@@ -260,7 +260,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CirPlusPlus<T, S> {
     // (`Deterministic::clone` snapshots the current state without
     // advancing it), so under the same seed this produces the identical
     // Gaussian stream a standalone `Cir` with the same parameters would.
-    let cir = Cir {
+    let cir: Cir<T, S> = Cir {
       theta: self.kappa,
       mu: self.theta,
       sigma: self.sigma,
@@ -269,6 +269,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CirPlusPlus<T, S> {
       t: self.t,
       use_sym: self.use_sym,
       seed: self.seed.clone(),
+      backend: std::marker::PhantomData,
     };
     CirPlusPlusSampler {
       n: self.n,

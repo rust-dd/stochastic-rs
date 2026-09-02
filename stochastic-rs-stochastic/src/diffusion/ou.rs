@@ -8,18 +8,24 @@
 //! the Brownian Motion*, Physical Review 36(5), 823–841,
 //! DOI: 10.1103/PhysRev.36.823.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::euler::EulerBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
+use crate::traits::process::sample_map_chunked;
+use crate::traits::process::sample_par_chunked;
 
 #[derive(Clone, Copy)]
-pub struct Ou<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Ou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed (κ in the SDE `dX = κ(θ − X) dt + σ dW`). Controls
   /// how fast `X` is pulled back toward [`mu`](Self::mu).
   pub theta: T,
@@ -36,6 +42,10 @@ pub struct Ou<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -51,6 +61,7 @@ impl<T: FloatExt, S: SeedExt> Ou<T, S> {
       x0,
       t,
       seed,
+      backend: PhantomData,
     }
   }
 
@@ -113,7 +124,25 @@ impl<T: FloatExt> Default for Ou<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ou<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Ou<T, S, B> {
+  /// Re-type this process to sample on backend `B2` (compile-time, zero
+  /// runtime cost): [`Cpu`] and `Accelerate` run the host sampler, the device
+  /// markers (`MetalNative`, `CudaNative`, `CubeCl`) the Euler kernel.
+  pub fn on<B2: EulerBackend>(self) -> Ou<T, S, B2> {
+    Ou {
+      theta: self.theta,
+      mu: self.mu,
+      sigma: self.sigma,
+      n: self.n,
+      x0: self.x0,
+      t: self.t,
+      seed: self.seed,
+      backend: PhantomData,
+    }
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: EulerBackend> ProcessExt<T> for Ou<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = OuSampler<T>
@@ -130,6 +159,31 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Ou<T, S> {
       drift_scale: self.theta * dt,
       diff_scale: self.sigma,
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+    }
+  }
+  fn sample(&self) -> Array1<T> {
+    if B::DEVICE {
+      B::euler_paths(self, 1).remove(0)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    if B::DEVICE {
+      B::euler_paths(self, m).iter().map(f).collect()
+    } else {
+      sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    if B::DEVICE {
+      B::euler_paths(self, m)
+    } else {
+      sample_par_chunked(self, m)
     }
   }
 }

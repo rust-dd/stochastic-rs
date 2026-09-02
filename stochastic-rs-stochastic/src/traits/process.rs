@@ -378,64 +378,11 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   /// rayon thread-pool size. `Unseeded` processes still draw fresh
   /// randomness on every call.
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Self::Output) -> R + Sync) -> Vec<R> {
-    if m == 0 {
-      return Vec::new();
-    }
-    if m == 1 {
-      return vec![f(&self.sample())];
-    }
-    self
-      .chunked_samplers(m)
-      .into_par_iter()
-      .map(|(mut sampler, len)| {
-        let mut slot: Option<Self::Output> = None;
-        (0..len)
-          .map(|_| {
-            if let Some(buf) = slot.as_mut() {
-              sampler.sample_into(buf);
-              return f(buf);
-            }
-            // First path in this chunk: sample fresh (no wasted draw) and
-            // keep the buffer to reuse for the rest of the chunk.
-            let buf = sampler.sample();
-            let r = f(&buf);
-            slot = Some(buf);
-            r
-          })
-          .collect::<Vec<_>>()
-      })
-      // Chunks run on rayon, but `Vec::into_par_iter()` → `.map()` is an
-      // `IndexedParallelIterator`, so `.collect()` restores chunk order
-      // regardless of completion order; flattening then reproduces the
-      // exact global path order (chunk 0's paths, then chunk 1's, ...).
-      .collect::<Vec<_>>()
-      .into_iter()
-      .flatten()
-      .collect()
+    sample_map_chunked(self, m, f)
   }
 
-  /// `m` independently sampled paths, kept. Like [`sample_map`](Self::sample_map)
-  /// it reuses one sampler per chunk, but allocates a fresh owned path each
-  /// step — cheaper than mapping then cloning when every path is wanted.
-  ///
-  /// **Reproducibility.** Same guarantee as [`sample_map`](Self::sample_map)
-  /// above.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
-    if m == 0 {
-      return Vec::new();
-    }
-    if m == 1 {
-      return vec![self.sample()];
-    }
-    self
-      .chunked_samplers(m)
-      .into_par_iter()
-      .map(|(mut sampler, len)| (0..len).map(|_| sampler.sample()).collect::<Vec<_>>())
-      // Same order-preserving collect-then-flatten as `sample_map` above.
-      .collect::<Vec<_>>()
-      .into_iter()
-      .flatten()
-      .collect()
+    sample_par_chunked(self, m)
   }
 }
 
@@ -531,4 +478,68 @@ pub trait ComplexPathOutput<T: FloatExt>:
 impl<T: FloatExt, P> ComplexPathOutput<T> for P where
   P: ProcessExt<T, Output = ndarray::Array1<num_complex::Complex<T>>>
 {
+}
+
+/// The trait's default `sample_map`: chunked host samplers on rayon, chunk order
+/// preserved. A backend-parameterised process calls this on its host path.
+pub(crate) fn sample_map_chunked<T: FloatExt, P: ProcessExt<T> + ?Sized, R: Send>(
+  p: &P,
+  m: usize,
+  f: impl Fn(&P::Output) -> R + Sync,
+) -> Vec<R> {
+  if m == 0 {
+    return Vec::new();
+  }
+  if m == 1 {
+    return vec![f(&p.sample())];
+  }
+  p.chunked_samplers(m)
+    .into_par_iter()
+    .map(|(mut sampler, len)| {
+      let mut slot: Option<P::Output> = None;
+      (0..len)
+        .map(|_| {
+          if let Some(buf) = slot.as_mut() {
+            sampler.sample_into(buf);
+            return f(buf);
+          }
+          // First path in this chunk: sample fresh (no wasted draw) and
+          // keep the buffer to reuse for the rest of the chunk.
+          let buf = sampler.sample();
+          let r = f(&buf);
+          slot = Some(buf);
+          r
+        })
+        .collect::<Vec<_>>()
+    })
+    // Chunks run on rayon, but `Vec::into_par_iter()` → `.map()` is an
+    // `IndexedParallelIterator`, so `.collect()` restores chunk order
+    // regardless of completion order; flattening then reproduces the
+    // exact global path order (chunk 0's paths, then chunk 1's, ...).
+    .collect::<Vec<_>>()
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
+/// The trait's default `sample_par`: chunked host samplers on rayon, chunk order
+/// preserved. A backend-parameterised process calls this on its host path.
+pub(crate) fn sample_par_chunked<T: FloatExt, P: ProcessExt<T> + ?Sized>(
+  p: &P,
+  m: usize,
+) -> Vec<P::Output> {
+  if m == 0 {
+    return Vec::new();
+  }
+  if m == 1 {
+    return vec![p.sample()];
+  }
+  p.chunked_samplers(m)
+    .into_par_iter()
+    .map(|(mut sampler, len)| (0..len).map(|_| sampler.sample()).collect::<Vec<_>>())
+    // Same order-preserving collect-then-flatten as `sample_map` above.
+    .collect::<Vec<_>>()
+    .into_iter()
+    .flatten()
+    .collect()
 }

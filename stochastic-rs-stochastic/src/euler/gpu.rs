@@ -5,6 +5,7 @@
 //! widened on the way back.
 
 use cubecl::prelude::*;
+use ndarray::Array1;
 use ndarray::Array2;
 use parking_lot::Mutex;
 
@@ -121,19 +122,19 @@ fn count_2d(cubes: u32) -> CubeCount {
 }
 
 impl EulerBackend for CubeCl {
-  fn euler_paths<T: FloatExt, P: EulerCoefficients<T>>(
-    process: &P,
-    m: usize,
-    seed: u64,
-  ) -> Array2<T> {
+  const DEVICE: bool = true;
+  fn euler_paths<T: FloatExt, P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>> {
     device_paths(
       process.euler_spec(),
       process.initial_value(),
       process.grid_points(),
       process.horizon(),
       m,
-      seed,
+      process.device_seed(),
     )
+    .outer_iter()
+    .map(|row| row.to_owned())
+    .collect()
   }
 }
 

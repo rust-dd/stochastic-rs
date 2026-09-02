@@ -6,85 +6,108 @@ use crate::diffusion::cir::Cir;
 use crate::diffusion::gbm::Gbm;
 use crate::diffusion::ou::Ou;
 
-/// The CPU back-end is the process's own sampler: bit for bit what
-/// `sample_par` returns with the seed pinned through `Deterministic`.
+/// `on::<Cpu>()` is the identity on a process's output, and the `Cpu`
+/// backend's `euler_paths` is the process's own `sample_par` — bit for bit.
 #[test]
 fn cpu_backend_is_the_process_sampler() {
-  let gbm = Gbm::new(0.05, 0.2, 64, Some(100.0), Some(1.0), Unseeded);
-  let engine = sample_paths::<f64, Cpu, _>(&gbm, 16, 42);
-  let own = gbm.seeded(42).sample_par(16);
-  assert_eq!(engine.dim(), (16, 64));
-  for (i, path) in own.iter().enumerate() {
-    assert_eq!(engine.row(i).to_vec(), path.to_vec());
+  // `Deterministic` advances as it samples, so every comparison starts from a
+  // freshly constructed process with the same seed.
+  let gbm = || {
+    Gbm::new(
+      0.05,
+      0.2,
+      64,
+      Some(100.0),
+      Some(1.0),
+      Deterministic::new(42),
+    )
+  };
+  let plain = gbm().sample_par(16);
+  let switched = gbm().on::<Cpu>().sample_par(16);
+  let through_trait = <Cpu as EulerBackend>::euler_paths(&gbm(), 16);
+  assert_eq!(plain.len(), 16);
+  for i in 0..16 {
+    assert_eq!(plain[i].to_vec(), switched[i].to_vec());
+    assert_eq!(plain[i].to_vec(), through_trait[i].to_vec());
   }
-  let direct = Gbm::new(
-    0.05,
-    0.2,
-    64,
-    Some(100.0),
-    Some(1.0),
-    Deterministic::new(42),
+  const {
+    assert!(!<Cpu as EulerBackend>::DEVICE);
+  }
+  let ou = || {
+    Ou::new(
+      2.0,
+      1.0,
+      0.5,
+      33,
+      Some(1.0),
+      Some(2.0),
+      Deterministic::new(7),
+    )
+  };
+  assert_eq!(ou().on::<Cpu>().sample().to_vec(), ou().sample().to_vec());
+  let cir = || {
+    Cir::new(
+      1.5,
+      0.04,
+      0.3,
+      33,
+      Some(0.09),
+      Some(1.0),
+      None,
+      Deterministic::new(7),
+    )
+  };
+  assert_eq!(
+    cir().on::<Cpu>().sample_map(4, |p| p[32]),
+    cir().sample_map(4, |p| p[32])
+  );
+  assert_eq!(gbm().on::<Cpu>().sample_par(0).len(), 0);
+}
+
+#[test]
+fn switching_the_backend_keeps_the_parameters() {
+  let gbm = Gbm::new(0.05, 0.2, 64, Some(100.0), Some(2.0), Unseeded).on::<Cpu>();
+  assert_eq!(
+    (gbm.mu, gbm.sigma, gbm.n, gbm.x0, gbm.t),
+    (0.05, 0.2, 64, Some(100.0), Some(2.0))
+  );
+  let cir = Cir::new(
+    1.5,
+    0.04,
+    0.3,
+    10,
+    Some(0.09),
+    Some(2.0),
+    Some(true),
+    Unseeded,
   )
-  .sample_par(16);
-  assert_eq!(engine.row(3).to_vec(), direct[3].to_vec());
-  let ou = Ou::new(2.0, 1.0, 0.5, 33, Some(1.0), Some(2.0), Unseeded);
-  assert_eq!(
-    sample_paths::<f64, Cpu, _>(&ou, 4, 7).row(2).to_vec(),
-    ou.seeded(7).sample_par(4)[2].to_vec()
-  );
-  let cir = Cir::new(1.5, 0.04, 0.3, 33, Some(0.09), Some(1.0), None, Unseeded);
-  assert_eq!(
-    sample_paths::<f64, Cpu, _>(&cir, 4, 7).row(1).to_vec(),
-    cir.seeded(7).sample_par(4)[1].to_vec()
-  );
-  assert_eq!(sample_paths::<f64, Cpu, _>(&gbm, 0, 1).dim(), (0, 64));
-}
-
-#[test]
-fn cpu_backend_seeds_are_reproducible_and_discriminating() {
-  let gbm = Gbm::new(0.05, 0.2, 64, Some(100.0), Some(1.0), Unseeded);
-  let a = sample_paths::<f64, Cpu, _>(&gbm, 16, 42);
-  let b = sample_paths::<f64, Cpu, _>(&gbm, 16, 42);
-  let c = sample_paths::<f64, Cpu, _>(&gbm, 16, 43);
-  assert_eq!(a, b);
-  assert_ne!(a, c);
-  assert_ne!(a.row(0), a.row(1));
-}
-
-#[test]
-fn spec_encoding_carries_the_family_and_its_parameters() {
-  assert_eq!(
-    EulerSpec::GeometricBrownian {
-      mu: 0.1,
-      sigma: 0.3
-    }
-    .encode(),
-    (0, [0.1, 0.3, 0.0, 0.0])
-  );
-  assert_eq!(
-    EulerSpec::OrnsteinUhlenbeck {
-      theta: 2.0,
-      mu: 1.0,
-      sigma: 0.5
-    }
-    .encode(),
-    (1, [2.0, 1.0, 0.5, 0.0])
-  );
-  assert_eq!(
-    EulerSpec::SquareRoot {
-      kappa: 1.0,
-      theta: 2.0,
-      sigma: 3.0
-    }
-    .encode(),
-    (2, [1.0, 2.0, 3.0, 0.0])
-  );
-  let cir = Cir::new(1.5, 0.04, 0.3, 10, Some(0.09), Some(2.0), None, Unseeded);
-  assert_eq!(cir.euler_spec().encode().0, 2);
+  .on::<Cpu>();
+  assert_eq!(cir.use_sym, Some(true));
+  assert_eq!(cir.euler_spec().encode(), (2, [1.5, 0.04, 0.3, 0.0]));
   assert_eq!(
     (cir.initial_value(), cir.grid_points(), cir.horizon()),
     (0.09, 10, 2.0)
   );
+  assert_eq!(gbm.euler_spec().encode(), (0, [0.05, 0.2, 0.0, 0.0]));
+  assert_eq!(
+    Ou::new(2.0, 1.0, 0.5, 5, None, None, Unseeded)
+      .euler_spec()
+      .encode(),
+    (1, [2.0, 1.0, 0.5, 0.0])
+  );
+}
+
+#[test]
+fn device_seed_follows_the_seed_source() {
+  let a = Gbm::new(0.05, 0.2, 8, None, None, Deterministic::new(3));
+  let b = Gbm::new(0.05, 0.2, 8, None, None, Deterministic::new(3));
+  assert_eq!(a.device_seed(), b.device_seed());
+  assert_ne!(
+    a.device_seed(),
+    Gbm::new(0.05, 0.2, 8, None, None, Deterministic::new(4)).device_seed()
+  );
+  let u = Gbm::new(0.05, 0.2, 8, None, None, Unseeded);
+  assert_ne!(u.device_seed(), u.device_seed());
 }
 
 /// Every compiled device back-end reproduces the lognormal moments and is
@@ -98,7 +121,19 @@ fn spec_encoding_carries_the_family_and_its_parameters() {
   feature = "gpu-wgpu"
 ))]
 mod devices {
+  use ndarray::Array2;
+
   use super::*;
+
+  /// Rows of `sample_par` as an `m × n` matrix.
+  fn stack(rows: &[Array1<f64>]) -> Array2<f64> {
+    let n = rows.first().map_or(0, |r| r.len());
+    let mut out = Array2::<f64>::zeros((rows.len(), n));
+    for (i, row) in rows.iter().enumerate() {
+      out.row_mut(i).assign(row);
+    }
+    out
+  }
 
   fn column_mean_var(paths: &Array2<f64>, col: usize) -> (f64, f64) {
     let column = paths.column(col);
@@ -108,10 +143,22 @@ mod devices {
     (mean, var)
   }
 
-  fn gbm_moments_hold<B: EulerBackend>(label: &str) -> Array2<f64> {
-    let gbm = Gbm::new(0.05, 0.2, 253, Some(100.0), Some(1.0), Unseeded);
-    let paths = sample_paths::<f64, B, _>(&gbm, 40_000, 7);
+  fn gbm(seed: u64) -> Gbm<f64, Deterministic> {
+    Gbm::new(
+      0.05,
+      0.2,
+      253,
+      Some(100.0),
+      Some(1.0),
+      Deterministic::new(seed),
+    )
+  }
+
+  fn gbm_moments_hold<B: EulerBackend>(label: &str) {
+    assert!(B::DEVICE, "{label}");
+    let paths = stack(&gbm(7).on::<B>().sample_par(40_000));
     assert_eq!(paths.dim(), (40_000, 253), "{label}");
+    assert!(paths.column(0).iter().all(|&x| x == 100.0), "{label}");
     let (mean, var) = column_mean_var(&paths, 252);
     let expected_mean = 100.0 * 0.05_f64.exp();
     let expected_var = 100.0_f64.powi(2) * (0.1_f64).exp() * ((0.04_f64).exp() - 1.0);
@@ -123,22 +170,39 @@ mod devices {
       (var / expected_var - 1.0).abs() < 0.06,
       "{label}: var {var} vs {expected_var}"
     );
-    assert_eq!(
-      sample_paths::<f64, B, _>(&gbm, 8, 7),
-      sample_paths::<f64, B, _>(&gbm, 8, 7),
+    let a = gbm(7).on::<B>().sample_par(8);
+    let b = gbm(7).on::<B>().sample_par(8);
+    let c = gbm(8).on::<B>().sample_par(8);
+    assert!(
+      a.iter().zip(&b).all(|(x, y)| x == y),
       "{label}: seed reproducibility"
     );
-    assert_ne!(
-      sample_paths::<f64, B, _>(&gbm, 8, 7),
-      sample_paths::<f64, B, _>(&gbm, 8, 8),
+    assert!(
+      a.iter().zip(&c).any(|(x, y)| x != y),
       "{label}: seed discrimination"
     );
-    paths
+    assert_ne!(a[0], a[1], "{label}: paths are distinct streams");
+    let single = gbm(7).on::<B>().sample();
+    assert_eq!(single.len(), 253, "{label}");
+    assert_eq!(
+      gbm(7).on::<B>().sample_map(3, |p| p[252]).len(),
+      3,
+      "{label}"
+    );
   }
 
   fn cir_stays_nonnegative<B: EulerBackend>(label: &str) {
-    let cir = Cir::new(1.5, 0.04, 0.3, 253, Some(0.09), Some(1.0), None, Unseeded);
-    let paths = sample_paths::<f64, B, _>(&cir, 4_000, 3);
+    let cir = Cir::new(
+      1.5,
+      0.04,
+      0.3,
+      253,
+      Some(0.09),
+      Some(1.0),
+      None,
+      Deterministic::new(3),
+    );
+    let paths = stack(&cir.on::<B>().sample_par(4_000));
     let (mean, _) = column_mean_var(&paths, 252);
     let expected = 0.04 + (0.09 - 0.04) * (-1.5_f64).exp();
     assert!(
@@ -168,23 +232,26 @@ mod devices {
     gbm_moments_hold::<crate::device::CudaNative>("CudaNative");
     cir_stays_nonnegative::<crate::device::CudaNative>("CudaNative");
     // f64 kernel: the double-precision path agrees with the f32 one to float rounding.
-    let gbm32 = Gbm::<f32, _>::new(0.05, 0.2, 64, Some(100.0), Some(1.0), Unseeded);
-    let gbm64 = Gbm::<f64, _>::new(0.05, 0.2, 64, Some(100.0), Some(1.0), Unseeded);
-    let single = sample_paths::<f32, crate::device::CudaNative, _>(&gbm32, 4, 5);
-    let double = sample_paths::<f64, crate::device::CudaNative, _>(&gbm64, 4, 5);
-    for (a, b) in single.iter().zip(double.iter()) {
-      assert!(((*a as f64) - b).abs() < 1e-3 * b.abs().max(1.0));
+    let single = Gbm::<f32, _>::new(0.05, 0.2, 64, Some(100.0), Some(1.0), Deterministic::new(5))
+      .on::<crate::device::CudaNative>()
+      .sample_par(4);
+    let double = gbm(5).on::<crate::device::CudaNative>().sample_par(4);
+    for (a, b) in single.iter().zip(&double) {
+      for (x, y) in a.iter().zip(b.iter()) {
+        assert!(((*x as f64) - y).abs() < 1e-3 * y.abs().max(1.0));
+      }
     }
   }
 
   #[cfg(all(feature = "metal", any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
   #[test]
   fn metal_native_and_cubecl_agree_seed_for_seed() {
-    let gbm = Gbm::new(0.05, 0.2, 128, Some(100.0), Some(1.0), Unseeded);
-    let metal = sample_paths::<f64, crate::device::MetalNative, _>(&gbm, 16, 11);
-    let cubecl = sample_paths::<f64, crate::device::CubeCl, _>(&gbm, 16, 11);
-    for (a, b) in metal.iter().zip(cubecl.iter()) {
-      assert!((a - b).abs() < 1e-3 * b.abs().max(1.0), "{a} vs {b}");
+    let metal = gbm(11).on::<crate::device::MetalNative>().sample_par(16);
+    let cubecl = gbm(11).on::<crate::device::CubeCl>().sample_par(16);
+    for (a, b) in metal.iter().zip(&cubecl) {
+      for (x, y) in a.iter().zip(b.iter()) {
+        assert!((x - y).abs() < 1e-3 * y.abs().max(1.0), "{x} vs {y}");
+      }
     }
   }
 }

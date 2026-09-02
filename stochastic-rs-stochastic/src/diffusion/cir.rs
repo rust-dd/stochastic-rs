@@ -8,15 +8,21 @@
 //! of the Term Structure of Interest Rates*, Econometrica 53(2),
 //! 385–407, DOI: 10.2307/1911242.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::euler::EulerBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
+use crate::traits::process::sample_map_chunked;
+use crate::traits::process::sample_par_chunked;
 
 /// Cox-Ingersoll-Ross (Cir) process.
 ///
@@ -26,7 +32,7 @@ use crate::traits::ProcessExt;
 /// [`theta`](Self::theta) corresponds to κ (mean-reversion speed) and
 /// [`mu`](Self::mu) corresponds to θ (long-run mean level).
 #[derive(Clone)]
-pub struct Cir<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Cir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed (κ in the SDE). Controls how fast `X` is pulled
   /// back toward [`mu`](Self::mu).
   pub theta: T,
@@ -45,6 +51,10 @@ pub struct Cir<T: FloatExt, S: SeedExt = Unseeded> {
   pub use_sym: Option<bool>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -94,6 +104,7 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
       t,
       use_sym,
       seed,
+      backend: PhantomData,
     }
   }
 
@@ -165,7 +176,26 @@ impl<T: FloatExt> Default for Cir<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cir<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
+  /// Re-type this process to sample on backend `B2` (compile-time, zero
+  /// runtime cost): [`Cpu`] and `Accelerate` run the host sampler, the device
+  /// markers (`MetalNative`, `CudaNative`, `CubeCl`) the Euler kernel.
+  pub fn on<B2: EulerBackend>(self) -> Cir<T, S, B2> {
+    Cir {
+      theta: self.theta,
+      mu: self.mu,
+      sigma: self.sigma,
+      n: self.n,
+      x0: self.x0,
+      t: self.t,
+      use_sym: self.use_sym,
+      seed: self.seed,
+      backend: PhantomData,
+    }
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: EulerBackend> ProcessExt<T> for Cir<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = CirSampler<T>
@@ -184,6 +214,31 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cir<T, S> {
       diff_scale: self.sigma,
       use_sym: self.use_sym.unwrap_or(false),
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+    }
+  }
+  fn sample(&self) -> Array1<T> {
+    if B::DEVICE {
+      B::euler_paths(self, 1).remove(0)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    if B::DEVICE {
+      B::euler_paths(self, m).iter().map(f).collect()
+    } else {
+      sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    if B::DEVICE {
+      B::euler_paths(self, m)
+    } else {
+      sample_par_chunked(self, m)
     }
   }
 }

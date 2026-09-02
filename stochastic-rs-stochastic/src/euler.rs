@@ -6,26 +6,31 @@
 //! $$
 //!
 //! Device-side path generation for the diffusions whose coefficients are a
-//! handful of scalars. One entry point, [`sample_paths`], parameterised by a
-//! [`Backend`] with the [`EulerBackend`] capability:
+//! handful of scalars. The backend is a type parameter of the process, as
+//! for the fGN-driven types: `Gbm<T, S, B = Cpu>`, `Ou`, `Cir` are switched
+//! with `.on::<B2>()` and then sampled through [`ProcessExt`] as usual —
+//! `gbm.on::<MetalNative>().sample_par(m)`.
 //!
 //! - [`Cpu`] (and `Accelerate`, a CPU device) is **the process's own
-//!   sampler** — `sample_par` with the seed pinned through `Deterministic` —
-//!   so nothing is re-implemented on the host: GBM keeps its exact log-normal
-//!   scheme, OU and CIR their SIMD Euler steppers.
+//!   sampler**, so nothing is re-implemented on the host: GBM keeps its exact
+//!   log-normal scheme, OU and CIR their SIMD Euler steppers.
 //! - The GPU back-ends run one device thread per path with the whole
 //!   Euler–Maruyama recursion in the kernel and Box–Muller normals from a
 //!   counter hash of `(path, step, seed)`: `CubeCl` (features `gpu-cuda` /
 //!   `gpu-wgpu`: CUDA, Metal, Vulkan or WebGPU through CubeCL, `f32`),
 //!   `CudaNative` (feature `cuda-native`: cudarc + NVRTC, `f32` or `f64` after
 //!   `T`) and `MetalNative` (feature `metal`: hand-written MSL, `f32`).
+//!   `sample_par` is one launch for all `m` paths; `sample` launches one path.
+//!
+//! The device seed is drawn from the process's own seed source, so a
+//! `Deterministic` process reproduces its device paths call after call and an
+//! `Unseeded` one draws fresh entropy, exactly as on the host. The device
+//! kernels share one integer hash, so the device back-ends agree with each
+//! other seed for seed up to libm rounding; the host path is the process's
+//! own stream, so CPU and device paths agree in distribution, not bit for bit.
 //!
 //! A process joins the engine by describing its coefficients as an
-//! [`EulerSpec`] through [`EulerCoefficients`] — [`Gbm`], [`Ou`] and [`Cir`]
-//! do. The device kernels share one integer hash, so the device back-ends
-//! agree with each other seed for seed up to libm rounding; the CPU path is
-//! the process's own stream, so CPU and device paths agree in distribution,
-//! not bit for bit.
+//! [`EulerSpec`] through [`EulerCoefficients`].
 //!
 //! References: Kloeden, P. E. & Platen, E. (1992), *Numerical Solution of
 //! Stochastic Differential Equations*, Springer, §10.2 (Euler–Maruyama);
@@ -34,8 +39,6 @@
 //! 10(2), 177–194 (full truncation, used by the device kernels for CIR).
 
 use ndarray::Array1;
-use ndarray::Array2;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 
 use crate::device::Backend;
@@ -74,87 +77,51 @@ impl<T: FloatExt> EulerSpec<T> {
   }
 }
 
-/// A process the Euler engine can run on a device: its coefficients, initial
-/// value, grid and horizon for the kernels, and a deterministically re-seeded
-/// copy of itself for the CPU path.
+/// A process the device kernels can run: its coefficients, initial value,
+/// grid, horizon and the seed the launch derives from the process's seed
+/// source.
 pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
-  /// The same process with its seed replaced by `Deterministic::new(seed)`.
-  type Seeded: ProcessExt<T, Output = Array1<T>>;
-  fn seeded(&self, seed: u64) -> Self::Seeded;
   fn euler_spec(&self) -> EulerSpec<T>;
   fn initial_value(&self) -> T;
   /// Number of grid points including `t = 0`.
   fn grid_points(&self) -> usize;
   fn horizon(&self) -> T;
+  /// One draw from the process's seed source: reproducible for
+  /// `Deterministic`, fresh entropy for `Unseeded`.
+  fn device_seed(&self) -> u64;
 }
 
-/// Device capability: `m` paths of `process` on the device, as an `m × n`
-/// matrix whose column 0 holds the initial value.
+/// Device capability: `m` paths of `process`, each an `n`-vector whose entry
+/// 0 is the initial value.
 pub trait EulerBackend: Backend {
-  fn euler_paths<T: FloatExt, P: EulerCoefficients<T>>(
-    process: &P,
-    m: usize,
-    seed: u64,
-  ) -> Array2<T>;
-}
-
-/// Runs `m` paths of `process` on backend `B` with the seed `seed`.
-pub fn sample_paths<T: FloatExt, B: EulerBackend, P: EulerCoefficients<T>>(
-  process: &P,
-  m: usize,
-  seed: u64,
-) -> Array2<T> {
-  B::euler_paths(process, m, seed)
-}
-
-/// Stacks `sample_par` output into the engine's `m × n` layout.
-fn stack_rows<T: FloatExt>(rows: Vec<Array1<T>>, n: usize) -> Array2<T> {
-  let m = rows.len();
-  let mut out = Array2::<T>::zeros((m, n));
-  for (i, row) in rows.iter().enumerate() {
-    out.row_mut(i).assign(row);
-  }
-  out
+  /// `true` for the GPU markers, whose paths come from the kernel; `false`
+  /// for the CPU devices, whose paths come from the process's own sampler.
+  const DEVICE: bool;
+  fn euler_paths<T: FloatExt, P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>>;
 }
 
 /// The CPU path is the process's own sampler.
 impl EulerBackend for Cpu {
-  fn euler_paths<T: FloatExt, P: EulerCoefficients<T>>(
-    process: &P,
-    m: usize,
-    seed: u64,
-  ) -> Array2<T> {
-    if m == 0 {
-      return Array2::<T>::zeros((0, process.grid_points()));
-    }
-    stack_rows(process.seeded(seed).sample_par(m), process.grid_points())
+  const DEVICE: bool = false;
+  fn euler_paths<T: FloatExt, P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>> {
+    process.sample_par(m)
   }
 }
 
 /// Accelerate is a CPU device (vDSP): the process's own sampler as well.
 #[cfg(feature = "accelerate")]
 impl EulerBackend for crate::device::Accelerate {
-  fn euler_paths<T: FloatExt, P: EulerCoefficients<T>>(
-    process: &P,
-    m: usize,
-    seed: u64,
-  ) -> Array2<T> {
-    Cpu::euler_paths(process, m, seed)
+  const DEVICE: bool = false;
+  fn euler_paths<T: FloatExt, P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>> {
+    process.sample_par(m)
   }
 }
 
-impl<T: FloatExt, S: SeedExt> EulerCoefficients<T> for Gbm<T, S> {
-  type Seeded = Gbm<T, Deterministic>;
-  fn seeded(&self, seed: u64) -> Self::Seeded {
-    Gbm::new(
-      self.mu,
-      self.sigma,
-      self.n,
-      self.x0,
-      self.t,
-      Deterministic::new(seed),
-    )
-  }
+fn draw_seed<S: SeedExt>(seed: &S) -> u64 {
+  rand::Rng::random(&mut seed.rng())
+}
+
+impl<T: FloatExt, S: SeedExt, B: EulerBackend> EulerCoefficients<T> for Gbm<T, S, B> {
   fn euler_spec(&self) -> EulerSpec<T> {
     EulerSpec::GeometricBrownian {
       mu: self.mu,
@@ -162,7 +129,7 @@ impl<T: FloatExt, S: SeedExt> EulerCoefficients<T> for Gbm<T, S> {
     }
   }
   fn initial_value(&self) -> T {
-    self.x0.unwrap_or(T::from_usize_(100))
+    self.x0.unwrap_or(T::one())
   }
   fn grid_points(&self) -> usize {
     self.n
@@ -170,21 +137,12 @@ impl<T: FloatExt, S: SeedExt> EulerCoefficients<T> for Gbm<T, S> {
   fn horizon(&self) -> T {
     self.t.unwrap_or(T::one())
   }
+  fn device_seed(&self) -> u64 {
+    draw_seed(&self.seed)
+  }
 }
 
-impl<T: FloatExt, S: SeedExt> EulerCoefficients<T> for Ou<T, S> {
-  type Seeded = Ou<T, Deterministic>;
-  fn seeded(&self, seed: u64) -> Self::Seeded {
-    Ou::new(
-      self.theta,
-      self.mu,
-      self.sigma,
-      self.n,
-      self.x0,
-      self.t,
-      Deterministic::new(seed),
-    )
-  }
+impl<T: FloatExt, S: SeedExt, B: EulerBackend> EulerCoefficients<T> for Ou<T, S, B> {
   fn euler_spec(&self) -> EulerSpec<T> {
     EulerSpec::OrnsteinUhlenbeck {
       theta: self.theta,
@@ -201,22 +159,12 @@ impl<T: FloatExt, S: SeedExt> EulerCoefficients<T> for Ou<T, S> {
   fn horizon(&self) -> T {
     self.t.unwrap_or(T::one())
   }
+  fn device_seed(&self) -> u64 {
+    draw_seed(&self.seed)
+  }
 }
 
-impl<T: FloatExt, S: SeedExt> EulerCoefficients<T> for Cir<T, S> {
-  type Seeded = Cir<T, Deterministic>;
-  fn seeded(&self, seed: u64) -> Self::Seeded {
-    Cir::new(
-      self.theta,
-      self.mu,
-      self.sigma,
-      self.n,
-      self.x0,
-      self.t,
-      self.use_sym,
-      Deterministic::new(seed),
-    )
-  }
+impl<T: FloatExt, S: SeedExt, B: EulerBackend> EulerCoefficients<T> for Cir<T, S, B> {
   fn euler_spec(&self) -> EulerSpec<T> {
     EulerSpec::SquareRoot {
       kappa: self.theta,
@@ -232,6 +180,9 @@ impl<T: FloatExt, S: SeedExt> EulerCoefficients<T> for Cir<T, S> {
   }
   fn horizon(&self) -> T {
     self.t.unwrap_or(T::one())
+  }
+  fn device_seed(&self) -> u64 {
+    draw_seed(&self.seed)
   }
 }
 
@@ -254,101 +205,98 @@ pub mod python {
   use numpy::IntoPyArray;
   use pyo3::exceptions::PyValueError;
   use pyo3::prelude::*;
-  use stochastic_rs_core::simd_rng::Unseeded;
+  use stochastic_rs_core::simd_rng::Deterministic;
 
-  use super::EulerBackend;
-  use super::EulerCoefficients;
   use crate::device::Cpu;
   use crate::diffusion::cir::Cir;
   use crate::diffusion::gbm::Gbm;
   use crate::diffusion::ou::Ou;
+  use crate::traits::ProcessExt;
 
-  /// Runs `m` paths of the family on the requested device.
-  fn dispatch<P: EulerCoefficients<f64>>(
-    py: Python<'_>,
-    process: &P,
-    m: usize,
-    seed: u64,
-    device: &str,
-  ) -> PyResult<ndarray::Array2<f64>> {
-    Ok(match device.to_ascii_lowercase().as_str() {
-      "cpu" => py.detach(|| Cpu::euler_paths(process, m, seed)),
-      "cuda-native" | "cuda_native" => {
-        #[cfg(feature = "cuda-native")]
-        {
-          py.detach(|| crate::device::CudaNative::euler_paths(process, m, seed))
+  /// Runs `m` paths of the process on the requested device through
+  /// `.on::<B>()`; every arm is the same call on a different marker.
+  macro_rules! on_device {
+    ($process:expr, $m:expr, $py:expr, $device:expr) => {
+      match $device {
+        "cpu" => $py.detach(|| $process.on::<Cpu>().sample_par($m)),
+        "cuda-native" | "cuda_native" => {
+          #[cfg(feature = "cuda-native")]
+          {
+            $py.detach(|| $process.on::<crate::device::CudaNative>().sample_par($m))
+          }
+          #[cfg(not(feature = "cuda-native"))]
+          {
+            return Err(PyValueError::new_err(
+              "this build has no native CUDA runtime; rebuild with the cuda-native feature",
+            ));
+          }
         }
-        #[cfg(not(feature = "cuda-native"))]
-        {
-          return Err(PyValueError::new_err(
-            "this build has no native CUDA runtime; rebuild with the cuda-native feature",
-          ));
+        "metal" => {
+          #[cfg(feature = "metal")]
+          {
+            $py.detach(|| $process.on::<crate::device::MetalNative>().sample_par($m))
+          }
+          #[cfg(not(feature = "metal"))]
+          {
+            return Err(PyValueError::new_err(
+              "this build has no native Metal runtime; rebuild with the metal feature",
+            ));
+          }
+        }
+        "cubecl" => {
+          #[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
+          {
+            $py.detach(|| $process.on::<crate::device::CubeCl>().sample_par($m))
+          }
+          #[cfg(not(any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
+          {
+            return Err(PyValueError::new_err(
+              "this build has no CubeCL runtime; rebuild with the gpu-cuda or gpu-wgpu feature",
+            ));
+          }
+        }
+        // The first compiled device back-end: native CUDA, then native Metal, then CubeCL.
+        "gpu" => {
+          #[cfg(feature = "cuda-native")]
+          {
+            $py.detach(|| $process.on::<crate::device::CudaNative>().sample_par($m))
+          }
+          #[cfg(all(feature = "metal", not(feature = "cuda-native")))]
+          {
+            $py.detach(|| $process.on::<crate::device::MetalNative>().sample_par($m))
+          }
+          #[cfg(all(
+            any(feature = "gpu-cuda", feature = "gpu-wgpu"),
+            not(feature = "metal"),
+            not(feature = "cuda-native")
+          ))]
+          {
+            $py.detach(|| $process.on::<crate::device::CubeCl>().sample_par($m))
+          }
+          #[cfg(not(any(
+            feature = "cuda-native",
+            feature = "metal",
+            feature = "gpu-cuda",
+            feature = "gpu-wgpu"
+          )))]
+          {
+            return Err(PyValueError::new_err(
+              "this build has no GPU runtime; rebuild with the cuda-native, metal, gpu-cuda or gpu-wgpu feature",
+            ));
+          }
+        }
+        other => {
+          return Err(PyValueError::new_err(format!(
+            "unknown device {other:?}; use cpu, gpu, cuda-native, metal or cubecl"
+          )));
         }
       }
-      "metal" => {
-        #[cfg(feature = "metal")]
-        {
-          py.detach(|| crate::device::MetalNative::euler_paths(process, m, seed))
-        }
-        #[cfg(not(feature = "metal"))]
-        {
-          return Err(PyValueError::new_err(
-            "this build has no native Metal runtime; rebuild with the metal feature",
-          ));
-        }
-      }
-      "cubecl" => {
-        #[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
-        {
-          py.detach(|| crate::device::CubeCl::euler_paths(process, m, seed))
-        }
-        #[cfg(not(any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
-        {
-          return Err(PyValueError::new_err(
-            "this build has no CubeCL runtime; rebuild with the gpu-cuda or gpu-wgpu feature",
-          ));
-        }
-      }
-      // The first compiled device back-end: native CUDA, then native Metal, then CubeCL.
-      "gpu" => {
-        #[cfg(feature = "cuda-native")]
-        {
-          py.detach(|| crate::device::CudaNative::euler_paths(process, m, seed))
-        }
-        #[cfg(all(feature = "metal", not(feature = "cuda-native")))]
-        {
-          py.detach(|| crate::device::MetalNative::euler_paths(process, m, seed))
-        }
-        #[cfg(all(
-          any(feature = "gpu-cuda", feature = "gpu-wgpu"),
-          not(feature = "metal"),
-          not(feature = "cuda-native")
-        ))]
-        {
-          py.detach(|| crate::device::CubeCl::euler_paths(process, m, seed))
-        }
-        #[cfg(not(any(
-          feature = "cuda-native",
-          feature = "metal",
-          feature = "gpu-cuda",
-          feature = "gpu-wgpu"
-        )))]
-        {
-          return Err(PyValueError::new_err(
-            "this build has no GPU runtime; rebuild with the cuda-native, metal, gpu-cuda or gpu-wgpu feature",
-          ));
-        }
-      }
-      other => {
-        return Err(PyValueError::new_err(format!(
-          "unknown device {other:?}; use cpu, gpu, cuda-native, metal or cubecl"
-        )));
-      }
-    })
+    };
   }
 
-  /// `m × n` paths of a scalar diffusion: the process's own sampler on the
-  /// CPU, the Euler–Maruyama kernel on a device. `family` is `"gbm"`
+  /// `m × n` paths of a scalar diffusion — `process.on::<B>().sample_par(m)`
+  /// with the process seeded by `seed`: the process's own sampler on the CPU,
+  /// the Euler–Maruyama kernel on a device. `family` is `"gbm"`
   /// (`[mu, sigma]`), `"ou"` (`[theta, mu, sigma]`) or `"cir"`
   /// (`[kappa, theta, sigma]`); `device` is `"cpu"`, `"gpu"` (the first
   /// compiled device back-end), or one of `"cuda-native"`, `"metal"`,
@@ -377,11 +325,19 @@ pub mod python {
         Ok(())
       }
     };
-    let paths = match family.to_ascii_lowercase().as_str() {
+    let device = device.to_ascii_lowercase();
+    let rows: Vec<ndarray::Array1<f64>> = match family.to_ascii_lowercase().as_str() {
       "gbm" => {
         need(2)?;
-        let process = Gbm::new(params[0], params[1], n, Some(x0), Some(t), Unseeded);
-        dispatch(py, &process, m, seed, device)?
+        let process = Gbm::new(
+          params[0],
+          params[1],
+          n,
+          Some(x0),
+          Some(t),
+          Deterministic::new(seed),
+        );
+        on_device!(process, m, py, device.as_str())
       }
       "ou" => {
         need(3)?;
@@ -392,9 +348,9 @@ pub mod python {
           n,
           Some(x0),
           Some(t),
-          Unseeded,
+          Deterministic::new(seed),
         );
-        dispatch(py, &process, m, seed, device)?
+        on_device!(process, m, py, device.as_str())
       }
       "cir" => {
         need(3)?;
@@ -406,9 +362,9 @@ pub mod python {
           Some(x0),
           Some(t),
           None,
-          Unseeded,
+          Deterministic::new(seed),
         );
-        dispatch(py, &process, m, seed, device)?
+        on_device!(process, m, py, device.as_str())
       }
       other => {
         return Err(PyValueError::new_err(format!(
@@ -416,6 +372,10 @@ pub mod python {
         )));
       }
     };
+    let mut paths = ndarray::Array2::<f64>::zeros((rows.len(), n));
+    for (i, row) in rows.iter().enumerate() {
+      paths.row_mut(i).assign(row);
+    }
     Ok(paths.into_pyarray(py))
   }
 }

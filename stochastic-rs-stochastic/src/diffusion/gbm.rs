@@ -4,6 +4,8 @@
 //! dS_t=\mu S_t\,dt+\sigma S_t\,dW_t,\quad S_0=s_0
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -13,13 +15,17 @@ use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::euler::EulerBackend;
 use crate::traits::DistributionExt;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
+use crate::traits::process::sample_map_chunked;
+use crate::traits::process::sample_par_chunked;
 
 #[derive(Clone)]
-pub struct Gbm<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Gbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant proportional drift rate μ. GBM has no mean reversion — `mu`
   /// is not a long-run level; it is the constant rate at which `S_t`
   /// grows (or shrinks) in expectation.
@@ -37,6 +43,10 @@ pub struct Gbm<T: FloatExt, S: SeedExt = Unseeded> {
   ln_sigma: f64,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// Recomputes the cached terminal-log-normal parameters `(ln_mu, ln_sigma)`
@@ -74,6 +84,7 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
       ln_mu,
       ln_sigma,
       seed,
+      backend: PhantomData,
     }
   }
 
@@ -137,7 +148,26 @@ impl<T: FloatExt> Default for Gbm<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Gbm<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Gbm<T, S, B> {
+  /// Re-type this process to sample on backend `B2` (compile-time, zero
+  /// runtime cost): [`Cpu`] and `Accelerate` run the host sampler, the device
+  /// markers (`MetalNative`, `CudaNative`, `CubeCl`) the Euler kernel.
+  pub fn on<B2: EulerBackend>(self) -> Gbm<T, S, B2> {
+    Gbm {
+      mu: self.mu,
+      sigma: self.sigma,
+      n: self.n,
+      x0: self.x0,
+      t: self.t,
+      ln_mu: self.ln_mu,
+      ln_sigma: self.ln_sigma,
+      seed: self.seed,
+      backend: PhantomData,
+    }
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: EulerBackend> ProcessExt<T> for Gbm<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = GbmSampler<T>
@@ -156,6 +186,31 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Gbm<T, S> {
       drift_scale: self.mu * dt,
       diff_scale: self.sigma,
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+    }
+  }
+  fn sample(&self) -> Array1<T> {
+    if B::DEVICE {
+      B::euler_paths(self, 1).remove(0)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    if B::DEVICE {
+      B::euler_paths(self, m).iter().map(f).collect()
+    } else {
+      sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    if B::DEVICE {
+      B::euler_paths(self, m)
+    } else {
+      sample_par_chunked(self, m)
     }
   }
 }

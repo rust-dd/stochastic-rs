@@ -312,12 +312,15 @@ Each contains the file-by-file recipe.
 
 ## Euler engine
 
-`euler::sample_paths::<T, B, _>(&process, m, seed)` runs `m` paths of a scalar
-diffusion on backend `B`. On `Cpu` (and `Accelerate`) it is **the process's own
-sampler** — `sample_par` with the seed pinned — so nothing is re-implemented
-on the host: GBM keeps its exact log-normal scheme, OU and CIR their SIMD
-steppers. The GPU back-ends run one device thread per path with the whole
-Euler–Maruyama recursion in the kernel and counter-hashed Box–Muller normals:
+The sampling backend is a **type parameter of the process**, exactly as for
+the fGN-driven types: `Gbm<T, S, B = Cpu>`, `Ou` and `Cir` are re-typed with
+`.on::<B2>()` and then sampled through `ProcessExt` as usual —
+`gbm.on::<MetalNative>().sample_par(m)`. On `Cpu` (and `Accelerate`) that is
+the process's own sampler, so nothing is re-implemented on the host: GBM keeps
+its exact log-normal scheme, OU and CIR their SIMD steppers. The GPU back-ends
+run one device thread per path with the whole Euler–Maruyama recursion in the
+kernel and counter-hashed Box–Muller normals (`sample_par` is one launch for
+all `m` paths):
 
 | Backend | Feature | Device | Precision |
 |---|---|---|---|
@@ -325,12 +328,14 @@ Euler–Maruyama recursion in the kernel and counter-hashed Box–Muller normals
 | `CudaNative` | `cuda-native` | NVIDIA, cudarc + NVRTC | `f32` or `f64`, after `T` |
 | `MetalNative` | `metal` | Apple GPUs, hand-written MSL | `f32` |
 
-A process joins the engine by describing its coefficients as an `EulerSpec`
-through `EulerCoefficients` — `Gbm`, `Ou` and `Cir` do. The device kernels
-share one integer hash for their uniforms, so the device back-ends agree with
-each other seed for seed up to libm rounding; the CPU path is the process's
-own stream, so CPU and device paths agree in distribution rather than bit for
-bit.
+The device seed is drawn from the process's own seed source (`Deterministic`
+reproduces its device paths call after call, `Unseeded` draws fresh entropy).
+The device kernels share one integer hash for their uniforms, so the device
+back-ends agree with each other seed for seed up to libm rounding; the host
+path is the process's own stream, so CPU and device paths agree in
+distribution rather than bit for bit. A process joins the engine by describing
+its coefficients as an `EulerSpec` through `EulerCoefficients` — `Gbm`, `Ou`
+and `Cir` do.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
