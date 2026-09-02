@@ -56,7 +56,7 @@ pub struct SquaredBessel<T: FloatExt, S: SeedExt = Unseeded> {
   /// otherwise (matching [`Cir::use_sym`](crate::diffusion::cir::Cir::use_sym)).
   pub use_sym: Option<bool>,
   /// Seed strategy (compile-time: [`Unseeded`] or
-  /// [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
+  /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 
@@ -280,7 +280,7 @@ pub struct Bessel<T: FloatExt, S: SeedExt = Unseeded> {
   /// otherwise (see [`SquaredBessel::use_sym`]).
   pub use_sym: Option<bool>,
   /// Seed strategy (compile-time: [`Unseeded`] or
-  /// [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
+  /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 

@@ -53,7 +53,7 @@ pub struct Agarch<T: FloatExt, S: SeedExt = Unseeded> {
   pub beta: Array1<T>,
   /// Length of the generated time series.
   pub n: usize,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 

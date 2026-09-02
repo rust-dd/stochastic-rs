@@ -34,7 +34,7 @@ where
   pub t_max: Option<T>,
   /// Distribution used for generated increments / inter-arrival draws.
   pub distribution: D,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 

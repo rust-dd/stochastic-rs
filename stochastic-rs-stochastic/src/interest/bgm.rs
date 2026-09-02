@@ -92,7 +92,7 @@ pub struct Bgm<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Number of time steps in the simulation.
   pub n: usize,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 

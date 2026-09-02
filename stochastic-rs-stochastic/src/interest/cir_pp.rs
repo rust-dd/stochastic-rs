@@ -78,7 +78,7 @@ pub struct CirPlusPlus<T: FloatExt, S: SeedExt = Unseeded> {
   /// CIR factor when true (see [`Cir::use_sym`]).
   pub use_sym: Option<bool>,
   /// Seed strategy (compile-time: [`Unseeded`] or
-  /// [`Deterministic`]).
+  /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 

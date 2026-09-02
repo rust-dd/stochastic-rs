@@ -37,7 +37,7 @@ where
   pub jump_times_distribution: D2,
   /// Underlying jump-time generator used internally.
   pub customjt: CustomJt<T, D2>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 

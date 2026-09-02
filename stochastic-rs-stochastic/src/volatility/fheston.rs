@@ -65,7 +65,7 @@ pub struct RoughHeston<T: FloatExt, S: SeedExt = Unseeded> {
   pub s0: Option<T>,
   /// Correlation between price and vol innovations (default 0 = independent).
   pub rho: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 

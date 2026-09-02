@@ -20,7 +20,7 @@ pub struct GammaSubordinator<T: FloatExt, S: SeedExt = Unseeded> {
   pub x0: Option<T>,
   /// Horizon.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 

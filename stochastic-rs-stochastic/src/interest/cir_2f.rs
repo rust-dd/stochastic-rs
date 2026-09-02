@@ -43,7 +43,7 @@ pub struct Cir2F<T: FloatExt, S: SeedExt = Unseeded> {
   /// output short rate `r_t = x_t + y_t + φ(t)` can be fitted to an
   /// initial term structure (shift extension, as in CIR++).
   pub phi: Fn1D<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   /// Authoritative: [`new`](Self::new) derives `x`'s and `y`'s own seeds
   /// from this value (two independent children, in that order), overwriting
   /// whatever seed the caller constructed `x`/`y` with.

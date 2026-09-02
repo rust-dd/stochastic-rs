@@ -45,7 +45,7 @@ pub struct Hawkes<T: FloatExt, S: SeedExt = Unseeded> {
   pub n: Option<usize>,
   /// Optional terminal time for horizon-based sampling.
   pub t_max: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 

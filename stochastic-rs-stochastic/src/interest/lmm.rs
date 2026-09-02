@@ -102,7 +102,7 @@ pub struct Lmm<T: FloatExt, S: SeedExt = Unseeded> {
   /// Simulation horizon `t_horizon`. Defaults to `T_M` (last tenor date)
   /// when `None`. Must satisfy `0 < t_horizon ≤ T_M`.
   pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic)).
+  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
 }
 
