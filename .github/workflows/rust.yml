@@ -77,10 +77,10 @@ jobs:
       # unnoticed. This step is what makes the deny bite.
       - name: cargo doc (intra-doc links, deny warnings)
         run: cargo doc --workspace --no-deps
-      - name: Cargo check (stochastic-rs-py, features=ai)
-        run: cargo check -p stochastic-rs-py --features ai
         env:
           RUSTDOCFLAGS: -D warnings
+      - name: Cargo check (stochastic-rs-py, features=ai)
+        run: cargo check -p stochastic-rs-py --features ai
 
   # metal + accelerate only compile on macOS, so no linux job can lint them;
   # this is the one arm of the CI that runs on a mac. Check-only: the point
