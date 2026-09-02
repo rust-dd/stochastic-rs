@@ -8,4 +8,6 @@ pub mod volatility;
 #[cfg(feature = "quant")]
 pub mod calibration;
 
+pub mod device;
+
 pub use candle_core::Device;

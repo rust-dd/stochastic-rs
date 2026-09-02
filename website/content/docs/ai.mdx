@@ -127,6 +127,23 @@ outside it, and a solution on the boundary is a warning, not an answer.
 </Tab>
 </Tabs>
 
+## Training on the GPU
+
+candle runs on the CPU by default. The `ai-metal` (macOS) and `ai-cuda`
+features of the umbrella crate compile the matching candle back-end, and
+`ai::device::best_available()` returns the fastest device the build can
+reach — pass it to any surrogate constructor instead of `Device::Cpu`.
+Weights are stored device-independently, so a model trained on a GPU loads on
+the CPU and vice versa.
+
+```rust
+use stochastic_rs::ai::device::best_available;
+use stochastic_rs::ai::volatility::heston::HestonNn;
+
+let device = best_available()?;               // Cuda / Metal / Cpu
+let mut model = HestonNn::new(&device)?;      // trains and predicts on that device
+```
+
 ## Adding a surrogate
 
 See the

@@ -21,6 +21,9 @@ quant = ["dep:stochastic-rs-quant", "dep:levenberg-marquardt", "dep:nalgebra"]
 # helper. Plotly is optional so a caller that only trains/predicts doesn't
 # compile a plotting stack.
 viz = ["dep:plotly"]
+# candle GPU back-ends; `device::best_available` prefers them when compiled in.
+metal = ["candle-core/metal", "candle-nn/metal"]
+cuda = ["candle-core/cuda", "candle-nn/cuda"]
 
 [dependencies]
 stochastic-rs-core = { workspace = true }
