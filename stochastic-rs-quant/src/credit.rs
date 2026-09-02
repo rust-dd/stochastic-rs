@@ -29,15 +29,20 @@
 
 pub mod bootstrap;
 pub mod cds;
+pub mod index;
 pub mod merton;
 pub mod migration;
 pub mod survival_curve;
+pub mod tranche;
 
 pub use bootstrap::CdsQuote;
 pub use bootstrap::bootstrap_hazard;
 pub use cds::CdsPosition;
 pub use cds::CdsValuation;
 pub use cds::CreditDefaultSwap;
+pub use index::CdsIndex;
+pub use index::IndexName;
+pub use index::IndexValuation;
 pub use merton::MertonStructural;
 pub use migration::GeneratorMatrix;
 pub use migration::TransitionMatrix;
@@ -45,3 +50,6 @@ pub use survival_curve::HazardInterpolation;
 pub use survival_curve::HazardRateCurve;
 pub use survival_curve::SurvivalCurve;
 pub use survival_curve::SurvivalPoint;
+pub use tranche::CdoTranche;
+pub use tranche::PoolName;
+pub use tranche::TrancheValuation;

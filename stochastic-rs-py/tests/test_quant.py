@@ -172,3 +172,19 @@ def test_xva_exposure_profile_and_adjustments():
     prof = swap.profile(curve, paths=2000, seed=7)
     assert prof.epe()[-1] == 0.0 and prof.peak_epe() > 0.0
     assert prof.cva(0.02, curve, 0.6) > prof.cva(0.01, curve, 0.6) > 0.0
+
+def test_cds_index_and_cdo_tranche():
+    import numpy as np
+
+    curve = sr.DiscountCurve.from_zero_rates(np.array([0.5, 1.0, 5.0, 10.0]), np.full(4, 0.03), interp="log_df")
+    names = [(1 / 125, 0.4, 0.02)] * 125
+    index = sr.CdsIndex(names, 0.01, 1e7, "2026-03-20", "2031-06-20")
+    fair = index.fair_spread("2026-03-20", curve)
+    assert 0.005 < fair < 0.03
+    assert abs(index.isda_upfront("2026-03-20", curve, 0.01)) < 1.0
+    assert index.isda_upfront("2026-03-20", curve, 0.012) > 0.0 > index.isda_upfront("2026-03-20", curve, 0.008)
+    equity = sr.CdoTranche(names, 0.0, 0.03, 0.05, [1.0, 2.0, 3.0, 4.0, 5.0], 0.3)
+    senior = sr.CdoTranche(names, 0.12, 0.22, 0.0, [1.0, 2.0, 3.0, 4.0, 5.0], 0.3)
+    assert equity.valuation(curve)[3] > senior.valuation(curve)[3] > 0.0
+    dist = equity.loss_distribution(5.0)
+    assert abs(sum(dist) - 1.0) < 1e-9 and dist[0] > 0.0

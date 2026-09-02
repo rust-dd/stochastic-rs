@@ -21,7 +21,7 @@ factor / strategy primitives.
 | **Calibration**    | Heston (Cui analytic Jacobian + NMLE / PMLE / NMLE-CEKF seeds), SABR per-expiry caplet smile, Lévy (CGMY, VG, NIG, Merton-jump, Kou, bilateral gamma), SVJ, rough Bergomi, double-Heston, BSM (multi-maturity), HKDE, Hull-White (Jamshidian), G2++ and Black-Karasinski (trinomial-tree repricing) swaption grids via Nelder-Mead. Optional Tikhonov regularisation toward a parameter anchor on the Heston, SABR and swaption calibrators. |
 | **Vol surface**    | Implied-vol surface from market quotes, SVI / SSVI / eSSVI (anchored per-maturity slices with butterfly and calendar bounds), arbitrage-free interpolation, smile and skew analytics, SABR-smile fits.                                                |
 | **Risk**           | VaR (Gaussian / historical / Monte Carlo), CVaR / ES, drawdown metrics, Sharpe / Sortino / IR / Calmar (no hard-coded annualisation), instrument-level Greeks, bucket DV01, scenario / shock / curve-shift stress framework, XVA (EPE / ENE / PFE exposure profiles, CVA / DVA / bilateral / FCA / FBA / FVA, Hull-White swap exposure engine). |
-| **Credit**         | Merton structural model (PD, equity / debt, distance-to-default, credit spread, implied recovery), reduced-form survival / hazard curves, CDS pricing (ISDA daily-grid, fair spread, risky PV01), hazard bootstrap from CDS par-spread term structure, JLT migration matrices with pure-Rust Padé-13 matrix exponential. |
+| **Credit**         | Merton structural model (PD, equity / debt, distance-to-default, credit spread, implied recovery), reduced-form survival / hazard curves, CDS pricing (ISDA daily-grid, fair spread, risky PV01), hazard bootstrap from CDS par-spread term structure, CDS index with ISDA standard-model upfront, CDO tranches under the one-factor Gaussian copula (ASB recursion, Vasicek large-pool limit), JLT migration matrices with pure-Rust Padé-13 matrix exponential. |
 | **Yield curves**   | Bootstrapping (deposit / FRA / future / swap / OIS helper), dual-curve tenor bootstrap against an OIS discount curve, Nelson-Siegel / Svensson, multi-curve (OIS discounting, tenor forecasting), discount-curve interpolation (linear / log-linear / cubic / monotone-convex). |
 | **Bonds**          | Fixed-rate / floating-rate / inflation-linked / amortizing bonds. YTM / Macaulay / modified duration / convexity / Z-spread / OAS. Vasicek / CIR / Hull-White short-rate bond pricing, callable / puttable coupon bonds on the Hull-White trinomial tree. |
 | **Cashflows**      | Coupon, leg, engine, schedule builder. Day-count + business-day conventions.                               |
@@ -275,6 +275,31 @@ print(profile.cva(hazard_rate=0.02, discount=curve, lgd=0.6), profile.fva(curve,
 # Any MtM matrix works: here a Brownian one, whose EPE is σ√t/√(2π).
 mtm = 10.0 * np.cumsum(np.random.default_rng(1).standard_normal((20000, 4)) * np.sqrt(0.5), axis=1)
 print(srs.ExposureProfile.from_mtm(mtm, [0.5, 1.0, 1.5, 2.0]).epe())
+```
+</Tab>
+</Tabs>
+
+### CDS index and CDO tranches
+
+`CdsIndex` values an untranched index name by name with the ISDA-style single-name engine and aggregates by notional weight, so the index fair spread is the annuity-weighted average of the names'; `isda_upfront` applies the standard-model convention (a flat hazard solved so a running CDS at the quoted spread is worth zero, then the coupon shortfall on that curve). `CdoTranche` prices a `[A, D]` tranche under the one-factor Gaussian copula: conditional on the market factor the defaults are independent, the loss distribution follows from the Andersen–Sidenius–Basu recursion on a loss grid, the factor is integrated by Gauss–Hermite quadrature, and the protection and premium legs follow O'Kane's mid-period convention; the Vasicek large-pool limit is exposed as a cross-check.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_quant_credit_portfolio.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import numpy as np
+import stochastic_rs as srs
+
+curve = srs.DiscountCurve.from_zero_rates(np.array([0.5, 1.0, 5.0, 10.0]), np.full(4, 0.03), interp="log_df")
+names = [(1 / 125, 0.4, 0.02)] * 125                     # (weight, recovery, hazard)
+index = srs.CdsIndex(names, coupon=0.01, notional=1e7, effective_date="2026-03-20", maturity_date="2031-06-20")
+print(index.fair_spread("2026-03-20", curve), index.isda_upfront("2026-03-20", curve, quoted_spread=0.012))
+
+equity = srs.CdoTranche(names, attachment=0.0, detachment=0.03, spread=0.05, payment_times=[1, 2, 3, 4, 5], correlation=0.3)
+print(equity.valuation(curve))                            # (protection, annuity, premium, fair_spread, upfront)
+print(equity.expected_tranche_loss(5.0), equity.large_pool_expected_tranche_loss(p=1 - np.exp(-0.1), lgd=0.6))
 ```
 </Tab>
 </Tabs>

@@ -387,6 +387,8 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_quant::python::PyBlackKarasinskiSwaptionCalibrator;
   use stochastic_rs_quant::python::PyBusinessDayConvention;
   use stochastic_rs_quant::python::PyCalendar;
+  use stochastic_rs_quant::python::PyCdoTranche;
+  use stochastic_rs_quant::python::PyCdsIndex;
   use stochastic_rs_quant::python::PyCgmysvCalibrator;
   use stochastic_rs_quant::python::PyDayCount;
   use stochastic_rs_quant::python::PyDiscountCurve;
@@ -407,6 +409,8 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyOrderBook>()?;
   m.add_class::<PyDiscountCurve>()?;
   m.add_class::<PyMultiCurve>()?;
+  m.add_class::<PyCdsIndex>()?;
+  m.add_class::<PyCdoTranche>()?;
   m.add_class::<PyExposureProfile>()?;
   m.add_class::<PyHullWhiteSwapExposure>()?;
   m.add_class::<PyHullWhiteSwaptionCalibrator>()?;
