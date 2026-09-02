@@ -107,6 +107,7 @@ use stochastic_rs_quant::pricing::asian::AsianPricer;
 use stochastic_rs_quant::pricing::finite_difference::FiniteDifferencePricer;
 use stochastic_rs_quant::pricing::malliavin_gbm::GbmMalliavinPricer;
 use stochastic_rs_quant::pricing::merton_jump::Merton1976Pricer;
+use stochastic_rs_quant::pricing::quanto::QuantoPricer;
 use stochastic_rs_quant::pricing::sabr::SabrPricer;
 use stochastic_rs_quant::pricing::snell_envelope::SnellEnvelopePricer;
 use stochastic_rs_quant::traits::ModelPricer;
@@ -217,7 +218,9 @@ macro_rules! assert_not_vanilla_european_call {
 //    `exp((b - r) * tau)`, which equals the default's `exp(-q * tau)` only when
 //    `b = r - q` — false for `BSMCoc::Bsm1973` at `q != 0` and for `Black1976` /
 //    `Asay1982`, and true only on a measure-zero line for the Asian pricer's
-//    averaged-underlying carry;
+//    averaged-underlying carry; `QuantoPricer` carries at the quanto drift
+//    `b = r_f - q - rho sigma_S sigma_E` and scales the whole price by the
+//    fixed exchange rate, so the default parity is wrong on both counts;
 //  - American exercise: `BjerksundStensland2002Pricer`, `SnellEnvelopePricer`
 //    and `FiniteDifferencePricer` price a put that carries an early-exercise
 //    premium the call does not, so European parity is not an approximation but
@@ -243,6 +246,7 @@ assert_model_pricer!(
   HestonStochCorrPricer,
   LevyModel,
   Merton1976Pricer,
+  QuantoPricer,
   RBergomiPricer,
   SabrPricer,
   SnellEnvelopePricer,
@@ -302,12 +306,18 @@ assert_vanilla_european_call!(
 //    obviously wrong: at `q = 0.06` both invert to within 0.008 of the model's
 //    own volatility, close enough to pass any eyeball check and wrong at every
 //    point.
+//  - `QuantoPricer`: a vanilla call on the foreign asset, but paid in the
+//    domestic currency at a fixed exchange rate — `E_p` times a Black price
+//    carried at the quanto drift `r_f - q - rho sigma_S sigma_E`. Inverting it
+//    as a domestic vanilla on `S` would fold the `E_p` scale and the wrong
+//    forward into a volatility that is neither the asset's nor the FX rate's.
 assert_not_vanilla_european_call!(
   AsianPricer,
   AssetOrNothingPricer,
   BjerksundStensland2002Pricer,
   CashOrNothingPricer,
   GapPricer,
+  QuantoPricer,
   SnellEnvelopePricer,
   SuperSharePricer,
 );
