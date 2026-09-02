@@ -100,6 +100,13 @@ impl OneFactorNn {
   }
 }
 
+#[cfg(feature = "quant")]
+impl crate::calibration::SurrogateModel for OneFactorNn {
+  fn nn(&self) -> &StochVolNn {
+    &self.inner
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use std::fs;

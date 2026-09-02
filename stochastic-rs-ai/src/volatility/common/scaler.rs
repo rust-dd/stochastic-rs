@@ -13,6 +13,12 @@ impl BoundedScaler {
     Self { lb, ub }
   }
 
+  /// Half of the `j`-th parameter's range: the parameter-to-scaled-coordinate
+  /// map is `(θ_j − centre_j) / half_range_j`, so this is `dθ_j / dx_j`.
+  pub(super) fn half_range(&self, j: usize) -> f32 {
+    0.5 * (self.ub[j] - self.lb[j])
+  }
+
   pub(super) fn scale_array2(&self, x: &Array2<f32>) -> Result<Array2<f32>> {
     if x.ncols() != self.lb.len() {
       bail!("input width mismatch for bounded scaling");

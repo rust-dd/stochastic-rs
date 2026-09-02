@@ -7,7 +7,9 @@ use anyhow::anyhow;
 use anyhow::bail;
 use candle_core::DType;
 use candle_core::Device;
+use candle_core::IndexOp;
 use candle_core::Tensor;
+use candle_core::Var;
 use candle_nn::AdamW;
 use candle_nn::Module;
 use candle_nn::Optimizer;
@@ -168,7 +170,42 @@ impl StochVolNn {
     Ok(arr.row(0).to_vec())
   }
 
-  /// Build an [`ImpliedVolSurface`] by running the network on `params` and
+  /// Surface prediction together with its Jacobian `∂F̃_k/∂θ_j` (rows = grid
+  /// points, columns = parameters) by reverse-mode differentiation through
+  /// the network — one backward pass per grid point — with the affine
+  /// derivatives of the parameter scaling (`1 / half-range_j`) and of the
+  /// output de-standardisation (`std_k`) applied, so the Jacobian is in
+  /// parameter and implied-volatility units.
+  pub fn predict_surface_with_jacobian(&self, params: &[f32]) -> Result<(Vec<f32>, Array2<f32>)> {
+    let scaler = self
+      .output_scaler
+      .as_ref()
+      .ok_or_else(|| anyhow!("model is not trained or loaded (missing output scaler)"))?;
+    let scaled = self.param_scaler.scale_vector(params)?;
+    let x = Var::from_slice(&scaled, (1, self.spec.input_dim), &self.device)?;
+    let y = self.model.forward(x.as_tensor())?;
+    let y_scaled = Array2::from_shape_vec(
+      (1, self.spec.output_dim),
+      y.to_vec2::<f32>()?.into_iter().flatten().collect(),
+    )?;
+    let surface = scaler.inverse_transform(&y_scaled)?.row(0).to_vec();
+    let mut jacobian = Array2::<f32>::zeros((self.spec.output_dim, self.spec.input_dim));
+    for k in 0..self.spec.output_dim {
+      let grads = y.i((0, k))?.backward()?;
+      let g = grads
+        .get(x.as_tensor())
+        .ok_or_else(|| anyhow!("the network output does not depend on its input"))?
+        .flatten_all()?
+        .to_vec1::<f32>()?;
+      for j in 0..self.spec.input_dim {
+        jacobian[(k, j)] = g[j] * scaler.std[k] / self.param_scaler.half_range(j);
+      }
+    }
+    Ok((surface, jacobian))
+  }
+
+  /// Build an [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface)
+  /// by running the network on `params` and
   /// reshaping the flat prediction into the standard `(N_T, N_K)` layout.
   ///
   /// The network's `output_dim` must equal `maturities.len() × strikes.len()`,

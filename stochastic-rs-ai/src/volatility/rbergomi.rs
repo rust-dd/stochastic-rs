@@ -101,6 +101,13 @@ impl RBergomiNn {
   }
 }
 
+#[cfg(feature = "quant")]
+impl crate::calibration::SurrogateModel for RBergomiNn {
+  fn nn(&self) -> &StochVolNn {
+    &self.inner
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use std::fs;

@@ -16,7 +16,7 @@ exclude = ["src/volatility/*TrainSet.txt.gz", "**/*.gz"]
 default = []
 # Bridge feature: enables `StochVolNn::predict_implied_vol_surface` which
 # packages a Nn prediction into a `stochastic_rs_quant::ImpliedVolSurface`.
-quant = ["dep:stochastic-rs-quant"]
+quant = ["dep:stochastic-rs-quant", "dep:levenberg-marquardt", "dep:nalgebra"]
 # Gates `volatility::common::write_surface_fit_plot_html`, the HTML fit-plot
 # helper. Plotly is optional so a caller that only trains/predicts doesn't
 # compile a plotting stack.
@@ -27,6 +27,8 @@ stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
 stochastic-rs-stochastic = { workspace = true }
 stochastic-rs-quant = { workspace = true, optional = true }
+levenberg-marquardt = { workspace = true, optional = true }
+nalgebra = { workspace = true, optional = true }
 candle-core = { workspace = true }
 candle-datasets = { workspace = true }
 candle-nn = { workspace = true }

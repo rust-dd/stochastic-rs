@@ -120,6 +120,13 @@ impl HestonNn {
   }
 }
 
+#[cfg(feature = "quant")]
+impl crate::calibration::SurrogateModel for HestonNn {
+  fn nn(&self) -> &StochVolNn {
+    &self.inner
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use std::fs;

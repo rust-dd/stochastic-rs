@@ -97,6 +97,36 @@ Every surrogate ships a `train_save_load_<model>` integration test that:
 
 This guards the on-disk format from silent regressions.
 
+## Calibrating with a surrogate
+
+The second step of Horvath, Muguruza & Tomas (2021): once a network $\tilde F$
+reproduces the implied-volatility surface on its fixed strike–maturity grid, a
+calibration is the deterministic least-squares problem
+
+$$
+\hat\theta = \arg\min_{\theta}\ \sum_{ij} w_{ij}^2\bigl(\tilde F(\theta)_{ij} - \sigma^{\text{mkt}}_{ij}\bigr)^2 ,
+$$
+
+solved with Levenberg–Marquardt on the surrogate's **exact Jacobian**
+(reverse-mode differentiation through the network, one backward pass per grid
+point) — the pricer never runs during the calibration. `SurrogateCalibrator`
+works on any `StochVolNn`; `HestonSurrogateCalibrator` and
+`RBergomiSurrogateCalibrator` add the parameter mapping to quant's `HestonParams`
+/ `RBergomiParams` and implement `Calibrator` + `ToModel`, so the fitted
+surrogate drops straight into the vol-surface pipeline. The result reports
+whether $\hat\theta$ stayed inside the training box: the network is untrained
+outside it, and a solution on the boundary is a warning, not an answer.
+
+<Tabs items={['Rust']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_ai_surrogate_calibration.rs" />
+
+> Requires the `ai` feature. The example trains a tiny network on a synthetic
+> surface so it runs without the bundled train sets; with a production
+> surrogate, load it with `HestonNn::load` instead.
+</Tab>
+</Tabs>
+
 ## Adding a surrogate
 
 See the
