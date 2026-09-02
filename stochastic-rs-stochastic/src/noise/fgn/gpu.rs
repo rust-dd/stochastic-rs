@@ -30,7 +30,7 @@ const LOCAL_STAGES: usize = 9; // log2(512)
 #[cube(launch)]
 fn fft_local<F: Float>(real: &mut Array<F>, imag: &mut Array<F>) {
   let tid = UNIT_POS as usize;
-  let base = CUBE_POS as usize * BLOCK;
+  let base = CUBE_POS * BLOCK;
 
   let mut sr = SharedMemory::<F>::new(BLOCK);
   let mut si = SharedMemory::<F>::new(BLOCK);
@@ -47,7 +47,7 @@ fn fft_local<F: Float>(real: &mut Array<F>, imag: &mut Array<F>) {
     let p = tid % 1;
     let i = g * 2 + p;
     let j = i + 1;
-    let a = F::new(-2.0) * F::new(3.141592653589793) * F::cast_from(p) / F::new(2.0);
+    let a = F::new(-2.0_f32) * F::new(3.141592653589793_f32) * F::cast_from(p) / F::new(2.0_f32);
     let (tw_r, tw_i) = (F::cos(a), F::sin(a));
     let (tr, ti) = (sr[j] * tw_r - si[j] * tw_i, sr[j] * tw_i + si[j] * tw_r);
     let (ar, ai) = (sr[i], si[i]);
@@ -63,7 +63,7 @@ fn fft_local<F: Float>(real: &mut Array<F>, imag: &mut Array<F>) {
     let p = tid % 2;
     let i = g * 4 + p;
     let j = i + 2;
-    let a = F::new(-2.0) * F::new(3.141592653589793) * F::cast_from(p) / F::new(4.0);
+    let a = F::new(-2.0_f32) * F::new(3.141592653589793_f32) * F::cast_from(p) / F::new(4.0_f32);
     let (tw_r, tw_i) = (F::cos(a), F::sin(a));
     let (tr, ti) = (sr[j] * tw_r - si[j] * tw_i, sr[j] * tw_i + si[j] * tw_r);
     let (ar, ai) = (sr[i], si[i]);
@@ -79,7 +79,7 @@ fn fft_local<F: Float>(real: &mut Array<F>, imag: &mut Array<F>) {
     let p = tid % 4;
     let i = g * 8 + p;
     let j = i + 4;
-    let a = F::new(-2.0) * F::new(3.141592653589793) * F::cast_from(p) / F::new(8.0);
+    let a = F::new(-2.0_f32) * F::new(3.141592653589793_f32) * F::cast_from(p) / F::new(8.0_f32);
     let (tw_r, tw_i) = (F::cos(a), F::sin(a));
     let (tr, ti) = (sr[j] * tw_r - si[j] * tw_i, sr[j] * tw_i + si[j] * tw_r);
     let (ar, ai) = (sr[i], si[i]);
@@ -95,7 +95,7 @@ fn fft_local<F: Float>(real: &mut Array<F>, imag: &mut Array<F>) {
     let p = tid % 8;
     let i = g * 16 + p;
     let j = i + 8;
-    let a = F::new(-2.0) * F::new(3.141592653589793) * F::cast_from(p) / F::new(16.0);
+    let a = F::new(-2.0_f32) * F::new(3.141592653589793_f32) * F::cast_from(p) / F::new(16.0_f32);
     let (tw_r, tw_i) = (F::cos(a), F::sin(a));
     let (tr, ti) = (sr[j] * tw_r - si[j] * tw_i, sr[j] * tw_i + si[j] * tw_r);
     let (ar, ai) = (sr[i], si[i]);
@@ -111,7 +111,7 @@ fn fft_local<F: Float>(real: &mut Array<F>, imag: &mut Array<F>) {
     let p = tid % 16;
     let i = g * 32 + p;
     let j = i + 16;
-    let a = F::new(-2.0) * F::new(3.141592653589793) * F::cast_from(p) / F::new(32.0);
+    let a = F::new(-2.0_f32) * F::new(3.141592653589793_f32) * F::cast_from(p) / F::new(32.0_f32);
     let (tw_r, tw_i) = (F::cos(a), F::sin(a));
     let (tr, ti) = (sr[j] * tw_r - si[j] * tw_i, sr[j] * tw_i + si[j] * tw_r);
     let (ar, ai) = (sr[i], si[i]);
@@ -127,7 +127,7 @@ fn fft_local<F: Float>(real: &mut Array<F>, imag: &mut Array<F>) {
     let p = tid % 32;
     let i = g * 64 + p;
     let j = i + 32;
-    let a = F::new(-2.0) * F::new(3.141592653589793) * F::cast_from(p) / F::new(64.0);
+    let a = F::new(-2.0_f32) * F::new(3.141592653589793_f32) * F::cast_from(p) / F::new(64.0_f32);
     let (tw_r, tw_i) = (F::cos(a), F::sin(a));
     let (tr, ti) = (sr[j] * tw_r - si[j] * tw_i, sr[j] * tw_i + si[j] * tw_r);
     let (ar, ai) = (sr[i], si[i]);
@@ -143,7 +143,7 @@ fn fft_local<F: Float>(real: &mut Array<F>, imag: &mut Array<F>) {
     let p = tid % 64;
     let i = g * 128 + p;
     let j = i + 64;
-    let a = F::new(-2.0) * F::new(3.141592653589793) * F::cast_from(p) / F::new(128.0);
+    let a = F::new(-2.0_f32) * F::new(3.141592653589793_f32) * F::cast_from(p) / F::new(128.0_f32);
     let (tw_r, tw_i) = (F::cos(a), F::sin(a));
     let (tr, ti) = (sr[j] * tw_r - si[j] * tw_i, sr[j] * tw_i + si[j] * tw_r);
     let (ar, ai) = (sr[i], si[i]);
@@ -159,7 +159,7 @@ fn fft_local<F: Float>(real: &mut Array<F>, imag: &mut Array<F>) {
     let p = tid % 128;
     let i = g * 256 + p;
     let j = i + 128;
-    let a = F::new(-2.0) * F::new(3.141592653589793) * F::cast_from(p) / F::new(256.0);
+    let a = F::new(-2.0_f32) * F::new(3.141592653589793_f32) * F::cast_from(p) / F::new(256.0_f32);
     let (tw_r, tw_i) = (F::cos(a), F::sin(a));
     let (tr, ti) = (sr[j] * tw_r - si[j] * tw_i, sr[j] * tw_i + si[j] * tw_r);
     let (ar, ai) = (sr[i], si[i]);
@@ -174,7 +174,7 @@ fn fft_local<F: Float>(real: &mut Array<F>, imag: &mut Array<F>) {
     let p = tid;
     let i = p;
     let j = i + 256;
-    let a = F::new(-2.0) * F::new(3.141592653589793) * F::cast_from(p) / F::new(512.0);
+    let a = F::new(-2.0_f32) * F::new(3.141592653589793_f32) * F::cast_from(p) / F::new(512.0_f32);
     let (tw_r, tw_i) = (F::cos(a), F::sin(a));
     let (tr, ti) = (sr[j] * tw_r - si[j] * tw_i, sr[j] * tw_i + si[j] * tw_r);
     let (ar, ai) = (sr[i], si[i]);
@@ -210,7 +210,8 @@ fn fft_butterfly<F: Float>(
   let i = base + group * stride + pos;
   let j = i + half_stride;
 
-  let a = F::new(-2.0) * F::new(3.141592653589793) * F::cast_from(pos) / F::cast_from(stride);
+  let a =
+    F::new(-2.0_f32) * F::new(3.141592653589793_f32) * F::cast_from(pos) / F::cast_from(stride);
   let (tw_r, tw_i) = (F::cos(a), F::sin(a));
   let (tr, ti) = (
     real[j] * tw_r - imag[j] * tw_i,
@@ -257,22 +258,22 @@ fn gen_scale<F: Float>(
   let g = tid as u32;
   // Two decorrelated uniforms via integer hashing (Murmur3-style finalizer).
   let mut a = (g * 2u32) ^ (seed * 2654435761u32);
-  a = a ^ (a >> 16);
-  a = a * 2246822519u32;
-  a = a ^ (a >> 13);
-  a = a * 3266489917u32;
-  a = a ^ (a >> 16);
+  a ^= a >> 16;
+  a *= 2246822519u32;
+  a ^= a >> 13;
+  a *= 3266489917u32;
+  a ^= a >> 16;
   let mut b = (g * 2u32 + 1u32) ^ (seed * 668265263u32);
-  b = b ^ (b >> 16);
-  b = b * 2246822519u32;
-  b = b ^ (b >> 13);
-  b = b * 3266489917u32;
-  b = b ^ (b >> 16);
-  let inv = F::new(2.3283064e-10);
-  let u1 = F::cast_from(a) * inv * F::new(0.999998) + F::new(1.0e-6);
+  b ^= b >> 16;
+  b *= 2246822519u32;
+  b ^= b >> 13;
+  b *= 3266489917u32;
+  b ^= b >> 16;
+  let inv = F::new(2.3283064e-10_f32);
+  let u1 = F::cast_from(a) * inv * F::new(0.999998_f32) + F::new(1.0e-6_f32);
   let u2 = F::cast_from(b) * inv;
-  let radius = F::sqrt(F::new(-2.0) * F::ln(u1));
-  let angle = F::new(6.2831853071) * u2;
+  let radius = F::sqrt(F::new(-2.0_f32) * F::ln(u1));
+  let angle = F::new(6.2831853071_f32) * u2;
   let j = tid % traj_size;
   let e = eigs[j];
   let dst = tid - j + rev[j] as usize;

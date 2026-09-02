@@ -504,6 +504,10 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m
   )?)?;
   m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_stochastic::euler::python::euler_paths,
+    m
+  )?)?;
+  m.add_function(pyo3::wrap_pyfunction!(
     stochastic_rs_copulas::python::kendall_tau_matrix,
     m
   )?)?;

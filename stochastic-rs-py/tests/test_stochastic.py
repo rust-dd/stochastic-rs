@@ -7,6 +7,7 @@ parallel multi-path sampler, and basic sanity of the simulated levels.
 from __future__ import annotations
 
 import numpy as np
+import pytest
 import stochastic_rs as sr
 
 
@@ -113,3 +114,21 @@ def test_cheyette_state_and_bonds():
     assert xs.shape == (50, 101) and ys.shape == (50, 101)
     assert abs(model.zero_bond(0.0, 2.0, 0.0, 0.0) - np.exp(-0.06)) < 1e-12
     assert abs(model.short_rate(0.5, 0.004) - 0.034) < 1e-15
+
+
+def test_euler_paths_families_and_moments():
+    paths = sr.euler_paths("gbm", [0.05, 0.2], 100.0, 253, 1.0, 20_000, seed=7)
+    assert paths.shape == (20_000, 253)
+    assert np.allclose(paths[:, 0], 100.0)
+    assert abs(paths[:, -1].mean() / (100.0 * np.exp(0.05)) - 1.0) < 0.01
+    ou = sr.euler_paths("ou", [2.0, 1.0, 0.5], 1.0, 501, 2.0, 10_000, seed=3)
+    assert abs(ou[:, -1].mean() - 1.0) < 0.02
+    cir = sr.euler_paths("cir", [1.5, 0.04, 0.3], 0.09, 253, 1.0, 5_000, seed=5)
+    assert cir.min() >= 0.0
+    assert np.array_equal(paths, sr.euler_paths("gbm", [0.05, 0.2], 100.0, 253, 1.0, 20_000, seed=7))
+    with pytest.raises(ValueError):
+        sr.euler_paths("gbm", [0.05], 100.0, 10, 1.0, 4)
+    with pytest.raises(ValueError):
+        sr.euler_paths("heston", [0.05, 0.2], 100.0, 10, 1.0, 4)
+    with pytest.raises(ValueError):
+        sr.euler_paths("gbm", [0.05, 0.2], 100.0, 10, 1.0, 4, device="tpu")

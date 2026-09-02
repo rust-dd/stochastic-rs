@@ -310,6 +310,37 @@ If you contribute, the four relevant SKILLs are:
 
 Each contains the file-by-file recipe.
 
+## Euler engine
+
+`euler::sample_paths::<T, B, _>(&process, m, seed)` runs `m` Euler–Maruyama
+paths of a scalar diffusion on backend `B`: `Cpu` always (the crate's SIMD
+normal generator, one rayon task per path block), `CubeCl` when the crate is
+built with `gpu-cuda` or `gpu-wgpu` (one device thread per path, the whole
+recursion in the kernel, counter-hashed Box–Muller normals). A process joins
+the engine by describing its coefficients as an `EulerSpec` through
+`EulerCoefficients` — `Gbm`, `Ou` and `Cir` do. The stepper is the same
+formula on every device; the random streams differ, so CPU and GPU paths agree
+in distribution rather than bit for bit. The device works in `f32`, the
+portable GPU float, and widens on the way back.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_stochastic_euler_engine.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import numpy as np
+import stochastic_rs as srs
+
+# family, params, x0, n, t, m, seed, device
+paths = srs.euler_paths("gbm", [0.05, 0.2], 100.0, 253, 1.0, 20_000, seed=7)
+print(paths.shape, paths[:, -1].mean())   # (20000, 253), ≈ 100·e^{0.05}
+ou = srs.euler_paths("ou", [2.0, 1.0, 0.5], 1.0, 501, 2.0, 10_000)
+# srs.euler_paths(..., device="gpu") needs a build with gpu-cuda / gpu-wgpu
+```
+</Tab>
+</Tabs>
+
 ## Volterra (stochastic Volterra equations)
 
 Solved by Markovian lift at `O(n N')` rather than the naive `O(n^2)`
