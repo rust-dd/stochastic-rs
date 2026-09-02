@@ -19,6 +19,9 @@
 //!   Annals of Statistics, 3(1), 119-131 (1975). DOI: 10.1214/aos/1176343003
 //! - Balkema, de Haan, "Residual Life Time at Great Age", Annals of
 //!   Probability, 2(5), 792-804 (1974). DOI: 10.1214/aop/1176996548
+//! - Hosking, Wallis, "Parameter and Quantile Estimation for the Generalized
+//!   Pareto Distribution", Technometrics, 29(3), 339-349 (1987).
+//!   DOI: 10.1080/00401706.1987.10488243
 //! - Coles, *An Introduction to Statistical Modeling of Extreme Values*,
 //!   Springer (2001), ch. 3-4. DOI: 10.1007/978-1-4471-3675-0
 //! - McNeil, Frey, Embrechts, *Quantitative Risk Management*, 2nd ed.,
@@ -34,8 +37,10 @@ pub use gev_fit::GevFit;
 pub use gev_fit::block_maxima;
 pub use gev_fit::gev_fit;
 pub use gpd_fit::GpdFit;
+pub use gpd_fit::GpdPwm;
 pub use gpd_fit::PotFit;
 pub use gpd_fit::gpd_fit;
+pub use gpd_fit::gpd_pwm;
 pub use gpd_fit::mean_excess;
 pub use gpd_fit::pot_fit;
 pub use hill::HillResult;

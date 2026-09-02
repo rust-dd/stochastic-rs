@@ -541,15 +541,19 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
     use stochastic_rs_stats::python::PyGaussianHmm;
     use stochastic_rs_stats::python::PyGevFit;
     use stochastic_rs_stats::python::PyGpdFit;
+    use stochastic_rs_stats::python::PyGpdPwm;
     use stochastic_rs_stats::python::PyGranger;
     use stochastic_rs_stats::python::PyHarRv;
     use stochastic_rs_stats::python::PyHillEstimator;
     use stochastic_rs_stats::python::PyJohansen;
+    use stochastic_rs_stats::python::PyJohnsonSuFit;
     use stochastic_rs_stats::python::PyKPSSTest;
     use stochastic_rs_stats::python::PyLeeMyklandJumpTest;
     use stochastic_rs_stats::python::PyLeybourneMcCabeTest;
     use stochastic_rs_stats::python::PyPhillipsPerronTest;
     use stochastic_rs_stats::python::PyPotFit;
+    use stochastic_rs_stats::python::PySkewTFit;
+    use stochastic_rs_stats::python::PyVarianceGammaFit;
     use stochastic_rs_stats::python::PyVecm;
     m.add_class::<PyADFTest>()?;
     m.add_class::<PyKPSSTest>()?;
@@ -569,6 +573,10 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyGpdFit>()?;
     m.add_class::<PyPotFit>()?;
     m.add_class::<PyGevFit>()?;
+    m.add_class::<PyGpdPwm>()?;
+    m.add_class::<PyJohnsonSuFit>()?;
+    m.add_class::<PySkewTFit>()?;
+    m.add_class::<PyVarianceGammaFit>()?;
     m.add_function(pyo3::wrap_pyfunction!(
       stochastic_rs_stats::python::block_maxima,
       m

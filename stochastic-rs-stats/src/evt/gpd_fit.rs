@@ -172,6 +172,71 @@ pub fn gpd_fit<T: FloatExt>(exceedances: ArrayView1<T>) -> GpdFit {
   }
 }
 
+/// Probability-weighted-moment estimate of the GPD (Hosking–Wallis 1987).
+#[derive(Debug, Clone)]
+pub struct GpdPwm {
+  /// Scale $\hat\sigma$.
+  pub sigma: f64,
+  /// Shape $\hat\xi$.
+  pub xi: f64,
+  /// $a_0$, the sample mean.
+  pub a0: f64,
+  /// $a_1$, the estimate of $\mathbb E[X(1 - F(X))]$.
+  pub a1: f64,
+  /// Number of excesses.
+  pub nobs: usize,
+}
+
+/// Hosking and Wallis's probability-weighted-moment estimator of the GPD
+/// on non-negative excesses: with the order statistics
+/// $x_{(1)} \le \dots \le x_{(n)}$,
+///
+/// $$
+/// a_0 = \bar x,\qquad a_1 = \frac1n\sum_{i=1}^{n}\frac{n - i}{n - 1}\,x_{(i)},\qquad
+/// \hat\xi = 2 - \frac{a_0}{a_0 - 2a_1},\qquad \hat\sigma = \frac{2a_0a_1}{a_0 - 2a_1},
+/// $$
+///
+/// their $\hat k = a_0/(a_0 - 2a_1) - 2$ in the $k = -\xi$ convention. Cheap,
+/// closed-form and well behaved for $\xi < 1/2$; the usual starting point
+/// or sanity check for [`gpd_fit`].
+///
+/// Reference: Hosking, Wallis, "Parameter and Quantile Estimation for the
+/// Generalized Pareto Distribution", Technometrics, 29(3), 339-349 (1987).
+/// DOI: 10.1080/00401706.1987.10488243
+///
+/// # Panics
+///
+/// If there are fewer than 2 excesses or any is negative or non-finite.
+pub fn gpd_pwm<T: FloatExt>(exceedances: ArrayView1<T>) -> GpdPwm {
+  let mut y: Vec<f64> = exceedances
+    .iter()
+    .map(|x| x.to_f64().unwrap_or(f64::NAN))
+    .collect();
+  let n = y.len();
+  assert!(n >= 2, "need at least 2 exceedances, got {n}");
+  assert!(
+    y.iter().all(|v| *v >= 0.0 && v.is_finite()),
+    "exceedances must be non-negative and finite"
+  );
+  y.sort_by(|a, b| a.partial_cmp(b).unwrap());
+  let nf = n as f64;
+  let a0 = y.iter().sum::<f64>() / nf;
+  let a1 = y
+    .iter()
+    .enumerate()
+    .map(|(i, v)| v * (nf - (i + 1) as f64) / (nf - 1.0))
+    .sum::<f64>()
+    / nf;
+  let denominator = a0 - 2.0 * a1;
+  GpdPwm {
+    sigma: 2.0 * a0 * a1 / denominator,
+    xi: 2.0 - a0 / denominator,
+    a0,
+    a1,
+    nobs: n,
+  }
+}
+
 /// Peaks-over-threshold fit of `data` (losses) above `threshold`.
 ///
 /// # Panics
@@ -226,7 +291,7 @@ pub fn mean_excess<T: FloatExt>(data: ArrayView1<T>, thresholds: ArrayView1<f64>
 /// Inverse of the central-difference Hessian of a negative log-likelihood
 /// at `theta`, with steps $10^{-4}\max(|\theta_i|, \text{scale}_i)$; NaN
 /// entries when the Hessian is singular.
-pub(super) fn information_inverse<F: Fn(&[f64]) -> f64>(
+pub(crate) fn information_inverse<F: Fn(&[f64]) -> f64>(
   nll: &F,
   theta: &[f64],
   scales: &[f64],

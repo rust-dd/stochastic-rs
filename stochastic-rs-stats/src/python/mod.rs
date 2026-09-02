@@ -11,6 +11,7 @@
 
 mod changepoint;
 mod cointegration;
+mod distfit;
 mod evt;
 mod garch;
 mod hmm;
@@ -29,6 +30,10 @@ pub use cointegration::PyEngleGranger;
 pub use cointegration::PyGranger;
 pub use cointegration::PyJohansen;
 pub use cointegration::PyVecm;
+pub use distfit::PyGpdPwm;
+pub use distfit::PyJohnsonSuFit;
+pub use distfit::PySkewTFit;
+pub use distfit::PyVarianceGammaFit;
 pub use evt::PyGevFit;
 pub use evt::PyGpdFit;
 pub use evt::PyHillEstimator;

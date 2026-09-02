@@ -135,3 +135,18 @@ def test_evt_pipeline_on_a_pareto_tail():
     assert np.isfinite(excess[:2]).all() and np.isnan(excess[2])
     gpd = sr.GpdFit(losses[losses > 3.0] - 3.0)
     assert abs(gpd.xi - pot.xi) < 1e-12
+
+
+def test_distribution_fits_run_and_rank():
+    rng = np.random.default_rng(12)
+    r = 0.3 * rng.standard_t(6, 3000) - 0.1 * np.abs(rng.standard_normal(3000))
+    skt = sr.SkewTFit(r)
+    assert skt.converged and skt.eta > 2.0 and abs(skt.lambda_) < 1.0
+    assert skt.std_errors().shape == (4,) and skt.covariance().shape == (4, 4)
+    jsu = sr.JohnsonSuFit(r)
+    assert jsu.converged and jsu.delta > 0.0 and jsu.lambda_ > 0.0
+    vg = sr.VarianceGammaFit(r)
+    assert vg.converged and vg.sigma > 0.0 and vg.nu > 0.0
+    assert np.isfinite([skt.aic, jsu.aic, vg.aic]).all()
+    pwm = sr.GpdPwm(np.abs(r[np.abs(r) > 0.5]) - 0.5)
+    assert np.isfinite(pwm.xi) and pwm.nobs >= 2

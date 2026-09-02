@@ -240,3 +240,24 @@ fn return_level_rejects_a_unit_period() {
   let fit = gev_fit(gev_sample().view());
   let _ = fit.return_level(1.0);
 }
+
+/// Hosking–Wallis PWM on the reference GPD sample: the closed-form
+/// estimates reproduce the Python evaluation of eqs. 15-16 to rounding,
+/// and land near the σ = 2, ξ = 0.25 truth like the MLE does.
+#[test]
+fn gpd_pwm_matches_the_hosking_wallis_formulas() {
+  let est = gpd_pwm(gpd_sample().view());
+  assert_eq!(est.nobs, 2_000);
+  assert_close(est.a0, 2.673_026_587_667_958, 1e-12, "a0");
+  assert_close(est.a1, 0.561_686_053_844_953, 1e-12, "a1");
+  assert_close(est.xi, 0.275_082_205_611_526_74, 1e-12, "xi");
+  assert_close(est.sigma, 1.937_724_538_274_003, 1e-12, "sigma");
+  let mle = gpd_fit(gpd_sample().view());
+  assert!((est.xi - mle.xi).abs() < 0.01 && (est.sigma - mle.sigma).abs() < 0.02);
+}
+
+#[test]
+#[should_panic(expected = "need at least 2 exceedances")]
+fn gpd_pwm_rejects_a_single_excess() {
+  let _ = gpd_pwm(array![1.0_f64].view());
+}

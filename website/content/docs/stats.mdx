@@ -32,7 +32,8 @@ struct's field names are estimator-specific (see
 | `leverage`             | Leverage-effect estimators                                                     |
 | `fou_estimator`        | fOU MLE with Hurst joint estimation                                            |
 | `garch`                | GARCH / GJR-GARCH / EGARCH Gaussian QMLE with inverse-Hessian and Bollerslev-Wooldridge robust standard errors |
-| `evt`                  | Extreme-value theory: Hill tail index, GPD peaks-over-threshold with VaR / ES, GEV block-maxima MLE with return levels |
+| `evt`                  | Extreme-value theory: Hill tail index, GPD peaks-over-threshold (MLE and Hosking-Wallis PWM) with VaR / ES, GEV block-maxima MLE with return levels |
+| `distfit`              | Maximum-likelihood fits of the skewed return laws: Johnson SU, Hansen skew-t with location and scale, variance gamma |
 
 ## Examples
 
@@ -165,6 +166,28 @@ print("VaR99:", pot.quantile(0.99), "ES99:", pot.expected_shortfall(0.99))
 
 gev = srs.GevFit(srs.block_maxima(losses, 21))    # monthly maxima
 print("100-block return level:", gev.return_level(100.0))
+```
+</Tab>
+</Tabs>
+
+### Fitting the skewed return distributions
+
+`distfit` fits the skewed laws of the distributions crate by maximum likelihood with their closed-form densities: `johnson_su_fit` (γ, δ, ξ, λ), `skew_t_fit` (Hansen's standardised skew-t with location μ and scale σ, so η > 2 and |λ| < 1 are kept by construction) and `variance_gamma_fit` (σ, ν, θ, μ through the Bessel-form density). Each returns the estimates, inverse-information standard errors, log-likelihood, AIC and BIC; the test-suite pins them to tightly converged `scipy` / `arch` optima on identical data. `evt::gpd_pwm` is the matching closed-form Hosking-Wallis estimator for threshold excesses.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_stats_distfit.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+fit = srs.SkewTFit(returns)
+print("eta:", fit.eta, "lambda:", fit.lambda_, "sigma:", fit.sigma)
+print("SEs:", fit.std_errors(), "AIC:", fit.aic)
+
+vg = srs.VarianceGammaFit(returns)
+print("sigma, nu, theta, mu:", vg.sigma, vg.nu, vg.theta, vg.mu)
 ```
 </Tab>
 </Tabs>

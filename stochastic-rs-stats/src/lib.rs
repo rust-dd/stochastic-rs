@@ -23,6 +23,7 @@ pub use stochastic_rs_stochastic as stochastic;
 pub mod acf;
 pub mod bayesian_diffusion;
 pub mod cir;
+pub mod distfit;
 pub mod double_exp;
 pub mod econometrics;
 pub mod evt;
