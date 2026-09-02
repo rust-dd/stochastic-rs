@@ -390,7 +390,9 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_quant::python::PyCgmysvCalibrator;
   use stochastic_rs_quant::python::PyDayCount;
   use stochastic_rs_quant::python::PyDiscountCurve;
+  use stochastic_rs_quant::python::PyExposureProfile;
   use stochastic_rs_quant::python::PyG2ppSwaptionCalibrator;
+  use stochastic_rs_quant::python::PyHullWhiteSwapExposure;
   use stochastic_rs_quant::python::PyHullWhiteSwaptionCalibrator;
   use stochastic_rs_quant::python::PyKyleEquilibrium;
   use stochastic_rs_quant::python::PyMultiCurve;
@@ -405,6 +407,8 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyOrderBook>()?;
   m.add_class::<PyDiscountCurve>()?;
   m.add_class::<PyMultiCurve>()?;
+  m.add_class::<PyExposureProfile>()?;
+  m.add_class::<PyHullWhiteSwapExposure>()?;
   m.add_class::<PyHullWhiteSwaptionCalibrator>()?;
   m.add_class::<PyBlackKarasinskiSwaptionCalibrator>()?;
   m.add_class::<PyG2ppSwaptionCalibrator>()?;

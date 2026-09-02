@@ -20,7 +20,7 @@ factor / strategy primitives.
 | **Pricing**        | Closed-form (BSM, Bachelier with normal implied-vol inversion, Black76, Garman-Kohlhagen, Margrabe, Kirk, Geske compound, Stulz, Bjerksund-Stensland, digital / gap / supershare, geometric basket, Levy moment-matching, cliquet / forward-start chain). Fourier (Carr-Madan, Lewis, Gil-Pelaez) for Heston / Bates / Merton-jump / Kou / VG / CGMY / HKDE / double-Heston. Monte Carlo (basket, rainbow, cliquet, autocallable, spread). Finite difference (explicit / implicit / Crank-Nicolson, American); Heston PDE by ADI (Douglas / Craig-Sneyd / MCS / Hundsdorfer-Verwer on sinh meshes, Rannacher damping, down-and-out barrier). Bermudan LSM. Heston SLV (Guyon-Labordère). |
 | **Calibration**    | Heston (Cui analytic Jacobian + NMLE / PMLE / NMLE-CEKF seeds), SABR per-expiry caplet smile, Lévy (CGMY, VG, NIG, Merton-jump, Kou, bilateral gamma), SVJ, rough Bergomi, double-Heston, BSM (multi-maturity), HKDE, Hull-White (Jamshidian), G2++ and Black-Karasinski (trinomial-tree repricing) swaption grids via Nelder-Mead. Optional Tikhonov regularisation toward a parameter anchor on the Heston, SABR and swaption calibrators. |
 | **Vol surface**    | Implied-vol surface from market quotes, SVI / SSVI / eSSVI (anchored per-maturity slices with butterfly and calendar bounds), arbitrage-free interpolation, smile and skew analytics, SABR-smile fits.                                                |
-| **Risk**           | VaR (Gaussian / historical / Monte Carlo), CVaR / ES, drawdown metrics, Sharpe / Sortino / IR / Calmar (no hard-coded annualisation), instrument-level Greeks, bucket DV01, scenario / shock / curve-shift stress framework. |
+| **Risk**           | VaR (Gaussian / historical / Monte Carlo), CVaR / ES, drawdown metrics, Sharpe / Sortino / IR / Calmar (no hard-coded annualisation), instrument-level Greeks, bucket DV01, scenario / shock / curve-shift stress framework, XVA (EPE / ENE / PFE exposure profiles, CVA / DVA / bilateral / FCA / FBA / FVA, Hull-White swap exposure engine). |
 | **Credit**         | Merton structural model (PD, equity / debt, distance-to-default, credit spread, implied recovery), reduced-form survival / hazard curves, CDS pricing (ISDA daily-grid, fair spread, risky PV01), hazard bootstrap from CDS par-spread term structure, JLT migration matrices with pure-Rust Padé-13 matrix exponential. |
 | **Yield curves**   | Bootstrapping (deposit / FRA / future / swap / OIS helper), dual-curve tenor bootstrap against an OIS discount curve, Nelson-Siegel / Svensson, multi-curve (OIS discounting, tenor forecasting), discount-curve interpolation (linear / log-linear / cubic / monotone-convex). |
 | **Bonds**          | Fixed-rate / floating-rate / inflation-linked / amortizing bonds. YTM / Macaulay / modified duration / convexity / Z-spread / OAS. Vasicek / CIR / Hull-White short-rate bond pricing, callable / puttable coupon bonds on the Hull-White trinomial tree. |
@@ -249,6 +249,32 @@ analytic = srs.HestonPricer(s=100.0, k=100.0, r=0.025, tau=1.0, v0=0.04, kappa=1
 print(call, analytic)                     # agree to ~1 %
 print(srs.HestonAdiPricer(s=100.0, k=100.0, r=0.025, tau=1.0, v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.9,
                           barrier=90.0).price())   # down-and-out call
+```
+</Tab>
+</Tabs>
+
+### XVA — exposure profiles and CVA / DVA / FVA
+
+`ExposureProfile` reduces a matrix of simulated mark-to-market values (paths × dates) to expected positive and negative exposure and a PFE quantile; `cva`, `dva`, `bilateral_cva`, `bilateral_dva`, `fca`, `fba` and `fva` integrate those profiles against survival, discount and funding curves on the exposure grid (Gregory 2015, Ch. 7, 14, 15). The core is model-agnostic; `HullWhiteSwapExposure` shows it fed by the crate's own stack, simulating the short rate as the Ornstein–Uhlenbeck factor plus the curve-fitting shift and revaluing a payer swap on its payment dates from the Hull–White bond formula.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_quant_xva.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import numpy as np
+import stochastic_rs as srs
+
+curve = srs.DiscountCurve.from_zero_rates(np.array([0.5, 1.0, 5.0, 10.0]), np.full(4, 0.03), interp="log_df")
+swap = srs.HullWhiteSwapExposure(mean_reversion=0.1, sigma=0.01, notional=1e6, payment_times=[1.0, 2.0, 3.0, 4.0, 5.0])
+profile = swap.profile(curve, paths=4000, quantile=0.95, seed=7)     # at par on the curve
+print(profile.epe(), profile.pfe())
+print(profile.cva(hazard_rate=0.02, discount=curve, lgd=0.6), profile.fva(curve, funding_spread=0.005))
+
+# Any MtM matrix works: here a Brownian one, whose EPE is σ√t/√(2π).
+mtm = 10.0 * np.cumsum(np.random.default_rng(1).standard_normal((20000, 4)) * np.sqrt(0.5), axis=1)
+print(srs.ExposureProfile.from_mtm(mtm, [0.5, 1.0, 1.5, 2.0]).epe())
 ```
 </Tab>
 </Tabs>

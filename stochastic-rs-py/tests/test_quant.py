@@ -156,3 +156,19 @@ def test_heston_adi_pricer_matches_the_analytic_price():
     assert abs(call - put - (100.0 - 100.0 * math.exp(-0.025))) < 1e-9
     knocked = sr.HestonAdiPricer(barrier=90.0, **kwargs).price()
     assert 0.0 < knocked < call
+
+def test_xva_exposure_profile_and_adjustments():
+    import numpy as np
+
+    curve = sr.DiscountCurve.from_zero_rates(np.array([0.5, 1.0, 5.0, 10.0]), np.full(4, 0.03), interp="log_df")
+    rng = np.random.default_rng(1)
+    mtm = 10.0 * np.cumsum(rng.standard_normal((20000, 4)) * np.sqrt(0.5), axis=1)
+    profile = sr.ExposureProfile.from_mtm(mtm, [0.5, 1.0, 1.5, 2.0], quantile=0.95)
+    for t, epe in zip(profile.times(), profile.epe()):
+        assert abs(epe - 10.0 * math.sqrt(t) / math.sqrt(2.0 * math.pi)) < 0.5
+    assert profile.cva(0.02, curve, 0.6) > 0.0 and profile.cva(0.0, curve, 0.6) == 0.0
+    assert abs(profile.fva(curve, 0.01)) < 0.2
+    swap = sr.HullWhiteSwapExposure(0.1, 0.01, 1e6, [1.0, 2.0, 3.0, 4.0, 5.0])
+    prof = swap.profile(curve, paths=2000, seed=7)
+    assert prof.epe()[-1] == 0.0 and prof.peak_epe() > 0.0
+    assert prof.cva(0.02, curve, 0.6) > prof.cva(0.01, curve, 0.6) > 0.0

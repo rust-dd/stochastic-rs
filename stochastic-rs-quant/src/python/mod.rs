@@ -28,6 +28,7 @@ mod pricing_fourier;
 mod pricing_path_dep;
 mod risk;
 mod vol_surface;
+mod xva;
 
 pub use bonds::PyCIRBond;
 pub use bonds::PyHullWhiteBond;
@@ -120,6 +121,8 @@ pub use vol_surface::PySsviCalibrator;
 pub use vol_surface::PySsviParams;
 pub use vol_surface::PySviCalibrator;
 pub use vol_surface::PySviRawParams;
+pub use xva::PyExposureProfile;
+pub use xva::PyHullWhiteSwapExposure;
 
 fn parse_option_type(s: &str) -> PyResult<OptionType> {
   match s.to_ascii_lowercase().as_str() {
