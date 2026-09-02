@@ -489,6 +489,20 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyFrank>()?;
   m.add_class::<PyIndependence>()?;
   m.add_class::<PyEmpiricalCopula2D>()?;
+  m.add_class::<stochastic_rs_copulas::python::PyBb1>()?;
+  m.add_class::<stochastic_rs_copulas::python::PyBb7>()?;
+  m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_copulas::python::fit_vine,
+    m
+  )?)?;
+  m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_copulas::python::copula_gof,
+    m
+  )?)?;
+  m.add_function(pyo3::wrap_pyfunction!(
+    stochastic_rs_copulas::python::pseudo_observations,
+    m
+  )?)?;
   m.add_function(pyo3::wrap_pyfunction!(
     stochastic_rs_copulas::python::kendall_tau_matrix,
     m

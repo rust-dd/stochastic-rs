@@ -12,6 +12,7 @@
 
 #[macro_use]
 mod macros;
+mod optim;
 
 pub mod traits;
 
@@ -25,6 +26,7 @@ pub use crate::traits::TailDependence;
 pub mod bivariate;
 pub mod correlation;
 pub mod empirical;
+pub mod gof;
 pub mod multivariate;
 pub mod process_coupling;
 pub mod univariate;

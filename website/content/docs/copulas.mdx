@@ -13,7 +13,7 @@ copulas plus correlation utilities and an empirical copula.
 
 ## Bivariate (`BivariateExt<T>`)
 
-**13** copulas — every variant of the crate's own `bivariate::CopulaType`
+**15** copulas — every variant of the crate's own `bivariate::CopulaType`
 enum (`grep -n "pub enum CopulaType" -A 15 stochastic-rs-copulas/src/bivariate.rs`).
 "Archimedean" below means the type overrides `generator()`, the trait's
 Archimedean-generator hook — the default implementation returns an error,
@@ -23,6 +23,8 @@ each module's own prose:
 | Copula        | Family              | Tail dependence                                    |
 |---------------|---------------------|-----------------------------------------------------|
 | Amh           | Archimedean         | None                                                |
+| Bb1           | Archimedean (two-parameter) | Both, asymmetric ($\lambda_L = 2^{-1/(\theta\delta)}$, $\lambda_U = 2 - 2^{1/\delta}$) |
+| Bb7           | Archimedean (two-parameter) | Both, asymmetric ($\lambda_U = 2 - 2^{1/\theta}$, $\lambda_L = 2^{-1/\delta}$) |
 | Clayton       | Archimedean         | Lower only ($\lambda_L = 2^{-1/\theta}$)             |
 | Fgm           | Perturbation        | None (bounded perturbation of independence)         |
 | Frank         | Archimedean         | None (symmetric)                                    |
@@ -105,6 +107,55 @@ uv = cop.sample(10_000, seed=42)              # shape (10_000, 2)
 # matrix; uv is already (n, 2), so [0, 1] is the one off-diagonal entry.
 tau = srs.kendall_tau_matrix(uv)[0, 1]
 print("Kendall's tau ≈", tau)                 # ≈ 0.5
+```
+</Tab>
+</Tabs>
+
+### BB1 / BB7 — two-parameter tail asymmetry
+
+The one-parameter Archimedean families tie the two tails together: Clayton
+has only lower-tail, Gumbel only upper-tail dependence. BB1 (Clayton–Gumbel)
+and BB7 (Joe–Clayton) carry two parameters $(\theta, \delta)$ and set the two
+tails separately — BB1 has $\lambda_L = 2^{-1/(\theta\delta)}$,
+$\lambda_U = 2 - 2^{1/\delta}$; BB7 has $\lambda_U = 2 - 2^{1/\theta}$,
+$\lambda_L = 2^{-1/\delta}$. `fit` is a two-parameter maximum-likelihood
+estimate (Nelder–Mead on the log-density); `set_tau` + `compute_theta`
+inverts Kendall's τ at the current δ (closed form for BB1,
+$\tau = 1 - 2/(\delta(\theta+2))$; numerical for BB7).
+
+`gof::gof_cramer_von_mises` is the Rosenblatt-transform Cramér–von Mises test
+of Genest, Rémillard & Beaudoin (2009) with a parametric bootstrap p-value —
+the valid procedure when the copula parameters were estimated on the same
+sample. `multivariate::fit::fit_vine` selects a D-vine or C-vine structure on
+Kendall's τ (Dißmann et al. 2013) and the family of every edge by AIC or BIC
+among Independence, Gaussian, Student-t, Clayton, Frank, BB1 and BB7, with
+the h-functions of the fitted pairs producing the pseudo-observations of the
+next tree. Feed every fit and test normalised ranks (`gof::pseudo_observations`,
+`srs.pseudo_observations` in Python): the statistics are rank statistics, and a
+family's `fit` rejects margins that fail its uniformity check.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_copulas_bb1_vine.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import numpy as np
+import stochastic_rs as srs
+
+truth = srs.Bb1(theta=0.8, delta=1.6)
+uv = srs.pseudo_observations(truth.sample(2_000, seed=42))
+lower, upper = truth.tail_dependence()      # asymmetric: ≈ 0.58 vs ≈ 0.46
+
+fitted = srs.Bb1()
+fitted.fit(uv)                              # MLE of (theta, delta)
+stat, p = srs.copula_gof("bb1", uv, replications=50, seed=7)
+print(fitted.theta(), fitted.delta(), p)    # p well above 0.05
+
+# 3-column data: structure + family selection with BIC
+u3 = srs.pseudo_observations(np.column_stack([uv, np.random.default_rng(1).uniform(size=2_000)]))
+fit = srs.fit_vine(u3, structure="dvine", criterion="bic")
+print(fit["order"], fit["families"], fit["aic"])
 ```
 </Tab>
 </Tabs>

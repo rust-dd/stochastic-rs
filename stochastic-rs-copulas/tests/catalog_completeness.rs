@@ -1,5 +1,5 @@
 //! Guards `website/content/docs/copulas.mdx`'s catalog tables (and
-//! `CLAUDE.md`'s "13 bivariate + 8 multivariate" line) against the failure
+//! `CLAUDE.md`'s "15 bivariate + 8 multivariate" line) against the failure
 //! mode this crate's docs shipped with for a while: a copula added to the
 //! tree without its row added to the docs page, so the table silently
 //! listed a shrinking fraction of the real catalog.
@@ -17,6 +17,8 @@ use stochastic_rs_copulas::bivariate::CopulaType as Bivariate;
 fn bivariate_catalog_matches_docs_count() {
   let count = [
     Bivariate::Amh,
+    Bivariate::Bb1,
+    Bivariate::Bb7,
     Bivariate::Clayton,
     Bivariate::Fgm,
     Bivariate::Frank,
@@ -33,6 +35,8 @@ fn bivariate_catalog_matches_docs_count() {
   .into_iter()
   .map(|t| match t {
     Bivariate::Amh
+    | Bivariate::Bb1
+    | Bivariate::Bb7
     | Bivariate::Clayton
     | Bivariate::Fgm
     | Bivariate::Frank
@@ -48,7 +52,7 @@ fn bivariate_catalog_matches_docs_count() {
   })
   .sum::<usize>();
 
-  assert_eq!(count, 13, "copulas.mdx's bivariate table says 13");
+  assert_eq!(count, 15, "copulas.mdx's bivariate table says 15");
 }
 
 #[test]

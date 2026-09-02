@@ -45,7 +45,7 @@ Highlights:
   full price-time priority order book.
 - **Distributions & copulas** — 18 SIMD distributions with
   closed-form pdf / cdf / cf / moments and Python bindings (29
-  distribution structs total). 13 bivariate (Clayton / Frank / Gumbel /
+  distribution structs total). 15 bivariate (Clayton / Frank / Gumbel / BB1 / BB7 /
   Independence / AMH / FGM / Galambos / Gaussian / Hüsler-Reiss / Joe /
   Marshall-Olkin / Plackett / Student-t) and 8 multivariate (Gaussian /
   Student-t / nested Archimedean / C-vine / D-vine / R-vine / two

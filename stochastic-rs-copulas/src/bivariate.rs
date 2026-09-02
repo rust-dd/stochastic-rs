@@ -126,6 +126,8 @@
 pub use crate::traits::BivariateExt;
 
 pub mod amh;
+pub mod bb1;
+pub mod bb7;
 pub mod clayton;
 pub mod fgm;
 pub mod frank;
@@ -138,10 +140,13 @@ pub mod joe;
 pub mod marshall_olkin;
 pub mod plackett;
 pub mod t_copula;
+pub(crate) mod two_parameter;
 
 #[derive(Debug, Clone, Copy)]
 pub enum CopulaType {
   Amh,
+  Bb1,
+  Bb7,
   Clayton,
   Fgm,
   Frank,

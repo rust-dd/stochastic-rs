@@ -68,6 +68,10 @@ pub enum PairCopula {
     /// Degrees of freedom $\nu > 0$.
     nu: f64,
   },
+  /// BB1 (Clayton–Gumbel) copula — see [`crate::bivariate::bb1::Bb1`].
+  Bb1 { theta: f64, delta: f64 },
+  /// BB7 (Joe–Clayton) copula — see [`crate::bivariate::bb7::Bb7`].
+  Bb7 { theta: f64, delta: f64 },
 }
 
 impl PairCopula {
@@ -100,6 +104,8 @@ impl PairCopula {
         let den = (e1 - 1.0) + (eu - 1.0) * (ev - 1.0);
         num / den
       }
+      PairCopula::Bb1 { theta, delta } => crate::bivariate::bb1::Bb1::h_scalar(u, v, theta, delta),
+      PairCopula::Bb7 { theta, delta } => crate::bivariate::bb7::Bb7::h_scalar(u, v, theta, delta),
       PairCopula::StudentT { rho, nu } => {
         // Aas-Czado (2009) Appendix A.2.
         // x = t_ν^{-1}(u), y = t_ν^{-1}(v)
@@ -158,6 +164,9 @@ impl PairCopula {
         }
         -arg.ln() / theta
       }
+      PairCopula::Bb1 { .. } | PairCopula::Bb7 { .. } => {
+        crate::bivariate::two_parameter::invert_h(|u| self.h(u, v), p)
+      }
       PairCopula::StudentT { rho, nu } => {
         // Inverse of h(u|v):
         //   z = t_{ν+1}^{-1}(p),  y = t_ν^{-1}(v)
@@ -205,6 +214,12 @@ impl PairCopula {
         let ev = (-theta * v).exp();
         let denom = a - (1.0 - eu) * (1.0 - ev);
         (theta * a).ln() + (-theta * (u + v)) - 2.0 * denom.abs().ln()
+      }
+      PairCopula::Bb1 { theta, delta } => {
+        crate::bivariate::bb1::Bb1::log_density_scalar(u, v, theta, delta)
+      }
+      PairCopula::Bb7 { theta, delta } => {
+        crate::bivariate::bb7::Bb7::log_density_scalar(u, v, theta, delta)
       }
       PairCopula::StudentT { rho, nu } => {
         // c(u, v) = (Γ((ν+2)/2) Γ(ν/2)) / (Γ((ν+1)/2)² √(1-ρ²))
@@ -285,6 +300,8 @@ fn student_t_quantile(p: f64, nu: f64) -> f64 {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::bivariate::bb1::Bb1;
+  use crate::traits::BivariateExt;
 
   /// Independence h-function must be the identity; inverse same.
   #[test]
@@ -380,5 +397,30 @@ mod tests {
         );
       }
     }
+  }
+
+  #[test]
+  fn bb_pairs_round_trip_h_and_match_the_bivariate_structs() {
+    let bb1 = PairCopula::Bb1 {
+      theta: 0.8,
+      delta: 1.6,
+    };
+    let bb7 = PairCopula::Bb7 {
+      theta: 1.7,
+      delta: 0.9,
+    };
+    for pair in [bb1, bb7] {
+      for (u, v) in [(0.2, 0.7), (0.55, 0.35), (0.9, 0.1)] {
+        let p = pair.h(u, v);
+        assert!(p > 0.0 && p < 1.0);
+        let back = pair.h_inverse(p, v);
+        assert!((back - u).abs() < 1e-9, "{pair:?} u {u} back {back}");
+        assert!(pair.density(u, v).is_finite() && pair.density(u, v) > 0.0);
+      }
+    }
+    let bb1_struct = Bb1::new(Some(0.8), Some(1.6), None);
+    let x = ndarray::array![[0.2, 0.7]];
+    let reference = bb1_struct.pdf(&x).unwrap()[0];
+    assert!((bb1.density(0.2, 0.7) - reference).abs() < 1e-12);
   }
 }

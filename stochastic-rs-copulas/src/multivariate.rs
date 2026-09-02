@@ -8,6 +8,7 @@ pub use crate::traits::MultivariateExt;
 
 pub mod cvine;
 pub mod dvine;
+pub mod fit;
 pub mod gaussian;
 pub(crate) mod linalg;
 pub mod nac;
