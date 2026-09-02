@@ -27,6 +27,13 @@ Python entry, so this is the only correct place to count from.
 
 See [Installation (Python)](/docs/getting-started/installation-python).
 
+The neural surrogates (`HestonNn`, `RBergomiNn`, `OneFactorNn`) and
+`calibrate_surrogate` are not in the published wheels — candle is heavy — and
+come with a source build: `maturin develop --features ai` from the workspace
+root. The same goes for the device back-ends of the Euler engine and the fGN
+samplers: `--features metal`, `cuda-native`, `gpu-cuda`, `gpu-wgpu`,
+`accelerate`.
+
 ## NumPy interop
 
 All `sample()` calls return `numpy.ndarray`. Bulk samplers

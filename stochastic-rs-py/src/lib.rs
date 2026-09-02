@@ -507,6 +507,17 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
     stochastic_rs_stochastic::euler::python::euler_paths,
     m
   )?)?;
+
+  #[cfg(feature = "ai")]
+  {
+    m.add_class::<stochastic_rs_ai::python::PyHestonNn>()?;
+    m.add_class::<stochastic_rs_ai::python::PyRBergomiNn>()?;
+    m.add_class::<stochastic_rs_ai::python::PyOneFactorNn>()?;
+    m.add_function(pyo3::wrap_pyfunction!(
+      stochastic_rs_ai::python::calibrate_surrogate,
+      m
+    )?)?;
+  }
   m.add_function(pyo3::wrap_pyfunction!(
     stochastic_rs_copulas::python::kendall_tau_matrix,
     m

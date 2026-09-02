@@ -117,9 +117,22 @@ surrogate drops straight into the vol-surface pipeline. The result reports
 whether $\hat\theta$ stayed inside the training box: the network is untrained
 outside it, and a solution on the boundary is a warning, not an answer.
 
-<Tabs items={['Rust']}>
+<Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
 <RustExample path="tests/doctest_ai_surrogate_calibration.rs" />
+</Tab>
+<Tab value="Python">
+```python
+# maturin develop --features ai   (the wheels on PyPI leave candle out)
+import numpy as np
+import stochastic_rs as srs
+
+model = srs.HestonNn()                       # best available device
+report = model.train(params, surfaces, epochs=200)   # rows: [v0, rho, sigma, theta, kappa] → 88 IVs
+fit = srs.calibrate_surrogate(model, market_surface)  # LM on the exact network Jacobian
+print(fit["params"], fit["rmse"], fit["converged"], fit["in_bounds"])
+surface, jacobian = model.predict_surface_with_jacobian(fit["params"])
+```
 
 > Requires the `ai` feature. The example trains a tiny network on a synthetic
 > surface so it runs without the bundled train sets; with a production

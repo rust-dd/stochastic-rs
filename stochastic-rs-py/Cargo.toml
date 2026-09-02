@@ -28,6 +28,9 @@ cuda-native = ["stochastic-rs-stochastic/cuda-native"]
 gpu-cuda = ["stochastic-rs-stochastic/gpu-cuda"]
 gpu-wgpu = ["stochastic-rs-stochastic/gpu-wgpu"]
 accelerate = ["stochastic-rs-stochastic/accelerate"]
+# Surrogates + surrogate calibration; off in the published wheels (candle is heavy):
+# `maturin develop --features ai`.
+ai = ["dep:stochastic-rs-ai"]
 default = []
 [dependencies]
 stochastic-rs-core = { workspace = true, features = ["python"] }
@@ -36,6 +39,7 @@ stochastic-rs-stochastic = { workspace = true, features = ["python"] }
 stochastic-rs-copulas = { workspace = true, features = ["python"] }
 stochastic-rs-stats = { workspace = true, features = ["python"] }
 stochastic-rs-quant = { workspace = true, features = ["python"] }
+stochastic-rs-ai = { workspace = true, features = ["python"], optional = true }
 pyo3 = { workspace = true, features = ["extension-module"] }
 numpy = { workspace = true }
 ndarray = { workspace = true }
