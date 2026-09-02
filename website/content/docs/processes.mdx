@@ -313,15 +313,23 @@ Each contains the file-by-file recipe.
 ## Euler engine
 
 `euler::sample_paths::<T, B, _>(&process, m, seed)` runs `m` Euler–Maruyama
-paths of a scalar diffusion on backend `B`: `Cpu` always (the crate's SIMD
-normal generator, one rayon task per path block), `CubeCl` when the crate is
-built with `gpu-cuda` or `gpu-wgpu` (one device thread per path, the whole
-recursion in the kernel, counter-hashed Box–Muller normals). A process joins
-the engine by describing its coefficients as an `EulerSpec` through
-`EulerCoefficients` — `Gbm`, `Ou` and `Cir` do. The stepper is the same
-formula on every device; the random streams differ, so CPU and GPU paths agree
-in distribution rather than bit for bit. The device works in `f32`, the
-portable GPU float, and widens on the way back.
+paths of a scalar diffusion on backend `B`. `Cpu` (and `Accelerate`) always:
+the crate's SIMD normal generator, one rayon task per path. The GPU back-ends
+run one device thread per path with the whole recursion in the kernel and
+counter-hashed Box–Muller normals:
+
+| Backend | Feature | Device | Precision |
+|---|---|---|---|
+| `CubeCl` | `gpu-cuda` / `gpu-wgpu` | CUDA, Metal, Vulkan, WebGPU through CubeCL | `f32` |
+| `CudaNative` | `cuda-native` | NVIDIA, cudarc + NVRTC | `f32` or `f64`, after `T` |
+| `MetalNative` | `metal` | Apple GPUs, hand-written MSL | `f32` |
+
+A process joins the engine by describing its coefficients as an `EulerSpec`
+through `EulerCoefficients` — `Gbm`, `Ou` and `Cir` do. The stepper is the
+same formula everywhere and the device kernels share one integer hash for
+their uniforms, so the device back-ends agree with each other seed for seed
+up to libm rounding; the CPU draws its own stream, so CPU and device paths
+agree in distribution rather than bit for bit.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -336,7 +344,9 @@ import stochastic_rs as srs
 paths = srs.euler_paths("gbm", [0.05, 0.2], 100.0, 253, 1.0, 20_000, seed=7)
 print(paths.shape, paths[:, -1].mean())   # (20000, 253), ≈ 100·e^{0.05}
 ou = srs.euler_paths("ou", [2.0, 1.0, 0.5], 1.0, 501, 2.0, 10_000)
-# srs.euler_paths(..., device="gpu") needs a build with gpu-cuda / gpu-wgpu
+# device="gpu" picks the first compiled device back-end; "cuda-native", "metal"
+# and "cubecl" name one (each needs the matching cargo feature of the build)
+gpu = srs.euler_paths("gbm", [0.05, 0.2], 100.0, 253, 1.0, 20_000, seed=7, device="gpu")
 ```
 </Tab>
 </Tabs>

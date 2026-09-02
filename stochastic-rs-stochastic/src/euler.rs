@@ -7,14 +7,19 @@
 //!
 //! One Euler–Maruyama stepper for the diffusions whose coefficients are a
 //! handful of scalars, on any [`Backend`] with the [`EulerBackend`]
-//! capability: [`Cpu`] runs the recursion with the crate's SIMD normal
-//! generator, one rayon task per path block; a compiled GPU runtime
-//! (`crate::device::CubeCl`, features `gpu-cuda` / `gpu-wgpu`) runs one thread per path
-//! with counter-hashed Box–Muller normals on the device. A process joins the
-//! engine by describing its coefficients as an [`EulerSpec`] through
-//! [`EulerCoefficients`]; the stepper is the same formula on every device,
-//! but the two devices draw different random streams, so paths agree in
-//! distribution, not bit for bit.
+//! capability. [`Cpu`] (and `Accelerate`, a CPU device) runs the recursion
+//! with the crate's SIMD normal generator, one rayon task per path. The GPU
+//! back-ends run one device thread per path with the whole recursion in the
+//! kernel and Box–Muller normals from a counter hash of `(path, step, seed)`:
+//! `CubeCl` (features `gpu-cuda` / `gpu-wgpu`: CUDA, Metal, Vulkan or WebGPU
+//! through CubeCL, `f32`), `CudaNative` (feature `cuda-native`: cudarc +
+//! NVRTC, `f32` or `f64` after `T`) and `MetalNative` (feature `metal`:
+//! hand-written MSL, `f32`). A process joins the engine by describing its
+//! coefficients as an [`EulerSpec`] through [`EulerCoefficients`]. The
+//! stepper is the same formula everywhere and the device kernels share one
+//! integer hash, so the device back-ends agree with each other seed for seed
+//! up to libm rounding, while the CPU draws its own stream: CPU and device
+//! paths agree in distribution, not bit for bit.
 //!
 //! References: Kloeden, P. E. & Platen, E. (1992), *Numerical Solution of
 //! Stochastic Differential Equations*, Springer, §10.2 (Euler–Maruyama);
@@ -173,12 +178,15 @@ impl<T: FloatExt, S: SeedExt> EulerCoefficients<T> for crate::diffusion::gbm::Gb
       sigma: self.sigma,
     }
   }
+
   fn initial_value(&self) -> T {
     self.x0.unwrap_or(T::from_usize_(100))
   }
+
   fn grid_points(&self) -> usize {
     self.n
   }
+
   fn horizon(&self) -> T {
     self.t.unwrap_or(T::one())
   }
@@ -192,12 +200,15 @@ impl<T: FloatExt, S: SeedExt> EulerCoefficients<T> for crate::diffusion::ou::Ou<
       sigma: self.sigma,
     }
   }
+
   fn initial_value(&self) -> T {
     self.x0.unwrap_or(T::zero())
   }
+
   fn grid_points(&self) -> usize {
     self.n
   }
+
   fn horizon(&self) -> T {
     self.t.unwrap_or(T::one())
   }
@@ -211,19 +222,41 @@ impl<T: FloatExt, S: SeedExt> EulerCoefficients<T> for crate::diffusion::cir::Ci
       sigma: self.sigma,
     }
   }
+
   fn initial_value(&self) -> T {
     self.x0.unwrap_or(T::zero())
   }
+
   fn grid_points(&self) -> usize {
     self.n
   }
+
   fn horizon(&self) -> T {
     self.t.unwrap_or(T::one())
   }
 }
 
+#[cfg(feature = "cuda-native")]
+pub mod cuda_native;
 #[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
 pub mod gpu;
+#[cfg(feature = "metal")]
+pub mod metal;
+
+/// Accelerate is a CPU device (vDSP), so its Euler paths are the CPU engine's.
+#[cfg(feature = "accelerate")]
+impl EulerBackend for crate::device::Accelerate {
+  fn euler_paths<T: FloatExt>(
+    spec: EulerSpec<T>,
+    x0: T,
+    n: usize,
+    t: T,
+    m: usize,
+    seed: u64,
+  ) -> Array2<T> {
+    Cpu::euler_paths(spec, x0, n, t, m, seed)
+  }
+}
 
 #[cfg(test)]
 mod tests;
@@ -287,8 +320,9 @@ pub mod python {
 
   /// `m × n` Euler–Maruyama paths of a scalar diffusion. `family` is `"gbm"`
   /// (`[mu, sigma]`), `"ou"` (`[theta, mu, sigma]`) or `"cir"`
-  /// (`[kappa, theta, sigma]`); `device` is `"cpu"` or `"gpu"` (the latter
-  /// needs a build with the `gpu-cuda` or `gpu-wgpu` feature).
+  /// (`[kappa, theta, sigma]`); `device` is `"cpu"`, `"gpu"` (the first
+  /// compiled device back-end), or one of `"cuda-native"`, `"metal"`,
+  /// `"cubecl"` (each needs the matching cargo feature of the build).
   #[pyfunction]
   #[pyo3(signature = (family, params, x0, n, t, m, seed=42, device="cpu"))]
   #[allow(clippy::too_many_arguments)]
@@ -306,7 +340,31 @@ pub mod python {
     let spec = spec_from(family, &params)?;
     let paths = match device.to_ascii_lowercase().as_str() {
       "cpu" => py.detach(|| Cpu::euler_paths(spec, x0, n, t, m, seed)),
-      "gpu" => {
+      "cuda-native" | "cuda_native" => {
+        #[cfg(feature = "cuda-native")]
+        {
+          py.detach(|| crate::device::CudaNative::euler_paths(spec, x0, n, t, m, seed))
+        }
+        #[cfg(not(feature = "cuda-native"))]
+        {
+          return Err(PyValueError::new_err(
+            "this build has no native CUDA runtime; rebuild with the cuda-native feature",
+          ));
+        }
+      }
+      "metal" => {
+        #[cfg(feature = "metal")]
+        {
+          py.detach(|| crate::device::MetalNative::euler_paths(spec, x0, n, t, m, seed))
+        }
+        #[cfg(not(feature = "metal"))]
+        {
+          return Err(PyValueError::new_err(
+            "this build has no native Metal runtime; rebuild with the metal feature",
+          ));
+        }
+      }
+      "cubecl" => {
         #[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
         {
           py.detach(|| crate::device::CubeCl::euler_paths(spec, x0, n, t, m, seed))
@@ -314,13 +372,43 @@ pub mod python {
         #[cfg(not(any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
         {
           return Err(PyValueError::new_err(
-            "this build has no GPU runtime; rebuild with the gpu-cuda or gpu-wgpu feature",
+            "this build has no CubeCL runtime; rebuild with the gpu-cuda or gpu-wgpu feature",
+          ));
+        }
+      }
+      // The first compiled device back-end: native CUDA, then native Metal, then CubeCL.
+      "gpu" => {
+        #[cfg(feature = "cuda-native")]
+        {
+          py.detach(|| crate::device::CudaNative::euler_paths(spec, x0, n, t, m, seed))
+        }
+        #[cfg(all(feature = "metal", not(feature = "cuda-native")))]
+        {
+          py.detach(|| crate::device::MetalNative::euler_paths(spec, x0, n, t, m, seed))
+        }
+        #[cfg(all(
+          any(feature = "gpu-cuda", feature = "gpu-wgpu"),
+          not(feature = "metal"),
+          not(feature = "cuda-native")
+        ))]
+        {
+          py.detach(|| crate::device::CubeCl::euler_paths(spec, x0, n, t, m, seed))
+        }
+        #[cfg(not(any(
+          feature = "cuda-native",
+          feature = "metal",
+          feature = "gpu-cuda",
+          feature = "gpu-wgpu"
+        )))]
+        {
+          return Err(PyValueError::new_err(
+            "this build has no GPU runtime; rebuild with the cuda-native, metal, gpu-cuda or gpu-wgpu feature",
           ));
         }
       }
       other => {
         return Err(PyValueError::new_err(format!(
-          "unknown device {other:?}; use cpu or gpu"
+          "unknown device {other:?}; use cpu, gpu, cuda-native, metal or cubecl"
         )));
       }
     };

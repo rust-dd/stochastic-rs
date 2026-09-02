@@ -132,3 +132,17 @@ def test_euler_paths_families_and_moments():
         sr.euler_paths("heston", [0.05, 0.2], 100.0, 10, 1.0, 4)
     with pytest.raises(ValueError):
         sr.euler_paths("gbm", [0.05, 0.2], 100.0, 10, 1.0, 4, device="tpu")
+
+
+def test_euler_paths_device_names_are_honoured_or_reported():
+    # A device name is either served by a compiled back-end or refused with a
+    # rebuild hint; never silently redirected to the CPU.
+    for device in ("gpu", "cuda-native", "metal", "cubecl"):
+        try:
+            paths = sr.euler_paths("gbm", [0.05, 0.2], 100.0, 64, 1.0, 256, seed=7, device=device)
+        except ValueError as err:
+            assert "rebuild" in str(err)
+            continue
+        assert paths.shape == (256, 64)
+        assert np.allclose(paths[:, 0], 100.0)
+        assert abs(paths[:, -1].mean() / (100.0 * np.exp(0.05)) - 1.0) < 0.05

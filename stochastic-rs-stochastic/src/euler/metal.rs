@@ -1,0 +1,181 @@
+//! Native Metal device path of the Euler engine (macOS, `metal` feature):
+//! hand-written MSL, one thread per path, the whole recursion in the kernel,
+//! normals from the same counter hash of `(path, step, seed)` as the CubeCL
+//! and CUDA kernels. `f32` only — Apple GPUs have no double precision — and
+//! widened on the way back.
+
+use anyhow::Result;
+use metal::*;
+use ndarray::Array2;
+use parking_lot::Mutex;
+
+use super::EulerBackend;
+use super::EulerSpec;
+use crate::device::MetalNative;
+use crate::traits::FloatExt;
+
+const MSL_SOURCE: &str = r#"
+#include <metal_stdlib>
+using namespace metal;
+
+struct EulerArgs {
+    uint family;
+    float x0;
+    float dt;
+    float sqrt_dt;
+    uint seed;
+    uint steps;
+    uint paths;
+};
+
+kernel void euler_paths(
+    device float* out [[buffer(0)]],
+    device const float* params [[buffer(1)]],
+    constant EulerArgs& args [[buffer(2)]],
+    uint path [[thread_position_in_grid]])
+{
+    if (path >= args.paths) return;
+    uint base = path * args.steps;
+    float x = args.x0;
+    float reported = args.x0;
+    if (args.family == 2u && args.x0 < 0.0f) reported = 0.0f;
+    out[base] = reported;
+    for (uint i = 1u; i < args.steps; i++) {
+        uint g = path * args.steps + i;
+        uint a = (g * 2u) ^ (args.seed * 2654435761u);
+        a ^= a >> 16; a *= 2246822519u; a ^= a >> 13; a *= 3266489917u; a ^= a >> 16;
+        uint b = (g * 2u + 1u) ^ (args.seed * 668265263u);
+        b ^= b >> 16; b *= 2246822519u; b ^= b >> 13; b *= 3266489917u; b ^= b >> 16;
+        float u1 = float(a) * 2.3283064e-10f * 0.999998f + 1.0e-6f;
+        float u2 = float(b) * 2.3283064e-10f;
+        float z = sqrt(-2.0f * log(u1)) * cos(6.2831853071795864f * u2);
+        if (args.family == 0u) {
+            x = x + params[0] * x * args.dt + params[1] * x * args.sqrt_dt * z;
+        } else if (args.family == 1u) {
+            x = x + params[0] * (params[1] - x) * args.dt + params[2] * args.sqrt_dt * z;
+        } else {
+            float positive = x > 0.0f ? x : 0.0f;
+            x = x + params[0] * (params[1] - positive) * args.dt + params[2] * sqrt(positive) * args.sqrt_dt * z;
+        }
+        reported = x;
+        if (args.family == 2u && x < 0.0f) reported = 0.0f;
+        out[base + i] = reported;
+    }
+}
+"#;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct EulerArgs {
+  family: u32,
+  x0: f32,
+  dt: f32,
+  sqrt_dt: f32,
+  seed: u32,
+  steps: u32,
+  paths: u32,
+}
+
+struct Context {
+  device: Device,
+  queue: CommandQueue,
+  pipeline: ComputePipelineState,
+}
+
+/// SAFETY: every device operation is serialised through the one queue.
+unsafe impl Send for Context {}
+
+static CONTEXT: Mutex<Option<Context>> = Mutex::new(None);
+
+fn ensure_context() -> Result<()> {
+  let mut guard = CONTEXT.lock();
+  if guard.is_some() {
+    return Ok(());
+  }
+  let device = Device::system_default().ok_or_else(|| anyhow::anyhow!("no Metal device"))?;
+  let queue = device.new_command_queue();
+  let library = device
+    .new_library_with_source(MSL_SOURCE, &CompileOptions::new())
+    .map_err(|e| anyhow::anyhow!("MSL compile: {e}"))?;
+  let function = library
+    .get_function("euler_paths", None)
+    .map_err(|e| anyhow::anyhow!("get euler_paths: {e}"))?;
+  let pipeline = device
+    .new_compute_pipeline_state_with_function(&function)
+    .map_err(|e| anyhow::anyhow!("euler_paths PSO: {e}"))?;
+  *guard = Some(Context {
+    device,
+    queue,
+    pipeline,
+  });
+  Ok(())
+}
+
+fn run(params: [f32; 4], args: EulerArgs) -> Result<Vec<f32>> {
+  ensure_context()?;
+  let guard = CONTEXT.lock();
+  let ctx = guard.as_ref().expect("initialised");
+  let shared = MTLResourceOptions::StorageModeShared;
+  let total = args.paths as usize * args.steps as usize;
+  let out_buf = ctx.device.new_buffer((total * 4) as u64, shared);
+  let params_buf = ctx
+    .device
+    .new_buffer_with_data(params.as_ptr() as *const _, 16, shared);
+  let cmd = ctx.queue.new_command_buffer();
+  {
+    let enc = cmd.new_compute_command_encoder();
+    enc.set_compute_pipeline_state(&ctx.pipeline);
+    enc.set_buffer(0, Some(&out_buf), 0);
+    enc.set_buffer(1, Some(&params_buf), 0);
+    enc.set_bytes(
+      2,
+      std::mem::size_of::<EulerArgs>() as u64,
+      &args as *const EulerArgs as *const _,
+    );
+    let width = ctx.pipeline.max_total_threads_per_threadgroup().min(256);
+    enc.dispatch_threads(
+      MTLSize::new(args.paths as u64, 1, 1),
+      MTLSize::new(width, 1, 1),
+    );
+    enc.end_encoding();
+  }
+  cmd.commit();
+  cmd.wait_until_completed();
+  let ptr = out_buf.contents() as *const f32;
+  Ok(unsafe { std::slice::from_raw_parts(ptr, total) }.to_vec())
+}
+
+impl EulerBackend for MetalNative {
+  fn euler_paths<T: FloatExt>(
+    spec: EulerSpec<T>,
+    x0: T,
+    n: usize,
+    t: T,
+    m: usize,
+    seed: u64,
+  ) -> Array2<T> {
+    if n == 0 || m == 0 {
+      return Array2::<T>::zeros((m, n));
+    }
+    let (family, params) = spec.encode();
+    let dt = (t.to_f64().unwrap_or(1.0) / (n.max(2) - 1) as f64) as f32;
+    let params32: [f32; 4] = std::array::from_fn(|i| params[i].to_f64().unwrap_or(0.0) as f32);
+    let args = EulerArgs {
+      family,
+      x0: x0.to_f64().unwrap_or(0.0) as f32,
+      dt,
+      sqrt_dt: dt.sqrt(),
+      seed: (seed ^ (seed >> 32)) as u32,
+      steps: n as u32,
+      paths: m as u32,
+    };
+    let data = run(params32, args).expect("native Metal Euler engine");
+    let mut out = Array2::<T>::zeros((m, n));
+    for i in 0..m {
+      for j in 0..n {
+        out[[i, j]] = T::from_f64_fast(data[i * n + j] as f64);
+      }
+    }
+    out
+  }
+}

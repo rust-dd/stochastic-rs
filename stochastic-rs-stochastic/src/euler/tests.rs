@@ -136,15 +136,20 @@ fn spec_step_matches_the_closed_form_increments() {
   assert_eq!(cir.observed(0.02), 0.02);
 }
 
-#[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
-mod device {
+/// Every compiled device back-end reproduces the lognormal moments and is
+/// deterministic in its seed; the device kernels share one integer hash for
+/// their uniforms, so two device back-ends agree seed for seed up to the
+/// `f32` libm rounding of Box–Muller.
+#[cfg(any(
+  feature = "metal",
+  feature = "cuda-native",
+  feature = "gpu-cuda",
+  feature = "gpu-wgpu"
+))]
+mod devices {
   use super::*;
-  use crate::device::CubeCl;
 
-  /// The device path reproduces the lognormal moments too — same stepper,
-  /// different random stream.
-  #[test]
-  fn gpu_gbm_paths_match_the_lognormal_moments() {
+  fn gbm_moments_hold<B: EulerBackend>(label: &str) -> Array2<f64> {
     let gbm = Gbm::new(
       0.05,
       0.2,
@@ -153,20 +158,111 @@ mod device {
       Some(1.0),
       stochastic_rs_core::simd_rng::Unseeded,
     );
-    let paths = sample_paths::<f64, CubeCl, _>(&gbm, 40_000, 7);
-    assert_eq!(paths.dim(), (40_000, 253));
+    let paths = sample_paths::<f64, B, _>(&gbm, 40_000, 7);
+    assert_eq!(paths.dim(), (40_000, 253), "{label}");
     let (mean, var) = column_mean_var(&paths, 252);
     let expected_mean = 100.0 * 0.05_f64.exp();
     let expected_var = 100.0_f64.powi(2) * (0.1_f64).exp() * ((0.04_f64).exp() - 1.0);
     assert!(
       (mean / expected_mean - 1.0).abs() < 0.01,
-      "mean {mean} vs {expected_mean}"
+      "{label}: mean {mean} vs {expected_mean}"
     );
     assert!(
       (var / expected_var - 1.0).abs() < 0.06,
-      "var {var} vs {expected_var}"
+      "{label}: var {var} vs {expected_var}"
     );
-    let again = sample_paths::<f64, CubeCl, _>(&gbm, 8, 7);
-    assert_eq!(again, sample_paths::<f64, CubeCl, _>(&gbm, 8, 7));
+    assert_eq!(
+      sample_paths::<f64, B, _>(&gbm, 8, 7),
+      sample_paths::<f64, B, _>(&gbm, 8, 7),
+      "{label}: seed reproducibility"
+    );
+    assert_ne!(
+      sample_paths::<f64, B, _>(&gbm, 8, 7),
+      sample_paths::<f64, B, _>(&gbm, 8, 8),
+      "{label}: seed discrimination"
+    );
+    paths
+  }
+
+  fn cir_stays_nonnegative<B: EulerBackend>(label: &str) {
+    let cir = Cir::new(
+      1.5,
+      0.04,
+      0.3,
+      253,
+      Some(0.09),
+      Some(1.0),
+      None,
+      stochastic_rs_core::simd_rng::Unseeded,
+    );
+    let paths = sample_paths::<f64, B, _>(&cir, 4_000, 3);
+    let (mean, _) = column_mean_var(&paths, 252);
+    let expected = 0.04 + (0.09 - 0.04) * (-1.5_f64).exp();
+    assert!(
+      (mean / expected - 1.0).abs() < 0.03,
+      "{label}: mean {mean} vs {expected}"
+    );
+    assert!(paths.iter().all(|&x| x >= 0.0), "{label}");
+  }
+
+  #[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
+  #[test]
+  fn cubecl_backend_matches_the_moments() {
+    gbm_moments_hold::<crate::device::CubeCl>("CubeCl");
+    cir_stays_nonnegative::<crate::device::CubeCl>("CubeCl");
+  }
+
+  #[cfg(feature = "metal")]
+  #[test]
+  fn metal_native_backend_matches_the_moments() {
+    gbm_moments_hold::<crate::device::MetalNative>("MetalNative");
+    cir_stays_nonnegative::<crate::device::MetalNative>("MetalNative");
+  }
+
+  #[cfg(feature = "cuda-native")]
+  #[test]
+  fn cuda_native_backend_matches_the_moments() {
+    gbm_moments_hold::<crate::device::CudaNative>("CudaNative");
+    cir_stays_nonnegative::<crate::device::CudaNative>("CudaNative");
+    // f64 kernel: the double-precision path agrees with the f32 one to float rounding.
+    let gbm32 = Gbm::<f32, _>::new(
+      0.05,
+      0.2,
+      64,
+      Some(100.0),
+      Some(1.0),
+      stochastic_rs_core::simd_rng::Unseeded,
+    );
+    let gbm64 = Gbm::<f64, _>::new(
+      0.05,
+      0.2,
+      64,
+      Some(100.0),
+      Some(1.0),
+      stochastic_rs_core::simd_rng::Unseeded,
+    );
+    let single = sample_paths::<f32, crate::device::CudaNative, _>(&gbm32, 4, 5);
+    let double = sample_paths::<f64, crate::device::CudaNative, _>(&gbm64, 4, 5);
+    for (a, b) in single.iter().zip(double.iter()) {
+      assert!(((*a as f64) - b).abs() < 1e-3 * b.abs().max(1.0));
+    }
+  }
+
+  #[cfg(all(feature = "metal", any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
+  #[test]
+  fn metal_native_and_cubecl_agree_seed_for_seed() {
+    let gbm = Gbm::new(
+      0.05,
+      0.2,
+      128,
+      Some(100.0),
+      Some(1.0),
+      stochastic_rs_core::simd_rng::Unseeded,
+    );
+    let metal = sample_paths::<f64, crate::device::MetalNative, _>(&gbm, 16, 11);
+    let cubecl = sample_paths::<f64, crate::device::CubeCl, _>(&gbm, 16, 11);
+    for (a, b) in metal.iter().zip(cubecl.iter()) {
+      assert!((a - b).abs() < 1e-3 * b.abs().max(1.0), "{a} vs {b}");
+    }
   }
 }
