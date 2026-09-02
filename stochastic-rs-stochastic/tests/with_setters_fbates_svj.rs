@@ -39,6 +39,7 @@ fn fbsvj_base_seeded<S: SeedExt>(seed: S) -> FBatesSvj<f64, S> {
     seed,
   )
 }
+
 fn fbsvj_base() -> FBatesSvj<f64> {
   fbsvj_base_seeded(Unseeded)
 }
@@ -59,6 +60,7 @@ struct FbsvjFields {
   n: usize,
   t: Option<f64>,
 }
+
 fn fbsvj_fields<S: SeedExt>(x: &FBatesSvj<f64, S>) -> FbsvjFields {
   FbsvjFields {
     hurst: x.hurst,

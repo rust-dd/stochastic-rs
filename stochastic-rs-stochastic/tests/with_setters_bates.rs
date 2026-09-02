@@ -105,6 +105,7 @@ fn bates_base_seeded<S: SeedExt>(seed: S) -> Bates1996<f64, ScalarNormal<f64>, S
     seed,
   )
 }
+
 fn bates_base() -> Bates1996<f64, ScalarNormal<f64>> {
   bates_base_seeded(Unseeded)
 }
@@ -131,6 +132,7 @@ struct BatesFields {
   t: Option<f64>,
   use_sym: Option<bool>,
 }
+
 fn bates_fields<S: SeedExt>(x: &Bates1996<f64, ScalarNormal<f64>, S>) -> BatesFields {
   BatesFields {
     mu: x.mu,

@@ -22,6 +22,7 @@ fn rb_base_seeded<S: SeedExt>(seed: S) -> RoughBergomi<f64, S> {
     seed,
   )
 }
+
 fn rb_base() -> RoughBergomi<f64> {
   rb_base_seeded(Unseeded)
 }
@@ -37,6 +38,7 @@ struct RbFields {
   n: usize,
   t: Option<f64>,
 }
+
 fn fields<S: SeedExt>(x: &RoughBergomi<f64, S>) -> RbFields {
   RbFields {
     hurst: x.hurst,
@@ -49,6 +51,7 @@ fn fields<S: SeedExt>(x: &RoughBergomi<f64, S>) -> RbFields {
     t: x.t,
   }
 }
+
 fn finite2(out: &[Array1<f64>; 2]) -> bool {
   out.iter().all(|a| a.iter().all(|v| v.is_finite()))
 }

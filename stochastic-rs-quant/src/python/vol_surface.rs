@@ -20,12 +20,15 @@ impl PySviRawParams {
   fn total_variance(&self, k: f64) -> f64 {
     self.inner.total_variance(k)
   }
+
   fn implied_vol(&self, k: f64, t: f64) -> f64 {
     self.inner.implied_vol(k, t)
   }
+
   fn min_variance(&self) -> f64 {
     self.inner.min_variance()
   }
+
   fn is_admissible(&self) -> bool {
     self.inner.is_admissible()
   }
@@ -48,9 +51,11 @@ impl PySsviParams {
   fn total_variance(&self, k: f64, theta: f64) -> f64 {
     self.inner.total_variance(k, theta)
   }
+
   fn implied_vol(&self, k: f64, theta: f64, t: f64) -> f64 {
     self.inner.implied_vol(k, theta, t)
   }
+
   fn satisfies_no_butterfly_condition(&self) -> bool {
     self.inner.satisfies_no_butterfly_condition()
   }
@@ -112,6 +117,7 @@ impl PyImpliedVolSurface {
   fn strikes(&self) -> Vec<f64> {
     self.inner.strikes.clone()
   }
+
   fn maturities(&self) -> Vec<f64> {
     self.inner.maturities.clone()
   }

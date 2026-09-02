@@ -390,9 +390,11 @@ impl stochastic_rs::traits::TimeExt for MockPricer {
   fn tau(&self) -> Option<f64> {
     None
   }
+
   fn eval(&self) -> Option<NaiveDate> {
     Some(self.eval)
   }
+
   fn expiration(&self) -> Option<NaiveDate> {
     Some(self.expiration)
   }
@@ -432,12 +434,15 @@ impl stochastic_rs::traits::TimeExt for MockPricerWithDcc {
   fn tau(&self) -> Option<f64> {
     self.tau
   }
+
   fn eval(&self) -> Option<NaiveDate> {
     Some(self.eval)
   }
+
   fn expiration(&self) -> Option<NaiveDate> {
     Some(self.expiration)
   }
+
   fn dcc(&self) -> Option<DayCountConvention> {
     self.dcc
   }

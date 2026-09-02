@@ -47,6 +47,7 @@ fn dk_base_seeded<S: SeedExt>(seed: S) -> DuffieKan<f64, S> {
     seed,
   )
 }
+
 fn dk_base() -> DuffieKan<f64> {
   dk_base_seeded(Unseeded)
 }
@@ -75,6 +76,7 @@ struct DkFields {
   x0: Option<f64>,
   t: Option<f64>,
 }
+
 fn dk_fields<S: SeedExt>(x: &DuffieKan<f64, S>) -> DkFields {
   DkFields {
     alpha: x.alpha,

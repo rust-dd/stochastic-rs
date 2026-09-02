@@ -20,22 +20,27 @@ impl PyEngleGranger {
   fn alpha(&self) -> f64 {
     self.inner.alpha
   }
+
   #[getter]
   fn beta(&self) -> f64 {
     self.inner.beta
   }
+
   #[getter]
   fn adf_statistic(&self) -> f64 {
     self.inner.adf_statistic
   }
+
   #[getter]
   fn critical_values(&self) -> (f64, f64, f64) {
     self.inner.critical_values
   }
+
   #[getter]
   fn reject_no_cointegration(&self) -> bool {
     self.inner.reject_no_cointegration
   }
+
   fn residuals<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
     self.inner.residuals.clone().into_pyarray(py)
@@ -63,35 +68,43 @@ impl PyJohansen {
     use numpy::IntoPyArray;
     self.inner.eigenvalues.clone().into_pyarray(py)
   }
+
   /// Eigenvectors as columns, normalised `V' S11 V = I`.
   fn eigenvectors<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
     use numpy::IntoPyArray;
     self.inner.eigenvectors.clone().into_pyarray(py)
   }
+
   fn trace_statistics<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
     self.inner.trace_statistics.clone().into_pyarray(py)
   }
+
   fn max_eig_statistics<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
     self.inner.max_eig_statistics.clone().into_pyarray(py)
   }
+
   fn trace_critical_5pct<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
     self.inner.trace_critical_5pct.clone().into_pyarray(py)
   }
+
   fn max_eig_critical_5pct<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
     self.inner.max_eig_critical_5pct.clone().into_pyarray(py)
   }
+
   #[getter]
   fn rank_trace(&self) -> usize {
     self.inner.rank_trace
   }
+
   #[getter]
   fn rank_max_eig(&self) -> usize {
     self.inner.rank_max_eig
   }
+
   #[getter]
   fn nobs(&self) -> usize {
     self.inner.nobs
@@ -120,16 +133,19 @@ impl PyVecm {
     use numpy::IntoPyArray;
     self.inner.beta.clone().into_pyarray(py)
   }
+
   /// Adjustment coefficients (`k × rank`).
   fn alpha<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
     use numpy::IntoPyArray;
     self.inner.alpha.clone().into_pyarray(py)
   }
+
   /// `alpha @ beta.T` (`k × k`).
   fn pi<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
     use numpy::IntoPyArray;
     self.inner.pi.clone().into_pyarray(py)
   }
+
   /// Short-run matrices `Gamma_1 … Gamma_{lags-1}`, each `k × k`.
   fn gamma<'py>(&self, py: Python<'py>) -> Vec<pyo3::Bound<'py, numpy::PyArray2<f64>>> {
     use numpy::IntoPyArray;
@@ -140,32 +156,39 @@ impl PyVecm {
       .map(|g| g.clone().into_pyarray(py))
       .collect()
   }
+
   fn intercept<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
     self.inner.intercept.clone().into_pyarray(py)
   }
+
   /// Residuals (`nobs × k`).
   fn residuals<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
     use numpy::IntoPyArray;
     self.inner.residuals.clone().into_pyarray(py)
   }
+
   /// ML residual covariance (`k × k`).
   fn sigma<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
     use numpy::IntoPyArray;
     self.inner.sigma.clone().into_pyarray(py)
   }
+
   fn eigenvalues<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
     self.inner.eigenvalues.clone().into_pyarray(py)
   }
+
   #[getter]
   fn rank(&self) -> usize {
     self.inner.rank
   }
+
   #[getter]
   fn lags(&self) -> usize {
     self.inner.lags
   }
+
   #[getter]
   fn nobs(&self) -> usize {
     self.inner.nobs
@@ -202,18 +225,22 @@ impl PyGranger {
   fn f_statistic(&self) -> f64 {
     self.inner.f_statistic
   }
+
   #[getter]
   fn p_value(&self) -> f64 {
     self.inner.p_value
   }
+
   #[getter]
   fn lags(&self) -> usize {
     self.inner.lags
   }
+
   #[getter]
   fn nobs(&self) -> usize {
     self.inner.nobs
   }
+
   #[getter]
   fn reject_no_causality(&self) -> bool {
     self.inner.reject_no_causality

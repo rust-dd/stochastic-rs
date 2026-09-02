@@ -74,6 +74,7 @@ impl crate::traits::HypothesisTest for LoMacKinlayResult {
   fn statistic(&self) -> f64 {
     self.z_robust
   }
+
   fn null_rejected(&self) -> Option<bool> {
     Some(self.reject_random_walk_robust)
   }

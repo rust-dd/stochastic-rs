@@ -32,9 +32,11 @@ impl crate::traits::CalibrationResult for HKDECalibrationResult {
   fn rmse(&self) -> f64 {
     self.loss.get(crate::LossMetric::Rmse)
   }
+
   fn converged(&self) -> bool {
     self.converged
   }
+
   fn params(&self) -> Self::Params {
     HKDEParams {
       v0: self.v0,
@@ -48,6 +50,7 @@ impl crate::traits::CalibrationResult for HKDECalibrationResult {
       eta2: self.eta2,
     }
   }
+
   fn loss_score(&self) -> Option<&CalibrationLossScore> {
     Some(&self.loss)
   }

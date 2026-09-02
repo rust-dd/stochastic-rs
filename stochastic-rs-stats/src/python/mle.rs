@@ -28,18 +28,22 @@ impl PyHestonMLE {
   fn v0(&self) -> f64 {
     self.inner.v0
   }
+
   #[getter]
   fn kappa(&self) -> f64 {
     self.inner.kappa
   }
+
   #[getter]
   fn theta(&self) -> f64 {
     self.inner.theta
   }
+
   #[getter]
   fn sigma(&self) -> f64 {
     self.inner.sigma
   }
+
   #[getter]
   fn rho(&self) -> f64 {
     self.inner.rho
@@ -74,26 +78,32 @@ impl PyHestonNMLECEKF {
   fn v0(&self) -> f64 {
     self.inner.params.v0
   }
+
   #[getter]
   fn kappa(&self) -> f64 {
     self.inner.params.kappa
   }
+
   #[getter]
   fn theta(&self) -> f64 {
     self.inner.params.theta
   }
+
   #[getter]
   fn sigma(&self) -> f64 {
     self.inner.params.sigma
   }
+
   #[getter]
   fn rho(&self) -> f64 {
     self.inner.params.rho
   }
+
   #[getter]
   fn iterations(&self) -> usize {
     self.inner.iterations
   }
+
   #[getter]
   fn converged(&self) -> bool {
     self.inner.converged

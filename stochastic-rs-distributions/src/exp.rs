@@ -507,36 +507,47 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdExp<
   fn pdf(&self, x: f64) -> f64 {
     self.inner.pdf(x)
   }
+
   fn cdf(&self, x: f64) -> f64 {
     self.inner.cdf(x)
   }
+
   fn inv_cdf(&self, p: f64) -> f64 {
     self.inner.inv_cdf(p)
   }
+
   fn mean(&self) -> f64 {
     self.inner.mean()
   }
+
   fn median(&self) -> f64 {
     self.inner.median()
   }
+
   fn mode(&self) -> f64 {
     self.inner.mode()
   }
+
   fn variance(&self) -> f64 {
     self.inner.variance()
   }
+
   fn skewness(&self) -> f64 {
     self.inner.skewness()
   }
+
   fn kurtosis(&self) -> f64 {
     self.inner.kurtosis()
   }
+
   fn entropy(&self) -> f64 {
     self.inner.entropy()
   }
+
   fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
     self.inner.characteristic_function(t)
   }
+
   fn moment_generating_function(&self, t: f64) -> f64 {
     self.inner.moment_generating_function(t)
   }

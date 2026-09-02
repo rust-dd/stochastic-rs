@@ -151,3 +151,23 @@ Doc comments describe what the module / item *does*, not which release ships it.
 ```
 
 Version history belongs in `MIGRATION.md` (the repo root breaking-changes record — there is no `CHANGELOG.md` here) / git log / `docs/V*_UPDATE.md`, not in `///` or `//!` blocks. To record a genuine limitation near the code, describe **what is not supported and why** without the release number (e.g. "Nested-Clayton sampling is not yet implemented — needs Devroye double-rejection"), or use a `// TODO:` with a short rationale. When porting prose from a `V*_UPDATE.md` planning doc into a module header, strip the version prefix.
+
+## 12. One blank line between items
+
+Separate consecutive items — functions (trait-impl methods included), impls,
+structs, enums, consts, statics, type aliases, modules, macros — with exactly
+one blank line, including before an attribute or doc comment that opens the
+next item. rustfmt does not insert these (its `blank_lines_lower_bound` also
+pads statements, so it is not used); generated code from patch scripts and
+heredocs must emit the blank lines itself. Never:
+
+```rust
+impl Foo for Bar {
+  fn a(&self) -> f64 {
+    1.0
+  }
+  fn b(&self) -> f64 {
+    2.0
+  }
+}
+```

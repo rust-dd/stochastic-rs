@@ -434,6 +434,7 @@ impl McRainbowPricer {
     }
   }
 }
+
 #[cfg(test)]
 #[path = "rainbow_tests.rs"]
 mod tests;

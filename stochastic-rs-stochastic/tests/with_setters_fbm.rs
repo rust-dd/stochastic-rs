@@ -18,6 +18,7 @@ use stochastic_rs_stochastic::traits::ProcessExt;
 fn fbm_base_seeded<S: SeedExt>(seed: S) -> Fbm<f64, S> {
   Fbm::new(0.7, 64, Some(1.0), seed)
 }
+
 fn fbm_base() -> Fbm<f64> {
   fbm_base_seeded(Unseeded)
 }
@@ -28,6 +29,7 @@ struct FbmFields {
   n: usize,
   t: Option<f64>,
 }
+
 fn fields<S: SeedExt>(x: &Fbm<f64, S>) -> FbmFields {
   FbmFields {
     hurst: x.hurst,
@@ -35,6 +37,7 @@ fn fields<S: SeedExt>(x: &Fbm<f64, S>) -> FbmFields {
     t: x.t,
   }
 }
+
 fn finite(out: &Array1<f64>) -> bool {
   out.iter().all(|v| v.is_finite())
 }

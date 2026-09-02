@@ -105,6 +105,7 @@ impl crate::traits::HypothesisTest for ApResult {
   fn statistic(&self) -> f64 {
     self.statistic
   }
+
   fn null_rejected(&self) -> Option<bool> {
     Some(self.null_rejected)
   }

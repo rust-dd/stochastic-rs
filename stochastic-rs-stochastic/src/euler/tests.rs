@@ -30,6 +30,7 @@ fn cpu_backend_is_the_process_sampler() {
     assert_eq!(plain[i].to_vec(), switched[i].to_vec());
     assert_eq!(plain[i].to_vec(), through_trait[i].to_vec());
   }
+
   const {
     assert!(!<Cpu as EulerBackend>::DEVICE);
   }

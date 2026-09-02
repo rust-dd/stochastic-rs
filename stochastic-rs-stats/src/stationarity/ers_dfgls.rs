@@ -69,6 +69,7 @@ impl crate::traits::HypothesisTest for ErsResult {
   fn statistic(&self) -> f64 {
     self.statistic
   }
+
   fn null_rejected(&self) -> Option<bool> {
     Some(self.reject_unit_root)
   }

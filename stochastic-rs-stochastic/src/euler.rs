@@ -128,15 +128,19 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend> EulerCoefficients<T> for Gbm<T, S
       sigma: self.sigma,
     }
   }
+
   fn initial_value(&self) -> T {
     self.x0.unwrap_or(T::one())
   }
+
   fn grid_points(&self) -> usize {
     self.n
   }
+
   fn horizon(&self) -> T {
     self.t.unwrap_or(T::one())
   }
+
   fn device_seed(&self) -> u64 {
     draw_seed(&self.seed)
   }
@@ -150,15 +154,19 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend> EulerCoefficients<T> for Ou<T, S,
       sigma: self.sigma,
     }
   }
+
   fn initial_value(&self) -> T {
     self.x0.unwrap_or(T::zero())
   }
+
   fn grid_points(&self) -> usize {
     self.n
   }
+
   fn horizon(&self) -> T {
     self.t.unwrap_or(T::one())
   }
+
   fn device_seed(&self) -> u64 {
     draw_seed(&self.seed)
   }
@@ -172,15 +180,19 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend> EulerCoefficients<T> for Cir<T, S
       sigma: self.sigma,
     }
   }
+
   fn initial_value(&self) -> T {
     self.x0.unwrap_or(T::zero())
   }
+
   fn grid_points(&self) -> usize {
     self.n
   }
+
   fn horizon(&self) -> T {
     self.t.unwrap_or(T::one())
   }
+
   fn device_seed(&self) -> u64 {
     draw_seed(&self.seed)
   }
@@ -224,6 +236,7 @@ pub mod python {
           {
             $py.detach(|| $process.on::<crate::device::CudaNative>().sample_par($m))
           }
+
           #[cfg(not(feature = "cuda-native"))]
           {
             return Err(PyValueError::new_err(
@@ -236,6 +249,7 @@ pub mod python {
           {
             $py.detach(|| $process.on::<crate::device::MetalNative>().sample_par($m))
           }
+
           #[cfg(not(feature = "metal"))]
           {
             return Err(PyValueError::new_err(
@@ -248,6 +262,7 @@ pub mod python {
           {
             $py.detach(|| $process.on::<crate::device::CubeCl>().sample_par($m))
           }
+
           #[cfg(not(any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
           {
             return Err(PyValueError::new_err(
@@ -261,10 +276,12 @@ pub mod python {
           {
             $py.detach(|| $process.on::<crate::device::CudaNative>().sample_par($m))
           }
+
           #[cfg(all(feature = "metal", not(feature = "cuda-native")))]
           {
             $py.detach(|| $process.on::<crate::device::MetalNative>().sample_par($m))
           }
+
           #[cfg(all(
             any(feature = "gpu-cuda", feature = "gpu-wgpu"),
             not(feature = "metal"),
@@ -273,6 +290,7 @@ pub mod python {
           {
             $py.detach(|| $process.on::<crate::device::CubeCl>().sample_par($m))
           }
+
           #[cfg(not(any(
             feature = "cuda-native",
             feature = "metal",

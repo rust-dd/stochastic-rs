@@ -17,6 +17,7 @@ struct PoissonFields {
   n: Option<usize>,
   t_max: Option<f64>,
 }
+
 fn fields(x: &Poisson<f64>) -> PoissonFields {
   PoissonFields {
     lambda: x.lambda,
@@ -24,6 +25,7 @@ fn fields(x: &Poisson<f64>) -> PoissonFields {
     t_max: x.t_max,
   }
 }
+
 fn finite(out: &Array1<f64>) -> bool {
   out.iter().all(|v| v.is_finite())
 }

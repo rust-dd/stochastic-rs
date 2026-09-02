@@ -216,6 +216,7 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend> ProcessExt<T> for Cir<T, S, B> {
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
     }
   }
+
   fn sample(&self) -> Array1<T> {
     if B::DEVICE {
       B::euler_paths(self, 1).remove(0)

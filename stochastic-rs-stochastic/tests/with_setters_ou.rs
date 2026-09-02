@@ -16,6 +16,7 @@ struct OuFields {
   x0: Option<f64>,
   t: Option<f64>,
 }
+
 fn fields(x: &Ou<f64>) -> OuFields {
   OuFields {
     theta: x.theta,
@@ -26,6 +27,7 @@ fn fields(x: &Ou<f64>) -> OuFields {
     t: x.t,
   }
 }
+
 fn finite(out: &Array1<f64>) -> bool {
   out.iter().all(|v| v.is_finite())
 }

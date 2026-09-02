@@ -122,15 +122,18 @@ impl crate::traits::CalibrationResult for LevyCalibrationResult {
   fn rmse(&self) -> f64 {
     self.loss.get(crate::LossMetric::Rmse)
   }
+
   fn params(&self) -> Self::Params {
     LevyParams {
       values: self.params.clone(),
       model_type: self.model_type,
     }
   }
+
   fn converged(&self) -> bool {
     self.converged
   }
+
   fn loss_score(&self) -> Option<&crate::CalibrationLossScore> {
     Some(&self.loss)
   }

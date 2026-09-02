@@ -44,6 +44,7 @@ pub trait RealExt:
   fn from_f32_fast(v: f32) -> Self {
     Self::from_f64_fast(v as f64)
   }
+
   fn pi() -> Self;
   fn two_pi() -> Self;
   fn min_positive_val() -> Self;
@@ -79,6 +80,7 @@ pub trait SimdFloatExt: RealExt {
     Self::fill_uniform_simd(rng, &mut buf);
     buf[0]
   }
+
   fn simd_from_i32x8(v: wide::i32x8) -> Self::Simd;
   const PREFERS_F32_WN: bool = false;
 }
@@ -95,6 +97,7 @@ pub trait FloatExt: RealExt + SimdFloatExt {
       *x = *x * scale;
     }
   }
+
   fn with_fgn_complex_scratch<R, F: FnOnce(&mut [Complex<Self>]) -> R>(len: usize, f: F) -> R;
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self>;
 }

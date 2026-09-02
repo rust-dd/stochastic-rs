@@ -381,6 +381,7 @@ mod tests {
       fn chf(&self, _t: f64, _xi: Complex64) -> Complex64 {
         Complex64::new(f64::NAN, f64::NAN)
       }
+
       fn cumulants(&self, _t: f64) -> super::super::Cumulants {
         super::super::Cumulants {
           c1: 0.0,

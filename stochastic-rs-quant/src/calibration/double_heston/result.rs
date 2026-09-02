@@ -51,12 +51,15 @@ impl crate::traits::CalibrationResult for DoubleHestonCalibrationResult {
   fn rmse(&self) -> f64 {
     self.loss.get(crate::LossMetric::Rmse)
   }
+
   fn converged(&self) -> bool {
     self.converged
   }
+
   fn params(&self) -> Self::Params {
     DoubleHestonCalibrationResult::params(self)
   }
+
   fn loss_score(&self) -> Option<&crate::CalibrationLossScore> {
     Some(&self.loss)
   }

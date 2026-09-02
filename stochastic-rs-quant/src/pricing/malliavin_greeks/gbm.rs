@@ -225,15 +225,19 @@ impl crate::traits::GreeksExt for GbmMalliavinGreeks {
   fn delta(&self) -> f64 {
     GbmMalliavinGreeks::delta(self)
   }
+
   fn gamma(&self) -> f64 {
     GbmMalliavinGreeks::gamma(self)
   }
+
   fn vega(&self) -> f64 {
     GbmMalliavinGreeks::vega(self)
   }
+
   fn rho(&self) -> f64 {
     GbmMalliavinGreeks::rho_greek(self)
   }
+
   /// Override the trait default — calling `delta()`/`gamma()`/`vega()`/`rho()`
   /// individually each runs an independent MC simulation, so the resulting
   /// Greeks would mix four different sample paths. [`Self::all_greeks`] uses

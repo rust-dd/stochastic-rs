@@ -63,12 +63,15 @@ impl crate::traits::CalibrationResult for BSMCalibrationResult {
   fn rmse(&self) -> f64 {
     self.loss.get(LossMetric::Rmse)
   }
+
   fn converged(&self) -> bool {
     self.converged
   }
+
   fn params(&self) -> Self::Params {
     BSMParams { v: self.v }
   }
+
   fn loss_score(&self) -> Option<&CalibrationLossScore> {
     Some(&self.loss)
   }

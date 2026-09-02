@@ -84,9 +84,11 @@ impl crate::traits::CalibrationResult for SabrCalibrationResult {
   fn rmse(&self) -> f64 {
     self.loss.get(LossMetric::Rmse)
   }
+
   fn converged(&self) -> bool {
     self.converged
   }
+
   fn params(&self) -> Self::Params {
     SabrParams {
       alpha: self.alpha,
@@ -95,6 +97,7 @@ impl crate::traits::CalibrationResult for SabrCalibrationResult {
       rho: self.rho,
     }
   }
+
   fn loss_score(&self) -> Option<&CalibrationLossScore> {
     Some(&self.loss)
   }
@@ -135,6 +138,7 @@ impl SabrParams {
     self.nu = self.nu.abs().max(NU_MIN);
     self.rho = self.rho.clamp(-RHO_BOUND, RHO_BOUND);
   }
+
   pub fn projected(mut self) -> Self {
     self.project_in_place();
     self
@@ -299,9 +303,11 @@ impl SabrCalibrator {
   pub fn set_initial_guess(&mut self, params: SabrParams) {
     self.params = Some(params.projected());
   }
+
   pub fn set_record_history(&mut self, record: bool) {
     self.record_history = record;
   }
+
   pub fn history(&self) -> Vec<CalibrationHistory<SabrParams>> {
     self.calibration_history.borrow().clone()
   }
@@ -416,9 +422,11 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for SabrCalibrator {
     p.project_in_place();
     self.params = Some(p);
   }
+
   fn params(&self) -> DVector<f64> {
     self.effective_params().as_lm_vec()
   }
+
   fn residuals(&self) -> Option<DVector<f64>> {
     let p = self.effective_params();
     let c_model = self.compute_model_prices_for(&p);
@@ -460,6 +468,7 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for SabrCalibrator {
       _ => Some(residuals),
     }
   }
+
   fn jacobian(&self) -> Option<DMatrix<f64>> {
     let jacobian = self.numeric_jacobian(&self.effective_params());
     match &self.regularization {

@@ -45,6 +45,7 @@ fn merton_base_seeded<S: SeedExt>(seed: S) -> Merton<f64, ScalarNormal<f64>, S> 
     seed,
   )
 }
+
 fn merton_base() -> Merton<f64, ScalarNormal<f64>> {
   merton_base_seeded(Unseeded)
 }
@@ -59,6 +60,7 @@ struct MertonFields {
   x0: Option<f64>,
   t: Option<f64>,
 }
+
 fn fields<S: SeedExt>(x: &Merton<f64, ScalarNormal<f64>, S>) -> MertonFields {
   MertonFields {
     alpha: x.alpha,
@@ -70,6 +72,7 @@ fn fields<S: SeedExt>(x: &Merton<f64, ScalarNormal<f64>, S>) -> MertonFields {
     t: x.t,
   }
 }
+
 fn finite(out: &Array1<f64>) -> bool {
   out.iter().all(|v| v.is_finite())
 }

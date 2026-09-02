@@ -318,6 +318,7 @@ mod backend {
     if !need {
       return;
     }
+
     #[cfg(feature = "gpu-cuda")]
     let dev = cubecl_cuda::CudaDevice::default();
     #[cfg(all(feature = "gpu-wgpu", not(feature = "gpu-cuda")))]

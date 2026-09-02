@@ -17,6 +17,7 @@ struct CirFields {
   t: Option<f64>,
   use_sym: Option<bool>,
 }
+
 fn fields(x: &Cir<f64>) -> CirFields {
   CirFields {
     theta: x.theta,
@@ -28,6 +29,7 @@ fn fields(x: &Cir<f64>) -> CirFields {
     use_sym: x.use_sym,
   }
 }
+
 fn finite(out: &Array1<f64>) -> bool {
   out.iter().all(|v| v.is_finite())
 }

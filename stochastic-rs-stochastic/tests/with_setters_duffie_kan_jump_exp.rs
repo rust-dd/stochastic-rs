@@ -45,6 +45,7 @@ fn dkj_base_seeded<S: SeedExt>(seed: S) -> DuffieKanJumpExp<f64, S> {
     seed,
   )
 }
+
 fn dkj_base() -> DuffieKanJumpExp<f64> {
   dkj_base_seeded(Unseeded)
 }
@@ -70,6 +71,7 @@ struct DkjFields {
   x0: Option<f64>,
   t: Option<f64>,
 }
+
 fn dkj_fields<S: SeedExt>(x: &DuffieKanJumpExp<f64, S>) -> DkjFields {
   DkjFields {
     alpha: x.alpha,

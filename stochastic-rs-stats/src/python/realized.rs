@@ -33,18 +33,22 @@ impl PyRealizedMoments {
   fn variance(&self) -> f64 {
     self.rv
   }
+
   #[getter]
   fn volatility(&self) -> f64 {
     self.rvol
   }
+
   #[getter]
   fn skewness(&self) -> f64 {
     self.skew
   }
+
   #[getter]
   fn kurtosis(&self) -> f64 {
     self.kurt
   }
+
   #[getter]
   fn quarticity(&self) -> f64 {
     self.rq
@@ -78,14 +82,17 @@ impl PyBipowerVariation {
   fn bipower(&self) -> f64 {
     self.bv
   }
+
   #[getter]
   fn minrv(&self) -> f64 {
     self.minrv
   }
+
   #[getter]
   fn medrv(&self) -> f64 {
     self.medrv
   }
+
   #[getter]
   fn tripower_quarticity(&self) -> f64 {
     self.tpq
@@ -112,10 +119,12 @@ impl PyBNSJumpTest {
   fn statistic(&self) -> f64 {
     self.inner.statistic
   }
+
   #[getter]
   fn p_value(&self) -> f64 {
     self.inner.p_value
   }
+
   #[getter]
   fn reject_no_jump(&self) -> bool {
     self.inner.reject_no_jump
@@ -164,30 +173,37 @@ impl PyLeeMyklandJumpTest {
   fn jump_indices(&self) -> Vec<usize> {
     self.inner.jump_indices.clone()
   }
+
   #[getter]
   fn threshold(&self) -> f64 {
     self.inner.threshold
   }
+
   #[getter]
   fn c_n(&self) -> f64 {
     self.inner.c_n
   }
+
   #[getter]
   fn s_n(&self) -> f64 {
     self.inner.s_n
   }
+
   #[getter]
   fn beta_star(&self) -> f64 {
     self.inner.beta_star
   }
+
   #[getter]
   fn window(&self) -> usize {
     self.inner.window
   }
+
   #[getter]
   fn alpha(&self) -> f64 {
     self.inner.alpha
   }
+
   #[getter]
   fn nobs(&self) -> usize {
     self.inner.nobs
@@ -239,6 +255,7 @@ impl PyRealizedKernel {
   fn realised(&self) -> f64 {
     self.rk
   }
+
   #[getter]
   fn bandwidth(&self) -> usize {
     self.bandwidth
@@ -346,22 +363,27 @@ impl PyHarRv {
   fn intercept(&self) -> f64 {
     self.inner.fit.intercept
   }
+
   #[getter]
   fn beta_d(&self) -> f64 {
     self.inner.fit.beta_d
   }
+
   #[getter]
   fn beta_w(&self) -> f64 {
     self.inner.fit.beta_w
   }
+
   #[getter]
   fn beta_m(&self) -> f64 {
     self.inner.fit.beta_m
   }
+
   #[getter]
   fn r_squared(&self) -> f64 {
     self.inner.fit.r_squared
   }
+
   #[getter]
   fn nobs(&self) -> usize {
     self.inner.fit.nobs

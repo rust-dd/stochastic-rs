@@ -158,9 +158,11 @@ impl PricingResult for StandardResult {
   fn npv(&self) -> f64 {
     self.npv
   }
+
   fn greeks(&self) -> Option<Greeks> {
     self.greeks
   }
+
   fn error_estimate(&self) -> Option<f64> {
     self.error_estimate
   }

@@ -17,6 +17,7 @@ struct BesselFields {
   t: Option<f64>,
   use_sym: Option<bool>,
 }
+
 fn bes_fields(x: &Bessel<f64>) -> BesselFields {
   BesselFields {
     delta: x.delta,
@@ -26,6 +27,7 @@ fn bes_fields(x: &Bessel<f64>) -> BesselFields {
     use_sym: x.use_sym,
   }
 }
+
 fn besq_fields(x: &SquaredBessel<f64>) -> BesselFields {
   BesselFields {
     delta: x.delta,
@@ -35,6 +37,7 @@ fn besq_fields(x: &SquaredBessel<f64>) -> BesselFields {
     use_sym: x.use_sym,
   }
 }
+
 fn finite(out: &Array1<f64>) -> bool {
   out.iter().all(|v| v.is_finite())
 }
@@ -54,6 +57,7 @@ macro_rules! bes_plain_test {
     }
   };
 }
+
 macro_rules! besq_plain_test {
   ($name:ident, $setter:ident, $field:ident, $val:expr) => {
     #[test]

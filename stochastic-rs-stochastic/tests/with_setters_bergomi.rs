@@ -12,6 +12,7 @@ use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
 fn bergomi_base_seeded<S: SeedExt>(seed: S) -> Bergomi<f64, S> {
   Bergomi::new(0.4, Some(0.2), Some(100.0), 0.01, -0.6, 64, Some(1.0), seed)
 }
+
 fn bergomi_base() -> Bergomi<f64> {
   bergomi_base_seeded(Unseeded)
 }
@@ -26,6 +27,7 @@ struct BergomiFields {
   n: usize,
   t: Option<f64>,
 }
+
 fn fields<S: SeedExt>(x: &Bergomi<f64, S>) -> BergomiFields {
   BergomiFields {
     nu: x.nu,
@@ -37,6 +39,7 @@ fn fields<S: SeedExt>(x: &Bergomi<f64, S>) -> BergomiFields {
     t: x.t,
   }
 }
+
 fn finite2(out: &[Array1<f64>; 2]) -> bool {
   out.iter().all(|a| a.iter().all(|v| v.is_finite()))
 }

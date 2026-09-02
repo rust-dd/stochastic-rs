@@ -49,40 +49,49 @@ impl PyBSMPricer {
       .inner
       .price_option(self.s, self.k, self.r, self.q, self.tau, self.option_type)
   }
+
   fn call_put(&self) -> (f64, f64) {
     self
       .inner
       .call_put(self.s, self.k, self.r, self.q, self.tau)
   }
+
   fn delta(&self) -> f64 {
     self
       .inner
       .delta(self.s, self.k, self.r, self.q, self.tau, self.option_type)
   }
+
   fn gamma(&self) -> f64 {
     self.inner.gamma(self.s, self.k, self.r, self.q, self.tau)
   }
+
   fn vega(&self) -> f64 {
     self.inner.vega(self.s, self.k, self.r, self.q, self.tau)
   }
+
   fn theta(&self) -> f64 {
     self
       .inner
       .theta(self.s, self.k, self.r, self.q, self.tau, self.option_type)
   }
+
   fn rho(&self) -> f64 {
     self
       .inner
       .rho(self.s, self.k, self.r, self.q, self.tau, self.option_type)
   }
+
   fn vanna(&self) -> f64 {
     self.inner.vanna(self.s, self.k, self.r, self.q, self.tau)
   }
+
   fn charm(&self) -> f64 {
     self
       .inner
       .charm(self.s, self.k, self.r, self.q, self.tau, self.option_type)
   }
+
   fn implied_volatility(&self, c_price: f64, option_type: &str) -> PyResult<f64> {
     let ot = parse_option_type(option_type)?;
     Ok(
@@ -139,6 +148,7 @@ impl PyHestonPricer {
       .inner
       .price_call(self.s, self.k, self.r, self.q, self.tau)
   }
+
   fn call_put(&self) -> (f64, f64) {
     self
       .inner
@@ -190,6 +200,7 @@ impl PySabrPricer {
       .inner
       .price_call(self.s, self.k, self.r, self.q, self.tau)
   }
+
   fn call_put(&self) -> (f64, f64) {
     self
       .inner
@@ -257,6 +268,7 @@ impl PyMerton1976Pricer {
       .inner
       .price_option(self.s, self.k, self.r, self.q, self.tau, self.option_type)
   }
+
   fn call_put(&self) -> (f64, f64) {
     self
       .inner

@@ -21,6 +21,7 @@ macro_rules! fit_class {
         use numpy::IntoPyArray;
         self.inner.std_errors.clone().into_pyarray(py)
       }
+
       fn covariance<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
         use numpy::IntoPyArray;
         self.inner.covariance.clone().into_pyarray(py)
@@ -35,22 +36,27 @@ macro_rules! fit_class {
       fn log_likelihood(&self) -> f64 {
         self.inner.log_likelihood
       }
+
       #[getter]
       fn aic(&self) -> f64 {
         self.inner.aic
       }
+
       #[getter]
       fn bic(&self) -> f64 {
         self.inner.bic
       }
+
       #[getter]
       fn nobs(&self) -> usize {
         self.inner.nobs
       }
+
       #[getter]
       fn iterations(&self) -> usize {
         self.inner.iterations
       }
+
       #[getter]
       fn converged(&self) -> bool {
         self.inner.converged
@@ -100,22 +106,27 @@ impl PyGpdPwm {
       inner: crate::evt::gpd_pwm(exceedances.as_array()),
     }
   }
+
   #[getter]
   fn sigma(&self) -> f64 {
     self.inner.sigma
   }
+
   #[getter]
   fn xi(&self) -> f64 {
     self.inner.xi
   }
+
   #[getter]
   fn a0(&self) -> f64 {
     self.inner.a0
   }
+
   #[getter]
   fn a1(&self) -> f64 {
     self.inner.a1
   }
+
   #[getter]
   fn nobs(&self) -> usize {
     self.inner.nobs

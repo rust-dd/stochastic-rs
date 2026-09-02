@@ -13,6 +13,7 @@ use stochastic_rs_stochastic::traits::ProcessExt;
 fn theta0(_t: f64) -> f64 {
   0.04
 }
+
 fn theta1(_t: f64) -> f64 {
   0.07
 }
@@ -25,6 +26,7 @@ struct HwFields {
   x0: Option<f64>,
   t: Option<f64>,
 }
+
 fn fields(x: &HullWhite<f64>) -> HwFields {
   HwFields {
     alpha: x.alpha,
@@ -34,6 +36,7 @@ fn fields(x: &HullWhite<f64>) -> HwFields {
     t: x.t,
   }
 }
+
 fn finite(out: &Array1<f64>) -> bool {
   out.iter().all(|v| v.is_finite())
 }

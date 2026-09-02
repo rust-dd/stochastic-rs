@@ -79,6 +79,7 @@ impl crate::traits::HypothesisTest for ResetResult {
   fn statistic(&self) -> f64 {
     self.f_statistic
   }
+
   fn null_rejected(&self) -> Option<bool> {
     Some(self.reject_correct_specification)
   }

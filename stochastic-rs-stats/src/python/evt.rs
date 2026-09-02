@@ -20,22 +20,27 @@ impl PyHillEstimator {
   fn xi(&self) -> f64 {
     self.inner.xi
   }
+
   #[getter]
   fn alpha(&self) -> f64 {
     self.inner.alpha
   }
+
   #[getter]
   fn std_error(&self) -> f64 {
     self.inner.std_error
   }
+
   #[getter]
   fn k(&self) -> usize {
     self.inner.k
   }
+
   #[getter]
   fn threshold(&self) -> f64 {
     self.inner.threshold
   }
+
   #[getter]
   fn nobs(&self) -> usize {
     self.inner.nobs
@@ -62,38 +67,47 @@ impl PyGpdFit {
     use numpy::IntoPyArray;
     self.inner.std_errors.clone().into_pyarray(py)
   }
+
   fn covariance<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
     use numpy::IntoPyArray;
     self.inner.covariance.clone().into_pyarray(py)
   }
+
   #[getter]
   fn sigma(&self) -> f64 {
     self.inner.sigma
   }
+
   #[getter]
   fn xi(&self) -> f64 {
     self.inner.xi
   }
+
   #[getter]
   fn log_likelihood(&self) -> f64 {
     self.inner.log_likelihood
   }
+
   #[getter]
   fn aic(&self) -> f64 {
     self.inner.aic
   }
+
   #[getter]
   fn bic(&self) -> f64 {
     self.inner.bic
   }
+
   #[getter]
   fn nobs(&self) -> usize {
     self.inner.nobs
   }
+
   #[getter]
   fn iterations(&self) -> usize {
     self.inner.iterations
   }
+
   #[getter]
   fn converged(&self) -> bool {
     self.inner.converged
@@ -119,43 +133,53 @@ impl PyPotFit {
   fn quantile(&self, p: f64) -> f64 {
     self.inner.quantile(p)
   }
+
   /// Expected shortfall at level `p`.
   fn expected_shortfall(&self, p: f64) -> f64 {
     self.inner.expected_shortfall(p)
   }
+
   /// Standard errors of the GPD `[sigma, xi]`.
   fn std_errors<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
     self.inner.gpd.std_errors.clone().into_pyarray(py)
   }
+
   #[getter]
   fn threshold(&self) -> f64 {
     self.inner.threshold
   }
+
   #[getter]
   fn sigma(&self) -> f64 {
     self.inner.gpd.sigma
   }
+
   #[getter]
   fn xi(&self) -> f64 {
     self.inner.gpd.xi
   }
+
   #[getter]
   fn log_likelihood(&self) -> f64 {
     self.inner.gpd.log_likelihood
   }
+
   #[getter]
   fn n_exceedances(&self) -> usize {
     self.inner.n_exceedances
   }
+
   #[getter]
   fn nobs(&self) -> usize {
     self.inner.nobs
   }
+
   #[getter]
   fn exceedance_rate(&self) -> f64 {
     self.inner.exceedance_rate
   }
+
   #[getter]
   fn converged(&self) -> bool {
     self.inner.gpd.converged
@@ -181,47 +205,58 @@ impl PyGevFit {
   fn return_level(&self, period: f64) -> f64 {
     self.inner.return_level(period)
   }
+
   /// Standard errors of `[mu, sigma, xi]`.
   fn std_errors<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
     self.inner.std_errors.clone().into_pyarray(py)
   }
+
   fn covariance<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
     use numpy::IntoPyArray;
     self.inner.covariance.clone().into_pyarray(py)
   }
+
   #[getter]
   fn mu(&self) -> f64 {
     self.inner.mu
   }
+
   #[getter]
   fn sigma(&self) -> f64 {
     self.inner.sigma
   }
+
   #[getter]
   fn xi(&self) -> f64 {
     self.inner.xi
   }
+
   #[getter]
   fn log_likelihood(&self) -> f64 {
     self.inner.log_likelihood
   }
+
   #[getter]
   fn aic(&self) -> f64 {
     self.inner.aic
   }
+
   #[getter]
   fn bic(&self) -> f64 {
     self.inner.bic
   }
+
   #[getter]
   fn nobs(&self) -> usize {
     self.inner.nobs
   }
+
   #[getter]
   fn iterations(&self) -> usize {
     self.inner.iterations
   }
+
   #[getter]
   fn converged(&self) -> bool {
     self.inner.converged

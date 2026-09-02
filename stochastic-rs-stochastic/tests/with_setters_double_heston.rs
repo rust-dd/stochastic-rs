@@ -44,6 +44,7 @@ fn dh_base_seeded<S: SeedExt>(seed: S) -> DoubleHeston<f64, S> {
     seed,
   )
 }
+
 fn dh_base() -> DoubleHeston<f64> {
   dh_base_seeded(Unseeded)
 }
@@ -66,6 +67,7 @@ struct DhFields {
   t: Option<f64>,
   use_sym: Option<bool>,
 }
+
 fn dh_fields<S: SeedExt>(x: &DoubleHeston<f64, S>) -> DhFields {
   DhFields {
     s0: x.s0,

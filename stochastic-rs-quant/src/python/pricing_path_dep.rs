@@ -37,6 +37,7 @@ impl PyAsianPricer {
       .inner
       .price_call(self.s, self.k, self.r, self.q, self.tau)
   }
+
   fn call_put(&self) -> (f64, f64) {
     self
       .inner
@@ -184,6 +185,7 @@ impl PyBjerksundStensland2002Pricer {
       .inner
       .price_option(self.s, self.k, self.r, self.q, self.tau, self.option_type)
   }
+
   fn call_put(&self) -> (f64, f64) {
     self
       .inner
@@ -208,14 +210,17 @@ impl PyVarianceSwapPricer {
   fn forward(&self) -> f64 {
     self.inner.forward()
   }
+
   /// BSM fair-strike (`σ²`).
   fn fair_strike_bsm(&self, sigma: f64) -> f64 {
     self.inner.fair_strike_bsm(sigma)
   }
+
   /// Heston closed-form fair-variance strike (Brockhaus-Long 2000).
   fn fair_strike_heston(&self, v0: f64, kappa: f64, theta: f64) -> f64 {
     self.inner.fair_strike_heston(v0, kappa, theta)
   }
+
   /// Demeterfi-Derman-Kamal-Zou static-replication fair strike.
   fn fair_strike_replication(&self, strikes: Vec<f64>, otm_prices: Vec<f64>) -> f64 {
     self.inner.fair_strike_replication(&strikes, &otm_prices)

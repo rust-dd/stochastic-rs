@@ -365,6 +365,7 @@ impl McSpreadPricer {
     self.price_option(s1, s2, k, r, q1, q2, tau, OptionType::Put)
   }
 }
+
 #[cfg(test)]
 #[path = "spread_tests.rs"]
 mod tests;

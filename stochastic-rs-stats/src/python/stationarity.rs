@@ -62,18 +62,22 @@ impl PyADFTest {
   fn statistic(&self) -> f64 {
     self.inner.statistic
   }
+
   #[getter]
   fn used_lags(&self) -> usize {
     self.inner.used_lags
   }
+
   #[getter]
   fn nobs(&self) -> usize {
     self.inner.nobs
   }
+
   #[getter]
   fn reject_unit_root(&self) -> bool {
     self.inner.reject_unit_root
   }
+
   /// Returns `(1%, 5%, 10%)` critical values.
   #[getter]
   fn critical_values(&self) -> (f64, f64, f64) {
@@ -121,10 +125,12 @@ impl PyKPSSTest {
   fn statistic(&self) -> f64 {
     self.inner.statistic
   }
+
   #[getter]
   fn used_lags(&self) -> usize {
     self.inner.used_lags
   }
+
   #[getter]
   fn reject_stationarity(&self) -> bool {
     self.inner.reject_stationarity
@@ -184,10 +190,12 @@ impl PyPhillipsPerronTest {
   fn statistic(&self) -> f64 {
     self.inner.statistic
   }
+
   #[getter]
   fn used_lags(&self) -> usize {
     self.inner.used_lags
   }
+
   #[getter]
   fn reject_unit_root(&self) -> Option<bool> {
     self.inner.reject_unit_root
@@ -250,14 +258,17 @@ impl PyERSTest {
   fn statistic(&self) -> f64 {
     self.inner.statistic
   }
+
   #[getter]
   fn used_lags(&self) -> usize {
     self.inner.used_lags
   }
+
   #[getter]
   fn nobs(&self) -> usize {
     self.inner.nobs
   }
+
   #[getter]
   fn reject_unit_root(&self) -> bool {
     self.inner.reject_unit_root
@@ -308,14 +319,17 @@ impl PyLeybourneMcCabeTest {
   fn statistic(&self) -> f64 {
     self.inner.statistic
   }
+
   #[getter]
   fn ar_lags(&self) -> usize {
     self.inner.ar_lags
   }
+
   #[getter]
   fn p_value(&self) -> f64 {
     self.inner.p_value
   }
+
   #[getter]
   fn reject_stationarity(&self) -> bool {
     self.inner.reject_stationarity

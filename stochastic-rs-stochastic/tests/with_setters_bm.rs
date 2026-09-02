@@ -12,9 +12,11 @@ struct BmFields {
   n: usize,
   t: Option<f64>,
 }
+
 fn fields(x: &Bm<f64>) -> BmFields {
   BmFields { n: x.n, t: x.t }
 }
+
 fn finite(out: &Array1<f64>) -> bool {
   out.iter().all(|v| v.is_finite())
 }

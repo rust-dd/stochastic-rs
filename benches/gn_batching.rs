@@ -89,21 +89,27 @@ fn bench_fouque(c: &mut Criterion) {
 fn a_fn(t: f64) -> f64 {
   0.02 + 0.01 * t
 }
+
 fn b_fn(t: f64) -> f64 {
   0.1 + 0.01 * t
 }
+
 fn p_fn(_t: f64, tm: f64) -> f64 {
   1.0 / (1.0 + tm)
 }
+
 fn q_fn(t: f64, _tm: f64) -> f64 {
   0.01 + 0.005 * t
 }
+
 fn v_fn(_t: f64, _tm: f64) -> f64 {
   0.2
 }
+
 fn alpha_fn(t: f64, _tm: f64) -> f64 {
   0.01 + 0.002 * t
 }
+
 fn sigma_fn(_t: f64, _tm: f64) -> f64 {
   0.15
 }

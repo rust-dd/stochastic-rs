@@ -12,6 +12,7 @@ use stochastic_rs_stochastic::volatility::sabr::Sabr;
 fn sabr_base_seeded<S: SeedExt>(seed: S) -> Sabr<f64, S> {
   Sabr::new(0.4, 0.7, -0.3, 64, Some(1.0), Some(0.3), Some(1.0), seed)
 }
+
 fn sabr_base() -> Sabr<f64> {
   sabr_base_seeded(Unseeded)
 }
@@ -26,6 +27,7 @@ struct SabrFields {
   alpha0: Option<f64>,
   t: Option<f64>,
 }
+
 fn fields<S: SeedExt>(x: &Sabr<f64, S>) -> SabrFields {
   SabrFields {
     nu: x.nu,
@@ -37,6 +39,7 @@ fn fields<S: SeedExt>(x: &Sabr<f64, S>) -> SabrFields {
     t: x.t,
   }
 }
+
 fn finite2(out: &[Array1<f64>; 2]) -> bool {
   out.iter().all(|a| a.iter().all(|v| v.is_finite()))
 }

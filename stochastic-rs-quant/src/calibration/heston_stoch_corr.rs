@@ -99,9 +99,11 @@ impl crate::traits::CalibrationResult for HscmCalibrationResult {
   fn rmse(&self) -> f64 {
     self.rmse
   }
+
   fn converged(&self) -> bool {
     self.converged && self.rmse.is_finite()
   }
+
   fn params(&self) -> Self::Params {
     HscmParams {
       kappa_v: self.kappa_v,

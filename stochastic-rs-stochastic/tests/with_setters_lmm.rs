@@ -46,6 +46,7 @@ fn lmm_base_seeded<S: SeedExt>(seed: S) -> Lmm<f64, S> {
     seed,
   )
 }
+
 fn lmm_base() -> Lmm<f64> {
   lmm_base_seeded(Unseeded)
 }
@@ -62,6 +63,7 @@ struct LmmFields<'a> {
   n: usize,
   t: Option<f64>,
 }
+
 fn lmm_fields<S: SeedExt>(x: &Lmm<f64, S>) -> LmmFields<'_> {
   LmmFields {
     tenor: &x.tenor,

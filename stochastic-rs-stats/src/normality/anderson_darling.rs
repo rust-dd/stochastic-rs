@@ -45,6 +45,7 @@ impl crate::traits::HypothesisTest for AndersonDarlingResult {
   fn statistic(&self) -> f64 {
     self.statistic
   }
+
   fn null_rejected(&self) -> Option<bool> {
     Some(self.reject_normality)
   }

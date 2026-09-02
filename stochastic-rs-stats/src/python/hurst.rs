@@ -29,14 +29,17 @@ impl PyFukasawaHurst {
   fn hurst(&self) -> f64 {
     self.inner.hurst
   }
+
   #[getter]
   fn eta(&self) -> f64 {
     self.inner.eta
   }
+
   #[getter]
   fn neg_log_lik(&self) -> f64 {
     self.inner.neg_log_lik
   }
+
   #[getter]
   fn n_obs(&self) -> usize {
     self.inner.n_obs
@@ -86,14 +89,17 @@ impl PyFouEstimate {
   fn hurst(&self) -> f64 {
     self.inner.hurst
   }
+
   #[getter]
   fn sigma(&self) -> f64 {
     self.inner.sigma
   }
+
   #[getter]
   fn mu(&self) -> f64 {
     self.inner.mu
   }
+
   #[getter]
   fn theta(&self) -> f64 {
     self.inner.theta
@@ -111,14 +117,17 @@ impl PyHurstResult {
   fn hurst(&self) -> f64 {
     self.inner.hurst
   }
+
   #[getter]
   fn std_err(&self) -> Option<f64> {
     self.inner.std_err
   }
+
   #[getter]
   fn n_obs(&self) -> usize {
     self.inner.n_obs
   }
+
   #[getter]
   fn slope(&self) -> Option<f64> {
     match &self.inner.diagnostic {
@@ -126,6 +135,7 @@ impl PyHurstResult {
       _ => None,
     }
   }
+
   #[getter]
   fn intercept(&self) -> Option<f64> {
     match &self.inner.diagnostic {
@@ -133,6 +143,7 @@ impl PyHurstResult {
       _ => None,
     }
   }
+
   #[getter]
   fn r_squared(&self) -> Option<f64> {
     match &self.inner.diagnostic {
@@ -140,6 +151,7 @@ impl PyHurstResult {
       _ => None,
     }
   }
+
   #[getter]
   fn neg_log_lik(&self) -> Option<f64> {
     match &self.inner.diagnostic {
@@ -147,6 +159,7 @@ impl PyHurstResult {
       _ => None,
     }
   }
+
   #[getter]
   fn eta(&self) -> Option<f64> {
     match &self.inner.diagnostic {
@@ -154,6 +167,7 @@ impl PyHurstResult {
       _ => None,
     }
   }
+
   #[getter]
   fn fractal_dim(&self) -> Option<f64> {
     match &self.inner.diagnostic {
@@ -308,10 +322,12 @@ impl PyFdResult {
   fn d(&self) -> f64 {
     self.inner.d
   }
+
   #[getter]
   fn n_obs(&self) -> usize {
     self.inner.n_obs
   }
+
   #[getter]
   fn slope(&self) -> Option<f64> {
     match &self.inner.diagnostic {
@@ -319,6 +335,7 @@ impl PyFdResult {
       _ => None,
     }
   }
+
   #[getter]
   fn intercept(&self) -> Option<f64> {
     match &self.inner.diagnostic {
@@ -326,6 +343,7 @@ impl PyFdResult {
       _ => None,
     }
   }
+
   #[getter]
   fn r_squared(&self) -> Option<f64> {
     match &self.inner.diagnostic {
@@ -333,6 +351,7 @@ impl PyFdResult {
       _ => None,
     }
   }
+
   #[getter]
   fn v_short(&self) -> Option<f64> {
     match &self.inner.diagnostic {
@@ -340,6 +359,7 @@ impl PyFdResult {
       _ => None,
     }
   }
+
   #[getter]
   fn v_long(&self) -> Option<f64> {
     match &self.inner.diagnostic {

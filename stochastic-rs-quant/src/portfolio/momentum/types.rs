@@ -15,10 +15,12 @@ pub trait ModelEstimate {
   fn model_label(&self) -> Option<&str> {
     None
   }
+
   /// Optional calibration/evaluation window.
   fn calibration_window(&self) -> Option<usize> {
     None
   }
+
   /// Optional model error metric (e.g. rolling MAPE).
   fn rolling_error(&self) -> Option<f64> {
     None

@@ -34,9 +34,11 @@ impl crate::traits::CalibrationResult for RBergomiCalibrationResult {
     // values from price-fitting calibrators.
     self.final_loss.abs().sqrt()
   }
+
   fn converged(&self) -> bool {
     self.converged
   }
+
   fn params(&self) -> Self::Params {
     self.calibrated_params.clone()
   }

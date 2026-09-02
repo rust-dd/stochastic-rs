@@ -35,9 +35,11 @@ use stochastic_rs_stochastic::traits::ProcessExt;
 fn fgn_base_seeded<S: SeedExt>(seed: S) -> Fgn<f64, S> {
   Fgn::new(0.7, 64, Some(1.0), seed)
 }
+
 fn fgn_base() -> Fgn<f64> {
   fgn_base_seeded(Unseeded)
 }
+
 fn finite(out: &Array1<f64>) -> bool {
   out.iter().all(|v| v.is_finite())
 }

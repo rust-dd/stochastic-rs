@@ -13,6 +13,7 @@ use stochastic_rs_stochastic::traits::ProcessExt;
 fn phi0(_t: f64) -> f64 {
   0.0
 }
+
 fn phi1(_t: f64) -> f64 {
   0.03
 }
@@ -27,6 +28,7 @@ struct PpFields {
   t: Option<f64>,
   use_sym: Option<bool>,
 }
+
 fn fields(x: &CirPlusPlus<f64>) -> PpFields {
   PpFields {
     kappa: x.kappa,
@@ -38,6 +40,7 @@ fn fields(x: &CirPlusPlus<f64>) -> PpFields {
     use_sym: x.use_sym,
   }
 }
+
 fn finite(out: &Array1<f64>) -> bool {
   out.iter().all(|v| v.is_finite())
 }

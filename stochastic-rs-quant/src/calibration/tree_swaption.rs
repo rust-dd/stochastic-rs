@@ -187,9 +187,11 @@ impl crate::traits::CalibrationResult for BlackKarasinskiCalibrationResult {
   fn rmse(&self) -> f64 {
     self.rmse
   }
+
   fn converged(&self) -> bool {
     self.converged
   }
+
   fn params(&self) -> Self::Params {
     BlackKarasinskiParams {
       mean_reversion: self.mean_reversion,
@@ -407,9 +409,11 @@ impl crate::traits::CalibrationResult for G2ppCalibrationResult {
   fn rmse(&self) -> f64 {
     self.rmse
   }
+
   fn converged(&self) -> bool {
     self.converged
   }
+
   fn params(&self) -> Self::Params {
     self.params.clone()
   }

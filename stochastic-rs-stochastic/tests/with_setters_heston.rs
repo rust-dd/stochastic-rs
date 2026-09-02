@@ -34,6 +34,7 @@ fn heston_base_seeded<S: SeedExt>(seed: S) -> Heston<f64, S> {
     seed,
   )
 }
+
 fn heston_base() -> Heston<f64> {
   heston_base_seeded(Unseeded)
 }
@@ -51,6 +52,7 @@ struct HestonFields {
   t: Option<f64>,
   use_sym: Option<bool>,
 }
+
 fn fields<S: SeedExt>(x: &Heston<f64, S>) -> HestonFields {
   HestonFields {
     s0: x.s0,
@@ -65,6 +67,7 @@ fn fields<S: SeedExt>(x: &Heston<f64, S>) -> HestonFields {
     use_sym: x.use_sym,
   }
 }
+
 fn finite2(out: &[Array1<f64>; 2]) -> bool {
   out.iter().all(|a| a.iter().all(|v| v.is_finite()))
 }

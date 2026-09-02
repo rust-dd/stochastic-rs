@@ -21,10 +21,12 @@ impl PyCusum {
     use numpy::IntoPyArray;
     self.inner.upper.clone().into_pyarray(py)
   }
+
   fn lower<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
     self.inner.lower.clone().into_pyarray(py)
   }
+
   #[getter]
   fn alarms(&self) -> Vec<usize> {
     self.inner.alarms.clone()
@@ -52,6 +54,7 @@ impl PyPelt {
   fn changepoints(&self) -> Vec<usize> {
     self.inner.changepoints.clone()
   }
+
   #[getter]
   fn cost(&self) -> f64 {
     self.inner.cost
@@ -82,13 +85,16 @@ impl PyPeriodogramFFT {
   fn frequencies(&self) -> Vec<f64> {
     self.inner.frequencies.clone()
   }
+
   fn spectrum(&self) -> Vec<f64> {
     self.inner.spectrum.clone()
   }
+
   #[getter]
   fn resolution_hz(&self) -> f64 {
     self.inner.resolution_hz
   }
+
   #[getter]
   fn nfft(&self) -> usize {
     self.inner.nfft

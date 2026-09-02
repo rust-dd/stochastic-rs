@@ -58,26 +58,32 @@ impl PyAlmgrenChrissPlan {
     use numpy::IntoPyArray;
     self.inner.inventory.clone().into_pyarray(py)
   }
+
   fn trades<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
     self.inner.trades.clone().into_pyarray(py)
   }
+
   fn rates<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
     self.inner.rates.clone().into_pyarray(py)
   }
+
   #[getter]
   fn kappa(&self) -> f64 {
     self.inner.kappa
   }
+
   #[getter]
   fn expected_cost(&self) -> f64 {
     self.inner.expected_cost
   }
+
   #[getter]
   fn variance(&self) -> f64 {
     self.inner.variance
   }
+
   fn risk_adjusted_cost(&self, lambda: f64) -> f64 {
     self.inner.risk_adjusted_cost(lambda)
   }
@@ -102,15 +108,18 @@ impl PyKyleEquilibrium {
   fn beta(&self) -> f64 {
     self.inner.beta
   }
+
   /// Kyle's lambda (price-impact coefficient).
   #[getter]
   fn lambda(&self) -> f64 {
     self.inner.lambda
   }
+
   #[getter]
   fn posterior_variance(&self) -> f64 {
     self.inner.posterior_variance
   }
+
   #[getter]
   fn expected_profit(&self) -> f64 {
     self.inner.expected_profit
@@ -249,15 +258,19 @@ impl PyOrderBook {
   fn best_bid(&self) -> Option<(f64, f64)> {
     self.inner.best_bid()
   }
+
   fn best_ask(&self) -> Option<(f64, f64)> {
     self.inner.best_ask()
   }
+
   fn mid(&self) -> Option<f64> {
     self.inner.mid()
   }
+
   fn spread(&self) -> Option<f64> {
     self.inner.spread()
   }
+
   /// Returns `(bids, asks)` where each side is `[(price, total_size)]`.
   fn depth(&self) -> (Vec<(f64, f64)>, Vec<(f64, f64)>) {
     self.inner.depth()

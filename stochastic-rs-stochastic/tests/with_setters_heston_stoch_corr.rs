@@ -39,6 +39,7 @@ fn hsc_base_seeded<S: SeedExt>(seed: S) -> HestonStochCorr<f64, S> {
     seed,
   )
 }
+
 fn hsc_base() -> HestonStochCorr<f64> {
   hsc_base_seeded(Unseeded)
 }
@@ -59,6 +60,7 @@ struct HscFields {
   n: usize,
   t: Option<f64>,
 }
+
 fn hsc_fields<S: SeedExt>(x: &HestonStochCorr<f64, S>) -> HscFields {
   HscFields {
     r: x.r,

@@ -15,6 +15,7 @@ struct BbFields {
   xt: Option<f64>,
   t: Option<f64>,
 }
+
 fn fields(x: &BrownianBridge<f64>) -> BbFields {
   BbFields {
     sigma: x.sigma,
@@ -24,6 +25,7 @@ fn fields(x: &BrownianBridge<f64>) -> BbFields {
     t: x.t,
   }
 }
+
 fn finite(out: &Array1<f64>) -> bool {
   out.iter().all(|v| v.is_finite())
 }

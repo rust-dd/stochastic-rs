@@ -186,6 +186,7 @@ fn fou_v4_bit_exact_against_struct_era_inline_reference() {
     }
     c
   }
+
   fn diff_coeff_ref(kk: usize, j: usize) -> f64 {
     let sign = if ((kk - j) & 1) == 0 { 1.0 } else { -1.0 };
     sign * binom_ref(kk, j)

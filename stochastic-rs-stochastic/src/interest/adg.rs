@@ -278,6 +278,7 @@ mod tests {
   fn const_one(_t: f64) -> f64 {
     1.0
   }
+
   fn const_zero(_t: f64) -> f64 {
     0.0
   }

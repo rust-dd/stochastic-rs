@@ -52,6 +52,7 @@ impl PyVaR {
   fn value(&self) -> f64 {
     self.value
   }
+
   #[getter]
   fn method(&self) -> String {
     self.method.clone()
@@ -123,14 +124,17 @@ impl PyDrawdownStats {
   fn max(&self) -> f64 {
     self.inner.max
   }
+
   #[getter]
   fn max_index(&self) -> usize {
     self.inner.max_index
   }
+
   #[getter]
   fn longest_duration(&self) -> usize {
     self.inner.longest_duration
   }
+
   #[getter]
   fn average(&self) -> f64 {
     self.inner.average

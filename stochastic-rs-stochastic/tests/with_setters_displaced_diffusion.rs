@@ -17,6 +17,7 @@ struct DdFields {
   x0: Option<f64>,
   t: Option<f64>,
 }
+
 fn fields(x: &DisplacedDiffusion<f64>) -> DdFields {
   DdFields {
     mu: x.mu,
@@ -27,6 +28,7 @@ fn fields(x: &DisplacedDiffusion<f64>) -> DdFields {
     t: x.t,
   }
 }
+
 fn finite(out: &Array1<f64>) -> bool {
   out.iter().all(|v| v.is_finite())
 }

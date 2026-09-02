@@ -21,18 +21,22 @@ impl PyJarqueBera {
   fn statistic(&self) -> f64 {
     self.inner.statistic
   }
+
   #[getter]
   fn p_value(&self) -> f64 {
     self.inner.p_value
   }
+
   #[getter]
   fn skewness(&self) -> f64 {
     self.inner.skewness
   }
+
   #[getter]
   fn excess_kurtosis(&self) -> f64 {
     self.inner.excess_kurtosis
   }
+
   #[getter]
   fn reject_normality(&self) -> bool {
     self.inner.reject_normality
@@ -59,14 +63,17 @@ impl PyAndersonDarling {
   fn statistic(&self) -> f64 {
     self.inner.statistic
   }
+
   #[getter]
   fn adjusted_statistic(&self) -> f64 {
     self.inner.adjusted_statistic
   }
+
   #[getter]
   fn p_value(&self) -> f64 {
     self.inner.p_value
   }
+
   #[getter]
   fn reject_normality(&self) -> bool {
     self.inner.reject_normality
@@ -102,10 +109,12 @@ impl PyShapiroFrancia {
   fn statistic(&self) -> f64 {
     self.inner.statistic
   }
+
   #[getter]
   fn p_value(&self) -> f64 {
     self.inner.p_value
   }
+
   #[getter]
   fn reject_normality(&self) -> bool {
     self.inner.reject_normality

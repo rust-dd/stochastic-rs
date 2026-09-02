@@ -41,10 +41,12 @@ impl PyPCA {
     use numpy::IntoPyArray;
     self.inner.singular_values.clone().into_pyarray(py)
   }
+
   fn eigenvalues<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
     self.inner.eigenvalues.clone().into_pyarray(py)
   }
+
   fn explained_variance_ratio<'py>(
     &self,
     py: Python<'py>,
@@ -52,10 +54,12 @@ impl PyPCA {
     use numpy::IntoPyArray;
     self.inner.explained_variance_ratio.clone().into_pyarray(py)
   }
+
   fn loadings<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
     use numpy::IntoPyArray;
     self.inner.loadings.clone().into_pyarray(py)
   }
+
   fn scores<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
     use numpy::IntoPyArray;
     self.inner.scores.clone().into_pyarray(py)
@@ -85,14 +89,17 @@ impl PyFamaMacBeth {
     use numpy::IntoPyArray;
     self.inner.gamma.clone().into_pyarray(py)
   }
+
   fn std_errors<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
     self.inner.std_errors.clone().into_pyarray(py)
   }
+
   fn t_statistics<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
     self.inner.t_statistics.clone().into_pyarray(py)
   }
+
   fn betas<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
     use numpy::IntoPyArray;
     self.inner.betas.clone().into_pyarray(py)
@@ -125,14 +132,17 @@ impl PyPairsStrategy {
   fn alpha(&self) -> f64 {
     self.inner.alpha
   }
+
   #[getter]
   fn beta(&self) -> f64 {
     self.inner.beta
   }
+
   #[getter]
   fn spread_mean(&self) -> f64 {
     self.inner.spread_mean
   }
+
   #[getter]
   fn spread_std(&self) -> f64 {
     self.inner.spread_std
@@ -142,10 +152,12 @@ impl PyPairsStrategy {
     use numpy::IntoPyArray;
     self.inner.spread.clone().into_pyarray(py)
   }
+
   fn z_score<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
     use numpy::IntoPyArray;
     self.inner.z_score.clone().into_pyarray(py)
   }
+
   /// Returns signals as an integer array: -1 = ShortSpread, 0 = Flat, +1 = LongSpread.
   fn signals<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<i64>> {
     use numpy::IntoPyArray;

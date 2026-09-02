@@ -52,16 +52,19 @@ impl PyCashOrNothingPricer {
       .inner
       .price_option(self.s, self.k, self.r, self.q, self.tau, self.option_type)
   }
+
   fn delta(&self) -> f64 {
     self
       .inner
       .delta(self.s, self.k, self.r, self.q, self.tau, self.option_type)
   }
+
   fn gamma(&self) -> f64 {
     self
       .inner
       .gamma(self.s, self.k, self.r, self.q, self.tau, self.option_type)
   }
+
   fn vega(&self) -> f64 {
     self
       .inner

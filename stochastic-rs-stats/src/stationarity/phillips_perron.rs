@@ -75,6 +75,7 @@ impl crate::traits::HypothesisTest for PhillipsPerronResult {
   fn statistic(&self) -> f64 {
     self.statistic
   }
+
   fn null_rejected(&self) -> Option<bool> {
     self.reject_unit_root
   }

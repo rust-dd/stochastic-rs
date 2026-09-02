@@ -28,12 +28,15 @@ impl PyDiscountCurve {
   fn discount_factor(&self, t: f64) -> f64 {
     self.inner.discount_factor(t)
   }
+
   fn zero_rate(&self, t: f64) -> f64 {
     self.inner.zero_rate(t)
   }
+
   fn forward_rate(&self, t1: f64, t2: f64) -> f64 {
     self.inner.forward_rate(t1, t2)
   }
+
   fn par_rate(&self, maturity: f64, frequency: u32) -> f64 {
     self.inner.par_rate(maturity, frequency)
   }
@@ -48,6 +51,7 @@ impl PyDiscountCurve {
     let mat = maturities.as_array().to_owned();
     self.inner.zero_rates(&mat).into_pyarray(py)
   }
+
   /// Bootstraps an OIS discount curve from par OIS quotes: one fixed-leg
   /// payment schedule (year fractions, last entry = maturity) per quote, the
   /// swap equation `1 = S Σ δ_i D(t_i) + D(t_n)` solved pillar by pillar.
@@ -205,9 +209,11 @@ impl PyNelsonSiegel {
   fn zero_rate(&self, tau: f64) -> f64 {
     self.inner.zero_rate(tau)
   }
+
   fn forward_rate(&self, tau: f64) -> f64 {
     self.inner.forward_rate(tau)
   }
+
   fn discount_factor(&self, tau: f64) -> f64 {
     self.inner.discount_factor(tau)
   }

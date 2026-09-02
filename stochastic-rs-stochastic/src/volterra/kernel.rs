@@ -59,6 +59,7 @@ pub trait VolterraKernel<T: FloatExt>: Clone {
   fn degree(&self) -> usize {
     self.nodes().len()
   }
+
   /// Exact kernel value $K(t)$, $t > 0$. Used by the reference path, by the
   /// diffusion boundary weight, and by the fit diagnostics.
   fn evaluate(&self, t: T) -> T;

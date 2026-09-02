@@ -45,6 +45,7 @@ fn hlog_base_seeded<S: SeedExt>(seed: S) -> HestonLog<f64, S> {
     seed,
   )
 }
+
 fn hlog_base() -> HestonLog<f64> {
   hlog_base_seeded(Unseeded)
 }
@@ -65,6 +66,7 @@ struct HlogFields {
   t: Option<f64>,
   use_sym: Option<bool>,
 }
+
 fn hlog_fields<S: SeedExt>(x: &HestonLog<f64, S>) -> HlogFields {
   HlogFields {
     mu: x.mu,

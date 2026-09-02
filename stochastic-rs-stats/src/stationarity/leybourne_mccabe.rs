@@ -59,6 +59,7 @@ impl crate::traits::HypothesisTest for LeybourneMcCabeResult {
   fn statistic(&self) -> f64 {
     self.statistic
   }
+
   fn null_rejected(&self) -> Option<bool> {
     Some(self.reject_stationarity)
   }

@@ -133,6 +133,7 @@ impl crate::traits::HypothesisTest for LjungBoxResult {
   fn statistic(&self) -> f64 {
     self.statistic
   }
+
   fn null_rejected(&self) -> Option<bool> {
     // No `alpha` is threaded through `ljung_box`, so (per the trait's
     // documented contract) this result is informational only.

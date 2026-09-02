@@ -12,9 +12,11 @@ struct GnFields {
   n: usize,
   t: Option<f64>,
 }
+
 fn fields(x: &Gn<f64>) -> GnFields {
   GnFields { n: x.n, t: x.t }
 }
+
 fn finite(out: &Array1<f64>) -> bool {
   out.iter().all(|v| v.is_finite())
 }

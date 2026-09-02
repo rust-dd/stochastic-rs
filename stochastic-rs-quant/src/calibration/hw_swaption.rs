@@ -99,9 +99,11 @@ impl crate::traits::CalibrationResult for HullWhiteCalibrationResult {
   fn rmse(&self) -> f64 {
     self.rmse
   }
+
   fn converged(&self) -> bool {
     self.converged
   }
+
   fn params(&self) -> Self::Params {
     HullWhiteParams {
       mean_reversion: self.mean_reversion,

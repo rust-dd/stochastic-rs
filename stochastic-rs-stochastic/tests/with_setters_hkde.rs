@@ -43,6 +43,7 @@ fn hkde_base_seeded<S: SeedExt>(seed: S) -> Hkde<f64, S> {
     seed,
   )
 }
+
 fn hkde_base() -> Hkde<f64> {
   hkde_base_seeded(Unseeded)
 }
@@ -64,6 +65,7 @@ struct HkdeFields {
   t: Option<f64>,
   use_sym: Option<bool>,
 }
+
 fn hkde_fields<S: SeedExt>(x: &Hkde<f64, S>) -> HkdeFields {
   HkdeFields {
     mu: x.mu,

@@ -48,6 +48,7 @@ fn bsvj_base_seeded<S: SeedExt>(seed: S) -> BatesSvj<f64, S> {
     seed,
   )
 }
+
 fn bsvj_base() -> BatesSvj<f64> {
   bsvj_base_seeded(Unseeded)
 }
@@ -74,6 +75,7 @@ struct BsvjFields {
   t: Option<f64>,
   use_sym: Option<bool>,
 }
+
 fn bsvj_fields<S: SeedExt>(x: &BatesSvj<f64, S>) -> BsvjFields {
   BsvjFields {
     mu: x.mu,

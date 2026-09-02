@@ -85,14 +85,17 @@ impl PyHscmMarketOption {
   fn strike(&self) -> f64 {
     self.inner.strike
   }
+
   #[getter]
   fn maturity(&self) -> f64 {
     self.inner.tau
   }
+
   #[getter]
   fn price(&self) -> f64 {
     self.inner.price
   }
+
   #[getter]
   fn rate(&self) -> f64 {
     self.inner.rate

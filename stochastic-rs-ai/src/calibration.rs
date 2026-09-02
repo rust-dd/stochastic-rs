@@ -82,18 +82,23 @@ impl CalibrationResult for SurrogateCalibrationResult {
   fn rmse(&self) -> f64 {
     self.rmse
   }
+
   fn converged(&self) -> bool {
     self.converged
   }
+
   fn params(&self) -> Vec<f64> {
     self.params.clone()
   }
+
   fn iterations(&self) -> Option<usize> {
     Some(self.evaluations)
   }
+
   fn message(&self) -> Option<&str> {
     Some(&self.message)
   }
+
   fn max_error(&self) -> f64 {
     self.max_error
   }
@@ -405,18 +410,23 @@ impl CalibrationResult for HestonSurrogateResult {
   fn rmse(&self) -> f64 {
     self.fit.rmse
   }
+
   fn converged(&self) -> bool {
     self.fit.converged
   }
+
   fn params(&self) -> HestonParams {
     self.params.clone()
   }
+
   fn iterations(&self) -> Option<usize> {
     Some(self.fit.evaluations)
   }
+
   fn message(&self) -> Option<&str> {
     Some(&self.fit.message)
   }
+
   fn max_error(&self) -> f64 {
     self.fit.max_error
   }
@@ -487,18 +497,23 @@ impl CalibrationResult for RBergomiSurrogateResult {
   fn rmse(&self) -> f64 {
     self.fit.rmse
   }
+
   fn converged(&self) -> bool {
     self.fit.converged
   }
+
   fn params(&self) -> RBergomiParams {
     self.params.clone()
   }
+
   fn iterations(&self) -> Option<usize> {
     Some(self.fit.evaluations)
   }
+
   fn message(&self) -> Option<&str> {
     Some(&self.fit.message)
   }
+
   fn max_error(&self) -> f64 {
     self.fit.max_error
   }

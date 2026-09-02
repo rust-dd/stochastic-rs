@@ -144,30 +144,38 @@ impl BivariateExt for Bb7 {
   fn r#type(&self) -> CopulaType {
     self.r#type
   }
+
   fn tau(&self) -> Option<f64> {
     self
       .tau
       .or_else(|| self.theta.map(|t| Self::kendall_tau(t, self.delta, 200)))
   }
+
   fn set_tau(&mut self, tau: f64) {
     self.tau = Some(tau);
   }
+
   fn theta(&self) -> Option<f64> {
     self.theta
   }
+
   fn theta_bounds(&self) -> (f64, f64) {
     self.theta_bounds
   }
+
   fn invalid_thetas(&self) -> Vec<f64> {
     self.invalid_thetas.clone()
   }
+
   fn set_theta(&mut self, theta: f64) {
     self.theta = Some(theta);
   }
+
   fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     let (theta, delta) = self.params()?;
     Ok(t.mapv(|x| (1.0 - (1.0 - x).powf(theta)).powf(-delta) - 1.0))
   }
+
   fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     let (theta, delta) = self.params()?;
     Ok(
@@ -177,6 +185,7 @@ impl BivariateExt for Bb7 {
         .collect(),
     )
   }
+
   fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     let (theta, delta) = self.params()?;
     Ok(
@@ -186,6 +195,7 @@ impl BivariateExt for Bb7 {
         .collect(),
     )
   }
+
   /// `∂_v C(u, v)`.
   fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
     let (theta, delta) = self.params()?;
@@ -196,6 +206,7 @@ impl BivariateExt for Bb7 {
         .collect(),
     )
   }
+
   /// `θ ∈ [1, 60]` solving the numerical τ at the stored `δ` by bisection.
   /// Inverse h-function by bisection: the trait's default root finder does
   /// not converge on the steep conditional CDF near `v → 1`.
@@ -212,6 +223,7 @@ impl BivariateExt for Bb7 {
         .collect(),
     )
   }
+
   fn compute_theta(&self) -> f64 {
     let tau = self.tau.expect("set tau first");
     let (mut lo, mut hi) = (1.0_f64, 60.0_f64);
@@ -228,6 +240,7 @@ impl BivariateExt for Bb7 {
     }
     0.5 * (lo + hi)
   }
+
   /// Maximum-likelihood fit of `(θ, δ)`, started from the Kendall inversion
   /// at the current `δ`.
   fn fit(&mut self, X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
@@ -235,6 +248,7 @@ impl BivariateExt for Bb7 {
     self.check_marginal(&X.column(1).to_owned())?;
     self.fit_parameters(X)
   }
+
   /// `λ_U = 2 − 2^{1/θ}`, `λ_L = 2^{−1/δ}` (Joe 1997, §5.2).
   fn tail_dependence(&self) -> TailDependence<f64> {
     self.assert_theta_valid_for_tail_dependence();

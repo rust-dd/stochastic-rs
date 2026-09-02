@@ -45,6 +45,7 @@ pub(crate) const M_MULTI_PER_CHUNK: usize = 96;
 pub(crate) fn fn1d_a(_t: f64) -> f64 {
   0.03
 }
+
 pub(crate) fn fn2d_a(_t: f64, _u: f64) -> f64 {
   0.01
 }

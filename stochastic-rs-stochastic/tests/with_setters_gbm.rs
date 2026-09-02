@@ -19,6 +19,7 @@ use stochastic_rs_stochastic::traits::ProcessExt;
 fn gbm_base_seeded<S: SeedExt>(seed: S) -> Gbm<f64, S> {
   Gbm::new(0.05, 0.2, 64, Some(100.0), Some(1.0), seed)
 }
+
 fn gbm_base() -> Gbm<f64> {
   gbm_base_seeded(Unseeded)
 }
@@ -31,6 +32,7 @@ struct GbmFields {
   x0: Option<f64>,
   t: Option<f64>,
 }
+
 fn fields<S: SeedExt>(x: &Gbm<f64, S>) -> GbmFields {
   GbmFields {
     mu: x.mu,
@@ -40,6 +42,7 @@ fn fields<S: SeedExt>(x: &Gbm<f64, S>) -> GbmFields {
     t: x.t,
   }
 }
+
 fn finite(out: &Array1<f64>) -> bool {
   out.iter().all(|v| v.is_finite())
 }

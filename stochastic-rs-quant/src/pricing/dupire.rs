@@ -88,26 +88,32 @@ impl DupireBuilder {
     self.r = r;
     self
   }
+
   pub fn q(mut self, q: f64) -> Self {
     self.q = q;
     self
   }
+
   pub fn eps(mut self, eps: f64) -> Self {
     self.eps = eps;
     self
   }
+
   pub fn dc_dk(mut self, dc_dk: Array2<f64>) -> Self {
     self.dc_dk = Some(dc_dk);
     self
   }
+
   pub fn d2c_dk2(mut self, d2c_dk2: Array2<f64>) -> Self {
     self.d2c_dk2 = Some(d2c_dk2);
     self
   }
+
   pub fn dc_dt(mut self, dc_dt: Array2<f64>) -> Self {
     self.dc_dt = Some(dc_dt);
     self
   }
+
   pub fn build(self) -> Dupire {
     Dupire {
       ks: self.ks,

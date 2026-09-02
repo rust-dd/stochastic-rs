@@ -12,6 +12,7 @@ use stochastic_rs_stochastic::traits::ProcessExt;
 fn theta0(_t: f64) -> f64 {
   0.05
 }
+
 fn theta1(_t: f64) -> f64 {
   0.08
 }
@@ -24,6 +25,7 @@ struct BkFields {
   r0: Option<f64>,
   t: Option<f64>,
 }
+
 fn fields(x: &BlackKarasinski<f64>) -> BkFields {
   BkFields {
     a: x.a,
@@ -33,6 +35,7 @@ fn fields(x: &BlackKarasinski<f64>) -> BkFields {
     t: x.t,
   }
 }
+
 fn finite(out: &Array1<f64>) -> bool {
   out.iter().all(|v| v.is_finite())
 }

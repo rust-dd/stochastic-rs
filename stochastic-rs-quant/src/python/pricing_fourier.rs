@@ -16,6 +16,7 @@ impl PyBSMFourier {
       inner: crate::pricing::fourier::BSMFourier { sigma, r, q },
     }
   }
+
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     ModelPricer::price_call(&self.inner, s, k, r, q, tau)
   }
@@ -42,6 +43,7 @@ impl PyHestonFourier {
       },
     }
   }
+
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     ModelPricer::price_call(&self.inner, s, k, r, q, tau)
   }
@@ -66,6 +68,7 @@ impl PyVarianceGammaFourier {
       },
     }
   }
+
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     ModelPricer::price_call(&self.inner, s, k, r, q, tau)
   }
@@ -84,6 +87,7 @@ impl PyCGMYFourier {
       inner: crate::pricing::fourier::CGMYFourier { c, g, m, y, r, q },
     }
   }
+
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     ModelPricer::price_call(&self.inner, s, k, r, q, tau)
   }
@@ -109,6 +113,7 @@ impl PyMertonJDFourier {
       },
     }
   }
+
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     ModelPricer::price_call(&self.inner, s, k, r, q, tau)
   }
@@ -135,6 +140,7 @@ impl PyKouFourier {
       },
     }
   }
+
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     ModelPricer::price_call(&self.inner, s, k, r, q, tau)
   }
@@ -175,6 +181,7 @@ impl PyBatesFourier {
       },
     }
   }
+
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     ModelPricer::price_call(&self.inner, s, k, r, q, tau)
   }
@@ -203,10 +210,12 @@ impl PyCarrMadanPricer {
   fn price_heston_call(&self, model: &PyHestonFourier, s: f64, k: f64, r: f64, tau: f64) -> f64 {
     self.inner.price_call(&model.inner, s, k, r, tau)
   }
+
   /// Price a Bates call. See `price_heston_call` for the NaN convention.
   fn price_bates_call(&self, model: &PyBatesFourier, s: f64, k: f64, r: f64, tau: f64) -> f64 {
     self.inner.price_call(&model.inner, s, k, r, tau)
   }
+
   /// Price a Kou call. See `price_heston_call` for the NaN convention.
   fn price_kou_call(&self, model: &PyKouFourier, s: f64, k: f64, r: f64, tau: f64) -> f64 {
     self.inner.price_call(&model.inner, s, k, r, tau)
@@ -306,6 +315,7 @@ impl PyDoubleHestonFourier {
       },
     }
   }
+
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     ModelPricer::price_call(&self.inner, s, k, r, q, tau)
   }
@@ -348,6 +358,7 @@ impl PyHKDEFourier {
       },
     }
   }
+
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     ModelPricer::price_call(&self.inner, s, k, r, q, tau)
   }

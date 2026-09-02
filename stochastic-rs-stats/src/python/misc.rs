@@ -61,6 +61,7 @@ impl PyTailIndex {
   fn tail_exponent(&self) -> f64 {
     self.xi
   }
+
   /// CGMY α parameter implied by the tail exponent (`Y = α + 1`).
   #[getter]
   fn cgmy_alpha(&self) -> f64 {

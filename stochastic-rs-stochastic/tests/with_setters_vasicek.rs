@@ -28,6 +28,7 @@ use stochastic_rs_stochastic::traits::ProcessExt;
 fn vasicek_base_seeded<S: SeedExt>(seed: S) -> Vasicek<f64, S> {
   Vasicek::new(3.0, 0.03, 0.02, 64, Some(0.03), Some(1.0), seed)
 }
+
 fn vasicek_base() -> Vasicek<f64> {
   vasicek_base_seeded(Unseeded)
 }
@@ -41,6 +42,7 @@ struct VasicekFields {
   x0: Option<f64>,
   t: Option<f64>,
 }
+
 fn fields<S: SeedExt>(x: &Vasicek<f64, S>) -> VasicekFields {
   VasicekFields {
     theta: x.theta,
@@ -51,6 +53,7 @@ fn fields<S: SeedExt>(x: &Vasicek<f64, S>) -> VasicekFields {
     t: x.t,
   }
 }
+
 fn finite(out: &Array1<f64>) -> bool {
   out.iter().all(|v| v.is_finite())
 }
