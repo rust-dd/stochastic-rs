@@ -23,7 +23,7 @@ factor / strategy primitives.
 | **Risk**           | VaR (Gaussian / historical / Monte Carlo), CVaR / ES, drawdown metrics, Sharpe / Sortino / IR / Calmar (no hard-coded annualisation), instrument-level Greeks, bucket DV01, scenario / shock / curve-shift stress framework. |
 | **Credit**         | Merton structural model (PD, equity / debt, distance-to-default, credit spread, implied recovery), reduced-form survival / hazard curves, CDS pricing (ISDA daily-grid, fair spread, risky PV01), hazard bootstrap from CDS par-spread term structure, JLT migration matrices with pure-Rust Padé-13 matrix exponential. |
 | **Yield curves**   | Bootstrapping (deposit / FRA / future / swap / OIS helper), dual-curve tenor bootstrap against an OIS discount curve, Nelson-Siegel / Svensson, multi-curve (OIS discounting, tenor forecasting), discount-curve interpolation (linear / log-linear / cubic / monotone-convex). |
-| **Bonds**          | Fixed-rate / floating-rate / inflation-linked / amortizing bonds. YTM / Macaulay / modified duration / convexity / Z-spread / OAS. Vasicek / CIR / Hull-White short-rate bond pricing. |
+| **Bonds**          | Fixed-rate / floating-rate / inflation-linked / amortizing bonds. YTM / Macaulay / modified duration / convexity / Z-spread / OAS. Vasicek / CIR / Hull-White short-rate bond pricing, callable / puttable coupon bonds on the Hull-White trinomial tree. |
 | **Cashflows**      | Coupon, leg, engine, schedule builder. Day-count + business-day conventions.                               |
 | **Instruments**    | Option (vanilla / barrier / Asian / lookback / digital), bond, swap, equity. Plus the `Instrument` / `PricingEngine` pair as a cross-engine comparison harness. |
 | **Portfolio**      | Covariance estimation (sample, Ledoit-Wolf, OAS), momentum, optimisers (mean-variance, MVO with constraints).                                                                                                              |
@@ -109,6 +109,28 @@ multi = srs.MultiCurve(ois)
 multi.add_forecast("3M", forecast)
 print(multi.basis_spread("3M", 1.0, 1.25))               # ≈ 0.005: the tenor trades ~50 bp over OIS
 print(multi.fair_swap_rate("3M", [0.0, 0.5, 1.0, 1.5, 2.0]))
+```
+</Tab>
+</Tabs>
+
+### Callable and puttable bonds on the Hull–White tree
+
+`price_callable_bond` runs the one-factor short-rate trinomial tree backwards with the bond's coupons as intermediate cash flows and the embedded options exercised at their decision nodes: the issuer calls when the ex-coupon continuation value exceeds the call price, the holder puts when it falls below the put price (Hull & White 1994; Hull, OFOD §31.5–31.6). `CallableBondSpec` carries face, coupon rate, coupon dates and the `(time, clean price)` call / put schedules; the result reports the straight price and the values of the two embedded options beside the bond price. Any `OneFactorShortRateModel` tree works, Hull–White and Black–Karasinski included.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_quant_callable_bond.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+tree = srs.HullWhiteCallableBond(initial_rate=0.04, mean_reversion=0.3, theta=0.04, sigma=0.01, horizon=3.0, steps=36)
+price, straight, call_value, put_value = tree.price(
+    face=100.0, coupon_rate=0.06, coupon_times=[1.0, 2.0, 3.0],
+    calls=[(1.0, 100.0), (2.0, 100.0)],
+)
+print(price, straight, call_value)   # callable < straight; call_value = straight − callable
 ```
 </Tab>
 </Tabs>

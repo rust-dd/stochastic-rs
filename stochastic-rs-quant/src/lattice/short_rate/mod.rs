@@ -5,6 +5,7 @@
 use crate::traits::RealExt;
 
 mod black_karasinski;
+mod callable_bond;
 mod common;
 mod curve_fitted_hw;
 mod g2pp;
@@ -12,6 +13,9 @@ mod hull_white;
 
 pub use black_karasinski::BlackKarasinskiTree;
 pub use black_karasinski::BlackKarasinskiTreeModel;
+pub use callable_bond::CallableBondPrice;
+pub use callable_bond::CallableBondSpec;
+pub use callable_bond::price_callable_bond;
 pub(crate) use common::correlated_joint_probabilities;
 pub use curve_fitted_hw::CurveFittedHullWhiteModel;
 pub use curve_fitted_hw::CurveFittedHullWhiteTree;

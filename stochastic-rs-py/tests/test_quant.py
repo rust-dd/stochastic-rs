@@ -6,6 +6,8 @@ range, monotonicity in strike, and the no-arbitrage call price bounds.
 
 from __future__ import annotations
 
+import math
+
 import stochastic_rs as sr
 
 
@@ -82,3 +84,16 @@ def test_dual_curve_bootstrap_recovers_the_tenor_curve():
     assert multi.projected_forward("6M", 1.0, 1.5) is None
     ois2 = sr.DiscountCurve.bootstrap_ois([[1.0], [1.0, 2.0]], [0.0202, 0.0204], interp="log_df")
     assert 0.9 < ois2.discount_factor(2.0) < ois2.discount_factor(1.0) < 1.0
+
+def test_callable_bond_on_the_hull_white_tree():
+    tree = sr.HullWhiteCallableBond(initial_rate=0.04, mean_reversion=0.3, theta=0.04, sigma=0.01, horizon=3.0, steps=36)
+    straight = tree.price(100.0, 0.06, [1.0, 2.0, 3.0])
+    callable_ = tree.price(100.0, 0.06, [1.0, 2.0, 3.0], calls=[(1.0, 100.0), (2.0, 100.0)])
+    puttable = tree.price(100.0, 0.06, [1.0, 2.0, 3.0], puts=[(1.0, 100.0), (2.0, 100.0)])
+    assert straight[0] == straight[1] and straight[2] == 0.0 and straight[3] == 0.0
+    assert callable_[0] < straight[0] < puttable[0]
+    assert abs(callable_[2] - (straight[0] - callable_[0])) < 1e-12
+    assert abs(puttable[3] - (puttable[0] - straight[0])) < 1e-12
+    flat = sr.HullWhiteCallableBond(0.02, 0.3, 0.02, 1e-9, 3.0, 36)
+    called = flat.price(100.0, 0.05, [1.0, 2.0, 3.0], calls=[(1.0, 100.0), (2.0, 100.0)])
+    assert abs(called[0] - 105.0 * math.exp(-0.02)) < 1e-6
