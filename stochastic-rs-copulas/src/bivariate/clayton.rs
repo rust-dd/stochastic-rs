@@ -190,7 +190,7 @@ impl BivariateExt for Clayton {
 
     let A = V.powf(-theta - 1.0);
 
-    if A.is_all_infinite() {
+    if A.iter().all(|a| a.is_infinite()) {
       return Ok(Array1::zeros(V.len()));
     }
 
@@ -336,5 +336,31 @@ mod tests {
       .unwrap();
     assert!(approx(pd[0], 0.3, 1e-12), "got {}", pd[0]);
     assert!(approx(pd[1], 0.2, 1e-12), "got {}", pd[1]);
+  }
+
+  /// `h(u | v) = v^{-θ-1} (u^{-θ} + v^{-θ} - 1)^{-(1+θ)/θ}` (Aas, Czado,
+  /// Frigessi & Bakken 2009, Table 1 — the Clayton row) at θ = 2, evaluated
+  /// with the same formula in Python:
+  ///   th=2.0; u=0.3; v=0.6; v**(-th-1)*(u**(-th)+v**(-th)-1)**(-(1+th)/th)
+  /// gives 0.10005136755229085, and 0.8004109404183268 with u and v swapped.
+  /// Guards the degenerate all-infinite branch, which ndarray's inverted
+  /// `is_all_infinite` used to select for every finite input.
+  #[test]
+  fn partial_derivative_matches_the_closed_form_h_function() {
+    let mut c = Clayton::new();
+    c.set_theta(2.0);
+    let h = c
+      .partial_derivative(&array![[0.3, 0.6], [0.6, 0.3]])
+      .unwrap();
+    assert!(
+      (h[0] - 0.10005136755229085).abs() < 1e-14,
+      "h(0.3 | 0.6) = {}",
+      h[0]
+    );
+    assert!(
+      (h[1] - 0.8004109404183268).abs() < 1e-14,
+      "h(0.6 | 0.3) = {}",
+      h[1]
+    );
   }
 }
