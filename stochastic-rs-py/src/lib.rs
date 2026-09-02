@@ -27,13 +27,16 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_distributions::gpd::PyGpd;
   use stochastic_rs_distributions::hypergeometric::PyHypergeometric;
   use stochastic_rs_distributions::inverse_gauss::PyInverseGauss;
+  use stochastic_rs_distributions::johnson_su::PyJohnsonSu;
   use stochastic_rs_distributions::lognormal::PyLogNormal;
   use stochastic_rs_distributions::normal::PyNormal;
   use stochastic_rs_distributions::normal_inverse_gauss::PyNormalInverseGauss;
   use stochastic_rs_distributions::pareto::PyPareto;
   use stochastic_rs_distributions::poisson::PyPoissonD;
+  use stochastic_rs_distributions::skew_t::PySkewT;
   use stochastic_rs_distributions::studentt::PyStudentT;
   use stochastic_rs_distributions::uniform::PyUniform;
+  use stochastic_rs_distributions::variance_gamma::PyVarianceGamma;
   use stochastic_rs_distributions::weibull::PyWeibull;
   // Stochastic — autoregressive
   use stochastic_rs_stochastic::autoregressive::agrach::PyAgarch;
@@ -225,12 +228,15 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyGev>()?;
   m.add_class::<PyGpd>()?;
   m.add_class::<PyInverseGauss>()?;
+  m.add_class::<PyJohnsonSu>()?;
   m.add_class::<PyLogNormal>()?;
   m.add_class::<PyNormal>()?;
   m.add_class::<PyNormalInverseGauss>()?;
   m.add_class::<PyPareto>()?;
+  m.add_class::<PySkewT>()?;
   m.add_class::<PyStudentT>()?;
   m.add_class::<PyUniform>()?;
+  m.add_class::<PyVarianceGamma>()?;
   m.add_class::<PyWeibull>()?;
   m.add_class::<PyBinomial>()?;
   m.add_class::<PyGeometric>()?;

@@ -1,6 +1,6 @@
 ---
 title: Distributions
-description: 20 of 30 SIMD distribution structs with full Python + closed-form parity. Bulk samplers; ziggurat, rejection, inversion.
+description: 23 of 33 SIMD distribution structs with full Python + closed-form parity. Bulk samplers; ziggurat, rejection, inversion.
 category: distribution
 since: 2.0.0
 status: stable
@@ -8,10 +8,10 @@ status: stable
 
 # Distributions
 
-The `stochastic-rs-distributions` crate ships **30** `Simd*` distribution
+The `stochastic-rs-distributions` crate ships **33** `Simd*` distribution
 structs (`grep -rc "^pub struct Simd" stochastic-rs-distributions/src --include='*.rs'`),
-plus `ComplexDistribution` (31 total). This page's table covers the
-**20** that carry the full package — every one of them has:
+plus `ComplexDistribution` (34 total). This page's table covers the
+**23** that carry the full package — every one of them has:
 
 - A `Simd<Name><T>` struct that implements `rand_distr::Distribution<T>`
 - A bulk filler `fill_slice(dst)` that draws from the distribution's own
@@ -24,7 +24,7 @@ plus `ComplexDistribution` (31 total). This page's table covers the
 - A KS-test against the analytic CDF
 
 **Not shown here** — 10 more real, public `Simd*` types that don't carry
-the full package (20 + 10 = 30), plus `ComplexDistribution` outside that
+the full package (23 + 10 = 33), plus `ComplexDistribution` outside that
 count entirely:
 
 - `Ged`, `Skellam`, and the four `Truncated{Normal,Exp,Beta,Gamma}`
@@ -44,7 +44,7 @@ count entirely:
   per draw), so the scalar `rand_distr::Distribution<T>` shape does not
   apply; each exposes its own `sample_fast`/`log_pdf` instead.
 
-That accounts for all 30. `ComplexDistribution` is a 31st, separate type
+That accounts for all 33. `ComplexDistribution` is a 34th, separate type
 (not `Simd`-prefixed) that samples `Complex<T>` directly and is the one
 type with no `DistributionExt` impl at all (see `CLAUDE.md`'s note on the
 trait). The API docs (`cargo doc -p stochastic-rs-distributions`) are the
@@ -72,6 +72,9 @@ exhaustive reference for all of them.
 | Uniform                     | Inversion (trivial)                       |
 | Alpha-stable                | Chambers-Mallows-Stuck                    |
 | Normal Inverse Gaussian     | Inverse-Gaussian mixture                  |
+| Variance Gamma              | Gamma-time normal mixture                 |
+| Johnson SU                  | Transformation (`sinh` of N)              |
+| Skewed Student-t (Hansen)   | Two-piece scaled Student-t                |
 
 ### Discrete
 
@@ -92,7 +95,7 @@ comment (`stochastic-rs-distributions/src/lib.rs`). Short version:
 | Need | Reach for |
 |---|---|
 | Symmetric, light-tailed, unbounded | `Normal` (default), or `Ged` to tune peakedness — `Ged` is never power-law heavy-tailed, for any shape parameter |
-| Heavy-tailed, unbounded (financial returns) | `StudentT` (`ν=1` **is** `Cauchy`, exactly) or `AlphaStable` (generalizes `Normal` at `α=2` and `Cauchy` at `α=1, β=0`, but has no closed-form pdf/cdf at general `α`); `NormalInverseGauss` for a skewed heavy tail with finite variance and full closed-form moments |
+| Heavy-tailed, unbounded (financial returns) | `StudentT` (`ν=1` **is** `Cauchy`, exactly) or `AlphaStable` (generalizes `Normal` at `α=2` and `Cauchy` at `α=1, β=0`, but has no closed-form pdf/cdf at general `α`); `NormalInverseGauss` or `VarianceGamma` for a skewed heavy tail with finite variance and closed-form moments (neither has a closed-form cdf); `SkewT` for Hansen's standardised skewed t with closed-form cdf and quantile — the GARCH innovation density; `JohnsonSu` when you want skew with light tails and every moment closed-form |
 | Extreme-value tails | `Gev` for block maxima, `Gpd` for excesses over a threshold — a different job from bulk return modeling; both carry closed-form moments with the usual $\xi$ existence thresholds, and `stats::evt` fits them |
 | Positive, duration/volatility-shaped | `Exponential` (constant hazard), `Weibull` (rising or falling hazard), `Gamma` (waiting time; backs `Beta`/`ChiSquared`/`Ged`/`Dirichlet` internally), `LogNormal` (multiplicative growth), `InverseGauss` (first-passage time) |
 | Genuine power-law heavy tail, positive support | `Pareto` — the only positive-support type here with real threshold-dependent moment existence |

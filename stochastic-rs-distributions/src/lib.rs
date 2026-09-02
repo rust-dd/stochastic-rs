@@ -5,7 +5,7 @@
 //!
 //! ## Choosing a distribution
 //!
-//! The website's distributions catalog groups these 30 types (31 counting
+//! The website's distributions catalog groups these 33 types (34 counting
 //! [`complex::ComplexDistribution`]) by sampling strategy; this section
 //! groups them by modeling role instead — the axis that actually decides
 //! which one to reach for.
@@ -36,6 +36,12 @@
 //! 1997, *Scandinavian Journal of Statistics* 24(1), 1-13, DOI:
 //! 10.1111/1467-9469.00045) — the practical reason to prefer NIG over
 //! [`alpha_stable::SimdAlphaStable`] for return modeling specifically.
+//! [`variance_gamma::SimdVarianceGamma`] is the gamma-clock sibling of NIG
+//! (closed-form pdf, cf and moments, no closed-form cdf), and
+//! [`skew_t::SimdSkewT`] is Hansen's standardised skewed Student-t — the
+//! GARCH literature's innovation density, with closed-form cdf and
+//! quantile; [`johnson_su::SimdJohnsonSu`] gives a skewed, light-tailed
+//! alternative with every moment in closed form.
 //! [`gev::SimdGev`] and [`gpd::SimdGpd`] are a different job again:
 //! extreme-value modeling of block maxima and of excesses over a high
 //! threshold respectively, not the bulk return distribution.
@@ -173,6 +179,7 @@ pub mod gamma;
 pub mod geometric;
 pub mod hypergeometric;
 pub mod inverse_gauss;
+pub mod johnson_su;
 pub mod lognormal;
 pub mod non_central_chi_squared;
 pub mod normal;
@@ -207,9 +214,11 @@ pub mod pareto;
 pub mod poisson;
 pub mod scalar;
 pub mod skellam;
+pub mod skew_t;
 pub mod studentt;
 pub mod truncated;
 pub mod uniform;
+pub mod variance_gamma;
 pub mod weibull;
 pub mod wishart;
 
@@ -278,11 +287,14 @@ impl_distribution_sampler_float!(
   gev::SimdGev<T>,
   gpd::SimdGpd<T>,
   inverse_gauss::SimdInverseGauss<T>,
+  johnson_su::SimdJohnsonSu<T>,
   lognormal::SimdLogNormal<T>,
   normal_inverse_gauss::SimdNormalInverseGauss<T>,
   pareto::SimdPareto<T>,
+  skew_t::SimdSkewT<T>,
   studentt::SimdStudentT<T>,
   uniform::SimdUniform<T>,
+  variance_gamma::SimdVarianceGamma<T>,
   weibull::SimdWeibull<T>,
 );
 

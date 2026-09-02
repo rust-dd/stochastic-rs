@@ -83,3 +83,13 @@ def test_gpd_and_gev_samplers_are_seeded_and_bounded():
     z = gev.sample_par(4, 1024)
     assert z.shape == (4, 1024)
     assert np.isfinite(z).all()
+
+
+def test_a6_distributions_sample_and_standardise():
+    vg = sr.PyVarianceGamma(0.2, 0.5, -0.1, 0.05, seed=1).sample(200_000)
+    assert abs(vg.mean() - (-0.05)) < 2e-3
+    jsu = sr.PyJohnsonSu(-0.5, 1.5, 0.2, 2.0, seed=2).sample(100_000)
+    assert abs(jsu.mean() - 1.048069681819088) < 0.03
+    skt = sr.PySkewT(5.0, -0.3, seed=3).sample(200_000)
+    assert abs(skt.mean()) < 0.01 and abs(skt.var() - 1.0) < 0.03
+    assert sr.PySkewT(8.0, 0.4, seed=4).sample_par(3, 512).shape == (3, 512)

@@ -25,8 +25,10 @@ use stochastic_rs_distributions::ged::SimdGed;
 use stochastic_rs_distributions::gev::SimdGev;
 use stochastic_rs_distributions::gpd::SimdGpd;
 use stochastic_rs_distributions::inverse_gauss::SimdInverseGauss;
+use stochastic_rs_distributions::johnson_su::SimdJohnsonSu;
 use stochastic_rs_distributions::lognormal::SimdLogNormal;
 use stochastic_rs_distributions::pareto::SimdPareto;
+use stochastic_rs_distributions::skew_t::SimdSkewT;
 use stochastic_rs_distributions::studentt::SimdStudentT;
 use stochastic_rs_distributions::uniform::SimdUniform;
 use stochastic_rs_distributions::weibull::SimdWeibull;
@@ -196,6 +198,32 @@ fn simd_gpd_exponential_matches_own_cdf() {
 fn simd_gpd_bounded_tail_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
     let dist = SimdGpd::<f64>::new(0.0, 1.0, -0.3, &Deterministic::new(seed));
+    let mut xs = vec![0.0; N];
+    dist.fill_slice(&mut xs);
+    (
+      xs,
+      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+    )
+  });
+}
+
+#[test]
+fn simd_johnson_su_matches_own_cdf() {
+  gof_support::assert_ks_accepts(N, |seed| {
+    let dist = SimdJohnsonSu::<f64>::new(-0.5, 1.5, 0.2, 2.0, &Deterministic::new(seed));
+    let mut xs = vec![0.0; N];
+    dist.fill_slice(&mut xs);
+    (
+      xs,
+      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+    )
+  });
+}
+
+#[test]
+fn simd_skew_t_matches_own_cdf() {
+  gof_support::assert_ks_accepts(N, |seed| {
+    let dist = SimdSkewT::<f64>::new(5.0, -0.3, &Deterministic::new(seed));
     let mut xs = vec![0.0; N];
     dist.fill_slice(&mut xs);
     (
