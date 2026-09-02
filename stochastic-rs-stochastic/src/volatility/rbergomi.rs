@@ -1,60 +1,48 @@
 //! # Rbergomi
 //!
 //! $$
-//! dS_t=S_t\sqrt{v_t}\,dW_t^1,\qquad
-//! v(t_i) = v_0^2\,\exp\!\Bigl(\nu\sqrt{2H}\,t_i^{H-1/2}\sum_{j<i}\!Z_j
-//!                         \;-\;\tfrac12\nu^2 t_i^{2H}\Bigr)
+//! dS_t = r S_t\,dt + S_t\sqrt{v_t}\,dW^1_t,\qquad
+//! v_t = v_0^2\exp\!\Bigl(\nu W^H_t - \tfrac12\nu^2 t^{2H}\Bigr),\qquad
+//! W^H_t = \sqrt{2H}\int_0^t (t-s)^{H-1/2}\,dW^2_s
 //! $$
 //!
-//! **Scope (scaled-Brownian-motion approximation of rough Bergomi —
-//! variance-matched, NOT a true Volterra integral).** The canonical
-//! Bayer-Friz-Gatheral (2016) rough Bergomi defines the log-variance
-//! driver as the **Volterra fractional Brownian motion**
+//! Rough Bergomi of Bayer, Friz & Gatheral (2016) with a flat forward
+//! variance curve $\xi_0(t) = v_0^2$. The variance driver $W^H$ is the
+//! Riemann–Liouville (Volterra) fractional Brownian motion, simulated with
+//! the hybrid scheme of Bennedsen, Lunde & Pakkanen (2017) at $\kappa = 1$:
+//! on the grid $t_i = i\Delta$ the Volterra process is
 //!
-//! ```text
-//! W^H_t = √(2H) · ∫_0^t (t − s)^{H − ½} dW_s^2
-//! ```
+//! $$
+//! X_{t_i} = \int_{t_{i-1}}^{t_i} (t_i-s)^{\alpha}\,dW^2_s
+//!         + \sum_{k=2}^{i} \bigl(b_k^*\Delta\bigr)^{\alpha}\,
+//!           \bigl(W^2_{t_{i-k+1}} - W^2_{t_{i-k}}\bigr),\qquad
+//! \alpha = H - \tfrac12,\quad
+//! b_k^* = \Bigl(\frac{k^{\alpha+1}-(k-1)^{\alpha+1}}{\alpha+1}\Bigr)^{1/\alpha},
+//! $$
 //!
-//! whose autocovariance encodes long memory and pathwise roughness. This
-//! implementation **does not** evaluate that Volterra integral. Instead
-//! it uses the simpler discrete recipe
+//! and $W^H_{t_i} = \sqrt{2H}\,X_{t_i}$. The first term is drawn exactly:
+//! it is jointly Gaussian with the increment $\Delta W^2_i$, with
+//! $\operatorname{Cov} = \Delta^{\alpha+1}/(\alpha+1)$ and variance
+//! $\Delta^{2\alpha+1}/(2\alpha+1)$, so it is the increment's regression
+//! plus an independent residual. The remaining sum uses the kernel at the
+//! optimal discretisation points $b_k^*$ (their Proposition 2.8), which
+//! makes the scheme's covariance error second order in $\Delta$. The
+//! scheme reproduces $\operatorname{Var}(W^H_t) = t^{2H}$, hence the
+//! $\tfrac12\nu^2 t^{2H}$ compensator keeps $\mathbb E(v_t) = v_0^2$, and
+//! reduces to the plain Brownian recipe at $H = \tfrac12$. The price uses
+//! Euler steps on $S$ with $dW^1 = \rho\,dW^2 + \sqrt{1-\rho^2}\,dW^\perp$.
 //!
-//! ```text
-//! v(t_i) = v_0² · exp[ ν · √(2H) · t_i^{H − ½} · Σ_{j<i} Z_j
-//!                      − ½ ν² · t_i^{2H} ]
-//! ```
+//! The convolution costs $O(n^2)$ per path, the same order as the
+//! Markov-lift alternatives at small $n$; for long grids see
+//! [`crate::rough::MarkovLift`] (exponential-sum kernel, $O(nN')$) and
+//! [`crate::rough::rl_heston::RlHeston`].
 //!
-//! where the time-dependent kernel weight `(t_i − s_j)^{H − ½}` inside
-//! the integrand has been **factored out** as a single multiplicative
-//! factor `t_i^{H − ½}` applied to the cumulative sum of i.i.d. Gaussian
-//! increments. The two coincide only when `H = ½` (Brownian case);
-//! everywhere else this is an approximation that:
-//!
-//! - **preserves** the marginal variance scaling `Var[X_t] ∝ t^{2H}`
-//!   (hence the `½ ν² t^{2H}` correction term matches the proper
-//!   model);
-//! - **does not preserve** the fBM autocovariance structure
-//!   `Cov[X_s, X_t] ≠ ½(t^{2H} + s^{2H} − |t − s|^{2H})` — paths sampled
-//!   here lack the long-memory / antipersistence kernel of true fBM.
-//!
-//! For applications where only the marginal variance and one-step
-//! variance dynamics matter (e.g. teaching, smile-shape playgrounds,
-//! Monte-Carlo stress tests of the BFG-style log-normal envelope), this
-//! is fine. **For calibration / pricing where joint distributional
-//! accuracy of `v_t` matters (caplets, swaptions, path-dependent rough
-//! products), use a true Volterra simulator** — e.g.
-//! [`crate::rough::MarkovLift`] (Bilokon-Wong 2026 generalised
-//! Gauss-Laguerre exponential-sum representation; SIMD-batched) or
-//! [`crate::rough::rl_heston::RlHeston`] /
-//! [`crate::rough::rl_bs::RlBlackScholes`]
-//! built on top of it, or [`crate::process::volterra::Volterra`] for the
-//! raw fractional integral.
-//!
-//! Reference: Bayer, Friz, Gatheral, "Pricing under rough volatility",
-//! Quantitative Finance 16(6), 887-904 (2016) — for the canonical model
-//! that this implementation approximates.
+//! References: Bayer, C., Friz, P. & Gatheral, J. (2016), *Pricing under
+//! rough volatility*, Quantitative Finance 16(6), 887–904; Bennedsen, M.,
+//! Lunde, A. & Pakkanen, M. S. (2017), *Hybrid scheme for Brownian
+//! semistationary processes*, Finance and Stochastics 21, 931–965.
+
 use ndarray::Array1;
-use ndarray::s;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -67,13 +55,9 @@ use crate::traits::ProcessExt;
 
 #[derive(Clone)]
 pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded> {
-  /// Hurst exponent H ∈ (0, 0.5) controlling roughness of the
-  /// (scaled-Brownian-motion-approximated) variance driver. Unlike true
-  /// fBM, this does **not** encode long-memory: the module doc's "Scope"
-  /// section documents that the factored-out kernel weight preserves
-  /// marginal variance scaling but not the fBM autocovariance, so paths
-  /// sampled here lack the long-memory / antipersistence structure a
-  /// literature-faithful rough Bergomi driver would have.
+  /// Hurst exponent `H ∈ (0, ½]` of the Volterra fractional Brownian
+  /// driver, simulated with the hybrid scheme (see the module doc); `H = ½`
+  /// is the Brownian case.
   pub hurst: T,
   /// Vol-of-vol ν scaling the log-variance driver's dispersion.
   pub nu: T,
@@ -219,6 +203,9 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughBergomi<T, S> {
   /// so chunk `i`'s basis and chunk `i+1`'s basis are hash-scrambled
   /// relative to each other rather than one raw stride apart.
   fn sampler(&self) -> RoughBergomiSampler<T, S> {
+    let dt = self.cgns.dt();
+    let (kernel, integral_on_increment, integral_residual_sd) =
+      RoughBergomiSampler::<T, S>::hybrid_weights(self.hurst, dt, self.n);
     RoughBergomiSampler {
       n: self.n,
       hurst: self.hurst,
@@ -226,7 +213,10 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughBergomi<T, S> {
       v0_sq: self.v0.unwrap_or(T::one()).powi(2),
       s0: self.s0.unwrap_or(T::from_usize_(100)),
       r: self.r,
-      dt: self.cgns.dt(),
+      dt,
+      kernel,
+      integral_on_increment,
+      integral_residual_sd,
       cgns: self.cgns,
       seed: self.seed.derive(),
     }
@@ -234,8 +224,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughBergomi<T, S> {
 }
 
 /// Reusable [`RoughBergomi`] sampling state: owns the correlated-Gaussian
-/// generator and the seed source so a Monte-Carlo loop reuses both output
-/// buffers and the noise setup.
+/// generator, the hybrid-scheme kernel weights and the seed source so a
+/// Monte-Carlo loop reuses both output buffers and the noise setup.
 #[doc(hidden)]
 pub struct RoughBergomiSampler<T: FloatExt, S: SeedExt> {
   n: usize,
@@ -245,17 +235,52 @@ pub struct RoughBergomiSampler<T: FloatExt, S: SeedExt> {
   s0: T,
   r: T,
   dt: T,
+  /// `g(b_k^* Δ)` for `k = 2..n`, stored at index `k`, index 0 and 1 unused.
+  kernel: Vec<T>,
+  /// Regression coefficient of the exact last-interval integral on the
+  /// Brownian increment, `Δ^α / (α + 1)`.
+  integral_on_increment: T,
+  /// Conditional standard deviation of that integral,
+  /// `Δ^{α + 1/2} √(1/(2α+1) − 1/(α+1)²)`.
+  integral_residual_sd: T,
   cgns: Cgns<T>,
   seed: S,
 }
 
 impl<T: FloatExt, S: SeedExt> RoughBergomiSampler<T, S> {
+  /// Bennedsen–Lunde–Pakkanen hybrid scheme with `κ = 1` (2017, eq. (3.6)):
+  /// the last interval's kernel integral is drawn exactly, jointly Gaussian
+  /// with the Brownian increment; earlier intervals use the kernel at the
+  /// optimal discretisation points `b_k^*` (Proposition 2.8).
+  pub(crate) fn hybrid_weights(hurst: T, dt: T, n: usize) -> (Vec<T>, T, T) {
+    let alpha = hurst - T::from_f64_fast(0.5);
+    let one = T::one();
+    let mut kernel = vec![T::zero(); n.max(2)];
+    let dt_alpha = dt.powf(alpha);
+    for (k, w) in kernel.iter_mut().enumerate().skip(2) {
+      let k_t = T::from_usize_(k);
+      *w = dt_alpha * (k_t.powf(alpha + one) - (k_t - one).powf(alpha + one)) / (alpha + one);
+    }
+    let on_increment = dt_alpha / (alpha + one);
+    let residual_var = one / (T::from_usize_(2) * alpha + one) - one / (alpha + one).powi(2);
+    let residual_sd = dt.powf(alpha + T::from_f64_fast(0.5)) * residual_var.max(T::zero()).sqrt();
+    (kernel, on_increment, residual_sd)
+  }
+
   fn fill_paths(&mut self, s: &mut [T], v2: &mut [T]) {
     if self.n == 0 {
       return;
     }
     let dt = self.dt;
     let [cgn1, z] = &self.cgns.sample_impl(&self.seed);
+    let steps = self.n - 1;
+    let mut eps = vec![T::zero(); steps];
+    if steps > 0 {
+      stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), T::one(), &self.seed)
+        .fill_slice(&mut eps);
+    }
+    let sqrt_2h = (T::from_usize_(2) * self.hurst).sqrt();
+    let two_h = T::from_usize_(2) * self.hurst;
 
     s[0] = self.s0;
     v2[0] = self.v0_sq;
@@ -263,15 +288,15 @@ impl<T: FloatExt, S: SeedExt> RoughBergomiSampler<T, S> {
     for i in 1..self.n {
       s[i] = s[i - 1] + self.r * s[i - 1] * dt + v2[i - 1].sqrt() * s[i - 1] * cgn1[i - 1];
 
-      let sum_z = z.slice(s![..i]).sum();
+      // Volterra process X_{t_i} = Σ_k kernel-weighted increments; the k = 1
+      // term is the exact integral over the last interval.
+      let mut x = self.integral_on_increment * z[i - 1] + self.integral_residual_sd * eps[i - 1];
+      for k in 2..=i {
+        x += self.kernel[k] * z[i - k];
+      }
       let t = T::from_usize_(i) * dt;
       v2[i] = self.v0_sq
-        * (self.nu
-          * (T::from_usize_(2) * self.hurst).sqrt()
-          * t.powf(self.hurst - T::from_f64_fast(0.5))
-          * sum_z
-          - T::from_f64_fast(0.5) * self.nu.powi(2) * t.powf(T::from_usize_(2) * self.hurst))
-        .exp();
+        * (self.nu * sqrt_2h * x - T::from_f64_fast(0.5) * self.nu.powi(2) * t.powf(two_h)).exp();
     }
   }
 }
@@ -417,5 +442,107 @@ impl PyRoughBergomi {
         r1.into_pyarray(py).into_py_any(py).unwrap(),
       )
     })
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+
+  fn model(hurst: f64, n: usize, seed: u64) -> RoughBergomi<f64, Deterministic> {
+    RoughBergomi::new(
+      hurst,
+      0.4,
+      Some(0.2),
+      Some(100.0),
+      0.0,
+      -0.6,
+      n,
+      Some(1.0),
+      Deterministic::new(seed),
+    )
+  }
+
+  /// Bennedsen–Lunde–Pakkanen (2017) Proposition 2.8: the `k = 2` weight is
+  /// `Δ^α (2^{α+1} − 1)/(α+1)`; at `H = ½` every weight is one and the exact
+  /// last-interval integral collapses onto the increment.
+  #[test]
+  fn hybrid_weights_match_the_closed_forms() {
+    let (kernel, on_increment, residual_sd) =
+      RoughBergomiSampler::<f64, Deterministic>::hybrid_weights(0.1, 0.01, 6);
+    let alpha = -0.4;
+    let expected_k2 = 0.01_f64.powf(alpha) * (2.0_f64.powf(alpha + 1.0) - 1.0) / (alpha + 1.0);
+    assert!((kernel[2] - expected_k2).abs() < 1e-12);
+    assert!((on_increment - 0.01_f64.powf(alpha) / (alpha + 1.0)).abs() < 1e-12);
+    let expected_var =
+      0.01_f64.powf(2.0 * alpha + 1.0) * (1.0 / (2.0 * alpha + 1.0) - 1.0 / (alpha + 1.0).powi(2));
+    assert!((residual_sd * residual_sd - expected_var).abs() < 1e-14);
+    assert!(
+      kernel[2] > kernel[3] && kernel[3] > kernel[4],
+      "weights decay"
+    );
+    let (brownian, on_inc, sd) =
+      RoughBergomiSampler::<f64, Deterministic>::hybrid_weights(0.5, 0.01, 6);
+    assert!(brownian[2..].iter().all(|w| (w - 1.0).abs() < 1e-12));
+    assert!((on_inc - 1.0).abs() < 1e-12 && sd.abs() < 1e-9);
+  }
+
+  /// `E[v_t] = v_0²` for every `t` (the `½ν²t^{2H}` compensator is exact
+  /// when `Var[W^H_t] = t^{2H}`), and the sample variance of the implied
+  /// `W^H_t` tracks `t^{2H}` — the scheme's variance error is second order.
+  #[test]
+  fn variance_driver_is_a_martingale_with_t_2h_variance() {
+    let n = 65;
+    let paths = 20_000;
+    let m = model(0.1, n, 7);
+    let v2 = m
+      .sample_par(paths)
+      .iter()
+      .map(|[_, v2]| v2.clone())
+      .collect::<Vec<_>>();
+    let nu = 0.4;
+    for i in [8usize, 32, 64] {
+      let t = i as f64 / 64.0;
+      let mean: f64 = v2.iter().map(|p| p[i]).sum::<f64>() / paths as f64 / 0.04;
+      assert!((mean - 1.0).abs() < 0.04, "t {t}: E[v]/v0² = {mean}");
+      let logs: Vec<f64> = v2
+        .iter()
+        .map(|p| ((p[i] / 0.04).ln() + 0.5 * nu * nu * t.powf(0.2)) / nu)
+        .collect();
+      let mean_w = logs.iter().sum::<f64>() / paths as f64;
+      let var_w = logs.iter().map(|w| (w - mean_w).powi(2)).sum::<f64>() / paths as f64;
+      assert!(
+        (var_w / t.powf(0.2) - 1.0).abs() < 0.05,
+        "t {t}: Var[W^H] = {var_w}, t^2H = {}",
+        t.powf(0.2)
+      );
+    }
+  }
+
+  /// The lag-one autocorrelation of the log-variance increments is the
+  /// fractional-Gaussian-noise value `½(2^{2H} − 2)` at `H = 0.1`, a
+  /// negative number a driver with independent increments cannot produce.
+  #[test]
+  fn log_variance_increments_are_antipersistent() {
+    let n = 257;
+    let paths = 4_000;
+    let m = model(0.1, n, 3);
+    let (mut num, mut den) = (0.0, 0.0);
+    for [_, v2] in m.sample_par(paths) {
+      let w: Vec<f64> = v2.iter().map(|v| (v / 0.04).ln()).collect();
+      let d: Vec<f64> = w.windows(2).map(|p| p[1] - p[0]).collect();
+      for k in 128..d.len() - 1 {
+        num += d[k] * d[k + 1];
+        den += d[k] * d[k];
+      }
+    }
+    let rho1 = num / den;
+    let fgn = 0.5 * (2.0_f64.powf(0.2) - 2.0);
+    assert!(
+      rho1 < -0.3 && (rho1 - fgn).abs() < 0.08,
+      "rho1 {rho1} vs fGN {fgn}"
+    );
   }
 }
