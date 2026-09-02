@@ -67,3 +67,16 @@ def test_sobol_and_bridge_qmc():
     assert w.shape == (2048, 32) and abs(np.var(w[:, -1]) - 2.0) < 0.15
     dw = qmc.increments(2048)
     assert np.allclose(np.cumsum(dw, axis=1), w)
+
+
+def test_multi_gbm_and_correlated_driver():
+    rho = np.array([[1.0, 0.6, -0.2], [0.6, 1.0, 0.1], [-0.2, 0.1, 1.0]])
+    dw = sr.PyMcgns(rho, 100_000, t=1.0, seed=3).sample()
+    assert dw.shape == (3, 100_000)
+    assert np.allclose(np.corrcoef(dw), rho, atol=0.02)
+    model = sr.PyMultiGbm([0.05, 0.03, 0.01], [0.2, 0.3, 0.15], rho, 64, [100.0, 50.0, 10.0], t=1.0, seed=7)
+    one = model.sample()
+    assert one.shape == (3, 64) and np.allclose(one[:, 0], [100.0, 50.0, 10.0])
+    paths = model.sample_par(2000)
+    assert len(paths) == 2000 and paths[0].shape == (3, 64)
+    assert not np.array_equal(paths[0], paths[1])

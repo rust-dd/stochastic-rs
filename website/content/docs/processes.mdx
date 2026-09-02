@@ -29,13 +29,13 @@ page disagreed with each other.
 
 | Family                        | Count | Examples                                                        |
 |--------------------------------|-------|-----------------------------------------------------------------|
-| **Diffusion**                  | 34    | OU, GBM (log + standard), CIR, CEV, CKLS, Aït-Sahalia, Pearson, Jacobi, regime-switching, Fouque |
+| **Diffusion**                  | 35    | OU, GBM (log + standard + correlated multi-asset), CIR, CEV, CKLS, Aït-Sahalia, Pearson, Jacobi, regime-switching, Fouque |
 | **Core building blocks**       | 20    | Brownian motion (+ bridge, correlated, correlated-fractional), fBM, Poisson (+ compound, custom jump sizes), Hawkes (+ multivariate), subordinators (α-stable, gamma, inverse-Gaussian, tempered-stable, Poisson, CTRW), linear fractional stable motion, naive (direct-convolution) Volterra |
 | **Jump**                       | 17    | Merton, Kou, CGMY, NIG, VG, bilateral gamma, KoBoL, RDTS, CTS, Bates, Lévy diffusion |
 | **Volatility**                 | 15    | Heston (+ log, 2D, multifactor), SABR (+ multifactor), Bergomi, rough Bergomi, rough Heston, double-Heston, BNS, HKDE, Bates SVJ (+ fractional), SVCGMY |
 | **Interest rate**               | 15    | Vasicek (+ fractional), CIR++, CIR 2-factor, ADG (affine/quadratic-Gaussian multi-factor), Hull-White (1F + 2F), Black-Karasinski, Ho-Lee, HJM, LMM, BGM, Wu-Zhang, Duffie-Kan (+ jump) |
 | **Autoregressive / GARCH**     | 9     | AR(p), MA(q), ARIMA, SARIMA, ARCH, GARCH, EGARCH, GJR-GARCH, AGARCH |
-| **Noise**                       | 5     | Fractional Gaussian noise, Gaussian noise, white noise, correlated FGN / GN |
+| **Noise**                       | 6     | Fractional Gaussian noise, Gaussian noise, white noise, correlated FGN / GN, k-dimensional correlated increments from a correlation matrix |
 | **Rough (Riemann–Liouville lift)** | 4  | RL Black-Scholes, RL fBM, RL Heston, RL fOU |
 | **Stochastic correlation**      | 4     | Van Emmerich / Jacobi-type, Teng-modified OU, general transformed-OU, Heston with stochastic correlation |
 | **Sheet**                       | 1     | Fractional Brownian sheet (`Fbs`) |
@@ -144,6 +144,28 @@ print(np.cov(w[:, -1], w[:, 31])[0, 1])                        # ≈ min(t, s) =
 
 sobol = srs.PySobolSeq(1000)                                   # 1000 dimensions, unscrambled
 print(sobol.sample(8)[:, 999])
+```
+</Tab>
+</Tabs>
+
+### Correlated multi-asset GBM
+
+`MultiGbm` simulates `k` geometric Brownian motions on one grid from a correlation matrix: the increments come from `Mcgns`, the `k`-dimensional correlated driver (independent normals through the Cholesky factor of ρ), and each asset is stepped by the exact log-Euler scheme, so the grid law is the multivariate lognormal. The output is one `(k, n)` matrix per path.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_processes_multi_gbm.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import numpy as np
+import stochastic_rs as srs
+
+rho = np.array([[1.0, 0.6, -0.2], [0.6, 1.0, 0.1], [-0.2, 0.1, 1.0]])
+model = srs.PyMultiGbm(mu=[0.05, 0.03, 0.01], sigma=[0.2, 0.3, 0.15], rho=rho, n=253, x0=[100.0, 50.0, 10.0], t=1.0, seed=7)
+paths = model.sample_par(10_000)          # list of (3, 253) arrays
+terminal = np.array([p[:, -1] for p in paths])
+print(np.corrcoef(np.log(terminal).T))    # ≈ rho
 ```
 </Tab>
 </Tabs>

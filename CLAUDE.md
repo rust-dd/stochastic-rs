@@ -11,12 +11,12 @@ umbrella that re-exports everything via `pub use`.
 stochastic-rs/                        (workspace root + umbrella)
 ├── stochastic-rs-core/               — simd_rng (foundation)
 ├── stochastic-rs-distributions/      — FloatExt/SimdFloatExt + distributions
-├── stochastic-rs-stochastic/         — ProcessExt + 127 processes (incl. interest::lmm::Lmm drift-coupled LMM)
+├── stochastic-rs-stochastic/         — ProcessExt + 129 processes (incl. interest::lmm::Lmm drift-coupled LMM)
 ├── stochastic-rs-copulas/            — BivariateExt + copulas (13 bivariate + 8 multivariate)
 ├── stochastic-rs-stats/              — estimators
 ├── stochastic-rs-quant/              — pricing/calibration/vol_surface + ModelPricer/ShortRatePricer/ToModel
 ├── stochastic-rs-ai/                 — neural surrogates (feature-gated upstream)
-└── stochastic-rs-py/                 — pyo3 cdylib (259 entries: 241 PyO3 classes + 18 pyfunctions, across distributions/stochastic/quant/copulas/stats; AI bindings deferred to 2.x). Built via `maturin` (see pyproject.toml `[tool.maturin] manifest-path`)
+└── stochastic-rs-py/                 — pyo3 cdylib (261 entries: 243 PyO3 classes + 18 pyfunctions, across distributions/stochastic/quant/copulas/stats; AI bindings deferred to 2.x). Built via `maturin` (see pyproject.toml `[tool.maturin] manifest-path`)
 ```
 
 The umbrella crate `stochastic-rs` keeps the existing public API
@@ -56,7 +56,7 @@ older summary.
 - `RealExt` — scalar real-number bound (arithmetic, conversions, constants — no SIMD, no RNG); the bound analytic pricing code takes, and the door a custom scalar (AAD dual, tape node) can implement; lives in `stochastic-rs-distributions::traits`
 - `SimdFloatExt` — 8-lane SIMD surface over `RealExt`, plus the uniform RNG fills
 - `FloatExt` — the full simulation-grade bound: `RealExt + SimdFloatExt` + batched normal-fill/fGN scratch; only `f32`/`f64` can implement it, so anything bounded on it is closed to custom scalars by construction
-- `ProcessExt<T>` — stochastic process simulation (`sample`/`sample_par`/`sample_map`); lives in `stochastic-rs-stochastic::traits`. **127** concrete implementors (`grep -rn "ProcessExt<T> for\|ProcessExt<T," stochastic-rs-stochastic/src --include='*.rs' | grep -v /traits/ | wc -l`); the exhaustive per-directory breakdown and the guard that keeps it honest live in `stochastic-rs-stochastic/tests/reproducibility_all_processes.rs`
+- `ProcessExt<T>` — stochastic process simulation (`sample`/`sample_par`/`sample_map`); lives in `stochastic-rs-stochastic::traits`. **129** concrete implementors (`grep -rn "ProcessExt<T> for\|ProcessExt<T," stochastic-rs-stochastic/src --include='*.rs' | grep -v /traits/ | wc -l`); the exhaustive per-directory breakdown and the guard that keeps it honest live in `stochastic-rs-stochastic/tests/reproducibility_all_processes.rs`
 - `BivariateExt` / `MultivariateExt` — copula traits in `stochastic-rs-copulas::traits`; **13** bivariate + **8** multivariate implementors (note: `NCopula2DExt` was removed in v2.0 — bivariate samplers consolidated under `BivariateExt`)
 - `TimeExt` — day-count-aware maturity: `tau()`, `tau_or_from_dates()`, `tau_with_dcc(dcc)` (explicit day-count override), both NaN-on-missing-data by convention. Implemented by **instruments only** — `EuropeanOption` and `DigitalOption`, **2** production implementors (`grep -rn "impl TimeExt for" stochastic-rs-quant/src`); a pricer takes `tau` as a query argument and holds no dates. The old intention to move its role into `calendar` is **dropped**, not pending: the arithmetic already lives there and what the trait adds is an instrument concern
 - `ModelPricer` — `price_call(s, k, r, q, tau)` / `price_put` (put-call parity default) / `price_option`; the struct holds model parameters and the query travels as arguments, which is what makes vectorized pricing across a strike/maturity grid possible. It replaced the bundled-market-data `PricerExt` (`calculate_call_put()` / `calculate_price()` / `implied_volatility()`), retired once its last implementor moved off it

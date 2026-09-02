@@ -14,6 +14,7 @@
 
 #[macro_use]
 mod macros;
+mod linalg;
 
 pub mod traits;
 

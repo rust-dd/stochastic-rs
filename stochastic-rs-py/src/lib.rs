@@ -67,6 +67,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::diffusion::gompertz::PyGompertz;
   use stochastic_rs_stochastic::diffusion::jacobi::PyJacobi;
   use stochastic_rs_stochastic::diffusion::kimura::PyKimura;
+  use stochastic_rs_stochastic::diffusion::multi_gbm::PyMultiGbm;
   use stochastic_rs_stochastic::diffusion::ou::PyOu;
   use stochastic_rs_stochastic::diffusion::quadratic::PyQuadratic;
   use stochastic_rs_stochastic::diffusion::verhulst::PyVerhulst;
@@ -106,6 +107,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::noise::cgns::PyCgns;
   use stochastic_rs_stochastic::noise::fgn::PyFgn;
   use stochastic_rs_stochastic::noise::gn::PyGn;
+  use stochastic_rs_stochastic::noise::mcgns::PyMcgns;
   use stochastic_rs_stochastic::noise::wn::PyWn;
   // Stochastic — process
   use stochastic_rs_stochastic::process::bm::PyBm;
@@ -160,6 +162,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyGn>()?;
   m.add_class::<PyWn>()?;
   m.add_class::<PyCgns>()?;
+  m.add_class::<PyMcgns>()?;
   m.add_class::<PyCfgns>()?;
   m.add_class::<PyCev>()?;
   m.add_class::<PyCfou>()?;
@@ -171,6 +174,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyFou>()?;
   m.add_class::<PyFouqueOU2D>()?;
   m.add_class::<PyGbm>()?;
+  m.add_class::<PyMultiGbm>()?;
   m.add_class::<PyGbmIh>()?;
   m.add_class::<PyGbmLog>()?;
   m.add_class::<PyGompertz>()?;

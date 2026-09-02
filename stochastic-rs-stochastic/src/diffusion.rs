@@ -35,6 +35,7 @@ pub mod kimura;
 pub mod linear_sde;
 pub mod logistic;
 pub mod modified_cir;
+pub mod multi_gbm;
 pub mod nonlinear_sde;
 pub mod ou;
 pub mod pearson;
