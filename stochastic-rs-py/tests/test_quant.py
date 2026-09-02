@@ -97,3 +97,14 @@ def test_callable_bond_on_the_hull_white_tree():
     flat = sr.HullWhiteCallableBond(0.02, 0.3, 0.02, 1e-9, 3.0, 36)
     called = flat.price(100.0, 0.05, [1.0, 2.0, 3.0], calls=[(1.0, 100.0), (2.0, 100.0)])
     assert abs(called[0] - 105.0 * math.exp(-0.02)) < 1e-6
+
+def test_bachelier_pricer_round_trips_the_normal_volatility():
+    pricer = sr.BachelierPricer(s=100.0, v=20.0, k=95.0, r=0.05, tau=0.75, q=0.02)
+    call, put = pricer.call_put()
+    forward = pricer.forward()
+    assert abs(call - put - math.exp(-0.05 * 0.75) * (forward - 95.0)) < 1e-9
+    assert pricer.price() == call
+    assert abs(pricer.implied_volatility(call, "call") - 20.0) < 1e-9
+    assert abs(pricer.implied_volatility(put, "put") - 20.0) < 1e-9
+    assert pricer.vega() > 0.0
+    assert math.isnan(pricer.implied_volatility(0.0, "call"))

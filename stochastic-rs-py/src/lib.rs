@@ -266,6 +266,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_quant::python::PyBSMCalibrator;
   use stochastic_rs_quant::python::PyBSMFourier;
   use stochastic_rs_quant::python::PyBSMPricer;
+  use stochastic_rs_quant::python::PyBachelierPricer;
   use stochastic_rs_quant::python::PyBarrierPricer;
   use stochastic_rs_quant::python::PyBatesFourier;
   use stochastic_rs_quant::python::PyBjerksundStensland2002Pricer;
@@ -320,6 +321,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_quant::python::PyVasicekBond;
 
   m.add_class::<PyBSMPricer>()?;
+  m.add_class::<PyBachelierPricer>()?;
   m.add_class::<PyHestonPricer>()?;
   m.add_class::<PySabrPricer>()?;
   m.add_class::<PyMerton1976Pricer>()?;

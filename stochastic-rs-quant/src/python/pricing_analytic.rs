@@ -328,3 +328,77 @@ impl PyQuantoPricer {
     self.inner.forward(self.s, self.q, self.tau)
   }
 }
+
+/// The Rust model holds the normal volatility only, so the wrapper carries
+/// the `(s, k, r, q, tau)` query and the option type that the Python-visible
+/// no-argument methods are defined at.
+#[pyclass(name = "BachelierPricer", unsendable)]
+pub struct PyBachelierPricer {
+  inner: crate::pricing::bachelier::BachelierPricer,
+  s: f64,
+  k: f64,
+  r: f64,
+  q: f64,
+  tau: f64,
+  option_type: crate::OptionType,
+}
+
+#[pymethods]
+impl PyBachelierPricer {
+  /// `v` is the normal volatility in price units per √year.
+  #[new]
+  #[pyo3(signature = (s, v, k, r, tau, option_type="call", q=None))]
+  fn new(
+    s: f64,
+    v: f64,
+    k: f64,
+    r: f64,
+    tau: f64,
+    option_type: &str,
+    q: Option<f64>,
+  ) -> PyResult<Self> {
+    let option_type = parse_option_type(option_type)?;
+    Ok(Self {
+      inner: crate::pricing::bachelier::BachelierPricer::new(v),
+      s,
+      k,
+      r,
+      q: q.unwrap_or(0.0),
+      tau,
+      option_type,
+    })
+  }
+
+  fn price(&self) -> f64 {
+    self
+      .inner
+      .price_option(self.s, self.k, self.r, self.q, self.tau, self.option_type)
+  }
+
+  fn call_put(&self) -> (f64, f64) {
+    self
+      .inner
+      .call_put(self.s, self.k, self.r, self.q, self.tau)
+  }
+
+  /// Forward `S e^{(r − q)τ}` the option is struck on.
+  fn forward(&self) -> f64 {
+    self.inner.forward(self.s, self.r, self.q, self.tau)
+  }
+
+  /// Normal vega `e^{−rτ} √τ φ(d)`.
+  fn vega(&self) -> f64 {
+    self.inner.vega(self.s, self.k, self.r, self.q, self.tau)
+  }
+
+  /// Normal volatility implied by a spot-quoted `price`; `NaN` below
+  /// intrinsic value.
+  fn implied_volatility(&self, price: f64, option_type: &str) -> PyResult<f64> {
+    let option_type = parse_option_type(option_type)?;
+    Ok(
+      self
+        .inner
+        .implied_volatility(price, self.s, self.k, self.r, self.q, self.tau, option_type),
+    )
+  }
+}

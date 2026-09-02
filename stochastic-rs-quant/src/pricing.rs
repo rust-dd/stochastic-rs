@@ -6,6 +6,7 @@
 //!
 pub mod asian;
 pub mod autocallable;
+pub mod bachelier;
 pub mod barrier;
 pub mod basket;
 pub mod bermudan;

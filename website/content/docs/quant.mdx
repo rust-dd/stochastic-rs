@@ -17,7 +17,7 @@ factor / strategy primitives.
 
 | Area               | What's inside                                                                                              |
 |--------------------|------------------------------------------------------------------------------------------------------------|
-| **Pricing**        | Closed-form (BSM, Bachelier, Black76, Garman-Kohlhagen, Margrabe, Kirk, Geske compound, Stulz, Bjerksund-Stensland, digital / gap / supershare, geometric basket, Levy moment-matching, cliquet / forward-start chain). Fourier (Carr-Madan, Lewis, Gil-Pelaez) for Heston / Bates / Merton-jump / Kou / VG / CGMY / HKDE / double-Heston. Monte Carlo (basket, rainbow, cliquet, autocallable, spread). Finite difference (explicit / implicit / Crank-Nicolson, American). Bermudan LSM. Heston SLV (Guyon-Labordère). |
+| **Pricing**        | Closed-form (BSM, Bachelier with normal implied-vol inversion, Black76, Garman-Kohlhagen, Margrabe, Kirk, Geske compound, Stulz, Bjerksund-Stensland, digital / gap / supershare, geometric basket, Levy moment-matching, cliquet / forward-start chain). Fourier (Carr-Madan, Lewis, Gil-Pelaez) for Heston / Bates / Merton-jump / Kou / VG / CGMY / HKDE / double-Heston. Monte Carlo (basket, rainbow, cliquet, autocallable, spread). Finite difference (explicit / implicit / Crank-Nicolson, American). Bermudan LSM. Heston SLV (Guyon-Labordère). |
 | **Calibration**    | Heston (Cui analytic Jacobian + NMLE / PMLE / NMLE-CEKF seeds), SABR per-expiry caplet smile, Lévy (CGMY, VG, NIG, Merton-jump, Kou, bilateral gamma), SVJ, rough Bergomi, double-Heston, BSM (multi-maturity), HKDE, Hull-White swaption-grid via Levenberg-Marquardt. |
 | **Vol surface**    | Implied-vol surface from market quotes, SVI / SSVI, arbitrage-free interpolation, smile and skew analytics, SABR-smile fits.                                                |
 | **Risk**           | VaR (Gaussian / historical / Monte Carlo), CVaR / ES, drawdown metrics, Sharpe / Sortino / IR / Calmar (no hard-coded annualisation), instrument-level Greeks, bucket DV01, scenario / shock / curve-shift stress framework. |
@@ -131,6 +131,26 @@ price, straight, call_value, put_value = tree.price(
     calls=[(1.0, 100.0), (2.0, 100.0)],
 )
 print(price, straight, call_value)   # callable < straight; call_value = straight − callable
+```
+</Tab>
+</Tabs>
+
+### Bachelier normal model and implied normal volatility
+
+`BachelierPricer` prices vanilla options under the arithmetic Brownian (normal) model, `c = e^{−rτ}[(F − K) Φ(d) + σ_N √τ φ(d)]` with `d = (F − K)/(σ_N √τ)` and `F = S e^{(r−q)τ}`, so negative strikes and forwards are well defined and the smile is flat in normal rather than lognormal volatility. `normal_implied_volatility` inverts an undiscounted forward price with a safeguarded Newton iteration (relative tolerance 1e-14, `NaN` below intrinsic value); the pricer's `implied_volatility` wraps it for spot quotes, and the forward-space entry point serves the caplet / floorlet and swaption code that already prices with normal vols.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_quant_bachelier.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+pricer = srs.BachelierPricer(s=100, v=20.0, k=95, r=0.05, tau=0.75, q=0.02)
+call, put = pricer.call_put()
+print(call, put, pricer.forward())
+print(pricer.implied_volatility(call, "call"))   # 20.0: the normal vol round-trips
 ```
 </Tab>
 </Tabs>

@@ -73,6 +73,7 @@ pub use microstructure::multi_period_kyle;
 pub use microstructure::propagator_price_impact;
 pub use microstructure::roll_spread;
 pub use pricing_analytic::PyBSMPricer;
+pub use pricing_analytic::PyBachelierPricer;
 pub use pricing_analytic::PyHestonPricer;
 pub use pricing_analytic::PyMerton1976Pricer;
 pub use pricing_analytic::PyQuantoPricer;

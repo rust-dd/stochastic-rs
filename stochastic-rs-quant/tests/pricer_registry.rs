@@ -104,6 +104,7 @@ use stochastic_rs_quant::pricing::HestonStochCorrPricer;
 use stochastic_rs_quant::pricing::RBergomiPricer;
 use stochastic_rs_quant::pricing::SuperSharePricer;
 use stochastic_rs_quant::pricing::asian::AsianPricer;
+use stochastic_rs_quant::pricing::bachelier::BachelierPricer;
 use stochastic_rs_quant::pricing::finite_difference::FiniteDifferencePricer;
 use stochastic_rs_quant::pricing::malliavin_gbm::GbmMalliavinPricer;
 use stochastic_rs_quant::pricing::merton_jump::Merton1976Pricer;
@@ -234,6 +235,7 @@ macro_rules! assert_not_vanilla_european_call {
 assert_model_pricer!(
   AsianPricer,
   AssetOrNothingPricer,
+  BachelierPricer,
   BjerksundStensland2002Pricer,
   BSMPricer,
   CashOrNothingPricer,
@@ -271,7 +273,11 @@ assert_model_pricer!(
 // `NaN` from `vanilla_call_forward` at `OptionStyle::American`. `BSMPricer` and
 // `Merton1976Pricer` are the two whose *forward* is per-instance, at `b(r, q)`
 // rather than the default `r - q`.
+// `BachelierPricer` is the normal-model member: its call is a European vanilla
+// on `S` at the default forward, so the Black inversion of its prices is the
+// normal-to-lognormal volatility conversion, strike by strike.
 assert_vanilla_european_call!(
+  BachelierPricer,
   BSMPricer,
   CrrModel<f64>,
   FiniteDifferencePricer,
