@@ -27,6 +27,10 @@ use crate::curves::InterpolationMethod;
 use crate::curves::bootstrap;
 use crate::traits::RealExt;
 
+mod ois;
+
+pub use ois::OisRateHelper;
+
 /// Quote-driven curve input.
 ///
 /// Implementations convert their current market quote plus conventions

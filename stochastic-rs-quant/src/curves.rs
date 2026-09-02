@@ -12,12 +12,16 @@
 //!
 //! Reference: Bianchetti, "Two Curves, One Price", arXiv:0905.2770 (2009).
 //!
+//! Reference: Ametrano & Bianchetti, "Everything You Always Wanted to Know About
+//! Multiple Interest Rate Curve Bootstrapping but Were Afraid to Ask", SSRN 2219548 (2013).
+//!
 //! $$
 //! D(t) = e^{-\int_0^t f(s)\,ds}, \quad r(t) = -\frac{\ln D(t)}{t}, \quad f(t_1, t_2) = -\frac{\ln D(t_2) - \ln D(t_1)}{t_2 - t_1}
 //! $$
 
 pub mod bootstrap;
 pub mod discount_curve;
+pub mod dual_curve;
 pub mod interpolation;
 pub(crate) mod linalg;
 pub mod multi_curve;
@@ -28,6 +32,8 @@ pub mod types;
 pub use bootstrap::bootstrap;
 pub use bootstrap::bootstrap_iterative;
 pub use discount_curve::DiscountCurve;
+pub use dual_curve::ForecastInstrument;
+pub use dual_curve::bootstrap_forecast;
 pub use interpolation::interpolate_discount_factor;
 pub use multi_curve::MultiCurve;
 pub use nelson_siegel::NelsonSiegel;

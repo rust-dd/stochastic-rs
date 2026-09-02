@@ -58,3 +58,27 @@ def test_quanto_pricer_matches_the_reiner_formula():
     assert abs(pricer.forward() - 150.2101470686) < 1e-6
     assert pricer.price() == call
     assert sr.QuantoPricer(option_type="put", **kwargs).price() == put
+
+def test_dual_curve_bootstrap_recovers_the_tenor_curve():
+    import numpy as np
+
+    ois = sr.DiscountCurve.from_zero_rates(np.array([0.25, 1.0, 5.0, 10.0]), np.full(4, 0.02), interp="log_df")
+    tenor_df = lambda t: np.exp(-0.025 * t)  # noqa: E731
+    deposits = [(0.25, (1.0 / tenor_df(0.25) - 1.0) / 0.25)]
+    fras = [(0.25, 0.5, (tenor_df(0.25) / tenor_df(0.5) - 1.0) / 0.25)]
+    swaps = []
+    for years in (1, 2, 3):
+        fixed = [float(i) for i in range(1, years + 1)]
+        flt = [0.25 * i for i in range(1, 4 * years + 1)]
+        float_pv = sum(ois.discount_factor(t) * (tenor_df(s) / tenor_df(t) - 1.0) for s, t in zip([0.0] + flt[:-1], flt))
+        annuity = sum((t - s) * ois.discount_factor(t) for s, t in zip([0.0] + fixed[:-1], fixed))
+        swaps.append((float_pv / annuity, fixed, flt))
+    forecast = sr.DiscountCurve.bootstrap_forecast(ois, deposits, fras, swaps, interp="log_df")
+    for t in (0.25, 0.5, 1.0, 2.0, 3.0):
+        assert abs(forecast.discount_factor(t) - tenor_df(t)) < 1e-8
+    multi = sr.MultiCurve(ois)
+    multi.add_forecast("3M", forecast)
+    assert abs(multi.basis_spread("3M", 1.0, 1.25) - 0.005) < 2e-4
+    assert multi.projected_forward("6M", 1.0, 1.5) is None
+    ois2 = sr.DiscountCurve.bootstrap_ois([[1.0], [1.0, 2.0]], [0.0202, 0.0204], interp="log_df")
+    assert 0.9 < ois2.discount_factor(2.0) < ois2.discount_factor(1.0) < 1.0

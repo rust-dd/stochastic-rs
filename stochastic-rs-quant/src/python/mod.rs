@@ -50,6 +50,7 @@ pub use calibration_basic::PyMarketSlice;
 pub use calibration_basic::PySabrCalibrator;
 pub use calibration_basic::PySabrCapletCalibrator;
 pub use curves::PyDiscountCurve;
+pub use curves::PyMultiCurve;
 pub use curves::PyNelsonSiegel;
 pub use curves::PyZeroCouponInflationCurve;
 pub use factors::PyFamaMacBeth;

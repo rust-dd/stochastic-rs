@@ -380,6 +380,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_quant::python::PyDayCount;
   use stochastic_rs_quant::python::PyDiscountCurve;
   use stochastic_rs_quant::python::PyKyleEquilibrium;
+  use stochastic_rs_quant::python::PyMultiCurve;
   use stochastic_rs_quant::python::PyNelsonSiegel;
   use stochastic_rs_quant::python::PyOrderBook;
   use stochastic_rs_quant::python::PySabrCapletCalibrator;
@@ -390,6 +391,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyKyleEquilibrium>()?;
   m.add_class::<PyOrderBook>()?;
   m.add_class::<PyDiscountCurve>()?;
+  m.add_class::<PyMultiCurve>()?;
   m.add_class::<PyNelsonSiegel>()?;
   m.add_class::<PyZeroCouponInflationCurve>()?;
   m.add_class::<PySabrCapletCalibrator>()?;
