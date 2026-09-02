@@ -380,11 +380,14 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyDrawdownStats>()?;
 
   use stochastic_rs_quant::python::PyAlmgrenChrissPlan;
+  use stochastic_rs_quant::python::PyBlackKarasinskiSwaptionCalibrator;
   use stochastic_rs_quant::python::PyBusinessDayConvention;
   use stochastic_rs_quant::python::PyCalendar;
   use stochastic_rs_quant::python::PyCgmysvCalibrator;
   use stochastic_rs_quant::python::PyDayCount;
   use stochastic_rs_quant::python::PyDiscountCurve;
+  use stochastic_rs_quant::python::PyG2ppSwaptionCalibrator;
+  use stochastic_rs_quant::python::PyHullWhiteSwaptionCalibrator;
   use stochastic_rs_quant::python::PyKyleEquilibrium;
   use stochastic_rs_quant::python::PyMultiCurve;
   use stochastic_rs_quant::python::PyNelsonSiegel;
@@ -398,6 +401,9 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyOrderBook>()?;
   m.add_class::<PyDiscountCurve>()?;
   m.add_class::<PyMultiCurve>()?;
+  m.add_class::<PyHullWhiteSwaptionCalibrator>()?;
+  m.add_class::<PyBlackKarasinskiSwaptionCalibrator>()?;
+  m.add_class::<PyG2ppSwaptionCalibrator>()?;
   m.add_class::<PyNelsonSiegel>()?;
   m.add_class::<PyZeroCouponInflationCurve>()?;
   m.add_class::<PySabrCapletCalibrator>()?;

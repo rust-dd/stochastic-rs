@@ -24,6 +24,7 @@ pub mod rbergomi;
 pub mod sabr;
 pub mod sabr_caplet;
 pub mod svj;
+pub mod tree_swaption;
 
 #[cfg(test)]
 mod quadrature_tests;
@@ -64,6 +65,12 @@ pub use sabr_caplet::SabrCapletParams;
 pub use svj::SVJCalibrationResult;
 pub use svj::SVJCalibrator;
 pub use svj::SVJParams;
+pub use tree_swaption::BlackKarasinskiCalibrationResult;
+pub use tree_swaption::BlackKarasinskiParams;
+pub use tree_swaption::BlackKarasinskiSwaptionCalibrator;
+pub use tree_swaption::G2ppCalibrationResult;
+pub use tree_swaption::G2ppParams;
+pub use tree_swaption::G2ppSwaptionCalibrator;
 
 const GL_PANEL_WIDTH: f64 = 50.0;
 const GL_MAX_PANELS: usize = 256;

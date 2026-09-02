@@ -108,3 +108,17 @@ def test_bachelier_pricer_round_trips_the_normal_volatility():
     assert abs(pricer.implied_volatility(put, "put") - 20.0) < 1e-9
     assert pricer.vega() > 0.0
     assert math.isnan(pricer.implied_volatility(0.0, "call"))
+
+def test_tree_swaption_calibrators_fit_a_small_grid():
+    import numpy as np
+
+    curve = sr.DiscountCurve.from_zero_rates(np.array([0.5, 1.0, 5.0, 10.0]), np.full(4, 0.03), interp="log_df")
+    quotes = [(1.0, 2.0, 0.22, 0.5, "payer"), (2.0, 2.0, 0.20, 0.5, "payer")]
+    a, sigma, rmse, converged = sr.BlackKarasinskiSwaptionCalibrator(
+        quotes, curve, initial_rate=0.03, long_run_rate=0.03, steps_per_year=8, max_iters=200
+    ).calibrate(initial_guess=(0.1, 0.2))
+    assert a > 0.0 and sigma > 0.0 and math.isfinite(rmse)
+    hw = sr.HullWhiteSwaptionCalibrator(quotes, curve).calibrate()
+    assert hw[1] > 0.0 and math.isfinite(hw[2])
+    g2 = sr.G2ppSwaptionCalibrator(quotes, curve, initial_rate=0.03, steps_per_year=4, max_iters=60).calibrate()
+    assert len(g2) == 7 and abs(g2[4]) < 1.0 and math.isfinite(g2[5])

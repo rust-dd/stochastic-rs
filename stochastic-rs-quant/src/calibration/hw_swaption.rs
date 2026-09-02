@@ -290,21 +290,21 @@ impl CostFunction for HullWhiteCost {
 }
 
 #[derive(Debug, Clone)]
-struct CurveSnapshot {
+pub(crate) struct CurveSnapshot {
   times: Vec<f64>,
   rates: Vec<f64>,
   method: crate::curves::InterpolationMethod,
 }
 
 impl CurveSnapshot {
-  fn rebuild(&self) -> DiscountCurve<f64> {
+  pub(crate) fn rebuild(&self) -> DiscountCurve<f64> {
     let times = ndarray::Array1::from(self.times.clone());
     let rates = ndarray::Array1::from(self.rates.clone());
     DiscountCurve::from_zero_rates(&times, &rates, self.method)
   }
 }
 
-fn serialize_curve(curve: &DiscountCurve<f64>) -> CurveSnapshot {
+pub(crate) fn serialize_curve(curve: &DiscountCurve<f64>) -> CurveSnapshot {
   let points = curve.points();
   let times: Vec<f64> = points.iter().map(|p| p.time).collect();
   let rates: Vec<f64> = points
