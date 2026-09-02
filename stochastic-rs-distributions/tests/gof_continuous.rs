@@ -22,6 +22,8 @@ use stochastic_rs_distributions::beta::SimdBeta;
 use stochastic_rs_distributions::cauchy::SimdCauchy;
 use stochastic_rs_distributions::chi_square::SimdChiSquared;
 use stochastic_rs_distributions::ged::SimdGed;
+use stochastic_rs_distributions::generalized_hyperbolic::SimdGeneralizedHyperbolic;
+use stochastic_rs_distributions::generalized_inverse_gauss::SimdGig;
 use stochastic_rs_distributions::gev::SimdGev;
 use stochastic_rs_distributions::gpd::SimdGpd;
 use stochastic_rs_distributions::inverse_gauss::SimdInverseGauss;
@@ -31,6 +33,7 @@ use stochastic_rs_distributions::pareto::SimdPareto;
 use stochastic_rs_distributions::skew_t::SimdSkewT;
 use stochastic_rs_distributions::studentt::SimdStudentT;
 use stochastic_rs_distributions::uniform::SimdUniform;
+use stochastic_rs_distributions::variance_gamma::SimdVarianceGamma;
 use stochastic_rs_distributions::weibull::SimdWeibull;
 
 const N: usize = 20_000;
@@ -230,6 +233,84 @@ fn simd_skew_t_matches_own_cdf() {
       xs,
       Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
     )
+  });
+}
+
+/// A CDF tabulated from a density by midpoint sums on `[lo, hi]` with
+/// linear interpolation between grid points: the null for samplers whose
+/// law has a closed-form density but no closed-form CDF (VG, GIG, GH). The
+/// mass outside `[lo, hi]` is negligible for the parameters used.
+fn integrated_cdf(pdf: impl Fn(f64) -> f64, lo: f64, hi: f64, n: usize) -> impl Fn(f64) -> f64 {
+  let h = (hi - lo) / n as f64;
+  let mut table = Vec::with_capacity(n + 1);
+  table.push(0.0);
+  let mut acc = 0.0;
+  for k in 0..n {
+    acc += pdf(lo + (k as f64 + 0.5) * h) * h;
+    table.push(acc);
+  }
+  let total = acc;
+  move |x: f64| {
+    if x <= lo {
+      return 0.0;
+    }
+    if x >= hi {
+      return 1.0;
+    }
+    let pos = (x - lo) / h;
+    let k = pos.floor() as usize;
+    let frac = pos - k as f64;
+    ((1.0 - frac) * table[k] + frac * table[k + 1]) / total
+  }
+}
+
+#[test]
+fn simd_variance_gamma_matches_own_integrated_cdf() {
+  gof_support::assert_ks_accepts(N, |seed| {
+    let dist = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05, &Deterministic::new(seed));
+    let mut xs = vec![0.0; N];
+    dist.fill_slice(&mut xs);
+    let pdf = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05, &Deterministic::new(0));
+    let cdf = integrated_cdf(move |x| pdf.pdf(x), -4.0, 4.0, 400_000);
+    (xs, Box::new(cdf) as Box<dyn Fn(f64) -> f64>)
+  });
+}
+
+#[test]
+fn simd_gig_matches_own_integrated_cdf() {
+  gof_support::assert_ks_accepts(N, |seed| {
+    let dist = SimdGig::<f64>::new(0.3, 2.0, 0.5, &Deterministic::new(seed));
+    let mut xs = vec![0.0; N];
+    dist.fill_slice(&mut xs);
+    let pdf = SimdGig::<f64>::new(0.3, 2.0, 0.5, &Deterministic::new(0));
+    let cdf = integrated_cdf(move |x| pdf.pdf(x), 0.0, 120.0, 600_000);
+    (xs, Box::new(cdf) as Box<dyn Fn(f64) -> f64>)
+  });
+}
+
+#[test]
+fn simd_gig_small_beta_regime_matches_own_integrated_cdf() {
+  gof_support::assert_ks_accepts(N, |seed| {
+    let dist = SimdGig::<f64>::new(0.2, 0.01, 1.0, &Deterministic::new(seed));
+    let mut xs = vec![0.0; N];
+    dist.fill_slice(&mut xs);
+    let pdf = SimdGig::<f64>::new(0.2, 0.01, 1.0, &Deterministic::new(0));
+    let cdf = integrated_cdf(move |x| pdf.pdf(x), 0.0, 60.0, 600_000);
+    (xs, Box::new(cdf) as Box<dyn Fn(f64) -> f64>)
+  });
+}
+
+#[test]
+fn simd_generalized_hyperbolic_matches_own_integrated_cdf() {
+  gof_support::assert_ks_accepts(N, |seed| {
+    let dist =
+      SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2, &Deterministic::new(seed));
+    let mut xs = vec![0.0; N];
+    dist.fill_slice(&mut xs);
+    let pdf =
+      SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2, &Deterministic::new(0));
+    let cdf = integrated_cdf(move |x| pdf.pdf(x), -25.0, 25.0, 500_000);
+    (xs, Box::new(cdf) as Box<dyn Fn(f64) -> f64>)
   });
 }
 
