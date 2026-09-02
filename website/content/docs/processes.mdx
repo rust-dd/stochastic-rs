@@ -312,11 +312,12 @@ Each contains the file-by-file recipe.
 
 ## Euler engine
 
-`euler::sample_paths::<T, B, _>(&process, m, seed)` runs `m` Euler–Maruyama
-paths of a scalar diffusion on backend `B`. `Cpu` (and `Accelerate`) always:
-the crate's SIMD normal generator, one rayon task per path. The GPU back-ends
-run one device thread per path with the whole recursion in the kernel and
-counter-hashed Box–Muller normals:
+`euler::sample_paths::<T, B, _>(&process, m, seed)` runs `m` paths of a scalar
+diffusion on backend `B`. On `Cpu` (and `Accelerate`) it is **the process's own
+sampler** — `sample_par` with the seed pinned — so nothing is re-implemented
+on the host: GBM keeps its exact log-normal scheme, OU and CIR their SIMD
+steppers. The GPU back-ends run one device thread per path with the whole
+Euler–Maruyama recursion in the kernel and counter-hashed Box–Muller normals:
 
 | Backend | Feature | Device | Precision |
 |---|---|---|---|
@@ -325,11 +326,11 @@ counter-hashed Box–Muller normals:
 | `MetalNative` | `metal` | Apple GPUs, hand-written MSL | `f32` |
 
 A process joins the engine by describing its coefficients as an `EulerSpec`
-through `EulerCoefficients` — `Gbm`, `Ou` and `Cir` do. The stepper is the
-same formula everywhere and the device kernels share one integer hash for
-their uniforms, so the device back-ends agree with each other seed for seed
-up to libm rounding; the CPU draws its own stream, so CPU and device paths
-agree in distribution rather than bit for bit.
+through `EulerCoefficients` — `Gbm`, `Ou` and `Cir` do. The device kernels
+share one integer hash for their uniforms, so the device back-ends agree with
+each other seed for seed up to libm rounding; the CPU path is the process's
+own stream, so CPU and device paths agree in distribution rather than bit for
+bit.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">

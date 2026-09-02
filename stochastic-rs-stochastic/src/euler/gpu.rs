@@ -9,6 +9,7 @@ use ndarray::Array2;
 use parking_lot::Mutex;
 
 use super::EulerBackend;
+use super::EulerCoefficients;
 use super::EulerSpec;
 use crate::device::CubeCl;
 use crate::traits::FloatExt;
@@ -120,14 +121,32 @@ fn count_2d(cubes: u32) -> CubeCount {
 }
 
 impl EulerBackend for CubeCl {
-  fn euler_paths<T: FloatExt>(
-    spec: EulerSpec<T>,
-    x0: T,
-    n: usize,
-    t: T,
+  fn euler_paths<T: FloatExt, P: EulerCoefficients<T>>(
+    process: &P,
     m: usize,
     seed: u64,
   ) -> Array2<T> {
+    device_paths(
+      process.euler_spec(),
+      process.initial_value(),
+      process.grid_points(),
+      process.horizon(),
+      m,
+      seed,
+    )
+  }
+}
+
+/// The kernel launch for an explicit specification.
+fn device_paths<T: FloatExt>(
+  spec: EulerSpec<T>,
+  x0: T,
+  n: usize,
+  t: T,
+  m: usize,
+  seed: u64,
+) -> Array2<T> {
+  {
     if n == 0 || m == 0 {
       return Array2::<T>::zeros((m, n));
     }
