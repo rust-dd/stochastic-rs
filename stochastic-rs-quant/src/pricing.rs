@@ -25,6 +25,7 @@ pub mod execution_cost;
 pub mod finite_difference;
 pub mod fourier;
 pub mod heston;
+pub mod heston_adi;
 pub mod heston_malliavin;
 pub mod heston_stoch_corr;
 pub mod kirk;

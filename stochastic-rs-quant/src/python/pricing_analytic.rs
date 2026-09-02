@@ -402,3 +402,91 @@ impl PyBachelierPricer {
     )
   }
 }
+
+/// The Rust model holds the Heston parameters and the ADI numerics, so the
+/// wrapper carries the `(s, k, r, q, tau)` query the Python-visible
+/// no-argument methods are defined at; `r` is the domestic rate and `q` the
+/// foreign rate / dividend yield.
+#[pyclass(name = "HestonAdiPricer", unsendable)]
+pub struct PyHestonAdiPricer {
+  inner: crate::pricing::heston_adi::HestonAdiPricer,
+  s: f64,
+  k: f64,
+  r: f64,
+  q: f64,
+  tau: f64,
+}
+
+#[pymethods]
+impl PyHestonAdiPricer {
+  /// `scheme` is one of `"douglas"`, `"cs"`, `"mcs"`, `"hv"`; `barrier` turns
+  /// the call into a down-and-out call.
+  #[new]
+  #[pyo3(signature = (s, v0, k, r, kappa, theta, sigma, rho, tau, q=None, m1=100, m2=50, steps=50, scheme="mcs", damping=true, barrier=None))]
+  #[allow(clippy::too_many_arguments)]
+  fn new(
+    s: f64,
+    v0: f64,
+    k: f64,
+    r: f64,
+    kappa: f64,
+    theta: f64,
+    sigma: f64,
+    rho: f64,
+    tau: f64,
+    q: Option<f64>,
+    m1: usize,
+    m2: usize,
+    steps: usize,
+    scheme: &str,
+    damping: bool,
+    barrier: Option<f64>,
+  ) -> PyResult<Self> {
+    use crate::pricing::heston_adi::AdiScheme;
+    let scheme = match scheme.to_ascii_lowercase().as_str() {
+      "douglas" | "do" => AdiScheme::Douglas,
+      "cs" | "craig_sneyd" | "craig-sneyd" => AdiScheme::CraigSneyd,
+      "mcs" | "modified_craig_sneyd" => AdiScheme::ModifiedCraigSneyd,
+      "hv" | "hundsdorfer_verwer" => AdiScheme::HundsdorferVerwer,
+      other => {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+          "scheme must be douglas/cs/mcs/hv, got '{other}'"
+        )));
+      }
+    };
+    let mut inner = crate::pricing::heston_adi::HestonAdiPricer::new(v0, kappa, theta, sigma, rho)
+      .with_grid(m1, m2, steps)
+      .with_scheme(scheme)
+      .with_damping(damping);
+    if let Some(b) = barrier {
+      inner = inner.with_barrier(b);
+    }
+    Ok(Self {
+      inner,
+      s,
+      k,
+      r,
+      q: q.unwrap_or(0.0),
+      tau,
+    })
+  }
+
+  /// Call price (down-and-out call with a barrier).
+  fn price(&self) -> f64 {
+    self
+      .inner
+      .price_call(self.s, self.k, self.r, self.q, self.tau)
+  }
+
+  /// `(call, put)`; the put is `NaN` with a barrier.
+  fn call_put(&self) -> (f64, f64) {
+    (
+      self
+        .inner
+        .price_call(self.s, self.k, self.r, self.q, self.tau),
+      self
+        .inner
+        .price_put(self.s, self.k, self.r, self.q, self.tau),
+    )
+  }
+}

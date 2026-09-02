@@ -287,6 +287,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_quant::python::PyGapPricer;
   use stochastic_rs_quant::python::PyHKDECalibrator;
   use stochastic_rs_quant::python::PyHKDEFourier;
+  use stochastic_rs_quant::python::PyHestonAdiPricer;
   use stochastic_rs_quant::python::PyHestonCalibrator;
   use stochastic_rs_quant::python::PyHestonFourier;
   use stochastic_rs_quant::python::PyHestonPricer;
@@ -324,6 +325,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyBSMPricer>()?;
   m.add_class::<PyBachelierPricer>()?;
   m.add_class::<PyHestonPricer>()?;
+  m.add_class::<PyHestonAdiPricer>()?;
   m.add_class::<PySabrPricer>()?;
   m.add_class::<PyMerton1976Pricer>()?;
   m.add_class::<PyQuantoPricer>()?;

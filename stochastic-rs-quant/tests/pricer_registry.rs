@@ -106,6 +106,7 @@ use stochastic_rs_quant::pricing::SuperSharePricer;
 use stochastic_rs_quant::pricing::asian::AsianPricer;
 use stochastic_rs_quant::pricing::bachelier::BachelierPricer;
 use stochastic_rs_quant::pricing::finite_difference::FiniteDifferencePricer;
+use stochastic_rs_quant::pricing::heston_adi::HestonAdiPricer;
 use stochastic_rs_quant::pricing::malliavin_gbm::GbmMalliavinPricer;
 use stochastic_rs_quant::pricing::merton_jump::Merton1976Pricer;
 use stochastic_rs_quant::pricing::quanto::QuantoPricer;
@@ -243,6 +244,7 @@ assert_model_pricer!(
   FiniteDifferencePricer,
   GapPricer,
   GbmMalliavinPricer,
+  HestonAdiPricer,
   HestonPricer,
   HestonSlvPricer,
   HestonStochCorrPricer,
@@ -273,6 +275,9 @@ assert_model_pricer!(
 // `NaN` from `vanilla_call_forward` at `OptionStyle::American`. `BSMPricer` and
 // `Merton1976Pricer` are the two whose *forward* is per-instance, at `b(r, q)`
 // rather than the default `r - q`.
+// `HestonAdiPricer` is per-instance like `FiniteDifferencePricer`: a vanilla
+// European call at the default forward without a barrier, and `NaN` from
+// `vanilla_call_forward` once `with_barrier` turns it into a down-and-out call.
 // `BachelierPricer` is the normal-model member: its call is a European vanilla
 // on `S` at the default forward, so the Black inversion of its prices is the
 // normal-to-lognormal volatility conversion, strike by strike.
@@ -282,6 +287,7 @@ assert_vanilla_european_call!(
   CrrModel<f64>,
   FiniteDifferencePricer,
   GbmMalliavinPricer,
+  HestonAdiPricer,
   HestonPricer,
   HestonSlvPricer,
   HestonStochCorrPricer,

@@ -146,3 +146,13 @@ def test_sabr_regularization_pulls_nu_to_the_anchor():
         strikes, prices, s=100.0, r=0.01, tau=1.0, regularization=([0.2, 0.9, -0.3], [0.0, 1e4, 0.0])
     ).calibrate()
     assert abs(plain[2] - 0.6) < 0.05 and abs(pulled[2] - 0.9) < 0.05
+
+def test_heston_adi_pricer_matches_the_analytic_price():
+    kwargs = dict(s=100.0, k=100.0, r=0.025, tau=1.0, v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.9, q=0.0)
+    pde = sr.HestonAdiPricer(m1=100, m2=50, steps=50, scheme="mcs", **kwargs)
+    call, put = pde.call_put()
+    analytic = sr.HestonPricer(**kwargs).price()
+    assert abs(call - analytic) / analytic < 1e-2
+    assert abs(call - put - (100.0 - 100.0 * math.exp(-0.025))) < 1e-9
+    knocked = sr.HestonAdiPricer(barrier=90.0, **kwargs).price()
+    assert 0.0 < knocked < call

@@ -17,7 +17,7 @@ factor / strategy primitives.
 
 | Area               | What's inside                                                                                              |
 |--------------------|------------------------------------------------------------------------------------------------------------|
-| **Pricing**        | Closed-form (BSM, Bachelier with normal implied-vol inversion, Black76, Garman-Kohlhagen, Margrabe, Kirk, Geske compound, Stulz, Bjerksund-Stensland, digital / gap / supershare, geometric basket, Levy moment-matching, cliquet / forward-start chain). Fourier (Carr-Madan, Lewis, Gil-Pelaez) for Heston / Bates / Merton-jump / Kou / VG / CGMY / HKDE / double-Heston. Monte Carlo (basket, rainbow, cliquet, autocallable, spread). Finite difference (explicit / implicit / Crank-Nicolson, American). Bermudan LSM. Heston SLV (Guyon-Labordère). |
+| **Pricing**        | Closed-form (BSM, Bachelier with normal implied-vol inversion, Black76, Garman-Kohlhagen, Margrabe, Kirk, Geske compound, Stulz, Bjerksund-Stensland, digital / gap / supershare, geometric basket, Levy moment-matching, cliquet / forward-start chain). Fourier (Carr-Madan, Lewis, Gil-Pelaez) for Heston / Bates / Merton-jump / Kou / VG / CGMY / HKDE / double-Heston. Monte Carlo (basket, rainbow, cliquet, autocallable, spread). Finite difference (explicit / implicit / Crank-Nicolson, American); Heston PDE by ADI (Douglas / Craig-Sneyd / MCS / Hundsdorfer-Verwer on sinh meshes, Rannacher damping, down-and-out barrier). Bermudan LSM. Heston SLV (Guyon-Labordère). |
 | **Calibration**    | Heston (Cui analytic Jacobian + NMLE / PMLE / NMLE-CEKF seeds), SABR per-expiry caplet smile, Lévy (CGMY, VG, NIG, Merton-jump, Kou, bilateral gamma), SVJ, rough Bergomi, double-Heston, BSM (multi-maturity), HKDE, Hull-White (Jamshidian), G2++ and Black-Karasinski (trinomial-tree repricing) swaption grids via Nelder-Mead. Optional Tikhonov regularisation toward a parameter anchor on the Heston, SABR and swaption calibrators. |
 | **Vol surface**    | Implied-vol surface from market quotes, SVI / SSVI / eSSVI (anchored per-maturity slices with butterfly and calendar bounds), arbitrage-free interpolation, smile and skew analytics, SABR-smile fits.                                                |
 | **Risk**           | VaR (Gaussian / historical / Monte Carlo), CVaR / ES, drawdown metrics, Sharpe / Sortino / IR / Calmar (no hard-coded annualisation), instrument-level Greeks, bucket DV01, scenario / shock / curve-shift stress framework. |
@@ -226,6 +226,29 @@ plain = srs.SabrCalibrator(strikes, prices, s=100.0, r=0.01, tau=1.0).calibrate(
 pulled = srs.SabrCalibrator(strikes, prices, s=100.0, r=0.01, tau=1.0,
                             regularization=([0.2, 0.9, -0.3], [0.0, 1e4, 0.0])).calibrate()
 print(plain[2], pulled[2])     # nu ≈ 0.6 without the anchor, ≈ 0.9 with it
+```
+</Tab>
+</Tabs>
+
+### Heston PDE by ADI finite differences
+
+`HestonAdiPricer` solves the two-dimensional Heston PDE with correlation on the sinh-stretched meshes of in 't Hout and Foulon (2010) — points clustered at the strike and at `v = 0`, second-order stencils with upwinding of the variance drift where it points outward — and steps it in time with their four Alternating Direction Implicit schemes (Douglas, Craig–Sneyd, Modified Craig–Sneyd, Hundsdorfer–Verwer) plus Rannacher start-up damping; the default is the paper's recommendation, MCS at `θ = ⅓`. Each step costs a tridiagonal sweep in `s` and a banded sweep in `v`, the mixed derivative staying explicit. A down-and-out barrier moves the lower spot boundary to the barrier. The pricer implements `ModelPricer` (`r = r_d`, `q = r_f`) and, without a barrier, `VanillaEuropeanCall`.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_quant_heston_adi.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+pde = srs.HestonAdiPricer(s=100.0, k=100.0, r=0.025, tau=1.0, v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.9,
+                          q=0.0, m1=100, m2=50, steps=50, scheme="mcs")
+call, put = pde.call_put()
+analytic = srs.HestonPricer(s=100.0, k=100.0, r=0.025, tau=1.0, v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.9, q=0.0).price()
+print(call, analytic)                     # agree to ~1 %
+print(srs.HestonAdiPricer(s=100.0, k=100.0, r=0.025, tau=1.0, v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.9,
+                          barrier=90.0).price())   # down-and-out call
 ```
 </Tab>
 </Tabs>
