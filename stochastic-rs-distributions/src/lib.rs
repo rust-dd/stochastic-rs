@@ -5,7 +5,7 @@
 //!
 //! ## Choosing a distribution
 //!
-//! The website's distributions catalog groups these 33 types (34 counting
+//! The website's distributions catalog groups these 36 types (37 counting
 //! [`complex::ComplexDistribution`]) by sampling strategy; this section
 //! groups them by modeling role instead — the axis that actually decides
 //! which one to reach for.
@@ -42,6 +42,13 @@
 //! GARCH literature's innovation density, with closed-form cdf and
 //! quantile; [`johnson_su::SimdJohnsonSu`] gives a skewed, light-tailed
 //! alternative with every moment in closed form.
+//! [`generalized_hyperbolic::SimdGeneralizedHyperbolic`] is the parent of
+//! NIG (λ = −1/2) and VG (δ → 0) over a
+//! [`generalized_inverse_gauss::SimdGig`] clock (Hörmann–Leydold
+//! generators, Bessel-ratio moments), and
+//! [`tempered_stable::SimdTemperedStable`] is the positive tempered stable
+//! subordinator law (Devroye's exact double rejection) with cumulants and
+//! transforms but no closed-form density.
 //! [`gev::SimdGev`] and [`gpd::SimdGpd`] are a different job again:
 //! extreme-value modeling of block maxima and of excesses over a high
 //! threshold respectively, not the bulk return distribution.
@@ -176,6 +183,8 @@ pub mod chi_square;
 pub mod complex;
 pub mod exp;
 pub mod gamma;
+pub mod generalized_hyperbolic;
+pub mod generalized_inverse_gauss;
 pub mod geometric;
 pub mod hypergeometric;
 pub mod inverse_gauss;
@@ -216,6 +225,7 @@ pub mod scalar;
 pub mod skellam;
 pub mod skew_t;
 pub mod studentt;
+pub mod tempered_stable;
 pub mod truncated;
 pub mod uniform;
 pub mod variance_gamma;
@@ -284,6 +294,8 @@ impl_distribution_sampler_float!(
   exp::SimdExp<T>,
   gamma::SimdGamma<T>,
   ged::SimdGed<T>,
+  generalized_hyperbolic::SimdGeneralizedHyperbolic<T>,
+  generalized_inverse_gauss::SimdGig<T>,
   gev::SimdGev<T>,
   gpd::SimdGpd<T>,
   inverse_gauss::SimdInverseGauss<T>,
@@ -293,6 +305,7 @@ impl_distribution_sampler_float!(
   pareto::SimdPareto<T>,
   skew_t::SimdSkewT<T>,
   studentt::SimdStudentT<T>,
+  tempered_stable::SimdTemperedStable<T>,
   uniform::SimdUniform<T>,
   variance_gamma::SimdVarianceGamma<T>,
   weibull::SimdWeibull<T>,

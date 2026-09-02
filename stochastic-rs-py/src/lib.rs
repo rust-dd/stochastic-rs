@@ -22,6 +22,8 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_distributions::chi_square::PyChiSquared;
   use stochastic_rs_distributions::exp::PyExp;
   use stochastic_rs_distributions::gamma::PyGamma;
+  use stochastic_rs_distributions::generalized_hyperbolic::PyGeneralizedHyperbolic;
+  use stochastic_rs_distributions::generalized_inverse_gauss::PyGig;
   use stochastic_rs_distributions::geometric::PyGeometric;
   use stochastic_rs_distributions::gev::PyGev;
   use stochastic_rs_distributions::gpd::PyGpd;
@@ -35,6 +37,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_distributions::poisson::PyPoissonD;
   use stochastic_rs_distributions::skew_t::PySkewT;
   use stochastic_rs_distributions::studentt::PyStudentT;
+  use stochastic_rs_distributions::tempered_stable::PyTemperedStable;
   use stochastic_rs_distributions::uniform::PyUniform;
   use stochastic_rs_distributions::variance_gamma::PyVarianceGamma;
   use stochastic_rs_distributions::weibull::PyWeibull;
@@ -225,6 +228,8 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyChiSquared>()?;
   m.add_class::<PyExp>()?;
   m.add_class::<PyGamma>()?;
+  m.add_class::<PyGeneralizedHyperbolic>()?;
+  m.add_class::<PyGig>()?;
   m.add_class::<PyGev>()?;
   m.add_class::<PyGpd>()?;
   m.add_class::<PyInverseGauss>()?;
@@ -235,6 +240,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyPareto>()?;
   m.add_class::<PySkewT>()?;
   m.add_class::<PyStudentT>()?;
+  m.add_class::<PyTemperedStable>()?;
   m.add_class::<PyUniform>()?;
   m.add_class::<PyVarianceGamma>()?;
   m.add_class::<PyWeibull>()?;

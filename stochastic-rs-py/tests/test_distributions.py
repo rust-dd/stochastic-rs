@@ -93,3 +93,13 @@ def test_a6_distributions_sample_and_standardise():
     skt = sr.PySkewT(5.0, -0.3, seed=3).sample(200_000)
     assert abs(skt.mean()) < 0.01 and abs(skt.var() - 1.0) < 0.03
     assert sr.PySkewT(8.0, 0.4, seed=4).sample_par(3, 512).shape == (3, 512)
+
+
+def test_gig_gh_and_tempered_stable_samplers():
+    gig = sr.PyGig(0.3, 2.0, 0.5, seed=5).sample(200_000)
+    assert gig.min() > 0.0 and abs(gig.mean() - 3.51040667383761) < 0.05
+    gh = sr.PyGeneralizedHyperbolic(1.0, 2.0, 0.5, 1.5, -0.2, seed=6).sample(200_000)
+    assert abs(gh.mean() - 0.40032685290757525) < 0.02
+    ts = sr.PyTemperedStable(0.6, 2.0, 1.5, seed=7).sample(200_000)
+    assert ts.min() > 0.0 and abs(ts.mean() - 1.5 * 0.6 * 2.0 ** (-0.4)) < 0.02
+    assert sr.PyGig(-0.5, 1.0, 4.0, seed=8).sample_par(2, 1024).shape == (2, 1024)
