@@ -125,6 +125,29 @@ fbm = np.cumsum(increments)         # fBM = cumsum(fGN)
 </Tab>
 </Tabs>
 
+### Quasi-Monte Carlo paths (Sobol + Brownian bridge)
+
+`SobolSeq` now carries Joe and Kuo's full `new-joe-kuo-6.21201` direction table (any dimension up to 21201) and an Owen-type scramble (`SobolSeq::scrambled`, random linear scrambling plus digital shift) for randomised-QMC error bars. `BrownianBridgeQmc` turns one Sobol point per path into Brownian levels by bridge bisection — terminal value first, then midpoints — so the sequence's best-equidistributed coordinates carry the path's coarsest features; `increments()` hands the same paths to an Euler loop.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_processes_qmc.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import numpy as np
+import stochastic_rs as srs
+
+qmc = srs.PyBrownianBridgeQmc(steps=64, horizon=1.0, seed=7)   # seed → scrambled
+w = qmc.paths(4096)                                            # (4096, 64) Brownian levels
+print(np.cov(w[:, -1], w[:, 31])[0, 1])                        # ≈ min(t, s) = 0.5
+
+sobol = srs.PySobolSeq(1000)                                   # 1000 dimensions, unscrambled
+print(sobol.sample(8)[:, 999])
+```
+</Tab>
+</Tabs>
+
 ## Common patterns
 
 ### Construction

@@ -52,3 +52,18 @@ def test_gbm_sample_par_shape():
 def test_gbm_paths_all_finite():
     s = sr.PyGbm(0.05, 0.2, 252, x0=100.0, t=1.0, seed=4).sample_par(32)
     assert np.all(np.isfinite(s))
+
+
+def test_sobol_and_bridge_qmc():
+    plain = sr.PySobolSeq(3000)
+    pts = plain.sample(64)
+    assert pts.shape == (64, 3000) and (pts >= 0).all() and (pts < 1).all()
+    assert not plain.is_scrambled
+    scrambled = sr.PySobolSeq(8, seed=5)
+    a, b = scrambled.sample(1024), sr.PySobolSeq(8, seed=5).sample(1024)
+    assert scrambled.is_scrambled and np.array_equal(a, b)
+    qmc = sr.PyBrownianBridgeQmc(32, 2.0, seed=3)
+    w = qmc.paths(2048)
+    assert w.shape == (2048, 32) and abs(np.var(w[:, -1]) - 2.0) < 0.15
+    dw = qmc.increments(2048)
+    assert np.allclose(np.cumsum(dw, axis=1), w)

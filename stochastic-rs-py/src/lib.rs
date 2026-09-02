@@ -99,6 +99,8 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::jump::nig::PyNig;
   use stochastic_rs_stochastic::jump::rdts::PyRdts;
   use stochastic_rs_stochastic::jump::vg::PyVg;
+  use stochastic_rs_stochastic::mc::brownian_bridge_qmc::PyBrownianBridgeQmc;
+  use stochastic_rs_stochastic::mc::sobol::PySobolSeq;
   // Stochastic — noise
   use stochastic_rs_stochastic::noise::cfgns::PyCfgns;
   use stochastic_rs_stochastic::noise::cgns::PyCgns;
@@ -213,6 +215,8 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyHullWhite>()?;
   m.add_class::<PyHullWhite2F>()?;
   m.add_class::<PyAgarch>()?;
+  m.add_class::<PySobolSeq>()?;
+  m.add_class::<PyBrownianBridgeQmc>()?;
   m.add_class::<PyARp>()?;
   m.add_class::<PyArch>()?;
   m.add_class::<PyArima>()?;

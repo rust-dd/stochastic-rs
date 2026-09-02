@@ -37,6 +37,7 @@ pub use crate::ito::Function2D;
 pub use crate::ito::ItoCalculator;
 pub use crate::ito::ItoResult;
 pub use crate::mc::McEstimate;
+pub use crate::mc::brownian_bridge_qmc::BrownianBridgeQmc;
 pub use crate::mc::halton::HaltonSeq;
 pub use crate::mc::lsm::Lsm;
 pub use crate::mc::mlmc::Mlmc;
