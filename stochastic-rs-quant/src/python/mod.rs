@@ -72,6 +72,7 @@ pub use microstructure::roll_spread;
 pub use pricing_analytic::PyBSMPricer;
 pub use pricing_analytic::PyHestonPricer;
 pub use pricing_analytic::PyMerton1976Pricer;
+pub use pricing_analytic::PyQuantoPricer;
 pub use pricing_analytic::PySabrPricer;
 pub use pricing_digital::PyAssetOrNothingPricer;
 pub use pricing_digital::PyCashOrNothingPricer;

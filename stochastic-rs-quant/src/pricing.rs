@@ -34,6 +34,7 @@ pub mod malliavin_thalmaier;
 pub(crate) mod mc_stats;
 pub mod merton_jump;
 pub mod pnl;
+pub mod quanto;
 pub mod rainbow;
 pub mod rbergomi;
 pub mod regime_switching;

@@ -300,6 +300,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_quant::python::PyMerton1976Pricer;
   use stochastic_rs_quant::python::PyMertonJDFourier;
   use stochastic_rs_quant::python::PyNigFourier;
+  use stochastic_rs_quant::python::PyQuantoPricer;
   use stochastic_rs_quant::python::PyRBergomiCalibrator;
   use stochastic_rs_quant::python::PySVJCalibrator;
   use stochastic_rs_quant::python::PySabrCalibrator;
@@ -319,6 +320,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyHestonPricer>()?;
   m.add_class::<PySabrPricer>()?;
   m.add_class::<PyMerton1976Pricer>()?;
+  m.add_class::<PyQuantoPricer>()?;
   m.add_class::<PyAsianPricer>()?;
   m.add_class::<PyBarrierPricer>()?;
   m.add_class::<PyCashOrNothingPricer>()?;

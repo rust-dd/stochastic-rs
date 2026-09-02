@@ -263,3 +263,68 @@ impl PyMerton1976Pricer {
       .call_put(self.s, self.k, self.r, self.q, self.tau)
   }
 }
+
+/// The Rust model holds `(σ_S, σ_E, ρ, r_f, E_p)` only, so the wrapper
+/// carries the `(s, k, r, q, tau)` query and the option type that the
+/// Python-visible no-argument methods are defined at; `r` is the domestic
+/// rate.
+#[pyclass(name = "QuantoPricer", unsendable)]
+pub struct PyQuantoPricer {
+  inner: crate::pricing::quanto::QuantoPricer,
+  s: f64,
+  k: f64,
+  r: f64,
+  q: f64,
+  tau: f64,
+  option_type: crate::OptionType,
+}
+
+#[pymethods]
+impl PyQuantoPricer {
+  #[new]
+  #[pyo3(signature = (s, v, k, r, tau, r_f, v_fx, rho, fixed_rate, option_type="call", q=None))]
+  #[allow(clippy::too_many_arguments)]
+  fn new(
+    s: f64,
+    v: f64,
+    k: f64,
+    r: f64,
+    tau: f64,
+    r_f: f64,
+    v_fx: f64,
+    rho: f64,
+    fixed_rate: f64,
+    option_type: &str,
+    q: Option<f64>,
+  ) -> PyResult<Self> {
+    let option_type = parse_option_type(option_type)?;
+    Ok(Self {
+      inner: crate::pricing::quanto::QuantoPricer::new(v, v_fx, rho, r_f, fixed_rate),
+      s,
+      k,
+      r,
+      q: q.unwrap_or(0.0),
+      tau,
+      option_type,
+    })
+  }
+
+  /// Price of the configured option type in domestic currency.
+  fn price(&self) -> f64 {
+    self
+      .inner
+      .price_option(self.s, self.k, self.r, self.q, self.tau, self.option_type)
+  }
+
+  /// `(call, put)` in domestic currency.
+  fn call_put(&self) -> (f64, f64) {
+    self
+      .inner
+      .call_put(self.s, self.k, self.r, self.q, self.tau)
+  }
+
+  /// Quanto forward `E_p · S · exp((r_f − q − ρ σ_S σ_E) τ)`.
+  fn forward(&self) -> f64 {
+    self.inner.forward(self.s, self.q, self.tau)
+  }
+}

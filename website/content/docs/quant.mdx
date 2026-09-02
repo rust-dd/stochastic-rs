@@ -60,6 +60,28 @@ print(f"delta={pricer.delta():.4f}, gamma={pricer.gamma():.4f}, "
 </Tab>
 </Tabs>
 
+### Quanto option — fixed exchange rate foreign equity
+
+`QuantoPricer` prices an option on a foreign asset whose payoff is converted to the domestic currency at a fixed exchange rate `E_p` (Reiner 1992; Haug §2.13.4). Under the domestic risk-neutral measure the asset drifts at `r_f − q − ρ σ_S σ_E`, the quanto adjustment, so the price is `E_p` times a Black–Scholes–Merton price with that cost of carry, discounted at the domestic rate; `forward()` is `E_p · S · e^{bτ}` and the put overrides parity with the quanto carry. The model holds `(σ_S, σ_E, ρ, r_f, E_p)`; the query `(s, k, r, q, τ)` travels as arguments like every `ModelPricer`.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_quant_quanto.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+# Foreign equity option paid in domestic currency at the fixed rate 1.5;
+# r is the domestic rate, r_f the foreign one, rho = corr(asset, FX).
+pricer = srs.QuantoPricer(s=100, v=0.2, k=105, r=0.08, tau=0.5, r_f=0.05, v_fx=0.12, rho=0.3, fixed_rate=1.5, q=0.04)
+call, put = pricer.call_put()
+print(call, put)          # 5.2937, 12.2977 on the Reiner / Haug §2.13.4 inputs
+print(pricer.forward())   # 150.21 = E_p · S · exp((r_f − q − ρ σ_S σ_E) τ)
+```
+</Tab>
+</Tabs>
+
 ### Heston — Fourier pricer with Cui analytic Jacobian
 
 <Tabs items={['Rust', 'Python']}>
