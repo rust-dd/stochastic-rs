@@ -6,19 +6,23 @@
 //!
 //! Feller–logistic diffusion: a CIR-style square-root diffusion term with a
 //! logistic (density-dependent) drift instead of CIR's linear drift.
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Feller–logistic diffusion
 /// dX_t = kappa (theta - X_t) X_t dt + sigma sqrt(X_t) dW_t
-pub struct FellerLogistic<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct FellerLogistic<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion / logistic-growth speed κ.
   pub kappa: T,
   /// Carrying-capacity level θ the density-dependent drift `κ(θ−X)X` pulls
@@ -36,6 +40,10 @@ pub struct FellerLogistic<T: FloatExt, S: SeedExt = Unseeded> {
   pub use_sym: Option<bool>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> FellerLogistic<T, S> {
@@ -50,6 +58,7 @@ impl<T: FloatExt, S: SeedExt> FellerLogistic<T, S> {
     seed: S,
   ) -> Self {
     Self {
+      backend: PhantomData,
       kappa,
       theta,
       sigma,
@@ -62,7 +71,11 @@ impl<T: FloatExt, S: SeedExt> FellerLogistic<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FellerLogistic<T, S> {
+impl<T: FloatExt, S: SeedExt, B> FellerLogistic<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] FellerLogistic<T, S> { kappa, theta, sigma, n, x0, t, use_sym, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for FellerLogistic<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = FellerLogisticSampler<T>

@@ -4,6 +4,8 @@
 //! \nu(dx)\propto e^{-\lambda |x|^\rho}|x|^{-1-\alpha}dx\quad(\text{rapidly decaying tempered stable})
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use scilib::math::basic::gamma;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -12,6 +14,8 @@ use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -19,7 +23,7 @@ use crate::traits::ProcessExt;
 
 /// Rdts process (Rapidly Decreasing Tempered Stable process)
 /// <https://sci-hub.se/https://doi.org/10.1016/j.jbankfin.2010.01.015>
-pub struct Rdts<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Rdts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Positive jump rate lambda_plus (corresponds to G)
   pub lambda_plus: T, // G
   /// Negative jump rate lambda_minus (corresponds to M)
@@ -36,6 +40,10 @@ pub struct Rdts<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Rdts<T, S> {
@@ -58,6 +66,7 @@ impl<T: FloatExt, S: SeedExt> Rdts<T, S> {
     );
 
     Self {
+      backend: PhantomData,
       lambda_plus,
       lambda_minus,
       alpha,
@@ -70,7 +79,11 @@ impl<T: FloatExt, S: SeedExt> Rdts<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Rdts<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Rdts<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Rdts<T, S> { lambda_plus, lambda_minus, alpha, n, j, x0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Rdts<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = RdtsSampler<T, S>

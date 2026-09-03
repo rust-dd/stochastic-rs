@@ -35,6 +35,8 @@
 //! simplification, not a reproduction of that (or any other specific
 //! published) numerical scheme.
 
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -43,6 +45,8 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 use stochastic_rs_distributions::special::gamma;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -50,7 +54,7 @@ use crate::traits::ProcessExt;
 
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `FBatesSvj::new(..).with_hurst(0.15).with_rho(-0.4)`.
-pub struct FBatesSvj<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct FBatesSvj<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness (H ∈ (0, 0.5) for rough).
   pub hurst: T,
   /// Drift rate.
@@ -79,6 +83,10 @@ pub struct FBatesSvj<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy.
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> FBatesSvj<T, S> {
@@ -100,6 +108,7 @@ impl<T: FloatExt, S: SeedExt> FBatesSvj<T, S> {
     seed: S,
   ) -> Self {
     Self {
+      backend: PhantomData,
       hurst,
       mu,
       s0,
@@ -116,7 +125,9 @@ impl<T: FloatExt, S: SeedExt> FBatesSvj<T, S> {
       seed,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> FBatesSvj<T, S, B> {
   /// Replace `hurst`, all else unchanged. `FBatesSvj` has no persisted
   /// correlated-noise cache (`sampler()` builds `cgns` fresh from `rho`,
   /// `n`, `t` on every call), so every setter here is a plain field write.
@@ -204,7 +215,9 @@ impl<T: FloatExt, S: SeedExt> FBatesSvj<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FBatesSvj<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] FBatesSvj<T, S> { hurst, mu, s0, v0, theta, kappa, xi, rho, lambda, nu, omega, n, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for FBatesSvj<T, S, B> {
   type Output = [Array1<T>; 2]; // [S, v]
   type Sampler<'s>
     = FBatesSvjSampler<T, S>

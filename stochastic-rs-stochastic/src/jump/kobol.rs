@@ -40,6 +40,8 @@
 //!   [`Cgmy`](crate::jump::cgmy::Cgmy), of which this family is a
 //!   generalization).
 
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use scilib::math::basic::gamma;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -48,12 +50,14 @@ use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-pub struct KoBoL<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct KoBoL<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Overall scale D > 0
   pub d: T,
   /// Positive-side weight p > 0
@@ -76,6 +80,10 @@ pub struct KoBoL<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> KoBoL<T, S> {
@@ -105,6 +113,7 @@ impl<T: FloatExt, S: SeedExt> KoBoL<T, S> {
     assert!(j >= 2, "j must be >= 2 (because we index from 1..j)");
 
     Self {
+      backend: PhantomData,
       d,
       p,
       q,
@@ -131,7 +140,11 @@ impl<T: FloatExt, S: SeedExt> KoBoL<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for KoBoL<T, S> {
+impl<T: FloatExt, S: SeedExt, B> KoBoL<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] KoBoL<T, S> { d, p, q, lambda_plus, lambda_minus, alpha, n, j, x0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for KoBoL<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = KoBoLSampler<T, S>

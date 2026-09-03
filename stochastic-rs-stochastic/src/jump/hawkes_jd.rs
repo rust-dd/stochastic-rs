@@ -13,6 +13,8 @@
 //! - Hawkes (1971), "Spectra of some self-exciting and mutually exciting point processes"
 //! - Merton (1976), "Option pricing when underlying stock returns are discontinuous"
 
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -20,6 +22,8 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -28,7 +32,7 @@ use crate::traits::ProcessExt;
 ///
 /// Combines Gbm diffusion with self-exciting Hawkes jump arrivals
 /// and log-normal jump sizes.
-pub struct HawkesJD<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct HawkesJD<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift $\mu$.
   pub mu: T,
   /// Diffusion volatility $\sigma$.
@@ -51,6 +55,10 @@ pub struct HawkesJD<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> HawkesJD<T, S> {
@@ -74,6 +82,7 @@ impl<T: FloatExt, S: SeedExt> HawkesJD<T, S> {
       "stationarity requires alpha/beta < 1"
     );
     Self {
+      backend: PhantomData,
       mu,
       sigma,
       mu_lambda,
@@ -89,7 +98,11 @@ impl<T: FloatExt, S: SeedExt> HawkesJD<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HawkesJD<T, S> {
+impl<T: FloatExt, S: SeedExt, B> HawkesJD<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] HawkesJD<T, S> { mu, sigma, mu_lambda, alpha, beta, mu_j, sigma_j, n, x0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for HawkesJD<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = HawkesJDSampler<T>

@@ -148,24 +148,7 @@ impl<T: FloatExt> Default for Gbm<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Gbm<T, S, B> {
-  /// Re-type this process to sample on backend `B2` (compile-time, zero
-  /// runtime cost): [`Cpu`] and `Accelerate` run the host sampler, the device
-  /// markers (`MetalNative`, `CudaNative`, `CubeCl`) the Euler kernel.
-  pub fn on<B2: EulerBackend>(self) -> Gbm<T, S, B2> {
-    Gbm {
-      mu: self.mu,
-      sigma: self.sigma,
-      n: self.n,
-      x0: self.x0,
-      t: self.t,
-      ln_mu: self.ln_mu,
-      ln_sigma: self.ln_sigma,
-      seed: self.seed,
-      backend: PhantomData,
-    }
-  }
-}
+backend_switch!([T: FloatExt, S: SeedExt] Gbm<T, S> { mu, sigma, n, x0, t, ln_mu, ln_sigma, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: EulerBackend> ProcessExt<T> for Gbm<T, S, B> {
   type Output = Array1<T>;

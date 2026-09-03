@@ -9,6 +9,8 @@
 //! no continuous diffusion component; this generates the pure jump sum
 //! `X_t`, meant to be added on top of a diffusion elsewhere.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use ndarray::Axis;
 use rand_distr::Distribution;
@@ -16,11 +18,13 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::customjt::CustomJt;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-pub struct CompoundCustom<T, D1, D2, S: SeedExt = Unseeded>
+pub struct CompoundCustom<T, D1, D2, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
   D1: Distribution<T> + Send + Sync,
@@ -39,6 +43,10 @@ where
   pub customjt: CustomJt<T, D2>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T, D1, D2, S: SeedExt> CompoundCustom<T, D1, D2, S>
@@ -60,6 +68,7 @@ where
     }
 
     Self {
+      backend: PhantomData,
       n,
       t_max,
       jumps_distribution,
@@ -70,7 +79,17 @@ where
   }
 }
 
-impl<T, D1, D2, S: SeedExt> ProcessExt<T> for CompoundCustom<T, D1, D2, S>
+impl<T, D1, D2, S: SeedExt, B> CompoundCustom<T, D1, D2, S, B>
+where
+  T: FloatExt,
+  D1: Distribution<T> + Send + Sync,
+  D2: Distribution<T> + Send + Sync,
+{
+}
+
+backend_switch!([T, D1, D2, S: SeedExt] CompoundCustom<T, D1, D2, S> { n, t_max, jumps_distribution, jump_times_distribution, customjt, seed } via host where  T: FloatExt,  D1: Distribution<T> + Send + Sync,  D2: Distribution<T> + Send + Sync);
+
+impl<T, D1, D2, S: SeedExt, B: HostBackend> ProcessExt<T> for CompoundCustom<T, D1, D2, S, B>
 where
   T: FloatExt,
   D1: Distribution<T> + Send + Sync,

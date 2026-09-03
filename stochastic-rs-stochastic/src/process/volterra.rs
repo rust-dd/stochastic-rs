@@ -28,6 +28,8 @@
 //! Reference:
 //! - Decreusefond, L. & Üstünel, A. S. (1999), "Stochastic Analysis of the Fractional Brownian Motion"
 
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -36,6 +38,8 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::rough::kernel::RlKernel;
 use crate::rough::markov_lift::RoughSimd;
 use crate::traits::FloatExt;
@@ -127,7 +131,7 @@ enum VolterraEngine<T: FloatExt + RoughSimd> {
 }
 
 /// Generic Volterra process with configurable kernel.
-pub struct Volterra<T: FloatExt + RoughSimd, S: SeedExt = Unseeded> {
+pub struct Volterra<T: FloatExt + RoughSimd, S: SeedExt = Unseeded, B = Cpu> {
   /// Kernel specification.
   pub kernel: VolterraKernelSpec,
   /// Number of grid points.
@@ -137,6 +141,10 @@ pub struct Volterra<T: FloatExt + RoughSimd, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
   engine: VolterraEngine<T>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt + RoughSimd, S: SeedExt> Volterra<T, S> {
@@ -153,6 +161,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> Volterra<T, S> {
       _ => VolterraEngine::Reference(kernel.prepare::<T>()),
     };
     Self {
+      backend: PhantomData,
       kernel,
       n,
       t,
@@ -161,6 +170,8 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> Volterra<T, S> {
     }
   }
 }
+
+impl<T: FloatExt + RoughSimd, S: SeedExt, B> Volterra<T, S, B> {}
 
 impl<T: FloatExt + RoughSimd> Volterra<T, Unseeded> {
   /// Fractional Brownian motion with Hurst parameter $H$.
@@ -178,7 +189,9 @@ fn lift_one<T: FloatExt>(_t: T, _x: T) -> T {
   T::one()
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for Volterra<T, S> {
+backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] Volterra<T, S> { kernel, n, t, seed, engine } via host);
+
+impl<T: FloatExt + RoughSimd, S: SeedExt, B: HostBackend> ProcessExt<T> for Volterra<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = VolterraSampler<T, S>

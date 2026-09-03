@@ -62,11 +62,15 @@
 //! be attained. A path touching zero is therefore a property of the model at
 //! those parameters, not evidence of a broken scheme.
 
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::gn::Gn;
 use crate::rough::markov_lift::RoughSimd;
 use crate::traits::FloatExt;
@@ -76,7 +80,7 @@ use crate::volterra::kernel::VolterraKernel;
 use crate::volterra::lift::VolterraLift;
 
 /// Volterra square-root process with a nonnegativity-preserving scheme.
-pub struct VolterraSquareRoot<T: FloatExt, K, S: SeedExt = Unseeded>
+pub struct VolterraSquareRoot<T: FloatExt, K, S: SeedExt = Unseeded, B = Cpu>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
@@ -99,6 +103,10 @@ where
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, K, S: SeedExt> Clone for VolterraSquareRoot<T, K, S>
@@ -111,6 +119,7 @@ where
   /// parameter on a clone isolates that parameter under common random numbers.
   fn clone(&self) -> Self {
     Self {
+      backend: PhantomData,
       kernel: self.kernel.clone(),
       kappa: self.kappa,
       theta: self.theta,
@@ -150,6 +159,7 @@ where
       assert!(v >= T::zero(), "v0 must be non-negative");
     }
     Self {
+      backend: PhantomData,
       kernel,
       kappa,
       theta,
@@ -160,7 +170,12 @@ where
       seed,
     }
   }
+}
 
+impl<T: FloatExt, K, S: SeedExt, B> VolterraSquareRoot<T, K, S, B>
+where
+  K: VolterraKernel<T> + Send + Sync,
+{
   /// Replace `kappa`, all else unchanged.
   #[must_use]
   pub fn with_kappa(mut self, kappa: T) -> Self {
@@ -216,7 +231,10 @@ where
   }
 }
 
-impl<T: FloatExt + RoughSimd, K, S: SeedExt> ProcessExt<T> for VolterraSquareRoot<T, K, S>
+backend_switch!([T: FloatExt + RoughSimd, K, S: SeedExt] VolterraSquareRoot<T, K, S> { kernel, kappa, theta, nu, n, v0, t, seed } via host where  K: VolterraKernel<T> + Send + Sync);
+
+impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: HostBackend> ProcessExt<T>
+  for VolterraSquareRoot<T, K, S, B>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
@@ -236,6 +254,7 @@ where
       nu: self.nu,
       lift: VolterraLift::new(self.kernel.clone(), dt),
       gn: Gn::<T, S> {
+        backend: PhantomData,
         n: self.n - 1,
         t: self.t,
         seed: self.seed.derive(),

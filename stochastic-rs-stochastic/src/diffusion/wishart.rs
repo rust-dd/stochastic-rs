@@ -25,6 +25,8 @@
 //! discretization schemes for Wishart processes and their affine extensions*,
 //! Ann. Appl. Probab. 23(3), 1025–1073. DOI: 10.1214/12-AAP863
 
+use std::marker::PhantomData;
+
 use ndarray::Array2;
 use ndarray::Array3;
 use ndarray::s;
@@ -35,6 +37,8 @@ use stochastic_rs_distributions::non_central_chi_squared::SimdNonCentralChiSquar
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::linalg::determinant;
 use crate::linalg::expm;
 use crate::linalg::extended_cholesky;
@@ -46,7 +50,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Clone)]
-pub struct Wishart<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Wishart<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Degree α ≥ d − 1.
   pub alpha: T,
   /// Drift matrix `b` (`d × d`).
@@ -62,6 +66,10 @@ pub struct Wishart<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   step: StepMaps<T>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// The maps of Proposition 6 for one grid step, computed once.
@@ -265,6 +273,7 @@ impl<T: FloatExt, S: SeedExt> Wishart<T, S> {
     let dt = t.unwrap_or(T::one()) / T::from_usize_(n.max(2) - 1);
     let step = StepMaps::new(&a, &b, dt);
     Self {
+      backend: PhantomData,
       alpha,
       b,
       a,
@@ -275,7 +284,9 @@ impl<T: FloatExt, S: SeedExt> Wishart<T, S> {
       step,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> Wishart<T, S, B> {
   /// Matrix dimension `d`.
   pub fn dim(&self) -> usize {
     self.x0.nrows()
@@ -352,7 +363,9 @@ impl<T: FloatExt, S: SeedExt> Wishart<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Wishart<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] Wishart<T, S> { alpha, b, a, x0, n, t, seed, step } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Wishart<T, S, B> {
   type Output = Array3<T>;
   type Sampler<'s>
     = WishartSampler<T, S>
@@ -362,6 +375,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Wishart<T, S> {
   fn sampler(&self) -> WishartSampler<T, S> {
     WishartSampler {
       process: Wishart {
+        backend: PhantomData,
         alpha: self.alpha,
         b: self.b.clone(),
         a: self.a.clone(),

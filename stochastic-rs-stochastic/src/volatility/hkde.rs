@@ -15,12 +15,16 @@
 //! - Kirkby, J.L. (PROJ_Option_Pricing_Matlab)
 //! - Kou, S.G. (2002), "A Jump-Diffusion Model for Option Pricing"
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -30,7 +34,7 @@ use crate::traits::ProcessExt;
 ///
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `Hkde::new(..).with_lambda(0.8).with_rho(-0.4)`.
-pub struct Hkde<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Hkde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift rate (or risk-free rate minus dividend yield).
   pub mu: T,
   /// Mean-reversion speed of variance.
@@ -62,6 +66,10 @@ pub struct Hkde<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy.
   pub seed: S,
   cgns: Cgns<T>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
@@ -93,6 +101,7 @@ impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
     assert!(lambda >= T::zero(), "lambda must be >= 0");
 
     Self {
+      backend: PhantomData,
       mu,
       kappa,
       theta,
@@ -111,7 +120,9 @@ impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
       cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
   /// Replace `mu`, all else unchanged.
   pub fn with_mu(mut self, mu: T) -> Self {
     self.mu = mu;
@@ -219,7 +230,7 @@ impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Hkde<T, S, B> {
   /// Kou double-exponential jump compensator: E[e^J - 1]
   #[inline]
   fn k_bar(&self) -> T {
@@ -229,7 +240,9 @@ impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hkde<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] Hkde<T, S> { mu, kappa, theta, sigma_v, rho, v0, lambda, p_up, eta1, eta2, n, s0, t, use_sym, seed, cgns } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Hkde<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = HkdeSampler<T, S>

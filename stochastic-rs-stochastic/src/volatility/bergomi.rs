@@ -33,6 +33,8 @@
 //!
 //! Reference: Bergomi, "Smile Dynamics II", Risk 18(10), 67-73 (2005);
 //! Bergomi, "Stochastic Volatility Modeling" (2016) §7.
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use ndarray::s;
 #[cfg(feature = "python")]
@@ -40,13 +42,15 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Clone)]
-pub struct Bergomi<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Bergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Vol-of-vol ν scaling the log-variance driver's dispersion.
   pub nu: T,
   /// Initial variance level v₀ (variance, not volatility — squared inside
@@ -67,6 +71,10 @@ pub struct Bergomi<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   cgns: Cgns<T>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -83,6 +91,7 @@ impl<T: FloatExt, S: SeedExt> Bergomi<T, S> {
     seed: S,
   ) -> Self {
     Self {
+      backend: PhantomData,
       nu,
       v0,
       s0,
@@ -94,7 +103,9 @@ impl<T: FloatExt, S: SeedExt> Bergomi<T, S> {
       cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> Bergomi<T, S, B> {
   /// Replace `nu`, all else unchanged.
   pub fn with_nu(mut self, nu: T) -> Self {
     self.nu = nu;
@@ -170,7 +181,9 @@ impl<T: FloatExt> Default for Bergomi<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bergomi<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] Bergomi<T, S> { nu, v0, s0, r, rho, n, t, seed, cgns } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Bergomi<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = BergomiSampler<T, S>

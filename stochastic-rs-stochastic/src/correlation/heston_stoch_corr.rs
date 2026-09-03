@@ -14,11 +14,15 @@
 //!
 //! Returns `[S, v, ρ]` — three paths.
 
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -37,7 +41,7 @@ use crate::traits::ProcessExt;
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `HestonStochCorr::new(..).with_kappa_v(2.5).with_rho2(-0.4)`.
 #[derive(Debug, Clone)]
-pub struct HestonStochCorr<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct HestonStochCorr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   // Market
   /// Risk-free rate.
   pub r: T,
@@ -74,6 +78,10 @@ pub struct HestonStochCorr<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy.
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> HestonStochCorr<T, S> {
@@ -95,6 +103,7 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorr<T, S> {
     seed: S,
   ) -> Self {
     Self {
+      backend: PhantomData,
       r,
       s0,
       v0,
@@ -111,7 +120,9 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorr<T, S> {
       seed,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> HestonStochCorr<T, S, B> {
   /// Replace `r`, all else unchanged.
   pub fn with_r(mut self, r: T) -> Self {
     self.r = r;
@@ -197,7 +208,9 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorr<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonStochCorr<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] HestonStochCorr<T, S> { r, s0, v0, kappa_v, mu_v, sigma_v, rho0, kappa_r, mu_r, sigma_r, rho2, n, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for HestonStochCorr<T, S, B> {
   type Output = [Array1<T>; 3]; // [S, v, rho]
   type Sampler<'s>
     = HestonStochCorrSampler<T, S>

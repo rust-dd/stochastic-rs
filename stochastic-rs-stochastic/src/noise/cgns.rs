@@ -4,17 +4,21 @@
 //! Z_t=L\varepsilon_t,\quad \varepsilon_t\sim\mathcal N(0,I),\ LL^\top=\Sigma
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Copy, Clone)]
-pub struct Cgns<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Cgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Instantaneous correlation ρ between the two output Gaussian streams.
   pub rho: T,
   /// Number of points sampled along each correlated-Gaussian stream.
@@ -24,6 +28,10 @@ pub struct Cgns<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Cgns<T, S> {
@@ -33,11 +41,19 @@ impl<T: FloatExt, S: SeedExt> Cgns<T, S> {
       "Correlation coefficient must be in [-1, 1]"
     );
 
-    Self { rho, n, t, seed }
+    Self {
+      backend: PhantomData,
+      rho,
+      n,
+      t,
+      seed,
+    }
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Cgns<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Cgns<T, S, B> {}
+
+impl<T: FloatExt, S: SeedExt, B> Cgns<T, S, B> {
   /// Sample with an explicit seed, used by callers like Cbms.
   pub fn sample_with_seed(&self, seed: u64) -> [Array1<T>; 2] {
     self.sample_impl(&Deterministic::new(seed))
@@ -74,7 +90,9 @@ impl<T: FloatExt, S: SeedExt> Cgns<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cgns<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] Cgns<T, S> { rho, n, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Cgns<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = CgnsSampler<T, S>
@@ -89,6 +107,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cgns<T, S> {
   fn sampler(&self) -> CgnsSampler<T, S> {
     CgnsSampler {
       cgns: Cgns {
+        backend: PhantomData,
         rho: self.rho,
         n: self.n,
         t: self.t,

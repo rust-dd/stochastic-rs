@@ -22,6 +22,8 @@
 //! Bates calibrators, or compose your own wrapper struct on the Rust side
 //! and re-bind via PyO3.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use rand_distr::Distribution;
 #[cfg(feature = "python")]
@@ -32,6 +34,8 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::scalar::ScalarNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
@@ -39,7 +43,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Clone)]
-pub struct Merton<T, D, S: SeedExt = Unseeded>
+pub struct Merton<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -99,6 +103,10 @@ where
   /// construction from this same value — see `cpoisson`'s doc above) drives
   /// the jump component.
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -133,6 +141,7 @@ where
       seed.clone().derive(),
     );
     Self {
+      backend: PhantomData,
       alpha,
       sigma,
       lambda,
@@ -144,7 +153,13 @@ where
       seed,
     }
   }
+}
 
+impl<T, D, S: SeedExt, B> Merton<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
   /// Replace `alpha`, all else unchanged.
   pub fn with_alpha(mut self, alpha: T) -> Self {
     self.alpha = alpha;
@@ -267,7 +282,9 @@ impl<T: FloatExt> Default for Merton<T, ScalarNormal<T>, Unseeded> {
   }
 }
 
-impl<T, D, S: SeedExt> ProcessExt<T> for Merton<T, D, S>
+backend_switch!([T, D, S: SeedExt] Merton<T, D, S> { alpha, sigma, lambda, theta, n, x0, t, cpoisson, seed } via host where  T: FloatExt,  D: Distribution<T> + Send + Sync);
+
+impl<T, D, S: SeedExt, B: HostBackend> ProcessExt<T> for Merton<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,

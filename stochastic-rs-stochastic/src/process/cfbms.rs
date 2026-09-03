@@ -4,16 +4,20 @@
 //! dX_t=L\,dB_t^H,\quad LL^\top=\Sigma
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::cfgns::Cfgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-pub struct Cfbms<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Cfbms<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst parameter (`0 < H < 1`) shared by both components.
   pub hurst: T,
   /// Instantaneous correlation between the two fractional-noise drivers.
@@ -25,6 +29,10 @@ pub struct Cfbms<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   cfgns: Cfgns<T>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
@@ -39,6 +47,7 @@ impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
     );
 
     Self {
+      backend: PhantomData,
       hurst,
       rho,
       n,
@@ -49,7 +58,11 @@ impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cfbms<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Cfbms<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Cfbms<T, S> { hurst, rho, n, t, seed, cfgns } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Cfbms<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = CfbmsSampler<'s, T, S>

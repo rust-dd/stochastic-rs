@@ -4,6 +4,8 @@
 //! \mathbb E[B^H(t_1,t_2)B^H(s_1,s_2)]=\prod_{j=1}^2\tfrac12\left(t_j^{2H_j}+s_j^{2H_j}-|t_j-s_j|^{2H_j}\right)
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
@@ -16,12 +18,14 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Debug, Clone)]
-pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory (used for both
   /// coordinate axes — this model is isotropic, not the anisotropic
   /// `H_1`/`H_2` of the module header's general covariance formula).
@@ -39,11 +43,16 @@ pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded> {
   pub r: T,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
   pub fn new(hurst: T, m: usize, n: usize, r: T, seed: S) -> Self {
     Self {
+      backend: PhantomData,
       hurst,
       m,
       n,
@@ -53,7 +62,11 @@ impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Fbs<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Fbs<T, S> { hurst, m, n, r, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Fbs<T, S, B> {
   type Output = Array2<T>;
   type Sampler<'s>
     = FbsSampler<T, S>
@@ -218,6 +231,8 @@ impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
     (out, c0, c2)
   }
 }
+
+impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {}
 
 py_process_2d!(PyFbs, Fbs,
   sig: (hurst, m, n, r, seed=None, dtype=None),

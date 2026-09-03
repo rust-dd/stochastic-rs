@@ -8,6 +8,8 @@
 //! Exchange Rate Processes Implicit in Deutsche Mark Options*, Review of
 //! Financial Studies 9(1), 69–107, DOI: 10.1093/rfs/9.1.69.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use rand_distr::Distribution;
 #[cfg(feature = "python")]
@@ -15,6 +17,8 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::process::poisson::Poisson;
@@ -38,7 +42,7 @@ fn validate_drift_args<T: FloatExt>(
 
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `Bates1996::new(..).with_lambda(0.8).with_rho(-0.4)`.
-pub struct Bates1996<T, D, S: SeedExt = Unseeded>
+pub struct Bates1996<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -127,6 +131,10 @@ where
   /// `cpoisson`'s own seed (set at construction from this same value — see
   /// `cpoisson`'s doc above) drives the jump component.
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T, D, S: SeedExt> Bates1996<T, D, S>
@@ -170,6 +178,7 @@ where
     );
 
     Self {
+      backend: PhantomData,
       mu,
       b,
       r,
@@ -190,7 +199,13 @@ where
       seed,
     }
   }
+}
 
+impl<T, D, S: SeedExt, B> Bates1996<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
   /// Replace `mu`; re-validates that a drift specification still exists.
   pub fn with_mu(mut self, mu: Option<T>) -> Self {
     self.mu = mu;
@@ -351,7 +366,7 @@ where
   }
 }
 
-impl<T, D, S: SeedExt> Bates1996<T, D, S>
+impl<T, D, S: SeedExt, B> Bates1996<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -367,7 +382,9 @@ where
   }
 }
 
-impl<T, D, S: SeedExt> ProcessExt<T> for Bates1996<T, D, S>
+backend_switch!([T, D, S: SeedExt] Bates1996<T, D, S> { mu, b, r, r_f, lambda, k, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, cgns, cpoisson, seed } via host where  T: FloatExt,  D: Distribution<T> + Send + Sync);
+
+impl<T, D, S: SeedExt, B: HostBackend> ProcessExt<T> for Bates1996<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,

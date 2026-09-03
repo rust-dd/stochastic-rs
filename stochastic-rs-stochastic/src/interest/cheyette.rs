@@ -24,6 +24,8 @@
 //! *Explicit local volatility formula for Cheyette-type interest rate models*,
 //! arXiv:2506.23876, §2, eqs. (1)–(3).
 
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -31,6 +33,8 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::Fn2D;
@@ -42,7 +46,7 @@ use crate::traits::ProcessExt;
 const FORWARD_INTEGRATION_PANELS: usize = 256;
 
 #[derive(Clone)]
-pub struct Cheyette<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Cheyette<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Initial instantaneous forward curve `f₀(t)`.
   pub f0: Fn1D<T>,
   /// Mean reversion κ of the state `x`.
@@ -55,6 +59,10 @@ pub struct Cheyette<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Cheyette<T, S> {
@@ -68,6 +76,7 @@ impl<T: FloatExt, S: SeedExt> Cheyette<T, S> {
   ) -> Self {
     assert!(kappa > T::zero(), "kappa must be positive");
     Self {
+      backend: PhantomData,
       f0: f0.into(),
       kappa,
       sigma: sigma.into(),
@@ -76,7 +85,9 @@ impl<T: FloatExt, S: SeedExt> Cheyette<T, S> {
       seed,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> Cheyette<T, S, B> {
   /// Time step `Δt = t / (n − 1)`.
   pub fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
@@ -121,7 +132,9 @@ impl<T: FloatExt, S: SeedExt> Cheyette<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cheyette<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] Cheyette<T, S> { f0, kappa, sigma, n, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Cheyette<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = CheyetteSampler<'s, T>

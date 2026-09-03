@@ -45,6 +45,8 @@
 //!   "Bayesian inference for non-Gaussian Ornstein-Uhlenbeck stochastic
 //!   volatility processes", *JRSS* B 66(2), 369-393.
 
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use rand::Rng;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -53,12 +55,14 @@ use stochastic_rs_distributions::FloatExt;
 use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// BNS-Gamma stochastic volatility model. See module documentation for
 /// the SDE form and the discretisation.
-pub struct Bns<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Bns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Initial stock price.
   pub s0: Option<T>,
   /// Initial variance $\sigma^2_0 > 0$.
@@ -78,6 +82,10 @@ pub struct Bns<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy.
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Bns<T, S> {
@@ -97,6 +105,7 @@ impl<T: FloatExt, S: SeedExt> Bns<T, S> {
     assert!(nu > T::zero(), "jump intensity ν must be positive");
     assert!(jump_shape > T::zero(), "Gamma shape ω must be positive");
     Self {
+      backend: PhantomData,
       s0,
       sigma2_0,
       lambda,
@@ -110,7 +119,11 @@ impl<T: FloatExt, S: SeedExt> Bns<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bns<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Bns<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Bns<T, S> { s0, sigma2_0, lambda, mu, nu, jump_shape, n, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Bns<T, S, B> {
   /// `(log-stock path, variance σ² path)`.
   type Output = [Array1<T>; 2];
   type Sampler<'s>

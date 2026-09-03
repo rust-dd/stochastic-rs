@@ -247,6 +247,9 @@ macro_rules! py_process_2d {
 /// Storage form:
 /// - `via fgn`     — backend carried through an inner `fgn: Fgn<_, _, B>` field.
 /// - `via phantom` — backend carried through a `_backend: PhantomData<B>` field.
+/// - `via host`    — a process with a host sampler only (`B2: HostBackend`), backend carried
+///   through its public `backend: PhantomData<B>` field.
+/// - `via euler`   — a process with Euler-engine device kernels (`B2: EulerBackend`), same field.
 macro_rules! backend_switch {
   (
     [$($gen:tt)*] $ty:ident<$($targ:ident),+ $(,)?> { $($field:ident),* $(,)? } via fgn
@@ -272,6 +275,40 @@ macro_rules! backend_switch {
         $ty {
           $($field: self.$field,)*
           _backend: ::std::marker::PhantomData,
+        }
+      }
+    }
+  };
+  (
+    [$($gen:tt)*] $ty:ident<$($targ:ident),+ $(,)?> { $($field:ident),* $(,)? } via host
+    $(where $($wc:tt)*)?
+  ) => {
+    impl<$($gen)*, B> $ty<$($targ),+, B> $(where $($wc)*)? {
+      /// Re-type this process to sample on backend `B2` (compile-time, zero
+      /// runtime cost). This process has a host sampler only, so `B2` is a
+      /// host device ([`Cpu`](crate::device::Cpu), `Accelerate`); a device
+      /// implementation widens the bound without touching callers.
+      pub fn on<B2: $crate::device::HostBackend>(self) -> $ty<$($targ),+, B2> {
+        $ty {
+          $($field: self.$field,)*
+          backend: ::std::marker::PhantomData,
+        }
+      }
+    }
+  };
+  (
+    [$($gen:tt)*] $ty:ident<$($targ:ident),+ $(,)?> { $($field:ident),* $(,)? } via euler
+    $(where $($wc:tt)*)?
+  ) => {
+    impl<$($gen)*, B> $ty<$($targ),+, B> $(where $($wc)*)? {
+      /// Re-type this process to sample on backend `B2` (compile-time, zero
+      /// runtime cost): [`Cpu`](crate::device::Cpu) and `Accelerate` run the host
+      /// sampler, the device markers (`MetalNative`, `CudaNative`, `CubeCl`) the
+      /// Euler kernel.
+      pub fn on<B2: $crate::euler::EulerBackend>(self) -> $ty<$($targ),+, B2> {
+        $ty {
+          $($field: self.$field,)*
+          backend: ::std::marker::PhantomData,
         }
       }
     }

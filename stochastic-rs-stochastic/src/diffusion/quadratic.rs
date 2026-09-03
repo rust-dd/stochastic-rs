@@ -4,19 +4,23 @@
 //! dX_t=(\gamma X_t^2+\beta X_t+\alpha)dt+\sigma X_t\,dW_t
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Quadratic diffusion
 /// dX_t = (alpha + beta X_t + gamma X_t^2) dt + sigma X_t dW_t
-pub struct Quadratic<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Quadratic<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant term α in the drift `α + βX_t + γX_t²`.
   pub alpha: T,
   /// Linear coefficient β in the drift.
@@ -34,6 +38,10 @@ pub struct Quadratic<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Quadratic<T, S> {
@@ -48,6 +56,7 @@ impl<T: FloatExt, S: SeedExt> Quadratic<T, S> {
     seed: S,
   ) -> Self {
     Self {
+      backend: PhantomData,
       alpha,
       beta,
       gamma,
@@ -60,7 +69,11 @@ impl<T: FloatExt, S: SeedExt> Quadratic<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Quadratic<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Quadratic<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Quadratic<T, S> { alpha, beta, gamma, sigma, n, x0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Quadratic<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = QuadraticSampler<T>

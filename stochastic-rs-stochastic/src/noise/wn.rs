@@ -4,18 +4,22 @@
 //! \xi_i\stackrel{iid}{\sim}\mathcal N(0,1)
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Copy, Clone)]
-pub struct Wn<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Wn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Number of i.i.d. noise samples generated.
   pub n: usize,
   /// Target mean level for generated noise samples.
@@ -24,11 +28,16 @@ pub struct Wn<T: FloatExt, S: SeedExt = Unseeded> {
   pub std_dev: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Wn<T, S> {
   pub fn new(n: usize, mean: Option<T>, std_dev: Option<T>, seed: S) -> Self {
     Wn {
+      backend: PhantomData,
       n,
       mean,
       std_dev,
@@ -37,7 +46,11 @@ impl<T: FloatExt, S: SeedExt> Wn<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Wn<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Wn<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Wn<T, S> { n, mean, std_dev, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Wn<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = WnSampler<T>

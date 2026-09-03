@@ -4,18 +4,22 @@
 //! \Delta W_i\sim\mathcal N(0,\Delta t)
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Copy, Clone)]
-pub struct Gn<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Gn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Number of `N(0, dt)` increments sampled (no leading zero).
   pub n: usize,
   /// Simulation horizon [0, t] that `n` increments span (defaults to 1
@@ -23,6 +27,10 @@ pub struct Gn<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -30,9 +38,16 @@ pub struct Gn<T: FloatExt, S: SeedExt = Unseeded> {
 /// builds its Gaussian source fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> Gn<T, S> {
   pub fn new(n: usize, t: Option<T>, seed: S) -> Self {
-    Gn { n, t, seed }
+    Gn {
+      backend: PhantomData,
+      n,
+      t,
+      seed,
+    }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> Gn<T, S, B> {
   /// Replace the number of increments `n`, all else unchanged.
   pub fn with_steps(mut self, n: usize) -> Self {
     self.n = n;
@@ -60,7 +75,9 @@ impl<T: FloatExt> Default for Gn<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Gn<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] Gn<T, S> { n, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Gn<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = GnSampler<T>
@@ -107,7 +124,7 @@ impl<T: FloatExt> PathSampler<T> for GnSampler<T> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Gn<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Gn<T, S, B> {
   pub fn fill_slice(&self, out: &mut [T]) {
     let len = self.n.min(out.len());
     if len == 0 {

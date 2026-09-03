@@ -176,24 +176,7 @@ impl<T: FloatExt> Default for Cir<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Cir<T, S, B> {
-  /// Re-type this process to sample on backend `B2` (compile-time, zero
-  /// runtime cost): [`Cpu`] and `Accelerate` run the host sampler, the device
-  /// markers (`MetalNative`, `CudaNative`, `CubeCl`) the Euler kernel.
-  pub fn on<B2: EulerBackend>(self) -> Cir<T, S, B2> {
-    Cir {
-      theta: self.theta,
-      mu: self.mu,
-      sigma: self.sigma,
-      n: self.n,
-      x0: self.x0,
-      t: self.t,
-      use_sym: self.use_sym,
-      seed: self.seed,
-      backend: PhantomData,
-    }
-  }
-}
+backend_switch!([T: FloatExt, S: SeedExt] Cir<T, S> { theta, mu, sigma, n, x0, t, use_sym, seed } via euler);
 
 impl<T: FloatExt, S: SeedExt, B: EulerBackend> ProcessExt<T> for Cir<T, S, B> {
   type Output = Array1<T>;

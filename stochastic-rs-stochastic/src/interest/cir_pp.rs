@@ -33,6 +33,8 @@
 //! [`SeedExt`]'s `Clone` supertrait) and keeps its real [`CirSampler`], so
 //! at `phi ≡ 0` the two processes consume the same Gaussian stream through
 //! the same step formula and agree bit-for-bit.
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -41,6 +43,8 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::cir::Cir;
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::diffusion::cir::CirSampler;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
@@ -55,7 +59,7 @@ use crate::traits::ProcessExt;
 /// See the module doc for the `kappa`/`theta` naming note and the
 /// composition with [`Cir`].
 #[derive(Clone)]
-pub struct CirPlusPlus<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct CirPlusPlus<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed κ of the underlying CIR factor `x_t` (see the
   /// module doc: unlike [`Cir::theta`], the speed here is named `kappa`).
   pub kappa: T,
@@ -80,6 +84,10 @@ pub struct CirPlusPlus<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// Constant shift φ(t) ≡ 0 used by [`CirPlusPlus`]'s `Default` impl —
@@ -124,6 +132,7 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
     }
 
     Self {
+      backend: PhantomData,
       kappa,
       theta,
       sigma,
@@ -135,7 +144,9 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
       seed,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> CirPlusPlus<T, S, B> {
   /// Replace `kappa`, all else unchanged.
   pub fn with_kappa(mut self, kappa: T) -> Self {
     self.kappa = kappa;
@@ -222,7 +233,9 @@ impl<T: FloatExt> Default for CirPlusPlus<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for CirPlusPlus<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] CirPlusPlus<T, S> { kappa, theta, sigma, phi, n, x0, t, use_sym, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for CirPlusPlus<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = CirPlusPlusSampler<'s, T>

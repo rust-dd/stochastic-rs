@@ -14,6 +14,8 @@
 //! white noise calculus and applications to finance*, IDAQP 6 (2003), 1–32;
 //! Necula C. *Option pricing in a fractional Brownian motion environment*,
 //! Working Paper (2008).
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -23,6 +25,8 @@ use super::markov_lift::MarkovLift;
 use super::markov_lift::RoughSimd;
 use super::rl_fbm::RlFBm;
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -30,7 +34,7 @@ use crate::traits::ProcessExt;
 
 /// Fractional Black–Scholes asset path driven by RL-fBM.
 #[derive(Clone)]
-pub struct RlBlackScholes<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct RlBlackScholes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent.
   pub hurst: T,
   /// Initial spot $S_0$.
@@ -48,6 +52,10 @@ pub struct RlBlackScholes<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy.
   pub seed: S,
   fbm: RlFBm<T>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> RlBlackScholes<T, S> {
@@ -66,6 +74,7 @@ impl<T: FloatExt, S: SeedExt> RlBlackScholes<T, S> {
     assert!(s0 > T::zero(), "s0 must be positive");
     assert!(sigma >= T::zero(), "sigma must be non-negative");
     Self {
+      backend: PhantomData,
       hurst,
       s0,
       r,
@@ -79,7 +88,7 @@ impl<T: FloatExt, S: SeedExt> RlBlackScholes<T, S> {
   }
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> RlBlackScholes<T, S> {
+impl<T: FloatExt + RoughSimd, S: SeedExt, B> RlBlackScholes<T, S, B> {
   /// Generate $m$ independent fractional Black–Scholes asset paths.
   /// Each path is $S_0 \exp(rt - \tfrac{1}{2}\sigma^2 t^{2H} + \sigma W^H_t)$
   /// applied pointwise to a batch of RL-fBM paths.
@@ -104,7 +113,11 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlBlackScholes<T, S> {
   }
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlBlackScholes<T, S> {
+backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] RlBlackScholes<T, S> { hurst, s0, r, sigma, n, t, degree, seed, fbm } via host);
+
+impl<T: FloatExt + RoughSimd, S: SeedExt, B: HostBackend> ProcessExt<T>
+  for RlBlackScholes<T, S, B>
+{
   type Output = Array1<T>;
   type Sampler<'s>
     = RlBlackScholesSampler<T, S>
@@ -122,6 +135,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlBlackScholes<T, S>
       two_h: T::from_f64_fast(2.0) * self.hurst,
       half_sigma_sq: T::from_f64_fast(0.5) * self.sigma * self.sigma,
       gn: Gn::<T, S> {
+        backend: PhantomData,
         n: self.n - 1,
         t: self.t,
         seed: self.seed.derive(),

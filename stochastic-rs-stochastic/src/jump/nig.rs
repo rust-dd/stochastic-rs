@@ -4,6 +4,8 @@
 //! X_t=\mu t+\beta I_t+W_{I_t},\quad I_t\sim\mathrm{Ig}(\delta t,\gamma)
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -11,11 +13,13 @@ use stochastic_rs_distributions::inverse_gauss::SimdInverseGauss;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-pub struct Nig<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Nig<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Skewness-in-subordinated-time β (matches the module header's own β,
   /// multiplying the IG-subordinator increment `I_t`). NIG is a pure Lévy
   /// process with **no mean reversion** — despite the field's name, this
@@ -37,12 +41,17 @@ pub struct Nig<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Nig<T, S> {
   pub fn new(theta: T, sigma: T, kappa: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(kappa > T::zero(), "kappa must be positive");
     Self {
+      backend: PhantomData,
       theta,
       sigma,
       kappa,
@@ -54,14 +63,18 @@ impl<T: FloatExt, S: SeedExt> Nig<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Nig<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Nig<T, S, B> {}
+
+impl<T: FloatExt, S: SeedExt, B> Nig<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Nig<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] Nig<T, S> { theta, sigma, kappa, n, x0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Nig<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = NigSampler<T>

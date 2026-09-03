@@ -70,6 +70,20 @@ impl Backend for MetalNative {}
 #[cfg(feature = "accelerate")]
 impl Backend for Accelerate {}
 
+/// Host capability: the process samples on the CPU through its own
+/// [`ProcessExt`](crate::traits::ProcessExt) sampler. Every process carries a
+/// backend parameter `B` and accepts at least the host devices in `on::<B2>()`;
+/// a process whose bound is this trait has no device kernel yet, and gaining
+/// one later only widens the bound (to [`crate::euler::EulerBackend`] or
+/// [`FgnBackend`]), which breaks no caller. [`Cpu`] and `Accelerate` (vDSP, a
+/// CPU device) implement it.
+pub trait HostBackend: Backend {}
+
+impl HostBackend for Cpu {}
+
+#[cfg(feature = "accelerate")]
+impl HostBackend for Accelerate {}
+
 /// The fGN sampling capability of a [`Backend`]: circulant-embedding
 /// fractional Gaussian noise, the one algorithm every device implements
 /// today. `Fgn<T, S, B>` dispatches to `B` through this trait.

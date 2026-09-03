@@ -22,6 +22,8 @@
 //! simplification, not a reproduction of that (or any other specific
 //! published) numerical scheme.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -29,12 +31,14 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::special::gamma;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-pub struct RoughHeston<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct RoughHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Initial variance/volatility level.
@@ -67,6 +71,10 @@ pub struct RoughHeston<T: FloatExt, S: SeedExt = Unseeded> {
   pub rho: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> RoughHeston<T, S> {
@@ -83,6 +91,7 @@ impl<T: FloatExt, S: SeedExt> RoughHeston<T, S> {
     seed: S,
   ) -> Self {
     RoughHeston {
+      backend: PhantomData,
       hurst,
       v0,
       theta,
@@ -100,7 +109,11 @@ impl<T: FloatExt, S: SeedExt> RoughHeston<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughHeston<T, S> {
+impl<T: FloatExt, S: SeedExt, B> RoughHeston<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] RoughHeston<T, S> { hurst, v0, theta, kappa, nu, c1, c2, t, n, mu, s0, rho, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for RoughHeston<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = RoughHestonSampler<T, S>

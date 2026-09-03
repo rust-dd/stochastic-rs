@@ -58,6 +58,8 @@
 //! [`crate::interest::lmm::Lmm`] (added 2026-05-08; spot-LIBOR measure,
 //! Glasserman 2003 §3.7).
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use ndarray::Array2;
 #[cfg(feature = "python")]
@@ -66,6 +68,8 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -78,7 +82,7 @@ use crate::traits::ProcessExt;
 /// finite `dt` (paths may go negative when `λ √dt` is not small); only the
 /// continuous-time limit is log-normal. No tenor structure, no measure
 /// choice, no cross-forward drift coupling.
-pub struct Bgm<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Bgm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Per-rate noise scale `λ_i` in the Euler step
   /// `L_i(t+dt) = L_i(t)·(1 + λ_i·ΔW)`. **Not** a Black/log-normal vol —
   /// the discrete recurrence is an Euler approximation, not exact log-normal
@@ -94,6 +98,10 @@ pub struct Bgm<T: FloatExt, S: SeedExt = Unseeded> {
   pub n: usize,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Bgm<T, S> {
@@ -113,6 +121,7 @@ impl<T: FloatExt, S: SeedExt> Bgm<T, S> {
       xn
     );
     Self {
+      backend: PhantomData,
       lambda,
       x0,
       xn,
@@ -123,7 +132,11 @@ impl<T: FloatExt, S: SeedExt> Bgm<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bgm<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Bgm<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Bgm<T, S> { lambda, x0, xn, t, n, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Bgm<T, S, B> {
   type Output = Array2<T>;
   type Sampler<'s>
     = BgmSampler<T, S>

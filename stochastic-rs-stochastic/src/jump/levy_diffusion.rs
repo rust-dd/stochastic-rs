@@ -4,6 +4,8 @@
 //! dX_t=\mu_tdt+\sigma_t dW_t+dL_t
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use rand_distr::Distribution;
 #[cfg(feature = "python")]
@@ -13,13 +15,15 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-pub struct LevyDiffusion<T, D, S: SeedExt = Unseeded>
+pub struct LevyDiffusion<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -74,6 +78,10 @@ where
   /// construction from this same value — see `cpoisson`'s doc above) drives
   /// the jump component.
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T, D, S: SeedExt> LevyDiffusion<T, D, S>
@@ -102,6 +110,7 @@ where
       seed.clone().derive(),
     );
     Self {
+      backend: PhantomData,
       gamma,
       sigma,
       lambda,
@@ -114,7 +123,16 @@ where
   }
 }
 
-impl<T, D, S: SeedExt> ProcessExt<T> for LevyDiffusion<T, D, S>
+impl<T, D, S: SeedExt, B> LevyDiffusion<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+}
+
+backend_switch!([T, D, S: SeedExt] LevyDiffusion<T, D, S> { gamma, sigma, lambda, n, x0, t, cpoisson, seed } via host where  T: FloatExt,  D: Distribution<T> + Send + Sync);
+
+impl<T, D, S: SeedExt, B: HostBackend> ProcessExt<T> for LevyDiffusion<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,

@@ -66,6 +66,8 @@
 //! Libor); supply a custom positive-definite matrix via `with_correlation`.
 //!
 
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
@@ -74,6 +76,8 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -85,7 +89,7 @@ use crate::traits::ProcessExt;
 /// Every field has a matching `with_*` builder setter (in addition to
 /// [`with_correlation`](Lmm::with_correlation)), e.g.
 /// `Lmm::new(..).with_steps(200).with_horizon(Some(1.5))`.
-pub struct Lmm<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Lmm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Tenor dates `T_0 < T_1 < … < T_M`, length `M+1`. Strictly increasing.
   pub tenor: Array1<T>,
   /// Initial forward Libor curve `L_n(0)` for `n=0..M-1`. Length `M`.
@@ -104,6 +108,10 @@ pub struct Lmm<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Lmm<T, S> {
@@ -118,6 +126,7 @@ impl<T: FloatExt, S: SeedExt> Lmm<T, S> {
   ) -> Self {
     validate_lmm_inputs(&tenor, &l0, &sigma);
     Self {
+      backend: PhantomData,
       tenor,
       l0,
       sigma,
@@ -127,7 +136,9 @@ impl<T: FloatExt, S: SeedExt> Lmm<T, S> {
       seed,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
   /// Attach a forward correlation matrix `rho` (`M × M`, symmetric,
   /// positive-definite). Panics if shape is wrong or Cholesky fails.
   pub fn with_correlation(mut self, rho: Array2<T>) -> Self {
@@ -228,7 +239,9 @@ fn validate_lmm_inputs<T: FloatExt>(tenor: &Array1<T>, l0: &Array1<T>, sigma: &A
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Lmm<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] Lmm<T, S> { tenor, l0, sigma, chol, n, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Lmm<T, S, B> {
   type Output = Array2<T>;
   type Sampler<'s>
     = LmmSampler<T, S>

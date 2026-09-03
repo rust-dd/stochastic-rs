@@ -14,12 +14,16 @@
 //! Diffusion vanishes *quadratically* at ±1 (stronger confinement).
 //! Closed-form stationary density: f(ρ̃) ∝ (1+ρ̃)^{a+b}(1−ρ̃)^{a−b}.
 
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -31,7 +35,7 @@ use crate::traits::ProcessExt;
 ///
 /// Output ρ_t = tanh(X_t) ∈ (−1, 1).
 #[derive(Debug, Clone)]
-pub struct TengSCP<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct TengSCP<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed (κ > 0).
   pub kappa: T,
   /// Long-run correlation level (μ ∈ (−1, 1)).
@@ -53,11 +57,16 @@ pub struct TengSCP<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy.
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> TengSCP<T, S> {
   pub fn new(kappa: T, mu: T, sigma: T, rho0: T, n: usize, t: Option<T>, seed: S) -> Self {
     Self {
+      backend: PhantomData,
       kappa,
       mu,
       sigma,
@@ -69,7 +78,9 @@ impl<T: FloatExt, S: SeedExt> TengSCP<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> TengSCP<T, S> {
+impl<T: FloatExt, S: SeedExt, B> TengSCP<T, S, B> {}
+
+impl<T: FloatExt, S: SeedExt, B> TengSCP<T, S, B> {
   /// Reparametrised coefficients (Eq. 21):
   /// κ* = κ + σ², μ* = κμ/(κ+σ²), σ* = σ.
   pub fn kappa_star(&self) -> T {
@@ -124,7 +135,9 @@ impl<T: FloatExt, S: SeedExt> TengSCP<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for TengSCP<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] TengSCP<T, S> { kappa, mu, sigma, rho0, n, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for TengSCP<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = TengSCPSampler<T>

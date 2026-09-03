@@ -4,17 +4,21 @@
 //! dX_t=-\kappa\frac{X_t}{\sqrt{1+X_t^2}}\,dt+\sigma\,dW_t
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-pub struct Hyperbolic<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Hyperbolic<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Nonlinear restoring-force strength κ in the drift `-κX_t/√(1+X_t²)`
   /// (a bounded, hyperbolic-tangent-like pull toward 0, not a linear
   /// mean-reversion speed).
@@ -29,11 +33,16 @@ pub struct Hyperbolic<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Hyperbolic<T, S> {
   pub fn new(kappa: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self {
+      backend: PhantomData,
       kappa,
       sigma,
       n,
@@ -44,7 +53,11 @@ impl<T: FloatExt, S: SeedExt> Hyperbolic<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hyperbolic<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Hyperbolic<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Hyperbolic<T, S> { kappa, sigma, n, x0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Hyperbolic<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = HyperbolicSampler<T>

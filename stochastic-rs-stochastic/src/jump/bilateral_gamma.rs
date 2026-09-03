@@ -4,6 +4,8 @@
 //! X_t=\Gamma^+_t-\Gamma^-_t,\quad \Gamma^+\sim\Gamma(\alpha_p t,\lambda_p^{-1}),\ \Gamma^-\sim\Gamma(\alpha_m t,\lambda_m^{-1})
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -11,6 +13,8 @@ use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -24,7 +28,7 @@ use crate::traits::ProcessExt;
 /// $$
 /// \psi(\xi)=\alpha_p\ln\!\frac{\lambda_p}{\lambda_p-i\xi}+\alpha_m\ln\!\frac{\lambda_m}{\lambda_m+i\xi}
 /// $$
-pub struct BilateralGamma<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct BilateralGamma<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Shape parameter for positive jumps.
   pub alpha_p: T,
   /// Rate parameter for positive jumps.
@@ -41,6 +45,10 @@ pub struct BilateralGamma<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> BilateralGamma<T, S> {
@@ -59,6 +67,7 @@ impl<T: FloatExt, S: SeedExt> BilateralGamma<T, S> {
     assert!(alpha_m > T::zero(), "alpha_m must be positive");
     assert!(lambda_m > T::zero(), "lambda_m must be positive");
     Self {
+      backend: PhantomData,
       alpha_p,
       lambda_p,
       alpha_m,
@@ -71,14 +80,18 @@ impl<T: FloatExt, S: SeedExt> BilateralGamma<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> BilateralGamma<T, S> {
+impl<T: FloatExt, S: SeedExt, B> BilateralGamma<T, S, B> {}
+
+impl<T: FloatExt, S: SeedExt, B> BilateralGamma<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BilateralGamma<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] BilateralGamma<T, S> { alpha_p, lambda_p, alpha_m, lambda_m, n, x0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for BilateralGamma<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = BilateralGammaSampler<T>
@@ -152,7 +165,7 @@ impl<T: FloatExt> PathSampler<T> for BilateralGammaSampler<T> {
 /// $$
 /// X_t=\sigma W_t+\Gamma^+_t-\Gamma^-_t
 /// $$
-pub struct BilateralGammaMotion<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct BilateralGammaMotion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Diffusion coefficient of the Brownian component.
   pub sigma: T,
   /// Shape parameter for positive jumps.
@@ -171,6 +184,10 @@ pub struct BilateralGammaMotion<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> BilateralGammaMotion<T, S> {
@@ -190,6 +207,7 @@ impl<T: FloatExt, S: SeedExt> BilateralGammaMotion<T, S> {
     assert!(alpha_m > T::zero(), "alpha_m must be positive");
     assert!(lambda_m > T::zero(), "lambda_m must be positive");
     Self {
+      backend: PhantomData,
       sigma,
       alpha_p,
       lambda_p,
@@ -203,14 +221,18 @@ impl<T: FloatExt, S: SeedExt> BilateralGammaMotion<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> BilateralGammaMotion<T, S> {
+impl<T: FloatExt, S: SeedExt, B> BilateralGammaMotion<T, S, B> {}
+
+impl<T: FloatExt, S: SeedExt, B> BilateralGammaMotion<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BilateralGammaMotion<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] BilateralGammaMotion<T, S> { sigma, alpha_p, lambda_p, alpha_m, lambda_m, n, x0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for BilateralGammaMotion<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = BilateralGammaMotionSampler<T>

@@ -17,6 +17,8 @@
 //! Reference: Bilokon & Wong (2026) §5.5; El Euch O., Rosenbaum M. *The
 //! characteristic function of rough Heston models*, Math. Finance 29 (2019),
 //! 3–38.
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -25,6 +27,8 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use super::kernel::RlKernel;
 use super::markov_lift::MarkovLift;
 use super::markov_lift::RoughSimd;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -32,7 +36,7 @@ use crate::traits::ProcessExt;
 
 /// Rough Heston model with Volterra-Cir variance and correlated Gbm asset.
 #[derive(Clone)]
-pub struct RlHeston<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct RlHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent $H \in (0, 1/2)$ of the variance kernel.
   pub hurst: T,
   /// Initial spot $S_0$.
@@ -59,6 +63,10 @@ pub struct RlHeston<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
   cgns: Cgns<T>,
   markov: MarkovLift<T>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 fn build_markov<T: FloatExt>(
@@ -98,6 +106,7 @@ impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
       assert!(v0 >= T::zero(), "v0 must be non-negative");
     }
     Self {
+      backend: PhantomData,
       hurst,
       s0,
       v0,
@@ -116,7 +125,7 @@ impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
   }
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> RlHeston<T, S> {
+impl<T: FloatExt + RoughSimd, S: SeedExt, B> RlHeston<T, S, B> {
   /// Generate $m$ independent rough Heston paths.
   /// Returns `[spot_paths, variance_paths]` where each is an $(m, n)$ array.
   pub fn sample_batch(&self, m: usize) -> [Array2<T>; 2] {
@@ -159,7 +168,9 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlHeston<T, S> {
   }
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlHeston<T, S> {
+backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] RlHeston<T, S> { hurst, s0, v0, kappa, theta, nu, rho, mu, n, t, degree, seed, cgns, markov } via host);
+
+impl<T: FloatExt + RoughSimd, S: SeedExt, B: HostBackend> ProcessExt<T> for RlHeston<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = RlHestonSampler<'s, T, S>

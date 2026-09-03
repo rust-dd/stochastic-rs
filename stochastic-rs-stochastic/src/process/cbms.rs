@@ -4,16 +4,20 @@
 //! dX_t=L\,dW_t,\quad LL^\top=\Sigma
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-pub struct Cbms<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Cbms<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Instantaneous correlation between the two Brownian components.
   pub rho: T,
   /// Number of discrete time points in each path.
@@ -23,6 +27,10 @@ pub struct Cbms<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   cgns: Cgns<T>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Cbms<T, S> {
@@ -33,6 +41,7 @@ impl<T: FloatExt, S: SeedExt> Cbms<T, S> {
     );
 
     Self {
+      backend: PhantomData,
       rho,
       n,
       t,
@@ -42,7 +51,11 @@ impl<T: FloatExt, S: SeedExt> Cbms<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cbms<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Cbms<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Cbms<T, S> { rho, n, t, seed, cgns } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Cbms<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = CbmsSampler<T, S>

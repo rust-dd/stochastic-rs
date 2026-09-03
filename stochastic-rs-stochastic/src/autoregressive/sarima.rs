@@ -4,12 +4,16 @@
 //! \Phi(B^s)\phi(B)(1-B)^d(1-B^s)^DX_t=\Theta(B^s)\theta(B)\varepsilon_t
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -48,7 +52,7 @@ use crate::traits::ProcessExt;
 /// 2. A single-pass SARMA recursion generates the "fully differenced" data.
 /// 3. We invert the seasonal differencing D times (lag s) and then invert the non-seasonal differencing d times to recover X_t.
 #[derive(Debug, Clone)]
-pub struct Sarima<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Sarima<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Non-seasonal AR coefficients, length p
   pub non_seasonal_ar_coefs: Array1<T>,
   /// Non-seasonal MA coefficients, length q
@@ -69,6 +73,10 @@ pub struct Sarima<T: FloatExt, S: SeedExt = Unseeded> {
   pub n: usize,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Sarima<T, S> {
@@ -89,6 +97,7 @@ impl<T: FloatExt, S: SeedExt> Sarima<T, S> {
     assert!(sigma > T::zero(), "Sarima requires sigma > 0");
     assert!(s > 0, "Sarima requires season length s > 0");
     Sarima {
+      backend: PhantomData,
       non_seasonal_ar_coefs,
       non_seasonal_ma_coefs,
       seasonal_ar_coefs,
@@ -103,7 +112,11 @@ impl<T: FloatExt, S: SeedExt> Sarima<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Sarima<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Sarima<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Sarima<T, S> { non_seasonal_ar_coefs, non_seasonal_ma_coefs, seasonal_ar_coefs, seasonal_ma_coefs, d, D, s, sigma, n, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Sarima<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = SarimaSampler<T>

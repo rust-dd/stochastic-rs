@@ -312,12 +312,14 @@ Each contains the file-by-file recipe.
 
 ## Euler engine
 
-The sampling backend is a **type parameter of the process**, exactly as for
-the fGN-driven types: `Gbm<T, S, B = Cpu>`, `Ou` and `Cir` are re-typed with
-`.on::<B2>()` and then sampled through `ProcessExt` as usual —
-`gbm.on::<MetalNative>().sample_par(m)`. On `Cpu` (and `Accelerate`) that is
-the process's own sampler, so nothing is re-implemented on the host: GBM keeps
-its exact log-normal scheme, OU and CIR their SIMD steppers. The GPU back-ends
+The sampling backend is a **type parameter of every process**
+(`Name<T, S, B = Cpu>`, switched with `.on::<B2>()`); the Euler engine is the
+capability behind the device markers for `Gbm`, `Ou` and `Cir`:
+`gbm.on::<MetalNative>().sample_par(m)` samples through `ProcessExt` as usual.
+On `Cpu` (and `Accelerate`) that is the process's own sampler, so nothing is
+re-implemented on the host: GBM keeps its exact log-normal scheme, OU and CIR
+their SIMD steppers. Every other process accepts the host markers only until it
+gains a kernel (see the backends concept page). The GPU back-ends
 run one device thread per path with the whole Euler–Maruyama recursion in the
 kernel and counter-hashed Box–Muller normals (`sample_par` is one launch for
 all `m` paths):

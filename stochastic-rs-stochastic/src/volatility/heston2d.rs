@@ -20,11 +20,15 @@
 //! Output is **log-prices** `x_i`, not levels `S_i = exp(x_i)`, matching MATLAB
 //! and the convention expected by `FMVol`.
 
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -36,7 +40,7 @@ use crate::traits::ProcessExt;
 /// correlation vector `rho`. Sampling produces four arrays `[x_1, v_1, x_2,
 /// v_2]` of length `n`, where `x_i` is the **log-price** and `v_i` is the
 /// instantaneous variance.
-pub struct Heston2D<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Heston2D<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Initial log-prices `[x_1(0), x_2(0)]`.
   pub x0: [Option<T>; 2],
   /// Initial variances `[v_1(0), v_2(0)]`; both entries must be present,
@@ -65,6 +69,10 @@ pub struct Heston2D<T: FloatExt, S: SeedExt = Unseeded> {
   /// Cholesky factor `L` of the 4×4 correlation matrix, stored as
   /// `[L_11, L_21, L_22, L_31, L_32, L_33, L_41, L_42, L_43, L_44]`.
   chol: [T; 10],
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// Lower-triangular Cholesky factor of the 4×4 correlation matrix induced by
@@ -196,6 +204,7 @@ impl<T: FloatExt, S: SeedExt> Heston2D<T, S> {
     warn_on_feller_violation(&kappa, &theta, &sigma, use_sym);
     let chol = cholesky_4x4::<T>(rho);
     Self {
+      backend: PhantomData,
       x0,
       v0,
       mu,
@@ -212,7 +221,11 @@ impl<T: FloatExt, S: SeedExt> Heston2D<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Heston2D<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Heston2D<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Heston2D<T, S> { x0, v0, mu, theta, kappa, sigma, rho, n, t, use_sym, seed, chol } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Heston2D<T, S, B> {
   /// Output: `[x_1, v_1, x_2, v_2]` — log-prices and instantaneous variances
   /// for both assets, each of length `n`.
   type Output = [Array1<T>; 4];

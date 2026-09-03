@@ -18,6 +18,8 @@
 //! Are Discontinuous*, Journal of Financial Economics 3(1-2), 125–144,
 //! DOI: 10.1016/0304-405X(76)90022-2.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use rand_distr::Distribution;
 #[cfg(feature = "python")]
@@ -27,6 +29,8 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -48,7 +52,7 @@ fn validate_drift_args<T: FloatExt>(
 
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `BatesSvj::new(..).with_lambda(0.8).with_rho(-0.4)`.
-pub struct BatesSvj<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct BatesSvj<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift rate of the asset price
   pub mu: Option<T>,
   /// Cost-of-carry rate
@@ -84,6 +88,10 @@ pub struct BatesSvj<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   cgns: Cgns<T>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
@@ -116,6 +124,7 @@ impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
     validate_drift_args(mu, b, r, r_f, "BatesSvj");
 
     Self {
+      backend: PhantomData,
       mu,
       b,
       r,
@@ -136,7 +145,9 @@ impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
       cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> BatesSvj<T, S, B> {
   /// Replace `mu`; re-validates that a drift specification still exists.
   pub fn with_mu(mut self, mu: Option<T>) -> Self {
     self.mu = mu;
@@ -259,7 +270,7 @@ impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
+impl<T: FloatExt, S: SeedExt, B> BatesSvj<T, S, B> {
   #[inline]
   fn kappa_j(&self) -> T {
     (self.nu + T::from_f64_fast(0.5) * self.omega * self.omega).exp() - T::one()
@@ -276,7 +287,9 @@ impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BatesSvj<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] BatesSvj<T, S> { mu, b, r, r_f, lambda, nu, omega, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, seed, cgns } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for BatesSvj<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = BatesSvjSampler<T, S>

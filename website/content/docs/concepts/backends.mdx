@@ -1,6 +1,6 @@
 ---
 title: Sampling backends
-description: Compile-time GPU / accelerator selection via `.on::<B>()` — the `Backend` marker, the `FgnBackend` capability, and zero-cost dispatch.
+description: Compile-time GPU / accelerator selection via `.on::<B>()` — the `Backend` marker, the `HostBackend` / `FgnBackend` / `EulerBackend` capabilities, and zero-cost dispatch.
 category: concept
 since: 2.4.0
 status: stable
@@ -44,12 +44,24 @@ fields are moved, nothing is copied, and the choice is resolved at compile time.
 ## The `Backend` marker and the `FgnBackend` capability
 
 `Backend` itself is a bare device marker — it carries no algorithm. What a
-device can compute is expressed by capability subtraits: `FgnBackend:
-Backend` is the fGN sampling capability, the one algorithm every marker
-implements today, and a future accelerated engine adds its own capability
-without touching the marker or any implementor. Bound on `Backend` to say
-"device-parameterised"; bound on `FgnBackend` when the code actually samples
-fractional noise.
+device can compute is expressed by capability subtraits, and **every process
+carries the backend as its last type parameter** (`Name<T, S, B = Cpu>`), so
+`.on::<B2>()` exists on all of them; the capability the process's bound names
+says which markers it accepts:
+
+- `HostBackend: Backend` — the process samples on the CPU through its own
+  `ProcessExt` sampler. `Cpu` and `Accelerate` implement it. Every process
+  accepts at least these; a process whose only bound is `HostBackend` has no
+  device kernel yet, and gaining one later merely widens the bound, which
+  breaks no caller.
+- `FgnBackend: Backend` — fractional Gaussian noise on the device (FFT
+  pipeline); the fGN-driven family (`Fgn`, `Fbm`, `Fou`, `Fcir`, `Fgbm`,
+  `FJacobi`, `Cfou`, `Cfgns`, `JumpFou`, `JumpFOUCustom`, `Sde`) is bound on it.
+- `EulerBackend: Backend` — the Euler engine's device kernels (`Gbm`, `Ou`,
+  `Cir` today); `Cpu` and `Accelerate` implement it as the host sampler.
+
+Bound on `Backend` to say "device-parameterised"; bound on a capability when
+the code actually samples through it.
 
 | Marker        | Feature                          | Backs onto                             | Hardware            |
 |---------------|----------------------------------|----------------------------------------|---------------------|
@@ -69,11 +81,15 @@ error*, not a silent runtime fallback.
 
 ## Which processes support it
 
-The backend type parameter is carried by the fractional / fGN family: `Fgn`,
-`Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `Cfou`, `Cfgns`, `JumpFou`,
-`JumpFOUCustom`, and the generic `Sde`. These are the processes whose hot path is
-a circulant-embedding FFT, which is exactly what the GPU / accelerator backends
-speed up. Non-fractional processes sample on the CPU only.
+All 131 processes carry the parameter and accept `.on::<Cpu>()` (and
+`.on::<Accelerate>()` under the `accelerate` feature). Device kernels exist for
+two families today: the fGN-driven processes (`FgnBackend`: `Fgn`, `Fbm`,
+`Fou`, `Fcir`, `Fgbm`, `FJacobi`, `Cfou`, `Cfgns`, `JumpFou`, `JumpFOUCustom`,
+`Sde`), whose hot path is a circulant-embedding FFT, and the Euler engine's
+scalar diffusions (`EulerBackend`: `Gbm`, `Ou`, `Cir`), which run the whole
+Euler–Maruyama recursion in one kernel launch. Every other process is bound on
+`HostBackend`: selecting a GPU marker for it is a compile error, and adding a
+kernel later widens the bound without touching callers.
 
 ## Precision
 

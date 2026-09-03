@@ -15,11 +15,15 @@
 //! Options*, Review of Financial Studies 6(2), 327–343,
 //! DOI: 10.1093/rfs/6.2.327.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -42,7 +46,7 @@ fn validate_drift_args<T: FloatExt>(
 
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `HestonLog::new(..).with_kappa(2.0).with_rho(-0.4)`.
-pub struct HestonLog<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct HestonLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift rate of the asset price
   pub mu: Option<T>,
   /// Cost-of-carry rate
@@ -71,6 +75,10 @@ pub struct HestonLog<T: FloatExt, S: SeedExt = Unseeded> {
   pub use_sym: Option<bool>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
@@ -104,6 +112,7 @@ impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
     validate_drift_args(mu, b, r, r_f, "HestonLog");
 
     Self {
+      backend: PhantomData,
       mu,
       b,
       r,
@@ -120,7 +129,9 @@ impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
       seed,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
   /// Replace `mu`; re-validates that a drift specification still exists.
   pub fn with_mu(mut self, mu: Option<T>) -> Self {
     self.mu = mu;
@@ -224,7 +235,7 @@ impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
+impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
   #[inline]
   fn drift(&self) -> T {
     // Construction-time `validate_drift_args` guarantees totality at runtime.
@@ -237,7 +248,9 @@ impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HestonLog<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] HestonLog<T, S> { mu, b, r, r_f, kappa, theta, xi, rho, n, s0, v0, t, use_sym, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for HestonLog<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = HestonLogSampler<T>

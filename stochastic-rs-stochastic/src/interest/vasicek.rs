@@ -14,10 +14,14 @@
 //!   diffusion ([`Ou`]) this file wraps under
 //!   short-rate parameter names.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::diffusion::ou::Ou;
 use crate::diffusion::ou::OuSampler;
 use crate::traits::FloatExt;
@@ -29,7 +33,7 @@ use crate::traits::ProcessExt;
 /// field [`theta`](Self::theta) corresponds to `a` (mean-reversion speed)
 /// and [`mu`](Self::mu) corresponds to `b` (long-run mean level).
 #[derive(Clone)]
-pub struct Vasicek<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Vasicek<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed (`a` in the SDE). Controls how fast `r` is pulled
   /// back toward [`mu`](Self::mu).
   pub theta: T,
@@ -47,6 +51,10 @@ pub struct Vasicek<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   ou: Ou<T, S>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -67,6 +75,7 @@ pub struct Vasicek<T: FloatExt, S: SeedExt = Unseeded> {
 impl<T: FloatExt, S: SeedExt> Vasicek<T, S> {
   pub fn new(theta: T, mu: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self {
+      backend: PhantomData,
       mu,
       sigma,
       theta,
@@ -77,7 +86,9 @@ impl<T: FloatExt, S: SeedExt> Vasicek<T, S> {
       seed,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> Vasicek<T, S, B> {
   /// Replace `theta`; rebuilds the embedded `Ou`.
   pub fn with_theta(mut self, theta: T) -> Self {
     self.theta = theta;
@@ -162,7 +173,9 @@ impl<T: FloatExt> Default for Vasicek<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Vasicek<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] Vasicek<T, S> { theta, mu, sigma, n, x0, t, seed, ou } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Vasicek<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = VasicekSampler<T>

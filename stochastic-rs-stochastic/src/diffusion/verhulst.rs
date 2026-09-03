@@ -4,19 +4,23 @@
 //! dX_t=rX_t\left(1-\frac{X_t}{K}\right)dt+\sigma X_t dW_t
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Verhulst (logistic) diffusion
 /// dX_t = r X_t (1 - X_t / K) dt + sigma X_t dW_t
-pub struct Verhulst<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Verhulst<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Logistic growth rate r (matches the module header's own r in
   /// `dX_t=rX_t(1−X_t/K)dt+...`).
   pub r: T,
@@ -36,6 +40,10 @@ pub struct Verhulst<T: FloatExt, S: SeedExt = Unseeded> {
   pub clamp: Option<bool>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Verhulst<T, S> {
@@ -50,6 +58,7 @@ impl<T: FloatExt, S: SeedExt> Verhulst<T, S> {
     seed: S,
   ) -> Self {
     Self {
+      backend: PhantomData,
       r,
       k,
       sigma,
@@ -62,7 +71,11 @@ impl<T: FloatExt, S: SeedExt> Verhulst<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Verhulst<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Verhulst<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Verhulst<T, S> { r, k, sigma, n, x0, t, clamp, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Verhulst<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = VerhulstSampler<T>

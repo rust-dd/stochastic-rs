@@ -4,6 +4,8 @@
 //! dX_t=K(\Theta-X_t)dt+\sqrt{A+BX_t}\,dW_t,\quad r_t=\ell_0+\ell^\top X_t
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -11,6 +13,8 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -25,7 +29,7 @@ use crate::traits::ProcessExt;
 ///
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `DuffieKanJumpExp::new(..).with_rho(-0.5).with_lambda(0.8)`.
-pub struct DuffieKanJumpExp<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct DuffieKanJumpExp<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Diffusion-loading coefficient on `r_t`, shared between both factors'
   /// diffusion scaling (multiplies `r` inside `alpha*r + beta*x + gamma`,
   /// itself scaled again by `sigma1`/`sigma2`).
@@ -78,6 +82,10 @@ pub struct DuffieKanJumpExp<T: FloatExt, S: SeedExt = Unseeded> {
   pub seed: S,
   /// Correlated Gaussian noise generator for the diffusion part.
   cgns: Cgns<T>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> DuffieKanJumpExp<T, S> {
@@ -103,6 +111,7 @@ impl<T: FloatExt, S: SeedExt> DuffieKanJumpExp<T, S> {
     seed: S,
   ) -> Self {
     Self {
+      backend: PhantomData,
       alpha,
       beta,
       gamma,
@@ -125,7 +134,9 @@ impl<T: FloatExt, S: SeedExt> DuffieKanJumpExp<T, S> {
       cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> DuffieKanJumpExp<T, S, B> {
   /// Replace `alpha`, all else unchanged.
   pub fn with_alpha(mut self, alpha: T) -> Self {
     self.alpha = alpha;
@@ -249,7 +260,9 @@ impl<T: FloatExt, S: SeedExt> DuffieKanJumpExp<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DuffieKanJumpExp<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] DuffieKanJumpExp<T, S> { alpha, beta, gamma, rho, a1, b1, c1, sigma1, a2, b2, c2, sigma2, lambda, jump_scale, n, r0, x0, t, seed, cgns } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for DuffieKanJumpExp<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = DuffieKanJumpExpSampler<T, S>

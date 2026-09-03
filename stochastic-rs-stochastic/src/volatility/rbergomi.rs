@@ -42,19 +42,23 @@
 //! Lunde, A. & Pakkanen, M. S. (2017), *Hybrid scheme for Brownian
 //! semistationary processes*, Finance and Stochastics 21, 931–965.
 
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Clone)]
-pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent `H ∈ (0, ½]` of the Volterra fractional Brownian
   /// driver, simulated with the hybrid scheme (see the module doc); `H = ½`
   /// is the Brownian case.
@@ -79,6 +83,10 @@ pub struct RoughBergomi<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   cgns: Cgns<T>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -96,6 +104,7 @@ impl<T: FloatExt, S: SeedExt> RoughBergomi<T, S> {
     seed: S,
   ) -> Self {
     RoughBergomi {
+      backend: PhantomData,
       hurst,
       nu,
       v0,
@@ -108,7 +117,9 @@ impl<T: FloatExt, S: SeedExt> RoughBergomi<T, S> {
       cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> RoughBergomi<T, S, B> {
   /// Replace `hurst`, all else unchanged.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     self.hurst = hurst;
@@ -191,7 +202,9 @@ impl<T: FloatExt> Default for RoughBergomi<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for RoughBergomi<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] RoughBergomi<T, S> { hurst, nu, v0, s0, r, rho, n, t, seed, cgns } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for RoughBergomi<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = RoughBergomiSampler<T, S>

@@ -5,12 +5,16 @@
 //! +\sum_{j=1}^q\beta_j\sigma_{t-j}^2
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -41,7 +45,7 @@ use crate::traits::ProcessExt;
 ///   structure but with different naming (`delta`).
 /// - Stationarity constraints typically require \(\sum \alpha_i + \tfrac{1}{2}\sum \delta_i + \sum \beta_j < 1\).
 #[derive(Debug, Clone)]
-pub struct Agarch<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Agarch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant term in conditional variance dynamics.
   pub omega: T,
   /// Arch coefficients α_i (positive-squared-residual loading), length p.
@@ -55,6 +59,10 @@ pub struct Agarch<T: FloatExt, S: SeedExt = Unseeded> {
   pub n: usize,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Agarch<T, S> {
@@ -72,6 +80,7 @@ impl<T: FloatExt, S: SeedExt> Agarch<T, S> {
       "Agarch requires alpha.len() == delta.len()"
     );
     Self {
+      backend: PhantomData,
       omega,
       alpha,
       delta,
@@ -82,7 +91,11 @@ impl<T: FloatExt, S: SeedExt> Agarch<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Agarch<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Agarch<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Agarch<T, S> { omega, alpha, delta, beta, n, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Agarch<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = AgarchSampler<T>

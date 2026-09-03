@@ -10,6 +10,8 @@
 //! its forward `F_i` is driven multiplicatively by `v_i`'s own path
 //! (no cross-dimension coupling, no `dW^v`/`dW^F` correlation).
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
@@ -19,11 +21,13 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-pub struct WuZhangD<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct WuZhangD<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean reversion level for each dimension's volatility.
   pub alpha: Array1<T>,
   /// Mean reversion speed for each dimension's volatility.
@@ -44,6 +48,10 @@ pub struct WuZhangD<T: FloatExt, S: SeedExt = Unseeded> {
   pub n: usize,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> WuZhangD<T, S> {
@@ -118,6 +126,7 @@ impl<T: FloatExt, S: SeedExt> WuZhangD<T, S> {
       "v0 entries must be non-negative"
     );
     Self {
+      backend: PhantomData,
       alpha,
       beta,
       nu,
@@ -132,7 +141,11 @@ impl<T: FloatExt, S: SeedExt> WuZhangD<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for WuZhangD<T, S> {
+impl<T: FloatExt, S: SeedExt, B> WuZhangD<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] WuZhangD<T, S> { alpha, beta, nu, lambda, x0, v0, xn, t, n, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for WuZhangD<T, S, B> {
   type Output = Array2<T>;
   type Sampler<'s>
     = WuZhangDSampler<T, S>

@@ -24,12 +24,16 @@
 //!   of Economic Dynamics and Control 18(5), 931–955,
 //!   DOI: 10.1016/0165-1889(94)90039-6.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -58,7 +62,7 @@ use crate::traits::ProcessExt;
 /// - Stationarity constraints typically include: \(\sum \alpha_i + \tfrac{1}{2}\sum \gamma_i + \sum \beta_j < 1\).
 /// - We do a simple unconditional variance initialization for \(\sigma_0^2\).
 #[derive(Debug, Clone)]
-pub struct GjrGarch<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct GjrGarch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant term in conditional variance dynamics.
   pub omega: T,
   /// Arch coefficients α_i (positive-squared-residual loading), length p.
@@ -72,6 +76,10 @@ pub struct GjrGarch<T: FloatExt, S: SeedExt = Unseeded> {
   pub n: usize,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> GjrGarch<T, S> {
@@ -89,6 +97,7 @@ impl<T: FloatExt, S: SeedExt> GjrGarch<T, S> {
       "GjrGarch requires alpha.len() == gamma.len()"
     );
     Self {
+      backend: PhantomData,
       omega,
       alpha,
       gamma,
@@ -99,7 +108,11 @@ impl<T: FloatExt, S: SeedExt> GjrGarch<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GjrGarch<T, S> {
+impl<T: FloatExt, S: SeedExt, B> GjrGarch<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] GjrGarch<T, S> { omega, alpha, gamma, beta, n, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for GjrGarch<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = GjrGarchSampler<T>

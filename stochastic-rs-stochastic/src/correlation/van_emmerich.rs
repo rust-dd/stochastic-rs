@@ -4,12 +4,16 @@
 //! d\rho_t = \kappa(\mu - \rho_t)\,dt + \sigma\sqrt{1 - \rho_t^2}\,dW_t
 //! $$
 
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -19,7 +23,7 @@ use crate::traits::ProcessExt;
 /// The diffusion coefficient vanishes *linearly* at ±1, keeping the
 /// process inside (−1, 1) when κ ≥ σ²/(1 ± μ).
 #[derive(Debug, Clone)]
-pub struct VanEmmerich<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct VanEmmerich<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed κ of the correlation process itself (ρ_t is
   /// the state being simulated directly, unlike
   /// [`TransformedOU`](crate::correlation::TransformedOU)'s X-space
@@ -38,11 +42,16 @@ pub struct VanEmmerich<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> VanEmmerich<T, S> {
   pub fn new(kappa: T, mu: T, sigma: T, rho0: T, n: usize, t: Option<T>, seed: S) -> Self {
     Self {
+      backend: PhantomData,
       kappa,
       mu,
       sigma,
@@ -54,7 +63,11 @@ impl<T: FloatExt, S: SeedExt> VanEmmerich<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for VanEmmerich<T, S> {
+impl<T: FloatExt, S: SeedExt, B> VanEmmerich<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] VanEmmerich<T, S> { kappa, mu, sigma, rho0, n, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for VanEmmerich<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = VanEmmerichSampler<T>

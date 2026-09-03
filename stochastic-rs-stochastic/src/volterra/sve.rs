@@ -34,11 +34,15 @@
 //! - Li M., Huang C., Hu Y. *Numerical methods for stochastic Volterra
 //!   integral equations with weakly singular kernels*, arXiv:2004.04916
 //!   (2020).
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::gn::Gn;
 use crate::rough::markov_lift::RoughSimd;
 use crate::traits::FloatExt;
@@ -66,7 +70,7 @@ use crate::volterra::lift::VolterraLift;
 /// decay rate, an `RlKernel` needs a Hurst exponent and quadrature degree,
 /// …) — the same reason [`CompoundPoisson`](crate::process::cpoisson::CompoundPoisson)`<T,
 /// D, S>` has no `Default` for its own extra generic `D`.
-pub struct VolterraSde<T: FloatExt, K, S: SeedExt = Unseeded>
+pub struct VolterraSde<T: FloatExt, K, S: SeedExt = Unseeded, B = Cpu>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
@@ -85,6 +89,10 @@ where
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, K, S: SeedExt> Clone for VolterraSde<T, K, S>
@@ -94,6 +102,7 @@ where
 {
   fn clone(&self) -> Self {
     Self {
+      backend: PhantomData,
       kernel: self.kernel.clone(),
       drift: self.drift.clone(),
       diffusion: self.diffusion.clone(),
@@ -126,6 +135,7 @@ where
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
     Self {
+      backend: PhantomData,
       kernel,
       drift: drift.into(),
       diffusion: diffusion.into(),
@@ -135,7 +145,12 @@ where
       seed,
     }
   }
+}
 
+impl<T: FloatExt, K, S: SeedExt, B> VolterraSde<T, K, S, B>
+where
+  K: VolterraKernel<T> + Send + Sync,
+{
   /// Replace `kernel`, all else unchanged.
   pub fn with_kernel(mut self, kernel: K) -> Self {
     self.kernel = kernel;
@@ -179,7 +194,10 @@ where
   }
 }
 
-impl<T: FloatExt + RoughSimd, K, S: SeedExt> ProcessExt<T> for VolterraSde<T, K, S>
+backend_switch!([T: FloatExt + RoughSimd, K, S: SeedExt] VolterraSde<T, K, S> { kernel, drift, diffusion, n, x0, t, seed } via host where  K: VolterraKernel<T> + Send + Sync);
+
+impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: HostBackend> ProcessExt<T>
+  for VolterraSde<T, K, S, B>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
@@ -203,6 +221,7 @@ where
       diffusion: self.diffusion.clone(),
       lift: VolterraLift::new(self.kernel.clone(), dt),
       gn: Gn::<T, S> {
+        backend: PhantomData,
         n: self.n - 1,
         t: self.t,
         seed: self.seed.derive(),

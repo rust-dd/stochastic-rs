@@ -13,6 +13,8 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::HestonPow;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -24,7 +26,7 @@ pub use scheme::Euler;
 pub use scheme::HestonScheme;
 
 #[derive(Clone)]
-pub struct Heston<T: FloatExt, S: SeedExt = Unseeded, Sch: HestonScheme = Euler> {
+pub struct Heston<T: FloatExt, S: SeedExt = Unseeded, Sch: HestonScheme = Euler, B = Cpu> {
   /// Initial stock price
   pub s0: Option<T>,
   /// Initial variance v₀ — a variance, not a volatility: `dv_t` above is
@@ -59,6 +61,10 @@ pub struct Heston<T: FloatExt, S: SeedExt = Unseeded, Sch: HestonScheme = Euler>
   cgns: Cgns<T>,
   /// Zero-sized marker for the compile-time variance scheme.
   _scheme: PhantomData<Sch>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Heston<T, S, Euler> {
@@ -84,6 +90,7 @@ impl<T: FloatExt, S: SeedExt> Heston<T, S, Euler> {
     }
 
     Self {
+      backend: PhantomData,
       s0,
       v0,
       kappa,
@@ -132,7 +139,7 @@ impl<T: FloatExt> Default for Heston<T, Unseeded, Euler> {
 /// scheme-independent — this is what lets the setters chain after
 /// [`qe()`](Heston::qe) too, e.g.
 /// `Heston::default().qe().with_kappa(3.0)`.
-impl<T: FloatExt, S: SeedExt, Sch: HestonScheme> Heston<T, S, Sch> {
+impl<T: FloatExt, S: SeedExt, Sch: HestonScheme, B> Heston<T, S, Sch, B> {
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: Option<T>) -> Self {
     self.s0 = s0;
@@ -220,13 +227,14 @@ impl<T: FloatExt, S: SeedExt, Sch: HestonScheme> Heston<T, S, Sch> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Heston<T, S, Euler> {
+impl<T: FloatExt, S: SeedExt, B> Heston<T, S, Euler, B> {
   /// Switch to the [`AndersenQe`] variance scheme at compile time. Consumes
   /// the model and re-tags it — zero runtime cost (the fields are moved and
   /// the marker swapped). QE is defined for the square-root (CIR) variance,
   /// so keep `pow = HestonPow::Sqrt`.
   pub fn qe(self) -> Heston<T, S, AndersenQe> {
     Heston {
+      backend: PhantomData,
       s0: self.s0,
       v0: self.v0,
       kappa: self.kappa,
@@ -245,10 +253,14 @@ impl<T: FloatExt, S: SeedExt> Heston<T, S, Euler> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, Sch: HestonScheme> ProcessExt<T> for Heston<T, S, Sch> {
+backend_switch!([T: FloatExt, S: SeedExt, Sch: HestonScheme] Heston<T, S, Sch> { s0, v0, kappa, theta, sigma, rho, mu, n, t, pow, use_sym, seed, cgns, _scheme } via host);
+
+impl<T: FloatExt, S: SeedExt, Sch: HestonScheme, B: HostBackend> ProcessExt<T>
+  for Heston<T, S, Sch, B>
+{
   type Output = [Array1<T>; 2];
   type Sampler<'s>
-    = HestonSampler<'s, T, S, Sch>
+    = HestonSampler<'s, T, S, Sch, B>
   where
     Self: 's;
 
@@ -258,7 +270,7 @@ impl<T: FloatExt, S: SeedExt, Sch: HestonScheme> ProcessExt<T> for Heston<T, S, 
   /// is `self.seed`'s *mixed* next tick, not a raw snapshot, so chunk `i`'s
   /// basis and chunk `i+1`'s basis are hash-scrambled relative to each
   /// other rather than one raw stride apart.
-  fn sampler(&self) -> HestonSampler<'_, T, S, Sch> {
+  fn sampler(&self) -> HestonSampler<'_, T, S, Sch, B> {
     HestonSampler {
       model: self,
       seed: self.seed.derive(),
@@ -272,12 +284,14 @@ impl<T: FloatExt, S: SeedExt, Sch: HestonScheme> ProcessExt<T> for Heston<T, S, 
 /// beyond that seed, so each call re-dispatches to `Sch::simulate`; there is
 /// nothing else reusable to hoist across calls.
 #[doc(hidden)]
-pub struct HestonSampler<'a, T: FloatExt, S: SeedExt, Sch: HestonScheme> {
-  model: &'a Heston<T, S, Sch>,
+pub struct HestonSampler<'a, T: FloatExt, S: SeedExt, Sch: HestonScheme, B> {
+  model: &'a Heston<T, S, Sch, B>,
   seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt, Sch: HestonScheme> PathSampler<T> for HestonSampler<'_, T, S, Sch> {
+impl<T: FloatExt, S: SeedExt, Sch: HestonScheme, B: HostBackend> PathSampler<T>
+  for HestonSampler<'_, T, S, Sch, B>
+{
   type Output = [Array1<T>; 2];
 
   fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
@@ -289,7 +303,7 @@ impl<T: FloatExt, S: SeedExt, Sch: HestonScheme> PathSampler<T> for HestonSample
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Heston<T, S> {
+impl<T: FloatExt, S: SeedExt, B: HostBackend> Heston<T, S, Euler, B> {
   /// Malliavin derivative of the volatility
   ///
   /// The Malliavin derivative of the Heston model is given by

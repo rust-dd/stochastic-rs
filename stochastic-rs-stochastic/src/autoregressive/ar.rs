@@ -4,12 +4,16 @@
 //! X_t=\sum_{k=1}^p \phi_k X_{t-k}+\varepsilon_t,\qquad \varepsilon_t\sim\mathcal N(0,\sigma^2)
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -29,7 +33,7 @@ use crate::traits::ProcessExt;
 /// - `m`: Optional batch size (for parallel sampling).
 /// - `x0`: Optional array of initial values. If provided, should have length at least `phi.len()`.
 #[derive(Debug, Clone)]
-pub struct ARp<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct ARp<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// AR coefficients
   pub phi: Array1<T>,
   /// Noise std dev
@@ -40,6 +44,10 @@ pub struct ARp<T: FloatExt, S: SeedExt = Unseeded> {
   pub x0: Option<Array1<T>>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> ARp<T, S> {
@@ -56,6 +64,7 @@ impl<T: FloatExt, S: SeedExt> ARp<T, S> {
       );
     }
     Self {
+      backend: PhantomData,
       phi,
       sigma,
       n,
@@ -65,7 +74,11 @@ impl<T: FloatExt, S: SeedExt> ARp<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ARp<T, S> {
+impl<T: FloatExt, S: SeedExt, B> ARp<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] ARp<T, S> { phi, sigma, n, x0, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for ARp<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = ARpSampler<T>

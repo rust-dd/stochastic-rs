@@ -4,18 +4,22 @@
 //! dS_t=\mu S_t\,dt+\sigma S_t^{\gamma}\,dW_t
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Clone)]
-pub struct Cev<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Cev<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant proportional drift rate μ — CEV has no mean reversion.
   pub mu: T,
   /// Diffusion scale σ multiplying `S_t^γ dW_t`.
@@ -35,6 +39,10 @@ pub struct Cev<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -43,6 +51,7 @@ pub struct Cev<T: FloatExt, S: SeedExt = Unseeded> {
 impl<T: FloatExt, S: SeedExt> Cev<T, S> {
   pub fn new(mu: T, sigma: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self {
+      backend: PhantomData,
       mu,
       sigma,
       gamma,
@@ -52,7 +61,9 @@ impl<T: FloatExt, S: SeedExt> Cev<T, S> {
       seed,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> Cev<T, S, B> {
   /// Replace `mu`, all else unchanged.
   pub fn with_mu(mut self, mu: T) -> Self {
     self.mu = mu;
@@ -114,7 +125,9 @@ impl<T: FloatExt> Default for Cev<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cev<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] Cev<T, S> { mu, sigma, gamma, n, x0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Cev<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = CevSampler<T>
@@ -198,7 +211,7 @@ impl<T: FloatExt> PathSampler<T> for CevSampler<T> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Cev<T, S> {
+impl<T: FloatExt, S: SeedExt, B: HostBackend> Cev<T, S, B> {
   /// Calculate the Malliavin derivative of the Cev process
   ///
   /// The Malliavin derivative of the Cev process is given by

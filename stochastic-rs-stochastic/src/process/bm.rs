@@ -4,24 +4,32 @@
 //! B_t=\int_0^t dW_s,\quad B_t-B_s\sim\mathcal N(0,t-s)
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Clone)]
-pub struct Bm<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Bm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Number of discrete time points in the generated path.
   pub n: usize,
   /// Simulation horizon [0, t] for the path (defaults to `1` if `None`).
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -29,9 +37,16 @@ pub struct Bm<T: FloatExt, S: SeedExt = Unseeded> {
 /// builds its Gaussian source fresh from `self` every call.
 impl<T: FloatExt, S: SeedExt> Bm<T, S> {
   pub fn new(n: usize, t: Option<T>, seed: S) -> Self {
-    Self { n, t, seed }
+    Self {
+      backend: PhantomData,
+      n,
+      t,
+      seed,
+    }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> Bm<T, S, B> {
   /// Replace the number of simulation steps `n`, all else unchanged.
   pub fn with_steps(mut self, n: usize) -> Self {
     self.n = n;
@@ -59,7 +74,9 @@ impl<T: FloatExt> Default for Bm<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bm<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] Bm<T, S> { n, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Bm<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = BmSampler<T>

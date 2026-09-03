@@ -11,6 +11,8 @@
 //!
 //! Reference: Bayer C., Friz P., Gatheral J. *Pricing under rough volatility*.
 //! Quantitative Finance 16 (2016), 887–904.
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -20,6 +22,8 @@ use super::markov_lift::MarkovLift;
 use super::markov_lift::RoughSimd;
 use super::rl_fbm::RlFBm;
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -27,7 +31,7 @@ use crate::traits::ProcessExt;
 
 /// Fractional Ornstein–Uhlenbeck driven by RL-fBM noise.
 #[derive(Clone)]
-pub struct RlFOU<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct RlFOU<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent of the driving fBM.
   pub hurst: T,
   /// Mean-reversion speed $\kappa$.
@@ -47,6 +51,10 @@ pub struct RlFOU<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy.
   pub seed: S,
   fbm: RlFBm<T>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> RlFOU<T, S> {
@@ -64,6 +72,7 @@ impl<T: FloatExt, S: SeedExt> RlFOU<T, S> {
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
     Self {
+      backend: PhantomData,
       hurst,
       kappa,
       mu,
@@ -78,7 +87,7 @@ impl<T: FloatExt, S: SeedExt> RlFOU<T, S> {
   }
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> RlFOU<T, S> {
+impl<T: FloatExt + RoughSimd, S: SeedExt, B> RlFOU<T, S, B> {
   /// Generate $m$ independent RFSV log-volatility paths as an $(m, n)$ array.
   /// The RL-fBM noise is generated in a single batch via
   /// [`RlFBm::sample_batch`], then each path is Euler-integrated independently.
@@ -100,7 +109,9 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlFOU<T, S> {
   }
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlFOU<T, S> {
+backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] RlFOU<T, S> { hurst, kappa, mu, nu, n, x0, t, degree, seed, fbm } via host);
+
+impl<T: FloatExt + RoughSimd, S: SeedExt, B: HostBackend> ProcessExt<T> for RlFOU<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = RlFOUSampler<T, S>
@@ -116,6 +127,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlFOU<T, S> {
       nu: self.nu,
       dt: self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1),
       gn: Gn::<T, S> {
+        backend: PhantomData,
         n: self.n - 1,
         t: self.t,
         seed: self.seed.derive(),

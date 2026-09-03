@@ -21,12 +21,16 @@
 //! a [`SquaredBessel`] of dimension `δ = 4κθ/σ²` under the time change
 //! `τ(t) = (σ²/4κ)(e^{κt}-1)` — the two SDEs share the same `2√X` diffusion
 //! shape, only reparametrized and time-changed.
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -39,7 +43,7 @@ use crate::traits::ProcessExt;
 /// in law) and to [`Cir`](crate::diffusion::cir::Cir) (a time-changed,
 /// scaled instance of this process).
 #[derive(Clone)]
-pub struct SquaredBessel<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct SquaredBessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Dimension δ of the process. The literature convention is δ ≥ 0; δ ≥ 2
   /// additionally keeps the continuous-time process strictly positive once
   /// started away from 0 (Going-Jaeschke & Yor, 2003) — the direct analogue
@@ -58,6 +62,10 @@ pub struct SquaredBessel<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -92,6 +100,7 @@ impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
     }
 
     Self {
+      backend: PhantomData,
       delta,
       n,
       x0,
@@ -100,7 +109,9 @@ impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
       seed,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> SquaredBessel<T, S, B> {
   /// Replace `delta`, all else unchanged.
   pub fn with_delta(mut self, delta: T) -> Self {
     self.delta = delta;
@@ -156,7 +167,9 @@ impl<T: FloatExt> Default for SquaredBessel<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for SquaredBessel<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] SquaredBessel<T, S> { delta, n, x0, t, use_sym, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for SquaredBessel<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = SquaredBesselSampler<T>
@@ -266,7 +279,7 @@ py_process_1d!(PySquaredBessel, SquaredBessel,
 /// way, say, a noncentral-χ² exact CIR sampler would be. Worth keeping in
 /// mind when choosing step counts for a calibration.
 #[derive(Clone)]
-pub struct Bessel<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Bessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Dimension δ (see [`SquaredBessel::delta`] — the same δ ≥ 2 threshold
   /// keeps the process strictly positive).
   pub delta: T,
@@ -282,6 +295,10 @@ pub struct Bessel<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -311,6 +328,7 @@ impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
     }
 
     Self {
+      backend: PhantomData,
       delta,
       n,
       x0,
@@ -319,7 +337,9 @@ impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
       seed,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> Bessel<T, S, B> {
   /// Replace `delta`, all else unchanged.
   pub fn with_delta(mut self, delta: T) -> Self {
     self.delta = delta;
@@ -375,7 +395,9 @@ impl<T: FloatExt> Default for Bessel<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Bessel<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] Bessel<T, S> { delta, n, x0, t, use_sym, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Bessel<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = BesselSampler<T>

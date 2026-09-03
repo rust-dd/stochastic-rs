@@ -4,12 +4,16 @@
 //! X_t=\int_{\mathbb{R}}\left(\max(t-u,0)^{H-1/\alpha}-\max(-u,0)^{H-1/\alpha}\right)\,dL_u^{\alpha}
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -22,7 +26,7 @@ use crate::traits::ProcessExt;
 ///
 /// `X_i = X_{i-1} + sum_{k=0}^{i-1} w_k * xi_{i-1-k}`,
 /// where `w_k = dt^d * ((k+1)^d - k^d)` and `d = H - 1/alpha`.
-pub struct Lfsm<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Lfsm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Stability index of the Levy-stable driver (`0 < alpha <= 2`).
   /// Smaller values produce heavier tails and larger jumps.
   pub alpha: T,
@@ -43,6 +47,10 @@ pub struct Lfsm<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Lfsm<T, S> {
@@ -64,6 +72,7 @@ impl<T: FloatExt, S: SeedExt> Lfsm<T, S> {
       "Lfsm requires 1/alpha < hurst < 1 for this discretization"
     );
     Self {
+      backend: PhantomData,
       alpha,
       beta,
       hurst,
@@ -76,14 +85,18 @@ impl<T: FloatExt, S: SeedExt> Lfsm<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Lfsm<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Lfsm<T, S, B> {}
+
+impl<T: FloatExt, S: SeedExt, B> Lfsm<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Lfsm<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] Lfsm<T, S> { alpha, beta, hurst, scale, n, x0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Lfsm<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = LfsmSampler<T>

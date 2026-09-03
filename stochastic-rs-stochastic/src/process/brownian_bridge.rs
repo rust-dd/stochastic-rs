@@ -32,12 +32,16 @@
 //! this module supplies the endpoint-pinned process itself, not the
 //! recursive dimension-allocation logic that pairs it with those sequences
 //! (a later, phase-E integration concern).
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -67,7 +71,7 @@ use crate::traits::ProcessExt;
 /// (assigning `xt` directly) exists only for bit-exactness, not to patch
 /// over a bias.
 #[derive(Clone)]
-pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Diffusion scale σ multiplying `dW_s` in the bridge SDE.
   pub sigma: T,
   /// Number of points sampled along the path. Both endpoints are
@@ -87,6 +91,10 @@ pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -96,6 +104,7 @@ pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded> {
 impl<T: FloatExt, S: SeedExt> BrownianBridge<T, S> {
   pub fn new(sigma: T, n: usize, x0: Option<T>, xt: Option<T>, t: Option<T>, seed: S) -> Self {
     Self {
+      backend: PhantomData,
       sigma,
       n,
       x0,
@@ -104,7 +113,9 @@ impl<T: FloatExt, S: SeedExt> BrownianBridge<T, S> {
       seed,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> BrownianBridge<T, S, B> {
   /// Replace `sigma`, all else unchanged.
   pub fn with_sigma(mut self, sigma: T) -> Self {
     self.sigma = sigma;
@@ -151,7 +162,9 @@ impl<T: FloatExt> Default for BrownianBridge<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BrownianBridge<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] BrownianBridge<T, S> { sigma, n, x0, xt, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for BrownianBridge<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = BrownianBridgeSampler<T>

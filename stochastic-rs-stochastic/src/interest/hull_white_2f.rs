@@ -22,19 +22,23 @@
 //!   DOI: 10.1007/978-3-540-34604-3 — source of the §4.2-style
 //!   state-space parametrization above.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-pub struct HullWhite2F<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct HullWhite2F<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Time-dependent drift target $\theta(t)$, fitted to the initial term
   /// structure — the additive role `HullWhite::theta` plays for the
   /// single-factor model.
@@ -62,6 +66,10 @@ pub struct HullWhite2F<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   cgns: Cgns<T>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> HullWhite2F<T, S> {
@@ -78,6 +86,7 @@ impl<T: FloatExt, S: SeedExt> HullWhite2F<T, S> {
     seed: S,
   ) -> Self {
     Self {
+      backend: PhantomData,
       theta: theta.into(),
       a,
       sigma1,
@@ -93,7 +102,11 @@ impl<T: FloatExt, S: SeedExt> HullWhite2F<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HullWhite2F<T, S> {
+impl<T: FloatExt, S: SeedExt, B> HullWhite2F<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] HullWhite2F<T, S> { theta, a, sigma1, sigma2, rho, b, x0, t, n, seed, cgns } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for HullWhite2F<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = HullWhite2FSampler<'s, T, S>

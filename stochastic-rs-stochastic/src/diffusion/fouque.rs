@@ -9,11 +9,15 @@
 //! ordinary (slow) time scale, `Y` mean-reverts on the fast `1/ε` time
 //! scale. As `ε → 0`, `Y` homogenizes and its effect on derived quantities
 //! reduces to its own long-run statistics.
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -22,7 +26,7 @@ use crate::traits::ProcessExt;
 ///
 /// dX_t = kappa (theta - X_t) dt + epsilon dW_t
 /// dY_t = (1/epsilon) (alpha - Y_t) dt + (1/sqrt(epsilon)) dZ_t
-pub struct FouqueOU2D<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct FouqueOU2D<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed of the slow factor `X_t`.
   pub kappa: T,
   /// Long-run mean level of the slow factor `X_t`.
@@ -44,6 +48,10 @@ pub struct FouqueOU2D<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> FouqueOU2D<T, S> {
@@ -61,6 +69,7 @@ impl<T: FloatExt, S: SeedExt> FouqueOU2D<T, S> {
     assert!(epsilon > T::zero(), "epsilon must be positive");
 
     Self {
+      backend: PhantomData,
       kappa,
       theta,
       epsilon,
@@ -74,7 +83,11 @@ impl<T: FloatExt, S: SeedExt> FouqueOU2D<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FouqueOU2D<T, S> {
+impl<T: FloatExt, S: SeedExt, B> FouqueOU2D<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] FouqueOU2D<T, S> { kappa, theta, epsilon, alpha, n, x0, y0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for FouqueOU2D<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = FouqueOU2DSampler<T, S>

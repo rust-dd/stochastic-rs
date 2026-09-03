@@ -4,10 +4,14 @@
 //! dX_t=K(\Theta-X_t)dt+\sqrt{A+BX_t}\,dW_t,\quad r_t=\ell_0+\ell^\top X_t
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -21,7 +25,7 @@ use crate::traits::ProcessExt;
 ///
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `DuffieKan::new(..).with_rho(-0.5).with_sigma1(0.02)`.
-pub struct DuffieKan<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct DuffieKan<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Diffusion-loading coefficient on `r_t`, shared between both factors'
   /// diffusion scaling (multiplies `r` inside `alpha*r + beta*x + gamma`,
   /// itself scaled again by `sigma1`/`sigma2`).
@@ -67,6 +71,10 @@ pub struct DuffieKan<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   cgns: Cgns<T>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> DuffieKan<T, S> {
@@ -90,6 +98,7 @@ impl<T: FloatExt, S: SeedExt> DuffieKan<T, S> {
     seed: S,
   ) -> Self {
     Self {
+      backend: PhantomData,
       alpha,
       beta,
       gamma,
@@ -110,7 +119,9 @@ impl<T: FloatExt, S: SeedExt> DuffieKan<T, S> {
       cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> DuffieKan<T, S, B> {
   /// Replace `alpha`, all else unchanged.
   pub fn with_alpha(mut self, alpha: T) -> Self {
     self.alpha = alpha;
@@ -222,7 +233,9 @@ impl<T: FloatExt, S: SeedExt> DuffieKan<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DuffieKan<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] DuffieKan<T, S> { alpha, beta, gamma, rho, a1, b1, c1, sigma1, a2, b2, c2, sigma2, n, r0, x0, t, seed, cgns } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for DuffieKan<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = DuffieKanSampler<T, S>

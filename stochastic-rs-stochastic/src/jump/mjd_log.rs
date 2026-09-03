@@ -10,6 +10,8 @@
 //! and $\kappa_J = e^{\nu+\frac12\omega^2}-1$.
 //! Log-spot scheme guarantees $S_t > 0$.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -19,6 +21,8 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -37,7 +41,7 @@ fn validate_drift_args<T: FloatExt>(
   }
 }
 
-pub struct MjdLog<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct MjdLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift rate
   pub mu: Option<T>,
   /// Cost-of-carry rate
@@ -62,6 +66,10 @@ pub struct MjdLog<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
@@ -85,6 +93,7 @@ impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
     assert!(omega >= T::zero(), "omega must be >= 0");
     validate_drift_args(mu, b, r, r_f, "MjdLog");
     Self {
+      backend: PhantomData,
       mu,
       b,
       r,
@@ -101,7 +110,9 @@ impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
+impl<T: FloatExt, S: SeedExt, B> MjdLog<T, S, B> {}
+
+impl<T: FloatExt, S: SeedExt, B> MjdLog<T, S, B> {
   #[inline]
   fn drift(&self) -> T {
     match (self.r, self.r_f, self.b, self.mu) {
@@ -123,7 +134,9 @@ impl<T: FloatExt, S: SeedExt> MjdLog<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MjdLog<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] MjdLog<T, S> { mu, b, r, r_f, sigma, lambda, nu, omega, n, s0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for MjdLog<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = MjdLogSampler<T>

@@ -15,19 +15,23 @@
 //! Theory and Practice*, 2nd ed., Springer Finance,
 //! DOI: 10.1007/978-3-540-34604-3.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::cir::Cir;
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::diffusion::cir::CirSampler;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-pub struct Cir2F<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Cir2F<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// First CIR factor `x_t` (own κ₁/θ₁/σ₁ carried inside the wrapped
   /// [`Cir`]). [`new`](Self::new) overwrites this factor's `seed` field with
   /// an independent child derived from the outer `seed` — whatever seed the
@@ -48,6 +52,10 @@ pub struct Cir2F<T: FloatExt, S: SeedExt = Unseeded> {
   /// from this value (two independent children, in that order), overwriting
   /// whatever seed the caller constructed `x`/`y` with.
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Cir2F<T, S> {
@@ -73,6 +81,7 @@ impl<T: FloatExt, S: SeedExt> Cir2F<T, S> {
     x.seed = seed.derive();
     y.seed = seed.derive();
     Self {
+      backend: PhantomData,
       x,
       y,
       phi: phi.into(),
@@ -81,7 +90,11 @@ impl<T: FloatExt, S: SeedExt> Cir2F<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Cir2F<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Cir2F<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Cir2F<T, S> { x, y, phi, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Cir2F<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = Cir2FSampler<T>

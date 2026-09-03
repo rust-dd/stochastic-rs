@@ -4,6 +4,8 @@
 //! \mathbb{P}(N=k)=e^{-\lambda}\frac{\lambda^k}{k!},\ k\in\mathbb N_0
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -13,12 +15,14 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::exp::SimdExp;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
-pub struct Poisson<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Poisson<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Jump intensity (expected arrivals per unit time).
   pub lambda: T,
   /// Optional fixed number of sampled events.
@@ -27,6 +31,10 @@ pub struct Poisson<T: FloatExt, S: SeedExt = Unseeded> {
   pub t_max: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 #[inline]
@@ -44,13 +52,16 @@ impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
   pub fn new(lambda: T, n: Option<usize>, t_max: Option<T>, seed: S) -> Self {
     validate_n_or_tmax(n, t_max, "Poisson");
     Poisson {
+      backend: PhantomData,
       lambda,
       n,
       t_max,
       seed,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
   /// Replace `lambda`, all else unchanged.
   pub fn with_lambda(mut self, lambda: T) -> Self {
     self.lambda = lambda;
@@ -89,7 +100,7 @@ impl<T: FloatExt> Default for Poisson<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
   /// Sample with an explicit seed, used by callers like CompoundPoisson.
   pub fn sample_with_seed(&self, seed: u64) -> Array1<T> {
     self.sample_impl(&Deterministic::new(seed))
@@ -119,7 +130,9 @@ impl<T: FloatExt, S: SeedExt> Poisson<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Poisson<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] Poisson<T, S> { lambda, n, t_max, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Poisson<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = PoissonSampler<T>

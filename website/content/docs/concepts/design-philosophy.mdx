@@ -67,21 +67,42 @@ A new module ships with both:
 This rule is enforced by review, not CI — there is no automated check
 that a new module shipped tests + benches.
 
-## 6. Default behaviour: panic, never silent zero
+## 6. Three-way error convention
 
-If a function cannot do its job (e.g. an unimplemented moment, a
-required feature is off, a contract violation), it **panics** with a
-helpful message. We never silently return 0, NaN, or `None` from
-something that semantically should compute a number.
+One rule for every crate, from the distributions up to the calibrators:
 
-## 7. Result-based calibration
+- **Invalid parameter → panic, naming the parameter and its value.** A negative
+  volatility, a Hurst exponent outside `[0, 1]`, a `theta` outside a copula's
+  admissible interval, a grid with fewer than two points: programmer errors,
+  not runtime states, so constructors and setters `assert!` them with a
+  message of the form ``sigma must satisfy `sigma > 0`, got sigma = -0.2``.
+  Never a silent clamp, a silent zero or a silent `None`.
+- **Not computable at this point → `NaN`, documented.** A price outside a
+  model's domain, a Greek at an expired option, an implied volatility with no
+  root: legitimate states, returned as `f64::NAN` from methods whose docs say
+  when. A function that semantically must compute a number never returns 0
+  in its place; unimplemented closed forms `unimplemented!` with the type
+  and method named.
+- **Data-dependent failure → `Result::Err`.** The optimiser did not converge,
+  a correlation matrix estimated from data is not positive-definite, a fit
+  rejected its input, a vine could not be built from the supplied pairs:
+  the caller needs a graceful path, so `Calibrator::calibrate`, the copula
+  `fit`/`new_with_corr`/vine constructors and the estimators return
+  `Result`. `Calibrator::Error` is a free associated type; the in-tree
+  calibrators set it to `anyhow::Error`.
 
-`Calibrator::calibrate(initial)` returns `Result<Self::Output, Self::Error>`,
-where `Output: CalibrationResult`. `Error` is a free associated type; all
-twelve in-tree calibrators set it to `anyhow::Error` for easy chaining.
-The optimiser may fail to converge (bad seed, ill-posed surface, …) and
-the caller needs
-a graceful path — panicking deep inside an L-BFGS loop is not it.
+## 7. What is stable and what may grow
+
+Enums that catalogue an open set — copula families, day-count and holiday
+conventions, interpolation and finite-difference schemes, loss metrics, error
+kinds — are `#[non_exhaustive]`, so a new family or scheme is not a breaking
+change; match them with a wildcard arm. Enums that are closed by definition
+(`OptionType`, `OptionStyle`, `Moneyness`, the payer/receiver and up/down ×
+in/out kinds) stay exhaustive. Processes and pricers with public fields are
+constructed through `new` and the `with_*` setters; a struct literal is not
+a supported construction (a public-field process also carries its backend
+marker, `backend: PhantomData`), so adding a field is not a breaking change
+for code that follows the constructors.
 
 ## Explicit non-goals
 

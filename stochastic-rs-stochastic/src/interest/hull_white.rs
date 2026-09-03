@@ -8,6 +8,8 @@
 //! Derivative Securities*, Review of Financial Studies 3(4), 573–592,
 //! DOI: 10.1093/rfs/3.4.573.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -16,13 +18,15 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Clone)]
-pub struct HullWhite<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct HullWhite<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Time-dependent drift target function θ(t), fitted to the initial
   /// term structure — added directly into the drift alongside `-alpha*r`.
   pub theta: Fn1D<T>,
@@ -39,6 +43,10 @@ pub struct HullWhite<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// Constant θ(t) ≡ 0.04 used by [`HullWhite`]'s `Default` impl — matches
@@ -64,6 +72,7 @@ impl<T: FloatExt, S: SeedExt> HullWhite<T, S> {
     seed: S,
   ) -> Self {
     Self {
+      backend: PhantomData,
       theta: theta.into(),
       alpha,
       sigma,
@@ -73,7 +82,9 @@ impl<T: FloatExt, S: SeedExt> HullWhite<T, S> {
       seed,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> HullWhite<T, S, B> {
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: impl Into<Fn1D<T>>) -> Self {
     self.theta = theta.into();
@@ -134,7 +145,9 @@ impl<T: FloatExt> Default for HullWhite<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HullWhite<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] HullWhite<T, S> { theta, alpha, sigma, n, x0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for HullWhite<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = HullWhiteSampler<'s, T>

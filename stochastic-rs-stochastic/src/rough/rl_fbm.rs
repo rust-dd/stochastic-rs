@@ -21,6 +21,8 @@
 //! [`Fgn`](crate::noise::fgn::Fgn).
 //!
 //! Reference: Bilokon & Wong (2026), doi:10.1017/jpr.2025.10071.
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -30,6 +32,8 @@ use super::kernel::RlKernel;
 use super::markov_lift::MarkovLift;
 use super::markov_lift::RoughSimd;
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -37,7 +41,7 @@ use crate::traits::ProcessExt;
 
 /// Riemann–Liouville fractional Brownian motion, Hurst $H \in (0, 1/2)$.
 #[derive(Clone)]
-pub struct RlFBm<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct RlFBm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent.
   pub hurst: T,
   /// Number of points sampled along the RL-fBM path.
@@ -49,6 +53,10 @@ pub struct RlFBm<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy.
   pub seed: S,
   markov: MarkovLift<T>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 fn build_markov<T: FloatExt>(
@@ -72,6 +80,7 @@ impl<T: FloatExt, S: SeedExt> RlFBm<T, S> {
     assert!(n >= 2, "n must be at least 2");
     let markov = build_markov(hurst, n, t, degree);
     Self {
+      backend: PhantomData,
       hurst,
       n,
       t,
@@ -89,7 +98,7 @@ impl<T: FloatExt, S: SeedExt> RlFBm<T, S> {
   }
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> RlFBm<T, S> {
+impl<T: FloatExt + RoughSimd, S: SeedExt, B> RlFBm<T, S, B> {
   /// Generate $m$ independent RL-fBM paths as an $(m, n)$ array. The
   /// underlying Markov-lift runs path-parallel SIMD (cache-tiled), matching
   /// the Python `RoughHestonFast` batching pattern — single-threaded.
@@ -122,6 +131,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlFBm<T, S> {
     let mut dw = Array2::<T>::zeros((m, n_minus_1));
     for p in 0..m {
       let gn = Gn::<T, S2> {
+        backend: PhantomData,
         n: n_minus_1,
         t: self.t,
         seed: seed.derive(),
@@ -133,7 +143,9 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlFBm<T, S> {
   }
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlFBm<T, S> {
+backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] RlFBm<T, S> { hurst, n, t, degree, seed, markov } via host);
+
+impl<T: FloatExt + RoughSimd, S: SeedExt, B: HostBackend> ProcessExt<T> for RlFBm<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = RlFBmSampler<T, S>
@@ -149,6 +161,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> ProcessExt<T> for RlFBm<T, S> {
     RlFBmSampler {
       n: self.n,
       gn: Gn::<T, S> {
+        backend: PhantomData,
         n: self.n - 1,
         t: self.t,
         seed: self.seed.derive(),

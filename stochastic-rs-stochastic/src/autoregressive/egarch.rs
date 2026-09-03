@@ -9,12 +9,16 @@
 //! Asset Returns: A New Approach*, Econometrica 59(2), 347–370,
 //! DOI: 10.2307/2938260.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -49,7 +53,7 @@ use crate::traits::ProcessExt;
 /// 2. We assume that `beta` has length \(q\).
 /// 3. Real-world usage typically enforces constraints to ensure stationarity/ergodicity.
 #[derive(Debug, Clone)]
-pub struct Egarch<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Egarch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant term (\(\omega\)) in log-variance
   pub omega: T,
   /// Magnitude effect coefficients (\(\alpha_1, \ldots, \alpha_p\))
@@ -62,6 +66,10 @@ pub struct Egarch<T: FloatExt, S: SeedExt = Unseeded> {
   pub n: usize,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Egarch<T, S> {
@@ -79,6 +87,7 @@ impl<T: FloatExt, S: SeedExt> Egarch<T, S> {
       "Egarch requires alpha.len() == gamma.len()"
     );
     Self {
+      backend: PhantomData,
       omega,
       alpha,
       gamma,
@@ -89,7 +98,11 @@ impl<T: FloatExt, S: SeedExt> Egarch<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Egarch<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Egarch<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Egarch<T, S> { omega, alpha, gamma, beta, n, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Egarch<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = EgarchSampler<T>

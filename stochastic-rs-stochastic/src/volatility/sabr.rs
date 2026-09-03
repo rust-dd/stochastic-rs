@@ -14,17 +14,21 @@
 //! No DOI is on record for this issue of Wilmott Magazine (it pre-dates
 //! the magazine's DOI registration).
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Clone)]
-pub struct Sabr<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Sabr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Vol-of-vol $\nu$: diffusion coefficient of the volatility state
   /// $\alpha_t$ (see module docs for the SDE).
   pub nu: T,
@@ -45,6 +49,10 @@ pub struct Sabr<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   cgns: Cgns<T>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -70,6 +78,7 @@ impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
     }
 
     Self {
+      backend: PhantomData,
       nu,
       beta,
       rho,
@@ -81,7 +90,9 @@ impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
       cgns: Cgns::new(rho, n - 1, t, Unseeded),
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> Sabr<T, S, B> {
   /// Replace `nu`, all else unchanged.
   pub fn with_nu(mut self, nu: T) -> Self {
     assert!(nu >= T::zero(), "nu must be non-negative");
@@ -165,7 +176,9 @@ impl<T: FloatExt> Default for Sabr<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Sabr<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] Sabr<T, S> { nu, beta, rho, n, f0, alpha0, t, seed, cgns } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Sabr<T, S, B> {
   /// `[F path, α path]`: index 0 is the forward `F`, index 1 is the
   /// stochastic-volatility state `α` (see module docs for the SDE).
   type Output = [Array1<T>; 2];
@@ -256,7 +269,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for SabrSampler<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Sabr<T, S> {
+impl<T: FloatExt, S: SeedExt, B: HostBackend> Sabr<T, S, B> {
   /// Calculate the Malliavin derivative of the Sabr model
   ///
   /// The Malliavin derivative of the volaility process in the Sabr model is given by:

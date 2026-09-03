@@ -19,6 +19,8 @@
 //! - `rho` is a **loading** on $v_t$ (not a correlation), so it is not restricted to [-1, 1].
 //! - Series indices follow Algorithm 1: **j = 1..J**, with **Γ0 = 0**.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use scilib::math::basic::gamma;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -27,6 +29,8 @@ use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::non_central_chi_squared::SimdNonCentralChiSquared;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -36,7 +40,7 @@ use crate::traits::ProcessExt;
 ///
 /// Reference: Kim Y. S. (2021), DOI: 10.3390/jrfm14020077 (see the
 /// module docs for the full citation).
-pub struct Svcgmy<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Svcgmy<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Positive tempering parameter λ+ > 0
   pub lambda_plus: T,
   /// Negative tempering parameter λ− > 0
@@ -63,6 +67,10 @@ pub struct Svcgmy<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Svcgmy<T, S> {
@@ -97,6 +105,7 @@ impl<T: FloatExt, S: SeedExt> Svcgmy<T, S> {
     }
 
     Self {
+      backend: PhantomData,
       lambda_plus,
       lambda_minus,
       alpha,
@@ -114,7 +123,11 @@ impl<T: FloatExt, S: SeedExt> Svcgmy<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Svcgmy<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Svcgmy<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Svcgmy<T, S> { lambda_plus, lambda_minus, alpha, kappa, eta, zeta, rho, n, j, x0, v0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Svcgmy<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = SvcgmySampler<T, S>

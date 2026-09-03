@@ -15,18 +15,21 @@
 //!   driver ([`Fou`]) this file wraps under
 //!   short-rate parameter names.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::diffusion::fou::Fou;
 use crate::diffusion::fou::FouSampler;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-pub struct FVasicek<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct FVasicek<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
   /// Mean-reversion speed (`a` in the module header's `a(b-r_t)dt`) —
@@ -55,6 +58,10 @@ pub struct FVasicek<T: FloatExt, S: SeedExt = Unseeded> {
   /// see module header — `FVasicek` is `Fou` under short-rate-model
   /// parameter names.
   pub fou: Fou<T, S>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> FVasicek<T, S> {
@@ -69,6 +76,7 @@ impl<T: FloatExt, S: SeedExt> FVasicek<T, S> {
     seed: S,
   ) -> Self {
     Self {
+      backend: PhantomData,
       hurst,
       theta,
       mu,
@@ -82,7 +90,11 @@ impl<T: FloatExt, S: SeedExt> FVasicek<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FVasicek<T, S> {
+impl<T: FloatExt, S: SeedExt, B> FVasicek<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] FVasicek<T, S> { hurst, theta, mu, sigma, n, x0, t, seed, fou } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for FVasicek<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = FVasicekSampler<'s, T, S>

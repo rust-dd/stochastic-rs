@@ -10,6 +10,8 @@
 //! time-dependent mean-reversion speed `θ(t)`, observed through a
 //! quadratic output map `phi(t) + b(t)X + c(t)X²`.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use ndarray::Array2;
 #[cfg(feature = "python")]
@@ -18,12 +20,14 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-pub struct Adg<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Adg<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Time-dependent additive drift target function k(t) — the level each
   /// latent factor is pulled toward, analogous to Hull-White's θ(t).
   pub k: Fn1D<T>,
@@ -55,6 +59,10 @@ pub struct Adg<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Adg<T, S> {
@@ -86,6 +94,7 @@ impl<T: FloatExt, S: SeedExt> Adg<T, S> {
       xn
     );
     Self {
+      backend: PhantomData,
       k: k.into(),
       theta: theta.into(),
       sigma,
@@ -101,10 +110,14 @@ impl<T: FloatExt, S: SeedExt> Adg<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Adg<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Adg<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Adg<T, S> { k, theta, sigma, phi, b, c, n, xn, x0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Adg<T, S, B> {
   type Output = Array2<T>;
   type Sampler<'s>
-    = AdgSampler<'s, T, S>
+    = AdgSampler<'s, T, S, B>
   where
     Self: 's;
 
@@ -120,7 +133,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Adg<T, S> {
   /// consume this owned seed directly, the same ticks the legacy code
   /// consumed from `self.seed` per call, so the first path reproduces the
   /// legacy stream bit-for-bit.
-  fn sampler(&self) -> AdgSampler<'_, T, S> {
+  fn sampler(&self) -> AdgSampler<'_, T, S, B> {
     AdgSampler {
       adg: self,
       seed: self.seed.derive(),
@@ -132,12 +145,12 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Adg<T, S> {
 /// once at construction. Each row's Gaussian increments are generated
 /// inside the step body from that owned seed.
 #[doc(hidden)]
-pub struct AdgSampler<'a, T: FloatExt, S: SeedExt> {
-  adg: &'a Adg<T, S>,
+pub struct AdgSampler<'a, T: FloatExt, S: SeedExt, B> {
+  adg: &'a Adg<T, S, B>,
   seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt> PathSampler<T> for AdgSampler<'_, T, S> {
+impl<T: FloatExt, S: SeedExt, B: HostBackend> PathSampler<T> for AdgSampler<'_, T, S, B> {
   type Output = Array2<T>;
 
   fn sample_into(&mut self, out: &mut Array2<T>) {
@@ -149,7 +162,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for AdgSampler<'_, T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Adg<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Adg<T, S, B> {
   fn sample_inner(&self, seed: &S) -> Array2<T> {
     let dt = if self.n > 1 {
       self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)

@@ -11,6 +11,8 @@
 //! [`CompoundCustom`](crate::process::ccustom::CompoundCustom) for the
 //! type that attaches jump sizes on top.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -18,11 +20,13 @@ use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-pub struct CustomJt<T, D, S: SeedExt = Unseeded>
+pub struct CustomJt<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -36,6 +40,10 @@ where
   pub distribution: D,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 #[inline]
@@ -53,12 +61,20 @@ where
   pub fn new(n: Option<usize>, t_max: Option<T>, distribution: D, seed: S) -> Self {
     validate_n_or_tmax(n, t_max, "CustomJt");
     CustomJt {
+      backend: PhantomData,
       n,
       t_max,
       distribution,
       seed,
     }
   }
+}
+
+impl<T, D, S: SeedExt, B> CustomJt<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
 }
 
 #[cfg(feature = "python")]
@@ -143,7 +159,7 @@ impl PyCustomJt {
   }
 }
 
-impl<T, D, S: SeedExt> CustomJt<T, D, S>
+impl<T, D, S: SeedExt, B> CustomJt<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -174,7 +190,9 @@ where
   }
 }
 
-impl<T, D, S: SeedExt> ProcessExt<T> for CustomJt<T, D, S>
+backend_switch!([T, D, S: SeedExt] CustomJt<T, D, S> { n, t_max, distribution, seed } via host where  T: FloatExt,  D: Distribution<T> + Send + Sync);
+
+impl<T, D, S: SeedExt, B: HostBackend> ProcessExt<T> for CustomJt<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,

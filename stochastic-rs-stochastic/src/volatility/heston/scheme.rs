@@ -27,7 +27,10 @@ pub trait HestonScheme: Send + Sync + 'static {
   /// makes `sample_par`/`sample_map`'s chunked fan-out deterministic: each
   /// chunk's sampler owns a distinct basis instead of every chunk racing on
   /// the same live `model.seed` inside the parallel region.
-  fn simulate<T: FloatExt, S: SeedExt>(model: &Heston<T, S, Self>, seed: &S) -> [Array1<T>; 2]
+  fn simulate<T: FloatExt, S: SeedExt, B>(
+    model: &Heston<T, S, Self, B>,
+    seed: &S,
+  ) -> [Array1<T>; 2]
   where
     Self: Sized;
 }
@@ -49,7 +52,10 @@ pub struct Euler;
 pub struct AndersenQe;
 
 impl HestonScheme for Euler {
-  fn simulate<T: FloatExt, S: SeedExt>(model: &Heston<T, S, Euler>, seed: &S) -> [Array1<T>; 2] {
+  fn simulate<T: FloatExt, S: SeedExt, B>(
+    model: &Heston<T, S, Euler, B>,
+    seed: &S,
+  ) -> [Array1<T>; 2] {
     let dt = model.cgns.dt();
     let [cgn1, cgn2] = &model.cgns.sample_impl(seed);
 
@@ -87,8 +93,8 @@ impl HestonScheme for AndersenQe {
   /// `V = Ψ⁻¹(U)` (eq. 24-26/29/30) — followed by the asset update (eq. 33).
   /// Correlation is handled analytically through the `K` constants, so no
   /// correlated Brownian pair is needed (unlike [`Euler`]).
-  fn simulate<T: FloatExt, S: SeedExt>(
-    model: &Heston<T, S, AndersenQe>,
+  fn simulate<T: FloatExt, S: SeedExt, B>(
+    model: &Heston<T, S, AndersenQe, B>,
     seed: &S,
   ) -> [Array1<T>; 2] {
     assert!(

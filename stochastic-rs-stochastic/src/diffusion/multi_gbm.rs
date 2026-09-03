@@ -15,18 +15,22 @@
 //! Engineering*, Springer, §3.2.3 (multidimensional geometric Brownian
 //! motion). DOI: 10.1007/978-0-387-21617-1
 
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::mcgns::Mcgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Clone)]
-pub struct MultiGbm<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct MultiGbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drifts $\mu_i$, one per asset.
   pub mu: Array1<T>,
   /// Volatilities $\sigma_i$, one per asset.
@@ -42,6 +46,10 @@ pub struct MultiGbm<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   driver: Mcgns<T, S>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> MultiGbm<T, S> {
@@ -68,6 +76,7 @@ impl<T: FloatExt, S: SeedExt> MultiGbm<T, S> {
     );
     let driver = Mcgns::new(rho.clone(), n.saturating_sub(1), t, seed.clone());
     Self {
+      backend: PhantomData,
       mu,
       sigma,
       rho,
@@ -78,7 +87,9 @@ impl<T: FloatExt, S: SeedExt> MultiGbm<T, S> {
       driver,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> MultiGbm<T, S, B> {
   /// Number of assets `k`.
   pub fn assets(&self) -> usize {
     self.rho.nrows()
@@ -106,7 +117,9 @@ impl<T: FloatExt, S: SeedExt> MultiGbm<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MultiGbm<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] MultiGbm<T, S> { mu, sigma, rho, n, x0, t, seed, driver } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for MultiGbm<T, S, B> {
   type Output = Array2<T>;
   type Sampler<'s>
     = MultiGbmSampler<T, S>

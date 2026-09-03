@@ -32,10 +32,14 @@
 //! multifactor stochastic volatility models work so well",
 //! *Management Science* 55(12), 1914-1932.
 
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -43,7 +47,7 @@ use crate::traits::ProcessExt;
 
 /// Multifactor Heston model with `K` independent variance factors driving
 /// a single stock. See module docs for the SDE form and reference.
-pub struct MultifactorHeston<T: FloatExt, const K: usize, S: SeedExt = Unseeded> {
+pub struct MultifactorHeston<T: FloatExt, const K: usize, S: SeedExt = Unseeded, B = Cpu> {
   /// Initial stock price.
   pub s0: Option<T>,
   /// Initial variance per factor.
@@ -67,6 +71,10 @@ pub struct MultifactorHeston<T: FloatExt, const K: usize, S: SeedExt = Unseeded>
   /// One `Cgns` per factor for $(\Delta W^S_k, \Delta W^V_k)$ with
   /// correlation $\rho_k$.
   cgns: Vec<Cgns<T>>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHeston<T, K, S> {
@@ -98,6 +106,7 @@ impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHeston<T, K, S> {
       .map(|k| Cgns::new(rho[k], n - 1, t, Unseeded))
       .collect::<Vec<_>>();
     Self {
+      backend: PhantomData,
       s0,
       v0,
       kappa,
@@ -113,7 +122,13 @@ impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHeston<T, K, S> {
   }
 }
 
-impl<T: FloatExt, const K: usize, S: SeedExt> ProcessExt<T> for MultifactorHeston<T, K, S> {
+impl<T: FloatExt, const K: usize, S: SeedExt, B> MultifactorHeston<T, K, S, B> {}
+
+backend_switch!([T: FloatExt, const K: usize, S: SeedExt] MultifactorHeston<T, K, S> { s0, v0, kappa, theta, sigma, rho, mu, n, t, seed, cgns } via host);
+
+impl<T: FloatExt, const K: usize, S: SeedExt, B: HostBackend> ProcessExt<T>
+  for MultifactorHeston<T, K, S, B>
+{
   /// `(stock_path, [variance_path; K])`.
   type Output = (Array1<T>, [Array1<T>; K]);
   type Sampler<'s>

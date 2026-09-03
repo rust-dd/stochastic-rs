@@ -4,6 +4,8 @@
 //! df(t,T)=\alpha(t,T)dt+\sigma(t,T)\,dW_t
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -11,6 +13,8 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::Fn2D;
@@ -21,7 +25,7 @@ use crate::traits::ProcessExt;
 ///
 /// This implementation treats `r`, `p`, and `f` as user-driven SDE components and
 /// does not enforce the no-arbitrage Hjm drift restriction between `alpha` and `sigma`.
-pub struct Hjm<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Hjm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Time-dependent coefficient a(t) in the short rate's drift term
   /// `a(t)·dt`.
   pub a: Fn1D<T>,
@@ -69,6 +73,10 @@ pub struct Hjm<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
@@ -88,6 +96,7 @@ impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
     seed: S,
   ) -> Self {
     Self {
+      backend: PhantomData,
       a: a.into(),
       b: b.into(),
       p: p.into(),
@@ -105,10 +114,14 @@ impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hjm<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Hjm<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Hjm<T, S> { a, b, p, q, v, alpha, sigma, n, r0, p0, f0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Hjm<T, S, B> {
   type Output = [Array1<T>; 3];
   type Sampler<'s>
-    = HjmSampler<'s, T, S>
+    = HjmSampler<'s, T, S, B>
   where
     Self: 's;
 
@@ -124,7 +137,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hjm<T, S> {
   /// owned seed directly — the same three ticks the legacy code consumed
   /// from `self.seed` per call, so the first path reproduces the legacy
   /// stream bit-for-bit.
-  fn sampler(&self) -> HjmSampler<'_, T, S> {
+  fn sampler(&self) -> HjmSampler<'_, T, S, B> {
     HjmSampler {
       hjm: self,
       seed: self.seed.derive(),
@@ -136,12 +149,12 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Hjm<T, S> {
 /// once at construction. Each SDE component's Gaussian increments are
 /// generated inside the step body from that owned seed.
 #[doc(hidden)]
-pub struct HjmSampler<'a, T: FloatExt, S: SeedExt> {
-  hjm: &'a Hjm<T, S>,
+pub struct HjmSampler<'a, T: FloatExt, S: SeedExt, B> {
+  hjm: &'a Hjm<T, S, B>,
   seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt> PathSampler<T> for HjmSampler<'_, T, S> {
+impl<T: FloatExt, S: SeedExt, B: HostBackend> PathSampler<T> for HjmSampler<'_, T, S, B> {
   type Output = [Array1<T>; 3];
 
   fn sample_into(&mut self, out: &mut [Array1<T>; 3]) {
@@ -153,7 +166,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for HjmSampler<'_, T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Hjm<T, S, B> {
   fn sample_inner(&self, seed: &S) -> [Array1<T>; 3] {
     let mut r = Array1::<T>::zeros(self.n);
     let mut p = Array1::<T>::zeros(self.n);

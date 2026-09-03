@@ -1,15 +1,19 @@
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::gamma::SimdGamma;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Gamma subordinator where `G_t ~ Gamma(nu * t, rate)`.
-pub struct GammaSubordinator<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct GammaSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Shape intensity `nu`.
   pub nu: T,
   /// Rate parameter (>0).
@@ -22,6 +26,10 @@ pub struct GammaSubordinator<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> GammaSubordinator<T, S> {
@@ -29,6 +37,7 @@ impl<T: FloatExt, S: SeedExt> GammaSubordinator<T, S> {
     assert!(nu > T::zero(), "nu must be positive");
     assert!(rate > T::zero(), "rate must be positive");
     Self {
+      backend: PhantomData,
       nu,
       rate,
       n,
@@ -39,7 +48,11 @@ impl<T: FloatExt, S: SeedExt> GammaSubordinator<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for GammaSubordinator<T, S> {
+impl<T: FloatExt, S: SeedExt, B> GammaSubordinator<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] GammaSubordinator<T, S> { nu, rate, n, x0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for GammaSubordinator<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = GammaSubordinatorSampler<T>

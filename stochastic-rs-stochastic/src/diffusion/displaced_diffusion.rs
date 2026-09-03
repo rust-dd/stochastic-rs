@@ -26,12 +26,16 @@
 //! tolerant Black-76-style pricers: choosing `beta > 0` keeps `S_t + beta`
 //! (and hence the model) well-defined even while `S_t` itself goes
 //! negative.
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -44,7 +48,7 @@ use crate::traits::ProcessExt;
 /// bit-for-bit relationship to [`Gbm`](crate::diffusion::gbm::Gbm) at
 /// `beta = 0`.
 #[derive(Clone)]
-pub struct DisplacedDiffusion<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct DisplacedDiffusion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant proportional drift rate μ of the shifted variable `S_t +
   /// beta` (same "no mean reversion" role as
   /// [`Gbm::mu`](crate::diffusion::gbm::Gbm::mu)).
@@ -67,6 +71,10 @@ pub struct DisplacedDiffusion<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -75,6 +83,7 @@ pub struct DisplacedDiffusion<T: FloatExt, S: SeedExt = Unseeded> {
 impl<T: FloatExt, S: SeedExt> DisplacedDiffusion<T, S> {
   pub fn new(mu: T, sigma: T, beta: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self {
+      backend: PhantomData,
       mu,
       sigma,
       beta,
@@ -84,7 +93,9 @@ impl<T: FloatExt, S: SeedExt> DisplacedDiffusion<T, S> {
       seed,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> DisplacedDiffusion<T, S, B> {
   /// Replace `mu`, all else unchanged.
   pub fn with_mu(mut self, mu: T) -> Self {
     self.mu = mu;
@@ -151,7 +162,9 @@ impl<T: FloatExt> Default for DisplacedDiffusion<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DisplacedDiffusion<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] DisplacedDiffusion<T, S> { mu, sigma, beta, n, x0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for DisplacedDiffusion<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = DisplacedDiffusionSampler<T>

@@ -28,6 +28,8 @@
 //! A lattice (trinomial-tree) engine for the same model already exists at
 //! `stochastic-rs-quant::lattice::short_rate::black_karasinski::BlackKarasinskiTree`;
 //! this type is the missing Monte-Carlo path simulator for it.
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -36,6 +38,8 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::PathSampler;
@@ -50,7 +54,7 @@ use crate::traits::ProcessExt;
 /// [`HullWhite`](crate::interest::hull_white::HullWhite)) and the exact-OU
 /// discretization.
 #[derive(Clone)]
-pub struct BlackKarasinski<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct BlackKarasinski<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Time-dependent additive drift target θ(t), fitted to the initial term
   /// structure of the log-rate — same role as
   /// [`HullWhite::theta`](crate::interest::hull_white::HullWhite::theta).
@@ -81,6 +85,10 @@ pub struct BlackKarasinski<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 /// Constant θ(t) ≡ 0.05 used by [`BlackKarasinski`]'s `Default` impl —
@@ -123,6 +131,7 @@ impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
     }
 
     Self {
+      backend: PhantomData,
       theta: theta.into(),
       a,
       sigma,
@@ -132,7 +141,9 @@ impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
       seed,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> BlackKarasinski<T, S, B> {
   /// Replace `theta`, all else unchanged.
   pub fn with_theta(mut self, theta: impl Into<Fn1D<T>>) -> Self {
     self.theta = theta.into();
@@ -196,7 +207,9 @@ impl<T: FloatExt> Default for BlackKarasinski<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for BlackKarasinski<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] BlackKarasinski<T, S> { theta, a, sigma, n, r0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for BlackKarasinski<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = BlackKarasinskiSampler<'s, T>

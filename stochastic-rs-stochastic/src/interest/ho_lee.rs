@@ -4,6 +4,8 @@
 //! dr_t=\theta(t)dt+\sigma dW_t
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -12,13 +14,15 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[allow(non_snake_case)]
-pub struct HoLee<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct HoLee<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Observed forward-rate curve f(0,T), used to derive the
   /// time-dependent drift `∂f/∂T(0,t) + σ²t` when supplied — mutually
   /// exclusive with the constant-drift alternative `theta`.
@@ -34,6 +38,10 @@ pub struct HoLee<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> HoLee<T, S> {
@@ -51,6 +59,7 @@ impl<T: FloatExt, S: SeedExt> HoLee<T, S> {
     );
 
     Self {
+      backend: PhantomData,
       f_T,
       theta,
       sigma,
@@ -61,7 +70,11 @@ impl<T: FloatExt, S: SeedExt> HoLee<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for HoLee<T, S> {
+impl<T: FloatExt, S: SeedExt, B> HoLee<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] HoLee<T, S> { f_T, theta, sigma, n, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for HoLee<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = HoLeeSampler<'s, T>

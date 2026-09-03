@@ -14,13 +14,15 @@ use stochastic_rs_distributions::uniform::SimdUniform;
 
 use super::sample_positive_stable;
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Inverse alpha-stable subordinator:
 /// `E_alpha(t) = inf { u >= 0 : D_alpha(u) > t }`.
-pub struct InverseAlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct InverseAlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Stability index in `(0, 1)`.
   pub alpha: T,
   /// Laplace scale of the direct stable subordinator.
@@ -35,6 +37,10 @@ pub struct InverseAlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded> {
   pub u_max: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> InverseAlphaStableSubordinator<T, S> {
@@ -54,6 +60,7 @@ impl<T: FloatExt, S: SeedExt> InverseAlphaStableSubordinator<T, S> {
     assert!(c > T::zero(), "c must be positive");
     assert!(u_steps >= 2, "u_steps must be >= 2");
     Self {
+      backend: PhantomData,
       alpha,
       c,
       n,
@@ -65,7 +72,13 @@ impl<T: FloatExt, S: SeedExt> InverseAlphaStableSubordinator<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for InverseAlphaStableSubordinator<T, S> {
+impl<T: FloatExt, S: SeedExt, B> InverseAlphaStableSubordinator<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] InverseAlphaStableSubordinator<T, S> { alpha, c, n, t, u_steps, u_max, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T>
+  for InverseAlphaStableSubordinator<T, S, B>
+{
   type Output = Array1<T>;
   type Sampler<'s>
     = InverseAlphaStableSubordinatorSampler<T>

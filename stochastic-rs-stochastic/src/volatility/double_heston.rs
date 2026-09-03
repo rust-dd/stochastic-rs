@@ -21,10 +21,14 @@
 //!   model and an analytical formula in pricing American put option",
 //!   <https://doi.org/10.1016/j.cam.2021.113422>
 
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -38,7 +42,7 @@ use crate::traits::ProcessExt;
 ///
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `DoubleHeston::new(..).with_kappa1(2.5).with_rho2(-0.4)`.
-pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Initial stock price.
   pub s0: Option<T>,
   /// Initial variance of factor 1.
@@ -75,6 +79,10 @@ pub struct DoubleHeston<T: FloatExt, S: SeedExt = Unseeded> {
   cgns1: Cgns<T>,
   /// Second factor's correlated Gaussian noise source: $(W_2^S, W_2^v)$.
   cgns2: Cgns<T>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
@@ -111,6 +119,7 @@ impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
     }
 
     Self {
+      backend: PhantomData,
       s0,
       v1_0,
       v2_0,
@@ -131,7 +140,9 @@ impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
       cgns2: Cgns::new(rho2, n - 1, t, Unseeded),
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   /// Replace `s0`, all else unchanged.
   pub fn with_s0(mut self, s0: Option<T>) -> Self {
     self.s0 = s0;
@@ -254,7 +265,9 @@ impl<T: FloatExt, S: SeedExt> DoubleHeston<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for DoubleHeston<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] DoubleHeston<T, S> { s0, v1_0, v2_0, kappa1, theta1, sigma1, rho1, kappa2, theta2, sigma2, rho2, mu, n, t, use_sym, seed, cgns1, cgns2 } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for DoubleHeston<T, S, B> {
   /// Output tuple: `[S, v1, v2]`.
   type Output = [Array1<T>; 3];
   type Sampler<'s>

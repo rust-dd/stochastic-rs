@@ -4,12 +4,16 @@
 //! \phi(B)(1-B)^dX_t=\theta(B)\varepsilon_t,\qquad \varepsilon_t\sim\mathcal N(0,\sigma^2)
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -22,7 +26,7 @@ use crate::traits::ProcessExt;
 /// where \(\phi(B)\) and \(\theta(B)\) are polynomials of orders p and q, respectively,
 /// and \(B\) is the backshift (lag) operator (\(B X_t = X_{t-1}\)).
 #[derive(Debug, Clone)]
-pub struct Arima<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Arima<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// AR coefficients (\(\phi_1,\dots,\phi_p\)) as an Array1
   pub ar_coefs: Array1<T>,
   /// MA coefficients (\(\theta_1,\dots,\theta_q\)) as an Array1
@@ -35,6 +39,10 @@ pub struct Arima<T: FloatExt, S: SeedExt = Unseeded> {
   pub n: usize,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Arima<T, S> {
@@ -49,6 +57,7 @@ impl<T: FloatExt, S: SeedExt> Arima<T, S> {
   ) -> Self {
     assert!(sigma > T::zero(), "Arima requires sigma > 0");
     Self {
+      backend: PhantomData,
       ar_coefs,
       ma_coefs,
       d,
@@ -59,7 +68,11 @@ impl<T: FloatExt, S: SeedExt> Arima<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Arima<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Arima<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Arima<T, S> { ar_coefs, ma_coefs, d, sigma, n, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Arima<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = ArimaSampler<T>

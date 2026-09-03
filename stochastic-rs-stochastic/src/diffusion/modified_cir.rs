@@ -15,18 +15,22 @@
 //! always-real-valued cousin of CIR rather than an implementation of a
 //! specific published model.
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
-pub struct ModifiedCIR<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct ModifiedCIR<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed κ pulling `X_t` toward 0 — this model has no
   /// separate long-run-level field; it always reverts to 0.
   pub kappa: T,
@@ -40,11 +44,16 @@ pub struct ModifiedCIR<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> ModifiedCIR<T, S> {
   pub fn new(kappa: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self {
+      backend: PhantomData,
       kappa,
       sigma,
       n,
@@ -55,7 +64,11 @@ impl<T: FloatExt, S: SeedExt> ModifiedCIR<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for ModifiedCIR<T, S> {
+impl<T: FloatExt, S: SeedExt, B> ModifiedCIR<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] ModifiedCIR<T, S> { kappa, sigma, n, x0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for ModifiedCIR<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = ModifiedCirSampler<T>

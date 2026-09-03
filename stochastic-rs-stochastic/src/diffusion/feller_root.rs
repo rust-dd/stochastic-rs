@@ -4,18 +4,22 @@
 //! dX_t=X_t(\theta_1 - X_t(\theta_3^3 - \theta_1\theta_2))\,dt+\theta_3 X_t^{3/2}\,dW_t
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
-pub struct FellerRoot<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct FellerRoot<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Coefficient θ₁ setting the linear part of the drift
   /// `X_t(θ_1 − X_t(θ_3³ − θ_1θ_2))`.
   pub theta1: T,
@@ -33,6 +37,10 @@ pub struct FellerRoot<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> FellerRoot<T, S> {
@@ -46,6 +54,7 @@ impl<T: FloatExt, S: SeedExt> FellerRoot<T, S> {
     seed: S,
   ) -> Self {
     Self {
+      backend: PhantomData,
       theta1,
       theta2,
       theta3,
@@ -57,7 +66,11 @@ impl<T: FloatExt, S: SeedExt> FellerRoot<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for FellerRoot<T, S> {
+impl<T: FloatExt, S: SeedExt, B> FellerRoot<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] FellerRoot<T, S> { theta1, theta2, theta3, n, x0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for FellerRoot<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = FellerRootSampler<T>

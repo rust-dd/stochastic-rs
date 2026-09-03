@@ -13,11 +13,15 @@
 //! Reference: Glasserman (2003), *Monte Carlo Methods in Financial
 //! Engineering*, Springer, §2.3.3. DOI: 10.1007/978-0-387-21617-1
 
+use std::marker::PhantomData;
+
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::linalg::cholesky_lower;
 use crate::linalg::validate_correlation;
 use crate::traits::FloatExt;
@@ -25,7 +29,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[derive(Clone)]
-pub struct Mcgns<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Mcgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Instantaneous correlation matrix ρ of the `k` streams (`k × k`).
   pub rho: Array2<T>,
   /// Number of increments sampled along each stream.
@@ -35,6 +39,10 @@ pub struct Mcgns<T: FloatExt, S: SeedExt = Unseeded> {
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   chol: Array2<T>,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Mcgns<T, S> {
@@ -43,6 +51,7 @@ impl<T: FloatExt, S: SeedExt> Mcgns<T, S> {
     validate_correlation(&rho);
     let chol = cholesky_lower(&rho);
     Self {
+      backend: PhantomData,
       rho,
       n,
       t,
@@ -50,7 +59,9 @@ impl<T: FloatExt, S: SeedExt> Mcgns<T, S> {
       chol,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> Mcgns<T, S, B> {
   /// Number of streams `k`.
   pub fn dims(&self) -> usize {
     self.rho.nrows()
@@ -92,7 +103,9 @@ impl<T: FloatExt, S: SeedExt> Mcgns<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Mcgns<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] Mcgns<T, S> { rho, n, t, seed, chol } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Mcgns<T, S, B> {
   type Output = Array2<T>;
   type Sampler<'s>
     = McgnsSampler<T, S>
@@ -102,6 +115,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Mcgns<T, S> {
   fn sampler(&self) -> McgnsSampler<T, S> {
     McgnsSampler {
       noise: Mcgns {
+        backend: PhantomData,
         rho: self.rho.clone(),
         n: self.n,
         t: self.t,

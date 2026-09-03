@@ -51,10 +51,14 @@
 //! - Osajima, Y. (2007), "The asymptotic expansion formula of implied
 //!   volatility for dynamic SABR model", SSRN 965265.
 
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -62,7 +66,7 @@ use crate::traits::ProcessExt;
 
 /// Dynamic / multi-factor SABR with piecewise-constant `beta`, `rho` and
 /// `nu` term structures. See module docs for the SDE and discretisation.
-pub struct MultifactorSabr<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct MultifactorSabr<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Initial forward-rate level.
   pub f0: Option<T>,
   /// Initial volatility level $\alpha_0$.
@@ -83,6 +87,10 @@ pub struct MultifactorSabr<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> MultifactorSabr<T, S> {
@@ -121,6 +129,7 @@ impl<T: FloatExt, S: SeedExt> MultifactorSabr<T, S> {
       assert!(alpha0 >= T::zero(), "alpha0 must be non-negative");
     }
     Self {
+      backend: PhantomData,
       f0,
       alpha0,
       knots,
@@ -132,7 +141,9 @@ impl<T: FloatExt, S: SeedExt> MultifactorSabr<T, S> {
       seed,
     }
   }
+}
 
+impl<T: FloatExt, S: SeedExt, B> MultifactorSabr<T, S, B> {
   /// Index of the active bucket at time `time`: the number of knots
   /// less than or equal to `time`, clamped to the last bucket.
   #[inline]
@@ -153,7 +164,9 @@ impl<T: FloatExt, S: SeedExt> MultifactorSabr<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for MultifactorSabr<T, S> {
+backend_switch!([T: FloatExt, S: SeedExt] MultifactorSabr<T, S> { f0, alpha0, knots, beta, rho, nu, n, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for MultifactorSabr<T, S, B> {
   /// `[F path, α path]`: index 0 is the forward `F`, index 1 is the
   /// stochastic-volatility state `α` (see module docs for the SDE).
   type Output = [Array1<T>; 2];

@@ -4,6 +4,8 @@
 //! \log Y\sim p\,\mathrm{Exp}(\eta_1)-(1-p)\,\mathrm{Exp}(\eta_2),\quad dS/S=\cdots+d\left(\sum(J-1)\right)
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use rand_distr::Distribution;
 #[cfg(feature = "python")]
@@ -13,6 +15,8 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
@@ -39,7 +43,7 @@ use crate::traits::ProcessExt;
 /// your own `D: Distribution<T> + Send + Sync` implementing the true
 /// double-exponential law instead (see [`Kou::new`]).
 #[derive(Clone)]
-pub struct Kou<T, D, S: SeedExt = Unseeded>
+pub struct Kou<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -99,6 +103,10 @@ where
   /// construction from this same value — see `cpoisson`'s doc above) drives
   /// the jump component.
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T, D, S: SeedExt> Kou<T, D, S>
@@ -129,6 +137,7 @@ where
       seed.clone().derive(),
     );
     Self {
+      backend: PhantomData,
       alpha,
       sigma,
       lambda,
@@ -142,7 +151,16 @@ where
   }
 }
 
-impl<T, D, S: SeedExt> ProcessExt<T> for Kou<T, D, S>
+impl<T, D, S: SeedExt, B> Kou<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+}
+
+backend_switch!([T, D, S: SeedExt] Kou<T, D, S> { alpha, sigma, lambda, theta, n, x0, t, cpoisson, seed } via host where  T: FloatExt,  D: Distribution<T> + Send + Sync);
+
+impl<T, D, S: SeedExt, B: HostBackend> ProcessExt<T> for Kou<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,

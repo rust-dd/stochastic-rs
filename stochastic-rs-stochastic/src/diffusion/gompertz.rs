@@ -4,19 +4,23 @@
 //! dX_t=aX_t\ln\!\left(\frac{K}{X_t}\right)dt+\sigma X_t dW_t
 //! $$
 //!
+use std::marker::PhantomData;
+
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Gompertz diffusion
 /// dX_t = (a - b ln X_t) X_t dt + sigma X_t dW_t
-pub struct Gompertz<T: FloatExt, S: SeedExt = Unseeded> {
+pub struct Gompertz<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Growth-rate coefficient a in the drift `X_t(a - b·ln X_t)dt` — together
   /// with `b`, sets the asymptotic level `exp(a/b)`.
   pub a: T,
@@ -34,11 +38,16 @@ pub struct Gompertz<T: FloatExt, S: SeedExt = Unseeded> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
+  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
+  /// updates keep working; it carries no data.
+  pub backend: PhantomData<B>,
 }
 
 impl<T: FloatExt, S: SeedExt> Gompertz<T, S> {
   pub fn new(a: T, b: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self {
+      backend: PhantomData,
       a,
       b,
       sigma,
@@ -50,7 +59,11 @@ impl<T: FloatExt, S: SeedExt> Gompertz<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Gompertz<T, S> {
+impl<T: FloatExt, S: SeedExt, B> Gompertz<T, S, B> {}
+
+backend_switch!([T: FloatExt, S: SeedExt] Gompertz<T, S> { a, b, sigma, n, x0, t, seed } via host);
+
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Gompertz<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = GompertzSampler<T>
