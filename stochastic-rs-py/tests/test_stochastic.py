@@ -193,3 +193,32 @@ def test_probe_device_describes_the_host_and_reports_missing_devices():
         assert all(p in ("f32", "f64") for p in found["precisions"])
     sr.select_device(0)
 
+
+def test_device_argument_on_the_process_classes():
+    base = sr.PyGbm(0.05, 0.2, 64, x0=100.0, t=1.0, seed=7)
+    same = sr.PyGbm(0.05, 0.2, 64, x0=100.0, t=1.0, seed=7, device="cpu")
+    assert np.array_equal(base.sample_par(4), same.sample_par(4))
+    assert np.array_equal(sr.PyFgn(0.7, 64, seed=3).sample_par(2), sr.PyFgn(0.7, 64, seed=3, device="cpu").sample_par(2))
+    with pytest.raises(ValueError):
+        sr.PyGbm(0.05, 0.2, 64, seed=7, device="tpu")
+    # float64 on a single-precision device is refused whatever the build carries
+    with pytest.raises(ValueError):
+        sr.PyGbm(0.05, 0.2, 64, seed=7, device="metal")
+    with pytest.raises(ValueError):
+        sr.PyFbm(0.7, 64, seed=7, device="cubecl")
+    for device in ("gpu", "cuda-native", "metal", "cubecl", "accelerate"):
+        try:
+            gbm = sr.PyGbm(0.05, 0.2, 64, x0=100.0, t=1.0, seed=7, dtype="f32", device=device)
+            fgn = sr.PyFgn(0.7, 64, seed=7, dtype="f32", device=device)
+        except ValueError as err:
+            assert "rebuild" in str(err)
+            continue
+        except RuntimeError:
+            continue
+        paths = gbm.sample_par(8)
+        assert paths.shape == (8, 64) and paths.dtype == np.float32
+        assert np.allclose(paths[:, 0], 100.0)
+        assert gbm.sample().shape == (64,)
+        noise = fgn.sample_par(3)
+        assert noise.shape == (3, 64) and noise.dtype == np.float32
+

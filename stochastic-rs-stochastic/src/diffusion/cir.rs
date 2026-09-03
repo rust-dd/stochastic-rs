@@ -280,7 +280,8 @@ impl<T: FloatExt> PathSampler<T> for CirSampler<T> {
 
 py_process_1d!(PyCir, Cir,
   sig: (theta, mu, sigma, n, x0=None, t=None, use_sym=None, seed=None, dtype=None),
-  params: (theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>)
+  params: (theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>),
+  device
 );
 
 #[cfg(test)]

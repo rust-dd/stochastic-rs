@@ -26,6 +26,7 @@ use crate::traits::ProcessExt;
 /// Fractional Cox-Ingersoll-Ross (Fcir) process.
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW^H(t)
 /// where X(t) is the Fcir process.
+#[derive(Clone)]
 pub struct Fcir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
@@ -176,7 +177,8 @@ backend_switch!([T: FloatExt, S: SeedExt] Fcir<T, S> { hurst, theta, mu, sigma, 
 
 py_process_1d!(PyFcir, Fcir,
   sig: (hurst, theta, mu, sigma, n, x0=None, t=None, use_sym=None, seed=None, dtype=None),
-  params: (hurst: f64, theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>)
+  params: (hurst: f64, theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>),
+  device
 );
 
 #[cfg(test)]

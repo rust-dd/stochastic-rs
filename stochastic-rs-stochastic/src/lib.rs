@@ -43,6 +43,9 @@ pub mod mc;
 pub mod noise;
 pub mod numerics;
 pub mod process;
+#[cfg(feature = "python")]
+#[doc(hidden)]
+pub mod python_device;
 pub mod rough;
 pub mod sde;
 pub mod sheet;

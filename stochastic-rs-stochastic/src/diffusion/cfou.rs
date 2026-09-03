@@ -32,6 +32,7 @@ use crate::traits::ProcessExt;
 ///
 /// Reference: Alazemi, Alsenafi, Chen, Zhou (2024), arXiv:2406.18004
 /// (see the module docs for the full citation).
+#[derive(Clone)]
 pub struct Cfou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent of the driving fractional Brownian motion.
   pub hurst: T,
@@ -180,7 +181,8 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S> {
 
 py_process_2d!(PyCfou, Cfou,
   sig: (hurst, lambda, omega, a, n, x1_0=None, x2_0=None, t=None, seed=None, dtype=None),
-  params: (hurst: f64, lambda: f64, omega: f64, a: f64, n: usize, x1_0: Option<f64>, x2_0: Option<f64>, t: Option<f64>)
+  params: (hurst: f64, lambda: f64, omega: f64, a: f64, n: usize, x1_0: Option<f64>, x2_0: Option<f64>, t: Option<f64>),
+  device
 );
 
 #[cfg(test)]

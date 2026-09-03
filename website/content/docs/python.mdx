@@ -114,6 +114,16 @@ chooses the device ordinal for the whole process (`STOCHASTIC_RS_DEVICE=n` does
 the same from the environment). A device failure during `euler_paths` is a
 `RuntimeError` too.
 
+The device-capable classes take `device=` directly — `PyGbm`, `PyOu`, `PyCir`
+(Euler engine) and `PyFgn`, `PyFbm`, `PyFou`, `PyFcir`, `PyFgbm`, `PyFJacobi`,
+`PyCfou`, `PyCfgns` (fGN family): `PyGbm(..., dtype="f32", device="metal")`.
+The name is checked against the build (`ValueError` with a rebuild hint), a
+single-precision device needs `dtype="f32"` (`ValueError` otherwise), and the
+device is probed when the object is built (`RuntimeError` if it cannot be
+opened), so `sample()` / `sample_par(m)` then run on it and return arrays in
+the class's dtype. `device="cpu"` is the default and samples exactly as
+before.
+
 ```python
 srs.probe_device("metal")   # {'backend': 'MetalNative', 'name': 'Apple M2 Max', 'precisions': ['f32'], 'ordinal': 0}
 srs.select_device(1)        # second CUDA GPU from here on

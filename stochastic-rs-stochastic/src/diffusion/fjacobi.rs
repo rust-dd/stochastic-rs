@@ -16,6 +16,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct FJacobi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
@@ -152,5 +153,6 @@ backend_switch!([T: FloatExt, S: SeedExt] FJacobi<T, S> { hurst, alpha, beta, si
 
 py_process_1d!(PyFJacobi, FJacobi,
   sig: (hurst, alpha, beta, sigma, n, x0=None, t=None, seed=None, dtype=None),
-  params: (hurst: f64, alpha: f64, beta: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (hurst: f64, alpha: f64, beta: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

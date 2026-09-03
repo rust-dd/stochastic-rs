@@ -16,6 +16,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct Cfgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
@@ -136,5 +137,6 @@ backend_switch!([T: FloatExt, S: SeedExt] Cfgns<T, S> { hurst, rho, n, t, seed }
 
 py_process_2x1d!(PyCfgns, Cfgns,
   sig: (hurst, rho, n, t=None, seed=None, dtype=None),
-  params: (hurst: f64, rho: f64, n: usize, t: Option<f64>)
+  params: (hurst: f64, rho: f64, n: usize, t: Option<f64>),
+  device
 );

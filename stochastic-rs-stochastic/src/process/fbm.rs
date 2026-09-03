@@ -5,19 +5,7 @@
 //! $$
 //!
 use ndarray::Array1;
-#[cfg(feature = "python")]
-use ndarray::Array2;
 use ndarray::parallel::prelude::*;
-#[cfg(feature = "python")]
-use numpy::IntoPyArray;
-#[cfg(feature = "python")]
-use numpy::PyArray1;
-#[cfg(feature = "python")]
-use numpy::PyArray2;
-#[cfg(feature = "python")]
-use pyo3::prelude::*;
-#[cfg(feature = "python")]
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -244,47 +232,11 @@ impl<T: FloatExt, S: SeedExt, B> Fbm<T, S, B> {
   }
 }
 
-#[cfg(feature = "python")]
-#[pyclass]
-pub struct PyFbm {
-  inner: Option<Fbm<f64>>,
-  seeded: Option<Fbm<f64, crate::simd_rng::Deterministic>>,
-}
-
-#[cfg(feature = "python")]
-#[pymethods]
-impl PyFbm {
-  #[new]
-  #[pyo3(signature = (hurst, n, t=None, seed=None))]
-  fn new(hurst: f64, n: usize, t: Option<f64>, seed: Option<u64>) -> Self {
-    match seed {
-      Some(s) => Self {
-        inner: None,
-        seeded: Some(Fbm::new(hurst, n, t, Deterministic::new(s))),
-      },
-      None => Self {
-        inner: Some(Fbm::new(hurst, n, t, Unseeded)),
-        seeded: None,
-      },
-    }
-  }
-
-  fn sample<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
-    py_dispatch_f64!(self, |inner| inner.sample().into_pyarray(py))
-  }
-
-  fn sample_par<'py>(&self, py: Python<'py>, m: usize) -> Bound<'py, PyArray2<f64>> {
-    py_dispatch_f64!(self, |inner| {
-      let paths = inner.sample_par(m);
-      let n = paths[0].len();
-      let mut result = Array2::<f64>::zeros((m, n));
-      for (i, path) in paths.iter().enumerate() {
-        result.row_mut(i).assign(path);
-      }
-      result.into_pyarray(py)
-    })
-  }
-}
+py_process_1d!(PyFbm, Fbm,
+  sig: (hurst, n, t=None, seed=None, dtype=None),
+  params: (hurst: f64, n: usize, t: Option<f64>),
+  device
+);
 
 #[cfg(test)]
 mod tests {

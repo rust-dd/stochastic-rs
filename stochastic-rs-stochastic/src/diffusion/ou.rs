@@ -221,5 +221,6 @@ impl<T: FloatExt> PathSampler<T> for OuSampler<T> {
 
 py_process_1d!(PyOu, Ou,
   sig: (theta, mu, sigma, n, x0=None, t=None, seed=None, dtype=None),
-  params: (theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );
