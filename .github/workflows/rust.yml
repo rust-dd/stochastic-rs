@@ -94,6 +94,22 @@ jobs:
       - name: Cargo check (metal + accelerate)
         run: cargo check -p stochastic-rs-stochastic --features metal,accelerate --all-targets
 
+  # cudarc loads libcuda at run time, so the native CUDA back-end compiles on
+  # a runner without a GPU or toolkit (the cuda-12080 pin stands in for the
+  # missing nvcc). Check-only: the kernels run on the maintainer's CUDA box.
+  check_cuda_native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Cargo check (cuda-native)
+        run: cargo check -p stochastic-rs-stochastic --features cuda-native --all-targets
+      - name: Clippy (cuda-native)
+        run: cargo clippy -p stochastic-rs-stochastic --features cuda-native --all-targets -- -D warnings
+
   # The docs site's Rust code blocks are `<RustExample path="tests/doctest_*.rs" />`
   # includes rather than hand-copied text, so there is nothing to diff for
   # divergence — the page renders the literal file the `test` job already
