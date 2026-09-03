@@ -69,6 +69,9 @@ pub struct LeeMyklandTest {
 /// Lee–Mykland jump test of every return in `returns` at level `alpha`,
 /// with the local volatility taken from the `window` observations before it.
 ///
+/// The first `window - 1` statistics and local volatilities are NaN, and so
+/// is any statistic where a zero return meets a zero local volatility.
+///
 /// # Panics
 ///
 /// If `window < 3`, if there are fewer than `window` returns, or if `alpha`

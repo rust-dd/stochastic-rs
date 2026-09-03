@@ -186,6 +186,10 @@ impl GeometricBasketPricer {
 
   /// Price either leg at one query point.
   ///
+  /// Returns NaN when the basket volatility or `tau` is zero and the
+  /// geometric forward sits exactly at the strike (`d₁` is 0/0); any other
+  /// degenerate volatility prices the discounted intrinsic value.
+  ///
   /// # Panics
   /// If the query's spot or yield vector disagrees with the length the
   /// weights, volatilities and correlation matrix fix between them.
@@ -368,6 +372,9 @@ impl ArithmeticBasketLevyPricer {
 
   /// Price either leg at one query point using Levy (1992) two-moment
   /// lognormal approximation.
+  ///
+  /// Returns NaN when the two matched moments do not define a lognormal
+  /// (a non-positive `m2 / m1²`), rather than flooring the variance.
   pub fn price_option(
     &self,
     s: ArrayView1<'_, f64>,

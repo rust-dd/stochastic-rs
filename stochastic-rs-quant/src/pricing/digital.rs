@@ -77,9 +77,9 @@ impl CashOrNothingPricer {
   /// one [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) gives. That
   /// is case 2, and it has to propagate into a `NaN` NPV rather than abort
   /// the engine; `every_unlinked_handle_poisons_npv_and_greeks` pins it.
-  /// The check spells the missing-data case out — `sigma.is_nan() || sigma
-  /// >= 0.0` — precisely so the two cases stay apart and neither is a
-  /// side effect of how `NaN` compares. Heston's parameters have no such path — they arrive
+  /// The check spells the missing-data case out, `sigma.is_nan() || sigma >= 0.0`,
+  /// precisely so the two cases stay apart and neither is a side effect of
+  /// how `NaN` compares. Heston's parameters have no such path — they arrive
   /// from calibration output, never from a handle.
   ///
   /// `sigma == 0` is the deterministic limit and stays accepted.
@@ -214,9 +214,9 @@ impl AssetOrNothingPricer {
   /// one [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) gives. That
   /// is case 2, and it has to propagate into a `NaN` NPV rather than abort
   /// the engine; `every_unlinked_handle_poisons_npv_and_greeks` pins it.
-  /// The check spells the missing-data case out — `sigma.is_nan() || sigma
-  /// >= 0.0` — precisely so the two cases stay apart and neither is a
-  /// side effect of how `NaN` compares. Heston's parameters have no such path — they arrive
+  /// The check spells the missing-data case out, `sigma.is_nan() || sigma >= 0.0`,
+  /// precisely so the two cases stay apart and neither is a side effect of
+  /// how `NaN` compares. Heston's parameters have no such path — they arrive
   /// from calibration output, never from a handle.
   ///
   /// `sigma == 0` is the deterministic limit and stays accepted.
@@ -330,9 +330,9 @@ impl GapPricer {
   /// one [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) gives. That
   /// is case 2, and it has to propagate into a `NaN` NPV rather than abort
   /// the engine; `every_unlinked_handle_poisons_npv_and_greeks` pins it.
-  /// The check spells the missing-data case out — `sigma.is_nan() || sigma
-  /// >= 0.0` — precisely so the two cases stay apart and neither is a
-  /// side effect of how `NaN` compares. Heston's parameters have no such path — they arrive
+  /// The check spells the missing-data case out, `sigma.is_nan() || sigma >= 0.0`,
+  /// precisely so the two cases stay apart and neither is a side effect of
+  /// how `NaN` compares. Heston's parameters have no such path — they arrive
   /// from calibration output, never from a handle.
   ///
   /// `sigma == 0` is the deterministic limit and stays accepted.
@@ -419,9 +419,9 @@ impl SuperSharePricer {
   /// one [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) gives. That
   /// is case 2, and it has to propagate into a `NaN` NPV rather than abort
   /// the engine; `every_unlinked_handle_poisons_npv_and_greeks` pins it.
-  /// The check spells the missing-data case out — `sigma.is_nan() || sigma
-  /// >= 0.0` — precisely so the two cases stay apart and neither is a
-  /// side effect of how `NaN` compares. Heston's parameters have no such path — they arrive
+  /// The check spells the missing-data case out, `sigma.is_nan() || sigma >= 0.0`,
+  /// precisely so the two cases stay apart and neither is a side effect of
+  /// how `NaN` compares. Heston's parameters have no such path — they arrive
   /// from calibration output, never from a handle.
   ///
   /// `sigma == 0` is the deterministic limit and stays accepted.

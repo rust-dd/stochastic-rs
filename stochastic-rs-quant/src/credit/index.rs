@@ -136,6 +136,8 @@ impl CdsIndex {
   }
 
   /// Name-by-name valuation aggregated by weight, from the buyer's side.
+  ///
+  /// The fair spread is NaN when the weighted risky annuity is not positive.
   pub fn valuation(
     &self,
     valuation_date: NaiveDate,

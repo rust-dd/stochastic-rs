@@ -41,6 +41,9 @@ pub struct HillResult {
 /// Hill estimator on the `k` largest of the positive entries of `data`
 /// (pass losses or absolute returns; non-positive values are ignored).
 ///
+/// Returns a NaN tail index when infinite observations reach the threshold
+/// order statistic.
+///
 /// # Panics
 ///
 /// If `k` is zero or there are fewer than `k + 1` positive observations.

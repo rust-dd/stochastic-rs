@@ -48,6 +48,8 @@ pub fn ln_gamma(x: f64) -> f64 {
 }
 
 /// Gamma function. Euler reflection for x < 0.5; Lanczos otherwise.
+///
+/// Returns NaN at the poles, the non-positive integers.
 pub fn gamma(x: f64) -> f64 {
   if x <= 0.0 && x.fract() == 0.0 {
     return f64::NAN; // poles at non-positive integers
@@ -64,6 +66,8 @@ pub fn gamma(x: f64) -> f64 {
 ///
 /// Recurrence (ψ(x) = ψ(x+1) − 1/x) lifts the argument above 6, then an
 /// asymptotic expansion in 1/x.
+///
+/// Returns NaN at the poles, the non-positive integers.
 pub fn digamma(x: f64) -> f64 {
   if x <= 0.0 && x.fract() == 0.0 {
     return f64::NAN;
@@ -133,6 +137,8 @@ pub fn erfc(x: f64) -> f64 {
 /// P. J. Acklam, *An algorithm for computing the inverse normal cumulative
 /// distribution function*, 2003. Maximum absolute error ≈ 1.15e-9 over
 /// `(0, 1)`; rebuilt without external lookup tables.
+///
+/// Returns NaN for a `p` outside `[0, 1]`.
 pub fn ndtri(p: f64) -> f64 {
   if !(0.0..=1.0).contains(&p) {
     return f64::NAN;
@@ -209,6 +215,8 @@ pub fn norm_cdf(x: f64) -> f64 {
 /// Regularised lower incomplete gamma P(a, x) = γ(a,x)/Γ(a).
 ///
 /// Numerical Recipes 3e §6.2: series for x < a+1, continued fraction otherwise.
+///
+/// Returns NaN for a negative `x` or a non-positive `a`.
 pub fn gamma_p(a: f64, x: f64) -> f64 {
   if x < 0.0 || a <= 0.0 {
     return f64::NAN;
@@ -291,6 +299,8 @@ fn gcf(a: f64, x: f64) -> f64 {
 ///
 /// Numerical Recipes 3e §6.4: continued fraction with Lentz's method, plus
 /// the symmetry `I_x(a,b) = 1 − I_{1−x}(b,a)` for tail-side stability.
+///
+/// Returns NaN for an `x` outside `[0, 1]`.
 pub fn beta_i(a: f64, b: f64, x: f64) -> f64 {
   if !(0.0..=1.0).contains(&x) {
     return f64::NAN;

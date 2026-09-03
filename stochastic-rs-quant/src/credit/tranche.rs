@@ -194,6 +194,9 @@ impl CdoTranche {
   }
 
   /// Full valuation on `pool` with `discount`.
+  ///
+  /// The fair spread is NaN when the risky annuity is not positive, as it is
+  /// once the expected loss has consumed the tranche width.
   pub fn valuation(&self, pool: &[PoolName], discount: &DiscountCurve<f64>) -> TrancheValuation {
     let width = self.detachment - self.attachment;
     let expected_loss: Vec<f64> = self

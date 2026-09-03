@@ -118,6 +118,9 @@ fn negative_log_likelihood(y: &[f64], sigma: f64, xi: f64) -> f64 {
 
 /// GPD maximum-likelihood fit to non-negative excesses.
 ///
+/// Returns a NaN covariance, and NaN standard errors with it, when the
+/// observed-information Hessian at the optimum is singular.
+///
 /// # Panics
 ///
 /// If there are fewer than 10 excesses or any is negative or non-finite.
@@ -204,6 +207,9 @@ pub struct GpdPwm {
 /// Generalized Pareto Distribution", Technometrics, 29(3), 339-349 (1987).
 /// DOI: 10.1080/00401706.1987.10488243
 ///
+/// Returns NaN for both estimates when $a_0 - 2a_1$ vanishes, as it does for
+/// all-zero excesses.
+///
 /// # Panics
 ///
 /// If there are fewer than 2 excesses or any is negative or non-finite.
@@ -238,6 +244,9 @@ pub fn gpd_pwm<T: FloatExt>(exceedances: ArrayView1<T>) -> GpdPwm {
 }
 
 /// Peaks-over-threshold fit of `data` (losses) above `threshold`.
+///
+/// The embedded [`gpd_fit`] contributes a NaN covariance and NaN standard
+/// errors when its observed-information Hessian at the optimum is singular.
 ///
 /// # Panics
 ///

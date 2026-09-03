@@ -41,6 +41,7 @@ impl BreedenLitzenberger {
   ///
   /// Returns a Vec of length strikes.len() with the estimated density at each strike.
   /// Endpoints (i = 0 and i = n-1) are set to NaN as second derivatives are ill-defined there with 3-point stencils.
+  /// With fewer than three strikes every entry is NaN.
   #[must_use]
   pub fn density(&self) -> Vec<f64> {
     assert!(

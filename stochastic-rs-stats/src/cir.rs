@@ -33,6 +33,9 @@ pub fn sample_seeded(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64, seed: u6
 }
 
 /// Exact Cox-Ingersoll-Ross transition density.
+///
+/// Returns NaN for parameters outside the valid domain, at `t == 0`, and for a
+/// negative or non-finite `future_state`.
 pub fn pdf(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64, future_state: f64) -> f64 {
   if !valid_parameters(theta, mu, sigma, t, r_t)
     || t == 0.0

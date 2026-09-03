@@ -87,6 +87,9 @@ pub struct ImpliedVolSurface {
 impl ImpliedVolSurface {
   /// Build an implied volatility surface from a grid of option prices.
   ///
+  /// A cell is left NaN in `ivs` and `total_variance` where the price does not
+  /// invert to a positive finite Black volatility.
+  ///
   /// # Arguments
   /// * `strikes` - Strike prices (ascending)
   /// * `maturities` - Maturities in years (ascending)
@@ -150,6 +153,9 @@ impl ImpliedVolSurface {
   /// (or never needed to invert) Black-Scholes — for example AI surrogates
   /// such as `stochastic_rs_ai::volatility::HestonNn::predict_surface`,
   /// which output IVs directly in the standard `(N_T, N_K)` layout.
+  ///
+  /// A `total_variance` cell is NaN wherever the supplied implied volatility
+  /// is not finite and positive.
   ///
   /// # Arguments
   /// * `strikes` — strike prices in ascending order, length `N_K`
@@ -261,6 +267,9 @@ impl ImpliedVolSurface {
   /// Falliable variant of [`Self::from_quotes`] returning
   /// [`ImpliedSurfaceError::MissingForward`] when a quote's maturity
   /// has no matching forward in `forwards`.
+  ///
+  /// A cell with no quote at that maturity and strike, or whose price does not
+  /// invert to a positive finite Black volatility, is left NaN.
   pub fn try_from_quotes(
     quotes: &[OptionQuote],
     forwards: &[(f64, f64)],

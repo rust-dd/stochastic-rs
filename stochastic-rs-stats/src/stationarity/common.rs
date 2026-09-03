@@ -215,6 +215,11 @@ fn build_adf_design(
   (lhs, rhs, gamma_index)
 }
 
+/// Augmented Dickey-Fuller regression at a fixed lag order, reporting the
+/// t-statistic of the lagged level.
+///
+/// Returns a NaN `statistic` when the lagged-level standard error is zero:
+/// a singular cross-product matrix, or an exactly fitting regression.
 pub fn fit_adf(y: &[f64], lags: usize, det: DeterministicTerm) -> AdfFit {
   let (lhs, rhs, gamma_index) = build_adf_design(y, lags, det);
   let ols_fit = ols(&lhs, &rhs);

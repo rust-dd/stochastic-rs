@@ -158,8 +158,8 @@ impl HestonMalliavinGreeks {
   /// Full El-Khatib Heston Malliavin Delta with the Skorohod correction.
   ///
   /// This uses the non-adapted kernel
-  /// `G(t,T) = sqrt(V_t) + integral_t^T d sqrt(V_s)/dV_s * D_t V_s
-  /// * (dW_s - sqrt(V_s) ds)` and the deterministic direction `u_t = 1`.
+  /// `G(t,T) = sqrt(V_t) + ∫_t^T d sqrt(V_s)/dV_s · D_t V_s (dW_s − sqrt(V_s) ds)`
+  /// and the deterministic direction `u_t = 1`.
   ///
   /// Reference: Y. El-Khatib, "Computations of Greeks in stochastic volatility
   /// models via the Malliavin calculus", arXiv:0904.3247 (2009), Proposition 5

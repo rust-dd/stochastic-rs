@@ -101,6 +101,9 @@ fn negative_log_likelihood(z: &[f64], mu: f64, sigma: f64, xi: f64) -> f64 {
 
 /// GEV maximum-likelihood fit to block maxima.
 ///
+/// Returns a NaN covariance, and NaN standard errors with it, when the
+/// observed-information Hessian at the optimum is singular.
+///
 /// # Panics
 ///
 /// If there are fewer than 10 maxima, any is non-finite, or they are

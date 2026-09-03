@@ -79,6 +79,9 @@ impl ExposureProfile {
   }
 
   /// Profile from precomputed expected exposures (e.g. analytic ones).
+  ///
+  /// The `quantile` field is NaN: expectations carry no PFE level, so `pfe`
+  /// is a copy of `epe` rather than a quantile of the exposure distribution.
   pub fn from_expected(times: Vec<f64>, epe: Vec<f64>, ene: Vec<f64>) -> Self {
     assert!(
       times.len() == epe.len() && times.len() == ene.len(),

@@ -100,6 +100,9 @@ fn z_critical(alpha: f64) -> f64 {
 
 /// Lo-MacKinlay (1988) variance-ratio test.
 ///
+/// The robust statistic `z_robust` is NaN when the heteroskedasticity-robust
+/// variance $\phi^*(q)$ comes out zero.
+///
 /// # Panics
 /// Panics on invalid inputs (non-finite series, too-short sample, $q < 2$, or
 /// $\alpha \notin (0, 1)$).

@@ -228,6 +228,9 @@ pub struct GarchFit {
 
 /// Fits `spec` to `returns` by Gaussian QMLE.
 ///
+/// Returns NaN covariances, and NaN standard errors with them, when the
+/// finite-difference Hessian at the optimum is singular.
+///
 /// # Panics
 ///
 /// If `spec.p` is zero, if there are fewer than 20 observations, or if the
