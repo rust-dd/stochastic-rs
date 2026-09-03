@@ -109,6 +109,12 @@ jobs:
         run: cargo check -p stochastic-rs-stochastic --features cuda-native --all-targets
       - name: Clippy (cuda-native)
         run: cargo clippy -p stochastic-rs-stochastic --features cuda-native --all-targets -- -D warnings
+      # The CubeCL CUDA runtime compiles the same way (cudarc underneath); the
+      # kernels themselves run in the Colab notebook under notebooks/.
+      - name: Cargo check (cubecl-cuda)
+        run: cargo check -p stochastic-rs-stochastic --features cubecl-cuda --all-targets
+      - name: Clippy (cubecl-cuda)
+        run: cargo clippy -p stochastic-rs-stochastic --features cubecl-cuda --all-targets -- -D warnings
 
   # The docs site's Rust code blocks are `<RustExample path="tests/doctest_*.rs" />`
   # includes rather than hand-copied text, so there is nothing to diff for
