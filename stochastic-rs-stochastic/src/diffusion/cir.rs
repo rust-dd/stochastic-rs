@@ -178,7 +178,7 @@ impl<T: FloatExt> Default for Cir<T, Unseeded> {
 
 backend_switch!([T: FloatExt, S: SeedExt] Cir<T, S> { theta, mu, sigma, n, x0, t, use_sym, seed } via euler);
 
-impl<T: FloatExt, S: SeedExt, B: EulerBackend> ProcessExt<T> for Cir<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Cir<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = CirSampler<T>

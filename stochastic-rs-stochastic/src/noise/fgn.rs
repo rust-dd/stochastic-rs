@@ -48,7 +48,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend> ProcessExt<T> for Fgn<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = FgnSampler<'s, T, S, B>
@@ -97,7 +97,7 @@ pub struct FgnSampler<'a, T: FloatExt, S: SeedExt, B> {
   normal: SimdNormal<T>,
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend> PathSampler<T> for FgnSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FgnSampler<'_, T, S, B> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {

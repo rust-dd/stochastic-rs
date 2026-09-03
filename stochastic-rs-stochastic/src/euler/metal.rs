@@ -14,7 +14,6 @@ use super::EulerBackend;
 use super::EulerCoefficients;
 use super::EulerSpec;
 use crate::device::MetalNative;
-use crate::traits::FloatExt;
 
 const MSL_SOURCE: &str = r#"
 #include <metal_stdlib>
@@ -147,9 +146,10 @@ fn run(params: [f32; 4], args: EulerArgs) -> Result<Vec<f32>> {
   Ok(unsafe { std::slice::from_raw_parts(ptr, total) }.to_vec())
 }
 
-impl EulerBackend for MetalNative {
+impl EulerBackend<f32> for MetalNative {
   const DEVICE: bool = true;
-  fn euler_paths<T: FloatExt, P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>> {
+
+  fn euler_paths<P: EulerCoefficients<f32>>(process: &P, m: usize) -> Vec<Array1<f32>> {
     device_paths(
       process.euler_spec(),
       process.initial_value(),
@@ -165,24 +165,24 @@ impl EulerBackend for MetalNative {
 }
 
 /// The kernel launch for an explicit specification.
-fn device_paths<T: FloatExt>(
-  spec: EulerSpec<T>,
-  x0: T,
+fn device_paths(
+  spec: EulerSpec<f32>,
+  x0: f32,
   n: usize,
-  t: T,
+  t: f32,
   m: usize,
   seed: u64,
-) -> Array2<T> {
+) -> Array2<f32> {
   {
     if n == 0 || m == 0 {
-      return Array2::<T>::zeros((m, n));
+      return Array2::<f32>::zeros((m, n));
     }
     let (family, params) = spec.encode();
-    let dt = (t.to_f64().unwrap_or(1.0) / (n.max(2) - 1) as f64) as f32;
-    let params32: [f32; 4] = std::array::from_fn(|i| params[i].to_f64().unwrap_or(0.0) as f32);
+    let dt = (t as f64 / (n.max(2) - 1) as f64) as f32;
+    let params32: [f32; 4] = params;
     let args = EulerArgs {
       family,
-      x0: x0.to_f64().unwrap_or(0.0) as f32,
+      x0,
       dt,
       sqrt_dt: dt.sqrt(),
       seed: (seed ^ (seed >> 32)) as u32,
@@ -190,12 +190,6 @@ fn device_paths<T: FloatExt>(
       paths: m as u32,
     };
     let data = run(params32, args).expect("native Metal Euler engine");
-    let mut out = Array2::<T>::zeros((m, n));
-    for i in 0..m {
-      for j in 0..n {
-        out[[i, j]] = T::from_f64_fast(data[i * n + j] as f64);
-      }
-    }
-    out
+    Array2::from_shape_vec((m, n), data).expect("the kernel returns m * n values")
   }
 }

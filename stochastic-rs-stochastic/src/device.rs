@@ -6,6 +6,12 @@
 //! `process.on::<CudaNative>()` — the marker must be in scope, and the GPU
 //! markers only exist when their feature is compiled, so selecting an
 //! unavailable backend is a compile error rather than a runtime fallback.
+//!
+//! The capability traits ([`FgnBackend`], [`crate::euler::EulerBackend`]) take
+//! the scalar as a type parameter, and a device implements them only for the
+//! precision its kernels compute in: `CudaNative` for `f32` and `f64`,
+//! `MetalNative` and `CubeCl` for `f32` alone. `Fgn<f64>` on `MetalNative`
+//! does not compile; nothing is computed in `f32` behind an `f64` type.
 
 use ndarray::Array1;
 use ndarray::parallel::prelude::*;
@@ -105,17 +111,17 @@ impl HostBackend for Accelerate {}
 /// covers seed consumption only, not vDSP's own arithmetic); the GPU backends
 /// ignore it (they seed from `fgn.seed` instead, once per batch call) exactly
 /// as documented per-method below.
-pub trait FgnBackend: Backend {
+pub trait FgnBackend<T: FloatExt>: Backend {
   /// One fGN increment vector. The host-side `seed` drives the CPU/Accelerate
   /// path only; GPU backends use the fGN's internal RNG (`fgn.seed`) and
   /// ignore this parameter — see the trait doc's reproducibility table.
-  fn generate<T: FloatExt, S: SeedExt, S2: SeedExt>(fgn: &Fgn<T, S, Self>, seed: &S2) -> Array1<T>;
+  fn generate<S: SeedExt, S2: SeedExt>(fgn: &Fgn<T, S, Self>, seed: &S2) -> Array1<T>;
 
   /// `m` fGN paths in one batched call, one [`Array1`] per path. `seed`
   /// drives the CPU/Accelerate path (see each backend's own impl for the
   /// mechanism that makes it thread-count independent); GPU backends ignore
   /// it — see the trait doc's reproducibility table.
-  fn generate_batch<T: FloatExt, S: SeedExt, S2: SeedExt>(
+  fn generate_batch<S: SeedExt, S2: SeedExt>(
     fgn: &Fgn<T, S, Self>,
     m: usize,
     seed: &S2,
@@ -125,7 +131,7 @@ pub trait FgnBackend: Backend {
   /// overrides with the real/imag parts of a single circulant FFT (one FFT,
   /// two independent fields — Dietrich & Newsam). `seed` drives the
   /// CPU/Accelerate path only, exactly as in [`generate_batch`](Self::generate_batch).
-  fn generate_pair<T: FloatExt, S: SeedExt, S2: SeedExt>(
+  fn generate_pair<S: SeedExt, S2: SeedExt>(
     fgn: &Fgn<T, S, Self>,
     seed: &S2,
   ) -> (Array1<T>, Array1<T>) {
@@ -136,8 +142,8 @@ pub trait FgnBackend: Backend {
   }
 }
 
-impl FgnBackend for Cpu {
-  fn generate<T: FloatExt, S: SeedExt, S2: SeedExt>(fgn: &Fgn<T, S, Self>, seed: &S2) -> Array1<T> {
+impl<T: FloatExt> FgnBackend<T> for Cpu {
+  fn generate<S: SeedExt, S2: SeedExt>(fgn: &Fgn<T, S, Self>, seed: &S2) -> Array1<T> {
     fgn.sample_cpu_impl(seed)
   }
 
@@ -157,7 +163,7 @@ impl FgnBackend for Cpu {
   /// across independent outer tasks. One basis per path costs one extra
   /// `SimdNormal` construction per path versus the (rejected) chunked
   /// design, which is negligible next to an FFT.
-  fn generate_batch<T: FloatExt, S: SeedExt, S2: SeedExt>(
+  fn generate_batch<S: SeedExt, S2: SeedExt>(
     fgn: &Fgn<T, S, Self>,
     m: usize,
     seed: &S2,
@@ -176,7 +182,7 @@ impl FgnBackend for Cpu {
       .collect()
   }
 
-  fn generate_pair<T: FloatExt, S: SeedExt, S2: SeedExt>(
+  fn generate_pair<S: SeedExt, S2: SeedExt>(
     fgn: &Fgn<T, S, Self>,
     seed: &S2,
   ) -> (Array1<T>, Array1<T>) {
@@ -190,35 +196,38 @@ impl FgnBackend for Cpu {
 /// `fgn.seed` once per call — see the trait doc's reproducibility table).
 /// Each marker and its impl are gated on the backend's feature.
 macro_rules! gpu_backend {
-  ($feat:literal, $marker:ident => $sampler:ident) => {
-    #[cfg(feature = $feat)]
-    impl FgnBackend for $marker {
-      fn generate<T: FloatExt, S: SeedExt, S2: SeedExt>(
-        fgn: &Fgn<T, S, Self>,
-        _seed: &S2,
-      ) -> Array1<T> {
-        fgn.$sampler(1).unwrap().row(0).to_owned()
-      }
+  ($feat:literal, $marker:ident => $sampler:ident, $($scalar:ty),+) => {
+    $(
+      #[cfg(feature = $feat)]
+      impl FgnBackend<$scalar> for $marker {
+        fn generate<S: SeedExt, S2: SeedExt>(fgn: &Fgn<$scalar, S, Self>, _seed: &S2) -> Array1<$scalar> {
+          fgn.$sampler(1).unwrap().row(0).to_owned()
+        }
 
-      fn generate_batch<T: FloatExt, S: SeedExt, S2: SeedExt>(
-        fgn: &Fgn<T, S, Self>,
-        m: usize,
-        _seed: &S2,
-      ) -> Vec<Array1<T>> {
-        fgn
-          .$sampler(m)
-          .unwrap()
-          .outer_iter()
-          .map(|row| row.to_owned())
-          .collect()
+        fn generate_batch<S: SeedExt, S2: SeedExt>(
+          fgn: &Fgn<$scalar, S, Self>,
+          m: usize,
+          _seed: &S2,
+        ) -> Vec<Array1<$scalar>> {
+          fgn
+            .$sampler(m)
+            .unwrap()
+            .outer_iter()
+            .map(|row| row.to_owned())
+            .collect()
+        }
       }
-    }
+    )+
   };
 }
 
-gpu_backend!("cuda-native", CudaNative => sample_cuda_native_impl);
-gpu_backend!("gpu", CubeCl => sample_gpu_impl);
-gpu_backend!("metal", MetalNative => sample_metal_impl);
+// Each device implements the capability for the scalars its kernels compute
+// in: the native CUDA kernels are templated on float and double, the Metal
+// and CubeCL FFT pipelines are single precision. `Fgn<f64>` on `MetalNative`
+// is therefore a compile error, not an `f32` computation behind an `f64` type.
+gpu_backend!("cuda-native", CudaNative => sample_cuda_native_impl, f32, f64);
+gpu_backend!("gpu", CubeCl => sample_gpu_impl, f32);
+gpu_backend!("metal", MetalNative => sample_metal_impl, f32);
 
 /// Accelerate (vDSP) runs on the CPU, so it gets the same reproducibility
 /// guarantee as [`Cpu`], reached via `ProcessExt::chunk_count`-style
@@ -236,8 +245,8 @@ gpu_backend!("metal", MetalNative => sample_metal_impl);
 /// wall-clock throughput once `chunk_count(m)` meets or exceeds the core
 /// count (see `MAX_CHUNKS`'s doc).
 #[cfg(feature = "accelerate")]
-impl FgnBackend for Accelerate {
-  fn generate<T: FloatExt, S: SeedExt, S2: SeedExt>(fgn: &Fgn<T, S, Self>, seed: &S2) -> Array1<T> {
+impl<T: FloatExt> FgnBackend<T> for Accelerate {
+  fn generate<S: SeedExt, S2: SeedExt>(fgn: &Fgn<T, S, Self>, seed: &S2) -> Array1<T> {
     fgn
       .sample_accelerate_impl(1, seed)
       .unwrap()
@@ -245,7 +254,7 @@ impl FgnBackend for Accelerate {
       .to_owned()
   }
 
-  fn generate_batch<T: FloatExt, S: SeedExt, S2: SeedExt>(
+  fn generate_batch<S: SeedExt, S2: SeedExt>(
     fgn: &Fgn<T, S, Self>,
     m: usize,
     seed: &S2,
@@ -289,7 +298,7 @@ mod tests {
   /// still be a [`Backend`] for the capabilities it does have.
   #[test]
   fn cpu_marker_has_the_fgn_capability() {
-    fn assert_fgn<B: FgnBackend>() {}
+    fn assert_fgn<B: FgnBackend<f64>>() {}
     assert_fgn::<Cpu>();
   }
 }

@@ -52,7 +52,7 @@ impl<T: FloatExt, S: SeedExt> Fgbm<T, S, Cpu> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend> ProcessExt<T> for Fgbm<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgbm<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = FgbmSampler<'s, T, S, B>
@@ -87,7 +87,7 @@ pub struct FgbmSampler<'a, T: FloatExt, S: SeedExt, B> {
   seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend> FgbmSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FgbmSampler<'_, T, S, B> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -106,7 +106,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend> FgbmSampler<'_, T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend> PathSampler<T> for FgbmSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FgbmSampler<'_, T, S, B> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {

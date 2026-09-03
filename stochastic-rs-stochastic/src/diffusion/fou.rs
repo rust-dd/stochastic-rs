@@ -68,7 +68,7 @@ impl<T: FloatExt, S: SeedExt> Fou<T, S, Cpu> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend> ProcessExt<T> for Fou<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fou<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = FouSampler<'s, T, S, B>
@@ -103,7 +103,7 @@ pub struct FouSampler<'a, T: FloatExt, S: SeedExt, B> {
   seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend> FouSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FouSampler<'_, T, S, B> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -122,7 +122,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend> FouSampler<'_, T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend> PathSampler<T> for FouSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FouSampler<'_, T, S, B> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {

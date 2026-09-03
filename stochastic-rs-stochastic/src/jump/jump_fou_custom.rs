@@ -101,7 +101,7 @@ where
   }
 }
 
-impl<T, D, S: SeedExt, B: FgnBackend> ProcessExt<T> for JumpFOUCustom<T, D, S, B>
+impl<T, D, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for JumpFOUCustom<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -145,7 +145,7 @@ pub struct JumpFOUCustomSampler<'a, T, D, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
-  B: FgnBackend,
+  B: FgnBackend<T>,
 {
   n: usize,
   theta: T,
@@ -164,7 +164,7 @@ impl<T, D, B> JumpFOUCustomSampler<'_, T, D, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
-  B: FgnBackend,
+  B: FgnBackend<T>,
 {
   fn fill_path(&mut self, out: &mut [T]) {
     // Match the legacy `n <= 1` path: return an all-zeros buffer (x0 is only
@@ -216,7 +216,7 @@ impl<T, D, B> PathSampler<T> for JumpFOUCustomSampler<'_, T, D, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
-  B: FgnBackend,
+  B: FgnBackend<T>,
 {
   type Output = Array1<T>;
 

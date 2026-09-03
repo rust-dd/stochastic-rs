@@ -106,7 +106,7 @@ impl<T: FloatExt> Default for Fbm<T, Unseeded, Cpu> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend> ProcessExt<T> for Fbm<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fbm<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = FbmSampler<'s, T, S, B>
@@ -183,7 +183,7 @@ pub struct FbmSampler<'a, T: FloatExt, S: SeedExt, B> {
   normal: SimdNormal<T>,
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend> FbmSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FbmSampler<'_, T, S, B> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -205,7 +205,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend> FbmSampler<'_, T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend> PathSampler<T> for FbmSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FbmSampler<'_, T, S, B> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {

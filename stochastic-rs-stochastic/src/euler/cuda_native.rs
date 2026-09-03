@@ -159,9 +159,10 @@ where
     .map_err(|e| anyhow::anyhow!("dtoh: {e}"))
 }
 
-impl EulerBackend for CudaNative {
+impl<T: FloatExt> EulerBackend<T> for CudaNative {
   const DEVICE: bool = true;
-  fn euler_paths<T: FloatExt, P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>> {
+
+  fn euler_paths<P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>> {
     device_paths(
       process.euler_spec(),
       process.initial_value(),
@@ -205,7 +206,8 @@ fn device_paths<T: FloatExt>(
         m,
       )
       .expect("native CUDA Euler engine");
-      let out = Array2::<f64>::from_shape_vec((m, n), data).expect("shape");
+      let out =
+        Array2::<f64>::from_shape_vec((m, n), data).expect("the kernel returns m * n values");
       return unsafe { std::mem::transmute::<Array2<f64>, Array2<T>>(out) };
     }
     let p32: [f32; 4] = std::array::from_fn(|i| p64[i] as f32);
@@ -220,12 +222,11 @@ fn device_paths<T: FloatExt>(
       m,
     )
     .expect("native CUDA Euler engine");
-    let mut out = Array2::<T>::zeros((m, n));
-    for i in 0..m {
-      for j in 0..n {
-        out[[i, j]] = T::from_f64_fast(data[i * n + j] as f64);
-      }
-    }
-    out
+    assert!(
+      TypeId::of::<T>() == TypeId::of::<f32>(),
+      "FloatExt is implemented for f32 and f64 only"
+    );
+    let out = Array2::<f32>::from_shape_vec((m, n), data).expect("the kernel returns m * n values");
+    unsafe { std::mem::transmute::<Array2<f32>, Array2<T>>(out) }
   }
 }

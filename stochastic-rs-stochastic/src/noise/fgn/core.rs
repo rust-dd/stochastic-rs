@@ -285,7 +285,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
 
 backend_switch!([T: FloatExt, S: SeedExt] Fgn<T, S> { hurst, n, t, offset, out_len, scale, sqrt_eigenvalues, fft_handler, seed } via phantom);
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend> Fgn<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Fgn<T, S, B> {
   /// One fGN increment vector on backend `B`. The host-side `seed` drives the
   /// CPU path only; GPU backends use the fGN's internal RNG.
   pub(crate) fn noise<S2: SeedExt>(&self, seed: &S2) -> Array1<T> {

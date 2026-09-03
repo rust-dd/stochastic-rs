@@ -12,15 +12,20 @@ backends, and what the rest do.
 
 | Family | Processes | Capability bound | `Cpu` | `Accelerate` | `MetalNative` | `CudaNative` | `CubeCl` |
 |---|---|---|---|---|---|---|---|
-| fGN-driven | `Fgn`, `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `Cfou`, `Cfgns`, `JumpFou`, `JumpFOUCustom`, `Sde` (11) | `FgnBackend` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` | cuFFT + Philox, `f32` / `f64` | CubeCL FFT, `f32` |
-| Euler engine | `Gbm`, `Ou`, `Cir` (3) | `EulerBackend` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` |
+| fGN-driven | `Fgn`, `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `Cfou`, `Cfgns`, `JumpFou`, `JumpFOUCustom`, `Sde` (11) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` | CubeCL FFT, `f32` only |
+| Euler engine | `Gbm`, `Ou`, `Cir` (3) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
 | Host only | the remaining 117 processes | `HostBackend` | own SIMD sampler | same as `Cpu` | compile error | compile error | compile error |
 
 Feature flags: `metal` (`MetalNative`), `cuda-native` (`CudaNative`),
 `gpu-cuda` / `gpu-wgpu` (`CubeCl` on CUDA or on Metal / Vulkan / WebGPU
 through wgpu), `accelerate`. A marker only exists when its feature is
 compiled, so selecting a backend a process does not support — or one the
-build does not carry — is a compile error, never a silent fallback.
+build does not carry — is a compile error, never a silent fallback. The same
+holds for precision: the capability traits take the scalar
+(`FgnBackend<T>`, `EulerBackend<T>`) and a device implements them only for
+the precision its kernels compute in, so `Gbm<f64>` or `Fgn<f64>` on
+`MetalNative` / `CubeCl` does not compile. Nothing is computed in `f32`
+behind an `f64` type.
 
 ## What the device path does
 
@@ -44,9 +49,9 @@ build does not carry — is a compile error, never a silent fallback.
 |---|---|---|---|
 | `Cpu` | `f32` / `f64` | yes, thread-count independent | — |
 | `Accelerate` | `f32` / `f64` | reproducible-effort only (vDSP reduction order can differ across core types) | no |
-| `MetalNative` | `f32` | yes | no |
-| `CudaNative` | `f32` / `f64` (the fGN path falls back to `f32` when the `f64` launch fails) | Euler engine yes; fGN only for an identical sequence of device draws in the process, because its Philox offsets come from a process-global counter | no |
-| `CubeCl` | `f32` | yes | no |
+| `MetalNative` | `f32` (an `f64` process is a compile error) | yes | no |
+| `CudaNative` | `f32` / `f64` (a failing `f64` launch is reported, never replaced by the `f32` kernel) | yes | no |
+| `CubeCl` | `f32` (an `f64` process is a compile error) | yes | no |
 
 The device seed is drawn from the process's own seed source: a
 `Deterministic` process reproduces its device paths call after call, an
@@ -59,7 +64,9 @@ own stream.
 `euler_paths(family, params, x0, n, t, m, seed, device)` runs the Euler
 engine with `device` one of `"cpu"`, `"gpu"` (the first compiled device
 backend), `"cuda-native"`, `"metal"`, `"cubecl"`; a backend the build does not
-carry raises `ValueError` with a rebuild hint. The published wheels are
+carry raises `ValueError` with a rebuild hint. The array is `float64` from
+the CPU and native CUDA paths and `float32` from Metal and CubeCL, whose
+kernels compute in single precision. The published wheels are
 CPU-only; the device backends come with a source build —
 `maturin develop --features metal,gpu-wgpu` on a Mac,
 `--features cuda-native` on an NVIDIA machine.

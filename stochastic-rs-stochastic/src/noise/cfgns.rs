@@ -53,7 +53,7 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend> Cfgns<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Cfgns<T, S, B> {
   /// Sample with an explicit seed, used by callers like Cfbms.
   pub fn sample_with_seed(&self, seed: u64) -> [Array1<T>; 2] {
     self.sample_impl(&Deterministic::new(seed))
@@ -74,7 +74,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend> Cfgns<T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend> ProcessExt<T> for Cfgns<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Cfgns<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = CfgnsSampler<'s, T, S, B>
@@ -109,7 +109,7 @@ pub struct CfgnsSampler<'a, T: FloatExt, S: SeedExt, B> {
   seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend> CfgnsSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> CfgnsSampler<'_, T, S, B> {
   fn fill_paths(&mut self, fgn1_out: &mut [T], fgn2_out: &mut [T]) {
     let [fgn1, fgn2] = self.cfgns.sample_impl(&self.seed);
     fgn1_out.copy_from_slice(fgn1.as_slice().expect("Cfgns noise 1 must be contiguous"));
@@ -117,7 +117,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend> CfgnsSampler<'_, T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend> PathSampler<T> for CfgnsSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for CfgnsSampler<'_, T, S, B> {
   type Output = [Array1<T>; 2];
 
   fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {

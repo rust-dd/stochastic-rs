@@ -13,7 +13,7 @@ use stochastic_rs::traits::FgnBackend;
 #[test]
 fn cpu_marker_is_a_backend_with_the_fgn_capability() {
   fn assert_marker<B: Backend>() {}
-  fn assert_fgn<B: FgnBackend>() {}
+  fn assert_fgn<B: FgnBackend<f64>>() {}
   assert_marker::<Cpu>();
   assert_fgn::<Cpu>();
   #[cfg(feature = "metal")]

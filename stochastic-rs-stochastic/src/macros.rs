@@ -252,12 +252,12 @@ macro_rules! py_process_2d {
 /// - `via euler`   — a process with Euler-engine device kernels (`B2: EulerBackend`), same field.
 macro_rules! backend_switch {
   (
-    [$($gen:tt)*] $ty:ident<$($targ:ident),+ $(,)?> { $($field:ident),* $(,)? } via fgn
+    [$($gen:tt)*] $ty:ident<$t:ident $(, $targ:ident)* $(,)?> { $($field:ident),* $(,)? } via fgn
     $(where $($wc:tt)*)?
   ) => {
-    impl<$($gen)*, B> $ty<$($targ),+, B> $(where $($wc)*)? {
+    impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
       /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
-      pub fn on<B2: $crate::device::FgnBackend>(self) -> $ty<$($targ),+, B2> {
+      pub fn on<B2: $crate::device::FgnBackend<$t>>(self) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
           fgn: self.fgn.on::<B2>(),
@@ -266,12 +266,12 @@ macro_rules! backend_switch {
     }
   };
   (
-    [$($gen:tt)*] $ty:ident<$($targ:ident),+ $(,)?> { $($field:ident),* $(,)? } via phantom
+    [$($gen:tt)*] $ty:ident<$t:ident $(, $targ:ident)* $(,)?> { $($field:ident),* $(,)? } via phantom
     $(where $($wc:tt)*)?
   ) => {
-    impl<$($gen)*, B> $ty<$($targ),+, B> $(where $($wc)*)? {
+    impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
       /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
-      pub fn on<B2: $crate::device::FgnBackend>(self) -> $ty<$($targ),+, B2> {
+      pub fn on<B2: $crate::device::FgnBackend<$t>>(self) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
           _backend: ::std::marker::PhantomData,
@@ -280,15 +280,15 @@ macro_rules! backend_switch {
     }
   };
   (
-    [$($gen:tt)*] $ty:ident<$($targ:ident),+ $(,)?> { $($field:ident),* $(,)? } via host
+    [$($gen:tt)*] $ty:ident<$t:ident $(, $targ:ident)* $(,)?> { $($field:ident),* $(,)? } via host
     $(where $($wc:tt)*)?
   ) => {
-    impl<$($gen)*, B> $ty<$($targ),+, B> $(where $($wc)*)? {
+    impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
       /// Re-type this process to sample on backend `B2` (compile-time, zero
       /// runtime cost). This process has a host sampler only, so `B2` is a
       /// host device ([`Cpu`](crate::device::Cpu), `Accelerate`); a device
       /// implementation widens the bound without touching callers.
-      pub fn on<B2: $crate::device::HostBackend>(self) -> $ty<$($targ),+, B2> {
+      pub fn on<B2: $crate::device::HostBackend>(self) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
           backend: ::std::marker::PhantomData,
@@ -297,15 +297,15 @@ macro_rules! backend_switch {
     }
   };
   (
-    [$($gen:tt)*] $ty:ident<$($targ:ident),+ $(,)?> { $($field:ident),* $(,)? } via euler
+    [$($gen:tt)*] $ty:ident<$t:ident $(, $targ:ident)* $(,)?> { $($field:ident),* $(,)? } via euler
     $(where $($wc:tt)*)?
   ) => {
-    impl<$($gen)*, B> $ty<$($targ),+, B> $(where $($wc)*)? {
+    impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
       /// Re-type this process to sample on backend `B2` (compile-time, zero
       /// runtime cost): [`Cpu`](crate::device::Cpu) and `Accelerate` run the host
       /// sampler, the device markers (`MetalNative`, `CudaNative`, `CubeCl`) the
       /// Euler kernel.
-      pub fn on<B2: $crate::euler::EulerBackend>(self) -> $ty<$($targ),+, B2> {
+      pub fn on<B2: $crate::euler::EulerBackend<$t>>(self) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
           backend: ::std::marker::PhantomData,

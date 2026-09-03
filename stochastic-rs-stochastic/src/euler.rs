@@ -94,26 +94,31 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
 
 /// Device capability: `m` paths of `process`, each an `n`-vector whose entry
 /// 0 is the initial value.
-pub trait EulerBackend: Backend {
+///
+/// The scalar is a trait parameter and a device implements the capability
+/// only for the precision its kernel computes in: `CudaNative` for `f32` and
+/// `f64`, `MetalNative` and `CubeCl` for `f32` alone, the CPU devices for
+/// both. `Gbm<f64>` on `MetalNative` is a compile error.
+pub trait EulerBackend<T: FloatExt>: Backend {
   /// `true` for the GPU markers, whose paths come from the kernel; `false`
   /// for the CPU devices, whose paths come from the process's own sampler.
   const DEVICE: bool;
-  fn euler_paths<T: FloatExt, P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>>;
+  fn euler_paths<P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>>;
 }
 
 /// The CPU path is the process's own sampler.
-impl EulerBackend for Cpu {
+impl<T: FloatExt> EulerBackend<T> for Cpu {
   const DEVICE: bool = false;
-  fn euler_paths<T: FloatExt, P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>> {
+  fn euler_paths<P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>> {
     process.sample_par(m)
   }
 }
 
 /// Accelerate is a CPU device (vDSP): the process's own sampler as well.
 #[cfg(feature = "accelerate")]
-impl EulerBackend for crate::device::Accelerate {
+impl<T: FloatExt> EulerBackend<T> for crate::device::Accelerate {
   const DEVICE: bool = false;
-  fn euler_paths<T: FloatExt, P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>> {
+  fn euler_paths<P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>> {
     process.sample_par(m)
   }
 }
@@ -122,7 +127,7 @@ fn draw_seed<S: SeedExt>(seed: &S) -> u64 {
   rand::Rng::random(&mut seed.rng())
 }
 
-impl<T: FloatExt, S: SeedExt, B: EulerBackend> EulerCoefficients<T> for Gbm<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> EulerCoefficients<T> for Gbm<T, S, B> {
   fn euler_spec(&self) -> EulerSpec<T> {
     EulerSpec::GeometricBrownian {
       mu: self.mu,
@@ -147,7 +152,7 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend> EulerCoefficients<T> for Gbm<T, S
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: EulerBackend> EulerCoefficients<T> for Ou<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> EulerCoefficients<T> for Ou<T, S, B> {
   fn euler_spec(&self) -> EulerSpec<T> {
     EulerSpec::OrnsteinUhlenbeck {
       theta: self.theta,
@@ -173,7 +178,7 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend> EulerCoefficients<T> for Ou<T, S,
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: EulerBackend> EulerCoefficients<T> for Cir<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> EulerCoefficients<T> for Cir<T, S, B> {
   fn euler_spec(&self) -> EulerSpec<T> {
     EulerSpec::SquareRoot {
       kappa: self.theta,
@@ -209,13 +214,28 @@ pub mod metal;
 #[cfg(test)]
 mod tests;
 
+/// A single-precision device refuses an `f64` process at compile time.
+///
+/// ```compile_fail,E0277
+/// use stochastic_rs_core::simd_rng::Unseeded;
+/// use stochastic_rs_stochastic::device::MetalNative;
+/// use stochastic_rs_stochastic::diffusion::gbm::Gbm;
+/// use stochastic_rs_stochastic::traits::ProcessExt;
+///
+/// let gbm = Gbm::<f64, _>::new(0.05, 0.2, 16, None, None, Unseeded);
+/// let _ = gbm.on::<MetalNative>().sample();
+/// ```
+#[cfg(feature = "metal")]
+pub mod precision_guard {}
+
 #[cfg(feature = "python")]
 pub mod python {
   //! Python surface of the Euler engine: one function over the scalar
-  //! families, `device="cpu"` always, `device="gpu"` when a CubeCL runtime is
-  //! compiled in.
+  //! families, `device="cpu"` always, the device names when their back-end
+  //! is compiled in; `float32` arrays from the single-precision devices.
 
   use numpy::IntoPyArray;
+  use pyo3::IntoPyObjectExt;
   use pyo3::exceptions::PyValueError;
   use pyo3::prelude::*;
   use stochastic_rs_core::simd_rng::Deterministic;
@@ -224,18 +244,78 @@ pub mod python {
   use crate::diffusion::cir::Cir;
   use crate::diffusion::gbm::Gbm;
   use crate::diffusion::ou::Ou;
+  use crate::traits::FloatExt;
   use crate::traits::ProcessExt;
 
   /// Runs `m` paths of the process on the requested device through
   /// `.on::<B>()`; every arm is the same call on a different marker.
+  /// Which scalar a device computes in: the CPU and native CUDA paths keep
+  /// `f64`, the Metal and CubeCL kernels are single precision and the array
+  /// they return says so.
+  enum Rows {
+    F64(Vec<ndarray::Array1<f64>>),
+    #[cfg(any(feature = "metal", feature = "gpu-cuda", feature = "gpu-wgpu"))]
+    F32(Vec<ndarray::Array1<f32>>),
+  }
+
+  fn stack<'py, T: FloatExt + numpy::Element>(
+    py: Python<'py>,
+    rows: Vec<ndarray::Array1<T>>,
+    n: usize,
+  ) -> PyResult<Py<PyAny>> {
+    let mut paths = ndarray::Array2::<T>::zeros((rows.len(), n));
+    for (i, row) in rows.iter().enumerate() {
+      paths.row_mut(i).assign(row);
+    }
+    paths.into_pyarray(py).into_py_any(py)
+  }
+
+  fn gbm<T: FloatExt>(p: &[f64], x0: f64, n: usize, t: f64, seed: u64) -> Gbm<T, Deterministic> {
+    Gbm::new(
+      T::from_f64_fast(p[0]),
+      T::from_f64_fast(p[1]),
+      n,
+      Some(T::from_f64_fast(x0)),
+      Some(T::from_f64_fast(t)),
+      Deterministic::new(seed),
+    )
+  }
+
+  fn ou<T: FloatExt>(p: &[f64], x0: f64, n: usize, t: f64, seed: u64) -> Ou<T, Deterministic> {
+    Ou::new(
+      T::from_f64_fast(p[0]),
+      T::from_f64_fast(p[1]),
+      T::from_f64_fast(p[2]),
+      n,
+      Some(T::from_f64_fast(x0)),
+      Some(T::from_f64_fast(t)),
+      Deterministic::new(seed),
+    )
+  }
+
+  fn cir<T: FloatExt>(p: &[f64], x0: f64, n: usize, t: f64, seed: u64) -> Cir<T, Deterministic> {
+    Cir::new(
+      T::from_f64_fast(p[0]),
+      T::from_f64_fast(p[1]),
+      T::from_f64_fast(p[2]),
+      n,
+      Some(T::from_f64_fast(x0)),
+      Some(T::from_f64_fast(t)),
+      None,
+      Deterministic::new(seed),
+    )
+  }
+
+  /// `$p64` / `$p32` build the process in the scalar the chosen device
+  /// computes in; only the arm that runs is evaluated.
   macro_rules! on_device {
-    ($process:expr, $m:expr, $py:expr, $device:expr) => {
+    ($p64:expr, $p32:expr, $m:expr, $py:expr, $device:expr) => {
       match $device {
-        "cpu" => $py.detach(|| $process.on::<Cpu>().sample_par($m)),
+        "cpu" => Rows::F64($py.detach(|| $p64.on::<Cpu>().sample_par($m))),
         "cuda-native" | "cuda_native" => {
           #[cfg(feature = "cuda-native")]
           {
-            $py.detach(|| $process.on::<crate::device::CudaNative>().sample_par($m))
+            Rows::F64($py.detach(|| $p64.on::<crate::device::CudaNative>().sample_par($m)))
           }
 
           #[cfg(not(feature = "cuda-native"))]
@@ -248,7 +328,7 @@ pub mod python {
         "metal" => {
           #[cfg(feature = "metal")]
           {
-            $py.detach(|| $process.on::<crate::device::MetalNative>().sample_par($m))
+            Rows::F32($py.detach(|| $p32.on::<crate::device::MetalNative>().sample_par($m)))
           }
 
           #[cfg(not(feature = "metal"))]
@@ -261,7 +341,7 @@ pub mod python {
         "cubecl" => {
           #[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
           {
-            $py.detach(|| $process.on::<crate::device::CubeCl>().sample_par($m))
+            Rows::F32($py.detach(|| $p32.on::<crate::device::CubeCl>().sample_par($m)))
           }
 
           #[cfg(not(any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
@@ -275,12 +355,12 @@ pub mod python {
         "gpu" => {
           #[cfg(feature = "cuda-native")]
           {
-            $py.detach(|| $process.on::<crate::device::CudaNative>().sample_par($m))
+            Rows::F64($py.detach(|| $p64.on::<crate::device::CudaNative>().sample_par($m)))
           }
 
           #[cfg(all(feature = "metal", not(feature = "cuda-native")))]
           {
-            $py.detach(|| $process.on::<crate::device::MetalNative>().sample_par($m))
+            Rows::F32($py.detach(|| $p32.on::<crate::device::MetalNative>().sample_par($m)))
           }
 
           #[cfg(all(
@@ -289,7 +369,7 @@ pub mod python {
             not(feature = "cuda-native")
           ))]
           {
-            $py.detach(|| $process.on::<crate::device::CubeCl>().sample_par($m))
+            Rows::F32($py.detach(|| $p32.on::<crate::device::CubeCl>().sample_par($m)))
           }
 
           #[cfg(not(any(
@@ -313,13 +393,14 @@ pub mod python {
     };
   }
 
-  /// `m × n` paths of a scalar diffusion — `process.on::<B>().sample_par(m)`
-  /// with the process seeded by `seed`: the process's own sampler on the CPU,
-  /// the Euler–Maruyama kernel on a device. `family` is `"gbm"`
-  /// (`[mu, sigma]`), `"ou"` (`[theta, mu, sigma]`) or `"cir"`
-  /// (`[kappa, theta, sigma]`); `device` is `"cpu"`, `"gpu"` (the first
-  /// compiled device back-end), or one of `"cuda-native"`, `"metal"`,
-  /// `"cubecl"` (each needs the matching cargo feature of the build).
+  /// `m` Euler paths of a scalar family on a device, as an `(m, n)` array.
+  ///
+  /// `family` is `"gbm"` (`[mu, sigma]`), `"ou"` (`[theta, mu, sigma]`) or
+  /// `"cir"` (`[kappa, theta, sigma]`); `device` is `"cpu"`, `"gpu"` (the
+  /// first compiled device back-end), or one of `"cuda-native"`, `"metal"`,
+  /// `"cubecl"` (each needs the matching cargo feature of the build). The
+  /// array is `float64` from the CPU and native CUDA paths and `float32` from
+  /// Metal and CubeCL, whose kernels compute in single precision.
   #[pyfunction]
   #[pyo3(signature = (family, params, x0, n, t, m, seed=42, device="cpu"))]
   #[allow(clippy::too_many_arguments)]
@@ -333,7 +414,7 @@ pub mod python {
     m: usize,
     seed: u64,
     device: &str,
-  ) -> PyResult<Bound<'py, numpy::PyArray2<f64>>> {
+  ) -> PyResult<Py<PyAny>> {
     let need = |k: usize| {
       if params.len() != k {
         Err(PyValueError::new_err(format!(
@@ -345,45 +426,37 @@ pub mod python {
       }
     };
     let device = device.to_ascii_lowercase();
-    let rows: Vec<ndarray::Array1<f64>> = match family.to_ascii_lowercase().as_str() {
+    let p = params.as_slice();
+    let rows = match family.to_ascii_lowercase().as_str() {
       "gbm" => {
         need(2)?;
-        let process = Gbm::new(
-          params[0],
-          params[1],
-          n,
-          Some(x0),
-          Some(t),
-          Deterministic::new(seed),
-        );
-        on_device!(process, m, py, device.as_str())
+        on_device!(
+          gbm::<f64>(p, x0, n, t, seed),
+          gbm::<f32>(p, x0, n, t, seed),
+          m,
+          py,
+          device.as_str()
+        )
       }
       "ou" => {
         need(3)?;
-        let process = Ou::new(
-          params[0],
-          params[1],
-          params[2],
-          n,
-          Some(x0),
-          Some(t),
-          Deterministic::new(seed),
-        );
-        on_device!(process, m, py, device.as_str())
+        on_device!(
+          ou::<f64>(p, x0, n, t, seed),
+          ou::<f32>(p, x0, n, t, seed),
+          m,
+          py,
+          device.as_str()
+        )
       }
       "cir" => {
         need(3)?;
-        let process = Cir::new(
-          params[0],
-          params[1],
-          params[2],
-          n,
-          Some(x0),
-          Some(t),
-          None,
-          Deterministic::new(seed),
-        );
-        on_device!(process, m, py, device.as_str())
+        on_device!(
+          cir::<f64>(p, x0, n, t, seed),
+          cir::<f32>(p, x0, n, t, seed),
+          m,
+          py,
+          device.as_str()
+        )
       }
       other => {
         return Err(PyValueError::new_err(format!(
@@ -391,10 +464,10 @@ pub mod python {
         )));
       }
     };
-    let mut paths = ndarray::Array2::<f64>::zeros((rows.len(), n));
-    for (i, row) in rows.iter().enumerate() {
-      paths.row_mut(i).assign(row);
+    match rows {
+      Rows::F64(rows) => stack(py, rows, n),
+      #[cfg(any(feature = "metal", feature = "gpu-cuda", feature = "gpu-wgpu"))]
+      Rows::F32(rows) => stack(py, rows, n),
     }
-    Ok(paths.into_pyarray(py))
   }
 }

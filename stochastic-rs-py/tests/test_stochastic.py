@@ -144,6 +144,14 @@ def test_euler_paths_device_names_are_honoured_or_reported():
             assert "rebuild" in str(err)
             continue
         assert paths.shape == (256, 64)
+        # Metal and CubeCL compute in single precision and say so; the CPU and
+        # native CUDA paths keep float64.
+        if device in ("metal", "cubecl"):
+            assert paths.dtype == np.float32
+        elif device == "cuda-native":
+            assert paths.dtype == np.float64
+        else:
+            assert paths.dtype in (np.float32, np.float64)
         assert np.allclose(paths[:, 0], 100.0)
         assert abs(paths[:, -1].mean() / (100.0 * np.exp(0.05)) - 1.0) < 0.05
 

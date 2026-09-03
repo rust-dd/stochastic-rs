@@ -10,7 +10,7 @@ use super::Sde;
 use crate::device::FgnBackend;
 use crate::traits::FloatExt;
 
-impl<T: FloatExt, F, G, B: FgnBackend> Sde<T, F, G, B>
+impl<T: FloatExt, F, G, B: FgnBackend<T>> Sde<T, F, G, B>
 where
   F: Fn(&Array1<T>, T) -> Array1<T>,
   G: Fn(&Array1<T>, T) -> ndarray::Array2<T>,

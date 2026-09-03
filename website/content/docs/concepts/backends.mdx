@@ -54,11 +54,17 @@ says which markers it accepts:
   accepts at least these; a process whose only bound is `HostBackend` has no
   device kernel yet, and gaining one later merely widens the bound, which
   breaks no caller.
-- `FgnBackend: Backend` — fractional Gaussian noise on the device (FFT
+- `FgnBackend<T>: Backend` — fractional Gaussian noise on the device (FFT
   pipeline); the fGN-driven family (`Fgn`, `Fbm`, `Fou`, `Fcir`, `Fgbm`,
   `FJacobi`, `Cfou`, `Cfgns`, `JumpFou`, `JumpFOUCustom`, `Sde`) is bound on it.
-- `EulerBackend: Backend` — the Euler engine's device kernels (`Gbm`, `Ou`,
+- `EulerBackend<T>: Backend` — the Euler engine's device kernels (`Gbm`, `Ou`,
   `Cir` today); `Cpu` and `Accelerate` implement it as the host sampler.
+
+Both capabilities take the scalar, and a device implements them only for the
+precision its kernels compute in: `CudaNative` for `f32` and `f64`,
+`MetalNative` and `CubeCl` for `f32`, the CPU devices for both. `Fgn<f64>` or
+`Gbm<f64>` on `MetalNative` is a compile error; nothing runs in `f32` behind an
+`f64` type. Generic code spells the scalar in the bound: `B: FgnBackend<T>`.
 
 Bound on `Backend` to say "device-parameterised"; bound on a capability when
 the code actually samples through it.
@@ -98,9 +104,10 @@ kernel later widens the bound without touching callers.
 
 ## Precision
 
-Apple GPUs have no `f64`, so `MetalNative` is **`f32` only**. `CudaNative`,
-`CubeCl`, and `Accelerate` support both `f32` and `f64`; the `Cpu` backend
-follows the process's `T` parameter.
+Apple GPUs have no `f64`, so `MetalNative` is **`f32` only**, and so is the
+CubeCL pipeline: both implement the capabilities for `f32` alone, and an `f64`
+process on them is a compile error. `CudaNative`, `Accelerate` and `Cpu`
+follow the process's `T` parameter in `f32` and `f64`.
 
 ## When is GPU worth it?
 

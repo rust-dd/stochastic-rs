@@ -150,7 +150,7 @@ impl<T: FloatExt> Default for Gbm<T, Unseeded> {
 
 backend_switch!([T: FloatExt, S: SeedExt] Gbm<T, S> { mu, sigma, n, x0, t, ln_mu, ln_sigma, seed } via euler);
 
-impl<T: FloatExt, S: SeedExt, B: EulerBackend> ProcessExt<T> for Gbm<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Gbm<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = GbmSampler<T>

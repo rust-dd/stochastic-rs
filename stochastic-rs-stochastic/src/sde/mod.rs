@@ -275,7 +275,7 @@ where
 backend_switch!([T: FloatExt, F, G] Sde<T, F, G> { drift, diffusion, noise, hursts } via phantom
   where F: Fn(&Array1<T>, T) -> Array1<T>, G: Fn(&Array1<T>, T) -> Array2<T>);
 
-impl<T: FloatExt, F, G, B: FgnBackend> Sde<T, F, G, B>
+impl<T: FloatExt, F, G, B: FgnBackend<T>> Sde<T, F, G, B>
 where
   F: Fn(&Array1<T>, T) -> Array1<T>,
   G: Fn(&Array1<T>, T) -> Array2<T>,

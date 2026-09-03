@@ -24,7 +24,7 @@ fn cpu_backend_is_the_process_sampler() {
   };
   let plain = gbm().sample_par(16);
   let switched = gbm().on::<Cpu>().sample_par(16);
-  let through_trait = <Cpu as EulerBackend>::euler_paths(&gbm(), 16);
+  let through_trait = <Cpu as EulerBackend<f64>>::euler_paths(&gbm(), 16);
   assert_eq!(plain.len(), 16);
   for i in 0..16 {
     assert_eq!(plain[i].to_vec(), switched[i].to_vec());
@@ -32,7 +32,7 @@ fn cpu_backend_is_the_process_sampler() {
   }
 
   const {
-    assert!(!<Cpu as EulerBackend>::DEVICE);
+    assert!(!<Cpu as EulerBackend<f64>>::DEVICE);
   }
   let ou = || {
     Ou::new(
@@ -126,12 +126,15 @@ mod devices {
 
   use super::*;
 
-  /// Rows of `sample_par` as an `m × n` matrix.
-  fn stack(rows: &[Array1<f64>]) -> Array2<f64> {
+  /// Rows of `sample_par` as an `m × n` matrix, widened to `f64` for the
+  /// statistics.
+  fn stack<T: FloatExt>(rows: &[Array1<T>]) -> Array2<f64> {
     let n = rows.first().map_or(0, |r| r.len());
     let mut out = Array2::<f64>::zeros((rows.len(), n));
     for (i, row) in rows.iter().enumerate() {
-      out.row_mut(i).assign(row);
+      for (j, x) in row.iter().enumerate() {
+        out[[i, j]] = x.to_f64().unwrap();
+      }
     }
     out
   }
@@ -144,20 +147,20 @@ mod devices {
     (mean, var)
   }
 
-  fn gbm(seed: u64) -> Gbm<f64, Deterministic> {
+  fn gbm<T: FloatExt>(seed: u64) -> Gbm<T, Deterministic> {
     Gbm::new(
-      0.05,
-      0.2,
+      T::from_f64_fast(0.05),
+      T::from_f64_fast(0.2),
       253,
-      Some(100.0),
-      Some(1.0),
+      Some(T::from_f64_fast(100.0)),
+      Some(T::one()),
       Deterministic::new(seed),
     )
   }
 
-  fn gbm_moments_hold<B: EulerBackend>(label: &str) {
+  fn gbm_moments_hold<T: FloatExt, B: EulerBackend<T>>(label: &str) {
     assert!(B::DEVICE, "{label}");
-    let paths = stack(&gbm(7).on::<B>().sample_par(40_000));
+    let paths = stack(&gbm::<T>(7).on::<B>().sample_par(40_000));
     assert_eq!(paths.dim(), (40_000, 253), "{label}");
     assert!(paths.column(0).iter().all(|&x| x == 100.0), "{label}");
     let (mean, var) = column_mean_var(&paths, 252);
@@ -171,9 +174,9 @@ mod devices {
       (var / expected_var - 1.0).abs() < 0.06,
       "{label}: var {var} vs {expected_var}"
     );
-    let a = gbm(7).on::<B>().sample_par(8);
-    let b = gbm(7).on::<B>().sample_par(8);
-    let c = gbm(8).on::<B>().sample_par(8);
+    let a = gbm::<T>(7).on::<B>().sample_par(8);
+    let b = gbm::<T>(7).on::<B>().sample_par(8);
+    let c = gbm::<T>(8).on::<B>().sample_par(8);
     assert!(
       a.iter().zip(&b).all(|(x, y)| x == y),
       "{label}: seed reproducibility"
@@ -183,23 +186,23 @@ mod devices {
       "{label}: seed discrimination"
     );
     assert_ne!(a[0], a[1], "{label}: paths are distinct streams");
-    let single = gbm(7).on::<B>().sample();
+    let single = gbm::<T>(7).on::<B>().sample();
     assert_eq!(single.len(), 253, "{label}");
     assert_eq!(
-      gbm(7).on::<B>().sample_map(3, |p| p[252]).len(),
+      gbm::<T>(7).on::<B>().sample_map(3, |p| p[252]).len(),
       3,
       "{label}"
     );
   }
 
-  fn cir_stays_nonnegative<B: EulerBackend>(label: &str) {
+  fn cir_stays_nonnegative<T: FloatExt, B: EulerBackend<T>>(label: &str) {
     let cir = Cir::new(
-      1.5,
-      0.04,
-      0.3,
+      T::from_f64_fast(1.5),
+      T::from_f64_fast(0.04),
+      T::from_f64_fast(0.3),
       253,
-      Some(0.09),
-      Some(1.0),
+      Some(T::from_f64_fast(0.09)),
+      Some(T::one()),
       None,
       Deterministic::new(3),
     );
@@ -216,27 +219,31 @@ mod devices {
   #[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
   #[test]
   fn cubecl_backend_matches_the_moments() {
-    gbm_moments_hold::<crate::device::CubeCl>("CubeCl");
-    cir_stays_nonnegative::<crate::device::CubeCl>("CubeCl");
+    gbm_moments_hold::<f32, crate::device::CubeCl>("CubeCl");
+    cir_stays_nonnegative::<f32, crate::device::CubeCl>("CubeCl");
   }
 
   #[cfg(feature = "metal")]
   #[test]
   fn metal_native_backend_matches_the_moments() {
-    gbm_moments_hold::<crate::device::MetalNative>("MetalNative");
-    cir_stays_nonnegative::<crate::device::MetalNative>("MetalNative");
+    gbm_moments_hold::<f32, crate::device::MetalNative>("MetalNative");
+    cir_stays_nonnegative::<f32, crate::device::MetalNative>("MetalNative");
   }
 
   #[cfg(feature = "cuda-native")]
   #[test]
   fn cuda_native_backend_matches_the_moments() {
-    gbm_moments_hold::<crate::device::CudaNative>("CudaNative");
-    cir_stays_nonnegative::<crate::device::CudaNative>("CudaNative");
+    gbm_moments_hold::<f64, crate::device::CudaNative>("CudaNative f64");
+    gbm_moments_hold::<f32, crate::device::CudaNative>("CudaNative f32");
+    cir_stays_nonnegative::<f64, crate::device::CudaNative>("CudaNative f64");
+    cir_stays_nonnegative::<f32, crate::device::CudaNative>("CudaNative f32");
     // f64 kernel: the double-precision path agrees with the f32 one to float rounding.
     let single = Gbm::<f32, _>::new(0.05, 0.2, 64, Some(100.0), Some(1.0), Deterministic::new(5))
       .on::<crate::device::CudaNative>()
       .sample_par(4);
-    let double = gbm(5).on::<crate::device::CudaNative>().sample_par(4);
+    let double = gbm::<f64>(5)
+      .on::<crate::device::CudaNative>()
+      .sample_par(4);
     for (a, b) in single.iter().zip(&double) {
       for (x, y) in a.iter().zip(b.iter()) {
         assert!(((*x as f64) - y).abs() < 1e-3 * y.abs().max(1.0));
@@ -247,8 +254,10 @@ mod devices {
   #[cfg(all(feature = "metal", any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
   #[test]
   fn metal_native_and_cubecl_agree_seed_for_seed() {
-    let metal = gbm(11).on::<crate::device::MetalNative>().sample_par(16);
-    let cubecl = gbm(11).on::<crate::device::CubeCl>().sample_par(16);
+    let metal = gbm::<f32>(11)
+      .on::<crate::device::MetalNative>()
+      .sample_par(16);
+    let cubecl = gbm::<f32>(11).on::<crate::device::CubeCl>().sample_par(16);
     for (a, b) in metal.iter().zip(&cubecl) {
       for (x, y) in a.iter().zip(b.iter()) {
         assert!((x - y).abs() < 1e-3 * y.abs().max(1.0), "{x} vs {y}");

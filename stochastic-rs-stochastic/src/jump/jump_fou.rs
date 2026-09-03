@@ -168,7 +168,7 @@ where
   }
 }
 
-impl<T, D, S: SeedExt, B: FgnBackend> ProcessExt<T> for JumpFou<T, D, S, B>
+impl<T, D, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for JumpFou<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
@@ -213,7 +213,7 @@ pub struct JumpFouSampler<'a, T, D, S: SeedExt, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
-  B: FgnBackend,
+  B: FgnBackend<T>,
 {
   n: usize,
   theta: T,
@@ -232,7 +232,7 @@ impl<T, D, S: SeedExt, B> JumpFouSampler<'_, T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
-  B: FgnBackend,
+  B: FgnBackend<T>,
 {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
@@ -266,7 +266,7 @@ impl<T, D, S: SeedExt, B> PathSampler<T> for JumpFouSampler<'_, T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
-  B: FgnBackend,
+  B: FgnBackend<T>,
 {
   type Output = Array1<T>;
 
