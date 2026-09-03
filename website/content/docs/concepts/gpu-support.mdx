@@ -106,11 +106,40 @@ CPU-only; the device backends come with a source build —
 ## Trying the CUDA back-end without a CUDA machine
 
 [`notebooks/colab_cuda_check.ipynb`](https://colab.research.google.com/github/rust-dd/stochastic-rs/blob/main/notebooks/colab_cuda_check.ipynb)
-opens in Google Colab: on a T4 runtime it installs Rust, clones the repository
-and runs the native CUDA tests (the fGN pipeline and the Euler engine), with
-optional cells for the CubeCL CUDA runtime and the Python module with
-`device="cuda-native"`. The first build takes 10–20 minutes on Colab's two
-cores; the tests take seconds.
+opens in Google Colab: on a T4 runtime it installs Rust, clones the repository,
+runs the native CUDA tests (the fGN pipeline and the Euler engine), builds the
+Python wheel with `device="cuda-native"` and plots what the GPU produced. The
+Rust tests build in 10–20 minutes on Colab's two cores, the wheel in another
+ten; the tests and the plots take seconds.
+
+### A run on a T4
+
+The notebook in the repository carries the outputs of a run on 2026-09-03
+(Tesla T4, driver 580.82 / CUDA 13.0, toolkit 12.8; GitHub's own viewer may
+not render the outputs, [nbviewer](https://nbviewer.org/github/rust-dd/stochastic-rs/blob/main/notebooks/colab_cuda_check.ipynb)
+does). All 12 `cuda_native` tests passed, including the two that assert a
+chunked batch equals one launch path for path, in `f32` and `f64`; the wheel
+built for CPython 3.13 and its device tests passed; `probe_device` reported
+`{'backend': 'CudaNative', 'name': 'Tesla T4', 'precisions': ['f32', 'f64']}`.
+
+<img src="/gpu/colab_cuda_check_t4.png" alt="fBM paths, the t^(2H) variance law on GPU and CPU, the GBM terminal law against the lognormal density, and wall time per call CPU vs CUDA on a T4" width={1289} height={889} />
+
+The variance of fractional Brownian motion sampled on the GPU sits on the
+`t^{2H}` lines for `H` = 0.3, 0.5, 0.8 exactly where the CPU samples sit, and
+the Euler engine's GBM terminal mean over 100k paths was 105.15 against the
+105.13 forward. Wall time per call, warm, against Colab's two CPU cores:
+
+| Case | CPU | CudaNative (T4) |
+|---|---|---|
+| fGN, `n` = 4096, `m` = 2000, `f64` | ≈ 0.55 s | ≈ 0.22 s (2.5×) |
+| fGN, `n` = 16384, `m` = 1000, `f64` | ≈ 0.65 s | ≈ 0.36 s (1.8×) |
+| GBM Euler, `n` = 253, `m` = 100k, `f64` | ≈ 0.29 s | ≈ 0.56 s |
+
+The Euler case is slower on the T4 in `f64` because that card executes
+double precision at 1/32 of its single-precision rate, and the 200 MB result
+is copied back and re-laid as rows on the host; `dtype="f32"` is the setting
+for the Euler engine on inference-class GPUs. The fGN pipeline is FFT-bound
+and wins already at these sizes; the gap widens with `m`.
 
 ## Adding a kernel
 
