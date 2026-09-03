@@ -114,9 +114,10 @@ ten; the tests and the plots take seconds.
 
 ### A run on a T4
 
-The notebook in the repository carries the outputs of a run on 2026-09-03
-(Tesla T4, driver 580.82 / CUDA 13.0, toolkit 12.8; GitHub's own viewer may
-not render the outputs, [nbviewer](https://nbviewer.org/github/rust-dd/stochastic-rs/blob/main/notebooks/colab_cuda_check.ipynb)
+[`notebooks/runs/colab_cuda_check_T4_2026-09-03.ipynb`](https://github.com/rust-dd/stochastic-rs/blob/main/notebooks/runs/colab_cuda_check_T4_2026-09-03.ipynb)
+is the executed copy of a run on 2026-09-03 (Tesla T4, driver 580.82 / CUDA
+13.0, toolkit 12.8; GitHub's own viewer may not render Colab outputs,
+[nbviewer](https://nbviewer.org/github/rust-dd/stochastic-rs/blob/main/notebooks/runs/colab_cuda_check_T4_2026-09-03.ipynb)
 does). All 12 `cuda_native` tests passed, including the two that assert a
 chunked batch equals one launch path for path, in `f32` and `f64`; the wheel
 built for CPython 3.13 and its device tests passed; `probe_device` reported
