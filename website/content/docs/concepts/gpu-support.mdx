@@ -103,6 +103,15 @@ CPU-only; the device backends come with a source build —
 `maturin develop --features metal,gpu-wgpu` on a Mac,
 `--features cuda-native` on an NVIDIA machine.
 
+## Trying the CUDA back-end without a CUDA machine
+
+[`notebooks/colab_cuda_check.ipynb`](https://colab.research.google.com/github/rust-dd/stochastic-rs/blob/main/notebooks/colab_cuda_check.ipynb)
+opens in Google Colab: on a T4 runtime it installs Rust, clones the repository
+and runs the native CUDA tests (the fGN pipeline and the Euler engine), with
+optional cells for the CubeCL CUDA runtime and the Python module with
+`device="cuda-native"`. The first build takes 10–20 minutes on Colab's two
+cores; the tests take seconds.
+
 ## Adding a kernel
 
 A process joins the Euler engine by implementing `EulerCoefficients`

@@ -114,7 +114,7 @@ repository = "https://github.com/rust-dd/stochastic-rs"
 readme = "README.md"
 keywords = ["quantitative-finance", "option-pricing", "quantlib", "stochastic-processes", "monte-carlo"]
 categories = ["finance", "mathematics", "science", "simulation", "algorithms"]
-exclude = [ "**/*.tar.gz", "data/**", "trainsets/**", "src/ai/volatility/*TrainSet.txt.gz", ]
+exclude = [ "**/*.tar.gz", "data/**", "trainsets/**", "notebooks/**", "src/ai/volatility/*TrainSet.txt.gz", ]
 
 [dependencies]
 stochastic-rs-core = { workspace = true }
