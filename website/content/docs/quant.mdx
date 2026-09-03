@@ -34,6 +34,35 @@ factor / strategy primitives.
 | **FX**             | ISO 4217 currency definitions, FX quoting / cross-rate / triangulation, FX forward via covered interest parity (continuous and simple compounding).                                                                            |
 | **Calendar**       | ACT/360, ACT/365, 30/360, ACT/ACT day-counts. Following / Modified Following / Preceding business-day adjustments. US, UK, TARGET, Tokyo, HKEX, ASX, SGX, B3 holiday calendars. Pluggable `CalendarExt`. `ScheduleBuilder` for coupon / payment dates.                                |
 
+## Choosing a pricer
+
+| You have | Reach for | Why |
+|---|---|---|
+| A European vanilla, one flat volatility | `BSMPricer` (`BachelierPricer` for rates / negative underlyings) | closed form, all Greeks to third order |
+| A stochastic-volatility model and a strike–maturity grid | `HestonPricer` (Fourier, Cui Jacobian) → `ModelSurface` | one characteristic function prices the whole grid |
+| A barrier or American payoff under Heston | `HestonAdiPricer` | ADI finite differences with a down-and-out barrier; Rannacher-damped |
+| An American vanilla under Black–Scholes | `BjerksundStensland2002Pricer` (analytic approximation), `FiniteDifferencePricer` or `CrrModel` (exact to the grid), `LsmPricer` for path-dependent early exercise | speed vs. grid-exactness |
+| Path-dependent exotics (Asian, lookback, cliquet, autocallable, barrier MC) | the Monte Carlo pricers returning `McEstimate` | the estimate carries its standard error |
+| Multi-asset | `BasketPricer`, `RainbowPricer`, `KirkSpreadPricer` (spread), `QuantoPricer` (foreign underlying) | closed forms where they exist, MC otherwise |
+| Jumps or heavy tails | `Merton1976Pricer`, the Lévy / CGMY Fourier pricers (`CarrMadanPricer`, COS) | the characteristic function is the model |
+| Rough volatility | `RBergomiPricer` (mSOE Monte Carlo) | no closed form exists |
+| A curve-driven instrument (swap, cap, swaption, bond, CDS) | the instrument's `.valuation(curve)` / the tree pricers under `lattice::short_rate` | prices off a term structure, not a spot–strike query |
+
+## Choosing a calibrator
+
+| Market data | Calibrator | Fit |
+|---|---|---|
+| Equity / FX vanilla surface | `HestonCalibrator` (Levenberg–Marquardt on the Cui Jacobian, NMLE / PMLE / CEKF seeds), `DoubleHestonCalibrator`, `SVJCalibrator`, `LevyCalibrator`, `CgmysvCalibrator`, `HKDECalibrator`, `HscmCalibrator` | least squares on prices or implied vols |
+| One smile at one expiry | `SabrCalibrator` (equity / FX), `SabrCapletCalibrator` (shifted, rates), `SabrSmileCalibrator` (FX quotes: ATM, risk reversal, butterfly) | Hagan expansion |
+| A whole surface, arbitrage-free | `calibrate_essvi` (eSSVI slices) | butterfly and calendar bounds enforced |
+| Swaption grid | `HullWhiteSwaptionCalibrator` (Jamshidian), `G2ppSwaptionCalibrator`, `BlackKarasinskiSwaptionCalibrator` (trinomial tree repricing) | Nelder–Mead on the tree |
+| Rough volatility | `RBergomiCalibrator` (Wasserstein loss on mSOE samples) | Monte Carlo |
+| A trained surrogate | `HestonSurrogateCalibrator`, `RBergomiSurrogateCalibrator` (`ai` feature) | LM on the network's exact Jacobian |
+
+All of them implement `Calibrator` (`calibrate(initial) -> Result<…>`) and hand
+their result to a pricer through `ToModel` / `ToShortRateModel`; `Regularization`
+adds a Tikhonov pull toward an anchor on the Heston, SABR and swaption ones.
+
 ## Examples
 
 ### Black-Scholes-Merton — closed-form European call

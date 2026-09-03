@@ -1,0 +1,125 @@
+---
+title: Migrating to v3
+description: Every breaking change between v2.6 and v3.0, grouped by crate, with the one-line replacement for each.
+---
+
+v3 is an API-stabilisation release: no new pricing layer, no renamed
+crates. The changes below are the ones that stop a v2.6 program from
+compiling, in the order you are most likely to hit them. Each entry gives
+the replacement; the design behind it is on
+[design philosophy](/docs/concepts/design-philosophy).
+
+## Every process carries its sampling backend as a type parameter
+
+`Gbm<T, S>` became `Gbm<T, S, B = Cpu>` — on all 131 processes. The default
+means existing constructors and type names keep working; what changes is
+struct literals and generic bounds.
+
+- **Struct literals** need the marker field: add
+  `backend: std::marker::PhantomData` (or build through the constructor).
+- **Generic code** over a process spells the third parameter:
+  `fn f<T, S, B: HostBackend>(p: &Gbm<T, S, B>)`. `HostBackend`,
+  `FgnBackend` and `EulerBackend` are the three capability traits a bound
+  can name; see [GPU support](/docs/concepts/gpu-support) for which process
+  accepts which.
+- **Device sampling** is `.on::<MetalNative>()` (or `CudaNative`, `CubeCl`,
+  `Accelerate`) on the process; the free-function form never shipped.
+
+## `PricerExt` is gone; pricers are models
+
+The bundled-market-data trait (`calculate_call_put()`, `calculate_price()`,
+`implied_volatility()`) is removed. Every pricer that implemented it is now
+a *model*: the struct holds model parameters only and the query travels as
+arguments through `ModelPricer`:
+
+```rust
+// v2.6
+let p = HestonPricer::builder().s(100.0).k(100.0).r(0.03).tau(0.5)
+    .v0(0.04).theta(0.04).kappa(2.0).sigma(0.5).rho(-0.7).build();
+let (call, put) = p.calculate_call_put();
+
+// v3
+let p = HestonPricer::new(0.04, 0.04, 2.0, 0.5, -0.7);
+let call = p.price_call(100.0, 100.0, 0.03, 0.0, 0.5);
+let put  = p.price_put(100.0, 100.0, 0.03, 0.0, 0.5);
+```
+
+The affected types and what each lost: `HestonPricer`, `Merton1976Pricer`,
+`SabrPricer` (absorbs the old `SabrModel`), `HestonStochCorrPricer` (absorbs
+`HscmModel`), `KirkSpreadPricer`, `FiniteDifferencePricer` (and gained a
+dividend yield in the PDE drift), `GbmMalliavinPricer`, `SnellEnvelopePricer`,
+`BjerksundStensland2002Pricer`. Their `…Builder` types are removed with
+them; `implied_volatility`, `char_func`, `forward()`, `sigma()` and
+`price_detailed` take the `(s, k, r, q, tau)` query. `TimeExt` is untouched
+and stays on the two instruments. Put Greeks on `HestonPricer` are new: the
+`greeks(…, OptionType::Put)` call differentiates the put, where v2 always
+differentiated the call.
+
+## Calibrators
+
+- Every calibrator has a public `regularization: Option<Regularization>`
+  field; a struct literal must set it (`None` reproduces v2).
+- `SabrCalibrator::new` asserts that strikes and vols have the same length,
+  and the shifted caplet calibrator returns `f64::MAX` residuals instead of
+  `NaN` for an out-of-domain trial point, so a Levenberg–Marquardt step no
+  longer stalls on a non-finite loss.
+
+## Copulas
+
+- `Clayton::partial_derivative` returns the conditional distribution
+  (the h-function), as the other Archimedean copulas do. v2 returned zeros
+  for every input because of an inverted `ndarray` predicate.
+- `BB1` and `BB7` are new variants of `CopulaType`; an exhaustive `match`
+  on that enum needs the two arms.
+
+## Growing enums are `#[non_exhaustive]`
+
+73 enums that will keep gaining variants (`CopulaType`, `EulerSpec`,
+`HazardInterpolation`, the scheme and family selectors, …) carry
+`#[non_exhaustive]`. Downstream `match` statements need a `_ =>` arm.
+Closed sets — `OptionType`, `OptionStyle`, `Moneyness`, the day-count
+conventions — stay exhaustive.
+
+## Parameter asserts name the parameter and its value
+
+Constructors that rejected a bad parameter with a bare `assert!` now panic
+with `"sigma must be positive, got -0.2"`. If a test pinned the old
+message through `#[should_panic(expected = …)]`, update the string. The
+three-way convention (invalid parameter → panic; not computable → documented
+`NaN`; data-dependent failure → `Result`) is in
+[design philosophy §6](/docs/concepts/design-philosophy).
+
+## Sampling results that change for a given seed
+
+- `RoughBergomi` uses the Bennedsen–Lunde–Pakkanen hybrid scheme (κ = 1)
+  instead of the exact covariance Cholesky path; paths for a fixed seed
+  differ from v2, distributions agree.
+- `Fbm` / `Fgn` on a device backend draw their own stream; host and
+  device paths agree in distribution, not bit for bit.
+
+## Prelude and hub
+
+- `MultivariateExt` joined the prelude (the linear-algebra stack moved to
+  pure-Rust `faer`, so the feature-gate reason for excluding it died).
+- `Instrument`, `InstrumentExt`, `PricingEngine`, `PricingResult` and
+  `GreeksExt` left the prelude; import them from `stochastic_rs::traits::*`.
+- The `openblas` / `nalgebra` linear-algebra features are gone with the
+  `faer` move; no feature is needed for the multivariate copulas.
+
+## Python
+
+- The wheel is CPU-only. `metal`, `cuda-native`, `gpu-cuda`, `gpu-wgpu`,
+  `accelerate` and `ai` are `maturin` build features; a class or function
+  behind one of them raises `ValueError` with a rebuild hint when it is
+  called from a build that lacks it.
+- `euler_paths(family, params, x0, n, t, m, seed, device)` is the device
+  entry point for the Euler engine.
+- The AI classes (`HestonNn`, `RBergomiNn`, `OneFactorNn`,
+  `calibrate_surrogate`) are behind the `ai` feature.
+
+## What is not a breaking change
+
+Widening a process's bound from `HostBackend` to `EulerBackend` (a process
+gaining a device kernel), a new `CopulaType` or `EulerSpec` variant, a new
+prelude item, and a new pricer or calibrator: all of these are additive
+and arrive in minor releases.

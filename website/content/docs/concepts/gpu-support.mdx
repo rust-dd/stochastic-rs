@@ -1,0 +1,81 @@
+---
+title: GPU support
+description: What runs on a GPU today, on which backend, at what precision — the fGN family, the Euler engine, and everything else on the host.
+---
+
+Every process carries its sampling backend as a type parameter and is
+re-typed with `.on::<B2>()` (see [backends](/docs/concepts/backends)). This
+page is the inventory: which processes have a device kernel today, on which
+backends, and what the rest do.
+
+## The support matrix
+
+| Family | Processes | Capability bound | `Cpu` | `Accelerate` | `MetalNative` | `CudaNative` | `CubeCl` |
+|---|---|---|---|---|---|---|---|
+| fGN-driven | `Fgn`, `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `Cfou`, `Cfgns`, `JumpFou`, `JumpFOUCustom`, `Sde` (11) | `FgnBackend` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` | cuFFT + Philox, `f32` / `f64` | CubeCL FFT, `f32` |
+| Euler engine | `Gbm`, `Ou`, `Cir` (3) | `EulerBackend` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` |
+| Host only | the remaining 117 processes | `HostBackend` | own SIMD sampler | same as `Cpu` | compile error | compile error | compile error |
+
+Feature flags: `metal` (`MetalNative`), `cuda-native` (`CudaNative`),
+`gpu-cuda` / `gpu-wgpu` (`CubeCl` on CUDA or on Metal / Vulkan / WebGPU
+through wgpu), `accelerate`. A marker only exists when its feature is
+compiled, so selecting a backend a process does not support — or one the
+build does not carry — is a compile error, never a silent fallback.
+
+## What the device path does
+
+- **fGN family.** The circulant-embedding FFT that produces fractional
+  Gaussian noise runs on the device; the process's own drift / diffusion
+  recursion then runs on the host as before. One launch per `sample_par`
+  batch.
+- **Euler engine.** The whole Euler–Maruyama recursion of a path runs in one
+  kernel thread; `sample_par(m)` is one launch for all `m` paths, `sample()`
+  launches a single path. CIR uses full truncation (Lord, Koekkoek & van Dijk
+  2010) in the kernel. The three device kernels share one integer hash for
+  their uniforms, so `MetalNative`, `CudaNative` and `CubeCl` agree with each
+  other seed for seed up to `f32` libm rounding.
+- **Host backends.** `Cpu` is the process's own sampler; `Accelerate` is a
+  CPU device that only differs for the fGN family (vDSP FFT). For every
+  other process both are the same code path.
+
+## Precision and reproducibility
+
+| Backend | Precision | Same seed, same device | Bit-identical to `Cpu` |
+|---|---|---|---|
+| `Cpu` | `f32` / `f64` | yes, thread-count independent | — |
+| `Accelerate` | `f32` / `f64` | reproducible-effort only (vDSP reduction order can differ across core types) | no |
+| `MetalNative` | `f32` | yes | no |
+| `CudaNative` | `f32` / `f64` | yes | no |
+| `CubeCl` | `f32` | yes | no |
+
+The device seed is drawn from the process's own seed source: a
+`Deterministic` process reproduces its device paths call after call, an
+`Unseeded` one draws fresh entropy — exactly as on the host. Host and device
+paths agree in distribution, not bit for bit, because the device draws its
+own stream.
+
+## From Python
+
+`euler_paths(family, params, x0, n, t, m, seed, device)` runs the Euler
+engine with `device` one of `"cpu"`, `"gpu"` (the first compiled device
+backend), `"cuda-native"`, `"metal"`, `"cubecl"`; a backend the build does not
+carry raises `ValueError` with a rebuild hint. The published wheels are
+CPU-only; the device backends come with a source build —
+`maturin develop --features metal,gpu-wgpu` on a Mac,
+`--features cuda-native` on an NVIDIA machine.
+
+## Adding a kernel
+
+A process joins the Euler engine by implementing `EulerCoefficients`
+(its `EulerSpec` family, initial value, grid, horizon, device seed) and
+switching its `backend_switch!` line from `via host` to `via euler`. A new
+drift / diffusion family is one `EulerSpec` variant plus one `family` branch
+in each of the three kernels (`euler/gpu.rs`, `euler/cuda_native.rs`,
+`euler/metal.rs`). Widening a process's bound from `HostBackend` to
+`EulerBackend` is not a breaking change for its callers.
+
+Not on a device yet, and what it would take: the two-state models
+(Heston, SABR, Bates, Heston-SLV — a correlated pair and a two-component
+stepper), time-dependent coefficients (CIR++ `φ(t)`, Hull–White `θ(t)` — a
+curve buffer on the device), jump processes (a Poisson draw in the kernel),
+and the Volterra / Markov-lift family (a separate `O(n·N')` kernel).

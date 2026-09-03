@@ -17,11 +17,13 @@ Rust core.
 | Feature           | Owner crate                 | Pulls in                             | Use when                                  |
 |-------------------|-----------------------------|--------------------------------------|-------------------------------------------|
 | `ai`              | umbrella                    | `stochastic-rs-ai`, `candle-core`    | NN volatility surrogates                  |
-| `cuda-native`     | `-stochastic`               | `cudarc` + cuFFT                     | NVIDIA GPU FGN / fBM (`CudaNative` backend) |
-| `gpu` / `gpu-cuda` / `gpu-wgpu` | `-stochastic` | `cubecl` (+ `cubecl-cuda` / `-wgpu`) | Portable CUDA / WebGPU kernels (`CubeCl` backend) |
-| `metal`           | `-stochastic`               | `metal`                             | macOS GPU FGN / fBM (`MetalNative` backend) |
-| `accelerate`      | `-stochastic`               | Apple vDSP (system framework)       | macOS CPU-FFT FGN / fBM (`Accelerate` backend) |
+| `cuda-native`     | `-stochastic`               | `cudarc` + cuFFT + NVRTC             | NVIDIA GPU: FGN / fBM (cuFFT) and the Euler engine kernels for `Gbm` / `Ou` / `Cir` (`CudaNative` backend, `f32` or `f64`) |
+| `gpu` / `gpu-cuda` / `gpu-wgpu` | `-stochastic` | `cubecl` (+ `cubecl-cuda` / `-wgpu`) | Portable CUDA / Metal / Vulkan / WebGPU kernels: FGN / fBM and the Euler engine (`CubeCl` backend, `f32`) |
+| `metal`           | `-stochastic`               | `metal`                             | Apple GPU: FGN / fBM and the Euler engine in hand-written MSL (`MetalNative` backend, `f32`) |
+| `accelerate`      | `-stochastic`               | Apple vDSP (system framework)       | macOS CPU-FFT FGN / fBM (`Accelerate` backend; a host device for every process) |
 | `python`          | `-py` (cdylib)              | `pyo3`, `numpy`                      | Building the wheel via maturin            |
+| `ai-metal`        | umbrella                    | `candle-core/metal`                  | candle's Metal back-end for surrogate training (`ai::device::best_available`); CUDA comes from `candle-core/cuda` in the consuming manifest |
+| `ai`, `metal`, `cuda-native`, `gpu-cuda`, `gpu-wgpu`, `accelerate` | `-py` | the sub-crate features above | Source-build extras of the Python module (`maturin develop --features …`): the surrogates + `calibrate_surrogate`, and the device back-ends behind `euler_paths(..., device=)`; none of them is in the published wheels |
 | `hotpath`         | umbrella                    | `tracing-subscriber`                 | Hot-path profiling helpers                |
 | `dual-stream-rng` | `-core`, `-distributions`   | none (additive)                      | ~2–6 % bulk Normal-Ziggurat speedup on Apple Silicon (Exp at parity) — see [seeding](/docs/concepts/seeding#dual-stream-rng-feature) |
 

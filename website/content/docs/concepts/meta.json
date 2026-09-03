@@ -9,6 +9,7 @@
     "seeding",
     "feature-flags",
     "backends",
+    "gpu-support",
     "design-philosophy"
   ]
 }

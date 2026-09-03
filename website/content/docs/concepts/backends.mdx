@@ -81,6 +81,11 @@ error*, not a silent runtime fallback.
 
 ## Which processes support it
 
+The per-family inventory — which process runs on which device, at what
+precision, and what the Python entry point is — lives on
+[GPU support](/docs/concepts/gpu-support); this section explains the
+mechanism.
+
 All 131 processes carry the parameter and accept `.on::<Cpu>()` (and
 `.on::<Accelerate>()` under the `accelerate` feature). Device kernels exist for
 two families today: the fGN-driven processes (`FgnBackend`: `Fgn`, `Fbm`,

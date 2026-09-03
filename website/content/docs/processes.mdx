@@ -1,6 +1,6 @@
 ---
 title: Stochastic processes
-description: 127 stochastic processes — diffusion, jump, volatility, interest-rate, fractional / rough, and noise. Catalog organised by mathematical family.
+description: 131 stochastic processes — diffusion, jump, volatility, interest-rate, fractional / rough, and noise. Catalog organised by mathematical family.
 category: process
 since: 2.0.0
 status: stable
@@ -8,7 +8,7 @@ status: stable
 
 # Stochastic processes
 
-The `stochastic-rs-stochastic` crate ships **127 processes** organised
+The `stochastic-rs-stochastic` crate ships **131 processes** organised
 into eleven families (below). Every process implements
 [`ProcessExt<T>`](/docs/concepts/process-ext): `sample()` returns one path,
 `sample_map(m, f)` folds over `m` paths in parallel, and `sample_par(m)`
@@ -22,7 +22,7 @@ derive its own exhaustive guard list, so the two never disagree. That file
 excludes `src/traits/process.rs` deliberately: it contributes only blanket
 impls of *marker* traits keyed off a `P: ProcessExt<...>` bound
 (`OneDimensional`, `MultiDimensional`, …), never a concrete process type —
-counting those inflates 127 to 130, which is how earlier audits of this
+counting those inflates 131 to 134, which is how earlier audits of this
 page disagreed with each other.
 
 ## Families
@@ -44,6 +44,20 @@ page disagreed with each other.
 Every row lists representative examples, not an exhaustive per-type list —
 the exhaustive list (one line per type) is the guard file linked above, or
 `cargo doc` for the API reference.
+
+## Choosing a family
+
+| You need | Start with | Then |
+|---|---|---|
+| A price path with constant volatility | `Gbm` (exact log-normal steps) | `GbmLog` for the log-price, `Cev` for a local-vol elasticity |
+| Mean reversion | `Ou` (Gaussian), `Cir` (positive, square-root), `Vasicek` / `HullWhite` for rates | `CirPlusPlus` to fit a term structure, `Cheyette` for a quasi-Gaussian HJM |
+| Stochastic volatility | `Heston` (Euler / QE schemes), `Sabr`, `Bergomi` | `DoubleHeston`, `MultifactorHeston`, `HestonStochCorr`, `HestonSlv` |
+| Rough volatility | `RoughBergomi` (hybrid scheme), `RoughHeston`, `RlHeston` (Markov lift) | the `volterra` module for a general kernel |
+| Long memory / fractional noise | `Fgn` → `Fbm`, `Fou`, `Fcir`, `Fgbm` | these are the processes with FFT device backends |
+| Jumps | `Merton`, `Kou`, `Bates1996`, `CompoundPoisson`, `Hawkes` | `LevyDiffusion` with any `Distribution` for the jump size |
+| Several correlated assets | `Mcgns` (driver) → `MultiGbm`, `Wishart` (covariance) | `Cfgns` for correlated fractional noise |
+| A rates curve, not a rate | `Hjm`, `Lmm`, `Bgm`, `Adg` | `G2pp`-style two-factor: `HullWhite2F`, `Cir2F` |
+| Time-series style | `Ar`, `Arima`, `Garch` / `Egarch` / `GjrGarch`, `Sarima` | the stats crate fits them |
 
 ## Examples
 
@@ -311,6 +325,9 @@ If you contribute, the four relevant SKILLs are:
 Each contains the file-by-file recipe.
 
 ## Euler engine
+
+What the engine runs on today, per backend and precision, is tabulated on
+[GPU support](/docs/concepts/gpu-support).
 
 The sampling backend is a **type parameter of every process**
 (`Name<T, S, B = Cpu>`, switched with `.on::<B2>()`); the Euler engine is the

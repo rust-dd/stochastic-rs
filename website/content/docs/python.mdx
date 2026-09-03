@@ -96,6 +96,29 @@ mc_call = np.exp(-0.05) * payoffs.mean()
 print("MC call =", mc_call)
 ```
 
+The models driven by Python callables — `PyHullWhite(theta, …)`, `PyAdg`,
+`PyHjm`, `PyCheyette` — have `sample_par` too. They release the GIL while the paths are
+generated and re-acquire it for each callback evaluation, so the callables
+run from the worker threads one at a time. `PyAdg.sample_par(m)` returns an
+`(m, factors, n)` array and `PyHjm.sample_par(m)` three `(m, n)` arrays
+(short rate, bond price, forward rate).
+
+## Credit curves
+
+`SurvivalCurve` is the term structure of default: build it from hazard
+rates, survival probabilities or default probabilities on a pillar grid
+(`SurvivalCurve.flat(h)` for one rate everywhere), and pass it anywhere a
+flat hazard rate is accepted — `ExposureProfile.cva` / `dva` /
+`bilateral_cva`, the `(weight, recovery, hazard)` triplets of `CdsIndex`
+and `CdoTranche`.
+
+```python
+curve = srs.SurvivalCurve([1.0, 3.0, 5.0], [0.010, 0.015, 0.020])
+curve.survival_probability(4.0)                    # exp(-0.010 - 0.030 - 0.020)
+profile.cva(curve, discount, lgd=0.6)              # same call as with a float
+index = srs.CdsIndex([(0.5, 0.4, curve), (0.5, 0.4, 0.02)], 0.01, 1e7, "2026-03-20", "2031-06-20")
+```
+
 ## Four pipelines
 
 There are four ways a Rust type ends up in the Python package:
