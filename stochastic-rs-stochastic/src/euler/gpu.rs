@@ -162,6 +162,47 @@ fn count_2d(cubes: u32) -> CubeCount {
 impl EulerBackend<f32> for CubeCl {
   const DEVICE: bool = true;
 
+  /// The launch buffer as the matrix, chunked like the row form when the
+  /// batch exceeds the budget.
+  fn try_euler_matrix<P: EulerCoefficients<f32>>(
+    process: &P,
+    m: usize,
+  ) -> DeviceResult<Array2<f32>> {
+    let n = process.grid_points();
+    let seed = process.device_seed();
+    let rows = crate::device::chunk_rows(n, std::mem::size_of::<f32>());
+    if m <= rows {
+      return device_paths(
+        process.euler_spec(),
+        process.initial_value(),
+        n,
+        process.horizon(),
+        0,
+        m,
+        seed,
+      );
+    }
+    let mut out = Array2::<f32>::zeros((m, n));
+    let mut first = 0;
+    while first < m {
+      let len = rows.min(m - first);
+      let chunk = device_paths(
+        process.euler_spec(),
+        process.initial_value(),
+        n,
+        process.horizon(),
+        first,
+        len,
+        seed,
+      )?;
+      out
+        .slice_mut(ndarray::s![first..first + len, ..])
+        .assign(&chunk);
+      first += len;
+    }
+    Ok(out)
+  }
+
   fn try_euler_paths_seeded<P: EulerCoefficients<f32>>(
     process: &P,
     first: usize,

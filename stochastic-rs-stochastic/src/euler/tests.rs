@@ -146,6 +146,17 @@ fn host_map_and_chunk_calls_match_the_process_sampler() {
 }
 
 #[test]
+fn matrix_form_matches_the_rows() {
+  let gbm = || Gbm::new(0.05, 0.2, 32, Some(100.0), Some(1.0), Deterministic::new(6));
+  let rows = gbm().sample_par(5);
+  let matrix = gbm().try_sample_matrix(5).expect("cpu");
+  assert_eq!(matrix.dim(), (5, 32));
+  for (i, row) in rows.iter().enumerate() {
+    assert_eq!(matrix.row(i), row.view());
+  }
+}
+
+#[test]
 fn device_seed_follows_the_seed_source() {
   let a = Gbm::new(0.05, 0.2, 8, None, None, Deterministic::new(3));
   let b = Gbm::new(0.05, 0.2, 8, None, None, Deterministic::new(3));
@@ -291,6 +302,27 @@ mod devices {
     crate::device::set_batch_budget_bytes(crate::device::DEFAULT_BATCH_BUDGET_BYTES);
     assert_eq!(chunked, whole);
     assert_eq!(mapped, whole.iter().map(|p| p[252]).collect::<Vec<_>>());
+  }
+
+  #[cfg(feature = "metal")]
+  #[test]
+  fn metal_native_matrix_matches_the_rows_and_chunks() {
+    use crate::device::MetalNative;
+    let rows = gbm::<f32>(23).on::<MetalNative>().sample_par(7);
+    let matrix = gbm::<f32>(23)
+      .on::<MetalNative>()
+      .try_sample_matrix(7)
+      .expect("Metal");
+    for (i, row) in rows.iter().enumerate() {
+      assert_eq!(matrix.row(i), row.view());
+    }
+    crate::device::set_batch_budget_bytes(253 * 4 * 2);
+    let chunked = gbm::<f32>(23)
+      .on::<MetalNative>()
+      .try_sample_matrix(7)
+      .expect("Metal");
+    crate::device::set_batch_budget_bytes(crate::device::DEFAULT_BATCH_BUDGET_BYTES);
+    assert_eq!(chunked, matrix);
   }
 
   #[cfg(feature = "metal")]

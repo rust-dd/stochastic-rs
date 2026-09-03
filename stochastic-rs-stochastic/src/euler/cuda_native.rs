@@ -223,6 +223,34 @@ impl<T: FloatExt> EulerBackend<T> for CudaNative {
     )
   }
 
+  /// The launch buffer as the matrix, chunked like the row form when the
+  /// batch exceeds the budget.
+  fn try_euler_matrix<P: EulerCoefficients<T>>(process: &P, m: usize) -> Result<Array2<T>> {
+    let n = process.grid_points();
+    let seed = process.device_seed();
+    let rows = crate::device::chunk_rows(n, std::mem::size_of::<T>());
+    if m <= rows {
+      return device_paths(
+        process.euler_spec(),
+        process.initial_value(),
+        n,
+        process.horizon(),
+        0,
+        m,
+        seed,
+      );
+    }
+    pipelined_paths(
+      process.euler_spec(),
+      process.initial_value(),
+      n,
+      process.horizon(),
+      m,
+      rows,
+      seed,
+    )
+  }
+
   fn try_euler_paths_seeded<P: EulerCoefficients<T>>(
     process: &P,
     first: usize,

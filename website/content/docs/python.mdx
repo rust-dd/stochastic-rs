@@ -122,7 +122,11 @@ single-precision device needs `dtype="f32"` (`ValueError` otherwise), and the
 device is probed when the object is built (`RuntimeError` if it cannot be
 opened), so `sample()` / `sample_par(m)` then run on it and return arrays in
 the class's dtype. `device="cpu"` is the default and samples exactly as
-before.
+before. Two fGN-driven processes stay on the host from Python: `PyJumpFou`
+and `PyJumpFOUCustom` carry a Python callable as their jump law, which cannot
+travel to a kernel, and `Sde` has no Python class because it takes Rust
+closures for its drift and diffusion. `euler_paths` hands the device buffer
+over as one NumPy array without re-laying it into rows.
 
 ```python
 srs.probe_device("metal")   # {'backend': 'MetalNative', 'name': 'Apple M2 Max', 'precisions': ['f32'], 'ordinal': 0}

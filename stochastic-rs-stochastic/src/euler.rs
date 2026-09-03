@@ -39,6 +39,7 @@
 //! 10(2), 177–194 (full truncation, used by the device kernels for CIR).
 
 use ndarray::Array1;
+use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 
 use crate::device::Backend;
@@ -175,6 +176,23 @@ pub trait EulerBackend<T: FloatExt>: Backend {
       let chunk = Self::try_euler_paths_seeded(process, first, len, seed)?;
       out.extend(chunk.par_iter().map(&f).collect::<Vec<R>>());
       first += len;
+    }
+    Ok(out)
+  }
+
+  /// The batch as one `m × n` matrix. The device back-ends hand their launch
+  /// buffer over as is, so a consumer that wants a matrix (the Python module,
+  /// a column-wise estimator) skips the re-layout into rows; the default
+  /// stacks [`try_euler_paths`](Self::try_euler_paths).
+  fn try_euler_matrix<P: EulerCoefficients<T>>(
+    process: &P,
+    m: usize,
+  ) -> Result<Array2<T>, DeviceError> {
+    let rows = Self::try_euler_paths(process, m)?;
+    let n = rows.first().map_or(process.grid_points(), |r| r.len());
+    let mut out = Array2::<T>::zeros((m, n));
+    for (i, row) in rows.iter().enumerate() {
+      out.row_mut(i).assign(row);
     }
     Ok(out)
   }
@@ -366,6 +384,12 @@ macro_rules! try_sample_par {
       pub fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, DeviceError> {
         B::try_euler_paths(self, m)
       }
+
+      /// The batch as one `m × n` matrix: on a device back-end the launch
+      /// buffer itself, without a re-layout into rows.
+      pub fn try_sample_matrix(&self, m: usize) -> Result<Array2<T>, DeviceError> {
+        B::try_euler_matrix(self, m)
+      }
     }
   };
 }
@@ -404,6 +428,7 @@ pub mod python {
   //! families, `device="cpu"` always, the device names when their back-end
   //! is compiled in; `float32` arrays from the single-precision devices.
 
+  use ndarray::Array2;
   use numpy::IntoPyArray;
   use pyo3::IntoPyObjectExt;
   use pyo3::exceptions::PyValueError;
@@ -428,20 +453,16 @@ pub mod python {
   /// `f64`, the Metal and CubeCL kernels are single precision and the array
   /// they return says so.
   enum Rows {
-    F64(Vec<ndarray::Array1<f64>>),
+    F64(Array2<f64>),
     #[cfg(any(feature = "metal", feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-    F32(Vec<ndarray::Array1<f32>>),
+    F32(Array2<f32>),
   }
 
+  /// The launch buffer becomes the NumPy array without another copy.
   fn stack<'py, T: FloatExt + numpy::Element>(
     py: Python<'py>,
-    rows: Vec<ndarray::Array1<T>>,
-    n: usize,
+    paths: Array2<T>,
   ) -> PyResult<Py<PyAny>> {
-    let mut paths = ndarray::Array2::<T>::zeros((rows.len(), n));
-    for (i, row) in rows.iter().enumerate() {
-      paths.row_mut(i).assign(row);
-    }
     paths.into_pyarray(py).into_py_any(py)
   }
 
@@ -486,11 +507,11 @@ pub mod python {
   macro_rules! on_device {
     ($p64:expr, $p32:expr, $m:expr, $py:expr, $device:expr) => {
       match $device {
-        "cpu" => Rows::F64($py.detach(|| $p64.on::<Cpu>().try_sample_par($m)).map_err(device_err)?),
+        "cpu" => Rows::F64($py.detach(|| $p64.on::<Cpu>().try_sample_matrix($m)).map_err(device_err)?),
         "cuda-native" | "cuda_native" => {
           #[cfg(feature = "cuda-native")]
           {
-            Rows::F64($py.detach(|| $p64.on::<crate::device::CudaNative>().try_sample_par($m)).map_err(device_err)?)
+            Rows::F64($py.detach(|| $p64.on::<crate::device::CudaNative>().try_sample_matrix($m)).map_err(device_err)?)
           }
 
           #[cfg(not(feature = "cuda-native"))]
@@ -503,7 +524,7 @@ pub mod python {
         "metal" => {
           #[cfg(feature = "metal")]
           {
-            Rows::F32($py.detach(|| $p32.on::<crate::device::MetalNative>().try_sample_par($m)).map_err(device_err)?)
+            Rows::F32($py.detach(|| $p32.on::<crate::device::MetalNative>().try_sample_matrix($m)).map_err(device_err)?)
           }
 
           #[cfg(not(feature = "metal"))]
@@ -516,7 +537,7 @@ pub mod python {
         "cubecl" => {
           #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
           {
-            Rows::F32($py.detach(|| $p32.on::<crate::device::CubeCl>().try_sample_par($m)).map_err(device_err)?)
+            Rows::F32($py.detach(|| $p32.on::<crate::device::CubeCl>().try_sample_matrix($m)).map_err(device_err)?)
           }
 
           #[cfg(not(any(feature = "cubecl-cuda", feature = "cubecl-wgpu")))]
@@ -530,12 +551,12 @@ pub mod python {
         "gpu" => {
           #[cfg(feature = "cuda-native")]
           {
-            Rows::F64($py.detach(|| $p64.on::<crate::device::CudaNative>().try_sample_par($m)).map_err(device_err)?)
+            Rows::F64($py.detach(|| $p64.on::<crate::device::CudaNative>().try_sample_matrix($m)).map_err(device_err)?)
           }
 
           #[cfg(all(feature = "metal", not(feature = "cuda-native")))]
           {
-            Rows::F32($py.detach(|| $p32.on::<crate::device::MetalNative>().try_sample_par($m)).map_err(device_err)?)
+            Rows::F32($py.detach(|| $p32.on::<crate::device::MetalNative>().try_sample_matrix($m)).map_err(device_err)?)
           }
 
           #[cfg(all(
@@ -544,7 +565,7 @@ pub mod python {
             not(feature = "cuda-native")
           ))]
           {
-            Rows::F32($py.detach(|| $p32.on::<crate::device::CubeCl>().try_sample_par($m)).map_err(device_err)?)
+            Rows::F32($py.detach(|| $p32.on::<crate::device::CubeCl>().try_sample_matrix($m)).map_err(device_err)?)
           }
 
           #[cfg(not(any(
@@ -764,9 +785,9 @@ pub mod python {
       }
     };
     match rows {
-      Rows::F64(rows) => stack(py, rows, n),
+      Rows::F64(paths) => stack(py, paths),
       #[cfg(any(feature = "metal", feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-      Rows::F32(rows) => stack(py, rows, n),
+      Rows::F32(paths) => stack(py, paths),
     }
   }
 }
