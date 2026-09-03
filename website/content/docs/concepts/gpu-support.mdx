@@ -45,7 +45,7 @@ build does not carry — is a compile error, never a silent fallback.
 | `Cpu` | `f32` / `f64` | yes, thread-count independent | — |
 | `Accelerate` | `f32` / `f64` | reproducible-effort only (vDSP reduction order can differ across core types) | no |
 | `MetalNative` | `f32` | yes | no |
-| `CudaNative` | `f32` / `f64` | yes | no |
+| `CudaNative` | `f32` / `f64` (the fGN path falls back to `f32` when the `f64` launch fails) | Euler engine yes; fGN only for an identical sequence of device draws in the process, because its Philox offsets come from a process-global counter | no |
 | `CubeCl` | `f32` | yes | no |
 
 The device seed is drawn from the process's own seed source: a
