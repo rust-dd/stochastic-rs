@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
 
 use anyhow::Result;
 use cudarc::cufft;
@@ -27,7 +26,6 @@ pub(super) struct GpuKernels {
 unsafe impl Send for GpuKernels {}
 
 pub(super) static GPU: Mutex<Option<GpuKernels>> = Mutex::new(None);
-pub(super) static RNG_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Cacheable page-locked host buffer for fast device→host transfers.
 ///

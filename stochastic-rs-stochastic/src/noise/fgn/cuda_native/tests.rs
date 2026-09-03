@@ -158,3 +158,28 @@ fn cuda_native_covariance_structure_matches_cpu() {
     "lag-4 cov ratio = {ratio4} (cuda={cuda_cov4}, cpu={cpu_cov4})"
   );
 }
+
+/// Two `Fgn`s from the same `Deterministic` seed agree bit for bit even when
+/// an unrelated device draw happens between them: the Philox offset is a
+/// function of the seed, not of the process's launch history.
+#[test]
+fn cuda_native_same_seed_same_paths_regardless_of_history() {
+  use stochastic_rs_core::simd_rng::Deterministic;
+  let first = Fgn::<f64, _>::new(0.7, 256, Some(1.0), Deterministic::new(7))
+    .sample_cuda_native_impl(4)
+    .expect("first batch");
+  let _interleaved = Fgn::<f64>::new(0.3, 128, Some(1.0), Unseeded)
+    .sample_cuda_native_impl(2)
+    .expect("interleaved batch");
+  let second = Fgn::<f64, _>::new(0.7, 256, Some(1.0), Deterministic::new(7))
+    .sample_cuda_native_impl(4)
+    .expect("second batch");
+  assert_eq!(first, second, "same seed must give the same device paths");
+  let other = Fgn::<f64, _>::new(0.7, 256, Some(1.0), Deterministic::new(8))
+    .sample_cuda_native_impl(4)
+    .expect("other seed");
+  assert_ne!(
+    first, other,
+    "a different seed must give different device paths"
+  );
+}

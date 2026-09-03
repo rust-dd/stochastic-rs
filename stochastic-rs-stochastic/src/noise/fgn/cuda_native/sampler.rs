@@ -1,6 +1,5 @@
 use std::any::TypeId;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 
 use anyhow::Result;
 use cudarc::cufft;
@@ -15,7 +14,6 @@ use super::convert::array2_from_vec_f64;
 use super::state::CUFFT_FORWARD;
 use super::state::GPU;
 use super::state::PinnedHost;
-use super::state::RNG_SEQ;
 use super::state::SIZED_F32;
 use super::state::SIZED_F64;
 use super::state::SizedCtxF32;
@@ -27,6 +25,21 @@ use crate::traits::FloatExt;
 /// parallel-copy path; smaller ones go direct via `clone_dtoh`, where the
 /// staging round-trip and rayon overhead aren't worth it.
 const STAGING_MIN_BYTES: usize = 32 << 20;
+
+/// Philox counter base for one launch, a pure function of the launch's seed.
+///
+/// The kernel keys Philox with the low 32 bits of `seed` and counts from
+/// `tid + seq`; deriving `seq` from the seed (SplitMix64 finaliser) makes
+/// every draw a function of the seed alone, so two `Fgn`s built from the
+/// same `Deterministic` seed produce the same paths no matter what other
+/// device draws the process made in between. A process-global counter used
+/// to sit here and made CUDA fGN paths depend on that history.
+fn counter_offset(seed: u64) -> u64 {
+  let mut z = seed.wrapping_add(0x9E37_79B9_7F4A_7C15);
+  z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+  z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+  z ^ (z >> 31)
+}
 
 /// Allocates an output `Vec<T>` and pre-faults its pages in parallel.
 ///
@@ -146,7 +159,7 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
   let total_complex = (m * traj_size) as i32;
   let traj_i32 = traj_size as i32;
   let seed: u64 = rand::Rng::random(&mut seed_src.rng());
-  let seq = RNG_SEQ.fetch_add(total_complex as u64, Ordering::Relaxed);
+  let seq = counter_offset(seed);
   unsafe {
     gpu
       .stream
@@ -295,7 +308,7 @@ fn sample_f64<T: FloatExt, S: SeedExt>(
   let total_complex = (m * traj_size) as i32;
   let traj_i32 = traj_size as i32;
   let seed: u64 = rand::Rng::random(&mut seed_src.rng());
-  let seq = RNG_SEQ.fetch_add(total_complex as u64, Ordering::Relaxed);
+  let seq = counter_offset(seed);
   unsafe {
     gpu
       .stream
@@ -375,22 +388,13 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
       return sample_f32::<T, S>(&eigs, n, m, offset, hurst, t, &self.seed);
     }
 
-    // Try f64 first, fall back to f32 on symbol/capability errors
+    // `f64` is what the type says, so a failing double-precision launch is
+    // reported, never quietly replaced by the `f32` kernel.
     let eigs_f64: Vec<f64> = self
       .sqrt_eigenvalues
       .iter()
       .map(|x| x.to_f64().unwrap())
       .collect();
-    match sample_f64::<T, S>(&eigs_f64, n, m, offset, hurst, t, &self.seed) {
-      Ok(out) => Ok(out),
-      Err(_) => {
-        let eigs_f32: Vec<f32> = self
-          .sqrt_eigenvalues
-          .iter()
-          .map(|x| x.to_f32().unwrap())
-          .collect();
-        sample_f32::<T, S>(&eigs_f32, n, m, offset, hurst, t, &self.seed)
-      }
-    }
+    sample_f64::<T, S>(&eigs_f64, n, m, offset, hurst, t, &self.seed)
   }
 }
