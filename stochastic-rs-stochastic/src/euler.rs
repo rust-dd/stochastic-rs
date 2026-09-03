@@ -445,6 +445,130 @@ pub mod python {
     };
   }
 
+  /// Chooses the device ordinal the device back-ends open (CUDA ordinal,
+  /// Metal device index, CubeCL device index); process-wide, `0` by default
+  /// or `STOCHASTIC_RS_DEVICE`. See `probe_device` to check what it opens.
+  #[pyfunction]
+  pub fn select_device(ordinal: usize) {
+    crate::device::select_device(ordinal);
+  }
+
+  /// Opens the named device (`"cpu"`, `"gpu"`, `"cuda-native"`, `"metal"`,
+  /// `"cubecl"`, `"accelerate"`) and describes it as a dict with `backend`,
+  /// `name`, `precisions` and `ordinal`; raises `RuntimeError` with the
+  /// device's own message when it cannot be used, `ValueError` for a device
+  /// this build does not carry.
+  #[pyfunction]
+  pub fn probe_device<'py>(
+    py: Python<'py>,
+    device: &str,
+  ) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
+    use crate::device::Backend;
+    use crate::device::DeviceInfo;
+    fn describe<'py>(
+      py: Python<'py>,
+      info: DeviceInfo,
+    ) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
+      let d = pyo3::types::PyDict::new(py);
+      d.set_item("backend", info.backend)?;
+      d.set_item("name", info.name)?;
+      d.set_item("precisions", info.precisions.to_vec())?;
+      d.set_item("ordinal", info.ordinal)?;
+      Ok(d)
+    }
+    let missing = |what: &str, feature: &str| {
+      PyValueError::new_err(format!(
+        "this build has no {what}; rebuild with the {feature} feature"
+      ))
+    };
+    let info = match device.to_ascii_lowercase().as_str() {
+      "cpu" => Cpu::probe(),
+      "accelerate" => {
+        #[cfg(feature = "accelerate")]
+        {
+          crate::device::Accelerate::probe()
+        }
+
+        #[cfg(not(feature = "accelerate"))]
+        {
+          return Err(missing("Accelerate back-end", "accelerate"));
+        }
+      }
+      "cuda-native" | "cuda_native" => {
+        #[cfg(feature = "cuda-native")]
+        {
+          crate::device::CudaNative::probe()
+        }
+
+        #[cfg(not(feature = "cuda-native"))]
+        {
+          return Err(missing("native CUDA runtime", "cuda-native"));
+        }
+      }
+      "metal" => {
+        #[cfg(feature = "metal")]
+        {
+          crate::device::MetalNative::probe()
+        }
+
+        #[cfg(not(feature = "metal"))]
+        {
+          return Err(missing("native Metal runtime", "metal"));
+        }
+      }
+      "cubecl" => {
+        #[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
+        {
+          crate::device::CubeCl::probe()
+        }
+
+        #[cfg(not(any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
+        {
+          return Err(missing("CubeCL runtime", "gpu-cuda or gpu-wgpu"));
+        }
+      }
+      "gpu" => {
+        #[cfg(feature = "cuda-native")]
+        {
+          crate::device::CudaNative::probe()
+        }
+
+        #[cfg(all(feature = "metal", not(feature = "cuda-native")))]
+        {
+          crate::device::MetalNative::probe()
+        }
+
+        #[cfg(all(
+          any(feature = "gpu-cuda", feature = "gpu-wgpu"),
+          not(feature = "metal"),
+          not(feature = "cuda-native")
+        ))]
+        {
+          crate::device::CubeCl::probe()
+        }
+
+        #[cfg(not(any(
+          feature = "cuda-native",
+          feature = "metal",
+          feature = "gpu-cuda",
+          feature = "gpu-wgpu"
+        )))]
+        {
+          return Err(missing(
+            "GPU runtime",
+            "cuda-native, metal, gpu-cuda or gpu-wgpu",
+          ));
+        }
+      }
+      other => {
+        return Err(PyValueError::new_err(format!(
+          "unknown device {other:?}; use cpu, gpu, cuda-native, metal, cubecl or accelerate"
+        )));
+      }
+    };
+    describe(py, info.map_err(device_err)?)
+  }
+
   /// `m` Euler paths of a scalar family on a device, as an `(m, n)` array.
   ///
   /// `family` is `"gbm"` (`[mu, sigma]`), `"ou"` (`[theta, mu, sigma]`) or

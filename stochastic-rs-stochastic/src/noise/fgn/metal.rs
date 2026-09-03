@@ -113,6 +113,7 @@ kernel void extract_real(
 "#;
 
 struct MetalCtx {
+  ordinal: usize,
   device: Device,
   queue: CommandQueue,
   gen_pso: ComputePipelineState,
@@ -146,12 +147,15 @@ unsafe impl Send for SizedMetal {}
 static SIZED: Mutex<Option<SizedMetal>> = Mutex::new(None);
 
 fn ensure_ctx() -> Result<()> {
+  let ordinal = crate::device::selected_device();
   let mut g = CTX.lock();
-  if g.is_some() {
+  if g.as_ref().is_some_and(|c| c.ordinal == ordinal) {
     return Ok(());
   }
-  let device = Device::system_default()
-    .ok_or_else(|| DeviceError::Unavailable("no Metal device".to_string()))?;
+  // A new device invalidates the per-size buffers of the old one.
+  *g = None;
+  *SIZED.lock() = None;
+  let device = crate::euler::metal::selected_metal_device()?;
   let queue = device.new_command_queue();
   let lib = device
     .new_library_with_source(MSL_SOURCE, &CompileOptions::new())
@@ -171,6 +175,7 @@ fn ensure_ctx() -> Result<()> {
   let extract_pso = mk("extract_real")?;
 
   *g = Some(MetalCtx {
+    ordinal,
     device,
     queue,
     gen_pso,

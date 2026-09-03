@@ -17,6 +17,7 @@ pub(super) const CUFFT_FORWARD: i32 = -1;
 
 /// Persistent GPU state: compiled kernels and stream (survives param changes).
 pub(super) struct GpuKernels {
+  pub(super) ordinal: usize,
   pub(super) stream: Arc<CudaStream>,
   pub(super) gen_scale_f32: CudaFunction,
   pub(super) extract_f32: CudaFunction,
@@ -64,12 +65,17 @@ impl<T> Drop for PinnedHost<T> {
 unsafe impl<T: Send> Send for PinnedHost<T> {}
 
 pub(super) fn get_or_init_gpu() -> Result<()> {
+  let ordinal = crate::device::selected_device();
   let mut g = GPU.lock();
-  if g.is_some() {
+  if g.as_ref().is_some_and(|k| k.ordinal == ordinal) {
     return Ok(());
   }
+  // A new context invalidates the per-size buffers and plans of the old one.
+  *g = None;
+  *SIZED_F32.lock() = None;
+  *SIZED_F64.lock() = None;
   let ctx =
-    CudaContext::new(0).map_err(|e| DeviceError::Unavailable(format!("CudaContext: {e}")))?;
+    CudaContext::new(ordinal).map_err(|e| DeviceError::Unavailable(format!("CudaContext: {e}")))?;
   let stream = ctx
     .new_stream()
     .map_err(|e| DeviceError::Launch(format!("stream: {e}")))?;
@@ -86,6 +92,7 @@ pub(super) fn get_or_init_gpu() -> Result<()> {
   };
 
   *g = Some(GpuKernels {
+    ordinal,
     gen_scale_f32: load(GEN_SCALE_F32, "gen_scale_f32")?,
     extract_f32: load(EXTRACT_F32, "extract_f32")?,
     gen_scale_f64: load(GEN_SCALE_F64, "gen_scale_f64")?,

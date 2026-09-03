@@ -14,6 +14,8 @@
 //! does not compile; nothing is computed in `f32` behind an `f64` type.
 
 use std::fmt;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use ndarray::Array1;
 use ndarray::parallel::prelude::*;
@@ -135,6 +137,38 @@ impl DeviceInfo {
       None,
     )
   }
+}
+
+/// `usize::MAX` = not chosen yet, so the first read consults the environment.
+static SELECTED_DEVICE: AtomicUsize = AtomicUsize::new(usize::MAX);
+
+/// Chooses which device the device markers open: the CUDA ordinal for
+/// `CudaNative`, the index into `Device::all()` for `MetalNative`, the
+/// runtime's device index for `CubeCl` (with `gpu-wgpu`, `0` is the default
+/// adapter and `n > 0` the n-th discrete GPU). Process-wide; the CPU devices
+/// ignore it. Until it is called the value comes from the
+/// `STOCHASTIC_RS_DEVICE` environment variable, and `0` when that is unset
+/// or not a number. A cached device context is re-opened on the next call
+/// when the selection changed.
+pub fn select_device(ordinal: usize) {
+  SELECTED_DEVICE.store(ordinal, Ordering::Relaxed);
+}
+
+/// The ordinal [`select_device`] chose, or the environment's / `0`.
+pub fn selected_device() -> usize {
+  let chosen = SELECTED_DEVICE.load(Ordering::Relaxed);
+  if chosen != usize::MAX {
+    return chosen;
+  }
+  let from_env = device_from_env(std::env::var("STOCHASTIC_RS_DEVICE").ok().as_deref());
+  let _ =
+    SELECTED_DEVICE.compare_exchange(usize::MAX, from_env, Ordering::Relaxed, Ordering::Relaxed);
+  SELECTED_DEVICE.load(Ordering::Relaxed)
+}
+
+/// `STOCHASTIC_RS_DEVICE` parsed as an ordinal; anything unparsable is `0`.
+pub(crate) fn device_from_env(value: Option<&str>) -> usize {
+  value.and_then(|s| s.trim().parse().ok()).unwrap_or(0)
 }
 
 /// The text of a caught panic payload, for runtimes that panic instead of
@@ -448,6 +482,14 @@ mod tests {
   /// The marker trait alone must stay algorithm-free: this compiles because
   /// `Cpu` has the fGN capability, and a future device that lacks it can
   /// still be a [`Backend`] for the capabilities it does have.
+  #[test]
+  fn device_ordinal_parses_the_environment_leniently() {
+    assert_eq!(device_from_env(None), 0);
+    assert_eq!(device_from_env(Some(" 2 ")), 2);
+    assert_eq!(device_from_env(Some("gpu1")), 0);
+    assert_eq!(device_from_env(Some("")), 0);
+  }
+
   #[test]
   fn cpu_probe_reports_both_precisions() {
     let info = Cpu::probe().expect("the host is always available");

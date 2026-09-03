@@ -87,6 +87,7 @@ fn euler_paths_kernel<F: Float + CubeElement>(
 }
 
 struct Context {
+  ordinal: usize,
   client: cubecl::client::ComputeClient<R>,
 }
 
@@ -97,17 +98,13 @@ static CONTEXT: Mutex<Option<Context>> = Mutex::new(None);
 /// The cached compute client, opened on first use. CubeCL panics rather than
 /// erroring when no device exists, so the opening is caught and reported.
 fn client() -> DeviceResult<cubecl::client::ComputeClient<R>> {
+  let ordinal = crate::device::selected_device();
   let mut guard = CONTEXT.lock();
-  if guard.is_none() {
-    let opened = std::panic::catch_unwind(|| {
-      #[cfg(feature = "gpu-cuda")]
-      let device = cubecl_cuda::CudaDevice::default();
-      #[cfg(all(feature = "gpu-wgpu", not(feature = "gpu-cuda")))]
-      let device = cubecl_wgpu::WgpuDevice::default();
-      R::client(&device)
-    });
+  if !guard.as_ref().is_some_and(|c| c.ordinal == ordinal) {
+    *guard = None;
+    let opened = std::panic::catch_unwind(|| R::client(&selected_cubecl_device()));
     match opened {
-      Ok(client) => *guard = Some(Context { client }),
+      Ok(client) => *guard = Some(Context { ordinal, client }),
       Err(payload) => {
         return Err(DeviceError::Unavailable(crate::device::panic_text(payload)));
       }
@@ -116,14 +113,32 @@ fn client() -> DeviceResult<cubecl::client::ComputeClient<R>> {
   Ok(guard.as_ref().expect("initialised").client.clone())
 }
 
-/// The CubeCL device, or why it cannot be used.
+/// The CubeCL device [`crate::device::select_device`] chose.
+pub(crate) fn selected_cubecl_device() -> <R as cubecl::Runtime>::Device {
+  let ordinal = crate::device::selected_device();
+  #[cfg(feature = "gpu-cuda")]
+  {
+    cubecl_cuda::CudaDevice { index: ordinal }
+  }
+
+  #[cfg(all(feature = "gpu-wgpu", not(feature = "gpu-cuda")))]
+  {
+    if ordinal == 0 {
+      cubecl_wgpu::WgpuDevice::default()
+    } else {
+      cubecl_wgpu::WgpuDevice::DiscreteGpu(ordinal)
+    }
+  }
+}
+
+/// The selected CubeCL device, or why it cannot be used.
 pub(crate) fn probe() -> DeviceResult<DeviceInfo> {
   let cl = client()?;
   Ok(DeviceInfo::new(
     "CubeCl",
     <R as cubecl::Runtime>::name(&cl).to_string(),
     &["f32"],
-    None,
+    Some(crate::device::selected_device()),
   ))
 }
 

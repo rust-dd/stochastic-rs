@@ -77,6 +77,7 @@ fn kernel_source(real: &str) -> String {
 }
 
 struct Kernels {
+  ordinal: usize,
   stream: Arc<CudaStream>,
   f32: CudaFunction,
   f64: CudaFunction,
@@ -87,10 +88,11 @@ unsafe impl Send for Kernels {}
 
 static KERNELS: Mutex<Option<Kernels>> = Mutex::new(None);
 
-/// The device behind ordinal 0, or why it cannot be used.
+/// The selected CUDA device, or why it cannot be used.
 pub(crate) fn probe() -> Result<DeviceInfo> {
+  let ordinal = crate::device::selected_device();
   let ctx =
-    CudaContext::new(0).map_err(|e| DeviceError::Unavailable(format!("CudaContext: {e}")))?;
+    CudaContext::new(ordinal).map_err(|e| DeviceError::Unavailable(format!("CudaContext: {e}")))?;
   let name = ctx
     .name()
     .map_err(|e| DeviceError::Unavailable(format!("device name: {e}")))?;
@@ -98,17 +100,19 @@ pub(crate) fn probe() -> Result<DeviceInfo> {
     "CudaNative",
     name,
     &["f32", "f64"],
-    Some(0),
+    Some(ordinal),
   ))
 }
 
 fn ensure_kernels() -> Result<()> {
+  let ordinal = crate::device::selected_device();
   let mut guard = KERNELS.lock();
-  if guard.is_some() {
+  if guard.as_ref().is_some_and(|k| k.ordinal == ordinal) {
     return Ok(());
   }
+  *guard = None;
   let ctx =
-    CudaContext::new(0).map_err(|e| DeviceError::Unavailable(format!("CudaContext: {e}")))?;
+    CudaContext::new(ordinal).map_err(|e| DeviceError::Unavailable(format!("CudaContext: {e}")))?;
   let stream = ctx
     .new_stream()
     .map_err(|e| DeviceError::Launch(format!("stream: {e}")))?;
@@ -126,6 +130,7 @@ fn ensure_kernels() -> Result<()> {
       .map_err(|e| DeviceError::Launch(format!("fn {name}: {e}")))
   };
   *guard = Some(Kernels {
+    ordinal,
     f32: load("float")?,
     f64: load("double")?,
     stream,

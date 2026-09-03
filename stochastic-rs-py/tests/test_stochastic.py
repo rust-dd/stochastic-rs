@@ -174,3 +174,22 @@ def test_callable_driven_rate_models_sample_par_release_the_gil():
     assert r.shape == p.shape == f.shape == (3, 32)
     assert np.isfinite(r).all() and np.isfinite(p).all() and np.isfinite(f).all()
 
+
+def test_probe_device_describes_the_host_and_reports_missing_devices():
+    info = sr.probe_device("cpu")
+    assert info["backend"] == "Cpu" and info["precisions"] == ["f32", "f64"] and info["ordinal"] is None
+    assert "thread" in info["name"]
+    with pytest.raises(ValueError):
+        sr.probe_device("tpu")
+    for device in ("gpu", "cuda-native", "metal", "cubecl", "accelerate"):
+        try:
+            found = sr.probe_device(device)
+        except ValueError as err:
+            assert "rebuild" in str(err)
+            continue
+        except RuntimeError:
+            continue
+        assert found["backend"] in ("CudaNative", "MetalNative", "CubeCl", "Accelerate")
+        assert all(p in ("f32", "f64") for p in found["precisions"])
+    sr.select_device(0)
+

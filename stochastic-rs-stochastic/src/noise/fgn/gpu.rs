@@ -299,6 +299,7 @@ mod backend {
   pub(super) type R = cubecl_wgpu::WgpuRuntime;
 
   struct GpuContext {
+    ordinal: usize,
     client: ComputeClient<R>,
     n: usize,
     m: usize,
@@ -312,24 +313,28 @@ mod backend {
   static GPU_CTX: Mutex<Option<GpuContext>> = Mutex::new(None);
 
   fn ensure_ctx(n: usize, m: usize, offset: usize, hb: u64, tb: u64) -> DeviceResult<()> {
+    let ordinal = crate::device::selected_device();
     let mut g = GPU_CTX.lock();
     let need = match &*g {
-      Some(c) => c.n != n || c.m != m || c.offset != offset || c.hurst_bits != hb || c.t_bits != tb,
+      Some(c) => {
+        c.ordinal != ordinal
+          || c.n != n
+          || c.m != m
+          || c.offset != offset
+          || c.hurst_bits != hb
+          || c.t_bits != tb
+      }
       None => true,
     };
     if !need {
       return Ok(());
     }
     // CubeCL panics rather than erroring when no device exists.
-    let client = std::panic::catch_unwind(|| {
-      #[cfg(feature = "gpu-cuda")]
-      let dev = cubecl_cuda::CudaDevice::default();
-      #[cfg(all(feature = "gpu-wgpu", not(feature = "gpu-cuda")))]
-      let dev = cubecl_wgpu::WgpuDevice::default();
-      R::client(&dev)
-    })
-    .map_err(|payload| DeviceError::Unavailable(crate::device::panic_text(payload)))?;
+    let client =
+      std::panic::catch_unwind(|| R::client(&crate::euler::gpu::selected_cubecl_device()))
+        .map_err(|payload| DeviceError::Unavailable(crate::device::panic_text(payload)))?;
     *g = Some(GpuContext {
+      ordinal,
       client,
       n,
       m,

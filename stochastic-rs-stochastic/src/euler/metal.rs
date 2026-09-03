@@ -81,6 +81,7 @@ struct EulerArgs {
 }
 
 struct Context {
+  ordinal: usize,
   device: Device,
   queue: CommandQueue,
   pipeline: ComputePipelineState,
@@ -91,25 +92,44 @@ unsafe impl Send for Context {}
 
 static CONTEXT: Mutex<Option<Context>> = Mutex::new(None);
 
-/// The system's default Metal device, or why it cannot be used.
+/// The Metal device [`crate::device::select_device`] chose: index `0` is the
+/// system default, `n > 0` the n-th entry of `Device::all()`.
+pub(crate) fn selected_metal_device() -> Result<Device> {
+  let ordinal = crate::device::selected_device();
+  if ordinal == 0 {
+    return Device::system_default()
+      .ok_or_else(|| DeviceError::Unavailable("no Metal device".to_string()));
+  }
+  let mut all = Device::all();
+  let count = all.len();
+  if ordinal < count {
+    Ok(all.swap_remove(ordinal))
+  } else {
+    Err(DeviceError::Unavailable(format!(
+      "no Metal device at index {ordinal}; this machine has {count}"
+    )))
+  }
+}
+
+/// The selected Metal device, or why it cannot be used.
 pub(crate) fn probe() -> Result<DeviceInfo> {
-  let device = Device::system_default()
-    .ok_or_else(|| DeviceError::Unavailable("no Metal device".to_string()))?;
+  let device = selected_metal_device()?;
   Ok(DeviceInfo::new(
     "MetalNative",
     device.name().to_string(),
     &["f32"],
-    None,
+    Some(crate::device::selected_device()),
   ))
 }
 
 fn ensure_context() -> Result<()> {
+  let ordinal = crate::device::selected_device();
   let mut guard = CONTEXT.lock();
-  if guard.is_some() {
+  if guard.as_ref().is_some_and(|c| c.ordinal == ordinal) {
     return Ok(());
   }
-  let device = Device::system_default()
-    .ok_or_else(|| DeviceError::Unavailable("no Metal device".to_string()))?;
+  *guard = None;
+  let device = selected_metal_device()?;
   let queue = device.new_command_queue();
   let library = device
     .new_library_with_source(MSL_SOURCE, &CompileOptions::new())
@@ -121,6 +141,7 @@ fn ensure_context() -> Result<()> {
     .new_compute_pipeline_state_with_function(&function)
     .map_err(|e| DeviceError::Launch(format!("euler_paths PSO: {e}")))?;
   *guard = Some(Context {
+    ordinal,
     device,
     queue,
     pipeline,
