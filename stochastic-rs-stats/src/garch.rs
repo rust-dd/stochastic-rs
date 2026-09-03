@@ -72,6 +72,7 @@ use crate::traits::FloatExt;
 
 /// Conditional-variance recursion to fit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum GarchKind {
   /// Bollerslev (1986) symmetric GARCH.
   Garch,
@@ -83,6 +84,7 @@ pub enum GarchKind {
 
 /// Conditional-mean specification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum MeanSpec {
   /// $\varepsilon_t = r_t$.
   Zero,

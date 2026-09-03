@@ -7,6 +7,7 @@ use crate::traits::ModelPricer;
 use crate::traits::VanillaEuropeanCall;
 
 #[derive(Default, Debug, Clone, Copy)]
+#[non_exhaustive]
 pub enum BSMCoc {
   /// Black-Scholes-Merton 1973 (stock option)
   /// Cost of carry = risk-free rate

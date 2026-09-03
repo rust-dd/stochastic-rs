@@ -67,6 +67,7 @@ impl<T: RealExt> AccrualPeriod<T> {
 
 /// Standard rate tenors used to pick forecast curves.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum RateTenor {
   Overnight,
   OneMonth,
@@ -251,6 +252,7 @@ impl<T: RealExt> RateIndex<T> for OvernightIndex<T> {
 
 /// Built-in floating indices supported by [`crate::cashflows::Leg`].
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum FloatingIndex<T: RealExt> {
   Ibor(IborIndex<T>),
   Overnight(OvernightIndex<T>),

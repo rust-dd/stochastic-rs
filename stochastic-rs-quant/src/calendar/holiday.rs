@@ -16,6 +16,7 @@ use chrono::Weekday;
 
 /// Identifies which holiday calendar to use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum HolidayCalendar {
   /// US Settlement (Federal Reserve) calendar.
   UnitedStates,

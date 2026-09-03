@@ -42,6 +42,7 @@ use crate::traits::FloatExt;
 /// Diffusion family whose drift is mean-reverting $\kappa(\theta - X)$ and
 /// whose diffusion coefficient distinguishes the member.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DiffusionKind {
   /// Ornstein-Uhlenbeck / Vasicek: $\sigma\,dW$ (constant diffusion,
   /// exact-Gaussian transition).

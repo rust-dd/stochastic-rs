@@ -20,6 +20,7 @@ use crate::vol_surface::implied::OptionQuote;
 
 /// How [`PriceHistory::returns`] differences successive adjusted closes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ReturnKind {
   /// Arithmetic (simple) returns $r_t = P_t / P_{t-1} - 1$.
   Arithmetic,

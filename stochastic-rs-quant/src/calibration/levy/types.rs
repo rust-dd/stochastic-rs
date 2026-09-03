@@ -3,6 +3,7 @@ use crate::CalibrationLossScore;
 
 /// Supported Lévy model types for calibration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum LevyModelType {
   /// Variance Gamma: $\psi(\xi)=-\frac{1}{\nu}\ln\!\bigl(1-i\theta\nu\xi+\tfrac12\sigma^2\nu\xi^2\bigr)$
   VarianceGamma,
@@ -85,6 +86,7 @@ pub struct LevyCalibrationResult {
 /// Used by [`LevyCalibrationResult::to_model`] so the result remains a
 /// concrete `ModelPricer` (no `Box<dyn>`).
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum LevyModel {
   VarianceGamma(crate::pricing::fourier::VarianceGammaFourier),
   Nig(crate::pricing::fourier::NigFourier),

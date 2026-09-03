@@ -38,6 +38,7 @@ use crate::traits::BivariateExt;
 
 /// Candidate pair-copula families for the selection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum PairFamily {
   Independence,
   Gaussian,
@@ -72,6 +73,7 @@ impl PairFamily {
 
 /// Information criterion used to pick the family of each edge.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum SelectionCriterion {
   #[default]
   Aic,
@@ -80,6 +82,7 @@ pub enum SelectionCriterion {
 
 /// Vine structure to fit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum VineStructure {
   #[default]
   DVine,

@@ -5,6 +5,7 @@ use super::RHO_BOUND;
 use super::XI0_MIN;
 
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum RBergomiXi0 {
   /// $\xi_0(t)=\theta_0$
   Constant(f64),

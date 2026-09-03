@@ -53,6 +53,7 @@ impl Display for Moneyness {
 
 /// Individual loss metric selector.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum LossMetric {
   Mae,
   Mse,

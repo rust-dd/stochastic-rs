@@ -78,6 +78,7 @@ use crate::traits::MultivariateExt;
 /// All nodes of a NAC must share the same family; mixed-family NAC is not
 /// yet supported.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum NacFamily {
   /// Clayton: $\varphi_\theta(t) = (t^{-\theta} - 1)/\theta$,
   /// $\theta \ge 0$. Lower-tail dependence.

@@ -19,6 +19,7 @@ use crate::OptionType;
 
 /// FX delta convention.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum FxDeltaConvention {
   /// Spot delta with no premium adjustment: $\Delta_{\text{spot}} = e^{-r_f\tau}\,\Phi(d_1)$.
   /// Standard for short-dated options (≤ 1y) outside JPY pairs.
@@ -38,6 +39,7 @@ pub enum FxDeltaConvention {
 
 /// At-the-money convention.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum AtmConvention {
   /// At-the-money forward: $K = F$.
   Forward,

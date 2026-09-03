@@ -230,6 +230,7 @@ pub struct LogRealizedVarianceQmlResult {
 
 /// Typed validation, optimisation, and numerical failures.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum LogRealizedVarianceQmlError {
   InsufficientObservations { actual: usize, minimum: usize },
   NonFiniteObservation { index: usize },

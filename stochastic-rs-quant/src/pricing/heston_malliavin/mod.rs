@@ -49,6 +49,7 @@ pub use variance_vega::HestonInitialVarianceVegaStability;
 
 /// Input or numerical failure from the Heston Malliavin engine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum HestonMalliavinError {
   /// A named precondition was not satisfied.
   InvalidInput(&'static str),

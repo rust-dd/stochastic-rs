@@ -23,6 +23,7 @@ use crate::traits::RealExt;
 
 /// Interpolation rule for survival probabilities between calibrated nodes.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum HazardInterpolation {
   /// Linear interpolation on $\ln Q(t)$. Equivalent to piecewise-constant
   /// forward hazard between grid points and is the ISDA standard choice.

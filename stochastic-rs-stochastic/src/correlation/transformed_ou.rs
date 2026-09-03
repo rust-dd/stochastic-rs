@@ -21,6 +21,7 @@ use crate::traits::ProcessExt;
 /// Bounded transformation mapping ℝ → (−1, 1) for constructing
 /// stochastic correlation processes from an underlying Ou process.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum Transformation {
   /// ρ = tanh(x).  Steeper near 0; boundaries approached exponentially.
   Tanh,

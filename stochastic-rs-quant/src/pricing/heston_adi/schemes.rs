@@ -7,6 +7,7 @@ use super::operators::Operators;
 /// ADI splitting scheme; the recommended `θ` of each is
 /// [`AdiScheme::default_theta`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum AdiScheme {
   /// Douglas (2.17): first order when `ρ ≠ 0`, unconditionally stable for `θ ≥ ½`.
   Douglas,

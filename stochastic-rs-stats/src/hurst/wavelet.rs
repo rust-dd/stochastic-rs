@@ -52,6 +52,7 @@ fn daubechies4_scaling() -> Vec<f64> {
 
 /// Wavelet family used by [`Wavelet`].  Currently only Daubechies-4.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum WaveletKind {
   Daubechies4,
 }

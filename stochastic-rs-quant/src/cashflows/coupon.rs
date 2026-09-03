@@ -129,6 +129,7 @@ pub struct SimpleCashflow<T: RealExt> {
 
 /// User-facing cashflow variants supported by [`crate::cashflows::Leg`].
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum Cashflow<T: RealExt> {
   Fixed(FixedRateCoupon<T>),
   Floating(FloatingRateCoupon<T>),

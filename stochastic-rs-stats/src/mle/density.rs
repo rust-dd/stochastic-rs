@@ -27,6 +27,7 @@ pub(super) fn gaussian_pdf(x: f64, mean: f64, var: f64) -> f64 {
 /// - Aït-Sahalia: Aït-Sahalia, Y. (2002). *Econometrica*, 70(1), 223-262.
 ///   <https://doi.org/10.1111/1468-0262.00274>
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub enum DensityApprox {
   /// Exact closed-form density (must be implemented by the model).
   Exact,

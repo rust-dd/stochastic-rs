@@ -28,6 +28,7 @@ use crate::traits::RealExt;
 
 /// Propagator-kernel family.
 #[derive(Default, Debug, Clone, Copy)]
+#[non_exhaustive]
 pub enum ImpactKernel<T: RealExt> {
   /// Pure power-law decay $G(\ell) = G_0\,(1 + \ell)^{-\beta}$ for
   /// $\beta \in (0, 1)$ (Bouchaud et al. 2004).

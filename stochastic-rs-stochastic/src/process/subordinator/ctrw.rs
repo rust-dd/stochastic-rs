@@ -19,6 +19,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Waiting-time distribution for Ctrw.
+#[non_exhaustive]
 pub enum CtrwWaitingLaw<T: FloatExt> {
   Exponential { rate: T },
   Gamma { shape: T, rate: T },
@@ -27,6 +28,7 @@ pub enum CtrwWaitingLaw<T: FloatExt> {
 }
 
 /// Jump-size distribution for Ctrw.
+#[non_exhaustive]
 pub enum CtrwJumpLaw<T: FloatExt> {
   Normal { mean: T, std: T },
   SymmetricStable { alpha: T, scale: T },

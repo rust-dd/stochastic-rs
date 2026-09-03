@@ -51,6 +51,7 @@ use crate::traits::ProcessExt;
 
 /// Scalar drift / diffusion families the device kernels know how to step.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum EulerSpec<T: FloatExt> {
   /// `dX = μX dt + σX dW`.
   GeometricBrownian { mu: T, sigma: T },

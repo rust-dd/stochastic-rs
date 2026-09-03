@@ -48,6 +48,7 @@ use crate::traits::MultivariateExt;
 /// generic R-vine variant (Dißmann 2013 sequential selection + density
 /// propagation per Joe-Kurowicka) is not yet implemented.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum RVine {
   /// Path-shaped trees — see [`super::dvine::DVine`].
   D(DVine),

@@ -8,6 +8,7 @@
 
 /// Supported portfolio optimization methods.
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub enum OptimizerMethod {
   /// Mean-variance optimization in long-only simplex.
   Markowitz,

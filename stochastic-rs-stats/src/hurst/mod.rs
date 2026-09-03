@@ -184,6 +184,7 @@ pub struct HurstResult<T: FloatExt = f64> {
 /// the common `.hurst` access while still letting callers pattern-match
 /// on the variant to recover slope, residuals, or other diagnostics.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum HurstDiagnostic<T: FloatExt> {
   /// Log-log regression diagnostics (R/S, DFA, GPH, Wavelet).
   LogLogRegression {
@@ -223,6 +224,7 @@ pub enum HurstDiagnostic<T: FloatExt> {
 
 /// Errors returned by [`HurstEstimator::estimate`].
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum HurstError {
   /// Input series is too short for the chosen estimator.
   TooFewObservations { got: usize, required: usize },

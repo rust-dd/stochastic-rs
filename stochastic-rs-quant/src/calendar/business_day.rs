@@ -12,6 +12,7 @@ use super::CalendarExt;
 ///
 /// Determines how a non-business day is adjusted to a valid business day.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum BusinessDayConvention {
   /// No adjustment; use the date as-is.
   Unadjusted,

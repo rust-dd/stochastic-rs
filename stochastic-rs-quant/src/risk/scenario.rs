@@ -21,6 +21,7 @@ use crate::traits::RealExt;
 
 /// Elementary risk-factor perturbation.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub enum Shock<T: RealExt> {
   /// Add `value` to the factor (e.g. +100 bps to every zero rate).
   Additive(T),
@@ -53,6 +54,7 @@ impl<T: RealExt> Display for Shock<T> {
 
 /// Deterministic parallel / key-rate / user-supplied yield curve shift.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum CurveShift<T: RealExt> {
   /// Parallel shift: add `amount` to every zero rate.
   Parallel(T),

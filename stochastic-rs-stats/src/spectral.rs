@@ -10,6 +10,7 @@ use num_complex::Complex64;
 
 /// Detrending strategy used before spectral estimation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DetrendMethod {
   /// No detrending.
   None,
@@ -21,6 +22,7 @@ pub enum DetrendMethod {
 
 /// Window function used before FFT.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum WindowFunction {
   /// w\[n\] = 1
   Rectangular,

@@ -22,6 +22,7 @@ use crate::traits::FloatExt;
 
 /// Kernel weight family.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum KernelType {
   /// $k(x) = 1 - x$ (linear; zero asymptotic bias rate, slow rate of consistency).
   Bartlett,

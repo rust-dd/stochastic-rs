@@ -29,6 +29,7 @@ use crate::traits::RealExt;
 /// Quote on the tenor being bootstrapped; times are year fractions from the
 /// curve origin.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum ForecastInstrument<T: RealExt> {
   /// Tenor deposit: `P_x(maturity) = 1 / (1 + rate · maturity)`.
   Deposit { maturity: T, rate: T },

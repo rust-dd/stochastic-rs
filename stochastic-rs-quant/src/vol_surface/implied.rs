@@ -17,6 +17,7 @@ use ndarray::Array2;
 
 /// Error returned by the falliable [`ImpliedVolSurface`] constructors.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum ImpliedSurfaceError {
   /// A quote's maturity has no matching forward in the supplied
   /// `forwards` slice. Add a `(tau, forward)` entry to `forwards` for

@@ -24,6 +24,7 @@ use crate::traits::SimdFloatExt;
 
 /// Particle resampling scheme.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum ResamplingScheme {
   /// Multinomial resampling — independent draws per particle.
   Multinomial,

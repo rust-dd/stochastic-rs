@@ -76,6 +76,7 @@ impl From<FouEstimateResult> for (f64, f64, f64, f64) {
 
 /// Linear filter selection for [`estimate_fou_v1`].
 #[derive(PartialEq, Clone, Copy, Debug)]
+#[non_exhaustive]
 pub enum FilterType {
   Daubechies,
 }

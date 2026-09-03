@@ -196,6 +196,7 @@ use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
 
 /// Selects the driving noise process for the SDE.
+#[non_exhaustive]
 pub enum NoiseModel {
   /// Standard Brownian motion with i.i.d. Gaussian increments.
   Gaussian,
@@ -208,6 +209,7 @@ pub enum NoiseModel {
 ///
 /// See the [module-level documentation](self) for the mathematical formulas and
 /// convergence properties of each method.
+#[non_exhaustive]
 pub enum SdeMethod {
   /// Euler–Maruyama scheme. Strong order 0.5, weak order 1.0.
   Euler,

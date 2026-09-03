@@ -17,6 +17,7 @@ pub mod t;
 pub mod tree;
 pub mod vine;
 
+#[non_exhaustive]
 pub enum CopulaType {
   CVine,
   DVine,
@@ -112,5 +113,44 @@ mod tests {
       rvine.sample_with_seed(64, 42).unwrap(),
       "RVine"
     );
+  }
+}
+
+#[cfg(test)]
+mod catalog_tests {
+  use super::CopulaType;
+
+  /// Guards `website/content/docs/copulas.mdx`'s catalog table (and `CLAUDE.md`'s
+  /// bivariate count) against a copula added to the tree without its row on the
+  /// docs page. The match has **no wildcard arm** on purpose: `CopulaType` is
+  /// `#[non_exhaustive]` for downstream crates, but inside this crate an
+  /// exhaustive match still is a compile error the moment a variant is added —
+  /// which is the point. When it fires: add the arm, add the row, bump the counts.
+  #[test]
+  fn multivariate_catalog_matches_docs_count() {
+    let count = [
+      CopulaType::CVine,
+      CopulaType::DVine,
+      CopulaType::Gaussian,
+      CopulaType::NestedArchimedean,
+      CopulaType::RVine,
+      CopulaType::TMultivariate,
+      CopulaType::Tree,
+      CopulaType::Vine,
+    ]
+    .into_iter()
+    .map(|t| match t {
+      CopulaType::CVine
+      | CopulaType::DVine
+      | CopulaType::Gaussian
+      | CopulaType::NestedArchimedean
+      | CopulaType::RVine
+      | CopulaType::TMultivariate
+      | CopulaType::Tree
+      | CopulaType::Vine => 1,
+    })
+    .sum::<usize>();
+
+    assert_eq!(count, 8, "copulas.mdx's multivariate table says 8");
   }
 }

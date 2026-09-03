@@ -16,6 +16,7 @@ use crate::traits::RealExt;
 
 /// Payment / coupon frequency.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum Frequency {
   Annual,
   #[default]
@@ -99,6 +100,7 @@ impl Schedule {
 /// Stub period convention for schedules whose total length is not an
 /// integer multiple of the payment period. Per ISDA 2006 §4.15.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum StubConvention {
   /// Short stub at the start of the schedule (the first period is shorter
   /// than the regular period). Default for [`DateGenerationRule::Backward`].

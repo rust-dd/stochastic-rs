@@ -31,6 +31,7 @@ pub use variogram::Variogram;
 
 /// Errors returned by fractal-dimension estimators.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum FdError {
   /// Path has fewer points than the estimator needs.
   PathTooShort { got: usize, required: usize },
@@ -96,6 +97,7 @@ pub struct FdResult<T: FloatExt = f64> {
 /// Method-specific auxiliary information returned alongside the
 /// fractal-dimension estimate.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum FdDiagnostic<T: FloatExt> {
   /// Higuchi log-log regression diagnostics.
   LogLogRegression {

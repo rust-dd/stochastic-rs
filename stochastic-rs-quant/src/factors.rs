@@ -36,6 +36,7 @@ pub mod shrinkage;
 /// fail on rank-deficient inputs (pure noise, perfectly collinear columns,
 /// SVD non-convergence).
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum FactorsError {
   /// SVD on a numerical input failed to converge.
   SvdFailed(String),

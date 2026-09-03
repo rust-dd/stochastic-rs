@@ -27,6 +27,7 @@ use crate::traits::FloatExt;
 
 /// Selector for the underlying variation kernel used by [`Variations`].
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum VariationKind {
   /// Daubechies-4 low-pass / dilated kernel (Coeurjolly variant).
   Daubechies,

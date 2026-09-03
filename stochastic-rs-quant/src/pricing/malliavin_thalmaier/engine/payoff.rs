@@ -2,6 +2,7 @@ use crate::traits::FloatExt;
 
 /// Payoff types supported by the M-T engine.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum MtPayoff<T: FloatExt> {
   /// Vanilla call `(S^{asset}_T − K)₊`.
   Call { asset: usize, strike: T },

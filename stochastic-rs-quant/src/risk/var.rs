@@ -44,6 +44,7 @@ impl Display for PnlOrLoss {
 
 /// Supported VaR estimation methods.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum VarMethod {
   /// Parametric Gaussian VaR using the sample mean and standard deviation.
   #[default]

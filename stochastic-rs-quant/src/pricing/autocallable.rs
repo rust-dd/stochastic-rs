@@ -23,6 +23,7 @@ use crate::traits::FloatExt;
 
 /// Barrier observation style for the knock-in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum KnockInStyle {
   /// Knock-in barrier checked only at maturity.
   EuropeanAtMaturity,

@@ -12,6 +12,7 @@ pub enum DeterministicTerm {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum LagSelection {
   Fixed(usize),
   Aic,

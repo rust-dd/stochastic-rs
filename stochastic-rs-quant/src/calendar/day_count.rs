@@ -13,6 +13,7 @@ use crate::traits::RealExt;
 /// \tau = \frac{\text{day count}(d_1, d_2)}{\text{denominator}}
 /// $$
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum DayCountConvention {
   /// Actual/360: actual days divided by 360.
   Actual360,

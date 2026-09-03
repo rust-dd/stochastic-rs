@@ -47,6 +47,7 @@ pub struct Yahoo<'a> {
   pub returns: Option<DataFrame>,
 }
 
+#[non_exhaustive]
 pub enum ReturnType {
   /// Arithmetic return $r_t = (p_t - p_{t-1}) / p_{t-1}$.
   Arithmetic,

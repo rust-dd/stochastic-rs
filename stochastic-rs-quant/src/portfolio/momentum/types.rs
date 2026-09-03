@@ -91,6 +91,7 @@ pub struct MomentumScore {
 
 /// Weighting policy inside long/short baskets.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum WeightScheme {
   #[default]
   Equal,

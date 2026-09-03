@@ -40,6 +40,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 /// Every variant carries the family's parameters as fields so PCC trees
 /// can be stored as `Vec<Vec<PairCopula>>` without trait objects.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub enum PairCopula {
   /// Product copula: $C(u, v) = u \cdot v$.
   Independence,

@@ -16,6 +16,7 @@ use crate::traits::RealExt;
 /// \end{cases}
 /// $$
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum Compounding {
   /// Continuous compounding: $D = e^{-r t}$.
   #[default]
@@ -67,6 +68,7 @@ impl Compounding {
 
 /// Interpolation method for the yield curve.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum InterpolationMethod {
   /// Linear interpolation on zero rates.
   #[default]
@@ -95,6 +97,7 @@ impl Display for InterpolationMethod {
 /// `crate::instruments::*` namespace; the old name is re-exported as a
 /// type alias from `curves::Instrument` for backward compatibility.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum BootstrapInstrument<T: RealExt> {
   /// Cash deposit: `(maturity_in_years, rate)`.
   Deposit { maturity: T, rate: T },

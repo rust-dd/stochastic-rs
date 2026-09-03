@@ -80,6 +80,7 @@ impl HestonNmleCekfParams {
 
 /// Validation and filtering errors for the CEKF APIs.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum HestonCekfError {
   TooFewPrices {
     len: usize,

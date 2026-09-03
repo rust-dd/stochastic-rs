@@ -58,6 +58,7 @@ use crate::volterra::sve::VolterraSdeSampler;
 /// [`RlKernel`] (built internally when $H<1/2$) is what actually implements
 /// that trait for the [`FractionalBM`](Self::FractionalBM) case.
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub enum VolterraKernelSpec {
   /// Fractional Brownian motion: $K(t,s) = (t-s)^{H-1/2}/\Gamma(H+1/2)$
   FractionalBM { h: f64 },
@@ -230,6 +231,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: HostBackend> ProcessExt<T> for Volt
 /// Reusable [`Volterra`] sampling state, one variant per [`VolterraEngine`]
 /// branch.
 #[doc(hidden)]
+#[non_exhaustive]
 pub enum VolterraSampler<T: FloatExt + RoughSimd, S: SeedExt> {
   Lift(VolterraSdeSampler<T, RlKernel<T>, S>),
   Reference(ReferenceVolterraSampler<T>),

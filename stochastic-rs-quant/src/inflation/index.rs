@@ -18,6 +18,7 @@ use crate::traits::RealExt;
 /// Built-in price indices. `Custom(name)` lets users register an arbitrary
 /// index without modifying the enum.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum PriceIndex {
   /// US CPI (BLS, "CPIAUCNS" series). Monthly, base year configurable per
   /// vintage.

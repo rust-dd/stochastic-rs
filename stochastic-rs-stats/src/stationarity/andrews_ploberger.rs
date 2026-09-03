@@ -48,6 +48,7 @@ use crate::linalg::solve;
 
 /// Which aggregation of the local Wald statistic to report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ApStatistic {
   /// $\sup_\tau W(\tau)$ — Andrews (1993) Sup-Wald.
   Sup,
