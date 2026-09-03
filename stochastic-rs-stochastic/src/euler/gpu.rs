@@ -18,9 +18,9 @@ use crate::device::DeviceInfo;
 
 type DeviceResult<T> = std::result::Result<T, DeviceError>;
 
-#[cfg(feature = "gpu-cuda")]
+#[cfg(feature = "cubecl-cuda")]
 type R = cubecl_cuda::CudaRuntime;
-#[cfg(all(feature = "gpu-wgpu", not(feature = "gpu-cuda")))]
+#[cfg(all(feature = "cubecl-wgpu", not(feature = "cubecl-cuda")))]
 type R = cubecl_wgpu::WgpuRuntime;
 
 const WG_SIZE: u32 = 256;
@@ -116,12 +116,12 @@ fn client() -> DeviceResult<cubecl::client::ComputeClient<R>> {
 /// The CubeCL device [`crate::device::select_device`] chose.
 pub(crate) fn selected_cubecl_device() -> <R as cubecl::Runtime>::Device {
   let ordinal = crate::device::selected_device();
-  #[cfg(feature = "gpu-cuda")]
+  #[cfg(feature = "cubecl-cuda")]
   {
     cubecl_cuda::CudaDevice { index: ordinal }
   }
 
-  #[cfg(all(feature = "gpu-wgpu", not(feature = "gpu-cuda")))]
+  #[cfg(all(feature = "cubecl-wgpu", not(feature = "cubecl-cuda")))]
   {
     if ordinal == 0 {
       cubecl_wgpu::WgpuDevice::default()

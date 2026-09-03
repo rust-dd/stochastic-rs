@@ -40,7 +40,7 @@ pub struct Cpu;
 pub struct CudaNative;
 
 /// cubecl Rust kernels (CUDA or wgpu, per the compiled `cubecl-*` runtime).
-#[cfg(feature = "gpu")]
+#[cfg(feature = "cubecl")]
 #[derive(Clone, Copy)]
 pub struct CubeCl;
 
@@ -173,7 +173,7 @@ pub(crate) fn device_from_env(value: Option<&str>) -> usize {
 
 /// The text of a caught panic payload, for runtimes that panic instead of
 /// returning an error when no device is present.
-#[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
+#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
 pub(crate) fn panic_text(payload: Box<dyn std::any::Any + Send>) -> String {
   if let Some(s) = payload.downcast_ref::<&str>() {
     (*s).to_string()
@@ -214,18 +214,18 @@ impl Backend for CudaNative {
     crate::euler::cuda_native::probe()
   }
 }
-#[cfg(feature = "gpu")]
+#[cfg(feature = "cubecl")]
 impl Backend for CubeCl {
   fn probe() -> Result<DeviceInfo, DeviceError> {
-    #[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
+    #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
     {
       crate::euler::gpu::probe()
     }
 
-    #[cfg(not(any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
+    #[cfg(not(any(feature = "cubecl-cuda", feature = "cubecl-wgpu")))]
     {
       Err(DeviceError::Unavailable(
-        "no CubeCL runtime compiled; enable the gpu-cuda or gpu-wgpu feature".to_string(),
+        "no CubeCL runtime compiled; enable the cubecl-cuda or cubecl-wgpu feature".to_string(),
       ))
     }
   }
@@ -414,7 +414,7 @@ macro_rules! gpu_backend {
 // and CubeCL FFT pipelines are single precision. `Fgn<f64>` on `MetalNative`
 // is therefore a compile error, not an `f32` computation behind an `f64` type.
 gpu_backend!("cuda-native", CudaNative => sample_cuda_native_impl, f32, f64);
-gpu_backend!("gpu", CubeCl => sample_gpu_impl, f32);
+gpu_backend!("cubecl", CubeCl => sample_gpu_impl, f32);
 gpu_backend!("metal", MetalNative => sample_metal_impl, f32);
 
 /// Accelerate (vDSP) runs on the CPU, so it gets the same reproducibility

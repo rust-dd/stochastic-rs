@@ -13,9 +13,15 @@ categories = ["mathematics", "simulation", "science"]
 
 [features]
 default = []
-gpu = ["dep:cubecl", "dep:gpu-fft"]
-gpu-cuda = ["gpu", "dep:cubecl-cuda"]
-gpu-wgpu = ["gpu", "dep:cubecl-wgpu"]
+# CubeCL portable kernels. `cubecl` is the runtime-agnostic core, `cubecl-cuda` /
+# `cubecl-wgpu` pick the runtime; `gpu`, `gpu-cuda` and `gpu-wgpu` are the same
+# three features under their earlier names.
+cubecl = ["dep:cubecl", "dep:gpu-fft"]
+cubecl-cuda = ["cubecl", "dep:cubecl-cuda"]
+cubecl-wgpu = ["cubecl", "dep:cubecl-wgpu"]
+gpu = ["cubecl"]
+gpu-cuda = ["cubecl-cuda"]
+gpu-wgpu = ["cubecl-wgpu"]
 cuda-native = ["dep:cudarc", "cudarc/cufft"]
 metal = ["dep:metal"]
 accelerate = []

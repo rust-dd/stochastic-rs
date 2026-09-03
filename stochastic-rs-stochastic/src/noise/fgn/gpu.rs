@@ -283,7 +283,7 @@ fn gen_scale<F: Float>(
   imag[dst] = radius * F::sin(angle) * e;
 }
 
-#[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
+#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
 mod backend {
   use std::any::TypeId;
 
@@ -292,10 +292,10 @@ mod backend {
 
   use super::*;
 
-  #[cfg(feature = "gpu-cuda")]
+  #[cfg(feature = "cubecl-cuda")]
   pub(super) type R = cubecl_cuda::CudaRuntime;
 
-  #[cfg(all(feature = "gpu-wgpu", not(feature = "gpu-cuda")))]
+  #[cfg(all(feature = "cubecl-wgpu", not(feature = "cubecl-cuda")))]
   pub(super) type R = cubecl_wgpu::WgpuRuntime;
 
   struct GpuContext {
@@ -485,7 +485,7 @@ mod backend {
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   pub(crate) fn sample_gpu_impl(&self, m: usize) -> DeviceResult<Array2<T>> {
-    #[cfg(not(any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
+    #[cfg(not(any(feature = "cubecl-cuda", feature = "cubecl-wgpu")))]
     {
       let _ = m;
       return Err(DeviceError::Unavailable(
@@ -493,7 +493,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
       ));
     }
 
-    #[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
+    #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
     {
       let n = self.n;
       let offset = self.offset;

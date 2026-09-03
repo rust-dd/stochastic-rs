@@ -73,8 +73,8 @@ impl<T: FloatExt> EulerSpec<T> {
     not(any(
       feature = "metal",
       feature = "cuda-native",
-      feature = "gpu-cuda",
-      feature = "gpu-wgpu"
+      feature = "cubecl-cuda",
+      feature = "cubecl-wgpu"
     )),
     allow(dead_code)
   )]
@@ -253,7 +253,7 @@ try_sample_par!(Cir);
 
 #[cfg(feature = "cuda-native")]
 pub mod cuda_native;
-#[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
+#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
 pub mod gpu;
 #[cfg(feature = "metal")]
 pub mod metal;
@@ -306,7 +306,7 @@ pub mod python {
   /// they return says so.
   enum Rows {
     F64(Vec<ndarray::Array1<f64>>),
-    #[cfg(any(feature = "metal", feature = "gpu-cuda", feature = "gpu-wgpu"))]
+    #[cfg(any(feature = "metal", feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
     F32(Vec<ndarray::Array1<f32>>),
   }
 
@@ -391,15 +391,15 @@ pub mod python {
           }
         }
         "cubecl" => {
-          #[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
+          #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
           {
             Rows::F32($py.detach(|| $p32.on::<crate::device::CubeCl>().try_sample_par($m)).map_err(device_err)?)
           }
 
-          #[cfg(not(any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
+          #[cfg(not(any(feature = "cubecl-cuda", feature = "cubecl-wgpu")))]
           {
             return Err(PyValueError::new_err(
-              "this build has no CubeCL runtime; rebuild with the gpu-cuda or gpu-wgpu feature",
+              "this build has no CubeCL runtime; rebuild with the cubecl-cuda or cubecl-wgpu feature",
             ));
           }
         }
@@ -416,7 +416,7 @@ pub mod python {
           }
 
           #[cfg(all(
-            any(feature = "gpu-cuda", feature = "gpu-wgpu"),
+            any(feature = "cubecl-cuda", feature = "cubecl-wgpu"),
             not(feature = "metal"),
             not(feature = "cuda-native")
           ))]
@@ -427,12 +427,12 @@ pub mod python {
           #[cfg(not(any(
             feature = "cuda-native",
             feature = "metal",
-            feature = "gpu-cuda",
-            feature = "gpu-wgpu"
+            feature = "cubecl-cuda",
+            feature = "cubecl-wgpu"
           )))]
           {
             return Err(PyValueError::new_err(
-              "this build has no GPU runtime; rebuild with the cuda-native, metal, gpu-cuda or gpu-wgpu feature",
+              "this build has no GPU runtime; rebuild with the cuda-native, metal, cubecl-cuda or cubecl-wgpu feature",
             ));
           }
         }
@@ -517,14 +517,14 @@ pub mod python {
         }
       }
       "cubecl" => {
-        #[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
+        #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
         {
           crate::device::CubeCl::probe()
         }
 
-        #[cfg(not(any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
+        #[cfg(not(any(feature = "cubecl-cuda", feature = "cubecl-wgpu")))]
         {
-          return Err(missing("CubeCL runtime", "gpu-cuda or gpu-wgpu"));
+          return Err(missing("CubeCL runtime", "cubecl-cuda or cubecl-wgpu"));
         }
       }
       "gpu" => {
@@ -539,7 +539,7 @@ pub mod python {
         }
 
         #[cfg(all(
-          any(feature = "gpu-cuda", feature = "gpu-wgpu"),
+          any(feature = "cubecl-cuda", feature = "cubecl-wgpu"),
           not(feature = "metal"),
           not(feature = "cuda-native")
         ))]
@@ -550,13 +550,13 @@ pub mod python {
         #[cfg(not(any(
           feature = "cuda-native",
           feature = "metal",
-          feature = "gpu-cuda",
-          feature = "gpu-wgpu"
+          feature = "cubecl-cuda",
+          feature = "cubecl-wgpu"
         )))]
         {
           return Err(missing(
             "GPU runtime",
-            "cuda-native, metal, gpu-cuda or gpu-wgpu",
+            "cuda-native, metal, cubecl-cuda or cubecl-wgpu",
           ));
         }
       }
@@ -642,7 +642,7 @@ pub mod python {
     };
     match rows {
       Rows::F64(rows) => stack(py, rows, n),
-      #[cfg(any(feature = "metal", feature = "gpu-cuda", feature = "gpu-wgpu"))]
+      #[cfg(any(feature = "metal", feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
       Rows::F32(rows) => stack(py, rows, n),
     }
   }

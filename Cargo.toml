@@ -205,7 +205,7 @@ harness = false
 [[bench]]
 name = "fgn_gpu"
 harness = false
-required-features = ["gpu"]
+required-features = ["cubecl"]
 
 [[bench]]
 name = "fgn_cuda_native"
@@ -215,12 +215,12 @@ required-features = ["cuda-native"]
 [[bench]]
 name = "fgn_cuda_compare"
 harness = false
-required-features = ["cuda-native", "gpu-cuda"]
+required-features = ["cuda-native", "cubecl-cuda"]
 
 [[bench]]
 name = "fgn_all_backends"
 harness = false
-required-features = ["gpu-wgpu", "metal", "accelerate"]
+required-features = ["cubecl-wgpu", "metal", "accelerate"]
 
 [[bench]]
 name = "fgn_accelerate"
@@ -341,10 +341,13 @@ dual-stream-rng = [
     "stochastic-rs-distributions/dual-stream-rng",
 ]
 accelerate = ["stochastic-rs-stochastic/accelerate"]
-gpu = ["dep:cubecl", "dep:gpu-fft", "stochastic-rs-stochastic/gpu"]
+cubecl = ["dep:cubecl", "dep:gpu-fft", "stochastic-rs-stochastic/cubecl"]
+gpu = ["cubecl"]
 metal = ["dep:metal", "stochastic-rs-stochastic/metal"]
-gpu-cuda = ["gpu", "dep:cubecl-cuda", "stochastic-rs-stochastic/gpu-cuda"]
-gpu-wgpu = ["gpu", "dep:cubecl-wgpu", "stochastic-rs-stochastic/gpu-wgpu"]
+cubecl-cuda = ["cubecl", "dep:cubecl-cuda", "stochastic-rs-stochastic/cubecl-cuda"]
+cubecl-wgpu = ["cubecl", "dep:cubecl-wgpu", "stochastic-rs-stochastic/cubecl-wgpu"]
+gpu-cuda = ["cubecl-cuda"]
+gpu-wgpu = ["cubecl-wgpu"]
 jemalloc = ["dep:tikv-jemallocator"]
 # Python bindings live in `stochastic-rs-py` (separate cdylib). Enabling
 # `python` here just turns on the upstream feature flags so the umbrella

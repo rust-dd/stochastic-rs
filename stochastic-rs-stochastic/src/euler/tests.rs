@@ -151,8 +151,8 @@ fn device_seed_follows_the_seed_source() {
 #[cfg(any(
   feature = "metal",
   feature = "cuda-native",
-  feature = "gpu-cuda",
-  feature = "gpu-wgpu"
+  feature = "cubecl-cuda",
+  feature = "cubecl-wgpu"
 ))]
 mod devices {
   use ndarray::Array2;
@@ -249,7 +249,7 @@ mod devices {
     assert!(paths.iter().all(|&x| x >= 0.0), "{label}");
   }
 
-  #[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
+  #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
   #[test]
   fn cubecl_backend_matches_the_moments() {
     gbm_moments_hold::<f32, crate::device::CubeCl>("CubeCl");
@@ -298,7 +298,10 @@ mod devices {
     }
   }
 
-  #[cfg(all(feature = "metal", any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
+  #[cfg(all(
+    feature = "metal",
+    any(feature = "cubecl-cuda", feature = "cubecl-wgpu")
+  ))]
   #[test]
   fn metal_native_and_cubecl_agree_seed_for_seed() {
     let metal = gbm::<f32>(11)

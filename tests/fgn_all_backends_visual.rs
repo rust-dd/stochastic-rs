@@ -1,7 +1,7 @@
 //! Side-by-side comparison of all Fgn backends: CPU, GPU (CubeCL), Metal, Accelerate.
 //! Plots autocovariance vectors and trajectories for each.
 
-#[cfg(all(feature = "gpu-wgpu", feature = "metal", feature = "accelerate"))]
+#[cfg(all(feature = "cubecl-wgpu", feature = "metal", feature = "accelerate"))]
 mod all_backends {
   use ndarray::Array1;
   use stochastic_rs::simd_rng::Unseeded;

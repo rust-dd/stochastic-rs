@@ -4,7 +4,7 @@
 //! trajectories for multiple Hurst parameters. Also estimates H back
 //! from the generated fBM paths using fractal dimension.
 
-#[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
+#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
 mod gpu_visual {
   use ndarray::Array1;
   use stochastic_rs::simd_rng::Unseeded;
