@@ -333,7 +333,11 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   /// budget: one seed for the whole batch, offset per chunk by the elements
   /// already produced (the kernel hashes `tid * 4 + seed`), so the result is
   /// the same whatever the budget.
-  pub(crate) fn sample_metal_impl(&self, m: usize) -> Result<Array2<T>> {
+  pub(crate) fn sample_metal_impl<S2: SeedExt>(
+    &self,
+    m: usize,
+    seed_src: &S2,
+  ) -> Result<Array2<T>> {
     let n = self.n;
     let offset = self.offset;
     let out_size = n - offset;
@@ -345,7 +349,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
       .iter()
       .map(|x| x.to_f32().unwrap())
       .collect();
-    let seed: u32 = rand::Rng::random(&mut self.seed.rng());
+    let seed: u32 = rand::Rng::random(&mut seed_src.rng());
     let rows = crate::device::chunk_rows(4 * n + out_size, 4);
     let mut out = Array2::<T>::zeros((m, out_size));
     let mut first = 0;
@@ -382,5 +386,19 @@ mod chunk_tests {
     crate::device::set_batch_budget_bytes(crate::device::DEFAULT_BATCH_BUDGET_BYTES);
     assert_eq!(whole, chunked);
     assert_ne!(whole[0], whole[1]);
+  }
+
+  /// A wrapper's own seed drives its device paths: two `Fbm`s built from the
+  /// same `Deterministic` seed agree, a different seed differs, and the inner
+  /// `Unseeded` fGN never enters.
+  #[test]
+  fn fbm_honours_its_own_seed_on_the_device() {
+    use crate::process::fbm::Fbm;
+    let fbm = |seed: u64| {
+      Fbm::<f32, _>::new(0.7, 256, Some(1.0), Deterministic::new(seed)).on::<MetalNative>()
+    };
+    assert_eq!(fbm(3).sample_par(3), fbm(3).sample_par(3));
+    assert_ne!(fbm(3).sample_par(1), fbm(4).sample_par(1));
+    assert_eq!(fbm(3).sample(), fbm(3).sample());
   }
 }

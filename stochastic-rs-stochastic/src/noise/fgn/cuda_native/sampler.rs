@@ -380,13 +380,17 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   /// `m` paths on the selected CUDA device, in chunks that fit the batch
   /// budget: one seed for the whole batch and a running element offset, so
   /// the result is the same whatever the budget.
-  pub(crate) fn sample_cuda_native_impl(&self, m: usize) -> Result<Array2<T>> {
+  pub(crate) fn sample_cuda_native_impl<S2: SeedExt>(
+    &self,
+    m: usize,
+    seed_src: &S2,
+  ) -> Result<Array2<T>> {
     let n = self.n;
     let offset = self.offset;
     let out_size = n - offset;
     let hurst = self.hurst.to_f64().unwrap();
     let t = self.t.unwrap_or(T::one()).to_f64().unwrap();
-    let seed: u64 = rand::Rng::random(&mut self.seed.rng());
+    let seed: u64 = rand::Rng::random(&mut seed_src.rng());
     // Per path: 2 * traj_size complex scalars of work buffer plus the output row.
     let rows = crate::device::chunk_rows(4 * n + out_size, std::mem::size_of::<T>());
     let mut out = Array2::<T>::zeros((m, out_size));

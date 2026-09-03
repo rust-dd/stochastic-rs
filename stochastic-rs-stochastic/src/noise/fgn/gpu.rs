@@ -466,10 +466,14 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   /// `m` paths on the selected CubeCL device, in chunks that fit the batch
   /// budget: one seed for the whole batch and a running element offset in the
   /// kernel's hash, so the result is the same whatever the budget.
-  pub(crate) fn sample_gpu_impl(&self, m: usize) -> DeviceResult<Array2<T>> {
+  pub(crate) fn sample_gpu_impl<S2: SeedExt>(
+    &self,
+    m: usize,
+    seed_src: &S2,
+  ) -> DeviceResult<Array2<T>> {
     #[cfg(not(any(feature = "cubecl-cuda", feature = "cubecl-wgpu")))]
     {
-      let _ = m;
+      let _ = (m, seed_src);
       return Err(DeviceError::Unavailable(
         "no CubeCL runtime compiled; enable the cubecl-cuda or cubecl-wgpu feature".to_string(),
       ));
@@ -487,7 +491,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
         .iter()
         .map(|x| x.to_f32().unwrap())
         .collect();
-      let seed_u: u32 = rand::Rng::random(&mut self.seed.rng());
+      let seed_u: u32 = rand::Rng::random(&mut seed_src.rng());
       let rows = crate::device::chunk_rows(4 * n + out_size, 4);
       let mut out = Array2::<T>::zeros((m, out_size));
       let mut first = 0;

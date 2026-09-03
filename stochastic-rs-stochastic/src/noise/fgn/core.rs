@@ -296,7 +296,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Fgn<T, S, B> {
   }
 
   /// One fGN increment vector on backend `B`. The host-side `seed` drives the
-  /// CPU path only; GPU backends use the fGN's internal RNG.
+  /// CPU path and the GPU launch seed alike.
   pub(crate) fn noise<S2: SeedExt>(&self, seed: &S2) -> Array1<T> {
     B::generate(self, seed)
   }

@@ -361,8 +361,9 @@ pub trait FgnBackend<T: FloatExt>: Backend {
 
   /// `m` fGN paths in one batched call, one [`Array1`] per path, or why the
   /// device could not produce them. The CPU devices derive one seed per path
-  /// from `seed`; the GPU devices seed their own generator from it once per
-  /// call.
+  /// from `seed`; the GPU devices draw their launch seed from it once per call,
+  /// so the caller's seed source (a wrapper's own `Deterministic`, say) is what
+  /// reproduces device paths.
   fn try_generate_batch<S: SeedExt, S2: SeedExt>(
     fgn: &Fgn<T, S, Self>,
     m: usize,
@@ -449,9 +450,10 @@ impl<T: FloatExt> FgnBackend<T> for Cpu {
 }
 
 /// Generates an [`FgnBackend`] impl for a GPU marker whose `$sampler` returns an
-/// `Array2<T>` of `m` paths. Single-path `generate` takes the first row; the
-/// host-side seed is unused (GPU backends carry their own RNG, seeded from
-/// `fgn.seed` once per call — see the trait doc's reproducibility table).
+/// `Array2<T>` of `m` paths. Single-path `generate` takes the first row. The
+/// caller's seed source drives the launch seed, exactly as on the CPU: a
+/// wrapper such as `Fbm` keeps an `Unseeded` inner `Fgn` and hands over its
+/// own seed, so a `Deterministic` wrapper reproduces its device paths too.
 /// Each marker and its impl are gated on the backend's feature.
 macro_rules! gpu_backend {
   ($feat:literal, $marker:ident => $sampler:ident, $($scalar:ty),+) => {
@@ -460,19 +462,19 @@ macro_rules! gpu_backend {
       impl FgnBackend<$scalar> for $marker {
         fn try_generate<S: SeedExt, S2: SeedExt>(
           fgn: &Fgn<$scalar, S, Self>,
-          _seed: &S2,
+          seed: &S2,
         ) -> Result<Array1<$scalar>, DeviceError> {
-          Ok(fgn.$sampler(1)?.row(0).to_owned())
+          Ok(fgn.$sampler(1, seed)?.row(0).to_owned())
         }
 
         fn try_generate_batch<S: SeedExt, S2: SeedExt>(
           fgn: &Fgn<$scalar, S, Self>,
           m: usize,
-          _seed: &S2,
+          seed: &S2,
         ) -> Result<Vec<Array1<$scalar>>, DeviceError> {
           Ok(
             fgn
-              .$sampler(m)?
+              .$sampler(m, seed)?
               .outer_iter()
               .map(|row| row.to_owned())
               .collect(),
