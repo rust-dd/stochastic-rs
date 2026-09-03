@@ -49,6 +49,7 @@ use crate::diffusion::gbm::Gbm;
 use crate::diffusion::ou::Ou;
 use crate::traits::FloatExt;
 use crate::traits::ProcessExt;
+use crate::traits::process::sample_map_chunked;
 
 /// Scalar drift / diffusion families the device kernels know how to step.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -116,27 +117,121 @@ pub trait EulerBackend<T: FloatExt>: Backend {
   /// `true` for the GPU markers, whose paths come from the kernel; `false`
   /// for the CPU devices, whose paths come from the process's own sampler.
   const DEVICE: bool;
-  /// `m` paths, or why the device could not produce them.
+
+  /// Paths `first .. first + m` of the launch stream seeded by `seed`, or why
+  /// the device could not produce them. The kernels hash
+  /// `(first + path, step, seed)`, so a batch produced in chunks under one
+  /// seed is bit-identical to one launch of the whole batch. The CPU devices
+  /// ignore `first` and `seed`: their stream is sequential, and they sample
+  /// `m` fresh paths.
+  fn try_euler_paths_seeded<P: EulerCoefficients<T>>(
+    process: &P,
+    first: usize,
+    m: usize,
+    seed: u64,
+  ) -> Result<Vec<Array1<T>>, DeviceError>;
+
+  /// Paths `first .. first + m` under one draw of the process's seed source.
+  fn try_euler_paths_from<P: EulerCoefficients<T>>(
+    process: &P,
+    first: usize,
+    m: usize,
+  ) -> Result<Vec<Array1<T>>, DeviceError> {
+    Self::try_euler_paths_seeded(process, first, m, process.device_seed())
+  }
+
+  /// `m` paths, or why the device could not produce them; one seed draw,
+  /// launched in chunks that fit [`crate::device::batch_budget_bytes`].
   fn try_euler_paths<P: EulerCoefficients<T>>(
     process: &P,
     m: usize,
-  ) -> Result<Vec<Array1<T>>, DeviceError>;
+  ) -> Result<Vec<Array1<T>>, DeviceError> {
+    let seed = process.device_seed();
+    let rows = crate::device::chunk_rows(process.grid_points(), std::mem::size_of::<T>());
+    let mut out = Vec::with_capacity(m);
+    let mut first = 0;
+    while first < m {
+      let len = rows.min(m - first);
+      out.extend(Self::try_euler_paths_seeded(process, first, len, seed)?);
+      first += len;
+    }
+    Ok(out)
+  }
+
+  /// `f` over `m` paths, each chunk mapped in parallel before the next is
+  /// launched, so the batch never has to fit in memory at once.
+  fn try_euler_paths_map<P: EulerCoefficients<T>, R: Send>(
+    process: &P,
+    m: usize,
+    f: impl Fn(&Array1<T>) -> R + Sync,
+  ) -> Result<Vec<R>, DeviceError> {
+    use rayon::prelude::*;
+    let seed = process.device_seed();
+    let rows = crate::device::chunk_rows(process.grid_points(), std::mem::size_of::<T>());
+    let mut out = Vec::with_capacity(m);
+    let mut first = 0;
+    while first < m {
+      let len = rows.min(m - first);
+      let chunk = Self::try_euler_paths_seeded(process, first, len, seed)?;
+      out.extend(chunk.par_iter().map(&f).collect::<Vec<R>>());
+      first += len;
+    }
+    Ok(out)
+  }
 
   /// [`try_euler_paths`](Self::try_euler_paths), panicking with the device's
   /// error; [`Backend::probe`] first turns that failure into a `Result`.
   fn euler_paths<P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>> {
     Self::try_euler_paths(process, m).unwrap_or_else(crate::device::device_panic)
   }
+
+  /// [`try_euler_paths_map`](Self::try_euler_paths_map), panicking with the
+  /// device's error.
+  fn euler_paths_map<P: EulerCoefficients<T>, R: Send>(
+    process: &P,
+    m: usize,
+    f: impl Fn(&Array1<T>) -> R + Sync,
+  ) -> Vec<R> {
+    Self::try_euler_paths_map(process, m, f).unwrap_or_else(crate::device::device_panic)
+  }
 }
 
 /// The CPU path is the process's own sampler.
 impl<T: FloatExt> EulerBackend<T> for Cpu {
   const DEVICE: bool = false;
+  fn try_euler_paths_seeded<P: EulerCoefficients<T>>(
+    process: &P,
+    _first: usize,
+    m: usize,
+    _seed: u64,
+  ) -> Result<Vec<Array1<T>>, DeviceError> {
+    Ok(process.sample_par(m))
+  }
+
+  /// The host never draws a device seed: its stream is the process's own.
+  fn try_euler_paths_from<P: EulerCoefficients<T>>(
+    process: &P,
+    _first: usize,
+    m: usize,
+  ) -> Result<Vec<Array1<T>>, DeviceError> {
+    Ok(process.sample_par(m))
+  }
+
+  /// The host stream is the process's own `sample_par`, never chunked here.
   fn try_euler_paths<P: EulerCoefficients<T>>(
     process: &P,
     m: usize,
   ) -> Result<Vec<Array1<T>>, DeviceError> {
     Ok(process.sample_par(m))
+  }
+
+  /// The host map is the process's own chunked `sample_map`.
+  fn try_euler_paths_map<P: EulerCoefficients<T>, R: Send>(
+    process: &P,
+    m: usize,
+    f: impl Fn(&Array1<T>) -> R + Sync,
+  ) -> Result<Vec<R>, DeviceError> {
+    Ok(sample_map_chunked(process, m, f))
   }
 }
 
@@ -144,11 +239,39 @@ impl<T: FloatExt> EulerBackend<T> for Cpu {
 #[cfg(feature = "accelerate")]
 impl<T: FloatExt> EulerBackend<T> for crate::device::Accelerate {
   const DEVICE: bool = false;
+  fn try_euler_paths_seeded<P: EulerCoefficients<T>>(
+    process: &P,
+    _first: usize,
+    m: usize,
+    _seed: u64,
+  ) -> Result<Vec<Array1<T>>, DeviceError> {
+    Ok(process.sample_par(m))
+  }
+
+  /// The host never draws a device seed: its stream is the process's own.
+  fn try_euler_paths_from<P: EulerCoefficients<T>>(
+    process: &P,
+    _first: usize,
+    m: usize,
+  ) -> Result<Vec<Array1<T>>, DeviceError> {
+    Ok(process.sample_par(m))
+  }
+
+  /// The host stream is the process's own `sample_par`, never chunked here.
   fn try_euler_paths<P: EulerCoefficients<T>>(
     process: &P,
     m: usize,
   ) -> Result<Vec<Array1<T>>, DeviceError> {
     Ok(process.sample_par(m))
+  }
+
+  /// The host map is the process's own chunked `sample_map`.
+  fn try_euler_paths_map<P: EulerCoefficients<T>, R: Send>(
+    process: &P,
+    m: usize,
+    f: impl Fn(&Array1<T>) -> R + Sync,
+  ) -> Result<Vec<R>, DeviceError> {
+    Ok(sample_map_chunked(process, m, f))
   }
 }
 

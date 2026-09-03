@@ -9,5 +9,7 @@ mod kernels;
 mod sampler;
 mod state;
 
+pub(crate) use state::PinnedHost;
+
 #[cfg(test)]
 mod tests;

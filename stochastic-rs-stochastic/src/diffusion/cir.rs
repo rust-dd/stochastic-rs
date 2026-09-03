@@ -212,7 +212,7 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Cir<T, S, B>
 
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
     if B::DEVICE {
-      B::euler_paths(self, m).iter().map(f).collect()
+      B::euler_paths_map(self, m, f)
     } else {
       sample_map_chunked(self, m, f)
     }

@@ -40,13 +40,13 @@ pub(super) static GPU: Mutex<Option<GpuKernels>> = Mutex::new(None);
 /// bandwidth instead of staging a pageable copy through a bounce buffer
 /// (~3.6 GB/s → ~20 GB/s on PCIe 4.0). Cached in the sized context so the
 /// (expensive) pinning happens once per parameter set, not per call.
-pub(super) struct PinnedHost<T> {
-  pub(super) ptr: *mut T,
+pub(crate) struct PinnedHost<T> {
+  pub(crate) ptr: *mut T,
   pub(super) len: usize,
 }
 
 impl<T> PinnedHost<T> {
-  pub(super) fn alloc(len: usize) -> Result<Self> {
+  pub(crate) fn alloc(len: usize) -> Result<Self> {
     let bytes = len * std::mem::size_of::<T>();
     let ptr = unsafe { cudarc::driver::result::malloc_host(bytes, 0) }
       .map_err(|e| DeviceError::Launch(format!("malloc_host: {e}")))? as *mut T;
@@ -72,8 +72,8 @@ pub(super) fn get_or_init_gpu() -> Result<()> {
   }
   // A new context invalidates the per-size buffers and plans of the old one.
   *g = None;
-  *SIZED_F32.lock() = None;
-  *SIZED_F64.lock() = None;
+  SIZED_F32.lock().clear();
+  SIZED_F64.lock().clear();
   let ctx =
     CudaContext::new(ordinal).map_err(|e| DeviceError::Unavailable(format!("CudaContext: {e}")))?;
   let stream = ctx
@@ -148,5 +148,6 @@ impl Drop for SizedCtxF64 {
 unsafe impl Send for SizedCtxF32 {}
 unsafe impl Send for SizedCtxF64 {}
 
-pub(super) static SIZED_F32: Mutex<Option<SizedCtxF32>> = Mutex::new(None);
-pub(super) static SIZED_F64: Mutex<Option<SizedCtxF64>> = Mutex::new(None);
+/// The last [`crate::device::CACHE_SLOTS`] per-size states, least recent first.
+pub(super) static SIZED_F32: Mutex<Vec<SizedCtxF32>> = Mutex::new(Vec::new());
+pub(super) static SIZED_F64: Mutex<Vec<SizedCtxF64>> = Mutex::new(Vec::new());

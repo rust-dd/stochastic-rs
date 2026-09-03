@@ -8,7 +8,7 @@
 mod accelerate;
 mod core;
 #[cfg(feature = "cuda-native")]
-mod cuda_native;
+pub(crate) mod cuda_native;
 #[cfg(feature = "cubecl")]
 mod gpu;
 #[cfg(feature = "metal")]

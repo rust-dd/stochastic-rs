@@ -254,10 +254,12 @@ fn gen_scale<F: Float>(
   eigs: &Array<F>,
   rev: &Array<u32>,
   seed: u32,
+  first_elem: u32,
   #[comptime] traj_size: usize,
 ) {
   let tid = ABSOLUTE_POS;
-  let g = tid as u32;
+  // Hash on the batch-global element, so chunks continue one launch's stream.
+  let g = tid as u32 + first_elem;
   // Two decorrelated uniforms via integer hashing (Murmur3-style finalizer).
   let mut a = (g * 2u32) ^ (seed * 2654435761u32);
   a ^= a >> 16;
@@ -301,47 +303,25 @@ mod backend {
   struct GpuContext {
     ordinal: usize,
     client: ComputeClient<R>,
-    n: usize,
-    m: usize,
-    offset: usize,
-    hurst_bits: u64,
-    t_bits: u64,
   }
 
   unsafe impl Send for GpuContext {}
 
   static GPU_CTX: Mutex<Option<GpuContext>> = Mutex::new(None);
 
-  fn ensure_ctx(n: usize, m: usize, offset: usize, hb: u64, tb: u64) -> DeviceResult<()> {
+  /// Opens the client for the selected device once; buffers are per call.
+  fn ensure_ctx() -> DeviceResult<()> {
     let ordinal = crate::device::selected_device();
     let mut g = GPU_CTX.lock();
-    let need = match &*g {
-      Some(c) => {
-        c.ordinal != ordinal
-          || c.n != n
-          || c.m != m
-          || c.offset != offset
-          || c.hurst_bits != hb
-          || c.t_bits != tb
-      }
-      None => true,
-    };
-    if !need {
+    if g.as_ref().is_some_and(|c| c.ordinal == ordinal) {
       return Ok(());
     }
+    *g = None;
     // CubeCL panics rather than erroring when no device exists.
     let client =
       std::panic::catch_unwind(|| R::client(&crate::euler::gpu::selected_cubecl_device()))
         .map_err(|payload| DeviceError::Unavailable(crate::device::panic_text(payload)))?;
-    *g = Some(GpuContext {
-      ordinal,
-      client,
-      n,
-      m,
-      offset,
-      hurst_bits: hb,
-      t_bits: tb,
-    });
+    *g = Some(GpuContext { ordinal, client });
     Ok(())
   }
 
@@ -362,24 +342,23 @@ mod backend {
     }
   }
 
-  pub(super) fn sample_gpu_f32<T: FloatExt, S: stochastic_rs_core::simd_rng::SeedExt>(
+  pub(super) fn sample_gpu_f32<T: FloatExt>(
     sqrt_eigs: &[f32],
     n: usize,
     m: usize,
     offset: usize,
     hurst: f64,
     t: f64,
-    seed: &S,
+    first: usize,
+    seed_u: u32,
   ) -> DeviceResult<Array2<T>> {
-    let hb = hurst.to_bits();
-    let tb = t.to_bits();
     let traj_size = 2 * n;
     let out_size = n - offset;
     let scale = (out_size.max(1) as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
     let total = m * traj_size;
     let log_n = traj_size.trailing_zeros() as usize;
 
-    ensure_ctx(n, m, offset, hb, tb)?;
+    ensure_ctx()?;
     let guard = GPU_CTX.lock();
     let cl = &guard.as_ref().unwrap().client;
 
@@ -395,7 +374,6 @@ mod backend {
     let hi = cl.empty(total * 4);
 
     // GPU: generate normals + eigenvalue scale + bit-reversed scatter.
-    let seed_u: u32 = rand::Rng::random(&mut seed.rng());
     unsafe {
       gen_scale::launch::<f32, R>(
         cl,
@@ -406,6 +384,7 @@ mod backend {
         ArrayArg::from_raw_parts::<f32>(&eig_h, traj_size, 1),
         ArrayArg::from_raw_parts::<u32>(&rev_h, traj_size, 1),
         ScalarArg::new(seed_u & 0xffff),
+        ScalarArg::new((first * traj_size) as u32),
         traj_size,
       )
       .map_err(|e| DeviceError::Launch(format!("gen_scale: {e}")))?;
@@ -484,12 +463,15 @@ mod backend {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
+  /// `m` paths on the selected CubeCL device, in chunks that fit the batch
+  /// budget: one seed for the whole batch and a running element offset in the
+  /// kernel's hash, so the result is the same whatever the budget.
   pub(crate) fn sample_gpu_impl(&self, m: usize) -> DeviceResult<Array2<T>> {
     #[cfg(not(any(feature = "cubecl-cuda", feature = "cubecl-wgpu")))]
     {
       let _ = m;
       return Err(DeviceError::Unavailable(
-        "No GPU backend selected. Enable `gpu-cuda` or `gpu-wgpu` feature.".to_string(),
+        "no CubeCL runtime compiled; enable the cubecl-cuda or cubecl-wgpu feature".to_string(),
       ));
     }
 
@@ -497,6 +479,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     {
       let n = self.n;
       let offset = self.offset;
+      let out_size = n - offset;
       let hurst = self.hurst.to_f64().unwrap();
       let t = self.t.unwrap_or(T::one()).to_f64().unwrap();
       let eigs: Vec<f32> = self
@@ -504,7 +487,19 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
         .iter()
         .map(|x| x.to_f32().unwrap())
         .collect();
-      backend::sample_gpu_f32::<T, S>(&eigs, n, m, offset, hurst, t, &self.seed)
+      let seed_u: u32 = rand::Rng::random(&mut self.seed.rng());
+      let rows = crate::device::chunk_rows(4 * n + out_size, 4);
+      let mut out = Array2::<T>::zeros((m, out_size));
+      let mut first = 0;
+      while first < m {
+        let len = rows.min(m - first);
+        let chunk = backend::sample_gpu_f32::<T>(&eigs, n, len, offset, hurst, t, first, seed_u)?;
+        out
+          .slice_mut(ndarray::s![first..first + len, ..])
+          .assign(&chunk);
+        first += len;
+      }
+      Ok(out)
     }
   }
 }

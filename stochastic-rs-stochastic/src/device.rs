@@ -171,6 +171,80 @@ pub(crate) fn device_from_env(value: Option<&str>) -> usize {
   value.and_then(|s| s.trim().parse().ok()).unwrap_or(0)
 }
 
+/// `usize::MAX` = not chosen yet, so the first read consults the environment.
+static BATCH_BUDGET: AtomicUsize = AtomicUsize::new(usize::MAX);
+
+/// Default cap on the path data one device launch materialises: 1 GiB.
+pub const DEFAULT_BATCH_BUDGET_BYTES: usize = 1 << 30;
+
+/// Caps the bytes of path data a single device launch holds. A batch larger
+/// than the budget is produced in chunks whose union is bit-identical to one
+/// launch of the whole batch, and `sample_map` maps each chunk before the
+/// next is launched, so the whole batch never has to fit in memory. Process-
+/// wide; until it is called the value comes from
+/// `STOCHASTIC_RS_DEVICE_BATCH_BYTES`, and [`DEFAULT_BATCH_BUDGET_BYTES`] when
+/// that is unset or not a positive number.
+pub fn set_batch_budget_bytes(bytes: usize) {
+  BATCH_BUDGET.store(bytes.max(1), Ordering::Relaxed);
+}
+
+/// The budget [`set_batch_budget_bytes`] chose, or the environment's / the default.
+pub fn batch_budget_bytes() -> usize {
+  let chosen = BATCH_BUDGET.load(Ordering::Relaxed);
+  if chosen != usize::MAX {
+    return chosen;
+  }
+  let from_env = budget_from_env(
+    std::env::var("STOCHASTIC_RS_DEVICE_BATCH_BYTES")
+      .ok()
+      .as_deref(),
+  );
+  let _ = BATCH_BUDGET.compare_exchange(usize::MAX, from_env, Ordering::Relaxed, Ordering::Relaxed);
+  BATCH_BUDGET.load(Ordering::Relaxed)
+}
+
+/// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` parsed; anything that is not a positive
+/// number is the default.
+pub(crate) fn budget_from_env(value: Option<&str>) -> usize {
+  value
+    .and_then(|s| s.trim().parse::<usize>().ok())
+    .filter(|b| *b > 0)
+    .unwrap_or(DEFAULT_BATCH_BUDGET_BYTES)
+}
+
+/// Paths of `n` `elem`-byte scalars that fit the batch budget, at least one.
+pub(crate) fn chunk_rows(n: usize, elem: usize) -> usize {
+  (batch_budget_bytes() / (n.max(1) * elem.max(1))).max(1)
+}
+
+/// How many per-size device states (FFT plans, buffers) a back-end keeps.
+/// Only the native CUDA and Metal fGN samplers cache per-size state, so a
+/// build without them has no caller.
+#[cfg_attr(not(any(feature = "cuda-native", feature = "metal")), allow(dead_code))]
+pub(crate) const CACHE_SLOTS: usize = 4;
+
+/// The cached state matching `matches`, moved to the most-recent slot, or a
+/// freshly built one after evicting the least-recent when the cache is full.
+#[cfg_attr(not(any(feature = "cuda-native", feature = "metal")), allow(dead_code))]
+pub(crate) fn lru_slot<C, E>(
+  cache: &mut Vec<C>,
+  matches: impl Fn(&C) -> bool,
+  build: impl FnOnce() -> Result<C, E>,
+) -> Result<&mut C, E> {
+  if let Some(i) = cache.iter().position(&matches) {
+    let hit = cache.remove(i);
+    cache.push(hit);
+  } else {
+    // Build first: a failed build must not evict anything.
+    let built = build()?;
+    if cache.len() >= CACHE_SLOTS {
+      cache.remove(0);
+    }
+    cache.push(built);
+  }
+  Ok(cache.last_mut().expect("the slot was just pushed"))
+}
+
 /// The text of a caught panic payload, for runtimes that panic instead of
 /// returning an error when no device is present.
 #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
@@ -482,6 +556,41 @@ mod tests {
   /// The marker trait alone must stay algorithm-free: this compiles because
   /// `Cpu` has the fGN capability, and a future device that lacks it can
   /// still be a [`Backend`] for the capabilities it does have.
+  #[test]
+  fn lru_slot_keeps_four_and_promotes_hits() {
+    let mut cache: Vec<usize> = Vec::new();
+    for k in 0..4 {
+      lru_slot::<usize, ()>(&mut cache, |c| *c == k, || Ok(k)).unwrap();
+    }
+    assert_eq!(cache, vec![0, 1, 2, 3]);
+    lru_slot::<usize, ()>(&mut cache, |c| *c == 1, || Ok(1)).unwrap();
+    assert_eq!(
+      cache,
+      vec![0, 2, 3, 1],
+      "a hit moves to the most-recent slot"
+    );
+    lru_slot::<usize, ()>(&mut cache, |c| *c == 9, || Ok(9)).unwrap();
+    assert_eq!(
+      cache,
+      vec![2, 3, 1, 9],
+      "a miss evicts the least-recent slot"
+    );
+    assert!(lru_slot::<usize, ()>(&mut cache, |c| *c == 7, || Err(())).is_err());
+    assert_eq!(
+      cache,
+      vec![2, 3, 1, 9],
+      "a failed build leaves the cache alone"
+    );
+  }
+
+  #[test]
+  fn batch_budget_parses_the_environment_leniently() {
+    assert_eq!(budget_from_env(None), DEFAULT_BATCH_BUDGET_BYTES);
+    assert_eq!(budget_from_env(Some("0")), DEFAULT_BATCH_BUDGET_BYTES);
+    assert_eq!(budget_from_env(Some("x")), DEFAULT_BATCH_BUDGET_BYTES);
+    assert_eq!(budget_from_env(Some(" 4096 ")), 4096);
+  }
+
   #[test]
   fn device_ordinal_parses_the_environment_leniently() {
     assert_eq!(device_from_env(None), 0);

@@ -95,14 +95,15 @@ where
   Ok(())
 }
 
-fn sample_f32<T: FloatExt, S: SeedExt>(
+fn sample_f32<T: FloatExt>(
   sqrt_eigs: &[f32],
   n: usize,
   m: usize,
   offset: usize,
   hurst: f64,
   t: f64,
-  seed_src: &S,
+  seed: u64,
+  first: usize,
 ) -> Result<Array2<T>> {
   let hurst_bits = hurst.to_bits();
   let t_bits = t.to_bits();
@@ -111,61 +112,63 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
   let scale = (out_size.max(1) as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
 
   get_or_init_gpu()?;
-  let gpu = GPU.lock();
-  let gpu = gpu.as_ref().unwrap();
-
-  let mut sized = SIZED_F32.lock();
-  let need_init = match &*sized {
-    Some(s) => {
-      s.n != n || s.m != m || s.offset != offset || s.hurst_bits != hurst_bits || s.t_bits != t_bits
-    }
-    None => true,
+  // Clone the handles out of the global lock so another size can launch
+  // concurrently; the per-size state below keeps its own lock for its buffers.
+  let (stream, gen_scale, extract) = {
+    let g = GPU.lock();
+    let k = g.as_ref().unwrap();
+    (
+      k.stream.clone(),
+      k.gen_scale_f32.clone(),
+      k.extract_f32.clone(),
+    )
   };
-
-  if need_init {
-    *sized = None;
-    let plan = cufft::result::plan_1d(traj_size as i32, cufft::sys::cufftType::CUFFT_C2C, m as i32)
-      .map_err(|e| DeviceError::Launch(format!("cuFFT plan: {e}")))?;
-    unsafe {
-      cufft::result::set_stream(plan, gpu.stream.cu_stream() as _)
-        .map_err(|e| DeviceError::Launch(format!("cuFFT set_stream: {e}")))?;
-    }
-    *sized = Some(SizedCtxF32 {
-      fft_plan: plan,
-      d_eigs: gpu
-        .stream
-        .clone_htod(sqrt_eigs)
-        .map_err(|e| DeviceError::Launch(format!("htod eigs: {e}")))?,
-      d_data: gpu
-        .stream
-        .alloc_zeros::<f32>(2 * m * traj_size)
-        .map_err(|e| DeviceError::Launch(format!("alloc data: {e}")))?,
-      d_out: gpu
-        .stream
-        .alloc_zeros::<f32>(m * out_size)
-        .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?,
-      host_pinned: PinnedHost::<f32>::alloc(m * out_size)?,
-      n,
-      m,
-      offset,
-      hurst_bits,
-      t_bits,
-    });
-  }
-
-  let s = sized.as_mut().unwrap();
+  let mut sized = SIZED_F32.lock();
+  let s = crate::device::lru_slot(
+    &mut sized,
+    |s| {
+      s.n == n && s.m == m && s.offset == offset && s.hurst_bits == hurst_bits && s.t_bits == t_bits
+    },
+    || {
+      let plan =
+        cufft::result::plan_1d(traj_size as i32, cufft::sys::cufftType::CUFFT_C2C, m as i32)
+          .map_err(|e| DeviceError::Launch(format!("cuFFT plan: {e}")))?;
+      unsafe {
+        cufft::result::set_stream(plan, stream.cu_stream() as _)
+          .map_err(|e| DeviceError::Launch(format!("cuFFT set_stream: {e}")))?;
+      }
+      Ok(SizedCtxF32 {
+        fft_plan: plan,
+        d_eigs: stream
+          .clone_htod(sqrt_eigs)
+          .map_err(|e| DeviceError::Launch(format!("htod eigs: {e}")))?,
+        d_data: stream
+          .alloc_zeros::<f32>(2 * m * traj_size)
+          .map_err(|e| DeviceError::Launch(format!("alloc data: {e}")))?,
+        d_out: stream
+          .alloc_zeros::<f32>(m * out_size)
+          .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?,
+        host_pinned: PinnedHost::<f32>::alloc(m * out_size)?,
+        n,
+        m,
+        offset,
+        hurst_bits,
+        t_bits,
+      })
+    },
+  )?;
   let profile = std::env::var("STOCHASTIC_RS_CUDA_PROFILE").is_ok();
   let tstart = std::time::Instant::now();
 
   // 1. Fused generate normals + scale by eigenvalues
   let total_complex = (m * traj_size) as i32;
   let traj_i32 = traj_size as i32;
-  let seed: u64 = rand::Rng::random(&mut seed_src.rng());
-  let seq = counter_offset(seed);
+  // One seed per batch; chunks continue the element count, so a batch
+  // produced in chunks equals one launch element for element.
+  let seq = counter_offset(seed) + (first * traj_size) as u64;
   unsafe {
-    gpu
-      .stream
-      .launch_builder(&gpu.gen_scale_f32)
+    stream
+      .launch_builder(&gen_scale)
       .arg(&mut s.d_data)
       .arg(&s.d_eigs)
       .arg(&traj_i32)
@@ -178,7 +181,7 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
 
   // 2. Batched FFT
   {
-    let (ptr, _g) = s.d_data.device_ptr_mut(&gpu.stream);
+    let (ptr, _g) = s.d_data.device_ptr_mut(&stream);
     unsafe {
       cufft::result::exec_c2c(s.fft_plan, ptr as *mut _, ptr as *mut _, CUFFT_FORWARD)
         .map_err(|e| DeviceError::Launch(format!("cuFFT: {e}")))?;
@@ -190,9 +193,8 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
   let out_i32 = out_size as i32;
   let stride_i32 = traj_size as i32;
   unsafe {
-    gpu
-      .stream
-      .launch_builder(&gpu.extract_f32)
+    stream
+      .launch_builder(&extract)
       .arg(&s.d_data)
       .arg(&mut s.d_out)
       .arg(&out_i32)
@@ -211,7 +213,7 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
     (len * std::mem::size_of::<f32>() >= STAGING_MIN_BYTES).then(|| alloc_prefaulted::<f32>(len));
 
   let t_compute = if profile {
-    gpu.stream.synchronize().ok();
+    stream.synchronize().ok();
     tstart.elapsed()
   } else {
     std::time::Duration::ZERO
@@ -219,11 +221,10 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
 
   let host = match prefaulted {
     Some(mut host) => {
-      drain_into(&gpu.stream, &s.d_out, &s.host_pinned, &mut host)?;
+      drain_into(&stream, &s.d_out, &s.host_pinned, &mut host)?;
       host
     }
-    None => gpu
-      .stream
+    None => stream
       .clone_dtoh(&s.d_out)
       .map_err(|e| DeviceError::Launch(format!("dtoh: {e}")))?,
   };
@@ -246,14 +247,15 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
   Ok(fgn)
 }
 
-fn sample_f64<T: FloatExt, S: SeedExt>(
+fn sample_f64<T: FloatExt>(
   sqrt_eigs: &[f64],
   n: usize,
   m: usize,
   offset: usize,
   hurst: f64,
   t: f64,
-  seed_src: &S,
+  seed: u64,
+  first: usize,
 ) -> Result<Array2<T>> {
   let hurst_bits = hurst.to_bits();
   let t_bits = t.to_bits();
@@ -262,59 +264,61 @@ fn sample_f64<T: FloatExt, S: SeedExt>(
   let scale = (out_size.max(1) as f64).powf(-hurst) * t.powf(hurst);
 
   get_or_init_gpu()?;
-  let gpu = GPU.lock();
-  let gpu = gpu.as_ref().unwrap();
-
-  let mut sized = SIZED_F64.lock();
-  let need_init = match &*sized {
-    Some(s) => {
-      s.n != n || s.m != m || s.offset != offset || s.hurst_bits != hurst_bits || s.t_bits != t_bits
-    }
-    None => true,
+  // Clone the handles out of the global lock so another size can launch
+  // concurrently; the per-size state below keeps its own lock for its buffers.
+  let (stream, gen_scale, extract) = {
+    let g = GPU.lock();
+    let k = g.as_ref().unwrap();
+    (
+      k.stream.clone(),
+      k.gen_scale_f64.clone(),
+      k.extract_f64.clone(),
+    )
   };
-
-  if need_init {
-    *sized = None;
-    let plan = cufft::result::plan_1d(traj_size as i32, cufft::sys::cufftType::CUFFT_Z2Z, m as i32)
-      .map_err(|e| DeviceError::Launch(format!("cuFFT plan: {e}")))?;
-    unsafe {
-      cufft::result::set_stream(plan, gpu.stream.cu_stream() as _)
-        .map_err(|e| DeviceError::Launch(format!("cuFFT set_stream: {e}")))?;
-    }
-    *sized = Some(SizedCtxF64 {
-      fft_plan: plan,
-      d_eigs: gpu
-        .stream
-        .clone_htod(sqrt_eigs)
-        .map_err(|e| DeviceError::Launch(format!("htod eigs: {e}")))?,
-      d_data: gpu
-        .stream
-        .alloc_zeros::<f64>(2 * m * traj_size)
-        .map_err(|e| DeviceError::Launch(format!("alloc data: {e}")))?,
-      d_out: gpu
-        .stream
-        .alloc_zeros::<f64>(m * out_size)
-        .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?,
-      host_pinned: PinnedHost::<f64>::alloc(m * out_size)?,
-      n,
-      m,
-      offset,
-      hurst_bits,
-      t_bits,
-    });
-  }
-
-  let s = sized.as_mut().unwrap();
+  let mut sized = SIZED_F64.lock();
+  let s = crate::device::lru_slot(
+    &mut sized,
+    |s| {
+      s.n == n && s.m == m && s.offset == offset && s.hurst_bits == hurst_bits && s.t_bits == t_bits
+    },
+    || {
+      let plan =
+        cufft::result::plan_1d(traj_size as i32, cufft::sys::cufftType::CUFFT_Z2Z, m as i32)
+          .map_err(|e| DeviceError::Launch(format!("cuFFT plan: {e}")))?;
+      unsafe {
+        cufft::result::set_stream(plan, stream.cu_stream() as _)
+          .map_err(|e| DeviceError::Launch(format!("cuFFT set_stream: {e}")))?;
+      }
+      Ok(SizedCtxF64 {
+        fft_plan: plan,
+        d_eigs: stream
+          .clone_htod(sqrt_eigs)
+          .map_err(|e| DeviceError::Launch(format!("htod eigs: {e}")))?,
+        d_data: stream
+          .alloc_zeros::<f64>(2 * m * traj_size)
+          .map_err(|e| DeviceError::Launch(format!("alloc data: {e}")))?,
+        d_out: stream
+          .alloc_zeros::<f64>(m * out_size)
+          .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?,
+        host_pinned: PinnedHost::<f64>::alloc(m * out_size)?,
+        n,
+        m,
+        offset,
+        hurst_bits,
+        t_bits,
+      })
+    },
+  )?;
 
   // 1. Fused generate + scale
   let total_complex = (m * traj_size) as i32;
   let traj_i32 = traj_size as i32;
-  let seed: u64 = rand::Rng::random(&mut seed_src.rng());
-  let seq = counter_offset(seed);
+  // One seed per batch; chunks continue the element count, so a batch
+  // produced in chunks equals one launch element for element.
+  let seq = counter_offset(seed) + (first * traj_size) as u64;
   unsafe {
-    gpu
-      .stream
-      .launch_builder(&gpu.gen_scale_f64)
+    stream
+      .launch_builder(&gen_scale)
       .arg(&mut s.d_data)
       .arg(&s.d_eigs)
       .arg(&traj_i32)
@@ -327,7 +331,7 @@ fn sample_f64<T: FloatExt, S: SeedExt>(
 
   // 2. Batched FFT
   {
-    let (ptr, _g) = s.d_data.device_ptr_mut(&gpu.stream);
+    let (ptr, _g) = s.d_data.device_ptr_mut(&stream);
     unsafe {
       cufft::result::exec_z2z(s.fft_plan, ptr as *mut _, ptr as *mut _, CUFFT_FORWARD)
         .map_err(|e| DeviceError::Launch(format!("cuFFT: {e}")))?;
@@ -339,9 +343,8 @@ fn sample_f64<T: FloatExt, S: SeedExt>(
   let out_i32 = out_size as i32;
   let stride_i32 = traj_size as i32;
   unsafe {
-    gpu
-      .stream
-      .launch_builder(&gpu.extract_f64)
+    stream
+      .launch_builder(&extract)
       .arg(&s.d_data)
       .arg(&mut s.d_out)
       .arg(&out_i32)
@@ -360,11 +363,10 @@ fn sample_f64<T: FloatExt, S: SeedExt>(
     .then(|| alloc_prefaulted::<f64>(len))
   {
     Some(mut host) => {
-      drain_into(&gpu.stream, &s.d_out, &s.host_pinned, &mut host)?;
+      drain_into(&stream, &s.d_out, &s.host_pinned, &mut host)?;
       host
     }
-    None => gpu
-      .stream
+    None => stream
       .clone_dtoh(&s.d_out)
       .map_err(|e| DeviceError::Launch(format!("dtoh: {e}")))?,
   };
@@ -375,28 +377,44 @@ fn sample_f64<T: FloatExt, S: SeedExt>(
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
+  /// `m` paths on the selected CUDA device, in chunks that fit the batch
+  /// budget: one seed for the whole batch and a running element offset, so
+  /// the result is the same whatever the budget.
   pub(crate) fn sample_cuda_native_impl(&self, m: usize) -> Result<Array2<T>> {
     let n = self.n;
     let offset = self.offset;
+    let out_size = n - offset;
     let hurst = self.hurst.to_f64().unwrap();
     let t = self.t.unwrap_or(T::one()).to_f64().unwrap();
-
-    if TypeId::of::<T>() == TypeId::of::<f32>() {
-      let eigs: Vec<f32> = self
-        .sqrt_eigenvalues
-        .iter()
-        .map(|x| x.to_f32().unwrap())
-        .collect();
-      return sample_f32::<T, S>(&eigs, n, m, offset, hurst, t, &self.seed);
+    let seed: u64 = rand::Rng::random(&mut self.seed.rng());
+    // Per path: 2 * traj_size complex scalars of work buffer plus the output row.
+    let rows = crate::device::chunk_rows(4 * n + out_size, std::mem::size_of::<T>());
+    let mut out = Array2::<T>::zeros((m, out_size));
+    let mut first = 0;
+    while first < m {
+      let len = rows.min(m - first);
+      let chunk = if TypeId::of::<T>() == TypeId::of::<f32>() {
+        let eigs: Vec<f32> = self
+          .sqrt_eigenvalues
+          .iter()
+          .map(|x| x.to_f32().unwrap())
+          .collect();
+        sample_f32::<T>(&eigs, n, len, offset, hurst, t, seed, first)?
+      } else {
+        // `f64` is what the type says, so a failing double-precision launch is
+        // reported, never quietly replaced by the `f32` kernel.
+        let eigs: Vec<f64> = self
+          .sqrt_eigenvalues
+          .iter()
+          .map(|x| x.to_f64().unwrap())
+          .collect();
+        sample_f64::<T>(&eigs, n, len, offset, hurst, t, seed, first)?
+      };
+      out
+        .slice_mut(ndarray::s![first..first + len, ..])
+        .assign(&chunk);
+      first += len;
     }
-
-    // `f64` is what the type says, so a failing double-precision launch is
-    // reported, never quietly replaced by the `f32` kernel.
-    let eigs_f64: Vec<f64> = self
-      .sqrt_eigenvalues
-      .iter()
-      .map(|x| x.to_f64().unwrap())
-      .collect();
-    sample_f64::<T, S>(&eigs_f64, n, m, offset, hurst, t, &self.seed)
+    Ok(out)
   }
 }

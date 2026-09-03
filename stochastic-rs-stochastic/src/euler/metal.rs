@@ -30,6 +30,7 @@ struct EulerArgs {
     uint seed;
     uint steps;
     uint paths;
+    uint first_path;
 };
 
 kernel void euler_paths(
@@ -45,7 +46,7 @@ kernel void euler_paths(
     if (args.family == 2u && args.x0 < 0.0f) reported = 0.0f;
     out[base] = reported;
     for (uint i = 1u; i < args.steps; i++) {
-        uint g = path * args.steps + i;
+        uint g = (args.first_path + path) * args.steps + i;
         uint a = (g * 2u) ^ (args.seed * 2654435761u);
         a ^= a >> 16; a *= 2246822519u; a ^= a >> 13; a *= 3266489917u; a ^= a >> 16;
         uint b = (g * 2u + 1u) ^ (args.seed * 668265263u);
@@ -78,6 +79,7 @@ struct EulerArgs {
   seed: u32,
   steps: u32,
   paths: u32,
+  first_path: u32,
 }
 
 struct Context {
@@ -186,15 +188,21 @@ fn run(params: [f32; 4], args: EulerArgs) -> Result<Vec<f32>> {
 impl EulerBackend<f32> for MetalNative {
   const DEVICE: bool = true;
 
-  fn try_euler_paths<P: EulerCoefficients<f32>>(process: &P, m: usize) -> Result<Vec<Array1<f32>>> {
+  fn try_euler_paths_seeded<P: EulerCoefficients<f32>>(
+    process: &P,
+    first: usize,
+    m: usize,
+    seed: u64,
+  ) -> Result<Vec<Array1<f32>>> {
     Ok(
       device_paths(
         process.euler_spec(),
         process.initial_value(),
         process.grid_points(),
         process.horizon(),
+        first,
         m,
-        process.device_seed(),
+        seed,
       )?
       .outer_iter()
       .map(|row| row.to_owned())
@@ -209,6 +217,7 @@ fn device_paths(
   x0: f32,
   n: usize,
   t: f32,
+  first: usize,
   m: usize,
   seed: u64,
 ) -> Result<Array2<f32>> {
@@ -227,6 +236,7 @@ fn device_paths(
       seed: (seed ^ (seed >> 32)) as u32,
       steps: n as u32,
       paths: m as u32,
+      first_path: first as u32,
     };
     let data = run(params32, args)?;
     Ok(Array2::from_shape_vec((m, n), data).expect("the kernel returns m * n values"))

@@ -112,6 +112,7 @@ kernel void extract_real(
 }
 "#;
 
+#[derive(Clone)]
 struct MetalCtx {
   ordinal: usize,
   device: Device,
@@ -144,7 +145,8 @@ struct SizedMetal {
 
 unsafe impl Send for SizedMetal {}
 
-static SIZED: Mutex<Option<SizedMetal>> = Mutex::new(None);
+/// The last [`crate::device::CACHE_SLOTS`] per-size states, least recent first.
+static SIZED: Mutex<Vec<SizedMetal>> = Mutex::new(Vec::new());
 
 fn ensure_ctx() -> Result<()> {
   let ordinal = crate::device::selected_device();
@@ -154,7 +156,7 @@ fn ensure_ctx() -> Result<()> {
   }
   // A new device invalidates the per-size buffers of the old one.
   *g = None;
-  *SIZED.lock() = None;
+  SIZED.lock().clear();
   let device = crate::euler::metal::selected_metal_device()?;
   let queue = device.new_command_queue();
   let lib = device
@@ -193,14 +195,14 @@ fn build_bit_reverse_table(n: usize) -> Vec<u32> {
     .collect()
 }
 
-fn sample_f32<T: FloatExt, S: SeedExt>(
+fn sample_f32<T: FloatExt>(
   sqrt_eigs: &[f32],
   n: usize,
   m: usize,
   offset: usize,
   hurst: f64,
   t: f64,
-  seed_src: &S,
+  seed: u32,
 ) -> Result<Array2<T>> {
   let traj_size = 2 * n;
   let out_size = n - offset;
@@ -209,8 +211,9 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
   let log_n = traj_size.trailing_zeros() as usize;
 
   ensure_ctx()?;
-  let g = CTX.lock();
-  let ctx = g.as_ref().unwrap();
+  // Clone the handles out of the global lock so another size can encode
+  // concurrently; the per-size state below keeps its own lock for its buffers.
+  let ctx = CTX.lock().as_ref().unwrap().clone();
   let dev = &ctx.device;
   let shared = MTLResourceOptions::StorageModeShared;
   let hb = hurst.to_bits();
@@ -219,41 +222,38 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
   // Allocate trajectory buffers + upload the eigenvalue / bit-reverse tables
   // once per configuration; reuse across same-size calls.
   let mut sized = SIZED.lock();
-  let need = match &*sized {
-    Some(s) => s.n != n || s.m != m || s.offset != offset || s.hurst_bits != hb || s.t_bits != tb,
-    None => true,
-  };
-  if need {
-    let real_buf = dev.new_buffer((total * 4) as u64, shared);
-    let imag_buf = dev.new_buffer((total * 4) as u64, shared);
-    let out_buf = dev.new_buffer((m * out_size * 4) as u64, shared);
-    let eig_buf = dev.new_buffer_with_data(
-      sqrt_eigs.as_ptr() as *const _,
-      (sqrt_eigs.len() * 4) as u64,
-      shared,
-    );
-    let bit_rev = build_bit_reverse_table(traj_size);
-    let rev_buf = dev.new_buffer_with_data(
-      bit_rev.as_ptr() as *const _,
-      (bit_rev.len() * 4) as u64,
-      shared,
-    );
-    *sized = Some(SizedMetal {
-      real_buf,
-      imag_buf,
-      out_buf,
-      eig_buf,
-      rev_buf,
-      n,
-      m,
-      offset,
-      hurst_bits: hb,
-      t_bits: tb,
-    });
-  }
-  let s = sized.as_ref().unwrap();
-
-  let seed: u32 = rand::Rng::random(&mut seed_src.rng());
+  let s = crate::device::lru_slot(
+    &mut sized,
+    |s| s.n == n && s.m == m && s.offset == offset && s.hurst_bits == hb && s.t_bits == tb,
+    || {
+      let real_buf = dev.new_buffer((total * 4) as u64, shared);
+      let imag_buf = dev.new_buffer((total * 4) as u64, shared);
+      let out_buf = dev.new_buffer((m * out_size * 4) as u64, shared);
+      let eig_buf = dev.new_buffer_with_data(
+        sqrt_eigs.as_ptr() as *const _,
+        (sqrt_eigs.len() * 4) as u64,
+        shared,
+      );
+      let bit_rev = build_bit_reverse_table(traj_size);
+      let rev_buf = dev.new_buffer_with_data(
+        bit_rev.as_ptr() as *const _,
+        (bit_rev.len() * 4) as u64,
+        shared,
+      );
+      Ok(SizedMetal {
+        real_buf,
+        imag_buf,
+        out_buf,
+        eig_buf,
+        rev_buf,
+        n,
+        m,
+        offset,
+        hurst_bits: hb,
+        t_bits: tb,
+      })
+    },
+  )?;
 
   // Single command buffer for the entire pipeline
   let cmd = ctx.queue.new_command_buffer();
@@ -329,9 +329,15 @@ fn arr2_f32<T: FloatExt>(data: &[f32], m: usize, cols: usize) -> Array2<T> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
+  /// `m` paths on the selected Metal device, in chunks that fit the batch
+  /// budget: one seed for the whole batch, offset per chunk by the elements
+  /// already produced (the kernel hashes `tid * 4 + seed`), so the result is
+  /// the same whatever the budget.
   pub(crate) fn sample_metal_impl(&self, m: usize) -> Result<Array2<T>> {
     let n = self.n;
     let offset = self.offset;
+    let out_size = n - offset;
+    let traj_size = 2 * n;
     let hurst = self.hurst.to_f64().unwrap();
     let t = self.t.unwrap_or(T::one()).to_f64().unwrap();
     let eigs: Vec<f32> = self
@@ -339,6 +345,42 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
       .iter()
       .map(|x| x.to_f32().unwrap())
       .collect();
-    sample_f32::<T, S>(&eigs, n, m, offset, hurst, t, &self.seed)
+    let seed: u32 = rand::Rng::random(&mut self.seed.rng());
+    let rows = crate::device::chunk_rows(4 * n + out_size, 4);
+    let mut out = Array2::<T>::zeros((m, out_size));
+    let mut first = 0;
+    while first < m {
+      let len = rows.min(m - first);
+      let chunk_seed = seed.wrapping_add((first * traj_size * 4) as u32);
+      let chunk = sample_f32::<T>(&eigs, n, len, offset, hurst, t, chunk_seed)?;
+      out
+        .slice_mut(ndarray::s![first..first + len, ..])
+        .assign(&chunk);
+      first += len;
+    }
+    Ok(out)
+  }
+}
+
+#[cfg(test)]
+mod chunk_tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+  use crate::device::MetalNative;
+  use crate::traits::ProcessExt;
+
+  /// A batch produced in chunks equals one launch, path for path: one seed per
+  /// batch and an element offset per chunk.
+  #[test]
+  fn chunks_are_bit_identical_to_one_launch() {
+    let fgn = || Fgn::<f32, _>::new(0.7, 512, Some(1.0), Deterministic::new(5)).on::<MetalNative>();
+    let whole = fgn().sample_par(9);
+    // Two paths per chunk: five launches for nine paths.
+    crate::device::set_batch_budget_bytes((4 * 512 + 512) * 4 * 2);
+    let chunked = fgn().sample_par(9);
+    crate::device::set_batch_budget_bytes(crate::device::DEFAULT_BATCH_BUDGET_BYTES);
+    assert_eq!(whole, chunked);
+    assert_ne!(whole[0], whole[1]);
   }
 }

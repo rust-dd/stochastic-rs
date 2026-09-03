@@ -36,6 +36,7 @@ fn euler_paths_kernel<F: Float + CubeElement>(
   seed: u32,
   steps: u32,
   paths: u32,
+  first_path: u32,
 ) {
   let path = ABSOLUTE_POS as u32;
   if path < paths {
@@ -48,7 +49,7 @@ fn euler_paths_kernel<F: Float + CubeElement>(
     out[base] = reported;
     for i in 1..steps {
       // Two decorrelated uniforms via integer hashing (Murmur3-style finalizer).
-      let g = path * steps + i;
+      let g = (first_path + path) * steps + i;
       let mut a = (g * 2u32) ^ (seed * 2654435761u32);
       a ^= a >> 16;
       a *= 2246822519u32;
@@ -161,9 +162,11 @@ fn count_2d(cubes: u32) -> CubeCount {
 impl EulerBackend<f32> for CubeCl {
   const DEVICE: bool = true;
 
-  fn try_euler_paths<P: EulerCoefficients<f32>>(
+  fn try_euler_paths_seeded<P: EulerCoefficients<f32>>(
     process: &P,
+    first: usize,
     m: usize,
+    seed: u64,
   ) -> DeviceResult<Vec<Array1<f32>>> {
     Ok(
       device_paths(
@@ -171,8 +174,9 @@ impl EulerBackend<f32> for CubeCl {
         process.initial_value(),
         process.grid_points(),
         process.horizon(),
+        first,
         m,
-        process.device_seed(),
+        seed,
       )?
       .outer_iter()
       .map(|row| row.to_owned())
@@ -187,6 +191,7 @@ fn device_paths(
   x0: f32,
   n: usize,
   t: f32,
+  first: usize,
   m: usize,
   seed: u64,
 ) -> DeviceResult<Array2<f32>> {
@@ -216,6 +221,7 @@ fn device_paths(
           ScalarArg::new((seed ^ (seed >> 32)) as u32),
           ScalarArg::new(n as u32),
           ScalarArg::new(m as u32),
+          ScalarArg::new(first as u32),
         )
         .map_err(|e| DeviceError::Launch(format!("euler_paths launch: {e:?}")))?;
       }
