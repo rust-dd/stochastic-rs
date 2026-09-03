@@ -321,16 +321,23 @@ mod devices {
     gbm_moments_hold::<f32, crate::device::CudaNative>("CudaNative f32");
     cir_stays_nonnegative::<f64, crate::device::CudaNative>("CudaNative f64");
     cir_stays_nonnegative::<f32, crate::device::CudaNative>("CudaNative f32");
-    // f64 kernel: the double-precision path agrees with the f32 one to float rounding.
-    let single = Gbm::<f32, _>::new(0.05, 0.2, 64, Some(100.0), Some(1.0), Deterministic::new(5))
+    // The f32 and f64 kernels draw the same uniforms (one integer hash) and
+    // differ only by float rounding, so the same process on the same grid
+    // agrees across the two precisions to well under 1e-3 relative.
+    let single = gbm::<f32>(5)
       .on::<crate::device::CudaNative>()
       .sample_par(4);
     let double = gbm::<f64>(5)
       .on::<crate::device::CudaNative>()
       .sample_par(4);
+    assert_eq!(single.len(), double.len());
     for (a, b) in single.iter().zip(&double) {
+      assert_eq!(a.len(), b.len());
       for (x, y) in a.iter().zip(b.iter()) {
-        assert!(((*x as f64) - y).abs() < 1e-3 * y.abs().max(1.0));
+        assert!(
+          ((*x as f64) - y).abs() < 1e-3 * y.abs().max(1.0),
+          "f32 {x} vs f64 {y}"
+        );
       }
     }
   }
