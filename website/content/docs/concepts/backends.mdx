@@ -152,8 +152,10 @@ follow the process's `T` parameter in `f32` and `f64`.
 
 ## When is GPU worth it?
 
-The discrete-GPU win is real but narrow — it shows up for large `n` (≥ 16 k) and
-batched sampling, while for small `n` the CPU SIMD path wins on launch latency.
+The discrete-GPU win shows up for large `n` (≥ 16 k) and batched sampling,
+while for small `n` the CPU SIMD path wins on launch latency; on Apple Silicon
+Metal leads single paths from `n = 16 k` and the GPU back-ends win batches by a
+modest margin since the device state became reusable across calls.
 See the [Benchmarks](/docs/benchmarks) page for the cross-over numbers, and the
 [Feature flags](/docs/concepts/feature-flags) page for how to enable each
 backend.
