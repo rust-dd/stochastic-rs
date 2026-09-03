@@ -146,3 +146,23 @@ def test_euler_paths_device_names_are_honoured_or_reported():
         assert paths.shape == (256, 64)
         assert np.allclose(paths[:, 0], 100.0)
         assert abs(paths[:, -1].mean() / (100.0 * np.exp(0.05)) - 1.0) < 0.05
+
+
+def test_callable_driven_rate_models_sample_par_release_the_gil():
+    import numpy as np
+
+    hw = sr.PyHullWhite(lambda t: 0.02 + 0.01 * t, 0.1, 0.01, 64, x0=0.03, t=1.0, seed=7)
+    paths = hw.sample_par(5)
+    assert paths.shape == (5, 64) and np.isfinite(paths).all()
+    again = sr.PyHullWhite(lambda t: 0.02 + 0.01 * t, 0.1, 0.01, 64, x0=0.03, t=1.0, seed=7).sample_par(5)
+    assert np.array_equal(paths, again)
+    adg = sr.PyAdg(lambda t: 0.5, lambda t: 0.04, [0.02, 0.01], lambda t: 0.0, lambda t: 1.0, lambda t: 0.0, 32, 2, [0.03, 0.02], t=1.0, seed=3)
+    cube = adg.sample_par(4)
+    assert cube.shape == (4, 2, 32) and np.isfinite(cube).all()
+    single = adg.sample()
+    assert single.shape == (2, 32)
+    hjm = sr.PyHjm(lambda t: 0.5, lambda t: 0.04, lambda t, u: 0.01, lambda t, u: 0.02, lambda t, u: 0.01, lambda t, u: 0.01, lambda t, u: 0.02, 32, r0=0.03, p0=1.0, f0=0.03, t=1.0, seed=5)
+    r, p, f = hjm.sample_par(3)
+    assert r.shape == p.shape == f.shape == (3, 32)
+    assert np.isfinite(r).all() and np.isfinite(p).all() and np.isfinite(f).all()
+

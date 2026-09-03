@@ -314,6 +314,45 @@ impl PyHjm {
       )
     })
   }
+
+  /// `m` independent paths as three `(m, n)` arrays — short rate, bond
+  /// price and forward rate. The GIL is released while the paths are
+  /// generated; the Python callables re-acquire it per evaluation.
+  fn sample_par<'py>(
+    &self,
+    py: pyo3::Python<'py>,
+    m: usize,
+  ) -> (
+    pyo3::Py<pyo3::PyAny>,
+    pyo3::Py<pyo3::PyAny>,
+    pyo3::Py<pyo3::PyAny>,
+  ) {
+    use ndarray::Array2;
+    use numpy::IntoPyArray;
+    use pyo3::IntoPyObjectExt;
+
+    use crate::traits::ProcessExt;
+    py_dispatch_f64!(self, |inner| {
+      let paths = py.detach(|| inner.sample_par(m));
+      let n = paths.first().map_or(0, |p| p[0].len());
+      let mut stacked = [
+        Array2::zeros((m, n)),
+        Array2::zeros((m, n)),
+        Array2::zeros((m, n)),
+      ];
+      for (i, [r, p, f]) in paths.iter().enumerate() {
+        stacked[0].row_mut(i).assign(r);
+        stacked[1].row_mut(i).assign(p);
+        stacked[2].row_mut(i).assign(f);
+      }
+      let [r, p, f] = stacked;
+      (
+        r.into_pyarray(py).into_py_any(py).unwrap(),
+        p.into_pyarray(py).into_py_any(py).unwrap(),
+        f.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    })
+  }
 }
 
 #[cfg(test)]

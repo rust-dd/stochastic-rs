@@ -284,6 +284,27 @@ impl PyHullWhite {
       .into_py_any(py)
       .unwrap())
   }
+
+  /// `m` independent paths stacked into an `(m, n)` array. The GIL is
+  /// released while the paths are generated; every `theta(t)` evaluation
+  /// re-acquires it, so the Python callable is called from rayon workers
+  /// one at a time.
+  fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
+    use ndarray::Array2;
+    use numpy::IntoPyArray;
+    use pyo3::IntoPyObjectExt;
+
+    use crate::traits::ProcessExt;
+    py_dispatch_f64!(self, |inner| {
+      let paths = py.detach(|| inner.sample_par(m));
+      let n = paths.first().map_or(0, |p| p.len());
+      let mut result = Array2::zeros((m, n));
+      for (i, path) in paths.iter().enumerate() {
+        result.row_mut(i).assign(path);
+      }
+      result.into_pyarray(py).into_py_any(py).unwrap()
+    })
+  }
 }
 
 #[cfg(test)]
