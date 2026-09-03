@@ -28,6 +28,7 @@ mod pricing_digital;
 mod pricing_fourier;
 mod pricing_path_dep;
 mod risk;
+mod survival;
 mod vol_surface;
 mod xva;
 
@@ -118,6 +119,7 @@ pub use pricing_path_dep::PyVarianceSwapPricer;
 pub use risk::PyDrawdownStats;
 pub use risk::PyExpectedShortfall;
 pub use risk::PyVaR;
+pub use survival::PySurvivalCurve;
 pub use vol_surface::PyEssviSurface;
 pub use vol_surface::PyImpliedVolSurface;
 pub use vol_surface::PySsviCalibrator;

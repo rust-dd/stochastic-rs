@@ -403,11 +403,13 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_quant::python::PySabrCapletCalibrator;
   use stochastic_rs_quant::python::PySchedule;
   use stochastic_rs_quant::python::PyScheduleBuilder;
+  use stochastic_rs_quant::python::PySurvivalCurve;
   use stochastic_rs_quant::python::PyZeroCouponInflationCurve;
   m.add_class::<PyAlmgrenChrissPlan>()?;
   m.add_class::<PyKyleEquilibrium>()?;
   m.add_class::<PyOrderBook>()?;
   m.add_class::<PyDiscountCurve>()?;
+  m.add_class::<PySurvivalCurve>()?;
   m.add_class::<PyMultiCurve>()?;
   m.add_class::<PyCdsIndex>()?;
   m.add_class::<PyCdoTranche>()?;

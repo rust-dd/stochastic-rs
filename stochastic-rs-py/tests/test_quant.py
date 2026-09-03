@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 import stochastic_rs as sr
 
 
@@ -188,3 +190,36 @@ def test_cds_index_and_cdo_tranche():
     assert equity.valuation(curve)[3] > senior.valuation(curve)[3] > 0.0
     dist = equity.loss_distribution(5.0)
     assert abs(sum(dist) - 1.0) < 1e-9 and dist[0] > 0.0
+
+
+def test_survival_curve_is_accepted_wherever_a_flat_hazard_is():
+    import numpy as np
+
+    flat = sr.SurvivalCurve.flat(0.02)
+    assert abs(flat.survival_probability(5.0) - math.exp(-0.1)) < 1e-12
+    assert abs(flat.average_hazard(7.0) - 0.02) < 1e-12
+    curve = sr.SurvivalCurve([1.0, 3.0, 5.0], [0.01, 0.02, 0.03])
+    assert abs(curve.survival_probability(1.0) - math.exp(-0.01)) < 1e-12
+    assert abs(curve.survival_probability(3.0) - math.exp(-0.01 - 0.04)) < 1e-12
+    assert abs(curve.forward_hazard(3.0, 5.0) - 0.03) < 1e-12
+    assert len(curve) == 4 and curve.times() == [0.0, 1.0, 3.0, 5.0] and curve.pillars()[0] == 1.0
+    assert curve.survival_probabilities([1.0, 3.0]) == [curve.survival_probability(1.0), curve.survival_probability(3.0)]
+    via_probs = sr.SurvivalCurve.from_survival_probs(curve.times(), curve.pillars())
+    assert abs(via_probs.default_probability(4.0) - curve.default_probability(4.0)) < 1e-12
+    discount = sr.DiscountCurve.from_zero_rates(np.array([0.5, 1.0, 5.0, 10.0]), np.full(4, 0.03), interp="log_df")
+    rng = np.random.default_rng(1)
+    mtm = 10.0 * np.cumsum(rng.standard_normal((5000, 4)) * np.sqrt(0.5), axis=1)
+    profile = sr.ExposureProfile.from_mtm(mtm, [0.5, 1.0, 1.5, 2.0], quantile=0.95)
+    assert profile.cva(flat, discount, 0.6) == profile.cva(0.02, discount, 0.6)
+    assert profile.bilateral_cva(curve, 0.01, discount, 0.6) > 0.0
+    names = [(1 / 10, 0.4, 0.02)] * 5 + [(1 / 10, 0.4, flat)] * 5
+    index = sr.CdsIndex(names, 0.01, 1e7, "2026-03-20", "2031-06-20")
+    same = sr.CdsIndex([(1 / 10, 0.4, 0.02)] * 10, 0.01, 1e7, "2026-03-20", "2031-06-20")
+    assert index.fair_spread("2026-03-20", discount) == same.fair_spread("2026-03-20", discount)
+    tranche = sr.CdoTranche([(0.5, 0.4, curve), (0.5, 0.4, 0.02)], 0.0, 0.03, 0.05, [1.0, 2.0, 3.0], 0.3)
+    assert tranche.valuation(discount)[3] > 0.0
+    with pytest.raises(ValueError):
+        sr.SurvivalCurve([1.0, 0.5], [0.01, 0.02])
+    with pytest.raises(ValueError):
+        profile.cva("0.02", discount, 0.6)
+

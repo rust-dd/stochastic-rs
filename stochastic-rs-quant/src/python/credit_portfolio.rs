@@ -3,9 +3,9 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use super::curves::PyDiscountCurve;
+use super::survival::survival_input;
 use crate::credit::index::CdsIndex;
 use crate::credit::index::IndexName;
-use crate::credit::index::flat_survival;
 use crate::credit::tranche::CdoTranche;
 use crate::credit::tranche::PoolName;
 
@@ -14,7 +14,8 @@ fn parse_date(s: &str) -> PyResult<NaiveDate> {
     .map_err(|e| PyValueError::new_err(format!("date '{s}' must be YYYY-MM-DD: {e}")))
 }
 
-/// Untranched CDS index of flat-hazard names on a running coupon.
+/// Untranched CDS index on a running coupon; each name carries a flat hazard
+/// rate or a `SurvivalCurve`.
 #[pyclass(name = "CdsIndex", unsendable)]
 pub struct PyCdsIndex {
   inner: CdsIndex,
@@ -22,12 +23,12 @@ pub struct PyCdsIndex {
 
 #[pymethods]
 impl PyCdsIndex {
-  /// `names` are `(weight, recovery, hazard_rate)` triplets (weights sum to
-  /// one); dates are `YYYY-MM-DD`.
+  /// `names` are `(weight, recovery, hazard)` triplets — `hazard` a flat rate
+  /// or a `SurvivalCurve` — with weights summing to one; dates are `YYYY-MM-DD`.
   #[new]
   #[pyo3(signature = (names, coupon, notional, effective_date, maturity_date))]
   fn new(
-    names: Vec<(f64, f64, f64)>,
+    names: Vec<(f64, f64, Bound<'_, PyAny>)>,
     coupon: f64,
     notional: f64,
     effective_date: &str,
@@ -35,12 +36,14 @@ impl PyCdsIndex {
   ) -> PyResult<Self> {
     let names = names
       .into_iter()
-      .map(|(weight, recovery, hazard)| IndexName {
-        weight,
-        recovery,
-        survival: flat_survival(hazard),
+      .map(|(weight, recovery, hazard)| {
+        Ok(IndexName {
+          weight,
+          recovery,
+          survival: survival_input(&hazard)?,
+        })
       })
-      .collect();
+      .collect::<PyResult<Vec<_>>>()?;
     Ok(Self {
       inner: CdsIndex::new(
         names,
@@ -96,8 +99,8 @@ impl PyCdsIndex {
   }
 }
 
-/// Synthetic CDO tranche on a pool of flat-hazard names under the one-factor
-/// Gaussian copula.
+/// Synthetic CDO tranche under the one-factor Gaussian copula; each pool
+/// name carries a flat hazard rate or a `SurvivalCurve`.
 #[pyclass(name = "CdoTranche", unsendable)]
 pub struct PyCdoTranche {
   inner: CdoTranche,
@@ -106,12 +109,13 @@ pub struct PyCdoTranche {
 
 #[pymethods]
 impl PyCdoTranche {
-  /// `pool` entries are `(weight, recovery, hazard_rate)`; `payment_times` in years.
+  /// `pool` entries are `(weight, recovery, hazard)` — `hazard` a flat rate or
+  /// a `SurvivalCurve`; `payment_times` in years.
   #[new]
   #[pyo3(signature = (pool, attachment, detachment, spread, payment_times, correlation, accrual=1.0, quadrature_nodes=40, loss_buckets=400))]
   #[allow(clippy::too_many_arguments)]
   fn new(
-    pool: Vec<(f64, f64, f64)>,
+    pool: Vec<(f64, f64, Bound<'_, PyAny>)>,
     attachment: f64,
     detachment: f64,
     spread: f64,
@@ -120,16 +124,18 @@ impl PyCdoTranche {
     accrual: f64,
     quadrature_nodes: usize,
     loss_buckets: usize,
-  ) -> Self {
+  ) -> PyResult<Self> {
     let pool = pool
       .into_iter()
-      .map(|(weight, recovery, hazard)| PoolName {
-        weight,
-        recovery,
-        survival: flat_survival(hazard),
+      .map(|(weight, recovery, hazard)| {
+        Ok(PoolName {
+          weight,
+          recovery,
+          survival: survival_input(&hazard)?,
+        })
       })
-      .collect();
-    Self {
+      .collect::<PyResult<Vec<_>>>()?;
+    Ok(Self {
       inner: CdoTranche::new(
         attachment,
         detachment,
@@ -140,7 +146,7 @@ impl PyCdoTranche {
       )
       .with_resolution(quadrature_nodes, loss_buckets),
       pool,
-    }
+    })
   }
 
   /// Expected tranche loss at `t` per unit of pool notional.

@@ -1,27 +1,12 @@
-use ndarray::Array1;
-use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use super::curves::PyDiscountCurve;
-use crate::credit::survival_curve::HazardInterpolation;
-use crate::credit::survival_curve::SurvivalCurve;
+use super::survival::survival_input;
 use crate::risk::xva;
 
-fn flat_survival(hazard_rate: f64) -> PyResult<SurvivalCurve<f64>> {
-  if !(hazard_rate.is_finite() && hazard_rate >= 0.0) {
-    return Err(PyValueError::new_err(
-      "hazard_rate must be finite and non-negative",
-    ));
-  }
-  Ok(SurvivalCurve::from_hazard_rates(
-    &Array1::from_vec(vec![1.0, 5.0, 10.0, 30.0]),
-    &Array1::from_vec(vec![hazard_rate; 4]),
-    HazardInterpolation::PiecewiseConstantHazard,
-  ))
-}
-
 /// Exposure profile (EPE / ENE / PFE on a date grid) with the valuation
-/// adjustments integrated against a discount curve and flat hazard rates.
+/// adjustments integrated against a discount curve; every `hazard_rate`
+/// argument takes a flat rate or a `SurvivalCurve`.
 #[pyclass(name = "ExposureProfile", unsendable)]
 pub struct PyExposureProfile {
   inner: xva::ExposureProfile,
@@ -62,21 +47,31 @@ impl PyExposureProfile {
     self.inner.average_epe()
   }
 
-  /// Unilateral CVA with a flat counterparty hazard rate.
-  fn cva(&self, hazard_rate: f64, discount: &PyDiscountCurve, lgd: f64) -> PyResult<f64> {
+  /// Unilateral CVA against the counterparty's survival (flat rate or curve).
+  fn cva(
+    &self,
+    hazard_rate: &Bound<'_, PyAny>,
+    discount: &PyDiscountCurve,
+    lgd: f64,
+  ) -> PyResult<f64> {
     Ok(xva::cva(
       &self.inner,
-      &flat_survival(hazard_rate)?,
+      &survival_input(hazard_rate)?,
       &discount.inner,
       lgd,
     ))
   }
 
-  /// Unilateral DVA with a flat own hazard rate.
-  fn dva(&self, own_hazard_rate: f64, discount: &PyDiscountCurve, lgd_own: f64) -> PyResult<f64> {
+  /// Unilateral DVA against the bank's own survival (flat rate or curve).
+  fn dva(
+    &self,
+    own_hazard_rate: &Bound<'_, PyAny>,
+    discount: &PyDiscountCurve,
+    lgd_own: f64,
+  ) -> PyResult<f64> {
     Ok(xva::dva(
       &self.inner,
-      &flat_survival(own_hazard_rate)?,
+      &survival_input(own_hazard_rate)?,
       &discount.inner,
       lgd_own,
     ))
@@ -85,15 +80,15 @@ impl PyExposureProfile {
   /// Bilateral CVA: counterparty default weighted by the bank's survival.
   fn bilateral_cva(
     &self,
-    hazard_rate: f64,
-    own_hazard_rate: f64,
+    hazard_rate: &Bound<'_, PyAny>,
+    own_hazard_rate: &Bound<'_, PyAny>,
     discount: &PyDiscountCurve,
     lgd: f64,
   ) -> PyResult<f64> {
     Ok(xva::bilateral_cva(
       &self.inner,
-      &flat_survival(hazard_rate)?,
-      &flat_survival(own_hazard_rate)?,
+      &survival_input(hazard_rate)?,
+      &survival_input(own_hazard_rate)?,
       &discount.inner,
       lgd,
     ))
