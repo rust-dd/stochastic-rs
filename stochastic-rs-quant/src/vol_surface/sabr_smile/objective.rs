@@ -91,6 +91,11 @@ impl CostFunction for SabrSmileProblem {
 
     let f = forward_fx(self.s, self.tau, self.r_d, self.r_f);
     let alpha = alpha_from_atm_vol(self.sigma_atm, f, self.tau, self.beta, rho, nu);
+    if !(alpha.is_finite() && alpha > 0.0) {
+      // Outside the Hagan formula's domain: an infeasible point of the search,
+      // scored as such rather than letting the formula's contract panic.
+      return Ok(f64::MAX);
+    }
 
     let term_rr =
       (rr_sigma(k_rr_c, k_rr_p, f, self.tau, alpha, self.beta, nu, rho) - self.sigma_rr).powi(2);

@@ -221,6 +221,13 @@ impl SabrCalibrator {
     option_type: OptionType,
     record_history: bool,
   ) -> Self {
+    assert!(
+      s.len() == k.len() && k.len() == c_market.len(),
+      "s, k and c_market must have equal length, got s.len() = {}, k.len() = {}, c_market.len() = {}",
+      s.len(),
+      k.len(),
+      c_market.len()
+    );
     Self {
       params,
       c_market,

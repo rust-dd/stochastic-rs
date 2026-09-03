@@ -119,13 +119,13 @@ impl<T: RealExt> SabrVolatility<T> {
 impl<T: RealExt> VolatilityModel<T> for SabrVolatility<T> {
   fn implied_volatility(&self, forward: T, strike: T, tau: T) -> T {
     let sigma = hagan_implied_vol(
-      strike.to_f64().unwrap_or(0.0),
-      forward.to_f64().unwrap_or(0.0),
-      tau.to_f64().unwrap_or(0.0),
-      self.alpha.to_f64().unwrap_or(0.0),
-      self.beta.to_f64().unwrap_or(0.0),
-      self.nu.to_f64().unwrap_or(0.0),
-      self.rho.to_f64().unwrap_or(0.0),
+      strike.to_f64().unwrap_or(f64::NAN),
+      forward.to_f64().unwrap_or(f64::NAN),
+      tau.to_f64().unwrap_or(f64::NAN),
+      self.alpha.to_f64().unwrap_or(f64::NAN),
+      self.beta.to_f64().unwrap_or(f64::NAN),
+      self.nu.to_f64().unwrap_or(f64::NAN),
+      self.rho.to_f64().unwrap_or(f64::NAN),
     );
     T::from_f64_fast(sigma)
   }
@@ -175,13 +175,13 @@ impl<T: RealExt> ShiftedSabrVolatility<T> {
 impl<T: RealExt> VolatilityModel<T> for ShiftedSabrVolatility<T> {
   fn implied_volatility(&self, forward: T, strike: T, tau: T) -> T {
     let sigma = hagan_implied_vol(
-      (strike + self.shift).to_f64().unwrap_or(0.0),
-      (forward + self.shift).to_f64().unwrap_or(0.0),
-      tau.to_f64().unwrap_or(0.0),
-      self.alpha.to_f64().unwrap_or(0.0),
-      self.beta.to_f64().unwrap_or(0.0),
-      self.nu.to_f64().unwrap_or(0.0),
-      self.rho.to_f64().unwrap_or(0.0),
+      (strike + self.shift).to_f64().unwrap_or(f64::NAN),
+      (forward + self.shift).to_f64().unwrap_or(f64::NAN),
+      tau.to_f64().unwrap_or(f64::NAN),
+      self.alpha.to_f64().unwrap_or(f64::NAN),
+      self.beta.to_f64().unwrap_or(f64::NAN),
+      self.nu.to_f64().unwrap_or(f64::NAN),
+      self.rho.to_f64().unwrap_or(f64::NAN),
     );
     T::from_f64_fast(sigma)
   }

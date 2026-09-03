@@ -34,7 +34,7 @@ use crate::pricing::sabr::hagan_implied_vol;
 /// to open it deliberately, matching the convention the `examples/` plots use.
 #[cfg(feature = "viz")]
 fn write_plot(plot: &Plot, name: &str) {
-  let path = std::path::Path::new("target").join(name);
+  let path = std::env::temp_dir().join("stochastic-rs").join(name);
   if let Some(dir) = path.parent() {
     let _ = std::fs::create_dir_all(dir);
   }

@@ -242,7 +242,7 @@ impl SabrCapletCalibrator {
     let shift = self.shift;
     let forward = self.forward;
     let shifted_forward = self.shifted_forward();
-    if shifted_forward <= 0.0 {
+    if !shifted_forward.is_finite() || shifted_forward <= 0.0 {
       anyhow::bail!(
         "SabrCapletCalibrator: shift {shift} does not make forward {forward} positive \
          (forward + shift = {shifted_forward} <= 0); use a larger shift"
@@ -250,7 +250,7 @@ impl SabrCapletCalibrator {
     }
     for (i, &k) in self.strikes.iter().enumerate() {
       let shifted_k = k + shift;
-      if shifted_k <= 0.0 {
+      if !shifted_k.is_finite() || shifted_k <= 0.0 {
         anyhow::bail!(
           "SabrCapletCalibrator: shift {shift} does not make strike[{i}] {k} positive \
            (strike + shift = {shifted_k} <= 0); use a larger shift"
