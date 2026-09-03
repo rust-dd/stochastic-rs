@@ -307,7 +307,10 @@ impl<T: FloatExt, S: SeedExt> LmmSampler<T, S> {
 
     let t_max = self.tenor[m];
     let horizon = self.t.unwrap_or(t_max);
-    assert!(horizon > T::zero() && horizon <= t_max);
+    assert!(
+      horizon > T::zero() && horizon <= t_max,
+      "horizon must satisfy `horizon > T::zero() && horizon <= t_max`, got horizon = {horizon:?}, t_max = {t_max:?}"
+    );
 
     let n_increments = n_steps - 1;
     let dt = horizon / T::from_usize_(n_increments);

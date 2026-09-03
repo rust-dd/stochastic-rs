@@ -50,7 +50,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
   /// RNGs come from a [`SeedExt`](crate::simd_rng::SeedExt) source; each
   /// sub-component (normal, main rng) gets an independent stream.
   pub fn new<S: crate::simd_rng::SeedExt>(alpha: T, scale: T, seed: &S) -> Self {
-    assert!(alpha > T::zero() && scale > T::zero());
+    assert!(
+      alpha > T::zero() && scale > T::zero(),
+      "alpha must satisfy `alpha > T::zero() && scale > T::zero()`, got alpha = {alpha:?}, scale = {scale:?}"
+    );
     let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
     let stream_seed = seed.seed_value();
     Self {

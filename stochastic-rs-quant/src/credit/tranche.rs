@@ -119,7 +119,10 @@ impl CdoTranche {
 
   /// Overrides the quadrature and loss-grid resolutions.
   pub fn with_resolution(mut self, quadrature_nodes: usize, loss_buckets: usize) -> Self {
-    assert!(quadrature_nodes >= 2 && loss_buckets >= 2);
+    assert!(
+      quadrature_nodes >= 2 && loss_buckets >= 2,
+      "quadrature_nodes must satisfy `quadrature_nodes >= 2 && loss_buckets >= 2`, got quadrature_nodes = {quadrature_nodes:?}, loss_buckets = {loss_buckets:?}"
+    );
     self.quadrature_nodes = quadrature_nodes;
     self.loss_buckets = loss_buckets;
     self

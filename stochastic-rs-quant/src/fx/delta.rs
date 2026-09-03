@@ -98,7 +98,10 @@ pub fn strike_from_delta(
   option_type: OptionType,
   convention: FxDeltaConvention,
 ) -> f64 {
-  assert!(sigma > 0.0 && tau > 0.0 && forward > 0.0);
+  assert!(
+    sigma > 0.0 && tau > 0.0 && forward > 0.0,
+    "sigma must satisfy `sigma > 0.0 && tau > 0.0 && forward > 0.0`, got sigma = {sigma:?}, tau = {tau:?}, forward = {forward:?}"
+  );
   let sqrt_t = tau.sqrt();
   let df = (-r_f * tau).exp();
   let sign = match option_type {

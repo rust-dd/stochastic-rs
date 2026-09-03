@@ -34,7 +34,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdPareto<T, R> {
   /// - `alpha` — tail index α > 0 (matches the module header's α);
   ///   controls which moments exist (mean requires α>1, variance α>2).
   pub fn new<S: crate::simd_rng::SeedExt>(x_m: T, alpha: T, seed: &S) -> Self {
-    assert!(x_m > T::zero() && alpha > T::zero());
+    assert!(
+      x_m > T::zero() && alpha > T::zero(),
+      "x_m must satisfy `x_m > T::zero() && alpha > T::zero()`, got x_m = {x_m:?}, alpha = {alpha:?}"
+    );
     let stream_seed = seed.seed_value();
     Self {
       x_m,

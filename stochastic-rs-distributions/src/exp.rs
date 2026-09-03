@@ -137,7 +137,10 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdExpZig<T, N, R> {
   #[inline]
   pub fn new<S: SeedExt>(lambda: T, seed: &S) -> Self {
     let _ = exp_zig_tables();
-    assert!(lambda > T::zero());
+    assert!(
+      lambda > T::zero(),
+      "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
+    );
     assert!(N >= 8, "buffer size must be at least 8");
     let stream_seed = seed.seed_value();
     Self {

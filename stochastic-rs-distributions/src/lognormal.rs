@@ -43,7 +43,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
   /// from (see `SimdBeta::new` for the same reuse pattern). Its own
   /// independent `Cell`, so this fork cursor advances on its own from here.
   pub fn new<S: crate::simd_rng::SeedExt>(mu: T, sigma: T, seed: &S) -> Self {
-    assert!(sigma > T::zero());
+    assert!(
+      sigma > T::zero(),
+      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
+    );
     let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
     let stream_seed = Cell::new(normal.stream_seed.get());
     Self {

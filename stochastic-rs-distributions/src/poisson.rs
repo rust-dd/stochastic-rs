@@ -62,7 +62,10 @@ impl<T: PrimInt, R: SimdRngExt> SimdPoisson<T, R> {
   ///   internal `build_cdf` for why the cumulative table must be built
   ///   in log space once λ ≳ 745.
   pub fn new<S: crate::simd_rng::SeedExt>(lambda: f64, seed: &S) -> Self {
-    assert!(lambda > 0.0);
+    assert!(
+      lambda > 0.0,
+      "lambda must satisfy `lambda > 0.0`, got lambda = {lambda:?}"
+    );
     let stream_seed = seed.seed_value();
     Self {
       lambda,

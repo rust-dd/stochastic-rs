@@ -173,7 +173,10 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdNormal<T, N, R> {
   #[inline]
   pub fn new<S: SeedExt>(mean: T, std_dev: T, seed: &S) -> Self {
     let _ = zig_tables();
-    assert!(std_dev > T::zero());
+    assert!(
+      std_dev > T::zero(),
+      "std_dev must satisfy `std_dev > T::zero()`, got std_dev = {std_dev:?}"
+    );
     assert!(N >= 8, "buffer size must be at least 8");
     let stream_seed = seed.seed_value();
     Self {

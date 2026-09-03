@@ -52,9 +52,18 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdAlphaStable<T, R> {
     location: T,
     seed: &S,
   ) -> Self {
-    assert!(alpha > T::zero() && alpha <= T::from(2.0).unwrap());
-    assert!((-T::one()..=T::one()).contains(&beta));
-    assert!(scale > T::zero());
+    assert!(
+      alpha > T::zero() && alpha <= T::from(2.0).unwrap(),
+      "alpha must satisfy `alpha > T::zero() && alpha <= T::from(2.0).unwrap()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      (-T::one()..=T::one()).contains(&beta),
+      "beta must satisfy `(-T::one()..=T::one()).contains(&beta)`, got beta = {beta:?}"
+    );
+    assert!(
+      scale > T::zero(),
+      "scale must satisfy `scale > T::zero()`, got scale = {scale:?}"
+    );
     let stream_seed = seed.seed_value();
     Self {
       alpha,

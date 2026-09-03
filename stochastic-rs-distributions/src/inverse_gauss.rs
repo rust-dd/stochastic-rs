@@ -37,7 +37,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdInverseGauss<T, R> {
   ///
   /// RNGs come from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   pub fn new<S: crate::simd_rng::SeedExt>(mu: T, lambda: T, seed: &S) -> Self {
-    assert!(mu > T::zero() && lambda > T::zero());
+    assert!(
+      mu > T::zero() && lambda > T::zero(),
+      "mu must satisfy `mu > T::zero() && lambda > T::zero()`, got mu = {mu:?}, lambda = {lambda:?}"
+    );
     let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
     let stream_seed = seed.seed_value();
     Self {

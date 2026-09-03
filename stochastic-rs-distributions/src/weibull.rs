@@ -36,7 +36,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdWeibull<T, R> {
   ///
   /// The RNG is seeded from a [`SeedExt`](crate::simd_rng::SeedExt) source.
   pub fn new<S: crate::simd_rng::SeedExt>(lambda: T, k: T, seed: &S) -> Self {
-    assert!(lambda > T::zero() && k > T::zero());
+    assert!(
+      lambda > T::zero() && k > T::zero(),
+      "lambda must satisfy `lambda > T::zero() && k > T::zero()`, got lambda = {lambda:?}, k = {k:?}"
+    );
     let exp1 = SimdExpZig::new(T::one(), seed);
     // No own engine to seed — reuse exp1's already-captured stream_seed as
     // this sampler's fork anchor (see SimdBeta::new for the same pattern).

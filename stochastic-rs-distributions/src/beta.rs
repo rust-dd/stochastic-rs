@@ -42,7 +42,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
   /// RNGs come from a [`SeedExt`](crate::simd_rng::SeedExt) source; each
   /// sub-component (gamma1, gamma2) gets an independent stream.
   pub fn new<S: crate::simd_rng::SeedExt>(alpha: T, beta: T, seed: &S) -> Self {
-    assert!(alpha > T::zero() && beta > T::zero());
+    assert!(
+      alpha > T::zero() && beta > T::zero(),
+      "alpha must satisfy `alpha > T::zero() && beta > T::zero()`, got alpha = {alpha:?}, beta = {beta:?}"
+    );
     let gamma1 = SimdGamma::<T, R>::new(alpha, T::one(), seed);
     let gamma2 = SimdGamma::<T, R>::new(beta, T::one(), seed);
     // No own engine to seed — reuse gamma1's already-captured stream_seed

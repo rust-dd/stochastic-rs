@@ -319,7 +319,10 @@ impl Dupire {
   /// the second-derivative stencil never fits.
   #[must_use]
   pub fn local_vol_slice(&self, j: usize) -> Vec<f64> {
-    assert!(j < self.ts.len());
+    assert!(
+      j < self.ts.len(),
+      "j must satisfy `j < self.ts.len()`, got j = {j:?}"
+    );
     let row = self.calls.index_axis(Axis(0), j);
     let mut out = vec![f64::NAN; self.ks.len()];
 

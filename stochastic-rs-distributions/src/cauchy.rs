@@ -34,7 +34,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdCauchy<T, R> {
   /// - `gamma` — scale γ > 0 (matches the module header's γ; the
   ///   half-width at half-maximum).
   pub fn new<S: crate::simd_rng::SeedExt>(x0: T, gamma: T, seed: &S) -> Self {
-    assert!(gamma > T::zero());
+    assert!(
+      gamma > T::zero(),
+      "gamma must satisfy `gamma > T::zero()`, got gamma = {gamma:?}"
+    );
     let stream_seed = seed.seed_value();
     Self {
       x0,

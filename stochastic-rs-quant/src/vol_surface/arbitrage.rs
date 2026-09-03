@@ -113,7 +113,11 @@ pub fn check_calendar_spread(
 ///
 /// Returns `(right_slope, left_slope)` estimated from the outermost points.
 pub fn lee_moment_slopes<T: RealExt>(ks: &[T], ws: &[T]) -> (T, T) {
-  assert!(ks.len() >= 2);
+  assert!(
+    ks.len() >= 2,
+    "ks must satisfy `ks.len() >= 2`, got ks.len() = {}",
+    ks.len()
+  );
   let n = ks.len();
   let zero = T::zero();
 

@@ -62,7 +62,10 @@ impl Default for CarrMadanPricer {
 
 impl CarrMadanPricer {
   pub fn new(n: usize, alpha: f64) -> Self {
-    assert!(n.is_power_of_two());
+    assert!(
+      n.is_power_of_two(),
+      "n must satisfy `n.is_power_of_two()`, got n = {n:?}"
+    );
     Self {
       n,
       alpha,

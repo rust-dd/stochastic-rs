@@ -371,7 +371,10 @@ impl ImpliedVolSurface {
   /// Extract a single smile slice (implied vols for one maturity).
   #[must_use]
   pub fn smile_slice(&self, maturity_idx: usize) -> SmileSlice {
-    assert!(maturity_idx < self.maturities.len());
+    assert!(
+      maturity_idx < self.maturities.len(),
+      "maturity_idx must satisfy `maturity_idx < self.maturities.len()`, got maturity_idx = {maturity_idx:?}"
+    );
     let nk = self.strikes.len();
     let mut ks = Vec::with_capacity(nk);
     let mut vols = Vec::with_capacity(nk);

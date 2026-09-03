@@ -64,9 +64,18 @@ impl<T: FloatExt, S: SeedExt> Lfsm<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
-    assert!(alpha > T::zero() && alpha <= T::from(2.0).unwrap());
-    assert!((-T::one()..=T::one()).contains(&beta));
-    assert!(scale > T::zero());
+    assert!(
+      alpha > T::zero() && alpha <= T::from(2.0).unwrap(),
+      "alpha must satisfy `alpha > T::zero() && alpha <= T::from(2.0).unwrap()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      (-T::one()..=T::one()).contains(&beta),
+      "beta must satisfy `(-T::one()..=T::one()).contains(&beta)`, got beta = {beta:?}"
+    );
+    assert!(
+      scale > T::zero(),
+      "scale must satisfy `scale > T::zero()`, got scale = {scale:?}"
+    );
     assert!(
       hurst > T::one() / alpha && hurst < T::one(),
       "Lfsm requires 1/alpha < hurst < 1 for this discretization"

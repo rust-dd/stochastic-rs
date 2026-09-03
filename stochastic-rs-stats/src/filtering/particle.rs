@@ -81,7 +81,10 @@ where
   where
     I: Fn(&mut SimdRng) -> Array1<f64>,
   {
-    assert!(n_particles >= 1);
+    assert!(
+      n_particles >= 1,
+      "n_particles must satisfy `n_particles >= 1`, got n_particles = {n_particles:?}"
+    );
     let mut rng = Deterministic::new(seed).rng();
     let first = init(&mut rng);
     let dim = first.len();

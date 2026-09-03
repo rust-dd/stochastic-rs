@@ -40,7 +40,7 @@ fn mat_inf_norm(a: &Array2<Complex64>) -> f64 {
 
 fn matrix_exp_complex(a: &Array2<Complex64>) -> Array2<Complex64> {
   let n = a.nrows();
-  assert!(n > 0);
+  assert!(n > 0, "n must satisfy `n > 0`, got n = {n:?}");
 
   let norm = mat_inf_norm(a);
 
