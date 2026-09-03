@@ -183,3 +183,29 @@ fn cuda_native_same_seed_same_paths_regardless_of_history() {
     "a different seed must give different device paths"
   );
 }
+
+/// A batch produced in chunks equals one launch, path for path: one seed per
+/// batch and an element offset per chunk, in both precisions.
+#[test]
+fn cuda_native_chunks_are_bit_identical_to_one_launch() {
+  use stochastic_rs_core::simd_rng::Deterministic;
+  let whole64 = Fgn::<f64, _>::new(0.7, 512, Some(1.0), Deterministic::new(5))
+    .sample_cuda_native_impl(9)
+    .expect("whole f64");
+  let whole32 = Fgn::<f32, _>::new(0.7, 512, Some(1.0), Deterministic::new(5))
+    .sample_cuda_native_impl(9)
+    .expect("whole f32");
+  // Two paths per chunk: five launches for nine paths.
+  crate::device::set_batch_budget_bytes((4 * 512 + 512) * 8 * 2);
+  let chunked64 = Fgn::<f64, _>::new(0.7, 512, Some(1.0), Deterministic::new(5))
+    .sample_cuda_native_impl(9)
+    .expect("chunked f64");
+  crate::device::set_batch_budget_bytes((4 * 512 + 512) * 4 * 2);
+  let chunked32 = Fgn::<f32, _>::new(0.7, 512, Some(1.0), Deterministic::new(5))
+    .sample_cuda_native_impl(9)
+    .expect("chunked f32");
+  crate::device::set_batch_budget_bytes(crate::device::DEFAULT_BATCH_BUDGET_BYTES);
+  assert_eq!(whole64, chunked64);
+  assert_eq!(whole32, chunked32);
+  assert_ne!(whole64.row(0), whole64.row(1));
+}

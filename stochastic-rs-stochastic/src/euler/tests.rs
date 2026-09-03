@@ -314,6 +314,32 @@ mod devices {
     cir_stays_nonnegative::<f32, crate::device::MetalNative>("MetalNative");
   }
 
+  /// A batch above the budget runs through the two-stream pipeline; its
+  /// union must equal one launch path for path, in both precisions.
+  #[cfg(feature = "cuda-native")]
+  #[test]
+  fn cuda_native_chunks_are_bit_identical_to_one_launch() {
+    use crate::device::CudaNative;
+    let whole64 = gbm::<f64>(21).on::<CudaNative>().sample_par(10);
+    let whole32 = gbm::<f32>(21).on::<CudaNative>().sample_par(10);
+    let middle = <CudaNative as EulerBackend<f64>>::try_euler_paths_from(
+      &gbm::<f64>(21).on::<CudaNative>(),
+      3,
+      4,
+    )
+    .expect("CUDA");
+    assert_eq!(&whole64[3..7], &middle[..], "paths 3..7 of one launch");
+    // Three paths per chunk: four launches alternating between the two streams.
+    crate::device::set_batch_budget_bytes(253 * 8 * 3);
+    let chunked64 = gbm::<f64>(21).on::<CudaNative>().sample_par(10);
+    let chunked32 = gbm::<f32>(21).on::<CudaNative>().sample_par(10);
+    let mapped: Vec<f64> = gbm::<f64>(21).on::<CudaNative>().sample_map(10, |p| p[252]);
+    crate::device::set_batch_budget_bytes(crate::device::DEFAULT_BATCH_BUDGET_BYTES);
+    assert_eq!(chunked64, whole64);
+    assert_eq!(chunked32, whole32);
+    assert_eq!(mapped, whole64.iter().map(|p| p[252]).collect::<Vec<_>>());
+  }
+
   #[cfg(feature = "cuda-native")]
   #[test]
   fn cuda_native_backend_matches_the_moments() {
