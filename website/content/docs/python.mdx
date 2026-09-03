@@ -103,6 +103,22 @@ run from the worker threads one at a time. `PyAdg.sample_par(m)` returns an
 `(m, factors, n)` array and `PyHjm.sample_par(m)` three `(m, n)` arrays
 (short rate, bond price, forward rate).
 
+## Devices
+
+`probe_device(name)` opens a device (`"cpu"`, `"gpu"`, `"cuda-native"`,
+`"metal"`, `"cubecl"`, `"accelerate"`) and returns a dict with `backend`,
+`name`, `precisions` and `ordinal`; a device this build does not carry raises
+`ValueError` with a rebuild hint, one that is compiled in but cannot be opened
+raises `RuntimeError` with the runtime's own message. `select_device(n)`
+chooses the device ordinal for the whole process (`STOCHASTIC_RS_DEVICE=n` does
+the same from the environment). A device failure during `euler_paths` is a
+`RuntimeError` too.
+
+```python
+srs.probe_device("metal")   # {'backend': 'MetalNative', 'name': 'Apple M2 Max', 'precisions': ['f32'], 'ordinal': 0}
+srs.select_device(1)        # second CUDA GPU from here on
+```
+
 ## Credit curves
 
 `SurvivalCurve` is the term structure of default: build it from hazard

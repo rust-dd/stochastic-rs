@@ -6,13 +6,15 @@
 //! FFT uses shared-memory radix-2 for local stages and radix-4 butterfly
 //! for global stages, minimising kernel dispatch count.
 //!
-use anyhow::Result;
 use cubecl::prelude::*;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 
 use super::Fgn;
+use crate::device::DeviceError;
 use crate::traits::FloatExt;
+
+type DeviceResult<T> = std::result::Result<T, DeviceError>;
 
 const WG_SIZE: usize = 256;
 const BLOCK: usize = WG_SIZE * 2; // 512 elements per shared-memory tile
@@ -309,28 +311,33 @@ mod backend {
 
   static GPU_CTX: Mutex<Option<GpuContext>> = Mutex::new(None);
 
-  fn ensure_ctx(n: usize, m: usize, offset: usize, hb: u64, tb: u64) {
+  fn ensure_ctx(n: usize, m: usize, offset: usize, hb: u64, tb: u64) -> DeviceResult<()> {
     let mut g = GPU_CTX.lock();
     let need = match &*g {
       Some(c) => c.n != n || c.m != m || c.offset != offset || c.hurst_bits != hb || c.t_bits != tb,
       None => true,
     };
     if !need {
-      return;
+      return Ok(());
     }
-
-    #[cfg(feature = "gpu-cuda")]
-    let dev = cubecl_cuda::CudaDevice::default();
-    #[cfg(all(feature = "gpu-wgpu", not(feature = "gpu-cuda")))]
-    let dev = cubecl_wgpu::WgpuDevice::default();
+    // CubeCL panics rather than erroring when no device exists.
+    let client = std::panic::catch_unwind(|| {
+      #[cfg(feature = "gpu-cuda")]
+      let dev = cubecl_cuda::CudaDevice::default();
+      #[cfg(all(feature = "gpu-wgpu", not(feature = "gpu-cuda")))]
+      let dev = cubecl_wgpu::WgpuDevice::default();
+      R::client(&dev)
+    })
+    .map_err(|payload| DeviceError::Unavailable(crate::device::panic_text(payload)))?;
     *g = Some(GpuContext {
-      client: R::client(&dev),
+      client,
       n,
       m,
       offset,
       hurst_bits: hb,
       t_bits: tb,
     });
+    Ok(())
   }
 
   /// Splits a 1D cube count into a 2D grid so no dimension exceeds WebGPU's
@@ -358,7 +365,7 @@ mod backend {
     hurst: f64,
     t: f64,
     seed: &S,
-  ) -> Result<Array2<T>> {
+  ) -> DeviceResult<Array2<T>> {
     let hb = hurst.to_bits();
     let tb = t.to_bits();
     let traj_size = 2 * n;
@@ -367,7 +374,7 @@ mod backend {
     let total = m * traj_size;
     let log_n = traj_size.trailing_zeros() as usize;
 
-    ensure_ctx(n, m, offset, hb, tb);
+    ensure_ctx(n, m, offset, hb, tb)?;
     let guard = GPU_CTX.lock();
     let cl = &guard.as_ref().unwrap().client;
 
@@ -396,7 +403,7 @@ mod backend {
         ScalarArg::new(seed_u & 0xffff),
         traj_size,
       )
-      .map_err(|e| anyhow::anyhow!("gen_scale: {e}"))?;
+      .map_err(|e| DeviceError::Launch(format!("gen_scale: {e}")))?;
     }
 
     // Phase 1: shared-memory local FFT (9 stages per 512-element tile, 1 launch)
@@ -409,7 +416,7 @@ mod backend {
         ArrayArg::from_raw_parts::<f32>(&hr, total, 1),
         ArrayArg::from_raw_parts::<f32>(&hi, total, 1),
       )
-      .map_err(|e| anyhow::anyhow!("fft_local: {e}"))?;
+      .map_err(|e| DeviceError::Launch(format!("fft_local: {e}")))?;
     }
 
     // Phase 2: remaining global stages (LOCAL_STAGES .. log_n)
@@ -426,7 +433,7 @@ mod backend {
           traj_size,
           hs,
         )
-        .map_err(|e| anyhow::anyhow!("fft_butterfly stage {stage}: {e}"))?;
+        .map_err(|e| DeviceError::Launch(format!("fft_butterfly stage {stage}: {e}")))?;
       }
     }
 
@@ -445,7 +452,7 @@ mod backend {
         out_size,
         traj_size,
       )
-      .map_err(|e| anyhow::anyhow!("extract_real: {e}"))?;
+      .map_err(|e| DeviceError::Launch(format!("extract_real: {e}")))?;
     }
 
     let bytes = cl.read_one(oh.clone());
@@ -472,11 +479,13 @@ mod backend {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
-  pub(crate) fn sample_gpu_impl(&self, m: usize) -> Result<Array2<T>> {
+  pub(crate) fn sample_gpu_impl(&self, m: usize) -> DeviceResult<Array2<T>> {
     #[cfg(not(any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
     {
       let _ = m;
-      anyhow::bail!("No GPU backend selected. Enable `gpu-cuda` or `gpu-wgpu` feature.")
+      return Err(DeviceError::Unavailable(
+        "No GPU backend selected. Enable `gpu-cuda` or `gpu-wgpu` feature.".to_string(),
+      ));
     }
 
     #[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]

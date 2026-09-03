@@ -4,7 +4,6 @@
 //! and CUDA kernels. `f32` only — Apple GPUs have no double precision — and
 //! widened on the way back.
 
-use anyhow::Result;
 use metal::*;
 use ndarray::Array1;
 use ndarray::Array2;
@@ -13,7 +12,11 @@ use parking_lot::Mutex;
 use super::EulerBackend;
 use super::EulerCoefficients;
 use super::EulerSpec;
+use crate::device::DeviceError;
+use crate::device::DeviceInfo;
 use crate::device::MetalNative;
+
+type Result<T> = std::result::Result<T, DeviceError>;
 
 const MSL_SOURCE: &str = r#"
 #include <metal_stdlib>
@@ -88,22 +91,35 @@ unsafe impl Send for Context {}
 
 static CONTEXT: Mutex<Option<Context>> = Mutex::new(None);
 
+/// The system's default Metal device, or why it cannot be used.
+pub(crate) fn probe() -> Result<DeviceInfo> {
+  let device = Device::system_default()
+    .ok_or_else(|| DeviceError::Unavailable("no Metal device".to_string()))?;
+  Ok(DeviceInfo::new(
+    "MetalNative",
+    device.name().to_string(),
+    &["f32"],
+    None,
+  ))
+}
+
 fn ensure_context() -> Result<()> {
   let mut guard = CONTEXT.lock();
   if guard.is_some() {
     return Ok(());
   }
-  let device = Device::system_default().ok_or_else(|| anyhow::anyhow!("no Metal device"))?;
+  let device = Device::system_default()
+    .ok_or_else(|| DeviceError::Unavailable("no Metal device".to_string()))?;
   let queue = device.new_command_queue();
   let library = device
     .new_library_with_source(MSL_SOURCE, &CompileOptions::new())
-    .map_err(|e| anyhow::anyhow!("MSL compile: {e}"))?;
+    .map_err(|e| DeviceError::Compile(format!("MSL compile: {e}")))?;
   let function = library
     .get_function("euler_paths", None)
-    .map_err(|e| anyhow::anyhow!("get euler_paths: {e}"))?;
+    .map_err(|e| DeviceError::Launch(format!("get euler_paths: {e}")))?;
   let pipeline = device
     .new_compute_pipeline_state_with_function(&function)
-    .map_err(|e| anyhow::anyhow!("euler_paths PSO: {e}"))?;
+    .map_err(|e| DeviceError::Launch(format!("euler_paths PSO: {e}")))?;
   *guard = Some(Context {
     device,
     queue,
@@ -149,18 +165,20 @@ fn run(params: [f32; 4], args: EulerArgs) -> Result<Vec<f32>> {
 impl EulerBackend<f32> for MetalNative {
   const DEVICE: bool = true;
 
-  fn euler_paths<P: EulerCoefficients<f32>>(process: &P, m: usize) -> Vec<Array1<f32>> {
-    device_paths(
-      process.euler_spec(),
-      process.initial_value(),
-      process.grid_points(),
-      process.horizon(),
-      m,
-      process.device_seed(),
+  fn try_euler_paths<P: EulerCoefficients<f32>>(process: &P, m: usize) -> Result<Vec<Array1<f32>>> {
+    Ok(
+      device_paths(
+        process.euler_spec(),
+        process.initial_value(),
+        process.grid_points(),
+        process.horizon(),
+        m,
+        process.device_seed(),
+      )?
+      .outer_iter()
+      .map(|row| row.to_owned())
+      .collect(),
     )
-    .outer_iter()
-    .map(|row| row.to_owned())
-    .collect()
   }
 }
 
@@ -172,10 +190,10 @@ fn device_paths(
   t: f32,
   m: usize,
   seed: u64,
-) -> Array2<f32> {
+) -> Result<Array2<f32>> {
   {
     if n == 0 || m == 0 {
-      return Array2::<f32>::zeros((m, n));
+      return Ok(Array2::<f32>::zeros((m, n)));
     }
     let (family, params) = spec.encode();
     let dt = (t as f64 / (n.max(2) - 1) as f64) as f32;
@@ -189,7 +207,7 @@ fn device_paths(
       steps: n as u32,
       paths: m as u32,
     };
-    let data = run(params32, args).expect("native Metal Euler engine");
-    Array2::from_shape_vec((m, n), data).expect("the kernel returns m * n values")
+    let data = run(params32, args)?;
+    Ok(Array2::from_shape_vec((m, n), data).expect("the kernel returns m * n values"))
   }
 }

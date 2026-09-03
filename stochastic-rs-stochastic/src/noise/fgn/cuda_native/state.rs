@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::Result;
 use cudarc::cufft;
 use cudarc::driver::*;
 use cudarc::nvrtc;
@@ -10,6 +9,9 @@ use super::kernels::EXTRACT_F32;
 use super::kernels::EXTRACT_F64;
 use super::kernels::GEN_SCALE_F32;
 use super::kernels::GEN_SCALE_F64;
+use crate::device::DeviceError;
+
+type Result<T> = std::result::Result<T, DeviceError>;
 
 pub(super) const CUFFT_FORWARD: i32 = -1;
 
@@ -46,7 +48,7 @@ impl<T> PinnedHost<T> {
   pub(super) fn alloc(len: usize) -> Result<Self> {
     let bytes = len * std::mem::size_of::<T>();
     let ptr = unsafe { cudarc::driver::result::malloc_host(bytes, 0) }
-      .map_err(|e| anyhow::anyhow!("malloc_host: {e}"))? as *mut T;
+      .map_err(|e| DeviceError::Launch(format!("malloc_host: {e}")))? as *mut T;
     Ok(Self { ptr, len })
   }
 }
@@ -66,19 +68,21 @@ pub(super) fn get_or_init_gpu() -> Result<()> {
   if g.is_some() {
     return Ok(());
   }
-  let ctx = CudaContext::new(0).map_err(|e| anyhow::anyhow!("CudaContext: {e}"))?;
+  let ctx =
+    CudaContext::new(0).map_err(|e| DeviceError::Unavailable(format!("CudaContext: {e}")))?;
   let stream = ctx
     .new_stream()
-    .map_err(|e| anyhow::anyhow!("stream: {e}"))?;
+    .map_err(|e| DeviceError::Launch(format!("stream: {e}")))?;
   let c = stream.context();
 
   let load = |src: &str, name: &str| -> Result<CudaFunction> {
-    let ptx = nvrtc::compile_ptx(src).map_err(|e| anyhow::anyhow!("NVRTC {name}: {e}"))?;
+    let ptx =
+      nvrtc::compile_ptx(src).map_err(|e| DeviceError::Compile(format!("NVRTC {name}: {e}")))?;
     let m = c
       .load_module(ptx)
-      .map_err(|e| anyhow::anyhow!("load {name}: {e}"))?;
+      .map_err(|e| DeviceError::Launch(format!("load {name}: {e}")))?;
     m.load_function(name)
-      .map_err(|e| anyhow::anyhow!("fn {name}: {e}"))
+      .map_err(|e| DeviceError::Launch(format!("fn {name}: {e}")))
   };
 
   *g = Some(GpuKernels {

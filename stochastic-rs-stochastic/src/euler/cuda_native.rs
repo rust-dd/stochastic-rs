@@ -7,7 +7,6 @@
 use std::any::TypeId;
 use std::sync::Arc;
 
-use anyhow::Result;
 use cudarc::driver::*;
 use cudarc::nvrtc;
 use ndarray::Array1;
@@ -18,7 +17,11 @@ use super::EulerBackend;
 use super::EulerCoefficients;
 use super::EulerSpec;
 use crate::device::CudaNative;
+use crate::device::DeviceError;
+use crate::device::DeviceInfo;
 use crate::traits::FloatExt;
+
+type Result<T> = std::result::Result<T, DeviceError>;
 
 /// The kernel body shared by both precisions; `REAL` is substituted at
 /// compile time.
@@ -84,26 +87,43 @@ unsafe impl Send for Kernels {}
 
 static KERNELS: Mutex<Option<Kernels>> = Mutex::new(None);
 
+/// The device behind ordinal 0, or why it cannot be used.
+pub(crate) fn probe() -> Result<DeviceInfo> {
+  let ctx =
+    CudaContext::new(0).map_err(|e| DeviceError::Unavailable(format!("CudaContext: {e}")))?;
+  let name = ctx
+    .name()
+    .map_err(|e| DeviceError::Unavailable(format!("device name: {e}")))?;
+  Ok(DeviceInfo::new(
+    "CudaNative",
+    name,
+    &["f32", "f64"],
+    Some(0),
+  ))
+}
+
 fn ensure_kernels() -> Result<()> {
   let mut guard = KERNELS.lock();
   if guard.is_some() {
     return Ok(());
   }
-  let ctx = CudaContext::new(0).map_err(|e| anyhow::anyhow!("CudaContext: {e}"))?;
+  let ctx =
+    CudaContext::new(0).map_err(|e| DeviceError::Unavailable(format!("CudaContext: {e}")))?;
   let stream = ctx
     .new_stream()
-    .map_err(|e| anyhow::anyhow!("stream: {e}"))?;
+    .map_err(|e| DeviceError::Launch(format!("stream: {e}")))?;
   let context = stream.context();
   let load = |real: &str| -> Result<CudaFunction> {
     let src = kernel_source(real);
     let name = format!("euler_paths_{real}");
-    let ptx = nvrtc::compile_ptx(src).map_err(|e| anyhow::anyhow!("NVRTC {name}: {e}"))?;
+    let ptx =
+      nvrtc::compile_ptx(src).map_err(|e| DeviceError::Compile(format!("NVRTC {name}: {e}")))?;
     let module = context
       .load_module(ptx)
-      .map_err(|e| anyhow::anyhow!("load {name}: {e}"))?;
+      .map_err(|e| DeviceError::Launch(format!("load {name}: {e}")))?;
     module
       .load_function(&name)
-      .map_err(|e| anyhow::anyhow!("fn {name}: {e}"))
+      .map_err(|e| DeviceError::Launch(format!("fn {name}: {e}")))
   };
   *guard = Some(Kernels {
     f32: load("float")?,
@@ -133,10 +153,10 @@ where
   let stream = &kernels.stream;
   let d_params = stream
     .clone_htod(&params[..])
-    .map_err(|e| anyhow::anyhow!("htod params: {e}"))?;
+    .map_err(|e| DeviceError::Launch(format!("htod params: {e}")))?;
   let mut d_out = stream
     .alloc_zeros::<R>(m * n)
-    .map_err(|e| anyhow::anyhow!("alloc out: {e}"))?;
+    .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?;
   let sqrt_dt = dt.sqrt();
   let (steps, paths) = (n as u32, m as u32);
   unsafe {
@@ -152,28 +172,30 @@ where
       .arg(&steps)
       .arg(&paths)
       .launch(LaunchConfig::for_num_elems(paths))
-      .map_err(|e| anyhow::anyhow!("euler_paths: {e}"))?;
+      .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
   stream
     .clone_dtoh(&d_out)
-    .map_err(|e| anyhow::anyhow!("dtoh: {e}"))
+    .map_err(|e| DeviceError::Launch(format!("dtoh: {e}")))
 }
 
 impl<T: FloatExt> EulerBackend<T> for CudaNative {
   const DEVICE: bool = true;
 
-  fn euler_paths<P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>> {
-    device_paths(
-      process.euler_spec(),
-      process.initial_value(),
-      process.grid_points(),
-      process.horizon(),
-      m,
-      process.device_seed(),
+  fn try_euler_paths<P: EulerCoefficients<T>>(process: &P, m: usize) -> Result<Vec<Array1<T>>> {
+    Ok(
+      device_paths(
+        process.euler_spec(),
+        process.initial_value(),
+        process.grid_points(),
+        process.horizon(),
+        m,
+        process.device_seed(),
+      )?
+      .outer_iter()
+      .map(|row| row.to_owned())
+      .collect(),
     )
-    .outer_iter()
-    .map(|row| row.to_owned())
-    .collect()
   }
 }
 
@@ -185,10 +207,10 @@ fn device_paths<T: FloatExt>(
   t: T,
   m: usize,
   seed: u64,
-) -> Array2<T> {
+) -> Result<Array2<T>> {
   {
     if n == 0 || m == 0 {
-      return Array2::<T>::zeros((m, n));
+      return Ok(Array2::<T>::zeros((m, n)));
     }
     let (family, params) = spec.encode();
     let dt = t.to_f64().unwrap_or(1.0) / (n.max(2) - 1) as f64;
@@ -204,11 +226,10 @@ fn device_paths<T: FloatExt>(
         seed32,
         n,
         m,
-      )
-      .expect("native CUDA Euler engine");
+      )?;
       let out =
         Array2::<f64>::from_shape_vec((m, n), data).expect("the kernel returns m * n values");
-      return unsafe { std::mem::transmute::<Array2<f64>, Array2<T>>(out) };
+      return Ok(unsafe { std::mem::transmute::<Array2<f64>, Array2<T>>(out) });
     }
     let p32: [f32; 4] = std::array::from_fn(|i| p64[i] as f32);
     let data = run::<f32>(
@@ -220,13 +241,12 @@ fn device_paths<T: FloatExt>(
       seed32,
       n,
       m,
-    )
-    .expect("native CUDA Euler engine");
+    )?;
     assert!(
       TypeId::of::<T>() == TypeId::of::<f32>(),
       "FloatExt is implemented for f32 and f64 only"
     );
     let out = Array2::<f32>::from_shape_vec((m, n), data).expect("the kernel returns m * n values");
-    unsafe { std::mem::transmute::<Array2<f32>, Array2<T>>(out) }
+    Ok(unsafe { std::mem::transmute::<Array2<f32>, Array2<T>>(out) })
   }
 }

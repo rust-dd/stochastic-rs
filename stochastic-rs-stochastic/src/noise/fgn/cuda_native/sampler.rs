@@ -1,7 +1,6 @@
 use std::any::TypeId;
 use std::sync::Arc;
 
-use anyhow::Result;
 use cudarc::cufft;
 use cudarc::driver::*;
 use ndarray::Array2;
@@ -19,7 +18,10 @@ use super::state::SIZED_F64;
 use super::state::SizedCtxF32;
 use super::state::SizedCtxF64;
 use super::state::get_or_init_gpu;
+use crate::device::DeviceError;
 use crate::traits::FloatExt;
+
+type Result<T> = std::result::Result<T, DeviceError>;
 
 /// Output transfers at or above this byte size use the pinned-staging +
 /// parallel-copy path; smaller ones go direct via `clone_dtoh`, where the
@@ -79,10 +81,10 @@ where
   let dst = unsafe { std::slice::from_raw_parts_mut(staging.ptr, len) };
   stream
     .memcpy_dtoh(d_out, dst)
-    .map_err(|e| anyhow::anyhow!("dtoh: {e}"))?;
+    .map_err(|e| DeviceError::Launch(format!("dtoh: {e}")))?;
   stream
     .synchronize()
-    .map_err(|e| anyhow::anyhow!("sync dtoh: {e}"))?;
+    .map_err(|e| DeviceError::Launch(format!("sync dtoh: {e}")))?;
 
   let src = unsafe { std::slice::from_raw_parts(staging.ptr, len) };
   const CHUNK: usize = 1 << 18;
@@ -123,25 +125,25 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
   if need_init {
     *sized = None;
     let plan = cufft::result::plan_1d(traj_size as i32, cufft::sys::cufftType::CUFFT_C2C, m as i32)
-      .map_err(|e| anyhow::anyhow!("cuFFT plan: {e}"))?;
+      .map_err(|e| DeviceError::Launch(format!("cuFFT plan: {e}")))?;
     unsafe {
       cufft::result::set_stream(plan, gpu.stream.cu_stream() as _)
-        .map_err(|e| anyhow::anyhow!("cuFFT set_stream: {e}"))?;
+        .map_err(|e| DeviceError::Launch(format!("cuFFT set_stream: {e}")))?;
     }
     *sized = Some(SizedCtxF32 {
       fft_plan: plan,
       d_eigs: gpu
         .stream
         .clone_htod(sqrt_eigs)
-        .map_err(|e| anyhow::anyhow!("htod eigs: {e}"))?,
+        .map_err(|e| DeviceError::Launch(format!("htod eigs: {e}")))?,
       d_data: gpu
         .stream
         .alloc_zeros::<f32>(2 * m * traj_size)
-        .map_err(|e| anyhow::anyhow!("alloc data: {e}"))?,
+        .map_err(|e| DeviceError::Launch(format!("alloc data: {e}")))?,
       d_out: gpu
         .stream
         .alloc_zeros::<f32>(m * out_size)
-        .map_err(|e| anyhow::anyhow!("alloc out: {e}"))?,
+        .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?,
       host_pinned: PinnedHost::<f32>::alloc(m * out_size)?,
       n,
       m,
@@ -171,7 +173,7 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
       .arg(&seed)
       .arg(&seq)
       .launch(LaunchConfig::for_num_elems(total_complex as u32))
-      .map_err(|e| anyhow::anyhow!("gen_scale: {e}"))?;
+      .map_err(|e| DeviceError::Launch(format!("gen_scale: {e}")))?;
   }
 
   // 2. Batched FFT
@@ -179,7 +181,7 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
     let (ptr, _g) = s.d_data.device_ptr_mut(&gpu.stream);
     unsafe {
       cufft::result::exec_c2c(s.fft_plan, ptr as *mut _, ptr as *mut _, CUFFT_FORWARD)
-        .map_err(|e| anyhow::anyhow!("cuFFT: {e}"))?;
+        .map_err(|e| DeviceError::Launch(format!("cuFFT: {e}")))?;
     }
   }
 
@@ -198,7 +200,7 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
       .arg(&scale)
       .arg(&total_out)
       .launch(LaunchConfig::for_num_elems(total_out as u32))
-      .map_err(|e| anyhow::anyhow!("extract: {e}"))?;
+      .map_err(|e| DeviceError::Launch(format!("extract: {e}")))?;
   }
   // 4. DtoH. For large outputs, allocate + pre-fault the host buffer now while
   // the async kernels above are still running, so the page faults overlap device
@@ -223,7 +225,7 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
     None => gpu
       .stream
       .clone_dtoh(&s.d_out)
-      .map_err(|e| anyhow::anyhow!("dtoh: {e}"))?,
+      .map_err(|e| DeviceError::Launch(format!("dtoh: {e}")))?,
   };
   let t_dtoh = if profile {
     tstart.elapsed()
@@ -274,25 +276,25 @@ fn sample_f64<T: FloatExt, S: SeedExt>(
   if need_init {
     *sized = None;
     let plan = cufft::result::plan_1d(traj_size as i32, cufft::sys::cufftType::CUFFT_Z2Z, m as i32)
-      .map_err(|e| anyhow::anyhow!("cuFFT plan: {e}"))?;
+      .map_err(|e| DeviceError::Launch(format!("cuFFT plan: {e}")))?;
     unsafe {
       cufft::result::set_stream(plan, gpu.stream.cu_stream() as _)
-        .map_err(|e| anyhow::anyhow!("cuFFT set_stream: {e}"))?;
+        .map_err(|e| DeviceError::Launch(format!("cuFFT set_stream: {e}")))?;
     }
     *sized = Some(SizedCtxF64 {
       fft_plan: plan,
       d_eigs: gpu
         .stream
         .clone_htod(sqrt_eigs)
-        .map_err(|e| anyhow::anyhow!("htod eigs: {e}"))?,
+        .map_err(|e| DeviceError::Launch(format!("htod eigs: {e}")))?,
       d_data: gpu
         .stream
         .alloc_zeros::<f64>(2 * m * traj_size)
-        .map_err(|e| anyhow::anyhow!("alloc data: {e}"))?,
+        .map_err(|e| DeviceError::Launch(format!("alloc data: {e}")))?,
       d_out: gpu
         .stream
         .alloc_zeros::<f64>(m * out_size)
-        .map_err(|e| anyhow::anyhow!("alloc out: {e}"))?,
+        .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?,
       host_pinned: PinnedHost::<f64>::alloc(m * out_size)?,
       n,
       m,
@@ -320,7 +322,7 @@ fn sample_f64<T: FloatExt, S: SeedExt>(
       .arg(&seed)
       .arg(&seq)
       .launch(LaunchConfig::for_num_elems(total_complex as u32))
-      .map_err(|e| anyhow::anyhow!("gen_scale: {e}"))?;
+      .map_err(|e| DeviceError::Launch(format!("gen_scale: {e}")))?;
   }
 
   // 2. Batched FFT
@@ -328,7 +330,7 @@ fn sample_f64<T: FloatExt, S: SeedExt>(
     let (ptr, _g) = s.d_data.device_ptr_mut(&gpu.stream);
     unsafe {
       cufft::result::exec_z2z(s.fft_plan, ptr as *mut _, ptr as *mut _, CUFFT_FORWARD)
-        .map_err(|e| anyhow::anyhow!("cuFFT: {e}"))?;
+        .map_err(|e| DeviceError::Launch(format!("cuFFT: {e}")))?;
     }
   }
 
@@ -347,7 +349,7 @@ fn sample_f64<T: FloatExt, S: SeedExt>(
       .arg(&scale)
       .arg(&total_out)
       .launch(LaunchConfig::for_num_elems(total_out as u32))
-      .map_err(|e| anyhow::anyhow!("extract: {e}"))?;
+      .map_err(|e| DeviceError::Launch(format!("extract: {e}")))?;
   }
 
   // 4. DtoH. Pre-fault the host buffer (large outputs) while the async kernels
@@ -364,7 +366,7 @@ fn sample_f64<T: FloatExt, S: SeedExt>(
     None => gpu
       .stream
       .clone_dtoh(&s.d_out)
-      .map_err(|e| anyhow::anyhow!("dtoh: {e}"))?,
+      .map_err(|e| DeviceError::Launch(format!("dtoh: {e}")))?,
   };
   drop(sized);
 

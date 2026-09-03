@@ -99,6 +99,39 @@ fn switching_the_backend_keeps_the_parameters() {
 }
 
 #[test]
+fn try_sample_par_matches_sample_par_on_the_cpu() {
+  let gbm = || Gbm::new(0.05, 0.2, 64, Some(100.0), Some(1.0), Deterministic::new(9));
+  assert_eq!(gbm().try_sample_par(8).expect("cpu"), gbm().sample_par(8));
+  let ou = || {
+    Ou::new(
+      2.0,
+      1.0,
+      0.5,
+      64,
+      Some(1.0),
+      Some(1.0),
+      Deterministic::new(9),
+    )
+  };
+  assert_eq!(ou().try_sample_par(8).expect("cpu"), ou().sample_par(8));
+  let cir = || {
+    Cir::new(
+      1.5,
+      0.04,
+      0.3,
+      64,
+      Some(0.09),
+      Some(1.0),
+      None,
+      Deterministic::new(9),
+    )
+  };
+  assert_eq!(cir().try_sample_par(8).expect("cpu"), cir().sample_par(8));
+  let fgn = || crate::noise::fgn::Fgn::<f64, _>::new(0.7, 64, Some(1.0), Deterministic::new(9));
+  assert_eq!(fgn().try_sample_par(4).expect("cpu"), fgn().sample_par(4));
+}
+
+#[test]
 fn device_seed_follows_the_seed_source() {
   let a = Gbm::new(0.05, 0.2, 8, None, None, Deterministic::new(3));
   let b = Gbm::new(0.05, 0.2, 8, None, None, Deterministic::new(3));
@@ -221,6 +254,20 @@ mod devices {
   fn cubecl_backend_matches_the_moments() {
     gbm_moments_hold::<f32, crate::device::CubeCl>("CubeCl");
     cir_stays_nonnegative::<f32, crate::device::CubeCl>("CubeCl");
+  }
+
+  #[cfg(feature = "metal")]
+  #[test]
+  fn metal_native_probe_and_try_sample_par() {
+    let info = crate::device::MetalNative::probe().expect("this Mac has a Metal device");
+    assert_eq!(info.backend, "MetalNative");
+    assert_eq!(info.precisions, &["f32"]);
+    assert!(!info.name.is_empty());
+    let paths = gbm::<f32>(3)
+      .on::<crate::device::MetalNative>()
+      .try_sample_par(5)
+      .expect("Metal");
+    assert_eq!(paths.len(), 5);
   }
 
   #[cfg(feature = "metal")]

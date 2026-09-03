@@ -102,6 +102,47 @@ Euler–Maruyama recursion in one kernel launch. Every other process is bound on
 `HostBackend`: selecting a GPU marker for it is a compile error, and adding a
 kernel later widens the bound without touching callers.
 
+## Choosing the device
+
+The markers are types, so they cannot carry a device index; the choice is
+process-wide instead. `device::select_device(n)` picks the CUDA ordinal for
+`CudaNative`, the index into `Device::all()` for `MetalNative` (`0` is the
+system default) and the runtime's device index for `CubeCl` (with `gpu-wgpu`,
+`0` is the default adapter and `n > 0` the n-th discrete GPU); the CPU devices
+ignore it. Until it is called the value comes from the `STOCHASTIC_RS_DEVICE`
+environment variable, `0` when unset. `device::selected_device()` reads it
+back, `probe()` reports the device actually opened in `DeviceInfo::ordinal`,
+and a cached device context is re-opened on the next call after the selection
+changed.
+
+## Probing a device and handling its failures
+
+A missing GPU, a runtime that will not start or a kernel that will not
+compile is an environmental failure, not a programming error, so it is
+reported as a value:
+
+```rust
+use stochastic_rs::stochastic::device::{Backend, DeviceError, MetalNative};
+
+match MetalNative::probe() {
+  Ok(info) => println!("{} on {} ({:?})", info.backend, info.name, info.precisions),
+  Err(DeviceError::Unavailable(why)) => eprintln!("no device: {why}"),
+  Err(other) => eprintln!("{other}"),
+}
+```
+
+`probe()` opens the device behind the marker once and describes it
+(`backend`, `name`, `precisions`, `ordinal`). After a successful probe the
+plain `sample()` / `sample_par(m)` calls keep the `ProcessExt` signature and
+panic with the device's error if something still fails at launch time (an
+allocation, typically); the device-capable primitives also offer
+`try_sample_par(m) -> Result<_, DeviceError>` (`Gbm`, `Ou`, `Cir`, `Fgn`) and
+the capability traits expose `try_euler_paths` / `try_generate_batch` for
+generic code. `DeviceError` has three kinds: `Unavailable`, `Compile`,
+`Launch`. On the CPU devices every probe is `Ok` and every `try_*` call is
+`Ok` with the same paths as its plain twin. From Python, a device failure is
+a `RuntimeError` with the same message.
+
 ## Precision
 
 Apple GPUs have no `f64`, so `MetalNative` is **`f32` only**, and so is the

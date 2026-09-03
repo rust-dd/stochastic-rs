@@ -7,14 +7,16 @@
 //!
 use std::any::TypeId;
 
-use anyhow::Result;
 use metal::*;
 use ndarray::Array2;
 use parking_lot::Mutex;
 use stochastic_rs_core::simd_rng::SeedExt;
 
 use super::Fgn;
+use crate::device::DeviceError;
 use crate::traits::FloatExt;
+
+type Result<T> = std::result::Result<T, DeviceError>;
 
 const MSL_SOURCE: &str = r#"
 #include <metal_stdlib>
@@ -148,19 +150,20 @@ fn ensure_ctx() -> Result<()> {
   if g.is_some() {
     return Ok(());
   }
-  let device = Device::system_default().ok_or_else(|| anyhow::anyhow!("no Metal device"))?;
+  let device = Device::system_default()
+    .ok_or_else(|| DeviceError::Unavailable("no Metal device".to_string()))?;
   let queue = device.new_command_queue();
   let lib = device
     .new_library_with_source(MSL_SOURCE, &CompileOptions::new())
-    .map_err(|e| anyhow::anyhow!("MSL compile: {e}"))?;
+    .map_err(|e| DeviceError::Compile(format!("MSL compile: {e}")))?;
 
   let mk = |name: &str| -> Result<ComputePipelineState> {
     let f = lib
       .get_function(name, None)
-      .map_err(|e| anyhow::anyhow!("get {name}: {e}"))?;
+      .map_err(|e| DeviceError::Launch(format!("get {name}: {e}")))?;
     device
       .new_compute_pipeline_state_with_function(&f)
-      .map_err(|e| anyhow::anyhow!("{name} PSO: {e}"))
+      .map_err(|e| DeviceError::Launch(format!("{name} PSO: {e}")))
   };
 
   let gen_pso = mk("generate_scale_permute")?;

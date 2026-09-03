@@ -90,6 +90,14 @@ One rule for every crate, from the distributions up to the calibrators:
   `fit`/`new_with_corr`/vine constructors and the estimators return
   `Result`. `Calibrator::Error` is a free associated type; the in-tree
   calibrators set it to `anyhow::Error`.
+- **Environmental failure on a device → probe first, then `Result` or a
+  panic that says so.** No GPU behind a marker, a runtime that will not
+  start, a kernel that will not compile, an allocation that fails:
+  `Backend::probe()` reports it as a `DeviceError` before any sampling, and
+  the `try_sample_par` / `try_*` calls return the same error at sampling
+  time. The plain `sample*` calls keep the `ProcessExt` signature and panic
+  with that error's message, so a device failure is never a silent host
+  fallback and never a bare unwrap.
 
 ## 7. What is stable and what may grow
 

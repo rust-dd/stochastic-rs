@@ -13,6 +13,10 @@ use super::EulerBackend;
 use super::EulerCoefficients;
 use super::EulerSpec;
 use crate::device::CubeCl;
+use crate::device::DeviceError;
+use crate::device::DeviceInfo;
+
+type DeviceResult<T> = std::result::Result<T, DeviceError>;
 
 #[cfg(feature = "gpu-cuda")]
 type R = cubecl_cuda::CudaRuntime;
@@ -90,18 +94,37 @@ unsafe impl Send for Context {}
 
 static CONTEXT: Mutex<Option<Context>> = Mutex::new(None);
 
-fn with_client<Out>(f: impl FnOnce(&cubecl::client::ComputeClient<R>) -> Out) -> Out {
+/// The cached compute client, opened on first use. CubeCL panics rather than
+/// erroring when no device exists, so the opening is caught and reported.
+fn client() -> DeviceResult<cubecl::client::ComputeClient<R>> {
   let mut guard = CONTEXT.lock();
   if guard.is_none() {
-    #[cfg(feature = "gpu-cuda")]
-    let device = cubecl_cuda::CudaDevice::default();
-    #[cfg(all(feature = "gpu-wgpu", not(feature = "gpu-cuda")))]
-    let device = cubecl_wgpu::WgpuDevice::default();
-    *guard = Some(Context {
-      client: R::client(&device),
+    let opened = std::panic::catch_unwind(|| {
+      #[cfg(feature = "gpu-cuda")]
+      let device = cubecl_cuda::CudaDevice::default();
+      #[cfg(all(feature = "gpu-wgpu", not(feature = "gpu-cuda")))]
+      let device = cubecl_wgpu::WgpuDevice::default();
+      R::client(&device)
     });
+    match opened {
+      Ok(client) => *guard = Some(Context { client }),
+      Err(payload) => {
+        return Err(DeviceError::Unavailable(crate::device::panic_text(payload)));
+      }
+    }
   }
-  f(&guard.as_ref().expect("initialised").client)
+  Ok(guard.as_ref().expect("initialised").client.clone())
+}
+
+/// The CubeCL device, or why it cannot be used.
+pub(crate) fn probe() -> DeviceResult<DeviceInfo> {
+  let cl = client()?;
+  Ok(DeviceInfo::new(
+    "CubeCl",
+    <R as cubecl::Runtime>::name(&cl).to_string(),
+    &["f32"],
+    None,
+  ))
 }
 
 /// Splits a 1-D cube count into a 2-D grid so no dimension exceeds WebGPU's
@@ -123,18 +146,23 @@ fn count_2d(cubes: u32) -> CubeCount {
 impl EulerBackend<f32> for CubeCl {
   const DEVICE: bool = true;
 
-  fn euler_paths<P: EulerCoefficients<f32>>(process: &P, m: usize) -> Vec<Array1<f32>> {
-    device_paths(
-      process.euler_spec(),
-      process.initial_value(),
-      process.grid_points(),
-      process.horizon(),
-      m,
-      process.device_seed(),
+  fn try_euler_paths<P: EulerCoefficients<f32>>(
+    process: &P,
+    m: usize,
+  ) -> DeviceResult<Vec<Array1<f32>>> {
+    Ok(
+      device_paths(
+        process.euler_spec(),
+        process.initial_value(),
+        process.grid_points(),
+        process.horizon(),
+        m,
+        process.device_seed(),
+      )?
+      .outer_iter()
+      .map(|row| row.to_owned())
+      .collect(),
     )
-    .outer_iter()
-    .map(|row| row.to_owned())
-    .collect()
   }
 }
 
@@ -146,16 +174,17 @@ fn device_paths(
   t: f32,
   m: usize,
   seed: u64,
-) -> Array2<f32> {
+) -> DeviceResult<Array2<f32>> {
   {
     if n == 0 || m == 0 {
-      return Array2::<f32>::zeros((m, n));
+      return Ok(Array2::<f32>::zeros((m, n)));
     }
     let (family, params) = spec.encode();
     let params32: Vec<f32> = params.to_vec();
     let dt = t as f64 / (n.max(2) - 1) as f64;
     let total = m * n;
-    let data: Vec<f32> = with_client(|cl| {
+    let cl = &client()?;
+    let data: Vec<f32> = {
       let params_h = cl.create_from_slice(f32::as_bytes(&params32));
       let out_h = cl.empty(total * 4);
       unsafe {
@@ -173,11 +202,11 @@ fn device_paths(
           ScalarArg::new(n as u32),
           ScalarArg::new(m as u32),
         )
-        .expect("Euler engine kernel launch");
+        .map_err(|e| DeviceError::Launch(format!("euler_paths launch: {e:?}")))?;
       }
       let bytes = cl.read_one(out_h.clone());
       f32::from_bytes(&bytes).to_vec()
-    });
-    Array2::from_shape_vec((m, n), data).expect("the kernel returns m * n values")
+    };
+    Ok(Array2::from_shape_vec((m, n), data).expect("the kernel returns m * n values"))
   }
 }

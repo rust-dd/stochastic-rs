@@ -29,12 +29,14 @@ use std::any::TypeId;
 use std::cell::RefCell;
 use std::ffi::c_void;
 
-use anyhow::Result;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 
 use super::Fgn;
+use crate::device::DeviceError;
 use crate::traits::FloatExt;
+
+type Result<T> = std::result::Result<T, DeviceError>;
 
 #[repr(C)]
 struct DSPSplitComplex {
@@ -100,7 +102,9 @@ fn cached_setup(log2n: u64) -> Result<*mut c_void> {
     }
     let ptr = unsafe { vDSP_create_fftsetup(log2n, FFT_RADIX2) };
     if ptr.is_null() {
-      anyhow::bail!("vDSP_create_fftsetup failed for log2n={log2n}");
+      return Err(DeviceError::Launch(format!(
+        "vDSP_create_fftsetup failed for log2n={log2n}"
+      )));
     }
     setups.push(FftSetup { log2n, ptr });
     Ok(ptr)

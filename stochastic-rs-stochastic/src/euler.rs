@@ -43,6 +43,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 
 use crate::device::Backend;
 use crate::device::Cpu;
+use crate::device::DeviceError;
 use crate::diffusion::cir::Cir;
 use crate::diffusion::gbm::Gbm;
 use crate::diffusion::ou::Ou;
@@ -64,8 +65,20 @@ pub enum EulerSpec<T: FloatExt> {
 }
 
 impl<T: FloatExt> EulerSpec<T> {
-  /// Family code and the four parameter slots the device kernels read.
-  pub fn encode(&self) -> (u32, [T; 4]) {
+  /// Family code and the four parameter slots the device kernels read. The
+  /// layout is the kernels' ABI and stays inside the crate, so it can widen
+  /// for a new family without a breaking change. Only the device kernels
+  /// read it, so a build without any device feature has no caller.
+  #[cfg_attr(
+    not(any(
+      feature = "metal",
+      feature = "cuda-native",
+      feature = "gpu-cuda",
+      feature = "gpu-wgpu"
+    )),
+    allow(dead_code)
+  )]
+  pub(crate) fn encode(&self) -> (u32, [T; 4]) {
     match *self {
       EulerSpec::GeometricBrownian { mu, sigma } => (0, [mu, sigma, T::zero(), T::zero()]),
       EulerSpec::OrnsteinUhlenbeck { theta, mu, sigma } => (1, [theta, mu, sigma, T::zero()]),
@@ -103,14 +116,27 @@ pub trait EulerBackend<T: FloatExt>: Backend {
   /// `true` for the GPU markers, whose paths come from the kernel; `false`
   /// for the CPU devices, whose paths come from the process's own sampler.
   const DEVICE: bool;
-  fn euler_paths<P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>>;
+  /// `m` paths, or why the device could not produce them.
+  fn try_euler_paths<P: EulerCoefficients<T>>(
+    process: &P,
+    m: usize,
+  ) -> Result<Vec<Array1<T>>, DeviceError>;
+
+  /// [`try_euler_paths`](Self::try_euler_paths), panicking with the device's
+  /// error; [`Backend::probe`] first turns that failure into a `Result`.
+  fn euler_paths<P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>> {
+    Self::try_euler_paths(process, m).unwrap_or_else(crate::device::device_panic)
+  }
 }
 
 /// The CPU path is the process's own sampler.
 impl<T: FloatExt> EulerBackend<T> for Cpu {
   const DEVICE: bool = false;
-  fn euler_paths<P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>> {
-    process.sample_par(m)
+  fn try_euler_paths<P: EulerCoefficients<T>>(
+    process: &P,
+    m: usize,
+  ) -> Result<Vec<Array1<T>>, DeviceError> {
+    Ok(process.sample_par(m))
   }
 }
 
@@ -118,8 +144,11 @@ impl<T: FloatExt> EulerBackend<T> for Cpu {
 #[cfg(feature = "accelerate")]
 impl<T: FloatExt> EulerBackend<T> for crate::device::Accelerate {
   const DEVICE: bool = false;
-  fn euler_paths<P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>> {
-    process.sample_par(m)
+  fn try_euler_paths<P: EulerCoefficients<T>>(
+    process: &P,
+    m: usize,
+  ) -> Result<Vec<Array1<T>>, DeviceError> {
+    Ok(process.sample_par(m))
   }
 }
 
@@ -204,6 +233,24 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> EulerCoefficients<T> for Cir<T
   }
 }
 
+macro_rules! try_sample_par {
+  ($ty:ident) => {
+    impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> $ty<T, S, B> {
+      /// `m` paths, or the device's error instead of the panic
+      /// [`ProcessExt::sample_par`] raises when the device cannot serve the
+      /// request. On the CPU devices this is always `Ok` and bit-identical
+      /// to `sample_par`.
+      pub fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, DeviceError> {
+        B::try_euler_paths(self, m)
+      }
+    }
+  };
+}
+
+try_sample_par!(Gbm);
+try_sample_par!(Ou);
+try_sample_par!(Cir);
+
 #[cfg(feature = "cuda-native")]
 pub mod cuda_native;
 #[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
@@ -241,14 +288,19 @@ pub mod python {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use crate::device::Cpu;
+  use crate::device::DeviceError;
   use crate::diffusion::cir::Cir;
   use crate::diffusion::gbm::Gbm;
   use crate::diffusion::ou::Ou;
   use crate::traits::FloatExt;
-  use crate::traits::ProcessExt;
 
   /// Runs `m` paths of the process on the requested device through
   /// `.on::<B>()`; every arm is the same call on a different marker.
+  /// A device failure is a Python `RuntimeError` carrying the device's message.
+  fn device_err(e: DeviceError) -> PyErr {
+    pyo3::exceptions::PyRuntimeError::new_err(e.to_string())
+  }
+
   /// Which scalar a device computes in: the CPU and native CUDA paths keep
   /// `f64`, the Metal and CubeCL kernels are single precision and the array
   /// they return says so.
@@ -311,11 +363,11 @@ pub mod python {
   macro_rules! on_device {
     ($p64:expr, $p32:expr, $m:expr, $py:expr, $device:expr) => {
       match $device {
-        "cpu" => Rows::F64($py.detach(|| $p64.on::<Cpu>().sample_par($m))),
+        "cpu" => Rows::F64($py.detach(|| $p64.on::<Cpu>().try_sample_par($m)).map_err(device_err)?),
         "cuda-native" | "cuda_native" => {
           #[cfg(feature = "cuda-native")]
           {
-            Rows::F64($py.detach(|| $p64.on::<crate::device::CudaNative>().sample_par($m)))
+            Rows::F64($py.detach(|| $p64.on::<crate::device::CudaNative>().try_sample_par($m)).map_err(device_err)?)
           }
 
           #[cfg(not(feature = "cuda-native"))]
@@ -328,7 +380,7 @@ pub mod python {
         "metal" => {
           #[cfg(feature = "metal")]
           {
-            Rows::F32($py.detach(|| $p32.on::<crate::device::MetalNative>().sample_par($m)))
+            Rows::F32($py.detach(|| $p32.on::<crate::device::MetalNative>().try_sample_par($m)).map_err(device_err)?)
           }
 
           #[cfg(not(feature = "metal"))]
@@ -341,7 +393,7 @@ pub mod python {
         "cubecl" => {
           #[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
           {
-            Rows::F32($py.detach(|| $p32.on::<crate::device::CubeCl>().sample_par($m)))
+            Rows::F32($py.detach(|| $p32.on::<crate::device::CubeCl>().try_sample_par($m)).map_err(device_err)?)
           }
 
           #[cfg(not(any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
@@ -355,12 +407,12 @@ pub mod python {
         "gpu" => {
           #[cfg(feature = "cuda-native")]
           {
-            Rows::F64($py.detach(|| $p64.on::<crate::device::CudaNative>().sample_par($m)))
+            Rows::F64($py.detach(|| $p64.on::<crate::device::CudaNative>().try_sample_par($m)).map_err(device_err)?)
           }
 
           #[cfg(all(feature = "metal", not(feature = "cuda-native")))]
           {
-            Rows::F32($py.detach(|| $p32.on::<crate::device::MetalNative>().sample_par($m)))
+            Rows::F32($py.detach(|| $p32.on::<crate::device::MetalNative>().try_sample_par($m)).map_err(device_err)?)
           }
 
           #[cfg(all(
@@ -369,7 +421,7 @@ pub mod python {
             not(feature = "cuda-native")
           ))]
           {
-            Rows::F32($py.detach(|| $p32.on::<crate::device::CubeCl>().sample_par($m)))
+            Rows::F32($py.detach(|| $p32.on::<crate::device::CubeCl>().try_sample_par($m)).map_err(device_err)?)
           }
 
           #[cfg(not(any(

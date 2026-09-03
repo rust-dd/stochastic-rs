@@ -13,6 +13,8 @@
 //! `MetalNative` and `CubeCl` for `f32` alone. `Fgn<f64>` on `MetalNative`
 //! does not compile; nothing is computed in `f32` behind an `f64` type.
 
+use std::fmt;
+
 use ndarray::Array1;
 use ndarray::parallel::prelude::*;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -64,17 +66,148 @@ pub struct Accelerate;
 /// The `Send + Sync` supertraits let a backend-parameterised process satisfy
 /// the `ProcessExt: Send + Sync` bound and be shared across rayon worker
 /// threads — every marker is a zero-sized unit struct, so this is free.
-pub trait Backend: Sized + Send + Sync {}
+/// Why a device could not serve a request.
+///
+/// Returned by [`Backend::probe`] and the `try_*` device calls
+/// ([`FgnBackend::try_generate_batch`],
+/// [`crate::euler::EulerBackend::try_euler_paths`], `try_sample_par` on the
+/// device-capable processes). The plain `sample*` calls panic with the same
+/// message when the device fails, so probing first turns an environmental
+/// failure into a `Result` instead of a panic.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum DeviceError {
+  /// No usable device behind the marker, or its runtime failed to initialise.
+  Unavailable(String),
+  /// The kernel source did not compile for this device.
+  Compile(String),
+  /// A kernel launch, allocation or copy failed at run time.
+  Launch(String),
+}
 
-impl Backend for Cpu {}
+impl fmt::Display for DeviceError {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      DeviceError::Unavailable(msg) => write!(f, "device unavailable: {msg}"),
+      DeviceError::Compile(msg) => write!(f, "kernel compilation failed: {msg}"),
+      DeviceError::Launch(msg) => write!(f, "device operation failed: {msg}"),
+    }
+  }
+}
+
+impl std::error::Error for DeviceError {}
+
+/// What [`Backend::probe`] found behind a marker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct DeviceInfo {
+  /// The marker's name, e.g. `"CudaNative"`.
+  pub backend: &'static str,
+  /// The device's own name, e.g. `"NVIDIA A100-SXM4-40GB"` or `"Apple M2 Max"`.
+  pub name: String,
+  /// Scalars the device computes in, e.g. `["f32"]` for an Apple GPU.
+  pub precisions: &'static [&'static str],
+  /// Device ordinal for back-ends that enumerate devices, `None` otherwise.
+  pub ordinal: Option<usize>,
+}
+
+impl DeviceInfo {
+  pub(crate) fn new(
+    backend: &'static str,
+    name: String,
+    precisions: &'static [&'static str],
+    ordinal: Option<usize>,
+  ) -> Self {
+    Self {
+      backend,
+      name,
+      precisions,
+      ordinal,
+    }
+  }
+
+  fn host(backend: &'static str, what: &str) -> Self {
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get());
+    Self::new(
+      backend,
+      format!("{what}, {threads} threads"),
+      &["f32", "f64"],
+      None,
+    )
+  }
+}
+
+/// The text of a caught panic payload, for runtimes that panic instead of
+/// returning an error when no device is present.
+#[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
+pub(crate) fn panic_text(payload: Box<dyn std::any::Any + Send>) -> String {
+  if let Some(s) = payload.downcast_ref::<&str>() {
+    (*s).to_string()
+  } else if let Some(s) = payload.downcast_ref::<String>() {
+    s.clone()
+  } else {
+    "the runtime panicked while opening the device".to_string()
+  }
+}
+
+/// The panic a plain `sample*` call raises when its device fails.
+pub(crate) fn device_panic<T>(e: DeviceError) -> T {
+  panic!("{e}; probe the device with `Backend::probe()` before sampling on it")
+}
+
+/// A device marker.
+///
+/// [`probe`](Self::probe) is the one run-time question a marker answers:
+/// whether the device behind it can be used right now, and what it is. The
+/// sampling itself stays a compile-time choice (`.on::<B>()`).
+pub trait Backend: Sized + Send + Sync {
+  /// Opens the device behind this marker and describes it, or says why it
+  /// cannot be used (no device, runtime missing, kernels failing to
+  /// compile). The CPU devices are always `Ok`. A `sample*` call on a device
+  /// that fails this probe panics with the same error; the `try_*` calls
+  /// return it.
+  fn probe() -> Result<DeviceInfo, DeviceError>;
+}
+
+impl Backend for Cpu {
+  fn probe() -> Result<DeviceInfo, DeviceError> {
+    Ok(DeviceInfo::host("Cpu", "host CPU (SIMD)"))
+  }
+}
 #[cfg(feature = "cuda-native")]
-impl Backend for CudaNative {}
+impl Backend for CudaNative {
+  fn probe() -> Result<DeviceInfo, DeviceError> {
+    crate::euler::cuda_native::probe()
+  }
+}
 #[cfg(feature = "gpu")]
-impl Backend for CubeCl {}
+impl Backend for CubeCl {
+  fn probe() -> Result<DeviceInfo, DeviceError> {
+    #[cfg(any(feature = "gpu-cuda", feature = "gpu-wgpu"))]
+    {
+      crate::euler::gpu::probe()
+    }
+
+    #[cfg(not(any(feature = "gpu-cuda", feature = "gpu-wgpu")))]
+    {
+      Err(DeviceError::Unavailable(
+        "no CubeCL runtime compiled; enable the gpu-cuda or gpu-wgpu feature".to_string(),
+      ))
+    }
+  }
+}
 #[cfg(feature = "metal")]
-impl Backend for MetalNative {}
+impl Backend for MetalNative {
+  fn probe() -> Result<DeviceInfo, DeviceError> {
+    crate::euler::metal::probe()
+  }
+}
 #[cfg(feature = "accelerate")]
-impl Backend for Accelerate {}
+impl Backend for Accelerate {
+  fn probe() -> Result<DeviceInfo, DeviceError> {
+    Ok(DeviceInfo::host("Accelerate", "host CPU (Apple vDSP)"))
+  }
+}
 
 /// Host capability: the process samples on the CPU through its own
 /// [`ProcessExt`](crate::traits::ProcessExt) sampler. Every process carries a
@@ -112,25 +245,38 @@ impl HostBackend for Accelerate {}
 /// ignore it (they seed from `fgn.seed` instead, once per batch call) exactly
 /// as documented per-method below.
 pub trait FgnBackend<T: FloatExt>: Backend {
-  /// One fGN increment vector. The host-side `seed` drives the CPU/Accelerate
-  /// path only; GPU backends use the fGN's internal RNG (`fgn.seed`) and
-  /// ignore this parameter — see the trait doc's reproducibility table.
-  fn generate<S: SeedExt, S2: SeedExt>(fgn: &Fgn<T, S, Self>, seed: &S2) -> Array1<T>;
+  /// One fGN increment vector, or why the device could not produce it.
+  fn try_generate<S: SeedExt, S2: SeedExt>(
+    fgn: &Fgn<T, S, Self>,
+    seed: &S2,
+  ) -> Result<Array1<T>, DeviceError>;
 
-  /// `m` fGN paths in one batched call, one [`Array1`] per path. `seed`
-  /// drives the CPU/Accelerate path (see each backend's own impl for the
-  /// mechanism that makes it thread-count independent); GPU backends ignore
-  /// it — see the trait doc's reproducibility table.
+  /// `m` fGN paths in one batched call, one [`Array1`] per path, or why the
+  /// device could not produce them. The CPU devices derive one seed per path
+  /// from `seed`; the GPU devices seed their own generator from it once per
+  /// call.
+  fn try_generate_batch<S: SeedExt, S2: SeedExt>(
+    fgn: &Fgn<T, S, Self>,
+    m: usize,
+    seed: &S2,
+  ) -> Result<Vec<Array1<T>>, DeviceError>;
+
+  /// [`try_generate`](Self::try_generate), panicking with the device's error.
+  fn generate<S: SeedExt, S2: SeedExt>(fgn: &Fgn<T, S, Self>, seed: &S2) -> Array1<T> {
+    Self::try_generate(fgn, seed).unwrap_or_else(device_panic)
+  }
+
+  /// [`try_generate_batch`](Self::try_generate_batch), panicking with the
+  /// device's error.
   fn generate_batch<S: SeedExt, S2: SeedExt>(
     fgn: &Fgn<T, S, Self>,
     m: usize,
     seed: &S2,
-  ) -> Vec<Array1<T>>;
+  ) -> Vec<Array1<T>> {
+    Self::try_generate_batch(fgn, m, seed).unwrap_or_else(device_panic)
+  }
 
-  /// Two independent fGN paths in one pass. Default: a batch of two; [`Cpu`]
-  /// overrides with the real/imag parts of a single circulant FFT (one FFT,
-  /// two independent fields — Dietrich & Newsam). `seed` drives the
-  /// CPU/Accelerate path only, exactly as in [`generate_batch`](Self::generate_batch).
+  /// Two paths from one batched call.
   fn generate_pair<S: SeedExt, S2: SeedExt>(
     fgn: &Fgn<T, S, Self>,
     seed: &S2,
@@ -143,8 +289,11 @@ pub trait FgnBackend<T: FloatExt>: Backend {
 }
 
 impl<T: FloatExt> FgnBackend<T> for Cpu {
-  fn generate<S: SeedExt, S2: SeedExt>(fgn: &Fgn<T, S, Self>, seed: &S2) -> Array1<T> {
-    fgn.sample_cpu_impl(seed)
+  fn try_generate<S: SeedExt, S2: SeedExt>(
+    fgn: &Fgn<T, S, Self>,
+    seed: &S2,
+  ) -> Result<Array1<T>, DeviceError> {
+    Ok(fgn.sample_cpu_impl(seed))
   }
 
   /// Derives one basis per **path** (not per `ProcessExt`-style chunk)
@@ -163,12 +312,12 @@ impl<T: FloatExt> FgnBackend<T> for Cpu {
   /// across independent outer tasks. One basis per path costs one extra
   /// `SimdNormal` construction per path versus the (rejected) chunked
   /// design, which is negligible next to an FFT.
-  fn generate_batch<S: SeedExt, S2: SeedExt>(
+  fn try_generate_batch<S: SeedExt, S2: SeedExt>(
     fgn: &Fgn<T, S, Self>,
     m: usize,
     seed: &S2,
-  ) -> Vec<Array1<T>> {
-    (0..m)
+  ) -> Result<Vec<Array1<T>>, DeviceError> {
+    let paths = (0..m)
       .map(|_| seed.derive())
       .collect::<Vec<_>>()
       .into_par_iter()
@@ -179,7 +328,8 @@ impl<T: FloatExt> FgnBackend<T> for Cpu {
       // `Vec::into_par_iter()` → `.map()` is an `IndexedParallelIterator`,
       // so `.collect()` restores index order regardless of completion
       // order — path `i` is always path `i`, independent of scheduling.
-      .collect()
+      .collect();
+    Ok(paths)
   }
 
   fn generate_pair<S: SeedExt, S2: SeedExt>(
@@ -200,21 +350,25 @@ macro_rules! gpu_backend {
     $(
       #[cfg(feature = $feat)]
       impl FgnBackend<$scalar> for $marker {
-        fn generate<S: SeedExt, S2: SeedExt>(fgn: &Fgn<$scalar, S, Self>, _seed: &S2) -> Array1<$scalar> {
-          fgn.$sampler(1).unwrap().row(0).to_owned()
+        fn try_generate<S: SeedExt, S2: SeedExt>(
+          fgn: &Fgn<$scalar, S, Self>,
+          _seed: &S2,
+        ) -> Result<Array1<$scalar>, DeviceError> {
+          Ok(fgn.$sampler(1)?.row(0).to_owned())
         }
 
-        fn generate_batch<S: SeedExt, S2: SeedExt>(
+        fn try_generate_batch<S: SeedExt, S2: SeedExt>(
           fgn: &Fgn<$scalar, S, Self>,
           m: usize,
           _seed: &S2,
-        ) -> Vec<Array1<$scalar>> {
-          fgn
-            .$sampler(m)
-            .unwrap()
-            .outer_iter()
-            .map(|row| row.to_owned())
-            .collect()
+        ) -> Result<Vec<Array1<$scalar>>, DeviceError> {
+          Ok(
+            fgn
+              .$sampler(m)?
+              .outer_iter()
+              .map(|row| row.to_owned())
+              .collect(),
+          )
         }
       }
     )+
@@ -246,21 +400,20 @@ gpu_backend!("metal", MetalNative => sample_metal_impl, f32);
 /// count (see `MAX_CHUNKS`'s doc).
 #[cfg(feature = "accelerate")]
 impl<T: FloatExt> FgnBackend<T> for Accelerate {
-  fn generate<S: SeedExt, S2: SeedExt>(fgn: &Fgn<T, S, Self>, seed: &S2) -> Array1<T> {
-    fgn
-      .sample_accelerate_impl(1, seed)
-      .unwrap()
-      .row(0)
-      .to_owned()
+  fn try_generate<S: SeedExt, S2: SeedExt>(
+    fgn: &Fgn<T, S, Self>,
+    seed: &S2,
+  ) -> Result<Array1<T>, DeviceError> {
+    Ok(fgn.sample_accelerate_impl(1, seed)?.row(0).to_owned())
   }
 
-  fn generate_batch<S: SeedExt, S2: SeedExt>(
+  fn try_generate_batch<S: SeedExt, S2: SeedExt>(
     fgn: &Fgn<T, S, Self>,
     m: usize,
     seed: &S2,
-  ) -> Vec<Array1<T>> {
+  ) -> Result<Vec<Array1<T>>, DeviceError> {
     if m == 0 {
-      return Vec::new();
+      return Ok(Vec::new());
     }
     let chunks = chunk_count(m);
     let chunk_seeds = (0..chunks).map(|_| seed.derive()).collect::<Vec<_>>();
@@ -269,17 +422,16 @@ impl<T: FloatExt> FgnBackend<T> for Accelerate {
       .collect::<Vec<_>>()
       .into_par_iter()
       .map(|(len, chunk_seed)| {
-        fgn
-          .sample_accelerate_impl(len, &chunk_seed)
-          .unwrap()
-          .outer_iter()
-          .map(|row| row.to_owned())
-          .collect::<Vec<_>>()
+        Ok(
+          fgn
+            .sample_accelerate_impl(len, &chunk_seed)?
+            .outer_iter()
+            .map(|row| row.to_owned())
+            .collect::<Vec<_>>(),
+        )
       })
-      .collect::<Vec<_>>()
-      .into_iter()
-      .flatten()
-      .collect()
+      .collect::<Result<Vec<_>, DeviceError>>()
+      .map(|chunks| chunks.into_iter().flatten().collect())
   }
 }
 
@@ -296,6 +448,30 @@ mod tests {
   /// The marker trait alone must stay algorithm-free: this compiles because
   /// `Cpu` has the fGN capability, and a future device that lacks it can
   /// still be a [`Backend`] for the capabilities it does have.
+  #[test]
+  fn cpu_probe_reports_both_precisions() {
+    let info = Cpu::probe().expect("the host is always available");
+    assert_eq!(info.backend, "Cpu");
+    assert_eq!(info.precisions, &["f32", "f64"]);
+    assert_eq!(info.ordinal, None);
+  }
+
+  #[test]
+  fn device_error_names_its_kind() {
+    assert_eq!(
+      DeviceError::Unavailable("no Metal device".into()).to_string(),
+      "device unavailable: no Metal device"
+    );
+    assert_eq!(
+      DeviceError::Compile("NVRTC euler_paths_float: x".into()).to_string(),
+      "kernel compilation failed: NVRTC euler_paths_float: x"
+    );
+    assert_eq!(
+      DeviceError::Launch("alloc out: y".into()).to_string(),
+      "device operation failed: alloc out: y"
+    );
+  }
+
   #[test]
   fn cpu_marker_has_the_fgn_capability() {
     fn assert_fgn<B: FgnBackend<f64>>() {}

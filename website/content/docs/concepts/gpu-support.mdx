@@ -43,6 +43,22 @@ behind an `f64` type.
   CPU device that only differs for the fGN family (vDSP FFT). For every
   other process both are the same code path.
 
+## More than one GPU
+
+`stochastic_rs::stochastic::device::select_device(n)` chooses the device the
+markers open, process-wide, or set `STOCHASTIC_RS_DEVICE=n` in the
+environment; `probe()` reports the ordinal it opened. From Python:
+`select_device(n)` and `probe_device("cuda-native")`.
+
+## When the device is missing
+
+`B::probe()` on any marker returns `Ok(DeviceInfo)` with the device's name and
+precisions, or `Err(DeviceError)` saying why it cannot be used (`Unavailable`,
+`Compile`, `Launch`). `Gbm` / `Ou` / `Cir` / `Fgn` have `try_sample_par(m)`
+returning the same error instead of panicking; the plain `sample*` calls panic
+with the error's message and never fall back to the host. From Python a device
+failure is a `RuntimeError`.
+
 ## Precision and reproducibility
 
 | Backend | Precision | Same seed, same device | Bit-identical to `Cpu` |
