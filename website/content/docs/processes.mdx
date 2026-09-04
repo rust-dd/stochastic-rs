@@ -307,7 +307,7 @@ let path = fgn.on::<CudaNative>().sample(); // FFT on the GPU, zero runtime bran
 ```
 
 Backends: `Cpu` (default), `CudaNative` (`cuda-native`), `CubeCl`
-(`gpu` / `gpu-cuda` / `gpu-wgpu`), `MetalNative` (`metal`), `Accelerate`
+(`cubecl-cuda` / `cubecl-wgpu`), `MetalNative` (`metal`), `Accelerate`
 (`accelerate`) — each marker exists only when its feature is compiled, so an
 unavailable backend is a compile error, not a runtime fallback. See the
 [Backends](/docs/concepts/backends) concept page and the
@@ -343,7 +343,7 @@ all `m` paths):
 
 | Backend | Feature | Device | Precision |
 |---|---|---|---|
-| `CubeCl` | `gpu-cuda` / `gpu-wgpu` | CUDA, Metal, Vulkan, WebGPU through CubeCL | `f32` |
+| `CubeCl` | `cubecl-cuda` / `cubecl-wgpu` | CUDA, Metal, Vulkan, WebGPU through CubeCL | `f32` |
 | `CudaNative` | `cuda-native` | NVIDIA, cudarc + NVRTC | `f32` or `f64`, after `T` |
 | `MetalNative` | `metal` | Apple GPUs, hand-written MSL | `f32` |
 
@@ -365,13 +365,14 @@ and `Cir` do.
 import numpy as np
 import stochastic_rs as srs
 
-# family, params, x0, n, t, m, seed, device
-paths = srs.euler_paths("gbm", [0.05, 0.2], 100.0, 253, 1.0, 20_000, seed=7)
+# PyGbm(mu, sigma, n, x0=None, t=None, seed=None, dtype=None, device=None)
+paths = srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7).sample_par(20_000)
 print(paths.shape, paths[:, -1].mean())   # (20000, 253), ≈ 100·e^{0.05}
-ou = srs.euler_paths("ou", [2.0, 1.0, 0.5], 1.0, 501, 2.0, 10_000)
+ou = srs.PyOu(2.0, 1.0, 0.5, 501, x0=1.0, t=2.0).sample_par(10_000)
 # device="gpu" picks the first compiled device back-end; "cuda-native", "metal"
-# and "cubecl" name one (each needs the matching cargo feature of the build)
-gpu = srs.euler_paths("gbm", [0.05, 0.2], 100.0, 253, 1.0, 20_000, seed=7, device="gpu")
+# and "cubecl" name one (each needs the matching cargo feature of the build);
+# the single-precision devices want dtype="f32" and return float32 arrays
+gpu = srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7, dtype="f32", device="gpu").sample_par(20_000)
 ```
 </Tab>
 </Tabs>

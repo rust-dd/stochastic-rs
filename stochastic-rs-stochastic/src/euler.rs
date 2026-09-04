@@ -424,169 +424,21 @@ pub mod precision_guard {}
 
 #[cfg(feature = "python")]
 pub mod python {
-  //! Python surface of the Euler engine: one function over the scalar
-  //! families, `device="cpu"` always, the device names when their back-end
-  //! is compiled in; `float32` arrays from the single-precision devices.
+  //! Python surface of the device layer: probing a device and choosing the
+  //! ordinal. Sampling on a device goes through the process classes'
+  //! `device=` argument.
 
-  use ndarray::Array2;
-  use numpy::IntoPyArray;
-  use pyo3::IntoPyObjectExt;
   use pyo3::exceptions::PyValueError;
   use pyo3::prelude::*;
-  use stochastic_rs_core::simd_rng::Deterministic;
 
   use crate::device::Cpu;
   use crate::device::DeviceError;
-  use crate::diffusion::cir::Cir;
-  use crate::diffusion::gbm::Gbm;
-  use crate::diffusion::ou::Ou;
-  use crate::traits::FloatExt;
 
   /// Runs `m` paths of the process on the requested device through
   /// `.on::<B>()`; every arm is the same call on a different marker.
   /// A device failure is a Python `RuntimeError` carrying the device's message.
   fn device_err(e: DeviceError) -> PyErr {
     pyo3::exceptions::PyRuntimeError::new_err(e.to_string())
-  }
-
-  /// Which scalar a device computes in: the CPU and native CUDA paths keep
-  /// `f64`, the Metal and CubeCL kernels are single precision and the array
-  /// they return says so.
-  enum Rows {
-    F64(Array2<f64>),
-    #[cfg(any(feature = "metal", feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-    F32(Array2<f32>),
-  }
-
-  /// The launch buffer becomes the NumPy array without another copy.
-  fn stack<'py, T: FloatExt + numpy::Element>(
-    py: Python<'py>,
-    paths: Array2<T>,
-  ) -> PyResult<Py<PyAny>> {
-    paths.into_pyarray(py).into_py_any(py)
-  }
-
-  fn gbm<T: FloatExt>(p: &[f64], x0: f64, n: usize, t: f64, seed: u64) -> Gbm<T, Deterministic> {
-    Gbm::new(
-      T::from_f64_fast(p[0]),
-      T::from_f64_fast(p[1]),
-      n,
-      Some(T::from_f64_fast(x0)),
-      Some(T::from_f64_fast(t)),
-      Deterministic::new(seed),
-    )
-  }
-
-  fn ou<T: FloatExt>(p: &[f64], x0: f64, n: usize, t: f64, seed: u64) -> Ou<T, Deterministic> {
-    Ou::new(
-      T::from_f64_fast(p[0]),
-      T::from_f64_fast(p[1]),
-      T::from_f64_fast(p[2]),
-      n,
-      Some(T::from_f64_fast(x0)),
-      Some(T::from_f64_fast(t)),
-      Deterministic::new(seed),
-    )
-  }
-
-  fn cir<T: FloatExt>(p: &[f64], x0: f64, n: usize, t: f64, seed: u64) -> Cir<T, Deterministic> {
-    Cir::new(
-      T::from_f64_fast(p[0]),
-      T::from_f64_fast(p[1]),
-      T::from_f64_fast(p[2]),
-      n,
-      Some(T::from_f64_fast(x0)),
-      Some(T::from_f64_fast(t)),
-      None,
-      Deterministic::new(seed),
-    )
-  }
-
-  /// `$p64` / `$p32` build the process in the scalar the chosen device
-  /// computes in; only the arm that runs is evaluated.
-  macro_rules! on_device {
-    ($p64:expr, $p32:expr, $m:expr, $py:expr, $device:expr) => {
-      match $device {
-        "cpu" => Rows::F64($py.detach(|| $p64.on::<Cpu>().try_sample_matrix($m)).map_err(device_err)?),
-        "cuda-native" | "cuda_native" => {
-          #[cfg(feature = "cuda-native")]
-          {
-            Rows::F64($py.detach(|| $p64.on::<crate::device::CudaNative>().try_sample_matrix($m)).map_err(device_err)?)
-          }
-
-          #[cfg(not(feature = "cuda-native"))]
-          {
-            return Err(PyValueError::new_err(
-              "this build has no native CUDA runtime; rebuild with the cuda-native feature",
-            ));
-          }
-        }
-        "metal" => {
-          #[cfg(feature = "metal")]
-          {
-            Rows::F32($py.detach(|| $p32.on::<crate::device::MetalNative>().try_sample_matrix($m)).map_err(device_err)?)
-          }
-
-          #[cfg(not(feature = "metal"))]
-          {
-            return Err(PyValueError::new_err(
-              "this build has no native Metal runtime; rebuild with the metal feature",
-            ));
-          }
-        }
-        "cubecl" => {
-          #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-          {
-            Rows::F32($py.detach(|| $p32.on::<crate::device::CubeCl>().try_sample_matrix($m)).map_err(device_err)?)
-          }
-
-          #[cfg(not(any(feature = "cubecl-cuda", feature = "cubecl-wgpu")))]
-          {
-            return Err(PyValueError::new_err(
-              "this build has no CubeCL runtime; rebuild with the cubecl-cuda or cubecl-wgpu feature",
-            ));
-          }
-        }
-        // The first compiled device back-end: native CUDA, then native Metal, then CubeCL.
-        "gpu" => {
-          #[cfg(feature = "cuda-native")]
-          {
-            Rows::F64($py.detach(|| $p64.on::<crate::device::CudaNative>().try_sample_matrix($m)).map_err(device_err)?)
-          }
-
-          #[cfg(all(feature = "metal", not(feature = "cuda-native")))]
-          {
-            Rows::F32($py.detach(|| $p32.on::<crate::device::MetalNative>().try_sample_matrix($m)).map_err(device_err)?)
-          }
-
-          #[cfg(all(
-            any(feature = "cubecl-cuda", feature = "cubecl-wgpu"),
-            not(feature = "metal"),
-            not(feature = "cuda-native")
-          ))]
-          {
-            Rows::F32($py.detach(|| $p32.on::<crate::device::CubeCl>().try_sample_matrix($m)).map_err(device_err)?)
-          }
-
-          #[cfg(not(any(
-            feature = "cuda-native",
-            feature = "metal",
-            feature = "cubecl-cuda",
-            feature = "cubecl-wgpu"
-          )))]
-          {
-            return Err(PyValueError::new_err(
-              "this build has no GPU runtime; rebuild with the cuda-native, metal, cubecl-cuda or cubecl-wgpu feature",
-            ));
-          }
-        }
-        other => {
-          return Err(PyValueError::new_err(format!(
-            "unknown device {other:?}; use cpu, gpu, cuda-native, metal or cubecl"
-          )));
-        }
-      }
-    };
   }
 
   /// Chooses the device ordinal the device back-ends open (CUDA ordinal,
@@ -711,83 +563,5 @@ pub mod python {
       }
     };
     describe(py, info.map_err(device_err)?)
-  }
-
-  /// `m` Euler paths of a scalar family on a device, as an `(m, n)` array.
-  ///
-  /// `family` is `"gbm"` (`[mu, sigma]`), `"ou"` (`[theta, mu, sigma]`) or
-  /// `"cir"` (`[kappa, theta, sigma]`); `device` is `"cpu"`, `"gpu"` (the
-  /// first compiled device back-end), or one of `"cuda-native"`, `"metal"`,
-  /// `"cubecl"` (each needs the matching cargo feature of the build). The
-  /// array is `float64` from the CPU and native CUDA paths and `float32` from
-  /// Metal and CubeCL, whose kernels compute in single precision.
-  #[pyfunction]
-  #[pyo3(signature = (family, params, x0, n, t, m, seed=42, device="cpu"))]
-  #[allow(clippy::too_many_arguments)]
-  pub fn euler_paths<'py>(
-    py: Python<'py>,
-    family: &str,
-    params: Vec<f64>,
-    x0: f64,
-    n: usize,
-    t: f64,
-    m: usize,
-    seed: u64,
-    device: &str,
-  ) -> PyResult<Py<PyAny>> {
-    let need = |k: usize| {
-      if params.len() != k {
-        Err(PyValueError::new_err(format!(
-          "{family} takes {k} parameters, got {}",
-          params.len()
-        )))
-      } else {
-        Ok(())
-      }
-    };
-    let device = device.to_ascii_lowercase();
-    let p = params.as_slice();
-    let rows = match family.to_ascii_lowercase().as_str() {
-      "gbm" => {
-        need(2)?;
-        on_device!(
-          gbm::<f64>(p, x0, n, t, seed),
-          gbm::<f32>(p, x0, n, t, seed),
-          m,
-          py,
-          device.as_str()
-        )
-      }
-      "ou" => {
-        need(3)?;
-        on_device!(
-          ou::<f64>(p, x0, n, t, seed),
-          ou::<f32>(p, x0, n, t, seed),
-          m,
-          py,
-          device.as_str()
-        )
-      }
-      "cir" => {
-        need(3)?;
-        on_device!(
-          cir::<f64>(p, x0, n, t, seed),
-          cir::<f32>(p, x0, n, t, seed),
-          m,
-          py,
-          device.as_str()
-        )
-      }
-      other => {
-        return Err(PyValueError::new_err(format!(
-          "unknown Euler family {other:?}; use gbm, ou or cir"
-        )));
-      }
-    };
-    match rows {
-      Rows::F64(paths) => stack(py, paths),
-      #[cfg(any(feature = "metal", feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-      Rows::F32(paths) => stack(py, paths),
-    }
   }
 }

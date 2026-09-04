@@ -31,7 +31,7 @@ The neural surrogates (`HestonNn`, `RBergomiNn`, `OneFactorNn`) and
 `calibrate_surrogate` are not in the published wheels — candle is heavy — and
 come with a source build: `maturin develop --features ai` from the workspace
 root. The same goes for the device back-ends of the Euler engine and the fGN
-samplers: `--features metal`, `cuda-native`, `gpu-cuda`, `gpu-wgpu`,
+samplers: `--features metal`, `cuda-native`, `cubecl-cuda`, `cubecl-wgpu`,
 `accelerate`.
 
 ## NumPy interop
@@ -111,7 +111,7 @@ run from the worker threads one at a time. `PyAdg.sample_par(m)` returns an
 `ValueError` with a rebuild hint, one that is compiled in but cannot be opened
 raises `RuntimeError` with the runtime's own message. `select_device(n)`
 chooses the device ordinal for the whole process (`STOCHASTIC_RS_DEVICE=n` does
-the same from the environment). A device failure during `euler_paths` is a
+the same from the environment). A device failure while sampling is a
 `RuntimeError` too.
 
 The device-capable classes take `device=` directly — `PyGbm`, `PyOu`, `PyCir`
@@ -125,8 +125,8 @@ the class's dtype. `device="cpu"` is the default and samples exactly as
 before. Two fGN-driven processes stay on the host from Python: `PyJumpFou`
 and `PyJumpFOUCustom` carry a Python callable as their jump law, which cannot
 travel to a kernel, and `Sde` has no Python class because it takes Rust
-closures for its drift and diffusion. `euler_paths` hands the device buffer
-over as one NumPy array without re-laying it into rows.
+closures for its drift and diffusion. The device classes hand the launch
+buffer over as one NumPy array without re-laying it into rows.
 
 ```python
 srs.probe_device("metal")   # {'backend': 'MetalNative', 'name': 'Apple M2 Max', 'precisions': ['f32'], 'ordinal': 0}

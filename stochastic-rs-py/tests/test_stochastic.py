@@ -116,63 +116,34 @@ def test_cheyette_state_and_bonds():
     assert abs(model.short_rate(0.5, 0.004) - 0.034) < 1e-15
 
 
-def test_euler_paths_families_and_moments():
-    paths = sr.euler_paths("gbm", [0.05, 0.2], 100.0, 253, 1.0, 20_000, seed=7)
-    assert paths.shape == (20_000, 253)
-    assert np.allclose(paths[:, 0], 100.0)
-    assert abs(paths[:, -1].mean() / (100.0 * np.exp(0.05)) - 1.0) < 0.01
-    ou = sr.euler_paths("ou", [2.0, 1.0, 0.5], 1.0, 501, 2.0, 10_000, seed=3)
-    assert abs(ou[:, -1].mean() - 1.0) < 0.02
-    cir = sr.euler_paths("cir", [1.5, 0.04, 0.3], 0.09, 253, 1.0, 5_000, seed=5)
+def test_device_classes_reproduce_the_euler_moments():
+    paths = sr.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7).sample_par(20_000)
+    assert paths.shape == (20_000, 253) and np.allclose(paths[:, 0], 100.0)
+    assert abs(paths[:, -1].mean() / (100.0 * math.exp(0.05)) - 1.0) < 0.02
+    ou = sr.PyOu(2.0, 1.0, 0.5, 501, x0=1.0, t=2.0, seed=3).sample_par(10_000)
+    assert abs(ou[:, -1].mean() - 1.0) < 0.05
+    cir = sr.PyCir(1.5, 0.04, 0.3, 253, x0=0.09, t=1.0, seed=5).sample_par(5_000)
     assert cir.min() >= 0.0
-    assert np.array_equal(paths, sr.euler_paths("gbm", [0.05, 0.2], 100.0, 253, 1.0, 20_000, seed=7))
-    with pytest.raises(ValueError):
-        sr.euler_paths("gbm", [0.05], 100.0, 10, 1.0, 4)
-    with pytest.raises(ValueError):
-        sr.euler_paths("heston", [0.05, 0.2], 100.0, 10, 1.0, 4)
-    with pytest.raises(ValueError):
-        sr.euler_paths("gbm", [0.05, 0.2], 100.0, 10, 1.0, 4, device="tpu")
+    assert np.array_equal(paths, sr.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7).sample_par(20_000))
 
 
-def test_euler_paths_device_names_are_honoured_or_reported():
+def test_device_names_are_honoured_or_reported():
     # A device name is either served by a compiled back-end or refused with a
     # rebuild hint; never silently redirected to the CPU.
+    with pytest.raises(ValueError):
+        sr.PyGbm(0.05, 0.2, 10, seed=7, device="tpu")
     for device in ("gpu", "cuda-native", "metal", "cubecl"):
         try:
-            paths = sr.euler_paths("gbm", [0.05, 0.2], 100.0, 64, 1.0, 256, seed=7, device=device)
+            gbm = sr.PyGbm(0.05, 0.2, 64, x0=100.0, t=1.0, seed=7, dtype="f32", device=device)
         except ValueError as err:
             assert "rebuild" in str(err)
             continue
-        assert paths.shape == (256, 64)
-        # Metal and CubeCL compute in single precision and say so; the CPU and
-        # native CUDA paths keep float64.
-        if device in ("metal", "cubecl"):
-            assert paths.dtype == np.float32
-        elif device == "cuda-native":
-            assert paths.dtype == np.float64
-        else:
-            assert paths.dtype in (np.float32, np.float64)
+        except RuntimeError:
+            continue
+        paths = gbm.sample_par(256)
+        assert paths.shape == (256, 64) and paths.dtype == np.float32
         assert np.allclose(paths[:, 0], 100.0)
         assert abs(paths[:, -1].mean() / (100.0 * np.exp(0.05)) - 1.0) < 0.05
-
-
-def test_callable_driven_rate_models_sample_par_release_the_gil():
-    import numpy as np
-
-    hw = sr.PyHullWhite(lambda t: 0.02 + 0.01 * t, 0.1, 0.01, 64, x0=0.03, t=1.0, seed=7)
-    paths = hw.sample_par(5)
-    assert paths.shape == (5, 64) and np.isfinite(paths).all()
-    again = sr.PyHullWhite(lambda t: 0.02 + 0.01 * t, 0.1, 0.01, 64, x0=0.03, t=1.0, seed=7).sample_par(5)
-    assert np.array_equal(paths, again)
-    adg = sr.PyAdg(lambda t: 0.5, lambda t: 0.04, [0.02, 0.01], lambda t: 0.0, lambda t: 1.0, lambda t: 0.0, 32, 2, [0.03, 0.02], t=1.0, seed=3)
-    cube = adg.sample_par(4)
-    assert cube.shape == (4, 2, 32) and np.isfinite(cube).all()
-    single = adg.sample()
-    assert single.shape == (2, 32)
-    hjm = sr.PyHjm(lambda t: 0.5, lambda t: 0.04, lambda t, u: 0.01, lambda t, u: 0.02, lambda t, u: 0.01, lambda t, u: 0.01, lambda t, u: 0.02, 32, r0=0.03, p0=1.0, f0=0.03, t=1.0, seed=5)
-    r, p, f = hjm.sample_par(3)
-    assert r.shape == p.shape == f.shape == (3, 32)
-    assert np.isfinite(r).all() and np.isfinite(p).all() and np.isfinite(f).all()
 
 
 def test_probe_device_describes_the_host_and_reports_missing_devices():

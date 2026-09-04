@@ -93,7 +93,7 @@ own stream.
 
 The device-capable classes take `device=` (`PyGbm(..., dtype="f32", device="metal")`;
 the fGN family and the Euler engine's three processes), checked and probed at
-construction. `euler_paths(family, params, x0, n, t, m, seed, device)` runs the Euler
+construction. `PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7, device="metal", dtype="f32").sample_par(m)` runs the Euler
 engine with `device` one of `"cpu"`, `"gpu"` (the first compiled device
 backend), `"cuda-native"`, `"metal"`, `"cubecl"`; a backend the build does not
 carry raises `ValueError` with a rebuild hint. The array is `float64` from

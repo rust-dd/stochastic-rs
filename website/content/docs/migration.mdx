@@ -108,11 +108,11 @@ three-way convention (invalid parameter → panic; not computable → documented
 
 ## Python
 
-- The wheel is CPU-only. `metal`, `cuda-native`, `gpu-cuda`, `gpu-wgpu`,
+- The wheel is CPU-only. `metal`, `cuda-native`, `cubecl-cuda`, `cubecl-wgpu`,
   `accelerate` and `ai` are `maturin` build features; a class or function
   behind one of them raises `ValueError` with a rebuild hint when it is
   called from a build that lacks it.
-- `euler_paths(family, params, x0, n, t, m, seed, device)` is the device
+- `device=` on the device-capable classes is the device
   entry point for the Euler engine.
 - The AI classes (`HestonNn`, `RBergomiNn`, `OneFactorNn`,
   `calibrate_surrogate`) are behind the `ai` feature.
