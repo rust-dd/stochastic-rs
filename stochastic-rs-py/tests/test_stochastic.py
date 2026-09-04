@@ -6,6 +6,8 @@ parallel multi-path sampler, and basic sanity of the simulated levels.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pytest
 import stochastic_rs as sr
