@@ -306,9 +306,10 @@ let fgn = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded);
 let path = fgn.on::<Cuda>().sample(); // FFT on the GPU, zero runtime branch
 ```
 
-Backends: `Cpu` (default), `Cuda` (`cuda`), `CubeclCuda` (`cubecl-cuda`),
-`CubeclWgpu` (`cubecl-wgpu`), `Metal` (`metal`), `Accelerate`
-(`accelerate`) — each handle exists only when its feature is compiled, so an
+Backends: `Cpu` (default), `Cuda` (`cuda`), `Metal` (`metal`), `Cubecl`
+(`cubecl-cuda` / `cubecl-wgpu`, the runtime named on the handle),
+`Accelerate` (`accelerate`) — each handle exists only when its feature is
+compiled, so an
 unavailable backend is a compile error, not a runtime fallback. See the
 [Backends](/docs/concepts/backends) concept page and the
 [Feature flags](/docs/concepts/feature-flags) matrix.
@@ -343,8 +344,7 @@ all `m` paths):
 
 | Backend | Feature | Device | Precision |
 |---|---|---|---|
-| `CubeclCuda` | `cubecl-cuda` | CUDA through CubeCL | `f32` |
-| `CubeclWgpu` | `cubecl-wgpu` | Metal, Vulkan, WebGPU through CubeCL | `f32` |
+| `Cubecl` | `cubecl-cuda` / `cubecl-wgpu` | CUDA, or Metal / Vulkan / WebGPU, through CubeCL | `f32` |
 | `Cuda` | `cuda` | NVIDIA, cudarc + NVRTC | `f32` or `f64`, after `T` |
 | `Metal` | `metal` | Apple GPUs, hand-written MSL | `f32` |
 

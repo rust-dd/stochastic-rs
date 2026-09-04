@@ -10,7 +10,7 @@
 #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
 mod gpu_fft_validation {
   use stochastic_rs::simd_rng::Unseeded;
-  use stochastic_rs::stochastic::device::CubeclWgpu;
+  use stochastic_rs::stochastic::device::Cubecl;
   use stochastic_rs::stochastic::noise::fgn::Fgn;
   use stochastic_rs::traits::ProcessExt;
 
@@ -37,7 +37,7 @@ mod gpu_fft_validation {
   }
 
   fn sample_gpu_paths(h: f32, n: usize, t: f32, m: usize) -> Vec<Vec<f64>> {
-    let fgn = Fgn::<f32>::new(h, n, Some(t), Unseeded).on::<CubeclWgpu>();
+    let fgn = Fgn::<f32>::new(h, n, Some(t), Unseeded).on::<Cubecl>();
     fgn
       .sample_par(m)
       .into_iter()

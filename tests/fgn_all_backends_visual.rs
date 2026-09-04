@@ -8,7 +8,7 @@ mod all_backends {
   use stochastic_rs::stats::fractal_dim::FractalDimEstimator;
   use stochastic_rs::stats::fractal_dim::Higuchi;
   use stochastic_rs::stochastic::device::Accelerate;
-  use stochastic_rs::stochastic::device::CubeclWgpu;
+  use stochastic_rs::stochastic::device::Cubecl;
   use stochastic_rs::stochastic::device::Metal;
   use stochastic_rs::stochastic::noise::fgn::Fgn;
   use stochastic_rs::stochastic::process::fbm::Fbm;
@@ -101,7 +101,7 @@ mod all_backends {
   }
 
   fn gpu_fgn(h: f32, n: usize, m: usize) -> Vec<Vec<f64>> {
-    let fgn = Fgn::<f32>::new(h, n, Some(1.0), Unseeded).on::<CubeclWgpu>();
+    let fgn = Fgn::<f32>::new(h, n, Some(1.0), Unseeded).on::<Cubecl>();
     fgn
       .sample_par(m)
       .into_iter()

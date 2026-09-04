@@ -151,7 +151,7 @@ use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
 let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
-  .on::<Cuda>() // Cuda | Metal | CubeclCuda | CubeclWgpu | Accelerate | Cpu
+  .on::<Cuda>() // Cuda | Metal | Cubecl | Accelerate | Cpu
   .sample();
 ```
 
@@ -204,11 +204,11 @@ cargo build --features cubecl-wgpu
 ```
 
 ```rust
-use stochastic_rs::stochastic::device::CubeclWgpu;
+use stochastic_rs::stochastic::device::Cubecl;
 
 // the wgpu runtime: Metal here, Vulkan on Linux, WebGPU on the web
 let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
-  .on::<CubeclWgpu>()
+  .on_device(Cubecl::wgpu(0))
   .sample();
 ```
 

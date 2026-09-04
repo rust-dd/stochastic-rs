@@ -18,7 +18,7 @@ fn euler_engine_prices_a_forward() {
   );
   // The backend is a type parameter of the process: `Cpu` (the default) is the
   // process's own SIMD sampler; `.on::<Metal>()`, `.on::<Cuda>()` or
-  // `.on::<CubeclWgpu>()` (with the matching feature) run the Euler kernel on the
+  // `.on::<Cubecl>()` (with the matching feature) run the Euler kernel on the
   // device through the very same `sample_par` call.
   let paths = gbm.clone().on::<Cpu>().sample_par(20_000); // Vec<Array1<f64>>, 20_000 × 253
   assert_eq!(paths.len(), 20_000);

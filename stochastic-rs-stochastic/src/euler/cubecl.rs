@@ -214,8 +214,8 @@ fn count_2d(cubes: u32) -> CubeCount {
   }
 }
 
-#[cfg(feature = "cubecl-cuda")]
-impl EulerKernel<f32> for crate::device::CubeclCuda {
+#[cfg(feature = "cubecl")]
+impl EulerKernel<f32> for crate::device::Cubecl {
   fn euler_kernel<P: EulerCoefficients<f32>>(
     &self,
     process: &P,
@@ -223,42 +223,20 @@ impl EulerKernel<f32> for crate::device::CubeclCuda {
     m: usize,
     seed: u64,
   ) -> DeviceResult<Array2<f32>> {
-    device_paths::<cuda_rt::Rt>(
-      self.ordinal,
-      process.euler_spec(),
-      process.initial_value(),
-      process.grid_points(),
-      process.horizon(),
-      first,
-      m,
-      seed,
-    )
-  }
-
-  fn batch_budget(&self) -> usize {
-    self.batch_budget
-  }
-}
-
-#[cfg(feature = "cubecl-wgpu")]
-impl EulerKernel<f32> for crate::device::CubeclWgpu {
-  fn euler_kernel<P: EulerCoefficients<f32>>(
-    &self,
-    process: &P,
-    first: usize,
-    m: usize,
-    seed: u64,
-  ) -> DeviceResult<Array2<f32>> {
-    device_paths::<wgpu_rt::Rt>(
-      self.ordinal,
-      process.euler_spec(),
-      process.initial_value(),
-      process.grid_points(),
-      process.horizon(),
-      first,
-      m,
-      seed,
-    )
+    let spec = process.euler_spec();
+    let x0 = process.initial_value();
+    let n = process.grid_points();
+    let t = process.horizon();
+    match self.device {
+      #[cfg(feature = "cubecl-cuda")]
+      crate::device::CubeclDevice::Cuda => {
+        device_paths::<cuda_rt::Rt>(self.ordinal, spec, x0, n, t, first, m, seed)
+      }
+      #[cfg(feature = "cubecl-wgpu")]
+      crate::device::CubeclDevice::Wgpu => {
+        device_paths::<wgpu_rt::Rt>(self.ordinal, spec, x0, n, t, first, m, seed)
+      }
+    }
   }
 
   fn batch_budget(&self) -> usize {

@@ -7,7 +7,7 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::device::Accelerate;
-use stochastic_rs::stochastic::device::CubeclWgpu;
+use stochastic_rs::stochastic::device::Cubecl;
 use stochastic_rs::stochastic::device::Metal;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
@@ -20,7 +20,7 @@ fn bench_single(c: &mut Criterion) {
 
   for &n in &[1024usize, 4096, 16384, 65536] {
     let fgn = Fgn::new(0.7f32, n, None, Unseeded);
-    let dev_gpu = Fgn::new(0.7f32, n, None, Unseeded).on::<CubeclWgpu>();
+    let dev_gpu = Fgn::new(0.7f32, n, None, Unseeded).on::<Cubecl>();
     let dev_metal = Fgn::new(0.7f32, n, None, Unseeded).on::<Metal>();
     let dev_accel = Fgn::new(0.7f32, n, None, Unseeded).on::<Accelerate>();
 
@@ -60,7 +60,7 @@ fn bench_batch(c: &mut Criterion) {
   ];
   for &(n, m) in &cases {
     let fgn = Fgn::new(0.7f32, n, None, Unseeded);
-    let dev_gpu = Fgn::new(0.7f32, n, None, Unseeded).on::<CubeclWgpu>();
+    let dev_gpu = Fgn::new(0.7f32, n, None, Unseeded).on::<Cubecl>();
     let dev_metal = Fgn::new(0.7f32, n, None, Unseeded).on::<Metal>();
     let dev_accel = Fgn::new(0.7f32, n, None, Unseeded).on::<Accelerate>();
     let _ = dev_gpu.sample_par(m);
@@ -140,7 +140,7 @@ fn bench_batch_large(c: &mut Criterion) {
     if n.saturating_mul(m) > 268_435_456 {
       continue;
     }
-    let dev = Fgn::new(0.7f32, n, None, Unseeded).on::<CubeclWgpu>();
+    let dev = Fgn::new(0.7f32, n, None, Unseeded).on::<Cubecl>();
     let _ = dev.sample_par(m);
     g.bench_with_input(
       BenchmarkId::new("gpu_cubecl", format!("n={n},m={m}")),

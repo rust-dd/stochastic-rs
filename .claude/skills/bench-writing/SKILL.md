@@ -75,7 +75,7 @@ The gated benches in tree today, with their exact feature sets:
 
 | Bench | `required-features` |
 |---|---|
-| `fgn_gpu` | `["cubecl"]` |
+| `fgn_cubecl` | `["cubecl-wgpu"]` |
 | `fgn_cuda` | `["cuda"]` |
 | `fgn_cuda_compare` | `["cuda", "cubecl-cuda"]` |
 | `fgn_all_backends` | `["cubecl-wgpu", "metal", "accelerate"]` |

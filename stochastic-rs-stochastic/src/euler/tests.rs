@@ -213,8 +213,8 @@ mod devices {
     )
   }
 
-  fn gbm_moments_hold<T: FloatExt, B: EulerBackend<T>>(label: &str) {
-    let paths = stack(&gbm::<T>(7).on::<B>().sample_par(40_000));
+  fn gbm_moments_hold<T: FloatExt, B: EulerBackend<T>>(device: B, label: &str) {
+    let paths = stack(&gbm::<T>(7).on_device(device).sample_par(40_000));
     assert_eq!(paths.dim(), (40_000, 253), "{label}");
     assert!(paths.column(0).iter().all(|&x| x == 100.0), "{label}");
     let (mean, var) = column_mean_var(&paths, 252);
@@ -228,9 +228,9 @@ mod devices {
       (var / expected_var - 1.0).abs() < 0.06,
       "{label}: var {var} vs {expected_var}"
     );
-    let a = gbm::<T>(7).on::<B>().sample_par(8);
-    let b = gbm::<T>(7).on::<B>().sample_par(8);
-    let c = gbm::<T>(8).on::<B>().sample_par(8);
+    let a = gbm::<T>(7).on_device(device).sample_par(8);
+    let b = gbm::<T>(7).on_device(device).sample_par(8);
+    let c = gbm::<T>(8).on_device(device).sample_par(8);
     assert!(
       a.iter().zip(&b).all(|(x, y)| x == y),
       "{label}: seed reproducibility"
@@ -240,16 +240,19 @@ mod devices {
       "{label}: seed discrimination"
     );
     assert_ne!(a[0], a[1], "{label}: paths are distinct streams");
-    let single = gbm::<T>(7).on::<B>().sample();
+    let single = gbm::<T>(7).on_device(device).sample();
     assert_eq!(single.len(), 253, "{label}");
     assert_eq!(
-      gbm::<T>(7).on::<B>().sample_map(3, |p| p[252]).len(),
+      gbm::<T>(7)
+        .on_device(device)
+        .sample_map(3, |p| p[252])
+        .len(),
       3,
       "{label}"
     );
   }
 
-  fn cir_stays_nonnegative<T: FloatExt, B: EulerBackend<T>>(label: &str) {
+  fn cir_stays_nonnegative<T: FloatExt, B: EulerBackend<T>>(device: B, label: &str) {
     let cir = Cir::new(
       T::from_f64_fast(1.5),
       T::from_f64_fast(0.04),
@@ -260,7 +263,7 @@ mod devices {
       None,
       Deterministic::new(3),
     );
-    let paths = stack(&cir.on::<B>().sample_par(4_000));
+    let paths = stack(&cir.on_device(device).sample_par(4_000));
     let (mean, _) = column_mean_var(&paths, 252);
     let expected = 0.04 + (0.09 - 0.04) * (-1.5_f64).exp();
     assert!(
@@ -273,8 +276,8 @@ mod devices {
   #[cfg(feature = "cubecl-wgpu")]
   #[test]
   fn cubecl_backend_matches_the_moments() {
-    gbm_moments_hold::<f32, crate::device::CubeclWgpu>("CubeclWgpu");
-    cir_stays_nonnegative::<f32, crate::device::CubeclWgpu>("CubeclWgpu");
+    gbm_moments_hold::<f32, _>(crate::device::Cubecl::wgpu(0), "Cubecl wgpu");
+    cir_stays_nonnegative::<f32, _>(crate::device::Cubecl::wgpu(0), "Cubecl wgpu");
   }
 
   #[cfg(feature = "metal")]
@@ -335,8 +338,8 @@ mod devices {
   #[cfg(feature = "metal")]
   #[test]
   fn metal_native_backend_matches_the_moments() {
-    gbm_moments_hold::<f32, crate::device::Metal>("Metal");
-    cir_stays_nonnegative::<f32, crate::device::Metal>("Metal");
+    gbm_moments_hold::<f32, _>(crate::device::Metal::default(), "Metal");
+    cir_stays_nonnegative::<f32, _>(crate::device::Metal::default(), "Metal");
   }
 
   /// A batch above the budget runs through the two-stream pipeline; its
@@ -367,10 +370,10 @@ mod devices {
   #[cfg(feature = "cuda")]
   #[test]
   fn cuda_backend_matches_the_moments() {
-    gbm_moments_hold::<f64, crate::device::Cuda>("Cuda f64");
-    gbm_moments_hold::<f32, crate::device::Cuda>("Cuda f32");
-    cir_stays_nonnegative::<f64, crate::device::Cuda>("Cuda f64");
-    cir_stays_nonnegative::<f32, crate::device::Cuda>("Cuda f32");
+    gbm_moments_hold::<f64, _>(crate::device::Cuda::default(), "Cuda f64");
+    gbm_moments_hold::<f32, _>(crate::device::Cuda::default(), "Cuda f32");
+    cir_stays_nonnegative::<f64, _>(crate::device::Cuda::default(), "Cuda f64");
+    cir_stays_nonnegative::<f32, _>(crate::device::Cuda::default(), "Cuda f32");
     // The f32 and f64 kernels draw the same uniforms (one integer hash) and
     // differ only by float rounding, so the same process on the same grid
     // agrees across the two precisions to well under 1e-3 relative.
@@ -396,7 +399,7 @@ mod devices {
   fn metal_native_and_cubecl_agree_seed_for_seed() {
     let metal = gbm::<f32>(11).on::<crate::device::Metal>().sample_par(16);
     let cubecl = gbm::<f32>(11)
-      .on::<crate::device::CubeclWgpu>()
+      .on_device(crate::device::Cubecl::wgpu(0))
       .sample_par(16);
     for (a, b) in metal.iter().zip(&cubecl) {
       for (x, y) in a.iter().zip(b.iter()) {

@@ -135,9 +135,9 @@ impl Device {
       #[cfg(feature = "metal")]
       Device::Metal(o) => crate::device::Metal::new(o).probe(),
       #[cfg(feature = "cubecl-cuda")]
-      Device::CubeclCuda(o) => crate::device::CubeclCuda::new(o).probe(),
+      Device::CubeclCuda(o) => crate::device::Cubecl::cuda(o).probe(),
       #[cfg(feature = "cubecl-wgpu")]
-      Device::CubeclWgpu(o) => crate::device::CubeclWgpu::new(o).probe(),
+      Device::CubeclWgpu(o) => crate::device::Cubecl::wgpu(o).probe(),
       #[allow(unreachable_patterns)]
       _ => unreachable!("check_compiled rejects the devices this build lacks"),
     };

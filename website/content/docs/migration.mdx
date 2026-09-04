@@ -22,8 +22,8 @@ struct literals and generic bounds.
   `FgnBackend` and `EulerBackend` are the three capability traits a bound
   can name; see [GPU support](/docs/concepts/gpu-support) for which process
   accepts which.
-- **Device sampling** is `.on::<Metal>()` (or `Cuda`, `CubeclCuda`,
-  `CubeclWgpu`, `Accelerate`) on the process, or `.on_device(handle)` with an explicit
+- **Device sampling** is `.on::<Metal>()` (or `Cuda`, `Cubecl`,
+  `Accelerate`) on the process, or `.on_device(handle)` with an explicit
   `Cuda { ordinal, batch_budget }`-style handle; the `backend` field
   holds that handle as a value (`backend: Cpu` in a struct literal).
 - **Fallible sampling** is on the trait: `ProcessExt::try_sample()` /

@@ -10,22 +10,23 @@ backends, and what the rest do.
 
 ## The support matrix
 
-| Family | Processes | Capability bound | `Cpu` | `Accelerate` | `Metal` | `Cuda` | `CubeclCuda` / `CubeclWgpu` |
+| Family | Processes | Capability bound | `Cpu` | `Accelerate` | `Metal` | `Cuda` | `Cubecl` |
 |---|---|---|---|---|---|---|---|
 | fGN-driven | `Fgn`, `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `Cfou`, `Cfgns`, `JumpFou`, `JumpFOUCustom`, `Sde` (11) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` | CubeCL FFT, `f32` only |
 | Euler engine | `Gbm`, `Ou`, `Cir` (3) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
 | Host only | the remaining 117 processes | `HostBackend` | own SIMD sampler | same as `Cpu` | compile error | compile error | compile error |
 
 Feature flags: `metal` (`Metal`), `cuda` (`Cuda`),
-`cubecl-cuda` (`CubeclCuda`) and `cubecl-wgpu` (`CubeclWgpu`: Metal, Vulkan
-or WebGPU through wgpu), `accelerate`. Both CubeCL handles can be compiled
-into one build and used at once. A marker only exists when its feature is
+`cubecl-cuda` and `cubecl-wgpu`, the two runtimes a `Cubecl` handle can name
+(`Cubecl::cuda(0)`, `Cubecl::wgpu(0)` — wgpu is Metal on macOS, Vulkan on
+Linux, WebGPU on the web), `accelerate`. Both runtimes can be compiled into
+one build and used at once. A marker only exists when its feature is
 compiled, so selecting a backend a process does not support — or one the
 build does not carry — is a compile error, never a silent fallback. The same
 holds for precision: the capability traits take the scalar
 (`FgnBackend<T>`, `EulerBackend<T>`) and a device implements them only for
 the precision its kernels compute in, so `Gbm<f64>` or `Fgn<f64>` on
-`Metal` or either CubeCL handle does not compile. Nothing is computed in `f32`
+`Metal` or `Cubecl` does not compile. Nothing is computed in `f32`
 behind an `f64` type.
 
 ## What the device path does
@@ -39,7 +40,7 @@ behind an `f64` type.
   launches a single path. CIR uses full truncation (Lord, Koekkoek & van Dijk
   2010) in the kernel. The CUDA and Metal kernels are one C body rendered per
   language, and the CubeCL kernel repeats its integer hash, so `Metal`,
-  `Cuda` and the CubeCL handles agree with each other seed for seed up to `f32`
+  `Cuda` and `Cubecl` agree with each other seed for seed up to `f32`
   libm rounding.
 - **Host backends.** `Cpu` is the process's own sampler; `Accelerate` is a
   CPU device that only differs for the fGN family (vDSP FFT). For every
@@ -62,8 +63,8 @@ does not re-plan on every call.
 ## More than one GPU
 
 The handle names the device: `Cuda::new(1)` (CUDA ordinal),
-`Metal::new(1)` (index into `Device::all()`), `CubeclCuda::new(1)` /
-`CubeclWgpu::new(1)` (the runtime's device index); `.on_device(handle)` puts a process on it, and
+`Metal::new(1)` (index into `Device::all()`), `Cubecl::cuda(1)` /
+`Cubecl::wgpu(1)` (the runtime and its device index); `.on_device(handle)` puts a process on it, and
 `handle.probe()` reports the device opened. The defaults read
 `STOCHASTIC_RS_DEVICE`. From Python the name carries the ordinal:
 `device="cuda:1"`, `probe_device("metal:0")`.
@@ -86,7 +87,7 @@ failure is a `RuntimeError`.
 | `Accelerate` | `f32` / `f64` | reproducible-effort only (vDSP reduction order can differ across core types) | no |
 | `Metal` | `f32` (an `f64` process is a compile error) | yes | no |
 | `Cuda` | `f32` / `f64` (a failing `f64` launch is reported, never replaced by the `f32` kernel) | yes | no |
-| `CubeclCuda` / `CubeclWgpu` | `f32` (an `f64` process is a compile error) | yes | no |
+| `Cubecl` | `f32` (an `f64` process is a compile error) | yes | no |
 
 The device seed is drawn from the process's own seed source, so the device
 follows the host's rule exactly: two processes built from the same

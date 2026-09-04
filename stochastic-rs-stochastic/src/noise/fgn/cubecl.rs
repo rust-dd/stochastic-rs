@@ -431,11 +431,11 @@ mod backend {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
-  /// `m` paths on `device`'s CubeCL runtime, in chunks that fit the batch
+  /// `m` paths on one CubeCL runtime, in chunks that fit the batch
   /// budget: one seed for the whole batch and a running element offset in the
   /// kernel's hash, so the result is the same whatever the budget.
   #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-  fn sample_cubecl_impl<C: crate::euler::cubecl::CubeclRuntime, S2: SeedExt>(
+  fn sample_cubecl_on<C: crate::euler::cubecl::CubeclRuntime, S2: SeedExt>(
     &self,
     m: usize,
     seed_src: &S2,
@@ -469,35 +469,31 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     Ok(out)
   }
 
-  /// [`sample_cubecl_impl`](Self::sample_cubecl_impl) on CubeCL's CUDA runtime.
-  #[cfg(feature = "cubecl-cuda")]
-  pub(crate) fn sample_cubecl_cuda_impl<S2: SeedExt>(
+  /// `m` paths on the runtime `device` names.
+  #[cfg(feature = "cubecl")]
+  pub(crate) fn sample_cubecl_impl<S2: SeedExt>(
     &self,
     m: usize,
     seed_src: &S2,
-    device: &crate::device::CubeclCuda,
+    device: &crate::device::Cubecl,
   ) -> DeviceResult<Array2<T>> {
-    self.sample_cubecl_impl::<crate::euler::cubecl::cuda_rt::Rt, S2>(
-      m,
-      seed_src,
-      device.ordinal,
-      device.batch_budget,
-    )
-  }
-
-  /// [`sample_cubecl_impl`](Self::sample_cubecl_impl) on CubeCL's wgpu runtime.
-  #[cfg(feature = "cubecl-wgpu")]
-  pub(crate) fn sample_cubecl_wgpu_impl<S2: SeedExt>(
-    &self,
-    m: usize,
-    seed_src: &S2,
-    device: &crate::device::CubeclWgpu,
-  ) -> DeviceResult<Array2<T>> {
-    self.sample_cubecl_impl::<crate::euler::cubecl::wgpu_rt::Rt, S2>(
-      m,
-      seed_src,
-      device.ordinal,
-      device.batch_budget,
-    )
+    match device.device {
+      #[cfg(feature = "cubecl-cuda")]
+      crate::device::CubeclDevice::Cuda => self
+        .sample_cubecl_on::<crate::euler::cubecl::cuda_rt::Rt, S2>(
+          m,
+          seed_src,
+          device.ordinal,
+          device.batch_budget,
+        ),
+      #[cfg(feature = "cubecl-wgpu")]
+      crate::device::CubeclDevice::Wgpu => self
+        .sample_cubecl_on::<crate::euler::cubecl::wgpu_rt::Rt, S2>(
+          m,
+          seed_src,
+          device.ordinal,
+          device.batch_budget,
+        ),
+    }
   }
 }

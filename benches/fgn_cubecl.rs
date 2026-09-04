@@ -6,7 +6,7 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use stochastic_rs::simd_rng::Unseeded;
-use stochastic_rs::stochastic::device::CubeclWgpu;
+use stochastic_rs::stochastic::device::Cubecl;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
@@ -20,7 +20,7 @@ fn bench_fgn_single_path_cpu_vs_gpu(c: &mut Criterion) {
 
   for &n in &[1024usize, 4096, 16384, 65536] {
     let fgn = Fgn::new(hurst, n, None, Unseeded);
-    let dev = Fgn::new(hurst, n, None, Unseeded).on::<CubeclWgpu>();
+    let dev = Fgn::new(hurst, n, None, Unseeded).on::<Cubecl>();
 
     let _ = dev.sample();
 
@@ -54,7 +54,7 @@ fn bench_fgn_batch_cpu_vs_gpu(c: &mut Criterion) {
   for &(n, m) in &cases {
     let label = format!("n={n},m={m}");
     let fgn = Fgn::new(hurst, n, None, Unseeded);
-    let dev = Fgn::new(hurst, n, None, Unseeded).on::<CubeclWgpu>();
+    let dev = Fgn::new(hurst, n, None, Unseeded).on::<Cubecl>();
 
     let _ = dev.sample_par(m);
 

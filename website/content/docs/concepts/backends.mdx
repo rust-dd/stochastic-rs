@@ -62,7 +62,7 @@ says which markers it accepts:
 
 Both capabilities take the scalar, and a device implements them only for the
 precision its kernels compute in: `Cuda` for `f32` and `f64`,
-`Metal` and the two CubeCL handles for `f32`, the CPU devices for both. `Fgn<f64>` or
+`Metal` and `Cubecl` for `f32`, the CPU devices for both. `Fgn<f64>` or
 `Gbm<f64>` on `Metal` is a compile error; nothing runs in `f32` behind an
 `f64` type. Generic code spells the scalar in the bound: `B: FgnBackend<T>`.
 
@@ -73,8 +73,7 @@ the code actually samples through it.
 |---------------|----------------------------------|----------------------------------------|---------------------|
 | `Cpu`         | — (always available, default)    | `ndrustfft` + CPU SIMD, rayon batches  | any CPU             |
 | `Cuda`  | `cuda`                    | `cudarc` + cuFFT, JIT Philox RNG       | NVIDIA, CUDA 12.x   |
-| `CubeclCuda`  | `cubecl-cuda`                    | `cubecl` portable kernels on CUDA      | NVIDIA |
-| `CubeclWgpu`  | `cubecl-wgpu`                    | `cubecl` portable kernels through wgpu | Metal / Vulkan / WebGPU |
+| `Cubecl`      | `cubecl-cuda` / `cubecl-wgpu`    | `cubecl` portable kernels, on the runtime the handle names | NVIDIA / Metal / Vulkan / WebGPU |
 | `Metal` | `metal`                          | hand-written MSL via the `metal` crate | Apple GPU (f32)     |
 | `Accelerate`  | `accelerate`                     | Apple vDSP FFT (CPU), rayon batches    | macOS               |
 
@@ -114,8 +113,8 @@ use stochastic_rs::stochastic::device::Cuda;
 let on_second_gpu = gbm.on_device(Cuda::new(1).with_batch_budget(256 << 20));
 ```
 
-`Cuda { ordinal, batch_budget }`, `Metal { .. }`, `CubeclCuda { .. }` and
-`CubeclWgpu { .. }`
+`Cuda { ordinal, batch_budget }`, `Metal { .. }` and
+`Cubecl { device, ordinal, batch_budget }`
 carry the device ordinal (CUDA ordinal, index into `Device::all()`, the
 runtime's device index) and the bytes of path data one launch may hold. Their
 `Default` reads `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`

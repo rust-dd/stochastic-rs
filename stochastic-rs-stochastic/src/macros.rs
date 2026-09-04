@@ -98,7 +98,7 @@ macro_rules! py_on_device_f32 {
       $crate::python_device::Device::CubeclCuda(ordinal) => {
         let owned = $inner
           .clone()
-          .on_device($crate::device::CubeclCuda::new(ordinal));
+          .on_device($crate::device::Cubecl::cuda(ordinal));
         let $p = &owned;
         $body
       }
@@ -106,7 +106,7 @@ macro_rules! py_on_device_f32 {
       $crate::python_device::Device::CubeclWgpu(ordinal) => {
         let owned = $inner
           .clone()
-          .on_device($crate::device::CubeclWgpu::new(ordinal));
+          .on_device($crate::device::Cubecl::wgpu(ordinal));
         let $p = &owned;
         $body
       }
