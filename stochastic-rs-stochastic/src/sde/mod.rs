@@ -179,8 +179,6 @@ mod gaussian;
 #[cfg(test)]
 mod tests;
 
-use std::marker::PhantomData;
-
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Array3;
@@ -245,7 +243,7 @@ where
   /// Hurst parameters for fractional noise, one per dimension.
   /// Required when `noise` is [`NoiseModel::Fractional`], ignored otherwise.
   pub hursts: Option<Array1<T>>,
-  _backend: PhantomData<B>,
+  pub backend: B,
 }
 
 impl<T: FloatExt, F, G> Sde<T, F, G, Cpu>
@@ -267,7 +265,7 @@ where
       diffusion,
       noise,
       hursts,
-      _backend: PhantomData,
+      backend: Cpu,
     }
   }
 }
@@ -320,7 +318,7 @@ where
 
         if let Some(h) = &self.hursts {
           let fgns: Vec<Fgn<T, Unseeded, B>> = (0..dim)
-            .map(|d| Fgn::new(h[d], steps, Some(t1 - t0), Unseeded).on::<B>())
+            .map(|d| Fgn::new(h[d], steps, Some(t1 - t0), Unseeded).on_device(self.backend))
             .collect();
 
           for p in 0..n_paths {

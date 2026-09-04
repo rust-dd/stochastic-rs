@@ -148,8 +148,7 @@ unsafe impl Send for SizedMetal {}
 /// The last [`crate::device::CACHE_SLOTS`] per-size states, least recent first.
 static SIZED: Mutex<Vec<SizedMetal>> = Mutex::new(Vec::new());
 
-fn ensure_ctx() -> Result<()> {
-  let ordinal = crate::device::selected_device();
+fn ensure_ctx(ordinal: usize) -> Result<()> {
   let mut g = CTX.lock();
   if g.as_ref().is_some_and(|c| c.ordinal == ordinal) {
     return Ok(());
@@ -157,7 +156,7 @@ fn ensure_ctx() -> Result<()> {
   // A new device invalidates the per-size buffers of the old one.
   *g = None;
   SIZED.lock().clear();
-  let device = crate::euler::metal::selected_metal_device()?;
+  let device = crate::euler::metal::metal_device(ordinal)?;
   let queue = device.new_command_queue();
   let lib = device
     .new_library_with_source(MSL_SOURCE, &CompileOptions::new())
@@ -203,6 +202,7 @@ fn sample_f32<T: FloatExt>(
   hurst: f64,
   t: f64,
   seed: u32,
+  ordinal: usize,
 ) -> Result<Array2<T>> {
   let traj_size = 2 * n;
   let out_size = n - offset;
@@ -210,7 +210,7 @@ fn sample_f32<T: FloatExt>(
   let total = m * traj_size;
   let log_n = traj_size.trailing_zeros() as usize;
 
-  ensure_ctx()?;
+  ensure_ctx(ordinal)?;
   // Clone the handles out of the global lock so another size can encode
   // concurrently; the per-size state below keeps its own lock for its buffers.
   let ctx = CTX.lock().as_ref().unwrap().clone();
@@ -337,6 +337,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     &self,
     m: usize,
     seed_src: &S2,
+    device: &crate::device::MetalNative,
   ) -> Result<Array2<T>> {
     let n = self.n;
     let offset = self.offset;
@@ -350,13 +351,13 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
       .map(|x| x.to_f32().unwrap())
       .collect();
     let seed: u32 = rand::Rng::random(&mut seed_src.rng());
-    let rows = crate::device::chunk_rows(4 * n + out_size, 4);
+    let rows = crate::device::chunk_rows(device.batch_budget, 4 * n + out_size, 4);
     let mut out = Array2::<T>::zeros((m, out_size));
     let mut first = 0;
     while first < m {
       let len = rows.min(m - first);
       let chunk_seed = seed.wrapping_add((first * traj_size * 4) as u32);
-      let chunk = sample_f32::<T>(&eigs, n, len, offset, hurst, t, chunk_seed)?;
+      let chunk = sample_f32::<T>(&eigs, n, len, offset, hurst, t, chunk_seed, device.ordinal)?;
       out
         .slice_mut(ndarray::s![first..first + len, ..])
         .assign(&chunk);
@@ -378,12 +379,13 @@ mod chunk_tests {
   /// batch and an element offset per chunk.
   #[test]
   fn chunks_are_bit_identical_to_one_launch() {
-    let fgn = || Fgn::<f32, _>::new(0.7, 512, Some(1.0), Deterministic::new(5)).on::<MetalNative>();
-    let whole = fgn().sample_par(9);
+    let fgn = |device: MetalNative| {
+      Fgn::<f32, _>::new(0.7, 512, Some(1.0), Deterministic::new(5)).on_device(device)
+    };
+    let whole = fgn(MetalNative::default()).sample_par(9);
     // Two paths per chunk: five launches for nine paths.
-    crate::device::set_batch_budget_bytes((4 * 512 + 512) * 4 * 2);
-    let chunked = fgn().sample_par(9);
-    crate::device::set_batch_budget_bytes(crate::device::DEFAULT_BATCH_BUDGET_BYTES);
+    let chunked =
+      fgn(MetalNative::default().with_batch_budget((4 * 512 + 512) * 4 * 2)).sample_par(9);
     assert_eq!(whole, chunked);
     assert_ne!(whole[0], whole[1]);
   }

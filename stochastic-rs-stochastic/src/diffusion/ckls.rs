@@ -4,7 +4,6 @@
 //! dX_t=(\theta_1+\theta_2 X_t)\,dt+\theta_3 X_t^{\theta_4}\,dW_t
 //! $$
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -35,10 +34,9 @@ pub struct Ckls<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> Ckls<T, S> {
@@ -53,7 +51,7 @@ impl<T: FloatExt, S: SeedExt> Ckls<T, S> {
     seed: S,
   ) -> Self {
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       theta1,
       theta2,
       theta3,

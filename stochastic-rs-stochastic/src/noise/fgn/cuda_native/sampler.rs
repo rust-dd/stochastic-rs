@@ -104,6 +104,7 @@ fn sample_f32<T: FloatExt>(
   t: f64,
   seed: u64,
   first: usize,
+  ordinal: usize,
 ) -> Result<Array2<T>> {
   let hurst_bits = hurst.to_bits();
   let t_bits = t.to_bits();
@@ -111,7 +112,7 @@ fn sample_f32<T: FloatExt>(
   let traj_size = 2 * n;
   let scale = (out_size.max(1) as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
 
-  get_or_init_gpu()?;
+  get_or_init_gpu(ordinal)?;
   // Clone the handles out of the global lock so another size can launch
   // concurrently; the per-size state below keeps its own lock for its buffers.
   let (stream, gen_scale, extract) = {
@@ -256,6 +257,7 @@ fn sample_f64<T: FloatExt>(
   t: f64,
   seed: u64,
   first: usize,
+  ordinal: usize,
 ) -> Result<Array2<T>> {
   let hurst_bits = hurst.to_bits();
   let t_bits = t.to_bits();
@@ -263,7 +265,7 @@ fn sample_f64<T: FloatExt>(
   let traj_size = 2 * n;
   let scale = (out_size.max(1) as f64).powf(-hurst) * t.powf(hurst);
 
-  get_or_init_gpu()?;
+  get_or_init_gpu(ordinal)?;
   // Clone the handles out of the global lock so another size can launch
   // concurrently; the per-size state below keeps its own lock for its buffers.
   let (stream, gen_scale, extract) = {
@@ -384,6 +386,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     &self,
     m: usize,
     seed_src: &S2,
+    device: &crate::device::CudaNative,
   ) -> Result<Array2<T>> {
     let n = self.n;
     let offset = self.offset;
@@ -392,7 +395,11 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     let t = self.t.unwrap_or(T::one()).to_f64().unwrap();
     let seed: u64 = rand::Rng::random(&mut seed_src.rng());
     // Per path: 2 * traj_size complex scalars of work buffer plus the output row.
-    let rows = crate::device::chunk_rows(4 * n + out_size, std::mem::size_of::<T>());
+    let rows = crate::device::chunk_rows(
+      device.batch_budget,
+      4 * n + out_size,
+      std::mem::size_of::<T>(),
+    );
     let mut out = Array2::<T>::zeros((m, out_size));
     let mut first = 0;
     while first < m {
@@ -403,7 +410,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
           .iter()
           .map(|x| x.to_f32().unwrap())
           .collect();
-        sample_f32::<T>(&eigs, n, len, offset, hurst, t, seed, first)?
+        sample_f32::<T>(&eigs, n, len, offset, hurst, t, seed, first, device.ordinal)?
       } else {
         // `f64` is what the type says, so a failing double-precision launch is
         // reported, never quietly replaced by the `f32` kernel.
@@ -412,7 +419,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
           .iter()
           .map(|x| x.to_f64().unwrap())
           .collect();
-        sample_f64::<T>(&eigs, n, len, offset, hurst, t, seed, first)?
+        sample_f64::<T>(&eigs, n, len, offset, hurst, t, seed, first, device.ordinal)?
       };
       out
         .slice_mut(ndarray::s![first..first + len, ..])

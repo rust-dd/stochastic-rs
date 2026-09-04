@@ -4,7 +4,6 @@
 //! X_t=\Gamma^+_t-\Gamma^-_t,\quad \Gamma^+\sim\Gamma(\alpha_p t,\lambda_p^{-1}),\ \Gamma^-\sim\Gamma(\alpha_m t,\lambda_m^{-1})
 //! $$
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -45,10 +44,9 @@ pub struct BilateralGamma<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> BilateralGamma<T, S> {
@@ -67,7 +65,7 @@ impl<T: FloatExt, S: SeedExt> BilateralGamma<T, S> {
     assert!(alpha_m > T::zero(), "alpha_m must be positive");
     assert!(lambda_m > T::zero(), "lambda_m must be positive");
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       alpha_p,
       lambda_p,
       alpha_m,
@@ -184,10 +182,9 @@ pub struct BilateralGammaMotion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> BilateralGammaMotion<T, S> {
@@ -207,7 +204,7 @@ impl<T: FloatExt, S: SeedExt> BilateralGammaMotion<T, S> {
     assert!(alpha_m > T::zero(), "alpha_m must be positive");
     assert!(lambda_m > T::zero(), "lambda_m must be positive");
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       sigma,
       alpha_p,
       lambda_p,

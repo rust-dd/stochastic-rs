@@ -17,7 +17,7 @@ backends, and what the rest do.
 | Host only | the remaining 117 processes | `HostBackend` | own SIMD sampler | same as `Cpu` | compile error | compile error | compile error |
 
 Feature flags: `metal` (`MetalNative`), `cuda-native` (`CudaNative`),
-`gpu-cuda` / `gpu-wgpu` (`CubeCl` on CUDA or on Metal / Vulkan / WebGPU
+`cubecl-cuda` / `cubecl-wgpu` (`CubeCl` on CUDA or on Metal / Vulkan / WebGPU
 through wgpu), `accelerate`. A marker only exists when its feature is
 compiled, so selecting a backend a process does not support — or one the
 build does not carry — is a compile error, never a silent fallback. The same
@@ -45,28 +45,30 @@ behind an `f64` type.
 
 ## Large batches
 
-A device launch holds at most `batch_budget_bytes()` of path data (1 GiB by
-default, `STOCHASTIC_RS_DEVICE_BATCH_BYTES` or
-`device::set_batch_budget_bytes(n)` to change it). A larger `sample_par(m)`
-runs as several launches whose union is bit-identical to one launch, because
-the kernels hash the global path index, and `sample_map(m, f)` maps each chunk
-in parallel on the host before the next chunk is launched, so the batch never
-has to fit in memory at once. On native CUDA the chunks alternate between two
-streams: one copies back through pinned memory while the next computes. The
-fGN devices chunk the same way, one seed per batch and an element offset per
-chunk, and keep the FFT plans and buffers of the last four `(n, m)` shapes, so
-alternating two sizes does not re-plan on every call.
+A device handle holds at most `batch_budget` bytes of path data per launch
+(1 GiB by default, `STOCHASTIC_RS_DEVICE_BATCH_BYTES`, or
+`CudaNative::default().with_batch_budget(n)`). A larger `sample_par(m)` runs as
+several launches whose union is bit-identical to one launch, because the kernels
+hash the global path index; `sample_map(m, f)` maps each chunk in parallel on
+the host before the next chunk is launched, so the batch never has to fit in
+memory at once. On native CUDA the chunks alternate between two streams: one
+copies back through pinned memory while the next computes. The fGN devices chunk
+the same way, one seed per batch and an element offset per chunk, and keep the
+FFT plans and buffers of the last four `(n, m)` shapes, so alternating two sizes
+does not re-plan on every call.
 
 ## More than one GPU
 
-`stochastic_rs::stochastic::device::select_device(n)` chooses the device the
-markers open, process-wide, or set `STOCHASTIC_RS_DEVICE=n` in the
-environment; `probe()` reports the ordinal it opened. From Python:
-`select_device(n)` and `probe_device("cuda-native")`.
+The handle names the device: `CudaNative::new(1)` (CUDA ordinal),
+`MetalNative::new(1)` (index into `Device::all()`), `CubeCl::new(1)` (the
+runtime's device index); `.on_device(handle)` puts a process on it, and
+`handle.probe()` reports the device opened. The defaults read
+`STOCHASTIC_RS_DEVICE`. From Python the name carries the ordinal:
+`device="cuda-native:1"`, `probe_device("metal:0")`.
 
 ## When the device is missing
 
-`B::probe()` on any marker returns `Ok(DeviceInfo)` with the device's name and
+`handle.probe()` on any backend handle returns `Ok(DeviceInfo)` with the device's name and
 precisions, or `Err(DeviceError)` saying why it cannot be used (`Unavailable`,
 `Compile`, `Launch`). `Gbm` / `Ou` / `Cir` / `Fgn` have `try_sample_par(m)`
 returning the same error instead of panicking; the plain `sample*` calls panic
@@ -100,7 +102,7 @@ carry raises `ValueError` with a rebuild hint. The array is `float64` from
 the CPU and native CUDA paths and `float32` from Metal and CubeCL, whose
 kernels compute in single precision. The published wheels are
 CPU-only; the device backends come with a source build —
-`maturin develop --features metal,gpu-wgpu` on a Mac,
+`maturin develop --features metal,cubecl-wgpu` on a Mac,
 `--features cuda-native` on an NVIDIA machine.
 
 ## Trying the CUDA back-end without a CUDA machine

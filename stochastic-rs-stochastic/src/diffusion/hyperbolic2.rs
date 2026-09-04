@@ -4,7 +4,6 @@
 //! dX_t=\frac{\sigma^2}{2}\left(\beta-\frac{\gamma X_t}{\sqrt{\delta^2+(X_t-\mu)^2}}\right)dt+\sigma\,dW_t
 //! $$
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -43,10 +42,9 @@ pub struct Hyperbolic2<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> Hyperbolic2<T, S> {
@@ -62,7 +60,7 @@ impl<T: FloatExt, S: SeedExt> Hyperbolic2<T, S> {
     seed: S,
   ) -> Self {
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       beta,
       gamma,
       delta,

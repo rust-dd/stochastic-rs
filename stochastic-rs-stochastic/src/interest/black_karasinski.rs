@@ -28,7 +28,6 @@
 //! A lattice (trinomial-tree) engine for the same model already exists at
 //! `stochastic-rs-quant::lattice::short_rate::black_karasinski::BlackKarasinskiTree`;
 //! this type is the missing Monte-Carlo path simulator for it.
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 #[cfg(feature = "python")]
@@ -85,10 +84,9 @@ pub struct BlackKarasinski<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Seed strategy (compile-time: [`Unseeded`] or
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 /// Constant θ(t) ≡ 0.05 used by [`BlackKarasinski`]'s `Default` impl —
@@ -131,7 +129,7 @@ impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
     }
 
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       theta: theta.into(),
       a,
       sigma,

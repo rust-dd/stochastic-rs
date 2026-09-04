@@ -8,7 +8,6 @@
 //! Exchange Rate Processes Implicit in Deutsche Mark Options*, Review of
 //! Financial Studies 9(1), 69–107, DOI: 10.1093/rfs/9.1.69.
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use rand_distr::Distribution;
@@ -131,10 +130,9 @@ where
   /// `cpoisson`'s own seed (set at construction from this same value — see
   /// `cpoisson`'s doc above) drives the jump component.
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T, D, S: SeedExt> Bates1996<T, D, S>
@@ -178,7 +176,7 @@ where
     );
 
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       mu,
       b,
       r,

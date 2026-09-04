@@ -4,7 +4,6 @@
 //! \operatorname{Cov}(\Delta B_i^H,\Delta B_j^H)=\tfrac12\left(|k+1|^{2H}-2|k|^{2H}+|k-1|^{2H}\right),\ k=i-j
 //! $$
 //!
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use ndarray::prelude::*;
@@ -45,7 +44,7 @@ pub struct Fgn<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
   /// Compile-time sampling backend marker (default [`Cpu`]).
-  _backend: PhantomData<B>,
+  pub backend: B,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -121,7 +120,7 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
       sqrt_eigenvalues: Arc::new(sqrt_eigenvalues),
       fft_handler,
       seed,
-      _backend: PhantomData,
+      backend: Cpu,
     }
   }
 
@@ -292,13 +291,13 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Fgn<T, S, B> {
   /// when the device cannot serve the request. On the CPU devices this is
   /// always `Ok` and bit-identical to `sample_par`.
   pub fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, DeviceError> {
-    B::try_generate_batch(self, m, &self.seed)
+    self.backend.try_generate_batch(self, m, &self.seed)
   }
 
   /// One fGN increment vector on backend `B`. The host-side `seed` drives the
   /// CPU path and the GPU launch seed alike.
   pub(crate) fn noise<S2: SeedExt>(&self, seed: &S2) -> Array1<T> {
-    B::generate(self, seed)
+    self.backend.generate(self, seed)
   }
 
   /// `m` fGN paths in one batched `B` call, one [`Array1`] per path. `seed`
@@ -307,12 +306,12 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Fgn<T, S, B> {
   /// its *own* real seed instead of `self.seed` — see
   /// [`FgnBackend::generate_batch`]'s doc for which backends actually consult it.
   pub(crate) fn noise_batch<S2: SeedExt>(&self, m: usize, seed: &S2) -> Vec<Array1<T>> {
-    B::generate_batch(self, m, seed)
+    self.backend.generate_batch(self, m, seed)
   }
 
   /// Two independent fGN paths in one pass on backend `B`.
   pub(crate) fn noise_pair<S2: SeedExt>(&self, seed: &S2) -> (Array1<T>, Array1<T>) {
-    B::generate_pair(self, seed)
+    self.backend.generate_pair(self, seed)
   }
 }
 

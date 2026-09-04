@@ -15,7 +15,6 @@
 //! Options*, Review of Financial Studies 6(2), 327–343,
 //! DOI: 10.1093/rfs/6.2.327.
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -75,10 +74,9 @@ pub struct HestonLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub use_sym: Option<bool>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
@@ -112,7 +110,7 @@ impl<T: FloatExt, S: SeedExt> HestonLog<T, S> {
     validate_drift_args(mu, b, r, r_f, "HestonLog");
 
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       mu,
       b,
       r,

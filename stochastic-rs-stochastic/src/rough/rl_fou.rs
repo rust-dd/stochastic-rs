@@ -11,7 +11,6 @@
 //!
 //! Reference: Bayer C., Friz P., Gatheral J. *Pricing under rough volatility*.
 //! Quantitative Finance 16 (2016), 887–904.
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -51,10 +50,9 @@ pub struct RlFOU<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Seed strategy.
   pub seed: S,
   fbm: RlFBm<T>,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> RlFOU<T, S> {
@@ -72,7 +70,7 @@ impl<T: FloatExt, S: SeedExt> RlFOU<T, S> {
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       hurst,
       kappa,
       mu,
@@ -127,7 +125,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: HostBackend> ProcessExt<T> for RlFO
       nu: self.nu,
       dt: self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1),
       gn: Gn::<T, S> {
-        backend: PhantomData,
+        backend: Cpu,
         n: self.n - 1,
         t: self.t,
         seed: self.seed.derive(),

@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
@@ -71,7 +69,7 @@ fn the_untruncated_scheme_does_go_negative_at_the_same_parameters() {
   let dt = 1.0 / (N - 1) as f64;
   let lift = VolterraLift::new(kernel(), dt);
   let gn = Gn::<f64, Deterministic> {
-    backend: PhantomData,
+    backend: Cpu,
     n: N - 1,
     t: Some(1.0),
     seed: Deterministic::new(42),

@@ -14,8 +14,6 @@
 //! does not compile; nothing is computed in `f32` behind an `f64` type.
 
 use std::fmt;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 
 use ndarray::Array1;
 use ndarray::parallel::prelude::*;
@@ -31,27 +29,138 @@ use crate::traits::process::chunk_count;
 use crate::traits::process::chunk_lens;
 
 /// CPU backend — the default `B` for every process.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Cpu;
 
 /// cudarc + cuFFT + NVRTC Philox.
 #[cfg(feature = "cuda-native")]
-#[derive(Clone, Copy)]
-pub struct CudaNative;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CudaNative {
+  /// Which device to open: the CUDA device ordinal.
+  pub ordinal: usize,
+  /// Bytes of path data one launch may hold; a larger batch runs as chunks
+  /// whose union is bit-identical to one launch.
+  pub batch_budget: usize,
+}
+
+#[cfg(feature = "cuda-native")]
+impl Default for CudaNative {
+  /// Ordinal from `STOCHASTIC_RS_DEVICE` (else `0`), budget from
+  /// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` (else [`DEFAULT_BATCH_BUDGET_BYTES`]).
+  fn default() -> Self {
+    Self {
+      ordinal: env_ordinal(),
+      batch_budget: env_budget(),
+    }
+  }
+}
+
+#[cfg(feature = "cuda-native")]
+impl CudaNative {
+  /// The device at `ordinal` with the default batch budget.
+  pub fn new(ordinal: usize) -> Self {
+    Self {
+      ordinal,
+      ..Self::default()
+    }
+  }
+
+  /// The same device with `bytes` of path data per launch.
+  pub fn with_batch_budget(self, bytes: usize) -> Self {
+    Self {
+      batch_budget: bytes.max(1),
+      ..self
+    }
+  }
+}
 
 /// cubecl Rust kernels (CUDA or wgpu, per the compiled `cubecl-*` runtime).
 #[cfg(feature = "cubecl")]
-#[derive(Clone, Copy)]
-pub struct CubeCl;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CubeCl {
+  /// Which device to open: the runtime's device index (with `cubecl-wgpu`, `0` is the default adapter and `n > 0` the n-th discrete GPU).
+  pub ordinal: usize,
+  /// Bytes of path data one launch may hold; a larger batch runs as chunks
+  /// whose union is bit-identical to one launch.
+  pub batch_budget: usize,
+}
+
+#[cfg(feature = "cubecl")]
+impl Default for CubeCl {
+  /// Ordinal from `STOCHASTIC_RS_DEVICE` (else `0`), budget from
+  /// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` (else [`DEFAULT_BATCH_BUDGET_BYTES`]).
+  fn default() -> Self {
+    Self {
+      ordinal: env_ordinal(),
+      batch_budget: env_budget(),
+    }
+  }
+}
+
+#[cfg(feature = "cubecl")]
+impl CubeCl {
+  /// The device at `ordinal` with the default batch budget.
+  pub fn new(ordinal: usize) -> Self {
+    Self {
+      ordinal,
+      ..Self::default()
+    }
+  }
+
+  /// The same device with `bytes` of path data per launch.
+  pub fn with_batch_budget(self, bytes: usize) -> Self {
+    Self {
+      batch_budget: bytes.max(1),
+      ..self
+    }
+  }
+}
 
 /// Hand-written MSL via the `metal` crate. f32 only — Apple GPUs lack f64.
 #[cfg(feature = "metal")]
-#[derive(Clone, Copy)]
-pub struct MetalNative;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MetalNative {
+  /// Which device to open: the index into `Device::all()`, `0` being the system default.
+  pub ordinal: usize,
+  /// Bytes of path data one launch may hold; a larger batch runs as chunks
+  /// whose union is bit-identical to one launch.
+  pub batch_budget: usize,
+}
+
+#[cfg(feature = "metal")]
+impl Default for MetalNative {
+  /// Ordinal from `STOCHASTIC_RS_DEVICE` (else `0`), budget from
+  /// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` (else [`DEFAULT_BATCH_BUDGET_BYTES`]).
+  fn default() -> Self {
+    Self {
+      ordinal: env_ordinal(),
+      batch_budget: env_budget(),
+    }
+  }
+}
+
+#[cfg(feature = "metal")]
+impl MetalNative {
+  /// The device at `ordinal` with the default batch budget.
+  pub fn new(ordinal: usize) -> Self {
+    Self {
+      ordinal,
+      ..Self::default()
+    }
+  }
+
+  /// The same device with `bytes` of path data per launch.
+  pub fn with_batch_budget(self, bytes: usize) -> Self {
+    Self {
+      batch_budget: bytes.max(1),
+      ..self
+    }
+  }
+}
 
 /// Apple vDSP / AMX (FFI system framework, macOS).
 #[cfg(feature = "accelerate")]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Accelerate;
 
 /// A compile-time device marker. Implemented by every marker type in this
@@ -139,70 +248,31 @@ impl DeviceInfo {
   }
 }
 
-/// `usize::MAX` = not chosen yet, so the first read consults the environment.
-static SELECTED_DEVICE: AtomicUsize = AtomicUsize::new(usize::MAX);
-
-/// Chooses which device the device markers open: the CUDA ordinal for
-/// `CudaNative`, the index into `Device::all()` for `MetalNative`, the
-/// runtime's device index for `CubeCl` (with `gpu-wgpu`, `0` is the default
-/// adapter and `n > 0` the n-th discrete GPU). Process-wide; the CPU devices
-/// ignore it. Until it is called the value comes from the
-/// `STOCHASTIC_RS_DEVICE` environment variable, and `0` when that is unset
-/// or not a number. A cached device context is re-opened on the next call
-/// when the selection changed.
-pub fn select_device(ordinal: usize) {
-  SELECTED_DEVICE.store(ordinal, Ordering::Relaxed);
-}
-
-/// The ordinal [`select_device`] chose, or the environment's / `0`.
-pub fn selected_device() -> usize {
-  let chosen = SELECTED_DEVICE.load(Ordering::Relaxed);
-  if chosen != usize::MAX {
-    return chosen;
-  }
-  let from_env = device_from_env(std::env::var("STOCHASTIC_RS_DEVICE").ok().as_deref());
-  let _ =
-    SELECTED_DEVICE.compare_exchange(usize::MAX, from_env, Ordering::Relaxed, Ordering::Relaxed);
-  SELECTED_DEVICE.load(Ordering::Relaxed)
-}
-
+#[cfg_attr(
+  not(any(feature = "cuda-native", feature = "metal", feature = "cubecl")),
+  allow(dead_code)
+)]
 /// `STOCHASTIC_RS_DEVICE` parsed as an ordinal; anything unparsable is `0`.
 pub(crate) fn device_from_env(value: Option<&str>) -> usize {
   value.and_then(|s| s.trim().parse().ok()).unwrap_or(0)
 }
 
-/// `usize::MAX` = not chosen yet, so the first read consults the environment.
-static BATCH_BUDGET: AtomicUsize = AtomicUsize::new(usize::MAX);
+#[cfg_attr(
+  not(any(feature = "cuda-native", feature = "metal", feature = "cubecl")),
+  allow(dead_code)
+)]
+/// The ordinal a device handle starts with: `STOCHASTIC_RS_DEVICE`, else `0`.
+pub(crate) fn env_ordinal() -> usize {
+  device_from_env(std::env::var("STOCHASTIC_RS_DEVICE").ok().as_deref())
+}
 
 /// Default cap on the path data one device launch materialises: 1 GiB.
 pub const DEFAULT_BATCH_BUDGET_BYTES: usize = 1 << 30;
 
-/// Caps the bytes of path data a single device launch holds. A batch larger
-/// than the budget is produced in chunks whose union is bit-identical to one
-/// launch of the whole batch, and `sample_map` maps each chunk before the
-/// next is launched, so the whole batch never has to fit in memory. Process-
-/// wide; until it is called the value comes from
-/// `STOCHASTIC_RS_DEVICE_BATCH_BYTES`, and [`DEFAULT_BATCH_BUDGET_BYTES`] when
-/// that is unset or not a positive number.
-pub fn set_batch_budget_bytes(bytes: usize) {
-  BATCH_BUDGET.store(bytes.max(1), Ordering::Relaxed);
-}
-
-/// The budget [`set_batch_budget_bytes`] chose, or the environment's / the default.
-pub fn batch_budget_bytes() -> usize {
-  let chosen = BATCH_BUDGET.load(Ordering::Relaxed);
-  if chosen != usize::MAX {
-    return chosen;
-  }
-  let from_env = budget_from_env(
-    std::env::var("STOCHASTIC_RS_DEVICE_BATCH_BYTES")
-      .ok()
-      .as_deref(),
-  );
-  let _ = BATCH_BUDGET.compare_exchange(usize::MAX, from_env, Ordering::Relaxed, Ordering::Relaxed);
-  BATCH_BUDGET.load(Ordering::Relaxed)
-}
-
+#[cfg_attr(
+  not(any(feature = "cuda-native", feature = "metal", feature = "cubecl")),
+  allow(dead_code)
+)]
 /// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` parsed; anything that is not a positive
 /// number is the default.
 pub(crate) fn budget_from_env(value: Option<&str>) -> usize {
@@ -212,9 +282,23 @@ pub(crate) fn budget_from_env(value: Option<&str>) -> usize {
     .unwrap_or(DEFAULT_BATCH_BUDGET_BYTES)
 }
 
-/// Paths of `n` `elem`-byte scalars that fit the batch budget, at least one.
-pub(crate) fn chunk_rows(n: usize, elem: usize) -> usize {
-  (batch_budget_bytes() / (n.max(1) * elem.max(1))).max(1)
+#[cfg_attr(
+  not(any(feature = "cuda-native", feature = "metal", feature = "cubecl")),
+  allow(dead_code)
+)]
+/// The batch budget a device handle starts with: `STOCHASTIC_RS_DEVICE_BATCH_BYTES`,
+/// else [`DEFAULT_BATCH_BUDGET_BYTES`].
+pub(crate) fn env_budget() -> usize {
+  budget_from_env(
+    std::env::var("STOCHASTIC_RS_DEVICE_BATCH_BYTES")
+      .ok()
+      .as_deref(),
+  )
+}
+
+/// Paths of `n` `elem`-byte scalars that fit `budget`, at least one.
+pub(crate) fn chunk_rows(budget: usize, n: usize, elem: usize) -> usize {
+  (budget / (n.max(1) * elem.max(1))).max(1)
 }
 
 /// How many per-size device states (FFT plans, buffers) a back-end keeps.
@@ -260,7 +344,7 @@ pub(crate) fn panic_text(payload: Box<dyn std::any::Any + Send>) -> String {
 
 /// The panic a plain `sample*` call raises when its device fails.
 pub(crate) fn device_panic<T>(e: DeviceError) -> T {
-  panic!("{e}; probe the device with `Backend::probe()` before sampling on it")
+  panic!("{e}; probe the device handle with `Backend::probe(&device)` before sampling on it")
 }
 
 /// A device marker.
@@ -268,32 +352,32 @@ pub(crate) fn device_panic<T>(e: DeviceError) -> T {
 /// [`probe`](Self::probe) is the one run-time question a marker answers:
 /// whether the device behind it can be used right now, and what it is. The
 /// sampling itself stays a compile-time choice (`.on::<B>()`).
-pub trait Backend: Sized + Send + Sync {
+pub trait Backend: Copy + Default + Send + Sync {
   /// Opens the device behind this marker and describes it, or says why it
   /// cannot be used (no device, runtime missing, kernels failing to
   /// compile). The CPU devices are always `Ok`. A `sample*` call on a device
   /// that fails this probe panics with the same error; the `try_*` calls
   /// return it.
-  fn probe() -> Result<DeviceInfo, DeviceError>;
+  fn probe(&self) -> Result<DeviceInfo, DeviceError>;
 }
 
 impl Backend for Cpu {
-  fn probe() -> Result<DeviceInfo, DeviceError> {
+  fn probe(&self) -> Result<DeviceInfo, DeviceError> {
     Ok(DeviceInfo::host("Cpu", "host CPU (SIMD)"))
   }
 }
 #[cfg(feature = "cuda-native")]
 impl Backend for CudaNative {
-  fn probe() -> Result<DeviceInfo, DeviceError> {
-    crate::euler::cuda_native::probe()
+  fn probe(&self) -> Result<DeviceInfo, DeviceError> {
+    crate::euler::cuda_native::probe(self.ordinal)
   }
 }
 #[cfg(feature = "cubecl")]
 impl Backend for CubeCl {
-  fn probe() -> Result<DeviceInfo, DeviceError> {
+  fn probe(&self) -> Result<DeviceInfo, DeviceError> {
     #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
     {
-      crate::euler::gpu::probe()
+      crate::euler::gpu::probe(self.ordinal)
     }
 
     #[cfg(not(any(feature = "cubecl-cuda", feature = "cubecl-wgpu")))]
@@ -306,13 +390,13 @@ impl Backend for CubeCl {
 }
 #[cfg(feature = "metal")]
 impl Backend for MetalNative {
-  fn probe() -> Result<DeviceInfo, DeviceError> {
-    crate::euler::metal::probe()
+  fn probe(&self) -> Result<DeviceInfo, DeviceError> {
+    crate::euler::metal::probe(self.ordinal)
   }
 }
 #[cfg(feature = "accelerate")]
 impl Backend for Accelerate {
-  fn probe() -> Result<DeviceInfo, DeviceError> {
+  fn probe(&self) -> Result<DeviceInfo, DeviceError> {
     Ok(DeviceInfo::host("Accelerate", "host CPU (Apple vDSP)"))
   }
 }
@@ -355,6 +439,7 @@ impl HostBackend for Accelerate {}
 pub trait FgnBackend<T: FloatExt>: Backend {
   /// One fGN increment vector, or why the device could not produce it.
   fn try_generate<S: SeedExt, S2: SeedExt>(
+    &self,
     fgn: &Fgn<T, S, Self>,
     seed: &S2,
   ) -> Result<Array1<T>, DeviceError>;
@@ -365,32 +450,37 @@ pub trait FgnBackend<T: FloatExt>: Backend {
   /// so the caller's seed source (a wrapper's own `Deterministic`, say) is what
   /// reproduces device paths.
   fn try_generate_batch<S: SeedExt, S2: SeedExt>(
+    &self,
     fgn: &Fgn<T, S, Self>,
     m: usize,
     seed: &S2,
   ) -> Result<Vec<Array1<T>>, DeviceError>;
 
   /// [`try_generate`](Self::try_generate), panicking with the device's error.
-  fn generate<S: SeedExt, S2: SeedExt>(fgn: &Fgn<T, S, Self>, seed: &S2) -> Array1<T> {
-    Self::try_generate(fgn, seed).unwrap_or_else(device_panic)
+  fn generate<S: SeedExt, S2: SeedExt>(&self, fgn: &Fgn<T, S, Self>, seed: &S2) -> Array1<T> {
+    self.try_generate(fgn, seed).unwrap_or_else(device_panic)
   }
 
   /// [`try_generate_batch`](Self::try_generate_batch), panicking with the
   /// device's error.
   fn generate_batch<S: SeedExt, S2: SeedExt>(
+    &self,
     fgn: &Fgn<T, S, Self>,
     m: usize,
     seed: &S2,
   ) -> Vec<Array1<T>> {
-    Self::try_generate_batch(fgn, m, seed).unwrap_or_else(device_panic)
+    self
+      .try_generate_batch(fgn, m, seed)
+      .unwrap_or_else(device_panic)
   }
 
   /// Two paths from one batched call.
   fn generate_pair<S: SeedExt, S2: SeedExt>(
+    &self,
     fgn: &Fgn<T, S, Self>,
     seed: &S2,
   ) -> (Array1<T>, Array1<T>) {
-    let mut paths = Self::generate_batch(fgn, 2, seed);
+    let mut paths = self.generate_batch(fgn, 2, seed);
     let second = paths.pop().expect("generate_batch(2) yields two paths");
     let first = paths.pop().expect("generate_batch(2) yields two paths");
     (first, second)
@@ -399,6 +489,7 @@ pub trait FgnBackend<T: FloatExt>: Backend {
 
 impl<T: FloatExt> FgnBackend<T> for Cpu {
   fn try_generate<S: SeedExt, S2: SeedExt>(
+    &self,
     fgn: &Fgn<T, S, Self>,
     seed: &S2,
   ) -> Result<Array1<T>, DeviceError> {
@@ -422,6 +513,7 @@ impl<T: FloatExt> FgnBackend<T> for Cpu {
   /// `SimdNormal` construction per path versus the (rejected) chunked
   /// design, which is negligible next to an FFT.
   fn try_generate_batch<S: SeedExt, S2: SeedExt>(
+    &self,
     fgn: &Fgn<T, S, Self>,
     m: usize,
     seed: &S2,
@@ -442,6 +534,7 @@ impl<T: FloatExt> FgnBackend<T> for Cpu {
   }
 
   fn generate_pair<S: SeedExt, S2: SeedExt>(
+    &self,
     fgn: &Fgn<T, S, Self>,
     seed: &S2,
   ) -> (Array1<T>, Array1<T>) {
@@ -461,20 +554,22 @@ macro_rules! gpu_backend {
       #[cfg(feature = $feat)]
       impl FgnBackend<$scalar> for $marker {
         fn try_generate<S: SeedExt, S2: SeedExt>(
+          &self,
           fgn: &Fgn<$scalar, S, Self>,
           seed: &S2,
         ) -> Result<Array1<$scalar>, DeviceError> {
-          Ok(fgn.$sampler(1, seed)?.row(0).to_owned())
+          Ok(fgn.$sampler(1, seed, self)?.row(0).to_owned())
         }
 
         fn try_generate_batch<S: SeedExt, S2: SeedExt>(
+          &self,
           fgn: &Fgn<$scalar, S, Self>,
           m: usize,
           seed: &S2,
         ) -> Result<Vec<Array1<$scalar>>, DeviceError> {
           Ok(
             fgn
-              .$sampler(m, seed)?
+              .$sampler(m, seed, self)?
               .outer_iter()
               .map(|row| row.to_owned())
               .collect(),
@@ -511,6 +606,7 @@ gpu_backend!("metal", MetalNative => sample_metal_impl, f32);
 #[cfg(feature = "accelerate")]
 impl<T: FloatExt> FgnBackend<T> for Accelerate {
   fn try_generate<S: SeedExt, S2: SeedExt>(
+    &self,
     fgn: &Fgn<T, S, Self>,
     seed: &S2,
   ) -> Result<Array1<T>, DeviceError> {
@@ -518,6 +614,7 @@ impl<T: FloatExt> FgnBackend<T> for Accelerate {
   }
 
   fn try_generate_batch<S: SeedExt, S2: SeedExt>(
+    &self,
     fgn: &Fgn<T, S, Self>,
     m: usize,
     seed: &S2,
@@ -603,7 +700,7 @@ mod tests {
 
   #[test]
   fn cpu_probe_reports_both_precisions() {
-    let info = Cpu::probe().expect("the host is always available");
+    let info = Cpu.probe().expect("the host is always available");
     assert_eq!(info.backend, "Cpu");
     assert_eq!(info.precisions, &["f32", "f64"]);
     assert_eq!(info.ordinal, None);

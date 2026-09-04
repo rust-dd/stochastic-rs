@@ -24,16 +24,14 @@ fn cpu_backend_is_the_process_sampler() {
   };
   let plain = gbm().sample_par(16);
   let switched = gbm().on::<Cpu>().sample_par(16);
-  let through_trait = <Cpu as EulerBackend<f64>>::euler_paths(&gbm(), 16);
+  let through_trait = Cpu.euler_paths(&gbm(), 16);
   assert_eq!(plain.len(), 16);
   for i in 0..16 {
     assert_eq!(plain[i].to_vec(), switched[i].to_vec());
     assert_eq!(plain[i].to_vec(), through_trait[i].to_vec());
   }
 
-  const {
-    assert!(!<Cpu as EulerBackend<f64>>::DEVICE);
-  }
+  const {}
   let ou = || {
     Ou::new(
       2.0,
@@ -135,13 +133,12 @@ fn try_sample_par_matches_sample_par_on_the_cpu() {
 fn host_map_and_chunk_calls_match_the_process_sampler() {
   let gbm = || Gbm::new(0.05, 0.2, 32, Some(100.0), Some(1.0), Deterministic::new(4));
   let direct: Vec<f64> = gbm().sample_map(6, |p| p[31]);
-  let through: Vec<f64> =
-    <Cpu as EulerBackend<f64>>::try_euler_paths_map(&gbm(), 6, |p| p[31]).expect("cpu");
+  let through: Vec<f64> = Cpu.try_euler_paths_map(&gbm(), 6, |p| p[31]).expect("cpu");
   assert_eq!(direct, through);
   assert_eq!(
-    <Cpu as EulerBackend<f64>>::try_euler_paths_from(&gbm(), 3, 6).expect("cpu"),
+    Cpu.try_euler_paths(&gbm(), 6).expect("cpu"),
     gbm().sample_par(6),
-    "the host ignores `first`"
+    "the host stream is the process's own"
   );
 }
 
@@ -217,7 +214,6 @@ mod devices {
   }
 
   fn gbm_moments_hold<T: FloatExt, B: EulerBackend<T>>(label: &str) {
-    assert!(B::DEVICE, "{label}");
     let paths = stack(&gbm::<T>(7).on::<B>().sample_par(40_000));
     assert_eq!(paths.dim(), (40_000, 253), "{label}");
     assert!(paths.column(0).iter().all(|&x| x == 100.0), "{label}");
@@ -286,20 +282,17 @@ mod devices {
   fn metal_native_chunks_are_bit_identical_to_one_launch() {
     use crate::device::MetalNative;
     let whole = gbm::<f32>(21).on::<MetalNative>().sample_par(10);
-    let middle = <MetalNative as EulerBackend<f32>>::try_euler_paths_from(
-      &gbm::<f32>(21).on::<MetalNative>(),
-      3,
-      4,
-    )
-    .expect("Metal");
-    assert_eq!(&whole[3..7], &middle[..], "paths 3..7 of one launch");
+    let process = gbm::<f32>(21).on::<MetalNative>();
+    let middle = MetalNative::default()
+      .euler_kernel(&process, 3, 4, process.device_seed())
+      .expect("Metal");
+    for (k, row) in middle.outer_iter().enumerate() {
+      assert_eq!(whole[3 + k], row.to_owned(), "paths 3..7 of one launch");
+    }
     // A budget of three paths forces four launches; the union must not move.
-    crate::device::set_batch_budget_bytes(253 * 4 * 3);
-    let chunked = gbm::<f32>(21).on::<MetalNative>().sample_par(10);
-    let mapped: Vec<f32> = gbm::<f32>(21)
-      .on::<MetalNative>()
-      .sample_map(10, |p| p[252]);
-    crate::device::set_batch_budget_bytes(crate::device::DEFAULT_BATCH_BUDGET_BYTES);
+    let small = MetalNative::default().with_batch_budget(253 * 4 * 3);
+    let chunked = gbm::<f32>(21).on_device(small).sample_par(10);
+    let mapped: Vec<f32> = gbm::<f32>(21).on_device(small).sample_map(10, |p| p[252]);
     assert_eq!(chunked, whole);
     assert_eq!(mapped, whole.iter().map(|p| p[252]).collect::<Vec<_>>());
   }
@@ -316,19 +309,19 @@ mod devices {
     for (i, row) in rows.iter().enumerate() {
       assert_eq!(matrix.row(i), row.view());
     }
-    crate::device::set_batch_budget_bytes(253 * 4 * 2);
     let chunked = gbm::<f32>(23)
-      .on::<MetalNative>()
+      .on_device(MetalNative::default().with_batch_budget(253 * 4 * 2))
       .try_sample_matrix(7)
       .expect("Metal");
-    crate::device::set_batch_budget_bytes(crate::device::DEFAULT_BATCH_BUDGET_BYTES);
     assert_eq!(chunked, matrix);
   }
 
   #[cfg(feature = "metal")]
   #[test]
   fn metal_native_probe_and_try_sample_par() {
-    let info = crate::device::MetalNative::probe().expect("this Mac has a Metal device");
+    let info = crate::device::MetalNative::default()
+      .probe()
+      .expect("this Mac has a Metal device");
     assert_eq!(info.backend, "MetalNative");
     assert_eq!(info.precisions, &["f32"]);
     assert!(!info.name.is_empty());
@@ -354,19 +347,18 @@ mod devices {
     use crate::device::CudaNative;
     let whole64 = gbm::<f64>(21).on::<CudaNative>().sample_par(10);
     let whole32 = gbm::<f32>(21).on::<CudaNative>().sample_par(10);
-    let middle = <CudaNative as EulerBackend<f64>>::try_euler_paths_from(
-      &gbm::<f64>(21).on::<CudaNative>(),
-      3,
-      4,
-    )
-    .expect("CUDA");
-    assert_eq!(&whole64[3..7], &middle[..], "paths 3..7 of one launch");
+    let process = gbm::<f64>(21).on::<CudaNative>();
+    let middle = CudaNative::default()
+      .euler_kernel(&process, 3, 4, process.device_seed())
+      .expect("CUDA");
+    for (k, row) in middle.outer_iter().enumerate() {
+      assert_eq!(whole64[3 + k], row.to_owned(), "paths 3..7 of one launch");
+    }
     // Three paths per chunk: four launches alternating between the two streams.
-    crate::device::set_batch_budget_bytes(253 * 8 * 3);
-    let chunked64 = gbm::<f64>(21).on::<CudaNative>().sample_par(10);
-    let chunked32 = gbm::<f32>(21).on::<CudaNative>().sample_par(10);
-    let mapped: Vec<f64> = gbm::<f64>(21).on::<CudaNative>().sample_map(10, |p| p[252]);
-    crate::device::set_batch_budget_bytes(crate::device::DEFAULT_BATCH_BUDGET_BYTES);
+    let small = CudaNative::default().with_batch_budget(253 * 8 * 3);
+    let chunked64 = gbm::<f64>(21).on_device(small).sample_par(10);
+    let chunked32 = gbm::<f32>(21).on_device(small).sample_par(10);
+    let mapped: Vec<f64> = gbm::<f64>(21).on_device(small).sample_map(10, |p| p[252]);
     assert_eq!(chunked64, whole64);
     assert_eq!(chunked32, whole32);
     assert_eq!(mapped, whole64.iter().map(|p| p[252]).collect::<Vec<_>>());

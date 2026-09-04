@@ -162,7 +162,8 @@ def test_probe_device_describes_the_host_and_reports_missing_devices():
             continue
         assert found["backend"] in ("CudaNative", "MetalNative", "CubeCl", "Accelerate")
         assert all(p in ("f32", "f64") for p in found["precisions"])
-    sr.select_device(0)
+    with pytest.raises(ValueError):
+        sr.probe_device("cpu:x")
 
 
 def test_device_argument_on_the_process_classes():

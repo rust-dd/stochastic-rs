@@ -4,7 +4,6 @@
 //! \nu(dx)\propto e^{-\lambda |x|^\rho}|x|^{-1-\alpha}dx\quad(\text{rapidly decaying tempered stable})
 //! $$
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use scilib::math::basic::gamma;
@@ -40,10 +39,9 @@ pub struct Rdts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> Rdts<T, S> {
@@ -66,7 +64,7 @@ impl<T: FloatExt, S: SeedExt> Rdts<T, S> {
     );
 
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       lambda_plus,
       lambda_minus,
       alpha,

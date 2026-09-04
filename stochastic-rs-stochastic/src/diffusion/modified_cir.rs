@@ -15,7 +15,6 @@
 //! always-real-valued cousin of CIR rather than an implementation of a
 //! specific published model.
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -44,16 +43,15 @@ pub struct ModifiedCIR<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> ModifiedCIR<T, S> {
   pub fn new(kappa: T, sigma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       kappa,
       sigma,
       n,

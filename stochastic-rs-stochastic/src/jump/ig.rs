@@ -4,7 +4,6 @@
 //! L_t\sim\mathrm{Ig}(\mu t,\lambda t),\quad X_t=L_t\text{ or time-change driver}
 //! $$
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -31,17 +30,16 @@ pub struct Ig<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> Ig<T, S> {
   pub fn new(gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(gamma > T::zero(), "gamma must be positive");
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       gamma,
       n,
       x0,

@@ -4,7 +4,6 @@
 //! dS_t=\mu S_t\,dt+\sigma S_t^{\gamma}\,dW_t
 //! $$
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -39,10 +38,9 @@ pub struct Cev<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -51,7 +49,7 @@ pub struct Cev<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> Cev<T, S> {
   pub fn new(mu: T, sigma: T, gamma: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       mu,
       sigma,
       gamma,

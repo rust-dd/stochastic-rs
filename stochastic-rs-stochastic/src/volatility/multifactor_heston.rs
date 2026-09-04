@@ -32,8 +32,6 @@
 //! multifactor stochastic volatility models work so well",
 //! *Management Science* 55(12), 1914-1932.
 
-use std::marker::PhantomData;
-
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -71,10 +69,9 @@ pub struct MultifactorHeston<T: FloatExt, const K: usize, S: SeedExt = Unseeded,
   /// One `Cgns` per factor for $(\Delta W^S_k, \Delta W^V_k)$ with
   /// correlation $\rho_k$.
   cgns: Vec<Cgns<T>>,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHeston<T, K, S> {
@@ -106,7 +103,7 @@ impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHeston<T, K, S> {
       .map(|k| Cgns::new(rho[k], n - 1, t, Unseeded))
       .collect::<Vec<_>>();
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       s0,
       v0,
       kappa,

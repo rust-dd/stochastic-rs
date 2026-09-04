@@ -4,7 +4,6 @@
 //! \Phi(B^s)\phi(B)(1-B)^d(1-B^s)^DX_t=\Theta(B^s)\theta(B)\varepsilon_t
 //! $$
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -73,10 +72,9 @@ pub struct Sarima<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> Sarima<T, S> {
@@ -97,7 +95,7 @@ impl<T: FloatExt, S: SeedExt> Sarima<T, S> {
     assert!(sigma > T::zero(), "Sarima requires sigma > 0");
     assert!(s > 0, "Sarima requires season length s > 0");
     Sarima {
-      backend: PhantomData,
+      backend: Cpu,
       non_seasonal_ar_coefs,
       non_seasonal_ma_coefs,
       seasonal_ar_coefs,

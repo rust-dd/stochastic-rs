@@ -28,8 +28,6 @@
 //! Reference:
 //! - Decreusefond, L. & Üstünel, A. S. (1999), "Stochastic Analysis of the Fractional Brownian Motion"
 
-use std::marker::PhantomData;
-
 use ndarray::Array1;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -142,10 +140,9 @@ pub struct Volterra<T: FloatExt + RoughSimd, S: SeedExt = Unseeded, B = Cpu> {
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
   engine: VolterraEngine<T>,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt + RoughSimd, S: SeedExt> Volterra<T, S> {
@@ -162,7 +159,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> Volterra<T, S> {
       _ => VolterraEngine::Reference(kernel.prepare::<T>()),
     };
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       kernel,
       n,
       t,

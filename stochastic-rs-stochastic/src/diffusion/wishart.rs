@@ -25,8 +25,6 @@
 //! discretization schemes for Wishart processes and their affine extensions*,
 //! Ann. Appl. Probab. 23(3), 1025–1073. DOI: 10.1214/12-AAP863
 
-use std::marker::PhantomData;
-
 use ndarray::Array2;
 use ndarray::Array3;
 use ndarray::s;
@@ -66,10 +64,9 @@ pub struct Wishart<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   step: StepMaps<T>,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 /// The maps of Proposition 6 for one grid step, computed once.
@@ -273,7 +270,7 @@ impl<T: FloatExt, S: SeedExt> Wishart<T, S> {
     let dt = t.unwrap_or(T::one()) / T::from_usize_(n.max(2) - 1);
     let step = StepMaps::new(&a, &b, dt);
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       alpha,
       b,
       a,
@@ -375,7 +372,7 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Wishart<T, S, B>
   fn sampler(&self) -> WishartSampler<T, S> {
     WishartSampler {
       process: Wishart {
-        backend: PhantomData,
+        backend: Cpu,
         alpha: self.alpha,
         b: self.b.clone(),
         a: self.a.clone(),

@@ -5,12 +5,11 @@
 //! widened on the way back.
 
 use metal::*;
-use ndarray::Array1;
 use ndarray::Array2;
 use parking_lot::Mutex;
 
-use super::EulerBackend;
 use super::EulerCoefficients;
+use super::EulerKernel;
 use super::EulerSpec;
 use crate::device::DeviceError;
 use crate::device::DeviceInfo;
@@ -94,10 +93,9 @@ unsafe impl Send for Context {}
 
 static CONTEXT: Mutex<Option<Context>> = Mutex::new(None);
 
-/// The Metal device [`crate::device::select_device`] chose: index `0` is the
-/// system default, `n > 0` the n-th entry of `Device::all()`.
-pub(crate) fn selected_metal_device() -> Result<Device> {
-  let ordinal = crate::device::selected_device();
+/// The Metal device at `ordinal`: index `0` is the system default, `n > 0` the
+/// n-th entry of `Device::all()`.
+pub(crate) fn metal_device(ordinal: usize) -> Result<Device> {
   if ordinal == 0 {
     return Device::system_default()
       .ok_or_else(|| DeviceError::Unavailable("no Metal device".to_string()));
@@ -113,25 +111,24 @@ pub(crate) fn selected_metal_device() -> Result<Device> {
   }
 }
 
-/// The selected Metal device, or why it cannot be used.
-pub(crate) fn probe() -> Result<DeviceInfo> {
-  let device = selected_metal_device()?;
+/// The Metal device at `ordinal`, or why it cannot be used.
+pub(crate) fn probe(ordinal: usize) -> Result<DeviceInfo> {
+  let device = metal_device(ordinal)?;
   Ok(DeviceInfo::new(
     "MetalNative",
     device.name().to_string(),
     &["f32"],
-    Some(crate::device::selected_device()),
+    Some(ordinal),
   ))
 }
 
-fn ensure_context() -> Result<()> {
-  let ordinal = crate::device::selected_device();
+fn ensure_context(ordinal: usize) -> Result<()> {
   let mut guard = CONTEXT.lock();
   if guard.as_ref().is_some_and(|c| c.ordinal == ordinal) {
     return Ok(());
   }
   *guard = None;
-  let device = selected_metal_device()?;
+  let device = metal_device(ordinal)?;
   let queue = device.new_command_queue();
   let library = device
     .new_library_with_source(MSL_SOURCE, &CompileOptions::new())
@@ -151,8 +148,8 @@ fn ensure_context() -> Result<()> {
   Ok(())
 }
 
-fn run(params: [f32; 4], args: EulerArgs) -> Result<Vec<f32>> {
-  ensure_context()?;
+fn run(ordinal: usize, params: [f32; 4], args: EulerArgs) -> Result<Vec<f32>> {
+  ensure_context(ordinal)?;
   let guard = CONTEXT.lock();
   let ctx = guard.as_ref().expect("initialised");
   let shared = MTLResourceOptions::StorageModeShared;
@@ -185,72 +182,35 @@ fn run(params: [f32; 4], args: EulerArgs) -> Result<Vec<f32>> {
   Ok(unsafe { std::slice::from_raw_parts(ptr, total) }.to_vec())
 }
 
-impl EulerBackend<f32> for MetalNative {
-  const DEVICE: bool = true;
-
-  /// The launch buffer as the matrix, chunked like the row form when the
-  /// batch exceeds the budget.
-  fn try_euler_matrix<P: EulerCoefficients<f32>>(process: &P, m: usize) -> Result<Array2<f32>> {
-    let n = process.grid_points();
-    let seed = process.device_seed();
-    let rows = crate::device::chunk_rows(n, std::mem::size_of::<f32>());
-    if m <= rows {
-      return device_paths(
-        process.euler_spec(),
-        process.initial_value(),
-        n,
-        process.horizon(),
-        0,
-        m,
-        seed,
-      );
-    }
-    let mut out = Array2::<f32>::zeros((m, n));
-    let mut first = 0;
-    while first < m {
-      let len = rows.min(m - first);
-      let chunk = device_paths(
-        process.euler_spec(),
-        process.initial_value(),
-        n,
-        process.horizon(),
-        first,
-        len,
-        seed,
-      )?;
-      out
-        .slice_mut(ndarray::s![first..first + len, ..])
-        .assign(&chunk);
-      first += len;
-    }
-    Ok(out)
-  }
-
-  fn try_euler_paths_seeded<P: EulerCoefficients<f32>>(
+impl EulerKernel<f32> for MetalNative {
+  fn euler_kernel<P: EulerCoefficients<f32>>(
+    &self,
     process: &P,
     first: usize,
     m: usize,
     seed: u64,
-  ) -> Result<Vec<Array1<f32>>> {
-    Ok(
-      device_paths(
-        process.euler_spec(),
-        process.initial_value(),
-        process.grid_points(),
-        process.horizon(),
-        first,
-        m,
-        seed,
-      )?
-      .outer_iter()
-      .map(|row| row.to_owned())
-      .collect(),
+  ) -> Result<Array2<f32>> {
+    device_paths(
+      self.ordinal,
+      process.euler_spec(),
+      process.initial_value(),
+      process.grid_points(),
+      process.horizon(),
+      first,
+      m,
+      seed,
     )
+  }
+
+  fn batch_budget(&self) -> usize {
+    self.batch_budget
   }
 }
 
 /// The kernel launch for an explicit specification.
+#[allow(clippy::too_many_arguments)]
 fn device_paths(
+  ordinal: usize,
   spec: EulerSpec<f32>,
   x0: f32,
   n: usize,
@@ -276,7 +236,7 @@ fn device_paths(
       paths: m as u32,
       first_path: first as u32,
     };
-    let data = run(params32, args)?;
+    let data = run(ordinal, params32, args)?;
     Ok(Array2::from_shape_vec((m, n), data).expect("the kernel returns m * n values"))
   }
 }

@@ -5,7 +5,6 @@
 //! +\sum_{j=1}^q\beta_j\sigma_{t-j}^2
 //! $$
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -59,10 +58,9 @@ pub struct Agarch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> Agarch<T, S> {
@@ -80,7 +78,7 @@ impl<T: FloatExt, S: SeedExt> Agarch<T, S> {
       "Agarch requires alpha.len() == delta.len()"
     );
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       omega,
       alpha,
       delta,

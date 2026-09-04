@@ -8,7 +8,6 @@
 //! Derivative Securities*, Review of Financial Studies 3(4), 573–592,
 //! DOI: 10.1093/rfs/3.4.573.
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 #[cfg(feature = "python")]
@@ -43,10 +42,9 @@ pub struct HullWhite<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 /// Constant θ(t) ≡ 0.04 used by [`HullWhite`]'s `Default` impl — matches
@@ -72,7 +70,7 @@ impl<T: FloatExt, S: SeedExt> HullWhite<T, S> {
     seed: S,
   ) -> Self {
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       theta: theta.into(),
       alpha,
       sigma,

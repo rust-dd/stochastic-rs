@@ -38,9 +38,9 @@ rl_rough            hurst          ndarray_overhead     sampler_compare
 | `fgn_cuda_native`    | `cuda-native`                      |
 | `fgn_metal`          | `metal`                            |
 | `fgn_accelerate`     | `accelerate`                       |
-| `fgn_all_backends`   | `gpu-wgpu`, `metal`, `accelerate`  |
+| `fgn_all_backends`   | `cubecl-wgpu`, `metal`, `accelerate` |
 | `hotpath_profile`    | `hotpath`                          |
-| `fgn_cuda_compare`   | `cuda-native`, `gpu-cuda`          |
+| `fgn_cuda_compare`   | `cuda-native`, `cubecl-cuda`       |
 | `dual_stream_compare`| `dual-stream-rng`                  |
 
 ## FGN — CPU vs CUDA native
@@ -77,7 +77,7 @@ transfer overhead.
 
 ## All backends head-to-head
 
-`fgn_all_backends` (requires `gpu-wgpu`, `metal`, and `accelerate`)
+`fgn_all_backends` (requires `cubecl-wgpu`, `metal`, and `accelerate`)
 compares **CPU**, **cubecl-wgpu**, **Metal**, and **Accelerate** on the
 same FGN sampler. Shape of the four bench groups it registers (the `…`
 elides the closure argument, so this is illustrative rather than

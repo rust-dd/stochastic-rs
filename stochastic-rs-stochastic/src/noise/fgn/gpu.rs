@@ -310,17 +310,15 @@ mod backend {
   static GPU_CTX: Mutex<Option<GpuContext>> = Mutex::new(None);
 
   /// Opens the client for the selected device once; buffers are per call.
-  fn ensure_ctx() -> DeviceResult<()> {
-    let ordinal = crate::device::selected_device();
+  fn ensure_ctx(ordinal: usize) -> DeviceResult<()> {
     let mut g = GPU_CTX.lock();
     if g.as_ref().is_some_and(|c| c.ordinal == ordinal) {
       return Ok(());
     }
     *g = None;
     // CubeCL panics rather than erroring when no device exists.
-    let client =
-      std::panic::catch_unwind(|| R::client(&crate::euler::gpu::selected_cubecl_device()))
-        .map_err(|payload| DeviceError::Unavailable(crate::device::panic_text(payload)))?;
+    let client = std::panic::catch_unwind(|| R::client(&crate::euler::gpu::cubecl_device(ordinal)))
+      .map_err(|payload| DeviceError::Unavailable(crate::device::panic_text(payload)))?;
     *g = Some(GpuContext { ordinal, client });
     Ok(())
   }
@@ -351,6 +349,7 @@ mod backend {
     t: f64,
     first: usize,
     seed_u: u32,
+    ordinal: usize,
   ) -> DeviceResult<Array2<T>> {
     let traj_size = 2 * n;
     let out_size = n - offset;
@@ -358,7 +357,7 @@ mod backend {
     let total = m * traj_size;
     let log_n = traj_size.trailing_zeros() as usize;
 
-    ensure_ctx()?;
+    ensure_ctx(ordinal)?;
     let guard = GPU_CTX.lock();
     let cl = &guard.as_ref().unwrap().client;
 
@@ -470,10 +469,11 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     &self,
     m: usize,
     seed_src: &S2,
+    device: &crate::device::CubeCl,
   ) -> DeviceResult<Array2<T>> {
     #[cfg(not(any(feature = "cubecl-cuda", feature = "cubecl-wgpu")))]
     {
-      let _ = (m, seed_src);
+      let _ = (m, seed_src, device);
       return Err(DeviceError::Unavailable(
         "no CubeCL runtime compiled; enable the cubecl-cuda or cubecl-wgpu feature".to_string(),
       ));
@@ -492,12 +492,22 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
         .map(|x| x.to_f32().unwrap())
         .collect();
       let seed_u: u32 = rand::Rng::random(&mut seed_src.rng());
-      let rows = crate::device::chunk_rows(4 * n + out_size, 4);
+      let rows = crate::device::chunk_rows(device.batch_budget, 4 * n + out_size, 4);
       let mut out = Array2::<T>::zeros((m, out_size));
       let mut first = 0;
       while first < m {
         let len = rows.min(m - first);
-        let chunk = backend::sample_gpu_f32::<T>(&eigs, n, len, offset, hurst, t, first, seed_u)?;
+        let chunk = backend::sample_gpu_f32::<T>(
+          &eigs,
+          n,
+          len,
+          offset,
+          hurst,
+          t,
+          first,
+          seed_u,
+          device.ordinal,
+        )?;
         out
           .slice_mut(ndarray::s![first..first + len, ..])
           .assign(&chunk);

@@ -20,8 +20,6 @@
 //! Output is **log-prices** `x_i`, not levels `S_i = exp(x_i)`, matching MATLAB
 //! and the convention expected by `FMVol`.
 
-use std::marker::PhantomData;
-
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -69,10 +67,9 @@ pub struct Heston2D<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Cholesky factor `L` of the 4×4 correlation matrix, stored as
   /// `[L_11, L_21, L_22, L_31, L_32, L_33, L_41, L_42, L_43, L_44]`.
   chol: [T; 10],
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 /// Lower-triangular Cholesky factor of the 4×4 correlation matrix induced by
@@ -204,7 +201,7 @@ impl<T: FloatExt, S: SeedExt> Heston2D<T, S> {
     warn_on_feller_violation(&kappa, &theta, &sigma, use_sym);
     let chol = cholesky_4x4::<T>(rho);
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       x0,
       v0,
       mu,

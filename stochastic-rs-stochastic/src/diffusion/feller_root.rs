@@ -4,7 +4,6 @@
 //! dX_t=X_t(\theta_1 - X_t(\theta_3^3 - \theta_1\theta_2))\,dt+\theta_3 X_t^{3/2}\,dW_t
 //! $$
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -37,10 +36,9 @@ pub struct FellerRoot<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> FellerRoot<T, S> {
@@ -54,7 +52,7 @@ impl<T: FloatExt, S: SeedExt> FellerRoot<T, S> {
     seed: S,
   ) -> Self {
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       theta1,
       theta2,
       theta3,

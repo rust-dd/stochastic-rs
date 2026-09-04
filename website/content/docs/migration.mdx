@@ -15,7 +15,7 @@ the replacement; the design behind it is on
 means existing constructors and type names keep working; what changes is
 struct literals and generic bounds.
 
-- **Struct literals** need the marker field: add
+- **Struct literals** name the handle: `backend: Cpu` where 2.x had
   `backend: std::marker::PhantomData` (or build through the constructor).
 - **Generic code** over a process spells the third parameter:
   `fn f<T, S, B: HostBackend>(p: &Gbm<T, S, B>)`. `HostBackend`,
@@ -23,7 +23,9 @@ struct literals and generic bounds.
   can name; see [GPU support](/docs/concepts/gpu-support) for which process
   accepts which.
 - **Device sampling** is `.on::<MetalNative>()` (or `CudaNative`, `CubeCl`,
-  `Accelerate`) on the process; the free-function form never shipped.
+  `Accelerate`) on the process, or `.on_device(handle)` with an explicit
+  `CudaNative { ordinal, batch_budget }`-style handle; the `backend` field
+  holds that handle as a value (`backend: Cpu` in a struct literal).
 
 ## `PricerExt` is gone; pricers are models
 

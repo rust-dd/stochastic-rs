@@ -17,7 +17,6 @@
 //! Reference: Bilokon & Wong (2026) §5.5; El Euch O., Rosenbaum M. *The
 //! characteristic function of rough Heston models*, Math. Finance 29 (2019),
 //! 3–38.
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -63,10 +62,9 @@ pub struct RlHeston<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub seed: S,
   cgns: Cgns<T>,
   markov: MarkovLift<T>,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 fn build_markov<T: FloatExt>(
@@ -106,7 +104,7 @@ impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
       assert!(v0 >= T::zero(), "v0 must be non-negative");
     }
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       hurst,
       s0,
       v0,

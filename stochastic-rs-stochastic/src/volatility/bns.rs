@@ -45,8 +45,6 @@
 //!   "Bayesian inference for non-Gaussian Ornstein-Uhlenbeck stochastic
 //!   volatility processes", *JRSS* B 66(2), 369-393.
 
-use std::marker::PhantomData;
-
 use ndarray::Array1;
 use rand::Rng;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -82,10 +80,9 @@ pub struct Bns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Seed strategy.
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> Bns<T, S> {
@@ -105,7 +102,7 @@ impl<T: FloatExt, S: SeedExt> Bns<T, S> {
     assert!(nu > T::zero(), "jump intensity ν must be positive");
     assert!(jump_shape > T::zero(), "Gamma shape ω must be positive");
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       s0,
       sigma2_0,
       lambda,

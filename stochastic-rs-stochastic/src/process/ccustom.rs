@@ -9,7 +9,6 @@
 //! no continuous diffusion component; this generates the pure jump sum
 //! `X_t`, meant to be added on top of a diffusion elsewhere.
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use ndarray::Axis;
@@ -43,10 +42,9 @@ where
   pub customjt: CustomJt<T, D2>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T, D1, D2, S: SeedExt> CompoundCustom<T, D1, D2, S>
@@ -68,7 +66,7 @@ where
     }
 
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       n,
       t_max,
       jumps_distribution,

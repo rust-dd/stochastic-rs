@@ -61,10 +61,9 @@ pub struct Heston<T: FloatExt, S: SeedExt = Unseeded, Sch: HestonScheme = Euler,
   cgns: Cgns<T>,
   /// Zero-sized marker for the compile-time variance scheme.
   _scheme: PhantomData<Sch>,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> Heston<T, S, Euler> {
@@ -90,7 +89,7 @@ impl<T: FloatExt, S: SeedExt> Heston<T, S, Euler> {
     }
 
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       s0,
       v0,
       kappa,
@@ -234,7 +233,7 @@ impl<T: FloatExt, S: SeedExt, B> Heston<T, S, Euler, B> {
   /// so keep `pow = HestonPow::Sqrt`.
   pub fn qe(self) -> Heston<T, S, AndersenQe> {
     Heston {
-      backend: PhantomData,
+      backend: Cpu,
       s0: self.s0,
       v0: self.v0,
       kappa: self.kappa,

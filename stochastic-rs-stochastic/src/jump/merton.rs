@@ -22,7 +22,6 @@
 //! Bates calibrators, or compose your own wrapper struct on the Rust side
 //! and re-bind via PyO3.
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use rand_distr::Distribution;
@@ -103,10 +102,9 @@ where
   /// construction from this same value — see `cpoisson`'s doc above) drives
   /// the jump component.
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -141,7 +139,7 @@ where
       seed.clone().derive(),
     );
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       alpha,
       sigma,
       lambda,

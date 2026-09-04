@@ -47,13 +47,15 @@ macro_rules! py_on_device_f64 {
       }
       #[cfg(feature = "accelerate")]
       $crate::python_device::Device::Accelerate => {
-        let owned = $inner.clone().on::<$crate::device::Accelerate>();
+        let owned = $inner.clone().on_device($crate::device::Accelerate);
         let $p = &owned;
         $body
       }
       #[cfg(feature = "cuda-native")]
-      $crate::python_device::Device::CudaNative => {
-        let owned = $inner.clone().on::<$crate::device::CudaNative>();
+      $crate::python_device::Device::CudaNative(ordinal) => {
+        let owned = $inner
+          .clone()
+          .on_device($crate::device::CudaNative::new(ordinal));
         let $p = &owned;
         $body
       }
@@ -76,25 +78,31 @@ macro_rules! py_on_device_f32 {
       }
       #[cfg(feature = "accelerate")]
       $crate::python_device::Device::Accelerate => {
-        let owned = $inner.clone().on::<$crate::device::Accelerate>();
+        let owned = $inner.clone().on_device($crate::device::Accelerate);
         let $p = &owned;
         $body
       }
       #[cfg(feature = "cuda-native")]
-      $crate::python_device::Device::CudaNative => {
-        let owned = $inner.clone().on::<$crate::device::CudaNative>();
+      $crate::python_device::Device::CudaNative(ordinal) => {
+        let owned = $inner
+          .clone()
+          .on_device($crate::device::CudaNative::new(ordinal));
         let $p = &owned;
         $body
       }
       #[cfg(feature = "metal")]
-      $crate::python_device::Device::MetalNative => {
-        let owned = $inner.clone().on::<$crate::device::MetalNative>();
+      $crate::python_device::Device::MetalNative(ordinal) => {
+        let owned = $inner
+          .clone()
+          .on_device($crate::device::MetalNative::new(ordinal));
         let $p = &owned;
         $body
       }
       #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-      $crate::python_device::Device::CubeCl => {
-        let owned = $inner.clone().on::<$crate::device::CubeCl>();
+      $crate::python_device::Device::CubeCl(ordinal) => {
+        let owned = $inner
+          .clone()
+          .on_device($crate::device::CubeCl::new(ordinal));
         let $p = &owned;
         $body
       }
@@ -525,9 +533,9 @@ macro_rules! py_process_2d {
 ///
 /// Storage form:
 /// - `via fgn`     — backend carried through an inner `fgn: Fgn<_, _, B>` field.
-/// - `via phantom` — backend carried through a `_backend: PhantomData<B>` field.
+/// - `via phantom` — backend carried through a `backend: Cpu<B>` field.
 /// - `via host`    — a process with a host sampler only (`B2: HostBackend`), backend carried
-///   through its public `backend: PhantomData<B>` field.
+///   through its public `backend: Cpu<B>` field.
 /// - `via euler`   — a process with Euler-engine device kernels (`B2: EulerBackend`), same field.
 macro_rules! backend_switch {
   (
@@ -535,11 +543,17 @@ macro_rules! backend_switch {
     $(where $($wc:tt)*)?
   ) => {
     impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
-      /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
-      pub fn on<B2: $crate::device::FgnBackend<$t>>(self) -> $ty<$t $(, $targ)*, B2> {
+      /// The same process on backend `B2` with that backend's default handle
+      /// (the environment's device ordinal and batch budget).
+      pub fn on<B2: $crate::device::FgnBackend<$t> + Default>(self) -> $ty<$t $(, $targ)*, B2> {
+        self.on_device(B2::default())
+      }
+
+      /// The same process on the given backend handle.
+      pub fn on_device<B2: $crate::device::FgnBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
-          fgn: self.fgn.on::<B2>(),
+          fgn: self.fgn.on_device(device),
         }
       }
     }
@@ -549,11 +563,17 @@ macro_rules! backend_switch {
     $(where $($wc:tt)*)?
   ) => {
     impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
-      /// Re-type this process to sample on backend `B2` (compile-time, zero runtime cost).
-      pub fn on<B2: $crate::device::FgnBackend<$t>>(self) -> $ty<$t $(, $targ)*, B2> {
+      /// The same process on backend `B2` with that backend's default handle
+      /// (the environment's device ordinal and batch budget).
+      pub fn on<B2: $crate::device::FgnBackend<$t> + Default>(self) -> $ty<$t $(, $targ)*, B2> {
+        self.on_device(B2::default())
+      }
+
+      /// The same process on the given backend handle.
+      pub fn on_device<B2: $crate::device::FgnBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
-          _backend: ::std::marker::PhantomData,
+          backend: device,
         }
       }
     }
@@ -563,14 +583,16 @@ macro_rules! backend_switch {
     $(where $($wc:tt)*)?
   ) => {
     impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
-      /// Re-type this process to sample on backend `B2` (compile-time, zero
-      /// runtime cost). This process has a host sampler only, so `B2` is a
-      /// host device ([`Cpu`](crate::device::Cpu), `Accelerate`); a device
-      /// implementation widens the bound without touching callers.
-      pub fn on<B2: $crate::device::HostBackend>(self) -> $ty<$t $(, $targ)*, B2> {
+      /// The same process on backend `B2` with that backend's default handle.
+      pub fn on<B2: $crate::device::HostBackend + Default>(self) -> $ty<$t $(, $targ)*, B2> {
+        self.on_device(B2::default())
+      }
+
+      /// The same process on the given backend handle.
+      pub fn on_device<B2: $crate::device::HostBackend>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
-          backend: ::std::marker::PhantomData,
+          backend: device,
         }
       }
     }
@@ -580,14 +602,18 @@ macro_rules! backend_switch {
     $(where $($wc:tt)*)?
   ) => {
     impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
-      /// Re-type this process to sample on backend `B2` (compile-time, zero
-      /// runtime cost): [`Cpu`](crate::device::Cpu) and `Accelerate` run the host
-      /// sampler, the device markers (`MetalNative`, `CudaNative`, `CubeCl`) the
-      /// Euler kernel.
-      pub fn on<B2: $crate::euler::EulerBackend<$t>>(self) -> $ty<$t $(, $targ)*, B2> {
+      /// The same process on backend `B2` with that backend's default handle
+      /// (the environment's device ordinal and batch budget).
+      pub fn on<B2: $crate::euler::EulerBackend<$t> + Default>(self) -> $ty<$t $(, $targ)*, B2> {
+        self.on_device(B2::default())
+      }
+
+      /// The same process on the given backend handle, e.g.
+      /// `CudaNative::new(1).with_batch_budget(256 << 20)`.
+      pub fn on_device<B2: $crate::euler::EulerBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
-          backend: ::std::marker::PhantomData,
+          backend: device,
         }
       }
     }

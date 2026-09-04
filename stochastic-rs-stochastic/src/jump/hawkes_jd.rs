@@ -13,8 +13,6 @@
 //! - Hawkes (1971), "Spectra of some self-exciting and mutually exciting point processes"
 //! - Merton (1976), "Option pricing when underlying stock returns are discontinuous"
 
-use std::marker::PhantomData;
-
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -55,10 +53,9 @@ pub struct HawkesJD<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> HawkesJD<T, S> {
@@ -82,7 +79,7 @@ impl<T: FloatExt, S: SeedExt> HawkesJD<T, S> {
       "stationarity requires alpha/beta < 1"
     );
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       mu,
       sigma,
       mu_lambda,

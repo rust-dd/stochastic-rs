@@ -506,10 +506,6 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m
   )?)?;
   m.add_function(pyo3::wrap_pyfunction!(
-    stochastic_rs_stochastic::euler::python::select_device,
-    m
-  )?)?;
-  m.add_function(pyo3::wrap_pyfunction!(
     stochastic_rs_stochastic::euler::python::probe_device,
     m
   )?)?;

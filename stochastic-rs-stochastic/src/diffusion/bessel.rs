@@ -21,7 +21,6 @@
 //! a [`SquaredBessel`] of dimension `δ = 4κθ/σ²` under the time change
 //! `τ(t) = (σ²/4κ)(e^{κt}-1)` — the two SDEs share the same `2√X` diffusion
 //! shape, only reparametrized and time-changed.
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -62,10 +61,9 @@ pub struct SquaredBessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Seed strategy (compile-time: [`Unseeded`] or
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -100,7 +98,7 @@ impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
     }
 
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       delta,
       n,
       x0,
@@ -295,10 +293,9 @@ pub struct Bessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Seed strategy (compile-time: [`Unseeded`] or
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -328,7 +325,7 @@ impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
     }
 
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       delta,
       n,
       x0,

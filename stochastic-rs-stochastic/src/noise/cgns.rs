@@ -4,7 +4,6 @@
 //! Z_t=L\varepsilon_t,\quad \varepsilon_t\sim\mathcal N(0,I),\ LL^\top=\Sigma
 //! $$
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -28,10 +27,9 @@ pub struct Cgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> Cgns<T, S> {
@@ -42,7 +40,7 @@ impl<T: FloatExt, S: SeedExt> Cgns<T, S> {
     );
 
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       rho,
       n,
       t,
@@ -107,7 +105,7 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Cgns<T, S, B> {
   fn sampler(&self) -> CgnsSampler<T, S> {
     CgnsSampler {
       cgns: Cgns {
-        backend: PhantomData,
+        backend: Cpu,
         rho: self.rho,
         n: self.n,
         t: self.t,

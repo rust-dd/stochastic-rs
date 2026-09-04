@@ -4,7 +4,6 @@
 //! dX_t=K(\Theta-X_t)dt+\sqrt{A+BX_t}\,dW_t,\quad r_t=\ell_0+\ell^\top X_t
 //! $$
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -71,10 +70,9 @@ pub struct DuffieKan<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   cgns: Cgns<T>,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> DuffieKan<T, S> {
@@ -98,7 +96,7 @@ impl<T: FloatExt, S: SeedExt> DuffieKan<T, S> {
     seed: S,
   ) -> Self {
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       alpha,
       beta,
       gamma,

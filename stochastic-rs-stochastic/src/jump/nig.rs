@@ -4,7 +4,6 @@
 //! X_t=\mu t+\beta I_t+W_{I_t},\quad I_t\sim\mathrm{Ig}(\delta t,\gamma)
 //! $$
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -41,17 +40,16 @@ pub struct Nig<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> Nig<T, S> {
   pub fn new(theta: T, sigma: T, kappa: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(kappa > T::zero(), "kappa must be positive");
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       theta,
       sigma,
       kappa,

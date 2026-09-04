@@ -33,7 +33,6 @@
 //! [`SeedExt`]'s `Clone` supertrait) and keeps its real [`CirSampler`], so
 //! at `phi ≡ 0` the two processes consume the same Gaussian stream through
 //! the same step formula and agree bit-for-bit.
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 #[cfg(feature = "python")]
@@ -84,10 +83,9 @@ pub struct CirPlusPlus<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Seed strategy (compile-time: [`Unseeded`] or
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 /// Constant shift φ(t) ≡ 0 used by [`CirPlusPlus`]'s `Default` impl —
@@ -132,7 +130,7 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
     }
 
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       kappa,
       theta,
       sigma,
@@ -282,7 +280,7 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for CirPlusPlus<T, S
       t: self.t,
       use_sym: self.use_sym,
       seed: self.seed.clone(),
-      backend: std::marker::PhantomData,
+      backend: Cpu,
     };
     CirPlusPlusSampler {
       n: self.n,

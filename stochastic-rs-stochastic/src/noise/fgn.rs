@@ -67,7 +67,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
   }
 
   fn sample(&self) -> Self::Output {
-    B::generate(self, &self.seed)
+    self.backend.generate(self, &self.seed)
   }
 
   /// The `m` paths are generated in **one batched backend call**.
@@ -84,7 +84,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
   /// [`FgnBackend`](crate::device::FgnBackend)'s doc for the full per-backend
   /// table.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
-    B::generate_batch(self, m, &self.seed)
+    self.backend.generate_batch(self, m, &self.seed)
   }
 }
 

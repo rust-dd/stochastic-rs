@@ -4,7 +4,6 @@
 //! X_t=\varepsilon_t+\sum_{k=1}^q\theta_k\varepsilon_{t-k},\qquad \varepsilon_t\sim\mathcal N(0,\sigma^2)
 //! $$
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -40,10 +39,9 @@ pub struct MAq<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> MAq<T, S> {
@@ -51,7 +49,7 @@ impl<T: FloatExt, S: SeedExt> MAq<T, S> {
   pub fn new(theta: Array1<T>, sigma: T, n: usize, seed: S) -> Self {
     assert!(sigma > T::zero(), "MAq requires sigma > 0");
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       theta,
       sigma,
       n,

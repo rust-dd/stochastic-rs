@@ -49,8 +49,10 @@ use crate::diffusion::cir::Cir;
 use crate::diffusion::gbm::Gbm;
 use crate::diffusion::ou::Ou;
 use crate::traits::FloatExt;
+use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 use crate::traits::process::sample_map_chunked;
+use crate::traits::process::sample_par_chunked;
 
 /// Scalar drift / diffusion families the device kernels know how to step.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -105,193 +107,236 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
   /// One draw from the process's seed source: reproducible for
   /// `Deterministic`, fresh entropy for `Unseeded`.
   fn device_seed(&self) -> u64;
+
+  /// One path from the process's own sampler, the host stream.
+  fn host_sample(&self) -> Array1<T>;
 }
 
-/// Device capability: `m` paths of `process`, each an `n`-vector whose entry
-/// 0 is the initial value.
-///
-/// The scalar is a trait parameter and a device implements the capability
-/// only for the precision its kernel computes in: `CudaNative` for `f32` and
-/// `f64`, `MetalNative` and `CubeCl` for `f32` alone, the CPU devices for
-/// both. `Gbm<f64>` on `MetalNative` is a compile error.
-pub trait EulerBackend<T: FloatExt>: Backend {
-  /// `true` for the GPU markers, whose paths come from the kernel; `false`
-  /// for the CPU devices, whose paths come from the process's own sampler.
-  const DEVICE: bool;
-
-  /// Paths `first .. first + m` of the launch stream seeded by `seed`, or why
-  /// the device could not produce them. The kernels hash
+/// The device primitive of the Euler engine: one launch under one seed.
+/// Implement it for a device handle and [`EulerBackend`] follows through
+/// `kernel_euler_backend!`; the host handles implement [`EulerBackend`]
+/// directly.
+pub trait EulerKernel<T: FloatExt>: Backend {
+  /// Paths `first .. first + m` of the launch stream seeded by `seed`, as an
+  /// `m × n` matrix whose column 0 is the initial value. The kernels hash
   /// `(first + path, step, seed)`, so a batch produced in chunks under one
-  /// seed is bit-identical to one launch of the whole batch. The CPU devices
-  /// ignore `first` and `seed`: their stream is sequential, and they sample
-  /// `m` fresh paths.
-  fn try_euler_paths_seeded<P: EulerCoefficients<T>>(
+  /// seed is bit-identical to one launch of the whole batch.
+  fn euler_kernel<P: EulerCoefficients<T>>(
+    &self,
     process: &P,
     first: usize,
     m: usize,
     seed: u64,
-  ) -> Result<Vec<Array1<T>>, DeviceError>;
+  ) -> Result<Array2<T>, DeviceError>;
 
-  /// Paths `first .. first + m` under one draw of the process's seed source.
-  fn try_euler_paths_from<P: EulerCoefficients<T>>(
-    process: &P,
-    first: usize,
-    m: usize,
-  ) -> Result<Vec<Array1<T>>, DeviceError> {
-    Self::try_euler_paths_seeded(process, first, m, process.device_seed())
-  }
+  /// Bytes of path data one launch may hold.
+  fn batch_budget(&self) -> usize;
 
-  /// `m` paths, or why the device could not produce them; one seed draw,
-  /// launched in chunks that fit [`crate::device::batch_budget_bytes`].
-  fn try_euler_paths<P: EulerCoefficients<T>>(
+  /// The whole batch under `seed`, chunked to the budget. A device may
+  /// override it to pipeline the chunks; the result must stay bit-identical.
+  fn euler_kernel_batch<P: EulerCoefficients<T>>(
+    &self,
     process: &P,
     m: usize,
-  ) -> Result<Vec<Array1<T>>, DeviceError> {
-    let seed = process.device_seed();
-    let rows = crate::device::chunk_rows(process.grid_points(), std::mem::size_of::<T>());
-    let mut out = Vec::with_capacity(m);
+    seed: u64,
+  ) -> Result<Array2<T>, DeviceError> {
+    let n = process.grid_points();
+    let rows = crate::device::chunk_rows(self.batch_budget(), n, std::mem::size_of::<T>());
+    if m <= rows {
+      return self.euler_kernel(process, 0, m, seed);
+    }
+    let mut out = Array2::<T>::zeros((m, n));
     let mut first = 0;
     while first < m {
       let len = rows.min(m - first);
-      out.extend(Self::try_euler_paths_seeded(process, first, len, seed)?);
+      let chunk = self.euler_kernel(process, first, len, seed)?;
+      out
+        .slice_mut(ndarray::s![first..first + len, ..])
+        .assign(&chunk);
       first += len;
     }
     Ok(out)
   }
+}
 
-  /// `f` over `m` paths, each chunk mapped in parallel before the next is
-  /// launched, so the batch never has to fit in memory at once.
+/// How a backend handle produces Euler paths for the processes it serves:
+/// the CPU handles run the process's own sampler, a device handle runs its
+/// [`EulerKernel`]. The `try_*` methods report a device failure as a
+/// [`DeviceError`]; the plain ones panic with it.
+pub trait EulerBackend<T: FloatExt>: Backend {
+  /// One path.
+  fn try_sample<P: EulerCoefficients<T>>(&self, process: &P) -> Result<Array1<T>, DeviceError>;
+
+  /// `m` paths.
+  fn try_euler_paths<P: EulerCoefficients<T>>(
+    &self,
+    process: &P,
+    m: usize,
+  ) -> Result<Vec<Array1<T>>, DeviceError>;
+
+  /// `f` over `m` paths, mapped as they are produced, so the batch never has
+  /// to fit in memory at once.
   fn try_euler_paths_map<P: EulerCoefficients<T>, R: Send>(
+    &self,
     process: &P,
     m: usize,
     f: impl Fn(&Array1<T>) -> R + Sync,
-  ) -> Result<Vec<R>, DeviceError> {
-    use rayon::prelude::*;
-    let seed = process.device_seed();
-    let rows = crate::device::chunk_rows(process.grid_points(), std::mem::size_of::<T>());
-    let mut out = Vec::with_capacity(m);
-    let mut first = 0;
-    while first < m {
-      let len = rows.min(m - first);
-      let chunk = Self::try_euler_paths_seeded(process, first, len, seed)?;
-      out.extend(chunk.par_iter().map(&f).collect::<Vec<R>>());
-      first += len;
-    }
-    Ok(out)
-  }
+  ) -> Result<Vec<R>, DeviceError>;
 
-  /// The batch as one `m × n` matrix. The device back-ends hand their launch
-  /// buffer over as is, so a consumer that wants a matrix (the Python module,
-  /// a column-wise estimator) skips the re-layout into rows; the default
-  /// stacks [`try_euler_paths`](Self::try_euler_paths).
+  /// The batch as one `m × n` matrix; on a device the launch buffer itself.
   fn try_euler_matrix<P: EulerCoefficients<T>>(
+    &self,
     process: &P,
     m: usize,
-  ) -> Result<Array2<T>, DeviceError> {
-    let rows = Self::try_euler_paths(process, m)?;
-    let n = rows.first().map_or(process.grid_points(), |r| r.len());
-    let mut out = Array2::<T>::zeros((m, n));
-    for (i, row) in rows.iter().enumerate() {
-      out.row_mut(i).assign(row);
-    }
-    Ok(out)
+  ) -> Result<Array2<T>, DeviceError>;
+
+  /// [`try_sample`](Self::try_sample), panicking with the device's error.
+  fn euler_sample<P: EulerCoefficients<T>>(&self, process: &P) -> Array1<T> {
+    self
+      .try_sample(process)
+      .unwrap_or_else(crate::device::device_panic)
   }
 
   /// [`try_euler_paths`](Self::try_euler_paths), panicking with the device's
   /// error; [`Backend::probe`] first turns that failure into a `Result`.
-  fn euler_paths<P: EulerCoefficients<T>>(process: &P, m: usize) -> Vec<Array1<T>> {
-    Self::try_euler_paths(process, m).unwrap_or_else(crate::device::device_panic)
+  fn euler_paths<P: EulerCoefficients<T>>(&self, process: &P, m: usize) -> Vec<Array1<T>> {
+    self
+      .try_euler_paths(process, m)
+      .unwrap_or_else(crate::device::device_panic)
   }
 
   /// [`try_euler_paths_map`](Self::try_euler_paths_map), panicking with the
   /// device's error.
   fn euler_paths_map<P: EulerCoefficients<T>, R: Send>(
+    &self,
     process: &P,
     m: usize,
     f: impl Fn(&Array1<T>) -> R + Sync,
   ) -> Vec<R> {
-    Self::try_euler_paths_map(process, m, f).unwrap_or_else(crate::device::device_panic)
+    self
+      .try_euler_paths_map(process, m, f)
+      .unwrap_or_else(crate::device::device_panic)
   }
 }
 
-/// The CPU path is the process's own sampler.
-impl<T: FloatExt> EulerBackend<T> for Cpu {
-  const DEVICE: bool = false;
-  fn try_euler_paths_seeded<P: EulerCoefficients<T>>(
-    process: &P,
-    _first: usize,
-    m: usize,
-    _seed: u64,
-  ) -> Result<Vec<Array1<T>>, DeviceError> {
-    Ok(process.sample_par(m))
-  }
+/// A host handle samples through the process's own sampler, chunked the way
+/// `ProcessExt` chunks, so its streams are those of the process.
+macro_rules! host_euler_backend {
+  ($handle:ty) => {
+    impl<T: FloatExt> EulerBackend<T> for $handle {
+      fn try_sample<P: EulerCoefficients<T>>(&self, process: &P) -> Result<Array1<T>, DeviceError> {
+        Ok(process.host_sample())
+      }
 
-  /// The host never draws a device seed: its stream is the process's own.
-  fn try_euler_paths_from<P: EulerCoefficients<T>>(
-    process: &P,
-    _first: usize,
-    m: usize,
-  ) -> Result<Vec<Array1<T>>, DeviceError> {
-    Ok(process.sample_par(m))
-  }
+      fn try_euler_paths<P: EulerCoefficients<T>>(
+        &self,
+        process: &P,
+        m: usize,
+      ) -> Result<Vec<Array1<T>>, DeviceError> {
+        Ok(sample_par_chunked(process, m))
+      }
 
-  /// The host stream is the process's own `sample_par`, never chunked here.
-  fn try_euler_paths<P: EulerCoefficients<T>>(
-    process: &P,
-    m: usize,
-  ) -> Result<Vec<Array1<T>>, DeviceError> {
-    Ok(process.sample_par(m))
-  }
+      fn try_euler_paths_map<P: EulerCoefficients<T>, R: Send>(
+        &self,
+        process: &P,
+        m: usize,
+        f: impl Fn(&Array1<T>) -> R + Sync,
+      ) -> Result<Vec<R>, DeviceError> {
+        Ok(sample_map_chunked(process, m, f))
+      }
 
-  /// The host map is the process's own chunked `sample_map`.
-  fn try_euler_paths_map<P: EulerCoefficients<T>, R: Send>(
-    process: &P,
-    m: usize,
-    f: impl Fn(&Array1<T>) -> R + Sync,
-  ) -> Result<Vec<R>, DeviceError> {
-    Ok(sample_map_chunked(process, m, f))
-  }
+      fn try_euler_matrix<P: EulerCoefficients<T>>(
+        &self,
+        process: &P,
+        m: usize,
+      ) -> Result<Array2<T>, DeviceError> {
+        let rows = sample_par_chunked(process, m);
+        let n = rows.first().map_or(process.grid_points(), |r| r.len());
+        let mut out = Array2::<T>::zeros((m, n));
+        for (i, row) in rows.iter().enumerate() {
+          out.row_mut(i).assign(row);
+        }
+        Ok(out)
+      }
+    }
+  };
 }
 
-/// Accelerate is a CPU device (vDSP): the process's own sampler as well.
+host_euler_backend!(Cpu);
 #[cfg(feature = "accelerate")]
-impl<T: FloatExt> EulerBackend<T> for crate::device::Accelerate {
-  const DEVICE: bool = false;
-  fn try_euler_paths_seeded<P: EulerCoefficients<T>>(
-    process: &P,
-    _first: usize,
-    m: usize,
-    _seed: u64,
-  ) -> Result<Vec<Array1<T>>, DeviceError> {
-    Ok(process.sample_par(m))
-  }
+host_euler_backend!(crate::device::Accelerate);
 
-  /// The host never draws a device seed: its stream is the process's own.
-  fn try_euler_paths_from<P: EulerCoefficients<T>>(
-    process: &P,
-    _first: usize,
-    m: usize,
-  ) -> Result<Vec<Array1<T>>, DeviceError> {
-    Ok(process.sample_par(m))
-  }
+/// A device kernel is an Euler backend: one seed per call, chunks to the
+/// handle's budget, the map applied per chunk in parallel. One impl per
+/// handle rather than a blanket one, which coherence would not allow beside
+/// the host impls above.
+#[cfg(any(feature = "cuda-native", feature = "metal", feature = "cubecl"))]
+macro_rules! kernel_euler_backend {
+  ($handle:ty, [$($gen:tt)*] $scalar:ty) => {
+    impl<$($gen)*> EulerBackend<$scalar> for $handle {
+    fn try_sample<P: EulerCoefficients<$scalar>>(&self, process: &P) -> Result<Array1<$scalar>, DeviceError> {
+      let seed = process.device_seed();
+      Ok(<Self as EulerKernel<$scalar>>::euler_kernel(self, process, 0, 1, seed)?.row(0).to_owned())
+    }
 
-  /// The host stream is the process's own `sample_par`, never chunked here.
-  fn try_euler_paths<P: EulerCoefficients<T>>(
-    process: &P,
-    m: usize,
-  ) -> Result<Vec<Array1<T>>, DeviceError> {
-    Ok(process.sample_par(m))
-  }
+    fn try_euler_paths<P: EulerCoefficients<$scalar>>(
+      &self,
+      process: &P,
+      m: usize,
+    ) -> Result<Vec<Array1<$scalar>>, DeviceError> {
+      let seed = process.device_seed();
+      Ok(
+        <Self as EulerKernel<$scalar>>::euler_kernel_batch(self, process, m, seed)?
+          .outer_iter()
+          .map(|row| row.to_owned())
+          .collect(),
+      )
+    }
 
-  /// The host map is the process's own chunked `sample_map`.
-  fn try_euler_paths_map<P: EulerCoefficients<T>, R: Send>(
-    process: &P,
-    m: usize,
-    f: impl Fn(&Array1<T>) -> R + Sync,
-  ) -> Result<Vec<R>, DeviceError> {
-    Ok(sample_map_chunked(process, m, f))
-  }
+    fn try_euler_paths_map<P: EulerCoefficients<$scalar>, R: Send>(
+      &self,
+      process: &P,
+      m: usize,
+      f: impl Fn(&Array1<$scalar>) -> R + Sync,
+    ) -> Result<Vec<R>, DeviceError> {
+      use rayon::prelude::*;
+      let seed = process.device_seed();
+      let rows = crate::device::chunk_rows(
+        <Self as EulerKernel<$scalar>>::batch_budget(self),
+        process.grid_points(),
+        std::mem::size_of::<$scalar>(),
+      );
+      let mut out = Vec::with_capacity(m);
+      let mut first = 0;
+      while first < m {
+        let len = rows.min(m - first);
+        let chunk: Vec<Array1<$scalar>> = <Self as EulerKernel<$scalar>>::euler_kernel(self, process, first, len, seed)?
+          .outer_iter()
+          .map(|row| row.to_owned())
+          .collect();
+        out.extend(chunk.par_iter().map(&f).collect::<Vec<R>>());
+        first += len;
+      }
+      Ok(out)
+    }
+
+    fn try_euler_matrix<P: EulerCoefficients<$scalar>>(
+      &self,
+      process: &P,
+      m: usize,
+    ) -> Result<Array2<$scalar>, DeviceError> {
+      <Self as EulerKernel<$scalar>>::euler_kernel_batch(self, process, m, process.device_seed())
+    }
+    }
+  };
 }
+
+#[cfg(feature = "metal")]
+kernel_euler_backend!(crate::device::MetalNative, [] f32);
+#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
+kernel_euler_backend!(crate::device::CubeCl, [] f32);
+#[cfg(feature = "cuda-native")]
+kernel_euler_backend!(crate::device::CudaNative, [T: FloatExt] T);
 
 fn draw_seed<S: SeedExt>(seed: &S) -> u64 {
   rand::Rng::random(&mut seed.rng())
@@ -320,6 +365,12 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> EulerCoefficients<T> for Gbm<T
   fn device_seed(&self) -> u64 {
     draw_seed(&self.seed)
   }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = self.sampler().sample();
+    self.advance_chunk_seed();
+    out
+  }
 }
 
 impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> EulerCoefficients<T> for Ou<T, S, B> {
@@ -345,6 +396,12 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> EulerCoefficients<T> for Ou<T,
 
   fn device_seed(&self) -> u64 {
     draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = self.sampler().sample();
+    self.advance_chunk_seed();
+    out
   }
 }
 
@@ -372,6 +429,12 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> EulerCoefficients<T> for Cir<T
   fn device_seed(&self) -> u64 {
     draw_seed(&self.seed)
   }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = self.sampler().sample();
+    self.advance_chunk_seed();
+    out
+  }
 }
 
 macro_rules! try_sample_par {
@@ -382,13 +445,19 @@ macro_rules! try_sample_par {
       /// request. On the CPU devices this is always `Ok` and bit-identical
       /// to `sample_par`.
       pub fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, DeviceError> {
-        B::try_euler_paths(self, m)
+        self.backend.try_euler_paths(self, m)
+      }
+
+      /// One path, or the device's error instead of the panic
+      /// [`ProcessExt::sample`] raises when the device cannot serve it.
+      pub fn try_sample(&self) -> Result<Array1<T>, DeviceError> {
+        self.backend.try_sample(self)
       }
 
       /// The batch as one `m × n` matrix: on a device back-end the launch
       /// buffer itself, without a re-layout into rows.
       pub fn try_sample_matrix(&self, m: usize) -> Result<Array2<T>, DeviceError> {
-        B::try_euler_matrix(self, m)
+        self.backend.try_euler_matrix(self, m)
       }
     }
   };
@@ -428,140 +497,24 @@ pub mod python {
   //! ordinal. Sampling on a device goes through the process classes'
   //! `device=` argument.
 
-  use pyo3::exceptions::PyValueError;
   use pyo3::prelude::*;
 
-  use crate::device::Cpu;
-  use crate::device::DeviceError;
-
-  /// Runs `m` paths of the process on the requested device through
-  /// `.on::<B>()`; every arm is the same call on a different marker.
-  /// A device failure is a Python `RuntimeError` carrying the device's message.
-  fn device_err(e: DeviceError) -> PyErr {
-    pyo3::exceptions::PyRuntimeError::new_err(e.to_string())
-  }
-
-  /// Chooses the device ordinal the device back-ends open (CUDA ordinal,
-  /// Metal device index, CubeCL device index); process-wide, `0` by default
-  /// or `STOCHASTIC_RS_DEVICE`. See `probe_device` to check what it opens.
-  #[pyfunction]
-  pub fn select_device(ordinal: usize) {
-    crate::device::select_device(ordinal);
-  }
-
   /// Opens the named device (`"cpu"`, `"gpu"`, `"cuda-native"`, `"metal"`,
-  /// `"cubecl"`, `"accelerate"`) and describes it as a dict with `backend`,
-  /// `name`, `precisions` and `ordinal`; raises `RuntimeError` with the
-  /// device's own message when it cannot be used, `ValueError` for a device
-  /// this build does not carry.
+  /// `"cubecl"`, `"accelerate"`, optionally with `:ordinal`) and describes it
+  /// as a dict with `backend`, `name`, `precisions` and `ordinal`; raises
+  /// `RuntimeError` with the device's own message when it cannot be used,
+  /// `ValueError` for a device this build does not carry.
   #[pyfunction]
   pub fn probe_device<'py>(
     py: Python<'py>,
     device: &str,
   ) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
-    use crate::device::Backend;
-    use crate::device::DeviceInfo;
-    fn describe<'py>(
-      py: Python<'py>,
-      info: DeviceInfo,
-    ) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
-      let d = pyo3::types::PyDict::new(py);
-      d.set_item("backend", info.backend)?;
-      d.set_item("name", info.name)?;
-      d.set_item("precisions", info.precisions.to_vec())?;
-      d.set_item("ordinal", info.ordinal)?;
-      Ok(d)
-    }
-    let missing = |what: &str, feature: &str| {
-      PyValueError::new_err(format!(
-        "this build has no {what}; rebuild with the {feature} feature"
-      ))
-    };
-    let info = match device.to_ascii_lowercase().as_str() {
-      "cpu" => Cpu::probe(),
-      "accelerate" => {
-        #[cfg(feature = "accelerate")]
-        {
-          crate::device::Accelerate::probe()
-        }
-
-        #[cfg(not(feature = "accelerate"))]
-        {
-          return Err(missing("Accelerate back-end", "accelerate"));
-        }
-      }
-      "cuda-native" | "cuda_native" => {
-        #[cfg(feature = "cuda-native")]
-        {
-          crate::device::CudaNative::probe()
-        }
-
-        #[cfg(not(feature = "cuda-native"))]
-        {
-          return Err(missing("native CUDA runtime", "cuda-native"));
-        }
-      }
-      "metal" => {
-        #[cfg(feature = "metal")]
-        {
-          crate::device::MetalNative::probe()
-        }
-
-        #[cfg(not(feature = "metal"))]
-        {
-          return Err(missing("native Metal runtime", "metal"));
-        }
-      }
-      "cubecl" => {
-        #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-        {
-          crate::device::CubeCl::probe()
-        }
-
-        #[cfg(not(any(feature = "cubecl-cuda", feature = "cubecl-wgpu")))]
-        {
-          return Err(missing("CubeCL runtime", "cubecl-cuda or cubecl-wgpu"));
-        }
-      }
-      "gpu" => {
-        #[cfg(feature = "cuda-native")]
-        {
-          crate::device::CudaNative::probe()
-        }
-
-        #[cfg(all(feature = "metal", not(feature = "cuda-native")))]
-        {
-          crate::device::MetalNative::probe()
-        }
-
-        #[cfg(all(
-          any(feature = "cubecl-cuda", feature = "cubecl-wgpu"),
-          not(feature = "metal"),
-          not(feature = "cuda-native")
-        ))]
-        {
-          crate::device::CubeCl::probe()
-        }
-
-        #[cfg(not(any(
-          feature = "cuda-native",
-          feature = "metal",
-          feature = "cubecl-cuda",
-          feature = "cubecl-wgpu"
-        )))]
-        {
-          return Err(missing(
-            "GPU runtime",
-            "cuda-native, metal, cubecl-cuda or cubecl-wgpu",
-          ));
-        }
-      }
-      other => {
-        return Err(PyValueError::new_err(format!(
-          "unknown device {other:?}; use cpu, gpu, cuda-native, metal, cubecl or accelerate"
-        )));
-      }
-    };
-    describe(py, info.map_err(device_err)?)
+    let info = crate::python_device::Device::parse_name(device)?.probe()?;
+    let d = pyo3::types::PyDict::new(py);
+    d.set_item("backend", info.backend)?;
+    d.set_item("name", info.name)?;
+    d.set_item("precisions", info.precisions.to_vec())?;
+    d.set_item("ordinal", info.ordinal)?;
+    Ok(d)
   }
 }

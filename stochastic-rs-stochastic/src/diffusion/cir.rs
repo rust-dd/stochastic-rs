@@ -8,7 +8,6 @@
 //! of the Term Structure of Interest Rates*, Econometrica 53(2),
 //! 385–407, DOI: 10.2307/1911242.
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -21,8 +20,6 @@ use crate::euler::EulerBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
-use crate::traits::process::sample_map_chunked;
-use crate::traits::process::sample_par_chunked;
 
 /// Cox-Ingersoll-Ross (Cir) process.
 ///
@@ -51,10 +48,9 @@ pub struct Cir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub use_sym: Option<bool>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -104,7 +100,7 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
       t,
       use_sym,
       seed,
-      backend: PhantomData,
+      backend: Cpu,
     }
   }
 
@@ -201,29 +197,15 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Cir<T, S, B>
   }
 
   fn sample(&self) -> Array1<T> {
-    if B::DEVICE {
-      B::euler_paths(self, 1).remove(0)
-    } else {
-      let out = self.sampler().sample();
-      self.advance_chunk_seed();
-      out
-    }
+    self.backend.euler_sample(self)
   }
 
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
-    if B::DEVICE {
-      B::euler_paths_map(self, m, f)
-    } else {
-      sample_map_chunked(self, m, f)
-    }
+    self.backend.euler_paths_map(self, m, f)
   }
 
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
-    if B::DEVICE {
-      B::euler_paths(self, m)
-    } else {
-      sample_par_chunked(self, m)
-    }
+    self.backend.euler_paths(self, m)
   }
 }
 

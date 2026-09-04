@@ -15,7 +15,6 @@
 //! - Kirkby, J.L. (PROJ_Option_Pricing_Matlab)
 //! - Kou, S.G. (2002), "A Jump-Diffusion Model for Option Pricing"
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use rand_distr::Distribution;
@@ -66,10 +65,9 @@ pub struct Hkde<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Seed strategy.
   pub seed: S,
   cgns: Cgns<T>,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
@@ -101,7 +99,7 @@ impl<T: FloatExt, S: SeedExt> Hkde<T, S> {
     assert!(lambda >= T::zero(), "lambda must be >= 0");
 
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       mu,
       kappa,
       theta,

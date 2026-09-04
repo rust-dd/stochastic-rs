@@ -33,7 +33,6 @@
 //!
 //! Reference: Bergomi, "Smile Dynamics II", Risk 18(10), 67-73 (2005);
 //! Bergomi, "Stochastic Volatility Modeling" (2016) §7.
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use ndarray::s;
@@ -71,10 +70,9 @@ pub struct Bergomi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   cgns: Cgns<T>,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -91,7 +89,7 @@ impl<T: FloatExt, S: SeedExt> Bergomi<T, S> {
     seed: S,
   ) -> Self {
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       nu,
       v0,
       s0,

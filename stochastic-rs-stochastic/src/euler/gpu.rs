@@ -5,12 +5,11 @@
 //! widened on the way back.
 
 use cubecl::prelude::*;
-use ndarray::Array1;
 use ndarray::Array2;
 use parking_lot::Mutex;
 
-use super::EulerBackend;
 use super::EulerCoefficients;
+use super::EulerKernel;
 use super::EulerSpec;
 use crate::device::CubeCl;
 use crate::device::DeviceError;
@@ -98,12 +97,11 @@ static CONTEXT: Mutex<Option<Context>> = Mutex::new(None);
 
 /// The cached compute client, opened on first use. CubeCL panics rather than
 /// erroring when no device exists, so the opening is caught and reported.
-fn client() -> DeviceResult<cubecl::client::ComputeClient<R>> {
-  let ordinal = crate::device::selected_device();
+fn client(ordinal: usize) -> DeviceResult<cubecl::client::ComputeClient<R>> {
   let mut guard = CONTEXT.lock();
   if !guard.as_ref().is_some_and(|c| c.ordinal == ordinal) {
     *guard = None;
-    let opened = std::panic::catch_unwind(|| R::client(&selected_cubecl_device()));
+    let opened = std::panic::catch_unwind(|| R::client(&cubecl_device(ordinal)));
     match opened {
       Ok(client) => *guard = Some(Context { ordinal, client }),
       Err(payload) => {
@@ -114,9 +112,9 @@ fn client() -> DeviceResult<cubecl::client::ComputeClient<R>> {
   Ok(guard.as_ref().expect("initialised").client.clone())
 }
 
-/// The CubeCL device [`crate::device::select_device`] chose.
-pub(crate) fn selected_cubecl_device() -> <R as cubecl::Runtime>::Device {
-  let ordinal = crate::device::selected_device();
+/// The CubeCL device at `ordinal`: with `cubecl-wgpu`, `0` is the default
+/// adapter and `n > 0` the n-th discrete GPU.
+pub(crate) fn cubecl_device(ordinal: usize) -> <R as cubecl::Runtime>::Device {
   #[cfg(feature = "cubecl-cuda")]
   {
     cubecl_cuda::CudaDevice { index: ordinal }
@@ -132,14 +130,14 @@ pub(crate) fn selected_cubecl_device() -> <R as cubecl::Runtime>::Device {
   }
 }
 
-/// The selected CubeCL device, or why it cannot be used.
-pub(crate) fn probe() -> DeviceResult<DeviceInfo> {
-  let cl = client()?;
+/// The CubeCL device at `ordinal`, or why it cannot be used.
+pub(crate) fn probe(ordinal: usize) -> DeviceResult<DeviceInfo> {
+  let cl = client(ordinal)?;
   Ok(DeviceInfo::new(
     "CubeCl",
     <R as cubecl::Runtime>::name(&cl).to_string(),
     &["f32"],
-    Some(crate::device::selected_device()),
+    Some(ordinal),
   ))
 }
 
@@ -159,75 +157,35 @@ fn count_2d(cubes: u32) -> CubeCount {
   }
 }
 
-impl EulerBackend<f32> for CubeCl {
-  const DEVICE: bool = true;
-
-  /// The launch buffer as the matrix, chunked like the row form when the
-  /// batch exceeds the budget.
-  fn try_euler_matrix<P: EulerCoefficients<f32>>(
-    process: &P,
-    m: usize,
-  ) -> DeviceResult<Array2<f32>> {
-    let n = process.grid_points();
-    let seed = process.device_seed();
-    let rows = crate::device::chunk_rows(n, std::mem::size_of::<f32>());
-    if m <= rows {
-      return device_paths(
-        process.euler_spec(),
-        process.initial_value(),
-        n,
-        process.horizon(),
-        0,
-        m,
-        seed,
-      );
-    }
-    let mut out = Array2::<f32>::zeros((m, n));
-    let mut first = 0;
-    while first < m {
-      let len = rows.min(m - first);
-      let chunk = device_paths(
-        process.euler_spec(),
-        process.initial_value(),
-        n,
-        process.horizon(),
-        first,
-        len,
-        seed,
-      )?;
-      out
-        .slice_mut(ndarray::s![first..first + len, ..])
-        .assign(&chunk);
-      first += len;
-    }
-    Ok(out)
-  }
-
-  fn try_euler_paths_seeded<P: EulerCoefficients<f32>>(
+impl EulerKernel<f32> for CubeCl {
+  fn euler_kernel<P: EulerCoefficients<f32>>(
+    &self,
     process: &P,
     first: usize,
     m: usize,
     seed: u64,
-  ) -> DeviceResult<Vec<Array1<f32>>> {
-    Ok(
-      device_paths(
-        process.euler_spec(),
-        process.initial_value(),
-        process.grid_points(),
-        process.horizon(),
-        first,
-        m,
-        seed,
-      )?
-      .outer_iter()
-      .map(|row| row.to_owned())
-      .collect(),
+  ) -> DeviceResult<Array2<f32>> {
+    device_paths(
+      self.ordinal,
+      process.euler_spec(),
+      process.initial_value(),
+      process.grid_points(),
+      process.horizon(),
+      first,
+      m,
+      seed,
     )
+  }
+
+  fn batch_budget(&self) -> usize {
+    self.batch_budget
   }
 }
 
 /// The kernel launch for an explicit specification.
+#[allow(clippy::too_many_arguments)]
 fn device_paths(
+  ordinal: usize,
   spec: EulerSpec<f32>,
   x0: f32,
   n: usize,
@@ -244,7 +202,7 @@ fn device_paths(
     let params32: Vec<f32> = params.to_vec();
     let dt = t as f64 / (n.max(2) - 1) as f64;
     let total = m * n;
-    let cl = &client()?;
+    let cl = &client(ordinal)?;
     let data: Vec<f32> = {
       let params_h = cl.create_from_slice(f32::as_bytes(&params32));
       let out_h = cl.empty(total * 4);

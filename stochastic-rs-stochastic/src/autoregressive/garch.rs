@@ -8,7 +8,6 @@
 //! Conditional Heteroskedasticity*, Journal of Econometrics 31(3),
 //! 307–327, DOI: 10.1016/0304-4076(86)90063-1.
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -54,17 +53,16 @@ pub struct Garch<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub n: usize,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> Garch<T, S> {
   pub fn new(omega: T, alpha: Array1<T>, beta: Array1<T>, n: usize, seed: S) -> Self {
     assert!(omega > T::zero(), "Garch requires omega > 0");
     Garch {
-      backend: PhantomData,
+      backend: Cpu,
       omega,
       alpha,
       beta,

@@ -9,12 +9,11 @@ use std::sync::Arc;
 
 use cudarc::driver::*;
 use cudarc::nvrtc;
-use ndarray::Array1;
 use ndarray::Array2;
 use parking_lot::Mutex;
 
-use super::EulerBackend;
 use super::EulerCoefficients;
+use super::EulerKernel;
 use super::EulerSpec;
 use crate::device::CudaNative;
 use crate::device::DeviceError;
@@ -93,9 +92,8 @@ unsafe impl Send for Kernels {}
 
 static KERNELS: Mutex<Option<Kernels>> = Mutex::new(None);
 
-/// The selected CUDA device, or why it cannot be used.
-pub(crate) fn probe() -> Result<DeviceInfo> {
-  let ordinal = crate::device::selected_device();
+/// The CUDA device at `ordinal`, or why it cannot be used.
+pub(crate) fn probe(ordinal: usize) -> Result<DeviceInfo> {
   let ctx =
     CudaContext::new(ordinal).map_err(|e| DeviceError::Unavailable(format!("CudaContext: {e}")))?;
   let name = ctx
@@ -109,8 +107,7 @@ pub(crate) fn probe() -> Result<DeviceInfo> {
   ))
 }
 
-fn ensure_kernels() -> Result<()> {
-  let ordinal = crate::device::selected_device();
+fn ensure_kernels(ordinal: usize) -> Result<()> {
   let mut guard = KERNELS.lock();
   if guard.as_ref().is_some_and(|k| k.ordinal == ordinal) {
     return Ok(());
@@ -149,6 +146,7 @@ fn ensure_kernels() -> Result<()> {
 
 #[allow(clippy::too_many_arguments)]
 fn run<R>(
+  ordinal: usize,
   func: impl Fn(&Kernels) -> &CudaFunction,
   params: [R; 4],
   x0: R,
@@ -162,7 +160,7 @@ fn run<R>(
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
 {
-  ensure_kernels()?;
+  ensure_kernels(ordinal)?;
   let guard = KERNELS.lock();
   let kernels = guard.as_ref().expect("initialised");
   let stream = &kernels.stream;
@@ -195,52 +193,45 @@ where
     .map_err(|e| DeviceError::Launch(format!("dtoh: {e}")))
 }
 
-impl<T: FloatExt> EulerBackend<T> for CudaNative {
-  const DEVICE: bool = true;
-
-  /// Chunks alternate between two streams: while chunk `k` copies back
-  /// through pinned memory, chunk `k + 1` is already computing. The union is
-  /// bit-identical to one launch (the kernel hashes the global path index).
-  fn try_euler_paths<P: EulerCoefficients<T>>(process: &P, m: usize) -> Result<Vec<Array1<T>>> {
-    let n = process.grid_points();
-    let rows = crate::device::chunk_rows(n, std::mem::size_of::<T>());
-    if m <= rows {
-      return Self::try_euler_paths_from(process, 0, m);
-    }
-    Ok(
-      pipelined_paths(
-        process.euler_spec(),
-        process.initial_value(),
-        n,
-        process.horizon(),
-        m,
-        rows,
-        process.device_seed(),
-      )?
-      .outer_iter()
-      .map(|row| row.to_owned())
-      .collect(),
+impl<T: FloatExt> EulerKernel<T> for CudaNative {
+  fn euler_kernel<P: EulerCoefficients<T>>(
+    &self,
+    process: &P,
+    first: usize,
+    m: usize,
+    seed: u64,
+  ) -> Result<Array2<T>> {
+    device_paths(
+      self.ordinal,
+      process.euler_spec(),
+      process.initial_value(),
+      process.grid_points(),
+      process.horizon(),
+      first,
+      m,
+      seed,
     )
   }
 
-  /// The launch buffer as the matrix, chunked like the row form when the
-  /// batch exceeds the budget.
-  fn try_euler_matrix<P: EulerCoefficients<T>>(process: &P, m: usize) -> Result<Array2<T>> {
+  fn batch_budget(&self) -> usize {
+    self.batch_budget
+  }
+
+  /// Chunks alternate between two streams: while chunk `k` copies back
+  /// through pinned memory, chunk `k + 1` is already computing.
+  fn euler_kernel_batch<P: EulerCoefficients<T>>(
+    &self,
+    process: &P,
+    m: usize,
+    seed: u64,
+  ) -> Result<Array2<T>> {
     let n = process.grid_points();
-    let seed = process.device_seed();
-    let rows = crate::device::chunk_rows(n, std::mem::size_of::<T>());
+    let rows = crate::device::chunk_rows(self.batch_budget, n, std::mem::size_of::<T>());
     if m <= rows {
-      return device_paths(
-        process.euler_spec(),
-        process.initial_value(),
-        n,
-        process.horizon(),
-        0,
-        m,
-        seed,
-      );
+      return self.euler_kernel(process, 0, m, seed);
     }
     pipelined_paths(
+      self.ordinal,
       process.euler_spec(),
       process.initial_value(),
       n,
@@ -250,32 +241,12 @@ impl<T: FloatExt> EulerBackend<T> for CudaNative {
       seed,
     )
   }
-
-  fn try_euler_paths_seeded<P: EulerCoefficients<T>>(
-    process: &P,
-    first: usize,
-    m: usize,
-    seed: u64,
-  ) -> Result<Vec<Array1<T>>> {
-    Ok(
-      device_paths(
-        process.euler_spec(),
-        process.initial_value(),
-        process.grid_points(),
-        process.horizon(),
-        first,
-        m,
-        seed,
-      )?
-      .outer_iter()
-      .map(|row| row.to_owned())
-      .collect(),
-    )
-  }
 }
 
 /// The kernel launch for an explicit specification.
+#[allow(clippy::too_many_arguments)]
 fn device_paths<T: FloatExt>(
+  ordinal: usize,
   spec: EulerSpec<T>,
   x0: T,
   n: usize,
@@ -294,6 +265,7 @@ fn device_paths<T: FloatExt>(
     let p64: [f64; 4] = std::array::from_fn(|i| params[i].to_f64().unwrap_or(0.0));
     if TypeId::of::<T>() == TypeId::of::<f64>() {
       let data = run::<f64>(
+        ordinal,
         |k| &k.f64,
         p64,
         x0.to_f64().unwrap_or(0.0),
@@ -310,6 +282,7 @@ fn device_paths<T: FloatExt>(
     }
     let p32: [f32; 4] = std::array::from_fn(|i| p64[i] as f32);
     let data = run::<f32>(
+      ordinal,
       |k| &k.f32,
       p32,
       x0.to_f64().unwrap_or(0.0) as f32,
@@ -376,6 +349,7 @@ where
 /// The whole batch through the two-stream pipeline, `rows` paths per chunk.
 #[allow(clippy::too_many_arguments)]
 fn pipelined<R>(
+  ordinal: usize,
   func: impl Fn(&Kernels) -> &CudaFunction,
   params: [R; 4],
   x0: R,
@@ -389,7 +363,7 @@ fn pipelined<R>(
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float + Send + Sync,
 {
-  ensure_kernels()?;
+  ensure_kernels(ordinal)?;
   let guard = KERNELS.lock();
   let kernels = guard.as_ref().expect("initialised");
   let streams = [kernels.stream.clone(), kernels.stream_b.clone()];
@@ -449,7 +423,9 @@ where
 
 /// The pipelined batch for an explicit specification, in the precision of `T`.
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 fn pipelined_paths<T: FloatExt>(
+  ordinal: usize,
   spec: EulerSpec<T>,
   x0: T,
   n: usize,
@@ -464,6 +440,7 @@ fn pipelined_paths<T: FloatExt>(
   let p64: [f64; 4] = std::array::from_fn(|i| params[i].to_f64().unwrap_or(0.0));
   if TypeId::of::<T>() == TypeId::of::<f64>() {
     let data = pipelined::<f64>(
+      ordinal,
       |k| &k.f64,
       p64,
       x0.to_f64().unwrap_or(0.0),
@@ -483,6 +460,7 @@ fn pipelined_paths<T: FloatExt>(
   );
   let p32: [f32; 4] = std::array::from_fn(|i| p64[i] as f32);
   let data = pipelined::<f32>(
+    ordinal,
     |k| &k.f32,
     p32,
     x0.to_f64().unwrap_or(0.0) as f32,

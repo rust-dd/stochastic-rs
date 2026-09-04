@@ -15,8 +15,6 @@
 //! Engineering*, Springer, §3.2.3 (multidimensional geometric Brownian
 //! motion). DOI: 10.1007/978-0-387-21617-1
 
-use std::marker::PhantomData;
-
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -46,10 +44,9 @@ pub struct MultiGbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   driver: Mcgns<T, S>,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> MultiGbm<T, S> {
@@ -76,7 +73,7 @@ impl<T: FloatExt, S: SeedExt> MultiGbm<T, S> {
     );
     let driver = Mcgns::new(rho.clone(), n.saturating_sub(1), t, seed.clone());
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       mu,
       sigma,
       rho,

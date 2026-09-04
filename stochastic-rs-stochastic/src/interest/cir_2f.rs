@@ -15,7 +15,6 @@
 //! Theory and Practice*, 2nd ed., Springer Finance,
 //! DOI: 10.1007/978-3-540-34604-3.
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -52,10 +51,9 @@ pub struct Cir2F<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// from this value (two independent children, in that order), overwriting
   /// whatever seed the caller constructed `x`/`y` with.
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> Cir2F<T, S> {
@@ -81,7 +79,7 @@ impl<T: FloatExt, S: SeedExt> Cir2F<T, S> {
     x.seed = seed.derive();
     y.seed = seed.derive();
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       x,
       y,
       phi: phi.into(),

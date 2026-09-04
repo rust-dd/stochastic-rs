@@ -18,7 +18,6 @@
 //! Are Discontinuous*, Journal of Financial Economics 3(1-2), 125–144,
 //! DOI: 10.1016/0304-405X(76)90022-2.
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use rand_distr::Distribution;
@@ -88,10 +87,9 @@ pub struct BatesSvj<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   cgns: Cgns<T>,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
@@ -124,7 +122,7 @@ impl<T: FloatExt, S: SeedExt> BatesSvj<T, S> {
     validate_drift_args(mu, b, r, r_f, "BatesSvj");
 
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       mu,
       b,
       r,

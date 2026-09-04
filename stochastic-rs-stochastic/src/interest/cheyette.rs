@@ -24,8 +24,6 @@
 //! *Explicit local volatility formula for Cheyette-type interest rate models*,
 //! arXiv:2506.23876, §2, eqs. (1)–(3).
 
-use std::marker::PhantomData;
-
 use ndarray::Array1;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -59,10 +57,9 @@ pub struct Cheyette<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> Cheyette<T, S> {
@@ -76,7 +73,7 @@ impl<T: FloatExt, S: SeedExt> Cheyette<T, S> {
   ) -> Self {
     assert!(kappa > T::zero(), "kappa must be positive");
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       f0: f0.into(),
       kappa,
       sigma: sigma.into(),

@@ -105,7 +105,7 @@ call, put = pricer.call_put()
 ```
 
 A process samples on a device by re-typing it: `Gbm::new(...).on::<MetalNative>()`
-(`CudaNative`, `CubeCl`, `Accelerate`), with `Backend::probe()` to check the device
+(`CudaNative`, `CubeCl`, `Accelerate`), with `handle.probe()` to check the device
 first; from Python, `device="metal"` on the device-capable classes. The
 [GPU support](https://stochastic.rust-dd.com/docs/concepts/gpu-support) page has
 the support matrix, and [`notebooks/`](notebooks/) a Colab notebook that runs the

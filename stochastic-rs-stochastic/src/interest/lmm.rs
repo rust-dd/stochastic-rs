@@ -66,8 +66,6 @@
 //! Libor); supply a custom positive-definite matrix via `with_correlation`.
 //!
 
-use std::marker::PhantomData;
-
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
@@ -108,10 +106,9 @@ pub struct Lmm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> Lmm<T, S> {
@@ -126,7 +123,7 @@ impl<T: FloatExt, S: SeedExt> Lmm<T, S> {
   ) -> Self {
     validate_lmm_inputs(&tenor, &l0, &sigma);
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       tenor,
       l0,
       sigma,

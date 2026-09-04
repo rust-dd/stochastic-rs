@@ -21,7 +21,6 @@
 //! [`Fgn`](crate::noise::fgn::Fgn).
 //!
 //! Reference: Bilokon & Wong (2026), doi:10.1017/jpr.2025.10071.
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -53,10 +52,9 @@ pub struct RlFBm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Seed strategy.
   pub seed: S,
   markov: MarkovLift<T>,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 fn build_markov<T: FloatExt>(
@@ -80,7 +78,7 @@ impl<T: FloatExt, S: SeedExt> RlFBm<T, S> {
     assert!(n >= 2, "n must be at least 2");
     let markov = build_markov(hurst, n, t, degree);
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       hurst,
       n,
       t,
@@ -131,7 +129,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B> RlFBm<T, S, B> {
     let mut dw = Array2::<T>::zeros((m, n_minus_1));
     for p in 0..m {
       let gn = Gn::<T, S2> {
-        backend: PhantomData,
+        backend: Cpu,
         n: n_minus_1,
         t: self.t,
         seed: seed.derive(),
@@ -161,7 +159,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: HostBackend> ProcessExt<T> for RlFB
     RlFBmSampler {
       n: self.n,
       gn: Gn::<T, S> {
-        backend: PhantomData,
+        backend: Cpu,
         n: self.n - 1,
         t: self.t,
         seed: self.seed.derive(),

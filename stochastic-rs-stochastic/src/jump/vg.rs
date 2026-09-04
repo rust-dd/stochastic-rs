@@ -4,7 +4,6 @@
 //! X_t=\theta G_t+\sigma W_{G_t},\quad G_t\sim\Gamma(\nu^{-1}t,\nu)
 //! $$
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -43,10 +42,9 @@ pub struct Vg<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -57,7 +55,7 @@ impl<T: FloatExt, S: SeedExt> Vg<T, S> {
   pub fn new(mu: T, sigma: T, nu: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     assert!(nu > T::zero(), "nu must be positive");
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       mu,
       sigma,
       nu,

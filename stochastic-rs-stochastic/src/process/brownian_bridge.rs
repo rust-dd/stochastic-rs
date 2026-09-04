@@ -32,7 +32,6 @@
 //! this module supplies the endpoint-pinned process itself, not the
 //! recursive dimension-allocation logic that pairs it with those sequences
 //! (a later, phase-E integration concern).
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -91,10 +90,9 @@ pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Seed strategy (compile-time: [`Unseeded`] or
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -104,7 +102,7 @@ pub struct BrownianBridge<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> BrownianBridge<T, S> {
   pub fn new(sigma: T, n: usize, x0: Option<T>, xt: Option<T>, t: Option<T>, seed: S) -> Self {
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       sigma,
       n,
       x0,

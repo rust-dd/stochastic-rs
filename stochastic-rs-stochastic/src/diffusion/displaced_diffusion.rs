@@ -26,7 +26,6 @@
 //! tolerant Black-76-style pricers: choosing `beta > 0` keeps `S_t + beta`
 //! (and hence the model) well-defined even while `S_t` itself goes
 //! negative.
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -71,10 +70,9 @@ pub struct DisplacedDiffusion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Seed strategy (compile-time: [`Unseeded`] or
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 /// Every field has a matching `with_*` builder setter, e.g.
@@ -83,7 +81,7 @@ pub struct DisplacedDiffusion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> DisplacedDiffusion<T, S> {
   pub fn new(mu: T, sigma: T, beta: T, n: usize, x0: Option<T>, t: Option<T>, seed: S) -> Self {
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       mu,
       sigma,
       beta,

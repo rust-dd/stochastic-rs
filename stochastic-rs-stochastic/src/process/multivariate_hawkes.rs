@@ -15,8 +15,6 @@
 //! - Hawkes (1971), "Spectra of some self-exciting and mutually exciting point processes"
 //! - Bacry, Mastromatteo, Muzy (2015), "Hawkes processes in finance", arXiv:1502.04592
 
-use std::marker::PhantomData;
-
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -49,10 +47,9 @@ pub struct MultivariateHawkes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t_max: T,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> MultivariateHawkes<T, S> {
@@ -61,7 +58,7 @@ impl<T: FloatExt, S: SeedExt> MultivariateHawkes<T, S> {
     assert_eq!(alpha.shape(), [d, d], "alpha must be (D, D)");
     assert_eq!(beta.shape(), [d, d], "beta must be (D, D)");
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       mu,
       alpha,
       beta,

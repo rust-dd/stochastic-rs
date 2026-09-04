@@ -4,7 +4,6 @@
 //! \mathbb E[B^H(t_1,t_2)B^H(s_1,s_2)]=\prod_{j=1}^2\tfrac12\left(t_j^{2H_j}+s_j^{2H_j}-|t_j-s_j|^{2H_j}\right)
 //! $$
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -43,16 +42,15 @@ pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub r: T,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
   pub fn new(hurst: T, m: usize, n: usize, r: T, seed: S) -> Self {
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       hurst,
       m,
       n,

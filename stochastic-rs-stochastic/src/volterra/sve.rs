@@ -34,7 +34,6 @@
 //! - Li M., Huang C., Hu Y. *Numerical methods for stochastic Volterra
 //!   integral equations with weakly singular kernels*, arXiv:2004.04916
 //!   (2020).
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -89,10 +88,9 @@ where
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, K, S: SeedExt> Clone for VolterraSde<T, K, S>
@@ -102,7 +100,7 @@ where
 {
   fn clone(&self) -> Self {
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       kernel: self.kernel.clone(),
       drift: self.drift.clone(),
       diffusion: self.diffusion.clone(),
@@ -135,7 +133,7 @@ where
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       kernel,
       drift: drift.into(),
       diffusion: diffusion.into(),
@@ -221,7 +219,7 @@ where
       diffusion: self.diffusion.clone(),
       lift: VolterraLift::new(self.kernel.clone(), dt),
       gn: Gn::<T, S> {
-        backend: PhantomData,
+        backend: Cpu,
         n: self.n - 1,
         t: self.t,
         seed: self.seed.derive(),

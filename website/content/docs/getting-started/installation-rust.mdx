@@ -55,7 +55,7 @@ stochastic-rs-core (simd_rng)
 |-----------------|------------------------------|-----------------------------------|-------------------------------------------------------|
 | `ai`            | umbrella                     | `stochastic-rs-ai`, `candle-core` | NN volatility surrogates                              |
 | `cuda-native`   | `stochastic`                 | `cudarc`, cuFFT, fused Philox     | Direct CUDA backend for FGN / fBM (NVIDIA, CUDA 12.x) |
-| `gpu`           | `stochastic`                 | `cubecl`, `gpu-fft`               | Portable GPU kernel framework (CPU + GPU runtime)     |
+| `cubecl`        | `stochastic`                 | `cubecl`, `gpu-fft`               | Portable GPU kernel framework (CPU + GPU runtime)     |
 | `cubecl-cuda`      | `stochastic`                 | `cubecl-cuda`                     | cubecl over CUDA (NVIDIA)                             |
 | `cubecl-wgpu`      | `stochastic`                 | `cubecl-wgpu`                     | cubecl over WebGPU (NVIDIA / AMD / Apple via wgpu)    |
 | `metal`         | `stochastic`                 | `metal` (Apple framework)         | Direct Metal backend for FGN / fBM on macOS           |

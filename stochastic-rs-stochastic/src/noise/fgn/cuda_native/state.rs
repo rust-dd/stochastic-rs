@@ -64,8 +64,7 @@ impl<T> Drop for PinnedHost<T> {
 
 unsafe impl<T: Send> Send for PinnedHost<T> {}
 
-pub(super) fn get_or_init_gpu() -> Result<()> {
-  let ordinal = crate::device::selected_device();
+pub(super) fn get_or_init_gpu(ordinal: usize) -> Result<()> {
   let mut g = GPU.lock();
   if g.as_ref().is_some_and(|k| k.ordinal == ordinal) {
     return Ok(());

@@ -19,7 +19,6 @@
 //! - `rho` is a **loading** on $v_t$ (not a correlation), so it is not restricted to [-1, 1].
 //! - Series indices follow Algorithm 1: **j = 1..J**, with **Γ0 = 0**.
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use scilib::math::basic::gamma;
@@ -67,10 +66,9 @@ pub struct Svcgmy<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> Svcgmy<T, S> {
@@ -105,7 +103,7 @@ impl<T: FloatExt, S: SeedExt> Svcgmy<T, S> {
     }
 
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       lambda_plus,
       lambda_minus,
       alpha,

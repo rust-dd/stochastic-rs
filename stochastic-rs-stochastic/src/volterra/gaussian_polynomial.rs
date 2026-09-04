@@ -39,8 +39,6 @@
 //! work, and stating that plainly is better than shipping half of it under a
 //! name that implies the whole model.
 
-use std::marker::PhantomData;
-
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -72,10 +70,9 @@ where
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T: FloatExt, K, S: SeedExt> Clone for GaussianPolynomialVolatility<T, K, S>
@@ -86,7 +83,7 @@ where
   /// Snapshot semantics, matching every other process in this crate.
   fn clone(&self) -> Self {
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       kernel: self.kernel.clone(),
       coefficients: self.coefficients.clone(),
       n: self.n,
@@ -111,7 +108,7 @@ where
       "coefficients must contain at least a constant term"
     );
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       kernel,
       coefficients,
       n,
@@ -240,7 +237,7 @@ where
       coefficients: self.coefficients.clone(),
       lift: VolterraLift::new(self.kernel.clone(), dt),
       gn: Gn::<T, S> {
-        backend: PhantomData,
+        backend: Cpu,
         n: self.n - 1,
         t: self.t,
         seed: self.seed.derive(),

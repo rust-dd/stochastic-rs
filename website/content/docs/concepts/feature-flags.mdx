@@ -23,7 +23,7 @@ Rust core.
 | `accelerate`      | `-stochastic`               | Apple vDSP (system framework)       | macOS CPU-FFT FGN / fBM (`Accelerate` backend; a host device for every process) |
 | `python`          | `-py` (cdylib)              | `pyo3`, `numpy`                      | Building the wheel via maturin            |
 | `ai-metal`        | umbrella                    | `candle-core/metal`                  | candle's Metal back-end for surrogate training (`ai::device::best_available`); CUDA comes from `candle-core/cuda` in the consuming manifest |
-| `ai`, `metal`, `cuda-native`, `cubecl-cuda`, `cubecl-wgpu`, `accelerate` | `-py` | the sub-crate features above | Source-build extras of the Python module (`maturin develop --features …`): the surrogates + `calibrate_surrogate`, and the device back-ends behind `euler_paths(..., device=)`; none of them is in the published wheels |
+| `ai`, `metal`, `cuda-native`, `cubecl-cuda`, `cubecl-wgpu`, `accelerate` | `-py` | the sub-crate features above | Source-build extras of the Python module (`maturin develop --features …`): the surrogates + `calibrate_surrogate`, and the device back-ends behind the process classes' `device=`; none of them is in the published wheels |
 | `hotpath`         | umbrella                    | `tracing-subscriber`                 | Hot-path profiling helpers                |
 | `dual-stream-rng` | `-core`, `-distributions`   | none (additive)                      | ~2–6 % bulk Normal-Ziggurat speedup on Apple Silicon (Exp at parity) — see [seeding](/docs/concepts/seeding#dual-stream-rng-feature) |
 

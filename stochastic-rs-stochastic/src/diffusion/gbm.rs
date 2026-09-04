@@ -4,7 +4,6 @@
 //! dS_t=\mu S_t\,dt+\sigma S_t\,dW_t,\quad S_0=s_0
 //! $$
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -21,8 +20,6 @@ use crate::traits::DistributionExt;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
-use crate::traits::process::sample_map_chunked;
-use crate::traits::process::sample_par_chunked;
 
 #[derive(Clone)]
 pub struct Gbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
@@ -43,10 +40,9 @@ pub struct Gbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   ln_sigma: f64,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 /// Recomputes the cached terminal-log-normal parameters `(ln_mu, ln_sigma)`
@@ -84,7 +80,7 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
       ln_mu,
       ln_sigma,
       seed,
-      backend: PhantomData,
+      backend: Cpu,
     }
   }
 
@@ -173,29 +169,15 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Gbm<T, S, B>
   }
 
   fn sample(&self) -> Array1<T> {
-    if B::DEVICE {
-      B::euler_paths(self, 1).remove(0)
-    } else {
-      let out = self.sampler().sample();
-      self.advance_chunk_seed();
-      out
-    }
+    self.backend.euler_sample(self)
   }
 
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
-    if B::DEVICE {
-      B::euler_paths_map(self, m, f)
-    } else {
-      sample_map_chunked(self, m, f)
-    }
+    self.backend.euler_paths_map(self, m, f)
   }
 
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
-    if B::DEVICE {
-      B::euler_paths(self, m)
-    } else {
-      sample_par_chunked(self, m)
-    }
+    self.backend.euler_paths(self, m)
   }
 }
 

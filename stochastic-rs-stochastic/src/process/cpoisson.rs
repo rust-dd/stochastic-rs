@@ -4,7 +4,6 @@
 //! X_t=\sum_{k=1}^{N_t}Y_k,\quad N_t\sim\mathrm{Poisson}(\lambda t)
 //! $$
 //!
-use std::marker::PhantomData;
 
 use ndarray::Array1;
 use ndarray::Axis;
@@ -33,10 +32,9 @@ where
   pub poisson: Poisson<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// Sampling backend marker (compile-time): [`Cpu`] by default, a device
-  /// marker after [`on`](Self::on). Public so `..Default::default()` struct
-  /// updates keep working; it carries no data.
-  pub backend: PhantomData<B>,
+  /// The sampling backend: [`Cpu`] by default, a device handle after
+  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  pub backend: B,
 }
 
 impl<T, D, S: SeedExt> CompoundPoisson<T, D, S>
@@ -46,7 +44,7 @@ where
 {
   pub fn new(distribution: D, poisson: Poisson<T>, seed: S) -> Self {
     Self {
-      backend: PhantomData,
+      backend: Cpu,
       distribution,
       poisson,
       seed,
