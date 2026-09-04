@@ -8,7 +8,7 @@
 //! Device-side path generation for the diffusions whose coefficients are a
 //! handful of scalars. The backend is a type parameter of the process, as
 //! for the fGN-driven types: `Gbm<T, S, B = Cpu>`, `Ou`, `Cir` are switched
-//! with `.on::<B2>()` and then sampled through [`ProcessExt`] as usual —
+//! with `.on::<B>()` and then sampled through [`ProcessExt`] as usual —
 //! `gbm.on::<Metal>().sample_par(m)`.
 //!
 //! - [`Cpu`] (and `Accelerate`, a CPU device) is **the process's own
@@ -342,7 +342,7 @@ macro_rules! kernel_euler_backend {
 #[cfg(feature = "metal")]
 kernel_euler_backend!(crate::device::Metal, [] f32);
 #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-kernel_euler_backend!(crate::device::Cubecl, [] f32);
+kernel_euler_backend!(crate::device::Cubecl<Rt>, [Rt: crate::euler::cubecl::CubeclRuntime] f32);
 #[cfg(feature = "cuda")]
 kernel_euler_backend!(crate::device::Cuda, [T: FloatExt] T);
 

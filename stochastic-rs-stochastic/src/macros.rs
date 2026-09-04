@@ -47,13 +47,15 @@ macro_rules! py_on_device_f64 {
       }
       #[cfg(feature = "accelerate")]
       $crate::python_device::Device::Accelerate => {
-        let owned = $inner.clone().on_device($crate::device::Accelerate);
+        let owned = $inner.clone().with_backend($crate::device::Accelerate);
         let $p = &owned;
         $body
       }
       #[cfg(feature = "cuda")]
       $crate::python_device::Device::Cuda(ordinal) => {
-        let owned = $inner.clone().on_device($crate::device::Cuda::new(ordinal));
+        let owned = $inner
+          .clone()
+          .with_backend($crate::device::Cuda::new(ordinal));
         let $p = &owned;
         $body
       }
@@ -76,13 +78,15 @@ macro_rules! py_on_device_f32 {
       }
       #[cfg(feature = "accelerate")]
       $crate::python_device::Device::Accelerate => {
-        let owned = $inner.clone().on_device($crate::device::Accelerate);
+        let owned = $inner.clone().with_backend($crate::device::Accelerate);
         let $p = &owned;
         $body
       }
       #[cfg(feature = "cuda")]
       $crate::python_device::Device::Cuda(ordinal) => {
-        let owned = $inner.clone().on_device($crate::device::Cuda::new(ordinal));
+        let owned = $inner
+          .clone()
+          .with_backend($crate::device::Cuda::new(ordinal));
         let $p = &owned;
         $body
       }
@@ -90,23 +94,23 @@ macro_rules! py_on_device_f32 {
       $crate::python_device::Device::Metal(ordinal) => {
         let owned = $inner
           .clone()
-          .on_device($crate::device::Metal::new(ordinal));
+          .with_backend($crate::device::Metal::new(ordinal));
         let $p = &owned;
         $body
       }
       #[cfg(feature = "cubecl-cuda")]
       $crate::python_device::Device::CubeclCuda(ordinal) => {
-        let owned = $inner
-          .clone()
-          .on_device($crate::device::Cubecl::cuda(ordinal));
+        let owned = $inner.clone().with_backend($crate::device::Cubecl::<
+          $crate::device::CudaRuntime,
+        >::new(ordinal));
         let $p = &owned;
         $body
       }
       #[cfg(feature = "cubecl-wgpu")]
       $crate::python_device::Device::CubeclWgpu(ordinal) => {
-        let owned = $inner
-          .clone()
-          .on_device($crate::device::Cubecl::wgpu(ordinal));
+        let owned = $inner.clone().with_backend($crate::device::Cubecl::<
+          $crate::device::WgpuRuntime,
+        >::new(ordinal));
         let $p = &owned;
         $body
       }
@@ -547,17 +551,25 @@ macro_rules! backend_switch {
     $(where $($wc:tt)*)?
   ) => {
     impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
-      /// The same process on backend `B2` with that backend's default handle
-      /// (the environment's device ordinal and batch budget).
+      /// The same process on backend `B2`, using that backend's default handle
+      /// (the device ordinal and batch budget from the environment).
       pub fn on<B2: $crate::device::FgnBackend<$t> + Default>(self) -> $ty<$t $(, $targ)*, B2> {
-        self.on_device(B2::default())
-      }
-
-      /// The same process on the given backend handle.
-      pub fn on_device<B2: $crate::device::FgnBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
-          fgn: self.fgn.on_device(device),
+          fgn: self.fgn.on::<B2>(),
+        }
+      }
+
+      /// The same process on an explicit backend handle. Crate-internal:
+      /// the public way to name a backend is [`on`](Self::on), and a specific
+      /// device comes from `STOCHASTIC_RS_DEVICE` or from calling a capability
+      /// trait on the handle itself. The Python bindings need it because a
+      /// `device="cuda:1"` name carries an ordinal.
+      #[allow(dead_code)]
+      pub(crate) fn with_backend<B2: $crate::device::FgnBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
+        $ty {
+          $($field: self.$field,)*
+          fgn: self.fgn.with_backend(device),
         }
       }
     }
@@ -567,14 +579,22 @@ macro_rules! backend_switch {
     $(where $($wc:tt)*)?
   ) => {
     impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
-      /// The same process on backend `B2` with that backend's default handle
-      /// (the environment's device ordinal and batch budget).
+      /// The same process on backend `B2`, using that backend's default handle
+      /// (the device ordinal and batch budget from the environment).
       pub fn on<B2: $crate::device::FgnBackend<$t> + Default>(self) -> $ty<$t $(, $targ)*, B2> {
-        self.on_device(B2::default())
+        $ty {
+          $($field: self.$field,)*
+          backend: B2::default(),
+        }
       }
 
-      /// The same process on the given backend handle.
-      pub fn on_device<B2: $crate::device::FgnBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
+      /// The same process on an explicit backend handle. Crate-internal:
+      /// the public way to name a backend is [`on`](Self::on), and a specific
+      /// device comes from `STOCHASTIC_RS_DEVICE` or from calling a capability
+      /// trait on the handle itself. The Python bindings need it because a
+      /// `device="cuda:1"` name carries an ordinal.
+      #[allow(dead_code)]
+      pub(crate) fn with_backend<B2: $crate::device::FgnBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
           backend: device,
@@ -587,13 +607,22 @@ macro_rules! backend_switch {
     $(where $($wc:tt)*)?
   ) => {
     impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
-      /// The same process on backend `B2` with that backend's default handle.
+      /// The same process on backend `B2`, using that backend's default handle
+      /// (the device ordinal and batch budget from the environment).
       pub fn on<B2: $crate::device::HostBackend + Default>(self) -> $ty<$t $(, $targ)*, B2> {
-        self.on_device(B2::default())
+        $ty {
+          $($field: self.$field,)*
+          backend: B2::default(),
+        }
       }
 
-      /// The same process on the given backend handle.
-      pub fn on_device<B2: $crate::device::HostBackend>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
+      /// The same process on an explicit backend handle. Crate-internal:
+      /// the public way to name a backend is [`on`](Self::on), and a specific
+      /// device comes from `STOCHASTIC_RS_DEVICE` or from calling a capability
+      /// trait on the handle itself. The Python bindings need it because a
+      /// `device="cuda:1"` name carries an ordinal.
+      #[allow(dead_code)]
+      pub(crate) fn with_backend<B2: $crate::device::HostBackend>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
           backend: device,
@@ -606,15 +635,22 @@ macro_rules! backend_switch {
     $(where $($wc:tt)*)?
   ) => {
     impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
-      /// The same process on backend `B2` with that backend's default handle
-      /// (the environment's device ordinal and batch budget).
+      /// The same process on backend `B2`, using that backend's default handle
+      /// (the device ordinal and batch budget from the environment).
       pub fn on<B2: $crate::euler::EulerBackend<$t> + Default>(self) -> $ty<$t $(, $targ)*, B2> {
-        self.on_device(B2::default())
+        $ty {
+          $($field: self.$field,)*
+          backend: B2::default(),
+        }
       }
 
-      /// The same process on the given backend handle, e.g.
-      /// `Cuda::new(1).with_batch_budget(256 << 20)`.
-      pub fn on_device<B2: $crate::euler::EulerBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
+      /// The same process on an explicit backend handle. Crate-internal:
+      /// the public way to name a backend is [`on`](Self::on), and a specific
+      /// device comes from `STOCHASTIC_RS_DEVICE` or from calling a capability
+      /// trait on the handle itself. The Python bindings need it because a
+      /// `device="cuda:1"` name carries an ordinal.
+      #[allow(dead_code)]
+      pub(crate) fn with_backend<B2: $crate::euler::EulerBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
           backend: device,

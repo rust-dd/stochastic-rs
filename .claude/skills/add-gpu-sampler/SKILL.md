@@ -15,7 +15,7 @@ switches with a turbofish or an explicit handle:
 ```rust
 let fbm = Fbm::<f64, _>::new(0.7, 1024, None, Deterministic::new(42));
 let a = fbm.clone().on::<Cuda>().sample_par(256);              // B::default()
-let b = fbm.on_device(Cuda::new(1).with_batch_budget(1 << 28)); // explicit
+let b = fbm.on(Cuda::new(1).with_batch_budget(1 << 28)); // explicit
 ```
 
 A handle only exists when its feature is compiled, and it implements a
@@ -288,8 +288,8 @@ kernel:
   `euler/cubecl.rs` — the Euler engine's shared body and its devices; the
   CubeCL module also owns `CubeclRuntime`, the per-runtime client caches and
   the panic-catching `open`.
-- `macros.rs`'s `backend_switch!` — generates `.on::<B2>()` and
-  `.on_device(handle)` for a backend-generic process, in four forms
+- `macros.rs`'s `backend_switch!` — generates `.on::<B>()` and
+  `.on::<B>()` for a backend-generic process, in four forms
   (`via fgn` / `via phantom` / `via host` / `via euler`). Invoke it
   rather than hand-writing them.
 - `tests/deterministic_parallelism_accelerate.rs` — what a

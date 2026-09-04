@@ -20,7 +20,7 @@ This replaces the ad-hoc per-backend methods (`sample_cuda`,
 
 ## Switching backend
 
-Re-type the process with the `.on::<B>()` turbofish, then sample as usual.
+Re-type the process by handing `.on` a backend handle, then sample as usual.
 `Cuda` only exists when the `cuda` feature is compiled (an
 NVIDIA CUDA 12.x toolkit and GPU), which the CI runners that build this
 site do not have, so this block is illustrative rather than compiled:
@@ -46,7 +46,7 @@ fields are moved, nothing is copied, and the choice is resolved at compile time.
 `Backend` itself is a bare device marker — it carries no algorithm. What a
 device can compute is expressed by capability subtraits, and **every process
 carries the backend as its last type parameter** (`Name<T, S, B = Cpu>`), so
-`.on::<B2>()` exists on all of them; the capability the process's bound names
+`.on::<B>()` exists on all of them; the capability the process's bound names
 says which markers it accepts:
 
 - `HostBackend: Backend` — the process samples on the CPU through its own
@@ -105,12 +105,12 @@ kernel later widens the bound without touching callers.
 ## Choosing the device
 
 A backend is a value, not only a type. `.on::<B>()` re-types the process with
-`B`'s default handle; `.on_device(handle)` takes an explicit one:
+`B`'s default handle; `.on::<B>()` takes an explicit one:
 
 ```rust
 use stochastic_rs::stochastic::device::Cuda;
 
-let on_second_gpu = gbm.on_device(Cuda::new(1).with_batch_budget(256 << 20));
+let on_second_gpu = gbm.on(Cuda::new(1).with_batch_budget(256 << 20));
 ```
 
 `Cuda { ordinal, batch_budget }`, `Metal { .. }` and

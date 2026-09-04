@@ -113,7 +113,7 @@ Five things matter:
   Riemann-Liouville kernel and silently mis-scales the moments under
   any other kernel. Always derive the convolution explicitly.
 
-Add `.on::<B2>()` with the `backend_switch!` macro (`macros.rs`) rather
+Add `.on::<B>()` with the `backend_switch!` macro (`macros.rs`) rather
 than hand-writing it — there is a form for a real `fgn` field and one
 for `PhantomData`.
 

@@ -14,8 +14,10 @@
 //! generated Metal kernel, so a formula that drifts from the declaration
 //! fails a test rather than a review.
 //!
-//! The names a step may use are fixed: `x` for the state, `dt`, `sqrt_dt` and
-//! `z` for the grid and the step's normal draw, and the family's own
+//! The names a step may use are fixed: `x` for the state, `dt` for the step
+//! size, `dz` for the step's noise **increment** — `sqrt_dt · z` for Gaussian
+//! noise, the fractional increment itself for fGN, which is what lets one
+//! declaration serve both — and the family's own
 //! parameters, which the generated code binds as locals from the parameter
 //! buffer in declaration order. The `report` expression maps the state to what
 //! the path records and is evaluated at `t = 0` as well, where no noise exists.
@@ -149,7 +151,7 @@ pub(crate) mod cube_ops {
 /// those parameters, and the reported value as an expression over `x`.
 macro_rules! euler_families {
   (
-    step_inputs($x:ident, $dt:ident, $sqrt_dt:ident, $z:ident);
+    step_inputs($x:ident, $params:ident, $dt:ident, $dz:ident);
     $(
     $(#[$meta:meta])*
     $code:literal => $name:ident { $($param:ident),* $(,)? }
@@ -180,10 +182,9 @@ macro_rules! euler_families {
     pub(crate) fn host_step<T: FloatExt>(
       family: Family,
       $x: T,
-      params: &[T],
+      $params: &[T],
       $dt: T,
-      $sqrt_dt: T,
-      $z: T,
+      $dz: T,
     ) -> T {
       #[allow(unused_imports)]
       use ops::*;
@@ -192,7 +193,7 @@ macro_rules! euler_families {
           Family::$name => {
             let mut slot = 0;
             $(
-              let $param = params[slot];
+              let $param = $params[slot];
               slot += 1;
             )*
             $($step)*
@@ -214,30 +215,24 @@ macro_rules! euler_families {
     }
 
     /// One `#[cube]` function per family, from the same expression the host
-    /// and the C kernels run. Parameters are arguments rather than buffer
-    /// reads, so a generated body carries no indexing and no macro call —
-    /// which is what lets the `#[cube]` attribute see finished tokens.
+    /// and the C kernels run, plus the dispatch that picks one. The parameter
+    /// bindings are peeled into the body before the `#[cube]` attribute sees
+    /// it, so the emitted item contains no macro call — which the attribute
+    /// cannot look through.
     #[cfg(feature = "cubecl")]
-    pub(crate) mod cube_step {
+    pub(crate) mod cube {
       #[allow(unused_imports)]
       use super::cube_ops::*;
       #[allow(unused_imports)]
       use cubecl::prelude::*;
 
       $(
-        $(#[$meta])*
-        #[cube]
-        #[allow(non_snake_case)]
-        pub(crate) fn $name(
-          $x: f32,
-          $($param: f32,)*
-          $dt: f32,
-          $sqrt_dt: f32,
-          $z: f32,
-        ) -> f32 {
-          $($step)*
-        }
+        euler_families!(@cube_step
+          $(#[$meta])* $name, $x, $params, $dt, $dz,
+          [0 1 2 3 4 5 6 7], [$($param)*], {}, {$($step)*}
+        );
       )*
+
     }
 
     /// What each family reports for a state, in a CubeCL kernel.
@@ -274,6 +269,36 @@ macro_rules! euler_families {
     )*);
   };
 
+  (@cube_step
+    $(#[$meta:meta])* $name:ident, $x:ident, $params:ident, $dt:ident, $dz:ident,
+    [$($idx:literal)*], [], {$($bound:tt)*}, {$($step:tt)*}
+  ) => {
+    $(#[$meta])*
+    #[cube]
+    #[allow(non_snake_case)]
+    pub(crate) fn $name(
+      $x: f32,
+      $params: &Array<f32>,
+      $dt: f32,
+      $dz: f32,
+    ) -> f32 {
+      $($bound)*
+      $($step)*
+    }
+  };
+
+  (@cube_step
+    $(#[$meta:meta])* $name:ident, $x:ident, $params:ident, $dt:ident, $dz:ident,
+    [$i:literal $($rest_idx:literal)*], [$head:ident $($rest:ident)*],
+    {$($bound:tt)*}, {$($step:tt)*}
+  ) => {
+    euler_families!(@cube_step
+      $(#[$meta])* $name, $x, $params, $dt, $dz,
+      [$($rest_idx)*], [$($rest)*],
+      {$($bound)* let $head = $params[$i];}, {$($step)*}
+    );
+  };
+
   (@bind [$($idx:literal)*]) => { "" };
 
   (@bind [$i:literal $($rest_idx:literal)*] $head:ident $($rest:ident)*) => {
@@ -285,23 +310,23 @@ macro_rules! euler_families {
 }
 
 euler_families! {
-  step_inputs(x, dt, sqrt_dt, z);
+  step_inputs(x, params, dt, dz);
 
   /// `dX = μX dt + σX dW`.
   0 => GeometricBrownian { mu, sigma }
-    step { x + mu * x * dt + sigma * x * sqrt_dt * z }
+    step { x + mu * x * dt + sigma * x * dz }
     report { x },
 
   /// `dX = θ(μ − X) dt + σ dW`.
   1 => OrnsteinUhlenbeck { theta, mu, sigma }
-    step { x + theta * (mu - x) * dt + sigma * sqrt_dt * z }
+    step { x + theta * (mu - x) * dt + sigma * dz }
     report { x },
 
   /// `dX = κ(θ − X) dt + σ√X dW`, stepped with full truncation (Lord,
   /// Koekkoek & van Dijk 2010): the recursion runs on an auxiliary state
   /// whose positive part enters drift, diffusion and the reported path.
   2 => SquareRoot { kappa, theta, sigma }
-    step { x + kappa * (theta - positive(x)) * dt + sigma * sqrt(positive(x)) * sqrt_dt * z }
+    step { x + kappa * (theta - positive(x)) * dt + sigma * sqrt(positive(x)) * dz }
     report { positive(x) },
 }
 

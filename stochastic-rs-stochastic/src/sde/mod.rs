@@ -303,7 +303,10 @@ where
     n_paths: usize,
     method: SdeMethod,
     rng: &mut impl Rng,
-  ) -> Array3<T> {
+  ) -> Array3<T>
+  where
+    B: Default,
+  {
     match self.noise {
       NoiseModel::Gaussian => match method {
         SdeMethod::Euler => self.solve_euler_gauss(x0, t0, t1, dt, n_paths, rng),
@@ -318,7 +321,7 @@ where
 
         if let Some(h) = &self.hursts {
           let fgns: Vec<Fgn<T, Unseeded, B>> = (0..dim)
-            .map(|d| Fgn::new(h[d], steps, Some(t1 - t0), Unseeded).on_device(self.backend))
+            .map(|d| Fgn::new(h[d], steps, Some(t1 - t0), Unseeded).on::<B>())
             .collect();
 
           for p in 0..n_paths {

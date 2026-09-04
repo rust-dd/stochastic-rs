@@ -208,7 +208,7 @@ use stochastic_rs::stochastic::device::Cubecl;
 
 // the wgpu runtime: Metal here, Vulkan on Linux, WebGPU on the web
 let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
-  .on_device(Cubecl::wgpu(0))
+  .on::<Cubecl<WgpuRuntime>>()
   .sample();
 ```
 

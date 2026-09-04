@@ -3,28 +3,30 @@
 
 use super::*;
 
-fn gbm_closed(x: f64, mu: f64, sigma: f64, dt: f64, sqrt_dt: f64, z: f64) -> f64 {
-  x + mu * x * dt + sigma * x * sqrt_dt * z
+fn gbm_closed(x: f64, mu: f64, sigma: f64, dt: f64, dz: f64) -> f64 {
+  x + mu * x * dt + sigma * x * dz
 }
 
-fn ou_closed(x: f64, theta: f64, mu: f64, sigma: f64, dt: f64, sqrt_dt: f64, z: f64) -> f64 {
-  x + theta * (mu - x) * dt + sigma * sqrt_dt * z
+fn ou_closed(x: f64, theta: f64, mu: f64, sigma: f64, dt: f64, dz: f64) -> f64 {
+  x + theta * (mu - x) * dt + sigma * dz
 }
 
-fn cir_closed(x: f64, kappa: f64, theta: f64, sigma: f64, dt: f64, sqrt_dt: f64, z: f64) -> f64 {
+fn cir_closed(x: f64, kappa: f64, theta: f64, sigma: f64, dt: f64, dz: f64) -> f64 {
   let positive = if x > 0.0 { x } else { 0.0 };
-  x + kappa * (theta - positive) * dt + sigma * positive.sqrt() * sqrt_dt * z
+  x + kappa * (theta - positive) * dt + sigma * positive.sqrt() * dz
 }
 
 /// The generated host step is the same operations in the same order as the
-/// closed form, so it must agree bit for bit rather than approximately.
+/// closed form, so it must agree bit for bit rather than approximately. The
+/// closed forms take the noise **increment**, as the declarations do: the
+/// diffusion multiplies by `dz`, not by `sqrt_dt` and then by a normal.
 #[test]
 fn the_host_step_matches_the_closed_forms() {
   let (dt, sqrt_dt) = (1.0 / 253.0, (1.0f64 / 253.0).sqrt());
   for (x, z) in [(100.0, 0.5), (1e-8, -2.25), (-0.01, 3.0)] {
     assert_eq!(
-      host_step(Family::GeometricBrownian, x, &[0.05, 0.2], dt, sqrt_dt, z),
-      gbm_closed(x, 0.05, 0.2, dt, sqrt_dt, z)
+      host_step(Family::GeometricBrownian, x, &[0.05, 0.2], dt, sqrt_dt * z),
+      gbm_closed(x, 0.05, 0.2, dt, sqrt_dt * z)
     );
     assert_eq!(
       host_step(
@@ -32,14 +34,13 @@ fn the_host_step_matches_the_closed_forms() {
         x,
         &[0.5, 0.02, 0.1],
         dt,
-        sqrt_dt,
-        z
+        sqrt_dt * z
       ),
-      ou_closed(x, 0.5, 0.02, 0.1, dt, sqrt_dt, z)
+      ou_closed(x, 0.5, 0.02, 0.1, dt, sqrt_dt * z)
     );
     assert_eq!(
-      host_step(Family::SquareRoot, x, &[0.5, 0.04, 0.1], dt, sqrt_dt, z),
-      cir_closed(x, 0.5, 0.04, 0.1, dt, sqrt_dt, z)
+      host_step(Family::SquareRoot, x, &[0.5, 0.04, 0.1], dt, sqrt_dt * z),
+      cir_closed(x, 0.5, 0.04, 0.1, dt, sqrt_dt * z)
     );
   }
 }
@@ -72,7 +73,7 @@ fn the_emitted_c_binds_parameters_and_steps() {
   assert!(C_STEP.contains("if (family == 0u) {"));
   assert!(C_STEP.contains("const REAL mu = params[0];"));
   assert!(C_STEP.contains("const REAL sigma = params[1];"));
-  assert!(C_STEP.contains("x = x + mu * x * dt + sigma * x * sqrt_dt * z;"));
+  assert!(C_STEP.contains("x = x + mu * x * dt + sigma * x * dz;"));
   assert!(C_STEP.contains("const REAL kappa = params[0];"));
   assert!(C_STEP.contains("const REAL theta = params[1];"));
   assert!(C_STEP.contains("const REAL sigma = params[2];"));

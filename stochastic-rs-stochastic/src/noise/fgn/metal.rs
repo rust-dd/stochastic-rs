@@ -380,7 +380,7 @@ mod chunk_tests {
   #[test]
   fn chunks_are_bit_identical_to_one_launch() {
     let fgn = |device: Metal| {
-      Fgn::<f32, _>::new(0.7, 512, Some(1.0), Deterministic::new(5)).on_device(device)
+      Fgn::<f32, _>::new(0.7, 512, Some(1.0), Deterministic::new(5)).with_backend(device)
     };
     let whole = fgn(Metal::default()).sample_par(9);
     // Two paths per chunk: five launches for nine paths.

@@ -30,6 +30,7 @@ REPORT
         REAL u1 = (REAL)a * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6;
         REAL u2 = (REAL)b * (REAL)2.3283064e-10;
         REAL z = STOCH_SQRT((REAL)-2.0 * STOCH_LOG(u1)) * STOCH_COS((REAL)6.283185307179586 * u2);
+        REAL dz = sqrt_dt * z;
 STEP
         reported = x;
 REPORT

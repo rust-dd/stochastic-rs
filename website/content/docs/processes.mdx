@@ -331,7 +331,7 @@ What the engine runs on today, per backend and precision, is tabulated on
 [GPU support](/docs/concepts/gpu-support).
 
 The sampling backend is a **type parameter of every process**
-(`Name<T, S, B = Cpu>`, switched with `.on::<B2>()`); the Euler engine is the
+(`Name<T, S, B = Cpu>`, switched with `.on::<B>()`); the Euler engine is the
 capability behind the device markers for `Gbm`, `Ou` and `Cir`:
 `gbm.on::<Metal>().sample_par(m)` samples through `ProcessExt` as usual.
 On `Cpu` (and `Accelerate`) that is the process's own sampler, so nothing is

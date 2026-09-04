@@ -12,8 +12,8 @@ use parking_lot::Mutex;
 use super::EulerCoefficients;
 use super::EulerKernel;
 use super::EulerSpec;
+use super::families::cube;
 use super::families::cube_report;
-use super::families::cube_step;
 use crate::device::DeviceError;
 use crate::device::DeviceInfo;
 
@@ -58,7 +58,7 @@ fn euler_paths_kernel(
       let u1 = f32::cast_from(a) * inv * 0.999998f32 + 1.0e-6f32;
       let u2 = f32::cast_from(b) * inv;
       let z = Sqrt::sqrt(-2.0f32 * Log::ln(u1)) * Cos::cos(core::f32::consts::TAU * u2);
-      x = step(family, x, params, dt, sqrt_dt, z);
+      x = step(family, x, params, dt, sqrt_dt * z);
       out[base + i as usize] = report(family, x);
     }
   }
@@ -69,16 +69,16 @@ fn euler_paths_kernel(
 /// order each family reads from the buffer, which the compiler checks by
 /// arity.
 #[cube]
-fn step(family: u32, x: f32, params: &Array<f32>, dt: f32, sqrt_dt: f32, z: f32) -> f32 {
+fn step(family: u32, x: f32, params: &Array<f32>, dt: f32, dz: f32) -> f32 {
   let mut stepped = x;
   if family == 0u32 {
-    stepped = cube_step::GeometricBrownian(x, params[0], params[1], dt, sqrt_dt, z);
+    stepped = cube::GeometricBrownian(x, params, dt, dz);
   }
   if family == 1u32 {
-    stepped = cube_step::OrnsteinUhlenbeck(x, params[0], params[1], params[2], dt, sqrt_dt, z);
+    stepped = cube::OrnsteinUhlenbeck(x, params, dt, dz);
   }
   if family == 2u32 {
-    stepped = cube_step::SquareRoot(x, params[0], params[1], params[2], dt, sqrt_dt, z);
+    stepped = cube::SquareRoot(x, params, dt, dz);
   }
   stepped
 }
@@ -102,7 +102,7 @@ fn report(family: u32, x: f32) -> f32 {
 /// A CubeCL runtime this crate can open, with its own cached compute client.
 /// One implementor per `cubecl-*` feature, so a build with both reaches both
 /// devices; the kernels themselves are runtime-agnostic.
-pub(crate) trait CubeclRuntime: 'static {
+pub trait CubeclRuntime: Copy + Default + Send + Sync + 'static {
   /// The CubeCL runtime this opens.
   type Rt: cubecl::Runtime;
 
@@ -148,19 +148,15 @@ pub(crate) fn open<Rt: cubecl::Runtime>(
   Ok(guard.as_ref().expect("initialised").client.clone())
 }
 
-/// The CUDA runtime of CubeCL, distinct from the hand-written [`Cuda`
-/// ](crate::device::Cuda) backend that reaches the same hardware through
-/// cudarc.
+/// The client cache of CubeCL's CUDA runtime. The tag it belongs to is
+/// [`crate::device::CudaRuntime`], so a handle names the runtime in its type.
 #[cfg(feature = "cubecl-cuda")]
-pub(crate) mod cuda_rt {
+mod cuda_rt {
   use super::*;
-
-  /// The tag type; the handle is [`CubeclCuda`](crate::device::CubeclCuda).
-  pub(crate) struct Rt;
 
   static CONTEXT: Mutex<Option<Context<cubecl_cuda::CudaRuntime>>> = Mutex::new(None);
 
-  impl CubeclRuntime for Rt {
+  impl CubeclRuntime for crate::device::CudaRuntime {
     type Rt = cubecl_cuda::CudaRuntime;
 
     const BACKEND: &'static str = "CubeclCuda";
@@ -175,18 +171,16 @@ pub(crate) mod cuda_rt {
   }
 }
 
-/// The wgpu runtime of CubeCL: Metal on macOS, Vulkan on Linux, WebGPU on the
-/// web. `ordinal` `0` is the default adapter, `n > 0` the n-th discrete GPU.
+/// The client cache of CubeCL's wgpu runtime — Metal on macOS, Vulkan on
+/// Linux, WebGPU on the web. `ordinal` `0` is the default adapter, `n > 0` the
+/// n-th discrete GPU.
 #[cfg(feature = "cubecl-wgpu")]
-pub(crate) mod wgpu_rt {
+mod wgpu_rt {
   use super::*;
-
-  /// The tag type; the handle is [`CubeclWgpu`](crate::device::CubeclWgpu).
-  pub(crate) struct Rt;
 
   static CONTEXT: Mutex<Option<Context<cubecl_wgpu::WgpuRuntime>>> = Mutex::new(None);
 
-  impl CubeclRuntime for Rt {
+  impl CubeclRuntime for crate::device::WgpuRuntime {
     type Rt = cubecl_wgpu::WgpuRuntime;
 
     const BACKEND: &'static str = "CubeclWgpu";
@@ -206,7 +200,7 @@ pub(crate) mod wgpu_rt {
 }
 
 /// The runtime's device at `ordinal`, or why it cannot be used.
-pub(crate) fn probe<C: CubeclRuntime>(ordinal: usize) -> DeviceResult<DeviceInfo> {
+pub fn probe<C: CubeclRuntime>(ordinal: usize) -> DeviceResult<DeviceInfo> {
   let cl = C::client(ordinal)?;
   Ok(DeviceInfo::new(
     C::BACKEND,
@@ -233,7 +227,7 @@ fn count_2d(cubes: u32) -> CubeCount {
 }
 
 #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-impl EulerKernel<f32> for crate::device::Cubecl {
+impl<R: CubeclRuntime> EulerKernel<f32> for crate::device::Cubecl<R> {
   fn euler_kernel<P: EulerCoefficients<f32>>(
     &self,
     process: &P,
@@ -241,20 +235,16 @@ impl EulerKernel<f32> for crate::device::Cubecl {
     m: usize,
     seed: u64,
   ) -> DeviceResult<Array2<f32>> {
-    let spec = process.euler_spec();
-    let x0 = process.initial_value();
-    let n = process.grid_points();
-    let t = process.horizon();
-    match self.device {
-      #[cfg(feature = "cubecl-cuda")]
-      crate::device::CubeclDevice::Cuda => {
-        device_paths::<cuda_rt::Rt>(self.ordinal, spec, x0, n, t, first, m, seed)
-      }
-      #[cfg(feature = "cubecl-wgpu")]
-      crate::device::CubeclDevice::Wgpu => {
-        device_paths::<wgpu_rt::Rt>(self.ordinal, spec, x0, n, t, first, m, seed)
-      }
-    }
+    device_paths::<R>(
+      self.ordinal,
+      process.euler_spec(),
+      process.initial_value(),
+      process.grid_points(),
+      process.horizon(),
+      first,
+      m,
+      seed,
+    )
   }
 
   fn batch_budget(&self) -> usize {

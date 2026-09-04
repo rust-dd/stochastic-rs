@@ -213,8 +213,8 @@ mod devices {
     )
   }
 
-  fn gbm_moments_hold<T: FloatExt, B: EulerBackend<T>>(device: B, label: &str) {
-    let paths = stack(&gbm::<T>(7).on_device(device).sample_par(40_000));
+  fn gbm_moments_hold<T: FloatExt, B: EulerBackend<T> + Default>(label: &str) {
+    let paths = stack(&gbm::<T>(7).on::<B>().sample_par(40_000));
     assert_eq!(paths.dim(), (40_000, 253), "{label}");
     assert!(paths.column(0).iter().all(|&x| x == 100.0), "{label}");
     let (mean, var) = column_mean_var(&paths, 252);
@@ -228,9 +228,9 @@ mod devices {
       (var / expected_var - 1.0).abs() < 0.06,
       "{label}: var {var} vs {expected_var}"
     );
-    let a = gbm::<T>(7).on_device(device).sample_par(8);
-    let b = gbm::<T>(7).on_device(device).sample_par(8);
-    let c = gbm::<T>(8).on_device(device).sample_par(8);
+    let a = gbm::<T>(7).on::<B>().sample_par(8);
+    let b = gbm::<T>(7).on::<B>().sample_par(8);
+    let c = gbm::<T>(8).on::<B>().sample_par(8);
     assert!(
       a.iter().zip(&b).all(|(x, y)| x == y),
       "{label}: seed reproducibility"
@@ -240,19 +240,16 @@ mod devices {
       "{label}: seed discrimination"
     );
     assert_ne!(a[0], a[1], "{label}: paths are distinct streams");
-    let single = gbm::<T>(7).on_device(device).sample();
+    let single = gbm::<T>(7).on::<B>().sample();
     assert_eq!(single.len(), 253, "{label}");
     assert_eq!(
-      gbm::<T>(7)
-        .on_device(device)
-        .sample_map(3, |p| p[252])
-        .len(),
+      gbm::<T>(7).on::<B>().sample_map(3, |p| p[252]).len(),
       3,
       "{label}"
     );
   }
 
-  fn cir_stays_nonnegative<T: FloatExt, B: EulerBackend<T>>(device: B, label: &str) {
+  fn cir_stays_nonnegative<T: FloatExt, B: EulerBackend<T> + Default>(label: &str) {
     let cir = Cir::new(
       T::from_f64_fast(1.5),
       T::from_f64_fast(0.04),
@@ -263,7 +260,7 @@ mod devices {
       None,
       Deterministic::new(3),
     );
-    let paths = stack(&cir.on_device(device).sample_par(4_000));
+    let paths = stack(&cir.on::<B>().sample_par(4_000));
     let (mean, _) = column_mean_var(&paths, 252);
     let expected = 0.04 + (0.09 - 0.04) * (-1.5_f64).exp();
     assert!(
@@ -277,11 +274,11 @@ mod devices {
   #[test]
   fn cubecl_backend_matches_the_moments() {
     #[cfg(feature = "cubecl-wgpu")]
-    let device = crate::device::Cubecl::wgpu(0);
+    type Rt = crate::device::WgpuRuntime;
     #[cfg(all(feature = "cubecl-cuda", not(feature = "cubecl-wgpu")))]
-    let device = crate::device::Cubecl::cuda(0);
-    gbm_moments_hold::<f32, _>(device, "Cubecl");
-    cir_stays_nonnegative::<f32, _>(device, "Cubecl");
+    type Rt = crate::device::CudaRuntime;
+    gbm_moments_hold::<f32, crate::device::Cubecl<Rt>>("Cubecl");
+    cir_stays_nonnegative::<f32, crate::device::Cubecl<Rt>>("Cubecl");
   }
 
   #[cfg(feature = "metal")]
@@ -298,8 +295,8 @@ mod devices {
     }
     // A budget of three paths forces four launches; the union must not move.
     let small = Metal::default().with_batch_budget(253 * 4 * 3);
-    let chunked = gbm::<f32>(21).on_device(small).sample_par(10);
-    let mapped: Vec<f32> = gbm::<f32>(21).on_device(small).sample_map(10, |p| p[252]);
+    let chunked = small.euler_paths(&gbm::<f32>(21), 10);
+    let mapped: Vec<f32> = small.euler_paths_map(&gbm::<f32>(21), 10, |p| p[252]);
     assert_eq!(chunked, whole);
     assert_eq!(mapped, whole.iter().map(|p| p[252]).collect::<Vec<_>>());
   }
@@ -316,9 +313,9 @@ mod devices {
     for (i, row) in rows.iter().enumerate() {
       assert_eq!(matrix.row(i), row.view());
     }
-    let chunked = gbm::<f32>(23)
-      .on_device(Metal::default().with_batch_budget(253 * 4 * 2))
-      .try_sample_matrix(7)
+    let chunked = Metal::default()
+      .with_batch_budget(253 * 4 * 2)
+      .try_euler_matrix(&gbm::<f32>(23), 7)
       .expect("Metal");
     assert_eq!(chunked, matrix);
   }
@@ -342,8 +339,8 @@ mod devices {
   #[cfg(feature = "metal")]
   #[test]
   fn metal_native_backend_matches_the_moments() {
-    gbm_moments_hold::<f32, _>(crate::device::Metal::default(), "Metal");
-    cir_stays_nonnegative::<f32, _>(crate::device::Metal::default(), "Metal");
+    gbm_moments_hold::<f32, crate::device::Metal>("Metal");
+    cir_stays_nonnegative::<f32, crate::device::Metal>("Metal");
   }
 
   /// A batch above the budget runs through the two-stream pipeline; its
@@ -363,9 +360,9 @@ mod devices {
     }
     // Three paths per chunk: four launches alternating between the two streams.
     let small = Cuda::default().with_batch_budget(253 * 8 * 3);
-    let chunked64 = gbm::<f64>(21).on_device(small).sample_par(10);
-    let chunked32 = gbm::<f32>(21).on_device(small).sample_par(10);
-    let mapped: Vec<f64> = gbm::<f64>(21).on_device(small).sample_map(10, |p| p[252]);
+    let chunked64 = small.euler_paths(&gbm::<f64>(21), 10);
+    let chunked32 = small.euler_paths(&gbm::<f32>(21), 10);
+    let mapped: Vec<f64> = small.euler_paths_map(&gbm::<f64>(21), 10, |p| p[252]);
     assert_eq!(chunked64, whole64);
     assert_eq!(chunked32, whole32);
     assert_eq!(mapped, whole64.iter().map(|p| p[252]).collect::<Vec<_>>());
@@ -374,10 +371,10 @@ mod devices {
   #[cfg(feature = "cuda")]
   #[test]
   fn cuda_backend_matches_the_moments() {
-    gbm_moments_hold::<f64, _>(crate::device::Cuda::default(), "Cuda f64");
-    gbm_moments_hold::<f32, _>(crate::device::Cuda::default(), "Cuda f32");
-    cir_stays_nonnegative::<f64, _>(crate::device::Cuda::default(), "Cuda f64");
-    cir_stays_nonnegative::<f32, _>(crate::device::Cuda::default(), "Cuda f32");
+    gbm_moments_hold::<f64, crate::device::Cuda>("Cuda f64");
+    gbm_moments_hold::<f32, crate::device::Cuda>("Cuda f32");
+    cir_stays_nonnegative::<f64, crate::device::Cuda>("Cuda f64");
+    cir_stays_nonnegative::<f32, crate::device::Cuda>("Cuda f32");
     // The f32 and f64 kernels draw the same uniforms (one integer hash) and
     // differ only by float rounding, so the same process on the same grid
     // agrees across the two precisions to well under 1e-3 relative.
@@ -437,20 +434,25 @@ mod devices {
       }
     }
 
-    let wgpu = crate::device::Cubecl::wgpu(0);
     agree(
       &gbm::<f32>(11).on::<crate::device::Metal>().sample_par(16),
-      &gbm::<f32>(11).on_device(wgpu).sample_par(16),
+      &gbm::<f32>(11)
+        .on::<crate::device::Cubecl<crate::device::WgpuRuntime>>()
+        .sample_par(16),
       "GeometricBrownian",
     );
     agree(
       &ou::<f32>(11).on::<crate::device::Metal>().sample_par(16),
-      &ou::<f32>(11).on_device(wgpu).sample_par(16),
+      &ou::<f32>(11)
+        .on::<crate::device::Cubecl<crate::device::WgpuRuntime>>()
+        .sample_par(16),
       "OrnsteinUhlenbeck",
     );
     agree(
       &cir::<f32>(11).on::<crate::device::Metal>().sample_par(16),
-      &cir::<f32>(11).on_device(wgpu).sample_par(16),
+      &cir::<f32>(11)
+        .on::<crate::device::Cubecl<crate::device::WgpuRuntime>>()
+        .sample_par(16),
       "SquareRoot",
     );
   }

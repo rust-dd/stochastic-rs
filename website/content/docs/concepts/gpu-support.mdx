@@ -4,7 +4,7 @@ description: What runs on a GPU today, on which backend, at what precision — t
 ---
 
 Every process carries its sampling backend as a type parameter and is
-re-typed with `.on::<B2>()` (see [backends](/docs/concepts/backends)). This
+re-typed with `.on::<B>()` (see [backends](/docs/concepts/backends)). This
 page is the inventory: which processes have a device kernel today, on which
 backends, and what the rest do.
 
@@ -64,7 +64,7 @@ does not re-plan on every call.
 
 The handle names the device: `Cuda::new(1)` (CUDA ordinal),
 `Metal::new(1)` (index into `Device::all()`), `Cubecl::cuda(1)` /
-`Cubecl::wgpu(1)` (the runtime and its device index); `.on_device(handle)` puts a process on it, and
+`Cubecl::wgpu(1)` (the runtime and its device index); `.on::<B>()` puts a process on it, and
 `handle.probe()` reports the device opened. The defaults read
 `STOCHASTIC_RS_DEVICE`. From Python the name carries the ordinal:
 `device="cuda:1"`, `probe_device("metal:0")`.

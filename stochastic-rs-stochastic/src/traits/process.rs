@@ -87,7 +87,7 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 ///
 /// ## Backend selection
 ///
-/// Re-type a process to a compile-time sampling backend with the turbofish
+/// Re-type a process to a compile-time sampling backend by handing `.on` a handle
 /// `process.on::<B>()` where `B: `[`FgnBackend`](crate::device::FgnBackend) (e.g.
 /// `process.on::<Cuda>()`); the backend marker propagates to the
 /// process's noise source with no runtime branch. Only the fractional family

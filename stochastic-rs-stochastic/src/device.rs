@@ -2,7 +2,7 @@
 //!
 //! A process is parameterised by a backend marker `B` ([`Cpu`] is the default);
 //! the [`Backend`] trait monomorphises `sample` / `sample_par` to that backend
-//! with **no runtime branch**. Switch backend with the turbofish
+//! with **no runtime branch**. Switch backend by handing `.on` a handle,
 //! `process.on::<Cuda>()` — the marker must be in scope, and the GPU
 //! markers only exist when their feature is compiled, so selecting an
 //! unavailable backend is a compile error rather than a runtime fallback.
@@ -74,72 +74,57 @@ impl Cuda {
   }
 }
 
-/// Which runtime a [`Cubecl`] handle opens. Feature-gated, so naming a
-/// runtime the build does not carry is a compile error.
-#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CubeclDevice {
-  /// CubeCL's CUDA runtime — the same hardware [`Cuda`] reaches through
-  /// cudarc, by a different route.
-  #[cfg(feature = "cubecl-cuda")]
-  Cuda,
-  /// CubeCL through wgpu: Metal on macOS, Vulkan on Linux, WebGPU on the web.
-  #[cfg(feature = "cubecl-wgpu")]
-  Wgpu,
-}
+// Which CubeCL runtime a `Cubecl` handle opens is a type parameter rather than
+// a field, so `.on::<Cubecl<WgpuRuntime>>()` names it at the call site and a
+// build carrying both runtimes has no ambiguous default to invent. The tags
+// implement `crate::euler::cubecl::CubeclRuntime`, which owns the client cache.
 
-/// cubecl Rust kernels, on the runtime the handle names. Both runtimes can be
-/// compiled into one build and used at once; each keeps its own client.
+/// CubeCL's CUDA runtime — the same hardware [`Cuda`] reaches through cudarc,
+/// by a different route.
+#[cfg(feature = "cubecl-cuda")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CudaRuntime;
+
+/// CubeCL through wgpu: Metal on macOS, Vulkan on Linux, WebGPU on the web.
+#[cfg(feature = "cubecl-wgpu")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WgpuRuntime;
+
+/// cubecl Rust kernels on the runtime `R`. Both runtimes can be compiled into
+/// one build and used at once; each keeps its own client.
 #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Cubecl {
-  /// Which CubeCL runtime to open.
-  pub device: CubeclDevice,
+pub struct Cubecl<R: crate::euler::cubecl::CubeclRuntime> {
   /// Which device to open: the runtime's device index (with the wgpu runtime,
   /// `0` is the default adapter and `n > 0` the n-th discrete GPU).
   pub ordinal: usize,
   /// Bytes of path data one launch may hold; a larger batch runs as chunks
   /// whose union is bit-identical to one launch.
   pub batch_budget: usize,
+  /// The runtime this opens.
+  pub runtime: R,
 }
 
-/// With exactly one runtime compiled there is one thing `Default` can mean, so
-/// `.on::<Cubecl>()` works; with both, the caller names the runtime through
-/// `.on_device(Cubecl::wgpu(0))`.
-#[cfg(all(feature = "cubecl-cuda", not(feature = "cubecl-wgpu")))]
-impl Default for Cubecl {
+#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
+impl<R: crate::euler::cubecl::CubeclRuntime> Default for Cubecl<R> {
+  /// Ordinal from `STOCHASTIC_RS_DEVICE` (else `0`), budget from
+  /// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` (else [`DEFAULT_BATCH_BUDGET_BYTES`]).
   fn default() -> Self {
-    Self::cuda(env_ordinal())
-  }
-}
-
-#[cfg(all(feature = "cubecl-wgpu", not(feature = "cubecl-cuda")))]
-impl Default for Cubecl {
-  fn default() -> Self {
-    Self::wgpu(env_ordinal())
+    Self {
+      ordinal: env_ordinal(),
+      batch_budget: env_budget(),
+      runtime: R::default(),
+    }
   }
 }
 
 #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-impl Cubecl {
-  /// The CubeCL CUDA runtime's device at `ordinal`, with the budget from
-  /// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` (else [`DEFAULT_BATCH_BUDGET_BYTES`]).
-  #[cfg(feature = "cubecl-cuda")]
-  pub fn cuda(ordinal: usize) -> Self {
+impl<R: crate::euler::cubecl::CubeclRuntime> Cubecl<R> {
+  /// The runtime's device at `ordinal` with the default batch budget.
+  pub fn new(ordinal: usize) -> Self {
     Self {
-      device: CubeclDevice::Cuda,
       ordinal,
-      batch_budget: env_budget(),
-    }
-  }
-
-  /// The wgpu runtime's device at `ordinal`, budget as in [`cuda`](Self::cuda).
-  #[cfg(feature = "cubecl-wgpu")]
-  pub fn wgpu(ordinal: usize) -> Self {
-    Self {
-      device: CubeclDevice::Wgpu,
-      ordinal,
-      batch_budget: env_budget(),
+      ..Self::default()
     }
   }
 
@@ -409,18 +394,9 @@ impl Backend for Cuda {
   }
 }
 #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-impl Backend for Cubecl {
+impl<R: crate::euler::cubecl::CubeclRuntime> Backend for Cubecl<R> {
   fn probe(&self) -> Result<DeviceInfo, DeviceError> {
-    match self.device {
-      #[cfg(feature = "cubecl-cuda")]
-      CubeclDevice::Cuda => {
-        crate::euler::cubecl::probe::<crate::euler::cubecl::cuda_rt::Rt>(self.ordinal)
-      }
-      #[cfg(feature = "cubecl-wgpu")]
-      CubeclDevice::Wgpu => {
-        crate::euler::cubecl::probe::<crate::euler::cubecl::wgpu_rt::Rt>(self.ordinal)
-      }
-    }
+    crate::euler::cubecl::probe::<R>(self.ordinal)
   }
 }
 
@@ -637,7 +613,7 @@ macro_rules! gpu_backend {
 // is therefore a compile error, not an `f32` computation behind an `f64` type.
 gpu_backend!("cuda", Cuda => sample_cuda_impl, f32, f64);
 #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-impl FgnBackend<f32> for Cubecl {
+impl<R: crate::euler::cubecl::CubeclRuntime> FgnBackend<f32> for Cubecl<R> {
   fn try_generate<S: SeedExt, S2: SeedExt>(
     &self,
     fgn: &Fgn<f32, S, Self>,

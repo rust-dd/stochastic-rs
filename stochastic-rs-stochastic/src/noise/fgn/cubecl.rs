@@ -469,31 +469,14 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     Ok(out)
   }
 
-  /// `m` paths on the runtime `device` names.
+  /// `m` paths on the runtime the handle names.
   #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-  pub(crate) fn sample_cubecl_impl<S2: SeedExt>(
+  pub(crate) fn sample_cubecl_impl<R: crate::euler::cubecl::CubeclRuntime, S2: SeedExt>(
     &self,
     m: usize,
     seed_src: &S2,
-    device: &crate::device::Cubecl,
+    device: &crate::device::Cubecl<R>,
   ) -> DeviceResult<Array2<T>> {
-    match device.device {
-      #[cfg(feature = "cubecl-cuda")]
-      crate::device::CubeclDevice::Cuda => self
-        .sample_cubecl_on::<crate::euler::cubecl::cuda_rt::Rt, S2>(
-          m,
-          seed_src,
-          device.ordinal,
-          device.batch_budget,
-        ),
-      #[cfg(feature = "cubecl-wgpu")]
-      crate::device::CubeclDevice::Wgpu => self
-        .sample_cubecl_on::<crate::euler::cubecl::wgpu_rt::Rt, S2>(
-          m,
-          seed_src,
-          device.ordinal,
-          device.batch_budget,
-        ),
-    }
+    self.sample_cubecl_on::<R, S2>(m, seed_src, device.ordinal, device.batch_budget)
   }
 }
