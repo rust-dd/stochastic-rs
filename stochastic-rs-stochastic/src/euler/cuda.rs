@@ -136,7 +136,7 @@ fn ensure_kernels(ordinal: usize) -> Result<()> {
 fn run<R>(
   ordinal: usize,
   func: impl Fn(&Kernels) -> &CudaFunction,
-  params: [R; 4],
+  params: [R; crate::euler::PARAM_SLOTS],
   x0: R,
   dt: R,
   family: u32,
@@ -269,7 +269,8 @@ fn device_paths<T: FloatExt>(
     let (family, params) = spec.encode();
     let dt = t.to_f64().unwrap_or(1.0) / (n.max(2) - 1) as f64;
     let seed32 = (seed ^ (seed >> 32)) as u32;
-    let p64: [f64; 4] = std::array::from_fn(|i| params[i].to_f64().unwrap_or(0.0));
+    let p64: [f64; crate::euler::PARAM_SLOTS] =
+      std::array::from_fn(|i| params[i].to_f64().unwrap_or(0.0));
     if TypeId::of::<T>() == TypeId::of::<f64>() {
       let incs = match fgn.as_ref() {
         Some(spec) => {
@@ -309,7 +310,7 @@ fn device_paths<T: FloatExt>(
         Array2::<f64>::from_shape_vec((m, n), data).expect("the kernel returns m * n values");
       return Ok(unsafe { std::mem::transmute::<Array2<f64>, Array2<T>>(out) });
     }
-    let p32: [f32; 4] = std::array::from_fn(|i| p64[i] as f32);
+    let p32: [f32; crate::euler::PARAM_SLOTS] = std::array::from_fn(|i| p64[i] as f32);
     let incs = match fgn.as_ref() {
       Some(spec) => {
         let eigs: Vec<f32> = spec
@@ -358,7 +359,7 @@ fn device_paths<T: FloatExt>(
 fn launch_chunk<R>(
   stream: &Arc<CudaStream>,
   func: &CudaFunction,
-  params: [R; 4],
+  params: [R; crate::euler::PARAM_SLOTS],
   x0: R,
   dt: R,
   family: u32,
@@ -419,7 +420,7 @@ where
 fn pipelined<R>(
   ordinal: usize,
   func: impl Fn(&Kernels) -> &CudaFunction,
-  params: [R; 4],
+  params: [R; crate::euler::PARAM_SLOTS],
   x0: R,
   dt: R,
   family: u32,
@@ -507,7 +508,8 @@ fn pipelined_paths<T: FloatExt>(
   let (family, params) = spec.encode();
   let dt = t.to_f64().unwrap_or(1.0) / (n.max(2) - 1) as f64;
   let seed32 = (seed ^ (seed >> 32)) as u32;
-  let p64: [f64; 4] = std::array::from_fn(|i| params[i].to_f64().unwrap_or(0.0));
+  let p64: [f64; crate::euler::PARAM_SLOTS] =
+    std::array::from_fn(|i| params[i].to_f64().unwrap_or(0.0));
   if TypeId::of::<T>() == TypeId::of::<f64>() {
     let data = pipelined::<f64>(
       ordinal,
@@ -528,7 +530,7 @@ fn pipelined_paths<T: FloatExt>(
     TypeId::of::<T>() == TypeId::of::<f32>(),
     "FloatExt is implemented for f32 and f64 only"
   );
-  let p32: [f32; 4] = std::array::from_fn(|i| p64[i] as f32);
+  let p32: [f32; crate::euler::PARAM_SLOTS] = std::array::from_fn(|i| p64[i] as f32);
   let data = pipelined::<f32>(
     ordinal,
     |k| &k.f32,

@@ -165,7 +165,7 @@ pub(crate) enum Increments<'a> {
 
 fn run(
   ordinal: usize,
-  params: [f32; 4],
+  params: [f32; crate::euler::PARAM_SLOTS],
   args: EulerArgs,
   increments: Increments<'_>,
 ) -> Result<Vec<f32>> {
@@ -175,9 +175,11 @@ fn run(
   let shared = MTLResourceOptions::StorageModeShared;
   let total = args.paths as usize * args.steps as usize;
   let out_buf = ctx.device.new_buffer((total * 4) as u64, shared);
-  let params_buf = ctx
-    .device
-    .new_buffer_with_data(params.as_ptr() as *const _, 16, shared);
+  let params_buf = ctx.device.new_buffer_with_data(
+    params.as_ptr() as *const _,
+    (crate::euler::PARAM_SLOTS * 4) as u64,
+    shared,
+  );
   // Metal requires every declared buffer to be bound, so an unused increment
   // slot still gets one float. A supplied buffer is bound as it stands: it was
   // written on this device and never left it.
@@ -282,7 +284,7 @@ fn device_paths(
     }
     let (family, params) = spec.encode();
     let dt = (t as f64 / (n.max(2) - 1) as f64) as f32;
-    let params32: [f32; 4] = params;
+    let params32: [f32; crate::euler::PARAM_SLOTS] = params;
     let args = EulerArgs {
       family,
       x0,

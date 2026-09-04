@@ -55,6 +55,11 @@ use crate::traits::ProcessExt;
 use crate::traits::process::sample_map_chunked;
 use crate::traits::process::sample_par_chunked;
 
+/// How many scalar parameters one family may carry. The layout is the
+/// kernels' ABI and stays inside the crate, so it can widen again without a
+/// breaking change.
+pub(crate) const PARAM_SLOTS: usize = 8;
+
 /// Scalar drift / diffusion families the device kernels know how to step.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
@@ -92,6 +97,13 @@ pub enum EulerSpec<T: FloatExt> {
   Logistic { a: T, b: T },
 }
 
+/// Widens a family's parameter list to the kernels' fixed slot count.
+fn pad<T: FloatExt, const N: usize>(values: [T; N]) -> [T; PARAM_SLOTS] {
+  let mut slots = [T::zero(); PARAM_SLOTS];
+  slots[..N].copy_from_slice(&values);
+  slots
+}
+
 impl<T: FloatExt> EulerSpec<T> {
   /// Family code and the four parameter slots the device kernels read. The
   /// layout is the kernels' ABI and stays inside the crate, so it can widen
@@ -106,45 +118,40 @@ impl<T: FloatExt> EulerSpec<T> {
     )),
     allow(dead_code)
   )]
-  pub(crate) fn encode(&self) -> (u32, [T; 4]) {
+  pub(crate) fn encode(&self) -> (u32, [T; PARAM_SLOTS]) {
     use families::Family;
     match *self {
-      EulerSpec::GeometricBrownian { mu, sigma } => (
-        Family::GeometricBrownian.code(),
-        [mu, sigma, T::zero(), T::zero()],
-      ),
-      EulerSpec::OrnsteinUhlenbeck { theta, mu, sigma } => (
-        Family::OrnsteinUhlenbeck.code(),
-        [theta, mu, sigma, T::zero()],
-      ),
+      EulerSpec::GeometricBrownian { mu, sigma } => {
+        (Family::GeometricBrownian.code(), pad([mu, sigma]))
+      }
+      EulerSpec::OrnsteinUhlenbeck { theta, mu, sigma } => {
+        (Family::OrnsteinUhlenbeck.code(), pad([theta, mu, sigma]))
+      }
       EulerSpec::SquareRoot {
         kappa,
         theta,
         sigma,
-      } => (Family::SquareRoot.code(), [kappa, theta, sigma, T::zero()]),
-      EulerSpec::Additive => (Family::Additive.code(), [T::zero(); 4]),
-      EulerSpec::ReflectedSquareRoot { theta, mu, sigma } => (
-        Family::ReflectedSquareRoot.code(),
-        [theta, mu, sigma, T::zero()],
-      ),
-      EulerSpec::MirroredSquareRoot { theta, mu, sigma } => (
-        Family::MirroredSquareRoot.code(),
-        [theta, mu, sigma, T::zero()],
-      ),
-      EulerSpec::Jacobi { alpha, beta, sigma } => {
-        (Family::Jacobi.code(), [alpha, beta, sigma, T::zero()])
+      } => (Family::SquareRoot.code(), pad([kappa, theta, sigma])),
+      EulerSpec::Additive => (Family::Additive.code(), pad([])),
+      EulerSpec::ReflectedSquareRoot { theta, mu, sigma } => {
+        (Family::ReflectedSquareRoot.code(), pad([theta, mu, sigma]))
       }
-      EulerSpec::ConstantElasticity { mu, sigma, gamma } => (
-        Family::ConstantElasticity.code(),
-        [mu, sigma, gamma, T::zero()],
-      ),
+      EulerSpec::MirroredSquareRoot { theta, mu, sigma } => {
+        (Family::MirroredSquareRoot.code(), pad([theta, mu, sigma]))
+      }
+      EulerSpec::Jacobi { alpha, beta, sigma } => {
+        (Family::Jacobi.code(), pad([alpha, beta, sigma]))
+      }
+      EulerSpec::ConstantElasticity { mu, sigma, gamma } => {
+        (Family::ConstantElasticity.code(), pad([mu, sigma, gamma]))
+      }
       EulerSpec::Ckls {
         theta1,
         theta2,
         theta3,
         theta4,
-      } => (Family::Ckls.code(), [theta1, theta2, theta3, theta4]),
-      EulerSpec::Logistic { a, b } => (Family::Logistic.code(), [a, b, T::zero(), T::zero()]),
+      } => (Family::Ckls.code(), pad([theta1, theta2, theta3, theta4])),
+      EulerSpec::Logistic { a, b } => (Family::Logistic.code(), pad([a, b])),
     }
   }
 }

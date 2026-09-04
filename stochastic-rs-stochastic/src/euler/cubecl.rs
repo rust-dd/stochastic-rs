@@ -352,7 +352,7 @@ fn device_paths<C: CubeclRuntime>(
           count_2d((m as u32).div_ceil(WG_SIZE)),
           CubeDim::new_1d(WG_SIZE),
           ArrayArg::from_raw_parts::<f32>(&out_h, total, 1),
-          ArrayArg::from_raw_parts::<f32>(&params_h, 4, 1),
+          ArrayArg::from_raw_parts::<f32>(&params_h, crate::euler::PARAM_SLOTS, 1),
           ArrayArg::from_raw_parts::<f32>(&incs_h, incs_len, 1),
           ScalarArg::new(family),
           ScalarArg::new(x0),

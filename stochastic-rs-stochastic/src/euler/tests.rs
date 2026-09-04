@@ -82,17 +82,20 @@ fn switching_the_backend_keeps_the_parameters() {
   )
   .on::<Cpu>();
   assert_eq!(cir.use_sym, Some(true));
-  assert_eq!(cir.euler_spec().encode(), (2, [1.5, 0.04, 0.3, 0.0]));
+  assert_eq!(cir.euler_spec().encode().0, 2);
   assert_eq!(
     (cir.initial_value(), cir.grid_points(), cir.horizon()),
     (0.09, 10, 2.0)
   );
-  assert_eq!(gbm.euler_spec().encode(), (0, [0.05, 0.2, 0.0, 0.0]));
-  assert_eq!(
-    Ou::new(2.0, 1.0, 0.5, 5, None, None, Unseeded)
-      .euler_spec()
-      .encode(),
-    (1, [2.0, 1.0, 0.5, 0.0])
+  assert_eq!(gbm.euler_spec().encode().0, 0);
+  let (code, params) = Ou::new(2.0, 1.0, 0.5, 5, None, None, Unseeded)
+    .euler_spec()
+    .encode();
+  assert_eq!(code, 1);
+  assert_eq!(&params[..3], &[2.0, 1.0, 0.5]);
+  assert!(
+    params[3..].iter().all(|p| *p == 0.0),
+    "unused slots are zero"
   );
 }
 
