@@ -772,6 +772,8 @@ pub(crate) mod kernel;
 pub mod metal;
 
 #[cfg(test)]
+mod family_parity;
+#[cfg(test)]
 mod tests;
 
 /// A single-precision device refuses an `f64` process at compile time.

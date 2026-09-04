@@ -10,9 +10,10 @@
 //! The CubeCL kernel is written by hand instead: its `#[cube]` attribute
 //! cannot see through a macro expansion, and calls into a generic helper need
 //! a turbofish the shared tokens must not carry. What keeps it honest is
-//! `euler::tests`, which pins every family's CubeCL output against the
-//! generated Metal kernel, so a formula that drifts from the declaration
-//! fails a test rather than a review.
+//! `euler::family_parity`, which launches every declared family on both
+//! kernels and compares them point for point, so a family missing from the
+//! hand-written dispatch fails a test rather than quietly returning a flat
+//! path.
 //!
 //! A step or report may open with `bind name = expr;` lines before its final
 //! expression. Each becomes a `let` on the host and in a CubeCL kernel and a
@@ -283,6 +284,17 @@ macro_rules! euler_families {
       #[allow(dead_code)]
       pub(crate) fn code(self) -> u32 {
         self as u32
+      }
+
+      /// The family a code names, or `None` when no family carries it. The
+      /// inverse of [`code`](Self::code), which is what lets a caller holding
+      /// an encoded spec run the generated host step for it.
+      #[allow(dead_code)]
+      pub(crate) fn from_code(code: u32) -> Option<Self> {
+        match code {
+          $( $code => Some(Family::$name), )*
+          _ => None,
+        }
       }
     }
 
