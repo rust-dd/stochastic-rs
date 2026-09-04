@@ -32,16 +32,16 @@ rl_rough            hurst          ndarray_overhead     sampler_compare
 
 ### Feature-gated suites
 
-| Bench                | Required features                  |
-|----------------------|------------------------------------|
-| `fgn_gpu`            | `gpu`                              |
-| `fgn_cuda`    | `cuda`                      |
-| `fgn_metal`          | `metal`                            |
-| `fgn_accelerate`     | `accelerate`                       |
-| `fgn_all_backends`   | `cubecl-wgpu`, `metal`, `accelerate` |
-| `hotpath_profile`    | `hotpath`                          |
-| `fgn_cuda_compare`   | `cuda`, `cubecl-cuda`       |
-| `dual_stream_compare`| `dual-stream-rng`                  |
+| Bench                 | Required features                    |
+|-----------------------|--------------------------------------|
+| `fgn_cubecl`          | `cubecl-wgpu`                        |
+| `fgn_cuda`            | `cuda`                               |
+| `fgn_metal`           | `metal`                              |
+| `fgn_accelerate`      | `accelerate`                         |
+| `fgn_all_backends`    | `cubecl-wgpu`, `metal`, `accelerate` |
+| `hotpath_profile`     | `hotpath`                            |
+| `fgn_cuda_compare`    | `cuda`, `cubecl-cuda`                |
+| `dual_stream_compare` | `dual-stream-rng`                    |
 
 ## FGN — CPU vs CUDA native
 
