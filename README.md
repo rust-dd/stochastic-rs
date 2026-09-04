@@ -9,87 +9,60 @@
 
 # stochastic-rs
 
-**Quantitative finance in Rust** — a high-performance library for
-stochastic process simulation, option pricing, model calibration,
-volatility surfaces, fixed income, risk, statistics, copulas, and
-neural-network volatility surrogates. Generic over `f32` / `f64`, with
-SIMD acceleration on CPU and CUDA / Metal / Accelerate / cubecl backends
-where they pay off, and first-class Python bindings via PyO3.
+**Quantitative finance in Rust**: stochastic process simulation, option
+pricing and calibration, volatility surfaces, fixed income and credit, risk,
+statistics, copulas and neural volatility surrogates. Generic over `f32` /
+`f64`, SIMD on the CPU, CUDA / Metal / CubeCL back-ends where they pay off, and
+Python bindings via PyO3 that ship the same surface as the Rust crates.
 
 ## Documentation
 
-📖 **[stochastic.rust-dd.com](https://stochastic.rust-dd.com)** —
-full docs site (Fumadocs + Next.js, deployed on Vercel).
+📖 **[stochastic.rust-dd.com](https://stochastic.rust-dd.com)** is the reference; this
+README only gets you installed and running.
 
-Highlights:
+- [Getting started](https://stochastic.rust-dd.com/docs/getting-started) — Rust and Python installation, first program
+- [Concepts](https://stochastic.rust-dd.com/docs/concepts) — the traits (`ProcessExt`, `DistributionExt`, `ModelPricer`), seeding, feature flags, [design philosophy](https://stochastic.rust-dd.com/docs/concepts/design-philosophy)
+- [Processes](https://stochastic.rust-dd.com/docs/processes) · [Distributions](https://stochastic.rust-dd.com/docs/distributions) · [Copulas](https://stochastic.rust-dd.com/docs/copulas) · [Statistics](https://stochastic.rust-dd.com/docs/stats) · [Quant](https://stochastic.rust-dd.com/docs/quant) · [AI](https://stochastic.rust-dd.com/docs/ai) — the catalogues with selection guides
+- [GPU support](https://stochastic.rust-dd.com/docs/concepts/gpu-support) — what runs on which device today, precision, an executed T4 run
+- [Python](https://stochastic.rust-dd.com/docs/python) — the bindings, `device=`, NumPy interop
+- [Benchmarks](https://stochastic.rust-dd.com/docs/benchmarks) · [Migrating to v3](https://stochastic.rust-dd.com/docs/migration) · [Tutorials](https://stochastic.rust-dd.com/docs/tutorials)
 
-- **120+ stochastic processes** — diffusion, jump, fractional / rough,
-  short-rate, HJM, LMM, fBM, Hawkes, Lévy. Generic-precision
-  `ProcessExt<T>` impl, SIMD on CPU, optional CUDA / Metal for FGN /
-  fBM.
-- **Pricing & calibration** — closed-form (BSM, Bachelier, Black76,
-  Bjerksund-Stensland, …), Fourier (Heston / Bates / Merton-jump / Kou
-  / VG / CGMY / HKDE / double-Heston), Monte Carlo (basket, rainbow,
-  cliquet, autocallable, spread), finite difference, Bermudan LSM,
-  Heston SLV. Heston / SABR / SVJ / Lévy / rough Bergomi / double-Heston
-  / Hull-White swaption-grid calibrators.
-- **Statistics & risk** — Hurst (Fukasawa), MLE for 1-D diffusions
-  with 6 transition densities, ADF / KPSS / Phillips-Perron, realised
-  variance with BNHLS bandwidth, HMM, changepoint, particle filter, UKF.
-  VaR / CVaR / drawdown, Sharpe / Sortino / IR / Calmar.
-- **Fixed income & credit** — yield-curve bootstrapping, Nelson-Siegel /
-  Svensson, multi-curve, IRS / inflation swaps, Vasicek / CIR /
-  Hull-White / G2++ short-rate engines, Merton structural model,
-  reduced-form survival curves, CDS pricing, JLT migration matrices.
-- **Microstructure** — Almgren-Chriss, Kyle (1985), Bouchaud propagator,
-  full price-time priority order book.
-- **Distributions & copulas** — 18 SIMD distributions with
-  closed-form pdf / cdf / cf / moments and Python bindings (29
-  distribution structs total). 15 bivariate (Clayton / Frank / Gumbel / BB1 / BB7 /
-  Independence / AMH / FGM / Galambos / Gaussian / Hüsler-Reiss / Joe /
-  Marshall-Olkin / Plackett / Student-t) and 8 multivariate (Gaussian /
-  Student-t / nested Archimedean / C-vine / D-vine / R-vine / two
-  Gaussian-collapsed tree / vine approximations) copulas.
-- **Python bindings** — 234 entries (218 PyO3 classes + 16 functions)
-  spanning every sub-crate except AI surrogates. Numpy-in / numpy-out.
+## What is inside
+
+One workspace, one umbrella crate (`stochastic-rs`) that re-exports the sub-crates:
+
+| Crate | Contents |
+|---|---|
+| `stochastic-rs-core` | the SIMD RNG and seed sources (`Deterministic`, `Unseeded`) |
+| `stochastic-rs-distributions` | SIMD samplers with closed-form pdf / cdf / characteristic function / moments, special functions |
+| `stochastic-rs-stochastic` | 131 processes behind one `ProcessExt` trait: diffusion, jump, stochastic and rough volatility, short rate, HJM / LMM, fractional noise, Volterra |
+| `stochastic-rs-copulas` | 15 bivariate and 8 multivariate copulas, vine fitting, goodness of fit |
+| `stochastic-rs-stats` | Hurst and diffusion estimators, unit-root and cointegration tests, realised volatility, filters, extreme values, risk measures |
+| `stochastic-rs-quant` | closed-form, Fourier, PDE, lattice and Monte Carlo pricers, calibrators, vol surfaces, curves, credit, XVA, market microstructure |
+| `stochastic-rs-ai` | neural volatility surrogates and surrogate calibration (`ai` feature) |
+| `stochastic-rs-py` | the Python module: every distribution, process, pricer, copula and estimator, NumPy in and out |
 
 ## Installation
-
-### Rust
 
 ```toml
 [dependencies]
 stochastic-rs = "3.0.0-rc.1"
 ```
 
-```rust
-use stochastic_rs::prelude::*;
-use stochastic_rs::stochastic::diffusion::gbm::Gbm;
-use stochastic_rs::quant::pricing::heston::HestonPricer;
-```
-
-For per-sub-crate (lean) builds, CUDA / Metal / cubecl /
-Accelerate feature flags, native CPU optimisation, and SIMD details,
-see the [installation guide](https://stochastic.rust-dd.com/docs/getting-started/installation-rust)
-on the docs site.
-
-### Python
+Device back-ends and other optional parts are cargo features (`cuda-native`,
+`metal`, `cubecl-cuda` / `cubecl-wgpu`, `accelerate`, `ai`, `dual-stream-rng`);
+the [installation guide](https://stochastic.rust-dd.com/docs/getting-started/installation-rust)
+and the [feature flags](https://stochastic.rust-dd.com/docs/concepts/feature-flags)
+page list them with what each pulls in. Sub-crates can be depended on directly
+for lean builds.
 
 ```bash
 pip install stochastic-rs
 ```
 
-Source build (requires the Rust toolchain):
-
-```bash
-pip install maturin
-maturin develop --release --manifest-path stochastic-rs-py/Cargo.toml
-```
-
-Linear algebra is pure Rust (`faer`), so every wheel — Linux, macOS and
-Windows — ships the identical full surface with no system BLAS to install.
-See the [Python bindings page](https://stochastic.rust-dd.com/docs/python)
-for the parity table.
+The wheels are CPU-only and carry the whole surface on Linux, macOS and Windows
+(linear algebra is pure Rust). A source build with a device back-end:
+`maturin develop --release --features metal` (or `cuda-native`) in a checkout.
 
 ## Quickstart
 
@@ -120,122 +93,44 @@ fn main() {
 ```python
 import stochastic_rs as srs
 
-# Mean-reverting OU path
-p = srs.Ou(theta=2.0, mu=0.0, sigma=1.0, n=1000, x0=0.0, t=1.0)
-path = p.sample()                       # numpy.ndarray, shape (1000,)
+# Mean-reverting OU path: PyOu(theta, mu, sigma, n, x0=None, t=None, seed=None, dtype=None, device=None)
+path = srs.PyOu(2.0, 0.0, 1.0, 1000, x0=0.0, t=1.0, seed=42).sample()   # numpy.ndarray, shape (1000,)
 
-# Heston European option
+# Heston European option, closed form
 pricer = srs.HestonPricer(
     s=100, v0=0.04, k=100, r=0.03, kappa=2.0, theta=0.04, sigma=0.3,
     rho=-0.5, tau=1.0, q=0.0,
 )
 call, put = pricer.call_put()
-print(f"call={call:.4f}, put={put:.4f}")
 ```
 
-More end-to-end recipes (Heston calibration, fBM Hurst estimation,
-vol-surface from quotes, Python interop) live in the
-[tutorials section](https://stochastic.rust-dd.com/docs/tutorials).
+A process samples on a device by re-typing it: `Gbm::new(...).on::<MetalNative>()`
+(`CudaNative`, `CubeCl`, `Accelerate`), with `Backend::probe()` to check the device
+first; from Python, `device="metal"` on the device-capable classes. The
+[GPU support](https://stochastic.rust-dd.com/docs/concepts/gpu-support) page has
+the support matrix, and [`notebooks/`](notebooks/) a Colab notebook that runs the
+CUDA back-end on a free T4.
 
 ## Benchmarks
 
-### FGN — CPU vs CUDA native (`f32`, H = 0.7)
+Criterion suites live under `benches/`; the
+[benchmarks page](https://stochastic.rust-dd.com/docs/benchmarks) carries the
+numbers: the SIMD Normal sampler against `rand_distr`, fractional Gaussian noise
+on CPU, Accelerate, Metal, CubeCL and cuFFT, and the per-release speedups.
 
-```bash
-cargo bench --features cuda-native --bench fgn_cuda_native
-```
+## Citing
 
-Single path:
-
-| n      | CPU `sample` | CUDA `.on(Device::CudaNative).sample()` | Speedup    |
-|-------:|-------------:|------------------------------:|-----------:|
-|  1,024 |       8.1 µs |                          46 µs|       0.18× |
-|  4,096 |        35 µs |                          84 µs|       0.42× |
-| 16,384 |       147 µs |                         110 µs| **1.3×**    |
-| 65,536 |       850 µs |                         227 µs| **3.7×**    |
-
-Batch:
-
-| n, m         | CPU `sample_par` | CUDA `.on(Device::CudaNative).sample_par` | Speedup  |
-|--------------|------------------:|---------------------------:|---------:|
-|   4,096, 32  |          147 µs   |                     117 µs |  **1.3×** |
-|   4,096, 512 |         1.78 ms   |                    2.37 ms |   0.75×   |
-|  65,536, 128 |         12.6 ms   |                    10.5 ms |  **1.2×** |
-|  65,536, 1 k |          102 ms   |                      93 ms |  **1.1×** |
-
-CUDA wins for large `n` (≥ 16 k); CPU rayon dominates for medium `n`
-because of the GPU launch / transfer overhead.
-
-### Distribution sampling — `Normal` vs upstream `rand_distr`
-
-Single-thread `fill_slice`, median of 7 runs (`cargo bench --bench
-dist_multicore`). Comparison column:
-
-- **`rand_distr + SimdRng`** — `rand_distr::Normal` consuming our `SimdRng`
-  (same uniform stream, only the Normal algorithm differs).
-- **`rand_distr + rand::rng()`** — the out-of-box upstream pipeline.
-
-|     n  | `SimdNormal` (µs) | `rand_distr + SimdRng` (µs) | speedup | `rand_distr + rand::rng()` (µs) | speedup |
-|-------:|------------------:|-----------------------------:|--------:|---------------------------------:|--------:|
-|      4 |             0.008 |                        0.013 |  1.73×  |                            0.032 |  4.22×  |
-|      8 |             0.014 |                        0.026 |  1.78×  |                            0.065 |  4.52×  |
-|     16 |             0.029 |                        0.051 |  1.79×  |                            0.128 |  4.47×  |
-|     64 |             0.109 |                        0.208 |  1.90×  |                            0.508 |  4.64×  |
-|    256 |             0.432 |                        0.840 |  1.94×  |                            2.029 |  4.70×  |
-|  4 096 |             6.975 |                       13.176 |  1.89×  |                           32.382 |  4.64×  |
-| 65 536 |           113.458 |                      212.406 |  1.87×  |                          520.219 |  4.59×  |
-
-### Single-sample speedup vs prior release
-
-Criterion `dist.sample(rng)` loop, vs the `wide 1.3.0` baseline
-(`cargo bench --bench distributions -- --baseline before`):
-
-|       distribution | f32 / large       | f64 / large       | f64 / small       |
-|-------------------:|------------------:|------------------:|------------------:|
-|     `Uniform/simd` | **−57%** (≈ 2.3×) | **−77%** (≈ 4.4×) | **−58%** (≈ 2.4×) |
-|      `Normal/simd` | **−51%** (≈ 2.0×) | **−75%** (≈ 4.0×) | **−63%** (≈ 2.7×) |
-|    `Exp/simd N=64` | −3% (n.s.)        | **−73%** (≈ 3.7×) | —                 |
-|   `LogNormal/simd` | **−71%** (≈ 3.4×) | **−70%** (≈ 3.4×) | **−66%** (≈ 2.9×) |
-
-Driven by SIMD `u64→f64` / `u32→f32` magic-number conversion in `SimdRng`
-(direct-write `fill_uniform_f64` / `fill_uniform_f32` APIs that skip the
-`[f64; 8]` return-by-value round-trip), fused Exp(λ) scaling inside
-`fill_exp_scaled`, and an 8-at-a-time main loop in `fill_ziggurat` so
-`copy_from_slice` inlines to `stp` stores instead of a `memcpy` call.
-
-#### Opt-in: dual-stream RNG (`dual-stream-rng` feature)
-
-```toml
-[dependencies]
-stochastic-rs = { version = "3.0.0-rc.1", features = ["dual-stream-rng"] }
-```
-
-Unlocks `SimdRngDual` (two parallel xoshiro engines) and `SimdNormalDual`
-(Ziggurat unrolled 2× over the dual streams). Measured against the
-single-stream `SimdNormal::fill_slice` on Apple Silicon
-(`cargo bench --bench dual_stream_compare --features dual-stream-rng`):
-
-|     n  | single (`SimdNormal`) | dual (`SimdNormalDual`) |   Δ   |
-|-------:|----------------------:|-------------------------:|------:|
-|     64 |              111.6 ns |                 105.5 ns | −5.5% |
-|    256 |              444.8 ns |                 418.3 ns | −6.0% |
-|   4 096 |              7.43 µs |                  6.60 µs |−11.2% |
-|  65 536 |             113.9 µs |                 106.6 µs | −6.4% |
-| 1 048 576 |            1.83 ms |                  1.70 ms | −6.8% |
-
-The win comes from hiding the 16 scalar `kn` / `wn` table-lookup latencies
-behind the second engine's `xoshiro` state update on a modern out-of-order
-core. Uniform fills are not bottlenecked on the engine so they see no
-speedup. Trade-off: `SimdRngDual::from_seed` does **not** reproduce
-`SimdRng::from_seed`'s bit-exact sequence (statistical properties are
-identical and KS-validated).
+The concept DOI [10.5281/zenodo.21553307](https://doi.org/10.5281/zenodo.21553307)
+always resolves to the latest release; [`CITATION.cff`](CITATION.cff) carries the
+version DOI of the current one.
 
 ## Contributing
 
-Contributions are welcome — bug reports, feature suggestions, or PRs.
-Open an issue or start a discussion on GitHub. Per-feature recipes
-(`add-diffusion-process`, `adding-distribution`, `calibration-pattern`,
-`docs-writing`, …) live under [`.claude/skills/`](.claude/skills/).
+Bug reports, suggestions and pull requests are welcome on GitHub. The
+[contributing page](https://stochastic.rust-dd.com/docs/contributing) has the
+development rules; per-feature recipes (`add-diffusion-process`,
+`adding-distribution`, `calibration-pattern`, …) live under
+[`.claude/skills/`](.claude/skills/).
 
 ## License
 
