@@ -12,9 +12,10 @@ backends, and what the rest do.
 
 | Family | Processes | Capability bound | `Cpu` | `Accelerate` | `Metal` | `Cuda` | `Cubecl` |
 |---|---|---|---|---|---|---|---|
-| fGN-driven | `Fgn`, `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `Cfou`, `Cfgns`, `JumpFou`, `JumpFOUCustom`, `Sde` (11) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` | CubeCL FFT, `f32` only |
-| Euler engine | `Gbm`, `Ou`, `Cir` (3) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
-| Host only | the remaining 117 processes | `HostBackend` | own SIMD sampler | same as `Cpu` | compile error | compile error | compile error |
+| fGN noise | `Fgn`, `Cfgns` (2) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` | CubeCL FFT, `f32` only |
+| Euler engine, Gaussian | `Gbm`, `Ou`, `Cir` (3) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
+| Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi` (5) | `FgnBackend<T>` + `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same MSL kernel | fGN pipeline feeds the same NVRTC kernel | fGN pipeline feeds the same CubeCL kernel |
+| Host only | the remaining 121 processes | `HostBackend` | own SIMD sampler | same as `Cpu` | compile error | compile error | compile error |
 
 Feature flags: `metal` (`Metal`), `cuda` (`Cuda`),
 `cubecl-cuda` and `cubecl-wgpu`, the two runtimes a `Cubecl` handle can name
@@ -31,10 +32,17 @@ behind an `f64` type.
 
 ## What the device path does
 
-- **fGN family.** The circulant-embedding FFT that produces fractional
-  Gaussian noise runs on the device; the process's own drift / diffusion
-  recursion then runs on the host as before. One launch per `sample_par`
-  batch.
+- **fGN noise.** The circulant-embedding FFT that produces fractional
+  Gaussian noise runs on the device, one launch per `sample_par` batch.
+  `Fgn` returns it directly and `Cfgns` combines two rows.
+- **Fractional diffusions.** `Fbm`, `Fou`, `Fcir`, `Fgbm` and `FJacobi` hand
+  those increments to the Euler engine, which runs the whole recursion in the
+  kernel. They declare no kernel of their own: `Fou` is the same
+  Ornstein–Uhlenbeck family a Gaussian `Ou` uses, `Fgbm` the same geometric
+  one, and a step that multiplies by an increment does not care whether the
+  increment was hashed or produced by an FFT. Measured on an M-series Metal
+  device against the host: fOU with 2000 paths of 512 steps went from 101 ms
+  to 25 ms, fBM with 4000 paths of 1024 steps from 252 ms to 93 ms.
 - **Euler engine.** The whole Euler–Maruyama recursion of a path runs in one
   kernel thread; `sample_par(m)` is one launch for all `m` paths, `sample()`
   launches a single path. CIR uses full truncation (Lord, Koekkoek & van Dijk
@@ -163,6 +171,13 @@ drift / diffusion family is one `EulerSpec` variant plus one `family` branch
 in the CubeCL kernel (`euler/gpu.rs`) and one in the C body the CUDA and
 Metal kernels render from a single text (`euler/kernel.rs`). Widening a process's bound from `HostBackend` to
 `EulerBackend` is not a breaking change for its callers.
+
+`Cfou`, `JumpFou`, `JumpFOUCustom` and `Sde` carry a backend parameter but do
+not reach a device: `Cfou` steps a complex pair and needs the state vector
+below, the two jump processes fill their fGN on the host because moving it
+would change their pinned streams, and `Sde` drives its own loop. Their
+`.on::<B>()` compiles and changes nothing, which is a wart to close rather
+than a feature.
 
 Not on a device yet, and what it would take: the two-state models
 (Heston, SABR, Bates, Heston-SLV — a correlated pair and a two-component
