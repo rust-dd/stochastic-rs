@@ -575,6 +575,34 @@ macro_rules! backend_switch {
     }
   };
   (
+    [$($gen:tt)*] $ty:ident<$t:ident $(, $targ:ident)* $(,)?> { $($field:ident),* $(,)? } via fgn euler
+    $(where $($wc:tt)*)?
+  ) => {
+    impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
+      /// The same process on backend `B2`, using that backend's default handle
+      /// (the device ordinal and batch budget from the environment).
+      pub fn on<B2: $crate::device::FgnBackend<$t> + $crate::euler::EulerBackend<$t> + Default>(self) -> $ty<$t $(, $targ)*, B2> {
+        $ty {
+          $($field: self.$field,)*
+          fgn: self.fgn.on::<B2>(),
+        }
+      }
+
+      /// The same process on an explicit backend handle. Crate-internal:
+      /// the public way to name a backend is [`on`](Self::on), and a specific
+      /// device comes from `STOCHASTIC_RS_DEVICE` or from calling a capability
+      /// trait on the handle itself. The Python bindings need it because a
+      /// `device="cuda:1"` name carries an ordinal.
+      #[allow(dead_code)]
+      pub(crate) fn with_backend<B2: $crate::device::FgnBackend<$t> + $crate::euler::EulerBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
+        $ty {
+          $($field: self.$field,)*
+          fgn: self.fgn.with_backend(device),
+        }
+      }
+    }
+  };
+  (
     [$($gen:tt)*] $ty:ident<$t:ident $(, $targ:ident)* $(,)?> { $($field:ident),* $(,)? } via phantom
     $(where $($wc:tt)*)?
   ) => {

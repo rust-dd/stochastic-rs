@@ -70,7 +70,9 @@ impl<T: FloatExt, S: SeedExt> Fou<T, S, Cpu> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fou<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
+  for Fou<T, S, B>
+{
   type Output = Array1<T>;
   type Sampler<'s>
     = FouSampler<'s, T, S, B>
@@ -93,6 +95,18 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fou<T, S, B> {
       fou: self,
       seed: self.seed.derive(),
     }
+  }
+
+  /// `m` paths through the Euler engine, which on a device runs the whole
+  /// recursion in the kernel from fGN increments and on the host devices is
+  /// the process's own sampler, chunked exactly as `ProcessExt` chunks — so
+  /// the CPU stream is the one it always was.
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    crate::euler::EulerBackend::euler_paths(&self.fgn.backend, self, m)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    crate::euler::EulerBackend::try_euler_paths(&self.fgn.backend, self, m)
   }
 }
 
@@ -151,7 +165,57 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FouSampler<'_
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Fou<T, S> { hurst, theta, mu, sigma, n, x0, t, seed } via fgn);
+/// The Euler engine's view of fOU: the same OU family a Gaussian process
+/// uses, with the fractional increments supplied instead of hashed ones.
+/// Nothing about the recursion differs, which is the point — a step that
+/// multiplies by `dz` does not care where `dz` came from.
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::euler::EulerCoefficients<T> for Fou<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::OrnsteinUhlenbeck {
+      theta: self.theta,
+      mu: self.mu,
+      sigma: self.sigma,
+    }
+  }
+
+  fn initial_value(&self) -> T {
+    self.x0.unwrap_or(T::zero())
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+
+  /// One fGN batch, flattened row-major. The kernel steps `grid_points() - 1`
+  /// times, which is exactly the length of one fGN row.
+  fn increments(&self, first: usize, m: usize, seed: u64) -> Option<Vec<T>> {
+    let _ = (first, seed);
+    let rows = self.fgn.noise_batch(m, &self.seed);
+    let mut flat = Vec::with_capacity(m * self.n.saturating_sub(1));
+    for row in rows {
+      flat.extend(row.iter().copied().take(self.n.saturating_sub(1)));
+    }
+    Some(flat)
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Fou<T, S> { hurst, theta, mu, sigma, n, x0, t, seed } via fgn euler);
 
 py_process_1d!(PyFou, Fou,
   sig: (hurst, theta, mu, sigma, n, x0=None, t=None, seed=None, dtype=None),
