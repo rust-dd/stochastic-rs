@@ -67,6 +67,15 @@ pub enum EulerSpec<T: FloatExt> {
   /// Koekkoek & van Dijk 2010): the recursion runs on an auxiliary process
   /// whose positive part enters drift, diffusion and the reported path.
   SquareRoot { kappa: T, theta: T, sigma: T },
+  /// `dX = dW`: the increment accumulates. With fractional increments this is
+  /// fractional Brownian motion.
+  Additive,
+  /// `dX = θ(μ − X) dt + σ√|X| dW`, clamped at zero after the step — the
+  /// fractional CIR recursion, which truncates the result rather than
+  /// stepping on a truncated state.
+  ReflectedSquareRoot { theta: T, mu: T, sigma: T },
+  /// The same with the symmetric reflection: the step's absolute value.
+  MirroredSquareRoot { theta: T, mu: T, sigma: T },
 }
 
 impl<T: FloatExt> EulerSpec<T> {
@@ -99,6 +108,15 @@ impl<T: FloatExt> EulerSpec<T> {
         theta,
         sigma,
       } => (Family::SquareRoot.code(), [kappa, theta, sigma, T::zero()]),
+      EulerSpec::Additive => (Family::Additive.code(), [T::zero(); 4]),
+      EulerSpec::ReflectedSquareRoot { theta, mu, sigma } => (
+        Family::ReflectedSquareRoot.code(),
+        [theta, mu, sigma, T::zero()],
+      ),
+      EulerSpec::MirroredSquareRoot { theta, mu, sigma } => (
+        Family::MirroredSquareRoot.code(),
+        [theta, mu, sigma, T::zero()],
+      ),
     }
   }
 }

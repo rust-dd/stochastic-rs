@@ -100,7 +100,9 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fcir<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
+  for Fcir<T, S, B>
+{
   type Output = Array1<T>;
   type Sampler<'s>
     = FcirSampler<'s, T, S, B>
@@ -123,6 +125,17 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fcir<T, S, B> 
       fcir: self,
       seed: self.seed.derive(),
     }
+  }
+
+  /// `m` paths through the Euler engine: on a device the whole recursion runs
+  /// in the kernel from fGN increments, on the host devices it is this
+  /// process's own sampler chunked exactly as `ProcessExt` chunks.
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    crate::euler::EulerBackend::euler_paths(&self.fgn.backend, self, m)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    crate::euler::EulerBackend::try_euler_paths(&self.fgn.backend, self, m)
   }
 }
 
@@ -187,7 +200,63 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FcirSampler<'
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Fcir<T, S> { hurst, theta, mu, sigma, n, x0, t, use_sym, seed } via fgn);
+/// The Euler engine's view of fractional CIR, in the reflected or the
+/// mirrored form depending on `use_sym`.
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::euler::EulerCoefficients<T> for Fcir<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    if self.use_sym.unwrap_or(false) {
+      crate::euler::EulerSpec::MirroredSquareRoot {
+        theta: self.theta,
+        mu: self.mu,
+        sigma: self.sigma,
+      }
+    } else {
+      crate::euler::EulerSpec::ReflectedSquareRoot {
+        theta: self.theta,
+        mu: self.mu,
+        sigma: self.sigma,
+      }
+    }
+  }
+
+  fn initial_value(&self) -> T {
+    self.x0.unwrap_or(T::zero())
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+
+  /// One fGN batch, flattened row-major: the kernel steps
+  /// `grid_points() - 1` times, exactly one fGN row per path.
+  fn increments(&self, first: usize, m: usize, seed: u64) -> Option<Vec<T>> {
+    let _ = (first, seed);
+    let steps = self.grid_points().saturating_sub(1);
+    let mut flat = Vec::with_capacity(m * steps);
+    for row in self.fgn.noise_batch(m, &self.seed) {
+      flat.extend(row.iter().copied().take(steps));
+    }
+    Some(flat)
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Fcir<T, S> { hurst, theta, mu, sigma, n, x0, t, use_sym, seed } via fgn euler);
 
 py_process_1d!(PyFcir, Fcir,
   sig: (hurst, theta, mu, sigma, n, x0=None, t=None, use_sym=None, seed=None, dtype=None),

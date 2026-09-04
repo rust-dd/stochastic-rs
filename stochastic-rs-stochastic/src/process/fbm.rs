@@ -5,7 +5,6 @@
 //! $$
 //!
 use ndarray::Array1;
-use ndarray::parallel::prelude::*;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -95,7 +94,9 @@ impl<T: FloatExt> Default for Fbm<T, Unseeded, Cpu> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fbm<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
+  for Fbm<T, S, B>
+{
   type Output = Array1<T>;
   type Sampler<'s>
     = FbmSampler<'s, T, S, B>
@@ -139,27 +140,11 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fbm<T, S, B> {
   /// one advance the stream, as on the host), subject to the cross-driver
   /// caveat in [`FgnBackend`]'s table.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
-    self.integrate(self.fgn.noise_batch(m, &self.seed))
+    crate::euler::EulerBackend::euler_paths(&self.fgn.backend, self, m)
   }
 
   fn try_sample_par(&self, m: usize) -> Result<Vec<Self::Output>, DeviceError> {
-    Ok(self.integrate(self.fgn.try_noise_batch(m, &self.seed)?))
-  }
-}
-
-impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Fbm<T, S, B> {
-  /// Cumulative sums of the increment rows, in parallel, row order kept.
-  fn integrate(&self, rows: Vec<Array1<T>>) -> Vec<Array1<T>> {
-    rows
-      .into_par_iter()
-      .map(|fgn_row| {
-        let mut fbm = Array1::<T>::zeros(self.n);
-        for i in 1..self.n {
-          fbm[i] = fbm[i - 1] + fgn_row[i - 1];
-        }
-        fbm
-      })
-      .collect()
+    crate::euler::EulerBackend::try_euler_paths(&self.fgn.backend, self, m)
   }
 }
 
@@ -209,7 +194,52 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FbmSampler<'_
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Fbm<T, S> { hurst, n, t, seed } via fgn);
+/// The Euler engine's view of fBm: the additive family, whose step is the
+/// increment itself, so accumulating fGN increments is one kernel rather than
+/// a host pass over the batch.
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::euler::EulerCoefficients<T> for Fbm<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::Additive
+  }
+
+  fn initial_value(&self) -> T {
+    T::zero()
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+
+  /// One fGN batch, flattened row-major: the kernel steps `n - 1` times,
+  /// exactly one fGN row per path.
+  fn increments(&self, first: usize, m: usize, seed: u64) -> Option<Vec<T>> {
+    let _ = (first, seed);
+    let steps = self.n.saturating_sub(1);
+    let mut flat = Vec::with_capacity(m * steps);
+    for row in self.fgn.noise_batch(m, &self.seed) {
+      flat.extend(row.iter().copied().take(steps));
+    }
+    Some(flat)
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Fbm<T, S> { hurst, n, t, seed } via fgn euler);
 
 impl<T: FloatExt, S: SeedExt, B> Fbm<T, S, B> {
   /// Calculate the Malliavin derivative

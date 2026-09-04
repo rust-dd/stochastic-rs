@@ -302,16 +302,6 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Fgn<T, S, B> {
     self.backend.try_generate(self, seed)
   }
 
-  /// [`noise_batch`](Self::noise_batch), the device's error instead of its
-  /// panic.
-  pub(crate) fn try_noise_batch<S2: SeedExt>(
-    &self,
-    m: usize,
-    seed: &S2,
-  ) -> Result<Vec<Array1<T>>, DeviceError> {
-    self.backend.try_generate_batch(self, m, seed)
-  }
-
   /// Two independent fGN paths in one pass on backend `B`, the device's
   /// error instead of its panic.
   pub(crate) fn try_noise_pair<S2: SeedExt>(

@@ -55,6 +55,7 @@ pub(crate) struct Language<'a> {
   pub cos: &'a str,
   pub exp: &'a str,
   pub pow: &'a str,
+  pub abs: &'a str,
   /// The type of a buffer index; `unsigned long long` on CUDA, `uint` in MSL.
   pub index: &'a str,
 }
@@ -82,5 +83,6 @@ fn substitute(text: &str, lang: &Language<'_>) -> String {
     .replace("STOCH_COS", lang.cos)
     .replace("STOCH_EXP", lang.exp)
     .replace("STOCH_POW", lang.pow)
+    .replace("STOCH_ABS", lang.abs)
     .replace("REAL", lang.real)
 }

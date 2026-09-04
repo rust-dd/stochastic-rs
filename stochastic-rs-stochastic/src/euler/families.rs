@@ -62,6 +62,12 @@ pub(crate) mod ops {
     a.powf(b)
   }
 
+  /// `|v|`
+  #[inline(always)]
+  pub(crate) fn abs<T: FloatExt>(v: T) -> T {
+    v.abs()
+  }
+
   /// The positive part, the truncation a square-root diffusion steps on.
   #[inline(always)]
   pub(crate) fn positive<T: FloatExt>(v: T) -> T {
@@ -96,6 +102,7 @@ pub(crate) const C_PRELUDE: &str = r#"#define sqrt(v) STOCH_SQRT(v)
 #define exp(v) STOCH_EXP(v)
 #define ln(v) STOCH_LOG(v)
 #define pow(a, b) STOCH_POW(a, b)
+#define abs(v) STOCH_ABS(v)
 #define positive(v) ((v) > (REAL)0 ? (v) : (REAL)0)
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define min(a, b) ((a) < (b) ? (a) : (b))
@@ -134,6 +141,12 @@ pub(crate) mod cube_ops {
   #[cube]
   pub(crate) fn pow(a: f32, b: f32) -> f32 {
     Powf::powf(a, b)
+  }
+
+  /// `|v|`
+  #[cube]
+  pub(crate) fn abs(v: f32) -> f32 {
+    Abs::abs(v)
   }
 
   /// The positive part, the truncation a square-root diffusion steps on.
@@ -246,7 +259,7 @@ macro_rules! euler_families {
       $(
         $(#[$meta])*
         #[cube]
-        #[allow(non_snake_case)]
+        #[allow(non_snake_case, unused_variables)]
         pub(crate) fn $name($x: f32) -> f32 {
           $($report)*
         }
@@ -275,7 +288,7 @@ macro_rules! euler_families {
   ) => {
     $(#[$meta])*
     #[cube]
-    #[allow(non_snake_case)]
+    #[allow(non_snake_case, unused_variables)]
     pub(crate) fn $name(
       $x: f32,
       $params: &Array<f32>,
@@ -325,6 +338,24 @@ euler_families! {
   /// `dX = κ(θ − X) dt + σ√X dW`, stepped with full truncation (Lord,
   /// Koekkoek & van Dijk 2010): the recursion runs on an auxiliary state
   /// whose positive part enters drift, diffusion and the reported path.
+  /// `dX = dW`: the increment accumulates, which is fractional Brownian
+  /// motion when the increments come from an fGN pipeline.
+  3 => Additive { }
+    step { x + dz }
+    report { x },
+
+  /// `dX = θ(μ − X) dt + σ√|X| dW`, clamped at zero after the step — the
+  /// fractional CIR recursion, which truncates the *result* rather than
+  /// stepping on a truncated state.
+  4 => ReflectedSquareRoot { theta, mu, sigma }
+    step { positive(x + theta * (mu - x) * dt + sigma * sqrt(abs(x)) * dz) }
+    report { x },
+
+  /// The same with the symmetric reflection: the step's absolute value.
+  5 => MirroredSquareRoot { theta, mu, sigma }
+    step { abs(x + theta * (mu - x) * dt + sigma * sqrt(abs(x)) * dz) }
+    report { x },
+
   2 => SquareRoot { kappa, theta, sigma }
     step { x + kappa * (theta - positive(x)) * dt + sigma * sqrt(positive(x)) * dz }
     report { positive(x) },

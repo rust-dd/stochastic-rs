@@ -54,7 +54,9 @@ impl<T: FloatExt, S: SeedExt> Fgbm<T, S, Cpu> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgbm<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
+  for Fgbm<T, S, B>
+{
   type Output = Array1<T>;
   type Sampler<'s>
     = FgbmSampler<'s, T, S, B>
@@ -77,6 +79,17 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgbm<T, S, B> 
       fgbm: self,
       seed: self.seed.derive(),
     }
+  }
+
+  /// `m` paths through the Euler engine: on a device the whole recursion runs
+  /// in the kernel from fGN increments, on the host devices it is this
+  /// process's own sampler chunked exactly as `ProcessExt` chunks.
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    crate::euler::EulerBackend::euler_paths(&self.fgn.backend, self, m)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    crate::euler::EulerBackend::try_euler_paths(&self.fgn.backend, self, m)
   }
 }
 
@@ -135,7 +148,54 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FgbmSampler<'
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Fgbm<T, S> { hurst, mu, sigma, n, x0, t, seed } via fgn);
+/// The Euler engine's view of fractional GBM: the same geometric family a
+/// Gaussian process uses, driven by fractional increments.
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::euler::EulerCoefficients<T> for Fgbm<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::GeometricBrownian {
+      mu: self.mu,
+      sigma: self.sigma,
+    }
+  }
+
+  fn initial_value(&self) -> T {
+    self.x0.unwrap_or(T::zero())
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+
+  /// One fGN batch, flattened row-major: the kernel steps
+  /// `grid_points() - 1` times, exactly one fGN row per path.
+  fn increments(&self, first: usize, m: usize, seed: u64) -> Option<Vec<T>> {
+    let _ = (first, seed);
+    let steps = self.grid_points().saturating_sub(1);
+    let mut flat = Vec::with_capacity(m * steps);
+    for row in self.fgn.noise_batch(m, &self.seed) {
+      flat.extend(row.iter().copied().take(steps));
+    }
+    Some(flat)
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Fgbm<T, S> { hurst, mu, sigma, n, x0, t, seed } via fgn euler);
 
 py_process_1d!(PyFgbm, Fgbm,
   sig: (hurst, mu, sigma, n, x0=None, t=None, seed=None, dtype=None),
