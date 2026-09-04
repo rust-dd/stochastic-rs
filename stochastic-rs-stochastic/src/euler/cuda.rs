@@ -18,7 +18,7 @@ use super::EulerSpec;
 use crate::device::CudaNative;
 use crate::device::DeviceError;
 use crate::device::DeviceInfo;
-use crate::noise::fgn::cuda_native::PinnedHost;
+use crate::noise::fgn::cuda::PinnedHost;
 use crate::traits::FloatExt;
 
 type Result<T> = std::result::Result<T, DeviceError>;

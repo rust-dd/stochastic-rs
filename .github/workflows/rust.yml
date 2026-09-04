@@ -97,7 +97,7 @@ jobs:
   # cudarc loads libcuda at run time, so the native CUDA back-end compiles on
   # a runner without a GPU or toolkit (the cuda-12080 pin stands in for the
   # missing nvcc). Check-only: the kernels run on the maintainer's CUDA box.
-  check_cuda_native:
+  check_cuda:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -105,10 +105,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - name: Cargo check (cuda-native)
-        run: cargo check -p stochastic-rs-stochastic --features cuda-native --all-targets
-      - name: Clippy (cuda-native)
-        run: cargo clippy -p stochastic-rs-stochastic --features cuda-native --all-targets -- -D warnings
+      - name: Cargo check (cuda)
+        run: cargo check -p stochastic-rs-stochastic --features cuda --all-targets
+      - name: Clippy (cuda)
+        run: cargo clippy -p stochastic-rs-stochastic --features cuda --all-targets -- -D warnings
       # The CubeCL CUDA runtime compiles the same way (cudarc underneath); the
       # kernels themselves run in the Colab notebook under notebooks/.
       - name: Cargo check (cubecl-cuda)

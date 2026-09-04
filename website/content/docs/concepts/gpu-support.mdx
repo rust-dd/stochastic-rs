@@ -16,7 +16,7 @@ backends, and what the rest do.
 | Euler engine | `Gbm`, `Ou`, `Cir` (3) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
 | Host only | the remaining 117 processes | `HostBackend` | own SIMD sampler | same as `Cpu` | compile error | compile error | compile error |
 
-Feature flags: `metal` (`MetalNative`), `cuda-native` (`CudaNative`),
+Feature flags: `metal` (`MetalNative`), `cuda` (`CudaNative`),
 `cubecl-cuda` / `cubecl-wgpu` (`CubeCl` on CUDA or on Metal / Vulkan / WebGPU
 through wgpu), `accelerate`. A marker only exists when its feature is
 compiled, so selecting a backend a process does not support — or one the
@@ -65,7 +65,7 @@ The handle names the device: `CudaNative::new(1)` (CUDA ordinal),
 runtime's device index); `.on_device(handle)` puts a process on it, and
 `handle.probe()` reports the device opened. The defaults read
 `STOCHASTIC_RS_DEVICE`. From Python the name carries the ordinal:
-`device="cuda-native:1"`, `probe_device("metal:0")`.
+`device="cuda:1"`, `probe_device("metal:0")`.
 
 ## When the device is missing
 
@@ -101,20 +101,20 @@ The device-capable classes take `device=` (`PyGbm(..., dtype="f32", device="meta
 the fGN family and the Euler engine's three processes), checked and probed at
 construction. `PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7, device="metal", dtype="f32").sample_par(m)` runs the Euler
 engine with `device` one of `"cpu"`, `"gpu"` (the first compiled device
-backend), `"cuda-native"`, `"metal"`, `"cubecl"`; a backend the build does not
+backend), `"cuda"`, `"metal"`, `"cubecl"`; a backend the build does not
 carry raises `ValueError` with a rebuild hint. The array is `float64` from
 the CPU and native CUDA paths and `float32` from Metal and CubeCL, whose
 kernels compute in single precision. The published wheels are
 CPU-only; the device backends come with a source build —
 `maturin develop --features metal,cubecl-wgpu` on a Mac,
-`--features cuda-native` on an NVIDIA machine.
+`--features cuda` on an NVIDIA machine.
 
 ## Trying the CUDA back-end without a CUDA machine
 
 [`notebooks/colab_cuda_check.ipynb`](https://colab.research.google.com/github/rust-dd/stochastic-rs/blob/main/notebooks/colab_cuda_check.ipynb)
 opens in Google Colab: on a T4 runtime it installs Rust, clones the repository,
 runs the native CUDA tests (the fGN pipeline and the Euler engine), builds the
-Python wheel with `device="cuda-native"` and plots what the GPU produced. The
+Python wheel with `device="cuda"` and plots what the GPU produced. The
 Rust tests build in 10–20 minutes on Colab's two cores, the wheel in another
 ten; the tests and the plots take seconds.
 
@@ -122,9 +122,10 @@ ten; the tests and the plots take seconds.
 
 [`notebooks/runs/colab_cuda_check_T4_2026-09-03.ipynb`](https://github.com/rust-dd/stochastic-rs/blob/main/notebooks/runs/colab_cuda_check_T4_2026-09-03.ipynb)
 is the executed copy of a run on 2026-09-03 (Tesla T4, driver 580.82 / CUDA
-13.0, toolkit 12.8; GitHub's own viewer may not render Colab outputs,
+13.0, toolkit 12.8; it predates the `cuda-native` → `cuda` rename, so its
+cells still name the old feature and device; GitHub's own viewer may not render Colab outputs,
 [nbviewer](https://nbviewer.org/github/rust-dd/stochastic-rs/blob/main/notebooks/runs/colab_cuda_check_T4_2026-09-03.ipynb)
-does). All 12 `cuda_native` tests passed, including the two that assert a
+does). All 12 `cuda` tests passed, including the two that assert a
 chunked batch equals one launch path for path, in `f32` and `f64`; the wheel
 built for CPython 3.13 and its device tests passed; `probe_device` reported
 `{'backend': 'CudaNative', 'name': 'Tesla T4', 'precisions': ['f32', 'f64']}`.

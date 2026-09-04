@@ -18,7 +18,7 @@
 //!   Euler–Maruyama recursion in the kernel and Box–Muller normals from a
 //!   counter hash of `(path, step, seed)`: `CubeCl` (features `cubecl-cuda` /
 //!   `cubecl-wgpu`: CUDA, Metal, Vulkan or WebGPU through CubeCL, `f32`),
-//!   `CudaNative` (feature `cuda-native`: cudarc + NVRTC, `f32` or `f64` after
+//!   `CudaNative` (feature `cuda`: cudarc + NVRTC, `f32` or `f64` after
 //!   `T`) and `MetalNative` (feature `metal`: hand-written MSL, `f32`).
 //!   `sample_par` is one launch for all `m` paths; `sample` launches one path.
 //!
@@ -77,7 +77,7 @@ impl<T: FloatExt> EulerSpec<T> {
   #[cfg_attr(
     not(any(
       feature = "metal",
-      feature = "cuda-native",
+      feature = "cuda",
       feature = "cubecl-cuda",
       feature = "cubecl-wgpu"
     )),
@@ -271,7 +271,7 @@ host_euler_backend!(crate::device::Accelerate);
 /// handle's budget, the map applied per chunk in parallel. One impl per
 /// handle rather than a blanket one, which coherence would not allow beside
 /// the host impls above.
-#[cfg(any(feature = "cuda-native", feature = "metal", feature = "cubecl"))]
+#[cfg(any(feature = "cuda", feature = "metal", feature = "cubecl"))]
 macro_rules! kernel_euler_backend {
   ($handle:ty, [$($gen:tt)*] $scalar:ty) => {
     impl<$($gen)*> EulerBackend<$scalar> for $handle {
@@ -336,7 +336,7 @@ macro_rules! kernel_euler_backend {
 kernel_euler_backend!(crate::device::MetalNative, [] f32);
 #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
 kernel_euler_backend!(crate::device::CubeCl, [] f32);
-#[cfg(feature = "cuda-native")]
+#[cfg(feature = "cuda")]
 kernel_euler_backend!(crate::device::CudaNative, [T: FloatExt] T);
 
 fn draw_seed<S: SeedExt>(seed: &S) -> u64 {
@@ -456,11 +456,11 @@ try_sample_matrix!(Gbm);
 try_sample_matrix!(Ou);
 try_sample_matrix!(Cir);
 
-#[cfg(feature = "cuda-native")]
-pub mod cuda_native;
+#[cfg(feature = "cuda")]
+pub mod cuda;
 #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
 pub mod gpu;
-#[cfg(any(feature = "cuda-native", feature = "metal"))]
+#[cfg(any(feature = "cuda", feature = "metal"))]
 pub(crate) mod kernel;
 #[cfg(feature = "metal")]
 pub mod metal;
@@ -490,7 +490,7 @@ pub mod python {
 
   use pyo3::prelude::*;
 
-  /// Opens the named device (`"cpu"`, `"gpu"`, `"cuda-native"`, `"metal"`,
+  /// Opens the named device (`"cpu"`, `"gpu"`, `"cuda"`, `"metal"`,
   /// `"cubecl"`, `"accelerate"`, optionally with `:ordinal`) and describes it
   /// as a dict with `backend`, `name`, `precisions` and `ordinal`; raises
   /// `RuntimeError` with the device's own message when it cannot be used,

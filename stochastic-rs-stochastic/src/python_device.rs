@@ -1,7 +1,7 @@
 //! The `device=` argument of the device-capable Python classes: parsed,
 //! checked against the build and the precision, and probed at construction,
 //! so a class that exists samples on a device that works. A name may carry
-//! an ordinal, `"cuda-native:1"`, `"metal:0"`; without one the handle's default
+//! an ordinal, `"cuda:1"`, `"metal:0"`; without one the handle's default
 //! (`STOCHASTIC_RS_DEVICE`, else `0`) applies.
 
 use pyo3::PyResult;
@@ -59,13 +59,13 @@ impl Device {
     let device = match kind.as_str() {
       "cpu" => Device::Cpu,
       "accelerate" => Device::Accelerate,
-      "cuda-native" | "cuda_native" => Device::CudaNative(ordinal(crate::device::env_ordinal())),
+      "cuda" => Device::CudaNative(ordinal(crate::device::env_ordinal())),
       "metal" => Device::MetalNative(ordinal(crate::device::env_ordinal())),
       "cubecl" => Device::CubeCl(ordinal(crate::device::env_ordinal())),
       "gpu" => Device::first_gpu(ordinal(crate::device::env_ordinal()))?,
       other => {
         return Err(PyValueError::new_err(format!(
-          "unknown device {other:?}; use cpu, gpu, cuda-native, metal, cubecl or accelerate, optionally with :ordinal"
+          "unknown device {other:?}; use cpu, gpu, cuda, metal, cubecl or accelerate, optionally with :ordinal"
         )));
       }
     };
@@ -74,7 +74,7 @@ impl Device {
   }
 
   fn first_gpu(ordinal: usize) -> PyResult<Self> {
-    if cfg!(feature = "cuda-native") {
+    if cfg!(feature = "cuda") {
       Ok(Device::CudaNative(ordinal))
     } else if cfg!(feature = "metal") {
       Ok(Device::MetalNative(ordinal))
@@ -82,7 +82,7 @@ impl Device {
       Ok(Device::CubeCl(ordinal))
     } else {
       Err(PyValueError::new_err(
-        "this build has no GPU runtime; rebuild with the cuda-native, metal, cubecl-cuda or cubecl-wgpu feature",
+        "this build has no GPU runtime; rebuild with the cuda, metal, cubecl-cuda or cubecl-wgpu feature",
       ))
     }
   }
@@ -95,11 +95,7 @@ impl Device {
         "Accelerate back-end",
         "accelerate",
       ),
-      Device::CudaNative(_) => (
-        cfg!(feature = "cuda-native"),
-        "native CUDA runtime",
-        "cuda-native",
-      ),
+      Device::CudaNative(_) => (cfg!(feature = "cuda"), "native CUDA runtime", "cuda"),
       Device::MetalNative(_) => (cfg!(feature = "metal"), "native Metal runtime", "metal"),
       Device::CubeCl(_) => (
         cfg!(any(feature = "cubecl-cuda", feature = "cubecl-wgpu")),
@@ -126,7 +122,7 @@ impl Device {
     match self {
       Device::Cpu => "cpu",
       Device::Accelerate => "accelerate",
-      Device::CudaNative(_) => "cuda-native",
+      Device::CudaNative(_) => "cuda",
       Device::MetalNative(_) => "metal",
       Device::CubeCl(_) => "cubecl",
     }
@@ -138,7 +134,7 @@ impl Device {
       Device::Cpu => Cpu.probe(),
       #[cfg(feature = "accelerate")]
       Device::Accelerate => crate::device::Accelerate.probe(),
-      #[cfg(feature = "cuda-native")]
+      #[cfg(feature = "cuda")]
       Device::CudaNative(o) => crate::device::CudaNative::new(o).probe(),
       #[cfg(feature = "metal")]
       Device::MetalNative(o) => crate::device::MetalNative::new(o).probe(),

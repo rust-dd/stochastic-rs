@@ -13,7 +13,7 @@ runs — CPU, CUDA, Metal, or Apple Accelerate — at **compile time**. A proces
 parameterised by a backend marker `B` (defaulting to `Cpu`); the `Backend` trait
 monomorphises `sample` / `sample_par` to that backend with **no runtime branch**.
 
-This replaces the ad-hoc per-backend methods (`sample_cuda_native`,
+This replaces the ad-hoc per-backend methods (`sample_cuda`,
 `sample_gpu`, …) with one uniform selector. Those methods are now crate-private
 (`sample_*_impl`, wired up in `stochastic_rs::stochastic::device`), so
 `.on::<B>()` is not merely the recommended API — it is the only one.
@@ -21,7 +21,7 @@ This replaces the ad-hoc per-backend methods (`sample_cuda_native`,
 ## Switching backend
 
 Re-type the process with the `.on::<B>()` turbofish, then sample as usual.
-`CudaNative` only exists when the `cuda-native` feature is compiled (an
+`CudaNative` only exists when the `cuda` feature is compiled (an
 NVIDIA CUDA 12.x toolkit and GPU), which the CI runners that build this
 site do not have, so this block is illustrative rather than compiled:
 
@@ -72,7 +72,7 @@ the code actually samples through it.
 | Marker        | Feature                          | Backs onto                             | Hardware            |
 |---------------|----------------------------------|----------------------------------------|---------------------|
 | `Cpu`         | — (always available, default)    | `ndrustfft` + CPU SIMD, rayon batches  | any CPU             |
-| `CudaNative`  | `cuda-native`                    | `cudarc` + cuFFT, JIT Philox RNG       | NVIDIA, CUDA 12.x   |
+| `CudaNative`  | `cuda`                    | `cudarc` + cuFFT, JIT Philox RNG       | NVIDIA, CUDA 12.x   |
 | `CubeCl`      | `cubecl` / `cubecl-cuda` / `cubecl-wgpu` | `cubecl` portable kernels              | NVIDIA / AMD / wgpu |
 | `MetalNative` | `metal`                          | hand-written MSL via the `metal` crate | Apple GPU (f32)     |
 | `Accelerate`  | `accelerate`                     | Apple vDSP FFT (CPU), rayon batches    | macOS               |

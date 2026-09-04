@@ -32,15 +32,16 @@ lines) is the second half.
 |---|---|---|---|
 | `Cpu` | *(none — always available)* | Default `B` for every process | `f32` / `f64` |
 | `Accelerate` | `accelerate` | Apple vDSP / AMX — a **CPU** path, not a GPU | `f32` / `f64` |
-| `CudaNative` | `cuda-native` | `cudarc` + cuFFT + NVRTC, fused Philox kernel | `f32` / `f64` |
+| `CudaNative` | `cuda` | `cudarc` + cuFFT + NVRTC, fused Philox kernel | `f32` / `f64` |
 | `MetalNative` | `metal` | Hand-written MSL via the `metal` crate | `f32` |
 | `CubeCl` | `cubecl` (+ `cubecl-cuda` / `cubecl-wgpu`) | cubecl Rust kernels | `f32` |
 
-There is no bare `cuda` feature, no `metal-rs` dependency, and the
-`gpu` / `gpu-cuda` / `gpu-wgpu` aliases were **removed before 3.0** —
-the canonical names are `cubecl*`. The CUDA backend is `cudarc`, not
+The native backends take the bare names (`cuda`, `metal`) and CubeCL's
+runtimes are namespaced under it; the `gpu` / `gpu-cuda` / `gpu-wgpu`
+aliases and the `cuda-native` spelling were **removed before 3.0**. There
+is no `metal-rs` dependency. The CUDA backend is `cudarc`, not
 `cust`. Kernels are Rust string constants compiled at runtime by NVRTC
-(`noise/fgn/cuda_native/kernels.rs` for fGN, `euler/kernel.rs` for the
+(`noise/fgn/cuda/kernels.rs` for fGN, `euler/kernel.rs` for the
 Euler engine) — there are **no `.cu` files** anywhere in the repo.
 
 Renaming a feature silently turns every `cfg(feature = "old")` false and
@@ -159,7 +160,7 @@ Device-side fGN backends are registered by `gpu_backend!` in
 `device.rs`; the trailing scalars are the precisions the device serves:
 
 ```rust
-gpu_backend!("cuda-native", CudaNative  => sample_cuda_native_impl, f32, f64);
+gpu_backend!("cuda", CudaNative  => sample_cuda_impl, f32, f64);
 gpu_backend!("cubecl",      CubeCl      => sample_gpu_impl,         f32);
 gpu_backend!("metal",       MetalNative => sample_metal_impl,       f32);
 ```
@@ -226,7 +227,7 @@ device tests.
 ## 7. Kernel conventions
 
 The fGN CUDA kernel is a `pub(super) const &str` of CUDA C compiled by
-NVRTC at runtime (`cuda_native/kernels.rs`), fusing RNG + scaling into
+NVRTC at runtime (`cuda/kernels.rs`), fusing RNG + scaling into
 one launch to avoid a memory round-trip. Four things carry over to a new
 kernel:
 
@@ -238,7 +239,7 @@ kernel:
   writing interleaved complex, rather than three round-trips.
 - **Pad to a power of two.** cuFFT and MPS are tuned for it; `Fgn::new`
   already does `n.next_power_of_two()` and carries the `offset`.
-- **Cache device state per size.** `cuda_native/state.rs` and the Metal
+- **Cache device state per size.** `cuda/state.rs` and the Metal
   sampler keep the last `CACHE_SLOTS` (4) `(n, m)` shapes, built before
   the eviction so a failing build cannot empty the cache. The rc.0 GPU
   FBM bench regressed ~30 % from per-call allocation.
@@ -258,7 +259,7 @@ kernel:
 - **Do not** implement a capability for a precision the kernels do not
   compute in. `f64` on Metal or CubeCL must not compile.
 - **Do not** allocate device memory per call. Cache it per size.
-- **Do not** name the feature `cuda`, or resurrect the `gpu*` aliases.
+- **Do not** resurrect the `gpu*` aliases or the `cuda-native` spelling.
 - **Do not** make the `backend` field private: downstream
   `Process { n: 64, ..Default::default() }` struct-update syntax needs
   it public (E0451).
@@ -272,12 +273,12 @@ kernel:
   and `Accelerate` written out by hand.
 - `euler.rs` — `EulerCoefficients`, `EulerKernel`, `EulerBackend`, the
   `host_euler_backend!` and `kernel_euler_backend!` macros.
-- `noise/fgn/cuda_native/` — `mod.rs`, `kernels.rs` (NVRTC sources),
+- `noise/fgn/cuda/` — `mod.rs`, `kernels.rs` (NVRTC sources),
   `sampler.rs`, `state.rs`, `convert.rs`, `tests.rs`. The most complete
   fGN backend, and the only one with the two-stream pipeline.
 - `noise/fgn/metal.rs`, `noise/fgn/gpu.rs`, `noise/fgn/accelerate.rs` —
   the other three.
-- `euler/kernel.rs`, `euler/cuda_native.rs`, `euler/metal.rs`,
+- `euler/kernel.rs`, `euler/cuda.rs`, `euler/metal.rs`,
   `euler/gpu.rs` — the Euler engine's shared body and its three devices.
 - `macros.rs`'s `backend_switch!` — generates `.on::<B2>()` and
   `.on_device(handle)` for a backend-generic process, in four forms
@@ -291,7 +292,7 @@ kernel:
 
 ## Related SKILLs
 
-- `feature-flag-management` — propagating `cuda-native` / `cubecl` /
+- `feature-flag-management` — propagating `cuda` / `cubecl` /
   `metal` / `accelerate` from the sub-crate to the umbrella.
 - `add-fractional-process` — the backend-generic consumers (`Fou`,
   `Fgbm`, `FJacobi`, `Cfou`, `JumpFou`, … all carry `B`).

@@ -49,7 +49,7 @@ One workspace, one umbrella crate (`stochastic-rs`) that re-exports the sub-crat
 stochastic-rs = "3.0.0-rc.1"
 ```
 
-Device back-ends and other optional parts are cargo features (`cuda-native`,
+Device back-ends and other optional parts are cargo features (`cuda`,
 `metal`, `cubecl-cuda` / `cubecl-wgpu`, `accelerate`, `ai`, `dual-stream-rng`);
 the [installation guide](https://stochastic.rust-dd.com/docs/getting-started/installation-rust)
 and the [feature flags](https://stochastic.rust-dd.com/docs/concepts/feature-flags)
@@ -62,7 +62,7 @@ pip install stochastic-rs
 
 The wheels are CPU-only and carry the whole surface on Linux, macOS and Windows
 (linear algebra is pure Rust). A source build with a device back-end:
-`maturin develop --release --features metal` (or `cuda-native`) in a checkout.
+`maturin develop --release --features metal` (or `cuda`) in a checkout.
 
 ## Quickstart
 

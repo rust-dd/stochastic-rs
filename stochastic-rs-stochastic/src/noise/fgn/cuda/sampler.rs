@@ -382,7 +382,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   /// `m` paths on the selected CUDA device, in chunks that fit the batch
   /// budget: one seed for the whole batch and a running element offset, so
   /// the result is the same whatever the budget.
-  pub(crate) fn sample_cuda_native_impl<S2: SeedExt>(
+  pub(crate) fn sample_cuda_impl<S2: SeedExt>(
     &self,
     m: usize,
     seed_src: &S2,

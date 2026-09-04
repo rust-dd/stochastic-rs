@@ -24,7 +24,7 @@ doctest = false
 # Device back-ends of the stochastic crate (Euler engine `device=`, fGN samplers):
 # `maturin develop --features metal` etc. Off in the published wheels.
 metal = ["stochastic-rs-stochastic/metal"]
-cuda-native = ["stochastic-rs-stochastic/cuda-native"]
+cuda = ["stochastic-rs-stochastic/cuda"]
 cubecl-cuda = ["stochastic-rs-stochastic/cubecl-cuda"]
 cubecl-wgpu = ["stochastic-rs-stochastic/cubecl-wgpu"]
 accelerate = ["stochastic-rs-stochastic/accelerate"]

@@ -51,7 +51,7 @@ macro_rules! py_on_device_f64 {
         let $p = &owned;
         $body
       }
-      #[cfg(feature = "cuda-native")]
+      #[cfg(feature = "cuda")]
       $crate::python_device::Device::CudaNative(ordinal) => {
         let owned = $inner
           .clone()
@@ -82,7 +82,7 @@ macro_rules! py_on_device_f32 {
         let $p = &owned;
         $body
       }
-      #[cfg(feature = "cuda-native")]
+      #[cfg(feature = "cuda")]
       $crate::python_device::Device::CudaNative(ordinal) => {
         let owned = $inner
           .clone()

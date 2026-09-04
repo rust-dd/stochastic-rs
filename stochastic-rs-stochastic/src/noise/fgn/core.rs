@@ -175,7 +175,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   /// chunk and calls `fill_cpu` directly (see `device.rs`'s `Cpu` impl), so
   /// this has no production caller left — kept `#[cfg(test)]` for the
   /// covariance/marginal tests in this module and the CPU-vs-CUDA comparison
-  /// tests in `cuda_native/tests.rs`, rather than duplicating this one-liner
+  /// tests in `cuda/tests.rs`, rather than duplicating this one-liner
   /// in both places.
   #[cfg(test)]
   pub(crate) fn sample_cpu(&self) -> Array1<T> {

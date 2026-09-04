@@ -291,7 +291,7 @@ CPU SIMD (`f64x4` / `f32x8`) is on by default. The fractional / fGN family
 (`Fgn`, `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `Cfou`, `Cfgns`, `JumpFou`,
 `JumpFOUCustom`, and the generic `Sde`) additionally picks a sampling
 **backend** at compile time with `.on::<B>()`.
-`CudaNative` only exists when the `cuda-native` feature is compiled, which
+`CudaNative` only exists when the `cuda` feature is compiled, which
 needs an NVIDIA CUDA 12.x toolkit and GPU — not available in the CI
 runners that build this site, so this block is illustrative rather than
 compiled:
@@ -306,7 +306,7 @@ let fgn = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded);
 let path = fgn.on::<CudaNative>().sample(); // FFT on the GPU, zero runtime branch
 ```
 
-Backends: `Cpu` (default), `CudaNative` (`cuda-native`), `CubeCl`
+Backends: `Cpu` (default), `CudaNative` (`cuda`), `CubeCl`
 (`cubecl-cuda` / `cubecl-wgpu`), `MetalNative` (`metal`), `Accelerate`
 (`accelerate`) — each marker exists only when its feature is compiled, so an
 unavailable backend is a compile error, not a runtime fallback. See the
@@ -344,7 +344,7 @@ all `m` paths):
 | Backend | Feature | Device | Precision |
 |---|---|---|---|
 | `CubeCl` | `cubecl-cuda` / `cubecl-wgpu` | CUDA, Metal, Vulkan, WebGPU through CubeCL | `f32` |
-| `CudaNative` | `cuda-native` | NVIDIA, cudarc + NVRTC | `f32` or `f64`, after `T` |
+| `CudaNative` | `cuda` | NVIDIA, cudarc + NVRTC | `f32` or `f64`, after `T` |
 | `MetalNative` | `metal` | Apple GPUs, hand-written MSL | `f32` |
 
 The device seed is drawn from the process's own seed source (the same
@@ -370,7 +370,7 @@ import stochastic_rs as srs
 paths = srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7).sample_par(20_000)
 print(paths.shape, paths[:, -1].mean())   # (20000, 253), ≈ 100·e^{0.05}
 ou = srs.PyOu(2.0, 1.0, 0.5, 501, x0=1.0, t=2.0).sample_par(10_000)
-# device="gpu" picks the first compiled device back-end; "cuda-native", "metal"
+# device="gpu" picks the first compiled device back-end; "cuda", "metal"
 # and "cubecl" name one (each needs the matching cargo feature of the build);
 # the single-precision devices want dtype="f32" and return float32 arrays
 gpu = srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7, dtype="f32", device="gpu").sample_par(20_000)

@@ -8,7 +8,7 @@ Build with the `mimalloc` global allocator — the batch path allocates one
 `Array1` per path, so the default Windows allocator otherwise bottlenecks it:
 
 ```bash
-cargo bench --bench fgn_cuda_compare --features "cuda-native,cubecl-cuda,mimalloc"
+cargo bench --bench fgn_cuda_compare --features "cuda,cubecl-cuda,mimalloc"
 ```
 
 ## Single path (`sample`, m = 1)
@@ -43,7 +43,7 @@ fast allocator.
 
 ## cuFFT batch pipeline breakdown
 
-Per-call breakdown of `cuda_native` (cuFFT) `sample_par`, measured in-process
+Per-call breakdown of `cuda` (cuFFT) `sample_par`, measured in-process
 with `STOCHASTIC_RS_CUDA_PROFILE=1` (env-gated phase timing in the sampler).
 `compute` = on-device RNG + batched FFT + extract; `dtoh` = device→host transfer
 + the parallel host copy.

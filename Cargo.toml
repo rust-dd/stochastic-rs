@@ -208,14 +208,14 @@ harness = false
 required-features = ["cubecl"]
 
 [[bench]]
-name = "fgn_cuda_native"
+name = "fgn_cuda"
 harness = false
-required-features = ["cuda-native"]
+required-features = ["cuda"]
 
 [[bench]]
 name = "fgn_cuda_compare"
 harness = false
-required-features = ["cuda-native", "cubecl-cuda"]
+required-features = ["cuda", "cubecl-cuda"]
 
 [[bench]]
 name = "fgn_all_backends"
@@ -321,16 +321,16 @@ harness = false
 
 [[example]]
 name = "cuda_fgn_analysis"
-required-features = ["cuda-native"]
+required-features = ["cuda"]
 
 [[example]]
 name = "cuda_d2h_bw"
-required-features = ["cuda-native"]
+required-features = ["cuda"]
 
 [features]
 ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]
 ai-metal = ["ai", "stochastic-rs-ai/metal"]
-cuda-native = ["dep:cudarc", "cudarc/cufft", "stochastic-rs-stochastic/cuda-native"]
+cuda = ["dep:cudarc", "cudarc/cufft", "stochastic-rs-stochastic/cuda"]
 default = []
 # Experimental: opt in to the dual-stream RNG (`SimdRngDual` /
 # `SimdNormalDual`). ~5–11% speedup on Ziggurat-based Normal/Exp bulk

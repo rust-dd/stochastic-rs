@@ -114,7 +114,7 @@ three-way convention (invalid parameter → panic; not computable → documented
 
 ## Python
 
-- The wheel is CPU-only. `metal`, `cuda-native`, `cubecl-cuda`, `cubecl-wgpu`,
+- The wheel is CPU-only. `metal`, `cuda`, `cubecl-cuda`, `cubecl-wgpu`,
   `accelerate` and `ai` are `maturin` build features; a class or function
   behind one of them raises `ValueError` with a rebuild hint when it is
   called from a build that lacks it.

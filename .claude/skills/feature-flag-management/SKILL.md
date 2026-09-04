@@ -6,7 +6,7 @@ description: Conventions for adding / propagating Cargo features across the stoc
 # Feature flag management — stochastic-rs
 
 The workspace has 8 sub-crates, several of which carry optional
-dependencies (`cuda-native`, `gpu`, `metal`, `accelerate`, `python`,
+dependencies (`cuda`, `gpu`, `metal`, `accelerate`, `python`,
 `yahoo`, `ai`, `hotpath`). Dense linear algebra is deliberately NOT one
 of them: it runs on the pure-Rust `faer`, always compiled in — there is
 no linalg feature and no system-BLAS dependency. Without discipline, `cargo check --all-features`
@@ -105,7 +105,7 @@ cargo check --workspace --no-default-features
 # 2.2 Most-common combinations
 cargo check --workspace --features ai
 cargo check --workspace --features python
-cargo check --workspace --features cuda-native
+cargo check --workspace --features cuda
 
 # 2.3 The thermonuclear all-features path — catches the §4.1 trap
 cargo check --workspace --all-features
@@ -195,7 +195,7 @@ it is a summary, and the sub-crate columns are the part that drifts.
 
 | Feature | Crates that publish it | Notes |
 |---|---|---|
-| `cuda-native` | `-stochastic`, umbrella | Native CUDA via **cudarc** + cuFFT + NVRTC. There is no bare `cuda` feature. |
+| `cuda` | `-stochastic`, umbrella | Native CUDA via **cudarc** + cuFFT + NVRTC — distinct from `cubecl-cuda`, which reaches the same hardware through CubeCL. |
 | `cubecl` | `-stochastic`, umbrella | cubecl runtime-agnostic base (pulls `gpu-fft`). |
 | `cubecl-cuda` / `cubecl-wgpu` | `-stochastic`, umbrella | cubecl runtimes; each implies `cubecl`. The `gpu` / `gpu-cuda` / `gpu-wgpu` aliases were removed before 3.0. |
 | `metal` | `-stochastic`, umbrella | Apple Silicon GPU via the `metal` crate; f32 only. |
@@ -213,7 +213,7 @@ it is a summary, and the sub-crate columns are the part that drifts.
 - `release-checklist` — `cargo check --workspace --all-features` is one
   of its stage-1 gates.
 - `add-gpu-sampler` — what each of the five backend features actually
-  selects, and why `cuda-native` and `cubecl-cuda` are different backends
+  selects, and why `cuda` and `cubecl-cuda` are different backends
   rather than aliases.
 - `add-gpu-sampler`, `add-jump-process` — invoke when the new module is
   feature-gated.

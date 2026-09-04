@@ -1,10 +1,10 @@
-//! Head-to-head fGN sampling benchmark: CPU (SIMD) vs cuda-native (cudarc +
-//! cuFFT) vs cubecl-cuda (cubecl). The per-backend `fgn_cuda_native` and `fgn_gpu`
+//! Head-to-head fGN sampling benchmark: CPU (SIMD) vs cuda (cudarc +
+//! cuFFT) vs cubecl-cuda (cubecl). The per-backend `fgn_cuda` and `fgn_gpu`
 //! benches each compare one GPU path against the CPU in isolation; this one
 //! puts all three on the same axes so the two CUDA backends can be compared
 //! directly. Requires both CUDA features and an NVIDIA GPU.
 //!
-//! Run: cargo bench --bench fgn_cuda_compare --features "cuda-native,cubecl-cuda"
+//! Run: cargo bench --bench fgn_cuda_compare --features "cuda,cubecl-cuda"
 use std::hint::black_box;
 use std::time::Duration;
 
@@ -40,7 +40,7 @@ fn bench_single_path(c: &mut Criterion) {
     group.bench_with_input(BenchmarkId::new("cpu", n), &n, |b, _| {
       b.iter(|| black_box(cpu.sample()));
     });
-    group.bench_with_input(BenchmarkId::new("cuda_native", n), &n, |b, _| {
+    group.bench_with_input(BenchmarkId::new("cuda", n), &n, |b, _| {
       b.iter(|| black_box(native.sample()));
     });
     group.bench_with_input(BenchmarkId::new("gpu_cuda", n), &n, |b, _| {
@@ -75,13 +75,9 @@ fn bench_batch(c: &mut Criterion) {
     group.bench_with_input(BenchmarkId::new("cpu", &label), &(n, m), |b, &(_n, m)| {
       b.iter(|| black_box(cpu.sample_par(m)));
     });
-    group.bench_with_input(
-      BenchmarkId::new("cuda_native", &label),
-      &(n, m),
-      |b, &(_n, m)| {
-        b.iter(|| black_box(native.sample_par(m)));
-      },
-    );
+    group.bench_with_input(BenchmarkId::new("cuda", &label), &(n, m), |b, &(_n, m)| {
+      b.iter(|| black_box(native.sample_par(m)));
+    });
 
     // cubecl holds its own large device buffers alongside cuFFT's; skip it once
     // the two together would exceed the 12 GB RTX 4070 SUPER (matches the Apple

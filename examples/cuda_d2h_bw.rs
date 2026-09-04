@@ -1,6 +1,6 @@
 //! Isolated device->host strategy probe: full cost of producing an owned
 //! `Vec<f32>` on the host from a device buffer.
-//! Run: cargo run --example cuda_d2h_bw --features cuda-native --release
+//! Run: cargo run --example cuda_d2h_bw --features cuda --release
 use std::time::Instant;
 
 use cudarc::driver::CudaContext;

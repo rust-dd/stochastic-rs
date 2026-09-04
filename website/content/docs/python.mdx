@@ -31,7 +31,7 @@ The neural surrogates (`HestonNn`, `RBergomiNn`, `OneFactorNn`) and
 `calibrate_surrogate` are not in the published wheels — candle is heavy — and
 come with a source build: `maturin develop --features ai` from the workspace
 root. The same goes for the device back-ends of the Euler engine and the fGN
-samplers: `--features metal`, `cuda-native`, `cubecl-cuda`, `cubecl-wgpu`,
+samplers: `--features metal`, `cuda`, `cubecl-cuda`, `cubecl-wgpu`,
 `accelerate`.
 
 ## NumPy interop
@@ -105,9 +105,9 @@ run from the worker threads one at a time. `PyAdg.sample_par(m)` returns an
 
 ## Devices
 
-`probe_device(name)` opens a device (`"cpu"`, `"gpu"`, `"cuda-native"`,
+`probe_device(name)` opens a device (`"cpu"`, `"gpu"`, `"cuda"`,
 `"metal"`, `"cubecl"`, `"accelerate"`, optionally with an ordinal:
-`"cuda-native:1"`) and returns a dict with `backend`, `name`, `precisions` and
+`"cuda:1"`) and returns a dict with `backend`, `name`, `precisions` and
 `ordinal`; a device this build does not carry raises `ValueError` with a rebuild
 hint, one that is compiled in but cannot be opened raises `RuntimeError` with the
 runtime's own message. Without an ordinal the handle's default applies
@@ -116,7 +116,7 @@ runtime's own message. Without an ordinal the handle's default applies
 
 ```python
 srs.probe_device("metal")             # {'backend': 'MetalNative', 'name': 'Apple M2 Max', 'precisions': ['f32'], 'ordinal': 0}
-srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7, device="cuda-native:1")   # second CUDA GPU
+srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7, device="cuda:1")   # second CUDA GPU
 ```
 
 The device-capable classes take `device=` directly — `PyGbm`, `PyOu`, `PyCir`

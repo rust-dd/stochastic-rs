@@ -10,8 +10,8 @@ use stochastic_rs::stochastic::device::CudaNative;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
-fn bench_fgn_single_path_cpu_vs_cuda_native(c: &mut Criterion) {
-  let mut group = c.benchmark_group("FGN_single_path_cpu_vs_cuda_native");
+fn bench_fgn_single_path_cpu_vs_cuda(c: &mut Criterion) {
+  let mut group = c.benchmark_group("FGN_single_path_cpu_vs_cuda");
   group.measurement_time(Duration::from_secs(3));
   group.warm_up_time(Duration::from_millis(700));
   group.sample_size(40);
@@ -28,20 +28,16 @@ fn bench_fgn_single_path_cpu_vs_cuda_native(c: &mut Criterion) {
       b.iter(|| black_box(fgn.sample()));
     });
 
-    group.bench_with_input(
-      BenchmarkId::new("cuda_native/sample_m1", n),
-      &n,
-      |b, &_n| {
-        b.iter(|| black_box(dev.sample()));
-      },
-    );
+    group.bench_with_input(BenchmarkId::new("cuda/sample_m1", n), &n, |b, &_n| {
+      b.iter(|| black_box(dev.sample()));
+    });
   }
 
   group.finish();
 }
 
-fn bench_fgn_batch_cpu_vs_cuda_native(c: &mut Criterion) {
-  let mut group = c.benchmark_group("FGN_batch_cpu_vs_cuda_native");
+fn bench_fgn_batch_cpu_vs_cuda(c: &mut Criterion) {
+  let mut group = c.benchmark_group("FGN_batch_cpu_vs_cuda");
   group.measurement_time(Duration::from_secs(3));
   group.warm_up_time(Duration::from_millis(700));
   group.sample_size(30);
@@ -74,7 +70,7 @@ fn bench_fgn_batch_cpu_vs_cuda_native(c: &mut Criterion) {
     );
 
     group.bench_with_input(
-      BenchmarkId::new("cuda_native/sample", &label),
+      BenchmarkId::new("cuda/sample", &label),
       &(n, m),
       |b, &(_n, m)| {
         b.iter(|| black_box(dev.sample_par(m)));
@@ -87,7 +83,7 @@ fn bench_fgn_batch_cpu_vs_cuda_native(c: &mut Criterion) {
 
 criterion_group!(
   benches,
-  bench_fgn_single_path_cpu_vs_cuda_native,
-  bench_fgn_batch_cpu_vs_cuda_native
+  bench_fgn_single_path_cpu_vs_cuda,
+  bench_fgn_batch_cpu_vs_cuda
 );
 criterion_main!(benches);

@@ -16,44 +16,44 @@ fn lag_covariance(paths: &[Vec<f64>], mean: f64, lag: usize) -> f64 {
 }
 
 #[test]
-fn cuda_native_single_path_shape() {
+fn cuda_single_path_shape() {
   let fgn = Fgn::<f64>::new(0.7, 1024, Some(1.0), Unseeded);
   let result = fgn
-    .sample_cuda_native_impl(1, &Unseeded, &CudaNative::default())
+    .sample_cuda_impl(1, &Unseeded, &CudaNative::default())
     .expect("single path should succeed");
   assert_eq!(result.shape(), &[1, 1024]);
 }
 
 #[test]
-fn cuda_native_batch_shape() {
+fn cuda_batch_shape() {
   let fgn = Fgn::<f64>::new(0.7, 512, Some(1.0), Unseeded);
   let m = 64;
   let batch = fgn
-    .sample_cuda_native_impl(m, &Unseeded, &CudaNative::default())
+    .sample_cuda_impl(m, &Unseeded, &CudaNative::default())
     .expect("batch should succeed");
   assert_eq!(batch.shape(), &[m, 512]);
 }
 
 #[test]
-fn cuda_native_f32_works() {
+fn cuda_f32_works() {
   let fgn = Fgn::<f32>::new(0.7, 1024, Some(1.0), Unseeded);
   let batch = fgn
-    .sample_cuda_native_impl(4, &Unseeded, &CudaNative::default())
+    .sample_cuda_impl(4, &Unseeded, &CudaNative::default())
     .expect("f32 should succeed");
   assert_eq!(batch.shape(), &[4, 1024]);
 }
 
 #[test]
-fn cuda_native_non_power_of_two_n() {
+fn cuda_non_power_of_two_n() {
   let fgn = Fgn::<f64>::new(0.7, 3000, Some(1.0), Unseeded);
   let batch = fgn
-    .sample_cuda_native_impl(8, &Unseeded, &CudaNative::default())
+    .sample_cuda_impl(8, &Unseeded, &CudaNative::default())
     .expect("non-pot n should work");
   assert_eq!(batch.shape(), &[8, 3000]);
 }
 
 #[test]
-fn cuda_native_eigenvalues_structural() {
+fn cuda_eigenvalues_structural() {
   let fgn = Fgn::<f64>::new(0.72, 2048, Some(1.0), Unseeded);
   let eigs = &*fgn.sqrt_eigenvalues;
 
@@ -79,7 +79,7 @@ fn cuda_native_eigenvalues_structural() {
 }
 
 #[test]
-fn cuda_native_scale_matches_cpu() {
+fn cuda_scale_matches_cpu() {
   for &n in &[1024_usize, 3000, 4096] {
     let fgn = Fgn::<f64>::new(0.7, n, Some(2.0), Unseeded);
     let cpu_scale = fgn.scale;
@@ -96,7 +96,7 @@ fn cuda_native_scale_matches_cpu() {
 }
 
 #[test]
-fn cuda_native_variance_matches_cpu() {
+fn cuda_variance_matches_cpu() {
   let h = 0.72_f64;
   let n = 2048_usize;
   let t = 1.0_f64;
@@ -110,7 +110,7 @@ fn cuda_native_variance_matches_cpu() {
     cpu_vals.iter().map(|x| (x - cpu_mean).powi(2)).sum::<f64>() / cpu_vals.len() as f64;
 
   let cuda_batch = fgn
-    .sample_cuda_native_impl(m, &Unseeded, &CudaNative::default())
+    .sample_cuda_impl(m, &Unseeded, &CudaNative::default())
     .expect("cuda batch should succeed");
   let cuda_vals: Vec<f64> = cuda_batch.iter().copied().collect();
   let cuda_mean = cuda_vals.iter().sum::<f64>() / cuda_vals.len() as f64;
@@ -128,7 +128,7 @@ fn cuda_native_variance_matches_cpu() {
 }
 
 #[test]
-fn cuda_native_covariance_structure_matches_cpu() {
+fn cuda_covariance_structure_matches_cpu() {
   let h = 0.72_f64;
   let n = 2048_usize;
   let t = 1.0_f64;
@@ -142,7 +142,7 @@ fn cuda_native_covariance_structure_matches_cpu() {
   let cpu_cov4 = lag_covariance(&cpu_paths, cpu_mean, 4);
 
   let cuda_batch = fgn
-    .sample_cuda_native_impl(m, &Unseeded, &CudaNative::default())
+    .sample_cuda_impl(m, &Unseeded, &CudaNative::default())
     .expect("cuda batch should succeed");
   let cuda_paths: Vec<Vec<f64>> = cuda_batch.rows().into_iter().map(|r| r.to_vec()).collect();
   let cuda_vals: Vec<f64> = cuda_paths.iter().flatten().copied().collect();
@@ -166,20 +166,20 @@ fn cuda_native_covariance_structure_matches_cpu() {
 /// an unrelated device draw happens between them: the Philox offset is a
 /// function of the seed, not of the process's launch history.
 #[test]
-fn cuda_native_same_seed_same_paths_regardless_of_history() {
+fn cuda_same_seed_same_paths_regardless_of_history() {
   use stochastic_rs_core::simd_rng::Deterministic;
   let first = Fgn::<f64, _>::new(0.7, 256, Some(1.0), Deterministic::new(7))
-    .sample_cuda_native_impl(4, &Deterministic::new(7), &CudaNative::default())
+    .sample_cuda_impl(4, &Deterministic::new(7), &CudaNative::default())
     .expect("first batch");
   let _interleaved = Fgn::<f64>::new(0.3, 128, Some(1.0), Unseeded)
-    .sample_cuda_native_impl(2, &Unseeded, &CudaNative::default())
+    .sample_cuda_impl(2, &Unseeded, &CudaNative::default())
     .expect("interleaved batch");
   let second = Fgn::<f64, _>::new(0.7, 256, Some(1.0), Deterministic::new(7))
-    .sample_cuda_native_impl(4, &Deterministic::new(7), &CudaNative::default())
+    .sample_cuda_impl(4, &Deterministic::new(7), &CudaNative::default())
     .expect("second batch");
   assert_eq!(first, second, "same seed must give the same device paths");
   let other = Fgn::<f64, _>::new(0.7, 256, Some(1.0), Deterministic::new(8))
-    .sample_cuda_native_impl(4, &Deterministic::new(8), &CudaNative::default())
+    .sample_cuda_impl(4, &Deterministic::new(8), &CudaNative::default())
     .expect("other seed");
   assert_ne!(
     first, other,
@@ -190,24 +190,24 @@ fn cuda_native_same_seed_same_paths_regardless_of_history() {
 /// A batch produced in chunks equals one launch, path for path: one seed per
 /// batch and an element offset per chunk, in both precisions.
 #[test]
-fn cuda_native_chunks_are_bit_identical_to_one_launch() {
+fn cuda_chunks_are_bit_identical_to_one_launch() {
   use stochastic_rs_core::simd_rng::Deterministic;
   let whole64 = Fgn::<f64, _>::new(0.7, 512, Some(1.0), Deterministic::new(5))
-    .sample_cuda_native_impl(9, &Deterministic::new(5), &CudaNative::default())
+    .sample_cuda_impl(9, &Deterministic::new(5), &CudaNative::default())
     .expect("whole f64");
   let whole32 = Fgn::<f32, _>::new(0.7, 512, Some(1.0), Deterministic::new(5))
-    .sample_cuda_native_impl(9, &Deterministic::new(5), &CudaNative::default())
+    .sample_cuda_impl(9, &Deterministic::new(5), &CudaNative::default())
     .expect("whole f32");
   // Two paths per chunk: five launches for nine paths.
   let chunked64 = Fgn::<f64, _>::new(0.7, 512, Some(1.0), Deterministic::new(5))
-    .sample_cuda_native_impl(
+    .sample_cuda_impl(
       9,
       &Deterministic::new(5),
       &CudaNative::default().with_batch_budget((4 * 512 + 512) * 8 * 2),
     )
     .expect("chunked f64");
   let chunked32 = Fgn::<f32, _>::new(0.7, 512, Some(1.0), Deterministic::new(5))
-    .sample_cuda_native_impl(
+    .sample_cuda_impl(
       9,
       &Deterministic::new(5),
       &CudaNative::default().with_batch_budget((4 * 512 + 512) * 4 * 2),
@@ -222,7 +222,7 @@ fn cuda_native_chunks_are_bit_identical_to_one_launch() {
 /// same `Deterministic` seed agree, a different seed differs, and the inner
 /// `Unseeded` fGN never enters.
 #[test]
-fn cuda_native_fbm_honours_its_own_seed() {
+fn cuda_fbm_honours_its_own_seed() {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use crate::device::CudaNative;

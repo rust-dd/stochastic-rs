@@ -54,7 +54,7 @@ stochastic-rs-core (simd_rng)
 | Feature         | Owner crate                  | Pulls in                          | Use when                                              |
 |-----------------|------------------------------|-----------------------------------|-------------------------------------------------------|
 | `ai`            | umbrella                     | `stochastic-rs-ai`, `candle-core` | NN volatility surrogates                              |
-| `cuda-native`   | `stochastic`                 | `cudarc`, cuFFT, fused Philox     | Direct CUDA backend for FGN / fBM (NVIDIA, CUDA 12.x) |
+| `cuda`   | `stochastic`                 | `cudarc`, cuFFT, fused Philox     | Direct CUDA backend for FGN / fBM (NVIDIA, CUDA 12.x) |
 | `cubecl`        | `stochastic`                 | `cubecl`, `gpu-fft`               | Portable GPU kernel framework (CPU + GPU runtime)     |
 | `cubecl-cuda`      | `stochastic`                 | `cubecl-cuda`                     | cubecl over CUDA (NVIDIA)                             |
 | `cubecl-wgpu`      | `stochastic`                 | `cubecl-wgpu`                     | cubecl over WebGPU (NVIDIA / AMD / Apple via wgpu)    |
@@ -162,7 +162,7 @@ public surface — the per-backend samplers are crate-private (`sample_*_impl`,
 wired up in `stochastic_rs::stochastic::device`) and are reached only through
 it, as in the per-backend blocks below.
 
-### `cuda-native` — direct CUDA (NVIDIA, recommended)
+### `cuda` — direct CUDA (NVIDIA, recommended)
 
 Direct binding via [`cudarc`](https://crates.io/crates/cudarc) + cuFFT
 + a fused Philox RNG kernel. **No `.cu` files, no `nvcc` required** —
@@ -171,8 +171,8 @@ the kernels ship as Rust strings and JIT through cudarc.
 Requires NVIDIA CUDA Toolkit 12.x and a compatible GPU.
 
 ```bash
-cargo build --features cuda-native
-cargo bench --features cuda-native --bench fgn_cuda_native
+cargo build --features cuda
+cargo bench --features cuda --bench fgn_cuda
 ```
 
 ```rust
@@ -257,7 +257,7 @@ let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
 | CPU SIMD     | Small `n` (≤ 4 k), single path               | ≈ 8 µs        | rayon × cores       |
 | `accelerate` | Medium `n` (4 k–16 k), single path on macOS  | ≈ 30 µs       | one core            |
 | `metal`      | Large `n` + batches on macOS                 | ≈ 80 µs       | full GPU            |
-| `cuda-native` / `cubecl-cuda` | Large `n` (≥ 16 k) + batches    | ≈ 80 µs       | full GPU            |
+| `cuda` / `cubecl-cuda` | Large `n` (≥ 16 k) + batches    | ≈ 80 µs       | full GPU            |
 | `cubecl-wgpu`   | Cross-platform, browser / WASM targets       | ≈ 100 µs      | full GPU            |
 
 Concrete numbers and the cross-over point are on the

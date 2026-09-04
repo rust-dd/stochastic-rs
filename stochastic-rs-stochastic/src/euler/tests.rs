@@ -172,7 +172,7 @@ fn device_seed_follows_the_seed_source() {
 /// `f32` libm rounding of Box–Muller.
 #[cfg(any(
   feature = "metal",
-  feature = "cuda-native",
+  feature = "cuda",
   feature = "cubecl-cuda",
   feature = "cubecl-wgpu"
 ))]
@@ -341,9 +341,9 @@ mod devices {
 
   /// A batch above the budget runs through the two-stream pipeline; its
   /// union must equal one launch path for path, in both precisions.
-  #[cfg(feature = "cuda-native")]
+  #[cfg(feature = "cuda")]
   #[test]
-  fn cuda_native_chunks_are_bit_identical_to_one_launch() {
+  fn cuda_chunks_are_bit_identical_to_one_launch() {
     use crate::device::CudaNative;
     let whole64 = gbm::<f64>(21).on::<CudaNative>().sample_par(10);
     let whole32 = gbm::<f32>(21).on::<CudaNative>().sample_par(10);
@@ -364,9 +364,9 @@ mod devices {
     assert_eq!(mapped, whole64.iter().map(|p| p[252]).collect::<Vec<_>>());
   }
 
-  #[cfg(feature = "cuda-native")]
+  #[cfg(feature = "cuda")]
   #[test]
-  fn cuda_native_backend_matches_the_moments() {
+  fn cuda_backend_matches_the_moments() {
     gbm_moments_hold::<f64, crate::device::CudaNative>("CudaNative f64");
     gbm_moments_hold::<f32, crate::device::CudaNative>("CudaNative f32");
     cir_stays_nonnegative::<f64, crate::device::CudaNative>("CudaNative f64");

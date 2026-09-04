@@ -66,9 +66,9 @@ names from the root `Cargo.toml` — there is no bare `cuda` feature:
 
 ```toml
 [[bench]]
-name = "fgn_cuda_native"
+name = "fgn_cuda"
 harness = false
-required-features = ["cuda-native"]          # cudarc + cuFFT
+required-features = ["cuda"]          # cudarc + cuFFT
 ```
 
 The gated benches in tree today, with their exact feature sets:
@@ -76,8 +76,8 @@ The gated benches in tree today, with their exact feature sets:
 | Bench | `required-features` |
 |---|---|
 | `fgn_gpu` | `["cubecl"]` |
-| `fgn_cuda_native` | `["cuda-native"]` |
-| `fgn_cuda_compare` | `["cuda-native", "cubecl-cuda"]` |
+| `fgn_cuda` | `["cuda"]` |
+| `fgn_cuda_compare` | `["cuda", "cubecl-cuda"]` |
 | `fgn_all_backends` | `["cubecl-wgpu", "metal", "accelerate"]` |
 | `fgn_accelerate` | `["accelerate"]` |
 | `fgn_metal` | `["metal"]` |
@@ -176,7 +176,7 @@ Before commit, verify:
 
 ```bash
 cargo build --benches -p stochastic-rs                              # default features
-cargo build --benches -p stochastic-rs --features cuda-native       # if applicable
+cargo build --benches -p stochastic-rs --features cuda       # if applicable
 ```
 
 Use `-p stochastic-rs`, **not** `--workspace`: every bench lives in the
