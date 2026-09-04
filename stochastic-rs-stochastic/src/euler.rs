@@ -79,6 +79,17 @@ pub enum EulerSpec<T: FloatExt> {
   /// `dX = (α − βX) dt + σ√(X(1−X)) dW` on the unit interval, absorbing at
   /// both ends.
   Jacobi { alpha: T, beta: T, sigma: T },
+  /// `dX = μX dt + σ|X|^γ dW`: constant elasticity of variance.
+  ConstantElasticity { mu: T, sigma: T, gamma: T },
+  /// `dX = (θ₁ + θ₂X) dt + θ₃|X|^θ₄ dW`: Chan–Karolyi–Longstaff–Sanders.
+  Ckls {
+    theta1: T,
+    theta2: T,
+    theta3: T,
+    theta4: T,
+  },
+  /// `dX = X(1 − aX) dt + bX dW`: logistic growth with multiplicative noise.
+  Logistic { a: T, b: T },
 }
 
 impl<T: FloatExt> EulerSpec<T> {
@@ -123,6 +134,17 @@ impl<T: FloatExt> EulerSpec<T> {
       EulerSpec::Jacobi { alpha, beta, sigma } => {
         (Family::Jacobi.code(), [alpha, beta, sigma, T::zero()])
       }
+      EulerSpec::ConstantElasticity { mu, sigma, gamma } => (
+        Family::ConstantElasticity.code(),
+        [mu, sigma, gamma, T::zero()],
+      ),
+      EulerSpec::Ckls {
+        theta1,
+        theta2,
+        theta3,
+        theta4,
+      } => (Family::Ckls.code(), [theta1, theta2, theta3, theta4]),
+      EulerSpec::Logistic { a, b } => (Family::Logistic.code(), [a, b, T::zero(), T::zero()]),
     }
   }
 }

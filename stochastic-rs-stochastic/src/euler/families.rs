@@ -421,6 +421,24 @@ euler_families! {
     }
     report { x },
 
+  /// `dX = μX dt + σ|X|^γ dW`: constant elasticity of variance, the power
+  /// taken off `|X|` so a negative excursion stays defined.
+  7 => ConstantElasticity { mu, sigma, gamma }
+    step { x + mu * x * dt + sigma * pow(abs(x), gamma) * dz }
+    report { x },
+
+  /// `dX = (θ₁ + θ₂X) dt + θ₃|X|^θ₄ dW`: the Chan–Karolyi–Longstaff–Sanders
+  /// family, whose four parameters nest most one-factor short-rate models.
+  8 => Ckls { theta1, theta2, theta3, theta4 }
+    step { x + (theta1 + theta2 * x) * dt + theta3 * pow(abs(x), theta4) * dz }
+    report { x },
+
+  /// `dX = X(1 − aX) dt + bX dW`: logistic growth with multiplicative noise.
+  /// `X(1 − aX)` is written `x - a * x * x`, which needs no literal.
+  9 => Logistic { a, b }
+    step { x + (x - a * x * x) * dt + b * x * dz }
+    report { x },
+
   2 => SquareRoot { kappa, theta, sigma }
     step { x + kappa * (theta - positive(x)) * dt + sigma * sqrt(positive(x)) * dz }
     report { positive(x) },

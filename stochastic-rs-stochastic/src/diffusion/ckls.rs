@@ -12,7 +12,6 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -66,9 +65,46 @@ impl<T: FloatExt, S: SeedExt> Ckls<T, S> {
 
 impl<T: FloatExt, S: SeedExt, B> Ckls<T, S, B> {}
 
-backend_switch!([T: FloatExt, S: SeedExt] Ckls<T, S> { theta1, theta2, theta3, theta4, n, x0, t, seed } via host);
+/// The Euler engine's view of CKLS: four parameters, one declaration, and
+/// every backend serves it.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for Ckls<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::Ckls {
+      theta1: self.theta1,
+      theta2: self.theta2,
+      theta3: self.theta3,
+      theta4: self.theta4,
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Ckls<T, S, B> {
+  fn initial_value(&self) -> T {
+    self.x0.unwrap_or(T::zero())
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Ckls<T, S> { theta1, theta2, theta3, theta4, n, x0, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Ckls<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = CklsSampler<T>
@@ -88,6 +124,29 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Ckls<T, S, B> {
       theta4: self.theta4,
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
     }
+  }
+
+  /// Through the Euler engine: on a device the recursion runs in the kernel,
+  /// on the host devices it is this process's own sampler, chunked exactly as
+  /// `ProcessExt` chunks.
+  fn sample(&self) -> Array1<T> {
+    self.backend.euler_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    self.backend.euler_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    self.backend.euler_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    self.backend.try_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    self.backend.try_euler_paths(self, m)
   }
 }
 
