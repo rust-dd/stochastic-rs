@@ -46,6 +46,7 @@ fn kernel_source(real: &str) -> String {
       exp: "expf",
       pow: "powf",
       abs: "fabsf",
+      tanh: "tanhf",
       index: "unsigned long long",
     }
   } else {
@@ -57,6 +58,7 @@ fn kernel_source(real: &str) -> String {
       exp: "exp",
       pow: "pow",
       abs: "fabs",
+      tanh: "tanh",
       index: "unsigned long long",
     }
   };

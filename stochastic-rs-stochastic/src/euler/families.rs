@@ -14,6 +14,11 @@
 //! generated Metal kernel, so a formula that drifts from the declaration
 //! fails a test rather than a review.
 //!
+//! A step or report may open with `bind name = expr;` lines before its final
+//! expression. Each becomes a `let` on the host and in a CubeCL kernel and a
+//! `const REAL` in the emitted C, which is how a family names a clamped or
+//! guarded state once and then reads like the host sampler it came from.
+//!
 //! The names a step may use are fixed: `x` for the state, `dt` for the step
 //! size, `dz` for the step's noise **increment** — `sqrt_dt · z` for Gaussian
 //! noise, the fractional increment itself for fGN, which is what lets one
@@ -22,12 +27,12 @@
 //! buffer in declaration order. The `report` expression maps the state to what
 //! the path records and is evaluated at `t = 0` as well, where no noise exists.
 //!
-//! The function vocabulary is `sqrt`, `exp`, `ln`, `pow`, `abs`, `positive`,
-//! `max`, `min`, the literal `lit`, the comparisons `less`, `leq` and `geq`,
-//! and the branch-free `pick`. Each has a host implementation in [`ops`],
-//! a C definition in
-//! [`C_PRELUDE`]; anything outside it fails to compile on the host, which is
-//! the intended way to find out that a kernel could not have run it either.
+//! The function vocabulary is `sqrt`, `exp`, `ln`, `pow`, `abs`, `negate`,
+//! `tanh`, `positive`, `max`, `min`, the literal `lit`, the comparisons
+//! `less`, `leq` and `geq`, and the branch-free `pick`. Each has a host
+//! implementation in [`ops`] and a C definition in [`C_PRELUDE`]; anything
+//! outside it fails to compile on the host, which is the intended way to find
+//! out that a kernel could not have run it either.
 
 use crate::traits::FloatExt;
 
@@ -68,6 +73,21 @@ pub(crate) mod ops {
   #[inline(always)]
   pub(crate) fn abs<T: FloatExt>(v: T) -> T {
     v.abs()
+  }
+
+  /// `−v`. A literal may never sit on the left of an operator — the compiler
+  /// cannot infer its type there — so a step that needs `c − f(x)` writes
+  /// `negate(f(x) − lit(c))`, which is the same value in IEEE arithmetic.
+  /// The name avoids `neg`, which `cubecl::prelude` already exports.
+  #[inline(always)]
+  pub(crate) fn negate<T: FloatExt>(v: T) -> T {
+    T::zero() - v
+  }
+
+  /// `tanh v`
+  #[inline(always)]
+  pub(crate) fn tanh<T: FloatExt>(v: T) -> T {
+    v.tanh()
   }
 
   /// The positive part, the truncation a square-root diffusion steps on.
@@ -132,6 +152,8 @@ pub(crate) const C_PRELUDE: &str = r#"#define sqrt(v) STOCH_SQRT(v)
 #define ln(v) STOCH_LOG(v)
 #define pow(a, b) STOCH_POW(a, b)
 #define abs(v) STOCH_ABS(v)
+#define negate(v) (-(v))
+#define tanh(v) STOCH_TANH(v)
 #define positive(v) ((v) > (REAL)0 ? (v) : (REAL)0)
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define min(a, b) ((a) < (b) ? (a) : (b))
@@ -180,6 +202,18 @@ pub(crate) mod cube_ops {
   #[cube]
   pub(crate) fn abs(v: f32) -> f32 {
     Abs::abs(v)
+  }
+
+  /// `−v`.
+  #[cube]
+  pub(crate) fn negate(v: f32) -> f32 {
+    0.0f32 - v
+  }
+
+  /// `tanh v`
+  #[cube]
+  pub(crate) fn tanh(v: f32) -> f32 {
+    Tanh::tanh(v)
   }
 
   /// The positive part, the truncation a square-root diffusion steps on.
@@ -272,20 +306,29 @@ macro_rules! euler_families {
               let $param = $params[slot];
               slot += 1;
             )*
-            $($step)*
+            euler_families!(@host_body $($step)*)
           }
         )*
       }
     }
 
-    /// What `family` reports for a state `x`, on the host.
-    #[allow(dead_code, unused_variables)]
-    pub(crate) fn host_report<T: FloatExt>(family: Family, $x: T) -> T {
+    /// What `family` reports for a state `x`, on the host. The parameter
+    /// buffer is read in declaration order, as [`host_step`] reads it, so a
+    /// report may name the family's own parameters.
+    #[allow(dead_code, unused_variables, unused_mut, unused_assignments)]
+    pub(crate) fn host_report<T: FloatExt>(family: Family, $x: T, $params: &[T]) -> T {
       #[allow(unused_imports)]
       use ops::*;
       match family {
         $(
-          Family::$name => { $($report)* }
+          Family::$name => {
+            let mut slot = 0;
+            $(
+              let $param = $params[slot];
+              slot += 1;
+            )*
+            euler_families!(@host_body $($report)*)
+          }
         )*
       }
     }
@@ -320,12 +363,10 @@ macro_rules! euler_families {
       use cubecl::prelude::*;
 
       $(
-        $(#[$meta])*
-        #[cube]
-        #[allow(non_snake_case, unused_variables)]
-        pub(crate) fn $name($x: f32) -> f32 {
-          $($report)*
-        }
+        euler_families!(@cube_report
+          $(#[$meta])* $name, $x, $params,
+          [0 1 2 3 4 5 6 7], [$($param)*], {}, {$($report)*}
+        );
       )*
     }
 
@@ -333,16 +374,27 @@ macro_rules! euler_families {
     pub(crate) const C_STEP: &str = concat!($(
       "        if (family == ", stringify!($code), "u) {\n",
       euler_families!(@bind [0 1 2 3 4 5 6 7] $($param)*),
-      "            x = ", stringify!($($step)*), ";\n",
+      euler_families!(@c_body "x", $($step)*),
       "        }\n",
     )*);
 
     /// The C statements that set `reported` from `x`, one block per family.
     pub(crate) const C_REPORT: &str = concat!($(
       "        if (family == ", stringify!($code), "u) {\n",
-      "            reported = ", stringify!($($report)*), ";\n",
+      euler_families!(@bind [0 1 2 3 4 5 6 7] $($param)*),
+      euler_families!(@c_body "reported", $($report)*),
       "        }\n",
     )*);
+  };
+
+  (@cube_step
+    $(#[$meta:meta])* $name:ident, $x:ident, $params:ident, $dt:ident, $dz:ident,
+    [$($idx:literal)*], [], {$($bound:tt)*}, {bind $n:ident = $e:expr; $($rest:tt)*}
+  ) => {
+    euler_families!(@cube_step
+      $(#[$meta])* $name, $x, $params, $dt, $dz,
+      [$($idx)*], [], {$($bound)* let $n = $e;}, {$($rest)*}
+    );
   };
 
   (@cube_step
@@ -373,6 +425,59 @@ macro_rules! euler_families {
       [$($rest_idx)*], [$($rest)*],
       {$($bound)* let $head = $params[$i];}, {$($step)*}
     );
+  };
+
+  (@cube_report
+    $(#[$meta:meta])* $name:ident, $x:ident, $params:ident,
+    [$($idx:literal)*], [], {$($bound:tt)*}, {bind $n:ident = $e:expr; $($rest:tt)*}
+  ) => {
+    euler_families!(@cube_report
+      $(#[$meta])* $name, $x, $params,
+      [$($idx)*], [], {$($bound)* let $n = $e;}, {$($rest)*}
+    );
+  };
+
+  (@cube_report
+    $(#[$meta:meta])* $name:ident, $x:ident, $params:ident,
+    [$($idx:literal)*], [], {$($bound:tt)*}, {$($report:tt)*}
+  ) => {
+    $(#[$meta])*
+    #[cube]
+    #[allow(non_snake_case, unused_variables)]
+    pub(crate) fn $name($x: f32, $params: &Array<f32>) -> f32 {
+      $($bound)*
+      $($report)*
+    }
+  };
+
+  (@cube_report
+    $(#[$meta:meta])* $name:ident, $x:ident, $params:ident,
+    [$i:literal $($rest_idx:literal)*], [$head:ident $($rest:ident)*],
+    {$($bound:tt)*}, {$($report:tt)*}
+  ) => {
+    euler_families!(@cube_report
+      $(#[$meta])* $name, $x, $params,
+      [$($rest_idx)*], [$($rest)*],
+      {$($bound)* let $head = $params[$i];}, {$($report)*}
+    );
+  };
+
+  (@host_body bind $n:ident = $e:expr; $($rest:tt)*) => {{
+    let $n = $e;
+    euler_families!(@host_body $($rest)*)
+  }};
+
+  (@host_body $($body:tt)*) => { $($body)* };
+
+  (@c_body $lhs:literal, bind $n:ident = $e:expr; $($rest:tt)*) => {
+    concat!(
+      "            const REAL ", stringify!($n), " = ", stringify!($e), ";\n",
+      euler_families!(@c_body $lhs, $($rest)*)
+    )
+  };
+
+  (@c_body $lhs:literal, $($body:tt)*) => {
+    concat!("            ", $lhs, " = ", stringify!($($body)*), ";\n")
   };
 
   (@bind [$($idx:literal)*]) => { "" };
@@ -507,6 +612,145 @@ euler_families! {
       x + (am1 / pick(less(abs(x), lit(1e-12)), lit(1e-12), x)
         + a0 + a1 * x + a2 * x * x) * dt
         + sqrt(abs(b0 + b1 * x + b2 * pow(abs(x), b3))) * dz
+    }
+    report { x },
+
+  /// `dX = (a − b·ln X)X dt + σX dW`, floored at `1e-12`. The step's own
+  /// floor makes the state positive from the first step on, and the process
+  /// floors `X₀` the same way, so the guard the host applies to every
+  /// coefficient is already true of `x` here.
+  18 => Gompertz { a, b, sigma }
+    step { max(x + (a - b * ln(x)) * x * dt + sigma * x * dz, lit(1e-12)) }
+    report { x },
+
+  /// `dX = aX(1−X) dt + σ√(X(1−X)) dW` on `[0, 1]`: the Kimura diffusion of
+  /// population genetics. As with [`Gompertz`](Family::Gompertz) the step's
+  /// own clamp is what keeps the coefficients in range.
+  19 => Kimura { a, sigma }
+    step {
+      bind xi = min(max(x, lit(0.0)), lit(1.0));
+      min(
+        max(
+          xi + a * xi * negate(xi - lit(1.0)) * dt
+            + sigma * sqrt(xi * negate(xi - lit(1.0))) * dz,
+          lit(0.0)
+        ),
+        lit(1.0)
+      )
+    }
+    report { x },
+
+  /// `dX = (α + βX + γX²) dt + σX dW`: a quadratic drift with proportional
+  /// noise.
+  20 => Quadratic { alpha, beta, gamma, sigma }
+    step { x + (alpha + beta * x + gamma * x * x) * dt + sigma * x * dz }
+    report { x },
+
+  /// `dX = κ(μ − X) dt + √|2κ(aX² + bX + c)| dW`: the Pearson diffusion
+  /// family. `2κ` is folded on the host so the step needs no literal.
+  21 => Pearson { kappa, mu, a, b, c, two_kappa }
+    step {
+      x + kappa * (mu - x) * dt + sqrt(abs(two_kappa * (a * x * x + b * x + c))) * dz
+    }
+    report { x },
+
+  /// `dX = rX(1 − X/K) dt + σX dW`: logistic growth in its Verhulst
+  /// parametrisation, run unclamped.
+  22 => Verhulst { r, k, sigma }
+    step { x + r * x * ((k - x) / k) * dt + sigma * x * dz }
+    report { x },
+
+  /// [`Verhulst`](Family::Verhulst) with the state confined to `[0, K]`.
+  23 => VerhulstClamped { r, k, sigma }
+    step { min(max(x + r * x * ((k - x) / k) * dt + sigma * x * dz, lit(0.0)), k) }
+    report { x },
+
+  /// `dX = κ(θ − X)X dt + σ√X dW`: Feller's logistic diffusion, truncated at
+  /// zero.
+  24 => FellerLogistic { kappa, theta, sigma }
+    step {
+      bind xi = positive(x);
+      positive(xi + kappa * (theta - xi) * xi * dt + sigma * sqrt(xi) * dz)
+    }
+    report { x },
+
+  /// [`FellerLogistic`](Family::FellerLogistic) reflected at zero instead of
+  /// truncated.
+  25 => FellerLogisticReflected { kappa, theta, sigma }
+    step {
+      bind xi = positive(x);
+      abs(xi + kappa * (theta - xi) * xi * dt + sigma * sqrt(xi) * dz)
+    }
+    report { x },
+
+  /// `dX = δ dt + 2√|X| dW`: the squared-Bessel recursion, truncated at zero.
+  26 => SquaredBesselState { delta, two }
+    step { positive(x + delta * dt + two * sqrt(abs(x)) * dz) }
+    report { x },
+
+  /// [`SquaredBesselState`](Family::SquaredBesselState) reflected at zero.
+  27 => SquaredBesselStateReflected { delta, two }
+    step { abs(x + delta * dt + two * sqrt(abs(x)) * dz) }
+    report { x },
+
+  /// [`SquaredBesselState`](Family::SquaredBesselState) reporting `√X`: the
+  /// Bessel process itself, stepped in squared space so the `(δ−1)/2X`
+  /// singularity never enters the recursion.
+  28 => BesselFromSquared { delta, two }
+    step { positive(x + delta * dt + two * sqrt(abs(x)) * dz) }
+    report { sqrt(x) },
+
+  /// [`BesselFromSquared`](Family::BesselFromSquared) reflected at zero.
+  29 => BesselFromSquaredReflected { delta, two }
+    step { abs(x + delta * dt + two * sqrt(abs(x)) * dz) }
+    report { sqrt(x) },
+
+  /// `dX = ½σ²(β − γ(X−μ)/√(δ² + (X−μ)²)) dt + σ dW`: the hyperbolic
+  /// diffusion whose stationary law is the hyperbolic distribution. `½σ²` is
+  /// folded on the host.
+  30 => HyperbolicDiffusion { beta, gamma, delta, mu, sigma, half_var }
+    step {
+      x + half_var * (beta - gamma * x / sqrt(delta * delta + (x - mu) * (x - mu))) * dt
+        + sigma * dz
+    }
+    report { x },
+
+  /// `dX = (a₋₁/X + a₀ + a₁X + a₂X²) dt + (b₀ + b₁X + b₂|X|^{b₃}) dW`: the
+  /// Aït-Sahalia drift with the diffusion left unsquared, guarded away from
+  /// the origin exactly as the host sampler guards it.
+  31 => NonLinear { am1, a0, a1, a2, b0, b1, b2, b3 }
+    step {
+      x + (am1 / pick(less(abs(x), lit(1e-12)), lit(1e-12), x)
+        + a0 + a1 * x + a2 * x * x) * dt
+        + (b0 + b1 * x + b2 * pow(abs(x), b3)) * dz
+    }
+    report { x },
+
+  /// Geometric Brownian motion on the shifted variable `Y = S + β`, reported
+  /// as `Y − β`: the displaced diffusion. The shift lives in the report, so
+  /// the step is the geometric one term for term.
+  32 => Displaced { mu, sigma, beta }
+    step { x + mu * x * dt + sigma * x * dz }
+    report { x - beta },
+
+  /// `dX = κ(μ − tanh X) dt + σ dW` reported as `tanh X`: Teng's stochastic
+  /// correlation process, stepped on the unbounded variable so the reported
+  /// correlation stays in `(−1, 1)` by construction.
+  33 => TanhOrnsteinUhlenbeck { kappa, mu, sigma }
+    step { x + kappa * (mu - tanh(x)) * dt + sigma * dz }
+    report { tanh(x) },
+
+  /// `dρ = κ(μ − ρ) dt + σ√(1 − ρ²) dW` confined to `[−0.9999, 0.9999]`: the
+  /// Van Emmerich stochastic correlation process.
+  34 => BoundedCorrelation { kappa, mu, sigma }
+    step {
+      min(
+        max(
+          x + kappa * (mu - x) * dt + sigma * sqrt(positive(negate(x * x - lit(1.0)))) * dz,
+          lit(-0.9999)
+        ),
+        lit(0.9999)
+      )
     }
     report { x },
 

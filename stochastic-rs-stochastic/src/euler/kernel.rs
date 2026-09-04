@@ -16,8 +16,8 @@
 /// The per-thread frame around the generated family blocks: the path guard,
 /// the counter-hash normals and the write-back. `STEP` and `REPORT` are the
 /// blocks [`super::families`] generates from the family declarations, and
-/// `REAL`, `STOCH_SQRT`, `STOCH_LOG`, `STOCH_COS` and the 64-bit buffer index
-/// type `INDEX` are the precision placeholders.
+/// `REAL`, `STOCH_SQRT`, `STOCH_LOG`, `STOCH_COS`, `STOCH_TANH` and the
+/// 64-bit buffer index type `INDEX` are the precision placeholders.
 pub(crate) const FRAME: &str = r#"    if (path >= paths) return;
     INDEX base = (INDEX)path * steps;
     REAL x = x0;
@@ -56,6 +56,7 @@ pub(crate) struct Language<'a> {
   pub exp: &'a str,
   pub pow: &'a str,
   pub abs: &'a str,
+  pub tanh: &'a str,
   /// The type of a buffer index; `unsigned long long` on CUDA, `uint` in MSL.
   pub index: &'a str,
 }
@@ -84,5 +85,6 @@ fn substitute(text: &str, lang: &Language<'_>) -> String {
     .replace("STOCH_EXP", lang.exp)
     .replace("STOCH_POW", lang.pow)
     .replace("STOCH_ABS", lang.abs)
+    .replace("STOCH_TANH", lang.tanh)
     .replace("REAL", lang.real)
 }

@@ -122,6 +122,115 @@ pub enum EulerSpec<T: FloatExt> {
     b2: T,
     b3: T,
   },
+  /// `dX = (a − b·ln X)X dt + σX dW`, floored at `1e-12`.
+  Gompertz {
+    a: T,
+    b: T,
+    sigma: T,
+  },
+  /// `dX = aX(1−X) dt + σ√(X(1−X)) dW` on `[0, 1]`.
+  Kimura {
+    a: T,
+    sigma: T,
+  },
+  /// `dX = (α + βX + γX²) dt + σX dW`.
+  Quadratic {
+    alpha: T,
+    beta: T,
+    gamma: T,
+    sigma: T,
+  },
+  /// `dX = κ(μ − X) dt + √|2κ(aX² + bX + c)| dW`, with `2κ` folded on the host.
+  Pearson {
+    kappa: T,
+    mu: T,
+    a: T,
+    b: T,
+    c: T,
+    two_kappa: T,
+  },
+  /// `dX = rX(1 − X/K) dt + σX dW`, unclamped.
+  Verhulst {
+    r: T,
+    k: T,
+    sigma: T,
+  },
+  /// [`Verhulst`](EulerSpec::Verhulst) confined to `[0, K]`.
+  VerhulstClamped {
+    r: T,
+    k: T,
+    sigma: T,
+  },
+  /// `dX = κ(θ − X)X dt + σ√X dW`, truncated at zero.
+  FellerLogistic {
+    kappa: T,
+    theta: T,
+    sigma: T,
+  },
+  /// [`FellerLogistic`](EulerSpec::FellerLogistic) reflected at zero.
+  FellerLogisticReflected {
+    kappa: T,
+    theta: T,
+    sigma: T,
+  },
+  /// `dX = δ dt + 2√|X| dW`, truncated at zero.
+  SquaredBesselState {
+    delta: T,
+    two: T,
+  },
+  /// [`SquaredBesselState`](EulerSpec::SquaredBesselState) reflected at zero.
+  SquaredBesselStateReflected {
+    delta: T,
+    two: T,
+  },
+  /// The squared-Bessel recursion reporting `√X`.
+  BesselFromSquared {
+    delta: T,
+    two: T,
+  },
+  /// [`BesselFromSquared`](EulerSpec::BesselFromSquared) reflected at zero.
+  BesselFromSquaredReflected {
+    delta: T,
+    two: T,
+  },
+  /// `dX = ½σ²(β − γ(X−μ)/√(δ² + (X−μ)²)) dt + σ dW`, with `½σ²` folded on the host.
+  HyperbolicDiffusion {
+    beta: T,
+    gamma: T,
+    delta: T,
+    mu: T,
+    sigma: T,
+    half_var: T,
+  },
+  /// The Aït-Sahalia drift with the diffusion left unsquared.
+  NonLinear {
+    am1: T,
+    a0: T,
+    a1: T,
+    a2: T,
+    b0: T,
+    b1: T,
+    b2: T,
+    b3: T,
+  },
+  /// Geometric Brownian motion on `Y = S + β`, reported as `Y − β`.
+  Displaced {
+    mu: T,
+    sigma: T,
+    beta: T,
+  },
+  /// `dX = κ(μ − tanh X) dt + σ dW` reported as `tanh X`.
+  TanhOrnsteinUhlenbeck {
+    kappa: T,
+    mu: T,
+    sigma: T,
+  },
+  /// `dρ = κ(μ − ρ) dt + σ√(1 − ρ²) dW` confined to `[−0.9999, 0.9999]`.
+  BoundedCorrelation {
+    kappa: T,
+    mu: T,
+    sigma: T,
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -211,6 +320,51 @@ impl<T: FloatExt> EulerSpec<T> {
         Family::AitSahalia.code(),
         [am1, a0, a1, a2, b0, b1, b2, b3],
       ),
+      EulerSpec::Gompertz { a, b, sigma } => (Family::Gompertz.code(), pad([a, b, sigma])),
+      EulerSpec::Kimura { a, sigma } => (Family::Kimura.code(), pad([a, sigma])),
+      EulerSpec::Quadratic {
+        alpha,
+        beta,
+        gamma,
+        sigma,
+      } => (Family::Quadratic.code(), pad([alpha, beta, gamma, sigma])),
+      EulerSpec::Pearson {
+        kappa,
+        mu,
+        a,
+        b,
+        c,
+        two_kappa,
+      } => (Family::Pearson.code(), pad([kappa, mu, a, b, c, two_kappa])),
+      EulerSpec::Verhulst { r, k, sigma } => (Family::Verhulst.code(), pad([r, k, sigma])),
+      EulerSpec::VerhulstClamped { r, k, sigma } => (Family::VerhulstClamped.code(), pad([r, k, sigma])),
+      EulerSpec::FellerLogistic { kappa, theta, sigma } => (Family::FellerLogistic.code(), pad([kappa, theta, sigma])),
+      EulerSpec::FellerLogisticReflected { kappa, theta, sigma } => (Family::FellerLogisticReflected.code(), pad([kappa, theta, sigma])),
+      EulerSpec::SquaredBesselState { delta, two } => (Family::SquaredBesselState.code(), pad([delta, two])),
+      EulerSpec::SquaredBesselStateReflected { delta, two } => (Family::SquaredBesselStateReflected.code(), pad([delta, two])),
+      EulerSpec::BesselFromSquared { delta, two } => (Family::BesselFromSquared.code(), pad([delta, two])),
+      EulerSpec::BesselFromSquaredReflected { delta, two } => (Family::BesselFromSquaredReflected.code(), pad([delta, two])),
+      EulerSpec::HyperbolicDiffusion {
+        beta,
+        gamma,
+        delta,
+        mu,
+        sigma,
+        half_var,
+      } => (Family::HyperbolicDiffusion.code(), pad([beta, gamma, delta, mu, sigma, half_var])),
+      EulerSpec::NonLinear {
+        am1,
+        a0,
+        a1,
+        a2,
+        b0,
+        b1,
+        b2,
+        b3,
+      } => (Family::NonLinear.code(), [am1, a0, a1, a2, b0, b1, b2, b3]),
+      EulerSpec::Displaced { mu, sigma, beta } => (Family::Displaced.code(), pad([mu, sigma, beta])),
+      EulerSpec::TanhOrnsteinUhlenbeck { kappa, mu, sigma } => (Family::TanhOrnsteinUhlenbeck.code(), pad([kappa, mu, sigma])),
+      EulerSpec::BoundedCorrelation { kappa, mu, sigma } => (Family::BoundedCorrelation.code(), pad([kappa, mu, sigma])),
     }
   }
 }

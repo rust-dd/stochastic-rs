@@ -40,7 +40,7 @@ fn euler_paths_kernel(
   if path < paths {
     let base = (path * steps) as usize;
     let mut x = x0;
-    out[base] = report(family, x0);
+    out[base] = report(family, x0, params);
     for i in 1..steps {
       // Two decorrelated uniforms via integer hashing (Murmur3-style finalizer).
       let g = (first_path + path) * steps + i;
@@ -65,7 +65,7 @@ fn euler_paths_kernel(
         dz = incs[(path * (steps - 1) + (i - 1)) as usize];
       }
       x = step(family, x, params, dt, dz);
-      out[base + i as usize] = report(family, x);
+      out[base + i as usize] = report(family, x, params);
     }
   }
 }
@@ -97,6 +97,57 @@ fn step(family: u32, x: f32, params: &Array<f32>, dt: f32, dz: f32) -> f32 {
   }
   if family == 17u32 {
     stepped = cube::AitSahalia(x, params, dt, dz);
+  }
+  if family == 18u32 {
+    stepped = cube::Gompertz(x, params, dt, dz);
+  }
+  if family == 19u32 {
+    stepped = cube::Kimura(x, params, dt, dz);
+  }
+  if family == 20u32 {
+    stepped = cube::Quadratic(x, params, dt, dz);
+  }
+  if family == 21u32 {
+    stepped = cube::Pearson(x, params, dt, dz);
+  }
+  if family == 22u32 {
+    stepped = cube::Verhulst(x, params, dt, dz);
+  }
+  if family == 23u32 {
+    stepped = cube::VerhulstClamped(x, params, dt, dz);
+  }
+  if family == 24u32 {
+    stepped = cube::FellerLogistic(x, params, dt, dz);
+  }
+  if family == 25u32 {
+    stepped = cube::FellerLogisticReflected(x, params, dt, dz);
+  }
+  if family == 26u32 {
+    stepped = cube::SquaredBesselState(x, params, dt, dz);
+  }
+  if family == 27u32 {
+    stepped = cube::SquaredBesselStateReflected(x, params, dt, dz);
+  }
+  if family == 28u32 {
+    stepped = cube::BesselFromSquared(x, params, dt, dz);
+  }
+  if family == 29u32 {
+    stepped = cube::BesselFromSquaredReflected(x, params, dt, dz);
+  }
+  if family == 30u32 {
+    stepped = cube::HyperbolicDiffusion(x, params, dt, dz);
+  }
+  if family == 31u32 {
+    stepped = cube::NonLinear(x, params, dt, dz);
+  }
+  if family == 32u32 {
+    stepped = cube::Displaced(x, params, dt, dz);
+  }
+  if family == 33u32 {
+    stepped = cube::TanhOrnsteinUhlenbeck(x, params, dt, dz);
+  }
+  if family == 34u32 {
+    stepped = cube::BoundedCorrelation(x, params, dt, dz);
   }
   if family == 16u32 {
     stepped = cube::FellerRoot(x, params, dt, dz);
@@ -136,61 +187,112 @@ fn step(family: u32, x: f32, params: &Array<f32>, dt: f32, dz: f32) -> f32 {
 
 /// Dispatches to the family's generated report.
 #[cube]
-fn report(family: u32, x: f32) -> f32 {
+fn report(family: u32, x: f32, params: &Array<f32>) -> f32 {
   let mut reported = x;
   if family == 0u32 {
-    reported = cube_report::GeometricBrownian(x);
+    reported = cube_report::GeometricBrownian(x, params);
   }
   if family == 1u32 {
-    reported = cube_report::OrnsteinUhlenbeck(x);
+    reported = cube_report::OrnsteinUhlenbeck(x, params);
   }
   if family == 2u32 {
-    reported = cube_report::SquareRoot(x);
+    reported = cube_report::SquareRoot(x, params);
   }
   if family == 6u32 {
-    reported = cube_report::Jacobi(x);
+    reported = cube_report::Jacobi(x, params);
   }
   if family == 9u32 {
-    reported = cube_report::Logistic(x);
+    reported = cube_report::Logistic(x, params);
   }
   if family == 12u32 {
-    reported = cube_report::RadialOrnsteinUhlenbeck(x);
+    reported = cube_report::RadialOrnsteinUhlenbeck(x, params);
   }
   if family == 17u32 {
-    reported = cube_report::AitSahalia(x);
+    reported = cube_report::AitSahalia(x, params);
+  }
+  if family == 18u32 {
+    reported = cube_report::Gompertz(x, params);
+  }
+  if family == 19u32 {
+    reported = cube_report::Kimura(x, params);
+  }
+  if family == 20u32 {
+    reported = cube_report::Quadratic(x, params);
+  }
+  if family == 21u32 {
+    reported = cube_report::Pearson(x, params);
+  }
+  if family == 22u32 {
+    reported = cube_report::Verhulst(x, params);
+  }
+  if family == 23u32 {
+    reported = cube_report::VerhulstClamped(x, params);
+  }
+  if family == 24u32 {
+    reported = cube_report::FellerLogistic(x, params);
+  }
+  if family == 25u32 {
+    reported = cube_report::FellerLogisticReflected(x, params);
+  }
+  if family == 26u32 {
+    reported = cube_report::SquaredBesselState(x, params);
+  }
+  if family == 27u32 {
+    reported = cube_report::SquaredBesselStateReflected(x, params);
+  }
+  if family == 28u32 {
+    reported = cube_report::BesselFromSquared(x, params);
+  }
+  if family == 29u32 {
+    reported = cube_report::BesselFromSquaredReflected(x, params);
+  }
+  if family == 30u32 {
+    reported = cube_report::HyperbolicDiffusion(x, params);
+  }
+  if family == 31u32 {
+    reported = cube_report::NonLinear(x, params);
+  }
+  if family == 32u32 {
+    reported = cube_report::Displaced(x, params);
+  }
+  if family == 33u32 {
+    reported = cube_report::TanhOrnsteinUhlenbeck(x, params);
+  }
+  if family == 34u32 {
+    reported = cube_report::BoundedCorrelation(x, params);
   }
   if family == 16u32 {
-    reported = cube_report::FellerRoot(x);
+    reported = cube_report::FellerRoot(x, params);
   }
   if family == 15u32 {
-    reported = cube_report::ModifiedSquareRoot(x);
+    reported = cube_report::ModifiedSquareRoot(x, params);
   }
   if family == 14u32 {
-    reported = cube_report::Hyperbolic(x);
+    reported = cube_report::Hyperbolic(x, params);
   }
   if family == 13u32 {
-    reported = cube_report::LinearSde(x);
+    reported = cube_report::LinearSde(x, params);
   }
   if family == 11u32 {
-    reported = cube_report::LogGeometric(x);
+    reported = cube_report::LogGeometric(x, params);
   }
   if family == 10u32 {
-    reported = cube_report::ThreeHalf(x);
+    reported = cube_report::ThreeHalf(x, params);
   }
   if family == 8u32 {
-    reported = cube_report::Ckls(x);
+    reported = cube_report::Ckls(x, params);
   }
   if family == 7u32 {
-    reported = cube_report::ConstantElasticity(x);
+    reported = cube_report::ConstantElasticity(x, params);
   }
   if family == 5u32 {
-    reported = cube_report::MirroredSquareRoot(x);
+    reported = cube_report::MirroredSquareRoot(x, params);
   }
   if family == 4u32 {
-    reported = cube_report::ReflectedSquareRoot(x);
+    reported = cube_report::ReflectedSquareRoot(x, params);
   }
   if family == 3u32 {
-    reported = cube_report::Additive(x);
+    reported = cube_report::Additive(x, params);
   }
   reported
 }

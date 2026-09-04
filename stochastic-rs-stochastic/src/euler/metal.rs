@@ -62,6 +62,7 @@ fn msl_source() -> String {
     exp: "exp",
     pow: "pow",
     abs: "abs",
+    tanh: "tanh",
     index: "uint",
   };
   let prelude = super::kernel::prelude(&lang);

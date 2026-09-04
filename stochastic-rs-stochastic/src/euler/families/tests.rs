@@ -49,10 +49,13 @@ fn the_host_step_matches_the_closed_forms() {
 /// state unchanged, at `t = 0` as much as later.
 #[test]
 fn the_host_report_truncates_only_the_square_root_family() {
-  assert_eq!(host_report(Family::GeometricBrownian, -2.0), -2.0);
-  assert_eq!(host_report(Family::OrnsteinUhlenbeck, -2.0), -2.0);
-  assert_eq!(host_report(Family::SquareRoot, -2.0), 0.0);
-  assert_eq!(host_report(Family::SquareRoot, 0.25), 0.25);
+  // A report binds the family's whole parameter list before it runs, as a
+  // step does, so it is handed a full buffer even where it names nothing.
+  let p = &[0.0f64; 8];
+  assert_eq!(host_report(Family::GeometricBrownian, -2.0, p), -2.0);
+  assert_eq!(host_report(Family::OrnsteinUhlenbeck, -2.0, p), -2.0);
+  assert_eq!(host_report(Family::SquareRoot, -2.0, p), 0.0);
+  assert_eq!(host_report(Family::SquareRoot, 0.25, p), 0.25);
 }
 
 /// The family codes are the kernels' ABI: the generated C compares against
@@ -88,11 +91,38 @@ fn the_emitted_c_reports_per_family() {
   assert!(C_REPORT.contains("reported = x;"));
 }
 
+/// A `bind` becomes a local in every language: a `let` on the host and in a
+/// CubeCL kernel, a `const REAL` in the emitted C. Without that the clamped
+/// state a family names once would have to be spelled out at each use.
+#[test]
+fn a_bind_becomes_a_c_local() {
+  assert!(C_STEP.contains("const REAL xi = positive(x);"));
+  assert!(C_STEP.contains("x = positive(xi + kappa * (theta - xi) * xi * dt + sigma * sqrt(xi) * dz);"));
+  assert_eq!(
+    host_step(Family::FellerLogistic, -3.0, &[0.5, 0.04, 0.1], 0.01, 0.02),
+    0.0,
+    "a negative state truncates to zero before the coefficients see it"
+  );
+}
+
+/// A report may name the family's parameters, which is what lets the
+/// displaced diffusion step the shifted variable and report the shift back
+/// out.
+#[test]
+fn a_report_sees_the_family_parameters() {
+  assert!(C_REPORT.contains("const REAL beta = params[2];"));
+  assert!(C_REPORT.contains("reported = x - beta;"));
+  assert_eq!(host_report(Family::Displaced, 105.0, &[0.05, 0.2, 5.0]), 100.0);
+}
+
 /// Every function the families use has a C definition, or the kernel would
 /// not link.
 #[test]
 fn every_function_used_has_a_c_definition() {
-  for name in ["sqrt", "exp", "ln", "pow", "positive", "max", "min"] {
+  for name in [
+    "sqrt", "exp", "ln", "pow", "abs", "negate", "tanh", "positive", "max", "min", "lit", "less",
+    "leq", "geq", "pick",
+  ] {
     assert!(
       C_PRELUDE.contains(&format!("#define {name}(")),
       "{name} has no C definition"
