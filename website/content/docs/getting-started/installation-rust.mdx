@@ -146,12 +146,12 @@ Select a backend at compile time with `.on::<B>()`, then call `sample()` /
 
 ```rust
 use stochastic_rs::simd_rng::Unseeded;
-use stochastic_rs::stochastic::device::CudaNative;
+use stochastic_rs::stochastic::device::Cuda;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
 let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
-  .on::<CudaNative>() // CudaNative | CubeCl | MetalNative | Accelerate | Cpu
+  .on::<Cuda>() // Cuda | CubeCl | Metal | Accelerate | Cpu
   .sample();
 ```
 
@@ -177,15 +177,15 @@ cargo bench --features cuda --bench fgn_cuda
 
 ```rust
 use stochastic_rs::simd_rng::Unseeded;
-use stochastic_rs::stochastic::device::CudaNative;
+use stochastic_rs::stochastic::device::Cuda;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
 let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
-  .on::<CudaNative>()
+  .on::<Cuda>()
   .sample(); // single path on GPU
 let batch = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
-  .on::<CudaNative>()
+  .on::<Cuda>()
   .sample_par(1024); // 1024 paths in one launch
 ```
 
@@ -224,10 +224,10 @@ cargo bench --features metal --bench fgn_metal
 ```
 
 ```rust
-use stochastic_rs::stochastic::device::MetalNative;
+use stochastic_rs::stochastic::device::Metal;
 
 let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
-  .on::<MetalNative>()
+  .on::<Metal>()
   .sample();
 ```
 

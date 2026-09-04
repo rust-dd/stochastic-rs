@@ -291,23 +291,23 @@ CPU SIMD (`f64x4` / `f32x8`) is on by default. The fractional / fGN family
 (`Fgn`, `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `Cfou`, `Cfgns`, `JumpFou`,
 `JumpFOUCustom`, and the generic `Sde`) additionally picks a sampling
 **backend** at compile time with `.on::<B>()`.
-`CudaNative` only exists when the `cuda` feature is compiled, which
+`Cuda` only exists when the `cuda` feature is compiled, which
 needs an NVIDIA CUDA 12.x toolkit and GPU — not available in the CI
 runners that build this site, so this block is illustrative rather than
 compiled:
 
 ```rust
 use stochastic_rs::simd_rng::Unseeded;
-use stochastic_rs::stochastic::device::CudaNative;
+use stochastic_rs::stochastic::device::Cuda;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
 let fgn = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded);
-let path = fgn.on::<CudaNative>().sample(); // FFT on the GPU, zero runtime branch
+let path = fgn.on::<Cuda>().sample(); // FFT on the GPU, zero runtime branch
 ```
 
-Backends: `Cpu` (default), `CudaNative` (`cuda`), `CubeCl`
-(`cubecl-cuda` / `cubecl-wgpu`), `MetalNative` (`metal`), `Accelerate`
+Backends: `Cpu` (default), `Cuda` (`cuda`), `CubeCl`
+(`cubecl-cuda` / `cubecl-wgpu`), `Metal` (`metal`), `Accelerate`
 (`accelerate`) — each marker exists only when its feature is compiled, so an
 unavailable backend is a compile error, not a runtime fallback. See the
 [Backends](/docs/concepts/backends) concept page and the
@@ -332,7 +332,7 @@ What the engine runs on today, per backend and precision, is tabulated on
 The sampling backend is a **type parameter of every process**
 (`Name<T, S, B = Cpu>`, switched with `.on::<B2>()`); the Euler engine is the
 capability behind the device markers for `Gbm`, `Ou` and `Cir`:
-`gbm.on::<MetalNative>().sample_par(m)` samples through `ProcessExt` as usual.
+`gbm.on::<Metal>().sample_par(m)` samples through `ProcessExt` as usual.
 On `Cpu` (and `Accelerate`) that is the process's own sampler, so nothing is
 re-implemented on the host: GBM keeps its exact log-normal scheme, OU and CIR
 their SIMD steppers. Every other process accepts the host markers only until it
@@ -344,8 +344,8 @@ all `m` paths):
 | Backend | Feature | Device | Precision |
 |---|---|---|---|
 | `CubeCl` | `cubecl-cuda` / `cubecl-wgpu` | CUDA, Metal, Vulkan, WebGPU through CubeCL | `f32` |
-| `CudaNative` | `cuda` | NVIDIA, cudarc + NVRTC | `f32` or `f64`, after `T` |
-| `MetalNative` | `metal` | Apple GPUs, hand-written MSL | `f32` |
+| `Cuda` | `cuda` | NVIDIA, cudarc + NVRTC | `f32` or `f64`, after `T` |
+| `Metal` | `metal` | Apple GPUs, hand-written MSL | `f32` |
 
 The device seed is drawn from the process's own seed source (the same
 `Deterministic` seed value gives the same paths, consecutive calls advance the

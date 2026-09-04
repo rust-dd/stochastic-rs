@@ -15,7 +15,7 @@ use parking_lot::Mutex;
 use super::EulerCoefficients;
 use super::EulerKernel;
 use super::EulerSpec;
-use crate::device::CudaNative;
+use crate::device::Cuda;
 use crate::device::DeviceError;
 use crate::device::DeviceInfo;
 use crate::noise::fgn::cuda::PinnedHost;
@@ -74,7 +74,7 @@ pub(crate) fn probe(ordinal: usize) -> Result<DeviceInfo> {
     .name()
     .map_err(|e| DeviceError::Unavailable(format!("device name: {e}")))?;
   Ok(DeviceInfo::new(
-    "CudaNative",
+    "Cuda",
     name,
     &["f32", "f64"],
     Some(ordinal),
@@ -167,7 +167,7 @@ where
     .map_err(|e| DeviceError::Launch(format!("dtoh: {e}")))
 }
 
-impl<T: FloatExt> EulerKernel<T> for CudaNative {
+impl<T: FloatExt> EulerKernel<T> for Cuda {
   fn euler_kernel<P: EulerCoefficients<T>>(
     &self,
     process: &P,

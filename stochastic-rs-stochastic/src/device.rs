@@ -3,14 +3,14 @@
 //! A process is parameterised by a backend marker `B` ([`Cpu`] is the default);
 //! the [`Backend`] trait monomorphises `sample` / `sample_par` to that backend
 //! with **no runtime branch**. Switch backend with the turbofish
-//! `process.on::<CudaNative>()` — the marker must be in scope, and the GPU
+//! `process.on::<Cuda>()` — the marker must be in scope, and the GPU
 //! markers only exist when their feature is compiled, so selecting an
 //! unavailable backend is a compile error rather than a runtime fallback.
 //!
 //! The capability traits ([`FgnBackend`], [`crate::euler::EulerBackend`]) take
 //! the scalar as a type parameter, and a device implements them only for the
-//! precision its kernels compute in: `CudaNative` for `f32` and `f64`,
-//! `MetalNative` and `CubeCl` for `f32` alone. `Fgn<f64>` on `MetalNative`
+//! precision its kernels compute in: `Cuda` for `f32` and `f64`,
+//! `Metal` and `CubeCl` for `f32` alone. `Fgn<f64>` on `Metal`
 //! does not compile; nothing is computed in `f32` behind an `f64` type.
 
 use std::fmt;
@@ -35,7 +35,7 @@ pub struct Cpu;
 /// cudarc + cuFFT + NVRTC Philox.
 #[cfg(feature = "cuda")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CudaNative {
+pub struct Cuda {
   /// Which device to open: the CUDA device ordinal.
   pub ordinal: usize,
   /// Bytes of path data one launch may hold; a larger batch runs as chunks
@@ -44,7 +44,7 @@ pub struct CudaNative {
 }
 
 #[cfg(feature = "cuda")]
-impl Default for CudaNative {
+impl Default for Cuda {
   /// Ordinal from `STOCHASTIC_RS_DEVICE` (else `0`), budget from
   /// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` (else [`DEFAULT_BATCH_BUDGET_BYTES`]).
   fn default() -> Self {
@@ -56,7 +56,7 @@ impl Default for CudaNative {
 }
 
 #[cfg(feature = "cuda")]
-impl CudaNative {
+impl Cuda {
   /// The device at `ordinal` with the default batch budget.
   pub fn new(ordinal: usize) -> Self {
     Self {
@@ -119,7 +119,7 @@ impl CubeCl {
 /// Hand-written MSL via the `metal` crate. f32 only — Apple GPUs lack f64.
 #[cfg(feature = "metal")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct MetalNative {
+pub struct Metal {
   /// Which device to open: the index into `Device::all()`, `0` being the system default.
   pub ordinal: usize,
   /// Bytes of path data one launch may hold; a larger batch runs as chunks
@@ -128,7 +128,7 @@ pub struct MetalNative {
 }
 
 #[cfg(feature = "metal")]
-impl Default for MetalNative {
+impl Default for Metal {
   /// Ordinal from `STOCHASTIC_RS_DEVICE` (else `0`), budget from
   /// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` (else [`DEFAULT_BATCH_BUDGET_BYTES`]).
   fn default() -> Self {
@@ -140,7 +140,7 @@ impl Default for MetalNative {
 }
 
 #[cfg(feature = "metal")]
-impl MetalNative {
+impl Metal {
   /// The device at `ordinal` with the default batch budget.
   pub fn new(ordinal: usize) -> Self {
     Self {
@@ -212,7 +212,7 @@ impl std::error::Error for DeviceError {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct DeviceInfo {
-  /// The marker's name, e.g. `"CudaNative"`.
+  /// The marker's name, e.g. `"Cuda"`.
   pub backend: &'static str,
   /// The device's own name, e.g. `"NVIDIA A100-SXM4-40GB"` or `"Apple M2 Max"`.
   pub name: String,
@@ -367,7 +367,7 @@ impl Backend for Cpu {
   }
 }
 #[cfg(feature = "cuda")]
-impl Backend for CudaNative {
+impl Backend for Cuda {
   fn probe(&self) -> Result<DeviceInfo, DeviceError> {
     crate::euler::cuda::probe(self.ordinal)
   }
@@ -389,7 +389,7 @@ impl Backend for CubeCl {
   }
 }
 #[cfg(feature = "metal")]
-impl Backend for MetalNative {
+impl Backend for Metal {
   fn probe(&self) -> Result<DeviceInfo, DeviceError> {
     crate::euler::metal::probe(self.ordinal)
   }
@@ -429,7 +429,7 @@ impl HostBackend for Accelerate {}
 /// |---|---|
 /// | [`Cpu`] | Yes — same seed + same `m` ⇒ bit-identical output on any machine, under any rayon thread-pool size. |
 /// | `Accelerate` (`accelerate` feature) | **Not bit-identical — measured, not assumed.** Seed *consumption* (which derived basis feeds which path) is thread-count independent, via the identical mechanism `Cpu` uses. But `vDSP_fft_zip`'s own floating-point output is not bit-stable across otherwise-identical calls: measured on Apple Silicon (M4 Max), 400 repeated calls across varied `(n, m)` on an idle system showed zero divergence, but the same sweep with all cores saturated by unrelated work showed 21/400 configurations diverge (worst relative difference `2.08e-3`) — consistent with the heterogeneous P-core/E-core scheduler dispatching the FFT to different core types across calls. `Cpu`, under the identical induced load, stayed bit-exact throughout. Treat `Accelerate` as reproducible-effort-only, the same tier as the GPU backends below — see `tests/deterministic_parallelism_accelerate.rs`. |
-/// | `CudaNative` / `CubeCl` / `MetalNative` (`cuda` / `cubecl` / `metal` features) | **Not guaranteed.** Each batch call draws one `u32`/`u64` value from the `seed: &S2` the caller passed — the process's own seed, so two `Deterministic` processes built from the same seed value produce the same device paths, and consecutive calls on one process advance the stream into independent paths, exactly as on the host — and hands it to the on-device kernel's own Philox/PCG-style RNG, with a per-chunk offset so a chunked batch equals one launch. Output is therefore a function of the pinned seed and *not* of host thread-pool size (no host-side rayon fan-out inside `generate_batch` for these backends), but cross-run bit-identity across GPU driver versions, vendors, or even repeated runs on the same device is untested and not promised. Treat these three as reproducible-effort-only. |
+/// | `Cuda` / `CubeCl` / `Metal` (`cuda` / `cubecl` / `metal` features) | **Not guaranteed.** Each batch call draws one `u32`/`u64` value from the `seed: &S2` the caller passed — the process's own seed, so two `Deterministic` processes built from the same seed value produce the same device paths, and consecutive calls on one process advance the stream into independent paths, exactly as on the host — and hands it to the on-device kernel's own Philox/PCG-style RNG, with a per-chunk offset so a chunked batch equals one launch. Output is therefore a function of the pinned seed and *not* of host thread-pool size (no host-side rayon fan-out inside `generate_batch` for these backends), but cross-run bit-identity across GPU driver versions, vendors, or even repeated runs on the same device is untested and not promised. Treat these three as reproducible-effort-only. |
 ///
 /// `generate`/`generate_batch`/`generate_pair`'s `seed: &S2` parameter is the
 /// mechanism behind every row above: `Cpu`/`Accelerate` derive one basis per
@@ -597,11 +597,11 @@ macro_rules! gpu_backend {
 
 // Each device implements the capability for the scalars its kernels compute
 // in: the native CUDA kernels are templated on float and double, the Metal
-// and CubeCL FFT pipelines are single precision. `Fgn<f64>` on `MetalNative`
+// and CubeCL FFT pipelines are single precision. `Fgn<f64>` on `Metal`
 // is therefore a compile error, not an `f32` computation behind an `f64` type.
-gpu_backend!("cuda", CudaNative => sample_cuda_impl, f32, f64);
+gpu_backend!("cuda", Cuda => sample_cuda_impl, f32, f64);
 gpu_backend!("cubecl", CubeCl => sample_gpu_impl, f32);
-gpu_backend!("metal", MetalNative => sample_metal_impl, f32);
+gpu_backend!("metal", Metal => sample_metal_impl, f32);
 
 /// Accelerate (vDSP) runs on the CPU, so it gets the same reproducibility
 /// guarantee as [`Cpu`], reached via `ProcessExt::chunk_count`-style

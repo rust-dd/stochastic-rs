@@ -18,8 +18,8 @@ use crate::device::DeviceInfo;
 pub enum Device {
   Cpu,
   Accelerate,
-  CudaNative(usize),
-  MetalNative(usize),
+  Cuda(usize),
+  Metal(usize),
   CubeCl(usize),
 }
 
@@ -59,8 +59,8 @@ impl Device {
     let device = match kind.as_str() {
       "cpu" => Device::Cpu,
       "accelerate" => Device::Accelerate,
-      "cuda" => Device::CudaNative(ordinal(crate::device::env_ordinal())),
-      "metal" => Device::MetalNative(ordinal(crate::device::env_ordinal())),
+      "cuda" => Device::Cuda(ordinal(crate::device::env_ordinal())),
+      "metal" => Device::Metal(ordinal(crate::device::env_ordinal())),
       "cubecl" => Device::CubeCl(ordinal(crate::device::env_ordinal())),
       "gpu" => Device::first_gpu(ordinal(crate::device::env_ordinal()))?,
       other => {
@@ -75,9 +75,9 @@ impl Device {
 
   fn first_gpu(ordinal: usize) -> PyResult<Self> {
     if cfg!(feature = "cuda") {
-      Ok(Device::CudaNative(ordinal))
+      Ok(Device::Cuda(ordinal))
     } else if cfg!(feature = "metal") {
-      Ok(Device::MetalNative(ordinal))
+      Ok(Device::Metal(ordinal))
     } else if cfg!(any(feature = "cubecl-cuda", feature = "cubecl-wgpu")) {
       Ok(Device::CubeCl(ordinal))
     } else {
@@ -95,8 +95,8 @@ impl Device {
         "Accelerate back-end",
         "accelerate",
       ),
-      Device::CudaNative(_) => (cfg!(feature = "cuda"), "native CUDA runtime", "cuda"),
-      Device::MetalNative(_) => (cfg!(feature = "metal"), "native Metal runtime", "metal"),
+      Device::Cuda(_) => (cfg!(feature = "cuda"), "native CUDA runtime", "cuda"),
+      Device::Metal(_) => (cfg!(feature = "metal"), "native Metal runtime", "metal"),
       Device::CubeCl(_) => (
         cfg!(any(feature = "cubecl-cuda", feature = "cubecl-wgpu")),
         "CubeCL runtime",
@@ -114,7 +114,7 @@ impl Device {
 
   /// Metal and CubeCL kernels compute in `f32` only.
   pub fn single_precision(self) -> bool {
-    matches!(self, Device::MetalNative(_) | Device::CubeCl(_))
+    matches!(self, Device::Metal(_) | Device::CubeCl(_))
   }
 
   /// The name `device=` accepts for this variant.
@@ -122,8 +122,8 @@ impl Device {
     match self {
       Device::Cpu => "cpu",
       Device::Accelerate => "accelerate",
-      Device::CudaNative(_) => "cuda",
-      Device::MetalNative(_) => "metal",
+      Device::Cuda(_) => "cuda",
+      Device::Metal(_) => "metal",
       Device::CubeCl(_) => "cubecl",
     }
   }
@@ -135,9 +135,9 @@ impl Device {
       #[cfg(feature = "accelerate")]
       Device::Accelerate => crate::device::Accelerate.probe(),
       #[cfg(feature = "cuda")]
-      Device::CudaNative(o) => crate::device::CudaNative::new(o).probe(),
+      Device::Cuda(o) => crate::device::Cuda::new(o).probe(),
       #[cfg(feature = "metal")]
-      Device::MetalNative(o) => crate::device::MetalNative::new(o).probe(),
+      Device::Metal(o) => crate::device::Metal::new(o).probe(),
       #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
       Device::CubeCl(o) => crate::device::CubeCl::new(o).probe(),
       #[allow(unreachable_patterns)]

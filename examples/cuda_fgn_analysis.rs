@@ -7,7 +7,7 @@ use plotly::Scatter;
 use plotly::common::Mode;
 use plotly::layout::Axis;
 use stochastic_rs::simd_rng::Unseeded;
-use stochastic_rs::stochastic::device::CudaNative;
+use stochastic_rs::stochastic::device::Cuda;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
@@ -41,7 +41,7 @@ fn main() {
   let max_lag = 20_usize;
 
   let fgn = Fgn::<f64>::new(h, n, Some(t), Unseeded);
-  let fgn_cuda = Fgn::<f64>::new(h, n, Some(t), Unseeded).on::<CudaNative>();
+  let fgn_cuda = Fgn::<f64>::new(h, n, Some(t), Unseeded).on::<Cuda>();
 
   // ── Covariance vector comparison ──────────────────────────────────────────
   println!("Generating {m} CPU paths (n={n}, H={h})...");
@@ -127,7 +127,7 @@ fn main() {
 
   for &hh in &hursts {
     let mut plot = Plot::new();
-    let fgn_h = Fgn::<f64>::new(hh, fbm_n, Some(1.0), Unseeded).on::<CudaNative>();
+    let fgn_h = Fgn::<f64>::new(hh, fbm_n, Some(1.0), Unseeded).on::<Cuda>();
     let batch = fgn_h.sample_par(fbm_paths);
 
     for (j, inc) in batch.iter().enumerate() {

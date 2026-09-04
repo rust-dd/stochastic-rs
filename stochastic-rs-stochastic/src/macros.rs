@@ -52,10 +52,8 @@ macro_rules! py_on_device_f64 {
         $body
       }
       #[cfg(feature = "cuda")]
-      $crate::python_device::Device::CudaNative(ordinal) => {
-        let owned = $inner
-          .clone()
-          .on_device($crate::device::CudaNative::new(ordinal));
+      $crate::python_device::Device::Cuda(ordinal) => {
+        let owned = $inner.clone().on_device($crate::device::Cuda::new(ordinal));
         let $p = &owned;
         $body
       }
@@ -83,18 +81,16 @@ macro_rules! py_on_device_f32 {
         $body
       }
       #[cfg(feature = "cuda")]
-      $crate::python_device::Device::CudaNative(ordinal) => {
-        let owned = $inner
-          .clone()
-          .on_device($crate::device::CudaNative::new(ordinal));
+      $crate::python_device::Device::Cuda(ordinal) => {
+        let owned = $inner.clone().on_device($crate::device::Cuda::new(ordinal));
         let $p = &owned;
         $body
       }
       #[cfg(feature = "metal")]
-      $crate::python_device::Device::MetalNative(ordinal) => {
+      $crate::python_device::Device::Metal(ordinal) => {
         let owned = $inner
           .clone()
-          .on_device($crate::device::MetalNative::new(ordinal));
+          .on_device($crate::device::Metal::new(ordinal));
         let $p = &owned;
         $body
       }
@@ -609,7 +605,7 @@ macro_rules! backend_switch {
       }
 
       /// The same process on the given backend handle, e.g.
-      /// `CudaNative::new(1).with_batch_budget(256 << 20)`.
+      /// `Cuda::new(1).with_batch_budget(256 << 20)`.
       pub fn on_device<B2: $crate::euler::EulerBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*

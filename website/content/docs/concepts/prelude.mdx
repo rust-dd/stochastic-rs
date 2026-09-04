@@ -79,7 +79,7 @@ PathSampler, VolterraKernel
 
 `Backend` is the compute-backend dispatch trait behind `Fgn`/`Fbm`'s
 `.on::<B>()`; `Cpu` is its default (zero-sized) implementor — every other
-backend (`CudaNative`, `CubeCl`, `MetalNative`, `Accelerate`) is feature-gated
+backend (`Cuda`, `CubeCl`, `Metal`, `Accelerate`) is feature-gated
 and reached via `stochastic_rs::stochastic::device` instead. `PathSampler`
 is the `sample()`/`sample_into()` abstraction `ProcessExt::sampler()`
 returns. `VolterraKernel` is the nodes/weights/evaluate trait behind the

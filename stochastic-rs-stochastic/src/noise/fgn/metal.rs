@@ -337,7 +337,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     &self,
     m: usize,
     seed_src: &S2,
-    device: &crate::device::MetalNative,
+    device: &crate::device::Metal,
   ) -> Result<Array2<T>> {
     let n = self.n;
     let offset = self.offset;
@@ -372,20 +372,19 @@ mod chunk_tests {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
-  use crate::device::MetalNative;
+  use crate::device::Metal;
   use crate::traits::ProcessExt;
 
   /// A batch produced in chunks equals one launch, path for path: one seed per
   /// batch and an element offset per chunk.
   #[test]
   fn chunks_are_bit_identical_to_one_launch() {
-    let fgn = |device: MetalNative| {
+    let fgn = |device: Metal| {
       Fgn::<f32, _>::new(0.7, 512, Some(1.0), Deterministic::new(5)).on_device(device)
     };
-    let whole = fgn(MetalNative::default()).sample_par(9);
+    let whole = fgn(Metal::default()).sample_par(9);
     // Two paths per chunk: five launches for nine paths.
-    let chunked =
-      fgn(MetalNative::default().with_batch_budget((4 * 512 + 512) * 4 * 2)).sample_par(9);
+    let chunked = fgn(Metal::default().with_batch_budget((4 * 512 + 512) * 4 * 2)).sample_par(9);
     assert_eq!(whole, chunked);
     assert_ne!(whole[0], whole[1]);
   }
@@ -396,9 +395,8 @@ mod chunk_tests {
   #[test]
   fn fbm_honours_its_own_seed_on_the_device() {
     use crate::process::fbm::Fbm;
-    let fbm = |seed: u64| {
-      Fbm::<f32, _>::new(0.7, 256, Some(1.0), Deterministic::new(seed)).on::<MetalNative>()
-    };
+    let fbm =
+      |seed: u64| Fbm::<f32, _>::new(0.7, 256, Some(1.0), Deterministic::new(seed)).on::<Metal>();
     assert_eq!(fbm(3).sample_par(3), fbm(3).sample_par(3));
     assert_ne!(fbm(3).sample_par(1), fbm(4).sample_par(1));
     assert_eq!(fbm(3).sample(), fbm(3).sample());

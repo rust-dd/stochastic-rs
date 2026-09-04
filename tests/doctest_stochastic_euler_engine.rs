@@ -17,7 +17,7 @@ fn euler_engine_prices_a_forward() {
     Deterministic::new(7),
   );
   // The backend is a type parameter of the process: `Cpu` (the default) is the
-  // process's own SIMD sampler; `.on::<MetalNative>()`, `.on::<CudaNative>()` or
+  // process's own SIMD sampler; `.on::<Metal>()`, `.on::<Cuda>()` or
   // `.on::<CubeCl>()` (with the matching feature) run the Euler kernel on the
   // device through the very same `sample_par` call.
   let paths = gbm.clone().on::<Cpu>().sample_par(20_000); // Vec<Array1<f64>>, 20_000 × 253

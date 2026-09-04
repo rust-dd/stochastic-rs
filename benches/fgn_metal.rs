@@ -6,7 +6,7 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use stochastic_rs::simd_rng::Unseeded;
-use stochastic_rs::stochastic::device::MetalNative;
+use stochastic_rs::stochastic::device::Metal;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
@@ -18,7 +18,7 @@ fn bench_single(c: &mut Criterion) {
 
   for &n in &[1024usize, 4096, 16384, 65536] {
     let fgn = Fgn::new(0.7f32, n, None, Unseeded);
-    let dev = Fgn::new(0.7f32, n, None, Unseeded).on::<MetalNative>();
+    let dev = Fgn::new(0.7f32, n, None, Unseeded).on::<Metal>();
     let _ = dev.sample();
 
     g.bench_with_input(BenchmarkId::new("cpu", n), &n, |b, _| {
@@ -46,7 +46,7 @@ fn bench_batch(c: &mut Criterion) {
   ];
   for &(n, m) in &cases {
     let fgn = Fgn::new(0.7f32, n, None, Unseeded);
-    let dev = Fgn::new(0.7f32, n, None, Unseeded).on::<MetalNative>();
+    let dev = Fgn::new(0.7f32, n, None, Unseeded).on::<Metal>();
     let _ = dev.sample_par(m);
     let label = format!("n={n},m={m}");
 

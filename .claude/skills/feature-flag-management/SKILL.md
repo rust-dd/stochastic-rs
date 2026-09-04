@@ -86,7 +86,7 @@ For a sub-crate's *own* internal feature (not exposed via the umbrella):
 
 // or, at item level:
 #[cfg(feature = "metal")]
-pub struct MetalNative;
+pub struct Metal;
 ```
 
 The `#[cfg(not(feature))]` no-op variant is sometimes useful for

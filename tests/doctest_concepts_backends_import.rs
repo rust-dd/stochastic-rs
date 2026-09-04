@@ -6,7 +6,7 @@
 //! for `f64` and `f32`, an Apple GPU for `f32` alone.
 
 #[cfg(feature = "metal")]
-use stochastic_rs::stochastic::device::MetalNative;
+use stochastic_rs::stochastic::device::Metal;
 use stochastic_rs::traits::Backend;
 use stochastic_rs::traits::Cpu;
 use stochastic_rs::traits::FgnBackend;
@@ -20,7 +20,7 @@ fn cpu_marker_is_a_backend_with_the_fgn_capability() {
   assert_fgn_f64::<Cpu>();
   assert_fgn_f32::<Cpu>();
   #[cfg(feature = "metal")]
-  assert_marker::<MetalNative>();
+  assert_marker::<Metal>();
   #[cfg(feature = "metal")]
-  assert_fgn_f32::<MetalNative>();
+  assert_fgn_f32::<Metal>();
 }

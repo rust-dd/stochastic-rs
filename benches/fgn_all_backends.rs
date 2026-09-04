@@ -8,7 +8,7 @@ use criterion::criterion_main;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::device::Accelerate;
 use stochastic_rs::stochastic::device::CubeCl;
-use stochastic_rs::stochastic::device::MetalNative;
+use stochastic_rs::stochastic::device::Metal;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
@@ -21,7 +21,7 @@ fn bench_single(c: &mut Criterion) {
   for &n in &[1024usize, 4096, 16384, 65536] {
     let fgn = Fgn::new(0.7f32, n, None, Unseeded);
     let dev_gpu = Fgn::new(0.7f32, n, None, Unseeded).on::<CubeCl>();
-    let dev_metal = Fgn::new(0.7f32, n, None, Unseeded).on::<MetalNative>();
+    let dev_metal = Fgn::new(0.7f32, n, None, Unseeded).on::<Metal>();
     let dev_accel = Fgn::new(0.7f32, n, None, Unseeded).on::<Accelerate>();
 
     // warmup
@@ -61,7 +61,7 @@ fn bench_batch(c: &mut Criterion) {
   for &(n, m) in &cases {
     let fgn = Fgn::new(0.7f32, n, None, Unseeded);
     let dev_gpu = Fgn::new(0.7f32, n, None, Unseeded).on::<CubeCl>();
-    let dev_metal = Fgn::new(0.7f32, n, None, Unseeded).on::<MetalNative>();
+    let dev_metal = Fgn::new(0.7f32, n, None, Unseeded).on::<Metal>();
     let dev_accel = Fgn::new(0.7f32, n, None, Unseeded).on::<Accelerate>();
     let _ = dev_gpu.sample_par(m);
     let _ = dev_metal.sample_par(m);
@@ -125,7 +125,7 @@ fn bench_batch_large(c: &mut Criterion) {
     );
   }
   for &(n, m) in &cases {
-    let dev = Fgn::new(0.7f32, n, None, Unseeded).on::<MetalNative>();
+    let dev = Fgn::new(0.7f32, n, None, Unseeded).on::<Metal>();
     let _ = dev.sample_par(m);
     g.bench_with_input(
       BenchmarkId::new("metal", format!("n={n},m={m}")),

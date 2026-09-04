@@ -386,7 +386,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     &self,
     m: usize,
     seed_src: &S2,
-    device: &crate::device::CudaNative,
+    device: &crate::device::Cuda,
   ) -> Result<Array2<T>> {
     let n = self.n;
     let offset = self.offset;

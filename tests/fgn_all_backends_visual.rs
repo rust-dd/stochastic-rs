@@ -9,7 +9,7 @@ mod all_backends {
   use stochastic_rs::stats::fractal_dim::Higuchi;
   use stochastic_rs::stochastic::device::Accelerate;
   use stochastic_rs::stochastic::device::CubeCl;
-  use stochastic_rs::stochastic::device::MetalNative;
+  use stochastic_rs::stochastic::device::Metal;
   use stochastic_rs::stochastic::noise::fgn::Fgn;
   use stochastic_rs::stochastic::process::fbm::Fbm;
   use stochastic_rs::traits::ProcessExt;
@@ -110,7 +110,7 @@ mod all_backends {
   }
 
   fn metal_fgn(h: f32, n: usize, m: usize) -> Vec<Vec<f64>> {
-    let fgn = Fgn::<f32>::new(h, n, Some(1.0), Unseeded).on::<MetalNative>();
+    let fgn = Fgn::<f32>::new(h, n, Some(1.0), Unseeded).on::<Metal>();
     fgn
       .sample_par(m)
       .into_iter()
@@ -128,7 +128,7 @@ mod all_backends {
   }
 
   fn metal_fbm(h: f32, n: usize, m: usize) -> Vec<Vec<f64>> {
-    let fbm = Fbm::<f32>::new(h, n, Some(1.0), Unseeded).on::<MetalNative>();
+    let fbm = Fbm::<f32>::new(h, n, Some(1.0), Unseeded).on::<Metal>();
     fbm
       .sample_par(m)
       .into_iter()

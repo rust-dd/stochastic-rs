@@ -9,7 +9,7 @@
 //! handful of scalars. The backend is a type parameter of the process, as
 //! for the fGN-driven types: `Gbm<T, S, B = Cpu>`, `Ou`, `Cir` are switched
 //! with `.on::<B2>()` and then sampled through [`ProcessExt`] as usual —
-//! `gbm.on::<MetalNative>().sample_par(m)`.
+//! `gbm.on::<Metal>().sample_par(m)`.
 //!
 //! - [`Cpu`] (and `Accelerate`, a CPU device) is **the process's own
 //!   sampler**, so nothing is re-implemented on the host: GBM keeps its exact
@@ -18,8 +18,8 @@
 //!   Euler–Maruyama recursion in the kernel and Box–Muller normals from a
 //!   counter hash of `(path, step, seed)`: `CubeCl` (features `cubecl-cuda` /
 //!   `cubecl-wgpu`: CUDA, Metal, Vulkan or WebGPU through CubeCL, `f32`),
-//!   `CudaNative` (feature `cuda`: cudarc + NVRTC, `f32` or `f64` after
-//!   `T`) and `MetalNative` (feature `metal`: hand-written MSL, `f32`).
+//!   `Cuda` (feature `cuda`: cudarc + NVRTC, `f32` or `f64` after
+//!   `T`) and `Metal` (feature `metal`: hand-written MSL, `f32`).
 //!   `sample_par` is one launch for all `m` paths; `sample` launches one path.
 //!
 //! The device seed is drawn from the process's own seed source, so the same
@@ -333,11 +333,11 @@ macro_rules! kernel_euler_backend {
 }
 
 #[cfg(feature = "metal")]
-kernel_euler_backend!(crate::device::MetalNative, [] f32);
+kernel_euler_backend!(crate::device::Metal, [] f32);
 #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
 kernel_euler_backend!(crate::device::CubeCl, [] f32);
 #[cfg(feature = "cuda")]
-kernel_euler_backend!(crate::device::CudaNative, [T: FloatExt] T);
+kernel_euler_backend!(crate::device::Cuda, [T: FloatExt] T);
 
 fn draw_seed<S: SeedExt>(seed: &S) -> u64 {
   rand::Rng::random(&mut seed.rng())
@@ -472,12 +472,12 @@ mod tests;
 ///
 /// ```compile_fail,E0277
 /// use stochastic_rs_core::simd_rng::Unseeded;
-/// use stochastic_rs_stochastic::device::MetalNative;
+/// use stochastic_rs_stochastic::device::Metal;
 /// use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 /// use stochastic_rs_stochastic::traits::ProcessExt;
 ///
 /// let gbm = Gbm::<f64, _>::new(0.05, 0.2, 16, None, None, Unseeded);
-/// let _ = gbm.on::<MetalNative>().sample();
+/// let _ = gbm.on::<Metal>().sample();
 /// ```
 #[cfg(feature = "metal")]
 pub mod precision_guard {}

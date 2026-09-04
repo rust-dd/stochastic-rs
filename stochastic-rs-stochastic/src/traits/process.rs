@@ -89,7 +89,7 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 ///
 /// Re-type a process to a compile-time sampling backend with the turbofish
 /// `process.on::<B>()` where `B: `[`FgnBackend`](crate::device::FgnBackend) (e.g.
-/// `process.on::<CudaNative>()`); the backend marker propagates to the
+/// `process.on::<Cuda>()`); the backend marker propagates to the
 /// process's noise source with no runtime branch. Only the fractional family
 /// (built on [`Fgn`](crate::noise::fgn::Fgn)) exposes GPU backends today, and a
 /// GPU marker only exists when its feature is compiled.
@@ -201,7 +201,7 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// induced load, stayed bit-exact in all 400 — see
 /// [`FgnBackend`](crate::device::FgnBackend)'s own doc for the full per-backend
 /// table and `tests/deterministic_parallelism_accelerate.rs` for the
-/// measurement. GPU backends (`CudaNative`/`CubeCl`/`MetalNative`) are
+/// measurement. GPU backends (`Cuda`/`CubeCl`/`Metal`) are
 /// excluded from this guarantee entirely, deliberately: each draws one
 /// value from `self.seed.rng()` per batch call and hands it to the
 /// on-device kernel's own Philox/PCG-style RNG, so output is a function of

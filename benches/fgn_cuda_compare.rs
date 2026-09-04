@@ -15,7 +15,7 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::device::CubeCl;
-use stochastic_rs::stochastic::device::CudaNative;
+use stochastic_rs::stochastic::device::Cuda;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
@@ -30,7 +30,7 @@ fn bench_single_path(c: &mut Criterion) {
     group.throughput(Throughput::Elements(n as u64));
 
     let cpu = Fgn::new(hurst, n, None, Unseeded);
-    let native = Fgn::new(hurst, n, None, Unseeded).on::<CudaNative>();
+    let native = Fgn::new(hurst, n, None, Unseeded).on::<Cuda>();
     let cubecl = Fgn::new(hurst, n, None, Unseeded).on::<CubeCl>();
 
     // Warm up the GPU contexts + kernel JIT once, outside the measurement.
@@ -69,7 +69,7 @@ fn bench_batch(c: &mut Criterion) {
     let label = format!("n={n},m={m}");
 
     let cpu = Fgn::new(hurst, n, None, Unseeded);
-    let native = Fgn::new(hurst, n, None, Unseeded).on::<CudaNative>();
+    let native = Fgn::new(hurst, n, None, Unseeded).on::<Cuda>();
     let _ = native.sample_par(m); // warm up cuFFT plan + device buffers
 
     group.bench_with_input(BenchmarkId::new("cpu", &label), &(n, m), |b, &(_n, m)| {

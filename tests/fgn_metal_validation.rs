@@ -1,12 +1,12 @@
 #[cfg(feature = "metal")]
 mod metal_validation {
   use stochastic_rs::simd_rng::Unseeded;
-  use stochastic_rs::stochastic::device::MetalNative;
+  use stochastic_rs::stochastic::device::Metal;
   use stochastic_rs::stochastic::noise::fgn::Fgn;
   use stochastic_rs::traits::ProcessExt;
 
   fn metal_paths(h: f32, n: usize, m: usize) -> Vec<Vec<f64>> {
-    let fgn = Fgn::<f32>::new(h, n, Some(1.0), Unseeded).on::<MetalNative>();
+    let fgn = Fgn::<f32>::new(h, n, Some(1.0), Unseeded).on::<Metal>();
     fgn
       .sample_par(m)
       .into_iter()

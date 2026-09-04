@@ -13,7 +13,7 @@ use super::EulerKernel;
 use super::EulerSpec;
 use crate::device::DeviceError;
 use crate::device::DeviceInfo;
-use crate::device::MetalNative;
+use crate::device::Metal;
 
 type Result<T> = std::result::Result<T, DeviceError>;
 
@@ -108,7 +108,7 @@ pub(crate) fn metal_device(ordinal: usize) -> Result<Device> {
 pub(crate) fn probe(ordinal: usize) -> Result<DeviceInfo> {
   let device = metal_device(ordinal)?;
   Ok(DeviceInfo::new(
-    "MetalNative",
+    "Metal",
     device.name().to_string(),
     &["f32"],
     Some(ordinal),
@@ -175,7 +175,7 @@ fn run(ordinal: usize, params: [f32; 4], args: EulerArgs) -> Result<Vec<f32>> {
   Ok(unsafe { std::slice::from_raw_parts(ptr, total) }.to_vec())
 }
 
-impl EulerKernel<f32> for MetalNative {
+impl EulerKernel<f32> for Metal {
   fn euler_kernel<P: EulerCoefficients<f32>>(
     &self,
     process: &P,

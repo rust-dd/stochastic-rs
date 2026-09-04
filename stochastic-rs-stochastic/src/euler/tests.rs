@@ -280,17 +280,17 @@ mod devices {
   #[cfg(feature = "metal")]
   #[test]
   fn metal_native_chunks_are_bit_identical_to_one_launch() {
-    use crate::device::MetalNative;
-    let whole = gbm::<f32>(21).on::<MetalNative>().sample_par(10);
-    let process = gbm::<f32>(21).on::<MetalNative>();
-    let middle = MetalNative::default()
+    use crate::device::Metal;
+    let whole = gbm::<f32>(21).on::<Metal>().sample_par(10);
+    let process = gbm::<f32>(21).on::<Metal>();
+    let middle = Metal::default()
       .euler_kernel(&process, 3, 4, process.device_seed())
       .expect("Metal");
     for (k, row) in middle.outer_iter().enumerate() {
       assert_eq!(whole[3 + k], row.to_owned(), "paths 3..7 of one launch");
     }
     // A budget of three paths forces four launches; the union must not move.
-    let small = MetalNative::default().with_batch_budget(253 * 4 * 3);
+    let small = Metal::default().with_batch_budget(253 * 4 * 3);
     let chunked = gbm::<f32>(21).on_device(small).sample_par(10);
     let mapped: Vec<f32> = gbm::<f32>(21).on_device(small).sample_map(10, |p| p[252]);
     assert_eq!(chunked, whole);
@@ -300,17 +300,17 @@ mod devices {
   #[cfg(feature = "metal")]
   #[test]
   fn metal_native_matrix_matches_the_rows_and_chunks() {
-    use crate::device::MetalNative;
-    let rows = gbm::<f32>(23).on::<MetalNative>().sample_par(7);
+    use crate::device::Metal;
+    let rows = gbm::<f32>(23).on::<Metal>().sample_par(7);
     let matrix = gbm::<f32>(23)
-      .on::<MetalNative>()
+      .on::<Metal>()
       .try_sample_matrix(7)
       .expect("Metal");
     for (i, row) in rows.iter().enumerate() {
       assert_eq!(matrix.row(i), row.view());
     }
     let chunked = gbm::<f32>(23)
-      .on_device(MetalNative::default().with_batch_budget(253 * 4 * 2))
+      .on_device(Metal::default().with_batch_budget(253 * 4 * 2))
       .try_sample_matrix(7)
       .expect("Metal");
     assert_eq!(chunked, matrix);
@@ -319,14 +319,14 @@ mod devices {
   #[cfg(feature = "metal")]
   #[test]
   fn metal_native_probe_and_try_sample_par() {
-    let info = crate::device::MetalNative::default()
+    let info = crate::device::Metal::default()
       .probe()
       .expect("this Mac has a Metal device");
-    assert_eq!(info.backend, "MetalNative");
+    assert_eq!(info.backend, "Metal");
     assert_eq!(info.precisions, &["f32"]);
     assert!(!info.name.is_empty());
     let paths = gbm::<f32>(3)
-      .on::<crate::device::MetalNative>()
+      .on::<crate::device::Metal>()
       .try_sample_par(5)
       .expect("Metal");
     assert_eq!(paths.len(), 5);
@@ -335,8 +335,8 @@ mod devices {
   #[cfg(feature = "metal")]
   #[test]
   fn metal_native_backend_matches_the_moments() {
-    gbm_moments_hold::<f32, crate::device::MetalNative>("MetalNative");
-    cir_stays_nonnegative::<f32, crate::device::MetalNative>("MetalNative");
+    gbm_moments_hold::<f32, crate::device::Metal>("Metal");
+    cir_stays_nonnegative::<f32, crate::device::Metal>("Metal");
   }
 
   /// A batch above the budget runs through the two-stream pipeline; its
@@ -344,18 +344,18 @@ mod devices {
   #[cfg(feature = "cuda")]
   #[test]
   fn cuda_chunks_are_bit_identical_to_one_launch() {
-    use crate::device::CudaNative;
-    let whole64 = gbm::<f64>(21).on::<CudaNative>().sample_par(10);
-    let whole32 = gbm::<f32>(21).on::<CudaNative>().sample_par(10);
-    let process = gbm::<f64>(21).on::<CudaNative>();
-    let middle = CudaNative::default()
+    use crate::device::Cuda;
+    let whole64 = gbm::<f64>(21).on::<Cuda>().sample_par(10);
+    let whole32 = gbm::<f32>(21).on::<Cuda>().sample_par(10);
+    let process = gbm::<f64>(21).on::<Cuda>();
+    let middle = Cuda::default()
       .euler_kernel(&process, 3, 4, process.device_seed())
       .expect("CUDA");
     for (k, row) in middle.outer_iter().enumerate() {
       assert_eq!(whole64[3 + k], row.to_owned(), "paths 3..7 of one launch");
     }
     // Three paths per chunk: four launches alternating between the two streams.
-    let small = CudaNative::default().with_batch_budget(253 * 8 * 3);
+    let small = Cuda::default().with_batch_budget(253 * 8 * 3);
     let chunked64 = gbm::<f64>(21).on_device(small).sample_par(10);
     let chunked32 = gbm::<f32>(21).on_device(small).sample_par(10);
     let mapped: Vec<f64> = gbm::<f64>(21).on_device(small).sample_map(10, |p| p[252]);
@@ -367,19 +367,15 @@ mod devices {
   #[cfg(feature = "cuda")]
   #[test]
   fn cuda_backend_matches_the_moments() {
-    gbm_moments_hold::<f64, crate::device::CudaNative>("CudaNative f64");
-    gbm_moments_hold::<f32, crate::device::CudaNative>("CudaNative f32");
-    cir_stays_nonnegative::<f64, crate::device::CudaNative>("CudaNative f64");
-    cir_stays_nonnegative::<f32, crate::device::CudaNative>("CudaNative f32");
+    gbm_moments_hold::<f64, crate::device::Cuda>("Cuda f64");
+    gbm_moments_hold::<f32, crate::device::Cuda>("Cuda f32");
+    cir_stays_nonnegative::<f64, crate::device::Cuda>("Cuda f64");
+    cir_stays_nonnegative::<f32, crate::device::Cuda>("Cuda f32");
     // The f32 and f64 kernels draw the same uniforms (one integer hash) and
     // differ only by float rounding, so the same process on the same grid
     // agrees across the two precisions to well under 1e-3 relative.
-    let single = gbm::<f32>(5)
-      .on::<crate::device::CudaNative>()
-      .sample_par(4);
-    let double = gbm::<f64>(5)
-      .on::<crate::device::CudaNative>()
-      .sample_par(4);
+    let single = gbm::<f32>(5).on::<crate::device::Cuda>().sample_par(4);
+    let double = gbm::<f64>(5).on::<crate::device::Cuda>().sample_par(4);
     assert_eq!(single.len(), double.len());
     for (a, b) in single.iter().zip(&double) {
       assert_eq!(a.len(), b.len());
@@ -398,9 +394,7 @@ mod devices {
   ))]
   #[test]
   fn metal_native_and_cubecl_agree_seed_for_seed() {
-    let metal = gbm::<f32>(11)
-      .on::<crate::device::MetalNative>()
-      .sample_par(16);
+    let metal = gbm::<f32>(11).on::<crate::device::Metal>().sample_par(16);
     let cubecl = gbm::<f32>(11).on::<crate::device::CubeCl>().sample_par(16);
     for (a, b) in metal.iter().zip(&cubecl) {
       for (x, y) in a.iter().zip(b.iter()) {

@@ -162,7 +162,7 @@ def test_probe_device_describes_the_host_and_reports_missing_devices():
             continue
         except RuntimeError:
             continue
-        assert found["backend"] in ("CudaNative", "MetalNative", "CubeCl", "Accelerate")
+        assert found["backend"] in ("Cuda", "Metal", "CubeCl", "Accelerate")
         assert all(p in ("f32", "f64") for p in found["precisions"])
     with pytest.raises(ValueError):
         sr.probe_device("cpu:x")

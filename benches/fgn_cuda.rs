@@ -6,7 +6,7 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use stochastic_rs::simd_rng::Unseeded;
-use stochastic_rs::stochastic::device::CudaNative;
+use stochastic_rs::stochastic::device::Cuda;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
@@ -20,7 +20,7 @@ fn bench_fgn_single_path_cpu_vs_cuda(c: &mut Criterion) {
 
   for &n in &[1024usize, 4096, 16384, 65536] {
     let fgn = Fgn::new(hurst, n, None, Unseeded);
-    let dev = Fgn::new(hurst, n, None, Unseeded).on::<CudaNative>();
+    let dev = Fgn::new(hurst, n, None, Unseeded).on::<Cuda>();
 
     let _ = dev.sample();
 
@@ -57,7 +57,7 @@ fn bench_fgn_batch_cpu_vs_cuda(c: &mut Criterion) {
   for &(n, m) in &cases {
     let label = format!("n={n},m={m}");
     let fgn = Fgn::new(hurst, n, None, Unseeded);
-    let dev = Fgn::new(hurst, n, None, Unseeded).on::<CudaNative>();
+    let dev = Fgn::new(hurst, n, None, Unseeded).on::<Cuda>();
 
     let _ = dev.sample_par(m);
 

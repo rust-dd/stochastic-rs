@@ -14,8 +14,8 @@ switches with a turbofish or an explicit handle:
 
 ```rust
 let fbm = Fbm::<f64, _>::new(0.7, 1024, None, Deterministic::new(42));
-let a = fbm.clone().on::<CudaNative>().sample_par(256);              // B::default()
-let b = fbm.on_device(CudaNative::new(1).with_batch_budget(1 << 28)); // explicit
+let a = fbm.clone().on::<Cuda>().sample_par(256);              // B::default()
+let b = fbm.on_device(Cuda::new(1).with_batch_budget(1 << 28)); // explicit
 ```
 
 A handle only exists when its feature is compiled, and it implements a
@@ -32,8 +32,8 @@ lines) is the second half.
 |---|---|---|---|
 | `Cpu` | *(none — always available)* | Default `B` for every process | `f32` / `f64` |
 | `Accelerate` | `accelerate` | Apple vDSP / AMX — a **CPU** path, not a GPU | `f32` / `f64` |
-| `CudaNative` | `cuda` | `cudarc` + cuFFT + NVRTC, fused Philox kernel | `f32` / `f64` |
-| `MetalNative` | `metal` | Hand-written MSL via the `metal` crate | `f32` |
+| `Cuda` | `cuda` | `cudarc` + cuFFT + NVRTC, fused Philox kernel | `f32` / `f64` |
+| `Metal` | `metal` | Hand-written MSL via the `metal` crate | `f32` |
 | `CubeCl` | `cubecl` (+ `cubecl-cuda` / `cubecl-wgpu`) | cubecl Rust kernels | `f32` |
 
 The native backends take the bare names (`cuda`, `metal`) and CubeCL's
@@ -54,7 +54,7 @@ commit as the rename.
 their settings:
 
 ```rust
-pub struct CudaNative { pub ordinal: usize, pub batch_budget: usize }
+pub struct Cuda { pub ordinal: usize, pub batch_budget: usize }
 ```
 
 `Default` reads `STOCHASTIC_RS_DEVICE` (else `0`) and
@@ -80,7 +80,7 @@ is normative) is:
 |---|---|
 | `Cpu` | **Yes.** Same seed + same `m` ⇒ bit-identical, on any machine, under any rayon thread-pool size. |
 | `Accelerate` | **No — measured, not assumed.** Seed *consumption* is thread-count independent, but `vDSP_fft_zip`'s arithmetic is not bit-stable across calls: 400 repeated calls on an idle M4 Max diverged 0 times; the same sweep under core saturation diverged 21/400, worst relative difference `2.08e-3`. `Cpu` stayed bit-exact under identical load. |
-| `CudaNative` / `MetalNative` / `CubeCl` | **Function of the pinned seed, not bit-identical to `Cpu`.** Each batch draws **one** launch seed from the `seed: &S2` the *caller* passed, so the same `Deterministic` seed value gives the same paths and consecutive calls advance the stream, as on the host. Bit-identity across driver versions, vendors or repeated runs is untested and unpromised. |
+| `Cuda` / `Metal` / `CubeCl` | **Function of the pinned seed, not bit-identical to `Cpu`.** Each batch draws **one** launch seed from the `seed: &S2` the *caller* passed, so the same `Deterministic` seed value gives the same paths and consecutive calls advance the stream, as on the host. Bit-identity across driver versions, vendors or repeated runs is untested and unpromised. |
 
 Two rules follow, and both have already been violated once:
 
@@ -160,9 +160,9 @@ Device-side fGN backends are registered by `gpu_backend!` in
 `device.rs`; the trailing scalars are the precisions the device serves:
 
 ```rust
-gpu_backend!("cuda", CudaNative  => sample_cuda_impl, f32, f64);
+gpu_backend!("cuda", Cuda  => sample_cuda_impl, f32, f64);
 gpu_backend!("cubecl",      CubeCl      => sample_gpu_impl,         f32);
-gpu_backend!("metal",       MetalNative => sample_metal_impl,       f32);
+gpu_backend!("metal",       Metal => sample_metal_impl,       f32);
 ```
 
 The macro generates one feature-gated `impl FgnBackend<$scalar>` per

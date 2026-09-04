@@ -115,7 +115,7 @@ runtime's own message. Without an ordinal the handle's default applies
 `RuntimeError` too.
 
 ```python
-srs.probe_device("metal")             # {'backend': 'MetalNative', 'name': 'Apple M2 Max', 'precisions': ['f32'], 'ordinal': 0}
+srs.probe_device("metal")             # {'backend': 'Metal', 'name': 'Apple M2 Max', 'precisions': ['f32'], 'ordinal': 0}
 srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7, device="cuda:1")   # second CUDA GPU
 ```
 
@@ -134,7 +134,7 @@ closures for its drift and diffusion. The device classes hand the launch
 buffer over as one NumPy array without re-laying it into rows.
 
 ```python
-srs.probe_device("metal")   # {'backend': 'MetalNative', 'name': 'Apple M2 Max', 'precisions': ['f32'], 'ordinal': 0}
+srs.probe_device("metal")   # {'backend': 'Metal', 'name': 'Apple M2 Max', 'precisions': ['f32'], 'ordinal': 0}
 ```
 
 ## Credit curves
