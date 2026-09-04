@@ -76,6 +76,9 @@ pub enum EulerSpec<T: FloatExt> {
   ReflectedSquareRoot { theta: T, mu: T, sigma: T },
   /// The same with the symmetric reflection: the step's absolute value.
   MirroredSquareRoot { theta: T, mu: T, sigma: T },
+  /// `dX = (α − βX) dt + σ√(X(1−X)) dW` on the unit interval, absorbing at
+  /// both ends.
+  Jacobi { alpha: T, beta: T, sigma: T },
 }
 
 impl<T: FloatExt> EulerSpec<T> {
@@ -117,6 +120,9 @@ impl<T: FloatExt> EulerSpec<T> {
         Family::MirroredSquareRoot.code(),
         [theta, mu, sigma, T::zero()],
       ),
+      EulerSpec::Jacobi { alpha, beta, sigma } => {
+        (Family::Jacobi.code(), [alpha, beta, sigma, T::zero()])
+      }
     }
   }
 }

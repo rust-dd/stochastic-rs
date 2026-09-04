@@ -93,6 +93,26 @@ pub(crate) mod ops {
   pub(crate) fn lit<T: FloatExt>(v: f64) -> T {
     T::from_f64_fast(v)
   }
+
+  /// `1` when `a <= b`, `0` otherwise: a condition as a number, so a step
+  /// stays one expression on every target.
+  #[inline(always)]
+  pub(crate) fn leq<T: FloatExt>(a: T, b: T) -> T {
+    if a <= b { T::one() } else { T::zero() }
+  }
+
+  /// `1` when `a >= b`, `0` otherwise.
+  #[inline(always)]
+  pub(crate) fn geq<T: FloatExt>(a: T, b: T) -> T {
+    if a >= b { T::one() } else { T::zero() }
+  }
+
+  /// `a` when `cond` is non-zero, `b` otherwise. Both arms are evaluated, so
+  /// an arm that could produce a NaN guards itself.
+  #[inline(always)]
+  pub(crate) fn pick<T: FloatExt>(cond: T, a: T, b: T) -> T {
+    if cond != T::zero() { a } else { b }
+  }
 }
 
 /// The C definitions of the function vocabulary, in terms of the precision
@@ -106,6 +126,9 @@ pub(crate) const C_PRELUDE: &str = r#"#define sqrt(v) STOCH_SQRT(v)
 #define positive(v) ((v) > (REAL)0 ? (v) : (REAL)0)
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define min(a, b) ((a) < (b) ? (a) : (b))
+#define leq(a, b) ((a) <= (b) ? (REAL)1 : (REAL)0)
+#define geq(a, b) ((a) >= (b) ? (REAL)1 : (REAL)0)
+#define pick(c, a, b) ((c) != (REAL)0 ? (a) : (b))
 #define lit(v) ((REAL)(v))
 "#;
 
@@ -153,6 +176,30 @@ pub(crate) mod cube_ops {
   #[cube]
   pub(crate) fn positive(v: f32) -> f32 {
     max(v, 0.0f32)
+  }
+
+  /// A numeric literal.
+  #[cube]
+  pub(crate) fn lit(v: f32) -> f32 {
+    v
+  }
+
+  /// `1` when `a <= b`, `0` otherwise.
+  #[cube]
+  pub(crate) fn leq(a: f32, b: f32) -> f32 {
+    select(a <= b, 1.0f32, 0.0f32)
+  }
+
+  /// `1` when `a >= b`, `0` otherwise.
+  #[cube]
+  pub(crate) fn geq(a: f32, b: f32) -> f32 {
+    select(a >= b, 1.0f32, 0.0f32)
+  }
+
+  /// `a` when `cond` is non-zero, `b` otherwise.
+  #[cube]
+  pub(crate) fn pick(cond: f32, a: f32, b: f32) -> f32 {
+    select(cond != 0.0f32, a, b)
   }
 }
 
@@ -354,6 +401,24 @@ euler_families! {
   /// The same with the symmetric reflection: the step's absolute value.
   5 => MirroredSquareRoot { theta, mu, sigma }
     step { abs(x + theta * (mu - x) * dt + sigma * sqrt(abs(x)) * dz) }
+    report { x },
+
+  /// `dX = (α − βX) dt + σ√(X(1−X)) dW` on the unit interval, absorbing at
+  /// both ends — the fractional Jacobi recursion. `X(1−X)` is written
+  /// `x - x * x`, which needs no literal and so no type to infer, and both
+  /// arms of a `pick` are evaluated, so the diffusion guards its own root.
+  6 => Jacobi { alpha, beta, sigma }
+    step {
+      pick(
+        leq(x, lit(0.0)),
+        lit(0.0),
+        pick(
+          geq(x, lit(1.0)),
+          lit(1.0),
+          x + (alpha - beta * x) * dt + sigma * sqrt(positive(x - x * x)) * dz
+        )
+      )
+    }
     report { x },
 
   2 => SquareRoot { kappa, theta, sigma }

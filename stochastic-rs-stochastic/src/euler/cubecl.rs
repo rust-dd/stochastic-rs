@@ -86,6 +86,9 @@ fn step(family: u32, x: f32, params: &Array<f32>, dt: f32, dz: f32) -> f32 {
   if family == 2u32 {
     stepped = cube::SquareRoot(x, params, dt, dz);
   }
+  if family == 6u32 {
+    stepped = cube::Jacobi(x, params, dt, dz);
+  }
   if family == 5u32 {
     stepped = cube::MirroredSquareRoot(x, params, dt, dz);
   }
@@ -110,6 +113,9 @@ fn report(family: u32, x: f32) -> f32 {
   }
   if family == 2u32 {
     reported = cube_report::SquareRoot(x);
+  }
+  if family == 6u32 {
+    reported = cube_report::Jacobi(x);
   }
   if family == 5u32 {
     reported = cube_report::MirroredSquareRoot(x);

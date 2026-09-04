@@ -11,6 +11,7 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::device::Metal;
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
 use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
+use stochastic_rs_stochastic::diffusion::fjacobi::FJacobi;
 use stochastic_rs_stochastic::diffusion::fou::Fou;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
@@ -106,6 +107,37 @@ fn fcir_on_metal_stays_nonnegative_and_agrees() {
   );
   assert!(
     (cpu - gpu).abs() < 0.01,
+    "terminal mean: host {cpu}, device {gpu}"
+  );
+}
+
+fn fjacobi() -> FJacobi<f32, Deterministic> {
+  FJacobi::new(
+    0.7,
+    0.3,
+    0.6,
+    0.2,
+    512,
+    Some(0.5),
+    Some(1.0),
+    Deterministic::new(9),
+  )
+}
+
+#[test]
+fn fjacobi_on_metal_stays_in_the_unit_interval() {
+  let m = 2_000;
+  let cpu = terminal_mean(&fjacobi().sample_par(m));
+  let gpu_paths = fjacobi().on::<Metal>().sample_par(m);
+  let gpu = terminal_mean(&gpu_paths);
+  assert!(
+    gpu_paths
+      .iter()
+      .all(|p| p.iter().all(|v| (0.0..=1.0).contains(v))),
+    "the absorbing recursion left the unit interval"
+  );
+  assert!(
+    (cpu - gpu).abs() < 0.02,
     "terminal mean: host {cpu}, device {gpu}"
   );
 }
