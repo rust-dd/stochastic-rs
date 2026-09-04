@@ -92,6 +92,15 @@ fn step(family: u32, x: f32, params: &Array<f32>, dt: f32, dz: f32) -> f32 {
   if family == 9u32 {
     stepped = cube::Logistic(x, params, dt, dz);
   }
+  if family == 12u32 {
+    stepped = cube::RadialOrnsteinUhlenbeck(x, params, dt, dz);
+  }
+  if family == 11u32 {
+    stepped = cube::LogGeometric(x, params, dt, dz);
+  }
+  if family == 10u32 {
+    stepped = cube::ThreeHalf(x, params, dt, dz);
+  }
   if family == 8u32 {
     stepped = cube::Ckls(x, params, dt, dz);
   }
@@ -128,6 +137,15 @@ fn report(family: u32, x: f32) -> f32 {
   }
   if family == 9u32 {
     reported = cube_report::Logistic(x);
+  }
+  if family == 12u32 {
+    reported = cube_report::RadialOrnsteinUhlenbeck(x);
+  }
+  if family == 11u32 {
+    reported = cube_report::LogGeometric(x);
+  }
+  if family == 10u32 {
+    reported = cube_report::ThreeHalf(x);
   }
   if family == 8u32 {
     reported = cube_report::Ckls(x);

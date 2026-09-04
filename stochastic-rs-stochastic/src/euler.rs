@@ -95,6 +95,13 @@ pub enum EulerSpec<T: FloatExt> {
   },
   /// `dX = X(1 − aX) dt + bX dW`: logistic growth with multiplicative noise.
   Logistic { a: T, b: T },
+  /// `dX = κX(μ − X) dt + σ|X|^{3/2} dW`: the 3/2 model.
+  ThreeHalf { kappa: T, mu: T, sigma: T },
+  /// Geometric Brownian motion stepped in logs, with the log drift per step
+  /// already formed on the host.
+  LogGeometric { drift_ln: T, sigma: T },
+  /// `dX = (κ/X − X) dt + σ dW`: radial Ornstein–Uhlenbeck.
+  RadialOrnsteinUhlenbeck { kappa: T, sigma: T },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -152,6 +159,15 @@ impl<T: FloatExt> EulerSpec<T> {
         theta4,
       } => (Family::Ckls.code(), pad([theta1, theta2, theta3, theta4])),
       EulerSpec::Logistic { a, b } => (Family::Logistic.code(), pad([a, b])),
+      EulerSpec::ThreeHalf { kappa, mu, sigma } => {
+        (Family::ThreeHalf.code(), pad([kappa, mu, sigma]))
+      }
+      EulerSpec::LogGeometric { drift_ln, sigma } => {
+        (Family::LogGeometric.code(), pad([drift_ln, sigma]))
+      }
+      EulerSpec::RadialOrnsteinUhlenbeck { kappa, sigma } => {
+        (Family::RadialOrnsteinUhlenbeck.code(), pad([kappa, sigma]))
+      }
     }
   }
 }

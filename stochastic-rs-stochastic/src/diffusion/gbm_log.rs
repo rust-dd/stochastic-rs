@@ -14,7 +14,6 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -113,9 +112,47 @@ impl<T: FloatExt, S: SeedExt, B> GbmLog<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] GbmLog<T, S> { mu, b, r, r_f, sigma, n, s0, t, seed } via host);
+/// The Euler engine's view of log-stepped GBM: the log drift per step is
+/// formed here, so the kernel multiplies by one exponential and no literal.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for GbmLog<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let n_increments = self.n.saturating_sub(1).max(1);
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(n_increments);
+    let half = T::from_f64_fast(0.5);
+    crate::euler::EulerSpec::LogGeometric {
+      drift_ln: (self.drift() - half * self.sigma * self.sigma) * dt,
+      sigma: self.sigma,
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for GbmLog<T, S, B> {
+  fn initial_value(&self) -> T {
+    self.s0.unwrap_or(T::one())
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] GbmLog<T, S> { mu, b, r, r_f, sigma, n, s0, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for GbmLog<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = GbmLogSampler<T>
@@ -134,6 +171,29 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for GbmLog<T, S, B> 
       drift_ln,
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
     }
+  }
+
+  /// Through the Euler engine: on a device the recursion runs in the kernel,
+  /// on the host devices it is this process's own sampler, chunked exactly as
+  /// `ProcessExt` chunks.
+  fn sample(&self) -> Array1<T> {
+    self.backend.euler_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    self.backend.euler_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    self.backend.euler_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    self.backend.try_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    self.backend.try_euler_paths(self, m)
   }
 }
 

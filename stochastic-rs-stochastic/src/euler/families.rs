@@ -439,6 +439,28 @@ euler_families! {
     step { x + (x - a * x * x) * dt + b * x * dz }
     report { x },
 
+  /// `dX = κX(μ − X) dt + σ|X|^{3/2} dW`: the 3/2 model, whose variance
+  /// mean-reverts faster than a square-root diffusion.
+  10 => ThreeHalf { kappa, mu, sigma }
+    step { x + kappa * x * (mu - x) * dt + sigma * pow(abs(x), lit(1.5)) * dz }
+    report { x },
+
+  /// Geometric Brownian motion stepped in logs: `X ← X·exp(m + σ dW)`, with
+  /// `m = (μ − σ²/2)Δt` computed once on the host, so the kernel needs no
+  /// literal and the exponential is exact rather than a first-order step.
+  11 => LogGeometric { drift_ln, sigma }
+    step { x * exp(drift_ln + sigma * dz) }
+    report { x },
+
+  /// `dX = (κ/X − X) dt + σ dW`: the radial Ornstein–Uhlenbeck process, whose
+  /// drift is guarded away from the origin exactly as the host sampler guards
+  /// it.
+  12 => RadialOrnsteinUhlenbeck { kappa, sigma }
+    step {
+      x + (kappa / pick(leq(abs(x), lit(1e-12)), lit(1e-12), x) - x) * dt + sigma * dz
+    }
+    report { x },
+
   2 => SquareRoot { kappa, theta, sigma }
     step { x + kappa * (theta - positive(x)) * dt + sigma * sqrt(positive(x)) * dz }
     report { positive(x) },
