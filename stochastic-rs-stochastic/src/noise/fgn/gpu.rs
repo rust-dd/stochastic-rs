@@ -1,7 +1,7 @@
 //! # CubeCL GPU
 //!
 //! Cross-platform GPU-accelerated Fgn sampling via CubeCL.
-//! Supports CUDA (gpu-cuda), Metal/Vulkan/WebGPU (gpu-wgpu).
+//! Supports CUDA (cubecl-cuda), Metal/Vulkan/WebGPU (cubecl-wgpu).
 //!
 //! FFT uses shared-memory radix-2 for local stages and radix-4 butterfly
 //! for global stages, minimising kernel dispatch count.

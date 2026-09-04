@@ -131,21 +131,13 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fbm<T, S, B> {
   /// `Fbm::sample_par` used to draw fresh randomness on every call
   /// regardless of the pinned seed.
   ///
-  /// **On GPU backends (`CudaNative`/`CubeCl`/`MetalNative`), this fix does
-  /// not reach — `Fbm::sample_par` remains seed-blind there, unlike bare
-  /// [`Fgn`] on the same backends.** `self.seed` is
-  /// still passed to `noise_batch`, but the GPU `FgnBackend::generate_batch`
-  /// impls ignore that parameter entirely and read `fgn.seed` internally
-  /// instead (see [`FgnBackend`]'s doc) — for bare
-  /// `Fgn`, `fgn` *is* `self`, so `fgn.seed` happens to be the real seed
-  /// anyway; for `Fbm`, `fgn` is the permanently-`Unseeded` embedded field,
-  /// so a `Deterministic`-seeded `Fbm` on a GPU backend draws fresh
-  /// randomness on every call, exactly as if it were `Unseeded` — not
-  /// merely "untested across runs" like the GPU backends' documented
-  /// caveat for other types, but zero dependence on the pinned seed at
-  /// all. Not fixed here: doing so would require either widening what
-  /// `FgnBackend::generate_batch`'s GPU impls read, or giving `Fbm` its own
-  /// GPU-specific noise path, both larger changes than this fix's scope.
+  /// **On the GPU backends the same seed reaches the launch.** The device
+  /// `FgnBackend` impls draw their launch seed from the `seed: &S2` handed
+  /// to `noise_batch` — `self.seed` here, not the embedded `fgn`'s dead
+  /// `Unseeded` one — so two `Deterministic`-seeded `Fbm`s built from the
+  /// same seed value produce the same device paths (and consecutive calls on
+  /// one advance the stream, as on the host), subject to the cross-driver
+  /// caveat in [`FgnBackend`]'s table.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
     self.integrate(self.fgn.noise_batch(m, &self.seed))
   }

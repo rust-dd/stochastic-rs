@@ -347,8 +347,9 @@ all `m` paths):
 | `CudaNative` | `cuda-native` | NVIDIA, cudarc + NVRTC | `f32` or `f64`, after `T` |
 | `MetalNative` | `metal` | Apple GPUs, hand-written MSL | `f32` |
 
-The device seed is drawn from the process's own seed source (`Deterministic`
-reproduces its device paths call after call, `Unseeded` draws fresh entropy).
+The device seed is drawn from the process's own seed source (the same
+`Deterministic` seed value gives the same paths, consecutive calls advance the
+stream, `Unseeded` draws fresh entropy).
 The device kernels share one integer hash for their uniforms, so the device
 back-ends agree with each other seed for seed up to libm rounding; the host
 path is the process's own stream, so CPU and device paths agree in

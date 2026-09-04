@@ -87,9 +87,11 @@ failure is a `RuntimeError`.
 | `CudaNative` | `f32` / `f64` (a failing `f64` launch is reported, never replaced by the `f32` kernel) | yes | no |
 | `CubeCl` | `f32` (an `f64` process is a compile error) | yes | no |
 
-The device seed is drawn from the process's own seed source: a
-`Deterministic` process reproduces its device paths call after call, an
-`Unseeded` one draws fresh entropy — exactly as on the host. Host and device
+The device seed is drawn from the process's own seed source, so the device
+follows the host's rule exactly: two processes built from the same
+`Deterministic` seed value give the same paths, consecutive calls on one
+process advance the stream into independent paths, and an `Unseeded` process
+draws fresh entropy every call. Host and device
 paths agree in distribution, not bit for bit, because the device draws its
 own stream.
 

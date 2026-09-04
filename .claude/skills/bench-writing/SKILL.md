@@ -75,10 +75,10 @@ The gated benches in tree today, with their exact feature sets:
 
 | Bench | `required-features` |
 |---|---|
-| `fgn_gpu` | `["gpu"]` |
+| `fgn_gpu` | `["cubecl"]` |
 | `fgn_cuda_native` | `["cuda-native"]` |
-| `fgn_cuda_compare` | `["cuda-native", "gpu-cuda"]` |
-| `fgn_all_backends` | `["gpu-wgpu", "metal", "accelerate"]` |
+| `fgn_cuda_compare` | `["cuda-native", "cubecl-cuda"]` |
+| `fgn_all_backends` | `["cubecl-wgpu", "metal", "accelerate"]` |
 | `fgn_accelerate` | `["accelerate"]` |
 | `fgn_metal` | `["metal"]` |
 | `hotpath_profile` | `["hotpath"]` |
@@ -199,7 +199,7 @@ is a file or a directory before editing.
 - `benches/distributions/` — sweep over distribution × sample-count.
 - `benches/fgn_fbm.rs` — ungated CPU fGn / fBm sweep.
 - `benches/fgn_all_backends.rs` — the actual cross-backend comparison;
-  gated on `["gpu-wgpu", "metal", "accelerate"]`.
+  gated on `["cubecl-wgpu", "metal", "accelerate"]`.
 - `benches/option.rs` — end-to-end pricing with reduced sample count.
 - `benches/risk.rs` — VaR / ES estimators on synthetic samples.
 - `benches/dist_multicore.rs` — `sample_par` parallelism vs serial.

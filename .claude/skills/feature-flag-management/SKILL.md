@@ -196,8 +196,8 @@ it is a summary, and the sub-crate columns are the part that drifts.
 | Feature | Crates that publish it | Notes |
 |---|---|---|
 | `cuda-native` | `-stochastic`, umbrella | Native CUDA via **cudarc** + cuFFT + NVRTC. There is no bare `cuda` feature. |
-| `gpu` | `-stochastic`, umbrella | cubecl runtime-agnostic base. |
-| `gpu-cuda` / `gpu-wgpu` | `-stochastic`, umbrella | cubecl backends; each implies `gpu`. |
+| `cubecl` | `-stochastic`, umbrella | cubecl runtime-agnostic base (pulls `gpu-fft`). |
+| `cubecl-cuda` / `cubecl-wgpu` | `-stochastic`, umbrella | cubecl runtimes; each implies `cubecl`. The `gpu` / `gpu-cuda` / `gpu-wgpu` aliases were removed before 3.0. |
 | `metal` | `-stochastic`, umbrella | Apple Silicon GPU via the `metal` crate; f32 only. |
 | `accelerate` | `-stochastic`, umbrella | Apple vDSP / AMX — a **CPU** path despite sitting beside the GPU flags. |
 | `dual-stream-rng` | `-core`, `-distributions`, umbrella | Experimental `SimdRngDual`; changes deterministic output. |
@@ -213,7 +213,7 @@ it is a summary, and the sub-crate columns are the part that drifts.
 - `release-checklist` — `cargo check --workspace --all-features` is one
   of its stage-1 gates.
 - `add-gpu-sampler` — what each of the five backend features actually
-  selects, and why `cuda-native` and `gpu-cuda` are different backends
+  selects, and why `cuda-native` and `cubecl-cuda` are different backends
   rather than aliases.
 - `add-gpu-sampler`, `add-jump-process` — invoke when the new module is
   feature-gated.

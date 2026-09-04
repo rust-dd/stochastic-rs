@@ -1,10 +1,10 @@
 //! Head-to-head fGN sampling benchmark: CPU (SIMD) vs cuda-native (cudarc +
-//! cuFFT) vs gpu-cuda (cubecl). The per-backend `fgn_cuda_native` and `fgn_gpu`
+//! cuFFT) vs cubecl-cuda (cubecl). The per-backend `fgn_cuda_native` and `fgn_gpu`
 //! benches each compare one GPU path against the CPU in isolation; this one
 //! puts all three on the same axes so the two CUDA backends can be compared
 //! directly. Requires both CUDA features and an NVIDIA GPU.
 //!
-//! Run: cargo bench --bench fgn_cuda_compare --features "cuda-native,gpu-cuda"
+//! Run: cargo bench --bench fgn_cuda_compare --features "cuda-native,cubecl-cuda"
 use std::hint::black_box;
 use std::time::Duration;
 

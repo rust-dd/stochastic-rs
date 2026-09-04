@@ -429,13 +429,16 @@ impl HostBackend for Accelerate {}
 /// |---|---|
 /// | [`Cpu`] | Yes — same seed + same `m` ⇒ bit-identical output on any machine, under any rayon thread-pool size. |
 /// | `Accelerate` (`accelerate` feature) | **Not bit-identical — measured, not assumed.** Seed *consumption* (which derived basis feeds which path) is thread-count independent, via the identical mechanism `Cpu` uses. But `vDSP_fft_zip`'s own floating-point output is not bit-stable across otherwise-identical calls: measured on Apple Silicon (M4 Max), 400 repeated calls across varied `(n, m)` on an idle system showed zero divergence, but the same sweep with all cores saturated by unrelated work showed 21/400 configurations diverge (worst relative difference `2.08e-3`) — consistent with the heterogeneous P-core/E-core scheduler dispatching the FFT to different core types across calls. `Cpu`, under the identical induced load, stayed bit-exact throughout. Treat `Accelerate` as reproducible-effort-only, the same tier as the GPU backends below — see `tests/deterministic_parallelism_accelerate.rs`. |
-/// | `CudaNative` / `CubeCl` / `MetalNative` (`cuda-native` / `gpu` / `metal` features) | **Not guaranteed.** Each batch call draws one `u32`/`u64` value from the fGN's seed (`self.seed.rng()`) and hands it to the on-device kernel's own Philox/PCG-style RNG — so output is a function of the pinned seed and *not* of host thread-pool size (there is no host-side rayon fan-out inside `generate_batch` for these backends), but cross-run bit-identity across GPU driver versions, vendors, or even repeated runs on the same device is untested and not promised. Treat these three as reproducible-effort-only. **Exception: [`Fbm`](crate::process::fbm::Fbm) on any of these three backends is not even a function of the pinned seed** — see [`Fbm::sample_par`](crate::process::fbm::Fbm)'s own doc. |
+/// | `CudaNative` / `CubeCl` / `MetalNative` (`cuda-native` / `cubecl` / `metal` features) | **Not guaranteed.** Each batch call draws one `u32`/`u64` value from the `seed: &S2` the caller passed — the process's own seed, so two `Deterministic` processes built from the same seed value produce the same device paths, and consecutive calls on one process advance the stream into independent paths, exactly as on the host — and hands it to the on-device kernel's own Philox/PCG-style RNG, with a per-chunk offset so a chunked batch equals one launch. Output is therefore a function of the pinned seed and *not* of host thread-pool size (no host-side rayon fan-out inside `generate_batch` for these backends), but cross-run bit-identity across GPU driver versions, vendors, or even repeated runs on the same device is untested and not promised. Treat these three as reproducible-effort-only. |
 ///
 /// `generate`/`generate_batch`/`generate_pair`'s `seed: &S2` parameter is the
-/// mechanism `Cpu`/`Accelerate` use for their guarantees above (`Accelerate`'s
-/// covers seed consumption only, not vDSP's own arithmetic); the GPU backends
-/// ignore it (they seed from `fgn.seed` instead, once per batch call) exactly
-/// as documented per-method below.
+/// mechanism behind every row above: `Cpu`/`Accelerate` derive one basis per
+/// path or chunk from it (`Accelerate`'s guarantee covers seed consumption
+/// only, not vDSP's own arithmetic), and the GPU backends draw one launch
+/// seed from it per batch. It is the caller's seed, not `fgn.seed`, which is
+/// what makes a wrapper whose embedded `fgn` is [`Unseeded`
+/// ](stochastic_rs_core::simd_rng::Unseeded) — [`Fbm`](crate::process::fbm::Fbm)
+/// and the `Fou` family — reproducible on a device too.
 pub trait FgnBackend<T: FloatExt>: Backend {
   /// One fGN increment vector, or why the device could not produce it.
   fn try_generate<S: SeedExt, S2: SeedExt>(

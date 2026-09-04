@@ -16,15 +16,16 @@
 //!   log-normal scheme, OU and CIR their SIMD Euler steppers.
 //! - The GPU back-ends run one device thread per path with the whole
 //!   Euler–Maruyama recursion in the kernel and Box–Muller normals from a
-//!   counter hash of `(path, step, seed)`: `CubeCl` (features `gpu-cuda` /
-//!   `gpu-wgpu`: CUDA, Metal, Vulkan or WebGPU through CubeCL, `f32`),
+//!   counter hash of `(path, step, seed)`: `CubeCl` (features `cubecl-cuda` /
+//!   `cubecl-wgpu`: CUDA, Metal, Vulkan or WebGPU through CubeCL, `f32`),
 //!   `CudaNative` (feature `cuda-native`: cudarc + NVRTC, `f32` or `f64` after
 //!   `T`) and `MetalNative` (feature `metal`: hand-written MSL, `f32`).
 //!   `sample_par` is one launch for all `m` paths; `sample` launches one path.
 //!
-//! The device seed is drawn from the process's own seed source, so a
-//! `Deterministic` process reproduces its device paths call after call and an
-//! `Unseeded` one draws fresh entropy, exactly as on the host. The device
+//! The device seed is drawn from the process's own seed source, so the same
+//! `Deterministic` seed value gives the same device paths, consecutive calls
+//! advance the stream and an `Unseeded` process draws fresh entropy, exactly
+//! as on the host. The device
 //! kernels share one integer hash, so the device back-ends agree with each
 //! other seed for seed up to libm rounding; the host path is the process's
 //! own stream, so CPU and device paths agree in distribution, not bit for bit.
