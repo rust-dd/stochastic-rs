@@ -288,7 +288,7 @@ fn gen_scale<F: Float>(
 }
 
 #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-mod backend {
+pub(crate) mod backend {
   use std::any::TypeId;
 
   use super::*;
@@ -311,7 +311,12 @@ mod backend {
     }
   }
 
-  pub(super) fn sample_cubecl_f32<C: CubeclRuntime, T: FloatExt>(
+  /// The pipeline itself: leaves the increments in the client handle it wrote
+  /// them to, so a consumer on the same runtime — the Euler engine — reads
+  /// them without a round trip through host memory. Returns the handle and
+  /// the row length.
+  #[allow(clippy::too_many_arguments)]
+  pub(crate) fn sample_cubecl_f32_handle<C: CubeclRuntime>(
     sqrt_eigs: &[f32],
     n: usize,
     m: usize,
@@ -321,7 +326,7 @@ mod backend {
     first: usize,
     seed_u: u32,
     ordinal: usize,
-  ) -> DeviceResult<Array2<T>> {
+  ) -> DeviceResult<(cubecl::server::Handle, usize)> {
     let traj_size = 2 * n;
     let out_size = n - offset;
     let scale = (out_size.max(1) as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
@@ -408,10 +413,28 @@ mod backend {
       .map_err(|e| DeviceError::Launch(format!("extract_real: {e}")))?;
     }
 
-    let bytes = cl.read_one(oh.clone());
-    let out = f32::from_bytes(&bytes);
-    let fgn = arr2::<T>(out, m, out_size);
-    Ok(fgn)
+    Ok((oh, out_size))
+  }
+
+  /// The pipeline with the increments read back into an array, for callers
+  /// that consume them on the host.
+  #[allow(clippy::too_many_arguments)]
+  pub(super) fn sample_cubecl_f32<C: CubeclRuntime, T: FloatExt>(
+    sqrt_eigs: &[f32],
+    n: usize,
+    m: usize,
+    offset: usize,
+    hurst: f64,
+    t: f64,
+    first: usize,
+    seed_u: u32,
+    ordinal: usize,
+  ) -> DeviceResult<Array2<T>> {
+    let (handle, out_size) =
+      sample_cubecl_f32_handle::<C>(sqrt_eigs, n, m, offset, hurst, t, first, seed_u, ordinal)?;
+    let cl = C::client(ordinal)?;
+    let bytes = cl.read_one(handle);
+    Ok(arr2::<T>(f32::from_bytes(&bytes), m, out_size))
   }
 
   fn arr2<T: FloatExt>(data: &[f32], m: usize, cols: usize) -> Array2<T> {

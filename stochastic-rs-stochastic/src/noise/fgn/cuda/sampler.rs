@@ -95,6 +95,129 @@ where
   Ok(())
 }
 
+/// The pipeline with the increments left on the device: the caller — the
+/// Euler engine — reads them from GPU memory instead of paying a round trip
+/// through the host, which is where most of a CUDA batch's time goes. The
+/// returned slice is a device-to-device copy of the cached output, so the
+/// per-size cache stays reusable.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn sample_f32_device(
+  sqrt_eigs: &[f32],
+  n: usize,
+  m: usize,
+  offset: usize,
+  hurst: f64,
+  t: f64,
+  seed: u64,
+  first: usize,
+  ordinal: usize,
+) -> Result<CudaSlice<f32>> {
+  let hurst_bits = hurst.to_bits();
+  let t_bits = t.to_bits();
+  let out_size = n - offset;
+  let traj_size = 2 * n;
+  let scale = (out_size.max(1) as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
+
+  get_or_init_gpu(ordinal)?;
+  // Clone the handles out of the global lock so another size can launch
+  // concurrently; the per-size state below keeps its own lock for its buffers.
+  let (stream, gen_scale, extract) = {
+    let g = GPU.lock();
+    let k = g.as_ref().unwrap();
+    (
+      k.stream.clone(),
+      k.gen_scale_f32.clone(),
+      k.extract_f32.clone(),
+    )
+  };
+  let mut sized = SIZED_F32.lock();
+  let s = crate::device::lru_slot(
+    &mut sized,
+    |s| {
+      s.n == n && s.m == m && s.offset == offset && s.hurst_bits == hurst_bits && s.t_bits == t_bits
+    },
+    || {
+      let plan =
+        cufft::result::plan_1d(traj_size as i32, cufft::sys::cufftType::CUFFT_C2C, m as i32)
+          .map_err(|e| DeviceError::Launch(format!("cuFFT plan: {e}")))?;
+      unsafe {
+        cufft::result::set_stream(plan, stream.cu_stream() as _)
+          .map_err(|e| DeviceError::Launch(format!("cuFFT set_stream: {e}")))?;
+      }
+      Ok(SizedCtxF32 {
+        fft_plan: plan,
+        d_eigs: stream
+          .clone_htod(sqrt_eigs)
+          .map_err(|e| DeviceError::Launch(format!("htod eigs: {e}")))?,
+        d_data: stream
+          .alloc_zeros::<f32>(2 * m * traj_size)
+          .map_err(|e| DeviceError::Launch(format!("alloc data: {e}")))?,
+        d_out: stream
+          .alloc_zeros::<f32>(m * out_size)
+          .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?,
+        host_pinned: PinnedHost::<f32>::alloc(m * out_size)?,
+        n,
+        m,
+        offset,
+        hurst_bits,
+        t_bits,
+      })
+    },
+  )?;
+
+  // 1. Fused generate normals + scale by eigenvalues
+  let total_complex = (m * traj_size) as i32;
+  let traj_i32 = traj_size as i32;
+  // One seed per batch; chunks continue the element count, so a batch
+  // produced in chunks equals one launch element for element.
+  let seq = counter_offset(seed) + (first * traj_size) as u64;
+  unsafe {
+    stream
+      .launch_builder(&gen_scale)
+      .arg(&mut s.d_data)
+      .arg(&s.d_eigs)
+      .arg(&traj_i32)
+      .arg(&total_complex)
+      .arg(&seed)
+      .arg(&seq)
+      .launch(LaunchConfig::for_num_elems(total_complex as u32))
+      .map_err(|e| DeviceError::Launch(format!("gen_scale: {e}")))?;
+  }
+
+  // 2. Batched FFT
+  {
+    let (ptr, _g) = s.d_data.device_ptr_mut(&stream);
+    unsafe {
+      cufft::result::exec_c2c(s.fft_plan, ptr as *mut _, ptr as *mut _, CUFFT_FORWARD)
+        .map_err(|e| DeviceError::Launch(format!("cuFFT: {e}")))?;
+    }
+  }
+
+  // 3. Extract real parts + scale
+  let total_out = (m * out_size) as i32;
+  let out_i32 = out_size as i32;
+  let stride_i32 = traj_size as i32;
+  unsafe {
+    stream
+      .launch_builder(&extract)
+      .arg(&s.d_data)
+      .arg(&mut s.d_out)
+      .arg(&out_i32)
+      .arg(&stride_i32)
+      .arg(&scale)
+      .arg(&total_out)
+      .launch(LaunchConfig::for_num_elems(total_out as u32))
+      .map_err(|e| DeviceError::Launch(format!("extract: {e}")))?;
+  }
+  // 4. Hand the output over where it lies. A device-to-device copy keeps the
+  // per-size cache reusable and costs a fraction of a host round trip.
+  let out = stream
+    .clone_dtod(&s.d_out)
+    .map_err(|e| DeviceError::Launch(format!("dtod: {e}")))?;
+  drop(sized);
+  Ok(out)
+}
+
 fn sample_f32<T: FloatExt>(
   sqrt_eigs: &[f32],
   n: usize,
@@ -246,6 +369,126 @@ fn sample_f32<T: FloatExt>(
     );
   }
   Ok(fgn)
+}
+
+/// The double-precision pipeline with the increments left on the device, as
+/// in [`sample_f32_device`].
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn sample_f64_device(
+  sqrt_eigs: &[f64],
+  n: usize,
+  m: usize,
+  offset: usize,
+  hurst: f64,
+  t: f64,
+  seed: u64,
+  first: usize,
+  ordinal: usize,
+) -> Result<CudaSlice<f64>> {
+  let hurst_bits = hurst.to_bits();
+  let t_bits = t.to_bits();
+  let out_size = n - offset;
+  let traj_size = 2 * n;
+  let scale = (out_size.max(1) as f64).powf(-hurst) * t.powf(hurst);
+
+  get_or_init_gpu(ordinal)?;
+  // Clone the handles out of the global lock so another size can launch
+  // concurrently; the per-size state below keeps its own lock for its buffers.
+  let (stream, gen_scale, extract) = {
+    let g = GPU.lock();
+    let k = g.as_ref().unwrap();
+    (
+      k.stream.clone(),
+      k.gen_scale_f64.clone(),
+      k.extract_f64.clone(),
+    )
+  };
+  let mut sized = SIZED_F64.lock();
+  let s = crate::device::lru_slot(
+    &mut sized,
+    |s| {
+      s.n == n && s.m == m && s.offset == offset && s.hurst_bits == hurst_bits && s.t_bits == t_bits
+    },
+    || {
+      let plan =
+        cufft::result::plan_1d(traj_size as i32, cufft::sys::cufftType::CUFFT_Z2Z, m as i32)
+          .map_err(|e| DeviceError::Launch(format!("cuFFT plan: {e}")))?;
+      unsafe {
+        cufft::result::set_stream(plan, stream.cu_stream() as _)
+          .map_err(|e| DeviceError::Launch(format!("cuFFT set_stream: {e}")))?;
+      }
+      Ok(SizedCtxF64 {
+        fft_plan: plan,
+        d_eigs: stream
+          .clone_htod(sqrt_eigs)
+          .map_err(|e| DeviceError::Launch(format!("htod eigs: {e}")))?,
+        d_data: stream
+          .alloc_zeros::<f64>(2 * m * traj_size)
+          .map_err(|e| DeviceError::Launch(format!("alloc data: {e}")))?,
+        d_out: stream
+          .alloc_zeros::<f64>(m * out_size)
+          .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?,
+        host_pinned: PinnedHost::<f64>::alloc(m * out_size)?,
+        n,
+        m,
+        offset,
+        hurst_bits,
+        t_bits,
+      })
+    },
+  )?;
+
+  // 1. Fused generate + scale
+  let total_complex = (m * traj_size) as i32;
+  let traj_i32 = traj_size as i32;
+  // One seed per batch; chunks continue the element count, so a batch
+  // produced in chunks equals one launch element for element.
+  let seq = counter_offset(seed) + (first * traj_size) as u64;
+  unsafe {
+    stream
+      .launch_builder(&gen_scale)
+      .arg(&mut s.d_data)
+      .arg(&s.d_eigs)
+      .arg(&traj_i32)
+      .arg(&total_complex)
+      .arg(&seed)
+      .arg(&seq)
+      .launch(LaunchConfig::for_num_elems(total_complex as u32))
+      .map_err(|e| DeviceError::Launch(format!("gen_scale: {e}")))?;
+  }
+
+  // 2. Batched FFT
+  {
+    let (ptr, _g) = s.d_data.device_ptr_mut(&stream);
+    unsafe {
+      cufft::result::exec_z2z(s.fft_plan, ptr as *mut _, ptr as *mut _, CUFFT_FORWARD)
+        .map_err(|e| DeviceError::Launch(format!("cuFFT: {e}")))?;
+    }
+  }
+
+  // 3. Extract + scale
+  let total_out = (m * out_size) as i32;
+  let out_i32 = out_size as i32;
+  let stride_i32 = traj_size as i32;
+  unsafe {
+    stream
+      .launch_builder(&extract)
+      .arg(&s.d_data)
+      .arg(&mut s.d_out)
+      .arg(&out_i32)
+      .arg(&stride_i32)
+      .arg(&scale)
+      .arg(&total_out)
+      .launch(LaunchConfig::for_num_elems(total_out as u32))
+      .map_err(|e| DeviceError::Launch(format!("extract: {e}")))?;
+  }
+
+  // 4. Hand the output over where it lies, as in the single-precision path.
+  let out = stream
+    .clone_dtod(&s.d_out)
+    .map_err(|e| DeviceError::Launch(format!("dtod: {e}")))?;
+  drop(sized);
+  Ok(out)
 }
 
 fn sample_f64<T: FloatExt>(

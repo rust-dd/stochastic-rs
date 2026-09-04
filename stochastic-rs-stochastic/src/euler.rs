@@ -143,17 +143,33 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
   /// One path from the process's own sampler, the host stream.
   fn host_sample(&self) -> Array1<T>;
 
-  /// The noise increments for paths `first .. first + m`, one row of
-  /// `grid_points() - 1` per path, or `None` to let the kernel hash its own
-  /// Gaussian increments from `(path, step, seed)`.
+  /// The fGN pipeline's inputs when this process's increments come from one,
+  /// or `None` to let the kernel hash its own Gaussian increments from
+  /// `(path, step, seed)`.
   ///
-  /// A fractional process overrides this with its fGN pipeline, which is how
-  /// one family declaration serves both noise kinds: the step multiplies by
-  /// `dz` and does not care where `dz` came from.
-  fn increments(&self, first: usize, m: usize, seed: u64) -> Option<Vec<T>> {
-    let _ = (first, m, seed);
+  /// A device runs the pipeline itself and keeps the increments in the buffer
+  /// it wrote them to, so they never travel through host memory between the
+  /// two kernels. That is why this reports the pipeline's inputs rather than
+  /// the increments: handing over an array would be the round trip.
+  fn fgn_spec(&self) -> Option<FgnSpec<'_, T>> {
     None
   }
+}
+
+/// What a device needs to run the fGN pipeline for a process whose increments
+/// are fractional: the precomputed circulant eigenvalues and the grid they
+/// were built for.
+pub struct FgnSpec<'a, T> {
+  /// Square roots of the circulant embedding's eigenvalues.
+  pub sqrt_eigenvalues: &'a [T],
+  /// The padded grid the eigenvalues belong to.
+  pub n: usize,
+  /// How many leading samples the pipeline drops.
+  pub offset: usize,
+  /// The Hurst exponent.
+  pub hurst: f64,
+  /// The horizon the increments are scaled to.
+  pub t: f64,
 }
 
 /// The device primitive of the Euler engine: one launch under one seed.

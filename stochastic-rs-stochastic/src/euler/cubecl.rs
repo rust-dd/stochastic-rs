@@ -274,7 +274,7 @@ impl<R: CubeclRuntime> EulerKernel<f32> for crate::device::Cubecl<R> {
       first,
       m,
       seed,
-      process.increments(first, m, seed).as_deref().unwrap_or(&[]),
+      process.fgn_spec(),
     )
   }
 
@@ -294,7 +294,7 @@ fn device_paths<C: CubeclRuntime>(
   first: usize,
   m: usize,
   seed: u64,
-  increments: &[f32],
+  fgn: Option<crate::euler::FgnSpec<'_, f32>>,
 ) -> DeviceResult<Array2<f32>> {
   {
     if n == 0 || m == 0 {
@@ -308,13 +308,26 @@ fn device_paths<C: CubeclRuntime>(
     let data: Vec<f32> = {
       let params_h = cl.create_from_slice(f32::as_bytes(&params32));
       let out_h = cl.empty(total * 4);
-      // Every declared buffer is bound; an unused increment slot gets one float.
-      let incs_h = if increments.is_empty() {
-        cl.empty(4)
-      } else {
-        cl.create_from_slice(f32::as_bytes(increments))
+      // Every declared buffer is bound; an unused increment slot gets one
+      // float. A fractional process has its increments produced on this same
+      // runtime and read from the handle they were written to.
+      let (incs_h, incs_len) = match fgn.as_ref() {
+        Some(spec) => {
+          let (handle, out_size) = crate::noise::fgn::cubecl::backend::sample_cubecl_f32_handle::<C>(
+            spec.sqrt_eigenvalues,
+            spec.n,
+            m,
+            spec.offset,
+            spec.hurst,
+            spec.t,
+            first,
+            seed as u32,
+            ordinal,
+          )?;
+          (handle, m * out_size)
+        }
+        None => (cl.empty(4), 1),
       };
-      let incs_len = increments.len().max(1);
       unsafe {
         euler_paths_kernel::launch::<C::Rt>(
           cl,
@@ -331,7 +344,7 @@ fn device_paths<C: CubeclRuntime>(
           ScalarArg::new(n as u32),
           ScalarArg::new(m as u32),
           ScalarArg::new(first as u32),
-          ScalarArg::new(u32::from(!increments.is_empty())),
+          ScalarArg::new(u32::from(fgn.is_some())),
         )
         .map_err(|e| DeviceError::Launch(format!("euler_paths launch: {e:?}")))?;
       }

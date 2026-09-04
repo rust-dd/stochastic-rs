@@ -286,15 +286,6 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
 backend_switch!([T: FloatExt, S: SeedExt] Fgn<T, S> { hurst, n, t, offset, out_len, scale, sqrt_eigenvalues, fft_handler, seed } via phantom);
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Fgn<T, S, B> {
-  /// `m` fGN paths in one batched `B` call, one [`Array1`] per path. `seed`
-  /// is external to `self` so a wrapper type (e.g. [`Fbm`](crate::process::fbm::Fbm),
-  /// whose embedded `fgn` is always [`Unseeded`]) can drive the batch from
-  /// its *own* real seed instead of `self.seed` — see
-  /// [`FgnBackend::generate_batch`]'s doc for which backends actually consult it.
-  pub(crate) fn noise_batch<S2: SeedExt>(&self, m: usize, seed: &S2) -> Vec<Array1<T>> {
-    self.backend.generate_batch(self, m, seed)
-  }
-
   /// One fGN increment vector on backend `B`, the device's error instead of
   /// its panic. The host-side `seed` drives the CPU path and the GPU launch
   /// seed alike.

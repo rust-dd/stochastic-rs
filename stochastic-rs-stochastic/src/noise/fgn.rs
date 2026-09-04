@@ -8,11 +8,11 @@
 mod accelerate;
 mod core;
 #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-mod cubecl;
+pub(crate) mod cubecl;
 #[cfg(feature = "cuda")]
 pub(crate) mod cuda;
 #[cfg(feature = "metal")]
-mod metal;
+pub(crate) mod metal;
 #[cfg(feature = "python")]
 mod python;
 

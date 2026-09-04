@@ -194,7 +194,11 @@ fn build_bit_reverse_table(n: usize) -> Vec<u32> {
     .collect()
 }
 
-fn sample_f32<T: FloatExt>(
+/// The pipeline itself: leaves the increments in the device buffer it wrote
+/// them to and hands that buffer over, so a consumer on the same device — the
+/// Euler engine — reads them without a round trip through host memory.
+/// Returns the buffer and the row length.
+pub(crate) fn sample_f32_buffer(
   sqrt_eigs: &[f32],
   n: usize,
   m: usize,
@@ -203,7 +207,7 @@ fn sample_f32<T: FloatExt>(
   t: f64,
   seed: u32,
   ordinal: usize,
-) -> Result<Array2<T>> {
+) -> Result<(Buffer, usize)> {
   let traj_size = 2 * n;
   let out_size = n - offset;
   let scale = (out_size.max(1) as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
@@ -305,12 +309,27 @@ fn sample_f32<T: FloatExt>(
   cmd.commit();
   cmd.wait_until_completed();
 
-  // Zero-copy read from shared buffer
-  let out_ptr = s.out_buf.contents() as *const f32;
-  let out_slice = unsafe { std::slice::from_raw_parts(out_ptr, m * out_size) };
+  Ok((s.out_buf.clone(), out_size))
+}
 
-  let fgn = arr2_f32::<T>(out_slice, m, out_size);
-  Ok(fgn)
+/// The pipeline with the increments read back into an array, for callers that
+/// consume them on the host.
+#[allow(clippy::too_many_arguments)]
+fn sample_f32<T: FloatExt>(
+  sqrt_eigs: &[f32],
+  n: usize,
+  m: usize,
+  offset: usize,
+  hurst: f64,
+  t: f64,
+  seed: u32,
+  ordinal: usize,
+) -> Result<Array2<T>> {
+  let (buf, out_size) = sample_f32_buffer(sqrt_eigs, n, m, offset, hurst, t, seed, ordinal)?;
+  // Shared storage: the pointer is the same memory the GPU wrote.
+  let out_ptr = buf.contents() as *const f32;
+  let out_slice = unsafe { std::slice::from_raw_parts(out_ptr, m * out_size) };
+  Ok(arr2_f32::<T>(out_slice, m, out_size))
 }
 
 fn arr2_f32<T: FloatExt>(data: &[f32], m: usize, cols: usize) -> Array2<T> {

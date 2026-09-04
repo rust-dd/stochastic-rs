@@ -152,7 +152,23 @@ fn ensure_context(ordinal: usize) -> Result<()> {
   Ok(())
 }
 
-fn run(ordinal: usize, params: [f32; 4], args: EulerArgs, increments: &[f32]) -> Result<Vec<f32>> {
+/// Where a launch's noise increments come from. There is no host variant:
+/// increments are either hashed in the kernel or produced on this device, so
+/// they never travel through host memory.
+pub(crate) enum Increments<'a> {
+  /// The kernel hashes its own Gaussian increments.
+  Hashed,
+  /// A buffer already written on this device — the fGN pipeline's own
+  /// output, which never leaves the GPU.
+  Device(&'a Buffer),
+}
+
+fn run(
+  ordinal: usize,
+  params: [f32; 4],
+  args: EulerArgs,
+  increments: Increments<'_>,
+) -> Result<Vec<f32>> {
   ensure_context(ordinal)?;
   let guard = CONTEXT.lock();
   let ctx = guard.as_ref().expect("initialised");
@@ -163,15 +179,15 @@ fn run(ordinal: usize, params: [f32; 4], args: EulerArgs, increments: &[f32]) ->
     .device
     .new_buffer_with_data(params.as_ptr() as *const _, 16, shared);
   // Metal requires every declared buffer to be bound, so an unused increment
-  // slot still gets one float.
-  let incs_buf = if increments.is_empty() {
-    ctx.device.new_buffer(4, shared)
-  } else {
-    ctx.device.new_buffer_with_data(
-      increments.as_ptr() as *const _,
-      (increments.len() * 4) as u64,
-      shared,
-    )
+  // slot still gets one float. A supplied buffer is bound as it stands: it was
+  // written on this device and never left it.
+  let owned;
+  let incs_buf = match increments {
+    Increments::Device(buf) => buf,
+    Increments::Hashed => {
+      owned = ctx.device.new_buffer(4, shared);
+      &owned
+    }
   };
   let cmd = ctx.queue.new_command_buffer();
   {
@@ -179,7 +195,7 @@ fn run(ordinal: usize, params: [f32; 4], args: EulerArgs, increments: &[f32]) ->
     enc.set_compute_pipeline_state(&ctx.pipeline);
     enc.set_buffer(0, Some(&out_buf), 0);
     enc.set_buffer(1, Some(&params_buf), 0);
-    enc.set_buffer(3, Some(&incs_buf), 0);
+    enc.set_buffer(3, Some(incs_buf), 0);
     enc.set_bytes(
       2,
       std::mem::size_of::<EulerArgs>() as u64,
@@ -206,6 +222,26 @@ impl EulerKernel<f32> for Metal {
     m: usize,
     seed: u64,
   ) -> Result<Array2<f32>> {
+    // A fractional process has its increments produced on this same device and
+    // read from the buffer they were written to: the two kernels meet in GPU
+    // memory rather than through the host.
+    let fractional = match process.fgn_spec() {
+      Some(spec) => {
+        let eigs: Vec<f32> = spec.sqrt_eigenvalues.to_vec();
+        let (buf, _) = crate::noise::fgn::metal::sample_f32_buffer(
+          &eigs,
+          spec.n,
+          m,
+          spec.offset,
+          spec.hurst,
+          spec.t,
+          seed as u32,
+          self.ordinal,
+        )?;
+        Some(buf)
+      }
+      None => None,
+    };
     device_paths(
       self.ordinal,
       process.euler_spec(),
@@ -215,7 +251,10 @@ impl EulerKernel<f32> for Metal {
       first,
       m,
       seed,
-      process.increments(first, m, seed).as_deref().unwrap_or(&[]),
+      match fractional.as_ref() {
+        Some(buf) => Increments::Device(buf),
+        None => Increments::Hashed,
+      },
     )
   }
 
@@ -235,7 +274,7 @@ fn device_paths(
   first: usize,
   m: usize,
   seed: u64,
-  increments: &[f32],
+  increments: Increments<'_>,
 ) -> Result<Array2<f32>> {
   {
     if n == 0 || m == 0 {
@@ -253,7 +292,7 @@ fn device_paths(
       steps: n as u32,
       paths: m as u32,
       first_path: first as u32,
-      increments: u32::from(!increments.is_empty()),
+      increments: u32::from(!matches!(increments, Increments::Hashed)),
     };
     let data = run(ordinal, params32, args, increments)?;
     Ok(Array2::from_shape_vec((m, n), data).expect("the kernel returns m * n values"))

@@ -144,7 +144,7 @@ fn run<R>(
   first: usize,
   n: usize,
   m: usize,
-  increments: &[R],
+  increments: Option<&CudaSlice<R>>,
 ) -> Result<Vec<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
@@ -162,16 +162,18 @@ where
   let sqrt_dt = dt.sqrt();
   let (steps, paths, first_path) = (n as u32, m as u32, first as u32);
   // The kernel always binds the increment pointer; an unused slot gets one
-  // element rather than a null.
-  let use_incs = u32::from(!increments.is_empty());
-  let d_incs = if increments.is_empty() {
-    stream
-      .alloc_zeros::<R>(1)
-      .map_err(|e| DeviceError::Launch(format!("alloc incs: {e}")))?
-  } else {
-    stream
-      .clone_htod(increments)
-      .map_err(|e| DeviceError::Launch(format!("htod incs: {e}")))?
+  // element rather than a null. A supplied slice was written on this device by
+  // the fGN pipeline and is bound where it lies.
+  let use_incs = u32::from(increments.is_some());
+  let owned;
+  let d_incs = match increments {
+    Some(slice) => slice,
+    None => {
+      owned = stream
+        .alloc_zeros::<R>(1)
+        .map_err(|e| DeviceError::Launch(format!("alloc incs: {e}")))?;
+      &owned
+    }
   };
   unsafe {
     stream
@@ -186,7 +188,7 @@ where
       .arg(&steps)
       .arg(&paths)
       .arg(&first_path)
-      .arg(&d_incs)
+      .arg(d_incs)
       .arg(&use_incs)
       .launch(LaunchConfig::for_num_elems(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
@@ -213,7 +215,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       first,
       m,
       seed,
-      process.increments(first, m, seed).as_deref().unwrap_or(&[]),
+      process.fgn_spec(),
     )
   }
 
@@ -247,16 +249,6 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
   }
 }
 
-/// Re-types a slice of `T` into the precision the kernel runs in. `T` is
-/// `f32` or `f64` by `FloatExt`'s own bound, so the conversion is a copy when
-/// the precisions differ and a borrow-shaped copy when they do not.
-fn cast_slice<T: FloatExt, R: num_traits::Float>(values: &[T]) -> Vec<R> {
-  values
-    .iter()
-    .map(|v| R::from(v.to_f64().unwrap_or(0.0)).unwrap_or_else(R::zero))
-    .collect()
-}
-
 /// The kernel launch for an explicit specification.
 #[allow(clippy::too_many_arguments)]
 fn device_paths<T: FloatExt>(
@@ -268,7 +260,7 @@ fn device_paths<T: FloatExt>(
   first: usize,
   m: usize,
   seed: u64,
-  increments: &[T],
+  fgn: Option<crate::euler::FgnSpec<'_, T>>,
 ) -> Result<Array2<T>> {
   {
     if n == 0 || m == 0 {
@@ -279,6 +271,27 @@ fn device_paths<T: FloatExt>(
     let seed32 = (seed ^ (seed >> 32)) as u32;
     let p64: [f64; 4] = std::array::from_fn(|i| params[i].to_f64().unwrap_or(0.0));
     if TypeId::of::<T>() == TypeId::of::<f64>() {
+      let incs = match fgn.as_ref() {
+        Some(spec) => {
+          let eigs: Vec<f64> = spec
+            .sqrt_eigenvalues
+            .iter()
+            .map(|v| v.to_f64().unwrap_or(0.0))
+            .collect();
+          Some(crate::noise::fgn::cuda::sampler::sample_f64_device(
+            &eigs,
+            spec.n,
+            m,
+            spec.offset,
+            spec.hurst,
+            spec.t,
+            seed,
+            first,
+            ordinal,
+          )?)
+        }
+        None => None,
+      };
       let data = run::<f64>(
         ordinal,
         |k| &k.f64,
@@ -290,13 +303,34 @@ fn device_paths<T: FloatExt>(
         first,
         n,
         m,
-        &cast_slice::<T, f64>(increments),
+        incs.as_ref(),
       )?;
       let out =
         Array2::<f64>::from_shape_vec((m, n), data).expect("the kernel returns m * n values");
       return Ok(unsafe { std::mem::transmute::<Array2<f64>, Array2<T>>(out) });
     }
     let p32: [f32; 4] = std::array::from_fn(|i| p64[i] as f32);
+    let incs = match fgn.as_ref() {
+      Some(spec) => {
+        let eigs: Vec<f32> = spec
+          .sqrt_eigenvalues
+          .iter()
+          .map(|v| v.to_f32().unwrap_or(0.0))
+          .collect();
+        Some(crate::noise::fgn::cuda::sampler::sample_f32_device(
+          &eigs,
+          spec.n,
+          m,
+          spec.offset,
+          spec.hurst,
+          spec.t,
+          seed,
+          first,
+          ordinal,
+        )?)
+      }
+      None => None,
+    };
     let data = run::<f32>(
       ordinal,
       |k| &k.f32,
@@ -308,7 +342,7 @@ fn device_paths<T: FloatExt>(
       first,
       n,
       m,
-      &cast_slice::<T, f32>(increments),
+      incs.as_ref(),
     )?;
     assert!(
       TypeId::of::<T>() == TypeId::of::<f32>(),
@@ -332,7 +366,7 @@ fn launch_chunk<R>(
   first: usize,
   n: usize,
   m: usize,
-  increments: &[R],
+  increments: Option<&CudaSlice<R>>,
 ) -> Result<CudaSlice<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
@@ -346,16 +380,18 @@ where
   let sqrt_dt = dt.sqrt();
   let (steps, paths, first_path) = (n as u32, m as u32, first as u32);
   // The kernel always binds the increment pointer; an unused slot gets one
-  // element rather than a null.
-  let use_incs = u32::from(!increments.is_empty());
-  let d_incs = if increments.is_empty() {
-    stream
-      .alloc_zeros::<R>(1)
-      .map_err(|e| DeviceError::Launch(format!("alloc incs: {e}")))?
-  } else {
-    stream
-      .clone_htod(increments)
-      .map_err(|e| DeviceError::Launch(format!("htod incs: {e}")))?
+  // element rather than a null. A supplied slice was written on this device by
+  // the fGN pipeline and is bound where it lies.
+  let use_incs = u32::from(increments.is_some());
+  let owned;
+  let d_incs = match increments {
+    Some(slice) => slice,
+    None => {
+      owned = stream
+        .alloc_zeros::<R>(1)
+        .map_err(|e| DeviceError::Launch(format!("alloc incs: {e}")))?;
+      &owned
+    }
   };
   unsafe {
     stream
@@ -370,7 +406,7 @@ where
       .arg(&steps)
       .arg(&paths)
       .arg(&first_path)
-      .arg(&d_incs)
+      .arg(d_incs)
       .arg(&use_incs)
       .launch(LaunchConfig::for_num_elems(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
@@ -439,9 +475,9 @@ where
       first,
       n,
       len,
-      // The pipelined batch is Gaussian only: a fractional process reports a
-      // batch budget that keeps it to one launch.
-      &[],
+      // The pipelined batch is Gaussian only: a fractional process is launched
+      // in one go, so its increments never meet this path.
+      None,
     )?;
     let dst = unsafe { std::slice::from_raw_parts_mut(staging[slot].ptr, len * n) };
     streams[slot]

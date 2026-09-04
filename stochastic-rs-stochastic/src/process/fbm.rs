@@ -226,16 +226,16 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
     out
   }
 
-  /// One fGN batch, flattened row-major: the kernel steps `n - 1` times,
-  /// exactly one fGN row per path.
-  fn increments(&self, first: usize, m: usize, seed: u64) -> Option<Vec<T>> {
-    let _ = (first, seed);
-    let steps = self.n.saturating_sub(1);
-    let mut flat = Vec::with_capacity(m * steps);
-    for row in self.fgn.noise_batch(m, &self.seed) {
-      flat.extend(row.iter().copied().take(steps));
-    }
-    Some(flat)
+  /// The pipeline that produces this process's increments: the device runs it
+  /// and keeps the result in its own buffer.
+  fn fgn_spec(&self) -> Option<crate::euler::FgnSpec<'_, T>> {
+    Some(crate::euler::FgnSpec {
+      sqrt_eigenvalues: self.fgn.sqrt_eigenvalues.as_slice().expect("contiguous"),
+      n: self.fgn.n,
+      offset: self.fgn.offset,
+      hurst: self.fgn.hurst.to_f64().unwrap_or(0.5),
+      t: self.fgn.t.unwrap_or(T::one()).to_f64().unwrap_or(1.0),
+    })
   }
 }
 

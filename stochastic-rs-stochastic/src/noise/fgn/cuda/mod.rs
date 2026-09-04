@@ -6,7 +6,7 @@
 //!
 mod convert;
 mod kernels;
-mod sampler;
+pub(crate) mod sampler;
 mod state;
 
 pub(crate) use state::PinnedHost;
