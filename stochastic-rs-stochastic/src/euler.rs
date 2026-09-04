@@ -84,14 +84,21 @@ impl<T: FloatExt> EulerSpec<T> {
     allow(dead_code)
   )]
   pub(crate) fn encode(&self) -> (u32, [T; 4]) {
+    use families::Family;
     match *self {
-      EulerSpec::GeometricBrownian { mu, sigma } => (0, [mu, sigma, T::zero(), T::zero()]),
-      EulerSpec::OrnsteinUhlenbeck { theta, mu, sigma } => (1, [theta, mu, sigma, T::zero()]),
+      EulerSpec::GeometricBrownian { mu, sigma } => (
+        Family::GeometricBrownian.code(),
+        [mu, sigma, T::zero(), T::zero()],
+      ),
+      EulerSpec::OrnsteinUhlenbeck { theta, mu, sigma } => (
+        Family::OrnsteinUhlenbeck.code(),
+        [theta, mu, sigma, T::zero()],
+      ),
       EulerSpec::SquareRoot {
         kappa,
         theta,
         sigma,
-      } => (2, [kappa, theta, sigma, T::zero()]),
+      } => (Family::SquareRoot.code(), [kappa, theta, sigma, T::zero()]),
     }
   }
 }
@@ -460,6 +467,11 @@ try_sample_matrix!(Cir);
 pub mod cubecl;
 #[cfg(feature = "cuda")]
 pub mod cuda;
+// The generated C artifacts have no consumer until `cuda` or `metal` renders
+// a kernel from them; the declarations, the family codes and the host step
+// stay compiled either way, so a family is checked without a GPU.
+#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+pub(crate) mod families;
 #[cfg(any(feature = "cuda", feature = "metal"))]
 pub(crate) mod kernel;
 #[cfg(feature = "metal")]

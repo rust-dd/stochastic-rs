@@ -51,14 +51,18 @@ kernel void euler_paths(
 "#;
 
 fn msl_source() -> String {
-  let body = super::kernel::render(&super::kernel::Language {
+  let lang = super::kernel::Language {
     real: "float",
     sqrt: "sqrt",
     log: "log",
     cos: "cos",
+    exp: "exp",
+    pow: "pow",
     index: "uint",
-  });
-  format!("{MSL_HEADER}{body}}}\n")
+  };
+  let prelude = super::kernel::prelude(&lang);
+  let body = super::kernel::render(&lang);
+  format!("{prelude}{MSL_HEADER}{body}}}\n")
 }
 
 #[repr(C)]

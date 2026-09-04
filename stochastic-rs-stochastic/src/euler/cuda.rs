@@ -36,19 +36,30 @@ const CUDA_HEADER: &str = r#"extern "C" __global__ void euler_paths_REAL(
 "#;
 
 fn kernel_source(real: &str) -> String {
-  let (sqrt, log, cos) = if real == "float" {
-    ("sqrtf", "logf", "cosf")
+  let lang = if real == "float" {
+    super::kernel::Language {
+      real,
+      sqrt: "sqrtf",
+      log: "logf",
+      cos: "cosf",
+      exp: "expf",
+      pow: "powf",
+      index: "unsigned long long",
+    }
   } else {
-    ("sqrt", "log", "cos")
+    super::kernel::Language {
+      real,
+      sqrt: "sqrt",
+      log: "log",
+      cos: "cos",
+      exp: "exp",
+      pow: "pow",
+      index: "unsigned long long",
+    }
   };
-  let body = super::kernel::render(&super::kernel::Language {
-    real,
-    sqrt,
-    log,
-    cos,
-    index: "unsigned long long",
-  });
-  format!("{}{}}}\n", CUDA_HEADER.replace("REAL", real), body)
+  let prelude = super::kernel::prelude(&lang);
+  let body = super::kernel::render(&lang);
+  format!("{prelude}{}{body}}}\n", CUDA_HEADER.replace("REAL", real))
 }
 
 struct Kernels {
