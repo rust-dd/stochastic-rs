@@ -102,6 +102,26 @@ pub enum EulerSpec<T: FloatExt> {
   LogGeometric { drift_ln: T, sigma: T },
   /// `dX = (κ/X − X) dt + σ dW`: radial Ornstein–Uhlenbeck.
   RadialOrnsteinUhlenbeck { kappa: T, sigma: T },
+  /// `dX = (a + bX) dt + cX dW`: the linear scalar SDE.
+  LinearSde { a: T, b: T, c: T },
+  /// `dX = −κX/√(1+X²) dt + σ dW`.
+  Hyperbolic { kappa: T, sigma: T },
+  /// `dX = −κX dt + σ√(1+X²) dW`.
+  ModifiedSquareRoot { kappa: T, sigma: T },
+  /// `dX = X(θ₁ − X·d) dt + θ₃|X|^{3/2} dW`, with `d = θ₃³ − θ₁θ₂` folded on
+  /// the host.
+  FellerRoot { theta1: T, decay: T, theta3: T },
+  /// The Aït-Sahalia short-rate model's eight coefficients.
+  AitSahalia {
+    am1: T,
+    a0: T,
+    a1: T,
+    a2: T,
+    b0: T,
+    b1: T,
+    b2: T,
+    b3: T,
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -168,6 +188,29 @@ impl<T: FloatExt> EulerSpec<T> {
       EulerSpec::RadialOrnsteinUhlenbeck { kappa, sigma } => {
         (Family::RadialOrnsteinUhlenbeck.code(), pad([kappa, sigma]))
       }
+      EulerSpec::LinearSde { a, b, c } => (Family::LinearSde.code(), pad([a, b, c])),
+      EulerSpec::Hyperbolic { kappa, sigma } => (Family::Hyperbolic.code(), pad([kappa, sigma])),
+      EulerSpec::ModifiedSquareRoot { kappa, sigma } => {
+        (Family::ModifiedSquareRoot.code(), pad([kappa, sigma]))
+      }
+      EulerSpec::FellerRoot {
+        theta1,
+        decay,
+        theta3,
+      } => (Family::FellerRoot.code(), pad([theta1, decay, theta3])),
+      EulerSpec::AitSahalia {
+        am1,
+        a0,
+        a1,
+        a2,
+        b0,
+        b1,
+        b2,
+        b3,
+      } => (
+        Family::AitSahalia.code(),
+        [am1, a0, a1, a2, b0, b1, b2, b3],
+      ),
     }
   }
 }

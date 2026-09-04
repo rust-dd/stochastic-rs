@@ -22,8 +22,10 @@
 //! buffer in declaration order. The `report` expression maps the state to what
 //! the path records and is evaluated at `t = 0` as well, where no noise exists.
 //!
-//! The function vocabulary is `sqrt`, `exp`, `ln`, `pow`, `positive`, `max`
-//! and `min`. Each has a host implementation in [`ops`] and a C definition in
+//! The function vocabulary is `sqrt`, `exp`, `ln`, `pow`, `abs`, `positive`,
+//! `max`, `min`, the literal `lit`, the comparisons `less`, `leq` and `geq`,
+//! and the branch-free `pick`. Each has a host implementation in [`ops`],
+//! a C definition in
 //! [`C_PRELUDE`]; anything outside it fails to compile on the host, which is
 //! the intended way to find out that a kernel could not have run it either.
 
@@ -94,6 +96,13 @@ pub(crate) mod ops {
     T::from_f64_fast(v)
   }
 
+  /// `1` when `a < b`, `0` otherwise: a strict comparison, kept distinct from
+  /// [`leq`] so a step can reproduce a host guard's boundary exactly.
+  #[inline(always)]
+  pub(crate) fn less<T: FloatExt>(a: T, b: T) -> T {
+    if a < b { T::one() } else { T::zero() }
+  }
+
   /// `1` when `a <= b`, `0` otherwise: a condition as a number, so a step
   /// stays one expression on every target.
   #[inline(always)]
@@ -126,6 +135,7 @@ pub(crate) const C_PRELUDE: &str = r#"#define sqrt(v) STOCH_SQRT(v)
 #define positive(v) ((v) > (REAL)0 ? (v) : (REAL)0)
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define min(a, b) ((a) < (b) ? (a) : (b))
+#define less(a, b) ((a) < (b) ? (REAL)1 : (REAL)0)
 #define leq(a, b) ((a) <= (b) ? (REAL)1 : (REAL)0)
 #define geq(a, b) ((a) >= (b) ? (REAL)1 : (REAL)0)
 #define pick(c, a, b) ((c) != (REAL)0 ? (a) : (b))
@@ -182,6 +192,12 @@ pub(crate) mod cube_ops {
   #[cube]
   pub(crate) fn lit(v: f32) -> f32 {
     v
+  }
+
+  /// `1` when `a < b`, `0` otherwise.
+  #[cube]
+  pub(crate) fn less(a: f32, b: f32) -> f32 {
+    select(a < b, 1.0f32, 0.0f32)
   }
 
   /// `1` when `a <= b`, `0` otherwise.
@@ -458,6 +474,39 @@ euler_families! {
   12 => RadialOrnsteinUhlenbeck { kappa, sigma }
     step {
       x + (kappa / pick(leq(abs(x), lit(1e-12)), lit(1e-12), x) - x) * dt + sigma * dz
+    }
+    report { x },
+
+  /// `dX = (a + bX) dt + cX dW`: the linear scalar SDE.
+  13 => LinearSde { a, b, c }
+    step { x + (a + b * x) * dt + c * x * dz }
+    report { x },
+
+  /// `dX = −κX/√(1+X²) dt + σ dW`: a hyperbolic drift, bounded in `X`.
+  14 => Hyperbolic { kappa, sigma }
+    step { x - kappa * x / sqrt(x * x + lit(1.0)) * dt + sigma * dz }
+    report { x },
+
+  /// `dX = −κX dt + σ√(1+X²) dW`: the modified CIR process, whose diffusion
+  /// never vanishes.
+  15 => ModifiedSquareRoot { kappa, sigma }
+    step { x - kappa * x * dt + sigma * sqrt(x * x + lit(1.0)) * dz }
+    report { x },
+
+  /// `dX = X(θ₁ − X(θ₃³ − θ₁θ₂)) dt + θ₃|X|^{3/2} dW`: the Feller root
+  /// process, with the drift's constant folded on the host.
+  16 => FellerRoot { theta1, decay, theta3 }
+    step { x + x * (theta1 - x * decay) * dt + theta3 * pow(abs(x), lit(1.5)) * dz }
+    report { x },
+
+  /// `dX = (a₋₁/X + a₀ + a₁X + a₂X²) dt + √|b₀ + b₁X + b₂|X|^{b₃}| dW`: the
+  /// Aït-Sahalia short-rate model, whose drift is guarded away from the origin
+  /// exactly as the host sampler guards it.
+  17 => AitSahalia { am1, a0, a1, a2, b0, b1, b2, b3 }
+    step {
+      x + (am1 / pick(less(abs(x), lit(1e-12)), lit(1e-12), x)
+        + a0 + a1 * x + a2 * x * x) * dt
+        + sqrt(abs(b0 + b1 * x + b2 * pow(abs(x), b3))) * dz
     }
     report { x },
 

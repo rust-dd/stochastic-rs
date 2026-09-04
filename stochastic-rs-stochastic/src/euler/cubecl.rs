@@ -95,6 +95,21 @@ fn step(family: u32, x: f32, params: &Array<f32>, dt: f32, dz: f32) -> f32 {
   if family == 12u32 {
     stepped = cube::RadialOrnsteinUhlenbeck(x, params, dt, dz);
   }
+  if family == 17u32 {
+    stepped = cube::AitSahalia(x, params, dt, dz);
+  }
+  if family == 16u32 {
+    stepped = cube::FellerRoot(x, params, dt, dz);
+  }
+  if family == 15u32 {
+    stepped = cube::ModifiedSquareRoot(x, params, dt, dz);
+  }
+  if family == 14u32 {
+    stepped = cube::Hyperbolic(x, params, dt, dz);
+  }
+  if family == 13u32 {
+    stepped = cube::LinearSde(x, params, dt, dz);
+  }
   if family == 11u32 {
     stepped = cube::LogGeometric(x, params, dt, dz);
   }
@@ -140,6 +155,21 @@ fn report(family: u32, x: f32) -> f32 {
   }
   if family == 12u32 {
     reported = cube_report::RadialOrnsteinUhlenbeck(x);
+  }
+  if family == 17u32 {
+    reported = cube_report::AitSahalia(x);
+  }
+  if family == 16u32 {
+    reported = cube_report::FellerRoot(x);
+  }
+  if family == 15u32 {
+    reported = cube_report::ModifiedSquareRoot(x);
+  }
+  if family == 14u32 {
+    reported = cube_report::Hyperbolic(x);
+  }
+  if family == 13u32 {
+    reported = cube_report::LinearSde(x);
   }
   if family == 11u32 {
     reported = cube_report::LogGeometric(x);
