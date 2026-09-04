@@ -36,9 +36,10 @@ behind an `f64` type.
 - **Euler engine.** The whole Euler–Maruyama recursion of a path runs in one
   kernel thread; `sample_par(m)` is one launch for all `m` paths, `sample()`
   launches a single path. CIR uses full truncation (Lord, Koekkoek & van Dijk
-  2010) in the kernel. The three device kernels share one integer hash for
-  their uniforms, so `MetalNative`, `CudaNative` and `CubeCl` agree with each
-  other seed for seed up to `f32` libm rounding.
+  2010) in the kernel. The CUDA and Metal kernels are one C body rendered per
+  language, and the CubeCL kernel repeats its integer hash, so `MetalNative`,
+  `CudaNative` and `CubeCl` agree with each other seed for seed up to `f32`
+  libm rounding.
 - **Host backends.** `Cpu` is the process's own sampler; `Accelerate` is a
   CPU device that only differs for the fGN family (vDSP FFT). For every
   other process both are the same code path.
@@ -151,8 +152,8 @@ A process joins the Euler engine by implementing `EulerCoefficients`
 (its `EulerSpec` family, initial value, grid, horizon, device seed) and
 switching its `backend_switch!` line from `via host` to `via euler`. A new
 drift / diffusion family is one `EulerSpec` variant plus one `family` branch
-in each of the three kernels (`euler/gpu.rs`, `euler/cuda_native.rs`,
-`euler/metal.rs`). Widening a process's bound from `HostBackend` to
+in the CubeCL kernel (`euler/gpu.rs`) and one in the C body the CUDA and
+Metal kernels render from a single text (`euler/kernel.rs`). Widening a process's bound from `HostBackend` to
 `EulerBackend` is not a breaking change for its callers.
 
 Not on a device yet, and what it would take: the two-state models

@@ -459,6 +459,8 @@ try_sample_matrix!(Cir);
 pub mod cuda_native;
 #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
 pub mod gpu;
+#[cfg(any(feature = "cuda-native", feature = "metal"))]
+pub(crate) mod kernel;
 #[cfg(feature = "metal")]
 pub mod metal;
 

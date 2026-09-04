@@ -23,10 +23,9 @@ use crate::traits::FloatExt;
 
 type Result<T> = std::result::Result<T, DeviceError>;
 
-/// The kernel body shared by both precisions; `REAL` is substituted at
-/// compile time.
-const KERNEL_TEMPLATE: &str = r#"
-extern "C" __global__ void euler_paths_REAL(
+/// The `float` / `double` kernel: the launch header around the body the
+/// Metal back-end renders too ([`super::kernel`]).
+const CUDA_HEADER: &str = r#"extern "C" __global__ void euler_paths_REAL(
     REAL* __restrict__ out,
     const REAL* __restrict__ params,
     unsigned int family, REAL x0, REAL dt, REAL sqrt_dt,
@@ -34,34 +33,6 @@ extern "C" __global__ void euler_paths_REAL(
     unsigned int first_path)
 {
     unsigned int path = blockIdx.x * blockDim.x + threadIdx.x;
-    if (path >= paths) return;
-    unsigned long long base = (unsigned long long)path * steps;
-    REAL x = x0;
-    REAL reported = x0;
-    if (family == 2u && x0 < (REAL)0) reported = (REAL)0;
-    out[base] = reported;
-    for (unsigned int i = 1; i < steps; i++) {
-        unsigned int g = (first_path + path) * steps + i;
-        unsigned int a = (g * 2u) ^ (seed * 2654435761u);
-        a ^= a >> 16; a *= 2246822519u; a ^= a >> 13; a *= 3266489917u; a ^= a >> 16;
-        unsigned int b = (g * 2u + 1u) ^ (seed * 668265263u);
-        b ^= b >> 16; b *= 2246822519u; b ^= b >> 13; b *= 3266489917u; b ^= b >> 16;
-        REAL u1 = (REAL)a * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6;
-        REAL u2 = (REAL)b * (REAL)2.3283064e-10;
-        REAL z = SQRT((REAL)-2.0 * LOG(u1)) * COS((REAL)6.283185307179586 * u2);
-        if (family == 0u) {
-            x = x + params[0] * x * dt + params[1] * x * sqrt_dt * z;
-        } else if (family == 1u) {
-            x = x + params[0] * (params[1] - x) * dt + params[2] * sqrt_dt * z;
-        } else {
-            REAL positive = x > (REAL)0 ? x : (REAL)0;
-            x = x + params[0] * (params[1] - positive) * dt + params[2] * SQRT(positive) * sqrt_dt * z;
-        }
-        reported = x;
-        if (family == 2u && x < (REAL)0) reported = (REAL)0;
-        out[base + i] = reported;
-    }
-}
 "#;
 
 fn kernel_source(real: &str) -> String {
@@ -70,11 +41,14 @@ fn kernel_source(real: &str) -> String {
   } else {
     ("sqrt", "log", "cos")
   };
-  KERNEL_TEMPLATE
-    .replace("SQRT", sqrt)
-    .replace("LOG", log)
-    .replace("COS", cos)
-    .replace("REAL", real)
+  let body = super::kernel::render(&super::kernel::Language {
+    real,
+    sqrt,
+    log,
+    cos,
+    index: "unsigned long long",
+  });
+  format!("{}{}}}\n", CUDA_HEADER.replace("REAL", real), body)
 }
 
 struct Kernels {
@@ -422,7 +396,6 @@ where
 }
 
 /// The pipelined batch for an explicit specification, in the precision of `T`.
-#[allow(clippy::too_many_arguments)]
 #[allow(clippy::too_many_arguments)]
 fn pipelined_paths<T: FloatExt>(
   ordinal: usize,

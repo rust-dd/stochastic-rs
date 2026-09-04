@@ -109,8 +109,8 @@ change; match them with a wildcard arm. Enums that are closed by definition
 in/out kinds) stay exhaustive. Processes and pricers with public fields are
 constructed through `new` and the `with_*` setters; a struct literal is not
 a supported construction (a public-field process also carries its backend
-marker, `backend: PhantomData`), so adding a field is not a breaking change
-for code that follows the constructors.
+handle, `backend: Cpu`), so adding a field is not a breaking change for code
+that follows the constructors.
 
 ## Explicit non-goals
 

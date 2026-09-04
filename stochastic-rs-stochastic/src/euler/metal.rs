@@ -17,8 +17,10 @@ use crate::device::MetalNative;
 
 type Result<T> = std::result::Result<T, DeviceError>;
 
-const MSL_SOURCE: &str = r#"
-#include <metal_stdlib>
+/// The MSL header around the kernel body the CUDA back-end renders too
+/// ([`super::kernel`]): the argument struct, the kernel signature and the
+/// bindings of its fields to the names the body uses.
+const MSL_HEADER: &str = r#"#include <metal_stdlib>
 using namespace metal;
 
 struct EulerArgs {
@@ -38,35 +40,26 @@ kernel void euler_paths(
     constant EulerArgs& args [[buffer(2)]],
     uint path [[thread_position_in_grid]])
 {
-    if (path >= args.paths) return;
-    uint base = path * args.steps;
-    float x = args.x0;
-    float reported = args.x0;
-    if (args.family == 2u && args.x0 < 0.0f) reported = 0.0f;
-    out[base] = reported;
-    for (uint i = 1u; i < args.steps; i++) {
-        uint g = (args.first_path + path) * args.steps + i;
-        uint a = (g * 2u) ^ (args.seed * 2654435761u);
-        a ^= a >> 16; a *= 2246822519u; a ^= a >> 13; a *= 3266489917u; a ^= a >> 16;
-        uint b = (g * 2u + 1u) ^ (args.seed * 668265263u);
-        b ^= b >> 16; b *= 2246822519u; b ^= b >> 13; b *= 3266489917u; b ^= b >> 16;
-        float u1 = float(a) * 2.3283064e-10f * 0.999998f + 1.0e-6f;
-        float u2 = float(b) * 2.3283064e-10f;
-        float z = sqrt(-2.0f * log(u1)) * cos(6.2831853071795864f * u2);
-        if (args.family == 0u) {
-            x = x + params[0] * x * args.dt + params[1] * x * args.sqrt_dt * z;
-        } else if (args.family == 1u) {
-            x = x + params[0] * (params[1] - x) * args.dt + params[2] * args.sqrt_dt * z;
-        } else {
-            float positive = x > 0.0f ? x : 0.0f;
-            x = x + params[0] * (params[1] - positive) * args.dt + params[2] * sqrt(positive) * args.sqrt_dt * z;
-        }
-        reported = x;
-        if (args.family == 2u && x < 0.0f) reported = 0.0f;
-        out[base + i] = reported;
-    }
-}
+    const uint family = args.family;
+    const float x0 = args.x0;
+    const float dt = args.dt;
+    const float sqrt_dt = args.sqrt_dt;
+    const uint seed = args.seed;
+    const uint steps = args.steps;
+    const uint paths = args.paths;
+    const uint first_path = args.first_path;
 "#;
+
+fn msl_source() -> String {
+  let body = super::kernel::render(&super::kernel::Language {
+    real: "float",
+    sqrt: "sqrt",
+    log: "log",
+    cos: "cos",
+    index: "uint",
+  });
+  format!("{MSL_HEADER}{body}}}\n")
+}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -131,7 +124,7 @@ fn ensure_context(ordinal: usize) -> Result<()> {
   let device = metal_device(ordinal)?;
   let queue = device.new_command_queue();
   let library = device
-    .new_library_with_source(MSL_SOURCE, &CompileOptions::new())
+    .new_library_with_source(&msl_source(), &CompileOptions::new())
     .map_err(|e| DeviceError::Compile(format!("MSL compile: {e}")))?;
   let function = library
     .get_function("euler_paths", None)
