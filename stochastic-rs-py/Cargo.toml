@@ -27,8 +27,6 @@ metal = ["stochastic-rs-stochastic/metal"]
 cuda-native = ["stochastic-rs-stochastic/cuda-native"]
 cubecl-cuda = ["stochastic-rs-stochastic/cubecl-cuda"]
 cubecl-wgpu = ["stochastic-rs-stochastic/cubecl-wgpu"]
-gpu-cuda = ["cubecl-cuda"]
-gpu-wgpu = ["cubecl-wgpu"]
 accelerate = ["stochastic-rs-stochastic/accelerate"]
 # Surrogates + surrogate calibration; off in the published wheels (candle is heavy):
 # `maturin develop --features ai`.

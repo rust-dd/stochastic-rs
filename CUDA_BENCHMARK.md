@@ -8,7 +8,7 @@ Build with the `mimalloc` global allocator — the batch path allocates one
 `Array1` per path, so the default Windows allocator otherwise bottlenecks it:
 
 ```bash
-cargo bench --bench fgn_cuda_compare --features "cuda-native,gpu-cuda,mimalloc"
+cargo bench --bench fgn_cuda_compare --features "cuda-native,cubecl-cuda,mimalloc"
 ```
 
 ## Single path (`sample`, m = 1)

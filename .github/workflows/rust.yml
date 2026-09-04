@@ -45,8 +45,8 @@ jobs:
           - "ai"
           - "yahoo"
           - "python"
-          - "gpu"
-          - "python,gpu"
+          - cubecl
+          - "python,cubecl"
           - "ai,yahoo"
     steps:
       - uses: actions/checkout@v3

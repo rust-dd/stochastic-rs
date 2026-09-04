@@ -18,7 +18,7 @@ Rust core.
 |-------------------|-----------------------------|--------------------------------------|-------------------------------------------|
 | `ai`              | umbrella                    | `stochastic-rs-ai`, `candle-core`    | NN volatility surrogates                  |
 | `cuda-native`     | `-stochastic`               | `cudarc` + cuFFT + NVRTC             | NVIDIA GPU: FGN / fBM (cuFFT) and the Euler engine kernels for `Gbm` / `Ou` / `Cir` (`CudaNative` backend, `f32` or `f64`) |
-| `cubecl-cuda` / `cubecl-wgpu` (`cubecl` = runtime-agnostic core) | `-stochastic` | `cubecl` (+ `cubecl-cuda` / `-wgpu`) | Portable CUDA / Metal / Vulkan / WebGPU kernels: FGN / fBM and the Euler engine (`CubeCl` backend, `f32`). `gpu-cuda` / `gpu-wgpu` / `gpu` are the same features under their earlier names |
+| `cubecl-cuda` / `cubecl-wgpu` (`cubecl` = runtime-agnostic core) | `-stochastic` | `cubecl` (+ `cubecl-cuda` / `-wgpu`) | Portable CUDA / Metal / Vulkan / WebGPU kernels: FGN / fBM and the Euler engine (`CubeCl` backend, `f32`) |
 | `metal`           | `-stochastic`               | `metal`                             | Apple GPU: FGN / fBM and the Euler engine in hand-written MSL (`MetalNative` backend, `f32`) |
 | `accelerate`      | `-stochastic`               | Apple vDSP (system framework)       | macOS CPU-FFT FGN / fBM (`Accelerate` backend; a host device for every process) |
 | `python`          | `-py` (cdylib)              | `pyo3`, `numpy`                      | Building the wheel via maturin            |

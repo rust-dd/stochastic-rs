@@ -342,12 +342,9 @@ dual-stream-rng = [
 ]
 accelerate = ["stochastic-rs-stochastic/accelerate"]
 cubecl = ["dep:cubecl", "dep:gpu-fft", "stochastic-rs-stochastic/cubecl"]
-gpu = ["cubecl"]
 metal = ["dep:metal", "stochastic-rs-stochastic/metal"]
 cubecl-cuda = ["cubecl", "dep:cubecl-cuda", "stochastic-rs-stochastic/cubecl-cuda"]
 cubecl-wgpu = ["cubecl", "dep:cubecl-wgpu", "stochastic-rs-stochastic/cubecl-wgpu"]
-gpu-cuda = ["cubecl-cuda"]
-gpu-wgpu = ["cubecl-wgpu"]
 jemalloc = ["dep:tikv-jemallocator"]
 # Python bindings live in `stochastic-rs-py` (separate cdylib). Enabling
 # `python` here just turns on the upstream feature flags so the umbrella

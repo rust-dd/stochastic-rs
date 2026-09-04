@@ -56,8 +56,8 @@ stochastic-rs-core (simd_rng)
 | `ai`            | umbrella                     | `stochastic-rs-ai`, `candle-core` | NN volatility surrogates                              |
 | `cuda-native`   | `stochastic`                 | `cudarc`, cuFFT, fused Philox     | Direct CUDA backend for FGN / fBM (NVIDIA, CUDA 12.x) |
 | `gpu`           | `stochastic`                 | `cubecl`, `gpu-fft`               | Portable GPU kernel framework (CPU + GPU runtime)     |
-| `gpu-cuda`      | `stochastic`                 | `cubecl-cuda`                     | cubecl over CUDA (NVIDIA)                             |
-| `gpu-wgpu`      | `stochastic`                 | `cubecl-wgpu`                     | cubecl over WebGPU (NVIDIA / AMD / Apple via wgpu)    |
+| `cubecl-cuda`      | `stochastic`                 | `cubecl-cuda`                     | cubecl over CUDA (NVIDIA)                             |
+| `cubecl-wgpu`      | `stochastic`                 | `cubecl-wgpu`                     | cubecl over WebGPU (NVIDIA / AMD / Apple via wgpu)    |
 | `metal`         | `stochastic`                 | `metal` (Apple framework)         | Direct Metal backend for FGN / fBM on macOS           |
 | `accelerate`    | `stochastic`                 | Apple Accelerate (vDSP)           | macOS-native FFT acceleration (no toolchain install)  |
 | `mimalloc` / `jemalloc` | umbrella             | `mimalloc` / `tikv-jemallocator`  | Drop-in allocator for long-running MC workloads       |
@@ -189,7 +189,7 @@ let batch = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
   .sample_par(1024); // 1024 paths in one launch
 ```
 
-### `gpu` / `gpu-cuda` / `gpu-wgpu` — cubecl portable kernels
+### `cubecl` / `cubecl-cuda` / `cubecl-wgpu` — cubecl portable kernels
 
 [`cubecl`](https://crates.io/crates/cubecl) is a CPU/GPU portable
 kernel framework. Useful when you want the same kernel to run on
@@ -197,10 +197,10 @@ CUDA, WebGPU, and a CPU debug runtime.
 
 ```bash
 # CUDA backend (NVIDIA)
-cargo build --features gpu-cuda
+cargo build --features cubecl-cuda
 
 # WebGPU backend (NVIDIA / AMD / Apple via wgpu — also runs in browsers)
-cargo build --features gpu-wgpu
+cargo build --features cubecl-wgpu
 ```
 
 ```rust
@@ -257,8 +257,8 @@ let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
 | CPU SIMD     | Small `n` (≤ 4 k), single path               | ≈ 8 µs        | rayon × cores       |
 | `accelerate` | Medium `n` (4 k–16 k), single path on macOS  | ≈ 30 µs       | one core            |
 | `metal`      | Large `n` + batches on macOS                 | ≈ 80 µs       | full GPU            |
-| `cuda-native` / `gpu-cuda` | Large `n` (≥ 16 k) + batches    | ≈ 80 µs       | full GPU            |
-| `gpu-wgpu`   | Cross-platform, browser / WASM targets       | ≈ 100 µs      | full GPU            |
+| `cuda-native` / `cubecl-cuda` | Large `n` (≥ 16 k) + batches    | ≈ 80 µs       | full GPU            |
+| `cubecl-wgpu`   | Cross-platform, browser / WASM targets       | ≈ 100 µs      | full GPU            |
 
 Concrete numbers and the cross-over point are on the
 [Benchmarks](/docs/benchmarks) page.
