@@ -40,9 +40,13 @@ behind an `f64` type.
   kernel. They declare no kernel of their own: `Fou` is the same
   Ornstein–Uhlenbeck family a Gaussian `Ou` uses, `Fgbm` the same geometric
   one, and a step that multiplies by an increment does not care whether the
-  increment was hashed or produced by an FFT. Measured on an M-series Metal
-  device against the host: fOU with 2000 paths of 512 steps went from 101 ms
-  to 25 ms, fBM with 4000 paths of 1024 steps from 252 ms to 93 ms.
+  increment was hashed or produced by an FFT. The two kernels meet in device
+  memory: the pipeline hands its own buffer to the Euler launch instead of
+  reading the increments back, so a batch crosses the bus once, for the paths.
+  Measured on an M-series Metal device against the host: fOU with 2000 paths
+  of 512 steps went from 101 ms to 5.8 ms, fBM with 4000 paths of 1024 steps
+  from 252 ms to 19.2 ms. Keeping the increments on the device is most of
+  that: through host memory the same runs took 25 ms and 93 ms.
 - **Euler engine.** The whole Euler–Maruyama recursion of a path runs in one
   kernel thread; `sample_par(m)` is one launch for all `m` paths, `sample()`
   launches a single path. CIR uses full truncation (Lord, Koekkoek & van Dijk
