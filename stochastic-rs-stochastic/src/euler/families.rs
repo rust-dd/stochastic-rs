@@ -7,6 +7,13 @@
 //! C body the native CUDA and Metal kernels render — from the same tokens, so
 //! the operation order cannot drift between them.
 //!
+//! The CubeCL kernel is written by hand instead: its `#[cube]` attribute
+//! cannot see through a macro expansion, and calls into a generic helper need
+//! a turbofish the shared tokens must not carry. What keeps it honest is
+//! `euler::tests`, which pins every family's CubeCL output against the
+//! generated Metal kernel, so a formula that drifts from the declaration
+//! fails a test rather than a review.
+//!
 //! The names a step may use are fixed: `x` for the state, `dt`, `sqrt_dt` and
 //! `z` for the grid and the step's normal draw, and the family's own
 //! parameters, which the generated code binds as locals from the parameter
@@ -70,6 +77,14 @@ pub(crate) mod ops {
   pub(crate) fn min<T: FloatExt>(a: T, b: T) -> T {
     if a < b { a } else { b }
   }
+
+  /// A numeric literal. Each target spells one differently — `T::from_f64_fast`
+  /// on the host, `F::new` in a CubeCL kernel, a cast in C — so a family writes
+  /// `lit(0.5)` and the emitters agree on what it means.
+  #[inline(always)]
+  pub(crate) fn lit<T: FloatExt>(v: f64) -> T {
+    T::from_f64_fast(v)
+  }
 }
 
 /// The C definitions of the function vocabulary, in terms of the precision
@@ -82,6 +97,7 @@ pub(crate) const C_PRELUDE: &str = r#"#define sqrt(v) STOCH_SQRT(v)
 #define positive(v) ((v) > (REAL)0 ? (v) : (REAL)0)
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define min(a, b) ((a) < (b) ? (a) : (b))
+#define lit(v) ((REAL)(v))
 "#;
 
 /// Declares the Euler engine's families: one entry per family, from which the

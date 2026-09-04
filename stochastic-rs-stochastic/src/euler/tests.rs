@@ -213,6 +213,31 @@ mod devices {
     )
   }
 
+  fn ou<T: FloatExt>(seed: u64) -> Ou<T, Deterministic> {
+    Ou::new(
+      T::from_f64_fast(0.5),
+      T::from_f64_fast(0.02),
+      T::from_f64_fast(0.1),
+      253,
+      Some(T::from_f64_fast(0.03)),
+      Some(T::one()),
+      Deterministic::new(seed),
+    )
+  }
+
+  fn cir<T: FloatExt>(seed: u64) -> Cir<T, Deterministic> {
+    Cir::new(
+      T::from_f64_fast(0.5),
+      T::from_f64_fast(0.04),
+      T::from_f64_fast(0.1),
+      253,
+      Some(T::from_f64_fast(0.03)),
+      Some(T::one()),
+      None,
+      Deterministic::new(seed),
+    )
+  }
+
   fn gbm_moments_hold<T: FloatExt, B: EulerBackend<T>>(device: B, label: &str) {
     let paths = stack(&gbm::<T>(7).on_device(device).sample_par(40_000));
     assert_eq!(paths.dim(), (40_000, 253), "{label}");
@@ -397,14 +422,32 @@ mod devices {
   ))]
   #[test]
   fn metal_native_and_cubecl_agree_seed_for_seed() {
-    let metal = gbm::<f32>(11).on::<crate::device::Metal>().sample_par(16);
-    let cubecl = gbm::<f32>(11)
-      .on_device(crate::device::Cubecl::wgpu(0))
-      .sample_par(16);
-    for (a, b) in metal.iter().zip(&cubecl) {
-      for (x, y) in a.iter().zip(b.iter()) {
-        assert!((x - y).abs() < 1e-3 * y.abs().max(1.0), "{x} vs {y}");
+    fn agree(metal: &[Array1<f32>], cubecl: &[Array1<f32>], label: &str) {
+      for (a, b) in metal.iter().zip(cubecl) {
+        for (x, y) in a.iter().zip(b.iter()) {
+          assert!(
+            (x - y).abs() < 1e-3 * y.abs().max(1.0),
+            "{label}: {x} vs {y}"
+          );
+        }
       }
     }
+
+    let wgpu = crate::device::Cubecl::wgpu(0);
+    agree(
+      &gbm::<f32>(11).on::<crate::device::Metal>().sample_par(16),
+      &gbm::<f32>(11).on_device(wgpu).sample_par(16),
+      "GeometricBrownian",
+    );
+    agree(
+      &ou::<f32>(11).on::<crate::device::Metal>().sample_par(16),
+      &ou::<f32>(11).on_device(wgpu).sample_par(16),
+      "OrnsteinUhlenbeck",
+    );
+    agree(
+      &cir::<f32>(11).on::<crate::device::Metal>().sample_par(16),
+      &cir::<f32>(11).on_device(wgpu).sample_par(16),
+      "SquareRoot",
+    );
   }
 }
