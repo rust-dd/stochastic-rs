@@ -20,8 +20,8 @@ Python bindings via PyO3 that ship the same surface as the Rust crates.
 📖 **[stochastic.rust-dd.com](https://stochastic.rust-dd.com)** is the reference; this
 README only gets you installed and running.
 
-- [Getting started](https://stochastic.rust-dd.com/docs/getting-started) — Rust and Python installation, first program
-- [Concepts](https://stochastic.rust-dd.com/docs/concepts) — the traits (`ProcessExt`, `DistributionExt`, `ModelPricer`), seeding, feature flags, [design philosophy](https://stochastic.rust-dd.com/docs/concepts/design-philosophy)
+- [Getting started](https://stochastic.rust-dd.com/docs/getting-started/quickstart) — Rust and Python installation, first program
+- [Concepts](https://stochastic.rust-dd.com/docs/concepts/traits) — the traits (`ProcessExt`, `DistributionExt`, `ModelPricer`), seeding, feature flags, [design philosophy](https://stochastic.rust-dd.com/docs/concepts/design-philosophy)
 - [Processes](https://stochastic.rust-dd.com/docs/processes) · [Distributions](https://stochastic.rust-dd.com/docs/distributions) · [Copulas](https://stochastic.rust-dd.com/docs/copulas) · [Statistics](https://stochastic.rust-dd.com/docs/stats) · [Quant](https://stochastic.rust-dd.com/docs/quant) · [AI](https://stochastic.rust-dd.com/docs/ai) — the catalogues with selection guides
 - [GPU support](https://stochastic.rust-dd.com/docs/concepts/gpu-support) — what runs on which device today, precision, an executed T4 run
 - [Python](https://stochastic.rust-dd.com/docs/python) — the bindings, `device=`, NumPy interop
