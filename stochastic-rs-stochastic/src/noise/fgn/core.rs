@@ -286,20 +286,6 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
 backend_switch!([T: FloatExt, S: SeedExt] Fgn<T, S> { hurst, n, t, offset, out_len, scale, sqrt_eigenvalues, fft_handler, seed } via phantom);
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Fgn<T, S, B> {
-  /// `m` fGN paths, or the device's error instead of the panic
-  /// [`ProcessExt::sample_par`](crate::traits::ProcessExt::sample_par) raises
-  /// when the device cannot serve the request. On the CPU devices this is
-  /// always `Ok` and bit-identical to `sample_par`.
-  pub fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, DeviceError> {
-    self.backend.try_generate_batch(self, m, &self.seed)
-  }
-
-  /// One fGN increment vector on backend `B`. The host-side `seed` drives the
-  /// CPU path and the GPU launch seed alike.
-  pub(crate) fn noise<S2: SeedExt>(&self, seed: &S2) -> Array1<T> {
-    self.backend.generate(self, seed)
-  }
-
   /// `m` fGN paths in one batched `B` call, one [`Array1`] per path. `seed`
   /// is external to `self` so a wrapper type (e.g. [`Fbm`](crate::process::fbm::Fbm),
   /// whose embedded `fgn` is always [`Unseeded`]) can drive the batch from
@@ -309,9 +295,30 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Fgn<T, S, B> {
     self.backend.generate_batch(self, m, seed)
   }
 
-  /// Two independent fGN paths in one pass on backend `B`.
-  pub(crate) fn noise_pair<S2: SeedExt>(&self, seed: &S2) -> (Array1<T>, Array1<T>) {
-    self.backend.generate_pair(self, seed)
+  /// One fGN increment vector on backend `B`, the device's error instead of
+  /// its panic. The host-side `seed` drives the CPU path and the GPU launch
+  /// seed alike.
+  pub(crate) fn try_noise<S2: SeedExt>(&self, seed: &S2) -> Result<Array1<T>, DeviceError> {
+    self.backend.try_generate(self, seed)
+  }
+
+  /// [`noise_batch`](Self::noise_batch), the device's error instead of its
+  /// panic.
+  pub(crate) fn try_noise_batch<S2: SeedExt>(
+    &self,
+    m: usize,
+    seed: &S2,
+  ) -> Result<Vec<Array1<T>>, DeviceError> {
+    self.backend.try_generate_batch(self, m, seed)
+  }
+
+  /// Two independent fGN paths in one pass on backend `B`, the device's
+  /// error instead of its panic.
+  pub(crate) fn try_noise_pair<S2: SeedExt>(
+    &self,
+    seed: &S2,
+  ) -> Result<(Array1<T>, Array1<T>), DeviceError> {
+    self.backend.try_generate_pair(self, seed)
   }
 }
 

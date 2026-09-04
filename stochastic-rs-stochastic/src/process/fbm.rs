@@ -12,6 +12,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::device::DeviceError;
 use crate::device::FgnBackend;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
@@ -146,9 +147,18 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fbm<T, S, B> {
   /// `FgnBackend::generate_batch`'s GPU impls read, or giving `Fbm` its own
   /// GPU-specific noise path, both larger changes than this fix's scope.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
-    self
-      .fgn
-      .noise_batch(m, &self.seed)
+    self.integrate(self.fgn.noise_batch(m, &self.seed))
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Self::Output>, DeviceError> {
+    Ok(self.integrate(self.fgn.try_noise_batch(m, &self.seed)?))
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Fbm<T, S, B> {
+  /// Cumulative sums of the increment rows, in parallel, row order kept.
+  fn integrate(&self, rows: Vec<Array1<T>>) -> Vec<Array1<T>> {
+    rows
       .into_par_iter()
       .map(|fgn_row| {
         let mut fbm = Array1::<T>::zeros(self.n);

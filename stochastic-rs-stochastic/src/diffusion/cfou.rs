@@ -22,6 +22,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
+use crate::device::DeviceError;
 use crate::device::FgnBackend;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
@@ -128,13 +129,13 @@ pub struct CfouSampler<'a, T: FloatExt, S: SeedExt, B> {
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> CfouSampler<'_, T, S, B> {
-  fn fill_path(&mut self, out: &mut Array1<Complex<T>>) {
+  fn try_fill_path(&mut self, out: &mut Array1<Complex<T>>) -> Result<(), DeviceError> {
     if out.is_empty() {
-      return;
+      return Ok(());
     }
     let p = self.cfou;
     let dt = p.fgn.dt();
-    let (noise_1, noise_2) = p.fgn.noise_pair(&self.seed);
+    let (noise_1, noise_2) = p.fgn.try_noise_pair(&self.seed)?;
     let gamma = Complex::new(p.lambda, -p.omega);
     let dt_c = Complex::new(dt, T::zero());
     let noise_scale = (p.a * T::from_f64_fast(0.5)).sqrt();
@@ -147,6 +148,13 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> CfouSampler<'_, T, S, B> {
       let d_zeta = Complex::new(noise_1[i - 1], noise_2[i - 1]);
       out[i] = z_prev + drift * dt_c + d_zeta * noise_scale;
     }
+    Ok(())
+  }
+
+  fn fill_path(&mut self, out: &mut Array1<Complex<T>>) {
+    self
+      .try_fill_path(out)
+      .unwrap_or_else(crate::device::device_panic)
   }
 }
 
@@ -161,6 +169,12 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for CfouSampler<'
     let mut out = Array1::<Complex<T>>::from_elem(self.cfou.n, Complex::new(T::zero(), T::zero()));
     self.fill_path(&mut out);
     out
+  }
+
+  fn try_sample(&mut self) -> Result<Array1<Complex<T>>, DeviceError> {
+    let mut out = Array1::<Complex<T>>::from_elem(self.cfou.n, Complex::new(T::zero(), T::zero()));
+    self.try_fill_path(&mut out)?;
+    Ok(out)
   }
 }
 

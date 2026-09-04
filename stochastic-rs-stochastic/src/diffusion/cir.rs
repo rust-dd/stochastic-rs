@@ -16,6 +16,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::device::DeviceError;
 use crate::euler::EulerBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -206,6 +207,14 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Cir<T, S, B>
 
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
     self.backend.euler_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, DeviceError> {
+    self.backend.try_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, DeviceError> {
+    self.backend.try_euler_paths(self, m)
   }
 }
 

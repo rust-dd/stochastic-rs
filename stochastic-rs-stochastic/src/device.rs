@@ -474,16 +474,28 @@ pub trait FgnBackend<T: FloatExt>: Backend {
       .unwrap_or_else(device_panic)
   }
 
+  /// Two paths from one batched call, the device's error instead of its
+  /// panic.
+  fn try_generate_pair<S: SeedExt, S2: SeedExt>(
+    &self,
+    fgn: &Fgn<T, S, Self>,
+    seed: &S2,
+  ) -> Result<(Array1<T>, Array1<T>), DeviceError> {
+    let mut paths = self.try_generate_batch(fgn, 2, seed)?;
+    let second = paths.pop().expect("generate_batch(2) yields two paths");
+    let first = paths.pop().expect("generate_batch(2) yields two paths");
+    Ok((first, second))
+  }
+
   /// Two paths from one batched call.
   fn generate_pair<S: SeedExt, S2: SeedExt>(
     &self,
     fgn: &Fgn<T, S, Self>,
     seed: &S2,
   ) -> (Array1<T>, Array1<T>) {
-    let mut paths = self.generate_batch(fgn, 2, seed);
-    let second = paths.pop().expect("generate_batch(2) yields two paths");
-    let first = paths.pop().expect("generate_batch(2) yields two paths");
-    (first, second)
+    self
+      .try_generate_pair(fgn, seed)
+      .unwrap_or_else(device_panic)
   }
 }
 
@@ -533,12 +545,12 @@ impl<T: FloatExt> FgnBackend<T> for Cpu {
     Ok(paths)
   }
 
-  fn generate_pair<S: SeedExt, S2: SeedExt>(
+  fn try_generate_pair<S: SeedExt, S2: SeedExt>(
     &self,
     fgn: &Fgn<T, S, Self>,
     seed: &S2,
-  ) -> (Array1<T>, Array1<T>) {
-    fgn.sample_pair_cpu_impl(seed)
+  ) -> Result<(Array1<T>, Array1<T>), DeviceError> {
+    Ok(fgn.sample_pair_cpu_impl(seed))
   }
 }
 

@@ -142,8 +142,9 @@ match MetalNative::default().probe() {
 (`backend`, `name`, `precisions`, `ordinal`). After a successful probe the
 plain `sample()` / `sample_par(m)` calls keep the `ProcessExt` signature and
 panic with the device's error if something still fails at launch time (an
-allocation, typically); the device-capable primitives also offer
-`try_sample_par(m) -> Result<_, DeviceError>` (`Gbm`, `Ou`, `Cir`, `Fgn`) and
+allocation, typically); every process also offers
+`try_sample()` / `try_sample_par(m) -> Result<_, DeviceError>` on `ProcessExt`
+(always `Ok` on the host devices, bit-identical to the plain calls) and
 the capability traits expose `try_euler_paths` / `try_generate_batch` on the
 handle for generic code; a new device implements `EulerKernel<T>` (one launch
 under one seed) and gets `EulerBackend<T>` from the per-handle kernel impl. `DeviceError` has three kinds: `Unavailable`, `Compile`,

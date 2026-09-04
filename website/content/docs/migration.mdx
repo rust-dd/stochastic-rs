@@ -26,6 +26,10 @@ struct literals and generic bounds.
   `Accelerate`) on the process, or `.on_device(handle)` with an explicit
   `CudaNative { ordinal, batch_budget }`-style handle; the `backend` field
   holds that handle as a value (`backend: Cpu` in a struct literal).
+- **Fallible sampling** is on the trait: `ProcessExt::try_sample()` /
+  `try_sample_par(m)` return `Result<_, DeviceError>` for every process
+  (always `Ok` on the host); the inherent `try_sample_par` of `Gbm` / `Ou` /
+  `Cir` / `Fgn` moved there, `try_sample_matrix` stays inherent.
 
 ## `PricerExt` is gone; pricers are models
 

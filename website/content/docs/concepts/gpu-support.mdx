@@ -70,8 +70,9 @@ runtime's device index); `.on_device(handle)` puts a process on it, and
 
 `handle.probe()` on any backend handle returns `Ok(DeviceInfo)` with the device's name and
 precisions, or `Err(DeviceError)` saying why it cannot be used (`Unavailable`,
-`Compile`, `Launch`). `Gbm` / `Ou` / `Cir` / `Fgn` have `try_sample_par(m)`
-returning the same error instead of panicking; the plain `sample*` calls panic
+`Compile`, `Launch`). Every process has `try_sample()` and `try_sample_par(m)`
+on `ProcessExt`, returning the same error instead of panicking (always `Ok` on
+the host devices, bit-identical to `sample*`); the plain `sample*` calls panic
 with the error's message and never fall back to the host. From Python a device
 failure is a `RuntimeError`.
 

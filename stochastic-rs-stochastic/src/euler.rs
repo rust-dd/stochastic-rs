@@ -437,25 +437,13 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> EulerCoefficients<T> for Cir<T
   }
 }
 
-macro_rules! try_sample_par {
+macro_rules! try_sample_matrix {
   ($ty:ident) => {
     impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> $ty<T, S, B> {
-      /// `m` paths, or the device's error instead of the panic
-      /// [`ProcessExt::sample_par`] raises when the device cannot serve the
-      /// request. On the CPU devices this is always `Ok` and bit-identical
-      /// to `sample_par`.
-      pub fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, DeviceError> {
-        self.backend.try_euler_paths(self, m)
-      }
-
-      /// One path, or the device's error instead of the panic
-      /// [`ProcessExt::sample`] raises when the device cannot serve it.
-      pub fn try_sample(&self) -> Result<Array1<T>, DeviceError> {
-        self.backend.try_sample(self)
-      }
-
       /// The batch as one `m × n` matrix: on a device back-end the launch
-      /// buffer itself, without a re-layout into rows.
+      /// buffer itself, without a re-layout into rows. The row form is
+      /// [`ProcessExt::try_sample_par`], the single path
+      /// [`ProcessExt::try_sample`].
       pub fn try_sample_matrix(&self, m: usize) -> Result<Array2<T>, DeviceError> {
         self.backend.try_euler_matrix(self, m)
       }
@@ -463,9 +451,9 @@ macro_rules! try_sample_par {
   };
 }
 
-try_sample_par!(Gbm);
-try_sample_par!(Ou);
-try_sample_par!(Cir);
+try_sample_matrix!(Gbm);
+try_sample_matrix!(Ou);
+try_sample_matrix!(Cir);
 
 #[cfg(feature = "cuda-native")]
 pub mod cuda_native;

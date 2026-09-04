@@ -25,6 +25,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
+use crate::device::DeviceError;
 use crate::device::FgnBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -85,6 +86,17 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
   /// table.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
     self.backend.generate_batch(self, m, &self.seed)
+  }
+
+  fn try_sample(&self) -> Result<Self::Output, DeviceError> {
+    self.backend.try_generate(self, &self.seed)
+  }
+
+  /// [`sample_par`](Self::sample_par) as one batched backend call, the
+  /// device's error instead of its panic. On the CPU devices this is always
+  /// `Ok` and bit-identical to `sample_par`.
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Self::Output>, DeviceError> {
+    self.backend.try_generate_batch(self, m, &self.seed)
   }
 }
 

@@ -14,6 +14,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
+use crate::device::DeviceError;
 use crate::device::FgnBackend;
 use crate::noise::fgn::Fgn;
 use crate::traits::FloatExt;
@@ -105,13 +106,13 @@ pub struct FouSampler<'a, T: FloatExt, S: SeedExt, B> {
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FouSampler<'_, T, S, B> {
-  fn fill_path(&mut self, out: &mut [T]) {
+  fn try_fill_path(&mut self, out: &mut [T]) -> Result<(), DeviceError> {
     if out.is_empty() {
-      return;
+      return Ok(());
     }
     let p = self.fou;
     let dt = p.fgn.dt();
-    let fgn = p.fgn.noise(&self.seed);
+    let fgn = p.fgn.try_noise(&self.seed)?;
 
     out[0] = p.x0.unwrap_or(T::zero());
     let mut prev = out[0];
@@ -120,6 +121,13 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FouSampler<'_, T, S, B> {
       *dst = next;
       prev = next;
     }
+    Ok(())
+  }
+
+  fn fill_path(&mut self, out: &mut [T]) {
+    self
+      .try_fill_path(out)
+      .unwrap_or_else(crate::device::device_panic)
   }
 }
 
@@ -134,6 +142,12 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FouSampler<'_
   fn sample(&mut self) -> Array1<T> {
     let n = self.fou.n;
     array1_from_fill(n, |out| self.fill_path(out))
+  }
+
+  fn try_sample(&mut self) -> Result<Array1<T>, DeviceError> {
+    let mut out = Array1::<T>::zeros(self.fou.n);
+    self.try_fill_path(out.as_slice_mut().expect("Fou output must be contiguous"))?;
+    Ok(out)
   }
 }
 

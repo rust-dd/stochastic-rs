@@ -6,6 +6,7 @@ use ndarray::parallel::prelude::*;
 use stochastic_rs_distributions::traits::FloatExt;
 
 use super::sampler::PathSampler;
+use crate::device::DeviceError;
 
 /// Upper bound on the number of chunks [`ProcessExt::sample_par`] /
 /// [`ProcessExt::sample_map`] split `m` paths into.
@@ -384,6 +385,22 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
     sample_par_chunked(self, m)
   }
+
+  /// [`sample`](Self::sample), reporting a device failure as a
+  /// [`DeviceError`] instead of panicking. On the host devices it cannot
+  /// fail and the path is the one `sample` would have produced.
+  fn try_sample(&self) -> Result<Self::Output, DeviceError> {
+    let out = self.sampler().try_sample();
+    self.advance_chunk_seed();
+    out
+  }
+
+  /// [`sample_par`](Self::sample_par), reporting a device failure as a
+  /// [`DeviceError`] instead of panicking. On the host devices it cannot
+  /// fail and the paths are bit-identical to `sample_par`'s.
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Self::Output>, DeviceError> {
+    try_sample_par_chunked(self, m)
+  }
 }
 
 /// Marker for processes whose [`ProcessExt::sample`] returns a single
@@ -542,4 +559,30 @@ pub(crate) fn sample_par_chunked<T: FloatExt, P: ProcessExt<T> + ?Sized>(
     .into_iter()
     .flatten()
     .collect()
+}
+
+/// [`sample_par_chunked`] through the sampler's fallible `try_sample`: the
+/// same chunks, the same per-chunk samplers in the same order, so a host
+/// process yields bit-identical paths and a device process reports its
+/// failure instead of panicking.
+pub(crate) fn try_sample_par_chunked<T: FloatExt, P: ProcessExt<T> + ?Sized>(
+  p: &P,
+  m: usize,
+) -> Result<Vec<P::Output>, DeviceError> {
+  if m == 0 {
+    return Ok(Vec::new());
+  }
+  if m == 1 {
+    return Ok(vec![p.try_sample()?]);
+  }
+  let chunks = p
+    .chunked_samplers(m)
+    .into_par_iter()
+    .map(|(mut sampler, len)| {
+      (0..len)
+        .map(|_| sampler.try_sample())
+        .collect::<Result<Vec<_>, DeviceError>>()
+    })
+    .collect::<Result<Vec<_>, DeviceError>>()?;
+  Ok(chunks.into_iter().flatten().collect())
 }

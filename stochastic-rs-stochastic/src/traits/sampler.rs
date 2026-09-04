@@ -2,6 +2,8 @@
 
 use stochastic_rs_distributions::traits::FloatExt;
 
+use crate::device::DeviceError;
+
 /// Mutable sampling state detached from the immutable process definition.
 ///
 /// Implementation detail behind [`ProcessExt`](super::ProcessExt)'s
@@ -25,4 +27,11 @@ pub trait PathSampler<T: FloatExt>: Send {
 
   /// One-shot sample: allocates the output and fills it.
   fn sample(&mut self) -> Self::Output;
+
+  /// [`sample`](Self::sample), reporting a device failure as a
+  /// [`DeviceError`] instead of panicking. A sampler that never reaches a
+  /// device keeps this default, which cannot fail.
+  fn try_sample(&mut self) -> Result<Self::Output, DeviceError> {
+    Ok(self.sample())
+  }
 }

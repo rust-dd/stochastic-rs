@@ -11,6 +11,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::fgn::Fgn;
 use crate::device::Cpu;
+use crate::device::DeviceError;
 use crate::device::FgnBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -65,13 +66,24 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Cfgns<T, S, B> {
   /// independent fields; on a GPU backend they come from a batch of two.
   #[inline]
   pub(crate) fn sample_impl<S2: SeedExt>(&self, seed: &S2) -> [Array1<T>; 2] {
-    let (fgn1, z) = self.fgn.noise_pair(seed);
+    self
+      .try_sample_impl(seed)
+      .unwrap_or_else(crate::device::device_panic)
+  }
+
+  /// [`sample_impl`](Self::sample_impl), the device's error instead of its
+  /// panic.
+  pub(crate) fn try_sample_impl<S2: SeedExt>(
+    &self,
+    seed: &S2,
+  ) -> Result<[Array1<T>; 2], DeviceError> {
+    let (fgn1, z) = self.fgn.try_noise_pair(seed)?;
     let c = (T::one() - self.rho.powi(2)).sqrt();
     let mut fgn2 = Array1::zeros(self.n);
     for i in 0..self.n {
       fgn2[i] = self.rho * fgn1[i] + c * z[i];
     }
-    [fgn1, fgn2]
+    Ok([fgn1, fgn2])
   }
 }
 
@@ -130,6 +142,10 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for CfgnsSampler<
 
   fn sample(&mut self) -> [Array1<T>; 2] {
     self.cfgns.sample_impl(&self.seed)
+  }
+
+  fn try_sample(&mut self) -> Result<[Array1<T>; 2], DeviceError> {
+    self.cfgns.try_sample_impl(&self.seed)
   }
 }
 
