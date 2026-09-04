@@ -12,6 +12,8 @@ use parking_lot::Mutex;
 use super::EulerCoefficients;
 use super::EulerKernel;
 use super::EulerSpec;
+use super::families::cube_report;
+use super::families::cube_step;
 use crate::device::DeviceError;
 use crate::device::DeviceInfo;
 
@@ -20,13 +22,13 @@ type DeviceResult<T> = std::result::Result<T, DeviceError>;
 const WG_SIZE: u32 = 256;
 
 #[cube(launch)]
-fn euler_paths_kernel<F: Float + CubeElement>(
-  out: &mut Array<F>,
-  params: &Array<F>,
+fn euler_paths_kernel(
+  out: &mut Array<f32>,
+  params: &Array<f32>,
   family: u32,
-  x0: F,
-  dt: F,
-  sqrt_dt: F,
+  x0: f32,
+  dt: f32,
+  sqrt_dt: f32,
   seed: u32,
   steps: u32,
   paths: u32,
@@ -36,11 +38,7 @@ fn euler_paths_kernel<F: Float + CubeElement>(
   if path < paths {
     let base = (path * steps) as usize;
     let mut x = x0;
-    let mut reported = x0;
-    if family == 2u32 && x0 < F::new(0.0_f32) {
-      reported = F::new(0.0_f32);
-    }
-    out[base] = reported;
+    out[base] = report(family, x0);
     for i in 1..steps {
       // Two decorrelated uniforms via integer hashing (Murmur3-style finalizer).
       let g = (first_path + path) * steps + i;
@@ -56,29 +54,49 @@ fn euler_paths_kernel<F: Float + CubeElement>(
       b ^= b >> 13;
       b *= 3266489917u32;
       b ^= b >> 16;
-      let inv = F::new(2.3283064e-10_f32);
-      let u1 = F::cast_from(a) * inv * F::new(0.999998_f32) + F::new(1.0e-6_f32);
-      let u2 = F::cast_from(b) * inv;
-      let z = F::sqrt(F::new(-2.0_f32) * F::ln(u1)) * F::cos(F::new(core::f32::consts::TAU) * u2);
-      if family == 0u32 {
-        x += params[0] * x * dt + params[1] * x * sqrt_dt * z;
-      } else if family == 1u32 {
-        x += params[0] * (params[1] - x) * dt + params[2] * sqrt_dt * z;
-      } else {
-        let mut positive = F::new(0.0_f32);
-        if x > F::new(0.0_f32) {
-          positive = x;
-        }
-        x =
-          x + params[0] * (params[1] - positive) * dt + params[2] * F::sqrt(positive) * sqrt_dt * z;
-      }
-      let mut reported = x;
-      if family == 2u32 && x < F::new(0.0_f32) {
-        reported = F::new(0.0_f32);
-      }
-      out[base + i as usize] = reported;
+      let inv = 2.3283064e-10f32;
+      let u1 = f32::cast_from(a) * inv * 0.999998f32 + 1.0e-6f32;
+      let u2 = f32::cast_from(b) * inv;
+      let z = Sqrt::sqrt(-2.0f32 * Log::ln(u1)) * Cos::cos(core::f32::consts::TAU * u2);
+      x = step(family, x, params, dt, sqrt_dt, z);
+      out[base + i as usize] = report(family, x);
     }
   }
+}
+
+/// Dispatches to the family's generated step. The formulas live in the
+/// declarations in [`super::families`]; what stands here is the parameter
+/// order each family reads from the buffer, which the compiler checks by
+/// arity.
+#[cube]
+fn step(family: u32, x: f32, params: &Array<f32>, dt: f32, sqrt_dt: f32, z: f32) -> f32 {
+  let mut stepped = x;
+  if family == 0u32 {
+    stepped = cube_step::GeometricBrownian(x, params[0], params[1], dt, sqrt_dt, z);
+  }
+  if family == 1u32 {
+    stepped = cube_step::OrnsteinUhlenbeck(x, params[0], params[1], params[2], dt, sqrt_dt, z);
+  }
+  if family == 2u32 {
+    stepped = cube_step::SquareRoot(x, params[0], params[1], params[2], dt, sqrt_dt, z);
+  }
+  stepped
+}
+
+/// Dispatches to the family's generated report.
+#[cube]
+fn report(family: u32, x: f32) -> f32 {
+  let mut reported = x;
+  if family == 0u32 {
+    reported = cube_report::GeometricBrownian(x);
+  }
+  if family == 1u32 {
+    reported = cube_report::OrnsteinUhlenbeck(x);
+  }
+  if family == 2u32 {
+    reported = cube_report::SquareRoot(x);
+  }
+  reported
 }
 
 /// A CubeCL runtime this crate can open, with its own cached compute client.
@@ -214,7 +232,7 @@ fn count_2d(cubes: u32) -> CubeCount {
   }
 }
 
-#[cfg(feature = "cubecl")]
+#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
 impl EulerKernel<f32> for crate::device::Cubecl {
   fn euler_kernel<P: EulerCoefficients<f32>>(
     &self,
@@ -269,7 +287,7 @@ fn device_paths<C: CubeclRuntime>(
       let params_h = cl.create_from_slice(f32::as_bytes(&params32));
       let out_h = cl.empty(total * 4);
       unsafe {
-        euler_paths_kernel::launch::<f32, C::Rt>(
+        euler_paths_kernel::launch::<C::Rt>(
           cl,
           count_2d((m as u32).div_ceil(WG_SIZE)),
           CubeDim::new_1d(WG_SIZE),

@@ -341,7 +341,7 @@ macro_rules! kernel_euler_backend {
 
 #[cfg(feature = "metal")]
 kernel_euler_backend!(crate::device::Metal, [] f32);
-#[cfg(feature = "cubecl")]
+#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
 kernel_euler_backend!(crate::device::Cubecl, [] f32);
 #[cfg(feature = "cuda")]
 kernel_euler_backend!(crate::device::Cuda, [T: FloatExt] T);

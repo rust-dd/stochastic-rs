@@ -7,7 +7,7 @@
 #[cfg(feature = "accelerate")]
 mod accelerate;
 mod core;
-#[cfg(feature = "cubecl")]
+#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
 mod cubecl;
 #[cfg(feature = "cuda")]
 pub(crate) mod cuda;

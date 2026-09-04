@@ -213,31 +213,6 @@ mod devices {
     )
   }
 
-  fn ou<T: FloatExt>(seed: u64) -> Ou<T, Deterministic> {
-    Ou::new(
-      T::from_f64_fast(0.5),
-      T::from_f64_fast(0.02),
-      T::from_f64_fast(0.1),
-      253,
-      Some(T::from_f64_fast(0.03)),
-      Some(T::one()),
-      Deterministic::new(seed),
-    )
-  }
-
-  fn cir<T: FloatExt>(seed: u64) -> Cir<T, Deterministic> {
-    Cir::new(
-      T::from_f64_fast(0.5),
-      T::from_f64_fast(0.04),
-      T::from_f64_fast(0.1),
-      253,
-      Some(T::from_f64_fast(0.03)),
-      Some(T::one()),
-      None,
-      Deterministic::new(seed),
-    )
-  }
-
   fn gbm_moments_hold<T: FloatExt, B: EulerBackend<T>>(device: B, label: &str) {
     let paths = stack(&gbm::<T>(7).on_device(device).sample_par(40_000));
     assert_eq!(paths.dim(), (40_000, 253), "{label}");
@@ -298,11 +273,15 @@ mod devices {
     assert!(paths.iter().all(|&x| x >= 0.0), "{label}");
   }
 
-  #[cfg(feature = "cubecl-wgpu")]
+  #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
   #[test]
   fn cubecl_backend_matches_the_moments() {
-    gbm_moments_hold::<f32, _>(crate::device::Cubecl::wgpu(0), "Cubecl wgpu");
-    cir_stays_nonnegative::<f32, _>(crate::device::Cubecl::wgpu(0), "Cubecl wgpu");
+    #[cfg(feature = "cubecl-wgpu")]
+    let device = crate::device::Cubecl::wgpu(0);
+    #[cfg(all(feature = "cubecl-cuda", not(feature = "cubecl-wgpu")))]
+    let device = crate::device::Cubecl::cuda(0);
+    gbm_moments_hold::<f32, _>(device, "Cubecl");
+    cir_stays_nonnegative::<f32, _>(device, "Cubecl");
   }
 
   #[cfg(feature = "metal")]
@@ -422,6 +401,31 @@ mod devices {
   ))]
   #[test]
   fn metal_native_and_cubecl_agree_seed_for_seed() {
+    fn ou<T: FloatExt>(seed: u64) -> Ou<T, Deterministic> {
+      Ou::new(
+        T::from_f64_fast(0.5),
+        T::from_f64_fast(0.02),
+        T::from_f64_fast(0.1),
+        253,
+        Some(T::from_f64_fast(0.03)),
+        Some(T::one()),
+        Deterministic::new(seed),
+      )
+    }
+
+    fn cir<T: FloatExt>(seed: u64) -> Cir<T, Deterministic> {
+      Cir::new(
+        T::from_f64_fast(0.5),
+        T::from_f64_fast(0.04),
+        T::from_f64_fast(0.1),
+        253,
+        Some(T::from_f64_fast(0.03)),
+        Some(T::one()),
+        None,
+        Deterministic::new(seed),
+      )
+    }
+
     fn agree(metal: &[Array1<f32>], cubecl: &[Array1<f32>], label: &str) {
       for (a, b) in metal.iter().zip(cubecl) {
         for (x, y) in a.iter().zip(b.iter()) {

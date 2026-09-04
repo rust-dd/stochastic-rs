@@ -100,6 +100,47 @@ pub(crate) const C_PRELUDE: &str = r#"#define sqrt(v) STOCH_SQRT(v)
 #define lit(v) ((REAL)(v))
 "#;
 
+/// The CubeCL implementations of the same vocabulary. They are concrete on
+/// `f32` — the only precision the CubeCL kernels compute in — so a call from a
+/// generated body has nothing left to infer, which a generic helper would.
+/// `max` and `min` are not defined here: `cubecl::prelude` already exports
+/// them as free functions with these names.
+#[cfg(feature = "cubecl")]
+#[allow(dead_code)]
+pub(crate) mod cube_ops {
+  use cubecl::prelude::*;
+
+  /// `√v`
+  #[cube]
+  pub(crate) fn sqrt(v: f32) -> f32 {
+    Sqrt::sqrt(v)
+  }
+
+  /// `exp v`
+  #[cube]
+  pub(crate) fn exp(v: f32) -> f32 {
+    Exp::exp(v)
+  }
+
+  /// `ln v`
+  #[cube]
+  pub(crate) fn ln(v: f32) -> f32 {
+    Log::ln(v)
+  }
+
+  /// `a^b`
+  #[cube]
+  pub(crate) fn pow(a: f32, b: f32) -> f32 {
+    Powf::powf(a, b)
+  }
+
+  /// The positive part, the truncation a square-root diffusion steps on.
+  #[cube]
+  pub(crate) fn positive(v: f32) -> f32 {
+    max(v, 0.0f32)
+  }
+}
+
 /// Declares the Euler engine's families: one entry per family, from which the
 /// host step, the host report and the kernels' C body are generated.
 ///
@@ -170,6 +211,51 @@ macro_rules! euler_families {
           Family::$name => { $($report)* }
         )*
       }
+    }
+
+    /// One `#[cube]` function per family, from the same expression the host
+    /// and the C kernels run. Parameters are arguments rather than buffer
+    /// reads, so a generated body carries no indexing and no macro call —
+    /// which is what lets the `#[cube]` attribute see finished tokens.
+    #[cfg(feature = "cubecl")]
+    pub(crate) mod cube_step {
+      #[allow(unused_imports)]
+      use super::cube_ops::*;
+      #[allow(unused_imports)]
+      use cubecl::prelude::*;
+
+      $(
+        $(#[$meta])*
+        #[cube]
+        #[allow(non_snake_case)]
+        pub(crate) fn $name(
+          $x: f32,
+          $($param: f32,)*
+          $dt: f32,
+          $sqrt_dt: f32,
+          $z: f32,
+        ) -> f32 {
+          $($step)*
+        }
+      )*
+    }
+
+    /// What each family reports for a state, in a CubeCL kernel.
+    #[cfg(feature = "cubecl")]
+    pub(crate) mod cube_report {
+      #[allow(unused_imports)]
+      use super::cube_ops::*;
+      #[allow(unused_imports)]
+      use cubecl::prelude::*;
+
+      $(
+        $(#[$meta])*
+        #[cube]
+        #[allow(non_snake_case)]
+        pub(crate) fn $name($x: f32) -> f32 {
+          $($report)*
+        }
+      )*
     }
 
     /// The C statements that step `x`, one guarded block per family.

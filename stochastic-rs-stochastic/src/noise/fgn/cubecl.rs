@@ -470,7 +470,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   }
 
   /// `m` paths on the runtime `device` names.
-  #[cfg(feature = "cubecl")]
+  #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
   pub(crate) fn sample_cubecl_impl<S2: SeedExt>(
     &self,
     m: usize,

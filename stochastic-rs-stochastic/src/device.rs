@@ -76,7 +76,7 @@ impl Cuda {
 
 /// Which runtime a [`Cubecl`] handle opens. Feature-gated, so naming a
 /// runtime the build does not carry is a compile error.
-#[cfg(feature = "cubecl")]
+#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CubeclDevice {
   /// CubeCL's CUDA runtime — the same hardware [`Cuda`] reaches through
@@ -90,7 +90,7 @@ pub enum CubeclDevice {
 
 /// cubecl Rust kernels, on the runtime the handle names. Both runtimes can be
 /// compiled into one build and used at once; each keeps its own client.
-#[cfg(feature = "cubecl")]
+#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Cubecl {
   /// Which CubeCL runtime to open.
@@ -120,7 +120,7 @@ impl Default for Cubecl {
   }
 }
 
-#[cfg(feature = "cubecl")]
+#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
 impl Cubecl {
   /// The CubeCL CUDA runtime's device at `ordinal`, with the budget from
   /// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` (else [`DEFAULT_BATCH_BUDGET_BYTES`]).
@@ -408,7 +408,7 @@ impl Backend for Cuda {
     crate::euler::cuda::probe(self.ordinal)
   }
 }
-#[cfg(feature = "cubecl")]
+#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
 impl Backend for Cubecl {
   fn probe(&self) -> Result<DeviceInfo, DeviceError> {
     match self.device {
@@ -636,7 +636,7 @@ macro_rules! gpu_backend {
 // and CubeCL FFT pipelines are single precision. `Fgn<f64>` on `Metal`
 // is therefore a compile error, not an `f32` computation behind an `f64` type.
 gpu_backend!("cuda", Cuda => sample_cuda_impl, f32, f64);
-#[cfg(feature = "cubecl")]
+#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
 impl FgnBackend<f32> for Cubecl {
   fn try_generate<S: SeedExt, S2: SeedExt>(
     &self,
