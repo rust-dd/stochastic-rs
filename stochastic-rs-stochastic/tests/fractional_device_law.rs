@@ -4,11 +4,18 @@
 //! and the host draw different streams, so what is pinned here is the law,
 //! not the path.
 
-#![cfg(feature = "metal")]
+#![cfg(any(feature = "metal", feature = "cuda"))]
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_stochastic::device::Metal;
+
+/// Whichever hand-written device this build carries; CUDA wins when both are
+/// compiled, since that is the machine a CUDA build is meant for.
+#[cfg(feature = "cuda")]
+type Device = stochastic_rs_stochastic::device::Cuda;
+#[cfg(all(feature = "metal", not(feature = "cuda")))]
+type Device = stochastic_rs_stochastic::device::Metal;
+
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
 use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
 use stochastic_rs_stochastic::diffusion::fjacobi::FJacobi;
@@ -36,7 +43,7 @@ fn terminal_mean(paths: &[Array1<f32>]) -> f64 {
 fn fou_on_metal_agrees_with_the_cpu_law() {
   let m = 2_000;
   let cpu = fou().sample_par(m);
-  let gpu = fou().on::<Metal>().sample_par(m);
+  let gpu = fou().on::<Device>().sample_par(m);
 
   assert_eq!(gpu.len(), m);
   assert_eq!(gpu[0].len(), 512);
@@ -83,7 +90,7 @@ fn fcir() -> Fcir<f32, Deterministic> {
 fn fgbm_on_metal_agrees_with_the_cpu_law() {
   let m = 2_000;
   let cpu = terminal_mean(&fgbm().sample_par(m));
-  let gpu_paths = fgbm().on::<Metal>().sample_par(m);
+  let gpu_paths = fgbm().on::<Device>().sample_par(m);
   let gpu = terminal_mean(&gpu_paths);
   assert!(
     gpu_paths.iter().all(|p| p.iter().all(|v| v.is_finite())),
@@ -99,7 +106,7 @@ fn fgbm_on_metal_agrees_with_the_cpu_law() {
 fn fcir_on_metal_stays_nonnegative_and_agrees() {
   let m = 2_000;
   let cpu = terminal_mean(&fcir().sample_par(m));
-  let gpu_paths = fcir().on::<Metal>().sample_par(m);
+  let gpu_paths = fcir().on::<Device>().sample_par(m);
   let gpu = terminal_mean(&gpu_paths);
   assert!(
     gpu_paths.iter().all(|p| p.iter().all(|v| *v >= 0.0)),
@@ -128,7 +135,7 @@ fn fjacobi() -> FJacobi<f32, Deterministic> {
 fn fjacobi_on_metal_stays_in_the_unit_interval() {
   let m = 2_000;
   let cpu = terminal_mean(&fjacobi().sample_par(m));
-  let gpu_paths = fjacobi().on::<Metal>().sample_par(m);
+  let gpu_paths = fjacobi().on::<Device>().sample_par(m);
   let gpu = terminal_mean(&gpu_paths);
   assert!(
     gpu_paths
