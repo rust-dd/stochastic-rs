@@ -4,6 +4,7 @@
 //! the fGN device kernels. `f32` on the device (the portable GPU float),
 //! widened on the way back.
 
+use cubecl::client::ComputeClient;
 use cubecl::prelude::*;
 use ndarray::Array2;
 use parking_lot::Mutex;
@@ -11,16 +12,10 @@ use parking_lot::Mutex;
 use super::EulerCoefficients;
 use super::EulerKernel;
 use super::EulerSpec;
-use crate::device::CubeCl;
 use crate::device::DeviceError;
 use crate::device::DeviceInfo;
 
 type DeviceResult<T> = std::result::Result<T, DeviceError>;
-
-#[cfg(feature = "cubecl-cuda")]
-type R = cubecl_cuda::CudaRuntime;
-#[cfg(all(feature = "cubecl-wgpu", not(feature = "cubecl-cuda")))]
-type R = cubecl_wgpu::WgpuRuntime;
 
 const WG_SIZE: u32 = 256;
 
@@ -86,56 +81,118 @@ fn euler_paths_kernel<F: Float + CubeElement>(
   }
 }
 
-struct Context {
-  ordinal: usize,
-  client: cubecl::client::ComputeClient<R>,
+/// A CubeCL runtime this crate can open, with its own cached compute client.
+/// One implementor per `cubecl-*` feature, so a build with both reaches both
+/// devices; the kernels themselves are runtime-agnostic.
+pub(crate) trait CubeclRuntime: 'static {
+  /// The CubeCL runtime this opens.
+  type Rt: cubecl::Runtime;
+
+  /// What [`DeviceInfo::backend`] reports.
+  const BACKEND: &'static str;
+
+  /// The runtime's device at `ordinal`.
+  fn device(ordinal: usize) -> <Self::Rt as cubecl::Runtime>::Device;
+
+  /// The cached client for `ordinal`, opened on first use.
+  fn client(ordinal: usize) -> DeviceResult<ComputeClient<Self::Rt>>;
 }
 
-unsafe impl Send for Context {}
+/// The client cache of one runtime: CubeCL clients are cheap to clone and
+/// expensive to open, and switching ordinal re-opens.
+pub(crate) struct Context<Rt: cubecl::Runtime> {
+  ordinal: usize,
+  client: ComputeClient<Rt>,
+}
 
-static CONTEXT: Mutex<Option<Context>> = Mutex::new(None);
+// SAFETY: the client is only ever handed out as a clone under the mutex, and
+// CubeCL's own client is internally synchronised.
+unsafe impl<Rt: cubecl::Runtime> Send for Context<Rt> {}
 
-/// The cached compute client, opened on first use. CubeCL panics rather than
-/// erroring when no device exists, so the opening is caught and reported.
-fn client(ordinal: usize) -> DeviceResult<cubecl::client::ComputeClient<R>> {
-  let mut guard = CONTEXT.lock();
+/// The cached client for `ordinal`, re-opening when the ordinal changes.
+/// CubeCL panics rather than erroring when no device exists, so the opening
+/// is caught and reported as a [`DeviceError`].
+pub(crate) fn open<Rt: cubecl::Runtime>(
+  slot: &Mutex<Option<Context<Rt>>>,
+  ordinal: usize,
+  device: fn(usize) -> Rt::Device,
+) -> DeviceResult<ComputeClient<Rt>> {
+  let mut guard = slot.lock();
   if !guard.as_ref().is_some_and(|c| c.ordinal == ordinal) {
     *guard = None;
-    let opened = std::panic::catch_unwind(|| R::client(&cubecl_device(ordinal)));
-    match opened {
+    // The device is built inside the closure: a `Runtime::Device` reference
+    // is not `RefUnwindSafe`, a `usize` and a fn pointer are.
+    match std::panic::catch_unwind(|| Rt::client(&device(ordinal))) {
       Ok(client) => *guard = Some(Context { ordinal, client }),
-      Err(payload) => {
-        return Err(DeviceError::Unavailable(crate::device::panic_text(payload)));
-      }
+      Err(payload) => return Err(DeviceError::Unavailable(crate::device::panic_text(payload))),
     }
   }
   Ok(guard.as_ref().expect("initialised").client.clone())
 }
 
-/// The CubeCL device at `ordinal`: with `cubecl-wgpu`, `0` is the default
-/// adapter and `n > 0` the n-th discrete GPU.
-pub(crate) fn cubecl_device(ordinal: usize) -> <R as cubecl::Runtime>::Device {
-  #[cfg(feature = "cubecl-cuda")]
-  {
-    cubecl_cuda::CudaDevice { index: ordinal }
-  }
+/// The CUDA runtime of CubeCL, distinct from the hand-written [`Cuda`
+/// ](crate::device::Cuda) backend that reaches the same hardware through
+/// cudarc.
+#[cfg(feature = "cubecl-cuda")]
+pub(crate) mod cuda_rt {
+  use super::*;
 
-  #[cfg(all(feature = "cubecl-wgpu", not(feature = "cubecl-cuda")))]
-  {
-    if ordinal == 0 {
-      cubecl_wgpu::WgpuDevice::default()
-    } else {
-      cubecl_wgpu::WgpuDevice::DiscreteGpu(ordinal)
+  /// The tag type; the handle is [`CubeclCuda`](crate::device::CubeclCuda).
+  pub(crate) struct Rt;
+
+  static CONTEXT: Mutex<Option<Context<cubecl_cuda::CudaRuntime>>> = Mutex::new(None);
+
+  impl CubeclRuntime for Rt {
+    type Rt = cubecl_cuda::CudaRuntime;
+
+    const BACKEND: &'static str = "CubeclCuda";
+
+    fn device(ordinal: usize) -> cubecl_cuda::CudaDevice {
+      cubecl_cuda::CudaDevice { index: ordinal }
+    }
+
+    fn client(ordinal: usize) -> DeviceResult<ComputeClient<Self::Rt>> {
+      open(&CONTEXT, ordinal, Self::device)
     }
   }
 }
 
-/// The CubeCL device at `ordinal`, or why it cannot be used.
-pub(crate) fn probe(ordinal: usize) -> DeviceResult<DeviceInfo> {
-  let cl = client(ordinal)?;
+/// The wgpu runtime of CubeCL: Metal on macOS, Vulkan on Linux, WebGPU on the
+/// web. `ordinal` `0` is the default adapter, `n > 0` the n-th discrete GPU.
+#[cfg(feature = "cubecl-wgpu")]
+pub(crate) mod wgpu_rt {
+  use super::*;
+
+  /// The tag type; the handle is [`CubeclWgpu`](crate::device::CubeclWgpu).
+  pub(crate) struct Rt;
+
+  static CONTEXT: Mutex<Option<Context<cubecl_wgpu::WgpuRuntime>>> = Mutex::new(None);
+
+  impl CubeclRuntime for Rt {
+    type Rt = cubecl_wgpu::WgpuRuntime;
+
+    const BACKEND: &'static str = "CubeclWgpu";
+
+    fn device(ordinal: usize) -> cubecl_wgpu::WgpuDevice {
+      if ordinal == 0 {
+        cubecl_wgpu::WgpuDevice::default()
+      } else {
+        cubecl_wgpu::WgpuDevice::DiscreteGpu(ordinal)
+      }
+    }
+
+    fn client(ordinal: usize) -> DeviceResult<ComputeClient<Self::Rt>> {
+      open(&CONTEXT, ordinal, Self::device)
+    }
+  }
+}
+
+/// The runtime's device at `ordinal`, or why it cannot be used.
+pub(crate) fn probe<C: CubeclRuntime>(ordinal: usize) -> DeviceResult<DeviceInfo> {
+  let cl = C::client(ordinal)?;
   Ok(DeviceInfo::new(
-    "CubeCl",
-    <R as cubecl::Runtime>::name(&cl).to_string(),
+    C::BACKEND,
+    <C::Rt as cubecl::Runtime>::name(&cl).to_string(),
     &["f32"],
     Some(ordinal),
   ))
@@ -157,7 +214,8 @@ fn count_2d(cubes: u32) -> CubeCount {
   }
 }
 
-impl EulerKernel<f32> for CubeCl {
+#[cfg(feature = "cubecl-cuda")]
+impl EulerKernel<f32> for crate::device::CubeclCuda {
   fn euler_kernel<P: EulerCoefficients<f32>>(
     &self,
     process: &P,
@@ -165,7 +223,33 @@ impl EulerKernel<f32> for CubeCl {
     m: usize,
     seed: u64,
   ) -> DeviceResult<Array2<f32>> {
-    device_paths(
+    device_paths::<cuda_rt::Rt>(
+      self.ordinal,
+      process.euler_spec(),
+      process.initial_value(),
+      process.grid_points(),
+      process.horizon(),
+      first,
+      m,
+      seed,
+    )
+  }
+
+  fn batch_budget(&self) -> usize {
+    self.batch_budget
+  }
+}
+
+#[cfg(feature = "cubecl-wgpu")]
+impl EulerKernel<f32> for crate::device::CubeclWgpu {
+  fn euler_kernel<P: EulerCoefficients<f32>>(
+    &self,
+    process: &P,
+    first: usize,
+    m: usize,
+    seed: u64,
+  ) -> DeviceResult<Array2<f32>> {
+    device_paths::<wgpu_rt::Rt>(
       self.ordinal,
       process.euler_spec(),
       process.initial_value(),
@@ -184,7 +268,7 @@ impl EulerKernel<f32> for CubeCl {
 
 /// The kernel launch for an explicit specification.
 #[allow(clippy::too_many_arguments)]
-fn device_paths(
+fn device_paths<C: CubeclRuntime>(
   ordinal: usize,
   spec: EulerSpec<f32>,
   x0: f32,
@@ -202,12 +286,12 @@ fn device_paths(
     let params32: Vec<f32> = params.to_vec();
     let dt = t as f64 / (n.max(2) - 1) as f64;
     let total = m * n;
-    let cl = &client(ordinal)?;
+    let cl = &C::client(ordinal)?;
     let data: Vec<f32> = {
       let params_h = cl.create_from_slice(f32::as_bytes(&params32));
       let out_h = cl.empty(total * 4);
       unsafe {
-        euler_paths_kernel::launch::<f32, R>(
+        euler_paths_kernel::launch::<f32, C::Rt>(
           cl,
           count_2d((m as u32).div_ceil(WG_SIZE)),
           CubeDim::new_1d(WG_SIZE),

@@ -270,11 +270,11 @@ mod devices {
     assert!(paths.iter().all(|&x| x >= 0.0), "{label}");
   }
 
-  #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
+  #[cfg(feature = "cubecl-wgpu")]
   #[test]
   fn cubecl_backend_matches_the_moments() {
-    gbm_moments_hold::<f32, crate::device::CubeCl>("CubeCl");
-    cir_stays_nonnegative::<f32, crate::device::CubeCl>("CubeCl");
+    gbm_moments_hold::<f32, crate::device::CubeclWgpu>("CubeclWgpu");
+    cir_stays_nonnegative::<f32, crate::device::CubeclWgpu>("CubeclWgpu");
   }
 
   #[cfg(feature = "metal")]
@@ -395,7 +395,9 @@ mod devices {
   #[test]
   fn metal_native_and_cubecl_agree_seed_for_seed() {
     let metal = gbm::<f32>(11).on::<crate::device::Metal>().sample_par(16);
-    let cubecl = gbm::<f32>(11).on::<crate::device::CubeCl>().sample_par(16);
+    let cubecl = gbm::<f32>(11)
+      .on::<crate::device::CubeclWgpu>()
+      .sample_par(16);
     for (a, b) in metal.iter().zip(&cubecl) {
       for (x, y) in a.iter().zip(b.iter()) {
         assert!((x - y).abs() < 1e-3 * y.abs().max(1.0), "{x} vs {y}");

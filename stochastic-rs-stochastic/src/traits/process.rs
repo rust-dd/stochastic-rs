@@ -201,7 +201,7 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// induced load, stayed bit-exact in all 400 — see
 /// [`FgnBackend`](crate::device::FgnBackend)'s own doc for the full per-backend
 /// table and `tests/deterministic_parallelism_accelerate.rs` for the
-/// measurement. GPU backends (`Cuda`/`CubeCl`/`Metal`) are
+/// measurement. GPU backends (`Cuda`/`Metal`/`CubeclCuda`/`CubeclWgpu`) are
 /// excluded from this guarantee entirely, deliberately: each draws one
 /// value from `self.seed.rng()` per batch call and hands it to the
 /// on-device kernel's own Philox/PCG-style RNG, so output is a function of

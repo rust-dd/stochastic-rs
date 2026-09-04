@@ -134,7 +134,7 @@ def test_device_names_are_honoured_or_reported():
     # rebuild hint; never silently redirected to the CPU.
     with pytest.raises(ValueError):
         sr.PyGbm(0.05, 0.2, 10, seed=7, device="tpu")
-    for device in ("gpu", "cuda", "metal", "cubecl"):
+    for device in ("cuda", "metal", "cubecl-cuda", "cubecl-wgpu"):
         try:
             gbm = sr.PyGbm(0.05, 0.2, 64, x0=100.0, t=1.0, seed=7, dtype="f32", device=device)
         except ValueError as err:
@@ -154,7 +154,7 @@ def test_probe_device_describes_the_host_and_reports_missing_devices():
     assert "thread" in info["name"]
     with pytest.raises(ValueError):
         sr.probe_device("tpu")
-    for device in ("gpu", "cuda", "metal", "cubecl", "accelerate"):
+    for device in ("cuda", "metal", "cubecl-cuda", "cubecl-wgpu", "accelerate"):
         try:
             found = sr.probe_device(device)
         except ValueError as err:
@@ -162,7 +162,7 @@ def test_probe_device_describes_the_host_and_reports_missing_devices():
             continue
         except RuntimeError:
             continue
-        assert found["backend"] in ("Cuda", "Metal", "CubeCl", "Accelerate")
+        assert found["backend"] in ("Cuda", "Metal", "CubeclCuda", "CubeclWgpu", "Accelerate")
         assert all(p in ("f32", "f64") for p in found["precisions"])
     with pytest.raises(ValueError):
         sr.probe_device("cpu:x")
@@ -179,8 +179,8 @@ def test_device_argument_on_the_process_classes():
     with pytest.raises(ValueError):
         sr.PyGbm(0.05, 0.2, 64, seed=7, device="metal")
     with pytest.raises(ValueError):
-        sr.PyFbm(0.7, 64, seed=7, device="cubecl")
-    for device in ("gpu", "cuda", "metal", "cubecl", "accelerate"):
+        sr.PyFbm(0.7, 64, seed=7, device="cubecl-wgpu")
+    for device in ("cuda", "metal", "cubecl-cuda", "cubecl-wgpu", "accelerate"):
         try:
             gbm = sr.PyGbm(0.05, 0.2, 64, x0=100.0, t=1.0, seed=7, dtype="f32", device=device)
             fgn = sr.PyFgn(0.7, 64, seed=7, dtype="f32", device=device)

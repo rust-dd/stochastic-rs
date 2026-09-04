@@ -7,10 +7,10 @@
 #[cfg(feature = "accelerate")]
 mod accelerate;
 mod core;
+#[cfg(feature = "cubecl")]
+mod cubecl;
 #[cfg(feature = "cuda")]
 pub(crate) mod cuda;
-#[cfg(feature = "cubecl")]
-mod gpu;
 #[cfg(feature = "metal")]
 mod metal;
 #[cfg(feature = "python")]

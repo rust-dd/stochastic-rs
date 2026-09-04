@@ -14,7 +14,7 @@ use criterion::Throughput;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use stochastic_rs::simd_rng::Unseeded;
-use stochastic_rs::stochastic::device::CubeCl;
+use stochastic_rs::stochastic::device::CubeclCuda;
 use stochastic_rs::stochastic::device::Cuda;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
@@ -31,7 +31,7 @@ fn bench_single_path(c: &mut Criterion) {
 
     let cpu = Fgn::new(hurst, n, None, Unseeded);
     let native = Fgn::new(hurst, n, None, Unseeded).on::<Cuda>();
-    let cubecl = Fgn::new(hurst, n, None, Unseeded).on::<CubeCl>();
+    let cubecl = Fgn::new(hurst, n, None, Unseeded).on::<CubeclCuda>();
 
     // Warm up the GPU contexts + kernel JIT once, outside the measurement.
     let _ = native.sample();
@@ -83,7 +83,7 @@ fn bench_batch(c: &mut Criterion) {
     // the two together would exceed the 12 GB RTX 4070 SUPER (matches the Apple
     // table, where CubeCL is "—" for the big batches).
     if n.saturating_mul(m) <= 67_108_864 {
-      let cubecl = Fgn::new(hurst, n, None, Unseeded).on::<CubeCl>();
+      let cubecl = Fgn::new(hurst, n, None, Unseeded).on::<CubeclCuda>();
       let _ = cubecl.sample_par(m);
       group.bench_with_input(
         BenchmarkId::new("gpu_cuda", &label),

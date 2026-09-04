@@ -11,7 +11,7 @@ mod gpu_visual {
   use stochastic_rs::stats::fractal_dim::FractalDimEstimator;
   use stochastic_rs::stats::fractal_dim::Higuchi;
   use stochastic_rs::stats::fractal_dim::Variogram;
-  use stochastic_rs::stochastic::device::CubeCl;
+  use stochastic_rs::stochastic::device::CubeclWgpu;
   use stochastic_rs::stochastic::noise::fgn::Fgn;
   use stochastic_rs::stochastic::process::fbm::Fbm;
   use stochastic_rs::traits::ProcessExt;
@@ -98,7 +98,7 @@ mod gpu_visual {
   }
 
   fn gpu_fgn_paths(h: f32, n: usize, m: usize) -> Vec<Vec<f64>> {
-    let fgn = Fgn::<f32>::new(h, n, Some(1.0), Unseeded).on::<CubeCl>();
+    let fgn = Fgn::<f32>::new(h, n, Some(1.0), Unseeded).on::<CubeclWgpu>();
     fgn
       .sample_par(m)
       .into_iter()
@@ -112,7 +112,7 @@ mod gpu_visual {
   }
 
   fn gpu_fbm_paths(h: f32, n: usize, m: usize) -> Vec<Vec<f64>> {
-    let fbm = Fbm::<f32>::new(h, n, Some(1.0), Unseeded).on::<CubeCl>();
+    let fbm = Fbm::<f32>::new(h, n, Some(1.0), Unseeded).on::<CubeclWgpu>();
     fbm
       .sample_par(m)
       .into_iter()

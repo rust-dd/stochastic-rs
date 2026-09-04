@@ -1,7 +1,9 @@
 //! # CubeCL GPU
 //!
 //! Cross-platform GPU-accelerated Fgn sampling via CubeCL.
-//! Supports CUDA (cubecl-cuda), Metal/Vulkan/WebGPU (cubecl-wgpu).
+//! One text per kernel, launched on whichever runtime the handle names:
+//! `CubeclCuda` (cubecl-cuda) or `CubeclWgpu` (cubecl-wgpu — Metal on macOS,
+//! Vulkan on Linux, WebGPU on the web).
 //!
 //! FFT uses shared-memory radix-2 for local stages and radix-4 butterfly
 //! for global stages, minimising kernel dispatch count.
@@ -289,39 +291,8 @@ fn gen_scale<F: Float>(
 mod backend {
   use std::any::TypeId;
 
-  use cubecl::client::ComputeClient;
-  use parking_lot::Mutex;
-
   use super::*;
-
-  #[cfg(feature = "cubecl-cuda")]
-  pub(super) type R = cubecl_cuda::CudaRuntime;
-
-  #[cfg(all(feature = "cubecl-wgpu", not(feature = "cubecl-cuda")))]
-  pub(super) type R = cubecl_wgpu::WgpuRuntime;
-
-  struct GpuContext {
-    ordinal: usize,
-    client: ComputeClient<R>,
-  }
-
-  unsafe impl Send for GpuContext {}
-
-  static GPU_CTX: Mutex<Option<GpuContext>> = Mutex::new(None);
-
-  /// Opens the client for the selected device once; buffers are per call.
-  fn ensure_ctx(ordinal: usize) -> DeviceResult<()> {
-    let mut g = GPU_CTX.lock();
-    if g.as_ref().is_some_and(|c| c.ordinal == ordinal) {
-      return Ok(());
-    }
-    *g = None;
-    // CubeCL panics rather than erroring when no device exists.
-    let client = std::panic::catch_unwind(|| R::client(&crate::euler::gpu::cubecl_device(ordinal)))
-      .map_err(|payload| DeviceError::Unavailable(crate::device::panic_text(payload)))?;
-    *g = Some(GpuContext { ordinal, client });
-    Ok(())
-  }
+  use crate::euler::cubecl::CubeclRuntime;
 
   /// Splits a 1D cube count into a 2D grid so no dimension exceeds WebGPU's
   /// 65535 per-dimension limit. For the power-of-two counts this sampler emits
@@ -340,7 +311,7 @@ mod backend {
     }
   }
 
-  pub(super) fn sample_gpu_f32<T: FloatExt>(
+  pub(super) fn sample_cubecl_f32<C: CubeclRuntime, T: FloatExt>(
     sqrt_eigs: &[f32],
     n: usize,
     m: usize,
@@ -357,9 +328,8 @@ mod backend {
     let total = m * traj_size;
     let log_n = traj_size.trailing_zeros() as usize;
 
-    ensure_ctx(ordinal)?;
-    let guard = GPU_CTX.lock();
-    let cl = &guard.as_ref().unwrap().client;
+    let client = C::client(ordinal)?;
+    let cl = &client;
 
     // Bit-reverse table + eigenvalues (small) uploaded; trajectory buffers empty.
     let log_t = traj_size.trailing_zeros() as usize;
@@ -374,7 +344,7 @@ mod backend {
 
     // GPU: generate normals + eigenvalue scale + bit-reversed scatter.
     unsafe {
-      gen_scale::launch::<f32, R>(
+      gen_scale::launch::<f32, C::Rt>(
         cl,
         count_2d((total as u32).div_ceil(WG_SIZE as u32)),
         CubeDim::new_1d(WG_SIZE as u32),
@@ -392,7 +362,7 @@ mod backend {
     // Phase 1: shared-memory local FFT (9 stages per 512-element tile, 1 launch)
     let n_tiles = (total / BLOCK) as u32;
     unsafe {
-      fft_local::launch::<f32, R>(
+      fft_local::launch::<f32, C::Rt>(
         cl,
         count_2d(n_tiles),
         CubeDim::new_1d(WG_SIZE as u32),
@@ -407,7 +377,7 @@ mod backend {
     for stage in LOCAL_STAGES..log_n {
       let hs = 1 << stage;
       unsafe {
-        fft_butterfly::launch::<f32, R>(
+        fft_butterfly::launch::<f32, C::Rt>(
           cl,
           count_2d(nwg),
           CubeDim::new_1d(WG_SIZE as u32),
@@ -425,7 +395,7 @@ mod backend {
     let oh = cl.empty(tout as usize * 4);
     let sh = cl.create_from_slice(f32::as_bytes(&[scale]));
     unsafe {
-      extract_real::launch::<f32, R>(
+      extract_real::launch::<f32, C::Rt>(
         cl,
         count_2d(tout.div_ceil(WG_SIZE as u32)),
         CubeDim::new_1d(WG_SIZE as u32),
@@ -441,7 +411,6 @@ mod backend {
     let bytes = cl.read_one(oh.clone());
     let out = f32::from_bytes(&bytes);
     let fgn = arr2::<T>(out, m, out_size);
-    drop(guard);
     Ok(fgn)
   }
 
@@ -462,58 +431,73 @@ mod backend {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
-  /// `m` paths on the selected CubeCL device, in chunks that fit the batch
+  /// `m` paths on `device`'s CubeCL runtime, in chunks that fit the batch
   /// budget: one seed for the whole batch and a running element offset in the
   /// kernel's hash, so the result is the same whatever the budget.
-  pub(crate) fn sample_gpu_impl<S2: SeedExt>(
+  #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
+  fn sample_cubecl_impl<C: crate::euler::cubecl::CubeclRuntime, S2: SeedExt>(
     &self,
     m: usize,
     seed_src: &S2,
-    device: &crate::device::CubeCl,
+    ordinal: usize,
+    batch_budget: usize,
   ) -> DeviceResult<Array2<T>> {
-    #[cfg(not(any(feature = "cubecl-cuda", feature = "cubecl-wgpu")))]
-    {
-      let _ = (m, seed_src, device);
-      return Err(DeviceError::Unavailable(
-        "no CubeCL runtime compiled; enable the cubecl-cuda or cubecl-wgpu feature".to_string(),
-      ));
+    let n = self.n;
+    let offset = self.offset;
+    let out_size = n - offset;
+    let hurst = self.hurst.to_f64().unwrap();
+    let t = self.t.unwrap_or(T::one()).to_f64().unwrap();
+    let eigs: Vec<f32> = self
+      .sqrt_eigenvalues
+      .iter()
+      .map(|x| x.to_f32().unwrap())
+      .collect();
+    let seed_u: u32 = rand::Rng::random(&mut seed_src.rng());
+    let rows = crate::device::chunk_rows(batch_budget, 4 * n + out_size, 4);
+    let mut out = Array2::<T>::zeros((m, out_size));
+    let mut first = 0;
+    while first < m {
+      let len = rows.min(m - first);
+      let chunk = backend::sample_cubecl_f32::<C, T>(
+        &eigs, n, len, offset, hurst, t, first, seed_u, ordinal,
+      )?;
+      out
+        .slice_mut(ndarray::s![first..first + len, ..])
+        .assign(&chunk);
+      first += len;
     }
+    Ok(out)
+  }
 
-    #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-    {
-      let n = self.n;
-      let offset = self.offset;
-      let out_size = n - offset;
-      let hurst = self.hurst.to_f64().unwrap();
-      let t = self.t.unwrap_or(T::one()).to_f64().unwrap();
-      let eigs: Vec<f32> = self
-        .sqrt_eigenvalues
-        .iter()
-        .map(|x| x.to_f32().unwrap())
-        .collect();
-      let seed_u: u32 = rand::Rng::random(&mut seed_src.rng());
-      let rows = crate::device::chunk_rows(device.batch_budget, 4 * n + out_size, 4);
-      let mut out = Array2::<T>::zeros((m, out_size));
-      let mut first = 0;
-      while first < m {
-        let len = rows.min(m - first);
-        let chunk = backend::sample_gpu_f32::<T>(
-          &eigs,
-          n,
-          len,
-          offset,
-          hurst,
-          t,
-          first,
-          seed_u,
-          device.ordinal,
-        )?;
-        out
-          .slice_mut(ndarray::s![first..first + len, ..])
-          .assign(&chunk);
-        first += len;
-      }
-      Ok(out)
-    }
+  /// [`sample_cubecl_impl`](Self::sample_cubecl_impl) on CubeCL's CUDA runtime.
+  #[cfg(feature = "cubecl-cuda")]
+  pub(crate) fn sample_cubecl_cuda_impl<S2: SeedExt>(
+    &self,
+    m: usize,
+    seed_src: &S2,
+    device: &crate::device::CubeclCuda,
+  ) -> DeviceResult<Array2<T>> {
+    self.sample_cubecl_impl::<crate::euler::cubecl::cuda_rt::Rt, S2>(
+      m,
+      seed_src,
+      device.ordinal,
+      device.batch_budget,
+    )
+  }
+
+  /// [`sample_cubecl_impl`](Self::sample_cubecl_impl) on CubeCL's wgpu runtime.
+  #[cfg(feature = "cubecl-wgpu")]
+  pub(crate) fn sample_cubecl_wgpu_impl<S2: SeedExt>(
+    &self,
+    m: usize,
+    seed_src: &S2,
+    device: &crate::device::CubeclWgpu,
+  ) -> DeviceResult<Array2<T>> {
+    self.sample_cubecl_impl::<crate::euler::cubecl::wgpu_rt::Rt, S2>(
+      m,
+      seed_src,
+      device.ordinal,
+      device.batch_budget,
+    )
   }
 }

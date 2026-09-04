@@ -10,7 +10,7 @@
 //! The capability traits ([`FgnBackend`], [`crate::euler::EulerBackend`]) take
 //! the scalar as a type parameter, and a device implements them only for the
 //! precision its kernels compute in: `Cuda` for `f32` and `f64`,
-//! `Metal` and `CubeCl` for `f32` alone. `Fgn<f64>` on `Metal`
+//! `Metal` and the two CubeCL handles for `f32` alone. `Fgn<f64>` on `Metal`
 //! does not compile; nothing is computed in `f32` behind an `f64` type.
 
 use std::fmt;
@@ -74,19 +74,20 @@ impl Cuda {
   }
 }
 
-/// cubecl Rust kernels (CUDA or wgpu, per the compiled `cubecl-*` runtime).
-#[cfg(feature = "cubecl")]
+/// cubecl Rust kernels on CubeCL's CUDA runtime — the same hardware
+/// [`Cuda`] reaches through cudarc, by a different route.
+#[cfg(feature = "cubecl-cuda")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CubeCl {
-  /// Which device to open: the runtime's device index (with `cubecl-wgpu`, `0` is the default adapter and `n > 0` the n-th discrete GPU).
+pub struct CubeclCuda {
+  /// Which device to open: the CUDA device index.
   pub ordinal: usize,
   /// Bytes of path data one launch may hold; a larger batch runs as chunks
   /// whose union is bit-identical to one launch.
   pub batch_budget: usize,
 }
 
-#[cfg(feature = "cubecl")]
-impl Default for CubeCl {
+#[cfg(feature = "cubecl-cuda")]
+impl Default for CubeclCuda {
   /// Ordinal from `STOCHASTIC_RS_DEVICE` (else `0`), budget from
   /// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` (else [`DEFAULT_BATCH_BUDGET_BYTES`]).
   fn default() -> Self {
@@ -97,8 +98,51 @@ impl Default for CubeCl {
   }
 }
 
-#[cfg(feature = "cubecl")]
-impl CubeCl {
+#[cfg(feature = "cubecl-cuda")]
+impl CubeclCuda {
+  /// The device at `ordinal` with the default batch budget.
+  pub fn new(ordinal: usize) -> Self {
+    Self {
+      ordinal,
+      ..Self::default()
+    }
+  }
+
+  /// The same device with `bytes` of path data per launch.
+  pub fn with_batch_budget(self, bytes: usize) -> Self {
+    Self {
+      batch_budget: bytes.max(1),
+      ..self
+    }
+  }
+}
+
+/// cubecl Rust kernels on CubeCL's wgpu runtime: Metal on macOS,
+/// Vulkan on Linux, WebGPU on the web.
+#[cfg(feature = "cubecl-wgpu")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CubeclWgpu {
+  /// Which device to open: `0` is the default adapter and `n > 0` the n-th discrete GPU.
+  pub ordinal: usize,
+  /// Bytes of path data one launch may hold; a larger batch runs as chunks
+  /// whose union is bit-identical to one launch.
+  pub batch_budget: usize,
+}
+
+#[cfg(feature = "cubecl-wgpu")]
+impl Default for CubeclWgpu {
+  /// Ordinal from `STOCHASTIC_RS_DEVICE` (else `0`), budget from
+  /// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` (else [`DEFAULT_BATCH_BUDGET_BYTES`]).
+  fn default() -> Self {
+    Self {
+      ordinal: env_ordinal(),
+      batch_budget: env_budget(),
+    }
+  }
+}
+
+#[cfg(feature = "cubecl-wgpu")]
+impl CubeclWgpu {
   /// The device at `ordinal` with the default batch budget.
   pub fn new(ordinal: usize) -> Self {
     Self {
@@ -372,22 +416,20 @@ impl Backend for Cuda {
     crate::euler::cuda::probe(self.ordinal)
   }
 }
-#[cfg(feature = "cubecl")]
-impl Backend for CubeCl {
+#[cfg(feature = "cubecl-cuda")]
+impl Backend for CubeclCuda {
   fn probe(&self) -> Result<DeviceInfo, DeviceError> {
-    #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-    {
-      crate::euler::gpu::probe(self.ordinal)
-    }
-
-    #[cfg(not(any(feature = "cubecl-cuda", feature = "cubecl-wgpu")))]
-    {
-      Err(DeviceError::Unavailable(
-        "no CubeCL runtime compiled; enable the cubecl-cuda or cubecl-wgpu feature".to_string(),
-      ))
-    }
+    crate::euler::cubecl::probe::<crate::euler::cubecl::cuda_rt::Rt>(self.ordinal)
   }
 }
+
+#[cfg(feature = "cubecl-wgpu")]
+impl Backend for CubeclWgpu {
+  fn probe(&self) -> Result<DeviceInfo, DeviceError> {
+    crate::euler::cubecl::probe::<crate::euler::cubecl::wgpu_rt::Rt>(self.ordinal)
+  }
+}
+
 #[cfg(feature = "metal")]
 impl Backend for Metal {
   fn probe(&self) -> Result<DeviceInfo, DeviceError> {
@@ -429,7 +471,7 @@ impl HostBackend for Accelerate {}
 /// |---|---|
 /// | [`Cpu`] | Yes — same seed + same `m` ⇒ bit-identical output on any machine, under any rayon thread-pool size. |
 /// | `Accelerate` (`accelerate` feature) | **Not bit-identical — measured, not assumed.** Seed *consumption* (which derived basis feeds which path) is thread-count independent, via the identical mechanism `Cpu` uses. But `vDSP_fft_zip`'s own floating-point output is not bit-stable across otherwise-identical calls: measured on Apple Silicon (M4 Max), 400 repeated calls across varied `(n, m)` on an idle system showed zero divergence, but the same sweep with all cores saturated by unrelated work showed 21/400 configurations diverge (worst relative difference `2.08e-3`) — consistent with the heterogeneous P-core/E-core scheduler dispatching the FFT to different core types across calls. `Cpu`, under the identical induced load, stayed bit-exact throughout. Treat `Accelerate` as reproducible-effort-only, the same tier as the GPU backends below — see `tests/deterministic_parallelism_accelerate.rs`. |
-/// | `Cuda` / `CubeCl` / `Metal` (`cuda` / `cubecl` / `metal` features) | **Not guaranteed.** Each batch call draws one `u32`/`u64` value from the `seed: &S2` the caller passed — the process's own seed, so two `Deterministic` processes built from the same seed value produce the same device paths, and consecutive calls on one process advance the stream into independent paths, exactly as on the host — and hands it to the on-device kernel's own Philox/PCG-style RNG, with a per-chunk offset so a chunked batch equals one launch. Output is therefore a function of the pinned seed and *not* of host thread-pool size (no host-side rayon fan-out inside `generate_batch` for these backends), but cross-run bit-identity across GPU driver versions, vendors, or even repeated runs on the same device is untested and not promised. Treat these three as reproducible-effort-only. |
+/// | `Cuda` / `Metal` / `CubeclCuda` / `CubeclWgpu` (`cuda` / `metal` / `cubecl-cuda` / `cubecl-wgpu` features) | **Not guaranteed.** Each batch call draws one `u32`/`u64` value from the `seed: &S2` the caller passed — the process's own seed, so two `Deterministic` processes built from the same seed value produce the same device paths, and consecutive calls on one process advance the stream into independent paths, exactly as on the host — and hands it to the on-device kernel's own Philox/PCG-style RNG, with a per-chunk offset so a chunked batch equals one launch. Output is therefore a function of the pinned seed and *not* of host thread-pool size (no host-side rayon fan-out inside `generate_batch` for these backends), but cross-run bit-identity across GPU driver versions, vendors, or even repeated runs on the same device is untested and not promised. Treat these three as reproducible-effort-only. |
 ///
 /// `generate`/`generate_batch`/`generate_pair`'s `seed: &S2` parameter is the
 /// mechanism behind every row above: `Cpu`/`Accelerate` derive one basis per
@@ -600,7 +642,8 @@ macro_rules! gpu_backend {
 // and CubeCL FFT pipelines are single precision. `Fgn<f64>` on `Metal`
 // is therefore a compile error, not an `f32` computation behind an `f64` type.
 gpu_backend!("cuda", Cuda => sample_cuda_impl, f32, f64);
-gpu_backend!("cubecl", CubeCl => sample_gpu_impl, f32);
+gpu_backend!("cubecl-cuda", CubeclCuda => sample_cubecl_cuda_impl, f32);
+gpu_backend!("cubecl-wgpu", CubeclWgpu => sample_cubecl_wgpu_impl, f32);
 gpu_backend!("metal", Metal => sample_metal_impl, f32);
 
 /// Accelerate (vDSP) runs on the CPU, so it gets the same reproducibility

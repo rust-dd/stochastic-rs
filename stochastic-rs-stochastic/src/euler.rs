@@ -16,8 +16,8 @@
 //!   log-normal scheme, OU and CIR their SIMD Euler steppers.
 //! - The GPU back-ends run one device thread per path with the whole
 //!   Euler–Maruyama recursion in the kernel and Box–Muller normals from a
-//!   counter hash of `(path, step, seed)`: `CubeCl` (features `cubecl-cuda` /
-//!   `cubecl-wgpu`: CUDA, Metal, Vulkan or WebGPU through CubeCL, `f32`),
+//!   counter hash of `(path, step, seed)`: `CubeclCuda` and `CubeclWgpu`
+//!   (CUDA, and Metal / Vulkan / WebGPU, through CubeCL, `f32`),
 //!   `Cuda` (feature `cuda`: cudarc + NVRTC, `f32` or `f64` after
 //!   `T`) and `Metal` (feature `metal`: hand-written MSL, `f32`).
 //!   `sample_par` is one launch for all `m` paths; `sample` launches one path.
@@ -334,8 +334,10 @@ macro_rules! kernel_euler_backend {
 
 #[cfg(feature = "metal")]
 kernel_euler_backend!(crate::device::Metal, [] f32);
-#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-kernel_euler_backend!(crate::device::CubeCl, [] f32);
+#[cfg(feature = "cubecl-cuda")]
+kernel_euler_backend!(crate::device::CubeclCuda, [] f32);
+#[cfg(feature = "cubecl-wgpu")]
+kernel_euler_backend!(crate::device::CubeclWgpu, [] f32);
 #[cfg(feature = "cuda")]
 kernel_euler_backend!(crate::device::Cuda, [T: FloatExt] T);
 
@@ -456,10 +458,10 @@ try_sample_matrix!(Gbm);
 try_sample_matrix!(Ou);
 try_sample_matrix!(Cir);
 
+#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
+pub mod cubecl;
 #[cfg(feature = "cuda")]
 pub mod cuda;
-#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-pub mod gpu;
 #[cfg(any(feature = "cuda", feature = "metal"))]
 pub(crate) mod kernel;
 #[cfg(feature = "metal")]
@@ -490,8 +492,8 @@ pub mod python {
 
   use pyo3::prelude::*;
 
-  /// Opens the named device (`"cpu"`, `"gpu"`, `"cuda"`, `"metal"`,
-  /// `"cubecl"`, `"accelerate"`, optionally with `:ordinal`) and describes it
+  /// Opens the named device (`"cpu"`, `"accelerate"`, `"cuda"`, `"metal"`,
+  /// `"cubecl-cuda"`, `"cubecl-wgpu"`, optionally with `:ordinal`) and describes it
   /// as a dict with `backend`, `name`, `precisions` and `ordinal`; raises
   /// `RuntimeError` with the device's own message when it cannot be used,
   /// `ValueError` for a device this build does not carry.

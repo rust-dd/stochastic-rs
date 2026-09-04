@@ -94,11 +94,19 @@ macro_rules! py_on_device_f32 {
         let $p = &owned;
         $body
       }
-      #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-      $crate::python_device::Device::CubeCl(ordinal) => {
+      #[cfg(feature = "cubecl-cuda")]
+      $crate::python_device::Device::CubeclCuda(ordinal) => {
         let owned = $inner
           .clone()
-          .on_device($crate::device::CubeCl::new(ordinal));
+          .on_device($crate::device::CubeclCuda::new(ordinal));
+        let $p = &owned;
+        $body
+      }
+      #[cfg(feature = "cubecl-wgpu")]
+      $crate::python_device::Device::CubeclWgpu(ordinal) => {
+        let owned = $inner
+          .clone()
+          .on_device($crate::device::CubeclWgpu::new(ordinal));
         let $p = &owned;
         $body
       }

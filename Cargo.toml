@@ -203,9 +203,9 @@ name = "dist_multicore"
 harness = false
 
 [[bench]]
-name = "fgn_gpu"
+name = "fgn_cubecl"
 harness = false
-required-features = ["cubecl"]
+required-features = ["cubecl-wgpu"]
 
 [[bench]]
 name = "fgn_cuda"

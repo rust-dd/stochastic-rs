@@ -105,8 +105,8 @@ run from the worker threads one at a time. `PyAdg.sample_par(m)` returns an
 
 ## Devices
 
-`probe_device(name)` opens a device (`"cpu"`, `"gpu"`, `"cuda"`,
-`"metal"`, `"cubecl"`, `"accelerate"`, optionally with an ordinal:
+`probe_device(name)` opens a device (`"cpu"`, `"accelerate"`, `"cuda"`,
+`"metal"`, `"cubecl-cuda"`, `"cubecl-wgpu"`, optionally with an ordinal:
 `"cuda:1"`) and returns a dict with `backend`, `name`, `precisions` and
 `ordinal`; a device this build does not carry raises `ValueError` with a rebuild
 hint, one that is compiled in but cannot be opened raises `RuntimeError` with the
