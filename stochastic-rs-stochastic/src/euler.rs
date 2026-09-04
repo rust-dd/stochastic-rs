@@ -118,6 +118,18 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
 
   /// One path from the process's own sampler, the host stream.
   fn host_sample(&self) -> Array1<T>;
+
+  /// The noise increments for paths `first .. first + m`, one row of
+  /// `grid_points() - 1` per path, or `None` to let the kernel hash its own
+  /// Gaussian increments from `(path, step, seed)`.
+  ///
+  /// A fractional process overrides this with its fGN pipeline, which is how
+  /// one family declaration serves both noise kinds: the step multiplies by
+  /// `dz` and does not care where `dz` came from.
+  fn increments(&self, first: usize, m: usize, seed: u64) -> Option<Vec<T>> {
+    let _ = (first, m, seed);
+    None
+  }
 }
 
 /// The device primitive of the Euler engine: one launch under one seed.

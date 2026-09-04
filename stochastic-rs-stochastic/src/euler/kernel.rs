@@ -4,11 +4,14 @@
 //!
 //! The thread index `path`, the output and parameter buffers and the launch
 //! arguments (`family`, `x0`, `dt`, `sqrt_dt`, `seed`, `steps`, `paths`,
-//! `first_path`) are bound by the language-specific header around the body;
+//! `first_path`, `increments`) and the `incs` buffer are bound by the
+//! language-specific header around the body;
 //! the body itself only uses the placeholders [`Language`] fills in. Two
 //! decorrelated uniforms per step come from a Murmur3-style integer hash of
 //! `(first_path + path, step, seed)`, so a batch produced in chunks is
-//! bit-identical to one launch.
+//! bit-identical to one launch. When `increments` is set the step reads its
+//! noise from `incs` instead — one row of `steps - 1` increments per path —
+//! which is how a fractional process reaches the same families.
 
 /// The per-thread frame around the generated family blocks: the path guard,
 /// the counter-hash normals and the write-back. `STEP` and `REPORT` are the
@@ -31,6 +34,9 @@ REPORT
         REAL u2 = (REAL)b * (REAL)2.3283064e-10;
         REAL z = STOCH_SQRT((REAL)-2.0 * STOCH_LOG(u1)) * STOCH_COS((REAL)6.283185307179586 * u2);
         REAL dz = sqrt_dt * z;
+        if (increments != 0u) {
+            dz = incs[(INDEX)path * (steps - 1) + (i - 1)];
+        }
 STEP
         reported = x;
 REPORT

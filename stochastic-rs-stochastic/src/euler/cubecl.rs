@@ -25,6 +25,7 @@ const WG_SIZE: u32 = 256;
 fn euler_paths_kernel(
   out: &mut Array<f32>,
   params: &Array<f32>,
+  incs: &Array<f32>,
   family: u32,
   x0: f32,
   dt: f32,
@@ -33,6 +34,7 @@ fn euler_paths_kernel(
   steps: u32,
   paths: u32,
   first_path: u32,
+  increments: u32,
 ) {
   let path = ABSOLUTE_POS as u32;
   if path < paths {
@@ -58,7 +60,11 @@ fn euler_paths_kernel(
       let u1 = f32::cast_from(a) * inv * 0.999998f32 + 1.0e-6f32;
       let u2 = f32::cast_from(b) * inv;
       let z = Sqrt::sqrt(-2.0f32 * Log::ln(u1)) * Cos::cos(core::f32::consts::TAU * u2);
-      x = step(family, x, params, dt, sqrt_dt * z);
+      let mut dz = sqrt_dt * z;
+      if increments != 0u32 {
+        dz = incs[(path * (steps - 1) + (i - 1)) as usize];
+      }
+      x = step(family, x, params, dt, dz);
       out[base + i as usize] = report(family, x);
     }
   }
@@ -244,6 +250,7 @@ impl<R: CubeclRuntime> EulerKernel<f32> for crate::device::Cubecl<R> {
       first,
       m,
       seed,
+      process.increments(first, m, seed).as_deref().unwrap_or(&[]),
     )
   }
 
@@ -263,6 +270,7 @@ fn device_paths<C: CubeclRuntime>(
   first: usize,
   m: usize,
   seed: u64,
+  increments: &[f32],
 ) -> DeviceResult<Array2<f32>> {
   {
     if n == 0 || m == 0 {
@@ -276,6 +284,13 @@ fn device_paths<C: CubeclRuntime>(
     let data: Vec<f32> = {
       let params_h = cl.create_from_slice(f32::as_bytes(&params32));
       let out_h = cl.empty(total * 4);
+      // Every declared buffer is bound; an unused increment slot gets one float.
+      let incs_h = if increments.is_empty() {
+        cl.empty(4)
+      } else {
+        cl.create_from_slice(f32::as_bytes(increments))
+      };
+      let incs_len = increments.len().max(1);
       unsafe {
         euler_paths_kernel::launch::<C::Rt>(
           cl,
@@ -283,6 +298,7 @@ fn device_paths<C: CubeclRuntime>(
           CubeDim::new_1d(WG_SIZE),
           ArrayArg::from_raw_parts::<f32>(&out_h, total, 1),
           ArrayArg::from_raw_parts::<f32>(&params_h, 4, 1),
+          ArrayArg::from_raw_parts::<f32>(&incs_h, incs_len, 1),
           ScalarArg::new(family),
           ScalarArg::new(x0),
           ScalarArg::new(dt as f32),
@@ -291,6 +307,7 @@ fn device_paths<C: CubeclRuntime>(
           ScalarArg::new(n as u32),
           ScalarArg::new(m as u32),
           ScalarArg::new(first as u32),
+          ScalarArg::new(u32::from(!increments.is_empty())),
         )
         .map_err(|e| DeviceError::Launch(format!("euler_paths launch: {e:?}")))?;
       }

@@ -32,12 +32,14 @@ struct EulerArgs {
     uint steps;
     uint paths;
     uint first_path;
+    uint increments;
 };
 
 kernel void euler_paths(
     device float* out [[buffer(0)]],
     device const float* params [[buffer(1)]],
     constant EulerArgs& args [[buffer(2)]],
+    device const float* incs [[buffer(3)]],
     uint path [[thread_position_in_grid]])
 {
     const uint family = args.family;
@@ -48,6 +50,7 @@ kernel void euler_paths(
     const uint steps = args.steps;
     const uint paths = args.paths;
     const uint first_path = args.first_path;
+    const uint increments = args.increments;
 "#;
 
 fn msl_source() -> String {
@@ -76,6 +79,9 @@ struct EulerArgs {
   steps: u32,
   paths: u32,
   first_path: u32,
+  /// Non-zero when the launch reads its noise from the increment buffer
+  /// rather than hashing it.
+  increments: u32,
 }
 
 struct Context {
@@ -145,7 +151,7 @@ fn ensure_context(ordinal: usize) -> Result<()> {
   Ok(())
 }
 
-fn run(ordinal: usize, params: [f32; 4], args: EulerArgs) -> Result<Vec<f32>> {
+fn run(ordinal: usize, params: [f32; 4], args: EulerArgs, increments: &[f32]) -> Result<Vec<f32>> {
   ensure_context(ordinal)?;
   let guard = CONTEXT.lock();
   let ctx = guard.as_ref().expect("initialised");
@@ -155,12 +161,24 @@ fn run(ordinal: usize, params: [f32; 4], args: EulerArgs) -> Result<Vec<f32>> {
   let params_buf = ctx
     .device
     .new_buffer_with_data(params.as_ptr() as *const _, 16, shared);
+  // Metal requires every declared buffer to be bound, so an unused increment
+  // slot still gets one float.
+  let incs_buf = if increments.is_empty() {
+    ctx.device.new_buffer(4, shared)
+  } else {
+    ctx.device.new_buffer_with_data(
+      increments.as_ptr() as *const _,
+      (increments.len() * 4) as u64,
+      shared,
+    )
+  };
   let cmd = ctx.queue.new_command_buffer();
   {
     let enc = cmd.new_compute_command_encoder();
     enc.set_compute_pipeline_state(&ctx.pipeline);
     enc.set_buffer(0, Some(&out_buf), 0);
     enc.set_buffer(1, Some(&params_buf), 0);
+    enc.set_buffer(3, Some(&incs_buf), 0);
     enc.set_bytes(
       2,
       std::mem::size_of::<EulerArgs>() as u64,
@@ -196,6 +214,7 @@ impl EulerKernel<f32> for Metal {
       first,
       m,
       seed,
+      process.increments(first, m, seed).as_deref().unwrap_or(&[]),
     )
   }
 
@@ -215,6 +234,7 @@ fn device_paths(
   first: usize,
   m: usize,
   seed: u64,
+  increments: &[f32],
 ) -> Result<Array2<f32>> {
   {
     if n == 0 || m == 0 {
@@ -232,8 +252,9 @@ fn device_paths(
       steps: n as u32,
       paths: m as u32,
       first_path: first as u32,
+      increments: u32::from(!increments.is_empty()),
     };
-    let data = run(ordinal, params32, args)?;
+    let data = run(ordinal, params32, args, increments)?;
     Ok(Array2::from_shape_vec((m, n), data).expect("the kernel returns m * n values"))
   }
 }
