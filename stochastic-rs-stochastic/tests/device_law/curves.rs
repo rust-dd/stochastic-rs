@@ -9,6 +9,7 @@ use ndarray::Array1;
 use stochastic_rs_distributions::traits::Fn1D;
 use stochastic_rs_stochastic::diffusion::gbm_ih::GbmIh;
 use stochastic_rs_stochastic::interest::black_karasinski::BlackKarasinski;
+use stochastic_rs_stochastic::interest::cir_2f::Cir2F;
 use stochastic_rs_stochastic::interest::cir_pp::CirPlusPlus;
 use stochastic_rs_stochastic::interest::ho_lee::HoLee;
 use stochastic_rs_stochastic::interest::hull_white::HullWhite;
@@ -142,5 +143,50 @@ fn inhomogeneous_gbm_agrees_with_the_cpu_law() {
     terminal_mean(&device),
     0.03,
     "inhomogeneous GBM terminal mean",
+  );
+}
+
+/// The two-factor CIR model reports the shifted sum of its factors, which is
+/// the first plane the launch writes.
+#[test]
+fn two_factor_cir_agrees_with_the_cpu_law() {
+  use stochastic_rs_stochastic::diffusion::cir::Cir;
+  let build = || {
+    Cir2F::<f32, _>::new(
+      Cir::new(2.0, 0.03, 0.1, N, Some(0.03), Some(1.0), None, Deterministic::new(2)),
+      Cir::new(1.0, 0.01, 0.05, N, Some(0.01), Some(1.0), None, Deterministic::new(3)),
+      rising(),
+      Deterministic::new(73),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  all_finite(&device, "two-factor CIR");
+  agrees(
+    terminal_mean(&build().sample_par(M)),
+    terminal_mean(&device),
+    0.04,
+    "two-factor CIR terminal rate",
+  );
+}
+
+/// The bridge pins its endpoint: the curve's last entry makes the step's own
+/// variance ratio zero and its drift the whole remaining gap, so the device
+/// lands on `xt` for the same reason the host assigns it.
+#[test]
+fn brownian_bridge_lands_on_its_endpoint() {
+  use stochastic_rs_stochastic::process::brownian_bridge::BrownianBridge;
+  let build = || {
+    BrownianBridge::<f32, _>::new(0.3, N, Some(0.0), Some(1.0), Some(1.0), Deterministic::new(79))
+  };
+  let device = build().on::<Device>().sample_par(M);
+  assert!(
+    device.iter().all(|p| (p[N - 1] - 1.0).abs() < 1e-4),
+    "a device bridge missed its endpoint"
+  );
+  agrees(
+    terminal_mean(&build().sample_par(M)) + 1.0,
+    terminal_mean(&device) + 1.0,
+    1e-4,
+    "Brownian bridge endpoint",
   );
 }

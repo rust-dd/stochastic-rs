@@ -4,8 +4,12 @@
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::traits::Fn1D;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::diffusion::fouque::FouqueOU2D;
+use stochastic_rs_stochastic::interest::duffie_kan::DuffieKan;
+use stochastic_rs_stochastic::interest::hull_white_2f::HullWhite2F;
+use stochastic_rs_stochastic::process::cbms::Cbms;
 use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
 use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
 use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
@@ -353,6 +357,93 @@ fn stochastic_correlation_heston_agrees_with_the_cpu_law() {
       terminal_mean_of(&device, c),
       tol,
       &format!("stochastic-correlation Heston terminal {what}"),
+    );
+  }
+}
+
+/// A correlated Brownian pair: both marginals are driftless, so the spread is
+/// what carries the law, and the pair's own correlation is what the second
+/// component's step exists to reproduce.
+#[test]
+fn correlated_brownian_agrees_with_the_cpu_law() {
+  let build = || Cbms::<f32, _>::new(-0.5, 253, Some(1.0), Deterministic::new(61));
+  let device = build().on::<Device>().sample_par(M);
+  let host = build().sample_par(M);
+  let corr = |paths: &[[Array1<f32>; 2]]| {
+    let last = paths[0][0].len() - 1;
+    let (mut sxy, mut sxx, mut syy) = (0.0f64, 0.0f64, 0.0f64);
+    for p in paths {
+      let (x, y) = (p[0][last] as f64, p[1][last] as f64);
+      sxy += x * y;
+      sxx += x * x;
+      syy += y * y;
+    }
+    sxy / (sxx * syy).sqrt()
+  };
+  agrees(corr(&host), corr(&device), 0.10, "correlated Brownian terminal");
+}
+
+/// The two-factor Hull-White model reads its mean-reversion level from the
+/// curve, so an off-by-one in that indexing moves the terminal rate.
+#[test]
+fn two_factor_hull_white_agrees_with_the_cpu_law() {
+  let build = || {
+    HullWhite2F::<f32, _>::new(
+      Fn1D::Native(|t: f32| 0.02 + 0.03 * t),
+      1.0,
+      0.01,
+      0.005,
+      -0.4,
+      0.5,
+      Some(0.02),
+      Some(1.0),
+      253,
+      Deterministic::new(67),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  let host = build().sample_par(M);
+  agrees(
+    terminal_mean(&host, 0),
+    terminal_mean(&device, 0),
+    0.06,
+    "two-factor Hull-White terminal rate",
+  );
+}
+
+/// Both Duffie-Kan factors share one affine volatility, which the step binds
+/// once and both components read.
+#[test]
+fn duffie_kan_agrees_with_the_cpu_law() {
+  let build = || {
+    DuffieKan::<f32, _>::new(
+      0.5,
+      0.2,
+      0.1,
+      -0.3,
+      -0.5,
+      0.1,
+      0.02,
+      0.1,
+      0.05,
+      -0.3,
+      0.01,
+      0.08,
+      253,
+      Some(0.03),
+      Some(0.01),
+      Some(1.0),
+      Deterministic::new(71),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  let host = build().sample_par(M);
+  for (c, what) in [(0usize, "rate"), (1, "factor")] {
+    agrees(
+      terminal_mean(&host, c),
+      terminal_mean(&device, c),
+      0.08,
+      &format!("Duffie-Kan terminal {what}"),
     );
   }
 }

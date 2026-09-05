@@ -23,7 +23,6 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use super::cir::Cir;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::diffusion::cir::CirSampler;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
@@ -90,9 +89,79 @@ impl<T: FloatExt, S: SeedExt> Cir2F<T, S> {
 
 impl<T: FloatExt, S: SeedExt, B> Cir2F<T, S, B> {}
 
-backend_switch!([T: FloatExt, S: SeedExt] Cir2F<T, S> { x, y, phi, seed } via host);
+/// The Euler engine's view of the two-factor CIR model: both factors step in
+/// the kernel and the reported short rate is their shifted sum, which is the
+/// first component the launch writes.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for Cir2F<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let flag = |sym: Option<bool>| {
+      if sym.unwrap_or(false) {
+        T::one()
+      } else {
+        T::zero()
+      }
+    };
+    crate::euler::EulerSpec::TwoFactorSquareRoot {
+      theta1: self.x.theta,
+      mu1: self.x.mu,
+      sigma1: self.x.sigma,
+      theta2: self.y.theta,
+      mu2: self.y.mu,
+      sigma2: self.y.sigma,
+      sym1: flag(self.x.use_sym),
+      sym2: flag(self.y.use_sym),
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Cir2F<T, S, B> {
+  fn initial_value(&self) -> T {
+    self.x.x0.unwrap_or(T::zero())
+  }
+
+  fn initial_state(&self) -> [T; 4] {
+    [
+      self.x.x0.unwrap_or(T::zero()),
+      self.y.x0.unwrap_or(T::zero()),
+      T::zero(),
+      T::zero(),
+    ]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.x.n
+  }
+
+  fn horizon(&self) -> T {
+    self.x.t.unwrap_or(T::one())
+  }
+
+  /// The deterministic shift at each grid point.
+  fn curve(&self) -> Option<Vec<T>> {
+    let dt = self.horizon() / T::from_usize_(self.grid_points().saturating_sub(1).max(1));
+    Some(
+      (0..self.grid_points())
+        .map(|i| self.phi.call(T::from_usize_(i) * dt))
+        .collect(),
+    )
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Cir2F<T, S> { x, y, phi, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for Cir2F<T, S, B>
+{
   type Output = Array1<T>;
   type Sampler<'s>
     = Cir2FSampler<T>
@@ -109,6 +178,29 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Cir2F<T, S, B> {
       y: self.y.sampler(),
       phi,
     }
+  }
+
+  /// Through the Euler engine: on a device the recursion runs in the kernel,
+  /// on the host devices it is this process's own sampler, chunked exactly as
+  /// `ProcessExt` chunks.
+  fn sample(&self) -> Array1<T> {
+    self.backend.euler_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    self.backend.euler_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    self.backend.euler_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    self.backend.try_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    self.backend.try_euler_paths(self, m)
   }
 }
 

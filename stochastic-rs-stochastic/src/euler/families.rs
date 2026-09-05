@@ -1278,6 +1278,74 @@ euler_families! {
     step { x + mu * x * dt + ct * x * dz }
     report { x },
 
+  /// Two Brownian motions correlated by `ρ`: the pair every two-factor model
+  /// here draws its shocks from, as a process in its own right.
+  51 => CorrelatedBrownian { rho }
+    state (a, b)
+    noise (dw, dq)
+    step {
+      a + dw,
+      b + rho * dw + sqrt(negate(rho * rho - lit(1.0))) * dq
+    }
+    report { a, b },
+
+  /// A Brownian bridge from `X₀` to `xt`, stepped by the exact conditional
+  /// law rather than by Euler's own variance. The curve carries `1/(T − s)`,
+  /// from which both the drift and the per-step variance ratio follow; at the
+  /// last step that ratio is zero and the drift is the whole remaining gap,
+  /// so the path lands on `xt` exactly rather than by a diffusion kick.
+  52 => BrownianBridge { xt, sigma }
+    state (x)
+    noise (dz)
+    step {
+      x + (xt - x) * ct * dt + sigma * sqrt(positive(negate(dt * ct - lit(1.0)))) * dz
+    }
+    report { x },
+
+  /// The two-factor Hull-White model: a short rate pulled toward the curve
+  /// and a second, zero-reverting factor added to its drift.
+  53 => TwoFactorHullWhite { a, b, sigma1, sigma2, rho }
+    state (x, u)
+    noise (dw, dq)
+    step {
+      bind du = rho * dw + sqrt(negate(rho * rho - lit(1.0))) * dq;
+      x + (ct + u - a * x) * dt + sigma1 * dw,
+      u - b * u * dt + sigma2 * du
+    }
+    report { x, u },
+
+  /// Two independent square-root factors whose sum, shifted by the curve, is
+  /// the reported short rate: the two-factor CIR model. Each factor chooses
+  /// reflection or truncation through a flag rather than a family of its own,
+  /// since the pair would otherwise need four.
+  54 => TwoFactorSquareRoot {
+    theta1, mu1, sigma1, theta2, mu2, sigma2, sym1, sym2
+  }
+    state (a, b)
+    noise (dw, dq)
+    step {
+      bind v1 = a + theta1 * (mu1 - a) * dt + sigma1 * sqrt(abs(a)) * dw;
+      bind v2 = b + theta2 * (mu2 - b) * dt + sigma2 * sqrt(abs(b)) * dq;
+      pick(sym1, abs(v1), positive(v1)),
+      pick(sym2, abs(v2), positive(v2))
+    }
+    report { a + b + ct, b },
+
+  /// The Duffie-Kan two-factor affine model: both factors drift affinely in
+  /// the pair and share one affine volatility.
+  55 => DuffieKan {
+    a1, b1, c1, sigma1, a2, b2, c2, sigma2, alpha, beta, gamma, rho
+  }
+    state (r, x)
+    noise (dw, dq)
+    step {
+      bind dx = rho * dw + sqrt(negate(rho * rho - lit(1.0))) * dq;
+      bind vol = alpha * r + beta * x + gamma;
+      r + (a1 * r + b1 * x + c1) * dt + sigma1 * vol * dw,
+      x + (a2 * r + b2 * x + c2) * dt + sigma2 * vol * dx
+    }
+    report { r, x },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)

@@ -298,6 +298,21 @@ fn step(
   if family == 50u32 {
     stepped = cube::TimeVaryingGeometricBrownian(component, x0, x1, x2, x3, params, dt, ct, dz0, dz1, dz2, dz3);
   }
+  if family == 51u32 {
+    stepped = cube::CorrelatedBrownian(component, x0, x1, x2, x3, params, dt, ct, dz0, dz1, dz2, dz3);
+  }
+  if family == 52u32 {
+    stepped = cube::BrownianBridge(component, x0, x1, x2, x3, params, dt, ct, dz0, dz1, dz2, dz3);
+  }
+  if family == 53u32 {
+    stepped = cube::TwoFactorHullWhite(component, x0, x1, x2, x3, params, dt, ct, dz0, dz1, dz2, dz3);
+  }
+  if family == 54u32 {
+    stepped = cube::TwoFactorSquareRoot(component, x0, x1, x2, x3, params, dt, ct, dz0, dz1, dz2, dz3);
+  }
+  if family == 55u32 {
+    stepped = cube::DuffieKan(component, x0, x1, x2, x3, params, dt, ct, dz0, dz1, dz2, dz3);
+  }
   if family == 16u32 {
     stepped = cube::FellerRoot(component, x0, x1, x2, x3, params, dt, ct, dz0, dz1, dz2, dz3);
   }
@@ -466,6 +481,21 @@ fn report(
   }
   if family == 50u32 {
     reported = cube_report::TimeVaryingGeometricBrownian(component, x0, x1, x2, x3, params, ct);
+  }
+  if family == 51u32 {
+    reported = cube_report::CorrelatedBrownian(component, x0, x1, x2, x3, params, ct);
+  }
+  if family == 52u32 {
+    reported = cube_report::BrownianBridge(component, x0, x1, x2, x3, params, ct);
+  }
+  if family == 53u32 {
+    reported = cube_report::TwoFactorHullWhite(component, x0, x1, x2, x3, params, ct);
+  }
+  if family == 54u32 {
+    reported = cube_report::TwoFactorSquareRoot(component, x0, x1, x2, x3, params, ct);
+  }
+  if family == 55u32 {
+    reported = cube_report::DuffieKan(component, x0, x1, x2, x3, params, ct);
   }
   if family == 16u32 {
     reported = cube_report::FellerRoot(component, x0, x1, x2, x3, params, ct);
@@ -642,7 +672,7 @@ impl<R: CubeclRuntime> EulerKernel<f32> for crate::device::Cubecl<R> {
     let planes = device_paths::<R>(
       self.ordinal,
       process.euler_spec(),
-      [process.initial_value(), 0.0, 0.0, 0.0],
+      process.initial_state(),
       process.grid_points(),
       process.time_step(),
       first,

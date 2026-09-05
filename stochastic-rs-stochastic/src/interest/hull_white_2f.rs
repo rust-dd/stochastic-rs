@@ -30,7 +30,6 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
@@ -102,9 +101,64 @@ impl<T: FloatExt, S: SeedExt> HullWhite2F<T, S> {
 
 impl<T: FloatExt, S: SeedExt, B> HullWhite2F<T, S, B> {}
 
-backend_switch!([T: FloatExt, S: SeedExt] HullWhite2F<T, S> { theta, a, sigma1, sigma2, rho, b, x0, t, n, seed, cgns } via host);
+/// The Euler engine's view of the two-factor Hull-White model.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
+  for HullWhite2F<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::TwoFactorHullWhite {
+      a: self.a,
+      b: self.b,
+      sigma1: self.sigma1,
+      sigma2: self.sigma2,
+      rho: self.rho,
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for HullWhite2F<T, S, B> {
+  fn initial_state(&self) -> [T; 4] {
+    [self.x0.unwrap_or(T::zero()), T::zero(), T::zero(), T::zero()]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  /// The correlated-noise source divides the horizon by the number of points,
+  /// not by the number of steps, so the device steps by that same amount.
+  fn time_step(&self) -> T {
+    self.cgns.dt()
+  }
+
+  /// The mean-reversion level at each grid point.
+  fn curve(&self) -> Option<Vec<T>> {
+    let dt = self.cgns.dt();
+    Some(
+      (0..self.n)
+        .map(|i| self.theta.call(T::from_usize_(i) * dt))
+        .collect(),
+    )
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 2] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] HullWhite2F<T, S> { theta, a, sigma1, sigma2, rho, b, x0, t, n, seed, cgns } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for HullWhite2F<T, S, B>
+{
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = HullWhite2FSampler<'s, T, S>
@@ -128,6 +182,32 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for HullWhite2F<T, S
       cgns: self.cgns,
       seed: self.seed.derive(),
     }
+  }
+
+  /// Through the Euler engine: on a device every component steps in the
+  /// kernel, on the host devices it is this process's own sampler, chunked
+  /// exactly as `ProcessExt` chunks.
+  fn sample(&self) -> [Array1<T>; 2] {
+    self.backend.system_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 2]) -> R + Sync) -> Vec<R> {
+    self.backend.system_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 2]> {
+    self.backend.system_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 2], crate::device::DeviceError> {
+    self.backend.try_system_sample(self)
+  }
+
+  fn try_sample_par(
+    &self,
+    m: usize,
+  ) -> Result<Vec<[Array1<T>; 2]>, crate::device::DeviceError> {
+    self.backend.try_system_paths(self, m)
   }
 }
 

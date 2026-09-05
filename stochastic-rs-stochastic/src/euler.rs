@@ -338,6 +338,44 @@ pub enum EulerSpec<T: FloatExt> {
   ShiftedSquareRootMirrored { theta: T, mu: T, sigma: T },
   /// Geometric Brownian motion over a term structure of volatilities.
   TimeVaryingGeometricBrownian { mu: T },
+  /// Two Brownian motions correlated by `ρ`.
+  CorrelatedBrownian { rho: T },
+  /// A Brownian bridge stepped by its exact conditional law.
+  BrownianBridge { xt: T, sigma: T },
+  /// The two-factor Hull-White model.
+  TwoFactorHullWhite {
+    a: T,
+    b: T,
+    sigma1: T,
+    sigma2: T,
+    rho: T,
+  },
+  /// Two square-root factors whose shifted sum is the reported rate.
+  TwoFactorSquareRoot {
+    theta1: T,
+    mu1: T,
+    sigma1: T,
+    theta2: T,
+    mu2: T,
+    sigma2: T,
+    sym1: T,
+    sym2: T,
+  },
+  /// The Duffie-Kan two-factor affine model.
+  DuffieKan {
+    a1: T,
+    b1: T,
+    c1: T,
+    sigma1: T,
+    a2: T,
+    b2: T,
+    c2: T,
+    sigma2: T,
+    alpha: T,
+    beta: T,
+    gamma: T,
+    rho: T,
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -600,6 +638,50 @@ impl<T: FloatExt> EulerSpec<T> {
         Family::TimeVaryingGeometricBrownian.code(),
         pad([mu]),
       ),
+      EulerSpec::CorrelatedBrownian { rho } => (Family::CorrelatedBrownian.code(), pad([rho])),
+      EulerSpec::BrownianBridge { xt, sigma } => {
+        (Family::BrownianBridge.code(), pad([xt, sigma]))
+      }
+      EulerSpec::TwoFactorHullWhite {
+        a,
+        b,
+        sigma1,
+        sigma2,
+        rho,
+      } => (
+        Family::TwoFactorHullWhite.code(),
+        pad([a, b, sigma1, sigma2, rho]),
+      ),
+      EulerSpec::TwoFactorSquareRoot {
+        theta1,
+        mu1,
+        sigma1,
+        theta2,
+        mu2,
+        sigma2,
+        sym1,
+        sym2,
+      } => (
+        Family::TwoFactorSquareRoot.code(),
+        pad([theta1, mu1, sigma1, theta2, mu2, sigma2, sym1, sym2]),
+      ),
+      EulerSpec::DuffieKan {
+        a1,
+        b1,
+        c1,
+        sigma1,
+        a2,
+        b2,
+        c2,
+        sigma2,
+        alpha,
+        beta,
+        gamma,
+        rho,
+      } => (
+        Family::DuffieKan.code(),
+        [a1, b1, c1, sigma1, a2, b2, c2, sigma2, alpha, beta, gamma, rho],
+      ),
     }
   }
 }
@@ -609,7 +691,18 @@ impl<T: FloatExt> EulerSpec<T> {
 /// source.
 pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
   fn euler_spec(&self) -> EulerSpec<T>;
+
+  /// The value the reported path starts from.
   fn initial_value(&self) -> T;
+
+  /// The state each path starts from, in the engine's four slots. The
+  /// default puts [`initial_value`](Self::initial_value) in slot zero, which
+  /// is what a one-component family needs; a process whose family carries
+  /// further components — a sum of two factors reported as one path, say —
+  /// overrides this.
+  fn initial_state(&self) -> [T; 4] {
+    [self.initial_value(), T::zero(), T::zero(), T::zero()]
+  }
   /// Number of grid points including `t = 0`.
   fn grid_points(&self) -> usize;
   fn horizon(&self) -> T;

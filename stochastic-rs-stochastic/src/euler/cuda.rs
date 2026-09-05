@@ -238,7 +238,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
     let planes = device_paths(
       self.ordinal,
       process.euler_spec(),
-      [process.initial_value(), T::zero(), T::zero(), T::zero()],
+      process.initial_state(),
       process.grid_points(),
       process.time_step(),
       first,
@@ -297,7 +297,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
     let planes = pipelined_paths(
       self.ordinal,
       process.euler_spec(),
-      [process.initial_value(), T::zero(), T::zero(), T::zero()],
+      process.initial_state(),
       n,
       process.time_step(),
       m,

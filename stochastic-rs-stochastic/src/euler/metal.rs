@@ -274,7 +274,7 @@ impl EulerKernel<f32> for Metal {
     let planes = device_paths(
       self.ordinal,
       process.euler_spec(),
-      [process.initial_value(), 0.0, 0.0, 0.0],
+      process.initial_state(),
       process.grid_points(),
       process.time_step(),
       first,

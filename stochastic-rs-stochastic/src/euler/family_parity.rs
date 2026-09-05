@@ -198,6 +198,11 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::ShiftedSquareRoot { .. } => "ShiftedSquareRoot",
     EulerSpec::ShiftedSquareRootMirrored { .. } => "ShiftedSquareRootMirrored",
     EulerSpec::TimeVaryingGeometricBrownian { .. } => "TimeVaryingGeometricBrownian",
+    EulerSpec::CorrelatedBrownian { .. } => "CorrelatedBrownian",
+    EulerSpec::BrownianBridge { .. } => "BrownianBridge",
+    EulerSpec::TwoFactorHullWhite { .. } => "TwoFactorHullWhite",
+    EulerSpec::TwoFactorSquareRoot { .. } => "TwoFactorSquareRoot",
+    EulerSpec::DuffieKan { .. } => "DuffieKan",
   }
 }
 
@@ -301,6 +306,7 @@ fn every_family() -> Vec<Probe> {
       0.04,
     ),
     p(EulerSpec::TimeVaryingGeometricBrownian { mu: 0.05 }, 100.0),
+    p(EulerSpec::BrownianBridge { xt: 1.0, sigma: 0.2 }, 0.0),
   ]
 }
 
@@ -463,6 +469,50 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         rho: -0.7,
       },
       x0: [100.0, 0.04],
+    },
+    SystemProbe {
+      spec: EulerSpec::CorrelatedBrownian { rho: -0.5 },
+      x0: [0.0, 0.0],
+    },
+    SystemProbe {
+      spec: EulerSpec::TwoFactorHullWhite {
+        a: 1.0,
+        b: 0.5,
+        sigma1: 0.01,
+        sigma2: 0.005,
+        rho: -0.4,
+      },
+      x0: [0.02, 0.0],
+    },
+    SystemProbe {
+      spec: EulerSpec::TwoFactorSquareRoot {
+        theta1: 2.0,
+        mu1: 0.03,
+        sigma1: 0.1,
+        theta2: 1.0,
+        mu2: 0.01,
+        sigma2: 0.05,
+        sym1: 0.0,
+        sym2: 1.0,
+      },
+      x0: [0.03, 0.01],
+    },
+    SystemProbe {
+      spec: EulerSpec::DuffieKan {
+        a1: -0.5,
+        b1: 0.1,
+        c1: 0.02,
+        sigma1: 0.1,
+        a2: 0.05,
+        b2: -0.3,
+        c2: 0.01,
+        sigma2: 0.08,
+        alpha: 0.5,
+        beta: 0.2,
+        gamma: 0.1,
+        rho: -0.3,
+      },
+      x0: [0.03, 0.01],
     },
     SystemProbe {
       spec: EulerSpec::LogHestonReflected {
