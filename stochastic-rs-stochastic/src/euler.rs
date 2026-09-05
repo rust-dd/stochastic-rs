@@ -59,6 +59,38 @@ use crate::traits::process::sample_par_chunked;
 /// How many scalar parameters one family may carry. The layout is the
 /// kernels' ABI and stays inside the crate, so it can widen again without a
 /// breaking change.
+/// The streams a correlated four-component family can carry; a model with
+/// more stays on its host sampler whatever the backend.
+pub(crate) const CORRELATED_STREAMS: usize = 4;
+
+/// A lower Cholesky factor of at most [`CORRELATED_STREAMS`] rows, packed
+/// row-major into the ten lower-triangle slots the correlated families take
+/// (`l00, l10, l11, l20, ...`). Rows the factor does not have get a unit
+/// diagonal, which is what leaves a padded component equal to its own shock
+/// and, with zero drift and volatility, constant.
+pub(crate) fn pack_cholesky<T: FloatExt>(chol: &ndarray::Array2<T>) -> [T; 10] {
+  let k = chol.nrows();
+  assert!(
+    k <= CORRELATED_STREAMS,
+    "a correlated family carries at most {CORRELATED_STREAMS} streams, not {k}"
+  );
+  let mut out = [T::zero(); 10];
+  let mut at = 0;
+  for i in 0..CORRELATED_STREAMS {
+    for j in 0..=i {
+      out[at] = if i < k {
+        chol[(i, j)]
+      } else if i == j {
+        T::one()
+      } else {
+        T::zero()
+      };
+      at += 1;
+    }
+  }
+  out
+}
+
 /// How many time-varying coefficients a kernel binds per launch. A family
 /// names them `ct` and `ct1` through `ct7`; a launch pays one buffer read per
 /// declared curve per step, so declaring fewer costs less.
@@ -564,6 +596,15 @@ pub enum EulerSpec<T: FloatExt> {
   AffineDiffusionGaussian { sigma: T },
   /// One forward-rate / square-root-variance pair of the Wu-Zhang model.
   WuZhang { alpha: T, beta: T, nu: T, lambda: T },
+  /// Up to four correlated geometric Brownian motions under one lower
+  /// Cholesky factor `l` (row-major, lower triangle), padded for fewer.
+  CorrelatedGeometric4 {
+    mu: [T; 4],
+    sigma: [T; 4],
+    l: [T; 10],
+  },
+  /// Up to four correlated Gaussian noises under one lower Cholesky factor.
+  CorrelatedNoises4 { l: [T; 10] },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1148,6 +1189,14 @@ impl<T: FloatExt> EulerSpec<T> {
         nu,
         lambda,
       } => (Family::WuZhang.code(), pad([alpha, beta, nu, lambda])),
+      EulerSpec::CorrelatedGeometric4 { mu, sigma, l } => {
+        let mut values = [T::zero(); 18];
+        values[..4].copy_from_slice(&mu);
+        values[4..8].copy_from_slice(&sigma);
+        values[8..].copy_from_slice(&l);
+        (Family::CorrelatedGeometric4.code(), pad(values))
+      }
+      EulerSpec::CorrelatedNoises4 { l } => (Family::CorrelatedNoises4.code(), pad(l)),
     }
   }
 }

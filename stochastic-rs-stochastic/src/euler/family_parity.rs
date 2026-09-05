@@ -332,6 +332,8 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::HeathJarrowMorton => "HeathJarrowMorton",
     EulerSpec::AffineDiffusionGaussian { .. } => "AffineDiffusionGaussian",
     EulerSpec::WuZhang { .. } => "WuZhang",
+    EulerSpec::CorrelatedGeometric4 { .. } => "CorrelatedGeometric4",
+    EulerSpec::CorrelatedNoises4 { .. } => "CorrelatedNoises4",
   }
 }
 
@@ -1288,6 +1290,20 @@ fn every_four_component_family() -> Vec<SystemProbe<4>> {
     }
   };
   vec![
+    SystemProbe {
+      spec: EulerSpec::CorrelatedGeometric4 {
+        mu: [0.03, 0.02, 0.01, 0.04],
+        sigma: [0.2, 0.3, 0.25, 0.15],
+        l: [1.0, -0.6, 0.8, 0.2, 0.1, 0.97, 0.1, -0.2, 0.3, 0.92],
+      },
+      x0: [100.0, 50.0, 80.0, 60.0],
+    },
+    SystemProbe {
+      spec: EulerSpec::CorrelatedNoises4 {
+        l: [1.0, -0.6, 0.8, 0.2, 0.1, 0.97, 0.1, -0.2, 0.3, 0.92],
+      },
+      x0: [0.0, 0.0, 0.0, 0.0],
+    },
     two_asset(false),
     two_asset(true),
     SystemProbe {

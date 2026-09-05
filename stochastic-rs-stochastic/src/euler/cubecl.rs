@@ -880,6 +880,18 @@ fn step(
       gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
+  if family == 91u32 {
+    stepped = cube::CorrelatedGeometric4(
+      component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
+      gm2, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 92u32 {
+    stepped = cube::CorrelatedNoises4(
+      component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
+      gm2, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
   if family == 90u32 {
     stepped = cube::WuZhang(
       component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
@@ -1451,6 +1463,18 @@ fn report(
   }
   if family == 86u32 {
     reported = cube_report::PoissonArrivals(
+      component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2,
+    );
+  }
+  if family == 91u32 {
+    reported = cube_report::CorrelatedGeometric4(
+      component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2,
+    );
+  }
+  if family == 92u32 {
+    reported = cube_report::CorrelatedNoises4(
       component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
       u2,
     );

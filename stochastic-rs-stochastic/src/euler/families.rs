@@ -1962,6 +1962,45 @@ euler_families! {
     }
     report { f, v },
 
+  /// Up to four correlated geometric Brownian motions under one lower
+  /// Cholesky factor: the four shocks are combined through `L` and each asset
+  /// takes the exact log-normal step in its own combined increment. A model
+  /// with fewer assets pads the rest with zero drift, zero volatility and a
+  /// unit diagonal, which leaves them constant at their (zero) start.
+  91 => CorrelatedGeometric4 { m0, m1, m2, m3, s0, s1, s2, s3, l00, l10, l11, l20, l21, l22, l30, l31, l32, l33 }
+    state (a, b, c, d)
+    noise (dz0, dz1, dz2, dz3)
+    step {
+      bind e0 = l00 * dz0;
+      bind e1 = l10 * dz0 + l11 * dz1;
+      bind e2 = l20 * dz0 + l21 * dz1 + l22 * dz2;
+      bind e3 = l30 * dz0 + l31 * dz1 + l32 * dz2 + l33 * dz3;
+      a * exp((m0 - s0 * s0 * lit(0.5)) * dt + s0 * e0),
+      b * exp((m1 - s1 * s1 * lit(0.5)) * dt + s1 * e1),
+      c * exp((m2 - s2 * s2 * lit(0.5)) * dt + s2 * e2),
+      d * exp((m3 - s3 * s3 * lit(0.5)) * dt + s3 * e3)
+    }
+    report { a, b, c, d },
+
+  /// Up to four correlated Gaussian noises under one lower Cholesky factor:
+  /// the four-stream generalisation of `CorrelatedInnovation`, whose state
+  /// is the combined increment itself. A model with fewer streams pads the
+  /// factor with a unit diagonal and ignores the rows it did not ask for.
+  92 => CorrelatedNoises4 { l00, l10, l11, l20, l21, l22, l30, l31, l32, l33 }
+    state (a, b, c, d)
+    noise (dz0, dz1, dz2, dz3)
+    step {
+      bind e0 = l00 * dz0;
+      bind e1 = l10 * dz0 + l11 * dz1;
+      bind e2 = l20 * dz0 + l21 * dz1 + l22 * dz2;
+      bind e3 = l30 * dz0 + l31 * dz1 + l32 * dz2 + l33 * dz3;
+      e0,
+      e1,
+      e2,
+      e3
+    }
+    report { a, b, c, d },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)

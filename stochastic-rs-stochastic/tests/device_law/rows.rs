@@ -8,9 +8,11 @@
 use ndarray::Array2;
 use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_stochastic::diffusion::multi_gbm::MultiGbm;
 use stochastic_rs_stochastic::interest::adg::Adg;
 use stochastic_rs_stochastic::interest::bgm::Bgm;
 use stochastic_rs_stochastic::interest::wu_zhang::WuZhangD;
+use stochastic_rs_stochastic::noise::mcgns::Mcgns;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 use super::common::Device;
@@ -243,6 +245,158 @@ fn wu_zhang_agrees_with_the_cpu_law() {
     assert!(
       c.abs() < 0.08,
       "Wu-Zhang rows {a} and {b} are correlated on the device ({c}): the pairs share a stream"
+    );
+  }
+}
+
+/// Terminal log-returns of a basket: the mean is `(mu - sigma^2 / 2) t`, the
+/// spread `sigma sqrt(t)` and the cross-correlation `rho`, all exactly, so
+/// each of the three parameter sets has a statistic that pins it.
+fn log_returns(paths: &[Array2<f32>], row: usize) -> Vec<f64> {
+  let last = paths[0].ncols() - 1;
+  paths
+    .iter()
+    .map(|p| (p[(row, last)] as f64 / p[(row, 0)] as f64).ln())
+    .collect()
+}
+
+fn corr(a: &[f64], b: &[f64]) -> f64 {
+  let n = a.len() as f64;
+  let (ma, mb) = (a.iter().sum::<f64>() / n, b.iter().sum::<f64>() / n);
+  let (mut sab, mut saa, mut sbb) = (0.0, 0.0, 0.0);
+  for (x, y) in a.iter().zip(b) {
+    sab += (x - ma) * (y - mb);
+    saa += (x - ma).powi(2);
+    sbb += (y - mb).powi(2);
+  }
+  sab / (saa * sbb).sqrt()
+}
+
+/// Three correlated assets in one launch under one Cholesky factor. The
+/// correlations are the point: a launch that combined the shocks through the
+/// wrong factor — or through none — keeps every marginal exactly right.
+#[test]
+fn multi_gbm_agrees_with_the_cpu_law() {
+  let build = || {
+    MultiGbm::<f32, _>::new(
+      array![0.05, 0.02, 0.08],
+      array![0.2, 0.3, 0.15],
+      array![[1.0, 0.6, -0.3], [0.6, 1.0, 0.2], [-0.3, 0.2, 1.0]],
+      N,
+      array![100.0, 50.0, 80.0],
+      Some(1.0),
+      Deterministic::new(53),
+    )
+  };
+  const PATHS: usize = 4 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert_eq!(device.len(), PATHS);
+  assert_eq!(device[0].dim(), (3, N));
+  for (i, x0) in [100.0f32, 50.0, 80.0].iter().enumerate() {
+    assert_eq!(device[0][(i, 0)], *x0, "asset {i} starts at its own x0");
+  }
+  let (hl, dl): (Vec<_>, Vec<_>) = (
+    (0..3).map(|i| log_returns(&host, i)).collect(),
+    (0..3).map(|i| log_returns(&device, i)).collect(),
+  );
+  for i in 0..3 {
+    let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
+    let sd = |v: &[f64]| {
+      let m = mean(v);
+      (v.iter().map(|x| (x - m).powi(2)).sum::<f64>() / v.len() as f64).sqrt()
+    };
+    assert!(
+      (mean(&hl[i]) - mean(&dl[i])).abs() < 0.01,
+      "basket asset {i} log-return mean: host {}, device {}",
+      mean(&hl[i]),
+      mean(&dl[i])
+    );
+    agrees(
+      sd(&hl[i]),
+      sd(&dl[i]),
+      0.05,
+      &format!("basket asset {i} log-return spread"),
+    );
+  }
+  for (a, b, rho) in [(0, 1, 0.6), (1, 2, 0.2), (0, 2, -0.3)] {
+    let (h, d) = (corr(&hl[a], &hl[b]), corr(&dl[a], &dl[b]));
+    assert!(
+      (h - d).abs() < 0.04 && (d - rho).abs() < 0.04,
+      "basket assets {a},{b} correlation: host {h}, device {d}, requested {rho}"
+    );
+  }
+}
+
+/// A basket too wide for a launch stays on the host whatever the backend,
+/// and says nothing about it: the shape and the law are those of the
+/// sampler, which this pins so the fallback cannot silently break.
+#[test]
+fn multi_gbm_wider_than_four_assets_still_samples() {
+  let rho = Array2::<f32>::eye(5);
+  let paths = MultiGbm::<f32, _>::new(
+    array![0.01, 0.02, 0.03, 0.04, 0.05],
+    array![0.1, 0.2, 0.3, 0.2, 0.1],
+    rho,
+    64,
+    array![1.0, 2.0, 3.0, 4.0, 5.0],
+    Some(1.0),
+    Deterministic::new(59),
+  )
+  .on::<Device>()
+  .sample_par(16);
+  assert_eq!(paths.len(), 16);
+  assert!(
+    paths
+      .iter()
+      .all(|p| p.dim() == (5, 64) && p.iter().all(|v| v.is_finite()))
+  );
+}
+
+/// Three correlated noise streams, every point a draw: the per-stream spread
+/// is `sqrt(dt)` and the cross-correlation over all points is the requested
+/// one, which a wrong or missing factor loses while keeping the spreads.
+#[test]
+fn mcgns_agrees_with_the_cpu_law() {
+  let build = || {
+    Mcgns::<f32, _>::new(
+      array![[1.0, 0.6, -0.3], [0.6, 1.0, 0.2], [-0.3, 0.2, 1.0]],
+      N,
+      Some(1.0),
+      Deterministic::new(61),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  let host = build().sample_par(M);
+  assert_eq!(device.len(), M);
+  assert_eq!(device[0].dim(), (3, N));
+  let flat = |paths: &[Array2<f32>], row: usize| -> Vec<f64> {
+    paths
+      .iter()
+      .flat_map(|p| p.row(row).iter().map(|v| *v as f64).collect::<Vec<_>>())
+      .collect()
+  };
+  let sd = |v: &[f64]| {
+    let m = v.iter().sum::<f64>() / v.len() as f64;
+    (v.iter().map(|x| (x - m).powi(2)).sum::<f64>() / v.len() as f64).sqrt()
+  };
+  let (hs, ds): (Vec<_>, Vec<_>) = (
+    (0..3).map(|i| flat(&host, i)).collect(),
+    (0..3).map(|i| flat(&device, i)).collect(),
+  );
+  for i in 0..3 {
+    agrees(
+      sd(&hs[i]),
+      sd(&ds[i]),
+      0.03,
+      &format!("correlated noise stream {i} spread"),
+    );
+  }
+  for (a, b, rho) in [(0, 1, 0.6), (1, 2, 0.2), (0, 2, -0.3)] {
+    let (h, d) = (corr(&hs[a], &hs[b]), corr(&ds[a], &ds[b]));
+    assert!(
+      (h - d).abs() < 0.02 && (d - rho).abs() < 0.02,
+      "noise streams {a},{b} correlation: host {h}, device {d}, requested {rho}"
     );
   }
 }

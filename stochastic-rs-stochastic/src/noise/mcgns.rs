@@ -13,13 +13,13 @@
 //! Reference: Glasserman (2003), *Monte Carlo Methods in Financial
 //! Engineering*, Springer, §2.3.3. DOI: 10.1007/978-0-387-21617-1
 
+use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::linalg::cholesky_lower;
 use crate::linalg::validate_correlation;
 use crate::traits::FloatExt;
@@ -100,9 +100,102 @@ impl<T: FloatExt, S: SeedExt, B> Mcgns<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Mcgns<T, S> { rho, n, t, seed, chol } via host);
+/// The streams in the engine's four slots. `Mcgns` reports a `k × n` matrix
+/// and the correlated noise family steps four components under one Cholesky
+/// factor, so this view carries a launch when `k <= 4`, the unused slots
+/// padded with a unit diagonal and dropped. It borrows rather than owns, so
+/// the seed it advances is the process's own.
+#[doc(hidden)]
+pub struct McgnsLaunch<'a, T: FloatExt, S: SeedExt, B>(&'a Mcgns<T, S, B>);
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Mcgns<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for McgnsLaunch<'_, T, S, B>
+{
+  type Output = [Array1<T>; 4];
+  type Sampler<'s>
+    = McgnsLaunchSampler<T, S>
+  where
+    Self: 's;
+
+  fn sampler(&self) -> McgnsLaunchSampler<T, S> {
+    McgnsLaunchSampler {
+      inner: <Mcgns<T, S, B> as ProcessExt<T>>::sampler(self.0),
+    }
+  }
+}
+
+/// [`McgnsLaunch`]'s sampler: the matrix sampler, its rows lifted into the
+/// four slots.
+#[doc(hidden)]
+pub struct McgnsLaunchSampler<T: FloatExt, S: SeedExt> {
+  inner: McgnsSampler<T, S>,
+}
+
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for McgnsLaunchSampler<T, S> {
+  type Output = [Array1<T>; 4];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 4]) {
+    *out = self.sample();
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 4] {
+    let matrix = self.inner.sample();
+    let n = matrix.ncols();
+    std::array::from_fn(|i| {
+      if i < matrix.nrows() {
+        matrix.row(i).to_owned()
+      } else {
+        Array1::zeros(n)
+      }
+    })
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 4>
+  for McgnsLaunch<'_, T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::CorrelatedNoises4 {
+      l: crate::euler::pack_cholesky(&self.0.chol),
+    }
+  }
+
+  fn initial_state(&self) -> [T; 4] {
+    [T::zero(); 4]
+  }
+
+  /// Every grid point is a draw, so the frame steps before it writes the
+  /// first one.
+  fn step_first(&self) -> bool {
+    true
+  }
+
+  fn grid_points(&self) -> usize {
+    self.0.n
+  }
+
+  fn horizon(&self) -> T {
+    self.0.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.0.dt()
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.0.seed)
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 4] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Mcgns<T, S> { rho, n, t, seed, chol } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Mcgns<T, S, B> {
   type Output = Array2<T>;
   type Sampler<'s>
     = McgnsSampler<T, S>
@@ -121,6 +214,83 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Mcgns<T, S, B> {
       },
     }
   }
+
+  /// Through the Euler engine for up to four streams, which is what the
+  /// correlated noise family carries: on a device the whole matrix is drawn
+  /// in one kernel under its Cholesky factor. More streams stay on this
+  /// process's own sampler whatever the backend.
+  fn sample(&self) -> Array2<T> {
+    if self.dims() <= crate::euler::CORRELATED_STREAMS {
+      slots_to_matrix(self.backend.system_sample(&McgnsLaunch(self)), self.dims())
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array2<T>) -> R + Sync) -> Vec<R> {
+    if self.dims() <= crate::euler::CORRELATED_STREAMS {
+      let k = self.dims();
+      self
+        .backend
+        .system_paths_map(&McgnsLaunch(self), m, |slots| {
+          f(&slots_to_matrix(slots.clone(), k))
+        })
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array2<T>> {
+    if self.dims() <= crate::euler::CORRELATED_STREAMS {
+      let k = self.dims();
+      self
+        .backend
+        .system_paths(&McgnsLaunch(self), m)
+        .into_iter()
+        .map(|slots| slots_to_matrix(slots, k))
+        .collect()
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<Array2<T>, crate::device::DeviceError> {
+    if self.dims() <= crate::euler::CORRELATED_STREAMS {
+      let slots = self.backend.try_system_sample(&McgnsLaunch(self))?;
+      Ok(slots_to_matrix(slots, self.dims()))
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array2<T>>, crate::device::DeviceError> {
+    if self.dims() <= crate::euler::CORRELATED_STREAMS {
+      let k = self.dims();
+      Ok(
+        self
+          .backend
+          .try_system_paths(&McgnsLaunch(self), m)?
+          .into_iter()
+          .map(|slots| slots_to_matrix(slots, k))
+          .collect(),
+      )
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
+    }
+  }
+}
+
+/// The first `k` of the engine's four slots as the `k × n` matrix the process
+/// reports; the padded slots are dropped.
+fn slots_to_matrix<T: FloatExt>(slots: [Array1<T>; 4], k: usize) -> Array2<T> {
+  let n = slots[0].len();
+  let mut out = Array2::<T>::zeros((k, n));
+  for (i, row) in slots.iter().take(k).enumerate() {
+    out.row_mut(i).assign(row);
+  }
+  out
 }
 
 /// Reusable [`Mcgns`] sampling state with a derived seed, so parallel

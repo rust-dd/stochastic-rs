@@ -21,7 +21,6 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::noise::mcgns::Mcgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -114,9 +113,109 @@ impl<T: FloatExt, S: SeedExt, B> MultiGbm<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] MultiGbm<T, S> { mu, sigma, rho, n, x0, t, seed, driver } via host);
+/// The batch's assets in the engine's four slots. `MultiGbm` reports a
+/// `k × n` matrix and the correlated family steps four components under one
+/// Cholesky factor, so this view is what carries a launch when `k <= 4`:
+/// the assets in the first `k` slots, the rest padded to constant zero. It
+/// borrows rather than owns, so the seed it advances is the process's own.
+#[doc(hidden)]
+pub struct MultiGbmLaunch<'a, T: FloatExt, S: SeedExt, B>(&'a MultiGbm<T, S, B>);
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for MultiGbm<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for MultiGbmLaunch<'_, T, S, B>
+{
+  type Output = [Array1<T>; 4];
+  type Sampler<'s>
+    = MultiGbmLaunchSampler<T, S>
+  where
+    Self: 's;
+
+  fn sampler(&self) -> MultiGbmLaunchSampler<T, S> {
+    MultiGbmLaunchSampler {
+      inner: <MultiGbm<T, S, B> as ProcessExt<T>>::sampler(self.0),
+    }
+  }
+}
+
+/// [`MultiGbmLaunch`]'s sampler: the matrix sampler, its rows lifted into
+/// the four slots.
+#[doc(hidden)]
+pub struct MultiGbmLaunchSampler<T: FloatExt, S: SeedExt> {
+  inner: MultiGbmSampler<T, S>,
+}
+
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for MultiGbmLaunchSampler<T, S> {
+  type Output = [Array1<T>; 4];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 4]) {
+    *out = self.sample();
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 4] {
+    let matrix = self.inner.sample();
+    let n = matrix.ncols();
+    std::array::from_fn(|i| {
+      if i < matrix.nrows() {
+        matrix.row(i).to_owned()
+      } else {
+        Array1::zeros(n)
+      }
+    })
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 4>
+  for MultiGbmLaunch<'_, T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let p = self.0;
+    let k = p.assets();
+    let padded = |v: &Array1<T>| std::array::from_fn(|i| if i < k { v[i] } else { T::zero() });
+    crate::euler::EulerSpec::CorrelatedGeometric4 {
+      mu: padded(&p.mu),
+      sigma: padded(&p.sigma),
+      l: crate::euler::pack_cholesky(p.driver.cholesky()),
+    }
+  }
+
+  fn initial_state(&self) -> [T; 4] {
+    let p = self.0;
+    std::array::from_fn(|i| if i < p.assets() { p.x0[i] } else { T::zero() })
+  }
+
+  fn grid_points(&self) -> usize {
+    self.0.n
+  }
+
+  fn horizon(&self) -> T {
+    self.0.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    let p = self.0;
+    if p.n > 1 {
+      p.t.unwrap_or(T::one()) / T::from_usize_(p.n - 1)
+    } else {
+      T::zero()
+    }
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.0.seed)
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 4] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] MultiGbm<T, S> { mu, sigma, rho, n, x0, t, seed, driver } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for MultiGbm<T, S, B>
+{
   type Output = Array2<T>;
   type Sampler<'s>
     = MultiGbmSampler<T, S>
@@ -137,6 +236,87 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for MultiGbm<T, S, B
       ),
     }
   }
+
+  /// Through the Euler engine for up to four assets, which is what the
+  /// correlated family carries: on a device the whole basket is stepped in
+  /// one kernel under its Cholesky factor. A larger basket stays on this
+  /// process's own sampler whatever the backend, since its correlation
+  /// needs more shocks than a launch has.
+  fn sample(&self) -> Array2<T> {
+    if self.assets() <= crate::euler::CORRELATED_STREAMS {
+      slots_to_matrix(
+        self.backend.system_sample(&MultiGbmLaunch(self)),
+        self.assets(),
+      )
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array2<T>) -> R + Sync) -> Vec<R> {
+    if self.assets() <= crate::euler::CORRELATED_STREAMS {
+      let k = self.assets();
+      self
+        .backend
+        .system_paths_map(&MultiGbmLaunch(self), m, |slots| {
+          f(&slots_to_matrix(slots.clone(), k))
+        })
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array2<T>> {
+    if self.assets() <= crate::euler::CORRELATED_STREAMS {
+      let k = self.assets();
+      self
+        .backend
+        .system_paths(&MultiGbmLaunch(self), m)
+        .into_iter()
+        .map(|slots| slots_to_matrix(slots, k))
+        .collect()
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<Array2<T>, crate::device::DeviceError> {
+    if self.assets() <= crate::euler::CORRELATED_STREAMS {
+      let slots = self.backend.try_system_sample(&MultiGbmLaunch(self))?;
+      Ok(slots_to_matrix(slots, self.assets()))
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array2<T>>, crate::device::DeviceError> {
+    if self.assets() <= crate::euler::CORRELATED_STREAMS {
+      let k = self.assets();
+      Ok(
+        self
+          .backend
+          .try_system_paths(&MultiGbmLaunch(self), m)?
+          .into_iter()
+          .map(|slots| slots_to_matrix(slots, k))
+          .collect(),
+      )
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
+    }
+  }
+}
+
+/// The first `k` of the engine's four slots as the `k × n` matrix the process
+/// reports; the padded slots are dropped.
+fn slots_to_matrix<T: FloatExt>(slots: [Array1<T>; 4], k: usize) -> Array2<T> {
+  let n = slots[0].len();
+  let mut out = Array2::<T>::zeros((k, n));
+  for (i, row) in slots.iter().take(k).enumerate() {
+    out.row_mut(i).assign(row);
+  }
+  out
 }
 
 /// Reusable [`MultiGbm`] sampling state with a derived seed, so parallel

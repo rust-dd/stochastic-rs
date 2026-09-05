@@ -14,11 +14,11 @@ backends, and what the rest do.
 |---|---|---|---|---|---|---|---|
 | fGN noise | `Fgn` (1) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` | CubeCL FFT, `f32` only |
 | Euler engine, one component | 68 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
-| Euler engine, systems | 22 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
+| Euler engine, systems | 24 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
 | Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `FVasicek`, `Cfgns`, `Cfbms`, `Cfou` (9, counted above) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same MSL kernel | fGN pipeline feeds the same NVRTC kernel | fGN pipeline feeds the same CubeCL kernel |
-| Host only | the remaining 28 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
+| Host only | the remaining 26 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
 
-The 90 processes on the engine cover the diffusions, the stochastic-volatility
+The 92 processes on the engine cover the diffusions, the stochastic-volatility
 models under both their Euler and quadratic-exponential schemes (`Heston`,
 `HestonLog`, `DoubleHeston`, `Heston2D`, `Sabr`, `Bergomi`,
 `HestonStochCorr`, `BatesSvj`, `Hkde`), the short-rate models including the
@@ -38,7 +38,10 @@ coefficients travel as curves rather than parameters (`MultifactorSabr`'s
 term structure, `Hjm`'s six time-dependent coefficients), the matrix-valued
 models whose rows are independent copies of one small family (`Bgm`'s forward
 rates, `Adg`'s affine factors, `WuZhangD`'s rate–variance pairs — one launch
-per row) and `Poisson` in its count mode.
+per row), the Cholesky-correlated baskets of up to four streams (`MultiGbm`,
+`Mcgns` — one launch, the factor folded into the family's ten lower-triangle
+slots; a wider basket stays on the host whatever the backend) and `Poisson`
+in its count mode.
 
 What stays on the host, and why. The engine steps a bounded forward
 recursion over four scalar state slots, so what rules a process out is
@@ -57,9 +60,10 @@ grid:
   `Rdts`, `Svcgmy`): the path is built by drawing a fixed number of jumps for
   the whole horizon, sorting them by arrival time and accumulating onto the
   grid — a global construction with a sort, not a step recursion.
-- **A runtime dimension that couples its rows** (`Lmm`, `MultiGbm`, `Mcgns`,
-  `Wishart`): the rows share a drift or a correlated noise, so they cannot be
-  stepped as independent launches the way `Bgm`, `Adg` and `WuZhangD` are.: the component count is a runtime
+- **A runtime dimension that couples its rows** (`Lmm`, `Wishart`, and
+  `MultiGbm` / `Mcgns` above four streams): the rows share a drift or a
+  correlated noise, so they cannot be stepped as independent launches the way
+  `Bgm`, `Adg` and `WuZhangD` are, and a launch carries four shocks.: the component count is a runtime
   value, or a parameter is an `Array1` / `Array2` rather than a fixed set of
   scalars.
 - **More time-varying coefficients than the eight the kernel binds**: none
@@ -92,7 +96,7 @@ grid:
 
 ## What a family is
 
-A process reaches a device by declaring which of the engine's **91 families**
+A process reaches a device by declaring which of the engine's **93 families**
 it steps, not by writing a kernel. A family is one entry in
 `stochastic-rs-stochastic/src/euler/families.rs` — its parameters, its state
 components, its noise components, one step expression per component and one
