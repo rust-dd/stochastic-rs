@@ -118,6 +118,9 @@ fn euler_paths_kernel(
       }
       if increments != 0u32 {
         d0 = incs[(path * (steps - 1) + (i - 1)) as usize];
+        if increments > 1u32 {
+          d1 = incs[((paths + path) * (steps - 1) + (i - 1)) as usize];
+        }
       }
       if has_curve != 0u32 {
         ct = curve[i as usize];
@@ -707,6 +710,11 @@ fn step(
       component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
+  if family == 83u32 {
+    stepped = cube::CorrelatedFractionalMotion(
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
   if family == 16u32 {
     stepped = cube::FellerRoot(
       component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
@@ -1144,6 +1152,11 @@ fn report(
       component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
     );
   }
+  if family == 83u32 {
+    reported = cube_report::CorrelatedFractionalMotion(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
+  }
   if family == 16u32 {
     reported = cube_report::FellerRoot(
       component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
@@ -1378,7 +1391,7 @@ impl<R: CubeclRuntime> EulerKernel<f32> for crate::device::Cubecl<R> {
       first,
       m,
       seed,
-      None,
+      process.fgn_spec(),
       process.curve().as_deref().unwrap_or(&[]),
       process.jump_intensity(),
       process.jump_sizes(),
@@ -1435,7 +1448,7 @@ fn device_paths<C: CubeclRuntime>(
           let (handle, out_size) = crate::noise::fgn::cubecl::backend::sample_cubecl_f32_handle::<C>(
             spec.sqrt_eigenvalues,
             spec.n,
-            m,
+            spec.streams * m,
             spec.offset,
             spec.hurst,
             spec.t,
@@ -1443,7 +1456,7 @@ fn device_paths<C: CubeclRuntime>(
             seed as u32,
             ordinal,
           )?;
-          (handle, m * out_size)
+          (handle, spec.streams * m * out_size)
         }
         None => (cl.empty(4), 1),
       };
@@ -1475,7 +1488,7 @@ fn device_paths<C: CubeclRuntime>(
           ScalarArg::new(n as u32),
           ScalarArg::new(m as u32),
           ScalarArg::new(first as u32),
-          ScalarArg::new(u32::from(fgn.is_some())),
+          ScalarArg::new(fgn.as_ref().map_or(0, |spec| spec.streams as u32)),
           ScalarArg::new(u32::from(!curve.is_empty())),
           ScalarArg::new(jump_lambda.unwrap_or(0.0)),
           ScalarArg::new(u32::from(jump_lambda.is_some())),

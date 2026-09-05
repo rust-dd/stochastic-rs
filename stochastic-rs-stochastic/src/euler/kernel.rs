@@ -21,7 +21,10 @@
 //! constant-fold the multiplication and reject it as an overflow. When
 //! `increments` is set the first component reads from `incs` instead — one
 //! row of `steps - 1` increments per path — which is how a fractional
-//! process reaches the same families.
+//! process reaches the same families. `increments` is a count, not a flag:
+//! at two the second component reads the buffer's next `paths` rows, so one
+//! embedding feeds a correlated fractional pair without the kernel binding a
+//! second buffer.
 //!
 //! With `step_first` the frame takes a step before writing the first point,
 //! which is what a process whose first grid point is itself a draw needs: a
@@ -112,6 +115,9 @@ REPORT
         }
         if (increments != 0u) {
             noise[0] = incs[(INDEX)path * (steps - 1) + (i - 1)];
+            if (increments > 1u) {
+                noise[1] = incs[((INDEX)paths + (INDEX)path) * (steps - 1) + (i - 1)];
+            }
         }
         if (has_curve != 0u) { ct = curve[i]; }
         unsigned int hu = (g ^ 2135587861u) ^ (seed * 2654435761u);

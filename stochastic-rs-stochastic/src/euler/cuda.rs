@@ -160,7 +160,7 @@ fn run<R>(
   first: usize,
   n: usize,
   m: usize,
-  increments: Option<&CudaSlice<R>>,
+  increments: Option<(&CudaSlice<R>, u32)>,
   curve: &[R],
   jump_lambda: R,
   use_jumps: u32,
@@ -195,10 +195,10 @@ where
   // The kernel always binds the increment pointer; an unused slot gets one
   // element rather than a null. A supplied slice was written on this device by
   // the fGN pipeline and is bound where it lies.
-  let use_incs = u32::from(increments.is_some());
+  let use_incs = increments.map_or(0, |(_, streams)| streams);
   let owned;
   let d_incs = match increments {
-    Some(slice) => slice,
+    Some((slice, _)) => slice,
     None => {
       owned = stream
         .alloc_zeros::<R>(1)
@@ -310,7 +310,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       first,
       m,
       seed,
-      None,
+      process.fgn_spec(),
       process.curve().as_deref().unwrap_or(&[]),
       process.jump_intensity(),
       process.jump_sizes(),
@@ -403,6 +403,7 @@ fn device_paths<T: FloatExt>(
     let seed32 = (seed ^ (seed >> 32)) as u32;
     let p64: [f64; crate::euler::PARAM_SLOTS] =
       std::array::from_fn(|i| params[i].to_f64().unwrap_or(0.0));
+    let streams = fgn.as_ref().map_or(1, |spec| spec.streams) as u32;
     if TypeId::of::<T>() == TypeId::of::<f64>() {
       let incs = match fgn.as_ref() {
         Some(spec) => {
@@ -414,7 +415,7 @@ fn device_paths<T: FloatExt>(
           Some(crate::noise::fgn::cuda::sampler::sample_f64_device(
             &eigs,
             spec.n,
-            m,
+            spec.streams * m,
             spec.offset,
             spec.hurst,
             spec.t,
@@ -439,7 +440,7 @@ fn device_paths<T: FloatExt>(
         first,
         n,
         m,
-        incs.as_ref(),
+        incs.as_ref().map(|slice| (slice, streams)),
         &curve64,
         lambda64,
         use_jumps,
@@ -471,7 +472,7 @@ fn device_paths<T: FloatExt>(
         Some(crate::noise::fgn::cuda::sampler::sample_f32_device(
           &eigs,
           spec.n,
-          m,
+          spec.streams * m,
           spec.offset,
           spec.hurst,
           spec.t,
@@ -496,7 +497,7 @@ fn device_paths<T: FloatExt>(
       first,
       n,
       m,
-      incs.as_ref(),
+      incs.as_ref().map(|slice| (slice, streams)),
       &curve32,
       lambda64 as f32,
       use_jumps,
@@ -538,7 +539,7 @@ fn launch_chunk<R>(
   first: usize,
   n: usize,
   m: usize,
-  increments: Option<&CudaSlice<R>>,
+  increments: Option<(&CudaSlice<R>, u32)>,
   curve: &[R],
   jump_lambda: R,
   use_jumps: u32,
@@ -569,10 +570,10 @@ where
   // The kernel always binds the increment pointer; an unused slot gets one
   // element rather than a null. A supplied slice was written on this device by
   // the fGN pipeline and is bound where it lies.
-  let use_incs = u32::from(increments.is_some());
+  let use_incs = increments.map_or(0, |(_, streams)| streams);
   let owned;
   let d_incs = match increments {
-    Some(slice) => slice,
+    Some((slice, _)) => slice,
     None => {
       owned = stream
         .alloc_zeros::<R>(1)

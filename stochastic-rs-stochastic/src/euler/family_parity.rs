@@ -285,6 +285,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::BilateralGammaMotion { .. } => "BilateralGammaMotion",
     EulerSpec::TemperedStableSubordinator { .. } => "TemperedStableSubordinator",
     EulerSpec::BarndorffNielsenShephard { .. } => "BarndorffNielsenShephard",
+    EulerSpec::CorrelatedFractionalMotion { .. } => "CorrelatedFractionalMotion",
   }
 }
 
@@ -941,6 +942,10 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
     },
     SystemProbe {
       spec: EulerSpec::CorrelatedInnovation { rho: -0.5 },
+      x0: [0.0, 0.0],
+    },
+    SystemProbe {
+      spec: EulerSpec::CorrelatedFractionalMotion { rho: 0.3 },
       x0: [0.0, 0.0],
     },
     SystemProbe {

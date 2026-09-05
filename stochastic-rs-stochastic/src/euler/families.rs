@@ -1792,6 +1792,20 @@ euler_families! {
     }
     report { s, v },
 
+  /// Two fractional rows out of one embedding: the first reads the increment
+  /// buffer's leading `paths` rows, the second the next block, and the step
+  /// correlates them exactly as `CorrelatedInnovation` correlates two
+  /// Brownian shocks. Both rows share a Hurst exponent, which is what lets a
+  /// single embedding feed the pair.
+  83 => CorrelatedFractionalMotion { rho }
+    state (a, b)
+    noise (dz1, dz2)
+    step {
+      a + dz1,
+      b + rho * dz1 + sqrt(negate(rho * rho - lit(1.0))) * dz2
+    }
+    report { a, b },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)

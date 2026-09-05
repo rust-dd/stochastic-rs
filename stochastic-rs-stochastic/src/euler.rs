@@ -506,6 +506,9 @@ pub enum EulerSpec<T: FloatExt> {
   /// The Barndorff-Nielsen-Shephard model: a gamma-driven variance and a
   /// log-Euler asset over it.
   BarndorffNielsenShephard { decay: T, mu: T },
+  /// A correlated pair of fractional motions: both rows accumulate their own
+  /// stream out of one embedding, correlated by `rho` in the step.
+  CorrelatedFractionalMotion { rho: T },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1057,6 +1060,9 @@ impl<T: FloatExt> EulerSpec<T> {
       EulerSpec::BarndorffNielsenShephard { decay, mu } => {
         (Family::BarndorffNielsenShephard.code(), pad([decay, mu]))
       }
+      EulerSpec::CorrelatedFractionalMotion { rho } => {
+        (Family::CorrelatedFractionalMotion.code(), pad([rho]))
+      }
     }
   }
 }
@@ -1158,6 +1164,13 @@ pub struct FgnSpec<'a, T> {
   pub hurst: f64,
   /// The horizon the increments are scaled to.
   pub t: f64,
+  /// How many independent fGN streams the family's noise components read.
+  /// One feeds `noise[0]`; a second feeds `noise[1]`, which is what a
+  /// correlated fractional pair needs — its two rows share a Hurst
+  /// exponent, so they share this embedding and the device draws
+  /// `streams * m` paths in the one batched call rather than running the
+  /// pipeline twice.
+  pub streams: usize,
 }
 
 /// The device primitive of the Euler engine: one launch under one seed.
@@ -1389,6 +1402,14 @@ pub trait EulerSystem<T: FloatExt, const D: usize>: ProcessExt<T, Output = [Arra
   /// The Gamma draws the step reads as `gm` and `gm2`, or `None` when it
   /// reads none.
   fn gamma_draws(&self) -> Option<GammaDraws<T>> {
+    None
+  }
+
+  /// The fGN pipeline's inputs when this system's noise components come from
+  /// one, or `None` to let the kernel hash its own Gaussian increments. The
+  /// same contract as [`EulerCoefficients::fgn_spec`], with
+  /// [`FgnSpec::streams`] saying how many components the pipeline fills.
+  fn fgn_spec(&self) -> Option<FgnSpec<'_, T>> {
     None
   }
 

@@ -4,12 +4,14 @@
 //! processes. The two sides draw different streams, so what is pinned here is
 //! the law and the boundary, not the path.
 
+use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
 use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
 use stochastic_rs_stochastic::diffusion::fjacobi::FJacobi;
 use stochastic_rs_stochastic::diffusion::fou::Fou;
 use stochastic_rs_stochastic::interest::fractional_vasicek::FVasicek;
+use stochastic_rs_stochastic::process::cfbms::Cfbms;
 use stochastic_rs_stochastic::process::fbm::Fbm;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
@@ -172,5 +174,68 @@ fn fractional_vasicek_agrees_with_the_cpu_law() {
   assert!(
     (host - dev).abs() < 0.01,
     "fractional Vasicek terminal mean: host {host}, device {dev}"
+  );
+}
+
+/// The correlated fractional pair is the only family that reads two streams
+/// out of one embedding: the device draws `2 · m` paths in a single batched
+/// call and the step takes its second stream from the buffer's next `paths`
+/// rows. Both the marginal spread and the pair's own correlation are checked,
+/// since a mis-indexed second block would keep the marginals right and lose
+/// exactly the correlation.
+#[test]
+fn correlated_fbm_agrees_with_the_cpu_law() {
+  let build = || Cfbms::<f32, _>::new(0.7, 0.4, N, Some(1.0), Deterministic::new(23));
+  let device = build().on::<Device>().sample_par(M);
+  let host = build().sample_par(M);
+  assert_eq!(device.len(), M);
+  assert_eq!(device[0][0].len(), N);
+  assert_eq!(device[0][0][0], 0.0, "both rows start at zero");
+  assert_eq!(device[0][1][0], 0.0, "both rows start at zero");
+  assert!(
+    device
+      .iter()
+      .all(|p| p.iter().all(|row| row.iter().all(|v| v.is_finite()))),
+    "correlated fBM: a device path left the reals"
+  );
+  let spread = |paths: &[[Array1<f32>; 2]], c: usize| {
+    let last = paths[0][c].len() - 1;
+    let n = paths.len() as f64;
+    let mean = paths.iter().map(|p| p[c][last] as f64).sum::<f64>() / n;
+    (paths
+      .iter()
+      .map(|p| (p[c][last] as f64 - mean).powi(2))
+      .sum::<f64>()
+      / n)
+      .sqrt()
+  };
+  let corr = |paths: &[[Array1<f32>; 2]]| {
+    let last = paths[0][0].len() - 1;
+    let (mut sxy, mut sxx, mut syy) = (0.0f64, 0.0f64, 0.0f64);
+    for p in paths {
+      let (x, y) = (p[0][last] as f64, p[1][last] as f64);
+      sxy += x * y;
+      sxx += x * x;
+      syy += y * y;
+    }
+    sxy / (sxx * syy).sqrt()
+  };
+  agrees(
+    spread(&host, 0),
+    spread(&device, 0),
+    0.08,
+    "correlated fBM first-row spread",
+  );
+  agrees(
+    spread(&host, 1),
+    spread(&device, 1),
+    0.08,
+    "correlated fBM second-row spread",
+  );
+  agrees(
+    corr(&host),
+    corr(&device),
+    0.12,
+    "correlated fBM terminal correlation",
   );
 }

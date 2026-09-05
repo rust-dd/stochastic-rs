@@ -222,8 +222,10 @@ pub(crate) enum Increments<'a> {
   /// The kernel hashes its own Gaussian increments.
   Hashed,
   /// A buffer already written on this device — the fGN pipeline's own
-  /// output, which never leaves the GPU.
-  Device(&'a Buffer),
+  /// output, which never leaves the GPU — and how many `paths`-row streams
+  /// it holds: one for a single fractional component, two for a correlated
+  /// pair drawn from the same embedding.
+  Device(&'a Buffer, u32),
 }
 
 fn run(
@@ -249,7 +251,7 @@ fn run(
   // written on this device and never left it.
   let owned;
   let incs_buf = match increments {
-    Increments::Device(buf) => buf,
+    Increments::Device(buf, _) => buf,
     Increments::Hashed => {
       owned = ctx.device.new_buffer(4, shared);
       &owned
@@ -302,23 +304,7 @@ impl EulerKernel<f32> for Metal {
     // A fractional process has its increments produced on this same device and
     // read from the buffer they were written to: the two kernels meet in GPU
     // memory rather than through the host.
-    let fractional = match process.fgn_spec() {
-      Some(spec) => {
-        let eigs: Vec<f32> = spec.sqrt_eigenvalues.to_vec();
-        let (buf, _) = crate::noise::fgn::metal::sample_f32_buffer(
-          &eigs,
-          spec.n,
-          m,
-          spec.offset,
-          spec.hurst,
-          spec.t,
-          seed as u32,
-          self.ordinal,
-        )?;
-        Some(buf)
-      }
-      None => None,
-    };
+    let fractional = fgn_buffer(process.fgn_spec(), m, seed, self.ordinal)?;
     let planes = device_paths(
       self.ordinal,
       process.euler_spec(),
@@ -329,7 +315,7 @@ impl EulerKernel<f32> for Metal {
       m,
       seed,
       match fractional.as_ref() {
-        Some(buf) => Increments::Device(buf),
+        Some((buf, streams)) => Increments::Device(buf, *streams),
         None => Increments::Hashed,
       },
       process.curve().as_deref().unwrap_or(&[]),
@@ -353,6 +339,7 @@ impl EulerKernel<f32> for Metal {
     let spec = process.euler_spec();
     super::check_arity(&spec, D);
     let slots = process.initial_state();
+    let fractional = fgn_buffer(process.fgn_spec(), m, seed, self.ordinal)?;
     device_paths(
       self.ordinal,
       spec,
@@ -362,7 +349,10 @@ impl EulerKernel<f32> for Metal {
       first,
       m,
       seed,
-      Increments::Hashed,
+      match fractional.as_ref() {
+        Some((buf, streams)) => Increments::Device(buf, *streams),
+        None => Increments::Hashed,
+      },
       process.curve().as_deref().unwrap_or(&[]),
       process.jump_intensity(),
       process.jump_sizes(),
@@ -373,6 +363,39 @@ impl EulerKernel<f32> for Metal {
 
   fn batch_budget(&self) -> usize {
     self.batch_budget
+  }
+}
+
+/// The fGN pipeline's output for a launch of `m` paths, with the stream count
+/// the kernel needs to find the second one. A correlated fractional pair
+/// shares a Hurst exponent, so both streams come out of one embedding and one
+/// batched call of `streams * m` paths — the second stream is the buffer's
+/// rows `m .. 2m`.
+fn fgn_buffer(
+  spec: Option<crate::euler::FgnSpec<'_, f32>>,
+  m: usize,
+  seed: u64,
+  ordinal: usize,
+) -> Result<Option<(Buffer, u32)>> {
+  // A fractional process has its increments produced on this same device and
+  // read from the buffer they were written to: the two kernels meet in GPU
+  // memory rather than through the host.
+  match spec {
+    Some(spec) => {
+      let eigs: Vec<f32> = spec.sqrt_eigenvalues.to_vec();
+      let (buf, _) = crate::noise::fgn::metal::sample_f32_buffer(
+        &eigs,
+        spec.n,
+        spec.streams * m,
+        spec.offset,
+        spec.hurst,
+        spec.t,
+        seed as u32,
+        ordinal,
+      )?;
+      Ok(Some((buf, spec.streams as u32)))
+    }
+    None => Ok(None),
   }
 }
 
@@ -413,7 +436,10 @@ fn device_paths(
     steps: n as u32,
     paths: m as u32,
     first_path: first as u32,
-    increments: u32::from(!matches!(increments, Increments::Hashed)),
+    increments: match increments {
+      Increments::Hashed => 0,
+      Increments::Device(_, streams) => streams,
+    },
     has_curve: u32::from(!curve.is_empty()),
     has_jumps: u32::from(jump_lambda.is_some()),
     jump_law: law,

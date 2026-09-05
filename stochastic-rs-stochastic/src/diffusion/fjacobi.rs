@@ -224,6 +224,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
       offset: self.fgn.offset,
       hurst: self.fgn.hurst.to_f64().unwrap_or(0.5),
       t: self.fgn.t.unwrap_or(T::one()).to_f64().unwrap_or(1.0),
+      streams: 1,
     })
   }
 }
