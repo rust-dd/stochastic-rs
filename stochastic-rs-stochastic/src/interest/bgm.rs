@@ -68,7 +68,6 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -130,11 +129,129 @@ impl<T: FloatExt, S: SeedExt> Bgm<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Bgm<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> Bgm<T, S, B> {
+  /// The square root of the grid spacing, which is the standard deviation
+  /// of one increment; zero when the grid has no increment to take.
+  fn sqrt_dt(&self) -> T {
+    if self.n > 1 {
+      (self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)).sqrt()
+    } else {
+      T::zero()
+    }
+  }
+}
 
-backend_switch!([T: FloatExt, S: SeedExt] Bgm<T, S> { lambda, x0, xn, t, n, seed } via host);
+/// One row's recursion: the tail is pre-filled with `N(0, dt)` draws and each
+/// rate then multiplies its own increment, `f_j = f_{j-1} (1 + lambda z_j)`.
+/// Shared by the matrix sampler and the row view so the two cannot drift.
+fn fill_bgm_row<T: FloatExt, S: SeedExt>(row: &mut [T], x0: T, lambda: T, sqrt_dt: T, seed: &S) {
+  if row.is_empty() {
+    return;
+  }
+  row[0] = x0;
+  if row.len() == 1 {
+    return;
+  }
+  let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, seed);
+  normal.fill_slice(&mut row[1..]);
+  for j in 1..row.len() {
+    let f_old = row[j - 1];
+    row[j] = f_old + f_old * lambda * row[j];
+  }
+}
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Bgm<T, S, B> {
+/// One forward rate of the batch, stepped on its own. `Bgm` reports every
+/// rate as a row of one matrix and the engine speaks in single paths, so this
+/// view is what carries a launch: row `i` is the linear SDE with no drift and
+/// the proportional diffusion `lambda[i]`, started at `x0[i]`. It borrows
+/// rather than owns, so the seed it advances is the process's own.
+#[doc(hidden)]
+pub struct BgmRow<'a, T: FloatExt, S: SeedExt, B>(&'a Bgm<T, S, B>, usize);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for BgmRow<'_, T, S, B>
+{
+  type Output = Array1<T>;
+  type Sampler<'s>
+    = BgmRowSampler<T, S>
+  where
+    Self: 's;
+
+  fn sampler(&self) -> BgmRowSampler<T, S> {
+    BgmRowSampler {
+      x0: self.0.x0[self.1],
+      lambda: self.0.lambda[self.1],
+      n: self.0.n,
+      sqrt_dt: self.0.sqrt_dt(),
+      seed: self.0.seed.derive(),
+    }
+  }
+}
+
+/// [`BgmRow`]'s sampler: one rate's recursion from a seed derived once.
+#[doc(hidden)]
+pub struct BgmRowSampler<T: FloatExt, S: SeedExt> {
+  x0: T,
+  lambda: T,
+  n: usize,
+  sqrt_dt: T,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for BgmRowSampler<T, S> {
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let row = out
+      .as_slice_mut()
+      .expect("Bgm row must be contiguous in memory");
+    fill_bgm_row(row, self.x0, self.lambda, self.sqrt_dt, &self.seed);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let mut out = Array1::<T>::zeros(self.n);
+    self.sample_into(&mut out);
+    out
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for BgmRow<'_, T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::LinearSde {
+      a: T::zero(),
+      b: T::zero(),
+      c: self.0.lambda[self.1],
+    }
+  }
+
+  fn initial_value(&self) -> T {
+    self.0.x0[self.1]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.0.n
+  }
+
+  fn horizon(&self) -> T {
+    self.0.t.unwrap_or(T::one())
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.0.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Bgm<T, S> { lambda, x0, xn, t, n, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Bgm<T, S, B> {
   type Output = Array2<T>;
   type Sampler<'s>
     = BgmSampler<T, S>
@@ -155,6 +272,56 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Bgm<T, S, B> {
       seed: self.seed.derive(),
     }
   }
+
+  /// Through the Euler engine, one launch per rate: the rows are independent
+  /// linear SDEs, so a device steps each row's whole batch in one kernel and
+  /// the matrix is assembled here. On the host devices each row runs its
+  /// own recursion, which is the same arithmetic the matrix sampler uses.
+  fn sample(&self) -> Array2<T> {
+    let mut out = Array2::<T>::zeros((self.xn, self.n));
+    for i in 0..self.xn {
+      out
+        .row_mut(i)
+        .assign(&self.backend.euler_sample(&BgmRow(self, i)));
+    }
+    out
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array2<T>) -> R + Sync) -> Vec<R> {
+    self.sample_par(m).iter().map(f).collect()
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array2<T>> {
+    let mut out: Vec<Array2<T>> = (0..m).map(|_| Array2::zeros((self.xn, self.n))).collect();
+    for i in 0..self.xn {
+      let rows = self.backend.euler_paths(&BgmRow(self, i), m);
+      for (matrix, row) in out.iter_mut().zip(rows) {
+        matrix.row_mut(i).assign(&row);
+      }
+    }
+    out
+  }
+
+  fn try_sample(&self) -> Result<Array2<T>, crate::device::DeviceError> {
+    let mut out = Array2::<T>::zeros((self.xn, self.n));
+    for i in 0..self.xn {
+      out
+        .row_mut(i)
+        .assign(&self.backend.try_sample(&BgmRow(self, i))?);
+    }
+    Ok(out)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array2<T>>, crate::device::DeviceError> {
+    let mut out: Vec<Array2<T>> = (0..m).map(|_| Array2::zeros((self.xn, self.n))).collect();
+    for i in 0..self.xn {
+      let rows = self.backend.try_euler_paths(&BgmRow(self, i), m)?;
+      for (matrix, row) in out.iter_mut().zip(rows) {
+        matrix.row_mut(i).assign(&row);
+      }
+    }
+    Ok(out)
+  }
 }
 
 /// Reusable [`Bgm`] sampling state: owns the per-rate scales, the initial
@@ -171,34 +338,17 @@ pub struct BgmSampler<T: FloatExt, S: SeedExt> {
 
 impl<T: FloatExt, S: SeedExt> BgmSampler<T, S> {
   fn fill_matrix(&mut self, fwd: &mut Array2<T>) {
-    if self.n == 0 {
-      return;
-    }
-
-    for i in 0..self.xn {
-      fwd[(i, 0)] = self.x0[i];
-    }
-
-    if self.n == 1 {
-      return;
-    }
-
-    let n_increments = self.n - 1;
-    let sqrt_dt = (self.t.unwrap_or(T::one()) / T::from_usize_(n_increments)).sqrt();
-
+    let sqrt_dt = if self.n > 1 {
+      (self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)).sqrt()
+    } else {
+      T::zero()
+    };
     for i in 0..self.xn {
       let mut row = fwd.row_mut(i);
       let row_slice = row
         .as_slice_mut()
         .expect("Bgm row must be contiguous in memory");
-      let tail = &mut row_slice[1..];
-      let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-      normal.fill_slice(tail);
-
-      for j in 1..self.n {
-        let f_old = row_slice[j - 1];
-        row_slice[j] = f_old + f_old * self.lambda[i] * row_slice[j];
-      }
+      fill_bgm_row(row_slice, self.x0[i], self.lambda[i], sqrt_dt, &self.seed);
     }
   }
 }

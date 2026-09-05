@@ -330,6 +330,8 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::PoissonArrivals { .. } => "PoissonArrivals",
     EulerSpec::DynamicSabr => "DynamicSabr",
     EulerSpec::HeathJarrowMorton => "HeathJarrowMorton",
+    EulerSpec::AffineDiffusionGaussian { .. } => "AffineDiffusionGaussian",
+    EulerSpec::WuZhang { .. } => "WuZhang",
   }
 }
 
@@ -601,6 +603,7 @@ fn every_family() -> Vec<Probe> {
       0.4,
     ),
     p(EulerSpec::PoissonArrivals { lambda: 2.5 }, 0.0),
+    p(EulerSpec::AffineDiffusionGaussian { sigma: 0.02 }, 0.03),
     p(
       EulerSpec::TransformedOrnsteinUhlenbeck {
         kappa: 1.0,
@@ -1039,6 +1042,15 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
     SystemProbe {
       spec: EulerSpec::DynamicSabr,
       x0: [0.04, 0.3],
+    },
+    SystemProbe {
+      spec: EulerSpec::WuZhang {
+        alpha: 0.04,
+        beta: 1.5,
+        nu: 0.3,
+        lambda: 0.8,
+      },
+      x0: [0.03, 0.04],
     },
     SystemProbe {
       spec: EulerSpec::ComplexFractionalOu {

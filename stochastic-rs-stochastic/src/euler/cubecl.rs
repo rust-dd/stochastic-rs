@@ -880,6 +880,18 @@ fn step(
       gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
+  if family == 90u32 {
+    stepped = cube::WuZhang(
+      component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
+      gm2, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 89u32 {
+    stepped = cube::AffineDiffusionGaussian(
+      component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
+      gm2, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
   if family == 88u32 {
     stepped = cube::HeathJarrowMorton(
       component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
@@ -1439,6 +1451,18 @@ fn report(
   }
   if family == 86u32 {
     reported = cube_report::PoissonArrivals(
+      component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2,
+    );
+  }
+  if family == 90u32 {
+    reported = cube_report::WuZhang(
+      component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2,
+    );
+  }
+  if family == 89u32 {
+    reported = cube_report::AffineDiffusionGaussian(
       component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
       u2,
     );

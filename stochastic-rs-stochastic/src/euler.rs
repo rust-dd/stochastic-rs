@@ -559,6 +559,11 @@ pub enum EulerSpec<T: FloatExt> {
   DynamicSabr,
   /// Heath-Jarrow-Morton's three rows, with all six coefficients as curves.
   HeathJarrowMorton,
+  /// One factor of the affine-diffusion Gaussian model: a mean reversion
+  /// under two curves, reported through a quadratic map of three more.
+  AffineDiffusionGaussian { sigma: T },
+  /// One forward-rate / square-root-variance pair of the Wu-Zhang model.
+  WuZhang { alpha: T, beta: T, nu: T, lambda: T },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1134,6 +1139,15 @@ impl<T: FloatExt> EulerSpec<T> {
       EulerSpec::PoissonArrivals { lambda } => (Family::PoissonArrivals.code(), pad([lambda])),
       EulerSpec::DynamicSabr => (Family::DynamicSabr.code(), pad([])),
       EulerSpec::HeathJarrowMorton => (Family::HeathJarrowMorton.code(), pad([])),
+      EulerSpec::AffineDiffusionGaussian { sigma } => {
+        (Family::AffineDiffusionGaussian.code(), pad([sigma]))
+      }
+      EulerSpec::WuZhang {
+        alpha,
+        beta,
+        nu,
+        lambda,
+      } => (Family::WuZhang.code(), pad([alpha, beta, nu, lambda])),
     }
   }
 }

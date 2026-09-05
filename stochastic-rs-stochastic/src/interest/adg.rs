@@ -20,7 +20,6 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::PathSampler;
@@ -108,11 +107,148 @@ impl<T: FloatExt, S: SeedExt> Adg<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Adg<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> Adg<T, S, B> {
+  /// The grid spacing: `n - 1` increments over the horizon, zero when the
+  /// grid has no increment to take.
+  fn dt(&self) -> T {
+    if self.n > 1 {
+      self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    } else {
+      T::zero()
+    }
+  }
 
-backend_switch!([T: FloatExt, S: SeedExt] Adg<T, S> { k, theta, sigma, phi, b, c, n, xn, x0, t, seed } via host);
+  /// One factor's row of the observed rate. The tail is pre-filled with
+  /// `N(0, dt)` draws, the state `x` walks its mean reversion under `k(t)`
+  /// and `theta(t)` consuming them, and each point is written back as the
+  /// quadratic observation `phi(t) + b(t) x + c(t) x^2` at the same time.
+  /// Shared by the matrix sampler and the row view so the two cannot drift.
+  fn fill_row<S2: SeedExt>(&self, row: &mut [T], factor: usize, seed: &S2) {
+    if row.is_empty() {
+      return;
+    }
+    let dt = self.dt();
+    let observe = |t: T, x: T| self.phi.call(t) + self.b.call(t) * x + self.c.call(t) * x * x;
+    let mut x = self.x0[factor];
+    row[0] = observe(T::zero(), x);
+    if row.len() == 1 {
+      return;
+    }
+    let normal = SimdNormal::<T>::new(T::zero(), dt.sqrt(), seed);
+    normal.fill_slice(&mut row[1..]);
+    for j in 1..row.len() {
+      let t = T::from_usize_(j) * dt;
+      x = x + (self.k.call(t) - self.theta.call(t) * x) * dt + self.sigma[factor] * row[j];
+      row[j] = observe(t, x);
+    }
+  }
+}
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Adg<T, S, B> {
+/// One factor of the model, stepped on its own. `Adg` reports every factor
+/// as a row of one matrix and the engine speaks in single paths, so this view
+/// is what carries a launch: factor `i` under its own diffusion scale, started
+/// at its own level, with the five time-varying coefficients tabulated once
+/// for all of them. It borrows rather than owns, so the seed it advances is
+/// the process's own.
+#[doc(hidden)]
+pub struct AdgRow<'a, T: FloatExt, S: SeedExt, B>(&'a Adg<T, S, B>, usize);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for AdgRow<'_, T, S, B>
+{
+  type Output = Array1<T>;
+  type Sampler<'s>
+    = AdgRowSampler<'s, T, S, B>
+  where
+    Self: 's;
+
+  fn sampler(&self) -> AdgRowSampler<'_, T, S, B> {
+    AdgRowSampler {
+      adg: self.0,
+      factor: self.1,
+      seed: self.0.seed.derive(),
+    }
+  }
+}
+
+/// [`AdgRow`]'s sampler: one factor's recursion from a seed derived once.
+#[doc(hidden)]
+pub struct AdgRowSampler<'a, T: FloatExt, S: SeedExt, B> {
+  adg: &'a Adg<T, S, B>,
+  factor: usize,
+  seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> PathSampler<T>
+  for AdgRowSampler<'_, T, S, B>
+{
+  type Output = Array1<T>;
+
+  fn sample_into(&mut self, out: &mut Array1<T>) {
+    let row = out
+      .as_slice_mut()
+      .expect("Adg row must be contiguous in memory");
+    self.adg.fill_row(row, self.factor, &self.seed);
+  }
+
+  fn sample(&mut self) -> Array1<T> {
+    let mut out = Array1::<T>::zeros(self.adg.n);
+    self.sample_into(&mut out);
+    out
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for AdgRow<'_, T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::AffineDiffusionGaussian {
+      sigma: self.0.sigma[self.1],
+    }
+  }
+
+  fn initial_value(&self) -> T {
+    self.0.x0[self.1]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.0.n
+  }
+
+  fn horizon(&self) -> T {
+    self.0.t.unwrap_or(T::one())
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.0.seed)
+  }
+
+  /// `k`, `theta`, `phi`, `b` and `c` at each grid point, in the order the
+  /// step names them as `ct` through `ct4`. Step `j` and the observation
+  /// written at it both read `j · dt`, which is what the host evaluates.
+  fn curves(&self) -> Option<Vec<Vec<T>>> {
+    let adg = self.0;
+    let dt = adg.dt();
+    let grid = |f: &dyn Fn(T) -> T| (0..adg.n).map(|j| f(T::from_usize_(j) * dt)).collect();
+    Some(vec![
+      grid(&|t| adg.k.call(t)),
+      grid(&|t| adg.theta.call(t)),
+      grid(&|t| adg.phi.call(t)),
+      grid(&|t| adg.b.call(t)),
+      grid(&|t| adg.c.call(t)),
+    ])
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Adg<T, S> { k, theta, sigma, phi, b, c, n, xn, x0, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Adg<T, S, B> {
   type Output = Array2<T>;
   type Sampler<'s>
     = AdgSampler<'s, T, S, B>
@@ -126,83 +262,94 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Adg<T, S, B> {
   /// other rather than one raw stride apart. The drift, level and
   /// observation maps are user-supplied [`Fn1D`] callables (not clonable,
   /// since the Python variant holds a `pyo3::Py`) so there is nothing else
-  /// reusable to hoist across calls beyond the borrowed process itself;
-  /// the per-row `sample_inner`'s `SimdNormal::new(..., seed)` calls
-  /// consume this owned seed directly, the same ticks the legacy code
-  /// consumed from `self.seed` per call, so the first path reproduces the
-  /// legacy stream bit-for-bit.
+  /// reusable to hoist across calls beyond the borrowed process itself.
   fn sampler(&self) -> AdgSampler<'_, T, S, B> {
     AdgSampler {
       adg: self,
       seed: self.seed.derive(),
     }
   }
+
+  /// Through the Euler engine, one launch per factor: the factors are
+  /// independent, so a device steps each one's whole batch in one kernel
+  /// under the tabulated coefficients and the matrix is assembled here. On
+  /// the host devices each factor runs the same row recursion the matrix
+  /// sampler does.
+  fn sample(&self) -> Array2<T> {
+    let mut out = Array2::<T>::zeros((self.xn, self.n));
+    for i in 0..self.xn {
+      out
+        .row_mut(i)
+        .assign(&self.backend.euler_sample(&AdgRow(self, i)));
+    }
+    out
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array2<T>) -> R + Sync) -> Vec<R> {
+    self.sample_par(m).iter().map(f).collect()
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array2<T>> {
+    let mut out: Vec<Array2<T>> = (0..m).map(|_| Array2::zeros((self.xn, self.n))).collect();
+    for i in 0..self.xn {
+      let rows = self.backend.euler_paths(&AdgRow(self, i), m);
+      for (matrix, row) in out.iter_mut().zip(rows) {
+        matrix.row_mut(i).assign(&row);
+      }
+    }
+    out
+  }
+
+  fn try_sample(&self) -> Result<Array2<T>, crate::device::DeviceError> {
+    let mut out = Array2::<T>::zeros((self.xn, self.n));
+    for i in 0..self.xn {
+      out
+        .row_mut(i)
+        .assign(&self.backend.try_sample(&AdgRow(self, i))?);
+    }
+    Ok(out)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array2<T>>, crate::device::DeviceError> {
+    let mut out: Vec<Array2<T>> = (0..m).map(|_| Array2::zeros((self.xn, self.n))).collect();
+    for i in 0..self.xn {
+      let rows = self.backend.try_euler_paths(&AdgRow(self, i), m)?;
+      for (matrix, row) in out.iter_mut().zip(rows) {
+        matrix.row_mut(i).assign(&row);
+      }
+    }
+    Ok(out)
+  }
 }
 
 /// Reusable [`Adg`] sampler: borrows the process and owns a seed derived
 /// once at construction. Each row's Gaussian increments are generated
-/// inside the step body from that owned seed.
+/// inside the row recursion from that owned seed.
 #[doc(hidden)]
 pub struct AdgSampler<'a, T: FloatExt, S: SeedExt, B> {
   adg: &'a Adg<T, S, B>,
   seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> PathSampler<T> for AdgSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> PathSampler<T>
+  for AdgSampler<'_, T, S, B>
+{
   type Output = Array2<T>;
 
   fn sample_into(&mut self, out: &mut Array2<T>) {
-    *out = self.adg.sample_inner(&self.seed);
+    for i in 0..self.adg.xn {
+      let mut row = out.row_mut(i);
+      let row = row
+        .as_slice_mut()
+        .expect("Adg state row must be contiguous in memory");
+      self.adg.fill_row(row, i, &self.seed);
+    }
   }
 
   fn sample(&mut self) -> Array2<T> {
-    self.adg.sample_inner(&self.seed)
-  }
-}
-
-impl<T: FloatExt, S: SeedExt, B> Adg<T, S, B> {
-  fn sample_inner(&self, seed: &S) -> Array2<T> {
-    let dt = if self.n > 1 {
-      self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
-    } else {
-      T::zero()
-    };
-    let sqrt_dt = dt.sqrt();
-
-    let mut adg = Array2::<T>::zeros((self.xn, self.n));
-    for i in 0..self.xn {
-      let mut row = adg.row_mut(i);
-      let row_slice = row
-        .as_slice_mut()
-        .expect("Adg state row must be contiguous in memory");
-      row_slice[0] = self.x0[i];
-      if self.n <= 1 {
-        continue;
-      }
-
-      let tail = &mut row_slice[1..];
-      let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, seed);
-      normal.fill_slice(tail);
-
-      for j in 1..self.n {
-        let t = T::from_usize_(j) * dt;
-        row_slice[j] = row_slice[j - 1]
-          + (self.k.call(t) - self.theta.call(t) * row_slice[j - 1]) * dt
-          + self.sigma[i] * row_slice[j];
-      }
-    }
-
-    let mut r = Array2::zeros((self.xn, self.n));
-
-    for i in 0..self.xn {
-      for j in 0..self.n {
-        let t = T::from_usize_(j) * dt;
-        let x = adg[(i, j)];
-        r[(i, j)] = self.phi.call(t) + self.b.call(t) * x + self.c.call(t) * x * x;
-      }
-    }
-
-    r
+    let mut out = Array2::<T>::zeros((self.adg.xn, self.adg.n));
+    self.sample_into(&mut out);
+    out
   }
 }
 

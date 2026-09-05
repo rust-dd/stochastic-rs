@@ -1933,6 +1933,35 @@ euler_families! {
     }
     report { r, p, f },
 
+  /// One factor of the affine-diffusion Gaussian short-rate model: a
+  /// mean-reverting state under a time-varying level `ct = k(t)` and speed
+  /// `ct1 = theta(t)`, reported through the quadratic observation
+  /// `phi(t) + b(t) x + c(t) x^2` whose three coefficients are `ct2`, `ct3`
+  /// and `ct4`. Each factor carries its own diffusion scale, and a model of
+  /// several is that many independent launches of this family.
+  89 => AffineDiffusionGaussian { sigma }
+    state (x)
+    noise (dz)
+    step { x + (ct - ct1 * x) * dt + sigma * dz }
+    report { ct2 + ct3 * x + ct4 * x * x },
+
+  /// One forward-rate / volatility pair of the Wu-Zhang model: a square-root
+  /// variance mean-reverting to `alpha` at speed `beta` with vol-of-vol `nu`,
+  /// and a forward rate whose diffusion is `lambda` times the square root of
+  /// the variance *just stepped*, which is why the variance is bound first.
+  /// Both are floored at zero as the host does, the rate before its step and
+  /// the variance before and after. A model of several pairs is that many
+  /// independent launches of this family.
+  90 => WuZhang { alpha, beta, nu, lambda }
+    state (f, v)
+    noise (df, dv)
+    step {
+      bind vn = positive(positive(v) + beta * (alpha - positive(v)) * dt + nu * sqrt(positive(v)) * dv);
+      positive(f) + positive(f) * lambda * sqrt(vn) * df,
+      vn
+    }
+    report { f, v },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)
