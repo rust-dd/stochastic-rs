@@ -231,11 +231,16 @@ the C body the CUDA and Metal kernels render is generated from the same
 declaration. Widening a process's bound from `HostBackend` to `EulerBackend`
 is not a breaking change for its callers.
 
-`Cfou`, `JumpFou`, `JumpFOUCustom` and `Sde` carry a backend parameter but do
-not reach a device: `Cfou` steps a complex pair, the two jump processes fill
-their fGN on the host because moving it would change their pinned streams,
-and `Sde` drives its own loop. Their `.on::<B>()` compiles and changes
-nothing, which is a wart to close rather than a feature.
+`Cfou` reaches a device only halfway: its fGN pair is drawn there, through
+the same pipeline `Fgn` uses, and the complex recursion that consumes it runs
+on the host. Closing that gap needs a second increment buffer, since the
+kernel reads one.
+
+`JumpFou`, `JumpFOUCustom` and `Sde` carry a backend parameter that changes
+nothing: the two jump processes fill their fGN on the host because moving it
+would change their pinned streams, and `Sde` drives its own loop over
+caller-supplied closures. Their `.on::<B>()` compiles and does nothing, which
+is a wart to close rather than a feature.
 
 What each remaining group would take: a jump process whose sizes do not
 aggregate needs a bounded loop in the step, and a self-exciting one needs the
