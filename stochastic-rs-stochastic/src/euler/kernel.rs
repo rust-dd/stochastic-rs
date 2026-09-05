@@ -24,6 +24,11 @@
 //! one-component family fills the buffer exactly as it always did and a
 //! system's components come back as separate contiguous paths.
 //!
+//! A family may read `u`, one uniform in `[0, 1)` for the step, from a hash
+//! stream no noise component and no jump count uses. It is what a scheme with
+//! a branch of its own needs — the quadratic-exponential variance step draws
+//! it — and a family that never names it pays one integer hash for it.
+//!
 //! A family may read `nj`, the number of jumps the step saw: a Poisson draw
 //! with mean `jump_lambda · dt`, by Knuth's product of uniforms from a hash
 //! stream of its own. It is drawn once per step, so every component of a
@@ -52,6 +57,7 @@ pub(crate) const FRAME: &str = r#"    if (path >= paths) return;
     REAL ct = (REAL)0;
     if (has_curve != 0u) { ct = curve[0]; }
     REAL nj = (REAL)0;
+    REAL u = (REAL)0;
     for (unsigned int c = 0u; c < 4u; c++) { state[c] = x0[c]; reported[c] = x0[c]; }
     for (unsigned int c = 0u; c < 4u; c++) { noise[c] = (REAL)0; }
 REPORT
@@ -76,6 +82,9 @@ REPORT
             noise[0] = incs[(INDEX)path * (steps - 1) + (i - 1)];
         }
         if (has_curve != 0u) { ct = curve[i]; }
+        unsigned int hu = (g ^ 2135587861u) ^ (seed * 2654435761u);
+        hu ^= hu >> 16; hu *= 2246822519u; hu ^= hu >> 13; hu *= 3266489917u; hu ^= hu >> 16;
+        u = (REAL)hu * (REAL)2.3283064e-10;
         if (has_jumps != 0u) {
             REAL ell = STOCH_EXP(-jump_lambda * dt);
             REAL prod = (REAL)1;

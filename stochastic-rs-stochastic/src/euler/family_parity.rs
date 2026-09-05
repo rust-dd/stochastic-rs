@@ -66,7 +66,7 @@ impl PathSampler<f32> for ProbeSampler {
     let curve = probe_curve();
     let mut state = [self.x0, 0.0, 0.0, 0.0];
     let mut out = [0.0f32; 4];
-    super::families::host_report(family, &state, &params, curve[0], 0.0, &mut out);
+    super::families::host_report(family, &state, &params, curve[0], 0.0, 0.5, &mut out);
     slice[0] = out[0];
     if slice.len() == 1 {
       return;
@@ -82,11 +82,12 @@ impl PathSampler<f32> for ProbeSampler {
         self.dt,
         curve[i + 1],
         0.0,
+        0.5,
         &[*z, 0.0, 0.0, 0.0],
         &mut next,
       );
       state = next;
-      super::families::host_report(family, &state, &params, curve[i + 1], 0.0, &mut out);
+      super::families::host_report(family, &state, &params, curve[i + 1], 0.0, 0.5, &mut out);
       *z = out[0];
     }
   }
@@ -219,6 +220,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::MertonJumpLog { .. } => "MertonJumpLog",
     EulerSpec::BatesJump { .. } => "BatesJump",
     EulerSpec::BatesJumpReflected { .. } => "BatesJumpReflected",
+    EulerSpec::AndersenQe { .. } => "AndersenQe",
   }
 }
 
@@ -576,7 +578,7 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
     let mut state = [0.0f32; 4];
     state[..D].copy_from_slice(&self.x0);
     let mut reported = [0.0f32; 4];
-    super::families::host_report(family, &state, &params, curve[0], 0.0, &mut reported);
+    super::families::host_report(family, &state, &params, curve[0], 0.0, 0.5, &mut reported);
     for (c, path) in out.iter_mut().enumerate() {
       path[0] = reported[c];
     }
@@ -587,10 +589,10 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       noise[..noises].copy_from_slice(&draw);
       let mut next = [0.0f32; 4];
       super::families::host_step(
-        family, &state, &params, self.dt, curve[i], 0.0, &noise, &mut next,
+        family, &state, &params, self.dt, curve[i], 0.0, 0.5, &noise, &mut next,
       );
       state = next;
-      super::families::host_report(family, &state, &params, curve[i], 0.0, &mut reported);
+      super::families::host_report(family, &state, &params, curve[i], 0.0, 0.5, &mut reported);
       for (c, path) in out.iter_mut().enumerate() {
         path[i] = reported[c];
       }
@@ -714,6 +716,20 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         rho: -0.7,
       },
       x0: [100.0, 0.04],
+    },
+    SystemProbe {
+      spec: EulerSpec::AndersenQe {
+        theta: 0.04,
+        e_kd: 0.9689,
+        c1: 0.0436,
+        k0: -0.00022,
+        c2: 0.0009,
+        k1: -2.3355,
+        k2: 2.3323,
+        k34: 0.001008,
+        mu: 0.02,
+      },
+      x0: [(100.0_f32).ln(), 0.04],
     },
     SystemProbe {
       spec: EulerSpec::BatesJump {

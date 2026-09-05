@@ -14,7 +14,6 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::HestonPow;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -380,11 +379,81 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// The quadratic-exponential scheme draws its variance from a non-central
-/// chi-square rather than stepping an Euler recursion, so it has no family.
-/// Its bound is `HostBackend`, which makes putting it on a device a compile
-/// error at the first `sample` rather than a silent fall back to this code.
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Heston<T, S, AndersenQe, B> {
+/// The Euler engine's view of the quadratic-exponential scheme. The variance
+/// is drawn from a moment-matched law rather than stepped, and the branch it
+/// picks needs a uniform, which the kernel supplies per step; every constant
+/// the scheme hoists out of its own path loop is folded here for the same
+/// reason it hoists them.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
+  for Heston<T, S, AndersenQe, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    assert!(
+      matches!(self.pow, HestonPow::Sqrt),
+      "Andersen QE is defined only for the square-root (CIR) variance; use HestonPow::Sqrt"
+    );
+    assert!(
+      self.kappa > T::zero(),
+      "Andersen QE requires a positive mean-reversion rate kappa"
+    );
+    let dt = self.time_step();
+    let (one, two, half) = (T::one(), T::from_f64_fast(2.0), T::from_f64_fast(0.5));
+    let e_kd = (-self.kappa * dt).exp();
+    let eps = self.sigma;
+    let krho_eps = self.kappa * self.rho / eps;
+    crate::euler::EulerSpec::AndersenQe {
+      theta: self.theta,
+      e_kd,
+      c1: eps * eps * e_kd / self.kappa,
+      c2: self.theta * eps * eps / (two * self.kappa),
+      k0: -self.rho * self.kappa * self.theta * dt / eps,
+      k1: half * dt * (krho_eps - half) - self.rho / eps,
+      k2: half * dt * (krho_eps - half) + self.rho / eps,
+      k34: half * dt * (one - self.rho * self.rho),
+      mu: self.mu,
+    }
+  }
+
+  /// The scheme evolves the log spot, so the first slot is `ln S₀` and the
+  /// report exponentiates it back.
+  fn initial_state(&self) -> [T; 4] {
+    let s0 = self.s0.unwrap_or(T::one());
+    assert!(
+      s0 > T::zero(),
+      "Andersen QE evolves log-spot, so s0 must be > 0"
+    );
+    [
+      s0.ln(),
+      self.v0.unwrap_or(T::zero()).max(T::zero()),
+      T::zero(),
+      T::zero(),
+    ]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 2] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+/// The quadratic-exponential scheme reaches a device through its own family,
+/// so this half routes through the backend as the Euler half does.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for Heston<T, S, AndersenQe, B>
+{
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = HestonSampler<'s, T, S, AndersenQe, B>
@@ -392,6 +461,26 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Heston<T, S, And
     Self: 's;
 
   heston_sampler_impl!(AndersenQe);
+
+  fn sample(&self) -> [Array1<T>; 2] {
+    self.backend.system_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 2]) -> R + Sync) -> Vec<R> {
+    self.backend.system_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 2]> {
+    self.backend.system_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 2], crate::device::DeviceError> {
+    self.backend.try_system_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 2]>, crate::device::DeviceError> {
+    self.backend.try_system_paths(self, m)
+  }
 }
 
 /// Reusable [`Heston`] sampler: borrows the process and owns a seed derived

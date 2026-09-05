@@ -398,6 +398,18 @@ pub enum EulerSpec<T: FloatExt> {
     sigma: T,
     rho: T,
   },
+  /// Andersen's quadratic-exponential Heston step.
+  AndersenQe {
+    theta: T,
+    e_kd: T,
+    c1: T,
+    c2: T,
+    k0: T,
+    k1: T,
+    k2: T,
+    k34: T,
+    mu: T,
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -823,6 +835,20 @@ impl<T: FloatExt> EulerSpec<T> {
       } => (
         Family::BatesJumpReflected.code(),
         pad([drift_c, nu, omega, alpha, beta, sigma, rho]),
+      ),
+      EulerSpec::AndersenQe {
+        theta,
+        e_kd,
+        c1,
+        c2,
+        k0,
+        k1,
+        k2,
+        k34,
+        mu,
+      } => (
+        Family::AndersenQe.code(),
+        pad([theta, e_kd, c1, c2, k0, k1, k2, k34, mu]),
       ),
     }
   }

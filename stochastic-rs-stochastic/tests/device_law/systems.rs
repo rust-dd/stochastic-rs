@@ -539,3 +539,49 @@ fn bates_agrees_with_the_cpu_law() {
     "Bates terminal variance",
   );
 }
+
+/// The quadratic-exponential scheme draws its variance from a moment-matched
+/// law with two branches, and the kernel picks between them with a uniform of
+/// its own. The variance is non-negative by construction on both branches.
+#[test]
+fn andersen_qe_heston_agrees_with_the_cpu_law() {
+  let build = || {
+    Heston::<f32, _>::new(
+      Some(100.0),
+      Some(0.04),
+      2.0,
+      0.04,
+      0.3,
+      -0.7,
+      0.0,
+      253,
+      Some(1.0),
+      HestonPow::Sqrt,
+      None,
+      Deterministic::new(101),
+    )
+    .qe()
+  };
+  let device = build().on::<Device>().sample_par(M);
+  assert!(
+    device.iter().all(|p| p[1].iter().all(|&v| v >= 0.0)),
+    "the moment-matched variance went negative"
+  );
+  assert!(
+    device.iter().all(|p| p[0].iter().all(|&v| v > 0.0)),
+    "the log-spot form let the spot reach zero"
+  );
+  let host = build().sample_par(M);
+  agrees(
+    terminal_mean(&host, 0),
+    terminal_mean(&device, 0),
+    0.03,
+    "QE Heston terminal spot",
+  );
+  agrees(
+    terminal_mean(&host, 1),
+    terminal_mean(&device, 1),
+    0.06,
+    "QE Heston terminal variance",
+  );
+}
