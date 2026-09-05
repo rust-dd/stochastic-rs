@@ -1641,6 +1641,39 @@ euler_families! {
     }
     report { x, lam },
 
+  /// `σ²_t = ω + αX²_{t−1} + βσ²_{t−1}`, `X_t = σ_t z_t`: GARCH(1,1), and at
+  /// `β = 0` ARCH(1). The series starts at `σ₀ z₀` with `σ₀²` the
+  /// unconditional variance, so the launch steps before writing its first
+  /// point and the third component marks whether that first step has been
+  /// taken — until it has, the variance stays at the level the host seeds it
+  /// with rather than running the recursion on a state that does not exist
+  /// yet.
+  70 => Garch { omega, alpha, beta }
+    state (x, s2, warm)
+    noise (dz)
+    step {
+      bind v = pick(warm, omega + alpha * x * x + beta * s2, s2);
+      sqrt(max(v, lit(1e-12))) * (dz / sqrt(dt)),
+      v,
+      lit(1.0)
+    }
+    report { x, s2, warm },
+
+  /// [`Garch`](Family::Garch) with a threshold term: `γX²_{t−1}` enters only
+  /// when the previous return was negative, which is the GJR asymmetry and,
+  /// under the other name its author gave it, the asymmetric GARCH.
+  71 => ThresholdGarch { omega, alpha, gamma, beta }
+    state (x, s2, warm)
+    noise (dz)
+    step {
+      bind lev = pick(less(x, lit(0.0)), gamma * x * x, lit(0.0));
+      bind v = pick(warm, omega + alpha * x * x + lev + beta * s2, s2);
+      sqrt(max(v, lit(1e-12))) * (dz / sqrt(dt)),
+      v,
+      lit(1.0)
+    }
+    report { x, s2, warm },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)

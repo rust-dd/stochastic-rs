@@ -467,6 +467,15 @@ pub enum EulerSpec<T: FloatExt> {
     jump_mu: T,
     jump_sigma: T,
   },
+  /// GARCH(1,1), and at zero persistence ARCH(1).
+  Garch { omega: T, alpha: T, beta: T },
+  /// GARCH(1,1) with a threshold term on negative returns.
+  ThresholdGarch {
+    omega: T,
+    alpha: T,
+    gamma: T,
+    beta: T,
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -978,6 +987,16 @@ impl<T: FloatExt> EulerSpec<T> {
         Family::HawkesJumpDiffusion.code(),
         pad([drift_c, sigma, alpha, beta, mu_lambda, jump_mu, jump_sigma]),
       ),
+      EulerSpec::Garch { omega, alpha, beta } => (Family::Garch.code(), pad([omega, alpha, beta])),
+      EulerSpec::ThresholdGarch {
+        omega,
+        alpha,
+        gamma,
+        beta,
+      } => (
+        Family::ThresholdGarch.code(),
+        pad([omega, alpha, gamma, beta]),
+      ),
     }
   }
 }
@@ -1033,6 +1052,14 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
   /// The step sees the sum as `js`.
   fn jump_sizes(&self) -> Option<JumpSizes<T>> {
     None
+  }
+
+  /// Whether the first point written is a step rather than the initial state.
+  /// A conditional-variance model's series starts at `σ₀ z₀`, so its first
+  /// point is a draw; every diffusion here starts at a level, which is the
+  /// default.
+  fn step_first(&self) -> bool {
+    false
   }
 
   /// One path from the process's own sampler, the host stream.
@@ -1241,6 +1268,14 @@ pub trait EulerSystem<T: FloatExt, const D: usize>: ProcessExt<T, Output = [Arra
   /// The step sees the sum as `js`.
   fn jump_sizes(&self) -> Option<JumpSizes<T>> {
     None
+  }
+
+  /// Whether the first point written is a step rather than the initial state.
+  /// A conditional-variance model's series starts at `σ₀ z₀`, so its first
+  /// point is a draw; every diffusion here starts at a level, which is the
+  /// default.
+  fn step_first(&self) -> bool {
+    false
   }
 
   /// One draw from the process's own sampler, the host stream.

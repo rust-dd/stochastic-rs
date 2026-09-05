@@ -13,7 +13,6 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -91,9 +90,71 @@ impl<T: FloatExt, S: SeedExt> Agarch<T, S> {
 
 impl<T: FloatExt, S: SeedExt, B> Agarch<T, S, B> {}
 
-backend_switch!([T: FloatExt, S: SeedExt] Agarch<T, S> { omega, alpha, delta, beta, n, seed } via host);
+/// The Euler engine's view of the asymmetric GARCH(1,1), whose threshold term
+/// is the same one GJR-GARCH takes under another name.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for Agarch<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    assert!(
+      self.alpha.len() == 1 && self.delta.len() == 1 && self.beta.len() == 1,
+      "Agarch reaches a device at order (1, 1) only; this one is ({}, {})",
+      self.alpha.len(),
+      self.beta.len()
+    );
+    crate::euler::EulerSpec::ThresholdGarch {
+      omega: self.omega,
+      alpha: self.alpha[0],
+      gamma: self.delta[0],
+      beta: self.beta[0],
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Agarch<T, S, B> {
+  fn initial_value(&self) -> T {
+    T::zero()
+  }
+
+  /// The series starts at `σ₀ z₀`, so the launch steps before writing its
+  /// first point: the state it starts from is the seed variance and the
+  /// not-yet-warm marker, not a value the path reports.
+  fn initial_state(&self) -> [T; 4] {
+    let half = T::from_f64_fast(0.5);
+    let denom = T::one() - self.alpha[0] - half * self.delta[0] - self.beta[0];
+    [T::zero(), self.omega / denom, T::zero(), T::zero()]
+  }
+
+  fn step_first(&self) -> bool {
+    true
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    T::from_usize_(self.n)
+  }
+
+  /// A discrete-time model advances by one observation, not by a fraction of
+  /// a horizon.
+  fn time_step(&self) -> T {
+    T::one()
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Agarch<T, S> { omega, alpha, delta, beta, n, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Agarch<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = AgarchSampler<T>
@@ -109,6 +170,29 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Agarch<T, S, B> 
       beta: self.beta.clone(),
       normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
     }
+  }
+
+  /// Through the Euler engine: on a device the conditional variance and the
+  /// series step together in the kernel, on the host devices it is this
+  /// process's own sampler, chunked exactly as `ProcessExt` chunks.
+  fn sample(&self) -> Array1<T> {
+    self.backend.euler_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    self.backend.euler_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    self.backend.euler_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    self.backend.try_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    self.backend.try_euler_paths(self, m)
   }
 }
 

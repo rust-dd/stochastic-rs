@@ -256,6 +256,8 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::KouJumpHestonReflected { .. } => "KouJumpHestonReflected",
     EulerSpec::DuffieKanJump { .. } => "DuffieKanJump",
     EulerSpec::HawkesJumpDiffusion { .. } => "HawkesJumpDiffusion",
+    EulerSpec::Garch { .. } => "Garch",
+    EulerSpec::ThresholdGarch { .. } => "ThresholdGarch",
   }
 }
 
@@ -946,6 +948,23 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
 
 /// One probe per three-component family.
 fn every_three_component_family() -> Vec<SystemProbe<3>> {
+  let garch = SystemProbe {
+    spec: EulerSpec::Garch {
+      omega: 0.00001,
+      alpha: 0.1,
+      beta: 0.85,
+    },
+    x0: [0.0, 0.0002, 0.0],
+  };
+  let threshold = SystemProbe {
+    spec: EulerSpec::ThresholdGarch {
+      omega: 0.00001,
+      alpha: 0.05,
+      gamma: 0.1,
+      beta: 0.85,
+    },
+    x0: [0.0, 0.0002, 0.0],
+  };
   let double = |sym| {
     let spec = if sym {
       EulerSpec::DoubleHestonReflected {
@@ -978,6 +997,8 @@ fn every_three_component_family() -> Vec<SystemProbe<3>> {
     }
   };
   vec![
+    garch,
+    threshold,
     double(false),
     double(true),
     SystemProbe {

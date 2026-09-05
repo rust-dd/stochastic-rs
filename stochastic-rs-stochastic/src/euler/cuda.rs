@@ -37,7 +37,8 @@ const CUDA_HEADER: &str = r#"extern "C" __global__ void euler_paths_REAL(
     const REAL* __restrict__ incs, unsigned int increments,
     const REAL* __restrict__ curve, unsigned int has_curve,
     REAL jump_lambda, unsigned int has_jumps,
-    unsigned int jump_law, REAL jump_a, REAL jump_b, REAL jump_c)
+    unsigned int jump_law, REAL jump_a, REAL jump_b, REAL jump_c,
+    unsigned int step_first)
 {
     unsigned int path = blockIdx.x * blockDim.x + threadIdx.x;
     const REAL x0[4] = { x00, x01, x02, x03 };
@@ -165,6 +166,7 @@ fn run<R>(
   jump_a: R,
   jump_b: R,
   jump_c: R,
+  step_first: u32,
 ) -> Result<Vec<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
@@ -235,6 +237,7 @@ where
       .arg(&jump_a)
       .arg(&jump_b)
       .arg(&jump_c)
+      .arg(&step_first)
       .launch(LaunchConfig::for_num_elems(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
@@ -264,6 +267,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.curve().as_deref().unwrap_or(&[]),
       process.jump_intensity(),
       process.jump_sizes(),
+      process.step_first(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -293,6 +297,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.curve().as_deref().unwrap_or(&[]),
       process.jump_intensity(),
       process.jump_sizes(),
+      process.step_first(),
     )
   }
 
@@ -325,6 +330,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.curve().as_deref().unwrap_or(&[]),
       process.jump_intensity(),
       process.jump_sizes(),
+      process.step_first(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -345,6 +351,7 @@ fn device_paths<T: FloatExt>(
   curve: &[T],
   jump_lambda: Option<T>,
   sizes: Option<crate::euler::JumpSizes<T>>,
+  step_first: bool,
 ) -> Result<Array3<T>> {
   {
     let (family, params) = spec.encode();
@@ -360,6 +367,7 @@ fn device_paths<T: FloatExt>(
         c.to_f64().unwrap_or(0.0),
       )
     });
+    let step_first = u32::from(step_first);
     let (components, noises) = (arity.components() as u32, arity.noises() as u32);
     let planes = components as usize;
     if n == 0 || m == 0 {
@@ -413,6 +421,7 @@ fn device_paths<T: FloatExt>(
         ja,
         jb,
         jc,
+        step_first,
       )?;
       let out = Array3::<f64>::from_shape_vec((planes, m, n), data)
         .expect("the kernel returns components * m * n values");
@@ -462,6 +471,7 @@ fn device_paths<T: FloatExt>(
       ja as f32,
       jb as f32,
       jc as f32,
+      step_first,
     )?;
     assert!(
       TypeId::of::<T>() == TypeId::of::<f32>(),
@@ -496,6 +506,7 @@ fn launch_chunk<R>(
   jump_a: R,
   jump_b: R,
   jump_c: R,
+  step_first: u32,
 ) -> Result<CudaSlice<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
@@ -562,6 +573,7 @@ where
       .arg(&jump_a)
       .arg(&jump_b)
       .arg(&jump_c)
+      .arg(&step_first)
       .launch(LaunchConfig::for_num_elems(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
@@ -590,6 +602,7 @@ fn pipelined<R>(
   jump_a: R,
   jump_b: R,
   jump_c: R,
+  step_first: u32,
 ) -> Result<Vec<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float + Send + Sync,
@@ -656,6 +669,7 @@ where
       jump_a,
       jump_b,
       jump_c,
+      step_first,
     )?;
     let dst = unsafe { std::slice::from_raw_parts_mut(staging[slot].ptr, planes * len * n) };
     streams[slot]
@@ -684,6 +698,7 @@ fn pipelined_paths<T: FloatExt>(
   curve: &[T],
   jump_lambda: Option<T>,
   sizes: Option<crate::euler::JumpSizes<T>>,
+  step_first: bool,
 ) -> Result<Array3<T>> {
   let (family, params) = spec.encode();
   let arity = super::families::Family::from_code(family).expect("a declared family");
@@ -698,6 +713,7 @@ fn pipelined_paths<T: FloatExt>(
       c.to_f64().unwrap_or(0.0),
     )
   });
+  let step_first = u32::from(step_first);
   let (components, noises) = (arity.components() as u32, arity.noises() as u32);
   let planes = components as usize;
   let dt = dt.to_f64().unwrap_or(0.0);
@@ -726,6 +742,7 @@ fn pipelined_paths<T: FloatExt>(
       ja,
       jb,
       jc,
+      step_first,
     )?;
     let out = Array3::<f64>::from_shape_vec((planes, m, n), data)
       .expect("the kernel returns components * m * n values");
@@ -757,6 +774,7 @@ fn pipelined_paths<T: FloatExt>(
     ja as f32,
     jb as f32,
     jc as f32,
+    step_first,
   )?;
   let out = Array3::<f32>::from_shape_vec((planes, m, n), data)
     .expect("the kernel returns components * m * n values");

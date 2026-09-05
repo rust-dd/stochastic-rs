@@ -50,6 +50,7 @@ fn euler_paths_kernel(
   jump_a: f32,
   jump_b: f32,
   jump_c: f32,
+  step_first: u32,
 ) {
   let path = ABSOLUTE_POS as u32;
   if path < paths {
@@ -67,17 +68,25 @@ fn euler_paths_kernel(
     let mut s1 = x01;
     let mut s2 = x02;
     let mut s3 = x03;
-    out[base] = report(family, 0u32, s0, s1, s2, s3, params, ct, nj, js, u, u2);
-    if components > 1u32 {
-      out[plane + base] = report(family, 1u32, s0, s1, s2, s3, params, ct, nj, js, u, u2);
+    if step_first == 0u32 {
+      out[base] = report(family, 0u32, s0, s1, s2, s3, params, ct, nj, js, u, u2);
+      if components > 1u32 {
+        out[plane + base] = report(family, 1u32, s0, s1, s2, s3, params, ct, nj, js, u, u2);
+      }
+      if components > 2u32 {
+        out[2usize * plane + base] =
+          report(family, 2u32, s0, s1, s2, s3, params, ct, nj, js, u, u2);
+      }
+      if components > 3u32 {
+        out[3usize * plane + base] =
+          report(family, 3u32, s0, s1, s2, s3, params, ct, nj, js, u, u2);
+      }
     }
-    if components > 2u32 {
-      out[2usize * plane + base] = report(family, 2u32, s0, s1, s2, s3, params, ct, nj, js, u, u2);
+    let mut lo = 1u32;
+    if step_first != 0u32 {
+      lo = 0u32;
     }
-    if components > 3u32 {
-      out[3usize * plane + base] = report(family, 3u32, s0, s1, s2, s3, params, ct, nj, js, u, u2);
-    }
-    for i in 1..steps {
+    for i in lo..steps {
       let g = (first_path + path) * steps + i;
       let mut d0 = normal(g, 0u32, seed) * sqrt_dt;
       let mut d1 = 0.0f32;
@@ -563,6 +572,16 @@ fn step(
       component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
     );
   }
+  if family == 70u32 {
+    stepped = cube::Garch(
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 71u32 {
+    stepped = cube::ThresholdGarch(
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
   if family == 16u32 {
     stepped = cube::FellerRoot(
       component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
@@ -843,6 +862,12 @@ fn report(
     reported =
       cube_report::HawkesJumpDiffusion(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
   }
+  if family == 70u32 {
+    reported = cube_report::Garch(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+  }
+  if family == 71u32 {
+    reported = cube_report::ThresholdGarch(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+  }
   if family == 16u32 {
     reported = cube_report::FellerRoot(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
   }
@@ -1032,6 +1057,7 @@ impl<R: CubeclRuntime> EulerKernel<f32> for crate::device::Cubecl<R> {
       process.curve().as_deref().unwrap_or(&[]),
       process.jump_intensity(),
       process.jump_sizes(),
+      process.step_first(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -1061,6 +1087,7 @@ impl<R: CubeclRuntime> EulerKernel<f32> for crate::device::Cubecl<R> {
       process.curve().as_deref().unwrap_or(&[]),
       process.jump_intensity(),
       process.jump_sizes(),
+      process.step_first(),
     )
   }
 
@@ -1084,6 +1111,7 @@ fn device_paths<C: CubeclRuntime>(
   curve: &[f32],
   jump_lambda: Option<f32>,
   sizes: Option<crate::euler::JumpSizes<f32>>,
+  step_first: bool,
 ) -> DeviceResult<Array3<f32>> {
   {
     let (family, params) = spec.encode();
@@ -1156,6 +1184,7 @@ fn device_paths<C: CubeclRuntime>(
           ScalarArg::new(jump_a),
           ScalarArg::new(jump_b),
           ScalarArg::new(jump_c),
+          ScalarArg::new(u32::from(step_first)),
         )
         .map_err(|e| DeviceError::Launch(format!("euler_paths launch: {e:?}")))?;
       }

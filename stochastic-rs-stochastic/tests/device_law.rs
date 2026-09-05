@@ -19,7 +19,8 @@
 //! its own memory rather than reading back; [`systems`] holds the ones whose
 //! recursion carries more than one state component; [`curves`] holds the
 //! ones whose coefficients vary with time; [`levy`] holds the ones whose
-//! increment is a draw rather than a step.
+//! increment is a draw rather than a step; [`conditional_variance`] holds the
+//! discrete-time models whose first point is itself a draw.
 //!
 //! Split across files only to stay under this crate's line-count limit; all
 //! four compile into one test binary.
@@ -29,6 +30,7 @@
 mod device_law {
   pub(crate) mod bounded;
   pub(crate) mod common;
+  pub(crate) mod conditional_variance;
   pub(crate) mod curves;
   pub(crate) mod fractional;
   pub(crate) mod gaussian;

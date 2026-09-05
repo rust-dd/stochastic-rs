@@ -36,6 +36,7 @@ struct EulerArgs {
     uint has_curve;
     uint has_jumps;
     uint jump_law;
+    uint step_first;
     float dt;
     float sqrt_dt;
     float jump_lambda;
@@ -67,6 +68,7 @@ kernel void euler_paths(
     const uint has_jumps = args.has_jumps;
     const float jump_lambda = args.jump_lambda;
     const uint jump_law = args.jump_law;
+    const uint step_first = args.step_first;
     const float jump_a = args.jump_a;
     const float jump_b = args.jump_b;
     const float jump_c = args.jump_c;
@@ -112,6 +114,9 @@ struct EulerArgs {
   has_jumps: u32,
   /// Which size law the jumps carry: none, normal, or double-exponential.
   jump_law: u32,
+  /// Non-zero when the first point written is a step rather than the
+  /// initial state.
+  step_first: u32,
   dt: f32,
   sqrt_dt: f32,
   jump_lambda: f32,
@@ -308,6 +313,7 @@ impl EulerKernel<f32> for Metal {
       process.curve().as_deref().unwrap_or(&[]),
       process.jump_intensity(),
       process.jump_sizes(),
+      process.step_first(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -337,6 +343,7 @@ impl EulerKernel<f32> for Metal {
       process.curve().as_deref().unwrap_or(&[]),
       process.jump_intensity(),
       process.jump_sizes(),
+      process.step_first(),
     )
   }
 
@@ -362,6 +369,7 @@ fn device_paths(
   curve: &[f32],
   jump_lambda: Option<f32>,
   sizes: Option<crate::euler::JumpSizes<f32>>,
+  step_first: bool,
 ) -> Result<Array3<f32>> {
   let (family, params) = spec.encode();
   let arity = super::families::Family::from_code(family).expect("a declared family");
@@ -382,6 +390,7 @@ fn device_paths(
     has_curve: u32::from(!curve.is_empty()),
     has_jumps: u32::from(jump_lambda.is_some()),
     jump_law: law,
+    step_first: u32::from(step_first),
     dt,
     sqrt_dt: dt.sqrt(),
     jump_lambda: jump_lambda.unwrap_or(0.0),

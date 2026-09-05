@@ -5,7 +5,8 @@
 //! The thread index `path`, the output and parameter buffers and the launch
 //! arguments (`family`, `components`, `noises`, `x0`, `dt`, `sqrt_dt`,
 //! `seed`, `steps`, `paths`, `first_path`, `increments`, `has_curve`,
-//! `jump_lambda`, `has_jumps`, `jump_law`, `jump_a`, `jump_b`, `jump_c`) and
+//! `jump_lambda`, `has_jumps`, `jump_law`, `jump_a`, `jump_b`, `jump_c`,
+//! `step_first`) and
 //! the `incs` and `curve` buffers are bound
 //! by the language-specific header around the body;
 //! the body itself only uses the placeholders [`Language`] fills in. Two
@@ -20,6 +21,12 @@
 //! `increments` is set the first component reads from `incs` instead — one
 //! row of `steps - 1` increments per path — which is how a fractional
 //! process reaches the same families.
+//!
+//! With `step_first` the frame takes a step before writing the first point,
+//! which is what a process whose first grid point is itself a draw needs: a
+//! conditional-variance model's series starts at `σ₀ z₀`, not at a
+//! deterministic level. Without it the first point is the reported initial
+//! state, as every diffusion here wants.
 //!
 //! A launch writes `components` planes of `paths * steps` values each, so a
 //! one-component family fills the buffer exactly as it always did and a
@@ -71,8 +78,10 @@ pub(crate) const FRAME: &str = r#"    if (path >= paths) return;
     for (unsigned int c = 0u; c < 4u; c++) { state[c] = x0[c]; reported[c] = x0[c]; }
     for (unsigned int c = 0u; c < 4u; c++) { noise[c] = (REAL)0; }
 REPORT
-    for (unsigned int c = 0u; c < components; c++) { out[(INDEX)c * plane + base] = reported[c]; }
-    for (unsigned int i = 1; i < steps; i++) {
+    if (step_first == 0u) {
+        for (unsigned int c = 0u; c < components; c++) { out[(INDEX)c * plane + base] = reported[c]; }
+    }
+    for (unsigned int i = (step_first != 0u ? 0u : 1u); i < steps; i++) {
         unsigned int g = (first_path + path) * steps + i;
         for (unsigned int k = 0u; k < noises; k++) {
             unsigned int gk = g;
