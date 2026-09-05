@@ -41,6 +41,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::Array3;
 use stochastic_rs_core::simd_rng::SeedExt;
 
 use crate::device::Backend;
@@ -231,6 +232,49 @@ pub enum EulerSpec<T: FloatExt> {
     mu: T,
     sigma: T,
   },
+  /// The Heston model's Euler scheme, variance truncated at zero.
+  Heston {
+    mu: T,
+    kappa: T,
+    theta: T,
+    sigma: T,
+    rho: T,
+    pow_v: T,
+  },
+  /// [`Heston`](EulerSpec::Heston) with the variance reflected at zero.
+  HestonReflected {
+    mu: T,
+    kappa: T,
+    theta: T,
+    sigma: T,
+    rho: T,
+    pow_v: T,
+  },
+  /// SABR under an exact log-normal volatility step.
+  Sabr {
+    beta: T,
+    rho: T,
+    nu: T,
+    half_nu_sq: T,
+  },
+  /// The Bergomi model, whose variance is a function of the running sum of
+  /// its own increments; that sum and the elapsed time travel as state.
+  Bergomi {
+    r: T,
+    nu: T,
+    half_nu_sq: T,
+    v0_sq: T,
+    rho: T,
+  },
+  /// A slow and a fast Ornstein-Uhlenbeck factor on one clock.
+  TwoScaleOrnsteinUhlenbeck {
+    kappa: T,
+    theta: T,
+    eps: T,
+    alpha: T,
+    eps_inv: T,
+    sqrt_eps_inv: T,
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -365,6 +409,52 @@ impl<T: FloatExt> EulerSpec<T> {
       EulerSpec::Displaced { mu, sigma, beta } => (Family::Displaced.code(), pad([mu, sigma, beta])),
       EulerSpec::TanhOrnsteinUhlenbeck { kappa, mu, sigma } => (Family::TanhOrnsteinUhlenbeck.code(), pad([kappa, mu, sigma])),
       EulerSpec::BoundedCorrelation { kappa, mu, sigma } => (Family::BoundedCorrelation.code(), pad([kappa, mu, sigma])),
+      EulerSpec::Heston {
+        mu,
+        kappa,
+        theta,
+        sigma,
+        rho,
+        pow_v,
+      } => (
+        Family::Heston.code(),
+        pad([mu, kappa, theta, sigma, rho, pow_v]),
+      ),
+      EulerSpec::HestonReflected {
+        mu,
+        kappa,
+        theta,
+        sigma,
+        rho,
+        pow_v,
+      } => (
+        Family::HestonReflected.code(),
+        pad([mu, kappa, theta, sigma, rho, pow_v]),
+      ),
+      EulerSpec::Sabr {
+        beta,
+        rho,
+        nu,
+        half_nu_sq,
+      } => (Family::Sabr.code(), pad([beta, rho, nu, half_nu_sq])),
+      EulerSpec::Bergomi {
+        r,
+        nu,
+        half_nu_sq,
+        v0_sq,
+        rho,
+      } => (Family::Bergomi.code(), pad([r, nu, half_nu_sq, v0_sq, rho])),
+      EulerSpec::TwoScaleOrnsteinUhlenbeck {
+        kappa,
+        theta,
+        eps,
+        alpha,
+        eps_inv,
+        sqrt_eps_inv,
+      } => (
+        Family::TwoScaleOrnsteinUhlenbeck.code(),
+        pad([kappa, theta, eps, alpha, eps_inv, sqrt_eps_inv]),
+      ),
     }
   }
 }
@@ -381,6 +471,14 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
   /// One draw from the process's seed source: reproducible for
   /// `Deterministic`, fresh entropy for `Unseeded`.
   fn device_seed(&self) -> u64;
+
+  /// The time step the recursion advances by. The default is the grid's own
+  /// spacing, `horizon / (grid_points - 1)`; a process whose host sampler
+  /// divides the horizon differently states that here, so the device
+  /// reproduces that process's law rather than a neighbouring one.
+  fn time_step(&self) -> T {
+    self.horizon() / T::from_usize_(self.grid_points().max(2) - 1)
+  }
 
   /// One path from the process's own sampler, the host stream.
   fn host_sample(&self) -> Array1<T>;
@@ -431,8 +529,43 @@ pub trait EulerKernel<T: FloatExt>: Backend {
     seed: u64,
   ) -> Result<Array2<T>, DeviceError>;
 
+  /// Paths `first .. first + m` of a system's launch stream, as a
+  /// `components × m × n` array.
+  fn euler_system_kernel<const D: usize, P: EulerSystem<T, D>>(
+    &self,
+    process: &P,
+    first: usize,
+    m: usize,
+    seed: u64,
+  ) -> Result<Array3<T>, DeviceError>;
+
   /// Bytes of path data one launch may hold.
   fn batch_budget(&self) -> usize;
+
+  /// The whole system batch under `seed`, chunked to the budget.
+  fn euler_system_batch<const D: usize, P: EulerSystem<T, D>>(
+    &self,
+    process: &P,
+    m: usize,
+    seed: u64,
+  ) -> Result<Array3<T>, DeviceError> {
+    let n = process.grid_points();
+    let rows = crate::device::chunk_rows(self.batch_budget(), n * D, std::mem::size_of::<T>());
+    if m <= rows {
+      return self.euler_system_kernel(process, 0, m, seed);
+    }
+    let mut out = Array3::<T>::zeros((D, m, n));
+    let mut first = 0;
+    while first < m {
+      let len = rows.min(m - first);
+      let chunk = self.euler_system_kernel(process, first, len, seed)?;
+      out
+        .slice_mut(ndarray::s![.., first..first + len, ..])
+        .assign(&chunk);
+      first += len;
+    }
+    Ok(out)
+  }
 
   /// The whole batch under `seed`, chunked to the budget. A device may
   /// override it to pipeline the chunks; the result must stay bit-identical.
@@ -465,6 +598,71 @@ pub trait EulerKernel<T: FloatExt>: Backend {
 /// the CPU handles run the process's own sampler, a device handle runs its
 /// [`EulerKernel`]. The `try_*` methods report a device failure as a
 /// [`DeviceError`]; the plain ones panic with it.
+/// A process whose device recursion carries more than one state component:
+/// the same families, the same kernels and the same launch, with `D` arrays
+/// back instead of one.
+///
+/// The engine's kernels always carry four state and four noise slots, so a
+/// system costs nothing beyond the components it declares. What a system adds
+/// over [`EulerCoefficients`] is only the shape of the answer: `D` paths per
+/// draw rather than one, which is what a stochastic-volatility or two-factor
+/// model returns.
+pub trait EulerSystem<T: FloatExt, const D: usize>: ProcessExt<T, Output = [Array1<T>; D]> {
+  /// The family this system steps. Its component count must be `D`.
+  fn euler_spec(&self) -> EulerSpec<T>;
+
+  /// The state each path starts from, in the engine's four slots. A family
+  /// that steps fewer components leaves the rest at zero.
+  ///
+  /// The slots are the family's own state, which may be larger than the `D`
+  /// paths the process returns: a model that carries an accumulator steps it
+  /// alongside the components it reports. The reported ones come first.
+  fn initial_state(&self) -> [T; 4];
+
+  /// Number of grid points including `t = 0`.
+  fn grid_points(&self) -> usize;
+
+  fn horizon(&self) -> T;
+
+  /// One draw from the process's seed source: reproducible for
+  /// `Deterministic`, fresh entropy for `Unseeded`.
+  fn device_seed(&self) -> u64;
+
+  /// The time step the recursion advances by. The default is the grid's own
+  /// spacing, `horizon / (grid_points - 1)`; a process whose host sampler
+  /// divides the horizon differently states that here, so the device
+  /// reproduces that process's law rather than a neighbouring one.
+  fn time_step(&self) -> T {
+    self.horizon() / T::from_usize_(self.grid_points().max(2) - 1)
+  }
+
+  /// One draw from the process's own sampler, the host stream.
+  fn host_sample(&self) -> [Array1<T>; D];
+}
+
+/// The arity check that a system's `D` paths are components its family
+/// actually steps. A mismatch is a declaration error rather than a runtime
+/// condition, so it fails loudly here instead of silently returning planes
+/// the kernel never wrote.
+pub(crate) fn check_arity<T: FloatExt>(spec: &EulerSpec<T>, d: usize) {
+  let (code, _) = spec.encode();
+  let family = families::Family::from_code(code).expect("a declared family");
+  assert!(
+    family.components() >= d,
+    "{family:?} steps {} components but the process returns {d} arrays",
+    family.components()
+  );
+}
+
+/// The `D` paths of one launch row, taken out of the `components × m × n`
+/// array a kernel returns.
+pub(crate) fn system_row<T: FloatExt, const D: usize>(
+  planes: &Array3<T>,
+  row: usize,
+) -> [Array1<T>; D] {
+  std::array::from_fn(|c| planes.slice(ndarray::s![c, row, ..]).to_owned())
+}
+
 pub trait EulerBackend<T: FloatExt>: Backend {
   /// One path.
   fn try_sample<P: EulerCoefficients<T>>(&self, process: &P) -> Result<Array1<T>, DeviceError>;
@@ -519,6 +717,60 @@ pub trait EulerBackend<T: FloatExt>: Backend {
       .try_euler_paths_map(process, m, f)
       .unwrap_or_else(crate::device::device_panic)
   }
+
+  /// One draw of a multi-component system.
+  fn try_system_sample<const D: usize, P: EulerSystem<T, D>>(
+    &self,
+    process: &P,
+  ) -> Result<[Array1<T>; D], DeviceError>;
+
+  /// `m` draws of a multi-component system.
+  fn try_system_paths<const D: usize, P: EulerSystem<T, D>>(
+    &self,
+    process: &P,
+    m: usize,
+  ) -> Result<Vec<[Array1<T>; D]>, DeviceError>;
+
+  /// `f` over `m` draws of a system, mapped as they are produced.
+  fn try_system_paths_map<const D: usize, P: EulerSystem<T, D>, R: Send>(
+    &self,
+    process: &P,
+    m: usize,
+    f: impl Fn(&[Array1<T>; D]) -> R + Sync,
+  ) -> Result<Vec<R>, DeviceError>;
+
+  /// [`try_system_sample`](Self::try_system_sample), panicking with the
+  /// device's error.
+  fn system_sample<const D: usize, P: EulerSystem<T, D>>(&self, process: &P) -> [Array1<T>; D] {
+    self
+      .try_system_sample(process)
+      .unwrap_or_else(crate::device::device_panic)
+  }
+
+  /// [`try_system_paths`](Self::try_system_paths), panicking with the
+  /// device's error.
+  fn system_paths<const D: usize, P: EulerSystem<T, D>>(
+    &self,
+    process: &P,
+    m: usize,
+  ) -> Vec<[Array1<T>; D]> {
+    self
+      .try_system_paths(process, m)
+      .unwrap_or_else(crate::device::device_panic)
+  }
+
+  /// [`try_system_paths_map`](Self::try_system_paths_map), panicking with the
+  /// device's error.
+  fn system_paths_map<const D: usize, P: EulerSystem<T, D>, R: Send>(
+    &self,
+    process: &P,
+    m: usize,
+    f: impl Fn(&[Array1<T>; D]) -> R + Sync,
+  ) -> Vec<R> {
+    self
+      .try_system_paths_map(process, m, f)
+      .unwrap_or_else(crate::device::device_panic)
+  }
 }
 
 /// A host handle samples through the process's own sampler, chunked the way
@@ -559,6 +811,30 @@ macro_rules! host_euler_backend {
           out.row_mut(i).assign(row);
         }
         Ok(out)
+      }
+
+      fn try_system_sample<const D: usize, P: EulerSystem<T, D>>(
+        &self,
+        process: &P,
+      ) -> Result<[Array1<T>; D], DeviceError> {
+        Ok(process.host_sample())
+      }
+
+      fn try_system_paths<const D: usize, P: EulerSystem<T, D>>(
+        &self,
+        process: &P,
+        m: usize,
+      ) -> Result<Vec<[Array1<T>; D]>, DeviceError> {
+        Ok(sample_par_chunked(process, m))
+      }
+
+      fn try_system_paths_map<const D: usize, P: EulerSystem<T, D>, R: Send>(
+        &self,
+        process: &P,
+        m: usize,
+        f: impl Fn(&[Array1<T>; D]) -> R + Sync,
+      ) -> Result<Vec<R>, DeviceError> {
+        Ok(sample_map_chunked(process, m, f))
       }
     }
   };
@@ -628,6 +904,52 @@ macro_rules! kernel_euler_backend {
       m: usize,
     ) -> Result<Array2<$scalar>, DeviceError> {
       <Self as EulerKernel<$scalar>>::euler_kernel_batch(self, process, m, process.device_seed())
+    }
+
+    fn try_system_sample<const D: usize, P: EulerSystem<$scalar, D>>(
+      &self,
+      process: &P,
+    ) -> Result<[Array1<$scalar>; D], DeviceError> {
+      let seed = process.device_seed();
+      let planes = <Self as EulerKernel<$scalar>>::euler_system_kernel(self, process, 0, 1, seed)?;
+      Ok(system_row(&planes, 0))
+    }
+
+    fn try_system_paths<const D: usize, P: EulerSystem<$scalar, D>>(
+      &self,
+      process: &P,
+      m: usize,
+    ) -> Result<Vec<[Array1<$scalar>; D]>, DeviceError> {
+      let seed = process.device_seed();
+      let planes = <Self as EulerKernel<$scalar>>::euler_system_batch(self, process, m, seed)?;
+      Ok((0..m).map(|row| system_row(&planes, row)).collect())
+    }
+
+    fn try_system_paths_map<const D: usize, P: EulerSystem<$scalar, D>, R: Send>(
+      &self,
+      process: &P,
+      m: usize,
+      f: impl Fn(&[Array1<$scalar>; D]) -> R + Sync,
+    ) -> Result<Vec<R>, DeviceError> {
+      use rayon::prelude::*;
+      let seed = process.device_seed();
+      let rows = crate::device::chunk_rows(
+        <Self as EulerKernel<$scalar>>::batch_budget(self),
+        process.grid_points() * D,
+        std::mem::size_of::<$scalar>(),
+      );
+      let mut out = Vec::with_capacity(m);
+      let mut first = 0;
+      while first < m {
+        let len = rows.min(m - first);
+        let planes =
+          <Self as EulerKernel<$scalar>>::euler_system_kernel(self, process, first, len, seed)?;
+        let chunk: Vec<[Array1<$scalar>; D]> =
+          (0..len).map(|row| system_row(&planes, row)).collect();
+        out.extend(chunk.par_iter().map(&f).collect::<Vec<R>>());
+        first += len;
+      }
+      Ok(out)
     }
     }
   };

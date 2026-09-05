@@ -259,7 +259,7 @@ impl EulerKernel<f32> for Metal {
       process.euler_spec(),
       [process.initial_value(), 0.0, 0.0, 0.0],
       process.grid_points(),
-      process.horizon(),
+      process.time_step(),
       first,
       m,
       seed,
@@ -269,6 +269,32 @@ impl EulerKernel<f32> for Metal {
       },
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
+  }
+
+
+  /// A system's launch: the same kernel, its state slots filled from the
+  /// process's own initial state and every component's plane returned.
+  fn euler_system_kernel<const D: usize, P: super::EulerSystem<f32, D>>(
+    &self,
+    process: &P,
+    first: usize,
+    m: usize,
+    seed: u64,
+  ) -> Result<Array3<f32>> {
+    let spec = process.euler_spec();
+    super::check_arity(&spec, D);
+    let slots = process.initial_state();
+    device_paths(
+      self.ordinal,
+      spec,
+      slots,
+      process.grid_points(),
+      process.time_step(),
+      first,
+      m,
+      seed,
+      Increments::Hashed,
+    )
   }
 
   fn batch_budget(&self) -> usize {
@@ -285,7 +311,7 @@ fn device_paths(
   spec: EulerSpec<f32>,
   x0: [f32; 4],
   n: usize,
-  t: f32,
+  dt: f32,
   first: usize,
   m: usize,
   seed: u64,
@@ -297,7 +323,6 @@ fn device_paths(
   if n == 0 || m == 0 {
     return Ok(Array3::<f32>::zeros((components, m, n)));
   }
-  let dt = (t as f64 / (n.max(2) - 1) as f64) as f32;
   let args = EulerArgs {
     family,
     components: components as u32,

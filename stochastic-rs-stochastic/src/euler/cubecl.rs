@@ -240,6 +240,21 @@ fn step(
   if family == 34u32 {
     stepped = cube::BoundedCorrelation(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
+  if family == 35u32 {
+    stepped = cube::Heston(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
+  }
+  if family == 36u32 {
+    stepped = cube::HestonReflected(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
+  }
+  if family == 37u32 {
+    stepped = cube::Sabr(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
+  }
+  if family == 38u32 {
+    stepped = cube::Bergomi(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
+  }
+  if family == 39u32 {
+    stepped = cube::TwoScaleOrnsteinUhlenbeck(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
+  }
   if family == 16u32 {
     stepped = cube::FellerRoot(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
@@ -359,6 +374,21 @@ fn report(
   }
   if family == 34u32 {
     reported = cube_report::BoundedCorrelation(component, x0, x1, x2, x3, params);
+  }
+  if family == 35u32 {
+    reported = cube_report::Heston(component, x0, x1, x2, x3, params);
+  }
+  if family == 36u32 {
+    reported = cube_report::HestonReflected(component, x0, x1, x2, x3, params);
+  }
+  if family == 37u32 {
+    reported = cube_report::Sabr(component, x0, x1, x2, x3, params);
+  }
+  if family == 38u32 {
+    reported = cube_report::Bergomi(component, x0, x1, x2, x3, params);
+  }
+  if family == 39u32 {
+    reported = cube_report::TwoScaleOrnsteinUhlenbeck(component, x0, x1, x2, x3, params);
   }
   if family == 16u32 {
     reported = cube_report::FellerRoot(component, x0, x1, x2, x3, params);
@@ -537,13 +567,39 @@ impl<R: CubeclRuntime> EulerKernel<f32> for crate::device::Cubecl<R> {
       process.euler_spec(),
       [process.initial_value(), 0.0, 0.0, 0.0],
       process.grid_points(),
-      process.horizon(),
+      process.time_step(),
       first,
       m,
       seed,
       process.fgn_spec(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
+  }
+
+
+  /// A system's launch: the same kernel, its state slots filled from the
+  /// process's own initial state and every component's plane returned.
+  fn euler_system_kernel<const D: usize, P: super::EulerSystem<f32, D>>(
+    &self,
+    process: &P,
+    first: usize,
+    m: usize,
+    seed: u64,
+  ) -> DeviceResult<Array3<f32>> {
+    let spec = process.euler_spec();
+    super::check_arity(&spec, D);
+    let slots = process.initial_state();
+    device_paths::<R>(
+      self.ordinal,
+      spec,
+      slots,
+      process.grid_points(),
+      process.time_step(),
+      first,
+      m,
+      seed,
+      None,
+    )
   }
 
   fn batch_budget(&self) -> usize {
@@ -558,7 +614,7 @@ fn device_paths<C: CubeclRuntime>(
   spec: EulerSpec<f32>,
   x0: [f32; 4],
   n: usize,
-  t: f32,
+  dt: f32,
   first: usize,
   m: usize,
   seed: u64,
@@ -572,7 +628,7 @@ fn device_paths<C: CubeclRuntime>(
       return Ok(Array3::<f32>::zeros((components, m, n)));
     }
     let params32: Vec<f32> = params.to_vec();
-    let dt = t as f64 / (n.max(2) - 1) as f64;
+    let dt = dt as f64;
     let total = components * m * n;
     let cl = &C::client(ordinal)?;
     let data: Vec<f32> = {

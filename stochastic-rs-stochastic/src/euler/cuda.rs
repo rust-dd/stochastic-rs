@@ -224,13 +224,39 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.euler_spec(),
       [process.initial_value(), T::zero(), T::zero(), T::zero()],
       process.grid_points(),
-      process.horizon(),
+      process.time_step(),
       first,
       m,
       seed,
       process.fgn_spec(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
+  }
+
+
+  /// A system's launch: the same kernel, its state slots filled from the
+  /// process's own initial state and every component's plane returned.
+  fn euler_system_kernel<const D: usize, P: super::EulerSystem<T, D>>(
+    &self,
+    process: &P,
+    first: usize,
+    m: usize,
+    seed: u64,
+  ) -> Result<Array3<T>> {
+    let spec = process.euler_spec();
+    super::check_arity(&spec, D);
+    let slots = process.initial_state();
+    device_paths(
+      self.ordinal,
+      spec,
+      slots,
+      process.grid_points(),
+      process.time_step(),
+      first,
+      m,
+      seed,
+      None,
+    )
   }
 
   fn batch_budget(&self) -> usize {
@@ -255,7 +281,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.euler_spec(),
       [process.initial_value(), T::zero(), T::zero(), T::zero()],
       n,
-      process.horizon(),
+      process.time_step(),
       m,
       rows,
       seed,
@@ -271,7 +297,7 @@ fn device_paths<T: FloatExt>(
   spec: EulerSpec<T>,
   x0: [T; 4],
   n: usize,
-  t: T,
+  dt: T,
   first: usize,
   m: usize,
   seed: u64,
@@ -285,7 +311,7 @@ fn device_paths<T: FloatExt>(
     if n == 0 || m == 0 {
       return Ok(Array3::<T>::zeros((planes, m, n)));
     }
-    let dt = t.to_f64().unwrap_or(1.0) / (n.max(2) - 1) as f64;
+    let dt = dt.to_f64().unwrap_or(0.0);
     let seed32 = (seed ^ (seed >> 32)) as u32;
     let p64: [f64; crate::euler::PARAM_SLOTS] =
       std::array::from_fn(|i| params[i].to_f64().unwrap_or(0.0));
@@ -541,7 +567,7 @@ fn pipelined_paths<T: FloatExt>(
   spec: EulerSpec<T>,
   x0: [T; 4],
   n: usize,
-  t: T,
+  dt: T,
   m: usize,
   rows: usize,
   seed: u64,
@@ -550,7 +576,7 @@ fn pipelined_paths<T: FloatExt>(
   let arity = super::families::Family::from_code(family).expect("a declared family");
   let (components, noises) = (arity.components() as u32, arity.noises() as u32);
   let planes = components as usize;
-  let dt = t.to_f64().unwrap_or(1.0) / (n.max(2) - 1) as f64;
+  let dt = dt.to_f64().unwrap_or(0.0);
   let seed32 = (seed ^ (seed >> 32)) as u32;
   let p64: [f64; crate::euler::PARAM_SLOTS] =
     std::array::from_fn(|i| params[i].to_f64().unwrap_or(0.0));

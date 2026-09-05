@@ -162,6 +162,11 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::Displaced { .. } => "Displaced",
     EulerSpec::TanhOrnsteinUhlenbeck { .. } => "TanhOrnsteinUhlenbeck",
     EulerSpec::BoundedCorrelation { .. } => "BoundedCorrelation",
+    EulerSpec::Heston { .. } => "Heston",
+    EulerSpec::HestonReflected { .. } => "HestonReflected",
+    EulerSpec::Sabr { .. } => "Sabr",
+    EulerSpec::Bergomi { .. } => "Bergomi",
+    EulerSpec::TwoScaleOrnsteinUhlenbeck { .. } => "TwoScaleOrnsteinUhlenbeck",
   }
 }
 
@@ -256,26 +261,214 @@ fn every_family() -> Vec<Probe> {
   ]
 }
 
-/// Every declared family has a probe, so the parity tests below cover all of
-/// them rather than whichever ones happened to be listed.
+/// A system that is only a family: what [`Probe`] is for a one-component
+/// family, for one with `D` of them.
+pub(crate) struct SystemProbe<const D: usize> {
+  spec: EulerSpec<f32>,
+  x0: [f32; D],
+}
+
+/// The host stream for a [`SystemProbe`]: independent normals per noise
+/// component through the family's own generated host step.
+pub(crate) struct SystemProbeSampler<const D: usize> {
+  spec: EulerSpec<f32>,
+  x0: [f32; D],
+  dt: f32,
+  normal: SimdNormal<f32>,
+}
+
+impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
+  type Output = [Array1<f32>; D];
+
+  fn sample_into(&mut self, out: &mut [Array1<f32>; D]) {
+    let (code, params) = self.spec.encode();
+    let family = super::families::Family::from_code(code).expect("a declared family");
+    let noises = family.noises();
+    let mut state = [0.0f32; 4];
+    state[..D].copy_from_slice(&self.x0);
+    let mut reported = [0.0f32; 4];
+    super::families::host_report(family, &state, &params, &mut reported);
+    for (c, path) in out.iter_mut().enumerate() {
+      path[0] = reported[c];
+    }
+    let mut draw = vec![0.0f32; noises];
+    for i in 1..N {
+      let mut noise = [0.0f32; 4];
+      self.normal.fill_slice(&mut draw);
+      noise[..noises].copy_from_slice(&draw);
+      let mut next = [0.0f32; 4];
+      super::families::host_step(family, &state, &params, self.dt, &noise, &mut next);
+      state = next;
+      super::families::host_report(family, &state, &params, &mut reported);
+      for (c, path) in out.iter_mut().enumerate() {
+        path[i] = reported[c];
+      }
+    }
+  }
+
+  fn sample(&mut self) -> [Array1<f32>; D] {
+    let mut out = std::array::from_fn(|_| Array1::zeros(N));
+    self.sample_into(&mut out);
+    out
+  }
+}
+
+impl<const D: usize> ProcessExt<f32> for SystemProbe<D> {
+  type Output = [Array1<f32>; D];
+  type Sampler<'s>
+    = SystemProbeSampler<D>
+  where
+    Self: 's;
+
+  fn sampler(&self) -> SystemProbeSampler<D> {
+    let dt = 1.0 / (N - 1) as f32;
+    SystemProbeSampler {
+      spec: self.spec,
+      x0: self.x0,
+      dt,
+      normal: SimdNormal::<f32>::new(0.0, dt.sqrt(), &Deterministic::new(7)),
+    }
+  }
+}
+
+impl<const D: usize> EulerSystem<f32, D> for SystemProbe<D> {
+  fn euler_spec(&self) -> EulerSpec<f32> {
+    self.spec
+  }
+
+  fn initial_state(&self) -> [f32; 4] {
+    let mut slots = [0.0; 4];
+    slots[..D].copy_from_slice(&self.x0);
+    slots
+  }
+
+  fn grid_points(&self) -> usize {
+    N
+  }
+
+  fn horizon(&self) -> f32 {
+    1.0
+  }
+
+  fn device_seed(&self) -> u64 {
+    11
+  }
+
+  fn host_sample(&self) -> [Array1<f32>; D] {
+    <Self as ProcessExt<f32>>::sampler(self).sample()
+  }
+}
+
+/// One probe per two-component family.
+fn every_two_component_family() -> Vec<SystemProbe<2>> {
+  let heston = |rho, pow_v| (0.03, 2.0, 0.04, 0.3, rho, pow_v);
+  let (mu, kappa, theta, sigma, rho, pow_v) = heston(-0.7, 0.5);
+  vec![
+    SystemProbe {
+      spec: EulerSpec::Heston {
+        mu,
+        kappa,
+        theta,
+        sigma,
+        rho,
+        pow_v,
+      },
+      x0: [100.0, 0.04],
+    },
+    SystemProbe {
+      spec: EulerSpec::HestonReflected {
+        mu,
+        kappa,
+        theta,
+        sigma,
+        rho,
+        pow_v,
+      },
+      x0: [100.0, 0.04],
+    },
+    SystemProbe {
+      spec: EulerSpec::Sabr {
+        beta: 0.5,
+        rho: -0.4,
+        nu: 0.4,
+        half_nu_sq: 0.08,
+      },
+      x0: [100.0, 0.2],
+    },
+    SystemProbe {
+      spec: EulerSpec::TwoScaleOrnsteinUhlenbeck {
+        kappa: 1.0,
+        theta: 0.0,
+        eps: 0.3,
+        alpha: 0.0,
+        eps_inv: 4.0,
+        sqrt_eps_inv: 2.0,
+      },
+      x0: [0.5, 0.5],
+    },
+  ]
+}
+
+/// One probe per four-component family. The Bergomi variance is a function of
+/// the running sum of its own increments, so that sum and the elapsed time
+/// travel as two further components; the probe compares all four.
+fn every_four_component_family() -> Vec<SystemProbe<4>> {
+  vec![SystemProbe {
+    spec: EulerSpec::Bergomi {
+      r: 0.02,
+      nu: 0.5,
+      half_nu_sq: 0.125,
+      v0_sq: 0.04,
+      rho: -0.6,
+    },
+    x0: [100.0, 0.04, 0.0, 0.0],
+  }]
+}
+
+/// Every declared family has a probe of the right arity, so the parity tests
+/// below cover all of them rather than whichever ones happened to be listed.
 #[test]
 fn every_family_has_a_probe() {
-  let probes = every_family();
-  let mut names: Vec<_> = probes.iter().map(|p| family_name(&p.spec)).collect();
+  let mut names: Vec<&'static str> = every_family().iter().map(|p| family_name(&p.spec)).collect();
+  names.extend(
+    every_two_component_family()
+      .iter()
+      .map(|p| family_name(&p.spec)),
+  );
+  names.extend(
+    every_four_component_family()
+      .iter()
+      .map(|p| family_name(&p.spec)),
+  );
+  let total = names.len();
   names.sort_unstable();
   names.dedup();
+  assert_eq!(names.len(), total, "two probes name the same family");
+
+  // Codes are dense and small, so walking the space is how the lists above
+  // are held to the declarations rather than to whoever last edited them.
+  let declared = (0..256u32)
+    .filter(|c| super::families::Family::from_code(*c).is_some())
+    .count();
   assert_eq!(
-    names.len(),
-    probes.len(),
-    "two probes name the same family: {names:?}"
+    declared, total,
+    "{declared} families are declared but {total} have probes"
   );
-  for probe in &probes {
-    let (code, _) = probe.spec.encode();
-    assert!(
-      super::families::Family::from_code(code).is_some(),
-      "{} encodes to an undeclared code {code}",
-      family_name(&probe.spec)
-    );
+
+  let arity = |spec: &EulerSpec<f32>| {
+    let (code, _) = spec.encode();
+    super::families::Family::from_code(code)
+      .expect("a declared family")
+      .components()
+  };
+  for probe in &every_family() {
+    assert_eq!(arity(&probe.spec), 1, "{}", family_name(&probe.spec));
+  }
+  for probe in &every_two_component_family() {
+    assert_eq!(arity(&probe.spec), 2, "{}", family_name(&probe.spec));
+  }
+  for probe in &every_four_component_family() {
+    assert_eq!(arity(&probe.spec), 4, "{}", family_name(&probe.spec));
   }
 }
 
@@ -300,6 +493,28 @@ fn every_family_runs_on_the_device() {
       "{name}: a device path left the reals"
     );
   }
+  for probe in every_two_component_family() {
+    let name = family_name(&probe.spec);
+    let paths = Device::default().system_paths(&probe, 8);
+    assert_eq!(paths.len(), 8, "{name}");
+    assert!(
+      paths
+        .iter()
+        .all(|c| c.iter().all(|p| p.len() == N && p.iter().all(|v| v.is_finite()))),
+      "{name}: a device path left the reals"
+    );
+  }
+  for probe in every_four_component_family() {
+    let name = family_name(&probe.spec);
+    let paths = Device::default().system_paths(&probe, 8);
+    assert_eq!(paths.len(), 8, "{name}");
+    assert!(
+      paths
+        .iter()
+        .all(|c| c.iter().all(|p| p.len() == N && p.iter().all(|v| v.is_finite()))),
+      "{name}: a device path left the reals"
+    );
+  }
 }
 
 /// The CubeCL dispatch is written by hand, so a family missing from it
@@ -316,16 +531,40 @@ fn the_cubecl_kernel_matches_the_generated_one() {
   #[cfg(all(feature = "cubecl-cuda", not(feature = "cubecl-wgpu")))]
   type Cube = crate::device::Cubecl<crate::device::CudaRuntime>;
 
+  fn agree(name: &str, native: &Array1<f32>, cube: &Array1<f32>) {
+    for (x, y) in native.iter().zip(cube.iter()) {
+      assert!(
+        (x - y).abs() < 1e-3 * y.abs().max(1.0),
+        "{name}: native {x} vs cubecl {y}"
+      );
+    }
+  }
+
   for probe in every_family() {
     let name = family_name(&probe.spec);
     let native = crate::device::Metal::default().euler_paths(&probe, 8);
     let cube = Cube::default().euler_paths(&probe, 8);
     for (a, b) in native.iter().zip(&cube) {
+      agree(name, a, b);
+    }
+  }
+  for probe in every_two_component_family() {
+    let name = family_name(&probe.spec);
+    let native = crate::device::Metal::default().system_paths(&probe, 8);
+    let cube = Cube::default().system_paths(&probe, 8);
+    for (a, b) in native.iter().zip(&cube) {
       for (x, y) in a.iter().zip(b.iter()) {
-        assert!(
-          (x - y).abs() < 1e-3 * y.abs().max(1.0),
-          "{name}: native {x} vs cubecl {y}"
-        );
+        agree(name, x, y);
+      }
+    }
+  }
+  for probe in every_four_component_family() {
+    let name = family_name(&probe.spec);
+    let native = crate::device::Metal::default().system_paths(&probe, 8);
+    let cube = Cube::default().system_paths(&probe, 8);
+    for (a, b) in native.iter().zip(&cube) {
+      for (x, y) in a.iter().zip(b.iter()) {
+        agree(name, x, y);
       }
     }
   }

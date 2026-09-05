@@ -59,6 +59,7 @@ pub use stochastic_rs_stochastic::device::Cpu;
 pub use stochastic_rs_stochastic::device::FgnBackend;
 pub use stochastic_rs_stochastic::device::HostBackend;
 pub use stochastic_rs_stochastic::euler::EulerBackend;
+pub use stochastic_rs_stochastic::euler::EulerSystem;
 pub use stochastic_rs_stochastic::euler::EulerKernel;
 pub use stochastic_rs_stochastic::traits::ComplexPathOutput;
 pub use stochastic_rs_stochastic::traits::CurveOutput;

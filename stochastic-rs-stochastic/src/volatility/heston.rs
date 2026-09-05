@@ -14,7 +14,6 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::HestonPow;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -226,7 +225,7 @@ impl<T: FloatExt, S: SeedExt, Sch: HestonScheme, B> Heston<T, S, Sch, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Heston<T, S, Euler, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Heston<T, S, Euler, B> {
   /// Switch to the [`AndersenQe`] variance scheme at compile time. Consumes
   /// the model and re-tags it — zero runtime cost (the fields are moved and
   /// the marker swapped). QE is defined for the square-root (CIR) variance,
@@ -252,29 +251,145 @@ impl<T: FloatExt, S: SeedExt, B> Heston<T, S, Euler, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt, Sch: HestonScheme] Heston<T, S, Sch> { s0, v0, kappa, theta, sigma, rho, mu, n, t, pow, use_sym, seed, cgns, _scheme } via host);
+/// The Euler engine's view of the Heston model. Only the [`Euler`] scheme has
+/// a device form: the quadratic-exponential scheme draws from a
+/// non-central chi-square, which is a different recursion rather than a
+/// different family, so `Heston<_, _, AndersenQe>` stays on the host.
+///
+/// The variance's exponent travels as a parameter rather than picking a
+/// family, since the kernel raises to it either way; whether the variance is
+/// truncated or reflected does pick the family, as it does for every other
+/// square-root diffusion here.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
+  for Heston<T, S, Euler, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let pow_v = match self.pow {
+      HestonPow::Sqrt => T::from_f64_fast(0.5),
+      HestonPow::ThreeHalves => T::from_f64_fast(1.5),
+    };
+    if self.use_sym.unwrap_or(false) {
+      crate::euler::EulerSpec::HestonReflected {
+        mu: self.mu,
+        kappa: self.kappa,
+        theta: self.theta,
+        sigma: self.sigma,
+        rho: self.rho,
+        pow_v,
+      }
+    } else {
+      crate::euler::EulerSpec::Heston {
+        mu: self.mu,
+        kappa: self.kappa,
+        theta: self.theta,
+        sigma: self.sigma,
+        rho: self.rho,
+        pow_v,
+      }
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, Sch: HestonScheme, B: HostBackend> ProcessExt<T>
-  for Heston<T, S, Sch, B>
+  fn initial_state(&self) -> [T; 4] {
+    [
+      self.s0.unwrap_or(T::zero()),
+      self.v0.unwrap_or(T::zero()).max(T::zero()),
+      T::zero(),
+      T::zero(),
+    ]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  /// The correlated-noise source divides the horizon by the number of points,
+  /// not by the number of steps, so the device steps by that same amount.
+  fn time_step(&self) -> T {
+    self.cgns.dt()
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 2] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt, Sch: HestonScheme] Heston<T, S, Sch> { s0, v0, kappa, theta, sigma, rho, mu, n, t, pow, use_sym, seed, cgns, _scheme } via euler);
+
+/// Derives a seed once, at construction, for [`HestonSampler`] to own and
+/// pass into `Sch::simulate` — see that trait method's docs for why.
+/// Deriving (not cloning) is what decorrelates chunks: the derived value
+/// is `self.seed`'s *mixed* next tick, not a raw snapshot, so chunk `i`'s
+/// basis and chunk `i+1`'s basis are hash-scrambled relative to each
+/// other rather than one raw stride apart.
+macro_rules! heston_sampler_impl {
+  ($scheme:ty) => {
+    fn sampler(&self) -> HestonSampler<'_, T, S, $scheme, B> {
+      HestonSampler {
+        model: self,
+        seed: self.seed.derive(),
+      }
+    }
+  };
+}
+
+/// The Euler scheme is the one the engine reproduces, so this half of the
+/// process routes through the backend.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for Heston<T, S, Euler, B>
 {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
-    = HestonSampler<'s, T, S, Sch, B>
+    = HestonSampler<'s, T, S, Euler, B>
   where
     Self: 's;
 
-  /// Derives a seed once, at construction, for [`HestonSampler`] to own and
-  /// pass into `Sch::simulate` — see that trait method's docs for why.
-  /// Deriving (not cloning) is what decorrelates chunks: the derived value
-  /// is `self.seed`'s *mixed* next tick, not a raw snapshot, so chunk `i`'s
-  /// basis and chunk `i+1`'s basis are hash-scrambled relative to each
-  /// other rather than one raw stride apart.
-  fn sampler(&self) -> HestonSampler<'_, T, S, Sch, B> {
-    HestonSampler {
-      model: self,
-      seed: self.seed.derive(),
-    }
+  heston_sampler_impl!(Euler);
+
+  /// Through the Euler engine: on a device both components step in the
+  /// kernel, on the host devices it is this process's own scheme, chunked
+  /// exactly as `ProcessExt` chunks.
+  fn sample(&self) -> [Array1<T>; 2] {
+    self.backend.system_sample(self)
   }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 2]) -> R + Sync) -> Vec<R> {
+    self.backend.system_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 2]> {
+    self.backend.system_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 2], crate::device::DeviceError> {
+    self.backend.try_system_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 2]>, crate::device::DeviceError> {
+    self.backend.try_system_paths(self, m)
+  }
+}
+
+/// The quadratic-exponential scheme draws its variance from a non-central
+/// chi-square rather than stepping an Euler recursion, so it has no family
+/// and stays on the host whatever backend the process carries.
+impl<T: FloatExt, S: SeedExt, B: Send + Sync> ProcessExt<T> for Heston<T, S, AndersenQe, B> {
+  type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = HestonSampler<'s, T, S, AndersenQe, B>
+  where
+    Self: 's;
+
+  heston_sampler_impl!(AndersenQe);
 }
 
 /// Reusable [`Heston`] sampler: borrows the process and owns a seed derived
@@ -288,7 +403,7 @@ pub struct HestonSampler<'a, T: FloatExt, S: SeedExt, Sch: HestonScheme, B> {
   seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt, Sch: HestonScheme, B: HostBackend> PathSampler<T>
+impl<T: FloatExt, S: SeedExt, Sch: HestonScheme, B: Send + Sync> PathSampler<T>
   for HestonSampler<'_, T, S, Sch, B>
 {
   type Output = [Array1<T>; 2];
@@ -302,7 +417,7 @@ impl<T: FloatExt, S: SeedExt, Sch: HestonScheme, B: HostBackend> PathSampler<T>
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> Heston<T, S, Euler, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Heston<T, S, Euler, B> {
   /// Malliavin derivative of the volatility
   ///
   /// The Malliavin derivative of the Heston model is given by

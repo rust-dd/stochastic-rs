@@ -16,7 +16,8 @@
 //! family clamps, truncates or reflects, where the boundary is as much the
 //! point as the mean; [`fractional`] holds the processes whose increments are
 //! fractional Gaussian noise, which the device produces itself and keeps in
-//! its own memory rather than reading back.
+//! its own memory rather than reading back; [`systems`] holds the ones whose
+//! recursion carries more than one state component.
 //!
 //! Split across files only to stay under this crate's line-count limit; all
 //! four compile into one test binary.
@@ -28,4 +29,5 @@ mod device_law {
   pub(crate) mod common;
   pub(crate) mod fractional;
   pub(crate) mod gaussian;
+  pub(crate) mod systems;
 }

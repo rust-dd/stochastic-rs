@@ -20,7 +20,6 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -174,9 +173,59 @@ impl<T: FloatExt> Default for Sabr<T, Unseeded> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Sabr<T, S> { nu, beta, rho, n, f0, alpha0, t, seed, cgns } via host);
+/// The Euler engine's view of SABR. `½ν²` depends on no state, so it is
+/// folded here rather than recomputed on every step of every path.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
+  for Sabr<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::Sabr {
+      beta: self.beta,
+      rho: self.rho,
+      nu: self.nu,
+      half_nu_sq: T::from_f64_fast(0.5) * self.nu * self.nu,
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Sabr<T, S, B> {
+  fn initial_state(&self) -> [T; 4] {
+    [
+      self.f0.unwrap_or(T::zero()),
+      self.alpha0.unwrap_or(T::zero()).max(T::zero()),
+      T::zero(),
+      T::zero(),
+    ]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  /// The correlated-noise source divides the horizon by the number of points,
+  /// not by the number of steps, so the device steps by that same amount.
+  fn time_step(&self) -> T {
+    self.cgns.dt()
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 2] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Sabr<T, S> { nu, beta, rho, n, f0, alpha0, t, seed, cgns } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for Sabr<T, S, B>
+{
   /// `[F path, α path]`: index 0 is the forward `F`, index 1 is the
   /// stochastic-volatility state `α` (see module docs for the SDE).
   type Output = [Array1<T>; 2];
@@ -204,6 +253,32 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Sabr<T, S, B> {
       cgns: self.cgns,
       seed: self.seed.derive(),
     }
+  }
+
+  /// Through the Euler engine: on a device every component steps in the
+  /// kernel, on the host devices it is this process's own sampler, chunked
+  /// exactly as `ProcessExt` chunks.
+  fn sample(&self) -> [Array1<T>; 2] {
+    self.backend.system_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 2]) -> R + Sync) -> Vec<R> {
+    self.backend.system_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 2]> {
+    self.backend.system_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 2], crate::device::DeviceError> {
+    self.backend.try_system_sample(self)
+  }
+
+  fn try_sample_par(
+    &self,
+    m: usize,
+  ) -> Result<Vec<[Array1<T>; 2]>, crate::device::DeviceError> {
+    self.backend.try_system_paths(self, m)
   }
 }
 
@@ -267,7 +342,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for SabrSampler<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> Sabr<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Sabr<T, S, B> {
   /// Calculate the Malliavin derivative of the Sabr model
   ///
   /// The Malliavin derivative of the volaility process in the Sabr model is given by:
