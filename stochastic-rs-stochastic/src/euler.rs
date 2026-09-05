@@ -616,6 +616,14 @@ pub enum EulerSpec<T: FloatExt> {
   },
   /// Up to four correlated Gaussian noises under one lower Cholesky factor.
   CorrelatedNoises4 { l: [T; 10] },
+  /// A log-normal spot under a Markov chain of up to four volatility regimes:
+  /// one volatility per regime and, per row of the one-step transition
+  /// matrix, the three cumulative thresholds the successor is drawn against.
+  RegimeSwitching {
+    mu: T,
+    sigma: [T; 4],
+    thresholds: [[T; 3]; 4],
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1208,6 +1216,19 @@ impl<T: FloatExt> EulerSpec<T> {
         (Family::CorrelatedGeometric4.code(), pad(values))
       }
       EulerSpec::CorrelatedNoises4 { l } => (Family::CorrelatedNoises4.code(), pad(l)),
+      EulerSpec::RegimeSwitching {
+        mu,
+        sigma,
+        thresholds,
+      } => {
+        let mut values = [T::zero(); 17];
+        values[0] = mu;
+        values[1..5].copy_from_slice(&sigma);
+        for (row, cuts) in thresholds.iter().enumerate() {
+          values[5 + 3 * row..8 + 3 * row].copy_from_slice(cuts);
+        }
+        (Family::RegimeSwitching.code(), pad(values))
+      }
     }
   }
 }

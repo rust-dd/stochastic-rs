@@ -20,7 +20,6 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -189,9 +188,90 @@ fn mat_mul<T: FloatExt>(a: &Array2<T>, b: &Array2<T>) -> Array2<T> {
   c
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] RegimeSwitchingDiffusion<T, S> { mu, q_matrix, vols, initial_state, n, s0, t, seed } via host);
+/// How many regimes a launch carries: the family holds four volatilities and
+/// four rows of thresholds. A chain with more stays on its host sampler
+/// whatever the backend.
+const DEVICE_REGIMES: usize = 4;
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for RegimeSwitchingDiffusion<T, S, B> {
+/// The Euler engine's view: the one-step transition matrix `exp(Q dt)` is
+/// computed once on the host — the same matrix the host sampler uses — and
+/// travels as per-row cumulative thresholds, so the kernel's regime draw is
+/// the host's inverse CDF on a uniform of its own. The regime index rides in
+/// the second state slot.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
+  for RegimeSwitchingDiffusion<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let m = self.vols.len();
+    let p_matrix = self.transition_prob_matrix(self.dt());
+    let sigma = std::array::from_fn(|r| if r < m { self.vols[r] } else { T::zero() });
+    let thresholds = std::array::from_fn(|r| {
+      let mut cum = T::zero();
+      std::array::from_fn(|j| {
+        if r < m && j < m {
+          cum += p_matrix[[r, j]];
+          cum
+        } else {
+          T::one()
+        }
+      })
+    });
+    crate::euler::EulerSpec::RegimeSwitching {
+      mu: self.mu,
+      sigma,
+      thresholds,
+    }
+  }
+
+  fn initial_state(&self) -> [T; 4] {
+    [
+      self.s0.unwrap_or(T::one()),
+      T::from_usize_(self.initial_state),
+      T::zero(),
+      T::zero(),
+    ]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.dt()
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 2] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B> RegimeSwitchingDiffusion<T, S, B> {
+  /// The grid spacing: `n - 1` increments over the horizon, zero when the
+  /// grid has no increment to take.
+  fn dt(&self) -> T {
+    if self.n > 1 {
+      self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    } else {
+      T::zero()
+    }
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] RegimeSwitchingDiffusion<T, S> { mu, q_matrix, vols, initial_state, n, s0, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for RegimeSwitchingDiffusion<T, S, B>
+{
   /// Returns [stock_prices, regime_states] where regime_states are cast to T.
   type Output = [Array1<T>; 2];
   type Sampler<'s>
@@ -213,6 +293,52 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for RegimeSwitchingD
       s0: self.s0.unwrap_or(T::one()),
       t: self.t,
       seed: self.seed.derive(),
+    }
+  }
+
+  /// Through the Euler engine for up to four regimes, which is what the
+  /// family carries: on a device the spot and the chain are stepped in one
+  /// kernel. A chain with more regimes stays on this process's own sampler
+  /// whatever the backend.
+  fn sample(&self) -> [Array1<T>; 2] {
+    if self.vols.len() <= DEVICE_REGIMES {
+      self.backend.system_sample(self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 2]) -> R + Sync) -> Vec<R> {
+    if self.vols.len() <= DEVICE_REGIMES {
+      self.backend.system_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 2]> {
+    if self.vols.len() <= DEVICE_REGIMES {
+      self.backend.system_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 2], crate::device::DeviceError> {
+    if self.vols.len() <= DEVICE_REGIMES {
+      self.backend.try_system_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 2]>, crate::device::DeviceError> {
+    if self.vols.len() <= DEVICE_REGIMES {
+      self.backend.try_system_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }

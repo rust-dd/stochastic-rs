@@ -334,6 +334,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::WuZhang { .. } => "WuZhang",
     EulerSpec::CorrelatedGeometric4 { .. } => "CorrelatedGeometric4",
     EulerSpec::CorrelatedNoises4 { .. } => "CorrelatedNoises4",
+    EulerSpec::RegimeSwitching { .. } => "RegimeSwitching",
   }
 }
 
@@ -1053,6 +1054,19 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         lambda: 0.8,
       },
       x0: [0.03, 0.04],
+    },
+    SystemProbe {
+      spec: EulerSpec::RegimeSwitching {
+        mu: 0.03,
+        sigma: [0.1, 0.25, 0.4, 0.0],
+        thresholds: [
+          [0.9, 0.97, 1.0],
+          [0.05, 0.92, 1.0],
+          [0.02, 0.1, 1.0],
+          [1.0, 1.0, 1.0],
+        ],
+      },
+      x0: [100.0, 1.0],
     },
     SystemProbe {
       spec: EulerSpec::ComplexFractionalOu {

@@ -2001,6 +2001,32 @@ euler_families! {
     }
     report { a, b, c, d },
 
+  /// A log-normal spot whose volatility is set by a Markov chain of up to
+  /// four regimes. The regime rides in a state slot as `0..3`; `g0..g3` are
+  /// the regimes' volatilities and `c_r1..c_r3` the cumulative one-step
+  /// transition thresholds of row `r`, tabulated on the host from `exp(Q dt)`.
+  /// The spot steps under the regime it is in, then the regime draws its
+  /// successor from that row by inverse CDF on the step's uniform — the host's
+  /// own order. A chain with fewer regimes pads the rest with thresholds of
+  /// one, which no draw reaches.
+  93 => RegimeSwitching {
+    mu, g0, g1, g2, g3, c01, c02, c03, c11, c12, c13, c21, c22, c23, c31, c32, c33
+  }
+    state (s, z)
+    noise (dw)
+    step {
+      bind r1 = geq(z, lit(0.5));
+      bind r2 = geq(z, lit(1.5));
+      bind r3 = geq(z, lit(2.5));
+      bind sig = pick(r3, g3, pick(r2, g2, pick(r1, g1, g0)));
+      bind k1 = pick(r3, c31, pick(r2, c21, pick(r1, c11, c01)));
+      bind k2 = pick(r3, c32, pick(r2, c22, pick(r1, c12, c02)));
+      bind k3 = pick(r3, c33, pick(r2, c23, pick(r1, c13, c03)));
+      s * exp((mu - sig * sig * lit(0.5)) * dt + sig * dw),
+      pick(leq(u, k1), lit(0.0), pick(leq(u, k2), lit(1.0), pick(leq(u, k3), lit(2.0), lit(3.0))))
+    }
+    report { s, z },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)
