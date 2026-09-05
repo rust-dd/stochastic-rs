@@ -13,12 +13,12 @@ backends, and what the rest do.
 | Family | Processes | Capability bound | `Cpu` | `Accelerate` | `Metal` | `Cuda` | `Cubecl` |
 |---|---|---|---|---|---|---|---|
 | fGN noise | `Fgn`, `Cfgns` (2) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` | CubeCL FFT, `f32` only |
-| Euler engine, one component | 54 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
-| Euler engine, systems | 20 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
+| Euler engine, one component | 59 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
+| Euler engine, systems | 21 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
 | Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `FVasicek` (6, counted above) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same MSL kernel | fGN pipeline feeds the same NVRTC kernel | fGN pipeline feeds the same CubeCL kernel |
-| Host only | the remaining 45 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
+| Host only | the remaining 39 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
 
-The 74 processes on the engine cover the diffusions, the stochastic-volatility
+The 80 processes on the engine cover the diffusions, the stochastic-volatility
 models under both their Euler and quadratic-exponential schemes (`Heston`,
 `HestonLog`, `DoubleHeston`, `Heston2D`, `Sabr`, `Bergomi`,
 `HestonStochCorr`, `BatesSvj`, `Hkde`), the short-rate models including the
@@ -27,23 +27,22 @@ curve-driven ones (`HullWhite`, `HullWhite2F`, `HoLee`, `BlackKarasinski`,
 `FVasicek`), the fractional processes, the jump models (`MjdLog`, `BatesSvj`,
 `Hkde`, `HawkesJD`, `DuffieKanJumpExp`), the Lévy processes whose increment
 is one draw with no rejection (`Ig`, `Nig`, `IGSubordinator`,
-`PoissonSubordinator`, `AlphaStableSubordinator`), the discrete-time
-conditional-variance models at order (1,1) (`Arch`, `Garch`, `GjrGarch`,
-`Agarch`, `Egarch`), the first-order lag models (`ARp`, `MAq`) and the noise
-generators (`Wn`, `Gn`, `Cgns`).
+`PoissonSubordinator`, `AlphaStableSubordinator`, `GammaSubordinator`,
+`TemperedStableSubordinator`, `Vg`, `BilateralGamma`, `BilateralGammaMotion`,
+`Bns`), the discrete-time conditional-variance models at order (1,1)
+(`Arch`, `Garch`, `GjrGarch`, `Agarch`, `Egarch`), the first-order lag models
+(`ARp`, `MAq`) and the noise generators (`Wn`, `Gn`, `Cgns`).
 
 What stays on the host, and why:
 
-- **Draws that need rejection or a series** (`Bns`, `Vg`, `BilateralGamma`,
-  `GammaSubordinator`, `TemperedStableSubordinator`,
-  `InverseAlphaStableSubordinator`, `Ctrw`, `Cgmy`, `Cts`, `KoBoL`, `Rdts`,
-  `Svcgmy`): the kernel draws a Poisson count, a uniform pair and a jump-size
-  sum per step, all in bounded work. A gamma draw needs rejection, whose loop
-  has no bound; the tempered-stable ones draw a whole series per step; and a
-  continuous-time random walk is event-driven rather than grid-driven.
+- **Series representations over the whole horizon** (`Cgmy`, `Cts`, `KoBoL`,
+  `Rdts`, `Svcgmy`): the path is built by drawing a fixed number of jumps for
+  the whole horizon, sorting them by arrival time and accumulating onto the
+  grid. That is a global construction with a sort, not a step recursion.
 - **Point processes on their own clock** (`Poisson` in horizon mode,
-  `Hawkes`, `MultivariateHawkes`): the output length is the number of events,
-  not the grid.
+  `Hawkes`, `MultivariateHawkes`, `Ctrw`) and inversions
+  (`InverseAlphaStableSubordinator`): the output length is the number of
+  events, or the step needs a search rather than a draw.
 - **Lag models beyond order one** (`Arima`, `Sarima`, and any of `ARp`,
   `MAq` or the GARCH family built at a higher order): the recursion reads
   back as many past values as the order, which the engine's four state slots
@@ -58,13 +57,15 @@ What stays on the host, and why:
 - **Closure-driven or discrete-state** (`TransformedOU`,
   `RegimeSwitchingDiffusion`): the coefficient is a user function or a Markov
   chain rather than an expression over the state.
-- **Noise transforms over a whole draw** (`Mcgns`, `Cfgns`, `Cfbms`): the
-  second row needs a second fractional or Cholesky-correlated stream, and the
-  kernel reads one increment buffer.
+- **Noise transforms over a second stream** (`Mcgns`, `Cfgns`, `Cfbms`,
+  `Cfou`): the second row needs a second fractional or Cholesky-correlated
+  stream, and the kernel reads one increment buffer. `Fgn` itself has a
+  device path of its own — the pipeline in the first row of the matrix — and
+  is listed here only because it declares no Euler family.
 
 ## What a family is
 
-A process reaches a device by declaring which of the engine's **77 families**
+A process reaches a device by declaring which of the engine's **83 families**
 it steps, not by writing a kernel. A family is one entry in
 `stochastic-rs-stochastic/src/euler/families.rs` — its parameters, its state
 components, its noise components, one step expression per component and one
@@ -75,7 +76,8 @@ is a declaration plus an `EulerCoefficients` (one component) or `EulerSystem`
 
 The engine's kernels carry four state slots, four independent noise
 components, twenty scalar parameters, one time-varying coefficient, two
-uniforms, a Poisson jump count and the sum of that step's jump sizes. A
+uniforms, a Poisson jump count, the sum of that step's jump sizes and up to
+two Gamma draws. A
 process whose first grid point is itself a draw — a conditional-variance
 model's series, a noise generator — asks the launch to step before writing
 it. A model that wants correlated shocks draws the components independently
@@ -256,8 +258,8 @@ would change their pinned streams, and `Sde` drives its own loop over
 caller-supplied closures. Their `.on::<B>()` compiles and does nothing, which
 is a wart to close rather than a feature.
 
-What each remaining group would take: a draw that needs rejection needs an
-unbounded loop, which a kernel cannot promise to finish; a lag model needs state proportional to its order rather than four
+What each remaining group would take: a series representation needs a sort
+over the whole horizon; a lag model needs state proportional to its order rather than four
 slots; the Volterra and rough family needs a separate `O(n·N')` kernel
 because its step is a convolution; and a dynamic-dimension model needs the
 component count to be a launch argument rather than a property of its
