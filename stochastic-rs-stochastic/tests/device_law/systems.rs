@@ -21,6 +21,7 @@ use stochastic_rs_stochastic::volatility::heston::Heston;
 use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
 use stochastic_rs_stochastic::volatility::heston2d::Heston2D;
 use stochastic_rs_stochastic::volatility::hkde::Hkde;
+use stochastic_rs_stochastic::volatility::multifactor_heston::MultifactorHeston;
 use stochastic_rs_stochastic::volatility::multifactor_sabr::MultifactorSabr;
 use stochastic_rs_stochastic::volatility::sabr::Sabr;
 
@@ -814,5 +815,145 @@ fn dynamic_sabr_agrees_with_the_cpu_law() {
     spread(&device, 0),
     0.10,
     "dynamic SABR terminal forward spread",
+  );
+}
+
+/// The two-factor model rides the double-Heston family with its factors in
+/// the family's own slots. Beyond the spot and variance laws, each factor's
+/// correlation with the spot is compared, since a launch that dropped or
+/// swapped a `rho_k` keeps every marginal exactly right and moves only that.
+#[test]
+fn multifactor_heston_agrees_with_the_cpu_law() {
+  let build = || {
+    MultifactorHeston::<f32, 2, _>::new(
+      Some(100.0),
+      [0.04, 0.02],
+      [2.0, 1.0],
+      [0.04, 0.03],
+      [0.3, 0.2],
+      [-0.7, -0.3],
+      0.03,
+      253,
+      Some(1.0),
+      Deterministic::new(67),
+    )
+  };
+  const PATHS: usize = 4 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert_eq!(device.len(), PATHS);
+  assert_eq!(device[0].0.len(), 253);
+  assert_eq!(device[0].0[0], 100.0, "the spot starts at s0");
+  assert_eq!(device[0].1[0][0], 0.04, "the first factor starts at its v0");
+  assert_eq!(
+    device[0].1[1][0], 0.02,
+    "the second factor starts at its v0"
+  );
+  assert!(
+    device.iter().all(|(s, v)| {
+      s.iter().all(|x| x.is_finite())
+        && v
+          .iter()
+          .all(|f| f.iter().all(|x| x.is_finite() && *x >= 0.0))
+    }),
+    "multifactor Heston: a device path left its domain"
+  );
+  let last = 252;
+  let log_spot = |paths: &[(Array1<f32>, [Array1<f32>; 2])]| -> Vec<f64> {
+    paths
+      .iter()
+      .map(|(s, _)| (s[last] as f64 / 100.0).ln())
+      .collect()
+  };
+  let factor = |paths: &[(Array1<f32>, [Array1<f32>; 2])], k: usize| -> Vec<f64> {
+    paths.iter().map(|(_, v)| v[k][last] as f64).collect()
+  };
+  let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
+  let sd = |v: &[f64]| {
+    let m = mean(v);
+    (v.iter().map(|x| (x - m).powi(2)).sum::<f64>() / v.len() as f64).sqrt()
+  };
+  let corr = |a: &[f64], b: &[f64]| {
+    let (ma, mb) = (mean(a), mean(b));
+    let (mut sab, mut saa, mut sbb) = (0.0, 0.0, 0.0);
+    for (x, y) in a.iter().zip(b) {
+      sab += (x - ma) * (y - mb);
+      saa += (x - ma).powi(2);
+      sbb += (y - mb).powi(2);
+    }
+    sab / (saa * sbb).sqrt()
+  };
+  let (hs, ds) = (log_spot(&host), log_spot(&device));
+  assert!(
+    (mean(&hs) - mean(&ds)).abs() < 0.01,
+    "multifactor Heston log-spot mean: host {}, device {}",
+    mean(&hs),
+    mean(&ds)
+  );
+  agrees(sd(&hs), sd(&ds), 0.05, "multifactor Heston log-spot spread");
+  for k in 0..2 {
+    let (hv, dv) = (factor(&host, k), factor(&device, k));
+    assert!(
+      (mean(&hv) - mean(&dv)).abs() < 0.002,
+      "multifactor Heston factor {k} terminal mean: host {}, device {}",
+      mean(&hv),
+      mean(&dv)
+    );
+    agrees(
+      sd(&hv),
+      sd(&dv),
+      0.08,
+      &format!("multifactor Heston factor {k} spread"),
+    );
+    let (hc, dc) = (corr(&hs, &hv), corr(&ds, &dv));
+    assert!(
+      (hc - dc).abs() < 0.05,
+      "multifactor Heston spot/factor-{k} correlation: host {hc}, device {dc}"
+    );
+  }
+}
+
+/// One factor rides the same family with the second factor zeroed, and three
+/// factors stay on the host whatever the backend: both must still produce
+/// the model's own shape and law.
+#[test]
+fn multifactor_heston_other_factor_counts_still_sample() {
+  let one = MultifactorHeston::<f32, 1, _>::new(
+    Some(100.0),
+    [0.04],
+    [2.0],
+    [0.04],
+    [0.3],
+    [-0.7],
+    0.03,
+    64,
+    Some(1.0),
+    Deterministic::new(71),
+  )
+  .on::<Device>()
+  .sample_par(32);
+  assert!(
+    one
+      .iter()
+      .all(|(s, v)| s.len() == 64 && v[0].len() == 64 && s.iter().all(|x| x.is_finite()))
+  );
+  let three = MultifactorHeston::<f32, 3, _>::new(
+    Some(100.0),
+    [0.04, 0.02, 0.01],
+    [2.0, 1.0, 0.5],
+    [0.04, 0.03, 0.02],
+    [0.3, 0.2, 0.1],
+    [-0.7, -0.3, 0.1],
+    0.03,
+    64,
+    Some(1.0),
+    Deterministic::new(73),
+  )
+  .on::<Device>()
+  .sample_par(32);
+  assert!(
+    three
+      .iter()
+      .all(|(s, v)| s.len() == 64 && v.len() == 3 && s.iter().all(|x| x.is_finite()))
   );
 }

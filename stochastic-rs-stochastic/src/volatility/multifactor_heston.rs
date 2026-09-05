@@ -37,7 +37,6 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -119,11 +118,131 @@ impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHeston<T, K, S> {
   }
 }
 
-impl<T: FloatExt, const K: usize, S: SeedExt, B> MultifactorHeston<T, K, S, B> {}
+/// How many variance factors a launch carries: the double-Heston family has
+/// two, and a one-factor model rides it with the second factor zeroed. A model
+/// with more stays on its host sampler whatever the backend.
+const DEVICE_FACTORS: usize = 2;
 
-backend_switch!([T: FloatExt, const K: usize, S: SeedExt] MultifactorHeston<T, K, S> { s0, v0, kappa, theta, sigma, rho, mu, n, t, seed, cgns } via host);
+/// The model in the double-Heston family's three slots — spot, first variance,
+/// second variance — which is what carries a launch when `K <= 2`: a one-factor
+/// model pads the second variance with zero speed, level, vol-of-vol,
+/// correlation and start, so it stays at zero and contributes nothing to the
+/// spot. It borrows rather than owns, so the seed it advances is the process's
+/// own.
+#[doc(hidden)]
+pub struct MultifactorHestonLaunch<'a, T: FloatExt, const K: usize, S: SeedExt, B>(
+  &'a MultifactorHeston<T, K, S, B>,
+);
 
-impl<T: FloatExt, const K: usize, S: SeedExt, B: HostBackend> ProcessExt<T>
+impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for MultifactorHestonLaunch<'_, T, K, S, B>
+{
+  type Output = [Array1<T>; 3];
+  type Sampler<'s>
+    = MultifactorHestonLaunchSampler<T, K, S>
+  where
+    Self: 's;
+
+  fn sampler(&self) -> MultifactorHestonLaunchSampler<T, K, S> {
+    MultifactorHestonLaunchSampler {
+      inner: <MultifactorHeston<T, K, S, B> as ProcessExt<T>>::sampler(self.0),
+    }
+  }
+}
+
+/// [`MultifactorHestonLaunch`]'s sampler: the model's own sampler, its spot
+/// and factors lifted into the three slots.
+#[doc(hidden)]
+pub struct MultifactorHestonLaunchSampler<T: FloatExt, const K: usize, S: SeedExt> {
+  inner: MultifactorHestonSampler<T, K, S>,
+}
+
+impl<T: FloatExt, const K: usize, S: SeedExt> PathSampler<T>
+  for MultifactorHestonLaunchSampler<T, K, S>
+{
+  type Output = [Array1<T>; 3];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 3]) {
+    *out = self.sample();
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 3] {
+    let (s, v) = self.inner.sample();
+    let n = s.len();
+    let factor = |k: usize| v.get(k).cloned().unwrap_or_else(|| Array1::zeros(n));
+    [s, factor(0), factor(1)]
+  }
+}
+
+impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>>
+  crate::euler::EulerSystem<T, 3> for MultifactorHestonLaunch<'_, T, K, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let p = self.0;
+    let at = |arr: &[T; K], k: usize| if k < K { arr[k] } else { T::zero() };
+    crate::euler::EulerSpec::DoubleHeston {
+      mu: p.mu,
+      kappa1: at(&p.kappa, 0),
+      theta1: at(&p.theta, 0),
+      sigma1: at(&p.sigma, 0),
+      rho1: at(&p.rho, 0),
+      kappa2: at(&p.kappa, 1),
+      theta2: at(&p.theta, 1),
+      sigma2: at(&p.sigma, 1),
+      rho2: at(&p.rho, 1),
+    }
+  }
+
+  /// The spot and the factors, the latter floored at zero exactly as the
+  /// host sampler floors its own starting variances.
+  fn initial_state(&self) -> [T; 4] {
+    let p = self.0;
+    let v0 = |k: usize| {
+      if k < K {
+        p.v0[k].max(T::zero())
+      } else {
+        T::zero()
+      }
+    };
+    [p.s0.unwrap_or(T::zero()), v0(0), v0(1), T::zero()]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.0.n
+  }
+
+  fn horizon(&self) -> T {
+    self.0.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.0.cgns[0].dt()
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.0.seed)
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 3] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+/// The three slots as the `(spot, [variance; K])` the model reports; a padded
+/// slot is dropped.
+fn slots_to_output<T: FloatExt, const K: usize>(
+  slots: [Array1<T>; 3],
+) -> (Array1<T>, [Array1<T>; K]) {
+  let [s, v1, v2] = slots;
+  let factors = [v1, v2];
+  (s, std::array::from_fn(|k| factors[k].clone()))
+}
+
+backend_switch!([T: FloatExt, const K: usize, S: SeedExt] MultifactorHeston<T, K, S> { s0, v0, kappa, theta, sigma, rho, mu, n, t, seed, cgns } via euler);
+
+impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for MultifactorHeston<T, K, S, B>
 {
   /// `(stock_path, [variance_path; K])`.
@@ -149,6 +268,80 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: HostBackend> ProcessExt<T>
       dt: self.cgns[0].dt(),
       cgns: self.cgns.clone(),
       seed: self.seed.derive(),
+    }
+  }
+
+  /// Through the Euler engine for one or two factors, which is what the
+  /// double-Heston family carries: on a device the spot and both factors are
+  /// stepped in one kernel. A model with more factors stays on this
+  /// process's own sampler whatever the backend, since a launch has four
+  /// shocks and each factor takes two.
+  fn sample(&self) -> (Array1<T>, [Array1<T>; K]) {
+    if K <= DEVICE_FACTORS {
+      slots_to_output(self.backend.system_sample(&MultifactorHestonLaunch(self)))
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(
+    &self,
+    m: usize,
+    f: impl Fn(&(Array1<T>, [Array1<T>; K])) -> R + Sync,
+  ) -> Vec<R> {
+    if K <= DEVICE_FACTORS {
+      self
+        .backend
+        .system_paths_map(&MultifactorHestonLaunch(self), m, |slots| {
+          f(&slots_to_output(slots.clone()))
+        })
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<(Array1<T>, [Array1<T>; K])> {
+    if K <= DEVICE_FACTORS {
+      self
+        .backend
+        .system_paths(&MultifactorHestonLaunch(self), m)
+        .into_iter()
+        .map(slots_to_output)
+        .collect()
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<(Array1<T>, [Array1<T>; K]), crate::device::DeviceError> {
+    if K <= DEVICE_FACTORS {
+      Ok(slots_to_output(
+        self
+          .backend
+          .try_system_sample(&MultifactorHestonLaunch(self))?,
+      ))
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(
+    &self,
+    m: usize,
+  ) -> Result<Vec<(Array1<T>, [Array1<T>; K])>, crate::device::DeviceError> {
+    if K <= DEVICE_FACTORS {
+      Ok(
+        self
+          .backend
+          .try_system_paths(&MultifactorHestonLaunch(self), m)?
+          .into_iter()
+          .map(slots_to_output)
+          .collect(),
+      )
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }

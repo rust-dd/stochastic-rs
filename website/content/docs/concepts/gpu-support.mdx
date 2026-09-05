@@ -14,11 +14,11 @@ backends, and what the rest do.
 |---|---|---|---|---|---|---|---|
 | fGN noise | `Fgn` (1) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` | CubeCL FFT, `f32` only |
 | Euler engine, one component | 68 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
-| Euler engine, systems | 24 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
+| Euler engine, systems | 25 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
 | Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `FVasicek`, `Cfgns`, `Cfbms`, `Cfou` (9, counted above) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same MSL kernel | fGN pipeline feeds the same NVRTC kernel | fGN pipeline feeds the same CubeCL kernel |
-| Host only | the remaining 26 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
+| Host only | the remaining 25 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
 
-The 92 processes on the engine cover the diffusions, the stochastic-volatility
+The 93 processes on the engine cover the diffusions, the stochastic-volatility
 models under both their Euler and quadratic-exponential schemes (`Heston`,
 `HestonLog`, `DoubleHeston`, `Heston2D`, `Sabr`, `Bergomi`,
 `HestonStochCorr`, `BatesSvj`, `Hkde`), the short-rate models including the
@@ -40,8 +40,10 @@ models whose rows are independent copies of one small family (`Bgm`'s forward
 rates, `Adg`'s affine factors, `WuZhangD`'s rate–variance pairs — one launch
 per row), the Cholesky-correlated baskets of up to four streams (`MultiGbm`,
 `Mcgns` — one launch, the factor folded into the family's ten lower-triangle
-slots; a wider basket stays on the host whatever the backend) and `Poisson`
-in its count mode.
+slots; a wider basket stays on the host whatever the backend), the one- and
+two-factor `MultifactorHeston` (which rides the double-Heston family with a
+zeroed second factor when it has one; three or more stay on the host) and
+`Poisson` in its count mode.
 
 What stays on the host, and why. The engine steps a bounded forward
 recursion over four scalar state slots, so what rules a process out is
@@ -87,12 +89,10 @@ grid:
   device; above it the process says so rather than falling back silently.
 - **A two-dimensional sheet rather than a path** (`Fbs`): its output is an
   `m x n` field from a two-dimensional FFT.
-- **A tuple output at a compile-time factor count** (`MultifactorHeston`):
-  at `K = 1` and `K = 2` its step is exactly the existing `Heston` and
-  `DoubleHeston` families, but the launch would need `D = K + 1` components,
-  which is a const expression the language does not yet let a generic impl
-  form. `K >= 3` needs `2K` noise components, past the four the kernel
-  carries.
+- **More variance factors than a launch's four shocks carry**
+  (`MultifactorHeston` at `K >= 3`): each factor takes two shocks, so one
+  and two factors ride the double-Heston family and three or more stay on the
+  host whatever the backend.
 
 ## What a family is
 
