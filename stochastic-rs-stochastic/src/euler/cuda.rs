@@ -40,7 +40,10 @@ const CUDA_HEADER: &str = r#"extern "C" __global__ void euler_paths_REAL(
     unsigned int jump_law, REAL jump_a, REAL jump_b, REAL jump_c,
     unsigned int step_first,
     unsigned int gamma_law, REAL g1_shape, REAL g1_scale, REAL g1_per,
-    REAL g2_shape, REAL g2_scale, REAL g2_per)
+    REAL g2_shape, REAL g2_scale, REAL g2_per,
+    const REAL* __restrict__ lift_decay, const REAL* __restrict__ lift_weight,
+    const REAL* __restrict__ lift_drift_scale, unsigned int has_lift, unsigned int lift_n,
+    REAL lift_db, REAL lift_fb, REAL lift_x0)
 {
     unsigned int path = blockIdx.x * blockDim.x + threadIdx.x;
     const REAL x0[4] = { x00, x01, x02, x03 };
@@ -151,6 +154,12 @@ fn run<R>(
   g2_shape: R,
   g2_scale: R,
   g2_per: R,
+  lift: [&[R]; 3],
+  has_lift: u32,
+  lift_n: u32,
+  lift_db: R,
+  lift_fb: R,
+  lift_x0: R,
 ) -> Result<Vec<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
@@ -184,6 +193,20 @@ where
   // The kernel always binds the curve pointer; an unused slot gets one
   // element rather than a null.
   let use_curve = n_curves;
+  // The three lift tables; an unused table gets one element rather than a
+  // null, as the increment and curve pointers do.
+  let mut d_lift = Vec::with_capacity(3);
+  for table in lift {
+    d_lift.push(if table.is_empty() {
+      stream
+        .alloc_zeros::<R>(1)
+        .map_err(|e| DeviceError::Launch(format!("alloc lift: {e}")))?
+    } else {
+      stream
+        .clone_htod(table)
+        .map_err(|e| DeviceError::Launch(format!("htod lift: {e}")))?
+    });
+  }
   let d_curve = if curve.is_empty() {
     stream
       .alloc_zeros::<R>(1)
@@ -229,6 +252,14 @@ where
       .arg(&g2_shape)
       .arg(&g2_scale)
       .arg(&g2_per)
+      .arg(&d_lift[0])
+      .arg(&d_lift[1])
+      .arg(&d_lift[2])
+      .arg(&has_lift)
+      .arg(&lift_n)
+      .arg(&lift_db)
+      .arg(&lift_fb)
+      .arg(&lift_x0)
       .launch(LaunchConfig::for_num_elems(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
@@ -260,6 +291,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.jump_sizes(),
       process.step_first(),
       process.gamma_draws(),
+      process.lift_spec(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -291,6 +323,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.jump_sizes(),
       process.step_first(),
       process.gamma_draws(),
+      process.lift_spec(),
     )
   }
 
@@ -312,11 +345,12 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       return self.euler_kernel(process, 0, m, seed);
     }
     // The pipelined batch hashes its own Gaussian increments and knows
-    // nothing of a fractional pipeline, so a process with one goes chunk by
-    // chunk through the single launch instead, which runs the pipeline at
-    // the right row offset for each chunk. Sending it through the pipeline
-    // would silently step Brownian motion in place of the fractional one.
-    if process.fgn_spec().is_some() {
+    // nothing of a fractional pipeline or a Markov lift, so a process with
+    // either goes chunk by chunk through the single launch instead, which
+    // runs the pipeline at the right row offset for each chunk. Sending it
+    // through the pipeline would silently step Brownian motion in place of
+    // the fractional or rough one.
+    if process.fgn_spec().is_some() || process.lift_spec().is_some() {
       let mut out = Array2::<T>::zeros((m, n));
       let mut first = 0;
       while first < m {
@@ -343,6 +377,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.jump_sizes(),
       process.step_first(),
       process.gamma_draws(),
+      None,
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -365,9 +400,21 @@ fn device_paths<T: FloatExt>(
   sizes: Option<crate::euler::JumpSizes<T>>,
   step_first: bool,
   gammas: Option<crate::euler::GammaDraws<T>>,
+  lift: Option<crate::euler::LiftSpec<'_, T>>,
 ) -> Result<Array3<T>> {
   {
     let (curve, n_curves) = crate::euler::flatten_curves(curves, n);
+    let (lift_tables, has_lift, lift_n, lift_db, lift_fb, lift_x0) =
+      crate::euler::encode_lift(lift.as_ref());
+    let lift_tables64: Vec<Vec<f64>> = lift_tables
+      .iter()
+      .map(|t| t.iter().map(|v| v.to_f64().unwrap_or(0.0)).collect())
+      .collect();
+    let (lift_db, lift_fb, lift_x0) = (
+      lift_db.to_f64().unwrap_or(0.0),
+      lift_fb.to_f64().unwrap_or(0.0),
+      lift_x0.to_f64().unwrap_or(0.0),
+    );
     let (family, params) = spec.encode();
     let arity = super::families::Family::from_code(family).expect("a declared family");
     let use_jumps = u32::from(jump_lambda.is_some());
@@ -451,12 +498,22 @@ fn device_paths<T: FloatExt>(
         gs2,
         gc2,
         gp2,
+        [&lift_tables64[0], &lift_tables64[1], &lift_tables64[2]],
+        has_lift,
+        lift_n,
+        lift_db,
+        lift_fb,
+        lift_x0,
       )?;
       let out = Array3::<f64>::from_shape_vec((planes, m, n), data)
         .expect("the kernel returns components * m * n values");
       return Ok(unsafe { std::mem::transmute::<Array3<f64>, Array3<T>>(out) });
     }
     let p32: [f32; crate::euler::PARAM_SLOTS] = std::array::from_fn(|i| p64[i] as f32);
+    let lift_tables32: Vec<Vec<f32>> = lift_tables64
+      .iter()
+      .map(|t| t.iter().map(|v| *v as f32).collect())
+      .collect();
     let incs = match fgn.as_ref() {
       Some(spec) => {
         let eigs: Vec<f32> = spec
@@ -509,6 +566,12 @@ fn device_paths<T: FloatExt>(
       gs2 as f32,
       gc2 as f32,
       gp2 as f32,
+      [&lift_tables32[0], &lift_tables32[1], &lift_tables32[2]],
+      has_lift,
+      lift_n,
+      lift_db as f32,
+      lift_fb as f32,
+      lift_x0 as f32,
     )?;
     assert!(
       TypeId::of::<T>() == TypeId::of::<f32>(),
@@ -552,6 +615,12 @@ fn launch_chunk<R>(
   g2_shape: R,
   g2_scale: R,
   g2_per: R,
+  lift: [&[R]; 3],
+  has_lift: u32,
+  lift_n: u32,
+  lift_db: R,
+  lift_fb: R,
+  lift_x0: R,
 ) -> Result<CudaSlice<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
@@ -581,6 +650,20 @@ where
   // The kernel always binds the curve pointer; an unused slot gets one
   // element rather than a null.
   let use_curve = n_curves;
+  // The three lift tables; an unused table gets one element rather than a
+  // null, as the increment and curve pointers do.
+  let mut d_lift = Vec::with_capacity(3);
+  for table in lift {
+    d_lift.push(if table.is_empty() {
+      stream
+        .alloc_zeros::<R>(1)
+        .map_err(|e| DeviceError::Launch(format!("alloc lift: {e}")))?
+    } else {
+      stream
+        .clone_htod(table)
+        .map_err(|e| DeviceError::Launch(format!("htod lift: {e}")))?
+    });
+  }
   let d_curve = if curve.is_empty() {
     stream
       .alloc_zeros::<R>(1)
@@ -626,6 +709,14 @@ where
       .arg(&g2_shape)
       .arg(&g2_scale)
       .arg(&g2_per)
+      .arg(&d_lift[0])
+      .arg(&d_lift[1])
+      .arg(&d_lift[2])
+      .arg(&has_lift)
+      .arg(&lift_n)
+      .arg(&lift_db)
+      .arg(&lift_fb)
+      .arg(&lift_x0)
       .launch(LaunchConfig::for_num_elems(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
@@ -739,6 +830,12 @@ where
       g2_shape,
       g2_scale,
       g2_per,
+      [&[], &[], &[]],
+      0,
+      0,
+      R::zero(),
+      R::zero(),
+      R::zero(),
     )?;
     let dst = unsafe { std::slice::from_raw_parts_mut(staging[slot].ptr, planes * len * n) };
     streams[slot]
@@ -769,8 +866,10 @@ fn pipelined_paths<T: FloatExt>(
   sizes: Option<crate::euler::JumpSizes<T>>,
   step_first: bool,
   gammas: Option<crate::euler::GammaDraws<T>>,
+  lift: Option<crate::euler::LiftSpec<'_, T>>,
 ) -> Result<Array3<T>> {
   let (curve, n_curves) = crate::euler::flatten_curves(curves, n);
+  debug_assert!(lift.is_none(), "the pipelined batch carries no lift");
   let (family, params) = spec.encode();
   let arity = super::families::Family::from_code(family).expect("a declared family");
   let use_jumps = u32::from(jump_lambda.is_some());

@@ -26,6 +26,13 @@ impl<T: FloatExt> MarkovLift<T> {
       inner: VolterraLift::new(kernel, dt),
     }
   }
+
+  /// The lift's precomputed per-node constants and boundary terms, which is
+  /// what a device launch ships instead of the kernel: the recursion on the
+  /// device is the one [`VolterraLift::simulate`] runs here.
+  pub(crate) fn lift(&self) -> &VolterraLift<T, RlKernel<T>> {
+    &self.inner
+  }
 }
 
 impl<T: FloatExt + RoughSimd> MarkovLift<T> {

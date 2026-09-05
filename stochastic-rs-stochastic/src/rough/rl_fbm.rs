@@ -32,7 +32,6 @@ use super::markov_lift::MarkovLift;
 use super::markov_lift::RoughSimd;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -141,9 +140,58 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B> RlFBm<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] RlFBm<T, S> { hurst, n, t, degree, seed, markov } via host);
+/// The Euler engine's view: the lift's per-node constants and boundary terms
+/// go to the device, which keeps the `2 · degree` lift states per path and
+/// steps the very recursion [`MarkovLift::simulate`] runs here; the family is
+/// the Riemann-Liouville one with no drift, unit diffusion and the step's own
+/// shock as the driver, so the lifted value is the path.
+impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
+  crate::euler::EulerCoefficients<T> for RlFBm<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::RiemannLiouville
+  }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt, B: HostBackend> ProcessExt<T> for RlFBm<T, S, B> {
+  fn initial_value(&self) -> T {
+    T::zero()
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn lift_spec(&self) -> Option<crate::euler::LiftSpec<'_, T>> {
+    let lift = self.markov.lift();
+    Some(crate::euler::LiftSpec {
+      decay: lift.exp_neg_x_dt.as_slice().expect("contiguous"),
+      weight: lift.we.as_slice().expect("contiguous"),
+      drift_scale: lift.one_minus_e_over_x.as_slice().expect("contiguous"),
+      drift_boundary: lift.drift_boundary,
+      diffusion_boundary: lift.diffusion_boundary,
+      x0: T::zero(),
+    })
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] RlFBm<T, S> { hurst, n, t, degree, seed, markov } via euler);
+
+impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for RlFBm<T, S, B>
+{
   type Output = Array1<T>;
   type Sampler<'s>
     = RlFBmSampler<T, S>
@@ -166,6 +214,29 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: HostBackend> ProcessExt<T> for RlFB
       },
       markov: self.markov.clone(),
     }
+  }
+
+  /// Through the Euler engine: on a device the lift runs in the kernel, its
+  /// state per path in the frame's own arrays, on the host devices it is this
+  /// process's own sampler, chunked exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> Array1<T> {
+    self.backend.euler_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    self.backend.euler_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    self.backend.euler_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    self.backend.try_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    self.backend.try_euler_paths(self, m)
   }
 }
 

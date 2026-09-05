@@ -50,6 +50,11 @@ struct EulerArgs {
     float g2_shape;
     float g2_scale;
     float g2_per;
+    uint has_lift;
+    uint lift_n;
+    float lift_db;
+    float lift_fb;
+    float lift_x0;
     float x0[4];
 };
 
@@ -59,6 +64,9 @@ kernel void euler_paths(
     constant EulerArgs& args [[buffer(2)]],
     device const float* incs [[buffer(3)]],
     device const float* curve [[buffer(4)]],
+    device const float* lift_decay [[buffer(5)]],
+    device const float* lift_weight [[buffer(6)]],
+    device const float* lift_drift_scale [[buffer(7)]],
     uint path [[thread_position_in_grid]])
 {
     const uint family = args.family;
@@ -83,6 +91,11 @@ kernel void euler_paths(
     const float g2_shape = args.g2_shape;
     const float g2_scale = args.g2_scale;
     const float g2_per = args.g2_per;
+    const uint has_lift = args.has_lift;
+    const uint lift_n = args.lift_n;
+    const float lift_db = args.lift_db;
+    const float lift_fb = args.lift_fb;
+    const float lift_x0 = args.lift_x0;
     const float jump_a = args.jump_a;
     const float jump_b = args.jump_b;
     const float jump_c = args.jump_c;
@@ -135,6 +148,13 @@ struct EulerArgs {
   g2_shape: f32,
   g2_scale: f32,
   g2_per: f32,
+  /// Non-zero when the launch steps a Markov lift, with its node count and
+  /// the two boundary terms and start the lift adds back each step.
+  has_lift: u32,
+  lift_n: u32,
+  lift_db: f32,
+  lift_fb: f32,
+  lift_x0: f32,
   x0: [f32; 4],
 }
 
@@ -224,6 +244,7 @@ fn run(
   args: EulerArgs,
   increments: Increments<'_>,
   curve: &[f32],
+  lift: [&[f32]; 3],
 ) -> Result<Vec<f32>> {
   ensure_context(ordinal)?;
   let guard = CONTEXT.lock();
@@ -257,6 +278,21 @@ fn run(
       shared,
     )
   };
+  // The three lift tables, one float each when the launch has no lift.
+  let lift_bufs: Vec<Buffer> = lift
+    .iter()
+    .map(|table| {
+      if table.is_empty() {
+        ctx.device.new_buffer(4, shared)
+      } else {
+        ctx.device.new_buffer_with_data(
+          table.as_ptr() as *const _,
+          std::mem::size_of_val(*table) as u64,
+          shared,
+        )
+      }
+    })
+    .collect();
   let cmd = ctx.queue.new_command_buffer();
   {
     let enc = cmd.new_compute_command_encoder();
@@ -265,6 +301,9 @@ fn run(
     enc.set_buffer(1, Some(&params_buf), 0);
     enc.set_buffer(3, Some(incs_buf), 0);
     enc.set_buffer(4, Some(&curve_buf), 0);
+    for (slot, buf) in lift_bufs.iter().enumerate() {
+      enc.set_buffer(5 + slot as u64, Some(buf), 0);
+    }
     enc.set_bytes(
       2,
       std::mem::size_of::<EulerArgs>() as u64,
@@ -313,6 +352,7 @@ impl EulerKernel<f32> for Metal {
       process.jump_sizes(),
       process.step_first(),
       process.gamma_draws(),
+      process.lift_spec(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -348,6 +388,7 @@ impl EulerKernel<f32> for Metal {
       process.jump_sizes(),
       process.step_first(),
       process.gamma_draws(),
+      process.lift_spec(),
     )
   }
 
@@ -414,6 +455,7 @@ fn device_paths(
   sizes: Option<crate::euler::JumpSizes<f32>>,
   step_first: bool,
   gammas: Option<crate::euler::GammaDraws<f32>>,
+  lift: Option<crate::euler::LiftSpec<'_, f32>>,
 ) -> Result<Array3<f32>> {
   let (family, params) = spec.encode();
   let arity = super::families::Family::from_code(family).expect("a declared family");
@@ -425,6 +467,8 @@ fn device_paths(
   let (gamma_law, g1_shape, g1_scale, g1_per, g2_shape, g2_scale, g2_per) =
     gammas.map_or((0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0), |g| g.encode());
   let (curve, n_curves) = crate::euler::flatten_curves(curves, n);
+  let (lift_tables, has_lift, lift_n, lift_db, lift_fb, lift_x0) =
+    crate::euler::encode_lift(lift.as_ref());
   let args = EulerArgs {
     family,
     components: components as u32,
@@ -454,9 +498,14 @@ fn device_paths(
     g2_shape,
     g2_scale,
     g2_per,
+    has_lift,
+    lift_n,
+    lift_db,
+    lift_fb,
+    lift_x0,
     x0,
   };
-  let data = run(ordinal, params, args, increments, &curve)?;
+  let data = run(ordinal, params, args, increments, &curve, lift_tables)?;
   Ok(
     Array3::from_shape_vec((components, m, n), data)
       .expect("the kernel returns components * m * n values"),

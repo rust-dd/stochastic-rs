@@ -15,6 +15,7 @@ use stochastic_rs_stochastic::interest::fractional_vasicek::FVasicek;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
 use stochastic_rs_stochastic::process::cfbms::Cfbms;
 use stochastic_rs_stochastic::process::fbm::Fbm;
+use stochastic_rs_stochastic::rough::rl_fbm::RlFBm;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 use super::common::Device;
@@ -400,5 +401,49 @@ fn complex_fou_agrees_with_the_cpu_law() {
     spread(&device, true),
     0.08,
     "complex fOU imaginary-part spread",
+  );
+}
+
+/// Riemann-Liouville fBm through the Markov lift, the first family whose
+/// state lives outside the four slots: the frame carries the lift's node
+/// states per path. Horizon 4 rather than 1 so the terminal spread `t^H`
+/// (1.52 at `H = 0.3`) is told apart from Brownian motion's `sqrt(t)` (2.00) —
+/// a launch that dropped the history sum and kept only the boundary term
+/// would look Brownian.
+#[test]
+fn rl_fbm_agrees_with_the_cpu_law() {
+  let build = || RlFBm::<f32, _>::new(0.3, N, Some(4.0), None, Deterministic::new(29));
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert_eq!(device.len(), PATHS);
+  assert_eq!(device[0].len(), N);
+  assert_eq!(device[0][0], 0.0, "every path starts at the origin");
+  all_finite(&device, "RL-fBm");
+  agrees(
+    terminal_std(&host),
+    terminal_std(&device),
+    0.06,
+    "RL-fBm terminal spread",
+  );
+  // The spread a quarter of the way in pins the roughness, not just the
+  // scale: `(t/4)^H / t^H = 4^-H` is 0.66 at `H = 0.3` and 0.5 for Brownian
+  // motion.
+  let quarter = |paths: &[Array1<f32>]| {
+    let k = paths[0].len() / 4;
+    let n = paths.len() as f64;
+    let mean = paths.iter().map(|p| p[k] as f64).sum::<f64>() / n;
+    (paths
+      .iter()
+      .map(|p| (p[k] as f64 - mean).powi(2))
+      .sum::<f64>()
+      / n)
+      .sqrt()
+  };
+  agrees(
+    quarter(&host),
+    quarter(&device),
+    0.06,
+    "RL-fBm quarter-horizon spread",
   );
 }

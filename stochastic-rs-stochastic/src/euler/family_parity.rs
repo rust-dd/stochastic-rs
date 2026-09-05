@@ -30,6 +30,34 @@ const N: usize = 64;
 pub(crate) struct Probe {
   spec: EulerSpec<f32>,
   x0: f32,
+  /// The Markov lift a lifted family steps under, `None` for the rest.
+  lift: Option<ProbeLift>,
+}
+
+/// A small Markov lift for the probes: a Riemann-Liouville kernel at
+/// `H = 0.3` on twelve nodes, its per-node constants and boundary terms taken
+/// from the same `VolterraLift` the host samplers step with.
+#[derive(Clone)]
+pub(crate) struct ProbeLift {
+  decay: Vec<f32>,
+  weight: Vec<f32>,
+  drift_scale: Vec<f32>,
+  db: f32,
+  fb: f32,
+  x0: f32,
+}
+
+fn probe_lift(dt: f32) -> ProbeLift {
+  let lift =
+    crate::volterra::lift::VolterraLift::new(crate::rough::RlKernel::<f32>::new(0.3, 12), dt);
+  ProbeLift {
+    decay: lift.exp_neg_x_dt.to_vec(),
+    weight: lift.we.to_vec(),
+    drift_scale: lift.one_minus_e_over_x.to_vec(),
+    db: lift.drift_boundary,
+    fb: lift.diffusion_boundary,
+    x0: 0.0,
+  }
 }
 
 /// The curve every probe carries: a family that reads none ignores it, and
@@ -76,6 +104,7 @@ pub(crate) struct ProbeSampler {
   x0: f32,
   dt: f32,
   normal: SimdNormal<f32>,
+  lift: Option<ProbeLift>,
 }
 
 impl PathSampler<f32> for ProbeSampler {
@@ -109,6 +138,7 @@ impl PathSampler<f32> for ProbeSampler {
       1.3,
       0.5,
       0.5,
+      0.0,
       &mut out,
     );
     slice[0] = out[0];
@@ -117,7 +147,19 @@ impl PathSampler<f32> for ProbeSampler {
     }
     let tail = &mut slice[1..];
     self.normal.fill_slice(tail);
+    // The lift's two state vectors, advanced per step exactly as the frame
+    // advances them, from the family's own drift, diffusion and shock.
+    let nodes = self.lift.as_ref().map_or(0, |l| l.decay.len());
+    let (mut lh, mut lj) = (vec![0.0f32; nodes], vec![0.0f32; nodes]);
     for (i, z) in tail.iter_mut().enumerate() {
+      let noise = [*z, 0.0, 0.0, 0.0];
+      let (mut lv, mut coefficients) = (0.0f32, [0.0f32; 3]);
+      if let Some(lift) = &self.lift {
+        coefficients = super::families::host_lift(family, &state, &params, self.dt, &noise);
+        let [lf, lg, lsh] = coefficients;
+        let hist: f32 = (0..nodes).map(|l| lift.weight[l] * (lh[l] + lj[l])).sum();
+        lv = lift.x0 + lift.db * lf + hist + lift.fb * lg * lsh;
+      }
       let mut next = [0.0f32; 4];
       super::families::host_step(
         family,
@@ -138,10 +180,18 @@ impl PathSampler<f32> for ProbeSampler {
         1.3,
         0.5,
         0.5,
-        &[*z, 0.0, 0.0, 0.0],
+        lv,
+        &noise,
         &mut next,
       );
       state = next;
+      if let Some(lift) = &self.lift {
+        let [lf, lg, lsh] = coefficients;
+        for l in 0..nodes {
+          lh[l] = lift.decay[l] * lh[l] + lift.drift_scale[l] * lf;
+          lj[l] = lift.decay[l] * (lj[l] + lg * lsh);
+        }
+      }
       super::families::host_report(
         family,
         &state,
@@ -160,6 +210,7 @@ impl PathSampler<f32> for ProbeSampler {
         1.3,
         0.5,
         0.5,
+        0.0,
         &mut out,
       );
       *z = out[0];
@@ -187,6 +238,7 @@ impl ProcessExt<f32> for Probe {
       x0: self.x0,
       dt,
       normal: SimdNormal::<f32>::new(0.0, dt.sqrt(), &Deterministic::new(7)),
+      lift: self.lift.clone(),
     }
   }
 }
@@ -214,6 +266,17 @@ impl EulerCoefficients<f32> for Probe {
 
   fn curves(&self) -> Option<Vec<Vec<f32>>> {
     Some(probe_curves())
+  }
+
+  fn lift_spec(&self) -> Option<crate::euler::LiftSpec<'_, f32>> {
+    self.lift.as_ref().map(|l| crate::euler::LiftSpec {
+      decay: &l.decay,
+      weight: &l.weight,
+      drift_scale: &l.drift_scale,
+      drift_boundary: l.db,
+      diffusion_boundary: l.fb,
+      x0: l.x0,
+    })
   }
 
   /// Every probe takes jumps, so the count's own hash stream runs on both
@@ -335,6 +398,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::CorrelatedGeometric4 { .. } => "CorrelatedGeometric4",
     EulerSpec::CorrelatedNoises4 { .. } => "CorrelatedNoises4",
     EulerSpec::RegimeSwitching { .. } => "RegimeSwitching",
+    EulerSpec::RiemannLiouville => "RiemannLiouville",
   }
 }
 
@@ -343,7 +407,17 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
 /// right: away from a boundary the family would clamp to anyway, and with a
 /// diffusion large enough to move the state over 64 points.
 fn every_family() -> Vec<Probe> {
-  let p = |spec, x0| Probe { spec, x0 };
+  let p = |spec, x0| Probe {
+    spec,
+    x0,
+    lift: None,
+  };
+  // A lifted family runs under the probes' small Riemann-Liouville lift.
+  let p_lift = |spec, x0| Probe {
+    spec,
+    x0,
+    lift: Some(probe_lift(1.0 / (N - 1) as f32)),
+  };
   vec![
     p(
       EulerSpec::GeometricBrownian {
@@ -606,6 +680,7 @@ fn every_family() -> Vec<Probe> {
       0.4,
     ),
     p(EulerSpec::PoissonArrivals { lambda: 2.5 }, 0.0),
+    p_lift(EulerSpec::RiemannLiouville, 0.0),
     p(EulerSpec::AffineDiffusionGaussian { sigma: 0.02 }, 0.03),
     p(
       EulerSpec::TransformedOrnsteinUhlenbeck {
@@ -775,6 +850,7 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       1.3,
       0.5,
       0.5,
+      0.0,
       &mut reported,
     );
     for (c, path) in out.iter_mut().enumerate() {
@@ -805,6 +881,7 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         1.3,
         0.5,
         0.5,
+        0.0,
         &noise,
         &mut next,
       );
@@ -827,6 +904,7 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         1.3,
         0.5,
         0.5,
+        0.0,
         &mut reported,
       );
       for (c, path) in out.iter_mut().enumerate() {

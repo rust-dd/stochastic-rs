@@ -91,6 +91,69 @@ pub(crate) fn pack_cholesky<T: FloatExt>(chol: &ndarray::Array2<T>) -> [T; 10] {
   out
 }
 
+/// The most nodes a Markov lift may carry on a device: one past
+/// [`crate::rough::RlKernel::MAX_STABLE_DEGREE`], since the kernels hold the
+/// lift's two state vectors in fixed per-thread arrays of this length.
+pub const LIFT_SLOTS: usize = 176;
+
+/// What a device needs to run the Markov lift of a rough Volterra kernel for a
+/// process: the per-node constants the host precomputed and the two boundary
+/// terms, exactly the quantities [`crate::volterra::lift::VolterraLift`] steps
+/// with. The family declares the drift, the diffusion and the driving shock;
+/// the frame keeps the `2 · degree` lift states per path and hands the family
+/// the lifted value as `lv` each step.
+pub struct LiftSpec<'a, T> {
+  /// `exp(-x_l dt)` per node.
+  pub decay: &'a [T],
+  /// `w_l exp(-x_l dt)` per node: the weight the history sum applies.
+  pub weight: &'a [T],
+  /// `(1 - exp(-x_l dt)) / x_l` per node: the drift's per-node integral.
+  pub drift_scale: &'a [T],
+  /// The kernel's integral over one step, multiplying the drift.
+  pub drift_boundary: T,
+  /// The kernel's value at one step, multiplying the diffusion.
+  pub diffusion_boundary: T,
+  /// The lifted component's starting value, which every step adds back.
+  pub x0: T,
+}
+
+/// The lift tables and scalars a launch binds: `[decay, weight, drift_scale]`
+/// (empty when the process has no lift), the `has_lift` flag, the node count
+/// and the two boundary terms plus the start the lift adds back each step.
+#[cfg_attr(
+  not(any(
+    feature = "cuda",
+    feature = "metal",
+    feature = "cubecl-cuda",
+    feature = "cubecl-wgpu"
+  )),
+  allow(dead_code)
+)]
+pub(crate) fn encode_lift<'a, T: FloatExt>(
+  lift: Option<&LiftSpec<'a, T>>,
+) -> ([&'a [T]; 3], u32, u32, T, T, T) {
+  match lift {
+    Some(l) => {
+      let n = l.decay.len();
+      assert!(
+        n <= LIFT_SLOTS && l.weight.len() == n && l.drift_scale.len() == n,
+        "a lift carries at most {LIFT_SLOTS} nodes and three tables of one length, not {n}, {}, {}",
+        l.weight.len(),
+        l.drift_scale.len()
+      );
+      (
+        [l.decay, l.weight, l.drift_scale],
+        1,
+        n as u32,
+        l.drift_boundary,
+        l.diffusion_boundary,
+        l.x0,
+      )
+    }
+    None => ([&[], &[], &[]], 0, 0, T::zero(), T::zero(), T::zero()),
+  }
+}
+
 /// How many time-varying coefficients a kernel binds per launch, which is the
 /// most a process's `curves()` may return. Public because that hook is: an
 /// out-of-tree process needs the cap it is held to. A family
@@ -624,6 +687,9 @@ pub enum EulerSpec<T: FloatExt> {
     sigma: [T; 4],
     thresholds: [[T; 3]; 4],
   },
+  /// Riemann-Liouville fractional Brownian motion, or any rough Volterra
+  /// kernel, under the Markov lift the launch's `lift_spec()` supplies.
+  RiemannLiouville,
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1229,6 +1295,7 @@ impl<T: FloatExt> EulerSpec<T> {
         }
         (Family::RegimeSwitching.code(), pad(values))
       }
+      EulerSpec::RiemannLiouville => (Family::RiemannLiouville.code(), pad([])),
     }
   }
 }
@@ -1328,6 +1395,13 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
   /// two kernels. That is why this reports the pipeline's inputs rather than
   /// the increments: handing over an array would be the round trip.
   fn fgn_spec(&self) -> Option<FgnSpec<'_, T>> {
+    None
+  }
+
+  /// The Markov lift this process's family steps under, or `None` when it
+  /// declares no `lift` clause. The device keeps the lift's state per path
+  /// and offers the lifted value to the step as `lv`.
+  fn lift_spec(&self) -> Option<LiftSpec<'_, T>> {
     None
   }
 }
@@ -1608,6 +1682,13 @@ pub trait EulerSystem<T: FloatExt, const D: usize>: ProcessExt<T, Output = [Arra
   /// same contract as [`EulerCoefficients::fgn_spec`], with
   /// [`FgnSpec::streams`] saying how many components the pipeline fills.
   fn fgn_spec(&self) -> Option<FgnSpec<'_, T>> {
+    None
+  }
+
+  /// The Markov lift this process's family steps under, or `None` when it
+  /// declares no `lift` clause. The device keeps the lift's state per path
+  /// and offers the lifted value to the step as `lv`.
+  fn lift_spec(&self) -> Option<LiftSpec<'_, T>> {
     None
   }
 

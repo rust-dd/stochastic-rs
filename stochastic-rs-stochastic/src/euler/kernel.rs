@@ -7,8 +7,9 @@
 //! `seed`, `steps`, `paths`, `first_path`, `increments`, `n_curves`,
 //! `jump_lambda`, `has_jumps`, `jump_law`, `jump_a`, `jump_b`, `jump_c`,
 //! `step_first`, `gamma_law`, `g1_shape`, `g1_scale`, `g1_per`,
-//! `g2_shape`, `g2_scale`, `g2_per`) and
-//! the `incs` and `curve` buffers are bound
+//! `g2_shape`, `g2_scale`, `g2_per`, `has_lift`, `lift_n`, `lift_db`, `lift_fb`,
+//! `lift_x0`) and the `incs`, `curve`, `lift_decay`, `lift_weight` and
+//! `lift_drift_scale` buffers are bound
 //! by the language-specific header around the body;
 //! the body itself only uses the placeholders [`Language`] fills in. Two
 //! decorrelated uniforms per noise component per step come from a
@@ -69,6 +70,15 @@
 //! system sees the same count, and it is zero for a family that declares no
 //! intensity.
 //!
+//! A family with a `lift` clause reads `lv`, the value its lifted component
+//! takes this step under the Markov lift of a rough Volterra kernel. The
+//! frame keeps the lift's two state vectors per path in fixed arrays of
+//! [`super::LIFT_SLOTS`] entries, evaluates the family's drift, diffusion and
+//! driving shock from the current state before the step, forms the history
+//! sum `Σ w_l e_l (h_l + j_l)` over the `lift_n` nodes, and after the step
+//! advances every node — exactly the recursion `VolterraLift::simulate` runs
+//! on the host, node constants and boundary terms supplied by `lift_spec()`.
+//!
 //! A family may also read `ct`, the step's value of a time-varying
 //! coefficient. The host supplies one value per grid point — a short-rate
 //! model's `θ(t)`, a term structure of volatilities — and the kernel binds it
@@ -118,6 +128,14 @@ pub(crate) const FRAME: &str = r#"    if (path >= paths) return;
     REAL gm2 = (REAL)0;
     REAL u = (REAL)0;
     REAL u2 = (REAL)0;
+    REAL lv = (REAL)0;
+    REAL lift[3];
+    lift[0] = (REAL)0; lift[1] = (REAL)0; lift[2] = (REAL)0;
+    REAL lh[176];
+    REAL lj[176];
+    if (has_lift != 0u) {
+        for (unsigned int l = 0u; l < lift_n; l++) { lh[l] = (REAL)0; lj[l] = (REAL)0; }
+    }
     for (unsigned int c = 0u; c < 4u; c++) { state[c] = x0[c]; reported[c] = x0[c]; }
     for (unsigned int c = 0u; c < 4u; c++) { noise[c] = (REAL)0; }
 REPORT
@@ -252,7 +270,19 @@ REPORT
                 if (uu2 <= STOCH_EXP(-jump_c * xj)) { js += xj; }
             }
         }
+        if (has_lift != 0u) {
+LIFT
+            REAL hist = (REAL)0;
+            for (unsigned int l = 0u; l < lift_n; l++) { hist += lift_weight[l] * (lh[l] + lj[l]); }
+            lv = lift_x0 + lift_db * lift[0] + hist + lift_fb * lift[1] * lift[2];
+        }
 STEP
+        if (has_lift != 0u) {
+            for (unsigned int l = 0u; l < lift_n; l++) {
+                lh[l] = lift_decay[l] * lh[l] + lift_drift_scale[l] * lift[0];
+                lj[l] = lift_decay[l] * (lj[l] + lift[1] * lift[2]);
+            }
+        }
         for (unsigned int c = 0u; c < 4u; c++) { reported[c] = state[c]; }
 REPORT
         for (unsigned int c = 0u; c < components; c++) { out[(INDEX)c * plane + base + i] = reported[c]; }
@@ -355,6 +385,7 @@ pub(crate) fn prelude(lang: &Language<'_>) -> String {
 /// the placeholders of `lang` filled in.
 pub(crate) fn render(lang: &Language<'_>) -> String {
   let body = FRAME
+    .replace("LIFT", super::families::C_LIFT.trim_end_matches('\n'))
     .replace("STEP", super::families::C_STEP.trim_end_matches('\n'))
     .replace("REPORT", super::families::C_REPORT.trim_end_matches('\n'));
   substitute(&body, lang)
