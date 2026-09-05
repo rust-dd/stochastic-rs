@@ -503,6 +503,9 @@ pub enum EulerSpec<T: FloatExt> {
   /// A tempered-stable subordinator: a deterministic small-jump drift plus
   /// the step's own thinned jumps.
   TemperedStableSubordinator { drift: T },
+  /// The Barndorff-Nielsen-Shephard model: a gamma-driven variance and a
+  /// log-Euler asset over it.
+  BarndorffNielsenShephard { decay: T, mu: T },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1051,6 +1054,9 @@ impl<T: FloatExt> EulerSpec<T> {
       EulerSpec::TemperedStableSubordinator { drift } => {
         (Family::TemperedStableSubordinator.code(), pad([drift]))
       }
+      EulerSpec::BarndorffNielsenShephard { decay, mu } => {
+        (Family::BarndorffNielsenShephard.code(), pad([decay, mu]))
+      }
     }
   }
 }
@@ -1291,19 +1297,24 @@ impl<T: FloatExt> JumpSizes<T> {
 /// processes, whose increment is the difference of two, declare both.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GammaDraws<T: FloatExt> {
-  /// The shape and scale of `gm`.
-  pub first: (T, T),
-  /// The shape and scale of `gm2`, when the family reads a second draw.
-  pub second: Option<(T, T)>,
+  /// The shape, scale and per-jump shape of `gm`. The shape the kernel uses
+  /// is `shape + per_jump · nj`, which is what a compound sum of gamma jumps
+  /// needs: the sum of `k` of them is one draw whose shape is `k` times the
+  /// single jump's. A process whose shape does not depend on the jump count
+  /// leaves the third term at zero.
+  pub first: (T, T, T),
+  /// The same three for `gm2`, when the family reads a second draw.
+  pub second: Option<(T, T, T)>,
 }
 
 impl<T: FloatExt> GammaDraws<T> {
-  /// How many draws to take, and the two shape/scale pairs the kernels read.
-  /// Public for the same reason [`JumpSizes::encode`] is.
-  pub fn encode(&self) -> (u32, T, T, T, T) {
+  /// How many draws to take, and the two shape/scale/per-jump triples the
+  /// kernels read. Public for the same reason [`JumpSizes::encode`] is.
+  pub fn encode(&self) -> (u32, T, T, T, T, T, T) {
+    let (s1, c1, p1) = self.first;
     match self.second {
-      Some((s2, c2)) => (2, self.first.0, self.first.1, s2, c2),
-      None => (1, self.first.0, self.first.1, T::zero(), T::zero()),
+      Some((s2, c2, p2)) => (2, s1, c1, p1, s2, c2, p2),
+      None => (1, s1, c1, p1, T::zero(), T::zero(), T::zero()),
     }
   }
 }

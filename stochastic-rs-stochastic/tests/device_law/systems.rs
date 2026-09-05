@@ -15,6 +15,7 @@ use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::bates_svj::BatesSvj;
 use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
+use stochastic_rs_stochastic::volatility::bns::Bns;
 use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
@@ -683,4 +684,57 @@ fn jump_duffie_kan_agrees_with_the_cpu_law() {
       &format!("jump Duffie-Kan terminal {what}"),
     );
   }
+}
+
+/// The Barndorff-Nielsen-Shephard variance is driven by a compound-Poisson
+/// subordinator of gamma jumps, which the kernel draws as one gamma whose
+/// shape is the step's jump count times a single jump's.
+///
+/// The variance this model reaches is large — of order one, not of order a
+/// percent — so the spot is a lognormal whose log has a standard deviation
+/// near two, and whose *mean* is therefore set by a handful of paths in the
+/// right tail. What is compared for the spot is the mean of its logarithm,
+/// which is the drift the two sides actually share; the variance itself is
+/// compared directly.
+#[test]
+fn barndorff_nielsen_shephard_agrees_with_the_cpu_law() {
+  let build = || {
+    Bns::<f32, _>::new(
+      Some(100.0),
+      0.04,
+      2.0,
+      0.02,
+      8.0,
+      1.0,
+      253,
+      Some(1.0),
+      Deterministic::new(229),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  assert!(
+    device.iter().all(|p| p[1].iter().all(|&v| v >= 0.0)),
+    "the gamma-driven variance went negative"
+  );
+  assert!(
+    device.iter().all(|p| p[0].iter().all(|&v| v > 0.0)),
+    "the log-Euler asset let the spot reach zero"
+  );
+  let host = build().sample_par(M);
+  let mean_log = |paths: &[[Array1<f32>; 2]]| {
+    let last = paths[0][0].len() - 1;
+    paths.iter().map(|p| (p[0][last] as f64).ln()).sum::<f64>() / paths.len() as f64
+  };
+  agrees(
+    mean_log(&host),
+    mean_log(&device),
+    0.05,
+    "BNS terminal log-spot",
+  );
+  agrees(
+    terminal_mean(&host, 1),
+    terminal_mean(&device, 1),
+    0.08,
+    "BNS terminal variance",
+  );
 }

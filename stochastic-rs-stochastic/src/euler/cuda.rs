@@ -39,7 +39,8 @@ const CUDA_HEADER: &str = r#"extern "C" __global__ void euler_paths_REAL(
     REAL jump_lambda, unsigned int has_jumps,
     unsigned int jump_law, REAL jump_a, REAL jump_b, REAL jump_c,
     unsigned int step_first,
-    unsigned int gamma_law, REAL g1_shape, REAL g1_scale, REAL g2_shape, REAL g2_scale)
+    unsigned int gamma_law, REAL g1_shape, REAL g1_scale, REAL g1_per,
+    REAL g2_shape, REAL g2_scale, REAL g2_per)
 {
     unsigned int path = blockIdx.x * blockDim.x + threadIdx.x;
     const REAL x0[4] = { x00, x01, x02, x03 };
@@ -171,8 +172,10 @@ fn run<R>(
   gamma_law: u32,
   g1_shape: R,
   g1_scale: R,
+  g1_per: R,
   g2_shape: R,
   g2_scale: R,
+  g2_per: R,
 ) -> Result<Vec<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
@@ -247,8 +250,10 @@ where
       .arg(&gamma_law)
       .arg(&g1_shape)
       .arg(&g1_scale)
+      .arg(&g1_per)
       .arg(&g2_shape)
       .arg(&g2_scale)
+      .arg(&g2_per)
       .launch(LaunchConfig::for_num_elems(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
@@ -383,16 +388,12 @@ fn device_paths<T: FloatExt>(
       )
     });
     let step_first = u32::from(step_first);
-    let (gamma_law, gs1, gc1, gs2, gc2) = gammas.map_or((0, 0.0, 0.0, 0.0, 0.0), |g| {
-      let (law, s1, c1, s2, c2) = g.encode();
-      (
-        law,
-        s1.to_f64().unwrap_or(0.0),
-        c1.to_f64().unwrap_or(0.0),
-        s2.to_f64().unwrap_or(0.0),
-        c2.to_f64().unwrap_or(0.0),
-      )
-    });
+    let (gamma_law, gs1, gc1, gp1, gs2, gc2, gp2) =
+      gammas.map_or((0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0), |g| {
+        let (law, s1, c1, p1, s2, c2, p2) = g.encode();
+        let f = |v: T| v.to_f64().unwrap_or(0.0);
+        (law, f(s1), f(c1), f(p1), f(s2), f(c2), f(p2))
+      });
     let (components, noises) = (arity.components() as u32, arity.noises() as u32);
     let planes = components as usize;
     if n == 0 || m == 0 {
@@ -450,8 +451,10 @@ fn device_paths<T: FloatExt>(
         gamma_law,
         gs1,
         gc1,
+        gp1,
         gs2,
         gc2,
+        gp2,
       )?;
       let out = Array3::<f64>::from_shape_vec((planes, m, n), data)
         .expect("the kernel returns components * m * n values");
@@ -505,8 +508,10 @@ fn device_paths<T: FloatExt>(
       gamma_law,
       gs1 as f32,
       gc1 as f32,
+      gp1 as f32,
       gs2 as f32,
       gc2 as f32,
+      gp2 as f32,
     )?;
     assert!(
       TypeId::of::<T>() == TypeId::of::<f32>(),
@@ -545,8 +550,10 @@ fn launch_chunk<R>(
   gamma_law: u32,
   g1_shape: R,
   g1_scale: R,
+  g1_per: R,
   g2_shape: R,
   g2_scale: R,
+  g2_per: R,
 ) -> Result<CudaSlice<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
@@ -617,8 +624,10 @@ where
       .arg(&gamma_law)
       .arg(&g1_shape)
       .arg(&g1_scale)
+      .arg(&g1_per)
       .arg(&g2_shape)
       .arg(&g2_scale)
+      .arg(&g2_per)
       .launch(LaunchConfig::for_num_elems(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
@@ -651,8 +660,10 @@ fn pipelined<R>(
   gamma_law: u32,
   g1_shape: R,
   g1_scale: R,
+  g1_per: R,
   g2_shape: R,
   g2_scale: R,
+  g2_per: R,
 ) -> Result<Vec<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float + Send + Sync,
@@ -723,8 +734,10 @@ where
       gamma_law,
       g1_shape,
       g1_scale,
+      g1_per,
       g2_shape,
       g2_scale,
+      g2_per,
     )?;
     let dst = unsafe { std::slice::from_raw_parts_mut(staging[slot].ptr, planes * len * n) };
     streams[slot]
@@ -770,16 +783,12 @@ fn pipelined_paths<T: FloatExt>(
     )
   });
   let step_first = u32::from(step_first);
-  let (gamma_law, gs1, gc1, gs2, gc2) = gammas.map_or((0, 0.0, 0.0, 0.0, 0.0), |g| {
-    let (law, s1, c1, s2, c2) = g.encode();
-    (
-      law,
-      s1.to_f64().unwrap_or(0.0),
-      c1.to_f64().unwrap_or(0.0),
-      s2.to_f64().unwrap_or(0.0),
-      c2.to_f64().unwrap_or(0.0),
-    )
-  });
+  let (gamma_law, gs1, gc1, gp1, gs2, gc2, gp2) =
+    gammas.map_or((0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0), |g| {
+      let (law, s1, c1, p1, s2, c2, p2) = g.encode();
+      let f = |v: T| v.to_f64().unwrap_or(0.0);
+      (law, f(s1), f(c1), f(p1), f(s2), f(c2), f(p2))
+    });
   let (components, noises) = (arity.components() as u32, arity.noises() as u32);
   let planes = components as usize;
   let dt = dt.to_f64().unwrap_or(0.0);
@@ -812,8 +821,10 @@ fn pipelined_paths<T: FloatExt>(
       gamma_law,
       gs1,
       gc1,
+      gp1,
       gs2,
       gc2,
+      gp2,
     )?;
     let out = Array3::<f64>::from_shape_vec((planes, m, n), data)
       .expect("the kernel returns components * m * n values");
@@ -849,8 +860,10 @@ fn pipelined_paths<T: FloatExt>(
     gamma_law,
     gs1 as f32,
     gc1 as f32,
+    gp1 as f32,
     gs2 as f32,
     gc2 as f32,
+    gp2 as f32,
   )?;
   let out = Array3::<f32>::from_shape_vec((planes, m, n), data)
     .expect("the kernel returns components * m * n values");

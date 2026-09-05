@@ -54,8 +54,10 @@ fn euler_paths_kernel(
   gamma_law: u32,
   g1_shape: f32,
   g1_scale: f32,
+  g1_per: f32,
   g2_shape: f32,
   g2_scale: f32,
+  g2_per: f32,
 ) {
   let path = ABSOLUTE_POS as u32;
   if path < paths {
@@ -124,10 +126,10 @@ fn euler_paths_kernel(
         nj = poisson(g, seed, jump_lambda * dt);
       }
       if gamma_law > 0u32 {
-        gm = gamma_draw(g, seed, 0u32, g1_shape, g1_scale);
+        gm = gamma_draw(g, seed, 0u32, g1_shape + g1_per * nj, g1_scale);
       }
       if gamma_law > 1u32 {
-        gm2 = gamma_draw(g, seed, 1u32, g2_shape, g2_scale);
+        gm2 = gamma_draw(g, seed, 1u32, g2_shape + g2_per * nj, g2_scale);
       }
       js = 0.0f32;
       if jump_law == 1u32 {
@@ -700,6 +702,11 @@ fn step(
       component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
+  if family == 82u32 {
+    stepped = cube::BarndorffNielsenShephard(
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
   if family == 16u32 {
     stepped = cube::FellerRoot(
       component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
@@ -1132,6 +1139,11 @@ fn report(
       component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
     );
   }
+  if family == 82u32 {
+    reported = cube_report::BarndorffNielsenShephard(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
+  }
   if family == 16u32 {
     reported = cube_report::FellerRoot(
       component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
@@ -1406,8 +1418,8 @@ fn device_paths<C: CubeclRuntime>(
       return Ok(Array3::<f32>::zeros((components, m, n)));
     }
     let (law, jump_a, jump_b, jump_c) = sizes.map_or((0, 0.0, 0.0, 0.0), |s| s.encode());
-    let (gamma_law, g1_shape, g1_scale, g2_shape, g2_scale) =
-      gammas.map_or((0, 0.0, 0.0, 0.0, 0.0), |g| g.encode());
+    let (gamma_law, g1_shape, g1_scale, g1_per, g2_shape, g2_scale, g2_per) =
+      gammas.map_or((0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0), |g| g.encode());
     let params32: Vec<f32> = params.to_vec();
     let dt = dt as f64;
     let total = components * m * n;
@@ -1475,8 +1487,10 @@ fn device_paths<C: CubeclRuntime>(
           ScalarArg::new(gamma_law),
           ScalarArg::new(g1_shape),
           ScalarArg::new(g1_scale),
+          ScalarArg::new(g1_per),
           ScalarArg::new(g2_shape),
           ScalarArg::new(g2_scale),
+          ScalarArg::new(g2_per),
         )
         .map_err(|e| DeviceError::Launch(format!("euler_paths launch: {e:?}")))?;
       }

@@ -46,8 +46,10 @@ struct EulerArgs {
     float jump_c;
     float g1_shape;
     float g1_scale;
+    float g1_per;
     float g2_shape;
     float g2_scale;
+    float g2_per;
     float x0[4];
 };
 
@@ -77,8 +79,10 @@ kernel void euler_paths(
     const uint gamma_law = args.gamma_law;
     const float g1_shape = args.g1_shape;
     const float g1_scale = args.g1_scale;
+    const float g1_per = args.g1_per;
     const float g2_shape = args.g2_shape;
     const float g2_scale = args.g2_scale;
+    const float g2_per = args.g2_per;
     const float jump_a = args.jump_a;
     const float jump_b = args.jump_b;
     const float jump_c = args.jump_c;
@@ -137,8 +141,10 @@ struct EulerArgs {
   jump_c: f32,
   g1_shape: f32,
   g1_scale: f32,
+  g1_per: f32,
   g2_shape: f32,
   g2_scale: f32,
+  g2_per: f32,
   x0: [f32; 4],
 }
 
@@ -397,8 +403,8 @@ fn device_paths(
     return Ok(Array3::<f32>::zeros((components, m, n)));
   }
   let (law, jump_a, jump_b, jump_c) = sizes.map_or((0, 0.0, 0.0, 0.0), |s| s.encode());
-  let (gamma_law, g1_shape, g1_scale, g2_shape, g2_scale) =
-    gammas.map_or((0, 0.0, 0.0, 0.0, 0.0), |g| g.encode());
+  let (gamma_law, g1_shape, g1_scale, g1_per, g2_shape, g2_scale, g2_per) =
+    gammas.map_or((0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0), |g| g.encode());
   let args = EulerArgs {
     family,
     components: components as u32,
@@ -421,8 +427,10 @@ fn device_paths(
     jump_c,
     g1_shape,
     g1_scale,
+    g1_per,
     g2_shape,
     g2_scale,
+    g2_per,
     x0,
   };
   let data = run(ordinal, params, args, increments, curve)?;

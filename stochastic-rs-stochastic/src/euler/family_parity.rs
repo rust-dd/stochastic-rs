@@ -46,8 +46,8 @@ const PROBE_INTENSITY: f32 = 3.0;
 /// below one so the boost branch runs and the second above it so the plain
 /// rejection loop does.
 const PROBE_GAMMAS: GammaDraws<f32> = GammaDraws {
-  first: (0.4, 1.5),
-  second: Some((2.5, 0.8)),
+  first: (0.4, 1.5, 0.0),
+  second: Some((2.5, 0.8, 0.0)),
 };
 
 const PROBE_SIZES: JumpSizes<f32> = JumpSizes::DoubleExponential {
@@ -284,6 +284,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::BilateralGamma => "BilateralGamma",
     EulerSpec::BilateralGammaMotion { .. } => "BilateralGammaMotion",
     EulerSpec::TemperedStableSubordinator { .. } => "TemperedStableSubordinator",
+    EulerSpec::BarndorffNielsenShephard { .. } => "BarndorffNielsenShephard",
   }
 }
 
@@ -930,6 +931,13 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         jump_sigma: 0.05,
       },
       x0: [0.0, 1.0],
+    },
+    SystemProbe {
+      spec: EulerSpec::BarndorffNielsenShephard {
+        decay: 0.99,
+        mu: 0.02,
+      },
+      x0: [100.0, 0.04],
     },
     SystemProbe {
       spec: EulerSpec::CorrelatedInnovation { rho: -0.5 },

@@ -1778,6 +1778,20 @@ euler_families! {
     step { x + drift + js }
     report { x },
 
+  /// `dσ² = −λσ² dt + dZ` with `Z` a compound-Poisson subordinator of gamma
+  /// jumps, and a log-Euler asset over it: the Barndorff-Nielsen-Shephard
+  /// model. The variance step is exact in the decay, as the host takes it,
+  /// and the jump sum is one gamma draw whose shape is the step's own jump
+  /// count times a single jump's.
+  82 => BarndorffNielsenShephard { decay, mu }
+    state (s, v)
+    noise (dw)
+    step {
+      s * exp((mu - v / lit(2.0)) * dt + sqrt(v) * dw),
+      decay * v + gm
+    }
+    report { s, v },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)

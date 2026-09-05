@@ -115,8 +115,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   fn gamma_draws(&self) -> Option<crate::euler::GammaDraws<T>> {
     let dt = self.dt();
     Some(crate::euler::GammaDraws {
-      first: (self.alpha_p * dt, T::one() / self.lambda_p),
-      second: Some((self.alpha_m * dt, T::one() / self.lambda_m)),
+      first: (self.alpha_p * dt, T::one() / self.lambda_p, T::zero()),
+      second: Some((self.alpha_m * dt, T::one() / self.lambda_m, T::zero())),
     })
   }
 
@@ -325,8 +325,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   fn gamma_draws(&self) -> Option<crate::euler::GammaDraws<T>> {
     let dt = self.dt();
     Some(crate::euler::GammaDraws {
-      first: (self.alpha_p * dt, T::one() / self.lambda_p),
-      second: Some((self.alpha_m * dt, T::one() / self.lambda_m)),
+      first: (self.alpha_p * dt, T::one() / self.lambda_p, T::zero()),
+      second: Some((self.alpha_m * dt, T::one() / self.lambda_m, T::zero())),
     })
   }
 

@@ -70,7 +70,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   fn gamma_draws(&self) -> Option<crate::euler::GammaDraws<T>> {
     let dt = self.time_step();
     Some(crate::euler::GammaDraws {
-      first: (self.nu * dt, T::one() / self.rate),
+      first: (self.nu * dt, T::one() / self.rate, T::zero()),
       second: None,
     })
   }

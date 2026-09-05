@@ -6,8 +6,8 @@
 //! arguments (`family`, `components`, `noises`, `x0`, `dt`, `sqrt_dt`,
 //! `seed`, `steps`, `paths`, `first_path`, `increments`, `has_curve`,
 //! `jump_lambda`, `has_jumps`, `jump_law`, `jump_a`, `jump_b`, `jump_c`,
-//! `step_first`, `gamma_law`, `g1_shape`, `g1_scale`, `g2_shape`,
-//! `g2_scale`) and
+//! `step_first`, `gamma_law`, `g1_shape`, `g1_scale`, `g1_per`,
+//! `g2_shape`, `g2_scale`, `g2_per`) and
 //! the `incs` and `curve` buffers are bound
 //! by the language-specific header around the body;
 //! the body itself only uses the placeholders [`Language`] fills in. Two
@@ -41,7 +41,9 @@
 //!
 //! A family may read `gm` and `gm2`, one or two Gamma draws for the step by
 //! Marsaglia-Tsang, with the shape boosted below one exactly as that method
-//! prescribes. The rejection loop is bounded at 24 tries: the method accepts
+//! prescribes. A draw's shape may carry a term proportional to the step's own
+//! jump count, which is what a compound sum of gamma jumps is: the sum of `k`
+//! of them is one draw at `k` times the shape. The rejection loop is bounded at 24 tries: the method accepts
 //! on the first try better than 98 % of the time for any shape, so exhausting
 //! the bound has probability below `1e-40`, and a step that did would take
 //! its last candidate rather than loop forever.
@@ -132,7 +134,7 @@ REPORT
             nj = (REAL)cnt;
         }
         for (unsigned int gi = 0u; gi < gamma_law; gi++) {
-            REAL gsh = (gi == 0u) ? g1_shape : g2_shape;
+            REAL gsh = ((gi == 0u) ? g1_shape : g2_shape) + ((gi == 0u) ? g1_per : g2_per) * nj;
             REAL gsc = (gi == 0u) ? g1_scale : g2_scale;
             REAL draw = (REAL)0;
             if (gsh > (REAL)0) {

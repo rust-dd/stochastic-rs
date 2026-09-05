@@ -164,7 +164,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   fn gamma_draws(&self) -> Option<crate::euler::GammaDraws<T>> {
     let dt = self.dt();
     Some(crate::euler::GammaDraws {
-      first: (dt / self.nu, self.nu),
+      first: (dt / self.nu, self.nu, T::zero()),
       second: None,
     })
   }
