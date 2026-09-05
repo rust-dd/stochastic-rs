@@ -221,6 +221,9 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::BatesJump { .. } => "BatesJump",
     EulerSpec::BatesJumpReflected { .. } => "BatesJumpReflected",
     EulerSpec::AndersenQe { .. } => "AndersenQe",
+    EulerSpec::CountingProcess => "CountingProcess",
+    EulerSpec::InverseGaussianSubordinator { .. } => "InverseGaussianSubordinator",
+    EulerSpec::NormalInverseGaussian { .. } => "NormalInverseGaussian",
   }
 }
 
@@ -536,6 +539,25 @@ fn every_family() -> Vec<Probe> {
       EulerSpec::BrownianBridge {
         xt: 1.0,
         sigma: 0.2,
+      },
+      0.0,
+    ),
+    p(EulerSpec::CountingProcess, 0.0),
+    p(
+      EulerSpec::InverseGaussianSubordinator {
+        mu_ig: 0.02,
+        two_lam: 0.0008,
+        four_mu_lam: 0.000032,
+      },
+      0.0,
+    ),
+    p(
+      EulerSpec::NormalInverseGaussian {
+        theta: -0.1,
+        sigma: 0.2,
+        mu_ig: 0.02,
+        two_lam: 0.0008,
+        four_mu_lam: 0.000032,
       },
       0.0,
     ),

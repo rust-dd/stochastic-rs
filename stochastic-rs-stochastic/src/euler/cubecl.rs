@@ -496,6 +496,21 @@ fn step(
       component, x0, x1, x2, x3, params, dt, ct, nj, u, dz0, dz1, dz2, dz3,
     );
   }
+  if family == 62u32 {
+    stepped = cube::CountingProcess(
+      component, x0, x1, x2, x3, params, dt, ct, nj, u, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 63u32 {
+    stepped = cube::InverseGaussianSubordinator(
+      component, x0, x1, x2, x3, params, dt, ct, nj, u, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 64u32 {
+    stepped = cube::NormalInverseGaussian(
+      component, x0, x1, x2, x3, params, dt, ct, nj, u, dz0, dz1, dz2, dz3,
+    );
+  }
   if family == 16u32 {
     stepped = cube::FellerRoot(
       component, x0, x1, x2, x3, params, dt, ct, nj, u, dz0, dz1, dz2, dz3,
@@ -725,6 +740,16 @@ fn report(
   }
   if family == 61u32 {
     reported = cube_report::AndersenQe(component, x0, x1, x2, x3, params, ct, nj, u);
+  }
+  if family == 62u32 {
+    reported = cube_report::CountingProcess(component, x0, x1, x2, x3, params, ct, nj, u);
+  }
+  if family == 63u32 {
+    reported =
+      cube_report::InverseGaussianSubordinator(component, x0, x1, x2, x3, params, ct, nj, u);
+  }
+  if family == 64u32 {
+    reported = cube_report::NormalInverseGaussian(component, x0, x1, x2, x3, params, ct, nj, u);
   }
   if family == 16u32 {
     reported = cube_report::FellerRoot(component, x0, x1, x2, x3, params, ct, nj, u);

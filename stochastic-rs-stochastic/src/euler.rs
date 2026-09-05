@@ -410,6 +410,22 @@ pub enum EulerSpec<T: FloatExt> {
     k34: T,
     mu: T,
   },
+  /// A Poisson counting process on the grid.
+  CountingProcess,
+  /// An inverse-Gaussian subordinator.
+  InverseGaussianSubordinator {
+    mu_ig: T,
+    two_lam: T,
+    four_mu_lam: T,
+  },
+  /// Brownian motion under an inverse-Gaussian clock.
+  NormalInverseGaussian {
+    theta: T,
+    sigma: T,
+    mu_ig: T,
+    two_lam: T,
+    four_mu_lam: T,
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -849,6 +865,25 @@ impl<T: FloatExt> EulerSpec<T> {
       } => (
         Family::AndersenQe.code(),
         pad([theta, e_kd, c1, c2, k0, k1, k2, k34, mu]),
+      ),
+      EulerSpec::CountingProcess => (Family::CountingProcess.code(), pad([])),
+      EulerSpec::InverseGaussianSubordinator {
+        mu_ig,
+        two_lam,
+        four_mu_lam,
+      } => (
+        Family::InverseGaussianSubordinator.code(),
+        pad([mu_ig, two_lam, four_mu_lam]),
+      ),
+      EulerSpec::NormalInverseGaussian {
+        theta,
+        sigma,
+        mu_ig,
+        two_lam,
+        four_mu_lam,
+      } => (
+        Family::NormalInverseGaussian.code(),
+        pad([theta, sigma, mu_ig, two_lam, four_mu_lam]),
       ),
     }
   }

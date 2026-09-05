@@ -1501,6 +1501,44 @@ euler_families! {
     }
     report { exp(y), v },
 
+  /// A Poisson counting process on the grid: the step adds the jumps it saw.
+  62 => CountingProcess { }
+    state (x)
+    noise (dz)
+    step { x + nj }
+    report { x },
+
+  /// An inverse-Gaussian subordinator: each increment is one Michael-Schucany-
+  /// Haas draw, which needs a standard normal and a uniform and no rejection,
+  /// so it is one expression. `2λ` and `4μλ` depend on the parameters and `dt`
+  /// alone and are folded on the host.
+  63 => InverseGaussianSubordinator { mu_ig, two_lam, four_mu_lam }
+    state (x)
+    noise (dz)
+    step {
+      bind w = (dz / sqrt(dt)) * (dz / sqrt(dt));
+      bind rad = sqrt(four_mu_lam * w + mu_ig * mu_ig * w * w);
+      bind xr = mu_ig + mu_ig * mu_ig * w / two_lam - mu_ig / two_lam * rad;
+      x + pick(less(u, mu_ig / (mu_ig + xr)), xr, mu_ig * mu_ig / xr)
+    }
+    report { x },
+
+  /// Brownian motion subordinated by an inverse-Gaussian clock: the normal
+  /// inverse Gaussian process. The clock's draw is the same one
+  /// [`InverseGaussianSubordinator`](Family::InverseGaussianSubordinator)
+  /// takes, and the second noise component is the Brownian shock it scales.
+  64 => NormalInverseGaussian { theta, sigma, mu_ig, two_lam, four_mu_lam }
+    state (x)
+    noise (dz, dq)
+    step {
+      bind w = (dz / sqrt(dt)) * (dz / sqrt(dt));
+      bind rad = sqrt(four_mu_lam * w + mu_ig * mu_ig * w * w);
+      bind xr = mu_ig + mu_ig * mu_ig * w / two_lam - mu_ig / two_lam * rad;
+      bind ig = pick(less(u, mu_ig / (mu_ig + xr)), xr, mu_ig * mu_ig / xr);
+      x + theta * ig + sigma * sqrt(ig) * (dq / sqrt(dt))
+    }
+    report { x },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)

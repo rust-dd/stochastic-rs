@@ -18,7 +18,8 @@
 //! fractional Gaussian noise, which the device produces itself and keeps in
 //! its own memory rather than reading back; [`systems`] holds the ones whose
 //! recursion carries more than one state component; [`curves`] holds the
-//! ones whose coefficients vary with time.
+//! ones whose coefficients vary with time; [`levy`] holds the ones whose
+//! increment is a draw rather than a step.
 //!
 //! Split across files only to stay under this crate's line-count limit; all
 //! four compile into one test binary.
@@ -31,5 +32,6 @@ mod device_law {
   pub(crate) mod curves;
   pub(crate) mod fractional;
   pub(crate) mod gaussian;
+  pub(crate) mod levy;
   pub(crate) mod systems;
 }
