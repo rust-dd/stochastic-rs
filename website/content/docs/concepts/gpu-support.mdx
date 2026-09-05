@@ -14,11 +14,11 @@ backends, and what the rest do.
 |---|---|---|---|---|---|---|---|
 | fGN noise | `Fgn` (1) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` | CubeCL FFT, `f32` only |
 | Euler engine, one component | 66 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
-| Euler engine, systems | 19 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
+| Euler engine, systems | 20 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
 | Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `FVasicek`, `Cfgns`, `Cfbms`, `Cfou` (9, counted above) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same MSL kernel | fGN pipeline feeds the same NVRTC kernel | fGN pipeline feeds the same CubeCL kernel |
-| Host only | the remaining 33 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
+| Host only | the remaining 32 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
 
-The 85 processes on the engine cover the diffusions, the stochastic-volatility
+The 86 processes on the engine cover the diffusions, the stochastic-volatility
 models under both their Euler and quadratic-exponential schemes (`Heston`,
 `HestonLog`, `DoubleHeston`, `Heston2D`, `Sabr`, `Bergomi`,
 `HestonStochCorr`, `BatesSvj`, `Hkde`), the short-rate models including the
@@ -33,8 +33,9 @@ is one draw with no rejection (`Ig`, `Nig`, `IGSubordinator`,
 (`Arch`, `Garch`, `GjrGarch`, `Agarch`, `Egarch`), the first-order lag models
 (`ARp`, `MAq`), the noise generators (`Wn`, `Gn`, `Cgns`, `Cfgns`), the
 correlated fractional pair (`Cfbms`, `Cfou`), the bounded correlation
-processes (`TengSCP`, `VanEmmerich`, `TransformedOU`) and `Poisson` in its
-count mode.
+processes (`TengSCP`, `VanEmmerich`, `TransformedOU`), the dynamic SABR
+(`MultifactorSabr`, whose term structure travels as curves) and `Poisson` in
+its count mode.
 
 What stays on the host, and why. The engine steps a bounded forward
 recursion over four scalar state slots, so what rules a process out is
@@ -54,13 +55,14 @@ grid:
   the whole horizon, sorting them by arrival time and accumulating onto the
   grid — a global construction with a sort, not a step recursion.
 - **A runtime dimension** (`Bgm`, `Lmm`, `MultiGbm`, `Mcgns`, `Wishart`,
-  `WuZhangD`, `MultifactorSabr`, `Adg`): the component count is a runtime
+  `WuZhangD`, `Adg`, and `Hjm`'s seven coefficient functions): the component count is a runtime
   value, or a parameter is an `Array1` / `Array2` rather than a fixed set of
   scalars.
-- **More time-varying coefficients than the one the kernel binds** (`Hjm`
-  with seven, `Adg` with five, `MultifactorSabr` with three): a single curve
-  is tabulated per grid point and bound before each step; a model that needs
-  several would need several.
+- **More time-varying coefficients than the eight the kernel binds**: none
+  today. `MultifactorSabr` needed three and now declares them, which is what
+  turned its per-step bucket search into a buffer read; `Hjm` needs six and
+  `Adg` five, and both are held back by something else in this list rather
+  than by the curve count.
 - **A coefficient that reads the state** (`Cheyette`): its `sigma(t, x)` is a
   user closure of time *and* the state, so it cannot be tabulated as a curve
   the way `Cir2F`'s `phi(t)` is. A closure of time alone is not a blocker.
@@ -87,7 +89,7 @@ grid:
 
 ## What a family is
 
-A process reaches a device by declaring which of the engine's **87 families**
+A process reaches a device by declaring which of the engine's **88 families**
 it steps, not by writing a kernel. A family is one entry in
 `stochastic-rs-stochastic/src/euler/families.rs` — its parameters, its state
 components, its noise components, one step expression per component and one
@@ -99,10 +101,12 @@ is a declaration plus an `EulerCoefficients` (one component) or `EulerSystem`
 The engine's kernels carry four state slots, four independent noise
 components, twenty scalar parameters, one time-varying coefficient, two
 uniforms, a Poisson jump count, the sum of that step's jump sizes and up to
-two Gamma draws. The first two noise components may come from a fractional
-pipeline instead of the kernel's own hash stream: one embedding produces both
-when the rows share a Hurst exponent, which is what a correlated fractional
-pair needs. A
+two Gamma draws. A launch binds up to eight time-varying coefficients, which
+a family names `ct` and `ct1` through `ct7`; it pays one buffer read per
+declared curve per step, so a model with one still pays for one. The first
+two noise components may come from a fractional pipeline instead of the
+kernel's own hash stream: one embedding produces both when the rows share a
+Hurst exponent, which is what a correlated fractional pair needs. A
 process whose first grid point is itself a draw — a conditional-variance
 model's series, a noise generator — asks the launch to step before writing
 it. A model that wants correlated shocks draws the components independently

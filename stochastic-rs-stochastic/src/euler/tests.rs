@@ -371,6 +371,68 @@ mod devices {
     );
   }
 
+  /// [`metal_fractional_chunks_are_bit_identical_to_one_launch`] on CUDA. The
+  /// two backends advance the pipeline's counter by different means — Metal
+  /// offsets the seed, CUDA offsets the row index — so the invariant is
+  /// asserted separately on each rather than assumed to carry over.
+  #[cfg(feature = "cuda")]
+  #[test]
+  fn cuda_fractional_chunks_are_bit_identical_to_one_launch() {
+    use stochastic_rs_core::simd_rng::Deterministic;
+
+    use crate::device::Cuda;
+    use crate::euler::EulerBackend;
+    use crate::noise::cfgns::Cfgns;
+    use crate::process::cfbms::Cfbms;
+    use crate::process::fbm::Fbm;
+
+    // Small enough that a modest budget forces several launches.
+    const N: usize = 16;
+    const M: usize = 6;
+    let small = Cuda::default().with_batch_budget(N * 4 * 2);
+
+    let fbm = || Fbm::<f32, _>::new(0.7, N, Some(1.0), Deterministic::new(5)).on::<Cuda>();
+    let whole = fbm().sample_par(M);
+    assert_eq!(
+      whole,
+      small.euler_paths(&fbm(), M),
+      "fBM: a chunked batch is not the whole one"
+    );
+    assert!(
+      whole.windows(2).all(|w| w[0] != w[1]),
+      "fBM: two paths of one batch are identical, so a chunk repeated itself"
+    );
+
+    // The two-stream launches: each path takes two rows of the embedding, so
+    // a chunk that advances by one row a path hands its own second stream to
+    // the next chunk as that chunk's first.
+    let cfbms = || Cfbms::<f32, _>::new(0.7, 0.0, N, Some(1.0), Deterministic::new(5)).on::<Cuda>();
+    let pairs = cfbms().sample_par(M);
+    assert_eq!(
+      pairs,
+      small.system_paths(&cfbms(), M),
+      "correlated fBM: chunking moved the batch"
+    );
+    for (i, a) in pairs.iter().enumerate() {
+      for (j, b) in pairs.iter().enumerate() {
+        if i != j {
+          assert_ne!(a[0], b[0], "correlated fBM: paths {i} and {j} share row 0");
+        }
+        assert_ne!(
+          a[1], b[0],
+          "correlated fBM: path {i}'s second stream is path {j}'s first"
+        );
+      }
+    }
+
+    let cfgns = || Cfgns::<f32, _>::new(0.7, 0.0, N, Some(1.0), Deterministic::new(5)).on::<Cuda>();
+    assert_eq!(
+      cfgns().sample_par(M),
+      small.system_paths(&cfgns(), M),
+      "correlated fGn: chunking moved the batch"
+    );
+  }
+
   #[cfg(feature = "metal")]
   #[test]
   fn metal_native_matrix_matches_the_rows_and_chunks() {
