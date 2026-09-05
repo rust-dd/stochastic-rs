@@ -14,6 +14,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::HestonPow;
 use crate::device::Cpu;
+use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -380,9 +381,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 }
 
 /// The quadratic-exponential scheme draws its variance from a non-central
-/// chi-square rather than stepping an Euler recursion, so it has no family
-/// and stays on the host whatever backend the process carries.
-impl<T: FloatExt, S: SeedExt, B: Send + Sync> ProcessExt<T> for Heston<T, S, AndersenQe, B> {
+/// chi-square rather than stepping an Euler recursion, so it has no family.
+/// Its bound is `HostBackend`, which makes putting it on a device a compile
+/// error at the first `sample` rather than a silent fall back to this code.
+impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Heston<T, S, AndersenQe, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = HestonSampler<'s, T, S, AndersenQe, B>

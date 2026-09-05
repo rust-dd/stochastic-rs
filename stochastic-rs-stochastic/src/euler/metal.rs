@@ -34,8 +34,10 @@ struct EulerArgs {
     uint first_path;
     uint increments;
     uint has_curve;
+    uint has_jumps;
     float dt;
     float sqrt_dt;
+    float jump_lambda;
     float x0[4];
 };
 
@@ -58,6 +60,8 @@ kernel void euler_paths(
     const uint first_path = args.first_path;
     const uint increments = args.increments;
     const uint has_curve = args.has_curve;
+    const uint has_jumps = args.has_jumps;
+    const float jump_lambda = args.jump_lambda;
     const float x0[4] = { args.x0[0], args.x0[1], args.x0[2], args.x0[3] };
 "#;
 
@@ -95,8 +99,11 @@ struct EulerArgs {
   increments: u32,
   /// Non-zero when the launch binds a time-varying coefficient.
   has_curve: u32,
+  /// Non-zero when the launch draws a jump count per step.
+  has_jumps: u32,
   dt: f32,
   sqrt_dt: f32,
+  jump_lambda: f32,
   x0: [f32; 4],
 }
 
@@ -285,6 +292,7 @@ impl EulerKernel<f32> for Metal {
         None => Increments::Hashed,
       },
       process.curve().as_deref().unwrap_or(&[]),
+      process.jump_intensity(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -313,6 +321,7 @@ impl EulerKernel<f32> for Metal {
       seed,
       Increments::Hashed,
       process.curve().as_deref().unwrap_or(&[]),
+      process.jump_intensity(),
     )
   }
 
@@ -336,6 +345,7 @@ fn device_paths(
   seed: u64,
   increments: Increments<'_>,
   curve: &[f32],
+  jump_lambda: Option<f32>,
 ) -> Result<Array3<f32>> {
   let (family, params) = spec.encode();
   let arity = super::families::Family::from_code(family).expect("a declared family");
@@ -353,8 +363,10 @@ fn device_paths(
     first_path: first as u32,
     increments: u32::from(!matches!(increments, Increments::Hashed)),
     has_curve: u32::from(!curve.is_empty()),
+    has_jumps: u32::from(jump_lambda.is_some()),
     dt,
     sqrt_dt: dt.sqrt(),
+    jump_lambda: jump_lambda.unwrap_or(0.0),
     x0,
   };
   let data = run(ordinal, params, args, increments, curve)?;

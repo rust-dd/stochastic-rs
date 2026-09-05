@@ -3,6 +3,11 @@
 //! (`HostBackend`, `EulerBackend` or `FgnBackend`) and every backend-typed
 //! process exposes `on::<B2>()`. A process added without the parameter fails
 //! here rather than shipping a second, `Cpu`-only API shape.
+//!
+//! The bound is what makes an unsupported backend a compile error rather
+//! than a silent fallback: a process bound on `HostBackend` cannot be
+//! sampled once it has been re-typed onto a device, which is the whole point
+//! of naming the capability rather than accepting any `B`.
 
 use std::fs;
 use std::path::Path;
@@ -88,9 +93,15 @@ fn every_process_ext_impl_is_backend_typed() {
     }
     for (generics, name, args) in impl_headers(src) {
       impls += 1;
-      let bound_ok = ["B: HostBackend", "B: EulerBackend", "B: FgnBackend"]
-        .iter()
-        .any(|b| generics.contains(b));
+      // The bound may be written through a path — `B: crate::euler::
+      // EulerBackend<T>` — so what is matched is the trait's own name at the
+      // end of the path, not the whole spelling.
+      let bound_ok = generics.split("B: ").skip(1).any(|rest| {
+        let bound = rest.split([',', '+']).next().unwrap_or(rest);
+        let name = bound.split('<').next().unwrap_or(bound);
+        let name = name.rsplit("::").next().unwrap_or(name).trim();
+        matches!(name, "HostBackend" | "EulerBackend" | "FgnBackend")
+      });
       if !(bound_ok && args.ends_with(", B")) {
         untyped.push(format!(
           "{}: {name}<{args}>",

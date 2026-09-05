@@ -418,6 +418,13 @@ pub enum EulerSpec<T: FloatExt> {
     l43: T,
     l44: T,
   },
+  /// Merton's jump diffusion in log-price.
+  MertonJumpLog {
+    drift_ln: T,
+    sigma: T,
+    nu: T,
+    omega: T,
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -770,6 +777,15 @@ impl<T: FloatExt> EulerSpec<T> {
         Family::TwoAssetHestonReflected.code(),
         pad([mu1, mu2, kappa1, theta1, sigma1, kappa2, theta2, sigma2, l11, l21, l22, l31, l32, l33, l41, l42, l43, l44]),
       ),
+      EulerSpec::MertonJumpLog {
+        drift_ln,
+        sigma,
+        nu,
+        omega,
+      } => (
+        Family::MertonJumpLog.code(),
+        pad([drift_ln, sigma, nu, omega]),
+      ),
     }
   }
 }
@@ -812,6 +828,14 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
   /// `θ(t)`, a term structure of volatilities, anything the host can tabulate
   /// on the same grid the recursion walks.
   fn curve(&self) -> Option<Vec<T>> {
+    None
+  }
+
+
+  /// The jump intensity per unit time, or `None` when the family has no jump
+  /// term. The kernel draws a Poisson count with mean `intensity · dt` once
+  /// per step and offers it to the step as `nj`.
+  fn jump_intensity(&self) -> Option<T> {
     None
   }
 
@@ -977,6 +1001,14 @@ pub trait EulerSystem<T: FloatExt, const D: usize>: ProcessExt<T, Output = [Arra
   /// `θ(t)`, a term structure of volatilities, anything the host can tabulate
   /// on the same grid the recursion walks.
   fn curve(&self) -> Option<Vec<T>> {
+    None
+  }
+
+
+  /// The jump intensity per unit time, or `None` when the family has no jump
+  /// term. The kernel draws a Poisson count with mean `intensity · dt` once
+  /// per step and offers it to the step as `nj`.
+  fn jump_intensity(&self) -> Option<T> {
     None
   }
 

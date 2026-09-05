@@ -21,7 +21,6 @@ use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -132,9 +131,63 @@ impl<T: FloatExt, S: SeedExt, B> MjdLog<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] MjdLog<T, S> { mu, b, r, r_f, sigma, lambda, nu, omega, n, s0, t, seed } via host);
+/// The Euler engine's view of Merton's jump diffusion. The whole log-drift is
+/// folded here, as the host sampler folds it, and the jump intensity travels
+/// as a launch argument rather than a family parameter: the kernel draws the
+/// count once per step and offers it to every family that asks.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for MjdLog<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let half = T::from_f64_fast(0.5);
+    let drift_ln =
+      (self.drift() - self.lambda * self.kappa_j() - half * self.sigma * self.sigma) * self.dt();
+    crate::euler::EulerSpec::MertonJumpLog {
+      drift_ln,
+      sigma: self.sigma,
+      nu: self.nu,
+      omega: self.omega,
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for MjdLog<T, S, B> {
+  fn initial_value(&self) -> T {
+    self.s0.unwrap_or(T::one())
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.dt()
+  }
+
+  /// The jump intensity per unit time; `None` when the process carries none,
+  /// which is what makes a zero-intensity build skip the draw entirely.
+  fn jump_intensity(&self) -> Option<T> {
+    (self.lambda > T::zero()).then_some(self.lambda)
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] MjdLog<T, S> { mu, b, r, r_f, sigma, lambda, nu, omega, n, s0, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for MjdLog<T, S, B>
+{
   type Output = Array1<T>;
   type Sampler<'s>
     = MjdLogSampler<T>
@@ -179,6 +232,29 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for MjdLog<T, S, B> 
       normal,
       jump_normal,
     }
+  }
+
+  /// Through the Euler engine: on a device the diffusion and the jump both
+  /// happen in the kernel, on the host devices it is this process's own
+  /// sampler, chunked exactly as `ProcessExt` chunks.
+  fn sample(&self) -> Array1<T> {
+    self.backend.euler_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    self.backend.euler_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    self.backend.euler_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    self.backend.try_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    self.backend.try_euler_paths(self, m)
   }
 }
 

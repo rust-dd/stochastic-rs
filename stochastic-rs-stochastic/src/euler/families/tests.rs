@@ -14,6 +14,7 @@ fn step1(family: Family, x: f64, params: &[f64], dt: f64, dz: f64) -> f64 {
     params,
     dt,
     0.0,
+    0.0,
     &[dz, 0.0, 0.0, 0.0],
     &mut out,
   );
@@ -22,7 +23,7 @@ fn step1(family: Family, x: f64, params: &[f64], dt: f64, dz: f64) -> f64 {
 
 fn report1(family: Family, x: f64, params: &[f64]) -> f64 {
   let mut out = [0.0; 4];
-  host_report(family, &[x, 0.0, 0.0, 0.0], params, 0.0, &mut out);
+  host_report(family, &[x, 0.0, 0.0, 0.0], params, 0.0, 0.0, &mut out);
   out[0]
 }
 

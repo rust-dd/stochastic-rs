@@ -35,6 +35,10 @@ pub(crate) struct Probe {
 /// The curve every probe carries: a family that reads none ignores it, and
 /// one that does gets a value that varies along the path, so a kernel binding
 /// the wrong step would show up as a different law.
+/// The jump intensity every probe declares: enough that a step sees a jump
+/// now and then, low enough that the count stays small.
+const PROBE_INTENSITY: f32 = 3.0;
+
 fn probe_curve() -> Vec<f32> {
   (0..N).map(|i| 0.02 + 0.001 * i as f32).collect()
 }
@@ -62,7 +66,7 @@ impl PathSampler<f32> for ProbeSampler {
     let curve = probe_curve();
     let mut state = [self.x0, 0.0, 0.0, 0.0];
     let mut out = [0.0f32; 4];
-    super::families::host_report(family, &state, &params, curve[0], &mut out);
+    super::families::host_report(family, &state, &params, curve[0], 0.0, &mut out);
     slice[0] = out[0];
     if slice.len() == 1 {
       return;
@@ -77,11 +81,12 @@ impl PathSampler<f32> for ProbeSampler {
         &params,
         self.dt,
         curve[i + 1],
+        0.0,
         &[*z, 0.0, 0.0, 0.0],
         &mut next,
       );
       state = next;
-      super::families::host_report(family, &state, &params, curve[i + 1], &mut out);
+      super::families::host_report(family, &state, &params, curve[i + 1], 0.0, &mut out);
       *z = out[0];
     }
   }
@@ -134,6 +139,12 @@ impl EulerCoefficients<f32> for Probe {
 
   fn curve(&self) -> Option<Vec<f32>> {
     Some(probe_curve())
+  }
+
+  /// Every probe takes jumps, so the count's own hash stream runs on both
+  /// kernels whether or not the family under test reads it.
+  fn jump_intensity(&self) -> Option<f32> {
+    Some(PROBE_INTENSITY)
   }
 
   fn host_sample(&self) -> Array1<f32> {
@@ -205,6 +216,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::DuffieKan { .. } => "DuffieKan",
     EulerSpec::TwoAssetHeston { .. } => "TwoAssetHeston",
     EulerSpec::TwoAssetHestonReflected { .. } => "TwoAssetHestonReflected",
+    EulerSpec::MertonJumpLog { .. } => "MertonJumpLog",
   }
 }
 
@@ -309,6 +321,15 @@ fn every_family() -> Vec<Probe> {
     ),
     p(EulerSpec::TimeVaryingGeometricBrownian { mu: 0.05 }, 100.0),
     p(EulerSpec::BrownianBridge { xt: 1.0, sigma: 0.2 }, 0.0),
+    p(
+      EulerSpec::MertonJumpLog {
+        drift_ln: 0.0001,
+        sigma: 0.2,
+        nu: -0.05,
+        omega: 0.1,
+      },
+      100.0,
+    ),
   ]
 }
 
@@ -339,7 +360,7 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
     let mut state = [0.0f32; 4];
     state[..D].copy_from_slice(&self.x0);
     let mut reported = [0.0f32; 4];
-    super::families::host_report(family, &state, &params, curve[0], &mut reported);
+    super::families::host_report(family, &state, &params, curve[0], 0.0, &mut reported);
     for (c, path) in out.iter_mut().enumerate() {
       path[0] = reported[c];
     }
@@ -349,9 +370,9 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       self.normal.fill_slice(&mut draw);
       noise[..noises].copy_from_slice(&draw);
       let mut next = [0.0f32; 4];
-      super::families::host_step(family, &state, &params, self.dt, curve[i], &noise, &mut next);
+      super::families::host_step(family, &state, &params, self.dt, curve[i], 0.0, &noise, &mut next);
       state = next;
-      super::families::host_report(family, &state, &params, curve[i], &mut reported);
+      super::families::host_report(family, &state, &params, curve[i], 0.0, &mut reported);
       for (c, path) in out.iter_mut().enumerate() {
         path[i] = reported[c];
       }
@@ -408,6 +429,10 @@ impl<const D: usize> EulerSystem<f32, D> for SystemProbe<D> {
 
   fn curve(&self) -> Option<Vec<f32>> {
     Some(probe_curve())
+  }
+
+  fn jump_intensity(&self) -> Option<f32> {
+    Some(PROBE_INTENSITY)
   }
 
   fn host_sample(&self) -> [Array1<f32>; D] {

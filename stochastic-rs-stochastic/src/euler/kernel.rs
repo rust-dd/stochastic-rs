@@ -4,9 +4,9 @@
 //!
 //! The thread index `path`, the output and parameter buffers and the launch
 //! arguments (`family`, `components`, `noises`, `x0`, `dt`, `sqrt_dt`,
-//! `seed`, `steps`, `paths`, `first_path`, `increments`, `has_curve`) and the
-//! `incs` and `curve` buffers are bound by the language-specific header
-//! around the body;
+//! `seed`, `steps`, `paths`, `first_path`, `increments`, `has_curve`,
+//! `jump_lambda`, `has_jumps`) and the `incs` and `curve` buffers are bound
+//! by the language-specific header around the body;
 //! the body itself only uses the placeholders [`Language`] fills in. Two
 //! decorrelated uniforms per noise component per step come from a
 //! Murmur3-style integer hash of `(first_path + path, step, seed)`, so a
@@ -23,6 +23,12 @@
 //! A launch writes `components` planes of `paths * steps` values each, so a
 //! one-component family fills the buffer exactly as it always did and a
 //! system's components come back as separate contiguous paths.
+//!
+//! A family may read `nj`, the number of jumps the step saw: a Poisson draw
+//! with mean `jump_lambda · dt`, by Knuth's product of uniforms from a hash
+//! stream of its own. It is drawn once per step, so every component of a
+//! system sees the same count, and it is zero for a family that declares no
+//! intensity.
 //!
 //! A family may also read `ct`, the step's value of a time-varying
 //! coefficient. The host supplies one value per grid point — a short-rate
@@ -45,6 +51,7 @@ pub(crate) const FRAME: &str = r#"    if (path >= paths) return;
     REAL noise[4];
     REAL ct = (REAL)0;
     if (has_curve != 0u) { ct = curve[0]; }
+    REAL nj = (REAL)0;
     for (unsigned int c = 0u; c < 4u; c++) { state[c] = x0[c]; reported[c] = x0[c]; }
     for (unsigned int c = 0u; c < 4u; c++) { noise[c] = (REAL)0; }
 REPORT
@@ -69,6 +76,19 @@ REPORT
             noise[0] = incs[(INDEX)path * (steps - 1) + (i - 1)];
         }
         if (has_curve != 0u) { ct = curve[i]; }
+        if (has_jumps != 0u) {
+            REAL ell = STOCH_EXP(-jump_lambda * dt);
+            REAL prod = (REAL)1;
+            unsigned int cnt = 0u;
+            for (unsigned int j = 0u; j < 64u; j++) {
+                unsigned int h = g ^ (2166136261u + j * 16777619u);
+                h ^= h >> 16; h *= 2246822519u; h ^= h >> 13; h *= 3266489917u; h ^= h >> 16;
+                prod = prod * ((REAL)h * (REAL)2.3283064e-10);
+                if (prod <= ell) { break; }
+                cnt++;
+            }
+            nj = (REAL)cnt;
+        }
 STEP
         for (unsigned int c = 0u; c < 4u; c++) { reported[c] = state[c]; }
 REPORT

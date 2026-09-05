@@ -17,6 +17,7 @@ use stochastic_rs_stochastic::diffusion::quadratic::Quadratic;
 use stochastic_rs_stochastic::diffusion::radial_ou::RadialOU;
 use stochastic_rs_stochastic::diffusion::three_half::ThreeHalf;
 use stochastic_rs_stochastic::interest::vasicek::Vasicek;
+use stochastic_rs_stochastic::jump::mjd_log::MjdLog;
 use stochastic_rs_stochastic::process::bm::Bm;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
@@ -259,5 +260,40 @@ fn brownian_motion_agrees_with_the_cpu_law() {
     terminal_std(&device),
     0.05,
     "Brownian motion terminal spread",
+  );
+}
+
+/// Merton's jump diffusion: the device draws its own Poisson count per step
+/// and aggregates the jump sizes into one normal, as the host sampler does,
+/// so the terminal mean carries both the diffusion and the jump compensator.
+#[test]
+fn merton_jump_diffusion_agrees_with_the_cpu_law() {
+  let build = || {
+    MjdLog::<f32, _>::new(
+      Some(0.05),
+      None,
+      None,
+      None,
+      0.2,
+      3.0,
+      -0.05,
+      0.1,
+      253,
+      Some(100.0),
+      Some(1.0),
+      Deterministic::new(89),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  all_finite(&device, "Merton jump diffusion");
+  assert!(
+    device.iter().all(|p| p.iter().all(|&v| v > 0.0)),
+    "the log-price form let the spot reach zero"
+  );
+  agrees(
+    terminal_mean(&build().sample_par(M)),
+    terminal_mean(&device),
+    0.03,
+    "Merton jump diffusion terminal mean",
   );
 }

@@ -35,7 +35,8 @@ const CUDA_HEADER: &str = r#"extern "C" __global__ void euler_paths_REAL(
     unsigned int seed, unsigned int steps, unsigned int paths,
     unsigned int first_path,
     const REAL* __restrict__ incs, unsigned int increments,
-    const REAL* __restrict__ curve, unsigned int has_curve)
+    const REAL* __restrict__ curve, unsigned int has_curve,
+    REAL jump_lambda, unsigned int has_jumps)
 {
     unsigned int path = blockIdx.x * blockDim.x + threadIdx.x;
     const REAL x0[4] = { x00, x01, x02, x03 };
@@ -155,6 +156,8 @@ fn run<R>(
   m: usize,
   increments: Option<&CudaSlice<R>>,
   curve: &[R],
+  jump_lambda: R,
+  use_jumps: u32,
 ) -> Result<Vec<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
@@ -219,6 +222,8 @@ where
       .arg(&use_incs)
       .arg(&d_curve)
       .arg(&use_curve)
+      .arg(&jump_lambda)
+      .arg(&use_jumps)
       .launch(LaunchConfig::for_num_elems(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
@@ -246,6 +251,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       seed,
       process.fgn_spec(),
       process.curve().as_deref().unwrap_or(&[]),
+      process.jump_intensity(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -274,6 +280,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       seed,
       None,
       process.curve().as_deref().unwrap_or(&[]),
+      process.jump_intensity(),
     )
   }
 
@@ -304,6 +311,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       rows,
       seed,
       process.curve().as_deref().unwrap_or(&[]),
+      process.jump_intensity(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -322,10 +330,15 @@ fn device_paths<T: FloatExt>(
   seed: u64,
   fgn: Option<crate::euler::FgnSpec<'_, T>>,
   curve: &[T],
+  jump_lambda: Option<T>,
 ) -> Result<Array3<T>> {
   {
     let (family, params) = spec.encode();
     let arity = super::families::Family::from_code(family).expect("a declared family");
+  let use_jumps = u32::from(jump_lambda.is_some());
+  let lambda64 = jump_lambda.map_or(0.0, |v| v.to_f64().unwrap_or(0.0));
+    let use_jumps = u32::from(jump_lambda.is_some());
+    let lambda64 = jump_lambda.map_or(0.0, |v| v.to_f64().unwrap_or(0.0));
     let (components, noises) = (arity.components() as u32, arity.noises() as u32);
     let planes = components as usize;
     if n == 0 || m == 0 {
@@ -373,6 +386,8 @@ fn device_paths<T: FloatExt>(
         m,
         incs.as_ref(),
         &curve64,
+        lambda64,
+        use_jumps,
       )?;
       let out =
         Array3::<f64>::from_shape_vec((planes, m, n), data)
@@ -417,6 +432,8 @@ fn device_paths<T: FloatExt>(
       m,
       incs.as_ref(),
       &curve32,
+      lambda64 as f32,
+      use_jumps,
     )?;
     assert!(
       TypeId::of::<T>() == TypeId::of::<f32>(),
@@ -445,6 +462,8 @@ fn launch_chunk<R>(
   m: usize,
   increments: Option<&CudaSlice<R>>,
   curve: &[R],
+  jump_lambda: R,
+  use_jumps: u32,
 ) -> Result<CudaSlice<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
@@ -505,6 +524,8 @@ where
       .arg(&use_incs)
       .arg(&d_curve)
       .arg(&use_curve)
+      .arg(&jump_lambda)
+      .arg(&use_jumps)
       .launch(LaunchConfig::for_num_elems(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
@@ -527,6 +548,8 @@ fn pipelined<R>(
   m: usize,
   rows: usize,
   curve: &[R],
+  jump_lambda: R,
+  use_jumps: u32,
 ) -> Result<Vec<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float + Send + Sync,
@@ -587,6 +610,8 @@ where
       // in one go, so its increments never meet this path.
       None,
       curve,
+      jump_lambda,
+      use_jumps,
     )?;
     let dst = unsafe { std::slice::from_raw_parts_mut(staging[slot].ptr, planes * len * n) };
     streams[slot]
@@ -613,9 +638,12 @@ fn pipelined_paths<T: FloatExt>(
   rows: usize,
   seed: u64,
   curve: &[T],
+  jump_lambda: Option<T>,
 ) -> Result<Array3<T>> {
   let (family, params) = spec.encode();
   let arity = super::families::Family::from_code(family).expect("a declared family");
+  let use_jumps = u32::from(jump_lambda.is_some());
+  let lambda64 = jump_lambda.map_or(0.0, |v| v.to_f64().unwrap_or(0.0));
   let (components, noises) = (arity.components() as u32, arity.noises() as u32);
   let planes = components as usize;
   let dt = dt.to_f64().unwrap_or(0.0);
@@ -638,6 +666,8 @@ fn pipelined_paths<T: FloatExt>(
       m,
       rows,
       &curve64,
+      lambda64,
+      use_jumps,
     )?;
     let out = Array3::<f64>::from_shape_vec((planes, m, n), data)
       .expect("the kernel returns components * m * n values");
@@ -663,6 +693,8 @@ fn pipelined_paths<T: FloatExt>(
     m,
     rows,
     &curve32,
+    lambda64 as f32,
+    use_jumps,
   )?;
   let out = Array3::<f32>::from_shape_vec((planes, m, n), data)
       .expect("the kernel returns components * m * n values");
