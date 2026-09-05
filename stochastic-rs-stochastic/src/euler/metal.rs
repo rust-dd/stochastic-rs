@@ -37,12 +37,17 @@ struct EulerArgs {
     uint has_jumps;
     uint jump_law;
     uint step_first;
+    uint gamma_law;
     float dt;
     float sqrt_dt;
     float jump_lambda;
     float jump_a;
     float jump_b;
     float jump_c;
+    float g1_shape;
+    float g1_scale;
+    float g2_shape;
+    float g2_scale;
     float x0[4];
 };
 
@@ -69,6 +74,11 @@ kernel void euler_paths(
     const float jump_lambda = args.jump_lambda;
     const uint jump_law = args.jump_law;
     const uint step_first = args.step_first;
+    const uint gamma_law = args.gamma_law;
+    const float g1_shape = args.g1_shape;
+    const float g1_scale = args.g1_scale;
+    const float g2_shape = args.g2_shape;
+    const float g2_scale = args.g2_scale;
     const float jump_a = args.jump_a;
     const float jump_b = args.jump_b;
     const float jump_c = args.jump_c;
@@ -117,12 +127,18 @@ struct EulerArgs {
   /// Non-zero when the first point written is a step rather than the
   /// initial state.
   step_first: u32,
+  /// How many Gamma draws the step takes: none, one, or two.
+  gamma_law: u32,
   dt: f32,
   sqrt_dt: f32,
   jump_lambda: f32,
   jump_a: f32,
   jump_b: f32,
   jump_c: f32,
+  g1_shape: f32,
+  g1_scale: f32,
+  g2_shape: f32,
+  g2_scale: f32,
   x0: [f32; 4],
 }
 
@@ -314,6 +330,7 @@ impl EulerKernel<f32> for Metal {
       process.jump_intensity(),
       process.jump_sizes(),
       process.step_first(),
+      process.gamma_draws(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -344,6 +361,7 @@ impl EulerKernel<f32> for Metal {
       process.jump_intensity(),
       process.jump_sizes(),
       process.step_first(),
+      process.gamma_draws(),
     )
   }
 
@@ -370,6 +388,7 @@ fn device_paths(
   jump_lambda: Option<f32>,
   sizes: Option<crate::euler::JumpSizes<f32>>,
   step_first: bool,
+  gammas: Option<crate::euler::GammaDraws<f32>>,
 ) -> Result<Array3<f32>> {
   let (family, params) = spec.encode();
   let arity = super::families::Family::from_code(family).expect("a declared family");
@@ -378,6 +397,8 @@ fn device_paths(
     return Ok(Array3::<f32>::zeros((components, m, n)));
   }
   let (law, jump_a, jump_b, jump_c) = sizes.map_or((0, 0.0, 0.0, 0.0), |s| s.encode());
+  let (gamma_law, g1_shape, g1_scale, g2_shape, g2_scale) =
+    gammas.map_or((0, 0.0, 0.0, 0.0, 0.0), |g| g.encode());
   let args = EulerArgs {
     family,
     components: components as u32,
@@ -391,12 +412,17 @@ fn device_paths(
     has_jumps: u32::from(jump_lambda.is_some()),
     jump_law: law,
     step_first: u32::from(step_first),
+    gamma_law,
     dt,
     sqrt_dt: dt.sqrt(),
     jump_lambda: jump_lambda.unwrap_or(0.0),
     jump_a,
     jump_b,
     jump_c,
+    g1_shape,
+    g1_scale,
+    g2_shape,
+    g2_scale,
     x0,
   };
   let data = run(ordinal, params, args, increments, curve)?;

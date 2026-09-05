@@ -6,10 +6,14 @@
 //! is that the device draws the same law the host's own sampler draws.
 
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGamma;
+use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGammaMotion;
 use stochastic_rs_stochastic::jump::hawkes_jd::HawkesJD;
 use stochastic_rs_stochastic::jump::ig::Ig;
 use stochastic_rs_stochastic::jump::nig::Nig;
+use stochastic_rs_stochastic::jump::vg::Vg;
 use stochastic_rs_stochastic::process::subordinator::alpha_stable::AlphaStableSubordinator;
+use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSubordinator;
 use stochastic_rs_stochastic::process::subordinator::ig_subordinator::IGSubordinator;
 use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PoissonSubordinator;
 use stochastic_rs_stochastic::traits::ProcessExt;
@@ -168,5 +172,112 @@ fn hawkes_jump_diffusion_agrees_with_the_cpu_law() {
   assert!(
     (host - dev).abs() < 0.02,
     "Hawkes jump diffusion terminal mean: host {host}, device {dev}"
+  );
+}
+
+/// A gamma subordinator is non-decreasing and positive, and its terminal mean
+/// is `ν t / λ`. The kernel draws it by Marsaglia-Tsang, whose rejection loop
+/// is bounded; what this pins is that the bounded loop still produces the
+/// law.
+#[test]
+fn gamma_subordinator_agrees_with_the_cpu_law() {
+  let build =
+    || GammaSubordinator::<f32, _>::new(2.0, 1.5, N, Some(0.0), Some(1.0), Deterministic::new(197));
+  let device = build().on::<Device>().sample_par(M);
+  within(&device, 0.0, f32::INFINITY, "gamma subordinator");
+  assert!(
+    device
+      .iter()
+      .all(|p| p.windows(2).into_iter().all(|w| w[1] >= w[0])),
+    "a subordinator path went backwards"
+  );
+  agrees(
+    terminal_mean(&build().sample_par(M)),
+    terminal_mean(&device),
+    0.05,
+    "gamma subordinator terminal mean",
+  );
+}
+
+/// Brownian motion under a gamma clock: the drift is `μ` times the clock, so
+/// the terminal mean carries the gamma draw and the Brownian one together.
+#[test]
+fn variance_gamma_agrees_with_the_cpu_law() {
+  let build = || {
+    Vg::<f32, _>::new(
+      -0.1,
+      0.2,
+      0.5,
+      N,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(199),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  all_finite(&device, "variance gamma");
+  let (host, dev) = (
+    terminal_mean(&build().sample_par(M)),
+    terminal_mean(&device),
+  );
+  assert!(
+    (host - dev).abs() < 0.02,
+    "variance gamma terminal mean: host {host}, device {dev}"
+  );
+}
+
+/// The difference of two gamma processes: both draws happen in the same step,
+/// from streams of their own.
+#[test]
+fn bilateral_gamma_agrees_with_the_cpu_law() {
+  let build = || {
+    BilateralGamma::<f32, _>::new(
+      1.5,
+      10.0,
+      1.2,
+      12.0,
+      N,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(211),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  all_finite(&device, "bilateral gamma");
+  let (host, dev) = (
+    terminal_mean(&build().sample_par(M)),
+    terminal_mean(&device),
+  );
+  assert!(
+    (host - dev).abs() < 0.02,
+    "bilateral gamma terminal mean: host {host}, device {dev}"
+  );
+}
+
+/// The same, with a Brownian part added.
+#[test]
+fn bilateral_gamma_motion_agrees_with_the_cpu_law() {
+  let build = || {
+    BilateralGammaMotion::<f32, _>::new(
+      0.1,
+      1.5,
+      10.0,
+      1.2,
+      12.0,
+      N,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(223),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  all_finite(&device, "bilateral gamma motion");
+  let (host, dev) = (
+    terminal_mean(&build().sample_par(M)),
+    terminal_mean(&device),
+  );
+  assert!(
+    (host - dev).abs() < 0.03,
+    "bilateral gamma motion terminal mean: host {host}, device {dev}"
   );
 }

@@ -51,6 +51,11 @@ fn euler_paths_kernel(
   jump_b: f32,
   jump_c: f32,
   step_first: u32,
+  gamma_law: u32,
+  g1_shape: f32,
+  g1_scale: f32,
+  g2_shape: f32,
+  g2_scale: f32,
 ) {
   let path = ABSOLUTE_POS as u32;
   if path < paths {
@@ -62,6 +67,8 @@ fn euler_paths_kernel(
     }
     let mut nj = 0.0f32;
     let mut js = 0.0f32;
+    let mut gm = 0.0f32;
+    let mut gm2 = 0.0f32;
     let mut u = 0.0f32;
     let mut u2 = 0.0f32;
     let mut s0 = x00;
@@ -69,17 +76,23 @@ fn euler_paths_kernel(
     let mut s2 = x02;
     let mut s3 = x03;
     if step_first == 0u32 {
-      out[base] = report(family, 0u32, s0, s1, s2, s3, params, ct, nj, js, u, u2);
+      out[base] = report(
+        family, 0u32, s0, s1, s2, s3, params, ct, nj, js, gm, gm2, u, u2,
+      );
       if components > 1u32 {
-        out[plane + base] = report(family, 1u32, s0, s1, s2, s3, params, ct, nj, js, u, u2);
+        out[plane + base] = report(
+          family, 1u32, s0, s1, s2, s3, params, ct, nj, js, gm, gm2, u, u2,
+        );
       }
       if components > 2u32 {
-        out[2usize * plane + base] =
-          report(family, 2u32, s0, s1, s2, s3, params, ct, nj, js, u, u2);
+        out[2usize * plane + base] = report(
+          family, 2u32, s0, s1, s2, s3, params, ct, nj, js, gm, gm2, u, u2,
+        );
       }
       if components > 3u32 {
-        out[3usize * plane + base] =
-          report(family, 3u32, s0, s1, s2, s3, params, ct, nj, js, u, u2);
+        out[3usize * plane + base] = report(
+          family, 3u32, s0, s1, s2, s3, params, ct, nj, js, gm, gm2, u, u2,
+        );
       }
     }
     let mut lo = 1u32;
@@ -110,6 +123,12 @@ fn euler_paths_kernel(
       if has_jumps != 0u32 {
         nj = poisson(g, seed, jump_lambda * dt);
       }
+      if gamma_law > 0u32 {
+        gm = gamma_draw(g, seed, 0u32, g1_shape, g1_scale);
+      }
+      if gamma_law > 1u32 {
+        gm2 = gamma_draw(g, seed, 1u32, g2_shape, g2_scale);
+      }
       js = 0.0f32;
       if jump_law == 1u32 {
         let ua = uniform(g ^ 1103515245u32, seed) * 0.999998f32 + 1.0e-6f32;
@@ -130,42 +149,47 @@ fn euler_paths_kernel(
       u = uniform(g ^ 2135587861u32, seed);
       u2 = uniform(g ^ 3266489917u32, seed);
       let n0 = step(
-        family, 0u32, s0, s1, s2, s3, params, dt, ct, nj, js, u, u2, d0, d1, d2, d3,
+        family, 0u32, s0, s1, s2, s3, params, dt, ct, nj, js, gm, gm2, u, u2, d0, d1, d2, d3,
       );
       let mut n1 = s1;
       let mut n2 = s2;
       let mut n3 = s3;
       if components > 1u32 {
         n1 = step(
-          family, 1u32, s0, s1, s2, s3, params, dt, ct, nj, js, u, u2, d0, d1, d2, d3,
+          family, 1u32, s0, s1, s2, s3, params, dt, ct, nj, js, gm, gm2, u, u2, d0, d1, d2, d3,
         );
       }
       if components > 2u32 {
         n2 = step(
-          family, 2u32, s0, s1, s2, s3, params, dt, ct, nj, js, u, u2, d0, d1, d2, d3,
+          family, 2u32, s0, s1, s2, s3, params, dt, ct, nj, js, gm, gm2, u, u2, d0, d1, d2, d3,
         );
       }
       if components > 3u32 {
         n3 = step(
-          family, 3u32, s0, s1, s2, s3, params, dt, ct, nj, js, u, u2, d0, d1, d2, d3,
+          family, 3u32, s0, s1, s2, s3, params, dt, ct, nj, js, gm, gm2, u, u2, d0, d1, d2, d3,
         );
       }
       s0 = n0;
       s1 = n1;
       s2 = n2;
       s3 = n3;
-      out[base + i as usize] = report(family, 0u32, s0, s1, s2, s3, params, ct, nj, js, u, u2);
+      out[base + i as usize] = report(
+        family, 0u32, s0, s1, s2, s3, params, ct, nj, js, gm, gm2, u, u2,
+      );
       if components > 1u32 {
-        out[plane + base + i as usize] =
-          report(family, 1u32, s0, s1, s2, s3, params, ct, nj, js, u, u2);
+        out[plane + base + i as usize] = report(
+          family, 1u32, s0, s1, s2, s3, params, ct, nj, js, gm, gm2, u, u2,
+        );
       }
       if components > 2u32 {
-        out[2usize * plane + base + i as usize] =
-          report(family, 2u32, s0, s1, s2, s3, params, ct, nj, js, u, u2);
+        out[2usize * plane + base + i as usize] = report(
+          family, 2u32, s0, s1, s2, s3, params, ct, nj, js, gm, gm2, u, u2,
+        );
       }
       if components > 3u32 {
-        out[3usize * plane + base + i as usize] =
-          report(family, 3u32, s0, s1, s2, s3, params, ct, nj, js, u, u2);
+        out[3usize * plane + base + i as usize] = report(
+          family, 3u32, s0, s1, s2, s3, params, ct, nj, js, gm, gm2, u, u2,
+        );
       }
     }
   }
@@ -182,6 +206,48 @@ fn uniform(g: u32, seed: u32) -> f32 {
   h *= 3266489917u32;
   h ^= h >> 16;
   f32::cast_from(h) * 2.3283064e-10f32
+}
+
+/// One `Gamma(shape, scale)` draw by Marsaglia-Tsang, with the boost the
+/// method prescribes below shape one. The rejection loop is bounded; see the
+/// frame's own note on why exhausting it is not a case worth handling.
+#[cube]
+fn gamma_draw(g: u32, seed: u32, slot: u32, shape: f32, scale: f32) -> f32 {
+  let mut out = 0.0f32;
+  if shape > 0.0f32 {
+    let mut boost = 1.0f32;
+    let mut a = shape;
+    if a < 1.0f32 {
+      let ub = uniform(g ^ (2246822519u32 + slot * 97u32), seed) * 0.999998f32 + 1.0e-6f32;
+      boost = Powf::powf(ub, 1.0f32 / shape);
+      a += 1.0f32;
+    }
+    let dd = a - 1.0f32 / 3.0f32;
+    let cc = 1.0f32 / Sqrt::sqrt(9.0f32 * dd);
+    let mut val = dd;
+    let mut running: u32 = 1u32;
+    for j in 0..24u32 {
+      if running != 0u32 {
+        let ga = uniform(g ^ (1103515245u32 + slot * 7919u32 + j * 104729u32), seed) * 0.999998f32
+          + 1.0e-6f32;
+        let gb = uniform(g ^ (1013904223u32 + slot * 7919u32 + j * 104729u32), seed) * 0.999998f32
+          + 1.0e-6f32;
+        let zg = Sqrt::sqrt(-2.0f32 * Log::ln(ga)) * Cos::cos(core::f32::consts::TAU * gb);
+        let mut vv = 1.0f32 + cc * zg;
+        vv = vv * vv * vv;
+        if vv > 0.0f32 {
+          let ug = uniform(g ^ (668265263u32 + slot * 7919u32 + j * 104729u32), seed) * 0.999998f32
+            + 1.0e-6f32;
+          val = dd * vv;
+          if Log::ln(ug) < 0.5f32 * zg * zg + dd - dd * vv + dd * Log::ln(vv) {
+            running = 0u32;
+          }
+        }
+      }
+    }
+    out = scale * boost * val;
+  }
+  out
 }
 
 /// A Poisson draw with mean `mean`, by Knuth's product of uniforms: the
@@ -269,6 +335,8 @@ fn step(
   ct: f32,
   nj: f32,
   js: f32,
+  gm: f32,
+  gm2: f32,
   u: f32,
   u2: f32,
   dz0: f32,
@@ -279,387 +347,407 @@ fn step(
   let mut stepped = x0;
   if family == 0u32 {
     stepped = cube::GeometricBrownian(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 1u32 {
     stepped = cube::OrnsteinUhlenbeck(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 2u32 {
     stepped = cube::SquareRoot(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 6u32 {
     stepped = cube::Jacobi(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 9u32 {
     stepped = cube::Logistic(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 12u32 {
     stepped = cube::RadialOrnsteinUhlenbeck(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 17u32 {
     stepped = cube::AitSahalia(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 18u32 {
     stepped = cube::Gompertz(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 19u32 {
     stepped = cube::Kimura(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 20u32 {
     stepped = cube::Quadratic(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 21u32 {
     stepped = cube::Pearson(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 22u32 {
     stepped = cube::Verhulst(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 23u32 {
     stepped = cube::VerhulstClamped(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 24u32 {
     stepped = cube::FellerLogistic(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 25u32 {
     stepped = cube::FellerLogisticReflected(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 26u32 {
     stepped = cube::SquaredBesselState(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 27u32 {
     stepped = cube::SquaredBesselStateReflected(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 28u32 {
     stepped = cube::BesselFromSquared(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 29u32 {
     stepped = cube::BesselFromSquaredReflected(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 30u32 {
     stepped = cube::HyperbolicDiffusion(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 31u32 {
     stepped = cube::NonLinear(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 32u32 {
     stepped = cube::Displaced(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 33u32 {
     stepped = cube::TanhOrnsteinUhlenbeck(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 34u32 {
     stepped = cube::BoundedCorrelation(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 35u32 {
     stepped = cube::Heston(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 36u32 {
     stepped = cube::HestonReflected(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 37u32 {
     stepped = cube::Sabr(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 38u32 {
     stepped = cube::Bergomi(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 39u32 {
     stepped = cube::TwoScaleOrnsteinUhlenbeck(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 40u32 {
     stepped = cube::LogHeston(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 41u32 {
     stepped = cube::LogHestonReflected(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 42u32 {
     stepped = cube::DoubleHeston(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 43u32 {
     stepped = cube::DoubleHestonReflected(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 44u32 {
     stepped = cube::StochasticCorrelationHeston(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 45u32 {
     stepped = cube::HullWhite(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 46u32 {
     stepped = cube::CurveDrift(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 47u32 {
     stepped = cube::LogMeanReverting(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 48u32 {
     stepped = cube::ShiftedSquareRoot(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 49u32 {
     stepped = cube::ShiftedSquareRootMirrored(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 50u32 {
     stepped = cube::TimeVaryingGeometricBrownian(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 51u32 {
     stepped = cube::CorrelatedBrownian(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 52u32 {
     stepped = cube::BrownianBridge(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 53u32 {
     stepped = cube::TwoFactorHullWhite(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 54u32 {
     stepped = cube::TwoFactorSquareRoot(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 55u32 {
     stepped = cube::DuffieKan(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 56u32 {
     stepped = cube::TwoAssetHeston(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 57u32 {
     stepped = cube::TwoAssetHestonReflected(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 58u32 {
     stepped = cube::MertonJumpLog(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 59u32 {
     stepped = cube::BatesJump(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 60u32 {
     stepped = cube::BatesJumpReflected(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 61u32 {
     stepped = cube::AndersenQe(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 62u32 {
     stepped = cube::CountingProcess(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 63u32 {
     stepped = cube::InverseGaussianSubordinator(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 64u32 {
     stepped = cube::NormalInverseGaussian(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 65u32 {
     stepped = cube::StableSubordinator(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 66u32 {
     stepped = cube::KouJumpHeston(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 67u32 {
     stepped = cube::KouJumpHestonReflected(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 68u32 {
     stepped = cube::DuffieKanJump(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 69u32 {
     stepped = cube::HawkesJumpDiffusion(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 70u32 {
     stepped = cube::Garch(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 71u32 {
     stepped = cube::ThresholdGarch(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 72u32 {
     stepped = cube::ExponentialGarch(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 73u32 {
     stepped = cube::Innovation(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 74u32 {
     stepped = cube::CorrelatedInnovation(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 75u32 {
     stepped = cube::Autoregressive(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 76u32 {
     stepped = cube::MovingAverage(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 77u32 {
+    stepped = cube::GammaSubordinator(
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 78u32 {
+    stepped = cube::VarianceGamma(
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 79u32 {
+    stepped = cube::BilateralGamma(
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 80u32 {
+    stepped = cube::BilateralGammaMotion(
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 16u32 {
     stepped = cube::FellerRoot(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 15u32 {
     stepped = cube::ModifiedSquareRoot(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 14u32 {
     stepped = cube::Hyperbolic(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 13u32 {
     stepped = cube::LinearSde(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 11u32 {
     stepped = cube::LogGeometric(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 10u32 {
     stepped = cube::ThreeHalf(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 8u32 {
     stepped = cube::Ckls(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 7u32 {
     stepped = cube::ConstantElasticity(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 5u32 {
     stepped = cube::MirroredSquareRoot(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 4u32 {
     stepped = cube::ReflectedSquareRoot(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   if family == 3u32 {
     stepped = cube::Additive(
-      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
   stepped
@@ -678,273 +766,416 @@ fn report(
   ct: f32,
   nj: f32,
   js: f32,
+  gm: f32,
+  gm2: f32,
   u: f32,
   u2: f32,
 ) -> f32 {
   let mut reported = x0;
   if family == 0u32 {
-    reported = cube_report::GeometricBrownian(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::GeometricBrownian(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 1u32 {
-    reported = cube_report::OrnsteinUhlenbeck(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::OrnsteinUhlenbeck(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 2u32 {
-    reported = cube_report::SquareRoot(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::SquareRoot(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 6u32 {
-    reported = cube_report::Jacobi(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::Jacobi(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 9u32 {
-    reported = cube_report::Logistic(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::Logistic(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 12u32 {
-    reported =
-      cube_report::RadialOrnsteinUhlenbeck(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::RadialOrnsteinUhlenbeck(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 17u32 {
-    reported = cube_report::AitSahalia(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::AitSahalia(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 18u32 {
-    reported = cube_report::Gompertz(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::Gompertz(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 19u32 {
-    reported = cube_report::Kimura(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::Kimura(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 20u32 {
-    reported = cube_report::Quadratic(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::Quadratic(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 21u32 {
-    reported = cube_report::Pearson(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::Pearson(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 22u32 {
-    reported = cube_report::Verhulst(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::Verhulst(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 23u32 {
-    reported = cube_report::VerhulstClamped(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::VerhulstClamped(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 24u32 {
-    reported = cube_report::FellerLogistic(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::FellerLogistic(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 25u32 {
-    reported =
-      cube_report::FellerLogisticReflected(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::FellerLogisticReflected(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 26u32 {
-    reported =
-      cube_report::SquaredBesselState(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::SquaredBesselState(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 27u32 {
     reported = cube_report::SquaredBesselStateReflected(
-      component, x0, x1, x2, x3, params, ct, nj, js, u, u2,
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
     );
   }
   if family == 28u32 {
-    reported = cube_report::BesselFromSquared(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::BesselFromSquared(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 29u32 {
-    reported =
-      cube_report::BesselFromSquaredReflected(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::BesselFromSquaredReflected(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 30u32 {
-    reported =
-      cube_report::HyperbolicDiffusion(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::HyperbolicDiffusion(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 31u32 {
-    reported = cube_report::NonLinear(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::NonLinear(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 32u32 {
-    reported = cube_report::Displaced(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::Displaced(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 33u32 {
-    reported =
-      cube_report::TanhOrnsteinUhlenbeck(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::TanhOrnsteinUhlenbeck(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 34u32 {
-    reported =
-      cube_report::BoundedCorrelation(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::BoundedCorrelation(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 35u32 {
-    reported = cube_report::Heston(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::Heston(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 36u32 {
-    reported = cube_report::HestonReflected(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::HestonReflected(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 37u32 {
-    reported = cube_report::Sabr(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::Sabr(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 38u32 {
-    reported = cube_report::Bergomi(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::Bergomi(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 39u32 {
-    reported =
-      cube_report::TwoScaleOrnsteinUhlenbeck(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::TwoScaleOrnsteinUhlenbeck(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 40u32 {
-    reported = cube_report::LogHeston(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::LogHeston(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 41u32 {
-    reported =
-      cube_report::LogHestonReflected(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::LogHestonReflected(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 42u32 {
-    reported = cube_report::DoubleHeston(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::DoubleHeston(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 43u32 {
-    reported =
-      cube_report::DoubleHestonReflected(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::DoubleHestonReflected(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 44u32 {
     reported = cube_report::StochasticCorrelationHeston(
-      component, x0, x1, x2, x3, params, ct, nj, js, u, u2,
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
     );
   }
   if family == 45u32 {
-    reported = cube_report::HullWhite(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::HullWhite(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 46u32 {
-    reported = cube_report::CurveDrift(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::CurveDrift(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 47u32 {
-    reported = cube_report::LogMeanReverting(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::LogMeanReverting(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 48u32 {
-    reported = cube_report::ShiftedSquareRoot(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::ShiftedSquareRoot(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 49u32 {
-    reported =
-      cube_report::ShiftedSquareRootMirrored(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::ShiftedSquareRootMirrored(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 50u32 {
     reported = cube_report::TimeVaryingGeometricBrownian(
-      component, x0, x1, x2, x3, params, ct, nj, js, u, u2,
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
     );
   }
   if family == 51u32 {
-    reported =
-      cube_report::CorrelatedBrownian(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::CorrelatedBrownian(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 52u32 {
-    reported = cube_report::BrownianBridge(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::BrownianBridge(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 53u32 {
-    reported =
-      cube_report::TwoFactorHullWhite(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::TwoFactorHullWhite(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 54u32 {
-    reported =
-      cube_report::TwoFactorSquareRoot(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::TwoFactorSquareRoot(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 55u32 {
-    reported = cube_report::DuffieKan(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::DuffieKan(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 56u32 {
-    reported = cube_report::TwoAssetHeston(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::TwoAssetHeston(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 57u32 {
-    reported =
-      cube_report::TwoAssetHestonReflected(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::TwoAssetHestonReflected(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 58u32 {
-    reported = cube_report::MertonJumpLog(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::MertonJumpLog(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 59u32 {
-    reported = cube_report::BatesJump(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::BatesJump(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 60u32 {
-    reported =
-      cube_report::BatesJumpReflected(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::BatesJumpReflected(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 61u32 {
-    reported = cube_report::AndersenQe(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::AndersenQe(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 62u32 {
-    reported = cube_report::CountingProcess(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::CountingProcess(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 63u32 {
     reported = cube_report::InverseGaussianSubordinator(
-      component, x0, x1, x2, x3, params, ct, nj, js, u, u2,
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
     );
   }
   if family == 64u32 {
-    reported =
-      cube_report::NormalInverseGaussian(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::NormalInverseGaussian(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 65u32 {
-    reported =
-      cube_report::StableSubordinator(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::StableSubordinator(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 66u32 {
-    reported = cube_report::KouJumpHeston(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::KouJumpHeston(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 67u32 {
-    reported =
-      cube_report::KouJumpHestonReflected(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::KouJumpHestonReflected(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 68u32 {
-    reported = cube_report::DuffieKanJump(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::DuffieKanJump(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 69u32 {
-    reported =
-      cube_report::HawkesJumpDiffusion(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::HawkesJumpDiffusion(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 70u32 {
-    reported = cube_report::Garch(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::Garch(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 71u32 {
-    reported = cube_report::ThresholdGarch(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::ThresholdGarch(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 72u32 {
-    reported = cube_report::ExponentialGarch(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::ExponentialGarch(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 73u32 {
-    reported = cube_report::Innovation(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::Innovation(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 74u32 {
-    reported =
-      cube_report::CorrelatedInnovation(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::CorrelatedInnovation(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 75u32 {
-    reported = cube_report::Autoregressive(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::Autoregressive(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 76u32 {
-    reported = cube_report::MovingAverage(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::MovingAverage(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
+  }
+  if family == 77u32 {
+    reported = cube_report::GammaSubordinator(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
+  }
+  if family == 78u32 {
+    reported = cube_report::VarianceGamma(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
+  }
+  if family == 79u32 {
+    reported = cube_report::BilateralGamma(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
+  }
+  if family == 80u32 {
+    reported = cube_report::BilateralGammaMotion(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 16u32 {
-    reported = cube_report::FellerRoot(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::FellerRoot(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 15u32 {
-    reported =
-      cube_report::ModifiedSquareRoot(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::ModifiedSquareRoot(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 14u32 {
-    reported = cube_report::Hyperbolic(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::Hyperbolic(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 13u32 {
-    reported = cube_report::LinearSde(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::LinearSde(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 11u32 {
-    reported = cube_report::LogGeometric(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::LogGeometric(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 10u32 {
-    reported = cube_report::ThreeHalf(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::ThreeHalf(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 8u32 {
-    reported = cube_report::Ckls(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::Ckls(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 7u32 {
-    reported =
-      cube_report::ConstantElasticity(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::ConstantElasticity(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 5u32 {
-    reported =
-      cube_report::MirroredSquareRoot(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::MirroredSquareRoot(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 4u32 {
-    reported =
-      cube_report::ReflectedSquareRoot(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::ReflectedSquareRoot(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   if family == 3u32 {
-    reported = cube_report::Additive(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+    reported = cube_report::Additive(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
   }
   reported
 }
@@ -1099,6 +1330,7 @@ impl<R: CubeclRuntime> EulerKernel<f32> for crate::device::Cubecl<R> {
       process.jump_intensity(),
       process.jump_sizes(),
       process.step_first(),
+      process.gamma_draws(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -1129,6 +1361,7 @@ impl<R: CubeclRuntime> EulerKernel<f32> for crate::device::Cubecl<R> {
       process.jump_intensity(),
       process.jump_sizes(),
       process.step_first(),
+      process.gamma_draws(),
     )
   }
 
@@ -1153,6 +1386,7 @@ fn device_paths<C: CubeclRuntime>(
   jump_lambda: Option<f32>,
   sizes: Option<crate::euler::JumpSizes<f32>>,
   step_first: bool,
+  gammas: Option<crate::euler::GammaDraws<f32>>,
 ) -> DeviceResult<Array3<f32>> {
   {
     let (family, params) = spec.encode();
@@ -1162,6 +1396,8 @@ fn device_paths<C: CubeclRuntime>(
       return Ok(Array3::<f32>::zeros((components, m, n)));
     }
     let (law, jump_a, jump_b, jump_c) = sizes.map_or((0, 0.0, 0.0, 0.0), |s| s.encode());
+    let (gamma_law, g1_shape, g1_scale, g2_shape, g2_scale) =
+      gammas.map_or((0, 0.0, 0.0, 0.0, 0.0), |g| g.encode());
     let params32: Vec<f32> = params.to_vec();
     let dt = dt as f64;
     let total = components * m * n;
@@ -1226,6 +1462,11 @@ fn device_paths<C: CubeclRuntime>(
           ScalarArg::new(jump_b),
           ScalarArg::new(jump_c),
           ScalarArg::new(u32::from(step_first)),
+          ScalarArg::new(gamma_law),
+          ScalarArg::new(g1_shape),
+          ScalarArg::new(g1_scale),
+          ScalarArg::new(g2_shape),
+          ScalarArg::new(g2_scale),
         )
         .map_err(|e| DeviceError::Launch(format!("euler_paths launch: {e:?}")))?;
       }

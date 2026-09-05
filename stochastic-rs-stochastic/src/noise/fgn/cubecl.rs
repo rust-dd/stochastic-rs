@@ -475,7 +475,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
       .iter()
       .map(|x| x.to_f32().unwrap())
       .collect();
-    let seed_u: u32 = rand::Rng::random(&mut seed_src.rng());
+    let seed_u = seed_src.seed_value() as u32;
     let rows = crate::device::chunk_rows(batch_budget, 4 * n + out_size, 4);
     let mut out = Array2::<T>::zeros((m, out_size));
     let mut first = 0;

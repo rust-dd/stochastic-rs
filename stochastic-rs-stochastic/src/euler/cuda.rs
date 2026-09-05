@@ -38,7 +38,8 @@ const CUDA_HEADER: &str = r#"extern "C" __global__ void euler_paths_REAL(
     const REAL* __restrict__ curve, unsigned int has_curve,
     REAL jump_lambda, unsigned int has_jumps,
     unsigned int jump_law, REAL jump_a, REAL jump_b, REAL jump_c,
-    unsigned int step_first)
+    unsigned int step_first,
+    unsigned int gamma_law, REAL g1_shape, REAL g1_scale, REAL g2_shape, REAL g2_scale)
 {
     unsigned int path = blockIdx.x * blockDim.x + threadIdx.x;
     const REAL x0[4] = { x00, x01, x02, x03 };
@@ -167,6 +168,11 @@ fn run<R>(
   jump_b: R,
   jump_c: R,
   step_first: u32,
+  gamma_law: u32,
+  g1_shape: R,
+  g1_scale: R,
+  g2_shape: R,
+  g2_scale: R,
 ) -> Result<Vec<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
@@ -238,6 +244,11 @@ where
       .arg(&jump_b)
       .arg(&jump_c)
       .arg(&step_first)
+      .arg(&gamma_law)
+      .arg(&g1_shape)
+      .arg(&g1_scale)
+      .arg(&g2_shape)
+      .arg(&g2_scale)
       .launch(LaunchConfig::for_num_elems(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
@@ -268,6 +279,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.jump_intensity(),
       process.jump_sizes(),
       process.step_first(),
+      process.gamma_draws(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -298,6 +310,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.jump_intensity(),
       process.jump_sizes(),
       process.step_first(),
+      process.gamma_draws(),
     )
   }
 
@@ -331,6 +344,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.jump_intensity(),
       process.jump_sizes(),
       process.step_first(),
+      process.gamma_draws(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -352,6 +366,7 @@ fn device_paths<T: FloatExt>(
   jump_lambda: Option<T>,
   sizes: Option<crate::euler::JumpSizes<T>>,
   step_first: bool,
+  gammas: Option<crate::euler::GammaDraws<T>>,
 ) -> Result<Array3<T>> {
   {
     let (family, params) = spec.encode();
@@ -368,6 +383,26 @@ fn device_paths<T: FloatExt>(
       )
     });
     let step_first = u32::from(step_first);
+    let (gamma_law, gs1, gc1, gs2, gc2) = gammas.map_or((0, 0.0, 0.0, 0.0, 0.0), |g| {
+      let (law, s1, c1, s2, c2) = g.encode();
+      (
+        law,
+        s1.to_f64().unwrap_or(0.0),
+        c1.to_f64().unwrap_or(0.0),
+        s2.to_f64().unwrap_or(0.0),
+        c2.to_f64().unwrap_or(0.0),
+      )
+    });
+    let (gamma_law, gs1, gc1, gs2, gc2) = gammas.map_or((0, 0.0, 0.0, 0.0, 0.0), |g| {
+      let (law, s1, c1, s2, c2) = g.encode();
+      (
+        law,
+        s1.to_f64().unwrap_or(0.0),
+        c1.to_f64().unwrap_or(0.0),
+        s2.to_f64().unwrap_or(0.0),
+        c2.to_f64().unwrap_or(0.0),
+      )
+    });
     let (components, noises) = (arity.components() as u32, arity.noises() as u32);
     let planes = components as usize;
     if n == 0 || m == 0 {
@@ -422,6 +457,11 @@ fn device_paths<T: FloatExt>(
         jb,
         jc,
         step_first,
+        gamma_law,
+        gs1,
+        gc1,
+        gs2,
+        gc2,
       )?;
       let out = Array3::<f64>::from_shape_vec((planes, m, n), data)
         .expect("the kernel returns components * m * n values");
@@ -472,6 +512,11 @@ fn device_paths<T: FloatExt>(
       jb as f32,
       jc as f32,
       step_first,
+      gamma_law,
+      gs1 as f32,
+      gc1 as f32,
+      gs2 as f32,
+      gc2 as f32,
     )?;
     assert!(
       TypeId::of::<T>() == TypeId::of::<f32>(),
@@ -507,6 +552,11 @@ fn launch_chunk<R>(
   jump_b: R,
   jump_c: R,
   step_first: u32,
+  gamma_law: u32,
+  g1_shape: R,
+  g1_scale: R,
+  g2_shape: R,
+  g2_scale: R,
 ) -> Result<CudaSlice<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
@@ -574,6 +624,11 @@ where
       .arg(&jump_b)
       .arg(&jump_c)
       .arg(&step_first)
+      .arg(&gamma_law)
+      .arg(&g1_shape)
+      .arg(&g1_scale)
+      .arg(&g2_shape)
+      .arg(&g2_scale)
       .launch(LaunchConfig::for_num_elems(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
@@ -603,6 +658,11 @@ fn pipelined<R>(
   jump_b: R,
   jump_c: R,
   step_first: u32,
+  gamma_law: u32,
+  g1_shape: R,
+  g1_scale: R,
+  g2_shape: R,
+  g2_scale: R,
 ) -> Result<Vec<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float + Send + Sync,
@@ -670,6 +730,11 @@ where
       jump_b,
       jump_c,
       step_first,
+      gamma_law,
+      g1_shape,
+      g1_scale,
+      g2_shape,
+      g2_scale,
     )?;
     let dst = unsafe { std::slice::from_raw_parts_mut(staging[slot].ptr, planes * len * n) };
     streams[slot]
@@ -699,6 +764,7 @@ fn pipelined_paths<T: FloatExt>(
   jump_lambda: Option<T>,
   sizes: Option<crate::euler::JumpSizes<T>>,
   step_first: bool,
+  gammas: Option<crate::euler::GammaDraws<T>>,
 ) -> Result<Array3<T>> {
   let (family, params) = spec.encode();
   let arity = super::families::Family::from_code(family).expect("a declared family");
@@ -714,6 +780,16 @@ fn pipelined_paths<T: FloatExt>(
     )
   });
   let step_first = u32::from(step_first);
+  let (gamma_law, gs1, gc1, gs2, gc2) = gammas.map_or((0, 0.0, 0.0, 0.0, 0.0), |g| {
+    let (law, s1, c1, s2, c2) = g.encode();
+    (
+      law,
+      s1.to_f64().unwrap_or(0.0),
+      c1.to_f64().unwrap_or(0.0),
+      s2.to_f64().unwrap_or(0.0),
+      c2.to_f64().unwrap_or(0.0),
+    )
+  });
   let (components, noises) = (arity.components() as u32, arity.noises() as u32);
   let planes = components as usize;
   let dt = dt.to_f64().unwrap_or(0.0);
@@ -743,6 +819,11 @@ fn pipelined_paths<T: FloatExt>(
       jb,
       jc,
       step_first,
+      gamma_law,
+      gs1,
+      gc1,
+      gs2,
+      gc2,
     )?;
     let out = Array3::<f64>::from_shape_vec((planes, m, n), data)
       .expect("the kernel returns components * m * n values");
@@ -775,6 +856,11 @@ fn pipelined_paths<T: FloatExt>(
     jb as f32,
     jc as f32,
     step_first,
+    gamma_law,
+    gs1 as f32,
+    gc1 as f32,
+    gs2 as f32,
+    gc2 as f32,
   )?;
   let out = Array3::<f32>::from_shape_vec((planes, m, n), data)
     .expect("the kernel returns components * m * n values");

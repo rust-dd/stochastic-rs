@@ -492,6 +492,14 @@ pub enum EulerSpec<T: FloatExt> {
   Autoregressive { phi: T, sigma: T },
   /// A first-order moving average.
   MovingAverage { theta: T, sigma: T },
+  /// A gamma subordinator.
+  GammaSubordinator,
+  /// Brownian motion under a gamma clock.
+  VarianceGamma { mu: T, sigma: T },
+  /// The difference of two gamma processes.
+  BilateralGamma,
+  /// [`BilateralGamma`](EulerSpec::BilateralGamma) with a Brownian part.
+  BilateralGammaMotion { sigma: T },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1031,6 +1039,12 @@ impl<T: FloatExt> EulerSpec<T> {
       EulerSpec::MovingAverage { theta, sigma } => {
         (Family::MovingAverage.code(), pad([theta, sigma]))
       }
+      EulerSpec::GammaSubordinator => (Family::GammaSubordinator.code(), pad([])),
+      EulerSpec::VarianceGamma { mu, sigma } => (Family::VarianceGamma.code(), pad([mu, sigma])),
+      EulerSpec::BilateralGamma => (Family::BilateralGamma.code(), pad([])),
+      EulerSpec::BilateralGammaMotion { sigma } => {
+        (Family::BilateralGammaMotion.code(), pad([sigma]))
+      }
     }
   }
 }
@@ -1094,6 +1108,12 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
   /// default.
   fn step_first(&self) -> bool {
     false
+  }
+
+  /// The Gamma draws the step reads as `gm` and `gm2`, or `None` when it
+  /// reads none.
+  fn gamma_draws(&self) -> Option<GammaDraws<T>> {
+    None
   }
 
   /// One path from the process's own sampler, the host stream.
@@ -1245,6 +1265,31 @@ impl<T: FloatExt> JumpSizes<T> {
   }
 }
 
+/// The Gamma draws a family reads as `gm` and `gm2`, when its increment is a
+/// gamma variate rather than a Gaussian one.
+///
+/// Each is one Marsaglia-Tsang draw of `Gamma(shape, scale)`, with the
+/// shape-below-one boost that method prescribes. A process that needs one
+/// draw declares [`second`](Self::second) as `None`; the bilateral gamma
+/// processes, whose increment is the difference of two, declare both.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GammaDraws<T: FloatExt> {
+  /// The shape and scale of `gm`.
+  pub first: (T, T),
+  /// The shape and scale of `gm2`, when the family reads a second draw.
+  pub second: Option<(T, T)>,
+}
+
+impl<T: FloatExt> GammaDraws<T> {
+  /// How many draws to take, and the two shape/scale pairs the kernels read.
+  pub(crate) fn encode(&self) -> (u32, T, T, T, T) {
+    match self.second {
+      Some((s2, c2)) => (2, self.first.0, self.first.1, s2, c2),
+      None => (1, self.first.0, self.first.1, T::zero(), T::zero()),
+    }
+  }
+}
+
 /// A process whose device recursion carries more than one state component:
 /// the same families, the same kernels and the same launch, with `D` arrays
 /// back instead of one.
@@ -1310,6 +1355,12 @@ pub trait EulerSystem<T: FloatExt, const D: usize>: ProcessExt<T, Output = [Arra
   /// default.
   fn step_first(&self) -> bool {
     false
+  }
+
+  /// The Gamma draws the step reads as `gm` and `gm2`, or `None` when it
+  /// reads none.
+  fn gamma_draws(&self) -> Option<GammaDraws<T>> {
+    None
   }
 
   /// One draw from the process's own sampler, the host stream.
@@ -1638,8 +1689,16 @@ kernel_euler_backend!(crate::device::Cubecl<Rt>, [Rt: crate::euler::cubecl::Cube
 #[cfg(feature = "cuda")]
 kernel_euler_backend!(crate::device::Cuda, [T: FloatExt] T);
 
-fn draw_seed<S: SeedExt>(seed: &S) -> u64 {
-  rand::Rng::random(&mut seed.rng())
+/// One launch seed from a process's own seed source: reproducible for
+/// `Deterministic`, fresh entropy for `Unseeded`, and advancing either way so
+/// two launches from one process do not replay.
+///
+/// This is [`SeedExt::seed_value`] and nothing else — the workspace draws its
+/// randomness from its own generator, never from `rand`. Public because
+/// `EulerCoefficients` is: an out-of-tree process needs it to answer
+/// `device_seed`.
+pub fn draw_seed<S: SeedExt>(seed: &S) -> u64 {
+  seed.seed_value()
 }
 
 impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> EulerCoefficients<T> for Gbm<T, S, B> {

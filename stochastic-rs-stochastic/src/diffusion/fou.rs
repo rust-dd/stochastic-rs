@@ -193,7 +193,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
   }
 
   fn device_seed(&self) -> u64 {
-    rand::Rng::random(&mut self.seed.rng())
+    crate::euler::draw_seed(&self.seed)
   }
 
   fn host_sample(&self) -> Array1<T> {

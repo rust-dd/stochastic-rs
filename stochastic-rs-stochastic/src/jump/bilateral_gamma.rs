@@ -13,7 +13,6 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -87,9 +86,56 @@ impl<T: FloatExt, S: SeedExt, B> BilateralGamma<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] BilateralGamma<T, S> { alpha_p, lambda_p, alpha_m, lambda_m, n, x0, t, seed } via host);
+/// The Euler engine's view of the bilateral gamma process: two draws, one per
+/// side, differenced in the step.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for BilateralGamma<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::BilateralGamma
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for BilateralGamma<T, S, B> {
+  fn initial_value(&self) -> T {
+    self.x0.unwrap_or(T::zero())
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.dt()
+  }
+
+  /// The two sides' own shapes and rates.
+  fn gamma_draws(&self) -> Option<crate::euler::GammaDraws<T>> {
+    let dt = self.dt();
+    Some(crate::euler::GammaDraws {
+      first: (self.alpha_p * dt, T::one() / self.lambda_p),
+      second: Some((self.alpha_m * dt, T::one() / self.lambda_m)),
+    })
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] BilateralGamma<T, S> { alpha_p, lambda_p, alpha_m, lambda_m, n, x0, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for BilateralGamma<T, S, B>
+{
   type Output = Array1<T>;
   type Sampler<'s>
     = BilateralGammaSampler<T>
@@ -107,6 +153,29 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for BilateralGamma<T
       gamma_p: SimdGamma::<T>::new(self.alpha_p * dt, T::one() / self.lambda_p, &self.seed),
       gamma_m: SimdGamma::<T>::new(self.alpha_m * dt, T::one() / self.lambda_m, &self.seed),
     }
+  }
+
+  /// Through the Euler engine: on a device the increment is drawn in the
+  /// kernel, on the host devices it is this process's own sampler, chunked
+  /// exactly as `ProcessExt` chunks.
+  fn sample(&self) -> Array1<T> {
+    self.backend.euler_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    self.backend.euler_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    self.backend.euler_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    self.backend.try_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    self.backend.try_euler_paths(self, m)
   }
 }
 
@@ -227,9 +296,56 @@ impl<T: FloatExt, S: SeedExt, B> BilateralGammaMotion<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] BilateralGammaMotion<T, S> { sigma, alpha_p, lambda_p, alpha_m, lambda_m, n, x0, t, seed } via host);
+/// The Euler engine's view of the bilateral gamma process with a Brownian
+/// part.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for BilateralGammaMotion<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::BilateralGammaMotion { sigma: self.sigma }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for BilateralGammaMotion<T, S, B> {
+  fn initial_value(&self) -> T {
+    self.x0.unwrap_or(T::zero())
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.dt()
+  }
+
+  /// The two sides' own shapes and rates.
+  fn gamma_draws(&self) -> Option<crate::euler::GammaDraws<T>> {
+    let dt = self.dt();
+    Some(crate::euler::GammaDraws {
+      first: (self.alpha_p * dt, T::one() / self.lambda_p),
+      second: Some((self.alpha_m * dt, T::one() / self.lambda_m)),
+    })
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] BilateralGammaMotion<T, S> { sigma, alpha_p, lambda_p, alpha_m, lambda_m, n, x0, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for BilateralGammaMotion<T, S, B>
+{
   type Output = Array1<T>;
   type Sampler<'s>
     = BilateralGammaMotionSampler<T>
@@ -250,6 +366,29 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for BilateralGammaMo
       gamma_m: SimdGamma::<T>::new(self.alpha_m * dt, T::one() / self.lambda_m, &self.seed),
       normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
     }
+  }
+
+  /// Through the Euler engine: on a device the increment is drawn in the
+  /// kernel, on the host devices it is this process's own sampler, chunked
+  /// exactly as `ProcessExt` chunks.
+  fn sample(&self) -> Array1<T> {
+    self.backend.euler_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    self.backend.euler_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    self.backend.euler_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    self.backend.try_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    self.backend.try_euler_paths(self, m)
   }
 }
 

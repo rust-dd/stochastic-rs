@@ -6,7 +6,8 @@
 //! arguments (`family`, `components`, `noises`, `x0`, `dt`, `sqrt_dt`,
 //! `seed`, `steps`, `paths`, `first_path`, `increments`, `has_curve`,
 //! `jump_lambda`, `has_jumps`, `jump_law`, `jump_a`, `jump_b`, `jump_c`,
-//! `step_first`) and
+//! `step_first`, `gamma_law`, `g1_shape`, `g1_scale`, `g2_shape`,
+//! `g2_scale`) and
 //! the `incs` and `curve` buffers are bound
 //! by the language-specific header around the body;
 //! the body itself only uses the placeholders [`Language`] fills in. Two
@@ -37,6 +38,13 @@
 //! a branch of its own needs — the quadratic-exponential variance step draws
 //! it, and the Chambers-Mallows-Stuck stable draw takes both — and a family
 //! that never names them pays two integer hashes for them.
+//!
+//! A family may read `gm` and `gm2`, one or two Gamma draws for the step by
+//! Marsaglia-Tsang, with the shape boosted below one exactly as that method
+//! prescribes. The rejection loop is bounded at 24 tries: the method accepts
+//! on the first try better than 98 % of the time for any shape, so exhausting
+//! the bound has probability below `1e-40`, and a step that did would take
+//! its last candidate rather than loop forever.
 //!
 //! A family may read `js`, the sum of the step's jump sizes: one normal draw
 //! when the sizes are normal, since the sum of `n` of those is itself normal,
@@ -73,6 +81,8 @@ pub(crate) const FRAME: &str = r#"    if (path >= paths) return;
     if (has_curve != 0u) { ct = curve[0]; }
     REAL nj = (REAL)0;
     REAL js = (REAL)0;
+    REAL gm = (REAL)0;
+    REAL gm2 = (REAL)0;
     REAL u = (REAL)0;
     REAL u2 = (REAL)0;
     for (unsigned int c = 0u; c < 4u; c++) { state[c] = x0[c]; reported[c] = x0[c]; }
@@ -119,6 +129,45 @@ REPORT
                 cnt++;
             }
             nj = (REAL)cnt;
+        }
+        for (unsigned int gi = 0u; gi < gamma_law; gi++) {
+            REAL gsh = (gi == 0u) ? g1_shape : g2_shape;
+            REAL gsc = (gi == 0u) ? g1_scale : g2_scale;
+            REAL draw = (REAL)0;
+            if (gsh > (REAL)0) {
+                REAL boost = (REAL)1;
+                REAL a = gsh;
+                if (a < (REAL)1) {
+                    unsigned int hb = (g ^ (2246822519u + gi * 97u)) ^ (seed * 2654435761u);
+                    hb ^= hb >> 16; hb *= 2246822519u; hb ^= hb >> 13; hb *= 3266489917u; hb ^= hb >> 16;
+                    REAL ub = (REAL)hb * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6;
+                    boost = STOCH_POW(ub, (REAL)1 / gsh);
+                    a = a + (REAL)1;
+                }
+                REAL dd = a - (REAL)1 / (REAL)3;
+                REAL cc = (REAL)1 / STOCH_SQRT((REAL)9 * dd);
+                REAL val = dd;
+                for (unsigned int j = 0u; j < 24u; j++) {
+                    unsigned int p1 = (g ^ (1103515245u + gi * 7919u + j * 104729u)) ^ (seed * 2654435761u);
+                    p1 ^= p1 >> 16; p1 *= 2246822519u; p1 ^= p1 >> 13; p1 *= 3266489917u; p1 ^= p1 >> 16;
+                    unsigned int p2 = (g ^ (1013904223u + gi * 7919u + j * 104729u)) ^ (seed * 2654435761u);
+                    p2 ^= p2 >> 16; p2 *= 2246822519u; p2 ^= p2 >> 13; p2 *= 3266489917u; p2 ^= p2 >> 16;
+                    REAL ga = (REAL)p1 * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6;
+                    REAL gb = (REAL)p2 * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6;
+                    REAL zg = STOCH_SQRT((REAL)-2.0 * STOCH_LOG(ga)) * STOCH_COS((REAL)6.283185307179586 * gb);
+                    REAL vv = (REAL)1 + cc * zg;
+                    vv = vv * vv * vv;
+                    if (vv > (REAL)0) {
+                        unsigned int p3 = (g ^ (668265263u + gi * 7919u + j * 104729u)) ^ (seed * 2654435761u);
+                        p3 ^= p3 >> 16; p3 *= 2246822519u; p3 ^= p3 >> 13; p3 *= 3266489917u; p3 ^= p3 >> 16;
+                        REAL ug = (REAL)p3 * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6;
+                        val = dd * vv;
+                        if (STOCH_LOG(ug) < (REAL)0.5 * zg * zg + dd - dd * vv + dd * STOCH_LOG(vv)) { break; }
+                    }
+                }
+                draw = gsc * boost * val;
+            }
+            if (gi == 0u) { gm = draw; } else { gm2 = draw; }
         }
         js = (REAL)0;
         if (jump_law == 1u) {

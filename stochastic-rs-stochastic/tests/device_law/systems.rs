@@ -192,8 +192,10 @@ fn bergomi_agrees_with_the_cpu_law() {
   );
 }
 
-/// Two Ornstein-Uhlenbeck factors on one clock, each reverting to its own
-/// level: the terminal means are those levels.
+/// Two Ornstein-Uhlenbeck factors on one clock, both reverting toward zero.
+/// Their terminal means are near zero, where a relative comparison is the
+/// ratio of two numbers that are both mostly sampling noise, so what is
+/// compared is the spread each factor's own reversion speed sets.
 #[test]
 fn two_scale_ornstein_uhlenbeck_agrees_with_the_cpu_law() {
   let build = || {
@@ -211,18 +213,24 @@ fn two_scale_ornstein_uhlenbeck_agrees_with_the_cpu_law() {
   };
   let device = build().on::<Device>().sample_par(M);
   let host = build().sample_par(M);
-  agrees(
-    terminal_mean(&host, 0),
-    terminal_mean(&device, 0),
-    0.10,
-    "slow factor terminal mean",
-  );
-  agrees(
-    terminal_mean(&host, 1),
-    terminal_mean(&device, 1),
-    0.10,
-    "fast factor terminal mean",
-  );
+  let spread = |paths: &[[Array1<f32>; 2]], c: usize| {
+    let last = paths[0][c].len() - 1;
+    let mean = terminal_mean(paths, c);
+    (paths
+      .iter()
+      .map(|p| (p[c][last] as f64 - mean).powi(2))
+      .sum::<f64>()
+      / paths.len() as f64)
+      .sqrt()
+  };
+  for (c, what) in [(0usize, "slow"), (1, "fast")] {
+    agrees(
+      spread(&host, c),
+      spread(&device, c),
+      0.06,
+      &format!("{what} factor terminal spread"),
+    );
+  }
 }
 
 /// The log-price form keeps the spot positive by construction, so that is

@@ -42,6 +42,14 @@ const PROBE_INTENSITY: f32 = 3.0;
 /// The size law every probe declares. Double-exponential rather than normal
 /// because it is the one the kernel sums in a loop, so the loop runs on both
 /// kernels whether or not the family under test reads the sum.
+/// The Gamma draws every probe declares. Two of them, with the first shape
+/// below one so the boost branch runs and the second above it so the plain
+/// rejection loop does.
+const PROBE_GAMMAS: GammaDraws<f32> = GammaDraws {
+  first: (0.4, 1.5),
+  second: Some((2.5, 0.8)),
+};
+
 const PROBE_SIZES: JumpSizes<f32> = JumpSizes::DoubleExponential {
   p_up: 0.4,
   eta_up: 25.0,
@@ -76,7 +84,7 @@ impl PathSampler<f32> for ProbeSampler {
     let mut state = [self.x0, 0.0, 0.0, 0.0];
     let mut out = [0.0f32; 4];
     super::families::host_report(
-      family, &state, &params, curve[0], 0.0, 0.0, 0.5, 0.5, &mut out,
+      family, &state, &params, curve[0], 0.0, 0.0, 0.7, 1.3, 0.5, 0.5, &mut out,
     );
     slice[0] = out[0];
     if slice.len() == 1 {
@@ -94,6 +102,8 @@ impl PathSampler<f32> for ProbeSampler {
         curve[i + 1],
         0.0,
         0.0,
+        0.7,
+        1.3,
         0.5,
         0.5,
         &[*z, 0.0, 0.0, 0.0],
@@ -107,6 +117,8 @@ impl PathSampler<f32> for ProbeSampler {
         curve[i + 1],
         0.0,
         0.0,
+        0.7,
+        1.3,
         0.5,
         0.5,
         &mut out,
@@ -173,6 +185,10 @@ impl EulerCoefficients<f32> for Probe {
 
   fn jump_sizes(&self) -> Option<JumpSizes<f32>> {
     Some(PROBE_SIZES)
+  }
+
+  fn gamma_draws(&self) -> Option<GammaDraws<f32>> {
+    Some(PROBE_GAMMAS)
   }
 
   fn host_sample(&self) -> Array1<f32> {
@@ -263,6 +279,10 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::CorrelatedInnovation { .. } => "CorrelatedInnovation",
     EulerSpec::Autoregressive { .. } => "Autoregressive",
     EulerSpec::MovingAverage { .. } => "MovingAverage",
+    EulerSpec::GammaSubordinator => "GammaSubordinator",
+    EulerSpec::VarianceGamma { .. } => "VarianceGamma",
+    EulerSpec::BilateralGamma => "BilateralGamma",
+    EulerSpec::BilateralGammaMotion { .. } => "BilateralGammaMotion",
   }
 }
 
@@ -582,6 +602,16 @@ fn every_family() -> Vec<Probe> {
       0.0,
     ),
     p(EulerSpec::CountingProcess, 0.0),
+    p(EulerSpec::GammaSubordinator, 0.0),
+    p(
+      EulerSpec::VarianceGamma {
+        mu: -0.05,
+        sigma: 0.2,
+      },
+      0.0,
+    ),
+    p(EulerSpec::BilateralGamma, 0.0),
+    p(EulerSpec::BilateralGammaMotion { sigma: 0.1 }, 0.0),
     p(
       EulerSpec::Innovation {
         mean: 0.01,
@@ -669,6 +699,8 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       curve[0],
       0.0,
       0.0,
+      0.7,
+      1.3,
       0.5,
       0.5,
       &mut reported,
@@ -683,7 +715,7 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       noise[..noises].copy_from_slice(&draw);
       let mut next = [0.0f32; 4];
       super::families::host_step(
-        family, &state, &params, self.dt, curve[i], 0.0, 0.0, 0.5, 0.5, &noise, &mut next,
+        family, &state, &params, self.dt, curve[i], 0.0, 0.0, 0.7, 1.3, 0.5, 0.5, &noise, &mut next,
       );
       state = next;
       super::families::host_report(
@@ -693,6 +725,8 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         curve[i],
         0.0,
         0.0,
+        0.7,
+        1.3,
         0.5,
         0.5,
         &mut reported,
@@ -761,6 +795,10 @@ impl<const D: usize> EulerSystem<f32, D> for SystemProbe<D> {
 
   fn jump_sizes(&self) -> Option<JumpSizes<f32>> {
     Some(PROBE_SIZES)
+  }
+
+  fn gamma_draws(&self) -> Option<GammaDraws<f32>> {
+    Some(PROBE_GAMMAS)
   }
 
   fn host_sample(&self) -> [Array1<f32>; D] {
