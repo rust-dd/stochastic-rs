@@ -56,7 +56,6 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -161,9 +160,68 @@ impl<T: FloatExt, S: SeedExt, B> MultifactorSabr<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] MultifactorSabr<T, S> { f0, alpha0, knots, beta, rho, nu, n, t, seed } via host);
+/// The Euler engine's view: the term structure travels as three curves
+/// rather than as parameters, so the per-step bucket search the host does
+/// becomes a buffer read the kernel already pays for. The knots themselves
+/// never reach the device — they are what the tabulation resolves.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
+  for MultifactorSabr<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::DynamicSabr
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for MultifactorSabr<T, S, B> {
+  fn initial_state(&self) -> [T; 4] {
+    [
+      self.f0.unwrap_or(T::zero()),
+      self.alpha0.unwrap_or(T::zero()).max(T::zero()),
+      T::zero(),
+      T::zero(),
+    ]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.dt()
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  /// `beta`, `rho` and `nu` at each grid point, in the order the step names
+  /// them as `ct`, `ct1` and `ct2`. Step `i` uses the bucket active at
+  /// `(i - 1) dt`, which is the time the host reads, so index 0 carries the
+  /// same value as index 1 rather than a bucket no step consults.
+  fn curves(&self) -> Option<Vec<Vec<T>>> {
+    let dt = self.dt();
+    let at = |i: usize| self.bucket_at(T::from_usize_(i.saturating_sub(1)) * dt);
+    Some(vec![
+      (0..self.n).map(|i| self.beta[at(i)]).collect(),
+      (0..self.n).map(|i| self.rho[at(i)]).collect(),
+      (0..self.n).map(|i| self.nu[at(i)]).collect(),
+    ])
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 2] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] MultifactorSabr<T, S> { f0, alpha0, knots, beta, rho, nu, n, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for MultifactorSabr<T, S, B>
+{
   /// `[F path, α path]`: index 0 is the forward `F`, index 1 is the
   /// stochastic-volatility state `α` (see module docs for the SDE).
   type Output = [Array1<T>; 2];
@@ -189,6 +247,29 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for MultifactorSabr<
       dt: self.dt(),
       seed: self.seed.derive(),
     }
+  }
+
+  /// Through the Euler engine: on a device both rows are stepped in the
+  /// kernel under the tabulated term structure, on the host devices it is
+  /// this process's own sampler, chunked exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> [Array1<T>; 2] {
+    self.backend.system_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 2]) -> R + Sync) -> Vec<R> {
+    self.backend.system_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 2]> {
+    self.backend.system_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 2], crate::device::DeviceError> {
+    self.backend.try_system_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 2]>, crate::device::DeviceError> {
+    self.backend.try_system_paths(self, m)
   }
 }
 

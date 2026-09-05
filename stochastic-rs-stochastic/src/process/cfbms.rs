@@ -44,6 +44,7 @@ impl<T: FloatExt, S: SeedExt> Cfbms<T, S> {
       (-T::one()..=T::one()).contains(&rho),
       "Correlation coefficient must be in [-1, 1]"
     );
+    assert!(n >= 2, "n must be at least 2");
 
     Self {
       hurst,

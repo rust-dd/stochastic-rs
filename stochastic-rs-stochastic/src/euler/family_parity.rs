@@ -304,6 +304,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::ComplexFractionalOu { .. } => "ComplexFractionalOu",
     EulerSpec::TransformedOrnsteinUhlenbeck { .. } => "TransformedOrnsteinUhlenbeck",
     EulerSpec::PoissonArrivals { .. } => "PoissonArrivals",
+    EulerSpec::DynamicSabr => "DynamicSabr",
   }
 }
 
@@ -991,6 +992,10 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
     SystemProbe {
       spec: EulerSpec::CorrelatedFractionalMotion { rho: 0.3 },
       x0: [0.0, 0.0],
+    },
+    SystemProbe {
+      spec: EulerSpec::DynamicSabr,
+      x0: [0.04, 0.3],
     },
     SystemProbe {
       spec: EulerSpec::ComplexFractionalOu {

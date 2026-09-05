@@ -103,6 +103,13 @@ impl<T: FloatExt, S: SeedExt> TransformedOU<T, S> {
     t: Option<T>,
     seed: S,
   ) -> Self {
+    // The transform maps onto (-1, 1), so its inverse clamps: without this
+    // an out-of-range `rho0` reports itself at `t = 0` on the host and the
+    // clamp on a device, which is the same path disagreeing with itself.
+    assert!(
+      rho0 > -T::one() && rho0 < T::one(),
+      "rho0 must lie in (-1, 1)"
+    );
     Self {
       backend: Cpu,
       kappa,

@@ -21,6 +21,7 @@ use stochastic_rs_stochastic::volatility::heston::Heston;
 use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
 use stochastic_rs_stochastic::volatility::heston2d::Heston2D;
 use stochastic_rs_stochastic::volatility::hkde::Hkde;
+use stochastic_rs_stochastic::volatility::multifactor_sabr::MultifactorSabr;
 use stochastic_rs_stochastic::volatility::sabr::Sabr;
 
 use super::common::Device;
@@ -736,5 +737,78 @@ fn barndorff_nielsen_shephard_agrees_with_the_cpu_law() {
     terminal_mean(&device, 1),
     0.08,
     "BNS terminal variance",
+  );
+}
+
+/// The dynamic SABR is the first family whose coefficients all arrive as
+/// curves: the host resolves its term structure per grid point and the kernel
+/// reads three of them per step. Two knots are used, so the tabulation has to
+/// change value twice — a launch that bound only the first curve, or read the
+/// buckets one step out of phase, would show up in the terminal spread.
+#[test]
+fn dynamic_sabr_agrees_with_the_cpu_law() {
+  let build = || {
+    MultifactorSabr::<f32, _>::new(
+      Some(0.04),
+      Some(0.3),
+      vec![0.3, 0.7],
+      vec![0.5, 0.7, 0.9],
+      vec![-0.6, -0.2, 0.3],
+      vec![0.8, 0.4, 0.2],
+      253,
+      Some(1.0),
+      Deterministic::new(83),
+    )
+  };
+  // Four times the usual batch: the volatility is log-normal, and the sample
+  // standard deviation of a log-normal is tail-driven — at `M` paths it moves
+  // by several percent between seeds on the host alone, which is wider than
+  // the agreement this case is meant to assert. The tolerance stays tight and
+  // the path count carries it.
+  const PATHS: usize = 4 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert_eq!(device.len(), PATHS);
+  assert_eq!(device[0][0].len(), 253);
+  assert_eq!(device[0][0][0], 0.04, "the forward starts at f0");
+  assert_eq!(device[0][1][0], 0.3, "the volatility starts at alpha0");
+  assert!(
+    device.iter().all(|p| p
+      .iter()
+      .all(|row| row.iter().all(|v| v.is_finite() && *v >= 0.0))),
+    "dynamic SABR: a device path left the non-negative reals"
+  );
+  let spread = |paths: &[[Array1<f32>; 2]], c: usize| {
+    let last = paths[0][c].len() - 1;
+    let n = paths.len() as f64;
+    let mean = paths.iter().map(|p| p[c][last] as f64).sum::<f64>() / n;
+    (paths
+      .iter()
+      .map(|p| (p[c][last] as f64 - mean).powi(2))
+      .sum::<f64>()
+      / n)
+      .sqrt()
+  };
+  agrees(
+    terminal_mean(&host, 1),
+    terminal_mean(&device, 1),
+    0.06,
+    "dynamic SABR terminal volatility",
+  );
+  // The volatility's spread is what pins `nu(t)`: its *mean* is `alpha0`
+  // whatever `nu` is, since the exact step for `d(alpha) = nu alpha dW` is a
+  // martingale — so a launch reading the wrong curve into `nu` passes a mean
+  // comparison and fails this one.
+  agrees(
+    spread(&host, 1),
+    spread(&device, 1),
+    0.06,
+    "dynamic SABR terminal volatility spread",
+  );
+  agrees(
+    spread(&host, 0),
+    spread(&device, 0),
+    0.10,
+    "dynamic SABR terminal forward spread",
   );
 }

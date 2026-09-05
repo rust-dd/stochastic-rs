@@ -1901,6 +1901,22 @@ euler_families! {
     step { x + negate(ln(max(u, lit(1.0e-7)))) * recip(lambda) }
     report { x },
 
+  /// The dynamic SABR: a forward rate under a backbone exponent and a
+  /// log-normal volatility, with all three coefficients time-varying. The
+  /// term structure arrives as curves rather than parameters — `ct` is
+  /// `beta(t)`, `ct1` is `rho(t)` and `ct2` is `nu(t)` — which is what turns
+  /// the host's per-step bucket search into a buffer read. The volatility
+  /// takes the exact step for `d(alpha) = nu alpha dW`, not an Euler one.
+  87 => DynamicSabr { }
+    state (f, v)
+    noise (dw1, dq)
+    step {
+      bind dw2 = ct1 * dw1 + sqrt(negate(ct1 * ct1 - lit(1.0))) * dq;
+      positive(f + positive(v) * pow(positive(f), ct) * dw1),
+      positive(v) * exp(ct2 * dw2 - ct2 * ct2 * dt * lit(0.5))
+    }
+    report { f, v },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)

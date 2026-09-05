@@ -155,9 +155,9 @@ fn euler_paths_kernel(
           inc_len = steps - 1u32;
           inc_at = i - 1u32;
         }
-        d0 = incs[(path * inc_len + inc_at) as usize];
+        d0 = incs[(path * increments * inc_len + inc_at) as usize];
         if increments > 1u32 {
-          d1 = incs[((paths + path) * inc_len + inc_at) as usize];
+          d1 = incs[((path * increments + 1u32) * inc_len + inc_at) as usize];
         }
       }
       if n_curves > 0u32 {
@@ -880,6 +880,12 @@ fn step(
       gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
+  if family == 87u32 {
+    stepped = cube::DynamicSabr(
+      component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
+      gm2, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
   if family == 16u32 {
     stepped = cube::FellerRoot(
       component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
@@ -1431,6 +1437,12 @@ fn report(
       u2,
     );
   }
+  if family == 87u32 {
+    reported = cube_report::DynamicSabr(
+      component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2,
+    );
+  }
   if family == 16u32 {
     reported = cube_report::FellerRoot(
       component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
@@ -1738,7 +1750,7 @@ fn device_paths<C: CubeclRuntime>(
             spec.offset,
             spec.hurst,
             spec.t,
-            first,
+            spec.streams * first,
             seed as u32,
             ordinal,
           )?;

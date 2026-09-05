@@ -21,10 +21,14 @@
 //! constant-fold the multiplication and reject it as an overflow. When
 //! `increments` is set the first component reads from `incs` instead — one
 //! row of `steps - 1` increments per path — which is how a fractional
-//! process reaches the same families. `increments` is a count, not a flag:
-//! at two the second component reads the buffer's next `paths` rows, so one
-//! embedding feeds a correlated fractional pair without the kernel binding a
-//! second buffer. A row is `steps - 1` increments long, one per step the
+//! process reaches the same families. `increments` is a count, not a flag: a
+//! path's streams sit next to each other, so path `p` reads rows
+//! `p * increments` and `p * increments + 1` and one embedding feeds a
+//! correlated fractional pair without the kernel binding a second buffer.
+//! Interleaving per path rather than blocking per stream is what keeps a
+//! chunked batch identical to one launch: a chunk covering paths
+//! `first .. first + len` owns rows `increments * first ..` contiguously,
+//! whatever `len` the budget chose. A row is `steps - 1` increments long, one per step the
 //! frame takes after the initial state — or `steps` under `step_first`,
 //! where the first grid point is a draw and every point consumes one.
 //!
@@ -140,9 +144,9 @@ REPORT
             unsigned int inc_len = steps;
             unsigned int inc_at = i;
             if (step_first == 0u) { inc_len = steps - 1u; inc_at = i - 1u; }
-            noise[0] = incs[(INDEX)path * inc_len + inc_at];
+            noise[0] = incs[(INDEX)(path * increments) * inc_len + inc_at];
             if (increments > 1u) {
-                noise[1] = incs[((INDEX)paths + (INDEX)path) * inc_len + inc_at];
+                noise[1] = incs[(INDEX)(path * increments + 1u) * inc_len + inc_at];
             }
         }
         if (n_curves > 0u) { ct = curve[(INDEX)0 * steps + i]; }

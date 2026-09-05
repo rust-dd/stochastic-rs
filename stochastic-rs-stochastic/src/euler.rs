@@ -554,6 +554,9 @@ pub enum EulerSpec<T: FloatExt> {
   /// The arrival times of a Poisson process on a fixed count: the running sum
   /// of exponential inter-arrival times.
   PoissonArrivals { lambda: T },
+  /// The dynamic SABR, whose three coefficients all travel as curves rather
+  /// than parameters.
+  DynamicSabr,
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1127,6 +1130,7 @@ impl<T: FloatExt> EulerSpec<T> {
         pad([kappa, mu, sigma, arctan, half_pi]),
       ),
       EulerSpec::PoissonArrivals { lambda } => (Family::PoissonArrivals.code(), pad([lambda])),
+      EulerSpec::DynamicSabr => (Family::DynamicSabr.code(), pad([])),
     }
   }
 }

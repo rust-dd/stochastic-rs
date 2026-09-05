@@ -262,6 +262,12 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
     ))
   }
 
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<Complex<T>>) -> R + Sync) -> Vec<R> {
+    crate::euler::EulerBackend::system_paths_map(&self.fgn.backend, &CfouParts(self), m, |parts| {
+      f(&join_complex([parts[0].clone(), parts[1].clone()]))
+    })
+  }
+
   fn sample_par(&self, m: usize) -> Vec<Array1<Complex<T>>> {
     crate::euler::EulerBackend::system_paths(&self.fgn.backend, &CfouParts(self), m)
       .into_iter()

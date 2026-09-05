@@ -396,7 +396,7 @@ fn device_paths<T: FloatExt>(
             spec.hurst,
             spec.t,
             seed,
-            first,
+            spec.streams * first,
             ordinal,
           )?)
         }
@@ -454,7 +454,7 @@ fn device_paths<T: FloatExt>(
           spec.hurst,
           spec.t,
           seed,
-          first,
+          spec.streams * first,
           ordinal,
         )?)
       }

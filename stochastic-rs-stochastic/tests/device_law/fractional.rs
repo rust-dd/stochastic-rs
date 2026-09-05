@@ -187,10 +187,17 @@ fn fractional_vasicek_agrees_with_the_cpu_law() {
 /// exactly the correlation.
 #[test]
 fn correlated_fbm_agrees_with_the_cpu_law() {
-  let build = || Cfbms::<f32, _>::new(0.7, 0.4, N, Some(1.0), Deterministic::new(23));
-  let device = build().on::<Device>().sample_par(M);
-  let host = build().sample_par(M);
-  assert_eq!(device.len(), M);
+  // Horizon 4 rather than 1: at `t = 1` the terminal spread of fBm is
+  // `t^H = 1` and of Brownian motion `sqrt(t) = 1`, so a launch that read a
+  // hashed Gaussian instead of the fractional stream would pass. At 4 they
+  // are 2.64 and 2.00. The path count is raised with it because the
+  // correlation estimator's standard error at `M` paths is a third of the
+  // tolerance, which is too thin to call an agreement.
+  const PATHS: usize = 6 * M;
+  let build = || Cfbms::<f32, _>::new(0.7, 0.4, N, Some(4.0), Deterministic::new(23));
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert_eq!(device.len(), PATHS);
   assert_eq!(device[0][0].len(), N);
   assert_eq!(device[0][0][0], 0.0, "both rows start at zero");
   assert_eq!(device[0][1][0], 0.0, "both rows start at zero");
@@ -365,6 +372,23 @@ fn complex_fou_agrees_with_the_cpu_law() {
       / n)
       .sqrt()
   };
+  // The terminal mean is the only statistic that sees `omega`: the path
+  // decays as `Z0 exp(-(lambda - i omega) T)`, so the rotation shows up as
+  // the balance between the parts and nowhere in either spread. Comparing
+  // the spreads alone passes with `omega` negated, or dropped entirely.
+  let part_mean = |paths: &[Array1<num_complex::Complex<f32>>], im: bool| {
+    let last = paths[0].len() - 1;
+    let part = |z: &num_complex::Complex<f32>| if im { z.im as f64 } else { z.re as f64 };
+    paths.iter().map(|p| part(&p[last])).sum::<f64>() / paths.len() as f64
+  };
+  for im in [false, true] {
+    let (h, d) = (part_mean(&host, im), part_mean(&device, im));
+    assert!(
+      (h - d).abs() < 0.02,
+      "complex fOU terminal mean ({}): host {h}, device {d}",
+      if im { "imaginary" } else { "real" }
+    );
+  }
   agrees(
     spread(&host, false),
     spread(&device, false),

@@ -294,7 +294,7 @@ impl EulerKernel<f32> for Metal {
     // A fractional process has its increments produced on this same device and
     // read from the buffer they were written to: the two kernels meet in GPU
     // memory rather than through the host.
-    let fractional = fgn_buffer(process.fgn_spec(), m, seed, self.ordinal)?;
+    let fractional = fgn_buffer(process.fgn_spec(), first, m, seed, self.ordinal)?;
     let planes = device_paths(
       self.ordinal,
       process.euler_spec(),
@@ -329,7 +329,7 @@ impl EulerKernel<f32> for Metal {
     let spec = process.euler_spec();
     super::check_arity(&spec, D);
     let slots = process.initial_state();
-    let fractional = fgn_buffer(process.fgn_spec(), m, seed, self.ordinal)?;
+    let fractional = fgn_buffer(process.fgn_spec(), first, m, seed, self.ordinal)?;
     device_paths(
       self.ordinal,
       spec,
@@ -363,6 +363,7 @@ impl EulerKernel<f32> for Metal {
 /// rows `m .. 2m`.
 fn fgn_buffer(
   spec: Option<crate::euler::FgnSpec<'_, f32>>,
+  first: usize,
   m: usize,
   seed: u64,
   ordinal: usize,
@@ -373,6 +374,11 @@ fn fgn_buffer(
   match spec {
     Some(spec) => {
       let eigs: Vec<f32> = spec.sqrt_eigenvalues.to_vec();
+      // The generate kernel hashes `tid * 4 + seed`, so a chunk starts where
+      // the previous one ended by advancing the seed past the elements
+      // already produced — the offset `sample_metal_impl` applies, times the
+      // stream count, since a two-stream launch takes `streams` rows a path.
+      let produced = spec.streams * first * 2 * spec.n * 4;
       let (buf, _) = crate::noise::fgn::metal::sample_f32_buffer(
         &eigs,
         spec.n,
@@ -380,7 +386,7 @@ fn fgn_buffer(
         spec.offset,
         spec.hurst,
         spec.t,
-        seed as u32,
+        (seed as u32).wrapping_add(produced as u32),
         ordinal,
       )?;
       Ok(Some((buf, spec.streams as u32)))
