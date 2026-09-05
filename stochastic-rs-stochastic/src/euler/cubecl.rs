@@ -255,6 +255,21 @@ fn step(
   if family == 39u32 {
     stepped = cube::TwoScaleOrnsteinUhlenbeck(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
+  if family == 40u32 {
+    stepped = cube::LogHeston(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
+  }
+  if family == 41u32 {
+    stepped = cube::LogHestonReflected(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
+  }
+  if family == 42u32 {
+    stepped = cube::DoubleHeston(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
+  }
+  if family == 43u32 {
+    stepped = cube::DoubleHestonReflected(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
+  }
+  if family == 44u32 {
+    stepped = cube::StochasticCorrelationHeston(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
+  }
   if family == 16u32 {
     stepped = cube::FellerRoot(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
@@ -389,6 +404,21 @@ fn report(
   }
   if family == 39u32 {
     reported = cube_report::TwoScaleOrnsteinUhlenbeck(component, x0, x1, x2, x3, params);
+  }
+  if family == 40u32 {
+    reported = cube_report::LogHeston(component, x0, x1, x2, x3, params);
+  }
+  if family == 41u32 {
+    reported = cube_report::LogHestonReflected(component, x0, x1, x2, x3, params);
+  }
+  if family == 42u32 {
+    reported = cube_report::DoubleHeston(component, x0, x1, x2, x3, params);
+  }
+  if family == 43u32 {
+    reported = cube_report::DoubleHestonReflected(component, x0, x1, x2, x3, params);
+  }
+  if family == 44u32 {
+    reported = cube_report::StochasticCorrelationHeston(component, x0, x1, x2, x3, params);
   }
   if family == 16u32 {
     reported = cube_report::FellerRoot(component, x0, x1, x2, x3, params);

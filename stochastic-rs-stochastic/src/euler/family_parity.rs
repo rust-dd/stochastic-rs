@@ -167,6 +167,11 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::Sabr { .. } => "Sabr",
     EulerSpec::Bergomi { .. } => "Bergomi",
     EulerSpec::TwoScaleOrnsteinUhlenbeck { .. } => "TwoScaleOrnsteinUhlenbeck",
+    EulerSpec::LogHeston { .. } => "LogHeston",
+    EulerSpec::LogHestonReflected { .. } => "LogHestonReflected",
+    EulerSpec::DoubleHeston { .. } => "DoubleHeston",
+    EulerSpec::DoubleHestonReflected { .. } => "DoubleHestonReflected",
+    EulerSpec::StochasticCorrelationHeston { .. } => "StochasticCorrelationHeston",
   }
 }
 
@@ -406,6 +411,78 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
       },
       x0: [0.5, 0.5],
     },
+    SystemProbe {
+      spec: EulerSpec::LogHeston {
+        drift: 0.03,
+        kappa: 2.0,
+        theta: 0.04,
+        xi: 0.3,
+        rho: -0.7,
+      },
+      x0: [100.0, 0.04],
+    },
+    SystemProbe {
+      spec: EulerSpec::LogHestonReflected {
+        drift: 0.03,
+        kappa: 2.0,
+        theta: 0.04,
+        xi: 0.3,
+        rho: -0.7,
+      },
+      x0: [100.0, 0.04],
+    },
+  ]
+}
+
+/// One probe per three-component family.
+fn every_three_component_family() -> Vec<SystemProbe<3>> {
+  let double = |sym| {
+    let spec = if sym {
+      EulerSpec::DoubleHestonReflected {
+        mu: 0.03,
+        kappa1: 2.0,
+        theta1: 0.04,
+        sigma1: 0.3,
+        rho1: -0.7,
+        kappa2: 1.0,
+        theta2: 0.02,
+        sigma2: 0.2,
+        rho2: -0.3,
+      }
+    } else {
+      EulerSpec::DoubleHeston {
+        mu: 0.03,
+        kappa1: 2.0,
+        theta1: 0.04,
+        sigma1: 0.3,
+        rho1: -0.7,
+        kappa2: 1.0,
+        theta2: 0.02,
+        sigma2: 0.2,
+        rho2: -0.3,
+      }
+    };
+    SystemProbe {
+      spec,
+      x0: [100.0, 0.04, 0.02],
+    }
+  };
+  vec![
+    double(false),
+    double(true),
+    SystemProbe {
+      spec: EulerSpec::StochasticCorrelationHeston {
+        kappa_r: 1.0,
+        mu_r: -0.3,
+        sigma_r: 0.2,
+        kappa_v: 2.0,
+        mu_v: 0.04,
+        sigma_v: 0.3,
+        r: 0.02,
+        rho2: 0.1,
+      },
+      x0: [100.0, 0.04, -0.3],
+    },
   ]
 }
 
@@ -432,6 +509,11 @@ fn every_family_has_a_probe() {
   let mut names: Vec<&'static str> = every_family().iter().map(|p| family_name(&p.spec)).collect();
   names.extend(
     every_two_component_family()
+      .iter()
+      .map(|p| family_name(&p.spec)),
+  );
+  names.extend(
+    every_three_component_family()
       .iter()
       .map(|p| family_name(&p.spec)),
   );
@@ -467,6 +549,9 @@ fn every_family_has_a_probe() {
   for probe in &every_two_component_family() {
     assert_eq!(arity(&probe.spec), 2, "{}", family_name(&probe.spec));
   }
+  for probe in &every_three_component_family() {
+    assert_eq!(arity(&probe.spec), 3, "{}", family_name(&probe.spec));
+  }
   for probe in &every_four_component_family() {
     assert_eq!(arity(&probe.spec), 4, "{}", family_name(&probe.spec));
   }
@@ -494,6 +579,17 @@ fn every_family_runs_on_the_device() {
     );
   }
   for probe in every_two_component_family() {
+    let name = family_name(&probe.spec);
+    let paths = Device::default().system_paths(&probe, 8);
+    assert_eq!(paths.len(), 8, "{name}");
+    assert!(
+      paths
+        .iter()
+        .all(|c| c.iter().all(|p| p.len() == N && p.iter().all(|v| v.is_finite()))),
+      "{name}: a device path left the reals"
+    );
+  }
+  for probe in every_three_component_family() {
     let name = family_name(&probe.spec);
     let paths = Device::default().system_paths(&probe, 8);
     assert_eq!(paths.len(), 8, "{name}");
@@ -549,6 +645,16 @@ fn the_cubecl_kernel_matches_the_generated_one() {
     }
   }
   for probe in every_two_component_family() {
+    let name = family_name(&probe.spec);
+    let native = crate::device::Metal::default().system_paths(&probe, 8);
+    let cube = Cube::default().system_paths(&probe, 8);
+    for (a, b) in native.iter().zip(&cube) {
+      for (x, y) in a.iter().zip(b.iter()) {
+        agree(name, x, y);
+      }
+    }
+  }
+  for probe in every_three_component_family() {
     let name = family_name(&probe.spec);
     let native = crate::device::Metal::default().system_paths(&probe, 8);
     let cube = Cube::default().system_paths(&probe, 8);

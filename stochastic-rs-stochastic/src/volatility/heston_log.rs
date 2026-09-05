@@ -22,7 +22,6 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -246,9 +245,65 @@ impl<T: FloatExt, S: SeedExt, B> HestonLog<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] HestonLog<T, S> { mu, b, r, r_f, kappa, theta, xi, rho, n, s0, v0, t, use_sym, seed } via host);
+/// The Euler engine's view of the log-price Heston model. The drift is
+/// resolved once here from whichever of the rate, carry or drift arguments
+/// the process was built with.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
+  for HestonLog<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    if self.use_sym.unwrap_or(false) {
+      crate::euler::EulerSpec::LogHestonReflected {
+        drift: self.drift(),
+        kappa: self.kappa,
+        theta: self.theta,
+        xi: self.xi,
+        rho: self.rho,
+      }
+    } else {
+      crate::euler::EulerSpec::LogHeston {
+        drift: self.drift(),
+        kappa: self.kappa,
+        theta: self.theta,
+        xi: self.xi,
+        rho: self.rho,
+      }
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for HestonLog<T, S, B> {
+  fn initial_state(&self) -> [T; 4] {
+    [
+      self.s0.unwrap_or(T::one()),
+      self.v0.unwrap_or(self.theta).max(T::zero()),
+      T::zero(),
+      T::zero(),
+    ]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 2] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] HestonLog<T, S> { mu, b, r, r_f, kappa, theta, xi, rho, n, s0, v0, t, use_sym, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for HestonLog<T, S, B>
+{
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = HestonLogSampler<T>
@@ -276,6 +331,32 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for HestonLog<T, S, 
       n1: SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed),
       n2: SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed),
     }
+  }
+
+  /// Through the Euler engine: on a device every component steps in the
+  /// kernel, on the host devices it is this process's own sampler, chunked
+  /// exactly as `ProcessExt` chunks.
+  fn sample(&self) -> [Array1<T>; 2] {
+    self.backend.system_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 2]) -> R + Sync) -> Vec<R> {
+    self.backend.system_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 2]> {
+    self.backend.system_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 2], crate::device::DeviceError> {
+    self.backend.try_system_sample(self)
+  }
+
+  fn try_sample_par(
+    &self,
+    m: usize,
+  ) -> Result<Vec<[Array1<T>; 2]>, crate::device::DeviceError> {
+    self.backend.try_system_paths(self, m)
   }
 }
 

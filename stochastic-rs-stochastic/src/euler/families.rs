@@ -411,7 +411,7 @@ macro_rules! euler_families {
           $(#[$meta])* $name, $params, $dt, $component, $produced,
           sig $sxs $sds,
           place $sxs [$($state)*] $sds [$($noise)*],
-          params [0 1 2 3 4 5 6 7] [$($param)*],
+          params [0 1 2 3 4 5 6 7 8 9 10 11] [$($param)*],
           bound {}, arms {}, at [0u32 1u32 2u32 3u32], body {$($step)*}
         );
       )*
@@ -431,7 +431,7 @@ macro_rules! euler_families {
           $(#[$meta])* $name, $params, $component, $produced,
           sig $sxs,
           place $sxs [$($state)*],
-          params [0 1 2 3 4 5 6 7] [$($param)*],
+          params [0 1 2 3 4 5 6 7 8 9 10 11] [$($param)*],
           bound {}, arms {}, at [0u32 1u32 2u32 3u32], body {$($report)*}
         );
       )*
@@ -440,7 +440,7 @@ macro_rules! euler_families {
     /// The C statements that step the state, one guarded block per family.
     pub(crate) const C_STEP: &str = concat!($(
       "        if (family == ", stringify!($code), "u) {\n",
-      euler_families!(@bind_params [0 1 2 3 4 5 6 7] $($param)*),
+      euler_families!(@bind_params [0 1 2 3 4 5 6 7 8 9 10 11] $($param)*),
       euler_families!(@bind_slots "state" [0 1 2 3] $($state)*),
       euler_families!(@bind_slots "noise" [0 1 2 3] $($noise)*),
       euler_families!(@c_body "state", [0 1 2 3], [$($state)*], $($step)*),
@@ -450,7 +450,7 @@ macro_rules! euler_families {
     /// The C statements that set the reported values, one block per family.
     pub(crate) const C_REPORT: &str = concat!($(
       "        if (family == ", stringify!($code), "u) {\n",
-      euler_families!(@bind_params [0 1 2 3 4 5 6 7] $($param)*),
+      euler_families!(@bind_params [0 1 2 3 4 5 6 7 8 9 10 11] $($param)*),
       euler_families!(@bind_slots "state" [0 1 2 3] $($state)*),
       euler_families!(@c_body "reported", [0 1 2 3], [$($state)*], $($report)*),
       "        }\n",
@@ -1125,6 +1125,97 @@ euler_families! {
       y + eps_inv * (alpha - y) * dt + sqrt_eps_inv * dy
     }
     report { x, y },
+
+  /// The Heston model stepped in log-price: `S` advances by the exponential
+  /// of its log increment, so it stays positive whatever the variance does.
+  /// The variance is truncated at zero and, unlike the arithmetic form, the
+  /// truncated value is what the next step starts from.
+  40 => LogHeston { drift, kappa, theta, xi, rho }
+    state (s, v)
+    noise (dw, dq)
+    step {
+      bind vp = positive(v);
+      bind sv = sqrt(vp);
+      bind dwv = rho * dw + sqrt(negate(rho * rho - lit(1.0))) * dq;
+      s * exp((drift - vp / lit(2.0)) * dt + sv * dw),
+      positive(vp + kappa * (theta - vp) * dt + xi * sv * dwv)
+    }
+    report { s, v },
+
+  /// [`LogHeston`](Family::LogHeston) with the variance reflected at zero.
+  41 => LogHestonReflected { drift, kappa, theta, xi, rho }
+    state (s, v)
+    noise (dw, dq)
+    step {
+      bind vp = abs(v);
+      bind sv = sqrt(vp);
+      bind dwv = rho * dw + sqrt(negate(rho * rho - lit(1.0))) * dq;
+      s * exp((drift - vp / lit(2.0)) * dt + sv * dw),
+      abs(vp + kappa * (theta - vp) * dt + xi * sv * dwv)
+    }
+    report { s, v },
+
+  /// Two independent square-root variance factors driving one spot, each with
+  /// its own correlation to the spot's own shock: the double Heston model,
+  /// with both variances truncated at zero.
+  42 => DoubleHeston {
+    mu, kappa1, theta1, sigma1, rho1, kappa2, theta2, sigma2, rho2
+  }
+    state (s, v1, v2)
+    noise (ds1, dq1, ds2, dq2)
+    step {
+      bind p1 = positive(v1);
+      bind p2 = positive(v2);
+      bind dv1 = rho1 * ds1 + sqrt(negate(rho1 * rho1 - lit(1.0))) * dq1;
+      bind dv2 = rho2 * ds2 + sqrt(negate(rho2 * rho2 - lit(1.0))) * dq2;
+      s + mu * s * dt + s * sqrt(p1) * ds1 + s * sqrt(p2) * ds2,
+      positive(v1 + kappa1 * (theta1 - p1) * dt + sigma1 * sqrt(p1) * dv1),
+      positive(v2 + kappa2 * (theta2 - p2) * dt + sigma2 * sqrt(p2) * dv2)
+    }
+    report { s, v1, v2 },
+
+  /// [`DoubleHeston`](Family::DoubleHeston) with both variances reflected.
+  43 => DoubleHestonReflected {
+    mu, kappa1, theta1, sigma1, rho1, kappa2, theta2, sigma2, rho2
+  }
+    state (s, v1, v2)
+    noise (ds1, dq1, ds2, dq2)
+    step {
+      bind p1 = positive(v1);
+      bind p2 = positive(v2);
+      bind dv1 = rho1 * ds1 + sqrt(negate(rho1 * rho1 - lit(1.0))) * dq1;
+      bind dv2 = rho2 * ds2 + sqrt(negate(rho2 * rho2 - lit(1.0))) * dq2;
+      s + mu * s * dt + s * sqrt(p1) * ds1 + s * sqrt(p2) * ds2,
+      abs(v1 + kappa1 * (theta1 - p1) * dt + sigma1 * sqrt(p1) * dv1),
+      abs(v2 + kappa2 * (theta2 - p2) * dt + sigma2 * sqrt(p2) * dv2)
+    }
+    report { s, v1, v2 },
+
+  /// A Heston spot whose correlation to its own variance is itself a
+  /// mean-reverting process, stepped on the unbounded variable and reported
+  /// through a `tanh`. The log increment reads the correlation *after* its
+  /// own step, so the third component is computed once and used by both.
+  44 => StochasticCorrelationHeston {
+    kappa_r, mu_r, sigma_r, kappa_v, mu_v, sigma_v, r, rho2
+  }
+    state (s, v, x)
+    noise (dv_w, drho, dx_w)
+    step {
+      bind vp = positive(v);
+      bind sv = sqrt(vp);
+      bind xc = x + kappa_r * (mu_r - tanh(x)) * dt + sigma_r * drho;
+      bind rt = tanh(xc);
+      bind indep = sqrt(positive(negate(rt * rt + rho2 * rho2 - lit(1.0))));
+      s * exp(
+        (r - vp / lit(2.0)) * dt
+          + rt * sv * dv_w
+          + rho2 * sv * drho
+          + indep * sv * dx_w
+      ),
+      positive(vp + kappa_v * (mu_v - vp) * dt + sigma_v * sv * dv_w),
+      xc
+    }
+    report { s, v, tanh(x) },
 
   2 => SquareRoot { kappa, theta, sigma }
     state (x)

@@ -59,7 +59,7 @@ use crate::traits::process::sample_par_chunked;
 /// How many scalar parameters one family may carry. The layout is the
 /// kernels' ABI and stays inside the crate, so it can widen again without a
 /// breaking change.
-pub(crate) const PARAM_SLOTS: usize = 8;
+pub(crate) const PARAM_SLOTS: usize = 12;
 
 /// Scalar drift / diffusion families the device kernels know how to step.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -275,6 +275,57 @@ pub enum EulerSpec<T: FloatExt> {
     eps_inv: T,
     sqrt_eps_inv: T,
   },
+  /// The Heston model stepped in log-price, variance truncated.
+  LogHeston {
+    drift: T,
+    kappa: T,
+    theta: T,
+    xi: T,
+    rho: T,
+  },
+  /// [`LogHeston`](EulerSpec::LogHeston) with the variance reflected.
+  LogHestonReflected {
+    drift: T,
+    kappa: T,
+    theta: T,
+    xi: T,
+    rho: T,
+  },
+  /// Two variance factors driving one spot, both truncated.
+  DoubleHeston {
+    mu: T,
+    kappa1: T,
+    theta1: T,
+    sigma1: T,
+    rho1: T,
+    kappa2: T,
+    theta2: T,
+    sigma2: T,
+    rho2: T,
+  },
+  /// [`DoubleHeston`](EulerSpec::DoubleHeston) with both variances reflected.
+  DoubleHestonReflected {
+    mu: T,
+    kappa1: T,
+    theta1: T,
+    sigma1: T,
+    rho1: T,
+    kappa2: T,
+    theta2: T,
+    sigma2: T,
+    rho2: T,
+  },
+  /// A Heston spot whose correlation to its variance is itself stochastic.
+  StochasticCorrelationHeston {
+    kappa_r: T,
+    mu_r: T,
+    sigma_r: T,
+    kappa_v: T,
+    mu_v: T,
+    sigma_v: T,
+    r: T,
+    rho2: T,
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -362,7 +413,7 @@ impl<T: FloatExt> EulerSpec<T> {
         b3,
       } => (
         Family::AitSahalia.code(),
-        [am1, a0, a1, a2, b0, b1, b2, b3],
+        pad([am1, a0, a1, a2, b0, b1, b2, b3]),
       ),
       EulerSpec::Gompertz { a, b, sigma } => (Family::Gompertz.code(), pad([a, b, sigma])),
       EulerSpec::Kimura { a, sigma } => (Family::Kimura.code(), pad([a, sigma])),
@@ -405,7 +456,10 @@ impl<T: FloatExt> EulerSpec<T> {
         b1,
         b2,
         b3,
-      } => (Family::NonLinear.code(), [am1, a0, a1, a2, b0, b1, b2, b3]),
+      } => (
+        Family::NonLinear.code(),
+        pad([am1, a0, a1, a2, b0, b1, b2, b3]),
+      ),
       EulerSpec::Displaced { mu, sigma, beta } => (Family::Displaced.code(), pad([mu, sigma, beta])),
       EulerSpec::TanhOrnsteinUhlenbeck { kappa, mu, sigma } => (Family::TanhOrnsteinUhlenbeck.code(), pad([kappa, mu, sigma])),
       EulerSpec::BoundedCorrelation { kappa, mu, sigma } => (Family::BoundedCorrelation.code(), pad([kappa, mu, sigma])),
@@ -454,6 +508,67 @@ impl<T: FloatExt> EulerSpec<T> {
       } => (
         Family::TwoScaleOrnsteinUhlenbeck.code(),
         pad([kappa, theta, eps, alpha, eps_inv, sqrt_eps_inv]),
+      ),
+      EulerSpec::LogHeston {
+        drift,
+        kappa,
+        theta,
+        xi,
+        rho,
+      } => (
+        Family::LogHeston.code(),
+        pad([drift, kappa, theta, xi, rho]),
+      ),
+      EulerSpec::LogHestonReflected {
+        drift,
+        kappa,
+        theta,
+        xi,
+        rho,
+      } => (
+        Family::LogHestonReflected.code(),
+        pad([drift, kappa, theta, xi, rho]),
+      ),
+      EulerSpec::DoubleHeston {
+        mu,
+        kappa1,
+        theta1,
+        sigma1,
+        rho1,
+        kappa2,
+        theta2,
+        sigma2,
+        rho2,
+      } => (
+        Family::DoubleHeston.code(),
+        pad([mu, kappa1, theta1, sigma1, rho1, kappa2, theta2, sigma2, rho2]),
+      ),
+      EulerSpec::DoubleHestonReflected {
+        mu,
+        kappa1,
+        theta1,
+        sigma1,
+        rho1,
+        kappa2,
+        theta2,
+        sigma2,
+        rho2,
+      } => (
+        Family::DoubleHestonReflected.code(),
+        pad([mu, kappa1, theta1, sigma1, rho1, kappa2, theta2, sigma2, rho2]),
+      ),
+      EulerSpec::StochasticCorrelationHeston {
+        kappa_r,
+        mu_r,
+        sigma_r,
+        kappa_v,
+        mu_v,
+        sigma_v,
+        r,
+        rho2,
+      } => (
+        Family::StochasticCorrelationHeston.code(),
+        pad([kappa_r, mu_r, sigma_r, kappa_v, mu_v, sigma_v, r, rho2]),
       ),
     }
   }

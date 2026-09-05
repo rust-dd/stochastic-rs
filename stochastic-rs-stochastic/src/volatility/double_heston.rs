@@ -26,7 +26,6 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -262,9 +261,79 @@ impl<T: FloatExt, S: SeedExt, B> DoubleHeston<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] DoubleHeston<T, S> { s0, v1_0, v2_0, kappa1, theta1, sigma1, rho1, kappa2, theta2, sigma2, rho2, mu, n, t, use_sym, seed, cgns1, cgns2 } via host);
+/// The Euler engine's view of the double Heston model: one spot driven by two
+/// independent variance factors, each with its own correlation to the spot's
+/// share of the shock.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 3>
+  for DoubleHeston<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    if self.use_sym.unwrap_or(false) {
+      crate::euler::EulerSpec::DoubleHestonReflected {
+        mu: self.mu,
+        kappa1: self.kappa1,
+        theta1: self.theta1,
+        sigma1: self.sigma1,
+        rho1: self.rho1,
+        kappa2: self.kappa2,
+        theta2: self.theta2,
+        sigma2: self.sigma2,
+        rho2: self.rho2,
+      }
+    } else {
+      crate::euler::EulerSpec::DoubleHeston {
+        mu: self.mu,
+        kappa1: self.kappa1,
+        theta1: self.theta1,
+        sigma1: self.sigma1,
+        rho1: self.rho1,
+        kappa2: self.kappa2,
+        theta2: self.theta2,
+        sigma2: self.sigma2,
+        rho2: self.rho2,
+      }
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for DoubleHeston<T, S, B> {
+  fn initial_state(&self) -> [T; 4] {
+    [
+      self.s0.unwrap_or(T::zero()),
+      self.v1_0.unwrap_or(T::zero()).max(T::zero()),
+      self.v2_0.unwrap_or(T::zero()).max(T::zero()),
+      T::zero(),
+    ]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  /// The correlated-noise sources divide the horizon by the number of points,
+  /// not by the number of steps, so the device steps by that same amount.
+  fn time_step(&self) -> T {
+    self.cgns1.dt()
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 3] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] DoubleHeston<T, S> { s0, v1_0, v2_0, kappa1, theta1, sigma1, rho1, kappa2, theta2, sigma2, rho2, mu, n, t, use_sym, seed, cgns1, cgns2 } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for DoubleHeston<T, S, B>
+{
   /// Output tuple: `[S, v1, v2]`.
   type Output = [Array1<T>; 3];
   type Sampler<'s>
@@ -295,6 +364,32 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for DoubleHeston<T, 
       cgns2: self.cgns2,
       seed: self.seed.derive(),
     }
+  }
+
+  /// Through the Euler engine: on a device every component steps in the
+  /// kernel, on the host devices it is this process's own sampler, chunked
+  /// exactly as `ProcessExt` chunks.
+  fn sample(&self) -> [Array1<T>; 3] {
+    self.backend.system_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 3]) -> R + Sync) -> Vec<R> {
+    self.backend.system_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 3]> {
+    self.backend.system_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 3], crate::device::DeviceError> {
+    self.backend.try_system_sample(self)
+  }
+
+  fn try_sample_par(
+    &self,
+    m: usize,
+  ) -> Result<Vec<[Array1<T>; 3]>, crate::device::DeviceError> {
+    self.backend.try_system_paths(self, m)
   }
 }
 

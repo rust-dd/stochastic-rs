@@ -20,7 +20,6 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -205,9 +204,62 @@ impl<T: FloatExt, S: SeedExt, B> HestonStochCorr<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] HestonStochCorr<T, S> { r, s0, v0, kappa_v, mu_v, sigma_v, rho0, kappa_r, mu_r, sigma_r, rho2, n, t, seed } via host);
+/// The Euler engine's view of the stochastic-correlation Heston model. The
+/// correlation is stepped on the unbounded variable it lives on, so `ρ₀`
+/// enters as its inverse transform and the reported value is transformed
+/// back.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 3>
+  for HestonStochCorr<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::StochasticCorrelationHeston {
+      kappa_r: self.kappa_r,
+      mu_r: self.mu_r,
+      sigma_r: self.sigma_r,
+      kappa_v: self.kappa_v,
+      mu_v: self.mu_v,
+      sigma_v: self.sigma_v,
+      r: self.r,
+      rho2: self.rho2,
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for HestonStochCorr<T, S, B> {
+  fn initial_state(&self) -> [T; 4] {
+    [
+      self.s0,
+      self.v0,
+      self
+        .rho0
+        .clamp(T::from_f64_fast(-0.999), T::from_f64_fast(0.999))
+        .atanh(),
+      T::zero(),
+    ]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 3] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] HestonStochCorr<T, S> { r, s0, v0, kappa_v, mu_v, sigma_v, rho0, kappa_r, mu_r, sigma_r, rho2, n, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for HestonStochCorr<T, S, B>
+{
   type Output = [Array1<T>; 3]; // [S, v, rho]
   type Sampler<'s>
     = HestonStochCorrSampler<T, S>
@@ -235,6 +287,32 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for HestonStochCorr<
       t: self.t,
       seed: self.seed.derive(),
     }
+  }
+
+  /// Through the Euler engine: on a device every component steps in the
+  /// kernel, on the host devices it is this process's own sampler, chunked
+  /// exactly as `ProcessExt` chunks.
+  fn sample(&self) -> [Array1<T>; 3] {
+    self.backend.system_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 3]) -> R + Sync) -> Vec<R> {
+    self.backend.system_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 3]> {
+    self.backend.system_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 3], crate::device::DeviceError> {
+    self.backend.try_system_sample(self)
+  }
+
+  fn try_sample_par(
+    &self,
+    m: usize,
+  ) -> Result<Vec<[Array1<T>; 3]>, crate::device::DeviceError> {
+    self.backend.try_system_paths(self, m)
   }
 }
 

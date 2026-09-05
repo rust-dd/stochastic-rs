@@ -6,7 +6,10 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::diffusion::fouque::FouqueOU2D;
+use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
 use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
+use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
+use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 use stochastic_rs_stochastic::volatility::sabr::Sabr;
 use stochastic_rs_stochastic::volatility::HestonPow;
@@ -16,6 +19,15 @@ use super::common::agrees;
 
 /// Fewer paths than the scalar cases use: a system draw carries two paths.
 const M: usize = 3_000;
+
+fn terminal_mean_of<const D: usize>(paths: &[[Array1<f32>; D]], component: usize) -> f64 {
+  let last = paths[0][component].len() - 1;
+  paths
+    .iter()
+    .map(|p| p[component][last] as f64)
+    .sum::<f64>()
+    / paths.len() as f64
+}
 
 fn terminal_mean(paths: &[[Array1<f32>; 2]], component: usize) -> f64 {
   let last = paths[0][component].len() - 1;
@@ -211,4 +223,136 @@ fn two_scale_ornstein_uhlenbeck_agrees_with_the_cpu_law() {
     0.10,
     "fast factor terminal mean",
   );
+}
+
+/// The log-price form keeps the spot positive by construction, so that is
+/// pinned alongside the two terminal means.
+#[test]
+fn log_heston_agrees_with_the_cpu_law() {
+  let build = || {
+    HestonLog::<f32, _>::new(
+      Some(0.0),
+      None,
+      None,
+      None,
+      2.0,
+      0.04,
+      0.3,
+      -0.7,
+      253,
+      Some(100.0),
+      Some(0.04),
+      Some(1.0),
+      Some(false),
+      Deterministic::new(29),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  assert!(
+    device.iter().all(|p| p[0].iter().all(|&v| v > 0.0)),
+    "the log-price form let the spot reach zero"
+  );
+  let host = build().sample_par(M);
+  agrees(
+    terminal_mean(&host, 0),
+    terminal_mean(&device, 0),
+    0.03,
+    "log-Heston terminal spot",
+  );
+  agrees(
+    terminal_mean(&host, 1),
+    terminal_mean(&device, 1),
+    0.06,
+    "log-Heston terminal variance",
+  );
+}
+
+/// Two variance factors driving one spot: both must stay non-negative and
+/// both terminal means must agree.
+#[test]
+fn double_heston_agrees_with_the_cpu_law() {
+  let build = || {
+    DoubleHeston::<f32, _>::new(
+      Some(100.0),
+      Some(0.04),
+      Some(0.02),
+      2.0,
+      0.04,
+      0.3,
+      -0.7,
+      1.0,
+      0.02,
+      0.2,
+      -0.3,
+      0.0,
+      253,
+      Some(1.0),
+      Some(false),
+      Deterministic::new(31),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  assert!(
+    device
+      .iter()
+      .all(|p| p[1].iter().chain(p[2].iter()).all(|&v| v >= 0.0)),
+    "a truncated variance went negative"
+  );
+  let host = build().sample_par(M);
+  for (c, tol, what) in [
+    (0usize, 0.04, "spot"),
+    (1, 0.08, "first variance"),
+    (2, 0.08, "second variance"),
+  ] {
+    agrees(
+      terminal_mean_of(&host, c),
+      terminal_mean_of(&device, c),
+      tol,
+      &format!("double Heston terminal {what}"),
+    );
+  }
+}
+
+/// The correlation component is stepped unbounded and reported through a
+/// `tanh`, so it cannot leave `(-1, 1)` however far the state wanders.
+#[test]
+fn stochastic_correlation_heston_agrees_with_the_cpu_law() {
+  let build = || {
+    HestonStochCorr::<f32, _>::new(
+      0.02,
+      100.0,
+      0.04,
+      2.0,
+      0.04,
+      0.3,
+      -0.3,
+      1.0,
+      -0.3,
+      0.2,
+      0.1,
+      253,
+      Some(1.0),
+      Deterministic::new(37),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  assert!(
+    device
+      .iter()
+      .all(|p| p[2].iter().all(|&v| (-1.0..=1.0).contains(&v))),
+    "the reported correlation left [-1, 1]"
+  );
+  let host = build().sample_par(M);
+  for (c, tol, what) in [
+    (0usize, 0.04, "spot"),
+    (1, 0.08, "variance"),
+    (2, 0.15, "correlation"),
+  ] {
+    agrees(
+      terminal_mean_of(&host, c),
+      terminal_mean_of(&device, c),
+      tol,
+      &format!("stochastic-correlation Heston terminal {what}"),
+    );
+  }
 }
