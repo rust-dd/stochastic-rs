@@ -335,8 +335,6 @@ fn device_paths<T: FloatExt>(
   {
     let (family, params) = spec.encode();
     let arity = super::families::Family::from_code(family).expect("a declared family");
-  let use_jumps = u32::from(jump_lambda.is_some());
-  let lambda64 = jump_lambda.map_or(0.0, |v| v.to_f64().unwrap_or(0.0));
     let use_jumps = u32::from(jump_lambda.is_some());
     let lambda64 = jump_lambda.map_or(0.0, |v| v.to_f64().unwrap_or(0.0));
     let (components, noises) = (arity.components() as u32, arity.noises() as u32);

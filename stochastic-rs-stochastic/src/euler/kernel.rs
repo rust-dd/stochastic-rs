@@ -81,7 +81,7 @@ REPORT
             REAL prod = (REAL)1;
             unsigned int cnt = 0u;
             for (unsigned int j = 0u; j < 64u; j++) {
-                unsigned int h = g ^ (2166136261u + j * 16777619u);
+                unsigned int h = (g ^ (2166136261u + j * 16777619u)) ^ (seed * 374761393u);
                 h ^= h >> 16; h *= 2246822519u; h ^= h >> 13; h *= 3266489917u; h ^= h >> 16;
                 prod = prod * ((REAL)h * (REAL)2.3283064e-10);
                 if (prod <= ell) { break; }

@@ -138,7 +138,7 @@ fn poisson(g: u32, seed: u32, mean: f32) -> f32 {
   let mut running: u32 = 1u32;
   for j in 0..64u32 {
     if running != 0u32 {
-      let mut h = g ^ (2166136261u32 + j * 16777619u32);
+      let mut h = (g ^ (2166136261u32 + j * 16777619u32)) ^ (seed * 374761393u32);
       h ^= h >> 16;
       h *= 2246822519u32;
       h ^= h >> 13;
