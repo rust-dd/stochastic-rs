@@ -311,6 +311,24 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
     if m <= rows {
       return self.euler_kernel(process, 0, m, seed);
     }
+    // The pipelined batch hashes its own Gaussian increments and knows
+    // nothing of a fractional pipeline, so a process with one goes chunk by
+    // chunk through the single launch instead, which runs the pipeline at
+    // the right row offset for each chunk. Sending it through the pipeline
+    // would silently step Brownian motion in place of the fractional one.
+    if process.fgn_spec().is_some() {
+      let mut out = Array2::<T>::zeros((m, n));
+      let mut first = 0;
+      while first < m {
+        let len = rows.min(m - first);
+        let chunk = self.euler_kernel(process, first, len, seed)?;
+        out
+          .slice_mut(ndarray::s![first..first + len, ..])
+          .assign(&chunk);
+        first += len;
+      }
+      return Ok(out);
+    }
     let planes = pipelined_paths(
       self.ordinal,
       process.euler_spec(),
@@ -701,8 +719,9 @@ where
       first,
       n,
       len,
-      // The pipelined batch is Gaussian only: a fractional process is launched
-      // in one go, so its increments never meet this path.
+      // The pipelined batch is Gaussian only: `euler_kernel_batch` routes a
+      // fractional process around it, chunk by chunk through `euler_kernel`,
+      // so no increment buffer ever meets this launch.
       None,
       curve,
       n_curves,

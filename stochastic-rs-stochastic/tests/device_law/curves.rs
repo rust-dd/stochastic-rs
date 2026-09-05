@@ -307,4 +307,26 @@ fn hjm_agrees_with_the_cpu_law() {
       &format!("HJM {name} terminal spread"),
     );
   }
+  // The three rows take three independent shocks, so their terminal values
+  // are uncorrelated. A kernel feeding one hashed component to every row
+  // keeps each marginal above exactly right and fails only here.
+  let row_corr = |paths: &[[Array1<f32>; 3]], a: usize, b: usize| {
+    let last = paths[0][a].len() - 1;
+    let (ma, mb) = (row_mean(paths, a), row_mean(paths, b));
+    let (mut sab, mut saa, mut sbb) = (0.0f64, 0.0f64, 0.0f64);
+    for p in paths {
+      let (x, y) = (p[a][last] as f64 - ma, p[b][last] as f64 - mb);
+      sab += x * y;
+      saa += x * x;
+      sbb += y * y;
+    }
+    sab / (saa * sbb).sqrt()
+  };
+  for (a, b) in [(0, 1), (1, 2), (0, 2)] {
+    let c = row_corr(&device, a, b);
+    assert!(
+      c.abs() < 0.08,
+      "HJM rows {a} and {b} are correlated on the device ({c}): the rows share a shock"
+    );
+  }
 }

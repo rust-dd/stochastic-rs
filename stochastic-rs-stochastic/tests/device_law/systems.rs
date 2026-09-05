@@ -743,8 +743,12 @@ fn barndorff_nielsen_shephard_agrees_with_the_cpu_law() {
 /// The dynamic SABR is the first family whose coefficients all arrive as
 /// curves: the host resolves its term structure per grid point and the kernel
 /// reads three of them per step. Two knots are used, so the tabulation has to
-/// change value twice — a launch that bound only the first curve, or read the
-/// buckets one step out of phase, would show up in the terminal spread.
+/// change value twice, and a launch that bound only the first curve — or
+/// combined the shocks under the wrong one — shows up in the spreads below.
+/// A bucket read one step out of phase does not: it moves every statistic
+/// here by less than the noise floor, so the tabulation's phase is pinned
+/// exactly, against the host's own bucket lookup, in the module's unit tests
+/// rather than statistically.
 #[test]
 fn dynamic_sabr_agrees_with_the_cpu_law() {
   let build = || {

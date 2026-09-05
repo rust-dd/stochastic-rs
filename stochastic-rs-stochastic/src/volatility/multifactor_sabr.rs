@@ -484,3 +484,60 @@ mod tests {
     );
   }
 }
+
+#[cfg(test)]
+mod tabulation {
+  use stochastic_rs_core::simd_rng::Unseeded;
+
+  use super::MultifactorSabr;
+
+  /// The device reads the bucket the host reads at every step: curve entry
+  /// `i` is the coefficient active at `(i - 1) dt`, which is the time the
+  /// host's own loop evaluates for step `i`. A statistical comparison cannot
+  /// see a one-step phase error here, so the tabulation is pinned exactly.
+  #[test]
+  fn the_curves_read_the_bucket_the_host_reads() {
+    let p = MultifactorSabr::<f64>::new(
+      Some(0.04),
+      Some(0.3),
+      vec![0.3, 0.7],
+      vec![0.5, 0.7, 0.9],
+      vec![-0.6, -0.2, 0.3],
+      vec![0.8, 0.4, 0.2],
+      64,
+      Some(1.0),
+      Unseeded,
+    );
+    let curves = <MultifactorSabr<f64> as crate::euler::EulerSystem<f64, 2>>::curves(&p)
+      .expect("three curves");
+    assert_eq!(curves.len(), 3);
+    let dt = 1.0 / 63.0;
+    for i in 1..64 {
+      let bucket = p.bucket_at((i - 1) as f64 * dt);
+      assert_eq!(curves[0][i], p.beta[bucket], "beta at step {i}");
+      assert_eq!(curves[1][i], p.rho[bucket], "rho at step {i}");
+      assert_eq!(curves[2][i], p.nu[bucket], "nu at step {i}");
+    }
+    // A grid point that lands exactly on a knot resolves to the same bucket
+    // on both sides, since both evaluate the same expression.
+    let on_knot = MultifactorSabr::<f64>::new(
+      Some(0.04),
+      Some(0.3),
+      vec![0.5],
+      vec![0.5, 0.9],
+      vec![0.0, 0.0],
+      vec![0.1, 0.1],
+      11,
+      Some(1.0),
+      Unseeded,
+    );
+    let curves = <MultifactorSabr<f64> as crate::euler::EulerSystem<f64, 2>>::curves(&on_knot)
+      .expect("curves");
+    for i in 1..11 {
+      assert_eq!(
+        curves[0][i],
+        on_knot.beta[on_knot.bucket_at((i - 1) as f64 * 0.1)]
+      );
+    }
+  }
+}

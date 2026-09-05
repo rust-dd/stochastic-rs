@@ -493,3 +493,66 @@ mod tests {
     assert!((p[2] - 1.0).abs() < 1e-12);
   }
 }
+
+#[cfg(test)]
+mod tabulation {
+  use stochastic_rs_core::simd_rng::Unseeded;
+
+  use super::Hjm;
+
+  /// Every coefficient is tabulated at `i · dt`, the time the host's loop
+  /// evaluates at step `i`, with the bond price's outer scale folded into its
+  /// drift and diffusion exactly as the host multiplies them. A statistical
+  /// comparison cannot see a one-step shift here, so it is pinned exactly.
+  #[test]
+  fn the_curves_are_the_host_coefficients_at_the_host_times() {
+    fn a(t: f64) -> f64 {
+      0.02 + 0.03 * t
+    }
+    fn b(t: f64) -> f64 {
+      0.01 + 0.01 * t
+    }
+    fn p(t: f64, _m: f64) -> f64 {
+      1.0 - 0.2 * t
+    }
+    fn q(t: f64, _m: f64) -> f64 {
+      -0.05 + 0.02 * t
+    }
+    fn v(t: f64, _m: f64) -> f64 {
+      0.03 + 0.02 * t
+    }
+    fn alpha(t: f64, _m: f64) -> f64 {
+      0.01 * t
+    }
+    fn sigma(t: f64, _m: f64) -> f64 {
+      0.02 + 0.01 * t
+    }
+    let h = Hjm::<f64>::new(
+      a as fn(f64) -> f64,
+      b as fn(f64) -> f64,
+      p as fn(f64, f64) -> f64,
+      q as fn(f64, f64) -> f64,
+      v as fn(f64, f64) -> f64,
+      alpha as fn(f64, f64) -> f64,
+      sigma as fn(f64, f64) -> f64,
+      41,
+      Some(0.03),
+      Some(1.0),
+      Some(0.04),
+      Some(2.0),
+      Unseeded,
+    );
+    let curves = <Hjm<f64> as crate::euler::EulerSystem<f64, 3>>::curves(&h).expect("six curves");
+    assert_eq!(curves.len(), 6);
+    let (dt, t_max) = (2.0 / 40.0, 2.0);
+    for i in 0..41 {
+      let t = i as f64 * dt;
+      assert_eq!(curves[0][i], a(t), "a at step {i}");
+      assert_eq!(curves[1][i], b(t), "b at step {i}");
+      assert_eq!(curves[2][i], p(t, t_max) * q(t, t_max), "p·q at step {i}");
+      assert_eq!(curves[3][i], p(t, t_max) * v(t, t_max), "p·v at step {i}");
+      assert_eq!(curves[4][i], alpha(t, t_max), "alpha at step {i}");
+      assert_eq!(curves[5][i], sigma(t, t_max), "sigma at step {i}");
+    }
+  }
+}

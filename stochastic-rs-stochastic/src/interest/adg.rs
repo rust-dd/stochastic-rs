@@ -485,3 +485,58 @@ mod tests {
     assert_eq!(path.ncols(), 32);
   }
 }
+
+#[cfg(test)]
+mod tabulation {
+  use ndarray::array;
+  use stochastic_rs_core::simd_rng::Unseeded;
+
+  use super::Adg;
+  use super::AdgRow;
+
+  /// The five coefficients are tabulated at `j · dt`, the time both the step
+  /// and the observation written at it read on the host.
+  #[test]
+  fn the_curves_are_the_host_coefficients_at_the_host_times() {
+    fn k(t: f64) -> f64 {
+      0.01 + 0.02 * t
+    }
+    fn theta(t: f64) -> f64 {
+      0.5 + 0.2 * t
+    }
+    fn phi(t: f64) -> f64 {
+      0.002 + 0.01 * t
+    }
+    fn b(t: f64) -> f64 {
+      0.8 + 0.4 * t
+    }
+    fn c(t: f64) -> f64 {
+      2.0 + t
+    }
+    let adg = Adg::<f64>::new(
+      k as fn(f64) -> f64,
+      theta as fn(f64) -> f64,
+      array![0.01, 0.02],
+      phi as fn(f64) -> f64,
+      b as fn(f64) -> f64,
+      c as fn(f64) -> f64,
+      33,
+      2,
+      array![0.02, 0.03],
+      Some(1.0),
+      Unseeded,
+    );
+    let row = AdgRow(&adg, 1);
+    let curves = crate::euler::EulerCoefficients::curves(&row).expect("five curves");
+    assert_eq!(curves.len(), 5);
+    let dt = 1.0 / 32.0;
+    for j in 0..33 {
+      let t = j as f64 * dt;
+      assert_eq!(curves[0][j], k(t), "k at step {j}");
+      assert_eq!(curves[1][j], theta(t), "theta at step {j}");
+      assert_eq!(curves[2][j], phi(t), "phi at step {j}");
+      assert_eq!(curves[3][j], b(t), "b at step {j}");
+      assert_eq!(curves[4][j], c(t), "c at step {j}");
+    }
+  }
+}

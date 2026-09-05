@@ -1447,10 +1447,17 @@ fn the_cubecl_kernel_matches_the_generated_one() {
   #[cfg(all(feature = "cubecl-cuda", not(feature = "cubecl-wgpu")))]
   type Cube = crate::device::Cubecl<crate::device::CudaRuntime>;
 
+  /// One part in a thousand of the value, with a floor of `1e-2` so a state
+  /// that sits near zero is still held to a scale rather than to an absolute
+  /// `1e-3` that would be a few percent of it. Relative rather than exact
+  /// because a family with a branch — the inverse-Gaussian draw's accept
+  /// test — can take the other side of a boundary on one runtime when two
+  /// `f32` roundings land a hair apart, and the path then differs by one
+  /// draw; both sides are draws of the same law, so that is not a defect.
   fn agree(name: &str, native: &Array1<f32>, cube: &Array1<f32>) {
     for (x, y) in native.iter().zip(cube.iter()) {
       assert!(
-        (x - y).abs() < 1e-3 * y.abs().max(1.0),
+        (x - y).abs() < 1e-3 * y.abs().max(1e-2),
         "{name}: native {x} vs cubecl {y}"
       );
     }
