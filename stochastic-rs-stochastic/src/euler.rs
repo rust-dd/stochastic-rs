@@ -521,6 +521,9 @@ pub enum EulerSpec<T: FloatExt> {
     arctan: T,
     half_pi: T,
   },
+  /// The arrival times of a Poisson process on a fixed count: the running sum
+  /// of exponential inter-arrival times.
+  PoissonArrivals { lambda: T },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1093,6 +1096,7 @@ impl<T: FloatExt> EulerSpec<T> {
         Family::TransformedOrnsteinUhlenbeck.code(),
         pad([kappa, mu, sigma, arctan, half_pi]),
       ),
+      EulerSpec::PoissonArrivals { lambda } => (Family::PoissonArrivals.code(), pad([lambda])),
     }
   }
 }

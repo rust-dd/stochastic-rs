@@ -12,6 +12,7 @@ use stochastic_rs_stochastic::jump::hawkes_jd::HawkesJD;
 use stochastic_rs_stochastic::jump::ig::Ig;
 use stochastic_rs_stochastic::jump::nig::Nig;
 use stochastic_rs_stochastic::jump::vg::Vg;
+use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::process::subordinator::alpha_stable::AlphaStableSubordinator;
 use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSubordinator;
 use stochastic_rs_stochastic::process::subordinator::ig_subordinator::IGSubordinator;
@@ -24,6 +25,7 @@ use super::common::M;
 use super::common::agrees;
 use super::common::all_finite;
 use super::common::terminal_mean;
+use super::common::terminal_std;
 use super::common::within;
 
 const N: usize = 253;
@@ -315,4 +317,42 @@ fn tempered_stable_subordinator_agrees_with_the_cpu_law() {
     0.06,
     "tempered stable subordinator terminal mean",
   );
+}
+
+/// Poisson in count mode is a running sum of exponential inter-arrival times,
+/// which the kernel draws by inverse CDF from its own uniform. The terminal
+/// arrival time of `n - 1` of them is Gamma(n - 1, 1/lambda), so its mean and
+/// spread are what carry the law. Horizon mode has no grid and stays on the
+/// host whatever the backend, which the last assertion pins.
+#[test]
+fn poisson_arrivals_agree_with_the_cpu_law() {
+  let build = || Poisson::<f32, _>::new(4.0, Some(N), None, Deterministic::new(71));
+  let device = build().on::<Device>().sample_par(M);
+  let host = build().sample_par(M);
+  assert_eq!(device.len(), M);
+  assert_eq!(device[0].len(), N);
+  assert_eq!(device[0][0], 0.0, "every path starts at the origin");
+  all_finite(&device, "Poisson arrivals");
+  assert!(
+    device
+      .iter()
+      .all(|p| p.windows(2).into_iter().all(|w| w[1] >= w[0])),
+    "Poisson arrivals must not run backwards"
+  );
+  agrees(
+    terminal_mean(&host),
+    terminal_mean(&device),
+    0.02,
+    "Poisson terminal arrival",
+  );
+  agrees(
+    terminal_std(&host),
+    terminal_std(&device),
+    0.08,
+    "Poisson arrival spread",
+  );
+  let horizon = Poisson::<f32, _>::new(4.0, None, Some(1.0), Deterministic::new(71))
+    .on::<Device>()
+    .sample();
+  assert_eq!(horizon[0], 0.0, "horizon mode still starts at the origin");
 }

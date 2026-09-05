@@ -15,7 +15,6 @@ use stochastic_rs_distributions::exp::SimdExp;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -128,9 +127,52 @@ impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Poisson<T, S> { lambda, n, t_max, seed } via host);
+/// The Euler engine's view of the **count mode** only: the running sum of
+/// exponential inter-arrival times is a bounded forward recursion, which is
+/// what a kernel can step. Horizon mode is not — its output length is the
+/// number of events in `(0, t_max)`, not a grid — so [`ProcessExt`] keeps
+/// that mode on the host and only reaches the engine when `n` is set.
+/// Calling the engine directly with a horizon-mode process is a declaration
+/// error and says so.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for Poisson<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::PoissonArrivals {
+      lambda: self.lambda,
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Poisson<T, S, B> {
+  fn initial_value(&self) -> T {
+    T::zero()
+  }
+
+  fn grid_points(&self) -> usize {
+    self
+      .n
+      .expect("the Euler engine describes Poisson's count mode; horizon mode has no grid")
+  }
+
+  /// The step is a sum of inter-arrival times and reads no `dt`, so the
+  /// horizon is the unit one every grid-free family reports.
+  fn horizon(&self) -> T {
+    T::one()
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Poisson<T, S> { lambda, n, t_max, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Poisson<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = PoissonSampler<T>
@@ -139,6 +181,44 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Poisson<T, S, B>
 
   fn sampler(&self) -> PoissonSampler<T> {
     self.sampler_impl(&self.seed)
+  }
+
+  /// Count mode goes through the Euler engine, which on a device sums the
+  /// inter-arrival times in the kernel. Horizon mode stays on this
+  /// process's own sampler whatever the backend: its output length is the
+  /// event count, which no fixed grid expresses.
+  fn sample(&self) -> Array1<T> {
+    if self.n.is_some() {
+      self.backend.euler_sample(self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    if self.n.is_some() {
+      self.backend.euler_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    if self.n.is_some() {
+      self.backend.try_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    if self.n.is_some() {
+      self.backend.try_euler_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
+    }
   }
 }
 

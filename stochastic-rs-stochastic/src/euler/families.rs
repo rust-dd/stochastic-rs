@@ -1854,6 +1854,17 @@ euler_families! {
       )
     },
 
+  /// The arrival times of a Poisson process sampled to a fixed count: a
+  /// running sum of exponential inter-arrival times, each drawn by inverse
+  /// CDF from the step's own uniform. The uniform is floored before the
+  /// logarithm because the hash stream can land on exactly zero, which is a
+  /// clamp of probability `1e-7` rather than a change of law.
+  86 => PoissonArrivals { lambda }
+    state (x)
+    noise (dz)
+    step { x + negate(ln(max(u, lit(1.0e-7)))) * recip(lambda) }
+    report { x },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)

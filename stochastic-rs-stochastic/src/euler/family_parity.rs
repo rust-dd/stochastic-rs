@@ -288,6 +288,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::CorrelatedFractionalMotion { .. } => "CorrelatedFractionalMotion",
     EulerSpec::ComplexFractionalOu { .. } => "ComplexFractionalOu",
     EulerSpec::TransformedOrnsteinUhlenbeck { .. } => "TransformedOrnsteinUhlenbeck",
+    EulerSpec::PoissonArrivals { .. } => "PoissonArrivals",
   }
 }
 
@@ -558,6 +559,7 @@ fn every_family() -> Vec<Probe> {
       },
       0.4,
     ),
+    p(EulerSpec::PoissonArrivals { lambda: 2.5 }, 0.0),
     p(
       EulerSpec::TransformedOrnsteinUhlenbeck {
         kappa: 1.0,

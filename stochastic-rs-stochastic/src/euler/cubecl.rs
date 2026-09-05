@@ -731,6 +731,11 @@ fn step(
       component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
+  if family == 86u32 {
+    stepped = cube::PoissonArrivals(
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
   if family == 16u32 {
     stepped = cube::FellerRoot(
       component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
@@ -1180,6 +1185,11 @@ fn report(
   }
   if family == 85u32 {
     reported = cube_report::TransformedOrnsteinUhlenbeck(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
+  }
+  if family == 86u32 {
+    reported = cube_report::PoissonArrivals(
       component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
     );
   }
