@@ -372,17 +372,10 @@ pub enum EulerSpec<T: FloatExt> {
     l44: T,
   },
   /// Merton's jump diffusion in log-price.
-  MertonJumpLog {
-    drift_ln: T,
-    sigma: T,
-    nu: T,
-    omega: T,
-  },
+  MertonJumpLog { drift_ln: T, sigma: T },
   /// The Bates stochastic-volatility jump model, variance truncated.
   BatesJump {
     drift_c: T,
-    nu: T,
-    omega: T,
     alpha: T,
     beta: T,
     sigma: T,
@@ -391,8 +384,6 @@ pub enum EulerSpec<T: FloatExt> {
   /// [`BatesJump`](EulerSpec::BatesJump) with the variance reflected.
   BatesJumpReflected {
     drift_c: T,
-    nu: T,
-    omega: T,
     alpha: T,
     beta: T,
     sigma: T,
@@ -434,6 +425,22 @@ pub enum EulerSpec<T: FloatExt> {
     tail_exp: T,
     scale: T,
     pi: T,
+  },
+  /// A Heston variance under a Kou-jumping log-price, variance truncated.
+  KouJumpHeston {
+    drift_c: T,
+    kappa: T,
+    theta: T,
+    sigma_v: T,
+    rho: T,
+  },
+  /// [`KouJumpHeston`](EulerSpec::KouJumpHeston) with the variance reflected.
+  KouJumpHestonReflected {
+    drift_c: T,
+    kappa: T,
+    theta: T,
+    sigma_v: T,
+    rho: T,
   },
 }
 
@@ -828,38 +835,28 @@ impl<T: FloatExt> EulerSpec<T> {
           l41, l42, l43, l44,
         ]),
       ),
-      EulerSpec::MertonJumpLog {
-        drift_ln,
-        sigma,
-        nu,
-        omega,
-      } => (
-        Family::MertonJumpLog.code(),
-        pad([drift_ln, sigma, nu, omega]),
-      ),
+      EulerSpec::MertonJumpLog { drift_ln, sigma } => {
+        (Family::MertonJumpLog.code(), pad([drift_ln, sigma]))
+      }
       EulerSpec::BatesJump {
         drift_c,
-        nu,
-        omega,
         alpha,
         beta,
         sigma,
         rho,
       } => (
         Family::BatesJump.code(),
-        pad([drift_c, nu, omega, alpha, beta, sigma, rho]),
+        pad([drift_c, alpha, beta, sigma, rho]),
       ),
       EulerSpec::BatesJumpReflected {
         drift_c,
-        nu,
-        omega,
         alpha,
         beta,
         sigma,
         rho,
       } => (
         Family::BatesJumpReflected.code(),
-        pad([drift_c, nu, omega, alpha, beta, sigma, rho]),
+        pad([drift_c, alpha, beta, sigma, rho]),
       ),
       EulerSpec::AndersenQe {
         theta,
@@ -904,6 +901,26 @@ impl<T: FloatExt> EulerSpec<T> {
       } => (
         Family::StableSubordinator.code(),
         pad([alpha, inv_alpha, one_minus_alpha, tail_exp, scale, pi]),
+      ),
+      EulerSpec::KouJumpHeston {
+        drift_c,
+        kappa,
+        theta,
+        sigma_v,
+        rho,
+      } => (
+        Family::KouJumpHeston.code(),
+        pad([drift_c, kappa, theta, sigma_v, rho]),
+      ),
+      EulerSpec::KouJumpHestonReflected {
+        drift_c,
+        kappa,
+        theta,
+        sigma_v,
+        rho,
+      } => (
+        Family::KouJumpHestonReflected.code(),
+        pad([drift_c, kappa, theta, sigma_v, rho]),
       ),
     }
   }
@@ -953,6 +970,12 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
   /// term. The kernel draws a Poisson count with mean `intensity · dt` once
   /// per step and offers it to the step as `nj`.
   fn jump_intensity(&self) -> Option<T> {
+    None
+  }
+
+  /// How big each jump is, or `None` when the family reads only the count.
+  /// The step sees the sum as `js`.
+  fn jump_sizes(&self) -> Option<JumpSizes<T>> {
     None
   }
 
@@ -1074,6 +1097,37 @@ pub trait EulerKernel<T: FloatExt>: Backend {
 /// the CPU handles run the process's own sampler, a device handle runs its
 /// [`EulerKernel`]. The `try_*` methods report a device failure as a
 /// [`DeviceError`]; the plain ones panic with it.
+/// How big a jump is, when a family declares jumps that carry a size.
+///
+/// The normal case aggregates exactly: the sum of `n` normal jump sizes is
+/// itself normal with mean `n·mean` and standard deviation `sd·√n`, so the
+/// kernel draws it once however many jumps the step saw. The
+/// double-exponential case has no such aggregation, so the kernel sums the
+/// sizes in a bounded loop.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum JumpSizes<T: FloatExt> {
+  /// Normal jump sizes, as Merton's and Bates's models take them.
+  Normal { mean: T, sd: T },
+  /// Kou's double-exponential sizes: up with probability `p_up` at rate
+  /// `eta_up`, down otherwise at rate `eta_down`.
+  DoubleExponential { p_up: T, eta_up: T, eta_down: T },
+}
+
+impl<T: FloatExt> JumpSizes<T> {
+  /// The law code and the three scalars the kernels read it through.
+  pub(crate) fn encode(&self) -> (u32, T, T, T) {
+    match *self {
+      JumpSizes::Normal { mean, sd } => (1, mean, sd, T::zero()),
+      JumpSizes::DoubleExponential {
+        p_up,
+        eta_up,
+        eta_down,
+      } => (2, p_up, eta_up, eta_down),
+    }
+  }
+}
+
 /// A process whose device recursion carries more than one state component:
 /// the same families, the same kernels and the same launch, with `D` arrays
 /// back instead of one.
@@ -1124,6 +1178,12 @@ pub trait EulerSystem<T: FloatExt, const D: usize>: ProcessExt<T, Output = [Arra
   /// term. The kernel draws a Poisson count with mean `intensity · dt` once
   /// per step and offers it to the step as `nj`.
   fn jump_intensity(&self) -> Option<T> {
+    None
+  }
+
+  /// How big each jump is, or `None` when the family reads only the count.
+  /// The step sees the sum as `js`.
+  fn jump_sizes(&self) -> Option<JumpSizes<T>> {
     None
   }
 

@@ -146,8 +146,6 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     crate::euler::EulerSpec::MertonJumpLog {
       drift_ln,
       sigma: self.sigma,
-      nu: self.nu,
-      omega: self.omega,
     }
   }
 
@@ -171,6 +169,15 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// which is what makes a zero-intensity build skip the draw entirely.
   fn jump_intensity(&self) -> Option<T> {
     (self.lambda > T::zero()).then_some(self.lambda)
+  }
+
+  /// Lognormal jump sizes, which are normal in the log-price the family
+  /// steps, so the kernel aggregates however many the step saw into one draw.
+  fn jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
+    Some(crate::euler::JumpSizes::Normal {
+      mean: self.nu,
+      sd: self.omega,
+    })
   }
 
   fn device_seed(&self) -> u64 {

@@ -18,6 +18,7 @@ use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
 use stochastic_rs_stochastic::volatility::heston2d::Heston2D;
+use stochastic_rs_stochastic::volatility::hkde::Hkde;
 use stochastic_rs_stochastic::volatility::sabr::Sabr;
 
 use super::common::Device;
@@ -583,5 +584,53 @@ fn andersen_qe_heston_agrees_with_the_cpu_law() {
     terminal_mean(&device, 1),
     0.06,
     "QE Heston terminal variance",
+  );
+}
+
+/// Kou's double-exponential jump sizes have no closed-form aggregate, so the
+/// kernel sums them in a bounded loop. What this pins is that the sum it
+/// builds carries the same law the host's own per-jump draws build.
+#[test]
+fn kou_jump_heston_agrees_with_the_cpu_law() {
+  let build = || {
+    Hkde::<f32, _>::new(
+      0.02,
+      2.0,
+      0.04,
+      0.3,
+      -0.7,
+      0.04,
+      3.0,
+      0.4,
+      25.0,
+      20.0,
+      253,
+      Some(100.0),
+      Some(1.0),
+      Some(false),
+      Deterministic::new(131),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  assert!(
+    device.iter().all(|p| p[1].iter().all(|&v| v >= 0.0)),
+    "the truncated variance went negative"
+  );
+  assert!(
+    device.iter().all(|p| p[0].iter().all(|&v| v > 0.0)),
+    "the log-price form let the spot reach zero"
+  );
+  let host = build().sample_par(M);
+  agrees(
+    terminal_mean(&host, 0),
+    terminal_mean(&device, 0),
+    0.05,
+    "Kou-jump Heston terminal spot",
+  );
+  agrees(
+    terminal_mean(&host, 1),
+    terminal_mean(&device, 1),
+    0.08,
+    "Kou-jump Heston terminal variance",
   );
 }

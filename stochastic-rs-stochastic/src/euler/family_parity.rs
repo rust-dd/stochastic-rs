@@ -39,6 +39,15 @@ pub(crate) struct Probe {
 /// now and then, low enough that the count stays small.
 const PROBE_INTENSITY: f32 = 3.0;
 
+/// The size law every probe declares. Double-exponential rather than normal
+/// because it is the one the kernel sums in a loop, so the loop runs on both
+/// kernels whether or not the family under test reads the sum.
+const PROBE_SIZES: JumpSizes<f32> = JumpSizes::DoubleExponential {
+  p_up: 0.4,
+  eta_up: 25.0,
+  eta_down: 20.0,
+};
+
 fn probe_curve() -> Vec<f32> {
   (0..N).map(|i| 0.02 + 0.001 * i as f32).collect()
 }
@@ -66,7 +75,9 @@ impl PathSampler<f32> for ProbeSampler {
     let curve = probe_curve();
     let mut state = [self.x0, 0.0, 0.0, 0.0];
     let mut out = [0.0f32; 4];
-    super::families::host_report(family, &state, &params, curve[0], 0.0, 0.5, 0.5, &mut out);
+    super::families::host_report(
+      family, &state, &params, curve[0], 0.0, 0.0, 0.5, 0.5, &mut out,
+    );
     slice[0] = out[0];
     if slice.len() == 1 {
       return;
@@ -82,6 +93,7 @@ impl PathSampler<f32> for ProbeSampler {
         self.dt,
         curve[i + 1],
         0.0,
+        0.0,
         0.5,
         0.5,
         &[*z, 0.0, 0.0, 0.0],
@@ -93,6 +105,7 @@ impl PathSampler<f32> for ProbeSampler {
         &state,
         &params,
         curve[i + 1],
+        0.0,
         0.0,
         0.5,
         0.5,
@@ -156,6 +169,10 @@ impl EulerCoefficients<f32> for Probe {
   /// kernels whether or not the family under test reads it.
   fn jump_intensity(&self) -> Option<f32> {
     Some(PROBE_INTENSITY)
+  }
+
+  fn jump_sizes(&self) -> Option<JumpSizes<f32>> {
+    Some(PROBE_SIZES)
   }
 
   fn host_sample(&self) -> Array1<f32> {
@@ -235,6 +252,8 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::InverseGaussianSubordinator { .. } => "InverseGaussianSubordinator",
     EulerSpec::NormalInverseGaussian { .. } => "NormalInverseGaussian",
     EulerSpec::StableSubordinator { .. } => "StableSubordinator",
+    EulerSpec::KouJumpHeston { .. } => "KouJumpHeston",
+    EulerSpec::KouJumpHestonReflected { .. } => "KouJumpHestonReflected",
   }
 }
 
@@ -587,8 +606,6 @@ fn every_family() -> Vec<Probe> {
       EulerSpec::MertonJumpLog {
         drift_ln: 0.0001,
         sigma: 0.2,
-        nu: -0.05,
-        omega: 0.1,
       },
       100.0,
     ),
@@ -628,6 +645,7 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       &params,
       curve[0],
       0.0,
+      0.0,
       0.5,
       0.5,
       &mut reported,
@@ -642,7 +660,7 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       noise[..noises].copy_from_slice(&draw);
       let mut next = [0.0f32; 4];
       super::families::host_step(
-        family, &state, &params, self.dt, curve[i], 0.0, 0.5, 0.5, &noise, &mut next,
+        family, &state, &params, self.dt, curve[i], 0.0, 0.0, 0.5, 0.5, &noise, &mut next,
       );
       state = next;
       super::families::host_report(
@@ -650,6 +668,7 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         &state,
         &params,
         curve[i],
+        0.0,
         0.0,
         0.5,
         0.5,
@@ -717,6 +736,10 @@ impl<const D: usize> EulerSystem<f32, D> for SystemProbe<D> {
     Some(PROBE_INTENSITY)
   }
 
+  fn jump_sizes(&self) -> Option<JumpSizes<f32>> {
+    Some(PROBE_SIZES)
+  }
+
   fn host_sample(&self) -> [Array1<f32>; D] {
     <Self as ProcessExt<f32>>::sampler(self).sample()
   }
@@ -780,6 +803,26 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
       x0: [100.0, 0.04],
     },
     SystemProbe {
+      spec: EulerSpec::KouJumpHeston {
+        drift_c: 0.02,
+        kappa: 2.0,
+        theta: 0.04,
+        sigma_v: 0.3,
+        rho: -0.7,
+      },
+      x0: [100.0, 0.04],
+    },
+    SystemProbe {
+      spec: EulerSpec::KouJumpHestonReflected {
+        drift_c: 0.02,
+        kappa: 2.0,
+        theta: 0.04,
+        sigma_v: 0.3,
+        rho: -0.7,
+      },
+      x0: [100.0, 0.04],
+    },
+    SystemProbe {
       spec: EulerSpec::AndersenQe {
         theta: 0.04,
         e_kd: 0.9689,
@@ -796,8 +839,6 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
     SystemProbe {
       spec: EulerSpec::BatesJump {
         drift_c: 0.02,
-        nu: -0.05,
-        omega: 0.1,
         alpha: 0.08,
         beta: 2.0,
         sigma: 0.3,
@@ -808,8 +849,6 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
     SystemProbe {
       spec: EulerSpec::BatesJumpReflected {
         drift_c: 0.02,
-        nu: -0.05,
-        omega: 0.1,
         alpha: 0.08,
         beta: 2.0,
         sigma: 0.3,

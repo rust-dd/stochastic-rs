@@ -35,9 +35,13 @@ struct EulerArgs {
     uint increments;
     uint has_curve;
     uint has_jumps;
+    uint jump_law;
     float dt;
     float sqrt_dt;
     float jump_lambda;
+    float jump_a;
+    float jump_b;
+    float jump_c;
     float x0[4];
 };
 
@@ -62,6 +66,10 @@ kernel void euler_paths(
     const uint has_curve = args.has_curve;
     const uint has_jumps = args.has_jumps;
     const float jump_lambda = args.jump_lambda;
+    const uint jump_law = args.jump_law;
+    const float jump_a = args.jump_a;
+    const float jump_b = args.jump_b;
+    const float jump_c = args.jump_c;
     const float x0[4] = { args.x0[0], args.x0[1], args.x0[2], args.x0[3] };
 "#;
 
@@ -102,9 +110,14 @@ struct EulerArgs {
   has_curve: u32,
   /// Non-zero when the launch draws a jump count per step.
   has_jumps: u32,
+  /// Which size law the jumps carry: none, normal, or double-exponential.
+  jump_law: u32,
   dt: f32,
   sqrt_dt: f32,
   jump_lambda: f32,
+  jump_a: f32,
+  jump_b: f32,
+  jump_c: f32,
   x0: [f32; 4],
 }
 
@@ -294,6 +307,7 @@ impl EulerKernel<f32> for Metal {
       },
       process.curve().as_deref().unwrap_or(&[]),
       process.jump_intensity(),
+      process.jump_sizes(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -322,6 +336,7 @@ impl EulerKernel<f32> for Metal {
       Increments::Hashed,
       process.curve().as_deref().unwrap_or(&[]),
       process.jump_intensity(),
+      process.jump_sizes(),
     )
   }
 
@@ -346,6 +361,7 @@ fn device_paths(
   increments: Increments<'_>,
   curve: &[f32],
   jump_lambda: Option<f32>,
+  sizes: Option<crate::euler::JumpSizes<f32>>,
 ) -> Result<Array3<f32>> {
   let (family, params) = spec.encode();
   let arity = super::families::Family::from_code(family).expect("a declared family");
@@ -353,6 +369,7 @@ fn device_paths(
   if n == 0 || m == 0 {
     return Ok(Array3::<f32>::zeros((components, m, n)));
   }
+  let (law, jump_a, jump_b, jump_c) = sizes.map_or((0, 0.0, 0.0, 0.0), |s| s.encode());
   let args = EulerArgs {
     family,
     components: components as u32,
@@ -364,9 +381,13 @@ fn device_paths(
     increments: u32::from(!matches!(increments, Increments::Hashed)),
     has_curve: u32::from(!curve.is_empty()),
     has_jumps: u32::from(jump_lambda.is_some()),
+    jump_law: law,
     dt,
     sqrt_dt: dt.sqrt(),
     jump_lambda: jump_lambda.unwrap_or(0.0),
+    jump_a,
+    jump_b,
+    jump_c,
     x0,
   };
   let data = run(ordinal, params, args, increments, curve)?;

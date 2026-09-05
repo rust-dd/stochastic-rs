@@ -297,8 +297,6 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     if self.use_sym.unwrap_or(false) {
       crate::euler::EulerSpec::BatesJumpReflected {
         drift_c,
-        nu: self.nu,
-        omega: self.omega,
         alpha: self.alpha,
         beta: self.beta,
         sigma: self.sigma,
@@ -307,8 +305,6 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     } else {
       crate::euler::EulerSpec::BatesJump {
         drift_c,
-        nu: self.nu,
-        omega: self.omega,
         alpha: self.alpha,
         beta: self.beta,
         sigma: self.sigma,
@@ -342,6 +338,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
   fn jump_intensity(&self) -> Option<T> {
     (self.lambda > T::zero()).then_some(self.lambda)
+  }
+
+  /// Lognormal jump sizes, normal in the log-price the family steps.
+  fn jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
+    Some(crate::euler::JumpSizes::Normal {
+      mean: self.nu,
+      sd: self.omega,
+    })
   }
 
   fn device_seed(&self) -> u64 {

@@ -5,7 +5,8 @@
 //! The thread index `path`, the output and parameter buffers and the launch
 //! arguments (`family`, `components`, `noises`, `x0`, `dt`, `sqrt_dt`,
 //! `seed`, `steps`, `paths`, `first_path`, `increments`, `has_curve`,
-//! `jump_lambda`, `has_jumps`) and the `incs` and `curve` buffers are bound
+//! `jump_lambda`, `has_jumps`, `jump_law`, `jump_a`, `jump_b`, `jump_c`) and
+//! the `incs` and `curve` buffers are bound
 //! by the language-specific header around the body;
 //! the body itself only uses the placeholders [`Language`] fills in. Two
 //! decorrelated uniforms per noise component per step come from a
@@ -29,6 +30,11 @@
 //! a branch of its own needs — the quadratic-exponential variance step draws
 //! it, and the Chambers-Mallows-Stuck stable draw takes both — and a family
 //! that never names them pays two integer hashes for them.
+//!
+//! A family may read `js`, the sum of the step's jump sizes: one normal draw
+//! when the sizes are normal, since the sum of `n` of those is itself normal,
+//! and a bounded loop when they are double-exponential, which has no such
+//! aggregation. It is zero for a family that declares no size law.
 //!
 //! A family may read `nj`, the number of jumps the step saw: a Poisson draw
 //! with mean `jump_lambda · dt`, by Knuth's product of uniforms from a hash
@@ -59,6 +65,7 @@ pub(crate) const FRAME: &str = r#"    if (path >= paths) return;
     REAL ct = (REAL)0;
     if (has_curve != 0u) { ct = curve[0]; }
     REAL nj = (REAL)0;
+    REAL js = (REAL)0;
     REAL u = (REAL)0;
     REAL u2 = (REAL)0;
     for (unsigned int c = 0u; c < 4u; c++) { state[c] = x0[c]; reported[c] = x0[c]; }
@@ -103,6 +110,30 @@ REPORT
                 cnt++;
             }
             nj = (REAL)cnt;
+        }
+        js = (REAL)0;
+        if (jump_law == 1u) {
+            unsigned int ja = (g ^ 1103515245u) ^ (seed * 2654435761u);
+            ja ^= ja >> 16; ja *= 2246822519u; ja ^= ja >> 13; ja *= 3266489917u; ja ^= ja >> 16;
+            unsigned int jb = (g ^ 1013904223u) ^ (seed * 2654435761u);
+            jb ^= jb >> 16; jb *= 2246822519u; jb ^= jb >> 13; jb *= 3266489917u; jb ^= jb >> 16;
+            REAL ua = (REAL)ja * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6;
+            REAL ub = (REAL)jb * (REAL)2.3283064e-10;
+            REAL zj = STOCH_SQRT((REAL)-2.0 * STOCH_LOG(ua)) * STOCH_COS((REAL)6.283185307179586 * ub);
+            js = jump_a * nj + jump_b * STOCH_SQRT(nj) * zj;
+        }
+        if (jump_law == 2u) {
+            for (unsigned int j = 0u; j < 32u; j++) {
+                if ((REAL)j >= nj) { break; }
+                unsigned int ka = (g ^ (2654435761u + j * 40503u)) ^ (seed * 2654435761u);
+                ka ^= ka >> 16; ka *= 2246822519u; ka ^= ka >> 13; ka *= 3266489917u; ka ^= ka >> 16;
+                unsigned int kb = (g ^ (668265263u + j * 40503u)) ^ (seed * 2654435761u);
+                kb ^= kb >> 16; kb *= 2246822519u; kb ^= kb >> 13; kb *= 3266489917u; kb ^= kb >> 16;
+                REAL up = (REAL)ka * (REAL)2.3283064e-10;
+                REAL ue = (REAL)kb * (REAL)2.3283064e-10;
+                REAL ee = -STOCH_LOG((REAL)1 - ue);
+                js += (up < jump_a) ? (ee / jump_b) : (-(ee / jump_c));
+            }
         }
 STEP
         for (unsigned int c = 0u; c < 4u; c++) { reported[c] = state[c]; }
