@@ -43,7 +43,6 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use super::cir::Cir;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::diffusion::cir::CirSampler;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
@@ -231,9 +230,62 @@ impl<T: FloatExt> Default for CirPlusPlus<T, Unseeded> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] CirPlusPlus<T, S> { kappa, theta, sigma, phi, n, x0, t, use_sym, seed } via host);
+/// The Euler engine's view of CIR++: the square-root recursion the wrapped
+/// process runs, with the deterministic shift added in the report rather
+/// than to the state, exactly as the host adds it.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for CirPlusPlus<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    if self.use_sym.unwrap_or(false) {
+      crate::euler::EulerSpec::ShiftedSquareRootMirrored {
+        theta: self.kappa,
+        mu: self.theta,
+        sigma: self.sigma,
+      }
+    } else {
+      crate::euler::EulerSpec::ShiftedSquareRoot {
+        theta: self.kappa,
+        mu: self.theta,
+        sigma: self.sigma,
+      }
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for CirPlusPlus<T, S, B> {
+  fn initial_value(&self) -> T {
+    self.x0.unwrap_or(T::zero())
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  /// The shift at each grid point.
+  fn curve(&self) -> Option<Vec<T>> {
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1));
+    Some((0..self.n).map(|i| self.phi.call(T::from_usize_(i) * dt)).collect())
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] CirPlusPlus<T, S> { kappa, theta, sigma, phi, n, x0, t, use_sym, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for CirPlusPlus<T, S, B>
+{
   type Output = Array1<T>;
   type Sampler<'s>
     = CirPlusPlusSampler<'s, T>
@@ -289,6 +341,29 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for CirPlusPlus<T, S
       cir: cir.sampler(),
       scratch: Array1::<T>::zeros(self.n),
     }
+  }
+
+  /// Through the Euler engine: on a device the recursion runs in the kernel
+  /// with its time-varying coefficient bound per step, on the host devices it
+  /// is this process's own sampler, chunked exactly as `ProcessExt` chunks.
+  fn sample(&self) -> Array1<T> {
+    self.backend.euler_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    self.backend.euler_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    self.backend.euler_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    self.backend.try_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    self.backend.try_euler_paths(self, m)
   }
 }
 

@@ -32,6 +32,13 @@ pub(crate) struct Probe {
   x0: f32,
 }
 
+/// The curve every probe carries: a family that reads none ignores it, and
+/// one that does gets a value that varies along the path, so a kernel binding
+/// the wrong step would show up as a different law.
+fn probe_curve() -> Vec<f32> {
+  (0..N).map(|i| 0.02 + 0.001 * i as f32).collect()
+}
+
 /// The host stream for a [`Probe`]: this crate's Gaussian generator feeding
 /// the family's own generated host step, which is the same expression the
 /// kernels run.
@@ -52,20 +59,29 @@ impl PathSampler<f32> for ProbeSampler {
     if slice.is_empty() {
       return;
     }
+    let curve = probe_curve();
     let mut state = [self.x0, 0.0, 0.0, 0.0];
     let mut out = [0.0f32; 4];
-    super::families::host_report(family, &state, &params, &mut out);
+    super::families::host_report(family, &state, &params, curve[0], &mut out);
     slice[0] = out[0];
     if slice.len() == 1 {
       return;
     }
     let tail = &mut slice[1..];
     self.normal.fill_slice(tail);
-    for z in tail.iter_mut() {
+    for (i, z) in tail.iter_mut().enumerate() {
       let mut next = [0.0f32; 4];
-      super::families::host_step(family, &state, &params, self.dt, &[*z, 0.0, 0.0, 0.0], &mut next);
+      super::families::host_step(
+        family,
+        &state,
+        &params,
+        self.dt,
+        curve[i + 1],
+        &[*z, 0.0, 0.0, 0.0],
+        &mut next,
+      );
       state = next;
-      super::families::host_report(family, &state, &params, &mut out);
+      super::families::host_report(family, &state, &params, curve[i + 1], &mut out);
       *z = out[0];
     }
   }
@@ -114,6 +130,10 @@ impl EulerCoefficients<f32> for Probe {
 
   fn device_seed(&self) -> u64 {
     11
+  }
+
+  fn curve(&self) -> Option<Vec<f32>> {
+    Some(probe_curve())
   }
 
   fn host_sample(&self) -> Array1<f32> {
@@ -172,6 +192,12 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::DoubleHeston { .. } => "DoubleHeston",
     EulerSpec::DoubleHestonReflected { .. } => "DoubleHestonReflected",
     EulerSpec::StochasticCorrelationHeston { .. } => "StochasticCorrelationHeston",
+    EulerSpec::HullWhite { .. } => "HullWhite",
+    EulerSpec::CurveDrift { .. } => "CurveDrift",
+    EulerSpec::LogMeanReverting { .. } => "LogMeanReverting",
+    EulerSpec::ShiftedSquareRoot { .. } => "ShiftedSquareRoot",
+    EulerSpec::ShiftedSquareRootMirrored { .. } => "ShiftedSquareRootMirrored",
+    EulerSpec::TimeVaryingGeometricBrownian { .. } => "TimeVaryingGeometricBrownian",
   }
 }
 
@@ -263,6 +289,18 @@ fn every_family() -> Vec<Probe> {
     p(EulerSpec::Displaced { mu: 0.05, sigma: 0.2, beta: 20.0 }, 120.0),
     p(EulerSpec::TanhOrnsteinUhlenbeck { kappa: 1.0, mu: 0.3, sigma: 0.2 }, 0.4),
     p(EulerSpec::BoundedCorrelation { kappa: 1.0, mu: 0.3, sigma: 0.2 }, 0.2),
+    p(EulerSpec::HullWhite { alpha: 0.5, sigma: 0.02 }, 0.03),
+    p(EulerSpec::CurveDrift { sigma: 0.02 }, 0.0),
+    p(
+      EulerSpec::LogMeanReverting { decay: 0.99, a: 0.5, sigma_eff: 0.02 },
+      (0.03_f32).ln(),
+    ),
+    p(EulerSpec::ShiftedSquareRoot { theta: 2.0, mu: 0.04, sigma: 0.2 }, 0.04),
+    p(
+      EulerSpec::ShiftedSquareRootMirrored { theta: 2.0, mu: 0.04, sigma: 0.2 },
+      0.04,
+    ),
+    p(EulerSpec::TimeVaryingGeometricBrownian { mu: 0.05 }, 100.0),
   ]
 }
 
@@ -289,10 +327,11 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
     let (code, params) = self.spec.encode();
     let family = super::families::Family::from_code(code).expect("a declared family");
     let noises = family.noises();
+    let curve = probe_curve();
     let mut state = [0.0f32; 4];
     state[..D].copy_from_slice(&self.x0);
     let mut reported = [0.0f32; 4];
-    super::families::host_report(family, &state, &params, &mut reported);
+    super::families::host_report(family, &state, &params, curve[0], &mut reported);
     for (c, path) in out.iter_mut().enumerate() {
       path[0] = reported[c];
     }
@@ -302,9 +341,9 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       self.normal.fill_slice(&mut draw);
       noise[..noises].copy_from_slice(&draw);
       let mut next = [0.0f32; 4];
-      super::families::host_step(family, &state, &params, self.dt, &noise, &mut next);
+      super::families::host_step(family, &state, &params, self.dt, curve[i], &noise, &mut next);
       state = next;
-      super::families::host_report(family, &state, &params, &mut reported);
+      super::families::host_report(family, &state, &params, curve[i], &mut reported);
       for (c, path) in out.iter_mut().enumerate() {
         path[i] = reported[c];
       }
@@ -357,6 +396,10 @@ impl<const D: usize> EulerSystem<f32, D> for SystemProbe<D> {
 
   fn device_seed(&self) -> u64 {
     11
+  }
+
+  fn curve(&self) -> Option<Vec<f32>> {
+    Some(probe_curve())
   }
 
   fn host_sample(&self) -> [Array1<f32>; D] {

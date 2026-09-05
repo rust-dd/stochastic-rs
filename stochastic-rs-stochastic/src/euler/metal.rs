@@ -33,6 +33,7 @@ struct EulerArgs {
     uint paths;
     uint first_path;
     uint increments;
+    uint has_curve;
     float dt;
     float sqrt_dt;
     float x0[4];
@@ -43,6 +44,7 @@ kernel void euler_paths(
     device const float* params [[buffer(1)]],
     constant EulerArgs& args [[buffer(2)]],
     device const float* incs [[buffer(3)]],
+    device const float* curve [[buffer(4)]],
     uint path [[thread_position_in_grid]])
 {
     const uint family = args.family;
@@ -55,6 +57,7 @@ kernel void euler_paths(
     const uint paths = args.paths;
     const uint first_path = args.first_path;
     const uint increments = args.increments;
+    const uint has_curve = args.has_curve;
     const float x0[4] = { args.x0[0], args.x0[1], args.x0[2], args.x0[3] };
 "#;
 
@@ -90,6 +93,8 @@ struct EulerArgs {
   /// Non-zero when the launch reads its first noise component from the
   /// increment buffer rather than hashing it.
   increments: u32,
+  /// Non-zero when the launch binds a time-varying coefficient.
+  has_curve: u32,
   dt: f32,
   sqrt_dt: f32,
   x0: [f32; 4],
@@ -178,6 +183,7 @@ fn run(
   params: [f32; crate::euler::PARAM_SLOTS],
   args: EulerArgs,
   increments: Increments<'_>,
+  curve: &[f32],
 ) -> Result<Vec<f32>> {
   ensure_context(ordinal)?;
   let guard = CONTEXT.lock();
@@ -201,6 +207,16 @@ fn run(
       &owned
     }
   };
+  // As with the increment slot, an unused curve still gets a bound buffer.
+  let curve_buf = if curve.is_empty() {
+    ctx.device.new_buffer(4, shared)
+  } else {
+    ctx.device.new_buffer_with_data(
+      curve.as_ptr() as *const _,
+      std::mem::size_of_val(curve) as u64,
+      shared,
+    )
+  };
   let cmd = ctx.queue.new_command_buffer();
   {
     let enc = cmd.new_compute_command_encoder();
@@ -208,6 +224,7 @@ fn run(
     enc.set_buffer(0, Some(&out_buf), 0);
     enc.set_buffer(1, Some(&params_buf), 0);
     enc.set_buffer(3, Some(incs_buf), 0);
+    enc.set_buffer(4, Some(&curve_buf), 0);
     enc.set_bytes(
       2,
       std::mem::size_of::<EulerArgs>() as u64,
@@ -267,6 +284,7 @@ impl EulerKernel<f32> for Metal {
         Some(buf) => Increments::Device(buf),
         None => Increments::Hashed,
       },
+      process.curve().as_deref().unwrap_or(&[]),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -294,6 +312,7 @@ impl EulerKernel<f32> for Metal {
       m,
       seed,
       Increments::Hashed,
+      process.curve().as_deref().unwrap_or(&[]),
     )
   }
 
@@ -316,6 +335,7 @@ fn device_paths(
   m: usize,
   seed: u64,
   increments: Increments<'_>,
+  curve: &[f32],
 ) -> Result<Array3<f32>> {
   let (family, params) = spec.encode();
   let arity = super::families::Family::from_code(family).expect("a declared family");
@@ -332,11 +352,12 @@ fn device_paths(
     paths: m as u32,
     first_path: first as u32,
     increments: u32::from(!matches!(increments, Increments::Hashed)),
+    has_curve: u32::from(!curve.is_empty()),
     dt,
     sqrt_dt: dt.sqrt(),
     x0,
   };
-  let data = run(ordinal, params, args, increments)?;
+  let data = run(ordinal, params, args, increments, curve)?;
   Ok(
     Array3::from_shape_vec((components, m, n), data)
       .expect("the kernel returns components * m * n values"),

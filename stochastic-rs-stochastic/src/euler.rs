@@ -326,6 +326,18 @@ pub enum EulerSpec<T: FloatExt> {
     r: T,
     rho2: T,
   },
+  /// Hull-White, whose mean-reversion level is the launch's curve.
+  HullWhite { alpha: T, sigma: T },
+  /// A drift that is entirely the curve, which is Ho-Lee.
+  CurveDrift { sigma: T },
+  /// The exact Ornstein-Uhlenbeck transition in log space: Black-Karasinski.
+  LogMeanReverting { decay: T, a: T, sigma_eff: T },
+  /// A square-root diffusion shifted by a curve: CIR++.
+  ShiftedSquareRoot { theta: T, mu: T, sigma: T },
+  /// [`ShiftedSquareRoot`](EulerSpec::ShiftedSquareRoot) reflected at zero.
+  ShiftedSquareRootMirrored { theta: T, mu: T, sigma: T },
+  /// Geometric Brownian motion over a term structure of volatilities.
+  TimeVaryingGeometricBrownian { mu: T },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -570,6 +582,24 @@ impl<T: FloatExt> EulerSpec<T> {
         Family::StochasticCorrelationHeston.code(),
         pad([kappa_r, mu_r, sigma_r, kappa_v, mu_v, sigma_v, r, rho2]),
       ),
+      EulerSpec::HullWhite { alpha, sigma } => (Family::HullWhite.code(), pad([alpha, sigma])),
+      EulerSpec::CurveDrift { sigma } => (Family::CurveDrift.code(), pad([sigma])),
+      EulerSpec::LogMeanReverting { decay, a, sigma_eff } => (
+        Family::LogMeanReverting.code(),
+        pad([decay, a, sigma_eff]),
+      ),
+      EulerSpec::ShiftedSquareRoot { theta, mu, sigma } => (
+        Family::ShiftedSquareRoot.code(),
+        pad([theta, mu, sigma]),
+      ),
+      EulerSpec::ShiftedSquareRootMirrored { theta, mu, sigma } => (
+        Family::ShiftedSquareRootMirrored.code(),
+        pad([theta, mu, sigma]),
+      ),
+      EulerSpec::TimeVaryingGeometricBrownian { mu } => (
+        Family::TimeVaryingGeometricBrownian.code(),
+        pad([mu]),
+      ),
     }
   }
 }
@@ -593,6 +623,15 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
   /// reproduces that process's law rather than a neighbouring one.
   fn time_step(&self) -> T {
     self.horizon() / T::from_usize_(self.grid_points().max(2) - 1)
+  }
+
+
+  /// A time-varying coefficient, one value per grid point, or `None` when the
+  /// family reads none. It reaches the step as `ct`: a short-rate model's
+  /// `θ(t)`, a term structure of volatilities, anything the host can tabulate
+  /// on the same grid the recursion walks.
+  fn curve(&self) -> Option<Vec<T>> {
+    None
   }
 
   /// One path from the process's own sampler, the host stream.
@@ -749,6 +788,15 @@ pub trait EulerSystem<T: FloatExt, const D: usize>: ProcessExt<T, Output = [Arra
   /// reproduces that process's law rather than a neighbouring one.
   fn time_step(&self) -> T {
     self.horizon() / T::from_usize_(self.grid_points().max(2) - 1)
+  }
+
+
+  /// A time-varying coefficient, one value per grid point, or `None` when the
+  /// family reads none. It reaches the step as `ct`: a short-rate model's
+  /// `θ(t)`, a term structure of volatilities, anything the host can tabulate
+  /// on the same grid the recursion walks.
+  fn curve(&self) -> Option<Vec<T>> {
+    None
   }
 
   /// One draw from the process's own sampler, the host stream.
