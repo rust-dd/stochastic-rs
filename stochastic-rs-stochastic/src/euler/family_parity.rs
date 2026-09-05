@@ -254,6 +254,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::StableSubordinator { .. } => "StableSubordinator",
     EulerSpec::KouJumpHeston { .. } => "KouJumpHeston",
     EulerSpec::KouJumpHestonReflected { .. } => "KouJumpHestonReflected",
+    EulerSpec::DuffieKanJump { .. } => "DuffieKanJump",
   }
 }
 
@@ -880,6 +881,23 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         sigma2: 0.05,
         sym1: 0.0,
         sym2: 1.0,
+      },
+      x0: [0.03, 0.01],
+    },
+    SystemProbe {
+      spec: EulerSpec::DuffieKanJump {
+        a1: -0.5,
+        b1: 0.1,
+        c1: 0.02,
+        sigma1: 0.1,
+        a2: 0.05,
+        b2: -0.3,
+        c2: 0.01,
+        sigma2: 0.08,
+        alpha: 0.5,
+        beta: 0.2,
+        gamma: 0.1,
+        rho: -0.3,
       },
       x0: [0.03, 0.01],
     },

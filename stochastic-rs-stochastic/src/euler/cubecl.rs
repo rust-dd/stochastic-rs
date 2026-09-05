@@ -553,6 +553,11 @@ fn step(
       component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
     );
   }
+  if family == 68u32 {
+    stepped = cube::DuffieKanJump(
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
   if family == 16u32 {
     stepped = cube::FellerRoot(
       component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
@@ -825,6 +830,9 @@ fn report(
   if family == 67u32 {
     reported =
       cube_report::KouJumpHestonReflected(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+  }
+  if family == 68u32 {
+    reported = cube_report::DuffieKanJump(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
   }
   if family == 16u32 {
     reported = cube_report::FellerRoot(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);

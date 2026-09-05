@@ -1605,6 +1605,23 @@ euler_families! {
     }
     report { s, v },
 
+  /// [`DuffieKan`](Family::DuffieKan) with a compound-Poisson jump on the
+  /// second factor. The host walks its jump times sequentially; the waiting
+  /// time is memoryless, so the number of jumps a step sees is Poisson with
+  /// mean `λ·dt` and their normal sizes aggregate into the kernel's own sum.
+  68 => DuffieKanJump {
+    a1, b1, c1, sigma1, a2, b2, c2, sigma2, alpha, beta, gamma, rho
+  }
+    state (r, x)
+    noise (dw, dq)
+    step {
+      bind dx = rho * dw + sqrt(negate(rho * rho - lit(1.0))) * dq;
+      bind vol = alpha * r + beta * x + gamma;
+      r + (a1 * r + b1 * x + c1) * dt + sigma1 * vol * dw,
+      x + (a2 * r + b2 * x + c2) * dt + sigma2 * vol * dx + js
+    }
+    report { r, x },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)

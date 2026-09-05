@@ -442,6 +442,21 @@ pub enum EulerSpec<T: FloatExt> {
     sigma_v: T,
     rho: T,
   },
+  /// [`DuffieKan`](EulerSpec::DuffieKan) with a compound-Poisson jump.
+  DuffieKanJump {
+    a1: T,
+    b1: T,
+    c1: T,
+    sigma1: T,
+    a2: T,
+    b2: T,
+    c2: T,
+    sigma2: T,
+    alpha: T,
+    beta: T,
+    gamma: T,
+    rho: T,
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -921,6 +936,25 @@ impl<T: FloatExt> EulerSpec<T> {
       } => (
         Family::KouJumpHestonReflected.code(),
         pad([drift_c, kappa, theta, sigma_v, rho]),
+      ),
+      EulerSpec::DuffieKanJump {
+        a1,
+        b1,
+        c1,
+        sigma1,
+        a2,
+        b2,
+        c2,
+        sigma2,
+        alpha,
+        beta,
+        gamma,
+        rho,
+      } => (
+        Family::DuffieKanJump.code(),
+        pad([
+          a1, b1, c1, sigma1, a2, b2, c2, sigma2, alpha, beta, gamma, rho,
+        ]),
       ),
     }
   }

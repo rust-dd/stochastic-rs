@@ -8,6 +8,7 @@ use stochastic_rs_distributions::traits::Fn1D;
 use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
 use stochastic_rs_stochastic::diffusion::fouque::FouqueOU2D;
 use stochastic_rs_stochastic::interest::duffie_kan::DuffieKan;
+use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
 use stochastic_rs_stochastic::interest::hull_white_2f::HullWhite2F;
 use stochastic_rs_stochastic::process::cbms::Cbms;
 use stochastic_rs_stochastic::traits::ProcessExt;
@@ -633,4 +634,45 @@ fn kou_jump_heston_agrees_with_the_cpu_law() {
     0.08,
     "Kou-jump Heston terminal variance",
   );
+}
+
+/// The jump-augmented Duffie-Kan model. The host walks its jump times
+/// sequentially and the device draws a Poisson count per step; the waiting
+/// time is memoryless, so the two are the same law, which is what the second
+/// factor's terminal mean pins.
+#[test]
+fn jump_duffie_kan_agrees_with_the_cpu_law() {
+  let build = || {
+    DuffieKanJumpExp::<f32, _>::new(
+      0.5,
+      0.2,
+      0.1,
+      -0.3,
+      -0.5,
+      0.1,
+      0.02,
+      0.1,
+      0.05,
+      -0.3,
+      0.01,
+      0.08,
+      3.0,
+      0.01,
+      253,
+      Some(0.03),
+      Some(0.01),
+      Some(1.0),
+      Deterministic::new(137),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  let host = build().sample_par(M);
+  for (c, what) in [(0usize, "rate"), (1, "jumping factor")] {
+    agrees(
+      terminal_mean(&host, c),
+      terminal_mean(&device, c),
+      0.10,
+      &format!("jump Duffie-Kan terminal {what}"),
+    );
+  }
 }
