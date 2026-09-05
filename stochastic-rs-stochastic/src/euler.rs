@@ -1064,7 +1064,10 @@ pub trait EulerSystem<T: FloatExt, const D: usize>: ProcessExt<T, Output = [Arra
 /// actually steps. A mismatch is a declaration error rather than a runtime
 /// condition, so it fails loudly here instead of silently returning planes
 /// the kernel never wrote.
-pub(crate) fn check_arity<T: FloatExt>(spec: &EulerSpec<T>, d: usize) {
+///
+/// Public because [`EulerKernel`] is: a device implemented outside this crate
+/// needs it, and [`system_row`], to satisfy `euler_system_kernel`.
+pub fn check_arity<T: FloatExt>(spec: &EulerSpec<T>, d: usize) {
   let (code, _) = spec.encode();
   let family = families::Family::from_code(code).expect("a declared family");
   assert!(
@@ -1075,8 +1078,8 @@ pub(crate) fn check_arity<T: FloatExt>(spec: &EulerSpec<T>, d: usize) {
 }
 
 /// The `D` paths of one launch row, taken out of the `components × m × n`
-/// array a kernel returns.
-pub(crate) fn system_row<T: FloatExt, const D: usize>(
+/// array a kernel returns. Public for the same reason [`check_arity`] is.
+pub fn system_row<T: FloatExt, const D: usize>(
   planes: &Array3<T>,
   row: usize,
 ) -> [Array1<T>; D] {
