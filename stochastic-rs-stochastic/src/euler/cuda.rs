@@ -47,35 +47,7 @@ const CUDA_HEADER: &str = r#"extern "C" __global__ void euler_paths_REAL(
 "#;
 
 fn kernel_source(real: &str) -> String {
-  let lang = if real == "float" {
-    super::kernel::Language {
-      real,
-      sqrt: "sqrtf",
-      log: "logf",
-      cos: "cosf",
-      sin: "sinf",
-      exp: "expf",
-      pow: "powf",
-      abs: "fabsf",
-      tanh: "tanhf",
-      atan: "atanf",
-      index: "unsigned long long",
-    }
-  } else {
-    super::kernel::Language {
-      real,
-      sqrt: "sqrt",
-      log: "log",
-      cos: "cos",
-      sin: "sin",
-      exp: "exp",
-      pow: "pow",
-      abs: "fabs",
-      tanh: "tanh",
-      atan: "atan",
-      index: "unsigned long long",
-    }
-  };
+  let lang = super::kernel::cuda_language(real);
   let prelude = super::kernel::prelude(&lang);
   let body = super::kernel::render(&lang);
   format!("{prelude}{}{body}}}\n", CUDA_HEADER.replace("REAL", real))

@@ -90,19 +90,7 @@ kernel void euler_paths(
 "#;
 
 fn msl_source() -> String {
-  let lang = super::kernel::Language {
-    real: "float",
-    sqrt: "sqrt",
-    log: "log",
-    cos: "cos",
-    sin: "sin",
-    exp: "exp",
-    pow: "pow",
-    abs: "abs",
-    tanh: "tanh",
-    atan: "atan",
-    index: "uint",
-  };
+  let lang = super::kernel::metal_language();
   let prelude = super::kernel::prelude(&lang);
   let body = super::kernel::render(&lang);
   format!("{prelude}{MSL_HEADER}{body}}}\n")

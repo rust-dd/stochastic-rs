@@ -247,6 +247,68 @@ pub(crate) struct Language<'a> {
   pub index: &'a str,
 }
 
+/// Metal Shading Language: `f32` only, and a 32-bit buffer index.
+pub(crate) fn metal_language() -> Language<'static> {
+  Language {
+    real: "float",
+    sqrt: "sqrt",
+    log: "log",
+    cos: "cos",
+    sin: "sin",
+    exp: "exp",
+    pow: "pow",
+    abs: "abs",
+    tanh: "tanh",
+    atan: "atan",
+    index: "uint",
+  }
+}
+
+/// CUDA C at the precision `real` names. Compiled without the `cuda` feature
+/// too, so the rendering checks below cover the CUDA tables on a machine that
+/// has no CUDA — which is the only place a missing intrinsic there would
+/// otherwise show up.
+/// CUDA C at the precision `real` names. The single-precision intrinsics
+/// carry the `f` suffix CUDA gives them; a double-precision kernel takes the
+/// unsuffixed ones. Both index with 64 bits, since a batch's plane can pass
+/// `u32::MAX` elements.
+///
+/// Compiled without the `cuda` feature as well, so the rendering checks below
+/// cover the CUDA tables on a machine that has no CUDA — the only place a
+/// missing intrinsic there would otherwise surface is the driver's compiler.
+#[cfg_attr(not(feature = "cuda"), allow(dead_code))]
+pub(crate) fn cuda_language(real: &'static str) -> Language<'static> {
+  if real == "float" {
+    Language {
+      real,
+      sqrt: "sqrtf",
+      log: "logf",
+      cos: "cosf",
+      sin: "sinf",
+      exp: "expf",
+      pow: "powf",
+      abs: "fabsf",
+      tanh: "tanhf",
+      atan: "atanf",
+      index: "unsigned long long",
+    }
+  } else {
+    Language {
+      real,
+      sqrt: "sqrt",
+      log: "log",
+      cos: "cos",
+      sin: "sin",
+      exp: "exp",
+      pow: "pow",
+      abs: "fabs",
+      tanh: "tanh",
+      atan: "atan",
+      index: "unsigned long long",
+    }
+  }
+}
+
 /// The function-vocabulary defines a generated family block may use, with the
 /// intrinsics of `lang` filled in. Emitted above the kernel.
 pub(crate) fn prelude(lang: &Language<'_>) -> String {
@@ -275,4 +337,84 @@ fn substitute(text: &str, lang: &Language<'_>) -> String {
     .replace("STOCH_TANH", lang.tanh)
     .replace("STOCH_ATAN", lang.atan)
     .replace("REAL", lang.real)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::cuda_language;
+  use super::metal_language;
+  use super::prelude;
+  use super::render;
+
+  /// Every shading language the engine renders, with a name for the failure
+  /// message. `f32` and `f64` CUDA are separate tables, so both are checked.
+  fn languages() -> Vec<(&'static str, super::Language<'static>)> {
+    vec![
+      ("MSL", metal_language()),
+      ("CUDA f32", cuda_language("float")),
+      ("CUDA f64", cuda_language("double")),
+    ]
+  }
+
+  /// A placeholder that survives rendering is an intrinsic the vocabulary
+  /// gained without a name in every `Language` table. The kernel still
+  /// compiles on the host and still passes every test that does not launch
+  /// it, and then fails inside the driver's compiler on a machine that has
+  /// the device — which is exactly the failure a Mac cannot see for CUDA.
+  #[test]
+  fn every_placeholder_is_substituted() {
+    for (name, lang) in languages() {
+      let source = format!("{}{}", prelude(&lang), render(&lang));
+      assert!(
+        !source.contains("STOCH_"),
+        "{name}: an intrinsic placeholder survived rendering — \
+         the vocabulary names it but this Language table does not"
+      );
+      assert!(
+        !source.contains("INDEX"),
+        "{name}: the buffer-index placeholder survived rendering"
+      );
+    }
+  }
+
+  /// Each language names a real type and an index type, and every intrinsic.
+  /// An empty entry renders as a syntax error the device only reports at
+  /// launch.
+  #[test]
+  fn every_intrinsic_is_named() {
+    for (name, lang) in languages() {
+      for (what, value) in [
+        ("real", lang.real),
+        ("sqrt", lang.sqrt),
+        ("log", lang.log),
+        ("cos", lang.cos),
+        ("sin", lang.sin),
+        ("exp", lang.exp),
+        ("pow", lang.pow),
+        ("abs", lang.abs),
+        ("tanh", lang.tanh),
+        ("atan", lang.atan),
+        ("index", lang.index),
+      ] {
+        assert!(!value.is_empty(), "{name}: `{what}` has no intrinsic");
+      }
+    }
+  }
+
+  /// Every declared family reaches the rendered kernel: the step dispatch and
+  /// the report dispatch each carry one arm per family code, so a family
+  /// declared without being spliced would launch as a no-op.
+  #[test]
+  fn every_family_reaches_the_rendered_kernel() {
+    let lang = metal_language();
+    let body = render(&lang);
+    for family in super::super::families::Family::ALL {
+      let code = family.code();
+      assert!(
+        body.contains(&format!("family == {code}u")),
+        "{family:?} (code {code}) is declared but the rendered kernel never \
+         dispatches to it"
+      );
+    }
+  }
 }

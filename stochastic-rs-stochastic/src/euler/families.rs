@@ -179,8 +179,10 @@ pub(crate) mod ops {
 }
 
 /// The C definitions of the function vocabulary, in terms of the precision
-/// placeholders the kernel renderer fills in. Each name expands to a distinct
-/// intrinsic, so no definition refers to itself.
+/// placeholders the kernel renderer fills in. Several expand to an intrinsic
+/// of the same name — MSL renders `#define sqrt(v) sqrt(v)` — which is not a
+/// loop: the preprocessor does not re-expand a macro inside its own
+/// expansion, so the definition resolves to the intrinsic exactly once.
 pub(crate) const C_PRELUDE: &str = r#"#define sqrt(v) STOCH_SQRT(v)
 #define exp(v) STOCH_EXP(v)
 #define ln(v) STOCH_LOG(v)
@@ -339,6 +341,12 @@ macro_rules! euler_families {
     }
 
     impl Family {
+      /// Every declared family, in declaration order. What a check over all
+      /// of them iterates, so a family added without one is not silently
+      /// skipped.
+      #[allow(dead_code)]
+      pub(crate) const ALL: &'static [Family] = &[$(Family::$name),*];
+
       /// The code the kernels compare `family` against.
       #[allow(dead_code)]
       pub(crate) fn code(self) -> u32 {
