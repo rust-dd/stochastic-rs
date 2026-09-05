@@ -18,6 +18,7 @@ use crate::traits::ProcessExt;
 
 /// Inhomogeneous Gbm with time-dependent volatility
 /// dX_t = mu X_t dt + sigma(t) X_t dW_t
+#[derive(Clone)]
 pub struct GbmIh<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant proportional drift rate μ — no mean reversion (only the
   /// diffusion coefficient is time-inhomogeneous in this model).
@@ -211,5 +212,6 @@ impl<T: FloatExt> PathSampler<T> for GbmIhSampler<T> {
 
 py_process_1d!(PyGbmIh, GbmIh,
   sig: (mu, sigma, n, x0=None, t=None, sigmas=None, seed=None, dtype=None),
-  params: (mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, sigmas: Option<Vec<f64>>)
+  params: (mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, sigmas: Option<Vec<f64>>),
+  device
 );

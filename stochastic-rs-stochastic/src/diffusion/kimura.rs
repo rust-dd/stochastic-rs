@@ -18,6 +18,7 @@ use crate::traits::ProcessExt;
 
 /// Kimura / Wright–Fisher diffusion
 /// dX_t = a X_t (1 - X_t) dt + sigma sqrt(X_t (1 - X_t)) dW_t
+#[derive(Clone)]
 pub struct Kimura<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift-rate coefficient a (Wright–Fisher selection/growth rate) in
   /// `aX_t(1-X_t)dt`.
@@ -190,5 +191,6 @@ impl<T: FloatExt> PathSampler<T> for KimuraSampler<T> {
 
 py_process_1d!(PyKimura, Kimura,
   sig: (a, sigma, n, x0=None, t=None, seed=None, dtype=None),
-  params: (a: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (a: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

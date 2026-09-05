@@ -350,13 +350,15 @@ pub struct PyBergomi {
   inner_f64: Option<Bergomi<f64>>,
   seeded_f32: Option<Bergomi<f32, crate::simd_rng::Deterministic>>,
   seeded_f64: Option<Bergomi<f64, crate::simd_rng::Deterministic>>,
+  /// The device the class samples on, chosen at construction.
+  device: crate::python_device::Device,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyBergomi {
   #[new]
-  #[pyo3(signature = (nu, r, rho, n, v0=None, s0=None, t=None, seed=None, dtype=None))]
+  #[pyo3(signature = (nu, r, rho, n, v0=None, s0=None, t=None, seed=None, dtype=None, device=None))]
   fn new(
     nu: f64,
     r: f64,
@@ -367,12 +369,15 @@ impl PyBergomi {
     t: Option<f64>,
     seed: Option<u64>,
     dtype: Option<&str>,
-  ) -> Self {
+    device: Option<&str>,
+  ) -> pyo3::PyResult<Self> {
+    let device = crate::python_device::Device::parse(device, dtype.unwrap_or("f64"))?;
     let mut s = Self {
       inner_f32: None,
       inner_f64: None,
       seeded_f32: None,
       seeded_f64: None,
+      device,
     };
     match (seed, dtype.unwrap_or("f64")) {
       (Some(sd), "f32") => {
@@ -415,7 +420,7 @@ impl PyBergomi {
         s.inner_f64 = Some(Bergomi::new(nu, v0, s0, r, rho, n, t, Unseeded));
       }
     }
-    s
+    Ok(s)
   }
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
@@ -423,7 +428,7 @@ impl PyBergomi {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    py_dispatch!(self, |inner| {
+    py_device_dispatch!(self, |inner| {
       let [a, b] = inner.sample();
       (
         a.into_pyarray(py).into_py_any(py).unwrap(),
@@ -442,7 +447,7 @@ impl PyBergomi {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    py_dispatch!(self, |inner| {
+    py_device_dispatch!(self, |inner| {
       let samples = inner.sample_par(m);
       let n = samples[0][0].len();
       let mut r0 = Array2::zeros((m, n));

@@ -20,6 +20,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 #[allow(non_snake_case)]
+#[derive(Clone)]
 pub struct HoLee<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Observed forward-rate curve f(0,T), used to derive the
   /// time-dependent drift `∂f/∂T(0,t) + σ²t` when supplied — mutually
@@ -267,13 +268,15 @@ mod tests {
 pub struct PyHoLee {
   inner: Option<HoLee<f64>>,
   seeded: Option<HoLee<f64, crate::simd_rng::Deterministic>>,
+  /// The device the class samples on, chosen at construction.
+  device: crate::python_device::Device,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyHoLee {
   #[new]
-  #[pyo3(signature = (sigma, n, f_T=None, theta=None, t=None, seed=None))]
+  #[pyo3(signature = (sigma, n, f_T=None, theta=None, t=None, seed=None, device=None))]
   fn new(
     sigma: f64,
     n: usize,
@@ -281,9 +284,12 @@ impl PyHoLee {
     theta: Option<f64>,
     t: Option<f64>,
     seed: Option<u64>,
-  ) -> Self {
-    match seed {
+    device: Option<&str>,
+  ) -> pyo3::PyResult<Self> {
+    let device = crate::python_device::Device::parse(device, "f64")?;
+    Ok(    match seed {
       Some(s) => Self {
+        device,
         inner: None,
         seeded: Some(HoLee::new(
           f_T.map(Fn1D::Py),
@@ -295,10 +301,11 @@ impl PyHoLee {
         )),
       },
       None => Self {
+        device,
         inner: Some(HoLee::new(f_T.map(Fn1D::Py), theta, sigma, n, t, Unseeded)),
         seeded: None,
       },
-    }
+    })
   }
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
@@ -306,7 +313,7 @@ impl PyHoLee {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    py_dispatch_f64!(self, |inner| inner
+    py_device_dispatch_f64!(self, |inner| inner
       .sample()
       .into_pyarray(py)
       .into_py_any(py)

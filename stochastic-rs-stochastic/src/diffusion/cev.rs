@@ -318,7 +318,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Cev<T, S, B> {
 
 py_process_1d!(PyCev, Cev,
   sig: (mu, sigma, gamma, n, x0=None, t=None, seed=None, dtype=None),
-  params: (mu: f64, sigma: f64, gamma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (mu: f64, sigma: f64, gamma: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );
 
 #[cfg(test)]

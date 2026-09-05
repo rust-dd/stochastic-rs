@@ -312,7 +312,8 @@ impl<T: FloatExt> PathSampler<T> for SquaredBesselSampler<T> {
 
 py_process_1d!(PySquaredBessel, SquaredBessel,
   sig: (delta, n, x0=None, t=None, use_sym=None, seed=None, dtype=None),
-  params: (delta: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>)
+  params: (delta: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>),
+  device
 );
 
 /// Bessel process BES(δ).

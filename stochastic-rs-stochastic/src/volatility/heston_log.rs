@@ -44,6 +44,7 @@ fn validate_drift_args<T: FloatExt>(
 
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `HestonLog::new(..).with_kappa(2.0).with_rho(-0.4)`.
+#[derive(Clone)]
 pub struct HestonLog<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift rate of the asset price
   pub mu: Option<T>,
@@ -506,5 +507,6 @@ mod tests {
 
 py_process_2x1d!(PyHestonLog, HestonLog,
   sig: (mu=None, b=None, r=None, r_f=None, *, kappa, theta, xi, rho, n, s0=None, v0=None, t=None, use_sym=None, seed=None, dtype=None),
-  params: (mu: Option<f64>, b: Option<f64>, r: Option<f64>, r_f: Option<f64>, kappa: f64, theta: f64, xi: f64, rho: f64, n: usize, s0: Option<f64>, v0: Option<f64>, t: Option<f64>, use_sym: Option<bool>)
+  params: (mu: Option<f64>, b: Option<f64>, r: Option<f64>, r_f: Option<f64>, kappa: f64, theta: f64, xi: f64, rho: f64, n: usize, s0: Option<f64>, v0: Option<f64>, t: Option<f64>, use_sym: Option<bool>),
+  device
 );

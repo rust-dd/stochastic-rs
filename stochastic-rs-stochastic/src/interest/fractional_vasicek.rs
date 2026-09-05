@@ -27,6 +27,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct FVasicek<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst exponent controlling roughness and long-memory.
   pub hurst: T,
@@ -201,7 +202,8 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for FVasicekSampler<'_, T, S> {
 
 py_process_1d!(PyFVasicek, FVasicek,
   sig: (hurst, theta, mu, sigma, n, x0=None, t=None, seed=None, dtype=None),
-  params: (hurst: f64, theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (hurst: f64, theta: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );
 
 #[cfg(test)]

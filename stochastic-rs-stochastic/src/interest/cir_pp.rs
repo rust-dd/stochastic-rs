@@ -409,13 +409,15 @@ impl<T: FloatExt> PathSampler<T> for CirPlusPlusSampler<'_, T> {
 pub struct PyCirPlusPlus {
   inner: Option<CirPlusPlus<f64>>,
   seeded: Option<CirPlusPlus<f64, crate::simd_rng::Deterministic>>,
+  /// The device the class samples on, chosen at construction.
+  device: crate::python_device::Device,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyCirPlusPlus {
   #[new]
-  #[pyo3(signature = (kappa, theta, sigma, phi, n, x0=None, t=None, use_sym=None, seed=None))]
+  #[pyo3(signature = (kappa, theta, sigma, phi, n, x0=None, t=None, use_sym=None, seed=None, device=None))]
   fn new(
     kappa: f64,
     theta: f64,
@@ -426,9 +428,12 @@ impl PyCirPlusPlus {
     t: Option<f64>,
     use_sym: Option<bool>,
     seed: Option<u64>,
-  ) -> Self {
-    match seed {
+    device: Option<&str>,
+  ) -> pyo3::PyResult<Self> {
+    let device = crate::python_device::Device::parse(device, "f64")?;
+    Ok(    match seed {
       Some(s) => Self {
+        device,
         inner: None,
         seeded: Some(CirPlusPlus::new(
           kappa,
@@ -443,6 +448,7 @@ impl PyCirPlusPlus {
         )),
       },
       None => Self {
+        device,
         inner: Some(CirPlusPlus::new(
           kappa,
           theta,
@@ -456,7 +462,7 @@ impl PyCirPlusPlus {
         )),
         seeded: None,
       },
-    }
+    })
   }
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
@@ -464,7 +470,7 @@ impl PyCirPlusPlus {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    py_dispatch_f64!(self, |inner| inner
+    py_device_dispatch_f64!(self, |inner| inner
       .sample()
       .into_pyarray(py)
       .into_py_any(py)

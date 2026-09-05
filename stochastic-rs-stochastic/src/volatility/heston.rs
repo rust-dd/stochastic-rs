@@ -593,13 +593,15 @@ pub struct PyHeston {
   inner_f64: Option<Heston<f64>>,
   seeded_f32: Option<Heston<f32, crate::simd_rng::Deterministic>>,
   seeded_f64: Option<Heston<f64, crate::simd_rng::Deterministic>>,
+  /// The device the class samples on, chosen at construction.
+  device: crate::python_device::Device,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyHeston {
   #[new]
-  #[pyo3(signature = (kappa, theta, sigma, rho, mu, n, s0=None, v0=None, t=None, pow=None, use_sym=None, seed=None, dtype=None))]
+  #[pyo3(signature = (kappa, theta, sigma, rho, mu, n, s0=None, v0=None, t=None, pow=None, use_sym=None, seed=None, dtype=None, device=None))]
   fn new(
     kappa: f64,
     theta: f64,
@@ -614,7 +616,9 @@ impl PyHeston {
     use_sym: Option<bool>,
     seed: Option<u64>,
     dtype: Option<&str>,
-  ) -> Self {
+    device: Option<&str>,
+  ) -> pyo3::PyResult<Self> {
+    let device = crate::python_device::Device::parse(device, dtype.unwrap_or("f64"))?;
     let hp = match pow.unwrap_or("sqrt") {
       "three_halves" | "3/2" => HestonPow::ThreeHalves,
       _ => HestonPow::Sqrt,
@@ -624,6 +628,7 @@ impl PyHeston {
       inner_f64: None,
       seeded_f32: None,
       seeded_f64: None,
+      device,
     };
     match (seed, dtype.unwrap_or("f64")) {
       (Some(sd), "f32") => {
@@ -680,7 +685,7 @@ impl PyHeston {
         ));
       }
     }
-    s
+    Ok(s)
   }
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
@@ -688,7 +693,7 @@ impl PyHeston {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    py_dispatch!(self, |inner| {
+    py_device_dispatch!(self, |inner| {
       let [a, b] = inner.sample();
       (
         a.into_pyarray(py).into_py_any(py).unwrap(),
@@ -707,7 +712,7 @@ impl PyHeston {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    py_dispatch!(self, |inner| {
+    py_device_dispatch!(self, |inner| {
       let samples = inner.sample_par(m);
       let n = samples[0][0].len();
       let mut r0 = Array2::zeros((m, n));

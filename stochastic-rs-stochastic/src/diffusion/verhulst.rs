@@ -18,6 +18,7 @@ use crate::traits::ProcessExt;
 
 /// Verhulst (logistic) diffusion
 /// dX_t = r X_t (1 - X_t / K) dt + sigma X_t dW_t
+#[derive(Clone)]
 pub struct Verhulst<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Logistic growth rate r (matches the module header's own r in
   /// `dX_t=rX_t(1−X_t/K)dt+...`).
@@ -223,5 +224,6 @@ impl<T: FloatExt> PathSampler<T> for VerhulstSampler<T> {
 
 py_process_1d!(PyVerhulst, Verhulst,
   sig: (r, k, sigma, n, x0=None, t=None, clamp=None, seed=None, dtype=None),
-  params: (r: f64, k: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, clamp: Option<bool>)
+  params: (r: f64, k: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, clamp: Option<bool>),
+  device
 );

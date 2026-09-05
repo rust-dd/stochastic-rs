@@ -16,6 +16,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct Ckls<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift intercept parameter.
   pub theta1: T,
@@ -201,5 +202,6 @@ impl<T: FloatExt> PathSampler<T> for CklsSampler<T> {
 
 py_process_1d!(PyCkls, Ckls,
   sig: (theta1, theta2, theta3, theta4, n, x0=None, t=None, seed=None, dtype=None),
-  params: (theta1: f64, theta2: f64, theta3: f64, theta4: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (theta1: f64, theta2: f64, theta3: f64, theta4: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

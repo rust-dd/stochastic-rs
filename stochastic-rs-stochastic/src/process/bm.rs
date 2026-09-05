@@ -189,7 +189,8 @@ impl<T: FloatExt> PathSampler<T> for BmSampler<T> {
 
 py_process_1d!(PyBm, Bm,
   sig: (n, t=None, seed=None, dtype=None),
-  params: (n: usize, t: Option<f64>)
+  params: (n: usize, t: Option<f64>),
+  device
 );
 
 #[cfg(test)]

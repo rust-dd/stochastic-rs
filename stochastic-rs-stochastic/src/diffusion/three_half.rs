@@ -16,6 +16,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct ThreeHalf<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed parameter.
   pub kappa: T,
@@ -190,5 +191,6 @@ impl<T: FloatExt> PathSampler<T> for ThreeHalfSampler<T> {
 
 py_process_1d!(PyThreeHalf, ThreeHalf,
   sig: (kappa, mu, sigma, n, x0=None, t=None, seed=None, dtype=None),
-  params: (kappa: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (kappa: f64, mu: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

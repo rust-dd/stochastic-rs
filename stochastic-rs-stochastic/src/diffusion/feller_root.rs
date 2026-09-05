@@ -202,5 +202,6 @@ impl<T: FloatExt> PathSampler<T> for FellerRootSampler<T> {
 
 py_process_1d!(PyFellerRoot, FellerRoot,
   sig: (theta1, theta2, theta3, n, x0=None, t=None, seed=None, dtype=None),
-  params: (theta1: f64, theta2: f64, theta3: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (theta1: f64, theta2: f64, theta3: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

@@ -13,25 +13,29 @@ backends, and what the rest do.
 | Family | Processes | Capability bound | `Cpu` | `Accelerate` | `Metal` | `Cuda` | `Cubecl` |
 |---|---|---|---|---|---|---|---|
 | fGN noise | `Fgn`, `Cfgns` (2) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` | CubeCL FFT, `f32` only |
-| Euler engine, one component | 42 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
-| Euler engine, systems | 11 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
+| Euler engine, one component | 43 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
+| Euler engine, systems | 13 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
 | Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `FVasicek` (6, counted above) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same MSL kernel | fGN pipeline feeds the same NVRTC kernel | fGN pipeline feeds the same CubeCL kernel |
-| Host only | the remaining 66 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
+| Host only | the remaining 63 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
 
-The 53 processes on the engine cover the diffusions, the stochastic-volatility
+The 56 processes on the engine cover the diffusions, the stochastic-volatility
 models under their Euler schemes (`Heston`, `HestonLog`, `DoubleHeston`,
-`Sabr`, `Bergomi`, `HestonStochCorr`), the short-rate models including the
-curve-driven ones (`HullWhite`, `HullWhite2F`, `HoLee`, `BlackKarasinski`,
-`CirPlusPlus`, `Cir2F`, `DuffieKan`, `Vasicek`, `FVasicek`), and the
-fractional processes.
+`Heston2D`, `Sabr`, `Bergomi`, `HestonStochCorr`, `BatesSvj`), the short-rate
+models including the curve-driven ones (`HullWhite`, `HullWhite2F`, `HoLee`,
+`BlackKarasinski`, `CirPlusPlus`, `Cir2F`, `DuffieKan`, `Vasicek`,
+`FVasicek`), the fractional processes, and the two compound-Poisson jump
+models whose jump sizes aggregate into one draw (`MjdLog`, `BatesSvj`).
 
 What stays on the host, and why:
 
-- **Jumps and Lévy processes** (`MjdLog`, `BatesSvj`, `Hkde`, `Bns`, the
-  `jump/` family, the subordinators, `Hawkes`, `Poisson`): the step needs a
-  jump count and a jump size, which is a second sampler rather than a second
-  term. The tempered-stable ones (`Cgmy`, `Cts`, `KoBoL`, `Rdts`, `Svcgmy`)
-  draw a whole series per step.
+- **Jumps whose sizes do not aggregate** (`Hkde`, `Bns`, `HawkesJD`,
+  `DuffieKanJumpExp`, the `jump/` Lévy family, the subordinators, `Hawkes`,
+  `Poisson`): the kernel draws a Poisson count per step, and where the jump
+  sizes are normal their sum is one normal draw — which is how `MjdLog` and
+  `BatesSvj` reach a device. A double-exponential or gamma size has no such
+  aggregation, so the step would have to loop; a self-exciting intensity is
+  state rather than a launch argument; and the tempered-stable ones (`Cgmy`,
+  `Cts`, `KoBoL`, `Rdts`, `Svcgmy`) draw a whole series per step.
 - **Lag models** (`ARp`, `MAq`, `Arima`, `Sarima`, the GARCH family): the
   conditional variance reads back as many past values as the model's order,
   which the engine's four state slots do not bound.
@@ -49,7 +53,7 @@ What stays on the host, and why:
 
 ## What a family is
 
-A process reaches a device by declaring which of the engine's **56 families**
+A process reaches a device by declaring which of the engine's **61 families**
 it steps, not by writing a kernel. A family is one entry in
 `stochastic-rs-stochastic/src/euler/families.rs` — its parameters, its state
 components, its noise components, one step expression per component and one
@@ -59,8 +63,8 @@ is a declaration plus an `EulerCoefficients` (one component) or `EulerSystem`
 (more than one) impl; no kernel is edited.
 
 The engine's kernels carry four state slots, four independent noise
-components, twelve scalar parameters and one time-varying coefficient per
-step. A model that wants correlated shocks draws the components independently
+components, twenty scalar parameters, one time-varying coefficient and one
+Poisson jump count per step. A model that wants correlated shocks draws the components independently
 and correlates them in its own step, which is what the host samplers do.
 
 Feature flags: `metal` (`Metal`), `cuda` (`Cuda`),
@@ -233,9 +237,10 @@ their fGN on the host because moving it would change their pinned streams,
 and `Sde` drives its own loop. Their `.on::<B>()` compiles and changes
 nothing, which is a wart to close rather than a feature.
 
-What each remaining group would take: a jump process needs a Poisson count
-and a size draw in the kernel, which is a second sampler beside the Gaussian
-one; a lag model needs state proportional to its order rather than four
+What each remaining group would take: a jump process whose sizes do not
+aggregate needs a bounded loop in the step, and a self-exciting one needs the
+Poisson mean to be an expression over the state rather than a launch
+argument; a lag model needs state proportional to its order rather than four
 slots; the Volterra and rough family needs a separate `O(n·N')` kernel
 because its step is a convolution; and a dynamic-dimension model needs the
 component count to be a launch argument rather than a property of its

@@ -217,5 +217,6 @@ impl<T: FloatExt> PathSampler<T> for PearsonSampler<T> {
 
 py_process_1d!(PyPearson, Pearson,
   sig: (kappa, mu, a, b, c, n, x0=None, t=None, seed=None, dtype=None),
-  params: (kappa: f64, mu: f64, a: f64, b: f64, c: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (kappa: f64, mu: f64, a: f64, b: f64, c: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

@@ -14,6 +14,24 @@ macro_rules! py_dispatch_f64 {
   };
 }
 
+/// [`py_dispatch_f64!`] on the class's device. A class whose parameters
+/// include a Python callable has no `float32` slot, so only the devices that
+/// compute in double precision can appear here — which is exactly the set
+/// [`py_on_device_f64!`] handles.
+#[cfg(feature = "python")]
+#[macro_export]
+macro_rules! py_device_dispatch_f64 {
+  ($self:expr, |$p:ident| $body:expr) => {
+    if let Some(ref inner) = $self.inner {
+      $crate::py_on_device_f64!($self.device, inner, |$p| $body)
+    } else if let Some(ref inner) = $self.seeded {
+      $crate::py_on_device_f64!($self.device, inner, |$p| $body)
+    } else {
+      unreachable!()
+    }
+  };
+}
+
 #[cfg(feature = "python")]
 #[macro_export]
 macro_rules! py_dispatch {

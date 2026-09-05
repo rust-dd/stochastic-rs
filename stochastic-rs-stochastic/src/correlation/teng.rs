@@ -284,7 +284,8 @@ impl<T: FloatExt> PathSampler<T> for TengSCPSampler<T> {
 
 py_process_1d!(PyTengSCP, TengSCP,
   sig: (kappa, mu, sigma, rho0, n, t=None, seed=None, dtype=None),
-  params: (kappa: f64, mu: f64, sigma: f64, rho0: f64, n: usize, t: Option<f64>)
+  params: (kappa: f64, mu: f64, sigma: f64, rho0: f64, n: usize, t: Option<f64>),
+  device
 );
 
 #[cfg(test)]

@@ -16,6 +16,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct Logistic<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Inverse carrying-capacity a (equilibrium level is 1/a) in the drift
   /// `X_t(1-aX_t)`.
@@ -183,5 +184,6 @@ impl<T: FloatExt> PathSampler<T> for LogisticSampler<T> {
 
 py_process_1d!(PyLogistic, Logistic,
   sig: (a, b, n, x0=None, t=None, seed=None, dtype=None),
-  params: (a: f64, b: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (a: f64, b: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

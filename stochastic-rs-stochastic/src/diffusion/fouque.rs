@@ -24,6 +24,7 @@ use crate::traits::ProcessExt;
 ///
 /// dX_t = kappa (theta - X_t) dt + epsilon dW_t
 /// dY_t = (1/epsilon) (alpha - Y_t) dt + (1/sqrt(epsilon)) dZ_t
+#[derive(Clone)]
 pub struct FouqueOU2D<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion speed of the slow factor `X_t`.
   pub kappa: T,
@@ -258,5 +259,6 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for FouqueOU2DSampler<T, S> {
 
 py_process_2x1d!(PyFouqueOU2D, FouqueOU2D,
   sig: (kappa, theta, epsilon, alpha, n, x0=None, y0=None, t=None, seed=None, dtype=None),
-  params: (kappa: f64, theta: f64, epsilon: f64, alpha: f64, n: usize, x0: Option<f64>, y0: Option<f64>, t: Option<f64>)
+  params: (kappa: f64, theta: f64, epsilon: f64, alpha: f64, n: usize, x0: Option<f64>, y0: Option<f64>, t: Option<f64>),
+  device
 );

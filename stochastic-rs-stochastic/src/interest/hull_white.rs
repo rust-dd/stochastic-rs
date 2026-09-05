@@ -291,13 +291,15 @@ impl<T: FloatExt> PathSampler<T> for HullWhiteSampler<'_, T> {
 pub struct PyHullWhite {
   inner: Option<HullWhite<f64>>,
   seeded: Option<HullWhite<f64, crate::simd_rng::Deterministic>>,
+  /// The device the class samples on, chosen at construction.
+  device: crate::python_device::Device,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyHullWhite {
   #[new]
-  #[pyo3(signature = (theta, alpha, sigma, n, x0=None, t=None, seed=None))]
+  #[pyo3(signature = (theta, alpha, sigma, n, x0=None, t=None, seed=None, device=None))]
   fn new(
     theta: pyo3::Py<pyo3::PyAny>,
     alpha: f64,
@@ -306,9 +308,12 @@ impl PyHullWhite {
     x0: Option<f64>,
     t: Option<f64>,
     seed: Option<u64>,
-  ) -> Self {
-    match seed {
+    device: Option<&str>,
+  ) -> pyo3::PyResult<Self> {
+    let device = crate::python_device::Device::parse(device, "f64")?;
+    Ok(    match seed {
       Some(s) => Self {
+        device,
         inner: None,
         seeded: Some(HullWhite::new(
           Fn1D::Py(theta),
@@ -321,6 +326,7 @@ impl PyHullWhite {
         )),
       },
       None => Self {
+        device,
         inner: Some(HullWhite::new(
           Fn1D::Py(theta),
           alpha,
@@ -332,7 +338,7 @@ impl PyHullWhite {
         )),
         seeded: None,
       },
-    }
+    })
   }
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
@@ -340,7 +346,7 @@ impl PyHullWhite {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    py_dispatch_f64!(self, |inner| inner
+    py_device_dispatch_f64!(self, |inner| inner
       .sample()
       .into_pyarray(py)
       .into_py_any(py)
@@ -357,7 +363,7 @@ impl PyHullWhite {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    py_dispatch_f64!(self, |inner| {
+    py_device_dispatch_f64!(self, |inner| {
       let paths = py.detach(|| inner.sample_par(m));
       let n = paths.first().map_or(0, |p| p.len());
       let mut result = Array2::zeros((m, n));

@@ -18,6 +18,7 @@ use crate::traits::ProcessExt;
 
 /// Gompertz diffusion
 /// dX_t = (a - b ln X_t) X_t dt + sigma X_t dW_t
+#[derive(Clone)]
 pub struct Gompertz<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Growth-rate coefficient a in the drift `X_t(a - b·ln X_t)dt` — together
   /// with `b`, sets the asymptotic level `exp(a/b)`.
@@ -200,5 +201,6 @@ impl<T: FloatExt> PathSampler<T> for GompertzSampler<T> {
 
 py_process_1d!(PyGompertz, Gompertz,
   sig: (a, b, sigma, n, x0=None, t=None, seed=None, dtype=None),
-  params: (a: f64, b: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (a: f64, b: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

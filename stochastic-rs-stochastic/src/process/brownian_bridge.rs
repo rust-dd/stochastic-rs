@@ -343,7 +343,8 @@ impl<T: FloatExt> PathSampler<T> for BrownianBridgeSampler<T> {
 
 py_process_1d!(PyBrownianBridge, BrownianBridge,
   sig: (sigma, n, x0=None, xt=None, t=None, seed=None, dtype=None),
-  params: (sigma: f64, n: usize, x0: Option<f64>, xt: Option<f64>, t: Option<f64>)
+  params: (sigma: f64, n: usize, x0: Option<f64>, xt: Option<f64>, t: Option<f64>),
+  device
 );
 
 #[cfg(test)]

@@ -36,6 +36,7 @@ use crate::traits::Fn1D;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct HullWhite2F<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Time-dependent drift target $\theta(t)$, fitted to the initial term
   /// structure — the additive role `HullWhite::theta` plays for the
@@ -279,6 +280,8 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for HullWhite2FSampler<'_, T, S> {
 pub struct PyHullWhite2F {
   inner: Option<HullWhite2F<f64>>,
   seeded: Option<HullWhite2F<f64, crate::simd_rng::Deterministic>>,
+  /// The device the class samples on, chosen at construction.
+  device: crate::python_device::Device,
 }
 
 #[cfg(feature = "python")]
@@ -290,7 +293,7 @@ impl PyHullWhite2F {
   // `a` parameter, so the Python signature is unaffected but its keyword
   // names map onto differently-named Rust parameters.
   #[new]
-  #[pyo3(signature = (k, theta, sigma1, sigma2, rho, b, n, x0=None, t=None, seed=None))]
+  #[pyo3(signature = (k, theta, sigma1, sigma2, rho, b, n, x0=None, t=None, seed=None, device=None))]
   fn new(
     k: pyo3::Py<pyo3::PyAny>,
     theta: f64,
@@ -302,9 +305,12 @@ impl PyHullWhite2F {
     x0: Option<f64>,
     t: Option<f64>,
     seed: Option<u64>,
-  ) -> Self {
-    match seed {
+    device: Option<&str>,
+  ) -> pyo3::PyResult<Self> {
+    let device = crate::python_device::Device::parse(device, "f64")?;
+    Ok(    match seed {
       Some(s) => Self {
+        device,
         inner: None,
         seeded: Some(HullWhite2F::new(
           Fn1D::Py(k),
@@ -320,6 +326,7 @@ impl PyHullWhite2F {
         )),
       },
       None => Self {
+        device,
         inner: Some(HullWhite2F::new(
           Fn1D::Py(k),
           theta,
@@ -334,7 +341,7 @@ impl PyHullWhite2F {
         )),
         seeded: None,
       },
-    }
+    })
   }
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
@@ -342,7 +349,7 @@ impl PyHullWhite2F {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    py_dispatch_f64!(self, |inner| {
+    py_device_dispatch_f64!(self, |inner| {
       let [a, b] = inner.sample();
       (
         a.into_pyarray(py).into_py_any(py).unwrap(),

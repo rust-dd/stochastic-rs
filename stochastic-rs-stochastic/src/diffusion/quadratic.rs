@@ -18,6 +18,7 @@ use crate::traits::ProcessExt;
 
 /// Quadratic diffusion
 /// dX_t = (alpha + beta X_t + gamma X_t^2) dt + sigma X_t dW_t
+#[derive(Clone)]
 pub struct Quadratic<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Constant term α in the drift `α + βX_t + γX_t²`.
   pub alpha: T,
@@ -208,5 +209,6 @@ impl<T: FloatExt> PathSampler<T> for QuadraticSampler<T> {
 
 py_process_1d!(PyQuadratic, Quadratic,
   sig: (alpha, beta, gamma, sigma, n, x0=None, t=None, seed=None, dtype=None),
-  params: (alpha: f64, beta: f64, gamma: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (alpha: f64, beta: f64, gamma: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

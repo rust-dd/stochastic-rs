@@ -365,7 +365,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Sabr<T, S, B> {
 // `nu`/`alpha0` parameters, so the Python signature is unaffected.
 py_process_2x1d!(PySabr, Sabr,
   sig: (alpha, beta, rho, n, f0=None, v0=None, t=None, seed=None, dtype=None),
-  params: (alpha: f64, beta: f64, rho: f64, n: usize, f0: Option<f64>, v0: Option<f64>, t: Option<f64>)
+  params: (alpha: f64, beta: f64, rho: f64, n: usize, f0: Option<f64>, v0: Option<f64>, t: Option<f64>),
+  device
 );
 
 #[cfg(test)]

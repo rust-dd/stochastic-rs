@@ -389,13 +389,15 @@ impl<T: FloatExt> PathSampler<T> for BlackKarasinskiSampler<'_, T> {
 pub struct PyBlackKarasinski {
   inner: Option<BlackKarasinski<f64>>,
   seeded: Option<BlackKarasinski<f64, crate::simd_rng::Deterministic>>,
+  /// The device the class samples on, chosen at construction.
+  device: crate::python_device::Device,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyBlackKarasinski {
   #[new]
-  #[pyo3(signature = (theta, a, sigma, n, r0=None, t=None, seed=None))]
+  #[pyo3(signature = (theta, a, sigma, n, r0=None, t=None, seed=None, device=None))]
   fn new(
     theta: pyo3::Py<pyo3::PyAny>,
     a: f64,
@@ -404,9 +406,12 @@ impl PyBlackKarasinski {
     r0: Option<f64>,
     t: Option<f64>,
     seed: Option<u64>,
-  ) -> Self {
-    match seed {
+    device: Option<&str>,
+  ) -> pyo3::PyResult<Self> {
+    let device = crate::python_device::Device::parse(device, "f64")?;
+    Ok(    match seed {
       Some(s) => Self {
+        device,
         inner: None,
         seeded: Some(BlackKarasinski::new(
           Fn1D::Py(theta),
@@ -419,6 +424,7 @@ impl PyBlackKarasinski {
         )),
       },
       None => Self {
+        device,
         inner: Some(BlackKarasinski::new(
           Fn1D::Py(theta),
           a,
@@ -430,7 +436,7 @@ impl PyBlackKarasinski {
         )),
         seeded: None,
       },
-    }
+    })
   }
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
@@ -438,7 +444,7 @@ impl PyBlackKarasinski {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    py_dispatch_f64!(self, |inner| inner
+    py_device_dispatch_f64!(self, |inner| inner
       .sample()
       .into_pyarray(py)
       .into_py_any(py)

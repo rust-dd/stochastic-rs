@@ -15,6 +15,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct Cbms<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Instantaneous correlation between the two Brownian components.
   pub rho: T,
@@ -187,5 +188,6 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for CbmsSampler<T, S> {
 
 py_process_2x1d!(PyCbms, Cbms,
   sig: (rho, n, t=None, seed=None, dtype=None),
-  params: (rho: f64, n: usize, t: Option<f64>)
+  params: (rho: f64, n: usize, t: Option<f64>),
+  device
 );

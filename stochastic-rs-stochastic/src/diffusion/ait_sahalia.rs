@@ -251,5 +251,6 @@ impl<T: FloatExt> PathSampler<T> for AitSahaliaSampler<T> {
 
 py_process_1d!(PyAitSahalia, AitSahalia,
   sig: (am1, a0, a1, a2, b0, b1, b2, b3, n, x0=None, t=None, seed=None, dtype=None),
-  params: (am1: f64, a0: f64, a1: f64, a2: f64, b0: f64, b1: f64, b2: f64, b3: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (am1: f64, a0: f64, a1: f64, a2: f64, b0: f64, b1: f64, b2: f64, b3: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

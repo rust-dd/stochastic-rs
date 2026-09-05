@@ -189,5 +189,6 @@ impl<T: FloatExt> PathSampler<T> for LinearSDESampler<T> {
 
 py_process_1d!(PyLinearSDE, LinearSDE,
   sig: (a, b, c, n, x0=None, t=None, seed=None, dtype=None),
-  params: (a: f64, b: f64, c: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (a: f64, b: f64, c: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

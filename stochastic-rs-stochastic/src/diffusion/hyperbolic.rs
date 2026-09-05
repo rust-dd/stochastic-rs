@@ -16,6 +16,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct Hyperbolic<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Nonlinear restoring-force strength κ in the drift `-κX_t/√(1+X_t²)`
   /// (a bounded, hyperbolic-tangent-like pull toward 0, not a linear
@@ -184,5 +185,6 @@ impl<T: FloatExt> PathSampler<T> for HyperbolicSampler<T> {
 
 py_process_1d!(PyHyperbolic, Hyperbolic,
   sig: (kappa, sigma, n, x0=None, t=None, seed=None, dtype=None),
-  params: (kappa: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (kappa: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

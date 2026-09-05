@@ -50,6 +50,7 @@ fn validate_drift_args<T: FloatExt>(
 
 /// Every field has a matching `with_*` builder setter, e.g.
 /// `BatesSvj::new(..).with_lambda(0.8).with_rho(-0.4)`.
+#[derive(Clone)]
 pub struct BatesSvj<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift rate of the asset price
   pub mu: Option<T>,
@@ -539,13 +540,15 @@ pub struct PyBatesSvj {
   inner_f64: Option<BatesSvj<f64>>,
   seeded_f32: Option<BatesSvj<f32, crate::simd_rng::Deterministic>>,
   seeded_f64: Option<BatesSvj<f64, crate::simd_rng::Deterministic>>,
+  /// The device the class samples on, chosen at construction.
+  device: crate::python_device::Device,
 }
 
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyBatesSvj {
   #[new]
-  #[pyo3(signature = (lambda_, nu, omega, alpha, beta, sigma, rho, n, mu=None, b=None, r=None, r_f=None, s0=None, v0=None, t=None, use_sym=None, seed=None, dtype=None))]
+  #[pyo3(signature = (lambda_, nu, omega, alpha, beta, sigma, rho, n, mu=None, b=None, r=None, r_f=None, s0=None, v0=None, t=None, use_sym=None, seed=None, dtype=None, device=None))]
   fn new(
     lambda_: f64,
     nu: f64,
@@ -565,12 +568,15 @@ impl PyBatesSvj {
     use_sym: Option<bool>,
     seed: Option<u64>,
     dtype: Option<&str>,
-  ) -> Self {
+    device: Option<&str>,
+  ) -> pyo3::PyResult<Self> {
+    let device = crate::python_device::Device::parse(device, dtype.unwrap_or("f64"))?;
     let mut s = Self {
       inner_f32: None,
       inner_f64: None,
       seeded_f32: None,
       seeded_f64: None,
+      device,
     };
     match (seed, dtype.unwrap_or("f64")) {
       (Some(sd), "f32") => {
@@ -643,7 +649,7 @@ impl PyBatesSvj {
         ));
       }
     }
-    s
+    Ok(s)
   }
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
@@ -651,7 +657,7 @@ impl PyBatesSvj {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    py_dispatch!(self, |inner| {
+    py_device_dispatch!(self, |inner| {
       let [a, b] = inner.sample();
       (
         a.into_pyarray(py).into_py_any(py).unwrap(),
@@ -670,7 +676,7 @@ impl PyBatesSvj {
     use pyo3::IntoPyObjectExt;
 
     use crate::traits::ProcessExt;
-    py_dispatch!(self, |inner| {
+    py_device_dispatch!(self, |inner| {
       let samples = inner.sample_par(m);
       let n = samples[0][0].len();
       let mut r0 = Array2::zeros((m, n));

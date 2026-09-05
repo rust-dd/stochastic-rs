@@ -196,5 +196,6 @@ impl<T: FloatExt> PathSampler<T> for ModifiedCirSampler<T> {
 
 py_process_1d!(PyModifiedCIR, ModifiedCIR,
   sig: (kappa, sigma, n, x0=None, t=None, seed=None, dtype=None),
-  params: (kappa: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (kappa: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

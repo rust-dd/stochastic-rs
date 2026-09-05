@@ -23,6 +23,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct RadialOU<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Radial restoring-force coefficient κ in the drift `κ/X_t − X_t`,
   /// which repels `X` away from 0 while an ordinary OU-style `-X_t` term
@@ -196,5 +197,6 @@ impl<T: FloatExt> PathSampler<T> for RadialOuSampler<T> {
 
 py_process_1d!(PyRadialOU, RadialOU,
   sig: (kappa, sigma, n, x0=None, t=None, seed=None, dtype=None),
-  params: (kappa: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (kappa: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

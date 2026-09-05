@@ -20,6 +20,7 @@ use crate::traits::ProcessExt;
 
 /// Feller–logistic diffusion
 /// dX_t = kappa (theta - X_t) X_t dt + sigma sqrt(X_t) dW_t
+#[derive(Clone)]
 pub struct FellerLogistic<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Mean-reversion / logistic-growth speed κ.
   pub kappa: T,
@@ -223,5 +224,6 @@ impl<T: FloatExt> PathSampler<T> for FellerLogisticSampler<T> {
 
 py_process_1d!(PyFellerLogistic, FellerLogistic,
   sig: (kappa, theta, sigma, n, x0=None, t=None, use_sym=None, seed=None, dtype=None),
-  params: (kappa: f64, theta: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>)
+  params: (kappa: f64, theta: f64, sigma: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>),
+  device
 );
