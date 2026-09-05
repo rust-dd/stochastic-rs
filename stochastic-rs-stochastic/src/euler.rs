@@ -59,6 +59,36 @@ use crate::traits::process::sample_par_chunked;
 /// How many scalar parameters one family may carry. The layout is the
 /// kernels' ABI and stays inside the crate, so it can widen again without a
 /// breaking change.
+/// How many time-varying coefficients a kernel binds per launch. A family
+/// names them `ct` and `ct1` through `ct7`; a launch pays one buffer read per
+/// declared curve per step, so declaring fewer costs less.
+pub(crate) const CURVE_SLOTS: usize = 8;
+
+/// The curve buffer a launch binds: the declared curves laid end to end, each
+/// padded to `n` values, so the kernel reads curve `k` at step `i` from
+/// `curve[k * n + i]`. Returns the flattened values and how many curves they
+/// hold; an empty buffer and zero when the family declares none.
+///
+/// A curve shorter than the grid is extended with its last value rather than
+/// read out of bounds — a host tabulation that stops one short is a
+/// declaration slip, not a reason to fault a kernel.
+pub(crate) fn flatten_curves<T: FloatExt>(curves: Option<Vec<Vec<T>>>, n: usize) -> (Vec<T>, u32) {
+  let Some(curves) = curves else {
+    return (Vec::new(), 0);
+  };
+  assert!(
+    curves.len() <= CURVE_SLOTS,
+    "a family may declare at most {CURVE_SLOTS} curves, not {}",
+    curves.len()
+  );
+  let mut flat = Vec::with_capacity(curves.len() * n);
+  for curve in &curves {
+    let last = curve.last().copied().unwrap_or_else(T::zero);
+    flat.extend((0..n).map(|i| curve.get(i).copied().unwrap_or(last)));
+  }
+  (flat, curves.len() as u32)
+}
+
 pub(crate) const PARAM_SLOTS: usize = 20;
 
 /// Scalar drift / diffusion families the device kernels know how to step.
@@ -1137,8 +1167,24 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
   /// family reads none. It reaches the step as `ct`: a short-rate model's
   /// `θ(t)`, a term structure of volatilities, anything the host can tabulate
   /// on the same grid the recursion walks.
+  ///
+  /// This is the one-curve convenience. A family that reads several — a
+  /// dynamic-SABR term structure, a Heath-Jarrow-Morton coefficient set —
+  /// overrides [`curves`](Self::curves) instead, which is what the engine
+  /// actually reads.
   fn curve(&self) -> Option<Vec<T>> {
     None
+  }
+
+  /// Every time-varying coefficient the family reads, one `Vec` per curve and
+  /// one value per grid point, in the order the step names them: `ct`, then
+  /// `ct1` through `ct7`. Defaults to lifting [`curve`](Self::curve), so a
+  /// one-curve process implements that and nothing else; override this one
+  /// instead — never both — when the step reads more than one.
+  ///
+  /// At most [`CURVE_SLOTS`] curves, since that is what the kernels bind.
+  fn curves(&self) -> Option<Vec<Vec<T>>> {
+    self.curve().map(|c| vec![c])
   }
 
   /// The jump intensity per unit time, or `None` when the family has no jump
@@ -1408,8 +1454,24 @@ pub trait EulerSystem<T: FloatExt, const D: usize>: ProcessExt<T, Output = [Arra
   /// family reads none. It reaches the step as `ct`: a short-rate model's
   /// `θ(t)`, a term structure of volatilities, anything the host can tabulate
   /// on the same grid the recursion walks.
+  ///
+  /// This is the one-curve convenience. A family that reads several — a
+  /// dynamic-SABR term structure, a Heath-Jarrow-Morton coefficient set —
+  /// overrides [`curves`](Self::curves) instead, which is what the engine
+  /// actually reads.
   fn curve(&self) -> Option<Vec<T>> {
     None
+  }
+
+  /// Every time-varying coefficient the family reads, one `Vec` per curve and
+  /// one value per grid point, in the order the step names them: `ct`, then
+  /// `ct1` through `ct7`. Defaults to lifting [`curve`](Self::curve), so a
+  /// one-curve process implements that and nothing else; override this one
+  /// instead — never both — when the step reads more than one.
+  ///
+  /// At most [`CURVE_SLOTS`] curves, since that is what the kernels bind.
+  fn curves(&self) -> Option<Vec<Vec<T>>> {
+    self.curve().map(|c| vec![c])
   }
 
   /// The jump intensity per unit time, or `None` when the family has no jump

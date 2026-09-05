@@ -4,7 +4,7 @@
 //!
 //! The thread index `path`, the output and parameter buffers and the launch
 //! arguments (`family`, `components`, `noises`, `x0`, `dt`, `sqrt_dt`,
-//! `seed`, `steps`, `paths`, `first_path`, `increments`, `has_curve`,
+//! `seed`, `steps`, `paths`, `first_path`, `increments`, `n_curves`,
 //! `jump_lambda`, `has_jumps`, `jump_law`, `jump_a`, `jump_b`, `jump_c`,
 //! `step_first`, `gamma_law`, `g1_shape`, `g1_scale`, `g1_per`,
 //! `g2_shape`, `g2_scale`, `g2_per`) and
@@ -70,6 +70,12 @@
 //! model's `θ(t)`, a term structure of volatilities — and the kernel binds it
 //! before each step, so a curve costs one buffer read rather than a
 //! parameter per step.
+//!
+//! A family that needs more than one names them `ct1` through `ct7`: the
+//! curves are laid end to end in the same buffer at `steps` values each, and
+//! the launch binds only the `n_curves` a family declares, so one curve still
+//! costs one read. A dynamic-SABR term structure and a Heath-Jarrow-Morton
+//! coefficient set are what the extra slots exist for.
 
 /// The per-thread frame around the generated family blocks: the path guard,
 /// the counter-hash normals and the write-back. The state, the reported
@@ -87,7 +93,21 @@ pub(crate) const FRAME: &str = r#"    if (path >= paths) return;
     REAL reported[4];
     REAL noise[4];
     REAL ct = (REAL)0;
-    if (has_curve != 0u) { ct = curve[0]; }
+    REAL ct1 = (REAL)0;
+    REAL ct2 = (REAL)0;
+    REAL ct3 = (REAL)0;
+    REAL ct4 = (REAL)0;
+    REAL ct5 = (REAL)0;
+    REAL ct6 = (REAL)0;
+    REAL ct7 = (REAL)0;
+    if (n_curves > 0u) { ct = curve[(INDEX)0 * steps]; }
+    if (n_curves > 1u) { ct1 = curve[(INDEX)1 * steps]; }
+    if (n_curves > 2u) { ct2 = curve[(INDEX)2 * steps]; }
+    if (n_curves > 3u) { ct3 = curve[(INDEX)3 * steps]; }
+    if (n_curves > 4u) { ct4 = curve[(INDEX)4 * steps]; }
+    if (n_curves > 5u) { ct5 = curve[(INDEX)5 * steps]; }
+    if (n_curves > 6u) { ct6 = curve[(INDEX)6 * steps]; }
+    if (n_curves > 7u) { ct7 = curve[(INDEX)7 * steps]; }
     REAL nj = (REAL)0;
     REAL js = (REAL)0;
     REAL gm = (REAL)0;
@@ -125,7 +145,14 @@ REPORT
                 noise[1] = incs[((INDEX)paths + (INDEX)path) * inc_len + inc_at];
             }
         }
-        if (has_curve != 0u) { ct = curve[i]; }
+        if (n_curves > 0u) { ct = curve[(INDEX)0 * steps + i]; }
+        if (n_curves > 1u) { ct1 = curve[(INDEX)1 * steps + i]; }
+        if (n_curves > 2u) { ct2 = curve[(INDEX)2 * steps + i]; }
+        if (n_curves > 3u) { ct3 = curve[(INDEX)3 * steps + i]; }
+        if (n_curves > 4u) { ct4 = curve[(INDEX)4 * steps + i]; }
+        if (n_curves > 5u) { ct5 = curve[(INDEX)5 * steps + i]; }
+        if (n_curves > 6u) { ct6 = curve[(INDEX)6 * steps + i]; }
+        if (n_curves > 7u) { ct7 = curve[(INDEX)7 * steps + i]; }
         unsigned int hu = (g ^ 2135587861u) ^ (seed * 2654435761u);
         hu ^= hu >> 16; hu *= 2246822519u; hu ^= hu >> 13; hu *= 3266489917u; hu ^= hu >> 16;
         u = (REAL)hu * (REAL)2.3283064e-10;
@@ -248,6 +275,11 @@ pub(crate) struct Language<'a> {
 }
 
 /// Metal Shading Language: `f32` only, and a 32-bit buffer index.
+///
+/// Compiled without the `metal` feature as well, for the same reason
+/// [`cuda_language`] is: the rendering checks below cover every table on any
+/// machine.
+#[cfg_attr(not(feature = "metal"), allow(dead_code))]
 pub(crate) fn metal_language() -> Language<'static> {
   Language {
     real: "float",

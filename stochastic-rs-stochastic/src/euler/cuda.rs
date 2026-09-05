@@ -35,7 +35,7 @@ const CUDA_HEADER: &str = r#"extern "C" __global__ void euler_paths_REAL(
     unsigned int seed, unsigned int steps, unsigned int paths,
     unsigned int first_path,
     const REAL* __restrict__ incs, unsigned int increments,
-    const REAL* __restrict__ curve, unsigned int has_curve,
+    const REAL* __restrict__ curve, unsigned int n_curves,
     REAL jump_lambda, unsigned int has_jumps,
     unsigned int jump_law, REAL jump_a, REAL jump_b, REAL jump_c,
     unsigned int step_first,
@@ -46,7 +46,7 @@ const CUDA_HEADER: &str = r#"extern "C" __global__ void euler_paths_REAL(
     const REAL x0[4] = { x00, x01, x02, x03 };
 "#;
 
-fn kernel_source(real: &str) -> String {
+fn kernel_source(real: &'static str) -> String {
   let lang = super::kernel::cuda_language(real);
   let prelude = super::kernel::prelude(&lang);
   let body = super::kernel::render(&lang);
@@ -95,7 +95,7 @@ fn ensure_kernels(ordinal: usize) -> Result<()> {
     .new_stream()
     .map_err(|e| DeviceError::Launch(format!("stream: {e}")))?;
   let context = stream.context();
-  let load = |real: &str| -> Result<CudaFunction> {
+  let load = |real: &'static str| -> Result<CudaFunction> {
     let src = kernel_source(real);
     let name = format!("euler_paths_{real}");
     let ptx =
@@ -136,6 +136,7 @@ fn run<R>(
   m: usize,
   increments: Option<(&CudaSlice<R>, u32)>,
   curve: &[R],
+  n_curves: u32,
   jump_lambda: R,
   use_jumps: u32,
   jump_law: u32,
@@ -182,7 +183,7 @@ where
   };
   // The kernel always binds the curve pointer; an unused slot gets one
   // element rather than a null.
-  let use_curve = u32::from(!curve.is_empty());
+  let use_curve = n_curves;
   let d_curve = if curve.is_empty() {
     stream
       .alloc_zeros::<R>(1)
@@ -254,7 +255,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       m,
       seed,
       process.fgn_spec(),
-      process.curve().as_deref().unwrap_or(&[]),
+      process.curves(),
       process.jump_intensity(),
       process.jump_sizes(),
       process.step_first(),
@@ -285,7 +286,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       m,
       seed,
       process.fgn_spec(),
-      process.curve().as_deref().unwrap_or(&[]),
+      process.curves(),
       process.jump_intensity(),
       process.jump_sizes(),
       process.step_first(),
@@ -319,7 +320,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       m,
       rows,
       seed,
-      process.curve().as_deref().unwrap_or(&[]),
+      process.curves(),
       process.jump_intensity(),
       process.jump_sizes(),
       process.step_first(),
@@ -341,13 +342,14 @@ fn device_paths<T: FloatExt>(
   m: usize,
   seed: u64,
   fgn: Option<crate::euler::FgnSpec<'_, T>>,
-  curve: &[T],
+  curves: Option<Vec<Vec<T>>>,
   jump_lambda: Option<T>,
   sizes: Option<crate::euler::JumpSizes<T>>,
   step_first: bool,
   gammas: Option<crate::euler::GammaDraws<T>>,
 ) -> Result<Array3<T>> {
   {
+    let (curve, n_curves) = crate::euler::flatten_curves(curves, n);
     let (family, params) = spec.encode();
     let arity = super::families::Family::from_code(family).expect("a declared family");
     let use_jumps = u32::from(jump_lambda.is_some());
@@ -416,6 +418,7 @@ fn device_paths<T: FloatExt>(
         m,
         incs.as_ref().map(|slice| (slice, streams)),
         &curve64,
+        n_curves,
         lambda64,
         use_jumps,
         jump_law,
@@ -473,6 +476,7 @@ fn device_paths<T: FloatExt>(
       m,
       incs.as_ref().map(|slice| (slice, streams)),
       &curve32,
+      n_curves,
       lambda64 as f32,
       use_jumps,
       jump_law,
@@ -515,6 +519,7 @@ fn launch_chunk<R>(
   m: usize,
   increments: Option<(&CudaSlice<R>, u32)>,
   curve: &[R],
+  n_curves: u32,
   jump_lambda: R,
   use_jumps: u32,
   jump_law: u32,
@@ -557,7 +562,7 @@ where
   };
   // The kernel always binds the curve pointer; an unused slot gets one
   // element rather than a null.
-  let use_curve = u32::from(!curve.is_empty());
+  let use_curve = n_curves;
   let d_curve = if curve.is_empty() {
     stream
       .alloc_zeros::<R>(1)
@@ -625,6 +630,7 @@ fn pipelined<R>(
   m: usize,
   rows: usize,
   curve: &[R],
+  n_curves: u32,
   jump_lambda: R,
   use_jumps: u32,
   jump_law: u32,
@@ -699,6 +705,7 @@ where
       // in one go, so its increments never meet this path.
       None,
       curve,
+      n_curves,
       jump_lambda,
       use_jumps,
       jump_law,
@@ -738,12 +745,13 @@ fn pipelined_paths<T: FloatExt>(
   m: usize,
   rows: usize,
   seed: u64,
-  curve: &[T],
+  curves: Option<Vec<Vec<T>>>,
   jump_lambda: Option<T>,
   sizes: Option<crate::euler::JumpSizes<T>>,
   step_first: bool,
   gammas: Option<crate::euler::GammaDraws<T>>,
 ) -> Result<Array3<T>> {
+  let (curve, n_curves) = crate::euler::flatten_curves(curves, n);
   let (family, params) = spec.encode();
   let arity = super::families::Family::from_code(family).expect("a declared family");
   let use_jumps = u32::from(jump_lambda.is_some());
@@ -786,6 +794,7 @@ fn pipelined_paths<T: FloatExt>(
       m,
       rows,
       &curve64,
+      n_curves,
       lambda64,
       use_jumps,
       jump_law,
@@ -825,6 +834,7 @@ fn pipelined_paths<T: FloatExt>(
     m,
     rows,
     &curve32,
+    n_curves,
     lambda64 as f32,
     use_jumps,
     jump_law,

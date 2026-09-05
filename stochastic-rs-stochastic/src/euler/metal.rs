@@ -33,7 +33,7 @@ struct EulerArgs {
     uint paths;
     uint first_path;
     uint increments;
-    uint has_curve;
+    uint n_curves;
     uint has_jumps;
     uint jump_law;
     uint step_first;
@@ -71,7 +71,7 @@ kernel void euler_paths(
     const uint paths = args.paths;
     const uint first_path = args.first_path;
     const uint increments = args.increments;
-    const uint has_curve = args.has_curve;
+    const uint n_curves = args.n_curves;
     const uint has_jumps = args.has_jumps;
     const float jump_lambda = args.jump_lambda;
     const uint jump_law = args.jump_law;
@@ -111,8 +111,9 @@ struct EulerArgs {
   /// Non-zero when the launch reads its first noise component from the
   /// increment buffer rather than hashing it.
   increments: u32,
-  /// Non-zero when the launch binds a time-varying coefficient.
-  has_curve: u32,
+  /// How many time-varying coefficients the launch binds, laid end to end in
+  /// the curve buffer at `steps` values each.
+  n_curves: u32,
   /// Non-zero when the launch draws a jump count per step.
   has_jumps: u32,
   /// Which size law the jumps carry: none, normal, or double-exponential.
@@ -307,7 +308,7 @@ impl EulerKernel<f32> for Metal {
         Some((buf, streams)) => Increments::Device(buf, *streams),
         None => Increments::Hashed,
       },
-      process.curve().as_deref().unwrap_or(&[]),
+      process.curves(),
       process.jump_intensity(),
       process.jump_sizes(),
       process.step_first(),
@@ -342,7 +343,7 @@ impl EulerKernel<f32> for Metal {
         Some((buf, streams)) => Increments::Device(buf, *streams),
         None => Increments::Hashed,
       },
-      process.curve().as_deref().unwrap_or(&[]),
+      process.curves(),
       process.jump_intensity(),
       process.jump_sizes(),
       process.step_first(),
@@ -402,7 +403,7 @@ fn device_paths(
   m: usize,
   seed: u64,
   increments: Increments<'_>,
-  curve: &[f32],
+  curves: Option<Vec<Vec<f32>>>,
   jump_lambda: Option<f32>,
   sizes: Option<crate::euler::JumpSizes<f32>>,
   step_first: bool,
@@ -417,6 +418,7 @@ fn device_paths(
   let (law, jump_a, jump_b, jump_c) = sizes.map_or((0, 0.0, 0.0, 0.0), |s| s.encode());
   let (gamma_law, g1_shape, g1_scale, g1_per, g2_shape, g2_scale, g2_per) =
     gammas.map_or((0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0), |g| g.encode());
+  let (curve, n_curves) = crate::euler::flatten_curves(curves, n);
   let args = EulerArgs {
     family,
     components: components as u32,
@@ -429,7 +431,7 @@ fn device_paths(
       Increments::Hashed => 0,
       Increments::Device(_, streams) => streams,
     },
-    has_curve: u32::from(!curve.is_empty()),
+    n_curves,
     has_jumps: u32::from(jump_lambda.is_some()),
     jump_law: law,
     step_first: u32::from(step_first),
@@ -448,7 +450,7 @@ fn device_paths(
     g2_per,
     x0,
   };
-  let data = run(ordinal, params, args, increments, curve)?;
+  let data = run(ordinal, params, args, increments, &curve)?;
   Ok(
     Array3::from_shape_vec((components, m, n), data)
       .expect("the kernel returns components * m * n values"),

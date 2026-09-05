@@ -84,7 +84,8 @@ impl PathSampler<f32> for ProbeSampler {
     let mut state = [self.x0, 0.0, 0.0, 0.0];
     let mut out = [0.0f32; 4];
     super::families::host_report(
-      family, &state, &params, curve[0], 0.0, 0.0, 0.7, 1.3, 0.5, 0.5, &mut out,
+      family, &state, &params, curve[0], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.7, 1.3,
+      0.5, 0.5, &mut out,
     );
     slice[0] = out[0];
     if slice.len() == 1 {
@@ -102,6 +103,13 @@ impl PathSampler<f32> for ProbeSampler {
         curve[i + 1],
         0.0,
         0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
         0.7,
         1.3,
         0.5,
@@ -115,6 +123,13 @@ impl PathSampler<f32> for ProbeSampler {
         &state,
         &params,
         curve[i + 1],
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
         0.0,
         0.0,
         0.7,
@@ -717,6 +732,13 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       curve[0],
       0.0,
       0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
       0.7,
       1.3,
       0.5,
@@ -733,7 +755,8 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       noise[..noises].copy_from_slice(&draw);
       let mut next = [0.0f32; 4];
       super::families::host_step(
-        family, &state, &params, self.dt, curve[i], 0.0, 0.0, 0.7, 1.3, 0.5, 0.5, &noise, &mut next,
+        family, &state, &params, self.dt, curve[i], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.7, 1.3, 0.5, 0.5, &noise, &mut next,
       );
       state = next;
       super::families::host_report(
@@ -741,6 +764,13 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         &state,
         &params,
         curve[i],
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
         0.0,
         0.0,
         0.7,
