@@ -12,7 +12,6 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -74,9 +73,66 @@ impl<T: FloatExt, S: SeedExt> ARp<T, S> {
 
 impl<T: FloatExt, S: SeedExt, B> ARp<T, S, B> {}
 
-backend_switch!([T: FloatExt, S: SeedExt] ARp<T, S> { phi, sigma, n, x0, seed } via host);
+/// The Euler engine's view of an autoregression. Higher orders read back more
+/// than one lag, which the engine's four state slots do not bound.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for ARp<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    assert!(
+      self.phi.len() == 1,
+      "ARp reaches a device at order 1 only; this one is order {}",
+      self.phi.len()
+    );
+    crate::euler::EulerSpec::Autoregressive {
+      phi: self.phi[0],
+      sigma: self.sigma,
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for ARp<T, S, B> {
+  fn initial_value(&self) -> T {
+    T::zero()
+  }
+
+  /// A process given an initial value starts from it; one without starts from
+  /// its first draw, which is why the flag below is conditional.
+  fn initial_state(&self) -> [T; 4] {
+    let x0 = self.x0.as_ref().and_then(|v| v.first().copied());
+    [x0.unwrap_or(T::zero()), T::zero(), T::zero(), T::zero()]
+  }
+
+  /// Every grid point is a draw, so the launch steps before writing the
+  /// first.
+  fn step_first(&self) -> bool {
+    self.x0.is_none()
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    T::from_usize_(self.n)
+  }
+
+  fn time_step(&self) -> T {
+    T::one()
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] ARp<T, S> { phi, sigma, n, x0, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for ARp<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = ARpSampler<T>
@@ -90,6 +146,29 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for ARp<T, S, B> {
       x0: self.x0.clone(),
       normal: SimdNormal::<T>::new(T::zero(), self.sigma, &self.seed),
     }
+  }
+
+  /// Through the Euler engine: on a device the draw happens in the kernel, on
+  /// the host devices it is this process's own sampler, chunked exactly as
+  /// `ProcessExt` chunks.
+  fn sample(&self) -> Array1<T> {
+    self.backend.euler_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    self.backend.euler_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    self.backend.euler_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    self.backend.try_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    self.backend.try_euler_paths(self, m)
   }
 }
 

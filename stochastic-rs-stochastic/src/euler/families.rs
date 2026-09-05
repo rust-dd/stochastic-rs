@@ -1693,6 +1693,47 @@ euler_families! {
     }
     report { x, ls2, warm },
 
+  /// One draw per grid point: the innovations themselves, with no recursion
+  /// over them. White noise takes a mean and a standard deviation; Gaussian
+  /// noise is the same family at zero mean and `√dt`.
+  73 => Innovation { mean, sd }
+    state (x)
+    noise (dz)
+    step { mean + sd * (dz / sqrt(dt)) }
+    report { x },
+
+  /// A correlated pair of innovations: the second is drawn independently and
+  /// correlated in the step, which is what every two-factor model here does
+  /// with its own shocks.
+  74 => CorrelatedInnovation { rho }
+    state (a, b)
+    noise (dw, dq)
+    step {
+      dw,
+      rho * dw + sqrt(negate(rho * rho - lit(1.0))) * dq
+    }
+    report { a, b },
+
+  /// `X_t = φX_{t−1} + σz_t`: a first-order autoregression.
+  75 => Autoregressive { phi, sigma }
+    state (x)
+    noise (dz)
+    step { phi * x + sigma * (dz / sqrt(dt)) }
+    report { x },
+
+  /// `X_t = σz_t + θσz_{t−1}`: a first-order moving average. The lagged
+  /// innovation is state of its own, since the step cannot see the previous
+  /// draw any other way.
+  76 => MovingAverage { theta, sigma }
+    state (x, e)
+    noise (dz)
+    step {
+      bind now = sigma * (dz / sqrt(dt));
+      now + theta * e,
+      now
+    }
+    report { x, e },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)

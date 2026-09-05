@@ -484,6 +484,14 @@ pub enum EulerSpec<T: FloatExt> {
     beta: T,
     e_abs_z: T,
   },
+  /// One draw per grid point, with no recursion over them.
+  Innovation { mean: T, sd: T },
+  /// A correlated pair of innovations.
+  CorrelatedInnovation { rho: T },
+  /// A first-order autoregression.
+  Autoregressive { phi: T, sigma: T },
+  /// A first-order moving average.
+  MovingAverage { theta: T, sigma: T },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1015,6 +1023,14 @@ impl<T: FloatExt> EulerSpec<T> {
         Family::ExponentialGarch.code(),
         pad([omega, alpha, gamma, beta, e_abs_z]),
       ),
+      EulerSpec::Innovation { mean, sd } => (Family::Innovation.code(), pad([mean, sd])),
+      EulerSpec::CorrelatedInnovation { rho } => (Family::CorrelatedInnovation.code(), pad([rho])),
+      EulerSpec::Autoregressive { phi, sigma } => {
+        (Family::Autoregressive.code(), pad([phi, sigma]))
+      }
+      EulerSpec::MovingAverage { theta, sigma } => {
+        (Family::MovingAverage.code(), pad([theta, sigma]))
+      }
     }
   }
 }

@@ -259,6 +259,10 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::Garch { .. } => "Garch",
     EulerSpec::ThresholdGarch { .. } => "ThresholdGarch",
     EulerSpec::ExponentialGarch { .. } => "ExponentialGarch",
+    EulerSpec::Innovation { .. } => "Innovation",
+    EulerSpec::CorrelatedInnovation { .. } => "CorrelatedInnovation",
+    EulerSpec::Autoregressive { .. } => "Autoregressive",
+    EulerSpec::MovingAverage { .. } => "MovingAverage",
   }
 }
 
@@ -579,6 +583,20 @@ fn every_family() -> Vec<Probe> {
     ),
     p(EulerSpec::CountingProcess, 0.0),
     p(
+      EulerSpec::Innovation {
+        mean: 0.01,
+        sd: 0.2,
+      },
+      0.0,
+    ),
+    p(
+      EulerSpec::Autoregressive {
+        phi: 0.6,
+        sigma: 0.2,
+      },
+      0.0,
+    ),
+    p(
       EulerSpec::StableSubordinator {
         alpha: 0.7,
         inv_alpha: 1.0 / 0.7,
@@ -872,6 +890,17 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         jump_sigma: 0.05,
       },
       x0: [0.0, 1.0],
+    },
+    SystemProbe {
+      spec: EulerSpec::CorrelatedInnovation { rho: -0.5 },
+      x0: [0.0, 0.0],
+    },
+    SystemProbe {
+      spec: EulerSpec::MovingAverage {
+        theta: 0.4,
+        sigma: 0.2,
+      },
+      x0: [0.0, 0.0],
     },
     SystemProbe {
       spec: EulerSpec::CorrelatedBrownian { rho: -0.5 },

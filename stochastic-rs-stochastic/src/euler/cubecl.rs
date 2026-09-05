@@ -587,6 +587,26 @@ fn step(
       component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
     );
   }
+  if family == 73u32 {
+    stepped = cube::Innovation(
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 74u32 {
+    stepped = cube::CorrelatedInnovation(
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 75u32 {
+    stepped = cube::Autoregressive(
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 76u32 {
+    stepped = cube::MovingAverage(
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
   if family == 16u32 {
     stepped = cube::FellerRoot(
       component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
@@ -875,6 +895,19 @@ fn report(
   }
   if family == 72u32 {
     reported = cube_report::ExponentialGarch(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+  }
+  if family == 73u32 {
+    reported = cube_report::Innovation(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+  }
+  if family == 74u32 {
+    reported =
+      cube_report::CorrelatedInnovation(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+  }
+  if family == 75u32 {
+    reported = cube_report::Autoregressive(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+  }
+  if family == 76u32 {
+    reported = cube_report::MovingAverage(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
   }
   if family == 16u32 {
     reported = cube_report::FellerRoot(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
