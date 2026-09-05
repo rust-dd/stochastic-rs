@@ -66,7 +66,7 @@ impl PathSampler<f32> for ProbeSampler {
     let curve = probe_curve();
     let mut state = [self.x0, 0.0, 0.0, 0.0];
     let mut out = [0.0f32; 4];
-    super::families::host_report(family, &state, &params, curve[0], 0.0, 0.5, &mut out);
+    super::families::host_report(family, &state, &params, curve[0], 0.0, 0.5, 0.5, &mut out);
     slice[0] = out[0];
     if slice.len() == 1 {
       return;
@@ -83,11 +83,21 @@ impl PathSampler<f32> for ProbeSampler {
         curve[i + 1],
         0.0,
         0.5,
+        0.5,
         &[*z, 0.0, 0.0, 0.0],
         &mut next,
       );
       state = next;
-      super::families::host_report(family, &state, &params, curve[i + 1], 0.0, 0.5, &mut out);
+      super::families::host_report(
+        family,
+        &state,
+        &params,
+        curve[i + 1],
+        0.0,
+        0.5,
+        0.5,
+        &mut out,
+      );
       *z = out[0];
     }
   }
@@ -224,6 +234,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::CountingProcess => "CountingProcess",
     EulerSpec::InverseGaussianSubordinator { .. } => "InverseGaussianSubordinator",
     EulerSpec::NormalInverseGaussian { .. } => "NormalInverseGaussian",
+    EulerSpec::StableSubordinator { .. } => "StableSubordinator",
   }
 }
 
@@ -544,6 +555,16 @@ fn every_family() -> Vec<Probe> {
     ),
     p(EulerSpec::CountingProcess, 0.0),
     p(
+      EulerSpec::StableSubordinator {
+        alpha: 0.7,
+        inv_alpha: 1.0 / 0.7,
+        one_minus_alpha: 0.3,
+        tail_exp: 0.3 / 0.7,
+        scale: 0.05,
+      },
+      0.0,
+    ),
+    p(
       EulerSpec::InverseGaussianSubordinator {
         mu_ig: 0.02,
         two_lam: 0.0008,
@@ -600,7 +621,16 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
     let mut state = [0.0f32; 4];
     state[..D].copy_from_slice(&self.x0);
     let mut reported = [0.0f32; 4];
-    super::families::host_report(family, &state, &params, curve[0], 0.0, 0.5, &mut reported);
+    super::families::host_report(
+      family,
+      &state,
+      &params,
+      curve[0],
+      0.0,
+      0.5,
+      0.5,
+      &mut reported,
+    );
     for (c, path) in out.iter_mut().enumerate() {
       path[0] = reported[c];
     }
@@ -611,10 +641,19 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       noise[..noises].copy_from_slice(&draw);
       let mut next = [0.0f32; 4];
       super::families::host_step(
-        family, &state, &params, self.dt, curve[i], 0.0, 0.5, &noise, &mut next,
+        family, &state, &params, self.dt, curve[i], 0.0, 0.5, 0.5, &noise, &mut next,
       );
       state = next;
-      super::families::host_report(family, &state, &params, curve[i], 0.0, 0.5, &mut reported);
+      super::families::host_report(
+        family,
+        &state,
+        &params,
+        curve[i],
+        0.0,
+        0.5,
+        0.5,
+        &mut reported,
+      );
       for (c, path) in out.iter_mut().enumerate() {
         path[i] = reported[c];
       }

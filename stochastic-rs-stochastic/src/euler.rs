@@ -426,6 +426,14 @@ pub enum EulerSpec<T: FloatExt> {
     two_lam: T,
     four_mu_lam: T,
   },
+  /// A positive-stable subordinator by the Chambers-Mallows-Stuck transform.
+  StableSubordinator {
+    alpha: T,
+    inv_alpha: T,
+    one_minus_alpha: T,
+    tail_exp: T,
+    scale: T,
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -884,6 +892,16 @@ impl<T: FloatExt> EulerSpec<T> {
       } => (
         Family::NormalInverseGaussian.code(),
         pad([theta, sigma, mu_ig, two_lam, four_mu_lam]),
+      ),
+      EulerSpec::StableSubordinator {
+        alpha,
+        inv_alpha,
+        one_minus_alpha,
+        tail_exp,
+        scale,
+      } => (
+        Family::StableSubordinator.code(),
+        pad([alpha, inv_alpha, one_minus_alpha, tail_exp, scale]),
       ),
     }
   }

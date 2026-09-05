@@ -71,6 +71,7 @@ fn msl_source() -> String {
     sqrt: "sqrt",
     log: "log",
     cos: "cos",
+    sin: "sin",
     exp: "exp",
     pow: "pow",
     abs: "abs",

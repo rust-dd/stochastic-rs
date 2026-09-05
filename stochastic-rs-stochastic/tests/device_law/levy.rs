@@ -8,6 +8,7 @@
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::jump::ig::Ig;
 use stochastic_rs_stochastic::jump::nig::Nig;
+use stochastic_rs_stochastic::process::subordinator::alpha_stable::AlphaStableSubordinator;
 use stochastic_rs_stochastic::process::subordinator::ig_subordinator::IGSubordinator;
 use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PoissonSubordinator;
 use stochastic_rs_stochastic::traits::ProcessExt;
@@ -95,5 +96,43 @@ fn normal_inverse_gaussian_agrees_with_the_cpu_law() {
   assert!(
     (host - dev).abs() < 0.02,
     "normal inverse Gaussian terminal mean: host {host}, device {dev}"
+  );
+}
+
+/// A positive-stable subordinator is non-decreasing, and its increments are
+/// heavy-tailed enough that the terminal mean is dominated by rare large
+/// jumps. What is compared is therefore the median, which the tail does not
+/// move, alongside the monotonicity the transform guarantees.
+#[test]
+fn stable_subordinator_agrees_with_the_cpu_law() {
+  let build = || {
+    AlphaStableSubordinator::<f32, _>::new(
+      0.7,
+      1.0,
+      N,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(127),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  within(&device, 0.0, f32::INFINITY, "stable subordinator");
+  assert!(
+    device
+      .iter()
+      .all(|p| p.windows(2).into_iter().all(|w| w[1] >= w[0])),
+    "a subordinator path went backwards"
+  );
+  let median = |paths: &[ndarray::Array1<f32>]| {
+    let last = paths[0].len() - 1;
+    let mut v: Vec<f32> = paths.iter().map(|p| p[last]).collect();
+    v.sort_by(f32::total_cmp);
+    v[v.len() / 2] as f64
+  };
+  agrees(
+    median(&build().sample_par(M)),
+    median(&device),
+    0.10,
+    "stable subordinator terminal median",
   );
 }

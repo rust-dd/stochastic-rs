@@ -20,7 +20,8 @@
 //! `const REAL` in the emitted C, which is how a family names a clamped or
 //! guarded state once and then reads like the host sampler it came from.
 //!
-//! A step or report may read `u`, one uniform in `[0, 1)` for the step, `nj`,
+//! A step or report may read `u` and `u2`, two uniforms in `[0, 1)` for the
+//! step, `nj`,
 //! the number of jumps it saw, and `ct`, the step's value of a time-varying
 //! coefficient the host supplies as one value per grid point. A family that
 //! never names it costs nothing for it.
@@ -40,7 +41,8 @@
 //! the path records and is evaluated at `t = 0` as well, where no noise exists.
 //!
 //! The function vocabulary is `sqrt`, `exp`, `ln`, `pow`, `abs`, `negate`,
-//! `tanh`, `recip`, `positive`, `max`, `min`, the literal `lit`, the comparisons
+//! `tanh`, `sin`, `recip`, `positive`, `max`, `min`, the literal `lit`, the
+//! comparisons
 //! `less`, `leq` and `geq`, and the branch-free `pick`. Each has a host
 //! implementation in [`ops`] and a C definition in [`C_PRELUDE`]; anything
 //! outside it fails to compile on the host, which is the intended way to find
@@ -100,6 +102,12 @@ pub(crate) mod ops {
   #[inline(always)]
   pub(crate) fn tanh<T: FloatExt>(v: T) -> T {
     v.tanh()
+  }
+
+  /// `sin v`
+  #[inline(always)]
+  pub(crate) fn sin<T: FloatExt>(v: T) -> T {
+    v.sin()
   }
 
   /// `1/v`. A literal may not sit on the left of an operator, so a family
@@ -174,6 +182,7 @@ pub(crate) const C_PRELUDE: &str = r#"#define sqrt(v) STOCH_SQRT(v)
 #define negate(v) (-(v))
 #define tanh(v) STOCH_TANH(v)
 #define recip(v) ((REAL)1 / (v))
+#define sin(v) STOCH_SIN(v)
 #define positive(v) ((v) > (REAL)0 ? (v) : (REAL)0)
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define min(a, b) ((a) < (b) ? (a) : (b))
@@ -242,6 +251,12 @@ pub(crate) mod cube_ops {
     1.0f32 / v
   }
 
+  /// `sin v`
+  #[cube]
+  pub(crate) fn sin(v: f32) -> f32 {
+    Sin::sin(v)
+  }
+
   /// The positive part, the truncation a square-root diffusion steps on.
   #[cube]
   pub(crate) fn positive(v: f32) -> f32 {
@@ -290,7 +305,7 @@ pub(crate) mod cube_ops {
 /// what a stochastic-volatility or two-factor model needs.
 macro_rules! euler_families {
   (
-    step_inputs($params:ident, $dt:ident, $ct:ident, $nj:ident, $u:ident, state $sxs:tt, noise $sds:tt, select($component:ident, $produced:ident));
+    step_inputs($params:ident, $dt:ident, $ct:ident, $nj:ident, $u:ident, $u2:ident, state $sxs:tt, noise $sds:tt, select($component:ident, $produced:ident));
     $(
     $(#[$meta:meta])*
     $code:literal => $name:ident { $($param:ident),* $(,)? }
@@ -360,6 +375,7 @@ macro_rules! euler_families {
       $ct: T,
       $nj: T,
       $u: T,
+      $u2: T,
       noise: &[T],
       out: &mut [T],
     ) {
@@ -400,6 +416,7 @@ macro_rules! euler_families {
       $ct: T,
       $nj: T,
       $u: T,
+      $u2: T,
       out: &mut [T],
     ) {
       #[allow(unused_imports)]
@@ -439,7 +456,7 @@ macro_rules! euler_families {
 
       $(
         euler_families!(@cube_step
-          $(#[$meta])* $name, $params, $dt, $ct, $nj, $u, $component, $produced,
+          $(#[$meta])* $name, $params, $dt, $ct, $nj, $u, $u2, $component, $produced,
           sig $sxs $sds,
           place $sxs [$($state)*] $sds [$($noise)*],
           params [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19] [$($param)*],
@@ -459,7 +476,7 @@ macro_rules! euler_families {
 
       $(
         euler_families!(@cube_report
-          $(#[$meta])* $name, $params, $ct, $nj, $u, $component, $produced,
+          $(#[$meta])* $name, $params, $ct, $nj, $u, $u2, $component, $produced,
           sig $sxs,
           place $sxs [$($state)*],
           params [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19] [$($param)*],
@@ -503,14 +520,14 @@ macro_rules! euler_families {
   }};
 
   (@cube_step
-    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $nj:ident, $u:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $nj:ident, $u:ident, $u2:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*) ($($sigd:ident),*),
     place ($slot:ident $(, $restx:ident)*) [$head:ident $($restname:ident)*] ($($pd:ident),*) [$($nd:ident)*],
     params [$($idx:literal)*] [$($p:ident)*],
     bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$($at:literal)*], body {$($body:tt)*}
   ) => {
     euler_families!(@cube_step
-      $(#[$meta])* $name, $params, $dt, $ct, $nj, $u, $component, $produced,
+      $(#[$meta])* $name, $params, $dt, $ct, $nj, $u, $u2, $component, $produced,
       sig ($($sigx),*) ($($sigd),*),
       place ($($restx),*) [$($restname)*] ($($pd),*) [$($nd)*],
       params [$($idx)*] [$($p)*],
@@ -519,14 +536,14 @@ macro_rules! euler_families {
   };
 
   (@cube_step
-    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $nj:ident, $u:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $nj:ident, $u:ident, $u2:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*) ($($sigd:ident),*),
     place ($($px:ident),*) [] ($slot:ident $(, $restd:ident)*) [$head:ident $($restname:ident)*],
     params [$($idx:literal)*] [$($p:ident)*],
     bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$($at:literal)*], body {$($body:tt)*}
   ) => {
     euler_families!(@cube_step
-      $(#[$meta])* $name, $params, $dt, $ct, $nj, $u, $component, $produced,
+      $(#[$meta])* $name, $params, $dt, $ct, $nj, $u, $u2, $component, $produced,
       sig ($($sigx),*) ($($sigd),*),
       place ($($px),*) [] ($($restd),*) [$($restname)*],
       params [$($idx)*] [$($p)*],
@@ -535,14 +552,14 @@ macro_rules! euler_families {
   };
 
   (@cube_step
-    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $nj:ident, $u:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $nj:ident, $u:ident, $u2:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*) ($($sigd:ident),*),
     place ($($px:ident),*) [] ($($pd:ident),*) [],
     params [$i:literal $($restidx:literal)*] [$head:ident $($restname:ident)*],
     bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$($at:literal)*], body {$($body:tt)*}
   ) => {
     euler_families!(@cube_step
-      $(#[$meta])* $name, $params, $dt, $ct, $nj, $u, $component, $produced,
+      $(#[$meta])* $name, $params, $dt, $ct, $nj, $u, $u2, $component, $produced,
       sig ($($sigx),*) ($($sigd),*),
       place ($($px),*) [] ($($pd),*) [],
       params [$($restidx)*] [$($restname)*],
@@ -551,7 +568,7 @@ macro_rules! euler_families {
   };
 
   (@cube_step
-    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $nj:ident, $u:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $nj:ident, $u:ident, $u2:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*) ($($sigd:ident),*),
     place ($($px:ident),*) [] ($($pd:ident),*) [],
     params [$($idx:literal)*] [],
@@ -559,7 +576,7 @@ macro_rules! euler_families {
     body {bind $n:ident = $e:expr; $($body:tt)*}
   ) => {
     euler_families!(@cube_step
-      $(#[$meta])* $name, $params, $dt, $ct, $nj, $u, $component, $produced,
+      $(#[$meta])* $name, $params, $dt, $ct, $nj, $u, $u2, $component, $produced,
       sig ($($sigx),*) ($($sigd),*),
       place ($($px),*) [] ($($pd),*) [],
       params [$($idx)*] [],
@@ -568,7 +585,7 @@ macro_rules! euler_families {
   };
 
   (@cube_step
-    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $nj:ident, $u:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $nj:ident, $u:ident, $u2:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*) ($($sigd:ident),*),
     place ($($px:ident),*) [] ($($pd:ident),*) [],
     params [$($idx:literal)*] [],
@@ -576,7 +593,7 @@ macro_rules! euler_families {
     body {$e:expr $(, $rest:expr)+ $(,)?}
   ) => {
     euler_families!(@cube_step
-      $(#[$meta])* $name, $params, $dt, $ct, $nj, $u, $component, $produced,
+      $(#[$meta])* $name, $params, $dt, $ct, $nj, $u, $u2, $component, $produced,
       sig ($($sigx),*) ($($sigd),*),
       place ($($px),*) [] ($($pd),*) [],
       params [$($idx)*] [],
@@ -587,7 +604,7 @@ macro_rules! euler_families {
   };
 
   (@cube_step
-    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $nj:ident, $u:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $nj:ident, $u:ident, $u2:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*) ($($sigd:ident),*),
     place ($($px:ident),*) [] ($($pd:ident),*) [],
     params [$($idx:literal)*] [],
@@ -605,6 +622,7 @@ macro_rules! euler_families {
       $ct: f32,
       $nj: f32,
       $u: f32,
+      $u2: f32,
       $($sigd: f32,)*
     ) -> f32 {
       $($bound)*
@@ -618,14 +636,14 @@ macro_rules! euler_families {
   };
 
   (@cube_report
-    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $nj:ident, $u:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $nj:ident, $u:ident, $u2:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*),
     place ($slot:ident $(, $restx:ident)*) [$head:ident $($restname:ident)*],
     params [$($idx:literal)*] [$($p:ident)*],
     bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$($at:literal)*], body {$($body:tt)*}
   ) => {
     euler_families!(@cube_report
-      $(#[$meta])* $name, $params, $ct, $nj, $u, $component, $produced,
+      $(#[$meta])* $name, $params, $ct, $nj, $u, $u2, $component, $produced,
       sig ($($sigx),*),
       place ($($restx),*) [$($restname)*],
       params [$($idx)*] [$($p)*],
@@ -634,14 +652,14 @@ macro_rules! euler_families {
   };
 
   (@cube_report
-    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $nj:ident, $u:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $nj:ident, $u:ident, $u2:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*),
     place ($($px:ident),*) [],
     params [$i:literal $($restidx:literal)*] [$head:ident $($restname:ident)*],
     bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$($at:literal)*], body {$($body:tt)*}
   ) => {
     euler_families!(@cube_report
-      $(#[$meta])* $name, $params, $ct, $nj, $u, $component, $produced,
+      $(#[$meta])* $name, $params, $ct, $nj, $u, $u2, $component, $produced,
       sig ($($sigx),*),
       place ($($px),*) [],
       params [$($restidx)*] [$($restname)*],
@@ -650,7 +668,7 @@ macro_rules! euler_families {
   };
 
   (@cube_report
-    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $nj:ident, $u:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $nj:ident, $u:ident, $u2:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*),
     place ($($px:ident),*) [],
     params [$($idx:literal)*] [],
@@ -658,7 +676,7 @@ macro_rules! euler_families {
     body {bind $n:ident = $e:expr; $($body:tt)*}
   ) => {
     euler_families!(@cube_report
-      $(#[$meta])* $name, $params, $ct, $nj, $u, $component, $produced,
+      $(#[$meta])* $name, $params, $ct, $nj, $u, $u2, $component, $produced,
       sig ($($sigx),*),
       place ($($px),*) [],
       params [$($idx)*] [],
@@ -667,7 +685,7 @@ macro_rules! euler_families {
   };
 
   (@cube_report
-    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $nj:ident, $u:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $nj:ident, $u:ident, $u2:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*),
     place ($($px:ident),*) [],
     params [$($idx:literal)*] [],
@@ -675,7 +693,7 @@ macro_rules! euler_families {
     body {$e:expr $(, $rest:expr)+ $(,)?}
   ) => {
     euler_families!(@cube_report
-      $(#[$meta])* $name, $params, $ct, $nj, $u, $component, $produced,
+      $(#[$meta])* $name, $params, $ct, $nj, $u, $u2, $component, $produced,
       sig ($($sigx),*),
       place ($($px),*) [],
       params [$($idx)*] [],
@@ -686,7 +704,7 @@ macro_rules! euler_families {
   };
 
   (@cube_report
-    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $nj:ident, $u:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $nj:ident, $u:ident, $u2:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*),
     place ($($px:ident),*) [],
     params [$($idx:literal)*] [],
@@ -703,6 +721,7 @@ macro_rules! euler_families {
       $ct: f32,
       $nj: f32,
       $u: f32,
+      $u2: f32,
     ) -> f32 {
       $($bound)*
       let mut $produced = 0.0f32;
@@ -767,7 +786,7 @@ macro_rules! euler_families {
 
 euler_families! {
   step_inputs(
-    params, dt, ct, nj, u,
+    params, dt, ct, nj, u, u2,
     state(slot_a, slot_b, slot_c, slot_d),
     noise(shock_a, shock_b, shock_c, shock_d),
     select(component, produced)
@@ -1536,6 +1555,27 @@ euler_families! {
       bind xr = mu_ig + mu_ig * mu_ig * w / two_lam - mu_ig / two_lam * rad;
       bind ig = pick(less(u, mu_ig / (mu_ig + xr)), xr, mu_ig * mu_ig / xr);
       x + theta * ig + sigma * sqrt(ig) * (dq / sqrt(dt))
+    }
+    report { x },
+
+  /// A positive-stable subordinator by the Chambers-Mallows-Stuck transform:
+  /// one uniform on `(0, π)` and one exponential, both from the step's own
+  /// uniforms, with no rejection. The two exponents depend on `α` alone and
+  /// are folded on the host, as is the scale `(c·dt)^{1/α}`.
+  ///
+  /// The uniforms are clamped into the open interval at a bound `f32` can
+  /// hold below one: at exactly one the angle is `π`, whose sine is a small
+  /// *negative* in single precision, and raising that to a fractional power
+  /// is a NaN. The sines are floored for the same reason the clamp exists.
+  65 => StableSubordinator { alpha, inv_alpha, one_minus_alpha, tail_exp, scale }
+    state (x)
+    noise (dz)
+    step {
+      bind uu = min(max(u, lit(1e-7)), lit(0.9999999)) * lit(3.141592653589793);
+      bind w = negate(ln(min(max(u2, lit(1e-7)), lit(0.9999999))));
+      bind s1 = sin(alpha * uu) / pow(max(sin(uu), lit(1e-20)), inv_alpha);
+      bind s2 = pow(max(sin(one_minus_alpha * uu), lit(1e-20)) / w, tail_exp);
+      x + scale * s1 * s2
     }
     report { x },
 

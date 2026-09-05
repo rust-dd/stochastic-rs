@@ -24,10 +24,11 @@
 //! one-component family fills the buffer exactly as it always did and a
 //! system's components come back as separate contiguous paths.
 //!
-//! A family may read `u`, one uniform in `[0, 1)` for the step, from a hash
-//! stream no noise component and no jump count uses. It is what a scheme with
+//! A family may read `u` and `u2`, two independent uniforms in `[0, 1)` for
+//! the step, from hash streams no noise component and no jump count uses. It is what a scheme with
 //! a branch of its own needs — the quadratic-exponential variance step draws
-//! it — and a family that never names it pays one integer hash for it.
+//! it, and the Chambers-Mallows-Stuck stable draw takes both — and a family
+//! that never names them pays two integer hashes for them.
 //!
 //! A family may read `nj`, the number of jumps the step saw: a Poisson draw
 //! with mean `jump_lambda · dt`, by Knuth's product of uniforms from a hash
@@ -46,7 +47,8 @@
 /// values and the noise are four-slot arrays whatever the family's own
 /// arity, so one kernel serves every family. `STEP` and `REPORT` are the
 /// blocks [`super::families`] generates from the family declarations, and
-/// `REAL`, `STOCH_SQRT`, `STOCH_LOG`, `STOCH_COS`, `STOCH_TANH` and the
+/// `REAL`, `STOCH_SQRT`, `STOCH_LOG`, `STOCH_COS`, `STOCH_SIN`, `STOCH_TANH`
+/// and the
 /// 64-bit buffer index type `INDEX` are the precision placeholders.
 pub(crate) const FRAME: &str = r#"    if (path >= paths) return;
     INDEX base = (INDEX)path * steps;
@@ -58,6 +60,7 @@ pub(crate) const FRAME: &str = r#"    if (path >= paths) return;
     if (has_curve != 0u) { ct = curve[0]; }
     REAL nj = (REAL)0;
     REAL u = (REAL)0;
+    REAL u2 = (REAL)0;
     for (unsigned int c = 0u; c < 4u; c++) { state[c] = x0[c]; reported[c] = x0[c]; }
     for (unsigned int c = 0u; c < 4u; c++) { noise[c] = (REAL)0; }
 REPORT
@@ -85,6 +88,9 @@ REPORT
         unsigned int hu = (g ^ 2135587861u) ^ (seed * 2654435761u);
         hu ^= hu >> 16; hu *= 2246822519u; hu ^= hu >> 13; hu *= 3266489917u; hu ^= hu >> 16;
         u = (REAL)hu * (REAL)2.3283064e-10;
+        unsigned int hv = (g ^ 3266489917u) ^ (seed * 2654435761u);
+        hv ^= hv >> 16; hv *= 2246822519u; hv ^= hv >> 13; hv *= 3266489917u; hv ^= hv >> 16;
+        u2 = (REAL)hv * (REAL)2.3283064e-10;
         if (has_jumps != 0u) {
             REAL ell = STOCH_EXP(-jump_lambda * dt);
             REAL prod = (REAL)1;
@@ -114,6 +120,7 @@ pub(crate) struct Language<'a> {
   pub sqrt: &'a str,
   pub log: &'a str,
   pub cos: &'a str,
+  pub sin: &'a str,
   pub exp: &'a str,
   pub pow: &'a str,
   pub abs: &'a str,
@@ -143,6 +150,7 @@ fn substitute(text: &str, lang: &Language<'_>) -> String {
     .replace("STOCH_SQRT", lang.sqrt)
     .replace("STOCH_LOG", lang.log)
     .replace("STOCH_COS", lang.cos)
+    .replace("STOCH_SIN", lang.sin)
     .replace("STOCH_EXP", lang.exp)
     .replace("STOCH_POW", lang.pow)
     .replace("STOCH_ABS", lang.abs)
