@@ -13,6 +13,7 @@ use stochastic_rs_stochastic::process::cbms::Cbms;
 use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
 use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
 use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
+use stochastic_rs_stochastic::volatility::heston2d::Heston2D;
 use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
 use stochastic_rs_stochastic::volatility::heston::Heston;
 use stochastic_rs_stochastic::volatility::sabr::Sabr;
@@ -444,6 +445,49 @@ fn duffie_kan_agrees_with_the_cpu_law() {
       terminal_mean(&device, c),
       0.08,
       &format!("Duffie-Kan terminal {what}"),
+    );
+  }
+}
+
+/// Two Heston assets under one Cholesky factor: four components in one
+/// launch. Both variances stay non-negative and every component's terminal
+/// mean must agree.
+#[test]
+fn two_asset_heston_agrees_with_the_cpu_law() {
+  let build = || {
+    Heston2D::<f32, _>::new(
+      [Some(4.6), Some(4.6)],
+      [Some(0.04), Some(0.03)],
+      [0.0, 0.0],
+      [0.04, 0.03],
+      [2.0, 1.5],
+      [0.3, 0.25],
+      [-0.6, 0.2, 0.1, -0.2, 0.3, 0.15],
+      253,
+      Some(1.0),
+      Some(false),
+      Deterministic::new(83),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  assert!(
+    device
+      .iter()
+      .all(|p| p[1].iter().chain(p[3].iter()).all(|&v| v >= 0.0)),
+    "a truncated variance went negative"
+  );
+  let host = build().sample_par(M);
+  for (c, tol, what) in [
+    (0usize, 0.02, "first log-price"),
+    (1, 0.08, "first variance"),
+    (2, 0.02, "second log-price"),
+    (3, 0.08, "second variance"),
+  ] {
+    agrees(
+      terminal_mean_of(&host, c),
+      terminal_mean_of(&device, c),
+      tol,
+      &format!("two-asset Heston terminal {what}"),
     );
   }
 }

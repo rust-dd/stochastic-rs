@@ -313,6 +313,12 @@ fn step(
   if family == 55u32 {
     stepped = cube::DuffieKan(component, x0, x1, x2, x3, params, dt, ct, dz0, dz1, dz2, dz3);
   }
+  if family == 56u32 {
+    stepped = cube::TwoAssetHeston(component, x0, x1, x2, x3, params, dt, ct, dz0, dz1, dz2, dz3);
+  }
+  if family == 57u32 {
+    stepped = cube::TwoAssetHestonReflected(component, x0, x1, x2, x3, params, dt, ct, dz0, dz1, dz2, dz3);
+  }
   if family == 16u32 {
     stepped = cube::FellerRoot(component, x0, x1, x2, x3, params, dt, ct, dz0, dz1, dz2, dz3);
   }
@@ -496,6 +502,12 @@ fn report(
   }
   if family == 55u32 {
     reported = cube_report::DuffieKan(component, x0, x1, x2, x3, params, ct);
+  }
+  if family == 56u32 {
+    reported = cube_report::TwoAssetHeston(component, x0, x1, x2, x3, params, ct);
+  }
+  if family == 57u32 {
+    reported = cube_report::TwoAssetHestonReflected(component, x0, x1, x2, x3, params, ct);
   }
   if family == 16u32 {
     reported = cube_report::FellerRoot(component, x0, x1, x2, x3, params, ct);

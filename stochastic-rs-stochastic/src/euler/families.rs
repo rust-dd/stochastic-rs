@@ -24,6 +24,12 @@
 //! coefficient the host supplies as one value per grid point. A family that
 //! never names it costs nothing for it.
 //!
+//! The CubeCL functions take the four state and four noise slots as
+//! parameters and bind the family's own names from them, so those parameters
+//! are named `slot_a`..`slot_d` and `shock_a`..`shock_d`: a family whose
+//! state were called `x1` would otherwise shadow the slot it was being read
+//! from, and every later binding would read the shadowed value.
+//!
 //! The names a step may use are fixed: `x` for the state, `dt` for the step
 //! size, `dz` for the step's noise **increment** — `sqrt_dt · z` for Gaussian
 //! noise, the fractional increment itself for fGN, which is what lets one
@@ -417,7 +423,7 @@ macro_rules! euler_families {
           $(#[$meta])* $name, $params, $dt, $ct, $component, $produced,
           sig $sxs $sds,
           place $sxs [$($state)*] $sds [$($noise)*],
-          params [0 1 2 3 4 5 6 7 8 9 10 11] [$($param)*],
+          params [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19] [$($param)*],
           bound {}, arms {}, at [0u32 1u32 2u32 3u32], body {$($step)*}
         );
       )*
@@ -437,7 +443,7 @@ macro_rules! euler_families {
           $(#[$meta])* $name, $params, $ct, $component, $produced,
           sig $sxs,
           place $sxs [$($state)*],
-          params [0 1 2 3 4 5 6 7 8 9 10 11] [$($param)*],
+          params [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19] [$($param)*],
           bound {}, arms {}, at [0u32 1u32 2u32 3u32], body {$($report)*}
         );
       )*
@@ -446,7 +452,7 @@ macro_rules! euler_families {
     /// The C statements that step the state, one guarded block per family.
     pub(crate) const C_STEP: &str = concat!($(
       "        if (family == ", stringify!($code), "u) {\n",
-      euler_families!(@bind_params [0 1 2 3 4 5 6 7 8 9 10 11] $($param)*),
+      euler_families!(@bind_params [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19] $($param)*),
       euler_families!(@bind_slots "state" [0 1 2 3] $($state)*),
       euler_families!(@bind_slots "noise" [0 1 2 3] $($noise)*),
       euler_families!(@c_body "state", [0 1 2 3], [$($state)*], $($step)*),
@@ -456,7 +462,7 @@ macro_rules! euler_families {
     /// The C statements that set the reported values, one block per family.
     pub(crate) const C_REPORT: &str = concat!($(
       "        if (family == ", stringify!($code), "u) {\n",
-      euler_families!(@bind_params [0 1 2 3 4 5 6 7 8 9 10 11] $($param)*),
+      euler_families!(@bind_params [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19] $($param)*),
       euler_families!(@bind_slots "state" [0 1 2 3] $($state)*),
       euler_families!(@c_body "reported", [0 1 2 3], [$($state)*], $($report)*),
       "        }\n",
@@ -737,7 +743,12 @@ macro_rules! euler_families {
 }
 
 euler_families! {
-  step_inputs(params, dt, ct, state(x0, x1, x2, x3), noise(dz0, dz1, dz2, dz3), select(component, produced));
+  step_inputs(
+    params, dt, ct,
+    state(slot_a, slot_b, slot_c, slot_d),
+    noise(shock_a, shock_b, shock_c, shock_d),
+    select(component, produced)
+  );
 
   /// `dX = μX dt + σX dW`.
   0 => GeometricBrownian { mu, sigma }
@@ -1345,6 +1356,51 @@ euler_families! {
       x + (a2 * r + b2 * x + c2) * dt + sigma2 * vol * dx
     }
     report { r, x },
+
+  /// Two Heston assets under one 4×4 Cholesky factor: both log-prices and
+  /// both variances step together, so every cross-correlation the factor
+  /// encodes is present in one launch. The variances are truncated at zero.
+  56 => TwoAssetHeston {
+    mu1, mu2, kappa1, theta1, sigma1, kappa2, theta2, sigma2,
+    l11, l21, l22, l31, l32, l33, l41, l42, l43, l44
+  }
+    state (x1, v1, x2, v2)
+    noise (e1, e2, e3, e4)
+    step {
+      bind dz1 = l11 * e1;
+      bind dz2 = l21 * e1 + l22 * e2;
+      bind dw1 = l31 * e1 + l32 * e2 + l33 * e3;
+      bind dw2 = l41 * e1 + l42 * e2 + l43 * e3 + l44 * e4;
+      bind p1 = positive(v1);
+      bind p2 = positive(v2);
+      x1 + (mu1 - p1 / lit(2.0)) * dt + sqrt(p1) * dw1,
+      positive(v1 + kappa1 * (theta1 - p1) * dt + sigma1 * sqrt(p1) * dz1),
+      x2 + (mu2 - p2 / lit(2.0)) * dt + sqrt(p2) * dw2,
+      positive(v2 + kappa2 * (theta2 - p2) * dt + sigma2 * sqrt(p2) * dz2)
+    }
+    report { x1, v1, x2, v2 },
+
+  /// [`TwoAssetHeston`](Family::TwoAssetHeston) with both variances
+  /// reflected at zero.
+  57 => TwoAssetHestonReflected {
+    mu1, mu2, kappa1, theta1, sigma1, kappa2, theta2, sigma2,
+    l11, l21, l22, l31, l32, l33, l41, l42, l43, l44
+  }
+    state (x1, v1, x2, v2)
+    noise (e1, e2, e3, e4)
+    step {
+      bind dz1 = l11 * e1;
+      bind dz2 = l21 * e1 + l22 * e2;
+      bind dw1 = l31 * e1 + l32 * e2 + l33 * e3;
+      bind dw2 = l41 * e1 + l42 * e2 + l43 * e3 + l44 * e4;
+      bind p1 = positive(v1);
+      bind p2 = positive(v2);
+      x1 + (mu1 - p1 / lit(2.0)) * dt + sqrt(p1) * dw1,
+      abs(v1 + kappa1 * (theta1 - p1) * dt + sigma1 * sqrt(p1) * dz1),
+      x2 + (mu2 - p2 / lit(2.0)) * dt + sqrt(p2) * dw2,
+      abs(v2 + kappa2 * (theta2 - p2) * dt + sigma2 * sqrt(p2) * dz2)
+    }
+    report { x1, v1, x2, v2 },
 
   2 => SquareRoot { kappa, theta, sigma }
     state (x)

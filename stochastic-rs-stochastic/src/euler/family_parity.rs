@@ -203,6 +203,8 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::TwoFactorHullWhite { .. } => "TwoFactorHullWhite",
     EulerSpec::TwoFactorSquareRoot { .. } => "TwoFactorSquareRoot",
     EulerSpec::DuffieKan { .. } => "DuffieKan",
+    EulerSpec::TwoAssetHeston { .. } => "TwoAssetHeston",
+    EulerSpec::TwoAssetHestonReflected { .. } => "TwoAssetHestonReflected",
   }
 }
 
@@ -583,16 +585,43 @@ fn every_three_component_family() -> Vec<SystemProbe<3>> {
 /// the running sum of its own increments, so that sum and the elapsed time
 /// travel as two further components; the probe compares all four.
 fn every_four_component_family() -> Vec<SystemProbe<4>> {
-  vec![SystemProbe {
-    spec: EulerSpec::Bergomi {
-      r: 0.02,
-      nu: 0.5,
-      half_nu_sq: 0.125,
-      v0_sq: 0.04,
-      rho: -0.6,
+  let two_asset = |sym| {
+    let (mu1, mu2) = (0.03, 0.02);
+    let (kappa1, theta1, sigma1) = (2.0, 0.04, 0.3);
+    let (kappa2, theta2, sigma2) = (1.5, 0.03, 0.25);
+    let (l11, l21, l22) = (1.0, -0.6, 0.8);
+    let (l31, l32, l33) = (0.2, 0.1, 0.97);
+    let (l41, l42, l43, l44) = (0.1, -0.2, 0.3, 0.92);
+    let spec = if sym {
+      EulerSpec::TwoAssetHestonReflected {
+        mu1, mu2, kappa1, theta1, sigma1, kappa2, theta2, sigma2,
+        l11, l21, l22, l31, l32, l33, l41, l42, l43, l44,
+      }
+    } else {
+      EulerSpec::TwoAssetHeston {
+        mu1, mu2, kappa1, theta1, sigma1, kappa2, theta2, sigma2,
+        l11, l21, l22, l31, l32, l33, l41, l42, l43, l44,
+      }
+    };
+    SystemProbe {
+      spec,
+      x0: [4.6, 0.04, 4.6, 0.03],
+    }
+  };
+  vec![
+    two_asset(false),
+    two_asset(true),
+    SystemProbe {
+      spec: EulerSpec::Bergomi {
+        r: 0.02,
+        nu: 0.5,
+        half_nu_sq: 0.125,
+        v0_sq: 0.04,
+        rho: -0.6,
+      },
+      x0: [100.0, 0.04, 0.0, 0.0],
     },
-    x0: [100.0, 0.04, 0.0, 0.0],
-  }]
+  ]
 }
 
 /// Every declared family has a probe of the right arity, so the parity tests

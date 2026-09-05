@@ -59,7 +59,7 @@ use crate::traits::process::sample_par_chunked;
 /// How many scalar parameters one family may carry. The layout is the
 /// kernels' ABI and stays inside the crate, so it can widen again without a
 /// breaking change.
-pub(crate) const PARAM_SLOTS: usize = 12;
+pub(crate) const PARAM_SLOTS: usize = 20;
 
 /// Scalar drift / diffusion families the device kernels know how to step.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -376,6 +376,48 @@ pub enum EulerSpec<T: FloatExt> {
     gamma: T,
     rho: T,
   },
+  /// Two Heston assets under one 4x4 Cholesky factor, variances truncated.
+  TwoAssetHeston {
+    mu1: T,
+    mu2: T,
+    kappa1: T,
+    theta1: T,
+    sigma1: T,
+    kappa2: T,
+    theta2: T,
+    sigma2: T,
+    l11: T,
+    l21: T,
+    l22: T,
+    l31: T,
+    l32: T,
+    l33: T,
+    l41: T,
+    l42: T,
+    l43: T,
+    l44: T,
+  },
+  /// [`TwoAssetHeston`](EulerSpec::TwoAssetHeston) with both variances reflected.
+  TwoAssetHestonReflected {
+    mu1: T,
+    mu2: T,
+    kappa1: T,
+    theta1: T,
+    sigma1: T,
+    kappa2: T,
+    theta2: T,
+    sigma2: T,
+    l11: T,
+    l21: T,
+    l22: T,
+    l31: T,
+    l32: T,
+    l33: T,
+    l41: T,
+    l42: T,
+    l43: T,
+    l44: T,
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -680,7 +722,53 @@ impl<T: FloatExt> EulerSpec<T> {
         rho,
       } => (
         Family::DuffieKan.code(),
-        [a1, b1, c1, sigma1, a2, b2, c2, sigma2, alpha, beta, gamma, rho],
+        pad([a1, b1, c1, sigma1, a2, b2, c2, sigma2, alpha, beta, gamma, rho]),
+      ),
+      EulerSpec::TwoAssetHeston {
+        mu1,
+        mu2,
+        kappa1,
+        theta1,
+        sigma1,
+        kappa2,
+        theta2,
+        sigma2,
+        l11,
+        l21,
+        l22,
+        l31,
+        l32,
+        l33,
+        l41,
+        l42,
+        l43,
+        l44,
+      } => (
+        Family::TwoAssetHeston.code(),
+        pad([mu1, mu2, kappa1, theta1, sigma1, kappa2, theta2, sigma2, l11, l21, l22, l31, l32, l33, l41, l42, l43, l44]),
+      ),
+      EulerSpec::TwoAssetHestonReflected {
+        mu1,
+        mu2,
+        kappa1,
+        theta1,
+        sigma1,
+        kappa2,
+        theta2,
+        sigma2,
+        l11,
+        l21,
+        l22,
+        l31,
+        l32,
+        l33,
+        l41,
+        l42,
+        l43,
+        l44,
+      } => (
+        Family::TwoAssetHestonReflected.code(),
+        pad([mu1, mu2, kappa1, theta1, sigma1, kappa2, theta2, sigma2, l11, l21, l22, l31, l32, l33, l41, l42, l43, l44]),
       ),
     }
   }

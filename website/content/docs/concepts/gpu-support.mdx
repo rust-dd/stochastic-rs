@@ -13,9 +13,55 @@ backends, and what the rest do.
 | Family | Processes | Capability bound | `Cpu` | `Accelerate` | `Metal` | `Cuda` | `Cubecl` |
 |---|---|---|---|---|---|---|---|
 | fGN noise | `Fgn`, `Cfgns` (2) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` | CubeCL FFT, `f32` only |
-| Euler engine, Gaussian | `Gbm`, `Ou`, `Cir` (3) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
-| Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi` (5) | `FgnBackend<T>` + `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same MSL kernel | fGN pipeline feeds the same NVRTC kernel | fGN pipeline feeds the same CubeCL kernel |
-| Host only | the remaining 121 processes | `HostBackend` | own SIMD sampler | same as `Cpu` | compile error | compile error | compile error |
+| Euler engine, one component | 42 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
+| Euler engine, systems | 11 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
+| Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `FVasicek` (6, counted above) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same MSL kernel | fGN pipeline feeds the same NVRTC kernel | fGN pipeline feeds the same CubeCL kernel |
+| Host only | the remaining 66 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
+
+The 53 processes on the engine cover the diffusions, the stochastic-volatility
+models under their Euler schemes (`Heston`, `HestonLog`, `DoubleHeston`,
+`Sabr`, `Bergomi`, `HestonStochCorr`), the short-rate models including the
+curve-driven ones (`HullWhite`, `HullWhite2F`, `HoLee`, `BlackKarasinski`,
+`CirPlusPlus`, `Cir2F`, `DuffieKan`, `Vasicek`, `FVasicek`), and the
+fractional processes.
+
+What stays on the host, and why:
+
+- **Jumps and Lévy processes** (`MjdLog`, `BatesSvj`, `Hkde`, `Bns`, the
+  `jump/` family, the subordinators, `Hawkes`, `Poisson`): the step needs a
+  jump count and a jump size, which is a second sampler rather than a second
+  term. The tempered-stable ones (`Cgmy`, `Cts`, `KoBoL`, `Rdts`, `Svcgmy`)
+  draw a whole series per step.
+- **Lag models** (`ARp`, `MAq`, `Arima`, `Sarima`, the GARCH family): the
+  conditional variance reads back as many past values as the model's order,
+  which the engine's four state slots do not bound.
+- **Rough and Volterra kernels** (`rough/`, `Volterra`, `RoughBergomi`,
+  `RoughHeston`, `Lfsm`, `Fbs`): the step is a convolution over the whole
+  path, not a recursion over one state.
+- **Dynamic dimension** (`MultiGbm`, `Wishart`, `Lmm`, `Hjm`, `Bgm`,
+  `Cheyette`, `MultifactorHeston`, `MultifactorSabr`, `Mcgns`): the number of
+  components is a runtime value.
+- **Closure-driven or discrete-state** (`TransformedOU`,
+  `RegimeSwitchingDiffusion`): the coefficient is a user function or a Markov
+  chain rather than an expression over the state.
+- **Noise generators** (`Gn`, `Wn`, `Cgns`): the output is the increments
+  themselves, not a recursion over them.
+
+## What a family is
+
+A process reaches a device by declaring which of the engine's **56 families**
+it steps, not by writing a kernel. A family is one entry in
+`stochastic-rs-stochastic/src/euler/families.rs` — its parameters, its state
+components, its noise components, one step expression per component and one
+report expression — and the same tokens generate the host step, the C body
+the CUDA and Metal kernels render, and the CubeCL functions. Adding a process
+is a declaration plus an `EulerCoefficients` (one component) or `EulerSystem`
+(more than one) impl; no kernel is edited.
+
+The engine's kernels carry four state slots, four independent noise
+components, twelve scalar parameters and one time-varying coefficient per
+step. A model that wants correlated shocks draws the components independently
+and correlates them in its own step, which is what the host samplers do.
 
 Feature flags: `metal` (`Metal`), `cuda` (`Cuda`),
 `cubecl-cuda` and `cubecl-wgpu`, the two runtimes a `Cubecl` handle can name
@@ -35,7 +81,8 @@ behind an `f64` type.
 - **fGN noise.** The circulant-embedding FFT that produces fractional
   Gaussian noise runs on the device, one launch per `sample_par` batch.
   `Fgn` returns it directly and `Cfgns` combines two rows.
-- **Fractional diffusions.** `Fbm`, `Fou`, `Fcir`, `Fgbm` and `FJacobi` hand
+- **Fractional diffusions.** `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi` and
+  `FVasicek` hand
   those increments to the Euler engine, which runs the whole recursion in the
   kernel. They declare no kernel of their own: `Fou` is the same
   Ornstein–Uhlenbeck family a Gaussian `Ou` uses, `Fgbm` the same geometric
@@ -49,11 +96,14 @@ behind an `f64` type.
   that: through host memory the same runs took 25 ms and 93 ms.
 - **Euler engine.** The whole Euler–Maruyama recursion of a path runs in one
   kernel thread; `sample_par(m)` is one launch for all `m` paths, `sample()`
-  launches a single path. CIR uses full truncation (Lord, Koekkoek & van Dijk
-  2010) in the kernel. The CUDA and Metal kernels are one C body rendered per
-  language, and the CubeCL kernel repeats its integer hash, so `Metal`,
-  `Cuda` and `Cubecl` agree with each other seed for seed up to `f32`
-  libm rounding.
+  launches a single path. A system writes one plane per component, so a
+  Heston draw comes back as the two arrays it always did. CIR uses full
+  truncation (Lord, Koekkoek & van Dijk 2010) in the kernel. The CUDA and
+  Metal kernels are one C body rendered per language, and the CubeCL kernel
+  repeats its integer hash, so `Metal`, `Cuda` and `Cubecl` agree with each
+  other seed for seed up to `f32` libm rounding — which
+  `euler::family_parity` checks by launching every declared family on both
+  kernels and comparing them point for point.
 - **Host backends.** `Cpu` is the process's own sampler; `Accelerate` is a
   CPU device that only differs for the fGN family (vDSP FFT). For every
   other process both are the same code path.
@@ -169,22 +219,24 @@ and wins already at these sizes; the gap widens with `m`.
 ## Adding a kernel
 
 A process joins the Euler engine by implementing `EulerCoefficients`
-(its `EulerSpec` family, initial value, grid, horizon, device seed) and
-switching its `backend_switch!` line from `via host` to `via euler`. A new
-drift / diffusion family is one `EulerSpec` variant plus one `family` branch
-in the CubeCL kernel (`euler/gpu.rs`) and one in the C body the CUDA and
-Metal kernels render from a single text (`euler/kernel.rs`). Widening a process's bound from `HostBackend` to
-`EulerBackend` is not a breaking change for its callers.
+(its family, initial state, grid, horizon and device seed, plus the curve if
+it reads one) and switching its `backend_switch!` line from `via host` to
+`via euler`. A new family is one entry in `euler/families.rs` plus one
+`EulerSpec` variant and one dispatch line in the hand-written CubeCL kernel;
+the C body the CUDA and Metal kernels render is generated from the same
+declaration. Widening a process's bound from `HostBackend` to `EulerBackend`
+is not a breaking change for its callers.
 
 `Cfou`, `JumpFou`, `JumpFOUCustom` and `Sde` carry a backend parameter but do
-not reach a device: `Cfou` steps a complex pair and needs the state vector
-below, the two jump processes fill their fGN on the host because moving it
-would change their pinned streams, and `Sde` drives its own loop. Their
-`.on::<B>()` compiles and changes nothing, which is a wart to close rather
-than a feature.
+not reach a device: `Cfou` steps a complex pair, the two jump processes fill
+their fGN on the host because moving it would change their pinned streams,
+and `Sde` drives its own loop. Their `.on::<B>()` compiles and changes
+nothing, which is a wart to close rather than a feature.
 
-Not on a device yet, and what it would take: the two-state models
-(Heston, SABR, Bates, Heston-SLV — a correlated pair and a two-component
-stepper), time-dependent coefficients (CIR++ `φ(t)`, Hull–White `θ(t)` — a
-curve buffer on the device), jump processes (a Poisson draw in the kernel),
-and the Volterra / Markov-lift family (a separate `O(n·N')` kernel).
+What each remaining group would take: a jump process needs a Poisson count
+and a size draw in the kernel, which is a second sampler beside the Gaussian
+one; a lag model needs state proportional to its order rather than four
+slots; the Volterra and rough family needs a separate `O(n·N')` kernel
+because its step is a convolution; and a dynamic-dimension model needs the
+component count to be a launch argument rather than a property of its
+family.

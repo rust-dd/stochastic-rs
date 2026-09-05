@@ -26,7 +26,6 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -220,9 +219,92 @@ impl<T: FloatExt, S: SeedExt> Heston2D<T, S> {
 
 impl<T: FloatExt, S: SeedExt, B> Heston2D<T, S, B> {}
 
-backend_switch!([T: FloatExt, S: SeedExt] Heston2D<T, S> { x0, v0, mu, theta, kappa, sigma, rho, n, t, use_sym, seed, chol } via host);
+/// The Euler engine's view of the two-asset Heston model. The Cholesky factor
+/// is computed once at construction and travels as parameters, so the kernel
+/// combines four independent shocks exactly as the host sampler does.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 4>
+  for Heston2D<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let [l11, l21, l22, l31, l32, l33, l41, l42, l43, l44] = self.chol;
+    if self.use_sym.unwrap_or(false) {
+      crate::euler::EulerSpec::TwoAssetHestonReflected {
+        mu1: self.mu[0],
+        mu2: self.mu[1],
+        kappa1: self.kappa[0],
+        theta1: self.theta[0],
+        sigma1: self.sigma[0],
+        kappa2: self.kappa[1],
+        theta2: self.theta[1],
+        sigma2: self.sigma[1],
+        l11,
+        l21,
+        l22,
+        l31,
+        l32,
+        l33,
+        l41,
+        l42,
+        l43,
+        l44,
+      }
+    } else {
+      crate::euler::EulerSpec::TwoAssetHeston {
+        mu1: self.mu[0],
+        mu2: self.mu[1],
+        kappa1: self.kappa[0],
+        theta1: self.theta[0],
+        sigma1: self.sigma[0],
+        kappa2: self.kappa[1],
+        theta2: self.theta[1],
+        sigma2: self.sigma[1],
+        l11,
+        l21,
+        l22,
+        l31,
+        l32,
+        l33,
+        l41,
+        l42,
+        l43,
+        l44,
+      }
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Heston2D<T, S, B> {
+  fn initial_state(&self) -> [T; 4] {
+    [
+      self.x0[0].unwrap_or(T::zero()),
+      self.v0[0].expect("validated initial variance must be present"),
+      self.x0[1].unwrap_or(T::zero()),
+      self.v0[1].expect("validated initial variance must be present"),
+    ]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 4] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Heston2D<T, S> { x0, v0, mu, theta, kappa, sigma, rho, n, t, use_sym, seed, chol } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for Heston2D<T, S, B>
+{
   /// Output: `[x_1, v_1, x_2, v_2]` — log-prices and instantaneous variances
   /// for both assets, each of length `n`.
   type Output = [Array1<T>; 4];
@@ -258,6 +340,32 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Heston2D<T, S, B
       use_sym: self.use_sym.unwrap_or(false),
       normals,
     }
+  }
+
+  /// Through the Euler engine: on a device all four components step in the
+  /// kernel, on the host devices it is this process's own sampler, chunked
+  /// exactly as `ProcessExt` chunks.
+  fn sample(&self) -> [Array1<T>; 4] {
+    self.backend.system_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 4]) -> R + Sync) -> Vec<R> {
+    self.backend.system_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 4]> {
+    self.backend.system_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 4], crate::device::DeviceError> {
+    self.backend.try_system_sample(self)
+  }
+
+  fn try_sample_par(
+    &self,
+    m: usize,
+  ) -> Result<Vec<[Array1<T>; 4]>, crate::device::DeviceError> {
+    self.backend.try_system_paths(self, m)
   }
 }
 
