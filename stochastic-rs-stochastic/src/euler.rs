@@ -91,10 +91,12 @@ pub(crate) fn pack_cholesky<T: FloatExt>(chol: &ndarray::Array2<T>) -> [T; 10] {
   out
 }
 
-/// How many time-varying coefficients a kernel binds per launch. A family
+/// How many time-varying coefficients a kernel binds per launch, which is the
+/// most a process's `curves()` may return. Public because that hook is: an
+/// out-of-tree process needs the cap it is held to. A family
 /// names them `ct` and `ct1` through `ct7`; a launch pays one buffer read per
 /// declared curve per step, so declaring fewer costs less.
-pub(crate) const CURVE_SLOTS: usize = 8;
+pub const CURVE_SLOTS: usize = 8;
 
 /// The curve buffer a launch binds: the declared curves laid end to end, each
 /// padded to `n` values, so the kernel reads curve `k` at step `i` from
@@ -104,6 +106,15 @@ pub(crate) const CURVE_SLOTS: usize = 8;
 /// A curve shorter than the grid is extended with its last value rather than
 /// read out of bounds — a host tabulation that stops one short is a
 /// declaration slip, not a reason to fault a kernel.
+#[cfg_attr(
+  not(any(
+    feature = "cuda",
+    feature = "metal",
+    feature = "cubecl-cuda",
+    feature = "cubecl-wgpu"
+  )),
+  allow(dead_code)
+)]
 pub(crate) fn flatten_curves<T: FloatExt>(curves: Option<Vec<Vec<T>>>, n: usize) -> (Vec<T>, u32) {
   let Some(curves) = curves else {
     return (Vec::new(), 0);

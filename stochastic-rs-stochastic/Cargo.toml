@@ -60,4 +60,3 @@ pyo3 = { workspace = true, features = ["extension-module"], optional = true }
 numpy = { workspace = true, optional = true }
 
 [dev-dependencies]
-romu = { workspace = true }

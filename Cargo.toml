@@ -98,7 +98,6 @@ yahoo_finance_api = "2.3.0"
 tokio-test = "0.4.4"
 
 # Dev
-romu = "0.8.0"
 criterion = { version = "0.8", features = ["html_reports"] }
 syn = { version = "3.0.3", default-features = false, features = ["full", "parsing"] }
 
@@ -176,7 +175,6 @@ criterion = { workspace = true, features = ["html_reports"] }
 plotly = { workspace = true, features = ["plotly_ndarray"] }
 rand = { workspace = true }
 rand_distr = { workspace = true }
-romu = { workspace = true }
 
 [[bench]]
 name = "distributions"

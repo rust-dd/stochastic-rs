@@ -33,7 +33,6 @@ pyo3 = { workspace = true, features = ["extension-module"], optional = true }
 numpy = { workspace = true, optional = true }
 
 [dev-dependencies]
-romu = { workspace = true }
 # `statrs` is dev-only — used to cross-validate closed-form `DistributionExt`
 # impls in `tests/distribution_ext_vs_reference.rs`. Production code never
 # delegates to statrs.

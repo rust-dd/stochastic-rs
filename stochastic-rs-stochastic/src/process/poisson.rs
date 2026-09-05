@@ -163,7 +163,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
     crate::euler::draw_seed(&self.seed)
   }
 
+  /// Reads `grid_points()` first so the host devices refuse a horizon-mode
+  /// process exactly as a device does, rather than quietly returning the
+  /// variable-length path the engine never described.
   fn host_sample(&self) -> Array1<T> {
+    let _ = crate::euler::EulerCoefficients::grid_points(self);
     let out = <Self as ProcessExt<T>>::sampler(self).sample();
     <Self as ProcessExt<T>>::advance_chunk_seed(self);
     out
