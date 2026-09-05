@@ -258,6 +258,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::HawkesJumpDiffusion { .. } => "HawkesJumpDiffusion",
     EulerSpec::Garch { .. } => "Garch",
     EulerSpec::ThresholdGarch { .. } => "ThresholdGarch",
+    EulerSpec::ExponentialGarch { .. } => "ExponentialGarch",
   }
 }
 
@@ -996,9 +997,20 @@ fn every_three_component_family() -> Vec<SystemProbe<3>> {
       x0: [100.0, 0.04, 0.02],
     }
   };
+  let exponential = SystemProbe {
+    spec: EulerSpec::ExponentialGarch {
+      omega: -0.2,
+      alpha: 0.1,
+      gamma: -0.05,
+      beta: 0.95,
+      e_abs_z: std::f32::consts::FRAC_2_PI.sqrt(),
+    },
+    x0: [0.0, -0.2, 0.0],
+  };
   vec![
     garch,
     threshold,
+    exponential,
     double(false),
     double(true),
     SystemProbe {

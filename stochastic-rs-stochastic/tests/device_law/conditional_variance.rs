@@ -8,6 +8,7 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::autoregressive::agrach::Agarch;
 use stochastic_rs_stochastic::autoregressive::arch::Arch;
+use stochastic_rs_stochastic::autoregressive::egarch::Egarch;
 use stochastic_rs_stochastic::autoregressive::garch::Garch;
 use stochastic_rs_stochastic::autoregressive::tgarch::GjrGarch;
 use stochastic_rs_stochastic::traits::ProcessExt;
@@ -111,5 +112,30 @@ fn asymmetric_garch_agrees_with_the_cpu_law() {
     terminal_variance(&device),
     0.15,
     "asymmetric GARCH terminal variance",
+  );
+}
+
+/// EGARCH runs its variance recursion in log space and reads back the
+/// previous standardised residual, which the device recovers from the state
+/// rather than keeping a third series.
+#[test]
+fn exponential_garch_agrees_with_the_cpu_law() {
+  let build = || {
+    Egarch::<f32, _>::new(
+      -0.2,
+      Array1::from(vec![0.1]),
+      Array1::from(vec![-0.05]),
+      Array1::from(vec![0.95]),
+      N,
+      Deterministic::new(167),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  all_finite(&device, "EGARCH");
+  agrees(
+    terminal_variance(&build().sample_par(M)),
+    terminal_variance(&device),
+    0.15,
+    "EGARCH terminal variance",
   );
 }

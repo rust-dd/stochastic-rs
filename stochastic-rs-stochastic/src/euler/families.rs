@@ -1674,6 +1674,25 @@ euler_families! {
     }
     report { x, s2, warm },
 
+  /// `ln σ²_t = ω + α(|z_{t−1}| − E|z|) + γ z_{t−1} + β ln σ²_{t−1}`,
+  /// `X_t = σ_t z_t`: EGARCH(1,1). The lagged standardised residual is the
+  /// previous return over the previous standard deviation, both of which the
+  /// state carries, so the step recovers it rather than keeping a third
+  /// series. `E|z| = √(2/π)` is folded on the host.
+  72 => ExponentialGarch { omega, alpha, gamma, beta, e_abs_z }
+    state (x, ls2, warm)
+    noise (dz)
+    step {
+      bind sd = sqrt(exp(ls2));
+      bind zl = x / sd;
+      bind shock = alpha * (abs(zl) - e_abs_z) + gamma * zl;
+      bind v = pick(warm, omega + shock + beta * ls2, ls2);
+      sqrt(exp(v)) * (dz / sqrt(dt)),
+      v,
+      lit(1.0)
+    }
+    report { x, ls2, warm },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)

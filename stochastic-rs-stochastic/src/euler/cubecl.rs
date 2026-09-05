@@ -582,6 +582,11 @@ fn step(
       component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
     );
   }
+  if family == 72u32 {
+    stepped = cube::ExponentialGarch(
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
   if family == 16u32 {
     stepped = cube::FellerRoot(
       component, x0, x1, x2, x3, params, dt, ct, nj, js, u, u2, dz0, dz1, dz2, dz3,
@@ -867,6 +872,9 @@ fn report(
   }
   if family == 71u32 {
     reported = cube_report::ThresholdGarch(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
+  }
+  if family == 72u32 {
+    reported = cube_report::ExponentialGarch(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);
   }
   if family == 16u32 {
     reported = cube_report::FellerRoot(component, x0, x1, x2, x3, params, ct, nj, js, u, u2);

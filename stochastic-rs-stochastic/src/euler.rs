@@ -476,6 +476,14 @@ pub enum EulerSpec<T: FloatExt> {
     gamma: T,
     beta: T,
   },
+  /// EGARCH(1,1), whose variance recursion runs in log space.
+  ExponentialGarch {
+    omega: T,
+    alpha: T,
+    gamma: T,
+    beta: T,
+    e_abs_z: T,
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -996,6 +1004,16 @@ impl<T: FloatExt> EulerSpec<T> {
       } => (
         Family::ThresholdGarch.code(),
         pad([omega, alpha, gamma, beta]),
+      ),
+      EulerSpec::ExponentialGarch {
+        omega,
+        alpha,
+        gamma,
+        beta,
+        e_abs_z,
+      } => (
+        Family::ExponentialGarch.code(),
+        pad([omega, alpha, gamma, beta, e_abs_z]),
       ),
     }
   }
