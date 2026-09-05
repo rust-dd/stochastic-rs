@@ -67,7 +67,7 @@ pub struct Heston2D<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// `[L_11, L_21, L_22, L_31, L_32, L_33, L_41, L_42, L_43, L_44]`.
   chol: [T; 10],
   /// The sampling backend: [`Cpu`] by default, a device handle after
-  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  /// [`on`](Self::on).
   pub backend: B,
 }
 
@@ -361,10 +361,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     self.backend.try_system_sample(self)
   }
 
-  fn try_sample_par(
-    &self,
-    m: usize,
-  ) -> Result<Vec<[Array1<T>; 4]>, crate::device::DeviceError> {
+  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 4]>, crate::device::DeviceError> {
     self.backend.try_system_paths(self, m)
   }
 }

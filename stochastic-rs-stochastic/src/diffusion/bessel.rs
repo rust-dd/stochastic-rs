@@ -61,7 +61,7 @@ pub struct SquaredBessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
-  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  /// [`on`](Self::on).
   pub backend: B,
 }
 
@@ -363,7 +363,7 @@ pub struct Bessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
-  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  /// [`on`](Self::on).
   pub backend: B,
 }
 
@@ -509,9 +509,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Bessel<T, S> { delta, n, x0, t, use_sym, seed } via euler);
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
-  for Bessel<T, S, B>
-{
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Bessel<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = BesselSampler<T>

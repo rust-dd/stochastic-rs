@@ -66,7 +66,7 @@ pub struct HullWhite2F<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub seed: S,
   cgns: Cgns<T>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
-  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  /// [`on`](Self::on).
   pub backend: B,
 }
 
@@ -117,7 +117,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn initial_state(&self) -> [T; 4] {
-    [self.x0.unwrap_or(T::zero()), T::zero(), T::zero(), T::zero()]
+    [
+      self.x0.unwrap_or(T::zero()),
+      T::zero(),
+      T::zero(),
+      T::zero(),
+    ]
   }
 
   fn grid_points(&self) -> usize {
@@ -204,10 +209,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     self.backend.try_system_sample(self)
   }
 
-  fn try_sample_par(
-    &self,
-    m: usize,
-  ) -> Result<Vec<[Array1<T>; 2]>, crate::device::DeviceError> {
+  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 2]>, crate::device::DeviceError> {
     self.backend.try_system_paths(self, m)
   }
 }
@@ -308,7 +310,7 @@ impl PyHullWhite2F {
     device: Option<&str>,
   ) -> pyo3::PyResult<Self> {
     let device = crate::python_device::Device::parse(device, "f64")?;
-    Ok(    match seed {
+    Ok(match seed {
       Some(s) => Self {
         device,
         inner: None,

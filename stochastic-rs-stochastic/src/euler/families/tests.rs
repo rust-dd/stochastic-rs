@@ -198,8 +198,7 @@ fn the_structured_families_match_their_models() {
       dt,
       dz,
     ),
-    x + kappa * (mu - x) * dt
-      + (2.0 * kappa * (a * x * x + b * x + c)).abs().sqrt() * dz,
+    x + kappa * (mu - x) * dt + (2.0 * kappa * (a * x * x + b * x + c)).abs().sqrt() * dz,
   );
 
   // Feller root: dX = X(θ₁ − X(θ₃³ − θ₁θ₂))dt + θ₃|X|^{3/2} dW, with the
@@ -238,11 +237,7 @@ fn the_structured_families_match_their_models() {
       dt,
       dz,
     ),
-    x + 0.5
-      * sigma
-      * sigma
-      * (beta - gamma * x / (delta * delta + (x - m) * (x - m)).sqrt())
-      * dt
+    x + 0.5 * sigma * sigma * (beta - gamma * x / (delta * delta + (x - m) * (x - m)).sqrt()) * dt
       + sigma * dz,
   );
 
@@ -291,7 +286,10 @@ fn the_bounded_families_apply_their_boundaries() {
   // Teng's process is stepped unbounded and reported through a tanh, so the
   // reported value is in (−1, 1) however far the state has wandered.
   let p = [1.0, 0.3, 0.2];
-  assert_eq!(report1(Family::TanhOrnsteinUhlenbeck, 40.0, &p), 40.0_f64.tanh());
+  assert_eq!(
+    report1(Family::TanhOrnsteinUhlenbeck, 40.0, &p),
+    40.0_f64.tanh()
+  );
   assert_eq!(
     step1(Family::TanhOrnsteinUhlenbeck, 0.4, &p, dt, dz),
     0.4 + p[0] * (p[1] - 0.4_f64.tanh()) * dt + p[2] * dz

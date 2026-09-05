@@ -71,7 +71,7 @@ where
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
-  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  /// [`on`](Self::on).
   pub backend: B,
 }
 

@@ -30,7 +30,17 @@ use super::common::terminal_std;
 
 #[test]
 fn cev_agrees_with_the_cpu_law() {
-  let build = || Cev::<f32, _>::new(0.05, 0.2, 0.8, 253, Some(100.0), Some(1.0), Deterministic::new(5));
+  let build = || {
+    Cev::<f32, _>::new(
+      0.05,
+      0.2,
+      0.8,
+      253,
+      Some(100.0),
+      Some(1.0),
+      Deterministic::new(5),
+    )
+  };
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "CEV");
   agrees(
@@ -43,8 +53,18 @@ fn cev_agrees_with_the_cpu_law() {
 
 #[test]
 fn ckls_agrees_with_the_cpu_law() {
-  let build =
-    || Ckls::<f32, _>::new(0.06, -1.5, 0.3, 0.5, 253, Some(0.04), Some(1.0), Deterministic::new(5));
+  let build = || {
+    Ckls::<f32, _>::new(
+      0.06,
+      -1.5,
+      0.3,
+      0.5,
+      253,
+      Some(0.04),
+      Some(1.0),
+      Deterministic::new(5),
+    )
+  };
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "CKLS");
   agrees(
@@ -82,7 +102,8 @@ fn log_gbm_agrees_with_the_cpu_law() {
 
 #[test]
 fn logistic_agrees_with_the_cpu_law() {
-  let build = || Logistic::<f32, _>::new(0.5, 0.2, 253, Some(1.0), Some(1.0), Deterministic::new(7));
+  let build =
+    || Logistic::<f32, _>::new(0.5, 0.2, 253, Some(1.0), Some(1.0), Deterministic::new(7));
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "logistic");
   agrees(
@@ -95,8 +116,17 @@ fn logistic_agrees_with_the_cpu_law() {
 
 #[test]
 fn three_half_agrees_with_the_cpu_law() {
-  let build =
-    || ThreeHalf::<f32, _>::new(2.0, 0.04, 0.3, 253, Some(0.04), Some(1.0), Deterministic::new(7));
+  let build = || {
+    ThreeHalf::<f32, _>::new(
+      2.0,
+      0.04,
+      0.3,
+      253,
+      Some(0.04),
+      Some(1.0),
+      Deterministic::new(7),
+    )
+  };
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "3/2");
   agrees(
@@ -109,7 +139,8 @@ fn three_half_agrees_with_the_cpu_law() {
 
 #[test]
 fn radial_ou_agrees_with_the_cpu_law() {
-  let build = || RadialOU::<f32, _>::new(1.0, 0.3, 253, Some(1.0), Some(1.0), Deterministic::new(7));
+  let build =
+    || RadialOU::<f32, _>::new(1.0, 0.3, 253, Some(1.0), Some(1.0), Deterministic::new(7));
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "radial OU");
   agrees(
@@ -122,8 +153,17 @@ fn radial_ou_agrees_with_the_cpu_law() {
 
 #[test]
 fn vasicek_agrees_with_the_cpu_law() {
-  let build =
-    || Vasicek::<f32, _>::new(0.5, 0.04, 0.02, 253, Some(0.03), Some(1.0), Deterministic::new(7));
+  let build = || {
+    Vasicek::<f32, _>::new(
+      0.5,
+      0.04,
+      0.02,
+      253,
+      Some(0.03),
+      Some(1.0),
+      Deterministic::new(7),
+    )
+  };
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "Vasicek");
   agrees(
@@ -136,8 +176,17 @@ fn vasicek_agrees_with_the_cpu_law() {
 
 #[test]
 fn linear_sde_agrees_with_the_cpu_law() {
-  let build =
-    || LinearSDE::<f32, _>::new(0.02, 0.3, 0.2, 253, Some(1.0), Some(1.0), Deterministic::new(9));
+  let build = || {
+    LinearSDE::<f32, _>::new(
+      0.02,
+      0.3,
+      0.2,
+      253,
+      Some(1.0),
+      Some(1.0),
+      Deterministic::new(9),
+    )
+  };
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "linear SDE");
   agrees(
@@ -151,7 +200,16 @@ fn linear_sde_agrees_with_the_cpu_law() {
 #[test]
 fn quadratic_agrees_with_the_cpu_law() {
   let build = || {
-    Quadratic::<f32, _>::new(0.02, 0.1, -0.05, 0.2, 253, Some(1.0), Some(1.0), Deterministic::new(9))
+    Quadratic::<f32, _>::new(
+      0.02,
+      0.1,
+      -0.05,
+      0.2,
+      253,
+      Some(1.0),
+      Some(1.0),
+      Deterministic::new(9),
+    )
   };
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "quadratic");
@@ -167,7 +225,8 @@ fn quadratic_agrees_with_the_cpu_law() {
 /// ratio of two near-zero numbers and the spread is the stable statistic.
 #[test]
 fn hyperbolic_agrees_with_the_cpu_law() {
-  let build = || Hyperbolic::<f32, _>::new(1.0, 0.3, 253, Some(0.5), Some(1.0), Deterministic::new(9));
+  let build =
+    || Hyperbolic::<f32, _>::new(1.0, 0.3, 253, Some(0.5), Some(1.0), Deterministic::new(9));
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "hyperbolic");
   agrees(
@@ -181,7 +240,8 @@ fn hyperbolic_agrees_with_the_cpu_law() {
 /// Also zero-reverting; see [`hyperbolic_agrees_with_the_cpu_law`].
 #[test]
 fn modified_cir_agrees_with_the_cpu_law() {
-  let build = || ModifiedCIR::<f32, _>::new(1.0, 0.2, 253, Some(0.5), Some(1.0), Deterministic::new(9));
+  let build =
+    || ModifiedCIR::<f32, _>::new(1.0, 0.2, 253, Some(0.5), Some(1.0), Deterministic::new(9));
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "modified CIR");
   agrees(
@@ -195,7 +255,17 @@ fn modified_cir_agrees_with_the_cpu_law() {
 #[test]
 fn hyperbolic_diffusion_agrees_with_the_cpu_law() {
   let build = || {
-    Hyperbolic2::<f32, _>::new(0.5, 1.0, 1.0, 0.0, 0.3, 253, Some(0.5), Some(1.0), Deterministic::new(9))
+    Hyperbolic2::<f32, _>::new(
+      0.5,
+      1.0,
+      1.0,
+      0.0,
+      0.3,
+      253,
+      Some(0.5),
+      Some(1.0),
+      Deterministic::new(9),
+    )
   };
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "hyperbolic diffusion");
@@ -216,7 +286,17 @@ fn hyperbolic_diffusion_agrees_with_the_cpu_law() {
 fn ait_sahalia_agrees_with_the_cpu_law() {
   let build = || {
     AitSahalia::<f32, _>::new(
-      0.0001, 0.15, -3.0, 0.0, 0.0004, 0.0, 0.05, 1.5, 253, Some(0.05), Some(1.0),
+      0.0001,
+      0.15,
+      -3.0,
+      0.0,
+      0.0004,
+      0.0,
+      0.05,
+      1.5,
+      253,
+      Some(0.05),
+      Some(1.0),
       Deterministic::new(11),
     )
   };
@@ -234,7 +314,17 @@ fn ait_sahalia_agrees_with_the_cpu_law() {
 fn nonlinear_sde_agrees_with_the_cpu_law() {
   let build = || {
     NonLinearSDE::<f32, _>::new(
-      0.0001, 0.15, -3.0, 0.0, 0.0, 0.0, 0.2, 1.0, 253, Some(0.05), Some(1.0),
+      0.0001,
+      0.15,
+      -3.0,
+      0.0,
+      0.0,
+      0.0,
+      0.2,
+      1.0,
+      253,
+      Some(0.05),
+      Some(1.0),
       Deterministic::new(11),
     )
   };

@@ -103,7 +103,7 @@ where
   /// the jump component.
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
-  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  /// [`on`](Self::on).
   pub backend: B,
 }
 

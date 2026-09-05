@@ -71,7 +71,7 @@ pub struct DuffieKan<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub seed: S,
   cgns: Cgns<T>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
-  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  /// [`on`](Self::on).
   pub backend: B,
 }
 
@@ -343,10 +343,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     self.backend.try_system_sample(self)
   }
 
-  fn try_sample_par(
-    &self,
-    m: usize,
-  ) -> Result<Vec<[Array1<T>; 2]>, crate::device::DeviceError> {
+  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 2]>, crate::device::DeviceError> {
     self.backend.try_system_paths(self, m)
   }
 }

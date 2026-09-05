@@ -297,7 +297,6 @@ impl EulerKernel<f32> for Metal {
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
 
-
   /// A system's launch: the same kernel, its state slots filled from the
   /// process's own initial state and every component's plane returned.
   fn euler_system_kernel<const D: usize, P: super::EulerSystem<f32, D>>(

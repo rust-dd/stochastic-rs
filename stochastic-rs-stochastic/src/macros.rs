@@ -14,10 +14,10 @@ macro_rules! py_dispatch_f64 {
   };
 }
 
-/// [`py_dispatch_f64!`] on the class's device. A class whose parameters
+/// `py_dispatch_f64!` on the class's device. A class whose parameters
 /// include a Python callable has no `float32` slot, so only the devices that
 /// compute in double precision can appear here — which is exactly the set
-/// [`py_on_device_f64!`] handles.
+/// `py_on_device_f64!` handles.
 #[cfg(feature = "python")]
 #[macro_export]
 macro_rules! py_device_dispatch_f64 {
@@ -83,7 +83,7 @@ macro_rules! py_on_device_f64 {
   };
 }
 
-/// [`py_on_device_f64!`] for a `float32` slot, which every compiled device
+/// `py_on_device_f64!` for a `float32` slot, which every compiled device
 /// accepts.
 #[cfg(feature = "python")]
 #[macro_export]
@@ -138,8 +138,8 @@ macro_rules! py_on_device_f32 {
   };
 }
 
-/// [`py_dispatch!`] for a class with a `device` field: the four slots, each
-/// routed through [`py_on_device_f64!`] / [`py_on_device_f32!`].
+/// `py_dispatch!` for a class with a `device` field: the four slots, each
+/// routed through `py_on_device_f64!` / `py_on_device_f32!`.
 #[cfg(feature = "python")]
 #[macro_export]
 macro_rules! py_device_dispatch {

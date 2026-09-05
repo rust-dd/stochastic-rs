@@ -58,7 +58,7 @@ pub struct FVasicek<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// parameter names.
   pub fou: Fou<T, S>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
-  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  /// [`on`](Self::on).
   pub backend: B,
 }
 
@@ -93,8 +93,8 @@ impl<T: FloatExt, S: SeedExt, B> FVasicek<T, S, B> {}
 /// The Euler engine's view of the fractional Vasicek model. It is the wrapped
 /// [`Fou`] under short-rate names, so both the family and the increment
 /// pipeline come from that process rather than being restated here.
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>>
-  crate::euler::EulerCoefficients<T> for FVasicek<T, S, B>
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for FVasicek<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::OrnsteinUhlenbeck {

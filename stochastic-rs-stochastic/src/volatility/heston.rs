@@ -62,7 +62,7 @@ pub struct Heston<T: FloatExt, S: SeedExt = Unseeded, Sch: HestonScheme = Euler,
   /// Zero-sized marker for the compile-time variance scheme.
   _scheme: PhantomData<Sch>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
-  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  /// [`on`](Self::on).
   pub backend: B,
 }
 

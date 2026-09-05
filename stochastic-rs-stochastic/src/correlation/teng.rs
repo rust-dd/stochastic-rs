@@ -55,7 +55,7 @@ pub struct TengSCP<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Seed strategy.
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
-  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  /// [`on`](Self::on).
   pub backend: B,
 }
 
@@ -173,9 +173,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] TengSCP<T, S> { kappa, mu, sigma, rho0, n, t, seed } via euler);
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
-  for TengSCP<T, S, B>
-{
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for TengSCP<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = TengSCPSampler<T>

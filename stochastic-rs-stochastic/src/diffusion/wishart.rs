@@ -65,7 +65,7 @@ pub struct Wishart<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   pub seed: S,
   step: StepMaps<T>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
-  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  /// [`on`](Self::on).
   pub backend: B,
 }
 

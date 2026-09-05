@@ -256,7 +256,6 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
 
-
   /// A system's launch: the same kernel, its state slots filled from the
   /// process's own initial state and every component's plane returned.
   fn euler_system_kernel<const D: usize, P: super::EulerSystem<T, D>>(
@@ -387,9 +386,8 @@ fn device_paths<T: FloatExt>(
         lambda64,
         use_jumps,
       )?;
-      let out =
-        Array3::<f64>::from_shape_vec((planes, m, n), data)
-      .expect("the kernel returns components * m * n values");
+      let out = Array3::<f64>::from_shape_vec((planes, m, n), data)
+        .expect("the kernel returns components * m * n values");
       return Ok(unsafe { std::mem::transmute::<Array3<f64>, Array3<T>>(out) });
     }
     let p32: [f32; crate::euler::PARAM_SLOTS] = std::array::from_fn(|i| p64[i] as f32);
@@ -695,6 +693,6 @@ fn pipelined_paths<T: FloatExt>(
     use_jumps,
   )?;
   let out = Array3::<f32>::from_shape_vec((planes, m, n), data)
-      .expect("the kernel returns components * m * n values");
+    .expect("the kernel returns components * m * n values");
   Ok(unsafe { std::mem::transmute::<Array3<f32>, Array3<T>>(out) })
 }

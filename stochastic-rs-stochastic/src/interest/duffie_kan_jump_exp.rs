@@ -82,7 +82,7 @@ pub struct DuffieKanJumpExp<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Correlated Gaussian noise generator for the diffusion part.
   cgns: Cgns<T>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
-  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  /// [`on`](Self::on).
   pub backend: B,
 }
 

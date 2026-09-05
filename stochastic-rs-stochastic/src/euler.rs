@@ -124,16 +124,9 @@ pub enum EulerSpec<T: FloatExt> {
     b3: T,
   },
   /// `dX = (a − b·ln X)X dt + σX dW`, floored at `1e-12`.
-  Gompertz {
-    a: T,
-    b: T,
-    sigma: T,
-  },
+  Gompertz { a: T, b: T, sigma: T },
   /// `dX = aX(1−X) dt + σ√(X(1−X)) dW` on `[0, 1]`.
-  Kimura {
-    a: T,
-    sigma: T,
-  },
+  Kimura { a: T, sigma: T },
   /// `dX = (α + βX + γX²) dt + σX dW`.
   Quadratic {
     alpha: T,
@@ -151,49 +144,21 @@ pub enum EulerSpec<T: FloatExt> {
     two_kappa: T,
   },
   /// `dX = rX(1 − X/K) dt + σX dW`, unclamped.
-  Verhulst {
-    r: T,
-    k: T,
-    sigma: T,
-  },
+  Verhulst { r: T, k: T, sigma: T },
   /// [`Verhulst`](EulerSpec::Verhulst) confined to `[0, K]`.
-  VerhulstClamped {
-    r: T,
-    k: T,
-    sigma: T,
-  },
+  VerhulstClamped { r: T, k: T, sigma: T },
   /// `dX = κ(θ − X)X dt + σ√X dW`, truncated at zero.
-  FellerLogistic {
-    kappa: T,
-    theta: T,
-    sigma: T,
-  },
+  FellerLogistic { kappa: T, theta: T, sigma: T },
   /// [`FellerLogistic`](EulerSpec::FellerLogistic) reflected at zero.
-  FellerLogisticReflected {
-    kappa: T,
-    theta: T,
-    sigma: T,
-  },
+  FellerLogisticReflected { kappa: T, theta: T, sigma: T },
   /// `dX = δ dt + 2√|X| dW`, truncated at zero.
-  SquaredBesselState {
-    delta: T,
-    two: T,
-  },
+  SquaredBesselState { delta: T, two: T },
   /// [`SquaredBesselState`](EulerSpec::SquaredBesselState) reflected at zero.
-  SquaredBesselStateReflected {
-    delta: T,
-    two: T,
-  },
+  SquaredBesselStateReflected { delta: T, two: T },
   /// The squared-Bessel recursion reporting `√X`.
-  BesselFromSquared {
-    delta: T,
-    two: T,
-  },
+  BesselFromSquared { delta: T, two: T },
   /// [`BesselFromSquared`](EulerSpec::BesselFromSquared) reflected at zero.
-  BesselFromSquaredReflected {
-    delta: T,
-    two: T,
-  },
+  BesselFromSquaredReflected { delta: T, two: T },
   /// `dX = ½σ²(β − γ(X−μ)/√(δ² + (X−μ)²)) dt + σ dW`, with `½σ²` folded on the host.
   HyperbolicDiffusion {
     beta: T,
@@ -215,23 +180,11 @@ pub enum EulerSpec<T: FloatExt> {
     b3: T,
   },
   /// Geometric Brownian motion on `Y = S + β`, reported as `Y − β`.
-  Displaced {
-    mu: T,
-    sigma: T,
-    beta: T,
-  },
+  Displaced { mu: T, sigma: T, beta: T },
   /// `dX = κ(μ − tanh X) dt + σ dW` reported as `tanh X`.
-  TanhOrnsteinUhlenbeck {
-    kappa: T,
-    mu: T,
-    sigma: T,
-  },
+  TanhOrnsteinUhlenbeck { kappa: T, mu: T, sigma: T },
   /// `dρ = κ(μ − ρ) dt + σ√(1 − ρ²) dW` confined to `[−0.9999, 0.9999]`.
-  BoundedCorrelation {
-    kappa: T,
-    mu: T,
-    sigma: T,
-  },
+  BoundedCorrelation { kappa: T, mu: T, sigma: T },
   /// The Heston model's Euler scheme, variance truncated at zero.
   Heston {
     mu: T,
@@ -551,13 +504,35 @@ impl<T: FloatExt> EulerSpec<T> {
         two_kappa,
       } => (Family::Pearson.code(), pad([kappa, mu, a, b, c, two_kappa])),
       EulerSpec::Verhulst { r, k, sigma } => (Family::Verhulst.code(), pad([r, k, sigma])),
-      EulerSpec::VerhulstClamped { r, k, sigma } => (Family::VerhulstClamped.code(), pad([r, k, sigma])),
-      EulerSpec::FellerLogistic { kappa, theta, sigma } => (Family::FellerLogistic.code(), pad([kappa, theta, sigma])),
-      EulerSpec::FellerLogisticReflected { kappa, theta, sigma } => (Family::FellerLogisticReflected.code(), pad([kappa, theta, sigma])),
-      EulerSpec::SquaredBesselState { delta, two } => (Family::SquaredBesselState.code(), pad([delta, two])),
-      EulerSpec::SquaredBesselStateReflected { delta, two } => (Family::SquaredBesselStateReflected.code(), pad([delta, two])),
-      EulerSpec::BesselFromSquared { delta, two } => (Family::BesselFromSquared.code(), pad([delta, two])),
-      EulerSpec::BesselFromSquaredReflected { delta, two } => (Family::BesselFromSquaredReflected.code(), pad([delta, two])),
+      EulerSpec::VerhulstClamped { r, k, sigma } => {
+        (Family::VerhulstClamped.code(), pad([r, k, sigma]))
+      }
+      EulerSpec::FellerLogistic {
+        kappa,
+        theta,
+        sigma,
+      } => (Family::FellerLogistic.code(), pad([kappa, theta, sigma])),
+      EulerSpec::FellerLogisticReflected {
+        kappa,
+        theta,
+        sigma,
+      } => (
+        Family::FellerLogisticReflected.code(),
+        pad([kappa, theta, sigma]),
+      ),
+      EulerSpec::SquaredBesselState { delta, two } => {
+        (Family::SquaredBesselState.code(), pad([delta, two]))
+      }
+      EulerSpec::SquaredBesselStateReflected { delta, two } => (
+        Family::SquaredBesselStateReflected.code(),
+        pad([delta, two]),
+      ),
+      EulerSpec::BesselFromSquared { delta, two } => {
+        (Family::BesselFromSquared.code(), pad([delta, two]))
+      }
+      EulerSpec::BesselFromSquaredReflected { delta, two } => {
+        (Family::BesselFromSquaredReflected.code(), pad([delta, two]))
+      }
       EulerSpec::HyperbolicDiffusion {
         beta,
         gamma,
@@ -565,7 +540,10 @@ impl<T: FloatExt> EulerSpec<T> {
         mu,
         sigma,
         half_var,
-      } => (Family::HyperbolicDiffusion.code(), pad([beta, gamma, delta, mu, sigma, half_var])),
+      } => (
+        Family::HyperbolicDiffusion.code(),
+        pad([beta, gamma, delta, mu, sigma, half_var]),
+      ),
       EulerSpec::NonLinear {
         am1,
         a0,
@@ -579,9 +557,16 @@ impl<T: FloatExt> EulerSpec<T> {
         Family::NonLinear.code(),
         pad([am1, a0, a1, a2, b0, b1, b2, b3]),
       ),
-      EulerSpec::Displaced { mu, sigma, beta } => (Family::Displaced.code(), pad([mu, sigma, beta])),
-      EulerSpec::TanhOrnsteinUhlenbeck { kappa, mu, sigma } => (Family::TanhOrnsteinUhlenbeck.code(), pad([kappa, mu, sigma])),
-      EulerSpec::BoundedCorrelation { kappa, mu, sigma } => (Family::BoundedCorrelation.code(), pad([kappa, mu, sigma])),
+      EulerSpec::Displaced { mu, sigma, beta } => {
+        (Family::Displaced.code(), pad([mu, sigma, beta]))
+      }
+      EulerSpec::TanhOrnsteinUhlenbeck { kappa, mu, sigma } => (
+        Family::TanhOrnsteinUhlenbeck.code(),
+        pad([kappa, mu, sigma]),
+      ),
+      EulerSpec::BoundedCorrelation { kappa, mu, sigma } => {
+        (Family::BoundedCorrelation.code(), pad([kappa, mu, sigma]))
+      }
       EulerSpec::Heston {
         mu,
         kappa,
@@ -660,7 +645,9 @@ impl<T: FloatExt> EulerSpec<T> {
         rho2,
       } => (
         Family::DoubleHeston.code(),
-        pad([mu, kappa1, theta1, sigma1, rho1, kappa2, theta2, sigma2, rho2]),
+        pad([
+          mu, kappa1, theta1, sigma1, rho1, kappa2, theta2, sigma2, rho2,
+        ]),
       ),
       EulerSpec::DoubleHestonReflected {
         mu,
@@ -674,7 +661,9 @@ impl<T: FloatExt> EulerSpec<T> {
         rho2,
       } => (
         Family::DoubleHestonReflected.code(),
-        pad([mu, kappa1, theta1, sigma1, rho1, kappa2, theta2, sigma2, rho2]),
+        pad([
+          mu, kappa1, theta1, sigma1, rho1, kappa2, theta2, sigma2, rho2,
+        ]),
       ),
       EulerSpec::StochasticCorrelationHeston {
         kappa_r,
@@ -691,26 +680,23 @@ impl<T: FloatExt> EulerSpec<T> {
       ),
       EulerSpec::HullWhite { alpha, sigma } => (Family::HullWhite.code(), pad([alpha, sigma])),
       EulerSpec::CurveDrift { sigma } => (Family::CurveDrift.code(), pad([sigma])),
-      EulerSpec::LogMeanReverting { decay, a, sigma_eff } => (
-        Family::LogMeanReverting.code(),
-        pad([decay, a, sigma_eff]),
-      ),
-      EulerSpec::ShiftedSquareRoot { theta, mu, sigma } => (
-        Family::ShiftedSquareRoot.code(),
-        pad([theta, mu, sigma]),
-      ),
+      EulerSpec::LogMeanReverting {
+        decay,
+        a,
+        sigma_eff,
+      } => (Family::LogMeanReverting.code(), pad([decay, a, sigma_eff])),
+      EulerSpec::ShiftedSquareRoot { theta, mu, sigma } => {
+        (Family::ShiftedSquareRoot.code(), pad([theta, mu, sigma]))
+      }
       EulerSpec::ShiftedSquareRootMirrored { theta, mu, sigma } => (
         Family::ShiftedSquareRootMirrored.code(),
         pad([theta, mu, sigma]),
       ),
-      EulerSpec::TimeVaryingGeometricBrownian { mu } => (
-        Family::TimeVaryingGeometricBrownian.code(),
-        pad([mu]),
-      ),
-      EulerSpec::CorrelatedBrownian { rho } => (Family::CorrelatedBrownian.code(), pad([rho])),
-      EulerSpec::BrownianBridge { xt, sigma } => {
-        (Family::BrownianBridge.code(), pad([xt, sigma]))
+      EulerSpec::TimeVaryingGeometricBrownian { mu } => {
+        (Family::TimeVaryingGeometricBrownian.code(), pad([mu]))
       }
+      EulerSpec::CorrelatedBrownian { rho } => (Family::CorrelatedBrownian.code(), pad([rho])),
+      EulerSpec::BrownianBridge { xt, sigma } => (Family::BrownianBridge.code(), pad([xt, sigma])),
       EulerSpec::TwoFactorHullWhite {
         a,
         b,
@@ -749,7 +735,9 @@ impl<T: FloatExt> EulerSpec<T> {
         rho,
       } => (
         Family::DuffieKan.code(),
-        pad([a1, b1, c1, sigma1, a2, b2, c2, sigma2, alpha, beta, gamma, rho]),
+        pad([
+          a1, b1, c1, sigma1, a2, b2, c2, sigma2, alpha, beta, gamma, rho,
+        ]),
       ),
       EulerSpec::TwoAssetHeston {
         mu1,
@@ -772,7 +760,10 @@ impl<T: FloatExt> EulerSpec<T> {
         l44,
       } => (
         Family::TwoAssetHeston.code(),
-        pad([mu1, mu2, kappa1, theta1, sigma1, kappa2, theta2, sigma2, l11, l21, l22, l31, l32, l33, l41, l42, l43, l44]),
+        pad([
+          mu1, mu2, kappa1, theta1, sigma1, kappa2, theta2, sigma2, l11, l21, l22, l31, l32, l33,
+          l41, l42, l43, l44,
+        ]),
       ),
       EulerSpec::TwoAssetHestonReflected {
         mu1,
@@ -795,7 +786,10 @@ impl<T: FloatExt> EulerSpec<T> {
         l44,
       } => (
         Family::TwoAssetHestonReflected.code(),
-        pad([mu1, mu2, kappa1, theta1, sigma1, kappa2, theta2, sigma2, l11, l21, l22, l31, l32, l33, l41, l42, l43, l44]),
+        pad([
+          mu1, mu2, kappa1, theta1, sigma1, kappa2, theta2, sigma2, l11, l21, l22, l31, l32, l33,
+          l41, l42, l43, l44,
+        ]),
       ),
       EulerSpec::MertonJumpLog {
         drift_ln,
@@ -866,7 +860,6 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
     self.horizon() / T::from_usize_(self.grid_points().max(2) - 1)
   }
 
-
   /// A time-varying coefficient, one value per grid point, or `None` when the
   /// family reads none. It reaches the step as `ct`: a short-rate model's
   /// `θ(t)`, a term structure of volatilities, anything the host can tabulate
@@ -874,7 +867,6 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
   fn curve(&self) -> Option<Vec<T>> {
     None
   }
-
 
   /// The jump intensity per unit time, or `None` when the family has no jump
   /// term. The kernel draws a Poisson count with mean `intensity · dt` once
@@ -1039,7 +1031,6 @@ pub trait EulerSystem<T: FloatExt, const D: usize>: ProcessExt<T, Output = [Arra
     self.horizon() / T::from_usize_(self.grid_points().max(2) - 1)
   }
 
-
   /// A time-varying coefficient, one value per grid point, or `None` when the
   /// family reads none. It reaches the step as `ct`: a short-rate model's
   /// `θ(t)`, a term structure of volatilities, anything the host can tabulate
@@ -1047,7 +1038,6 @@ pub trait EulerSystem<T: FloatExt, const D: usize>: ProcessExt<T, Output = [Arra
   fn curve(&self) -> Option<Vec<T>> {
     None
   }
-
 
   /// The jump intensity per unit time, or `None` when the family has no jump
   /// term. The kernel draws a Poisson count with mean `intensity · dt` once
@@ -1079,10 +1069,7 @@ pub fn check_arity<T: FloatExt>(spec: &EulerSpec<T>, d: usize) {
 
 /// The `D` paths of one launch row, taken out of the `components × m × n`
 /// array a kernel returns. Public for the same reason [`check_arity`] is.
-pub fn system_row<T: FloatExt, const D: usize>(
-  planes: &Array3<T>,
-  row: usize,
-) -> [Array1<T>; D] {
+pub fn system_row<T: FloatExt, const D: usize>(planes: &Array3<T>, row: usize) -> [Array1<T>; D] {
   std::array::from_fn(|c| planes.slice(ndarray::s![c, row, ..]).to_owned())
 }
 

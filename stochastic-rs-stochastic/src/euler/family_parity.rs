@@ -229,26 +229,124 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
 fn every_family() -> Vec<Probe> {
   let p = |spec, x0| Probe { spec, x0 };
   vec![
-    p(EulerSpec::GeometricBrownian { mu: 0.05, sigma: 0.2 }, 100.0),
-    p(EulerSpec::OrnsteinUhlenbeck { theta: 2.0, mu: 0.05, sigma: 0.1 }, 0.03),
-    p(EulerSpec::SquareRoot { kappa: 2.0, theta: 0.04, sigma: 0.2 }, 0.04),
-    p(EulerSpec::Additive, 0.0),
-    p(EulerSpec::ReflectedSquareRoot { theta: 2.0, mu: 0.04, sigma: 0.2 }, 0.04),
-    p(EulerSpec::MirroredSquareRoot { theta: 2.0, mu: 0.04, sigma: 0.2 }, 0.04),
-    p(EulerSpec::Jacobi { alpha: 0.3, beta: 0.6, sigma: 0.2 }, 0.5),
-    p(EulerSpec::ConstantElasticity { mu: 0.05, sigma: 0.2, gamma: 0.8 }, 100.0),
     p(
-      EulerSpec::Ckls { theta1: 0.06, theta2: -1.5, theta3: 0.3, theta4: 0.5 },
+      EulerSpec::GeometricBrownian {
+        mu: 0.05,
+        sigma: 0.2,
+      },
+      100.0,
+    ),
+    p(
+      EulerSpec::OrnsteinUhlenbeck {
+        theta: 2.0,
+        mu: 0.05,
+        sigma: 0.1,
+      },
+      0.03,
+    ),
+    p(
+      EulerSpec::SquareRoot {
+        kappa: 2.0,
+        theta: 0.04,
+        sigma: 0.2,
+      },
+      0.04,
+    ),
+    p(EulerSpec::Additive, 0.0),
+    p(
+      EulerSpec::ReflectedSquareRoot {
+        theta: 2.0,
+        mu: 0.04,
+        sigma: 0.2,
+      },
+      0.04,
+    ),
+    p(
+      EulerSpec::MirroredSquareRoot {
+        theta: 2.0,
+        mu: 0.04,
+        sigma: 0.2,
+      },
+      0.04,
+    ),
+    p(
+      EulerSpec::Jacobi {
+        alpha: 0.3,
+        beta: 0.6,
+        sigma: 0.2,
+      },
+      0.5,
+    ),
+    p(
+      EulerSpec::ConstantElasticity {
+        mu: 0.05,
+        sigma: 0.2,
+        gamma: 0.8,
+      },
+      100.0,
+    ),
+    p(
+      EulerSpec::Ckls {
+        theta1: 0.06,
+        theta2: -1.5,
+        theta3: 0.3,
+        theta4: 0.5,
+      },
       0.04,
     ),
     p(EulerSpec::Logistic { a: 0.5, b: 0.2 }, 1.0),
-    p(EulerSpec::ThreeHalf { kappa: 2.0, mu: 0.04, sigma: 0.3 }, 0.04),
-    p(EulerSpec::LogGeometric { drift_ln: 0.0001, sigma: 0.2 }, 100.0),
-    p(EulerSpec::RadialOrnsteinUhlenbeck { kappa: 1.0, sigma: 0.3 }, 1.0),
-    p(EulerSpec::LinearSde { a: 0.02, b: 0.3, c: 0.2 }, 1.0),
-    p(EulerSpec::Hyperbolic { kappa: 1.0, sigma: 0.3 }, 0.5),
-    p(EulerSpec::ModifiedSquareRoot { kappa: 1.0, sigma: 0.2 }, 0.5),
-    p(EulerSpec::FellerRoot { theta1: 0.5, decay: -0.142, theta3: 0.2 }, 0.5),
+    p(
+      EulerSpec::ThreeHalf {
+        kappa: 2.0,
+        mu: 0.04,
+        sigma: 0.3,
+      },
+      0.04,
+    ),
+    p(
+      EulerSpec::LogGeometric {
+        drift_ln: 0.0001,
+        sigma: 0.2,
+      },
+      100.0,
+    ),
+    p(
+      EulerSpec::RadialOrnsteinUhlenbeck {
+        kappa: 1.0,
+        sigma: 0.3,
+      },
+      1.0,
+    ),
+    p(
+      EulerSpec::LinearSde {
+        a: 0.02,
+        b: 0.3,
+        c: 0.2,
+      },
+      1.0,
+    ),
+    p(
+      EulerSpec::Hyperbolic {
+        kappa: 1.0,
+        sigma: 0.3,
+      },
+      0.5,
+    ),
+    p(
+      EulerSpec::ModifiedSquareRoot {
+        kappa: 1.0,
+        sigma: 0.2,
+      },
+      0.5,
+    ),
+    p(
+      EulerSpec::FellerRoot {
+        theta1: 0.5,
+        decay: -0.142,
+        theta3: 0.2,
+      },
+      0.5,
+    ),
     p(
       EulerSpec::AitSahalia {
         am1: 0.0001,
@@ -262,27 +360,95 @@ fn every_family() -> Vec<Probe> {
       },
       0.05,
     ),
-    p(EulerSpec::Gompertz { a: 0.5, b: 0.3, sigma: 0.2 }, 1.0),
+    p(
+      EulerSpec::Gompertz {
+        a: 0.5,
+        b: 0.3,
+        sigma: 0.2,
+      },
+      1.0,
+    ),
     p(EulerSpec::Kimura { a: 0.5, sigma: 0.2 }, 0.5),
     p(
-      EulerSpec::Quadratic { alpha: 0.02, beta: 0.1, gamma: -0.05, sigma: 0.2 },
+      EulerSpec::Quadratic {
+        alpha: 0.02,
+        beta: 0.1,
+        gamma: -0.05,
+        sigma: 0.2,
+      },
       1.0,
     ),
     p(
-      EulerSpec::Pearson { kappa: 3.0, mu: 0.05, a: 0.0, b: 0.0, c: 0.01, two_kappa: 6.0 },
+      EulerSpec::Pearson {
+        kappa: 3.0,
+        mu: 0.05,
+        a: 0.0,
+        b: 0.0,
+        c: 0.01,
+        two_kappa: 6.0,
+      },
       0.05,
     ),
-    p(EulerSpec::Verhulst { r: 1.0, k: 2.0, sigma: 0.3 }, 0.5),
-    p(EulerSpec::VerhulstClamped { r: 1.0, k: 2.0, sigma: 0.3 }, 0.5),
-    p(EulerSpec::FellerLogistic { kappa: 1.0, theta: 1.0, sigma: 0.3 }, 0.5),
     p(
-      EulerSpec::FellerLogisticReflected { kappa: 1.0, theta: 1.0, sigma: 0.3 },
+      EulerSpec::Verhulst {
+        r: 1.0,
+        k: 2.0,
+        sigma: 0.3,
+      },
       0.5,
     ),
-    p(EulerSpec::SquaredBesselState { delta: 3.0, two: 2.0 }, 1.0),
-    p(EulerSpec::SquaredBesselStateReflected { delta: 3.0, two: 2.0 }, 1.0),
-    p(EulerSpec::BesselFromSquared { delta: 3.0, two: 2.0 }, 1.0),
-    p(EulerSpec::BesselFromSquaredReflected { delta: 3.0, two: 2.0 }, 1.0),
+    p(
+      EulerSpec::VerhulstClamped {
+        r: 1.0,
+        k: 2.0,
+        sigma: 0.3,
+      },
+      0.5,
+    ),
+    p(
+      EulerSpec::FellerLogistic {
+        kappa: 1.0,
+        theta: 1.0,
+        sigma: 0.3,
+      },
+      0.5,
+    ),
+    p(
+      EulerSpec::FellerLogisticReflected {
+        kappa: 1.0,
+        theta: 1.0,
+        sigma: 0.3,
+      },
+      0.5,
+    ),
+    p(
+      EulerSpec::SquaredBesselState {
+        delta: 3.0,
+        two: 2.0,
+      },
+      1.0,
+    ),
+    p(
+      EulerSpec::SquaredBesselStateReflected {
+        delta: 3.0,
+        two: 2.0,
+      },
+      1.0,
+    ),
+    p(
+      EulerSpec::BesselFromSquared {
+        delta: 3.0,
+        two: 2.0,
+      },
+      1.0,
+    ),
+    p(
+      EulerSpec::BesselFromSquaredReflected {
+        delta: 3.0,
+        two: 2.0,
+      },
+      1.0,
+    ),
     p(
       EulerSpec::HyperbolicDiffusion {
         beta: 0.5,
@@ -307,22 +473,70 @@ fn every_family() -> Vec<Probe> {
       },
       0.05,
     ),
-    p(EulerSpec::Displaced { mu: 0.05, sigma: 0.2, beta: 20.0 }, 120.0),
-    p(EulerSpec::TanhOrnsteinUhlenbeck { kappa: 1.0, mu: 0.3, sigma: 0.2 }, 0.4),
-    p(EulerSpec::BoundedCorrelation { kappa: 1.0, mu: 0.3, sigma: 0.2 }, 0.2),
-    p(EulerSpec::HullWhite { alpha: 0.5, sigma: 0.02 }, 0.03),
+    p(
+      EulerSpec::Displaced {
+        mu: 0.05,
+        sigma: 0.2,
+        beta: 20.0,
+      },
+      120.0,
+    ),
+    p(
+      EulerSpec::TanhOrnsteinUhlenbeck {
+        kappa: 1.0,
+        mu: 0.3,
+        sigma: 0.2,
+      },
+      0.4,
+    ),
+    p(
+      EulerSpec::BoundedCorrelation {
+        kappa: 1.0,
+        mu: 0.3,
+        sigma: 0.2,
+      },
+      0.2,
+    ),
+    p(
+      EulerSpec::HullWhite {
+        alpha: 0.5,
+        sigma: 0.02,
+      },
+      0.03,
+    ),
     p(EulerSpec::CurveDrift { sigma: 0.02 }, 0.0),
     p(
-      EulerSpec::LogMeanReverting { decay: 0.99, a: 0.5, sigma_eff: 0.02 },
+      EulerSpec::LogMeanReverting {
+        decay: 0.99,
+        a: 0.5,
+        sigma_eff: 0.02,
+      },
       (0.03_f32).ln(),
     ),
-    p(EulerSpec::ShiftedSquareRoot { theta: 2.0, mu: 0.04, sigma: 0.2 }, 0.04),
     p(
-      EulerSpec::ShiftedSquareRootMirrored { theta: 2.0, mu: 0.04, sigma: 0.2 },
+      EulerSpec::ShiftedSquareRoot {
+        theta: 2.0,
+        mu: 0.04,
+        sigma: 0.2,
+      },
+      0.04,
+    ),
+    p(
+      EulerSpec::ShiftedSquareRootMirrored {
+        theta: 2.0,
+        mu: 0.04,
+        sigma: 0.2,
+      },
       0.04,
     ),
     p(EulerSpec::TimeVaryingGeometricBrownian { mu: 0.05 }, 100.0),
-    p(EulerSpec::BrownianBridge { xt: 1.0, sigma: 0.2 }, 0.0),
+    p(
+      EulerSpec::BrownianBridge {
+        xt: 1.0,
+        sigma: 0.2,
+      },
+      0.0,
+    ),
     p(
       EulerSpec::MertonJumpLog {
         drift_ln: 0.0001,
@@ -372,7 +586,9 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       self.normal.fill_slice(&mut draw);
       noise[..noises].copy_from_slice(&draw);
       let mut next = [0.0f32; 4];
-      super::families::host_step(family, &state, &params, self.dt, curve[i], 0.0, &noise, &mut next);
+      super::families::host_step(
+        family, &state, &params, self.dt, curve[i], 0.0, &noise, &mut next,
+      );
       state = next;
       super::families::host_report(family, &state, &params, curve[i], 0.0, &mut reported);
       for (c, path) in out.iter_mut().enumerate() {
@@ -645,13 +861,45 @@ fn every_four_component_family() -> Vec<SystemProbe<4>> {
     let (l41, l42, l43, l44) = (0.1, -0.2, 0.3, 0.92);
     let spec = if sym {
       EulerSpec::TwoAssetHestonReflected {
-        mu1, mu2, kappa1, theta1, sigma1, kappa2, theta2, sigma2,
-        l11, l21, l22, l31, l32, l33, l41, l42, l43, l44,
+        mu1,
+        mu2,
+        kappa1,
+        theta1,
+        sigma1,
+        kappa2,
+        theta2,
+        sigma2,
+        l11,
+        l21,
+        l22,
+        l31,
+        l32,
+        l33,
+        l41,
+        l42,
+        l43,
+        l44,
       }
     } else {
       EulerSpec::TwoAssetHeston {
-        mu1, mu2, kappa1, theta1, sigma1, kappa2, theta2, sigma2,
-        l11, l21, l22, l31, l32, l33, l41, l42, l43, l44,
+        mu1,
+        mu2,
+        kappa1,
+        theta1,
+        sigma1,
+        kappa2,
+        theta2,
+        sigma2,
+        l11,
+        l21,
+        l22,
+        l31,
+        l32,
+        l33,
+        l41,
+        l42,
+        l43,
+        l44,
       }
     };
     SystemProbe {
@@ -679,7 +927,10 @@ fn every_four_component_family() -> Vec<SystemProbe<4>> {
 /// below cover all of them rather than whichever ones happened to be listed.
 #[test]
 fn every_family_has_a_probe() {
-  let mut names: Vec<&'static str> = every_family().iter().map(|p| family_name(&p.spec)).collect();
+  let mut names: Vec<&'static str> = every_family()
+    .iter()
+    .map(|p| family_name(&p.spec))
+    .collect();
   names.extend(
     every_two_component_family()
       .iter()
@@ -756,9 +1007,9 @@ fn every_family_runs_on_the_device() {
     let paths = Device::default().system_paths(&probe, 8);
     assert_eq!(paths.len(), 8, "{name}");
     assert!(
-      paths
+      paths.iter().all(|c| c
         .iter()
-        .all(|c| c.iter().all(|p| p.len() == N && p.iter().all(|v| v.is_finite()))),
+        .all(|p| p.len() == N && p.iter().all(|v| v.is_finite()))),
       "{name}: a device path left the reals"
     );
   }
@@ -767,9 +1018,9 @@ fn every_family_runs_on_the_device() {
     let paths = Device::default().system_paths(&probe, 8);
     assert_eq!(paths.len(), 8, "{name}");
     assert!(
-      paths
+      paths.iter().all(|c| c
         .iter()
-        .all(|c| c.iter().all(|p| p.len() == N && p.iter().all(|v| v.is_finite()))),
+        .all(|p| p.len() == N && p.iter().all(|v| v.is_finite()))),
       "{name}: a device path left the reals"
     );
   }
@@ -778,9 +1029,9 @@ fn every_family_runs_on_the_device() {
     let paths = Device::default().system_paths(&probe, 8);
     assert_eq!(paths.len(), 8, "{name}");
     assert!(
-      paths
+      paths.iter().all(|c| c
         .iter()
-        .all(|c| c.iter().all(|p| p.len() == N && p.iter().all(|v| v.is_finite()))),
+        .all(|p| p.len() == N && p.iter().all(|v| v.is_finite()))),
       "{name}: a device path left the reals"
     );
   }

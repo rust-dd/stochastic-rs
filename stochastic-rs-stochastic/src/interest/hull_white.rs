@@ -42,7 +42,7 @@ pub struct HullWhite<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
-  /// [`on`](Self::on) or [`on_device`](Self::on_device).
+  /// [`on`](Self::on).
   pub backend: B,
 }
 
@@ -168,7 +168,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// The mean-reversion level at each grid point.
   fn curve(&self) -> Option<Vec<T>> {
     let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1));
-    Some((0..self.n).map(|i| self.theta.call(T::from_usize_(i) * dt)).collect())
+    Some(
+      (0..self.n)
+        .map(|i| self.theta.call(T::from_usize_(i) * dt))
+        .collect(),
+    )
   }
 
   fn device_seed(&self) -> u64 {
@@ -311,7 +315,7 @@ impl PyHullWhite {
     device: Option<&str>,
   ) -> pyo3::PyResult<Self> {
     let device = crate::python_device::Device::parse(device, "f64")?;
-    Ok(    match seed {
+    Ok(match seed {
       Some(s) => Self {
         device,
         inner: None,

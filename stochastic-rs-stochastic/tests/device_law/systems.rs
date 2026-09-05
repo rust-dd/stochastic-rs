@@ -5,20 +5,20 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::traits::Fn1D;
-use stochastic_rs_stochastic::traits::ProcessExt;
+use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
 use stochastic_rs_stochastic::diffusion::fouque::FouqueOU2D;
 use stochastic_rs_stochastic::interest::duffie_kan::DuffieKan;
 use stochastic_rs_stochastic::interest::hull_white_2f::HullWhite2F;
 use stochastic_rs_stochastic::process::cbms::Cbms;
-use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
+use stochastic_rs_stochastic::traits::ProcessExt;
+use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::bates_svj::BatesSvj;
 use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
 use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
-use stochastic_rs_stochastic::volatility::heston2d::Heston2D;
-use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
 use stochastic_rs_stochastic::volatility::heston::Heston;
+use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
+use stochastic_rs_stochastic::volatility::heston2d::Heston2D;
 use stochastic_rs_stochastic::volatility::sabr::Sabr;
-use stochastic_rs_stochastic::volatility::HestonPow;
 
 use super::common::Device;
 use super::common::agrees;
@@ -28,20 +28,12 @@ const M: usize = 3_000;
 
 fn terminal_mean_of<const D: usize>(paths: &[[Array1<f32>; D]], component: usize) -> f64 {
   let last = paths[0][component].len() - 1;
-  paths
-    .iter()
-    .map(|p| p[component][last] as f64)
-    .sum::<f64>()
-    / paths.len() as f64
+  paths.iter().map(|p| p[component][last] as f64).sum::<f64>() / paths.len() as f64
 }
 
 fn terminal_mean(paths: &[[Array1<f32>; 2]], component: usize) -> f64 {
   let last = paths[0][component].len() - 1;
-  paths
-    .iter()
-    .map(|p| p[component][last] as f64)
-    .sum::<f64>()
-    / paths.len() as f64
+  paths.iter().map(|p| p[component][last] as f64).sum::<f64>() / paths.len() as f64
 }
 
 /// The spot is a martingale under a zero drift and the variance reverts to
@@ -382,7 +374,12 @@ fn correlated_brownian_agrees_with_the_cpu_law() {
     }
     sxy / (sxx * syy).sqrt()
   };
-  agrees(corr(&host), corr(&device), 0.10, "correlated Brownian terminal");
+  agrees(
+    corr(&host),
+    corr(&device),
+    0.10,
+    "correlated Brownian terminal",
+  );
 }
 
 /// The two-factor Hull-White model reads its mean-reversion level from the

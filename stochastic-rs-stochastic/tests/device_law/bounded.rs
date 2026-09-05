@@ -28,7 +28,16 @@ use super::common::within;
 #[test]
 fn cir_stays_nonnegative_and_agrees() {
   let build = || {
-    Cir::<f32, _>::new(2.0, 0.04, 0.2, 253, Some(0.04), Some(1.0), None, Deterministic::new(3))
+    Cir::<f32, _>::new(
+      2.0,
+      0.04,
+      0.2,
+      253,
+      Some(0.04),
+      Some(1.0),
+      None,
+      Deterministic::new(3),
+    )
   };
   let device = build().on::<Device>().sample_par(M);
   within(&device, 0.0, f32::INFINITY, "CIR");
@@ -42,7 +51,17 @@ fn cir_stays_nonnegative_and_agrees() {
 
 #[test]
 fn jacobi_stays_in_the_unit_interval() {
-  let build = || Jacobi::<f32, _>::new(0.3, 0.6, 0.2, 253, Some(0.5), Some(1.0), Deterministic::new(3));
+  let build = || {
+    Jacobi::<f32, _>::new(
+      0.3,
+      0.6,
+      0.2,
+      253,
+      Some(0.5),
+      Some(1.0),
+      Deterministic::new(3),
+    )
+  };
   let device = build().on::<Device>().sample_par(M);
   within(&device, 0.0, 1.0, "Jacobi");
   agrees(
@@ -71,7 +90,16 @@ fn kimura_stays_in_the_unit_interval() {
 #[test]
 fn verhulst_honours_its_carrying_capacity() {
   let build = || {
-    Verhulst::<f32, _>::new(1.0, 2.0, 0.3, 253, Some(0.5), Some(1.0), Some(true), Deterministic::new(3))
+    Verhulst::<f32, _>::new(
+      1.0,
+      2.0,
+      0.3,
+      253,
+      Some(0.5),
+      Some(1.0),
+      Some(true),
+      Deterministic::new(3),
+    )
   };
   let device = build().on::<Device>().sample_par(M);
   within(&device, 0.0, 2.0, "clamped Verhulst");
@@ -87,7 +115,14 @@ fn verhulst_honours_its_carrying_capacity() {
 fn unclamped_verhulst_agrees_with_the_cpu_law() {
   let build = || {
     Verhulst::<f32, _>::new(
-      1.0, 2.0, 0.3, 253, Some(0.5), Some(1.0), Some(false), Deterministic::new(3),
+      1.0,
+      2.0,
+      0.3,
+      253,
+      Some(0.5),
+      Some(1.0),
+      Some(false),
+      Deterministic::new(3),
     )
   };
   let device = build().on::<Device>().sample_par(M);
@@ -104,7 +139,14 @@ fn unclamped_verhulst_agrees_with_the_cpu_law() {
 fn feller_logistic_stays_nonnegative() {
   let build = || {
     FellerLogistic::<f32, _>::new(
-      1.0, 1.0, 0.3, 253, Some(0.5), Some(1.0), Some(false), Deterministic::new(3),
+      1.0,
+      1.0,
+      0.3,
+      253,
+      Some(0.5),
+      Some(1.0),
+      Some(false),
+      Deterministic::new(3),
     )
   };
   let device = build().on::<Device>().sample_par(M);
@@ -120,7 +162,15 @@ fn feller_logistic_stays_nonnegative() {
 #[test]
 fn feller_root_agrees_with_the_cpu_law() {
   let build = || {
-    FellerRoot::<f32, _>::new(0.5, 0.3, 0.2, 253, Some(0.5), Some(1.0), Deterministic::new(3))
+    FellerRoot::<f32, _>::new(
+      0.5,
+      0.3,
+      0.2,
+      253,
+      Some(0.5),
+      Some(1.0),
+      Deterministic::new(3),
+    )
   };
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "Feller root");
@@ -134,7 +184,8 @@ fn feller_root_agrees_with_the_cpu_law() {
 
 #[test]
 fn squared_bessel_stays_nonnegative() {
-  let build = || SquaredBessel::<f32, _>::new(3.0, 253, Some(1.0), Some(1.0), None, Deterministic::new(3));
+  let build =
+    || SquaredBessel::<f32, _>::new(3.0, 253, Some(1.0), Some(1.0), None, Deterministic::new(3));
   let device = build().on::<Device>().sample_par(M);
   within(&device, 0.0, f32::INFINITY, "squared Bessel");
   agrees(
@@ -162,7 +213,17 @@ fn bessel_stays_nonnegative() {
 
 #[test]
 fn gompertz_stays_positive() {
-  let build = || Gompertz::<f32, _>::new(0.5, 0.3, 0.2, 253, Some(1.0), Some(1.0), Deterministic::new(3));
+  let build = || {
+    Gompertz::<f32, _>::new(
+      0.5,
+      0.3,
+      0.2,
+      253,
+      Some(1.0),
+      Some(1.0),
+      Deterministic::new(3),
+    )
+  };
   let device = build().on::<Device>().sample_par(M);
   within(&device, 0.0, f32::INFINITY, "Gompertz");
   agrees(
@@ -176,7 +237,17 @@ fn gompertz_stays_positive() {
 #[test]
 fn pearson_agrees_with_the_cpu_law() {
   let build = || {
-    Pearson::<f32, _>::new(1.0, 0.3, 0.0, 0.0, 0.01, 253, Some(0.3), Some(1.0), Deterministic::new(3))
+    Pearson::<f32, _>::new(
+      1.0,
+      0.3,
+      0.0,
+      0.0,
+      0.01,
+      253,
+      Some(0.3),
+      Some(1.0),
+      Deterministic::new(3),
+    )
   };
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "Pearson");
@@ -194,7 +265,15 @@ fn pearson_agrees_with_the_cpu_law() {
 #[test]
 fn displaced_diffusion_agrees_with_the_cpu_law() {
   let build = || {
-    DisplacedDiffusion::<f32, _>::new(0.05, 0.2, 20.0, 253, Some(100.0), Some(1.0), Deterministic::new(3))
+    DisplacedDiffusion::<f32, _>::new(
+      0.05,
+      0.2,
+      20.0,
+      253,
+      Some(100.0),
+      Some(1.0),
+      Deterministic::new(3),
+    )
   };
   let device = build().on::<Device>().sample_par(M);
   all_finite(&device, "displaced diffusion");
@@ -224,7 +303,8 @@ fn teng_correlation_stays_in_range() {
 
 #[test]
 fn van_emmerich_correlation_stays_in_range() {
-  let build = || VanEmmerich::<f32, _>::new(1.0, 0.3, 0.2, 0.2, 253, Some(1.0), Deterministic::new(3));
+  let build =
+    || VanEmmerich::<f32, _>::new(1.0, 0.3, 0.2, 0.2, 253, Some(1.0), Deterministic::new(3));
   let device = build().on::<Device>().sample_par(M);
   within(&device, -0.9999, 0.9999, "Van Emmerich correlation");
   agrees(
