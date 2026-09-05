@@ -287,6 +287,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::BarndorffNielsenShephard { .. } => "BarndorffNielsenShephard",
     EulerSpec::CorrelatedFractionalMotion { .. } => "CorrelatedFractionalMotion",
     EulerSpec::ComplexFractionalOu { .. } => "ComplexFractionalOu",
+    EulerSpec::TransformedOrnsteinUhlenbeck { .. } => "TransformedOrnsteinUhlenbeck",
   }
 }
 
@@ -554,6 +555,16 @@ fn every_family() -> Vec<Probe> {
         kappa: 1.0,
         mu: 0.3,
         sigma: 0.2,
+      },
+      0.4,
+    ),
+    p(
+      EulerSpec::TransformedOrnsteinUhlenbeck {
+        kappa: 1.0,
+        mu: 0.3,
+        sigma: 0.2,
+        arctan: 1.0,
+        half_pi: std::f32::consts::FRAC_PI_2,
       },
       0.4,
     ),

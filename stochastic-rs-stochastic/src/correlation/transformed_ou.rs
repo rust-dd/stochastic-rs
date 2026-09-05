@@ -11,7 +11,6 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -120,9 +119,57 @@ impl<T: FloatExt, S: SeedExt> TransformedOU<T, S> {
 
 impl<T: FloatExt, S: SeedExt, B> TransformedOU<T, S, B> {}
 
-backend_switch!([T: FloatExt, S: SeedExt] TransformedOU<T, S> { kappa, mu, sigma, rho0, transform, n, t, seed } via host);
+/// The Euler engine's view: the step is the plain Ornstein-Uhlenbeck one and
+/// the bounded map lives in the report, so the state travels in X-space and
+/// only the reported point is a correlation. The transform is carried as a
+/// parameter rather than two families, since both branches are total.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for TransformedOU<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::TransformedOrnsteinUhlenbeck {
+      kappa: self.kappa,
+      mu: self.mu,
+      sigma: self.sigma,
+      arctan: match self.transform {
+        Transformation::Tanh => T::zero(),
+        Transformation::Arctan => T::one(),
+      },
+      half_pi: T::from_f64_fast(std::f64::consts::FRAC_PI_2),
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for TransformedOU<T, S, B> {
+  /// The launch starts in X-space, where the host has already inverted the
+  /// initial correlation — the kernel reports `forward` of it, which is
+  /// `rho0` again.
+  fn initial_value(&self) -> T {
+    self.transform.inverse(self.rho0)
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] TransformedOU<T, S> { kappa, mu, sigma, rho0, transform, n, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for TransformedOU<T, S, B>
+{
   type Output = Array1<T>;
   type Sampler<'s>
     = TransformedOUSampler<T>
@@ -146,6 +193,29 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for TransformedOU<T,
       dt,
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
     }
+  }
+
+  /// Through the Euler engine: on a device the recursion runs in the kernel
+  /// and the bounded map is applied there, on the host devices it is this
+  /// process's own sampler, chunked exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> Array1<T> {
+    self.backend.euler_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    self.backend.euler_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    self.backend.euler_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    self.backend.try_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    self.backend.try_euler_paths(self, m)
   }
 }
 

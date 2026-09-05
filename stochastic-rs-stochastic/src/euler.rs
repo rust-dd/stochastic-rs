@@ -512,6 +512,15 @@ pub enum EulerSpec<T: FloatExt> {
   /// The complex fractional Ornstein-Uhlenbeck process, real and imaginary
   /// parts, under one complex mean reversion `lambda - i·omega`.
   ComplexFractionalOu { lambda: T, omega: T, scale: T },
+  /// An Ornstein-Uhlenbeck process reported through a bounded map onto
+  /// `(-1, 1)`: `tanh` at `arctan = 0`, `(2/pi) arctan(pi x / 2)` at one.
+  TransformedOrnsteinUhlenbeck {
+    kappa: T,
+    mu: T,
+    sigma: T,
+    arctan: T,
+    half_pi: T,
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1073,6 +1082,16 @@ impl<T: FloatExt> EulerSpec<T> {
       } => (
         Family::ComplexFractionalOu.code(),
         pad([lambda, omega, scale]),
+      ),
+      EulerSpec::TransformedOrnsteinUhlenbeck {
+        kappa,
+        mu,
+        sigma,
+        arctan,
+        half_pi,
+      } => (
+        Family::TransformedOrnsteinUhlenbeck.code(),
+        pad([kappa, mu, sigma, arctan, half_pi]),
       ),
     }
   }

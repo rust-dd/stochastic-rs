@@ -41,7 +41,8 @@
 //! the path records and is evaluated at `t = 0` as well, where no noise exists.
 //!
 //! The function vocabulary is `sqrt`, `exp`, `ln`, `pow`, `abs`, `negate`,
-//! `tanh`, `sin`, `recip`, `positive`, `max`, `min`, the literal `lit`, the
+//! `tanh`, `atan`, `sin`, `recip`, `positive`, `max`, `min`, the literal
+//! `lit`, the
 //! comparisons
 //! `less`, `leq` and `geq`, and the branch-free `pick`. Each has a host
 //! implementation in [`ops`] and a C definition in [`C_PRELUDE`]; anything
@@ -102,6 +103,12 @@ pub(crate) mod ops {
   #[inline(always)]
   pub(crate) fn tanh<T: FloatExt>(v: T) -> T {
     v.tanh()
+  }
+
+  /// `arctan v`
+  #[inline(always)]
+  pub(crate) fn atan<T: FloatExt>(v: T) -> T {
+    v.atan()
   }
 
   /// `sin v`
@@ -181,6 +188,7 @@ pub(crate) const C_PRELUDE: &str = r#"#define sqrt(v) STOCH_SQRT(v)
 #define abs(v) STOCH_ABS(v)
 #define negate(v) (-(v))
 #define tanh(v) STOCH_TANH(v)
+#define atan(v) STOCH_ATAN(v)
 #define recip(v) ((REAL)1 / (v))
 #define sin(v) STOCH_SIN(v)
 #define positive(v) ((v) > (REAL)0 ? (v) : (REAL)0)
@@ -243,6 +251,12 @@ pub(crate) mod cube_ops {
   #[cube]
   pub(crate) fn tanh(v: f32) -> f32 {
     Tanh::tanh(v)
+  }
+
+  /// `arctan v`
+  #[cube]
+  pub(crate) fn atan(v: f32) -> f32 {
+    ArcTan::atan(v)
   }
 
   /// `1/v`.
@@ -1820,6 +1834,25 @@ euler_families! {
       x2 - (lambda * x2 - omega * x1) * dt + scale * dz2
     }
     report { x1, x2 },
+
+  /// An Ornstein-Uhlenbeck process reported through a bounded map onto
+  /// `(-1, 1)`, which is how a stochastic correlation is built from an
+  /// unbounded state. `arctan` selects the map: at zero it is `tanh x`, and
+  /// at one the shallower `(2/pi) arctan(pi x / 2)`, whose `pi / 2` arrives
+  /// as `half_pi` rather than as a literal the kernel would carry at the
+  /// wrong precision — `2 / pi` is its reciprocal. Both branches are
+  /// evaluated and one is picked, since neither can fault.
+  85 => TransformedOrnsteinUhlenbeck { kappa, mu, sigma, arctan, half_pi }
+    state (x)
+    noise (dz)
+    step { x + kappa * (mu - x) * dt + sigma * dz }
+    report {
+      pick(
+        geq(arctan, lit(0.5)),
+        atan(x * half_pi) * recip(half_pi),
+        tanh(x)
+      )
+    },
 
   2 => SquareRoot { kappa, theta, sigma }
     state (x)

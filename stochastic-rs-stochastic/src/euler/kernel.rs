@@ -76,7 +76,8 @@
 /// values and the noise are four-slot arrays whatever the family's own
 /// arity, so one kernel serves every family. `STEP` and `REPORT` are the
 /// blocks [`super::families`] generates from the family declarations, and
-/// `REAL`, `STOCH_SQRT`, `STOCH_LOG`, `STOCH_COS`, `STOCH_SIN`, `STOCH_TANH`
+/// `REAL`, `STOCH_SQRT`, `STOCH_LOG`, `STOCH_COS`, `STOCH_SIN`, `STOCH_TANH`,
+/// `STOCH_ATAN`
 /// and the
 /// 64-bit buffer index type `INDEX` are the precision placeholders.
 pub(crate) const FRAME: &str = r#"    if (path >= paths) return;
@@ -241,6 +242,7 @@ pub(crate) struct Language<'a> {
   pub pow: &'a str,
   pub abs: &'a str,
   pub tanh: &'a str,
+  pub atan: &'a str,
   /// The type of a buffer index; `unsigned long long` on CUDA, `uint` in MSL.
   pub index: &'a str,
 }
@@ -271,5 +273,6 @@ fn substitute(text: &str, lang: &Language<'_>) -> String {
     .replace("STOCH_POW", lang.pow)
     .replace("STOCH_ABS", lang.abs)
     .replace("STOCH_TANH", lang.tanh)
+    .replace("STOCH_ATAN", lang.atan)
     .replace("REAL", lang.real)
 }

@@ -3,6 +3,8 @@
 //! standard deviation — is the whole comparison.
 
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_stochastic::correlation::transformed_ou::Transformation;
+use stochastic_rs_stochastic::correlation::transformed_ou::TransformedOU;
 use stochastic_rs_stochastic::diffusion::ait_sahalia::AitSahalia;
 use stochastic_rs_stochastic::diffusion::cev::Cev;
 use stochastic_rs_stochastic::diffusion::ckls::Ckls;
@@ -27,6 +29,7 @@ use super::common::agrees;
 use super::common::all_finite;
 use super::common::terminal_mean;
 use super::common::terminal_std;
+use super::common::within;
 
 #[test]
 fn cev_agrees_with_the_cpu_law() {
@@ -386,4 +389,47 @@ fn merton_jump_diffusion_agrees_with_the_cpu_law() {
     0.03,
     "Merton jump diffusion terminal mean",
   );
+}
+
+/// The transformed Ornstein-Uhlenbeck steps in X-space and reports through a
+/// bounded map, so what the kernel must reproduce is the map, not just the
+/// recursion: both branches are checked, since only one of them exercises the
+/// `atan` the engine's vocabulary gained for it.
+#[test]
+fn transformed_ou_agrees_with_the_cpu_law() {
+  for transform in [Transformation::Tanh, Transformation::Arctan] {
+    let build = || {
+      TransformedOU::<f32, _>::new(
+        2.0,
+        0.3,
+        0.5,
+        0.1,
+        transform,
+        253,
+        Some(1.0),
+        Deterministic::new(53),
+      )
+    };
+    let device = build().on::<Device>().sample_par(M);
+    let host = build().sample_par(M);
+    all_finite(&device, "transformed OU");
+    within(&device, -1.0, 1.0, "transformed OU");
+    assert!(
+      (device[0][0] - 0.1).abs() < 1e-5,
+      "{transform:?}: every path starts at rho0, got {}",
+      device[0][0]
+    );
+    agrees(
+      terminal_mean(&host),
+      terminal_mean(&device),
+      0.05,
+      "transformed OU terminal mean",
+    );
+    agrees(
+      terminal_std(&host),
+      terminal_std(&device),
+      0.08,
+      "transformed OU terminal spread",
+    );
+  }
 }

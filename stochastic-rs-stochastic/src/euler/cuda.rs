@@ -58,6 +58,7 @@ fn kernel_source(real: &str) -> String {
       pow: "powf",
       abs: "fabsf",
       tanh: "tanhf",
+      atan: "atanf",
       index: "unsigned long long",
     }
   } else {
@@ -71,6 +72,7 @@ fn kernel_source(real: &str) -> String {
       pow: "pow",
       abs: "fabs",
       tanh: "tanh",
+      atan: "atan",
       index: "unsigned long long",
     }
   };
