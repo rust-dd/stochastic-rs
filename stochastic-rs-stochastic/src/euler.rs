@@ -696,6 +696,15 @@ pub enum EulerSpec<T: FloatExt> {
   /// Black-Scholes under Riemann-Liouville fBm in closed form, the
   /// deterministic exponent tabulated as the curve `ct`.
   RiemannLiouvilleBlackScholes { s0: T, sigma: T },
+  /// The rough Heston model: the variance under the launch's Markov lift, the
+  /// spot by Euler, the two shocks correlated by `rho`.
+  RiemannLiouvilleHeston {
+    mu: T,
+    kappa: T,
+    theta: T,
+    nu: T,
+    rho: T,
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1302,6 +1311,16 @@ impl<T: FloatExt> EulerSpec<T> {
         (Family::RegimeSwitching.code(), pad(values))
       }
       EulerSpec::RiemannLiouville => (Family::RiemannLiouville.code(), pad([])),
+      EulerSpec::RiemannLiouvilleHeston {
+        mu,
+        kappa,
+        theta,
+        nu,
+        rho,
+      } => (
+        Family::RiemannLiouvilleHeston.code(),
+        pad([mu, kappa, theta, nu, rho]),
+      ),
       EulerSpec::RiemannLiouvilleOu { kappa, mu, nu } => {
         (Family::RiemannLiouvilleOu.code(), pad([kappa, mu, nu]))
       }

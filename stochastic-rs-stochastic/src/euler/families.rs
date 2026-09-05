@@ -2190,6 +2190,26 @@ euler_families! {
     report { s, b }
     lift { drift (lit(0.0)) diffusion (lit(1.0)) shock (dz) },
 
+  /// The rough Heston model: a square-root variance whose mean reversion and
+  /// diffusion enter through the Markov lift of a rough kernel, so the lifted
+  /// value is the next variance, and a spot stepped by Euler under the
+  /// truncated variance. The variance's shock is correlated with the spot's
+  /// through `rho`; the state carries the raw lifted variance and reports it
+  /// truncated, as the host does.
+  97 => RiemannLiouvilleHeston { mu, kappa, theta, nu, rho }
+    state (s, v)
+    noise (ds, dq)
+    step {
+      s + mu * s * dt + s * sqrt(positive(v)) * ds,
+      lv
+    }
+    report { s, positive(v) }
+    lift {
+      drift (kappa * (theta - positive(v)))
+      diffusion (nu * sqrt(positive(v)))
+      shock (rho * ds + sqrt(negate(rho * rho - lit(1.0))) * dq)
+    },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)

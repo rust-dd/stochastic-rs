@@ -15,9 +15,12 @@ use stochastic_rs_stochastic::interest::fractional_vasicek::FVasicek;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
 use stochastic_rs_stochastic::process::cfbms::Cfbms;
 use stochastic_rs_stochastic::process::fbm::Fbm;
+use stochastic_rs_stochastic::process::volterra::Volterra;
+use stochastic_rs_stochastic::process::volterra::VolterraKernelSpec;
 use stochastic_rs_stochastic::rough::rl_bs::RlBlackScholes;
 use stochastic_rs_stochastic::rough::rl_fbm::RlFBm;
 use stochastic_rs_stochastic::rough::rl_fou::RlFOU;
+use stochastic_rs_stochastic::rough::rl_heston::RlHeston;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 use super::common::Device;
@@ -532,4 +535,132 @@ fn rl_black_scholes_agrees_with_the_cpu_law() {
     mean(&d)
   );
   agrees(sd(&h), sd(&d), 0.06, "RL-Black-Scholes log-return spread");
+}
+
+/// The rough Heston puts the lift on the variance and correlates its shock
+/// with the spot's. The variance's terminal mean pins `kappa` and `theta`, its
+/// spread `nu` and the roughness, and the spot/variance correlation `rho` —
+/// the one statistic a launch that dropped the correlation keeps every
+/// marginal of.
+#[test]
+fn rl_heston_agrees_with_the_cpu_law() {
+  let build = || {
+    RlHeston::<f32, _>::new(
+      0.3,
+      Some(100.0),
+      Some(0.04),
+      2.0,
+      0.04,
+      0.3,
+      -0.6,
+      0.03,
+      N,
+      Some(1.0),
+      None,
+      Deterministic::new(43),
+    )
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert_eq!(device.len(), PATHS);
+  assert_eq!(device[0][0][0], 100.0, "the spot starts at s0");
+  assert_eq!(device[0][1][0], 0.04, "the variance starts at v0");
+  assert!(
+    device
+      .iter()
+      .all(|[s, v]| s.iter().all(|x| x.is_finite()) && v.iter().all(|x| x.is_finite() && *x >= 0.0)),
+    "rough Heston: a device path left its domain"
+  );
+  let last = N - 1;
+  let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
+  let sd = |v: &[f64]| {
+    let m = mean(v);
+    (v.iter().map(|x| (x - m).powi(2)).sum::<f64>() / v.len() as f64).sqrt()
+  };
+  let corr = |a: &[f64], b: &[f64]| {
+    let (ma, mb) = (mean(a), mean(b));
+    let (mut sab, mut saa, mut sbb) = (0.0, 0.0, 0.0);
+    for (x, y) in a.iter().zip(b) {
+      sab += (x - ma) * (y - mb);
+      saa += (x - ma).powi(2);
+      sbb += (y - mb).powi(2);
+    }
+    sab / (saa * sbb).sqrt()
+  };
+  let log_spot = |paths: &[[Array1<f32>; 2]]| -> Vec<f64> {
+    paths
+      .iter()
+      .map(|[s, _]| (s[last] as f64 / 100.0).ln())
+      .collect()
+  };
+  let variance = |paths: &[[Array1<f32>; 2]]| -> Vec<f64> {
+    paths.iter().map(|[_, v]| v[last] as f64).collect()
+  };
+  let (hs, ds, hv, dv) = (
+    log_spot(&host),
+    log_spot(&device),
+    variance(&host),
+    variance(&device),
+  );
+  assert!(
+    (mean(&hs) - mean(&ds)).abs() < 0.01,
+    "rough Heston log-spot mean: host {}, device {}",
+    mean(&hs),
+    mean(&ds)
+  );
+  agrees(sd(&hs), sd(&ds), 0.06, "rough Heston log-spot spread");
+  assert!(
+    (mean(&hv) - mean(&dv)).abs() < 0.002,
+    "rough Heston variance mean: host {}, device {}",
+    mean(&hv),
+    mean(&dv)
+  );
+  agrees(sd(&hv), sd(&dv), 0.08, "rough Heston variance spread");
+  let (hc, dc) = (corr(&hs, &hv), corr(&ds, &dv));
+  assert!(
+    (hc - dc).abs() < 0.05,
+    "rough Heston spot/variance correlation: host {hc}, device {dc}"
+  );
+}
+
+/// The general Volterra process's lift branch is fBm under the Markov lift —
+/// the family `RlFBm` rides — while a kernel outside the rough range takes the
+/// reference convolution on the host whatever the backend.
+#[test]
+fn volterra_lift_agrees_with_the_cpu_law_and_the_reference_still_samples() {
+  let build = || {
+    Volterra::<f32, _>::new(
+      VolterraKernelSpec::FractionalBM { h: 0.3 },
+      N,
+      Some(4.0),
+      Deterministic::new(47),
+    )
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert_eq!(device.len(), PATHS);
+  assert_eq!(device[0][0], 0.0, "every path starts at the origin");
+  all_finite(&device, "Volterra lift");
+  agrees(
+    terminal_std(&host),
+    terminal_std(&device),
+    0.06,
+    "Volterra lift terminal spread",
+  );
+  let reference = Volterra::<f32, _>::new(
+    VolterraKernelSpec::FractionalBM { h: 0.7 },
+    64,
+    Some(1.0),
+    Deterministic::new(53),
+  )
+  .on::<Device>()
+  .sample_par(8);
+  assert_eq!(reference.len(), 8);
+  assert!(
+    reference
+      .iter()
+      .all(|p| p.len() == 64 && p.iter().all(|v| v.is_finite()))
+  );
 }

@@ -27,7 +27,6 @@ use super::kernel::RlKernel;
 use super::markov_lift::MarkovLift;
 use super::markov_lift::RoughSimd;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -166,9 +165,72 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B> RlHeston<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] RlHeston<T, S> { hurst, s0, v0, kappa, theta, nu, rho, mu, n, t, degree, seed, cgns, markov } via host);
+/// The Euler engine's view: the variance's lift goes to the device as its node
+/// constants and boundary terms — started at `v0`, floored as the host floors
+/// it — and the family steps the spot by Euler beside it, the two shocks
+/// correlated in the step exactly as the host's correlated pair is.
+impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
+  crate::euler::EulerSystem<T, 2> for RlHeston<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::RiemannLiouvilleHeston {
+      mu: self.mu,
+      kappa: self.kappa,
+      theta: self.theta,
+      nu: self.nu,
+      rho: self.rho,
+    }
+  }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt, B: HostBackend> ProcessExt<T> for RlHeston<T, S, B> {
+  fn initial_state(&self) -> [T; 4] {
+    [
+      self.s0.unwrap_or(T::zero()),
+      self.v0.unwrap_or(T::zero()).max(T::zero()),
+      T::zero(),
+      T::zero(),
+    ]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn lift_spec(&self) -> Option<crate::euler::LiftSpec<'_, T>> {
+    let lift = self.markov.lift();
+    Some(crate::euler::LiftSpec {
+      decay: lift.exp_neg_x_dt.as_slice().expect("contiguous"),
+      weight: lift.we.as_slice().expect("contiguous"),
+      drift_scale: lift.one_minus_e_over_x.as_slice().expect("contiguous"),
+      drift_boundary: lift.drift_boundary,
+      diffusion_boundary: lift.diffusion_boundary,
+      x0: self.v0.unwrap_or(T::zero()).max(T::zero()),
+    })
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 2] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] RlHeston<T, S> { hurst, s0, v0, kappa, theta, nu, rho, mu, n, t, degree, seed, cgns, markov } via euler);
+
+impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for RlHeston<T, S, B>
+{
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = RlHestonSampler<'s, T, S>
@@ -196,6 +258,29 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: HostBackend> ProcessExt<T> for RlHe
       markov: &self.markov,
       seed: self.seed.derive(),
     }
+  }
+
+  /// Through the Euler engine: on a device the lift and both components run
+  /// in the kernel, on the host devices it is this process's own sampler,
+  /// chunked exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> [Array1<T>; 2] {
+    self.backend.system_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 2]) -> R + Sync) -> Vec<R> {
+    self.backend.system_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 2]> {
+    self.backend.system_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 2], crate::device::DeviceError> {
+    self.backend.try_system_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 2]>, crate::device::DeviceError> {
+    self.backend.try_system_paths(self, m)
   }
 }
 

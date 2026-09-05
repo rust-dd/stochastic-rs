@@ -486,6 +486,12 @@ fn lift_coefficient(
       u2, lv, dz0, dz1, dz2, dz3,
     );
   }
+  if family == 97u32 {
+    value = cube_lift::RiemannLiouvilleHeston(
+      which, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2, lv, dz0, dz1, dz2, dz3,
+    );
+  }
   if family == 94u32 {
     value = cube_lift::RiemannLiouville(
       which, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
@@ -997,6 +1003,12 @@ fn step(
   }
   if family == 96u32 {
     stepped = cube::RiemannLiouvilleBlackScholes(
+      component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
+      gm2, u, u2, lv, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 97u32 {
+    stepped = cube::RiemannLiouvilleHeston(
       component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
       gm2, u, u2, lv, dz0, dz1, dz2, dz3,
     );
@@ -1609,6 +1621,12 @@ fn report(
   }
   if family == 96u32 {
     reported = cube_report::RiemannLiouvilleBlackScholes(
+      component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2, lv,
+    );
+  }
+  if family == 97u32 {
+    reported = cube_report::RiemannLiouvilleHeston(
       component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
       u2, lv,
     );

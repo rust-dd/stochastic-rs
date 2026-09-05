@@ -401,6 +401,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::RiemannLiouville => "RiemannLiouville",
     EulerSpec::RiemannLiouvilleOu { .. } => "RiemannLiouvilleOu",
     EulerSpec::RiemannLiouvilleBlackScholes { .. } => "RiemannLiouvilleBlackScholes",
+    EulerSpec::RiemannLiouvilleHeston { .. } => "RiemannLiouvilleHeston",
   }
 }
 
@@ -1174,6 +1175,17 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         sigma: 0.2,
       },
       x0: [100.0, 0.0],
+      lift: Some(probe_lift(1.0 / (N - 1) as f32)),
+    },
+    SystemProbe {
+      spec: EulerSpec::RiemannLiouvilleHeston {
+        mu: 0.03,
+        kappa: 2.0,
+        theta: 0.04,
+        nu: 0.3,
+        rho: -0.6,
+      },
+      x0: [100.0, 0.04],
       lift: Some(probe_lift(1.0 / (N - 1) as f32)),
     },
     SystemProbe {

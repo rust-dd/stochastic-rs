@@ -37,7 +37,6 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::rough::kernel::RlKernel;
 use crate::rough::markov_lift::RoughSimd;
 use crate::traits::FloatExt;
@@ -140,6 +139,9 @@ pub struct Volterra<T: FloatExt + RoughSimd, S: SeedExt = Unseeded, B = Cpu> {
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
   engine: VolterraEngine<T>,
+  /// The Markov lift a device steps in the lift branch, built once here;
+  /// `None` in the reference branch, which stays on the host.
+  lift: Option<crate::rough::MarkovLift<T>>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
@@ -158,6 +160,13 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> Volterra<T, S> {
       }
       _ => VolterraEngine::Reference(kernel.prepare::<T>()),
     };
+    let lift = match &engine {
+      VolterraEngine::Lift(rl) if n > 1 => Some(crate::rough::MarkovLift::new(
+        rl.clone(),
+        t.unwrap_or(T::one()) / T::from_usize_(n - 1),
+      )),
+      _ => None,
+    };
     Self {
       backend: Cpu,
       kernel,
@@ -165,6 +174,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> Volterra<T, S> {
       t,
       seed,
       engine,
+      lift,
     }
   }
 }
@@ -187,9 +197,56 @@ fn lift_one<T: FloatExt>(_t: T, _x: T) -> T {
   T::one()
 }
 
-backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] Volterra<T, S> { kernel, n, t, seed, engine } via host);
+/// The Euler engine's view of the lift branch: fBm under the Markov lift, the
+/// same family `RlFBm` rides. The reference branch has no lift and never
+/// reaches the engine; [`ProcessExt`] keeps it on the host.
+impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
+  crate::euler::EulerCoefficients<T> for Volterra<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::RiemannLiouville
+  }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt, B: HostBackend> ProcessExt<T> for Volterra<T, S, B> {
+  fn initial_value(&self) -> T {
+    T::zero()
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn lift_spec(&self) -> Option<crate::euler::LiftSpec<'_, T>> {
+    let lift = self.lift.as_ref()?.lift();
+    Some(crate::euler::LiftSpec {
+      decay: lift.exp_neg_x_dt.as_slice().expect("contiguous"),
+      weight: lift.we.as_slice().expect("contiguous"),
+      drift_scale: lift.one_minus_e_over_x.as_slice().expect("contiguous"),
+      drift_boundary: lift.drift_boundary,
+      diffusion_boundary: lift.diffusion_boundary,
+      x0: T::zero(),
+    })
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] Volterra<T, S> { kernel, n, t, seed, engine, lift } via euler);
+
+impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for Volterra<T, S, B>
+{
   type Output = Array1<T>;
   type Sampler<'s>
     = VolterraSampler<T, S>
@@ -221,6 +278,51 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: HostBackend> ProcessExt<T> for Volt
           normal: SimdNormal::<T, 64>::new(T::zero(), T::one(), &self.seed),
         })
       }
+    }
+  }
+
+  /// Through the Euler engine in the lift branch, whose lift runs in the
+  /// kernel; the reference branch has no lift and stays on this process's
+  /// own sampler whatever the backend.
+  fn sample(&self) -> Array1<T> {
+    if self.lift.is_some() {
+      self.backend.euler_sample(self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    if self.lift.is_some() {
+      self.backend.euler_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    if self.lift.is_some() {
+      self.backend.euler_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    if self.lift.is_some() {
+      self.backend.try_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    if self.lift.is_some() {
+      self.backend.try_euler_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }
