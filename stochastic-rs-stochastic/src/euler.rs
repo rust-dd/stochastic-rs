@@ -557,6 +557,8 @@ pub enum EulerSpec<T: FloatExt> {
   /// The dynamic SABR, whose three coefficients all travel as curves rather
   /// than parameters.
   DynamicSabr,
+  /// Heath-Jarrow-Morton's three rows, with all six coefficients as curves.
+  HeathJarrowMorton,
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1131,6 +1133,7 @@ impl<T: FloatExt> EulerSpec<T> {
       ),
       EulerSpec::PoissonArrivals { lambda } => (Family::PoissonArrivals.code(), pad([lambda])),
       EulerSpec::DynamicSabr => (Family::DynamicSabr.code(), pad([])),
+      EulerSpec::HeathJarrowMorton => (Family::HeathJarrowMorton.code(), pad([])),
     }
   }
 }

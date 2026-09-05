@@ -56,8 +56,16 @@ const PROBE_SIZES: JumpSizes<f32> = JumpSizes::DoubleExponential {
   eta_down: 20.0,
 };
 
-fn probe_curve() -> Vec<f32> {
-  (0..N).map(|i| 0.02 + 0.001 * i as f32).collect()
+/// One ramp per curve slot, each with its own level and slope, so every slot
+/// the kernels bind carries a value no other slot carries and a family that
+/// reads `ct3` is checked against the host reading `ct3` and nothing else.
+fn probe_curves() -> Vec<Vec<f32>> {
+  (0..crate::euler::CURVE_SLOTS)
+    .map(|k| {
+      let (level, slope) = (0.02 + 0.003 * k as f32, 0.001 + 0.0002 * k as f32);
+      (0..N).map(|i| level + slope * i as f32).collect()
+    })
+    .collect()
 }
 
 /// The host stream for a [`Probe`]: this crate's Gaussian generator feeding
@@ -80,12 +88,28 @@ impl PathSampler<f32> for ProbeSampler {
     if slice.is_empty() {
       return;
     }
-    let curve = probe_curve();
+    let curves = probe_curves();
     let mut state = [self.x0, 0.0, 0.0, 0.0];
     let mut out = [0.0f32; 4];
     super::families::host_report(
-      family, &state, &params, curve[0], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.7, 1.3,
-      0.5, 0.5, &mut out,
+      family,
+      &state,
+      &params,
+      curves[0][0],
+      curves[1][0],
+      curves[2][0],
+      curves[3][0],
+      curves[4][0],
+      curves[5][0],
+      curves[6][0],
+      curves[7][0],
+      0.0,
+      0.0,
+      0.7,
+      1.3,
+      0.5,
+      0.5,
+      &mut out,
     );
     slice[0] = out[0];
     if slice.len() == 1 {
@@ -100,14 +124,14 @@ impl PathSampler<f32> for ProbeSampler {
         &state,
         &params,
         self.dt,
-        curve[i + 1],
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
+        curves[0][i + 1],
+        curves[1][i + 1],
+        curves[2][i + 1],
+        curves[3][i + 1],
+        curves[4][i + 1],
+        curves[5][i + 1],
+        curves[6][i + 1],
+        curves[7][i + 1],
         0.0,
         0.0,
         0.7,
@@ -122,14 +146,14 @@ impl PathSampler<f32> for ProbeSampler {
         family,
         &state,
         &params,
-        curve[i + 1],
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
+        curves[0][i + 1],
+        curves[1][i + 1],
+        curves[2][i + 1],
+        curves[3][i + 1],
+        curves[4][i + 1],
+        curves[5][i + 1],
+        curves[6][i + 1],
+        curves[7][i + 1],
         0.0,
         0.0,
         0.7,
@@ -188,8 +212,8 @@ impl EulerCoefficients<f32> for Probe {
     11
   }
 
-  fn curve(&self) -> Option<Vec<f32>> {
-    Some(probe_curve())
+  fn curves(&self) -> Option<Vec<Vec<f32>>> {
+    Some(probe_curves())
   }
 
   /// Every probe takes jumps, so the count's own hash stream runs on both
@@ -305,6 +329,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::TransformedOrnsteinUhlenbeck { .. } => "TransformedOrnsteinUhlenbeck",
     EulerSpec::PoissonArrivals { .. } => "PoissonArrivals",
     EulerSpec::DynamicSabr => "DynamicSabr",
+    EulerSpec::HeathJarrowMorton => "HeathJarrowMorton",
   }
 }
 
@@ -722,7 +747,7 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
     let (code, params) = self.spec.encode();
     let family = super::families::Family::from_code(code).expect("a declared family");
     let noises = family.noises();
-    let curve = probe_curve();
+    let curves = probe_curves();
     let mut state = [0.0f32; 4];
     state[..D].copy_from_slice(&self.x0);
     let mut reported = [0.0f32; 4];
@@ -730,14 +755,14 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       family,
       &state,
       &params,
-      curve[0],
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
+      curves[0][0],
+      curves[1][0],
+      curves[2][0],
+      curves[3][0],
+      curves[4][0],
+      curves[5][0],
+      curves[6][0],
+      curves[7][0],
       0.0,
       0.0,
       0.7,
@@ -756,22 +781,40 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       noise[..noises].copy_from_slice(&draw);
       let mut next = [0.0f32; 4];
       super::families::host_step(
-        family, &state, &params, self.dt, curve[i], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-        0.7, 1.3, 0.5, 0.5, &noise, &mut next,
+        family,
+        &state,
+        &params,
+        self.dt,
+        curves[0][i],
+        curves[1][i],
+        curves[2][i],
+        curves[3][i],
+        curves[4][i],
+        curves[5][i],
+        curves[6][i],
+        curves[7][i],
+        0.0,
+        0.0,
+        0.7,
+        1.3,
+        0.5,
+        0.5,
+        &noise,
+        &mut next,
       );
       state = next;
       super::families::host_report(
         family,
         &state,
         &params,
-        curve[i],
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
+        curves[0][i],
+        curves[1][i],
+        curves[2][i],
+        curves[3][i],
+        curves[4][i],
+        curves[5][i],
+        curves[6][i],
+        curves[7][i],
         0.0,
         0.0,
         0.7,
@@ -834,8 +877,8 @@ impl<const D: usize> EulerSystem<f32, D> for SystemProbe<D> {
     11
   }
 
-  fn curve(&self) -> Option<Vec<f32>> {
-    Some(probe_curve())
+  fn curves(&self) -> Option<Vec<Vec<f32>>> {
+    Some(probe_curves())
   }
 
   fn jump_intensity(&self) -> Option<f32> {
@@ -1088,6 +1131,10 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
 
 /// One probe per three-component family.
 fn every_three_component_family() -> Vec<SystemProbe<3>> {
+  let hjm = SystemProbe {
+    spec: EulerSpec::HeathJarrowMorton,
+    x0: [0.03, 1.0, 0.04],
+  };
   let garch = SystemProbe {
     spec: EulerSpec::Garch {
       omega: 0.00001,
@@ -1147,6 +1194,7 @@ fn every_three_component_family() -> Vec<SystemProbe<3>> {
     x0: [0.0, -0.2, 0.0],
   };
   vec![
+    hjm,
     garch,
     threshold,
     exponential,

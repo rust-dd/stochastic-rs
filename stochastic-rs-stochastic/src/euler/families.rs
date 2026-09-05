@@ -1917,6 +1917,22 @@ euler_families! {
     }
     report { f, v },
 
+  /// Heath-Jarrow-Morton in its three-row discretisation: the short rate,
+  /// the bond price and the forward rate each take a drift and a diffusion
+  /// coefficient that are functions of time alone, so all six travel as
+  /// curves — `ct`/`ct1` for the rate, `ct2`/`ct3` for the bond price with
+  /// its outer scale already folded into both, `ct4`/`ct5` for the forward
+  /// rate — and the family carries no parameter at all.
+  88 => HeathJarrowMorton { }
+    state (r, p, f)
+    noise (dr, dp, df)
+    step {
+      r + ct * dt + ct1 * dr,
+      p + ct2 * dt + ct3 * dp,
+      f + ct4 * dt + ct5 * df
+    }
+    report { r, p, f },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)

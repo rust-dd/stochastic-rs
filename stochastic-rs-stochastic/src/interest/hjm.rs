@@ -13,7 +13,6 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::Fn2D;
@@ -114,9 +113,82 @@ impl<T: FloatExt, S: SeedExt> Hjm<T, S> {
 
 impl<T: FloatExt, S: SeedExt, B> Hjm<T, S, B> {}
 
-backend_switch!([T: FloatExt, S: SeedExt] Hjm<T, S> { a, b, p, q, v, alpha, sigma, n, r0, p0, f0, t, seed } via host);
+/// The Euler engine's view: the seven coefficient functions are functions of
+/// time alone — every `Fn2D` is called at the fixed horizon — so the host
+/// tabulates them per grid point and the kernel steps three rows under six
+/// curves, the bond price's outer scale folded into its drift and diffusion.
+/// The callables themselves never reach the device.
+impl<T: FloatExt, S: SeedExt, B> Hjm<T, S, B> {
+  /// The grid spacing the three rows share: `n - 1` increments over the
+  /// horizon, and zero when the grid has no increment to take.
+  fn dt(&self) -> T {
+    if self.n > 1 {
+      self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    } else {
+      T::zero()
+    }
+  }
+}
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Hjm<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 3>
+  for Hjm<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::HeathJarrowMorton
+  }
+
+  fn initial_state(&self) -> [T; 4] {
+    [
+      self.r0.unwrap_or(T::zero()),
+      self.p0.unwrap_or(T::zero()),
+      self.f0.unwrap_or(T::zero()),
+      T::zero(),
+    ]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.dt()
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  /// The six coefficients at each grid point, in the order the step names
+  /// them: `a`, `b`, `p·q`, `p·v`, `alpha`, `sigma`. Step `i` reads the
+  /// value at `i · dt`, which is the time the host's own loop evaluates.
+  fn curves(&self) -> Option<Vec<Vec<T>>> {
+    let dt = self.dt();
+    let t_max = self.horizon();
+    let grid = |f: &dyn Fn(T) -> T| (0..self.n).map(|i| f(T::from_usize_(i) * dt)).collect();
+    Some(vec![
+      grid(&|t| self.a.call(t)),
+      grid(&|t| self.b.call(t)),
+      grid(&|t| self.p.call(t, t_max) * self.q.call(t, t_max)),
+      grid(&|t| self.p.call(t, t_max) * self.v.call(t, t_max)),
+      grid(&|t| self.alpha.call(t, t_max)),
+      grid(&|t| self.sigma.call(t, t_max)),
+    ])
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 3] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Hjm<T, S> { a, b, p, q, v, alpha, sigma, n, r0, p0, f0, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Hjm<T, S, B> {
   type Output = [Array1<T>; 3];
   type Sampler<'s>
     = HjmSampler<'s, T, S, B>
@@ -141,6 +213,29 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Hjm<T, S, B> {
       seed: self.seed.derive(),
     }
   }
+
+  /// Through the Euler engine: on a device the three rows are stepped in the
+  /// kernel under the tabulated coefficients, on the host devices it is this
+  /// process's own sampler, chunked exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> [Array1<T>; 3] {
+    self.backend.system_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 3]) -> R + Sync) -> Vec<R> {
+    self.backend.system_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 3]> {
+    self.backend.system_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 3], crate::device::DeviceError> {
+    self.backend.try_system_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 3]>, crate::device::DeviceError> {
+    self.backend.try_system_paths(self, m)
+  }
 }
 
 /// Reusable [`Hjm`] sampler: borrows the process and owns a seed derived
@@ -152,7 +247,9 @@ pub struct HjmSampler<'a, T: FloatExt, S: SeedExt, B> {
   seed: S,
 }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> PathSampler<T> for HjmSampler<'_, T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> PathSampler<T>
+  for HjmSampler<'_, T, S, B>
+{
   type Output = [Array1<T>; 3];
 
   fn sample_into(&mut self, out: &mut [Array1<T>; 3]) {
