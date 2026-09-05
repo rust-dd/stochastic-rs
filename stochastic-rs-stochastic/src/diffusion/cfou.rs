@@ -88,9 +88,144 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Cfou<T, S> { hurst, lambda, omega, a, n, x1_0, x2_0, t, seed } via fgn);
+/// The Euler engine's view of the complex fOU: the real and imaginary parts
+/// are the family's two components, driven by the pair of streams the one
+/// embedding produces. `ProcessExt` reassembles them into the complex path
+/// the process reports.
+/// The complex path's two real rows as a process in their own right. The
+/// engine speaks in `[Array1<T>; 2]` and [`Cfou`] reports `Array1<Complex<T>>`,
+/// so this view is what carries the launch; [`Cfou`] rejoins the planes it
+/// returns. It borrows rather than owns, so the seed it advances is the
+/// process's own.
+#[doc(hidden)]
+pub struct CfouParts<'a, T: FloatExt, S: SeedExt, B>(&'a Cfou<T, S, B>);
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Cfou<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
+  for CfouParts<'_, T, S, B>
+{
+  type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = CfouPartsSampler<'s, T, S, B>
+  where
+    Self: 's;
+
+  fn sampler(&self) -> CfouPartsSampler<'_, T, S, B> {
+    CfouPartsSampler(<Cfou<T, S, B> as ProcessExt<T>>::sampler(self.0))
+  }
+
+  fn advance_chunk_seed(&self) {
+    <Cfou<T, S, B> as ProcessExt<T>>::advance_chunk_seed(self.0)
+  }
+}
+
+/// [`CfouParts`]'s sampler: the process's own complex sampler, split into the
+/// two real rows as each path comes off it.
+#[doc(hidden)]
+pub struct CfouPartsSampler<'a, T: FloatExt, S: SeedExt, B>(CfouSampler<'a, T, S, B>);
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for CfouPartsSampler<'_, T, S, B> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    let [x1, x2] = self.sample();
+    out[0] = x1;
+    out[1] = x2;
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    split_complex(&self.0.sample())
+  }
+
+  fn try_sample(&mut self) -> Result<[Array1<T>; 2], DeviceError> {
+    self.0.try_sample().map(|z| split_complex(&z))
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::euler::EulerSystem<T, 2> for CfouParts<'_, T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::ComplexFractionalOu {
+      lambda: self.0.lambda,
+      omega: self.0.omega,
+      scale: (self.0.a * T::from_f64_fast(0.5)).sqrt(),
+    }
+  }
+
+  fn initial_state(&self) -> [T; 4] {
+    [
+      self.0.x1_0.unwrap_or(T::zero()),
+      self.0.x2_0.unwrap_or(T::zero()),
+      T::zero(),
+      T::zero(),
+    ]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.0.n
+  }
+
+  fn horizon(&self) -> T {
+    self.0.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.0.fgn.dt()
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.0.seed)
+  }
+
+  /// The real and imaginary noises are the two independent halves of one
+  /// complex fractional increment, so they come out of a single embedding:
+  /// the pipeline draws `2 · m` paths in one batched call and the step reads
+  /// its second stream from the buffer's next `paths` rows.
+  fn fgn_spec(&self) -> Option<crate::euler::FgnSpec<'_, T>> {
+    Some(crate::euler::FgnSpec {
+      sqrt_eigenvalues: self.0.fgn.sqrt_eigenvalues.as_slice().expect("contiguous"),
+      n: self.0.fgn.n,
+      offset: self.0.fgn.offset,
+      hurst: self.0.fgn.hurst.to_f64().unwrap_or(0.5),
+      t: self.0.fgn.t.unwrap_or(T::one()).to_f64().unwrap_or(1.0),
+      streams: 2,
+    })
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 2] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+/// The real and imaginary rows of a complex path, the shape the engine's
+/// two-component launch speaks in.
+fn split_complex<T: FloatExt>(z: &Array1<Complex<T>>) -> [Array1<T>; 2] {
+  let mut x1 = Array1::<T>::zeros(z.len());
+  let mut x2 = Array1::<T>::zeros(z.len());
+  for (i, v) in z.iter().enumerate() {
+    x1[i] = v.re;
+    x2[i] = v.im;
+  }
+  [x1, x2]
+}
+
+/// The inverse of [`split_complex`]: the engine reports two real planes and
+/// the process reports one complex path.
+fn join_complex<T: FloatExt>([x1, x2]: [Array1<T>; 2]) -> Array1<Complex<T>> {
+  Array1::from_iter(
+    x1.iter()
+      .zip(x2.iter())
+      .map(|(re, im)| Complex::new(*re, *im)),
+  )
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Cfou<T, S> { hurst, lambda, omega, a, n, x1_0, x2_0, t, seed } via fgn euler);
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
+  for Cfou<T, S, B>
+{
   type Output = Array1<Complex<T>>;
   type Sampler<'s>
     = CfouSampler<'s, T, S, B>
@@ -113,6 +248,39 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Cfou<T, S, B> 
       cfou: self,
       seed: self.seed.derive(),
     }
+  }
+
+  /// Through the Euler engine: on a device the whole complex recursion runs
+  /// in the kernel over the increments the fractional pipeline wrote to that
+  /// same device, and the two real planes are rejoined here; on the host
+  /// devices it is this process's own sampler, chunked exactly as
+  /// [`ProcessExt`] chunks.
+  fn sample(&self) -> Array1<Complex<T>> {
+    join_complex(crate::euler::EulerBackend::system_sample(
+      &self.fgn.backend,
+      &CfouParts(self),
+    ))
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<Complex<T>>> {
+    crate::euler::EulerBackend::system_paths(&self.fgn.backend, &CfouParts(self), m)
+      .into_iter()
+      .map(join_complex)
+      .collect()
+  }
+
+  fn try_sample(&self) -> Result<Array1<Complex<T>>, DeviceError> {
+    crate::euler::EulerBackend::try_system_sample(&self.fgn.backend, &CfouParts(self))
+      .map(join_complex)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<Complex<T>>>, DeviceError> {
+    Ok(
+      crate::euler::EulerBackend::try_system_paths(&self.fgn.backend, &CfouParts(self), m)?
+        .into_iter()
+        .map(join_complex)
+        .collect(),
+    )
   }
 }
 

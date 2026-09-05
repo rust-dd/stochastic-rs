@@ -6,6 +6,7 @@
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_stochastic::diffusion::cfou::Cfou;
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
 use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
 use stochastic_rs_stochastic::diffusion::fjacobi::FJacobi;
@@ -318,5 +319,62 @@ fn correlated_fgn_agrees_with_the_cpu_law() {
     corr(&device),
     0.08,
     "correlated fGn correlation",
+  );
+}
+
+/// The complex fOU reaches the engine through a two-component view of its own
+/// real and imaginary rows, since the process itself reports one complex path.
+/// Both parts mean-revert to zero, so the terminal spread of each is what
+/// carries the law.
+#[test]
+fn complex_fou_agrees_with_the_cpu_law() {
+  let build = || {
+    Cfou::<f32, _>::new(
+      0.7,
+      2.0,
+      1.5,
+      0.6,
+      N,
+      Some(0.1),
+      Some(-0.1),
+      Some(1.0),
+      Deterministic::new(17),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  let host = build().sample_par(M);
+  assert_eq!(device.len(), M);
+  assert_eq!(device[0].len(), N);
+  assert_eq!(device[0][0].re, 0.1, "the real part starts at x1_0");
+  assert_eq!(device[0][0].im, -0.1, "the imaginary part starts at x2_0");
+  assert!(
+    device
+      .iter()
+      .all(|p| p.iter().all(|z| z.re.is_finite() && z.im.is_finite())),
+    "complex fOU: a device path left the reals"
+  );
+  let spread = |paths: &[Array1<num_complex::Complex<f32>>], im: bool| {
+    let last = paths[0].len() - 1;
+    let part = |z: &num_complex::Complex<f32>| if im { z.im as f64 } else { z.re as f64 };
+    let n = paths.len() as f64;
+    let mean = paths.iter().map(|p| part(&p[last])).sum::<f64>() / n;
+    (paths
+      .iter()
+      .map(|p| (part(&p[last]) - mean).powi(2))
+      .sum::<f64>()
+      / n)
+      .sqrt()
+  };
+  agrees(
+    spread(&host, false),
+    spread(&device, false),
+    0.08,
+    "complex fOU real-part spread",
+  );
+  agrees(
+    spread(&host, true),
+    spread(&device, true),
+    0.08,
+    "complex fOU imaginary-part spread",
   );
 }

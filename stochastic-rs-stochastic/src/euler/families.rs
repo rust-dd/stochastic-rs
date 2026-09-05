@@ -1806,6 +1806,21 @@ euler_families! {
     }
     report { a, b },
 
+  /// The complex fractional Ornstein-Uhlenbeck process in its real and
+  /// imaginary parts: one complex mean reversion `lambda - i·omega` acting on
+  /// `x1 + i·x2`, driven by a complex fractional noise whose two parts are
+  /// the pair of streams the one embedding produces. `scale` is the noise
+  /// intensity `sqrt(a / 2)`, folded in on the host so the step carries no
+  /// square root of its own.
+  84 => ComplexFractionalOu { lambda, omega, scale }
+    state (x1, x2)
+    noise (dz1, dz2)
+    step {
+      x1 - (lambda * x1 + omega * x2) * dt + scale * dz1,
+      x2 - (lambda * x2 - omega * x1) * dt + scale * dz2
+    }
+    report { x1, x2 },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)

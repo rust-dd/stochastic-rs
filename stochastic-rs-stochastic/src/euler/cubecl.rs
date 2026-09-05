@@ -721,6 +721,11 @@ fn step(
       component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
     );
   }
+  if family == 84u32 {
+    stepped = cube::ComplexFractionalOu(
+      component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
+    );
+  }
   if family == 16u32 {
     stepped = cube::FellerRoot(
       component, x0, x1, x2, x3, params, dt, ct, nj, js, gm, gm2, u, u2, dz0, dz1, dz2, dz3,
@@ -1160,6 +1165,11 @@ fn report(
   }
   if family == 83u32 {
     reported = cube_report::CorrelatedFractionalMotion(
+      component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
+    );
+  }
+  if family == 84u32 {
+    reported = cube_report::ComplexFractionalOu(
       component, x0, x1, x2, x3, params, ct, nj, js, gm, gm2, u, u2,
     );
   }

@@ -509,6 +509,9 @@ pub enum EulerSpec<T: FloatExt> {
   /// A correlated pair of fractional motions: both rows accumulate their own
   /// stream out of one embedding, correlated by `rho` in the step.
   CorrelatedFractionalMotion { rho: T },
+  /// The complex fractional Ornstein-Uhlenbeck process, real and imaginary
+  /// parts, under one complex mean reversion `lambda - i·omega`.
+  ComplexFractionalOu { lambda: T, omega: T, scale: T },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1063,6 +1066,14 @@ impl<T: FloatExt> EulerSpec<T> {
       EulerSpec::CorrelatedFractionalMotion { rho } => {
         (Family::CorrelatedFractionalMotion.code(), pad([rho]))
       }
+      EulerSpec::ComplexFractionalOu {
+        lambda,
+        omega,
+        scale,
+      } => (
+        Family::ComplexFractionalOu.code(),
+        pad([lambda, omega, scale]),
+      ),
     }
   }
 }
