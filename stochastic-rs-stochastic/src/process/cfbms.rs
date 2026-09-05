@@ -77,6 +77,30 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
       seed: self.seed.derive(),
     }
   }
+
+  /// Through the Euler engine: on a device both rows are produced in the
+  /// kernel from the increments the fractional pipeline wrote to that same
+  /// device, on the host devices it is this process's own sampler, chunked
+  /// exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> [Array1<T>; 2] {
+    crate::euler::EulerBackend::system_sample(&self.fgn.backend, self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 2]) -> R + Sync) -> Vec<R> {
+    crate::euler::EulerBackend::system_paths_map(&self.fgn.backend, self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 2]> {
+    crate::euler::EulerBackend::system_paths(&self.fgn.backend, self, m)
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 2], DeviceError> {
+    crate::euler::EulerBackend::try_system_sample(&self.fgn.backend, self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 2]>, DeviceError> {
+    crate::euler::EulerBackend::try_system_paths(&self.fgn.backend, self, m)
+  }
 }
 
 /// Reusable [`Cfbms`] sampling state: borrows the process for its fractional

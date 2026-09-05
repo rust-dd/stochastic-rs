@@ -87,7 +87,9 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Cfgns<T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Cfgns<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
+  for Cfgns<T, S, B>
+{
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = CfgnsSampler<'s, T, S, B>
@@ -110,6 +112,30 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Cfgns<T, S, B>
       cfgns: self,
       seed: self.seed.derive(),
     }
+  }
+
+  /// Through the Euler engine: on a device both rows are produced in the
+  /// kernel from the increments the fractional pipeline wrote to that same
+  /// device, on the host devices it is this process's own sampler, chunked
+  /// exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> [Array1<T>; 2] {
+    crate::euler::EulerBackend::system_sample(&self.fgn.backend, self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 2]) -> R + Sync) -> Vec<R> {
+    crate::euler::EulerBackend::system_paths_map(&self.fgn.backend, self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 2]> {
+    crate::euler::EulerBackend::system_paths(&self.fgn.backend, self, m)
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 2], DeviceError> {
+    crate::euler::EulerBackend::try_system_sample(&self.fgn.backend, self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 2]>, DeviceError> {
+    crate::euler::EulerBackend::try_system_paths(&self.fgn.backend, self, m)
   }
 }
 
@@ -149,7 +175,63 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for CfgnsSampler<
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Cfgns<T, S> { hurst, rho, n, t, seed } via fgn);
+/// The Euler engine's view of correlated fGn: the pair *is* the step, so the
+/// two-shock innovation family reports its own noise. Both rows come out of
+/// one embedding — they share a Hurst exponent — so the pipeline draws
+/// `2 · m` paths in the one batched call and the step reads its second stream
+/// from the buffer's next `paths` rows.
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::euler::EulerSystem<T, 2> for Cfgns<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::CorrelatedInnovation { rho: self.rho }
+  }
+
+  fn initial_state(&self) -> [T; 4] {
+    [T::zero(); 4]
+  }
+
+  /// Every grid point is a draw, so the frame steps before it writes the
+  /// first one and each point consumes one increment.
+  fn step_first(&self) -> bool {
+    true
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.fgn.dt()
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn fgn_spec(&self) -> Option<crate::euler::FgnSpec<'_, T>> {
+    Some(crate::euler::FgnSpec {
+      sqrt_eigenvalues: self.fgn.sqrt_eigenvalues.as_slice().expect("contiguous"),
+      n: self.fgn.n,
+      offset: self.fgn.offset,
+      hurst: self.fgn.hurst.to_f64().unwrap_or(0.5),
+      t: self.fgn.t.unwrap_or(T::one()).to_f64().unwrap_or(1.0),
+      streams: 2,
+    })
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 2] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Cfgns<T, S> { hurst, rho, n, t, seed } via fgn euler);
 
 py_process_2x1d!(PyCfgns, Cfgns,
   sig: (hurst, rho, n, t=None, seed=None, dtype=None),

@@ -11,6 +11,7 @@ use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
 use stochastic_rs_stochastic::diffusion::fjacobi::FJacobi;
 use stochastic_rs_stochastic::diffusion::fou::Fou;
 use stochastic_rs_stochastic::interest::fractional_vasicek::FVasicek;
+use stochastic_rs_stochastic::noise::cfgns::Cfgns;
 use stochastic_rs_stochastic::process::cfbms::Cfbms;
 use stochastic_rs_stochastic::process::fbm::Fbm;
 use stochastic_rs_stochastic::traits::ProcessExt;
@@ -198,6 +199,14 @@ fn correlated_fbm_agrees_with_the_cpu_law() {
       .all(|p| p.iter().all(|row| row.iter().all(|v| v.is_finite()))),
     "correlated fBM: a device path left the reals"
   );
+  assert!(
+    host
+      .iter()
+      .zip(device.iter())
+      .any(|(h, d)| h[0].iter().zip(d[0].iter()).any(|(a, b)| a != b)),
+    "{}: the device drew the host's own stream, so `on::<Device>()` did nothing",
+    "correlated fBM"
+  );
   let spread = |paths: &[[Array1<f32>; 2]], c: usize| {
     let last = paths[0][c].len() - 1;
     let n = paths.len() as f64;
@@ -237,5 +246,77 @@ fn correlated_fbm_agrees_with_the_cpu_law() {
     corr(&device),
     0.12,
     "correlated fBM terminal correlation",
+  );
+}
+
+/// Correlated fGn is the one process whose output *is* the noise: every grid
+/// point is a draw, so the frame steps before it writes the first point and
+/// each point consumes one increment rather than `steps - 1` of them. The
+/// statistics are taken over all points of all paths, since no single index
+/// is more meaningful than another for a noise process.
+#[test]
+fn correlated_fgn_agrees_with_the_cpu_law() {
+  let build = || Cfgns::<f32, _>::new(0.7, -0.4, N, Some(1.0), Deterministic::new(31));
+  let device = build().on::<Device>().sample_par(M);
+  let host = build().sample_par(M);
+  assert_eq!(device.len(), M);
+  assert_eq!(device[0][0].len(), N);
+  assert!(
+    device
+      .iter()
+      .all(|p| p.iter().all(|row| row.iter().all(|v| v.is_finite()))),
+    "correlated fGn: a device path left the reals"
+  );
+  assert!(
+    host
+      .iter()
+      .zip(device.iter())
+      .any(|(h, d)| h[0].iter().zip(d[0].iter()).any(|(a, b)| a != b)),
+    "{}: the device drew the host's own stream, so `on::<Device>()` did nothing",
+    "correlated fGn"
+  );
+  let std = |paths: &[[Array1<f32>; 2]], c: usize| {
+    let n = (paths.len() * paths[0][c].len()) as f64;
+    let mean = paths
+      .iter()
+      .map(|p| p[c].iter().map(|v| *v as f64).sum::<f64>())
+      .sum::<f64>()
+      / n;
+    (paths
+      .iter()
+      .map(|p| p[c].iter().map(|v| (*v as f64 - mean).powi(2)).sum::<f64>())
+      .sum::<f64>()
+      / n)
+      .sqrt()
+  };
+  let corr = |paths: &[[Array1<f32>; 2]]| {
+    let (mut sxy, mut sxx, mut syy) = (0.0f64, 0.0f64, 0.0f64);
+    for p in paths {
+      for (a, b) in p[0].iter().zip(p[1].iter()) {
+        let (x, y) = (*a as f64, *b as f64);
+        sxy += x * y;
+        sxx += x * x;
+        syy += y * y;
+      }
+    }
+    sxy / (sxx * syy).sqrt()
+  };
+  agrees(
+    std(&host, 0),
+    std(&device, 0),
+    0.05,
+    "correlated fGn first row",
+  );
+  agrees(
+    std(&host, 1),
+    std(&device, 1),
+    0.05,
+    "correlated fGn second row",
+  );
+  agrees(
+    corr(&host),
+    corr(&device),
+    0.08,
+    "correlated fGn correlation",
   );
 }

@@ -117,9 +117,15 @@ fn euler_paths_kernel(
         d3 = normal(g, 3u32, seed) * sqrt_dt;
       }
       if increments != 0u32 {
-        d0 = incs[(path * (steps - 1) + (i - 1)) as usize];
+        let mut inc_len = steps;
+        let mut inc_at = i;
+        if step_first == 0u32 {
+          inc_len = steps - 1u32;
+          inc_at = i - 1u32;
+        }
+        d0 = incs[(path * inc_len + inc_at) as usize];
         if increments > 1u32 {
-          d1 = incs[((paths + path) * (steps - 1) + (i - 1)) as usize];
+          d1 = incs[((paths + path) * inc_len + inc_at) as usize];
         }
       }
       if has_curve != 0u32 {

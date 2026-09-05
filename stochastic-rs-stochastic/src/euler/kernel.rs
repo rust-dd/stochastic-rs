@@ -24,7 +24,9 @@
 //! process reaches the same families. `increments` is a count, not a flag:
 //! at two the second component reads the buffer's next `paths` rows, so one
 //! embedding feeds a correlated fractional pair without the kernel binding a
-//! second buffer.
+//! second buffer. A row is `steps - 1` increments long, one per step the
+//! frame takes after the initial state — or `steps` under `step_first`,
+//! where the first grid point is a draw and every point consumes one.
 //!
 //! With `step_first` the frame takes a step before writing the first point,
 //! which is what a process whose first grid point is itself a draw needs: a
@@ -114,9 +116,12 @@ REPORT
             noise[k] = sqrt_dt * z;
         }
         if (increments != 0u) {
-            noise[0] = incs[(INDEX)path * (steps - 1) + (i - 1)];
+            unsigned int inc_len = steps;
+            unsigned int inc_at = i;
+            if (step_first == 0u) { inc_len = steps - 1u; inc_at = i - 1u; }
+            noise[0] = incs[(INDEX)path * inc_len + inc_at];
             if (increments > 1u) {
-                noise[1] = incs[((INDEX)paths + (INDEX)path) * (steps - 1) + (i - 1)];
+                noise[1] = incs[((INDEX)paths + (INDEX)path) * inc_len + inc_at];
             }
         }
         if (has_curve != 0u) { ct = curve[i]; }
