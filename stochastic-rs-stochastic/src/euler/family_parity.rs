@@ -52,16 +52,21 @@ impl PathSampler<f32> for ProbeSampler {
     if slice.is_empty() {
       return;
     }
-    slice[0] = super::families::host_report(family, self.x0, &params);
+    let mut state = [self.x0, 0.0, 0.0, 0.0];
+    let mut out = [0.0f32; 4];
+    super::families::host_report(family, &state, &params, &mut out);
+    slice[0] = out[0];
     if slice.len() == 1 {
       return;
     }
     let tail = &mut slice[1..];
     self.normal.fill_slice(tail);
-    let mut x = self.x0;
     for z in tail.iter_mut() {
-      x = super::families::host_step(family, x, &params, self.dt, *z);
-      *z = super::families::host_report(family, x, &params);
+      let mut next = [0.0f32; 4];
+      super::families::host_step(family, &state, &params, self.dt, &[*z, 0.0, 0.0, 0.0], &mut next);
+      state = next;
+      super::families::host_report(family, &state, &params, &mut out);
+      *z = out[0];
     }
   }
 

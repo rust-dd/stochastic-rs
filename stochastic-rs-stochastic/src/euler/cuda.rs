@@ -10,6 +10,7 @@ use std::sync::Arc;
 use cudarc::driver::*;
 use cudarc::nvrtc;
 use ndarray::Array2;
+use ndarray::Array3;
 use parking_lot::Mutex;
 
 use super::EulerCoefficients;
@@ -28,12 +29,15 @@ type Result<T> = std::result::Result<T, DeviceError>;
 const CUDA_HEADER: &str = r#"extern "C" __global__ void euler_paths_REAL(
     REAL* __restrict__ out,
     const REAL* __restrict__ params,
-    unsigned int family, REAL x0, REAL dt, REAL sqrt_dt,
+    unsigned int family, unsigned int components, unsigned int noises,
+    REAL x00, REAL x01, REAL x02, REAL x03,
+    REAL dt, REAL sqrt_dt,
     unsigned int seed, unsigned int steps, unsigned int paths,
     unsigned int first_path,
     const REAL* __restrict__ incs, unsigned int increments)
 {
     unsigned int path = blockIdx.x * blockDim.x + threadIdx.x;
+    const REAL x0[4] = { x00, x01, x02, x03 };
 "#;
 
 fn kernel_source(real: &str) -> String {
@@ -139,9 +143,11 @@ fn run<R>(
   ordinal: usize,
   func: impl Fn(&Kernels) -> &CudaFunction,
   params: [R; crate::euler::PARAM_SLOTS],
-  x0: R,
+  x0: [R; 4],
   dt: R,
   family: u32,
+  components: u32,
+  noises: u32,
   seed: u32,
   first: usize,
   n: usize,
@@ -159,7 +165,7 @@ where
     .clone_htod(&params[..])
     .map_err(|e| DeviceError::Launch(format!("htod params: {e}")))?;
   let mut d_out = stream
-    .alloc_zeros::<R>(m * n)
+    .alloc_zeros::<R>(components as usize * m * n)
     .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?;
   let sqrt_dt = dt.sqrt();
   let (steps, paths, first_path) = (n as u32, m as u32, first as u32);
@@ -183,7 +189,12 @@ where
       .arg(&mut d_out)
       .arg(&d_params)
       .arg(&family)
-      .arg(&x0)
+      .arg(&components)
+      .arg(&noises)
+      .arg(&x0[0])
+      .arg(&x0[1])
+      .arg(&x0[2])
+      .arg(&x0[3])
       .arg(&dt)
       .arg(&sqrt_dt)
       .arg(&seed)
@@ -208,17 +219,18 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
     m: usize,
     seed: u64,
   ) -> Result<Array2<T>> {
-    device_paths(
+    let planes = device_paths(
       self.ordinal,
       process.euler_spec(),
-      process.initial_value(),
+      [process.initial_value(), T::zero(), T::zero(), T::zero()],
       process.grid_points(),
       process.horizon(),
       first,
       m,
       seed,
       process.fgn_spec(),
-    )
+    )?;
+    Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
 
   fn batch_budget(&self) -> usize {
@@ -238,16 +250,17 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
     if m <= rows {
       return self.euler_kernel(process, 0, m, seed);
     }
-    pipelined_paths(
+    let planes = pipelined_paths(
       self.ordinal,
       process.euler_spec(),
-      process.initial_value(),
+      [process.initial_value(), T::zero(), T::zero(), T::zero()],
       n,
       process.horizon(),
       m,
       rows,
       seed,
-    )
+    )?;
+    Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
 }
 
@@ -256,19 +269,22 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
 fn device_paths<T: FloatExt>(
   ordinal: usize,
   spec: EulerSpec<T>,
-  x0: T,
+  x0: [T; 4],
   n: usize,
   t: T,
   first: usize,
   m: usize,
   seed: u64,
   fgn: Option<crate::euler::FgnSpec<'_, T>>,
-) -> Result<Array2<T>> {
+) -> Result<Array3<T>> {
   {
-    if n == 0 || m == 0 {
-      return Ok(Array2::<T>::zeros((m, n)));
-    }
     let (family, params) = spec.encode();
+    let arity = super::families::Family::from_code(family).expect("a declared family");
+    let (components, noises) = (arity.components() as u32, arity.noises() as u32);
+    let planes = components as usize;
+    if n == 0 || m == 0 {
+      return Ok(Array3::<T>::zeros((planes, m, n)));
+    }
     let dt = t.to_f64().unwrap_or(1.0) / (n.max(2) - 1) as f64;
     let seed32 = (seed ^ (seed >> 32)) as u32;
     let p64: [f64; crate::euler::PARAM_SLOTS] =
@@ -299,9 +315,11 @@ fn device_paths<T: FloatExt>(
         ordinal,
         |k| &k.f64,
         p64,
-        x0.to_f64().unwrap_or(0.0),
+        std::array::from_fn(|i| x0[i].to_f64().unwrap_or(0.0)),
         dt,
         family,
+        components,
+        noises,
         seed32,
         first,
         n,
@@ -309,8 +327,9 @@ fn device_paths<T: FloatExt>(
         incs.as_ref(),
       )?;
       let out =
-        Array2::<f64>::from_shape_vec((m, n), data).expect("the kernel returns m * n values");
-      return Ok(unsafe { std::mem::transmute::<Array2<f64>, Array2<T>>(out) });
+        Array3::<f64>::from_shape_vec((planes, m, n), data)
+      .expect("the kernel returns components * m * n values");
+      return Ok(unsafe { std::mem::transmute::<Array3<f64>, Array3<T>>(out) });
     }
     let p32: [f32; crate::euler::PARAM_SLOTS] = std::array::from_fn(|i| p64[i] as f32);
     let incs = match fgn.as_ref() {
@@ -338,9 +357,11 @@ fn device_paths<T: FloatExt>(
       ordinal,
       |k| &k.f32,
       p32,
-      x0.to_f64().unwrap_or(0.0) as f32,
+      std::array::from_fn(|i| x0[i].to_f64().unwrap_or(0.0) as f32),
       dt as f32,
       family,
+      components,
+      noises,
       seed32,
       first,
       n,
@@ -351,8 +372,9 @@ fn device_paths<T: FloatExt>(
       TypeId::of::<T>() == TypeId::of::<f32>(),
       "FloatExt is implemented for f32 and f64 only"
     );
-    let out = Array2::<f32>::from_shape_vec((m, n), data).expect("the kernel returns m * n values");
-    Ok(unsafe { std::mem::transmute::<Array2<f32>, Array2<T>>(out) })
+    let out = Array3::<f32>::from_shape_vec((planes, m, n), data)
+      .expect("the kernel returns components * m * n values");
+    Ok(unsafe { std::mem::transmute::<Array3<f32>, Array3<T>>(out) })
   }
 }
 
@@ -362,9 +384,11 @@ fn launch_chunk<R>(
   stream: &Arc<CudaStream>,
   func: &CudaFunction,
   params: [R; crate::euler::PARAM_SLOTS],
-  x0: R,
+  x0: [R; 4],
   dt: R,
   family: u32,
+  components: u32,
+  noises: u32,
   seed: u32,
   first: usize,
   n: usize,
@@ -378,7 +402,7 @@ where
     .clone_htod(&params[..])
     .map_err(|e| DeviceError::Launch(format!("htod params: {e}")))?;
   let mut d_out = stream
-    .alloc_zeros::<R>(m * n)
+    .alloc_zeros::<R>(components as usize * m * n)
     .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?;
   let sqrt_dt = dt.sqrt();
   let (steps, paths, first_path) = (n as u32, m as u32, first as u32);
@@ -402,7 +426,12 @@ where
       .arg(&mut d_out)
       .arg(&d_params)
       .arg(&family)
-      .arg(&x0)
+      .arg(&components)
+      .arg(&noises)
+      .arg(&x0[0])
+      .arg(&x0[1])
+      .arg(&x0[2])
+      .arg(&x0[3])
       .arg(&dt)
       .arg(&sqrt_dt)
       .arg(&seed)
@@ -423,9 +452,11 @@ fn pipelined<R>(
   ordinal: usize,
   func: impl Fn(&Kernels) -> &CudaFunction,
   params: [R; crate::euler::PARAM_SLOTS],
-  x0: R,
+  x0: [R; 4],
   dt: R,
   family: u32,
+  components: u32,
+  noises: u32,
   seed: u32,
   n: usize,
   m: usize,
@@ -440,10 +471,11 @@ where
   let streams = [kernels.stream.clone(), kernels.stream_b.clone()];
   let func = func(kernels).clone();
   drop(guard);
-  let mut host = vec![R::zero(); m * n];
+  let planes = components as usize;
+  let mut host = vec![R::zero(); planes * m * n];
   let staging = [
-    PinnedHost::<R>::alloc(rows * n)?,
-    PinnedHost::<R>::alloc(rows * n)?,
+    PinnedHost::<R>::alloc(planes * rows * n)?,
+    PinnedHost::<R>::alloc(planes * rows * n)?,
   ];
   // Per slot: the device buffer kept alive until its copy has landed, and
   // the `(first, len)` rows the staging buffer holds.
@@ -456,8 +488,13 @@ where
       streams[slot]
         .synchronize()
         .map_err(|e| DeviceError::Launch(format!("sync chunk: {e}")))?;
-      let src = unsafe { std::slice::from_raw_parts(staging[slot].ptr, l0 * n) };
-      host[f0 * n..(f0 + l0) * n].copy_from_slice(src);
+      let src = unsafe { std::slice::from_raw_parts(staging[slot].ptr, planes * l0 * n) };
+      // A chunk holds its own planes back to back; the batch holds each
+      // plane whole, so the rows land one plane at a time.
+      for c in 0..planes {
+        let to = (c * m + f0) * n;
+        host[to..to + l0 * n].copy_from_slice(&src[c * l0 * n..(c + 1) * l0 * n]);
+      }
     }
     Ok(())
   };
@@ -474,6 +511,8 @@ where
       x0,
       dt,
       family,
+      components,
+      noises,
       seed,
       first,
       n,
@@ -482,7 +521,7 @@ where
       // in one go, so its increments never meet this path.
       None,
     )?;
-    let dst = unsafe { std::slice::from_raw_parts_mut(staging[slot].ptr, len * n) };
+    let dst = unsafe { std::slice::from_raw_parts_mut(staging[slot].ptr, planes * len * n) };
     streams[slot]
       .memcpy_dtoh(&d_out, dst)
       .map_err(|e| DeviceError::Launch(format!("dtoh chunk: {e}")))?;
@@ -500,14 +539,17 @@ where
 fn pipelined_paths<T: FloatExt>(
   ordinal: usize,
   spec: EulerSpec<T>,
-  x0: T,
+  x0: [T; 4],
   n: usize,
   t: T,
   m: usize,
   rows: usize,
   seed: u64,
-) -> Result<Array2<T>> {
+) -> Result<Array3<T>> {
   let (family, params) = spec.encode();
+  let arity = super::families::Family::from_code(family).expect("a declared family");
+  let (components, noises) = (arity.components() as u32, arity.noises() as u32);
+  let planes = components as usize;
   let dt = t.to_f64().unwrap_or(1.0) / (n.max(2) - 1) as f64;
   let seed32 = (seed ^ (seed >> 32)) as u32;
   let p64: [f64; crate::euler::PARAM_SLOTS] =
@@ -517,16 +559,19 @@ fn pipelined_paths<T: FloatExt>(
       ordinal,
       |k| &k.f64,
       p64,
-      x0.to_f64().unwrap_or(0.0),
+      std::array::from_fn(|i| x0[i].to_f64().unwrap_or(0.0)),
       dt,
       family,
+      components,
+      noises,
       seed32,
       n,
       m,
       rows,
     )?;
-    let out = Array2::<f64>::from_shape_vec((m, n), data).expect("the kernel returns m * n values");
-    return Ok(unsafe { std::mem::transmute::<Array2<f64>, Array2<T>>(out) });
+    let out = Array3::<f64>::from_shape_vec((planes, m, n), data)
+      .expect("the kernel returns components * m * n values");
+    return Ok(unsafe { std::mem::transmute::<Array3<f64>, Array3<T>>(out) });
   }
   assert!(
     TypeId::of::<T>() == TypeId::of::<f32>(),
@@ -537,14 +582,17 @@ fn pipelined_paths<T: FloatExt>(
     ordinal,
     |k| &k.f32,
     p32,
-    x0.to_f64().unwrap_or(0.0) as f32,
+    std::array::from_fn(|i| x0[i].to_f64().unwrap_or(0.0) as f32),
     dt as f32,
     family,
+    components,
+    noises,
     seed32,
     n,
     m,
     rows,
   )?;
-  let out = Array2::<f32>::from_shape_vec((m, n), data).expect("the kernel returns m * n values");
-  Ok(unsafe { std::mem::transmute::<Array2<f32>, Array2<T>>(out) })
+  let out = Array3::<f32>::from_shape_vec((planes, m, n), data)
+      .expect("the kernel returns components * m * n values");
+  Ok(unsafe { std::mem::transmute::<Array3<f32>, Array3<T>>(out) })
 }

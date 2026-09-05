@@ -258,14 +258,19 @@ pub(crate) mod cube_ops {
 /// host step, the host report and the kernels' C body are generated.
 ///
 /// Each entry names its parameters in the order the parameter buffer carries
-/// them, gives the step as an expression over `x`, `dt`, `sqrt_dt`, `z` and
-/// those parameters, and the reported value as an expression over `x`.
+/// them, its state components and its noise components, then gives one step
+/// expression per state component and one report expression per component.
+/// A family with a single component is the common case and reads as it did
+/// before the engine learned about systems; the comma-separated forms are
+/// what a stochastic-volatility or two-factor model needs.
 macro_rules! euler_families {
   (
-    step_inputs($x:ident, $params:ident, $dt:ident, $dz:ident);
+    step_inputs($params:ident, $dt:ident, state $sxs:tt, noise $sds:tt);
     $(
     $(#[$meta:meta])*
     $code:literal => $name:ident { $($param:ident),* $(,)? }
+      state ($($state:ident),+ $(,)?)
+      noise ($($noise:ident),+ $(,)?)
       step { $($step:tt)* }
       report { $($report:tt)* }
   ),* $(,)?) => {
@@ -296,18 +301,40 @@ macro_rules! euler_families {
           _ => None,
         }
       }
+
+      /// How many state components the family steps, which is how many paths
+      /// a launch writes and how many arrays a process built on it returns.
+      #[allow(dead_code)]
+      pub(crate) fn components(self) -> usize {
+        match self {
+          $( Family::$name => [$(stringify!($state)),*].len(), )*
+        }
+      }
+
+      /// How many independent noise components a step draws. A model that
+      /// wants correlated noise draws independent components and correlates
+      /// them in its own step, which is what the host samplers do.
+      #[allow(dead_code)]
+      pub(crate) fn noises(self) -> usize {
+        match self {
+          $( Family::$name => [$(stringify!($noise)),*].len(), )*
+        }
+      }
     }
 
-    /// One step of `family` on the host, from the same expression the kernels
-    /// run. The parameter buffer is read in declaration order.
+    /// One step of `family` on the host, from the same expressions the
+    /// kernels run. The parameter buffer is read in declaration order, the
+    /// state and the noise by position, and every component is computed from
+    /// the state as it stood before the step.
     #[allow(dead_code, unused_variables, unused_mut, unused_assignments)]
     pub(crate) fn host_step<T: FloatExt>(
       family: Family,
-      $x: T,
+      state: &[T],
       $params: &[T],
       $dt: T,
-      $dz: T,
-    ) -> T {
+      noise: &[T],
+      out: &mut [T],
+    ) {
       #[allow(unused_imports)]
       use ops::*;
       match family {
@@ -318,17 +345,32 @@ macro_rules! euler_families {
               let $param = $params[slot];
               slot += 1;
             )*
-            euler_families!(@host_body $($step)*)
+            let mut at = 0;
+            $(
+              let $state = state[at];
+              at += 1;
+            )*
+            let mut of = 0;
+            $(
+              let $noise = noise[of];
+              of += 1;
+            )*
+            euler_families!(@host_assign out, $($step)*)
           }
         )*
       }
     }
 
-    /// What `family` reports for a state `x`, on the host. The parameter
-    /// buffer is read in declaration order, as [`host_step`] reads it, so a
-    /// report may name the family's own parameters.
+    /// What `family` reports for a state, on the host. The parameters and the
+    /// state components are bound as [`host_step`] binds them, so a report may
+    /// name either.
     #[allow(dead_code, unused_variables, unused_mut, unused_assignments)]
-    pub(crate) fn host_report<T: FloatExt>(family: Family, $x: T, $params: &[T]) -> T {
+    pub(crate) fn host_report<T: FloatExt>(
+      family: Family,
+      state: &[T],
+      $params: &[T],
+      out: &mut [T],
+    ) {
       #[allow(unused_imports)]
       use ops::*;
       match family {
@@ -339,18 +381,25 @@ macro_rules! euler_families {
               let $param = $params[slot];
               slot += 1;
             )*
-            euler_families!(@host_body $($report)*)
+            let mut at = 0;
+            $(
+              let $state = state[at];
+              at += 1;
+            )*
+            euler_families!(@host_assign out, $($report)*)
           }
         )*
       }
     }
 
-    /// One `#[cube]` function per family, from the same expression the host
-    /// and the C kernels run, plus the dispatch that picks one. The parameter
-    /// bindings are peeled into the body before the `#[cube]` attribute sees
-    /// it, so the emitted item contains no macro call — which the attribute
-    /// cannot look through.
+    /// One `#[cube]` function per family, from the same expressions the host
+    /// and the C kernels run. Each takes the four state and four noise
+    /// scalars plus the component to produce, so the hand-written dispatcher
+    /// calls every family the same way. The bindings and the per-component
+    /// branches are peeled into the body before the `#[cube]` attribute sees
+    /// it, which the attribute cannot look through.
     #[cfg(feature = "cubecl")]
+    #[allow(non_snake_case)]
     pub(crate) mod cube {
       #[allow(unused_imports)]
       use super::cube_ops::*;
@@ -359,15 +408,18 @@ macro_rules! euler_families {
 
       $(
         euler_families!(@cube_step
-          $(#[$meta])* $name, $x, $params, $dt, $dz,
-          [0 1 2 3 4 5 6 7], [$($param)*], {}, {$($step)*}
+          $(#[$meta])* $name, $params, $dt,
+          sig $sxs $sds,
+          place $sxs [$($state)*] $sds [$($noise)*],
+          params [0 1 2 3 4 5 6 7] [$($param)*],
+          bound {}, arms {}, at [0u32 1u32 2u32 3u32], body {$($step)*}
         );
       )*
-
     }
 
-    /// What each family reports for a state, in a CubeCL kernel.
+    /// One `#[cube]` report function per family, shaped like [`cube`].
     #[cfg(feature = "cubecl")]
+    #[allow(non_snake_case)]
     pub(crate) mod cube_report {
       #[allow(unused_imports)]
       use super::cube_ops::*;
@@ -376,142 +428,316 @@ macro_rules! euler_families {
 
       $(
         euler_families!(@cube_report
-          $(#[$meta])* $name, $x, $params,
-          [0 1 2 3 4 5 6 7], [$($param)*], {}, {$($report)*}
+          $(#[$meta])* $name, $params,
+          sig $sxs,
+          place $sxs [$($state)*],
+          params [0 1 2 3 4 5 6 7] [$($param)*],
+          bound {}, arms {}, at [0u32 1u32 2u32 3u32], body {$($report)*}
         );
       )*
     }
 
-    /// The C statements that step `x`, one guarded block per family.
+    /// The C statements that step the state, one guarded block per family.
     pub(crate) const C_STEP: &str = concat!($(
       "        if (family == ", stringify!($code), "u) {\n",
-      euler_families!(@bind [0 1 2 3 4 5 6 7] $($param)*),
-      euler_families!(@c_body "x", $($step)*),
+      euler_families!(@bind_params [0 1 2 3 4 5 6 7] $($param)*),
+      euler_families!(@bind_slots "state" [0 1 2 3] $($state)*),
+      euler_families!(@bind_slots "noise" [0 1 2 3] $($noise)*),
+      euler_families!(@c_body "state", [0 1 2 3], [$($state)*], $($step)*),
       "        }\n",
     )*);
 
-    /// The C statements that set `reported` from `x`, one block per family.
+    /// The C statements that set the reported values, one block per family.
     pub(crate) const C_REPORT: &str = concat!($(
       "        if (family == ", stringify!($code), "u) {\n",
-      euler_families!(@bind [0 1 2 3 4 5 6 7] $($param)*),
-      euler_families!(@c_body "reported", $($report)*),
+      euler_families!(@bind_params [0 1 2 3 4 5 6 7] $($param)*),
+      euler_families!(@bind_slots "state" [0 1 2 3] $($state)*),
+      euler_families!(@c_body "reported", [0 1 2 3], [$($state)*], $($report)*),
       "        }\n",
     )*);
   };
 
+  (@host_assign $out:ident, bind $n:ident = $e:expr; $($rest:tt)*) => {{
+    let $n = $e;
+    euler_families!(@host_assign $out, $($rest)*)
+  }};
+
+  (@host_assign $out:ident, $($e:expr),* $(,)?) => {{
+    let mut at = 0;
+    $(
+      $out[at] = $e;
+      at += 1;
+    )*
+    let _ = at;
+  }};
+
   (@cube_step
-    $(#[$meta:meta])* $name:ident, $x:ident, $params:ident, $dt:ident, $dz:ident,
-    [$($idx:literal)*], [], {$($bound:tt)*}, {bind $n:ident = $e:expr; $($rest:tt)*}
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident,
+    sig ($($sigx:ident),*) ($($sigd:ident),*),
+    place ($slot:ident $(, $restx:ident)*) [$head:ident $($restname:ident)*] ($($pd:ident),*) [$($nd:ident)*],
+    params [$($idx:literal)*] [$($p:ident)*],
+    bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$($at:literal)*], body {$($body:tt)*}
   ) => {
     euler_families!(@cube_step
-      $(#[$meta])* $name, $x, $params, $dt, $dz,
-      [$($idx)*], [], {$($bound)* let $n = $e;}, {$($rest)*}
+      $(#[$meta])* $name, $params, $dt,
+      sig ($($sigx),*) ($($sigd),*),
+      place ($($restx),*) [$($restname)*] ($($pd),*) [$($nd)*],
+      params [$($idx)*] [$($p)*],
+      bound {$($bound)* let $head = $slot;}, arms {$($arms)*}, at [$($at)*], body {$($body)*}
     );
   };
 
   (@cube_step
-    $(#[$meta:meta])* $name:ident, $x:ident, $params:ident, $dt:ident, $dz:ident,
-    [$($idx:literal)*], [], {$($bound:tt)*}, {$($step:tt)*}
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident,
+    sig ($($sigx:ident),*) ($($sigd:ident),*),
+    place ($($px:ident),*) [] ($slot:ident $(, $restd:ident)*) [$head:ident $($restname:ident)*],
+    params [$($idx:literal)*] [$($p:ident)*],
+    bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$($at:literal)*], body {$($body:tt)*}
+  ) => {
+    euler_families!(@cube_step
+      $(#[$meta])* $name, $params, $dt,
+      sig ($($sigx),*) ($($sigd),*),
+      place ($($px),*) [] ($($restd),*) [$($restname)*],
+      params [$($idx)*] [$($p)*],
+      bound {$($bound)* let $head = $slot;}, arms {$($arms)*}, at [$($at)*], body {$($body)*}
+    );
+  };
+
+  (@cube_step
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident,
+    sig ($($sigx:ident),*) ($($sigd:ident),*),
+    place ($($px:ident),*) [] ($($pd:ident),*) [],
+    params [$i:literal $($restidx:literal)*] [$head:ident $($restname:ident)*],
+    bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$($at:literal)*], body {$($body:tt)*}
+  ) => {
+    euler_families!(@cube_step
+      $(#[$meta])* $name, $params, $dt,
+      sig ($($sigx),*) ($($sigd),*),
+      place ($($px),*) [] ($($pd),*) [],
+      params [$($restidx)*] [$($restname)*],
+      bound {$($bound)* let $head = $params[$i];}, arms {$($arms)*}, at [$($at)*], body {$($body)*}
+    );
+  };
+
+  (@cube_step
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident,
+    sig ($($sigx:ident),*) ($($sigd:ident),*),
+    place ($($px:ident),*) [] ($($pd:ident),*) [],
+    params [$($idx:literal)*] [],
+    bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$($at:literal)*],
+    body {bind $n:ident = $e:expr; $($body:tt)*}
+  ) => {
+    euler_families!(@cube_step
+      $(#[$meta])* $name, $params, $dt,
+      sig ($($sigx),*) ($($sigd),*),
+      place ($($px),*) [] ($($pd),*) [],
+      params [$($idx)*] [],
+      bound {$($bound)* let $n = $e;}, arms {$($arms)*}, at [$($at)*], body {$($body)*}
+    );
+  };
+
+  (@cube_step
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident,
+    sig ($($sigx:ident),*) ($($sigd:ident),*),
+    place ($($px:ident),*) [] ($($pd:ident),*) [],
+    params [$($idx:literal)*] [],
+    bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$a:literal $($at:literal)*],
+    body {$e:expr $(, $rest:expr)+ $(,)?}
+  ) => {
+    euler_families!(@cube_step
+      $(#[$meta])* $name, $params, $dt,
+      sig ($($sigx),*) ($($sigd),*),
+      place ($($px),*) [] ($($pd),*) [],
+      params [$($idx)*] [],
+      bound {$($bound)*},
+      arms {$($arms)* if component == $a { produced = $e; }},
+      at [$($at)*], body {$($rest),+}
+    );
+  };
+
+  (@cube_step
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident,
+    sig ($($sigx:ident),*) ($($sigd:ident),*),
+    place ($($px:ident),*) [] ($($pd:ident),*) [],
+    params [$($idx:literal)*] [],
+    bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$a:literal $($at:literal)*],
+    body {$e:expr $(,)?}
   ) => {
     $(#[$meta])*
     #[cube]
     #[allow(non_snake_case, unused_variables)]
     pub(crate) fn $name(
-      $x: f32,
+      component: u32,
+      $($sigx: f32,)*
       $params: &Array<f32>,
       $dt: f32,
-      $dz: f32,
+      $($sigd: f32,)*
     ) -> f32 {
       $($bound)*
-      $($step)*
+      let mut produced = 0.0f32;
+      $($arms)*
+      if component == $a {
+        produced = $e;
+      }
+      produced
     }
   };
 
-  (@cube_step
-    $(#[$meta:meta])* $name:ident, $x:ident, $params:ident, $dt:ident, $dz:ident,
-    [$i:literal $($rest_idx:literal)*], [$head:ident $($rest:ident)*],
-    {$($bound:tt)*}, {$($step:tt)*}
-  ) => {
-    euler_families!(@cube_step
-      $(#[$meta])* $name, $x, $params, $dt, $dz,
-      [$($rest_idx)*], [$($rest)*],
-      {$($bound)* let $head = $params[$i];}, {$($step)*}
-    );
-  };
-
   (@cube_report
-    $(#[$meta:meta])* $name:ident, $x:ident, $params:ident,
-    [$($idx:literal)*], [], {$($bound:tt)*}, {bind $n:ident = $e:expr; $($rest:tt)*}
+    $(#[$meta:meta])* $name:ident, $params:ident,
+    sig ($($sigx:ident),*),
+    place ($slot:ident $(, $restx:ident)*) [$head:ident $($restname:ident)*],
+    params [$($idx:literal)*] [$($p:ident)*],
+    bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$($at:literal)*], body {$($body:tt)*}
   ) => {
     euler_families!(@cube_report
-      $(#[$meta])* $name, $x, $params,
-      [$($idx)*], [], {$($bound)* let $n = $e;}, {$($rest)*}
+      $(#[$meta])* $name, $params,
+      sig ($($sigx),*),
+      place ($($restx),*) [$($restname)*],
+      params [$($idx)*] [$($p)*],
+      bound {$($bound)* let $head = $slot;}, arms {$($arms)*}, at [$($at)*], body {$($body)*}
     );
   };
 
   (@cube_report
-    $(#[$meta:meta])* $name:ident, $x:ident, $params:ident,
-    [$($idx:literal)*], [], {$($bound:tt)*}, {$($report:tt)*}
+    $(#[$meta:meta])* $name:ident, $params:ident,
+    sig ($($sigx:ident),*),
+    place ($($px:ident),*) [],
+    params [$i:literal $($restidx:literal)*] [$head:ident $($restname:ident)*],
+    bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$($at:literal)*], body {$($body:tt)*}
+  ) => {
+    euler_families!(@cube_report
+      $(#[$meta])* $name, $params,
+      sig ($($sigx),*),
+      place ($($px),*) [],
+      params [$($restidx)*] [$($restname)*],
+      bound {$($bound)* let $head = $params[$i];}, arms {$($arms)*}, at [$($at)*], body {$($body)*}
+    );
+  };
+
+  (@cube_report
+    $(#[$meta:meta])* $name:ident, $params:ident,
+    sig ($($sigx:ident),*),
+    place ($($px:ident),*) [],
+    params [$($idx:literal)*] [],
+    bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$($at:literal)*],
+    body {bind $n:ident = $e:expr; $($body:tt)*}
+  ) => {
+    euler_families!(@cube_report
+      $(#[$meta])* $name, $params,
+      sig ($($sigx),*),
+      place ($($px),*) [],
+      params [$($idx)*] [],
+      bound {$($bound)* let $n = $e;}, arms {$($arms)*}, at [$($at)*], body {$($body)*}
+    );
+  };
+
+  (@cube_report
+    $(#[$meta:meta])* $name:ident, $params:ident,
+    sig ($($sigx:ident),*),
+    place ($($px:ident),*) [],
+    params [$($idx:literal)*] [],
+    bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$a:literal $($at:literal)*],
+    body {$e:expr $(, $rest:expr)+ $(,)?}
+  ) => {
+    euler_families!(@cube_report
+      $(#[$meta])* $name, $params,
+      sig ($($sigx),*),
+      place ($($px),*) [],
+      params [$($idx)*] [],
+      bound {$($bound)*},
+      arms {$($arms)* if component == $a { produced = $e; }},
+      at [$($at)*], body {$($rest),+}
+    );
+  };
+
+  (@cube_report
+    $(#[$meta:meta])* $name:ident, $params:ident,
+    sig ($($sigx:ident),*),
+    place ($($px:ident),*) [],
+    params [$($idx:literal)*] [],
+    bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$a:literal $($at:literal)*],
+    body {$e:expr $(,)?}
   ) => {
     $(#[$meta])*
     #[cube]
     #[allow(non_snake_case, unused_variables)]
-    pub(crate) fn $name($x: f32, $params: &Array<f32>) -> f32 {
+    pub(crate) fn $name(component: u32, $($sigx: f32,)* $params: &Array<f32>) -> f32 {
       $($bound)*
-      $($report)*
+      let mut produced = 0.0f32;
+      $($arms)*
+      if component == $a {
+        produced = $e;
+      }
+      produced
     }
   };
 
-  (@cube_report
-    $(#[$meta:meta])* $name:ident, $x:ident, $params:ident,
-    [$i:literal $($rest_idx:literal)*], [$head:ident $($rest:ident)*],
-    {$($bound:tt)*}, {$($report:tt)*}
-  ) => {
-    euler_families!(@cube_report
-      $(#[$meta])* $name, $x, $params,
-      [$($rest_idx)*], [$($rest)*],
-      {$($bound)* let $head = $params[$i];}, {$($report)*}
-    );
-  };
+  (@bind_params [$($idx:literal)*]) => { "" };
 
-  (@host_body bind $n:ident = $e:expr; $($rest:tt)*) => {{
-    let $n = $e;
-    euler_families!(@host_body $($rest)*)
-  }};
-
-  (@host_body $($body:tt)*) => { $($body)* };
-
-  (@c_body $lhs:literal, bind $n:ident = $e:expr; $($rest:tt)*) => {
+  (@bind_params [$i:literal $($rest_idx:literal)*] $head:ident $($rest:ident)*) => {
     concat!(
-      "            const REAL ", stringify!($n), " = ", stringify!($e), ";\n",
-      euler_families!(@c_body $lhs, $($rest)*)
+      "            const REAL ", stringify!($head), " = params[", stringify!($i), "];\n",
+      euler_families!(@bind_params [$($rest_idx)*] $($rest)*)
     )
   };
 
-  (@c_body $lhs:literal, $($body:tt)*) => {
-    concat!("            ", $lhs, " = ", stringify!($($body)*), ";\n")
+  (@bind_slots $buf:literal [$($idx:literal)*]) => { "" };
+
+  (@bind_slots $buf:literal [$i:literal $($rest_idx:literal)*] $head:ident $($rest:ident)*) => {
+    concat!(
+      "            const REAL ", stringify!($head), " = ", $buf, "[", stringify!($i), "];\n",
+      euler_families!(@bind_slots $buf [$($rest_idx)*] $($rest)*)
+    )
   };
 
-  (@bind [$($idx:literal)*]) => { "" };
-
-  (@bind [$i:literal $($rest_idx:literal)*] $head:ident $($rest:ident)*) => {
+  (@c_body $lhs:literal, [$($idx:literal)*], [$($rem:ident)*], bind $n:ident = $e:expr; $($rest:tt)*) => {
     concat!(
-      "            const REAL ", stringify!($head), " = params[", stringify!($i), "];\n",
-      euler_families!(@bind [$($rest_idx)*] $($rest)*)
+      "            const REAL ", stringify!($n), " = ", stringify!($e), ";\n",
+      euler_families!(@c_body $lhs, [$($idx)*], [$($rem)*], $($rest)*)
+    )
+  };
+
+  (@c_body $lhs:literal, [$($idx:literal)*], [$($rem:ident)*], $($e:expr),* $(,)?) => {
+    concat!(
+      euler_families!(@c_temps [$($idx)*] $($e),*),
+      euler_families!(@c_store $lhs, [$($idx)*] $($rem)*)
+    )
+  };
+
+  (@c_temps [$($idx:literal)*]) => { "" };
+
+  (@c_temps [$i:literal $($rest_idx:literal)*] $head:expr $(, $rest:expr)*) => {
+    concat!(
+      "            const REAL __n", stringify!($i), " = ", stringify!($head), ";\n",
+      euler_families!(@c_temps [$($rest_idx)*] $($rest),*)
+    )
+  };
+
+  (@c_store $lhs:literal, [$($idx:literal)*]) => { "" };
+
+  (@c_store $lhs:literal, [$i:literal $($rest_idx:literal)*] $head:ident $($rest:ident)*) => {
+    concat!(
+      "            ", $lhs, "[", stringify!($i), "] = __n", stringify!($i), ";\n",
+      euler_families!(@c_store $lhs, [$($rest_idx)*] $($rest)*)
     )
   };
 }
 
 euler_families! {
-  step_inputs(x, params, dt, dz);
+  step_inputs(params, dt, state(x0, x1, x2, x3), noise(dz0, dz1, dz2, dz3));
 
   /// `dX = μX dt + σX dW`.
   0 => GeometricBrownian { mu, sigma }
+    state (x)
+    noise (dz)
     step { x + mu * x * dt + sigma * x * dz }
     report { x },
 
   /// `dX = θ(μ − X) dt + σ dW`.
   1 => OrnsteinUhlenbeck { theta, mu, sigma }
+    state (x)
+    noise (dz)
     step { x + theta * (mu - x) * dt + sigma * dz }
     report { x },
 
@@ -521,6 +747,8 @@ euler_families! {
   /// `dX = dW`: the increment accumulates, which is fractional Brownian
   /// motion when the increments come from an fGN pipeline.
   3 => Additive { }
+    state (x)
+    noise (dz)
     step { x + dz }
     report { x },
 
@@ -528,11 +756,15 @@ euler_families! {
   /// fractional CIR recursion, which truncates the *result* rather than
   /// stepping on a truncated state.
   4 => ReflectedSquareRoot { theta, mu, sigma }
+    state (x)
+    noise (dz)
     step { positive(x + theta * (mu - x) * dt + sigma * sqrt(abs(x)) * dz) }
     report { x },
 
   /// The same with the symmetric reflection: the step's absolute value.
   5 => MirroredSquareRoot { theta, mu, sigma }
+    state (x)
+    noise (dz)
     step { abs(x + theta * (mu - x) * dt + sigma * sqrt(abs(x)) * dz) }
     report { x },
 
@@ -541,6 +773,8 @@ euler_families! {
   /// `x - x * x`, which needs no literal and so no type to infer, and both
   /// arms of a `pick` are evaluated, so the diffusion guards its own root.
   6 => Jacobi { alpha, beta, sigma }
+    state (x)
+    noise (dz)
     step {
       pick(
         leq(x, lit(0.0)),
@@ -557,24 +791,32 @@ euler_families! {
   /// `dX = μX dt + σ|X|^γ dW`: constant elasticity of variance, the power
   /// taken off `|X|` so a negative excursion stays defined.
   7 => ConstantElasticity { mu, sigma, gamma }
+    state (x)
+    noise (dz)
     step { x + mu * x * dt + sigma * pow(abs(x), gamma) * dz }
     report { x },
 
   /// `dX = (θ₁ + θ₂X) dt + θ₃|X|^θ₄ dW`: the Chan–Karolyi–Longstaff–Sanders
   /// family, whose four parameters nest most one-factor short-rate models.
   8 => Ckls { theta1, theta2, theta3, theta4 }
+    state (x)
+    noise (dz)
     step { x + (theta1 + theta2 * x) * dt + theta3 * pow(abs(x), theta4) * dz }
     report { x },
 
   /// `dX = X(1 − aX) dt + bX dW`: logistic growth with multiplicative noise.
   /// `X(1 − aX)` is written `x - a * x * x`, which needs no literal.
   9 => Logistic { a, b }
+    state (x)
+    noise (dz)
     step { x + (x - a * x * x) * dt + b * x * dz }
     report { x },
 
   /// `dX = κX(μ − X) dt + σ|X|^{3/2} dW`: the 3/2 model, whose variance
   /// mean-reverts faster than a square-root diffusion.
   10 => ThreeHalf { kappa, mu, sigma }
+    state (x)
+    noise (dz)
     step { x + kappa * x * (mu - x) * dt + sigma * pow(abs(x), lit(1.5)) * dz }
     report { x },
 
@@ -582,6 +824,8 @@ euler_families! {
   /// `m = (μ − σ²/2)Δt` computed once on the host, so the kernel needs no
   /// literal and the exponential is exact rather than a first-order step.
   11 => LogGeometric { drift_ln, sigma }
+    state (x)
+    noise (dz)
     step { x * exp(drift_ln + sigma * dz) }
     report { x },
 
@@ -589,6 +833,8 @@ euler_families! {
   /// drift is guarded away from the origin exactly as the host sampler guards
   /// it.
   12 => RadialOrnsteinUhlenbeck { kappa, sigma }
+    state (x)
+    noise (dz)
     step {
       x + (kappa / pick(leq(abs(x), lit(1e-12)), lit(1e-12), x) - x) * dt + sigma * dz
     }
@@ -596,23 +842,31 @@ euler_families! {
 
   /// `dX = (a + bX) dt + cX dW`: the linear scalar SDE.
   13 => LinearSde { a, b, c }
+    state (x)
+    noise (dz)
     step { x + (a + b * x) * dt + c * x * dz }
     report { x },
 
   /// `dX = −κX/√(1+X²) dt + σ dW`: a hyperbolic drift, bounded in `X`.
   14 => Hyperbolic { kappa, sigma }
+    state (x)
+    noise (dz)
     step { x - kappa * x / sqrt(x * x + lit(1.0)) * dt + sigma * dz }
     report { x },
 
   /// `dX = −κX dt + σ√(1+X²) dW`: the modified CIR process, whose diffusion
   /// never vanishes.
   15 => ModifiedSquareRoot { kappa, sigma }
+    state (x)
+    noise (dz)
     step { x - kappa * x * dt + sigma * sqrt(x * x + lit(1.0)) * dz }
     report { x },
 
   /// `dX = X(θ₁ − X(θ₃³ − θ₁θ₂)) dt + θ₃|X|^{3/2} dW`: the Feller root
   /// process, with the drift's constant folded on the host.
   16 => FellerRoot { theta1, decay, theta3 }
+    state (x)
+    noise (dz)
     step { x + x * (theta1 - x * decay) * dt + theta3 * pow(abs(x), lit(1.5)) * dz }
     report { x },
 
@@ -620,6 +874,8 @@ euler_families! {
   /// Aït-Sahalia short-rate model, whose drift is guarded away from the origin
   /// exactly as the host sampler guards it.
   17 => AitSahalia { am1, a0, a1, a2, b0, b1, b2, b3 }
+    state (x)
+    noise (dz)
     step {
       x + (am1 / pick(less(abs(x), lit(1e-12)), lit(1e-12), x)
         + a0 + a1 * x + a2 * x * x) * dt
@@ -632,6 +888,8 @@ euler_families! {
   /// floors `X₀` the same way, so the guard the host applies to every
   /// coefficient is already true of `x` here.
   18 => Gompertz { a, b, sigma }
+    state (x)
+    noise (dz)
     step { max(x + (a - b * ln(x)) * x * dt + sigma * x * dz, lit(1e-12)) }
     report { x },
 
@@ -639,6 +897,8 @@ euler_families! {
   /// population genetics. As with [`Gompertz`](Family::Gompertz) the step's
   /// own clamp is what keeps the coefficients in range.
   19 => Kimura { a, sigma }
+    state (x)
+    noise (dz)
     step {
       bind xi = min(max(x, lit(0.0)), lit(1.0));
       min(
@@ -655,12 +915,16 @@ euler_families! {
   /// `dX = (α + βX + γX²) dt + σX dW`: a quadratic drift with proportional
   /// noise.
   20 => Quadratic { alpha, beta, gamma, sigma }
+    state (x)
+    noise (dz)
     step { x + (alpha + beta * x + gamma * x * x) * dt + sigma * x * dz }
     report { x },
 
   /// `dX = κ(μ − X) dt + √|2κ(aX² + bX + c)| dW`: the Pearson diffusion
   /// family. `2κ` is folded on the host so the step needs no literal.
   21 => Pearson { kappa, mu, a, b, c, two_kappa }
+    state (x)
+    noise (dz)
     step {
       x + kappa * (mu - x) * dt + sqrt(abs(two_kappa * (a * x * x + b * x + c))) * dz
     }
@@ -669,17 +933,23 @@ euler_families! {
   /// `dX = rX(1 − X/K) dt + σX dW`: logistic growth in its Verhulst
   /// parametrisation, run unclamped.
   22 => Verhulst { r, k, sigma }
+    state (x)
+    noise (dz)
     step { x + r * x * ((k - x) / k) * dt + sigma * x * dz }
     report { x },
 
   /// [`Verhulst`](Family::Verhulst) with the state confined to `[0, K]`.
   23 => VerhulstClamped { r, k, sigma }
+    state (x)
+    noise (dz)
     step { min(max(x + r * x * ((k - x) / k) * dt + sigma * x * dz, lit(0.0)), k) }
     report { x },
 
   /// `dX = κ(θ − X)X dt + σ√X dW`: Feller's logistic diffusion, truncated at
   /// zero.
   24 => FellerLogistic { kappa, theta, sigma }
+    state (x)
+    noise (dz)
     step {
       bind xi = positive(x);
       positive(xi + kappa * (theta - xi) * xi * dt + sigma * sqrt(xi) * dz)
@@ -689,6 +959,8 @@ euler_families! {
   /// [`FellerLogistic`](Family::FellerLogistic) reflected at zero instead of
   /// truncated.
   25 => FellerLogisticReflected { kappa, theta, sigma }
+    state (x)
+    noise (dz)
     step {
       bind xi = positive(x);
       abs(xi + kappa * (theta - xi) * xi * dt + sigma * sqrt(xi) * dz)
@@ -697,11 +969,15 @@ euler_families! {
 
   /// `dX = δ dt + 2√|X| dW`: the squared-Bessel recursion, truncated at zero.
   26 => SquaredBesselState { delta, two }
+    state (x)
+    noise (dz)
     step { positive(x + delta * dt + two * sqrt(abs(x)) * dz) }
     report { x },
 
   /// [`SquaredBesselState`](Family::SquaredBesselState) reflected at zero.
   27 => SquaredBesselStateReflected { delta, two }
+    state (x)
+    noise (dz)
     step { abs(x + delta * dt + two * sqrt(abs(x)) * dz) }
     report { x },
 
@@ -709,11 +985,15 @@ euler_families! {
   /// Bessel process itself, stepped in squared space so the `(δ−1)/2X`
   /// singularity never enters the recursion.
   28 => BesselFromSquared { delta, two }
+    state (x)
+    noise (dz)
     step { positive(x + delta * dt + two * sqrt(abs(x)) * dz) }
     report { sqrt(x) },
 
   /// [`BesselFromSquared`](Family::BesselFromSquared) reflected at zero.
   29 => BesselFromSquaredReflected { delta, two }
+    state (x)
+    noise (dz)
     step { abs(x + delta * dt + two * sqrt(abs(x)) * dz) }
     report { sqrt(x) },
 
@@ -721,6 +1001,8 @@ euler_families! {
   /// diffusion whose stationary law is the hyperbolic distribution. `½σ²` is
   /// folded on the host.
   30 => HyperbolicDiffusion { beta, gamma, delta, mu, sigma, half_var }
+    state (x)
+    noise (dz)
     step {
       x + half_var * (beta - gamma * x / sqrt(delta * delta + (x - mu) * (x - mu))) * dt
         + sigma * dz
@@ -731,6 +1013,8 @@ euler_families! {
   /// Aït-Sahalia drift with the diffusion left unsquared, guarded away from
   /// the origin exactly as the host sampler guards it.
   31 => NonLinear { am1, a0, a1, a2, b0, b1, b2, b3 }
+    state (x)
+    noise (dz)
     step {
       x + (am1 / pick(less(abs(x), lit(1e-12)), lit(1e-12), x)
         + a0 + a1 * x + a2 * x * x) * dt
@@ -742,6 +1026,8 @@ euler_families! {
   /// as `Y − β`: the displaced diffusion. The shift lives in the report, so
   /// the step is the geometric one term for term.
   32 => Displaced { mu, sigma, beta }
+    state (x)
+    noise (dz)
     step { x + mu * x * dt + sigma * x * dz }
     report { x - beta },
 
@@ -749,12 +1035,16 @@ euler_families! {
   /// correlation process, stepped on the unbounded variable so the reported
   /// correlation stays in `(−1, 1)` by construction.
   33 => TanhOrnsteinUhlenbeck { kappa, mu, sigma }
+    state (x)
+    noise (dz)
     step { x + kappa * (mu - tanh(x)) * dt + sigma * dz }
     report { tanh(x) },
 
   /// `dρ = κ(μ − ρ) dt + σ√(1 − ρ²) dW` confined to `[−0.9999, 0.9999]`: the
   /// Van Emmerich stochastic correlation process.
   34 => BoundedCorrelation { kappa, mu, sigma }
+    state (x)
+    noise (dz)
     step {
       min(
         max(
@@ -767,6 +1057,8 @@ euler_families! {
     report { x },
 
   2 => SquareRoot { kappa, theta, sigma }
+    state (x)
+    noise (dz)
     step { x + kappa * (theta - positive(x)) * dt + sigma * sqrt(positive(x)) * dz }
     report { positive(x) },
 }

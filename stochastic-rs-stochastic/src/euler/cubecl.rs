@@ -7,6 +7,7 @@
 use cubecl::client::ComputeClient;
 use cubecl::prelude::*;
 use ndarray::Array2;
+use ndarray::Array3;
 use parking_lot::Mutex;
 
 use super::EulerCoefficients;
@@ -22,12 +23,18 @@ type DeviceResult<T> = std::result::Result<T, DeviceError>;
 const WG_SIZE: u32 = 256;
 
 #[cube(launch)]
+#[allow(clippy::too_many_arguments)]
 fn euler_paths_kernel(
   out: &mut Array<f32>,
   params: &Array<f32>,
   incs: &Array<f32>,
   family: u32,
-  x0: f32,
+  components: u32,
+  noises: u32,
+  x00: f32,
+  x01: f32,
+  x02: f32,
+  x03: f32,
   dt: f32,
   sqrt_dt: f32,
   seed: u32,
@@ -39,35 +46,105 @@ fn euler_paths_kernel(
   let path = ABSOLUTE_POS as u32;
   if path < paths {
     let base = (path * steps) as usize;
-    let mut x = x0;
-    out[base] = report(family, x0, params);
+    let plane = (paths * steps) as usize;
+    let mut s0 = x00;
+    let mut s1 = x01;
+    let mut s2 = x02;
+    let mut s3 = x03;
+    out[base] = report(family, 0u32, s0, s1, s2, s3, params);
+    if components > 1u32 {
+      out[plane + base] = report(family, 1u32, s0, s1, s2, s3, params);
+    }
+    if components > 2u32 {
+      out[2usize * plane + base] = report(family, 2u32, s0, s1, s2, s3, params);
+    }
+    if components > 3u32 {
+      out[3usize * plane + base] = report(family, 3u32, s0, s1, s2, s3, params);
+    }
     for i in 1..steps {
-      // Two decorrelated uniforms via integer hashing (Murmur3-style finalizer).
       let g = (first_path + path) * steps + i;
-      let mut a = (g * 2u32) ^ (seed * 2654435761u32);
-      a ^= a >> 16;
-      a *= 2246822519u32;
-      a ^= a >> 13;
-      a *= 3266489917u32;
-      a ^= a >> 16;
-      let mut b = (g * 2u32 + 1u32) ^ (seed * 668265263u32);
-      b ^= b >> 16;
-      b *= 2246822519u32;
-      b ^= b >> 13;
-      b *= 3266489917u32;
-      b ^= b >> 16;
-      let inv = 2.3283064e-10f32;
-      let u1 = f32::cast_from(a) * inv * 0.999998f32 + 1.0e-6f32;
-      let u2 = f32::cast_from(b) * inv;
-      let z = Sqrt::sqrt(-2.0f32 * Log::ln(u1)) * Cos::cos(core::f32::consts::TAU * u2);
-      let mut dz = sqrt_dt * z;
-      if increments != 0u32 {
-        dz = incs[(path * (steps - 1) + (i - 1)) as usize];
+      let mut d0 = normal(g, 0u32, seed) * sqrt_dt;
+      let mut d1 = 0.0f32;
+      let mut d2 = 0.0f32;
+      let mut d3 = 0.0f32;
+      if noises > 1u32 {
+        d1 = normal(g, 1u32, seed) * sqrt_dt;
       }
-      x = step(family, x, params, dt, dz);
-      out[base + i as usize] = report(family, x, params);
+      if noises > 2u32 {
+        d2 = normal(g, 2u32, seed) * sqrt_dt;
+      }
+      if noises > 3u32 {
+        d3 = normal(g, 3u32, seed) * sqrt_dt;
+      }
+      if increments != 0u32 {
+        d0 = incs[(path * (steps - 1) + (i - 1)) as usize];
+      }
+      let n0 = step(family, 0u32, s0, s1, s2, s3, params, dt, d0, d1, d2, d3);
+      let mut n1 = s1;
+      let mut n2 = s2;
+      let mut n3 = s3;
+      if components > 1u32 {
+        n1 = step(family, 1u32, s0, s1, s2, s3, params, dt, d0, d1, d2, d3);
+      }
+      if components > 2u32 {
+        n2 = step(family, 2u32, s0, s1, s2, s3, params, dt, d0, d1, d2, d3);
+      }
+      if components > 3u32 {
+        n3 = step(family, 3u32, s0, s1, s2, s3, params, dt, d0, d1, d2, d3);
+      }
+      s0 = n0;
+      s1 = n1;
+      s2 = n2;
+      s3 = n3;
+      out[base + i as usize] = report(family, 0u32, s0, s1, s2, s3, params);
+      if components > 1u32 {
+        out[plane + base + i as usize] = report(family, 1u32, s0, s1, s2, s3, params);
+      }
+      if components > 2u32 {
+        out[2usize * plane + base + i as usize] = report(family, 2u32, s0, s1, s2, s3, params);
+      }
+      if components > 3u32 {
+        out[3usize * plane + base + i as usize] = report(family, 3u32, s0, s1, s2, s3, params);
+      }
     }
   }
+}
+
+/// One standard normal for noise component `k` of counter `g`, from two
+/// decorrelated uniforms via integer hashing (Murmur3-style finalizer).
+/// Component `0` hashes the counter itself and every further one xors in a
+/// constant of its own, so a single-noise family draws exactly the stream it
+/// drew before the engine learned about systems. The salt is xored rather
+/// than multiplied in because WGSL constant-folds the multiplication and
+/// rejects it as an overflow.
+#[cube]
+fn normal(g: u32, k: u32, seed: u32) -> f32 {
+  let mut gk = g;
+  if k == 1u32 {
+    gk = g ^ 2654435769u32;
+  }
+  if k == 2u32 {
+    gk = g ^ 2246822519u32;
+  }
+  if k == 3u32 {
+    gk = g ^ 3266489917u32;
+  }
+  let mut a = (gk * 2u32) ^ (seed * 2654435761u32);
+  a ^= a >> 16;
+  a *= 2246822519u32;
+  a ^= a >> 13;
+  a *= 3266489917u32;
+  a ^= a >> 16;
+  let mut b = (gk * 2u32 + 1u32) ^ (seed * 668265263u32);
+  b ^= b >> 16;
+  b *= 2246822519u32;
+  b ^= b >> 13;
+  b *= 3266489917u32;
+  b ^= b >> 16;
+  let inv = 2.3283064e-10f32;
+  let u1 = f32::cast_from(a) * inv * 0.999998f32 + 1.0e-6f32;
+  let u2 = f32::cast_from(b) * inv;
+  Sqrt::sqrt(-2.0f32 * Log::ln(u1)) * Cos::cos(core::f32::consts::TAU * u2)
 }
 
 /// Dispatches to the family's generated step. The formulas live in the
@@ -75,224 +152,246 @@ fn euler_paths_kernel(
 /// order each family reads from the buffer, which the compiler checks by
 /// arity.
 #[cube]
-fn step(family: u32, x: f32, params: &Array<f32>, dt: f32, dz: f32) -> f32 {
-  let mut stepped = x;
+#[allow(clippy::too_many_arguments)]
+fn step(
+  family: u32,
+  component: u32,
+  x0: f32,
+  x1: f32,
+  x2: f32,
+  x3: f32,
+  params: &Array<f32>,
+  dt: f32,
+  dz0: f32,
+  dz1: f32,
+  dz2: f32,
+  dz3: f32,
+) -> f32 {
+  let mut stepped = x0;
   if family == 0u32 {
-    stepped = cube::GeometricBrownian(x, params, dt, dz);
+    stepped = cube::GeometricBrownian(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 1u32 {
-    stepped = cube::OrnsteinUhlenbeck(x, params, dt, dz);
+    stepped = cube::OrnsteinUhlenbeck(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 2u32 {
-    stepped = cube::SquareRoot(x, params, dt, dz);
+    stepped = cube::SquareRoot(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 6u32 {
-    stepped = cube::Jacobi(x, params, dt, dz);
+    stepped = cube::Jacobi(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 9u32 {
-    stepped = cube::Logistic(x, params, dt, dz);
+    stepped = cube::Logistic(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 12u32 {
-    stepped = cube::RadialOrnsteinUhlenbeck(x, params, dt, dz);
+    stepped = cube::RadialOrnsteinUhlenbeck(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 17u32 {
-    stepped = cube::AitSahalia(x, params, dt, dz);
+    stepped = cube::AitSahalia(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 18u32 {
-    stepped = cube::Gompertz(x, params, dt, dz);
+    stepped = cube::Gompertz(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 19u32 {
-    stepped = cube::Kimura(x, params, dt, dz);
+    stepped = cube::Kimura(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 20u32 {
-    stepped = cube::Quadratic(x, params, dt, dz);
+    stepped = cube::Quadratic(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 21u32 {
-    stepped = cube::Pearson(x, params, dt, dz);
+    stepped = cube::Pearson(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 22u32 {
-    stepped = cube::Verhulst(x, params, dt, dz);
+    stepped = cube::Verhulst(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 23u32 {
-    stepped = cube::VerhulstClamped(x, params, dt, dz);
+    stepped = cube::VerhulstClamped(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 24u32 {
-    stepped = cube::FellerLogistic(x, params, dt, dz);
+    stepped = cube::FellerLogistic(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 25u32 {
-    stepped = cube::FellerLogisticReflected(x, params, dt, dz);
+    stepped = cube::FellerLogisticReflected(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 26u32 {
-    stepped = cube::SquaredBesselState(x, params, dt, dz);
+    stepped = cube::SquaredBesselState(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 27u32 {
-    stepped = cube::SquaredBesselStateReflected(x, params, dt, dz);
+    stepped = cube::SquaredBesselStateReflected(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 28u32 {
-    stepped = cube::BesselFromSquared(x, params, dt, dz);
+    stepped = cube::BesselFromSquared(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 29u32 {
-    stepped = cube::BesselFromSquaredReflected(x, params, dt, dz);
+    stepped = cube::BesselFromSquaredReflected(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 30u32 {
-    stepped = cube::HyperbolicDiffusion(x, params, dt, dz);
+    stepped = cube::HyperbolicDiffusion(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 31u32 {
-    stepped = cube::NonLinear(x, params, dt, dz);
+    stepped = cube::NonLinear(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 32u32 {
-    stepped = cube::Displaced(x, params, dt, dz);
+    stepped = cube::Displaced(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 33u32 {
-    stepped = cube::TanhOrnsteinUhlenbeck(x, params, dt, dz);
+    stepped = cube::TanhOrnsteinUhlenbeck(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 34u32 {
-    stepped = cube::BoundedCorrelation(x, params, dt, dz);
+    stepped = cube::BoundedCorrelation(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 16u32 {
-    stepped = cube::FellerRoot(x, params, dt, dz);
+    stepped = cube::FellerRoot(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 15u32 {
-    stepped = cube::ModifiedSquareRoot(x, params, dt, dz);
+    stepped = cube::ModifiedSquareRoot(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 14u32 {
-    stepped = cube::Hyperbolic(x, params, dt, dz);
+    stepped = cube::Hyperbolic(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 13u32 {
-    stepped = cube::LinearSde(x, params, dt, dz);
+    stepped = cube::LinearSde(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 11u32 {
-    stepped = cube::LogGeometric(x, params, dt, dz);
+    stepped = cube::LogGeometric(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 10u32 {
-    stepped = cube::ThreeHalf(x, params, dt, dz);
+    stepped = cube::ThreeHalf(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 8u32 {
-    stepped = cube::Ckls(x, params, dt, dz);
+    stepped = cube::Ckls(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 7u32 {
-    stepped = cube::ConstantElasticity(x, params, dt, dz);
+    stepped = cube::ConstantElasticity(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 5u32 {
-    stepped = cube::MirroredSquareRoot(x, params, dt, dz);
+    stepped = cube::MirroredSquareRoot(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 4u32 {
-    stepped = cube::ReflectedSquareRoot(x, params, dt, dz);
+    stepped = cube::ReflectedSquareRoot(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   if family == 3u32 {
-    stepped = cube::Additive(x, params, dt, dz);
+    stepped = cube::Additive(component, x0, x1, x2, x3, params, dt, dz0, dz1, dz2, dz3);
   }
   stepped
 }
 
 /// Dispatches to the family's generated report.
 #[cube]
-fn report(family: u32, x: f32, params: &Array<f32>) -> f32 {
-  let mut reported = x;
+fn report(
+  family: u32,
+  component: u32,
+  x0: f32,
+  x1: f32,
+  x2: f32,
+  x3: f32,
+  params: &Array<f32>,
+) -> f32 {
+  let mut reported = x0;
   if family == 0u32 {
-    reported = cube_report::GeometricBrownian(x, params);
+    reported = cube_report::GeometricBrownian(component, x0, x1, x2, x3, params);
   }
   if family == 1u32 {
-    reported = cube_report::OrnsteinUhlenbeck(x, params);
+    reported = cube_report::OrnsteinUhlenbeck(component, x0, x1, x2, x3, params);
   }
   if family == 2u32 {
-    reported = cube_report::SquareRoot(x, params);
+    reported = cube_report::SquareRoot(component, x0, x1, x2, x3, params);
   }
   if family == 6u32 {
-    reported = cube_report::Jacobi(x, params);
+    reported = cube_report::Jacobi(component, x0, x1, x2, x3, params);
   }
   if family == 9u32 {
-    reported = cube_report::Logistic(x, params);
+    reported = cube_report::Logistic(component, x0, x1, x2, x3, params);
   }
   if family == 12u32 {
-    reported = cube_report::RadialOrnsteinUhlenbeck(x, params);
+    reported = cube_report::RadialOrnsteinUhlenbeck(component, x0, x1, x2, x3, params);
   }
   if family == 17u32 {
-    reported = cube_report::AitSahalia(x, params);
+    reported = cube_report::AitSahalia(component, x0, x1, x2, x3, params);
   }
   if family == 18u32 {
-    reported = cube_report::Gompertz(x, params);
+    reported = cube_report::Gompertz(component, x0, x1, x2, x3, params);
   }
   if family == 19u32 {
-    reported = cube_report::Kimura(x, params);
+    reported = cube_report::Kimura(component, x0, x1, x2, x3, params);
   }
   if family == 20u32 {
-    reported = cube_report::Quadratic(x, params);
+    reported = cube_report::Quadratic(component, x0, x1, x2, x3, params);
   }
   if family == 21u32 {
-    reported = cube_report::Pearson(x, params);
+    reported = cube_report::Pearson(component, x0, x1, x2, x3, params);
   }
   if family == 22u32 {
-    reported = cube_report::Verhulst(x, params);
+    reported = cube_report::Verhulst(component, x0, x1, x2, x3, params);
   }
   if family == 23u32 {
-    reported = cube_report::VerhulstClamped(x, params);
+    reported = cube_report::VerhulstClamped(component, x0, x1, x2, x3, params);
   }
   if family == 24u32 {
-    reported = cube_report::FellerLogistic(x, params);
+    reported = cube_report::FellerLogistic(component, x0, x1, x2, x3, params);
   }
   if family == 25u32 {
-    reported = cube_report::FellerLogisticReflected(x, params);
+    reported = cube_report::FellerLogisticReflected(component, x0, x1, x2, x3, params);
   }
   if family == 26u32 {
-    reported = cube_report::SquaredBesselState(x, params);
+    reported = cube_report::SquaredBesselState(component, x0, x1, x2, x3, params);
   }
   if family == 27u32 {
-    reported = cube_report::SquaredBesselStateReflected(x, params);
+    reported = cube_report::SquaredBesselStateReflected(component, x0, x1, x2, x3, params);
   }
   if family == 28u32 {
-    reported = cube_report::BesselFromSquared(x, params);
+    reported = cube_report::BesselFromSquared(component, x0, x1, x2, x3, params);
   }
   if family == 29u32 {
-    reported = cube_report::BesselFromSquaredReflected(x, params);
+    reported = cube_report::BesselFromSquaredReflected(component, x0, x1, x2, x3, params);
   }
   if family == 30u32 {
-    reported = cube_report::HyperbolicDiffusion(x, params);
+    reported = cube_report::HyperbolicDiffusion(component, x0, x1, x2, x3, params);
   }
   if family == 31u32 {
-    reported = cube_report::NonLinear(x, params);
+    reported = cube_report::NonLinear(component, x0, x1, x2, x3, params);
   }
   if family == 32u32 {
-    reported = cube_report::Displaced(x, params);
+    reported = cube_report::Displaced(component, x0, x1, x2, x3, params);
   }
   if family == 33u32 {
-    reported = cube_report::TanhOrnsteinUhlenbeck(x, params);
+    reported = cube_report::TanhOrnsteinUhlenbeck(component, x0, x1, x2, x3, params);
   }
   if family == 34u32 {
-    reported = cube_report::BoundedCorrelation(x, params);
+    reported = cube_report::BoundedCorrelation(component, x0, x1, x2, x3, params);
   }
   if family == 16u32 {
-    reported = cube_report::FellerRoot(x, params);
+    reported = cube_report::FellerRoot(component, x0, x1, x2, x3, params);
   }
   if family == 15u32 {
-    reported = cube_report::ModifiedSquareRoot(x, params);
+    reported = cube_report::ModifiedSquareRoot(component, x0, x1, x2, x3, params);
   }
   if family == 14u32 {
-    reported = cube_report::Hyperbolic(x, params);
+    reported = cube_report::Hyperbolic(component, x0, x1, x2, x3, params);
   }
   if family == 13u32 {
-    reported = cube_report::LinearSde(x, params);
+    reported = cube_report::LinearSde(component, x0, x1, x2, x3, params);
   }
   if family == 11u32 {
-    reported = cube_report::LogGeometric(x, params);
+    reported = cube_report::LogGeometric(component, x0, x1, x2, x3, params);
   }
   if family == 10u32 {
-    reported = cube_report::ThreeHalf(x, params);
+    reported = cube_report::ThreeHalf(component, x0, x1, x2, x3, params);
   }
   if family == 8u32 {
-    reported = cube_report::Ckls(x, params);
+    reported = cube_report::Ckls(component, x0, x1, x2, x3, params);
   }
   if family == 7u32 {
-    reported = cube_report::ConstantElasticity(x, params);
+    reported = cube_report::ConstantElasticity(component, x0, x1, x2, x3, params);
   }
   if family == 5u32 {
-    reported = cube_report::MirroredSquareRoot(x, params);
+    reported = cube_report::MirroredSquareRoot(component, x0, x1, x2, x3, params);
   }
   if family == 4u32 {
-    reported = cube_report::ReflectedSquareRoot(x, params);
+    reported = cube_report::ReflectedSquareRoot(component, x0, x1, x2, x3, params);
   }
   if family == 3u32 {
-    reported = cube_report::Additive(x, params);
+    reported = cube_report::Additive(component, x0, x1, x2, x3, params);
   }
   reported
 }
@@ -433,17 +532,18 @@ impl<R: CubeclRuntime> EulerKernel<f32> for crate::device::Cubecl<R> {
     m: usize,
     seed: u64,
   ) -> DeviceResult<Array2<f32>> {
-    device_paths::<R>(
+    let planes = device_paths::<R>(
       self.ordinal,
       process.euler_spec(),
-      process.initial_value(),
+      [process.initial_value(), 0.0, 0.0, 0.0],
       process.grid_points(),
       process.horizon(),
       first,
       m,
       seed,
       process.fgn_spec(),
-    )
+    )?;
+    Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
 
   fn batch_budget(&self) -> usize {
@@ -456,22 +556,24 @@ impl<R: CubeclRuntime> EulerKernel<f32> for crate::device::Cubecl<R> {
 fn device_paths<C: CubeclRuntime>(
   ordinal: usize,
   spec: EulerSpec<f32>,
-  x0: f32,
+  x0: [f32; 4],
   n: usize,
   t: f32,
   first: usize,
   m: usize,
   seed: u64,
   fgn: Option<crate::euler::FgnSpec<'_, f32>>,
-) -> DeviceResult<Array2<f32>> {
+) -> DeviceResult<Array3<f32>> {
   {
-    if n == 0 || m == 0 {
-      return Ok(Array2::<f32>::zeros((m, n)));
-    }
     let (family, params) = spec.encode();
+    let arity = super::families::Family::from_code(family).expect("a declared family");
+    let (components, noises) = (arity.components(), arity.noises());
+    if n == 0 || m == 0 {
+      return Ok(Array3::<f32>::zeros((components, m, n)));
+    }
     let params32: Vec<f32> = params.to_vec();
     let dt = t as f64 / (n.max(2) - 1) as f64;
-    let total = m * n;
+    let total = components * m * n;
     let cl = &C::client(ordinal)?;
     let data: Vec<f32> = {
       let params_h = cl.create_from_slice(f32::as_bytes(&params32));
@@ -505,7 +607,12 @@ fn device_paths<C: CubeclRuntime>(
           ArrayArg::from_raw_parts::<f32>(&params_h, crate::euler::PARAM_SLOTS, 1),
           ArrayArg::from_raw_parts::<f32>(&incs_h, incs_len, 1),
           ScalarArg::new(family),
-          ScalarArg::new(x0),
+          ScalarArg::new(components as u32),
+          ScalarArg::new(noises as u32),
+          ScalarArg::new(x0[0]),
+          ScalarArg::new(x0[1]),
+          ScalarArg::new(x0[2]),
+          ScalarArg::new(x0[3]),
           ScalarArg::new(dt as f32),
           ScalarArg::new(dt.sqrt() as f32),
           ScalarArg::new((seed ^ (seed >> 32)) as u32),
@@ -519,6 +626,9 @@ fn device_paths<C: CubeclRuntime>(
       let bytes = cl.read_one(out_h.clone());
       f32::from_bytes(&bytes).to_vec()
     };
-    Ok(Array2::from_shape_vec((m, n), data).expect("the kernel returns m * n values"))
+    Ok(
+      Array3::from_shape_vec((components, m, n), data)
+        .expect("the kernel returns components * m * n values"),
+    )
   }
 }

@@ -6,6 +6,7 @@
 
 use metal::*;
 use ndarray::Array2;
+use ndarray::Array3;
 use parking_lot::Mutex;
 
 use super::EulerCoefficients;
@@ -25,14 +26,16 @@ using namespace metal;
 
 struct EulerArgs {
     uint family;
-    float x0;
-    float dt;
-    float sqrt_dt;
+    uint components;
+    uint noises;
     uint seed;
     uint steps;
     uint paths;
     uint first_path;
     uint increments;
+    float dt;
+    float sqrt_dt;
+    float x0[4];
 };
 
 kernel void euler_paths(
@@ -43,7 +46,8 @@ kernel void euler_paths(
     uint path [[thread_position_in_grid]])
 {
     const uint family = args.family;
-    const float x0 = args.x0;
+    const uint components = args.components;
+    const uint noises = args.noises;
     const float dt = args.dt;
     const float sqrt_dt = args.sqrt_dt;
     const uint seed = args.seed;
@@ -51,6 +55,7 @@ kernel void euler_paths(
     const uint paths = args.paths;
     const uint first_path = args.first_path;
     const uint increments = args.increments;
+    const float x0[4] = { args.x0[0], args.x0[1], args.x0[2], args.x0[3] };
 "#;
 
 fn msl_source() -> String {
@@ -74,16 +79,20 @@ fn msl_source() -> String {
 #[derive(Clone, Copy)]
 struct EulerArgs {
   family: u32,
-  x0: f32,
-  dt: f32,
-  sqrt_dt: f32,
+  /// State components the family steps, and planes the launch writes.
+  components: u32,
+  /// Independent noise components the step draws.
+  noises: u32,
   seed: u32,
   steps: u32,
   paths: u32,
   first_path: u32,
-  /// Non-zero when the launch reads its noise from the increment buffer
-  /// rather than hashing it.
+  /// Non-zero when the launch reads its first noise component from the
+  /// increment buffer rather than hashing it.
   increments: u32,
+  dt: f32,
+  sqrt_dt: f32,
+  x0: [f32; 4],
 }
 
 struct Context {
@@ -174,7 +183,7 @@ fn run(
   let guard = CONTEXT.lock();
   let ctx = guard.as_ref().expect("initialised");
   let shared = MTLResourceOptions::StorageModeShared;
-  let total = args.paths as usize * args.steps as usize;
+  let total = args.components as usize * args.paths as usize * args.steps as usize;
   let out_buf = ctx.device.new_buffer((total * 4) as u64, shared);
   let params_buf = ctx.device.new_buffer_with_data(
     params.as_ptr() as *const _,
@@ -245,10 +254,10 @@ impl EulerKernel<f32> for Metal {
       }
       None => None,
     };
-    device_paths(
+    let planes = device_paths(
       self.ordinal,
       process.euler_spec(),
-      process.initial_value(),
+      [process.initial_value(), 0.0, 0.0, 0.0],
       process.grid_points(),
       process.horizon(),
       first,
@@ -258,7 +267,8 @@ impl EulerKernel<f32> for Metal {
         Some(buf) => Increments::Device(buf),
         None => Increments::Hashed,
       },
-    )
+    )?;
+    Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
 
   fn batch_budget(&self) -> usize {
@@ -266,38 +276,44 @@ impl EulerKernel<f32> for Metal {
   }
 }
 
-/// The kernel launch for an explicit specification.
+/// The kernel launch for an explicit specification, as a
+/// `components × m × n` array. A one-component family fills a single plane,
+/// which is what [`EulerKernel::euler_kernel`] hands back as its matrix.
 #[allow(clippy::too_many_arguments)]
 fn device_paths(
   ordinal: usize,
   spec: EulerSpec<f32>,
-  x0: f32,
+  x0: [f32; 4],
   n: usize,
   t: f32,
   first: usize,
   m: usize,
   seed: u64,
   increments: Increments<'_>,
-) -> Result<Array2<f32>> {
-  {
-    if n == 0 || m == 0 {
-      return Ok(Array2::<f32>::zeros((m, n)));
-    }
-    let (family, params) = spec.encode();
-    let dt = (t as f64 / (n.max(2) - 1) as f64) as f32;
-    let params32: [f32; crate::euler::PARAM_SLOTS] = params;
-    let args = EulerArgs {
-      family,
-      x0,
-      dt,
-      sqrt_dt: dt.sqrt(),
-      seed: (seed ^ (seed >> 32)) as u32,
-      steps: n as u32,
-      paths: m as u32,
-      first_path: first as u32,
-      increments: u32::from(!matches!(increments, Increments::Hashed)),
-    };
-    let data = run(ordinal, params32, args, increments)?;
-    Ok(Array2::from_shape_vec((m, n), data).expect("the kernel returns m * n values"))
+) -> Result<Array3<f32>> {
+  let (family, params) = spec.encode();
+  let arity = super::families::Family::from_code(family).expect("a declared family");
+  let (components, noises) = (arity.components(), arity.noises());
+  if n == 0 || m == 0 {
+    return Ok(Array3::<f32>::zeros((components, m, n)));
   }
+  let dt = (t as f64 / (n.max(2) - 1) as f64) as f32;
+  let args = EulerArgs {
+    family,
+    components: components as u32,
+    noises: noises as u32,
+    seed: (seed ^ (seed >> 32)) as u32,
+    steps: n as u32,
+    paths: m as u32,
+    first_path: first as u32,
+    increments: u32::from(!matches!(increments, Increments::Hashed)),
+    dt,
+    sqrt_dt: dt.sqrt(),
+    x0,
+  };
+  let data = run(ordinal, params, args, increments)?;
+  Ok(
+    Array3::from_shape_vec((components, m, n), data)
+      .expect("the kernel returns components * m * n values"),
+  )
 }

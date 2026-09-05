@@ -3,6 +3,21 @@
 
 use super::*;
 
+/// The generated step and report take the whole state and noise vectors, so
+/// a one-component family is exercised through these two shims rather than by
+/// spelling the four slots out at every call.
+fn step1(family: Family, x: f64, params: &[f64], dt: f64, dz: f64) -> f64 {
+  let mut out = [0.0; 4];
+  host_step(family, &[x, 0.0, 0.0, 0.0], params, dt, &[dz, 0.0, 0.0, 0.0], &mut out);
+  out[0]
+}
+
+fn report1(family: Family, x: f64, params: &[f64]) -> f64 {
+  let mut out = [0.0; 4];
+  host_report(family, &[x, 0.0, 0.0, 0.0], params, &mut out);
+  out[0]
+}
+
 fn gbm_closed(x: f64, mu: f64, sigma: f64, dt: f64, dz: f64) -> f64 {
   x + mu * x * dt + sigma * x * dz
 }
@@ -25,11 +40,11 @@ fn the_host_step_matches_the_closed_forms() {
   let (dt, sqrt_dt) = (1.0 / 253.0, (1.0f64 / 253.0).sqrt());
   for (x, z) in [(100.0, 0.5), (1e-8, -2.25), (-0.01, 3.0)] {
     assert_eq!(
-      host_step(Family::GeometricBrownian, x, &[0.05, 0.2], dt, sqrt_dt * z),
+      step1(Family::GeometricBrownian, x, &[0.05, 0.2], dt, sqrt_dt * z),
       gbm_closed(x, 0.05, 0.2, dt, sqrt_dt * z)
     );
     assert_eq!(
-      host_step(
+      step1(
         Family::OrnsteinUhlenbeck,
         x,
         &[0.5, 0.02, 0.1],
@@ -39,7 +54,7 @@ fn the_host_step_matches_the_closed_forms() {
       ou_closed(x, 0.5, 0.02, 0.1, dt, sqrt_dt * z)
     );
     assert_eq!(
-      host_step(Family::SquareRoot, x, &[0.5, 0.04, 0.1], dt, sqrt_dt * z),
+      step1(Family::SquareRoot, x, &[0.5, 0.04, 0.1], dt, sqrt_dt * z),
       cir_closed(x, 0.5, 0.04, 0.1, dt, sqrt_dt * z)
     );
   }
@@ -52,10 +67,10 @@ fn the_host_report_truncates_only_the_square_root_family() {
   // A report binds the family's whole parameter list before it runs, as a
   // step does, so it is handed a full buffer even where it names nothing.
   let p = &[0.0f64; 8];
-  assert_eq!(host_report(Family::GeometricBrownian, -2.0, p), -2.0);
-  assert_eq!(host_report(Family::OrnsteinUhlenbeck, -2.0, p), -2.0);
-  assert_eq!(host_report(Family::SquareRoot, -2.0, p), 0.0);
-  assert_eq!(host_report(Family::SquareRoot, 0.25, p), 0.25);
+  assert_eq!(report1(Family::GeometricBrownian, -2.0, p), -2.0);
+  assert_eq!(report1(Family::OrnsteinUhlenbeck, -2.0, p), -2.0);
+  assert_eq!(report1(Family::SquareRoot, -2.0, p), 0.0);
+  assert_eq!(report1(Family::SquareRoot, 0.25, p), 0.25);
 }
 
 /// The family codes are the kernels' ABI: the generated C compares against
@@ -76,7 +91,14 @@ fn the_emitted_c_binds_parameters_and_steps() {
   assert!(C_STEP.contains("if (family == 0u) {"));
   assert!(C_STEP.contains("const REAL mu = params[0];"));
   assert!(C_STEP.contains("const REAL sigma = params[1];"));
-  assert!(C_STEP.contains("x = x + mu * x * dt + sigma * x * dz;"));
+  // The state and the noise are bound by position from the launch's own
+  // vectors, so a one-component family reads slot zero of each.
+  assert!(C_STEP.contains("const REAL x = state[0];"));
+  assert!(C_STEP.contains("const REAL dz = noise[0];"));
+  // Every component is computed into a temporary before any is stored, so a
+  // system's second component still sees the state as it stood.
+  assert!(C_STEP.contains("const REAL __n0 = x + mu * x * dt + sigma * x * dz;"));
+  assert!(C_STEP.contains("state[0] = __n0;"));
   assert!(C_STEP.contains("const REAL kappa = params[0];"));
   assert!(C_STEP.contains("const REAL theta = params[1];"));
   assert!(C_STEP.contains("const REAL sigma = params[2];"));
@@ -87,8 +109,9 @@ fn the_emitted_c_binds_parameters_and_steps() {
 #[test]
 fn the_emitted_c_reports_per_family() {
   assert!(C_REPORT.contains("if (family == 2u) {"));
-  assert!(C_REPORT.contains("reported = positive(x);"));
-  assert!(C_REPORT.contains("reported = x;"));
+  assert!(C_REPORT.contains("const REAL __n0 = positive(x);"));
+  assert!(C_REPORT.contains("const REAL __n0 = x;"));
+  assert!(C_REPORT.contains("reported[0] = __n0;"));
 }
 
 /// A `bind` becomes a local in every language: a `let` on the host and in a
@@ -97,9 +120,11 @@ fn the_emitted_c_reports_per_family() {
 #[test]
 fn a_bind_becomes_a_c_local() {
   assert!(C_STEP.contains("const REAL xi = positive(x);"));
-  assert!(C_STEP.contains("x = positive(xi + kappa * (theta - xi) * xi * dt + sigma * sqrt(xi) * dz);"));
+  assert!(C_STEP.contains(
+    "const REAL __n0 = positive(xi + kappa * (theta - xi) * xi * dt + sigma * sqrt(xi) * dz);"
+  ));
   assert_eq!(
-    host_step(Family::FellerLogistic, -3.0, &[0.5, 0.04, 0.1], 0.01, 0.02),
+    step1(Family::FellerLogistic, -3.0, &[0.5, 0.04, 0.1], 0.01, 0.02),
     0.0,
     "a negative state truncates to zero before the coefficients see it"
   );
@@ -111,8 +136,8 @@ fn a_bind_becomes_a_c_local() {
 #[test]
 fn a_report_sees_the_family_parameters() {
   assert!(C_REPORT.contains("const REAL beta = params[2];"));
-  assert!(C_REPORT.contains("reported = x - beta;"));
-  assert_eq!(host_report(Family::Displaced, 105.0, &[0.05, 0.2, 5.0]), 100.0);
+  assert!(C_REPORT.contains("const REAL __n0 = x - beta;"));
+  assert_eq!(report1(Family::Displaced, 105.0, &[0.05, 0.2, 5.0]), 100.0);
 }
 
 /// Every function the families use has a C definition, or the kernel would
@@ -157,7 +182,7 @@ fn the_structured_families_match_their_models() {
   // Pearson: dX = κ(μ−X)dt + √|2κ(aX² + bX + c)| dW, with 2κ folded.
   let (kappa, mu, a, b, c) = (3.0, 0.05, 0.1, 0.2, 0.01);
   close(
-    host_step(
+    step1(
       Family::Pearson,
       x,
       &[kappa, mu, a, b, c, 2.0 * kappa],
@@ -173,7 +198,7 @@ fn the_structured_families_match_their_models() {
   let (t1, t2, t3) = (0.5_f64, 0.3_f64, 0.2_f64);
   let decay = t3.powi(3) - t1 * t2;
   close(
-    host_step(Family::FellerRoot, x, &[t1, decay, t3], dt, dz),
+    step1(Family::FellerRoot, x, &[t1, decay, t3], dt, dz),
     x + x * (t1 - x * decay) * dt + t3 * x.abs().powf(1.5) * dz,
   );
 
@@ -182,14 +207,14 @@ fn the_structured_families_match_their_models() {
   let p = [0.0001, 0.15, -3.0, 0.0, 0.0004, 0.0, 0.05, 1.5];
   let guarded = if x.abs() < 1e-12 { 1e-12 } else { x };
   close(
-    host_step(Family::AitSahalia, x, &p, dt, dz),
+    step1(Family::AitSahalia, x, &p, dt, dz),
     x + (p[0] / guarded + p[1] + p[2] * x + p[3] * x * x) * dt
       + (p[4] + p[5] * x + p[6] * x.abs().powf(p[7])).abs().sqrt() * dz,
   );
 
   // The same drift with the diffusion left unsquared.
   close(
-    host_step(Family::NonLinear, x, &p, dt, dz),
+    step1(Family::NonLinear, x, &p, dt, dz),
     x + (p[0] / guarded + p[1] + p[2] * x + p[3] * x * x) * dt
       + (p[4] + p[5] * x + p[6] * x.abs().powf(p[7])) * dz,
   );
@@ -197,7 +222,7 @@ fn the_structured_families_match_their_models() {
   // Hyperbolic diffusion: ½σ² folded out of the drift.
   let (beta, gamma, delta, m, sigma) = (0.5, 1.0, 1.0, 0.0, 0.3);
   close(
-    host_step(
+    step1(
       Family::HyperbolicDiffusion,
       x,
       &[beta, gamma, delta, m, sigma, 0.5 * sigma * sigma],
@@ -215,7 +240,7 @@ fn the_structured_families_match_their_models() {
   // Verhulst: the one reassociated declaration.
   let (r, k) = (1.0, 2.0);
   close(
-    host_step(Family::Verhulst, x, &[r, k, sigma], dt, dz),
+    step1(Family::Verhulst, x, &[r, k, sigma], dt, dz),
     x + r * x * (1.0 - x / k) * dt + sigma * x * dz,
   );
 }
@@ -234,32 +259,32 @@ fn the_bounded_families_apply_their_boundaries() {
     (xi + a * xi * (1.0 - xi) * dt + sigma * (xi * (1.0 - xi)).sqrt() * dz).clamp(0.0, 1.0)
   };
   for x in [-0.3, 0.0, 0.5, 1.0, 1.7] {
-    assert_eq!(host_step(Family::Kimura, x, &[a, sigma], dt, dz), clamped(x));
+    assert_eq!(step1(Family::Kimura, x, &[a, sigma], dt, dz), clamped(x));
   }
 
   // The squared-Bessel recursion truncates; its reflected twin mirrors.
   for x in [-0.2, 0.0, 1.0] {
     let raw = x + 3.0 * dt + 2.0 * x.abs().sqrt() * dz;
     assert_eq!(
-      host_step(Family::SquaredBesselState, x, &[3.0, 2.0], dt, dz),
+      step1(Family::SquaredBesselState, x, &[3.0, 2.0], dt, dz),
       raw.max(0.0)
     );
     assert_eq!(
-      host_step(Family::SquaredBesselStateReflected, x, &[3.0, 2.0], dt, dz),
+      step1(Family::SquaredBesselStateReflected, x, &[3.0, 2.0], dt, dz),
       raw.abs()
     );
   }
 
   // A bounded correlation never leaves [−0.9999, 0.9999], whatever the noise.
-  let stepped = host_step(Family::BoundedCorrelation, 0.99, &[1.0, 0.3, 5.0], dt, 3.0);
+  let stepped = step1(Family::BoundedCorrelation, 0.99, &[1.0, 0.3, 5.0], dt, 3.0);
   assert!((-0.9999..=0.9999).contains(&stepped), "{stepped}");
 
   // Teng's process is stepped unbounded and reported through a tanh, so the
   // reported value is in (−1, 1) however far the state has wandered.
   let p = [1.0, 0.3, 0.2];
-  assert_eq!(host_report(Family::TanhOrnsteinUhlenbeck, 40.0, &p), 40.0_f64.tanh());
+  assert_eq!(report1(Family::TanhOrnsteinUhlenbeck, 40.0, &p), 40.0_f64.tanh());
   assert_eq!(
-    host_step(Family::TanhOrnsteinUhlenbeck, 0.4, &p, dt, dz),
+    step1(Family::TanhOrnsteinUhlenbeck, 0.4, &p, dt, dz),
     0.4 + p[0] * (p[1] - 0.4_f64.tanh()) * dt + p[2] * dz
   );
 }
