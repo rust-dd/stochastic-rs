@@ -433,6 +433,7 @@ pub enum EulerSpec<T: FloatExt> {
     one_minus_alpha: T,
     tail_exp: T,
     scale: T,
+    pi: T,
   },
 }
 
@@ -899,9 +900,10 @@ impl<T: FloatExt> EulerSpec<T> {
         one_minus_alpha,
         tail_exp,
         scale,
+        pi,
       } => (
         Family::StableSubordinator.code(),
-        pad([alpha, inv_alpha, one_minus_alpha, tail_exp, scale]),
+        pad([alpha, inv_alpha, one_minus_alpha, tail_exp, scale, pi]),
       ),
     }
   }

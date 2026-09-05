@@ -65,6 +65,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
       one_minus_alpha: one - self.alpha,
       tail_exp: (one - self.alpha) / self.alpha,
       scale: (self.c * dt).powf(one / self.alpha),
+      pi: T::from_f64_fast(std::f64::consts::PI),
     }
   }
 

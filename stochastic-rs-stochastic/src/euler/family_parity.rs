@@ -561,6 +561,7 @@ fn every_family() -> Vec<Probe> {
         one_minus_alpha: 0.3,
         tail_exp: 0.3 / 0.7,
         scale: 0.05,
+        pi: std::f32::consts::PI,
       },
       0.0,
     ),

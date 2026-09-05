@@ -1561,17 +1561,17 @@ euler_families! {
   /// A positive-stable subordinator by the Chambers-Mallows-Stuck transform:
   /// one uniform on `(0, π)` and one exponential, both from the step's own
   /// uniforms, with no rejection. The two exponents depend on `α` alone and
-  /// are folded on the host, as is the scale `(c·dt)^{1/α}`.
+  /// are folded on the host, as are the scale `(c·dt)^{1/α}` and `π`.
   ///
   /// The uniforms are clamped into the open interval at a bound `f32` can
   /// hold below one: at exactly one the angle is `π`, whose sine is a small
   /// *negative* in single precision, and raising that to a fractional power
   /// is a NaN. The sines are floored for the same reason the clamp exists.
-  65 => StableSubordinator { alpha, inv_alpha, one_minus_alpha, tail_exp, scale }
+  65 => StableSubordinator { alpha, inv_alpha, one_minus_alpha, tail_exp, scale, pi }
     state (x)
     noise (dz)
     step {
-      bind uu = min(max(u, lit(1e-7)), lit(0.9999999)) * lit(3.141592653589793);
+      bind uu = min(max(u, lit(1e-7)), lit(0.9999999)) * pi;
       bind w = negate(ln(min(max(u2, lit(1e-7)), lit(0.9999999))));
       bind s1 = sin(alpha * uu) / pow(max(sin(uu), lit(1e-20)), inv_alpha);
       bind s2 = pow(max(sin(one_minus_alpha * uu), lit(1e-20)) / w, tail_exp);
