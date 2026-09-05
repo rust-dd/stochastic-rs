@@ -359,6 +359,12 @@ fn step(
   if family == 58u32 {
     stepped = cube::MertonJumpLog(component, x0, x1, x2, x3, params, dt, ct, nj, dz0, dz1, dz2, dz3);
   }
+  if family == 59u32 {
+    stepped = cube::BatesJump(component, x0, x1, x2, x3, params, dt, ct, nj, dz0, dz1, dz2, dz3);
+  }
+  if family == 60u32 {
+    stepped = cube::BatesJumpReflected(component, x0, x1, x2, x3, params, dt, ct, nj, dz0, dz1, dz2, dz3);
+  }
   if family == 16u32 {
     stepped = cube::FellerRoot(component, x0, x1, x2, x3, params, dt, ct, nj, dz0, dz1, dz2, dz3);
   }
@@ -552,6 +558,12 @@ fn report(
   }
   if family == 58u32 {
     reported = cube_report::MertonJumpLog(component, x0, x1, x2, x3, params, ct, nj);
+  }
+  if family == 59u32 {
+    reported = cube_report::BatesJump(component, x0, x1, x2, x3, params, ct, nj);
+  }
+  if family == 60u32 {
+    reported = cube_report::BatesJumpReflected(component, x0, x1, x2, x3, params, ct, nj);
   }
   if family == 16u32 {
     reported = cube_report::FellerRoot(component, x0, x1, x2, x3, params, ct, nj);

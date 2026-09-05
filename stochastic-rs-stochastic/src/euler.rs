@@ -425,6 +425,26 @@ pub enum EulerSpec<T: FloatExt> {
     nu: T,
     omega: T,
   },
+  /// The Bates stochastic-volatility jump model, variance truncated.
+  BatesJump {
+    drift_c: T,
+    nu: T,
+    omega: T,
+    alpha: T,
+    beta: T,
+    sigma: T,
+    rho: T,
+  },
+  /// [`BatesJump`](EulerSpec::BatesJump) with the variance reflected.
+  BatesJumpReflected {
+    drift_c: T,
+    nu: T,
+    omega: T,
+    alpha: T,
+    beta: T,
+    sigma: T,
+    rho: T,
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -785,6 +805,30 @@ impl<T: FloatExt> EulerSpec<T> {
       } => (
         Family::MertonJumpLog.code(),
         pad([drift_ln, sigma, nu, omega]),
+      ),
+      EulerSpec::BatesJump {
+        drift_c,
+        nu,
+        omega,
+        alpha,
+        beta,
+        sigma,
+        rho,
+      } => (
+        Family::BatesJump.code(),
+        pad([drift_c, nu, omega, alpha, beta, sigma, rho]),
+      ),
+      EulerSpec::BatesJumpReflected {
+        drift_c,
+        nu,
+        omega,
+        alpha,
+        beta,
+        sigma,
+        rho,
+      } => (
+        Family::BatesJumpReflected.code(),
+        pad([drift_c, nu, omega, alpha, beta, sigma, rho]),
       ),
     }
   }

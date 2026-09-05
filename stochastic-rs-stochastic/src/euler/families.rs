@@ -1421,6 +1421,38 @@ euler_families! {
     }
     report { x },
 
+  /// A Heston variance under a log-price that also jumps: the Bates
+  /// stochastic-volatility jump model. The compensated drift is folded on the
+  /// host, and the jump sizes aggregate into one normal draw as they do for
+  /// [`MertonJumpLog`](Family::MertonJumpLog). The variance is truncated at
+  /// zero and the truncated value is what the next step starts from.
+  59 => BatesJump { drift_c, nu, omega, alpha, beta, sigma, rho }
+    state (s, v)
+    noise (dw, dq, dj)
+    step {
+      bind vp = positive(v);
+      bind sv = sqrt(vp);
+      bind dv = rho * dw + sqrt(negate(rho * rho - lit(1.0))) * dq;
+      bind jump = nu * nj + omega * sqrt(nj) * (dj / sqrt(dt));
+      s * exp((drift_c - vp / lit(2.0)) * dt + sv * dw + jump),
+      positive(vp + (alpha - beta * vp) * dt + sigma * sv * dv)
+    }
+    report { s, v },
+
+  /// [`BatesJump`](Family::BatesJump) with the variance reflected at zero.
+  60 => BatesJumpReflected { drift_c, nu, omega, alpha, beta, sigma, rho }
+    state (s, v)
+    noise (dw, dq, dj)
+    step {
+      bind vp = abs(v);
+      bind sv = sqrt(vp);
+      bind dv = rho * dw + sqrt(negate(rho * rho - lit(1.0))) * dq;
+      bind jump = nu * nj + omega * sqrt(nj) * (dj / sqrt(dt));
+      s * exp((drift_c - vp / lit(2.0)) * dt + sv * dw + jump),
+      abs(vp + (alpha - beta * vp) * dt + sigma * sv * dv)
+    }
+    report { s, v },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)

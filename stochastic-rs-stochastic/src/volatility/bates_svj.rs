@@ -29,7 +29,6 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -285,9 +284,81 @@ impl<T: FloatExt, S: SeedExt, B> BatesSvj<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] BatesSvj<T, S> { mu, b, r, r_f, lambda, nu, omega, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, seed, cgns } via host);
+/// The Euler engine's view of the Bates model. The jump compensator is
+/// folded into the drift here, as the host sampler folds it, and the
+/// intensity travels as a launch argument so the kernel can draw the count
+/// once per step.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
+  for BatesSvj<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let drift_c = self.drift() - self.lambda * self.kappa_j();
+    if self.use_sym.unwrap_or(false) {
+      crate::euler::EulerSpec::BatesJumpReflected {
+        drift_c,
+        nu: self.nu,
+        omega: self.omega,
+        alpha: self.alpha,
+        beta: self.beta,
+        sigma: self.sigma,
+        rho: self.rho,
+      }
+    } else {
+      crate::euler::EulerSpec::BatesJump {
+        drift_c,
+        nu: self.nu,
+        omega: self.omega,
+        alpha: self.alpha,
+        beta: self.beta,
+        sigma: self.sigma,
+        rho: self.rho,
+      }
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for BatesSvj<T, S, B> {
+  fn initial_state(&self) -> [T; 4] {
+    [
+      self.s0.unwrap_or(T::one()),
+      self.v0.unwrap_or(T::zero()).max(T::zero()),
+      T::zero(),
+      T::zero(),
+    ]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  /// The correlated-noise source divides the horizon by the number of points,
+  /// not by the number of steps, so the device steps by that same amount.
+  fn time_step(&self) -> T {
+    self.cgns.dt()
+  }
+
+  fn jump_intensity(&self) -> Option<T> {
+    (self.lambda > T::zero()).then_some(self.lambda)
+  }
+
+  fn device_seed(&self) -> u64 {
+    rand::Rng::random(&mut self.seed.rng())
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 2] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] BatesSvj<T, S> { mu, b, r, r_f, lambda, nu, omega, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, seed, cgns } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for BatesSvj<T, S, B>
+{
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = BatesSvjSampler<T, S>
@@ -316,6 +387,32 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for BatesSvj<T, S, B
       cgns: self.cgns,
       seed: self.seed.derive(),
     }
+  }
+
+  /// Through the Euler engine: on a device the variance, the diffusion and
+  /// the jump all happen in the kernel, on the host devices it is this
+  /// process's own sampler, chunked exactly as `ProcessExt` chunks.
+  fn sample(&self) -> [Array1<T>; 2] {
+    self.backend.system_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 2]) -> R + Sync) -> Vec<R> {
+    self.backend.system_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 2]> {
+    self.backend.system_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 2], crate::device::DeviceError> {
+    self.backend.try_system_sample(self)
+  }
+
+  fn try_sample_par(
+    &self,
+    m: usize,
+  ) -> Result<Vec<[Array1<T>; 2]>, crate::device::DeviceError> {
+    self.backend.try_system_paths(self, m)
   }
 }
 

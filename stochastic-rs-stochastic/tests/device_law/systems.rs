@@ -11,6 +11,7 @@ use stochastic_rs_stochastic::interest::duffie_kan::DuffieKan;
 use stochastic_rs_stochastic::interest::hull_white_2f::HullWhite2F;
 use stochastic_rs_stochastic::process::cbms::Cbms;
 use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
+use stochastic_rs_stochastic::volatility::bates_svj::BatesSvj;
 use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
 use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
 use stochastic_rs_stochastic::volatility::heston2d::Heston2D;
@@ -490,4 +491,54 @@ fn two_asset_heston_agrees_with_the_cpu_law() {
       &format!("two-asset Heston terminal {what}"),
     );
   }
+}
+
+/// A Heston variance under a jumping log-price: the device draws its own
+/// Poisson count and aggregates the jump sizes, so both the variance's law
+/// and the jump-compensated spot must agree.
+#[test]
+fn bates_agrees_with_the_cpu_law() {
+  let build = || {
+    BatesSvj::<f32, _>::new(
+      Some(0.02),
+      None,
+      None,
+      None,
+      3.0,
+      -0.05,
+      0.1,
+      0.08,
+      2.0,
+      0.3,
+      -0.7,
+      253,
+      Some(100.0),
+      Some(0.04),
+      Some(1.0),
+      Some(false),
+      Deterministic::new(97),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  assert!(
+    device.iter().all(|p| p[1].iter().all(|&v| v >= 0.0)),
+    "the truncated variance went negative"
+  );
+  assert!(
+    device.iter().all(|p| p[0].iter().all(|&v| v > 0.0)),
+    "the log-price form let the spot reach zero"
+  );
+  let host = build().sample_par(M);
+  agrees(
+    terminal_mean(&host, 0),
+    terminal_mean(&device, 0),
+    0.04,
+    "Bates terminal spot",
+  );
+  agrees(
+    terminal_mean(&host, 1),
+    terminal_mean(&device, 1),
+    0.08,
+    "Bates terminal variance",
+  );
 }

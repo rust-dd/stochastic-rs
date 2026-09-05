@@ -217,6 +217,8 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::TwoAssetHeston { .. } => "TwoAssetHeston",
     EulerSpec::TwoAssetHestonReflected { .. } => "TwoAssetHestonReflected",
     EulerSpec::MertonJumpLog { .. } => "MertonJumpLog",
+    EulerSpec::BatesJump { .. } => "BatesJump",
+    EulerSpec::BatesJumpReflected { .. } => "BatesJumpReflected",
   }
 }
 
@@ -493,6 +495,30 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         kappa: 2.0,
         theta: 0.04,
         xi: 0.3,
+        rho: -0.7,
+      },
+      x0: [100.0, 0.04],
+    },
+    SystemProbe {
+      spec: EulerSpec::BatesJump {
+        drift_c: 0.02,
+        nu: -0.05,
+        omega: 0.1,
+        alpha: 0.08,
+        beta: 2.0,
+        sigma: 0.3,
+        rho: -0.7,
+      },
+      x0: [100.0, 0.04],
+    },
+    SystemProbe {
+      spec: EulerSpec::BatesJumpReflected {
+        drift_c: 0.02,
+        nu: -0.05,
+        omega: 0.1,
+        alpha: 0.08,
+        beta: 2.0,
+        sigma: 0.3,
         rho: -0.7,
       },
       x0: [100.0, 0.04],
