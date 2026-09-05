@@ -1,8 +1,7 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::array;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
+use stochastic_rs_core::simd_rng::SimdRng;
 
 use super::NoiseModel;
 use super::Sde;
@@ -35,7 +34,7 @@ fn euler_gbm_recovers_analytical_mean() {
   let s0 = array![100.0_f64];
   let t = 1.0_f64;
   let dt = 1e-3_f64;
-  let mut rng = StdRng::seed_from_u64(0x5DE_F00D);
+  let mut rng = SimdRng::from_seed(0x5DE_F00D);
   let paths = sde.solve(&s0, 0.0, t, dt, 4_000, SdeMethod::Euler, &mut rng);
 
   let analytic = 100.0_f64 * (0.05_f64 * t).exp();
@@ -50,7 +49,7 @@ fn milstein_gbm_recovers_analytical_mean() {
   let s0 = array![100.0_f64];
   let t = 1.0_f64;
   let dt = 1e-3_f64;
-  let mut rng = StdRng::seed_from_u64(0xC0FFEE);
+  let mut rng = SimdRng::from_seed(0xC0FFEE);
   let paths = sde.solve(&s0, 0.0, t, dt, 4_000, SdeMethod::Milstein, &mut rng);
 
   let analytic = 100.0_f64 * (0.05_f64 * t).exp();
@@ -63,7 +62,7 @@ fn milstein_gbm_recovers_analytical_mean() {
 fn srk2_and_srk4_produce_finite_paths() {
   let sde = gbm_sde();
   let s0 = array![100.0_f64];
-  let mut rng = StdRng::seed_from_u64(0xBADCAFE);
+  let mut rng = SimdRng::from_seed(0xBADCAFE);
   for method in [SdeMethod::SRK2, SdeMethod::SRK4] {
     let paths = sde.solve(&s0, 0.0, 0.5, 1e-3, 200, method, &mut rng);
     assert!(paths.iter().all(|v| v.is_finite()));
@@ -88,7 +87,7 @@ fn pure_drift_decay_tracks_exponential() {
   let s0 = array![1.0_f64];
   let t = 1.0_f64;
   let dt = 1e-3_f64;
-  let mut rng = StdRng::seed_from_u64(0xDEC0DE);
+  let mut rng = SimdRng::from_seed(0xDEC0DE);
   let paths = sde.solve(&s0, 0.0, t, dt, 1, SdeMethod::Euler, &mut rng);
 
   let last = paths.shape()[1] - 1;
@@ -105,7 +104,7 @@ fn pure_drift_decay_tracks_exponential() {
 fn initial_condition_preserved() {
   let sde = gbm_sde();
   let s0 = array![100.0_f64];
-  let mut rng = StdRng::seed_from_u64(7);
+  let mut rng = SimdRng::from_seed(7);
   let paths = sde.solve(&s0, 0.0, 0.1, 1e-3, 5, SdeMethod::Euler, &mut rng);
   for p in 0..5 {
     assert_eq!(paths[[p, 0, 0]], 100.0);

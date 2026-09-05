@@ -7,9 +7,8 @@ use anyhow::bail;
 use flate2::read::GzDecoder;
 use ndarray::Array2;
 use ndarray_npy::ReadNpyExt;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
+use stochastic_rs_core::simd_rng::SimdRng;
 
 pub fn load_trainset_gzip_npy<P: AsRef<Path>>(
   path: P,
@@ -78,7 +77,7 @@ pub(super) fn train_test_split_indices(
   seed: u64,
 ) -> (Vec<usize>, Vec<usize>) {
   let mut idx = (0..n).collect::<Vec<usize>>();
-  let mut rng = StdRng::seed_from_u64(seed);
+  let mut rng = SimdRng::from_seed(seed);
   idx.shuffle(&mut rng);
 
   let mut n_test = ((n as f32) * test_ratio).round() as usize;
@@ -96,16 +95,14 @@ pub(crate) fn synthetic_surface_dataset(
   output_dim: usize,
   seed: u64,
 ) -> (Array2<f32>, Array2<f32>) {
-  use rand::Rng;
-
   let dim = lb.len();
-  let mut rng = StdRng::seed_from_u64(seed);
+  let mut rng = SimdRng::from_seed(seed);
   let mut params = Array2::<f32>::zeros((samples, dim));
   let mut surfaces = Array2::<f32>::zeros((samples, output_dim));
 
   for i in 0..samples {
     for j in 0..dim {
-      let u = rng.random::<f32>();
+      let u = rng.next_f32();
       params[[i, j]] = lb[j] + (ub[j] - lb[j]) * u;
     }
     for k in 0..output_dim {

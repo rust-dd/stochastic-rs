@@ -23,7 +23,6 @@
 //! a single array — both pinned below, with a same-file counterfactual
 //! proving the pin is not diffusion-only.
 
-use rand_distr::Normal;
 use stochastic_rs::distributions::scalar::ScalarNormal;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::Unseeded;
@@ -243,10 +242,19 @@ fn golden_fou_stream() {
 /// downstream. `times` is unaffected because nothing before it reads the
 /// seed. This is expected and was traded for `sample_par`/`sample_map`
 /// actually being cross-chunk-independent.
+///
+/// `cum`/`jumps` moved a second time when the jump-size distribution here
+/// changed from `rand_distr::Normal` to the workspace's own `ScalarNormal`,
+/// which is what the other two jump-chain goldens in this file (`Merton`,
+/// `Bates1996`) already use. Both are N(0, 0.1) — what moved the stream is
+/// the draw: `rand_distr`'s ziggurat consumes the seeded stream differently
+/// from `ScalarNormal`'s `ndtri` inverse CDF, one uniform per sample. `times`
+/// is again unaffected: the arrival grid is drawn before any jump size and
+/// never reads the jump distribution.
 #[test]
 fn golden_compound_poisson_streams() {
   let cpoisson = CompoundPoisson::<f64, _, _>::new(
-    Normal::new(0.0, 0.1).unwrap(),
+    ScalarNormal::new(0.0, 0.1),
     Poisson::<f64, _>::new(0.5, Some(N), Some(1.0), Unseeded),
     Deterministic::new(44),
   );
@@ -268,26 +276,26 @@ fn golden_compound_poisson_streams() {
     &cum,
     &[
       0,
-      13821590905287482682,
-      13823140035420567097,
-      13823193588762097129,
-      13821607767976760320,
-      13812879127933788120,
-      13815136404819208294,
-      13819433902103997129,
+      13819361769254466326,
+      13821853430779983300,
+      13821932939754451688,
+      13820332725089879588,
+      13816981657832692969,
+      13820328902620182530,
+      13823475481968905204,
     ],
   );
   assert_close(
     &jumps,
     &[
       0,
-      13821590905287482682,
-      13814232978050278395,
-      13792373287096932327,
-      4591007703804512164,
-      4595874907490768916,
-      13808047411661410587,
-      13814724200134044972,
+      13819361769254466326,
+      13813632129328836835,
+      13795110633374435572,
+      4588104413111680688,
+      4591304556237549407,
+      13814668948152931099,
+      13817614862062886886,
     ],
   );
 }

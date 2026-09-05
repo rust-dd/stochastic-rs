@@ -18,9 +18,8 @@ use candle_nn::VarBuilder;
 use candle_nn::VarMap;
 use ndarray::Array2;
 use ndarray::Axis;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
+use stochastic_rs_core::simd_rng::SimdRng;
 
 use super::dataset::train_test_split_indices;
 use super::metadata::parse_metadata;
@@ -119,7 +118,7 @@ impl StochVolNn {
 
     let mut report = TrainReport { epochs: Vec::new() };
     let mut order: Vec<usize> = (0..x_train_scaled.nrows()).collect();
-    let mut rng = StdRng::seed_from_u64(config.random_seed ^ 0xABCD_1234_EF98_7654);
+    let mut rng = SimdRng::from_seed(config.random_seed ^ 0xABCD_1234_EF98_7654);
 
     for epoch in 1..=config.epochs {
       if config.shuffle {

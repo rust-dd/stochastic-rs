@@ -4,9 +4,7 @@ use argmin::core::Gradient;
 use argmin::core::State;
 use argmin::solver::linesearch::MoreThuenteLineSearch;
 use argmin::solver::quasinewton::LBFGS;
-use rand::Rng;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
+use stochastic_rs_core::simd_rng::SimdRng;
 
 use crate::pricing::sabr::alpha_from_atm_vol;
 use crate::pricing::sabr::bs_price_fx;
@@ -145,7 +143,7 @@ pub(super) fn basin_hopping_opt(
   stepsize: f64,
   problem: &SabrSmileProblem,
 ) -> ([f64; NVARS], f64) {
-  let mut rng = StdRng::seed_from_u64(3);
+  let mut rng = SimdRng::from_seed(3);
 
   let mut current_x = x0;
   let mut current_f = problem.cost(&x0.to_vec()).unwrap_or(f64::INFINITY);
@@ -158,7 +156,7 @@ pub(super) fn basin_hopping_opt(
   for _ in 0..niter {
     let mut x_trial = current_x;
     for (i, x) in x_trial.iter_mut().enumerate() {
-      *x += rng.random_range(-stepsize..stepsize);
+      *x += (rng.next_f64() * 2.0 - 1.0) * stepsize;
       *x = (*x).clamp(problem.bounds_lo[i], problem.bounds_hi[i]);
     }
 
@@ -181,7 +179,7 @@ pub(super) fn basin_hopping_opt(
         let accept = if delta <= 0.0 {
           true
         } else {
-          let u: f64 = rng.random();
+          let u = rng.next_f64();
           u < (-delta / temp).exp()
         };
 

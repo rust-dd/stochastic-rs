@@ -153,7 +153,7 @@
 //!
 //! ```rust
 //! use ndarray::{array, Array1, Array2};
-//! use rand::rng;
+//! use stochastic_rs_core::simd_rng::SimdRng;
 //! use stochastic_rs_stochastic::sde::{Sde, SdeMethod, NoiseModel};
 //!
 //! // Geometric Brownian Motion: dS = mu*S*dt + sigma*S*dW
@@ -170,7 +170,8 @@
 //! );
 //!
 //! let x0 = array![100.0_f64];
-//! let paths = sde.solve(&x0, 0.0, 1.0, 0.001, 100, SdeMethod::Milstein, &mut rng());
+//! let mut rng = SimdRng::from_seed(42);
+//! let paths = sde.solve(&x0, 0.0, 1.0, 0.001, 100, SdeMethod::Milstein, &mut rng);
 //! // paths.shape() == [100, 1001, 1]
 //! ```
 
@@ -185,7 +186,9 @@ use ndarray::Array3;
 use ndarray::ArrayView1;
 use ndarray::s;
 use rand::Rng;
-use stochastic_rs_core::simd_rng::Unseeded;
+use rand_distr::Distribution;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::scalar::ScalarNormal;
 
 use super::noise::fgn::Fgn;
 use crate::device::Cpu;
@@ -288,7 +291,10 @@ where
   /// * `dt` - Time step size $\Delta t$
   /// * `n_paths` - Number of independent sample paths to simulate
   /// * `method` - Numerical discretization scheme to use
-  /// * `rng` - Random number generator (used only for Gaussian noise)
+  /// * `rng` - Random number generator. Every Gaussian increment is drawn
+  ///   from it, and under [`NoiseModel::Fractional`] it seeds the fGN
+  ///   embedding of each dimension — so a seeded generator (the workspace's
+  ///   `SimdRng::from_seed`) makes the whole solve reproducible.
   ///
   /// # Returns
   ///
@@ -320,8 +326,16 @@ where
         let mut incs = Array3::zeros((n_paths, steps, dim));
 
         if let Some(h) = &self.hursts {
-          let fgns: Vec<Fgn<T, Unseeded, B>> = (0..dim)
-            .map(|d| Fgn::new(h[d], steps, Some(t1 - t0), Unseeded).on::<B>())
+          let fgns: Vec<Fgn<T, Deterministic, B>> = (0..dim)
+            .map(|d| {
+              Fgn::new(
+                h[d],
+                steps,
+                Some(t1 - t0),
+                Deterministic::new(rng.next_u64()),
+              )
+              .on::<B>()
+            })
             .collect();
 
           for p in 0..n_paths {
@@ -342,8 +356,18 @@ where
     }
   }
 
-  pub(super) fn fill_gauss_increment(&self, out: &mut [T], sqrt_dt: T, _rng: &mut impl Rng) {
-    T::fill_standard_normal_scaled_slice(out, sqrt_dt);
+  /// Fills `out` with one Brownian increment per dimension, i.i.d.
+  /// $\mathcal{N}(0, \Delta t)$, drawn from `rng`.
+  ///
+  /// The draw goes through [`ScalarNormal`] — the workspace normal that
+  /// inverts its CDF against the *caller's* generator — rather than a
+  /// `Simd*` distribution, which owns a stream of its own and would leave
+  /// `rng` unused.
+  pub(super) fn fill_gauss_increment(&self, out: &mut [T], sqrt_dt: T, rng: &mut impl Rng) {
+    let standard = ScalarNormal::new(T::zero(), T::one());
+    for x in out.iter_mut() {
+      *x = standard.sample(rng) * sqrt_dt;
+    }
   }
 
   /// Computes the Milstein correction term for the multi-dimensional case.

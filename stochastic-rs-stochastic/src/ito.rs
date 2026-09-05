@@ -14,8 +14,8 @@
 //! [`crate::sde::Sde`] (`<T: FloatExt>`) or any of the strongly-typed
 //! [`crate::traits::ProcessExt`] processes.
 use ndarray::Array1;
-
-use crate::traits::FloatExt;
+use rand_distr::Distribution;
+use stochastic_rs_distributions::scalar::ScalarNormal;
 
 /// A structure defining the drift and diffusion functions of the SDE.
 /// Optionally, a jump term can be added (e.g., for jump-diffusion models).
@@ -153,7 +153,9 @@ impl ItoCalculator {
   /// * `t0` - The starting time.
   /// * `t1` - The final time.
   /// * `dt` - The time step for the numerical simulation.
-  /// * `rng` - A random number generator that implements `rand::Rng`.
+  /// * `rng` - The generator every Brownian increment is drawn from. Any
+  ///   `rand::Rng` works; the workspace default is `SimdRng`, seeded via
+  ///   `SimdRng::from_seed` when the path must be reproducible.
   ///
   /// # Returns
   /// An `ndarray::Array1` of `(time, value)` tuples representing the simulated path.
@@ -163,12 +165,15 @@ impl ItoCalculator {
     t0: f64,
     t1: f64,
     dt: f64,
-    _rng: &mut impl rand::Rng,
+    rng: &mut impl rand::Rng,
   ) -> Array1<(f64, f64)> {
     let steps = ((t1 - t0) / dt).ceil().max(0.0) as usize;
     let sqrt_dt = dt.sqrt();
+    let standard = ScalarNormal::new(0.0_f64, 1.0);
     let mut normals = vec![0.0; steps];
-    <f64 as FloatExt>::fill_standard_normal_slice(&mut normals);
+    for z in normals.iter_mut() {
+      *z = standard.sample(rng);
+    }
 
     let mut t = t0;
     let mut x = x0;
