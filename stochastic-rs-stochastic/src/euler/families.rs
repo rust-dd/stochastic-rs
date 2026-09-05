@@ -1770,6 +1770,14 @@ euler_families! {
     step { x + sigma * dz + gm - gm2 }
     report { x },
 
+  /// A tempered-stable subordinator: the deterministic drift the small jumps
+  /// below the truncation contribute, plus the step's own thinned jumps.
+  81 => TemperedStableSubordinator { drift }
+    state (x)
+    noise (dz)
+    step { x + drift + js }
+    report { x },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)

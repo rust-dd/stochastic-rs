@@ -16,6 +16,7 @@ use stochastic_rs_stochastic::process::subordinator::alpha_stable::AlphaStableSu
 use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSubordinator;
 use stochastic_rs_stochastic::process::subordinator::ig_subordinator::IGSubordinator;
 use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PoissonSubordinator;
+use stochastic_rs_stochastic::process::subordinator::tempered_stable::TemperedStableSubordinator;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 use super::common::Device;
@@ -279,5 +280,39 @@ fn bilateral_gamma_motion_agrees_with_the_cpu_law() {
   assert!(
     (host - dev).abs() < 0.03,
     "bilateral gamma motion terminal mean: host {host}, device {dev}"
+  );
+}
+
+/// A tempered-stable subordinator: the kernel draws the candidates above the
+/// truncation and keeps each with the tempering probability, so the sum it
+/// builds is the thinned one the host builds by the same test. The path is
+/// non-decreasing because every kept jump is positive.
+#[test]
+fn tempered_stable_subordinator_agrees_with_the_cpu_law() {
+  let build = || {
+    TemperedStableSubordinator::<f32, _>::new(
+      0.6,
+      1.0,
+      2.0,
+      0.05,
+      N,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(227),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  within(&device, 0.0, f32::INFINITY, "tempered stable subordinator");
+  assert!(
+    device
+      .iter()
+      .all(|p| p.windows(2).into_iter().all(|w| w[1] >= w[0])),
+    "a subordinator path went backwards"
+  );
+  agrees(
+    terminal_mean(&build().sample_par(M)),
+    terminal_mean(&device),
+    0.06,
+    "tempered stable subordinator terminal mean",
   );
 }

@@ -7,7 +7,6 @@ use stochastic_rs_distributions::uniform::SimdUniform;
 use super::clamp_open01;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -73,9 +72,61 @@ impl<T: FloatExt, S: SeedExt> TemperedStableSubordinator<T, S> {
 
 impl<T: FloatExt, S: SeedExt, B> TemperedStableSubordinator<T, S, B> {}
 
-backend_switch!([T: FloatExt, S: SeedExt] TemperedStableSubordinator<T, S> { alpha, c, mu, epsilon, n, x0, t, seed } via host);
+/// The Euler engine's view of the tempered-stable subordinator. Every jump
+/// below the truncation contributes a deterministic drift, which is folded
+/// here; above it, the step reads the kernel's own sum over the candidates it
+/// kept.
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for TemperedStableSubordinator<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let one = T::one();
+    let dt = self.time_step();
+    crate::euler::EulerSpec::TemperedStableSubordinator {
+      drift: dt * self.c * self.epsilon.powf(one - self.alpha) / (one - self.alpha),
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T>
+  fn initial_value(&self) -> T {
+    self.x0.unwrap_or(T::zero())
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  /// The candidate rate above the truncation.
+  fn jump_intensity(&self) -> Option<T> {
+    Some(self.c / self.alpha * self.epsilon.powf(-self.alpha))
+  }
+
+  /// A candidate `ε u^{−1/α}`, kept with probability `exp(−μ·candidate)`.
+  fn jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
+    Some(crate::euler::JumpSizes::TemperedStable {
+      eps: self.epsilon,
+      neg_inv_alpha: -T::one() / self.alpha,
+      mu: self.mu,
+    })
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] TemperedStableSubordinator<T, S> { alpha, c, mu, epsilon, n, x0, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for TemperedStableSubordinator<T, S, B>
 {
   type Output = Array1<T>;
@@ -107,6 +158,29 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T>
       poisson: SimdPoisson::<u32>::new(lambda0 * dt, &self.seed),
       uniform: SimdUniform::<f64>::new(0.0, 1.0, &self.seed),
     }
+  }
+
+  /// Through the Euler engine: on a device the candidates are drawn and
+  /// thinned in the kernel, on the host devices it is this process's own
+  /// sampler, chunked exactly as `ProcessExt` chunks.
+  fn sample(&self) -> Array1<T> {
+    self.backend.euler_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    self.backend.euler_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    self.backend.euler_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    self.backend.try_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    self.backend.try_euler_paths(self, m)
   }
 }
 

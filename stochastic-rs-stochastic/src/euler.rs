@@ -500,6 +500,9 @@ pub enum EulerSpec<T: FloatExt> {
   BilateralGamma,
   /// [`BilateralGamma`](EulerSpec::BilateralGamma) with a Brownian part.
   BilateralGammaMotion { sigma: T },
+  /// A tempered-stable subordinator: a deterministic small-jump drift plus
+  /// the step's own thinned jumps.
+  TemperedStableSubordinator { drift: T },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1045,6 +1048,9 @@ impl<T: FloatExt> EulerSpec<T> {
       EulerSpec::BilateralGammaMotion { sigma } => {
         (Family::BilateralGammaMotion.code(), pad([sigma]))
       }
+      EulerSpec::TemperedStableSubordinator { drift } => {
+        (Family::TemperedStableSubordinator.code(), pad([drift]))
+      }
     }
   }
 }
@@ -1249,11 +1255,17 @@ pub enum JumpSizes<T: FloatExt> {
   /// Kou's double-exponential sizes: up with probability `p_up` at rate
   /// `eta_up`, down otherwise at rate `eta_down`.
   DoubleExponential { p_up: T, eta_up: T, eta_down: T },
+  /// A tempered-stable subordinator's sizes: a candidate `ε u^{−1/α}` kept
+  /// with probability `exp(−μ·candidate)`, so the sum is over the accepted
+  /// ones. `neg_inv_alpha` is `−1/α`, which depends on `α` alone.
+  TemperedStable { eps: T, neg_inv_alpha: T, mu: T },
 }
 
 impl<T: FloatExt> JumpSizes<T> {
-  /// The law code and the three scalars the kernels read it through.
-  pub(crate) fn encode(&self) -> (u32, T, T, T) {
+  /// The law code and the three scalars the kernels read it through. Public
+  /// because [`EulerKernel`] is: a device implemented outside this crate has
+  /// to pass the same five values its launch takes.
+  pub fn encode(&self) -> (u32, T, T, T) {
     match *self {
       JumpSizes::Normal { mean, sd } => (1, mean, sd, T::zero()),
       JumpSizes::DoubleExponential {
@@ -1261,6 +1273,11 @@ impl<T: FloatExt> JumpSizes<T> {
         eta_up,
         eta_down,
       } => (2, p_up, eta_up, eta_down),
+      JumpSizes::TemperedStable {
+        eps,
+        neg_inv_alpha,
+        mu,
+      } => (3, eps, neg_inv_alpha, mu),
     }
   }
 }
@@ -1282,7 +1299,8 @@ pub struct GammaDraws<T: FloatExt> {
 
 impl<T: FloatExt> GammaDraws<T> {
   /// How many draws to take, and the two shape/scale pairs the kernels read.
-  pub(crate) fn encode(&self) -> (u32, T, T, T, T) {
+  /// Public for the same reason [`JumpSizes::encode`] is.
+  pub fn encode(&self) -> (u32, T, T, T, T) {
     match self.second {
       Some((s2, c2)) => (2, self.first.0, self.first.1, s2, c2),
       None => (1, self.first.0, self.first.1, T::zero(), T::zero()),

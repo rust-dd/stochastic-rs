@@ -283,6 +283,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::VarianceGamma { .. } => "VarianceGamma",
     EulerSpec::BilateralGamma => "BilateralGamma",
     EulerSpec::BilateralGammaMotion { .. } => "BilateralGammaMotion",
+    EulerSpec::TemperedStableSubordinator { .. } => "TemperedStableSubordinator",
   }
 }
 
@@ -612,6 +613,7 @@ fn every_family() -> Vec<Probe> {
     ),
     p(EulerSpec::BilateralGamma, 0.0),
     p(EulerSpec::BilateralGammaMotion { sigma: 0.1 }, 0.0),
+    p(EulerSpec::TemperedStableSubordinator { drift: 0.01 }, 0.0),
     p(
       EulerSpec::Innovation {
         mean: 0.01,

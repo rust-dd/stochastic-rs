@@ -48,8 +48,9 @@
 //!
 //! A family may read `js`, the sum of the step's jump sizes: one normal draw
 //! when the sizes are normal, since the sum of `n` of those is itself normal,
-//! and a bounded loop when they are double-exponential, which has no such
-//! aggregation. It is zero for a family that declares no size law.
+//! and a bounded loop when they are double-exponential or tempered-stable,
+//! neither of which has such an aggregation. The tempered-stable law thins
+//! its own candidates, so the sum is over the accepted ones. It is zero for a family that declares no size law.
 //!
 //! A family may read `nj`, the number of jumps the step saw: a Poisson draw
 //! with mean `jump_lambda · dt`, by Knuth's product of uniforms from a hash
@@ -191,6 +192,19 @@ REPORT
                 REAL ue = (REAL)kb * (REAL)2.3283064e-10;
                 REAL ee = -STOCH_LOG((REAL)1 - ue);
                 js += (up < jump_a) ? (ee / jump_b) : (-(ee / jump_c));
+            }
+        }
+        if (jump_law == 3u) {
+            for (unsigned int j = 0u; j < 32u; j++) {
+                if ((REAL)j >= nj) { break; }
+                unsigned int ta = (g ^ (2654435761u + j * 40503u)) ^ (seed * 2654435761u);
+                ta ^= ta >> 16; ta *= 2246822519u; ta ^= ta >> 13; ta *= 3266489917u; ta ^= ta >> 16;
+                unsigned int tb = (g ^ (668265263u + j * 40503u)) ^ (seed * 2654435761u);
+                tb ^= tb >> 16; tb *= 2246822519u; tb ^= tb >> 13; tb *= 3266489917u; tb ^= tb >> 16;
+                REAL uu1 = (REAL)ta * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6;
+                REAL uu2 = (REAL)tb * (REAL)2.3283064e-10;
+                REAL xj = jump_a * STOCH_POW(uu1, jump_b);
+                if (uu2 <= STOCH_EXP(-jump_c * xj)) { js += xj; }
             }
         }
 STEP

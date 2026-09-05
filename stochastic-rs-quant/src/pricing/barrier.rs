@@ -8,10 +8,10 @@
 //! - Reiner, E. & Rubinstein, M. (1991), "Breaking Down the Barriers"
 //! - Ikeda, M. & Kunitomo, N. (1992), "Pricing Options with Curved Barriers"
 //!
-use rand::RngCore;
 use rayon::prelude::*;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_core::simd_rng::SimdRng;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::norm_cdf;
 
@@ -270,9 +270,9 @@ pub struct MCBarrierPricer {
 impl MCBarrierPricer {
   /// Price a barrier option via Monte Carlo with parallel path generation.
   ///
-  /// The path seeds come from a fresh [`SimdRng`], so repeated calls give
-  /// independent estimates. Use [`Self::price_seeded`] when the estimate has
-  /// to be reproducible.
+  /// The base seed comes from a fresh [`Unseeded`] draw, so repeated calls
+  /// give independent estimates. Use [`Self::price_seeded`] when the estimate
+  /// has to be reproducible.
   #[allow(clippy::too_many_arguments)]
   pub fn price(
     &self,
@@ -285,7 +285,7 @@ impl MCBarrierPricer {
     barrier_type: BarrierType,
     option_type: OptionType,
   ) -> McEstimate<f64> {
-    let base = SimdRng::new().next_u64();
+    let base = Unseeded.seed_value();
     self.price_from(s, k, h, r, sigma, t, barrier_type, option_type, base)
   }
 

@@ -121,19 +121,16 @@ pub fn jarque_bera_test(sample: ArrayView1<f64>, cfg: JarqueBeraConfig) -> Jarqu
 #[cfg(test)]
 mod tests {
   use ndarray::ArrayView1;
-  use rand::Rng;
-  use rand::SeedableRng;
-  use rand::rngs::StdRng;
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::normal::SimdNormal;
+  use stochastic_rs_distributions::uniform::SimdUniform;
 
   use super::JarqueBeraConfig;
   use super::jarque_bera_test;
 
   /// The sample must come from a `Deterministic` seed, not an `Unseeded` one:
-  /// `fill_slice` ignores the `Rng` it is handed and draws from the
-  /// distribution's own SIMD stream, so seeding an external `StdRng` has no
-  /// effect on the data at all.
+  /// `fill_slice` takes no RNG at all and draws from the distribution's own
+  /// SIMD stream, so only the constructor's seed controls the data.
   fn normal_sample(seed: u64, n: usize) -> Vec<f64> {
     let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
     let mut x = vec![0.0; n];
@@ -165,12 +162,13 @@ mod tests {
   fn jarque_bera_rejects_heavy_tail_sample() {
     let mut x = normal_sample(42, 5000);
 
-    // The bimodal +/-2 shift is what makes the sample non-normal, so this
-    // rng genuinely drives the data and has to be seeded on its own.
-    let mut rng = StdRng::seed_from_u64(42);
-    for v in &mut x {
-      let u: f64 = rng.random();
-      *v += if u < 0.5 { -2.0 } else { 2.0 };
+    // The bimodal +/-2 shift is what makes the sample non-normal, so the
+    // coin flips genuinely drive the data and get their own seed, distinct
+    // from the one behind `normal_sample`.
+    let mut coin = vec![0.0_f64; x.len()];
+    SimdUniform::<f64>::new(0.0, 1.0, &Deterministic::new(43)).fill_slice(&mut coin);
+    for (v, u) in x.iter_mut().zip(&coin) {
+      *v += if *u < 0.5 { -2.0 } else { 2.0 };
     }
 
     let res = jarque_bera_test(ArrayView1::from(&x), JarqueBeraConfig::default());
