@@ -393,16 +393,6 @@ fn device_paths<T: FloatExt>(
         c2.to_f64().unwrap_or(0.0),
       )
     });
-    let (gamma_law, gs1, gc1, gs2, gc2) = gammas.map_or((0, 0.0, 0.0, 0.0, 0.0), |g| {
-      let (law, s1, c1, s2, c2) = g.encode();
-      (
-        law,
-        s1.to_f64().unwrap_or(0.0),
-        c1.to_f64().unwrap_or(0.0),
-        s2.to_f64().unwrap_or(0.0),
-        c2.to_f64().unwrap_or(0.0),
-      )
-    });
     let (components, noises) = (arity.components() as u32, arity.noises() as u32);
     let planes = components as usize;
     if n == 0 || m == 0 {
