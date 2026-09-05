@@ -25,7 +25,6 @@ use super::markov_lift::RoughSimd;
 use super::rl_fbm::RlFBm;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::noise::gn::Gn;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -111,9 +110,74 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B> RlBlackScholes<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] RlBlackScholes<T, S> { hurst, s0, r, sigma, n, t, degree, seed, fbm } via host);
+/// The Euler engine's view: the lift the inner fBm carries goes to the device
+/// as its node constants and boundary terms; the family steps the lifted fBm
+/// in its second slot and the closed-form spot in the first, with the
+/// deterministic exponent tabulated as a curve.
+impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
+  crate::euler::EulerCoefficients<T> for RlBlackScholes<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::RiemannLiouvilleBlackScholes {
+      s0: self.s0,
+      sigma: self.sigma,
+    }
+  }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt, B: HostBackend> ProcessExt<T>
+  fn initial_value(&self) -> T {
+    self.s0
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  /// The deterministic exponent `r t - sigma^2 t^{2H} / 2` at each grid point,
+  /// the curve the closed form adds the lifted fBm to.
+  fn curves(&self) -> Option<Vec<Vec<T>>> {
+    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
+    let two_h = T::from_f64_fast(2.0) * self.hurst;
+    let half_sigma_sq = T::from_f64_fast(0.5) * self.sigma * self.sigma;
+    Some(vec![
+      (0..self.n)
+        .map(|i| {
+          let t = T::from_usize_(i) * dt;
+          self.r * t - half_sigma_sq * t.powf(two_h)
+        })
+        .collect(),
+    ])
+  }
+
+  fn lift_spec(&self) -> Option<crate::euler::LiftSpec<'_, T>> {
+    let lift = self.fbm.markov().lift();
+    Some(crate::euler::LiftSpec {
+      decay: lift.exp_neg_x_dt.as_slice().expect("contiguous"),
+      weight: lift.we.as_slice().expect("contiguous"),
+      drift_scale: lift.one_minus_e_over_x.as_slice().expect("contiguous"),
+      drift_boundary: lift.drift_boundary,
+      diffusion_boundary: lift.diffusion_boundary,
+      x0: T::zero(),
+    })
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] RlBlackScholes<T, S> { hurst, s0, r, sigma, n, t, degree, seed, fbm } via euler);
+
+impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for RlBlackScholes<T, S, B>
 {
   type Output = Array1<T>;
@@ -140,6 +204,29 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: HostBackend> ProcessExt<T>
       },
       markov: self.fbm.markov().clone(),
     }
+  }
+
+  /// Through the Euler engine: on a device the lift and the closed form run
+  /// in the kernel, on the host devices it is this process's own sampler,
+  /// chunked exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> Array1<T> {
+    self.backend.euler_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    self.backend.euler_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    self.backend.euler_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    self.backend.try_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    self.backend.try_euler_paths(self, m)
   }
 }
 

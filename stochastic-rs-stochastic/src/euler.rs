@@ -690,6 +690,12 @@ pub enum EulerSpec<T: FloatExt> {
   /// Riemann-Liouville fractional Brownian motion, or any rough Volterra
   /// kernel, under the Markov lift the launch's `lift_spec()` supplies.
   RiemannLiouville,
+  /// A mean-reverting process driven by the increments of Riemann-Liouville
+  /// fBm under the launch's Markov lift.
+  RiemannLiouvilleOu { kappa: T, mu: T, nu: T },
+  /// Black-Scholes under Riemann-Liouville fBm in closed form, the
+  /// deterministic exponent tabulated as the curve `ct`.
+  RiemannLiouvilleBlackScholes { s0: T, sigma: T },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1296,6 +1302,13 @@ impl<T: FloatExt> EulerSpec<T> {
         (Family::RegimeSwitching.code(), pad(values))
       }
       EulerSpec::RiemannLiouville => (Family::RiemannLiouville.code(), pad([])),
+      EulerSpec::RiemannLiouvilleOu { kappa, mu, nu } => {
+        (Family::RiemannLiouvilleOu.code(), pad([kappa, mu, nu]))
+      }
+      EulerSpec::RiemannLiouvilleBlackScholes { s0, sigma } => (
+        Family::RiemannLiouvilleBlackScholes.code(),
+        pad([s0, sigma]),
+      ),
     }
   }
 }

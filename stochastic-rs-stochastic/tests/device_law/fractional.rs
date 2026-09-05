@@ -15,7 +15,9 @@ use stochastic_rs_stochastic::interest::fractional_vasicek::FVasicek;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
 use stochastic_rs_stochastic::process::cfbms::Cfbms;
 use stochastic_rs_stochastic::process::fbm::Fbm;
+use stochastic_rs_stochastic::rough::rl_bs::RlBlackScholes;
 use stochastic_rs_stochastic::rough::rl_fbm::RlFBm;
+use stochastic_rs_stochastic::rough::rl_fou::RlFOU;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 use super::common::Device;
@@ -446,4 +448,88 @@ fn rl_fbm_agrees_with_the_cpu_law() {
     0.06,
     "RL-fBm quarter-horizon spread",
   );
+}
+
+/// The rough OU takes the lifted fBm's increments in its own Euler loop; the
+/// terminal mean pins `kappa` and `mu`, the spread `nu` and the roughness.
+#[test]
+fn rl_fou_agrees_with_the_cpu_law() {
+  let build = || {
+    RlFOU::<f32, _>::new(
+      0.3,
+      2.0,
+      0.05,
+      0.3,
+      N,
+      Some(0.02),
+      Some(1.0),
+      None,
+      Deterministic::new(37),
+    )
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert_eq!(device.len(), PATHS);
+  assert_eq!(device[0].len(), N);
+  assert!(
+    (device[0][0] - 0.02).abs() < 1e-6,
+    "every path starts at x0"
+  );
+  all_finite(&device, "RL-fOU");
+  let (hm, dm) = (terminal_mean(&host), terminal_mean(&device));
+  assert!(
+    (hm - dm).abs() < 0.01,
+    "RL-fOU terminal mean: host {hm}, device {dm}"
+  );
+  agrees(
+    terminal_std(&host),
+    terminal_std(&device),
+    0.06,
+    "RL-fOU terminal spread",
+  );
+}
+
+/// The rough Black-Scholes is a closed form of the lifted fBm plus a curve;
+/// the terminal log-return's mean pins the curve and its spread the lift.
+#[test]
+fn rl_black_scholes_agrees_with_the_cpu_law() {
+  let build = || {
+    RlBlackScholes::<f32, _>::new(
+      0.3,
+      100.0,
+      0.03,
+      0.2,
+      N,
+      Some(1.0),
+      None,
+      Deterministic::new(41),
+    )
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert_eq!(device.len(), PATHS);
+  assert_eq!(device[0][0], 100.0, "every path starts at s0");
+  all_finite(&device, "RL-Black-Scholes");
+  let log_ret = |paths: &[Array1<f32>]| -> Vec<f64> {
+    let last = paths[0].len() - 1;
+    paths
+      .iter()
+      .map(|p| (p[last] as f64 / 100.0).ln())
+      .collect()
+  };
+  let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
+  let sd = |v: &[f64]| {
+    let m = mean(v);
+    (v.iter().map(|x| (x - m).powi(2)).sum::<f64>() / v.len() as f64).sqrt()
+  };
+  let (h, d) = (log_ret(&host), log_ret(&device));
+  assert!(
+    (mean(&h) - mean(&d)).abs() < 0.01,
+    "RL-Black-Scholes log-return mean: host {}, device {}",
+    mean(&h),
+    mean(&d)
+  );
+  agrees(sd(&h), sd(&d), 0.06, "RL-Black-Scholes log-return spread");
 }

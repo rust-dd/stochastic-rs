@@ -2162,6 +2162,34 @@ euler_families! {
     report { x }
     lift { drift (lit(0.0)) diffusion (lit(1.0)) shock (dz) },
 
+  /// A mean-reverting process driven by Riemann-Liouville fBm: the lifted
+  /// fBm rides in the second slot and the state takes its increment,
+  /// `x + kappa (mu - x) dt + nu (B_{i} - B_{i-1})`, exactly as the host
+  /// feeds the lift's path into its own Euler loop.
+  95 => RiemannLiouvilleOu { kappa, mu, nu }
+    state (x, b)
+    noise (dz)
+    step {
+      x + kappa * (mu - x) * dt + nu * (lv - b),
+      lv
+    }
+    report { x, b }
+    lift { drift (lit(0.0)) diffusion (lit(1.0)) shock (dz) },
+
+  /// Black-Scholes under Riemann-Liouville fBm in closed form: the spot is
+  /// `s0 exp(r t - sigma^2 t^{2H} / 2 + sigma B_t)`, with the deterministic
+  /// part tabulated as the curve `ct` at each grid point and the lifted fBm
+  /// in the second slot.
+  96 => RiemannLiouvilleBlackScholes { s0, sigma }
+    state (s, b)
+    noise (dz)
+    step {
+      s0 * exp(ct + sigma * lv),
+      lv
+    }
+    report { s, b }
+    lift { drift (lit(0.0)) diffusion (lit(1.0)) shock (dz) },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)

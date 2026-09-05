@@ -399,6 +399,8 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::CorrelatedNoises4 { .. } => "CorrelatedNoises4",
     EulerSpec::RegimeSwitching { .. } => "RegimeSwitching",
     EulerSpec::RiemannLiouville => "RiemannLiouville",
+    EulerSpec::RiemannLiouvilleOu { .. } => "RiemannLiouvilleOu",
+    EulerSpec::RiemannLiouvilleBlackScholes { .. } => "RiemannLiouvilleBlackScholes",
   }
 }
 
@@ -810,6 +812,8 @@ fn every_family() -> Vec<Probe> {
 pub(crate) struct SystemProbe<const D: usize> {
   spec: EulerSpec<f32>,
   x0: [f32; D],
+  /// The Markov lift a lifted family steps under, `None` for the rest.
+  lift: Option<ProbeLift>,
 }
 
 /// The host stream for a [`SystemProbe`]: independent normals per noise
@@ -819,6 +823,7 @@ pub(crate) struct SystemProbeSampler<const D: usize> {
   x0: [f32; D],
   dt: f32,
   normal: SimdNormal<f32>,
+  lift: Option<ProbeLift>,
 }
 
 impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
@@ -857,10 +862,21 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       path[0] = reported[c];
     }
     let mut draw = vec![0.0f32; noises];
+    // The lift's two state vectors, advanced per step exactly as the frame
+    // advances them, from the family's own drift, diffusion and shock.
+    let nodes = self.lift.as_ref().map_or(0, |l| l.decay.len());
+    let (mut lh, mut lj) = (vec![0.0f32; nodes], vec![0.0f32; nodes]);
     for i in 1..N {
       let mut noise = [0.0f32; 4];
       self.normal.fill_slice(&mut draw);
       noise[..noises].copy_from_slice(&draw);
+      let (mut lv, mut coefficients) = (0.0f32, [0.0f32; 3]);
+      if let Some(lift) = &self.lift {
+        coefficients = super::families::host_lift(family, &state, &params, self.dt, &noise);
+        let [lf, lg, lsh] = coefficients;
+        let hist: f32 = (0..nodes).map(|l| lift.weight[l] * (lh[l] + lj[l])).sum();
+        lv = lift.x0 + lift.db * lf + hist + lift.fb * lg * lsh;
+      }
       let mut next = [0.0f32; 4];
       super::families::host_step(
         family,
@@ -881,11 +897,18 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         1.3,
         0.5,
         0.5,
-        0.0,
+        lv,
         &noise,
         &mut next,
       );
       state = next;
+      if let Some(lift) = &self.lift {
+        let [lf, lg, lsh] = coefficients;
+        for l in 0..nodes {
+          lh[l] = lift.decay[l] * lh[l] + lift.drift_scale[l] * lf;
+          lj[l] = lift.decay[l] * (lj[l] + lg * lsh);
+        }
+      }
       super::families::host_report(
         family,
         &state,
@@ -934,6 +957,7 @@ impl<const D: usize> ProcessExt<f32> for SystemProbe<D> {
       x0: self.x0,
       dt,
       normal: SimdNormal::<f32>::new(0.0, dt.sqrt(), &Deterministic::new(7)),
+      lift: self.lift.clone(),
     }
   }
 }
@@ -963,6 +987,17 @@ impl<const D: usize> EulerSystem<f32, D> for SystemProbe<D> {
 
   fn curves(&self) -> Option<Vec<Vec<f32>>> {
     Some(probe_curves())
+  }
+
+  fn lift_spec(&self) -> Option<crate::euler::LiftSpec<'_, f32>> {
+    self.lift.as_ref().map(|l| crate::euler::LiftSpec {
+      decay: &l.decay,
+      weight: &l.weight,
+      drift_scale: &l.drift_scale,
+      drift_boundary: l.db,
+      diffusion_boundary: l.fb,
+      x0: l.x0,
+    })
   }
 
   fn jump_intensity(&self) -> Option<f32> {
@@ -997,6 +1032,7 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         pow_v,
       },
       x0: [100.0, 0.04],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::HestonReflected {
@@ -1008,6 +1044,7 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         pow_v,
       },
       x0: [100.0, 0.04],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::Sabr {
@@ -1017,6 +1054,7 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         half_nu_sq: 0.08,
       },
       x0: [100.0, 0.2],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::TwoScaleOrnsteinUhlenbeck {
@@ -1028,6 +1066,7 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         sqrt_eps_inv: 2.0,
       },
       x0: [0.5, 0.5],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::LogHeston {
@@ -1038,6 +1077,7 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         rho: -0.7,
       },
       x0: [100.0, 0.04],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::KouJumpHeston {
@@ -1048,6 +1088,7 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         rho: -0.7,
       },
       x0: [100.0, 0.04],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::KouJumpHestonReflected {
@@ -1058,6 +1099,7 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         rho: -0.7,
       },
       x0: [100.0, 0.04],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::AndersenQe {
@@ -1072,6 +1114,7 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         mu: 0.02,
       },
       x0: [(100.0_f32).ln(), 0.04],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::BatesJump {
@@ -1082,6 +1125,7 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         rho: -0.7,
       },
       x0: [100.0, 0.04],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::BatesJumpReflected {
@@ -1092,6 +1136,7 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         rho: -0.7,
       },
       x0: [100.0, 0.04],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::HawkesJumpDiffusion {
@@ -1104,6 +1149,7 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         jump_sigma: 0.05,
       },
       x0: [0.0, 1.0],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::BarndorffNielsenShephard {
@@ -1111,18 +1157,39 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         mu: 0.02,
       },
       x0: [100.0, 0.04],
+      lift: None,
+    },
+    SystemProbe {
+      spec: EulerSpec::RiemannLiouvilleOu {
+        kappa: 2.0,
+        mu: 0.05,
+        nu: 0.3,
+      },
+      x0: [0.02, 0.0],
+      lift: Some(probe_lift(1.0 / (N - 1) as f32)),
+    },
+    SystemProbe {
+      spec: EulerSpec::RiemannLiouvilleBlackScholes {
+        s0: 100.0,
+        sigma: 0.2,
+      },
+      x0: [100.0, 0.0],
+      lift: Some(probe_lift(1.0 / (N - 1) as f32)),
     },
     SystemProbe {
       spec: EulerSpec::CorrelatedInnovation { rho: -0.5 },
       x0: [0.0, 0.0],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::CorrelatedFractionalMotion { rho: 0.3 },
       x0: [0.0, 0.0],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::DynamicSabr,
       x0: [0.04, 0.3],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::WuZhang {
@@ -1132,6 +1199,7 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         lambda: 0.8,
       },
       x0: [0.03, 0.04],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::RegimeSwitching {
@@ -1145,6 +1213,7 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         ],
       },
       x0: [100.0, 1.0],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::ComplexFractionalOu {
@@ -1153,6 +1222,7 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         scale: 0.4,
       },
       x0: [0.1, -0.1],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::MovingAverage {
@@ -1160,10 +1230,12 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         sigma: 0.2,
       },
       x0: [0.0, 0.0],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::CorrelatedBrownian { rho: -0.5 },
       x0: [0.0, 0.0],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::TwoFactorHullWhite {
@@ -1174,6 +1246,7 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         rho: -0.4,
       },
       x0: [0.02, 0.0],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::TwoFactorSquareRoot {
@@ -1187,6 +1260,7 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         sym2: 1.0,
       },
       x0: [0.03, 0.01],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::DuffieKanJump {
@@ -1204,6 +1278,7 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         rho: -0.3,
       },
       x0: [0.03, 0.01],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::DuffieKan {
@@ -1221,6 +1296,7 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         rho: -0.3,
       },
       x0: [0.03, 0.01],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::LogHestonReflected {
@@ -1231,6 +1307,7 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         rho: -0.7,
       },
       x0: [100.0, 0.04],
+      lift: None,
     },
   ]
 }
@@ -1240,6 +1317,7 @@ fn every_three_component_family() -> Vec<SystemProbe<3>> {
   let hjm = SystemProbe {
     spec: EulerSpec::HeathJarrowMorton,
     x0: [0.03, 1.0, 0.04],
+    lift: None,
   };
   let garch = SystemProbe {
     spec: EulerSpec::Garch {
@@ -1248,6 +1326,7 @@ fn every_three_component_family() -> Vec<SystemProbe<3>> {
       beta: 0.85,
     },
     x0: [0.0, 0.0002, 0.0],
+    lift: None,
   };
   let threshold = SystemProbe {
     spec: EulerSpec::ThresholdGarch {
@@ -1257,6 +1336,7 @@ fn every_three_component_family() -> Vec<SystemProbe<3>> {
       beta: 0.85,
     },
     x0: [0.0, 0.0002, 0.0],
+    lift: None,
   };
   let double = |sym| {
     let spec = if sym {
@@ -1287,6 +1367,7 @@ fn every_three_component_family() -> Vec<SystemProbe<3>> {
     SystemProbe {
       spec,
       x0: [100.0, 0.04, 0.02],
+      lift: None,
     }
   };
   let exponential = SystemProbe {
@@ -1298,6 +1379,7 @@ fn every_three_component_family() -> Vec<SystemProbe<3>> {
       e_abs_z: std::f32::consts::FRAC_2_PI.sqrt(),
     },
     x0: [0.0, -0.2, 0.0],
+    lift: None,
   };
   vec![
     hjm,
@@ -1318,6 +1400,7 @@ fn every_three_component_family() -> Vec<SystemProbe<3>> {
         rho2: 0.1,
       },
       x0: [100.0, 0.04, -0.3],
+      lift: None,
     },
   ]
 }
@@ -1379,6 +1462,7 @@ fn every_four_component_family() -> Vec<SystemProbe<4>> {
     SystemProbe {
       spec,
       x0: [4.6, 0.04, 4.6, 0.03],
+      lift: None,
     }
   };
   vec![
@@ -1389,12 +1473,14 @@ fn every_four_component_family() -> Vec<SystemProbe<4>> {
         l: [1.0, -0.6, 0.8, 0.2, 0.1, 0.97, 0.1, -0.2, 0.3, 0.92],
       },
       x0: [100.0, 50.0, 80.0, 60.0],
+      lift: None,
     },
     SystemProbe {
       spec: EulerSpec::CorrelatedNoises4 {
         l: [1.0, -0.6, 0.8, 0.2, 0.1, 0.97, 0.1, -0.2, 0.3, 0.92],
       },
       x0: [0.0, 0.0, 0.0, 0.0],
+      lift: None,
     },
     two_asset(false),
     two_asset(true),
@@ -1407,6 +1493,7 @@ fn every_four_component_family() -> Vec<SystemProbe<4>> {
         rho: -0.6,
       },
       x0: [100.0, 0.04, 0.0, 0.0],
+      lift: None,
     },
   ]
 }

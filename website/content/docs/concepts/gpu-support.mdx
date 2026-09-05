@@ -13,12 +13,12 @@ backends, and what the rest do.
 | Family | Processes | Capability bound | `Cpu` | `Accelerate` | `Metal` | `Cuda` | `Cubecl` |
 |---|---|---|---|---|---|---|---|
 | fGN noise | `Fgn` (1) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` | CubeCL FFT, `f32` only |
-| Euler engine, one component | 69 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
+| Euler engine, one component | 71 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
 | Euler engine, systems | 26 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
 | Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `FVasicek`, `Cfgns`, `Cfbms`, `Cfou` (9, counted above) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same MSL kernel | fGN pipeline feeds the same NVRTC kernel | fGN pipeline feeds the same CubeCL kernel |
-| Host only | the remaining 23 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
+| Host only | the remaining 21 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
 
-The 95 processes on the engine cover the diffusions, the stochastic-volatility
+The 97 processes on the engine cover the diffusions, the stochastic-volatility
 models under both their Euler and quadratic-exponential schemes (`Heston`,
 `HestonLog`, `DoubleHeston`, `Heston2D`, `Sabr`, `Bergomi`,
 `HestonStochCorr`, `BatesSvj`, `Hkde`), the short-rate models including the
@@ -45,10 +45,10 @@ two-factor `MultifactorHeston` (which rides the double-Heston family with a
 zeroed second factor when it has one; three or more stay on the host), the
 regime-switching diffusion with up to four regimes (the one-step transition
 matrix is exponentiated once on the host and travels as cumulative
-thresholds; five or more regimes stay on the host), Riemann-Liouville fBm
-under the Markov lift of its rough kernel (`RlFBm` — the lift's node states
-live in the kernel's own per-path arrays, see below) and `Poisson` in its
-count mode.
+thresholds; five or more regimes stay on the host), the Riemann-Liouville
+family under the Markov lift of its rough kernel (`RlFBm`, `RlFOU`,
+`RlBlackScholes` — the lift's node states live in the kernel's own per-path
+arrays, see below) and `Poisson` in its count mode.
 
 What stays on the host, and why. The engine steps a bounded forward
 recursion over four scalar state slots, so what rules a process out is
@@ -59,11 +59,11 @@ grid:
   `FBatesSvj`, `RoughBergomi`, `Lfsm`, `Volterra` in its direct branch): the
   step sums `(t_i - t_j)^(H - 1/2) z_j` over all `j < i`, which is work that
   grows with the step index.
-- **Markov-lift schemes not yet declared** (`RlBlackScholes`, `RlFOU`,
-  `RlHeston`, `Volterra` in its lift branch): the lift block that carries
-  `RlFBm` — the family declares a drift, a diffusion and a driving shock and
-  the frame keeps the `2 · degree` node states per path — carries these too;
-  they are the next declarations, not a new mechanism.
+- **Markov-lift schemes not yet declared** (`RlHeston`, `Volterra` in its
+  lift branch): the lift block that carries `RlFBm`, `RlFOU` and
+  `RlBlackScholes` — the family declares a drift, a diffusion and a driving
+  shock and the frame keeps the `2 · degree` node states per path — carries
+  these too; they are the next declarations, not a new mechanism.
 - **Series representations over the whole horizon** (`Cgmy`, `Cts`, `KoBoL`,
   `Rdts`, `Svcgmy`): the path is built by drawing a fixed number of jumps for
   the whole horizon, sorting them by arrival time and accumulating onto the
@@ -104,7 +104,7 @@ grid:
 
 ## What a family is
 
-A process reaches a device by declaring which of the engine's **95 families**
+A process reaches a device by declaring which of the engine's **97 families**
 it steps, not by writing a kernel. A family is one entry in
 `stochastic-rs-stochastic/src/euler/families.rs` — its parameters, its state
 components, its noise components, one step expression per component and one
