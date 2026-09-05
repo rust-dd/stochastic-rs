@@ -255,6 +255,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::KouJumpHeston { .. } => "KouJumpHeston",
     EulerSpec::KouJumpHestonReflected { .. } => "KouJumpHestonReflected",
     EulerSpec::DuffieKanJump { .. } => "DuffieKanJump",
+    EulerSpec::HawkesJumpDiffusion { .. } => "HawkesJumpDiffusion",
   }
 }
 
@@ -856,6 +857,18 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         rho: -0.7,
       },
       x0: [100.0, 0.04],
+    },
+    SystemProbe {
+      spec: EulerSpec::HawkesJumpDiffusion {
+        drift_c: 0.02,
+        sigma: 0.2,
+        alpha: 0.5,
+        beta: 2.0,
+        mu_lambda: 1.0,
+        jump_mu: -0.02,
+        jump_sigma: 0.05,
+      },
+      x0: [0.0, 1.0],
     },
     SystemProbe {
       spec: EulerSpec::CorrelatedBrownian { rho: -0.5 },

@@ -457,6 +457,16 @@ pub enum EulerSpec<T: FloatExt> {
     gamma: T,
     rho: T,
   },
+  /// A jump diffusion whose intensity is excited by its own jumps.
+  HawkesJumpDiffusion {
+    drift_c: T,
+    sigma: T,
+    alpha: T,
+    beta: T,
+    mu_lambda: T,
+    jump_mu: T,
+    jump_sigma: T,
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -955,6 +965,18 @@ impl<T: FloatExt> EulerSpec<T> {
         pad([
           a1, b1, c1, sigma1, a2, b2, c2, sigma2, alpha, beta, gamma, rho,
         ]),
+      ),
+      EulerSpec::HawkesJumpDiffusion {
+        drift_c,
+        sigma,
+        alpha,
+        beta,
+        mu_lambda,
+        jump_mu,
+        jump_sigma,
+      } => (
+        Family::HawkesJumpDiffusion.code(),
+        pad([drift_c, sigma, alpha, beta, mu_lambda, jump_mu, jump_sigma]),
       ),
     }
   }

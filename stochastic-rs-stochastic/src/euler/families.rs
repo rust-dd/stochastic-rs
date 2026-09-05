@@ -1622,6 +1622,25 @@ euler_families! {
     }
     report { r, x },
 
+  /// A jump diffusion whose jump intensity is itself excited by its jumps:
+  /// the Hawkes jump diffusion. At most one jump per step, as the host's own
+  /// Bernoulli test takes it, so the intensity is a state component the step
+  /// excites and then mean-reverts. The process reports the path alone; the
+  /// intensity is the second component it carries.
+  69 => HawkesJumpDiffusion {
+    drift_c, sigma, alpha, beta, mu_lambda, jump_mu, jump_sigma
+  }
+    state (x, lam)
+    noise (dw, dj)
+    step {
+      bind fired = less(u, lam * dt);
+      bind size = pick(fired, jump_mu + jump_sigma * (dj / sqrt(dt)), lit(0.0));
+      bind excited = lam + pick(fired, alpha, lit(0.0));
+      x + drift_c * dt + sigma * dw + size,
+      positive(excited + beta * (mu_lambda - excited) * dt)
+    }
+    report { x, lam },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)

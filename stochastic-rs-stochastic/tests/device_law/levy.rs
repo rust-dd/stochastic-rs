@@ -6,6 +6,7 @@
 //! is that the device draws the same law the host's own sampler draws.
 
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_stochastic::jump::hawkes_jd::HawkesJD;
 use stochastic_rs_stochastic::jump::ig::Ig;
 use stochastic_rs_stochastic::jump::nig::Nig;
 use stochastic_rs_stochastic::process::subordinator::alpha_stable::AlphaStableSubordinator;
@@ -134,5 +135,38 @@ fn stable_subordinator_agrees_with_the_cpu_law() {
     median(&device),
     0.10,
     "stable subordinator terminal median",
+  );
+}
+
+/// The Hawkes jump diffusion carries its own intensity as a second component
+/// the kernel excites and mean-reverts. At most one jump per step, as the
+/// host's Bernoulli test takes it, so what the terminal mean pins is that the
+/// device's excitement loop matches the host's.
+#[test]
+fn hawkes_jump_diffusion_agrees_with_the_cpu_law() {
+  let build = || {
+    HawkesJD::<f32, _>::new(
+      0.02,
+      0.2,
+      1.0,
+      0.5,
+      2.0,
+      -0.02,
+      0.05,
+      N,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(139),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  all_finite(&device, "Hawkes jump diffusion");
+  let (host, dev) = (
+    terminal_mean(&build().sample_par(M)),
+    terminal_mean(&device),
+  );
+  assert!(
+    (host - dev).abs() < 0.02,
+    "Hawkes jump diffusion terminal mean: host {host}, device {dev}"
   );
 }
