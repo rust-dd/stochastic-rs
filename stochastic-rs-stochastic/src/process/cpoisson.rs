@@ -5,6 +5,8 @@
 //! $$
 //!
 
+use std::any::Any;
+
 use ndarray::Array1;
 use ndarray::Axis;
 use rand::Rng;
@@ -12,10 +14,11 @@ use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::poisson::SimdPoisson;
+use stochastic_rs_distributions::scalar::ScalarExp;
+use stochastic_rs_distributions::scalar::ScalarNormal;
 
 use super::poisson::Poisson;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -57,6 +60,45 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
+}
+
+/// The Euler engine's description of `distribution`, when it is one of the
+/// size laws the device kernels draw: the scalar normal ([`ScalarNormal`])
+/// and the scalar exponential ([`ScalarExp`]), the latter as the
+/// double-exponential law that only ever jumps up. The scalar laws are the
+/// ones a process can carry as its `D` at all — the SIMD laws hold
+/// thread-local buffers and are not `Sync`. The type is inspected at runtime
+/// through [`Any`], which is what lets a process stay generic over
+/// `D: Distribution<T>` on the host and still hand a recognised law to the
+/// device; a closure, a Python callable or any other law returns `None`, and
+/// the process samples on the host.
+pub(crate) fn device_jump_sizes<T: FloatExt, D: Any>(
+  distribution: &D,
+) -> Option<crate::euler::JumpSizes<T>> {
+  let any: &dyn Any = distribution;
+  if let Some(normal) = any.downcast_ref::<ScalarNormal<T>>() {
+    return Some(crate::euler::JumpSizes::Normal {
+      mean: normal.mean(),
+      sd: normal.std_dev(),
+    });
+  }
+  device_arrival_rate(distribution).map(|rate| crate::euler::JumpSizes::DoubleExponential {
+    // Every draw takes the up branch: the kernels compare a uniform in
+    // `[0, 1)` against `p_up`, and `2` — not `1`, which a uniform rounded up
+    // to `1.0` in single precision would fail — is "always".
+    p_up: T::from_f64_fast(2.0),
+    eta_up: rate,
+    eta_down: rate,
+  })
+}
+
+/// The rate of `distribution` when it is the scalar exponential law
+/// [`device_jump_sizes`] recognises: what makes a user-supplied inter-arrival
+/// law a Poisson arrival stream the kernels draw. `None` for any other type.
+pub(crate) fn device_arrival_rate<T: FloatExt, D: Any>(distribution: &D) -> Option<T> {
+  (distribution as &dyn Any)
+    .downcast_ref::<ScalarExp<T>>()
+    .map(|exp| exp.lambda())
 }
 
 /// Core of [`CompoundPoisson::sample_grid_increments`], parameterized
@@ -197,12 +239,84 @@ where
   increments
 }
 
-backend_switch!([T, D, S: SeedExt] CompoundPoisson<T, D, S> { distribution, poisson, seed } via host where  T: FloatExt,  D: Distribution<T> + Send + Sync);
-
-impl<T, D, S: SeedExt, B: HostBackend> ProcessExt<T> for CompoundPoisson<T, D, S, B>
+impl<T, D, S: SeedExt, B> CompoundPoisson<T, D, S, B>
 where
   T: FloatExt,
-  D: Distribution<T> + Send + Sync,
+  D: Distribution<T> + Send + Sync + Any,
+{
+  /// The jump-size law as the Euler engine's kernels draw it, one size per
+  /// arrival; `None` for a distribution they do not carry.
+  fn device_jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
+    device_jump_sizes(&self.distribution).and_then(crate::euler::JumpSizes::single)
+  }
+
+  /// Whether a device can run this process: a fixed number of arrivals — the
+  /// horizon mode has no grid — and sizes under a law the kernels draw.
+  fn device_ready(&self) -> bool {
+    self.poisson.n.is_some() && self.device_jump_sizes().is_some()
+  }
+}
+
+impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 3>
+  for CompoundPoisson<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::CompoundPoissonEvents {
+      lambda: self.poisson.lambda,
+    }
+  }
+
+  fn initial_state(&self) -> [T; 4] {
+    [T::zero(); 4]
+  }
+
+  fn grid_points(&self) -> usize {
+    self
+      .poisson
+      .n
+      .expect("the Euler engine describes CompoundPoisson's count mode; horizon mode has no grid")
+  }
+
+  /// One step is one arrival, so the grid has no horizon of its own; the
+  /// waiting times come from the intensity in the step.
+  fn horizon(&self) -> T {
+    T::one()
+  }
+
+  fn jump_intensity(&self) -> Option<T> {
+    Some(self.poisson.lambda)
+  }
+
+  /// One size per step under the kernels' law. A law they do not carry never
+  /// reaches a launch — [`ProcessExt::sample`] keeps such a process on the
+  /// host — so asking for one here is a caller bypassing that guard.
+  fn jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
+    Some(self.device_jump_sizes().expect(
+      "CompoundPoisson: the jump-size distribution is not a law the Euler engine draws on a \
+       device; sample through `ProcessExt`, which keeps it on the host",
+    ))
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 3] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T, D, S: SeedExt] CompoundPoisson<T, D, S> { distribution, poisson, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
+
+impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for CompoundPoisson<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
 {
   type Output = [Array1<T>; 3];
   type Sampler<'s>
@@ -219,6 +333,51 @@ where
       distribution: &self.distribution,
       poisson: &self.poisson,
       seed: self.seed.derive(),
+    }
+  }
+
+  /// Through the Euler engine when the arrival count is fixed and the
+  /// jump-size law is one the device kernels draw; anything else keeps the process on the host,
+  /// chunked exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> [Array1<T>; 3] {
+    if self.device_ready() {
+      crate::euler::EulerBackend::system_sample(&self.backend, self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 3]) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::system_paths_map(&self.backend, self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 3]> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::system_paths(&self.backend, self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 3], crate::device::DeviceError> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::try_system_sample(&self.backend, self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 3]>, crate::device::DeviceError> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::try_system_paths(&self.backend, self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }

@@ -45,7 +45,6 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::noise::gn::Gn;
 use crate::rough::markov_lift::RoughSimd;
 use crate::traits::FloatExt;
@@ -70,6 +69,9 @@ where
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// The Markov lift of `kernel` at the grid spacing, what a device replays
+  /// node by node; rebuilt whenever the grid changes.
+  pub(crate) lift: VolterraLift<T, K>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
@@ -89,6 +91,7 @@ where
       n: self.n,
       t: self.t,
       seed: self.seed.clone(),
+      lift: self.lift.clone(),
     }
   }
 }
@@ -107,6 +110,7 @@ where
       !coefficients.is_empty(),
       "coefficients must contain at least a constant term"
     );
+    let lift = VolterraLift::new(kernel.clone(), grid_spacing(n, t));
     Self {
       backend: Cpu,
       kernel,
@@ -114,6 +118,7 @@ where
       n,
       t,
       seed,
+      lift,
     }
   }
 
@@ -184,6 +189,7 @@ where
   pub fn with_steps(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must be at least 2");
     self.n = n;
+    self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(n, self.t));
     self
   }
 
@@ -191,6 +197,7 @@ where
   #[must_use]
   pub fn with_horizon(mut self, t: T) -> Self {
     self.t = Some(t);
+    self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(self.n, Some(t)));
     self
   }
 
@@ -217,9 +224,91 @@ where
   }
 }
 
-backend_switch!([T: FloatExt + RoughSimd, K, S: SeedExt] GaussianPolynomialVolatility<T, K, S> { kernel, coefficients, n, t, seed } via host where  K: VolterraKernel<T> + Send + Sync);
+/// The grid spacing of `n` points over `[0, t]`, `t` defaulting to one.
+fn grid_spacing<T: FloatExt>(n: usize, t: Option<T>) -> T {
+  t.unwrap_or(T::one()) / T::from_usize_(n - 1)
+}
 
-impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: HostBackend> ProcessExt<T>
+/// The most coefficients a device evaluates: the kernels unroll Horner's
+/// rule over this many slots, and a longer polynomial samples on the host.
+pub const DEVICE_COEFFICIENTS: usize = 8;
+
+impl<T: FloatExt + RoughSimd, K, S: SeedExt, B> GaussianPolynomialVolatility<T, K, S, B>
+where
+  K: VolterraKernel<T> + Send + Sync,
+{
+  /// Whether a device can run this process: the polynomial fits the kernels'
+  /// coefficient slots.
+  fn device_ready(&self) -> bool {
+    self.coefficients.len() <= DEVICE_COEFFICIENTS
+  }
+}
+
+impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: crate::euler::EulerBackend<T>>
+  crate::euler::EulerCoefficients<T> for GaussianPolynomialVolatility<T, K, S, B>
+where
+  K: VolterraKernel<T> + Send + Sync,
+{
+  /// The coefficients in rising order, padded with zeros to the kernels'
+  /// slots. A longer polynomial never reaches a launch — [`ProcessExt::sample`]
+  /// keeps it on the host — so asking here is a caller bypassing that guard.
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    assert!(
+      self.device_ready(),
+      "GaussianPolynomialVolatility: a device evaluates at most {DEVICE_COEFFICIENTS} \
+       coefficients; sample through `ProcessExt`, which keeps a longer polynomial on the host"
+    );
+    let mut coefficients = [T::zero(); DEVICE_COEFFICIENTS];
+    coefficients[..self.coefficients.len()].copy_from_slice(
+      self
+        .coefficients
+        .as_slice()
+        .expect("coefficients must be contiguous"),
+    );
+    crate::euler::EulerSpec::GaussianPolynomialVolatility { coefficients }
+  }
+
+  /// The lifted Gaussian starts at zero; the first reported point is the
+  /// polynomial there, its constant term, as on the host.
+  fn initial_value(&self) -> T {
+    T::zero()
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  /// The lift's nodes, decays and weights, and the boundary terms of its
+  /// first step, exactly as the host's stepper holds them.
+  fn lift_spec(&self) -> Option<crate::euler::LiftSpec<'_, T>> {
+    Some(crate::euler::LiftSpec {
+      decay: self.lift.exp_neg_x_dt.as_slice().expect("contiguous"),
+      weight: self.lift.we.as_slice().expect("contiguous"),
+      drift_scale: self.lift.one_minus_e_over_x.as_slice().expect("contiguous"),
+      drift_boundary: self.lift.drift_boundary,
+      diffusion_boundary: self.lift.diffusion_boundary,
+      x0: T::zero(),
+    })
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt + RoughSimd, K, S: SeedExt] GaussianPolynomialVolatility<T, K, S> { kernel, coefficients, n, t, seed, lift } via euler where  K: VolterraKernel<T> + Send + Sync);
+
+impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for GaussianPolynomialVolatility<T, K, S, B>
 where
   K: VolterraKernel<T> + Send + Sync,
@@ -242,6 +331,51 @@ where
         t: self.t,
         seed: self.seed.derive(),
       },
+    }
+  }
+
+  /// Through the Euler engine when the polynomial fits the kernels'
+  /// coefficient slots; anything else keeps the process on the host,
+  /// chunked exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> Array1<T> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::euler_sample(&self.backend, self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::euler_paths_map(&self.backend, self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::euler_paths(&self.backend, self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::try_sample(&self.backend, self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::try_euler_paths(&self.backend, self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }

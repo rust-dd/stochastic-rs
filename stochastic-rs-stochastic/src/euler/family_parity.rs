@@ -87,6 +87,40 @@ const PROBE_SIZES: JumpSizes<f32> = JumpSizes::DoubleExponential {
 /// One ramp per curve slot, each with its own level and slope, so every slot
 /// the kernels bind carries a value no other slot carries and a family that
 /// reads `ct3` is checked against the host reading `ct3` and nothing else.
+/// The size law a probe's jump sum is drawn under: the shared
+/// double-exponential unless the family exists for another law, which is
+/// then the one its parity run exercises — so every `js` branch of the
+/// kernels has a family that reaches it, the tempered-stable thinning
+/// included, which no other probe would otherwise touch.
+fn probe_sizes(spec: &EulerSpec<f32>) -> JumpSizes<f32> {
+  match spec {
+    EulerSpec::TemperedStableSubordinator { .. } => JumpSizes::TemperedStable {
+      eps: 0.05,
+      neg_inv_alpha: -1.0 / 0.7,
+      mu: 1.0,
+    },
+    EulerSpec::Bates1996 { .. } => JumpSizes::NormalProduct {
+      mean: -0.02,
+      sd: 0.05,
+    },
+    EulerSpec::Bates1996Reflected { .. } => JumpSizes::DoubleExponentialProduct {
+      p_up: 0.4,
+      eta_up: 20.0,
+      eta_down: 25.0,
+    },
+    EulerSpec::CompoundPoissonEvents { .. } => JumpSizes::OneDoubleExponential {
+      p_up: 0.4,
+      eta_up: 20.0,
+      eta_down: 25.0,
+    },
+    EulerSpec::JumpFractionalOu { .. } => JumpSizes::OneNormal {
+      mean: 0.01,
+      sd: 0.05,
+    },
+    _ => PROBE_SIZES,
+  }
+}
+
 fn probe_curves() -> Vec<Vec<f32>> {
   (0..crate::euler::CURVE_SLOTS)
     .map(|k| {
@@ -286,7 +320,7 @@ impl EulerCoefficients<f32> for Probe {
   }
 
   fn jump_sizes(&self) -> Option<JumpSizes<f32>> {
-    Some(PROBE_SIZES)
+    Some(probe_sizes(&self.spec))
   }
 
   fn gamma_draws(&self) -> Option<GammaDraws<f32>> {
@@ -402,6 +436,13 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::RiemannLiouvilleOu { .. } => "RiemannLiouvilleOu",
     EulerSpec::RiemannLiouvilleBlackScholes { .. } => "RiemannLiouvilleBlackScholes",
     EulerSpec::RiemannLiouvilleHeston { .. } => "RiemannLiouvilleHeston",
+    EulerSpec::AdditiveJumpDiffusion { .. } => "AdditiveJumpDiffusion",
+    EulerSpec::Bates1996 { .. } => "Bates1996",
+    EulerSpec::Bates1996Reflected { .. } => "Bates1996Reflected",
+    EulerSpec::CompoundPoissonEvents { .. } => "CompoundPoissonEvents",
+    EulerSpec::JumpFractionalOu { .. } => "JumpFractionalOu",
+    EulerSpec::VolterraSquareRoot { .. } => "VolterraSquareRoot",
+    EulerSpec::GaussianPolynomialVolatility { .. } => "GaussianPolynomialVolatility",
   }
 }
 
@@ -684,6 +725,35 @@ fn every_family() -> Vec<Probe> {
     ),
     p(EulerSpec::PoissonArrivals { lambda: 2.5 }, 0.0),
     p_lift(EulerSpec::RiemannLiouville, 0.0),
+    p(
+      EulerSpec::AdditiveJumpDiffusion {
+        drift_dt: 0.0002,
+        sigma: 0.2,
+      },
+      1.0,
+    ),
+    p(
+      EulerSpec::JumpFractionalOu {
+        theta: 1.5,
+        mu: 0.02,
+        sigma: 0.3,
+      },
+      0.0,
+    ),
+    p_lift(
+      EulerSpec::VolterraSquareRoot {
+        kappa: 2.0,
+        theta: 0.04,
+        nu: 0.3,
+      },
+      0.04,
+    ),
+    p_lift(
+      EulerSpec::GaussianPolynomialVolatility {
+        coefficients: [0.2, 0.5, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0],
+      },
+      0.0,
+    ),
     p(EulerSpec::AffineDiffusionGaussian { sigma: 0.02 }, 0.03),
     p(
       EulerSpec::TransformedOrnsteinUhlenbeck {
@@ -1006,7 +1076,7 @@ impl<const D: usize> EulerSystem<f32, D> for SystemProbe<D> {
   }
 
   fn jump_sizes(&self) -> Option<JumpSizes<f32>> {
-    Some(PROBE_SIZES)
+    Some(probe_sizes(&self.spec))
   }
 
   fn gamma_draws(&self) -> Option<GammaDraws<f32>> {
@@ -1189,6 +1259,28 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
       lift: Some(probe_lift(1.0 / (N - 1) as f32)),
     },
     SystemProbe {
+      spec: EulerSpec::Bates1996 {
+        drift_c: 0.03,
+        alpha: 0.08,
+        beta: 2.0,
+        sigma: 0.3,
+        rho: -0.6,
+      },
+      x0: [100.0, 0.04],
+      lift: None,
+    },
+    SystemProbe {
+      spec: EulerSpec::Bates1996Reflected {
+        drift_c: 0.03,
+        alpha: 0.08,
+        beta: 2.0,
+        sigma: 0.3,
+        rho: -0.6,
+      },
+      x0: [100.0, 0.04],
+      lift: None,
+    },
+    SystemProbe {
       spec: EulerSpec::CorrelatedInnovation { rho: -0.5 },
       x0: [0.0, 0.0],
       lift: None,
@@ -1350,6 +1442,11 @@ fn every_three_component_family() -> Vec<SystemProbe<3>> {
     x0: [0.0, 0.0002, 0.0],
     lift: None,
   };
+  let compound = SystemProbe {
+    spec: EulerSpec::CompoundPoissonEvents { lambda: 5.0 },
+    x0: [0.0, 0.0, 0.0],
+    lift: None,
+  };
   let double = |sym| {
     let spec = if sym {
       EulerSpec::DoubleHestonReflected {
@@ -1398,6 +1495,7 @@ fn every_three_component_family() -> Vec<SystemProbe<3>> {
     garch,
     threshold,
     exponential,
+    compound,
     double(false),
     double(true),
     SystemProbe {

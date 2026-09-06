@@ -5,7 +5,15 @@
 //! the law and the boundary, not the path.
 
 use ndarray::Array1;
+use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::scalar::ScalarExp;
+use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
+use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
+use stochastic_rs_stochastic::rough::kernel::RlKernel;
+use stochastic_rs_stochastic::volterra::gaussian_polynomial::GaussianPolynomialVolatility;
+use stochastic_rs_stochastic::volterra::square_root::VolterraSquareRoot;
 use stochastic_rs_stochastic::diffusion::cfou::Cfou;
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
 use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
@@ -663,4 +671,159 @@ fn volterra_lift_agrees_with_the_cpu_law_and_the_reference_still_samples() {
       .iter()
       .all(|p| p.len() == 64 && p.iter().all(|v| v.is_finite()))
   );
+}
+
+#[test]
+fn jump_fou_agrees_with_the_cpu_law() {
+  let build = || {
+    JumpFou::<f32, _, _>::new(
+      0.7,
+      2.0,
+      1.0,
+      0.3,
+      3.0,
+      ScalarNormal::<f32>::new(0.05, 0.1),
+      N,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(9),
+    )
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert_eq!(device[0][0], 0.0, "every path starts at x0");
+  all_finite(&device, "jump fOU");
+  agrees(
+    terminal_mean(&host),
+    terminal_mean(&device),
+    0.03,
+    "jump fOU terminal mean",
+  );
+  agrees(
+    terminal_std(&host),
+    terminal_std(&device),
+    0.06,
+    "jump fOU terminal spread",
+  );
+}
+
+/// Exponential inter-arrivals are Poisson arrivals and exponential sizes a
+/// law the kernels draw, so this pair of user-supplied laws runs on the
+/// device; the host's event loop and the kernel's per-step count are the
+/// same law.
+#[test]
+fn jump_fou_custom_with_exponential_laws_agrees_with_the_cpu_law() {
+  let build = || {
+    JumpFOUCustom::<f32, _, _>::new(
+      0.7,
+      2.0,
+      1.0,
+      0.3,
+      N,
+      Some(0.0),
+      Some(1.0),
+      ScalarExp::<f32>::new(3.0),
+      ScalarExp::<f32>::new(10.0),
+      Deterministic::new(41),
+    )
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  all_finite(&device, "custom jump fOU");
+  agrees(
+    terminal_mean(&host),
+    terminal_mean(&device),
+    0.03,
+    "custom jump fOU terminal mean",
+  );
+  agrees(
+    terminal_std(&host),
+    terminal_std(&device),
+    0.06,
+    "custom jump fOU terminal spread",
+  );
+}
+
+#[test]
+fn volterra_square_root_agrees_with_the_cpu_law() {
+  let build = || {
+    VolterraSquareRoot::<f32, _, _>::new(
+      RlKernel::new(0.3, 12),
+      2.0,
+      0.04,
+      0.3,
+      N,
+      Some(0.04),
+      Some(1.0),
+      Deterministic::new(43),
+    )
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert_eq!(device[0][0], 0.04, "every path starts at v0");
+  within(&device, 0.0, f32::INFINITY, "Volterra square root");
+  agrees(
+    terminal_mean(&host),
+    terminal_mean(&device),
+    0.05,
+    "Volterra square root terminal mean",
+  );
+  agrees(
+    terminal_std(&host),
+    terminal_std(&device),
+    0.06,
+    "Volterra square root terminal spread",
+  );
+}
+
+#[test]
+fn gaussian_polynomial_volatility_agrees_with_the_cpu_law() {
+  let build = || {
+    GaussianPolynomialVolatility::<f32, _, _>::new(
+      RlKernel::new(0.3, 12),
+      array![0.2_f32, 0.5, 0.1],
+      N,
+      Some(1.0),
+      Deterministic::new(47),
+    )
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert!(
+    device.iter().all(|p| p[0] == 0.2),
+    "every path starts at the constant term"
+  );
+  all_finite(&device, "Gaussian polynomial volatility");
+  agrees(
+    terminal_mean(&host),
+    terminal_mean(&device),
+    0.08,
+    "Gaussian polynomial volatility terminal mean",
+  );
+  agrees(
+    terminal_std(&host),
+    terminal_std(&device),
+    0.06,
+    "Gaussian polynomial volatility terminal spread",
+  );
+}
+
+/// Nine coefficients exceed the kernels' slots, so the device build samples
+/// on the host and is the host build to the bit.
+#[test]
+fn a_longer_polynomial_keeps_the_process_on_the_host() {
+  let build = || {
+    GaussianPolynomialVolatility::<f32, _, _>::new(
+      RlKernel::new(0.3, 12),
+      array![0.2_f32, 0.5, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.01],
+      N,
+      Some(1.0),
+      Deterministic::new(53),
+    )
+  };
+  assert_eq!(build().on::<Device>().sample_par(8), build().sample_par(8));
 }

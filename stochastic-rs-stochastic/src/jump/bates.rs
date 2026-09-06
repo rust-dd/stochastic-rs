@@ -9,6 +9,8 @@
 //! Financial Studies 9(1), 69–107, DOI: 10.1093/rfs/9.1.69.
 //!
 
+use std::any::Any;
+
 use ndarray::Array1;
 use rand_distr::Distribution;
 #[cfg(feature = "python")]
@@ -17,7 +19,6 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::process::poisson::Poisson;
@@ -380,12 +381,111 @@ where
   }
 }
 
-backend_switch!([T, D, S: SeedExt] Bates1996<T, D, S> { mu, b, r, r_f, lambda, k, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, cgns, cpoisson, seed } via host where  T: FloatExt,  D: Distribution<T> + Send + Sync);
-
-impl<T, D, S: SeedExt, B: HostBackend> ProcessExt<T> for Bates1996<T, D, S, B>
+impl<T, D, S: SeedExt, B> Bates1996<T, D, S, B>
 where
   T: FloatExt,
-  D: Distribution<T> + Send + Sync,
+  D: Distribution<T> + Send + Sync + Any,
+{
+  /// The jump-size law as the Euler engine's kernels draw it, `None` for a
+  /// distribution they do not carry.
+  fn device_jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
+    crate::process::cpoisson::device_jump_sizes(&self.cpoisson.distribution)
+      .and_then(crate::euler::JumpSizes::product)
+  }
+
+  /// Whether a device can run this process: it has no jumps, or its sizes
+  /// follow a law the kernels draw. Anything else samples on the host.
+  fn device_ready(&self) -> bool {
+    self.lambda <= T::zero() || self.device_jump_sizes().is_some()
+  }
+}
+
+impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
+  for Bates1996<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
+{
+  /// The spot's drift arrives compensated by `lambda k`, and the variance
+  /// keeps whichever treatment of the boundary the process was built with.
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let drift_c = self.effective_drift() - self.lambda * self.k;
+    if self.use_sym.unwrap_or(false) {
+      crate::euler::EulerSpec::Bates1996Reflected {
+        drift_c,
+        alpha: self.alpha,
+        beta: self.beta,
+        sigma: self.sigma,
+        rho: self.rho,
+      }
+    } else {
+      crate::euler::EulerSpec::Bates1996 {
+        drift_c,
+        alpha: self.alpha,
+        beta: self.beta,
+        sigma: self.sigma,
+        rho: self.rho,
+      }
+    }
+  }
+
+  fn initial_state(&self) -> [T; 4] {
+    [
+      self.s0.unwrap_or(T::zero()),
+      self.v0.unwrap_or(T::zero()).max(T::zero()),
+      T::zero(),
+      T::zero(),
+    ]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.cgns.dt()
+  }
+
+  /// The jump intensity per unit time; `None` when the process carries none,
+  /// which is what makes a zero-intensity build skip the draw entirely.
+  fn jump_intensity(&self) -> Option<T> {
+    (self.lambda > T::zero()).then_some(self.lambda)
+  }
+
+  /// The size law as the kernels draw it. A law they do not carry never
+  /// reaches a launch — [`ProcessExt::sample`] keeps such a process on the
+  /// host — so asking for one here is a caller bypassing that guard.
+  fn jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
+    if self.lambda <= T::zero() {
+      return None;
+    }
+    Some(self.device_jump_sizes().expect(
+      "Bates1996: the jump-size distribution is not a law the Euler engine compounds multiplicatively on a device; \
+       sample through `ProcessExt`, which keeps it on the host",
+    ))
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 2] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T, D, S: SeedExt] Bates1996<T, D, S> { mu, b, r, r_f, lambda, k, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, cgns, cpoisson, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
+
+impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Bates1996<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
 {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
@@ -423,6 +523,51 @@ where
       jump_distribution: &self.cpoisson.distribution,
       jump_seed: self.cpoisson.seed.derive(),
       seed: self.seed.derive(),
+    }
+  }
+
+  /// Through the Euler engine when the jump-size law is one the device
+  /// kernels draw; any other law keeps the process on the host, chunked
+  /// exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> [Array1<T>; 2] {
+    if self.device_ready() {
+      self.backend.system_sample(self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 2]) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      self.backend.system_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 2]> {
+    if self.device_ready() {
+      self.backend.system_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 2], crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_system_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 2]>, crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_system_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }

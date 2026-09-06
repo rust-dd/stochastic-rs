@@ -34,6 +34,7 @@ mod device_law {
   pub(crate) mod curves;
   pub(crate) mod fractional;
   pub(crate) mod gaussian;
+  pub(crate) mod jumps;
   pub(crate) mod levy;
   pub(crate) mod rows;
   pub(crate) mod systems;

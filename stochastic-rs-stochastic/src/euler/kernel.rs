@@ -62,7 +62,11 @@
 //! when the sizes are normal, since the sum of `n` of those is itself normal,
 //! and a bounded loop when they are double-exponential or tempered-stable,
 //! neither of which has such an aggregation. The tempered-stable law thins
-//! its own candidates, so the sum is over the accepted ones. It is zero for a family that declares no size law.
+//! its own candidates, so the sum is over the accepted ones. A product law
+//! compounds the sizes instead, `∏ (1 + y_j) − 1`, for a step whose jump
+//! multiplies the state, and a one-per-step law takes a single size whatever
+//! the count, for an event-indexed path. It is zero for a family that
+//! declares no size law.
 //!
 //! A family may read `nj`, the number of jumps the step saw: a Poisson draw
 //! with mean `jump_lambda · dt`, by Knuth's product of uniforms from a hash
@@ -269,6 +273,56 @@ REPORT
                 REAL xj = jump_a * STOCH_POW(uu1, jump_b);
                 if (uu2 <= STOCH_EXP(-jump_c * xj)) { js += xj; }
             }
+        }
+        if (jump_law == 4u) {
+            REAL jp = (REAL)1;
+            for (unsigned int j = 0u; j < 32u; j++) {
+                if ((REAL)j >= nj) { break; }
+                unsigned int pa = (g ^ (2654435761u + j * 40503u)) ^ (seed * 2654435761u);
+                pa ^= pa >> 16; pa *= 2246822519u; pa ^= pa >> 13; pa *= 3266489917u; pa ^= pa >> 16;
+                unsigned int pb = (g ^ (668265263u + j * 40503u)) ^ (seed * 2654435761u);
+                pb ^= pb >> 16; pb *= 2246822519u; pb ^= pb >> 13; pb *= 3266489917u; pb ^= pb >> 16;
+                REAL pu1 = (REAL)pa * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6;
+                REAL pu2 = (REAL)pb * (REAL)2.3283064e-10;
+                REAL pz = STOCH_SQRT((REAL)-2.0 * STOCH_LOG(pu1)) * STOCH_COS((REAL)6.283185307179586 * pu2);
+                jp = jp * ((REAL)1 + jump_a + jump_b * pz);
+            }
+            js = jp - (REAL)1;
+        }
+        if (jump_law == 5u) {
+            REAL jp = (REAL)1;
+            for (unsigned int j = 0u; j < 32u; j++) {
+                if ((REAL)j >= nj) { break; }
+                unsigned int ka = (g ^ (2654435761u + j * 40503u)) ^ (seed * 2654435761u);
+                ka ^= ka >> 16; ka *= 2246822519u; ka ^= ka >> 13; ka *= 3266489917u; ka ^= ka >> 16;
+                unsigned int kb = (g ^ (668265263u + j * 40503u)) ^ (seed * 2654435761u);
+                kb ^= kb >> 16; kb *= 2246822519u; kb ^= kb >> 13; kb *= 3266489917u; kb ^= kb >> 16;
+                REAL up = (REAL)ka * (REAL)2.3283064e-10;
+                REAL ue = (REAL)kb * (REAL)2.3283064e-10;
+                REAL ee = -STOCH_LOG((REAL)1 - ue);
+                jp = jp * ((REAL)1 + ((up < jump_a) ? (ee / jump_b) : (-(ee / jump_c))));
+            }
+            js = jp - (REAL)1;
+        }
+        if (jump_law == 6u) {
+            unsigned int ja = (g ^ 1103515245u) ^ (seed * 2654435761u);
+            ja ^= ja >> 16; ja *= 2246822519u; ja ^= ja >> 13; ja *= 3266489917u; ja ^= ja >> 16;
+            unsigned int jb = (g ^ 1013904223u) ^ (seed * 2654435761u);
+            jb ^= jb >> 16; jb *= 2246822519u; jb ^= jb >> 13; jb *= 3266489917u; jb ^= jb >> 16;
+            REAL ua = (REAL)ja * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6;
+            REAL ub = (REAL)jb * (REAL)2.3283064e-10;
+            REAL zj = STOCH_SQRT((REAL)-2.0 * STOCH_LOG(ua)) * STOCH_COS((REAL)6.283185307179586 * ub);
+            js = jump_a + jump_b * zj;
+        }
+        if (jump_law == 7u) {
+            unsigned int ka = (g ^ 2654435761u) ^ (seed * 2654435761u);
+            ka ^= ka >> 16; ka *= 2246822519u; ka ^= ka >> 13; ka *= 3266489917u; ka ^= ka >> 16;
+            unsigned int kb = (g ^ 668265263u) ^ (seed * 2654435761u);
+            kb ^= kb >> 16; kb *= 2246822519u; kb ^= kb >> 13; kb *= 3266489917u; kb ^= kb >> 16;
+            REAL up = (REAL)ka * (REAL)2.3283064e-10;
+            REAL ue = (REAL)kb * (REAL)2.3283064e-10;
+            REAL ee = -STOCH_LOG((REAL)1 - ue);
+            js = (up < jump_a) ? (ee / jump_b) : (-(ee / jump_c));
         }
         if (has_lift != 0u) {
 LIFT

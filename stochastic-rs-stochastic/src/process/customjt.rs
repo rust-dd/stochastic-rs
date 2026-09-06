@@ -12,6 +12,8 @@
 //! type that attaches jump sizes on top.
 //!
 
+use std::any::Any;
+
 use ndarray::Array1;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -20,7 +22,6 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -188,12 +189,74 @@ where
   }
 }
 
-backend_switch!([T, D, S: SeedExt] CustomJt<T, D, S> { n, t_max, distribution, seed } via host where  T: FloatExt,  D: Distribution<T> + Send + Sync);
-
-impl<T, D, S: SeedExt, B: HostBackend> ProcessExt<T> for CustomJt<T, D, S, B>
+impl<T, D, S: SeedExt, B> CustomJt<T, D, S, B>
 where
   T: FloatExt,
-  D: Distribution<T> + Send + Sync,
+  D: Distribution<T> + Send + Sync + Any,
+{
+  /// The arrival intensity when the inter-arrival law is exponential, which
+  /// is when the arrivals are the Poisson stream the kernels draw.
+  fn device_intensity(&self) -> Option<T> {
+    crate::process::cpoisson::device_arrival_rate(&self.distribution)
+  }
+
+  /// Whether a device can run this process: a fixed number of arrivals — the
+  /// horizon mode has no grid — under an exponential inter-arrival law.
+  fn device_ready(&self) -> bool {
+    self.n.is_some() && self.device_intensity().is_some()
+  }
+}
+
+impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for CustomJt<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
+{
+  /// Poisson arrivals at the exponential law's rate. Any other law never
+  /// reaches a launch — [`ProcessExt::sample`] keeps it on the host — so
+  /// asking here is a caller bypassing that guard.
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::PoissonArrivals {
+      lambda: self.device_intensity().expect(
+        "CustomJt: the inter-arrival distribution is not exponential, which is the only arrival \
+         law the Euler engine draws on a device; sample through `ProcessExt`, which keeps it on \
+         the host",
+      ),
+    }
+  }
+
+  fn initial_value(&self) -> T {
+    T::zero()
+  }
+
+  fn grid_points(&self) -> usize {
+    self
+      .n
+      .expect("the Euler engine describes CustomJt's count mode; horizon mode has no grid")
+  }
+
+  fn horizon(&self) -> T {
+    T::one()
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T, D, S: SeedExt] CustomJt<T, D, S> { n, t_max, distribution, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
+
+impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for CustomJt<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
 {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -203,6 +266,51 @@ where
 
   fn sampler(&self) -> CustomJtSampler<'_, T, D> {
     self.sampler_impl(&self.seed)
+  }
+
+  /// Through the Euler engine when the arrival count is fixed and the
+  /// inter-arrivals are exponential; anything else keeps the process on the host,
+  /// chunked exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> Array1<T> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::euler_sample(&self.backend, self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::euler_paths_map(&self.backend, self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::euler_paths(&self.backend, self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::try_sample(&self.backend, self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::try_euler_paths(&self.backend, self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
+    }
   }
 }
 

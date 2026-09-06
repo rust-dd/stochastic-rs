@@ -68,7 +68,6 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::noise::gn::Gn;
 use crate::rough::markov_lift::RoughSimd;
 use crate::traits::FloatExt;
@@ -101,6 +100,9 @@ where
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
+  /// The Markov lift of `kernel` at the grid spacing, what a device replays
+  /// node by node; rebuilt whenever the grid changes.
+  pub(crate) lift: VolterraLift<T, K>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
@@ -125,6 +127,7 @@ where
       v0: self.v0,
       t: self.t,
       seed: self.seed.clone(),
+      lift: self.lift.clone(),
     }
   }
 }
@@ -155,6 +158,7 @@ where
     if let Some(v) = v0 {
       assert!(v >= T::zero(), "v0 must be non-negative");
     }
+    let lift = VolterraLift::new(kernel.clone(), grid_spacing(n, t));
     Self {
       backend: Cpu,
       kernel,
@@ -165,8 +169,14 @@ where
       v0,
       t,
       seed,
+      lift,
     }
   }
+}
+
+/// The grid spacing of `n` points over `[0, t]`, `t` defaulting to one.
+fn grid_spacing<T: FloatExt>(n: usize, t: Option<T>) -> T {
+  t.unwrap_or(T::one()) / T::from_usize_(n - 1)
 }
 
 impl<T: FloatExt, K, S: SeedExt, B> VolterraSquareRoot<T, K, S, B>
@@ -202,6 +212,7 @@ where
   pub fn with_steps(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must be at least 2");
     self.n = n;
+    self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(n, self.t));
     self
   }
 
@@ -217,6 +228,7 @@ where
   #[must_use]
   pub fn with_horizon(mut self, t: T) -> Self {
     self.t = Some(t);
+    self.lift = VolterraLift::new(self.kernel.clone(), grid_spacing(self.n, Some(t)));
     self
   }
 
@@ -228,9 +240,58 @@ where
   }
 }
 
-backend_switch!([T: FloatExt + RoughSimd, K, S: SeedExt] VolterraSquareRoot<T, K, S> { kernel, kappa, theta, nu, n, v0, t, seed } via host where  K: VolterraKernel<T> + Send + Sync);
+impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: crate::euler::EulerBackend<T>>
+  crate::euler::EulerCoefficients<T> for VolterraSquareRoot<T, K, S, B>
+where
+  K: VolterraKernel<T> + Send + Sync,
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::VolterraSquareRoot {
+      kappa: self.kappa,
+      theta: self.theta,
+      nu: self.nu,
+    }
+  }
 
-impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: HostBackend> ProcessExt<T>
+  fn initial_value(&self) -> T {
+    self.v0.unwrap_or(self.theta)
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  /// The lift's nodes, decays and weights, and the boundary terms of its
+  /// first step, exactly as the host's stepper holds them.
+  fn lift_spec(&self) -> Option<crate::euler::LiftSpec<'_, T>> {
+    Some(crate::euler::LiftSpec {
+      decay: self.lift.exp_neg_x_dt.as_slice().expect("contiguous"),
+      weight: self.lift.we.as_slice().expect("contiguous"),
+      drift_scale: self.lift.one_minus_e_over_x.as_slice().expect("contiguous"),
+      drift_boundary: self.lift.drift_boundary,
+      diffusion_boundary: self.lift.diffusion_boundary,
+      x0: self.v0.unwrap_or(self.theta),
+    })
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt + RoughSimd, K, S: SeedExt] VolterraSquareRoot<T, K, S> { kernel, kappa, theta, nu, n, v0, t, seed, lift } via euler where  K: VolterraKernel<T> + Send + Sync);
+
+impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for VolterraSquareRoot<T, K, S, B>
 where
   K: VolterraKernel<T> + Send + Sync,
@@ -257,6 +318,29 @@ where
         seed: self.seed.derive(),
       },
     }
+  }
+
+  /// Through the Euler engine: on a device the lift is replayed in the
+  /// kernel, on the host devices it is this process's own sampler, chunked
+  /// exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> Array1<T> {
+    self.backend.euler_sample(self)
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    self.backend.euler_paths_map(self, m, f)
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    self.backend.euler_paths(self, m)
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    self.backend.try_sample(self)
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    self.backend.try_euler_paths(self, m)
   }
 }
 

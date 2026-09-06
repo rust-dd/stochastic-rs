@@ -15,6 +15,8 @@
 //! plus an independent jump driver) is this crate's own composition
 //! rather than a single named model from one paper.
 //!
+use std::any::Any;
+
 use ndarray::Array1;
 use rand_distr::Distribution;
 #[cfg(feature = "python")]
@@ -168,10 +170,11 @@ where
   }
 }
 
-impl<T, D, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for JumpFou<T, D, S, B>
+impl<T, D, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
+  for JumpFou<T, D, S, B>
 where
   T: FloatExt,
-  D: Distribution<T> + Send + Sync,
+  D: Distribution<T> + Send + Sync + Any,
 {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -200,6 +203,51 @@ where
       jump_distribution: &self.cpoisson.distribution,
       lambda: self.lambda,
       jump_seed: self.cpoisson.seed.derive(),
+    }
+  }
+
+  /// Through the Euler engine when the jump-size law is one the device
+  /// kernels draw; any other law keeps the process on the host, chunked
+  /// exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> Array1<T> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::euler_sample(&self.fgn.backend, self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::euler_paths_map(&self.fgn.backend, self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::euler_paths(&self.fgn.backend, self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::try_sample(&self.fgn.backend, self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::try_euler_paths(&self.fgn.backend, self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }
@@ -284,7 +332,96 @@ where
   }
 }
 
-backend_switch!([T, D, S: SeedExt] JumpFou<T, D, S> { hurst, theta, mu, sigma, n, x0, t, lambda, cpoisson, seed } via fgn
+impl<T, D, S: SeedExt, B> JumpFou<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
+{
+  /// The jump-size law as the Euler engine's kernels draw it, `None` for a
+  /// distribution they do not carry.
+  fn device_jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
+    crate::process::cpoisson::device_jump_sizes(&self.cpoisson.distribution)
+  }
+
+  /// Whether a device can run this process: it has no jumps, or its sizes
+  /// follow a law the kernels draw. Anything else samples on the host.
+  fn device_ready(&self) -> bool {
+    self.lambda <= T::zero() || self.device_jump_sizes().is_some()
+  }
+}
+
+impl<T, D, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::euler::EulerCoefficients<T> for JumpFou<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::JumpFractionalOu {
+      theta: self.theta,
+      mu: self.mu,
+      sigma: self.sigma,
+    }
+  }
+
+  fn initial_value(&self) -> T {
+    self.x0.unwrap_or(T::zero())
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.fgn.dt()
+  }
+
+  fn fgn_spec(&self) -> Option<crate::euler::FgnSpec<'_, T>> {
+    Some(crate::euler::FgnSpec {
+      sqrt_eigenvalues: self.fgn.sqrt_eigenvalues.as_slice().expect("contiguous"),
+      n: self.fgn.n,
+      offset: self.fgn.offset,
+      hurst: self.fgn.hurst.to_f64().unwrap_or(0.5),
+      t: self.fgn.t.unwrap_or(T::one()).to_f64().unwrap_or(1.0),
+      streams: 1,
+    })
+  }
+
+  /// The jump intensity per unit time; `None` when the process carries none,
+  /// which is what makes a zero-intensity build skip the draw entirely.
+  fn jump_intensity(&self) -> Option<T> {
+    (self.lambda > T::zero()).then_some(self.lambda)
+  }
+
+  /// The size law as the kernels draw it. A law they do not carry never
+  /// reaches a launch — [`ProcessExt::sample`] keeps such a process on the
+  /// host — so asking for one here is a caller bypassing that guard.
+  fn jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
+    if self.lambda <= T::zero() {
+      return None;
+    }
+    Some(self.device_jump_sizes().expect(
+      "JumpFou: the jump-size distribution is not a law the Euler engine draws on a device; \
+       sample through `ProcessExt`, which keeps it on the host",
+    ))
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T, D, S: SeedExt] JumpFou<T, D, S> { hurst, theta, mu, sigma, n, x0, t, lambda, cpoisson, seed } via fgn euler
   where T: FloatExt, D: Distribution<T> + Send + Sync);
 
 #[cfg(feature = "python")]

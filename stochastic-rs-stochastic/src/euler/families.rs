@@ -2210,6 +2210,96 @@ euler_families! {
       shock (rho * ds + sqrt(negate(rho * rho - lit(1.0))) * dq)
     },
 
+  /// A diffusion with additive compound-Poisson jumps, `x + drift dt + sigma
+  /// dW + J`, the jump sum `js` under whatever size law the host declares.
+  /// Merton's and Kou's jump diffusions and the Lévy diffusion all step this,
+  /// differing only in the drift they hand over, already compensated and
+  /// multiplied by `dt`.
+  98 => AdditiveJumpDiffusion { drift_dt, sigma }
+    state (x)
+    noise (dw)
+    step { x + drift_dt + sigma * dw + js }
+    report { x },
+
+  /// Bates (1996) by Euler in the spot rather than the log-spot: the drift
+  /// arrives compensated, the jump multiplies the spot by `1 + js` with `js`
+  /// under a product size law, `∏ (1 + y_j) − 1`, and the variance is
+  /// truncated at zero.
+  99 => Bates1996 { drift_c, alpha, beta, sigma, rho }
+    state (s, v)
+    noise (dw, dq)
+    step {
+      bind vp = positive(v);
+      bind sv = sqrt(vp);
+      bind dv = rho * dw + sqrt(negate(rho * rho - lit(1.0))) * dq;
+      s + drift_c * s * dt + s * sv * dw + s * js,
+      positive(vp + (alpha - beta * vp) * dt + sigma * sv * dv)
+    }
+    report { s, v },
+
+  /// [`Bates1996`](Family::Bates1996) with the variance reflected at zero.
+  100 => Bates1996Reflected { drift_c, alpha, beta, sigma, rho }
+    state (s, v)
+    noise (dw, dq)
+    step {
+      bind vp = abs(v);
+      bind sv = sqrt(vp);
+      bind dv = rho * dw + sqrt(negate(rho * rho - lit(1.0))) * dq;
+      s + drift_c * s * dt + s * sv * dw + s * js,
+      abs(vp + (alpha - beta * vp) * dt + sigma * sv * dv)
+    }
+    report { s, v },
+
+  /// An event-indexed compound Poisson path: every step is one arrival, so
+  /// the first slot advances by an exponential waiting time, the third takes
+  /// the arrival's single size — `js` under a one-per-step law — and the
+  /// second accumulates it.
+  101 => CompoundPoissonEvents { lambda }
+    state (t, c, j)
+    noise (dz)
+    step {
+      t + negate(ln(max(u, lit(1.0e-7)))) * recip(lambda),
+      c + js,
+      js
+    }
+    report { t, c, j },
+
+  /// A fractional Ornstein-Uhlenbeck process with compound-Poisson jumps:
+  /// the fractional increments come from the device's embedding and the jump
+  /// sum from the step's own draw.
+  102 => JumpFractionalOu { theta, mu, sigma }
+    state (x)
+    noise (dz)
+    step { x + theta * (mu - x) * dt + sigma * dz + js }
+    report { x },
+
+  /// A square-root Volterra process under the Markov lift of its kernel:
+  /// mean reversion and diffusion enter through the lift, the lifted value
+  /// is the next state, and the state is reported truncated at zero as the
+  /// host does — rough Heston's variance when the kernel is
+  /// Riemann-Liouville.
+  103 => VolterraSquareRoot { kappa, theta, nu }
+    state (v)
+    noise (dz)
+    step { lv }
+    report { positive(v) }
+    lift {
+      drift (kappa * (theta - positive(v)))
+      diffusion (nu * sqrt(positive(v)))
+      shock (dz)
+    },
+
+  /// A polynomial of a Gaussian Volterra process: the state is the lifted
+  /// Gaussian — no drift, unit diffusion — and the report evaluates the
+  /// polynomial by Horner's rule over up to eight coefficients in rising
+  /// order, the unused ones zero.
+  104 => GaussianPolynomialVolatility { c0, c1, c2, c3, c4, c5, c6, c7 }
+    state (x)
+    noise (dz)
+    step { lv }
+    report { c0 + x * (c1 + x * (c2 + x * (c3 + x * (c4 + x * (c5 + x * (c6 + x * c7)))))) }
+    lift { drift (lit(0.0)) diffusion (lit(1.0)) shock (dz) },
+
   2 => SquareRoot { kappa, theta, sigma }
     state (x)
     noise (dz)

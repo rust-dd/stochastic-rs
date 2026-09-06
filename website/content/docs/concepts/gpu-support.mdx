@@ -13,19 +13,24 @@ backends, and what the rest do.
 | Family | Processes | Capability bound | `Cpu` | `Accelerate` | `Metal` | `Cuda` | `Cubecl` |
 |---|---|---|---|---|---|---|---|
 | fGN noise | `Fgn` (1) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` | CubeCL FFT, `f32` only |
-| Euler engine, one component | 72 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
-| Euler engine, systems | 27 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
-| Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `FVasicek`, `Cfgns`, `Cfbms`, `Cfou` (9, counted above) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same MSL kernel | fGN pipeline feeds the same NVRTC kernel | fGN pipeline feeds the same CubeCL kernel |
-| Host only | the remaining 19 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
+| Euler engine, one component | 80 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
+| Euler engine, systems | 30 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
+| Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `FVasicek`, `Cfgns`, `Cfbms`, `Cfou`, `JumpFou`, `JumpFOUCustom` (11, counted above) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same MSL kernel | fGN pipeline feeds the same NVRTC kernel | fGN pipeline feeds the same CubeCL kernel |
+| Host only | the remaining 20 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
 
-The 99 processes on the engine cover the diffusions, the stochastic-volatility
+The 110 processes on the engine cover the diffusions, the stochastic-volatility
 models under both their Euler and quadratic-exponential schemes (`Heston`,
 `HestonLog`, `DoubleHeston`, `Heston2D`, `Sabr`, `Bergomi`,
 `HestonStochCorr`, `BatesSvj`, `Hkde`), the short-rate models including the
 curve-driven ones (`HullWhite`, `HullWhite2F`, `HoLee`, `BlackKarasinski`,
 `CirPlusPlus`, `Cir2F`, `DuffieKan`, `DuffieKanJumpExp`, `Vasicek`,
 `FVasicek`), the fractional processes, the jump models (`MjdLog`, `BatesSvj`,
-`Hkde`, `HawkesJD`, `DuffieKanJumpExp`), the Lévy processes whose increment
+`Hkde`, `HawkesJD`, `DuffieKanJumpExp`, and the ones generic over a
+user-supplied size law — `Merton`, `Kou`, `LevyDiffusion`, `Bates1996`,
+`JumpFou`, `JumpFOUCustom` — whose `ScalarNormal` or `ScalarExp` law the
+engine recognises at runtime and draws in the kernel, Bates's as the product
+`∏(1 + y) − 1` its multiplicative jump needs; any other law keeps the process
+on the host through the same calls), the Lévy processes whose increment
 is one draw with no rejection (`Ig`, `Nig`, `IGSubordinator`,
 `PoissonSubordinator`, `AlphaStableSubordinator`, `GammaSubordinator`,
 `TemperedStableSubordinator`, `Vg`, `BilateralGamma`, `BilateralGammaMotion`,
@@ -49,8 +54,11 @@ thresholds; five or more regimes stay on the host), the Riemann-Liouville
 family under the Markov lift of its rough kernel (`RlFBm`, `RlFOU`,
 `RlBlackScholes`, `RlHeston`, and `Volterra`'s lift branch — the lift's node
 states live in the kernel's own per-path arrays, see below; `Volterra`'s
-reference-convolution branch stays on the host) and `Poisson` in its count
-mode.
+reference-convolution branch stays on the host), the two lift-stepped
+Volterra models (`VolterraSquareRoot`, and `GaussianPolynomialVolatility` up
+to eight coefficients) and the event-indexed processes in their count mode
+(`Poisson`, `CompoundPoisson`, and `CustomJt` / `CompoundCustom` when their
+inter-arrival law is the scalar exponential), one arrival per step.
 
 What stays on the host, and why. The engine steps a bounded forward
 recursion over four scalar state slots, so what rules a process out is
@@ -83,8 +91,9 @@ grid:
   the way `Cir2F`'s `phi(t)` is. A closure of time alone is not a blocker.
 - **Point processes on their own clock** (`Hawkes`, `MultivariateHawkes`,
   `Ctrw`): the output length is the number of events, not the grid.
-  `Poisson` splits here — its count mode is a fixed-length running sum and
-  reaches the engine, its horizon mode does not.
+  `Poisson`, `CompoundPoisson`, `CustomJt` and `CompoundCustom` split here —
+  their count mode is a fixed-length running sum and reaches the engine,
+  their horizon mode does not.
 - **A per-step inversion or search** (`InverseAlphaStableSubordinator`): the
   step scans an auxiliary path rather than drawing a value.
 - **More regimes than the four the chain family carries**
@@ -104,7 +113,7 @@ grid:
 
 ## What a family is
 
-A process reaches a device by declaring which of the engine's **98 families**
+A process reaches a device by declaring which of the engine's **105 families**
 it steps, not by writing a kernel. A family is one entry in
 `stochastic-rs-stochastic/src/euler/families.rs` — its parameters, its state
 components, its noise components, one step expression per component and one
@@ -114,9 +123,11 @@ is a declaration plus an `EulerCoefficients` (one component) or `EulerSystem`
 (more than one) impl; no kernel is edited.
 
 The engine's kernels carry four state slots, four independent noise
-components, twenty scalar parameters, one time-varying coefficient, two
-uniforms, a Poisson jump count, the sum of that step's jump sizes and up to
-two Gamma draws. A family with a `lift` clause runs under the Markov lift of a
+components, twenty scalar parameters, two uniforms, a Poisson jump count,
+the sum of that step's jump sizes — under a normal, double-exponential or
+tempered-stable law, the first two also compounded as `∏(1 + y) − 1` for a
+multiplicative jump or taken one per step for an event-indexed path — and up
+to two Gamma draws. A family with a `lift` clause runs under the Markov lift of a
 rough Volterra kernel: the frame keeps up to 176 nodes' two state vectors per
 path, evaluates the family's drift, diffusion and shock before the step and
 hands it the lifted value as `lv`. A launch binds up to eight time-varying

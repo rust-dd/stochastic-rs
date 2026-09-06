@@ -231,6 +231,52 @@ fn euler_paths_kernel(
           }
         }
       }
+      if jump_law == 3u32 {
+        for j in 0..32u32 {
+          if f32::cast_from(j) < nj {
+            let uu1 = uniform(g ^ (2654435761u32 + j * 40503u32), seed) * 0.999998f32 + 1.0e-6f32;
+            let uu2 = uniform(g ^ (668265263u32 + j * 40503u32), seed);
+            let xj = jump_a * Powf::powf(uu1, jump_b);
+            js += select(uu2 <= Exp::exp(0.0f32 - jump_c * xj), xj, 0.0f32);
+          }
+        }
+      }
+      if jump_law == 4u32 {
+        let mut jp = 1.0f32;
+        for j in 0..32u32 {
+          if f32::cast_from(j) < nj {
+            let pu1 = uniform(g ^ (2654435761u32 + j * 40503u32), seed) * 0.999998f32 + 1.0e-6f32;
+            let pu2 = uniform(g ^ (668265263u32 + j * 40503u32), seed);
+            let pz = Sqrt::sqrt(-2.0f32 * Log::ln(pu1)) * Cos::cos(core::f32::consts::TAU * pu2);
+            jp *= 1.0f32 + jump_a + jump_b * pz;
+          }
+        }
+        js = jp - 1.0f32;
+      }
+      if jump_law == 5u32 {
+        let mut jp = 1.0f32;
+        for j in 0..32u32 {
+          if f32::cast_from(j) < nj {
+            let up = uniform(g ^ (2654435761u32 + j * 40503u32), seed);
+            let ue = uniform(g ^ (668265263u32 + j * 40503u32), seed);
+            let ee = 0.0f32 - Log::ln(1.0f32 - ue);
+            jp *= 1.0f32 + select(up < jump_a, ee / jump_b, 0.0f32 - ee / jump_c);
+          }
+        }
+        js = jp - 1.0f32;
+      }
+      if jump_law == 6u32 {
+        let ua = uniform(g ^ 1103515245u32, seed) * 0.999998f32 + 1.0e-6f32;
+        let ub = uniform(g ^ 1013904223u32, seed);
+        let zj = Sqrt::sqrt(-2.0f32 * Log::ln(ua)) * Cos::cos(core::f32::consts::TAU * ub);
+        js = jump_a + jump_b * zj;
+      }
+      if jump_law == 7u32 {
+        let up = uniform(g ^ 2654435761u32, seed);
+        let ue = uniform(g ^ 668265263u32, seed);
+        let ee = 0.0f32 - Log::ln(1.0f32 - ue);
+        js = select(up < jump_a, ee / jump_b, 0.0f32 - ee / jump_c);
+      }
       u = uniform(g ^ 2135587861u32, seed);
       u2 = uniform(g ^ 3266489917u32, seed);
       if has_lift != 0u32 {
@@ -488,6 +534,18 @@ fn lift_coefficient(
   }
   if family == 97u32 {
     value = cube_lift::RiemannLiouvilleHeston(
+      which, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2, lv, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 103u32 {
+    value = cube_lift::VolterraSquareRoot(
+      which, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2, lv, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 104u32 {
+    value = cube_lift::GaussianPolynomialVolatility(
       which, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
       u2, lv, dz0, dz1, dz2, dz3,
     );
@@ -1009,6 +1067,48 @@ fn step(
   }
   if family == 97u32 {
     stepped = cube::RiemannLiouvilleHeston(
+      component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
+      gm2, u, u2, lv, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 98u32 {
+    stepped = cube::AdditiveJumpDiffusion(
+      component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
+      gm2, u, u2, lv, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 99u32 {
+    stepped = cube::Bates1996(
+      component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
+      gm2, u, u2, lv, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 100u32 {
+    stepped = cube::Bates1996Reflected(
+      component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
+      gm2, u, u2, lv, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 101u32 {
+    stepped = cube::CompoundPoissonEvents(
+      component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
+      gm2, u, u2, lv, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 102u32 {
+    stepped = cube::JumpFractionalOu(
+      component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
+      gm2, u, u2, lv, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 103u32 {
+    stepped = cube::VolterraSquareRoot(
+      component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
+      gm2, u, u2, lv, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 104u32 {
+    stepped = cube::GaussianPolynomialVolatility(
       component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
       gm2, u, u2, lv, dz0, dz1, dz2, dz3,
     );
@@ -1627,6 +1727,48 @@ fn report(
   }
   if family == 97u32 {
     reported = cube_report::RiemannLiouvilleHeston(
+      component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2, lv,
+    );
+  }
+  if family == 98u32 {
+    reported = cube_report::AdditiveJumpDiffusion(
+      component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2, lv,
+    );
+  }
+  if family == 99u32 {
+    reported = cube_report::Bates1996(
+      component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2, lv,
+    );
+  }
+  if family == 100u32 {
+    reported = cube_report::Bates1996Reflected(
+      component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2, lv,
+    );
+  }
+  if family == 101u32 {
+    reported = cube_report::CompoundPoissonEvents(
+      component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2, lv,
+    );
+  }
+  if family == 102u32 {
+    reported = cube_report::JumpFractionalOu(
+      component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2, lv,
+    );
+  }
+  if family == 103u32 {
+    reported = cube_report::VolterraSquareRoot(
+      component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2, lv,
+    );
+  }
+  if family == 104u32 {
+    reported = cube_report::GaussianPolynomialVolatility(
       component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
       u2, lv,
     );

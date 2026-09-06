@@ -4,6 +4,8 @@
 //! dX_t=\kappa(\theta-X_t)dt+\sigma dB_t^H+dJ_t
 //! $$
 //!
+use std::any::Any;
+
 use ndarray::Array1;
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -101,10 +103,11 @@ where
   }
 }
 
-impl<T, D, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for JumpFOUCustom<T, D, S, B>
+impl<T, D, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
+  for JumpFOUCustom<T, D, S, B>
 where
   T: FloatExt,
-  D: Distribution<T> + Send + Sync,
+  D: Distribution<T> + Send + Sync + Any,
 {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -132,6 +135,51 @@ where
       jump_times: &self.jump_times,
       jump_sizes: &self.jump_sizes,
       rng: self.seed.rng(),
+    }
+  }
+
+  /// Through the Euler engine when the inter-arrivals are exponential and
+  /// the jump-size law is one the device kernels draw; anything else keeps the process on the host,
+  /// chunked exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> Array1<T> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::euler_sample(&self.fgn.backend, self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::euler_paths_map(&self.fgn.backend, self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::euler_paths(&self.fgn.backend, self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::try_sample(&self.fgn.backend, self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::try_euler_paths(&self.fgn.backend, self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }
@@ -234,7 +282,102 @@ where
   }
 }
 
-backend_switch!([T, D, S: SeedExt] JumpFOUCustom<T, D, S> { hurst, theta, mu, sigma, n, x0, t, jump_times, jump_sizes, seed } via fgn
+impl<T, D, S: SeedExt, B> JumpFOUCustom<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
+{
+  /// The arrival intensity when the inter-arrival law is exponential, which
+  /// is when the arrivals are the Poisson stream the kernels count.
+  fn device_intensity(&self) -> Option<T> {
+    crate::process::cpoisson::device_arrival_rate(&self.jump_times)
+  }
+
+  /// The jump-size law as the Euler engine's kernels draw it, `None` for a
+  /// distribution they do not carry.
+  fn device_jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
+    crate::process::cpoisson::device_jump_sizes(&self.jump_sizes)
+  }
+
+  /// Whether a device can run this process: exponential inter-arrivals and a
+  /// size law the kernels draw. Any other pair samples on the host.
+  fn device_ready(&self) -> bool {
+    self.device_intensity().is_some() && self.device_jump_sizes().is_some()
+  }
+}
+
+impl<T, D, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::euler::EulerCoefficients<T> for JumpFOUCustom<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::JumpFractionalOu {
+      theta: self.theta,
+      mu: self.mu,
+      sigma: self.sigma,
+    }
+  }
+
+  fn initial_value(&self) -> T {
+    self.x0.unwrap_or(T::zero())
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.fgn.dt()
+  }
+
+  fn fgn_spec(&self) -> Option<crate::euler::FgnSpec<'_, T>> {
+    Some(crate::euler::FgnSpec {
+      sqrt_eigenvalues: self.fgn.sqrt_eigenvalues.as_slice().expect("contiguous"),
+      n: self.fgn.n,
+      offset: self.fgn.offset,
+      hurst: self.fgn.hurst.to_f64().unwrap_or(0.5),
+      t: self.fgn.t.unwrap_or(T::one()).to_f64().unwrap_or(1.0),
+      streams: 1,
+    })
+  }
+
+  /// The Poisson intensity the exponential inter-arrival law amounts to. A
+  /// law that is not exponential never reaches a launch — [`ProcessExt::sample`]
+  /// keeps such a process on the host — so asking here is a caller bypassing
+  /// that guard.
+  fn jump_intensity(&self) -> Option<T> {
+    Some(self.device_intensity().expect(
+      "JumpFOUCustom: the inter-arrival distribution is not exponential, which is the only \
+       arrival law the Euler engine draws on a device; sample through `ProcessExt`, which keeps \
+       it on the host",
+    ))
+  }
+
+  fn jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
+    Some(self.device_jump_sizes().expect(
+      "JumpFOUCustom: the jump-size distribution is not a law the Euler engine draws on a \
+       device; sample through `ProcessExt`, which keeps it on the host",
+    ))
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T, D, S: SeedExt] JumpFOUCustom<T, D, S> { hurst, theta, mu, sigma, n, x0, t, jump_times, jump_sizes, seed } via fgn euler
   where T: FloatExt, D: Distribution<T> + Send + Sync);
 
 #[cfg(test)]

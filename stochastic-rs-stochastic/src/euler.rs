@@ -705,6 +705,37 @@ pub enum EulerSpec<T: FloatExt> {
     nu: T,
     rho: T,
   },
+  /// A diffusion with additive compound-Poisson jumps, the drift handed over
+  /// already compensated and multiplied by `dt`.
+  AdditiveJumpDiffusion { drift_dt: T, sigma: T },
+  /// Bates (1996) stepped by Euler in the spot, the jump multiplicative under
+  /// a product size law, the variance truncated at zero.
+  Bates1996 {
+    drift_c: T,
+    alpha: T,
+    beta: T,
+    sigma: T,
+    rho: T,
+  },
+  /// [`Bates1996`](EulerSpec::Bates1996) with the variance reflected.
+  Bates1996Reflected {
+    drift_c: T,
+    alpha: T,
+    beta: T,
+    sigma: T,
+    rho: T,
+  },
+  /// An event-indexed compound Poisson path — arrival times, cumulative
+  /// jumps and the jumps themselves — one arrival per step, the size under a
+  /// one-per-step law.
+  CompoundPoissonEvents { lambda: T },
+  /// A fractional Ornstein-Uhlenbeck process with compound-Poisson jumps.
+  JumpFractionalOu { theta: T, mu: T, sigma: T },
+  /// A square-root Volterra process under the launch's Markov lift.
+  VolterraSquareRoot { kappa: T, theta: T, nu: T },
+  /// A polynomial of a Gaussian Volterra process under the launch's Markov
+  /// lift, up to eight coefficients in rising order, the unused ones zero.
+  GaussianPolynomialVolatility { coefficients: [T; 8] },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1328,6 +1359,42 @@ impl<T: FloatExt> EulerSpec<T> {
         Family::RiemannLiouvilleBlackScholes.code(),
         pad([s0, sigma]),
       ),
+      EulerSpec::AdditiveJumpDiffusion { drift_dt, sigma } => {
+        (Family::AdditiveJumpDiffusion.code(), pad([drift_dt, sigma]))
+      }
+      EulerSpec::Bates1996 {
+        drift_c,
+        alpha,
+        beta,
+        sigma,
+        rho,
+      } => (
+        Family::Bates1996.code(),
+        pad([drift_c, alpha, beta, sigma, rho]),
+      ),
+      EulerSpec::Bates1996Reflected {
+        drift_c,
+        alpha,
+        beta,
+        sigma,
+        rho,
+      } => (
+        Family::Bates1996Reflected.code(),
+        pad([drift_c, alpha, beta, sigma, rho]),
+      ),
+      EulerSpec::CompoundPoissonEvents { lambda } => {
+        (Family::CompoundPoissonEvents.code(), pad([lambda]))
+      }
+      EulerSpec::JumpFractionalOu { theta, mu, sigma } => {
+        (Family::JumpFractionalOu.code(), pad([theta, mu, sigma]))
+      }
+      EulerSpec::VolterraSquareRoot { kappa, theta, nu } => {
+        (Family::VolterraSquareRoot.code(), pad([kappa, theta, nu]))
+      }
+      EulerSpec::GaussianPolynomialVolatility { coefficients } => (
+        Family::GaussianPolynomialVolatility.code(),
+        pad(coefficients),
+      ),
     }
   }
 }
@@ -1566,6 +1633,18 @@ pub enum JumpSizes<T: FloatExt> {
   /// with probability `exp(−μ·candidate)`, so the sum is over the accepted
   /// ones. `neg_inv_alpha` is `−1/α`, which depends on `α` alone.
   TemperedStable { eps: T, neg_inv_alpha: T, mu: T },
+  /// Normal sizes compounded multiplicatively, `∏ (1 + mean + sd·z_j) − 1`
+  /// over the step's jumps: what a jump that multiplies the state needs, and
+  /// what a single aggregated normal cannot express once a step sees two.
+  NormalProduct { mean: T, sd: T },
+  /// [`DoubleExponential`](JumpSizes::DoubleExponential) sizes compounded
+  /// multiplicatively, `∏ (1 + y_j) − 1`.
+  DoubleExponentialProduct { p_up: T, eta_up: T, eta_down: T },
+  /// Exactly one normal size per step whatever the count: what an
+  /// event-indexed compound Poisson path draws, one size per arrival.
+  OneNormal { mean: T, sd: T },
+  /// Exactly one double-exponential size per step, for the same use.
+  OneDoubleExponential { p_up: T, eta_up: T, eta_down: T },
 }
 
 impl<T: FloatExt> JumpSizes<T> {
@@ -1585,6 +1664,56 @@ impl<T: FloatExt> JumpSizes<T> {
         neg_inv_alpha,
         mu,
       } => (3, eps, neg_inv_alpha, mu),
+      JumpSizes::NormalProduct { mean, sd } => (4, mean, sd, T::zero()),
+      JumpSizes::DoubleExponentialProduct {
+        p_up,
+        eta_up,
+        eta_down,
+      } => (5, p_up, eta_up, eta_down),
+      JumpSizes::OneNormal { mean, sd } => (6, mean, sd, T::zero()),
+      JumpSizes::OneDoubleExponential {
+        p_up,
+        eta_up,
+        eta_down,
+      } => (7, p_up, eta_up, eta_down),
+    }
+  }
+
+  /// The same sizes compounded multiplicatively, `∏ (1 + y_j) − 1`, for a
+  /// step whose jump multiplies the state. Only the normal and the
+  /// double-exponential law have a product form the kernels draw.
+  pub fn product(self) -> Option<Self> {
+    match self {
+      JumpSizes::Normal { mean, sd } => Some(JumpSizes::NormalProduct { mean, sd }),
+      JumpSizes::DoubleExponential {
+        p_up,
+        eta_up,
+        eta_down,
+      } => Some(JumpSizes::DoubleExponentialProduct {
+        p_up,
+        eta_up,
+        eta_down,
+      }),
+      _ => None,
+    }
+  }
+
+  /// One size of this law per step, for an event-indexed path that takes a
+  /// jump at every step. Only the normal and the double-exponential law have
+  /// such a form.
+  pub fn single(self) -> Option<Self> {
+    match self {
+      JumpSizes::Normal { mean, sd } => Some(JumpSizes::OneNormal { mean, sd }),
+      JumpSizes::DoubleExponential {
+        p_up,
+        eta_up,
+        eta_down,
+      } => Some(JumpSizes::OneDoubleExponential {
+        p_up,
+        eta_up,
+        eta_down,
+      }),
+      _ => None,
     }
   }
 }

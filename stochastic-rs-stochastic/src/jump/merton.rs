@@ -9,19 +9,25 @@
 //! `Merton<T, D, S>` is generic over the jump-size distribution `D`, which
 //! must implement [`rand_distr::Distribution<T>`]. Common choices:
 //!
-//! - [`SimdNormal<T>`](stochastic_rs_distributions::normal::SimdNormal) for
-//!   the classical lognormal-jump Merton (1976) model
-//! - [`SimdGed<T>`](stochastic_rs_distributions::ged::SimdGed) with β=1
-//!   (Laplace / double-exponential) / a custom asymmetric variant for
-//!   Kou-style jumps
-//! - any user-defined `Distribution<T>`
+//! - [`ScalarNormal<T>`](stochastic_rs_distributions::scalar::ScalarNormal)
+//!   for the classical normal-jump Merton (1976) model
+//! - [`ScalarExp<T>`](stochastic_rs_distributions::scalar::ScalarExp) for
+//!   one-sided exponential jumps
+//! - any user-defined `Distribution<T>` that is `Send + Sync` — which the
+//!   SIMD laws, with their thread-local buffers, are not
+//!
+//! On a device the engine draws the two scalar laws above in the kernel and
+//! recognises them at runtime; any other `D` keeps the process on the host,
+//! through the same `ProcessExt` calls.
 //!
 //! Python bindings (under the `python` feature) need a monomorphic type
-//! signature, so the `PyMerton` wrapper fixes `D = SimdNormal<f64>`. If
+//! signature, so the `PyMerton` wrapper fixes `D = CallableDist<T>`. If
 //! you need a different jump distribution from Python, prefer the SVJ /
 //! Bates calibrators, or compose your own wrapper struct on the Rust side
 //! and re-bind via PyO3.
 //!
+
+use std::any::Any;
 
 use ndarray::Array1;
 use rand_distr::Distribution;
@@ -34,7 +40,6 @@ use stochastic_rs_distributions::scalar::ScalarNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::process::cpoisson::CompoundPoisson;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
@@ -280,12 +285,106 @@ impl<T: FloatExt> Default for Merton<T, ScalarNormal<T>, Unseeded> {
   }
 }
 
-backend_switch!([T, D, S: SeedExt] Merton<T, D, S> { alpha, sigma, lambda, theta, n, x0, t, cpoisson, seed } via host where  T: FloatExt,  D: Distribution<T> + Send + Sync);
-
-impl<T, D, S: SeedExt, B: HostBackend> ProcessExt<T> for Merton<T, D, S, B>
+impl<T, D, S: SeedExt, B> Merton<T, D, S, B>
 where
   T: FloatExt,
-  D: Distribution<T> + Send + Sync,
+  D: Distribution<T> + Send + Sync + Any,
+{
+  /// The grid spacing, zero for a single point.
+  fn dt(&self) -> T {
+    if self.n > 1 {
+      self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    } else {
+      T::zero()
+    }
+  }
+
+  /// The compensated drift over one step, `(alpha - sigma^2 / 2 - lambda theta) dt`.
+  fn drift_dt(&self) -> T {
+    (self.alpha
+      - self.sigma.powf(T::from_usize(2).unwrap()) / T::from_usize(2).unwrap()
+      - self.lambda * self.theta)
+      * self.dt()
+  }
+
+  /// The jump-size law as the Euler engine's kernels draw it, `None` for a
+  /// distribution they do not carry.
+  fn device_jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
+    crate::process::cpoisson::device_jump_sizes(&self.cpoisson.distribution)
+  }
+
+  /// Whether a device can run this process: it has no jumps, or its sizes
+  /// follow a law the kernels draw. Anything else samples on the host.
+  fn device_ready(&self) -> bool {
+    self.lambda <= T::zero() || self.device_jump_sizes().is_some()
+  }
+}
+
+impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for Merton<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::AdditiveJumpDiffusion {
+      drift_dt: self.drift_dt(),
+      sigma: self.sigma,
+    }
+  }
+
+  fn initial_value(&self) -> T {
+    self.x0.unwrap_or(T::zero())
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.dt()
+  }
+
+  /// The jump intensity per unit time; `None` when the process carries none,
+  /// which is what makes a zero-intensity build skip the draw entirely.
+  fn jump_intensity(&self) -> Option<T> {
+    (self.lambda > T::zero()).then_some(self.lambda)
+  }
+
+  /// The size law as the kernels draw it. A law they do not carry never
+  /// reaches a launch — [`ProcessExt::sample`] keeps such a process on the
+  /// host — so asking for one here is a caller bypassing that guard.
+  fn jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
+    if self.lambda <= T::zero() {
+      return None;
+    }
+    Some(self.device_jump_sizes().expect(
+      "Merton: the jump-size distribution is not a law the Euler engine draws on a device; \
+       sample through `ProcessExt`, which keeps it on the host",
+    ))
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T, D, S: SeedExt] Merton<T, D, S> { alpha, sigma, lambda, theta, n, x0, t, cpoisson, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
+
+impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Merton<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
 {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -304,15 +403,8 @@ where
     // Each path within one chunk still re-derives its own jump sub-stream
     // from that owned basis exactly as the legacy `sample()` did from the
     // old (always-`Unseeded`) field, so only the seed *source* changed.
-    let dt = if self.n > 1 {
-      self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
-    } else {
-      T::zero()
-    };
-    let drift_dt = (self.alpha
-      - self.sigma.powf(T::from_usize(2).unwrap()) / T::from_usize(2).unwrap()
-      - self.lambda * self.theta)
-      * dt;
+    let dt = self.dt();
+    let drift_dt = self.drift_dt();
     MertonSampler {
       n: self.n,
       sigma: self.sigma,
@@ -323,6 +415,51 @@ where
       lambda: self.lambda,
       jump_seed: self.cpoisson.seed.derive(),
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+    }
+  }
+
+  /// Through the Euler engine when the jump-size law is one the device
+  /// kernels draw; any other law keeps the process on the host, chunked
+  /// exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> Array1<T> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::euler_sample(&self.backend, self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::euler_paths_map(&self.backend, self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::euler_paths(&self.backend, self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::try_sample(&self.backend, self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::try_euler_paths(&self.backend, self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }

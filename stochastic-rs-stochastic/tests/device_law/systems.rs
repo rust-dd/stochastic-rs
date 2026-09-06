@@ -5,6 +5,7 @@
 use ndarray::Array1;
 use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::scalar::ScalarNormal;
 use stochastic_rs_distributions::traits::Fn1D;
 use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
 use stochastic_rs_stochastic::diffusion::fouque::FouqueOU2D;
@@ -12,6 +13,7 @@ use stochastic_rs_stochastic::diffusion::regime_switching::RegimeSwitchingDiffus
 use stochastic_rs_stochastic::interest::duffie_kan::DuffieKan;
 use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
 use stochastic_rs_stochastic::interest::hull_white_2f::HullWhite2F;
+use stochastic_rs_stochastic::jump::bates::Bates1996;
 use stochastic_rs_stochastic::process::cbms::Cbms;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::HestonPow;
@@ -1069,4 +1071,64 @@ fn regime_switching_wider_than_four_regimes_still_samples() {
       .iter()
       .all(|[s, z]| s.len() == 64 && z.iter().all(|r| (0.0..=4.0).contains(r)))
   );
+}
+
+/// Bates (1996) in the spot: the jumps multiply the spot by `1 + Y` for a
+/// normal `Y`, compounded across the jumps a step sees, which the kernels
+/// draw as a product law rather than an aggregated sum.
+#[test]
+fn bates_1996_agrees_with_the_cpu_law() {
+  for reflected in [false, true] {
+    let build = || {
+      Bates1996::<f32, _, _>::new(
+        Some(0.02),
+        None,
+        None,
+        None,
+        3.0,
+        -0.02,
+        0.08,
+        2.0,
+        0.3,
+        -0.7,
+        ScalarNormal::<f32>::new(-0.02, 0.05),
+        253,
+        Some(100.0),
+        Some(0.04),
+        Some(1.0),
+        Some(reflected),
+        Deterministic::new(97),
+      )
+    };
+    const PATHS: usize = 3 * M;
+    let device = build().on::<Device>().sample_par(PATHS);
+    assert!(
+      device.iter().all(|p| p[1].iter().all(|&v| v >= 0.0)),
+      "the variance went negative (reflected: {reflected})"
+    );
+    let host = build().sample_par(PATHS);
+    agrees(
+      terminal_mean(&host, 0),
+      terminal_mean(&device, 0),
+      0.02,
+      "Bates 1996 terminal spot",
+    );
+    agrees(
+      terminal_mean(&host, 1),
+      terminal_mean(&device, 1),
+      0.05,
+      "Bates 1996 terminal variance",
+    );
+    let spread = |paths: &[[Array1<f32>; 2]]| {
+      let n = paths.len() as f64;
+      let mean = terminal_mean(paths, 0);
+      (paths
+        .iter()
+        .map(|p| (p[0][252] as f64 - mean).powi(2))
+        .sum::<f64>()
+        / n)
+        .sqrt()
+    };
+    agrees(spread(&host), spread(&device), 0.06, "Bates 1996 spot spread");
+  }
 }
