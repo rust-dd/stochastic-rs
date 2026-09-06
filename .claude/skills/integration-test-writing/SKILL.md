@@ -211,6 +211,46 @@ Either:
 - Accept the test is fundamentally noisy and document the seed
   selection rationale.
 
+## 6b. Law tests: the model's own closed form
+
+`stochastic-rs-stochastic/tests/laws.rs` holds each process to what its
+source paper states, as opposed to `device_law`, which holds a device to
+this crate's CPU sampler. The distinction earns its keep: the two
+literature bugs of September 2026 (the fractional Brownian field's
+correction term, the tempered-stable series divisor) were invisible to a
+host-device comparison because host and device were wrong together, and the
+ziggurat's folded tail was invisible to a KS test because it misplaced
+5.8e-4 of the mass.
+
+Four rules the suite runs on:
+
+- **No tolerance is chosen.** Take the statistic per path, and compare its
+  mean to the closed form through the standard error *across* paths
+  (`common::holds`, five of them). Paths are independent, so that standard
+  error is valid whatever the dependence inside a path is — which is what
+  lets a persistent GARCH or a mean-reverting rate be tested this way at
+  all.
+- **A discretisation is part of the statement.** Every diffusion here steps
+  Euler-Maruyama, so the sampler's law is the chain's, not the model's: an
+  OU chain's stationary variance is `σ²/(2θ − θ²dt)`. `holds_within` takes
+  that difference of two closed forms as the band's bias term, computed, not
+  chosen. A case needing a large one is a case whose step is too coarse to
+  be testing the model.
+- **Pick a statistic that converges.** A transform (`E[cos uX]`, `E[e^{−uX}]`)
+  is bounded, so it has a standard error even for a law with no mean — an
+  α-stable subordinator is only reachable this way. A sample autocorrelation
+  is a ratio of two sums whose bias runs to six standard errors at `ρ ≈ 0.99`;
+  the autocovariance about a known mean has none. A sample kurtosis needs the
+  eighth moment, a sample `m3` the sixth — a Student t at `η = 5` has neither.
+- **Correct a known estimator bias rather than widen the band.** An
+  autoregressive slope is low by `2φ/n` (Marriott & Pope 1954); the reversion
+  rate in `laws/short_rate.rs` applies that correction and keeps the band at
+  five standard errors of the estimator itself.
+
+State the sensitivity where it is not obvious: an OU path of length `T`
+carries relative information `√(2/(θT))` about `θ`, so 256 paths of `T = 64`
+catch a reversion rate wrong by 5 % and nothing finer.
+
 ## 7. Things that should always panic (and prove it)
 
 For invariants that must hold:
@@ -290,6 +330,12 @@ fn fbm_variance_scales_as_t_2h() {
   anchor.
 - **Do not** loosen tolerances to mask flakes. Fix the seed or fix the
   test.
+- **Do not** gate on the *worst* of the pinned seeds. Every "must not
+  reject" assertion takes the best: the worst-of-three form fails a correct
+  sampler about three times in a hundred runs, which is where this
+  workspace's "transient" GoF failures came from (fixed 2026-09-06 across
+  `gof_support`, `normal`, `exp`, `gamma`, and the two `stochastic-rs-stats`
+  goodness-of-fit modules).
 - **Do not** add a test that imports a feature-gated symbol without
   gating the test itself.
 - **Do not** put feature-gated `use` statements above the
