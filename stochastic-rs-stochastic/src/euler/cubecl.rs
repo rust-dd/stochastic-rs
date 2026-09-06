@@ -73,6 +73,7 @@ fn euler_paths_kernel(
   hist_slot: u32,
   slots: u32,
   series_n: u32,
+  series_live: u32,
   table_n: u32,
   table_u0: f32,
 ) {
@@ -132,28 +133,32 @@ fn euler_paths_kernel(
     let mut uj = 0.0f32;
     let mut uv = 0.0f32;
     if series_n != 0u32 {
-      for k in 0..steps {
+      for k in 0..512u32 {
         block[k as usize] = 0.0f32;
       }
       for j in 1..(series_n + 1u32) {
         let sg = ((first_path + path) * 2654435761u32) ^ (j * 40503u32) ^ 3266489917u32;
         gj += 0.0f32 - Log::ln(uniform(sg ^ 2654435769u32, seed) * 0.999998f32 + 1.0e-6f32);
-        ej = 0.0f32 - Log::ln(uniform(sg ^ 2246822507u32, seed) * 0.999998f32 + 1.0e-6f32);
-        uj = uniform(sg ^ 3266489909u32, seed);
-        uv = uniform(sg ^ 668265263u32, seed);
-        let ratio = uniform(sg ^ 374761393u32, seed) * f32::cast_from(steps - 1u32);
-        let size = series_size(family, params, dt, gj, ej, uj, uv);
-        let mut cell = u32::cast_from(ratio);
-        if f32::cast_from(cell) < ratio {
-          cell += 1u32;
+        if series_live != 0u32 {
+          block[j as usize] = gj;
+        } else {
+          ej = 0.0f32 - Log::ln(uniform(sg ^ 2246822507u32, seed) * 0.999998f32 + 1.0e-6f32);
+          uj = uniform(sg ^ 3266489909u32, seed);
+          uv = uniform(sg ^ 668265263u32, seed);
+          let ratio = uniform(sg ^ 374761393u32, seed) * f32::cast_from(steps - 1u32);
+          let size = series_size(family, x00, x01, x02, x03, params, dt, gj, ej, uj, uv);
+          let mut cell = u32::cast_from(ratio);
+          if f32::cast_from(cell) < ratio {
+            cell += 1u32;
+          }
+          if cell < 1u32 {
+            cell = 1u32;
+          }
+          if cell > steps - 1u32 {
+            cell = steps - 1u32;
+          }
+          block[cell as usize] = block[cell as usize] + size;
         }
-        if cell < 1u32 {
-          cell = 1u32;
-        }
-        if cell > steps - 1u32 {
-          cell = steps - 1u32;
-        }
-        block[cell as usize] = block[cell as usize] + size;
       }
       gj = 0.0f32;
       ej = 0.0f32;
@@ -381,7 +386,35 @@ fn euler_paths_kernel(
       u2 = uniform(g ^ 3266489917u32, seed);
       sj = 0.0f32;
       if series_n != 0u32 {
-        sj = block[i as usize];
+        if series_live != 0u32 {
+          for j in 1..(series_n + 1u32) {
+            let sg = ((first_path + path) * 2654435761u32) ^ (j * 40503u32) ^ 3266489917u32;
+            let ratio = uniform(sg ^ 374761393u32, seed) * f32::cast_from(steps - 1u32);
+            let mut cell = u32::cast_from(ratio);
+            if f32::cast_from(cell) < ratio {
+              cell += 1u32;
+            }
+            if cell < 1u32 {
+              cell = 1u32;
+            }
+            if cell > steps - 1u32 {
+              cell = steps - 1u32;
+            }
+            if cell == i {
+              gj = block[j as usize];
+              ej = 0.0f32 - Log::ln(uniform(sg ^ 2246822507u32, seed) * 0.999998f32 + 1.0e-6f32);
+              uj = uniform(sg ^ 3266489909u32, seed);
+              uv = uniform(sg ^ 668265263u32, seed);
+              sj += series_size(family, s0, s1, s2, s3, params, dt, gj, ej, uj, uv);
+            }
+          }
+          gj = 0.0f32;
+          ej = 0.0f32;
+          uj = 0.0f32;
+          uv = 0.0f32;
+        } else {
+          sj = block[i as usize];
+        }
       }
       if table_n != 0u32 {
         let ti = dt * f32::cast_from(i);
@@ -646,6 +679,10 @@ fn table_increment(
 #[allow(clippy::too_many_arguments)]
 fn series_size(
   family: u32,
+  x0: f32,
+  x1: f32,
+  x2: f32,
+  x3: f32,
   params: &Array<f32>,
   dt: f32,
   gj: f32,
@@ -656,9 +693,16 @@ fn series_size(
   let mut value = 0.0f32;
   if family == 110u32 {
     value = cube_series::TemperedStableSeries(
-      0u32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, params, dt, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32,
-      0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32,
-      gj, ej, uj, uv, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32,
+      0u32, x0, x1, x2, x3, params, dt, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32,
+      0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, gj, ej, uj,
+      uv, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32,
+    );
+  }
+  if family == 115u32 {
+    value = cube_series::StochasticVolatilityCgmy(
+      0u32, x0, x1, x2, x3, params, dt, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32,
+      0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, gj, ej, uj,
+      uv, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32,
     );
   }
   value
@@ -1451,6 +1495,12 @@ fn step(
       gm2, u, u2, lv, cv, sj, gj, ej, uj, uv, iv, tv, dz0, dz1, dz2, dz3,
     );
   }
+  if family == 115u32 {
+    stepped = cube::StochasticVolatilityCgmy(
+      component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
+      gm2, u, u2, lv, cv, sj, gj, ej, uj, uv, iv, tv, dz0, dz1, dz2, dz3,
+    );
+  }
   if family == 94u32 {
     stepped = cube::RiemannLiouville(
       component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
@@ -2179,6 +2229,12 @@ fn report(
       u2, lv, cv, sj, gj, ej, uj, uv, iv, tv,
     );
   }
+  if family == 115u32 {
+    reported = cube_report::StochasticVolatilityCgmy(
+      component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2, lv, cv, sj, gj, ej, uj, uv, iv, tv,
+    );
+  }
   if family == 94u32 {
     reported = cube_report::RiemannLiouville(
       component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
@@ -2511,6 +2567,7 @@ fn device_paths<C: CubeclRuntime>(
     let (family, params) = spec.encode();
     let hist_slot = crate::euler::history_slot(family, n);
     let series_n = crate::euler::series_terms(family, n, series);
+    let series_live = crate::euler::series_live(family);
     let (table_n, table_u0) = crate::euler::table_terms(family, table);
     let arity = super::families::Family::from_code(family).expect("a declared family");
     let (components, noises) = (arity.components(), arity.noises());
@@ -2617,6 +2674,7 @@ fn device_paths<C: CubeclRuntime>(
           ScalarArg::new(hist_slot),
           ScalarArg::new(slots),
           ScalarArg::new(series_n),
+          ScalarArg::new(series_live),
           ScalarArg::new(table_n),
           ScalarArg::new(table_u0),
         )

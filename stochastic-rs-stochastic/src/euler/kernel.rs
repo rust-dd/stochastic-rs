@@ -82,6 +82,9 @@
 //! `ej`, two uniforms `uj` and `uv`, and a uniform arrival time — sizes each
 //! with the family's expression and sums it into the grid cell its time falls
 //! in, an array of 512 cells the grid may not exceed; `sj` is the step's cell.
+//! A `live` clause keeps each term's arrival in that array instead — the term
+//! count then bounded by 512 — and the step sizes the terms of its own cell
+//! against the current state, redrawing their uniforms from the same hashes.
 //! Without a clause `series_n` is zero and `sj` stays zero.
 //!
 //! A family with a `table` clause reads `iv`: before the steps the frame
@@ -182,30 +185,35 @@ pub(crate) const FRAME: &str = r#"    if (path >= paths) return;
     REAL series_size[1];
     series_size[0] = (REAL)0;
     if (series_n != 0u) {
-        for (unsigned int k = 0u; k < steps; k++) { block[k] = (REAL)0; }
+        for (unsigned int c = 0u; c < 4u; c++) { state[c] = x0[c]; }
+        for (unsigned int k = 0u; k < 512u; k++) { block[k] = (REAL)0; }
         for (unsigned int j = 1u; j <= series_n; j++) {
             unsigned int sg = ((first_path + path) * 2654435761u) ^ (j * 40503u) ^ 3266489917u;
             unsigned int q1 = (sg ^ 2654435769u) ^ (seed * 2654435761u);
             q1 ^= q1 >> 16; q1 *= 2246822519u; q1 ^= q1 >> 13; q1 *= 3266489917u; q1 ^= q1 >> 16;
-            unsigned int q2 = (sg ^ 2246822507u) ^ (seed * 2654435761u);
-            q2 ^= q2 >> 16; q2 *= 2246822519u; q2 ^= q2 >> 13; q2 *= 3266489917u; q2 ^= q2 >> 16;
-            unsigned int q3 = (sg ^ 3266489909u) ^ (seed * 2654435761u);
-            q3 ^= q3 >> 16; q3 *= 2246822519u; q3 ^= q3 >> 13; q3 *= 3266489917u; q3 ^= q3 >> 16;
-            unsigned int q4 = (sg ^ 668265263u) ^ (seed * 2654435761u);
-            q4 ^= q4 >> 16; q4 *= 2246822519u; q4 ^= q4 >> 13; q4 *= 3266489917u; q4 ^= q4 >> 16;
-            unsigned int q5 = (sg ^ 374761393u) ^ (seed * 2654435761u);
-            q5 ^= q5 >> 16; q5 *= 2246822519u; q5 ^= q5 >> 13; q5 *= 3266489917u; q5 ^= q5 >> 16;
             gj += -STOCH_LOG((REAL)q1 * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6);
-            ej = -STOCH_LOG((REAL)q2 * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6);
-            uj = (REAL)q3 * (REAL)2.3283064e-10;
-            uv = (REAL)q4 * (REAL)2.3283064e-10;
-            REAL ratio = (REAL)q5 * (REAL)2.3283064e-10 * (REAL)(steps - 1u);
+            if (series_live != 0u) {
+                block[j] = gj;
+            } else {
+                unsigned int q2 = (sg ^ 2246822507u) ^ (seed * 2654435761u);
+                q2 ^= q2 >> 16; q2 *= 2246822519u; q2 ^= q2 >> 13; q2 *= 3266489917u; q2 ^= q2 >> 16;
+                unsigned int q3 = (sg ^ 3266489909u) ^ (seed * 2654435761u);
+                q3 ^= q3 >> 16; q3 *= 2246822519u; q3 ^= q3 >> 13; q3 *= 3266489917u; q3 ^= q3 >> 16;
+                unsigned int q4 = (sg ^ 668265263u) ^ (seed * 2654435761u);
+                q4 ^= q4 >> 16; q4 *= 2246822519u; q4 ^= q4 >> 13; q4 *= 3266489917u; q4 ^= q4 >> 16;
+                unsigned int q5 = (sg ^ 374761393u) ^ (seed * 2654435761u);
+                q5 ^= q5 >> 16; q5 *= 2246822519u; q5 ^= q5 >> 13; q5 *= 3266489917u; q5 ^= q5 >> 16;
+                ej = -STOCH_LOG((REAL)q2 * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6);
+                uj = (REAL)q3 * (REAL)2.3283064e-10;
+                uv = (REAL)q4 * (REAL)2.3283064e-10;
+                REAL ratio = (REAL)q5 * (REAL)2.3283064e-10 * (REAL)(steps - 1u);
 SERIES
-            unsigned int cell = (unsigned int)ratio;
-            if ((REAL)cell < ratio) { cell += 1u; }
-            if (cell < 1u) { cell = 1u; }
-            if (cell > steps - 1u) { cell = steps - 1u; }
-            block[cell] += series_size[0];
+                unsigned int cell = (unsigned int)ratio;
+                if ((REAL)cell < ratio) { cell += 1u; }
+                if (cell < 1u) { cell = 1u; }
+                if (cell > steps - 1u) { cell = steps - 1u; }
+                block[cell] += series_size[0];
+            }
         }
         gj = (REAL)0; ej = (REAL)0; uj = (REAL)0; uv = (REAL)0;
     }
@@ -282,7 +290,38 @@ REPORT
         unsigned int hv = (g ^ 3266489917u) ^ (seed * 2654435761u);
         hv ^= hv >> 16; hv *= 2246822519u; hv ^= hv >> 13; hv *= 3266489917u; hv ^= hv >> 16;
         u2 = (REAL)hv * (REAL)2.3283064e-10;
-        sj = (series_n != 0u) ? block[i] : (REAL)0;
+        sj = (REAL)0;
+        if (series_n != 0u) {
+            if (series_live != 0u) {
+                for (unsigned int j = 1u; j <= series_n; j++) {
+                    unsigned int sg = ((first_path + path) * 2654435761u) ^ (j * 40503u) ^ 3266489917u;
+                    unsigned int q5 = (sg ^ 374761393u) ^ (seed * 2654435761u);
+                    q5 ^= q5 >> 16; q5 *= 2246822519u; q5 ^= q5 >> 13; q5 *= 3266489917u; q5 ^= q5 >> 16;
+                    REAL ratio = (REAL)q5 * (REAL)2.3283064e-10 * (REAL)(steps - 1u);
+                    unsigned int cell = (unsigned int)ratio;
+                    if ((REAL)cell < ratio) { cell += 1u; }
+                    if (cell < 1u) { cell = 1u; }
+                    if (cell > steps - 1u) { cell = steps - 1u; }
+                    if (cell == i) {
+                        unsigned int q2 = (sg ^ 2246822507u) ^ (seed * 2654435761u);
+                        q2 ^= q2 >> 16; q2 *= 2246822519u; q2 ^= q2 >> 13; q2 *= 3266489917u; q2 ^= q2 >> 16;
+                        unsigned int q3 = (sg ^ 3266489909u) ^ (seed * 2654435761u);
+                        q3 ^= q3 >> 16; q3 *= 2246822519u; q3 ^= q3 >> 13; q3 *= 3266489917u; q3 ^= q3 >> 16;
+                        unsigned int q4 = (sg ^ 668265263u) ^ (seed * 2654435761u);
+                        q4 ^= q4 >> 16; q4 *= 2246822519u; q4 ^= q4 >> 13; q4 *= 3266489917u; q4 ^= q4 >> 16;
+                        gj = block[j];
+                        ej = -STOCH_LOG((REAL)q2 * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6);
+                        uj = (REAL)q3 * (REAL)2.3283064e-10;
+                        uv = (REAL)q4 * (REAL)2.3283064e-10;
+SERIES
+                        sj += series_size[0];
+                    }
+                }
+                gj = (REAL)0; ej = (REAL)0; uj = (REAL)0; uv = (REAL)0;
+            } else {
+                sj = block[i];
+            }
+        }
         if (table_n != 0u) {
             REAL ti = dt * (REAL)i;
             while (tp < table_n && block[tp] < ti) { tp++; }

@@ -392,11 +392,30 @@ fn series_size_is_the_smaller_of_bound_and_draw_on_the_drawn_side() {
   let cap = (gj * rate).powf(-1.0 / alpha);
   for (uv, side, sign) in [(0.2, lp, 1.0), (0.9, lm, -1.0)] {
     let draw = e_scale * ej.powf(e_pow) * uj.powf(1.0 / alpha) / side;
-    let size = host_series(Family::TemperedStableSeries, &params, 0.01, gj, ej, uj, uv)
+    let size = host_series(Family::TemperedStableSeries, &[0.0; 4], &params, 0.01, gj, ej, uj, uv)
       .expect("a series family");
     assert!((size - sign * cap.min(draw)).abs() < 1e-12, "uv = {uv}: {size}");
   }
-  assert!(host_series(Family::GeometricBrownian, &[0.05, 0.2], 0.01, gj, ej, uj, 0.2).is_none());
+  assert!(host_series(Family::GeometricBrownian, &[0.0; 4], &[0.05, 0.2], 0.01, gj, ej, uj, 0.2).is_none());
+}
+
+/// The live series of the stochastic-volatility CGMY reads the variance: the
+/// arrival bound's rate is `rate0 / v`, so a larger variance admits larger
+/// terms, and the family says so of itself.
+#[test]
+fn live_series_size_reads_the_variance_slot() {
+  assert!(Family::StochasticVolatilityCgmy.series_live());
+  assert!(!Family::TemperedStableSeries.series_live());
+  let (rate0, alpha, lp, lm) = (0.25_f64, 0.5_f64, 2.0_f64, 6.0_f64);
+  let params = [rate0, 1.0 / alpha, lp, lm, -0.1, 400.0, 0.98, 0.3];
+  let (gj, ej, uj, uv): (f64, f64, f64, f64) = (2.0, 1.5, 0.3, 0.2);
+  for v in [0.04_f64, 0.16_f64] {
+    let cap = (gj * rate0 / v).powf(-1.0 / alpha);
+    let draw = ej * uj.powf(1.0 / alpha) / lp;
+    let size = host_series(Family::StochasticVolatilityCgmy, &[0.0, v, 0.0, 0.0], &params, 0.01, gj, ej, uj, uv)
+      .expect("a series family");
+    assert!((size - cap.min(draw)).abs() < 1e-12, "v = {v}: {size}");
+  }
 }
 
 /// Kanter's positive-stable draw at the table's own scale.

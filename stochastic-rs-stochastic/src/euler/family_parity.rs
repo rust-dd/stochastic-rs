@@ -142,6 +142,31 @@ fn probe_sizes(spec: &EulerSpec<f32>) -> JumpSizes<f32> {
 /// One ramp per curve slot, each with its own level and slope, so every slot
 /// the kernels bind carries a value no other slot carries and a family that
 /// reads `ct3` is checked against the host reading `ct3` and nothing else.
+/// The series sum a step reads: the filed cell for a preamble-sized family,
+/// the terms of the cell sized against the current state for a live one.
+fn cell_sum(
+  family: super::families::Family,
+  state: &[f32],
+  params: &[f32],
+  dt: f32,
+  terms: &[(f32, f32, f32, f32, usize)],
+  series: &[f32],
+  point: usize,
+) -> f32 {
+  if family.series_live() {
+    terms
+      .iter()
+      .filter(|term| term.4 == point)
+      .map(|&(gj, ej, uj, uv, _)| {
+        super::families::host_series(family, state, params, dt, gj, ej, uj, uv)
+          .expect("a family with a series clause sizes its terms")
+      })
+      .sum()
+  } else {
+    series[point]
+  }
+}
+
 fn probe_curves() -> Vec<Vec<f32>> {
   (0..crate::euler::CURVE_SLOTS)
     .map(|k| {
@@ -219,8 +244,11 @@ impl PathSampler<f32> for ProbeSampler {
     let hist_slot = family.history_slot();
     let mut past = Vec::<f32>::new();
     // The series a `series` family sums into its grid cells, from a uniform
-    // stream of its own, exactly as the frame's preamble does.
+    // stream of its own, exactly as the frame's preamble does; a live family
+    // keeps the terms and sizes them in the step of their cell against the
+    // state there.
     let mut series = vec![0.0f32; N];
+    let mut terms: Vec<(f32, f32, f32, f32, usize)> = Vec::new();
     if family.has_series() {
       let uniform = SimdUniform::<f32>::new(0.0, 1.0, &Deterministic::new(11));
       let mut gj = 0.0f32;
@@ -230,10 +258,15 @@ impl PathSampler<f32> for ProbeSampler {
         let uj = uniform.sample_fast();
         let uv = uniform.sample_fast();
         let ratio = uniform.sample_fast() * (N - 1) as f32;
-        let size = super::families::host_series(family, &params, self.dt, gj, ej, uj, uv)
-          .expect("a family with a series clause sizes its terms");
         let cell = (ratio.ceil() as usize).clamp(1, N - 1);
-        series[cell] += size;
+        if family.series_live() {
+          terms.push((gj, ej, uj, uv, cell));
+        } else {
+          let size =
+            super::families::host_series(family, &state, &params, self.dt, gj, ej, uj, uv)
+              .expect("a family with a series clause sizes its terms");
+          series[cell] += size;
+        }
       }
     }
     // The table a `table` family inverts, built exactly as the frame's
@@ -319,7 +352,7 @@ impl PathSampler<f32> for ProbeSampler {
         0.5,
         lv,
         cv,
-        series[i + 1],
+        cell_sum(family, &state, &params, self.dt, &terms, &series, i + 1),
         0.0,
         0.0,
         0.0,
@@ -594,6 +627,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::HawkesEvents { .. } => "HawkesEvents",
     EulerSpec::LiborMarket4 { .. } => "LiborMarket4",
     EulerSpec::InverseStableSubordinator { .. } => "InverseStableSubordinator",
+    EulerSpec::StochasticVolatilityCgmy { .. } => "StochasticVolatilityCgmy",
   }
 }
 
@@ -1147,8 +1181,11 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
     let hist_slot = family.history_slot();
     let mut past = Vec::<f32>::new();
     // The series a `series` family sums into its grid cells, from a uniform
-    // stream of its own, exactly as the frame's preamble does.
+    // stream of its own, exactly as the frame's preamble does; a live family
+    // keeps the terms and sizes them in the step of their cell against the
+    // state there.
     let mut series = vec![0.0f32; N];
+    let mut terms: Vec<(f32, f32, f32, f32, usize)> = Vec::new();
     if family.has_series() {
       let uniform = SimdUniform::<f32>::new(0.0, 1.0, &Deterministic::new(11));
       let mut gj = 0.0f32;
@@ -1158,10 +1195,15 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         let uj = uniform.sample_fast();
         let uv = uniform.sample_fast();
         let ratio = uniform.sample_fast() * (N - 1) as f32;
-        let size = super::families::host_series(family, &params, self.dt, gj, ej, uj, uv)
-          .expect("a family with a series clause sizes its terms");
         let cell = (ratio.ceil() as usize).clamp(1, N - 1);
-        series[cell] += size;
+        if family.series_live() {
+          terms.push((gj, ej, uj, uv, cell));
+        } else {
+          let size =
+            super::families::host_series(family, &state, &params, self.dt, gj, ej, uj, uv)
+              .expect("a family with a series clause sizes its terms");
+          series[cell] += size;
+        }
       }
     }
     // The table a `table` family inverts, built exactly as the frame's
@@ -1249,7 +1291,7 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         0.5,
         lv,
         cv,
-        series[i],
+        cell_sum(family, &state, &params, self.dt, &terms, &series, i),
         0.0,
         0.0,
         0.0,
@@ -1584,6 +1626,20 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         rho: -0.6,
       },
       x0: [100.0, 0.04],
+      lift: None,
+    },
+    SystemProbe {
+      spec: EulerSpec::StochasticVolatilityCgmy {
+        rate0: 0.25,
+        inv_alpha: 2.0,
+        lambda_plus: 3.0,
+        lambda_minus: 3.0,
+        bcoef: -0.1,
+        twoc: 400.0,
+        ek: 0.98,
+        rho: 0.3,
+      },
+      x0: [0.0, 0.04],
       lift: None,
     },
     SystemProbe {

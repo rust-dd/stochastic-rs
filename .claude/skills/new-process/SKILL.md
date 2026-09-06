@@ -79,8 +79,8 @@ Then the backend switch from `src/macros.rs`. `backend_switch!` generates `on::<
 
 | Arm | Bound | Storage | Use when | Uses (snapshot) |
 |---|---|---|---|---|
-| `via euler` | `EulerBackend<T>` | `backend: B` | the process declares a family | 114 |
-| `via host` | `HostBackend` | `backend: B` | host only (see last section) | 6 |
+| `via euler` | `EulerBackend<T>` | `backend: B` | the process declares a family | 115 |
+| `via host` | `HostBackend` | `backend: B` | host only (see last section) | 5 |
 | `via fgn euler` | `FgnBackend<T> + EulerBackend<T>` | `fgn: Fgn<_, _, B>` | fractional **and** on the engine | 10 |
 | `via phantom` | `FgnBackend<T>` | `backend: B` | backend carried, not an engine process | 2 |
 | `via fgn` | `FgnBackend<T>` | `fgn: Fgn<_, _, B>` | fractional, not on the engine | 0 |
@@ -111,7 +111,9 @@ recurse into it); the vocabulary triple is in `src/euler/families/vocabulary.rs`
 Optional clauses after `report`: `lift { drift (..) diffusion (..) shock (..) }`,
 `history { push (..) weights (ctK) }`, `series { size (..) }` — sizes one shot-noise
 term from the preamble's draws `gj` (a unit-rate arrival), `ej` (`Exp(1)`), `uj`, `uv`
-(uniforms), and the step reads the cell's sum as `sj` — and `table { increment (..) }`
+(uniforms), and the step reads the cell's sum as `sj`; written `series { live size (..) }`
+the terms are sized in the step of their cell and the size may read the state — and
+`table { increment (..) }`
 — one increment of a monotone table from `uj`, `uv` and the spacing `tv`, and the step
 reads the table's interpolated inverse at its time as `iv`. A step or report may open
 with `bind name = expr;` lines. A step reads `x` (its own state names), `dt`, its noise
@@ -308,7 +310,10 @@ rotation, fBm at `t = 1` looks like Brownian motion (use `t = 4`, where the spre
 2.64 vs 2.00); give sibling rows and curves distinct slopes so a slot read from its
 neighbour moves the statistic past the tolerance.
 **Never pad a tolerance** — if the standard error is too thin, raise the path
-count (`3 * M`, `4 * M`) and keep the tolerance. **Pin exact things exactly** — curve
+count (`3 * M`, `4 * M`) and keep the tolerance. **A heavy-tailed law gets a robust
+spread**: at a kurtosis above twenty (tempered-stable jumps, stable increments) the
+sample standard deviation at 12 000 paths wanders by 5–8 % between seeds, so pin the
+interquartile range, as `series.rs`, `jumps.rs` and the `Svcgmy` case do. **Pin exact things exactly** — curve
 tabulation, the initial point and the runtime-guard fallback get equality assertions,
 not statistics; the fallback must be bit-identical to the plain host build
 (`assert_eq!(build().on::<Device>().sample(), build().sample())`).
@@ -502,10 +507,12 @@ scale at each arrival is the variance path there, drawn by an exact non-central
 χ² step the kernels do not carry); **Rust closures in the coefficients** (`Cheyette`'s
 `Fn1D`/`Fn2D`, `VolterraSde`'s two `Fn2D` — no GPU path without a DSL for them); an
 **output length that is not the grid** (`MultivariateHawkes`, `Hawkes` in horizon
-mode); **state-dependent draws the frame does not carry** (`Wishart`'s non-central χ²
-with a state-dependent non-centrality); **more than 4 state slots or 4 noise
-components** (`Lmm` / `MultiGbm` / `Mcgns` above four, `Wishart` above `d = 2`); **a
-two-dimensional field** (the sheet `Fbs`).
+mode); **a rank-adaptive step or a Poisson mixture below one degree of freedom**
+(`Wishart`; `Svcgmy` at `4κη/ζ² < 1`) — at one degree or more a non-central χ² is the
+square of a shifted normal plus the frame's gamma draw, which is how `Svcgmy`'s exact
+CIR step runs; **more than 4 state slots or 4 noise components** (`Lmm` / `MultiGbm` /
+`Mcgns` above four, `Wishart` above `d = 2`); **a two-dimensional field** (the sheet
+`Fbs`).
 
 Before declaring a process host-only — the current list is whatever
 `grep -rln "via host" stochastic-rs-stochastic/src --include='*.rs'` returns, and it

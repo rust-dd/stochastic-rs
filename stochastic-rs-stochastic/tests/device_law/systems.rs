@@ -29,6 +29,7 @@ use stochastic_rs_stochastic::volatility::hkde::Hkde;
 use stochastic_rs_stochastic::volatility::multifactor_heston::MultifactorHeston;
 use stochastic_rs_stochastic::volatility::multifactor_sabr::MultifactorSabr;
 use stochastic_rs_stochastic::volatility::sabr::Sabr;
+use stochastic_rs_stochastic::volatility::svcgmy::Svcgmy;
 
 use super::common::Device;
 use super::common::agrees;
@@ -1228,3 +1229,106 @@ fn bates_1996_compounds_several_jumps_a_step() {
     "Bates 1996 mean log-spot under compounding jumps: host {h}, device {d}"
   );
 }
+
+/// CGMY under a CIR variance: the variance takes the exact square-root step
+/// on both machines, so its terminal law is one law; the jumps are sized in
+/// their own step against that variance, so the log-price's spread — larger
+/// where the variance ran high — is what pins the live sizing. The jump law
+/// has a kurtosis above twenty at these parameters, so the spread is read off
+/// the quartiles, which a heavy tail leaves alone, and the mean is held
+/// against the interquartile range.
+#[test]
+fn stochastic_volatility_cgmy_agrees_with_the_cpu_law() {
+  let build = || {
+    Svcgmy::<f32, _>::new(
+      2.0,
+      6.0,
+      0.5,
+      2.0,
+      0.04,
+      0.2,
+      0.3,
+      253,
+      256,
+      Some(0.0),
+      Some(0.04),
+      Some(1.0),
+      Deterministic::new(233),
+    )
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert_eq!(device.len(), PATHS);
+  assert!(
+    device.iter().all(|p| p[1].iter().all(|&v| v >= 0.0)),
+    "the exact variance step went negative"
+  );
+  // The reported log-price is `y + ρ v`, so its start is `x0` up to the
+  // rounding of `−ρ v0 + ρ v0` in single precision.
+  assert!(
+    device.iter().all(|p| p[0][0].abs() < 1e-6 && (p[1][0] - 0.04).abs() < 1e-7),
+    "every path starts at x0 and v0"
+  );
+  agrees(
+    terminal_mean(&host, 1),
+    terminal_mean(&device, 1),
+    0.03,
+    "SV-CGMY terminal variance",
+  );
+  let spread = |paths: &[[Array1<f32>; 2]], row: usize| {
+    let n = paths.len() as f64;
+    let mean = terminal_mean(paths, row);
+    (paths
+      .iter()
+      .map(|p| (p[row][252] as f64 - mean).powi(2))
+      .sum::<f64>()
+      / n)
+      .sqrt()
+  };
+  agrees(spread(&host, 1), spread(&device, 1), 0.06, "SV-CGMY variance spread");
+  let iqr = |paths: &[[Array1<f32>; 2]], at: usize| {
+    let mut values: Vec<f64> = paths.iter().map(|p| p[0][at] as f64).collect();
+    values.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
+    values[values.len() * 3 / 4] - values[values.len() / 4]
+  };
+  agrees(iqr(&host, 252), iqr(&device, 252), 0.06, "SV-CGMY log-price interquartile range");
+  agrees(
+    iqr(&host, 63),
+    iqr(&device, 63),
+    0.06,
+    "SV-CGMY quarter-horizon log-price interquartile range",
+  );
+  let scale = iqr(&host, 252);
+  let (h, d) = (terminal_mean(&host, 0), terminal_mean(&device, 0));
+  assert!(
+    (h - d).abs() < 0.05 * scale,
+    "SV-CGMY terminal log-price: host {h}, device {d} against a range of {scale}"
+  );
+}
+
+/// Below one degree of freedom the host draws the variance from a Poisson
+/// mixture the kernels do not carry, so the device build samples on the host
+/// and is the host build to the bit.
+#[test]
+fn a_thin_variance_keeps_the_stochastic_volatility_cgmy_on_the_host() {
+  let build = || {
+    Svcgmy::<f32, _>::new(
+      2.0,
+      6.0,
+      0.5,
+      0.5,
+      0.01,
+      0.4,
+      0.3,
+      64,
+      64,
+      Some(0.0),
+      Some(0.04),
+      Some(1.0),
+      Deterministic::new(239),
+    )
+  };
+  assert_eq!(build().on::<Device>().sample_par(8), build().sample_par(8));
+}
+

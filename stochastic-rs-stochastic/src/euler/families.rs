@@ -59,7 +59,11 @@
 //! its time falls in. That is the shot-noise series representation of a
 //! Lévy process, the sort with a rejection-free size bound, run without the
 //! host's sort: cells are addressed, not ordered. Grids up to
-//! [`SERIES_SLOTS`](crate::euler::SERIES_SLOTS) points.
+//! [`SERIES_SLOTS`](crate::euler::SERIES_SLOTS) points. A clause written
+//! `series { live size (..) }` sizes each term in the step of its cell
+//! instead, where the size may read the state — a scale that follows a
+//! simulated variance — and the frame keeps the arrivals per term rather
+//! than the sums per cell, so the term count is what the slots then bound.
 //!
 //! A family with a `table { increment (..) }` clause reads `iv`, the inverse
 //! of a monotone table at the step's time: before the steps the frame builds,
@@ -1671,6 +1675,34 @@ euler_families! {
         bind s1 = sin(alpha * uu) / pow(max(sin(uu), lit(1e-20)), inv_alpha);
         bind s2 = pow(max(sin(one_minus_alpha * uu), lit(1e-20)) / w, tail_exp);
         pow(c * tv, inv_alpha) * s1 * s2
+      )
+    },
+
+  /// CGMY under a CIR stochastic volatility (Kim 2021): the variance takes
+  /// the exact square-root step — a non-central χ² as the square of a shifted
+  /// normal plus a central χ²(df − 1), which is the frame's gamma draw `gm` —
+  /// and the log-price is a tempered-stable series whose terms are sized in
+  /// their own step, each arrival's bound scaled by the variance at its time,
+  /// plus the compensating drift `bcoef · v · dt`. The state keeps the jump
+  /// part `y` and the variance; the path records `y + ρ v` and `v`.
+  115 => StochasticVolatilityCgmy { rate0, inv_alpha, lambda_plus, lambda_minus, bcoef, twoc, ek, rho }
+    state (y, v)
+    noise (dz)
+    step {
+      bind zn = dz / sqrt(dt);
+      bind root = zn + sqrt(twoc * v * ek);
+      y + bcoef * v * dt + sj,
+      (root * root + gm) / twoc
+    }
+    report { y + rho * v, v }
+    series {
+      live size (
+        bind up = less(uv, lit(0.5));
+        bind side = pick(up, lambda_plus, lambda_minus);
+        bind cap = pow(gj * rate0 / max(v, lit(1.0e-12)), negate(inv_alpha));
+        bind draw = ej * pow(uj, inv_alpha) / side;
+        bind mag = min(cap, draw);
+        pick(up, mag, negate(mag))
       )
     },
 }

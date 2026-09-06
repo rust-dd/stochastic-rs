@@ -29,7 +29,6 @@ use stochastic_rs_distributions::non_central_chi_squared::SimdNonCentralChiSquar
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -121,11 +120,113 @@ impl<T: FloatExt, S: SeedExt> Svcgmy<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Svcgmy<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> Svcgmy<T, S, B> {
+  /// The horizon, one when omitted.
+  fn t_max(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
 
-backend_switch!([T: FloatExt, S: SeedExt] Svcgmy<T, S> { lambda_plus, lambda_minus, alpha, kappa, eta, zeta, rho, n, j, x0, v0, t, seed } via host);
+  /// The grid spacing.
+  fn dt(&self) -> T {
+    self.t_max() / T::from_usize_(self.n - 1)
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Svcgmy<T, S, B> {
+  /// The CIR step's degrees of freedom, `4 κ η / ζ²`.
+  fn degrees_of_freedom(&self) -> T {
+    T::from_usize_(4) * self.kappa * self.eta / self.zeta.powi(2)
+  }
+
+  /// The tempered-stable scale `C = (Γ(2 − α)(λ₊^{α−2} + λ₋^{α−2}))^{-1}`.
+  fn tempering_constant(&self) -> T {
+    let two = T::from_usize_(2);
+    T::one()
+      / (T::from_f64_fast(gamma(2.0 - self.alpha.to_f64().unwrap()))
+        * (self.lambda_plus.powf(self.alpha - two) + self.lambda_minus.powf(self.alpha - two)))
+  }
+
+  /// Whether a device can run this process: the variance's exact step needs
+  /// at least one degree of freedom — below it the host draws a Poisson
+  /// mixture the kernels do not carry — and the series terms fit the kernels'
+  /// per-path slots. Anything else samples on the host.
+  pub fn device_ready(&self) -> bool {
+    self.degrees_of_freedom() >= T::one() && self.j <= crate::euler::SERIES_SLOTS
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
+  for Svcgmy<T, S, B>
+{
+  /// The host's constants folded once: the arrival bound's rate at unit
+  /// variance, the drift per unit variance, and the CIR step's `2c` and decay.
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let two = T::from_usize_(2);
+    let ek = (-self.kappa * self.dt()).exp();
+    let c = two * self.kappa / ((T::one() - ek) * self.zeta.powi(2));
+    let bcoef = -(self.lambda_plus.powf(self.alpha - T::one())
+      - self.lambda_minus.powf(self.alpha - T::one()))
+      / ((T::one() - self.alpha)
+        * (self.lambda_plus.powf(self.alpha - two) + self.lambda_minus.powf(self.alpha - two)));
+    crate::euler::EulerSpec::StochasticVolatilityCgmy {
+      rate0: self.alpha / (two * self.tempering_constant() * self.t_max()),
+      inv_alpha: T::one() / self.alpha,
+      lambda_plus: self.lambda_plus,
+      lambda_minus: self.lambda_minus,
+      bcoef,
+      twoc: two * c,
+      ek,
+      rho: self.rho,
+    }
+  }
+
+  /// The jump part starts at `x0 − ρ v0`, so the reported log-price starts
+  /// at `x0`; the variance at `v0`.
+  fn initial_state(&self) -> [T; 4] {
+    let v0 = self.v0.unwrap_or(T::zero());
+    [self.x0.unwrap_or(T::zero()) - self.rho * v0, v0, T::zero(), T::zero()]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t_max()
+  }
+
+  fn time_step(&self) -> T {
+    self.dt()
+  }
+
+  /// The central χ²(df − 1) of the exact CIR step, a gamma of shape
+  /// `(df − 1) / 2` and scale two; none at exactly one degree of freedom,
+  /// where the step is the shifted normal's square alone.
+  fn gamma_draws(&self) -> Option<crate::euler::GammaDraws<T>> {
+    let df = self.degrees_of_freedom();
+    (df > T::one()).then(|| crate::euler::GammaDraws {
+      first: ((df - T::one()) / T::from_usize_(2), T::from_usize_(2), T::zero()),
+      second: None,
+    })
+  }
+
+  /// One term per series index, as many as the host draws.
+  fn series_terms(&self) -> Option<u32> {
+    Some(self.j as u32)
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 2] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Svcgmy<T, S> { lambda_plus, lambda_minus, alpha, kappa, eta, zeta, rho, n, j, x0, v0, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Svcgmy<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = SvcgmySampler<T, S>
@@ -151,6 +252,51 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Svcgmy<T, S, B> 
       v0: self.v0.unwrap_or(T::zero()),
       t: self.t,
       seed: self.seed.derive(),
+    }
+  }
+
+  /// Through the Euler engine when the variance's exact step has a degree of
+  /// freedom to spare and the series fits the kernels' slots; anything else
+  /// keeps the process on the host, chunked exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> [Array1<T>; 2] {
+    if self.device_ready() {
+      self.backend.system_sample(self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 2]) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      self.backend.system_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 2]> {
+    if self.device_ready() {
+      self.backend.system_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 2], crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_system_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 2]>, crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_system_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }

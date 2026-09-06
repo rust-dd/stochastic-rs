@@ -214,18 +214,41 @@ pub const SERIES_SLOTS: usize = 512;
   allow(dead_code)
 )]
 pub(crate) fn series_terms(family: u32, n: usize, terms: Option<u32>) -> u32 {
-  let has_series = families::Family::from_code(family).is_some_and(families::Family::has_series);
+  let family = families::Family::from_code(family);
+  let has_series = family.is_some_and(families::Family::has_series);
   assert!(
     has_series == terms.is_some(),
     "a family declares a series clause exactly when its process names a term count"
   );
-  if terms.is_some() {
-    assert!(
-      n <= SERIES_SLOTS,
-      "a series family steps at most {SERIES_SLOTS} grid points on a device, not {n}"
-    );
+  if let Some(count) = terms {
+    if family.is_some_and(families::Family::series_live) {
+      assert!(
+        count as usize <= SERIES_SLOTS,
+        "a live series family keeps at most {SERIES_SLOTS} terms per path on a device, not {count}"
+      );
+    } else {
+      assert!(
+        n <= SERIES_SLOTS,
+        "a series family steps at most {SERIES_SLOTS} grid points on a device, not {n}"
+      );
+    }
   }
   terms.unwrap_or(0)
+}
+
+/// Whether the launch's family sizes its series terms in their own step
+/// rather than in the preamble, as the kernels read it.
+#[cfg_attr(
+  not(any(
+    feature = "cuda",
+    feature = "metal",
+    feature = "cubecl-cuda",
+    feature = "cubecl-wgpu"
+  )),
+  allow(dead_code)
+)]
+pub(crate) fn series_live(family: u32) -> u32 {
+  u32::from(families::Family::from_code(family).is_some_and(families::Family::series_live))
 }
 
 /// The most points a family with a `table` clause builds per path on a
@@ -929,6 +952,20 @@ pub enum EulerSpec<T: FloatExt> {
     one_minus_alpha: T,
     tail_exp: T,
     pi: T,
+  },
+  /// CGMY under an exactly stepped CIR variance, the series sized in the step
+  /// of each term's cell against the variance there: the arrival bound's rate
+  /// at unit variance `rate0 = α / (2 C T)`, the drift coefficient `bcoef` per
+  /// unit variance, the CIR step's `2c` and `e^{−κ Δt}`, and the loading `ρ`.
+  StochasticVolatilityCgmy {
+    rate0: T,
+    inv_alpha: T,
+    lambda_plus: T,
+    lambda_minus: T,
+    bcoef: T,
+    twoc: T,
+    ek: T,
+    rho: T,
   },
   /// Up to four forward LIBOR rates under the spot measure's drift coupling:
   /// their volatilities, their accrual periods, and the lower Cholesky factor
@@ -1683,6 +1720,28 @@ impl<T: FloatExt> EulerSpec<T> {
       } => (
         Family::InverseStableSubordinator.code(),
         pad([alpha, c, inv_alpha, one_minus_alpha, tail_exp, pi]),
+      ),
+      EulerSpec::StochasticVolatilityCgmy {
+        rate0,
+        inv_alpha,
+        lambda_plus,
+        lambda_minus,
+        bcoef,
+        twoc,
+        ek,
+        rho,
+      } => (
+        Family::StochasticVolatilityCgmy.code(),
+        pad([
+          rate0,
+          inv_alpha,
+          lambda_plus,
+          lambda_minus,
+          bcoef,
+          twoc,
+          ek,
+          rho,
+        ]),
       ),
       EulerSpec::LiborMarket4 { sigma, delta, l } => {
         let mut values = [T::zero(); 18];

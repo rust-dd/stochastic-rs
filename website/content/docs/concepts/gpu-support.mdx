@@ -14,11 +14,11 @@ backends, and what the rest do.
 |---|---|---|---|---|---|---|---|
 | fGN noise | `Fgn` (1) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` | CubeCL FFT, `f32` only |
 | Euler engine, one component | 90 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
-| Euler engine, systems | 34 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
+| Euler engine, systems | 35 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
 | Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `FVasicek`, `Cfgns`, `Cfbms`, `Cfou`, `JumpFou`, `JumpFOUCustom` (11, counted above) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same MSL kernel | fGN pipeline feeds the same NVRTC kernel | fGN pipeline feeds the same CubeCL kernel |
-| Host only | the remaining 6 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
+| Host only | the remaining 5 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
 
-The 124 processes on the engine cover the diffusions, the stochastic-volatility
+The 125 processes on the engine cover the diffusions, the stochastic-volatility
 models under both their Euler and quadratic-exponential schemes (`Heston`,
 `HestonLog`, `DoubleHeston`, `Heston2D`, `Sabr`, `Bergomi`,
 `HestonStochCorr`, `BatesSvj`, `Hkde`), the short-rate models including the
@@ -77,7 +77,11 @@ drift coupling and the reset freezes written out over the four slots; and
 `InverseAlphaStableSubordinator`, whose table block builds the direct stable
 subordinator per path on its own grid — doubling the extent until it reaches
 the horizon, as the host does — and reads the inverse clock off it by
-interpolation at every step.
+interpolation at every step; and `Svcgmy`, CGMY under a CIR variance, whose
+variance takes the exact square-root step — a non-central χ² as the square of a
+shifted normal plus the frame's gamma draw — and whose series terms are sized
+in the step of their own cell against the variance there, the one series
+clause written `live`.
 
 What stays on the host, and why. The engine steps a bounded forward
 recursion over four scalar state slots, so what rules a process out is
@@ -94,12 +98,11 @@ grid:
   to 512 points; that is how `RoughHeston`, `FBatesSvj`, `RoughBergomi` and
   `Lfsm` reach a device. Longer grids stay on the host, which the process's
   `device_ready()` decides.
-- **A series whose term sizes read another simulated path** (`Svcgmy`): the
-  CGMY scale at each arrival is the variance path at that time, and the
-  variance is drawn by an exact non-central χ² step the kernels do not carry.
-  The plain series (`Cgmy`, `Cts`, `KoBoL`, `Rdts`) needs no sort on a device:
-  the series block draws the terms per path and sums them into the cells they
-  fall in.
+- **A variance with less than one degree of freedom** (`Svcgmy` at
+  `4κη/ζ² < 1`): the exact square-root step then draws a Poisson mixture the
+  kernels do not carry, and the process stays on the host; at one degree or
+  more the step is the square of a shifted normal plus a central χ², which the
+  frame's gamma draw supplies, and the series block sizes the terms live.
 - **A runtime dimension that couples its rows, above four** (`Wishart`, and
   `Lmm` / `MultiGbm` / `Mcgns` above four): the rows share a drift or a
   correlated noise, so they cannot be stepped as independent launches the way
@@ -145,32 +148,24 @@ grid:
   and two factors ride the double-Heston family and three or more stay on the
   host whatever the backend.
 
-### The last six, and how each would reach a device
+### The last five, and how each would reach a device
 
-Six processes have no device route today. None is ruled out for good; each
+Five processes have no device route today. None is ruled out for good; each
 names the one facility the engine still lacks, and the facilities are of the
 kind the lift, history, series and table blocks already are — a clause in the
 family table plus a block in the frame, never a hand-written kernel.
 
-- **`Svcgmy`** needs two things. Its variance is drawn by an exact CIR step,
-  a non-central χ² whose non-centrality is the current variance — a
-  **state-dependent count**: a `count { mean (..) }` clause evaluated on the
-  pre-step state would supply the Poisson mean the frame's `nj` is drawn with,
-  and `χ²(df, ncp) = 2 Γ(df/2 + K)`, `K ~ Poisson(ncp/2)`, is then the gamma
-  draw the frame already makes with shape `g1_shape + g1_per · nj`. And its
-  series terms are scaled by the variance at each arrival's time, which the
-  preamble cannot know — the series block would keep the raw draws (`Γ_j`,
-  `E_j`, `U_j`, the side, the cell) per path and size the terms in the step of
-  their cell, where the state is known: `O(n · J)` work per path instead of
-  `O(J)`, trivial on a device for `J ≤ 512`. The count clause alone also opens
-  the exact CIR and Heston schemes.
-- **`Wishart`** at `d ≤ 2` rides the same count clause: the Ahdida–Alfonsi
-  step is a basis change by three `2 × 2` maps folded on the host, then per
-  coordinate a squared Bessel draw — a non-central χ² with state-dependent
-  non-centrality — and Gaussian updates of the off-diagonal entry; at `d = 2`
-  the extended Cholesky of the remaining `1 × 1` block is a square root and
-  its pivot is fixed, so the whole step is a three-slot family. `d ≥ 3` stays
-  on the host for want of slots.
+- **`Wishart`** at `d ≤ 2` is a transcription rather than a new facility: the
+  Ahdida–Alfonsi step is a basis change by three `2 × 2` maps folded on the
+  host, then per coordinate a squared Bessel draw — a non-central χ² with a
+  state-dependent non-centrality, which at one degree of freedom or more is
+  the square of a shifted normal plus a central χ², the form `Svcgmy`'s
+  variance already takes on the engine — and Gaussian updates of the
+  off-diagonal entry; at `d = 2` the extended Cholesky of the remaining
+  `1 × 1` block is a square root. What is left to decide is the rank-adaptive
+  branch the host takes when that block degenerates, and the Poisson mixture
+  below one degree of freedom, neither of which a family can express today.
+  `d ≥ 3` stays on the host for want of slots.
 - **`MultivariateHawkes`** has a ragged output — one event list per
   dimension over a horizon — and no count mode. A device version is an API
   addition, not a port: a count mode that produces a fixed number of events
@@ -200,7 +195,7 @@ family table plus a block in the frame, never a hand-written kernel.
 
 ## What a family is
 
-A process reaches a device by declaring which of the engine's **115 families**
+A process reaches a device by declaring which of the engine's **116 families**
 it steps, not by writing a kernel. A family is one entry in
 `stochastic-rs-stochastic/src/euler/families.rs` — its parameters, its state
 components, its noise components, one step expression per component and one

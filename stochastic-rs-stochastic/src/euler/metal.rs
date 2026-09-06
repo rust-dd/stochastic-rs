@@ -57,6 +57,7 @@ struct EulerArgs {
     float lift_x0;
     uint hist_slot;
     uint series_n;
+    uint series_live;
     uint table_n;
     float table_u0;
     float x0[4];
@@ -102,6 +103,7 @@ kernel void euler_paths(
     const float lift_x0 = args.lift_x0;
     const uint hist_slot = args.hist_slot;
     const uint series_n = args.series_n;
+    const uint series_live = args.series_live;
     const uint table_n = args.table_n;
     const float table_u0 = args.table_u0;
     const float jump_a = args.jump_a;
@@ -169,6 +171,8 @@ struct EulerArgs {
   /// How many series terms the launch draws per path, zero for a family
   /// without a `series` clause.
   series_n: u32,
+  /// Non-zero when the series family sizes its terms in their own step.
+  series_live: u32,
   /// The table a `table` family builds per path: its point count, zero for a
   /// family without one, and its starting extent.
   table_n: u32,
@@ -495,6 +499,7 @@ fn device_paths(
     crate::euler::encode_lift(lift.as_ref());
   let hist_slot = crate::euler::history_slot(family, n);
   let series_n = crate::euler::series_terms(family, n, series);
+  let series_live = crate::euler::series_live(family);
   let (table_n, table_u0) = crate::euler::table_terms(family, table);
   let args = EulerArgs {
     family,
@@ -532,6 +537,7 @@ fn device_paths(
     lift_x0,
     hist_slot,
     series_n,
+    series_live,
     table_n,
     table_u0,
     x0,

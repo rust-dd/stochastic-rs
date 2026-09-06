@@ -102,6 +102,15 @@ macro_rules! euler_families {
         }
       }
 
+      /// Whether the family's `series` clause sizes its terms in the step of
+      /// their cell, where the state is known, rather than in the preamble.
+      #[allow(dead_code)]
+      pub(crate) fn series_live(self) -> bool {
+        match self {
+          $( Family::$name => euler_families!(@series_live $($ser)?), )*
+        }
+      }
+
       /// Whether the family declares a `table` clause: a monotone table built
       /// per path before the steps, whose inverse each step reads at its time.
       #[allow(dead_code)]
@@ -443,7 +452,7 @@ macro_rules! euler_families {
     /// per family that declares a `series` clause. A family without one
     /// contributes nothing.
     pub(crate) const C_SERIES: &str = concat!($(
-      euler_families!(@c_series $code, [$($param)*], $($ser)?),
+      euler_families!(@c_series $code, [$($param)*], [$($state)*], $($ser)?),
     )*);
 
     /// The host evaluation of a series family's term size from one set of
@@ -452,6 +461,7 @@ macro_rules! euler_families {
     #[allow(dead_code, clippy::too_many_arguments, unused_variables)]
     pub(crate) fn host_series<T: FloatExt>(
       family: Family,
+      state: &[T],
       $params: &[T],
       $dt: T,
       $gj: T,
@@ -464,7 +474,7 @@ macro_rules! euler_families {
       match family {
         $(
           Family::$name => {
-            euler_families!(@host_series $params, $dt, $gj, $ej, $uj, $uv, [$($param)*], $($ser)?)
+            euler_families!(@host_series $params, $dt, $gj, $ej, $uj, $uv, state, [$($param)*], [$($state)*], $($ser)?)
           }
         )*
       }
@@ -677,23 +687,49 @@ macro_rules! euler_families {
 
   (@has_series { size ($($sz:tt)*) }) => { true };
 
-  (@c_series $code:literal, [$($param:ident)*],) => { "" };
+  (@has_series { live size ($($sz:tt)*) }) => { true };
 
-  (@c_series $code:literal, [$($param:ident)*], { size ($($sz:tt)*) }) => {
+  (@series_live) => { false };
+
+  (@series_live { size ($($sz:tt)*) }) => { false };
+
+  (@series_live { live size ($($sz:tt)*) }) => { true };
+
+  (@c_series $code:literal, [$($param:ident)*], [$($state:ident)*],) => { "" };
+
+  (@c_series $code:literal, [$($param:ident)*], [$($state:ident)*], { size ($($sz:tt)*) }) => {
+    euler_families!(@c_series_body $code, [$($param)*], [$($state)*], $($sz)*)
+  };
+
+  (@c_series $code:literal, [$($param:ident)*], [$($state:ident)*], { live size ($($sz:tt)*) }) => {
+    euler_families!(@c_series_body $code, [$($param)*], [$($state)*], $($sz)*)
+  };
+
+  (@c_series_body $code:literal, [$($param:ident)*], [$($state:ident)*], $($sz:tt)*) => {
     concat!(
       "            if (family == ", stringify!($code), "u) {\n",
       euler_families!(@bind_params [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19] $($param)*),
+      euler_families!(@bind_slots "state" [0 1 2 3] $($state)*),
       euler_families!(@c_body "series_size", [0], [sz], $($sz)*),
       "            }\n",
     )
   };
 
-  (@host_series $params:ident, $dt:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, [$($param:ident)*],) => {
+  (@host_series $params:ident, $dt:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $state_in:ident, [$($param:ident)*], [$($state:ident)*],) => {
     None
   };
 
-  (@host_series $params:ident, $dt:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, [$($param:ident)*],
-    { size ($($sz:tt)*) }) => {{
+  (@host_series $params:ident, $dt:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $state_in:ident, [$($param:ident)*], [$($state:ident)*],
+    { size ($($sz:tt)*) }) => {
+    euler_families!(@host_series_body $params, $state_in, [$($param)*], [$($state)*], $($sz)*)
+  };
+
+  (@host_series $params:ident, $dt:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $state_in:ident, [$($param:ident)*], [$($state:ident)*],
+    { live size ($($sz:tt)*) }) => {
+    euler_families!(@host_series_body $params, $state_in, [$($param)*], [$($state)*], $($sz)*)
+  };
+
+  (@host_series_body $params:ident, $state_in:ident, [$($param:ident)*], [$($state:ident)*], $($sz:tt)*) => {{
     #[allow(unused_mut, unused_variables)]
     let mut slot = 0;
     $(
@@ -701,6 +737,13 @@ macro_rules! euler_families {
       slot += 1;
     )*
     let _ = slot;
+    #[allow(unused_mut, unused_variables)]
+    let mut at = 0;
+    $(
+      let $state = $state_in[at];
+      at += 1;
+    )*
+    let _ = at;
     let mut size = [T::zero(); 1];
     euler_families!(@host_assign size, $($sz)*);
     Some(size[0])
@@ -719,6 +762,29 @@ macro_rules! euler_families {
     place $psx:tt [$($state:ident)*] $psd:tt [$($noise:ident)*],
     params [$($idx:literal)*] [$($param:ident)*],
     { size ($($sz:tt)*) }
+  ) => {
+    euler_families!(@cube_step
+      $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $component, $produced,
+      sig $sxs $sds,
+      place $psx [$($state)*] $psd [$($noise)*],
+      params [$($idx)*] [$($param)*],
+      bound {}, arms {}, at [0u32 1u32 2u32 3u32], body {$($sz)*}
+    );
+  };
+
+  (@cube_series
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $component:ident, $produced:ident,
+    sig $sxs:tt $sds:tt,
+    place $psx:tt [$($state:ident)*] $psd:tt [$($noise:ident)*],
+    params [$($idx:literal)*] [$($param:ident)*],
+  ) => {};
+
+  (@cube_series
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, $sj:ident, $gj:ident, $ej:ident, $uj:ident, $uv:ident, $iv:ident, $tv:ident, $component:ident, $produced:ident,
+    sig $sxs:tt $sds:tt,
+    place $psx:tt [$($state:ident)*] $psd:tt [$($noise:ident)*],
+    params [$($idx:literal)*] [$($param:ident)*],
+    { live size ($($sz:tt)*) }
   ) => {
     euler_families!(@cube_step
       $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $cv, $sj, $gj, $ej, $uj, $uv, $iv, $tv, $component, $produced,
