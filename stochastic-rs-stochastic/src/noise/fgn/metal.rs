@@ -18,22 +18,36 @@ use crate::traits::FloatExt;
 
 type Result<T> = std::result::Result<T, DeviceError>;
 
-/// What every MSL pipeline of this crate's FFT family starts from: the hash,
-/// its uniform, and the radix-2 butterfly stage. The sheet pipeline
-/// concatenates its own kernels behind it.
+/// What every MSL pipeline of this crate's FFT family starts from: the
+/// uniform, the 64-bit keyed draw behind it, and the radix-2 butterfly stage.
+/// The sheet pipeline concatenates its own kernels behind it.
 pub(crate) const MSL_COMMON: &str = r#"
 #include <metal_stdlib>
 using namespace metal;
 
-// PCG hash: excellent statistical quality, single-instruction path
-inline uint pcg(uint v) {
-    uint state = v * 747796405u + 2891336453u;
-    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
-    return (word >> 22u) ^ word;
-}
-
 inline float u01(uint x) {
     return (float(x >> 8) + 0.5f) / 16777216.0f;
+}
+
+// SplitMix64. The counter these pipelines draw on is an element of the whole
+// batch, and a batch of a million 512-point paths already passes 2^30 of
+// them, where a 32-bit counter hands two chunks the same stream.
+inline ulong sm64(ulong x) {
+    x += 0x9e3779b97f4a7c15UL;
+    x ^= x >> 30; x *= 0xbf58476d1ce4e5b9UL;
+    x ^= x >> 27; x *= 0x94d049bb133111ebUL;
+    x ^= x >> 31;
+    return x;
+}
+
+// The four uniforms of one cell: two 64-bit mixes of the cell number under
+// the batch's seed, each read as two words.
+inline float4 u01x4(ulong cell, uint seed) {
+    ulong k = cell ^ ((ulong)seed * 0x9e3779b97f4a7c15UL);
+    ulong h1 = sm64(k);
+    ulong h2 = sm64(k ^ 0xd1b54a32d192ed03UL);
+    return float4(u01((uint)h1), u01((uint)(h1 >> 32)),
+                  u01((uint)h2), u01((uint)(h2 >> 32)));
 }
 
 kernel void fft_butterfly(
@@ -72,8 +86,8 @@ kernel void fft_butterfly(
 /// The fGN kernels proper: the fused draw, and the read-out.
 const MSL_FGN: &str = r#"
 // Generate normals, scale by eigenvalues, write to bit-reversed position.
-// Each thread produces one (re, im) pair using 4 independent PCG hashes
-// fed into two Box-Muller transforms.
+// Each thread produces one (re, im) pair from the four uniforms of its cell
+// of the batch, fed into two Box-Muller transforms.
 kernel void generate_scale_permute(
     device float* dst_real [[buffer(0)]],
     device float* dst_imag [[buffer(1)]],
@@ -81,16 +95,17 @@ kernel void generate_scale_permute(
     device const uint* bit_rev [[buffer(3)]],
     constant uint& traj_size [[buffer(4)]],
     constant uint& seed [[buffer(5)]],
+    constant ulong& first_cell [[buffer(6)]],
     uint tid [[thread_position_in_grid]])
 {
     uint batch = tid / traj_size;
     uint local = tid % traj_size;
 
-    uint base = tid * 4u + seed;
-    float u1 = u01(pcg(base));
-    float u2 = u01(pcg(base + 1u));
-    float u3 = u01(pcg(base + 2u));
-    float u4 = u01(pcg(base + 3u));
+    float4 u = u01x4((ulong)tid + first_cell, seed);
+    float u1 = u.x;
+    float u2 = u.y;
+    float u3 = u.z;
+    float u4 = u.w;
 
     float r_a = sqrt(-2.0f * log(u1 + 1e-10f));
     float r_b = sqrt(-2.0f * log(u3 + 1e-10f));
@@ -215,6 +230,7 @@ pub(crate) fn sample_f32_buffer(
   hurst: f64,
   t: f64,
   seed: u32,
+  first_cell: u64,
   ordinal: usize,
 ) -> Result<(Buffer, usize)> {
   let traj_size = 2 * n;
@@ -283,6 +299,7 @@ pub(crate) fn sample_f32_buffer(
     enc.set_buffer(3, Some(&s.rev_buf), 0);
     enc.set_bytes(4, 4, &ts_u32 as *const u32 as *const _);
     enc.set_bytes(5, 4, &seed as *const u32 as *const _);
+    enc.set_bytes(6, 8, &first_cell as *const u64 as *const _);
     enc.dispatch_threads(MTLSize::new(total as u64, 1, 1), tg);
     enc.end_encoding();
   }
@@ -332,9 +349,11 @@ fn sample_f32<T: FloatExt>(
   hurst: f64,
   t: f64,
   seed: u32,
+  first_cell: u64,
   ordinal: usize,
 ) -> Result<Array2<T>> {
-  let (buf, out_size) = sample_f32_buffer(sqrt_eigs, n, m, offset, hurst, t, seed, ordinal)?;
+  let (buf, out_size) =
+    sample_f32_buffer(sqrt_eigs, n, m, offset, hurst, t, seed, first_cell, ordinal)?;
   // Shared storage: the pointer is the same memory the GPU wrote.
   let out_ptr = buf.contents() as *const f32;
   let out_slice = unsafe { std::slice::from_raw_parts(out_ptr, m * out_size) };
@@ -358,8 +377,8 @@ fn arr2_f32<T: FloatExt>(data: &[f32], m: usize, cols: usize) -> Array2<T> {
 
 impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   /// `m` paths on the selected Metal device, in chunks that fit the batch
-  /// budget: one seed for the whole batch, offset per chunk by the elements
-  /// already produced (the kernel hashes `tid * 4 + seed`), so the result is
+  /// budget: one seed for the whole batch and a cell number per chunk that
+  /// counts the elements already produced, so the result is
   /// the same whatever the budget.
   pub(crate) fn sample_metal_impl<S2: SeedExt>(
     &self,
@@ -384,8 +403,18 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     let mut first = 0;
     while first < m {
       let len = rows.min(m - first);
-      let chunk_seed = seed.wrapping_add((first * traj_size * 4) as u32);
-      let chunk = sample_f32::<T>(&eigs, n, len, offset, hurst, t, chunk_seed, device.ordinal)?;
+      let first_cell = (first * traj_size) as u64;
+      let chunk = sample_f32::<T>(
+        &eigs,
+        n,
+        len,
+        offset,
+        hurst,
+        t,
+        seed,
+        first_cell,
+        device.ordinal,
+      )?;
       out
         .slice_mut(ndarray::s![first..first + len, ..])
         .assign(&chunk);

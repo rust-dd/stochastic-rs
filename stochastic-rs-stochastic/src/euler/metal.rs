@@ -455,11 +455,11 @@ fn fgn_buffer(
   match spec {
     Some(spec) => {
       let eigs: Vec<f32> = spec.sqrt_eigenvalues.to_vec();
-      // The generate kernel hashes `tid * 4 + seed`, so a chunk starts where
-      // the previous one ended by advancing the seed past the elements
-      // already produced — the offset `sample_metal_impl` applies, times the
-      // stream count, since a two-stream launch takes `streams` rows a path.
-      let produced = spec.streams * first * 2 * spec.n * 4;
+      // The generate kernel keys on the batch-global cell, so a chunk starts
+      // where the previous one ended: the elements already produced — the
+      // offset `sample_metal_impl` applies, times the stream count, since a
+      // two-stream launch takes `streams` rows a path.
+      let produced = spec.streams * first * 2 * spec.n;
       let (buf, _) = crate::noise::fgn::metal::sample_f32_buffer(
         &eigs,
         spec.n,
@@ -467,7 +467,8 @@ fn fgn_buffer(
         spec.offset,
         spec.hurst,
         spec.t,
-        (seed as u32).wrapping_add(produced as u32),
+        seed as u32,
+        produced as u64,
         ordinal,
       )?;
       Ok(Some((buf, spec.streams as u32)))

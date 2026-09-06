@@ -25,7 +25,7 @@ type Result<T> = std::result::Result<T, DeviceError>;
 
 const MSL_SHEET: &str = r#"
 // One complex normal per embedding cell, scaled by the eigenvalue root and
-// written to its row's bit-reversed slot; the hash runs on the batch-global
+// written to its row's bit-reversed slot; the draw keys on the batch-global
 // cell so a chunk continues one launch's stream.
 kernel void sheet_generate(
     device float* dst_real [[buffer(0)]],
@@ -35,7 +35,7 @@ kernel void sheet_generate(
     constant uint& cells [[buffer(4)]],
     constant uint& cols [[buffer(5)]],
     constant uint& seed [[buffer(6)]],
-    constant uint& first_cell [[buffer(7)]],
+    constant ulong& first_cell [[buffer(7)]],
     uint tid [[thread_position_in_grid]])
 {
     uint sheet = tid / cells;
@@ -43,11 +43,11 @@ kernel void sheet_generate(
     uint row = local / cols;
     uint col = local % cols;
 
-    uint base = (tid + first_cell) * 4u + seed;
-    float u1 = u01(pcg(base));
-    float u2 = u01(pcg(base + 1u));
-    float u3 = u01(pcg(base + 2u));
-    float u4 = u01(pcg(base + 3u));
+    float4 u = u01x4((ulong)tid + first_cell, seed);
+    float u1 = u.x;
+    float u2 = u.y;
+    float u3 = u.z;
+    float u4 = u.w;
     float r_a = sqrt(-2.0f * log(u1 + 1e-10f));
     float r_b = sqrt(-2.0f * log(u3 + 1e-10f));
     float n_re = r_a * cos(6.28318530718f * u2);
@@ -93,7 +93,7 @@ kernel void sheet_extract(
     constant float& r [[buffer(6)]],
     constant float& corr [[buffer(7)]],
     constant uint& seed [[buffer(8)]],
-    constant uint& corr_cell [[buffer(9)]],
+    constant ulong& corr_cell [[buffer(9)]],
     uint tid [[thread_position_in_grid]])
 {
     uint per = m * n;
@@ -104,11 +104,11 @@ kernel void sheet_extract(
     uint base = sheet * cells;
     float value = freq_real[base + j * rows + i] - freq_real[base];
 
-    uint hb = (corr_cell + sheet) * 4u + seed;
-    float u1 = u01(pcg(hb));
-    float u2 = u01(pcg(hb + 1u));
-    float u3 = u01(pcg(hb + 2u));
-    float u4 = u01(pcg(hb + 3u));
+    float4 u = u01x4(corr_cell + (ulong)sheet, seed);
+    float u1 = u.x;
+    float u2 = u.y;
+    float u3 = u.z;
+    float u4 = u.w;
     float z1 = sqrt(-2.0f * log(u1 + 1e-10f)) * cos(6.28318530718f * u2);
     float z2 = sqrt(-2.0f * log(u3 + 1e-10f)) * cos(6.28318530718f * u4);
     float ty = r * float(i + 1u) / float(m);
@@ -222,7 +222,7 @@ fn sample_chunk(
   sheet: &SheetLaunch<'_, f32>,
   sheets: usize,
   first: usize,
-  corr_cell: u32,
+  corr_cell: u64,
   seed: u32,
   ordinal: usize,
 ) -> Result<Vec<f32>> {
@@ -275,7 +275,7 @@ fn sample_chunk(
   let cells_u32 = cells as u32;
   let rows_u32 = big_m as u32;
   let cols_u32 = big_n as u32;
-  let first_cell = (first * cells) as u32;
+  let first_cell = (first * cells) as u64;
 
   // 1. Draw, scale, scatter bit-reversed along the rows.
   {
@@ -288,7 +288,7 @@ fn sample_chunk(
     enc.set_bytes(4, 4, &cells_u32 as *const u32 as *const _);
     enc.set_bytes(5, 4, &cols_u32 as *const u32 as *const _);
     enc.set_bytes(6, 4, &seed as *const u32 as *const _);
-    enc.set_bytes(7, 4, &first_cell as *const u32 as *const _);
+    enc.set_bytes(7, 8, &first_cell as *const u64 as *const _);
     enc.dispatch_threads(MTLSize::new(total as u64, 1, 1), tg);
     enc.end_encoding();
   }
@@ -330,7 +330,7 @@ fn sample_chunk(
     enc.set_bytes(6, 4, &sheet.r as *const f32 as *const _);
     enc.set_bytes(7, 4, &sheet.corr as *const f32 as *const _);
     enc.set_bytes(8, 4, &seed as *const u32 as *const _);
-    enc.set_bytes(9, 4, &corr_cell as *const u32 as *const _);
+    enc.set_bytes(9, 8, &corr_cell as *const u64 as *const _);
     enc.dispatch_threads(MTLSize::new(out_len as u64, 1, 1), tg);
     enc.end_encoding();
   }
@@ -370,7 +370,7 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
     let mut first = 0;
     while first < sheets {
       let len = rows.min(sheets - first);
-      let corr_cell = (sheets * cells + first) as u32;
+      let corr_cell = (sheets * cells + first) as u64;
       let flat = sample_chunk(&launch, len, first, corr_cell, seed, device.ordinal)?;
       out.extend(self.sheets_from_flat(&flat));
       first += len;
