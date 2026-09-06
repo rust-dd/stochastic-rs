@@ -32,9 +32,13 @@ pub(crate) struct Estimate {
 /// `stat` applied to every path past the burn-in, as a mean and its standard
 /// error.
 pub(crate) fn across_paths(paths: &[Array1<f64>], stat: impl Fn(&[f64]) -> f64) -> Estimate {
+  estimate(paths, BURN, stat)
+}
+
+fn estimate(paths: &[Array1<f64>], burn: usize, stat: impl Fn(&[f64]) -> f64) -> Estimate {
   let values: Vec<f64> = paths
     .iter()
-    .map(|p| stat(&p.as_slice().expect("contiguous")[BURN..]))
+    .map(|p| stat(&p.as_slice().expect("contiguous")[burn..]))
     .collect();
   let n = values.len() as f64;
   let mean = values.iter().sum::<f64>() / n;
@@ -58,6 +62,54 @@ pub(crate) fn holds(estimate: Estimate, theory: f64, what: &str) {
   assert!(
     z.abs() < 5.0,
     "{what}: sampled {mean} ± {se}, the law says {theory} ({z:.1} standard errors away)"
+  );
+}
+
+/// Each path's last point — one independent draw of the law at the horizon.
+pub(crate) fn terminals(paths: &[Array1<f64>]) -> Vec<f64> {
+  paths.iter().map(|p| p[p.len() - 1]).collect()
+}
+
+/// The mean of independent per-path values and its standard error.
+pub(crate) fn over_paths(values: &[f64]) -> Estimate {
+  let n = values.len() as f64;
+  let m = values.iter().sum::<f64>() / n;
+  let var = values.iter().map(|v| (v - m).powi(2)).sum::<f64>() / (n - 1.0);
+  Estimate {
+    mean: m,
+    se: (var / n).sqrt(),
+  }
+}
+
+/// The variance of independent per-path values and its standard error, taken
+/// from the sample's own fourth moment: `Var(s²) = (m₄ − m₂²)/P`, which needs
+/// no normality assumption of the values themselves.
+pub(crate) fn spread_over_paths(values: &[f64]) -> Estimate {
+  let n = values.len() as f64;
+  let m = values.iter().sum::<f64>() / n;
+  let m2 = values.iter().map(|v| (v - m).powi(2)).sum::<f64>() / n;
+  let m4 = values.iter().map(|v| (v - m).powi(4)).sum::<f64>() / n;
+  Estimate {
+    mean: m2,
+    se: ((m4 - m2 * m2) / n).sqrt(),
+  }
+}
+
+/// The estimate covers `theory` within five standard errors, widened by the
+/// bias the sampler's own scheme carries.
+///
+/// `bias` is a difference of two closed forms — the law of the chain the code
+/// steps minus the law of the diffusion it approximates — so it is computed,
+/// not chosen, and a case that needs a large one is a case whose step is too
+/// coarse to be testing the model at all.
+pub(crate) fn holds_within(estimate: Estimate, theory: f64, bias: f64, what: &str) {
+  let Estimate { mean, se } = estimate;
+  let band = 5.0 * se + bias.abs();
+  assert!(
+    (mean - theory).abs() < band,
+    "{what}: sampled {mean} ± {se}, the law says {theory} \
+     (band {band}, of which {} is the scheme's own bias)",
+    bias.abs()
   );
 }
 
@@ -89,6 +141,22 @@ pub(crate) fn kurtosis(x: &[f64]) -> f64 {
   let m = mean(x);
   let v = variance(x);
   x.iter().map(|s| (s - m).powi(4)).sum::<f64>() / x.len() as f64 / v.powi(2)
+}
+
+/// The sample autocovariance at lag `k` about a mean the law names.
+///
+/// The correlation is a ratio of two sums over the same series, and at high
+/// persistence that ratio carries a bias of order `1/n` — at `ρ = 0.994` and
+/// `n = 15360` it runs to six standard errors, an order above the
+/// discretisation it would be used to measure. Dividing by the number of
+/// products actually formed and centring on the known mean leaves an
+/// estimator with no such bias, and the law states a covariance as readily as
+/// a correlation.
+pub(crate) fn autocovariance(x: &[f64], k: usize, centre: f64) -> f64 {
+  (k..x.len())
+    .map(|t| (x[t] - centre) * (x[t - k] - centre))
+    .sum::<f64>()
+    / (x.len() - k) as f64
 }
 
 /// The autocorrelation of the squared series, the statistic a conditional

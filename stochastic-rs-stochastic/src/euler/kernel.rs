@@ -21,7 +21,10 @@
 //! noise for their whole length. Each component salts the two words with a
 //! constant of its own, which is what decorrelates the components. A salt is
 //! xored in rather than multiplied because a shading language may
-//! constant-fold the multiplication and reject it as an overflow. When
+//! constant-fold the multiplication and reject it as an overflow. The
+//! uniform feeding the logarithm is clamped away from zero at `1e-6`, so a
+//! device normal is truncated at `5.26σ` — `1.4e-7` of the law, four orders
+//! below the `f32` the kernels compute in. When
 //! `increments` is set the first component reads from `incs` instead — one
 //! row of `steps - 1` increments per path — which is how a fractional
 //! process reaches the same families. `increments` is a count, not a flag: a
