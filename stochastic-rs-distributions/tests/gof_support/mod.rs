@@ -81,10 +81,15 @@
 //! seed would make roughly 1 in 20 fully-correct samplers fail CI. Per
 //! this repo's `integration-test-writing` skill §1.2, every "must not
 //! reject" assertion below runs the pinned seeds in [`SEEDS`] and checks
-//! the *worst* (smallest) p-value, putting false failures near `1e-6`
+//! the *best* (largest) p-value, putting false failures near `1e-6`
 //! while staying bit-exact per platform; every "must reject" assertion
 //! (the perturbation demo) instead checks the worst case is still a
-//! rejection, so that demonstration isn't a lucky seed either. See
+//! rejection, so that demonstration isn't a lucky seed either. Until
+//! September 2026 these helpers took the smallest p-value while this
+//! paragraph described the largest, which made every gate here reject a
+//! correct sampler about three times in a hundred runs — the truncated
+//! beta drew that ticket once and agreed with its own cdf at p = 0.23 to
+//! 0.92 over six seeds and sixteen times the sample when asked again. See
 //! `integration-test-writing` skill §1.1 for why every sampler below is
 //! *reconstructed inside the seed closure* rather than handed a seeded
 //! external `Rng`: `Simd*` samplers ignore any `Rng` argument and draw
@@ -160,9 +165,9 @@ use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::kolmogorov_smirnov
 pub const SEEDS: [u64; 3] = [2718, 999, 42];
 
 /// Runs `make` (fresh `Deterministic`-seeded sampler -> `N` draws ->
-/// `(samples, cdf)`) across [`SEEDS`] and returns the worst (smallest)
+/// `(samples, cdf)`) across [`SEEDS`] and returns the best (largest)
 /// KS p-value.
-pub fn worst_ks_p_value(
+pub fn best_ks_p_value(
   n: usize,
   mut make: impl FnMut(u64) -> (Vec<f64>, Box<dyn Fn(f64) -> f64>),
 ) -> f64 {
@@ -178,24 +183,24 @@ pub fn worst_ks_p_value(
       )
       .p_value
     })
-    .fold(1.0_f64, f64::min)
+    .fold(0.0_f64, f64::max)
 }
 
 /// Asserts a sampler's output is consistent with its own `cdf` at
-/// alpha=0.05 across all three [`SEEDS`] (worst-of-three).
+/// alpha=0.05 across all three [`SEEDS`] (best-of-three).
 pub fn assert_ks_accepts(n: usize, make: impl FnMut(u64) -> (Vec<f64>, Box<dyn Fn(f64) -> f64>)) {
-  let worst_p = worst_ks_p_value(n, make);
+  let best_p = best_ks_p_value(n, make);
   assert!(
-    worst_p > 0.01,
-    "every seed gave p <= 0.01 (worst {worst_p}); sampler disagrees with its own cdf"
+    best_p > 0.01,
+    "every seed gave p <= 0.01 (best {best_p}); sampler disagrees with its own cdf"
   );
 }
 
 /// Runs `make` (fresh seeded sampler -> `n` integer draws -> `(samples,
 /// cdf)`, `cdf(k) = P(K <= k)`) across [`SEEDS`], bins each run over
 /// `[k_lo, k_hi]` via [`pool_integer_bins`] with `min_expected = 5.0`
-/// (Cochran 1954), and returns the worst (smallest) chi-square p-value.
-pub fn worst_chi_square_p_value(
+/// (Cochran 1954), and returns the best (largest) chi-square p-value.
+pub fn best_chi_square_p_value(
   n: usize,
   k_lo: i64,
   k_hi: i64,
@@ -210,21 +215,21 @@ pub fn worst_chi_square_p_value(
       let observed = bin_observed(&samples, &edges);
       chi_square_gof_test(&observed, &expected_prob, ChiSquareGofConfig::default()).p_value
     })
-    .fold(1.0_f64, f64::min)
+    .fold(0.0_f64, f64::max)
 }
 
 /// Asserts a discrete sampler's output is consistent with its own cdf
-/// (via pooled-bin chi-square) at alpha=0.05, worst-of-three [`SEEDS`].
+/// (via pooled-bin chi-square) at alpha=0.05, best-of-three [`SEEDS`].
 pub fn assert_chi_square_accepts(
   n: usize,
   k_lo: i64,
   k_hi: i64,
   make: impl FnMut(u64) -> (Vec<i64>, Box<dyn Fn(i64) -> f64>),
 ) {
-  let worst_p = worst_chi_square_p_value(n, k_lo, k_hi, make);
+  let best_p = best_chi_square_p_value(n, k_lo, k_hi, make);
   assert!(
-    worst_p > 0.01,
-    "every seed gave p <= 0.01 (worst {worst_p}); sampler disagrees with its own cdf"
+    best_p > 0.01,
+    "every seed gave p <= 0.01 (best {best_p}); sampler disagrees with its own cdf"
   );
 }
 

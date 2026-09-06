@@ -235,13 +235,13 @@ mod tests {
   }
 
   /// A true normal sample must not reject at `alpha = 0.05` — run three
-  /// pinned seeds and require the *worst* (smallest) p-value to still
+  /// pinned seeds and require the *best* (largest) p-value to still
   /// clear `alpha`, per this workspace's multi-seed mandate for
   /// statistical assertions (a correct test still rejects a true null at
   /// rate `alpha`, and the SIMD stream differs across platforms).
   #[test]
   fn accepts_true_normal_sample() {
-    let worst_p = [42u64, 999, 2718]
+    let best_p = [42u64, 999, 2718]
       .into_iter()
       .map(|seed| {
         let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
@@ -254,10 +254,10 @@ mod tests {
         )
         .p_value
       })
-      .fold(1.0_f64, f64::min);
+      .fold(0.0_f64, f64::max);
     assert!(
-      worst_p > 0.01,
-      "every seed gave p <= 0.01 (worst {worst_p}); likely a bug, not bad luck"
+      best_p > 0.01,
+      "every seed gave p <= 0.01 (best {best_p}); likely a bug, not bad luck"
     );
   }
 

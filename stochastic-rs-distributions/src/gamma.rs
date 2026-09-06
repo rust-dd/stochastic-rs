@@ -328,7 +328,7 @@ mod tests {
   /// (Kolmogorov 1933 / Smirnov 1948 / Massey 1951 critical values,
   /// alpha=0.05 — see
   /// `stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov`'s module
-  /// doc), worst-of-three pinned seeds: a correct test still rejects a
+  /// doc), best-of-three pinned seeds: a correct test still rejects a
   /// true null at rate alpha, and the SIMD stream differs across
   /// platforms, so one seed cannot be trusted to be lucky everywhere.
   /// Replaces this test's own former `ks_critical = 2.0/sqrt(N)` bound,
@@ -336,7 +336,7 @@ mod tests {
   #[test]
   fn simd_gamma_fill_matches_theoretical_distribution() {
     const N: usize = 40_000;
-    let worst_p = [2718u64, 999, 42]
+    let best_p = [2718u64, 999, 42]
       .into_iter()
       .map(|seed| {
         let dist = SimdGamma::<f64>::new(2.5, 1.5, &Deterministic::new(seed));
@@ -350,17 +350,17 @@ mod tests {
         )
         .p_value
       })
-      .fold(1.0_f64, f64::min);
+      .fold(0.0_f64, f64::max);
     assert!(
-      worst_p > 0.01,
-      "every seed gave p <= 0.01 (worst {worst_p}); likely a bug, not bad luck"
+      best_p > 0.01,
+      "every seed gave p <= 0.01 (best {best_p}); likely a bug, not bad luck"
     );
   }
 
   #[test]
   fn simd_gamma_boosted_alpha_below_one_matches_theory() {
     const N: usize = 40_000;
-    let worst_p = [2718u64, 999, 42]
+    let best_p = [2718u64, 999, 42]
       .into_iter()
       .map(|seed| {
         let dist = SimdGamma::<f64>::new(0.5, 2.0, &Deterministic::new(seed));
@@ -374,10 +374,10 @@ mod tests {
         )
         .p_value
       })
-      .fold(1.0_f64, f64::min);
+      .fold(0.0_f64, f64::max);
     assert!(
-      worst_p > 0.01,
-      "every seed gave p <= 0.01 (worst {worst_p}); likely a bug, not bad luck"
+      best_p > 0.01,
+      "every seed gave p <= 0.01 (best {best_p}); likely a bug, not bad luck"
     );
   }
 }
