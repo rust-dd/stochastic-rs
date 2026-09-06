@@ -1,7 +1,7 @@
 //! Native Metal device path of the Euler engine (macOS, `metal` feature):
 //! hand-written MSL, one thread per path, the whole recursion in the kernel,
-//! normals from the same counter hash of `(path, step, seed)` as the CubeCL
-//! and CUDA kernels. `f32` only — Apple GPUs have no double precision — and
+//! normals from the same counter hash of `(path, step, seed)` as the CUDA
+//! kernel. `f32` only — Apple GPUs have no double precision — and
 //! widened on the way back.
 
 use metal::*;

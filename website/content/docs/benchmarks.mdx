@@ -1,6 +1,6 @@
 ---
 title: Benchmarks
-description: Criterion bench numbers — FGN CPU vs CUDA, distribution sampling speedups, and the all-backends matrix (CPU / cubecl / Metal / Accelerate).
+description: Criterion bench numbers — FGN CPU vs CUDA, distribution sampling speedups, and the all-backends matrix (CPU / Metal / Accelerate).
 category: reference
 since: 2.0.0
 status: stable
@@ -34,13 +34,11 @@ rl_rough            hurst          ndarray_overhead     sampler_compare
 
 | Bench                 | Required features                    |
 |-----------------------|--------------------------------------|
-| `fgn_cubecl`          | `cubecl-wgpu`                        |
 | `fgn_cuda`            | `cuda`                               |
 | `fgn_metal`           | `metal`                              |
 | `fgn_accelerate`      | `accelerate`                         |
-| `fgn_all_backends`    | `cubecl-wgpu`, `metal`, `accelerate` |
+| `fgn_all_backends`    | `metal`, `accelerate`                |
 | `hotpath_profile`     | `hotpath`                            |
-| `fgn_cuda_compare`    | `cuda`, `cubecl-cuda`                |
 | `dual_stream_compare` | `dual-stream-rng`                    |
 
 ## FGN — CPU vs CUDA native
@@ -77,15 +75,14 @@ transfer overhead.
 
 ## All backends head-to-head
 
-`fgn_all_backends` (requires `cubecl-wgpu`, `metal`, and `accelerate`)
-compares **CPU**, **cubecl-wgpu**, **Metal**, and **Accelerate** on the
-same FGN sampler. Shape of the four bench groups it registers (the `…`
+`fgn_all_backends` (requires `metal` and `accelerate`) compares **CPU**,
+**Metal**, and **Accelerate** on the same FGN sampler. Shape of the bench
+groups it registers (the `…`
 elides the closure argument, so this is illustrative rather than
 compiled — see `benches/fgn_all_backends.rs` for the full, real body):
 
 ```
 g.bench_with_input(BenchmarkId::new("cpu", n),         …);
-g.bench_with_input(BenchmarkId::new("gpu_cubecl", n),  …);
 g.bench_with_input(BenchmarkId::new("metal", n),       …);
 g.bench_with_input(BenchmarkId::new("accelerate", n),  …);
 ```
@@ -101,6 +98,11 @@ Single-path latency is the only dimension where the two test machines share a
 grid, so the backends are directly comparable. The **i9-285K / RTX 4070 SUPER**
 figures are converted from the `Melem/s` values in [`CUDA_BENCHMARK.md`](https://github.com/dancixx/stochastic-rs/blob/main/CUDA_BENCHMARK.md)
 (`fgn_cuda_compare`).
+
+The CubeCL columns in the tables below are historical: the CubeCL backend
+was removed in 3.0.0-rc.2, having duplicated the native CUDA and Metal kernels
+at a lower speed, and the benches that produced those columns (`fgn_cubecl`,
+`fgn_cuda_compare`) went with it. The other columns stand.
 
 **Apple M4 Max** (10 P + 4 E cores, 36 GB unified; measured 2026-09-03 on the
 rc.1 code, after the per-size device caches and the client reuse landed):

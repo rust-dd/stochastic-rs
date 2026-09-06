@@ -52,7 +52,7 @@ subdirectory; `[workspace]`, `[workspace.dependencies]`, `[package]`,
 # The real entries in the root Cargo.toml, verbatim:
 [features]
 ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]
-gpu = ["dep:cubecl", "dep:gpu-fft", "stochastic-rs-stochastic/gpu"]
+cuda = ["dep:cudarc", "cudarc/cufft", "stochastic-rs-stochastic/cuda"]
 metal = ["dep:metal", "stochastic-rs-stochastic/metal"]
 viz = ["stochastic-rs-quant/viz", "stochastic-rs-ai?/viz"]
 ```
@@ -63,7 +63,7 @@ Three things that example teaches which a made-up one would not:
   reaches `-stochastic` only — forwarding to a crate that lacks the
   feature is a hard cargo error.
 - **`dep:` for optional dependencies the umbrella owns itself**
-  (`dep:cubecl`, `dep:ndarray-linalg`), alongside the
+  (`dep:cudarc`, `dep:metal`), alongside the
   `<crate>/<feature>` forwards.
 - **`crate?/feature`** — the weak-dependency form, as in
   `stochastic-rs-ai?/viz`: enable `-ai`'s `viz` *only if* `-ai` is
@@ -195,9 +195,7 @@ it is a summary, and the sub-crate columns are the part that drifts.
 
 | Feature | Crates that publish it | Notes |
 |---|---|---|
-| `cuda` | `-stochastic`, umbrella | Native CUDA via **cudarc** + cuFFT + NVRTC — distinct from `cubecl-cuda`, which reaches the same hardware through CubeCL. |
-| `cubecl` | `-stochastic`, umbrella | cubecl runtime-agnostic base (pulls `gpu-fft`). |
-| `cubecl-cuda` / `cubecl-wgpu` | `-stochastic`, umbrella | cubecl runtimes; each implies `cubecl`. The `gpu` / `gpu-cuda` / `gpu-wgpu` aliases were removed before 3.0. |
+| `cuda` | `-stochastic`, umbrella | Native CUDA via **cudarc** + cuFFT + NVRTC. The CubeCL backend (`cubecl`, `cubecl-cuda`, `cubecl-wgpu`) and the `gpu*` aliases were removed before 3.0. |
 | `metal` | `-stochastic`, umbrella | Apple Silicon GPU via the `metal` crate; f32 only. |
 | `accelerate` | `-stochastic`, umbrella | Apple vDSP / AMX — a **CPU** path despite sitting beside the GPU flags. |
 | `dual-stream-rng` | `-core`, `-distributions`, umbrella | Experimental `SimdRngDual`; changes deterministic output. |
@@ -212,8 +210,7 @@ it is a summary, and the sub-crate columns are the part that drifts.
 
 - `release-checklist` — `cargo check --workspace --all-features` is one
   of its stage-1 gates.
-- `add-gpu-sampler` — what each of the five backend features actually
-  selects, and why `cuda` and `cubecl-cuda` are different backends
-  rather than aliases.
+- `add-gpu-sampler` — what each of the three backend features actually
+  selects.
 - `add-gpu-sampler`, `add-jump-process` — invoke when the new module is
   feature-gated.

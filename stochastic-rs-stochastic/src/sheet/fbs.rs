@@ -45,8 +45,6 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
-#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-mod cubecl;
 #[cfg(feature = "cuda")]
 mod cuda;
 #[cfg(feature = "metal")]
@@ -364,9 +362,7 @@ impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
 /// embedding from another in a per-size cache.
 #[cfg(any(
   feature = "metal",
-  feature = "cuda",
-  feature = "cubecl-cuda",
-  feature = "cubecl-wgpu"
+  feature = "cuda"
 ))]
 pub(crate) struct SheetLaunch<'a, F> {
   pub(crate) lam: &'a [F],
@@ -379,9 +375,7 @@ pub(crate) struct SheetLaunch<'a, F> {
 
 #[cfg(any(
   feature = "metal",
-  feature = "cuda",
-  feature = "cubecl-cuda",
-  feature = "cubecl-wgpu"
+  feature = "cuda"
 ))]
 impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
   /// The embedding's cells: `2(m − 1) · 2(n − 1)`.

@@ -16,10 +16,9 @@
 //!   log-normal scheme, OU and CIR their SIMD Euler steppers.
 //! - The GPU back-ends run one device thread per path with the whole
 //!   Euler–Maruyama recursion in the kernel and Box–Muller normals from a
-//!   counter hash of `(path, step, seed)`: `Cubecl` (its CUDA runtime, or
-//!   Metal / Vulkan / WebGPU through wgpu, `f32`),
-//!   `Cuda` (feature `cuda`: cudarc + NVRTC, `f32` or `f64` after
-//!   `T`) and `Metal` (feature `metal`: hand-written MSL, `f32`).
+//!   counter hash of `(path, step, seed)`: `Cuda` (feature `cuda`: cudarc +
+//!   NVRTC, `f32` or `f64` after `T`) and `Metal` (feature `metal`:
+//!   hand-written MSL, `f32`).
 //!   `sample_par` is one launch for all `m` paths; `sample` launches one path.
 //!
 //! The device seed is drawn from the process's own seed source, so the same
@@ -140,9 +139,7 @@ pub struct LiftSpec<'a, T> {
 #[cfg_attr(
   not(any(
     feature = "cuda",
-    feature = "metal",
-    feature = "cubecl-cuda",
-    feature = "cubecl-wgpu"
+    feature = "metal"
   )),
   allow(dead_code)
 )]
@@ -197,9 +194,7 @@ pub struct ProgramSpec<'a> {
 #[cfg_attr(
   not(any(
     feature = "cuda",
-    feature = "metal",
-    feature = "cubecl-cuda",
-    feature = "cubecl-wgpu"
+    feature = "metal"
   )),
   allow(dead_code)
 )]
@@ -246,9 +241,7 @@ pub const HISTORY_SLOTS: usize = 512;
 #[cfg_attr(
   not(any(
     feature = "cuda",
-    feature = "metal",
-    feature = "cubecl-cuda",
-    feature = "cubecl-wgpu"
+    feature = "metal"
   )),
   allow(dead_code)
 )]
@@ -280,9 +273,7 @@ pub const SERIES_SLOTS: usize = 512;
 #[cfg_attr(
   not(any(
     feature = "cuda",
-    feature = "metal",
-    feature = "cubecl-cuda",
-    feature = "cubecl-wgpu"
+    feature = "metal"
   )),
   allow(dead_code)
 )]
@@ -314,9 +305,7 @@ pub(crate) fn series_terms(family: u32, n: usize, terms: Option<u32>) -> u32 {
 #[cfg_attr(
   not(any(
     feature = "cuda",
-    feature = "metal",
-    feature = "cubecl-cuda",
-    feature = "cubecl-wgpu"
+    feature = "metal"
   )),
   allow(dead_code)
 )]
@@ -348,9 +337,7 @@ pub struct TableSpec<T> {
 #[cfg_attr(
   not(any(
     feature = "cuda",
-    feature = "metal",
-    feature = "cubecl-cuda",
-    feature = "cubecl-wgpu"
+    feature = "metal"
   )),
   allow(dead_code)
 )]
@@ -384,9 +371,7 @@ pub(crate) fn table_terms<T: FloatExt>(family: u32, spec: Option<TableSpec<T>>) 
 #[cfg_attr(
   not(any(
     feature = "cuda",
-    feature = "metal",
-    feature = "cubecl-cuda",
-    feature = "cubecl-wgpu"
+    feature = "metal"
   )),
   allow(dead_code)
 )]
@@ -1094,9 +1079,7 @@ impl<T: FloatExt> EulerSpec<T> {
   #[cfg_attr(
     not(any(
       feature = "metal",
-      feature = "cuda",
-      feature = "cubecl-cuda",
-      feature = "cubecl-wgpu"
+      feature = "cuda"
     )),
     allow(dead_code)
   )]
@@ -2595,7 +2578,7 @@ host_euler_backend!(crate::device::Accelerate);
 /// handle's budget, the map applied per chunk in parallel. One impl per
 /// handle rather than a blanket one, which coherence would not allow beside
 /// the host impls above.
-#[cfg(any(feature = "cuda", feature = "metal", feature = "cubecl"))]
+#[cfg(any(feature = "cuda", feature = "metal"))]
 macro_rules! kernel_euler_backend {
   ($handle:ty, [$($gen:tt)*] $scalar:ty) => {
     impl<$($gen)*> EulerBackend<$scalar> for $handle {
@@ -2704,8 +2687,6 @@ macro_rules! kernel_euler_backend {
 
 #[cfg(feature = "metal")]
 kernel_euler_backend!(crate::device::Metal, [] f32);
-#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-kernel_euler_backend!(crate::device::Cubecl<Rt>, [Rt: crate::euler::cubecl::CubeclRuntime] f32);
 #[cfg(feature = "cuda")]
 kernel_euler_backend!(crate::device::Cuda, [T: FloatExt] T);
 
@@ -2835,9 +2816,6 @@ try_sample_matrix!(Gbm);
 try_sample_matrix!(Ou);
 try_sample_matrix!(Cir);
 
-#[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-#[doc(hidden)]
-pub mod cubecl;
 #[cfg(feature = "cuda")]
 #[doc(hidden)]
 pub mod cuda;
@@ -2880,7 +2858,7 @@ pub mod python {
   use pyo3::prelude::*;
 
   /// Opens the named device (`"cpu"`, `"accelerate"`, `"cuda"`, `"metal"`,
-  /// `"cubecl-cuda"`, `"cubecl-wgpu"`, optionally with `:ordinal`) and describes it
+  /// optionally with `:ordinal`) and describes it
   /// as a dict with `backend`, `name`, `precisions` and `ordinal`; raises
   /// `RuntimeError` with the device's own message when it cannot be used,
   /// `ValueError` for a device this build does not carry.

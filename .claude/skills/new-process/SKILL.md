@@ -97,8 +97,8 @@ src/euler/{cuda,metal}.rs` → `0` for both).
 **2a. Declare the family** in the table `src/euler/families.rs`, appended in code
 order with the next free integer code. Read that file's module doc — it is the DSL
 specification. The generator `euler_families!` lives in `src/euler/families/codegen.rs`
-(pulled in with `#[macro_use]`, not a `use`, because the generated `cube*` child modules
-recurse into it); the vocabulary triple is in `src/euler/families/vocabulary.rs`.
+(pulled in with `#[macro_use]`, not a `use`, because the generated child modules
+recurse into it); the vocabulary pair is in `src/euler/families/vocabulary.rs`.
 
 ```rust
   /// `dX = θ(μ − X) dt + σ dW`.
@@ -121,20 +121,18 @@ with `bind name = expr;` lines. A step reads `x` (its own state names), `dt`, it
 names, its parameters, plus `ct`/`ct1`..`ct7`, `nj`, `js`, `gm`, `gm2`, `u`, `u2`, `lv`,
 `cv`, `sj`, `iv`.
 Vocabulary: `sqrt exp ln pow abs negate tanh atan sin recip positive max min lit less
-leq geq pick` — a **new** intrinsic goes into all three implementations in
-`vocabulary.rs` (host `ops`, `C_PRELUDE`, `cube_ops`).
+leq geq pick` — a **new** intrinsic goes into both implementations in
+`vocabulary.rs` (host `ops`, `C_PRELUDE`).
 
 Traps, each learned from a real failure:
 
 - **A literal never sits left of an operator** — it cannot infer its type there;
   write `c − f(x)` as `negate(f(x) - lit(c))`.
-- **State/noise names must not be `slot_a`..`slot_d` / `shock_a`..`shock_d`** —
-  the CubeCL functions take the slots as parameters and bind the family's names
-  from them, so a collision shadows the slot it is read from.
-- **`#[cube]` cannot see through a macro call**, so every identifier used in more
-  than one macro arm must come from `step_inputs(...)` or hygiene splits it in two.
-- **Never name a threaded value `ln`** — CubeCL treats it as the logarithm
-  intrinsic and panics; that is why the lifted value is `lv`.
+- **State/noise names must not be `slot_a`..`slot_d` / `shock_a`..`shock_d`**
+  and every identifier used in more than one macro arm must come from
+  `step_inputs(...)`, or macro hygiene splits it in two.
+- **Never name a threaded value `ln`** — it is the logarithm in the vocabulary;
+  that is why the lifted value is `lv`.
 - **Noise components are increments `√dt · z`**, so a term the host adds as a
   standard normal is written `residual_sd * (de / sqrt(dt))`.
 - **A family may keep more state slots than it reports** — `Family::components()`
@@ -184,28 +182,10 @@ host fallback chunk-correct:
   }
 ```
 
-**2d. The hand-written CubeCL dispatch** — `src/euler/cubecl.rs`. A new family
-needs **two** arms (`fn step`, `fn report`), plus one in `fn lift_coefficient` if it has
-a `lift` clause, one in `fn history_push` if it has a `history` clause, one in
-`fn series_size` if it has a `series` clause and one in `fn table_increment` if it has
-a `table` clause. The invariant is `arms = 2 × families + lift clauses + history
-clauses + series clauses + table clauses` (when this was written,
-2 × 115 + 6 + 6 + 1 + 1 = 244).
-
-```rust
-  if family == 110u32 {
-    stepped = cube::Foo(
-      component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
-      gm2, u, u2, lv, cv, dz0, dz1, dz2, dz3,
-    );
-  }
-```
-
-`report` drops `dt` and the four `dz` and calls `cube_report::`; `lift_coefficient` /
-`history_push` lead with `which` / `0u32` instead of `component` and call `cube_lift::`
-/ `cube_history::`; `series_size` and `table_increment` pass zeros for everything but
-`params`, `dt` and their draws and call `cube_series::` / `cube_table::`. A missing arm compiles, runs, and quietly returns a flat path —
-which is what §4d catches.
+**2d. Nothing to dispatch by hand.** The C body the CUDA and Metal kernels
+render is generated from the table, family by family; there is no second
+kernel to keep in step (the hand-written CubeCL dispatch went with that
+backend in 3.0.0-rc.2).
 
 **2e. `src/euler/family_parity.rs`.** `family_name`'s `match` has no wildcard, so
 a new `EulerSpec` variant fails to compile until it is named. Then add a probe to
@@ -218,11 +198,11 @@ jump law no other family reaches.
 
 **2f. A new *per-step value* is a frame change**, not a family addition: the
 matchers and expansions in `codegen.rs`, its four signature blocks, the
-`step_inputs(...)` invocation in `families.rs`, every `cubecl.rs` dispatch arm, and the
-frame in `src/euler/kernel.rs`. Script it, and re-read the traps first.
+`step_inputs(...)` invocation in `families.rs`, and the frame in
+`src/euler/kernel.rs`. Script it, and re-read the traps first.
 
-Verify §2: `grep -c "family ==" src/euler/cubecl.rs` must equal `2 × families + lifts +
-histories + series + tables`, families from `grep -cE "^  [0-9]+ => " src/euler/families.rs`.
+Verify §2: `cargo test -p stochastic-rs-stochastic --lib -- euler::families` renders
+every family into the C body, families counted by `grep -cE "^  [0-9]+ => " src/euler/families.rs`.
 A probe needs no series or table work of its own: `Probe::series_terms` and
 `Probe::table_spec` answer from `Family::has_series()` / `has_table()`.
 
@@ -349,9 +329,8 @@ of one batch are equal. The two backends advance the pipeline counter differentl
 both are asserted separately.
 
 **4d. The parity suite** (needs no GPU for the compile-time and rendered-kernel
-checks): `cargo test -p stochastic-rs-stochastic --features metal,cubecl-wgpu
---lib euler::`, covering `every_family_has_a_probe`,
-`every_family_runs_on_the_device`, `the_cubecl_kernel_matches_the_generated_one` and
+checks): `cargo test -p stochastic-rs-stochastic --features metal --lib euler::`,
+covering `every_family_has_a_probe`, `every_family_runs_on_the_device` and
 `kernel::tests::every_family_reaches_the_rendered_kernel`.
 
 **4e. The reproducibility guard.** Add exactly one `guard!` line to
@@ -473,11 +452,11 @@ indentation and contains literal `—`, `∏`, `−` characters.
 
 ```bash
   cargo clippy -p stochastic-rs-stochastic --all-targets -- -D warnings
-  cargo clippy -p stochastic-rs-stochastic --all-targets --features metal,cubecl-wgpu -- -D warnings
+  cargo clippy -p stochastic-rs-stochastic --all-targets --features metal -- -D warnings
   cargo clippy -p stochastic-rs-stochastic --all-targets --features cuda -- -D warnings
   RUSTDOCFLAGS="-D warnings" cargo doc -p stochastic-rs-stochastic --no-deps
   cargo check --workspace --no-default-features
-  cargo test -p stochastic-rs-stochastic --features metal,cubecl-wgpu --lib euler::
+  cargo test -p stochastic-rs-stochastic --features metal --lib euler::
   cargo test -p stochastic-rs-stochastic --features metal --test device_law
 ```
 
@@ -486,8 +465,8 @@ All three clippy runs matter, and the `cuda` one compiles on a machine with no G
 batch path, and a launch scalar added to one and not the others is an arity error only
 that build shows — the history/series/table scalars once shipped that way for three
 commits. A helper only device launches call is dead code in the no-feature build, so give it the crate's guard, as `flatten_curves` and `history_slot`
-in `euler.rs` have — `#[cfg_attr(not(any(feature = "cuda", feature = "metal", feature =
-"cubecl-cuda", feature = "cubecl-wgpu")), allow(dead_code))]`. `src/lib.rs` carries
+in `euler.rs` have — `#[cfg_attr(not(any(feature = "cuda", feature = "metal")),
+allow(dead_code))]`. `src/lib.rs` carries
 `#![deny(rustdoc::broken_intra_doc_links)]`, so a mistyped `[`Foo`]` fails `cargo doc`
 rather than warning.
 
@@ -558,12 +537,11 @@ shrinks as the engine grows (empty today) — check the nine documented ways rou
    event is the earliest of their exact arrivals and the mark its index. Extra
    uniforms come from the noise components — half the sum of two squared
    normals is a unit exponential and one minus its negative exponential a
-   uniform — so no `erf` enters the vocabulary (CubeCL's prelude `erf` is a
-   `Line` polyfill and clashes with a `cube_ops` name anyway).
+   uniform — so no `erf` enters the vocabulary.
 8. **A pipeline of its own** — a process whose sample is a transform rather
    than a recursion gets a capability trait beside `FgnBackend`
    (`SheetBackend<T>` in `device.rs`), a `via sheet` switch arm, and one
-   pipeline file per backend under its module (`sheet/fbs/{metal,cuda,cubecl}.rs`)
+   pipeline file per backend under its module (`sheet/fbs/{metal,cuda}.rs`)
    reusing the fGN pipeline's butterflies, hash and bit-reverse table. The host
    devices route through the process's own sampler, so a fallback is
    bit-identical to the `Cpu` build, and `device_ready()` names what the
@@ -578,7 +556,7 @@ shrinks as the engine grows (empty today) — check the nine documented ways rou
    interprets it before every step at `ct` and the first state slot, and the
    family reads `pv` / `pv2`. `device_ready()` is `fn2d.program().is_some()`;
    a closure stays on the host. Sixteen opcodes, ≤ 62 operations, stack ≤ 8 —
-   the interpreter lives in the C frame (`kernel.rs`) and `cubecl.rs::program_value`,
+   the interpreter lives in the C frame (`kernel.rs`),
    and the host's `Program::eval` is the reference the parity probes run
    (`ProbePrograms::pair()` uses every opcode). This is what moved `Cheyette`
    and `VolterraSde` onto the engine — the last two host-only processes.
@@ -594,7 +572,6 @@ shrinks as the engine grows (empty today) — check the nine documented ways rou
 - [ ] Family declared in `families.rs`; the six DSL traps checked
 - [ ] `EulerSpec` variant + `encode()` arm; ≤ 20 params, ≤ 8 curves, ≤ 4 states, ≤ 4 noises
 - [ ] `EulerCoefficients`/`EulerSystem` impl; `draw_seed`; `host_sample` calls the sampler **and** `advance_chunk_seed`
-- [ ] `cubecl.rs` step + report arms (+ lift, + history, + series, + table), count checked against the family count
 - [ ] `family_name` arm and a probe in the arity-matching `every_*_family()` list
 - [ ] All five `ProcessExt` methods overridden through the backend; a configuration the kernels cannot carry answers `device_ready()` (a `ProcessExt` override) and falls back to the host in every one of them, never a panic; the hook's `assert!` names the bypass
 - [ ] Device-law case in the right `device_law/<group>.rs`; statistic moves with every parameter; tolerance not padded

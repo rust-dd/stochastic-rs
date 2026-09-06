@@ -116,22 +116,6 @@ macro_rules! py_on_device_f32 {
         let $p = &owned;
         $body
       }
-      #[cfg(feature = "cubecl-cuda")]
-      $crate::python_device::Device::CubeclCuda(ordinal) => {
-        let owned = $inner.clone().with_backend($crate::device::Cubecl::<
-          $crate::device::CudaRuntime,
-        >::new(ordinal));
-        let $p = &owned;
-        $body
-      }
-      #[cfg(feature = "cubecl-wgpu")]
-      $crate::python_device::Device::CubeclWgpu(ordinal) => {
-        let owned = $inner.clone().with_backend($crate::device::Cubecl::<
-          $crate::device::WgpuRuntime,
-        >::new(ordinal));
-        let $p = &owned;
-        $body
-      }
       #[allow(unreachable_patterns)]
       _ => unreachable!("devices this build lacks are rejected at construction"),
     }

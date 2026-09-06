@@ -1,14 +1,16 @@
 # fGN sampling: PC (i9-285K + RTX 4070 SUPER)
 
-`benches/fgn_cuda_compare.rs`, same parameters as the Apple M4 Max table so the
-machines are directly comparable. Times are criterion medians; **lower is
+Measured with the `fgn_cuda_compare` bench (removed with the CubeCL backend in
+3.0.0-rc.2; `fgn_cuda` carries the cuFFT legs), same parameters as the Apple
+M4 Max table so the machines are directly comparable. The cubecl rows are
+historical. Times are criterion medians; **lower is
 better**. `n` = path length, `m` = number of paths.
 
 Build with the `mimalloc` global allocator — the batch path allocates one
 `Array1` per path, so the default Windows allocator otherwise bottlenecks it:
 
 ```bash
-cargo bench --bench fgn_cuda_compare --features "cuda,cubecl-cuda,mimalloc"
+cargo bench --bench fgn_cuda --features "cuda,mimalloc"
 ```
 
 ## Single path (`sample`, m = 1)

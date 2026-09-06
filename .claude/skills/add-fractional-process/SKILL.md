@@ -256,8 +256,8 @@ mod tests {
 
 **Backend caveat on tests 4 and 5.** Those guarantees hold on `Cpu`
 only. `Accelerate` is bit-stable in seed *consumption* but not in
-vDSP's arithmetic; `Cuda` / `Metal` / `CubeclCuda` / `CubeclWgpu` are
-reproducible-effort-only, and `Fbm` on those three is not even a
+vDSP's arithmetic; `Cuda` / `Metal` are reproducible-effort-only, and
+`Fbm` on those two is not even a
 function of the pinned seed. Pin `B = Cpu` in reproducibility tests and
 test the other backends distributionally. See `add-gpu-sampler` §2 and
 `Backend`'s own reproducibility table.

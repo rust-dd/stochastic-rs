@@ -177,8 +177,8 @@ fn the_emitted_c_reports_per_family() {
   assert!(C_REPORT.contains("reported[0] = __n0;"));
 }
 
-/// A `bind` becomes a local in every language: a `let` on the host and in a
-/// CubeCL kernel, a `const REAL` in the emitted C. Without that the clamped
+/// A `bind` becomes a local in every language: a `let` on the host, a
+/// `const REAL` in the emitted C. Without that the clamped
 /// state a family names once would have to be spelled out at each use.
 #[test]
 fn a_bind_becomes_a_c_local() {

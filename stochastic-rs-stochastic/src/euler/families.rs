@@ -7,30 +7,20 @@
 //! C body the native CUDA and Metal kernels render — from the same tokens, so
 //! the operation order cannot drift between them.
 //!
-//! The CubeCL kernel is written by hand instead: its `#[cube]` attribute
-//! cannot see through a macro expansion, and calls into a generic helper need
-//! a turbofish the shared tokens must not carry. What keeps it honest is
-//! `euler::family_parity`, which launches every declared family on both
-//! kernels and compares them point for point, so a family missing from the
-//! hand-written dispatch fails a test rather than quietly returning a flat
-//! path.
+//! `euler::family_parity` launches every declared family on the device
+//! present and holds it to the host step, so a declaration that renders but
+//! misbehaves fails a test rather than quietly returning a flat path.
 //!
 //! A step or report may open with `bind name = expr;` lines before its final
-//! expression. Each becomes a `let` on the host and in a CubeCL kernel and a
-//! `const REAL` in the emitted C, which is how a family names a clamped or
-//! guarded state once and then reads like the host sampler it came from.
+//! expression. Each becomes a `let` on the host and a `const REAL` in the
+//! emitted C, which is how a family names a clamped or guarded state once and
+//! then reads like the host sampler it came from.
 //!
 //! A step or report may read `u` and `u2`, two uniforms in `[0, 1)` for the
 //! step, `nj`, the number of jumps it saw, `js`, the sum of their sizes, `gm`
 //! and `gm2`, one or two Gamma draws, and `ct`, the step's value of a time-varying
 //! coefficient the host supplies as one value per grid point. A family that
 //! never names it costs nothing for it.
-//!
-//! The CubeCL functions take the four state and four noise slots as
-//! parameters and bind the family's own names from them, so those parameters
-//! are named `slot_a`..`slot_d` and `shock_a`..`shock_d`: a family whose
-//! state were called `x1` would otherwise shadow the slot it was being read
-//! from, and every later binding would read the shadowed value.
 //!
 //! The names a step may use are fixed: `x` for the state, `dt` for the step
 //! size, `dz` for the step's noise **increment** — `sqrt_dt · z` for Gaussian
@@ -82,8 +72,8 @@
 //! `lit`, the
 //! comparisons
 //! `less`, `leq` and `geq`, and the branch-free `pick`. Each has a host
-//! implementation in [`ops`], a C definition in [`vocabulary::C_PRELUDE`] and a CubeCL
-//! one in `cube_ops`, the three kept together in [`vocabulary`]; anything
+//! implementation in [`ops`] and a C definition in [`vocabulary::C_PRELUDE`],
+//! the two kept together in [`vocabulary`]; anything
 //! outside it fails to compile on the host, which is the intended way to find
 //! out that a kernel could not have run it either.
 //!
@@ -101,8 +91,6 @@ use crate::traits::FloatExt;
 pub(crate) mod codegen;
 pub(crate) mod vocabulary;
 
-#[cfg(feature = "cubecl")]
-pub(crate) use vocabulary::cube_ops;
 pub(crate) use vocabulary::ops;
 
 euler_families! {

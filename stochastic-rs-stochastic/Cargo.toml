@@ -13,11 +13,6 @@ categories = ["mathematics", "simulation", "science"]
 
 [features]
 default = []
-# CubeCL portable kernels: `cubecl` is the runtime-agnostic core, `cubecl-cuda` /
-# `cubecl-wgpu` pick the runtime.
-cubecl = ["dep:cubecl", "dep:gpu-fft"]
-cubecl-cuda = ["cubecl", "dep:cubecl-cuda"]
-cubecl-wgpu = ["cubecl", "dep:cubecl-wgpu"]
 cuda = ["dep:cudarc", "cudarc/cufft"]
 metal = ["dep:metal"]
 accelerate = []
@@ -50,11 +45,7 @@ scilib = { workspace = true }
 linreg = { workspace = true }
 parking_lot = { workspace = true }
 ordered-float = { workspace = true }
-cubecl = { workspace = true, optional = true, default-features = false }
-cubecl-cuda = { workspace = true, optional = true }
-cubecl-wgpu = { workspace = true, optional = true }
 cudarc = { workspace = true, optional = true, features = ["cuda-12080", "cuda-version-from-build-system"] }
-gpu-fft = { workspace = true, optional = true }
 metal = { workspace = true, optional = true }
 pyo3 = { workspace = true, features = ["extension-module"], optional = true }
 numpy = { workspace = true, optional = true }

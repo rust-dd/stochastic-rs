@@ -175,9 +175,7 @@ fn device_seed_follows_the_seed_source() {
 /// `f32` libm rounding of Box–Muller.
 #[cfg(any(
   feature = "metal",
-  feature = "cuda",
-  feature = "cubecl-cuda",
-  feature = "cubecl-wgpu"
+  feature = "cuda"
 ))]
 mod devices {
   use ndarray::Array2;
@@ -271,17 +269,6 @@ mod devices {
       "{label}: mean {mean} vs {expected}"
     );
     assert!(paths.iter().all(|&x| x >= 0.0), "{label}");
-  }
-
-  #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
-  #[test]
-  fn cubecl_backend_matches_the_moments() {
-    #[cfg(feature = "cubecl-wgpu")]
-    type Rt = crate::device::WgpuRuntime;
-    #[cfg(all(feature = "cubecl-cuda", not(feature = "cubecl-wgpu")))]
-    type Rt = crate::device::CudaRuntime;
-    gbm_moments_hold::<f32, crate::device::Cubecl<Rt>>("Cubecl");
-    cir_stays_nonnegative::<f32, crate::device::Cubecl<Rt>>("Cubecl");
   }
 
   #[cfg(feature = "metal")]

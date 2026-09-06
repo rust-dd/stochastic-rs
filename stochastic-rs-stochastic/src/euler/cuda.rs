@@ -1,7 +1,7 @@
 //! cudarc + NVRTC device path of the Euler engine: one CUDA thread per path,
 //! the whole recursion in the kernel, normals from the same counter hash of
-//! `(path, step, seed)` as the CubeCL and Metal kernels (so the three device
-//! back-ends agree seed for seed up to libm rounding), in `f32` or `f64`
+//! `(path, step, seed)` as the Metal kernel (so the two device back-ends
+//! agree seed for seed up to libm rounding), in `f32` or `f64`
 //! according to `T` — NVIDIA hardware has native double precision.
 
 use std::any::TypeId;

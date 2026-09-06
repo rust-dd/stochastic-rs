@@ -1,6 +1,6 @@
 ---
 name: add-gpu-sampler
-description: How to add or extend a GPU / accelerated sampling backend (CUDA, Metal, wgpu, Accelerate) in stochastic-rs-stochastic. Invoke when porting fGN or the Euler engine to a new device, or when a backend-generic process needs to reach one.
+description: How to add or extend a GPU / accelerated sampling backend (CUDA, Metal, Accelerate) in stochastic-rs-stochastic. Invoke when porting fGN or the Euler engine to a new device, or when a backend-generic process needs to reach one.
 ---
 
 # Add GPU sampler — stochastic-rs-stochastic
@@ -34,12 +34,11 @@ lines) is the second half.
 | `Accelerate` | `accelerate` | Apple vDSP / AMX — a **CPU** path, not a GPU | `f32` / `f64` |
 | `Cuda` | `cuda` | `cudarc` + cuFFT + NVRTC, fused Philox kernel | `f32` / `f64` |
 | `Metal` | `metal` | Hand-written MSL via the `metal` crate | `f32` |
-| `CubeclCuda` | `cubecl-cuda` | cubecl Rust kernels on CubeCL's CUDA runtime | `f32` |
-| `CubeclWgpu` | `cubecl-wgpu` | cubecl Rust kernels through wgpu: Metal, Vulkan, WebGPU | `f32` |
 
-The native backends take the bare names (`cuda`, `metal`) and CubeCL's
-runtimes are namespaced under it; the `gpu` / `gpu-cuda` / `gpu-wgpu`
-aliases and the `cuda-native` spelling were **removed before 3.0**. There
+The backends take the bare names (`cuda`, `metal`); the `gpu*` aliases, the
+`cuda-native` spelling and the whole CubeCL backend (`cubecl`, `cubecl-cuda`,
+`cubecl-wgpu`; `Cubecl<R>`) were **removed before 3.0** — CubeCL duplicated
+the native kernels at a lower speed (user decision, 2026-09-06). There
 is no `metal-rs` dependency. The CUDA backend is `cudarc`, not
 `cust`. Kernels are Rust string constants compiled at runtime by NVRTC
 (`noise/fgn/cuda/kernels.rs` for fGN, `euler/kernel.rs` for the
@@ -81,7 +80,7 @@ is normative) is:
 |---|---|
 | `Cpu` | **Yes.** Same seed + same `m` ⇒ bit-identical, on any machine, under any rayon thread-pool size. |
 | `Accelerate` | **No — measured, not assumed.** Seed *consumption* is thread-count independent, but `vDSP_fft_zip`'s arithmetic is not bit-stable across calls: 400 repeated calls on an idle M4 Max diverged 0 times; the same sweep under core saturation diverged 21/400, worst relative difference `2.08e-3`. `Cpu` stayed bit-exact under identical load. |
-| `Cuda` / `Metal` / `CubeclCuda` / `CubeclWgpu` | **Function of the pinned seed, not bit-identical to `Cpu`.** Each batch draws **one** launch seed from the `seed: &S2` the *caller* passed, so the same `Deterministic` seed value gives the same paths and consecutive calls advance the stream, as on the host. Bit-identity across driver versions, vendors or repeated runs is untested and unpromised. |
+| `Cuda` / `Metal` | **Function of the pinned seed, not bit-identical to `Cpu`.** Each batch draws **one** launch seed from the `seed: &S2` the *caller* passed, so the same `Deterministic` seed value gives the same paths and consecutive calls advance the stream, as on the host. Bit-identity across driver versions, vendors or repeated runs is untested and unpromised. |
 
 Two rules follow, and both have already been violated once:
 
@@ -162,8 +161,6 @@ Device-side fGN backends are registered by `gpu_backend!` in
 
 ```rust
 gpu_backend!("cuda", Cuda  => sample_cuda_impl, f32, f64);
-gpu_backend!("cubecl-cuda", CubeclCuda  => sample_cubecl_cuda_impl, f32);
-gpu_backend!("cubecl-wgpu", CubeclWgpu  => sample_cubecl_wgpu_impl, f32);
 gpu_backend!("metal",       Metal => sample_metal_impl,       f32);
 ```
 
@@ -217,14 +214,10 @@ A process joins the Euler engine by implementing `EulerCoefficients`
 to `via euler`. A new drift/diffusion family is one `EulerSpec` variant
 plus one `family` branch in the kernels.
 
-There are **two** kernel texts, not three: `euler/kernel.rs` holds one C
-body that the native CUDA and the Metal back-ends both render (the
-`Language` struct fills in `REAL`, `SQRT`, `LOG`, `COS` and the buffer
-index type), and `euler/cubecl.rs` holds the CubeCL kernel, which repeats
-the same integer hash in Rust. Changing the recursion means editing the
-shared body and mirroring it in the CubeCL kernel — then re-checking the
-CUDA text is byte-identical if you meant it to be, and re-running the
-device tests.
+There is **one** kernel text: `euler/kernel.rs` holds the C body that the
+native CUDA and the Metal back-ends both render (the `Language` struct fills
+in `REAL`, `SQRT`, `LOG`, `COS` and the buffer index type). Changing the
+recursion means editing that body once and re-running the device tests.
 
 ## 7. Kernel conventions
 
@@ -259,11 +252,11 @@ kernel:
   are themselves feature-gated — and a failing device must surface a
   `DeviceError`, never a host result.
 - **Do not** implement a capability for a precision the kernels do not
-  compute in. `f64` on Metal or CubeCL must not compile.
+  compute in. `f64` on Metal must not compile.
 - **Do not** allocate device memory per call. Cache it per size.
-- **Do not** resurrect the `gpu*` aliases, the `cuda-native` spelling, or a
-  device name that means "whichever backend this build carries" (`"gpu"` and
-  `"cubecl"` were removed for exactly that reason: they hide what ran).
+- **Do not** resurrect the `gpu*` aliases, the `cuda-native` spelling, the
+  CubeCL backend, or a device name that means "whichever backend this build
+  carries" (`"gpu"` was removed for exactly that reason: it hides what ran).
 - **Do not** make the `backend` field private: downstream
   `Process { n: 64, ..Default::default() }` struct-update syntax needs
   it public (E0451).
@@ -280,14 +273,9 @@ kernel:
 - `noise/fgn/cuda/` — `mod.rs`, `kernels.rs` (NVRTC sources),
   `sampler.rs`, `state.rs`, `convert.rs`, `tests.rs`. The most complete
   fGN backend, and the only one with the two-stream pipeline.
-- `noise/fgn/metal.rs`, `noise/fgn/cubecl.rs`, `noise/fgn/accelerate.rs` —
-  the other three; the CubeCL one serves both runtimes through the
-  `CubeclRuntime` trait, one implementor per runtime with its own client
-  cache.
-- `euler/kernel.rs`, `euler/cuda.rs`, `euler/metal.rs`,
-  `euler/cubecl.rs` — the Euler engine's shared body and its devices; the
-  CubeCL module also owns `CubeclRuntime`, the per-runtime client caches and
-  the panic-catching `open`.
+- `noise/fgn/metal.rs`, `noise/fgn/accelerate.rs` — the other two.
+- `euler/kernel.rs`, `euler/cuda.rs`, `euler/metal.rs` — the Euler engine's
+  shared body and its devices.
 - `macros.rs`'s `backend_switch!` — generates `.on::<B>()` and
   `.on::<B>()` for a backend-generic process, in four forms
   (`via fgn` / `via phantom` / `via host` / `via euler`). Invoke it
@@ -300,8 +288,8 @@ kernel:
 
 ## Related SKILLs
 
-- `feature-flag-management` — propagating `cuda` / `cubecl` /
-  `metal` / `accelerate` from the sub-crate to the umbrella.
+- `feature-flag-management` — propagating `cuda` / `metal` / `accelerate`
+  from the sub-crate to the umbrella.
 - `add-fractional-process` — the backend-generic consumers (`Fou`,
   `Fgbm`, `FJacobi`, `Cfou`, `JumpFou`, … all carry `B`).
 - `bench-writing` — the exact `required-features` sets for the gated

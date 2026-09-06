@@ -20,8 +20,6 @@ pub enum Device {
   Accelerate,
   Cuda(usize),
   Metal(usize),
-  CubeclCuda(usize),
-  CubeclWgpu(usize),
 }
 
 impl Device {
@@ -62,11 +60,9 @@ impl Device {
       "accelerate" => Device::Accelerate,
       "cuda" => Device::Cuda(ordinal(crate::device::env_ordinal())),
       "metal" => Device::Metal(ordinal(crate::device::env_ordinal())),
-      "cubecl-cuda" => Device::CubeclCuda(ordinal(crate::device::env_ordinal())),
-      "cubecl-wgpu" => Device::CubeclWgpu(ordinal(crate::device::env_ordinal())),
       other => {
         return Err(PyValueError::new_err(format!(
-          "unknown device {other:?}; use cpu, accelerate, cuda, metal, cubecl-cuda or cubecl-wgpu, optionally with :ordinal"
+          "unknown device {other:?}; use cpu, accelerate, cuda or metal, optionally with :ordinal"
         )));
       }
     };
@@ -84,16 +80,6 @@ impl Device {
       ),
       Device::Cuda(_) => (cfg!(feature = "cuda"), "native CUDA runtime", "cuda"),
       Device::Metal(_) => (cfg!(feature = "metal"), "native Metal runtime", "metal"),
-      Device::CubeclCuda(_) => (
-        cfg!(feature = "cubecl-cuda"),
-        "CubeCL CUDA runtime",
-        "cubecl-cuda",
-      ),
-      Device::CubeclWgpu(_) => (
-        cfg!(any(feature = "cubecl-cuda", feature = "cubecl-wgpu")),
-        "CubeCL runtime",
-        "cubecl-cuda or cubecl-wgpu",
-      ),
     };
     if compiled {
       Ok(())
@@ -104,12 +90,9 @@ impl Device {
     }
   }
 
-  /// Metal and CubeCL kernels compute in `f32` only.
+  /// The Metal kernels compute in `f32` only.
   pub fn single_precision(self) -> bool {
-    matches!(
-      self,
-      Device::Metal(_) | Device::CubeclCuda(_) | Device::CubeclWgpu(_)
-    )
+    matches!(self, Device::Metal(_))
   }
 
   /// The name `device=` accepts for this variant.
@@ -119,8 +102,6 @@ impl Device {
       Device::Accelerate => "accelerate",
       Device::Cuda(_) => "cuda",
       Device::Metal(_) => "metal",
-      Device::CubeclCuda(_) => "cubecl-cuda",
-      Device::CubeclWgpu(_) => "cubecl-wgpu",
     }
   }
 
@@ -134,10 +115,6 @@ impl Device {
       Device::Cuda(o) => crate::device::Cuda::new(o).probe(),
       #[cfg(feature = "metal")]
       Device::Metal(o) => crate::device::Metal::new(o).probe(),
-      #[cfg(feature = "cubecl-cuda")]
-      Device::CubeclCuda(o) => crate::device::Cubecl::<crate::device::CudaRuntime>::new(o).probe(),
-      #[cfg(feature = "cubecl-wgpu")]
-      Device::CubeclWgpu(o) => crate::device::Cubecl::<crate::device::WgpuRuntime>::new(o).probe(),
       #[allow(unreachable_patterns)]
       _ => unreachable!("check_compiled rejects the devices this build lacks"),
     };

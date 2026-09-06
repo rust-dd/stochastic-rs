@@ -12,7 +12,7 @@
 **Quantitative finance in Rust**: stochastic process simulation, option
 pricing and calibration, volatility surfaces, fixed income and credit, risk,
 statistics, copulas and neural volatility surrogates. Generic over `f32` /
-`f64`, SIMD on the CPU, CUDA / Metal / CubeCL back-ends where they pay off, and
+`f64`, SIMD on the CPU, CUDA and Metal back-ends where they pay off, and
 Python bindings via PyO3 that ship the same surface as the Rust crates.
 
 ## Documentation
@@ -50,7 +50,7 @@ stochastic-rs = "3.0.0-rc.1"
 ```
 
 Device back-ends and other optional parts are cargo features (`cuda`,
-`metal`, `cubecl-cuda` / `cubecl-wgpu`, `accelerate`, `ai`, `dual-stream-rng`);
+`metal`, `accelerate`, `ai`, `dual-stream-rng`);
 the [installation guide](https://stochastic.rust-dd.com/docs/getting-started/installation-rust)
 and the [feature flags](https://stochastic.rust-dd.com/docs/concepts/feature-flags)
 page list them with what each pulls in. Sub-crates can be depended on directly
@@ -105,7 +105,7 @@ call, put = pricer.call_put()
 ```
 
 A process samples on a device by re-typing it: `Gbm::new(...).on::<Metal>()`
-(`Cuda`, `Cubecl`, `Accelerate`), with `handle.probe()` to check the device
+(`Cuda`, `Accelerate`), with `handle.probe()` to check the device
 first; from Python, `device="metal"` on the device-capable classes. The
 [GPU support](https://stochastic.rust-dd.com/docs/concepts/gpu-support) page has
 the support matrix, and [`notebooks/`](notebooks/) a Colab notebook that runs the
@@ -116,7 +116,7 @@ CUDA back-end on a free T4.
 Criterion suites live under `benches/`; the
 [benchmarks page](https://stochastic.rust-dd.com/docs/benchmarks) carries the
 numbers: the SIMD Normal sampler against `rand_distr`, fractional Gaussian noise
-on CPU, Accelerate, Metal, CubeCL and cuFFT, and the per-release speedups.
+on CPU, Accelerate, Metal and cuFFT, and the per-release speedups.
 
 ## Citing
 

@@ -25,8 +25,8 @@ family.
   HJM, LMM with drift coupling, Duffie-Kan, Wu-Zhang, ADG.
 - **Monte Carlo** — antithetic, control variates, stratified sampling,
   importance sampling, Halton and Sobol sequences, Longstaff-Schwartz, MLMC.
-- **Backends** — CPU SIMD by default; CUDA, Metal, Accelerate and cubecl
-  for fractional Gaussian noise via `.on::<B>()`.
+- **Backends** — CPU SIMD by default; CUDA, Metal and Accelerate for every
+  process via `.on::<B>()`.
 
 ## Usage
 

@@ -1,9 +1,8 @@
 //! The function vocabulary a family step may use, in its three
 //! implementations: the host functions in [`ops`], the C `#define`s in
 //! [`C_PRELUDE`] the kernel renderer completes with each language's
-//! intrinsics, and the CubeCL functions in `cube_ops`. A new name is added to
-//! all three, and the parity run over every family is what holds them to one
-//! meaning.
+//! intrinsics. A new name is added to both, and the parity run over every
+//! family is what holds them to one meaning.
 
 /// Host implementations of the function vocabulary a family step may use, so
 /// `sqrt(v)` means on the host what the `#define` in [`C_PRELUDE`] makes it
@@ -47,7 +46,6 @@ pub(crate) mod ops {
   /// `−v`. A literal may never sit on the left of an operator — the compiler
   /// cannot infer its type there — so a step that needs `c − f(x)` writes
   /// `negate(f(x) − lit(c))`, which is the same value in IEEE arithmetic.
-  /// The name avoids `neg`, which `cubecl::prelude` already exports.
   #[inline(always)]
   pub(crate) fn negate<T: FloatExt>(v: T) -> T {
     T::zero() - v
@@ -97,7 +95,7 @@ pub(crate) mod ops {
   }
 
   /// A numeric literal. Each target spells one differently — `T::from_f64_fast`
-  /// on the host, `F::new` in a CubeCL kernel, a cast in C — so a family writes
+  /// on the host, a cast in C — so a family writes
   /// `lit(0.5)` and the emitters agree on what it means.
   #[inline(always)]
   pub(crate) fn lit<T: FloatExt>(v: f64) -> T {
@@ -156,110 +154,3 @@ pub(crate) const C_PRELUDE: &str = r#"#define sqrt(v) STOCH_SQRT(v)
 #define pick(c, a, b) ((c) != (REAL)0 ? (a) : (b))
 #define lit(v) ((REAL)(v))
 "#;
-
-/// The CubeCL implementations of the same vocabulary. They are concrete on
-/// `f32` — the only precision the CubeCL kernels compute in — so a call from a
-/// generated body has nothing left to infer, which a generic helper would.
-/// `max` and `min` are not defined here: `cubecl::prelude` already exports
-/// them as free functions with these names.
-#[cfg(feature = "cubecl")]
-#[allow(dead_code)]
-pub(crate) mod cube_ops {
-  use cubecl::prelude::*;
-
-  /// `√v`
-  #[cube]
-  pub(crate) fn sqrt(v: f32) -> f32 {
-    Sqrt::sqrt(v)
-  }
-
-  /// `exp v`
-  #[cube]
-  pub(crate) fn exp(v: f32) -> f32 {
-    Exp::exp(v)
-  }
-
-  /// `ln v`
-  #[cube]
-  pub(crate) fn ln(v: f32) -> f32 {
-    Log::ln(v)
-  }
-
-  /// `a^b`
-  #[cube]
-  pub(crate) fn pow(a: f32, b: f32) -> f32 {
-    Powf::powf(a, b)
-  }
-
-  /// `|v|`
-  #[cube]
-  pub(crate) fn abs(v: f32) -> f32 {
-    Abs::abs(v)
-  }
-
-  /// `−v`.
-  #[cube]
-  pub(crate) fn negate(v: f32) -> f32 {
-    0.0f32 - v
-  }
-
-  /// `tanh v`
-  #[cube]
-  pub(crate) fn tanh(v: f32) -> f32 {
-    Tanh::tanh(v)
-  }
-
-  /// `arctan v`
-  #[cube]
-  pub(crate) fn atan(v: f32) -> f32 {
-    ArcTan::atan(v)
-  }
-
-  /// `1/v`.
-  #[cube]
-  pub(crate) fn recip(v: f32) -> f32 {
-    1.0f32 / v
-  }
-
-  /// `sin v`
-  #[cube]
-  pub(crate) fn sin(v: f32) -> f32 {
-    Sin::sin(v)
-  }
-
-  /// The positive part, the truncation a square-root diffusion steps on.
-  #[cube]
-  pub(crate) fn positive(v: f32) -> f32 {
-    max(v, 0.0f32)
-  }
-
-  /// A numeric literal.
-  #[cube]
-  pub(crate) fn lit(v: f32) -> f32 {
-    v
-  }
-
-  /// `1` when `a < b`, `0` otherwise.
-  #[cube]
-  pub(crate) fn less(a: f32, b: f32) -> f32 {
-    select(a < b, 1.0f32, 0.0f32)
-  }
-
-  /// `1` when `a <= b`, `0` otherwise.
-  #[cube]
-  pub(crate) fn leq(a: f32, b: f32) -> f32 {
-    select(a <= b, 1.0f32, 0.0f32)
-  }
-
-  /// `1` when `a >= b`, `0` otherwise.
-  #[cube]
-  pub(crate) fn geq(a: f32, b: f32) -> f32 {
-    select(a >= b, 1.0f32, 0.0f32)
-  }
-
-  /// `a` when `cond` is non-zero, `b` otherwise.
-  #[cube]
-  pub(crate) fn pick(cond: f32, a: f32, b: f32) -> f32 {
-    select(cond != 0.0f32, a, b)
-  }
-}

@@ -2,11 +2,9 @@
 //! it.
 //!
 //! The kernels the CUDA and Metal back-ends run are generated from the family
-//! declarations, so a family that compiles is a family those two can step.
-//! The CubeCL kernel is different: its dispatch is written by hand, because
-//! `#[cube]` cannot look through a macro call. A family added without its
-//! dispatch line still compiles, still runs, and quietly returns the state
-//! unchanged — a flat path rather than an error.
+//! declarations, so a family that compiles is a family those two can step;
+//! what is left to check is that the declaration means on the device what it
+//! means on the host.
 //!
 //! What closes that gap is [`Probe`], a process that is nothing but a family,
 //! and [`family_name`], whose `match` carries no wildcard: a new
@@ -568,8 +566,7 @@ impl EulerCoefficients<f32> for Probe {
 
 /// The name of a family, matched without a wildcard on purpose: a new
 /// [`EulerSpec`] variant fails to compile here until it is named, which is
-/// the prompt to give it an entry in [`every_family`] and a dispatch line in
-/// the CubeCL kernel.
+/// the prompt to give it an entry in [`every_family`].
 fn family_name(spec: &EulerSpec<f32>) -> &'static str {
   match spec {
     EulerSpec::GeometricBrownian { .. } => "GeometricBrownian",
@@ -2305,80 +2302,5 @@ fn every_family_runs_on_the_device() {
         .all(|p| p.len() == N && p.iter().all(|v| v.is_finite()))),
       "{name}: a device path left the reals"
     );
-  }
-}
-
-/// The CubeCL dispatch is written by hand, so a family missing from it
-/// returns the state unchanged. Comparing against the generated native kernel
-/// — CUDA where the crate is built for it, Metal otherwise — point for point
-/// is what turns that silence into a failure, on whichever GPU is present.
-#[cfg(all(
-  any(feature = "metal", feature = "cuda"),
-  any(feature = "cubecl-cuda", feature = "cubecl-wgpu")
-))]
-#[test]
-fn the_cubecl_kernel_matches_the_generated_one() {
-  #[cfg(feature = "cubecl-wgpu")]
-  type Cube = crate::device::Cubecl<crate::device::WgpuRuntime>;
-  #[cfg(all(feature = "cubecl-cuda", not(feature = "cubecl-wgpu")))]
-  type Cube = crate::device::Cubecl<crate::device::CudaRuntime>;
-  #[cfg(feature = "cuda")]
-  type Native = crate::device::Cuda;
-  #[cfg(all(feature = "metal", not(feature = "cuda")))]
-  type Native = crate::device::Metal;
-
-  /// One part in a thousand of the value, with a floor of `1e-2` so a state
-  /// that sits near zero is still held to a scale rather than to an absolute
-  /// `1e-3` that would be a few percent of it. Relative rather than exact
-  /// because a family with a branch — the inverse-Gaussian draw's accept
-  /// test — can take the other side of a boundary on one runtime when two
-  /// `f32` roundings land a hair apart, and the path then differs by one
-  /// draw; both sides are draws of the same law, so that is not a defect.
-  fn agree(name: &str, native: &Array1<f32>, cube: &Array1<f32>) {
-    for (x, y) in native.iter().zip(cube.iter()) {
-      assert!(
-        (x - y).abs() < 1e-3 * y.abs().max(1e-2),
-        "{name}: native {x} vs cubecl {y}"
-      );
-    }
-  }
-
-  for probe in every_family() {
-    let name = family_name(&probe.spec);
-    let native = Native::default().euler_paths(&probe, 8);
-    let cube = Cube::default().euler_paths(&probe, 8);
-    for (a, b) in native.iter().zip(&cube) {
-      agree(name, a, b);
-    }
-  }
-  for probe in every_two_component_family() {
-    let name = family_name(&probe.spec);
-    let native = Native::default().system_paths(&probe, 8);
-    let cube = Cube::default().system_paths(&probe, 8);
-    for (a, b) in native.iter().zip(&cube) {
-      for (x, y) in a.iter().zip(b.iter()) {
-        agree(name, x, y);
-      }
-    }
-  }
-  for probe in every_three_component_family() {
-    let name = family_name(&probe.spec);
-    let native = Native::default().system_paths(&probe, 8);
-    let cube = Cube::default().system_paths(&probe, 8);
-    for (a, b) in native.iter().zip(&cube) {
-      for (x, y) in a.iter().zip(b.iter()) {
-        agree(name, x, y);
-      }
-    }
-  }
-  for probe in every_four_component_family() {
-    let name = family_name(&probe.spec);
-    let native = Native::default().system_paths(&probe, 8);
-    let cube = Cube::default().system_paths(&probe, 8);
-    for (a, b) in native.iter().zip(&cube) {
-      for (x, y) in a.iter().zip(b.iter()) {
-        agree(name, x, y);
-      }
-    }
   }
 }

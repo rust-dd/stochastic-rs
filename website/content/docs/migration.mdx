@@ -22,10 +22,17 @@ struct literals and generic bounds.
   `FgnBackend` and `EulerBackend` are the three capability traits a bound
   can name; see [GPU support](/docs/concepts/gpu-support) for which process
   accepts which.
-- **Device sampling** is `.on::<Metal>()` (or `Cuda`, `Cubecl`,
-  `Accelerate`) on the process, or `.on::<B>()` with an explicit
-  `Cuda { ordinal, batch_budget }`-style handle; the `backend` field
-  holds that handle as a value (`backend: Cpu` in a struct literal).
+- **Device sampling** is `.on::<Metal>()` (or `Cuda`, `Accelerate`) on the
+  process, or `with_backend(Cuda::new(1))` with an explicit handle; the
+  `backend` field holds that handle as a value (`backend: Cpu` in a struct
+  literal). A configuration the kernels cannot carry samples on the host
+  bit-identically, and `device_ready()` on `ProcessExt` says so beforehand.
+- **CubeCL is gone.** The `cubecl`, `cubecl-cuda` and `cubecl-wgpu` features,
+  the `Cubecl<R>` handle and the Python names `device="cubecl-cuda"` /
+  `"cubecl-wgpu"` were removed in 3.0.0-rc.2: the portable kernels duplicated
+  the native CUDA and Metal ones and ran slower on the hardware they cover.
+  Vulkan and WebGPU targets are no longer served; use `Cuda` on NVIDIA and
+  `Metal` on Apple GPUs.
 - **Fallible sampling** is on the trait: `ProcessExt::try_sample()` /
   `try_sample_par(m)` return `Result<_, DeviceError>` for every process
   (always `Ok` on the host); the inherent `try_sample_par` of `Gbm` / `Ou` /
@@ -114,8 +121,8 @@ three-way convention (invalid parameter → panic; not computable → documented
 
 ## Python
 
-- The wheel is CPU-only. `metal`, `cuda`, `cubecl-cuda`, `cubecl-wgpu`,
-  `accelerate` and `ai` are `maturin` build features; a class or function
+- The wheel is CPU-only. `metal`, `cuda`, `accelerate` and `ai` are
+  `maturin` build features; a class or function
   behind one of them raises `ValueError` with a rebuild hint when it is
   called from a build that lacks it.
 - `device=` on the device-capable classes is the device
