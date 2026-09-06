@@ -26,7 +26,7 @@ an unavailable backend — or `f64` on a `f32`-only device — is a
 this: it is 742 lines, current, and it is the contract. `euler.rs` (510
 lines) is the second half.
 
-## 1. The five backends and their real feature names
+## 1. The four backends and their real feature names
 
 | Handle | Feature | What it is | Precisions |
 |---|---|---|---|
@@ -35,11 +35,9 @@ lines) is the second half.
 | `Cuda` | `cuda` | `cudarc` + cuFFT + NVRTC, fused Philox kernel | `f32` / `f64` |
 | `Metal` | `metal` | Hand-written MSL via the `metal` crate | `f32` |
 
-The backends take the bare names (`cuda`, `metal`); the `gpu*` aliases, the
-`cuda-native` spelling and the whole CubeCL backend (`cubecl`, `cubecl-cuda`,
-`cubecl-wgpu`; `Cubecl<R>`) were **removed before 3.0** — CubeCL duplicated
-the native kernels at a lower speed (user decision, 2026-09-06). There
-is no `metal-rs` dependency. The CUDA backend is `cudarc`, not
+The backends take the bare names (`cuda`, `metal`); the `gpu*` aliases and
+the `cuda-native` spelling were **removed before 3.0**. There is no
+`metal-rs` dependency. The CUDA backend is `cudarc`, not
 `cust`. Kernels are Rust string constants compiled at runtime by NVRTC
 (`noise/fgn/cuda/kernels.rs` for fGN, `euler/kernel.rs` for the
 Euler engine) — there are **no `.cu` files** anywhere in the repo.
@@ -50,7 +48,7 @@ commit as the rename.
 
 ## 2. A handle is a value, not a marker
 
-`Cpu` and `Accelerate` are unit structs. The four device handles carry
+`Cpu` and `Accelerate` are unit structs. The two device handles carry
 their settings:
 
 ```rust
@@ -255,8 +253,9 @@ kernel:
   compute in. `f64` on Metal must not compile.
 - **Do not** allocate device memory per call. Cache it per size.
 - **Do not** resurrect the `gpu*` aliases, the `cuda-native` spelling, the
-  CubeCL backend, or a device name that means "whichever backend this build
-  carries" (`"gpu"` was removed for exactly that reason: it hides what ran).
+  CubeCL backend (dropped as a slower duplicate of the native kernels), or a
+  device name that means "whichever backend this build carries" (`"gpu"` was
+  removed for exactly that reason: it hides what ran).
 - **Do not** make the `backend` field private: downstream
   `Process { n: 64, ..Default::default() }` struct-update syntax needs
   it public (E0451).

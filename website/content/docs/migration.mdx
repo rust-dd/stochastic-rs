@@ -27,12 +27,10 @@ struct literals and generic bounds.
   `backend` field holds that handle as a value (`backend: Cpu` in a struct
   literal). A configuration the kernels cannot carry samples on the host
   bit-identically, and `device_ready()` on `ProcessExt` says so beforehand.
-- **CubeCL is gone.** The `cubecl`, `cubecl-cuda` and `cubecl-wgpu` features,
-  the `Cubecl<R>` handle and the Python names `device="cubecl-cuda"` /
-  `"cubecl-wgpu"` were removed in 3.0.0-rc.2: the portable kernels duplicated
-  the native CUDA and Metal ones and ran slower on the hardware they cover.
-  Vulkan and WebGPU targets are no longer served; use `Cuda` on NVIDIA and
-  `Metal` on Apple GPUs.
+- **CubeCL is gone.** The backend was removed in 3.0.0-rc.2 because it
+  duplicated the native CUDA and Metal kernels and ran slower on the same
+  hardware. Vulkan and WebGPU targets are no longer served; use `Cuda` on
+  NVIDIA and `Metal` on Apple GPUs.
 - **Fallible sampling** is on the trait: `ProcessExt::try_sample()` /
   `try_sample_par(m)` return `Result<_, DeviceError>` for every process
   (always `Ok` on the host); the inherent `try_sample_par` of `Gbm` / `Ou` /

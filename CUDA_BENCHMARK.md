@@ -1,10 +1,12 @@
 # fGN sampling: PC (i9-285K + RTX 4070 SUPER)
 
-Measured with the `fgn_cuda_compare` bench (removed with the CubeCL backend in
-3.0.0-rc.2; `fgn_cuda` carries the cuFFT legs), same parameters as the Apple
-M4 Max table so the machines are directly comparable. The cubecl rows are
-historical. Times are criterion medians; **lower is
-better**. `n` = path length, `m` = number of paths.
+Measured with the `fgn_cuda_compare` bench (since removed; `fgn_cuda` carries
+the cuFFT legs), same parameters as the Apple M4 Max table so the machines are
+directly comparable. Times are criterion medians; **lower is better**. `n` =
+path length, `m` = number of paths.
+
+The portable CubeCL backend was removed in 3.0.0-rc.2: it duplicated the native
+CUDA and Metal kernels and was slower on the same hardware.
 
 Build with the `mimalloc` global allocator — the batch path allocates one
 `Array1` per path, so the default Windows allocator otherwise bottlenecks it:
@@ -19,7 +21,6 @@ cargo bench --bench fgn_cuda --features "cuda,mimalloc"
 |---|--:|--:|--:|--:|
 | CPU (i9-285K) | **7.9 µs** | **34.2 µs** | 150 µs | 601 µs |
 | cuFFT (cudarc) | 51 µs | 83 µs | **102 µs** | **219 µs** |
-| cubecl | 140 µs | 196 µs | 248 µs | 486 µs |
 
 ## Batch (`sample_par`, n × m)
 
@@ -27,7 +28,6 @@ cargo bench --bench fgn_cuda --features "cuda,mimalloc"
 |---|--:|--:|--:|
 | CPU (i9-285K) | **556 µs** | **33.7 ms** | **143 ms** |
 | cuFFT (cudarc) | 686 µs | 51.4 ms | 253 ms |
-| cubecl | 889 µs | 81.6 ms | — (OOM > 12 GB) |
 
 cuFFT batch 16k×16k was **481 ms** before the device→host transfer was optimised
 (see below) — now **253 ms**.
@@ -125,25 +125,3 @@ GB is the hardware ceiling for this transfer.
 - **So the GPU pays off when the generated paths stay on the device** for a
   downstream GPU step — eliminating the device→host copy. For "generate then
   copy back to host", the CPU is still the better choice on this hardware.
-
-## cubecl note (updated)
-
-The updated cubecl backend is **dramatically faster** than the previous version:
-
-| case | old | new | speedup |
-|---|--:|--:|--:|
-| single n=16k | 509 µs | 248 µs | ~2× |
-| single n=64k | 1.71 ms | 486 µs | ~3.5× |
-| batch 1k×1k | 25.9 ms | 889 µs | ~29× |
-| batch 4k×16k | 2.29 s | 81.6 ms | ~28× |
-
-cubecl is no longer the outlier it was — it now lands within ~1.5–2× of cuFFT
-across the grid and scales with problem size like a real batched FFT (the old
-build was kernel-launch-bound at a roughly constant ~30–45 Melem/s regardless of
-size). It is still a step behind cuFFT (vendor-tuned plans) and behind the CPU
-for batches, for the same on-device-RNG + device→host-copy reasons above.
-
-16k×16k cubecl is still skipped: cuFFT's ~5.4 GB device buffers plus cubecl's
-own pools would exceed the 12 GB card (the grid runs largest-first, so cuFFT
-allocates before cubecl), and cubecl-CUDA has **no** 256 MB buffer cap (that is a
-wgpu limit, not a cubecl-CUDA one).

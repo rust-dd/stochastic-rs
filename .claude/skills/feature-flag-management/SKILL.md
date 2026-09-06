@@ -195,7 +195,7 @@ it is a summary, and the sub-crate columns are the part that drifts.
 
 | Feature | Crates that publish it | Notes |
 |---|---|---|
-| `cuda` | `-stochastic`, umbrella | Native CUDA via **cudarc** + cuFFT + NVRTC. The CubeCL backend (`cubecl`, `cubecl-cuda`, `cubecl-wgpu`) and the `gpu*` aliases were removed before 3.0. |
+| `cuda` | `-stochastic`, umbrella | Native CUDA via **cudarc** + cuFFT + NVRTC. The `gpu*` aliases were removed before 3.0. |
 | `metal` | `-stochastic`, umbrella | Apple Silicon GPU via the `metal` crate; f32 only. |
 | `accelerate` | `-stochastic`, umbrella | Apple vDSP / AMX — a **CPU** path despite sitting beside the GPU flags. |
 | `dual-stream-rng` | `-core`, `-distributions`, umbrella | Experimental `SimdRngDual`; changes deterministic output. |

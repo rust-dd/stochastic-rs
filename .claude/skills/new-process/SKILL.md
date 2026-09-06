@@ -184,8 +184,7 @@ host fallback chunk-correct:
 
 **2d. Nothing to dispatch by hand.** The C body the CUDA and Metal kernels
 render is generated from the table, family by family; there is no second
-kernel to keep in step (the hand-written CubeCL dispatch went with that
-backend in 3.0.0-rc.2).
+kernel to keep in step.
 
 **2e. `src/euler/family_parity.rs`.** `family_name`'s `match` has no wildcard, so
 a new `EulerSpec` variant fails to compile until it is named. Then add a probe to
