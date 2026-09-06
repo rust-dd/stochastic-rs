@@ -101,6 +101,24 @@ for (const file of walk(ROOT)) {
   const rel = relative(WORKSPACE, file);
   const src = readFileSync(file, 'utf8');
   const fm = parseFrontmatter(src);
+  // `parseFrontmatter` takes everything after the first colon as the value,
+  // where the site build hands the block to a real YAML parser: an unquoted
+  // value carrying a colon *and a space* is a nested mapping to that parser
+  // and fails the build with a syntax error this audit never saw. Nothing
+  // else here can catch it, since by the time the value reaches the schema
+  // it is already a plain string.
+  for (const line of (src.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? '').split('\n')) {
+    const m = line.match(/^([a-z_]+):\s*(.*)$/i);
+    if (!m) continue;
+    const value = m[2].trim();
+    if (/^['"[{]/.test(value)) continue;
+    if (value.includes(': ')) {
+      errors++;
+      console.error(
+        `✘ ${rel}: ${m[1]} carries a colon-space and is not quoted — YAML reads it as a mapping`,
+      );
+    }
+  }
   const result = schema.safeParse(fm);
   if (!result.success) {
     errors++;
