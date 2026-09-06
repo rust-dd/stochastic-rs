@@ -65,8 +65,10 @@
 //! its own candidates, so the sum is over the accepted ones. A product law
 //! compounds the sizes instead, `∏ (1 + y_j) − 1`, for a step whose jump
 //! multiplies the state, and a one-per-step law takes a single size whatever
-//! the count, for an event-indexed path. It is zero for a family that
-//! declares no size law.
+//! the count, for an event-indexed path; a Rademacher law sums `±scale` over
+//! the count, and a symmetric α-stable law draws the count's sum in one
+//! Chambers–Mallows–Stuck step at scale `scale · n^{1/α}`. It is zero for a
+//! family that declares no size law.
 //!
 //! A family with a `history` clause reads `cv`: the frame keeps the values the
 //! family pushed so far in a per-path array of 512 slots — the grid may not
@@ -378,6 +380,27 @@ REPORT
             REAL ue = (REAL)kb * (REAL)2.3283064e-10;
             REAL ee = -STOCH_LOG((REAL)1 - ue);
             js = (up < jump_a) ? (ee / jump_b) : (-(ee / jump_c));
+        }
+        if (jump_law == 8u) {
+            for (unsigned int j = 0u; j < 64u; j++) {
+                if ((REAL)j >= nj) { break; }
+                unsigned int ra = (g ^ (2654435761u + j * 40503u)) ^ (seed * 2654435761u);
+                ra ^= ra >> 16; ra *= 2246822519u; ra ^= ra >> 13; ra *= 3266489917u; ra ^= ra >> 16;
+                js += ((REAL)ra * (REAL)2.3283064e-10 < (REAL)0.5) ? jump_a : (-jump_a);
+            }
+        }
+        if (jump_law == 9u) {
+            unsigned int sa = (g ^ 1103515245u) ^ (seed * 2654435761u);
+            sa ^= sa >> 16; sa *= 2246822519u; sa ^= sa >> 13; sa *= 3266489917u; sa ^= sa >> 16;
+            unsigned int sb = (g ^ 1013904223u) ^ (seed * 2654435761u);
+            sb ^= sb >> 16; sb *= 2246822519u; sb ^= sb >> 13; sb *= 3266489917u; sb ^= sb >> 16;
+            REAL va = ((REAL)sa * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6 - (REAL)0.5) * (REAL)3.141592653589793;
+            REAL wv = -STOCH_LOG((REAL)sb * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6);
+            REAL ia = (REAL)1 / jump_a;
+            REAL ratio = STOCH_COS(va - jump_a * va) / wv;
+            if (ratio < (REAL)1.0e-30) { ratio = (REAL)1.0e-30; }
+            REAL xs = STOCH_SIN(jump_a * va) / STOCH_POW(STOCH_COS(va), ia) * STOCH_POW(ratio, ((REAL)1 - jump_a) * ia);
+            js = jump_b * STOCH_POW(nj, ia) * xs;
         }
         if (has_lift != 0u) {
 LIFT

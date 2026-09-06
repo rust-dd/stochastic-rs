@@ -1593,6 +1593,51 @@ euler_families! {
       s * exp(negate(beta * st)) + alpha
     }
     report { t },
+
+  /// Up to four forward LIBOR rates under the spot measure, by the log-Euler
+  /// step with the drift frozen at the step's start: rate `n` takes
+  /// `σ_n Σ_{j=η}^{n} ρ_nj δ_j σ_j L_j / (1 + δ_j L_j)` from the rates between
+  /// the active reset index `η` — the curve `ct` — and itself, `ρ_nj` from the
+  /// lower Cholesky factor `L` whose rows also correlate the four shocks, and
+  /// a rate whose reset date has passed (`n ≤ η`) stays where it is. An absent
+  /// rate travels with a zero volatility and an identity row and never moves
+  /// nor enters a drift.
+  113 => LiborMarket4 { s0, s1, s2, s3, d0, d1, d2, d3, l00, l10, l11, l20, l21, l22, l30, l31, l32, l33 }
+    state (f0, f1, f2, f3)
+    noise (z0, z1, z2, z3)
+    step {
+      bind a0 = leq(ct, lit(0.0));
+      bind a1 = leq(ct, lit(1.0));
+      bind a2 = leq(ct, lit(2.0));
+      bind a3 = leq(ct, lit(3.0));
+      bind g0 = a0 * d0 * s0 * f0 / (d0 * f0 + lit(1.0));
+      bind g1 = a1 * d1 * s1 * f1 / (d1 * f1 + lit(1.0));
+      bind g2 = a2 * d2 * s2 * f2 / (d2 * f2 + lit(1.0));
+      bind g3 = a3 * d3 * s3 * f3 / (d3 * f3 + lit(1.0));
+      bind r00 = l00 * l00;
+      bind r10 = l10 * l00;
+      bind r11 = l10 * l10 + l11 * l11;
+      bind r20 = l20 * l00;
+      bind r21 = l20 * l10 + l21 * l11;
+      bind r22 = l20 * l20 + l21 * l21 + l22 * l22;
+      bind r30 = l30 * l00;
+      bind r31 = l30 * l10 + l31 * l11;
+      bind r32 = l30 * l20 + l31 * l21 + l32 * l22;
+      bind r33 = l30 * l30 + l31 * l31 + l32 * l32 + l33 * l33;
+      bind m0 = s0 * (r00 * g0);
+      bind m1 = s1 * (r10 * g0 + r11 * g1);
+      bind m2 = s2 * (r20 * g0 + r21 * g1 + r22 * g2);
+      bind m3 = s3 * (r30 * g0 + r31 * g1 + r32 * g2 + r33 * g3);
+      bind w0 = l00 * z0;
+      bind w1 = l10 * z0 + l11 * z1;
+      bind w2 = l20 * z0 + l21 * z1 + l22 * z2;
+      bind w3 = l30 * z0 + l31 * z1 + l32 * z2 + l33 * z3;
+      pick(less(ct, lit(0.0)), f0 * exp((m0 - s0 * s0 / lit(2.0)) * dt + s0 * w0), f0),
+      pick(less(ct, lit(1.0)), f1 * exp((m1 - s1 * s1 / lit(2.0)) * dt + s1 * w1), f1),
+      pick(less(ct, lit(2.0)), f2 * exp((m2 - s2 * s2 / lit(2.0)) * dt + s2 * w2), f2),
+      pick(less(ct, lit(3.0)), f3 * exp((m3 - s3 * s3 / lit(2.0)) * dt + s3 * w3), f3)
+    }
+    report { f0, f1, f2, f3 },
 }
 
 #[cfg(test)]

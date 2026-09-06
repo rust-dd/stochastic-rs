@@ -13,12 +13,12 @@ backends, and what the rest do.
 | Family | Processes | Capability bound | `Cpu` | `Accelerate` | `Metal` | `Cuda` | `Cubecl` |
 |---|---|---|---|---|---|---|---|
 | fGN noise | `Fgn` (1) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` | CubeCL FFT, `f32` only |
-| Euler engine, one component | 88 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
-| Euler engine, systems | 33 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
+| Euler engine, one component | 89 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
+| Euler engine, systems | 34 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
 | Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `FVasicek`, `Cfgns`, `Cfbms`, `Cfou`, `JumpFou`, `JumpFOUCustom` (11, counted above) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same MSL kernel | fGN pipeline feeds the same NVRTC kernel | fGN pipeline feeds the same CubeCL kernel |
-| Host only | the remaining 9 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
+| Host only | the remaining 7 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
 
-The 121 processes on the engine cover the diffusions, the stochastic-volatility
+The 123 processes on the engine cover the diffusions, the stochastic-volatility
 models under both their Euler and quadratic-exponential schemes (`Heston`,
 `HestonLog`, `DoubleHeston`, `Heston2D`, `Sabr`, `Bergomi`,
 `HestonStochCorr`, `BatesSvj`, `Hkde`), the short-rate models including the
@@ -70,7 +70,10 @@ tempered-stable processes built from their shot-noise series (`Cgmy`, `Cts`,
 grid cells they fall in, the host's sort replaced by addressing, again up to 512
 points; and `Hawkes` in its count mode, one event per step by the exact
 two-uniform recursion of Dassios and Zhao, the host's thinning loop replaced by
-a closed form.
+a closed form; `Ctrw` under exponential waits, whose arrivals per cell are the
+Poisson count the kernels draw, with normal, Rademacher or symmetric-stable
+jumps; and `Lmm` with up to four forwards in one launch, the spot measure's
+drift coupling and the reset freezes written out over the four slots.
 
 What stays on the host, and why. The engine steps a bounded forward
 recursion over four scalar state slots, so what rules a process out is
@@ -93,12 +96,12 @@ grid:
   The plain series (`Cgmy`, `Cts`, `KoBoL`, `Rdts`) needs no sort on a device:
   the series block draws the terms per path and sums them into the cells they
   fall in.
-- **A runtime dimension that couples its rows** (`Lmm`, `Wishart`, and
-  `MultiGbm` / `Mcgns` above four streams): the rows share a drift or a
+- **A runtime dimension that couples its rows, above four** (`Wishart`, and
+  `Lmm` / `MultiGbm` / `Mcgns` above four): the rows share a drift or a
   correlated noise, so they cannot be stepped as independent launches the way
-  `Bgm`, `Adg` and `WuZhangD` are, and a launch carries four shocks.: the component count is a runtime
-  value, or a parameter is an `Array1` / `Array2` rather than a fixed set of
-  scalars.
+  `Bgm`, `Adg` and `WuZhangD` are, and a launch carries four slots and four
+  shocks; up to four they ride one launch, above it they stay on the host
+  whatever the backend.
 - **More time-varying coefficients than the eight the kernel binds**: none
   today. `MultifactorSabr` needed three, `Adg` five and `Hjm` six, and all
   three now declare them — the first turned a per-step bucket search into a
@@ -106,10 +109,12 @@ grid:
 - **A coefficient that reads the state** (`Cheyette`): its `sigma(t, x)` is a
   user closure of time *and* the state, so it cannot be tabulated as a curve
   the way `Cir2F`'s `phi(t)` is. A closure of time alone is not a blocker.
-- **Point processes on their own clock** (`MultivariateHawkes`, `Ctrw`, and
-  `Hawkes` in its horizon mode): the output length is the number of events,
-  not the grid. `Hawkes` in count mode is one event per step and reaches the
-  engine through the exact exponential-excitation recursion.
+- **Point processes on their own clock** (`MultivariateHawkes`, and `Hawkes`
+  in its horizon mode): the output length is the number of events, not the
+  grid. `Hawkes` in count mode is one event per step and reaches the engine
+  through the exact exponential-excitation recursion; `Ctrw` is a grid process
+  and reaches it under exponential waits, while its gamma, inverse-Gaussian
+  and stable waits have no per-cell Poisson count and stay on the host.
   `Poisson`, `CompoundPoisson`, `CustomJt` and `CompoundCustom` split here —
   their count mode is a fixed-length running sum and reaches the engine,
   their horizon mode does not.
@@ -135,7 +140,7 @@ grid:
 
 ## What a family is
 
-A process reaches a device by declaring which of the engine's **113 families**
+A process reaches a device by declaring which of the engine's **114 families**
 it steps, not by writing a kernel. A family is one entry in
 `stochastic-rs-stochastic/src/euler/families.rs` — its parameters, its state
 components, its noise components, one step expression per component and one
@@ -146,10 +151,10 @@ is a declaration plus an `EulerCoefficients` (one component) or `EulerSystem`
 
 The engine's kernels carry four state slots, four independent noise
 components, twenty scalar parameters, two uniforms, a Poisson jump count,
-the sum of that step's jump sizes — under a normal, double-exponential or
-tempered-stable law, the first two also compounded as `∏(1 + y) − 1` for a
-multiplicative jump or taken one per step for an event-indexed path — and up
-to two Gamma draws. A family with a `lift` clause runs under the Markov lift of a
+the sum of that step's jump sizes — under a normal, double-exponential,
+tempered-stable, Rademacher or symmetric-stable law, the first two also
+compounded as `∏(1 + y) − 1` for a multiplicative jump or taken one per step
+for an event-indexed path — and up to two Gamma draws. A family with a `lift` clause runs under the Markov lift of a
 rough Volterra kernel: the frame keeps up to 176 nodes' two state vectors per
 path, evaluates the family's drift, diffusion and shock before the step and
 hands it the lifted value as `lv`. A family with a `history` clause keeps, per

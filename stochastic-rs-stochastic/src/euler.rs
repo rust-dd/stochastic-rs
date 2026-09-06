@@ -872,6 +872,15 @@ pub enum EulerSpec<T: FloatExt> {
   /// A Hawkes process with exponential excitation, one event per step, by the
   /// exact two-uniform recursion.
   HawkesEvents { mu: T, alpha: T, beta: T },
+  /// Up to four forward LIBOR rates under the spot measure's drift coupling:
+  /// their volatilities, their accrual periods, and the lower Cholesky factor
+  /// of their correlation in row-major lower-triangle order; the active reset
+  /// index travels as the launch's first curve.
+  LiborMarket4 {
+    sigma: [T; 4],
+    delta: [T; 4],
+    l: [T; 10],
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1606,6 +1615,13 @@ impl<T: FloatExt> EulerSpec<T> {
       EulerSpec::HawkesEvents { mu, alpha, beta } => {
         (Family::HawkesEvents.code(), pad([mu, alpha, beta]))
       }
+      EulerSpec::LiborMarket4 { sigma, delta, l } => {
+        let mut values = [T::zero(); 18];
+        values[..4].copy_from_slice(&sigma);
+        values[4..8].copy_from_slice(&delta);
+        values[8..].copy_from_slice(&l);
+        (Family::LiborMarket4.code(), pad(values))
+      }
     }
   }
 }
@@ -1862,6 +1878,11 @@ pub enum JumpSizes<T: FloatExt> {
   OneNormal { mean: T, sd: T },
   /// Exactly one double-exponential size per step, for the same use.
   OneDoubleExponential { p_up: T, eta_up: T, eta_down: T },
+  /// Sizes of `±scale` with equal probability, summed over the step's jumps.
+  Rademacher { scale: T },
+  /// Symmetric α-stable sizes, summed over the step's jumps in one draw: the
+  /// sum of `n` of them is the same law at scale `scale · n^{1/α}`.
+  SymmetricStable { alpha: T, scale: T },
 }
 
 impl<T: FloatExt> JumpSizes<T> {
@@ -1893,6 +1914,8 @@ impl<T: FloatExt> JumpSizes<T> {
         eta_up,
         eta_down,
       } => (7, p_up, eta_up, eta_down),
+      JumpSizes::Rademacher { scale } => (8, scale, T::zero(), T::zero()),
+      JumpSizes::SymmetricStable { alpha, scale } => (9, alpha, scale, T::zero()),
     }
   }
 

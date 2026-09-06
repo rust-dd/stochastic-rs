@@ -16,6 +16,9 @@ use stochastic_rs_stochastic::process::ccustom::CompoundCustom;
 use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs_stochastic::process::customjt::CustomJt;
 use stochastic_rs_stochastic::process::poisson::Poisson;
+use stochastic_rs_stochastic::process::subordinator::ctrw::Ctrw;
+use stochastic_rs_stochastic::process::subordinator::ctrw::CtrwJumpLaw;
+use stochastic_rs_stochastic::process::subordinator::ctrw::CtrwWaitingLaw;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
 use super::common::Device;
@@ -325,4 +328,152 @@ fn an_unrecognised_jump_law_keeps_the_process_on_the_host() {
     .try_sample_par(8)
     .expect("the host fallback cannot fail on the device's account");
   assert_eq!(device, host);
+}
+
+fn std_at(paths: &[Array1<f32>], at: usize) -> f64 {
+  let n = paths.len() as f64;
+  let mean = paths.iter().map(|p| p[at] as f64).sum::<f64>() / n;
+  (paths
+    .iter()
+    .map(|p| (p[at] as f64 - mean).powi(2))
+    .sum::<f64>()
+    / n)
+    .sqrt()
+}
+
+fn iqr_at(paths: &[Array1<f32>], at: usize) -> f64 {
+  let mut values: Vec<f64> = paths.iter().map(|p| p[at] as f64).collect();
+  values.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
+  values[values.len() * 3 / 4] - values[values.len() / 4]
+}
+
+/// Exponential waits make the arrivals in a cell the Poisson count the
+/// kernels draw, and normal sizes the law they aggregate; the mean grows as
+/// `rate · mean · t` and the spread as `√(rate t (mean² + std²))`.
+#[test]
+fn ctrw_with_normal_jumps_agrees_with_the_cpu_law() {
+  let build = || {
+    Ctrw::<f32, _>::new(
+      CtrwWaitingLaw::Exponential { rate: 20.0 },
+      CtrwJumpLaw::Normal {
+        mean: 0.1,
+        std: 0.3,
+      },
+      N,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(173),
+    )
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert_eq!(device[0][0], 0.0, "every path starts at x0");
+  all_finite(&device, "CTRW normal");
+  agrees(
+    terminal_mean(&host),
+    terminal_mean(&device),
+    0.03,
+    "CTRW normal terminal mean",
+  );
+  agrees(
+    terminal_std(&host),
+    terminal_std(&device),
+    0.05,
+    "CTRW normal terminal spread",
+  );
+}
+
+/// Rademacher sizes are the one law the kernels sum by coin flips; a wrong
+/// sign convention or a dropped flip would move the spread, `scale √(rate t)`,
+/// while the mean stays at zero either way.
+#[test]
+fn ctrw_with_rademacher_jumps_agrees_with_the_cpu_law() {
+  let build = || {
+    Ctrw::<f32, _>::new(
+      CtrwWaitingLaw::Exponential { rate: 20.0 },
+      CtrwJumpLaw::Rademacher { scale: 0.5 },
+      N,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(179),
+    )
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  all_finite(&device, "CTRW Rademacher");
+  let spread = terminal_std(&host);
+  assert!(
+    terminal_mean(&device).abs() < 0.05 * spread,
+    "CTRW Rademacher terminal mean {} against a spread of {spread}",
+    terminal_mean(&device)
+  );
+  agrees(spread, terminal_std(&device), 0.05, "CTRW Rademacher terminal spread");
+  agrees(
+    std_at(&host, N / 4),
+    std_at(&device, N / 4),
+    0.05,
+    "CTRW Rademacher quarter-horizon spread",
+  );
+}
+
+/// Symmetric stable sizes have no variance, so the spread is read off the
+/// quartiles; the kernel draws a cell's sum in one Chambers–Mallows–Stuck
+/// step at scale `scale · n^{1/α}`, the host draws each jump.
+#[test]
+fn ctrw_with_stable_jumps_agrees_with_the_cpu_law() {
+  let build = || {
+    Ctrw::<f32, _>::new(
+      CtrwWaitingLaw::Exponential { rate: 20.0 },
+      CtrwJumpLaw::SymmetricStable {
+        alpha: 1.7,
+        scale: 0.2,
+      },
+      N,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(181),
+    )
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  all_finite(&device, "CTRW stable");
+  agrees(
+    iqr_at(&host, N - 1),
+    iqr_at(&device, N - 1),
+    0.06,
+    "CTRW stable terminal interquartile range",
+  );
+  agrees(
+    iqr_at(&host, N / 4),
+    iqr_at(&device, N / 4),
+    0.06,
+    "CTRW stable quarter-horizon interquartile range",
+  );
+}
+
+/// A waiting law without the memoryless property has no per-cell Poisson
+/// count, so the device build samples on the host and is the host build to
+/// the bit.
+#[test]
+fn ctrw_with_gamma_waits_keeps_the_process_on_the_host() {
+  let build = || {
+    Ctrw::<f32, _>::new(
+      CtrwWaitingLaw::Gamma {
+        shape: 2.0,
+        rate: 10.0,
+      },
+      CtrwJumpLaw::Normal {
+        mean: 0.1,
+        std: 0.3,
+      },
+      N,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(191),
+    )
+  };
+  assert_eq!(build().on::<Device>().sample_par(8), build().sample_par(8));
 }

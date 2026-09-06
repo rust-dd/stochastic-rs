@@ -75,7 +75,6 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -236,9 +235,176 @@ fn validate_lmm_inputs<T: FloatExt>(tenor: &Array1<T>, l0: &Array1<T>, sigma: &A
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Lmm<T, S> { tenor, l0, sigma, chol, n, t, seed } via host);
+impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
+  /// The horizon, the last tenor date when omitted.
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(self.tenor[self.l0.len()])
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Lmm<T, S, B> {
+  /// The grid spacing, the horizon itself for a single point.
+  fn dt(&self) -> T {
+    if self.n > 1 {
+      self.horizon() / T::from_usize_(self.n - 1)
+    } else {
+      self.horizon()
+    }
+  }
+
+  /// The index of the last reset date reached at each step's start — the
+  /// host loop's `eta_idx` — tabulated for the step that produces each grid
+  /// point: the rates at or below it are frozen and the drift sums start
+  /// there.
+  fn active_index_curve(&self) -> Vec<T> {
+    let m = self.l0.len();
+    let dt = self.dt();
+    (0..self.n)
+      .map(|i| {
+        let t_now = T::from_usize_(i.saturating_sub(1)) * dt;
+        let mut eta = 0usize;
+        while eta < m && self.tenor[eta] <= t_now {
+          eta += 1;
+        }
+        T::from_usize_(eta.saturating_sub(1).min(m))
+      })
+      .collect()
+  }
+
+  /// Whether a device can run this process: at most as many forwards as a
+  /// launch has state slots and shocks. A wider curve samples on the host.
+  pub fn device_ready(&self) -> bool {
+    self.l0.len() <= crate::euler::CORRELATED_STREAMS
+  }
+}
+
+/// The Euler engine's view of the curve: the rows padded into the four slots
+/// of one launch, an absent rate travelling with a zero volatility and an
+/// identity row of the factor so it neither moves nor enters a drift.
+#[doc(hidden)]
+pub struct LmmLaunch<'a, T: FloatExt, S: SeedExt, B>(&'a Lmm<T, S, B>);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for LmmLaunch<'_, T, S, B>
+{
+  type Output = [Array1<T>; 4];
+  type Sampler<'s>
+    = LmmLaunchSampler<T, S>
+  where
+    Self: 's;
+
+  fn sampler(&self) -> LmmLaunchSampler<T, S> {
+    LmmLaunchSampler {
+      inner: <Lmm<T, S, B> as ProcessExt<T>>::sampler(self.0),
+    }
+  }
+}
+
+#[doc(hidden)]
+pub struct LmmLaunchSampler<T: FloatExt, S: SeedExt> {
+  inner: LmmSampler<T, S>,
+}
+
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for LmmLaunchSampler<T, S> {
+  type Output = [Array1<T>; 4];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 4]) {
+    *out = self.sample();
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 4] {
+    let matrix = self.inner.sample();
+    let n = matrix.ncols();
+    std::array::from_fn(|i| {
+      if i < matrix.nrows() {
+        matrix.row(i).to_owned()
+      } else {
+        Array1::zeros(n)
+      }
+    })
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 4>
+  for LmmLaunch<'_, T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let p = self.0;
+    validate_lmm_inputs(&p.tenor, &p.l0, &p.sigma);
+    let m = p.l0.len();
+    let mut l = [T::zero(); 10];
+    let mut at = 0;
+    for row in 0..4 {
+      for col in 0..=row {
+        l[at] = match &p.chol {
+          Some(chol) if row < m && col < m => chol[(row, col)],
+          _ => {
+            if row == col {
+              T::one()
+            } else {
+              T::zero()
+            }
+          }
+        };
+        at += 1;
+      }
+    }
+    crate::euler::EulerSpec::LiborMarket4 {
+      sigma: std::array::from_fn(|i| if i < m { p.sigma[i] } else { T::zero() }),
+      delta: std::array::from_fn(|i| {
+        if i < m {
+          p.tenor[i + 1] - p.tenor[i]
+        } else {
+          T::zero()
+        }
+      }),
+      l,
+    }
+  }
+
+  fn initial_state(&self) -> [T; 4] {
+    let p = self.0;
+    std::array::from_fn(|i| if i < p.l0.len() { p.l0[i] } else { T::zero() })
+  }
+
+  fn grid_points(&self) -> usize {
+    self.0.n
+  }
+
+  fn horizon(&self) -> T {
+    self.0.horizon()
+  }
+
+  fn time_step(&self) -> T {
+    self.0.dt()
+  }
+
+  fn curves(&self) -> Option<Vec<Vec<T>>> {
+    Some(vec![self.0.active_index_curve()])
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.0.seed)
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 4] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+/// The launch's four slots back into the process's own `m × n` matrix.
+fn rows_to_matrix<T: FloatExt>(slots: [Array1<T>; 4], m: usize) -> Array2<T> {
+  let n = slots[0].len();
+  let mut out = Array2::<T>::zeros((m, n));
+  for (i, row) in slots.iter().take(m).enumerate() {
+    out.row_mut(i).assign(row);
+  }
+  out
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Lmm<T, S> { tenor, l0, sigma, chol, n, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Lmm<T, S, B> {
   type Output = Array2<T>;
   type Sampler<'s>
     = LmmSampler<T, S>
@@ -267,6 +433,69 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Lmm<T, S, B> {
       n: self.n,
       t: self.t,
       seed: self.seed.derive(),
+    }
+  }
+
+  /// Through the Euler engine when the curve fits a launch's four slots; a
+  /// wider one keeps the process on the host, chunked exactly as
+  /// [`ProcessExt`] chunks.
+  fn sample(&self) -> Array2<T> {
+    if self.device_ready() {
+      rows_to_matrix(self.backend.system_sample(&LmmLaunch(self)), self.l0.len())
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array2<T>) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      let rows = self.l0.len();
+      self
+        .backend
+        .system_paths_map(&LmmLaunch(self), m, |slots| f(&rows_to_matrix(slots.clone(), rows)))
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array2<T>> {
+    if self.device_ready() {
+      let rows = self.l0.len();
+      self
+        .backend
+        .system_paths(&LmmLaunch(self), m)
+        .into_iter()
+        .map(|slots| rows_to_matrix(slots, rows))
+        .collect()
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<Array2<T>, crate::device::DeviceError> {
+    if self.device_ready() {
+      let slots = self.backend.try_system_sample(&LmmLaunch(self))?;
+      Ok(rows_to_matrix(slots, self.l0.len()))
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array2<T>>, crate::device::DeviceError> {
+    if self.device_ready() {
+      let rows = self.l0.len();
+      Ok(
+        self
+          .backend
+          .try_system_paths(&LmmLaunch(self), m)?
+          .into_iter()
+          .map(|slots| rows_to_matrix(slots, rows))
+          .collect(),
+      )
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }

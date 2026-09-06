@@ -319,6 +319,27 @@ fn euler_paths_kernel(
         let ee = 0.0f32 - Log::ln(1.0f32 - ue);
         js = select(up < jump_a, ee / jump_b, 0.0f32 - ee / jump_c);
       }
+      if jump_law == 8u32 {
+        for j in 0..64u32 {
+          if f32::cast_from(j) < nj {
+            let ur = uniform(g ^ (2654435761u32 + j * 40503u32), seed);
+            js += select(ur < 0.5f32, jump_a, 0.0f32 - jump_a);
+          }
+        }
+      }
+      if jump_law == 9u32 {
+        let va = (uniform(g ^ 1103515245u32, seed) * 0.999998f32 + 1.0e-6f32 - 0.5f32)
+          * core::f32::consts::PI;
+        let wv = 0.0f32 - Log::ln(uniform(g ^ 1013904223u32, seed) * 0.999998f32 + 1.0e-6f32);
+        let ia = 1.0f32 / jump_a;
+        let mut ratio = Cos::cos(va - jump_a * va) / wv;
+        if ratio < 1.0e-30f32 {
+          ratio = 1.0e-30f32;
+        }
+        let xs = Sin::sin(jump_a * va) / Powf::powf(Cos::cos(va), ia)
+          * Powf::powf(ratio, (1.0f32 - jump_a) * ia);
+        js = jump_b * Powf::powf(nj, ia) * xs;
+      }
       u = uniform(g ^ 2135587861u32, seed);
       u2 = uniform(g ^ 3266489917u32, seed);
       sj = 0.0f32;
@@ -1336,6 +1357,12 @@ fn step(
       gm2, u, u2, lv, cv, sj, gj, ej, uj, uv, dz0, dz1, dz2, dz3,
     );
   }
+  if family == 113u32 {
+    stepped = cube::LiborMarket4(
+      component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
+      gm2, u, u2, lv, cv, sj, gj, ej, uj, uv, dz0, dz1, dz2, dz3,
+    );
+  }
   if family == 94u32 {
     stepped = cube::RiemannLiouville(
       component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
@@ -2046,6 +2073,12 @@ fn report(
   }
   if family == 112u32 {
     reported = cube_report::HawkesEvents(
+      component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2, lv, cv, sj, gj, ej, uj, uv,
+    );
+  }
+  if family == 113u32 {
+    reported = cube_report::LiborMarket4(
       component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
       u2, lv, cv, sj, gj, ej, uj, uv,
     );

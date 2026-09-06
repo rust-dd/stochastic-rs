@@ -11,7 +11,6 @@ use stochastic_rs_distributions::uniform::SimdUniform;
 use super::sample_positive_stable;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -90,9 +89,88 @@ enum JumpSampler<T: FloatExt> {
   Rademacher(T),
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Ctrw<T, S> { waiting, jumps, n, x0, t, seed } via host);
+impl<T: FloatExt, S: SeedExt, B> Ctrw<T, S, B> {
+  /// The grid spacing the host steps: the horizon over the increments, one
+  /// increment at least.
+  fn dt(&self) -> T {
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Ctrw<T, S, B> {
+  /// Whether a device can run this process: exponential waiting times, whose
+  /// arrivals per grid cell are the Poisson count the kernels draw. The
+  /// gamma, inverse-Gaussian and stable waits are not memoryless and stay on
+  /// the host; every jump law the process offers has a kernel draw.
+  pub fn device_ready(&self) -> bool {
+    matches!(self.waiting, CtrwWaitingLaw::Exponential { .. })
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for Ctrw<T, S, B>
+{
+  /// A pure jump path: the additive jump-diffusion family with no drift and
+  /// no diffusion, the step being the cell's jump sum alone.
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::AdditiveJumpDiffusion {
+      drift_dt: T::zero(),
+      sigma: T::zero(),
+    }
+  }
+
+  fn initial_value(&self) -> T {
+    self.x0.unwrap_or(T::zero())
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.dt()
+  }
+
+  /// The exponential waits' rate: the arrivals in a cell of width `dt` are
+  /// Poisson with mean `rate · dt`. Any other waiting law never reaches a
+  /// launch — [`ProcessExt::sample`] keeps it on the host — so asking here is
+  /// a caller bypassing that guard.
+  fn jump_intensity(&self) -> Option<T> {
+    match self.waiting {
+      CtrwWaitingLaw::Exponential { rate } => Some(rate),
+      _ => panic!(
+        "Ctrw: only exponential waiting times run on a device; sample through `ProcessExt`, \
+         which keeps the other laws on the host"
+      ),
+    }
+  }
+
+  fn jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
+    Some(match self.jumps {
+      CtrwJumpLaw::Normal { mean, std } => crate::euler::JumpSizes::Normal { mean, sd: std },
+      CtrwJumpLaw::SymmetricStable { alpha, scale } => {
+        crate::euler::JumpSizes::SymmetricStable { alpha, scale }
+      }
+      CtrwJumpLaw::Rademacher { scale } => crate::euler::JumpSizes::Rademacher { scale },
+    })
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Ctrw<T, S> { waiting, jumps, n, x0, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Ctrw<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = CtrwSampler<T>
@@ -172,6 +250,50 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Ctrw<T, S, B> {
       waiting,
       jumps,
       uniform,
+    }
+  }
+
+  /// Through the Euler engine under exponential waits; any other waiting law
+  /// keeps the process on the host, chunked exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> Array1<T> {
+    if self.device_ready() {
+      self.backend.euler_sample(self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      self.backend.euler_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    if self.device_ready() {
+      self.backend.euler_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_euler_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }

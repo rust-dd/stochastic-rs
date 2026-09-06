@@ -125,6 +125,13 @@ fn probe_sizes(spec: &EulerSpec<f32>) -> JumpSizes<f32> {
       mean: -0.02,
       sd: 0.1,
     },
+    // Two more families that read the sum, so the Rademacher and the stable
+    // laws are compared kernel to kernel rather than merely executed.
+    EulerSpec::MertonJumpLog { .. } => JumpSizes::SymmetricStable {
+      alpha: 1.7,
+      scale: 0.02,
+    },
+    EulerSpec::DuffieKanJump { .. } => JumpSizes::Rademacher { scale: 0.02 },
     _ => PROBE_SIZES,
   }
 }
@@ -522,6 +529,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::TemperedStableSeries { .. } => "TemperedStableSeries",
     EulerSpec::VolterraReference => "VolterraReference",
     EulerSpec::HawkesEvents { .. } => "HawkesEvents",
+    EulerSpec::LiborMarket4 { .. } => "LiborMarket4",
   }
 }
 
@@ -1787,6 +1795,15 @@ fn every_four_component_family() -> Vec<SystemProbe<4>> {
     }
   };
   vec![
+    SystemProbe {
+      spec: EulerSpec::LiborMarket4 {
+        sigma: [0.2, 0.25, 0.3, 0.35],
+        delta: [0.5, 0.5, 0.5, 0.5],
+        l: [1.0, 0.6, 0.8, 0.3, 0.2, 0.93, 0.1, 0.1, 0.2, 0.97],
+      },
+      x0: [0.03, 0.035, 0.04, 0.045],
+      lift: None,
+    },
     SystemProbe {
       spec: EulerSpec::CorrelatedGeometric4 {
         mu: [0.03, 0.02, 0.01, 0.04],

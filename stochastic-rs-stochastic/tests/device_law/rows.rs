@@ -11,6 +11,7 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::diffusion::multi_gbm::MultiGbm;
 use stochastic_rs_stochastic::interest::adg::Adg;
 use stochastic_rs_stochastic::interest::bgm::Bgm;
+use stochastic_rs_stochastic::interest::lmm::Lmm;
 use stochastic_rs_stochastic::interest::wu_zhang::WuZhangD;
 use stochastic_rs_stochastic::noise::mcgns::Mcgns;
 use stochastic_rs_stochastic::traits::ProcessExt;
@@ -399,4 +400,140 @@ fn mcgns_agrees_with_the_cpu_law() {
       "noise streams {a},{b} correlation: host {h}, device {d}, requested {rho}"
     );
   }
+}
+
+/// Three forwards under the spot measure's drift coupling: the first has
+/// reset at the origin and never moves, the second freezes at its reset a
+/// third of the way in, the third two thirds in. Each live rate's terminal
+/// mean carries the coupled drift and its spread its own volatility, and the
+/// freezes are exact.
+#[test]
+fn lmm_agrees_with_the_cpu_law() {
+  let build = || {
+    Lmm::<f32, _>::new(
+      array![0.0_f32, 0.5, 1.0, 1.5],
+      array![0.03_f32, 0.035, 0.04],
+      array![0.2_f32, 0.25, 0.3],
+      N,
+      Some(1.5),
+      Deterministic::new(193),
+    )
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert_eq!(device.len(), PATHS);
+  assert!(device.iter().all(|p| p.nrows() == 3 && p.ncols() == N));
+  assert!(
+    device.iter().all(|p| p.row(0).iter().all(|&v| v == 0.03)),
+    "the first forward reset at the origin and must not move"
+  );
+  assert!(
+    device
+      .iter()
+      .all(|p| p[(1, N - 1)] == p[(1, N - 2)] && p[(2, N - 1)] == p[(2, N - 2)]),
+    "a forward past its reset date must be frozen"
+  );
+  assert!(
+    device.iter().any(|p| p[(2, N / 2)] != p[(2, 0)]),
+    "the third forward is live half way in"
+  );
+  for row in 1..3 {
+    agrees(
+      row_mean(&host, row),
+      row_mean(&device, row),
+      0.02,
+      &format!("LMM forward {row} terminal mean"),
+    );
+    agrees(
+      row_spread(&host, row),
+      row_spread(&device, row),
+      0.06,
+      &format!("LMM forward {row} terminal spread"),
+    );
+  }
+}
+
+/// With a correlation matrix the shocks are combined through its Cholesky
+/// factor and the drifts through the correlations it implies; the
+/// correlation of two live forwards' log-returns is the one statistic a
+/// launch dropping either would move.
+#[test]
+fn lmm_correlated_forwards_agree_with_the_cpu_law() {
+  let build = || {
+    Lmm::<f32, _>::new(
+      array![0.0_f32, 0.5, 1.0, 1.5],
+      array![0.03_f32, 0.035, 0.04],
+      array![0.2_f32, 0.25, 0.3],
+      N,
+      Some(1.5),
+      Deterministic::new(197),
+    )
+    .with_correlation(array![[1.0_f32, 0.7, 0.4], [0.7, 1.0, 0.7], [0.4, 0.7, 1.0]])
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  let (h, d) = (
+    corr(&log_returns(&host, 1), &log_returns(&host, 2)),
+    corr(&log_returns(&device, 1), &log_returns(&device, 2)),
+  );
+  assert!(d > 0.5, "the forwards' log-returns do not correlate: {d}");
+  agrees(h, d, 0.05, "LMM forward log-return correlation");
+  agrees(
+    row_mean(&host, 2),
+    row_mean(&device, 2),
+    0.02,
+    "LMM correlated forward terminal mean",
+  );
+}
+
+/// The drift coupling itself, made large enough to see: at rates of a half
+/// with unit accruals and a volatility of a half, a forward's drift from the
+/// rates below it is of the order of its own `σ²/2`, so the mean log-return of
+/// a live forward — near `−σ² T / 2` without the coupling — moves by a
+/// multiple of its standard error when the coupling is wrong.
+#[test]
+fn lmm_drift_coupling_agrees_with_the_cpu_law() {
+  let build = || {
+    Lmm::<f32, _>::new(
+      array![0.0_f32, 1.0, 2.0, 3.0],
+      array![0.5_f32, 0.5, 0.5],
+      array![0.5_f32, 0.5, 0.5],
+      N,
+      Some(3.0),
+      Deterministic::new(211),
+    )
+  };
+  const PATHS: usize = 4 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  for row in 1..3 {
+    let mean = |paths: &[Array2<f32>]| {
+      let r = log_returns(paths, row);
+      r.iter().sum::<f64>() / r.len() as f64
+    };
+    let (h, d) = (mean(&host), mean(&device));
+    assert!(
+      (h - d).abs() < 0.02,
+      "LMM forward {row} mean log-return: host {h}, device {d}"
+    );
+  }
+}
+
+/// Five forwards exceed a launch's four slots, so the device build samples on
+/// the host and is the host build to the bit.
+#[test]
+fn more_than_four_forwards_keep_lmm_on_the_host() {
+  let build = || {
+    Lmm::<f32, _>::new(
+      array![0.0_f32, 0.5, 1.0, 1.5, 2.0, 2.5],
+      array![0.03_f32, 0.035, 0.04, 0.045, 0.05],
+      array![0.2_f32, 0.2, 0.2, 0.2, 0.2],
+      64,
+      Some(2.5),
+      Deterministic::new(199),
+    )
+  };
+  assert_eq!(build().on::<Device>().sample_par(8), build().sample_par(8));
 }
