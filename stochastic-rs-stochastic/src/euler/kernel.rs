@@ -13,12 +13,14 @@
 //! by the language-specific header around the body;
 //! the body itself only uses the placeholders [`Language`] fills in. Two
 //! decorrelated uniforms per noise component per step come from a
-//! Murmur3-style integer hash of `(first_path + path, step, seed)`, so a
-//! batch produced in chunks is bit-identical to one launch. The first
-//! component hashes that counter directly and every further one hashes it
-//! xored with a constant of its own, which leaves a single-noise family's
-//! stream exactly what it was before the engine learned about systems. The
-//! salt is xored rather than multiplied in because a shading language may
+//! Murmur3-style integer hash of the cell `(first_path + path, step)` under
+//! the seed, so a batch produced in chunks is bit-identical to one launch.
+//! The cell number is counted in the language's 64-bit type and avalanched
+//! into the 32-bit word the hashes key on: counted in 32 bits it wraps at
+//! 2^31 path-steps, and two paths that far apart would then draw the same
+//! noise for their whole length. Each component salts the two words with a
+//! constant of its own, which is what decorrelates the components. A salt is
+//! xored in rather than multiplied because a shading language may
 //! constant-fold the multiplication and reject it as an overflow. When
 //! `increments` is set the first component reads from `incs` instead — one
 //! row of `steps - 1` increments per path — which is how a fractional
