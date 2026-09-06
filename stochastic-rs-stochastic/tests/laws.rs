@@ -15,4 +15,5 @@
 mod laws {
   pub(crate) mod autoregressive;
   pub(crate) mod common;
+  pub(crate) mod levy;
 }
