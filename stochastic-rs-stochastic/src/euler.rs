@@ -967,6 +967,16 @@ pub enum EulerSpec<T: FloatExt> {
     ek: T,
     rho: T,
   },
+  /// The two-dimensional Wishart process by its exact step: the three `2 × 2`
+  /// maps of the law identity — `m = exp(Δt b)`, the extended Cholesky factor
+  /// `θ` of `q / Δt` and its inverse — row-major, and whether the noise has
+  /// rank two.
+  WishartTwo {
+    m: [T; 4],
+    theta: [T; 4],
+    theta_inv: [T; 4],
+    two: T,
+  },
   /// Up to four forward LIBOR rates under the spot measure's drift coupling:
   /// their volatilities, their accrual periods, and the lower Cholesky factor
   /// of their correlation in row-major lower-triangle order; the active reset
@@ -1743,6 +1753,19 @@ impl<T: FloatExt> EulerSpec<T> {
           rho,
         ]),
       ),
+      EulerSpec::WishartTwo {
+        m,
+        theta,
+        theta_inv,
+        two,
+      } => {
+        let mut values = [T::zero(); 13];
+        values[..4].copy_from_slice(&m);
+        values[4..8].copy_from_slice(&theta);
+        values[8..12].copy_from_slice(&theta_inv);
+        values[12] = two;
+        (Family::WishartTwo.code(), pad(values))
+      }
       EulerSpec::LiborMarket4 { sigma, delta, l } => {
         let mut values = [T::zero(); 18];
         values[..4].copy_from_slice(&sigma);

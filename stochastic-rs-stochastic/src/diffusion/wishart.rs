@@ -25,6 +25,7 @@
 //! discretization schemes for Wishart processes and their affine extensions*,
 //! Ann. Appl. Probab. 23(3), 1025–1073. DOI: 10.1214/12-AAP863
 
+use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Array3;
 use ndarray::s;
@@ -36,7 +37,6 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::linalg::determinant;
 use crate::linalg::expm;
 use crate::linalg::extended_cholesky;
@@ -360,9 +360,139 @@ impl<T: FloatExt, S: SeedExt, B> Wishart<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Wishart<T, S> { alpha, b, a, x0, n, t, seed, step } via host);
+impl<T: FloatExt, S: SeedExt, B> Wishart<T, S, B> {
+  /// Whether a device can run this process: two dimensions — the family
+  /// carries the three entries of a symmetric `2 × 2` matrix — a noise of
+  /// rank one or two, and a degree of at least three, which keeps the path
+  /// inside the cone so the rank-adaptive branch of the host's step is never
+  /// taken and the squared Bessel draw has the degree the kernels' central
+  /// χ² supplies. Anything else samples on the host.
+  pub fn device_ready(&self) -> bool {
+    self.dim() == 2 && self.step.rank >= 1 && self.alpha >= T::from_usize_(3)
+  }
+}
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Wishart<T, S, B> {
+/// The Euler engine's view of the matrix path: the three entries of the
+/// symmetric matrix as one launch's slots, the exact step's maps folded once.
+#[doc(hidden)]
+pub struct WishartLaunch<'a, T: FloatExt, S: SeedExt, B>(&'a Wishart<T, S, B>);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for WishartLaunch<'_, T, S, B>
+{
+  type Output = [Array1<T>; 3];
+  type Sampler<'s>
+    = WishartLaunchSampler<T, S>
+  where
+    Self: 's;
+
+  fn sampler(&self) -> WishartLaunchSampler<T, S> {
+    WishartLaunchSampler {
+      inner: <Wishart<T, S, B> as ProcessExt<T>>::sampler(self.0),
+    }
+  }
+}
+
+#[doc(hidden)]
+pub struct WishartLaunchSampler<T: FloatExt, S: SeedExt> {
+  inner: WishartSampler<T, S>,
+}
+
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for WishartLaunchSampler<T, S> {
+  type Output = [Array1<T>; 3];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 3]) {
+    *out = self.sample();
+  }
+
+  fn sample(&mut self) -> [Array1<T>; 3] {
+    let path = self.inner.sample();
+    [
+      path.slice(s![.., 0, 0]).to_owned(),
+      path.slice(s![.., 0, 1]).to_owned(),
+      path.slice(s![.., 1, 1]).to_owned(),
+    ]
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 3>
+  for WishartLaunch<'_, T, S, B>
+{
+  /// The step's maps row-major. A configuration the family cannot carry
+  /// never reaches a launch — [`ProcessExt::sample`] keeps it on the host —
+  /// so asking here is a caller bypassing that guard.
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let p = self.0;
+    assert!(
+      p.device_ready(),
+      "Wishart: a launch carries two dimensions at a degree of at least three; sample through \
+       `ProcessExt`, which keeps the rest on the host"
+    );
+    let flat = |m: &Array2<T>| [m[(0, 0)], m[(0, 1)], m[(1, 0)], m[(1, 1)]];
+    crate::euler::EulerSpec::WishartTwo {
+      m: flat(&p.step.m),
+      theta: flat(&p.step.theta),
+      theta_inv: flat(&p.step.theta_inv),
+      two: if p.step.rank >= 2 { T::one() } else { T::zero() },
+    }
+  }
+
+  fn initial_state(&self) -> [T; 4] {
+    let x0 = &self.0.x0;
+    [x0[(0, 0)], x0[(0, 1)], x0[(1, 1)], T::zero()]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.0.n
+  }
+
+  fn horizon(&self) -> T {
+    self.0.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.0.dt()
+  }
+
+  /// The central χ²(α − 2) each coordinate's squared Bessel draw adds to its
+  /// shifted normal's square: a gamma of shape `(α − 2) / 2` and scale two,
+  /// one per coordinate.
+  fn gamma_draws(&self) -> Option<crate::euler::GammaDraws<T>> {
+    let two = T::from_usize_(2);
+    let draw = ((self.0.alpha - two) / two, two, T::zero());
+    Some(crate::euler::GammaDraws {
+      first: draw,
+      second: Some(draw),
+    })
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.0.seed)
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 3] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+/// The launch's three slots back into the `n × 2 × 2` matrix path.
+fn slots_to_matrices<T: FloatExt>(slots: [Array1<T>; 3]) -> Array3<T> {
+  let n = slots[0].len();
+  let mut out = Array3::<T>::zeros((n, 2, 2));
+  for j in 0..n {
+    out[(j, 0, 0)] = slots[0][j];
+    out[(j, 0, 1)] = slots[1][j];
+    out[(j, 1, 0)] = slots[1][j];
+    out[(j, 1, 1)] = slots[2][j];
+  }
+  out
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Wishart<T, S> { alpha, b, a, x0, n, t, seed, step } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Wishart<T, S, B> {
   type Output = Array3<T>;
   type Sampler<'s>
     = WishartSampler<T, S>
@@ -382,6 +512,65 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Wishart<T, S, B>
         seed: self.seed.derive(),
         step: self.step.clone(),
       },
+    }
+  }
+
+  /// Through the Euler engine in two dimensions at a degree of at least
+  /// three; anything else keeps the process on the host, chunked exactly as
+  /// [`ProcessExt`] chunks.
+  fn sample(&self) -> Array3<T> {
+    if self.device_ready() {
+      slots_to_matrices(self.backend.system_sample(&WishartLaunch(self)))
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array3<T>) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      self
+        .backend
+        .system_paths_map(&WishartLaunch(self), m, |slots| f(&slots_to_matrices(slots.clone())))
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array3<T>> {
+    if self.device_ready() {
+      self
+        .backend
+        .system_paths(&WishartLaunch(self), m)
+        .into_iter()
+        .map(slots_to_matrices)
+        .collect()
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<Array3<T>, crate::device::DeviceError> {
+    if self.device_ready() {
+      Ok(slots_to_matrices(self.backend.try_system_sample(&WishartLaunch(self))?))
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array3<T>>, crate::device::DeviceError> {
+    if self.device_ready() {
+      Ok(
+        self
+          .backend
+          .try_system_paths(&WishartLaunch(self), m)?
+          .into_iter()
+          .map(slots_to_matrices)
+          .collect(),
+      )
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }

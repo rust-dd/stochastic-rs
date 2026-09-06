@@ -1705,6 +1705,59 @@ euler_families! {
         pick(up, mag, negate(mag))
       )
     },
+
+  /// The two-dimensional Wishart process by the exact Ahdida–Alfonsi step:
+  /// the state is carried to `y = θ⁻¹ m X mᵀ θ⁻ᵀ` by the three maps folded on
+  /// the host, then each coordinate in turn takes the one-coordinate law —
+  /// the remaining `1 × 1` block's square root, the off-diagonal entry's
+  /// Gaussian move, and a squared Bessel draw of degree `α − 1` for the
+  /// diagonal as the square of a shifted normal plus the frame's central χ²
+  /// draw — the second coordinate skipped when the noise has rank one, and the
+  /// result carried back by `θ Y θᵀ`. The state is the symmetric matrix's
+  /// three entries.
+  116 => WishartTwo { m00, m01, m10, m11, t00, t01, t10, t11, i00, i01, i10, i11, two }
+    state (a, b, c)
+    noise (z1, w1, z2, w2)
+    step {
+      bind p00 = m00 * a + m01 * b;
+      bind p01 = m00 * b + m01 * c;
+      bind p10 = m10 * a + m11 * b;
+      bind p11 = m10 * b + m11 * c;
+      bind q00 = p00 * m00 + p01 * m01;
+      bind q01 = p00 * m10 + p01 * m11;
+      bind q11 = p10 * m10 + p11 * m11;
+      bind r00 = i00 * q00 + i01 * q01;
+      bind r01 = i00 * q01 + i01 * q11;
+      bind r10 = i10 * q00 + i11 * q01;
+      bind r11 = i10 * q01 + i11 * q11;
+      bind y00 = r00 * i00 + r01 * i01;
+      bind y01 = r00 * i10 + r01 * i11;
+      bind y11 = r10 * i10 + r11 * i11;
+      bind s1 = sqrt(max(y11, lit(1.0e-30)));
+      bind u1 = y01 / s1;
+      bind h1 = max(y00 - u1 * u1, lit(0.0));
+      bind zz1 = z1 / sqrt(dt) + sqrt(h1 / dt);
+      bind hn1 = dt * (zz1 * zz1 + gm);
+      bind un1 = u1 + w1;
+      bind a1 = hn1 + un1 * un1;
+      bind b1 = s1 * un1;
+      bind s2 = sqrt(max(a1, lit(1.0e-30)));
+      bind u2 = b1 / s2;
+      bind h2 = max(y11 - u2 * u2, lit(0.0));
+      bind zz2 = z2 / sqrt(dt) + sqrt(h2 / dt);
+      bind hn2 = dt * (zz2 * zz2 + gm2);
+      bind un2 = u2 + w2;
+      bind c2 = pick(two, hn2 + un2 * un2, y11);
+      bind b2 = pick(two, s2 * un2, b1);
+      bind e00 = t00 * a1 + t01 * b2;
+      bind e01 = t00 * b2 + t01 * c2;
+      bind e10 = t10 * a1 + t11 * b2;
+      bind e11 = t10 * b2 + t11 * c2;
+      e00 * t00 + e01 * t01,
+      e00 * t10 + e01 * t11,
+      e10 * t10 + e11 * t11
+    }
+    report { a, b, c },
 }
 
 #[cfg(test)]

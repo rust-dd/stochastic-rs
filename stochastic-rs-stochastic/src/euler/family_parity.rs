@@ -628,6 +628,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::LiborMarket4 { .. } => "LiborMarket4",
     EulerSpec::InverseStableSubordinator { .. } => "InverseStableSubordinator",
     EulerSpec::StochasticVolatilityCgmy { .. } => "StochasticVolatilityCgmy",
+    EulerSpec::WishartTwo { .. } => "WishartTwo",
   }
 }
 
@@ -1857,6 +1858,16 @@ fn every_three_component_family() -> Vec<SystemProbe<3>> {
     x0: [0.0, 0.0, 0.0],
     lift: None,
   };
+  let wishart = SystemProbe {
+    spec: EulerSpec::WishartTwo {
+      m: [0.99, 0.01, 0.0, 0.98],
+      theta: [1.0, 0.0, 0.3, 0.9],
+      theta_inv: [1.0, 0.0, -1.0 / 3.0, 1.0 / 0.9],
+      two: 1.0,
+    },
+    x0: [1.0, 0.2, 0.5],
+    lift: None,
+  };
   let double = |sym| {
     let spec = if sym {
       EulerSpec::DoubleHestonReflected {
@@ -1906,6 +1917,7 @@ fn every_three_component_family() -> Vec<SystemProbe<3>> {
     threshold,
     exponential,
     compound,
+    wishart,
     double(false),
     double(true),
     SystemProbe {

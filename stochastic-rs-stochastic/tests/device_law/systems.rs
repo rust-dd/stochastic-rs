@@ -3,6 +3,7 @@
 //! the boundary its family promises.
 
 use ndarray::Array1;
+use ndarray::Array3;
 use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::scalar::ScalarExp;
@@ -10,6 +11,7 @@ use stochastic_rs_distributions::scalar::ScalarNormal;
 use stochastic_rs_distributions::traits::Fn1D;
 use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
 use stochastic_rs_stochastic::diffusion::fouque::FouqueOU2D;
+use stochastic_rs_stochastic::diffusion::wishart::Wishart;
 use stochastic_rs_stochastic::diffusion::regime_switching::RegimeSwitchingDiffusion;
 use stochastic_rs_stochastic::interest::duffie_kan::DuffieKan;
 use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
@@ -1332,3 +1334,99 @@ fn a_thin_variance_keeps_the_stochastic_volatility_cgmy_on_the_host() {
   assert_eq!(build().on::<Device>().sample_par(8), build().sample_par(8));
 }
 
+
+/// The two-dimensional Wishart process by its exact step on both machines:
+/// the terminal mean of every entry has a closed form both have to hit, the
+/// spreads have to agree, and the device path has to stay in the cone.
+#[test]
+fn wishart_agrees_with_the_cpu_law_and_its_closed_form_mean() {
+  let build = || {
+    Wishart::<f32, _>::new(
+      3.5,
+      array![[-0.5_f32, 0.1], [0.05, -0.3]],
+      array![[0.3_f32, 0.1], [0.0, 0.2]],
+      array![[1.0_f32, 0.2], [0.2, 0.5]],
+      253,
+      Some(1.0),
+      Deterministic::new(241),
+    )
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert_eq!(device.len(), PATHS);
+  assert!(device.iter().all(|p| p.dim() == (253, 2, 2)));
+  assert!(
+    device.iter().all(|p| (0..253).all(|j| {
+      p[(j, 0, 0)] >= 0.0
+        && p[(j, 1, 1)] >= 0.0
+        && p[(j, 0, 0)] * p[(j, 1, 1)] - p[(j, 0, 1)] * p[(j, 1, 0)] >= -1e-5
+        && p[(j, 0, 1)] == p[(j, 1, 0)]
+    })),
+    "a device matrix left the cone or lost its symmetry"
+  );
+  let entry_mean = |paths: &[Array3<f32>], r: usize, c: usize| {
+    paths.iter().map(|p| p[(252, r, c)] as f64).sum::<f64>() / paths.len() as f64
+  };
+  let entry_spread = |paths: &[Array3<f32>], r: usize, c: usize| {
+    let n = paths.len() as f64;
+    let mean = entry_mean(paths, r, c);
+    (paths
+      .iter()
+      .map(|p| (p[(252, r, c)] as f64 - mean).powi(2))
+      .sum::<f64>()
+      / n)
+      .sqrt()
+  };
+  let closed = build().mean(1.0);
+  for (r, c) in [(0, 0), (0, 1), (1, 1)] {
+    let (h, d, m) = (entry_mean(&host, r, c), entry_mean(&device, r, c), closed[(r, c)] as f64);
+    let se = entry_spread(&host, r, c) / (PATHS as f64).sqrt();
+    assert!(
+      (d - m).abs() < 4.0 * se,
+      "Wishart entry ({r},{c}) terminal mean: device {d} vs closed form {m}, standard error {se}"
+    );
+    assert!(
+      (h - d).abs() < 4.0 * se * std::f64::consts::SQRT_2,
+      "Wishart entry ({r},{c}) terminal mean: host {h}, device {d}"
+    );
+    agrees(
+      entry_spread(&host, r, c),
+      entry_spread(&device, r, c),
+      0.06,
+      &format!("Wishart entry ({r},{c}) terminal spread"),
+    );
+  }
+}
+
+/// Below a degree of three the host's step can take its rank-adaptive branch
+/// and below two its Poisson mixture, neither of which a family carries; the
+/// device build samples on the host and is the host build to the bit. So
+/// does a one-dimensional process, which the two-slot family does not fit.
+#[test]
+fn a_low_degree_or_one_dimension_keeps_wishart_on_the_host() {
+  let low = || {
+    Wishart::<f32, _>::new(
+      2.5,
+      array![[-0.5_f32, 0.1], [0.05, -0.3]],
+      array![[0.3_f32, 0.1], [0.0, 0.2]],
+      array![[1.0_f32, 0.2], [0.2, 0.5]],
+      64,
+      Some(1.0),
+      Deterministic::new(251),
+    )
+  };
+  assert_eq!(low().on::<Device>().sample_par(8), low().sample_par(8));
+  let one = || {
+    Wishart::<f32, _>::new(
+      3.5,
+      array![[-0.5_f32]],
+      array![[0.3_f32]],
+      array![[1.0_f32]],
+      64,
+      Some(1.0),
+      Deterministic::new(257),
+    )
+  };
+  assert_eq!(one().on::<Device>().sample_par(8), one().sample_par(8));
+}
