@@ -17,6 +17,7 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_distributions::uniform::SimdUniform;
 
 use super::*;
 use crate::traits::PathSampler;
@@ -65,6 +66,10 @@ fn probe_lift(dt: f32) -> ProbeLift {
 /// the wrong step would show up as a different law.
 /// The jump intensity every probe declares: enough that a step sees a jump
 /// now and then, low enough that the count stays small.
+/// The series terms every series probe draws per path: a few per cell on
+/// the probes' short grid, so a cell that gets none is the exception.
+const PROBE_TERMS: u32 = 64;
+
 const PROBE_INTENSITY: f32 = 3.0;
 
 /// The size law every probe declares. Double-exponential rather than normal
@@ -180,6 +185,11 @@ impl PathSampler<f32> for ProbeSampler {
       0.5,
       0.0,
       0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
       &mut out,
     );
     slice[0] = out[0];
@@ -196,6 +206,24 @@ impl PathSampler<f32> for ProbeSampler {
     // exactly as the frame does.
     let hist_slot = family.history_slot();
     let mut past = Vec::<f32>::new();
+    // The series a `series` family sums into its grid cells, from a uniform
+    // stream of its own, exactly as the frame's preamble does.
+    let mut series = vec![0.0f32; N];
+    if family.has_series() {
+      let uniform = SimdUniform::<f32>::new(0.0, 1.0, &Deterministic::new(11));
+      let mut gj = 0.0f32;
+      for _ in 0..PROBE_TERMS {
+        gj -= (uniform.sample_fast() * 0.999998 + 1.0e-6).ln();
+        let ej = -(uniform.sample_fast() * 0.999998 + 1.0e-6).ln();
+        let uj = uniform.sample_fast();
+        let uv = uniform.sample_fast();
+        let ratio = uniform.sample_fast() * (N - 1) as f32;
+        let size = super::families::host_series(family, &params, self.dt, gj, ej, uj, uv)
+          .expect("a family with a series clause sizes its terms");
+        let cell = (ratio.ceil() as usize).clamp(1, N - 1);
+        series[cell] += size;
+      }
+    }
     for (i, z) in tail.iter_mut().enumerate() {
       let noise = [*z, 0.0, 0.0, 0.0];
       let (mut lv, mut coefficients) = (0.0f32, [0.0f32; 3]);
@@ -237,6 +265,11 @@ impl PathSampler<f32> for ProbeSampler {
         0.5,
         lv,
         cv,
+        series[i + 1],
+        0.0,
+        0.0,
+        0.0,
+        0.0,
         &noise,
         &mut next,
       );
@@ -266,6 +299,11 @@ impl PathSampler<f32> for ProbeSampler {
         1.3,
         0.5,
         0.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
         0.0,
         0.0,
         &mut out,
@@ -338,6 +376,16 @@ impl EulerCoefficients<f32> for Probe {
 
   /// Every probe takes jumps, so the count's own hash stream runs on both
   /// kernels whether or not the family under test reads it.
+  /// A series family draws the probes' fixed handful of terms per path; the
+  /// rest draw none.
+  fn series_terms(&self) -> Option<u32> {
+    let (code, _) = self.spec.encode();
+    super::families::Family::from_code(code)
+      .expect("a declared family")
+      .has_series()
+      .then_some(PROBE_TERMS)
+  }
+
   fn jump_intensity(&self) -> Option<f32> {
     Some(PROBE_INTENSITY)
   }
@@ -471,6 +519,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::RoughBergomiMemory { .. } => "RoughBergomiMemory",
     EulerSpec::LinearFractionalStable { .. } => "LinearFractionalStable",
     EulerSpec::MovingAverageFilter { .. } => "MovingAverageFilter",
+    EulerSpec::TemperedStableSeries { .. } => "TemperedStableSeries",
   }
 }
 
@@ -795,6 +844,19 @@ fn every_family() -> Vec<Probe> {
       0.0,
     ),
     p(EulerSpec::MovingAverageFilter { sigma: 0.3 }, 0.0),
+    p(
+      EulerSpec::TemperedStableSeries {
+        b_t: 0.01,
+        rate: 0.25,
+        inv_alpha: 2.0,
+        e_scale: 1.0,
+        e_pow: 1.0,
+        w_plus: 0.5,
+        lambda_plus: 3.0,
+        lambda_minus: 3.0,
+      },
+      0.0,
+    ),
     p(EulerSpec::AffineDiffusionGaussian { sigma: 0.02 }, 0.03),
     p(
       EulerSpec::TransformedOrnsteinUhlenbeck {
@@ -969,6 +1031,11 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       0.5,
       0.0,
       0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
       &mut reported,
     );
     for (c, path) in out.iter_mut().enumerate() {
@@ -983,6 +1050,24 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
     // exactly as the frame does.
     let hist_slot = family.history_slot();
     let mut past = Vec::<f32>::new();
+    // The series a `series` family sums into its grid cells, from a uniform
+    // stream of its own, exactly as the frame's preamble does.
+    let mut series = vec![0.0f32; N];
+    if family.has_series() {
+      let uniform = SimdUniform::<f32>::new(0.0, 1.0, &Deterministic::new(11));
+      let mut gj = 0.0f32;
+      for _ in 0..PROBE_TERMS {
+        gj -= (uniform.sample_fast() * 0.999998 + 1.0e-6).ln();
+        let ej = -(uniform.sample_fast() * 0.999998 + 1.0e-6).ln();
+        let uj = uniform.sample_fast();
+        let uv = uniform.sample_fast();
+        let ratio = uniform.sample_fast() * (N - 1) as f32;
+        let size = super::families::host_series(family, &params, self.dt, gj, ej, uj, uv)
+          .expect("a family with a series clause sizes its terms");
+        let cell = (ratio.ceil() as usize).clamp(1, N - 1);
+        series[cell] += size;
+      }
+    }
     for i in 1..N {
       let mut noise = [0.0f32; 4];
       self.normal.fill_slice(&mut draw);
@@ -1026,6 +1111,11 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         0.5,
         lv,
         cv,
+        series[i],
+        0.0,
+        0.0,
+        0.0,
+        0.0,
         &noise,
         &mut next,
       );
@@ -1055,6 +1145,11 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         1.3,
         0.5,
         0.5,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
         0.0,
         0.0,
         &mut reported,
@@ -1127,6 +1222,16 @@ impl<const D: usize> EulerSystem<f32, D> for SystemProbe<D> {
       diffusion_boundary: l.fb,
       x0: l.x0,
     })
+  }
+
+  /// A series family draws the probes' fixed handful of terms per path; the
+  /// rest draw none.
+  fn series_terms(&self) -> Option<u32> {
+    let (code, _) = self.spec.encode();
+    super::families::Family::from_code(code)
+      .expect("a declared family")
+      .has_series()
+      .then_some(PROBE_TERMS)
   }
 
   fn jump_intensity(&self) -> Option<f32> {

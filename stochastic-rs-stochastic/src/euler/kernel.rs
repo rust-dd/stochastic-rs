@@ -75,6 +75,13 @@
 //! step producing point `i`. Without a clause `hist_slot` is the sentinel
 //! `0xFFFFFFFF` and `cv` stays zero.
 //!
+//! A family with a `series` clause reads `sj`: before the steps the frame
+//! draws `series_n` terms per path — a unit-rate arrival `gj`, an `Exp(1)`
+//! `ej`, two uniforms `uj` and `uv`, and a uniform arrival time — sizes each
+//! with the family's expression and sums it into the grid cell its time falls
+//! in, an array of 512 cells the grid may not exceed; `sj` is the step's cell.
+//! Without a clause `series_n` is zero and `sj` stays zero.
+//!
 //! A family may read `nj`, the number of jumps the step saw: a Poisson draw
 //! with mean `jump_lambda · dt`, by Knuth's product of uniforms from a hash
 //! stream of its own. It is drawn once per step, so every component of a
@@ -151,6 +158,42 @@ pub(crate) const FRAME: &str = r#"    if (path >= paths) return;
     REAL hist_in[1];
     hist_in[0] = (REAL)0;
     REAL past[512];
+    REAL sj = (REAL)0;
+    REAL gj = (REAL)0;
+    REAL ej = (REAL)0;
+    REAL uj = (REAL)0;
+    REAL uv = (REAL)0;
+    REAL series_size[1];
+    series_size[0] = (REAL)0;
+    REAL series[512];
+    if (series_n != 0u) {
+        for (unsigned int k = 0u; k < steps; k++) { series[k] = (REAL)0; }
+        for (unsigned int j = 1u; j <= series_n; j++) {
+            unsigned int sg = ((first_path + path) * 2654435761u) ^ (j * 40503u) ^ 3266489917u;
+            unsigned int q1 = (sg ^ 2654435769u) ^ (seed * 2654435761u);
+            q1 ^= q1 >> 16; q1 *= 2246822519u; q1 ^= q1 >> 13; q1 *= 3266489917u; q1 ^= q1 >> 16;
+            unsigned int q2 = (sg ^ 2246822507u) ^ (seed * 2654435761u);
+            q2 ^= q2 >> 16; q2 *= 2246822519u; q2 ^= q2 >> 13; q2 *= 3266489917u; q2 ^= q2 >> 16;
+            unsigned int q3 = (sg ^ 3266489909u) ^ (seed * 2654435761u);
+            q3 ^= q3 >> 16; q3 *= 2246822519u; q3 ^= q3 >> 13; q3 *= 3266489917u; q3 ^= q3 >> 16;
+            unsigned int q4 = (sg ^ 668265263u) ^ (seed * 2654435761u);
+            q4 ^= q4 >> 16; q4 *= 2246822519u; q4 ^= q4 >> 13; q4 *= 3266489917u; q4 ^= q4 >> 16;
+            unsigned int q5 = (sg ^ 374761393u) ^ (seed * 2654435761u);
+            q5 ^= q5 >> 16; q5 *= 2246822519u; q5 ^= q5 >> 13; q5 *= 3266489917u; q5 ^= q5 >> 16;
+            gj += -STOCH_LOG((REAL)q1 * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6);
+            ej = -STOCH_LOG((REAL)q2 * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6);
+            uj = (REAL)q3 * (REAL)2.3283064e-10;
+            uv = (REAL)q4 * (REAL)2.3283064e-10;
+            REAL ratio = (REAL)q5 * (REAL)2.3283064e-10 * (REAL)(steps - 1u);
+SERIES
+            unsigned int cell = (unsigned int)ratio;
+            if ((REAL)cell < ratio) { cell += 1u; }
+            if (cell < 1u) { cell = 1u; }
+            if (cell > steps - 1u) { cell = steps - 1u; }
+            series[cell] += series_size[0];
+        }
+        gj = (REAL)0; ej = (REAL)0; uj = (REAL)0; uv = (REAL)0;
+    }
     for (unsigned int c = 0u; c < 4u; c++) { state[c] = x0[c]; reported[c] = x0[c]; }
     for (unsigned int c = 0u; c < 4u; c++) { noise[c] = (REAL)0; }
 REPORT
@@ -196,6 +239,7 @@ REPORT
         unsigned int hv = (g ^ 3266489917u) ^ (seed * 2654435761u);
         hv ^= hv >> 16; hv *= 2246822519u; hv ^= hv >> 13; hv *= 3266489917u; hv ^= hv >> 16;
         u2 = (REAL)hv * (REAL)2.3283064e-10;
+        sj = (series_n != 0u) ? series[i] : (REAL)0;
         if (has_jumps != 0u) {
             REAL ell = STOCH_EXP(-jump_lambda * dt);
             REAL prod = (REAL)1;
@@ -457,6 +501,7 @@ pub(crate) fn prelude(lang: &Language<'_>) -> String {
 /// the placeholders of `lang` filled in.
 pub(crate) fn render(lang: &Language<'_>) -> String {
   let body = FRAME
+    .replace("SERIES", super::families::C_SERIES.trim_end_matches('\n'))
     .replace("LIFT", super::families::C_LIFT.trim_end_matches('\n'))
     .replace("HISTORY", super::families::C_HISTORY.trim_end_matches('\n'))
     .replace("STEP", super::families::C_STEP.trim_end_matches('\n'))

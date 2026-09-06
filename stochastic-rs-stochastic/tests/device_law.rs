@@ -38,5 +38,6 @@ mod device_law {
   pub(crate) mod levy;
   pub(crate) mod memory;
   pub(crate) mod rows;
+  pub(crate) mod series;
   pub(crate) mod systems;
 }

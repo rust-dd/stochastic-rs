@@ -56,6 +56,7 @@ struct EulerArgs {
     float lift_fb;
     float lift_x0;
     uint hist_slot;
+    uint series_n;
     float x0[4];
 };
 
@@ -98,6 +99,7 @@ kernel void euler_paths(
     const float lift_fb = args.lift_fb;
     const float lift_x0 = args.lift_x0;
     const uint hist_slot = args.hist_slot;
+    const uint series_n = args.series_n;
     const float jump_a = args.jump_a;
     const float jump_b = args.jump_b;
     const float jump_c = args.jump_c;
@@ -160,6 +162,9 @@ struct EulerArgs {
   /// The curve slot a history family reads its weights from, `u32::MAX`
   /// for a family without one.
   hist_slot: u32,
+  /// How many series terms the launch draws per path, zero for a family
+  /// without a `series` clause.
+  series_n: u32,
   x0: [f32; 4],
 }
 
@@ -358,6 +363,7 @@ impl EulerKernel<f32> for Metal {
       process.step_first(),
       process.gamma_draws(),
       process.lift_spec(),
+      process.series_terms(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -394,6 +400,7 @@ impl EulerKernel<f32> for Metal {
       process.step_first(),
       process.gamma_draws(),
       process.lift_spec(),
+      process.series_terms(),
     )
   }
 
@@ -461,6 +468,7 @@ fn device_paths(
   step_first: bool,
   gammas: Option<crate::euler::GammaDraws<f32>>,
   lift: Option<crate::euler::LiftSpec<'_, f32>>,
+  series: Option<u32>,
 ) -> Result<Array3<f32>> {
   let (family, params) = spec.encode();
   let arity = super::families::Family::from_code(family).expect("a declared family");
@@ -475,6 +483,7 @@ fn device_paths(
   let (lift_tables, has_lift, lift_n, lift_db, lift_fb, lift_x0) =
     crate::euler::encode_lift(lift.as_ref());
   let hist_slot = crate::euler::history_slot(family, n);
+  let series_n = crate::euler::series_terms(family, n, series);
   let args = EulerArgs {
     family,
     components: components as u32,
@@ -510,6 +519,7 @@ fn device_paths(
     lift_fb,
     lift_x0,
     hist_slot,
+    series_n,
     x0,
   };
   let data = run(ordinal, params, args, increments, &curve, lift_tables)?;

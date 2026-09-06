@@ -37,7 +37,6 @@ use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::process::poisson::Poisson;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -119,9 +118,91 @@ impl<T: FloatExt, S: SeedExt> Cgmy<T, S> {
 
 impl<T: FloatExt, S: SeedExt, B> Cgmy<T, S, B> {}
 
-backend_switch!([T: FloatExt, S: SeedExt] Cgmy<T, S> { c, lambda_plus, lambda_minus, alpha, n, j, x0, t, seed } via host);
+impl<T: FloatExt, S: SeedExt, B> Cgmy<T, S, B> {
+  /// The horizon, one when omitted.
+  fn t_max(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Cgmy<T, S, B> {
+  /// The grid spacing.
+  fn dt(&self) -> T {
+    self.t_max() / T::from_usize_(self.n - 1)
+  }
+
+  /// Whether a device can run this process: the grid fits the kernels'
+  /// per-path series cells. A longer grid samples on the host.
+  pub fn device_ready(&self) -> bool {
+    self.n <= crate::euler::SERIES_SLOTS
+  }
+
+  /// The mean-compensating drift `-C Γ(1 - Y) (G^{Y-1} - M^{Y-1})`, finite —
+  /// and applied — only below `Y = 1`.
+  fn drift_rate(&self) -> T {
+    if self.alpha < T::one() {
+      let g1 = gamma(1.0 - self.alpha.to_f64().unwrap());
+      -self.c
+        * T::from_f64_fast(g1)
+        * (self.lambda_plus.powf(self.alpha - T::one())
+          - self.lambda_minus.powf(self.alpha - T::one()))
+    } else {
+      T::zero()
+    }
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for Cgmy<T, S, B>
+{
+  /// The series constants folded once: the arrival bound's rate `Y / (2 C T)`,
+  /// the exponential draw entering plainly, and the two sides equally likely.
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::TemperedStableSeries {
+      b_t: self.drift_rate(),
+      rate: self.alpha / (T::from_usize_(2) * self.c * self.t_max()),
+      inv_alpha: T::one() / self.alpha,
+      e_scale: T::one(),
+      e_pow: T::one(),
+      w_plus: T::from_f64_fast(0.5),
+      lambda_plus: self.lambda_plus,
+      lambda_minus: self.lambda_minus,
+    }
+  }
+
+  fn initial_value(&self) -> T {
+    self.x0.unwrap_or(T::zero())
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t_max()
+  }
+
+  fn time_step(&self) -> T {
+    self.dt()
+  }
+
+  /// One term per series index, as many as the host draws.
+  fn series_terms(&self) -> Option<u32> {
+    Some(self.j as u32)
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Cgmy<T, S> { c, lambda_plus, lambda_minus, alpha, n, j, x0, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Cgmy<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = CgmySampler<T, S>
@@ -133,21 +214,9 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Cgmy<T, S, B> {
     // order as the legacy `sample()`, so the first fill reproduces it
     // bit-for-bit; both owned sources advance on reuse for independent paths.
     // The seed-independent drift `b_t` is precomputed here.
-    let t_max = self.t.unwrap_or(T::one());
-    let dt = t_max / T::from_usize_(self.n - 1);
-
-    let C = self.c;
-
-    // Mean-compensator drift (finite only if alpha < 1 in the classical sense)
-    let b_t = if self.alpha < T::one() {
-      // b_T = -C Γ(1-Y) (G^{Y-1} - M^{Y-1})
-      let g1 = gamma(1.0 - self.alpha.to_f64().unwrap());
-      -C * T::from_f64_fast(g1)
-        * (self.lambda_plus.powf(self.alpha - T::one())
-          - self.lambda_minus.powf(self.alpha - T::one()))
-    } else {
-      T::zero()
-    };
+    let t_max = self.t_max();
+    let dt = self.dt();
+    let b_t = self.drift_rate();
 
     CgmySampler {
       n: self.n,
@@ -163,6 +232,51 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Cgmy<T, S, B> {
       uniform: SimdUniform::<T>::new(T::zero(), T::one(), &self.seed),
       exp: SimdExp::<T>::new(T::one(), &self.seed),
       seed: self.seed.derive(),
+    }
+  }
+
+  /// Through the Euler engine when the grid fits the kernels' per-path
+  /// series cells; a longer grid keeps the process on the host, chunked
+  /// exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> Array1<T> {
+    if self.device_ready() {
+      self.backend.euler_sample(self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      self.backend.euler_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    if self.device_ready() {
+      self.backend.euler_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_euler_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }

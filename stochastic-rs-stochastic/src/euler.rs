@@ -193,6 +193,41 @@ pub(crate) fn history_slot(family: u32, n: usize) -> u32 {
   }
 }
 
+/// The most grid points a family with a `series` clause steps on a device:
+/// the kernels sum each path's terms into an array of this many cells. A
+/// longer grid stays on the host, which the process's own guard decides.
+pub const SERIES_SLOTS: usize = 512;
+
+/// How many series terms the launch draws per path, or zero for a family
+/// without a `series` clause. A family with one is never launched without a
+/// count and a family without one never with — either would be a process
+/// declaring the wrong family — and a grid beyond [`SERIES_SLOTS`] never
+/// reaches a launch through `ProcessExt`, so an oversize one here is a caller
+/// bypassing that guard.
+#[cfg_attr(
+  not(any(
+    feature = "cuda",
+    feature = "metal",
+    feature = "cubecl-cuda",
+    feature = "cubecl-wgpu"
+  )),
+  allow(dead_code)
+)]
+pub(crate) fn series_terms(family: u32, n: usize, terms: Option<u32>) -> u32 {
+  let has_series = families::Family::from_code(family).is_some_and(families::Family::has_series);
+  assert!(
+    has_series == terms.is_some(),
+    "a family declares a series clause exactly when its process names a term count"
+  );
+  if terms.is_some() {
+    assert!(
+      n <= SERIES_SLOTS,
+      "a series family steps at most {SERIES_SLOTS} grid points on a device, not {n}"
+    );
+  }
+  terms.unwrap_or(0)
+}
+
 /// The curve buffer a launch binds: the declared curves laid end to end, each
 /// padded to `n` values, so the kernel reads curve `k` at step `i` from
 /// `curve[k * n + i]`. Returns the flattened values and how many curves they
@@ -816,6 +851,21 @@ pub enum EulerSpec<T: FloatExt> {
   /// A moving-average filter of white noise whose weights — the impulse
   /// response of the host's linear recursion — travel as the first curve.
   MovingAverageFilter { sigma: T },
+  /// A tempered-stable process by its shot-noise series, the term sizes'
+  /// constants folded on the host: `rate` scales the arrival bound, the
+  /// exponential draw enters as `e_scale E^{e_pow}`, and a side is positive
+  /// with probability `w_plus` at tempering `lambda_plus`, negative at
+  /// `lambda_minus`.
+  TemperedStableSeries {
+    b_t: T,
+    rate: T,
+    inv_alpha: T,
+    e_scale: T,
+    e_pow: T,
+    w_plus: T,
+    lambda_plus: T,
+    lambda_minus: T,
+  },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1524,6 +1574,28 @@ impl<T: FloatExt> EulerSpec<T> {
       EulerSpec::MovingAverageFilter { sigma } => {
         (Family::MovingAverageFilter.code(), pad([sigma]))
       }
+      EulerSpec::TemperedStableSeries {
+        b_t,
+        rate,
+        inv_alpha,
+        e_scale,
+        e_pow,
+        w_plus,
+        lambda_plus,
+        lambda_minus,
+      } => (
+        Family::TemperedStableSeries.code(),
+        pad([
+          b_t,
+          rate,
+          inv_alpha,
+          e_scale,
+          e_pow,
+          w_plus,
+          lambda_plus,
+          lambda_minus,
+        ]),
+      ),
     }
   }
 }
@@ -1630,6 +1702,12 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
   /// declares no `lift` clause. The device keeps the lift's state per path
   /// and offers the lifted value to the step as `lv`.
   fn lift_spec(&self) -> Option<LiftSpec<'_, T>> {
+    None
+  }
+
+  /// How many terms a family with a `series` clause draws per path before
+  /// the steps; `None` for a family without one.
+  fn series_terms(&self) -> Option<u32> {
     None
   }
 }
@@ -1979,6 +2057,12 @@ pub trait EulerSystem<T: FloatExt, const D: usize>: ProcessExt<T, Output = [Arra
   /// declares no `lift` clause. The device keeps the lift's state per path
   /// and offers the lifted value to the step as `lv`.
   fn lift_spec(&self) -> Option<LiftSpec<'_, T>> {
+    None
+  }
+
+  /// How many terms a family with a `series` clause draws per path before
+  /// the steps; `None` for a family without one.
+  fn series_terms(&self) -> Option<u32> {
     None
   }
 

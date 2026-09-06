@@ -50,6 +50,17 @@
 //! filter, a fractional stable motion — for grids up to
 //! [`HISTORY_SLOTS`](crate::euler::HISTORY_SLOTS) points.
 //!
+//! A family with a `series { size (..) }` clause reads `sj`, the sum of the
+//! terms that fell into the step's grid cell: before the steps the frame
+//! draws, per path, as many terms as the launch's `series_terms()` names —
+//! for each, `gj` the arrival of a unit-rate Poisson process, `ej` an
+//! `Exp(1)`, `uj` and `uv` two uniforms, and a uniform arrival time on the
+//! horizon — sizes each with the clause's expression and adds it to the cell
+//! its time falls in. That is the shot-noise series representation of a
+//! Lévy process, the sort with a rejection-free size bound, run without the
+//! host's sort: cells are addressed, not ordered. Grids up to
+//! [`SERIES_SLOTS`](crate::euler::SERIES_SLOTS) points.
+//!
 //! The function vocabulary is `sqrt`, `exp`, `ln`, `pow`, `abs`, `negate`,
 //! `tanh`, `atan`, `sin`, `recip`, `positive`, `max`, `min`, the literal
 //! `lit`, the
@@ -80,7 +91,7 @@ pub(crate) use vocabulary::ops;
 
 euler_families! {
   step_inputs(
-    params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u, u2, lv, cv,
+    params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u, u2, lv, cv, sj, gj, ej, uj, uv,
     state(slot_a, slot_b, slot_c, slot_d),
     noise(shock_a, shock_b, shock_c, shock_d),
     select(component, produced)
@@ -1520,6 +1531,32 @@ euler_families! {
     step { cv }
     report { x }
     history { push (sigma * dz / sqrt(dt)) weights (ct) },
+
+  /// A tempered-stable process by its shot-noise series (Rosiński 2007):
+  /// the launch draws `J` terms per path before the steps — the arrival
+  /// `Γ_j` of a unit-rate Poisson process, an `Exp(1)`, a uniform, the side
+  /// by a uniform against `w_plus`, and a uniform arrival time — sizes each
+  /// as `min((Γ_j rate)^{-1/α}, e_scale E^{e_pow} U^{1/α} / λ_side)` on the
+  /// side's sign and sums it into the grid cell its time falls in; the step
+  /// then adds the cell's jumps and the compensating drift `b_t dt`. CGMY,
+  /// the classical and the rapidly decreasing tempered stable laws and KoBoL
+  /// differ only in the folded `rate`, the exponential's scale and power and
+  /// the side probability.
+  110 => TemperedStableSeries { b_t, rate, inv_alpha, e_scale, e_pow, w_plus, lambda_plus, lambda_minus }
+    state (x)
+    noise (dz)
+    step { x + b_t * dt + sj }
+    report { x }
+    series {
+      size (
+        bind up = less(uv, w_plus);
+        bind side = pick(up, lambda_plus, lambda_minus);
+        bind cap = pow(gj * rate, negate(inv_alpha));
+        bind draw = e_scale * pow(ej, e_pow) * pow(uj, inv_alpha) / side;
+        bind mag = min(cap, draw);
+        pick(up, mag, negate(mag))
+      )
+    },
 }
 
 #[cfg(test)]
