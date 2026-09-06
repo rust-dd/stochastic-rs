@@ -110,9 +110,10 @@ grid:
   today. `MultifactorSabr` needed three, `Adg` five and `Hjm` six, and all
   three now declare them — the first turned a per-step bucket search into a
   buffer read, the last seven time-only callables into six tabulated curves.
-- **A coefficient that reads the state** (`Cheyette`): its `sigma(t, x)` is a
-  user closure of time *and* the state, so it cannot be tabulated as a curve
-  the way `Cir2F`'s `phi(t)` is. A closure of time alone is not a blocker.
+- **A coefficient that is a Rust closure of the state** (`Cheyette`'s
+  `sigma(t, x)`, `VolterraSde`'s drift and diffusion): a closure of time alone
+  is tabulated as a curve the way `Cir2F`'s `phi(t)` is; one that reads the
+  state has no representation a kernel can evaluate. See below.
 - **Point processes on their own clock** (`MultivariateHawkes`, and `Hawkes`
   in its horizon mode): the output length is the number of events, not the
   grid. `Hawkes` in count mode is one event per step and reaches the engine
@@ -143,6 +144,59 @@ grid:
   (`MultifactorHeston` at `K >= 3`): each factor takes two shocks, so one
   and two factors ride the double-Heston family and three or more stay on the
   host whatever the backend.
+
+### The last six, and how each would reach a device
+
+Six processes have no device route today. None is ruled out for good; each
+names the one facility the engine still lacks, and the facilities are of the
+kind the lift, history, series and table blocks already are — a clause in the
+family table plus a block in the frame, never a hand-written kernel.
+
+- **`Svcgmy`** needs two things. Its variance is drawn by an exact CIR step,
+  a non-central χ² whose non-centrality is the current variance — a
+  **state-dependent count**: a `count { mean (..) }` clause evaluated on the
+  pre-step state would supply the Poisson mean the frame's `nj` is drawn with,
+  and `χ²(df, ncp) = 2 Γ(df/2 + K)`, `K ~ Poisson(ncp/2)`, is then the gamma
+  draw the frame already makes with shape `g1_shape + g1_per · nj`. And its
+  series terms are scaled by the variance at each arrival's time, which the
+  preamble cannot know — the series block would keep the raw draws (`Γ_j`,
+  `E_j`, `U_j`, the side, the cell) per path and size the terms in the step of
+  their cell, where the state is known: `O(n · J)` work per path instead of
+  `O(J)`, trivial on a device for `J ≤ 512`. The count clause alone also opens
+  the exact CIR and Heston schemes.
+- **`Wishart`** at `d ≤ 2` rides the same count clause: the Ahdida–Alfonsi
+  step is a basis change by three `2 × 2` maps folded on the host, then per
+  coordinate a squared Bessel draw — a non-central χ² with state-dependent
+  non-centrality — and Gaussian updates of the off-diagonal entry; at `d = 2`
+  the extended Cholesky of the remaining `1 × 1` block is a square root and
+  its pivot is fixed, so the whole step is a three-slot family. `d ≥ 3` stays
+  on the host for want of slots.
+- **`MultivariateHawkes`** has a ragged output — one event list per
+  dimension over a horizon — and no count mode. A device version is an API
+  addition, not a port: a count mode that produces a fixed number of events
+  as two rows, time and mark, and a family with the state `(t, λ_1, …, λ_3)`
+  for `d ≤ 3`. With a common decay the exact recursion that runs `Hawkes`
+  generalises; with the per-pair decays the process allows, the next event
+  needs thinning, a random number of proposals a step — a `thinning { rate
+  (..) bound (..) }` clause drawing hashed uniforms per attempt, as the
+  frame's Poisson count already does.
+- **`Fbs`** is a two-dimensional circulant embedding: the eigenvalues of the
+  `2m × 2n` covariance block by a two-dimensional FFT once, then per sample a
+  two-dimensional FFT of complex Gaussian noise scaled by their square roots.
+  That is a device *pipeline* beside the fGN one, not a family: row FFTs, a
+  transpose, column FFTs on each backend's existing batched FFT (cuFFT has
+  native two-dimensional plans), about a day per backend.
+- **`Cheyette` and `VolterraSde`** hold Rust closures of the state. Three
+  routes, in order of preference: a **coefficient expression tree** the user
+  builds instead of a closure (`Expr::state().sqrt() * Expr::param(0) + …`),
+  compiled on the host to a short stack bytecode and interpreted in the kernel
+  from a per-launch instruction buffer — exact and general, the frame gaining
+  one bounded evaluation loop; **tabulation** of the closure on a `(t, x)` grid
+  with bilinear interpolation in the kernel — approximate, but no change for
+  the caller, and good for smooth coefficients; or a **closed set of shapes**
+  (`DeviceFn`: constant, affine, power, exponential, spline in time) mapped to
+  a family each — cheap and restrictive. The expression tree is the durable
+  answer, the tabulation the stopgap.
 
 ## What a family is
 
