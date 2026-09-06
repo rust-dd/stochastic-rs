@@ -410,10 +410,40 @@ mod tests {
       let m3 = xs.iter().map(|x| (x - mean).powi(3)).sum::<f64>() / n as f64;
       assert!(mean.abs() < 0.01, "mean {mean}");
       assert!((var - 1.0).abs() < 0.03, "var {var}");
+      // A Student t has moments below its degrees of freedom and no others,
+      // so the sample third moment has an infinite standard error at
+      // `eta = 5`: across eight seeds it spans -1.04 to -1.36 around a
+      // skewness of -1.23, and which side of a fixed band it lands on is a
+      // coin toss. It is asserted only where the sixth moment exists.
+      if eta > 6.0 {
+        assert!(
+          (m3 - d.skewness()).abs() < 0.05,
+          "m3 {m3} vs {}",
+          d.skewness()
+        );
+      }
+      // Bowley's quartile skewness converges whatever the tails do, and the
+      // distribution's own `inv_cdf` says what it should be. The band is
+      // five standard errors, each quantile's being
+      // `sqrt(p(1-p)/n) / pdf(q_p)` (Serfling 1980, §2.3.3) carried through
+      // the ratio by its partial derivatives.
+      let mut sorted = xs.clone();
+      sorted.sort_by(f64::total_cmp);
+      let sample_at = |p: f64| sorted[((n as f64) * p) as usize];
+      let bowley = |a: f64, b: f64, c: f64| (c + a - 2.0 * b) / (c - a);
+      let sampled = bowley(sample_at(0.25), sample_at(0.5), sample_at(0.75));
+      let (q1, q2, q3) = (d.inv_cdf(0.25), d.inv_cdf(0.5), d.inv_cdf(0.75));
+      let want = bowley(q1, q2, q3);
+      let spread = q3 - q1;
+      let quantile_se = |p: f64, q: f64| (p * (1.0 - p) / n as f64).sqrt() / d.pdf(q);
+      let band = 5.0
+        * (((1.0 + want) / spread * quantile_se(0.25, q1)).powi(2)
+          + (2.0 / spread * quantile_se(0.5, q2)).powi(2)
+          + ((1.0 - want) / spread * quantile_se(0.75, q3)).powi(2))
+        .sqrt();
       assert!(
-        (m3 - d.skewness()).abs() < 0.15,
-        "m3 {m3} vs {}",
-        d.skewness()
+        (sampled - want).abs() < band,
+        "quartile skewness {sampled} vs {want} (band {band})"
       );
       let below = xs.iter().filter(|x| **x < d.knot()).count() as f64 / n as f64;
       assert!(
