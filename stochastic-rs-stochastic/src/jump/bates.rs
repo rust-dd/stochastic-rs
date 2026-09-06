@@ -393,11 +393,6 @@ where
       .and_then(crate::euler::JumpSizes::product)
   }
 
-  /// Whether a device can run this process: it has no jumps, or its sizes
-  /// follow a law the kernels draw. Anything else samples on the host.
-  pub fn device_ready(&self) -> bool {
-    self.lambda <= T::zero() || self.device_jump_sizes().is_some()
-  }
 }
 
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
@@ -569,6 +564,12 @@ where
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
+  }
+
+  /// Whether a device can run this process: it has no jumps, or its sizes
+  /// follow a law the kernels draw. Anything else samples on the host.
+  fn device_ready(&self) -> bool {
+    self.lambda <= T::zero() || self.device_jump_sizes().is_some()
   }
 }
 

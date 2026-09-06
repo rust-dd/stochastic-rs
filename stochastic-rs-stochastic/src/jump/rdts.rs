@@ -89,12 +89,6 @@ impl<T: FloatExt, S: SeedExt, B> Rdts<T, S, B> {
     self.t_max() / T::from_usize_(self.n - 1)
   }
 
-  /// Whether a device can run this process: the grid fits the kernels'
-  /// per-path series cells. A longer grid samples on the host.
-  pub fn device_ready(&self) -> bool {
-    self.n <= crate::euler::SERIES_SLOTS
-  }
-
   /// The scale `C = (Γ(2 - α) (λ₊^{α-2} + λ₋^{α-2}))^{-1}` that normalises
   /// the law's variance to one.
   fn tempering_constant(&self) -> T {
@@ -246,6 +240,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
+  }
+
+  /// Whether a device can run this process: the grid fits the kernels'
+  /// per-path series cells. A longer grid samples on the host.
+  fn device_ready(&self) -> bool {
+    self.n <= crate::euler::SERIES_SLOTS
   }
 }
 

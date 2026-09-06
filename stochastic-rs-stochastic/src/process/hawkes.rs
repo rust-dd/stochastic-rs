@@ -89,11 +89,6 @@ impl<T: FloatExt, S: SeedExt, B> Hawkes<T, S, B> {
     );
   }
 
-  /// Whether a device can run this process: a fixed number of events — the
-  /// horizon mode's length is itself random and has no grid.
-  pub fn device_ready(&self) -> bool {
-    self.n.is_some()
-  }
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
@@ -224,6 +219,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
+  }
+
+  /// Whether a device can run this process: a fixed number of events — the
+  /// horizon mode's length is itself random and has no grid.
+  fn device_ready(&self) -> bool {
+    self.n.is_some()
   }
 }
 

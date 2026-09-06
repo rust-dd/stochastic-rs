@@ -149,12 +149,6 @@ impl<T: FloatExt, S: SeedExt, B> KoBoL<T, S, B> {
     self.t_max() / T::from_usize_(self.n - 1)
   }
 
-  /// Whether a device can run this process: the grid fits the kernels'
-  /// per-path series cells. A longer grid samples on the host.
-  pub fn device_ready(&self) -> bool {
-    self.n <= crate::euler::SERIES_SLOTS
-  }
-
   /// The probability a term falls on the positive side, `p / (p + q)`.
   fn positive_share(&self) -> T {
     self.p / (self.p + self.q)
@@ -312,6 +306,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
+  }
+
+  /// Whether a device can run this process: the grid fits the kernels'
+  /// per-path series cells. A longer grid samples on the host.
+  fn device_ready(&self) -> bool {
+    self.n <= crate::euler::SERIES_SLOTS
   }
 }
 

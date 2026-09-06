@@ -154,15 +154,6 @@ impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
-  /// Whether a device can run this sheet: both embedding sides, `2(m − 1)`
-  /// and `2(n − 1)`, powers of two, which is what the kernels' radix-2
-  /// transforms take. Any other grid samples on the host.
-  pub fn device_ready(&self) -> bool {
-    (self.m - 1).is_power_of_two() && (self.n - 1).is_power_of_two()
-  }
-}
-
 impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> Fbs<T, S, B> {
   /// One sheet from this process's own sampler, the seed advanced as
   /// [`ProcessExt::sample`] advances it: what the host devices produce, and
@@ -248,6 +239,13 @@ impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> ProcessExt<T> for Fbs<T, S, B>
     } else {
       Ok(crate::traits::process::sample_par_chunked(self, m))
     }
+  }
+
+  /// Whether a device can run this sheet: both embedding sides, `2(m − 1)`
+  /// and `2(n − 1)`, powers of two, which is what the kernels' radix-2
+  /// transforms take. Any other grid samples on the host.
+  fn device_ready(&self) -> bool {
+    (self.m - 1).is_power_of_two() && (self.n - 1).is_power_of_two()
   }
 }
 

@@ -130,12 +130,6 @@ impl<T: FloatExt, S: SeedExt, B> Cheyette<T, S, B> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Cheyette<T, S, B> {
-  /// Whether a device can run this process: a local volatility written as an
-  /// [`Expr`](crate::traits::Expr), which the kernel interprets at every
-  /// step. A Rust closure or a Python callable keeps the process on the host.
-  pub fn device_ready(&self) -> bool {
-    self.sigma.program().is_some()
-  }
 
   /// The time the step starting at each grid point sees, `(i − 1) Δt` at
   /// point `i`: the launch's first curve, which is the `t` the local
@@ -267,6 +261,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
+  }
+
+  /// Whether a device can run this process: a local volatility written as an
+  /// [`Expr`](crate::traits::Expr), which the kernel interprets at every
+  /// step. A Rust closure or a Python callable keeps the process on the host.
+  fn device_ready(&self) -> bool {
+    self.sigma.program().is_some()
   }
 }
 

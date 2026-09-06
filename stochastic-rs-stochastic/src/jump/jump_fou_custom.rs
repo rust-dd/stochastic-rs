@@ -182,6 +182,12 @@ where
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
+
+  /// Whether a device can run this process: exponential inter-arrivals and a
+  /// size law the kernels draw. Any other pair samples on the host.
+  fn device_ready(&self) -> bool {
+    self.device_intensity().is_some() && self.device_jump_sizes().is_some()
+  }
 }
 
 /// Reusable [`JumpFOUCustom`] sampling state: borrows `fgn` for its
@@ -299,11 +305,6 @@ where
     crate::process::cpoisson::device_jump_sizes(&self.jump_sizes)
   }
 
-  /// Whether a device can run this process: exponential inter-arrivals and a
-  /// size law the kernels draw. Any other pair samples on the host.
-  pub fn device_ready(&self) -> bool {
-    self.device_intensity().is_some() && self.device_jump_sizes().is_some()
-  }
 }
 
 impl<T, D, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>

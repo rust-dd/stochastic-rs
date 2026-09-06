@@ -96,13 +96,6 @@ impl<T: FloatExt, S: SeedExt, B> Ctrw<T, S, B> {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
   }
 
-  /// Whether a device can run this process: exponential waiting times, whose
-  /// arrivals per grid cell are the Poisson count the kernels draw. The
-  /// gamma, inverse-Gaussian and stable waits are not memoryless and stay on
-  /// the host; every jump law the process offers has a kernel draw.
-  pub fn device_ready(&self) -> bool {
-    matches!(self.waiting, CtrwWaitingLaw::Exponential { .. })
-  }
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
@@ -295,6 +288,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
+  }
+
+  /// Whether a device can run this process: exponential waiting times, whose
+  /// arrivals per grid cell are the Poisson count the kernels draw. The
+  /// gamma, inverse-Gaussian and stable waits are not memoryless and stay on
+  /// the host; every jump law the process offers has a kernel draw.
+  fn device_ready(&self) -> bool {
+    matches!(self.waiting, CtrwWaitingLaw::Exponential { .. })
   }
 }
 

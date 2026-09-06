@@ -144,13 +144,6 @@ impl<T: FloatExt, S: SeedExt, B> Svcgmy<T, S, B> {
         * (self.lambda_plus.powf(self.alpha - two) + self.lambda_minus.powf(self.alpha - two)))
   }
 
-  /// Whether a device can run this process: the variance's exact step needs
-  /// at least one degree of freedom — below it the host draws a Poisson
-  /// mixture the kernels do not carry — and the series terms fit the kernels'
-  /// per-path slots. Anything else samples on the host.
-  pub fn device_ready(&self) -> bool {
-    self.degrees_of_freedom() >= T::one() && self.j <= crate::euler::SERIES_SLOTS
-  }
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
@@ -298,6 +291,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
+  }
+
+  /// Whether a device can run this process: the variance's exact step needs
+  /// at least one degree of freedom — below it the host draws a Poisson
+  /// mixture the kernels do not carry — and the series terms fit the kernels'
+  /// per-path slots. Anything else samples on the host.
+  fn device_ready(&self) -> bool {
+    self.degrees_of_freedom() >= T::one() && self.j <= crate::euler::SERIES_SLOTS
   }
 }
 

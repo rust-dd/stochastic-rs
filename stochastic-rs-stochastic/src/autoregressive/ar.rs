@@ -81,8 +81,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     assert!(
       self.phi.len() == 1,
-      "ARp reaches a device at order 1 only; this one is order {}",
-      self.phi.len()
+      "ARp: a launch carries order one; sample through `ProcessExt`, which keeps a higher order on the host"
     );
     crate::euler::EulerSpec::Autoregressive {
       phi: self.phi[0],
@@ -151,24 +150,53 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   /// Through the Euler engine: on a device the draw happens in the kernel, on
   /// the host devices it is this process's own sampler, chunked exactly as
   /// `ProcessExt` chunks.
+  /// Whether a device can run this process: order one — the family carries one lag; a higher order stays on the host.
+  fn device_ready(&self) -> bool {
+    self.phi.len() == 1
+  }
+
+  /// Through the Euler engine at the order the family carries; a higher order
+  /// keeps the process on the host, chunked exactly as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
-    self.backend.euler_sample(self)
+    if self.device_ready() {
+      self.backend.euler_sample(self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
   }
 
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
-    self.backend.euler_paths_map(self, m, f)
+    if self.device_ready() {
+      self.backend.euler_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
   }
 
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
-    self.backend.euler_paths(self, m)
+    if self.device_ready() {
+      self.backend.euler_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
   }
 
   fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
-    self.backend.try_sample(self)
+    if self.device_ready() {
+      self.backend.try_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
   }
 
   fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
-    self.backend.try_euler_paths(self, m)
+    if self.device_ready() {
+      self.backend.try_euler_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
+    }
   }
 }
 

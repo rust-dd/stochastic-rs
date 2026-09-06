@@ -208,16 +208,6 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B> Volterra<T, S, B> {
     }
   }
 
-  /// Whether a device can run this process: the lift branch when it has a
-  /// lift to replay — it has none on a single-point grid — and the reference
-  /// branch when the grid fits the kernels' per-path history. Anything else
-  /// samples on the host.
-  pub fn device_ready(&self) -> bool {
-    match self.engine {
-      VolterraEngine::Lift(_) => self.lift.is_some(),
-      VolterraEngine::Reference(_) => self.n <= crate::euler::HISTORY_SLOTS,
-    }
-  }
 }
 
 /// The Euler engine's view of both branches: fBm under the Markov lift in
@@ -367,6 +357,17 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> Proc
       self.backend.try_euler_paths(self, m)
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
+    }
+  }
+
+  /// Whether a device can run this process: the lift branch when it has a
+  /// lift to replay — it has none on a single-point grid — and the reference
+  /// branch when the grid fits the kernels' per-path history. Anything else
+  /// samples on the host.
+  fn device_ready(&self) -> bool {
+    match self.engine {
+      VolterraEngine::Lift(_) => self.lift.is_some(),
+      VolterraEngine::Reference(_) => self.n <= crate::euler::HISTORY_SLOTS,
     }
   }
 }

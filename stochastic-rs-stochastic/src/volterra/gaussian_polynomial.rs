@@ -234,17 +234,6 @@ fn grid_spacing<T: FloatExt>(n: usize, t: Option<T>) -> T {
 /// rule over this many slots, and a longer polynomial samples on the host.
 pub const DEVICE_COEFFICIENTS: usize = 8;
 
-impl<T: FloatExt + RoughSimd, K, S: SeedExt, B> GaussianPolynomialVolatility<T, K, S, B>
-where
-  K: VolterraKernel<T> + Send + Sync,
-{
-  /// Whether a device can run this process: the polynomial fits the kernels'
-  /// coefficient slots.
-  pub fn device_ready(&self) -> bool {
-    self.coefficients.len() <= DEVICE_COEFFICIENTS
-  }
-}
-
 impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: crate::euler::EulerBackend<T>>
   crate::euler::EulerCoefficients<T> for GaussianPolynomialVolatility<T, K, S, B>
 where
@@ -383,6 +372,12 @@ where
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
+  }
+
+  /// Whether a device can run this process: the polynomial fits the kernels'
+  /// coefficient slots.
+  fn device_ready(&self) -> bool {
+    self.coefficients.len() <= DEVICE_COEFFICIENTS
   }
 }
 

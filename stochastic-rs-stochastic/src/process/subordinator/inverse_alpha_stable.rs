@@ -70,15 +70,6 @@ impl<T: FloatExt, S: SeedExt> InverseAlphaStableSubordinator<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> InverseAlphaStableSubordinator<T, S, B> {
-  /// Whether a device can run this process: the direct subordinator's table
-  /// has at least two points and fits the kernels' per-path table. A finer
-  /// one samples on the host.
-  pub fn device_ready(&self) -> bool {
-    (2..=crate::euler::TABLE_SLOTS).contains(&self.u_steps)
-  }
-}
-
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for InverseAlphaStableSubordinator<T, S, B>
 {
@@ -201,6 +192,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
+  }
+
+  /// Whether a device can run this process: the direct subordinator's table
+  /// has at least two points and fits the kernels' per-path table. A finer
+  /// one samples on the host.
+  fn device_ready(&self) -> bool {
+    (2..=crate::euler::TABLE_SLOTS).contains(&self.u_steps)
   }
 }
 

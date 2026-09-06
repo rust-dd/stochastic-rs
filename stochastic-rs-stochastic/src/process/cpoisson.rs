@@ -251,11 +251,6 @@ where
     device_jump_sizes(&self.distribution).and_then(crate::euler::JumpSizes::single)
   }
 
-  /// Whether a device can run this process: a fixed number of arrivals — the
-  /// horizon mode has no grid — and sizes under a law the kernels draw.
-  pub fn device_ready(&self) -> bool {
-    self.poisson.n.is_some() && self.device_jump_sizes().is_some()
-  }
 }
 
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 3>
@@ -378,6 +373,12 @@ where
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
+  }
+
+  /// Whether a device can run this process: a fixed number of arrivals — the
+  /// horizon mode has no grid — and sizes under a law the kernels draw.
+  fn device_ready(&self) -> bool {
+    self.poisson.n.is_some() && self.device_jump_sizes().is_some()
   }
 }
 

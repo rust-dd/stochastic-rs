@@ -252,7 +252,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   /// process's own sampler whatever the backend, since its correlation
   /// needs more shocks than a launch has.
   fn sample(&self) -> Array2<T> {
-    if self.assets() <= crate::euler::CORRELATED_STREAMS {
+    if self.device_ready() {
       slots_to_matrix(
         self.backend.system_sample(&MultiGbmLaunch(self)),
         self.assets(),
@@ -265,7 +265,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array2<T>) -> R + Sync) -> Vec<R> {
-    if self.assets() <= crate::euler::CORRELATED_STREAMS {
+    if self.device_ready() {
       let k = self.assets();
       self
         .backend
@@ -278,7 +278,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 
   fn sample_par(&self, m: usize) -> Vec<Array2<T>> {
-    if self.assets() <= crate::euler::CORRELATED_STREAMS {
+    if self.device_ready() {
       let k = self.assets();
       self
         .backend
@@ -292,7 +292,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 
   fn try_sample(&self) -> Result<Array2<T>, crate::device::DeviceError> {
-    if self.assets() <= crate::euler::CORRELATED_STREAMS {
+    if self.device_ready() {
       let slots = self.backend.try_system_sample(&MultiGbmLaunch(self))?;
       Ok(slots_to_matrix(slots, self.assets()))
     } else {
@@ -301,7 +301,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 
   fn try_sample_par(&self, m: usize) -> Result<Vec<Array2<T>>, crate::device::DeviceError> {
-    if self.assets() <= crate::euler::CORRELATED_STREAMS {
+    if self.device_ready() {
       let k = self.assets();
       Ok(
         self
@@ -314,6 +314,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
+  }
+
+  /// Whether a device can run this process: at most as many assets as a
+  /// launch has state slots and shocks; a wider basket stays on the host.
+  fn device_ready(&self) -> bool {
+    self.assets() <= crate::euler::CORRELATED_STREAMS
   }
 }
 

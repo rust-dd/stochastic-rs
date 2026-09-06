@@ -360,18 +360,6 @@ impl<T: FloatExt, S: SeedExt, B> Wishart<T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Wishart<T, S, B> {
-  /// Whether a device can run this process: two dimensions — the family
-  /// carries the three entries of a symmetric `2 × 2` matrix — a noise of
-  /// rank one or two, and a degree of at least three, which keeps the path
-  /// inside the cone so the rank-adaptive branch of the host's step is never
-  /// taken and the squared Bessel draw has the degree the kernels' central
-  /// χ² supplies. Anything else samples on the host.
-  pub fn device_ready(&self) -> bool {
-    self.dim() == 2 && self.step.rank >= 1 && self.alpha >= T::from_usize_(3)
-  }
-}
-
 /// The Euler engine's view of the matrix path: the three entries of the
 /// symmetric matrix as one launch's slots, the exact step's maps folded once.
 #[doc(hidden)]
@@ -572,6 +560,16 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
+  }
+
+  /// Whether a device can run this process: two dimensions — the family
+  /// carries the three entries of a symmetric `2 × 2` matrix — a noise of
+  /// rank one or two, and a degree of at least three, which keeps the path
+  /// inside the cone so the rank-adaptive branch of the host's step is never
+  /// taken and the squared Bessel draw has the degree the kernels' central
+  /// χ² supplies. Anything else samples on the host.
+  fn device_ready(&self) -> bool {
+    self.dim() == 2 && self.step.rank >= 1 && self.alpha >= T::from_usize_(3)
   }
 }
 

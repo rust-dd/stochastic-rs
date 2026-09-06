@@ -129,12 +129,6 @@ impl<T: FloatExt, S: SeedExt, B> Cgmy<T, S, B> {
     self.t_max() / T::from_usize_(self.n - 1)
   }
 
-  /// Whether a device can run this process: the grid fits the kernels'
-  /// per-path series cells. A longer grid samples on the host.
-  pub fn device_ready(&self) -> bool {
-    self.n <= crate::euler::SERIES_SLOTS
-  }
-
   /// The mean-compensating drift `-C Γ(1 - Y) (G^{Y-1} - M^{Y-1})`, finite —
   /// and applied — only below `Y = 1`.
   fn drift_rate(&self) -> T {
@@ -278,6 +272,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
+  }
+
+  /// Whether a device can run this process: the grid fits the kernels'
+  /// per-path series cells. A longer grid samples on the host.
+  fn device_ready(&self) -> bool {
+    self.n <= crate::euler::SERIES_SLOTS
   }
 }
 

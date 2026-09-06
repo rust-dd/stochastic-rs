@@ -67,14 +67,6 @@ impl<T: FloatExt, S: SeedExt> Arima<T, S> {
 
 impl<T: FloatExt, S: SeedExt, B> Arima<T, S, B> {}
 
-impl<T: FloatExt, S: SeedExt, B> Arima<T, S, B> {
-  /// Whether a device can run this process: the series fits the kernels'
-  /// per-path history. A longer series samples on the host.
-  pub fn device_ready(&self) -> bool {
-    self.n <= crate::euler::HISTORY_SLOTS
-  }
-}
-
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Arima<T, S, B>
 {
@@ -185,6 +177,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
+  }
+
+  /// Whether a device can run this process: the series fits the kernels'
+  /// per-path history. A longer series samples on the host.
+  fn device_ready(&self) -> bool {
+    self.n <= crate::euler::HISTORY_SLOTS
   }
 }
 

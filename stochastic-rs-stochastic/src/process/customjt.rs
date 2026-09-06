@@ -200,11 +200,6 @@ where
     crate::process::cpoisson::device_arrival_rate(&self.distribution)
   }
 
-  /// Whether a device can run this process: a fixed number of arrivals — the
-  /// horizon mode has no grid — under an exponential inter-arrival law.
-  pub fn device_ready(&self) -> bool {
-    self.n.is_some() && self.device_intensity().is_some()
-  }
 }
 
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
@@ -312,6 +307,12 @@ where
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
+  }
+
+  /// Whether a device can run this process: a fixed number of arrivals — the
+  /// horizon mode has no grid — under an exponential inter-arrival law.
+  fn device_ready(&self) -> bool {
+    self.n.is_some() && self.device_intensity().is_some()
   }
 }
 

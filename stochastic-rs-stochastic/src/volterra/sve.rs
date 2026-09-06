@@ -171,17 +171,6 @@ where
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
   }
 
-  /// Whether a device can run this process: a drift and a diffusion written
-  /// as [`Expr`](crate::traits::Expr)s, which the kernel interprets at every
-  /// step, and a kernel whose exponential fit has at most
-  /// [`LIFT_SLOTS`](crate::euler::LIFT_SLOTS) nodes. Closures keep the
-  /// process on the host.
-  pub fn device_ready(&self) -> bool {
-    self.drift.program().is_some()
-      && self.diffusion.program().is_some()
-      && self.kernel.degree() <= crate::euler::LIFT_SLOTS
-  }
-
   /// The time the step starting at each grid point sees, `(i − 1) Δt` at
   /// point `i`: the launch's first curve, the `t` the coefficients are
   /// evaluated at, exactly as the host evaluates them at the left point.
@@ -376,6 +365,17 @@ where
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
+  }
+
+  /// Whether a device can run this process: a drift and a diffusion written
+  /// as [`Expr`](crate::traits::Expr)s, which the kernel interprets at every
+  /// step, and a kernel whose exponential fit has at most
+  /// [`LIFT_SLOTS`](crate::euler::LIFT_SLOTS) nodes. Closures keep the
+  /// process on the host.
+  fn device_ready(&self) -> bool {
+    self.drift.program().is_some()
+      && self.diffusion.program().is_some()
+      && self.kernel.degree() <= crate::euler::LIFT_SLOTS
   }
 }
 

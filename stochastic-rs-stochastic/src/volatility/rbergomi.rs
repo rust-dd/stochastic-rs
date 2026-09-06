@@ -198,14 +198,6 @@ impl<T: FloatExt> Default for RoughBergomi<T, Unseeded> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> RoughBergomi<T, S, B> {
-  /// Whether a device can run this process: the grid fits the kernels'
-  /// per-path history. A longer grid samples on the host.
-  pub fn device_ready(&self) -> bool {
-    self.n <= crate::euler::HISTORY_SLOTS
-  }
-}
-
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
   for RoughBergomi<T, S, B>
 {
@@ -357,6 +349,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
+  }
+
+  /// Whether a device can run this process: the grid fits the kernels'
+  /// per-path history. A longer grid samples on the host.
+  fn device_ready(&self) -> bool {
+    self.n <= crate::euler::HISTORY_SLOTS
   }
 }
 

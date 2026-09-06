@@ -325,6 +325,18 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   #[doc(hidden)]
   fn advance_chunk_seed(&self) {}
 
+  /// Whether this configuration runs on a device backend. `true` for a
+  /// process the device kernels carry whole; `false` where the configuration
+  /// exceeds what they carry — a grid past a per-path array, a dimension past
+  /// the state slots, a coefficient that is a closure, a mode with no grid.
+  /// A `false` never fails: on any backend the process then samples on the
+  /// host through its own sampler, bit-identically to the `Cpu` build. The
+  /// question is about the configuration, not the handle, so the host
+  /// backends answer it the same way a device does.
+  fn device_ready(&self) -> bool {
+    true
+  }
+
   /// Builds one sampler per chunk, paired with that chunk's path count,
   /// **sequentially on the calling thread, before any chunk reaches
   /// rayon** — each chunk's sampler is only *distinctly* seeded (the

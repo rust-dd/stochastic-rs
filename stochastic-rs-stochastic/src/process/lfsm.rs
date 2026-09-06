@@ -100,16 +100,6 @@ impl<T: FloatExt, S: SeedExt, B> Lfsm<T, S, B> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Lfsm<T, S, B> {
-  /// Whether a device can run this process: the grid fits the kernels'
-  /// per-path history and the stability index is not one, whose
-  /// Chambers–Mallows–Stuck draw is a different formula the kernels do not
-  /// carry. Anything else samples on the host.
-  pub fn device_ready(&self) -> bool {
-    self.n <= crate::euler::HISTORY_SLOTS && self.alpha != T::one()
-  }
-}
-
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for Lfsm<T, S, B>
 {
@@ -257,6 +247,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
+  }
+
+  /// Whether a device can run this process: the grid fits the kernels'
+  /// per-path history and the stability index is not one, whose
+  /// Chambers–Mallows–Stuck draw is a different formula the kernels do not
+  /// carry. Anything else samples on the host.
+  fn device_ready(&self) -> bool {
+    self.n <= crate::euler::HISTORY_SLOTS && self.alpha != T::one()
   }
 }
 

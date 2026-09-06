@@ -244,3 +244,43 @@ fn moving_average_agrees_with_the_cpu_law() {
     "moving average terminal mean",
   );
 }
+
+/// An order the engine's state slots do not carry — two autoregressive lags,
+/// two GARCH lags — keeps the process on the host on any backend: the device
+/// build says so through `device_ready()` and is the host build to the bit.
+#[test]
+fn a_higher_order_keeps_the_lag_models_on_the_host() {
+  let ar = || {
+    ARp::<f32, _>::new(
+      Array1::from(vec![0.5, 0.2]),
+      0.2,
+      64,
+      Some(Array1::from(vec![0.5, 0.4])),
+      Deterministic::new(197),
+    )
+  };
+  assert!(!ar().device_ready() && !ar().on::<Device>().device_ready());
+  assert_eq!(ar().on::<Device>().sample_par(4), ar().sample_par(4));
+  assert_eq!(ar().on::<Device>().sample(), ar().sample());
+  let garch = || {
+    Garch::<f32, _>::new(
+      0.00001,
+      Array1::from(vec![0.05, 0.05]),
+      Array1::from(vec![0.85]),
+      64,
+      Deterministic::new(199),
+    )
+  };
+  assert!(!garch().on::<Device>().device_ready());
+  assert_eq!(garch().on::<Device>().sample_par(4), garch().sample_par(4));
+  let one = || {
+    Garch::<f32, _>::new(
+      0.00001,
+      Array1::from(vec![0.1]),
+      Array1::from(vec![0.85]),
+      64,
+      Deterministic::new(151),
+    )
+  };
+  assert!(one().on::<Device>().device_ready());
+}

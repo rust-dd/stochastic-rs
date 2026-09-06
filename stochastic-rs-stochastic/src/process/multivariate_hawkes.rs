@@ -86,19 +86,6 @@ impl<T: FloatExt, S: SeedExt, B> MultivariateHawkes<T, S, B> {
     self.mu.len()
   }
 
-  /// Whether a device can run this process: count mode — the horizon mode's
-  /// length is itself random and has no grid — with at most two components,
-  /// one decay per target (`β_ij` constant along each row) and positive
-  /// baselines. The family superposes each target's exact excess clock with
-  /// the baselines' joint Poisson clock, which is what one decay per target
-  /// makes closed-form; per-pair decays keep the process on the host.
-  pub fn device_ready(&self) -> bool {
-    let d = self.dim();
-    self.n.is_some()
-      && d <= 2
-      && (0..d).all(|i| (0..d).all(|j| self.beta[[i, j]] == self.beta[[i, 0]]))
-      && self.mu.iter().all(|&m| m > T::zero())
-  }
 }
 
 backend_switch!([T: FloatExt, S: SeedExt] MultivariateHawkes<T, S> { mu, alpha, beta, t_max, n, seed } via euler);
@@ -317,6 +304,20 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
+  }
+
+  /// Whether a device can run this process: count mode — the horizon mode's
+  /// length is itself random and has no grid — with at most two components,
+  /// one decay per target (`β_ij` constant along each row) and positive
+  /// baselines. The family superposes each target's exact excess clock with
+  /// the baselines' joint Poisson clock, which is what one decay per target
+  /// makes closed-form; per-pair decays keep the process on the host.
+  fn device_ready(&self) -> bool {
+    let d = self.dim();
+    self.n.is_some()
+      && d <= 2
+      && (0..d).all(|i| (0..d).all(|j| self.beta[[i, j]] == self.beta[[i, 0]]))
+      && self.mu.iter().all(|&m| m > T::zero())
   }
 }
 
