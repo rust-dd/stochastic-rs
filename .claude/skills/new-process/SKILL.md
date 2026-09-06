@@ -79,8 +79,8 @@ Then the backend switch from `src/macros.rs`. `backend_switch!` generates `on::<
 
 | Arm | Bound | Storage | Use when | Uses (snapshot) |
 |---|---|---|---|---|
-| `via euler` | `EulerBackend<T>` | `backend: B` | the process declares a family | 117 |
-| `via host` | `HostBackend` | `backend: B` | host only (see last section) | 2 |
+| `via euler` | `EulerBackend<T>` | `backend: B` | the process declares a family | 119 |
+| `via host` | `HostBackend` | `backend: B` | host only (see last section) | 0 |
 | `via sheet` | `SheetBackend<T>` | `backend: B` | a two-dimensional field through the sheet pipeline (`Fbs`) | 1 |
 | `via fgn euler` | `FgnBackend<T> + EulerBackend<T>` | `fgn: Fgn<_, _, B>` | fractional **and** on the engine | 10 |
 | `via phantom` | `FgnBackend<T>` | `backend: B` | backend carried, not an engine process | 2 |
@@ -505,8 +505,10 @@ fixed grid. Each group below is a *decision*, not a permanent verdict — a new 
 pipeline can move one onto the engine, and the named examples go stale as that happens:
 a **series whose term sizes read another simulated path** (`Svcgmy`: the CGMY
 scale at each arrival is the variance path there, drawn by an exact non-central
-χ² step the kernels do not carry); **Rust closures in the coefficients** (`Cheyette`'s
-`Fn1D`/`Fn2D`, `VolterraSde`'s two `Fn2D` — no GPU path without a DSL for them); an
+χ² step the kernels do not carry); **Rust closures or Python callables in the coefficients** (`Cheyette`'s
+`sigma`, `VolterraSde`'s drift and diffusion — the same coefficient written as an
+`Expr` compiles to a program the kernel interprets and the process runs; a closure
+keeps it on the host through `device_ready()`); an
 **output length that is not the grid** (`Hawkes` and `MultivariateHawkes` in horizon
 mode, `MultivariateHawkes` above two components or with per-pair decays); **a rank-adaptive step or a Poisson mixture below one degree of freedom**
 (`Wishart` below a degree of three, `Svcgmy` at `4κη/ζ² < 1`) — at one degree or more a
@@ -517,7 +519,7 @@ above `d = 2`).
 
 Before declaring a process host-only — the current list is whatever
 `grep -rln "via host" stochastic-rs-stochastic/src --include='*.rs'` returns, and it
-shrinks as the engine grows — check the eight documented ways round the cap:
+shrinks as the engine grows (empty today) — check the nine documented ways round the cap:
 
 1. **A launch view with a runtime cap** — pad a runtime `k` into the fixed
    four-slot family and fall back to the host above it (`MultiGbmLaunch`), or
@@ -562,6 +564,17 @@ shrinks as the engine grows — check the eight documented ways round the cap:
    what moved the sheet `Fbs` onto the devices. A chunk-invariance test
    (`with_batch_budget`) is mandatory: every hash must run on a batch-global
    counter, the correction's on one past every cell of the batch.
+9. **A program** — a coefficient of time and state the user writes as an
+   `Expr` (`stochastic_rs_distributions::traits::Expr`, stored as
+   `Fn2D::Expr(Program)`) reaches the kernel as postfix code: the process
+   returns it from `program_spec()` (`ProgramSpec { first, second }`), the frame
+   interprets it before every step at `ct` and the first state slot, and the
+   family reads `pv` / `pv2`. `device_ready()` is `fn2d.program().is_some()`;
+   a closure stays on the host. Sixteen opcodes, ≤ 62 operations, stack ≤ 8 —
+   the interpreter lives in the C frame (`kernel.rs`) and `cubecl.rs::program_value`,
+   and the host's `Program::eval` is the reference the parity probes run
+   (`ProbePrograms::pair()` uses every opcode). This is what moved `Cheyette`
+   and `VolterraSde` onto the engine — the last two host-only processes.
 
 ## Definition of done
 

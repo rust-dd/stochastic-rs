@@ -43,6 +43,7 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Array3;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::traits::Program;
 
 use crate::device::Backend;
 use crate::device::Cpu;
@@ -152,6 +153,57 @@ pub(crate) fn encode_lift<'a, T: FloatExt>(
     }
     None => ([&[], &[], &[]], 0, 0, T::zero(), T::zero(), T::zero()),
   }
+}
+
+/// The floats a launch's program buffer holds: the two programs' lengths,
+/// then each program's `(opcode, constant)` pairs — room for two programs of
+/// [`Program::MAX_OPS`] operations each.
+pub const PROGRAM_SLOTS: usize = 2 + 4 * Program::MAX_OPS;
+
+/// The programs a launch interprets in its kernel: a coefficient of time and
+/// state written as an [`Expr`](stochastic_rs_distributions::traits::Expr)
+/// and compiled, and an optional second one. Before every step the kernel
+/// evaluates each at the launch's first curve `ct` and the first state slot
+/// and hands the values to the family as `pv` and `pv2` — the local
+/// volatility of a Cheyette model, the drift and diffusion of a Volterra
+/// equation.
+pub struct ProgramSpec<'a> {
+  /// The first program, read as `pv`.
+  pub first: &'a Program,
+  /// The second program, read as `pv2`; `None` leaves `pv2` at zero.
+  pub second: Option<&'a Program>,
+}
+
+/// The program buffer a launch binds — `[len₁, len₂, pairs…]` in
+/// [`PROGRAM_SLOTS`] floats — and how many programs it holds.
+#[cfg_attr(
+  not(any(
+    feature = "cuda",
+    feature = "metal",
+    feature = "cubecl-cuda",
+    feature = "cubecl-wgpu"
+  )),
+  allow(dead_code)
+)]
+pub(crate) fn encode_programs<T: FloatExt>(spec: Option<&ProgramSpec<'_>>) -> (Vec<T>, u32) {
+  let mut out = vec![T::zero(); PROGRAM_SLOTS];
+  let Some(spec) = spec else {
+    return (out, 0);
+  };
+  let mut at = 2usize;
+  let mut write = |program: &Program, slot: usize| {
+    out[slot] = T::from_usize_(program.len());
+    for &(code, value) in program.ops() {
+      out[at] = T::from_usize_(code as usize);
+      out[at + 1] = T::from_f64_fast(value);
+      at += 2;
+    }
+  };
+  write(spec.first, 0);
+  if let Some(second) = spec.second {
+    write(second, 1);
+  }
+  (out, if spec.second.is_some() { 2 } else { 1 })
 }
 
 /// How many time-varying coefficients a kernel binds per launch, which is the
@@ -951,6 +1003,12 @@ pub enum EulerSpec<T: FloatExt> {
     alpha: [T; 4],
     beta: [T; 2],
   },
+  /// The Cheyette quasi-Gaussian state `(x, y)` under a local volatility the
+  /// launch's first program computes from `(t, x)`.
+  CheyetteLocalVol { kappa: T },
+  /// A stochastic Volterra equation under the Markov lift of its kernel, the
+  /// drift and diffusion the launch's two programs compute from `(t, x)`.
+  VolterraProgram,
   /// The inverse of an α-stable subordinator by the table block: the direct
   /// subordinator's Chambers–Mallows–Stuck constants folded on the host, the
   /// table's extent and resolution from the launch's `table_spec()`.
@@ -1735,6 +1793,8 @@ impl<T: FloatExt> EulerSpec<T> {
           mu[0], mu[1], alpha[0], alpha[1], alpha[2], alpha[3], beta[0], beta[1],
         ]),
       ),
+      EulerSpec::CheyetteLocalVol { kappa } => (Family::CheyetteLocalVol.code(), pad([kappa])),
+      EulerSpec::VolterraProgram => (Family::VolterraProgram.code(), pad([])),
       EulerSpec::InverseStableSubordinator {
         alpha,
         c,
@@ -1906,6 +1966,13 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
   /// The table a family with a `table` clause has built per path before the
   /// steps; `None` for a family without one.
   fn table_spec(&self) -> Option<TableSpec<T>> {
+    None
+  }
+
+  /// The programs the kernel interprets for this process — coefficients
+  /// written as expressions, read by the family as `pv` and `pv2` — or
+  /// `None` when the family reads none.
+  fn program_spec(&self) -> Option<ProgramSpec<'_>> {
     None
   }
 }
@@ -2274,6 +2341,13 @@ pub trait EulerSystem<T: FloatExt, const D: usize>: ProcessExt<T, Output = [Arra
   /// The table a family with a `table` clause has built per path before the
   /// steps; `None` for a family without one.
   fn table_spec(&self) -> Option<TableSpec<T>> {
+    None
+  }
+
+  /// The programs the kernel interprets for this process — coefficients
+  /// written as expressions, read by the family as `pv` and `pv2` — or
+  /// `None` when the family reads none.
+  fn program_spec(&self) -> Option<ProgramSpec<'_>> {
     None
   }
 

@@ -59,6 +59,7 @@ struct EulerArgs {
     uint series_n;
     uint series_live;
     uint table_n;
+    uint program_n;
     float table_u0;
     float x0[4];
 };
@@ -72,6 +73,7 @@ kernel void euler_paths(
     device const float* lift_decay [[buffer(5)]],
     device const float* lift_weight [[buffer(6)]],
     device const float* lift_drift_scale [[buffer(7)]],
+    device const float* program [[buffer(8)]],
     uint path [[thread_position_in_grid]])
 {
     const uint family = args.family;
@@ -105,6 +107,7 @@ kernel void euler_paths(
     const uint series_n = args.series_n;
     const uint series_live = args.series_live;
     const uint table_n = args.table_n;
+    const uint program_n = args.program_n;
     const float table_u0 = args.table_u0;
     const float jump_a = args.jump_a;
     const float jump_b = args.jump_b;
@@ -176,6 +179,8 @@ struct EulerArgs {
   /// The table a `table` family builds per path: its point count, zero for a
   /// family without one, and its starting extent.
   table_n: u32,
+  /// How many programs the launch interprets, zero to two.
+  program_n: u32,
   table_u0: f32,
   x0: [f32; 4],
 }
@@ -267,6 +272,7 @@ fn run(
   increments: Increments<'_>,
   curve: &[f32],
   lift: [&[f32]; 3],
+  program: &[f32],
 ) -> Result<Vec<f32>> {
   ensure_context(ordinal)?;
   let guard = CONTEXT.lock();
@@ -315,6 +321,11 @@ fn run(
       }
     })
     .collect();
+  let program_buf = ctx.device.new_buffer_with_data(
+    program.as_ptr() as *const _,
+    std::mem::size_of_val(program) as u64,
+    shared,
+  );
   let cmd = ctx.queue.new_command_buffer();
   {
     let enc = cmd.new_compute_command_encoder();
@@ -326,6 +337,7 @@ fn run(
     for (slot, buf) in lift_bufs.iter().enumerate() {
       enc.set_buffer(5 + slot as u64, Some(buf), 0);
     }
+    enc.set_buffer(8, Some(&program_buf), 0);
     enc.set_bytes(
       2,
       std::mem::size_of::<EulerArgs>() as u64,
@@ -377,6 +389,7 @@ impl EulerKernel<f32> for Metal {
       process.lift_spec(),
       process.series_terms(),
       process.table_spec(),
+      process.program_spec(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -415,6 +428,7 @@ impl EulerKernel<f32> for Metal {
       process.lift_spec(),
       process.series_terms(),
       process.table_spec(),
+      process.program_spec(),
     )
   }
 
@@ -484,8 +498,10 @@ fn device_paths(
   lift: Option<crate::euler::LiftSpec<'_, f32>>,
   series: Option<u32>,
   table: Option<crate::euler::TableSpec<f32>>,
+  program: Option<crate::euler::ProgramSpec<'_>>,
 ) -> Result<Array3<f32>> {
   let (family, params) = spec.encode();
+  let (program_buf, program_n) = crate::euler::encode_programs::<f32>(program.as_ref());
   let arity = super::families::Family::from_code(family).expect("a declared family");
   let (components, noises) = (arity.components(), arity.noises());
   if n == 0 || m == 0 {
@@ -539,10 +555,19 @@ fn device_paths(
     series_n,
     series_live,
     table_n,
+    program_n,
     table_u0,
     x0,
   };
-  let data = run(ordinal, params, args, increments, &curve, lift_tables)?;
+  let data = run(
+    ordinal,
+    params,
+    args,
+    increments,
+    &curve,
+    lift_tables,
+    &program_buf,
+  )?;
   Ok(
     Array3::from_shape_vec((components, m, n), data)
       .expect("the kernel returns components * m * n values"),

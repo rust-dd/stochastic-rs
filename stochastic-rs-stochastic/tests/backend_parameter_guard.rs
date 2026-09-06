@@ -100,7 +100,10 @@ fn every_process_ext_impl_is_backend_typed() {
         let bound = rest.split([',', '+']).next().unwrap_or(rest);
         let name = bound.split('<').next().unwrap_or(bound);
         let name = name.rsplit("::").next().unwrap_or(name).trim();
-        matches!(name, "HostBackend" | "EulerBackend" | "FgnBackend")
+        matches!(
+          name,
+          "HostBackend" | "EulerBackend" | "FgnBackend" | "SheetBackend"
+        )
       });
       if !(bound_ok && args.ends_with(", B")) {
         untyped.push(format!(

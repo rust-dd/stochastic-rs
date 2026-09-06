@@ -136,7 +136,11 @@
 /// `REAL`, `STOCH_SQRT`, `STOCH_LOG`, `STOCH_COS`, `STOCH_SIN`, `STOCH_TANH`,
 /// `STOCH_ATAN`
 /// and the
-/// 64-bit buffer index type `INDEX` are the precision placeholders.
+/// 64-bit buffer index type `INDEX` are the precision placeholders. Before
+/// the lift and the step, the frame runs the launch's programs — the postfix
+/// code of the coefficients a process wrote as expressions — on a fixed
+/// stack at the step's `ct` and first state slot, and hands their values to
+/// the family as `pv` and `pv2`.
 pub(crate) const FRAME: &str = r#"    if (path >= paths) return;
     INDEX base = (INDEX)path * steps;
     INDEX plane = (INDEX)paths * steps;
@@ -219,6 +223,8 @@ SERIES
     }
     REAL iv = (REAL)0;
     REAL tv = (REAL)0;
+    REAL pv = (REAL)0;
+    REAL pv2 = (REAL)0;
     REAL table_inc[1];
     table_inc[0] = (REAL)0;
     unsigned int tp = 1u;
@@ -492,6 +498,36 @@ SERIES
             if (ratio < (REAL)1.0e-30) { ratio = (REAL)1.0e-30; }
             REAL xs = STOCH_SIN(jump_a * va) / STOCH_POW(STOCH_COS(va), ia) * STOCH_POW(ratio, ((REAL)1 - jump_a) * ia);
             js = jump_b * STOCH_POW(nj, ia) * xs;
+        }
+        if (program_n != 0u) {
+            for (unsigned int w = 0u; w < program_n; w++) {
+                unsigned int plen = (unsigned int)program[w];
+                unsigned int pbase = 2u;
+                if (w == 1u) { pbase = 2u + 2u * (unsigned int)program[0]; }
+                REAL pst[8];
+                unsigned int psp = 0u;
+                for (unsigned int k = 0u; k < plen; k++) {
+                    unsigned int code = (unsigned int)program[pbase + 2u * k];
+                    REAL val = program[pbase + 2u * k + 1u];
+                    if (code == 0u) { pst[psp] = ct; psp++; }
+                    else if (code == 1u) { pst[psp] = state[0]; psp++; }
+                    else if (code == 2u) { pst[psp] = val; psp++; }
+                    else if (code == 3u) { pst[psp - 2u] = pst[psp - 2u] + pst[psp - 1u]; psp--; }
+                    else if (code == 4u) { pst[psp - 2u] = pst[psp - 2u] - pst[psp - 1u]; psp--; }
+                    else if (code == 5u) { pst[psp - 2u] = pst[psp - 2u] * pst[psp - 1u]; psp--; }
+                    else if (code == 6u) { pst[psp - 2u] = pst[psp - 2u] / pst[psp - 1u]; psp--; }
+                    else if (code == 7u) { pst[psp - 2u] = STOCH_POW(pst[psp - 2u], pst[psp - 1u]); psp--; }
+                    else if (code == 8u) { pst[psp - 2u] = (pst[psp - 2u] > pst[psp - 1u]) ? pst[psp - 2u] : pst[psp - 1u]; psp--; }
+                    else if (code == 9u) { pst[psp - 2u] = (pst[psp - 2u] < pst[psp - 1u]) ? pst[psp - 2u] : pst[psp - 1u]; psp--; }
+                    else if (code == 10u) { pst[psp - 1u] = -pst[psp - 1u]; }
+                    else if (code == 11u) { pst[psp - 1u] = STOCH_SQRT(pst[psp - 1u]); }
+                    else if (code == 12u) { pst[psp - 1u] = STOCH_EXP(pst[psp - 1u]); }
+                    else if (code == 13u) { pst[psp - 1u] = STOCH_LOG(pst[psp - 1u]); }
+                    else if (code == 14u) { pst[psp - 1u] = STOCH_ABS(pst[psp - 1u]); }
+                    else if (code == 15u) { pst[psp - 1u] = STOCH_TANH(pst[psp - 1u]); }
+                }
+                if (w == 0u) { pv = pst[0]; } else { pv2 = pst[0]; }
+            }
         }
         if (has_lift != 0u) {
 LIFT

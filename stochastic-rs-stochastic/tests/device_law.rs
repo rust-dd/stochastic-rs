@@ -22,7 +22,9 @@
 //! increment is a draw rather than a step; [`conditional_variance`] holds the
 //! discrete-time models whose first point is itself a draw; [`sheet`] holds
 //! the two-dimensional field, which the device produces through its own
-//! circulant-embedding pipeline rather than the engine.
+//! circulant-embedding pipeline rather than the engine; [`coefficients`]
+//! holds the processes whose coefficients are expressions the kernel
+//! interprets.
 //!
 //! Split across files only to stay under this crate's line-count limit; all
 //! four compile into one test binary.
@@ -31,6 +33,7 @@
 
 mod device_law {
   pub(crate) mod bounded;
+  pub(crate) mod coefficients;
   pub(crate) mod common;
   pub(crate) mod conditional_variance;
   pub(crate) mod curves;

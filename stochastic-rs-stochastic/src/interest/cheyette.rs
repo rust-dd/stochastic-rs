@@ -32,7 +32,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
+use crate::device::DeviceError;
 use crate::traits::FloatExt;
 use crate::traits::Fn1D;
 use crate::traits::Fn2D;
@@ -129,9 +129,84 @@ impl<T: FloatExt, S: SeedExt, B> Cheyette<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Cheyette<T, S> { f0, kappa, sigma, n, t, seed } via host);
+impl<T: FloatExt, S: SeedExt, B> Cheyette<T, S, B> {
+  /// Whether a device can run this process: a local volatility written as an
+  /// [`Expr`](crate::traits::Expr), which the kernel interprets at every
+  /// step. A Rust closure or a Python callable keeps the process on the host.
+  pub fn device_ready(&self) -> bool {
+    self.sigma.program().is_some()
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Cheyette<T, S, B> {
+  /// The time the step starting at each grid point sees, `(i − 1) Δt` at
+  /// point `i`: the launch's first curve, which is the `t` the local
+  /// volatility is evaluated at, exactly as the host evaluates it at the left
+  /// grid point.
+  fn step_time_curve(&self) -> Vec<T> {
+    let dt = self.dt();
+    (0..self.n)
+      .map(|i| T::from_usize_(i.saturating_sub(1)) * dt)
+      .collect()
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Cheyette<T, S> { f0, kappa, sigma, n, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
+  for Cheyette<T, S, B>
+{
+  /// A configuration the family cannot carry — a closure for `σ` — never
+  /// reaches a launch: [`ProcessExt::sample`] keeps it on the host, so asking
+  /// here is a caller bypassing that guard.
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    assert!(
+      self.device_ready(),
+      "Cheyette: a launch carries a local volatility written as an expression; sample through \
+       `ProcessExt`, which keeps a closure on the host"
+    );
+    crate::euler::EulerSpec::CheyetteLocalVol { kappa: self.kappa }
+  }
+
+  /// The origin, `x₀ = y₀ = 0`.
+  fn initial_state(&self) -> [T; 4] {
+    [T::zero(); 4]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.dt()
+  }
+
+  fn curves(&self) -> Option<Vec<Vec<T>>> {
+    Some(vec![self.step_time_curve()])
+  }
+
+  /// The local volatility's program, read by the family as `pv`.
+  fn program_spec(&self) -> Option<crate::euler::ProgramSpec<'_>> {
+    self.sigma.program().map(|first| crate::euler::ProgramSpec {
+      first,
+      second: None,
+    })
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 2] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Cheyette<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = CheyetteSampler<'s, T>
@@ -146,6 +221,51 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Cheyette<T, S, B
       kappa: self.kappa,
       sigma: &self.sigma,
       normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+    }
+  }
+
+  /// Through the Euler engine when the local volatility is an expression;
+  /// a closure keeps the process on the host, chunked exactly as
+  /// [`ProcessExt`] chunks.
+  fn sample(&self) -> [Array1<T>; 2] {
+    if self.device_ready() {
+      self.backend.system_sample(self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 2]) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      self.backend.system_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 2]> {
+    if self.device_ready() {
+      self.backend.system_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 2], DeviceError> {
+    if self.device_ready() {
+      self.backend.try_system_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 2]>, DeviceError> {
+    if self.device_ready() {
+      self.backend.try_system_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }

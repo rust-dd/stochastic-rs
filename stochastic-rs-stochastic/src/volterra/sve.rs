@@ -41,7 +41,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
+use crate::device::DeviceError;
 use crate::noise::gn::Gn;
 use crate::rough::markov_lift::RoughSimd;
 use crate::traits::FloatExt;
@@ -91,6 +91,10 @@ where
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
   pub backend: B,
+  /// The Markov lift of `kernel` at this grid's step, the tables a device
+  /// launch binds; rebuilt whenever the kernel, the step count or the
+  /// horizon changes.
+  pub(crate) lift: VolterraLift<T, K>,
 }
 
 impl<T: FloatExt, K, S: SeedExt> Clone for VolterraSde<T, K, S>
@@ -108,6 +112,7 @@ where
       x0: self.x0,
       t: self.t,
       seed: self.seed.clone(),
+      lift: VolterraLift::new(self.kernel.clone(), self.step_size()),
     }
   }
 }
@@ -132,6 +137,10 @@ where
     seed: S,
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
+    let lift = VolterraLift::new(
+      kernel.clone(),
+      t.unwrap_or(T::one()) / T::from_usize_(n - 1),
+    );
     Self {
       backend: Cpu,
       kernel,
@@ -141,6 +150,7 @@ where
       x0,
       t,
       seed,
+      lift,
     }
   }
 }
@@ -152,7 +162,34 @@ where
   /// Replace `kernel`, all else unchanged.
   pub fn with_kernel(mut self, kernel: K) -> Self {
     self.kernel = kernel;
+    self.lift = VolterraLift::new(self.kernel.clone(), self.step_size());
     self
+  }
+
+  /// The grid's step, `t / (n − 1)`.
+  pub fn step_size(&self) -> T {
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+  }
+
+  /// Whether a device can run this process: a drift and a diffusion written
+  /// as [`Expr`](crate::traits::Expr)s, which the kernel interprets at every
+  /// step, and a kernel whose exponential fit has at most
+  /// [`LIFT_SLOTS`](crate::euler::LIFT_SLOTS) nodes. Closures keep the
+  /// process on the host.
+  pub fn device_ready(&self) -> bool {
+    self.drift.program().is_some()
+      && self.diffusion.program().is_some()
+      && self.kernel.degree() <= crate::euler::LIFT_SLOTS
+  }
+
+  /// The time the step starting at each grid point sees, `(i − 1) Δt` at
+  /// point `i`: the launch's first curve, the `t` the coefficients are
+  /// evaluated at, exactly as the host evaluates them at the left point.
+  fn step_time_curve(&self) -> Vec<T> {
+    let dt = self.step_size();
+    (0..self.n)
+      .map(|i| T::from_usize_(i.saturating_sub(1)) * dt)
+      .collect()
   }
 
   /// Replace `drift`, all else unchanged.
@@ -170,6 +207,7 @@ where
   /// Replace the number of simulation steps `n`, all else unchanged.
   pub fn with_steps(mut self, n: usize) -> Self {
     self.n = n;
+    self.lift = VolterraLift::new(self.kernel.clone(), self.step_size());
     self
   }
 
@@ -182,6 +220,7 @@ where
   /// Replace the simulation horizon `t`, all else unchanged.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     self.t = t;
+    self.lift = VolterraLift::new(self.kernel.clone(), self.step_size());
     self
   }
 
@@ -192,9 +231,76 @@ where
   }
 }
 
-backend_switch!([T: FloatExt + RoughSimd, K, S: SeedExt] VolterraSde<T, K, S> { kernel, drift, diffusion, n, x0, t, seed } via host where  K: VolterraKernel<T> + Send + Sync);
+backend_switch!([T: FloatExt + RoughSimd, K, S: SeedExt] VolterraSde<T, K, S> { kernel, drift, diffusion, n, x0, t, seed, lift } via euler where  K: VolterraKernel<T> + Send + Sync);
 
-impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: HostBackend> ProcessExt<T>
+impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: crate::euler::EulerBackend<T>>
+  crate::euler::EulerCoefficients<T> for VolterraSde<T, K, S, B>
+where
+  K: VolterraKernel<T> + Send + Sync,
+{
+  /// A configuration the family cannot carry — a closure for the drift or
+  /// the diffusion — never reaches a launch: [`ProcessExt::sample`] keeps it
+  /// on the host, so asking here is a caller bypassing that guard.
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    assert!(
+      self.device_ready(),
+      "VolterraSde: a launch carries a drift and a diffusion written as expressions; sample \
+       through `ProcessExt`, which keeps closures on the host"
+    );
+    crate::euler::EulerSpec::VolterraProgram
+  }
+
+  fn initial_value(&self) -> T {
+    self.x0.unwrap_or(T::zero())
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn curves(&self) -> Option<Vec<Vec<T>>> {
+    Some(vec![self.step_time_curve()])
+  }
+
+  /// The kernel's Markov lift: the same per-node constants and boundary
+  /// terms the host sampler steps with, and the start the lift adds back.
+  fn lift_spec(&self) -> Option<crate::euler::LiftSpec<'_, T>> {
+    let lift = &self.lift;
+    Some(crate::euler::LiftSpec {
+      decay: lift.exp_neg_x_dt.as_slice().expect("contiguous"),
+      weight: lift.we.as_slice().expect("contiguous"),
+      drift_scale: lift.one_minus_e_over_x.as_slice().expect("contiguous"),
+      drift_boundary: lift.drift_boundary,
+      diffusion_boundary: lift.diffusion_boundary,
+      x0: self.x0.unwrap_or(T::zero()),
+    })
+  }
+
+  /// The drift's and the diffusion's programs, read by the family as `pv`
+  /// and `pv2`.
+  fn program_spec(&self) -> Option<crate::euler::ProgramSpec<'_>> {
+    Some(crate::euler::ProgramSpec {
+      first: self.drift.program()?,
+      second: Some(self.diffusion.program()?),
+    })
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for VolterraSde<T, K, S, B>
 where
   K: VolterraKernel<T> + Send + Sync,
@@ -224,6 +330,51 @@ where
         t: self.t,
         seed: self.seed.derive(),
       },
+    }
+  }
+
+  /// Through the Euler engine when the drift and the diffusion are
+  /// expressions; a closure keeps the process on the host, chunked exactly
+  /// as [`ProcessExt`] chunks.
+  fn sample(&self) -> Array1<T> {
+    if self.device_ready() {
+      self.backend.euler_sample(self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      self.backend.euler_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    if self.device_ready() {
+      self.backend.euler_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, DeviceError> {
+    if self.device_ready() {
+      self.backend.try_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, DeviceError> {
+    if self.device_ready() {
+      self.backend.try_euler_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }

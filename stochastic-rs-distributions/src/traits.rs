@@ -10,8 +10,10 @@ pub mod float;
 
 #[cfg(feature = "python")]
 pub use callable::CallableDist;
+pub use callable::Expr;
 pub use callable::Fn1D;
 pub use callable::Fn2D;
+pub use callable::Program;
 pub use distribution::DistributionExt;
 pub use distribution::DistributionSampler;
 pub use float::FloatExt;

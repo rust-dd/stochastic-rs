@@ -37,6 +37,8 @@ fn step1(family: Family, x: f64, params: &[f64], dt: f64, dz: f64) -> f64 {
     0.0,
     0.0,
     0.0,
+    0.0,
+    0.0,
     &[dz, 0.0, 0.0, 0.0],
     &mut out,
   );
@@ -49,6 +51,8 @@ fn report1(family: Family, x: f64, params: &[f64]) -> f64 {
     family,
     &[x, 0.0, 0.0, 0.0],
     params,
+    0.0,
+    0.0,
     0.0,
     0.0,
     0.0,
@@ -364,9 +368,52 @@ fn step_full(
   let mut out = [0.0; 4];
   host_step(
     family, &state, params, dt, ct, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, u, u2,
-    0.0, 0.0, sj, 0.0, 0.0, 0.0, 0.0, iv, 0.0, &noise, &mut out,
+    0.0, 0.0, sj, 0.0, 0.0, 0.0, 0.0, iv, 0.0, 0.0, 0.0, &noise, &mut out,
   );
   out
+}
+
+/// The generated step with the two program values a family reads as `pv` and
+/// `pv2`, the rest of the frame at zero.
+#[allow(clippy::too_many_arguments)]
+fn step_program(
+  family: Family,
+  state: [f64; 4],
+  params: &[f64],
+  dt: f64,
+  lv: f64,
+  pv: f64,
+  pv2: f64,
+  noise: [f64; 4],
+) -> [f64; 4] {
+  let mut out = [0.0; 4];
+  host_step(
+    family, &state, params, dt, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    0.0, lv, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, pv, pv2, &noise, &mut out,
+  );
+  out
+}
+
+/// The Cheyette state steps by Euler–Maruyama with the program's value as
+/// the local volatility of the step's start.
+#[test]
+fn cheyette_step_is_euler_with_the_program_volatility() {
+  let (kappa, dt, dz) = (0.5_f64, 0.01_f64, 0.1_f64);
+  let (x, y, s) = (0.02_f64, 0.001_f64, 0.03_f64);
+  let next = step_program(Family::CheyetteLocalVol, [x, y, 0.0, 0.0], &[kappa], dt, 0.0, s, 0.0, [dz, 0.0, 0.0, 0.0]);
+  assert!((next[0] - (x + (y - kappa * x) * dt + s * dz)).abs() < 1e-15);
+  assert!((next[1] - (y + (s * s - 2.0 * kappa * y) * dt)).abs() < 1e-15);
+}
+
+/// The Volterra family is its lift: the step is the lifted value, and the
+/// lift's drift and diffusion are the two programs, its shock the noise.
+#[test]
+fn volterra_program_step_is_the_lift_of_its_programs() {
+  let noise = [0.07, 0.0, 0.0, 0.0];
+  let next = step_program(Family::VolterraProgram, [0.2, 0.0, 0.0, 0.0], &[], 0.01, 0.31, 0.5, 0.25, noise);
+  assert_eq!(next[0], 0.31);
+  let lift = host_lift(Family::VolterraProgram, &[0.2, 0.0, 0.0, 0.0], &[], 0.01, 0.5, 0.25, &noise);
+  assert_eq!(lift, [0.5, 0.25, 0.07]);
 }
 
 /// No family declares two of the history, series and table clauses: the

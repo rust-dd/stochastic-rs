@@ -44,7 +44,8 @@ const CUDA_HEADER: &str = r#"extern "C" __global__ void euler_paths_REAL(
     const REAL* __restrict__ lift_decay, const REAL* __restrict__ lift_weight,
     const REAL* __restrict__ lift_drift_scale, unsigned int has_lift, unsigned int lift_n,
     REAL lift_db, REAL lift_fb, REAL lift_x0, unsigned int hist_slot,
-    unsigned int series_n, unsigned int series_live, unsigned int table_n, REAL table_u0)
+    unsigned int series_n, unsigned int series_live, unsigned int table_n, REAL table_u0,
+    const REAL* __restrict__ program, unsigned int program_n)
 {
     unsigned int path = blockIdx.x * blockDim.x + threadIdx.x;
     const REAL x0[4] = { x00, x01, x02, x03 };
@@ -166,6 +167,8 @@ fn run<R>(
   series_live: u32,
   table_n: u32,
   table_u0: R,
+  program: &[R],
+  program_n: u32,
 ) -> Result<Vec<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
@@ -222,6 +225,9 @@ where
       .clone_htod(curve)
       .map_err(|e| DeviceError::Launch(format!("htod curve: {e}")))?
   };
+  let d_program = stream
+    .clone_htod(program)
+    .map_err(|e| DeviceError::Launch(format!("htod program: {e}")))?;
   unsafe {
     stream
       .launch_builder(func(kernels))
@@ -271,6 +277,8 @@ where
       .arg(&series_live)
       .arg(&table_n)
       .arg(&table_u0)
+      .arg(&d_program)
+      .arg(&program_n)
       .launch(LaunchConfig::for_num_elems(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
@@ -305,6 +313,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.lift_spec(),
       process.series_terms(),
       process.table_spec(),
+      process.program_spec(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -339,6 +348,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.lift_spec(),
       process.series_terms(),
       process.table_spec(),
+      process.program_spec(),
     )
   }
 
@@ -397,6 +407,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       None,
       process.series_terms(),
       process.table_spec(),
+      process.program_spec(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -422,9 +433,13 @@ fn device_paths<T: FloatExt>(
   lift: Option<crate::euler::LiftSpec<'_, T>>,
   series: Option<u32>,
   table: Option<crate::euler::TableSpec<T>>,
+  program: Option<crate::euler::ProgramSpec<'_>>,
 ) -> Result<Array3<T>> {
   {
     let (curve, n_curves) = crate::euler::flatten_curves(curves, n);
+    let (program_t, program_n) = crate::euler::encode_programs::<T>(program.as_ref());
+    let program64: Vec<f64> = program_t.iter().map(|v| v.to_f64().unwrap_or(0.0)).collect();
+    let program32: Vec<f32> = program64.iter().map(|v| *v as f32).collect();
     let (lift_tables, has_lift, lift_n, lift_db, lift_fb, lift_x0) =
       crate::euler::encode_lift(lift.as_ref());
     let lift_tables64: Vec<Vec<f64>> = lift_tables
@@ -534,6 +549,8 @@ fn device_paths<T: FloatExt>(
         series_live,
         table_n,
         table_u0.to_f64().unwrap_or(0.0),
+        &program64,
+        program_n,
       )?;
       let out = Array3::<f64>::from_shape_vec((planes, m, n), data)
         .expect("the kernel returns components * m * n values");
@@ -607,6 +624,8 @@ fn device_paths<T: FloatExt>(
       series_live,
       table_n,
       table_u0.to_f64().unwrap_or(0.0) as f32,
+      &program32,
+      program_n,
     )?;
     assert!(
       TypeId::of::<T>() == TypeId::of::<f32>(),
@@ -661,6 +680,8 @@ fn launch_chunk<R>(
   series_live: u32,
   table_n: u32,
   table_u0: R,
+  program: &[R],
+  program_n: u32,
 ) -> Result<CudaSlice<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
@@ -713,6 +734,9 @@ where
       .clone_htod(curve)
       .map_err(|e| DeviceError::Launch(format!("htod curve: {e}")))?
   };
+  let d_program = stream
+    .clone_htod(program)
+    .map_err(|e| DeviceError::Launch(format!("htod program: {e}")))?;
   unsafe {
     stream
       .launch_builder(func)
@@ -762,6 +786,8 @@ where
       .arg(&series_live)
       .arg(&table_n)
       .arg(&table_u0)
+      .arg(&d_program)
+      .arg(&program_n)
       .launch(LaunchConfig::for_num_elems(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
@@ -804,6 +830,8 @@ fn pipelined<R>(
   series_live: u32,
   table_n: u32,
   table_u0: R,
+  program: &[R],
+  program_n: u32,
 ) -> Result<Vec<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float + Send + Sync,
@@ -891,6 +919,8 @@ where
       series_live,
       table_n,
       table_u0,
+      program,
+      program_n,
     )?;
     let dst = unsafe { std::slice::from_raw_parts_mut(staging[slot].ptr, planes * len * n) };
     streams[slot]
@@ -924,8 +954,12 @@ fn pipelined_paths<T: FloatExt>(
   lift: Option<crate::euler::LiftSpec<'_, T>>,
   series: Option<u32>,
   table: Option<crate::euler::TableSpec<T>>,
+  program: Option<crate::euler::ProgramSpec<'_>>,
 ) -> Result<Array3<T>> {
   let (curve, n_curves) = crate::euler::flatten_curves(curves, n);
+  let (program_t, program_n) = crate::euler::encode_programs::<T>(program.as_ref());
+  let program64: Vec<f64> = program_t.iter().map(|v| v.to_f64().unwrap_or(0.0)).collect();
+  let program32: Vec<f32> = program64.iter().map(|v| *v as f32).collect();
   debug_assert!(lift.is_none(), "the pipelined batch carries no lift");
   let (family, params) = spec.encode();
   let hist_slot = crate::euler::history_slot(family, n);
@@ -993,6 +1027,8 @@ fn pipelined_paths<T: FloatExt>(
       series_live,
       table_n,
       table_u0.to_f64().unwrap_or(0.0),
+      &program64,
+      program_n,
     )?;
     let out = Array3::<f64>::from_shape_vec((planes, m, n), data)
       .expect("the kernel returns components * m * n values");
@@ -1038,6 +1074,8 @@ fn pipelined_paths<T: FloatExt>(
     series_live,
     table_n,
     table_u0.to_f64().unwrap_or(0.0) as f32,
+    &program32,
+    program_n,
   )?;
   let out = Array3::<f32>::from_shape_vec((planes, m, n), data)
     .expect("the kernel returns components * m * n values");

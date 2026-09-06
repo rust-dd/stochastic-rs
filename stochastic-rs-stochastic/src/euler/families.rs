@@ -107,7 +107,7 @@ pub(crate) use vocabulary::ops;
 
 euler_families! {
   step_inputs(
-    params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u, u2, lv, cv, sj, gj, ej, uj, uv, iv, tv,
+    params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u, u2, lv, cv, sj, gj, ej, uj, uv, iv, tv, pv, pv2,
     state(slot_a, slot_b, slot_c, slot_d),
     noise(shock_a, shock_b, shock_c, shock_d),
     select(component, produced)
@@ -1798,6 +1798,31 @@ euler_families! {
       kn
     }
     report { t, k },
+
+  /// The Cheyette quasi-Gaussian state by Euler–Maruyama, `dx = (y − κx) dt +
+  /// σ(t, x) dW`, `dy = (σ² − 2κy) dt`, the local volatility `σ(t, x)` the
+  /// launch's first program evaluated at the step's start and handed in as
+  /// `pv`.
+  118 => CheyetteLocalVol { kappa }
+    state (x, y)
+    noise (dz)
+    step {
+      bind s = pv;
+      x + (y - kappa * x) * dt + s * dz,
+      y + (s * s - kappa * y * lit(2.0)) * dt
+    }
+    report { x, y },
+
+  /// A stochastic Volterra equation `X_t = X_0 + ∫K(t−s) b(s, X_s) ds +
+  /// ∫K(t−s) σ(s, X_s) dW_s` under the Markov lift of its kernel: the drift
+  /// `b` and diffusion `σ` are the launch's two programs at the step's start,
+  /// `pv` and `pv2`, and the step is the lifted value.
+  119 => VolterraProgram { }
+    state (x)
+    noise (dz)
+    step { lv }
+    report { x }
+    lift { drift (pv) diffusion (pv2) shock (dz) },
 }
 
 #[cfg(test)]
