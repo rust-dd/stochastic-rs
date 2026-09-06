@@ -207,7 +207,6 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B> Volterra<T, S, B> {
       t
     }
   }
-
 }
 
 /// The Euler engine's view of both branches: fBm under the Markov lift in

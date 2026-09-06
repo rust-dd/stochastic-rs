@@ -46,7 +46,8 @@ const LOG_CHI2_VARIANCE: f64 = 4.934_802_200_544_679;
 #[test]
 fn ar1_variance_and_acf_match_the_yule_walker_law() {
   let (phi, sigma) = (0.6, 1.0);
-  let paths = ARp::<f64, _>::new(array![phi], sigma, N, None, Deterministic::new(11)).sample_par(PATHS);
+  let paths =
+    ARp::<f64, _>::new(array![phi], sigma, N, None, Deterministic::new(11)).sample_par(PATHS);
   holds(
     across_paths(&paths, variance),
     sigma * sigma / (1.0 - phi * phi),
@@ -67,11 +68,15 @@ fn ar1_variance_and_acf_match_the_yule_walker_law() {
 #[test]
 fn ar2_variance_and_first_lag_match_the_yule_walker_law() {
   let (phi1, phi2, sigma) = (0.5, 0.3, 0.8);
-  let paths =
-    ARp::<f64, _>::new(array![phi1, phi2], sigma, N, None, Deterministic::new(23)).sample_par(PATHS);
+  let paths = ARp::<f64, _>::new(array![phi1, phi2], sigma, N, None, Deterministic::new(23))
+    .sample_par(PATHS);
   let variance_law =
     sigma * sigma * (1.0 - phi2) / ((1.0 + phi2) * ((1.0 - phi2).powi(2) - phi1 * phi1));
-  holds(across_paths(&paths, variance), variance_law, "AR(2) variance");
+  holds(
+    across_paths(&paths, variance),
+    variance_law,
+    "AR(2) variance",
+  );
   holds(
     across_paths(&paths, |x| autocorr(x, 1)),
     phi1 / (1.0 - phi2),
@@ -90,7 +95,8 @@ fn ar2_variance_and_first_lag_match_the_yule_walker_law() {
 #[test]
 fn ma2_variance_and_acf_cut_off_after_the_order() {
   let (t1, t2, sigma) = (0.7, 0.4, 1.3);
-  let paths = MAq::<f64, _>::new(array![t1, t2], sigma, N, Deterministic::new(37)).sample_par(PATHS);
+  let paths =
+    MAq::<f64, _>::new(array![t1, t2], sigma, N, Deterministic::new(37)).sample_par(PATHS);
   let scale = 1.0 + t1 * t1 + t2 * t2;
   holds(
     across_paths(&paths, variance),
@@ -124,7 +130,8 @@ fn ma2_variance_and_acf_cut_off_after_the_order() {
 #[test]
 fn arch1_unconditional_variance_and_kurtosis_match_engle() {
   let (omega, alpha) = (0.3, 0.25);
-  let paths = Arch::<f64, _>::new(omega, array![alpha], N, Deterministic::new(53)).sample_par(PATHS);
+  let paths =
+    Arch::<f64, _>::new(omega, array![alpha], N, Deterministic::new(53)).sample_par(PATHS);
   holds(
     across_paths(&paths, variance),
     omega / (1.0 - alpha),
@@ -450,7 +457,15 @@ fn every_autoregressive_path_stays_in_the_reals() {
     ),
     (
       "Arima",
-      Arima::<f64, _>::new(array![0.5], array![0.3], 1, 1.0, 4_096, Deterministic::new(29)).sample(),
+      Arima::<f64, _>::new(
+        array![0.5],
+        array![0.3],
+        1,
+        1.0,
+        4_096,
+        Deterministic::new(29),
+      )
+      .sample(),
     ),
     (
       "Sarima",
@@ -470,10 +485,7 @@ fn every_autoregressive_path_stays_in_the_reals() {
     ),
   ];
   for (name, path) in checks {
-    assert!(
-      path.iter().all(|v| v.is_finite()),
-      "{name} left the reals"
-    );
+    assert!(path.iter().all(|v| v.is_finite()), "{name} left the reals");
     assert_eq!(path.len(), 4_096, "{name} produced the wrong length");
   }
 }

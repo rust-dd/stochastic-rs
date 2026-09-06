@@ -421,7 +421,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
       m: flat(&p.step.m),
       theta: flat(&p.step.theta),
       theta_inv: flat(&p.step.theta_inv),
-      two: if p.step.rank >= 2 { T::one() } else { T::zero() },
+      two: if p.step.rank >= 2 {
+        T::one()
+      } else {
+        T::zero()
+      },
     }
   }
 
@@ -520,7 +524,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     if self.device_ready() {
       self
         .backend
-        .system_paths_map(&WishartLaunch(self), m, |slots| f(&slots_to_matrices(slots.clone())))
+        .system_paths_map(&WishartLaunch(self), m, |slots| {
+          f(&slots_to_matrices(slots.clone()))
+        })
     } else {
       crate::traits::process::sample_map_chunked(self, m, f)
     }
@@ -541,7 +547,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 
   fn try_sample(&self) -> Result<Array3<T>, crate::device::DeviceError> {
     if self.device_ready() {
-      Ok(slots_to_matrices(self.backend.try_system_sample(&WishartLaunch(self))?))
+      Ok(slots_to_matrices(
+        self.backend.try_system_sample(&WishartLaunch(self))?,
+      ))
     } else {
       Ok(<Self as ProcessExt<T>>::sample(self))
     }

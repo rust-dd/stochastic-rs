@@ -31,7 +31,12 @@ fn the_fractional_brownian_field_has_the_variogram_of_its_paper() {
   let coord = |i: usize, j: usize| (r * (i + 1) as f64 / m as f64, r * (j + 1) as f64 / n as f64);
   // Pairs whose distance stays inside the unit disk, where the embedding is
   // the field's own covariance.
-  for (p, q) in [((0, 0), (6, 6)), ((2, 3), (6, 1)), ((0, 8), (4, 4)), ((1, 1), (1, 7))] {
+  for (p, q) in [
+    ((0, 0), (6, 6)),
+    ((2, 3), (6, 1)),
+    ((0, 8), (4, 4)),
+    ((1, 1), (1, 7)),
+  ] {
     let (ps, qs) = (coord(p.0, p.1), coord(q.0, q.1));
     let dist = ((ps.0 - qs.0).powi(2) + (ps.1 - qs.1).powi(2)).sqrt();
     assert!(dist <= 1.0);
@@ -48,7 +53,10 @@ fn the_fractional_brownian_field_has_the_variogram_of_its_paper() {
       fourth / (second * second)
     );
     let mean = mean_over(&sheets, |s| s[p] - s[q]);
-    assert!(mean.abs() < 5.0 * (second / SHEETS as f64).sqrt(), "increment mean {mean}");
+    assert!(
+      mean.abs() < 5.0 * (second / SHEETS as f64).sqrt(),
+      "increment mean {mean}"
+    );
   }
 }
 
@@ -59,9 +67,17 @@ fn the_fractional_brownian_field_has_the_variogram_of_its_paper() {
 fn the_standard_tempered_stable_series_has_the_variance_of_its_scale() {
   const PATHS: usize = 20_000;
   let terminal_variance = |t: f64, seed: u64| {
-    let paths =
-      Cts::<f64, _>::new(2.0, 6.0, 0.5, 2, 4_000, Some(0.0), Some(t), Deterministic::new(seed))
-        .sample_par(PATHS);
+    let paths = Cts::<f64, _>::new(
+      2.0,
+      6.0,
+      0.5,
+      2,
+      4_000,
+      Some(0.0),
+      Some(t),
+      Deterministic::new(seed),
+    )
+    .sample_par(PATHS);
     let last: Vec<f64> = paths.iter().map(|p| p[p.len() - 1]).collect();
     let mean = last.iter().sum::<f64>() / PATHS as f64;
     last.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / PATHS as f64
@@ -85,8 +101,18 @@ fn the_standard_tempered_stable_series_has_the_variance_of_its_scale() {
 fn the_cgmy_series_has_the_variance_of_its_levy_measure() {
   const PATHS: usize = 20_000;
   let (c, g, m, y, t) = (0.5_f64, 4.0_f64, 7.0_f64, 0.6_f64, 1.5_f64);
-  let paths = Cgmy::<f64, _>::new(c, g, m, y, 2, 4_000, Some(0.0), Some(t), Deterministic::new(331))
-    .sample_par(PATHS);
+  let paths = Cgmy::<f64, _>::new(
+    c,
+    g,
+    m,
+    y,
+    2,
+    4_000,
+    Some(0.0),
+    Some(t),
+    Deterministic::new(331),
+  )
+  .sample_par(PATHS);
   let last: Vec<f64> = paths.iter().map(|p| p[p.len() - 1]).collect();
   let mean = last.iter().sum::<f64>() / PATHS as f64;
   let variance = last.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / PATHS as f64;

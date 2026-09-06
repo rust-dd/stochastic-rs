@@ -265,8 +265,18 @@ macro_rules! sheet_precision {
         &mut sized,
         |s| s.m == m && s.n == n && s.sheets == sheets && s.key == sheet.key,
         || {
-          let plan_rows = make_plan(&stream, big_n, sheets * big_m, cufft::sys::cufftType::$cufft_ty)?;
-          let plan_cols = match make_plan(&stream, big_m, sheets * big_n, cufft::sys::cufftType::$cufft_ty) {
+          let plan_rows = make_plan(
+            &stream,
+            big_n,
+            sheets * big_m,
+            cufft::sys::cufftType::$cufft_ty,
+          )?;
+          let plan_cols = match make_plan(
+            &stream,
+            big_m,
+            sheets * big_n,
+            cufft::sys::cufftType::$cufft_ty,
+          ) {
             Ok(plan) => plan,
             Err(e) => {
               unsafe {

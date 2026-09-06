@@ -392,7 +392,6 @@ where
     crate::process::cpoisson::device_jump_sizes(&self.cpoisson.distribution)
       .and_then(crate::euler::JumpSizes::product)
   }
-
 }
 
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>

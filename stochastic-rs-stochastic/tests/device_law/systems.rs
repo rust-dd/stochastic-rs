@@ -11,8 +11,8 @@ use stochastic_rs_distributions::scalar::ScalarNormal;
 use stochastic_rs_distributions::traits::Fn1D;
 use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
 use stochastic_rs_stochastic::diffusion::fouque::FouqueOU2D;
-use stochastic_rs_stochastic::diffusion::wishart::Wishart;
 use stochastic_rs_stochastic::diffusion::regime_switching::RegimeSwitchingDiffusion;
+use stochastic_rs_stochastic::diffusion::wishart::Wishart;
 use stochastic_rs_stochastic::interest::duffie_kan::DuffieKan;
 use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
 use stochastic_rs_stochastic::interest::hull_white_2f::HullWhite2F;
@@ -1133,7 +1133,12 @@ fn bates_1996_agrees_with_the_cpu_law() {
         / n)
         .sqrt()
     };
-    agrees(spread(&host), spread(&device), 0.06, "Bates 1996 spot spread");
+    agrees(
+      spread(&host),
+      spread(&device),
+      0.06,
+      "Bates 1996 spot spread",
+    );
   }
 }
 
@@ -1269,7 +1274,9 @@ fn stochastic_volatility_cgmy_agrees_with_the_cpu_law() {
   // The reported log-price is `y + ρ v`, so its start is `x0` up to the
   // rounding of `−ρ v0 + ρ v0` in single precision.
   assert!(
-    device.iter().all(|p| p[0][0].abs() < 1e-6 && (p[1][0] - 0.04).abs() < 1e-7),
+    device
+      .iter()
+      .all(|p| p[0][0].abs() < 1e-6 && (p[1][0] - 0.04).abs() < 1e-7),
     "every path starts at x0 and v0"
   );
   agrees(
@@ -1288,13 +1295,23 @@ fn stochastic_volatility_cgmy_agrees_with_the_cpu_law() {
       / n)
       .sqrt()
   };
-  agrees(spread(&host, 1), spread(&device, 1), 0.06, "SV-CGMY variance spread");
+  agrees(
+    spread(&host, 1),
+    spread(&device, 1),
+    0.06,
+    "SV-CGMY variance spread",
+  );
   let iqr = |paths: &[[Array1<f32>; 2]], at: usize| {
     let mut values: Vec<f64> = paths.iter().map(|p| p[0][at] as f64).collect();
     values.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
     values[values.len() * 3 / 4] - values[values.len() / 4]
   };
-  agrees(iqr(&host, 252), iqr(&device, 252), 0.06, "SV-CGMY log-price interquartile range");
+  agrees(
+    iqr(&host, 252),
+    iqr(&device, 252),
+    0.06,
+    "SV-CGMY log-price interquartile range",
+  );
   agrees(
     iqr(&host, 63),
     iqr(&device, 63),
@@ -1333,7 +1350,6 @@ fn a_thin_variance_keeps_the_stochastic_volatility_cgmy_on_the_host() {
   };
   assert_eq!(build().on::<Device>().sample_par(8), build().sample_par(8));
 }
-
 
 /// The two-dimensional Wishart process by its exact step on both machines:
 /// the terminal mean of every entry has a closed form both have to hit, the
@@ -1380,7 +1396,11 @@ fn wishart_agrees_with_the_cpu_law_and_its_closed_form_mean() {
   };
   let closed = build().mean(1.0);
   for (r, c) in [(0, 0), (0, 1), (1, 1)] {
-    let (h, d, m) = (entry_mean(&host, r, c), entry_mean(&device, r, c), closed[(r, c)] as f64);
+    let (h, d, m) = (
+      entry_mean(&host, r, c),
+      entry_mean(&device, r, c),
+      closed[(r, c)] as f64,
+    );
     let se = entry_spread(&host, r, c) / (PATHS as f64).sqrt();
     assert!(
       (d - m).abs() < 4.0 * se,

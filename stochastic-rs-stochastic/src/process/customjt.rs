@@ -199,7 +199,6 @@ where
   fn device_intensity(&self) -> Option<T> {
     crate::process::cpoisson::device_arrival_rate(&self.distribution)
   }
-
 }
 
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>

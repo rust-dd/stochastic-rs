@@ -205,12 +205,17 @@ pub(crate) fn transform_holds(sample: &[f64], f: impl Fn(f64) -> f64, theory: f6
 
 /// Both parts of the empirical characteristic function at `u`, against the
 /// value the law gives it.
-pub(crate) fn characteristic_function_holds(
-  sample: &[f64],
-  u: f64,
-  theory: Complex64,
-  what: &str,
-) {
-  transform_holds(sample, |x| (u * x).cos(), theory.re, &format!("{what}: Re φ({u})"));
-  transform_holds(sample, |x| (u * x).sin(), theory.im, &format!("{what}: Im φ({u})"));
+pub(crate) fn characteristic_function_holds(sample: &[f64], u: f64, theory: Complex64, what: &str) {
+  transform_holds(
+    sample,
+    |x| (u * x).cos(),
+    theory.re,
+    &format!("{what}: Re φ({u})"),
+  );
+  transform_holds(
+    sample,
+    |x| (u * x).sin(),
+    theory.im,
+    &format!("{what}: Im φ({u})"),
+  );
 }

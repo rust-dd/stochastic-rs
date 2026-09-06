@@ -85,7 +85,6 @@ impl<T: FloatExt, S: SeedExt, B> MultivariateHawkes<T, S, B> {
   pub fn dim(&self) -> usize {
     self.mu.len()
   }
-
 }
 
 backend_switch!([T: FloatExt, S: SeedExt] MultivariateHawkes<T, S> { mu, alpha, beta, t_max, n, seed } via euler);
@@ -105,7 +104,9 @@ fn rows_to_components<T: FloatExt>(rows: [Array1<T>; 2], d: usize) -> Vec<Array1
 /// The Euler engine's view of the process: the events as two rows, time and
 /// mark, one event per grid step.
 #[doc(hidden)]
-pub struct MultivariateHawkesLaunch<'a, T: FloatExt, S: SeedExt, B>(&'a MultivariateHawkes<T, S, B>);
+pub struct MultivariateHawkesLaunch<'a, T: FloatExt, S: SeedExt, B>(
+  &'a MultivariateHawkes<T, S, B>,
+);
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for MultivariateHawkesLaunch<'_, T, S, B>
@@ -193,11 +194,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
   /// One step is one event, after the origin.
   fn grid_points(&self) -> usize {
-    self
-      .0
-      .n
-      .expect("the Euler engine describes MultivariateHawkes's count mode; horizon mode has no grid")
-      + 1
+    self.0.n.expect(
+      "the Euler engine describes MultivariateHawkes's count mode; horizon mode has no grid",
+    ) + 1
   }
 
   /// One step is one event, so the grid has no horizon of its own; the waits
@@ -217,7 +216,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for MultivariateHawkes<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for MultivariateHawkes<T, S, B>
+{
   type Output = Vec<Array1<T>>;
   type Sampler<'s>
     = MultivariateHawkesSampler<'s, T, S>
@@ -244,7 +245,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   /// the process on the host, chunked exactly as [`ProcessExt`] chunks.
   fn sample(&self) -> Vec<Array1<T>> {
     if self.device_ready() {
-      rows_to_components(self.backend.system_sample(&MultivariateHawkesLaunch(self)), self.dim())
+      rows_to_components(
+        self.backend.system_sample(&MultivariateHawkesLaunch(self)),
+        self.dim(),
+      )
     } else {
       let out = self.sampler().sample();
       self.advance_chunk_seed();
@@ -282,7 +286,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   fn try_sample(&self) -> Result<Vec<Array1<T>>, DeviceError> {
     if self.device_ready() {
       Ok(rows_to_components(
-        self.backend.try_system_sample(&MultivariateHawkesLaunch(self))?,
+        self
+          .backend
+          .try_system_sample(&MultivariateHawkesLaunch(self))?,
         self.dim(),
       ))
     } else {

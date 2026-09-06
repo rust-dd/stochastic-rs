@@ -87,7 +87,10 @@ fn normal_inverse_gaussian_matches_the_barndorff_nielsen_transform() {
   .sample_par(PATHS);
   let sample = increments(&paths);
   for u in FREQUENCIES {
-    let inner = Complex64::new(1.0 + sigma * sigma * u * u * kappa, -2.0 * u * theta * kappa);
+    let inner = Complex64::new(
+      1.0 + sigma * sigma * u * u * kappa,
+      -2.0 * u * theta * kappa,
+    );
     let phi = ((Complex64::new(1.0, 0.0) - inner.sqrt()) / kappa).exp();
     characteristic_function_holds(&sample, u, phi, "normal inverse Gaussian");
   }
@@ -304,7 +307,8 @@ fn every_levy_path_stays_in_the_reals() {
     assert_eq!(path[0], 2.0, "{name} did not start at x0");
     assert!(path.iter().all(|v| v.is_finite()), "{name} left the reals");
     assert!(
-      path.windows(2).into_iter().all(|w| w[1] >= w[0]) || name.starts_with("Vg")
+      path.windows(2).into_iter().all(|w| w[1] >= w[0])
+        || name.starts_with("Vg")
         || name.starts_with("Nig")
         || name.starts_with("Bilateral"),
       "{name} is a subordinator and must not decrease"

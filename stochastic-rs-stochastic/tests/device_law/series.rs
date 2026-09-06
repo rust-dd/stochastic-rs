@@ -93,7 +93,18 @@ fn cgmy_agrees_with_the_cpu_law() {
 
 #[test]
 fn classical_tempered_stable_agrees_with_the_cpu_law() {
-  let build = || Cts::<f32, _>::new(2.0, 6.0, 0.5, N, J, Some(0.5), Some(1.0), Deterministic::new(137));
+  let build = || {
+    Cts::<f32, _>::new(
+      2.0,
+      6.0,
+      0.5,
+      N,
+      J,
+      Some(0.5),
+      Some(1.0),
+      Deterministic::new(137),
+    )
+  };
   const PATHS: usize = 3 * M;
   let device = build().on::<Device>().sample_par(PATHS);
   let host = build().sample_par(PATHS);
@@ -125,7 +136,18 @@ fn kobol_agrees_with_the_cpu_law() {
 
 #[test]
 fn rapidly_decreasing_tempered_stable_agrees_with_the_cpu_law() {
-  let build = || Rdts::<f32, _>::new(2.0, 6.0, 0.5, N, J, Some(0.0), Some(1.0), Deterministic::new(149));
+  let build = || {
+    Rdts::<f32, _>::new(
+      2.0,
+      6.0,
+      0.5,
+      N,
+      J,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(149),
+    )
+  };
   const PATHS: usize = 3 * M;
   let device = build().on::<Device>().sample_par(PATHS);
   let host = build().sample_par(PATHS);
@@ -136,6 +158,18 @@ fn rapidly_decreasing_tempered_stable_agrees_with_the_cpu_law() {
 /// then the host build to the bit.
 #[test]
 fn a_longer_grid_keeps_the_series_process_on_the_host() {
-  let build = || Cgmy::<f32, _>::new(1.0, 2.0, 6.0, 0.5, 600, J, Some(0.0), Some(1.0), Deterministic::new(151));
+  let build = || {
+    Cgmy::<f32, _>::new(
+      1.0,
+      2.0,
+      6.0,
+      0.5,
+      600,
+      J,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(151),
+    )
+  };
   assert_eq!(build().on::<Device>().sample_par(8), build().sample_par(8));
 }

@@ -565,7 +565,12 @@ fn bivariate_hawkes_agrees_with_the_cpu_law() {
   };
   let (h, d) = (last(&host), last(&device));
   agrees(mean(&h), mean(&d), 0.03, "bivariate Hawkes last event time");
-  agrees(std(&h), std(&d), 0.06, "bivariate Hawkes last event time spread");
+  agrees(
+    std(&h),
+    std(&d),
+    0.06,
+    "bivariate Hawkes last event time spread",
+  );
   let share = |paths: &[Vec<Array1<f32>>]| {
     paths
       .iter()
@@ -616,6 +621,9 @@ fn per_pair_decays_a_third_component_or_a_horizon_keep_the_multivariate_hawkes_o
       Deterministic::new(179),
     )
   };
-  assert_eq!(horizon().on::<Device>().sample_par(4), horizon().sample_par(4));
+  assert_eq!(
+    horizon().on::<Device>().sample_par(4),
+    horizon().sample_par(4)
+  );
   assert_eq!(horizon().on::<Device>().sample(), horizon().sample());
 }

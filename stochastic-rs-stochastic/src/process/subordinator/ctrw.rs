@@ -95,7 +95,6 @@ impl<T: FloatExt, S: SeedExt, B> Ctrw<T, S, B> {
   fn dt(&self) -> T {
     self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
   }
-
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>

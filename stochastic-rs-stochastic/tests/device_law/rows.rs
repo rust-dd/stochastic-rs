@@ -470,7 +470,11 @@ fn lmm_correlated_forwards_agree_with_the_cpu_law() {
       Some(1.5),
       Deterministic::new(197),
     )
-    .with_correlation(array![[1.0_f32, 0.7, 0.4], [0.7, 1.0, 0.7], [0.4, 0.7, 1.0]])
+    .with_correlation(array![
+      [1.0_f32, 0.7, 0.4],
+      [0.7, 1.0, 0.7],
+      [0.4, 0.7, 1.0]
+    ])
   };
   const PATHS: usize = 3 * M;
   let device = build().on::<Device>().sample_par(PATHS);
@@ -518,7 +522,11 @@ fn lmm_drift_coupling_agrees_with_the_cpu_law() {
         Deterministic::new(211),
       );
       if correlated {
-        lmm.with_correlation(array![[1.0_f32, 0.7, 0.4], [0.7, 1.0, 0.7], [0.4, 0.7, 1.0]])
+        lmm.with_correlation(array![
+          [1.0_f32, 0.7, 0.4],
+          [0.7, 1.0, 0.7],
+          [0.4, 0.7, 1.0]
+        ])
       } else {
         lmm
       }

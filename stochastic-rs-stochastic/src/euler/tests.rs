@@ -173,10 +173,7 @@ fn device_seed_follows_the_seed_source() {
 /// deterministic in its seed; the device kernels share one integer hash for
 /// their uniforms, so two device back-ends agree seed for seed up to the
 /// `f32` libm rounding of Box–Muller.
-#[cfg(any(
-  feature = "metal",
-  feature = "cuda"
-))]
+#[cfg(any(feature = "metal", feature = "cuda"))]
 mod devices {
   use ndarray::Array2;
 

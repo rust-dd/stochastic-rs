@@ -69,9 +69,24 @@ fn cheyette_with_an_expression_volatility_agrees_with_the_cpu_law() {
     terminal_mean(&hx),
     terminal_mean(&dx)
   );
-  agrees(terminal_std(&hx), terminal_std(&dx), 0.06, "Cheyette x terminal spread");
-  agrees(terminal_mean(&hy), terminal_mean(&dy), 0.03, "Cheyette y terminal mean");
-  agrees(terminal_std(&hy), terminal_std(&dy), 0.06, "Cheyette y terminal spread");
+  agrees(
+    terminal_std(&hx),
+    terminal_std(&dx),
+    0.06,
+    "Cheyette x terminal spread",
+  );
+  agrees(
+    terminal_mean(&hy),
+    terminal_mean(&dy),
+    0.03,
+    "Cheyette y terminal mean",
+  );
+  agrees(
+    terminal_std(&hy),
+    terminal_std(&dy),
+    0.06,
+    "Cheyette y terminal spread",
+  );
 }
 
 /// With the diffusion at zero the Volterra equation is deterministic, so the
@@ -150,7 +165,10 @@ fn closure_coefficients_keep_cheyette_and_the_volterra_sde_on_the_host() {
       Deterministic::new(227),
     )
   };
-  assert_eq!(cheyette().on::<Device>().sample_par(4), cheyette().sample_par(4));
+  assert_eq!(
+    cheyette().on::<Device>().sample_par(4),
+    cheyette().sample_par(4)
+  );
   assert_eq!(cheyette().on::<Device>().sample(), cheyette().sample());
   let volterra = || {
     VolterraSde::<f32, _, _>::new(
@@ -163,6 +181,9 @@ fn closure_coefficients_keep_cheyette_and_the_volterra_sde_on_the_host() {
       Deterministic::new(229),
     )
   };
-  assert_eq!(volterra().on::<Device>().sample_par(4), volterra().sample_par(4));
+  assert_eq!(
+    volterra().on::<Device>().sample_par(4),
+    volterra().sample_par(4)
+  );
   assert_eq!(volterra().on::<Device>().sample(), volterra().sample());
 }

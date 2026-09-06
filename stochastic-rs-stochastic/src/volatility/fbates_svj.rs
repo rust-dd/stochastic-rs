@@ -231,7 +231,6 @@ impl<T: FloatExt, S: SeedExt, B> FBatesSvj<T, S, B> {
       .map(|m| (T::from_usize_(m + 1) * dt).powf(self.hurst - half) * dt)
       .collect()
   }
-
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>

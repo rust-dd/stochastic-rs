@@ -455,7 +455,10 @@ fn device_paths<T: FloatExt>(
   {
     let (curve, n_curves) = crate::euler::flatten_curves(curves, n);
     let (program_t, program_n) = crate::euler::encode_programs::<T>(program.as_ref());
-    let program64: Vec<f64> = program_t.iter().map(|v| v.to_f64().unwrap_or(0.0)).collect();
+    let program64: Vec<f64> = program_t
+      .iter()
+      .map(|v| v.to_f64().unwrap_or(0.0))
+      .collect();
     let program32: Vec<f32> = program64.iter().map(|v| *v as f32).collect();
     let (lift_tables, has_lift, lift_n, lift_db, lift_fb, lift_x0) =
       crate::euler::encode_lift(lift.as_ref());
@@ -975,7 +978,10 @@ fn pipelined_paths<T: FloatExt>(
 ) -> Result<Array3<T>> {
   let (curve, n_curves) = crate::euler::flatten_curves(curves, n);
   let (program_t, program_n) = crate::euler::encode_programs::<T>(program.as_ref());
-  let program64: Vec<f64> = program_t.iter().map(|v| v.to_f64().unwrap_or(0.0)).collect();
+  let program64: Vec<f64> = program_t
+    .iter()
+    .map(|v| v.to_f64().unwrap_or(0.0))
+    .collect();
   let program32: Vec<f32> = program64.iter().map(|v| *v as f32).collect();
   debug_assert!(lift.is_none(), "the pipelined batch carries no lift");
   let (family, params) = spec.encode();

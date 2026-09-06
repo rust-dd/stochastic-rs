@@ -360,10 +360,7 @@ impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
 /// eigenvalue roots in the device's precision, the grid, the domain extent,
 /// the linear correction's coefficient `√(2 c₂)`, and a key that tells one
 /// embedding from another in a per-size cache.
-#[cfg(any(
-  feature = "metal",
-  feature = "cuda"
-))]
+#[cfg(any(feature = "metal", feature = "cuda"))]
 pub(crate) struct SheetLaunch<'a, F> {
   pub(crate) lam: &'a [F],
   pub(crate) m: usize,
@@ -373,10 +370,7 @@ pub(crate) struct SheetLaunch<'a, F> {
   pub(crate) key: (u64, u64),
 }
 
-#[cfg(any(
-  feature = "metal",
-  feature = "cuda"
-))]
+#[cfg(any(feature = "metal", feature = "cuda"))]
 impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
   /// The embedding's cells: `2(m − 1) · 2(n − 1)`.
   pub(crate) fn cells(&self) -> usize {
@@ -402,7 +396,9 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
     let (m, n) = (self.m, self.n);
     flat
       .chunks_exact(m * n)
-      .map(|sheet| Array2::from_shape_fn((m, n), |(i, j)| T::from_f64_fast(sheet[i * n + j].into())))
+      .map(|sheet| {
+        Array2::from_shape_fn((m, n), |(i, j)| T::from_f64_fast(sheet[i * n + j].into()))
+      })
       .collect()
   }
 }

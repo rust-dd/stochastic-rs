@@ -175,9 +175,7 @@ mod all_backends {
       let mtl = empirical_acov(&metal_fgn(h as f32, n, m), max_lag);
       let acc = empirical_acov(&accel_fgn(h as f32, n, m), max_lag);
 
-      eprintln!(
-        "H={h}  lag  theory         CPU            Metal          Accelerate"
-      );
+      eprintln!("H={h}  lag  theory         CPU            Metal          Accelerate");
       for k in 0..=max_lag.min(6) {
         eprintln!(
           "       {k:<4} {:<14.8} {:<14.8} {:<14.8} {:<14.8}",
@@ -300,10 +298,7 @@ mod all_backends {
       let hm = est(metal_fgn(h, n - 1, m));
       let ha = est(accel_fgn(h, n - 1, m));
 
-      eprintln!(
-        "{:<8.2} {:<10.4} {:<10.4} {:<10.4}",
-        h, hc, hm, ha
-      );
+      eprintln!("{:<8.2} {:<10.4} {:<10.4} {:<10.4}", h, hc, hm, ha);
     }
   }
 }

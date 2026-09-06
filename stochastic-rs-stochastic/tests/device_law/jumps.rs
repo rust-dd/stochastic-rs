@@ -196,7 +196,11 @@ fn compound_poisson_events_agree_with_the_cpu_law() {
   let device = build().on::<Device>().sample_par(M);
   let host = build().sample_par(M);
   assert_eq!(device.len(), M);
-  assert!(device.iter().all(|p| p.iter().all(|row| row.len() == EVENTS)));
+  assert!(
+    device
+      .iter()
+      .all(|p| p.iter().all(|row| row.len() == EVENTS))
+  );
   nondecreasing(&device, "compound Poisson");
   accumulates(&device, "compound Poisson");
   agrees(
@@ -321,7 +325,10 @@ fn an_unrecognised_jump_law_keeps_the_process_on_the_host() {
   };
   let device = build().on::<Device>().sample_par(8);
   let host = build().sample_par(8);
-  assert_eq!(device, host, "the host fallback diverged from the host build");
+  assert_eq!(
+    device, host,
+    "the host fallback diverged from the host build"
+  );
   assert_eq!(build().on::<Device>().sample(), build().sample());
   let device = build()
     .on::<Device>()
@@ -409,7 +416,12 @@ fn ctrw_with_rademacher_jumps_agrees_with_the_cpu_law() {
     "CTRW Rademacher terminal mean {} against a spread of {spread}",
     terminal_mean(&device)
   );
-  agrees(spread, terminal_std(&device), 0.05, "CTRW Rademacher terminal spread");
+  agrees(
+    spread,
+    terminal_std(&device),
+    0.05,
+    "CTRW Rademacher terminal spread",
+  );
   agrees(
     std_at(&host, N / 4),
     std_at(&device, N / 4),

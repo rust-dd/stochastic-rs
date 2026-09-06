@@ -36,12 +36,7 @@ fn point_spread(sheets: &[Array2<f32>], i: usize, j: usize) -> f64 {
 
 /// The interquartile range of the difference between two grid points.
 fn increment_spread(sheets: &[Array2<f32>], p: (usize, usize), q: (usize, usize)) -> f64 {
-  iqr(
-    sheets
-      .iter()
-      .map(|s| (s[p] - s[q]) as f64)
-      .collect(),
-  )
+  iqr(sheets.iter().map(|s| (s[p] - s[q]) as f64).collect())
 }
 
 /// The device pipeline carries the host field's law: every sheet has the

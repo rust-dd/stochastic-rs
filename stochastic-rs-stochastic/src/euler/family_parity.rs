@@ -52,7 +52,9 @@ impl ProbePrograms {
     Self {
       first: Program::compile(&(Expr::x() * -0.5 + Expr::t() * 0.1 - Expr::lit(0.02))),
       second: Some(Program::compile(
-        &((Expr::lit(0.3) + Expr::x().abs() * 0.2).min(Expr::lit(0.6)).max(0.05)
+        &((Expr::lit(0.3) + Expr::x().abs() * 0.2)
+          .min(Expr::lit(0.6))
+          .max(0.05)
           * (-Expr::x() * Expr::x()).exp()
           + Expr::x().powf(2.0).sqrt().tanh() / 4.0
           + (Expr::lit(1.0) + Expr::t()).ln() * 0.1),
@@ -306,9 +308,8 @@ impl PathSampler<f32> for ProbeSampler {
         if family.series_live() {
           terms.push((gj, ej, uj, uv, cell));
         } else {
-          let size =
-            super::families::host_series(family, &state, &params, self.dt, gj, ej, uj, uv)
-              .expect("a family with a series clause sizes its terms");
+          let size = super::families::host_series(family, &state, &params, self.dt, gj, ej, uj, uv)
+            .expect("a family with a series clause sizes its terms");
           series[cell] += size;
         }
       }
@@ -1275,9 +1276,8 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         if family.series_live() {
           terms.push((gj, ej, uj, uv, cell));
         } else {
-          let size =
-            super::families::host_series(family, &state, &params, self.dt, gj, ej, uj, uv)
-              .expect("a family with a series clause sizes its terms");
+          let size = super::families::host_series(family, &state, &params, self.dt, gj, ej, uj, uv)
+            .expect("a family with a series clause sizes its terms");
           series[cell] += size;
         }
       }

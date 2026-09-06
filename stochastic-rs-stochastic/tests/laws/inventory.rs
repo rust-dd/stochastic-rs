@@ -71,7 +71,9 @@ fn declared_processes() -> BTreeSet<String> {
           end -= 1;
         }
         let tail = &text[offset..end];
-        let Some(at) = tail.find(" for ") else { continue };
+        let Some(at) = tail.find(" for ") else {
+          continue;
+        };
         if tail[..at].contains(['{', ';']) || tail[..at].contains("\n\n") {
           continue;
         }

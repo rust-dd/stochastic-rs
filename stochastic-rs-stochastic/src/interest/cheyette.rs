@@ -130,7 +130,6 @@ impl<T: FloatExt, S: SeedExt, B> Cheyette<T, S, B> {
 }
 
 impl<T: FloatExt, S: SeedExt, B> Cheyette<T, S, B> {
-
   /// The time the step starting at each grid point sees, `(i − 1) Δt` at
   /// point `i`: the launch's first curve, which is the `t` the local
   /// volatility is evaluated at, exactly as the host evaluates it at the left
@@ -200,7 +199,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Cheyette<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for Cheyette<T, S, B>
+{
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = CheyetteSampler<'s, T>

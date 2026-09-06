@@ -264,7 +264,10 @@ impl Program {
       "an expression may need a stack of at most {}, this one needs {deepest}",
       Self::MAX_DEPTH
     );
-    Self { ops, depth: deepest }
+    Self {
+      ops,
+      depth: deepest,
+    }
   }
 
   /// The value at `(t, x)`, by running the code on a stack exactly as the

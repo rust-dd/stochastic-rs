@@ -88,7 +88,6 @@ impl<T: FloatExt, S: SeedExt, B> Hawkes<T, S, B> {
       "stationarity requires α < β (branching ratio α/β < 1)"
     );
   }
-
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>

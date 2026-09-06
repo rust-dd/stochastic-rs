@@ -198,7 +198,14 @@ fn ensure_ctx(ordinal: usize) -> Result<()> {
 
 /// The radix-2 stages of a batch of length-`n` transforms, on the buffer
 /// pair the batch lies in.
-fn encode_fft(cmd: &CommandBufferRef, ctx: &SheetCtx, real: &Buffer, imag: &Buffer, n: usize, total: usize) {
+fn encode_fft(
+  cmd: &CommandBufferRef,
+  ctx: &SheetCtx,
+  real: &Buffer,
+  imag: &Buffer,
+  n: usize,
+  total: usize,
+) {
   let tg = MTLSize::new(256, 1, 1);
   let grid = MTLSize::new((total / 2) as u64, 1, 1);
   let n_u32 = n as u32;
@@ -407,7 +414,8 @@ mod chunk_tests {
   /// the same `Deterministic` seed agree, a different seed differs.
   #[test]
   fn a_sheet_honours_its_own_seed_on_the_device() {
-    let fbs = |seed: u64| Fbs::<f32, _>::new(0.7, 9, 9, 1.0, Deterministic::new(seed)).on::<Metal>();
+    let fbs =
+      |seed: u64| Fbs::<f32, _>::new(0.7, 9, 9, 1.0, Deterministic::new(seed)).on::<Metal>();
     assert_eq!(fbs(3).sample_par(3), fbs(3).sample_par(3));
     assert_ne!(fbs(3).sample(), fbs(4).sample());
     assert_eq!(fbs(3).sample(), fbs(3).sample());

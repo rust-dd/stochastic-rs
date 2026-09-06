@@ -173,9 +173,7 @@ where
 
   /// The compensated drift over one step, `(alpha - sigma^2 / 2 - lambda theta) dt`.
   fn drift_dt(&self) -> T {
-    (self.alpha
-      - self.sigma.powf(T::from_usize_(2)) / T::from_usize_(2)
-      - self.lambda * self.theta)
+    (self.alpha - self.sigma.powf(T::from_usize_(2)) / T::from_usize_(2) - self.lambda * self.theta)
       * self.dt()
   }
 
@@ -184,7 +182,6 @@ where
   fn device_jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
     crate::process::cpoisson::device_jump_sizes(&self.cpoisson.distribution)
   }
-
 }
 
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>

@@ -9,27 +9,27 @@ use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::scalar::ScalarExp;
 use stochastic_rs_distributions::scalar::ScalarNormal;
-use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
-use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
-use stochastic_rs_stochastic::rough::kernel::RlKernel;
-use stochastic_rs_stochastic::volterra::gaussian_polynomial::GaussianPolynomialVolatility;
-use stochastic_rs_stochastic::volterra::square_root::VolterraSquareRoot;
 use stochastic_rs_stochastic::diffusion::cfou::Cfou;
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
 use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
 use stochastic_rs_stochastic::diffusion::fjacobi::FJacobi;
 use stochastic_rs_stochastic::diffusion::fou::Fou;
 use stochastic_rs_stochastic::interest::fractional_vasicek::FVasicek;
+use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
+use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
 use stochastic_rs_stochastic::process::cfbms::Cfbms;
 use stochastic_rs_stochastic::process::fbm::Fbm;
 use stochastic_rs_stochastic::process::volterra::Volterra;
 use stochastic_rs_stochastic::process::volterra::VolterraKernelSpec;
+use stochastic_rs_stochastic::rough::kernel::RlKernel;
 use stochastic_rs_stochastic::rough::rl_bs::RlBlackScholes;
 use stochastic_rs_stochastic::rough::rl_fbm::RlFBm;
 use stochastic_rs_stochastic::rough::rl_fou::RlFOU;
 use stochastic_rs_stochastic::rough::rl_heston::RlHeston;
 use stochastic_rs_stochastic::traits::ProcessExt;
+use stochastic_rs_stochastic::volterra::gaussian_polynomial::GaussianPolynomialVolatility;
+use stochastic_rs_stochastic::volterra::square_root::VolterraSquareRoot;
 
 use super::common::Device;
 use super::common::agrees;
@@ -668,7 +668,10 @@ fn volterra_lift_and_reference_agree_with_the_cpu_law() {
   };
   let device = reference().on::<Device>().sample_par(PATHS);
   let host = reference().sample_par(PATHS);
-  assert_eq!(device[0][0], 0.0, "every reference path starts at the origin");
+  assert_eq!(
+    device[0][0], 0.0,
+    "every reference path starts at the origin"
+  );
   all_finite(&device, "Volterra reference");
   agrees(
     terminal_std(&host),

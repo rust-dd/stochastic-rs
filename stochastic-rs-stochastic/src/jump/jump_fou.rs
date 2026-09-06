@@ -348,7 +348,6 @@ where
   fn device_jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
     crate::process::cpoisson::device_jump_sizes(&self.cpoisson.distribution)
   }
-
 }
 
 impl<T, D, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>

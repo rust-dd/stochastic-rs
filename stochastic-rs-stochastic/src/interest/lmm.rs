@@ -272,7 +272,6 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
       })
       .collect()
   }
-
 }
 
 /// The Euler engine's view of the curve: the rows padded into the four slots
@@ -465,9 +464,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array2<T>) -> R + Sync) -> Vec<R> {
     if self.device_ready() {
       let rows = self.l0.len();
-      self
-        .backend
-        .system_paths_map(&LmmLaunch(self), m, |slots| f(&rows_to_matrix(slots.clone(), rows)))
+      self.backend.system_paths_map(&LmmLaunch(self), m, |slots| {
+        f(&rows_to_matrix(slots.clone(), rows))
+      })
     } else {
       crate::traits::process::sample_map_chunked(self, m, f)
     }

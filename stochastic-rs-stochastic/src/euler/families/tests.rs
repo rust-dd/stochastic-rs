@@ -1,8 +1,8 @@
 //! One declaration has to produce a host step and a kernel body that agree,
 //! so these tests pin both halves against the closed forms they came from.
 
-use super::*;
 use super::vocabulary::C_PRELUDE;
+use super::*;
 
 /// The generated step and report take the whole state and noise vectors, so
 /// a one-component family is exercised through these two shims rather than by
@@ -400,7 +400,16 @@ fn step_program(
 fn cheyette_step_is_euler_with_the_program_volatility() {
   let (kappa, dt, dz) = (0.5_f64, 0.01_f64, 0.1_f64);
   let (x, y, s) = (0.02_f64, 0.001_f64, 0.03_f64);
-  let next = step_program(Family::CheyetteLocalVol, [x, y, 0.0, 0.0], &[kappa], dt, 0.0, s, 0.0, [dz, 0.0, 0.0, 0.0]);
+  let next = step_program(
+    Family::CheyetteLocalVol,
+    [x, y, 0.0, 0.0],
+    &[kappa],
+    dt,
+    0.0,
+    s,
+    0.0,
+    [dz, 0.0, 0.0, 0.0],
+  );
   assert!((next[0] - (x + (y - kappa * x) * dt + s * dz)).abs() < 1e-15);
   assert!((next[1] - (y + (s * s - 2.0 * kappa * y) * dt)).abs() < 1e-15);
 }
@@ -410,9 +419,26 @@ fn cheyette_step_is_euler_with_the_program_volatility() {
 #[test]
 fn volterra_program_step_is_the_lift_of_its_programs() {
   let noise = [0.07, 0.0, 0.0, 0.0];
-  let next = step_program(Family::VolterraProgram, [0.2, 0.0, 0.0, 0.0], &[], 0.01, 0.31, 0.5, 0.25, noise);
+  let next = step_program(
+    Family::VolterraProgram,
+    [0.2, 0.0, 0.0, 0.0],
+    &[],
+    0.01,
+    0.31,
+    0.5,
+    0.25,
+    noise,
+  );
   assert_eq!(next[0], 0.31);
-  let lift = host_lift(Family::VolterraProgram, &[0.2, 0.0, 0.0, 0.0], &[], 0.01, 0.5, 0.25, &noise);
+  let lift = host_lift(
+    Family::VolterraProgram,
+    &[0.2, 0.0, 0.0, 0.0],
+    &[],
+    0.01,
+    0.5,
+    0.25,
+    &noise,
+  );
   assert_eq!(lift, [0.5, 0.25, 0.07]);
 }
 
@@ -439,11 +465,35 @@ fn series_size_is_the_smaller_of_bound_and_draw_on_the_drawn_side() {
   let cap = (gj * rate).powf(-1.0 / alpha);
   for (uv, side, sign) in [(0.2, lp, 1.0), (0.9, lm, -1.0)] {
     let draw = e_scale * ej.powf(e_pow) * uj.powf(1.0 / alpha) / side;
-    let size = host_series(Family::TemperedStableSeries, &[0.0; 4], &params, 0.01, gj, ej, uj, uv)
-      .expect("a series family");
-    assert!((size - sign * cap.min(draw)).abs() < 1e-12, "uv = {uv}: {size}");
+    let size = host_series(
+      Family::TemperedStableSeries,
+      &[0.0; 4],
+      &params,
+      0.01,
+      gj,
+      ej,
+      uj,
+      uv,
+    )
+    .expect("a series family");
+    assert!(
+      (size - sign * cap.min(draw)).abs() < 1e-12,
+      "uv = {uv}: {size}"
+    );
   }
-  assert!(host_series(Family::GeometricBrownian, &[0.0; 4], &[0.05, 0.2], 0.01, gj, ej, uj, 0.2).is_none());
+  assert!(
+    host_series(
+      Family::GeometricBrownian,
+      &[0.0; 4],
+      &[0.05, 0.2],
+      0.01,
+      gj,
+      ej,
+      uj,
+      0.2
+    )
+    .is_none()
+  );
 }
 
 /// The live series of the stochastic-volatility CGMY reads the variance: the
@@ -459,8 +509,17 @@ fn live_series_size_reads_the_variance_slot() {
   for v in [0.04_f64, 0.16_f64] {
     let cap = (gj * rate0 / v).powf(-1.0 / alpha);
     let draw = ej * uj.powf(1.0 / alpha) / lp;
-    let size = host_series(Family::StochasticVolatilityCgmy, &[0.0, v, 0.0, 0.0], &params, 0.01, gj, ej, uj, uv)
-      .expect("a series family");
+    let size = host_series(
+      Family::StochasticVolatilityCgmy,
+      &[0.0, v, 0.0, 0.0],
+      &params,
+      0.01,
+      gj,
+      ej,
+      uj,
+      uv,
+    )
+    .expect("a series family");
     assert!((size - cap.min(draw)).abs() < 1e-12, "v = {v}: {size}");
   }
 }
@@ -469,7 +528,14 @@ fn live_series_size_reads_the_variance_slot() {
 #[test]
 fn table_increment_is_the_positive_stable_draw_at_the_spacing() {
   let (alpha, c, tv) = (0.7_f64, 1.5_f64, 0.05_f64);
-  let params = [alpha, c, 1.0 / alpha, 1.0 - alpha, (1.0 - alpha) / alpha, std::f64::consts::PI];
+  let params = [
+    alpha,
+    c,
+    1.0 / alpha,
+    1.0 - alpha,
+    (1.0 - alpha) / alpha,
+    std::f64::consts::PI,
+  ];
   let (uj, uv) = (0.37_f64, 0.61_f64);
   let u = uj * std::f64::consts::PI;
   let w = -uv.ln();
@@ -497,18 +563,57 @@ fn hawkes_step_is_the_dassios_zhao_recursion() {
   let u = 0.95_f64;
   let d = 1.0 + beta * u.ln() / s;
   let s1 = -d.ln() / beta;
-  assert!(s1 < s2, "the case is meant to have the excitation fire first");
-  let next = step_full(Family::HawkesEvents, [t, s, 0.0, 0.0], &params, 1.0, 0.0, u, u2, 0.0, 0.0, [0.0; 4]);
+  assert!(
+    s1 < s2,
+    "the case is meant to have the excitation fire first"
+  );
+  let next = step_full(
+    Family::HawkesEvents,
+    [t, s, 0.0, 0.0],
+    &params,
+    1.0,
+    0.0,
+    u,
+    u2,
+    0.0,
+    0.0,
+    [0.0; 4],
+  );
   assert!((next[0] - (t + s1)).abs() < 1e-12);
   assert!((next[1] - (s * (-beta * s1).exp() + alpha)).abs() < 1e-12);
   // A middling uniform: the excitation would fire, but the baseline is sooner.
   let u = 0.6_f64;
   let d = 1.0 + beta * u.ln() / s;
-  assert!(d > 0.0 && -d.ln() / beta > s2, "the case is meant to have the baseline fire first");
-  let next = step_full(Family::HawkesEvents, [t, s, 0.0, 0.0], &params, 1.0, 0.0, u, u2, 0.0, 0.0, [0.0; 4]);
+  assert!(
+    d > 0.0 && -d.ln() / beta > s2,
+    "the case is meant to have the baseline fire first"
+  );
+  let next = step_full(
+    Family::HawkesEvents,
+    [t, s, 0.0, 0.0],
+    &params,
+    1.0,
+    0.0,
+    u,
+    u2,
+    0.0,
+    0.0,
+    [0.0; 4],
+  );
   assert!((next[0] - (t + s2)).abs() < 1e-12);
   // Too small a uniform: the excitation never fires and the baseline does.
-  let next = step_full(Family::HawkesEvents, [t, s, 0.0, 0.0], &params, 1.0, 0.0, 0.01, u2, 0.0, 0.0, [0.0; 4]);
+  let next = step_full(
+    Family::HawkesEvents,
+    [t, s, 0.0, 0.0],
+    &params,
+    1.0,
+    0.0,
+    0.01,
+    u2,
+    0.0,
+    0.0,
+    [0.0; 4],
+  );
   assert!((next[0] - (t + s2)).abs() < 1e-12);
   assert!((next[1] - (s * (-beta * s2).exp() + alpha)).abs() < 1e-12);
 }
@@ -532,9 +637,23 @@ fn bivariate_hawkes_step_is_the_superposition_of_exact_clocks() {
   // A uniform near one: the first target's own excitation fires first.
   let u = 0.95_f64;
   let w1 = -(1.0 + 1.5 * u.ln() / s1).ln() / 1.5;
-  assert!(w1 < w0, "the case is meant to have the first target's excess fire first");
+  assert!(
+    w1 < w0,
+    "the case is meant to have the first target's excess fire first"
+  );
   let noise = [0.5, 0.5, 1.0, 1.0];
-  let next = step_full(Family::HawkesEvents2, [t, s1, s2, 1.0], &params, 1.0, 0.0, u, u2, 0.0, 0.0, noise);
+  let next = step_full(
+    Family::HawkesEvents2,
+    [t, s1, s2, 1.0],
+    &params,
+    1.0,
+    0.0,
+    u,
+    u2,
+    0.0,
+    0.0,
+    noise,
+  );
   assert!((next[0] - (t + w1)).abs() < 1e-9);
   assert_eq!(next[3], 0.0);
   assert!((next[1] - (s1 * (-1.5 * w1).exp() + 0.3)).abs() < 1e-9);
@@ -544,10 +663,24 @@ fn bivariate_hawkes_step_is_the_superposition_of_exact_clocks() {
   // event on the second component.
   let u = 0.6_f64;
   let w1 = -(1.0 + 1.5 * u.ln() / s1).ln() / 1.5;
-  assert!(w1 > w0, "the case is meant to have the baselines fire first");
+  assert!(
+    w1 > w0,
+    "the case is meant to have the baselines fire first"
+  );
   let u4 = 1.0 - (-1.0_f64).exp();
   assert!(u4 * 1.7 > 1.0);
-  let next = step_full(Family::HawkesEvents2, [t, s1, s2, 0.0], &params, 1.0, 0.0, u, u2, 0.0, 0.0, noise);
+  let next = step_full(
+    Family::HawkesEvents2,
+    [t, s1, s2, 0.0],
+    &params,
+    1.0,
+    0.0,
+    u,
+    u2,
+    0.0,
+    0.0,
+    noise,
+  );
   assert!((next[0] - (t + w0)).abs() < 1e-9);
   assert_eq!(next[3], 1.0);
   assert!((next[1] - (s1 * (-1.5 * w0).exp() + 0.2)).abs() < 1e-9);
@@ -569,15 +702,41 @@ fn libor_market_step_freezes_reset_rates_and_steps_the_live_ones() {
   let dz = [0.1_f64, -0.2, 0.3, 0.0];
   let dt = 0.01;
   // One reset date passed: rate 0 is frozen, the drift sums start at it.
-  let next = step_full(Family::LiborMarket4, f, &params, dt, 1.0, 0.0, 0.0, 0.0, 0.0, dz);
+  let next = step_full(
+    Family::LiborMarket4,
+    f,
+    &params,
+    dt,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    dz,
+  );
   assert_eq!(next[0], f[0]);
   for n in 1..3 {
     let drift = sigma[n] * (delta[n] * sigma[n] * f[n] / (1.0 + delta[n] * f[n]));
     let expected = f[n] * ((drift - sigma[n] * sigma[n] / 2.0) * dt + sigma[n] * dz[n]).exp();
-    assert!((next[n] - expected).abs() < 1e-12, "rate {n}: {} vs {expected}", next[n]);
+    assert!(
+      (next[n] - expected).abs() < 1e-12,
+      "rate {n}: {} vs {expected}",
+      next[n]
+    );
   }
   assert_eq!(next[3], 0.0);
   // No reset date passed: every rate is live, including the first.
-  let next = step_full(Family::LiborMarket4, f, &params, dt, 0.0, 0.0, 0.0, 0.0, 0.0, dz);
+  let next = step_full(
+    Family::LiborMarket4,
+    f,
+    &params,
+    dt,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    dz,
+  );
   assert!(next[0] > f[0]);
 }

@@ -250,7 +250,6 @@ where
   fn device_jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
     device_jump_sizes(&self.distribution).and_then(crate::euler::JumpSizes::single)
   }
-
 }
 
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 3>
@@ -307,7 +306,8 @@ where
 
 backend_switch!([T, D, S: SeedExt] CompoundPoisson<T, D, S> { distribution, poisson, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
 
-impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for CompoundPoisson<T, D, S, B>
+impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for CompoundPoisson<T, D, S, B>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync + Any,

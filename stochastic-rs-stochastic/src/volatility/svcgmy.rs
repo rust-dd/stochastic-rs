@@ -143,7 +143,6 @@ impl<T: FloatExt, S: SeedExt, B> Svcgmy<T, S, B> {
       / (T::from_f64_fast(gamma(2.0 - self.alpha.to_f64().unwrap()))
         * (self.lambda_plus.powf(self.alpha - two) + self.lambda_minus.powf(self.alpha - two)))
   }
-
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
@@ -175,7 +174,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   /// at `x0`; the variance at `v0`.
   fn initial_state(&self) -> [T; 4] {
     let v0 = self.v0.unwrap_or(T::zero());
-    [self.x0.unwrap_or(T::zero()) - self.rho * v0, v0, T::zero(), T::zero()]
+    [
+      self.x0.unwrap_or(T::zero()) - self.rho * v0,
+      v0,
+      T::zero(),
+      T::zero(),
+    ]
   }
 
   fn grid_points(&self) -> usize {
@@ -196,7 +200,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   fn gamma_draws(&self) -> Option<crate::euler::GammaDraws<T>> {
     let df = self.degrees_of_freedom();
     (df > T::one()).then(|| crate::euler::GammaDraws {
-      first: ((df - T::one()) / T::from_usize_(2), T::from_usize_(2), T::zero()),
+      first: (
+        (df - T::one()) / T::from_usize_(2),
+        T::from_usize_(2),
+        T::zero(),
+      ),
       second: None,
     })
   }

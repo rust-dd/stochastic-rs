@@ -23,14 +23,14 @@ use stochastic_rs_stochastic::traits::ProcessExt;
 use super::common::N;
 use super::common::PATHS;
 use super::common::across_paths;
-use super::common::over_paths;
-use super::common::spread_over_paths;
-use super::common::terminals;
 use super::common::autocorr;
 use super::common::autocovariance;
 use super::common::holds;
 use super::common::holds_within;
 use super::common::mean;
+use super::common::over_paths;
+use super::common::spread_over_paths;
+use super::common::terminals;
 use super::common::variance;
 
 /// The horizon every stationary case runs to. Long enough that the burn-in
@@ -176,7 +176,11 @@ fn ho_lee_is_a_brownian_motion_with_drift() {
   )
   .sample_par(4_096);
   let terminal = terminals(&paths);
-  holds(over_paths(&terminal), drift * horizon, "Ho-Lee terminal mean");
+  holds(
+    over_paths(&terminal),
+    drift * horizon,
+    "Ho-Lee terminal mean",
+  );
   holds(
     spread_over_paths(&terminal),
     sigma * sigma * horizon,

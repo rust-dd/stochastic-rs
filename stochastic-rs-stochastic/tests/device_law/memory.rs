@@ -189,7 +189,11 @@ fn rough_bergomi_agrees_with_the_cpu_law() {
   // mean and spread pin both the convolution weights and the exponent curve.
   let (h, d) = (
     host.iter().map(|p| (p[1][N - 1] as f64).ln()).sum::<f64>() / PATHS as f64,
-    device.iter().map(|p| (p[1][N - 1] as f64).ln()).sum::<f64>() / PATHS as f64,
+    device
+      .iter()
+      .map(|p| (p[1][N - 1] as f64).ln())
+      .sum::<f64>()
+      / PATHS as f64,
   );
   assert!(
     (h - d).abs() < 0.07,
