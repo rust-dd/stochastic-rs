@@ -86,12 +86,17 @@
 //!
 //! A family with a `table` clause reads `iv`: before the steps the frame
 //! builds `table_n` values per path over `[0, u_max]` from the family's
-//! increment expression of two uniforms and the spacing `tv`, doubling
-//! `u_max` up to ten times until the last value reaches the horizon, and at
+//! increment expression of two uniforms and the spacing `tv`, trying up to
+//! ten extents, each double the last, until the last value reaches the
+//! horizon, and at
 //! each step finds the first value at or past the step's time and
 //! interpolates its abscissa linearly — the inverse subordinator. The table
 //! holds 512 values the point count may not exceed. Without a clause
 //! `table_n` is zero and `iv` stays zero.
+//!
+//! The history, series and table blocks share one per-path array of 512
+//! values: no family declares two of them, which `families::tests` holds
+//! the table to, and a thread pays for one array rather than three.
 //!
 //! A family may read `nj`, the number of jumps the step saw: a Poisson draw
 //! with mean `jump_lambda · dt`, by Knuth's product of uniforms from a hash
@@ -168,7 +173,7 @@ pub(crate) const FRAME: &str = r#"    if (path >= paths) return;
     REAL cv = (REAL)0;
     REAL hist_in[1];
     hist_in[0] = (REAL)0;
-    REAL past[512];
+    REAL block[512];
     REAL sj = (REAL)0;
     REAL gj = (REAL)0;
     REAL ej = (REAL)0;
@@ -176,9 +181,8 @@ pub(crate) const FRAME: &str = r#"    if (path >= paths) return;
     REAL uv = (REAL)0;
     REAL series_size[1];
     series_size[0] = (REAL)0;
-    REAL series[512];
     if (series_n != 0u) {
-        for (unsigned int k = 0u; k < steps; k++) { series[k] = (REAL)0; }
+        for (unsigned int k = 0u; k < steps; k++) { block[k] = (REAL)0; }
         for (unsigned int j = 1u; j <= series_n; j++) {
             unsigned int sg = ((first_path + path) * 2654435761u) ^ (j * 40503u) ^ 3266489917u;
             unsigned int q1 = (sg ^ 2654435769u) ^ (seed * 2654435761u);
@@ -201,7 +205,7 @@ SERIES
             if ((REAL)cell < ratio) { cell += 1u; }
             if (cell < 1u) { cell = 1u; }
             if (cell > steps - 1u) { cell = steps - 1u; }
-            series[cell] += series_size[0];
+            block[cell] += series_size[0];
         }
         gj = (REAL)0; ej = (REAL)0; uj = (REAL)0; uv = (REAL)0;
     }
@@ -209,7 +213,6 @@ SERIES
     REAL tv = (REAL)0;
     REAL table_inc[1];
     table_inc[0] = (REAL)0;
-    REAL table[512];
     unsigned int tp = 1u;
     if (table_n != 0u) {
         REAL horizon = dt * (REAL)(steps - 1u);
@@ -217,7 +220,7 @@ SERIES
         if (umax <= (REAL)0) { umax = (horizon > (REAL)1) ? horizon : (REAL)1; }
         for (unsigned int attempt = 0u; attempt < 10u; attempt++) {
             tv = umax / (REAL)(table_n - 1u);
-            table[0] = (REAL)0;
+            block[0] = (REAL)0;
             for (unsigned int k = 1u; k < table_n; k++) {
                 unsigned int tg = ((first_path + path) * 2654435761u) ^ (attempt * 668265263u) ^ (k * 40503u) ^ 2246822519u;
                 unsigned int p1 = (tg ^ 2654435769u) ^ (seed * 2654435761u);
@@ -227,9 +230,9 @@ SERIES
                 uj = (REAL)p1 * (REAL)2.3283064e-10;
                 uv = (REAL)p2 * (REAL)2.3283064e-10;
 TABLE
-                table[k] = table[k - 1u] + table_inc[0];
+                block[k] = block[k - 1u] + table_inc[0];
             }
-            if (table[table_n - 1u] >= horizon) { break; }
+            if (block[table_n - 1u] >= horizon) { break; }
             if (attempt < 9u) { umax = umax * (REAL)2; }
         }
         uj = (REAL)0; uv = (REAL)0;
@@ -279,16 +282,16 @@ REPORT
         unsigned int hv = (g ^ 3266489917u) ^ (seed * 2654435761u);
         hv ^= hv >> 16; hv *= 2246822519u; hv ^= hv >> 13; hv *= 3266489917u; hv ^= hv >> 16;
         u2 = (REAL)hv * (REAL)2.3283064e-10;
-        sj = (series_n != 0u) ? series[i] : (REAL)0;
+        sj = (series_n != 0u) ? block[i] : (REAL)0;
         if (table_n != 0u) {
             REAL ti = dt * (REAL)i;
-            while (tp < table_n && table[tp] < ti) { tp++; }
+            while (tp < table_n && block[tp] < ti) { tp++; }
             if (tp >= table_n) {
                 iv = tv * (REAL)(table_n - 1u);
-            } else if (table[tp] <= table[tp - 1u]) {
+            } else if (block[tp] <= block[tp - 1u]) {
                 iv = tv * (REAL)tp;
             } else {
-                iv = tv * (REAL)(tp - 1u) + (ti - table[tp - 1u]) / (table[tp] - table[tp - 1u]) * tv;
+                iv = tv * (REAL)(tp - 1u) + (ti - block[tp - 1u]) / (block[tp] - block[tp - 1u]) * tv;
             }
         }
         if (has_jumps != 0u) {
@@ -460,9 +463,9 @@ LIFT
         if (hist_slot != 4294967295u) {
 HISTORY
             unsigned int hi = (step_first != 0u) ? i : (i - 1u);
-            past[hi] = hist_in[0];
+            block[hi] = hist_in[0];
             cv = (REAL)0;
-            for (unsigned int k = 0u; k <= hi; k++) { cv += curve[(INDEX)hist_slot * steps + k] * past[hi - k]; }
+            for (unsigned int k = 0u; k <= hi; k++) { cv += curve[(INDEX)hist_slot * steps + k] * block[hi - k]; }
         }
 STEP
         if (has_lift != 0u) {

@@ -167,9 +167,18 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for MultiGbmLaunchSampler<T, S> {
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 4>
   for MultiGbmLaunch<'_, T, S, B>
 {
+  /// Padded into the four slots. A wider basket never reaches a launch —
+  /// [`ProcessExt::sample`] keeps it on the host — so asking here is a caller
+  /// bypassing that guard.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let p = self.0;
     let k = p.assets();
+    assert!(
+      k <= crate::euler::CORRELATED_STREAMS,
+      "MultiGbm: a launch carries at most {} assets; sample through `ProcessExt`, which keeps a \
+       wider basket on the host",
+      crate::euler::CORRELATED_STREAMS
+    );
     let padded = |v: &Array1<T>| std::array::from_fn(|i| if i < k { v[i] } else { T::zero() });
     crate::euler::EulerSpec::CorrelatedGeometric4 {
       mu: padded(&p.mu),

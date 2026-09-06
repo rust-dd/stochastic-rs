@@ -402,16 +402,17 @@ fn mcgns_agrees_with_the_cpu_law() {
   }
 }
 
-/// Three forwards under the spot measure's drift coupling: the first has
-/// reset at the origin and never moves, the second freezes at its reset a
-/// third of the way in, the third two thirds in. Each live rate's terminal
-/// mean carries the coupled drift and its spread its own volatility, and the
-/// freezes are exact.
+/// Three forwards under the spot measure's drift coupling, with unequal
+/// accruals so a launch reading one rate's period for all would move: the
+/// first has reset at the origin and never moves, the second freezes at its
+/// reset a third of the way in, the third five sixths in. Each live rate's
+/// terminal mean carries the coupled drift and its spread its own volatility,
+/// and the freezes are exact.
 #[test]
 fn lmm_agrees_with_the_cpu_law() {
   let build = || {
     Lmm::<f32, _>::new(
-      array![0.0_f32, 0.5, 1.0, 1.5],
+      array![0.0_f32, 0.5, 1.25, 1.5],
       array![0.03_f32, 0.035, 0.04],
       array![0.2_f32, 0.25, 0.3],
       N,
@@ -462,7 +463,7 @@ fn lmm_agrees_with_the_cpu_law() {
 fn lmm_correlated_forwards_agree_with_the_cpu_law() {
   let build = || {
     Lmm::<f32, _>::new(
-      array![0.0_f32, 0.5, 1.0, 1.5],
+      array![0.0_f32, 0.5, 1.25, 1.5],
       array![0.03_f32, 0.035, 0.04],
       array![0.2_f32, 0.25, 0.3],
       N,
@@ -474,9 +475,18 @@ fn lmm_correlated_forwards_agree_with_the_cpu_law() {
   const PATHS: usize = 3 * M;
   let device = build().on::<Device>().sample_par(PATHS);
   let host = build().sample_par(PATHS);
+  // Over the window both forwards are live — up to the second's reset a
+  // third of the way in — where the correlation is the matrix's own; after
+  // it the third moves alone and the terminal correlation dilutes.
+  let shared = |paths: &[Array2<f32>], row: usize| -> Vec<f64> {
+    paths
+      .iter()
+      .map(|p| (p[(row, N / 3)] as f64 / p[(row, 0)] as f64).ln())
+      .collect()
+  };
   let (h, d) = (
-    corr(&log_returns(&host, 1), &log_returns(&host, 2)),
-    corr(&log_returns(&device, 1), &log_returns(&device, 2)),
+    corr(&shared(&host, 1), &shared(&host, 2)),
+    corr(&shared(&device, 1), &shared(&device, 2)),
   );
   assert!(d > 0.5, "the forwards' log-returns do not correlate: {d}");
   agrees(h, d, 0.05, "LMM forward log-return correlation");
@@ -492,31 +502,79 @@ fn lmm_correlated_forwards_agree_with_the_cpu_law() {
 /// with unit accruals and a volatility of a half, a forward's drift from the
 /// rates below it is of the order of its own `σ²/2`, so the mean log-return of
 /// a live forward — near `−σ² T / 2` without the coupling — moves by a
-/// multiple of its standard error when the coupling is wrong.
+/// multiple of its standard error when the coupling is wrong. Once without a
+/// correlation, where only a rate's own term survives, and once with one,
+/// where the cross terms `ρ_nj` carry the rest.
 #[test]
 fn lmm_drift_coupling_agrees_with_the_cpu_law() {
+  for correlated in [false, true] {
+    let build = || {
+      let lmm = Lmm::<f32, _>::new(
+        array![0.0_f32, 1.0, 2.0, 3.0],
+        array![0.5_f32, 0.5, 0.5],
+        array![0.5_f32, 0.5, 0.5],
+        N,
+        Some(3.0),
+        Deterministic::new(211),
+      );
+      if correlated {
+        lmm.with_correlation(array![[1.0_f32, 0.7, 0.4], [0.7, 1.0, 0.7], [0.4, 0.7, 1.0]])
+      } else {
+        lmm
+      }
+    };
+    const PATHS: usize = 4 * M;
+    let device = build().on::<Device>().sample_par(PATHS);
+    let host = build().sample_par(PATHS);
+    for row in 1..3 {
+      let mean = |paths: &[Array2<f32>]| {
+        let r = log_returns(paths, row);
+        r.iter().sum::<f64>() / r.len() as f64
+      };
+      let (h, d) = (mean(&host), mean(&device));
+      assert!(
+        (h - d).abs() < 0.02,
+        "LMM forward {row} mean log-return (correlated: {correlated}): host {h}, device {d}"
+      );
+    }
+  }
+}
+
+/// A tenor whose first reset lies ahead: every forward is live at first, the
+/// first one included, and freezes only once its date has passed — the
+/// convention a device curve that froze the first forward from the start
+/// would break.
+#[test]
+fn lmm_forward_starting_tenor_agrees_with_the_cpu_law() {
   let build = || {
     Lmm::<f32, _>::new(
-      array![0.0_f32, 1.0, 2.0, 3.0],
-      array![0.5_f32, 0.5, 0.5],
-      array![0.5_f32, 0.5, 0.5],
+      array![0.5_f32, 1.0, 1.5, 2.0],
+      array![0.03_f32, 0.035, 0.04],
+      array![0.2_f32, 0.25, 0.3],
       N,
-      Some(3.0),
-      Deterministic::new(211),
+      Some(1.5),
+      Deterministic::new(229),
     )
   };
-  const PATHS: usize = 4 * M;
+  const PATHS: usize = 3 * M;
   let device = build().on::<Device>().sample_par(PATHS);
   let host = build().sample_par(PATHS);
-  for row in 1..3 {
-    let mean = |paths: &[Array2<f32>]| {
-      let r = log_returns(paths, row);
-      r.iter().sum::<f64>() / r.len() as f64
-    };
-    let (h, d) = (mean(&host), mean(&device));
-    assert!(
-      (h - d).abs() < 0.02,
-      "LMM forward {row} mean log-return: host {h}, device {d}"
+  assert!(
+    device.iter().any(|p| p[(0, N / 4)] != p[(0, 0)]),
+    "the first forward is live before its reset"
+  );
+  assert!(
+    device
+      .iter()
+      .all(|p| p[(0, N - 1)] == p[(0, N - 2)] && p[(1, N - 1)] == p[(1, N - 2)]),
+    "a forward past its reset date must be frozen"
+  );
+  for row in 0..3 {
+    agrees(
+      row_spread(&host, row),
+      row_spread(&device, row),
+      0.06,
+      &format!("LMM forward-starting forward {row} terminal spread"),
     );
   }
 }

@@ -47,10 +47,10 @@ fn mean_agrees(host: &[Array1<f32>], device: &[Array1<f32>], what: &str) {
   );
 }
 
-fn law_agrees(host: &[Array1<f32>], device: &[Array1<f32>], what: &str) {
+fn law_agrees(host: &[Array1<f32>], device: &[Array1<f32>], x0: f32, what: &str) {
   assert_eq!(device.len(), host.len());
   assert_eq!(device[0].len(), N);
-  assert_eq!(device[0][0], 0.0, "{what}: every path starts at x0");
+  assert_eq!(device[0][0], x0, "{what}: every path starts at x0");
   all_finite(device, what);
   mean_agrees(host, device, what);
   agrees(
@@ -88,16 +88,16 @@ fn cgmy_agrees_with_the_cpu_law() {
   const PATHS: usize = 3 * M;
   let device = build().on::<Device>().sample_par(PATHS);
   let host = build().sample_par(PATHS);
-  law_agrees(&host, &device, "CGMY");
+  law_agrees(&host, &device, 0.0, "CGMY");
 }
 
 #[test]
 fn classical_tempered_stable_agrees_with_the_cpu_law() {
-  let build = || Cts::<f32, _>::new(2.0, 6.0, 0.5, N, J, Some(0.0), Some(1.0), Deterministic::new(137));
+  let build = || Cts::<f32, _>::new(2.0, 6.0, 0.5, N, J, Some(0.5), Some(1.0), Deterministic::new(137));
   const PATHS: usize = 3 * M;
   let device = build().on::<Device>().sample_par(PATHS);
   let host = build().sample_par(PATHS);
-  law_agrees(&host, &device, "CTS");
+  law_agrees(&host, &device, 0.5, "CTS");
 }
 
 #[test]
@@ -120,7 +120,7 @@ fn kobol_agrees_with_the_cpu_law() {
   const PATHS: usize = 3 * M;
   let device = build().on::<Device>().sample_par(PATHS);
   let host = build().sample_par(PATHS);
-  law_agrees(&host, &device, "KoBoL");
+  law_agrees(&host, &device, 0.0, "KoBoL");
 }
 
 #[test]
@@ -129,7 +129,7 @@ fn rapidly_decreasing_tempered_stable_agrees_with_the_cpu_law() {
   const PATHS: usize = 3 * M;
   let device = build().on::<Device>().sample_par(PATHS);
   let host = build().sample_par(PATHS);
-  law_agrees(&host, &device, "RDTS");
+  law_agrees(&host, &device, 0.0, "RDTS");
 }
 
 /// A grid longer than the kernels' series cells samples on the host, and is

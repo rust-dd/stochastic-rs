@@ -250,21 +250,25 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
     }
   }
 
-  /// The index of the last reset date reached at each step's start — the
-  /// host loop's `eta_idx` — tabulated for the step that produces each grid
-  /// point: the rates at or below it are frozen and the drift sums start
-  /// there.
-  fn active_index_curve(&self) -> Vec<T> {
+  /// The number of reset dates passed at each step's start — the host loop's
+  /// `eta` — tabulated for the step that produces each grid point, with the
+  /// time accumulated step by step exactly as the host accumulates it, so a
+  /// reset landing on a grid time is crossed at the same step on both. The
+  /// rates below it are frozen; the drift sums start one below it.
+  fn reset_count_curve(&self) -> Vec<T> {
     let m = self.l0.len();
     let dt = self.dt();
+    let mut t_now = T::zero();
     (0..self.n)
       .map(|i| {
-        let t_now = T::from_usize_(i.saturating_sub(1)) * dt;
+        if i > 1 {
+          t_now += dt;
+        }
         let mut eta = 0usize;
         while eta < m && self.tenor[eta] <= t_now {
           eta += 1;
         }
-        T::from_usize_(eta.saturating_sub(1).min(m))
+        T::from_usize_(eta)
       })
       .collect()
   }
@@ -326,10 +330,24 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for LmmLaunchSampler<T, S> {
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 4>
   for LmmLaunch<'_, T, S, B>
 {
+  /// Padded into the four slots. A wider curve never reaches a launch —
+  /// [`ProcessExt::sample`] keeps it on the host — so asking here is a caller
+  /// bypassing that guard; the horizon is held to the host's own bounds.
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     let p = self.0;
     validate_lmm_inputs(&p.tenor, &p.l0, &p.sigma);
+    assert!(
+      p.device_ready(),
+      "Lmm: a launch carries at most {} forwards; sample through `ProcessExt`, which keeps a wider \
+       curve on the host",
+      crate::euler::CORRELATED_STREAMS
+    );
     let m = p.l0.len();
+    let (horizon, t_max) = (p.horizon(), p.tenor[m]);
+    assert!(
+      horizon > T::zero() && horizon <= t_max,
+      "horizon must satisfy `horizon > T::zero() && horizon <= t_max`, got horizon = {horizon:?}, t_max = {t_max:?}"
+    );
     let mut l = [T::zero(); 10];
     let mut at = 0;
     for row in 0..4 {
@@ -378,7 +396,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 
   fn curves(&self) -> Option<Vec<Vec<T>>> {
-    Some(vec![self.0.active_index_curve()])
+    Some(vec![self.0.reset_count_curve()])
   }
 
   fn device_seed(&self) -> u64 {

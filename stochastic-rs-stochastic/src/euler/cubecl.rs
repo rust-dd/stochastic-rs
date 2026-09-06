@@ -125,16 +125,15 @@ fn euler_paths_kernel(
     let mut lsh = 0.0f32;
     let mut lh = Array::<f32>::new(176usize);
     let mut lj = Array::<f32>::new(176usize);
-    let mut past = Array::<f32>::new(512usize);
+    let mut block = Array::<f32>::new(512usize);
     let mut sj = 0.0f32;
     let mut gj = 0.0f32;
     let mut ej = 0.0f32;
     let mut uj = 0.0f32;
     let mut uv = 0.0f32;
-    let mut series = Array::<f32>::new(512usize);
     if series_n != 0u32 {
       for k in 0..steps {
-        series[k as usize] = 0.0f32;
+        block[k as usize] = 0.0f32;
       }
       for j in 1..(series_n + 1u32) {
         let sg = ((first_path + path) * 2654435761u32) ^ (j * 40503u32) ^ 3266489917u32;
@@ -154,7 +153,7 @@ fn euler_paths_kernel(
         if cell > steps - 1u32 {
           cell = steps - 1u32;
         }
-        series[cell as usize] = series[cell as usize] + size;
+        block[cell as usize] = block[cell as usize] + size;
       }
       gj = 0.0f32;
       ej = 0.0f32;
@@ -164,7 +163,6 @@ fn euler_paths_kernel(
     let mut iv = 0.0f32;
     let mut tv = 0.0f32;
     let mut tp = 1u32;
-    let mut table = Array::<f32>::new(512usize);
     if table_n != 0u32 {
       let horizon = dt * f32::cast_from(steps - 1u32);
       let mut umax = table_u0;
@@ -176,7 +174,7 @@ fn euler_paths_kernel(
       }
       for attempt in 0..10u32 {
         tv = umax / f32::cast_from(table_n - 1u32);
-        table[0] = 0.0f32;
+        block[0] = 0.0f32;
         for k in 1..table_n {
           let tg = ((first_path + path) * 2654435761u32)
             ^ (attempt * 668265263u32)
@@ -185,9 +183,9 @@ fn euler_paths_kernel(
           uj = uniform(tg ^ 2654435769u32, seed);
           uv = uniform(tg ^ 3266489909u32, seed);
           let inc = table_increment(family, params, dt, uj, uv, tv);
-          table[k as usize] = table[(k - 1u32) as usize] + inc;
+          block[k as usize] = block[(k - 1u32) as usize] + inc;
         }
-        if table[(table_n - 1u32) as usize] >= horizon {
+        if block[(table_n - 1u32) as usize] >= horizon {
           break;
         }
         if attempt < 9u32 {
@@ -212,19 +210,19 @@ fn euler_paths_kernel(
         family, 0u32, s0, s1, s2, s3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
         gm2, u, u2, lv, cv, sj, gj, ej, uj, uv, iv, tv,
       );
-      if slots > 1u32 {
+      if components > 1u32 {
         out[plane + base] = report(
           family, 1u32, s0, s1, s2, s3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
           gm2, u, u2, lv, cv, sj, gj, ej, uj, uv, iv, tv,
         );
       }
-      if slots > 2u32 {
+      if components > 2u32 {
         out[2usize * plane + base] = report(
           family, 2u32, s0, s1, s2, s3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
           gm2, u, u2, lv, cv, sj, gj, ej, uj, uv, iv, tv,
         );
       }
-      if slots > 3u32 {
+      if components > 3u32 {
         out[3usize * plane + base] = report(
           family, 3u32, s0, s1, s2, s3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
           gm2, u, u2, lv, cv, sj, gj, ej, uj, uv, iv, tv,
@@ -383,20 +381,20 @@ fn euler_paths_kernel(
       u2 = uniform(g ^ 3266489917u32, seed);
       sj = 0.0f32;
       if series_n != 0u32 {
-        sj = series[i as usize];
+        sj = block[i as usize];
       }
       if table_n != 0u32 {
         let ti = dt * f32::cast_from(i);
-        while tp < table_n && table[tp as usize] < ti {
+        while tp < table_n && block[tp as usize] < ti {
           tp += 1u32;
         }
         if tp >= table_n {
           iv = tv * f32::cast_from(table_n - 1u32);
-        } else if table[tp as usize] <= table[(tp - 1u32) as usize] {
+        } else if block[tp as usize] <= block[(tp - 1u32) as usize] {
           iv = tv * f32::cast_from(tp);
         } else {
           iv = tv * f32::cast_from(tp - 1u32)
-            + (ti - table[(tp - 1u32) as usize]) / (table[tp as usize] - table[(tp - 1u32) as usize])
+            + (ti - block[(tp - 1u32) as usize]) / (block[tp as usize] - block[(tp - 1u32) as usize])
               * tv;
         }
       }
@@ -428,10 +426,10 @@ fn euler_paths_kernel(
         if step_first == 0u32 {
           hi = i - 1u32;
         }
-        past[hi as usize] = pushed;
+        block[hi as usize] = pushed;
         cv = 0.0f32;
         for k in 0..(hi + 1u32) {
-          cv += curve[(hist_slot * steps + k) as usize] * past[(hi - k) as usize];
+          cv += curve[(hist_slot * steps + k) as usize] * block[(hi - k) as usize];
         }
       }
       let n0 = step(

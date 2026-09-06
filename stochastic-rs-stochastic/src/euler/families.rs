@@ -65,8 +65,9 @@
 //! of a monotone table at the step's time: before the steps the frame builds,
 //! per path, a table of as many points as the launch's `table_spec()` names
 //! over `[0, u_max]` — each increment from the clause's expression of the two
-//! uniforms `uj`, `uv` and the spacing `tv` — doubling `u_max` up to ten
-//! times until the table reaches the horizon, exactly as the host does; each
+//! uniforms `uj`, `uv` and the spacing `tv` — trying up to ten extents, each
+//! double the last, until the table reaches the horizon, exactly as the host
+//! does; each
 //! step then finds the first table value at or past its time and
 //! interpolates the abscissa linearly. That is the inverse subordinator, the
 //! first-passage clock of a positive process. Tables up to
@@ -1606,21 +1607,23 @@ euler_families! {
     report { t },
 
   /// Up to four forward LIBOR rates under the spot measure, by the log-Euler
-  /// step with the drift frozen at the step's start: rate `n` takes
-  /// `σ_n Σ_{j=η}^{n} ρ_nj δ_j σ_j L_j / (1 + δ_j L_j)` from the rates between
-  /// the active reset index `η` — the curve `ct` — and itself, `ρ_nj` from the
-  /// lower Cholesky factor `L` whose rows also correlate the four shocks, and
-  /// a rate whose reset date has passed (`n ≤ η`) stays where it is. An absent
-  /// rate travels with a zero volatility and an identity row and never moves
-  /// nor enters a drift.
+  /// step with the drift frozen at the step's start. The curve `ct` is the
+  /// number of reset dates passed at the step's start, `η`: a rate whose reset
+  /// date has passed (`n < η`) stays where it is, and a live rate `n` takes
+  /// `σ_n Σ_{j=max(η−1, 0)}^{n} ρ_nj δ_j σ_j L_j / (1 + δ_j L_j)` from the rates
+  /// between the last reset and itself, `ρ_nj` from the lower Cholesky factor
+  /// `L` whose rows also correlate the four shocks. An absent rate travels
+  /// with a zero volatility and an identity row and never moves nor enters a
+  /// drift.
   113 => LiborMarket4 { s0, s1, s2, s3, d0, d1, d2, d3, l00, l10, l11, l20, l21, l22, l30, l31, l32, l33 }
     state (f0, f1, f2, f3)
     noise (z0, z1, z2, z3)
     step {
-      bind a0 = leq(ct, lit(0.0));
-      bind a1 = leq(ct, lit(1.0));
-      bind a2 = leq(ct, lit(2.0));
-      bind a3 = leq(ct, lit(3.0));
+      bind ei = max(ct - lit(1.0), lit(0.0));
+      bind a0 = leq(ei, lit(0.0));
+      bind a1 = leq(ei, lit(1.0));
+      bind a2 = leq(ei, lit(2.0));
+      bind a3 = leq(ei, lit(3.0));
       bind g0 = a0 * d0 * s0 * f0 / (d0 * f0 + lit(1.0));
       bind g1 = a1 * d1 * s1 * f1 / (d1 * f1 + lit(1.0));
       bind g2 = a2 * d2 * s2 * f2 / (d2 * f2 + lit(1.0));
@@ -1643,17 +1646,17 @@ euler_families! {
       bind w1 = l10 * z0 + l11 * z1;
       bind w2 = l20 * z0 + l21 * z1 + l22 * z2;
       bind w3 = l30 * z0 + l31 * z1 + l32 * z2 + l33 * z3;
-      pick(less(ct, lit(0.0)), f0 * exp((m0 - s0 * s0 / lit(2.0)) * dt + s0 * w0), f0),
-      pick(less(ct, lit(1.0)), f1 * exp((m1 - s1 * s1 / lit(2.0)) * dt + s1 * w1), f1),
-      pick(less(ct, lit(2.0)), f2 * exp((m2 - s2 * s2 / lit(2.0)) * dt + s2 * w2), f2),
-      pick(less(ct, lit(3.0)), f3 * exp((m3 - s3 * s3 / lit(2.0)) * dt + s3 * w3), f3)
+      pick(leq(ct, lit(0.0)), f0 * exp((m0 - s0 * s0 / lit(2.0)) * dt + s0 * w0), f0),
+      pick(leq(ct, lit(1.0)), f1 * exp((m1 - s1 * s1 / lit(2.0)) * dt + s1 * w1), f1),
+      pick(leq(ct, lit(2.0)), f2 * exp((m2 - s2 * s2 / lit(2.0)) * dt + s2 * w2), f2),
+      pick(leq(ct, lit(3.0)), f3 * exp((m3 - s3 * s3 / lit(2.0)) * dt + s3 * w3), f3)
     }
     report { f0, f1, f2, f3 },
 
   /// The inverse of an α-stable subordinator, `E(t) = inf{u : D(u) > t}`: the
   /// table block builds `D` on a grid in `u` from positive-stable increments —
-  /// Kanter's form of the Chambers–Mallows–Stuck draw, its uniforms clamped as
-  /// the stable subordinator clamps them, at scale `(c Δu)^{1/α}` — and the
+  /// Kanter's form of the Chambers–Mallows–Stuck draw, its uniforms clamped
+  /// away from the ends of the unit interval, at scale `(c Δu)^{1/α}` — and the
   /// step takes the interpolated first passage over the horizon's time. The
   /// state is that inverse; there is nothing to step.
   114 => InverseStableSubordinator { alpha, c, inv_alpha, one_minus_alpha, tail_exp, pi }

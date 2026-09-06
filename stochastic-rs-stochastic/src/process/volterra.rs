@@ -208,11 +208,15 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B> Volterra<T, S, B> {
     }
   }
 
-  /// Whether a device can run this process: the lift branch always, the
-  /// reference branch when the grid fits the kernels' per-path history. A
-  /// longer reference grid samples on the host.
+  /// Whether a device can run this process: the lift branch when it has a
+  /// lift to replay — it has none on a single-point grid — and the reference
+  /// branch when the grid fits the kernels' per-path history. Anything else
+  /// samples on the host.
   pub fn device_ready(&self) -> bool {
-    self.lift.is_some() || self.n <= crate::euler::HISTORY_SLOTS
+    match self.engine {
+      VolterraEngine::Lift(_) => self.lift.is_some(),
+      VolterraEngine::Reference(_) => self.n <= crate::euler::HISTORY_SLOTS,
+    }
   }
 }
 

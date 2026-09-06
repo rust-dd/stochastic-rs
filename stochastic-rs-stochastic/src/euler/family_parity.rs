@@ -325,7 +325,7 @@ impl PathSampler<f32> for ProbeSampler {
         0.0,
         0.0,
         inverse_at(self.dt * (i + 1) as f32),
-        0.0,
+        spacing,
         &noise,
         &mut next,
       );
@@ -1255,7 +1255,7 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         0.0,
         0.0,
         inverse_at(self.dt * i as f32),
-        0.0,
+        spacing,
         &noise,
         &mut next,
       );

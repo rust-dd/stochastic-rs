@@ -676,9 +676,9 @@ fn volterra_lift_and_reference_agree_with_the_cpu_law() {
     0.06,
     "Volterra reference terminal spread",
   );
-  // A quarter of the way in as well: the weights are the kernel by lag, and
-  // a kernel reading them off by one keeps the scale while moving the
-  // roughness, which `(t/4)^H / t^H = 4^-H` is what shows.
+  // A quarter of the way in as well: a second point on the path's spread,
+  // which a launch that convolved with the wrong lags would move by a
+  // different amount than the terminal one.
   let quarter = |paths: &[Array1<f32>]| {
     let k = paths[0].len() / 4;
     let n = paths.len() as f64;

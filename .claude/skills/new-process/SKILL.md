@@ -461,14 +461,18 @@ indentation and contains literal `—`, `∏`, `−` characters.
 ```bash
   cargo clippy -p stochastic-rs-stochastic --all-targets -- -D warnings
   cargo clippy -p stochastic-rs-stochastic --all-targets --features metal,cubecl-wgpu -- -D warnings
+  cargo clippy -p stochastic-rs-stochastic --all-targets --features cuda -- -D warnings
   RUSTDOCFLAGS="-D warnings" cargo doc -p stochastic-rs-stochastic --no-deps
   cargo check --workspace --no-default-features
   cargo test -p stochastic-rs-stochastic --features metal,cubecl-wgpu --lib euler::
   cargo test -p stochastic-rs-stochastic --features metal --test device_law
 ```
 
-Both clippy runs matter: a helper only device launches call is dead code in the
-no-feature build, so give it the crate's guard, as `flatten_curves` and `history_slot`
+All three clippy runs matter, and the `cuda` one compiles on a machine with no GPU
+(cudarc links at run time): the CUDA back-end has two launch wrappers and a pipelined
+batch path, and a launch scalar added to one and not the others is an arity error only
+that build shows — the history/series/table scalars once shipped that way for three
+commits. A helper only device launches call is dead code in the no-feature build, so give it the crate's guard, as `flatten_curves` and `history_slot`
 in `euler.rs` have — `#[cfg_attr(not(any(feature = "cuda", feature = "metal", feature =
 "cubecl-cuda", feature = "cubecl-wgpu")), allow(dead_code))]`. `src/lib.rs` carries
 `#![deny(rustdoc::broken_intra_doc_links)]`, so a mistyped `[`Foo`]` fails `cargo doc`

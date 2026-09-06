@@ -72,9 +72,10 @@ impl<T: FloatExt, S: SeedExt> InverseAlphaStableSubordinator<T, S> {
 
 impl<T: FloatExt, S: SeedExt, B> InverseAlphaStableSubordinator<T, S, B> {
   /// Whether a device can run this process: the direct subordinator's table
-  /// fits the kernels' per-path table. A finer one samples on the host.
+  /// has at least two points and fits the kernels' per-path table. A finer
+  /// one samples on the host.
   pub fn device_ready(&self) -> bool {
-    self.u_steps <= crate::euler::TABLE_SLOTS
+    (2..=crate::euler::TABLE_SLOTS).contains(&self.u_steps)
   }
 }
 

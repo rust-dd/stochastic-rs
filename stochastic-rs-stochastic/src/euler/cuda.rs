@@ -362,7 +362,9 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
     // either goes chunk by chunk through the single launch instead, which
     // runs the pipeline at the right row offset for each chunk. Sending it
     // through the pipeline would silently step Brownian motion in place of
-    // the fractional or rough one.
+    // the fractional or rough one. The history, series and table blocks live
+    // in the kernel's own per-path arrays and travel as launch scalars, so
+    // they ride the pipeline unchanged.
     if process.fgn_spec().is_some() || process.lift_spec().is_some() {
       let mut out = Array2::<T>::zeros((m, n));
       let mut first = 0;
@@ -391,6 +393,8 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.step_first(),
       process.gamma_draws(),
       None,
+      process.series_terms(),
+      process.table_spec(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -788,6 +792,10 @@ fn pipelined<R>(
   g2_shape: R,
   g2_scale: R,
   g2_per: R,
+  hist_slot: u32,
+  series_n: u32,
+  table_n: u32,
+  table_u0: R,
 ) -> Result<Vec<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float + Send + Sync,
@@ -870,6 +878,10 @@ where
       R::zero(),
       R::zero(),
       R::zero(),
+      hist_slot,
+      series_n,
+      table_n,
+      table_u0,
     )?;
     let dst = unsafe { std::slice::from_raw_parts_mut(staging[slot].ptr, planes * len * n) };
     streams[slot]
@@ -966,6 +978,10 @@ fn pipelined_paths<T: FloatExt>(
       gs2,
       gc2,
       gp2,
+      hist_slot,
+      series_n,
+      table_n,
+      table_u0.to_f64().unwrap_or(0.0),
     )?;
     let out = Array3::<f64>::from_shape_vec((planes, m, n), data)
       .expect("the kernel returns components * m * n values");
@@ -1006,6 +1022,10 @@ fn pipelined_paths<T: FloatExt>(
     gs2 as f32,
     gc2 as f32,
     gp2 as f32,
+    hist_slot,
+    series_n,
+    table_n,
+    table_u0.to_f64().unwrap_or(0.0) as f32,
   )?;
   let out = Array3::<f32>::from_shape_vec((planes, m, n), data)
     .expect("the kernel returns components * m * n values");
