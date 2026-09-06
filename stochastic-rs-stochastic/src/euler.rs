@@ -866,6 +866,12 @@ pub enum EulerSpec<T: FloatExt> {
     lambda_plus: T,
     lambda_minus: T,
   },
+  /// A Gaussian Volterra process by the reference quadrature, the kernel on
+  /// the grid travelling as the launch's first curve.
+  VolterraReference,
+  /// A Hawkes process with exponential excitation, one event per step, by the
+  /// exact two-uniform recursion.
+  HawkesEvents { mu: T, alpha: T, beta: T },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1596,6 +1602,10 @@ impl<T: FloatExt> EulerSpec<T> {
           lambda_minus,
         ]),
       ),
+      EulerSpec::VolterraReference => (Family::VolterraReference.code(), pad([])),
+      EulerSpec::HawkesEvents { mu, alpha, beta } => {
+        (Family::HawkesEvents.code(), pad([mu, alpha, beta]))
+      }
     }
   }
 }

@@ -520,6 +520,8 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::LinearFractionalStable { .. } => "LinearFractionalStable",
     EulerSpec::MovingAverageFilter { .. } => "MovingAverageFilter",
     EulerSpec::TemperedStableSeries { .. } => "TemperedStableSeries",
+    EulerSpec::VolterraReference => "VolterraReference",
+    EulerSpec::HawkesEvents { .. } => "HawkesEvents",
   }
 }
 
@@ -854,6 +856,15 @@ fn every_family() -> Vec<Probe> {
         w_plus: 0.5,
         lambda_plus: 3.0,
         lambda_minus: 3.0,
+      },
+      0.0,
+    ),
+    p(EulerSpec::VolterraReference, 0.0),
+    p(
+      EulerSpec::HawkesEvents {
+        mu: 1.0,
+        alpha: 0.5,
+        beta: 1.5,
       },
       0.0,
     ),

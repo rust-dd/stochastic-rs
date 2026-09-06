@@ -1557,6 +1557,42 @@ euler_families! {
         pick(up, mag, negate(mag))
       )
     },
+
+  /// A Gaussian Volterra process by the reference quadrature: the path is the
+  /// convolution of the Brownian increments with the kernel on the grid,
+  /// `X_i = Σ_{k<i} K((i − k) dt) ΔW_k`, so the pushed value is the increment
+  /// itself and the weights the host tabulates as `ct` are `K((m + 1) dt)` by
+  /// lag. Any kernel the host can evaluate rides it; the rough ones take the
+  /// Markov lift instead.
+  111 => VolterraReference { }
+    state (x)
+    noise (dz)
+    step { cv }
+    report { x }
+    history { push (dz) weights (ct) },
+
+  /// A Hawkes process with exponential excitation, one event per step, by the
+  /// exact recursion of Dassios and Zhao (2013): with `s` the excess intensity
+  /// just after the last event, the wait to the next is the smaller of an
+  /// `Exp(mu)` from the baseline and the excitation's own arrival, which is
+  /// `−ln(d) / beta` for `d = 1 + beta ln(u) / s` when that is positive and
+  /// never otherwise; the excess then decays over the wait and jumps by
+  /// `alpha`. The state keeps the time and the excess, the path records the
+  /// times.
+  112 => HawkesEvents { mu, alpha, beta }
+    state (t, s)
+    noise (dz)
+    step {
+      bind se = max(s, lit(1.0e-12));
+      bind d = beta * ln(max(u, lit(1.0e-7))) / se + lit(1.0);
+      bind pos = less(negate(d), lit(0.0));
+      bind s1 = pick(pos, negate(ln(max(d, lit(1.0e-30)))) / beta, lit(1.0e30));
+      bind s2 = negate(ln(max(u2, lit(1.0e-7)))) / mu;
+      bind st = min(s1, s2);
+      t + st,
+      s * exp(negate(beta * st)) + alpha
+    }
+    report { t },
 }
 
 #[cfg(test)]

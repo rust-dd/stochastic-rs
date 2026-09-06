@@ -634,9 +634,10 @@ fn rl_heston_agrees_with_the_cpu_law() {
 
 /// The general Volterra process's lift branch is fBm under the Markov lift —
 /// the family `RlFBm` rides — while a kernel outside the rough range takes the
-/// reference convolution on the host whatever the backend.
+/// reference convolution, which the history block runs in the kernel against
+/// the kernel tabulated on the grid.
 #[test]
-fn volterra_lift_agrees_with_the_cpu_law_and_the_reference_still_samples() {
+fn volterra_lift_and_reference_agree_with_the_cpu_law() {
   let build = || {
     Volterra::<f32, _>::new(
       VolterraKernelSpec::FractionalBM { h: 0.3 },
@@ -657,20 +658,59 @@ fn volterra_lift_agrees_with_the_cpu_law_and_the_reference_still_samples() {
     0.06,
     "Volterra lift terminal spread",
   );
-  let reference = Volterra::<f32, _>::new(
-    VolterraKernelSpec::FractionalBM { h: 0.7 },
-    64,
-    Some(1.0),
-    Deterministic::new(53),
-  )
-  .on::<Device>()
-  .sample_par(8);
-  assert_eq!(reference.len(), 8);
-  assert!(
-    reference
-      .iter()
-      .all(|p| p.len() == 64 && p.iter().all(|v| v.is_finite()))
+  let reference = || {
+    Volterra::<f32, _>::new(
+      VolterraKernelSpec::FractionalBM { h: 0.7 },
+      N,
+      Some(4.0),
+      Deterministic::new(53),
+    )
+  };
+  let device = reference().on::<Device>().sample_par(PATHS);
+  let host = reference().sample_par(PATHS);
+  assert_eq!(device[0][0], 0.0, "every reference path starts at the origin");
+  all_finite(&device, "Volterra reference");
+  agrees(
+    terminal_std(&host),
+    terminal_std(&device),
+    0.06,
+    "Volterra reference terminal spread",
   );
+  // A quarter of the way in as well: the weights are the kernel by lag, and
+  // a kernel reading them off by one keeps the scale while moving the
+  // roughness, which `(t/4)^H / t^H = 4^-H` is what shows.
+  let quarter = |paths: &[Array1<f32>]| {
+    let k = paths[0].len() / 4;
+    let n = paths.len() as f64;
+    let mean = paths.iter().map(|p| p[k] as f64).sum::<f64>() / n;
+    (paths
+      .iter()
+      .map(|p| (p[k] as f64 - mean).powi(2))
+      .sum::<f64>()
+      / n)
+      .sqrt()
+  };
+  agrees(
+    quarter(&host),
+    quarter(&device),
+    0.06,
+    "Volterra reference quarter-horizon spread",
+  );
+}
+
+/// A reference grid longer than the kernels' history samples on the host,
+/// and is then the host build to the bit.
+#[test]
+fn a_longer_reference_grid_keeps_volterra_on_the_host() {
+  let build = || {
+    Volterra::<f32, _>::new(
+      VolterraKernelSpec::Exponential { beta: 2.0 },
+      600,
+      Some(1.0),
+      Deterministic::new(59),
+    )
+  };
+  assert_eq!(build().on::<Device>().sample_par(8), build().sample_par(8));
 }
 
 #[test]

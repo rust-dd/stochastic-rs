@@ -13,12 +13,12 @@ backends, and what the rest do.
 | Family | Processes | Capability bound | `Cpu` | `Accelerate` | `Metal` | `Cuda` | `Cubecl` |
 |---|---|---|---|---|---|---|---|
 | fGN noise | `Fgn` (1) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` | CubeCL FFT, `f32` only |
-| Euler engine, one component | 87 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
+| Euler engine, one component | 88 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
 | Euler engine, systems | 33 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
 | Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `FVasicek`, `Cfgns`, `Cfbms`, `Cfou`, `JumpFou`, `JumpFOUCustom` (11, counted above) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same MSL kernel | fGN pipeline feeds the same NVRTC kernel | fGN pipeline feeds the same CubeCL kernel |
-| Host only | the remaining 10 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
+| Host only | the remaining 9 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
 
-The 120 processes on the engine cover the diffusions, the stochastic-volatility
+The 121 processes on the engine cover the diffusions, the stochastic-volatility
 models under both their Euler and quadratic-exponential schemes (`Heston`,
 `HestonLog`, `DoubleHeston`, `Heston2D`, `Sabr`, `Bergomi`,
 `HestonStochCorr`, `BatesSvj`, `Hkde`), the short-rate models including the
@@ -54,7 +54,8 @@ thresholds; five or more regimes stay on the host), the Riemann-Liouville
 family under the Markov lift of its rough kernel (`RlFBm`, `RlFOU`,
 `RlBlackScholes`, `RlHeston`, and `Volterra`'s lift branch — the lift's node
 states live in the kernel's own per-path arrays, see below; `Volterra`'s
-reference-convolution branch stays on the host), the two lift-stepped
+reference-convolution branch rides the history block instead, the kernel
+tabulated on the grid as its weights), the two lift-stepped
 Volterra models (`VolterraSquareRoot`, and `GaussianPolynomialVolatility` up
 to eight coefficients) and the event-indexed processes in their count mode
 (`Poisson`, `CompoundPoisson`, and `CustomJt` / `CompoundCustom` when their
@@ -67,7 +68,9 @@ innovations — each on the host's own scheme, for grids up to 512 points; and t
 tempered-stable processes built from their shot-noise series (`Cgmy`, `Cts`,
 `KoBoL`, `Rdts`), whose terms the series block draws per path and sums into the
 grid cells they fall in, the host's sort replaced by addressing, again up to 512
-points.
+points; and `Hawkes` in its count mode, one event per step by the exact
+two-uniform recursion of Dassios and Zhao, the host's thinning loop replaced by
+a closed form.
 
 What stays on the host, and why. The engine steps a bounded forward
 recursion over four scalar state slots, so what rules a process out is
@@ -75,8 +78,8 @@ unbounded work per step, unbounded state, or an output that is not a fixed
 grid:
 
 - **A history integral over every earlier step, on a grid longer than 512
-  points** (`Volterra` in its reference branch, taken for a kernel outside
-  the rough range, and any history family above that length): the step sums
+  points** (`Volterra`'s reference branch and any history family above that
+  length): the step sums
   `(t_i - t_j)^(H - 1/2) z_j` over all `j < i`, which is work that grows with
   the step index. The Markov lift is the answer where it applies — the whole
   `Rl*` family and `Volterra`'s rough kernels ride it — and the history block
@@ -103,8 +106,10 @@ grid:
 - **A coefficient that reads the state** (`Cheyette`): its `sigma(t, x)` is a
   user closure of time *and* the state, so it cannot be tabulated as a curve
   the way `Cir2F`'s `phi(t)` is. A closure of time alone is not a blocker.
-- **Point processes on their own clock** (`Hawkes`, `MultivariateHawkes`,
-  `Ctrw`): the output length is the number of events, not the grid.
+- **Point processes on their own clock** (`MultivariateHawkes`, `Ctrw`, and
+  `Hawkes` in its horizon mode): the output length is the number of events,
+  not the grid. `Hawkes` in count mode is one event per step and reaches the
+  engine through the exact exponential-excitation recursion.
   `Poisson`, `CompoundPoisson`, `CustomJt` and `CompoundCustom` split here —
   their count mode is a fixed-length running sum and reaches the engine,
   their horizon mode does not.
@@ -130,7 +135,7 @@ grid:
 
 ## What a family is
 
-A process reaches a device by declaring which of the engine's **111 families**
+A process reaches a device by declaring which of the engine's **113 families**
 it steps, not by writing a kernel. A family is one entry in
 `stochastic-rs-stochastic/src/euler/families.rs` — its parameters, its state
 components, its noise components, one step expression per component and one

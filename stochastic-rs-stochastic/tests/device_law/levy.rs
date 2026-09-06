@@ -5,6 +5,7 @@
 //! inverse-Gaussian draw by Michael-Schucany-Haas — so what these cases pin
 //! is that the device draws the same law the host's own sampler draws.
 
+use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGamma;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGammaMotion;
@@ -12,6 +13,7 @@ use stochastic_rs_stochastic::jump::hawkes_jd::HawkesJD;
 use stochastic_rs_stochastic::jump::ig::Ig;
 use stochastic_rs_stochastic::jump::nig::Nig;
 use stochastic_rs_stochastic::jump::vg::Vg;
+use stochastic_rs_stochastic::process::hawkes::Hawkes;
 use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::process::subordinator::alpha_stable::AlphaStableSubordinator;
 use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSubordinator;
@@ -355,4 +357,62 @@ fn poisson_arrivals_agree_with_the_cpu_law() {
     .on::<Device>()
     .sample();
   assert_eq!(horizon[0], 0.0, "horizon mode still starts at the origin");
+}
+
+/// Hawkes in count mode: the host thins Ogata's proposals, the kernel runs
+/// the exact two-uniform recursion, and both are the process with intensity
+/// `mu + Σ alpha e^{-beta (t - t_k)}` — so the time of the last event, whose
+/// mean the branching ratio sets, and the clustering of the waits, which the
+/// excitation alone produces, have to agree.
+#[test]
+fn hawkes_agrees_with_the_cpu_law() {
+  const EVENTS: usize = 64;
+  let build = || Hawkes::<f32, _>::new(1.0, 0.5, 1.5, Some(EVENTS), None, Deterministic::new(157));
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert_eq!(device.len(), PATHS);
+  assert!(device.iter().all(|p| p.len() == EVENTS));
+  assert!(
+    device
+      .iter()
+      .all(|p| p[0] == 0.0 && p.windows(2).into_iter().all(|w| w[1] > w[0])),
+    "an event time did not advance"
+  );
+  agrees(
+    terminal_mean(&host),
+    terminal_mean(&device),
+    0.03,
+    "Hawkes last event time",
+  );
+  agrees(
+    terminal_std(&host),
+    terminal_std(&device),
+    0.06,
+    "Hawkes last event time spread",
+  );
+  // The waits' coefficient of variation is one for a Poisson stream and
+  // above it under excitation; it is the statistic the excitation moves and
+  // the baseline does not.
+  let clustering = |paths: &[Array1<f32>]| {
+    let waits: Vec<f64> = paths
+      .iter()
+      .flat_map(|p| p.windows(2).into_iter().map(|w| (w[1] - w[0]) as f64))
+      .collect();
+    let n = waits.len() as f64;
+    let mean = waits.iter().sum::<f64>() / n;
+    let var = waits.iter().map(|w| (w - mean).powi(2)).sum::<f64>() / n;
+    var.sqrt() / mean
+  };
+  let (h, d) = (clustering(&host), clustering(&device));
+  assert!(h > 1.1, "the host waits do not cluster: {h}");
+  agrees(h, d, 0.03, "Hawkes wait clustering");
+}
+
+/// The horizon mode has a random length and no grid, so a device build
+/// samples on the host and is the host build to the bit.
+#[test]
+fn hawkes_horizon_mode_keeps_the_process_on_the_host() {
+  let build = || Hawkes::<f32, _>::new(1.0, 0.5, 1.5, None, Some(10.0), Deterministic::new(163));
+  assert_eq!(build().on::<Device>().sample_par(8), build().sample_par(8));
 }

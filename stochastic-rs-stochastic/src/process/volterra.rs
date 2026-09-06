@@ -197,14 +197,53 @@ fn lift_one<T: FloatExt>(_t: T, _x: T) -> T {
   T::one()
 }
 
-/// The Euler engine's view of the lift branch: fBm under the Markov lift, the
-/// same family `RlFBm` rides. The reference branch has no lift and never
-/// reaches the engine; [`ProcessExt`] keeps it on the host.
+impl<T: FloatExt + RoughSimd, S: SeedExt, B> Volterra<T, S, B> {
+  /// The grid spacing, the horizon itself for a single point.
+  fn dt(&self) -> T {
+    let t = self.t.unwrap_or(T::one());
+    if self.n > 1 {
+      t / T::from_usize_(self.n - 1)
+    } else {
+      t
+    }
+  }
+
+  /// Whether a device can run this process: the lift branch always, the
+  /// reference branch when the grid fits the kernels' per-path history. A
+  /// longer reference grid samples on the host.
+  pub fn device_ready(&self) -> bool {
+    self.lift.is_some() || self.n <= crate::euler::HISTORY_SLOTS
+  }
+}
+
+/// The Euler engine's view of both branches: fBm under the Markov lift in
+/// the lift branch — the same family `RlFBm` rides — and the reference
+/// convolution in the other, run by the history block against the kernel
+/// tabulated on the grid.
 impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
   crate::euler::EulerCoefficients<T> for Volterra<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    crate::euler::EulerSpec::RiemannLiouville
+    match self.engine {
+      VolterraEngine::Lift(_) => crate::euler::EulerSpec::RiemannLiouville,
+      VolterraEngine::Reference(_) => crate::euler::EulerSpec::VolterraReference,
+    }
+  }
+
+  /// The reference branch's kernel by lag, `K((m + 1) dt)`, exactly the
+  /// weights the host's quadrature applies to the increments.
+  fn curves(&self) -> Option<Vec<Vec<T>>> {
+    match &self.engine {
+      VolterraEngine::Lift(_) => None,
+      VolterraEngine::Reference(prepared) => {
+        let dt = self.dt();
+        Some(vec![
+          (0..self.n)
+            .map(|m| prepared.eval(T::from_usize_(m + 1) * dt, T::zero()))
+            .collect(),
+        ])
+      }
+    }
   }
 
   fn initial_value(&self) -> T {
@@ -281,11 +320,12 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> Proc
     }
   }
 
-  /// Through the Euler engine in the lift branch, whose lift runs in the
-  /// kernel; the reference branch has no lift and stays on this process's
-  /// own sampler whatever the backend.
+  /// Through the Euler engine: the lift branch's lift and the reference
+  /// branch's convolution both run in the kernel; a reference grid longer
+  /// than the kernels' history keeps the process on its own sampler, chunked
+  /// exactly as [`ProcessExt`] chunks.
   fn sample(&self) -> Array1<T> {
-    if self.lift.is_some() {
+    if self.device_ready() {
       self.backend.euler_sample(self)
     } else {
       let out = self.sampler().sample();
@@ -295,7 +335,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> Proc
   }
 
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
-    if self.lift.is_some() {
+    if self.device_ready() {
       self.backend.euler_paths_map(self, m, f)
     } else {
       crate::traits::process::sample_map_chunked(self, m, f)
@@ -303,7 +343,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> Proc
   }
 
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
-    if self.lift.is_some() {
+    if self.device_ready() {
       self.backend.euler_paths(self, m)
     } else {
       crate::traits::process::sample_par_chunked(self, m)
@@ -311,7 +351,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> Proc
   }
 
   fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
-    if self.lift.is_some() {
+    if self.device_ready() {
       self.backend.try_sample(self)
     } else {
       Ok(<Self as ProcessExt<T>>::sample(self))
@@ -319,7 +359,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> Proc
   }
 
   fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
-    if self.lift.is_some() {
+    if self.device_ready() {
       self.backend.try_euler_paths(self, m)
     } else {
       Ok(<Self as ProcessExt<T>>::sample_par(self, m))

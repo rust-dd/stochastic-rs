@@ -636,6 +636,12 @@ fn history_push(
       u2, lv, cv, sj, gj, ej, uj, uv, dz0, dz1, dz2, dz3,
     );
   }
+  if family == 111u32 {
+    value = cube_history::VolterraReference(
+      0u32, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2, lv, cv, sj, gj, ej, uj, uv, dz0, dz1, dz2, dz3,
+    );
+  }
   value
 }
 
@@ -1314,6 +1320,18 @@ fn step(
   }
   if family == 110u32 {
     stepped = cube::TemperedStableSeries(
+      component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
+      gm2, u, u2, lv, cv, sj, gj, ej, uj, uv, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 111u32 {
+    stepped = cube::VolterraReference(
+      component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
+      gm2, u, u2, lv, cv, sj, gj, ej, uj, uv, dz0, dz1, dz2, dz3,
+    );
+  }
+  if family == 112u32 {
+    stepped = cube::HawkesEvents(
       component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
       gm2, u, u2, lv, cv, sj, gj, ej, uj, uv, dz0, dz1, dz2, dz3,
     );
@@ -2016,6 +2034,18 @@ fn report(
   }
   if family == 110u32 {
     reported = cube_report::TemperedStableSeries(
+      component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2, lv, cv, sj, gj, ej, uj, uv,
+    );
+  }
+  if family == 111u32 {
+    reported = cube_report::VolterraReference(
+      component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2, lv, cv, sj, gj, ej, uj, uv,
+    );
+  }
+  if family == 112u32 {
+    reported = cube_report::HawkesEvents(
       component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
       u2, lv, cv, sj, gj, ej, uj, uv,
     );

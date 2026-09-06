@@ -20,7 +20,6 @@ use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -76,11 +75,71 @@ impl<T: FloatExt, S: SeedExt> Hawkes<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Hawkes<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> Hawkes<T, S, B> {
+  /// The parameter contract every sampler, host or device, holds the process
+  /// to: a positive baseline, non-negative excitation that decays faster than
+  /// it builds.
+  fn validate(&self) {
+    assert!(self.mu > T::zero(), "baseline intensity μ must be positive");
+    assert!(self.alpha >= T::zero(), "excitation α must be non-negative");
+    assert!(self.beta > T::zero(), "decay rate β must be positive");
+    assert!(
+      self.alpha < self.beta,
+      "stationarity requires α < β (branching ratio α/β < 1)"
+    );
+  }
 
-backend_switch!([T: FloatExt, S: SeedExt] Hawkes<T, S> { mu, alpha, beta, n, t_max, seed } via host);
+  /// Whether a device can run this process: a fixed number of events — the
+  /// horizon mode's length is itself random and has no grid.
+  pub fn device_ready(&self) -> bool {
+    self.n.is_some()
+  }
+}
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Hawkes<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for Hawkes<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    self.validate();
+    crate::euler::EulerSpec::HawkesEvents {
+      mu: self.mu,
+      alpha: self.alpha,
+      beta: self.beta,
+    }
+  }
+
+  /// The first event is the origin, with no excess intensity yet.
+  fn initial_value(&self) -> T {
+    T::zero()
+  }
+
+  fn grid_points(&self) -> usize {
+    self
+      .n
+      .expect("the Euler engine describes Hawkes's count mode; horizon mode has no grid")
+  }
+
+  /// One step is one event, so the grid has no horizon of its own; the waits
+  /// come from the intensities in the step.
+  fn horizon(&self) -> T {
+    T::one()
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let _ = crate::euler::EulerCoefficients::grid_points(self);
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Hawkes<T, S> { mu, alpha, beta, n, t_max, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Hawkes<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = HawkesSampler<T>
@@ -90,13 +149,7 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Hawkes<T, S, B> 
   /// Builds the Ogata-thinning sampler. Validation of `μ`, `α`, `β` happens
   /// here so a reused sampler pays it once.
   fn sampler(&self) -> HawkesSampler<T> {
-    assert!(self.mu > T::zero(), "baseline intensity μ must be positive");
-    assert!(self.alpha >= T::zero(), "excitation α must be non-negative");
-    assert!(self.beta > T::zero(), "decay rate β must be positive");
-    assert!(
-      self.alpha < self.beta,
-      "stationarity requires α < β (branching ratio α/β < 1)"
-    );
+    self.validate();
 
     let mode = if let Some(n) = self.n {
       HawkesMode::Count { n }
@@ -125,6 +178,51 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Hawkes<T, S, B> 
       beta: self.beta,
       rng: self.seed.rng(),
       mode,
+    }
+  }
+
+  /// Through the Euler engine in count mode, where every step is one event;
+  /// the horizon mode has a random length and keeps the process on the host,
+  /// chunked exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> Array1<T> {
+    if self.device_ready() {
+      self.backend.euler_sample(self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      self.backend.euler_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    if self.device_ready() {
+      self.backend.euler_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_euler_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }
