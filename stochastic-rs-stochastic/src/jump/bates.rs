@@ -395,7 +395,7 @@ where
 
   /// Whether a device can run this process: it has no jumps, or its sizes
   /// follow a law the kernels draw. Anything else samples on the host.
-  fn device_ready(&self) -> bool {
+  pub fn device_ready(&self) -> bool {
     self.lambda <= T::zero() || self.device_jump_sizes().is_some()
   }
 }

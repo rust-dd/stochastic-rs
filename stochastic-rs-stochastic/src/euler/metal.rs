@@ -55,6 +55,7 @@ struct EulerArgs {
     float lift_db;
     float lift_fb;
     float lift_x0;
+    uint hist_slot;
     float x0[4];
 };
 
@@ -96,6 +97,7 @@ kernel void euler_paths(
     const float lift_db = args.lift_db;
     const float lift_fb = args.lift_fb;
     const float lift_x0 = args.lift_x0;
+    const uint hist_slot = args.hist_slot;
     const float jump_a = args.jump_a;
     const float jump_b = args.jump_b;
     const float jump_c = args.jump_c;
@@ -155,6 +157,9 @@ struct EulerArgs {
   lift_db: f32,
   lift_fb: f32,
   lift_x0: f32,
+  /// The curve slot a history family reads its weights from, `u32::MAX`
+  /// for a family without one.
+  hist_slot: u32,
   x0: [f32; 4],
 }
 
@@ -469,6 +474,7 @@ fn device_paths(
   let (curve, n_curves) = crate::euler::flatten_curves(curves, n);
   let (lift_tables, has_lift, lift_n, lift_db, lift_fb, lift_x0) =
     crate::euler::encode_lift(lift.as_ref());
+  let hist_slot = crate::euler::history_slot(family, n);
   let args = EulerArgs {
     family,
     components: components as u32,
@@ -503,6 +509,7 @@ fn device_paths(
     lift_db,
     lift_fb,
     lift_x0,
+    hist_slot,
     x0,
   };
   let data = run(ordinal, params, args, increments, &curve, lift_tables)?;

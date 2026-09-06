@@ -13,8 +13,9 @@
 //!   for the classical normal-jump Merton (1976) model
 //! - [`ScalarExp<T>`](stochastic_rs_distributions::scalar::ScalarExp) for
 //!   one-sided exponential jumps
-//! - any user-defined `Distribution<T>` that is `Send + Sync` — which the
-//!   SIMD laws, with their thread-local buffers, are not
+//! - any user-defined `Distribution<T>` that is `Send + Sync + 'static` — the
+//!   engine inspects it through `Any` — which the SIMD laws, with their
+//!   thread-local buffers, are not
 //!
 //! On a device the engine draws the two scalar laws above in the kernel and
 //! recognises them at runtime; any other `D` keeps the process on the host,
@@ -315,7 +316,7 @@ where
 
   /// Whether a device can run this process: it has no jumps, or its sizes
   /// follow a law the kernels draw. Anything else samples on the host.
-  fn device_ready(&self) -> bool {
+  pub fn device_ready(&self) -> bool {
     self.lambda <= T::zero() || self.device_jump_sizes().is_some()
   }
 }

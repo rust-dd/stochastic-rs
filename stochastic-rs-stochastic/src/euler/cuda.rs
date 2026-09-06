@@ -43,7 +43,7 @@ const CUDA_HEADER: &str = r#"extern "C" __global__ void euler_paths_REAL(
     REAL g2_shape, REAL g2_scale, REAL g2_per,
     const REAL* __restrict__ lift_decay, const REAL* __restrict__ lift_weight,
     const REAL* __restrict__ lift_drift_scale, unsigned int has_lift, unsigned int lift_n,
-    REAL lift_db, REAL lift_fb, REAL lift_x0)
+    REAL lift_db, REAL lift_fb, REAL lift_x0, unsigned int hist_slot)
 {
     unsigned int path = blockIdx.x * blockDim.x + threadIdx.x;
     const REAL x0[4] = { x00, x01, x02, x03 };
@@ -160,6 +160,7 @@ fn run<R>(
   lift_db: R,
   lift_fb: R,
   lift_x0: R,
+  hist_slot: u32,
 ) -> Result<Vec<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
@@ -260,6 +261,7 @@ where
       .arg(&lift_db)
       .arg(&lift_fb)
       .arg(&lift_x0)
+      .arg(&hist_slot)
       .launch(LaunchConfig::for_num_elems(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
@@ -416,6 +418,7 @@ fn device_paths<T: FloatExt>(
       lift_x0.to_f64().unwrap_or(0.0),
     );
     let (family, params) = spec.encode();
+    let hist_slot = crate::euler::history_slot(family, n);
     let arity = super::families::Family::from_code(family).expect("a declared family");
     let use_jumps = u32::from(jump_lambda.is_some());
     let lambda64 = jump_lambda.map_or(0.0, |v| v.to_f64().unwrap_or(0.0));
@@ -504,6 +507,7 @@ fn device_paths<T: FloatExt>(
         lift_db,
         lift_fb,
         lift_x0,
+        hist_slot,
       )?;
       let out = Array3::<f64>::from_shape_vec((planes, m, n), data)
         .expect("the kernel returns components * m * n values");
@@ -572,6 +576,7 @@ fn device_paths<T: FloatExt>(
       lift_db as f32,
       lift_fb as f32,
       lift_x0 as f32,
+      hist_slot,
     )?;
     assert!(
       TypeId::of::<T>() == TypeId::of::<f32>(),
@@ -621,6 +626,7 @@ fn launch_chunk<R>(
   lift_db: R,
   lift_fb: R,
   lift_x0: R,
+  hist_slot: u32,
 ) -> Result<CudaSlice<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
@@ -717,6 +723,7 @@ where
       .arg(&lift_db)
       .arg(&lift_fb)
       .arg(&lift_x0)
+      .arg(&hist_slot)
       .launch(LaunchConfig::for_num_elems(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
@@ -871,6 +878,7 @@ fn pipelined_paths<T: FloatExt>(
   let (curve, n_curves) = crate::euler::flatten_curves(curves, n);
   debug_assert!(lift.is_none(), "the pipelined batch carries no lift");
   let (family, params) = spec.encode();
+  let hist_slot = crate::euler::history_slot(family, n);
   let arity = super::families::Family::from_code(family).expect("a declared family");
   let use_jumps = u32::from(jump_lambda.is_some());
   let lambda64 = jump_lambda.map_or(0.0, |v| v.to_f64().unwrap_or(0.0));

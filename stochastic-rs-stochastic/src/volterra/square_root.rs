@@ -100,8 +100,9 @@ where
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// The Markov lift of `kernel` at the grid spacing, what a device replays
-  /// node by node; rebuilt whenever the grid changes.
+  /// The Markov lift of `kernel` at the grid spacing: the host sampler steps
+  /// it and a device replays it node by node, so both run one object. The
+  /// grid setters rebuild it; a direct write to `n` or `t` leaves it stale.
   pub(crate) lift: VolterraLift<T, K>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -303,14 +304,13 @@ where
     Self: 's;
 
   fn sampler(&self) -> VolterraSquareRootSampler<T, K, S> {
-    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
     VolterraSquareRootSampler {
       n: self.n,
       v0: self.v0.unwrap_or(self.theta),
       kappa: self.kappa,
       theta: self.theta,
       nu: self.nu,
-      lift: VolterraLift::new(self.kernel.clone(), dt),
+      lift: self.lift.clone(),
       gn: Gn::<T, S> {
         backend: Cpu,
         n: self.n - 1,

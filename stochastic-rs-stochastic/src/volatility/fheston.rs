@@ -31,7 +31,6 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::special::gamma;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -109,9 +108,91 @@ impl<T: FloatExt, S: SeedExt> RoughHeston<T, S> {
 
 impl<T: FloatExt, S: SeedExt, B> RoughHeston<T, S, B> {}
 
-backend_switch!([T: FloatExt, S: SeedExt] RoughHeston<T, S> { hurst, v0, theta, kappa, nu, c1, c2, t, n, mu, s0, rho, seed } via host);
+impl<T: FloatExt, S: SeedExt, B> RoughHeston<T, S, B> {
+  /// The grid spacing, zero for a single point.
+  fn dt(&self) -> T {
+    if self.n > 1 {
+      self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    } else {
+      T::zero()
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for RoughHeston<T, S, B> {
+  /// The memory kernel on the grid, `((m + 1) dt)^{H - 1/2} dt` at lag `m`:
+  /// what the host sums the local factor against, one weight per lag, which
+  /// the device reads as its first curve.
+  fn memory_weights(&self) -> Vec<T> {
+    let dt = self.dt();
+    let half = T::from_f64_fast(0.5);
+    (0..self.n)
+      .map(|m| (T::from_usize_(m + 1) * dt).powf(self.hurst - half) * dt)
+      .collect()
+  }
+
+  /// Whether a device can run this process: the grid fits the kernels'
+  /// per-path history. A longer grid samples on the host.
+  pub fn device_ready(&self) -> bool {
+    self.n <= crate::euler::HISTORY_SLOTS
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
+  for RoughHeston<T, S, B>
+{
+  /// The host's constants folded once: the factor's decay over a step and the
+  /// reciprocal of `Γ(H - 1/2)` the memory term is divided by.
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::RoughHestonMemory {
+      mu: self.mu.unwrap_or(T::zero()),
+      theta: self.theta,
+      ek: (-self.kappa * self.dt()).exp(),
+      nu: self.nu,
+      c1: self.c1.unwrap_or(T::one()),
+      c2: self.c2.unwrap_or(T::one()),
+      inv_g: T::from_f64_fast(1.0 / gamma(self.hurst.to_f64().unwrap() - 0.5)),
+      rho: self.rho.unwrap_or(T::zero()),
+    }
+  }
+
+  /// Spot, variance, and the two factors behind it: `y` starts at the
+  /// variance and `z` at zero, as on the host.
+  fn initial_state(&self) -> [T; 4] {
+    let v0_sq = self.v0.unwrap_or(T::one()).powi(2);
+    [self.s0.unwrap_or(T::one()), v0_sq, v0_sq, T::zero()]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.dt()
+  }
+
+  fn curves(&self) -> Option<Vec<Vec<T>>> {
+    Some(vec![self.memory_weights()])
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 2] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] RoughHeston<T, S> { hurst, v0, theta, kappa, nu, c1, c2, t, n, mu, s0, rho, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for RoughHeston<T, S, B>
+{
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = RoughHestonSampler<T, S>
@@ -158,6 +239,51 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for RoughHeston<T, S
       g: gamma(self.hurst.to_f64().unwrap() - 0.5),
       cgns: Cgns::new(rho, n_steps, self.t, Unseeded),
       seed: self.seed.derive(),
+    }
+  }
+
+  /// Through the Euler engine when the grid fits the kernels'
+  /// per-path history; a longer grid keeps the process on the host,
+  /// chunked exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> [Array1<T>; 2] {
+    if self.device_ready() {
+      self.backend.system_sample(self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 2]) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      self.backend.system_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 2]> {
+    if self.device_ready() {
+      self.backend.system_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 2], crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_system_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 2]>, crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_system_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }

@@ -93,9 +93,11 @@ where
   D2: Distribution<T> + Send + Sync + Any,
 {
   /// The arrival intensity when the inter-arrival law is exponential, which
-  /// is when the arrivals are the Poisson stream the kernels draw.
+  /// is when the arrivals are the Poisson stream the kernels draw. Read off
+  /// the `customjt` that the host actually samples the arrivals from, not the
+  /// separately held `jump_times_distribution`.
   fn device_intensity(&self) -> Option<T> {
-    crate::process::cpoisson::device_arrival_rate(&self.jump_times_distribution)
+    crate::process::cpoisson::device_arrival_rate(&self.customjt.distribution)
   }
 
   /// The jump-size law as the kernels draw it, one size per arrival; `None`
@@ -106,10 +108,14 @@ where
   }
 
   /// Whether a device can run this process: a fixed number of arrivals — the
-  /// horizon mode has no grid — exponential inter-arrivals, and sizes under a
-  /// law the kernels draw.
-  fn device_ready(&self) -> bool {
-    self.n.is_some() && self.device_intensity().is_some() && self.device_jump_sizes().is_some()
+  /// horizon mode has no grid — that the arrival stream `customjt` counts to
+  /// as well, exponential inter-arrivals, and sizes under a law the kernels
+  /// draw. Anything else samples on the host.
+  pub fn device_ready(&self) -> bool {
+    self.n.is_some()
+      && self.customjt.n == self.n
+      && self.device_intensity().is_some()
+      && self.device_jump_sizes().is_some()
   }
 }
 
@@ -147,10 +153,8 @@ where
     T::one()
   }
 
-  fn jump_intensity(&self) -> Option<T> {
-    self.device_intensity()
-  }
-
+  /// One size per step under the kernels' law; the count the intensity would
+  /// draw is never read, so no intensity is declared and no count is drawn.
   fn jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
     Some(self.device_jump_sizes().expect(
       "CompoundCustom: the jump-size distribution is not a law the Euler engine draws on a \
@@ -163,6 +167,7 @@ where
   }
 
   fn host_sample(&self) -> [Array1<T>; 3] {
+    let _ = <Self as crate::euler::EulerSystem<T, 3>>::grid_points(self);
     let out = <Self as ProcessExt<T>>::sampler(self).sample();
     <Self as ProcessExt<T>>::advance_chunk_seed(self);
     out

@@ -5,6 +5,7 @@
 use ndarray::Array1;
 use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::scalar::ScalarExp;
 use stochastic_rs_distributions::scalar::ScalarNormal;
 use stochastic_rs_distributions::traits::Fn1D;
 use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
@@ -1131,4 +1132,99 @@ fn bates_1996_agrees_with_the_cpu_law() {
     };
     agrees(spread(&host), spread(&device), 0.06, "Bates 1996 spot spread");
   }
+}
+
+/// Where the Feller condition fails the two boundary treatments part: the
+/// truncated variance sits at zero for a good share of paths while the
+/// reflected one bounces off it. Each variant has to agree with its own host
+/// on that share, and the two shares have to differ — which is what pins the
+/// variant a launch runs, not just the shared drift.
+#[test]
+fn bates_1996_reflection_moves_the_boundary() {
+  let share_at_zero = |paths: &[[Array1<f32>; 2]]| {
+    paths.iter().filter(|p| p[1][252] < 1e-4).count() as f64 / paths.len() as f64
+  };
+  let mut shares = [0.0f64; 2];
+  for (k, reflected) in [false, true].into_iter().enumerate() {
+    let build = || {
+      Bates1996::<f32, _, _>::new(
+        Some(0.02),
+        None,
+        None,
+        None,
+        0.0,
+        0.0,
+        0.005,
+        2.0,
+        0.6,
+        -0.5,
+        ScalarNormal::<f32>::new(-0.02, 0.05),
+        253,
+        Some(100.0),
+        Some(0.04),
+        Some(1.0),
+        Some(reflected),
+        Deterministic::new(101),
+      )
+    };
+    const PATHS: usize = 3 * M;
+    let device = build().on::<Device>().sample_par(PATHS);
+    let host = build().sample_par(PATHS);
+    let (h, d) = (share_at_zero(&host), share_at_zero(&device));
+    assert!(
+      (h - d).abs() < 0.03,
+      "Bates 1996 share of variances at zero (reflected: {reflected}): host {h}, device {d}"
+    );
+    shares[k] = d;
+  }
+  assert!(
+    shares[0] - shares[1] > 0.1,
+    "truncation and reflection are indistinguishable here: {shares:?}"
+  );
+}
+
+/// Several jumps a step is where a product law differs from a sum: with an
+/// intensity above one per step, `∏(1 + Y) − 1` carries the cross terms a sum
+/// drops, and with positive exponential sizes those terms lift the mean
+/// log-spot by about a quarter over the horizon — a margin a summing kernel
+/// would miss and a statistic whose standard error here is a hundredth of it,
+/// where the spot's own mean sits under a tail too heavy to pin.
+#[test]
+fn bates_1996_compounds_several_jumps_a_step() {
+  let build = || {
+    Bates1996::<f32, _, _>::new(
+      Some(0.02),
+      None,
+      None,
+      None,
+      30.0,
+      0.2,
+      0.08,
+      2.0,
+      0.3,
+      -0.5,
+      ScalarExp::<f32>::new(5.0),
+      26,
+      Some(100.0),
+      Some(0.04),
+      Some(1.0),
+      Some(false),
+      Deterministic::new(103),
+    )
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert!(
+    device.iter().all(|p| p[0].iter().all(|&s| s > 0.0)),
+    "positive multiplicative jumps cannot take the spot below zero"
+  );
+  let mean_log_spot = |paths: &[[Array1<f32>; 2]]| {
+    paths.iter().map(|p| (p[0][25] as f64).ln()).sum::<f64>() / paths.len() as f64
+  };
+  let (h, d) = (mean_log_spot(&host), mean_log_spot(&device));
+  assert!(
+    (h - d).abs() < 0.06,
+    "Bates 1996 mean log-spot under compounding jumps: host {h}, device {d}"
+  );
 }

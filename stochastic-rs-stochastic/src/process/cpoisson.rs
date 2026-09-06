@@ -65,13 +65,14 @@ where
 /// The Euler engine's description of `distribution`, when it is one of the
 /// size laws the device kernels draw: the scalar normal ([`ScalarNormal`])
 /// and the scalar exponential ([`ScalarExp`]), the latter as the
-/// double-exponential law that only ever jumps up. The scalar laws are the
-/// ones a process can carry as its `D` at all — the SIMD laws hold
-/// thread-local buffers and are not `Sync`. The type is inspected at runtime
-/// through [`Any`], which is what lets a process stay generic over
-/// `D: Distribution<T>` on the host and still hand a recognised law to the
-/// device; a closure, a Python callable or any other law returns `None`, and
-/// the process samples on the host.
+/// double-exponential law that only ever jumps up. The SIMD laws are not
+/// among them: they hold thread-local buffers and are not `Sync`, so a
+/// process cannot carry them as its `D`. The type is inspected at runtime
+/// through [`Any`] — which is why a process on the engine asks `'static` of
+/// its `D` — and that is what lets it stay generic over `D: Distribution<T>`
+/// on the host and still hand a recognised law to the device; a closure, a
+/// Python callable or any other law returns `None`, and the process samples
+/// on the host.
 pub(crate) fn device_jump_sizes<T: FloatExt, D: Any>(
   distribution: &D,
 ) -> Option<crate::euler::JumpSizes<T>> {
@@ -252,7 +253,7 @@ where
 
   /// Whether a device can run this process: a fixed number of arrivals — the
   /// horizon mode has no grid — and sizes under a law the kernels draw.
-  fn device_ready(&self) -> bool {
+  pub fn device_ready(&self) -> bool {
     self.poisson.n.is_some() && self.device_jump_sizes().is_some()
   }
 }
@@ -286,11 +287,8 @@ where
     T::one()
   }
 
-  fn jump_intensity(&self) -> Option<T> {
-    Some(self.poisson.lambda)
-  }
-
-  /// One size per step under the kernels' law. A law they do not carry never
+  /// One size per step under the kernels' law; the count an intensity would
+  /// draw is never read, so none is declared. A law they do not carry never
   /// reaches a launch — [`ProcessExt::sample`] keeps such a process on the
   /// host — so asking for one here is a caller bypassing that guard.
   fn jump_sizes(&self) -> Option<crate::euler::JumpSizes<T>> {
@@ -305,6 +303,7 @@ where
   }
 
   fn host_sample(&self) -> [Array1<T>; 3] {
+    let _ = <Self as crate::euler::EulerSystem<T, 3>>::grid_points(self);
     let out = <Self as ProcessExt<T>>::sampler(self).sample();
     <Self as ProcessExt<T>>::advance_chunk_seed(self);
     out

@@ -36,8 +36,8 @@ fn nondecreasing(paths: &[[Array1<f32>; 3]], what: &str) {
   );
 }
 
-/// The second row is the running sum of the third, on the device as on the
-/// host, to within single-precision rounding of the accumulation.
+/// The second row is the running sum of the third, to within single-precision
+/// rounding of the accumulation — what the kernel's two slots promise.
 fn accumulates(paths: &[[Array1<f32>; 3]], what: &str) {
   for p in paths {
     assert_eq!(p[1][0], 0.0, "{what}: the cumulative row starts at zero");
@@ -280,6 +280,12 @@ fn compound_custom_agrees_with_the_cpu_law() {
     mean_of(&device, 1),
     0.02,
     "compound custom cumulative jumps",
+  );
+  agrees(
+    std_of(&host, 2, EVENTS / 2),
+    std_of(&device, 2, EVENTS / 2),
+    0.06,
+    "compound custom jump size spread",
   );
 }
 

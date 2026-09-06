@@ -202,7 +202,7 @@ where
 
   /// Whether a device can run this process: a fixed number of arrivals — the
   /// horizon mode has no grid — under an exponential inter-arrival law.
-  fn device_ready(&self) -> bool {
+  pub fn device_ready(&self) -> bool {
     self.n.is_some() && self.device_intensity().is_some()
   }
 }
@@ -245,6 +245,7 @@ where
   }
 
   fn host_sample(&self) -> Array1<T> {
+    let _ = crate::euler::EulerCoefficients::grid_points(self);
     let out = <Self as ProcessExt<T>>::sampler(self).sample();
     <Self as ProcessExt<T>>::advance_chunk_seed(self);
     out

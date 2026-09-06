@@ -69,8 +69,9 @@ where
   pub t: Option<T>,
   /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
   pub seed: S,
-  /// The Markov lift of `kernel` at the grid spacing, what a device replays
-  /// node by node; rebuilt whenever the grid changes.
+  /// The Markov lift of `kernel` at the grid spacing: the host sampler steps
+  /// it and a device replays it node by node, so both run one object. The
+  /// grid setters rebuild it; a direct write to `n` or `t` leaves it stale.
   pub(crate) lift: VolterraLift<T, K>,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
@@ -239,7 +240,7 @@ where
 {
   /// Whether a device can run this process: the polynomial fits the kernels'
   /// coefficient slots.
-  fn device_ready(&self) -> bool {
+  pub fn device_ready(&self) -> bool {
     self.coefficients.len() <= DEVICE_COEFFICIENTS
   }
 }
@@ -268,10 +269,16 @@ where
     crate::euler::EulerSpec::GaussianPolynomialVolatility { coefficients }
   }
 
-  /// The lifted Gaussian starts at zero; the first reported point is the
-  /// polynomial there, its constant term, as on the host.
+  /// The reported path starts at the polynomial of a zero Gaussian, its
+  /// constant term, as on the host.
   fn initial_value(&self) -> T {
-    T::zero()
+    self.coefficients[0]
+  }
+
+  /// The state is the lifted Gaussian itself, which starts at zero; the first
+  /// point comes out of the report expression, not this slot.
+  fn initial_state(&self) -> [T; 4] {
+    [T::zero(); 4]
   }
 
   fn grid_points(&self) -> usize {
@@ -320,11 +327,10 @@ where
     Self: 's;
 
   fn sampler(&self) -> GaussianPolynomialVolatilitySampler<T, K, S> {
-    let dt = self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1);
     GaussianPolynomialVolatilitySampler {
       n: self.n,
       coefficients: self.coefficients.clone(),
-      lift: VolterraLift::new(self.kernel.clone(), dt),
+      lift: self.lift.clone(),
       gn: Gn::<T, S> {
         backend: Cpu,
         n: self.n - 1,

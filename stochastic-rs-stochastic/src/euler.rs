@@ -161,6 +161,29 @@ pub(crate) fn encode_lift<'a, T: FloatExt>(
 /// declared curve per step, so declaring fewer costs less.
 pub const CURVE_SLOTS: usize = 8;
 
+/// The most grid points a family with a `history` clause steps on a device:
+/// the kernels keep each path's pushed values in an array of this many slots
+/// and convolve them with the family's weight curve every step. A longer grid
+/// stays on the host, which the process's own guard decides.
+pub const HISTORY_SLOTS: usize = 512;
+
+/// The curve slot the launch's family reads its history weights from, or the
+/// kernels' "none" sentinel; a history family whose grid exceeds
+/// [`HISTORY_SLOTS`] never reaches a launch through `ProcessExt`, so an
+/// oversize grid here is a caller bypassing that guard.
+pub(crate) fn history_slot(family: u32, n: usize) -> u32 {
+  match families::Family::from_code(family).and_then(families::Family::history_slot) {
+    Some(slot) => {
+      assert!(
+        n <= HISTORY_SLOTS,
+        "a history family steps at most {HISTORY_SLOTS} grid points on a device, not {n}"
+      );
+      slot
+    }
+    None => u32::MAX,
+  }
+}
+
 /// The curve buffer a launch binds: the declared curves laid end to end, each
 /// padded to `n` values, so the kernel reads curve `k` at step `i` from
 /// `curve[k * n + i]`. Returns the flattened values and how many curves they
@@ -736,6 +759,54 @@ pub enum EulerSpec<T: FloatExt> {
   /// A polynomial of a Gaussian Volterra process under the launch's Markov
   /// lift, up to eight coefficients in rising order, the unused ones zero.
   GaussianPolynomialVolatility { coefficients: [T; 8] },
+  /// Rough Heston in the two-term rational approximation of its kernel, the
+  /// memory integral of the local factor kept exactly by the history block
+  /// against the weights the launch tabulates as its first curve.
+  RoughHestonMemory {
+    mu: T,
+    theta: T,
+    ek: T,
+    nu: T,
+    c1: T,
+    c2: T,
+    inv_g: T,
+    rho: T,
+  },
+  /// The fractional Bates model: [`RoughHestonMemory`](EulerSpec::RoughHestonMemory)
+  /// with unit calibration coefficients, a jump-compensated drift and normal
+  /// jumps in the log-spot.
+  FractionalBatesMemory {
+    mu_c: T,
+    theta: T,
+    ek: T,
+    xi: T,
+    inv_g: T,
+    rho: T,
+  },
+  /// Rough Bergomi under the hybrid scheme, its Volterra driver the history
+  /// block's convolution (weights in the first curve) plus an independent
+  /// residual, the deterministic exponent in the second curve.
+  RoughBergomiMemory {
+    r: T,
+    a: T,
+    v0sq: T,
+    residual_sd: T,
+    rho: T,
+  },
+  /// Linear fractional stable motion: a moving average of α-stable draws
+  /// under the weights the launch tabulates as its first curve.
+  LinearFractionalStable {
+    alpha: T,
+    inv_alpha: T,
+    tail_exp: T,
+    b: T,
+    scale_s: T,
+    pi: T,
+    half_pi: T,
+  },
+  /// A moving-average filter of white noise whose weights — the impulse
+  /// response of the host's linear recursion — travel as the first curve.
+  MovingAverageFilter { sigma: T },
 }
 
 /// Widens a family's parameter list to the kernels' fixed slot count.
@@ -1395,6 +1466,55 @@ impl<T: FloatExt> EulerSpec<T> {
         Family::GaussianPolynomialVolatility.code(),
         pad(coefficients),
       ),
+      EulerSpec::RoughHestonMemory {
+        mu,
+        theta,
+        ek,
+        nu,
+        c1,
+        c2,
+        inv_g,
+        rho,
+      } => (
+        Family::RoughHestonMemory.code(),
+        pad([mu, theta, ek, nu, c1, c2, inv_g, rho]),
+      ),
+      EulerSpec::FractionalBatesMemory {
+        mu_c,
+        theta,
+        ek,
+        xi,
+        inv_g,
+        rho,
+      } => (
+        Family::FractionalBatesMemory.code(),
+        pad([mu_c, theta, ek, xi, inv_g, rho]),
+      ),
+      EulerSpec::RoughBergomiMemory {
+        r,
+        a,
+        v0sq,
+        residual_sd,
+        rho,
+      } => (
+        Family::RoughBergomiMemory.code(),
+        pad([r, a, v0sq, residual_sd, rho]),
+      ),
+      EulerSpec::LinearFractionalStable {
+        alpha,
+        inv_alpha,
+        tail_exp,
+        b,
+        scale_s,
+        pi,
+        half_pi,
+      } => (
+        Family::LinearFractionalStable.code(),
+        pad([alpha, inv_alpha, tail_exp, b, scale_s, pi, half_pi]),
+      ),
+      EulerSpec::MovingAverageFilter { sigma } => {
+        (Family::MovingAverageFilter.code(), pad([sigma]))
+      }
     }
   }
 }

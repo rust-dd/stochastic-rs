@@ -40,6 +40,16 @@
 //! buffer in declaration order. The `report` expression maps the state to what
 //! the path records and is evaluated at `t = 0` as well, where no noise exists.
 //!
+//! A family with a `history { push (..) weights (ctK) }` clause reads `cv`,
+//! the convolution of what it has pushed so far with the weights the launch
+//! tabulated in curve slot `K`, indexed by lag: at the step that produces
+//! grid point `i` the frame appends the pushed value `p_i` (evaluated on the
+//! pre-step state, this step's noise and uniforms) and hands the step
+//! `cv = Σ_{k≤i} w_k p_{i-k}`. That is the exact O(n²) scheme of a moving
+//! average over the whole past — a Volterra integral on the grid, an ARMA
+//! filter, a fractional stable motion — for grids up to
+//! [`HISTORY_SLOTS`](crate::euler::HISTORY_SLOTS) points.
+//!
 //! The function vocabulary is `sqrt`, `exp`, `ln`, `pow`, `abs`, `negate`,
 //! `tanh`, `atan`, `sin`, `recip`, `positive`, `max`, `min`, the literal
 //! `lit`, the
@@ -321,7 +331,7 @@ pub(crate) mod cube_ops {
 /// what a stochastic-volatility or two-factor model needs.
 macro_rules! euler_families {
   (
-    step_inputs($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, state $sxs:tt, noise $sds:tt, select($component:ident, $produced:ident));
+    step_inputs($params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, state $sxs:tt, noise $sds:tt, select($component:ident, $produced:ident));
     $(
     $(#[$meta:meta])*
     $code:literal => $name:ident { $($param:ident),* $(,)? }
@@ -330,6 +340,7 @@ macro_rules! euler_families {
       step { $($step:tt)* }
       report { $($report:tt)* }
       $(lift $lift:tt)?
+      $(history $hist:tt)?
   ),* $(,)?) => {
     /// The family codes the kernels dispatch on, in declaration order.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -367,10 +378,30 @@ macro_rules! euler_families {
 
       /// How many state components the family steps, which is how many paths
       /// a launch writes and how many arrays a process built on it returns.
+      /// How many values the family reports per grid point — the planes a
+      /// launch writes. A family may keep more state slots than it reports.
       #[allow(dead_code)]
       pub(crate) fn components(self) -> usize {
         match self {
+          $( Family::$name => euler_families!(@count_exprs $($report)*), )*
+        }
+      }
+
+      /// How many state slots the family steps — at least as many as it
+      /// reports, more when it keeps auxiliary state the path never records.
+      #[allow(dead_code)]
+      pub(crate) fn slots(self) -> usize {
+        match self {
           $( Family::$name => [$(stringify!($state)),*].len(), )*
+        }
+      }
+
+      /// The curve slot a family's `history` clause reads its weights from,
+      /// `None` for a family without one.
+      #[allow(dead_code)]
+      pub(crate) fn history_slot(self) -> Option<u32> {
+        match self {
+          $( Family::$name => euler_families!(@history_slot $($hist)?), )*
         }
       }
 
@@ -410,6 +441,7 @@ macro_rules! euler_families {
       $u: T,
       $u2: T,
       $ln: T,
+      $cv: T,
       noise: &[T],
       out: &mut [T],
     ) {
@@ -462,6 +494,7 @@ macro_rules! euler_families {
       $u: T,
       $u2: T,
       $ln: T,
+      $cv: T,
       out: &mut [T],
     ) {
       #[allow(unused_imports)]
@@ -501,7 +534,7 @@ macro_rules! euler_families {
 
       $(
         euler_families!(@cube_step
-          $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $component, $produced,
+          $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $cv, $component, $produced,
           sig $sxs $sds,
           place $sxs [$($state)*] $sds [$($noise)*],
           params [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19] [$($param)*],
@@ -520,11 +553,32 @@ macro_rules! euler_families {
 
       $(
         euler_families!(@cube_lift
-          $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $component, $produced,
+          $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $cv, $component, $produced,
           sig $sxs $sds,
           place $sxs [$($state)*] $sds [$($noise)*],
           params [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19] [$($param)*],
           $($lift)?
+        );
+      )*
+    }
+
+    /// One `#[cube]` push function per history family, shaped like [`cube`]
+    /// with the pushed value as its only component.
+    #[cfg(feature = "cubecl")]
+    #[allow(non_snake_case)]
+    pub(crate) mod cube_history {
+      #[allow(unused_imports)]
+      use super::cube_ops::*;
+      #[allow(unused_imports)]
+      use cubecl::prelude::*;
+
+      $(
+        euler_families!(@cube_history
+          $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $cv, $component, $produced,
+          sig $sxs $sds,
+          place $sxs [$($state)*] $sds [$($noise)*],
+          params [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19] [$($param)*],
+          $($hist)?
         );
       )*
     }
@@ -540,7 +594,7 @@ macro_rules! euler_families {
 
       $(
         euler_families!(@cube_report
-          $(#[$meta])* $name, $params, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $component, $produced,
+          $(#[$meta])* $name, $params, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $cv, $component, $produced,
           sig $sxs,
           place $sxs [$($state)*],
           params [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19] [$($param)*],
@@ -584,6 +638,39 @@ macro_rules! euler_families {
         $(
           Family::$name => {
             euler_families!(@host_lift $params, $dt, state, noise, [$($param)*], [$($state)*], [$($noise)*], $($lift)?)
+          }
+        )*
+      }
+    }
+
+    /// The C statements that evaluate a history family's pushed value into
+    /// `hist_in[0]`, one block per family that declares a `history` clause;
+    /// the frame appends it to the path's history and convolves that history
+    /// with the family's weight curve into `cv`. A family without a clause
+    /// contributes nothing.
+    pub(crate) const C_HISTORY: &str = concat!($(
+      euler_families!(@c_history $code, [$($param)*], [$($state)*], [$($noise)*], $($hist)?),
+    )*);
+
+    /// The host evaluation of a history family's pushed value from the state,
+    /// noise and uniforms of one step, `None` for a family that declares no
+    /// history. What the parity probes and the tests run against.
+    #[allow(dead_code, clippy::too_many_arguments, unused_variables)]
+    pub(crate) fn host_history<T: FloatExt>(
+      family: Family,
+      state: &[T],
+      $params: &[T],
+      $dt: T,
+      noise: &[T],
+      $u: T,
+      $u2: T,
+    ) -> Option<T> {
+      #[allow(unused_imports)]
+      use ops::*;
+      match family {
+        $(
+          Family::$name => {
+            euler_families!(@host_history $params, $dt, $u, $u2, state, noise, [$($param)*], [$($state)*], [$($noise)*], $($hist)?)
           }
         )*
       }
@@ -646,25 +733,118 @@ macro_rules! euler_families {
   }};
 
   (@cube_lift
-    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, $component:ident, $produced:ident,
     sig $sxs:tt $sds:tt,
     place $psx:tt [$($state:ident)*] $psd:tt [$($noise:ident)*],
     params [$($idx:literal)*] [$($param:ident)*],
   ) => {};
 
   (@cube_lift
-    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, $component:ident, $produced:ident,
     sig $sxs:tt $sds:tt,
     place $psx:tt [$($state:ident)*] $psd:tt [$($noise:ident)*],
     params [$($idx:literal)*] [$($param:ident)*],
     { drift ($($ld:tt)*) diffusion ($($lg:tt)*) shock ($($lsh:tt)*) }
   ) => {
     euler_families!(@cube_step
-      $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $component, $produced,
+      $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $cv, $component, $produced,
       sig $sxs $sds,
       place $psx [$($state)*] $psd [$($noise)*],
       params [$($idx)*] [$($param)*],
       bound {}, arms {}, at [0u32 1u32 2u32 3u32], body {$($ld)*, $($lg)*, $($lsh)*}
+    );
+  };
+
+  (@count_exprs bind $n:ident = $e:expr; $($rest:tt)*) => {
+    euler_families!(@count_exprs $($rest)*)
+  };
+
+  (@count_exprs $($e:expr),* $(,)?) => { [$(stringify!($e)),*].len() };
+
+  (@history_slot) => { None };
+
+  (@history_slot { push ($($hp:tt)*) weights (ct) }) => { Some(0u32) };
+
+  (@history_slot { push ($($hp:tt)*) weights (ct1) }) => { Some(1u32) };
+
+  (@history_slot { push ($($hp:tt)*) weights (ct2) }) => { Some(2u32) };
+
+  (@history_slot { push ($($hp:tt)*) weights (ct3) }) => { Some(3u32) };
+
+  (@history_slot { push ($($hp:tt)*) weights (ct4) }) => { Some(4u32) };
+
+  (@history_slot { push ($($hp:tt)*) weights (ct5) }) => { Some(5u32) };
+
+  (@history_slot { push ($($hp:tt)*) weights (ct6) }) => { Some(6u32) };
+
+  (@history_slot { push ($($hp:tt)*) weights (ct7) }) => { Some(7u32) };
+
+  (@c_history $code:literal, [$($param:ident)*], [$($state:ident)*], [$($noise:ident)*],) => { "" };
+
+  (@c_history $code:literal, [$($param:ident)*], [$($state:ident)*], [$($noise:ident)*],
+    { push ($($hp:tt)*) weights ($w:ident) }) => {
+    concat!(
+      "        if (family == ", stringify!($code), "u) {\n",
+      euler_families!(@bind_params [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19] $($param)*),
+      euler_families!(@bind_slots "state" [0 1 2 3] $($state)*),
+      euler_families!(@bind_slots "noise" [0 1 2 3] $($noise)*),
+      euler_families!(@c_body "hist_in", [0], [hp], $($hp)*),
+      "        }\n",
+    )
+  };
+
+  (@host_history $params:ident, $dt:ident, $u:ident, $u2:ident, $state_in:ident, $noise_in:ident, [$($param:ident)*], [$($state:ident)*], [$($noise:ident)*],) => {
+    None
+  };
+
+  (@host_history $params:ident, $dt:ident, $u:ident, $u2:ident, $state_in:ident, $noise_in:ident, [$($param:ident)*], [$($state:ident)*], [$($noise:ident)*],
+    { push ($($hp:tt)*) weights ($w:ident) }) => {{
+    #[allow(unused_mut, unused_variables)]
+    let mut slot = 0;
+    $(
+      let $param = $params[slot];
+      slot += 1;
+    )*
+    let _ = slot;
+    #[allow(unused_mut, unused_variables)]
+    let mut at = 0;
+    $(
+      let $state = $state_in[at];
+      at += 1;
+    )*
+    let _ = at;
+    #[allow(unused_mut, unused_variables)]
+    let mut at = 0;
+    $(
+      let $noise = $noise_in[at];
+      at += 1;
+    )*
+    let _ = at;
+    let mut pushed = [T::zero(); 1];
+    euler_families!(@host_assign pushed, $($hp)*);
+    Some(pushed[0])
+  }};
+
+  (@cube_history
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, $component:ident, $produced:ident,
+    sig $sxs:tt $sds:tt,
+    place $psx:tt [$($state:ident)*] $psd:tt [$($noise:ident)*],
+    params [$($idx:literal)*] [$($param:ident)*],
+  ) => {};
+
+  (@cube_history
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, $component:ident, $produced:ident,
+    sig $sxs:tt $sds:tt,
+    place $psx:tt [$($state:ident)*] $psd:tt [$($noise:ident)*],
+    params [$($idx:literal)*] [$($param:ident)*],
+    { push ($($hp:tt)*) weights ($w:ident) }
+  ) => {
+    euler_families!(@cube_step
+      $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $cv, $component, $produced,
+      sig $sxs $sds,
+      place $psx [$($state)*] $psd [$($noise)*],
+      params [$($idx)*] [$($param)*],
+      bound {}, arms {}, at [0u32 1u32 2u32 3u32], body {$($hp)*}
     );
   };
 
@@ -683,14 +863,14 @@ macro_rules! euler_families {
   }};
 
   (@cube_step
-    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*) ($($sigd:ident),*),
     place ($slot:ident $(, $restx:ident)*) [$head:ident $($restname:ident)*] ($($pd:ident),*) [$($nd:ident)*],
     params [$($idx:literal)*] [$($p:ident)*],
     bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$($at:literal)*], body {$($body:tt)*}
   ) => {
     euler_families!(@cube_step
-      $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $component, $produced,
+      $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $cv, $component, $produced,
       sig ($($sigx),*) ($($sigd),*),
       place ($($restx),*) [$($restname)*] ($($pd),*) [$($nd)*],
       params [$($idx)*] [$($p)*],
@@ -699,14 +879,14 @@ macro_rules! euler_families {
   };
 
   (@cube_step
-    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*) ($($sigd:ident),*),
     place ($($px:ident),*) [] ($slot:ident $(, $restd:ident)*) [$head:ident $($restname:ident)*],
     params [$($idx:literal)*] [$($p:ident)*],
     bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$($at:literal)*], body {$($body:tt)*}
   ) => {
     euler_families!(@cube_step
-      $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $component, $produced,
+      $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $cv, $component, $produced,
       sig ($($sigx),*) ($($sigd),*),
       place ($($px),*) [] ($($restd),*) [$($restname)*],
       params [$($idx)*] [$($p)*],
@@ -715,14 +895,14 @@ macro_rules! euler_families {
   };
 
   (@cube_step
-    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*) ($($sigd:ident),*),
     place ($($px:ident),*) [] ($($pd:ident),*) [],
     params [$i:literal $($restidx:literal)*] [$head:ident $($restname:ident)*],
     bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$($at:literal)*], body {$($body:tt)*}
   ) => {
     euler_families!(@cube_step
-      $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $component, $produced,
+      $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $cv, $component, $produced,
       sig ($($sigx),*) ($($sigd),*),
       place ($($px),*) [] ($($pd),*) [],
       params [$($restidx)*] [$($restname)*],
@@ -731,7 +911,7 @@ macro_rules! euler_families {
   };
 
   (@cube_step
-    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*) ($($sigd:ident),*),
     place ($($px:ident),*) [] ($($pd:ident),*) [],
     params [$($idx:literal)*] [],
@@ -739,7 +919,7 @@ macro_rules! euler_families {
     body {bind $n:ident = $e:expr; $($body:tt)*}
   ) => {
     euler_families!(@cube_step
-      $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $component, $produced,
+      $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $cv, $component, $produced,
       sig ($($sigx),*) ($($sigd),*),
       place ($($px),*) [] ($($pd),*) [],
       params [$($idx)*] [],
@@ -748,7 +928,7 @@ macro_rules! euler_families {
   };
 
   (@cube_step
-    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*) ($($sigd:ident),*),
     place ($($px:ident),*) [] ($($pd:ident),*) [],
     params [$($idx:literal)*] [],
@@ -756,7 +936,7 @@ macro_rules! euler_families {
     body {$e:expr $(, $rest:expr)+ $(,)?}
   ) => {
     euler_families!(@cube_step
-      $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $component, $produced,
+      $(#[$meta])* $name, $params, $dt, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $cv, $component, $produced,
       sig ($($sigx),*) ($($sigd),*),
       place ($($px),*) [] ($($pd),*) [],
       params [$($idx)*] [],
@@ -767,7 +947,7 @@ macro_rules! euler_families {
   };
 
   (@cube_step
-    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $dt:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*) ($($sigd:ident),*),
     place ($($px:ident),*) [] ($($pd:ident),*) [],
     params [$($idx:literal)*] [],
@@ -797,6 +977,7 @@ macro_rules! euler_families {
       $u: f32,
       $u2: f32,
       $ln: f32,
+      $cv: f32,
       $($sigd: f32,)*
     ) -> f32 {
       $($bound)*
@@ -810,14 +991,14 @@ macro_rules! euler_families {
   };
 
   (@cube_report
-    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*),
     place ($slot:ident $(, $restx:ident)*) [$head:ident $($restname:ident)*],
     params [$($idx:literal)*] [$($p:ident)*],
     bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$($at:literal)*], body {$($body:tt)*}
   ) => {
     euler_families!(@cube_report
-      $(#[$meta])* $name, $params, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $component, $produced,
+      $(#[$meta])* $name, $params, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $cv, $component, $produced,
       sig ($($sigx),*),
       place ($($restx),*) [$($restname)*],
       params [$($idx)*] [$($p)*],
@@ -826,14 +1007,14 @@ macro_rules! euler_families {
   };
 
   (@cube_report
-    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*),
     place ($($px:ident),*) [],
     params [$i:literal $($restidx:literal)*] [$head:ident $($restname:ident)*],
     bound {$($bound:tt)*}, arms {$($arms:tt)*}, at [$($at:literal)*], body {$($body:tt)*}
   ) => {
     euler_families!(@cube_report
-      $(#[$meta])* $name, $params, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $component, $produced,
+      $(#[$meta])* $name, $params, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $cv, $component, $produced,
       sig ($($sigx),*),
       place ($($px),*) [],
       params [$($restidx)*] [$($restname)*],
@@ -842,7 +1023,7 @@ macro_rules! euler_families {
   };
 
   (@cube_report
-    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*),
     place ($($px:ident),*) [],
     params [$($idx:literal)*] [],
@@ -850,7 +1031,7 @@ macro_rules! euler_families {
     body {bind $n:ident = $e:expr; $($body:tt)*}
   ) => {
     euler_families!(@cube_report
-      $(#[$meta])* $name, $params, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $component, $produced,
+      $(#[$meta])* $name, $params, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $cv, $component, $produced,
       sig ($($sigx),*),
       place ($($px),*) [],
       params [$($idx)*] [],
@@ -859,7 +1040,7 @@ macro_rules! euler_families {
   };
 
   (@cube_report
-    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*),
     place ($($px:ident),*) [],
     params [$($idx:literal)*] [],
@@ -867,7 +1048,7 @@ macro_rules! euler_families {
     body {$e:expr $(, $rest:expr)+ $(,)?}
   ) => {
     euler_families!(@cube_report
-      $(#[$meta])* $name, $params, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $component, $produced,
+      $(#[$meta])* $name, $params, $ct, $ct1, $ct2, $ct3, $ct4, $ct5, $ct6, $ct7, $nj, $js, $gm, $gm2, $u, $u2, $ln, $cv, $component, $produced,
       sig ($($sigx),*),
       place ($($px),*) [],
       params [$($idx)*] [],
@@ -878,7 +1059,7 @@ macro_rules! euler_families {
   };
 
   (@cube_report
-    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $component:ident, $produced:ident,
+    $(#[$meta:meta])* $name:ident, $params:ident, $ct:ident, $ct1:ident, $ct2:ident, $ct3:ident, $ct4:ident, $ct5:ident, $ct6:ident, $ct7:ident, $nj:ident, $js:ident, $gm:ident, $gm2:ident, $u:ident, $u2:ident, $ln:ident, $cv:ident, $component:ident, $produced:ident,
     sig ($($sigx:ident),*),
     place ($($px:ident),*) [],
     params [$($idx:literal)*] [],
@@ -907,6 +1088,7 @@ macro_rules! euler_families {
       $u: f32,
       $u2: f32,
       $ln: f32,
+      $cv: f32,
     ) -> f32 {
       $($bound)*
       let mut $produced = 0.0f32;
@@ -946,7 +1128,7 @@ macro_rules! euler_families {
   (@c_body $lhs:literal, [$($idx:literal)*], [$($rem:ident)*], $($e:expr),* $(,)?) => {
     concat!(
       euler_families!(@c_temps [$($idx)*] $($e),*),
-      euler_families!(@c_store $lhs, [$($idx)*] $($rem)*)
+      euler_families!(@c_store $lhs, [$($idx)*] $($e),*)
     )
   };
 
@@ -961,17 +1143,19 @@ macro_rules! euler_families {
 
   (@c_store $lhs:literal, [$($idx:literal)*]) => { "" };
 
-  (@c_store $lhs:literal, [$i:literal $($rest_idx:literal)*] $head:ident $($rest:ident)*) => {
+  // One store per expression, not per declared name: a family may keep more
+  // state slots than it reports, and the temporaries exist per expression.
+  (@c_store $lhs:literal, [$i:literal $($rest_idx:literal)*] $head:expr $(, $rest:expr)*) => {
     concat!(
       "            ", $lhs, "[", stringify!($i), "] = __n", stringify!($i), ";\n",
-      euler_families!(@c_store $lhs, [$($rest_idx)*] $($rest)*)
+      euler_families!(@c_store $lhs, [$($rest_idx)*] $($rest),*)
     )
   };
 }
 
 euler_families! {
   step_inputs(
-    params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u, u2, lv,
+    params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u, u2, lv, cv,
     state(slot_a, slot_b, slot_c, slot_d),
     noise(shock_a, shock_b, shock_c, shock_d),
     select(component, produced)
@@ -2213,8 +2397,8 @@ euler_families! {
   /// A diffusion with additive compound-Poisson jumps, `x + drift dt + sigma
   /// dW + J`, the jump sum `js` under whatever size law the host declares.
   /// Merton's and Kou's jump diffusions and the Lévy diffusion all step this,
-  /// differing only in the drift they hand over, already compensated and
-  /// multiplied by `dt`.
+  /// differing only in the drift they hand over per step — compensated for
+  /// the jumps in the first two, the bare `gamma dt` in the third.
   98 => AdditiveJumpDiffusion { drift_dt, sigma }
     state (x)
     noise (dw)
@@ -2277,7 +2461,8 @@ euler_families! {
   /// mean reversion and diffusion enter through the lift, the lifted value
   /// is the next state, and the state is reported truncated at zero as the
   /// host does — rough Heston's variance when the kernel is
-  /// Riemann-Liouville.
+  /// Riemann-Liouville. One difference of kind: the host's truncation lets a
+  /// NaN through so a caller sees it, `positive` here maps it to zero.
   103 => VolterraSquareRoot { kappa, theta, nu }
     state (v)
     noise (dz)
@@ -2299,6 +2484,111 @@ euler_families! {
     step { lv }
     report { c0 + x * (c1 + x * (c2 + x * (c3 + x * (c4 + x * (c5 + x * (c6 + x * c7)))))) }
     lift { drift (lit(0.0)) diffusion (lit(1.0)) shock (dz) },
+
+  /// The rough Heston model in the two-term rational approximation of its
+  /// kernel — a mean-reverting factor `y`, a local factor `z` and the memory
+  /// integral of `z` under `(t − s)^{H − 1/2}` — with the integral kept as
+  /// the history block's exact convolution of the pushed `z` against the
+  /// kernel weights the host tabulates as `ct`, so the device runs the host's
+  /// own O(n²) scheme. The variance reported is
+  /// `y + c1 ν z + c2 ν ∫ / Γ(H − 1/2)`; the spot steps in the log under the
+  /// truncated previous variance, its shock correlated with the factor's
+  /// through `rho`.
+  105 => RoughHestonMemory { mu, theta, ek, nu, c1, c2, inv_g, rho }
+    state (s, v, y, z)
+    noise (dw, dq)
+    step {
+      bind vp = positive(v);
+      bind st = positive(y + nu * z);
+      bind dsp = rho * dw + sqrt(negate(rho * rho - lit(1.0))) * dq;
+      bind y1 = theta + (y - theta) * ek;
+      bind z1 = z * ek + sqrt(st) * dw;
+      s * exp((mu - vp / lit(2.0)) * dt + sqrt(vp) * dsp),
+      y1 + c1 * nu * z1 + c2 * nu * cv * inv_g,
+      y1,
+      z1
+    }
+    report { s, v }
+    history { push (z) weights (ct) },
+
+  /// The fractional Bates model:
+  /// [`RoughHestonMemory`](Family::RoughHestonMemory) with unit calibration
+  /// coefficients, `xi` for the vol-of-vol, a jump-compensated drift and
+  /// normal jumps in the log-spot summed by the step's `js`.
+  106 => FractionalBatesMemory { mu_c, theta, ek, xi, inv_g, rho }
+    state (s, v, y, z)
+    noise (dw, dq)
+    step {
+      bind vp = positive(v);
+      bind st = positive(y + xi * z);
+      bind dsp = rho * dw + sqrt(negate(rho * rho - lit(1.0))) * dq;
+      bind y1 = theta + (y - theta) * ek;
+      bind z1 = z * ek + sqrt(st) * dw;
+      s * exp((mu_c - vp / lit(2.0)) * dt + sqrt(vp) * dsp + js),
+      y1 + xi * z1 + xi * cv * inv_g,
+      y1,
+      z1
+    }
+    report { s, v }
+    history { push (z) weights (ct) },
+
+  /// Rough Bergomi under the hybrid scheme: the Volterra driver of the
+  /// log-variance is the history block's convolution of the correlated shock
+  /// with the scheme's weights — the last interval's exact kernel integral
+  /// first, then the kernel at the optimal points — plus an independent
+  /// residual of standard-normal size (`de / √dt`, since `residual_sd`
+  /// already carries the interval's `dt^{H}`), and the variance is
+  /// `v0² exp(ν √(2H) X − ½ ν² t^{2H})` with the deterministic exponent
+  /// tabulated as `ct1`. The spot steps by Euler under the previous variance.
+  107 => RoughBergomiMemory { r, a, v0sq, residual_sd, rho }
+    state (s, v, x)
+    noise (dw, dq, de)
+    step {
+      bind xv = cv + residual_sd * (de / sqrt(dt));
+      s + r * s * dt + sqrt(v) * s * dw,
+      v0sq * exp(a * xv - ct1),
+      xv
+    }
+    report { s, v }
+    history { push (rho * dw + sqrt(negate(rho * rho - lit(1.0))) * dq) weights (ct) },
+
+  /// Linear fractional stable motion: a moving average of α-stable
+  /// innovations under the weights `dt^d ((k+1)^d − k^d)`, `d = H − 1/α`,
+  /// which the host tabulates as `ct`. The innovation is the
+  /// Chambers–Mallows–Stuck draw from the step's two uniforms — the angle
+  /// `π (u − ½)`, the exponential `−ln u2` — scaled by the host-folded
+  /// `S · scale · dt^{1/α}`, `cos` written as a shifted `sin`, and the
+  /// uniforms clamped as the stable subordinator clamps them.
+  108 => LinearFractionalStable { alpha, inv_alpha, tail_exp, b, scale_s, pi, half_pi }
+    state (x)
+    noise (dz)
+    step { x + cv }
+    report { x }
+    history {
+      push (
+        bind uu = min(max(u, lit(1e-7)), lit(0.9999999));
+        bind ee = min(max(u2, lit(1e-7)), lit(0.9999999));
+        bind va = pi * (uu - lit(0.5));
+        bind w = negate(ln(ee));
+        bind phi = alpha * (va + b);
+        bind cs = max(sin(va + half_pi), lit(1e-20));
+        bind ratio = max(sin(va - phi + half_pi) / w, lit(1e-30));
+        scale_s * sin(phi) / pow(cs, inv_alpha) * pow(ratio, tail_exp)
+      )
+      weights (ct)
+    },
+
+  /// A moving-average filter of white noise: the state is the convolution of
+  /// the pushed innovations `σ z` with the weight curve, which the host fills
+  /// with the impulse response of whatever linear recursion it declares — an
+  /// ARMA with its differencing, seasonal or not — so the device runs that
+  /// recursion exactly, at any order. The first point is itself a draw.
+  109 => MovingAverageFilter { sigma }
+    state (x)
+    noise (dz)
+    step { cv }
+    report { x }
+    history { push (sigma * dz / sqrt(dt)) weights (ct) },
 
   2 => SquareRoot { kappa, theta, sigma }
     state (x)

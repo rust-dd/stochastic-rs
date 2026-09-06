@@ -301,7 +301,7 @@ where
 
   /// Whether a device can run this process: exponential inter-arrivals and a
   /// size law the kernels draw. Any other pair samples on the host.
-  fn device_ready(&self) -> bool {
+  pub fn device_ready(&self) -> bool {
     self.device_intensity().is_some() && self.device_jump_sizes().is_some()
   }
 }

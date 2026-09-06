@@ -84,14 +84,11 @@ const PROBE_SIZES: JumpSizes<f32> = JumpSizes::DoubleExponential {
   eta_down: 20.0,
 };
 
-/// One ramp per curve slot, each with its own level and slope, so every slot
-/// the kernels bind carries a value no other slot carries and a family that
-/// reads `ct3` is checked against the host reading `ct3` and nothing else.
 /// The size law a probe's jump sum is drawn under: the shared
 /// double-exponential unless the family exists for another law, which is
 /// then the one its parity run exercises — so every `js` branch of the
-/// kernels has a family that reaches it, the tempered-stable thinning
-/// included, which no other probe would otherwise touch.
+/// kernels — the aggregated normal, the tempered-stable thinning, the two
+/// products and the two one-per-step laws — has a family that reaches it.
 fn probe_sizes(spec: &EulerSpec<f32>) -> JumpSizes<f32> {
   match spec {
     EulerSpec::TemperedStableSubordinator { .. } => JumpSizes::TemperedStable {
@@ -117,10 +114,19 @@ fn probe_sizes(spec: &EulerSpec<f32>) -> JumpSizes<f32> {
       mean: 0.01,
       sd: 0.05,
     },
+    // The aggregated normal is the production law of most jump models, so
+    // one probe holds it too rather than leaving the busiest branch unchecked.
+    EulerSpec::AdditiveJumpDiffusion { .. } => JumpSizes::Normal {
+      mean: -0.02,
+      sd: 0.1,
+    },
     _ => PROBE_SIZES,
   }
 }
 
+/// One ramp per curve slot, each with its own level and slope, so every slot
+/// the kernels bind carries a value no other slot carries and a family that
+/// reads `ct3` is checked against the host reading `ct3` and nothing else.
 fn probe_curves() -> Vec<Vec<f32>> {
   (0..crate::euler::CURVE_SLOTS)
     .map(|k| {
@@ -173,6 +179,7 @@ impl PathSampler<f32> for ProbeSampler {
       0.5,
       0.5,
       0.0,
+      0.0,
       &mut out,
     );
     slice[0] = out[0];
@@ -185,6 +192,10 @@ impl PathSampler<f32> for ProbeSampler {
     // advances them, from the family's own drift, diffusion and shock.
     let nodes = self.lift.as_ref().map_or(0, |l| l.decay.len());
     let (mut lh, mut lj) = (vec![0.0f32; nodes], vec![0.0f32; nodes]);
+    // The history a `history` family pushes, convolved with its weight curve
+    // exactly as the frame does.
+    let hist_slot = family.history_slot();
+    let mut past = Vec::<f32>::new();
     for (i, z) in tail.iter_mut().enumerate() {
       let noise = [*z, 0.0, 0.0, 0.0];
       let (mut lv, mut coefficients) = (0.0f32, [0.0f32; 3]);
@@ -193,6 +204,16 @@ impl PathSampler<f32> for ProbeSampler {
         let [lf, lg, lsh] = coefficients;
         let hist: f32 = (0..nodes).map(|l| lift.weight[l] * (lh[l] + lj[l])).sum();
         lv = lift.x0 + lift.db * lf + hist + lift.fb * lg * lsh;
+      }
+      let mut cv = 0.0f32;
+      if let Some(slot) = hist_slot {
+        let pushed =
+          super::families::host_history(family, &state, &params, self.dt, &noise, 0.5, 0.5)
+            .expect("a family with a history clause pushes a value");
+        past.push(pushed);
+        let weights = &curves[slot as usize];
+        let hi = past.len() - 1;
+        cv = (0..=hi).map(|k| weights[k] * past[hi - k]).sum();
       }
       let mut next = [0.0f32; 4];
       super::families::host_step(
@@ -215,6 +236,7 @@ impl PathSampler<f32> for ProbeSampler {
         0.5,
         0.5,
         lv,
+        cv,
         &noise,
         &mut next,
       );
@@ -244,6 +266,7 @@ impl PathSampler<f32> for ProbeSampler {
         1.3,
         0.5,
         0.5,
+        0.0,
         0.0,
         &mut out,
       );
@@ -443,6 +466,11 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::JumpFractionalOu { .. } => "JumpFractionalOu",
     EulerSpec::VolterraSquareRoot { .. } => "VolterraSquareRoot",
     EulerSpec::GaussianPolynomialVolatility { .. } => "GaussianPolynomialVolatility",
+    EulerSpec::RoughHestonMemory { .. } => "RoughHestonMemory",
+    EulerSpec::FractionalBatesMemory { .. } => "FractionalBatesMemory",
+    EulerSpec::RoughBergomiMemory { .. } => "RoughBergomiMemory",
+    EulerSpec::LinearFractionalStable { .. } => "LinearFractionalStable",
+    EulerSpec::MovingAverageFilter { .. } => "MovingAverageFilter",
   }
 }
 
@@ -754,6 +782,19 @@ fn every_family() -> Vec<Probe> {
       },
       0.0,
     ),
+    p(
+      EulerSpec::LinearFractionalStable {
+        alpha: 1.7,
+        inv_alpha: 1.0 / 1.7,
+        tail_exp: (1.0 - 1.7) / 1.7,
+        b: 0.1,
+        scale_s: 0.05,
+        pi: std::f32::consts::PI,
+        half_pi: std::f32::consts::FRAC_PI_2,
+      },
+      0.0,
+    ),
+    p(EulerSpec::MovingAverageFilter { sigma: 0.3 }, 0.0),
     p(EulerSpec::AffineDiffusionGaussian { sigma: 0.02 }, 0.03),
     p(
       EulerSpec::TransformedOrnsteinUhlenbeck {
@@ -927,6 +968,7 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       0.5,
       0.5,
       0.0,
+      0.0,
       &mut reported,
     );
     for (c, path) in out.iter_mut().enumerate() {
@@ -937,6 +979,10 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
     // advances them, from the family's own drift, diffusion and shock.
     let nodes = self.lift.as_ref().map_or(0, |l| l.decay.len());
     let (mut lh, mut lj) = (vec![0.0f32; nodes], vec![0.0f32; nodes]);
+    // The history a `history` family pushes, convolved with its weight curve
+    // exactly as the frame does.
+    let hist_slot = family.history_slot();
+    let mut past = Vec::<f32>::new();
     for i in 1..N {
       let mut noise = [0.0f32; 4];
       self.normal.fill_slice(&mut draw);
@@ -947,6 +993,16 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         let [lf, lg, lsh] = coefficients;
         let hist: f32 = (0..nodes).map(|l| lift.weight[l] * (lh[l] + lj[l])).sum();
         lv = lift.x0 + lift.db * lf + hist + lift.fb * lg * lsh;
+      }
+      let mut cv = 0.0f32;
+      if let Some(slot) = hist_slot {
+        let pushed =
+          super::families::host_history(family, &state, &params, self.dt, &noise, 0.5, 0.5)
+            .expect("a family with a history clause pushes a value");
+        past.push(pushed);
+        let weights = &curves[slot as usize];
+        let hi = past.len() - 1;
+        cv = (0..=hi).map(|k| weights[k] * past[hi - k]).sum();
       }
       let mut next = [0.0f32; 4];
       super::families::host_step(
@@ -969,6 +1025,7 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         0.5,
         0.5,
         lv,
+        cv,
         &noise,
         &mut next,
       );
@@ -998,6 +1055,7 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         1.3,
         0.5,
         0.5,
+        0.0,
         0.0,
         &mut reported,
       );
@@ -1276,6 +1334,43 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
         beta: 2.0,
         sigma: 0.3,
         rho: -0.6,
+      },
+      x0: [100.0, 0.04],
+      lift: None,
+    },
+    SystemProbe {
+      spec: EulerSpec::RoughHestonMemory {
+        mu: 0.03,
+        theta: 0.04,
+        ek: 0.99,
+        nu: 0.3,
+        c1: 1.0,
+        c2: 1.0,
+        inv_g: -0.17,
+        rho: -0.6,
+      },
+      x0: [100.0, 0.04],
+      lift: None,
+    },
+    SystemProbe {
+      spec: EulerSpec::FractionalBatesMemory {
+        mu_c: 0.02,
+        theta: 0.04,
+        ek: 0.99,
+        xi: 0.3,
+        inv_g: -0.17,
+        rho: -0.6,
+      },
+      x0: [100.0, 0.04],
+      lift: None,
+    },
+    SystemProbe {
+      spec: EulerSpec::RoughBergomiMemory {
+        r: 0.02,
+        a: 0.9,
+        v0sq: 0.04,
+        residual_sd: 0.01,
+        rho: -0.7,
       },
       x0: [100.0, 0.04],
       lift: None,
@@ -1723,10 +1818,11 @@ fn every_family_runs_on_the_device() {
 }
 
 /// The CubeCL dispatch is written by hand, so a family missing from it
-/// returns the state unchanged. Comparing against the generated Metal kernel
-/// point for point is what turns that silence into a failure.
+/// returns the state unchanged. Comparing against the generated native kernel
+/// — CUDA where the crate is built for it, Metal otherwise — point for point
+/// is what turns that silence into a failure, on whichever GPU is present.
 #[cfg(all(
-  feature = "metal",
+  any(feature = "metal", feature = "cuda"),
   any(feature = "cubecl-cuda", feature = "cubecl-wgpu")
 ))]
 #[test]
@@ -1735,6 +1831,10 @@ fn the_cubecl_kernel_matches_the_generated_one() {
   type Cube = crate::device::Cubecl<crate::device::WgpuRuntime>;
   #[cfg(all(feature = "cubecl-cuda", not(feature = "cubecl-wgpu")))]
   type Cube = crate::device::Cubecl<crate::device::CudaRuntime>;
+  #[cfg(feature = "cuda")]
+  type Native = crate::device::Cuda;
+  #[cfg(all(feature = "metal", not(feature = "cuda")))]
+  type Native = crate::device::Metal;
 
   /// One part in a thousand of the value, with a floor of `1e-2` so a state
   /// that sits near zero is still held to a scale rather than to an absolute
@@ -1754,7 +1854,7 @@ fn the_cubecl_kernel_matches_the_generated_one() {
 
   for probe in every_family() {
     let name = family_name(&probe.spec);
-    let native = crate::device::Metal::default().euler_paths(&probe, 8);
+    let native = Native::default().euler_paths(&probe, 8);
     let cube = Cube::default().euler_paths(&probe, 8);
     for (a, b) in native.iter().zip(&cube) {
       agree(name, a, b);
@@ -1762,7 +1862,7 @@ fn the_cubecl_kernel_matches_the_generated_one() {
   }
   for probe in every_two_component_family() {
     let name = family_name(&probe.spec);
-    let native = crate::device::Metal::default().system_paths(&probe, 8);
+    let native = Native::default().system_paths(&probe, 8);
     let cube = Cube::default().system_paths(&probe, 8);
     for (a, b) in native.iter().zip(&cube) {
       for (x, y) in a.iter().zip(b.iter()) {
@@ -1772,7 +1872,7 @@ fn the_cubecl_kernel_matches_the_generated_one() {
   }
   for probe in every_three_component_family() {
     let name = family_name(&probe.spec);
-    let native = crate::device::Metal::default().system_paths(&probe, 8);
+    let native = Native::default().system_paths(&probe, 8);
     let cube = Cube::default().system_paths(&probe, 8);
     for (a, b) in native.iter().zip(&cube) {
       for (x, y) in a.iter().zip(b.iter()) {
@@ -1782,7 +1882,7 @@ fn the_cubecl_kernel_matches_the_generated_one() {
   }
   for probe in every_four_component_family() {
     let name = family_name(&probe.spec);
-    let native = crate::device::Metal::default().system_paths(&probe, 8);
+    let native = Native::default().system_paths(&probe, 8);
     let cube = Cube::default().system_paths(&probe, 8);
     for (a, b) in native.iter().zip(&cube) {
       for (x, y) in a.iter().zip(b.iter()) {

@@ -12,7 +12,6 @@ use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -112,9 +111,75 @@ impl<T: FloatExt, S: SeedExt> Sarima<T, S> {
 
 impl<T: FloatExt, S: SeedExt, B> Sarima<T, S, B> {}
 
-backend_switch!([T: FloatExt, S: SeedExt] Sarima<T, S> { non_seasonal_ar_coefs, non_seasonal_ma_coefs, seasonal_ar_coefs, seasonal_ma_coefs, d, D, s, sigma, n, seed } via host);
+impl<T: FloatExt, S: SeedExt, B> Sarima<T, S, B> {
+  /// Whether a device can run this process: the series fits the kernels'
+  /// per-path history. A longer series samples on the host.
+  pub fn device_ready(&self) -> bool {
+    self.n <= crate::euler::HISTORY_SLOTS
+  }
+}
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Sarima<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for Sarima<T, S, B>
+{
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::MovingAverageFilter { sigma: self.sigma }
+  }
+
+  fn initial_value(&self) -> T {
+    T::zero()
+  }
+
+  /// The first point is itself a draw, as on the host.
+  fn step_first(&self) -> bool {
+    true
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  /// A unit step per point: the series has no time of its own.
+  fn horizon(&self) -> T {
+    T::from_usize_(self.n)
+  }
+
+  fn time_step(&self) -> T {
+    T::one()
+  }
+
+  /// The impulse response of this SARIMA's own recursion, so the device's
+  /// convolution of the innovations is that recursion exactly, seasonal
+  /// terms and differencing included.
+  fn curves(&self) -> Option<Vec<Vec<T>>> {
+    Some(vec![super::arima::impulse_response(self.n, |unit| {
+      sarima_filter(
+        unit,
+        &self.non_seasonal_ar_coefs,
+        &self.non_seasonal_ma_coefs,
+        &self.seasonal_ar_coefs,
+        &self.seasonal_ma_coefs,
+        self.d,
+        self.D,
+        self.s,
+      )
+    })])
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Sarima<T, S> { non_seasonal_ar_coefs, non_seasonal_ma_coefs, seasonal_ar_coefs, seasonal_ma_coefs, d, D, s, sigma, n, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Sarima<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = SarimaSampler<T>
@@ -132,6 +197,51 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Sarima<T, S, B> 
       big_d: self.D,
       s: self.s,
       normal: SimdNormal::<T>::new(T::zero(), self.sigma, &self.seed),
+    }
+  }
+
+  /// Through the Euler engine when the series fits the kernels'
+  /// per-path history; a longer series keeps the process on the host,
+  /// chunked exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> Array1<T> {
+    if self.device_ready() {
+      self.backend.euler_sample(self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      self.backend.euler_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    if self.device_ready() {
+      self.backend.euler_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_euler_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }
@@ -155,59 +265,85 @@ pub struct SarimaSampler<T: FloatExt> {
 impl<T: FloatExt> SarimaSampler<T> {
   fn fill_path(&mut self, out: &mut [T]) {
     let n = out.len();
-
     let mut noise = Array1::<T>::zeros(n);
     if n > 0 {
       let slice = noise.as_slice_mut().expect("contiguous");
       self.normal.fill_slice(slice);
     }
-
-    // Multiply φ(B) and Φ(Bˢ) to get the combined AR polynomial.
-    // φ(B) = 1 - φ_1 B - ... - φ_p B^p
-    // Φ(Bˢ) = 1 - Φ_1 B^s - ... - Φ_P B^{Ps}
-    // Product polynomial has terms at lags: i + j*s for all combinations.
-    let ar_lags =
-      multiply_ar_polynomials(&self.non_seasonal_ar_coefs, &self.seasonal_ar_coefs, self.s);
-
-    // Multiply θ(B) and Θ(Bˢ) to get the combined MA polynomial.
-    // θ(B) = 1 + θ_1 B + ... + θ_q B^q
-    // Θ(Bˢ) = 1 + Θ_1 B^s + ... + Θ_Q B^{Qs}
-    let ma_lags =
-      multiply_ma_polynomials(&self.non_seasonal_ma_coefs, &self.seasonal_ma_coefs, self.s);
-
-    // Single-pass SARMA recursion:
-    // W_t = sum(ar_coef_k * W_{t-k}) + eps_t + sum(ma_coef_k * eps_{t-k})
-    let mut sarma_series = Array1::<T>::zeros(n);
-
-    for t in 0..n {
-      let mut val = noise[t];
-
-      for &(lag, coef) in &ar_lags {
-        if t >= lag {
-          val += coef * sarma_series[t - lag];
-        }
-      }
-
-      for &(lag, coef) in &ma_lags {
-        if t >= lag {
-          val += coef * noise[t - lag];
-        }
-      }
-
-      sarma_series[t] = val;
-    }
-
-    // Invert seasonal differencing D times, then non-seasonal differencing d times
-    let mut integrated = sarma_series;
-    for _ in 0..self.big_d {
-      integrated = inverse_seasonal_difference(&integrated, self.s);
-    }
-    for _ in 0..self.d {
-      integrated = inverse_difference(&integrated);
-    }
-
+    let integrated = sarima_filter(
+      &noise,
+      &self.non_seasonal_ar_coefs,
+      &self.non_seasonal_ma_coefs,
+      &self.seasonal_ar_coefs,
+      &self.seasonal_ma_coefs,
+      self.d,
+      self.big_d,
+      self.s,
+    );
     out.copy_from_slice(integrated.as_slice().expect("contiguous"));
   }
+}
+
+/// The SARIMA recursion as a linear filter of its innovations: the combined
+/// seasonal × non-seasonal polynomials run as one SARMA pass, then the
+/// seasonal and the plain inverse differences. Linear in `noise`, so run on a
+/// unit impulse it yields the impulse response a device convolves the
+/// innovations with.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn sarima_filter<T: FloatExt>(
+  noise: &Array1<T>,
+  non_seasonal_ar_coefs: &Array1<T>,
+  non_seasonal_ma_coefs: &Array1<T>,
+  seasonal_ar_coefs: &Array1<T>,
+  seasonal_ma_coefs: &Array1<T>,
+  d: usize,
+  big_d: usize,
+  s: usize,
+) -> Array1<T> {
+  let n = noise.len();
+
+  // Multiply φ(B) and Φ(Bˢ) to get the combined AR polynomial.
+  // φ(B) = 1 - φ_1 B - ... - φ_p B^p
+  // Φ(Bˢ) = 1 - Φ_1 B^s - ... - Φ_P B^{Ps}
+  // Product polynomial has terms at lags: i + j*s for all combinations.
+  let ar_lags = multiply_ar_polynomials(non_seasonal_ar_coefs, seasonal_ar_coefs, s);
+
+  // Multiply θ(B) and Θ(Bˢ) to get the combined MA polynomial.
+  // θ(B) = 1 + θ_1 B + ... + θ_q B^q
+  // Θ(Bˢ) = 1 + Θ_1 B^s + ... + Θ_Q B^{Qs}
+  let ma_lags = multiply_ma_polynomials(non_seasonal_ma_coefs, seasonal_ma_coefs, s);
+
+  // Single-pass SARMA recursion:
+  // W_t = sum(ar_coef_k * W_{t-k}) + eps_t + sum(ma_coef_k * eps_{t-k})
+  let mut sarma_series = Array1::<T>::zeros(n);
+
+  for t in 0..n {
+    let mut val = noise[t];
+
+    for &(lag, coef) in &ar_lags {
+      if t >= lag {
+        val += coef * sarma_series[t - lag];
+      }
+    }
+
+    for &(lag, coef) in &ma_lags {
+      if t >= lag {
+        val += coef * noise[t - lag];
+      }
+    }
+
+    sarma_series[t] = val;
+  }
+
+  // Invert seasonal differencing D times, then non-seasonal differencing d times
+  let mut integrated = sarma_series;
+  for _ in 0..big_d {
+    integrated = inverse_seasonal_difference(&integrated, s);
+  }
+  for _ in 0..d {
+    integrated = inverse_difference(&integrated);
+  }
+  integrated
 }
 
 impl<T: FloatExt> PathSampler<T> for SarimaSampler<T> {

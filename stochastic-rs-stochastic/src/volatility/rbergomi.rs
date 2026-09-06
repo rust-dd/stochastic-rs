@@ -49,7 +49,6 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
@@ -199,9 +198,92 @@ impl<T: FloatExt> Default for RoughBergomi<T, Unseeded> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] RoughBergomi<T, S> { hurst, nu, v0, s0, r, rho, n, t, seed, cgns } via host);
+impl<T: FloatExt, S: SeedExt, B> RoughBergomi<T, S, B> {
+  /// Whether a device can run this process: the grid fits the kernels'
+  /// per-path history. A longer grid samples on the host.
+  pub fn device_ready(&self) -> bool {
+    self.n <= crate::euler::HISTORY_SLOTS
+  }
+}
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for RoughBergomi<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
+  for RoughBergomi<T, S, B>
+{
+  /// The hybrid scheme's constants, from the same tabulation the host sampler
+  /// steps with.
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let (_, _, residual_sd) =
+      RoughBergomiSampler::<T, S>::hybrid_weights(self.hurst, self.cgns.dt(), self.n);
+    crate::euler::EulerSpec::RoughBergomiMemory {
+      r: self.r,
+      a: self.nu * (T::from_usize_(2) * self.hurst).sqrt(),
+      v0sq: self.v0.unwrap_or(T::one()).powi(2),
+      residual_sd,
+      rho: self.rho,
+    }
+  }
+
+  fn initial_state(&self) -> [T; 4] {
+    [
+      self.s0.unwrap_or(T::from_usize_(100)),
+      self.v0.unwrap_or(T::one()).powi(2),
+      T::zero(),
+      T::zero(),
+    ]
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.cgns.dt()
+  }
+
+  /// Two curves: the scheme's weights by lag — the last interval's exact
+  /// kernel integral first, then the kernel at the optimal points — and the
+  /// deterministic exponent `ν² t^{2H} / 2` at each grid point.
+  fn curves(&self) -> Option<Vec<Vec<T>>> {
+    let dt = self.cgns.dt();
+    let (kernel, on_increment, _) =
+      RoughBergomiSampler::<T, S>::hybrid_weights(self.hurst, dt, self.n);
+    let weights = (0..self.n)
+      .map(|m| {
+        if m == 0 {
+          on_increment
+        } else {
+          kernel.get(m + 1).copied().unwrap_or(T::zero())
+        }
+      })
+      .collect();
+    let half = T::from_f64_fast(0.5);
+    let two_h = T::from_usize_(2) * self.hurst;
+    let exponent = (0..self.n)
+      .map(|i| half * self.nu * self.nu * (T::from_usize_(i) * dt).powf(two_h))
+      .collect();
+    Some(vec![weights, exponent])
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 2] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] RoughBergomi<T, S> { hurst, nu, v0, s0, r, rho, n, t, seed, cgns } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for RoughBergomi<T, S, B>
+{
   type Output = [Array1<T>; 2];
   type Sampler<'s>
     = RoughBergomiSampler<T, S>
@@ -229,6 +311,51 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for RoughBergomi<T, 
       integral_residual_sd,
       cgns: self.cgns,
       seed: self.seed.derive(),
+    }
+  }
+
+  /// Through the Euler engine when the grid fits the kernels'
+  /// per-path history; a longer grid keeps the process on the host,
+  /// chunked exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> [Array1<T>; 2] {
+    if self.device_ready() {
+      self.backend.system_sample(self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&[Array1<T>; 2]) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      self.backend.system_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<[Array1<T>; 2]> {
+    if self.device_ready() {
+      self.backend.system_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<[Array1<T>; 2], crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_system_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<[Array1<T>; 2]>, crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_system_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }

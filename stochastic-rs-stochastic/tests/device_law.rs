@@ -36,6 +36,7 @@ mod device_law {
   pub(crate) mod gaussian;
   pub(crate) mod jumps;
   pub(crate) mod levy;
+  pub(crate) mod memory;
   pub(crate) mod rows;
   pub(crate) mod systems;
 }

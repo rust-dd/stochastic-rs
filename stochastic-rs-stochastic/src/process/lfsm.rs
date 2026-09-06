@@ -12,7 +12,6 @@ use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -101,9 +100,83 @@ impl<T: FloatExt, S: SeedExt, B> Lfsm<T, S, B> {
   }
 }
 
-backend_switch!([T: FloatExt, S: SeedExt] Lfsm<T, S> { alpha, beta, hurst, scale, n, x0, t, seed } via host);
+impl<T: FloatExt, S: SeedExt, B> Lfsm<T, S, B> {
+  /// Whether a device can run this process: the grid fits the kernels'
+  /// per-path history and the stability index is not one, whose
+  /// Chambers–Mallows–Stuck draw is a different formula the kernels do not
+  /// carry. Anything else samples on the host.
+  pub fn device_ready(&self) -> bool {
+    self.n <= crate::euler::HISTORY_SLOTS && self.alpha != T::one()
+  }
+}
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Lfsm<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for Lfsm<T, S, B>
+{
+  /// The Chambers–Mallows–Stuck constants of the host's stable generator for
+  /// `α ≠ 1`, with the innovation scale `scale · dt^{1/α}` folded into `S`.
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let pi = T::from_f64_fast(std::f64::consts::PI);
+    let two = T::from_usize_(2);
+    let beta_tan = self.beta * (pi * self.alpha / two).tan();
+    let s = (T::one() + beta_tan * beta_tan).powf(T::one() / (two * self.alpha));
+    crate::euler::EulerSpec::LinearFractionalStable {
+      alpha: self.alpha,
+      inv_alpha: T::one() / self.alpha,
+      tail_exp: (T::one() - self.alpha) / self.alpha,
+      b: beta_tan.atan() / self.alpha,
+      scale_s: self.scale * self.dt().powf(T::one() / self.alpha) * s,
+      pi,
+      half_pi: pi / two,
+    }
+  }
+
+  fn initial_value(&self) -> T {
+    self.x0.unwrap_or(T::zero())
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  fn time_step(&self) -> T {
+    self.dt()
+  }
+
+  /// The moving-average weights `dt^d ((k + 1)^d − k^d)`, `d = H − 1/α`, one
+  /// per lag, exactly as the host tabulates them.
+  fn curves(&self) -> Option<Vec<Vec<T>>> {
+    let dt = self.dt();
+    let d = self.hurst - T::one() / self.alpha;
+    let kernel_scale = dt.powf(d);
+    Some(vec![
+      (0..self.n)
+        .map(|k| {
+          let kf = T::from_usize_(k);
+          kernel_scale * ((kf + T::one()).powf(d) - kf.powf(d))
+        })
+        .collect(),
+    ])
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] Lfsm<T, S> { alpha, beta, hurst, scale, n, x0, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Lfsm<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = LfsmSampler<T>
@@ -138,6 +211,51 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for Lfsm<T, S, B> {
       x0: self.x0.unwrap_or(T::zero()),
       stable,
       weights,
+    }
+  }
+
+  /// Through the Euler engine when the grid fits the kernels'
+  /// per-path history and `α ≠ 1`; a longer grid keeps the process on the host,
+  /// chunked exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> Array1<T> {
+    if self.device_ready() {
+      self.backend.euler_sample(self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      self.backend.euler_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    if self.device_ready() {
+      self.backend.euler_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_euler_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }

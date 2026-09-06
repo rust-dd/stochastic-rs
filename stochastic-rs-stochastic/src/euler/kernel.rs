@@ -68,6 +68,13 @@
 //! the count, for an event-indexed path. It is zero for a family that
 //! declares no size law.
 //!
+//! A family with a `history` clause reads `cv`: the frame keeps the values the
+//! family pushed so far in a per-path array of 512 slots — the grid may not
+//! exceed it — and convolves them with the weight curve the launch's
+//! `hist_slot` names, indexed by lag, so `cv = Σ_{k≤i} w_k p_{i−k}` at the
+//! step producing point `i`. Without a clause `hist_slot` is the sentinel
+//! `0xFFFFFFFF` and `cv` stays zero.
+//!
 //! A family may read `nj`, the number of jumps the step saw: a Poisson draw
 //! with mean `jump_lambda · dt`, by Knuth's product of uniforms from a hash
 //! stream of its own. It is drawn once per step, so every component of a
@@ -140,6 +147,10 @@ pub(crate) const FRAME: &str = r#"    if (path >= paths) return;
     if (has_lift != 0u) {
         for (unsigned int l = 0u; l < lift_n; l++) { lh[l] = (REAL)0; lj[l] = (REAL)0; }
     }
+    REAL cv = (REAL)0;
+    REAL hist_in[1];
+    hist_in[0] = (REAL)0;
+    REAL past[512];
     for (unsigned int c = 0u; c < 4u; c++) { state[c] = x0[c]; reported[c] = x0[c]; }
     for (unsigned int c = 0u; c < 4u; c++) { noise[c] = (REAL)0; }
 REPORT
@@ -249,7 +260,7 @@ REPORT
             js = jump_a * nj + jump_b * STOCH_SQRT(nj) * zj;
         }
         if (jump_law == 2u) {
-            for (unsigned int j = 0u; j < 32u; j++) {
+            for (unsigned int j = 0u; j < 64u; j++) {
                 if ((REAL)j >= nj) { break; }
                 unsigned int ka = (g ^ (2654435761u + j * 40503u)) ^ (seed * 2654435761u);
                 ka ^= ka >> 16; ka *= 2246822519u; ka ^= ka >> 13; ka *= 3266489917u; ka ^= ka >> 16;
@@ -262,7 +273,7 @@ REPORT
             }
         }
         if (jump_law == 3u) {
-            for (unsigned int j = 0u; j < 32u; j++) {
+            for (unsigned int j = 0u; j < 64u; j++) {
                 if ((REAL)j >= nj) { break; }
                 unsigned int ta = (g ^ (2654435761u + j * 40503u)) ^ (seed * 2654435761u);
                 ta ^= ta >> 16; ta *= 2246822519u; ta ^= ta >> 13; ta *= 3266489917u; ta ^= ta >> 16;
@@ -276,7 +287,7 @@ REPORT
         }
         if (jump_law == 4u) {
             REAL jp = (REAL)1;
-            for (unsigned int j = 0u; j < 32u; j++) {
+            for (unsigned int j = 0u; j < 64u; j++) {
                 if ((REAL)j >= nj) { break; }
                 unsigned int pa = (g ^ (2654435761u + j * 40503u)) ^ (seed * 2654435761u);
                 pa ^= pa >> 16; pa *= 2246822519u; pa ^= pa >> 13; pa *= 3266489917u; pa ^= pa >> 16;
@@ -291,7 +302,7 @@ REPORT
         }
         if (jump_law == 5u) {
             REAL jp = (REAL)1;
-            for (unsigned int j = 0u; j < 32u; j++) {
+            for (unsigned int j = 0u; j < 64u; j++) {
                 if ((REAL)j >= nj) { break; }
                 unsigned int ka = (g ^ (2654435761u + j * 40503u)) ^ (seed * 2654435761u);
                 ka ^= ka >> 16; ka *= 2246822519u; ka ^= ka >> 13; ka *= 3266489917u; ka ^= ka >> 16;
@@ -329,6 +340,13 @@ LIFT
             REAL hist = (REAL)0;
             for (unsigned int l = 0u; l < lift_n; l++) { hist += lift_weight[l] * (lh[l] + lj[l]); }
             lv = lift_x0 + lift_db * lift[0] + hist + lift_fb * lift[1] * lift[2];
+        }
+        if (hist_slot != 4294967295u) {
+HISTORY
+            unsigned int hi = (step_first != 0u) ? i : (i - 1u);
+            past[hi] = hist_in[0];
+            cv = (REAL)0;
+            for (unsigned int k = 0u; k <= hi; k++) { cv += curve[(INDEX)hist_slot * steps + k] * past[hi - k]; }
         }
 STEP
         if (has_lift != 0u) {
@@ -440,6 +458,7 @@ pub(crate) fn prelude(lang: &Language<'_>) -> String {
 pub(crate) fn render(lang: &Language<'_>) -> String {
   let body = FRAME
     .replace("LIFT", super::families::C_LIFT.trim_end_matches('\n'))
+    .replace("HISTORY", super::families::C_HISTORY.trim_end_matches('\n'))
     .replace("STEP", super::families::C_STEP.trim_end_matches('\n'))
     .replace("REPORT", super::families::C_REPORT.trim_end_matches('\n'));
   substitute(&body, lang)
