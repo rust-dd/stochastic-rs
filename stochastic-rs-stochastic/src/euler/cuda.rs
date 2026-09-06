@@ -44,7 +44,7 @@ const CUDA_HEADER: &str = r#"extern "C" __global__ void euler_paths_REAL(
     const REAL* __restrict__ lift_decay, const REAL* __restrict__ lift_weight,
     const REAL* __restrict__ lift_drift_scale, unsigned int has_lift, unsigned int lift_n,
     REAL lift_db, REAL lift_fb, REAL lift_x0, unsigned int hist_slot,
-    unsigned int series_n)
+    unsigned int series_n, unsigned int table_n, REAL table_u0)
 {
     unsigned int path = blockIdx.x * blockDim.x + threadIdx.x;
     const REAL x0[4] = { x00, x01, x02, x03 };
@@ -163,6 +163,8 @@ fn run<R>(
   lift_x0: R,
   hist_slot: u32,
   series_n: u32,
+  table_n: u32,
+  table_u0: R,
 ) -> Result<Vec<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
@@ -265,6 +267,8 @@ where
       .arg(&lift_x0)
       .arg(&hist_slot)
       .arg(&series_n)
+      .arg(&table_n)
+      .arg(&table_u0)
       .launch(LaunchConfig::for_num_elems(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
@@ -298,6 +302,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.gamma_draws(),
       process.lift_spec(),
       process.series_terms(),
+      process.table_spec(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -331,6 +336,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.gamma_draws(),
       process.lift_spec(),
       process.series_terms(),
+      process.table_spec(),
     )
   }
 
@@ -409,6 +415,7 @@ fn device_paths<T: FloatExt>(
   gammas: Option<crate::euler::GammaDraws<T>>,
   lift: Option<crate::euler::LiftSpec<'_, T>>,
   series: Option<u32>,
+  table: Option<crate::euler::TableSpec<T>>,
 ) -> Result<Array3<T>> {
   {
     let (curve, n_curves) = crate::euler::flatten_curves(curves, n);
@@ -426,6 +433,7 @@ fn device_paths<T: FloatExt>(
     let (family, params) = spec.encode();
     let hist_slot = crate::euler::history_slot(family, n);
     let series_n = crate::euler::series_terms(family, n, series);
+    let (table_n, table_u0) = crate::euler::table_terms(family, table);
     let arity = super::families::Family::from_code(family).expect("a declared family");
     let use_jumps = u32::from(jump_lambda.is_some());
     let lambda64 = jump_lambda.map_or(0.0, |v| v.to_f64().unwrap_or(0.0));
@@ -516,6 +524,8 @@ fn device_paths<T: FloatExt>(
         lift_x0,
         hist_slot,
         series_n,
+        table_n,
+        table_u0.to_f64().unwrap_or(0.0),
       )?;
       let out = Array3::<f64>::from_shape_vec((planes, m, n), data)
         .expect("the kernel returns components * m * n values");
@@ -586,6 +596,8 @@ fn device_paths<T: FloatExt>(
       lift_x0 as f32,
       hist_slot,
       series_n,
+      table_n,
+      table_u0.to_f64().unwrap_or(0.0) as f32,
     )?;
     assert!(
       TypeId::of::<T>() == TypeId::of::<f32>(),
@@ -637,6 +649,8 @@ fn launch_chunk<R>(
   lift_x0: R,
   hist_slot: u32,
   series_n: u32,
+  table_n: u32,
+  table_u0: R,
 ) -> Result<CudaSlice<R>>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
@@ -735,6 +749,8 @@ where
       .arg(&lift_x0)
       .arg(&hist_slot)
       .arg(&series_n)
+      .arg(&table_n)
+      .arg(&table_u0)
       .launch(LaunchConfig::for_num_elems(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
@@ -886,12 +902,14 @@ fn pipelined_paths<T: FloatExt>(
   gammas: Option<crate::euler::GammaDraws<T>>,
   lift: Option<crate::euler::LiftSpec<'_, T>>,
   series: Option<u32>,
+  table: Option<crate::euler::TableSpec<T>>,
 ) -> Result<Array3<T>> {
   let (curve, n_curves) = crate::euler::flatten_curves(curves, n);
   debug_assert!(lift.is_none(), "the pipelined batch carries no lift");
   let (family, params) = spec.encode();
   let hist_slot = crate::euler::history_slot(family, n);
   let series_n = crate::euler::series_terms(family, n, series);
+  let (table_n, table_u0) = crate::euler::table_terms(family, table);
   let arity = super::families::Family::from_code(family).expect("a declared family");
   let use_jumps = u32::from(jump_lambda.is_some());
   let lambda64 = jump_lambda.map_or(0.0, |v| v.to_f64().unwrap_or(0.0));

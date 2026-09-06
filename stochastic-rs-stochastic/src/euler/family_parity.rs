@@ -70,6 +70,9 @@ fn probe_lift(dt: f32) -> ProbeLift {
 /// the probes' short grid, so a cell that gets none is the exception.
 const PROBE_TERMS: u32 = 64;
 
+/// The table points every table probe builds per path.
+const PROBE_TABLE: u32 = 64;
+
 const PROBE_INTENSITY: f32 = 3.0;
 
 /// The size law every probe declares. Double-exponential rather than normal
@@ -197,6 +200,8 @@ impl PathSampler<f32> for ProbeSampler {
       0.0,
       0.0,
       0.0,
+      0.0,
+      0.0,
       &mut out,
     );
     slice[0] = out[0];
@@ -231,6 +236,48 @@ impl PathSampler<f32> for ProbeSampler {
         series[cell] += size;
       }
     }
+    // The table a `table` family inverts, built exactly as the frame's
+    // preamble builds it, and the pointer its steps scan with.
+    let horizon = self.dt * (N - 1) as f32;
+    let mut table = Vec::<f32>::new();
+    let mut spacing = 0.0f32;
+    if family.has_table() {
+      let uniform = SimdUniform::<f32>::new(0.0, 1.0, &Deterministic::new(13));
+      let mut umax = 1.0f32;
+      for attempt in 0..10 {
+        spacing = umax / (PROBE_TABLE - 1) as f32;
+        table = vec![0.0f32; PROBE_TABLE as usize];
+        for k in 1..PROBE_TABLE as usize {
+          let (uj, uv) = (uniform.sample_fast(), uniform.sample_fast());
+          let inc = super::families::host_table(family, &params, self.dt, uj, uv, spacing)
+            .expect("a family with a table clause sizes its increments");
+          table[k] = table[k - 1] + inc;
+        }
+        if table[PROBE_TABLE as usize - 1] >= horizon {
+          break;
+        }
+        if attempt < 9 {
+          umax *= 2.0;
+        }
+      }
+    }
+    let mut pointer = 1usize;
+    let mut inverse_at = |ti: f32| -> f32 {
+      if table.is_empty() {
+        return 0.0;
+      }
+      while pointer < table.len() && table[pointer] < ti {
+        pointer += 1;
+      }
+      if pointer >= table.len() {
+        spacing * (table.len() - 1) as f32
+      } else if table[pointer] <= table[pointer - 1] {
+        spacing * pointer as f32
+      } else {
+        spacing * (pointer - 1) as f32
+          + (ti - table[pointer - 1]) / (table[pointer] - table[pointer - 1]) * spacing
+      }
+    };
     for (i, z) in tail.iter_mut().enumerate() {
       let noise = [*z, 0.0, 0.0, 0.0];
       let (mut lv, mut coefficients) = (0.0f32, [0.0f32; 3]);
@@ -277,6 +324,8 @@ impl PathSampler<f32> for ProbeSampler {
         0.0,
         0.0,
         0.0,
+        inverse_at(self.dt * (i + 1) as f32),
+        0.0,
         &noise,
         &mut next,
       );
@@ -306,6 +355,8 @@ impl PathSampler<f32> for ProbeSampler {
         1.3,
         0.5,
         0.5,
+        0.0,
+        0.0,
         0.0,
         0.0,
         0.0,
@@ -391,6 +442,18 @@ impl EulerCoefficients<f32> for Probe {
       .expect("a declared family")
       .has_series()
       .then_some(PROBE_TERMS)
+  }
+
+  /// A table family builds the probes' fixed table over the unit extent.
+  fn table_spec(&self) -> Option<crate::euler::TableSpec<f32>> {
+    let (code, _) = self.spec.encode();
+    super::families::Family::from_code(code)
+      .expect("a declared family")
+      .has_table()
+      .then_some(crate::euler::TableSpec {
+        points: PROBE_TABLE,
+        u_max: 1.0,
+      })
   }
 
   fn jump_intensity(&self) -> Option<f32> {
@@ -530,6 +593,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::VolterraReference => "VolterraReference",
     EulerSpec::HawkesEvents { .. } => "HawkesEvents",
     EulerSpec::LiborMarket4 { .. } => "LiborMarket4",
+    EulerSpec::InverseStableSubordinator { .. } => "InverseStableSubordinator",
   }
 }
 
@@ -876,6 +940,17 @@ fn every_family() -> Vec<Probe> {
       },
       0.0,
     ),
+    p(
+      EulerSpec::InverseStableSubordinator {
+        alpha: 0.7,
+        c: 1.0,
+        inv_alpha: 1.0 / 0.7,
+        one_minus_alpha: 0.3,
+        tail_exp: 0.3 / 0.7,
+        pi: std::f32::consts::PI,
+      },
+      0.0,
+    ),
     p(EulerSpec::AffineDiffusionGaussian { sigma: 0.02 }, 0.03),
     p(
       EulerSpec::TransformedOrnsteinUhlenbeck {
@@ -1055,6 +1130,8 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
       0.0,
       0.0,
       0.0,
+      0.0,
+      0.0,
       &mut reported,
     );
     for (c, path) in out.iter_mut().enumerate() {
@@ -1087,6 +1164,48 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         series[cell] += size;
       }
     }
+    // The table a `table` family inverts, built exactly as the frame's
+    // preamble builds it, and the pointer its steps scan with.
+    let horizon = self.dt * (N - 1) as f32;
+    let mut table = Vec::<f32>::new();
+    let mut spacing = 0.0f32;
+    if family.has_table() {
+      let uniform = SimdUniform::<f32>::new(0.0, 1.0, &Deterministic::new(13));
+      let mut umax = 1.0f32;
+      for attempt in 0..10 {
+        spacing = umax / (PROBE_TABLE - 1) as f32;
+        table = vec![0.0f32; PROBE_TABLE as usize];
+        for k in 1..PROBE_TABLE as usize {
+          let (uj, uv) = (uniform.sample_fast(), uniform.sample_fast());
+          let inc = super::families::host_table(family, &params, self.dt, uj, uv, spacing)
+            .expect("a family with a table clause sizes its increments");
+          table[k] = table[k - 1] + inc;
+        }
+        if table[PROBE_TABLE as usize - 1] >= horizon {
+          break;
+        }
+        if attempt < 9 {
+          umax *= 2.0;
+        }
+      }
+    }
+    let mut pointer = 1usize;
+    let mut inverse_at = |ti: f32| -> f32 {
+      if table.is_empty() {
+        return 0.0;
+      }
+      while pointer < table.len() && table[pointer] < ti {
+        pointer += 1;
+      }
+      if pointer >= table.len() {
+        spacing * (table.len() - 1) as f32
+      } else if table[pointer] <= table[pointer - 1] {
+        spacing * pointer as f32
+      } else {
+        spacing * (pointer - 1) as f32
+          + (ti - table[pointer - 1]) / (table[pointer] - table[pointer - 1]) * spacing
+      }
+    };
     for i in 1..N {
       let mut noise = [0.0f32; 4];
       self.normal.fill_slice(&mut draw);
@@ -1135,6 +1254,8 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         0.0,
         0.0,
         0.0,
+        inverse_at(self.dt * i as f32),
+        0.0,
         &noise,
         &mut next,
       );
@@ -1164,6 +1285,8 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
         1.3,
         0.5,
         0.5,
+        0.0,
+        0.0,
         0.0,
         0.0,
         0.0,
@@ -1251,6 +1374,18 @@ impl<const D: usize> EulerSystem<f32, D> for SystemProbe<D> {
       .expect("a declared family")
       .has_series()
       .then_some(PROBE_TERMS)
+  }
+
+  /// A table family builds the probes' fixed table over the unit extent.
+  fn table_spec(&self) -> Option<crate::euler::TableSpec<f32>> {
+    let (code, _) = self.spec.encode();
+    super::families::Family::from_code(code)
+      .expect("a declared family")
+      .has_table()
+      .then_some(crate::euler::TableSpec {
+        points: PROBE_TABLE,
+        u_max: 1.0,
+      })
   }
 
   fn jump_intensity(&self) -> Option<f32> {

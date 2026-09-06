@@ -15,7 +15,6 @@ use stochastic_rs_distributions::uniform::SimdUniform;
 use super::sample_positive_stable;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
-use crate::device::HostBackend;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -71,11 +70,66 @@ impl<T: FloatExt, S: SeedExt> InverseAlphaStableSubordinator<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> InverseAlphaStableSubordinator<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> InverseAlphaStableSubordinator<T, S, B> {
+  /// Whether a device can run this process: the direct subordinator's table
+  /// fits the kernels' per-path table. A finer one samples on the host.
+  pub fn device_ready(&self) -> bool {
+    self.u_steps <= crate::euler::TABLE_SLOTS
+  }
+}
 
-backend_switch!([T: FloatExt, S: SeedExt] InverseAlphaStableSubordinator<T, S> { alpha, c, n, t, u_steps, u_max, seed } via host);
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for InverseAlphaStableSubordinator<T, S, B>
+{
+  /// The direct subordinator's Chambers–Mallows–Stuck constants folded once.
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    crate::euler::EulerSpec::InverseStableSubordinator {
+      alpha: self.alpha,
+      c: self.c,
+      inv_alpha: T::one() / self.alpha,
+      one_minus_alpha: T::one() - self.alpha,
+      tail_exp: (T::one() - self.alpha) / self.alpha,
+      pi: T::from_f64_fast(std::f64::consts::PI),
+    }
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T>
+  /// The inverse clock starts at the origin.
+  fn initial_value(&self) -> T {
+    T::zero()
+  }
+
+  fn grid_points(&self) -> usize {
+    self.n
+  }
+
+  fn horizon(&self) -> T {
+    self.t.unwrap_or(T::one())
+  }
+
+  /// The direct subordinator's table: `u_steps` points over the extent given,
+  /// or over the horizon when none was, grown by doubling until it reaches
+  /// the horizon, as the host grows it.
+  fn table_spec(&self) -> Option<crate::euler::TableSpec<T>> {
+    Some(crate::euler::TableSpec {
+      points: self.u_steps as u32,
+      u_max: self.u_max.unwrap_or(self.t.unwrap_or(T::one())),
+    })
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.seed)
+  }
+
+  fn host_sample(&self) -> Array1<T> {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] InverseAlphaStableSubordinator<T, S> { alpha, c, n, t, u_steps, u_max, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for InverseAlphaStableSubordinator<T, S, B>
 {
   type Output = Array1<T>;
@@ -100,6 +154,51 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T>
       u_max0,
       uniform: SimdUniform::<f64>::new(0.0, 1.0, &self.seed),
       _marker: PhantomData,
+    }
+  }
+
+  /// Through the Euler engine when the direct subordinator's table fits the
+  /// kernels' per-path table; a finer one keeps the process on the host,
+  /// chunked exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> Array1<T> {
+    if self.device_ready() {
+      self.backend.euler_sample(self)
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      self.backend.euler_paths_map(self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
+    if self.device_ready() {
+      self.backend.euler_paths(self, m)
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<Array1<T>, crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_sample(self)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Array1<T>>, crate::device::DeviceError> {
+    if self.device_ready() {
+      self.backend.try_euler_paths(self, m)
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }

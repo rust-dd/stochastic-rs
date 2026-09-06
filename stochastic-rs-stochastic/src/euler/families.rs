@@ -61,6 +61,17 @@
 //! host's sort: cells are addressed, not ordered. Grids up to
 //! [`SERIES_SLOTS`](crate::euler::SERIES_SLOTS) points.
 //!
+//! A family with a `table { increment (..) }` clause reads `iv`, the inverse
+//! of a monotone table at the step's time: before the steps the frame builds,
+//! per path, a table of as many points as the launch's `table_spec()` names
+//! over `[0, u_max]` — each increment from the clause's expression of the two
+//! uniforms `uj`, `uv` and the spacing `tv` — doubling `u_max` up to ten
+//! times until the table reaches the horizon, exactly as the host does; each
+//! step then finds the first table value at or past its time and
+//! interpolates the abscissa linearly. That is the inverse subordinator, the
+//! first-passage clock of a positive process. Tables up to
+//! [`TABLE_SLOTS`](crate::euler::TABLE_SLOTS) points; the grid is free.
+//!
 //! The function vocabulary is `sqrt`, `exp`, `ln`, `pow`, `abs`, `negate`,
 //! `tanh`, `atan`, `sin`, `recip`, `positive`, `max`, `min`, the literal
 //! `lit`, the
@@ -91,7 +102,7 @@ pub(crate) use vocabulary::ops;
 
 euler_families! {
   step_inputs(
-    params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u, u2, lv, cv, sj, gj, ej, uj, uv,
+    params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u, u2, lv, cv, sj, gj, ej, uj, uv, iv, tv,
     state(slot_a, slot_b, slot_c, slot_d),
     noise(shock_a, shock_b, shock_c, shock_d),
     select(component, produced)
@@ -1638,6 +1649,27 @@ euler_families! {
       pick(less(ct, lit(3.0)), f3 * exp((m3 - s3 * s3 / lit(2.0)) * dt + s3 * w3), f3)
     }
     report { f0, f1, f2, f3 },
+
+  /// The inverse of an α-stable subordinator, `E(t) = inf{u : D(u) > t}`: the
+  /// table block builds `D` on a grid in `u` from positive-stable increments —
+  /// Kanter's form of the Chambers–Mallows–Stuck draw, its uniforms clamped as
+  /// the stable subordinator clamps them, at scale `(c Δu)^{1/α}` — and the
+  /// step takes the interpolated first passage over the horizon's time. The
+  /// state is that inverse; there is nothing to step.
+  114 => InverseStableSubordinator { alpha, c, inv_alpha, one_minus_alpha, tail_exp, pi }
+    state (x)
+    noise (dz)
+    step { iv }
+    report { x }
+    table {
+      increment (
+        bind uu = min(max(uj, lit(1e-7)), lit(0.9999999)) * pi;
+        bind w = negate(ln(min(max(uv, lit(1e-7)), lit(0.9999999))));
+        bind s1 = sin(alpha * uu) / pow(max(sin(uu), lit(1e-20)), inv_alpha);
+        bind s2 = pow(max(sin(one_minus_alpha * uu), lit(1e-20)) / w, tail_exp);
+        pow(c * tv, inv_alpha) * s1 * s2
+      )
+    },
 }
 
 #[cfg(test)]

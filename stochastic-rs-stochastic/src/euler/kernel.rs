@@ -84,6 +84,15 @@
 //! in, an array of 512 cells the grid may not exceed; `sj` is the step's cell.
 //! Without a clause `series_n` is zero and `sj` stays zero.
 //!
+//! A family with a `table` clause reads `iv`: before the steps the frame
+//! builds `table_n` values per path over `[0, u_max]` from the family's
+//! increment expression of two uniforms and the spacing `tv`, doubling
+//! `u_max` up to ten times until the last value reaches the horizon, and at
+//! each step finds the first value at or past the step's time and
+//! interpolates its abscissa linearly — the inverse subordinator. The table
+//! holds 512 values the point count may not exceed. Without a clause
+//! `table_n` is zero and `iv` stays zero.
+//!
 //! A family may read `nj`, the number of jumps the step saw: a Poisson draw
 //! with mean `jump_lambda · dt`, by Knuth's product of uniforms from a hash
 //! stream of its own. It is drawn once per step, so every component of a
@@ -196,6 +205,35 @@ SERIES
         }
         gj = (REAL)0; ej = (REAL)0; uj = (REAL)0; uv = (REAL)0;
     }
+    REAL iv = (REAL)0;
+    REAL tv = (REAL)0;
+    REAL table_inc[1];
+    table_inc[0] = (REAL)0;
+    REAL table[512];
+    unsigned int tp = 1u;
+    if (table_n != 0u) {
+        REAL horizon = dt * (REAL)(steps - 1u);
+        REAL umax = table_u0;
+        if (umax <= (REAL)0) { umax = (horizon > (REAL)1) ? horizon : (REAL)1; }
+        for (unsigned int attempt = 0u; attempt < 10u; attempt++) {
+            tv = umax / (REAL)(table_n - 1u);
+            table[0] = (REAL)0;
+            for (unsigned int k = 1u; k < table_n; k++) {
+                unsigned int tg = ((first_path + path) * 2654435761u) ^ (attempt * 668265263u) ^ (k * 40503u) ^ 2246822519u;
+                unsigned int p1 = (tg ^ 2654435769u) ^ (seed * 2654435761u);
+                p1 ^= p1 >> 16; p1 *= 2246822519u; p1 ^= p1 >> 13; p1 *= 3266489917u; p1 ^= p1 >> 16;
+                unsigned int p2 = (tg ^ 3266489909u) ^ (seed * 2654435761u);
+                p2 ^= p2 >> 16; p2 *= 2246822519u; p2 ^= p2 >> 13; p2 *= 3266489917u; p2 ^= p2 >> 16;
+                uj = (REAL)p1 * (REAL)2.3283064e-10;
+                uv = (REAL)p2 * (REAL)2.3283064e-10;
+TABLE
+                table[k] = table[k - 1u] + table_inc[0];
+            }
+            if (table[table_n - 1u] >= horizon) { break; }
+            if (attempt < 9u) { umax = umax * (REAL)2; }
+        }
+        uj = (REAL)0; uv = (REAL)0;
+    }
     for (unsigned int c = 0u; c < 4u; c++) { state[c] = x0[c]; reported[c] = x0[c]; }
     for (unsigned int c = 0u; c < 4u; c++) { noise[c] = (REAL)0; }
 REPORT
@@ -242,6 +280,17 @@ REPORT
         hv ^= hv >> 16; hv *= 2246822519u; hv ^= hv >> 13; hv *= 3266489917u; hv ^= hv >> 16;
         u2 = (REAL)hv * (REAL)2.3283064e-10;
         sj = (series_n != 0u) ? series[i] : (REAL)0;
+        if (table_n != 0u) {
+            REAL ti = dt * (REAL)i;
+            while (tp < table_n && table[tp] < ti) { tp++; }
+            if (tp >= table_n) {
+                iv = tv * (REAL)(table_n - 1u);
+            } else if (table[tp] <= table[tp - 1u]) {
+                iv = tv * (REAL)tp;
+            } else {
+                iv = tv * (REAL)(tp - 1u) + (ti - table[tp - 1u]) / (table[tp] - table[tp - 1u]) * tv;
+            }
+        }
         if (has_jumps != 0u) {
             REAL ell = STOCH_EXP(-jump_lambda * dt);
             REAL prod = (REAL)1;
@@ -525,6 +574,7 @@ pub(crate) fn prelude(lang: &Language<'_>) -> String {
 pub(crate) fn render(lang: &Language<'_>) -> String {
   let body = FRAME
     .replace("SERIES", super::families::C_SERIES.trim_end_matches('\n'))
+    .replace("TABLE", super::families::C_TABLE.trim_end_matches('\n'))
     .replace("LIFT", super::families::C_LIFT.trim_end_matches('\n'))
     .replace("HISTORY", super::families::C_HISTORY.trim_end_matches('\n'))
     .replace("STEP", super::families::C_STEP.trim_end_matches('\n'))

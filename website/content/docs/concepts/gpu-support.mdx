@@ -13,12 +13,12 @@ backends, and what the rest do.
 | Family | Processes | Capability bound | `Cpu` | `Accelerate` | `Metal` | `Cuda` | `Cubecl` |
 |---|---|---|---|---|---|---|---|
 | fGN noise | `Fgn` (1) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` | CubeCL FFT, `f32` only |
-| Euler engine, one component | 89 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
+| Euler engine, one component | 90 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
 | Euler engine, systems | 34 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
 | Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `FVasicek`, `Cfgns`, `Cfbms`, `Cfou`, `JumpFou`, `JumpFOUCustom` (11, counted above) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same MSL kernel | fGN pipeline feeds the same NVRTC kernel | fGN pipeline feeds the same CubeCL kernel |
-| Host only | the remaining 7 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
+| Host only | the remaining 6 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
 
-The 123 processes on the engine cover the diffusions, the stochastic-volatility
+The 124 processes on the engine cover the diffusions, the stochastic-volatility
 models under both their Euler and quadratic-exponential schemes (`Heston`,
 `HestonLog`, `DoubleHeston`, `Heston2D`, `Sabr`, `Bergomi`,
 `HestonStochCorr`, `BatesSvj`, `Hkde`), the short-rate models including the
@@ -73,7 +73,11 @@ two-uniform recursion of Dassios and Zhao, the host's thinning loop replaced by
 a closed form; `Ctrw` under exponential waits, whose arrivals per cell are the
 Poisson count the kernels draw, with normal, Rademacher or symmetric-stable
 jumps; and `Lmm` with up to four forwards in one launch, the spot measure's
-drift coupling and the reset freezes written out over the four slots.
+drift coupling and the reset freezes written out over the four slots; and
+`InverseAlphaStableSubordinator`, whose table block builds the direct stable
+subordinator per path on its own grid — doubling the extent until it reaches
+the horizon, as the host does — and reads the inverse clock off it by
+interpolation at every step.
 
 What stays on the host, and why. The engine steps a bounded forward
 recursion over four scalar state slots, so what rules a process out is
@@ -118,8 +122,10 @@ grid:
   `Poisson`, `CompoundPoisson`, `CustomJt` and `CompoundCustom` split here —
   their count mode is a fixed-length running sum and reaches the engine,
   their horizon mode does not.
-- **A per-step inversion or search** (`InverseAlphaStableSubordinator`): the
-  step scans an auxiliary path rather than drawing a value.
+- **A per-step search over a table finer than 512 points**
+  (`InverseAlphaStableSubordinator` with more `u_steps` than that): the table
+  block keeps the direct subordinator in a per-path array of 512 values and
+  scans it; a finer table stays on the host.
 - **More regimes than the four the chain family carries**
   (`RegimeSwitchingDiffusion` at five or more): the family holds four
   volatilities and four rows of thresholds; larger chains stay on the host
@@ -140,7 +146,7 @@ grid:
 
 ## What a family is
 
-A process reaches a device by declaring which of the engine's **114 families**
+A process reaches a device by declaring which of the engine's **115 families**
 it steps, not by writing a kernel. A family is one entry in
 `stochastic-rs-stochastic/src/euler/families.rs` — its parameters, its state
 components, its noise components, one step expression per component and one
@@ -166,8 +172,11 @@ depending on the weights. A family with a `series` clause has the frame draw,
 per path and before the steps, as many shot-noise terms as the launch names —
 a unit-rate arrival, an exponential, two uniforms and an arrival time each —
 size them with the family's own expression and sum them into the grid cells
-their times fall in, up to 512; the step reads its cell as `sj`. A launch binds
-up to eight time-varying coefficients, which
+their times fall in, up to 512; the step reads its cell as `sj`. A family with a
+`table` clause has the frame build, per path, a monotone table of up to 512
+values from its increment expression, doubling the extent until the table
+reaches the horizon, and hands each step the interpolated inverse at its time
+as `iv`. A launch binds up to eight time-varying coefficients, which
 a family names `ct` and `ct1` through `ct7`; it pays one buffer read per
 declared curve per step, so a model with one still pays for one. The first
 two noise components may come from a fractional pipeline instead of the

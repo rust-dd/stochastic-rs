@@ -57,6 +57,8 @@ struct EulerArgs {
     float lift_x0;
     uint hist_slot;
     uint series_n;
+    uint table_n;
+    float table_u0;
     float x0[4];
 };
 
@@ -100,6 +102,8 @@ kernel void euler_paths(
     const float lift_x0 = args.lift_x0;
     const uint hist_slot = args.hist_slot;
     const uint series_n = args.series_n;
+    const uint table_n = args.table_n;
+    const float table_u0 = args.table_u0;
     const float jump_a = args.jump_a;
     const float jump_b = args.jump_b;
     const float jump_c = args.jump_c;
@@ -165,6 +169,10 @@ struct EulerArgs {
   /// How many series terms the launch draws per path, zero for a family
   /// without a `series` clause.
   series_n: u32,
+  /// The table a `table` family builds per path: its point count, zero for a
+  /// family without one, and its starting extent.
+  table_n: u32,
+  table_u0: f32,
   x0: [f32; 4],
 }
 
@@ -364,6 +372,7 @@ impl EulerKernel<f32> for Metal {
       process.gamma_draws(),
       process.lift_spec(),
       process.series_terms(),
+      process.table_spec(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
@@ -401,6 +410,7 @@ impl EulerKernel<f32> for Metal {
       process.gamma_draws(),
       process.lift_spec(),
       process.series_terms(),
+      process.table_spec(),
     )
   }
 
@@ -469,6 +479,7 @@ fn device_paths(
   gammas: Option<crate::euler::GammaDraws<f32>>,
   lift: Option<crate::euler::LiftSpec<'_, f32>>,
   series: Option<u32>,
+  table: Option<crate::euler::TableSpec<f32>>,
 ) -> Result<Array3<f32>> {
   let (family, params) = spec.encode();
   let arity = super::families::Family::from_code(family).expect("a declared family");
@@ -484,6 +495,7 @@ fn device_paths(
     crate::euler::encode_lift(lift.as_ref());
   let hist_slot = crate::euler::history_slot(family, n);
   let series_n = crate::euler::series_terms(family, n, series);
+  let (table_n, table_u0) = crate::euler::table_terms(family, table);
   let args = EulerArgs {
     family,
     components: components as u32,
@@ -520,6 +532,8 @@ fn device_paths(
     lift_x0,
     hist_slot,
     series_n,
+    table_n,
+    table_u0,
     x0,
   };
   let data = run(ordinal, params, args, increments, &curve, lift_tables)?;

@@ -79,8 +79,8 @@ Then the backend switch from `src/macros.rs`. `backend_switch!` generates `on::<
 
 | Arm | Bound | Storage | Use when | Uses (snapshot) |
 |---|---|---|---|---|
-| `via euler` | `EulerBackend<T>` | `backend: B` | the process declares a family | 110 |
-| `via host` | `HostBackend` | `backend: B` | host only (see last section) | 10 |
+| `via euler` | `EulerBackend<T>` | `backend: B` | the process declares a family | 114 |
+| `via host` | `HostBackend` | `backend: B` | host only (see last section) | 6 |
 | `via fgn euler` | `FgnBackend<T> + EulerBackend<T>` | `fgn: Fgn<_, _, B>` | fractional **and** on the engine | 10 |
 | `via phantom` | `FgnBackend<T>` | `backend: B` | backend carried, not an engine process | 2 |
 | `via fgn` | `FgnBackend<T>` | `fgn: Fgn<_, _, B>` | fractional, not on the engine | 0 |
@@ -109,12 +109,14 @@ recurse into it); the vocabulary triple is in `src/euler/families/vocabulary.rs`
 ```
 
 Optional clauses after `report`: `lift { drift (..) diffusion (..) shock (..) }`,
-`history { push (..) weights (ctK) }` and `series { size (..) }` — the last sizes one
-shot-noise term from the preamble's draws `gj` (a unit-rate arrival), `ej` (`Exp(1)`),
-`uj`, `uv` (uniforms), and the step reads the cell's sum as `sj`. A step or report may
-open with `bind name = expr;` lines. A step reads `x` (its own state names), `dt`, its
-noise names, its parameters, plus `ct`/`ct1`..`ct7`, `nj`, `js`, `gm`, `gm2`, `u`,
-`u2`, `lv`, `cv`, `sj`.
+`history { push (..) weights (ctK) }`, `series { size (..) }` — sizes one shot-noise
+term from the preamble's draws `gj` (a unit-rate arrival), `ej` (`Exp(1)`), `uj`, `uv`
+(uniforms), and the step reads the cell's sum as `sj` — and `table { increment (..) }`
+— one increment of a monotone table from `uj`, `uv` and the spacing `tv`, and the step
+reads the table's interpolated inverse at its time as `iv`. A step or report may open
+with `bind name = expr;` lines. A step reads `x` (its own state names), `dt`, its noise
+names, its parameters, plus `ct`/`ct1`..`ct7`, `nj`, `js`, `gm`, `gm2`, `u`, `u2`, `lv`,
+`cv`, `sj`, `iv`.
 Vocabulary: `sqrt exp ln pow abs negate tanh atan sin recip positive max min lit less
 leq geq pick` — a **new** intrinsic goes into all three implementations in
 `vocabulary.rs` (host `ops`, `C_PRELUDE`, `cube_ops`).
@@ -143,7 +145,8 @@ Traps, each learned from a real failure:
 `CURVE_SLOTS = 8` (`ct`, `ct1`..`ct7`), 2 uniforms `u`/`u2`, Poisson count `nj`, jump
 sum `js`, Gamma draws `gm`/`gm2`, lifted value `lv` over `LIFT_SLOTS = 176` nodes,
 history convolution `cv` over `HISTORY_SLOTS = 512` grid points, series cell sum `sj`
-over `SERIES_SLOTS = 512` grid points, `CORRELATED_STREAMS = 4`.
+over `SERIES_SLOTS = 512` grid points, table inverse `iv` over `TABLE_SLOTS = 512`
+table points, `CORRELATED_STREAMS = 4`.
 
 **2c. The trait impl.** One component → `crate::euler::EulerCoefficients<T>`
 (needs `ProcessExt<T, Output = Array1<T>>`); 2–4 components →
@@ -165,6 +168,7 @@ over `SERIES_SLOTS = 512` grid points, `CORRELATED_STREAMS = 4`.
 | `fgn_spec()` | default `None` | `FgnSpec { sqrt_eigenvalues, n, offset, hurst, t, streams }` |
 | `lift_spec()` | default `None` | `LiftSpec { decay, weight, drift_scale, drift_boundary, diffusion_boundary, x0 }` |
 | `series_terms()` | default `None` | `Some(j)` terms per path for a family with a `series` clause — exactly when, the launch asserts both ways |
+| `table_spec()` | default `None` | `Some(TableSpec { points, u_max })` for a family with a `table` clause — same both-ways assert; `points ≤ TABLE_SLOTS` |
 
 `host_sample` is always exactly this — the `advance_chunk_seed` call is what keeps a
 host fallback chunk-correct:
@@ -179,10 +183,11 @@ host fallback chunk-correct:
 
 **2d. The hand-written CubeCL dispatch** — `src/euler/cubecl.rs`. A new family
 needs **two** arms (`fn step`, `fn report`), plus one in `fn lift_coefficient` if it has
-a `lift` clause, one in `fn history_push` if it has a `history` clause and one in
-`fn series_size` if it has a `series` clause. The invariant is `arms = 2 × families +
-lift clauses + history clauses + series clauses` (when this was written,
-2 × 111 + 6 + 5 + 1 = 234).
+a `lift` clause, one in `fn history_push` if it has a `history` clause, one in
+`fn series_size` if it has a `series` clause and one in `fn table_increment` if it has
+a `table` clause. The invariant is `arms = 2 × families + lift clauses + history
+clauses + series clauses + table clauses` (when this was written,
+2 × 115 + 6 + 6 + 1 + 1 = 244).
 
 ```rust
   if family == 110u32 {
@@ -195,8 +200,8 @@ lift clauses + history clauses + series clauses` (when this was written,
 
 `report` drops `dt` and the four `dz` and calls `cube_report::`; `lift_coefficient` /
 `history_push` lead with `which` / `0u32` instead of `component` and call `cube_lift::`
-/ `cube_history::`; `series_size` passes zeros for everything but `params`, `dt` and
-the four draws and calls `cube_series::`. A missing arm compiles, runs, and quietly returns a flat path —
+/ `cube_history::`; `series_size` and `table_increment` pass zeros for everything but
+`params`, `dt` and their draws and call `cube_series::` / `cube_table::`. A missing arm compiles, runs, and quietly returns a flat path —
 which is what §4d catches.
 
 **2e. `src/euler/family_parity.rs`.** `family_name`'s `match` has no wildcard, so
@@ -214,9 +219,9 @@ matchers and expansions in `codegen.rs`, its four signature blocks, the
 frame in `src/euler/kernel.rs`. Script it, and re-read the traps first.
 
 Verify §2: `grep -c "family ==" src/euler/cubecl.rs` must equal `2 × families + lifts +
-histories + series`, families from `grep -cE "^  [0-9]+ => " src/euler/families.rs`.
-A probe needs no series work of its own: `Probe::series_terms` answers from
-`Family::has_series()`.
+histories + series + tables`, families from `grep -cE "^  [0-9]+ => " src/euler/families.rs`.
+A probe needs no series or table work of its own: `Probe::series_terms` and
+`Probe::table_spec` answer from `Family::has_series()` / `has_table()`.
 
 ## 3. The mandatory dispatch overrides
 
@@ -259,7 +264,9 @@ of silently drawing zeros — `Merton::jump_sizes`,
 kernels draw, via `src/process/cpoisson.rs::device_jump_sizes`),
 `GaussianPolynomialVolatility` (`DEVICE_COEFFICIENTS = 8`), `MultiGbm` (`assets() <=
 CORRELATED_STREAMS`), `RoughHeston` / `RoughBergomi` / `FBatesSvj` / `Arima`
-(`HISTORY_SLOTS`), `Cgmy` / `Cts` / `KoBoL` / `Rdts` (`SERIES_SLOTS`).
+(`HISTORY_SLOTS`), `Cgmy` / `Cts` / `KoBoL` / `Rdts` (`SERIES_SLOTS`),
+`InverseAlphaStableSubordinator` (`TABLE_SLOTS`), `Lmm` (`CORRELATED_STREAMS`
+forwards), `Ctrw` (exponential waits), `Hawkes` (count mode).
 
 When the `Output` is not what the engine produces (`Array2<T>`, a complex path, one row
 of a matrix), add a borrowed **launch view**: a `#[doc(hidden)] pub struct FooLaunch<'a,
@@ -490,14 +497,15 @@ a **series whose term sizes read another simulated path** (`Svcgmy`: the CGMY
 scale at each arrival is the variance path there, drawn by an exact non-central
 χ² step the kernels do not carry); **Rust closures in the coefficients** (`Cheyette`'s
 `Fn1D`/`Fn2D`, `VolterraSde`'s two `Fn2D` — no GPU path without a DSL for them); an
-**output length that is not the grid, or state-dependent event counts** (`Hawkes`,
-`MultivariateHawkes`, `Ctrw`, `InverseAlphaStableSubordinator`); **more than 4 state
-slots or 4 noise components** (`Lmm`'s per-thread rate array with its O(M²) drift,
-`Wishart`, the 2-D sheet `Fbs`).
+**output length that is not the grid** (`MultivariateHawkes`, `Hawkes` in horizon
+mode); **state-dependent draws the frame does not carry** (`Wishart`'s non-central χ²
+with a state-dependent non-centrality); **more than 4 state slots or 4 noise
+components** (`Lmm` / `MultiGbm` / `Mcgns` above four, `Wishart` above `d = 2`); **a
+two-dimensional field** (the sheet `Fbs`).
 
 Before declaring a process host-only — the current list is whatever
 `grep -rln "via host" stochastic-rs-stochastic/src --include='*.rs'` returns, and it
-shrinks as the engine grows — check the five documented ways round the cap:
+shrinks as the engine grows — check the seven documented ways round the cap:
 
 1. **A launch view with a runtime cap** — pad a runtime `k` into the fixed
    four-slot family and fall back to the host above it (`MultiGbmLaunch`), or
@@ -516,6 +524,14 @@ shrinks as the engine grows — check the five documented ways round the cap:
    and summed into the grid cells its terms fall in, so the host's sort is not
    needed; grids up to `SERIES_SLOTS`. This is what moved `Cgmy`, `Cts`, `KoBoL`
    and `Rdts` onto the engine, as one family with host-folded constants.
+6. **A `table` clause** — a monotone table built per path before the steps and
+   inverted by interpolation at every step, the extent doubled until the table
+   reaches the horizon; tables up to `TABLE_SLOTS`. This is what moved
+   `InverseAlphaStableSubordinator` onto the engine.
+7. **An exact recursion in place of a rejection loop** — a family reads two
+   uniforms a step, so a thinning loop with a random number of proposals has no
+   home in it, but an exact inverse-transform of the same law does. This is
+   what moved `Hawkes` (Dassios–Zhao) onto the engine.
 
 ## Definition of done
 
@@ -528,7 +544,7 @@ shrinks as the engine grows — check the five documented ways round the cap:
 - [ ] Family declared in `families.rs`; the six DSL traps checked
 - [ ] `EulerSpec` variant + `encode()` arm; ≤ 20 params, ≤ 8 curves, ≤ 4 states, ≤ 4 noises
 - [ ] `EulerCoefficients`/`EulerSystem` impl; `draw_seed`; `host_sample` calls the sampler **and** `advance_chunk_seed`
-- [ ] `cubecl.rs` step + report arms (+ lift, + history, + series), count checked against the family count
+- [ ] `cubecl.rs` step + report arms (+ lift, + history, + series, + table), count checked against the family count
 - [ ] `family_name` arm and a probe in the arity-matching `every_*_family()` list
 - [ ] All five `ProcessExt` methods overridden through the backend, or a `device_ready()` guard with a host fallback and an `expect` in the hook
 - [ ] Device-law case in the right `device_law/<group>.rs`; statistic moves with every parameter; tolerance not padded

@@ -18,6 +18,7 @@ use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::process::subordinator::alpha_stable::AlphaStableSubordinator;
 use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSubordinator;
 use stochastic_rs_stochastic::process::subordinator::ig_subordinator::IGSubordinator;
+use stochastic_rs_stochastic::process::subordinator::inverse_alpha_stable::InverseAlphaStableSubordinator;
 use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PoissonSubordinator;
 use stochastic_rs_stochastic::process::subordinator::tempered_stable::TemperedStableSubordinator;
 use stochastic_rs_stochastic::traits::ProcessExt;
@@ -414,5 +415,67 @@ fn hawkes_agrees_with_the_cpu_law() {
 #[test]
 fn hawkes_horizon_mode_keeps_the_process_on_the_host() {
   let build = || Hawkes::<f32, _>::new(1.0, 0.5, 1.5, None, Some(10.0), Deterministic::new(163));
+  assert_eq!(build().on::<Device>().sample_par(8), build().sample_par(8));
+}
+
+/// The inverse stable subordinator is the first-passage clock of a stable
+/// subordinator built on a table in its own argument: the kernel builds the
+/// same table from the same positive-stable increments and interpolates the
+/// same way, so the clock's terminal law — mean and spread — and its
+/// monotonicity have to agree.
+#[test]
+fn inverse_alpha_stable_subordinator_agrees_with_the_cpu_law() {
+  let build = || {
+    InverseAlphaStableSubordinator::<f32, _>::new(
+      0.7,
+      1.0,
+      N,
+      Some(1.0),
+      256,
+      None,
+      Deterministic::new(223),
+    )
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert_eq!(device.len(), PATHS);
+  assert_eq!(device[0][0], 0.0, "the clock starts at the origin");
+  all_finite(&device, "inverse stable subordinator");
+  assert!(
+    device
+      .iter()
+      .all(|p| p.windows(2).into_iter().all(|w| w[1] >= w[0])),
+    "an inverse clock ran backwards"
+  );
+  agrees(
+    terminal_mean(&host),
+    terminal_mean(&device),
+    0.03,
+    "inverse stable subordinator terminal mean",
+  );
+  agrees(
+    terminal_std(&host),
+    terminal_std(&device),
+    0.06,
+    "inverse stable subordinator terminal spread",
+  );
+}
+
+/// A table finer than the kernels' per-path table samples on the host, and
+/// is then the host build to the bit.
+#[test]
+fn a_finer_table_keeps_the_inverse_subordinator_on_the_host() {
+  let build = || {
+    InverseAlphaStableSubordinator::<f32, _>::new(
+      0.7,
+      1.0,
+      64,
+      Some(1.0),
+      600,
+      None,
+      Deterministic::new(227),
+    )
+  };
   assert_eq!(build().on::<Device>().sample_par(8), build().sample_par(8));
 }

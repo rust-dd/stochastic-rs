@@ -35,6 +35,8 @@ fn step1(family: Family, x: f64, params: &[f64], dt: f64, dz: f64) -> f64 {
     0.0,
     0.0,
     0.0,
+    0.0,
+    0.0,
     &[dz, 0.0, 0.0, 0.0],
     &mut out,
   );
@@ -47,6 +49,8 @@ fn report1(family: Family, x: f64, params: &[f64]) -> f64 {
     family,
     &[x, 0.0, 0.0, 0.0],
     params,
+    0.0,
+    0.0,
     0.0,
     0.0,
     0.0,

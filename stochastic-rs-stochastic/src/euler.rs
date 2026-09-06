@@ -228,6 +228,53 @@ pub(crate) fn series_terms(family: u32, n: usize, terms: Option<u32>) -> u32 {
   terms.unwrap_or(0)
 }
 
+/// The most points a family with a `table` clause builds per path on a
+/// device: the kernels keep the table in an array of this many entries. A
+/// finer table stays on the host, which the process's own guard decides.
+pub const TABLE_SLOTS: usize = 512;
+
+/// What a family with a `table` clause has the frame build per path before
+/// the steps: a monotone table of `points` values over `[0, u_max]` — a
+/// non-positive `u_max` meaning the horizon, one at least — grown by doubling
+/// until it reaches the horizon.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TableSpec<T> {
+  pub points: u32,
+  pub u_max: T,
+}
+
+/// The table's point count and starting extent for a launch, zero and zero
+/// for a family without a `table` clause. A family with one is never launched
+/// without a spec and a family without one never with, and a table beyond
+/// [`TABLE_SLOTS`] never reaches a launch through `ProcessExt`.
+#[cfg_attr(
+  not(any(
+    feature = "cuda",
+    feature = "metal",
+    feature = "cubecl-cuda",
+    feature = "cubecl-wgpu"
+  )),
+  allow(dead_code)
+)]
+pub(crate) fn table_terms<T: FloatExt>(family: u32, spec: Option<TableSpec<T>>) -> (u32, T) {
+  let has_table = families::Family::from_code(family).is_some_and(families::Family::has_table);
+  assert!(
+    has_table == spec.is_some(),
+    "a family declares a table clause exactly when its process names a table"
+  );
+  match spec {
+    Some(spec) => {
+      assert!(
+        spec.points as usize <= TABLE_SLOTS && spec.points >= 2,
+        "a table family builds between 2 and {TABLE_SLOTS} points on a device, not {}",
+        spec.points
+      );
+      (spec.points, spec.u_max)
+    }
+    None => (0, T::zero()),
+  }
+}
+
 /// The curve buffer a launch binds: the declared curves laid end to end, each
 /// padded to `n` values, so the kernel reads curve `k` at step `i` from
 /// `curve[k * n + i]`. Returns the flattened values and how many curves they
@@ -872,6 +919,17 @@ pub enum EulerSpec<T: FloatExt> {
   /// A Hawkes process with exponential excitation, one event per step, by the
   /// exact two-uniform recursion.
   HawkesEvents { mu: T, alpha: T, beta: T },
+  /// The inverse of an α-stable subordinator by the table block: the direct
+  /// subordinator's Chambers–Mallows–Stuck constants folded on the host, the
+  /// table's extent and resolution from the launch's `table_spec()`.
+  InverseStableSubordinator {
+    alpha: T,
+    c: T,
+    inv_alpha: T,
+    one_minus_alpha: T,
+    tail_exp: T,
+    pi: T,
+  },
   /// Up to four forward LIBOR rates under the spot measure's drift coupling:
   /// their volatilities, their accrual periods, and the lower Cholesky factor
   /// of their correlation in row-major lower-triangle order; the active reset
@@ -1615,6 +1673,17 @@ impl<T: FloatExt> EulerSpec<T> {
       EulerSpec::HawkesEvents { mu, alpha, beta } => {
         (Family::HawkesEvents.code(), pad([mu, alpha, beta]))
       }
+      EulerSpec::InverseStableSubordinator {
+        alpha,
+        c,
+        inv_alpha,
+        one_minus_alpha,
+        tail_exp,
+        pi,
+      } => (
+        Family::InverseStableSubordinator.code(),
+        pad([alpha, c, inv_alpha, one_minus_alpha, tail_exp, pi]),
+      ),
       EulerSpec::LiborMarket4 { sigma, delta, l } => {
         let mut values = [T::zero(); 18];
         values[..4].copy_from_slice(&sigma);
@@ -1734,6 +1803,12 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
   /// How many terms a family with a `series` clause draws per path before
   /// the steps; `None` for a family without one.
   fn series_terms(&self) -> Option<u32> {
+    None
+  }
+
+  /// The table a family with a `table` clause has built per path before the
+  /// steps; `None` for a family without one.
+  fn table_spec(&self) -> Option<TableSpec<T>> {
     None
   }
 }
@@ -2096,6 +2171,12 @@ pub trait EulerSystem<T: FloatExt, const D: usize>: ProcessExt<T, Output = [Arra
   /// How many terms a family with a `series` clause draws per path before
   /// the steps; `None` for a family without one.
   fn series_terms(&self) -> Option<u32> {
+    None
+  }
+
+  /// The table a family with a `table` clause has built per path before the
+  /// steps; `None` for a family without one.
+  fn table_spec(&self) -> Option<TableSpec<T>> {
     None
   }
 
