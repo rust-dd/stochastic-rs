@@ -578,13 +578,12 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The same process on an explicit backend handle. Crate-internal:
-      /// the public way to name a backend is [`on`](Self::on), and a specific
-      /// device comes from `STOCHASTIC_RS_DEVICE` or from calling a capability
-      /// trait on the handle itself. The Python bindings need it because a
-      /// `device="cuda:1"` name carries an ordinal.
-      #[allow(dead_code)]
-      pub(crate) fn with_backend<B2: $crate::device::FgnBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
+      /// The same process on an explicit backend handle: a device picked by
+      /// ordinal, `with_backend(Cuda::new(1))`, or a handle with its own batch
+      /// budget, `with_backend(Metal::default().with_batch_budget(256 << 20))`.
+      /// [`on`](Self::on) is the same move with the backend's default handle,
+      /// which reads `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
+      pub fn with_backend<B2: $crate::device::FgnBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
           fgn: self.fgn.with_backend(device),
@@ -606,13 +605,12 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The same process on an explicit backend handle. Crate-internal:
-      /// the public way to name a backend is [`on`](Self::on), and a specific
-      /// device comes from `STOCHASTIC_RS_DEVICE` or from calling a capability
-      /// trait on the handle itself. The Python bindings need it because a
-      /// `device="cuda:1"` name carries an ordinal.
-      #[allow(dead_code)]
-      pub(crate) fn with_backend<B2: $crate::device::FgnBackend<$t> + $crate::euler::EulerBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
+      /// The same process on an explicit backend handle: a device picked by
+      /// ordinal, `with_backend(Cuda::new(1))`, or a handle with its own batch
+      /// budget, `with_backend(Metal::default().with_batch_budget(256 << 20))`.
+      /// [`on`](Self::on) is the same move with the backend's default handle,
+      /// which reads `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
+      pub fn with_backend<B2: $crate::device::FgnBackend<$t> + $crate::euler::EulerBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
           fgn: self.fgn.with_backend(device),
@@ -634,13 +632,12 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The same process on an explicit backend handle. Crate-internal:
-      /// the public way to name a backend is [`on`](Self::on), and a specific
-      /// device comes from `STOCHASTIC_RS_DEVICE` or from calling a capability
-      /// trait on the handle itself. The Python bindings need it because a
-      /// `device="cuda:1"` name carries an ordinal.
-      #[allow(dead_code)]
-      pub(crate) fn with_backend<B2: $crate::device::FgnBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
+      /// The same process on an explicit backend handle: a device picked by
+      /// ordinal, `with_backend(Cuda::new(1))`, or a handle with its own batch
+      /// budget, `with_backend(Metal::default().with_batch_budget(256 << 20))`.
+      /// [`on`](Self::on) is the same move with the backend's default handle,
+      /// which reads `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
+      pub fn with_backend<B2: $crate::device::FgnBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
           backend: device,
@@ -662,13 +659,12 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The same process on an explicit backend handle. Crate-internal:
-      /// the public way to name a backend is [`on`](Self::on), and a specific
-      /// device comes from `STOCHASTIC_RS_DEVICE` or from calling a capability
-      /// trait on the handle itself. The Python bindings need it because a
-      /// `device="cuda:1"` name carries an ordinal.
-      #[allow(dead_code)]
-      pub(crate) fn with_backend<B2: $crate::device::HostBackend>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
+      /// The same process on an explicit backend handle: a device picked by
+      /// ordinal, `with_backend(Cuda::new(1))`, or a handle with its own batch
+      /// budget, `with_backend(Metal::default().with_batch_budget(256 << 20))`.
+      /// [`on`](Self::on) is the same move with the backend's default handle,
+      /// which reads `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
+      pub fn with_backend<B2: $crate::device::HostBackend>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
           backend: device,
@@ -690,13 +686,12 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The same process on an explicit backend handle. Crate-internal:
-      /// the public way to name a backend is [`on`](Self::on), and a specific
-      /// device comes from `STOCHASTIC_RS_DEVICE` or from calling a capability
-      /// trait on the handle itself. The Python bindings need it because a
-      /// `device="cuda:1"` name carries an ordinal.
-      #[allow(dead_code)]
-      pub(crate) fn with_backend<B2: $crate::device::SheetBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
+      /// The same process on an explicit backend handle: a device picked by
+      /// ordinal, `with_backend(Cuda::new(1))`, or a handle with its own batch
+      /// budget, `with_backend(Metal::default().with_batch_budget(256 << 20))`.
+      /// [`on`](Self::on) is the same move with the backend's default handle,
+      /// which reads `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
+      pub fn with_backend<B2: $crate::device::SheetBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
           backend: device,
@@ -718,13 +713,12 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The same process on an explicit backend handle. Crate-internal:
-      /// the public way to name a backend is [`on`](Self::on), and a specific
-      /// device comes from `STOCHASTIC_RS_DEVICE` or from calling a capability
-      /// trait on the handle itself. The Python bindings need it because a
-      /// `device="cuda:1"` name carries an ordinal.
-      #[allow(dead_code)]
-      pub(crate) fn with_backend<B2: $crate::euler::EulerBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
+      /// The same process on an explicit backend handle: a device picked by
+      /// ordinal, `with_backend(Cuda::new(1))`, or a handle with its own batch
+      /// budget, `with_backend(Metal::default().with_batch_budget(256 << 20))`.
+      /// [`on`](Self::on) is the same move with the backend's default handle,
+      /// which reads `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
+      pub fn with_backend<B2: $crate::euler::EulerBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
           backend: device,

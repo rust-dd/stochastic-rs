@@ -33,6 +33,20 @@
 //! A process joins the engine by describing its coefficients as an
 //! [`EulerSpec`] through [`EulerCoefficients`].
 //!
+//! ## What is public here
+//!
+//! [`EulerBackend`] is the capability a generic bound names — `B:
+//! EulerBackend<T>` says a process runs on the device `B` through this
+//! engine — and it is the one item of this module a caller writes. Everything
+//! else — the family specification [`EulerSpec`], the launch hooks
+//! [`EulerCoefficients`] and [`EulerSystem`], the lift, table and program
+//! specifications, the slot caps, the kernel-implementor trait
+//! [`EulerKernel`] — is the engine's own machinery: public so the crate's
+//! sub-modules, tests and probes can reach it, hidden from the rendered
+//! documentation, and not covered by the crate's stability promise. A
+//! process reaches a device by declaring a family in this crate's table, not
+//! by implementing these traits from outside.
+//!
 //! References: Kloeden, P. E. & Platen, E. (1992), *Numerical Solution of
 //! Stochastic Differential Equations*, Springer, §10.2 (Euler–Maruyama);
 //! Lord, R., Koekkoek, R. & van Dijk, D. (2010), *A comparison of biased
@@ -95,6 +109,7 @@ pub(crate) fn pack_cholesky<T: FloatExt>(chol: &ndarray::Array2<T>) -> [T; 10] {
 /// The most nodes a Markov lift may carry on a device: one past
 /// [`crate::rough::RlKernel::MAX_STABLE_DEGREE`], since the kernels hold the
 /// lift's two state vectors in fixed per-thread arrays of this length.
+#[doc(hidden)]
 pub const LIFT_SLOTS: usize = 176;
 
 /// What a device needs to run the Markov lift of a rough Volterra kernel for a
@@ -103,6 +118,7 @@ pub const LIFT_SLOTS: usize = 176;
 /// with. The family declares the drift, the diffusion and the driving shock;
 /// the frame keeps the `2 · degree` lift states per path and hands the family
 /// the lifted value as `lv` each step.
+#[doc(hidden)]
 pub struct LiftSpec<'a, T> {
   /// `exp(-x_l dt)` per node.
   pub decay: &'a [T],
@@ -158,6 +174,7 @@ pub(crate) fn encode_lift<'a, T: FloatExt>(
 /// The floats a launch's program buffer holds: the two programs' lengths,
 /// then each program's `(opcode, constant)` pairs — room for two programs of
 /// [`Program::MAX_OPS`] operations each.
+#[doc(hidden)]
 pub const PROGRAM_SLOTS: usize = 2 + 4 * Program::MAX_OPS;
 
 /// The programs a launch interprets in its kernel: a coefficient of time and
@@ -167,6 +184,7 @@ pub const PROGRAM_SLOTS: usize = 2 + 4 * Program::MAX_OPS;
 /// and hands the values to the family as `pv` and `pv2` — the local
 /// volatility of a Cheyette model, the drift and diffusion of a Volterra
 /// equation.
+#[doc(hidden)]
 pub struct ProgramSpec<'a> {
   /// The first program, read as `pv`.
   pub first: &'a Program,
@@ -211,12 +229,14 @@ pub(crate) fn encode_programs<T: FloatExt>(spec: Option<&ProgramSpec<'_>>) -> (V
 /// out-of-tree process needs the cap it is held to. A family
 /// names them `ct` and `ct1` through `ct7`; a launch pays one buffer read per
 /// declared curve per step, so declaring fewer costs less.
+#[doc(hidden)]
 pub const CURVE_SLOTS: usize = 8;
 
 /// The most grid points a family with a `history` clause steps on a device:
 /// the kernels keep each path's pushed values in an array of this many slots
 /// and convolve them with the family's weight curve every step. A longer grid
 /// stays on the host, which the process's own guard decides.
+#[doc(hidden)]
 pub const HISTORY_SLOTS: usize = 512;
 
 /// The curve slot the launch's family reads its history weights from, or the
@@ -248,6 +268,7 @@ pub(crate) fn history_slot(family: u32, n: usize) -> u32 {
 /// The most grid points a family with a `series` clause steps on a device:
 /// the kernels sum each path's terms into an array of this many cells. A
 /// longer grid stays on the host, which the process's own guard decides.
+#[doc(hidden)]
 pub const SERIES_SLOTS: usize = 512;
 
 /// How many series terms the launch draws per path, or zero for a family
@@ -306,6 +327,7 @@ pub(crate) fn series_live(family: u32) -> u32 {
 /// The most points a family with a `table` clause builds per path on a
 /// device: the kernels keep the table in an array of this many entries. A
 /// finer table stays on the host, which the process's own guard decides.
+#[doc(hidden)]
 pub const TABLE_SLOTS: usize = 512;
 
 /// What a family with a `table` clause has the frame build per path before
@@ -313,6 +335,7 @@ pub const TABLE_SLOTS: usize = 512;
 /// non-positive `u_max` meaning the horizon, one at least — grown by doubling
 /// until it reaches the horizon.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[doc(hidden)]
 pub struct TableSpec<T> {
   pub points: u32,
   pub u_max: T,
@@ -389,6 +412,7 @@ pub(crate) const PARAM_SLOTS: usize = 20;
 /// Scalar drift / diffusion families the device kernels know how to step.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
+#[doc(hidden)]
 pub enum EulerSpec<T: FloatExt> {
   /// `dX = μX dt + σX dW`.
   GeometricBrownian { mu: T, sigma: T },
@@ -1855,6 +1879,7 @@ impl<T: FloatExt> EulerSpec<T> {
 /// A process the device kernels can run: its coefficients, initial value,
 /// grid, horizon and the seed the launch derives from the process's seed
 /// source.
+#[doc(hidden)]
 pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
   fn euler_spec(&self) -> EulerSpec<T>;
 
@@ -1980,6 +2005,7 @@ pub trait EulerCoefficients<T: FloatExt>: ProcessExt<T, Output = Array1<T>> {
 /// What a device needs to run the fGN pipeline for a process whose increments
 /// are fractional: the precomputed circulant eigenvalues and the grid they
 /// were built for.
+#[doc(hidden)]
 pub struct FgnSpec<'a, T> {
   /// Square roots of the circulant embedding's eigenvalues.
   pub sqrt_eigenvalues: &'a [T],
@@ -2004,6 +2030,7 @@ pub struct FgnSpec<'a, T> {
 /// Implement it for a device handle and [`EulerBackend`] follows through
 /// `kernel_euler_backend!`; the host handles implement [`EulerBackend`]
 /// directly.
+#[doc(hidden)]
 pub trait EulerKernel<T: FloatExt>: Backend {
   /// Paths `first .. first + m` of the launch stream seeded by `seed`, as an
   /// `m × n` matrix whose column 0 is the initial value. The kernels hash
@@ -2095,6 +2122,7 @@ pub trait EulerKernel<T: FloatExt>: Backend {
 /// sizes in a bounded loop.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
+#[doc(hidden)]
 pub enum JumpSizes<T: FloatExt> {
   /// Normal jump sizes, as Merton's and Bates's models take them.
   Normal { mean: T, sd: T },
@@ -2205,6 +2233,7 @@ impl<T: FloatExt> JumpSizes<T> {
 /// draw declares [`second`](Self::second) as `None`; the bilateral gamma
 /// processes, whose increment is the difference of two, declare both.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[doc(hidden)]
 pub struct GammaDraws<T: FloatExt> {
   /// The shape, scale and per-jump shape of `gm`. The shape the kernel uses
   /// is `shape + per_jump · nj`, which is what a compound sum of gamma jumps
@@ -2237,6 +2266,7 @@ impl<T: FloatExt> GammaDraws<T> {
 /// over [`EulerCoefficients`] is only the shape of the answer: `D` paths per
 /// draw rather than one, which is what a stochastic-volatility or two-factor
 /// model returns.
+#[doc(hidden)]
 pub trait EulerSystem<T: FloatExt, const D: usize>: ProcessExt<T, Output = [Array1<T>; D]> {
   /// The family this system steps. Its component count must be `D`.
   fn euler_spec(&self) -> EulerSpec<T>;
@@ -2362,6 +2392,7 @@ pub trait EulerSystem<T: FloatExt, const D: usize>: ProcessExt<T, Output = [Arra
 ///
 /// Public because [`EulerKernel`] is: a device implemented outside this crate
 /// needs it, and [`system_row`], to satisfy `euler_system_kernel`.
+#[doc(hidden)]
 pub fn check_arity<T: FloatExt>(spec: &EulerSpec<T>, d: usize) {
   let (code, _) = spec.encode();
   let family = families::Family::from_code(code).expect("a declared family");
@@ -2374,6 +2405,7 @@ pub fn check_arity<T: FloatExt>(spec: &EulerSpec<T>, d: usize) {
 
 /// The `D` paths of one launch row, taken out of the `components × m × n`
 /// array a kernel returns. Public for the same reason [`check_arity`] is.
+#[doc(hidden)]
 pub fn system_row<T: FloatExt, const D: usize>(planes: &Array3<T>, row: usize) -> [Array1<T>; D] {
   std::array::from_fn(|c| planes.slice(ndarray::s![c, row, ..]).to_owned())
 }
@@ -2685,6 +2717,7 @@ kernel_euler_backend!(crate::device::Cuda, [T: FloatExt] T);
 /// randomness from its own generator, never from `rand`. Public because
 /// `EulerCoefficients` is: an out-of-tree process needs it to answer
 /// `device_seed`.
+#[doc(hidden)]
 pub fn draw_seed<S: SeedExt>(seed: &S) -> u64 {
   seed.seed_value()
 }
@@ -2803,8 +2836,10 @@ try_sample_matrix!(Ou);
 try_sample_matrix!(Cir);
 
 #[cfg(any(feature = "cubecl-cuda", feature = "cubecl-wgpu"))]
+#[doc(hidden)]
 pub mod cubecl;
 #[cfg(feature = "cuda")]
+#[doc(hidden)]
 pub mod cuda;
 // The generated C artifacts have no consumer until `cuda` or `metal` renders
 // a kernel from them; the declarations, the family codes and the host step
@@ -2814,6 +2849,7 @@ pub(crate) mod families;
 #[cfg(any(feature = "cuda", feature = "metal"))]
 pub(crate) mod kernel;
 #[cfg(feature = "metal")]
+#[doc(hidden)]
 pub mod metal;
 
 #[cfg(test)]
