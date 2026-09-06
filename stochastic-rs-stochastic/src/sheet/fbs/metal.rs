@@ -5,7 +5,7 @@
 //! bit-reversed along each row, the row transforms by the fGN pipeline's
 //! butterfly, a transpose that bit-reverses the new rows, the column
 //! transforms by the same butterfly, and a read-out that takes the real part
-//! of the leading `m × n` block, subtracts its corner and adds the low-rank
+//! of the leading `m × n` block, subtracts its corner and adds Stein's linear
 //! correction from two more hashed normals. One command buffer per chunk,
 //! unified memory.
 
@@ -80,9 +80,9 @@ kernel void sheet_transpose(
     dst_imag[dst] = src_imag[tid];
 }
 
-// The real part of the leading m × n block less its corner, plus the
-// correction sqrt(2 c2) · (r (i+1)/m) z1 · (r (j+1)/n) z2 from two normals
-// hashed on a counter past every cell of the batch.
+// The real part of the leading m × n block less its corner, plus Stein's
+// linear correction sqrt(2 c2) · ((r (i+1)/m) z1 + (r (j+1)/n) z2) from two
+// normals hashed on a counter past every cell of the batch.
 kernel void sheet_extract(
     device const float* freq_real [[buffer(0)]],
     device float* output [[buffer(1)]],
@@ -113,7 +113,7 @@ kernel void sheet_extract(
     float z2 = sqrt(-2.0f * log(u3 + 1e-10f)) * cos(6.28318530718f * u4);
     float ty = r * float(i + 1u) / float(m);
     float tx = r * float(j + 1u) / float(n);
-    output[tid] = value + corr * ty * z1 * tx * z2;
+    output[tid] = value + corr * (ty * z1 + tx * z2);
 }
 "#;
 

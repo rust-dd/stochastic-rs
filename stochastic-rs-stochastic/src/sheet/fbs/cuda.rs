@@ -4,7 +4,7 @@
 //! Philox complex Gaussian noise scaled by the embedding's eigenvalue roots
 //! in natural order, the row transforms by a batched cuFFT plan, a
 //! transpose, the column transforms by a second batched plan, and the
-//! read-out of the leading `m × n` block less its corner plus the low-rank
+//! read-out of the leading `m × n` block less its corner plus Stein's linear
 //! correction from two more Philox normals. Templated on `float` and
 //! `double`, so an `f64` sheet is computed in double.
 
@@ -105,7 +105,7 @@ extern "C" __global__ void sheet_extract_REAL(
     philox_pair((unsigned long long)sheet + seq_corr, seed, &z1, &z2);
     REAL ty = r * (REAL)(i + 1) / (REAL)m;
     REAL tx = r * (REAL)(j + 1) / (REAL)n;
-    out[tid] = value + corr * ty * z1 * tx * z2;
+    out[tid] = value + corr * (ty * z1 + tx * z2);
 }
 "#;
 

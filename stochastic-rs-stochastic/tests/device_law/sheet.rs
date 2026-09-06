@@ -2,9 +2,8 @@
 //! device's own circulant-embedding pipeline rather than the Euler engine.
 //! What the device has to reproduce is the field's law point by point — the
 //! spread at grid points and of the differences between them — against the
-//! host sampler. The correction the sampler adds is a product of two normals,
-//! so the spread is read as an interquartile range, which that product's
-//! tails leave alone where a variance would wander.
+//! host sampler. The spread is read as an interquartile range, the robust
+//! statistic every field case uses.
 
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;

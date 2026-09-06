@@ -278,7 +278,7 @@ behind an `f64` type.
   once on the host, when the process is built; per batch the device draws the
   complex Gaussian noise, scales it, transforms the rows, transposes,
   transforms the columns and reads out the leading `m × n` block less its
-  corner plus the low-rank correction. The radix-2 transforms take embedding
+  corner plus Stein's linear correction `√(2c₂)(t₁Z₁ + t₂Z₂)`. The radix-2 transforms take embedding
   sides that are powers of two, so a grid with `m − 1` and `n − 1` powers of
   two runs on the device and any other stays on the host, bit-identically to
   the `Cpu` build. A batch produced in chunks equals one launch sheet for

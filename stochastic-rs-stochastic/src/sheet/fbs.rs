@@ -1,16 +1,35 @@
 //! # Fbs
 //!
+//! The isotropic fractional Brownian field (fractional Brownian surface) of
+//! Stein (2002): the zero-mean Gaussian field on the plane with
+//!
 //! $$
-//! \mathbb E[B^H(t_1,t_2)B^H(s_1,s_2)]=\prod_{j=1}^2\tfrac12\left(t_j^{2H_j}+s_j^{2H_j}-|t_j-s_j|^{2H_j}\right)
+//! \operatorname{Cov}(X_s, X_t)=\|s\|^{\alpha}+\|t\|^{\alpha}-\|s-t\|^{\alpha},\qquad \alpha=2H,
 //! $$
+//!
+//! so that `E[(X_s − X_t)²] = 2‖s − t‖^α` — the isotropic generalisation of
+//! fractional Brownian motion, not the product-form sheet. Sampled exactly by
+//! Stein's intrinsic embedding: a stationary field with the covariance
+//! `c₀ + c₂‖h‖² − ‖h‖^α` (cubic tail out to `r` when `α > 1.5`) is drawn by
+//! circulant embedding and a two-dimensional FFT, its value at the first grid
+//! point is subtracted, and the random linear term `√(2c₂) tᵀZ`, `Z` a pair
+//! of independent standard normals, restores the `c₂‖s − t‖²` the embedding
+//! took out. The law holds for pairs of points within unit distance of each
+//! other; the grid spans `(0, r]²`.
+//!
+//! References: Stein, M. L. (2002), *Fast and exact simulation of fractional
+//! Brownian surfaces*, J. Comput. Graph. Statist. 11(3), 587–599; Kroese, D.
+//! P. & Botev, Z. I. (2015), *Spatial process simulation*, §4.4, in
+//! Stochastic Geometry, Spatial Statistics and Random Fields, Springer
+//! (arXiv:1308.0399). The linear correction is the one in their eq. (16)
+//! construction; their listed MATLAB adds `kron(ty'·Z₁, tx·Z₂)`, a product of
+//! two normals, which is neither Gaussian nor the right variogram.
 //!
 
 use std::sync::Arc;
 
 use ndarray::Array1;
 use ndarray::Array2;
-use ndarray::Axis;
-use ndarray::linalg::kron;
 use ndarray::s;
 use ndrustfft::FftHandler;
 use ndrustfft::ndfft;
@@ -35,9 +54,8 @@ mod metal;
 
 #[derive(Debug, Clone)]
 pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Hurst exponent controlling roughness and long-memory (used for both
-  /// coordinate axes — this model is isotropic, not the anisotropic
-  /// `H_1`/`H_2` of the module header's general covariance formula).
+  /// Hurst exponent `H`, `α = 2H` in the covariance; the field is isotropic,
+  /// one exponent for both coordinates.
   pub hurst: T,
   /// Grid resolution along the sheet's second coordinate axis (rows of
   /// the output `Array2`).
@@ -59,8 +77,9 @@ pub struct Fbs<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// `2(m − 1) × 2(n − 1)` block every sample scales its complex Gaussian
   /// noise by, computed once here and uploaded once per device configuration.
   pub(crate) lam: Arc<Array2<T>>,
-  /// The `c₂` of the intrinsic embedding at this Hurst exponent and cutoff,
-  /// the coefficient of the low-rank correction added after the shift.
+  /// The `c₂` of the intrinsic embedding at this Hurst exponent and cutoff:
+  /// the random linear term `√(2c₂) (t₁ Z₁ + t₂ Z₂)` added after the shift
+  /// restores the `c₂‖s − t‖²` the embedding took out of the variogram.
   pub(crate) c2: T,
 }
 
@@ -234,8 +253,8 @@ impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> ProcessExt<T> for Fbs<T, S, B>
 
 /// Reusable [`Fbs`] sampling state: owns the seed source so a Monte-Carlo loop
 /// reuses the output field, and shares the process's embedding, so a sample
-/// is the noise transform alone. Both the matrix and scalar Gaussian draws
-/// come from the derived seed in the same order as the legacy `sample` body.
+/// is the noise transform alone. The matrix draw and the two normals of the
+/// linear correction come from the derived seed in that order.
 #[doc(hidden)]
 pub struct FbsSampler<T: FloatExt, S: SeedExt> {
   lam: Arc<Array2<T>>,
@@ -275,6 +294,8 @@ impl<T: FloatExt, S: SeedExt> FbsSampler<T, S> {
     let shift = field[[0, 0]];
     field.mapv_inplace(|v| v - shift);
 
+    // Stein's correction: the random linear function √(2c₂) (t₁ Z₁ + t₂ Z₂),
+    // whose increments carry exactly the c₂‖s − t‖² the embedding took out.
     let normal_scalar = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
     let mut z_buf = [T::zero(); 2];
     normal_scalar.fill_slice(&mut z_buf);
@@ -283,13 +304,12 @@ impl<T: FloatExt, S: SeedExt> FbsSampler<T, S> {
 
     let tx = Array1::linspace(r / T::from_usize_(n), r, n);
     let ty = Array1::linspace(r / T::from_usize_(m), r, m);
-    let ty_scaled = &ty * z1;
-    let tx_scaled = &tx * z2;
-    let ty_mat = ty_scaled.insert_axis(Axis(1));
-    let tx_mat = tx_scaled.insert_axis(Axis(0));
-
-    let correction = kron(&ty_mat, &tx_mat) * (T::from_usize_(2) * self.c2).sqrt();
-    field = &field + &correction;
+    let scale = (T::from_usize_(2) * self.c2).sqrt();
+    for i in 0..m {
+      for j in 0..n {
+        field[[i, j]] += scale * (ty[i] * z1 + tx[j] * z2);
+      }
+    }
 
     field
   }
@@ -342,8 +362,8 @@ impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
 
 /// The per-launch view of a sheet the device pipelines share: the embedding's
 /// eigenvalue roots in the device's precision, the grid, the domain extent,
-/// the correction's coefficient `√(2 c₂)`, and a key that tells one embedding
-/// from another in a per-size cache.
+/// the linear correction's coefficient `√(2 c₂)`, and a key that tells one
+/// embedding from another in a per-size cache.
 #[cfg(any(
   feature = "metal",
   feature = "cuda",
@@ -380,7 +400,7 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
     )
   }
 
-  /// `√(2 c₂)`, the correction's coefficient.
+  /// `√(2 c₂)`, the linear correction's coefficient.
   pub(crate) fn correction(&self) -> T {
     (T::from_usize_(2) * self.c2).sqrt()
   }

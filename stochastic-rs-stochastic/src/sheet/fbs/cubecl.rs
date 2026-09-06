@@ -5,7 +5,7 @@
 //! eigenvalue roots and scattered bit-reversed along each row, the row
 //! transforms by a bounds-guarded radix-2 butterfly, a transpose that
 //! bit-reverses the new rows, the column transforms, and the read-out of
-//! the leading `m × n` block less its corner plus the low-rank correction.
+//! the leading `m × n` block less its corner plus Stein's linear correction.
 //! Every kernel guards its thread count, so an embedding smaller than a
 //! workgroup is stepped as exactly as a large one.
 
@@ -131,10 +131,10 @@ fn sheet_transpose<F: Float>(
   }
 }
 
-/// The real part of the leading `m × n` block less its corner, plus the
-/// correction `√(2c₂) · (r (i+1)/m) z₁ · (r (j+1)/n) z₂` from two normals
-/// hashed on a counter past every cell of the batch. `scal` carries `r` and
-/// `√(2c₂)`.
+/// The real part of the leading `m × n` block less its corner, plus Stein's
+/// linear correction `√(2c₂) · ((r (i+1)/m) z₁ + (r (j+1)/n) z₂)` from two
+/// normals hashed on a counter past every cell of the batch. `scal` carries
+/// `r` and `√(2c₂)`.
 #[allow(clippy::approx_constant, clippy::excessive_precision)]
 #[cube(launch)]
 fn sheet_extract<F: Float>(
@@ -184,7 +184,7 @@ fn sheet_extract<F: Float>(
     let corr = scal[1];
     let ty = r * F::cast_from(i + 1) / F::cast_from(m);
     let tx = r * F::cast_from(j + 1) / F::cast_from(n);
-    output[tid] = value + corr * ty * z1 * tx * z2;
+    output[tid] = value + corr * (ty * z1 + tx * z2);
   }
 }
 
@@ -369,8 +369,7 @@ mod wgpu_tests {
   use crate::device::WgpuRuntime;
   use crate::traits::ProcessExt;
 
-  /// The interquartile range of a grid point across sheets: the spread a
-  /// product of normals in the correction leaves a robust statistic of.
+  /// The interquartile range of a grid point across sheets: a robust spread.
   fn iqr(sheets: &[Array2<f32>], i: usize, j: usize) -> f64 {
     let mut v: Vec<f64> = sheets.iter().map(|s| s[(i, j)] as f64).collect();
     v.sort_by(|a, b| a.partial_cmp(b).unwrap());
