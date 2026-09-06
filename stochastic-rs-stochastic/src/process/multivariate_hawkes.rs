@@ -21,7 +21,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::device::Cpu;
-use crate::device::HostBackend;
+use crate::device::DeviceError;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -43,8 +43,12 @@ pub struct MultivariateHawkes<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// `j`-to-`i` excitation from `alpha` fades back toward `mu_i`.
   pub beta: Array2<T>,
   /// Time horizon — event generation stops once simulated time exceeds
-  /// this value.
+  /// this value. Ignored in count mode.
   pub t_max: T,
+  /// Optional fixed number of events after the origins, across all
+  /// components: count mode, the one a device can run. `None` samples over
+  /// the horizon.
+  pub n: Option<usize>,
   /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
   pub seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
@@ -63,16 +67,170 @@ impl<T: FloatExt, S: SeedExt> MultivariateHawkes<T, S> {
       alpha,
       beta,
       t_max,
+      n: None,
       seed,
     }
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> MultivariateHawkes<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> MultivariateHawkes<T, S, B> {
+  /// Count mode: exactly `n` events after the origins, across all
+  /// components, the horizon ignored.
+  pub fn with_count(mut self, n: usize) -> Self {
+    self.n = Some(n);
+    self
+  }
 
-backend_switch!([T: FloatExt, S: SeedExt] MultivariateHawkes<T, S> { mu, alpha, beta, t_max, seed } via host);
+  /// The number of components, `D`.
+  pub fn dim(&self) -> usize {
+    self.mu.len()
+  }
 
-impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for MultivariateHawkes<T, S, B> {
+  /// Whether a device can run this process: count mode — the horizon mode's
+  /// length is itself random and has no grid — with at most two components,
+  /// one decay per target (`β_ij` constant along each row) and positive
+  /// baselines. The family superposes each target's exact excess clock with
+  /// the baselines' joint Poisson clock, which is what one decay per target
+  /// makes closed-form; per-pair decays keep the process on the host.
+  pub fn device_ready(&self) -> bool {
+    let d = self.dim();
+    self.n.is_some()
+      && d <= 2
+      && (0..d).all(|i| (0..d).all(|j| self.beta[[i, j]] == self.beta[[i, 0]]))
+      && self.mu.iter().all(|&m| m > T::zero())
+  }
+}
+
+backend_switch!([T: FloatExt, S: SeedExt] MultivariateHawkes<T, S> { mu, alpha, beta, t_max, n, seed } via euler);
+
+/// The device's two rows — every event's time and its component — back into
+/// one event list per component, each opening at the origin as the host's do.
+fn rows_to_components<T: FloatExt>(rows: [Array1<T>; 2], d: usize) -> Vec<Array1<T>> {
+  let [times, marks] = rows;
+  let mut events: Vec<Vec<T>> = (0..d).map(|_| vec![T::zero()]).collect();
+  for j in 1..times.len() {
+    let k = marks[j].to_f64().unwrap_or(0.0).round().max(0.0) as usize;
+    events[k.min(d - 1)].push(times[j]);
+  }
+  events.into_iter().map(Array1::from_vec).collect()
+}
+
+/// The Euler engine's view of the process: the events as two rows, time and
+/// mark, one event per grid step.
+#[doc(hidden)]
+pub struct MultivariateHawkesLaunch<'a, T: FloatExt, S: SeedExt, B>(&'a MultivariateHawkes<T, S, B>);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+  for MultivariateHawkesLaunch<'_, T, S, B>
+{
+  type Output = [Array1<T>; 2];
+  type Sampler<'s>
+    = MultivariateHawkesLaunchSampler<'s, T, S>
+  where
+    Self: 's;
+
+  fn sampler(&self) -> MultivariateHawkesLaunchSampler<'_, T, S> {
+    MultivariateHawkesLaunchSampler {
+      inner: <MultivariateHawkes<T, S, B> as ProcessExt<T>>::sampler(self.0),
+    }
+  }
+}
+
+#[doc(hidden)]
+pub struct MultivariateHawkesLaunchSampler<'a, T: FloatExt, S: SeedExt> {
+  inner: MultivariateHawkesSampler<'a, T, S>,
+}
+
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for MultivariateHawkesLaunchSampler<'_, T, S> {
+  type Output = [Array1<T>; 2];
+
+  fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {
+    *out = self.sample();
+  }
+
+  /// The host's per-component lists merged into time order, with the mark.
+  fn sample(&mut self) -> [Array1<T>; 2] {
+    let components = self.inner.sample_inner();
+    let mut events: Vec<(T, usize)> = components
+      .iter()
+      .enumerate()
+      .flat_map(|(k, times)| times.iter().skip(1).map(move |&t| (t, k)))
+      .collect();
+    events.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    let mut times = vec![T::zero()];
+    let mut marks = vec![T::zero()];
+    for (t, k) in events {
+      times.push(t);
+      marks.push(T::from_usize_(k));
+    }
+    [Array1::from_vec(times), Array1::from_vec(marks)]
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
+  for MultivariateHawkesLaunch<'_, T, S, B>
+{
+  /// The baselines, the excitation matrix and one decay per target, a missing
+  /// second component travelling with a zero baseline and zero excitations. A
+  /// configuration the family cannot carry never reaches a launch —
+  /// [`ProcessExt::sample`] keeps it on the host — so asking here is a caller
+  /// bypassing that guard.
+  fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
+    let p = self.0;
+    assert!(
+      p.device_ready(),
+      "MultivariateHawkes: a launch carries count mode with at most two components and one decay \
+       per target; sample through `ProcessExt`, which keeps the rest on the host"
+    );
+    let d = p.dim();
+    let at = |i: usize, j: usize| {
+      if i < d && j < d {
+        p.alpha[[i, j]]
+      } else {
+        T::zero()
+      }
+    };
+    let mu = |i: usize| if i < d { p.mu[i] } else { T::zero() };
+    let beta = |i: usize| if i < d { p.beta[[i, 0]] } else { T::one() };
+    crate::euler::EulerSpec::HawkesEvents2 {
+      mu: [mu(0), mu(1)],
+      alpha: [at(0, 0), at(0, 1), at(1, 0), at(1, 1)],
+      beta: [beta(0), beta(1)],
+    }
+  }
+
+  /// The origin, with no excess intensity yet and the mark at zero.
+  fn initial_state(&self) -> [T; 4] {
+    [T::zero(); 4]
+  }
+
+  /// One step is one event, after the origin.
+  fn grid_points(&self) -> usize {
+    self
+      .0
+      .n
+      .expect("the Euler engine describes MultivariateHawkes's count mode; horizon mode has no grid")
+      + 1
+  }
+
+  /// One step is one event, so the grid has no horizon of its own; the waits
+  /// come from the intensities in the step.
+  fn horizon(&self) -> T {
+    T::one()
+  }
+
+  fn device_seed(&self) -> u64 {
+    crate::euler::draw_seed(&self.0.seed)
+  }
+
+  fn host_sample(&self) -> [Array1<T>; 2] {
+    let out = <Self as ProcessExt<T>>::sampler(self).sample();
+    <Self as ProcessExt<T>>::advance_chunk_seed(self);
+    out
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for MultivariateHawkes<T, S, B> {
   type Output = Vec<Array1<T>>;
   type Sampler<'s>
     = MultivariateHawkesSampler<'s, T, S>
@@ -89,7 +247,75 @@ impl<T: FloatExt, S: SeedExt, B: HostBackend> ProcessExt<T> for MultivariateHawk
       alpha: &self.alpha,
       beta: &self.beta,
       t_max: self.t_max,
+      n: self.n,
       seed: self.seed.derive(),
+    }
+  }
+
+  /// Through the Euler engine in count mode with at most two components and
+  /// one decay per target, where every step is one event; anything else keeps
+  /// the process on the host, chunked exactly as [`ProcessExt`] chunks.
+  fn sample(&self) -> Vec<Array1<T>> {
+    if self.device_ready() {
+      rows_to_components(self.backend.system_sample(&MultivariateHawkesLaunch(self)), self.dim())
+    } else {
+      let out = self.sampler().sample();
+      self.advance_chunk_seed();
+      out
+    }
+  }
+
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Vec<Array1<T>>) -> R + Sync) -> Vec<R> {
+    if self.device_ready() {
+      let d = self.dim();
+      self
+        .backend
+        .system_paths_map(&MultivariateHawkesLaunch(self), m, |rows| {
+          f(&rows_to_components(rows.clone(), d))
+        })
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, f)
+    }
+  }
+
+  fn sample_par(&self, m: usize) -> Vec<Vec<Array1<T>>> {
+    if self.device_ready() {
+      let d = self.dim();
+      self
+        .backend
+        .system_paths(&MultivariateHawkesLaunch(self), m)
+        .into_iter()
+        .map(|rows| rows_to_components(rows, d))
+        .collect()
+    } else {
+      crate::traits::process::sample_par_chunked(self, m)
+    }
+  }
+
+  fn try_sample(&self) -> Result<Vec<Array1<T>>, DeviceError> {
+    if self.device_ready() {
+      Ok(rows_to_components(
+        self.backend.try_system_sample(&MultivariateHawkesLaunch(self))?,
+        self.dim(),
+      ))
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample(self))
+    }
+  }
+
+  fn try_sample_par(&self, m: usize) -> Result<Vec<Vec<Array1<T>>>, DeviceError> {
+    if self.device_ready() {
+      let d = self.dim();
+      Ok(
+        self
+          .backend
+          .try_system_paths(&MultivariateHawkesLaunch(self), m)?
+          .into_iter()
+          .map(|rows| rows_to_components(rows, d))
+          .collect(),
+      )
+    } else {
+      Ok(<Self as ProcessExt<T>>::sample_par(self, m))
     }
   }
 }
@@ -105,11 +331,12 @@ pub struct MultivariateHawkesSampler<'a, T: FloatExt, S: SeedExt> {
   alpha: &'a Array2<T>,
   beta: &'a Array2<T>,
   t_max: T,
+  n: Option<usize>,
   seed: S,
 }
 
 impl<T: FloatExt, S: SeedExt> MultivariateHawkesSampler<'_, T, S> {
-  /// Multivariate Ogata thinning.
+  /// Multivariate Ogata thinning, over the horizon or until the event count.
   fn sample_inner(&mut self) -> Vec<Array1<T>> {
     let mut rng = self.seed.rng();
     let d = self.mu.len();
@@ -118,8 +345,14 @@ impl<T: FloatExt, S: SeedExt> MultivariateHawkesSampler<'_, T, S> {
     let mut s = vec![vec![T::zero(); d]; d];
     let mut t = T::zero();
     let mut events: Vec<Vec<T>> = (0..d).map(|_| vec![T::zero()]).collect();
+    let mut produced = 0usize;
 
-    while t < self.t_max {
+    loop {
+      match self.n {
+        Some(n) if produced >= n => break,
+        None if t >= self.t_max => break,
+        _ => {}
+      }
       // Compute component intensities and total upper bound
       let mut lambdas = vec![T::zero(); d];
       for i in 0..d {
@@ -138,7 +371,7 @@ impl<T: FloatExt, S: SeedExt> MultivariateHawkesSampler<'_, T, S> {
       let dt = -u.ln() / lambda_bar;
       t += dt;
 
-      if t >= self.t_max {
+      if self.n.is_none() && t >= self.t_max {
         break;
       }
 
@@ -165,6 +398,7 @@ impl<T: FloatExt, S: SeedExt> MultivariateHawkesSampler<'_, T, S> {
         if v <= cumsum {
           // Event accepted on component i
           events[i].push(t);
+          produced += 1;
           // Excite all components from source i
           for k in 0..d {
             s[k][i] += self.alpha[[k, i]];

@@ -6,6 +6,7 @@
 //! is that the device draws the same law the host's own sampler draws.
 
 use ndarray::Array1;
+use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGamma;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGammaMotion;
@@ -14,6 +15,7 @@ use stochastic_rs_stochastic::jump::ig::Ig;
 use stochastic_rs_stochastic::jump::nig::Nig;
 use stochastic_rs_stochastic::jump::vg::Vg;
 use stochastic_rs_stochastic::process::hawkes::Hawkes;
+use stochastic_rs_stochastic::process::multivariate_hawkes::MultivariateHawkes;
 use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::process::subordinator::alpha_stable::AlphaStableSubordinator;
 use stochastic_rs_stochastic::process::subordinator::gamma_subordinator::GammaSubordinator;
@@ -478,4 +480,104 @@ fn a_finer_table_keeps_the_inverse_subordinator_on_the_host() {
     )
   };
   assert_eq!(build().on::<Device>().sample_par(8), build().sample_par(8));
+}
+
+/// The bivariate Hawkes process in count mode, its two components on one
+/// launch: every path carries the right number of events split across the
+/// components, each component's list opens at the origin and advances, and
+/// the last event's time, its spread and the share of events on the first
+/// component agree with the host's thinning sampler.
+#[test]
+fn bivariate_hawkes_agrees_with_the_cpu_law() {
+  const EVENTS: usize = 64;
+  let build = || {
+    MultivariateHawkes::<f32, _>::new(
+      array![1.0_f32, 0.7],
+      array![[0.3_f32, 0.2], [0.1, 0.4]],
+      array![[1.5_f32, 1.5], [2.0, 2.0]],
+      5.0,
+      Deterministic::new(163),
+    )
+    .with_count(EVENTS)
+  };
+  const PATHS: usize = 3 * M;
+  let device = build().on::<Device>().sample_par(PATHS);
+  let host = build().sample_par(PATHS);
+  assert_eq!(device.len(), PATHS);
+  for path in &device {
+    assert_eq!(path.len(), 2);
+    assert_eq!(path[0].len() + path[1].len(), EVENTS + 2);
+    for component in path {
+      assert!(
+        component[0] == 0.0 && component.windows(2).into_iter().all(|w| w[1] > w[0]),
+        "a component's events did not advance"
+      );
+    }
+  }
+  let last: fn(&[Vec<Array1<f32>>]) -> Vec<f64> = |paths| {
+    paths
+      .iter()
+      .map(|p| p[0][p[0].len() - 1].max(p[1][p[1].len() - 1]) as f64)
+      .collect()
+  };
+  let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
+  let std = |v: &[f64]| {
+    let m = mean(v);
+    (v.iter().map(|x| (x - m).powi(2)).sum::<f64>() / v.len() as f64).sqrt()
+  };
+  let (h, d) = (last(&host), last(&device));
+  agrees(mean(&h), mean(&d), 0.03, "bivariate Hawkes last event time");
+  agrees(std(&h), std(&d), 0.06, "bivariate Hawkes last event time spread");
+  let share = |paths: &[Vec<Array1<f32>>]| {
+    paths
+      .iter()
+      .map(|p| (p[0].len() - 1) as f64 / EVENTS as f64)
+      .sum::<f64>()
+      / paths.len() as f64
+  };
+  agrees(
+    share(&host),
+    share(&device),
+    0.03,
+    "bivariate Hawkes share of events on the first component",
+  );
+}
+
+/// Per-pair decays, a third component or the horizon mode have no family;
+/// the device build samples on the host and is the host build to the bit.
+#[test]
+fn per_pair_decays_a_third_component_or_a_horizon_keep_the_multivariate_hawkes_on_the_host() {
+  let pairs = || {
+    MultivariateHawkes::<f32, _>::new(
+      array![1.0_f32, 0.7],
+      array![[0.3_f32, 0.2], [0.1, 0.4]],
+      array![[1.5_f32, 2.0], [2.0, 1.5]],
+      5.0,
+      Deterministic::new(167),
+    )
+    .with_count(16)
+  };
+  assert_eq!(pairs().on::<Device>().sample_par(4), pairs().sample_par(4));
+  let three = || {
+    MultivariateHawkes::<f32, _>::new(
+      array![1.0_f32, 0.7, 0.5],
+      array![[0.3_f32, 0.1, 0.1], [0.1, 0.3, 0.1], [0.1, 0.1, 0.3]],
+      array![[2.0_f32; 3], [2.0; 3], [2.0; 3]],
+      5.0,
+      Deterministic::new(173),
+    )
+    .with_count(16)
+  };
+  assert_eq!(three().on::<Device>().sample_par(4), three().sample_par(4));
+  let horizon = || {
+    MultivariateHawkes::<f32, _>::new(
+      array![1.0_f32, 0.7],
+      array![[0.3_f32, 0.2], [0.1, 0.4]],
+      array![[1.5_f32, 1.5], [2.0, 2.0]],
+      3.0,
+      Deterministic::new(179),
+    )
+  };
+  assert_eq!(horizon().on::<Device>().sample_par(4), horizon().sample_par(4));
+  assert_eq!(horizon().on::<Device>().sample(), horizon().sample());
 }

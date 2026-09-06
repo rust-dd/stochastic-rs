@@ -1495,6 +1495,12 @@ fn step(
       gm2, u, u2, lv, cv, sj, gj, ej, uj, uv, iv, tv, dz0, dz1, dz2, dz3,
     );
   }
+  if family == 117u32 {
+    stepped = cube::HawkesEvents2(
+      component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
+      gm2, u, u2, lv, cv, sj, gj, ej, uj, uv, iv, tv, dz0, dz1, dz2, dz3,
+    );
+  }
   if family == 114u32 {
     stepped = cube::InverseStableSubordinator(
       component, x0, x1, x2, x3, params, dt, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm,
@@ -2231,6 +2237,12 @@ fn report(
   }
   if family == 116u32 {
     reported = cube_report::WishartTwo(
+      component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
+      u2, lv, cv, sj, gj, ej, uj, uv, iv, tv,
+    );
+  }
+  if family == 117u32 {
+    reported = cube_report::HawkesEvents2(
       component, x0, x1, x2, x3, params, ct, ct1, ct2, ct3, ct4, ct5, ct6, ct7, nj, js, gm, gm2, u,
       u2, lv, cv, sj, gj, ej, uj, uv, iv, tv,
     );

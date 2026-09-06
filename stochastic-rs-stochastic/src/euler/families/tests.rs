@@ -466,6 +466,47 @@ fn hawkes_step_is_the_dassios_zhao_recursion() {
   assert!((next[1] - (s * (-beta * s2).exp() + alpha)).abs() < 1e-12);
 }
 
+/// Two targets with excess intensities and the baselines together: the step
+/// takes the earliest of the three exact clocks, marks its component, and
+/// excites both targets from that component's column of `α`. The noise
+/// components enter as uniforms: half the sum of two squared normals is a
+/// unit exponential, one minus its negative exponential a uniform.
+#[test]
+fn bivariate_hawkes_step_is_the_superposition_of_exact_clocks() {
+  let params = [1.0_f64, 0.7, 0.3, 0.2, 0.1, 0.4, 1.5, 2.0];
+  let (t, s1, s2) = (1.0_f64, 0.8_f64, 0.5_f64);
+  let u2 = 0.3_f64;
+  let w0 = -u2.ln() / 1.7;
+  // Two normals of one half: the second target's uniform is 1 − e^{−1/4},
+  // small enough that its excess clock never fires.
+  let u3 = 1.0 - (-0.25_f64).exp();
+  let d2 = 1.0 + 2.0 * u3.ln() / s2;
+  assert!(d2 < 0.0);
+  // A uniform near one: the first target's own excitation fires first.
+  let u = 0.95_f64;
+  let w1 = -(1.0 + 1.5 * u.ln() / s1).ln() / 1.5;
+  assert!(w1 < w0, "the case is meant to have the first target's excess fire first");
+  let noise = [0.5, 0.5, 1.0, 1.0];
+  let next = step_full(Family::HawkesEvents2, [t, s1, s2, 1.0], &params, 1.0, 0.0, u, u2, 0.0, 0.0, noise);
+  assert!((next[0] - (t + w1)).abs() < 1e-9);
+  assert_eq!(next[3], 0.0);
+  assert!((next[1] - (s1 * (-1.5 * w1).exp() + 0.3)).abs() < 1e-9);
+  assert!((next[2] - (s2 * (-2.0 * w1).exp() + 0.1)).abs() < 1e-9);
+  // A middling uniform: the excess clocks are late, the baselines fire, and
+  // the fourth uniform 1 − e^{−1} times μ₁ + μ₂ exceeds μ₁, which puts the
+  // event on the second component.
+  let u = 0.6_f64;
+  let w1 = -(1.0 + 1.5 * u.ln() / s1).ln() / 1.5;
+  assert!(w1 > w0, "the case is meant to have the baselines fire first");
+  let u4 = 1.0 - (-1.0_f64).exp();
+  assert!(u4 * 1.7 > 1.0);
+  let next = step_full(Family::HawkesEvents2, [t, s1, s2, 0.0], &params, 1.0, 0.0, u, u2, 0.0, 0.0, noise);
+  assert!((next[0] - (t + w0)).abs() < 1e-9);
+  assert_eq!(next[3], 1.0);
+  assert!((next[1] - (s1 * (-1.5 * w0).exp() + 0.2)).abs() < 1e-9);
+  assert!((next[2] - (s2 * (-2.0 * w0).exp() + 0.4)).abs() < 1e-9);
+}
+
 /// Three independent forwards with the first past its reset: it stays, the
 /// live ones take the frozen-drift log-Euler step with their own drift, and
 /// the absent fourth slot never moves.

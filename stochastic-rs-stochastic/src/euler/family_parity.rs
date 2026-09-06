@@ -625,6 +625,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::TemperedStableSeries { .. } => "TemperedStableSeries",
     EulerSpec::VolterraReference => "VolterraReference",
     EulerSpec::HawkesEvents { .. } => "HawkesEvents",
+    EulerSpec::HawkesEvents2 { .. } => "HawkesEvents2",
     EulerSpec::LiborMarket4 { .. } => "LiborMarket4",
     EulerSpec::InverseStableSubordinator { .. } => "InverseStableSubordinator",
     EulerSpec::StochasticVolatilityCgmy { .. } => "StochasticVolatilityCgmy",
@@ -1453,6 +1454,15 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
   let heston = |rho, pow_v| (0.03, 2.0, 0.04, 0.3, rho, pow_v);
   let (mu, kappa, theta, sigma, rho, pow_v) = heston(-0.7, 0.5);
   vec![
+    SystemProbe {
+      spec: EulerSpec::HawkesEvents2 {
+        mu: [1.0, 0.7],
+        alpha: [0.3, 0.2, 0.1, 0.4],
+        beta: [1.5, 2.0],
+      },
+      x0: [0.0, 0.0],
+      lift: None,
+    },
     SystemProbe {
       spec: EulerSpec::Heston {
         mu,

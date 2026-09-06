@@ -942,6 +942,15 @@ pub enum EulerSpec<T: FloatExt> {
   /// A Hawkes process with exponential excitation, one event per step, by the
   /// exact two-uniform recursion.
   HawkesEvents { mu: T, alpha: T, beta: T },
+  /// A bivariate Hawkes process, one event per step, by the superposition of
+  /// each target's exact excess clock and the baselines' joint Poisson clock:
+  /// the two baselines, the excitation matrix row-major (`α_ij`: onto target
+  /// `i` from source `j`) and one decay per target.
+  HawkesEvents2 {
+    mu: [T; 2],
+    alpha: [T; 4],
+    beta: [T; 2],
+  },
   /// The inverse of an α-stable subordinator by the table block: the direct
   /// subordinator's Chambers–Mallows–Stuck constants folded on the host, the
   /// table's extent and resolution from the launch's `table_spec()`.
@@ -1720,6 +1729,12 @@ impl<T: FloatExt> EulerSpec<T> {
       EulerSpec::HawkesEvents { mu, alpha, beta } => {
         (Family::HawkesEvents.code(), pad([mu, alpha, beta]))
       }
+      EulerSpec::HawkesEvents2 { mu, alpha, beta } => (
+        Family::HawkesEvents2.code(),
+        pad([
+          mu[0], mu[1], alpha[0], alpha[1], alpha[2], alpha[3], beta[0], beta[1],
+        ]),
+      ),
       EulerSpec::InverseStableSubordinator {
         alpha,
         c,
