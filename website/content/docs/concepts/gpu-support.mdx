@@ -160,7 +160,7 @@ grid:
 - **A lag order above one** (`ARp`, `MAq` or the GARCH family built above
   order one): the recursion reads back as many past values as the order and a
   step holds four slots. At order one they reach a device; above it the
-  process says so rather than falling back silently. `Arima` and `Sarima` are
+  process stays on the host, as its `device_ready()` reports. `Arima` and `Sarima` are
   the exception: a linear recursion of white noise is a moving-average filter,
   so the history block runs them at any order as the convolution of the
   innovations with the recursion's own impulse response.
@@ -327,11 +327,13 @@ does not re-plan on every call.
 ## More than one GPU
 
 The handle names the device: `Cuda::new(1)` (CUDA ordinal),
-`Metal::new(1)` (index into `Device::all()`), `Cubecl::cuda(1)` /
-`Cubecl::wgpu(1)` (the runtime and its device index); `.on::<B>()` puts a process on it, and
-`handle.probe()` reports the device opened. The defaults read
-`STOCHASTIC_RS_DEVICE`. From Python the name carries the ordinal:
-`device="cuda:1"`, `probe_device("metal:0")`.
+`Metal::new(1)` (index into `Device::all()`), `Cubecl::<CudaRuntime>::new(1)` /
+`Cubecl::<WgpuRuntime>::new(1)` (the runtime and its device index);
+`process.with_backend(handle)` puts a process on that handle, `.on::<B>()` on
+the backend's default handle, and `handle.probe()` reports the device opened.
+The defaults read `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
+From Python the name carries the ordinal: `device="cuda:1"`,
+`probe_device("metal:0")`.
 
 ## When the device is missing
 
@@ -342,6 +344,13 @@ on `ProcessExt`, returning the same error instead of panicking (always `Ok` on
 the host devices, bit-identical to `sample*`); the plain `sample*` calls panic
 with the error's message and never fall back to the host. From Python a device
 failure is a `RuntimeError`.
+
+A *configuration* the kernels cannot carry is a different matter and follows
+one rule: the process samples on the host, bit-identically to the `Cpu`
+build, whatever backend it is on, and `device_ready()` — a `ProcessExt`
+method, `true` by default — says so beforehand. Nothing panics and nothing
+changes law; the "What stays on the host" list above is exactly the set of
+configurations that answer `false`.
 
 ## Precision and reproducibility
 
@@ -420,29 +429,22 @@ and wins already at these sizes; the gap widens with `m`.
 
 ## Adding a kernel
 
-A process joins the Euler engine by implementing `EulerCoefficients`
-(its family, initial state, grid, horizon and device seed, plus the curve if
-it reads one) and switching its `backend_switch!` line from `via host` to
-`via euler`. A new family is one entry in `euler/families.rs` plus one
-`EulerSpec` variant and one dispatch line in the hand-written CubeCL kernel;
-the C body the CUDA and Metal kernels render is generated from the same
-declaration. Widening a process's bound from `HostBackend` to `EulerBackend`
+A process joins the Euler engine inside this crate: one family entry in
+`euler/families.rs` — parameters, state, noise, step and report expressions,
+plus a `lift`, `history`, `series` or `table` clause where the recursion needs
+one — generates the host step, the C body the CUDA and Metal kernels render
+and the CubeCL functions, and the process declares that family through the
+engine's launch hooks and switches its `backend_switch!` line to `via euler`.
+The hooks, the family specification and the slot caps are the engine's own
+machinery: public so the crate's tests and probes reach them, hidden from
+the rendered documentation and outside the stability promise. What is public
+and stable is the capability a bound names, `EulerBackend<T>`, together with
+`.on::<B>()`, `with_backend(handle)`, `device_ready()`, `probe()` and the
+`try_*` calls. Widening a process's bound from `HostBackend` to `EulerBackend`
 is not a breaking change for its callers.
 
-`Cfou` reaches a device only halfway: its fGN pair is drawn there, through
-the same pipeline `Fgn` uses, and the complex recursion that consumes it runs
-on the host. Closing that gap needs a second increment buffer, since the
-kernel reads one.
-
-`JumpFou`, `JumpFOUCustom` and `Sde` carry a backend parameter that changes
-nothing: the two jump processes fill their fGN on the host because moving it
-would change their pinned streams, and `Sde` drives its own loop over
-caller-supplied closures. Their `.on::<B>()` compiles and does nothing, which
-is a wart to close rather than a feature.
-
-What each remaining group would take: a series representation needs a sort
-over the whole horizon; a lag model needs state proportional to its order rather than four
-slots; the Volterra and rough family needs a separate `O(n·N')` kernel
-because its step is a convolution; and a dynamic-dimension model needs the
-component count to be a launch argument rather than a property of its
-family.
+A coefficient a process takes as a closure has no representation a kernel
+can evaluate; written as an `Expr` it compiles to a program the kernel
+interprets, which is how `Cheyette` and `VolterraSde` run on a device. `Sde`,
+which drives its own loop over caller-supplied closures, is the one process
+whose `.on::<B>()` re-types without changing where it samples.

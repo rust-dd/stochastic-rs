@@ -1,6 +1,6 @@
 ---
 title: Sampling backends
-description: Compile-time device selection via `.on::<B>()` — the `Backend` marker, the `HostBackend` / `FgnBackend` / `EulerBackend` capabilities, no run-time cost.
+description: Compile-time device selection via `.on::<B>()` and `with_backend(handle)` — the `Backend` marker, the `HostBackend` / `FgnBackend` / `SheetBackend` / `EulerBackend` capabilities, one fallback rule, no run-time cost.
 category: concept
 since: 2.4.0
 status: stable
@@ -8,9 +8,9 @@ status: stable
 
 # Sampling backends
 
-The fractional / fGN process family selects **where** its FFT-based sampling
-runs — CPU, CUDA, Metal, or Apple Accelerate — at **compile time**. A process is
-parameterised by a backend marker `B` (defaulting to `Cpu`); the `Backend` trait
+Every process selects **where** it samples — CPU, CUDA, Metal, a CubeCL
+runtime or Apple Accelerate — at **compile time**. A process is parameterised
+by a backend marker `B` (defaulting to `Cpu`); the `Backend` trait
 monomorphises `sample` / `sample_par` to that backend with **no runtime branch**.
 
 This replaces the ad-hoc per-backend methods (`sample_cuda`,
@@ -20,7 +20,7 @@ This replaces the ad-hoc per-backend methods (`sample_cuda`,
 
 ## Switching backend
 
-Re-type the process by handing `.on` a backend handle, then sample as usual.
+Re-type the process by naming a backend marker, then sample as usual.
 `Cuda` only exists when the `cuda` feature is compiled (an
 NVIDIA CUDA 12.x toolkit and GPU), which the CI runners that build this
 site do not have, so this block is illustrative rather than compiled:
@@ -51,20 +51,23 @@ says which markers it accepts:
 
 - `HostBackend: Backend` — the process samples on the CPU through its own
   `ProcessExt` sampler. `Cpu` and `Accelerate` implement it. Every process
-  accepts at least these; a process whose only bound is `HostBackend` has no
-  device kernel yet, and gaining one later merely widens the bound, which
-  breaks no caller.
-- `FgnBackend<T>: Backend` — fractional Gaussian noise on the device (FFT
-  pipeline); the fGN-driven family (`Fgn`, `Fbm`, `Fou`, `Fcir`, `Fgbm`,
-  `FJacobi`, `Cfou`, `Cfgns`, `JumpFou`, `JumpFOUCustom`, `Sde`) is bound on it.
-- `EulerBackend<T>: Backend` — the Euler engine's device kernels (`Gbm`, `Ou`,
-  `Cir` today); `Cpu` and `Accelerate` implement it as the host sampler.
+  accepts at least these; it is the bound a new process starts with, and
+  gaining a kernel later merely widens it, which breaks no caller. No process
+  is bound on it alone today.
+- `FgnBackend<T>: Backend` — fractional Gaussian noise on the device (the
+  circulant-embedding FFT pipeline); `Fgn` is bound on it, and the fractional
+  processes on the engine take their increments from it.
+- `SheetBackend<T>: Backend` — the two-dimensional circulant embedding behind
+  the fractional Brownian field `Fbs`.
+- `EulerBackend<T>: Backend` — the Euler engine's device kernels, which 129
+  processes step through; `Cpu` and `Accelerate` implement it as the host
+  sampler.
 
-Both capabilities take the scalar, and a device implements them only for the
-precision its kernels compute in: `Cuda` for `f32` and `f64`,
+All three device capabilities take the scalar, and a device implements them
+only for the precision its kernels compute in: `Cuda` for `f32` and `f64`,
 `Metal` and `Cubecl` for `f32`, the CPU devices for both. `Fgn<f64>` or
 `Gbm<f64>` on `Metal` is a compile error; nothing runs in `f32` behind an
-`f64` type. Generic code spells the scalar in the bound: `B: FgnBackend<T>`.
+`f64` type. Generic code spells the scalar in the bound: `B: EulerBackend<T>`.
 
 Bound on `Backend` to say "device-parameterised"; bound on a capability when
 the code actually samples through it.
@@ -77,8 +80,8 @@ the code actually samples through it.
 | `Metal` | `metal`                          | hand-written MSL via the `metal` crate | Apple GPU (f32)     |
 | `Accelerate`  | `accelerate`                     | Apple vDSP FFT (CPU), rayon batches    | macOS               |
 
-`Backend`, `Cpu` and `FgnBackend` are re-exported at
-`stochastic_rs::traits`; the GPU markers
+`Backend`, `Cpu`, `HostBackend`, `FgnBackend`, `SheetBackend` and
+`EulerBackend` are re-exported at `stochastic_rs::traits`; the GPU markers
 live under `stochastic_rs::stochastic::device` and **only exist when their
 feature is compiled**. Selecting an unavailable backend is therefore a *compile
 error*, not a silent runtime fallback.
@@ -92,25 +95,35 @@ precision, and what the Python entry point is — lives on
 [GPU support](/docs/concepts/gpu-support); this section explains the
 mechanism.
 
-All 131 processes carry the parameter and accept `.on::<Cpu>()` (and
-`.on::<Accelerate>()` under the `accelerate` feature). Device kernels exist for
-two families today: the fGN-driven processes (`FgnBackend`: `Fgn`, `Fbm`,
-`Fou`, `Fcir`, `Fgbm`, `FJacobi`, `Cfou`, `Cfgns`, `JumpFou`, `JumpFOUCustom`,
-`Sde`), whose hot path is a circulant-embedding FFT, and the Euler engine's
-scalar diffusions (`EulerBackend`: `Gbm`, `Ou`, `Cir`), which run the whole
-Euler–Maruyama recursion in one kernel launch. Every other process is bound on
-`HostBackend`: selecting a GPU marker for it is a compile error, and adding a
-kernel later widens the bound without touching callers.
+All 131 processes carry the parameter and reach a device: 129 through the
+Euler engine (`EulerBackend`), `Fgn` through its FFT pipeline (`FgnBackend`)
+and `Fbs` through the sheet pipeline (`SheetBackend`). What a device cannot
+carry is decided per configuration, not per type — see the one fallback rule
+below.
+
+## One fallback rule
+
+Some configurations exceed what the kernels carry: a grid past a per-path
+array, a dimension past the four state slots, a coefficient written as a
+closure, a point process in horizon mode. Every process answers
+`device_ready()` — a method of `ProcessExt`, `true` by default — for the
+configuration it holds, and a `false` never fails: on any backend the process
+then samples on the host through its own sampler, bit-identically to the
+`Cpu` build. `try_sample` is `Ok` on that path, and `sample` never panics for
+a configuration — only a device that fails to open, compile or launch does
+that. So `gbm.on::<Cuda>()` always runs on the GPU, while
+`wishart.on::<Cuda>()` runs there for `d = 2` and on the host for `d = 3`,
+and `wishart.device_ready()` says which.
 
 ## Choosing the device
 
 A backend is a value, not only a type. `.on::<B>()` re-types the process with
-`B`'s default handle; `.on::<B>()` takes an explicit one:
+`B`'s default handle; `with_backend(handle)` takes an explicit one:
 
 ```rust
 use stochastic_rs::stochastic::device::Cuda;
 
-let on_second_gpu = gbm.on(Cuda::new(1).with_batch_budget(256 << 20));
+let on_second_gpu = gbm.with_backend(Cuda::new(1).with_batch_budget(256 << 20));
 ```
 
 `Cuda { ordinal, batch_budget }`, `Metal { .. }` and
@@ -147,9 +160,8 @@ allocation, typically); every process also offers
 `try_sample()` / `try_sample_par(m) -> Result<_, DeviceError>` on `ProcessExt`
 (always `Ok` on the host devices, bit-identical to the plain calls) and
 the capability traits expose `try_euler_paths` / `try_generate_batch` on the
-handle for generic code; a new device implements `EulerKernel<T>` (one launch
-under one seed) and gets `EulerBackend<T>` from the per-handle kernel impl. `DeviceError` has three kinds: `Unavailable`, `Compile`,
-`Launch`. On the CPU devices every probe is `Ok` and every `try_*` call is
+handle for generic code. `DeviceError` has three kinds: `Unavailable`,
+`Compile`, `Launch`. On the CPU devices every probe is `Ok` and every `try_*` call is
 `Ok` with the same paths as its plain twin. From Python, a device failure is
 a `RuntimeError` with the same message.
 

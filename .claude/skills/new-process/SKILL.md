@@ -71,7 +71,7 @@ those bases apart); a sampler may `.derive()` again on its *own* basis for sub-s
 (`CirPlusPlus`).
 
 Then the backend switch from `src/macros.rs`. `backend_switch!` generates `on::<B2>()` /
-`with_backend(..)` and **must name every field** except the one holding the backend:
+`with_backend(handle)` (public — `process.with_backend(Cuda::new(1))`) and **must name every field** except the one holding the backend:
 
 ```rust
   backend_switch!([T: FloatExt, S: SeedExt] Foo<T, S> { kappa, n, x0, t, seed } via euler);
@@ -243,11 +243,18 @@ the host. Two integrations shipped that way before this was written down. Route 
 | `try_sample` | `try_sample` | `try_system_sample` |
 | `try_sample_par` | `try_euler_paths` | `try_system_paths` |
 
-When the engine cannot serve every configuration, add a runtime guard and a host
-fallback rather than dropping the process off the engine:
+When the engine cannot serve every configuration, override `device_ready()` —
+a provided method of `ProcessExt`, `true` by default — **inside the
+`ProcessExt` impl** and give every dispatch method the host fallback. This is
+the one fallback rule: a `false` samples on the host bit-identically to the
+`Cpu` build and never panics; the hook's `assert!` only catches a caller that
+bypasses `ProcessExt`. Never leave a device panic as the only answer.
 
 ```rust
-  pub fn device_ready(&self) -> bool { self.n <= crate::euler::HISTORY_SLOTS }
+  /// Whether a device can run this process: <what the kernels carry>.
+  fn device_ready(&self) -> bool {
+    self.n <= crate::euler::HISTORY_SLOTS
+  }
 
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
     if self.device_ready() {
@@ -589,7 +596,7 @@ shrinks as the engine grows (empty today) — check the nine documented ways rou
 - [ ] `EulerCoefficients`/`EulerSystem` impl; `draw_seed`; `host_sample` calls the sampler **and** `advance_chunk_seed`
 - [ ] `cubecl.rs` step + report arms (+ lift, + history, + series, + table), count checked against the family count
 - [ ] `family_name` arm and a probe in the arity-matching `every_*_family()` list
-- [ ] All five `ProcessExt` methods overridden through the backend, or a `device_ready()` guard with a host fallback and an `expect` in the hook
+- [ ] All five `ProcessExt` methods overridden through the backend; a configuration the kernels cannot carry answers `device_ready()` (a `ProcessExt` override) and falls back to the host in every one of them, never a panic; the hook's `assert!` names the bypass
 - [ ] Device-law case in the right `device_law/<group>.rs`; statistic moves with every parameter; tolerance not padded
 - [ ] **Sabotage-verified**: term scaled by `lit(3.0)` → test fails → reverted, `cmp` clean
 - [ ] Chunk-invariance test extended if the family is fGN-fed

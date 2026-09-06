@@ -354,9 +354,10 @@ stream, `Unseeded` draws fresh entropy).
 The device kernels share one integer hash for their uniforms, so the device
 back-ends agree with each other seed for seed up to libm rounding; the host
 path is the process's own stream, so CPU and device paths agree in
-distribution rather than bit for bit. A process joins the engine by describing
-its coefficients as an `EulerSpec` through `EulerCoefficients` — `Gbm`, `Ou`
-and `Cir` do.
+distribution rather than bit for bit. A process joins the engine by declaring one
+of its families inside the crate; 129 of the 131 do, and every process answers
+`device_ready()` for the configuration it holds — a `false` samples on the
+host, bit-identically to the `Cpu` build.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
