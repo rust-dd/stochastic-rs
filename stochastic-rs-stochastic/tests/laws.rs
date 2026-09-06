@@ -14,6 +14,7 @@
 
 mod laws {
   pub(crate) mod autoregressive;
+  pub(crate) mod bounded;
   pub(crate) mod common;
   pub(crate) mod inventory;
   pub(crate) mod levy;
