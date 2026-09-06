@@ -171,6 +171,15 @@ pub const HISTORY_SLOTS: usize = 512;
 /// kernels' "none" sentinel; a history family whose grid exceeds
 /// [`HISTORY_SLOTS`] never reaches a launch through `ProcessExt`, so an
 /// oversize grid here is a caller bypassing that guard.
+#[cfg_attr(
+  not(any(
+    feature = "cuda",
+    feature = "metal",
+    feature = "cubecl-cuda",
+    feature = "cubecl-wgpu"
+  )),
+  allow(dead_code)
+)]
 pub(crate) fn history_slot(family: u32, n: usize) -> u32 {
   match families::Family::from_code(family).and_then(families::Family::history_slot) {
     Some(slot) => {

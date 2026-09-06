@@ -2,6 +2,7 @@
 //! so these tests pin both halves against the closed forms they came from.
 
 use super::*;
+use super::vocabulary::C_PRELUDE;
 
 /// The generated step and report take the whole state and noise vectors, so
 /// a one-component family is exercised through these two shims rather than by

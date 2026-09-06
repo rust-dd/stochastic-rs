@@ -450,7 +450,7 @@ pub(crate) fn cuda_language(real: &'static str) -> Language<'static> {
 /// The function-vocabulary defines a generated family block may use, with the
 /// intrinsics of `lang` filled in. Emitted above the kernel.
 pub(crate) fn prelude(lang: &Language<'_>) -> String {
-  substitute(super::families::C_PRELUDE, lang)
+  substitute(super::families::vocabulary::C_PRELUDE, lang)
 }
 
 /// The kernel body: the frame with the generated family blocks spliced in and
