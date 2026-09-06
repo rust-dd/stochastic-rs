@@ -146,7 +146,33 @@
 /// code of the coefficients a process wrote as expressions — on a fixed
 /// stack at the step's `ct` and first state slot, and hands their values to
 /// the family as `pv` and `pv2`.
-pub(crate) const FRAME: &str = r#"    if (path >= paths) return;
+///
+/// Held as the blocks below rather than one literal: the body is four hundred
+/// lines of C, and an edit to one of its concerns should not be an edit inside
+/// a four-hundred-line string. [`render`] joins them in this order, so the
+/// text a kernel is built from is exactly what a single constant gave.
+#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+pub(crate) const FRAME_BLOCKS: [&str; 11] = [
+  FRAME_LOCALS,
+  FRAME_SERIES_DRAW,
+  FRAME_TABLE_DRAW,
+  FRAME_ENTRY_REPORT,
+  FRAME_NOISE,
+  FRAME_SERIES_LIVE,
+  FRAME_TABLE_LIVE,
+  FRAME_COUNTS,
+  FRAME_JUMP_LAWS,
+  FRAME_PROGRAM,
+  FRAME_STEP,
+];
+
+/// Everything a path needs before its first step: the guard, the state and
+/// noise registers, the curve values at the origin, and the scratch the lift,
+/// history, series and table blocks write into.
+///
+/// The 47-line block of [`FRAME_BLOCKS`].
+#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+const FRAME_LOCALS: &str = r#"    if (path >= paths) return;
     INDEX base = (INDEX)path * steps;
     INDEX plane = (INDEX)paths * steps;
     REAL state[4];
@@ -192,8 +218,15 @@ pub(crate) const FRAME: &str = r#"    if (path >= paths) return;
     REAL uj = (REAL)0;
     REAL uv = (REAL)0;
     REAL series_size[1];
-    series_size[0] = (REAL)0;
-    if (series_n != 0u) {
+    series_size[0] = (REAL)0;"#;
+
+/// The series preamble. A shot-noise family draws its jump times and sizes
+/// for the whole path here and buckets them into `block` by the step they land
+/// in, then clears the draw registers.
+///
+/// The 33-line block of [`FRAME_BLOCKS`].
+#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+const FRAME_SERIES_DRAW: &str = r#"    if (series_n != 0u) {
         for (unsigned int c = 0u; c < 4u; c++) { state[c] = x0[c]; }
         for (unsigned int k = 0u; k < 512u; k++) { block[k] = (REAL)0; }
         for (unsigned int j = 1u; j <= series_n; j++) {
@@ -225,8 +258,15 @@ SERIES
             }
         }
         gj = (REAL)0; ej = (REAL)0; uj = (REAL)0; uv = (REAL)0;
-    }
-    REAL iv = (REAL)0;
+    }"#;
+
+/// The table preamble. A family that walks a clock of its own draws that
+/// clock's increments here, doubling the horizon guess until the table spans
+/// the launch's own horizon.
+///
+/// The 30-line block of [`FRAME_BLOCKS`].
+#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+const FRAME_TABLE_DRAW: &str = r#"    REAL iv = (REAL)0;
     REAL tv = (REAL)0;
     REAL pv = (REAL)0;
     REAL pv2 = (REAL)0;
@@ -255,14 +295,27 @@ TABLE
             if (attempt < 9u) { umax = umax * (REAL)2; }
         }
         uj = (REAL)0; uv = (REAL)0;
-    }
-    for (unsigned int c = 0u; c < 4u; c++) { state[c] = x0[c]; reported[c] = x0[c]; }
+    }"#;
+
+/// The initial state, and what the path reports for it — written unless the
+/// family's first point is itself a step.
+///
+/// The 6-line block of [`FRAME_BLOCKS`].
+#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+const FRAME_ENTRY_REPORT: &str = r#"    for (unsigned int c = 0u; c < 4u; c++) { state[c] = x0[c]; reported[c] = x0[c]; }
     for (unsigned int c = 0u; c < 4u; c++) { noise[c] = (REAL)0; }
 REPORT
     if (step_first == 0u) {
         for (unsigned int c = 0u; c < components; c++) { out[(INDEX)c * plane + base] = reported[c]; }
-    }
-    for (unsigned int i = (step_first != 0u ? 0u : 1u); i < steps; i++) {
+    }"#;
+
+/// The step's own draws: the 64-bit cell key, a normal per noise component,
+/// the increments a fractional pipeline supplies in their place, the curve
+/// values at this step, and the two spare uniforms.
+///
+/// The 43-line block of [`FRAME_BLOCKS`].
+#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+const FRAME_NOISE: &str = r#"    for (unsigned int i = (step_first != 0u ? 0u : 1u); i < steps; i++) {
         // The cell number is counted in 64 bits and avalanched down to the
         // word every draw of this step keys on. Counted in 32 bits it wraps
         // at 2^31 path-steps -- 2^21 paths over 1024 steps, a batch this
@@ -304,8 +357,15 @@ REPORT
         u = (REAL)hu * (REAL)2.3283064e-10;
         unsigned int hv = (g ^ 3266489917u) ^ (seed * 2654435761u);
         hv ^= hv >> 16; hv *= 2246822519u; hv ^= hv >> 13; hv *= 3266489917u; hv ^= hv >> 16;
-        u2 = (REAL)hv * (REAL)2.3283064e-10;
-        sj = (REAL)0;
+        u2 = (REAL)hv * (REAL)2.3283064e-10;"#;
+
+/// The live half of a series family: the jump whose time falls inside this
+/// step, drawn now rather than bucketed, for the families that need a size at
+/// the moment it arrives.
+///
+/// The 32-line block of [`FRAME_BLOCKS`].
+#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+const FRAME_SERIES_LIVE: &str = r#"        sj = (REAL)0;
         if (series_n != 0u) {
             if (series_live != 0u) {
                 for (unsigned int j = 1u; j <= series_n; j++) {
@@ -336,8 +396,14 @@ SERIES
             } else {
                 sj = block[i];
             }
-        }
-        if (table_n != 0u) {
+        }"#;
+
+/// The clock's value at this step, interpolated from the table the preamble
+/// built.
+///
+/// The 11-line block of [`FRAME_BLOCKS`].
+#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+const FRAME_TABLE_LIVE: &str = r#"        if (table_n != 0u) {
             REAL ti = dt * (REAL)i;
             while (tp < table_n && block[tp] < ti) { tp++; }
             if (tp >= table_n) {
@@ -347,8 +413,15 @@ SERIES
             } else {
                 iv = tv * (REAL)(tp - 1u) + (ti - block[tp - 1u]) / (block[tp] - block[tp - 1u]) * tv;
             }
-        }
-        if (has_jumps != 0u) {
+        }"#;
+
+/// The step's jump count, by Knuth's product of uniforms, and the gamma draws
+/// a family may take beside it — Marsaglia & Tsang's squeeze, with the boost
+/// that carries a shape below one.
+///
+/// The 52-line block of [`FRAME_BLOCKS`].
+#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+const FRAME_COUNTS: &str = r#"        if (has_jumps != 0u) {
             REAL ell = STOCH_EXP(-jump_lambda * dt);
             REAL prod = (REAL)1;
             unsigned int cnt = 0u;
@@ -399,8 +472,15 @@ SERIES
                 draw = gsc * boost * val;
             }
             if (gi == 0u) { gm = draw; } else { gm2 = draw; }
-        }
-        js = (REAL)0;
+        }"#;
+
+/// The jump size, by the law the launch names. Every one keys on the same
+/// cell as the step's normals, so a batch produced in chunks stays identical to
+/// one launch.
+///
+/// The 108-line block of [`FRAME_BLOCKS`].
+#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+const FRAME_JUMP_LAWS: &str = r#"        js = (REAL)0;
         if (jump_law == 1u) {
             unsigned int ja = (g ^ 1103515245u) ^ (seed * 2654435761u);
             ja ^= ja >> 16; ja *= 2246822519u; ja ^= ja >> 13; ja *= 3266489917u; ja ^= ja >> 16;
@@ -507,8 +587,15 @@ SERIES
             if (ratio < (REAL)1.0e-30) { ratio = (REAL)1.0e-30; }
             REAL xs = STOCH_SIN(jump_a * va) / STOCH_POW(STOCH_COS(va), ia) * STOCH_POW(ratio, ((REAL)1 - jump_a) * ia);
             js = jump_b * STOCH_POW(nj, ia) * xs;
-        }
-        if (program_n != 0u) {
+        }"#;
+
+/// The postfix interpreter for the launch's coefficient programs: a stack
+/// machine over the sixteen opcodes an `Expr` compiles to, run before the lift
+/// so the step reads its coefficients as plain values.
+///
+/// The 31-line block of [`FRAME_BLOCKS`].
+#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+const FRAME_PROGRAM: &str = r#"        if (program_n != 0u) {
             for (unsigned int w = 0u; w < program_n; w++) {
                 unsigned int plen = (unsigned int)program[w];
                 unsigned int pbase = 2u;
@@ -538,8 +625,14 @@ SERIES
                 if (w == 0u) { pv = pst[0]; } else { pv2 = pst[0]; }
             }
         }
-        if (has_lift != 0u) {
-LIFT
+        if (has_lift != 0u) {"#;
+
+/// The four generated blocks — the lift, the history window, the family's own
+/// step and its report — and the write-out that ends an iteration.
+///
+/// The 23-line block of [`FRAME_BLOCKS`].
+#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+const FRAME_STEP: &str = r#"LIFT
             REAL hist = (REAL)0;
             for (unsigned int l = 0u; l < lift_n; l++) { hist += lift_weight[l] * (lh[l] + lj[l]); }
             lv = lift_x0 + lift_db * lift[0] + hist + lift_fb * lift[1] * lift[2];
@@ -667,7 +760,8 @@ pub(crate) fn prelude(lang: &Language<'_>) -> String {
 /// The kernel body: the frame with the generated family blocks spliced in and
 /// the placeholders of `lang` filled in.
 pub(crate) fn render(lang: &Language<'_>) -> String {
-  let body = FRAME
+  let body = FRAME_BLOCKS
+    .join("\n")
     .replace("SERIES", super::families::C_SERIES.trim_end_matches('\n'))
     .replace("TABLE", super::families::C_TABLE.trim_end_matches('\n'))
     .replace("LIFT", super::families::C_LIFT.trim_end_matches('\n'))
@@ -708,6 +802,38 @@ mod tests {
       ("CUDA f32", cuda_language("float")),
       ("CUDA f64", cuda_language("double")),
     ]
+  }
+
+  /// The blocks join into one body, not eleven fragments.
+  ///
+  /// Each block opens braces a later one closes — the step loop's head is in
+  /// [`FRAME_NOISE`] and its tail in [`FRAME_STEP`] — so a block dropped from
+  /// [`FRAME_BLOCKS`] or moved out of order leaves the body unbalanced. That
+  /// is a failure no machine without a device would otherwise see, since the
+  /// text only reaches a compiler when a kernel is built.
+  #[test]
+  fn the_frame_blocks_join_into_a_balanced_body() {
+    let joined = super::FRAME_BLOCKS.join("\n");
+    let mut depth = 0i32;
+    let mut lowest = 0i32;
+    for c in joined.chars() {
+      match c {
+        '{' => depth += 1,
+        '}' => depth -= 1,
+        _ => {}
+      }
+      lowest = lowest.min(depth);
+    }
+    assert_eq!(
+      depth, 0,
+      "the frame opens and closes its own braces — the kernel's function brace \
+       belongs to the language header and its close is appended by the \
+       back-end — and this body is left at {depth}"
+    );
+    assert_eq!(
+      lowest, 0,
+      "a block closes a brace no earlier block opened; the order is wrong"
+    );
   }
 
   /// A placeholder that survives rendering is an intrinsic the vocabulary
