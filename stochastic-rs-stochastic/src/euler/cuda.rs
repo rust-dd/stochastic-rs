@@ -24,6 +24,23 @@ use crate::traits::FloatExt;
 
 type Result<T> = std::result::Result<T, DeviceError>;
 
+/// Threads per block. The kernel carries a path's whole state — the four
+/// components, the 512-slot history block, the program stack — in registers
+/// and local memory, so occupancy is bounded by register pressure long before
+/// it is bounded by threads. `LaunchConfig::for_num_elems` asks for 1024,
+/// which on that footprint spills or is refused outright by the driver; 256
+/// is the largest block that leaves every family room.
+const BLOCK: u32 = 256;
+
+/// One thread per path, in blocks of [`BLOCK`].
+fn paths_config(paths: u32) -> LaunchConfig {
+  LaunchConfig {
+    grid_dim: (paths.div_ceil(BLOCK), 1, 1),
+    block_dim: (BLOCK, 1, 1),
+    shared_mem_bytes: 0,
+  }
+}
+
 /// The `float` / `double` kernel: the launch header around the body the
 /// Metal back-end renders too ([`super::kernel`]).
 const CUDA_HEADER: &str = r#"extern "C" __global__ void euler_paths_REAL(
@@ -279,7 +296,7 @@ where
       .arg(&table_u0)
       .arg(&d_program)
       .arg(&program_n)
-      .launch(LaunchConfig::for_num_elems(paths))
+      .launch(paths_config(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
   stream
@@ -788,7 +805,7 @@ where
       .arg(&table_u0)
       .arg(&d_program)
       .arg(&program_n)
-      .launch(LaunchConfig::for_num_elems(paths))
+      .launch(paths_config(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
   Ok(d_out)
