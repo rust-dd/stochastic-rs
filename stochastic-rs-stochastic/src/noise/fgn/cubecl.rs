@@ -297,7 +297,7 @@ pub(crate) mod backend {
   /// Splits a 1D cube count into a 2D grid so no dimension exceeds WebGPU's
   /// 65535 per-dimension limit. For the power-of-two counts this sampler emits
   /// the split is exact (no over-dispatch, so the kernels need no bounds guard).
-  fn count_2d(cubes: u32) -> CubeCount {
+  pub(crate) fn count_2d(cubes: u32) -> CubeCount {
     if cubes <= 65535 {
       CubeCount::Static(cubes.max(1), 1, 1)
     } else {

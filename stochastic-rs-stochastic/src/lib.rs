@@ -26,6 +26,7 @@ pub use stochastic_rs_distributions::traits::SimdFloatExt;
 pub use crate::device::Backend;
 pub use crate::device::Cpu;
 pub use crate::device::FgnBackend;
+pub use crate::device::SheetBackend;
 pub use crate::traits::ProcessExt;
 
 pub mod autoregressive;

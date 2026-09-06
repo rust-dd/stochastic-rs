@@ -17,6 +17,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct Cfbms<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Hurst parameter (`0 < H < 1`) shared by both components.
   pub hurst: T,

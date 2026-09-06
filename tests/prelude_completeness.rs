@@ -71,6 +71,7 @@ mod prelude_excluded_traits_stay_hub_reachable {
   use stochastic_rs::traits::InstrumentExt;
   use stochastic_rs::traits::PricingEngine;
   use stochastic_rs::traits::PricingResult;
+  use stochastic_rs::traits::SheetBackend;
   use stochastic_rs::traits::ShortRatePricer;
   use stochastic_rs::traits::ToShortRateModel;
   use stochastic_rs::traits::VanillaEuropeanCall;

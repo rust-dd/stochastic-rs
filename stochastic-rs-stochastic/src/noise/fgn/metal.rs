@@ -18,7 +18,10 @@ use crate::traits::FloatExt;
 
 type Result<T> = std::result::Result<T, DeviceError>;
 
-const MSL_SOURCE: &str = r#"
+/// What every MSL pipeline of this crate's FFT family starts from: the hash,
+/// its uniform, and the radix-2 butterfly stage. The sheet pipeline
+/// concatenates its own kernels behind it.
+pub(crate) const MSL_COMMON: &str = r#"
 #include <metal_stdlib>
 using namespace metal;
 
@@ -31,39 +34,6 @@ inline uint pcg(uint v) {
 
 inline float u01(uint x) {
     return (float(x >> 8) + 0.5f) / 16777216.0f;
-}
-
-// Generate normals, scale by eigenvalues, write to bit-reversed position.
-// Each thread produces one (re, im) pair using 4 independent PCG hashes
-// fed into two Box-Muller transforms.
-kernel void generate_scale_permute(
-    device float* dst_real [[buffer(0)]],
-    device float* dst_imag [[buffer(1)]],
-    device const float* sqrt_eigs [[buffer(2)]],
-    device const uint* bit_rev [[buffer(3)]],
-    constant uint& traj_size [[buffer(4)]],
-    constant uint& seed [[buffer(5)]],
-    uint tid [[thread_position_in_grid]])
-{
-    uint batch = tid / traj_size;
-    uint local = tid % traj_size;
-
-    uint base = tid * 4u + seed;
-    float u1 = u01(pcg(base));
-    float u2 = u01(pcg(base + 1u));
-    float u3 = u01(pcg(base + 2u));
-    float u4 = u01(pcg(base + 3u));
-
-    float r_a = sqrt(-2.0f * log(u1 + 1e-10f));
-    float r_b = sqrt(-2.0f * log(u3 + 1e-10f));
-    float n_re = r_a * cos(6.28318530718f * u2);
-    float n_im = r_b * cos(6.28318530718f * u4);
-
-    float eig = sqrt_eigs[local];
-    uint rev = bit_rev[local];
-    uint dst = batch * traj_size + rev;
-    dst_real[dst] = n_re * eig;
-    dst_imag[dst] = n_im * eig;
 }
 
 kernel void fft_butterfly(
@@ -96,6 +66,42 @@ kernel void fft_butterfly(
     imag[i] = ai + ti;
     real[j] = ar - tr;
     imag[j] = ai - ti;
+}
+"#;
+
+/// The fGN kernels proper: the fused draw, and the read-out.
+const MSL_FGN: &str = r#"
+// Generate normals, scale by eigenvalues, write to bit-reversed position.
+// Each thread produces one (re, im) pair using 4 independent PCG hashes
+// fed into two Box-Muller transforms.
+kernel void generate_scale_permute(
+    device float* dst_real [[buffer(0)]],
+    device float* dst_imag [[buffer(1)]],
+    device const float* sqrt_eigs [[buffer(2)]],
+    device const uint* bit_rev [[buffer(3)]],
+    constant uint& traj_size [[buffer(4)]],
+    constant uint& seed [[buffer(5)]],
+    uint tid [[thread_position_in_grid]])
+{
+    uint batch = tid / traj_size;
+    uint local = tid % traj_size;
+
+    uint base = tid * 4u + seed;
+    float u1 = u01(pcg(base));
+    float u2 = u01(pcg(base + 1u));
+    float u3 = u01(pcg(base + 2u));
+    float u4 = u01(pcg(base + 3u));
+
+    float r_a = sqrt(-2.0f * log(u1 + 1e-10f));
+    float r_b = sqrt(-2.0f * log(u3 + 1e-10f));
+    float n_re = r_a * cos(6.28318530718f * u2);
+    float n_im = r_b * cos(6.28318530718f * u4);
+
+    float eig = sqrt_eigs[local];
+    uint rev = bit_rev[local];
+    uint dst = batch * traj_size + rev;
+    dst_real[dst] = n_re * eig;
+    dst_imag[dst] = n_im * eig;
 }
 
 kernel void extract_real(
@@ -158,8 +164,9 @@ fn ensure_ctx(ordinal: usize) -> Result<()> {
   SIZED.lock().clear();
   let device = crate::euler::metal::metal_device(ordinal)?;
   let queue = device.new_command_queue();
+  let source = format!("{MSL_COMMON}{MSL_FGN}");
   let lib = device
-    .new_library_with_source(MSL_SOURCE, &CompileOptions::new())
+    .new_library_with_source(&source, &CompileOptions::new())
     .map_err(|e| DeviceError::Compile(format!("MSL compile: {e}")))?;
 
   let mk = |name: &str| -> Result<ComputePipelineState> {
@@ -186,7 +193,9 @@ fn ensure_ctx(ordinal: usize) -> Result<()> {
   Ok(())
 }
 
-fn build_bit_reverse_table(n: usize) -> Vec<u32> {
+/// Where each index of a length-`n` transform lands when its bits are
+/// reversed, the order a decimation-in-time butterfly wants its input in.
+pub(crate) fn build_bit_reverse_table(n: usize) -> Vec<u32> {
   let log_n = n.trailing_zeros() as usize;
   let bits = usize::BITS as usize;
   (0..n)

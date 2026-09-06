@@ -13,10 +13,11 @@ backends, and what the rest do.
 | Family | Processes | Capability bound | `Cpu` | `Accelerate` | `Metal` | `Cuda` | `Cubecl` |
 |---|---|---|---|---|---|---|---|
 | fGN noise | `Fgn` (1) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` | CubeCL FFT, `f32` only |
+| Sheet | `Fbs` (1) | `SheetBackend<T>` | SIMD + `ndrustfft` | same as `Cpu` | MSL sheet pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` | CubeCL sheet pipeline, `f32` only |
 | Euler engine, one component | 90 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` | CubeCL kernel, `f32` only |
 | Euler engine, systems | 36 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel | the same kernel |
 | Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `FVasicek`, `Cfgns`, `Cfbms`, `Cfou`, `JumpFou`, `JumpFOUCustom` (11, counted above) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same MSL kernel | fGN pipeline feeds the same NVRTC kernel | fGN pipeline feeds the same CubeCL kernel |
-| Host only | the remaining 4 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
+| Host only | the remaining 3 processes | `HostBackend` | own SIMD sampler | compile error | compile error | compile error | compile error |
 
 The 126 processes on the engine cover the diffusions, the stochastic-volatility
 models under both their Euler and quadratic-exponential schemes (`Heston`,
@@ -86,7 +87,9 @@ Ahdida–Alfonsi step — the three maps of the law identity folded on the host,
 two coordinate steps each a shifted normal's square plus the frame's central
 χ² draw and a Gaussian move of the off-diagonal entry — at a degree of three or
 more, where the path stays inside the cone and the host's rank-adaptive branch
-is never taken.
+is never taken. The two-dimensional field `Fbs` is the one device process off
+the engine: its sample is a transform, not a recursion, and it runs through a
+pipeline of its own behind `SheetBackend<T>`, described below.
 
 What stays on the host, and why. The engine steps a bounded forward
 recursion over four scalar state slots, so what rules a process out is
@@ -148,16 +151,18 @@ grid:
   the exception: a linear recursion of white noise is a moving-average filter,
   so the history block runs them at any order as the convolution of the
   innovations with the recursion's own impulse response.
-- **A two-dimensional sheet rather than a path** (`Fbs`): its output is an
-  `m x n` field from a two-dimensional FFT.
+- **A sheet whose embedding sides are not powers of two** (`Fbs` with
+  `m − 1` or `n − 1` not a power of two): the sheet pipeline's radix-2
+  transforms take embedding sides `2(m − 1)` and `2(n − 1)` that are powers
+  of two; any other grid stays on the host whatever the backend.
 - **More variance factors than a launch's four shocks carry**
   (`MultifactorHeston` at `K >= 3`): each factor takes two shocks, so one
   and two factors ride the double-Heston family and three or more stay on the
   host whatever the backend.
 
-### The last four, and how each would reach a device
+### The last three, and how each would reach a device
 
-Four processes have no device route today. None is ruled out for good; each
+Three processes have no device route today. None is ruled out for good; each
 names the one facility the engine still lacks, and the facilities are of the
 kind the lift, history, series and table blocks already are — a clause in the
 family table plus a block in the frame, never a hand-written kernel.
@@ -171,12 +176,6 @@ family table plus a block in the frame, never a hand-written kernel.
   needs thinning, a random number of proposals a step — a `thinning { rate
   (..) bound (..) }` clause drawing hashed uniforms per attempt, as the
   frame's Poisson count already does.
-- **`Fbs`** is a two-dimensional circulant embedding: the eigenvalues of the
-  `2m × 2n` covariance block by a two-dimensional FFT once, then per sample a
-  two-dimensional FFT of complex Gaussian noise scaled by their square roots.
-  That is a device *pipeline* beside the fGN one, not a family: row FFTs, a
-  transpose, column FFTs on each backend's existing batched FFT (cuFFT has
-  native two-dimensional plans), about a day per backend.
 - **`Cheyette` and `VolterraSde`** hold Rust closures of the state. Three
   routes, in order of preference: a **coefficient expression tree** the user
   builds instead of a closure (`Expr::state().sqrt() * Expr::param(0) + …`),
@@ -240,7 +239,7 @@ one build and used at once. A marker only exists when its feature is
 compiled, so selecting a backend a process does not support — or one the
 build does not carry — is a compile error, never a silent fallback. The same
 holds for precision: the capability traits take the scalar
-(`FgnBackend<T>`, `EulerBackend<T>`) and a device implements them only for
+(`FgnBackend<T>`, `SheetBackend<T>`, `EulerBackend<T>`) and a device implements them only for
 the precision its kernels compute in, so `Gbm<f64>` or `Fgn<f64>` on
 `Metal` or `Cubecl` does not compile. Nothing is computed in `f32`
 behind an `f64` type.
@@ -250,6 +249,16 @@ behind an `f64` type.
 - **fGN noise.** The circulant-embedding FFT that produces fractional
   Gaussian noise runs on the device, one launch per `sample_par` batch.
   `Fgn` returns it directly.
+- **Sheets.** `Fbs` runs its two-dimensional circulant embedding as a
+  pipeline beside the fGN one. The embedding's eigenvalue roots are computed
+  once on the host, when the process is built; per batch the device draws the
+  complex Gaussian noise, scales it, transforms the rows, transposes,
+  transforms the columns and reads out the leading `m × n` block less its
+  corner plus the low-rank correction. The radix-2 transforms take embedding
+  sides that are powers of two, so a grid with `m − 1` and `n − 1` powers of
+  two runs on the device and any other stays on the host, bit-identically to
+  the `Cpu` build. A batch produced in chunks equals one launch sheet for
+  sheet, as with the fGN pipeline.
 - **Fractional diffusions.** `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`,
   `FVasicek`, `Cfgns`, `Cfbms` and `Cfou` hand
   those increments to the Euler engine, which runs the whole recursion in the

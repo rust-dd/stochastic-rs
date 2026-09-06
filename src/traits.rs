@@ -58,6 +58,7 @@ pub use stochastic_rs_stochastic::device::Backend;
 pub use stochastic_rs_stochastic::device::Cpu;
 pub use stochastic_rs_stochastic::device::FgnBackend;
 pub use stochastic_rs_stochastic::device::HostBackend;
+pub use stochastic_rs_stochastic::device::SheetBackend;
 pub use stochastic_rs_stochastic::euler::EulerBackend;
 pub use stochastic_rs_stochastic::euler::EulerKernel;
 pub use stochastic_rs_stochastic::euler::EulerSystem;

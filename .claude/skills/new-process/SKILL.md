@@ -80,7 +80,8 @@ Then the backend switch from `src/macros.rs`. `backend_switch!` generates `on::<
 | Arm | Bound | Storage | Use when | Uses (snapshot) |
 |---|---|---|---|---|
 | `via euler` | `EulerBackend<T>` | `backend: B` | the process declares a family | 116 |
-| `via host` | `HostBackend` | `backend: B` | host only (see last section) | 4 |
+| `via host` | `HostBackend` | `backend: B` | host only (see last section) | 3 |
+| `via sheet` | `SheetBackend<T>` | `backend: B` | a two-dimensional field through the sheet pipeline (`Fbs`) | 1 |
 | `via fgn euler` | `FgnBackend<T> + EulerBackend<T>` | `fgn: Fgn<_, _, B>` | fractional **and** on the engine | 10 |
 | `via phantom` | `FgnBackend<T>` | `backend: B` | backend carried, not an engine process | 2 |
 | `via fgn` | `FgnBackend<T>` | `fgn: Fgn<_, _, B>` | fractional, not on the engine | 0 |
@@ -512,11 +513,11 @@ mode); **a rank-adaptive step or a Poisson mixture below one degree of freedom**
 non-central χ² is the square of a shifted normal plus the frame's gamma draw, which is
 how `Svcgmy`'s exact CIR step and `Wishart`'s squared Bessel draws run; **more than 4
 state slots or 4 noise components** (`Lmm` / `MultiGbm` / `Mcgns` above four, `Wishart`
-above `d = 2`); **a two-dimensional field** (the sheet `Fbs`).
+above `d = 2`).
 
 Before declaring a process host-only — the current list is whatever
 `grep -rln "via host" stochastic-rs-stochastic/src --include='*.rs'` returns, and it
-shrinks as the engine grows — check the seven documented ways round the cap:
+shrinks as the engine grows — check the eight documented ways round the cap:
 
 1. **A launch view with a runtime cap** — pad a runtime `k` into the fixed
    four-slot family and fall back to the host above it (`MultiGbmLaunch`), or
@@ -543,6 +544,17 @@ shrinks as the engine grows — check the seven documented ways round the cap:
    uniforms a step, so a thinning loop with a random number of proposals has no
    home in it, but an exact inverse-transform of the same law does. This is
    what moved `Hawkes` (Dassios–Zhao) onto the engine.
+8. **A pipeline of its own** — a process whose sample is a transform rather
+   than a recursion gets a capability trait beside `FgnBackend`
+   (`SheetBackend<T>` in `device.rs`), a `via sheet` switch arm, and one
+   pipeline file per backend under its module (`sheet/fbs/{metal,cuda,cubecl}.rs`)
+   reusing the fGN pipeline's butterflies, hash and bit-reverse table. The host
+   devices route through the process's own sampler, so a fallback is
+   bit-identical to the `Cpu` build, and `device_ready()` names what the
+   kernels take (radix-2: embedding sides that are powers of two). This is
+   what moved the sheet `Fbs` onto the devices. A chunk-invariance test
+   (`with_batch_budget`) is mandatory: every hash must run on a batch-global
+   counter, the correction's on one past every cell of the batch.
 
 ## Definition of done
 

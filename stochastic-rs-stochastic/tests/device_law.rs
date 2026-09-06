@@ -20,7 +20,9 @@
 //! recursion carries more than one state component; [`curves`] holds the
 //! ones whose coefficients vary with time; [`levy`] holds the ones whose
 //! increment is a draw rather than a step; [`conditional_variance`] holds the
-//! discrete-time models whose first point is itself a draw.
+//! discrete-time models whose first point is itself a draw; [`sheet`] holds
+//! the two-dimensional field, which the device produces through its own
+//! circulant-embedding pipeline rather than the engine.
 //!
 //! Split across files only to stay under this crate's line-count limit; all
 //! four compile into one test binary.
@@ -39,5 +41,6 @@ mod device_law {
   pub(crate) mod memory;
   pub(crate) mod rows;
   pub(crate) mod series;
+  pub(crate) mod sheet;
   pub(crate) mod systems;
 }
