@@ -95,6 +95,8 @@ pub(crate) fn zig_tables() -> &'static ZigTables {
 #[inline(never)]
 fn nfix<T: SimdFloatExt, R: SimdRngExt>(hz: i32, iz: usize, tables: &ZigTables, rng: &mut R) -> T {
   const R_TAIL: f64 = 3.442620;
+  /// `1 / R_TAIL`, the scale of the tail's exponential draw.
+  const R_TAIL_INV: f64 = 0.2904764;
   let mut hz = hz;
   let mut iz = iz;
 
@@ -105,7 +107,13 @@ fn nfix<T: SimdFloatExt, R: SimdRngExt>(hz: i32, iz: usize, tables: &ZigTables, 
       loop {
         let u1: f64 = rng.next_f64();
         let u2: f64 = rng.next_f64();
-        let x_tail = -0.2904764 * (-u1.ln());
+        // Marsaglia & Tsang's tail draw. `x_tail` is how far *past* the
+        // ziggurat's boundary the sample falls, so it is positive: negated,
+        // every tail draw lands back inside `R_TAIL` and the law loses
+        // everything beyond 3.44σ — a kurtosis of 2.96, no four-sigma move
+        // ever, and every Gaussian-driven process in the workspace short of
+        // its tails.
+        let x_tail = -u1.ln() * R_TAIL_INV;
         let y = -u2.ln();
         if y + y >= x_tail * x_tail {
           let val = if hz > 0 {
