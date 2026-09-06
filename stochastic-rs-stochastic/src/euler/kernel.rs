@@ -258,15 +258,19 @@ REPORT
         for (unsigned int c = 0u; c < components; c++) { out[(INDEX)c * plane + base] = reported[c]; }
     }
     for (unsigned int i = (step_first != 0u ? 0u : 1u); i < steps; i++) {
-        unsigned int g = (first_path + path) * steps + i;
+        // The cell number is counted in 64 bits and avalanched down to the
+        // word every draw of this step keys on. Counted in 32 bits it wraps
+        // at 2^31 path-steps -- 2^21 paths over 1024 steps, a batch this
+        // engine can be handed -- and two paths that far apart would then
+        // draw the same noise for their whole length.
+        U64 gid = (U64)(first_path + path) * (U64)steps + (U64)i;
+        gid ^= gid >> 33; gid *= (U64)0xff51afd7ed558ccd; gid ^= gid >> 33;
+        gid *= (U64)0xc4ceb9fe1a85ec53; gid ^= gid >> 33;
+        unsigned int g = (unsigned int)gid ^ (unsigned int)(gid >> 32);
         for (unsigned int k = 0u; k < noises; k++) {
-            unsigned int gk = g;
-            if (k == 1u) { gk = g ^ 2654435769u; }
-            if (k == 2u) { gk = g ^ 2246822519u; }
-            if (k == 3u) { gk = g ^ 3266489917u; }
-            unsigned int a = (gk * 2u) ^ (seed * 2654435761u);
+            unsigned int a = (g ^ (2654435769u + k * 2654435761u)) ^ (seed * 2654435761u);
             a ^= a >> 16; a *= 2246822519u; a ^= a >> 13; a *= 3266489917u; a ^= a >> 16;
-            unsigned int b = (gk * 2u + 1u) ^ (seed * 668265263u);
+            unsigned int b = (g ^ (1442695041u + k * 1013904223u)) ^ (seed * 668265263u);
             b ^= b >> 16; b *= 2246822519u; b ^= b >> 13; b *= 3266489917u; b ^= b >> 16;
             REAL u1 = (REAL)a * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6;
             REAL u2 = (REAL)b * (REAL)2.3283064e-10;
@@ -572,6 +576,11 @@ pub(crate) struct Language<'a> {
   pub atan: &'a str,
   /// The type of a buffer index; `unsigned long long` on CUDA, `uint` in MSL.
   pub index: &'a str,
+  /// The 64-bit unsigned integer the per-cell RNG key is counted in;
+  /// `unsigned long long` in CUDA C, `ulong` in MSL. A buffer index stays
+  /// 32-bit on Metal, but the key must not: it counts path-steps, not
+  /// elements of one launch's output.
+  pub wide: &'a str,
 }
 
 /// Metal Shading Language: `f32` only, and a 32-bit buffer index.
@@ -593,6 +602,7 @@ pub(crate) fn metal_language() -> Language<'static> {
     tanh: "tanh",
     atan: "atan",
     index: "uint",
+    wide: "ulong",
   }
 }
 
@@ -623,6 +633,7 @@ pub(crate) fn cuda_language(real: &'static str) -> Language<'static> {
       tanh: "tanhf",
       atan: "atanf",
       index: "unsigned long long",
+      wide: "unsigned long long",
     }
   } else {
     Language {
@@ -637,6 +648,7 @@ pub(crate) fn cuda_language(real: &'static str) -> Language<'static> {
       tanh: "tanh",
       atan: "atan",
       index: "unsigned long long",
+      wide: "unsigned long long",
     }
   }
 }
@@ -663,6 +675,7 @@ pub(crate) fn render(lang: &Language<'_>) -> String {
 fn substitute(text: &str, lang: &Language<'_>) -> String {
   text
     .replace("INDEX", lang.index)
+    .replace("U64", lang.wide)
     .replace("STOCH_SQRT", lang.sqrt)
     .replace("STOCH_LOG", lang.log)
     .replace("STOCH_COS", lang.cos)
@@ -709,6 +722,33 @@ mod tests {
       assert!(
         !source.contains("INDEX"),
         "{name}: the buffer-index placeholder survived rendering"
+      );
+      assert!(
+        !source.contains("U64"),
+        "{name}: the wide-integer placeholder survived rendering"
+      );
+    }
+  }
+
+  /// The cell number a step's draws key on is counted in the language's
+  /// 64-bit type. Counted in 32 bits it wraps at 2^31 path-steps — 2^21 paths
+  /// over 1024 steps — and the two paths that far apart draw the same noise
+  /// from there on, which no suite can catch: the batch that shows it is 8 GB
+  /// of output. So the arithmetic is pinned here instead.
+  #[test]
+  fn the_cell_key_is_counted_in_64_bits() {
+    for (name, lang) in languages() {
+      let wide = lang.wide;
+      let source = render(&lang);
+      assert!(
+        source.contains(&format!(
+          "{wide} gid = ({wide})(first_path + path) * ({wide})steps + ({wide})i;"
+        )),
+        "{name}: the cell number is not counted in {wide}"
+      );
+      assert!(
+        !source.contains("(first_path + path) * steps"),
+        "{name}: a 32-bit cell number survives in the frame"
       );
     }
   }

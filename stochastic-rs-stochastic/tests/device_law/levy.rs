@@ -377,10 +377,31 @@ fn hawkes_agrees_with_the_cpu_law() {
   assert_eq!(device.len(), PATHS);
   assert!(device.iter().all(|p| p.len() == EVENTS));
   assert!(
+    device.iter().all(|p| p[0] == 0.0),
+    "a path did not start at zero"
+  );
+  assert!(
     device
       .iter()
-      .all(|p| p[0] == 0.0 && p.windows(2).into_iter().all(|w| w[1] > w[0])),
-    "an event time did not advance"
+      .all(|p| p.windows(2).into_iter().all(|w| w[1] >= w[0])),
+    "an event time went backwards"
+  );
+  // A wait is positive, but the sum is `f32`: past `t ≈ 40` a wait under
+  // `t · 2⁻²⁴ ≈ 2e-6` rounds away, and with an intensity around 3 that is
+  // `≈ 1e-5` of the waits — the host sampler shows the same handful on this
+  // batch. What a broken stream would give is a *rate*, not a handful, so the
+  // bound is three orders above the arithmetic's own.
+  let ties = |paths: &[Array1<f32>]| {
+    paths
+      .iter()
+      .map(|p| p.windows(2).into_iter().filter(|w| w[1] == w[0]).count())
+      .sum::<usize>()
+  };
+  let (pairs, stuck) = (PATHS * (EVENTS - 1), ties(&device));
+  assert!(
+    stuck * 10_000 < pairs,
+    "{stuck} of {pairs} device waits rounded to zero, host had {}",
+    ties(&host)
   );
   agrees(
     terminal_mean(&host),
@@ -509,11 +530,28 @@ fn bivariate_hawkes_agrees_with_the_cpu_law() {
     assert_eq!(path[0].len() + path[1].len(), EVENTS + 2);
     for component in path {
       assert!(
-        component[0] == 0.0 && component.windows(2).into_iter().all(|w| w[1] > w[0]),
-        "a component's events did not advance"
+        component[0] == 0.0 && component.windows(2).into_iter().all(|w| w[1] >= w[0]),
+        "a component's events went backwards"
       );
     }
   }
+  // As in the univariate case, a wait below `t · 2⁻²⁴` rounds away in `f32`;
+  // the bound is three orders above that rate, so a stream that stalled would
+  // still fail here.
+  let ties = |paths: &[Vec<Array1<f32>>]| {
+    paths
+      .iter()
+      .flatten()
+      .map(|c| c.windows(2).into_iter().filter(|w| w[1] == w[0]).count())
+      .sum::<usize>()
+  };
+  let stuck = ties(&device);
+  assert!(
+    stuck * 10_000 < PATHS * EVENTS,
+    "{stuck} of {} device waits rounded to zero, host had {}",
+    PATHS * EVENTS,
+    ties(&host)
+  );
   let last: fn(&[Vec<Array1<f32>>]) -> Vec<f64> = |paths| {
     paths
       .iter()
