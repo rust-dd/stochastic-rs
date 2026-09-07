@@ -143,6 +143,11 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
     crate::euler::EulerBackend::euler_paths_map_view(&self.fgn.backend, self, m, f)
   }
 
+  fn sample_reduce(&self, m: usize, reduce: crate::euler::Reduce) -> Vec<T> {
+    crate::euler::EulerBackend::try_euler_reduce(&self.fgn.backend, self, m, reduce)
+      .unwrap_or_else(crate::device::device_panic)
+  }
+
   /// `m` paths through the Euler engine: on a device the whole recursion runs
   /// in the kernel from fGN increments, on the host devices it is this
   /// process's own sampler chunked exactly as `ProcessExt` chunks.

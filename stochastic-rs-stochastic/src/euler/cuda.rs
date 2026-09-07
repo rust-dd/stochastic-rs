@@ -17,6 +17,7 @@ use parking_lot::Mutex;
 use super::EulerCoefficients;
 use super::EulerKernel;
 use super::EulerSpec;
+use super::Reduce;
 use super::kernel::Shape;
 use crate::device::Cuda;
 use crate::device::DeviceError;
@@ -396,6 +397,7 @@ fn run<R, O>(
   table_u0: R,
   program: &[R],
   program_n: u32,
+  reduce: Reduce,
   finish: impl FnOnce(&[R]) -> O,
 ) -> Result<O>
 where
@@ -405,9 +407,10 @@ where
     super::families::Family::from_code(family).expect("a declared family"),
     use_jumps != 0 || jump_law != 0,
     gamma_law != 0,
-  );
+  )
+  .with_reduce(reduce);
   ensure_kernels(ordinal, shape, real)?;
-  let out_len = components as usize * m * n;
+  let out_len = components as usize * m * reduce.stride(n);
   let mut guard = KERNELS.lock();
   let kernels = guard.as_mut().expect("initialised");
   let stream = kernels.stream.clone();
@@ -577,10 +580,51 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.series_terms(),
       process.table_spec(),
       process.program_spec(),
+      Reduce::None,
       |data| {
         Array2::from_shape_vec((m, process.grid_points()), data.to_vec())
           .expect("the kernel returns m * n values for a one-component family")
       },
+    )
+  }
+
+  /// The fold in the kernel: `m` values back instead of `m × n`.
+  ///
+  /// Every step's four bytes cross PCIe in the other entry points, and that
+  /// crossing is what a launch here costs — the kernel is under two per cent
+  /// of the wall on a T4. A reduction is the only change that makes the
+  /// crossing smaller rather than faster.
+  fn euler_kernel_reduce<P: EulerCoefficients<T>>(
+    &self,
+    process: &P,
+    first: usize,
+    m: usize,
+    seed: u64,
+    reduce: Reduce,
+  ) -> Result<Vec<T>> {
+    device_paths(
+      self.ordinal,
+      process.euler_spec(),
+      process.initial_state(),
+      process.grid_points(),
+      process.time_step(),
+      first,
+      m,
+      seed,
+      process.fgn_spec(),
+      process.curves(),
+      process.jump_intensity(),
+      process.jump_sizes(),
+      process.step_first(),
+      process.gamma_draws(),
+      process.lift_spec(),
+      process.series_terms(),
+      process.table_spec(),
+      process.program_spec(),
+      reduce,
+      // The first plane again: one value a path, the component a one-state
+      // family reports.
+      |data| data[..m.min(data.len())].to_vec(),
     )
   }
 
@@ -618,6 +662,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.series_terms(),
       process.table_spec(),
       process.program_spec(),
+      Reduce::None,
       |data| {
         f(ndarray::ArrayView2::from_shape((m, n), data)
           .expect("the kernel returns m * n values for a one-component family"))
@@ -656,6 +701,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.series_terms(),
       process.table_spec(),
       process.program_spec(),
+      Reduce::None,
       |data| {
         Array3::from_shape_vec((D, m, process.grid_points()), data.to_vec())
           .expect("the kernel returns components * m * n values")
@@ -746,6 +792,7 @@ fn device_paths<T: FloatExt, O>(
   series: Option<u32>,
   table: Option<crate::euler::TableSpec<T>>,
   program: Option<crate::euler::ProgramSpec<'_>>,
+  reduce: Reduce,
   finish: impl FnOnce(&[T]) -> O,
 ) -> Result<O> {
   {
@@ -866,6 +913,7 @@ fn device_paths<T: FloatExt, O>(
         table_u0.to_f64().unwrap_or(0.0),
         &program64,
         program_n,
+        reduce,
         // The branch this is in establishes that `T` is `f64`, so the values
         // are already in the caller's precision.
         |data| finish(unsafe { std::slice::from_raw_parts(data.as_ptr() as *const T, data.len()) }),
@@ -945,6 +993,7 @@ fn device_paths<T: FloatExt, O>(
       table_u0.to_f64().unwrap_or(0.0) as f32,
       &program32,
       program_n,
+      reduce,
       // The assert above says `T` is `f32` here, so the values are already
       // the caller's precision.
       |data| finish(unsafe { std::slice::from_raw_parts(data.as_ptr() as *const T, data.len()) }),

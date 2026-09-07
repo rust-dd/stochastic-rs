@@ -131,6 +131,11 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
     crate::euler::EulerBackend::euler_paths_map_view(&self.fgn.backend, self, m, f)
   }
 
+  fn sample_reduce(&self, m: usize, reduce: crate::euler::Reduce) -> Vec<T> {
+    crate::euler::EulerBackend::try_euler_reduce(&self.fgn.backend, self, m, reduce)
+      .unwrap_or_else(crate::device::device_panic)
+  }
+
   /// The `m` fGN noises are generated in one batched backend call, then each
   /// path is assembled (cumulative sum) on the host across all cores.
   ///

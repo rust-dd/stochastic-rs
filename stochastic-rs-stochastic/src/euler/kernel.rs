@@ -178,6 +178,80 @@ pub(crate) enum Need {
   Uniforms,
 }
 
+use super::Reduce;
+
+impl Reduce {
+  /// The identity the accumulator starts at, as a C literal.
+  fn identity(self) -> &'static str {
+    match self {
+      Reduce::Max => "-INFINITY",
+      Reduce::Min => "INFINITY",
+      _ => "(REAL)0",
+    }
+  }
+
+  /// The fold, as a C expression over `acc[c]` and `reported[c]`.
+  fn fold(self) -> &'static str {
+    match self {
+      Reduce::Terminal => "reported[c]",
+      Reduce::Max => "acc[c] > reported[c] ? acc[c] : reported[c]",
+      Reduce::Min => "acc[c] < reported[c] ? acc[c] : reported[c]",
+      _ => "acc[c] + reported[c]",
+    }
+  }
+}
+
+/// The four splices a launch's output mode makes in the frame: the stride of
+/// a path in the buffer, the accumulator's declaration, and what the entry
+/// point, each step and the end of the loop do with a value.
+fn reduce_splices(reduce: Reduce) -> [(&'static str, String); 5] {
+  let store = |index: &str| {
+    format!(
+      "        for (unsigned int c = 0u; c < COMPONENTS; c++) {{ out[(INDEX)c * plane + base{index}] = acc[c]; }}"
+    )
+  };
+  match reduce {
+    Reduce::None => [
+      ("STRIDE", "steps".to_string()),
+      ("ACC_DECL", String::new()),
+      (
+        "ACC_ENTRY",
+        "        for (unsigned int c = 0u; c < COMPONENTS; c++) { out[(INDEX)c * plane + base] = reported[c]; }".to_string(),
+      ),
+      (
+        "ACC_STEP",
+        "        for (unsigned int c = 0u; c < COMPONENTS; c++) { out[(INDEX)c * plane + base + i] = reported[c]; }".to_string(),
+      ),
+      ("ACC_STORE", String::new()),
+    ],
+    _ => [
+      ("STRIDE", "1u".to_string()),
+      (
+        "ACC_DECL",
+        format!(
+          "    REAL acc[4];\n    for (unsigned int c = 0u; c < 4u; c++) {{ acc[c] = {}; }}",
+          reduce.identity()
+        ),
+      ),
+      (
+        "ACC_ENTRY",
+        format!(
+          "        for (unsigned int c = 0u; c < COMPONENTS; c++) {{ acc[c] = {}; }}",
+          reduce.fold()
+        ),
+      ),
+      (
+        "ACC_STEP",
+        format!(
+          "        for (unsigned int c = 0u; c < COMPONENTS; c++) {{ acc[c] = {}; }}",
+          reduce.fold()
+        ),
+      ),
+      ("ACC_STORE", store("")),
+    ],
+  }
+}
+
 pub(crate) const FRAME_BLOCKS: [(&str, Need); 14] = [
   (FRAME_LOCALS, Need::Always),
   (FRAME_SERIES_DRAW, Need::Series),
@@ -202,8 +276,9 @@ pub(crate) const FRAME_BLOCKS: [(&str, Need); 14] = [
 /// The 47-line block of [`FRAME_BLOCKS`].
 #[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
 const FRAME_LOCALS: &str = r#"    if (path >= paths) return;
-    INDEX base = (INDEX)path * steps;
-    INDEX plane = (INDEX)paths * steps;
+    INDEX base = (INDEX)path * STRIDE;
+    INDEX plane = (INDEX)paths * STRIDE;
+ACC_DECL
     REAL state[4];
     REAL reported[4];
     REAL noise[4];
@@ -335,7 +410,7 @@ const FRAME_ENTRY_REPORT: &str = r#"    for (unsigned int c = 0u; c < 4u; c++) {
     for (unsigned int c = 0u; c < 4u; c++) { noise[c] = (REAL)0; }
 REPORT
     if (step_first == 0u) {
-        for (unsigned int c = 0u; c < COMPONENTS; c++) { out[(INDEX)c * plane + base] = reported[c]; }
+ACC_ENTRY
     }"#;
 
 /// The step's own draws: the 64-bit cell key, a normal per noise component,
@@ -708,8 +783,9 @@ const FRAME_STEP: &str = r#"STEP
         }
         for (unsigned int c = 0u; c < 4u; c++) { reported[c] = state[c]; }
 REPORT
-        for (unsigned int c = 0u; c < COMPONENTS; c++) { out[(INDEX)c * plane + base + i] = reported[c]; }
+ACC_STEP
     }
+ACC_STORE
 "#;
 
 /// What a shading language substitutes into the kernel text.
@@ -856,6 +932,8 @@ pub(crate) struct Shape {
   pub(crate) components: u8,
   /// The launch draws gamma variates.
   pub(crate) gamma: bool,
+  /// What the launch writes: every step, or one folded value a path.
+  pub(crate) reduce: Reduce,
 }
 
 /// Whether `block` reads the identifier `name`.
@@ -923,7 +1001,13 @@ impl Shape {
       .any(|block| reads(block, "u") || reads(block, "u2")),
       noises: family.noises() as u8,
       components: family.components() as u8,
+      reduce: Reduce::None,
     }
+  }
+
+  /// The same shape, writing one folded value a path instead of every step.
+  pub(crate) fn with_reduce(self, reduce: Reduce) -> Self {
+    Self { reduce, ..self }
   }
 
   /// Whether the 512-slot convolution window is reachable at all.
@@ -974,6 +1058,9 @@ pub(crate) fn render_for(lang: &Language<'_>, shape: Shape) -> String {
     }
     format!("{indent}{{\n{}\n{indent}}}", body.trim_end_matches('\n'))
   };
+  let body = reduce_splices(shape.reduce)
+    .iter()
+    .fold(body, |body, (name, code)| body.replace(name, code));
   let body = body
     .replace("NOISES", &format!("{}u", shape.noises))
     .replace("COMPONENTS", &format!("{}u", shape.components))

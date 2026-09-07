@@ -2009,6 +2009,28 @@ pub trait EulerKernel<T: FloatExt>: Backend {
     Ok(f(chunk.view()))
   }
 
+  /// Paths `first .. first + m` folded to one value each, `components × m`
+  /// values in all.
+  ///
+  /// The default folds a whole launch on the host, which is what a backend
+  /// with nothing to gain should do; a device overrides it to fold in the
+  /// kernel, where the batch never has to be written or moved at all.
+  fn euler_kernel_reduce<P: EulerCoefficients<T>>(
+    &self,
+    process: &P,
+    first: usize,
+    m: usize,
+    seed: u64,
+    reduce: Reduce,
+  ) -> Result<Vec<T>, DeviceError> {
+    self.euler_kernel_lend(process, first, m, seed, |view| {
+      view
+        .outer_iter()
+        .map(|row| reduce.fold_row(row))
+        .collect::<Vec<T>>()
+    })
+  }
+
   /// Paths `first .. first + m` of a system's launch stream, as a
   /// `components × m × n` array.
   fn euler_system_kernel<const D: usize, P: EulerSystem<T, D>>(
@@ -2371,6 +2393,51 @@ pub fn system_row<T: FloatExt, const D: usize>(planes: &Array3<T>, row: usize) -
   std::array::from_fn(|c| planes.slice(ndarray::s![c, row, ..]).to_owned())
 }
 
+/// What a launch writes: every step of every path, or one value a path.
+///
+/// A reduction is what makes a device batch worth its bus. The engine's cost
+/// on a card behind PCIe is four bytes a step crossing it, and on a unified
+/// device it is the store itself — both scale with `paths × steps`, and both
+/// collapse to `paths` when the fold runs in the kernel. Every mode here is a
+/// fold the kernel can carry in one register a component, over exactly the
+/// points [`Reduce::None`] would have written, so a reduced launch and a
+/// folded sequence agree value for value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Reduce {
+  /// Every step, as `sample_par` returns it.
+  #[default]
+  None,
+  /// The last point of the path.
+  Terminal,
+  /// The largest value the path takes.
+  Max,
+  /// The smallest.
+  Min,
+  /// The sum over the path's points; divide by the grid size for a mean.
+  Sum,
+}
+
+impl Reduce {
+  /// Values a path writes under this mode: one, or the whole grid. What a
+  /// launch multiplies by `paths` to size its output.
+  pub fn stride(self, steps: usize) -> usize {
+    match self {
+      Reduce::None => steps,
+      _ => 1,
+    }
+  }
+
+  /// The fold, on the host, over the points a sequence launch would write.
+  pub fn fold_row<T: FloatExt>(self, row: ndarray::ArrayView1<T>) -> T {
+    match self {
+      Reduce::None | Reduce::Terminal => row[row.len() - 1],
+      Reduce::Max => row.iter().copied().fold(T::neg_infinity(), T::max),
+      Reduce::Min => row.iter().copied().fold(T::infinity(), T::min),
+      Reduce::Sum => row.iter().copied().fold(T::zero(), |a, b| a + b),
+    }
+  }
+}
+
 pub trait EulerBackend<T: FloatExt>: Backend {
   /// One path.
   fn try_sample<P: EulerCoefficients<T>>(&self, process: &P) -> Result<Array1<T>, DeviceError>;
@@ -2390,6 +2457,20 @@ pub trait EulerBackend<T: FloatExt>: Backend {
     m: usize,
     f: impl Fn(&Array1<T>) -> R + Sync,
   ) -> Result<Vec<R>, DeviceError>;
+
+  /// `m` paths folded to one value each, the fold running wherever the paths
+  /// are made.
+  ///
+  /// This is the one call that does not scale with the grid: a device writes
+  /// and returns `m` values instead of `m × n`, where the store and — behind
+  /// a bus — the crossing are the launch's largest costs. What comes back is
+  /// what [`Reduce::fold_row`] would have made of each path.
+  fn try_euler_reduce<P: EulerCoefficients<T>>(
+    &self,
+    process: &P,
+    m: usize,
+    reduce: Reduce,
+  ) -> Result<Vec<T>, DeviceError>;
 
   /// [`try_euler_paths_map`](Self::try_euler_paths_map) where the callback
   /// borrows the row. A device chunk is one `m × n` block already in host
@@ -2540,6 +2621,17 @@ macro_rules! host_euler_backend {
         Ok(sample_map_chunked(process, m, |path| f(path.view())))
       }
 
+      fn try_euler_reduce<P: EulerCoefficients<T>>(
+        &self,
+        process: &P,
+        m: usize,
+        reduce: Reduce,
+      ) -> Result<Vec<T>, DeviceError> {
+        Ok(sample_map_chunked(process, m, |path| {
+          reduce.fold_row(path.view())
+        }))
+      }
+
       fn try_euler_matrix<P: EulerCoefficients<T>>(
         &self,
         process: &P,
@@ -2673,6 +2765,33 @@ macro_rules! kernel_euler_backend {
           },
         )?;
         out.extend(chunk);
+        first += len;
+      }
+      Ok(out)
+    }
+
+    fn try_euler_reduce<P: EulerCoefficients<$scalar>>(
+      &self,
+      process: &P,
+      m: usize,
+      reduce: Reduce,
+    ) -> Result<Vec<$scalar>, DeviceError> {
+      let seed = process.device_seed();
+      // The budget is what a *sequence* launch would need: the kernel still
+      // steps the whole grid, it just does not write it, and the chunking
+      // stays what every other entry point uses so the noise does too.
+      let rows = crate::device::chunk_rows(
+        <Self as EulerKernel<$scalar>>::batch_budget(self),
+        process.grid_points(),
+        std::mem::size_of::<$scalar>(),
+      );
+      let mut out = Vec::with_capacity(m);
+      let mut first = 0;
+      while first < m {
+        let len = rows.min(m - first);
+        out.extend(<Self as EulerKernel<$scalar>>::euler_kernel_reduce(
+          self, process, first, len, seed, reduce,
+        )?);
         first += len;
       }
       Ok(out)
