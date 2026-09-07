@@ -398,7 +398,10 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
       .map(|x| x.to_f32().unwrap())
       .collect();
     let seed = seed_src.seed_value() as u32;
-    let rows = crate::device::chunk_rows(device.batch_budget, 4 * n + out_size, 4);
+    let budget = device
+      .batch_budget
+      .min(crate::euler::metal::working_set(device.ordinal));
+    let rows = crate::device::chunk_rows(budget, 4 * n + out_size, 4);
     let mut out = Array2::<T>::zeros((m, out_size));
     let mut first = 0;
     while first < m {

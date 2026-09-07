@@ -2005,15 +2005,13 @@ pub trait EulerKernel<T: FloatExt>: Backend {
       return self.euler_system_kernel(process, 0, m, seed);
     }
     let mut out = Array3::<T>::zeros((D, m, n));
-    let mut first = 0;
-    while first < m {
-      let len = rows.min(m - first);
+    crate::device::over_chunks(m, rows, |first, len| {
       let chunk = self.euler_system_kernel(process, first, len, seed)?;
       out
         .slice_mut(ndarray::s![.., first..first + len, ..])
         .assign(&chunk);
-      first += len;
-    }
+      Ok(())
+    })?;
     Ok(out)
   }
 
@@ -2031,15 +2029,13 @@ pub trait EulerKernel<T: FloatExt>: Backend {
       return self.euler_kernel(process, 0, m, seed);
     }
     let mut out = Array2::<T>::zeros((m, n));
-    let mut first = 0;
-    while first < m {
-      let len = rows.min(m - first);
+    crate::device::over_chunks(m, rows, |first, len| {
       let chunk = self.euler_kernel(process, first, len, seed)?;
       out
         .slice_mut(ndarray::s![first..first + len, ..])
         .assign(&chunk);
-      first += len;
-    }
+      Ok(())
+    })?;
     Ok(out)
   }
 }

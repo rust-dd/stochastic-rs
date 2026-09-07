@@ -215,6 +215,31 @@ pub(crate) fn metal_device(ordinal: usize) -> Result<Device> {
   }
 }
 
+/// Half of what the device at `ordinal` says it is comfortable holding,
+/// cached after the first query.
+///
+/// A handle's `batch_budget` is a guess — one gigabyte by default, whatever
+/// the device — and on a small GPU that guess is the difference between a
+/// launch and an allocation failure. Half, because the budget counts path
+/// data while a launch also holds its parameters, curves, lift tables and the
+/// fractional pipeline's own buffers. `usize::MAX` when the device will not
+/// open: a budget is not the place to report that, and the launch that
+/// follows reports it properly.
+pub(crate) fn working_set(ordinal: usize) -> usize {
+  static CACHED: Mutex<Option<(usize, usize)>> = Mutex::new(None);
+  let mut guard = CACHED.lock();
+  if let Some((seen, bytes)) = *guard
+    && seen == ordinal
+  {
+    return bytes;
+  }
+  let bytes = metal_device(ordinal)
+    .map(|d| (d.recommended_max_working_set_size() / 2) as usize)
+    .unwrap_or(usize::MAX);
+  *guard = Some((ordinal, bytes));
+  bytes
+}
+
 /// The Metal device at `ordinal`, or why it cannot be used.
 pub(crate) fn probe(ordinal: usize) -> Result<DeviceInfo> {
   let device = metal_device(ordinal)?;
@@ -433,7 +458,7 @@ impl EulerKernel<f32> for Metal {
   }
 
   fn batch_budget(&self) -> usize {
-    self.batch_budget
+    self.batch_budget.min(working_set(self.ordinal))
   }
 }
 

@@ -154,6 +154,12 @@ pub enum DeviceError {
   Compile(String),
   /// A kernel launch, allocation or copy failed at run time.
   Launch(String),
+  /// The device ran out of memory. Separate from [`Launch`](Self::Launch)
+  /// because it is the one device failure a caller can do something about:
+  /// the batch loops below halve their chunk and try again, and a chunk of
+  /// this engine is bit-identical however the batch is cut, so the retry
+  /// returns the same numbers rather than an approximation of them.
+  OutOfMemory(String),
 }
 
 impl fmt::Display for DeviceError {
@@ -162,7 +168,16 @@ impl fmt::Display for DeviceError {
       DeviceError::Unavailable(msg) => write!(f, "device unavailable: {msg}"),
       DeviceError::Compile(msg) => write!(f, "kernel compilation failed: {msg}"),
       DeviceError::Launch(msg) => write!(f, "device operation failed: {msg}"),
+      DeviceError::OutOfMemory(msg) => write!(f, "device out of memory: {msg}"),
     }
+  }
+}
+
+impl DeviceError {
+  /// Whether the device failed for want of memory, which a smaller chunk may
+  /// survive. Every other failure is the same however the batch is cut.
+  pub fn is_out_of_memory(&self) -> bool {
+    matches!(self, DeviceError::OutOfMemory(_))
   }
 }
 
@@ -249,6 +264,32 @@ pub(crate) fn env_budget() -> usize {
 /// Paths of `n` `elem`-byte scalars that fit `budget`, at least one.
 pub(crate) fn chunk_rows(budget: usize, n: usize, elem: usize) -> usize {
   (budget / (n.max(1) * elem.max(1))).max(1)
+}
+
+/// Runs `chunk(first, len)` over `m` rows, halving the chunk each time the
+/// device answers that it is out of memory, down to a single row.
+///
+/// The budget a handle carries is a guess — a fixed default, or a number the
+/// caller chose — and a guess that is too large is otherwise a hard failure
+/// on a device that would have served a smaller launch. Halving is safe here
+/// and nowhere else in the crate: an engine chunk is bit-identical however
+/// the batch is cut, so the retry produces the same paths.
+pub(crate) fn over_chunks(
+  m: usize,
+  rows: usize,
+  mut chunk: impl FnMut(usize, usize) -> Result<(), DeviceError>,
+) -> Result<(), DeviceError> {
+  let mut rows = rows.max(1);
+  let mut first = 0;
+  while first < m {
+    let len = rows.min(m - first);
+    match chunk(first, len) {
+      Ok(()) => first += len,
+      Err(e) if e.is_out_of_memory() && len > 1 => rows = len / 2,
+      Err(e) => return Err(e),
+    }
+  }
+  Ok(())
 }
 
 /// How many per-size device states (FFT plans, buffers) a back-end keeps.

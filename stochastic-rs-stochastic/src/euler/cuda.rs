@@ -24,6 +24,18 @@ use crate::traits::FloatExt;
 
 type Result<T> = std::result::Result<T, DeviceError>;
 
+/// A driver failure as a [`DeviceError`], with the one code a caller can act
+/// on kept apart: an allocation that ran out of memory is retried by the
+/// engine's batch loop with a smaller chunk, where every other code is the
+/// same however the batch is cut.
+fn driver_error(what: &str, e: DriverError) -> DeviceError {
+  if e.0 == cudarc::driver::sys::CUresult::CUDA_ERROR_OUT_OF_MEMORY {
+    DeviceError::OutOfMemory(format!("{what}: {e}"))
+  } else {
+    DeviceError::Launch(format!("{what}: {e}"))
+  }
+}
+
 /// Threads per block. The kernel carries a path's whole state — the four
 /// components, the 512-slot history block, the program stack — in registers
 /// and local memory, so occupancy is bounded by register pressure long before
@@ -196,10 +208,10 @@ where
   let stream = &kernels.stream;
   let d_params = stream
     .clone_htod(&params[..])
-    .map_err(|e| DeviceError::Launch(format!("htod params: {e}")))?;
+    .map_err(|e| driver_error("htod params", e))?;
   let mut d_out = stream
     .alloc_zeros::<R>(components as usize * m * n)
-    .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?;
+    .map_err(|e| driver_error("alloc out", e))?;
   let sqrt_dt = dt.sqrt();
   let (steps, paths, first_path) = (n as u32, m as u32, first as u32);
   // The kernel always binds the increment pointer; an unused slot gets one
@@ -212,7 +224,7 @@ where
     None => {
       owned = stream
         .alloc_zeros::<R>(1)
-        .map_err(|e| DeviceError::Launch(format!("alloc incs: {e}")))?;
+        .map_err(|e| driver_error("alloc incs", e))?;
       &owned
     }
   };
@@ -226,25 +238,25 @@ where
     d_lift.push(if table.is_empty() {
       stream
         .alloc_zeros::<R>(1)
-        .map_err(|e| DeviceError::Launch(format!("alloc lift: {e}")))?
+        .map_err(|e| driver_error("alloc lift", e))?
     } else {
       stream
         .clone_htod(table)
-        .map_err(|e| DeviceError::Launch(format!("htod lift: {e}")))?
+        .map_err(|e| driver_error("htod lift", e))?
     });
   }
   let d_curve = if curve.is_empty() {
     stream
       .alloc_zeros::<R>(1)
-      .map_err(|e| DeviceError::Launch(format!("alloc curve: {e}")))?
+      .map_err(|e| driver_error("alloc curve", e))?
   } else {
     stream
       .clone_htod(curve)
-      .map_err(|e| DeviceError::Launch(format!("htod curve: {e}")))?
+      .map_err(|e| driver_error("htod curve", e))?
   };
   let d_program = stream
     .clone_htod(program)
-    .map_err(|e| DeviceError::Launch(format!("htod program: {e}")))?;
+    .map_err(|e| driver_error("htod program", e))?;
   unsafe {
     stream
       .launch_builder(func(kernels))
@@ -301,7 +313,7 @@ where
   }
   stream
     .clone_dtoh(&d_out)
-    .map_err(|e| DeviceError::Launch(format!("dtoh: {e}")))
+    .map_err(|e| driver_error("dtoh", e))
 }
 
 impl<T: FloatExt> EulerKernel<T> for Cuda {
@@ -708,10 +720,10 @@ where
 {
   let d_params = stream
     .clone_htod(&params[..])
-    .map_err(|e| DeviceError::Launch(format!("htod params: {e}")))?;
+    .map_err(|e| driver_error("htod params", e))?;
   let mut d_out = stream
     .alloc_zeros::<R>(components as usize * m * n)
-    .map_err(|e| DeviceError::Launch(format!("alloc out: {e}")))?;
+    .map_err(|e| driver_error("alloc out", e))?;
   let sqrt_dt = dt.sqrt();
   let (steps, paths, first_path) = (n as u32, m as u32, first as u32);
   // The kernel always binds the increment pointer; an unused slot gets one
@@ -724,7 +736,7 @@ where
     None => {
       owned = stream
         .alloc_zeros::<R>(1)
-        .map_err(|e| DeviceError::Launch(format!("alloc incs: {e}")))?;
+        .map_err(|e| driver_error("alloc incs", e))?;
       &owned
     }
   };
@@ -738,25 +750,25 @@ where
     d_lift.push(if table.is_empty() {
       stream
         .alloc_zeros::<R>(1)
-        .map_err(|e| DeviceError::Launch(format!("alloc lift: {e}")))?
+        .map_err(|e| driver_error("alloc lift", e))?
     } else {
       stream
         .clone_htod(table)
-        .map_err(|e| DeviceError::Launch(format!("htod lift: {e}")))?
+        .map_err(|e| driver_error("htod lift", e))?
     });
   }
   let d_curve = if curve.is_empty() {
     stream
       .alloc_zeros::<R>(1)
-      .map_err(|e| DeviceError::Launch(format!("alloc curve: {e}")))?
+      .map_err(|e| driver_error("alloc curve", e))?
   } else {
     stream
       .clone_htod(curve)
-      .map_err(|e| DeviceError::Launch(format!("htod curve: {e}")))?
+      .map_err(|e| driver_error("htod curve", e))?
   };
   let d_program = stream
     .clone_htod(program)
-    .map_err(|e| DeviceError::Launch(format!("htod program: {e}")))?;
+    .map_err(|e| driver_error("htod program", e))?;
   unsafe {
     stream
       .launch_builder(func)
@@ -945,7 +957,7 @@ where
     let dst = unsafe { std::slice::from_raw_parts_mut(staging[slot].ptr, planes * len * n) };
     streams[slot]
       .memcpy_dtoh(&d_out, dst)
-      .map_err(|e| DeviceError::Launch(format!("dtoh chunk: {e}")))?;
+      .map_err(|e| driver_error("dtoh chunk", e))?;
     in_flight[slot] = Some((d_out, first, len));
     first += len;
     k += 1;
