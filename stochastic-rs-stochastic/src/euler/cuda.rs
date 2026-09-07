@@ -345,8 +345,15 @@ fn ensure_kernels(ordinal: usize, shape: Shape, real: &'static str) -> Result<()
   Ok(())
 }
 
+/// One launch, with `finish` run over the values it wrote.
+///
+/// The finisher is what lets a caller that only reads the batch — a mapped
+/// fold, say — never see a copy of it: the page-locked landing buffer is lent
+/// for the call and taken back after, where a caller that wants to own the
+/// values copies them itself. On a host with slow pages that copy is the
+/// larger part of the wall, bigger than the bus crossing it follows.
 #[allow(clippy::too_many_arguments)]
-fn run<R>(
+fn run<R, O>(
   ordinal: usize,
   real: &'static str,
   params: [R; crate::euler::PARAM_SLOTS],
@@ -389,7 +396,8 @@ fn run<R>(
   table_u0: R,
   program: &[R],
   program_n: u32,
-) -> Result<Vec<R>>
+  finish: impl FnOnce(&[R]) -> O,
+) -> Result<O>
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float + CachedOut,
 {
@@ -532,7 +540,7 @@ where
   stream
     .synchronize()
     .map_err(|e| driver_error("dtoh sync", e))?;
-  let out = unsafe { staging.as_slice(out_len) }.to_vec();
+  let out = finish(unsafe { staging.as_slice(out_len) });
   {
     let mut guard = KERNELS.lock();
     let kernels = guard.as_mut().expect("initialised");
@@ -550,7 +558,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
     m: usize,
     seed: u64,
   ) -> Result<Array2<T>> {
-    let planes = device_paths(
+    device_paths(
       self.ordinal,
       process.euler_spec(),
       process.initial_state(),
@@ -569,8 +577,52 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.series_terms(),
       process.table_spec(),
       process.program_spec(),
-    )?;
-    Ok(planes.index_axis_move(ndarray::Axis(0), 0))
+      |data| {
+        Array2::from_shape_vec((m, process.grid_points()), data.to_vec())
+          .expect("the kernel returns m * n values for a one-component family")
+      },
+    )
+  }
+
+  /// The launch's rows lent to `f` rather than copied out.
+  ///
+  /// The page-locked landing buffer is what `f` reads, so the batch crosses
+  /// the bus once and is not copied again on this side. That second copy is
+  /// the larger of the two on a host with slow pages: forty megabytes of
+  /// fresh `Vec` is ten thousand first-touch faults before a byte moves.
+  fn euler_kernel_lend<P: EulerCoefficients<T>, O>(
+    &self,
+    process: &P,
+    first: usize,
+    m: usize,
+    seed: u64,
+    f: impl FnOnce(ndarray::ArrayView2<T>) -> O,
+  ) -> Result<O> {
+    let n = process.grid_points();
+    device_paths(
+      self.ordinal,
+      process.euler_spec(),
+      process.initial_state(),
+      n,
+      process.time_step(),
+      first,
+      m,
+      seed,
+      process.fgn_spec(),
+      process.curves(),
+      process.jump_intensity(),
+      process.jump_sizes(),
+      process.step_first(),
+      process.gamma_draws(),
+      process.lift_spec(),
+      process.series_terms(),
+      process.table_spec(),
+      process.program_spec(),
+      |data| {
+        f(ndarray::ArrayView2::from_shape((m, n), data)
+          .expect("the kernel returns m * n values for a one-component family"))
+      },
+    )
   }
 
   /// A system's launch: the same kernel, its state slots filled from the
@@ -604,6 +656,10 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.series_terms(),
       process.table_spec(),
       process.program_spec(),
+      |data| {
+        Array3::from_shape_vec((D, m, process.grid_points()), data.to_vec())
+          .expect("the kernel returns components * m * n values")
+      },
     )
   }
 
@@ -668,9 +724,10 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
   }
 }
 
-/// The kernel launch for an explicit specification.
+/// The kernel launch for an explicit specification, with `finish` run over
+/// the `components × m × n` values it wrote, in the caller's precision.
 #[allow(clippy::too_many_arguments)]
-fn device_paths<T: FloatExt>(
+fn device_paths<T: FloatExt, O>(
   ordinal: usize,
   spec: EulerSpec<T>,
   x0: [T; 4],
@@ -689,7 +746,8 @@ fn device_paths<T: FloatExt>(
   series: Option<u32>,
   table: Option<crate::euler::TableSpec<T>>,
   program: Option<crate::euler::ProgramSpec<'_>>,
-) -> Result<Array3<T>> {
+  finish: impl FnOnce(&[T]) -> O,
+) -> Result<O> {
   {
     let (curve, n_curves) = crate::euler::flatten_curves(curves, n);
     let (program_t, program_n) = crate::euler::encode_programs::<T>(program.as_ref());
@@ -734,9 +792,8 @@ fn device_paths<T: FloatExt>(
         (law, f(s1), f(c1), f(p1), f(s2), f(c2), f(p2))
       });
     let (components, noises) = (arity.components() as u32, arity.noises() as u32);
-    let planes = components as usize;
     if n == 0 || m == 0 {
-      return Ok(Array3::<T>::zeros((planes, m, n)));
+      return Ok(finish(&[]));
     }
     let dt = dt.to_f64().unwrap_or(0.0);
     let seed32 = (seed ^ (seed >> 32)) as u32;
@@ -766,7 +823,7 @@ fn device_paths<T: FloatExt>(
         None => None,
       };
       let curve64: Vec<f64> = curve.iter().map(|v| v.to_f64().unwrap_or(0.0)).collect();
-      let data = run::<f64>(
+      return run::<f64, O>(
         ordinal,
         "double",
         p64,
@@ -809,10 +866,10 @@ fn device_paths<T: FloatExt>(
         table_u0.to_f64().unwrap_or(0.0),
         &program64,
         program_n,
-      )?;
-      let out = Array3::<f64>::from_shape_vec((planes, m, n), data)
-        .expect("the kernel returns components * m * n values");
-      return Ok(unsafe { std::mem::transmute::<Array3<f64>, Array3<T>>(out) });
+        // The branch this is in establishes that `T` is `f64`, so the values
+        // are already in the caller's precision.
+        |data| finish(unsafe { std::slice::from_raw_parts(data.as_ptr() as *const T, data.len()) }),
+      );
     }
     let p32: [f32; crate::euler::PARAM_SLOTS] = std::array::from_fn(|i| p64[i] as f32);
     let lift_tables32: Vec<Vec<f32>> = lift_tables64
@@ -841,7 +898,11 @@ fn device_paths<T: FloatExt>(
       None => None,
     };
     let curve32: Vec<f32> = curve.iter().map(|v| v.to_f32().unwrap_or(0.0)).collect();
-    let data = run::<f32>(
+    assert!(
+      TypeId::of::<T>() == TypeId::of::<f32>(),
+      "FloatExt is implemented for f32 and f64 only"
+    );
+    run::<f32, O>(
       ordinal,
       "float",
       p32,
@@ -884,14 +945,10 @@ fn device_paths<T: FloatExt>(
       table_u0.to_f64().unwrap_or(0.0) as f32,
       &program32,
       program_n,
-    )?;
-    assert!(
-      TypeId::of::<T>() == TypeId::of::<f32>(),
-      "FloatExt is implemented for f32 and f64 only"
-    );
-    let out = Array3::<f32>::from_shape_vec((planes, m, n), data)
-      .expect("the kernel returns components * m * n values");
-    Ok(unsafe { std::mem::transmute::<Array3<f32>, Array3<T>>(out) })
+      // The assert above says `T` is `f32` here, so the values are already
+      // the caller's precision.
+      |data| finish(unsafe { std::slice::from_raw_parts(data.as_ptr() as *const T, data.len()) }),
+    )
   }
 }
 
