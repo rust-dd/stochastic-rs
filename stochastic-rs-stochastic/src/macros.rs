@@ -172,6 +172,25 @@ macro_rules! py_process_1d {
         s
       }
 
+      /// Why this configuration cannot run on a device kernel, or `None`
+      /// when it can — a grid past a per-path array, a dimension past the
+      /// state slots, a coefficient that is a closure, a mode with no grid.
+      ///
+      /// The question is about the configuration, not the handle, so the
+      /// answer is the same whatever `device=` was passed, and a `device=`
+      /// that cannot be honoured samples on the host at a cost this is the
+      /// only way to see coming.
+      fn device_fallback(&self) -> Option<&'static str> {
+        use $crate::traits::ProcessExt;
+        $crate::py_dispatch!(self, |inner| inner.device_fallback())
+      }
+
+      /// Whether this configuration runs on a device kernel: the absence of
+      /// a [`device_fallback`](Self::device_fallback) reason.
+      fn device_ready(&self) -> bool {
+        self.device_fallback().is_none()
+      }
+
       fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
         use numpy::IntoPyArray;
         use $crate::traits::ProcessExt;
@@ -237,6 +256,25 @@ macro_rules! py_process_1d {
           (None, _) => { s.inner_f64 = Some($inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param),)* stochastic_rs_core::simd_rng::Unseeded)); },
         }
         Ok(s)
+      }
+
+      /// Why this configuration cannot run on a device kernel, or `None`
+      /// when it can — a grid past a per-path array, a dimension past the
+      /// state slots, a coefficient that is a closure, a mode with no grid.
+      ///
+      /// The question is about the configuration, not the handle, so the
+      /// answer is the same whatever `device=` was passed, and a `device=`
+      /// that cannot be honoured samples on the host at a cost this is the
+      /// only way to see coming.
+      fn device_fallback(&self) -> Option<&'static str> {
+        use $crate::traits::ProcessExt;
+        $crate::py_dispatch!(self, |inner| inner.device_fallback())
+      }
+
+      /// Whether this configuration runs on a device kernel: the absence of
+      /// a [`device_fallback`](Self::device_fallback) reason.
+      fn device_ready(&self) -> bool {
+        self.device_fallback().is_none()
       }
 
       fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
@@ -312,6 +350,25 @@ macro_rules! py_process_2x1d {
         s
       }
 
+      /// Why this configuration cannot run on a device kernel, or `None`
+      /// when it can — a grid past a per-path array, a dimension past the
+      /// state slots, a coefficient that is a closure, a mode with no grid.
+      ///
+      /// The question is about the configuration, not the handle, so the
+      /// answer is the same whatever `device=` was passed, and a `device=`
+      /// that cannot be honoured samples on the host at a cost this is the
+      /// only way to see coming.
+      fn device_fallback(&self) -> Option<&'static str> {
+        use $crate::traits::ProcessExt;
+        $crate::py_dispatch!(self, |inner| inner.device_fallback())
+      }
+
+      /// Whether this configuration runs on a device kernel: the absence of
+      /// a [`device_fallback`](Self::device_fallback) reason.
+      fn device_ready(&self) -> bool {
+        self.device_fallback().is_none()
+      }
+
       fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
         use numpy::IntoPyArray;
         use $crate::traits::ProcessExt;
@@ -374,6 +431,25 @@ macro_rules! py_process_2x1d {
           (None, _) => { s.inner_f64 = Some($inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param),)* stochastic_rs_core::simd_rng::Unseeded)); },
         }
         Ok(s)
+      }
+
+      /// Why this configuration cannot run on a device kernel, or `None`
+      /// when it can — a grid past a per-path array, a dimension past the
+      /// state slots, a coefficient that is a closure, a mode with no grid.
+      ///
+      /// The question is about the configuration, not the handle, so the
+      /// answer is the same whatever `device=` was passed, and a `device=`
+      /// that cannot be honoured samples on the host at a cost this is the
+      /// only way to see coming.
+      fn device_fallback(&self) -> Option<&'static str> {
+        use $crate::traits::ProcessExt;
+        $crate::py_dispatch!(self, |inner| inner.device_fallback())
+      }
+
+      /// Whether this configuration runs on a device kernel: the absence of
+      /// a [`device_fallback`](Self::device_fallback) reason.
+      fn device_ready(&self) -> bool {
+        self.device_fallback().is_none()
       }
 
       fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
@@ -446,6 +522,25 @@ macro_rules! py_process_2d {
         s
       }
 
+      /// Why this configuration cannot run on a device kernel, or `None`
+      /// when it can — a grid past a per-path array, a dimension past the
+      /// state slots, a coefficient that is a closure, a mode with no grid.
+      ///
+      /// The question is about the configuration, not the handle, so the
+      /// answer is the same whatever `device=` was passed, and a `device=`
+      /// that cannot be honoured samples on the host at a cost this is the
+      /// only way to see coming.
+      fn device_fallback(&self) -> Option<&'static str> {
+        use $crate::traits::ProcessExt;
+        $crate::py_dispatch!(self, |inner| inner.device_fallback())
+      }
+
+      /// Whether this configuration runs on a device kernel: the absence of
+      /// a [`device_fallback`](Self::device_fallback) reason.
+      fn device_ready(&self) -> bool {
+        self.device_fallback().is_none()
+      }
+
       fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
         use numpy::IntoPyArray;
         use $crate::traits::ProcessExt;
@@ -500,6 +595,25 @@ macro_rules! py_process_2d {
           (None, _) => { s.inner_f64 = Some($inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param),)* stochastic_rs_core::simd_rng::Unseeded)); },
         }
         Ok(s)
+      }
+
+      /// Why this configuration cannot run on a device kernel, or `None`
+      /// when it can — a grid past a per-path array, a dimension past the
+      /// state slots, a coefficient that is a closure, a mode with no grid.
+      ///
+      /// The question is about the configuration, not the handle, so the
+      /// answer is the same whatever `device=` was passed, and a `device=`
+      /// that cannot be honoured samples on the host at a cost this is the
+      /// only way to see coming.
+      fn device_fallback(&self) -> Option<&'static str> {
+        use $crate::traits::ProcessExt;
+        $crate::py_dispatch!(self, |inner| inner.device_fallback())
+      }
+
+      /// Whether this configuration runs on a device kernel: the absence of
+      /// a [`device_fallback`](Self::device_fallback) reason.
+      fn device_ready(&self) -> bool {
+        self.device_fallback().is_none()
       }
 
       fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
