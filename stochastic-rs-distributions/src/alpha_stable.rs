@@ -175,6 +175,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdAlphaStable<T, R> {
     let inv_alpha = T::one() / alpha;
     let exp_term = (T::one() - alpha) / alpha;
     let min_pos = T::splat(T::min_positive_val());
+    let cos_floor = T::splat(T::epsilon());
 
     let mut u = [T::zero(); 8];
     let mut e = [T::zero(); 8];
@@ -193,7 +194,14 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdAlphaStable<T, R> {
       let w = -T::simd_ln(e_v);
       let phi = a * (v + b_v);
       let numer = T::simd_sin(phi);
-      let denom = T::simd_powf(T::simd_cos(v), inv_alpha);
+      // `cos(v)` is positive everywhere `v` is drawn from, but the lane-wise
+      // cosine is an approximation: within an ulp of ±pi/2 it can come back a
+      // small negative or a denormal, and `powf` then returns a NaN or a
+      // denominator that overflows the quotient — one draw in about ten
+      // million in `f32`. The floor is the type's own epsilon, which sits
+      // below the smallest cosine a uniform of that precision can produce, so
+      // it bites only on the approximation and not on the law.
+      let denom = T::simd_powf(T::simd_max(T::simd_cos(v), cos_floor), inv_alpha);
       let ratio = T::simd_max(T::simd_cos(v - phi) / w, min_pos);
       let tail = T::simd_powf(ratio, exp_term);
       let x = loc + scale * s_v * (numer / denom) * tail;
@@ -212,7 +220,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdAlphaStable<T, R> {
       let w = -T::simd_ln(e_v);
       let phi = a * (v + b_v);
       let numer = T::simd_sin(phi);
-      let denom = T::simd_powf(T::simd_cos(v), inv_alpha);
+      // The same cosine floor as above.
+      let denom = T::simd_powf(T::simd_max(T::simd_cos(v), cos_floor), inv_alpha);
       let ratio = T::simd_max(T::simd_cos(v - phi) / w, min_pos);
       let tail = T::simd_powf(ratio, exp_term);
       let x = T::simd_to_array(loc + scale * s_v * (numer / denom) * tail);
@@ -411,6 +420,33 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
+
+  /// Every single-precision draw is finite.
+  ///
+  /// The Chambers-Mallows-Stuck form divides by `cos(v)^(1/alpha)`, and `v`
+  /// is drawn from the open interval where that cosine is positive — but the
+  /// lane-wise cosine is an approximation, and within an ulp of ±pi/2 it can
+  /// return a small negative, which turns the fractional power into a NaN.
+  /// The rate is about one draw in ten million, so the seed is pinned to one
+  /// that hits it: seed 2 fails 352 453 draws in, whatever `alpha` is, since
+  /// the offending value is in the uniform stream rather than the law. A
+  /// Levy fractional stable motion path turning to NaN is how it first
+  /// showed up.
+  #[test]
+  fn single_precision_draws_stay_finite() {
+    for alpha in [0.9_f64, 1.1, 1.5, 1.7, 1.9] {
+      let dist = SimdAlphaStable::<f32>::new(alpha as f32, 0.2, 1.0, 0.0, &Deterministic::new(2));
+      let mut out = vec![0.0_f32; 360_000];
+      dist.fill_slice(&mut out);
+      let bad = out.iter().filter(|x| !x.is_finite()).count();
+      assert_eq!(
+        bad,
+        0,
+        "alpha = {alpha}: {bad} non-finite draws of {}",
+        out.len()
+      );
+    }
+  }
 
   #[test]
   fn alpha_stable_samples_are_finite() {
