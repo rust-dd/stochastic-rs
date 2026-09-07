@@ -26,6 +26,24 @@ an unavailable backend — or `f64` on a `f32`-only device — is a
 this: it is 742 lines, current, and it is the contract. `euler.rs` (510
 lines) is the second half.
 
+## 0. What a back-end owes the caller
+
+Three things, added in the September 2026 API round and easy to leave out of
+a new back-end:
+
+- **A budget that the device agrees with.** A handle's `batch_budget` is a
+  guess (one gigabyte by default); clamp it with what the device reports —
+  `euler::metal::working_set` halves `recommended_max_working_set_size()` and
+  the CUDA side has the driver's own figure. A guess too large is an
+  allocation failure on hardware that would have served a smaller launch.
+- **An out-of-memory failure the caller can act on.** Map the driver's OOM
+  code to `DeviceError::OutOfMemory`, never to `Launch`: `device::over_chunks`
+  halves the chunk and retries on that variant alone, which is sound because
+  an engine chunk is bit-identical however the batch is cut.
+- **A reason, not a bool.** A configuration the kernels cannot carry is
+  reported by `ProcessExt::device_fallback()` as a `&'static str`;
+  `device_ready()` is derived from it. Never override the bool.
+
 ## 1. The four backends and their real feature names
 
 | Handle | Feature | What it is | Precisions |
