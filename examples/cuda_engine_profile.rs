@@ -166,8 +166,11 @@ fn main() {
      against the same host. Throughput that stays flat as the batch grows is \
      the tell that the kernel is no longer the cost: what is left is the \
      device-to-host copy and the host-side assembly, which scale with cells \
-     and not with occupancy. The same changes took an M4 Max from 0.70 to \
-     10.10 G steps/s at 200k paths, 3.7x its CPU, where the copy is free \
-     because the memory is unified."
+     and not with occupancy. An M4 Max went from 0.70 to 47.67 G steps/s over \
+     the same period, but most of that was host-side and a card behind a bus \
+     cannot have it: unified memory let the batch be *lent* to the caller \
+     where PCIe has to be crossed. Every step's four bytes must make that \
+     crossing, which caps this shape near 3 G steps/s on a PCIe 3 card \
+     whatever the kernel does."
   );
 }
