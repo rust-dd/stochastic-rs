@@ -2,6 +2,7 @@
 name = "stochastic-rs-stats"
 version.workspace = true
 edition = "2024"
+rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
 description = "Statistical estimators for stochastic processes."

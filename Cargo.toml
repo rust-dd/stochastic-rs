@@ -12,6 +12,7 @@ members = [
 
 [workspace.package]
 version = "3.0.0-rc.1"
+rust-version = "1.89"
 
 [workspace.dependencies]
 # Internal crates
@@ -101,6 +102,7 @@ syn = { version = "3.0.3", default-features = false, features = ["full", "parsin
 name = "stochastic-rs"
 version.workspace = true
 edition = "2024"
+rust-version.workspace = true
 license = "MIT"
 description = "Quantitative finance in Rust: 120+ stochastic processes, option pricing, model calibration, volatility surfaces, fixed income, risk and copulas — SIMD/GPU accelerated, with Python bindings."
 homepage = "https://stochastic.rust-dd.com"

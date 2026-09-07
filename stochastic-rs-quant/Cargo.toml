@@ -2,6 +2,7 @@
 name = "stochastic-rs-quant"
 version.workspace = true
 edition = "2024"
+rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
 description = "Quantitative finance: pricing, calibration, vol surfaces, instruments."
