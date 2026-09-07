@@ -222,6 +222,26 @@ ziggurat in the kernel would buy nothing, and a time-major output layout —
 coalesced across a simdgroup, scattered within a thread — was *slower* on
 Apple hardware, where thread locality wins.
 
+### One traversal, not two
+
+The table above maps with `sample_map`, whose callback takes an owned path.
+A device batch arrives as one `m × n` block, so that means copying every row
+out of it after the copy that already crossed the bus — the whole batch
+walked twice. `sample_map_view` hands the callback an `ArrayView1` of the
+block instead, and most callbacks compile unchanged, since a view indexes,
+iterates and reduces like the array it borrows:
+
+| paths × steps | `sample_map` | `sample_map_view` | |
+|--------------:|-------------:|------------------:|---:|
+| 10 000 × 1 024 | 2.0 ms | **1.7 ms** | 1.20× |
+| 50 000 × 1 024 | 6.8 ms | **4.4 ms** | 1.56× |
+| 200 000 × 1 024 | 20.7 ms | **17.3 ms** | 1.20× |
+
+On the host the two are within noise of each other, which is the point: a
+host path is already an owned array, so the view neither costs nor saves
+anything there. The gain is the device batch's second traversal, and it is
+larger where the batch is large enough to leave cache between the two walks.
+
 ## Euler engine — CPU against CUDA
 
 The same measurement, the same `examples/cuda_engine_profile`, on a **Tesla
