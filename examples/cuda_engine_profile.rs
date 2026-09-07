@@ -8,11 +8,13 @@
 //! worth using for this engine*:
 //!
 //! 1. **The kernel's own shape** — registers and local memory per thread, and
-//!    the blocks per multiprocessor that follow. The engine compiles one
-//!    monolithic kernel that carries every family's step, every optional
-//!    frame block and the scratch they need, so a launch of any one family
-//!    pays for all of them. If occupancy here is low, that is the reason, and
-//!    a per-family kernel is the fix.
+//!    the share of a multiprocessor's thread slots that leaves the launch.
+//!    The engine renders one kernel per launch shape, carrying that family's
+//!    step alone, so a low occupancy here would mean the specialisation did
+//!    not reach this family. The denominator is read from the device: a
+//!    multiprocessor holds 1024 threads on Turing and 2048 on most other
+//!    generations, and assuming either reports the other's full
+//!    multiprocessor at half or double what it is.
 //! 2. **Throughput against the host**, in steps per second, over a few batch
 //!    shapes and both precisions. On an Apple M4 Max the same measurement now
 //!    gives 5–10 G steps/s on Metal against 2.3–2.7 on the CPU, where before
@@ -66,13 +68,14 @@ fn main() {
     match kernel_profile(0, real, BLOCK) {
       Ok(p) => println!(
         "  {real:6}  {:4} registers/thread  {:6} B local/thread  {:5} B shared  \
-         max block {:4}  {:2} blocks/SM  ({:3}% of a 2048-thread SM)",
+         max block {:4}  {:2} blocks/SM  ({:3}% of this SM's {} thread slots)",
         p.registers,
         p.local_bytes,
         p.shared_bytes,
         p.max_threads_per_block,
         p.blocks_per_multiprocessor,
-        p.blocks_per_multiprocessor * BLOCK * 100 / 2048,
+        p.occupancy_percent(),
+        p.threads_per_multiprocessor,
       ),
       Err(e) => println!("  {real}: {e}"),
     }
@@ -147,12 +150,17 @@ fn main() {
   }
 
   println!(
-    "\nWhat to read: local memory per thread should now be zero for a plain \
+    "\nWhat to read: local memory per thread should be zero for a plain \
      diffusion — the kernel is rendered for one family and declares no scratch \
-     it cannot reach — and the blocks per multiprocessor should be what the \
-     registers alone allow. A T4 reported 80 registers and 3552 bytes of local \
-     memory before that change, at 37% occupancy and 0.15 G steps/s against \
-     0.21 on its host. The same three changes took an M4 Max from 0.70 to \
-     10.10 G steps/s at 200k paths, 3.7x its CPU."
+     it cannot reach — and the occupancy should be what the registers alone \
+     allow. A T4 reported 80 registers, 3552 bytes of local memory and 37% \
+     occupancy before that change, at 0.15 G steps/s against 0.21 on its host; \
+     after it, 31 registers, no local memory, a full multiprocessor and 0.31 \
+     against the same host. Throughput that stays flat as the batch grows is \
+     the tell that the kernel is no longer the cost: what is left is the \
+     device-to-host copy and the host-side assembly, which scale with cells \
+     and not with occupancy. The same changes took an M4 Max from 0.70 to \
+     10.10 G steps/s at 200k paths, 3.7x its CPU, where the copy is free \
+     because the memory is unified."
   );
 }
