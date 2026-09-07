@@ -56,6 +56,7 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Array3;
 use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::traits::Program;
 
@@ -1980,6 +1981,31 @@ pub trait EulerKernel<T: FloatExt>: Backend {
     seed: u64,
   ) -> Result<Array2<T>, DeviceError>;
 
+  /// [`euler_kernel`](Self::euler_kernel) with the launch *lent* to `f`
+  /// rather than handed over: `f` reads an `m × n` view and returns what it
+  /// made of it, and the paths never have to be copied anywhere.
+  ///
+  /// A unified-memory device overrides this — its kernel writes where the
+  /// CPU already reads, so the copy the owning form has to make is pure
+  /// loss. It is not a small share: at two hundred thousand paths over a
+  /// thousand points the batch is eight hundred megabytes, and copying it
+  /// out took three times what the kernel that produced it did. The default
+  /// is the copy, which is what a device behind a bus pays anyway.
+  ///
+  /// The view is valid only for the call; a device may reuse the memory
+  /// behind it as soon as `f` returns.
+  fn euler_kernel_lend<P: EulerCoefficients<T>, O>(
+    &self,
+    process: &P,
+    first: usize,
+    m: usize,
+    seed: u64,
+    f: impl FnOnce(ArrayView2<T>) -> O,
+  ) -> Result<O, DeviceError> {
+    let chunk = self.euler_kernel(process, first, m, seed)?;
+    Ok(f(chunk.view()))
+  }
+
   /// Paths `first .. first + m` of a system's launch stream, as a
   /// `components × m × n` array.
   fn euler_system_kernel<const D: usize, P: EulerSystem<T, D>>(
@@ -2606,22 +2632,44 @@ macro_rules! kernel_euler_backend {
         // paths that was more than the kernel. The copy into it is the price
         // of an owned array; `try_euler_paths_map_view` below is the same
         // walk without it.
-        let chunk = <Self as EulerKernel<$scalar>>::euler_kernel(self, process, first, len, seed)?;
-        let n = chunk.ncols();
-        out.extend(
-          chunk
-            .outer_iter()
-            .collect::<Vec<_>>()
-            .into_par_iter()
-            .map_init(
-              || Array1::<$scalar>::zeros(n),
-              |buffer, row| {
-                buffer.assign(&row);
-                f(buffer)
-              },
-            )
-            .collect::<Vec<R>>(),
-        );
+        let chunk = <Self as EulerKernel<$scalar>>::euler_kernel_lend(
+          self,
+          process,
+          first,
+          len,
+          seed,
+          |view| {
+            let n = view.ncols();
+            match view.as_slice() {
+              // The lent batch is contiguous, so the rows are chunks of one
+              // slice: rayon splits them where they are instead of being fed
+              // a vector of two hundred thousand views built first.
+              Some(flat) => flat
+                .par_chunks(n.max(1))
+                .map_init(
+                  || Array1::<$scalar>::zeros(n),
+                  |buffer, row| {
+                    buffer.assign(&ArrayView1::from(row));
+                    f(buffer)
+                  },
+                )
+                .collect::<Vec<R>>(),
+              None => view
+                .outer_iter()
+                .collect::<Vec<_>>()
+                .into_par_iter()
+                .map_init(
+                  || Array1::<$scalar>::zeros(n),
+                  |buffer, row| {
+                    buffer.assign(&row);
+                    f(buffer)
+                  },
+                )
+                .collect::<Vec<R>>(),
+            }
+          },
+        )?;
+        out.extend(chunk);
         first += len;
       }
       Ok(out)
@@ -2644,18 +2692,34 @@ macro_rules! kernel_euler_backend {
       let mut first = 0;
       while first < m {
         let len = rows.min(m - first);
-        // The chunk is the launch buffer as it came back: the callback reads
-        // the rows where they already are, so the batch is walked once and
-        // nothing is allocated per path.
-        let chunk = <Self as EulerKernel<$scalar>>::euler_kernel(self, process, first, len, seed)?;
-        out.extend(
-          chunk
-            .outer_iter()
-            .collect::<Vec<_>>()
-            .into_par_iter()
-            .map(&f)
-            .collect::<Vec<R>>(),
-        );
+        // The chunk is the launch as the device holds it: on a unified-memory
+        // device that is the buffer the kernel wrote, so the batch is read
+        // once, where it lies, and nothing is copied or allocated per path.
+        let chunk = <Self as EulerKernel<$scalar>>::euler_kernel_lend(
+          self,
+          process,
+          first,
+          len,
+          seed,
+          |view| {
+            let n = view.ncols();
+            match view.as_slice() {
+              // As above: the rows of a contiguous batch are chunks of one
+              // slice, and rayon splits a slice without materialising it.
+              Some(flat) => flat
+                .par_chunks(n.max(1))
+                .map(|row| f(ArrayView1::from(row)))
+                .collect::<Vec<R>>(),
+              None => view
+                .outer_iter()
+                .collect::<Vec<_>>()
+                .into_par_iter()
+                .map(&f)
+                .collect::<Vec<R>>(),
+            }
+          },
+        )?;
+        out.extend(chunk);
         first += len;
       }
       Ok(out)

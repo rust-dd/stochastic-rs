@@ -200,6 +200,9 @@ struct Context {
   /// the kernel itself. A Monte-Carlo loop launches the same shape over and
   /// over, so the buffer is grown to the largest launch and reused. The fGN
   /// pipeline has had a cache like this since 2.6; the engine had none.
+  ///
+  /// A launch takes it out of here for as long as its caller is reading it,
+  /// and puts it back after. See [`run`].
   output: Option<Buffer>,
 
   /// One pipeline per launch shape, built on first use and kept.
@@ -316,7 +319,32 @@ pub(crate) enum Increments<'a> {
   Device(&'a Buffer, u32),
 }
 
-fn run(
+/// What `setBytes` will take, so a launch argument under it needs no buffer.
+const SET_BYTES_MAX: usize = 4096;
+
+/// Binds `values` at `slot` inside the command buffer. An empty slot still
+/// gets one float: Metal wants every declared buffer bound.
+fn bind(enc: &ComputeCommandEncoderRef, slot: u64, values: &[f32]) {
+  let one = [0.0f32];
+  let values = if values.is_empty() { &one[..] } else { values };
+  enc.set_bytes(
+    slot,
+    std::mem::size_of_val(values) as u64,
+    values.as_ptr() as *const _,
+  );
+}
+
+/// One launch, with `finish` run over the values it wrote.
+///
+/// The output lives in a shared buffer the CPU can already read, so `finish`
+/// reads it where it lies rather than being handed a copy: at two hundred
+/// thousand paths over a thousand points that copy was eight hundred
+/// megabytes and three quarters of the call — three times the kernel that
+/// produced it. The buffer is taken out of the context for the duration and
+/// put back after, so `finish` may itself launch on this device: that launch
+/// allocates a buffer of its own rather than waiting on a lock this one still
+/// holds, or writing over the values being read.
+fn run<O>(
   ordinal: usize,
   params: [f32; crate::euler::PARAM_SLOTS],
   args: EulerArgs,
@@ -324,7 +352,8 @@ fn run(
   curve: &[f32],
   lift: [&[f32]; 3],
   program: &[f32],
-) -> Result<Vec<f32>> {
+  finish: impl FnOnce(&[f32]) -> O,
+) -> Result<O> {
   let shape = Shape::new(
     super::families::Family::from_code(args.family).expect("a declared family"),
     args.has_jumps != 0 || args.jump_law != 0,
@@ -339,67 +368,41 @@ fn run(
   if ctx.output.as_ref().is_none_or(|b| b.length() < bytes) {
     ctx.output = Some(ctx.device.new_buffer(bytes, shared));
   }
+  let out_buf = ctx.output.take().expect("just sized");
   let ctx = guard.as_ref().expect("initialised");
   let pipeline = ctx.pipelines.get(&shape).expect("compiled for this shape");
-  let out_buf = ctx.output.as_ref().expect("just sized");
-  let params_buf = ctx.device.new_buffer_with_data(
-    params.as_ptr() as *const _,
-    (crate::euler::PARAM_SLOTS * 4) as u64,
-    shared,
-  );
-  // Metal requires every declared buffer to be bound, so an unused increment
-  // slot still gets one float. A supplied buffer is bound as it stands: it was
-  // written on this device and never left it.
-  let owned;
-  let incs_buf = match increments {
-    Increments::Device(buf, _) => buf,
-    Increments::Hashed => {
-      owned = ctx.device.new_buffer(4, shared);
-      &owned
-    }
-  };
-  // As with the increment slot, an unused curve still gets a bound buffer.
-  let curve_buf = if curve.is_empty() {
-    ctx.device.new_buffer(4, shared)
-  } else {
+  // Every small argument travels inside the command buffer rather than in a
+  // buffer of its own: `setBytes` takes up to four kilobytes, which is all
+  // but the largest curve, and an allocation per launch is a driver call the
+  // launch does not need. A curve past that gets a buffer.
+  let big_curve = (curve.len() * 4 >= SET_BYTES_MAX).then(|| {
     ctx.device.new_buffer_with_data(
       curve.as_ptr() as *const _,
       std::mem::size_of_val(curve) as u64,
       shared,
     )
-  };
-  // The three lift tables, one float each when the launch has no lift.
-  let lift_bufs: Vec<Buffer> = lift
-    .iter()
-    .map(|table| {
-      if table.is_empty() {
-        ctx.device.new_buffer(4, shared)
-      } else {
-        ctx.device.new_buffer_with_data(
-          table.as_ptr() as *const _,
-          std::mem::size_of_val(*table) as u64,
-          shared,
-        )
-      }
-    })
-    .collect();
-  let program_buf = ctx.device.new_buffer_with_data(
-    program.as_ptr() as *const _,
-    std::mem::size_of_val(program) as u64,
-    shared,
-  );
+  });
   let cmd = ctx.queue.new_command_buffer();
   {
     let enc = cmd.new_compute_command_encoder();
     enc.set_compute_pipeline_state(pipeline);
-    enc.set_buffer(0, Some(out_buf), 0);
-    enc.set_buffer(1, Some(&params_buf), 0);
-    enc.set_buffer(3, Some(incs_buf), 0);
-    enc.set_buffer(4, Some(&curve_buf), 0);
-    for (slot, buf) in lift_bufs.iter().enumerate() {
-      enc.set_buffer(5 + slot as u64, Some(buf), 0);
+    enc.set_buffer(0, Some(&out_buf), 0);
+    bind(enc, 1, &params);
+    // Metal requires every declared buffer to be bound, so an unused
+    // increment slot still gets one float. A supplied buffer is bound as it
+    // stands: it was written on this device and never left it.
+    match increments {
+      Increments::Device(buf, _) => enc.set_buffer(3, Some(buf), 0),
+      Increments::Hashed => bind(enc, 3, &[0.0f32]),
     }
-    enc.set_buffer(8, Some(&program_buf), 0);
+    match big_curve.as_ref() {
+      Some(buf) => enc.set_buffer(4, Some(buf), 0),
+      None => bind(enc, 4, curve),
+    }
+    for (slot, table) in lift.iter().enumerate() {
+      bind(enc, 5 + slot as u64, table);
+    }
+    bind(enc, 8, program);
     enc.set_bytes(
       2,
       std::mem::size_of::<EulerArgs>() as u64,
@@ -414,8 +417,18 @@ fn run(
   }
   cmd.commit();
   cmd.wait_until_completed();
+  drop(guard);
   let ptr = out_buf.contents() as *const f32;
-  Ok(unsafe { std::slice::from_raw_parts(ptr, total) }.to_vec())
+  let out = finish(unsafe { std::slice::from_raw_parts(ptr, total) });
+  let mut guard = CONTEXT.lock();
+  if let Some(ctx) = guard.as_mut()
+    && ctx.ordinal == ordinal
+    && ctx.output.as_ref().is_none_or(|b| b.length() < bytes)
+  {
+    ctx.output = Some(out_buf);
+  }
+  drop(guard);
+  Ok(out)
 }
 
 impl EulerKernel<f32> for Metal {
@@ -454,6 +467,51 @@ impl EulerKernel<f32> for Metal {
       process.program_spec(),
     )?;
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
+  }
+
+  /// The launch lent rather than handed over: the buffer the kernel wrote is
+  /// shared memory the CPU can already read, so `f` reads the paths where
+  /// they lie. Nothing is copied and nothing is allocated for the batch.
+  fn euler_kernel_lend<P: EulerCoefficients<f32>, O>(
+    &self,
+    process: &P,
+    first: usize,
+    m: usize,
+    seed: u64,
+    f: impl FnOnce(ndarray::ArrayView2<f32>) -> O,
+  ) -> Result<O> {
+    let fractional = fgn_buffer(process.fgn_spec(), first, m, seed, self.ordinal)?;
+    let n = process.grid_points();
+    launch_paths(
+      self.ordinal,
+      process.euler_spec(),
+      process.initial_state(),
+      n,
+      process.time_step(),
+      first,
+      m,
+      seed,
+      match fractional.as_ref() {
+        Some((buf, streams)) => Increments::Device(buf, *streams),
+        None => Increments::Hashed,
+      },
+      process.curves(),
+      process.jump_intensity(),
+      process.jump_sizes(),
+      process.step_first(),
+      process.gamma_draws(),
+      process.lift_spec(),
+      process.series_terms(),
+      process.table_spec(),
+      process.program_spec(),
+      // The first plane is the matrix a one-component family reports; a
+      // family with more writes its planes after it, and this form hands
+      // back the first exactly as `euler_kernel` does.
+      |data, _| {
+        f(ndarray::ArrayView2::from_shape((m, n), &data[..m * n])
+          .expect("m * n values in the first plane"))
+      },
+    )
   }
 
   /// A system's launch: the same kernel, its state slots filled from the
@@ -539,11 +597,13 @@ fn fgn_buffer(
   }
 }
 
-/// The kernel launch for an explicit specification, as a
-/// `components × m × n` array. A one-component family fills a single plane,
-/// which is what [`EulerKernel::euler_kernel`] hands back as its matrix.
+/// The kernel launch for an explicit specification, with `finish` run over
+/// the `components × m × n` values it wrote — plane by plane — and the
+/// component count beside them. What a caller does there is the only thing
+/// [`device_paths`] and [`EulerKernel::euler_kernel_lend`] differ in: one
+/// copies the values out, the other reads them where they lie.
 #[allow(clippy::too_many_arguments)]
-fn device_paths(
+fn launch_paths<O>(
   ordinal: usize,
   spec: EulerSpec<f32>,
   x0: [f32; 4],
@@ -562,13 +622,14 @@ fn device_paths(
   series: Option<u32>,
   table: Option<crate::euler::TableSpec<f32>>,
   program: Option<crate::euler::ProgramSpec<'_>>,
-) -> Result<Array3<f32>> {
+  finish: impl FnOnce(&[f32], usize) -> O,
+) -> Result<O> {
   let (family, params) = spec.encode();
   let (program_buf, program_n) = crate::euler::encode_programs::<f32>(program.as_ref());
   let arity = super::families::Family::from_code(family).expect("a declared family");
   let (components, noises) = (arity.components(), arity.noises());
   if n == 0 || m == 0 {
-    return Ok(Array3::<f32>::zeros((components, m, n)));
+    return Ok(finish(&[], components));
   }
   let (law, jump_a, jump_b, jump_c) = sizes.map_or((0, 0.0, 0.0, 0.0), |s| s.encode());
   let (gamma_law, g1_shape, g1_scale, g1_per, g2_shape, g2_scale, g2_per) =
@@ -622,7 +683,7 @@ fn device_paths(
     table_u0,
     x0,
   };
-  let data = run(
+  run(
     ordinal,
     params,
     args,
@@ -630,9 +691,55 @@ fn device_paths(
     &curve,
     lift_tables,
     &program_buf,
-  )?;
-  Ok(
-    Array3::from_shape_vec((components, m, n), data)
-      .expect("the kernel returns components * m * n values"),
+    |data| finish(data, components),
+  )
+}
+
+/// [`launch_paths`] as a `components × m × n` array of its own — the shape a
+/// caller that keeps the batch needs.
+#[allow(clippy::too_many_arguments)]
+fn device_paths(
+  ordinal: usize,
+  spec: EulerSpec<f32>,
+  x0: [f32; 4],
+  n: usize,
+  dt: f32,
+  first: usize,
+  m: usize,
+  seed: u64,
+  increments: Increments<'_>,
+  curves: Option<Vec<Vec<f32>>>,
+  jump_lambda: Option<f32>,
+  sizes: Option<crate::euler::JumpSizes<f32>>,
+  step_first: bool,
+  gammas: Option<crate::euler::GammaDraws<f32>>,
+  lift: Option<crate::euler::LiftSpec<'_, f32>>,
+  series: Option<u32>,
+  table: Option<crate::euler::TableSpec<f32>>,
+  program: Option<crate::euler::ProgramSpec<'_>>,
+) -> Result<Array3<f32>> {
+  launch_paths(
+    ordinal,
+    spec,
+    x0,
+    n,
+    dt,
+    first,
+    m,
+    seed,
+    increments,
+    curves,
+    jump_lambda,
+    sizes,
+    step_first,
+    gammas,
+    lift,
+    series,
+    table,
+    program,
+    |data, components| {
+      Array3::from_shape_vec((components, m, n), data.to_vec())
+        .expect("the kernel returns components * m * n values")
+    },
   )
 }
