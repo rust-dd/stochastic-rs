@@ -325,5 +325,6 @@ impl<T: FloatExt> PathSampler<T> for EgarchSampler<T> {
 
 py_process_1d!(PyEgarch, Egarch,
   sig: (omega, alpha, gamma_, beta, n, seed=None, dtype=None),
-  params: (omega: f64, alpha: Vec<f64>, gamma_: Vec<f64>, beta: Vec<f64>, n: usize)
+  params: (omega: f64, alpha: Vec<f64>, gamma_: Vec<f64>, beta: Vec<f64>, n: usize),
+  device
 );

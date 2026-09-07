@@ -615,7 +615,8 @@ impl<T: FloatExt> PathSampler<T> for BesselSampler<T> {
 
 py_process_1d!(PyBessel, Bessel,
   sig: (delta, n, x0=None, t=None, use_sym=None, seed=None, dtype=None),
-  params: (delta: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>)
+  params: (delta: f64, n: usize, x0: Option<f64>, t: Option<f64>, use_sym: Option<bool>),
+  device
 );
 
 // Split out to keep this file under the project's 600-line cap (both

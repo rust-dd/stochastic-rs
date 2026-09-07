@@ -38,6 +38,7 @@ use crate::traits::ProcessExt;
 ///
 /// Reference: Kim Y. S. (2021), DOI: 10.3390/jrfm14020077 (see the
 /// module docs for the full citation).
+#[derive(Clone)]
 pub struct Svcgmy<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Positive tempering parameter λ+ > 0
   pub lambda_plus: T,
@@ -474,5 +475,6 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for SvcgmySampler<T, S> {
 
 py_process_2x1d!(PySvcgmy, Svcgmy,
   sig: (lambda_plus, lambda_minus, alpha, kappa, eta, zeta, rho, n, j, x0=None, v0=None, t=None, seed=None, dtype=None),
-  params: (lambda_plus: f64, lambda_minus: f64, alpha: f64, kappa: f64, eta: f64, zeta: f64, rho: f64, n: usize, j: usize, x0: Option<f64>, v0: Option<f64>, t: Option<f64>)
+  params: (lambda_plus: f64, lambda_minus: f64, alpha: f64, kappa: f64, eta: f64, zeta: f64, rho: f64, n: usize, j: usize, x0: Option<f64>, v0: Option<f64>, t: Option<f64>),
+  device
 );

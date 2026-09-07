@@ -42,6 +42,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct Cgmy<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Overall jump intensity scale C > 0
   pub c: T,
@@ -396,5 +397,6 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for CgmySampler<T, S> {
 
 py_process_1d!(PyCgmy, Cgmy,
   sig: (c, lambda_plus, lambda_minus, alpha, n, j, x0=None, t=None, seed=None, dtype=None),
-  params: (c: f64, lambda_plus: f64, lambda_minus: f64, alpha: f64, n: usize, j: usize, x0: Option<f64>, t: Option<f64>)
+  params: (c: f64, lambda_plus: f64, lambda_minus: f64, alpha: f64, n: usize, j: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

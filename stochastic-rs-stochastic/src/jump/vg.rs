@@ -290,5 +290,6 @@ mod tests {
 
 py_process_1d!(PyVg, Vg,
   sig: (mu, sigma, nu, n, x0=None, t=None, seed=None, dtype=None),
-  params: (mu: f64, sigma: f64, nu: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (mu: f64, sigma: f64, nu: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

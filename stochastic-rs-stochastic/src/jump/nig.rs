@@ -17,6 +17,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct Nig<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Skewness-in-subordinated-time β (matches the module header's own β,
   /// multiplying the IG-subordinator increment `I_t`). NIG is a pure Lévy
@@ -227,5 +228,6 @@ mod tests {
 
 py_process_1d!(PyNig, Nig,
   sig: (theta, sigma, kappa, n, x0=None, t=None, seed=None, dtype=None),
-  params: (theta: f64, sigma: f64, kappa: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (theta: f64, sigma: f64, kappa: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

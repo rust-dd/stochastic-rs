@@ -26,6 +26,7 @@ use crate::traits::ProcessExt;
 /// $$
 /// \psi(\xi)=\alpha_p\ln\!\frac{\lambda_p}{\lambda_p-i\xi}+\alpha_m\ln\!\frac{\lambda_m}{\lambda_m+i\xi}
 /// $$
+#[derive(Clone)]
 pub struct BilateralGamma<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Shape parameter for positive jumps.
   pub alpha_p: T,
@@ -232,6 +233,7 @@ impl<T: FloatExt> PathSampler<T> for BilateralGammaSampler<T> {
 /// $$
 /// X_t=\sigma W_t+\Gamma^+_t-\Gamma^-_t
 /// $$
+#[derive(Clone)]
 pub struct BilateralGammaMotion<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Diffusion coefficient of the Brownian component.
   pub sigma: T,
@@ -514,10 +516,12 @@ mod tests {
 
 py_process_1d!(PyBilateralGamma, BilateralGamma,
   sig: (alpha_p, lambda_p, alpha_m, lambda_m, n, x0=None, t=None, seed=None, dtype=None),
-  params: (alpha_p: f64, lambda_p: f64, alpha_m: f64, lambda_m: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (alpha_p: f64, lambda_p: f64, alpha_m: f64, lambda_m: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );
 
 py_process_1d!(PyBilateralGammaMotion, BilateralGammaMotion,
   sig: (sigma, alpha_p, lambda_p, alpha_m, lambda_m, n, x0=None, t=None, seed=None, dtype=None),
-  params: (sigma: f64, alpha_p: f64, lambda_p: f64, alpha_m: f64, lambda_m: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (sigma: f64, alpha_p: f64, lambda_p: f64, alpha_m: f64, lambda_m: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

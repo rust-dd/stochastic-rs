@@ -483,5 +483,6 @@ fn inverse_seasonal_difference<T: FloatExt>(y: &Array1<T>, s: usize) -> Array1<T
 
 py_process_1d!(PySarima, Sarima,
   sig: (non_seasonal_ar_coefs, non_seasonal_ma_coefs, seasonal_ar_coefs, seasonal_ma_coefs, d, d_seasonal, s, sigma, n, seed=None, dtype=None),
-  params: (non_seasonal_ar_coefs: Vec<f64>, non_seasonal_ma_coefs: Vec<f64>, seasonal_ar_coefs: Vec<f64>, seasonal_ma_coefs: Vec<f64>, d: usize, d_seasonal: usize, s: usize, sigma: f64, n: usize)
+  params: (non_seasonal_ar_coefs: Vec<f64>, non_seasonal_ma_coefs: Vec<f64>, seasonal_ar_coefs: Vec<f64>, seasonal_ma_coefs: Vec<f64>, d: usize, d_seasonal: usize, s: usize, sigma: f64, n: usize),
+  device
 );

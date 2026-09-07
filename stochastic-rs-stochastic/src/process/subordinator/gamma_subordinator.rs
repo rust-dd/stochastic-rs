@@ -10,6 +10,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Gamma subordinator where `G_t ~ Gamma(nu * t, rate)`.
+#[derive(Clone)]
 pub struct GammaSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Shape intensity `nu`.
   pub nu: T,
@@ -180,5 +181,6 @@ impl<T: FloatExt> PathSampler<T> for GammaSubordinatorSampler<T> {
 
 py_process_1d!(PyGammaSubordinator, GammaSubordinator,
   sig: (nu, rate, n, x0=None, t=None, seed=None, dtype=None),
-  params: (nu: f64, rate: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (nu: f64, rate: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

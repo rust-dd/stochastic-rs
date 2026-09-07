@@ -340,7 +340,8 @@ impl<T: FloatExt> PathSampler<T> for HawkesSampler<T> {
 
 py_process_1d!(PyHawkes, Hawkes,
   sig: (mu, alpha, beta, n=None, t_max=None, seed=None, dtype=None),
-  params: (mu: f64, alpha: f64, beta: f64, n: Option<usize>, t_max: Option<f64>)
+  params: (mu: f64, alpha: f64, beta: f64, n: Option<usize>, t_max: Option<f64>),
+  device
 );
 
 #[cfg(test)]

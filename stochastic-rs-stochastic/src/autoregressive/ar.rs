@@ -260,5 +260,6 @@ impl<T: FloatExt> PathSampler<T> for ARpSampler<T> {
 
 py_process_1d!(PyARp, ARp,
   sig: (phi, sigma, n, x0=None, seed=None, dtype=None),
-  params: (phi: Vec<f64>, sigma: f64, n: usize, x0: Option<Vec<f64>>)
+  params: (phi: Vec<f64>, sigma: f64, n: usize, x0: Option<Vec<f64>>),
+  device
 );

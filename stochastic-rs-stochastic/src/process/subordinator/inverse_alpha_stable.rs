@@ -21,6 +21,7 @@ use crate::traits::ProcessExt;
 
 /// Inverse alpha-stable subordinator:
 /// `E_alpha(t) = inf { u >= 0 : D_alpha(u) > t }`.
+#[derive(Clone)]
 pub struct InverseAlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Stability index in `(0, 1)`.
   pub alpha: T,
@@ -308,5 +309,6 @@ impl<T: FloatExt> PathSampler<T> for InverseAlphaStableSubordinatorSampler<T> {
 
 py_process_1d!(PyInverseAlphaStableSubordinator, InverseAlphaStableSubordinator,
   sig: (alpha, c, n, t=None, u_steps=2048, u_max=None, seed=None, dtype=None),
-  params: (alpha: f64, c: f64, n: usize, t: Option<f64>, u_steps: usize, u_max: Option<f64>)
+  params: (alpha: f64, c: f64, n: usize, t: Option<f64>, u_steps: usize, u_max: Option<f64>),
+  device
 );

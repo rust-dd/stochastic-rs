@@ -11,6 +11,7 @@ use crate::traits::ProcessExt;
 
 /// Inverse-Gaussian subordinator with BNS parameterization:
 /// `phi(lambda) = delta (sqrt(gamma^2 + 2 lambda) - gamma)`.
+#[derive(Clone)]
 pub struct IGSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Scale `delta`.
   pub delta: T,
@@ -180,5 +181,6 @@ impl<T: FloatExt> PathSampler<T> for IGSubordinatorSampler<T> {
 
 py_process_1d!(PyIGSubordinator, IGSubordinator,
   sig: (delta, gamma_, n, x0=None, t=None, seed=None, dtype=None),
-  params: (delta: f64, gamma_: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (delta: f64, gamma_: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

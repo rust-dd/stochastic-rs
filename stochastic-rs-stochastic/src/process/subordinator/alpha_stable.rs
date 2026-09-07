@@ -11,6 +11,7 @@ use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
 /// Alpha-stable subordinator with Laplace exponent `phi(lambda) = c * lambda^alpha`.
+#[derive(Clone)]
 pub struct AlphaStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Stability index in `(0, 1)`.
   pub alpha: T,
@@ -191,5 +192,6 @@ impl<T: FloatExt> PathSampler<T> for AlphaStableSubordinatorSampler<T> {
 
 py_process_1d!(PyAlphaStableSubordinator, AlphaStableSubordinator,
   sig: (alpha, c, n, x0=None, t=None, seed=None, dtype=None),
-  params: (alpha: f64, c: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (alpha: f64, c: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

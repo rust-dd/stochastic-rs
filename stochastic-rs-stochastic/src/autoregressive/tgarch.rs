@@ -343,5 +343,6 @@ impl<T: FloatExt> PathSampler<T> for GjrGarchSampler<T> {
 
 py_process_1d!(PyGjrGarch, GjrGarch,
   sig: (omega, alpha, gamma_, beta, n, seed=None, dtype=None),
-  params: (omega: f64, alpha: Vec<f64>, gamma_: Vec<f64>, beta: Vec<f64>, n: usize)
+  params: (omega: f64, alpha: Vec<f64>, gamma_: Vec<f64>, beta: Vec<f64>, n: usize),
+  device
 );

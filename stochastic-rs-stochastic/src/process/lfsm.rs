@@ -24,6 +24,7 @@ use crate::traits::ProcessExt;
 ///
 /// `X_i = X_{i-1} + sum_{k=0}^{i-1} w_k * xi_{i-1-k}`,
 /// where `w_k = dt^d * ((k+1)^d - k^d)` and `d = H - 1/alpha`.
+#[derive(Clone)]
 pub struct Lfsm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Stability index of the Levy-stable driver (`0 < alpha <= 2`).
   /// Smaller values produce heavier tails and larger jumps.
@@ -313,7 +314,8 @@ impl<T: FloatExt> PathSampler<T> for LfsmSampler<T> {
 
 py_process_1d!(PyLfsm, Lfsm,
   sig: (alpha, beta, hurst, scale, n, x0=None, t=None, seed=None, dtype=None),
-  params: (alpha: f64, beta: f64, hurst: f64, scale: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (alpha: f64, beta: f64, hurst: f64, scale: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );
 
 #[cfg(test)]

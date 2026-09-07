@@ -16,6 +16,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct Ig<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Rate γ of the inverse-Gaussian subordinator: sets the per-step mean
   /// (`gamma * dt`) and, via the mean squared, the per-step shape of the
@@ -192,7 +193,8 @@ impl<T: FloatExt> PathSampler<T> for IgSampler<T> {
 
 py_process_1d!(PyIg, Ig,
   sig: (gamma_, n, x0=None, t=None, seed=None, dtype=None),
-  params: (gamma_: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (gamma_: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );
 
 #[cfg(test)]

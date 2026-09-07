@@ -49,6 +49,7 @@ use crate::traits::ProcessExt;
 /// Cts process (Classical Tempered Stable process)
 /// <https://sci-hub.se/https://doi.org/10.1016/j.jbankfin.2010.01.015>
 ///
+#[derive(Clone)]
 pub struct Cts<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Positive jump rate lambda_plus (corresponds to G)
   pub lambda_plus: T, // G
@@ -384,5 +385,6 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for CtsSampler<T, S> {
 
 py_process_1d!(PyCts, Cts,
   sig: (lambda_plus, lambda_minus, alpha, n, j, x0=None, t=None, seed=None, dtype=None),
-  params: (lambda_plus: f64, lambda_minus: f64, alpha: f64, n: usize, j: usize, x0: Option<f64>, t: Option<f64>)
+  params: (lambda_plus: f64, lambda_minus: f64, alpha: f64, n: usize, j: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

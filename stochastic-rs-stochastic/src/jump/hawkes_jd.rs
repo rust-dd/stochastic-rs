@@ -29,6 +29,7 @@ use crate::traits::ProcessExt;
 ///
 /// Combines Gbm diffusion with self-exciting Hawkes jump arrivals
 /// and log-normal jump sizes.
+#[derive(Clone)]
 pub struct HawkesJD<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Drift $\mu$.
   pub mu: T,
@@ -282,7 +283,8 @@ impl<T: FloatExt> PathSampler<T> for HawkesJDSampler<T> {
 
 py_process_1d!(PyHawkesJD, HawkesJD,
   sig: (mu, sigma, mu_lambda, alpha, beta, mu_j, sigma_j, n, x0=None, t=None, seed=None, dtype=None),
-  params: (mu: f64, sigma: f64, mu_lambda: f64, alpha: f64, beta: f64, mu_j: f64, sigma_j: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (mu: f64, sigma: f64, mu_lambda: f64, alpha: f64, beta: f64, mu_j: f64, sigma_j: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );
 
 #[cfg(test)]

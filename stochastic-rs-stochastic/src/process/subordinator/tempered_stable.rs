@@ -16,6 +16,7 @@ use crate::traits::ProcessExt;
 /// Uses truncated-stable large jumps with exponential thinning and
 /// deterministic small-jump drift:
 /// `nu(dx) = c * exp(-mu x) * x^{-1-alpha} dx`, `x > 0`, `alpha in (0,1)`.
+#[derive(Clone)]
 pub struct TemperedStableSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Stable index in `(0,1)`.
   pub alpha: T,
@@ -244,5 +245,6 @@ impl<T: FloatExt> PathSampler<T> for TemperedStableSubordinatorSampler<T> {
 
 py_process_1d!(PyTemperedStableSubordinator, TemperedStableSubordinator,
   sig: (alpha, c, mu, epsilon, n, x0=None, t=None, seed=None, dtype=None),
-  params: (alpha: f64, c: f64, mu: f64, epsilon: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (alpha: f64, c: f64, mu: f64, epsilon: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

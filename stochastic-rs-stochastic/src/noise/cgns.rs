@@ -217,5 +217,6 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for CgnsSampler<T, S> {
 
 py_process_2x1d!(PyCgns, Cgns,
   sig: (rho, n, t=None, seed=None, dtype=None),
-  params: (rho: f64, n: usize, t: Option<f64>)
+  params: (rho: f64, n: usize, t: Option<f64>),
+  device
 );

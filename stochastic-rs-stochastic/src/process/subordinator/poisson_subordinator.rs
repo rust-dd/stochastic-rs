@@ -13,6 +13,7 @@ use crate::traits::ProcessExt;
 
 /// Poisson subordinator with unit jumps:
 /// `N_t` with independent increments `Poisson(lambda * dt)`.
+#[derive(Clone)]
 pub struct PoissonSubordinator<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Intensity parameter.
   pub lambda: T,
@@ -174,5 +175,6 @@ impl<T: FloatExt> PathSampler<T> for PoissonSubordinatorSampler<T> {
 
 py_process_1d!(PyPoissonSubordinator, PoissonSubordinator,
   sig: (lambda_, n, x0=None, t=None, seed=None, dtype=None),
-  params: (lambda_: f64, n: usize, x0: Option<f64>, t: Option<f64>)
+  params: (lambda_: f64, n: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

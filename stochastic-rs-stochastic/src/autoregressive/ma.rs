@@ -229,5 +229,6 @@ impl<T: FloatExt> PathSampler<T> for MAqSampler<T> {
 
 py_process_1d!(PyMAq, MAq,
   sig: (theta, sigma, n, seed=None, dtype=None),
-  params: (theta: Vec<f64>, sigma: f64, n: usize)
+  params: (theta: Vec<f64>, sigma: f64, n: usize),
+  device
 );

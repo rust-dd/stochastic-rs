@@ -298,5 +298,6 @@ fn inverse_difference<T: FloatExt>(y: &Array1<T>) -> Array1<T> {
 
 py_process_1d!(PyArima, Arima,
   sig: (ar_coefs, ma_coefs, d, sigma, n, seed=None, dtype=None),
-  params: (ar_coefs: Vec<f64>, ma_coefs: Vec<f64>, d: usize, sigma: f64, n: usize)
+  params: (ar_coefs: Vec<f64>, ma_coefs: Vec<f64>, d: usize, sigma: f64, n: usize),
+  device
 );

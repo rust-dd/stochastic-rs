@@ -165,5 +165,6 @@ impl<T: FloatExt> PathSampler<T> for WnSampler<T> {
 
 py_process_1d!(PyWn, Wn,
   sig: (n, mean=None, std_dev=None, seed=None, dtype=None),
-  params: (n: usize, mean: Option<f64>, std_dev: Option<f64>)
+  params: (n: usize, mean: Option<f64>, std_dev: Option<f64>),
+  device
 );

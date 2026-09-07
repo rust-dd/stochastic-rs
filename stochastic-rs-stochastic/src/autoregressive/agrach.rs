@@ -320,5 +320,6 @@ impl<T: FloatExt> PathSampler<T> for AgarchSampler<T> {
 
 py_process_1d!(PyAgarch, Agarch,
   sig: (omega, alpha, delta, beta, n, seed=None, dtype=None),
-  params: (omega: f64, alpha: Vec<f64>, delta: Vec<f64>, beta: Vec<f64>, n: usize)
+  params: (omega: f64, alpha: Vec<f64>, delta: Vec<f64>, beta: Vec<f64>, n: usize),
+  device
 );

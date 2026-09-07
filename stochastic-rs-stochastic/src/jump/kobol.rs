@@ -54,6 +54,7 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+#[derive(Clone)]
 pub struct KoBoL<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Overall scale D > 0
   pub d: T,
@@ -428,5 +429,6 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for KoBoLSampler<T, S> {
 
 py_process_1d!(PyKoBoL, KoBoL,
   sig: (d, p, q, lambda_plus, lambda_minus, alpha, n, j, x0=None, t=None, seed=None, dtype=None),
-  params: (d: f64, p: f64, q: f64, lambda_plus: f64, lambda_minus: f64, alpha: f64, n: usize, j: usize, x0: Option<f64>, t: Option<f64>)
+  params: (d: f64, p: f64, q: f64, lambda_plus: f64, lambda_minus: f64, alpha: f64, n: usize, j: usize, x0: Option<f64>, t: Option<f64>),
+  device
 );

@@ -246,5 +246,6 @@ impl<T: FloatExt> PathSampler<T> for ArchSampler<T> {
 
 py_process_1d!(PyArch, Arch,
   sig: (omega, alpha, n, seed=None, dtype=None),
-  params: (omega: f64, alpha: Vec<f64>, n: usize)
+  params: (omega: f64, alpha: Vec<f64>, n: usize),
+  device
 );

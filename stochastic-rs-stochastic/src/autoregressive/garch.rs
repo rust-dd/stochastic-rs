@@ -288,5 +288,6 @@ impl<T: FloatExt> PathSampler<T> for GarchSampler<T> {
 
 py_process_1d!(PyGarch, Garch,
   sig: (omega, alpha, beta, n, seed=None, dtype=None),
-  params: (omega: f64, alpha: Vec<f64>, beta: Vec<f64>, n: usize)
+  params: (omega: f64, alpha: Vec<f64>, beta: Vec<f64>, n: usize),
+  device
 );
