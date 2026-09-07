@@ -304,6 +304,10 @@ name = "cuda_fgn_analysis"
 required-features = ["cuda"]
 
 [[example]]
+name = "metal_vs_cpu_gallery"
+required-features = ["metal"]
+
+[[example]]
 name = "cuda_d2h_bw"
 required-features = ["cuda"]
 

@@ -51,12 +51,19 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::autoregressive::ma::PyMAq;
   use stochastic_rs_stochastic::autoregressive::sarima::PySarima;
   use stochastic_rs_stochastic::autoregressive::tgarch::PyGjrGarch;
+  use stochastic_rs_stochastic::correlation::teng::PyTengSCP;
+  use stochastic_rs_stochastic::diffusion::ait_sahalia::PyAitSahalia;
+  use stochastic_rs_stochastic::diffusion::bessel::PyBessel;
+  use stochastic_rs_stochastic::diffusion::bessel::PySquaredBessel;
   // Stochastic — diffusion
   use stochastic_rs_stochastic::diffusion::cev::PyCev;
   use stochastic_rs_stochastic::diffusion::cfou::PyCfou;
   use stochastic_rs_stochastic::diffusion::cir::PyCir;
+  use stochastic_rs_stochastic::diffusion::ckls::PyCkls;
+  use stochastic_rs_stochastic::diffusion::displaced_diffusion::PyDisplacedDiffusion;
   use stochastic_rs_stochastic::diffusion::fcir::PyFcir;
   use stochastic_rs_stochastic::diffusion::feller::PyFellerLogistic;
+  use stochastic_rs_stochastic::diffusion::feller_root::PyFellerRoot;
   use stochastic_rs_stochastic::diffusion::fgbm::PyFgbm;
   use stochastic_rs_stochastic::diffusion::fjacobi::PyFJacobi;
   use stochastic_rs_stochastic::diffusion::fou::PyFou;
@@ -65,11 +72,20 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::diffusion::gbm_ih::PyGbmIh;
   use stochastic_rs_stochastic::diffusion::gbm_log::PyGbmLog;
   use stochastic_rs_stochastic::diffusion::gompertz::PyGompertz;
+  use stochastic_rs_stochastic::diffusion::hyperbolic::PyHyperbolic;
+  use stochastic_rs_stochastic::diffusion::hyperbolic2::PyHyperbolic2;
   use stochastic_rs_stochastic::diffusion::jacobi::PyJacobi;
   use stochastic_rs_stochastic::diffusion::kimura::PyKimura;
+  use stochastic_rs_stochastic::diffusion::linear_sde::PyLinearSDE;
+  use stochastic_rs_stochastic::diffusion::logistic::PyLogistic;
+  use stochastic_rs_stochastic::diffusion::modified_cir::PyModifiedCIR;
   use stochastic_rs_stochastic::diffusion::multi_gbm::PyMultiGbm;
+  use stochastic_rs_stochastic::diffusion::nonlinear_sde::PyNonLinearSDE;
   use stochastic_rs_stochastic::diffusion::ou::PyOu;
+  use stochastic_rs_stochastic::diffusion::pearson::PyPearson;
   use stochastic_rs_stochastic::diffusion::quadratic::PyQuadratic;
+  use stochastic_rs_stochastic::diffusion::radial_ou::PyRadialOU;
+  use stochastic_rs_stochastic::diffusion::three_half::PyThreeHalf;
   use stochastic_rs_stochastic::diffusion::verhulst::PyVerhulst;
   use stochastic_rs_stochastic::diffusion::wishart::PyWishart;
   // Stochastic — interest rates
@@ -91,6 +107,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::jump::bilateral_gamma::PyBilateralGammaMotion;
   use stochastic_rs_stochastic::jump::cgmy::PyCgmy;
   use stochastic_rs_stochastic::jump::cts::PyCts;
+  use stochastic_rs_stochastic::jump::hawkes_jd::PyHawkesJD;
   use stochastic_rs_stochastic::jump::ig::PyIg;
   use stochastic_rs_stochastic::jump::jump_fou::PyJumpFou;
   use stochastic_rs_stochastic::jump::jump_fou_custom::PyJumpFOUCustom;
@@ -113,6 +130,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::noise::wn::PyWn;
   // Stochastic — process
   use stochastic_rs_stochastic::process::bm::PyBm;
+  use stochastic_rs_stochastic::process::brownian_bridge::PyBrownianBridge;
   use stochastic_rs_stochastic::process::cbms::PyCbms;
   use stochastic_rs_stochastic::process::ccustom::PyCompoundCustom;
   use stochastic_rs_stochastic::process::cfbms::PyCfbms;
@@ -141,24 +159,6 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::volatility::rbergomi::PyRoughBergomi;
   use stochastic_rs_stochastic::volatility::sabr::PySabr;
   use stochastic_rs_stochastic::volatility::svcgmy::PySvcgmy;
-  use stochastic_rs_stochastic::diffusion::ait_sahalia::PyAitSahalia;
-  use stochastic_rs_stochastic::diffusion::bessel::PyBessel;
-  use stochastic_rs_stochastic::process::brownian_bridge::PyBrownianBridge;
-  use stochastic_rs_stochastic::diffusion::ckls::PyCkls;
-  use stochastic_rs_stochastic::diffusion::displaced_diffusion::PyDisplacedDiffusion;
-  use stochastic_rs_stochastic::diffusion::feller_root::PyFellerRoot;
-  use stochastic_rs_stochastic::jump::hawkes_jd::PyHawkesJD;
-  use stochastic_rs_stochastic::diffusion::hyperbolic::PyHyperbolic;
-  use stochastic_rs_stochastic::diffusion::hyperbolic2::PyHyperbolic2;
-  use stochastic_rs_stochastic::diffusion::linear_sde::PyLinearSDE;
-  use stochastic_rs_stochastic::diffusion::logistic::PyLogistic;
-  use stochastic_rs_stochastic::diffusion::modified_cir::PyModifiedCIR;
-  use stochastic_rs_stochastic::diffusion::nonlinear_sde::PyNonLinearSDE;
-  use stochastic_rs_stochastic::diffusion::pearson::PyPearson;
-  use stochastic_rs_stochastic::diffusion::radial_ou::PyRadialOU;
-  use stochastic_rs_stochastic::diffusion::bessel::PySquaredBessel;
-  use stochastic_rs_stochastic::correlation::teng::PyTengSCP;
-  use stochastic_rs_stochastic::diffusion::three_half::PyThreeHalf;
 
   m.add_class::<PyFbm>()?;
   m.add_class::<PyLfsm>()?;
