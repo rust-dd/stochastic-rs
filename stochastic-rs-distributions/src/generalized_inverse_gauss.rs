@@ -190,6 +190,16 @@ impl Setup {
       Regime::RatioOfUniforms => loop {
         let u = uniform(rng) * self.u_plus;
         let v = uniform(rng);
+        // The ratio-of-uniforms region is `0 < v ≤ sqrt(g(u/v))`, so `v = 0`
+        // is not a point of it — but a single-precision uniform hands back
+        // an exact zero once in about 8.4 million draws, and then `u/v` is
+        // `+inf` while `2 ln v` is `-inf`. For `λ < 1` the normalised log
+        // density at infinity is `-inf` too, so the test passes and the
+        // infinity leaves as a draw (as a zero, once the `λ < 0` branch
+        // inverts it — either way outside the strictly positive support).
+        if v <= 0.0 {
+          continue;
+        }
         let x = u / v;
         if 2.0 * v.ln() <= self.log_g_normalised(x) {
           return x;
@@ -198,6 +208,13 @@ impl Setup {
       Regime::RatioOfUniformsShifted => loop {
         let u = self.u_minus + uniform(rng) * (self.u_plus - self.u_minus);
         let v = uniform(rng);
+        // The same `v = 0` exclusion. A `λ > 2` shape escapes it on its
+        // own — `log g` at infinity is a NaN there and the test fails —
+        // but this regime also takes every `λ < 1` with `β > 3`, which has
+        // the `-inf ≤ -inf` acceptance of the branch above.
+        if v <= 0.0 {
+          continue;
+        }
         let x = u / v + self.m;
         if x > 0.0 && 2.0 * v.ln() <= self.log_g_normalised(x) {
           return x;
@@ -614,6 +631,37 @@ mod tests {
   #[should_panic(expected = "chi must be positive")]
   fn rejects_zero_chi() {
     let _ = SimdGig::<f64>::new(1.0, 0.0, 1.0, &Unseeded);
+  }
+
+  /// Every single-precision draw lands inside the support.
+  ///
+  /// Both ratio-of-uniforms regimes draw from `0 < v ≤ sqrt(g(u/v))`, and
+  /// `v = 0` is not a point of that region — but a single-precision uniform
+  /// hands back an exact zero about once in 8.4 million draws, `u/v` is
+  /// then `+inf`, and for `λ < 1` both sides of the acceptance test come
+  /// out `-inf`, so the infinity leaves as a draw. At `λ < 0` the same
+  /// event shows as an exact zero, since that branch inverts what it drew
+  /// — which is how the generalized hyperbolic family picks it up through
+  /// its mixing clock. The seeds are pinned where the offending uniform
+  /// lands early: 182 puts it at draw 7303 of the un-shifted regime, 571 at
+  /// draw 8052 of the mode-shifted one that `β = √(χψ) > 3` selects.
+  #[test]
+  fn single_precision_draws_stay_in_the_support() {
+    for (lambda, chi, psi, seed, draws) in [
+      (-0.5_f32, 1.0_f32, 1.0_f32, 182u64, 8_192usize),
+      (0.0, 1.0, 1.0, 182, 8_192),
+      (0.5, 1.0, 1.0, 182, 8_192),
+      (0.5, 100.0, 100.0, 571, 16_384),
+    ] {
+      let d = SimdGig::<f32>::new(lambda, chi, psi, &Deterministic::new(seed));
+      let mut out = vec![0.0_f32; draws];
+      d.fill_slice(&mut out);
+      let bad = out.iter().filter(|x| !x.is_finite() || **x <= 0.0).count();
+      assert_eq!(
+        bad, 0,
+        "lambda = {lambda}, chi = {chi}, psi = {psi}: {bad} of {draws} draws outside (0, inf)"
+      );
+    }
   }
 }
 

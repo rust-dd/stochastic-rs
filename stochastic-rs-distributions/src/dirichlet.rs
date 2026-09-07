@@ -68,13 +68,41 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdDirichlet<T, R> {
       *x = g.sample_fast();
       sum += *x;
     }
-    let sum_safe = if sum > T::zero() {
-      sum
-    } else {
-      T::from_f64_fast(1e-300)
-    };
+    if sum > T::zero() {
+      for x in out.iter_mut() {
+        *x = *x / sum;
+      }
+      return;
+    }
+    self.simplex_from_logs(out);
+  }
+
+  /// The simplex point recovered from log draws, for the case where every
+  /// Gamma marginal underflowed to exactly zero and the normalisation is
+  /// `0/0`.
+  ///
+  /// Small concentrations make that ordinary: at `α = 0.001` two thirds of
+  /// a single-precision Dirichlet's draws lose every coordinate this way.
+  /// The old guard substituted `1e-300` for the vanished sum, which is
+  /// itself zero once `T` is `f32` — the division stayed `0/0` and the
+  /// whole vector came back NaN.
+  #[cold]
+  #[inline(never)]
+  fn simplex_from_logs(&self, out: &mut [T]) {
+    for (x, g) in out.iter_mut().zip(self.gammas.iter()) {
+      *x = g.sample_log_fast();
+    }
+    let peak = out
+      .iter()
+      .copied()
+      .fold(T::neg_infinity(), |m: T, x| if x > m { x } else { m });
+    let mut sum = T::zero();
     for x in out.iter_mut() {
-      *x = *x / sum_safe;
+      *x = (*x - peak).exp();
+      sum += *x;
+    }
+    for x in out.iter_mut() {
+      *x = *x / sum;
     }
   }
 
@@ -122,7 +150,48 @@ impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdDirichlet<T, R> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
+
+  /// Small concentrations must not lose the whole vector to `0 / 0`.
+  ///
+  /// Every Gamma marginal underflows to exactly zero two thirds of the time
+  /// at `α = 0.001` in single precision, and the old guard substituted
+  /// `1e-300` for the vanished sum — itself zero once `T` is `f32`, so the
+  /// division stayed `0 / 0` and the vector came back all NaN. The mean
+  /// check is what separates a real repair from one that merely returns a
+  /// fixed point of the simplex.
+  #[test]
+  fn small_concentrations_stay_on_the_simplex() {
+    let alpha = [0.001_f32, 0.002, 0.003, 0.004];
+    let total: f32 = alpha.iter().sum();
+    let d = SimdDirichlet::<f32>::new(alpha.to_vec(), &Deterministic::new(151));
+    let mut out = [0.0_f32; 4];
+    let mut acc = [0.0_f64; 4];
+    let n = 100_000;
+    for _ in 0..n {
+      d.sample_into(&mut out);
+      let s: f32 = out.iter().sum();
+      assert!(
+        out.iter().all(|x| x.is_finite() && *x >= 0.0) && (s - 1.0).abs() < 1e-3,
+        "draw {out:?} is not on the simplex"
+      );
+      for k in 0..4 {
+        acc[k] += out[k] as f64;
+      }
+    }
+    for k in 0..4 {
+      let mean = acc[k] / n as f64;
+      let want = (alpha[k] / total) as f64;
+      // Each coordinate is all but Bernoulli(want) at this concentration,
+      // so five standard errors is 2.5/√n.
+      assert!(
+        (mean - want).abs() < 2.5 / (n as f64).sqrt(),
+        "coordinate {k}: mean = {mean}, expected {want}"
+      );
+    }
+  }
 
   /// Samples lie on the simplex (sum to 1, all components non-negative).
   #[test]

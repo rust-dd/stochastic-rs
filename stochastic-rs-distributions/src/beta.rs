@@ -94,6 +94,23 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
     z
   }
 
+  /// The ratio recovered from logs, for the draws where both Gamma
+  /// marginals underflowed to exactly zero and `a / (a + b)` is `0/0`.
+  ///
+  /// Small shapes make that ordinary rather than exotic: `Beta(0.01, 0.01)`
+  /// loses a draw this way once in eight in single precision and once in
+  /// five million in double. The ratio is scale-free, so re-forming it
+  /// from a fresh pair of log draws is exact wherever the value path was,
+  /// and where the log difference saturates `exp` the answer is the 0 or
+  /// the 1 that rounding the true draw would have given.
+  #[cold]
+  #[inline(never)]
+  fn ratio_from_logs(&self) -> T {
+    let la = self.gamma1.sample_log_fast();
+    let lb = self.gamma2.sample_log_fast();
+    T::one() / (T::one() + (lb - la).exp())
+  }
+
   /// Fills `out` using the internal SIMD RNG stream — the only stream this
   /// sampler draws from (see the crate-level RNG policy).
   pub fn fill_slice(&self, out: &mut [T]) {
@@ -101,7 +118,11 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
       for x in out.iter_mut() {
         let a = self.gamma1.sample_fast();
         let b = self.gamma2.sample_fast();
-        *x = a / (a + b);
+        *x = if a + b > T::zero() {
+          a / (a + b)
+        } else {
+          self.ratio_from_logs()
+        };
       }
       return;
     }
@@ -120,6 +141,11 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
         let a = T::simd_from_array(*a8);
         let b = T::simd_from_array(*b8);
         *sub = T::simd_to_array(a / (a + b));
+        for (j, x) in sub.iter_mut().enumerate() {
+          if a8[j] + b8[j] <= T::zero() {
+            *x = self.ratio_from_logs();
+          }
+        }
       }
     }
     if !rem.is_empty() {
@@ -127,7 +153,11 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
       self.gamma1.fill_slice(&mut g1[..n]);
       self.gamma2.fill_slice(&mut g2[..n]);
       for i in 0..n {
-        rem[i] = g1[i] / (g1[i] + g2[i]);
+        rem[i] = if g1[i] + g2[i] > T::zero() {
+          g1[i] / (g1[i] + g2[i])
+        } else {
+          self.ratio_from_logs()
+        };
       }
     }
   }
@@ -271,6 +301,71 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdBeta
     unimplemented!(
       "DistributionExt::moment_generating_function for SimdBeta requires the confluent hypergeometric ₁F₁; not implemented"
     )
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+
+  /// Small shapes must not lose a draw to `0 / 0`.
+  ///
+  /// The Gamma-ratio construction underflows both marginals to exactly zero
+  /// once a shape is small — 13 % of the draws at `α = β = 0.01` in single
+  /// precision, and it still reaches double precision at `α = β = 0.001`.
+  /// Both fill paths are exercised: a 1000-long slice takes the SIMD
+  /// chunks plus the scalar remainder, an 8-long one the short path.
+  #[test]
+  fn small_shapes_stay_finite() {
+    for seed in [7u64, 11] {
+      let d = SimdBeta::<f32>::new(0.01, 0.01, &Deterministic::new(seed));
+      let mut wide = vec![0.0_f32; 1_000];
+      d.fill_slice(&mut wide);
+      let bad = wide.iter().filter(|x| !x.is_finite()).count();
+      assert_eq!(bad, 0, "seed {seed}: {bad} non-finite of the wide fill");
+      let mut narrow = [0.0_f32; 8];
+      for _ in 0..200 {
+        d.fill_slice(&mut narrow);
+        let bad = narrow.iter().filter(|x| !x.is_finite()).count();
+        assert_eq!(bad, 0, "seed {seed}: {bad} non-finite of the short fill");
+      }
+    }
+  }
+
+  /// The repaired small-shape draws still carry Beta's first two moments —
+  /// a fix that merely clamped the NaN away would not. Single precision is
+  /// deliberate: an eighth of these draws take the repaired branch.
+  #[test]
+  fn small_shape_moments_hold() {
+    let (a, b) = (0.01_f64, 0.01_f64);
+    let d = SimdBeta::<f32>::new(a as f32, b as f32, &Deterministic::new(11));
+    let mut buf = vec![0.0_f32; 1 << 16];
+    let (mut s, mut s2) = (0.0, 0.0);
+    let reps = 8;
+    for _ in 0..reps {
+      d.fill_slice(&mut buf);
+      for &x in buf.iter() {
+        s += x as f64;
+        s2 += (x as f64) * (x as f64);
+      }
+    }
+    let n = (reps * buf.len()) as f64;
+    let (mean, m2) = (s / n, s2 / n);
+    let want_mean = a / (a + b);
+    let want_m2 = a * (a + 1.0) / ((a + b) * (a + b + 1.0));
+    // The law is all but Bernoulli(1/2) at this shape, so σ ≈ 1/2 and five
+    // standard errors of the mean is 2.5/√n.
+    let band = 2.5 / n.sqrt();
+    assert!(
+      (mean - want_mean).abs() < band,
+      "mean = {mean}, expected {want_mean} ± {band}"
+    );
+    assert!(
+      (m2 - want_m2).abs() < band,
+      "second moment = {m2}, expected {want_m2} ± {band}"
+    );
   }
 }
 

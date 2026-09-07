@@ -120,6 +120,41 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
     }
   }
 
+  /// Natural log of one draw, formed without the `u^{1/α}` boost factor.
+  ///
+  /// For `α < 1` Marsaglia-Tsang draws `Gamma(α+1)` and scales it by
+  /// `u^{1/α}`, and that power underflows to exactly zero long before the
+  /// draw itself is unrepresentable — 36 % of the draws at `α = 0.01` in
+  /// single precision, 90 % at `α = 0.001`, and still 48 % at `α = 0.001`
+  /// in double. A single zero is a legitimate rounding of a number like
+  /// `e^{-700}`, but two of them turn the ratio a Beta or a Dirichlet
+  /// forms into `0/0`. In logs the same draw is an ordinary negative
+  /// number, so those consumers can recover the ratio that the value
+  /// domain has lost.
+  pub(crate) fn sample_log_fast(&self) -> T {
+    let rng = unsafe { &mut *self.simd_rng.get() };
+    let third = T::from(1.0 / 3.0).unwrap();
+    let nine = T::from(9.0).unwrap();
+    let boosted = self.alpha < T::one();
+    let alpha_eff = if boosted {
+      self.alpha + T::one()
+    } else {
+      self.alpha
+    };
+    let d = alpha_eff - third;
+    let c = T::one() / (nine * d).sqrt();
+    let g = Self::sample_mt_one(rng, &self.normal, d, c);
+    let log_core = self.scale.ln() + g.ln();
+    if boosted {
+      // `1 - u` lands the uniform in `(0, 1]`, so the log is finite where
+      // the generator's own `[0, 1)` would have handed back a `-inf`.
+      let u = T::one() - T::sample_uniform_simd(rng);
+      log_core + u.ln() / self.alpha
+    } else {
+      log_core
+    }
+  }
+
   /// Fills `out` using the internal SIMD RNG stream — the only stream this
   /// sampler draws from (see the crate-level RNG policy).
   pub fn fill_slice(&self, out: &mut [T]) {

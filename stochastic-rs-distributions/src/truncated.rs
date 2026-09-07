@@ -9,11 +9,14 @@
 //! - **Truncated Normal:** plain rejection from the base
 //!   $\mathcal{N}(\mu, \sigma^2)$ via the existing [`SimdNormal`] sampler
 //!   while acceptance stays above 5 %. Tight intervals (mass $< 0.05$,
-//!   where rejection would spin) fall back to the closed-form inverse-CDF
-//!   transform instead — exact, not an accept-reject scheme, at the cost
-//!   of one [`crate::special::ndtri`] call per draw.
-//! - **Truncated Exponential:** closed-form inverse-CDF sampling — no
-//!   rejection needed.
+//!   where rejection would spin) split by where they sit: one lying wholly
+//!   on one side of the mean takes Robert's accept-reject on the
+//!   standardised interval, which never forms a CDF and so cannot lose the
+//!   interval's mass to rounding; one straddling the mean takes the
+//!   closed-form inverse-CDF transform, exact where the normal CDF still
+//!   resolves, at one [`crate::special::ndtri`] call per draw.
+//! - **Truncated Exponential:** closed-form inverse-CDF sampling on the
+//!   survival function — no rejection needed.
 //! - **Truncated Beta / Gamma:** plain rejection from the corresponding
 //!   [`SimdBeta`] / [`SimdGamma`] sampler. For very tight intervals where
 //!   acceptance falls below 1 % the rejection loop bails after 1000 tries
@@ -30,6 +33,9 @@
 //! - Devroye, L. (1986), *Non-Uniform Random Variate Generation*,
 //!   Springer, §II.3 (general rejection, the wide-interval path for all
 //!   four families here).
+//! - Robert, C.P. (1995), "Simulation of truncated normal variables",
+//!   *Statistics and Computing* 5(2), 121-125, DOI: 10.1007/BF00143942
+//!   (the two one-sided proposals the tail path picks between).
 
 use std::cell::UnsafeCell;
 
@@ -46,6 +52,52 @@ use crate::simd_rng::SimdRngExt;
 use crate::traits::DistributionExt;
 use crate::traits::SimdFloatExt;
 
+/// Which of Robert (1995)'s proposals a one-sided standardised interval
+/// $[a, b]$ with $a \ge 0$ takes.
+#[derive(Debug, Clone, Copy)]
+enum TailProposal {
+  /// Translated exponential of rate $\alpha^\*$ (Robert 1995, §2.2), for an
+  /// interval at least two proposal means wide.
+  Exponential { alpha_star: f64 },
+  /// Uniform on $[a, b]$ reweighted by $e^{(a^2 - z^2)/2}$ (Robert 1995,
+  /// §2.3), for a narrower one, where the exponential's own truncation
+  /// rejection would dominate.
+  Uniform,
+}
+
+/// The standardised one-sided interval a tail draw runs on.
+#[derive(Debug, Clone, Copy)]
+struct TailSetup {
+  /// Standardised bounds with $0 \le a < b \le \infty$.
+  a: f64,
+  b: f64,
+  /// Whether the interval was reflected about the mean to get there; the
+  /// draw is negated back on the way out.
+  mirrored: bool,
+  proposal: TailProposal,
+}
+
+impl TailSetup {
+  fn new(a: f64, b: f64, mirrored: bool) -> Self {
+    let alpha_star = 0.5 * (a + (a * a + 4.0).sqrt());
+    // Two proposal means of width is where the exponential's truncation
+    // rejection stops costing more than the uniform's Gaussian weight:
+    // below it the exponential overshoots `b` more often than not, above
+    // it the uniform's worst weight has already decayed past e^-2.
+    let proposal = if b - a >= 2.0 / alpha_star {
+      TailProposal::Exponential { alpha_star }
+    } else {
+      TailProposal::Uniform
+    };
+    Self {
+      a,
+      b,
+      mirrored,
+      proposal,
+    }
+  }
+}
+
 /// Truncated normal $\mathcal{N}(\mu, \sigma^2)$ restricted to
 /// $[\text{lower}, \text{upper}]$.
 pub struct SimdTruncatedNormal<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
@@ -60,6 +112,10 @@ pub struct SimdTruncatedNormal<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   f_lo: f64,
   f_up: f64,
   norm_mass: f64,
+  /// Set when the interval lies wholly on one side of the mean, where the
+  /// CDF pair the inverse transform needs is the one that loses its
+  /// significance first.
+  tail: Option<TailSetup>,
   simd_rng: UnsafeCell<R>,
 }
 
@@ -76,8 +132,20 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedNormal<T, R> {
     assert!(lower < upper, "lower bound must be < upper bound");
     let mean_f64 = mean.to_f64().unwrap();
     let std_f64 = std_dev.to_f64().unwrap();
-    let f_lo = norm_cdf_scalar((lower.to_f64().unwrap() - mean_f64) / std_f64);
-    let f_up = norm_cdf_scalar((upper.to_f64().unwrap() - mean_f64) / std_f64);
+    let a_std = (lower.to_f64().unwrap() - mean_f64) / std_f64;
+    let b_std = (upper.to_f64().unwrap() - mean_f64) / std_f64;
+    let f_lo = norm_cdf_scalar(a_std);
+    let f_up = norm_cdf_scalar(b_std);
+    // Reflect a left-tail interval into the right tail so the tail sampler
+    // only ever has to handle `a >= 0`; one straddling the mean keeps the
+    // inverse transform, which is accurate exactly where `Φ` is.
+    let tail = if a_std >= 0.0 {
+      Some(TailSetup::new(a_std, b_std, false))
+    } else if b_std <= 0.0 {
+      Some(TailSetup::new(-b_std, -a_std, true))
+    } else {
+      None
+    };
     Self {
       mean,
       std_dev,
@@ -87,6 +155,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedNormal<T, R> {
       f_lo,
       f_up,
       norm_mass: f_up - f_lo,
+      tail,
       simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
     }
   }
@@ -94,8 +163,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedNormal<T, R> {
   /// Draw a single truncated normal sample using the internal SIMD RNG.
   ///
   /// On wide intervals (acceptance ≥ 5 %) we use plain rejection on the
-  /// base normal sampler; on tight intervals we route through the
-  /// inverse-CDF transform which is exact but a bit slower.
+  /// base normal sampler; on tight intervals we route to whichever of the
+  /// two exact schemes the interval's position allows.
   #[inline]
   pub fn sample_fast(&self) -> T {
     if self.norm_mass > 0.05 {
@@ -106,10 +175,47 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedNormal<T, R> {
           return x;
         }
       }
-      // Fall through to the inverse-CDF if we somehow had a 1000-shot run
-      // of rejections (numerical edge cases).
+      // Fall through if we somehow had a 1000-shot run of rejections
+      // (numerical edge cases).
     }
-    self.inverse_cdf_sample()
+    match self.tail {
+      Some(setup) => self.tail_sample(setup),
+      None => self.inverse_cdf_sample(),
+    }
+  }
+
+  /// Robert (1995) accept-reject on the standardised one-sided interval.
+  ///
+  /// The inverse transform cannot serve this case: `F(lower)` and
+  /// `F(upper)` both round to 1 once the interval sits past about four
+  /// standard deviations, their difference loses every digit it had, and
+  /// `ndtri` of the saturated quantile is `+inf` — 17 % of the draws on
+  /// `[8σ, 8.5σ]`, all of them on `[10σ, 12σ]`. Neither proposal here ever
+  /// forms a CDF, so the interval's mass never has to be representable as
+  /// a difference of two numbers near 1.
+  fn tail_sample(&self, setup: TailSetup) -> T {
+    let rng = unsafe { &mut *self.simd_rng.get() };
+    let z = match setup.proposal {
+      TailProposal::Exponential { alpha_star } => loop {
+        // `1 - u` keeps the generator's `[0, 1)` off the `ln`'s zero.
+        let z = setup.a - (1.0 - rng.next_f64()).ln() / alpha_star;
+        if z > setup.b {
+          continue;
+        }
+        let d = z - alpha_star;
+        if rng.next_f64() <= (-0.5 * d * d).exp() {
+          break z;
+        }
+      },
+      TailProposal::Uniform => loop {
+        let z = setup.a + rng.next_f64() * (setup.b - setup.a);
+        if rng.next_f64() <= (0.5 * (setup.a * setup.a - z * z)).exp() {
+          break z;
+        }
+      },
+    };
+    let z = if setup.mirrored { -z } else { z };
+    T::from_f64_fast(self.mean.to_f64().unwrap() + self.std_dev.to_f64().unwrap() * z)
   }
 
   /// Inverse-CDF sample: $X = F^{-1}(F(\text{lower}) + U \cdot (F(\text{upper}) - F(\text{lower})))$.
@@ -171,9 +277,10 @@ pub struct SimdTruncatedExp<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   lambda: T,
   lower: T,
   upper: T,
-  f_lo: f64,
-  f_up: f64,
-  norm_mass: f64,
+  /// $e^{-\lambda(\text{upper} - \text{lower})}$ — the survival at the upper
+  /// bound relative to the lower one, and the only summary of the interval
+  /// the draw and the density need. Zero when `upper` is infinite.
+  tail_ratio: f64,
   simd_rng: UnsafeCell<R>,
 }
 
@@ -190,30 +297,33 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedExp<T, R> {
     let lam = lambda.to_f64().unwrap();
     let lo = lower.to_f64().unwrap();
     let up = upper.to_f64().unwrap();
-    let f_lo = 1.0 - (-lam * lo).exp();
-    let f_up = if up.is_infinite() {
-      1.0
-    } else {
-      1.0 - (-lam * up).exp()
-    };
     Self {
       lambda,
       lower,
       upper,
-      f_lo,
-      f_up,
-      norm_mass: f_up - f_lo,
+      tail_ratio: (-lam * (up - lo)).exp(),
       simd_rng: UnsafeCell::new(seed.rng_ext::<R>()),
     }
   }
 
-  /// Closed-form inverse-CDF draw: $X = -\ln(1 - U(F(\text{upper}) - F(\text{lower})) - F(\text{lower}))/\lambda$.
+  /// Closed-form inverse-CDF draw, written on the survival function rather
+  /// than the CDF: $X = \text{lower} - \ln(V)/\lambda$ with $V$ uniform on
+  /// $(e^{-\lambda(\text{upper}-\text{lower})}, 1]$.
+  ///
+  /// The CDF form $F(x) = 1 - e^{-\lambda x}$ saturates at 1 as soon as
+  /// $\lambda \cdot \text{lower}$ passes about 36: both bounds round to the
+  /// same double, the normalising mass comes out zero, and every draw
+  /// collapses onto whatever the guard against $\ln 0$ happened to be —
+  /// 690.78, a value outside the interval entirely. Shifting the origin to
+  /// `lower` leaves a difference of positives that keeps its significance
+  /// wherever the interval itself is representable.
   #[inline]
   pub fn sample_fast(&self) -> T {
     let rng = unsafe { &mut *self.simd_rng.get() };
-    let q = self.f_lo + rng.next_f64() * (self.f_up - self.f_lo);
-    let arg = (1.0 - q).max(1e-300);
-    T::from_f64_fast(-arg.ln() / self.lambda.to_f64().unwrap())
+    // `1 - u` maps the generator's `[0, 1)` onto `(0, 1]`, so `v` stays
+    // strictly above the tail ratio and the log is never `-inf`.
+    let v = 1.0 - rng.next_f64() * (1.0 - self.tail_ratio);
+    T::from_f64_fast(self.lower.to_f64().unwrap() - v.ln() / self.lambda.to_f64().unwrap())
   }
 }
 
@@ -237,8 +347,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> DistributionExt for SimdTruncatedExp<T, R> 
       return 0.0;
     }
     let lam = self.lambda.to_f64().unwrap();
-    let phi = lam * (-lam * x).exp();
-    phi / self.norm_mass
+    // Referred to `lower` for the same reason the draw is; the leading
+    // `e^{-λ·lower}` cancels between the density and the interval's mass.
+    lam * (-lam * (x - lo)).exp() / (1.0 - self.tail_ratio)
   }
 
   fn cdf(&self, x: f64) -> f64 {
@@ -251,9 +362,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> DistributionExt for SimdTruncatedExp<T, R> 
       return 1.0;
     }
     let lam = self.lambda.to_f64().unwrap();
-    let f_x = 1.0 - (-lam * x).exp();
-    let f_lo = 1.0 - (-lam * lo).exp();
-    (f_x - f_lo) / self.norm_mass
+    (1.0 - (-lam * (x - lo)).exp()) / (1.0 - self.tail_ratio)
   }
 }
 
@@ -465,6 +574,8 @@ fn norm_cdf_scalar(z: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   /// Truncated normal samples must respect the bound.
@@ -527,6 +638,82 @@ mod tests {
       (mean - expected).abs() < 0.01,
       "truncated Exp(1) mean = {mean}, expected ≈ {expected}"
     );
+  }
+
+  /// A far-tail interval keeps its draws inside its bounds and keeps the
+  /// right conditional mean.
+  ///
+  /// The inverse transform cannot reach here: `F(lower)` and `F(upper)`
+  /// both round to 1 past about four standard deviations, their difference
+  /// loses every digit, and `ndtri` of the saturated quantile is `+inf` —
+  /// 17 % of the draws on [8, 8.5], every one of them on [10, 12] and on
+  /// its mirror image. The reference mean comes from Simpson quadrature on
+  /// the conditional density of `Z - a`, which is proportional to
+  /// `exp(-a t - t^2 / 2)` and so never has to form a CDF either.
+  #[test]
+  fn truncated_normal_far_tail_stays_in_bounds() {
+    for (lo, hi) in [(8.0_f64, 8.5_f64), (10.0, 12.0), (-12.0, -10.0)] {
+      let tn = SimdTruncatedNormal::<f64>::new(0.0, 1.0, lo, hi, &Deterministic::new(2718));
+      let n = 40_000;
+      let mut sum = 0.0;
+      for _ in 0..n {
+        let x = tn.sample_fast();
+        assert!((lo..=hi).contains(&x), "sample {x} out of [{lo}, {hi}]");
+        sum += x;
+      }
+      let a = lo.abs().min(hi.abs());
+      let width = hi - lo;
+      let (mut num, mut den) = (0.0, 0.0);
+      let steps = 4_000;
+      let h = width / steps as f64;
+      for k in 0..=steps {
+        let t = k as f64 * h;
+        let w = if k == 0 || k == steps {
+          1.0
+        } else if k % 2 == 1 {
+          4.0
+        } else {
+          2.0
+        };
+        let f = (-a * t - 0.5 * t * t).exp();
+        num += w * t * f;
+        den += w * f;
+      }
+      let want = (a + num / den) * lo.signum();
+      let mean = sum / n as f64;
+      assert!(
+        (mean - want).abs() < 0.01,
+        "[{lo}, {hi}]: mean = {mean}, expected ≈ {want}"
+      );
+    }
+  }
+
+  /// A far interval keeps its truncated-exponential draws inside its bounds.
+  ///
+  /// `F(x) = 1 - e^{-λx}` saturates at 1 once `λ · lower` passes about 36:
+  /// both bounds round to the same double, the normalising mass comes out
+  /// zero, and every draw collapsed onto 690.78 — the `-ln(1e-300)` the old
+  /// guard against `ln 0` left behind, outside the interval entirely.
+  #[test]
+  fn truncated_exp_far_interval_stays_in_bounds() {
+    for (lam, lo, hi) in [(1.0_f64, 50.0_f64, 60.0_f64), (100.0, 0.5, 0.6)] {
+      let te = SimdTruncatedExp::<f64>::new(lam, lo, hi, &Deterministic::new(2718));
+      let n = 40_000;
+      let mut sum = 0.0;
+      for _ in 0..n {
+        let x = te.sample_fast();
+        assert!((lo..=hi).contains(&x), "sample {x} out of [{lo}, {hi}]");
+        sum += x;
+      }
+      // E[X] = lower + 1/λ − (upper − lower)·r/(1 − r), r = e^{−λ(upper−lower)}.
+      let r = (-lam * (hi - lo)).exp();
+      let want = lo + 1.0 / lam - (hi - lo) * r / (1.0 - r);
+      let mean = sum / n as f64;
+      assert!(
+        (mean - want).abs() < 5.0 / lam / (n as f64).sqrt(),
+        "lambda = {lam} on [{lo}, {hi}]: mean = {mean}, expected ≈ {want}"
+      );
+    }
   }
 
   /// Truncated Beta in [0.2, 0.8] respects bounds and has uniform-like
