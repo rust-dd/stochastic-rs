@@ -34,6 +34,8 @@ use stochastic_rs_stochastic::volterra::square_root::VolterraSquareRoot;
 use super::common::Device;
 use super::common::agrees;
 use super::common::all_finite;
+use super::common::means_agree;
+use super::common::spreads_agree;
 use super::common::terminal_mean;
 use super::common::terminal_std;
 use super::common::within;
@@ -808,18 +810,8 @@ fn volterra_square_root_agrees_with_the_cpu_law() {
   let host = build().sample_par(PATHS);
   assert_eq!(device[0][0], 0.04, "every path starts at v0");
   within(&device, 0.0, f32::INFINITY, "Volterra square root");
-  agrees(
-    terminal_mean(&host),
-    terminal_mean(&device),
-    0.05,
-    "Volterra square root terminal mean",
-  );
-  agrees(
-    terminal_std(&host),
-    terminal_std(&device),
-    0.06,
-    "Volterra square root terminal spread",
-  );
+  means_agree(&host, &device, "Volterra square root terminal mean");
+  spreads_agree(&host, &device, "Volterra square root terminal spread");
 }
 
 #[test]

@@ -42,6 +42,31 @@ pub(crate) fn agrees(host: f64, device: f64, tol: f64, what: &str) {
   );
 }
 
+/// Host and device agree on a terminal mean, within five standard errors of
+/// what the two samples allow.
+///
+/// The same argument as [`spreads_agree`]: a relative tolerance is a guess
+/// about a quantity whose own noise is `σ/√M` per side, and for a mean near
+/// zero — a square-root process at `v₀ = 0.04`, a rate reverting to `0.04` —
+/// the ratio of two small numbers says nothing about agreement.
+pub(crate) fn means_agree(host: &[Array1<f32>], device: &[Array1<f32>], what: &str) {
+  let stats = |paths: &[Array1<f32>]| {
+    let last = paths[0].len() - 1;
+    let values: Vec<f64> = paths.iter().map(|p| p[last] as f64).collect();
+    let n = values.len() as f64;
+    let mean = values.iter().sum::<f64>() / n;
+    let var = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n - 1.0);
+    (mean, (var / n).sqrt())
+  };
+  let (hm, he) = stats(host);
+  let (dm, de) = stats(device);
+  let band = 5.0 * (he * he + de * de).sqrt();
+  assert!(
+    (hm - dm).abs() < band,
+    "{what}: host {hm}, device {dm} (band {band}, five standard errors of the estimate)"
+  );
+}
+
 /// Host and device agree on a terminal spread, within five standard errors
 /// of what that spread's own noise allows.
 ///

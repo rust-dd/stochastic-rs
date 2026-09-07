@@ -174,14 +174,17 @@ pub(crate) enum Need {
   Counts,
   /// Only a launch that draws jumps.
   Jumps,
+  /// Only a family that reads one of the two spare uniforms.
+  Uniforms,
 }
 
-pub(crate) const FRAME_BLOCKS: [(&str, Need); 13] = [
+pub(crate) const FRAME_BLOCKS: [(&str, Need); 14] = [
   (FRAME_LOCALS, Need::Always),
   (FRAME_SERIES_DRAW, Need::Series),
   (FRAME_TABLE_DRAW, Need::Table),
   (FRAME_ENTRY_REPORT, Need::Always),
   (FRAME_NOISE, Need::Always),
+  (FRAME_UNIFORMS, Need::Uniforms),
   (FRAME_SERIES_LIVE, Need::Series),
   (FRAME_TABLE_LIVE, Need::Table),
   (FRAME_COUNTS, Need::Counts),
@@ -332,7 +335,7 @@ const FRAME_ENTRY_REPORT: &str = r#"    for (unsigned int c = 0u; c < 4u; c++) {
     for (unsigned int c = 0u; c < 4u; c++) { noise[c] = (REAL)0; }
 REPORT
     if (step_first == 0u) {
-        for (unsigned int c = 0u; c < components; c++) { out[(INDEX)c * plane + base] = reported[c]; }
+        for (unsigned int c = 0u; c < COMPONENTS; c++) { out[(INDEX)c * plane + base] = reported[c]; }
     }"#;
 
 /// The step's own draws: the 64-bit cell key, a normal per noise component,
@@ -342,16 +345,19 @@ REPORT
 /// The 43-line block of [`FRAME_BLOCKS`].
 #[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
 const FRAME_NOISE: &str = r#"    for (unsigned int i = (step_first != 0u ? 0u : 1u); i < steps; i++) {
-        // The cell number is counted in 64 bits and avalanched down to the
-        // word every draw of this step keys on. Counted in 32 bits it wraps
-        // at 2^31 path-steps -- 2^21 paths over 1024 steps, a batch this
-        // engine can be handed -- and two paths that far apart would then
-        // draw the same noise for their whole length.
-        U64 gid = (U64)(first_path + path) * (U64)steps + (U64)i;
-        gid ^= gid >> 33; gid *= (U64)0xff51afd7ed558ccd; gid ^= gid >> 33;
-        gid *= (U64)0xc4ceb9fe1a85ec53; gid ^= gid >> 33;
-        unsigned int g = (unsigned int)gid ^ (unsigned int)(gid >> 32);
-        for (unsigned int k = 0u; k < noises; k++) {
+        // The path and the step enter the key as two words, never as one
+        // product: `p * steps + i` in 32 bits wraps at 2^31 path-steps --
+        // 2^21 paths over 1024 steps, a batch this engine can be handed --
+        // and the two paths that far apart would draw the same noise for
+        // their whole length. Multiplying the path by an odd constant is a
+        // bijection, so no two paths share a word at any step, and the
+        // avalanche below spreads the pair over the word. It is done in 32
+        // bits because an Apple GPU has no 64-bit integer unit and emulates
+        // every such multiply.
+        unsigned int g = (first_path + path) * 2654435761u;
+        g ^= (i + 2246822519u) * 2246822519u;
+        g ^= g >> 16; g *= 2246822519u; g ^= g >> 13; g *= 3266489917u; g ^= g >> 16;
+        for (unsigned int k = 0u; k < NOISES; k++) {
             unsigned int a = (g ^ (2654435769u + k * 2654435761u)) ^ (seed * 2654435761u);
             a ^= a >> 16; a *= 2246822519u; a ^= a >> 13; a *= 3266489917u; a ^= a >> 16;
             unsigned int b = (g ^ (1442695041u + k * 1013904223u)) ^ (seed * 668265263u);
@@ -378,7 +384,15 @@ const FRAME_NOISE: &str = r#"    for (unsigned int i = (step_first != 0u ? 0u : 
         if (n_curves > 5u) { ct5 = curve[(INDEX)5 * steps + i]; }
         if (n_curves > 6u) { ct6 = curve[(INDEX)6 * steps + i]; }
         if (n_curves > 7u) { ct7 = curve[(INDEX)7 * steps + i]; }
-        unsigned int hu = (g ^ 2135587861u) ^ (seed * 2654435761u);
+"#;
+
+/// The two spare uniforms, `u` and `u2`: a hash each, every step, for the
+/// families that draw a threshold or a wait from them. Two of the four hashes
+/// a step costs, and most families read neither.
+///
+/// One of the [`FRAME_BLOCKS`].
+#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+const FRAME_UNIFORMS: &str = r#"        unsigned int hu = (g ^ 2135587861u) ^ (seed * 2654435761u);
         hu ^= hu >> 16; hu *= 2246822519u; hu ^= hu >> 13; hu *= 3266489917u; hu ^= hu >> 16;
         u = (REAL)hu * (REAL)2.3283064e-10;
         unsigned int hv = (g ^ 3266489917u) ^ (seed * 2654435761u);
@@ -694,7 +708,7 @@ const FRAME_STEP: &str = r#"STEP
         }
         for (unsigned int c = 0u; c < 4u; c++) { reported[c] = state[c]; }
 REPORT
-        for (unsigned int c = 0u; c < components; c++) { out[(INDEX)c * plane + base + i] = reported[c]; }
+        for (unsigned int c = 0u; c < COMPONENTS; c++) { out[(INDEX)c * plane + base + i] = reported[c]; }
     }
 "#;
 
@@ -833,8 +847,43 @@ pub(crate) struct Shape {
   /// The launch draws jumps, or names a jump law — the two are independent:
   /// a compound Poisson in count mode carries a size law with no intensity.
   pub(crate) jumps: bool,
+  /// The family reads one of the two spare uniforms.
+  pub(crate) uniforms: bool,
+  /// Noise components the family draws, as a literal in the source: a loop
+  /// bound the compiler can unroll is worth more than one it cannot.
+  pub(crate) noises: u8,
+  /// State components the family reports, likewise.
+  pub(crate) components: u8,
   /// The launch draws gamma variates.
   pub(crate) gamma: bool,
+}
+
+/// Whether `block` reads the identifier `name`.
+///
+/// A substring search is not enough and the difference is a wrong kernel:
+/// `u` occurs inside `uj`, `uv` and `unsigned`, and it occurs *as itself*
+/// inside `max(u, lit(1e-7))`, where no surrounding spaces mark it. Ten
+/// device-law cases failed on that distinction before this looked at the
+/// characters either side.
+fn reads(block: &str, name: &str) -> bool {
+  let bytes = block.as_bytes();
+  let mut from = 0;
+  while let Some(at) = block[from..].find(name) {
+    let start = from + at;
+    let end = start + name.len();
+    let before = start
+      .checked_sub(1)
+      .map(|i| bytes[i])
+      .is_none_or(|c| !c.is_ascii_alphanumeric() && c != b'_');
+    let after = bytes
+      .get(end)
+      .is_none_or(|c| !c.is_ascii_alphanumeric() && *c != b'_');
+    if before && after {
+      return true;
+    }
+    from = end;
+  }
+  false
 }
 
 impl Shape {
@@ -862,6 +911,18 @@ impl Shape {
       .any(|block| block.contains("pv")),
       jumps,
       gamma,
+      uniforms: [
+        families::c_step_for(family),
+        families::c_lift_for(family),
+        families::c_report_for(family),
+        families::c_history_for(family),
+        families::c_series_for(family),
+        families::c_table_for(family),
+      ]
+      .iter()
+      .any(|block| reads(block, "u") || reads(block, "u2")),
+      noises: family.noises() as u8,
+      components: family.components() as u8,
     }
   }
 
@@ -887,6 +948,7 @@ pub(crate) fn render_for(lang: &Language<'_>, shape: Shape) -> String {
       Need::History => shape.history,
       Need::Counts => shape.jumps || shape.gamma,
       Need::Jumps => shape.jumps,
+      Need::Uniforms => shape.uniforms,
     }
   };
   let mut body = FRAME_BLOCKS
@@ -913,6 +975,8 @@ pub(crate) fn render_for(lang: &Language<'_>, shape: Shape) -> String {
     format!("{indent}{{\n{}\n{indent}}}", body.trim_end_matches('\n'))
   };
   let body = body
+    .replace("NOISES", &format!("{}u", shape.noises))
+    .replace("COMPONENTS", &format!("{}u", shape.components))
     .replace(
       "SERIES",
       &scoped(families::c_series_for(family), "            "),
@@ -941,6 +1005,8 @@ pub(crate) fn render(lang: &Language<'_>) -> String {
     .map(|(block, _)| *block)
     .collect::<Vec<_>>()
     .join("\n")
+    .replace("NOISES", "noises")
+    .replace("COMPONENTS", "components")
     .replace("SERIES", super::families::C_SERIES.trim_end_matches('\n'))
     .replace("TABLE", super::families::C_TABLE.trim_end_matches('\n'))
     .replace("LIFT", super::families::C_LIFT.trim_end_matches('\n'))
@@ -1100,7 +1166,7 @@ mod tests {
       // The two that frame the step loop, by their place in the list.
       let want = match i {
         4 => 1,
-        12 => -1,
+        13 => -1,
         _ => 0,
       };
       assert_eq!(
@@ -1136,25 +1202,25 @@ mod tests {
     }
   }
 
-  /// The cell number a step's draws key on is counted in the language's
-  /// 64-bit type. Counted in 32 bits it wraps at 2^31 path-steps — 2^21 paths
-  /// over 1024 steps — and the two paths that far apart draw the same noise
-  /// from there on, which no suite can catch: the batch that shows it is 8 GB
-  /// of output. So the arithmetic is pinned here instead.
+  /// The path and the step reach the key as two words, never as one product.
+  ///
+  /// `p * steps + i` in 32 bits wraps at 2^31 path-steps — 2^21 paths over
+  /// 1024 steps — and the two paths that far apart draw the same noise from
+  /// there on, which no suite can catch: the batch that shows it is 8 GB of
+  /// output. Two words never collide, because multiplying the path by an odd
+  /// constant is a bijection. Pinned here because the alternative is a
+  /// correctness bug no test can reach.
   #[test]
-  fn the_cell_key_is_counted_in_64_bits() {
+  fn the_cell_key_takes_the_path_and_the_step_apart() {
     for (name, lang) in languages() {
-      let wide = lang.wide;
       let source = render(&lang);
       assert!(
-        source.contains(&format!(
-          "{wide} gid = ({wide})(first_path + path) * ({wide})steps + ({wide})i;"
-        )),
-        "{name}: the cell number is not counted in {wide}"
+        source.contains("unsigned int g = (first_path + path) * 2654435761u;"),
+        "{name}: the path does not enter the key through an odd multiplier"
       );
       assert!(
         !source.contains("(first_path + path) * steps"),
-        "{name}: a 32-bit cell number survives in the frame"
+        "{name}: the key is a product of the path and the step count"
       );
     }
   }
