@@ -126,6 +126,14 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     self.backend.euler_paths_map(self, m, f)
   }
 
+  fn sample_map_view<R: Send>(
+    &self,
+    m: usize,
+    f: impl Fn(ndarray::ArrayView1<T>) -> R + Sync,
+  ) -> Vec<R> {
+    self.backend.euler_paths_map_view(self, m, f)
+  }
+
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
     self.backend.euler_paths(self, m)
   }

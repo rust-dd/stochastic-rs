@@ -55,6 +55,7 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Array3;
+use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::traits::Program;
 
@@ -2361,6 +2362,17 @@ pub trait EulerBackend<T: FloatExt>: Backend {
     f: impl Fn(&Array1<T>) -> R + Sync,
   ) -> Result<Vec<R>, DeviceError>;
 
+  /// [`try_euler_paths_map`](Self::try_euler_paths_map) where the callback
+  /// borrows the row. A device chunk is one `m × n` block already in host
+  /// memory, so a view hands the callback that memory and the batch is
+  /// traversed once; the owning form copies every row out of it first.
+  fn try_euler_paths_map_view<P: EulerCoefficients<T>, R: Send>(
+    &self,
+    process: &P,
+    m: usize,
+    f: impl Fn(ArrayView1<T>) -> R + Sync,
+  ) -> Result<Vec<R>, DeviceError>;
+
   /// The batch as one `m × n` matrix; on a device the launch buffer itself.
   fn try_euler_matrix<P: EulerCoefficients<T>>(
     &self,
@@ -2393,6 +2405,19 @@ pub trait EulerBackend<T: FloatExt>: Backend {
   ) -> Vec<R> {
     self
       .try_euler_paths_map(process, m, f)
+      .unwrap_or_else(crate::device::device_panic)
+  }
+
+  /// [`try_euler_paths_map_view`](Self::try_euler_paths_map_view), panicking
+  /// with the device's error.
+  fn euler_paths_map_view<P: EulerCoefficients<T>, R: Send>(
+    &self,
+    process: &P,
+    m: usize,
+    f: impl Fn(ArrayView1<T>) -> R + Sync,
+  ) -> Vec<R> {
+    self
+      .try_euler_paths_map_view(process, m, f)
       .unwrap_or_else(crate::device::device_panic)
   }
 
@@ -2475,6 +2500,15 @@ macro_rules! host_euler_backend {
         f: impl Fn(&Array1<T>) -> R + Sync,
       ) -> Result<Vec<R>, DeviceError> {
         Ok(sample_map_chunked(process, m, f))
+      }
+
+      fn try_euler_paths_map_view<P: EulerCoefficients<T>, R: Send>(
+        &self,
+        process: &P,
+        m: usize,
+        f: impl Fn(ArrayView1<T>) -> R + Sync,
+      ) -> Result<Vec<R>, DeviceError> {
+        Ok(sample_map_chunked(process, m, |path| f(path.view())))
       }
 
       fn try_euler_matrix<P: EulerCoefficients<T>>(
@@ -2569,7 +2603,9 @@ macro_rules! kernel_euler_backend {
         // One buffer per rayon worker, not one allocation per path: the
         // closure takes an owned array, and allocating a fresh one for every
         // path costs about 68 ns — at a batch of a hundred thousand short
-        // paths that was more than the kernel.
+        // paths that was more than the kernel. The copy into it is the price
+        // of an owned array; `try_euler_paths_map_view` below is the same
+        // walk without it.
         let chunk = <Self as EulerKernel<$scalar>>::euler_kernel(self, process, first, len, seed)?;
         let n = chunk.ncols();
         out.extend(
@@ -2584,6 +2620,40 @@ macro_rules! kernel_euler_backend {
                 f(buffer)
               },
             )
+            .collect::<Vec<R>>(),
+        );
+        first += len;
+      }
+      Ok(out)
+    }
+
+    fn try_euler_paths_map_view<P: EulerCoefficients<$scalar>, R: Send>(
+      &self,
+      process: &P,
+      m: usize,
+      f: impl Fn(ArrayView1<$scalar>) -> R + Sync,
+    ) -> Result<Vec<R>, DeviceError> {
+      use rayon::prelude::*;
+      let seed = process.device_seed();
+      let rows = crate::device::chunk_rows(
+        <Self as EulerKernel<$scalar>>::batch_budget(self),
+        process.grid_points(),
+        std::mem::size_of::<$scalar>(),
+      );
+      let mut out = Vec::with_capacity(m);
+      let mut first = 0;
+      while first < m {
+        let len = rows.min(m - first);
+        // The chunk is the launch buffer as it came back: the callback reads
+        // the rows where they already are, so the batch is walked once and
+        // nothing is allocated per path.
+        let chunk = <Self as EulerKernel<$scalar>>::euler_kernel(self, process, first, len, seed)?;
+        out.extend(
+          chunk
+            .outer_iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(&f)
             .collect::<Vec<R>>(),
         );
         first += len;

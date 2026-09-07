@@ -159,6 +159,18 @@ where
     }
   }
 
+  fn sample_map_view<R: Send>(
+    &self,
+    m: usize,
+    f: impl Fn(ndarray::ArrayView1<T>) -> R + Sync,
+  ) -> Vec<R> {
+    if self.device_ready() {
+      crate::euler::EulerBackend::euler_paths_map_view(&self.fgn.backend, self, m, f)
+    } else {
+      crate::traits::process::sample_map_chunked(self, m, |path| f(path.view()))
+    }
+  }
+
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
     if self.device_ready() {
       crate::euler::EulerBackend::euler_paths(&self.fgn.backend, self, m)

@@ -23,7 +23,10 @@
 //!    than recursion-shaped, and it is where the GPU already wins.
 //!
 //! Every timing is the best of five runs: a single run on a shared machine
-//! measures the neighbours as much as the kernel.
+//! measures the neighbours as much as the kernel. The throughput rows map
+//! with [`ProcessExt::sample_map_view`], whose callback borrows the row: the
+//! owning form copies every path out of the launch buffer first, which is a
+//! second traversal of the whole batch and worth 1.2-1.6x on Metal.
 
 use std::time::Instant;
 
@@ -93,10 +96,12 @@ fn main() {
       || Gbm::<f32, _>::new(0.05, 0.2, n, Some(100.0), Some(1.0), Deterministic::new(7));
     let _ = build32().on::<Cuda>().sample_par(8);
     let host = best(5, || {
-      build32().on::<Cpu>().sample_map(m, |p| p[p.len() - 1])
+      build32().on::<Cpu>().sample_map_view(m, |p| p[p.len() - 1])
     });
     let device = best(5, || {
-      build32().on::<Cuda>().sample_map(m, |p| p[p.len() - 1])
+      build32()
+        .on::<Cuda>()
+        .sample_map_view(m, |p| p[p.len() - 1])
     });
     println!(
       "  {m:>7} {n:>7} {:>6} {:>10.1} {:>10.1} {:>13.2} {:>13.2} {:>8.2}x",
@@ -115,10 +120,12 @@ fn main() {
       || Gbm::<f64, _>::new(0.05, 0.2, n, Some(100.0), Some(1.0), Deterministic::new(7));
     let _ = build64().on::<Cuda>().sample_par(8);
     let host = best(5, || {
-      build64().on::<Cpu>().sample_map(m, |p| p[p.len() - 1])
+      build64().on::<Cpu>().sample_map_view(m, |p| p[p.len() - 1])
     });
     let device = best(5, || {
-      build64().on::<Cuda>().sample_map(m, |p| p[p.len() - 1])
+      build64()
+        .on::<Cuda>()
+        .sample_map_view(m, |p| p[p.len() - 1])
     });
     println!(
       "  {m:>7} {n:>7} {:>6} {:>10.1} {:>10.1} {:>13.2} {:>13.2} {:>8.2}x",

@@ -2,6 +2,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use ndarray::parallel::prelude::*;
 use stochastic_rs_distributions::traits::FloatExt;
 
@@ -415,6 +416,26 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
 
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
     sample_par_chunked(self, m)
+  }
+
+  /// [`sample_map`](Self::sample_map) where the callback borrows the path
+  /// instead of owning it — for the processes whose sample is a single row.
+  ///
+  /// The two produce the same values; what differs is who allocates. A
+  /// device batch arrives as one `m × n` block, and handing an owned
+  /// `Array1` to the callback means copying every row out of it a second
+  /// time, after the copy that crossed the bus. A view is that same memory,
+  /// so the whole batch is traversed once. On the host, where a path is
+  /// already an owned array, the view costs nothing either way.
+  ///
+  /// Most callbacks compile unchanged — `ArrayView1` indexes, iterates and
+  /// reduces like the array it borrows — so this is the one to reach for
+  /// when the result is a number per path rather than the path itself.
+  fn sample_map_view<R: Send>(&self, m: usize, f: impl Fn(ArrayView1<T>) -> R + Sync) -> Vec<R>
+  where
+    Self: ProcessExt<T, Output = Array1<T>> + Sized,
+  {
+    self.sample_map(m, |path| f(path.view()))
   }
 
   /// [`sample`](Self::sample), reporting a device failure as a
