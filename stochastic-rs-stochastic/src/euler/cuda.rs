@@ -26,6 +26,47 @@ use crate::traits::FloatExt;
 
 type Result<T> = std::result::Result<T, DeviceError>;
 
+/// Which cached output buffer a precision uses. Implemented for the two the
+/// kernels are rendered in; `cudarc`'s slices are typed, so the cache is one
+/// array per precision rather than one of bytes.
+trait CachedOut: DeviceRepr + ValidAsZeroBits + Copy {
+  fn slots(kernels: &mut Kernels) -> &mut [Option<CudaSlice<Self>>; 2];
+}
+
+impl CachedOut for f32 {
+  fn slots(kernels: &mut Kernels) -> &mut [Option<CudaSlice<f32>>; 2] {
+    &mut kernels.out_f32
+  }
+}
+
+impl CachedOut for f64 {
+  fn slots(kernels: &mut Kernels) -> &mut [Option<CudaSlice<f64>>; 2] {
+    &mut kernels.out_f64
+  }
+}
+
+/// The cached buffer of `slot`, grown to `len` if it is smaller, taken out of
+/// the cache for the caller to launch into. [`return_output`] puts it back.
+fn take_output<R: CachedOut>(
+  kernels: &mut Kernels,
+  stream: &Arc<CudaStream>,
+  slot: usize,
+  len: usize,
+) -> Result<CudaSlice<R>> {
+  let held = R::slots(kernels)[slot].take();
+  match held {
+    Some(buffer) if buffer.len() >= len => Ok(buffer),
+    _ => stream
+      .alloc_zeros::<R>(len)
+      .map_err(|e| driver_error("alloc out", e)),
+  }
+}
+
+/// Puts a launch's output buffer back for the next call to grow into.
+fn return_output<R: CachedOut>(kernels: &mut Kernels, slot: usize, buffer: CudaSlice<R>) {
+  R::slots(kernels)[slot] = Some(buffer);
+}
+
 /// A driver failure as a [`DeviceError`], with the one code a caller can act
 /// on kept apart: an allocation that ran out of memory is retried by the
 /// engine's batch loop with a smaller chunk, where every other code is the
@@ -96,6 +137,17 @@ struct Kernels {
   /// Second stream of the batch pipeline: chunk `k + 1` computes on one
   /// while chunk `k` copies back on the other.
   stream_b: Arc<CudaStream>,
+  /// The launches' output buffers, kept between calls: slot 0 for a single
+  /// launch, slots 0 and 1 for the two-stream pipeline.
+  ///
+  /// `alloc_zeros` per launch both allocates and clears; on Metal the same
+  /// allocation was the single largest cost of a batch — three to four times
+  /// the kernel at a hundred thousand paths — and there is no reason CUDA
+  /// pays it either. The kernel writes every element it is asked for, so a
+  /// reused buffer needs no clearing.
+  out_f32: [Option<CudaSlice<f32>>; 2],
+  out_f64: [Option<CudaSlice<f64>>; 2],
+
   /// One compiled kernel per launch shape and precision, built on first use.
   ///
   /// A T4 reports what the monolithic body costs: 80 registers and 3552 bytes
@@ -197,6 +249,8 @@ fn ensure_kernels(ordinal: usize, shape: Shape, real: &'static str) -> Result<()
       context: context.clone(),
       stream,
       stream_b,
+      out_f32: [None, None],
+      out_f64: [None, None],
       functions: HashMap::new(),
     });
   }
@@ -264,7 +318,7 @@ fn run<R>(
   program_n: u32,
 ) -> Result<Vec<R>>
 where
-  R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
+  R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float + CachedOut,
 {
   let shape = Shape::new(
     super::families::Family::from_code(family).expect("a declared family"),
@@ -272,19 +326,22 @@ where
     gamma_law != 0,
   );
   ensure_kernels(ordinal, shape, real)?;
-  let guard = KERNELS.lock();
-  let kernels = guard.as_ref().expect("initialised");
+  let out_len = components as usize * m * n;
+  let mut guard = KERNELS.lock();
+  let kernels = guard.as_mut().expect("initialised");
+  let stream = kernels.stream.clone();
   let func = kernels
     .functions
     .get(&(shape, real))
-    .expect("compiled for this shape");
-  let stream = &kernels.stream;
+    .expect("compiled for this shape")
+    .clone();
+  let mut d_out = take_output::<R>(kernels, &stream, 0, out_len)?;
+  drop(guard);
+  let stream = &stream;
+  let func = &func;
   let d_params = stream
     .clone_htod(&params[..])
     .map_err(|e| driver_error("htod params", e))?;
-  let mut d_out = stream
-    .alloc_zeros::<R>(components as usize * m * n)
-    .map_err(|e| driver_error("alloc out", e))?;
   let sqrt_dt = dt.sqrt();
   let (steps, paths, first_path) = (n as u32, m as u32, first as u32);
   // The kernel always binds the increment pointer; an unused slot gets one
@@ -384,9 +441,13 @@ where
       .launch(paths_config(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
-  stream
-    .clone_dtoh(&d_out)
-    .map_err(|e| driver_error("dtoh", e))
+  // Only this launch's own rows: the buffer may be larger, having been grown
+  // by an earlier one.
+  let out = stream
+    .clone_dtoh(&d_out.slice(0..out_len))
+    .map_err(|e| driver_error("dtoh", e))?;
+  return_output(KERNELS.lock().as_mut().expect("initialised"), 0, d_out);
+  Ok(out)
 }
 
 impl<T: FloatExt> EulerKernel<T> for Cuda {
@@ -787,16 +848,14 @@ fn launch_chunk<R>(
   table_u0: R,
   program: &[R],
   program_n: u32,
-) -> Result<CudaSlice<R>>
+  d_out: &mut CudaSlice<R>,
+) -> Result<()>
 where
-  R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
+  R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float + CachedOut,
 {
   let d_params = stream
     .clone_htod(&params[..])
     .map_err(|e| driver_error("htod params", e))?;
-  let mut d_out = stream
-    .alloc_zeros::<R>(components as usize * m * n)
-    .map_err(|e| driver_error("alloc out", e))?;
   let sqrt_dt = dt.sqrt();
   let (steps, paths, first_path) = (n as u32, m as u32, first as u32);
   // The kernel always binds the increment pointer; an unused slot gets one
@@ -845,7 +904,7 @@ where
   unsafe {
     stream
       .launch_builder(func)
-      .arg(&mut d_out)
+      .arg(&mut *d_out)
       .arg(&d_params)
       .arg(&family)
       .arg(&components)
@@ -896,7 +955,7 @@ where
       .launch(paths_config(paths))
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
-  Ok(d_out)
+  Ok(())
 }
 
 /// The whole batch through the two-stream pipeline, `rows` paths per chunk.
@@ -939,7 +998,7 @@ fn pipelined<R>(
   program_n: u32,
 ) -> Result<Vec<R>>
 where
-  R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float + Send + Sync,
+  R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float + Send + Sync + CachedOut,
 {
   let shape = Shape::new(
     super::families::Family::from_code(family).expect("a declared family"),
@@ -964,24 +1023,34 @@ where
   ];
   // Per slot: the device buffer kept alive until its copy has landed, and
   // the `(first, len)` rows the staging buffer holds.
-  let mut in_flight: [Option<(CudaSlice<R>, usize, usize)>; 2] = [None, None];
-  let drain = |slot: usize,
-               in_flight: &mut [Option<(CudaSlice<R>, usize, usize)>; 2],
-               host: &mut [R]|
-   -> Result<()> {
-    if let Some((_d_out, f0, l0)) = in_flight[slot].take() {
-      streams[slot]
-        .synchronize()
-        .map_err(|e| DeviceError::Launch(format!("sync chunk: {e}")))?;
-      let src = unsafe { std::slice::from_raw_parts(staging[slot].ptr, planes * l0 * n) };
-      // A chunk holds its own planes back to back; the batch holds each
-      // plane whole, so the rows land one plane at a time.
-      for c in 0..planes {
-        let to = (c * m + f0) * n;
-        host[to..to + l0 * n].copy_from_slice(&src[c * l0 * n..(c + 1) * l0 * n]);
+  let mut in_flight: [Option<(usize, usize)>; 2] = [None, None];
+  let drain =
+    |slot: usize, in_flight: &mut [Option<(usize, usize)>; 2], host: &mut [R]| -> Result<()> {
+      if let Some((f0, l0)) = in_flight[slot].take() {
+        streams[slot]
+          .synchronize()
+          .map_err(|e| DeviceError::Launch(format!("sync chunk: {e}")))?;
+        let src = unsafe { std::slice::from_raw_parts(staging[slot].ptr, planes * l0 * n) };
+        // A chunk holds its own planes back to back; the batch holds each
+        // plane whole, so the rows land one plane at a time.
+        for c in 0..planes {
+          let to = (c * m + f0) * n;
+          host[to..to + l0 * n].copy_from_slice(&src[c * l0 * n..(c + 1) * l0 * n]);
+        }
       }
-    }
-    Ok(())
+      Ok(())
+    };
+  // The two output buffers the pipeline alternates between, sized for the
+  // largest chunk and kept across calls: allocating them per chunk is what
+  // made a Metal batch three times slower than its kernel.
+  let mut buffers = {
+    let mut guard = KERNELS.lock();
+    let kernels = guard.as_mut().expect("initialised");
+    let need = planes * rows * n;
+    [
+      take_output::<R>(kernels, &streams[0], 0, need)?,
+      take_output::<R>(kernels, &streams[1], 1, need)?,
+    ]
   };
   let mut first = 0;
   let mut k = 0;
@@ -989,7 +1058,7 @@ where
     let len = rows.min(m - first);
     let slot = k % 2;
     drain(slot, &mut in_flight, &mut host)?;
-    let d_out = launch_chunk(
+    launch_chunk(
       &streams[slot],
       &func,
       params,
@@ -1035,17 +1104,25 @@ where
       table_u0,
       program,
       program_n,
+      &mut buffers[slot],
     )?;
     let dst = unsafe { std::slice::from_raw_parts_mut(staging[slot].ptr, planes * len * n) };
     streams[slot]
-      .memcpy_dtoh(&d_out, dst)
+      .memcpy_dtoh(&buffers[slot].slice(0..planes * len * n), dst)
       .map_err(|e| driver_error("dtoh chunk", e))?;
-    in_flight[slot] = Some((d_out, first, len));
+    in_flight[slot] = Some((first, len));
     first += len;
     k += 1;
   }
   drain(0, &mut in_flight, &mut host)?;
   drain(1, &mut in_flight, &mut host)?;
+  {
+    let mut guard = KERNELS.lock();
+    let kernels = guard.as_mut().expect("initialised");
+    let [b0, b1] = buffers;
+    return_output(kernels, 0, b0);
+    return_output(kernels, 1, b1);
+  }
   Ok(host)
 }
 

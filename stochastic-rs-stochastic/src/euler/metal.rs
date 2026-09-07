@@ -192,6 +192,16 @@ struct Context {
   ordinal: usize,
   device: Device,
   queue: CommandQueue,
+  /// The launch's output buffer, kept between launches.
+  ///
+  /// A fresh shared buffer has to be mapped page by page before the kernel
+  /// can write it, and at a hundred thousand paths over a thousand steps
+  /// that is four hundred megabytes: about eighty milliseconds, more than
+  /// the kernel itself. A Monte-Carlo loop launches the same shape over and
+  /// over, so the buffer is grown to the largest launch and reused. The fGN
+  /// pipeline has had a cache like this since 2.6; the engine had none.
+  output: Option<Buffer>,
+
   /// One pipeline per launch shape, built on first use and kept.
   ///
   /// A kernel rendered for one family is a fraction of the monolithic body —
@@ -270,6 +280,7 @@ fn ensure_context(ordinal: usize, shape: Shape) -> Result<()> {
       ordinal,
       device,
       queue,
+      output: None,
       pipelines: HashMap::new(),
     });
   }
@@ -320,12 +331,17 @@ fn run(
     args.gamma_law != 0,
   );
   ensure_context(ordinal, shape)?;
-  let guard = CONTEXT.lock();
-  let ctx = guard.as_ref().expect("initialised");
-  let pipeline = ctx.pipelines.get(&shape).expect("compiled for this shape");
+  let mut guard = CONTEXT.lock();
+  let ctx = guard.as_mut().expect("initialised");
   let shared = MTLResourceOptions::StorageModeShared;
   let total = args.components as usize * args.paths as usize * args.steps as usize;
-  let out_buf = ctx.device.new_buffer((total * 4) as u64, shared);
+  let bytes = (total * 4) as u64;
+  if ctx.output.as_ref().is_none_or(|b| b.length() < bytes) {
+    ctx.output = Some(ctx.device.new_buffer(bytes, shared));
+  }
+  let ctx = guard.as_ref().expect("initialised");
+  let pipeline = ctx.pipelines.get(&shape).expect("compiled for this shape");
+  let out_buf = ctx.output.as_ref().expect("just sized");
   let params_buf = ctx.device.new_buffer_with_data(
     params.as_ptr() as *const _,
     (crate::euler::PARAM_SLOTS * 4) as u64,
@@ -376,7 +392,7 @@ fn run(
   {
     let enc = cmd.new_compute_command_encoder();
     enc.set_compute_pipeline_state(pipeline);
-    enc.set_buffer(0, Some(&out_buf), 0);
+    enc.set_buffer(0, Some(out_buf), 0);
     enc.set_buffer(1, Some(&params_buf), 0);
     enc.set_buffer(3, Some(incs_buf), 0);
     enc.set_buffer(4, Some(&curve_buf), 0);

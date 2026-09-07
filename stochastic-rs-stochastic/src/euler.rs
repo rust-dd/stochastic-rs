@@ -2566,11 +2566,26 @@ macro_rules! kernel_euler_backend {
       let mut first = 0;
       while first < m {
         let len = rows.min(m - first);
-        let chunk: Vec<Array1<$scalar>> = <Self as EulerKernel<$scalar>>::euler_kernel(self, process, first, len, seed)?
-          .outer_iter()
-          .map(|row| row.to_owned())
-          .collect();
-        out.extend(chunk.par_iter().map(&f).collect::<Vec<R>>());
+        // One buffer per rayon worker, not one allocation per path: the
+        // closure takes an owned array, and allocating a fresh one for every
+        // path costs about 68 ns — at a batch of a hundred thousand short
+        // paths that was more than the kernel.
+        let chunk = <Self as EulerKernel<$scalar>>::euler_kernel(self, process, first, len, seed)?;
+        let n = chunk.ncols();
+        out.extend(
+          chunk
+            .outer_iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map_init(
+              || Array1::<$scalar>::zeros(n),
+              |buffer, row| {
+                buffer.assign(&row);
+                f(buffer)
+              },
+            )
+            .collect::<Vec<R>>(),
+        );
         first += len;
       }
       Ok(out)
