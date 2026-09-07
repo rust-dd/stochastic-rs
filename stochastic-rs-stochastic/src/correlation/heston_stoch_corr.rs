@@ -376,20 +376,20 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorrSampler<T, S> {
     rho_path[0] = x_corr.tanh();
 
     for i in 1..self.n {
-      // ── Correlation dynamics (modified Ou in X-space) ──
+      // Correlation dynamics (modified Ou in X-space)
       let corr_drift = self.kappa_r * (self.mu_r - x_corr.tanh());
       x_corr = x_corr + corr_drift * dt + self.sigma_r * dw_rho[i - 1];
       let rho_t = x_corr.tanh();
       rho_path[i] = rho_t;
 
-      // ── Variance dynamics (Cir) ──
+      // Variance dynamics (Cir)
       let v_prev = v_path[i - 1].max(zero);
       v_path[i] = (v_prev
         + self.kappa_v * (self.mu_v - v_prev) * dt
         + self.sigma_v * v_prev.sqrt() * dw_v[i - 1])
         .max(zero);
 
-      // ── Log-price dynamics (Cholesky, Eq. 2.7 with ρ₁=0) ──
+      // Log-price dynamics (Cholesky, Eq. 2.7 with ρ₁=0)
       // dx = (r − ½v)dt + ρ_t√v dW̃^ν + ρ₂√v dW̃^ρ + √(1−ρ_t²−ρ₂²)√v dW̃^x
       let rho2_sq = self.rho2 * self.rho2;
       let indep_coeff = (T::one() - rho_t * rho_t - rho2_sq).max(zero).sqrt();

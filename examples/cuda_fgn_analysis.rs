@@ -43,7 +43,6 @@ fn main() {
   let fgn = Fgn::<f64>::new(h, n, Some(t), Unseeded);
   let fgn_cuda = Fgn::<f64>::new(h, n, Some(t), Unseeded).on::<Cuda>();
 
-  // ── Covariance vector comparison ──────────────────────────────────────────
   println!("Generating {m} CPU paths (n={n}, H={h})...");
   let cpu_paths: Vec<Vec<f64>> = (0..m).map(|_| fgn.sample().to_vec()).collect();
   let cpu_vals: Vec<f64> = cpu_paths.iter().flatten().copied().collect();
@@ -119,7 +118,6 @@ fn main() {
   cov_plot.write_html("fgn_covariance_comparison.html");
   println!("\nCovariance plot saved to fgn_covariance_comparison.html");
 
-  // ── FBM path plots from CUDA ──────────────────────────────────────────────
   let fbm_n = 4096_usize;
   let fbm_paths = 8_usize;
   let hursts = [0.15, 0.25, 0.50, 0.75, 0.90];

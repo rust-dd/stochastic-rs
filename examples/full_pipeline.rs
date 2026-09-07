@@ -49,9 +49,6 @@ fn main() {
   println!("  stochastic-rs — full pricing pipeline demo (v2)");
   println!("=========================================================\n");
 
-  // -----------------------------------------------------------------------
-  // 1. Reactive market handles
-  // -----------------------------------------------------------------------
   let spot_q = Arc::new(SimpleQuote::new(100.0));
   let vol_q = Arc::new(SimpleQuote::new(0.20));
   let rate_q = Arc::new(SimpleQuote::new(0.05));
@@ -68,18 +65,12 @@ fn main() {
   println!("  rate   = {:.4}", rate_q.value());
   println!("  div    = {:.4}\n", div_q.value());
 
-  // -----------------------------------------------------------------------
-  // 2. Two engines against the same market
-  // -----------------------------------------------------------------------
   let bs_engine = AnalyticBSEngine::new(spot.clone(), vol.clone(), rate.clone(), div.clone());
 
   let heston_params = HestonStaticParams::new(0.04, 1.5, 0.04, 0.30, -0.7);
   let heston_engine =
     AnalyticHestonEngine::new(spot.clone(), rate.clone(), div.clone(), heston_params);
 
-  // -----------------------------------------------------------------------
-  // 3. Portfolio: equity option + variance swap + TRS
-  // -----------------------------------------------------------------------
   let call = EuropeanOption::new_tau(110.0, OptionType::Call, 1.0);
   let put = EuropeanOption::new_tau(95.0, OptionType::Put, 1.0);
 
@@ -150,9 +141,6 @@ fn main() {
     trs_v.fair_spread * 1e4
   );
 
-  // -----------------------------------------------------------------------
-  // 4. Reactive update: bump spot, all engines re-price automatically
-  // -----------------------------------------------------------------------
   println!("Reactive update — spot 100 → 105:");
   spot_q.set_value(105.0);
   let bs_after = bs_engine.calculate(&call);
@@ -170,9 +158,6 @@ fn main() {
   );
   spot_q.set_value(100.0);
 
-  // -----------------------------------------------------------------------
-  // 5. FX vol smile (Vanna-Volga)
-  // -----------------------------------------------------------------------
   let fx_quotes = FxMarketQuotes {
     atm: 0.10,
     rr_25: -0.005,
@@ -194,9 +179,6 @@ fn main() {
   }
   println!();
 
-  // -----------------------------------------------------------------------
-  // 6. Aggregate Greeks
-  // -----------------------------------------------------------------------
   let g_call = bs_call.greeks().unwrap();
   let g_put = bs_put.greeks().unwrap();
   let net_delta = g_call.delta - g_put.delta; // long call, short put
@@ -207,9 +189,6 @@ fn main() {
   println!("  Γ = {:.6}", net_gamma);
   println!("  ν = {:.4}\n", net_vega);
 
-  // -----------------------------------------------------------------------
-  // 7. Parametric VaR on simulated portfolio PnL
-  // -----------------------------------------------------------------------
   let n_sim = 1_000_usize;
   let pnl: Vec<f64> = (0..n_sim)
     .map(|i| {
@@ -224,9 +203,6 @@ fn main() {
   println!("  VaR(95%) = {:.4}", var_95);
   println!("  VaR(99%) = {:.4}\n", var_99);
 
-  // -----------------------------------------------------------------------
-  // 8. Liquidity-adjusted view (Almgren-Chriss execution cost)
-  // -----------------------------------------------------------------------
   let exec = AlmgrenChrissParams {
     total_shares: 50_000.0,
     horizon: 1.0,

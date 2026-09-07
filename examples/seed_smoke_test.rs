@@ -27,7 +27,6 @@ fn main() {
   let h = 0.7_f64;
   let t = 1.0_f64;
 
-  // ─── 1. Unseeded → independent streams ────────────────────────────────
   let fbm_a = Fbm::<f64, _>::new(h, n, Some(t), Unseeded);
   let fbm_b = Fbm::<f64, _>::new(h, n, Some(t), Unseeded);
   let path_a = fbm_a.sample().to_vec();
@@ -42,7 +41,6 @@ fn main() {
     "two Unseeded Fbm instances produced identical paths — seed propagation broken?"
   );
 
-  // ─── 2. Deterministic(seed) reproducibility ──────────────────────────
   let seed = 0xDEAD_BEEFu64;
   let fbm_c = Fbm::<f64, _>::new(h, n, Some(t), Deterministic::new(seed));
   let fbm_d = Fbm::<f64, _>::new(h, n, Some(t), Deterministic::new(seed));
@@ -58,7 +56,6 @@ fn main() {
     "Deterministic seed did NOT reproduce — seed propagation broken"
   );
 
-  // ─── 3. Different seeds → different paths ────────────────────────────
   let fbm_e = Fbm::<f64, _>::new(h, n, Some(t), Deterministic::new(seed));
   let fbm_f = Fbm::<f64, _>::new(h, n, Some(t), Deterministic::new(seed.wrapping_add(1)));
   let path_e = fbm_e.sample().to_vec();
@@ -74,7 +71,6 @@ fn main() {
     "different seeds produced identical paths — seed mixing broken"
   );
 
-  // ─── 4. Same Fbm instance, repeated samples ──────────────────────────
   // `Fbm` stores `seed: S`, so `sample()` calls advance the internal seed
   // state through `S::rng()`. Two consecutive samples from the SAME
   // instance must therefore differ (otherwise every call would replay).
@@ -91,7 +87,6 @@ fn main() {
     "consecutive samples from the same Deterministic Fbm matched — seed not advancing"
   );
 
-  // ─── 5. SeedExt::reseed — in-place seed swap, no realloc ─────────────
   // After `seed.reseed(s)` the same process instance must reproduce the
   // path it would have produced if constructed with `Deterministic::new(s)`
   // (bit-for-bit). Lets calibration loops sweep seeds without rebuilding
@@ -109,7 +104,7 @@ fn main() {
     "reseed(seed) did NOT reproduce the Deterministic(seed) stream — reset path broken"
   );
 
-  // 5b. After reseed, two replays of the same seed match.
+  // After reseed, two replays of the same seed match.
   let fbm_i = Fbm::<f64, _>::new(h, n, Some(t), Deterministic::new(0));
   fbm_i.seed.reseed(123);
   let path_i1 = fbm_i.sample().to_vec();
@@ -125,7 +120,6 @@ fn main() {
     "reseeding to the same value did NOT replay the same stream"
   );
 
-  // ─── 6. Unseeded::reseed is a no-op ───────────────────────────────────
   // Spec: `Unseeded.reseed(seed)` is silently a no-op (no fixed state to
   // assign to). The call must compile and have no observable effect.
   let fbm_j = Fbm::<f64, _>::new(h, n, Some(t), Unseeded);
@@ -135,7 +129,6 @@ fn main() {
 
   println!("\n--- Fgn (direct, not via Fbm cumsum) ---");
 
-  // ─── 7. Fgn Unseeded → independent streams ────────────────────────────
   let fgn_a = Fgn::<f64, _>::new(h, n, Some(t), Unseeded);
   let fgn_b = Fgn::<f64, _>::new(h, n, Some(t), Unseeded);
   let p_a = fgn_a.sample().to_vec();
@@ -150,7 +143,6 @@ fn main() {
     "two Unseeded Fgn instances produced identical paths"
   );
 
-  // ─── 8. Fgn Deterministic reproducibility ─────────────────────────────
   let fgn_c = Fgn::<f64, _>::new(h, n, Some(t), Deterministic::new(seed));
   let fgn_d = Fgn::<f64, _>::new(h, n, Some(t), Deterministic::new(seed));
   let p_c = fgn_c.sample().to_vec();
@@ -162,7 +154,6 @@ fn main() {
   );
   println!("Fgn Deterministic({seed}) × 2 → identical paths ✓");
 
-  // ─── 9. Fgn different seeds → different paths ─────────────────────────
   let fgn_e = Fgn::<f64, _>::new(h, n, Some(t), Deterministic::new(seed));
   let fgn_f = Fgn::<f64, _>::new(h, n, Some(t), Deterministic::new(seed.wrapping_add(1)));
   let p_e = fgn_e.sample().to_vec();
@@ -173,7 +164,6 @@ fn main() {
   );
   println!("Fgn Deterministic(seed) vs Deterministic(seed+1) → different paths ✓");
 
-  // ─── 10. Fgn same instance, repeated samples ──────────────────────────
   let fgn_g = Fgn::<f64, _>::new(h, n, Some(t), Deterministic::new(seed));
   let p_g1 = fgn_g.sample().to_vec();
   let p_g2 = fgn_g.sample().to_vec();
@@ -183,7 +173,6 @@ fn main() {
   );
   println!("Fgn same instance × 2 samples → different paths ✓");
 
-  // ─── 11. Fgn reseed reproduces Deterministic stream ───────────────────
   let fgn_h = Fgn::<f64, _>::new(h, n, Some(t), Deterministic::new(0));
   fgn_h.seed.reseed(seed);
   let p_h = fgn_h.sample().to_vec();
@@ -194,7 +183,6 @@ fn main() {
   );
   println!("Fgn reseed(seed) → identical to Deterministic(seed) stream ✓");
 
-  // ─── 12. Fgn Unseeded::reseed is a no-op ──────────────────────────────
   let fgn_i = Fgn::<f64, _>::new(h, n, Some(t), Unseeded);
   fgn_i.seed.reseed(seed);
   let _ = fgn_i.sample();

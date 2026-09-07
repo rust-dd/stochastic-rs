@@ -348,7 +348,6 @@ pub fn fit_drr_garch(
   let k = k_folds.unwrap_or(5);
   let lam1 = lambda1.unwrap_or(p as f64 / n as f64);
 
-  // ---- Step 1: Preliminary ridge on [y_lag, X] ----
   // We use observations t=0..n-2 as predictors, t=1..n-1 as response.
   let n_eff = n - 1;
 
@@ -375,7 +374,6 @@ pub fn fit_drr_garch(
     residuals_step1[t] = y_next[t] - alpha_ar * y[t];
   }
 
-  // ---- Step 2: CV-selected ridge on residuals vs X ----
   // Build X_lag of shape (n_eff, p)
   let x_lag = x.slice(ndarray::s![..n_eff, ..]).to_owned();
 
@@ -389,7 +387,6 @@ pub fn fit_drr_garch(
   // Final ridge fit with selected lambda2
   let beta_hat = ridge_solve(&x_lag, &residuals_step1, lam2);
 
-  // ---- Step 3: Compute final residuals and fit Garch(1,1) ----
   let predicted = x_lag.dot(&beta_hat);
   let final_residuals = &residuals_step1 - &predicted;
 
