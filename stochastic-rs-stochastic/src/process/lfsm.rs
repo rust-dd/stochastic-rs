@@ -249,12 +249,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Whether a device can run this process: the grid fits the kernels'
+  /// What a device runs here: the grid fits the kernels'
   /// per-path history and the stability index is not one, whose
   /// Chambers–Mallows–Stuck draw is a different formula the kernels do not
   /// carry. Anything else samples on the host.
-  fn device_ready(&self) -> bool {
-    self.n <= crate::euler::HISTORY_SLOTS && self.alpha != T::one()
+  fn device_fallback(&self) -> Option<&'static str> {
+    (!(self.n <= crate::euler::HISTORY_SLOTS && self.alpha != T::one()))
+      .then_some("a grid past the kernels' per-path history, or a unit stability index")
   }
 }
 

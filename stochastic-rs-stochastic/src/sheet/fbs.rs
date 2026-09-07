@@ -239,11 +239,12 @@ impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> ProcessExt<T> for Fbs<T, S, B>
     }
   }
 
-  /// Whether a device can run this sheet: both embedding sides, `2(m − 1)`
+  /// What a device runs here: both embedding sides, `2(m − 1)`
   /// and `2(n − 1)`, powers of two, which is what the kernels' radix-2
   /// transforms take. Any other grid samples on the host.
-  fn device_ready(&self) -> bool {
-    (self.m - 1).is_power_of_two() && (self.n - 1).is_power_of_two()
+  fn device_fallback(&self) -> Option<&'static str> {
+    (!((self.m - 1).is_power_of_two() && (self.n - 1).is_power_of_two()))
+      .then_some("an embedding side that is not a power of two")
   }
 }
 

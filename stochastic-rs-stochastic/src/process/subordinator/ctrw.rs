@@ -289,12 +289,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Whether a device can run this process: exponential waiting times, whose
+  /// What a device runs here: exponential waiting times, whose
   /// arrivals per grid cell are the Poisson count the kernels draw. The
   /// gamma, inverse-Gaussian and stable waits are not memoryless and stay on
   /// the host; every jump law the process offers has a kernel draw.
-  fn device_ready(&self) -> bool {
-    matches!(self.waiting, CtrwWaitingLaw::Exponential { .. })
+  fn device_fallback(&self) -> Option<&'static str> {
+    (!(matches!(self.waiting, CtrwWaitingLaw::Exponential { .. })))
+      .then_some("a waiting law that is not memoryless")
   }
 }
 

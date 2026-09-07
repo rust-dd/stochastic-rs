@@ -511,10 +511,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Whether a device can run this process: at most as many forwards as a
+  /// What a device runs here: at most as many forwards as a
   /// launch has state slots and shocks. A wider curve samples on the host.
-  fn device_ready(&self) -> bool {
-    self.l0.len() <= crate::euler::CORRELATED_STREAMS
+  fn device_fallback(&self) -> Option<&'static str> {
+    (!(self.l0.len() <= crate::euler::CORRELATED_STREAMS))
+      .then_some("more forwards than a launch has state slots and shocks")
   }
 }
 

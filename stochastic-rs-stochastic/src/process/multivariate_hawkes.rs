@@ -312,18 +312,21 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Whether a device can run this process: count mode — the horizon mode's
+  /// What a device runs here: count mode — the horizon mode's
   /// length is itself random and has no grid — with at most two components,
   /// one decay per target (`β_ij` constant along each row) and positive
   /// baselines. The family superposes each target's exact excess clock with
   /// the baselines' joint Poisson clock, which is what one decay per target
   /// makes closed-form; per-pair decays keep the process on the host.
-  fn device_ready(&self) -> bool {
-    let d = self.dim();
-    self.n.is_some()
-      && d <= 2
-      && (0..d).all(|i| (0..d).all(|j| self.beta[[i, j]] == self.beta[[i, 0]]))
-      && self.mu.iter().all(|&m| m > T::zero())
+  fn device_fallback(&self) -> Option<&'static str> {
+    let ready = {
+      let d = self.dim();
+      self.n.is_some()
+        && d <= 2
+        && (0..d).all(|i| (0..d).all(|j| self.beta[[i, j]] == self.beta[[i, 0]]))
+        && self.mu.iter().all(|&m| m > T::zero())
+    };
+    (!ready).then_some("the horizon mode, more than two targets, or a decay that differs per pair")
   }
 }
 

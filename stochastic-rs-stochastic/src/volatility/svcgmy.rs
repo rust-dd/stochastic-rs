@@ -301,12 +301,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Whether a device can run this process: the variance's exact step needs
+  /// What a device runs here: the variance's exact step needs
   /// at least one degree of freedom — below it the host draws a Poisson
   /// mixture the kernels do not carry — and the series terms fit the kernels'
   /// per-path slots. Anything else samples on the host.
-  fn device_ready(&self) -> bool {
-    self.degrees_of_freedom() >= T::one() && self.j <= crate::euler::SERIES_SLOTS
+  fn device_fallback(&self) -> Option<&'static str> {
+    (!(self.degrees_of_freedom() >= T::one() && self.j <= crate::euler::SERIES_SLOTS))
+      .then_some("degrees of freedom below one, or a series past the kernels' cells")
   }
 }
 

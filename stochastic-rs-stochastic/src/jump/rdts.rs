@@ -242,10 +242,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Whether a device can run this process: the grid fits the kernels'
+  /// What a device runs here: the grid fits the kernels'
   /// per-path series cells. A longer grid samples on the host.
-  fn device_ready(&self) -> bool {
-    self.n <= crate::euler::SERIES_SLOTS
+  fn device_fallback(&self) -> Option<&'static str> {
+    (!(self.n <= crate::euler::SERIES_SLOTS))
+      .then_some("a grid longer than the kernels' per-path series cells")
   }
 }
 

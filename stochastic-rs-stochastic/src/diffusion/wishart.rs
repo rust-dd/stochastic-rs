@@ -570,14 +570,15 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Whether a device can run this process: two dimensions — the family
+  /// What a device runs here: two dimensions — the family
   /// carries the three entries of a symmetric `2 × 2` matrix — a noise of
   /// rank one or two, and a degree of at least three, which keeps the path
   /// inside the cone so the rank-adaptive branch of the host's step is never
   /// taken and the squared Bessel draw has the degree the kernels' central
   /// χ² supplies. Anything else samples on the host.
-  fn device_ready(&self) -> bool {
-    self.dim() == 2 && self.step.rank >= 1 && self.alpha >= T::from_usize_(3)
+  fn device_fallback(&self) -> Option<&'static str> {
+    (!(self.dim() == 2 && self.step.rank >= 1 && self.alpha >= T::from_usize_(3)))
+      .then_some("a Wishart outside the two-dimensional cone the kernel steps")
   }
 }
 

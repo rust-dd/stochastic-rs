@@ -152,9 +152,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   /// Through the Euler engine: on a device the conditional variance and the
   /// series step together in the kernel, on the host devices it is this
   /// process's own sampler, chunked exactly as `ProcessExt` chunks.
-  /// Whether a device can run this process: order (1, 1) — the family carries one lag of each; a higher order stays on the host.
-  fn device_ready(&self) -> bool {
-    self.alpha.len() == 1 && self.beta.len() == 1
+  /// What a device runs here: order (1, 1) — the family carries one lag of each; a higher order stays on the host.
+  fn device_fallback(&self) -> Option<&'static str> {
+    (!(self.alpha.len() == 1 && self.beta.len() == 1))
+      .then_some("an order above (1, 1): the family carries one lag of each")
   }
 
   /// Through the Euler engine at the order the family carries; a higher order

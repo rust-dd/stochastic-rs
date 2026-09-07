@@ -264,11 +264,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Whether a device can run this process: a local volatility written as an
+  /// What a device runs here: a local volatility written as an
   /// [`Expr`](crate::traits::Expr), which the kernel interprets at every
   /// step. A Rust closure or a Python callable keeps the process on the host.
-  fn device_ready(&self) -> bool {
-    self.sigma.program().is_some()
+  fn device_fallback(&self) -> Option<&'static str> {
+    (!(self.sigma.program().is_some()))
+      .then_some("a local volatility that is a closure rather than an Expr")
   }
 }
 

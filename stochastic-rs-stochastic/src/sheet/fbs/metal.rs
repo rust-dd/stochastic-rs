@@ -372,7 +372,10 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
       key: self.launch_key(),
     };
     let seed = self.seed.seed_value() as u32;
-    let rows = crate::device::chunk_rows(device.batch_budget, 4 * cells + m * n, 4);
+    let budget = device
+      .batch_budget
+      .min(crate::euler::metal::working_set(device.ordinal));
+    let rows = crate::device::chunk_rows(budget, 4 * cells + m * n, 4);
     let mut out = Vec::with_capacity(sheets);
     let mut first = 0;
     while first < sheets {

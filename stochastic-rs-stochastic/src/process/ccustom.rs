@@ -237,15 +237,20 @@ where
     }
   }
 
-  /// Whether a device can run this process: a fixed number of arrivals — the
+  /// What a device runs here: a fixed number of arrivals — the
   /// horizon mode has no grid — that the arrival stream `customjt` counts to
   /// as well, exponential inter-arrivals, and sizes under a law the kernels
   /// draw. Anything else samples on the host.
-  fn device_ready(&self) -> bool {
-    self.n.is_some()
-      && self.customjt.n == self.n
-      && self.device_intensity().is_some()
-      && self.device_jump_sizes().is_some()
+  fn device_fallback(&self) -> Option<&'static str> {
+    let ready = {
+      self.n.is_some()
+        && self.customjt.n == self.n
+        && self.device_intensity().is_some()
+        && self.device_jump_sizes().is_some()
+    };
+    (!ready).then_some(
+      "the horizon mode's missing grid, or an arrival or size law the kernels do not draw",
+    )
   }
 }
 

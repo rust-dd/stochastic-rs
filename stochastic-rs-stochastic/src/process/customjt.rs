@@ -308,10 +308,11 @@ where
     }
   }
 
-  /// Whether a device can run this process: a fixed number of arrivals — the
+  /// What a device runs here: a fixed number of arrivals — the
   /// horizon mode has no grid — under an exponential inter-arrival law.
-  fn device_ready(&self) -> bool {
-    self.n.is_some() && self.device_intensity().is_some()
+  fn device_fallback(&self) -> Option<&'static str> {
+    (!(self.n.is_some() && self.device_intensity().is_some()))
+      .then_some("the horizon mode's missing grid, or a non-exponential inter-arrival law")
   }
 }
 

@@ -150,9 +150,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   /// Through the Euler engine: on a device the draw happens in the kernel, on
   /// the host devices it is this process's own sampler, chunked exactly as
   /// `ProcessExt` chunks.
-  /// Whether a device can run this process: order one — the family carries one lag; a higher order stays on the host.
-  fn device_ready(&self) -> bool {
-    self.phi.len() == 1
+  /// What a device runs here: order one — the family carries one lag; a higher order stays on the host.
+  fn device_fallback(&self) -> Option<&'static str> {
+    (!(self.phi.len() == 1)).then_some("an order above one: the family carries a single lag")
   }
 
   /// Through the Euler engine at the order the family carries; a higher order

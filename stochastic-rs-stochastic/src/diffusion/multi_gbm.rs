@@ -316,10 +316,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Whether a device can run this process: at most as many assets as a
+  /// What a device runs here: at most as many assets as a
   /// launch has state slots and shocks; a wider basket stays on the host.
-  fn device_ready(&self) -> bool {
-    self.assets() <= crate::euler::CORRELATED_STREAMS
+  fn device_fallback(&self) -> Option<&'static str> {
+    (!(self.assets() <= crate::euler::CORRELATED_STREAMS))
+      .then_some("more assets than a launch has state slots and shocks")
   }
 }
 

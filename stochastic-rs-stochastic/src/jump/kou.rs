@@ -327,10 +327,11 @@ where
     }
   }
 
-  /// Whether a device can run this process: it has no jumps, or its sizes
+  /// What a device runs here: it has no jumps, or its sizes
   /// follow a law the kernels draw. Anything else samples on the host.
-  fn device_ready(&self) -> bool {
-    self.lambda <= T::zero() || self.device_jump_sizes().is_some()
+  fn device_fallback(&self) -> Option<&'static str> {
+    (!(self.lambda <= T::zero() || self.device_jump_sizes().is_some()))
+      .then_some("a jump-size law the kernels do not draw")
   }
 }
 

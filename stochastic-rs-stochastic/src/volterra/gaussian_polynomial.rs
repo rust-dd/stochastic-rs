@@ -374,10 +374,11 @@ where
     }
   }
 
-  /// Whether a device can run this process: the polynomial fits the kernels'
+  /// What a device runs here: the polynomial fits the kernels'
   /// coefficient slots.
-  fn device_ready(&self) -> bool {
-    self.coefficients.len() <= DEVICE_COEFFICIENTS
+  fn device_fallback(&self) -> Option<&'static str> {
+    (!(self.coefficients.len() <= DEVICE_COEFFICIENTS))
+      .then_some("more coefficients than a launch carries")
   }
 }
 

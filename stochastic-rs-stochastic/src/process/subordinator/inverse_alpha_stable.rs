@@ -194,11 +194,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     }
   }
 
-  /// Whether a device can run this process: the direct subordinator's table
+  /// What a device runs here: the direct subordinator's table
   /// has at least two points and fits the kernels' per-path table. A finer
   /// one samples on the host.
-  fn device_ready(&self) -> bool {
-    (2..=crate::euler::TABLE_SLOTS).contains(&self.u_steps)
+  fn device_fallback(&self) -> Option<&'static str> {
+    (!((2..=crate::euler::TABLE_SLOTS).contains(&self.u_steps)))
+      .then_some("a table outside the kernels' per-path table")
   }
 }
 

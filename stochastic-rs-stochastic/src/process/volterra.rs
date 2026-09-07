@@ -359,15 +359,17 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> Proc
     }
   }
 
-  /// Whether a device can run this process: the lift branch when it has a
+  /// What a device runs here: the lift branch when it has a
   /// lift to replay — it has none on a single-point grid — and the reference
   /// branch when the grid fits the kernels' per-path history. Anything else
   /// samples on the host.
-  fn device_ready(&self) -> bool {
-    match self.engine {
+  fn device_fallback(&self) -> Option<&'static str> {
+    let ready = match self.engine {
       VolterraEngine::Lift(_) => self.lift.is_some(),
       VolterraEngine::Reference(_) => self.n <= crate::euler::HISTORY_SLOTS,
-    }
+    };
+    (!ready)
+      .then_some("a grid past the kernels' per-path history, or a lift with nothing to replay")
   }
 }
 

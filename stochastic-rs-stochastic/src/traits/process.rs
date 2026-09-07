@@ -325,16 +325,35 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   #[doc(hidden)]
   fn advance_chunk_seed(&self) {}
 
+  /// Why this configuration cannot run on a device kernel, or `None` when it
+  /// can — a grid past a per-path array, a dimension past the state slots, a
+  /// coefficient that is a closure, a mode with no grid.
+  ///
+  /// The reason is what [`device_ready`](Self::device_ready) leaves out, and
+  /// leaving it out is a trap: a fallback costs an order of magnitude in
+  /// speed and says nothing, so a caller who cares about running on the
+  /// device has to be able to print the cause. A process that the kernels
+  /// carry whole answers `None`, which is the default.
+  ///
+  /// ```ignore
+  /// if let Some(why) = process.device_fallback() {
+  ///   eprintln!("sampling on the host: {why}");
+  /// }
+  /// ```
+  fn device_fallback(&self) -> Option<&'static str> {
+    None
+  }
+
   /// Whether this configuration runs on a device backend. `true` for a
   /// process the device kernels carry whole; `false` where the configuration
-  /// exceeds what they carry — a grid past a per-path array, a dimension past
-  /// the state slots, a coefficient that is a closure, a mode with no grid.
+  /// exceeds what they carry, which is exactly when
+  /// [`device_fallback`](Self::device_fallback) names a reason.
   /// A `false` never fails: on any backend the process then samples on the
   /// host through its own sampler, bit-identically to the `Cpu` build. The
   /// question is about the configuration, not the handle, so the host
   /// backends answer it the same way a device does.
   fn device_ready(&self) -> bool {
-    true
+    self.device_fallback().is_none()
   }
 
   /// Builds one sampler per chunk, paired with that chunk's path count,

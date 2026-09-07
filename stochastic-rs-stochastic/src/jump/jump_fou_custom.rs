@@ -183,10 +183,11 @@ where
     }
   }
 
-  /// Whether a device can run this process: exponential inter-arrivals and a
+  /// What a device runs here: exponential inter-arrivals and a
   /// size law the kernels draw. Any other pair samples on the host.
-  fn device_ready(&self) -> bool {
-    self.device_intensity().is_some() && self.device_jump_sizes().is_some()
+  fn device_fallback(&self) -> Option<&'static str> {
+    (!(self.device_intensity().is_some() && self.device_jump_sizes().is_some()))
+      .then_some("an inter-arrival or size law the kernels do not draw")
   }
 }
 

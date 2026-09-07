@@ -367,15 +367,20 @@ where
     }
   }
 
-  /// Whether a device can run this process: a drift and a diffusion written
+  /// What a device runs here: a drift and a diffusion written
   /// as [`Expr`](crate::traits::Expr)s, which the kernel interprets at every
   /// step, and a kernel whose exponential fit has at most
   /// [`LIFT_SLOTS`](crate::euler::LIFT_SLOTS) nodes. Closures keep the
   /// process on the host.
-  fn device_ready(&self) -> bool {
-    self.drift.program().is_some()
-      && self.diffusion.program().is_some()
-      && self.kernel.degree() <= crate::euler::LIFT_SLOTS
+  fn device_fallback(&self) -> Option<&'static str> {
+    let ready = {
+      self.drift.program().is_some()
+        && self.diffusion.program().is_some()
+        && self.kernel.degree() <= crate::euler::LIFT_SLOTS
+    };
+    (!ready).then_some(
+      "a coefficient that is a closure rather than an Expr, or a kernel degree past the lift",
+    )
   }
 }
 

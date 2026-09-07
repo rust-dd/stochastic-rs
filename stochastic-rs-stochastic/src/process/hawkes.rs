@@ -220,10 +220,10 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     }
   }
 
-  /// Whether a device can run this process: a fixed number of events — the
+  /// What a device runs here: a fixed number of events — the
   /// horizon mode's length is itself random and has no grid.
-  fn device_ready(&self) -> bool {
-    self.n.is_some()
+  fn device_fallback(&self) -> Option<&'static str> {
+    (!(self.n.is_some())).then_some("the horizon mode, whose own length is random and has no grid")
   }
 }
 

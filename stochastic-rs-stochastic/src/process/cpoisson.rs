@@ -375,10 +375,11 @@ where
     }
   }
 
-  /// Whether a device can run this process: a fixed number of arrivals — the
+  /// What a device runs here: a fixed number of arrivals — the
   /// horizon mode has no grid — and sizes under a law the kernels draw.
-  fn device_ready(&self) -> bool {
-    self.poisson.n.is_some() && self.device_jump_sizes().is_some()
+  fn device_fallback(&self) -> Option<&'static str> {
+    (!(self.poisson.n.is_some() && self.device_jump_sizes().is_some()))
+      .then_some("the horizon mode's missing grid, or a size law the kernels do not draw")
   }
 }
 
