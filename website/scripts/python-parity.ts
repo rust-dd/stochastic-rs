@@ -22,7 +22,8 @@
  * `kind` is inferred from the `use` import that brought each `PyXxx` name
  * into scope (the crate segment of the import path). Every entry ships in
  * every wheel — the linalg stack is the pure-Rust faer, so nothing is
- * feature-gated any more.
+ * feature-gated any more — except the four `ai` registrations, which are
+ * counted here and reach a wheel only in a source build with that feature.
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -69,9 +70,12 @@ const rows: Row[] = [];
 for (let i = 0; i < lines.length; i++) {
   const line = lines[i];
 
-  const classMatch = /m\.add_class::<(\w+)>\(\)/.exec(line);
+  // A registration may name the type by a qualified path rather than an
+  // imported symbol (`m.add_class::<stochastic_rs_copulas::python::PyBb1>()`),
+  // which a `\w+` pattern skips silently — two copulas went uncounted.
+  const classMatch = /m\.add_class::<([\w:]+)>\(\)/.exec(line);
   if (classMatch) {
-    const py = classMatch[1];
+    const py = classMatch[1].split('::').pop() as string;
     rows.push({
       python_name: py,
       kind: kindFromCratePath(importCrate.get(py) ?? ''),

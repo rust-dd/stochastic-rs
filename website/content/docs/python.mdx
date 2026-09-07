@@ -9,11 +9,13 @@ status: stable
 # Python bindings
 
 The `stochastic_rs` Python package wraps the Rust crates via PyO3. The
-surface is **234 entries**: 218 PyO3 classes plus 16 free functions across
+surface is **303 entries**: 281 PyO3 classes plus 22 free functions across
 distributions, stochastic processes, pricers, calibrators, copulas, and
 stats — every class ships in every wheel (the linear algebra is the
 pure-Rust `faer`, so the 13 formerly BLAS-gated classes need no feature
-any more). AI bindings are deferred to 2.x.
+any more). Four more registrations — three surrogate classes and
+`calibrate_surrogate` — are behind the `ai` feature and reach only a source
+build.
 
 **Derivation**: `bun run python:parity` (from `website/`) regenerates
 `public/python-parity.json` by parsing every `m.add_class::<PyXxx>()` and
