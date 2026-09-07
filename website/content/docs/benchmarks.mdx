@@ -222,6 +222,64 @@ ziggurat in the kernel would buy nothing, and a time-major output layout —
 coalesced across a simdgroup, scattered within a thread — was *slower* on
 Apple hardware, where thread locality wins.
 
+## Euler engine — CPU against CUDA
+
+The same measurement, the same `examples/cuda_engine_profile`, on a **Tesla
+T4** in a Colab runtime, best of five, measured 2026-09-07. The host there is
+a small shared VM: its CPU column runs at about a tenth of the M4 Max's, so
+read the ratio, not the absolute.
+
+| paths | steps | dtype | CPU | CUDA | CUDA / CPU |
+|------:|------:|:------|-------:|-------:|-----------:|
+| 10 000 | 1 024 | `f32` | 0.21 G | **0.31 G** | 1.50× |
+| 50 000 | 1 024 | `f32` | 0.21 G | **0.28 G** | 1.31× |
+| 10 000 | 4 096 | `f32` | 0.21 G | **0.29 G** | 1.36× |
+| 10 000 | 1 024 | `f64` | **0.21 G** | 0.14 G | 0.66× |
+| 50 000 | 1 024 | `f64` | **0.15 G** | 0.12 G | 0.86× |
+| 10 000 | 4 096 | `f64` | **0.21 G** | 0.12 G | 0.59× |
+
+**The per-shape kernel did what it was for.** The driver's own report of the
+`f32` GBM kernel at 256 threads a block went from 80 registers and **3 552
+bytes of local memory per thread to 31 registers and none at all**, and from
+three blocks a multiprocessor to four — which on Turing is the whole machine,
+its multiprocessor holding 1024 threads where most generations hold 2048.
+Throughput doubled with it, **0.15 → 0.31 G steps/s**, and that is what took
+the card from 0.7× its host to 1.3–1.5×. The `double` kernel compiles to 40
+registers and 48 bytes of local memory, also a full multiprocessor.
+
+**`f64` on a T4 is slower than the T4's own host, and that is the card, not
+the engine.** A T4 runs double precision at **1/32** of its single-precision
+rate — a consumer inference part with the FP64 units cut down — so 0.59–0.86×
+is the hardware's answer. Use `f32` on a consumer NVIDIA card, and keep `f64`
+on the device for parts with a real double ratio: an A100 or H100 at 1/2 has
+sixteen times the headroom for the same kernel. The host does not care much
+either way — the two precisions are within a few per cent of each other in
+the CPU column, except at 50 000 paths where the larger working set costs it
+something.
+
+**The fractional pipeline remains the best case on this hardware**, at
+2.7–3.5×. fGN is FFT-shaped rather than recursion-shaped, so far more device
+work rides on each byte copied back, and above 32 MB it stages that copy
+through pinned memory, which the engine's single launch does not:
+
+| paths | points | CPU | cuFFT | cuFFT / CPU |
+|------:|-------:|--------:|---------:|------------:|
+| 1 000 | 4 096 | 81.3 ms | **23.1 ms** | 3.52× |
+| 1 000 | 16 384 | 355.0 ms | **125.1 ms** | 2.84× |
+| 10 000 | 4 096 | 852.2 ms | **318.4 ms** | 2.68× |
+
+**Why 0.31 and not 10.** The M4 Max reaches 10.10 G steps/s on the same
+kernel, and the two cards are within a factor of two of each other in raw
+`f32` throughput, so hardware explains almost none of a 33× gap. The T4's
+wall time is **3.2–3.6 ns per cell at every shape measured** — flat whether
+the batch fills a quarter of the multiprocessors or all of them, which is not
+what a kernel-bound run looks like — and 3.5 ns per four bytes is 1.1 GB/s,
+a transfer number. What is left after the kernel is a PCIe copy into a
+freshly allocated pageable `Vec` and a second host-side copy per path, and
+Apple pays for neither: its memory is unified, so the kernel writes where the
+CPU already reads. `CUDA_BENCHMARK.md` carries the arithmetic and what is
+worth fixing.
+
 ## Normal sampling vs `rand_distr` (single-thread, `fill_slice`)
 
 Measured with `cargo bench --bench dist_multicore`. Single-thread `fill_slice`,
