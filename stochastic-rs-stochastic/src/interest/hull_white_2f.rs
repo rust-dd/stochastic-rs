@@ -289,16 +289,15 @@ pub struct PyHullWhite2F {
 #[cfg(feature = "python")]
 #[pyo3::prelude::pymethods]
 impl PyHullWhite2F {
-  // Python-visible parameter names stay `k`/`theta` (pre-existing public
-  // API surface); `k=` forwards into `HullWhite2F::new`'s drift-function
-  // `theta` parameter and `theta=` forwards into its mean-reversion-speed
-  // `a` parameter, so the Python signature is unaffected but its keyword
-  // names map onto differently-named Rust parameters.
+  // The two leading keywords are named for what they are in the model, and
+  // for what every other short-rate class here calls them: `theta` is the
+  // drift-target curve, `a` the mean-reversion speed. They were once `k` and
+  // `theta`, which put the name of the curve on the speed.
   #[new]
-  #[pyo3(signature = (k, theta, sigma1, sigma2, rho, b, n, x0=None, t=None, seed=None, device=None))]
+  #[pyo3(signature = (theta, a, sigma1, sigma2, rho, b, n, x0=None, t=None, seed=None, device=None))]
   fn new(
-    k: pyo3::Py<pyo3::PyAny>,
-    theta: f64,
+    theta: pyo3::Py<pyo3::PyAny>,
+    a: f64,
     sigma1: f64,
     sigma2: f64,
     rho: f64,
@@ -315,8 +314,8 @@ impl PyHullWhite2F {
         device,
         inner: None,
         seeded: Some(HullWhite2F::new(
-          Fn1D::Py(k),
-          theta,
+          Fn1D::Py(theta),
+          a,
           sigma1,
           sigma2,
           rho,
@@ -330,8 +329,8 @@ impl PyHullWhite2F {
       None => Self {
         device,
         inner: Some(HullWhite2F::new(
-          Fn1D::Py(k),
-          theta,
+          Fn1D::Py(theta),
+          a,
           sigma1,
           sigma2,
           rho,
@@ -344,6 +343,21 @@ impl PyHullWhite2F {
         seeded: None,
       },
     })
+  }
+
+  /// The reason a device kernel cannot carry this configuration, if there is
+  /// one: the engine states what it cannot do rather than doing it quietly on
+  /// the host. The question is about the configuration, not the handle, so
+  /// the answer is the same whatever `device=` was passed.
+  fn device_fallback(&self) -> Option<&'static str> {
+    use crate::traits::ProcessExt;
+    crate::py_dispatch_f64!(self, |inner| inner.device_fallback())
+  }
+
+  /// Whether this configuration runs on a device kernel: the absence of a
+  /// [`device_fallback`](Self::device_fallback) reason.
+  fn device_ready(&self) -> bool {
+    self.device_fallback().is_none()
   }
 
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
