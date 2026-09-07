@@ -152,18 +152,44 @@
 /// a four-hundred-line string. [`render`] joins them in this order, so the
 /// text a kernel is built from is exactly what a single constant gave.
 #[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
-pub(crate) const FRAME_BLOCKS: [&str; 11] = [
-  FRAME_LOCALS,
-  FRAME_SERIES_DRAW,
-  FRAME_TABLE_DRAW,
-  FRAME_ENTRY_REPORT,
-  FRAME_NOISE,
-  FRAME_SERIES_LIVE,
-  FRAME_TABLE_LIVE,
-  FRAME_COUNTS,
-  FRAME_JUMP_LAWS,
-  FRAME_PROGRAM,
-  FRAME_STEP,
+/// What a block is there for, and so whether a kernel rendered for one shape
+/// keeps it. [`Need::Always`] is the frame itself — the guard, the state, the
+/// draws, the write-out; the rest is what one family or one launch reaches
+/// for and another never does.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Need {
+  /// Every kernel carries it.
+  Always,
+  /// Only a family that declares a shot-noise series.
+  Series,
+  /// Only a family that declares a clock table.
+  Table,
+  /// Only a family whose step reads a coefficient program.
+  Program,
+  /// Only a family that declares a Markov lift.
+  Lift,
+  /// Only a family that declares a history window.
+  History,
+  /// Only a launch that draws jumps or gamma variates.
+  Counts,
+  /// Only a launch that draws jumps.
+  Jumps,
+}
+
+pub(crate) const FRAME_BLOCKS: [(&str, Need); 13] = [
+  (FRAME_LOCALS, Need::Always),
+  (FRAME_SERIES_DRAW, Need::Series),
+  (FRAME_TABLE_DRAW, Need::Table),
+  (FRAME_ENTRY_REPORT, Need::Always),
+  (FRAME_NOISE, Need::Always),
+  (FRAME_SERIES_LIVE, Need::Series),
+  (FRAME_TABLE_LIVE, Need::Table),
+  (FRAME_COUNTS, Need::Counts),
+  (FRAME_JUMP_LAWS, Need::Jumps),
+  (FRAME_PROGRAM, Need::Program),
+  (FRAME_LIFT, Need::Lift),
+  (FRAME_HISTORY, Need::History),
+  (FRAME_STEP, Need::Always),
 ];
 
 /// Everything a path needs before its first step: the guard, the state and
@@ -218,7 +244,9 @@ const FRAME_LOCALS: &str = r#"    if (path >= paths) return;
     REAL uj = (REAL)0;
     REAL uv = (REAL)0;
     REAL series_size[1];
-    series_size[0] = (REAL)0;"#;
+    series_size[0] = (REAL)0;
+    REAL pv = (REAL)0;
+    REAL pv2 = (REAL)0;"#;
 
 /// The series preamble. A shot-noise family draws its jump times and sizes
 /// for the whole path here and buckets them into `block` by the step they land
@@ -268,8 +296,6 @@ SERIES
 #[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
 const FRAME_TABLE_DRAW: &str = r#"    REAL iv = (REAL)0;
     REAL tv = (REAL)0;
-    REAL pv = (REAL)0;
-    REAL pv2 = (REAL)0;
     REAL table_inc[1];
     table_inc[0] = (REAL)0;
     unsigned int tp = 1u;
@@ -624,27 +650,42 @@ const FRAME_PROGRAM: &str = r#"        if (program_n != 0u) {
                 }
                 if (w == 0u) { pv = pst[0]; } else { pv2 = pst[0]; }
             }
-        }
-        if (has_lift != 0u) {"#;
+        }"#;
 
-/// The four generated blocks — the lift, the history window, the family's own
-/// step and its report — and the write-out that ends an iteration.
+/// The Markov lift: the family's three coefficients, and the lifted value the
+/// step reads. Left out of a kernel rendered for a family that declares no
+/// lift, along with the two 176-slot histories it walks.
 ///
-/// The 23-line block of [`FRAME_BLOCKS`].
+/// One of the [`FRAME_BLOCKS`].
 #[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
-const FRAME_STEP: &str = r#"LIFT
+const FRAME_LIFT: &str = r#"        if (has_lift != 0u) {
+LIFT
             REAL hist = (REAL)0;
             for (unsigned int l = 0u; l < lift_n; l++) { hist += lift_weight[l] * (lh[l] + lj[l]); }
             lv = lift_x0 + lift_db * lift[0] + hist + lift_fb * lift[1] * lift[2];
-        }
-        if (hist_slot != 4294967295u) {
+        }"#;
+
+/// The history window: the family's pushed value appended to this path's own
+/// history and convolved with the weight curve into `cv`. Left out of a
+/// kernel rendered for a family that declares no history, along with the
+/// 512-slot block it walks.
+///
+/// One of the [`FRAME_BLOCKS`].
+#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+const FRAME_HISTORY: &str = r#"        if (hist_slot != 4294967295u) {
 HISTORY
             unsigned int hi = (step_first != 0u) ? i : (i - 1u);
             block[hi] = hist_in[0];
             cv = (REAL)0;
             for (unsigned int k = 0u; k <= hi; k++) { cv += curve[(INDEX)hist_slot * steps + k] * block[hi - k]; }
-        }
-STEP
+        }"#;
+
+/// The family's own step and report, the lift's decay, and the write-out that
+/// ends an iteration.
+///
+/// One of the [`FRAME_BLOCKS`].
+#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+const FRAME_STEP: &str = r#"STEP
         if (has_lift != 0u) {
             for (unsigned int l = 0u; l < lift_n; l++) {
                 lh[l] = lift_decay[l] * lh[l] + lift_drift_scale[l] * lift[0];
@@ -757,10 +798,148 @@ pub(crate) fn prelude(lang: &Language<'_>) -> String {
   substitute(super::families::vocabulary::C_PRELUDE, lang)
 }
 
-/// The kernel body: the frame with the generated family blocks spliced in and
-/// the placeholders of `lang` filled in.
+/// Every family's block in one body, as the kernels were built until
+/// September 2026 and as the rendering checks still read them.
+///
+/// No launch compiles this: a launch compiles [`render_for`], which carries
+/// one family. What this is for is the checks that every family reaches the
+/// C text at all, which is cheaper to state over one string than over 120.
+/// What one launch reaches for, and so what a kernel rendered for it has to
+/// carry.
+///
+/// The monolithic body carries every family's step behind a 120-way
+/// comparison and declares the scratch every optional block needs — two
+/// 176-slot lift histories and a 512-slot convolution window — whether or not
+/// the launch touches them. A Tesla T4 reports the bill: 80 registers and
+/// **3552 bytes of local memory per thread** in `f32`, 130 and 7104 in `f64`,
+/// which is three blocks per multiprocessor and 37% occupancy, and a
+/// throughput that *falls* as the batch grows because the scratch leaves L2.
+/// A kernel rendered for one shape carries that family's step alone and
+/// declares only the scratch it uses.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub(crate) struct Shape {
+  /// The family the kernel steps.
+  pub(crate) family: u32,
+  /// The family declares a Markov lift.
+  pub(crate) lift: bool,
+  /// The family declares a history window.
+  pub(crate) history: bool,
+  /// The family declares a shot-noise series.
+  pub(crate) series: bool,
+  /// The family declares a clock table.
+  pub(crate) table: bool,
+  /// The family's step reads a coefficient program.
+  pub(crate) program: bool,
+  /// The launch draws jumps, or names a jump law — the two are independent:
+  /// a compound Poisson in count mode carries a size law with no intensity.
+  pub(crate) jumps: bool,
+  /// The launch draws gamma variates.
+  pub(crate) gamma: bool,
+}
+
+impl Shape {
+  /// The shape of a launch: what the family declares, plus the jump and gamma
+  /// laws, which belong to the process rather than to the family.
+  pub(crate) fn new(family: super::families::Family, jumps: bool, gamma: bool) -> Self {
+    use super::families;
+    Self {
+      family: family.code(),
+      lift: !families::c_lift_for(family).is_empty(),
+      history: !families::c_history_for(family).is_empty(),
+      series: !families::c_series_for(family).is_empty(),
+      table: !families::c_table_for(family).is_empty(),
+      // A program value can be read anywhere the family writes C: the
+      // Volterra equation takes both of them in its lift, not its step.
+      program: [
+        families::c_step_for(family),
+        families::c_lift_for(family),
+        families::c_report_for(family),
+        families::c_series_for(family),
+        families::c_table_for(family),
+        families::c_history_for(family),
+      ]
+      .iter()
+      .any(|block| block.contains("pv")),
+      jumps,
+      gamma,
+    }
+  }
+
+  /// Whether the 512-slot convolution window is reachable at all.
+  fn needs_block(&self) -> bool {
+    self.history || self.series || self.table
+  }
+}
+
+/// The kernel body for one [`Shape`]: that family's step and report spliced in
+/// directly, the blocks it cannot reach left out, and the scratch it does not
+/// touch declared one element wide.
+pub(crate) fn render_for(lang: &Language<'_>, shape: Shape) -> String {
+  use super::families;
+  let family = families::Family::from_code(shape.family).expect("a declared family");
+  let keep = |need: Need| -> bool {
+    match need {
+      Need::Always => true,
+      Need::Series => shape.series,
+      Need::Table => shape.table,
+      Need::Program => shape.program,
+      Need::Lift => shape.lift,
+      Need::History => shape.history,
+      Need::Counts => shape.jumps || shape.gamma,
+      Need::Jumps => shape.jumps,
+    }
+  };
+  let mut body = FRAME_BLOCKS
+    .iter()
+    .filter(|(_, need)| keep(*need))
+    .map(|(block, _)| *block)
+    .collect::<Vec<_>>()
+    .join("\n");
+  if !shape.lift {
+    body = body
+      .replace("REAL lh[176];", "REAL lh[1];")
+      .replace("REAL lj[176];", "REAL lj[1];");
+  }
+  if !shape.needs_block() {
+    body = body.replace("REAL block[512];", "REAL block[1];");
+  }
+  // Each spliced body keeps a scope of its own. The chain got one from the
+  // `if (family == …)` it no longer has, and without it the step's `const`
+  // bindings and the report's collide — the same parameter, read twice.
+  let scoped = |body: &str, indent: &str| -> String {
+    if body.trim().is_empty() {
+      return String::new();
+    }
+    format!("{indent}{{\n{}\n{indent}}}", body.trim_end_matches('\n'))
+  };
+  let body = body
+    .replace(
+      "SERIES",
+      &scoped(families::c_series_for(family), "            "),
+    )
+    .replace(
+      "TABLE",
+      &scoped(families::c_table_for(family), "                "),
+    )
+    .replace("LIFT", &scoped(families::c_lift_for(family), "        "))
+    .replace(
+      "HISTORY",
+      &scoped(families::c_history_for(family), "        "),
+    )
+    .replace("STEP", &scoped(families::c_step_for(family), "        "))
+    .replace(
+      "REPORT",
+      &scoped(families::c_report_for(family), "        "),
+    );
+  substitute(&body, lang)
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn render(lang: &Language<'_>) -> String {
   let body = FRAME_BLOCKS
+    .iter()
+    .map(|(block, _)| *block)
+    .collect::<Vec<_>>()
     .join("\n")
     .replace("SERIES", super::families::C_SERIES.trim_end_matches('\n'))
     .replace("TABLE", super::families::C_TABLE.trim_end_matches('\n'))
@@ -804,6 +983,77 @@ mod tests {
     ]
   }
 
+  /// Every family renders to a kernel of its own, in every language, with no
+  /// placeholder left and no other family's step inside it.
+  ///
+  /// The specialised body is what a launch compiles; a family that renders
+  /// wrong here fails inside a driver's compiler on a machine that has the
+  /// device, which is exactly the failure a Mac cannot see for CUDA and a
+  /// CUDA box cannot see for Metal.
+  #[test]
+  fn every_family_renders_a_kernel_of_its_own() {
+    for (name, lang) in languages() {
+      for family in super::super::families::Family::ALL {
+        let shape = super::Shape::new(*family, true, true);
+        let source = super::render_for(&lang, shape);
+        assert!(
+          !source.contains("if (family =="),
+          "{name}/{family:?}: a specialised kernel still compares the family"
+        );
+        for placeholder in [
+          "STOCH_", "INDEX", "U64", "STEP", "REPORT", "LIFT", "HISTORY",
+        ] {
+          assert!(
+            !source.contains(placeholder),
+            "{name}/{family:?}: the {placeholder} placeholder survived"
+          );
+        }
+        let balance = source.chars().fold(0i32, |d, c| match c {
+          '{' => d + 1,
+          '}' => d - 1,
+          _ => d,
+        });
+        assert_eq!(balance, 0, "{name}/{family:?}: unbalanced body");
+      }
+    }
+  }
+
+  /// A family that declares no lift, history, series or table carries none of
+  /// their scratch: the two 176-slot lift histories and the 512-slot window
+  /// are what a T4 reports as 3552 bytes of local memory per thread.
+  #[test]
+  fn a_plain_family_declares_no_scratch_it_cannot_reach() {
+    let lang = metal_language();
+    let plain = super::Shape::new(
+      super::super::families::Family::GeometricBrownian,
+      false,
+      false,
+    );
+    let source = super::render_for(&lang, plain);
+    for scratch in ["lh[176]", "lj[176]", "block[512]"] {
+      assert!(
+        !source.contains(scratch),
+        "a plain family still declares {scratch}"
+      );
+    }
+    assert!(
+      !source.contains("jump_law == 9u") && !source.contains("gi < gamma_law"),
+      "a launch with no jumps still carries the jump laws"
+    );
+    let full = super::render_for(
+      &lang,
+      super::Shape::new(
+        super::super::families::Family::GeometricBrownian,
+        true,
+        true,
+      ),
+    );
+    assert!(
+      full.len() > source.len(),
+      "the jump laws must cost something, or dropping them buys nothing"
+    );
+  }
+
   /// The blocks join into one body, not eleven fragments.
   ///
   /// Each block opens braces a later one closes — the step loop's head is in
@@ -813,7 +1063,11 @@ mod tests {
   /// text only reaches a compiler when a kernel is built.
   #[test]
   fn the_frame_blocks_join_into_a_balanced_body() {
-    let joined = super::FRAME_BLOCKS.join("\n");
+    let joined = super::FRAME_BLOCKS
+      .iter()
+      .map(|(block, _)| *block)
+      .collect::<Vec<_>>()
+      .join("\n");
     let mut depth = 0i32;
     let mut lowest = 0i32;
     for c in joined.chars() {
@@ -834,6 +1088,27 @@ mod tests {
       lowest, 0,
       "a block closes a brace no earlier block opened; the order is wrong"
     );
+    // Every block closes what it opens, so a kernel rendered for one family
+    // can leave any of them out — except the two that frame the step loop,
+    // which is why they are the two a specialised kernel always keeps.
+    for (i, (block, _)) in super::FRAME_BLOCKS.iter().enumerate() {
+      let balance = block.chars().fold(0i32, |d, c| match c {
+        '{' => d + 1,
+        '}' => d - 1,
+        _ => d,
+      });
+      // The two that frame the step loop, by their place in the list.
+      let want = match i {
+        4 => 1,
+        12 => -1,
+        _ => 0,
+      };
+      assert_eq!(
+        balance, want,
+        "block {i} leaves {balance} braces open, not {want}; an optional block \
+         that does not close what it opens cannot be left out"
+      );
+    }
   }
 
   /// A placeholder that survives rendering is an intrinsic the vocabulary

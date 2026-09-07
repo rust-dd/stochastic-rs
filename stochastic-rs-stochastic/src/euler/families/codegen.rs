@@ -392,6 +392,68 @@ macro_rules! euler_families {
     }
 
     /// The C statements that set the reported values, one block per family.
+    /// One family's step, without the `if (family == …)` guard the chain
+    /// needs. A kernel rendered for a single family dispatches at compile
+    /// time — the guard, and the 119 other blocks behind it, are what a
+    /// specialised launch stops paying for.
+    #[allow(dead_code)]
+    pub(crate) fn c_step_for(family: Family) -> &'static str {
+      match family {
+        $( Family::$name => concat!(
+          euler_families!(@bind_params [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19] $($param)*),
+          euler_families!(@bind_slots "state" [0 1 2 3] $($state)*),
+          euler_families!(@bind_slots "noise" [0 1 2 3] $($noise)*),
+          euler_families!(@c_body "state", [0 1 2 3], [$($state)*], $($step)*),
+        ), )*
+      }
+    }
+
+    /// One family's report, as [`c_step_for`] is its step.
+    #[allow(dead_code)]
+    pub(crate) fn c_report_for(family: Family) -> &'static str {
+      match family {
+        $( Family::$name => concat!(
+          euler_families!(@bind_params [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19] $($param)*),
+          euler_families!(@bind_slots "state" [0 1 2 3] $($state)*),
+          euler_families!(@c_body "reported", [0 1 2 3], [$($state)*], $($report)*),
+        ), )*
+      }
+    }
+
+    /// One family's lift coefficients, or `""` where it declares none — which
+    /// is also how a specialised kernel knows to leave the lift block, and
+    /// the 176-slot history it needs, out of the source entirely.
+    #[allow(dead_code)]
+    pub(crate) fn c_lift_for(family: Family) -> &'static str {
+      match family {
+        $( Family::$name => euler_families!(@bare_lift [$($param)*], [$($state)*], [$($noise)*], $($lift)?), )*
+      }
+    }
+
+    /// One family's pushed history value, or `""` where it declares none.
+    #[allow(dead_code)]
+    pub(crate) fn c_history_for(family: Family) -> &'static str {
+      match family {
+        $( Family::$name => euler_families!(@bare_history [$($param)*], [$($state)*], [$($noise)*], $($hist)?), )*
+      }
+    }
+
+    /// One family's series term, or `""` where it declares none.
+    #[allow(dead_code)]
+    pub(crate) fn c_series_for(family: Family) -> &'static str {
+      match family {
+        $( Family::$name => euler_families!(@bare_series [$($param)*], [$($state)*], $($ser)?), )*
+      }
+    }
+
+    /// One family's table increment, or `""` where it declares none.
+    #[allow(dead_code)]
+    pub(crate) fn c_table_for(family: Family) -> &'static str {
+      match family {
+        $( Family::$name => euler_families!(@bare_table [$($param)*], $($tab)?), )*
+      }
+    }
+
     pub(crate) const C_REPORT: &str = concat!($(
       "        if (family == ", stringify!($code), "u) {\n",
       euler_families!(@bind_params [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19] $($param)*),
@@ -399,6 +461,60 @@ macro_rules! euler_families {
       euler_families!(@c_body "reported", [0 1 2 3], [$($state)*], $($report)*),
       "        }\n",
     )*);
+  };
+
+  // The same clause bodies as the guarded arms below, without the
+  // `if (family == …)` wrapper: what a kernel rendered for a single family
+  // splices in place of the whole chain.
+  (@bare_lift [$($param:ident)*], [$($state:ident)*], [$($noise:ident)*],) => { "" };
+
+  (@bare_lift [$($param:ident)*], [$($state:ident)*], [$($noise:ident)*],
+    { drift ($($ld:tt)*) diffusion ($($lg:tt)*) shock ($($lsh:tt)*) }) => {
+    concat!(
+      euler_families!(@bind_params [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19] $($param)*),
+      euler_families!(@bind_slots "state" [0 1 2 3] $($state)*),
+      euler_families!(@bind_slots "noise" [0 1 2 3] $($noise)*),
+      euler_families!(@c_body "lift", [0 1 2], [lf lg lsh], $($ld)*, $($lg)*, $($lsh)*),
+    )
+  };
+
+  (@bare_history [$($param:ident)*], [$($state:ident)*], [$($noise:ident)*],) => { "" };
+
+  (@bare_history [$($param:ident)*], [$($state:ident)*], [$($noise:ident)*],
+    { push ($($hp:tt)*) weights ($w:ident) }) => {
+    concat!(
+      euler_families!(@bind_params [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19] $($param)*),
+      euler_families!(@bind_slots "state" [0 1 2 3] $($state)*),
+      euler_families!(@bind_slots "noise" [0 1 2 3] $($noise)*),
+      euler_families!(@c_body "hist_in", [0], [hp], $($hp)*),
+    )
+  };
+
+  (@bare_series [$($param:ident)*], [$($state:ident)*],) => { "" };
+
+  (@bare_series [$($param:ident)*], [$($state:ident)*], { size ($($sz:tt)*) }) => {
+    euler_families!(@bare_series_body [$($param)*], [$($state)*], $($sz)*)
+  };
+
+  (@bare_series [$($param:ident)*], [$($state:ident)*], { live size ($($sz:tt)*) }) => {
+    euler_families!(@bare_series_body [$($param)*], [$($state)*], $($sz)*)
+  };
+
+  (@bare_series_body [$($param:ident)*], [$($state:ident)*], $($sz:tt)*) => {
+    concat!(
+      euler_families!(@bind_params [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19] $($param)*),
+      euler_families!(@bind_slots "state" [0 1 2 3] $($state)*),
+      euler_families!(@c_body "series_size", [0], [sz], $($sz)*),
+    )
+  };
+
+  (@bare_table [$($param:ident)*],) => { "" };
+
+  (@bare_table [$($param:ident)*], { increment ($($ti:tt)*) }) => {
+    concat!(
+      euler_families!(@bind_params [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19] $($param)*),
+      euler_families!(@c_body "table_inc", [0], [ti], $($ti)*),
+    )
   };
 
   (@c_lift $code:literal, [$($param:ident)*], [$($state:ident)*], [$($noise:ident)*],) => { "" };

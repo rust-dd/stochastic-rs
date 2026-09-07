@@ -5,6 +5,7 @@
 //! according to `T` — NVIDIA hardware has native double precision.
 
 use std::any::TypeId;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use cudarc::driver::*;
@@ -16,6 +17,7 @@ use parking_lot::Mutex;
 use super::EulerCoefficients;
 use super::EulerKernel;
 use super::EulerSpec;
+use super::kernel::Shape;
 use crate::device::Cuda;
 use crate::device::DeviceError;
 use crate::device::DeviceInfo;
@@ -80,21 +82,28 @@ const CUDA_HEADER: &str = r#"extern "C" __global__ void euler_paths_REAL(
     const REAL x0[4] = { x00, x01, x02, x03 };
 "#;
 
-fn kernel_source(real: &'static str) -> String {
+fn kernel_source(real: &'static str, shape: Shape) -> String {
   let lang = super::kernel::cuda_language(real);
   let prelude = super::kernel::prelude(&lang);
-  let body = super::kernel::render(&lang);
+  let body = super::kernel::render_for(&lang, shape);
   format!("{prelude}{}{body}}}\n", CUDA_HEADER.replace("REAL", real))
 }
 
 struct Kernels {
   ordinal: usize,
+  context: Arc<CudaContext>,
   stream: Arc<CudaStream>,
   /// Second stream of the batch pipeline: chunk `k + 1` computes on one
   /// while chunk `k` copies back on the other.
   stream_b: Arc<CudaStream>,
-  f32: CudaFunction,
-  f64: CudaFunction,
+  /// One compiled kernel per launch shape and precision, built on first use.
+  ///
+  /// A T4 reports what the monolithic body costs: 80 registers and 3552 bytes
+  /// of local memory per thread in `f32`, 130 and 7104 in `f64` — three and
+  /// one block per multiprocessor. A kernel rendered for one family carries
+  /// that family's step alone and declares only the scratch it reaches, which
+  /// is where the occupancy comes back.
+  functions: HashMap<(Shape, &'static str), CudaFunction>,
 }
 
 /// SAFETY: every device operation is serialised through the one stream.
@@ -142,17 +151,18 @@ pub struct KernelProfile {
   pub block: u32,
 }
 
-/// [`KernelProfile`] for the `f32` or `f64` engine kernel on the device at
+/// [`KernelProfile`] for the kernel a plain diffusion compiles at `real` —
+/// the shape every specialised launch is measured against — on the device at
 /// `ordinal`, at a block size of `block` threads.
-pub fn kernel_profile(ordinal: usize, real: &str, block: u32) -> Result<KernelProfile> {
-  ensure_kernels(ordinal)?;
+pub fn kernel_profile(ordinal: usize, real: &'static str, block: u32) -> Result<KernelProfile> {
+  let shape = Shape::new(super::families::Family::GeometricBrownian, false, false);
+  ensure_kernels(ordinal, shape, real)?;
   let guard = KERNELS.lock();
   let kernels = guard.as_ref().expect("initialised");
-  let func = if real == "double" {
-    &kernels.f64
-  } else {
-    &kernels.f32
-  };
+  let func = kernels
+    .functions
+    .get(&(shape, real))
+    .expect("compiled for this shape");
   let attr = |what: &str, v: std::result::Result<i32, DriverError>| -> Result<i32> {
     v.map_err(|e| driver_error(what, e))
   };
@@ -168,47 +178,50 @@ pub fn kernel_profile(ordinal: usize, real: &str, block: u32) -> Result<KernelPr
   })
 }
 
-fn ensure_kernels(ordinal: usize) -> Result<()> {
+/// Opens the device at `ordinal` if it is not already open, and compiles the
+/// kernel for `shape` at `real` if that one is not already built.
+fn ensure_kernels(ordinal: usize, shape: Shape, real: &'static str) -> Result<()> {
   let mut guard = KERNELS.lock();
-  if guard.as_ref().is_some_and(|k| k.ordinal == ordinal) {
+  if !guard.as_ref().is_some_and(|k| k.ordinal == ordinal) {
+    let ctx = CudaContext::new(ordinal)
+      .map_err(|e| DeviceError::Unavailable(format!("CudaContext: {e}")))?;
+    let stream = ctx
+      .new_stream()
+      .map_err(|e| DeviceError::Launch(format!("stream: {e}")))?;
+    let context = stream.context();
+    let stream_b = ctx
+      .new_stream()
+      .map_err(|e| DeviceError::Launch(format!("stream: {e}")))?;
+    *guard = Some(Kernels {
+      ordinal,
+      context: context.clone(),
+      stream,
+      stream_b,
+      functions: HashMap::new(),
+    });
+  }
+  let kernels = guard.as_mut().expect("initialised");
+  if kernels.functions.contains_key(&(shape, real)) {
     return Ok(());
   }
-  *guard = None;
-  let ctx =
-    CudaContext::new(ordinal).map_err(|e| DeviceError::Unavailable(format!("CudaContext: {e}")))?;
-  let stream = ctx
-    .new_stream()
-    .map_err(|e| DeviceError::Launch(format!("stream: {e}")))?;
-  let context = stream.context();
-  let load = |real: &'static str| -> Result<CudaFunction> {
-    let src = kernel_source(real);
-    let name = format!("euler_paths_{real}");
-    let ptx =
-      nvrtc::compile_ptx(src).map_err(|e| DeviceError::Compile(format!("NVRTC {name}: {e}")))?;
-    let module = context
-      .load_module(ptx)
-      .map_err(|e| DeviceError::Launch(format!("load {name}: {e}")))?;
-    module
-      .load_function(&name)
-      .map_err(|e| DeviceError::Launch(format!("fn {name}: {e}")))
-  };
-  let stream_b = ctx
-    .new_stream()
-    .map_err(|e| DeviceError::Launch(format!("stream: {e}")))?;
-  *guard = Some(Kernels {
-    ordinal,
-    f32: load("float")?,
-    f64: load("double")?,
-    stream,
-    stream_b,
-  });
+  let name = format!("euler_paths_{real}");
+  let ptx = nvrtc::compile_ptx(kernel_source(real, shape))
+    .map_err(|e| DeviceError::Compile(format!("NVRTC {name}: {e}")))?;
+  let module = kernels
+    .context
+    .load_module(ptx)
+    .map_err(|e| DeviceError::Launch(format!("load {name}: {e}")))?;
+  let function = module
+    .load_function(&name)
+    .map_err(|e| DeviceError::Launch(format!("fn {name}: {e}")))?;
+  kernels.functions.insert((shape, real), function);
   Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
 fn run<R>(
   ordinal: usize,
-  func: impl Fn(&Kernels) -> &CudaFunction,
+  real: &'static str,
   params: [R; crate::euler::PARAM_SLOTS],
   x0: [R; 4],
   dt: R,
@@ -253,9 +266,18 @@ fn run<R>(
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float,
 {
-  ensure_kernels(ordinal)?;
+  let shape = Shape::new(
+    super::families::Family::from_code(family).expect("a declared family"),
+    use_jumps != 0 || jump_law != 0,
+    gamma_law != 0,
+  );
+  ensure_kernels(ordinal, shape, real)?;
   let guard = KERNELS.lock();
   let kernels = guard.as_ref().expect("initialised");
+  let func = kernels
+    .functions
+    .get(&(shape, real))
+    .expect("compiled for this shape");
   let stream = &kernels.stream;
   let d_params = stream
     .clone_htod(&params[..])
@@ -310,7 +332,7 @@ where
     .map_err(|e| driver_error("htod program", e))?;
   unsafe {
     stream
-      .launch_builder(func(kernels))
+      .launch_builder(func)
       .arg(&mut d_out)
       .arg(&d_params)
       .arg(&family)
@@ -593,7 +615,7 @@ fn device_paths<T: FloatExt>(
       let curve64: Vec<f64> = curve.iter().map(|v| v.to_f64().unwrap_or(0.0)).collect();
       let data = run::<f64>(
         ordinal,
-        |k| &k.f64,
+        "double",
         p64,
         std::array::from_fn(|i| x0[i].to_f64().unwrap_or(0.0)),
         dt,
@@ -668,7 +690,7 @@ fn device_paths<T: FloatExt>(
     let curve32: Vec<f32> = curve.iter().map(|v| v.to_f32().unwrap_or(0.0)).collect();
     let data = run::<f32>(
       ordinal,
-      |k| &k.f32,
+      "float",
       p32,
       std::array::from_fn(|i| x0[i].to_f64().unwrap_or(0.0) as f32),
       dt as f32,
@@ -881,7 +903,7 @@ where
 #[allow(clippy::too_many_arguments)]
 fn pipelined<R>(
   ordinal: usize,
-  func: impl Fn(&Kernels) -> &CudaFunction,
+  real: &'static str,
   params: [R; crate::euler::PARAM_SLOTS],
   x0: [R; 4],
   dt: R,
@@ -919,11 +941,20 @@ fn pipelined<R>(
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float + Send + Sync,
 {
-  ensure_kernels(ordinal)?;
+  let shape = Shape::new(
+    super::families::Family::from_code(family).expect("a declared family"),
+    use_jumps != 0 || jump_law != 0,
+    gamma_law != 0,
+  );
+  ensure_kernels(ordinal, shape, real)?;
   let guard = KERNELS.lock();
   let kernels = guard.as_ref().expect("initialised");
   let streams = [kernels.stream.clone(), kernels.stream_b.clone()];
-  let func = func(kernels).clone();
+  let func = kernels
+    .functions
+    .get(&(shape, real))
+    .expect("compiled for this shape")
+    .clone();
   drop(guard);
   let planes = components as usize;
   let mut host = vec![R::zero(); planes * m * n];
@@ -1081,7 +1112,7 @@ fn pipelined_paths<T: FloatExt>(
     let curve64: Vec<f64> = curve.iter().map(|v| v.to_f64().unwrap_or(0.0)).collect();
     let data = pipelined::<f64>(
       ordinal,
-      |k| &k.f64,
+      "double",
       p64,
       std::array::from_fn(|i| x0[i].to_f64().unwrap_or(0.0)),
       dt,
@@ -1128,7 +1159,7 @@ fn pipelined_paths<T: FloatExt>(
   let curve32: Vec<f32> = curve.iter().map(|v| v.to_f32().unwrap_or(0.0)).collect();
   let data = pipelined::<f32>(
     ordinal,
-    |k| &k.f32,
+    "float",
     p32,
     std::array::from_fn(|i| x0[i].to_f64().unwrap_or(0.0) as f32),
     dt as f32,

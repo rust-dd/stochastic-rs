@@ -4,6 +4,8 @@
 //! kernel. `f32` only — Apple GPUs have no double precision — and
 //! widened on the way back.
 
+use std::collections::HashMap;
+
 use metal::*;
 use ndarray::Array2;
 use ndarray::Array3;
@@ -12,6 +14,7 @@ use parking_lot::Mutex;
 use super::EulerCoefficients;
 use super::EulerKernel;
 use super::EulerSpec;
+use super::kernel::Shape;
 use crate::device::DeviceError;
 use crate::device::DeviceInfo;
 use crate::device::Metal;
@@ -115,10 +118,10 @@ kernel void euler_paths(
     const float x0[4] = { args.x0[0], args.x0[1], args.x0[2], args.x0[3] };
 "#;
 
-fn msl_source() -> String {
+fn msl_source(shape: Shape) -> String {
   let lang = super::kernel::metal_language();
   let prelude = super::kernel::prelude(&lang);
-  let body = super::kernel::render(&lang);
+  let body = super::kernel::render_for(&lang, shape);
   format!("{prelude}{MSL_HEADER}{body}}}\n")
 }
 
@@ -189,7 +192,14 @@ struct Context {
   ordinal: usize,
   device: Device,
   queue: CommandQueue,
-  pipeline: ComputePipelineState,
+  /// One pipeline per launch shape, built on first use and kept.
+  ///
+  /// A kernel rendered for one family is a fraction of the monolithic body —
+  /// no 120-way comparison, and none of the scratch the family cannot reach —
+  /// and a program using three processes compiles three small kernels instead
+  /// of one large one. The map is small by construction: a shape is a family
+  /// plus the handful of flags a launch of it can carry.
+  pipelines: HashMap<Shape, ComputePipelineState>,
 }
 
 /// SAFETY: every device operation is serialised through the one queue.
@@ -251,29 +261,34 @@ pub(crate) fn probe(ordinal: usize) -> Result<DeviceInfo> {
   ))
 }
 
-fn ensure_context(ordinal: usize) -> Result<()> {
+fn ensure_context(ordinal: usize, shape: Shape) -> Result<()> {
   let mut guard = CONTEXT.lock();
-  if guard.as_ref().is_some_and(|c| c.ordinal == ordinal) {
+  if !guard.as_ref().is_some_and(|c| c.ordinal == ordinal) {
+    let device = metal_device(ordinal)?;
+    let queue = device.new_command_queue();
+    *guard = Some(Context {
+      ordinal,
+      device,
+      queue,
+      pipelines: HashMap::new(),
+    });
+  }
+  let ctx = guard.as_mut().expect("initialised");
+  if ctx.pipelines.contains_key(&shape) {
     return Ok(());
   }
-  *guard = None;
-  let device = metal_device(ordinal)?;
-  let queue = device.new_command_queue();
-  let library = device
-    .new_library_with_source(&msl_source(), &CompileOptions::new())
+  let library = ctx
+    .device
+    .new_library_with_source(&msl_source(shape), &CompileOptions::new())
     .map_err(|e| DeviceError::Compile(format!("MSL compile: {e}")))?;
   let function = library
     .get_function("euler_paths", None)
     .map_err(|e| DeviceError::Launch(format!("get euler_paths: {e}")))?;
-  let pipeline = device
+  let pipeline = ctx
+    .device
     .new_compute_pipeline_state_with_function(&function)
     .map_err(|e| DeviceError::Launch(format!("euler_paths PSO: {e}")))?;
-  *guard = Some(Context {
-    ordinal,
-    device,
-    queue,
-    pipeline,
-  });
+  ctx.pipelines.insert(shape, pipeline);
   Ok(())
 }
 
@@ -299,9 +314,15 @@ fn run(
   lift: [&[f32]; 3],
   program: &[f32],
 ) -> Result<Vec<f32>> {
-  ensure_context(ordinal)?;
+  let shape = Shape::new(
+    super::families::Family::from_code(args.family).expect("a declared family"),
+    args.has_jumps != 0 || args.jump_law != 0,
+    args.gamma_law != 0,
+  );
+  ensure_context(ordinal, shape)?;
   let guard = CONTEXT.lock();
   let ctx = guard.as_ref().expect("initialised");
+  let pipeline = ctx.pipelines.get(&shape).expect("compiled for this shape");
   let shared = MTLResourceOptions::StorageModeShared;
   let total = args.components as usize * args.paths as usize * args.steps as usize;
   let out_buf = ctx.device.new_buffer((total * 4) as u64, shared);
@@ -354,7 +375,7 @@ fn run(
   let cmd = ctx.queue.new_command_buffer();
   {
     let enc = cmd.new_compute_command_encoder();
-    enc.set_compute_pipeline_state(&ctx.pipeline);
+    enc.set_compute_pipeline_state(pipeline);
     enc.set_buffer(0, Some(&out_buf), 0);
     enc.set_buffer(1, Some(&params_buf), 0);
     enc.set_buffer(3, Some(incs_buf), 0);
@@ -368,7 +389,7 @@ fn run(
       std::mem::size_of::<EulerArgs>() as u64,
       &args as *const EulerArgs as *const _,
     );
-    let width = ctx.pipeline.max_total_threads_per_threadgroup().min(256);
+    let width = pipeline.max_total_threads_per_threadgroup().min(256);
     enc.dispatch_threads(
       MTLSize::new(args.paths as u64, 1, 1),
       MTLSize::new(width, 1, 1),
