@@ -573,6 +573,27 @@ macro_rules! backend_switch {
           fgn: self.fgn.with_backend(device),
         }
       }
+
+      /// The handle this process samples on: the value `on` or
+      /// `with_backend` put there, with the device ordinal and batch budget
+      /// it carries. What [`probe`](Self::probe) opens, and the one way to
+      /// read back a choice the type alone does not record.
+      pub fn backend(&self) -> B
+      where
+        B: Copy,
+      {
+        self.fgn.backend
+      }
+
+      /// What the device behind this process reports — its name, the scalars
+      /// it computes in, its ordinal — or why it cannot be used. The CPU
+      /// devices always answer `Ok`.
+      pub fn probe(&self) -> ::core::result::Result<$crate::device::DeviceInfo, $crate::device::DeviceError>
+      where
+        B: $crate::device::Backend,
+      {
+        $crate::device::Backend::probe(&self.fgn.backend)
+      }
     }
   };
   (
@@ -599,6 +620,27 @@ macro_rules! backend_switch {
           $($field: self.$field,)*
           fgn: self.fgn.with_backend(device),
         }
+      }
+
+      /// The handle this process samples on: the value `on` or
+      /// `with_backend` put there, with the device ordinal and batch budget
+      /// it carries. What [`probe`](Self::probe) opens, and the one way to
+      /// read back a choice the type alone does not record.
+      pub fn backend(&self) -> B
+      where
+        B: Copy,
+      {
+        self.fgn.backend
+      }
+
+      /// What the device behind this process reports — its name, the scalars
+      /// it computes in, its ordinal — or why it cannot be used. The CPU
+      /// devices always answer `Ok`.
+      pub fn probe(&self) -> ::core::result::Result<$crate::device::DeviceInfo, $crate::device::DeviceError>
+      where
+        B: $crate::device::Backend,
+      {
+        $crate::device::Backend::probe(&self.fgn.backend)
       }
     }
   };
@@ -627,6 +669,27 @@ macro_rules! backend_switch {
           backend: device,
         }
       }
+
+      /// The handle this process samples on: the value `on` or
+      /// `with_backend` put there, with the device ordinal and batch budget
+      /// it carries. What [`probe`](Self::probe) opens, and the one way to
+      /// read back a choice the type alone does not record.
+      pub fn backend(&self) -> B
+      where
+        B: Copy,
+      {
+        self.backend
+      }
+
+      /// What the device behind this process reports — its name, the scalars
+      /// it computes in, its ordinal — or why it cannot be used. The CPU
+      /// devices always answer `Ok`.
+      pub fn probe(&self) -> ::core::result::Result<$crate::device::DeviceInfo, $crate::device::DeviceError>
+      where
+        B: $crate::device::Backend,
+      {
+        $crate::device::Backend::probe(&self.backend)
+      }
     }
   };
   (
@@ -653,6 +716,27 @@ macro_rules! backend_switch {
           $($field: self.$field,)*
           backend: device,
         }
+      }
+
+      /// The handle this process samples on: the value `on` or
+      /// `with_backend` put there, with the device ordinal and batch budget
+      /// it carries. What [`probe`](Self::probe) opens, and the one way to
+      /// read back a choice the type alone does not record.
+      pub fn backend(&self) -> B
+      where
+        B: Copy,
+      {
+        self.backend
+      }
+
+      /// What the device behind this process reports — its name, the scalars
+      /// it computes in, its ordinal — or why it cannot be used. The CPU
+      /// devices always answer `Ok`.
+      pub fn probe(&self) -> ::core::result::Result<$crate::device::DeviceInfo, $crate::device::DeviceError>
+      where
+        B: $crate::device::Backend,
+      {
+        $crate::device::Backend::probe(&self.backend)
       }
     }
   };
@@ -681,6 +765,27 @@ macro_rules! backend_switch {
           backend: device,
         }
       }
+
+      /// The handle this process samples on: the value `on` or
+      /// `with_backend` put there, with the device ordinal and batch budget
+      /// it carries. What [`probe`](Self::probe) opens, and the one way to
+      /// read back a choice the type alone does not record.
+      pub fn backend(&self) -> B
+      where
+        B: Copy,
+      {
+        self.backend
+      }
+
+      /// What the device behind this process reports — its name, the scalars
+      /// it computes in, its ordinal — or why it cannot be used. The CPU
+      /// devices always answer `Ok`.
+      pub fn probe(&self) -> ::core::result::Result<$crate::device::DeviceInfo, $crate::device::DeviceError>
+      where
+        B: $crate::device::Backend,
+      {
+        $crate::device::Backend::probe(&self.backend)
+      }
     }
   };
   (
@@ -707,6 +812,27 @@ macro_rules! backend_switch {
           $($field: self.$field,)*
           backend: device,
         }
+      }
+
+      /// The handle this process samples on: the value `on` or
+      /// `with_backend` put there, with the device ordinal and batch budget
+      /// it carries. What [`probe`](Self::probe) opens, and the one way to
+      /// read back a choice the type alone does not record.
+      pub fn backend(&self) -> B
+      where
+        B: Copy,
+      {
+        self.backend
+      }
+
+      /// What the device behind this process reports — its name, the scalars
+      /// it computes in, its ordinal — or why it cannot be used. The CPU
+      /// devices always answer `Ok`.
+      pub fn probe(&self) -> ::core::result::Result<$crate::device::DeviceInfo, $crate::device::DeviceError>
+      where
+        B: $crate::device::Backend,
+      {
+        $crate::device::Backend::probe(&self.backend)
       }
     }
   };
