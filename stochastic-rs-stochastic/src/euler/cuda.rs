@@ -117,6 +117,57 @@ pub(crate) fn probe(ordinal: usize) -> Result<DeviceInfo> {
   ))
 }
 
+/// What the driver reports about the compiled engine kernel.
+///
+/// Registers and local memory per thread are what bound occupancy, and
+/// occupancy is what a monolithic kernel spends: the body carries every
+/// family's step, every optional frame block and the scratch they need,
+/// whether or not the launch reaches them. These numbers say how much a
+/// per-family kernel would have to gain back, and they cannot be read on a
+/// machine without the device — which is why they are printed by an example
+/// rather than assumed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KernelProfile {
+  /// Registers per thread.
+  pub registers: i32,
+  /// Local (per-thread, off-chip) memory in bytes.
+  pub local_bytes: i32,
+  /// Statically allocated shared memory in bytes.
+  pub shared_bytes: i32,
+  /// The largest block the driver will launch this kernel with.
+  pub max_threads_per_block: i32,
+  /// Concurrent blocks per multiprocessor at [`block`](Self::block) threads.
+  pub blocks_per_multiprocessor: u32,
+  /// The block size the occupancy above was computed for.
+  pub block: u32,
+}
+
+/// [`KernelProfile`] for the `f32` or `f64` engine kernel on the device at
+/// `ordinal`, at a block size of `block` threads.
+pub fn kernel_profile(ordinal: usize, real: &str, block: u32) -> Result<KernelProfile> {
+  ensure_kernels(ordinal)?;
+  let guard = KERNELS.lock();
+  let kernels = guard.as_ref().expect("initialised");
+  let func = if real == "double" {
+    &kernels.f64
+  } else {
+    &kernels.f32
+  };
+  let attr = |what: &str, v: std::result::Result<i32, DriverError>| -> Result<i32> {
+    v.map_err(|e| driver_error(what, e))
+  };
+  Ok(KernelProfile {
+    registers: attr("num_regs", func.num_regs())?,
+    local_bytes: attr("local_size_bytes", func.local_size_bytes())?,
+    shared_bytes: attr("shared_size_bytes", func.shared_size_bytes())?,
+    max_threads_per_block: attr("max_threads_per_block", func.max_threads_per_block())?,
+    blocks_per_multiprocessor: func
+      .occupancy_max_active_blocks_per_multiprocessor(block, 0, None)
+      .map_err(|e| driver_error("occupancy", e))?,
+    block,
+  })
+}
+
 fn ensure_kernels(ordinal: usize) -> Result<()> {
   let mut guard = KERNELS.lock();
   if guard.as_ref().is_some_and(|k| k.ordinal == ordinal) {

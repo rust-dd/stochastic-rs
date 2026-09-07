@@ -311,6 +311,10 @@ required-features = ["metal"]
 name = "cuda_d2h_bw"
 required-features = ["cuda"]
 
+[[example]]
+name = "cuda_engine_profile"
+required-features = ["cuda"]
+
 [features]
 ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]
 ai-metal = ["ai", "stochastic-rs-ai/metal"]
