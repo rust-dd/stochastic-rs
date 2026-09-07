@@ -306,6 +306,21 @@ impl PyHoLee {
     })
   }
 
+  /// The reason a device kernel cannot carry this configuration, if there is
+  /// one: the engine states what it cannot do rather than doing it quietly on
+  /// the host. The question is about the configuration, not the handle, so
+  /// the answer is the same whatever `device=` was passed.
+  fn device_fallback(&self) -> Option<&'static str> {
+    use crate::traits::ProcessExt;
+    crate::py_dispatch_f64!(self, |inner| inner.device_fallback())
+  }
+
+  /// Whether this configuration runs on a device kernel: the absence of a
+  /// [`device_fallback`](Self::device_fallback) reason.
+  fn device_ready(&self) -> bool {
+    self.device_fallback().is_none()
+  }
+
   fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
     use numpy::IntoPyArray;
     use pyo3::IntoPyObjectExt;
