@@ -118,9 +118,12 @@ srs.probe_device("metal")             # {'backend': 'Metal', 'name': 'Apple M2 M
 srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7, device="cuda:1")   # second CUDA GPU
 ```
 
-The device-capable classes take `device=` directly — `PyGbm`, `PyOu`, `PyCir`
-(Euler engine) and `PyFgn`, `PyFbm`, `PyFou`, `PyFcir`, `PyFgbm`, `PyFJacobi`,
-`PyCfou`, `PyCfgns` (fGN family): `PyGbm(..., dtype="f32", device="metal")`.
+Every class whose process reaches a device takes `device=` — all 81 of them,
+the Euler engine's families and the fGN family alike:
+`PyGbm(..., dtype="f32", device="metal")`. (Until September 2026 only 47 did,
+and the other 34 — the jump laws, the subordinators, the conditional-variance
+models, `PyHawkes`, `PyPoisson` — were host-only from Python although their
+Rust processes had kernels.)
 The name is checked against the build (`ValueError` with a rebuild hint), a
 single-precision device needs `dtype="f32"` (`ValueError` otherwise), and the
 device is probed when the object is built (`RuntimeError` if it cannot be
