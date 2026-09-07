@@ -112,6 +112,55 @@ fn normal_inverse_gaussian_agrees_with_the_cpu_law() {
   );
 }
 
+/// The inverse-Gaussian clock stays positive on a grid fine enough to expose
+/// the draw's cancellation, on the device and on the host alike.
+///
+/// Michael-Schucany-Haas takes the small root as a difference of two terms
+/// that agree to more digits the finer the grid is: at `n = 253` the two
+/// still differ in single precision, at `n = 2048` they do not, and the root
+/// came out zero or negative — a clock that runs backwards, and a NaN as soon
+/// as the normal inverse Gaussian takes its square root. Every path was NaN
+/// on the device and a quarter of them on the host before the roots were
+/// rewritten as a sum and a quotient.
+#[test]
+fn the_inverse_gaussian_clock_survives_a_fine_grid() {
+  const FINE: usize = 2_048;
+  let clock = || {
+    IGSubordinator::<f32, _>::new(
+      1.0,
+      2.0,
+      FINE,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(113),
+    )
+  };
+  let nig = || {
+    Nig::<f32, _>::new(
+      -0.1,
+      0.2,
+      0.5,
+      FINE,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(113),
+    )
+  };
+  all_finite(
+    &clock().sample_par(M),
+    "inverse-Gaussian subordinator (host)",
+  );
+  all_finite(
+    &clock().on::<Device>().sample_par(M),
+    "inverse-Gaussian subordinator",
+  );
+  all_finite(&nig().sample_par(M), "normal inverse Gaussian (host)");
+  all_finite(
+    &nig().on::<Device>().sample_par(M),
+    "normal inverse Gaussian",
+  );
+}
+
 /// A positive-stable subordinator is non-decreasing, and its increments are
 /// heavy-tailed enough that the terminal mean is dominated by rare large
 /// jumps. What is compared is therefore the median, which the tail does not

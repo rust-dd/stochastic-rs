@@ -102,7 +102,7 @@ pub(crate) fn spreads_agree(host: &[Array1<f32>], device: &[Array1<f32>], what: 
 pub(crate) fn all_finite(paths: &[Array1<f32>], what: &str) {
   assert!(
     paths.iter().all(|p| p.iter().all(|v| v.is_finite())),
-    "{what}: a device path left the reals"
+    "{what}: a path left the reals"
   );
 }
 

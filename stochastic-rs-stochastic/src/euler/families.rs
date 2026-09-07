@@ -839,14 +839,22 @@ euler_families! {
   /// Haas draw, which needs a standard normal and a uniform and no rejection,
   /// so it is one expression. `2λ` and `4μλ` depend on the parameters and `dt`
   /// alone and are folded on the host.
+  ///
+  /// The draw's two roots are a sum and a quotient rather than a difference:
+  /// once `w` is large the subtracted terms agree to five digits, and in
+  /// single precision their difference comes out zero or negative — where the
+  /// law is strictly positive, and where the caller of this clock takes its
+  /// square root. Multiplying by the conjugate leaves `μ²` over a sum of
+  /// positives, and the large root is that same sum.
   63 => InverseGaussianSubordinator { mu_ig, two_lam, four_mu_lam }
     state (x)
     noise (dz)
     step {
       bind w = (dz / sqrt(dt)) * (dz / sqrt(dt));
       bind rad = sqrt(four_mu_lam * w + mu_ig * mu_ig * w * w);
-      bind xr = mu_ig + mu_ig * mu_ig * w / two_lam - mu_ig / two_lam * rad;
-      x + pick(less(u, mu_ig / (mu_ig + xr)), xr, mu_ig * mu_ig / xr)
+      bind big = mu_ig + mu_ig * mu_ig * w / two_lam + mu_ig / two_lam * rad;
+      bind xr = mu_ig * mu_ig / big;
+      x + pick(less(u, mu_ig / (mu_ig + xr)), xr, big)
     }
     report { x },
 
@@ -860,8 +868,9 @@ euler_families! {
     step {
       bind w = (dz / sqrt(dt)) * (dz / sqrt(dt));
       bind rad = sqrt(four_mu_lam * w + mu_ig * mu_ig * w * w);
-      bind xr = mu_ig + mu_ig * mu_ig * w / two_lam - mu_ig / two_lam * rad;
-      bind ig = pick(less(u, mu_ig / (mu_ig + xr)), xr, mu_ig * mu_ig / xr);
+      bind big = mu_ig + mu_ig * mu_ig * w / two_lam + mu_ig / two_lam * rad;
+      bind xr = mu_ig * mu_ig / big;
+      bind ig = pick(less(u, mu_ig / (mu_ig + xr)), xr, big);
       x + theta * ig + sigma * sqrt(ig) * (dq / sqrt(dt))
     }
     report { x },

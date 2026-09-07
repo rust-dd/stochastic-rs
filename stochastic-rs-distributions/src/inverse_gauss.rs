@@ -96,13 +96,17 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdInverseGauss<T, R> {
         let w = z * z;
         let t1 = self.mu + (self.mu * self.mu * w) / (two * self.lambda);
         let rad = (four * self.mu * self.lambda * w + self.mu * self.mu * w * w).sqrt();
-        let xr = t1 - (self.mu / (two * self.lambda)) * rad;
+        // The two roots as a sum and a quotient rather than a difference.
+        // `t1` and `(mu / 2 lambda) * rad` agree to five digits once `w` is
+        // large, so their difference loses most of its significance and in
+        // `f32` can come out zero or negative — where the law is strictly
+        // positive, and the caller's `sqrt` of it is a NaN. Multiplying by
+        // the conjugate leaves `mu^2` over a sum of positives, and the large
+        // root is that same sum.
+        let big = t1 + (self.mu / (two * self.lambda)) * rad;
+        let xr = self.mu * self.mu / big;
         let check = self.mu / (self.mu + xr);
-        *x = if u < check {
-          xr
-        } else {
-          self.mu * self.mu / xr
-        };
+        *x = if u < check { xr } else { big };
       }
       return;
     }
@@ -127,9 +131,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdInverseGauss<T, R> {
         let w = z * z;
         let t1 = mu + (mu * mu * w) / (two * lam);
         let rad = T::simd_sqrt(four * mu * lam * w + mu * mu * w * w);
-        let x = t1 - (mu / (two * lam)) * rad;
+        // The conjugate form of the small root; see the scalar path above.
+        let alt = t1 + (mu / (two * lam)) * rad;
+        let x = (mu * mu) / alt;
         let check = mu / (mu + x);
-        let alt = (mu * mu) / x;
         let xa = T::simd_to_array(x);
         let ca = T::simd_to_array(check);
         let aa = T::simd_to_array(alt);
@@ -152,9 +157,11 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdInverseGauss<T, R> {
         let lam_s = self.lambda;
         let t1 = mu_s + (mu_s * mu_s * w) / (two_s * lam_s);
         let rad = (four_s * mu_s * lam_s * w + mu_s * mu_s * w * w).sqrt();
-        let x = t1 - (mu_s / (two_s * lam_s)) * rad;
+        // The conjugate form of the small root; see the scalar path above.
+        let big = t1 + (mu_s / (two_s * lam_s)) * rad;
+        let x = mu_s * mu_s / big;
         let check = mu_s / (mu_s + x);
-        rem[i] = if u < check { x } else { mu_s * mu_s / x };
+        rem[i] = if u < check { x } else { big };
       }
     }
   }
