@@ -14,10 +14,9 @@
 //!    pays for all of them. If occupancy here is low, that is the reason, and
 //!    a per-family kernel is the fix.
 //! 2. **Throughput against the host**, in steps per second, over a few batch
-//!    shapes and both precisions. On an Apple M4 Max the same measurement
-//!    gives 0.7–1.3 G steps/s on Metal against 2.0–2.5 on the CPU; the
-//!    question this answers is whether an NVIDIA card and a server CPU sit
-//!    the same way round.
+//!    shapes and both precisions. On an Apple M4 Max the same measurement now
+//!    gives 5–10 G steps/s on Metal against 2.3–2.7 on the CPU, where before
+//!    the per-family kernels and the kept output buffer it gave 0.7–1.3.
 //! 3. **The fractional pipeline for contrast** — fGN is FFT-shaped rather
 //!    than recursion-shaped, and it is where the GPU already wins.
 //!
@@ -148,10 +147,12 @@ fn main() {
   }
 
   println!(
-    "\nWhat to read: a low blocks/SM figure with large local memory is the \
-     monolithic kernel's cost, and a per-family kernel is what removes it. On \
-     an M4 Max the specialised prototype ran 1.3-2.1x the monolith, which \
-     brought Metal to 0.65-0.85x of that machine's CPU — the number this run \
-     is for is whether CUDA starts above or below its host."
+    "\nWhat to read: local memory per thread should now be zero for a plain \
+     diffusion — the kernel is rendered for one family and declares no scratch \
+     it cannot reach — and the blocks per multiprocessor should be what the \
+     registers alone allow. A T4 reported 80 registers and 3552 bytes of local \
+     memory before that change, at 37% occupancy and 0.15 G steps/s against \
+     0.21 on its host. The same three changes took an M4 Max from 0.70 to \
+     10.10 G steps/s at 200k paths, 3.7x its CPU."
   );
 }
