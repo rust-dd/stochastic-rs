@@ -97,6 +97,22 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
     }
   }
 
+  /// The same launch as [`sample_par`](Self::sample_par), mapped. Without
+  /// these two the trait's defaults would send a mapped batch through the
+  /// host sampler while `sample_par` ran on the device — the same law, but
+  /// a different stream and none of the device's speed.
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    crate::euler::EulerBackend::euler_paths_map(&self.fgn.backend, self, m, f)
+  }
+
+  fn sample_map_view<R: Send>(
+    &self,
+    m: usize,
+    f: impl Fn(ndarray::ArrayView1<T>) -> R + Sync,
+  ) -> Vec<R> {
+    crate::euler::EulerBackend::euler_paths_map_view(&self.fgn.backend, self, m, f)
+  }
+
   /// `m` paths through the Euler engine, which on a device runs the whole
   /// recursion in the kernel from fGN increments and on the host devices is
   /// the process's own sampler, chunked exactly as `ProcessExt` chunks — so
