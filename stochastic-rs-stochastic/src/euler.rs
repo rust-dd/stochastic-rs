@@ -712,12 +712,15 @@ pub enum EulerSpec<T: FloatExt> {
     four_mu_lam: T,
   },
   /// A positive-stable subordinator by the Chambers-Mallows-Stuck transform.
+  /// The scale is `ln((c·dt)^{1/α})`, not the scale itself: the step sums the
+  /// transform's factors in logs, and `(c·dt)^{1/α}` underflows to zero for
+  /// small `α` before any of them does.
   StableSubordinator {
     alpha: T,
     inv_alpha: T,
     one_minus_alpha: T,
     tail_exp: T,
-    scale: T,
+    log_scale: T,
     pi: T,
   },
   /// A Heston variance under a Kou-jumping log-price, variance truncated.
@@ -1468,11 +1471,11 @@ impl<T: FloatExt> EulerSpec<T> {
         inv_alpha,
         one_minus_alpha,
         tail_exp,
-        scale,
+        log_scale,
         pi,
       } => (
         Family::StableSubordinator.code(),
-        pad([alpha, inv_alpha, one_minus_alpha, tail_exp, scale, pi]),
+        pad([alpha, inv_alpha, one_minus_alpha, tail_exp, log_scale, pi]),
       ),
       EulerSpec::KouJumpHeston {
         drift_c,

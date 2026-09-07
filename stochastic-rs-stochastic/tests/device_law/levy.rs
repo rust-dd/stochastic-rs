@@ -490,6 +490,57 @@ fn hawkes_horizon_mode_keeps_the_process_on_the_host() {
   assert_eq!(build().on::<Device>().sample_par(8), build().sample_par(8));
 }
 
+/// A small scale keeps the kernel's stable subordinator on the host's law
+/// rather than collapsing it to zero.
+///
+/// The kernel folds the transform's scale as `(c·dt)^{1/α}`, and in `f32` that
+/// factor underflows to zero long before the path it scales does: at `α = 0.2`
+/// and `c·dt = 9.8e-10` it is `8.8e-46`, zero as a float, while the terminal
+/// value near `(c·T)^{1/α} = 1e-30` is an ordinary single. Every device path
+/// was then identically zero against a host that was still right — the host
+/// folds in `f64`, so only the kernel copy of the transform showed it. The
+/// same fold in the kernel's own precision turned 7.9 % of the points of an
+/// `α = 0.1` device path into NaN.
+#[test]
+fn a_small_scale_keeps_the_stable_subordinator_on_the_cpu_law() {
+  let build = || {
+    AlphaStableSubordinator::<f32, _>::new(
+      0.2,
+      1e-6,
+      1024,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(4242),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  let host = build().sample_par(M);
+  all_finite(&device, "small-scale stable subordinator");
+  assert!(
+    device
+      .iter()
+      .all(|p| p.windows(2).into_iter().all(|w| w[1] >= w[0])),
+    "a subordinator path went backwards"
+  );
+  let median = |paths: &[Array1<f32>]| {
+    let last = paths[0].len() - 1;
+    let mut v: Vec<f32> = paths.iter().map(|p| p[last]).collect();
+    v.sort_by(f32::total_cmp);
+    v[v.len() / 2] as f64
+  };
+  let device_median = median(&device);
+  assert!(
+    device_median > 0.0,
+    "every device path collapsed to zero: median terminal = {device_median:e}"
+  );
+  agrees(
+    median(&host),
+    device_median,
+    0.05,
+    "small-scale stable subordinator terminal median",
+  );
+}
+
 /// The inverse stable subordinator is the first-passage clock of a stable
 /// subordinator built on a table in its own argument: the kernel builds the
 /// same table from the same positive-stable increments and interpolates the

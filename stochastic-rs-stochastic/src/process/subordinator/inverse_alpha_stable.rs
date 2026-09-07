@@ -234,12 +234,14 @@ impl<T: FloatExt> InverseAlphaStableSubordinatorSampler<T> {
   fn simulate_direct_path(&self, u_max: f64) -> (Vec<f64>, Vec<f64>) {
     let m = self.u_steps;
     let du = u_max / (m - 1) as f64;
-    let scale = (self.c * du).powf(1.0 / self.alpha);
+    // In logs, where the increment's own factors are summed: `(c·du)^{1/α}`
+    // underflows to zero on its own once `α` is small and the table is fine.
+    let log_scale = (self.c * du).ln() / self.alpha;
     let mut u = vec![0.0; m];
     let mut d = vec![0.0; m];
     for i in 1..m {
       u[i] = i as f64 * du;
-      d[i] = d[i - 1] + scale * sample_positive_stable(self.alpha, &self.uniform);
+      d[i] = d[i - 1] + sample_positive_stable(self.alpha, log_scale, &self.uniform);
     }
     (u, d)
   }

@@ -54,6 +54,8 @@ impl<T: FloatExt, S: SeedExt, B> AlphaStableSubordinator<T, S, B> {}
 /// The Euler engine's view of the positive-stable subordinator. Every
 /// exponent the transform needs depends on `α` alone, and the scale on `c`
 /// and `dt`, so all five travel as parameters and the step is one expression.
+/// The scale travels in logs, where the step already sums the transform's
+/// other factors, and where `(c·dt)^{1/α}` cannot underflow to zero first.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for AlphaStableSubordinator<T, S, B>
 {
@@ -65,7 +67,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
       inv_alpha: one / self.alpha,
       one_minus_alpha: one - self.alpha,
       tail_exp: (one - self.alpha) / self.alpha,
-      scale: (self.c * dt).powf(one / self.alpha),
+      log_scale: (self.c * dt).ln() / self.alpha,
       pi: T::from_f64_fast(std::f64::consts::PI),
     }
   }
@@ -111,12 +113,12 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     let alpha = self.alpha.to_f64().unwrap();
     let c = self.c.to_f64().unwrap();
     let dt = t_max / n_increments as f64;
-    let scale = (c * dt).powf(1.0 / alpha);
+    let log_scale = (c * dt).ln() / alpha;
     AlphaStableSubordinatorSampler {
       n: self.n,
       x0,
       alpha,
-      scale,
+      log_scale,
       uniform: SimdUniform::<f64>::new(0.0, 1.0, &self.seed),
     }
   }
@@ -154,13 +156,15 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 }
 
 /// Reusable [`AlphaStableSubordinator`] sampling state: the owned uniform
-/// source driving the positive-stable increments plus precomputed scales.
+/// source driving the positive-stable increments plus precomputed scales. The
+/// scale travels as its logarithm because `(c·dt)^{1/α}` underflows to zero
+/// on its own for `α` below about 0.011 on a fine grid.
 #[doc(hidden)]
 pub struct AlphaStableSubordinatorSampler<T: FloatExt> {
   n: usize,
   x0: T,
   alpha: f64,
-  scale: f64,
+  log_scale: f64,
   uniform: SimdUniform<f64>,
 }
 
@@ -175,8 +179,7 @@ impl<T: FloatExt> AlphaStableSubordinatorSampler<T> {
     }
     let mut level = self.x0.to_f64().unwrap();
     for x in out[1..].iter_mut() {
-      let s = sample_positive_stable(self.alpha, &self.uniform);
-      level += self.scale * s;
+      level += sample_positive_stable(self.alpha, self.log_scale, &self.uniform);
       *x = T::from_f64_fast(level);
     }
   }

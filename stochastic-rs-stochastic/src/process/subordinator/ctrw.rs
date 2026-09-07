@@ -80,7 +80,7 @@ enum WaitingSampler<T: FloatExt> {
   Exp(SimdExp<T>),
   Gamma(SimdGamma<T>),
   Ig(SimdInverseGauss<T>),
-  PosStable { alpha: f64, scale: f64 },
+  PosStable { alpha: f64, log_scale: f64 },
 }
 
 enum JumpSampler<T: FloatExt> {
@@ -204,7 +204,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
         );
         WaitingSampler::PosStable {
           alpha: alpha.to_f64().unwrap(),
-          scale: scale.to_f64().unwrap(),
+          log_scale: scale.to_f64().unwrap().ln(),
         }
       }
     };
@@ -330,8 +330,8 @@ impl<T: FloatExt> CtrwSampler<T> {
       WaitingSampler::Exp(d) => d.sample_fast().to_f64().unwrap(),
       WaitingSampler::Gamma(d) => d.sample_fast().to_f64().unwrap(),
       WaitingSampler::Ig(d) => d.sample_fast().to_f64().unwrap(),
-      WaitingSampler::PosStable { alpha, scale } => {
-        scale * sample_positive_stable(*alpha, &self.uniform)
+      WaitingSampler::PosStable { alpha, log_scale } => {
+        sample_positive_stable(*alpha, *log_scale, &self.uniform)
       }
     }
     .max(1e-12)

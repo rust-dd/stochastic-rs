@@ -878,21 +878,33 @@ euler_families! {
   /// A positive-stable subordinator by the Chambers-Mallows-Stuck transform:
   /// one uniform on `(0, π)` and one exponential, both from the step's own
   /// uniforms, with no rejection. The two exponents depend on `α` alone and
-  /// are folded on the host, as are the scale `(c·dt)^{1/α}` and `π`.
+  /// are folded on the host, as are `π` and the scale — the latter as
+  /// `ln((c·dt)^{1/α})`, since the scale itself underflows to zero for `α`
+  /// below about 0.011 on a fine grid.
   ///
   /// The uniforms are clamped into the open interval at a bound `f32` can
   /// hold below one: at exactly one the angle is `π`, whose sine is a small
-  /// *negative* in single precision, and raising that to a fractional power
-  /// is a NaN. The sines are floored for the same reason the clamp exists.
-  65 => StableSubordinator { alpha, inv_alpha, one_minus_alpha, tail_exp, scale, pi }
+  /// *negative* in single precision, and the logarithm of that is a NaN. The
+  /// sines are floored for the same reason the clamp exists.
+  ///
+  /// The two powers and the scale are summed as logarithms and raised once,
+  /// rather than multiplied as three factors. Each factor leaves the
+  /// representable range long before their product does — at `α = 0.01` the
+  /// exponent is 100, so `sin(u)^{1/α}` underflows for `sin u < 8e-4` and the
+  /// tail factor overflows for `w < 7e-4` — and the product then came back
+  /// `+inf`, or NaN against an underflowed scale, where the factors would have
+  /// cancelled. `sin(αu)` stays outside: it is O(1) over the clamped range and
+  /// is the one factor that never needed a logarithm.
+  65 => StableSubordinator { alpha, inv_alpha, one_minus_alpha, tail_exp, log_scale, pi }
     state (x)
     noise (dz)
     step {
       bind uu = min(max(u, lit(1e-7)), lit(0.9999999)) * pi;
       bind w = negate(ln(min(max(u2, lit(1e-7)), lit(0.9999999))));
-      bind s1 = sin(alpha * uu) / pow(max(sin(uu), lit(1e-20)), inv_alpha);
-      bind s2 = pow(max(sin(one_minus_alpha * uu), lit(1e-20)) / w, tail_exp);
-      x + scale * s1 * s2
+      bind lsin = negate(ln(max(sin(uu), lit(1e-20))));
+      bind ltail = ln(max(sin(one_minus_alpha * uu), lit(1e-20))) - ln(w);
+      bind lg = log_scale + inv_alpha * lsin + tail_exp * ltail;
+      x + sin(alpha * uu) * exp(lg)
     }
     report { x },
 
@@ -1660,6 +1672,12 @@ euler_families! {
   /// away from the ends of the unit interval, at scale `(c Δu)^{1/α}` — and the
   /// step takes the interpolated first passage over the horizon's time. The
   /// state is that inverse; there is nothing to step.
+  ///
+  /// The increment sums its powers and its scale as logarithms and raises them
+  /// once, for the reason
+  /// [`StableSubordinator`](Family::StableSubordinator) does: the factors
+  /// leave the representable range for small `α` well before their product
+  /// does, and `(c Δu)^{1/α}` underflows to zero before any of them.
   114 => InverseStableSubordinator { alpha, c, inv_alpha, one_minus_alpha, tail_exp, pi }
     state (x)
     noise (dz)
@@ -1669,9 +1687,10 @@ euler_families! {
       increment (
         bind uu = min(max(uj, lit(1e-7)), lit(0.9999999)) * pi;
         bind w = negate(ln(min(max(uv, lit(1e-7)), lit(0.9999999))));
-        bind s1 = sin(alpha * uu) / pow(max(sin(uu), lit(1e-20)), inv_alpha);
-        bind s2 = pow(max(sin(one_minus_alpha * uu), lit(1e-20)) / w, tail_exp);
-        pow(c * tv, inv_alpha) * s1 * s2
+        bind lsin = ln(c * tv) - ln(max(sin(uu), lit(1e-20)));
+        bind ltail = ln(max(sin(one_minus_alpha * uu), lit(1e-20))) - ln(w);
+        bind lg = inv_alpha * lsin + tail_exp * ltail;
+        sin(alpha * uu) * exp(lg)
       )
     },
 
