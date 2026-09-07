@@ -6,11 +6,27 @@
 //!
 //! Collection of long-only and long-short allocation optimizers.
 
+use std::convert::Infallible;
+
+use basin::CostFunction;
+
 mod cvar;
 mod helpers;
 mod heuristic;
 mod hrp;
 mod markowitz;
+
+pub(super) fn run_nelder_mead<P>(
+  problem: P,
+  simplex: Vec<Vec<f64>>,
+  max_iters: u64,
+  sd_tolerance: f64,
+) -> Vec<f64>
+where
+  P: CostFunction<Param = Vec<f64>, Output = f64, Error = Infallible>,
+{
+  crate::calibration::run_nelder_mead(problem, simplex, max_iters, sd_tolerance).0
+}
 
 pub use cvar::empirical_cvar;
 pub use cvar::optimize_mean_cvar;

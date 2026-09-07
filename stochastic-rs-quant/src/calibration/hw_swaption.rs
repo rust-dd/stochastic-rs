@@ -11,12 +11,12 @@
 //! Reference: Brigo & Mercurio, "Interest Rate Models — Theory and Practice",
 //! Springer 2nd ed. (2006), §3.3.2 & §3.11.
 
-use argmin::core::CostFunction;
-use argmin::core::Executor;
-use argmin::core::State;
-use argmin::solver::neldermead::NelderMead;
+use std::convert::Infallible;
+
+use basin::CostFunction;
 
 use crate::calibration::Regularization;
+use crate::calibration::run_nelder_mead;
 use crate::curves::DiscountCurve;
 use crate::instruments::option::caplet::black_forward_caplet;
 use crate::instruments::option::jamshidian::price_jamshidian_hull_white;
@@ -181,27 +181,8 @@ impl<'a> HullWhiteSwaptionCalibrator<'a> {
     let (a0, s0) = self.initial_guess.unwrap_or((0.05, 0.01));
     let simplex = vec![vec![a0, s0], vec![a0 * 1.5, s0], vec![a0, s0 * 1.5]];
 
-    let mut converged = true;
-    let best = match NelderMead::new(simplex.clone()).with_sd_tolerance(self.sd_tolerance) {
-      Ok(solver) => match Executor::new(problem.clone(), solver)
-        .configure(|s| s.max_iters(self.max_iters))
-        .run()
-      {
-        Ok(res) => res
-          .state
-          .get_best_param()
-          .cloned()
-          .unwrap_or_else(|| simplex[0].clone()),
-        Err(_) => {
-          converged = false;
-          simplex[0].clone()
-        }
-      },
-      Err(_) => {
-        converged = false;
-        simplex[0].clone()
-      }
-    };
+    let (best, converged) =
+      run_nelder_mead(problem.clone(), simplex, self.max_iters, self.sd_tolerance);
 
     let a_hat = best[0].abs();
     let sigma_hat = best[1].abs();
@@ -294,8 +275,9 @@ impl HullWhiteCost {
 impl CostFunction for HullWhiteCost {
   type Param = Vec<f64>;
   type Output = f64;
+  type Error = Infallible;
 
-  fn cost(&self, x: &Self::Param) -> Result<f64, argmin::core::Error> {
+  fn cost(&self, x: &Self::Param) -> Result<f64, Self::Error> {
     let a = x[0].abs().max(1e-6);
     let sigma = x[1].abs().max(1e-6);
     let (model_prices, market_prices) = self.price_series(a, sigma);

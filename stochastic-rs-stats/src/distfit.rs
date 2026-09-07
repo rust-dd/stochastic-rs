@@ -30,12 +30,15 @@ pub mod skew_t;
 mod tests;
 pub mod variance_gamma;
 
-use argmin::core::CostFunction;
-use argmin::core::Executor;
-use argmin::core::Gradient;
-use argmin::core::State;
-use argmin::solver::linesearch::MoreThuenteLineSearch;
-use argmin::solver::quasinewton::LBFGS;
+use std::convert::Infallible;
+
+use basin::CostFunction;
+use basin::CostTolerance;
+use basin::Executor;
+use basin::Gradient;
+use basin::GradientTolerance;
+use basin::LbfgsState;
+use basin::Lbfgsb;
 pub use johnson_su::JohnsonSuFit;
 pub use johnson_su::johnson_su_fit;
 use ndarray::ArrayView1;
@@ -44,6 +47,7 @@ pub use skew_t::skew_t_fit;
 pub use variance_gamma::VarianceGammaFit;
 pub use variance_gamma::variance_gamma_fit;
 
+use crate::optim::more_thuente;
 use crate::optim::nelder_mead_vec;
 use crate::traits::FloatExt;
 
@@ -95,7 +99,7 @@ pub(crate) fn minimise<F: Fn(&[f64]) -> f64 + Clone>(
   )
 }
 
-/// The objective as an `argmin` problem with numerical gradients.
+/// The objective as a Basin problem with numerical gradients.
 #[derive(Clone)]
 struct Polish<F> {
   objective: F,
@@ -104,20 +108,20 @@ struct Polish<F> {
 impl<F: Fn(&[f64]) -> f64 + Clone> Polish<F> {
   fn run(&self, theta: Vec<f64>) -> (Vec<f64>, usize) {
     let start_cost = (self.objective)(&theta);
-    let linesearch = MoreThuenteLineSearch::new();
-    let solver = LBFGS::new(linesearch, 10);
-    let result = Executor::new(self.clone(), solver)
-      .configure(|state| state.param(theta.clone()).max_iters(200))
-      .run();
-    match result {
-      Ok(res) => {
-        let iters = res.state.get_iter() as usize;
-        match res.state.get_best_param() {
-          Some(best) if (self.objective)(best) < start_cost => (best.clone(), iters),
-          _ => (theta, iters),
-        }
-      }
-      Err(_) => (theta, 0),
+    let solver = Lbfgsb::with_line_search(more_thuente()).unbounded();
+    let state = LbfgsState::new(theta.clone(), 10);
+    let result = Executor::new(self.clone(), solver, state)
+      .max_iter(200)
+      .terminate_on(GradientTolerance(f64::EPSILON.sqrt()))
+      .terminate_on(CostTolerance::new(f64::EPSILON))
+      .run()
+      .expect("distribution-fitting objective is infallible");
+    let iters = result.iter() as usize;
+    let best = result.best_param();
+    if (self.objective)(best) < start_cost {
+      (best.clone(), iters)
+    } else {
+      (theta, iters)
     }
   }
 }
@@ -125,17 +129,17 @@ impl<F: Fn(&[f64]) -> f64 + Clone> Polish<F> {
 impl<F: Fn(&[f64]) -> f64 + Clone> CostFunction for Polish<F> {
   type Param = Vec<f64>;
   type Output = f64;
+  type Error = Infallible;
 
-  fn cost(&self, theta: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
+  fn cost(&self, theta: &Self::Param) -> Result<Self::Output, Self::Error> {
     Ok((self.objective)(theta))
   }
 }
 
 impl<F: Fn(&[f64]) -> f64 + Clone> Gradient for Polish<F> {
-  type Param = Vec<f64>;
   type Gradient = Vec<f64>;
 
-  fn gradient(&self, theta: &Self::Param) -> Result<Self::Gradient, argmin::core::Error> {
+  fn gradient(&self, theta: &Self::Param) -> Result<Self::Gradient, Self::Error> {
     let mut grad = vec![0.0; theta.len()];
     for i in 0..theta.len() {
       let step = 1e-6 * (1.0 + theta[i].abs());

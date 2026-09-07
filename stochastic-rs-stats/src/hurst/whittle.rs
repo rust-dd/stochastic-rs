@@ -14,18 +14,21 @@
 //! Implementation follows Section 3.2 of the paper:
 //! - Paxson (Euler-Maclaurin) boundary correction for the spectral density sum
 //! - Correction terms `A¹` and `A²` for low-frequency truncation (eq. 16)
-//! - Multi-start L-BFGS-B optimisation (projected L-BFGS via argmin)
+//! - Multi-start L-BFGS-B optimisation via Basin
 //!
 //! Wrapped under the [`super::HurstEstimator`] trait as [`Whittle`];
 //! free functions [`estimate`] / [`estimate_from_prices`] are also
 //! available for direct use.
 
-use argmin::core::CostFunction;
-use argmin::core::Executor;
-use argmin::core::Gradient;
-use argmin::core::State;
-use argmin::solver::linesearch::MoreThuenteLineSearch;
-use argmin::solver::quasinewton::LBFGS;
+use std::convert::Infallible;
+
+use basin::BoxConstraints;
+use basin::CostFunction;
+use basin::CostTolerance;
+use basin::Executor;
+use basin::Gradient;
+use basin::LbfgsState;
+use basin::Lbfgsb;
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::gamma;
 
@@ -33,6 +36,7 @@ use super::HurstDiagnostic;
 use super::HurstError;
 use super::HurstEstimator;
 use super::HurstResult;
+use crate::optim::more_thuente;
 use crate::traits::FloatExt;
 
 /// Estimation result from the adapted Whittle estimator.
@@ -292,25 +296,27 @@ struct WhittleProblem {
   psi: f64,
   k_trunc: usize,
   j_max: usize,
-  h_bounds: (f64, f64),
-  v_bounds: (f64, f64),
+  lower: Vec<f64>,
+  upper: Vec<f64>,
 }
 
 impl WhittleProblem {
   fn clamp(&self, params: &[f64]) -> Vec<f64> {
-    vec![
-      params[0].clamp(self.h_bounds.0, self.h_bounds.1),
-      params[1].clamp(self.v_bounds.0, self.v_bounds.1),
-    ]
+    params
+      .iter()
+      .enumerate()
+      .map(|(i, &value)| value.clamp(self.lower[i], self.upper[i]))
+      .collect()
   }
 
   fn eval(&self, params: &[f64]) -> f64 {
-    let p = self.clamp(params);
+    // The spectral parameterization remains restricted during line searches.
+    let params = self.clamp(params);
     whittle_objective_full(
       &self.pgram,
       &self.gamma,
-      p[0],
-      p[1],
+      params[0],
+      params[1],
       self.m,
       self.n,
       self.psi,
@@ -323,24 +329,25 @@ impl WhittleProblem {
 impl CostFunction for WhittleProblem {
   type Param = Vec<f64>;
   type Output = f64;
-  fn cost(&self, params: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
+  type Error = Infallible;
+
+  fn cost(&self, params: &Self::Param) -> Result<Self::Output, Self::Error> {
     Ok(self.eval(params))
   }
 }
 
 impl Gradient for WhittleProblem {
-  type Param = Vec<f64>;
   type Gradient = Vec<f64>;
-  fn gradient(&self, params: &Self::Param) -> Result<Self::Gradient, argmin::core::Error> {
-    let p = self.clamp(params);
-    let bounds = [self.h_bounds, self.v_bounds];
+
+  fn gradient(&self, params: &Self::Param) -> Result<Self::Gradient, Self::Error> {
+    let params = self.clamp(params);
     let mut grad = vec![0.0; 2];
     for i in 0..2 {
-      let step = 1e-7 * (1.0 + p[i].abs());
-      let mut p_plus = p.clone();
-      let mut p_minus = p.clone();
-      p_plus[i] = (p[i] + step).min(bounds[i].1);
-      p_minus[i] = (p[i] - step).max(bounds[i].0);
+      let step = 1e-7 * (1.0 + params[i].abs());
+      let mut p_plus = params.clone();
+      let mut p_minus = params.clone();
+      p_plus[i] = (params[i] + step).min(self.upper[i]);
+      p_minus[i] = (params[i] - step).max(self.lower[i]);
       let actual_2h = p_plus[i] - p_minus[i];
       if actual_2h > 0.0 {
         let fp = self.eval(&p_plus);
@@ -352,23 +359,27 @@ impl Gradient for WhittleProblem {
   }
 }
 
+impl BoxConstraints for WhittleProblem {
+  fn lower(&self) -> &Self::Param {
+    &self.lower
+  }
+
+  fn upper(&self) -> &Self::Param {
+    &self.upper
+  }
+}
+
 fn run_lbfgs(problem: &WhittleProblem, h_init: f64, v_init: f64) -> (f64, f64, f64) {
   let init = vec![h_init, v_init];
-  let fallback_cost = problem.eval(&init);
-  let linesearch = MoreThuenteLineSearch::new();
-  let solver = LBFGS::new(linesearch, 10);
-  let result = Executor::new(problem.clone(), solver)
-    .configure(|state| state.param(init.clone()).max_iters(200))
-    .run();
-  match result {
-    Ok(res) => {
-      let best_p = res.state.get_best_param().cloned().unwrap_or(init);
-      let clamped = problem.clamp(&best_p);
-      let cost = problem.eval(&clamped);
-      (clamped[0], clamped[1], cost)
-    }
-    Err(_) => (h_init, v_init, fallback_cost),
-  }
+  let solver = Lbfgsb::with_line_search(more_thuente()).with_tol_pg(f64::EPSILON.sqrt());
+  let state = LbfgsState::new(init, 10);
+  let result = Executor::new(problem.clone(), solver, state)
+    .max_iter(200)
+    .terminate_on(CostTolerance::new(f64::EPSILON))
+    .run()
+    .expect("Whittle objective is infallible");
+  let best = problem.clamp(result.best_param());
+  (best[0], best[1], problem.eval(&best))
 }
 
 fn run_estimate(
@@ -416,8 +427,8 @@ fn run_estimate(
     psi,
     k_trunc,
     j_max,
-    h_bounds: (0.005, 0.495),
-    v_bounds: (0.01, 12.0),
+    lower: vec![0.005, 0.01],
+    upper: vec![0.495, 12.0],
   };
   let (h_r, v_r, nll_r) = run_lbfgs(&problem, best_h, best_v);
   if nll_r < best_nll {
@@ -483,6 +494,47 @@ mod tests {
 
   use super::*;
   use crate::traits::ProcessExt;
+
+  fn bounded_problem() -> WhittleProblem {
+    WhittleProblem {
+      pgram: vec![0.1; 16],
+      gamma: vec![0.1; 32],
+      m: 72,
+      n: 32,
+      psi: 1e-5,
+      k_trunc: 20,
+      j_max: 5,
+      lower: vec![0.005, 0.01],
+      upper: vec![0.495, 12.0],
+    }
+  }
+
+  #[test]
+  fn bounded_whittle_cost_and_gradient_use_feasible_parameters() {
+    let problem = bounded_problem();
+    for (outside, boundary) in [
+      (vec![0.6, 1.0], vec![0.495, 1.0]),
+      (vec![-0.1, 1.0], vec![0.005, 1.0]),
+      (vec![0.3, 15.0], vec![0.3, 12.0]),
+    ] {
+      assert_eq!(problem.eval(&outside), problem.eval(&boundary));
+      let expected = problem.gradient(&boundary).unwrap();
+      assert!(expected.iter().any(|value| value.abs() > 1e-6));
+      assert_eq!(problem.gradient(&outside).unwrap(), expected);
+    }
+  }
+
+  #[test]
+  fn bounded_whittle_refinement_returns_feasible_parameters_and_cost() {
+    let problem = bounded_problem();
+    for initial in [[0.2, 1.0], [0.6, 15.0], [-0.1, -1.0]] {
+      let (h, v, cost) = run_lbfgs(&problem, initial[0], initial[1]);
+      assert!((problem.lower[0]..=problem.upper[0]).contains(&h));
+      assert!((problem.lower[1]..=problem.upper[1]).contains(&v));
+      assert!(cost.is_finite());
+      assert_eq!(cost, problem.eval(&[h, v]));
+    }
+  }
 
   fn simulate_log_rv(true_h: f64, m: usize, n_days: usize, delta: f64, seed: u64) -> Vec<f64> {
     let fou = Fou::new(

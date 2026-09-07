@@ -68,6 +68,9 @@ impl PyHullWhiteSwaptionCalibrator {
   }
 
   /// Returns `(mean_reversion, sigma, rmse, converged)`.
+  ///
+  /// `converged` requires simplex objective spread below `sd_tolerance`.
+  /// An iteration limit or nonfinite simplex costs returns `false`.
   #[pyo3(signature = (initial_guess=None))]
   fn calibrate(&self, initial_guess: Option<(f64, f64)>) -> PyResult<(f64, f64, f64, bool)> {
     let calibrator = HullWhiteSwaptionCalibrator::new(&self.quotes, &self.curve, self.notional);
@@ -119,6 +122,9 @@ impl PyBlackKarasinskiSwaptionCalibrator {
   }
 
   /// Returns `(mean_reversion, sigma, rmse, converged)`.
+  ///
+  /// `converged` requires simplex objective spread below `sd_tolerance`.
+  /// An iteration limit or nonfinite simplex costs returns `false`.
   #[pyo3(signature = (initial_guess=None))]
   fn calibrate(&self, initial_guess: Option<(f64, f64)>) -> PyResult<(f64, f64, f64, bool)> {
     let calibrator = BlackKarasinskiSwaptionCalibrator::new(
@@ -175,6 +181,9 @@ impl PyG2ppSwaptionCalibrator {
   }
 
   /// Returns `(a, b, sigma, eta, rho, rmse, converged)`.
+  ///
+  /// `converged` requires simplex objective spread below `sd_tolerance`.
+  /// An iteration limit or nonfinite simplex costs returns `false`.
   #[pyo3(signature = (initial_guess=None))]
   fn calibrate(
     &self,

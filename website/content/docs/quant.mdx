@@ -210,6 +210,14 @@ print(g2.calibrate())                                    # (a, b, sigma, eta, rh
 </Tab>
 </Tabs>
 
+For these three swaption calibrators and `SabrCapletCalibrator`, `converged`
+means the sample standard deviation of the simplex objective values fell below
+`sd_tolerance`. Reaching `max_iters` or encountering nonfinite simplex costs
+returns `false`, while retaining the best parameters found. Earlier versions
+reported successful optimizer completion as convergence, so the same quote grid
+can now return `false`. Check both `converged` and `rmse` before using a fit.
+The SABR caplet Python tuple is `(alpha, beta, nu, rho, rmse, converged)`.
+
 ### eSSVI slices with arbitrage-free interpolation
 
 `calibrate_essvi` fits one SSVI slice per maturity with its own `(θ, ρ, ψ)` — the extended SSVI surface of Hendriks and Martini — using the anchored scheme of Corbetta, Cohort, Laachir and Martini (2019): each slice is pinned to its quote closest to the money, the Gatheral–Jacquier butterfly bounds become an explicit cap on `ψ`, and the calendar-spread conditions against the previous slice become a floor, so the surface is arbitrage-free by construction rather than by a post-hoc projection. `EssviSurface` interpolates `(θ, ψ, ρψ)` linearly between slices, which the note shows keeps the surface calendar-spread-free, and reports both admissibility checks.

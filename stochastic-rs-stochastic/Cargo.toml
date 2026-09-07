@@ -34,8 +34,6 @@ rayon = { workspace = true }
 roots = { workspace = true }
 kendalls = { workspace = true }
 levenberg-marquardt = { workspace = true }
-argmin = { workspace = true }
-argmin-math = { workspace = true, features = ["ndarray_latest-nolinalg", "vec"] }
 gauss-quad = { workspace = true }
 quadrature = { workspace = true }
 nalgebra = { workspace = true }

@@ -217,6 +217,9 @@ impl PySabrCapletCalibrator {
   }
 
   /// Returns `(alpha, beta, nu, rho, rmse, converged)`.
+  ///
+  /// `converged` requires simplex objective spread below `sd_tolerance`.
+  /// An iteration limit or nonfinite simplex costs returns `false`.
   fn calibrate(&self) -> PyResult<(f64, f64, f64, f64, f64, bool)> {
     use crate::traits::Calibrator;
     let res = self

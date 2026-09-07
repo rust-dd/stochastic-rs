@@ -18,15 +18,15 @@
 //! Ch. 13 (lattices); Hull, J. & White, A. (1994), *Numerical Procedures for
 //! Implementing Term Structure Models I*, Journal of Derivatives 2(1), 7–16.
 
-use argmin::core::CostFunction;
-use argmin::core::Executor;
-use argmin::core::State;
-use argmin::solver::neldermead::NelderMead;
+use std::convert::Infallible;
+
+use basin::CostFunction;
 
 use super::hw_swaption::CurveSnapshot;
 use super::hw_swaption::SwaptionQuote;
 use super::hw_swaption::serialize_curve;
 use crate::calibration::Regularization;
+use crate::calibration::run_nelder_mead;
 use crate::curves::DiscountCurve;
 use crate::instruments::option::bermudan::BermudanSwaption;
 use crate::instruments::option::caplet::black_forward_caplet;
@@ -113,31 +113,6 @@ fn rmse(model: &[f64], market: &[f64]) -> f64 {
     .sum::<f64>()
     / n)
     .sqrt()
-}
-
-fn run_nelder_mead<C: CostFunction<Param = Vec<f64>, Output = f64> + Clone>(
-  problem: C,
-  simplex: Vec<Vec<f64>>,
-  max_iters: u64,
-  sd_tolerance: f64,
-) -> (Vec<f64>, bool) {
-  match NelderMead::new(simplex.clone()).with_sd_tolerance(sd_tolerance) {
-    Ok(solver) => match Executor::new(problem, solver)
-      .configure(|s| s.max_iters(max_iters))
-      .run()
-    {
-      Ok(res) => (
-        res
-          .state
-          .get_best_param()
-          .cloned()
-          .unwrap_or_else(|| simplex[0].clone()),
-        true,
-      ),
-      Err(_) => (simplex[0].clone(), false),
-    },
-    Err(_) => (simplex[0].clone(), false),
-  }
 }
 
 /// Calibrated Black–Karasinski parameters.
@@ -337,7 +312,9 @@ impl BlackKarasinskiCost {
 impl CostFunction for BlackKarasinskiCost {
   type Param = Vec<f64>;
   type Output = f64;
-  fn cost(&self, x: &Self::Param) -> Result<f64, argmin::core::Error> {
+  type Error = Infallible;
+
+  fn cost(&self, x: &Self::Param) -> Result<f64, Self::Error> {
     let (a, sigma) = (x[0].abs().max(1e-6), x[1].abs().max(1e-6));
     let (model, market) = self.price_series(a, sigma);
     let penalty = self
@@ -581,7 +558,9 @@ impl G2ppCost {
 impl CostFunction for G2ppCost {
   type Param = Vec<f64>;
   type Output = f64;
-  fn cost(&self, x: &Self::Param) -> Result<f64, argmin::core::Error> {
+  type Error = Infallible;
+
+  fn cost(&self, x: &Self::Param) -> Result<f64, Self::Error> {
     let p = Self::params(x);
     let (model, market) = self.price_series(&p);
     let penalty = self.regularization.as_ref().map_or(0.0, |reg| {

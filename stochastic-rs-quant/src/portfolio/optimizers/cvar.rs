@@ -1,8 +1,8 @@
 //! Empirical CVaR and mean-CVaR optimizers.
 
-use argmin::core::CostFunction;
-use argmin::core::Executor;
-use argmin::solver::neldermead::NelderMead;
+use std::convert::Infallible;
+
+use basin::CostFunction;
 
 use super::OptimizerConfig;
 use super::helpers::dot;
@@ -10,6 +10,7 @@ use super::helpers::long_short_simplex;
 use super::helpers::portfolio_vol_from_returns;
 use super::helpers::softmax;
 use super::helpers::tanh_weights;
+use super::run_nelder_mead;
 use crate::portfolio::types::PortfolioResult;
 use crate::portfolio::types::empty_result;
 
@@ -74,8 +75,9 @@ pub fn optimize_mean_cvar(
   impl CostFunction for CVaRCost {
     type Param = Vec<f64>;
     type Output = f64;
+    type Error = Infallible;
 
-    fn cost(&self, x: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
+    fn cost(&self, x: &Self::Param) -> Result<Self::Output, Self::Error> {
       let w = softmax(x);
       let mut port_returns: Vec<f64> = (0..self.n_periods)
         .map(|t| {
@@ -113,21 +115,8 @@ pub fn optimize_mean_cvar(
     simplex.push(point);
   }
 
-  let w = match NelderMead::new(simplex).with_sd_tolerance(1e-8) {
-    Ok(solver) => {
-      match Executor::new(cost, solver)
-        .configure(|state| state.max_iters(5000))
-        .run()
-      {
-        Ok(res) => {
-          let best_x = res.state.best_param.unwrap_or(x0);
-          softmax(&best_x)
-        }
-        Err(_) => vec![1.0 / n as f64; n],
-      }
-    }
-    Err(_) => vec![1.0 / n as f64; n],
-  };
+  let best_x = run_nelder_mead(cost, simplex, 5_000, 1e-8);
+  let w = softmax(&best_x);
 
   let expected_return = dot(&w, mu);
   let volatility = portfolio_vol_from_returns(&w, aligned_returns, config.periods_per_year);
@@ -177,8 +166,9 @@ pub fn optimize_mean_cvar_long_short(
   impl CostFunction for CVaRLSCost {
     type Param = Vec<f64>;
     type Output = f64;
+    type Error = Infallible;
 
-    fn cost(&self, x: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
+    fn cost(&self, x: &Self::Param) -> Result<Self::Output, Self::Error> {
       let w = tanh_weights(x);
       let mut port_returns: Vec<f64> = (0..self.n_periods)
         .map(|t| {
@@ -207,24 +197,10 @@ pub fn optimize_mean_cvar_long_short(
     periods_per_year_sqrt: config.periods_per_year.sqrt(),
   };
 
-  let x0 = vec![0.0; n];
   let simplex = long_short_simplex(n);
 
-  let w = match NelderMead::new(simplex).with_sd_tolerance(1e-8) {
-    Ok(solver) => {
-      match Executor::new(cost, solver)
-        .configure(|state| state.max_iters(5000))
-        .run()
-      {
-        Ok(res) => {
-          let best_x = res.state.best_param.unwrap_or(x0);
-          tanh_weights(&best_x)
-        }
-        Err(_) => vec![1.0 / n as f64; n],
-      }
-    }
-    Err(_) => vec![1.0 / n as f64; n],
-  };
+  let best_x = run_nelder_mead(cost, simplex, 5_000, 1e-8);
+  let w = tanh_weights(&best_x);
 
   let expected_return = dot(&w, mu);
   let volatility = portfolio_vol_from_returns(&w, aligned_returns, config.periods_per_year);

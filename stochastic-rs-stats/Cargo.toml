@@ -38,8 +38,7 @@ roots = { workspace = true }
 kendalls = { workspace = true }
 levenberg-marquardt = { workspace = true }
 linreg = { workspace = true }
-argmin = { workspace = true }
-argmin-math = { workspace = true, features = ["ndarray_latest-nolinalg", "vec"] }
+basin = { workspace = true }
 gauss-quad = { workspace = true }
 quadrature = { workspace = true }
 sci-rs = { workspace = true }
@@ -51,4 +50,3 @@ ndrustfft = { workspace = true }
 anyhow = { workspace = true }
 pyo3 = { workspace = true, features = ["extension-module"], optional = true }
 numpy = { workspace = true, optional = true }
-
