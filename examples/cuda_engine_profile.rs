@@ -161,16 +161,15 @@ fn main() {
      diffusion — the kernel is rendered for one family and declares no scratch \
      it cannot reach — and the occupancy should be what the registers alone \
      allow. A T4 reported 80 registers, 3552 bytes of local memory and 37% \
-     occupancy before that change, at 0.15 G steps/s against 0.21 on its host; \
-     after it, 31 registers, no local memory, a full multiprocessor and 0.31 \
-     against the same host. Throughput that stays flat as the batch grows is \
-     the tell that the kernel is no longer the cost: what is left is the \
-     device-to-host copy and the host-side assembly, which scale with cells \
-     and not with occupancy. An M4 Max went from 0.70 to 47.67 G steps/s over \
-     the same period, but most of that was host-side and a card behind a bus \
-     cannot have it: unified memory let the batch be *lent* to the caller \
-     where PCIe has to be crossed. Every step's four bytes must make that \
-     crossing, which caps this shape near 3 G steps/s on a PCIe 3 card \
-     whatever the kernel does."
+     occupancy before that, at 0.15 G steps/s against 0.21 on its host; after \
+     it, 31 registers, no local memory and a full multiprocessor. The kernel \
+     stopped being the cost there and the road home took over: with the batch \
+     landed in page-locked memory and lent to the caller rather than copied \
+     out, the same card reads 2.35 G steps/s in f32 and 0.66 in f64, 11x and \
+     3.2x its host. What binds it now is the bus — every step's four bytes \
+     have to cross PCIe, which caps this shape near 3 G steps/s whatever the \
+     kernel does, and 2.35 is 78% of it. Past that the answer is not a faster \
+     kernel but a smaller crossing: reduce on the device, return the \
+     reduction."
   );
 }

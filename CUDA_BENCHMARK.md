@@ -195,6 +195,13 @@ launch does not.
 
 ### Where the T4's time actually goes
 
+*Written when the card measured 0.31 G steps/s, and kept because the
+diagnosis is what produced the 2.35 G above. Read it as history: items 1 and
+2 of the ranked list at the end have since landed, and the combined result
+was 5–8×, not the 2–2.8× estimated here — the estimates assumed a
+desktop-class host, where a two-vCPU VM makes every host-side byte more
+expensive than the bus.*
+
 An M4 Max reaches **10.10** G steps/s on the same kernel and the T4 **0.31**
 — 33×, where the two cards are within about 2× of each other in raw `f32`
 throughput (T4 ≈ 8.1 TFLOPS, M4 Max GPU ≈ 16). Hardware explains almost none
@@ -283,54 +290,37 @@ stops dominating.
 
 ### What is left, ranked
 
-Estimates below are from the arithmetic above, not from a profiler; the T4
-runs are the only measurements.
+The two host-side items that led this list have landed; what follows is what
+they left behind. Estimates are from arithmetic, not a profiler.
 
-1. **Pinned, pre-faulted, overlapped copy in `euler_kernel`** — est. **1.6–2×**
-   end to end. Give the single launch what `pipelined_paths` and the fGN
-   sampler already have: a cached pinned staging buffer, the output `Vec`
-   allocated and faulted while the kernel runs, and the DMA overlapped with
-   the launch instead of `clone_dtoh`'s implicit sync. On the desktop card
-   the same three changes took a 1 GB `dtoh` from 280 ms to 79 ms.
-   *Needs a CUDA device to measure.*
-2. **Stop copying every element twice** — est. **1.2–1.4×** on the map path.
-   `try_euler_paths_map` can hand `f` the `ArrayView1` row it already has, or
-   the pinned staging rows directly, instead of `assign`-ing each into a
-   per-worker `Array1`. The closure signature (`&Array1<T>`) is what forces
-   the copy, and it is a host-side change, so the cost is measurable on any
-   machine. *Verifiable here* (bench the map path on the CPU backend against
-   a view-taking variant).
+1. **Reduce on the device and return the reduction.** The wall is now the bus,
+   and the bus cannot be made faster: 41 MB at 9.3 GB/s is 4.4 ms, and every
+   step's four bytes have to cross. This shape is capped near **3 G steps/s**
+   on a PCIe 3 card, and it already runs at 78–83 % of that. The only way
+   past is to stop returning `m · n` scalars — a payoff, a running maximum, a
+   Greek — computed in the kernel. *Design work, and the largest remaining
+   item by far.*
+2. **Overlap the copy with the launch.** `run` still synchronises between the
+   kernel and the `dtoh`; `pipelined_paths` already alternates two streams,
+   but only above the 1 GiB batch budget. Widening that gate would hide the
+   crossing behind the next chunk's compute. Est. **1.2–1.4×** on the shapes
+   here. *Needs a CUDA device to measure.*
 3. **Pin the float-math mode on both back-ends, and give NVRTC the
    `__logf`/`__cosf` intrinsics or `--use_fast_math`** — est. **1.5–1.9× on
-   the kernel**, which is worth roughly nothing today and roughly all of it
-   once (1) lands. It cuts the ~50 instructions of `logf` + `cosf` + `sqrtf`
-   to about 7, and it ends the present state where CUDA compiles accurate and
-   Metal compiles at whatever the OS defaults to. The cost is that the two
-   back-ends stop agreeing seed for seed at anything as tight as the current
-   "libm rounding", so it wants a revised parity tolerance rather than a flag
-   flip. *Needs a CUDA device to measure*; the instruction counts are
-   *verifiable here* by rendering the kernel source and compiling it both
-   ways.
-4. **Keep the paths on the device.** Unchanged from the fGN conclusion: below
-   the transfer floor is impossible while returning `m · n` scalars, so a
-   downstream device step (pricing, Greeks, RL rollouts) is the only way to
-   delete the copy rather than shrink it. *Design work, not a measurement.*
-5. **Cache the pinned staging buffers in `pipelined_paths`.** Not on any
-   shape measured here — the pipeline only runs above the 1 GiB batch budget
-   — but it calls `PinnedHost::alloc` twice per call for `planes · rows · n`
-   elements, which at the default budget is 1 GiB pinned twice, per call,
-   where the fGN sampler pins once per parameter set. *Verifiable here* by
-   reading the two call sites; the cost of `cuMemHostAlloc` **needs a CUDA
-   device to measure**.
-6. **A coalesced output layout** — est. **under 1.1×**, and possibly nothing.
-   The kernel writes `out[path * steps + i]`, so a warp's store touches 32
-   different cache lines. It looks worse than it is: each thread's next eight
-   `f32` steps land in the same 32-byte sector, and 1024 resident threads
-   hold only 32 KB of open sectors against a 64 KB L1, so L2 write-combining
-   absorbs most of the amplification before DRAM. Apple measured the
-   time-major alternative as *slower*. Lowest expected return of the six.
+   the kernel**. Worth roughly nothing while the bus binds, and it costs the
+   seed-for-seed agreement between the two back-ends, so it wants a revised
+   parity tolerance rather than a flag flip. *Needs a CUDA device to measure.*
+4. **Cache the pinned staging buffers in `pipelined_paths`.** Done for the
+   single launch; the pipeline still calls `PinnedHost::alloc` twice per call,
+   which at the default budget is a gigabyte pinned twice. Off every shape
+   measured here. *Verifiable by reading; the cost of `cuMemHostAlloc` needs
+   a device.*
+5. **A coalesced output layout** — est. **under 1.1×**, and Apple measured
+   the time-major alternative as *slower*. Lowest expected return.
    *Needs a CUDA device to measure.*
 
-**When is the T4 worth it?** For `f32` and ten thousand paths or more, yes,
-but only by 1.3–1.5× — and that number is set by the host, not the card.
-For `f64`, no. For fGN, yes at 2.7–3.5×.
+**When is the T4 worth it?** For `f32` and ten thousand paths or more,
+**7–12×**. For `f64`, **3.2–3.8×** — the card is worth using in double
+precision after all, which was not true a day ago. For fGN, 2.8–3.9×. The
+number that no longer moves is the bus: at ten thousand paths over a thousand
+steps the crossing alone is 4.4 ms of the 4.4 ms wall.
