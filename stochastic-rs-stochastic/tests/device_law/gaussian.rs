@@ -8,6 +8,8 @@ use stochastic_rs_stochastic::correlation::transformed_ou::TransformedOU;
 use stochastic_rs_stochastic::diffusion::ait_sahalia::AitSahalia;
 use stochastic_rs_stochastic::diffusion::cev::Cev;
 use stochastic_rs_stochastic::diffusion::ckls::Ckls;
+use stochastic_rs_stochastic::diffusion::fou::Fou;
+use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::diffusion::gbm_log::GbmLog;
 use stochastic_rs_stochastic::diffusion::hyperbolic::Hyperbolic;
 use stochastic_rs_stochastic::diffusion::hyperbolic2::Hyperbolic2;
@@ -27,6 +29,7 @@ use super::common::Device;
 use super::common::M;
 use super::common::agrees;
 use super::common::all_finite;
+use super::common::map_forms_agree;
 use super::common::terminal_mean;
 use super::common::terminal_std;
 use super::common::within;
@@ -432,4 +435,59 @@ fn transformed_ou_agrees_with_the_cpu_law() {
       "transformed OU terminal spread",
     );
   }
+}
+
+/// The two map forms agree, on the device and on the host.
+///
+/// `sample_map_view` hands the callback a row of the launch buffer where
+/// `sample_map` hands it a copy, which is the whole point of it — one
+/// traversal of a device batch instead of two. Three processes stand for the
+/// three routes a map can take: a plain diffusion through the engine, a
+/// fractional one whose rows come from the fGN pipeline, and a Gaussian one
+/// on the host.
+#[test]
+fn the_two_map_forms_agree() {
+  map_forms_agree(
+    || {
+      Gbm::<f32, _>::new(
+        0.05,
+        0.2,
+        253,
+        Some(100.0),
+        Some(1.0),
+        Deterministic::new(3),
+      )
+      .on::<Device>()
+    },
+    "GBM on the device",
+  );
+  map_forms_agree(
+    || {
+      Gbm::<f32, _>::new(
+        0.05,
+        0.2,
+        253,
+        Some(100.0),
+        Some(1.0),
+        Deterministic::new(3),
+      )
+    },
+    "GBM on the host",
+  );
+  map_forms_agree(
+    || {
+      Fou::<f32, _>::new(
+        0.7,
+        2.0,
+        1.0,
+        0.3,
+        253,
+        Some(0.0),
+        Some(1.0),
+        Deterministic::new(9),
+      )
+      .on::<Device>()
+    },
+    "fractional OU on the device",
+  );
 }

@@ -2,6 +2,7 @@
 //! statistics the comparisons are made on, and the agreement predicates.
 
 use ndarray::Array1;
+use stochastic_rs_stochastic::traits::ProcessExt;
 
 /// The device the cases run on. CUDA when the crate is built for it, Metal
 /// otherwise; the whole binary is gated on one of the two being present.
@@ -112,5 +113,22 @@ pub(crate) fn within(paths: &[Array1<f32>], lo: f32, hi: f32, what: &str) {
   assert!(
     paths.iter().all(|p| p.iter().all(|&v| v >= lo && v <= hi)),
     "{what}: a device path left [{lo}, {hi}]"
+  );
+}
+
+/// `sample_map_view` and `sample_map` return the same numbers.
+///
+/// The view form exists to spare the device batch a second traversal — the
+/// owning form copies every row out of the launch buffer before the callback
+/// sees it — so what has to be pinned is that sparing it changes nothing.
+pub(crate) fn map_forms_agree<P>(process: impl Fn() -> P, what: &str)
+where
+  P: ProcessExt<f32, Output = Array1<f32>>,
+{
+  let owned = process().sample_map(M, |path| path[path.len() - 1]);
+  let viewed = process().sample_map_view(M, |path| path[path.len() - 1]);
+  assert_eq!(
+    owned, viewed,
+    "{what}: sample_map and sample_map_view disagree"
   );
 }
