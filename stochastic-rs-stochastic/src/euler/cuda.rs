@@ -31,17 +31,27 @@ type Result<T> = std::result::Result<T, DeviceError>;
 /// array per precision rather than one of bytes.
 trait CachedOut: DeviceRepr + ValidAsZeroBits + Copy {
   fn slots(kernels: &mut Kernels) -> &mut [Option<CudaSlice<Self>>; 2];
+
+  fn staging(kernels: &mut Kernels) -> &mut [Option<PinnedHost<Self>>; 2];
 }
 
 impl CachedOut for f32 {
   fn slots(kernels: &mut Kernels) -> &mut [Option<CudaSlice<f32>>; 2] {
     &mut kernels.out_f32
   }
+
+  fn staging(kernels: &mut Kernels) -> &mut [Option<PinnedHost<f32>>; 2] {
+    &mut kernels.staging_f32
+  }
 }
 
 impl CachedOut for f64 {
   fn slots(kernels: &mut Kernels) -> &mut [Option<CudaSlice<f64>>; 2] {
     &mut kernels.out_f64
+  }
+
+  fn staging(kernels: &mut Kernels) -> &mut [Option<PinnedHost<f64>>; 2] {
+    &mut kernels.staging_f64
   }
 }
 
@@ -65,6 +75,24 @@ fn take_output<R: CachedOut>(
 /// Puts a launch's output buffer back for the next call to grow into.
 fn return_output<R: CachedOut>(kernels: &mut Kernels, slot: usize, buffer: CudaSlice<R>) {
   R::slots(kernels)[slot] = Some(buffer);
+}
+
+/// The cached host landing buffer, grown to `len` if it is smaller, taken out
+/// of the cache for the caller to copy into. [`return_staging`] puts it back.
+fn take_staging<R: CachedOut>(
+  kernels: &mut Kernels,
+  slot: usize,
+  len: usize,
+) -> Result<PinnedHost<R>> {
+  match R::staging(kernels)[slot].take() {
+    Some(buffer) if buffer.len() >= len => Ok(buffer),
+    _ => PinnedHost::<R>::alloc(len),
+  }
+}
+
+/// Puts the host landing buffer back for the next call to grow into.
+fn return_staging<R: CachedOut>(kernels: &mut Kernels, slot: usize, buffer: PinnedHost<R>) {
+  R::staging(kernels)[slot] = Some(buffer);
 }
 
 /// A driver failure as a [`DeviceError`], with the one code a caller can act
@@ -147,6 +175,24 @@ struct Kernels {
   /// reused buffer needs no clearing.
   out_f32: [Option<CudaSlice<f32>>; 2],
   out_f64: [Option<CudaSlice<f64>>; 2],
+
+  /// The host buffer a single launch lands in, page-locked and kept between
+  /// calls for the same reason the device buffers are.
+  ///
+  /// `clone_dtoh` allocates a fresh `Vec` and copies into pageable memory,
+  /// which the driver has to stage through a bounce buffer of its own: about
+  /// 3.6 GB/s where a page-locked destination reaches the bus. The batch pays
+  /// that on every launch, along with the first-touch page fault of every
+  /// page of the fresh allocation — tens of thousands of them at a hundred
+  /// thousand paths. The pipelined path already stages through pinned memory;
+  /// this is the same for the single launch, which is what every batch that
+  /// fits the budget takes.
+  ///
+  /// It holds the largest batch seen so far, page-locked, until the process
+  /// ends — the same bargain the device buffers strike, and the same size as
+  /// the `Vec` the call returns, so the peak is what it always was.
+  staging_f32: [Option<PinnedHost<f32>>; 2],
+  staging_f64: [Option<PinnedHost<f64>>; 2],
 
   /// One compiled kernel per launch shape and precision, built on first use.
   ///
@@ -276,6 +322,8 @@ fn ensure_kernels(ordinal: usize, shape: Shape, real: &'static str) -> Result<()
       stream_b,
       out_f32: [None, None],
       out_f64: [None, None],
+      staging_f32: [None, None],
+      staging_f64: [None, None],
       functions: HashMap::new(),
     });
   }
@@ -467,11 +515,30 @@ where
       .map_err(|e| DeviceError::Launch(format!("euler_paths: {e}")))?;
   }
   // Only this launch's own rows: the buffer may be larger, having been grown
-  // by an earlier one.
-  let out = stream
-    .clone_dtoh(&d_out.slice(0..out_len))
+  // by an earlier one. The copy goes to page-locked memory and the `Vec` is
+  // filled from there — a plain `clone_dtoh` would allocate that `Vec` per
+  // launch and copy into pageable pages the driver then stages itself.
+  let mut staging = {
+    let mut guard = KERNELS.lock();
+    take_staging::<R>(guard.as_mut().expect("initialised"), 0, out_len)?
+  };
+  stream
+    .memcpy_dtoh(&d_out.slice(0..out_len), unsafe {
+      staging.as_mut_slice(out_len)
+    })
     .map_err(|e| driver_error("dtoh", e))?;
-  return_output(KERNELS.lock().as_mut().expect("initialised"), 0, d_out);
+  // A copy into page-locked memory is asynchronous, so the buffer is only the
+  // launch's output once the stream says so.
+  stream
+    .synchronize()
+    .map_err(|e| driver_error("dtoh sync", e))?;
+  let out = unsafe { staging.as_slice(out_len) }.to_vec();
+  {
+    let mut guard = KERNELS.lock();
+    let kernels = guard.as_mut().expect("initialised");
+    return_output(kernels, 0, d_out);
+    return_staging(kernels, 0, staging);
+  }
   Ok(out)
 }
 
@@ -1042,10 +1109,17 @@ where
   drop(guard);
   let planes = components as usize;
   let mut host = vec![R::zero(); planes * m * n];
-  let staging = [
-    PinnedHost::<R>::alloc(planes * rows * n)?,
-    PinnedHost::<R>::alloc(planes * rows * n)?,
-  ];
+  // Both staging buffers come from the cache: pinning pages is a syscall
+  // that scales with the allocation, and at the default budget these are a
+  // gigabyte each — paid on every pipelined batch before this.
+  let staging = {
+    let mut guard = KERNELS.lock();
+    let kernels = guard.as_mut().expect("initialised");
+    [
+      take_staging::<R>(kernels, 0, planes * rows * n)?,
+      take_staging::<R>(kernels, 1, planes * rows * n)?,
+    ]
+  };
   // Per slot: the device buffer kept alive until its copy has landed, and
   // the `(first, len)` rows the staging buffer holds.
   let mut in_flight: [Option<(usize, usize)>; 2] = [None, None];
@@ -1147,6 +1221,9 @@ where
     let [b0, b1] = buffers;
     return_output(kernels, 0, b0);
     return_output(kernels, 1, b1);
+    let [s0, s1] = staging;
+    return_staging(kernels, 0, s0);
+    return_staging(kernels, 1, s1);
   }
   Ok(host)
 }

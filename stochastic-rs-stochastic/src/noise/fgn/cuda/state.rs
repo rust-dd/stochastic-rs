@@ -46,6 +46,34 @@ pub(crate) struct PinnedHost<T> {
 }
 
 impl<T> PinnedHost<T> {
+  /// Elements the allocation holds.
+  pub(crate) fn len(&self) -> usize {
+    self.len
+  }
+
+  /// The first `len` elements, which the caller must have written or copied
+  /// into. `len` is not checked against the allocation: every caller sizes
+  /// the buffer through [`alloc`](Self::alloc) first.
+  ///
+  /// # Safety
+  ///
+  /// `len` must not exceed the allocation, and the copy that filled it must
+  /// have completed — a device-to-host copy into page-locked memory is
+  /// asynchronous, so the stream has to be synchronised first.
+  pub(crate) unsafe fn as_slice(&self, len: usize) -> &[T] {
+    unsafe { std::slice::from_raw_parts(self.ptr, len) }
+  }
+
+  /// The first `len` elements, to be written into.
+  ///
+  /// # Safety
+  ///
+  /// As [`as_slice`](Self::as_slice), minus the completion requirement: this
+  /// is the destination a copy is issued against.
+  pub(crate) unsafe fn as_mut_slice(&mut self, len: usize) -> &mut [T] {
+    unsafe { std::slice::from_raw_parts_mut(self.ptr, len) }
+  }
+
   pub(crate) fn alloc(len: usize) -> Result<Self> {
     let bytes = len * std::mem::size_of::<T>();
     let ptr = unsafe { cudarc::driver::result::malloc_host(bytes, 0) }
