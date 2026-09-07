@@ -71,3 +71,6 @@ website/public/python-parity.json
 
 # Migration notes are kept locally only (like docs/), not published
 MIGRATION.md
+
+# pytest/hypothesis scratch from a local wheel run
+/.hypothesis/
