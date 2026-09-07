@@ -111,8 +111,27 @@ then samples on the host through its own sampler, bit-identically to the
 `Cpu` build. `try_sample` is `Ok` on that path, and `sample` never panics for
 a configuration — only a device that fails to open, compile or launch does
 that. So `gbm.on::<Cuda>()` always runs on the GPU, while
-`wishart.on::<Cuda>()` runs there for `d = 2` and on the host for `d = 3`,
-and `wishart.device_ready()` says which.
+`wishart.on::<Cuda>()` runs there for `d = 2` and on the host for `d = 3`.
+
+Which it is, and why, the process will say. `device_fallback()` returns the
+reason as `Some("a Wishart outside the two-dimensional cone the kernel
+steps")` and `None` when a kernel carries the configuration whole;
+`device_ready()` is the absence of a reason. The reason matters because the
+fallback is silent otherwise, and silence costs an order of magnitude:
+
+```rust
+if let Some(why) = wishart.device_fallback() {
+  eprintln!("sampling on the host: {why}");
+}
+```
+
+Both are on `ProcessExt`, and both are available from Python as
+`process.device_fallback()` and `process.device_ready()`.
+
+A process will also say where it is pointed. `process.backend()` hands back
+the handle it holds — the ordinal and batch budget a type parameter does not
+record — and `process.probe()` opens the device behind it and describes it,
+or reports why it cannot be used.
 
 ## Choosing the device
 

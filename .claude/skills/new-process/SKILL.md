@@ -222,17 +222,21 @@ the host. Two integrations shipped that way before this was written down. Route 
 | `try_sample` | `try_sample` | `try_system_sample` |
 | `try_sample_par` | `try_euler_paths` | `try_system_paths` |
 
-When the engine cannot serve every configuration, override `device_ready()` —
-a provided method of `ProcessExt`, `true` by default — **inside the
-`ProcessExt` impl** and give every dispatch method the host fallback. This is
-the one fallback rule: a `false` samples on the host bit-identically to the
-`Cpu` build and never panics; the hook's `assert!` only catches a caller that
-bypasses `ProcessExt`. Never leave a device panic as the only answer.
+When the engine cannot serve every configuration, override
+`device_fallback()` — a provided method of `ProcessExt`, `None` by default —
+**inside the `ProcessExt` impl** and give every dispatch method the host
+fallback. Override the reason, never `device_ready()`: that one is defined as
+the absence of a reason, and a process that answers `false` without saying
+why leaves the caller an order of magnitude slower with nothing to read. This
+is the one fallback rule: a fallback samples on the host bit-identically to
+the `Cpu` build and never panics; the hook's `assert!` only catches a caller
+that bypasses `ProcessExt`. Never leave a device panic as the only answer.
 
 ```rust
-  /// Whether a device can run this process: <what the kernels carry>.
-  fn device_ready(&self) -> bool {
-    self.n <= crate::euler::HISTORY_SLOTS
+  /// What a device runs here: <what the kernels carry>.
+  fn device_fallback(&self) -> Option<&'static str> {
+    (!(self.n <= crate::euler::HISTORY_SLOTS))
+      .then_some("a grid longer than the kernels' per-path history")
   }
 
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
