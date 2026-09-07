@@ -19,7 +19,12 @@
 //!    shapes and both precisions. On an Apple M4 Max the same measurement now
 //!    gives 5–10 G steps/s on Metal against 2.3–2.7 on the CPU, where before
 //!    the per-family kernels and the kept output buffer it gave 0.7–1.3.
-//! 3. **The fractional pipeline for contrast** — fGN is FFT-shaped rather
+//! 3. **The fold in the kernel**, which is the one change that makes the
+//!    crossing smaller rather than faster: `sample_reduce` returns one value
+//!    a path instead of the grid, so `paths` four-byte values cross the bus
+//!    where `paths × steps` did. On an M4 Max, where there is no bus and the
+//!    store alone is the cost, it is worth 1.4-2.6x.
+//! 4. **The fractional pipeline for contrast** — fGN is FFT-shaped rather
 //!    than recursion-shaped, and it is where the GPU already wins.
 //!
 //! Every timing is the best of five runs: a single run on a shared machine
@@ -34,6 +39,7 @@ use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stochastic::device::Cpu;
 use stochastic_rs::stochastic::device::Cuda;
 use stochastic_rs::stochastic::diffusion::gbm::Gbm;
+use stochastic_rs::stochastic::euler::Reduce;
 use stochastic_rs::stochastic::euler::cuda::kernel_profile;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
@@ -135,6 +141,29 @@ fn main() {
       throughput(cells, host),
       throughput(cells, device),
       host / device
+    );
+  }
+
+  println!("\nthe fold in the kernel — GBM, f32, best of five");
+  println!(
+    "  {:>7} {:>7} {:>12} {:>12} {:>9} {:>13}",
+    "paths", "steps", "mapped ms", "reduced ms", "gain", "gpu Gsteps/s"
+  );
+  for (m, n) in [(10_000usize, 1_024usize), (50_000, 1_024), (10_000, 4_096)] {
+    let build = || Gbm::<f32, _>::new(0.05, 0.2, n, Some(100.0), Some(1.0), Deterministic::new(7));
+    let _ = build().on::<Cuda>().sample_par(8);
+    let mapped = best(5, || {
+      build().on::<Cuda>().sample_map_view(m, |p| p[p.len() - 1])
+    });
+    let reduced = best(5, || {
+      build().on::<Cuda>().sample_reduce(m, Reduce::Terminal)
+    });
+    println!(
+      "  {m:>7} {n:>7} {:>12.1} {:>12.1} {:>8.2}x {:>13.2}",
+      mapped * 1e3,
+      reduced * 1e3,
+      mapped / reduced,
+      throughput((m * n) as f64, reduced)
     );
   }
 

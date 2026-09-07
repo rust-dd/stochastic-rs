@@ -253,6 +253,32 @@ renders from too, and it needs a `float4` spelling per language, a
 and a tail for grids that are not a multiple of four. Measured and left on the
 table.
 
+### The fold in the kernel
+
+Every number above is a launch that writes the grid: `paths × steps` values,
+which on a unified device is the store — the largest single cost of the
+kernel — and on a card behind a bus is the crossing as well. Most Monte Carlo
+does not want the grid. `sample_reduce` hands the fold to the kernel, which
+keeps one accumulator a component in a register and writes one value a path:
+
+| paths × steps | `sample_map_view` | `sample_reduce` | | reduced |
+|--------------:|------------------:|----------------:|---:|--------:|
+| 10 000 × 1 024 | 1.16 ms | **0.84 ms** | 1.37× | 12.2 G steps/s |
+| 50 000 × 1 024 | 1.55 ms | **0.89 ms** | 1.74× | 57.6 G steps/s |
+| 200 000 × 1 024 | 4.90 ms | **1.91 ms** | 2.56× | **107.3 G steps/s** |
+| 100 000 × 4 096 | 8.55 ms | **3.89 ms** | 2.20× | **105.3 G steps/s** |
+
+At two hundred thousand paths the four modes cost 1.80–1.94 ms — terminal
+value, running maximum, running minimum, sum — against **78–89 ms** for the
+same fold on the host, which is **43×**. It also walks past the ceiling the
+section above measured, and legitimately: 68 G steps/s is what *storing every
+step* allows, and this stores one value a path.
+
+What comes back is exactly what folding the path would have given: the kernel
+accumulates over the same points a sequence launch would have written, and
+`device_law` pins the two together for every mode, on the device and on the
+host.
+
 ### One traversal, not two
 
 The table above maps with `sample_map`, whose callback takes an owned path.
