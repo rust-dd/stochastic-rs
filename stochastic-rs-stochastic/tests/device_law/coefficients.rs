@@ -16,6 +16,7 @@ use super::common::Device;
 use super::common::M;
 use super::common::agrees;
 use super::common::all_finite;
+use super::common::spreads_agree;
 use super::common::terminal_mean;
 use super::common::terminal_std;
 
@@ -81,12 +82,7 @@ fn cheyette_with_an_expression_volatility_agrees_with_the_cpu_law() {
     0.03,
     "Cheyette y terminal mean",
   );
-  agrees(
-    terminal_std(&hy),
-    terminal_std(&dy),
-    0.06,
-    "Cheyette y terminal spread",
-  );
+  spreads_agree(&hy, &dy, "Cheyette y terminal spread");
 }
 
 /// With the diffusion at zero the Volterra equation is deterministic, so the

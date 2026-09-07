@@ -42,6 +42,36 @@ pub(crate) fn agrees(host: f64, device: f64, tol: f64, what: &str) {
   );
 }
 
+/// Host and device agree on a terminal spread, within five standard errors
+/// of what that spread's own noise allows.
+///
+/// A relative tolerance is the wrong instrument for a heavy-tailed statistic:
+/// the standard error of a sample standard deviation is `σ√((κ−1)/4M)`, so a
+/// terminal value with a kurtosis near twenty carries ±3.4 % per side at four
+/// thousand paths and ±4.9 % between two independent samples. A fixed 6 %
+/// band on that is one and a quarter standard errors — a coin toss dressed as
+/// a check, and it is what the Cheyette case used to be. Here the band comes
+/// from the two samples' own kurtoses.
+pub(crate) fn spreads_agree(host: &[Array1<f32>], device: &[Array1<f32>], what: &str) {
+  let noise = |paths: &[Array1<f32>]| {
+    let last = paths[0].len() - 1;
+    let values: Vec<f64> = paths.iter().map(|p| p[last] as f64).collect();
+    let n = values.len() as f64;
+    let mean = values.iter().sum::<f64>() / n;
+    let m2 = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n;
+    let m4 = values.iter().map(|v| (v - mean).powi(4)).sum::<f64>() / n;
+    let kurtosis = m4 / (m2 * m2);
+    (m2.sqrt(), m2.sqrt() * ((kurtosis - 1.0) / (4.0 * n)).sqrt())
+  };
+  let (hs, he) = noise(host);
+  let (ds, de) = noise(device);
+  let band = 5.0 * (he * he + de * de).sqrt();
+  assert!(
+    (hs - ds).abs() < band,
+    "{what}: host {hs}, device {ds} (band {band}, five standard errors of the estimate)"
+  );
+}
+
 /// Every point of every path is finite: the first thing a wrong kernel body
 /// breaks, and the one check that costs nothing to make everywhere.
 pub(crate) fn all_finite(paths: &[Array1<f32>], what: &str) {
