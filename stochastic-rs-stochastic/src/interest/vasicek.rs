@@ -117,13 +117,7 @@ impl<T: FloatExt, S: SeedExt, B> Vasicek<T, S, B> {
   fn resync(mut self) -> Self {
     let ou_seed = self.ou.seed.clone();
     self.ou = Ou::new(
-      self.theta,
-      self.mu,
-      self.sigma,
-      self.n,
-      self.x0,
-      self.t,
-      ou_seed,
+      self.theta, self.mu, self.sigma, self.n, self.x0, self.t, ou_seed,
     );
     self
   }
@@ -326,8 +320,15 @@ mod tests {
     ] {
       const N: usize = 512;
       const M: usize = 64;
-      let vasicek =
-        Vasicek::<f64, _>::new(theta, mu, sigma, N, Some(x0), Some(1.0), Deterministic::new(7));
+      let vasicek = Vasicek::<f64, _>::new(
+        theta,
+        mu,
+        sigma,
+        N,
+        Some(x0),
+        Some(1.0),
+        Deterministic::new(7),
+      );
       let ou = crate::diffusion::ou::Ou::<f64, _>::new(
         theta,
         mu,
@@ -337,10 +338,7 @@ mod tests {
         Some(1.0),
         Deterministic::new(7),
       );
-      for (name, paths) in [
-        ("Vasicek", vasicek.sample_par(M)),
-        ("Ou", ou.sample_par(M)),
-      ] {
+      for (name, paths) in [("Vasicek", vasicek.sample_par(M)), ("Ou", ou.sample_par(M))] {
         let dt = 1.0 / (N - 1) as f64;
         let mut residuals = Vec::with_capacity(M * (N - 1));
         for path in &paths {
