@@ -102,6 +102,13 @@ figures are converted from the `Melem/s` values in [`CUDA_BENCHMARK.md`](https:/
 The portable CubeCL backend was removed in 3.0.0-rc.2: it duplicated the native
 CUDA and Metal kernels and was slower on the same hardware.
 
+<Callout type="warn">
+The Metal column below was measured before the pipeline was rewritten. A
+batch of fGN on Metal is now **3.1–5.0× faster** than these numbers imply
+— see *The fGN pipeline, rewritten* under the engine sections — and the
+single-path figures want a criterion re-run.
+</Callout>
+
 **Apple M4 Max** (10 P + 4 E cores, 36 GB unified; measured 2026-09-03 on the
 rc.1 code, after the per-size device caches landed):
 
@@ -252,6 +259,49 @@ renders from too, and it needs a `float4` spelling per language, a
 `steps % 4 == 0` precondition in the shape key (doubling the pipeline cache)
 and a tail for grids that are not a multiple of four. Measured and left on the
 table.
+
+### The fGN pipeline, rewritten
+
+The fractional sampler is not the Euler engine: an fGN point is thirteen
+butterflies over an array twice its length, where a diffusion step is one
+fused multiply-add in a register. But the same question applies — how much of
+the wall is the transform, and how much is the way it is written? Measured
+here at 10 000 paths × 4 096 points, stage by stage from GPU timestamps:
+
+| stage | ms | share |
+|---|---:|---:|
+| 13 butterfly passes, one dispatch each | **48.4** | 82 % |
+| draw, Box-Muller, eigenvalue scale, bit-reversed scatter | 5.3 | 9 % |
+| the read-out pass | 2.6 | 4 % |
+| encode and barriers, 15 dispatches | 0.8 | 1 % |
+| the host copying the batch out | 2.5 | 4 % |
+
+**Each pass was a full round trip to DRAM.** One stage moved 1.31 GB in
+3.72 ms — 340 GB/s — and a stage that only *copies* the same bytes cost
+3.78 ms, identical: the butterflies' `cos`, `sin` and index arithmetic were
+entirely hidden behind the traffic. A twiddle lookup table changed nothing.
+The pass count was the only lever, and a contiguous block of bit-reversed
+positions is closed under the first stages, so eleven of them now run inside
+threadgroup memory, the draw is fused into the same kernel, and the read-out
+is fused into the last stage. **Fifteen passes became three.**
+
+| paths | points | before | after | |
+|------:|-------:|-------:|------:|---:|
+| 1 000 | 4 096 | 5.92 ms | **1.50 ms** | 3.95× |
+| 1 000 | 16 384 | 26.43 ms | **8.60 ms** | 3.08× |
+| 10 000 | 4 096 | 59.00 ms | **11.87 ms** | 4.97× |
+
+Bit-identical: 0 of 40 960 000 values differ at the largest shape. Traffic is
+now 64 bytes an output point against 444 before, which puts the ceiling near
+5.3 G points/s; the sampler runs at 3.45. What is left is one global pass and
+the mandatory batch write — and Davies-Harte's second path, which the
+transform already computes and the device still throws away, worth another
+1.87× when it is claimed.
+
+A radix-4 pass above the tile was measured at 1.5× on the remaining passes and
+**rejected**: the compiler contracts the cross-stage multiply into an FMA and
+3.2 million of 41 million values move by a few ULP. Bit-identity is worth more
+than that here.
 
 ### The fold in the kernel
 
