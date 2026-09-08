@@ -90,8 +90,18 @@ where
 /// first place to look for an effect that only appears under load.
 #[test]
 fn the_fractional_ou_reproduces_its_seed_under_contention() {
-  let build =
-    || Fou::<f32, _>::new(0.7, 2.0, 1.0, 0.3, N, Some(0.0), Some(1.0), Deterministic::new(9));
+  let build = || {
+    Fou::<f32, _>::new(
+      0.7,
+      2.0,
+      1.0,
+      0.3,
+      N,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(9),
+    )
+  };
   let reference = build().sample_par(M);
   holds("fractional OU", move || build().sample_par(M), reference);
 }
@@ -109,8 +119,7 @@ fn the_fractional_noise_reproduces_its_seed_under_contention() {
 /// one moves too, the cause is in the chunking rather than in the pipeline.
 #[test]
 fn a_plain_diffusion_reproduces_its_seed_under_contention() {
-  let build =
-    || Gbm::<f32, _>::new(0.05, 0.2, N, Some(100.0), Some(1.0), Deterministic::new(3));
+  let build = || Gbm::<f32, _>::new(0.05, 0.2, N, Some(100.0), Some(1.0), Deterministic::new(3));
   let reference = build().sample_par(M);
   holds("GBM", move || build().sample_par(M), reference);
 }
@@ -119,7 +128,17 @@ fn a_plain_diffusion_reproduces_its_seed_under_contention() {
 /// without the fractional noise.
 #[test]
 fn the_mean_reverting_diffusion_reproduces_its_seed_under_contention() {
-  let build = || Ou::<f32, _>::new(2.0, 1.0, 0.3, N, Some(0.0), Some(1.0), Deterministic::new(9));
+  let build = || {
+    Ou::<f32, _>::new(
+      2.0,
+      1.0,
+      0.3,
+      N,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(9),
+    )
+  };
   let reference = build().sample_par(M);
   holds("OU", move || build().sample_par(M), reference);
 }
@@ -131,8 +150,18 @@ fn the_mean_reverting_diffusion_reproduces_its_seed_under_contention() {
 /// was actually seen to fail.
 #[test]
 fn a_folded_batch_reproduces_its_seed_under_contention() {
-  let build =
-    || Fou::<f32, _>::new(0.7, 2.0, 1.0, 0.3, N, Some(0.0), Some(1.0), Deterministic::new(9));
+  let build = || {
+    Fou::<f32, _>::new(
+      0.7,
+      2.0,
+      1.0,
+      0.3,
+      N,
+      Some(0.0),
+      Some(1.0),
+      Deterministic::new(9),
+    )
+  };
   let reference = build().sample_reduce(M, Reduce::Terminal);
   let build = Arc::new(build);
   let reference = Arc::new(reference);
