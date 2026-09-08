@@ -581,9 +581,14 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.table_spec(),
       process.program_spec(),
       Reduce::None,
-      |data| {
-        Array2::from_shape_vec((m, process.grid_points()), data.to_vec())
-          .expect("the kernel returns m * n values for a one-component family")
+      // A family may step more components than the process reports, so the
+      // first plane is taken by the count the launch actually wrote.
+      |data, _| {
+        Array2::from_shape_vec(
+          (m, process.grid_points()),
+          data[..m * process.grid_points()].to_vec(),
+        )
+        .expect("the kernel writes m * n values in its first plane")
       },
     )
   }
@@ -624,7 +629,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       reduce,
       // The first plane again: one value a path, the component a one-state
       // family reports.
-      |data| data[..m.min(data.len())].to_vec(),
+      |data, _| data[..m.min(data.len())].to_vec(),
     )
   }
 
@@ -663,9 +668,9 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.table_spec(),
       process.program_spec(),
       Reduce::None,
-      |data| {
-        f(ndarray::ArrayView2::from_shape((m, n), data)
-          .expect("the kernel returns m * n values for a one-component family"))
+      |data, _| {
+        f(ndarray::ArrayView2::from_shape((m, n), &data[..m * n])
+          .expect("the kernel writes m * n values in its first plane"))
       },
     )
   }
@@ -702,8 +707,11 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
       process.table_spec(),
       process.program_spec(),
       Reduce::None,
-      |data| {
-        Array3::from_shape_vec((D, m, process.grid_points()), data.to_vec())
+      // `check_arity` allows a family to step *more* components than the
+      // process returns, so the array is shaped by what the launch wrote —
+      // not by `D`, which is only the count the caller will read back out.
+      |data, planes| {
+        Array3::from_shape_vec((planes, m, process.grid_points()), data.to_vec())
           .expect("the kernel returns components * m * n values")
       },
     )
@@ -793,7 +801,7 @@ fn device_paths<T: FloatExt, O>(
   table: Option<crate::euler::TableSpec<T>>,
   program: Option<crate::euler::ProgramSpec<'_>>,
   reduce: Reduce,
-  finish: impl FnOnce(&[T]) -> O,
+  finish: impl FnOnce(&[T], usize) -> O,
 ) -> Result<O> {
   {
     let (curve, n_curves) = crate::euler::flatten_curves(curves, n);
@@ -840,7 +848,7 @@ fn device_paths<T: FloatExt, O>(
       });
     let (components, noises) = (arity.components() as u32, arity.noises() as u32);
     if n == 0 || m == 0 {
-      return Ok(finish(&[]));
+      return Ok(finish(&[], components as usize));
     }
     let dt = dt.to_f64().unwrap_or(0.0);
     let seed32 = (seed ^ (seed >> 32)) as u32;
@@ -916,7 +924,12 @@ fn device_paths<T: FloatExt, O>(
         reduce,
         // The branch this is in establishes that `T` is `f64`, so the values
         // are already in the caller's precision.
-        |data| finish(unsafe { std::slice::from_raw_parts(data.as_ptr() as *const T, data.len()) }),
+        |data| {
+          finish(
+            unsafe { std::slice::from_raw_parts(data.as_ptr() as *const T, data.len()) },
+            components as usize,
+          )
+        },
       );
     }
     let p32: [f32; crate::euler::PARAM_SLOTS] = std::array::from_fn(|i| p64[i] as f32);
@@ -996,7 +1009,12 @@ fn device_paths<T: FloatExt, O>(
       reduce,
       // The assert above says `T` is `f32` here, so the values are already
       // the caller's precision.
-      |data| finish(unsafe { std::slice::from_raw_parts(data.as_ptr() as *const T, data.len()) }),
+      |data| {
+        finish(
+          unsafe { std::slice::from_raw_parts(data.as_ptr() as *const T, data.len()) },
+          components as usize,
+        )
+      },
     )
   }
 }
