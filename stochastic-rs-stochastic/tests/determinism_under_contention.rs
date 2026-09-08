@@ -47,9 +47,9 @@ const THREADS: usize = 8;
 const ROUNDS: usize = 12;
 
 /// Every thread, every round, reproduces `reference` exactly.
-fn holds<T: Send + Sync + 'static>(name: &'static str, build: T, reference: Vec<Array1<f32>>)
+fn holds<T>(name: &'static str, build: T, reference: Vec<Array1<f32>>)
 where
-  T: Fn() -> Vec<Array1<f32>>,
+  T: Fn() -> Vec<Array1<f32>> + Send + Sync + 'static,
 {
   let build = Arc::new(build);
   let reference = Arc::new(reference);
