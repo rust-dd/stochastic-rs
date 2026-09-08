@@ -138,8 +138,8 @@
 /// values and the noise are four-slot arrays whatever the family's own
 /// arity, so one kernel serves every family. `STEP` and `REPORT` are the
 /// blocks [`super::families`] generates from the family declarations, and
-/// `REAL`, `STOCH_SQRT`, `STOCH_LOG`, `STOCH_COS`, `STOCH_SIN`, `STOCH_TANH`,
-/// `STOCH_ATAN`
+/// `REAL`, `STOCH_SQRT`, `STOCH_LOG`, `STOCH_COS`, `STOCH_FAST_LOG`,
+/// `STOCH_FAST_COS`, `STOCH_SIN`, `STOCH_TANH`, `STOCH_ATAN`
 /// and the
 /// 64-bit buffer index type `INDEX` are the precision placeholders. Before
 /// the lift and the step, the frame runs the launch's programs — the postfix
@@ -339,7 +339,7 @@ const FRAME_SERIES_DRAW: &str = r#"    if (series_n != 0u) {
             unsigned int sg = ((first_path + path) * 2654435761u) ^ (j * 40503u) ^ 3266489917u;
             unsigned int q1 = (sg ^ 2654435769u) ^ (seed * 2654435761u);
             q1 ^= q1 >> 16; q1 *= 2246822519u; q1 ^= q1 >> 13; q1 *= 3266489917u; q1 ^= q1 >> 16;
-            gj += -STOCH_LOG((REAL)q1 * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6);
+            gj += -STOCH_FAST_LOG((REAL)q1 * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6);
             if (series_live != 0u) {
                 block[j] = gj;
             } else {
@@ -351,7 +351,7 @@ const FRAME_SERIES_DRAW: &str = r#"    if (series_n != 0u) {
                 q4 ^= q4 >> 16; q4 *= 2246822519u; q4 ^= q4 >> 13; q4 *= 3266489917u; q4 ^= q4 >> 16;
                 unsigned int q5 = (sg ^ 374761393u) ^ (seed * 2654435761u);
                 q5 ^= q5 >> 16; q5 *= 2246822519u; q5 ^= q5 >> 13; q5 *= 3266489917u; q5 ^= q5 >> 16;
-                ej = -STOCH_LOG((REAL)q2 * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6);
+                ej = -STOCH_FAST_LOG((REAL)q2 * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6);
                 uj = (REAL)q3 * (REAL)2.3283064e-10;
                 uv = (REAL)q4 * (REAL)2.3283064e-10;
                 REAL ratio = (REAL)q5 * (REAL)2.3283064e-10 * (REAL)(steps - 1u);
@@ -439,7 +439,7 @@ const FRAME_NOISE: &str = r#"    for (unsigned int i = (step_first != 0u ? 0u : 
             b ^= b >> 16; b *= 2246822519u; b ^= b >> 13; b *= 3266489917u; b ^= b >> 16;
             REAL u1 = (REAL)a * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6;
             REAL u2 = (REAL)b * (REAL)2.3283064e-10;
-            REAL z = STOCH_SQRT((REAL)-2.0 * STOCH_LOG(u1)) * STOCH_COS((REAL)6.283185307179586 * u2);
+            REAL z = STOCH_SQRT((REAL)-2.0 * STOCH_FAST_LOG(u1)) * STOCH_FAST_COS((REAL)6.283185307179586 * u2);
             noise[k] = sqrt_dt * z;
         }
         if (increments != 0u) {
@@ -500,7 +500,7 @@ const FRAME_SERIES_LIVE: &str = r#"        sj = (REAL)0;
                         unsigned int q4 = (sg ^ 668265263u) ^ (seed * 2654435761u);
                         q4 ^= q4 >> 16; q4 *= 2246822519u; q4 ^= q4 >> 13; q4 *= 3266489917u; q4 ^= q4 >> 16;
                         gj = block[j];
-                        ej = -STOCH_LOG((REAL)q2 * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6);
+                        ej = -STOCH_FAST_LOG((REAL)q2 * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6);
                         uj = (REAL)q3 * (REAL)2.3283064e-10;
                         uv = (REAL)q4 * (REAL)2.3283064e-10;
 SERIES
@@ -573,7 +573,7 @@ const FRAME_COUNTS: &str = r#"        if (has_jumps != 0u) {
                     p2 ^= p2 >> 16; p2 *= 2246822519u; p2 ^= p2 >> 13; p2 *= 3266489917u; p2 ^= p2 >> 16;
                     REAL ga = (REAL)p1 * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6;
                     REAL gb = (REAL)p2 * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6;
-                    REAL zg = STOCH_SQRT((REAL)-2.0 * STOCH_LOG(ga)) * STOCH_COS((REAL)6.283185307179586 * gb);
+                    REAL zg = STOCH_SQRT((REAL)-2.0 * STOCH_FAST_LOG(ga)) * STOCH_FAST_COS((REAL)6.283185307179586 * gb);
                     REAL vv = (REAL)1 + cc * zg;
                     vv = vv * vv * vv;
                     if (vv > (REAL)0) {
@@ -581,7 +581,7 @@ const FRAME_COUNTS: &str = r#"        if (has_jumps != 0u) {
                         p3 ^= p3 >> 16; p3 *= 2246822519u; p3 ^= p3 >> 13; p3 *= 3266489917u; p3 ^= p3 >> 16;
                         REAL ug = (REAL)p3 * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6;
                         val = dd * vv;
-                        if (STOCH_LOG(ug) < (REAL)0.5 * zg * zg + dd - dd * vv + dd * STOCH_LOG(vv)) { break; }
+                        if (STOCH_FAST_LOG(ug) < (REAL)0.5 * zg * zg + dd - dd * vv + dd * STOCH_FAST_LOG(vv)) { break; }
                     }
                 }
                 draw = gsc * boost * val;
@@ -603,7 +603,7 @@ const FRAME_JUMP_LAWS: &str = r#"        js = (REAL)0;
             jb ^= jb >> 16; jb *= 2246822519u; jb ^= jb >> 13; jb *= 3266489917u; jb ^= jb >> 16;
             REAL ua = (REAL)ja * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6;
             REAL ub = (REAL)jb * (REAL)2.3283064e-10;
-            REAL zj = STOCH_SQRT((REAL)-2.0 * STOCH_LOG(ua)) * STOCH_COS((REAL)6.283185307179586 * ub);
+            REAL zj = STOCH_SQRT((REAL)-2.0 * STOCH_FAST_LOG(ua)) * STOCH_FAST_COS((REAL)6.283185307179586 * ub);
             js = jump_a * nj + jump_b * STOCH_SQRT(nj) * zj;
         }
         if (jump_law == 2u) {
@@ -615,7 +615,7 @@ const FRAME_JUMP_LAWS: &str = r#"        js = (REAL)0;
                 kb ^= kb >> 16; kb *= 2246822519u; kb ^= kb >> 13; kb *= 3266489917u; kb ^= kb >> 16;
                 REAL up = (REAL)ka * (REAL)2.3283064e-10;
                 REAL ue = (REAL)kb * (REAL)2.3283064e-10;
-                REAL ee = -STOCH_LOG((REAL)1 - ue);
+                REAL ee = -STOCH_FAST_LOG((REAL)1 - ue);
                 js += (up < jump_a) ? (ee / jump_b) : (-(ee / jump_c));
             }
         }
@@ -642,7 +642,7 @@ const FRAME_JUMP_LAWS: &str = r#"        js = (REAL)0;
                 pb ^= pb >> 16; pb *= 2246822519u; pb ^= pb >> 13; pb *= 3266489917u; pb ^= pb >> 16;
                 REAL pu1 = (REAL)pa * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6;
                 REAL pu2 = (REAL)pb * (REAL)2.3283064e-10;
-                REAL pz = STOCH_SQRT((REAL)-2.0 * STOCH_LOG(pu1)) * STOCH_COS((REAL)6.283185307179586 * pu2);
+                REAL pz = STOCH_SQRT((REAL)-2.0 * STOCH_FAST_LOG(pu1)) * STOCH_FAST_COS((REAL)6.283185307179586 * pu2);
                 jp = jp * ((REAL)1 + jump_a + jump_b * pz);
             }
             js = jp - (REAL)1;
@@ -657,7 +657,7 @@ const FRAME_JUMP_LAWS: &str = r#"        js = (REAL)0;
                 kb ^= kb >> 16; kb *= 2246822519u; kb ^= kb >> 13; kb *= 3266489917u; kb ^= kb >> 16;
                 REAL up = (REAL)ka * (REAL)2.3283064e-10;
                 REAL ue = (REAL)kb * (REAL)2.3283064e-10;
-                REAL ee = -STOCH_LOG((REAL)1 - ue);
+                REAL ee = -STOCH_FAST_LOG((REAL)1 - ue);
                 jp = jp * ((REAL)1 + ((up < jump_a) ? (ee / jump_b) : (-(ee / jump_c))));
             }
             js = jp - (REAL)1;
@@ -669,7 +669,7 @@ const FRAME_JUMP_LAWS: &str = r#"        js = (REAL)0;
             jb ^= jb >> 16; jb *= 2246822519u; jb ^= jb >> 13; jb *= 3266489917u; jb ^= jb >> 16;
             REAL ua = (REAL)ja * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6;
             REAL ub = (REAL)jb * (REAL)2.3283064e-10;
-            REAL zj = STOCH_SQRT((REAL)-2.0 * STOCH_LOG(ua)) * STOCH_COS((REAL)6.283185307179586 * ub);
+            REAL zj = STOCH_SQRT((REAL)-2.0 * STOCH_FAST_LOG(ua)) * STOCH_FAST_COS((REAL)6.283185307179586 * ub);
             js = jump_a + jump_b * zj;
         }
         if (jump_law == 7u) {
@@ -679,7 +679,7 @@ const FRAME_JUMP_LAWS: &str = r#"        js = (REAL)0;
             kb ^= kb >> 16; kb *= 2246822519u; kb ^= kb >> 13; kb *= 3266489917u; kb ^= kb >> 16;
             REAL up = (REAL)ka * (REAL)2.3283064e-10;
             REAL ue = (REAL)kb * (REAL)2.3283064e-10;
-            REAL ee = -STOCH_LOG((REAL)1 - ue);
+            REAL ee = -STOCH_FAST_LOG((REAL)1 - ue);
             js = (up < jump_a) ? (ee / jump_b) : (-(ee / jump_c));
         }
         if (jump_law == 8u) {
@@ -696,11 +696,11 @@ const FRAME_JUMP_LAWS: &str = r#"        js = (REAL)0;
             unsigned int sb = (g ^ 1013904223u) ^ (seed * 2654435761u);
             sb ^= sb >> 16; sb *= 2246822519u; sb ^= sb >> 13; sb *= 3266489917u; sb ^= sb >> 16;
             REAL va = ((REAL)sa * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6 - (REAL)0.5) * (REAL)3.141592653589793;
-            REAL wv = -STOCH_LOG((REAL)sb * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6);
+            REAL wv = -STOCH_FAST_LOG((REAL)sb * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6);
             REAL ia = (REAL)1 / jump_a;
-            REAL ratio = STOCH_COS(va - jump_a * va) / wv;
+            REAL ratio = STOCH_FAST_COS(va - jump_a * va) / wv;
             if (ratio < (REAL)1.0e-30) { ratio = (REAL)1.0e-30; }
-            REAL xs = STOCH_SIN(jump_a * va) / STOCH_POW(STOCH_COS(va), ia) * STOCH_POW(ratio, ((REAL)1 - jump_a) * ia);
+            REAL xs = STOCH_SIN(jump_a * va) / STOCH_POW(STOCH_FAST_COS(va), ia) * STOCH_POW(ratio, ((REAL)1 - jump_a) * ia);
             js = jump_b * STOCH_POW(nj, ia) * xs;
         }"#;
 
@@ -733,7 +733,7 @@ const FRAME_PROGRAM: &str = r#"        if (program_n != 0u) {
                     else if (code == 10u) { pst[psp - 1u] = -pst[psp - 1u]; }
                     else if (code == 11u) { pst[psp - 1u] = STOCH_SQRT(pst[psp - 1u]); }
                     else if (code == 12u) { pst[psp - 1u] = STOCH_EXP(pst[psp - 1u]); }
-                    else if (code == 13u) { pst[psp - 1u] = STOCH_LOG(pst[psp - 1u]); }
+                    else if (code == 13u) { pst[psp - 1u] = STOCH_FAST_LOG(pst[psp - 1u]); }
                     else if (code == 14u) { pst[psp - 1u] = STOCH_ABS(pst[psp - 1u]); }
                     else if (code == 15u) { pst[psp - 1u] = STOCH_TANH(pst[psp - 1u]); }
                 }
@@ -800,13 +800,17 @@ pub(crate) struct Language<'a> {
   /// The logarithm and cosine the *sampling* code takes, which need not be
   /// the accurate ones.
   ///
-  /// Every `STOCH_LOG` and `STOCH_COS` in the frame is a random draw — a
-  /// Box-Muller normal, an exponential waiting time, a Marsaglia-Tsang
-  /// rejection test — where a relative error of `2^-21` moves a normal by
-  /// about one `f32` ulp and shifts a rejection boundary by as much. A
-  /// family's own mathematics keeps the accurate spellings: `lang.log` and
-  /// `lang.cos` are what the DSL's `ln` and `cos` render to, and those sit
-  /// inside a model, not inside a draw.
+  /// Every `STOCH_FAST_LOG` and `STOCH_FAST_COS` in the frame is a random
+  /// draw — a Box-Muller normal, an exponential waiting time, a
+  /// Marsaglia-Tsang rejection test — where a relative error of `2^-21`
+  /// moves a normal by about one `f32` ulp and shifts a rejection boundary
+  /// by as much.
+  ///
+  /// A family's own mathematics keeps the accurate spellings. The two are
+  /// deliberately different placeholders because the family vocabulary's
+  /// `#define ln(v)` expands to `STOCH_LOG`: pointing that at an approximate
+  /// logarithm would take the positive-stable transform's log-domain form,
+  /// which exists to survive `α = 0.01`, and hand it three fewer digits.
   ///
   /// On CUDA these are the `__logf` / `__cosf` intrinsics, which are a
   /// hardware instruction each where the accurate routines are tens; the
@@ -1132,8 +1136,13 @@ fn substitute(text: &str, lang: &Language<'_>) -> String {
     .replace("INDEX", lang.index)
     .replace("U64", lang.wide)
     .replace("STOCH_SQRT", lang.sqrt)
-    .replace("STOCH_LOG", lang.fast_log)
-    .replace("STOCH_COS", lang.fast_cos)
+    // The frame's own draws first: `STOCH_FAST_LOG` is a Box-Muller normal
+    // or an exponential waiting time, where `STOCH_LOG` is whatever a family
+    // wrote as `ln`, and those are two different accuracy requirements.
+    .replace("STOCH_FAST_LOG", lang.fast_log)
+    .replace("STOCH_FAST_COS", lang.fast_cos)
+    .replace("STOCH_LOG", lang.log)
+    .replace("STOCH_COS", lang.cos)
     .replace("STOCH_SIN", lang.sin)
     .replace("STOCH_EXP", lang.exp)
     .replace("STOCH_POW", lang.pow)
