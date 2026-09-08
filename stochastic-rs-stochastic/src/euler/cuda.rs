@@ -64,12 +64,17 @@ fn take_output<R: CachedOut>(
   slot: usize,
   len: usize,
 ) -> Result<CudaSlice<R>> {
-  let held = R::slots(kernels)[slot].take();
-  match held {
+  match R::slots(kernels)[slot].take() {
     Some(buffer) if buffer.len() >= len => Ok(buffer),
-    _ => stream
-      .alloc_zeros::<R>(len)
-      .map_err(|e| driver_error("alloc out", e)),
+    // The old buffer is released *before* the larger one is asked for: held
+    // across the allocation, a batch that doubles needs both at once, and
+    // the peak is what fails first on a card that is nearly full.
+    held => {
+      drop(held);
+      stream
+        .alloc_zeros::<R>(len)
+        .map_err(|e| driver_error("alloc out", e))
+    }
   }
 }
 
@@ -87,7 +92,12 @@ fn take_staging<R: CachedOut>(
 ) -> Result<PinnedHost<R>> {
   match R::staging(kernels)[slot].take() {
     Some(buffer) if buffer.len() >= len => Ok(buffer),
-    _ => PinnedHost::<R>::alloc(len),
+    // Freed before the larger one is pinned, for the reason `take_output`
+    // gives: page-locked memory is the scarcer of the two.
+    held => {
+      drop(held);
+      PinnedHost::<R>::alloc(len)
+    }
   }
 }
 
@@ -205,7 +215,9 @@ struct Kernels {
   functions: HashMap<(Shape, &'static str), CudaFunction>,
 }
 
-/// SAFETY: every device operation is serialised through the one stream.
+/// SAFETY: the raw driver handles inside are only ever reached through this
+/// mutex, and the two streams are ordered against each other by the explicit
+/// synchronise each chunk's drain performs before its slot is reused.
 unsafe impl Send for Kernels {}
 
 static KERNELS: Mutex<Option<Kernels>> = Mutex::new(None);
@@ -277,10 +289,11 @@ pub fn kernel_profile(ordinal: usize, real: &'static str, block: u32) -> Result<
   ensure_kernels(ordinal, shape, real)?;
   let guard = KERNELS.lock();
   let kernels = guard.as_ref().expect("initialised");
-  let func = kernels
-    .functions
-    .get(&(shape, real))
-    .expect("compiled for this shape");
+  // As in `run`: the lock was released between compiling and this lookup, so
+  // a concurrent call on another ordinal can have emptied the map.
+  let func = kernels.functions.get(&(shape, real)).ok_or_else(|| {
+    DeviceError::Launch("the kernel cache was rebound to another device mid-launch".into())
+  })?;
   let attr = |what: &str, v: std::result::Result<i32, DriverError>| -> Result<i32> {
     v.map_err(|e| driver_error(what, e))
   };
@@ -414,10 +427,15 @@ where
   let mut guard = KERNELS.lock();
   let kernels = guard.as_mut().expect("initialised");
   let stream = kernels.stream.clone();
+  // Not `expect`: `ensure_kernels` released the lock before this took it, and
+  // a concurrent call naming a different ordinal rebinds the whole cache in
+  // between, which empties the map. That is a race to report, not to panic on.
   let func = kernels
     .functions
     .get(&(shape, real))
-    .expect("compiled for this shape")
+    .ok_or_else(|| {
+      DeviceError::Launch("the kernel cache was rebound to another device mid-launch".into())
+    })?
     .clone();
   let mut d_out = take_output::<R>(kernels, &stream, 0, out_len)?;
   drop(guard);
@@ -607,6 +625,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
     seed: u64,
     reduce: Reduce,
   ) -> Result<Vec<T>> {
+    let reduce = reduce.folded();
     device_paths(
       self.ordinal,
       process.euler_spec(),
@@ -744,15 +763,16 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
     // they ride the pipeline unchanged.
     if process.fgn_spec().is_some() || process.lift_spec().is_some() {
       let mut out = Array2::<T>::zeros((m, n));
-      let mut first = 0;
-      while first < m {
-        let len = rows.min(m - first);
+      // Through `over_chunks`, not a plain loop: a chunk that runs the card
+      // out of memory is retried at half the size, which is the whole point
+      // of that helper and was unwired on the back-end it was written for.
+      crate::device::over_chunks(m, rows, |first, len| {
         let chunk = self.euler_kernel(process, first, len, seed)?;
         out
           .slice_mut(ndarray::s![first..first + len, ..])
           .assign(&chunk);
-        first += len;
-      }
+        Ok(())
+      })?;
       return Ok(out);
     }
     let planes = pipelined_paths(
@@ -1225,14 +1245,37 @@ where
   let guard = KERNELS.lock();
   let kernels = guard.as_ref().expect("initialised");
   let streams = [kernels.stream.clone(), kernels.stream_b.clone()];
+  // Not `expect`: `ensure_kernels` released the lock before this took it, and
+  // a concurrent call naming a different ordinal rebinds the whole cache in
+  // between, which empties the map. That is a race to report, not to panic on.
   let func = kernels
     .functions
     .get(&(shape, real))
-    .expect("compiled for this shape")
+    .ok_or_else(|| {
+      DeviceError::Launch("the kernel cache was rebound to another device mid-launch".into())
+    })?
     .clone();
   drop(guard);
   let planes = components as usize;
   let mut host = vec![R::zero(); planes * m * n];
+  /// Synchronises both streams before the page-locked buffers can be freed.
+  ///
+  /// A chunk's copy back is enqueued and left in flight while the next chunk
+  /// computes, so any `?` in the loop below unwinds with a device-to-host
+  /// transfer still running. Freeing its destination then hands the driver a
+  /// page it no longer owns; cudarc's own pinned slice synchronises in its
+  /// `Drop` for the same reason. Declared *after* the buffers so it drops
+  /// *before* them.
+  struct DrainOnDrop([Arc<CudaStream>; 2]);
+
+  impl Drop for DrainOnDrop {
+    fn drop(&mut self) {
+      for stream in &self.0 {
+        let _ = stream.synchronize();
+      }
+    }
+  }
+
   // Both staging buffers come from the cache: pinning pages is a syscall
   // that scales with the allocation, and at the default budget these are a
   // gigabyte each — paid on every pipelined batch before this.
@@ -1244,6 +1287,7 @@ where
       take_staging::<R>(kernels, 1, planes * rows * n)?,
     ]
   };
+  let _drain = DrainOnDrop([streams[0].clone(), streams[1].clone()]);
   // Per slot: the device buffer kept alive until its copy has landed, and
   // the `(first, len)` rows the staging buffer holds.
   let mut in_flight: [Option<(usize, usize)>; 2] = [None, None];

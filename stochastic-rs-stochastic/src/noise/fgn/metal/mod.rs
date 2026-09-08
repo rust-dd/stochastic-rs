@@ -74,10 +74,17 @@ static CTX: Mutex<Option<MetalCtx>> = Mutex::new(None);
 /// the trajectory buffers and re-uploading the eigenvalue / bit-reverse tables
 /// on every call was the dominant per-call cost; the gen kernel overwrites
 /// `real`/`imag` each time, so reuse is safe.
+///
+/// The read-out's destination is deliberately *not* here. These four are only
+/// ever touched while [`SIZED`] is held, but the read-out buffer outlives the
+/// call — its whole purpose is to be read afterwards, and on the engine's
+/// fractional path it is read by a second launch — so a cache entry shared
+/// across threads would let one thread's pipeline overwrite the increments
+/// another thread is still consuming. It comes from [`OUT_POOL`] instead,
+/// which hands a buffer to one holder at a time.
 struct SizedMetal {
   real_buf: Buffer,
   imag_buf: Buffer,
-  out_buf: Buffer,
   eig_buf: Buffer,
   rev_buf: Buffer,
   n: usize,
@@ -92,6 +99,54 @@ unsafe impl Send for SizedMetal {}
 
 /// The last [`crate::device::CACHE_SLOTS`] per-size states, least recent first.
 static SIZED: Mutex<Vec<SizedMetal>> = Mutex::new(Vec::new());
+
+/// Read-out buffers nobody is holding, longest first.
+///
+/// A fresh `StorageModeShared` buffer has to be faulted in page by page before
+/// anything can be read out of it, and at ten thousand paths over four
+/// thousand points that is a hundred and fifty-six megabytes: measured on an
+/// M4 Max, allocating one per launch costs 34 % of `Fou::sample_par` and 59 %
+/// of `Fgn::sample_par` at that size. So they are pooled rather than
+/// reallocated — but pooled by *ownership*, one holder at a time, which is
+/// what keying them by size got wrong.
+static OUT_POOL: Mutex<Vec<Buffer>> = Mutex::new(Vec::new());
+
+/// A read-out buffer of at least `bytes`, taken out of [`OUT_POOL`] so no
+/// other caller can be handed the same one.
+fn take_out_buffer(dev: &Device, bytes: u64) -> Buffer {
+  let mut pool = OUT_POOL.lock();
+  match pool.iter().position(|b| b.length() >= bytes) {
+    Some(i) => pool.remove(i),
+    None => dev.new_buffer(bytes.max(4), MTLResourceOptions::StorageModeShared),
+  }
+}
+
+/// Hands a read-out buffer back once its holder is done with it, keeping the
+/// [`crate::device::CACHE_SLOTS`] longest.
+fn return_out_buffer(buf: Buffer) {
+  let mut pool = OUT_POOL.lock();
+  let at = pool
+    .iter()
+    .position(|b| b.length() < buf.length())
+    .unwrap_or(pool.len());
+  pool.insert(at, buf);
+  pool.truncate(crate::device::CACHE_SLOTS);
+}
+
+std::thread_local! {
+  /// The read-out buffer [`sample_f32_buffer`] last handed this thread.
+  ///
+  /// That entry point returns the buffer to a caller who keeps it — the Euler
+  /// engine binds it into a launch of its own — so nothing inside this module
+  /// can see the borrow end. What can be said is that the borrow is over by
+  /// the time the *same* thread asks for another: every consumer reads the
+  /// buffer within the call that obtained it (`EulerKernel::euler_kernel`
+  /// waits for the launch that reads the increments before it returns), so a
+  /// thread back here has finished with the last one. Reclaiming it then is
+  /// what keeps a Monte-Carlo loop on one thread reusing a single buffer,
+  /// while two threads simply hold two.
+  static LENT: std::cell::RefCell<Option<Buffer>> = const { std::cell::RefCell::new(None) };
+}
 
 /// The compile options every library here is built with.
 ///
@@ -181,10 +236,29 @@ pub(crate) fn build_bit_reverse_table(n: usize) -> Vec<u32> {
     .collect()
 }
 
-/// The pipeline itself: leaves the increments in the device buffer it wrote
-/// them to and hands that buffer over, so a consumer on the same device — the
-/// Euler engine — reads them without a round trip through host memory.
-/// Returns the buffer and the row length.
+/// Everything one launch needs to know, so the two entry points below differ
+/// only in who ends up holding the read-out.
+#[derive(Clone, Copy)]
+struct Launch<'a> {
+  sqrt_eigs: &'a [f32],
+  n: usize,
+  m: usize,
+  offset: usize,
+  hurst: f64,
+  t: f64,
+  seed: u32,
+  first_cell: u64,
+  ordinal: usize,
+}
+
+impl Launch<'_> {
+  /// Floats the read-out writes, which is what a buffer for it must hold.
+  fn out_len(&self) -> usize {
+    self.m * (self.n - self.offset)
+  }
+}
+
+/// The pipeline itself, writing its read-out into `out`.
 ///
 /// `first_cell` names where the launch sits in the batch: it is the absolute
 /// index of its first row times `2n`, which is what every caller already
@@ -194,17 +268,18 @@ pub(crate) fn build_bit_reverse_table(n: usize) -> Vec<u32> {
 /// transform in front of it as well and drops the half it does not own. Which
 /// values a row gets is therefore a function of its absolute index alone, and
 /// a batch cut anywhere still equals one launch.
-pub(crate) fn sample_f32_buffer(
-  sqrt_eigs: &[f32],
-  n: usize,
-  m: usize,
-  offset: usize,
-  hurst: f64,
-  t: f64,
-  seed: u32,
-  first_cell: u64,
-  ordinal: usize,
-) -> Result<(Buffer, usize)> {
+fn run_pipeline(launch: Launch<'_>, out: &Buffer) -> Result<usize> {
+  let Launch {
+    sqrt_eigs,
+    n,
+    m,
+    offset,
+    hurst,
+    t,
+    seed,
+    first_cell,
+    ordinal,
+  } = launch;
   let traj_size = 2 * n;
   let out_size = n - offset;
   let scale = (out_size.max(1) as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
@@ -239,7 +314,6 @@ pub(crate) fn sample_f32_buffer(
     || {
       let real_buf = dev.new_buffer((total * 4) as u64, shared);
       let imag_buf = dev.new_buffer((total * 4) as u64, shared);
-      let out_buf = dev.new_buffer((m * out_size * 4) as u64, shared);
       let eig_buf = dev.new_buffer_with_data(
         sqrt_eigs.as_ptr() as *const _,
         (sqrt_eigs.len() * 4) as u64,
@@ -254,7 +328,6 @@ pub(crate) fn sample_f32_buffer(
       Ok(SizedMetal {
         real_buf,
         imag_buf,
-        out_buf,
         eig_buf,
         rev_buf,
         n,
@@ -329,7 +402,7 @@ pub(crate) fn sample_f32_buffer(
     enc.set_buffer(0, Some(&s.real_buf), 0);
     enc.set_buffer(1, Some(&s.imag_buf), 0);
     enc.set_bytes(2, 4, &ts_u32 as *const u32 as *const _);
-    enc.set_buffer(3, Some(&s.out_buf), 0);
+    enc.set_buffer(3, Some(out), 0);
     enc.set_bytes(4, 4, &os as *const u32 as *const _);
     enc.set_bytes(5, 4, &scale as *const f32 as *const _);
     enc.set_bytes(6, 4, &rows as *const u32 as *const _);
@@ -342,7 +415,69 @@ pub(crate) fn sample_f32_buffer(
   cmd.commit();
   cmd.wait_until_completed();
 
-  Ok((s.out_buf.clone(), out_size))
+  Ok(out_size)
+}
+
+/// One launch whose read-out the caller keeps: the buffer comes back with it,
+/// so a consumer on the same device — the Euler engine, which binds it into a
+/// launch of its own — reads the increments without a round trip through host
+/// memory. Returns the buffer and the row length.
+///
+/// The buffer is the caller's alone until this thread asks for another (see
+/// [`LENT`]), which is what makes the hand-over safe to hold across a second
+/// launch.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn sample_f32_buffer(
+  sqrt_eigs: &[f32],
+  n: usize,
+  m: usize,
+  offset: usize,
+  hurst: f64,
+  t: f64,
+  seed: u32,
+  first_cell: u64,
+  ordinal: usize,
+) -> Result<(Buffer, usize)> {
+  let launch = Launch {
+    sqrt_eigs,
+    n,
+    m,
+    offset,
+    hurst,
+    t,
+    seed,
+    first_cell,
+    ordinal,
+  };
+  ensure_ctx(ordinal)?;
+  let dev = CTX.lock().as_ref().unwrap().device.clone();
+  if let Some(done) = LENT.with_borrow_mut(Option::take) {
+    return_out_buffer(done);
+  }
+  let out = take_out_buffer(&dev, (launch.out_len() * 4) as u64);
+  let out_size = run_pipeline(launch, &out)?;
+  LENT.with_borrow_mut(|slot| *slot = Some(out.clone()));
+  Ok((out, out_size))
+}
+
+/// One launch whose read-out `consume` reads where it lies, the buffer going
+/// back to the pool the moment it returns.
+///
+/// The borrow is bracketed here, so this path needs none of
+/// [`sample_f32_buffer`]'s deferred reclamation and holds no buffer between
+/// calls.
+fn with_f32_rows<R>(launch: Launch<'_>, consume: impl FnOnce(&[f32]) -> Result<R>) -> Result<R> {
+  ensure_ctx(launch.ordinal)?;
+  let dev = CTX.lock().as_ref().unwrap().device.clone();
+  let len = launch.out_len();
+  let out = take_out_buffer(&dev, (len * 4) as u64);
+  let result = run_pipeline(launch, &out).and_then(|_| {
+    // SAFETY: shared storage the launch has finished writing into, of at
+    // least `len` floats by construction, and held by nobody else.
+    consume(unsafe { std::slice::from_raw_parts(out.contents() as *const f32, len) })
+  });
+  return_out_buffer(out);
+  result
 }
 
 /// What one launch of a chunked batch needs: the row that starts it and how
@@ -426,8 +561,9 @@ impl<S: SeedExt, B> Fgn<f32, S, B> {
   }
 
   /// Runs the pipeline chunk by chunk, handing `consume` the rows of each
-  /// launch as the device left them. The rows are consumed before the next
-  /// launch, which reuses the same cached buffer behind them.
+  /// launch as the device left them. The read-out is borrowed for exactly as
+  /// long as `consume` runs, so no other launch — on this thread or another —
+  /// can be writing the rows it is reading.
   fn over_metal_chunks<S2: SeedExt>(
     &self,
     m: usize,
@@ -437,30 +573,24 @@ impl<S: SeedExt, B> Fgn<f32, S, B> {
   ) -> Result<()> {
     let (n, offset) = (self.n, self.offset);
     let out_size = n - offset;
-    let hurst = self.hurst as f64;
-    let t = self.t.unwrap_or(1.0) as f64;
     let eigs = self
       .sqrt_eigenvalues
       .as_slice()
       .expect("the eigenvalues are contiguous");
     let seed = seed_src.seed_value() as u32;
     for chunk in chunks(n, out_size, m, device) {
-      let (buf, cols) = sample_f32_buffer(
-        eigs,
+      let launch = Launch {
+        sqrt_eigs: eigs,
         n,
-        chunk.len,
+        m: chunk.len,
         offset,
-        hurst,
-        t,
+        hurst: self.hurst as f64,
+        t: self.t.unwrap_or(1.0) as f64,
         seed,
-        (chunk.first * 2 * n) as u64,
-        device.ordinal,
-      )?;
-      // SAFETY: shared storage the launch has finished writing into, of at
-      // least `chunk.len * cols` floats by construction.
-      let rows =
-        unsafe { std::slice::from_raw_parts(buf.contents() as *const f32, chunk.len * cols) };
-      consume(&chunk, rows)?;
+        first_cell: (chunk.first * 2 * n) as u64,
+        ordinal: device.ordinal,
+      };
+      with_f32_rows(launch, |rows| consume(&chunk, rows))?;
     }
     Ok(())
   }

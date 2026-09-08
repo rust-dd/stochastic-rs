@@ -2023,6 +2023,7 @@ pub trait EulerKernel<T: FloatExt>: Backend {
     seed: u64,
     reduce: Reduce,
   ) -> Result<Vec<T>, DeviceError> {
+    let reduce = reduce.folded();
     self.euler_kernel_lend(process, first, m, seed, |view| {
       view
         .outer_iter()
@@ -2052,11 +2053,20 @@ pub trait EulerKernel<T: FloatExt>: Backend {
     seed: u64,
   ) -> Result<Array3<T>, DeviceError> {
     let n = process.grid_points();
-    let rows = crate::device::chunk_rows(self.batch_budget(), n * D, std::mem::size_of::<T>());
+    // A launch writes one plane per component the *family* reports, which
+    // `check_arity` allows to exceed the `D` the process reads back out — the
+    // Bergomi family reports four where its process takes two. Both the
+    // budget and the assembled array follow the launch, not `D`, or the
+    // chunks do not fit the array they are assigned into.
+    let (code, _) = process.euler_spec().encode();
+    let planes = families::Family::from_code(code)
+      .expect("a declared family")
+      .components();
+    let rows = crate::device::chunk_rows(self.batch_budget(), n * planes, std::mem::size_of::<T>());
     if m <= rows {
       return self.euler_system_kernel(process, 0, m, seed);
     }
-    let mut out = Array3::<T>::zeros((D, m, n));
+    let mut out = Array3::<T>::zeros((planes, m, n));
     crate::device::over_chunks(m, rows, |first, len| {
       let chunk = self.euler_system_kernel(process, first, len, seed)?;
       out
@@ -2418,6 +2428,21 @@ pub enum Reduce {
 }
 
 impl Reduce {
+  /// The mode a *reduced* launch runs, which is never [`Reduce::None`].
+  ///
+  /// `None` is the default, and it reaches the reduce entry points whenever
+  /// a caller writes `sample_reduce(m, Default::default())`. On the host it
+  /// folds to the terminal value, because that is what
+  /// [`fold_row`](Self::fold_row) does with it; a device asked to store the
+  /// whole grid and then read one value a path would hand back the first
+  /// `m` cells of path zero. They agree by both taking this.
+  pub(crate) fn folded(self) -> Self {
+    match self {
+      Reduce::None => Reduce::Terminal,
+      other => other,
+    }
+  }
+
   /// Values a path writes under this mode: one, or the whole grid. What a
   /// launch multiplies by `paths` to size its output.
   pub fn stride(self, steps: usize) -> usize {
@@ -2718,9 +2743,9 @@ macro_rules! kernel_euler_backend {
         std::mem::size_of::<$scalar>(),
       );
       let mut out = Vec::with_capacity(m);
-      let mut first = 0;
-      while first < m {
-        let len = rows.min(m - first);
+      // `over_chunks`, so a chunk too large for the device is retried at half
+      // the size rather than failing the batch.
+      crate::device::over_chunks(m, rows, |first, len| {
         // One buffer per rayon worker, not one allocation per path: the
         // closure takes an owned array, and allocating a fresh one for every
         // path costs about 68 ns — at a batch of a hundred thousand short
@@ -2765,8 +2790,8 @@ macro_rules! kernel_euler_backend {
           },
         )?;
         out.extend(chunk);
-        first += len;
-      }
+        Ok(())
+      })?;
       Ok(out)
     }
 
@@ -2776,6 +2801,7 @@ macro_rules! kernel_euler_backend {
       m: usize,
       reduce: Reduce,
     ) -> Result<Vec<$scalar>, DeviceError> {
+      let reduce = reduce.folded();
       let seed = process.device_seed();
       // The budget is what a *sequence* launch would need: the kernel still
       // steps the whole grid, it just does not write it, and the chunking
@@ -2786,14 +2812,14 @@ macro_rules! kernel_euler_backend {
         std::mem::size_of::<$scalar>(),
       );
       let mut out = Vec::with_capacity(m);
-      let mut first = 0;
-      while first < m {
-        let len = rows.min(m - first);
+      // `over_chunks`, so a chunk that exhausts the device is retried at half
+      // the size instead of failing the batch.
+      crate::device::over_chunks(m, rows, |first, len| {
         out.extend(<Self as EulerKernel<$scalar>>::euler_kernel_reduce(
           self, process, first, len, seed, reduce,
         )?);
-        first += len;
-      }
+        Ok(())
+      })?;
       Ok(out)
     }
 
@@ -2811,9 +2837,9 @@ macro_rules! kernel_euler_backend {
         std::mem::size_of::<$scalar>(),
       );
       let mut out = Vec::with_capacity(m);
-      let mut first = 0;
-      while first < m {
-        let len = rows.min(m - first);
+      // `over_chunks`, so a chunk too large for the device is retried at half
+      // the size rather than failing the batch.
+      crate::device::over_chunks(m, rows, |first, len| {
         // The chunk is the launch as the device holds it: on a unified-memory
         // device that is the buffer the kernel wrote, so the batch is read
         // once, where it lies, and nothing is copied or allocated per path.
@@ -2842,8 +2868,8 @@ macro_rules! kernel_euler_backend {
           },
         )?;
         out.extend(chunk);
-        first += len;
-      }
+        Ok(())
+      })?;
       Ok(out)
     }
 
@@ -2888,16 +2914,16 @@ macro_rules! kernel_euler_backend {
         std::mem::size_of::<$scalar>(),
       );
       let mut out = Vec::with_capacity(m);
-      let mut first = 0;
-      while first < m {
-        let len = rows.min(m - first);
+      // `over_chunks`, so a chunk too large for the device is retried at half
+      // the size rather than failing the batch.
+      crate::device::over_chunks(m, rows, |first, len| {
         let planes =
           <Self as EulerKernel<$scalar>>::euler_system_kernel(self, process, first, len, seed)?;
         let chunk: Vec<[Array1<$scalar>; D]> =
           (0..len).map(|row| system_row(&planes, row)).collect();
         out.extend(chunk.par_iter().map(&f).collect::<Vec<R>>());
-        first += len;
-      }
+        Ok(())
+      })?;
       Ok(out)
     }
     }

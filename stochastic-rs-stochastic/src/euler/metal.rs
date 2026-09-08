@@ -503,6 +503,7 @@ impl EulerKernel<f32> for Metal {
     seed: u64,
     reduce: Reduce,
   ) -> Result<Vec<f32>> {
+    let reduce = reduce.folded();
     let fractional = fgn_buffer(process.fgn_spec(), first, m, seed, self.ordinal)?;
     launch_paths(
       self.ordinal,

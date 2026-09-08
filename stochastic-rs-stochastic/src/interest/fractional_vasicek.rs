@@ -4,6 +4,27 @@
 //! dr_t=a(b-r_t)dt+\sigma dB_t^H
 //! $$
 //!
+//! ## Same SDE as [`Fou`]
+//!
+//! What Vasicek named is the term-structure reading of the equation, not the
+//! equation: `dr = a(b − r)dt + σ dB^H` is the fractional Ornstein-Uhlenbeck
+//! process with the short rate as its state. The dictionary is `a = `
+//! [`theta`](FVasicek::theta) `= ` [`Fou::theta`] (reversion speed), `b = `
+//! [`mu`](FVasicek::mu) `= ` [`Fou::mu`] (the level reverted to), `σ = `
+//! [`sigma`](FVasicek::sigma) `= ` [`Fou::sigma`], `H = `
+//! [`hurst`](FVasicek::hurst) `= ` [`Fou::hurst`], and `r = X`.
+//!
+//! So this type re-derives nothing. It holds a [`Fou`], its sampler *is*
+//! [`FouSampler`], and both the Euler family and the fGN pipeline it reports
+//! come from that process. The separate identity is the short-rate
+//! application — the same reason [`Vasicek`](super::vasicek::Vasicek) is
+//! distinct from [`Ou`](crate::diffusion::ou::Ou).
+//!
+//! The random stream is the one thing not shared: [`FVasicek::new`] derives a
+//! child seed for the embedded `Fou`, so the two built from one
+//! [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic) seed are
+//! independent draws of the same law.
+//!
 //! References:
 //! - Vasicek O. (1977) — *An Equilibrium Characterization of the Term
 //!   Structure*, Journal of Financial Economics 5(2), 177–188,
@@ -88,34 +109,32 @@ impl<T: FloatExt, S: SeedExt> FVasicek<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> FVasicek<T, S, B> {}
-
 /// The Euler engine's view of the fractional Vasicek model. It is the wrapped
-/// [`Fou`] under short-rate names, so both the family and the increment
-/// pipeline come from that process rather than being restated here.
+/// [`Fou`] under short-rate names, so the family, the state, the grid and the
+/// increment pipeline all come from that process rather than being restated
+/// here.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
   for FVasicek<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
-    crate::euler::EulerSpec::OrnsteinUhlenbeck {
-      theta: self.theta,
-      mu: self.mu,
-      sigma: self.sigma,
-    }
+    crate::euler::EulerCoefficients::euler_spec(&self.fou)
   }
 
   fn initial_value(&self) -> T {
-    self.x0.unwrap_or(T::zero())
+    crate::euler::EulerCoefficients::initial_value(&self.fou)
   }
 
   fn grid_points(&self) -> usize {
-    self.n
+    crate::euler::EulerCoefficients::grid_points(&self.fou)
   }
 
   fn horizon(&self) -> T {
-    self.t.unwrap_or(T::one())
+    crate::euler::EulerCoefficients::horizon(&self.fou)
   }
 
+  /// The one thing not taken from the embedded `Fou`: its seed is a child of
+  /// this one, so reading it here would give an `FVasicek` the stream of the
+  /// `Fou` it holds rather than its own.
   fn device_seed(&self) -> u64 {
     crate::euler::draw_seed(&self.seed)
   }

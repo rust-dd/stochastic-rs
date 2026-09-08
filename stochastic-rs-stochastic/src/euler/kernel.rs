@@ -182,10 +182,18 @@ use super::Reduce;
 
 impl Reduce {
   /// The identity the accumulator starts at, as a C literal.
-  fn identity(self) -> &'static str {
-    match self {
-      Reduce::Max => "-INFINITY",
-      Reduce::Min => "INFINITY",
+  ///
+  /// The extremes are the largest finite magnitude of the precision rather
+  /// than `INFINITY`: that name is a `<math.h>` macro, and NVRTC compiles
+  /// with no host headers. A value past it would already be an infinity, so
+  /// nothing a launch can produce escapes the identity.
+  fn identity(self, lang: &Language<'_>) -> &'static str {
+    let wide = lang.real != "float";
+    match (self, wide) {
+      (Reduce::Max, false) => "(REAL)-3.402823466e+38",
+      (Reduce::Max, true) => "(REAL)-1.7976931348623157e+308",
+      (Reduce::Min, false) => "(REAL)3.402823466e+38",
+      (Reduce::Min, true) => "(REAL)1.7976931348623157e+308",
       _ => "(REAL)0",
     }
   }
@@ -204,7 +212,7 @@ impl Reduce {
 /// The four splices a launch's output mode makes in the frame: the stride of
 /// a path in the buffer, the accumulator's declaration, and what the entry
 /// point, each step and the end of the loop do with a value.
-fn reduce_splices(reduce: Reduce) -> [(&'static str, String); 5] {
+fn reduce_splices(reduce: Reduce, lang: &Language<'_>) -> [(&'static str, String); 5] {
   let store = |index: &str| {
     format!(
       "        for (unsigned int c = 0u; c < COMPONENTS; c++) {{ out[(INDEX)c * plane + base{index}] = acc[c]; }}"
@@ -230,7 +238,7 @@ fn reduce_splices(reduce: Reduce) -> [(&'static str, String); 5] {
         "ACC_DECL",
         format!(
           "    REAL acc[4];\n    for (unsigned int c = 0u; c < 4u; c++) {{ acc[c] = {}; }}",
-          reduce.identity()
+          reduce.identity(lang)
         ),
       ),
       (
@@ -696,11 +704,17 @@ const FRAME_JUMP_LAWS: &str = r#"        js = (REAL)0;
             unsigned int sb = (g ^ 1013904223u) ^ (seed * 2654435761u);
             sb ^= sb >> 16; sb *= 2246822519u; sb ^= sb >> 13; sb *= 3266489917u; sb ^= sb >> 16;
             REAL va = ((REAL)sa * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6 - (REAL)0.5) * (REAL)3.141592653589793;
-            REAL wv = -STOCH_FAST_LOG((REAL)sb * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6);
+            REAL wv = -STOCH_LOG((REAL)sb * (REAL)2.3283064e-10 * (REAL)0.999998 + (REAL)1.0e-6);
             REAL ia = (REAL)1 / jump_a;
-            REAL ratio = STOCH_FAST_COS(va - jump_a * va) / wv;
+            REAL ratio = STOCH_COS(va - jump_a * va) / wv;
             if (ratio < (REAL)1.0e-30) { ratio = (REAL)1.0e-30; }
-            REAL xs = STOCH_SIN(jump_a * va) / STOCH_POW(STOCH_FAST_COS(va), ia) * STOCH_POW(ratio, ((REAL)1 - jump_a) * ia);
+            // The accurate cosine, not the sampling one, and the accurate
+            // logarithm with it. Both feed a power of `1/alpha`, which turns
+            // an approximate intrinsic's *absolute* error bound into an
+            // unbounded relative one as the angle approaches ±pi/2 and then
+            // amplifies it a hundredfold at `alpha = 0.01`. A draw's worth of
+            // accuracy is cheap here: this runs once a jump, not once a step.
+            REAL xs = STOCH_SIN(jump_a * va) / STOCH_POW(STOCH_COS(va), ia) * STOCH_POW(ratio, ((REAL)1 - jump_a) * ia);
             js = jump_b * STOCH_POW(nj, ia) * xs;
         }"#;
 
@@ -733,7 +747,7 @@ const FRAME_PROGRAM: &str = r#"        if (program_n != 0u) {
                     else if (code == 10u) { pst[psp - 1u] = -pst[psp - 1u]; }
                     else if (code == 11u) { pst[psp - 1u] = STOCH_SQRT(pst[psp - 1u]); }
                     else if (code == 12u) { pst[psp - 1u] = STOCH_EXP(pst[psp - 1u]); }
-                    else if (code == 13u) { pst[psp - 1u] = STOCH_FAST_LOG(pst[psp - 1u]); }
+                    else if (code == 13u) { pst[psp - 1u] = STOCH_LOG(pst[psp - 1u]); }
                     else if (code == 14u) { pst[psp - 1u] = STOCH_ABS(pst[psp - 1u]); }
                     else if (code == 15u) { pst[psp - 1u] = STOCH_TANH(pst[psp - 1u]); }
                 }
@@ -1086,7 +1100,7 @@ pub(crate) fn render_for(lang: &Language<'_>, shape: Shape) -> String {
     }
     format!("{indent}{{\n{}\n{indent}}}", body.trim_end_matches('\n'))
   };
-  let body = reduce_splices(shape.reduce)
+  let body = reduce_splices(shape.reduce, lang)
     .iter()
     .fold(body, |body, (name, code)| body.replace(name, code));
   let body = body
@@ -1119,7 +1133,13 @@ pub(crate) fn render(lang: &Language<'_>) -> String {
     .iter()
     .map(|(block, _)| *block)
     .collect::<Vec<_>>()
-    .join("\n")
+    .join("\n");
+  // The output mode's splices first: `ACC_STEP` has to become the store
+  // before `STEP` is substituted, or the substitution rewrites the middle of
+  // its name and the text stops being C.
+  let body = reduce_splices(Reduce::None, lang)
+    .iter()
+    .fold(body, |body, (name, code)| body.replace(name, code))
     .replace("NOISES", "noises")
     .replace("COMPONENTS", "components")
     .replace("SERIES", super::families::C_SERIES.trim_end_matches('\n'))
@@ -1319,6 +1339,52 @@ mod tests {
         !source.contains("U64"),
         "{name}: the wide-integer placeholder survived rendering"
       );
+    }
+  }
+
+  /// Every output mode renders to C, in both languages.
+  ///
+  /// Nothing else covers this. `render` only ever asks for
+  /// [`Reduce::None`], `Shape::new` pins the same, and the two devices'
+  /// suites run on whichever machine has that device — so a mode's four
+  /// splices and its identity literal reach a compiler only when someone
+  /// calls `sample_reduce` on hardware. That is how `INFINITY` — a
+  /// `<math.h>` macro, and NVRTC compiles with no host headers — sat in the
+  /// `Max` and `Min` identities without anything noticing.
+  #[test]
+  fn every_reduction_renders_in_both_languages() {
+    use super::Shape;
+    use super::render_for;
+    use crate::euler::Reduce;
+    use crate::euler::families::Family;
+
+    let family = Family::GeometricBrownian;
+    for (name, lang) in languages() {
+      for reduce in [
+        Reduce::None,
+        Reduce::Terminal,
+        Reduce::Max,
+        Reduce::Min,
+        Reduce::Sum,
+      ] {
+        let shape = Shape::new(family, false, false).with_reduce(reduce);
+        let source = format!("{}{}", prelude(&lang), render_for(&lang, shape));
+        for placeholder in ["STOCH_", "ACC_", "STRIDE", "INDEX", "U64", "REAL "] {
+          assert!(
+            !source.contains(placeholder),
+            "{name} {reduce:?}: `{placeholder}` survived rendering"
+          );
+        }
+        assert!(
+          !source.contains("INFINITY"),
+          "{name} {reduce:?}: `INFINITY` is a math.h macro and NVRTC has no host headers"
+        );
+        let opens = source.matches('{').count();
+        let closes = source.matches('}').count();
+        assert_eq!(opens, closes, "{name} {reduce:?}: unbalanced braces");
+        let stores = source.matches("out[").count();
+        assert!(stores > 0, "{name} {reduce:?}: the kernel writes nothing");
+      }
     }
   }
 

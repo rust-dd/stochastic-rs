@@ -74,7 +74,11 @@ fn main() {
 
   println!("kernel as the driver sees it, at {BLOCK} threads per block");
   for real in ["float", "double"] {
-    match kernel_profile(0, real, BLOCK) {
+    // The same ordinal every benchmark below runs on, not a hardcoded zero:
+    // `kernel_profile` rebinds the process-wide kernel cache to the ordinal
+    // it is given, so asking about device 0 while the batches run on device 1
+    // would both answer the wrong question and throw away their buffers.
+    match kernel_profile(Cuda::default().ordinal, real, BLOCK) {
       Ok(p) => println!(
         "  {real:6}  {:4} registers/thread  {:6} B local/thread  {:5} B shared  \
          max block {:4}  {:2} blocks/SM  ({:3}% of this SM's {} thread slots)",

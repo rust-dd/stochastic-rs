@@ -1,13 +1,31 @@
 //! # Ou
 //!
 //! $$
-//! dX_t=\kappa(\theta-X_t)\,dt+\sigma\,dW_t
+//! dX_t=\theta(\mu-X_t)\,dt+\sigma\,dW_t
 //! $$
+//!
+//! The symbols are the field names: `theta` is the reversion speed, `mu` the
+//! level the path reverts to, `sigma` the noise scale. A general `mu` is the
+//! standard form of the process — the zero-mean `dX = −θX dt + σ dW` is the
+//! `mu = 0` case of it, not a different equation.
+//!
+//! ## Same SDE as [`Vasicek`]
+//!
+//! [`Vasicek`] is this equation under short-rate vocabulary: its `a` is this
+//! `theta` (speed), its `b` is this `mu` (level), its `r` is this `X`. The
+//! two are not parallel implementations — `Vasicek` holds an `Ou`, samples
+//! through [`OuSampler`] and reports this process's Euler family, so there
+//! is one recursion and one device kernel behind both names. What differs is
+//! the application: reach for `Ou` when the state is a spread, a log-price
+//! or a mean-reverting signal, and for `Vasicek` when it is a short rate and
+//! the bond, yield-curve and calibration machinery in `stochastic-rs-quant`
+//! applies to it.
 //!
 //! Reference: Uhlenbeck G. E., Ornstein L. S. (1930) — *On the Theory of
 //! the Brownian Motion*, Physical Review 36(5), 823–841,
 //! DOI: 10.1103/PhysRev.36.823.
 //!
+//! [`Vasicek`]: crate::interest::vasicek::Vasicek
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -24,11 +42,13 @@ use crate::traits::ProcessExt;
 
 #[derive(Clone, Copy)]
 pub struct Ou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Mean-reversion speed (κ in the SDE `dX = κ(θ − X) dt + σ dW`). Controls
-  /// how fast `X` is pulled back toward [`mu`](Self::mu).
+  /// Mean-reversion speed (θ in the SDE `dX = θ(μ − X) dt + σ dW`). Controls
+  /// how fast `X` is pulled back toward [`mu`](Self::mu). The same quantity
+  /// [`Vasicek::theta`](crate::interest::vasicek::Vasicek::theta) calls `a`.
   pub theta: T,
-  /// Long-run mean level (θ in the SDE). The value `X` reverts to as
-  /// `t → ∞`.
+  /// Long-run mean level (μ in the SDE). The value `X` reverts to as
+  /// `t → ∞`. The same quantity
+  /// [`Vasicek::mu`](crate::interest::vasicek::Vasicek::mu) calls `b`.
   pub mu: T,
   /// Diffusion scale σ multiplying `dW_t` (σ in the SDE).
   pub sigma: T,
@@ -178,7 +198,9 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Ou<T, S, B> 
 }
 
 /// Reusable [`Ou`] sampling state: precomputed mean-reversion scales and the
-/// owned Gaussian source.
+/// owned Gaussian source. Also the whole of
+/// [`Vasicek`](crate::interest::vasicek::Vasicek)'s sampler, which is an
+/// alias for this type — the mean-reverting recursion is written once.
 #[doc(hidden)]
 pub struct OuSampler<T: FloatExt> {
   n: usize,
