@@ -421,6 +421,47 @@ pub trait FgnBackend<T: FloatExt>: Backend {
     seed: &S2,
   ) -> Result<Vec<Array1<T>>, DeviceError>;
 
+  /// `f` over `m` fGN paths, mapped where the batch lies.
+  ///
+  /// A device produces the batch as one `m × n` block and the default here
+  /// splits it into `m` owned arrays before the caller sees a single value —
+  /// at ten thousand paths over four thousand points that is ten thousand
+  /// allocations and a hundred and sixty megabytes copied, on whatever host
+  /// the card is attached to, which is several times the transfer that
+  /// preceded it. A device overrides this to hand `f` the rows themselves.
+  ///
+  /// The CPU devices have nothing to save: their paths are owned arrays from
+  /// the start, so the default is what they should do.
+  fn try_generate_map<S: SeedExt, S2: SeedExt, R: Send>(
+    &self,
+    fgn: &Fgn<T, S, Self>,
+    m: usize,
+    seed: &S2,
+    f: impl Fn(ndarray::ArrayView1<T>) -> R + Sync,
+  ) -> Result<Vec<R>, DeviceError> {
+    Ok(
+      self
+        .try_generate_batch(fgn, m, seed)?
+        .iter()
+        .map(|path| f(path.view()))
+        .collect(),
+    )
+  }
+
+  /// [`try_generate_map`](Self::try_generate_map), panicking with the
+  /// device's error.
+  fn generate_map<S: SeedExt, S2: SeedExt, R: Send>(
+    &self,
+    fgn: &Fgn<T, S, Self>,
+    m: usize,
+    seed: &S2,
+    f: impl Fn(ndarray::ArrayView1<T>) -> R + Sync,
+  ) -> Vec<R> {
+    self
+      .try_generate_map(fgn, m, seed, f)
+      .unwrap_or_else(device_panic)
+  }
+
   /// [`try_generate`](Self::try_generate), panicking with the device's error.
   fn generate<S: SeedExt, S2: SeedExt>(&self, fgn: &Fgn<T, S, Self>, seed: &S2) -> Array1<T> {
     self.try_generate(fgn, seed).unwrap_or_else(device_panic)
@@ -552,6 +593,32 @@ macro_rules! gpu_backend {
               .collect(),
           )
         }
+
+        fn try_generate_map<S: SeedExt, S2: SeedExt, R: Send>(
+          &self,
+          fgn: &Fgn<$scalar, S, Self>,
+          m: usize,
+          seed: &S2,
+          f: impl Fn(ndarray::ArrayView1<$scalar>) -> R + Sync,
+        ) -> Result<Vec<R>, DeviceError> {
+          use rayon::prelude::*;
+          let batch = fgn.$sampler(m, seed, self)?;
+          // The rows of the block the device filled, read where they are.
+          // Owning them first is what the batch form does, and on a slow
+          // host that copy costs several times the transfer.
+          Ok(match batch.as_slice() {
+            Some(flat) => flat
+              .par_chunks(fgn.out_len.max(1))
+              .map(|row| f(ndarray::ArrayView1::from(row)))
+              .collect(),
+            None => batch
+              .outer_iter()
+              .collect::<Vec<_>>()
+              .into_par_iter()
+              .map(&f)
+              .collect(),
+          })
+        }
       }
     )+
   };
@@ -610,6 +677,42 @@ impl<T: FloatExt> FgnBackend<T> for Accelerate {
             .sample_accelerate_impl(len, &chunk_seed)?
             .outer_iter()
             .map(|row| row.to_owned())
+            .collect::<Vec<_>>(),
+        )
+      })
+      .collect::<Result<Vec<_>, DeviceError>>()
+      .map(|chunks| chunks.into_iter().flatten().collect())
+  }
+
+  /// vDSP fills a chunk as one block, the same as a GPU does, so the rows are
+  /// read where they lie rather than owned first — the one place an
+  /// Accelerate batch was paying a copy a path.
+  ///
+  /// The chunking, the per-chunk seed derivation and the order they are
+  /// flattened back in are the batch form's, unchanged: this maps the same
+  /// paths, in the same order, from the same streams.
+  fn try_generate_map<S: SeedExt, S2: SeedExt, R: Send>(
+    &self,
+    fgn: &Fgn<T, S, Self>,
+    m: usize,
+    seed: &S2,
+    f: impl Fn(ndarray::ArrayView1<T>) -> R + Sync,
+  ) -> Result<Vec<R>, DeviceError> {
+    if m == 0 {
+      return Ok(Vec::new());
+    }
+    let chunks = chunk_count(m);
+    let chunk_seeds = (0..chunks).map(|_| seed.derive()).collect::<Vec<_>>();
+    chunk_lens(m, chunks)
+      .zip(chunk_seeds)
+      .collect::<Vec<_>>()
+      .into_par_iter()
+      .map(|(len, chunk_seed)| {
+        Ok(
+          fgn
+            .sample_accelerate_impl(len, &chunk_seed)?
+            .outer_iter()
+            .map(&f)
             .collect::<Vec<_>>(),
         )
       })

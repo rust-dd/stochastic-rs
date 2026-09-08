@@ -86,6 +86,30 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
     self.backend.generate_batch(self, m, &self.seed)
   }
 
+  /// Through the same batched call [`sample_par`](Self::sample_par) takes.
+  /// Without these three the trait's defaults would sample path by path on
+  /// the host while `sample_par` ran the device's pipeline — the same law,
+  /// a different stream, and none of the device's speed.
+  fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
+    self
+      .backend
+      .generate_map(self, m, &self.seed, |row| f(&row.to_owned()))
+  }
+
+  fn sample_map_view<R: Send>(
+    &self,
+    m: usize,
+    f: impl Fn(ndarray::ArrayView1<T>) -> R + Sync,
+  ) -> Vec<R> {
+    self.backend.generate_map(self, m, &self.seed, f)
+  }
+
+  fn sample_reduce(&self, m: usize, reduce: crate::euler::Reduce) -> Vec<T> {
+    self
+      .backend
+      .generate_map(self, m, &self.seed, |row| reduce.fold_row(row))
+  }
+
   fn try_sample(&self) -> Result<Self::Output, DeviceError> {
     self.backend.try_generate(self, &self.seed)
   }
