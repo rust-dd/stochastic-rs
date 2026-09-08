@@ -797,6 +797,24 @@ pub(crate) struct Language<'a> {
   pub sqrt: &'a str,
   pub log: &'a str,
   pub cos: &'a str,
+  /// The logarithm and cosine the *sampling* code takes, which need not be
+  /// the accurate ones.
+  ///
+  /// Every `STOCH_LOG` and `STOCH_COS` in the frame is a random draw — a
+  /// Box-Muller normal, an exponential waiting time, a Marsaglia-Tsang
+  /// rejection test — where a relative error of `2^-21` moves a normal by
+  /// about one `f32` ulp and shifts a rejection boundary by as much. A
+  /// family's own mathematics keeps the accurate spellings: `lang.log` and
+  /// `lang.cos` are what the DSL's `ln` and `cos` render to, and those sit
+  /// inside a model, not inside a draw.
+  ///
+  /// On CUDA these are the `__logf` / `__cosf` intrinsics, which are a
+  /// hardware instruction each where the accurate routines are tens; the
+  /// `double` kernel has no such pair and keeps the accurate ones. Metal
+  /// compiles its whole library in the relaxed mode, so its two are already
+  /// this.
+  pub fast_log: &'a str,
+  pub fast_cos: &'a str,
   pub sin: &'a str,
   pub exp: &'a str,
   pub pow: &'a str,
@@ -824,6 +842,8 @@ pub(crate) fn metal_language() -> Language<'static> {
     sqrt: "sqrt",
     log: "log",
     cos: "cos",
+    fast_log: "log",
+    fast_cos: "cos",
     sin: "sin",
     exp: "exp",
     pow: "pow",
@@ -855,6 +875,8 @@ pub(crate) fn cuda_language(real: &'static str) -> Language<'static> {
       sqrt: "sqrtf",
       log: "logf",
       cos: "cosf",
+      fast_log: "__logf",
+      fast_cos: "__cosf",
       sin: "sinf",
       exp: "expf",
       pow: "powf",
@@ -869,6 +891,8 @@ pub(crate) fn cuda_language(real: &'static str) -> Language<'static> {
       real,
       sqrt: "sqrt",
       log: "log",
+      fast_log: "log",
+      fast_cos: "cos",
       cos: "cos",
       sin: "sin",
       exp: "exp",
@@ -1108,8 +1132,8 @@ fn substitute(text: &str, lang: &Language<'_>) -> String {
     .replace("INDEX", lang.index)
     .replace("U64", lang.wide)
     .replace("STOCH_SQRT", lang.sqrt)
-    .replace("STOCH_LOG", lang.log)
-    .replace("STOCH_COS", lang.cos)
+    .replace("STOCH_LOG", lang.fast_log)
+    .replace("STOCH_COS", lang.fast_cos)
     .replace("STOCH_SIN", lang.sin)
     .replace("STOCH_EXP", lang.exp)
     .replace("STOCH_POW", lang.pow)

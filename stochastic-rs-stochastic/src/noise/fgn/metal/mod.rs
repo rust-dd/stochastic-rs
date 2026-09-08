@@ -93,6 +93,19 @@ unsafe impl Send for SizedMetal {}
 /// The last [`crate::device::CACHE_SLOTS`] per-size states, least recent first.
 static SIZED: Mutex<Vec<SizedMetal>> = Mutex::new(Vec::new());
 
+/// The compile options every library here is built with.
+///
+/// Metal's relaxed float mode is the default, and a default is not a promise:
+/// it has moved across OS versions, and `MTLCompileOptions` replaced the flag
+/// with a three-way mode in Metal 3.1. Setting it explicitly is what keeps a
+/// seed reproducing the same path after a system update — the values these
+/// kernels produce depend on it, and nothing else in the crate pins it.
+fn compile_options() -> CompileOptions {
+  let options = CompileOptions::new();
+  options.set_fast_math_enabled(true);
+  options
+}
+
 fn ensure_ctx(ordinal: usize) -> Result<()> {
   let mut g = CTX.lock();
   if g.as_ref().is_some_and(|c| c.ordinal == ordinal) {
@@ -105,7 +118,7 @@ fn ensure_ctx(ordinal: usize) -> Result<()> {
   let queue = device.new_command_queue();
   let source = format!("{MSL_COMMON}{MSL_FGN}");
   let lib = device
-    .new_library_with_source(&source, &CompileOptions::new())
+    .new_library_with_source(&source, &compile_options())
     .map_err(|e| DeviceError::Compile(format!("MSL compile: {e}")))?;
 
   let mk = |name: &str| -> Result<ComputePipelineState> {

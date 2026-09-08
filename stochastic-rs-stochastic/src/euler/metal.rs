@@ -119,6 +119,19 @@ kernel void euler_paths(
     const float x0[4] = { args.x0[0], args.x0[1], args.x0[2], args.x0[3] };
 "#;
 
+/// The compile options every library here is built with.
+///
+/// Metal's relaxed float mode is the default, and a default is not a promise:
+/// it has moved across OS versions, and `MTLCompileOptions` replaced the flag
+/// with a three-way mode in Metal 3.1. Setting it explicitly is what keeps a
+/// seed reproducing the same path after a system update — the values these
+/// kernels produce depend on it, and nothing else in the crate pins it.
+fn compile_options() -> CompileOptions {
+  let options = CompileOptions::new();
+  options.set_fast_math_enabled(true);
+  options
+}
+
 fn msl_source(shape: Shape) -> String {
   let lang = super::kernel::metal_language();
   let prelude = super::kernel::prelude(&lang);
@@ -294,7 +307,7 @@ fn ensure_context(ordinal: usize, shape: Shape) -> Result<()> {
   }
   let library = ctx
     .device
-    .new_library_with_source(&msl_source(shape), &CompileOptions::new())
+    .new_library_with_source(&msl_source(shape), &compile_options())
     .map_err(|e| DeviceError::Compile(format!("MSL compile: {e}")))?;
   let function = library
     .get_function("euler_paths", None)
