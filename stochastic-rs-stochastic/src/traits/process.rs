@@ -109,6 +109,31 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// [`sample_par`](Self::sample_par) keeps every path, allocating each fresh
 /// (no buffer reuse, no clone).
 ///
+/// ### What reproducibility means here
+///
+/// Three questions get confused, and only the first is a promise.
+///
+/// **Same seed, same `m`, same backend, same build.** Bit-identical, every
+/// run, on any machine, under any rayon thread-pool size. This is the
+/// guarantee, and it is what the crate's reproducibility suite tests.
+///
+/// **Same seed, different backend.** *Never* identical, by construction. The
+/// host draws from this crate's SIMD ziggurat; a device kernel hashes its own
+/// normals from `(path, step, seed)`, and the fractional pipelines transform
+/// their noise in a different order again. What the two share is the *law*,
+/// which is what the device-law suite compares — the terminal mean, the
+/// spread, the covariance, each against the host's own. A program that
+/// depends on a host path and a device path being the same numbers was never
+/// going to work; one that depends on them having the same distribution will.
+///
+/// **Same seed, different version of this crate.** Not promised. A sampler's
+/// stream is an implementation detail, and two things move it: a correctness
+/// fix — where the old numbers were wrong, so they had to — and a
+/// performance change that reorders how draws are assigned to paths. The
+/// second kind is called out in the release notes with the backend and the
+/// processes it touches, so a stored result can be re-blessed deliberately
+/// rather than discovered by a failing diff. Within a release, nothing moves.
+///
 /// ### Reproducibility requirement on implementors
 ///
 /// Sequential chunk construction only produces bit-identical, thread-count-
