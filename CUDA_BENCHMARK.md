@@ -156,26 +156,61 @@ divide by a hard-coded 2048 and print that as 50 %; it now reads
 
 | paths | steps | dtype | cpu ms | cuda ms | CPU | CUDA | speed-up |
 |---:|---:|---|--:|--:|--:|--:|--:|
-| 10 000 | 1 024 | `f32` | 49.2 | 32.9 | 0.21 G | **0.31 G** | 1.50× |
-| 50 000 | 1 024 | `f32` | 243.4 | 186.1 | 0.21 G | **0.28 G** | 1.31× |
-| 10 000 | 4 096 | `f32` | 192.9 | 141.8 | 0.21 G | **0.29 G** | 1.36× |
-| 10 000 | 1 024 | `f64` | 49.1 | 74.7 | **0.21 G** | 0.14 G | 0.66× |
-| 50 000 | 1 024 | `f64` | 351.0 | 410.5 | **0.15 G** | 0.12 G | 0.86× |
-| 10 000 | 4 096 | `f64` | 196.4 | 334.6 | **0.21 G** | 0.12 G | 0.59× |
+| 10 000 | 1 024 | `f32` | 48.0 | **4.4** | 0.21 G | **2.35 G** | 11.01× |
+| 50 000 | 1 024 | `f32` | 242.7 | **67.0** | 0.21 G | **0.76 G** | 3.62× |
+| 10 000 | 4 096 | `f32` | 192.5 | **16.7** | 0.21 G | **2.45 G** | 11.49× |
+| 10 000 | 1 024 | `f64` | 48.6 | **15.6** | 0.21 G | **0.66 G** | 3.12× |
+| 50 000 | 1 024 | `f64` | 362.3 | **81.9** | 0.14 G | **0.63 G** | 4.43× |
+| 10 000 | 4 096 | `f64` | 192.3 | **51.5** | 0.21 G | **0.80 G** | 3.74× |
+
+The 50 000-path `f32` row is the one to distrust: the run before this one, on
+the same code and the same kind of runtime, read 31.6 ms and 1.62 G. Colab's
+GPU is shared and that row moves the most bytes of the six — 205 MB — so it
+is the most exposed to a neighbour. Read it as somewhere between 0.8 and 1.6
+rather than as a regression.
+
+### The fold in the kernel
+
+The same shapes, `sample_map_view` against `sample_reduce`, which returns one
+value a path instead of the whole grid:
+
+| paths | steps | mapped | reduced | | reduced |
+|---:|---:|-------:|--------:|---:|--------:|
+| 10 000 | 1 024 | 4.3 ms | **0.2 ms** | 18.2× | 43.3 G steps/s |
+| 50 000 | 1 024 | 62.5 ms | **0.6 ms** | 102.0× | 83.5 G steps/s |
+| 10 000 | 4 096 | 16.7 ms | **0.8 ms** | 21.9× | 53.6 G steps/s |
+
+**This is what makes the card worth its bus.** Every other entry point sends
+`paths × steps` four-byte values back across PCIe; this one sends `paths`, so
+the crossing shrinks by the grid factor — 205 MB becomes 200 KB in the middle
+row. The card stops waiting on the bus and starts running its kernel, which
+is why this is 18× to 102× where lending the buffer was 5× to 8×.
+
+Numbers that steep are worth checking against the hardware rather than
+believing. A T4 issues one instruction per warp scheduler per cycle over a
+warp of 32 threads: 4 × 32 × 40 SM × 1.59 GHz = **8.1 × 10¹² thread
+instructions a second**. At 85 G steps/s that is 95 instructions a step, at
+51 G it is 159. A GBM step — the counter hash, a Box-Muller pair, the Euler
+update — is roughly 40 to 50 with `__logf`/`__cosf`, so these sit at 30 to
+50 % of peak issue. Steep, and possible; the fast transcendentals are what
+put it there, since the accurate `logf` and `cosf` are tens of instructions
+each on their own.
 
 **The per-shape kernel did what it was for.** The monolithic body cost this
 same card 80 registers and **3 552 bytes of local memory per thread**, three
 blocks a multiprocessor, 37 % occupancy and 0.15 G steps/s against 0.21 on
 its host. Rendering one kernel per launch shape took the local memory to
-**zero**, the registers to **31**, the occupancy to a full multiprocessor,
-and the throughput to **0.31** — a doubling, and the difference between 0.7×
-the host and 1.3–1.5×.
+**zero**, the registers to **31** and the occupancy to a full multiprocessor.
+That alone doubled the throughput; everything past it was the road home.
 
-**`f64` is slower than this machine's own CPU, and that is the card.** A T4
-runs double precision at **1/32** of its single-precision rate; it is a
-consumer inference part with the FP64 units cut down. Use `f32` on such a
-card. `f64` on the device is for parts with a real double ratio — an A100 or
-H100 at 1/2 — where the same kernel has sixteen times the headroom.
+**`f64` is not slower than this machine's own CPU, and this corrects what
+this file said before.** At 0.59–0.86× the natural reading was the T4's 1/32
+double-precision rate, so the hardware had spoken. It had not: `f64` moves
+twice the bytes and was paying twice the host-side copy. The evidence was in
+the table — the `f64` rows took 2.1–2.3× the `f32` rows, where a kernel-bound
+`f64` run on this card would have taken thirty. With the copy gone `f64` runs
+at **3.1–4.4×** its host. Prefer `f32` on a consumer card for the bytes, not
+for the ALU.
 
 ### fGN on the same machine, for contrast
 
@@ -183,27 +218,28 @@ The FFT pipeline, not the engine: `sample_par`, `f32`, H = 0.7, best of five.
 
 | paths | points | cpu ms | cuda ms | speed-up |
 |---:|---:|--:|--:|--:|
-| 1 000 | 4 096 | 81.3 | 23.1 | **3.52×** |
-| 1 000 | 16 384 | 355.0 | 125.1 | **2.84×** |
-| 10 000 | 4 096 | 852.2 | 318.4 | **2.68×** |
+| 1 000 | 4 096 | 83.6 | 20.6 | **4.07×** |
+| 1 000 | 16 384 | 360.4 | 117.7 | **3.06×** |
+| 10 000 | 4 096 | 891.5 | 301.4 | **2.96×** |
 
-fGN stays the best case here at **2.7–3.5×**, and for two reasons the engine
-does not share: an FFT does O(n log n) device work per byte returned where a
-Euler step does O(1), and above 32 MB the fGN sampler stages its copy back
-through pinned memory into a pre-faulted output, which the engine's single
-launch does not.
+fGN sits at **3.0–4.1×** and none of the engine's changes touched it — the
+Metal pipeline was rewritten today, the CUDA one was not. An FFT does
+O(n log n) device work per byte returned where a Euler step does O(1), which
+is why it led for so long; the engine has now overtaken it, because a folded
+batch returns almost no bytes at all.
 
 ### Where the T4's time actually goes
 
 *Written when the card measured 0.31 G steps/s, and kept because the
-diagnosis is what produced the 2.35 G above. Read it as history: items 1 and
-2 of the ranked list at the end have since landed, and the combined result
-was 5–8×, not the 2–2.8× estimated here — the estimates assumed a
-desktop-class host, where a two-vCPU VM makes every host-side byte more
-expensive than the bus.*
+diagnosis is what produced everything above it. Read it as history: the
+host-side items of the ranked list at the end have landed and were worth
+5–8×, not the 2–2.8× estimated here — the estimates assumed a desktop-class
+host, where a two-vCPU VM makes every host-side byte dearer than the bus.
+Folding in the kernel, which the list did name as the largest remaining
+item, then took the shapes it applies to another 18× to 102×.*
 
-An M4 Max reaches **10.10** G steps/s on the same kernel and the T4 **0.31**
-— 33×, where the two cards are within about 2× of each other in raw `f32`
+An M4 Max reached **10.10** G steps/s on the same kernel where the T4 read
+**0.31** — 33×, where the two cards are within about 2× of each other in raw `f32`
 throughput (T4 ≈ 8.1 TFLOPS, M4 Max GPU ≈ 16). Hardware explains almost none
 of it. The numbers say where the rest is.
 
