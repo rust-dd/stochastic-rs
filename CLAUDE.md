@@ -76,13 +76,13 @@ older summary.
 use stochastic_rs::prelude::*;
 ```
 
-Brings **25** items in 6 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"`):
+Brings **26** items in 6 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"`):
 
 - **Trait core**: `RealExt`, `FloatExt`, `SimdFloatExt`, `ProcessExt`, `BivariateExt`, `MultivariateExt`, `DistributionExt`, `DistributionSampler`, `TimeExt`
 - **Pricing**: `ModelPricer`
 - **Calibration**: `Calibrator`, `CalibrationResult`, `ToModel`
 - **Option types**: `Moneyness`, `OptionStyle`, `OptionType`
-- **Backend / sampling**: `Backend`, `Cpu`, `PathSampler`, `VolterraKernel`
+- **Backend / sampling**: `Backend`, `Cpu`, `PathSampler`, `VolterraKernel`, `Reduce`
 - **Estimation**: `HurstEstimator`, `FractalDimEstimator`, `HypothesisTest`, `DiffusionModel`, `TailDependence`
 
 `MultivariateExt` joined the prelude in 3.0, when the linalg stack moved to the pure-Rust faer and its feature-gate exclusion reason died. `CallableDist` (python-only) stays reachable via `traits::*` but out of the prelude to keep it feature-flag-free. Same for `ShortRatePricer` (prices off a yield curve, not a spot/strike query), the two markers `VanillaEuropeanCall` / `ToShortRateModel`, and `GreeksExt` (2 implementors, both Monte Carlo estimators, 0 generic consumers — a no-argument trait beside a query-taking `ModelPricer` advertised a symmetry the crate does not have). The `Instrument`/`InstrumentExt`/`PricingEngine`/`PricingResult` four left the prelude in 3.0: two instruments and two engines (three engine×instrument pairings) are a cross-engine comparison harness for validating models on the same European vanilla, not a third pricing layer — the crate's two layers are `ModelPricer` (spot/strike query) and the instruments' `.valuation(curve)`. All four stay hub-reachable via `traits::*`, as are `FgnBackend`, `SheetBackend` and `EulerBackend` (the fGN, sheet-pipeline and Euler-engine capability subtraits of the prelude's `Backend` device marker — named only when writing generic code over backends). `EulerKernel` and `EulerSystem` left the hub in 3.0: with `EulerSpec`, `EulerCoefficients`, the lift/table/program specs and the slot caps they are the engine's own machinery — `pub` for the crate's tests and probes, `#[doc(hidden)]`, outside the stability promise (see the `euler` module doc's "What is public here").

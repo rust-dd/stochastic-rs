@@ -78,6 +78,7 @@ pub mod prelude {
   pub use crate::traits::PathSampler;
   pub use crate::traits::ProcessExt;
   pub use crate::traits::RealExt;
+  pub use crate::traits::Reduce;
   pub use crate::traits::SimdFloatExt;
   pub use crate::traits::TailDependence;
   pub use crate::traits::TimeExt;
