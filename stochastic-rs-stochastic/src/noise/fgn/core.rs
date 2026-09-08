@@ -72,39 +72,45 @@ impl<T: FloatExt, S: SeedExt> Fgn<T, S, Cpu> {
     let out_len = n;
     let n = n.next_power_of_two();
     let circ_len = 2 * n;
-    let f2h = T::from_usize_(2) * hurst;
-    let half = T::from_f64_fast(0.5);
+    // The embedding is built in double precision whatever `T` is, and only
+    // the square roots that come out of it are narrowed.
+    //
+    // The autocovariance is a second difference of `k^{2H}`, and second
+    // differences cancel: at `H = 0.7` and `k = 4000` the three terms are
+    // each about 2.6e5 and their combination about 1e-1, six digits gone. In
+    // `f32` that leaves nothing — the value is 12 % wrong by `k = 1000` and
+    // *exactly zero* past `k ≈ 4000`, so the kernel flattens, every
+    // eigenvalue but the first collapses, and the sampler returns white
+    // noise: lag-one autocorrelation −0.006 against a theoretical 0.3195 at
+    // `n = 16384`. It is a setup cost paid once per parameter set, so there
+    // is nothing to save by narrowing it early.
+    let f2h = 2.0 * hurst.to_f64().unwrap_or(0.5);
 
-    let mut buf = Array1::<Complex<T>>::zeros(circ_len);
+    let mut buf = Array1::<Complex<f64>>::zeros(circ_len);
     let buf_slice = buf.as_slice_mut().unwrap();
-    buf_slice[0] = Complex::new(T::one(), T::zero());
+    buf_slice[0] = Complex::new(1.0, 0.0);
     for k in 1..=n {
-      let kf = T::from_usize_(k);
-      let val = half
-        * ((kf + T::one()).powf(f2h) - T::from_usize_(2) * kf.powf(f2h)
-          + (kf - T::one()).powf(f2h));
-      buf_slice[k] = Complex::new(val, T::zero());
+      let kf = k as f64;
+      let val = 0.5 * ((kf + 1.0).powf(f2h) - 2.0 * kf.powf(f2h) + (kf - 1.0).powf(f2h));
+      buf_slice[k] = Complex::new(val, 0.0);
       if k > 0 && k < n {
-        buf_slice[circ_len - k] = Complex::new(val, T::zero());
+        buf_slice[circ_len - k] = Complex::new(val, 0.0);
       }
     }
 
-    let fft_handler = Arc::new(FftHandler::new(circ_len));
+    let setup_handler = FftHandler::<f64>::new(circ_len);
     let mut buf_view = buf.view_mut();
-    ndfft_inplace_par(&mut buf_view, &*fft_handler, 0);
+    ndfft_inplace_par(&mut buf_view, &setup_handler, 0);
 
-    let norm = T::from_usize_(circ_len);
+    let fft_handler = Arc::new(FftHandler::new(circ_len));
+    let norm = circ_len as f64;
     let mut sqrt_eigenvalues = Array1::<T>::uninit(circ_len);
     let eig_slice =
       unsafe { std::slice::from_raw_parts_mut(sqrt_eigenvalues.as_mut_ptr() as *mut T, circ_len) };
     let buf_slice = buf.as_slice().unwrap();
     for (dst, src) in eig_slice.iter_mut().zip(buf_slice.iter()) {
       let lambda = src.re / norm;
-      *dst = if lambda > T::zero() {
-        lambda.sqrt()
-      } else {
-        T::zero()
-      };
+      *dst = T::from_f64_fast(if lambda > 0.0 { lambda.sqrt() } else { 0.0 });
     }
     let sqrt_eigenvalues = unsafe { sqrt_eigenvalues.assume_init() };
 
@@ -305,9 +311,11 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Fgn<T, S, B> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_core::simd_rng::Unseeded;
 
   use super::Fgn;
+  use crate::traits::ProcessExt;
 
   fn generate_fgn_paths(h: f64, n: usize, t: f64, m: usize) -> Vec<Vec<f64>> {
     let fgn = Fgn::<f64>::new(h, n, Some(t), Unseeded);
@@ -445,6 +453,34 @@ mod tests {
       ((cov4_emp / cov4_theory) - 1.0).abs() < 0.05,
       "lag-4 covariance mismatch: emp={cov4_emp}, theory={cov4_theory}"
     );
+  }
+
+  /// A single-precision sample keeps its long memory on a fine grid.
+  ///
+  /// The circulant kernel is a second difference of `k^{2H}`, which cancels:
+  /// in `f32` the three terms agree to six digits by `k ≈ 4000` and their
+  /// combination is then exactly zero, which flattens the kernel and leaves
+  /// the sampler drawing white noise. At `n = 16384` the pooled lag-one
+  /// autocorrelation read −0.006 against a theoretical 0.3195 before the
+  /// embedding was built in double precision — the sign itself was wrong.
+  #[test]
+  fn single_precision_keeps_its_covariance_on_a_fine_grid() {
+    let theory = 0.5 * (2.0_f64.powf(1.4) - 2.0);
+    for n in [4_096usize, 16_384] {
+      let paths = Fgn::<f32, _>::new(0.7, n, Some(1.0), Deterministic::new(11)).sample_par(40);
+      let (mut num, mut den) = (0.0_f64, 0.0);
+      for p in &paths {
+        for i in 0..p.len() - 1 {
+          num += p[i] as f64 * p[i + 1] as f64;
+        }
+        den += p.iter().map(|v| (*v as f64) * (*v as f64)).sum::<f64>();
+      }
+      let rho = num / den;
+      assert!(
+        (rho - theory).abs() < 0.02,
+        "n = {n}: lag-one autocorrelation {rho:.4}, theory {theory:.4}"
+      );
+    }
   }
 
   #[test]
