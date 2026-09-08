@@ -285,23 +285,44 @@ positions is closed under the first stages, so eleven of them now run inside
 threadgroup memory, the draw is fused into the same kernel, and the read-out
 is fused into the last stage. **Fifteen passes became three.**
 
-| paths | points | before | after | |
-|------:|-------:|-------:|------:|---:|
-| 1 000 | 4 096 | 5.92 ms | **1.50 ms** | 3.95× |
-| 1 000 | 16 384 | 26.43 ms | **8.60 ms** | 3.08× |
-| 10 000 | 4 096 | 59.00 ms | **11.87 ms** | 4.97× |
+Two more followed, and together they take the transform count down as well
+as the pass count. **Radix-4** above the tile fuses two stages in registers,
+one pass instead of two. **Davies-Harte's pair**: the transform is complex
+and its real and imaginary halves are two independent fGN paths, so claiming
+the second halves the transforms a batch needs.
 
-Bit-identical: 0 of 40 960 000 values differ at the largest shape. Traffic is
-now 64 bytes an output point against 444 before, which puts the ceiling near
-5.3 G points/s; the sampler runs at 3.45. What is left is one global pass and
-the mandatory batch write — and Davies-Harte's second path, which the
-transform already computes and the device still throws away, worth another
-1.87× when it is claimed.
+| paths | points | before | tile | + radix-4 and pairs | |
+|------:|-------:|-------:|-----:|--------------------:|---:|
+| 1 000 | 4 096 | 5.92 ms | 2.38 ms | **2.24 ms** | 3.0× |
+| 1 000 | 16 384 | 26.43 ms | 8.11 ms | **3.28 ms** | 8.0× |
+| 10 000 | 4 096 | 59.00 ms | 11.74 ms | **4.63 ms** | **12.6×** |
 
-A radix-4 pass above the tile was measured at 1.5× on the remaining passes and
-**rejected**: the compiler contracts the cross-stage multiply into an FMA and
-3.2 million of 41 million values move by a few ULP. Bit-identity is worth more
-than that here.
+That is **0.70 → 8.85 G points/s**. The thousand-path shape is noise rather
+than a gain: four million points is too little for the device work to be the
+wall, and every variant spans 1.8–2.4 ms there.
+
+**These two change the values, where the first did not.** Pairing changes
+which transform a row comes from, and two stages held in registers let the
+compiler contract the multiply-add that spans them — one to two ULP. The law
+is preserved and the realisation is not, which also reaches the fractional
+processes, since the Euler engine draws its increments from this pipeline.
+
+Bit-identity had been doing the verification, so it was replaced rather than
+dropped. The acceptance test recomputes the same keyed draw on the host in
+`f64` and sums it directly against `exp(−2πijk/M)` — a direct sum, assuming
+nothing about the device's factorisation — and compares entry against entry
+at ten positions a row across `n = 64…16 384`, at full, three-row and
+one-row chunks. Ten deliberate mutations were tried against the suite and all
+ten were caught.
+
+One of those mutations is worth naming, because the obvious test misses it.
+Feeding both halves of the transform the same normal gives each half the
+right variance *and* the right autocovariance at every lag; only the
+cross-covariance is wrong, and it is a function of the index **sum**, so a
+lag-pooled cross-correlation averages it to `O(n^{2H−2})` — 0.013 at
+`n = 512`, inside any reasonable band. The same-index, column-by-column
+cross-correlation is what separates them: 1.0 at the first column under the
+mutation, zero under the real thing.
 
 ### The fold in the kernel
 
