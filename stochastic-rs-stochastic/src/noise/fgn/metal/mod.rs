@@ -10,202 +10,50 @@
 //! at ten thousand paths over four thousand points, one stage moves 1.31 GB
 //! in 3.9 ms, 340 GB/s, and a stage that only copies the same bytes costs the
 //! same, so the twiddles and the Box-Muller are free next to the traffic.
-//! Thirteen such stages were 49 ms of a 57 ms launch. A contiguous block of
-//! 2^k bit-reversed positions is closed under the first k stages, so
-//! [`MSL_FGN`]'s `gen_tile_fft` draws its own block, permutes it and runs
-//! those k stages inside threadgroup memory, writing the batch once instead
-//! of k + 1 times; the last stage exports the scaled real part in place of
-//! the transform, which removes the read-out pass too. The butterflies are
-//! the same butterflies in the same order, so the output is bit-identical to
-//! the stage-per-dispatch pipeline this replaced — measured over 61 million
-//! values across three shapes, not assumed. Where the cut falls depends on
-//! the transform length and on how wide a threadgroup the compiled kernel
-//! admits, so both shapes it can take are swept against the embedding's own
-//! covariance by `tests/fgn_metal_tile_cuts.rs`.
+//! Thirteen such stages were 49 ms of a 57 ms launch. Three things cut that
+//! down, and all three are about passes rather than arithmetic:
+//!
+//! - A contiguous block of 2^k bit-reversed positions is closed under the
+//!   first k stages, so `gen_tile_fft` draws its own block, permutes it and
+//!   runs those k stages inside threadgroup memory — the batch is written
+//!   once instead of k + 1 times.
+//! - The stages above the tile go two to a dispatch: the quadruple a thread
+//!   of `fft_radix4` owns is closed under both, so a pair of stages is one
+//!   crossing rather than two.
+//! - The last pair exports the read-out in place of the transform, and
+//!   exports *both* halves of it. The real and imaginary parts of a
+//!   circulant-embedding transform are two independent paths of the same law
+//!   (Dietrich & Newsam 1997), so one transform serves two rows of the batch
+//!   and the pass that used to copy the read-out out disappears.
+//!
+//! Together, fifteen passes over the batch became three, over half as many
+//! transforms: 2.5x at ten thousand paths over four thousand points, on top
+//! of the 4x the tile alone was worth.
+//!
+//! **What this does not preserve is the values.** The pairing changes which
+//! transform a row comes from, and holding two stages in registers lets the
+//! compiler contract the multiply-add that spans them, so the device's output
+//! is a different realisation of the same law than earlier releases produced.
+//! A device's stream has never been reproducible across versions — see
+//! [`FgnBackend`](crate::device::FgnBackend)'s table — and the host backends
+//! are untouched. What *is* pinned, by `tests/fgn_metal_pipeline.rs`, is that
+//! every row is the transform it claims to be, entry by entry, against a
+//! direct Fourier sum over the same keyed draw; that the two rows of a pair
+//! are independent; and that a batch cut anywhere still equals one launch.
+
+mod kernels;
+
+use kernels::MSL_FGN;
 use metal::*;
 use ndarray::Array2;
 use parking_lot::Mutex;
 use stochastic_rs_core::simd_rng::SeedExt;
 
+pub(crate) use self::kernels::MSL_COMMON;
 use super::Fgn;
 use crate::device::DeviceError;
 
 type Result<T> = std::result::Result<T, DeviceError>;
-
-/// What every MSL pipeline of this crate's FFT family starts from: the
-/// uniform, the 64-bit keyed draw behind it, and the radix-2 butterfly stage.
-/// The sheet pipeline concatenates its own kernels behind it.
-pub(crate) const MSL_COMMON: &str = r#"
-#include <metal_stdlib>
-using namespace metal;
-
-inline float u01(uint x) {
-    return (float(x >> 8) + 0.5f) / 16777216.0f;
-}
-
-// SplitMix64. The counter these pipelines draw on is an element of the whole
-// batch, and a batch of a million 512-point paths already passes 2^30 of
-// them, where a 32-bit counter hands two chunks the same stream.
-inline ulong sm64(ulong x) {
-    x += 0x9e3779b97f4a7c15UL;
-    x ^= x >> 30; x *= 0xbf58476d1ce4e5b9UL;
-    x ^= x >> 27; x *= 0x94d049bb133111ebUL;
-    x ^= x >> 31;
-    return x;
-}
-
-// The four uniforms of one cell: two 64-bit mixes of the cell number under
-// the batch's seed, each read as two words.
-inline float4 u01x4(ulong cell, uint seed) {
-    ulong k = cell ^ ((ulong)seed * 0x9e3779b97f4a7c15UL);
-    ulong h1 = sm64(k);
-    ulong h2 = sm64(k ^ 0xd1b54a32d192ed03UL);
-    return float4(u01((uint)h1), u01((uint)(h1 >> 32)),
-                  u01((uint)h2), u01((uint)(h2 >> 32)));
-}
-
-kernel void fft_butterfly(
-    device float* real [[buffer(0)]],
-    device float* imag [[buffer(1)]],
-    constant uint& n [[buffer(2)]],
-    constant uint& half_stride [[buffer(3)]],
-    uint tid [[thread_position_in_grid]])
-{
-    uint butterflies_per_batch = n / 2;
-    uint batch = tid / butterflies_per_batch;
-    uint local_tid = tid % butterflies_per_batch;
-    uint stride = half_stride * 2;
-    uint group = local_tid / half_stride;
-    uint pos = local_tid % half_stride;
-    uint base = batch * n;
-    uint i = base + group * stride + pos;
-    uint j = i + half_stride;
-
-    float angle = -2.0f * 3.14159265358979323846f * float(pos) / float(stride);
-    float tw_r = cos(angle);
-    float tw_i = sin(angle);
-
-    float tr = real[j] * tw_r - imag[j] * tw_i;
-    float ti = real[j] * tw_i + imag[j] * tw_r;
-    float ar = real[i];
-    float ai = imag[i];
-
-    real[i] = ar + tr;
-    imag[i] = ai + ti;
-    real[j] = ar - tr;
-    imag[j] = ai - ti;
-}
-"#;
-
-/// The fGN kernels proper: the head of the pipeline, and its tail.
-const MSL_FGN: &str = r#"
-// The draw, the eigenvalue scale, the bit-reversal and the first `stages`
-// butterfly stages, all inside one threadgroup's tile. Each thread produces
-// two (re, im) pairs from the four uniforms of a cell of the batch, fed into
-// two Box-Muller transforms, then owns one butterfly of every stage.
-//
-// The value belonging at bit-reversed position p is the draw of the natural
-// index rev(p) — the permutation is its own inverse — so the tile can start
-// from its own positions rather than from a scatter across the batch.
-kernel void gen_tile_fft(
-    device float* real [[buffer(0)]],
-    device float* imag [[buffer(1)]],
-    device const float* sqrt_eigs [[buffer(2)]],
-    device const uint* bit_rev [[buffer(3)]],
-    constant uint& traj_size [[buffer(4)]],
-    constant uint& seed [[buffer(5)]],
-    constant ulong& first_cell [[buffer(6)]],
-    constant uint& stages [[buffer(7)]],
-    threadgroup float* sh_re [[threadgroup(0)]],
-    threadgroup float* sh_im [[threadgroup(1)]],
-    uint lid [[thread_position_in_threadgroup]],
-    uint gid [[threadgroup_position_in_grid]],
-    uint half_tile [[threads_per_threadgroup]])
-{
-    uint tile = half_tile * 2;
-    uint tile_base = gid * tile;
-    uint batch = tile_base / traj_size;
-    uint within = tile_base % traj_size;
-
-    for (uint k = lid; k < tile; k += half_tile) {
-        uint nat = bit_rev[within + k];
-        float4 u = u01x4((ulong)(batch * traj_size + nat) + first_cell, seed);
-        float r_a = sqrt(-2.0f * log(u.x + 1e-10f));
-        float r_b = sqrt(-2.0f * log(u.z + 1e-10f));
-        float eig = sqrt_eigs[nat];
-        sh_re[k] = r_a * cos(6.28318530718f * u.y) * eig;
-        sh_im[k] = r_b * cos(6.28318530718f * u.w) * eig;
-    }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-
-    for (uint s = 0; s < stages; ++s) {
-        uint half_stride = 1u << s;
-        uint stride = half_stride * 2;
-        uint group = lid / half_stride;
-        uint pos = lid % half_stride;
-        uint i = group * stride + pos;
-        uint j = i + half_stride;
-
-        float angle = -2.0f * 3.14159265358979323846f * float(pos) / float(stride);
-        float tw_r = cos(angle);
-        float tw_i = sin(angle);
-
-        float tr = sh_re[j] * tw_r - sh_im[j] * tw_i;
-        float ti = sh_re[j] * tw_i + sh_im[j] * tw_r;
-        float ar = sh_re[i];
-        float ai = sh_im[i];
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-        sh_re[i] = ar + tr;
-        sh_im[i] = ai + ti;
-        sh_re[j] = ar - tr;
-        sh_im[j] = ai - ti;
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-    }
-
-    for (uint k = lid; k < tile; k += half_tile) {
-        real[tile_base + k] = sh_re[k];
-        imag[tile_base + k] = sh_im[k];
-    }
-}
-
-// The last butterfly stage, exporting the read-out in place of the
-// transform. Only the real half leaves, so the imaginary output is never
-// formed and `imag[i]` is never read: three loads and one store where the
-// stage that writes the whole transform costs four and four, and the pass
-// that used to copy the read-out out of it disappears.
-kernel void fft_butterfly_extract(
-    device const float* real [[buffer(0)]],
-    device const float* imag [[buffer(1)]],
-    constant uint& n [[buffer(2)]],
-    constant uint& half_stride [[buffer(3)]],
-    device float* output [[buffer(4)]],
-    constant uint& out_size [[buffer(5)]],
-    constant float& scale [[buffer(6)]],
-    uint tid [[thread_position_in_grid]])
-{
-    uint butterflies_per_batch = n / 2;
-    uint batch = tid / butterflies_per_batch;
-    uint pos = tid % butterflies_per_batch;
-    uint i = batch * n + pos;
-    uint j = i + half_stride;
-
-    float angle = -2.0f * 3.14159265358979323846f * float(pos) / float(half_stride * 2);
-    float tw_r = cos(angle);
-    float tw_i = sin(angle);
-    float tr = real[j] * tw_r - imag[j] * tw_i;
-    float ar = real[i];
-
-    // Position `l` of the transform is entry `l - 1` of the read-out.
-    uint out_base = batch * out_size;
-    if (pos >= 1 && pos - 1 < out_size) {
-        output[out_base + pos - 1] = (ar + tr) * scale;
-    }
-    uint l = pos + half_stride;
-    if (l - 1 < out_size) {
-        output[out_base + l - 1] = (ar - tr) * scale;
-    }
-}
-"#;
 
 #[derive(Clone)]
 struct MetalCtx {
@@ -213,8 +61,9 @@ struct MetalCtx {
   device: Device,
   queue: CommandQueue,
   tile_pso: ComputePipelineState,
-  butterfly_pso: ComputePipelineState,
+  radix4_pso: ComputePipelineState,
   readout_pso: ComputePipelineState,
+  readout2_pso: ComputePipelineState,
 }
 
 unsafe impl Send for MetalCtx {}
@@ -234,6 +83,7 @@ struct SizedMetal {
   n: usize,
   m: usize,
   offset: usize,
+  parity: u32,
   hurst_bits: u64,
   t_bits: u64,
 }
@@ -268,16 +118,18 @@ fn ensure_ctx(ordinal: usize) -> Result<()> {
   };
 
   let tile_pso = mk("gen_tile_fft")?;
-  let butterfly_pso = mk("fft_butterfly")?;
-  let readout_pso = mk("fft_butterfly_extract")?;
+  let radix4_pso = mk("fft_radix4")?;
+  let readout_pso = mk("fft_radix4_extract")?;
+  let readout2_pso = mk("fft_butterfly_extract")?;
 
   *g = Some(MetalCtx {
     ordinal,
     device,
     queue,
     tile_pso,
-    butterfly_pso,
+    radix4_pso,
     readout_pso,
+    readout2_pso,
   });
   Ok(())
 }
@@ -290,14 +142,20 @@ fn ensure_ctx(ordinal: usize) -> Result<()> {
 /// bounded by what the compiled kernel admits per threadgroup — 1024 on the
 /// Apple parts measured, which puts the tile at 2048 points and 16 KB. A
 /// device that admits fewer just runs more of the stages as their own
-/// dispatch; the output does not change with the cut. The last stage always
-/// stays outside, because that is the one that exports the read-out.
+/// dispatch. The last stage always stays outside, because that is the one
+/// that exports the read-out, and the count left outside is kept even so
+/// each of them is half of a radix-4 pair — a stage shifted into the tile
+/// costs a threadgroup round trip, a stage left over costs a batch one.
 fn tile_plan(log_n: usize, max_threads: usize) -> (usize, usize) {
   let mut tile_log = log_n.min(11);
   while tile_log > 1 && (1usize << (tile_log - 1)) > max_threads {
     tile_log -= 1;
   }
-  (tile_log, tile_log.min(log_n - 1))
+  let mut stages = tile_log.min(log_n - 1);
+  if (log_n - stages) % 2 == 1 && stages >= 1 {
+    stages -= 1;
+  }
+  (tile_log, stages)
 }
 
 /// Where each index of a length-`n` transform lands when its bits are
@@ -314,6 +172,15 @@ pub(crate) fn build_bit_reverse_table(n: usize) -> Vec<u32> {
 /// them to and hands that buffer over, so a consumer on the same device — the
 /// Euler engine — reads them without a round trip through host memory.
 /// Returns the buffer and the row length.
+///
+/// `first_cell` names where the launch sits in the batch: it is the absolute
+/// index of its first row times `2n`, which is what every caller already
+/// passes. One transform serves *two* rows — the real and imaginary halves of
+/// a circulant-embedding transform are two independent paths of the same law
+/// (Dietrich & Newsam 1997) — so a launch whose first row is odd computes the
+/// transform in front of it as well and drops the half it does not own. Which
+/// values a row gets is therefore a function of its absolute index alone, and
+/// a batch cut anywhere still equals one launch.
 pub(crate) fn sample_f32_buffer(
   sqrt_eigs: &[f32],
   n: usize,
@@ -328,8 +195,11 @@ pub(crate) fn sample_f32_buffer(
   let traj_size = 2 * n;
   let out_size = n - offset;
   let scale = (out_size.max(1) as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
-  let total = m * traj_size;
   let log_n = traj_size.trailing_zeros() as usize;
+  let parity = ((first_cell / traj_size as u64) & 1) as u32;
+  let base_cell = first_cell - u64::from(parity) * traj_size as u64;
+  let transforms = (parity as usize + m).div_ceil(2);
+  let total = transforms * traj_size;
 
   ensure_ctx(ordinal)?;
   // Clone the handles out of the global lock so another size can encode
@@ -345,7 +215,14 @@ pub(crate) fn sample_f32_buffer(
   let mut sized = SIZED.lock();
   let s = crate::device::lru_slot(
     &mut sized,
-    |s| s.n == n && s.m == m && s.offset == offset && s.hurst_bits == hb && s.t_bits == tb,
+    |s| {
+      s.n == n
+        && s.m == m
+        && s.offset == offset
+        && s.parity == parity
+        && s.hurst_bits == hb
+        && s.t_bits == tb
+    },
     || {
       let real_buf = dev.new_buffer((total * 4) as u64, shared);
       let imag_buf = dev.new_buffer((total * 4) as u64, shared);
@@ -370,6 +247,7 @@ pub(crate) fn sample_f32_buffer(
         n,
         m,
         offset,
+        parity,
         hurst_bits: hb,
         t_bits: tb,
       })
@@ -397,7 +275,7 @@ pub(crate) fn sample_f32_buffer(
     enc.set_buffer(3, Some(&s.rev_buf), 0);
     enc.set_bytes(4, 4, &ts_u32 as *const u32 as *const _);
     enc.set_bytes(5, 4, &seed as *const u32 as *const _);
-    enc.set_bytes(6, 8, &first_cell as *const u64 as *const _);
+    enc.set_bytes(6, 8, &base_cell as *const u64 as *const _);
     enc.set_bytes(7, 4, &st as *const u32 as *const _);
     enc.set_threadgroup_memory_length(0, (tile * 4) as u64);
     enc.set_threadgroup_memory_length(1, (tile * 4) as u64);
@@ -408,34 +286,43 @@ pub(crate) fn sample_f32_buffer(
     enc.end_encoding();
   }
 
-  // 2. The stages between the tile and the last one, a dispatch each
-  let grid_fft = MTLSize::new((total / 2) as u64, 1, 1);
-  for stage in tile_stages..log_n - 1 {
-    let hs = 1u32 << stage;
+  // 2. The stages between the tile and the last pair, two to a dispatch
+  for stage in (tile_stages..log_n.saturating_sub(2)).step_by(2) {
+    let s0 = stage as u32;
     let enc = cmd.new_compute_command_encoder();
-    enc.set_compute_pipeline_state(&ctx.butterfly_pso);
+    enc.set_compute_pipeline_state(&ctx.radix4_pso);
     enc.set_buffer(0, Some(&s.real_buf), 0);
     enc.set_buffer(1, Some(&s.imag_buf), 0);
     enc.set_bytes(2, 4, &ts_u32 as *const u32 as *const _);
-    enc.set_bytes(3, 4, &hs as *const u32 as *const _);
-    enc.dispatch_threads(grid_fft, tg);
+    enc.set_bytes(3, 4, &s0 as *const u32 as *const _);
+    enc.dispatch_threads(MTLSize::new((total / 4) as u64, 1, 1), tg);
     enc.end_encoding();
   }
 
-  // 3. The last stage, which writes the read-out rather than the transform
+  // 3. The last stages, which export the read-out rather than the transform.
+  // `tile_plan` leaves an even count outside the tile wherever it can, so the
+  // pair is the usual tail and the single stage only serves a four-point
+  // transform.
   {
-    let hs = 1u32 << (log_n - 1);
+    let single = log_n - tile_stages == 1;
     let os = out_size as u32;
+    let rows = m as u32;
     let enc = cmd.new_compute_command_encoder();
-    enc.set_compute_pipeline_state(&ctx.readout_pso);
+    enc.set_compute_pipeline_state(if single {
+      &ctx.readout2_pso
+    } else {
+      &ctx.readout_pso
+    });
     enc.set_buffer(0, Some(&s.real_buf), 0);
     enc.set_buffer(1, Some(&s.imag_buf), 0);
     enc.set_bytes(2, 4, &ts_u32 as *const u32 as *const _);
-    enc.set_bytes(3, 4, &hs as *const u32 as *const _);
-    enc.set_buffer(4, Some(&s.out_buf), 0);
-    enc.set_bytes(5, 4, &os as *const u32 as *const _);
-    enc.set_bytes(6, 4, &scale as *const f32 as *const _);
-    enc.dispatch_threads(grid_fft, tg);
+    enc.set_buffer(3, Some(&s.out_buf), 0);
+    enc.set_bytes(4, 4, &os as *const u32 as *const _);
+    enc.set_bytes(5, 4, &scale as *const f32 as *const _);
+    enc.set_bytes(6, 4, &rows as *const u32 as *const _);
+    enc.set_bytes(7, 4, &parity as *const u32 as *const _);
+    let lanes = if single { total / 2 } else { total / 4 };
+    enc.dispatch_threads(MTLSize::new(lanes as u64, 1, 1), tg);
     enc.end_encoding();
   }
 
@@ -460,7 +347,9 @@ fn chunks(fgn_n: usize, out_size: usize, m: usize, device: &crate::device::Metal
   let budget = device
     .batch_budget
     .min(crate::euler::metal::working_set(device.ordinal));
-  let rows = crate::device::chunk_rows(budget, 4 * fgn_n + out_size, 4);
+  // A row costs half a transform's `real`/`imag` — two paths come out of one
+  // — plus its own output row.
+  let rows = crate::device::chunk_rows(budget, 2 * fgn_n + out_size, 4);
   let mut first = 0;
   let mut out = Vec::new();
   while first < m {
