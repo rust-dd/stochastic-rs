@@ -560,39 +560,54 @@ impl<T: FloatExt> FgnBackend<T> for Cpu {
   }
 }
 
-/// Generates an [`FgnBackend`] impl for a GPU marker whose `$sampler` returns an
-/// `Array2<T>` of `m` paths. Single-path `generate` takes the first row. The
-/// caller's seed source drives the launch seed, exactly as on the CPU: a
-/// wrapper such as `Fbm` keeps an `Unseeded` inner `Fgn` and hands over its
-/// own seed, so a `Deterministic` wrapper reproduces its device paths too.
-/// Each marker and its impl are gated on the backend's feature.
+/// The two methods every GPU [`FgnBackend`] shares, given a `$sampler` that
+/// returns an `Array2` of `m` paths: single-path `generate` takes the first
+/// row, the batch form owns each row of the block. The caller's seed source
+/// drives the launch seed, exactly as on the CPU — a wrapper such as `Fbm`
+/// keeps an `Unseeded` inner `Fgn` and hands over its own seed, so a
+/// `Deterministic` wrapper reproduces its device paths too.
+///
+/// Gated with the impls that invoke it: both sit behind a backend feature, so
+/// a build without one would leave this defined and never expanded.
+#[cfg(any(feature = "cuda", feature = "metal"))]
+macro_rules! gpu_backend_owning {
+  ($sampler:ident, $scalar:ty) => {
+    fn try_generate<S: SeedExt, S2: SeedExt>(
+      &self,
+      fgn: &Fgn<$scalar, S, Self>,
+      seed: &S2,
+    ) -> Result<Array1<$scalar>, DeviceError> {
+      Ok(fgn.$sampler(1, seed, self)?.row(0).to_owned())
+    }
+
+    fn try_generate_batch<S: SeedExt, S2: SeedExt>(
+      &self,
+      fgn: &Fgn<$scalar, S, Self>,
+      m: usize,
+      seed: &S2,
+    ) -> Result<Vec<Array1<$scalar>>, DeviceError> {
+      Ok(
+        fgn
+          .$sampler(m, seed, self)?
+          .outer_iter()
+          .map(|row| row.to_owned())
+          .collect(),
+      )
+    }
+  };
+}
+
+/// Generates an [`FgnBackend`] impl for a GPU marker behind a bus, whose
+/// batch has to cross into host memory before anything can read it: the map
+/// form therefore takes that batch and walks its rows, which still saves the
+/// per-row copy the trait's default would add. Each marker and its impl are
+/// gated on the backend's feature.
 macro_rules! gpu_backend {
   ($feat:literal, $marker:ident => $sampler:ident, $($scalar:ty),+) => {
     $(
       #[cfg(feature = $feat)]
       impl FgnBackend<$scalar> for $marker {
-        fn try_generate<S: SeedExt, S2: SeedExt>(
-          &self,
-          fgn: &Fgn<$scalar, S, Self>,
-          seed: &S2,
-        ) -> Result<Array1<$scalar>, DeviceError> {
-          Ok(fgn.$sampler(1, seed, self)?.row(0).to_owned())
-        }
-
-        fn try_generate_batch<S: SeedExt, S2: SeedExt>(
-          &self,
-          fgn: &Fgn<$scalar, S, Self>,
-          m: usize,
-          seed: &S2,
-        ) -> Result<Vec<Array1<$scalar>>, DeviceError> {
-          Ok(
-            fgn
-              .$sampler(m, seed, self)?
-              .outer_iter()
-              .map(|row| row.to_owned())
-              .collect(),
-          )
-        }
+        gpu_backend_owning!($sampler, $scalar);
 
         fn try_generate_map<S: SeedExt, S2: SeedExt, R: Send>(
           &self,
@@ -629,7 +644,26 @@ macro_rules! gpu_backend {
 // FFT pipeline is single precision. `Fgn<f64>` on `Metal` is therefore a
 // compile error, not an `f32` computation behind an `f64` type.
 gpu_backend!("cuda", Cuda => sample_cuda_impl, f32, f64);
-gpu_backend!("metal", Metal => sample_metal_impl, f32);
+
+/// Metal is the one backend that shares memory with the host, so its map
+/// form is the only one that can skip the batch entirely: `map_metal_impl`
+/// hands `f` the rows of the launch's own output buffer. The two owning
+/// methods are the macro's, unchanged — what differs is only that a caller
+/// who folds the batch does not pay for a copy of it.
+#[cfg(feature = "metal")]
+impl FgnBackend<f32> for Metal {
+  gpu_backend_owning!(sample_metal_impl, f32);
+
+  fn try_generate_map<S: SeedExt, S2: SeedExt, R: Send>(
+    &self,
+    fgn: &Fgn<f32, S, Self>,
+    m: usize,
+    seed: &S2,
+    f: impl Fn(ndarray::ArrayView1<f32>) -> R + Sync,
+  ) -> Result<Vec<R>, DeviceError> {
+    fgn.map_metal_impl(m, seed, self, f)
+  }
+}
 
 /// Accelerate (vDSP) runs on the CPU, so it gets the same reproducibility
 /// guarantee as [`Cpu`], reached via `ProcessExt::chunk_count`-style
