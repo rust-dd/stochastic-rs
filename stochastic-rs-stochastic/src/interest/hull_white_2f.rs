@@ -373,6 +373,36 @@ impl PyHullWhite2F {
       )
     })
   }
+
+  /// `m` independent paths as a pair of `(m, n)` arrays, one a component.
+  /// The GIL is released while the paths are generated; every callable
+  /// coefficient re-acquires it, so a Python function is called from rayon
+  /// workers one at a time.
+  fn sample_par<'py>(
+    &self,
+    py: pyo3::Python<'py>,
+    m: usize,
+  ) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
+    use ndarray::Array2;
+    use numpy::IntoPyArray;
+    use pyo3::IntoPyObjectExt;
+
+    use crate::traits::ProcessExt;
+    py_device_dispatch_f64!(self, |inner| {
+      let paths = py.detach(|| inner.sample_par(m));
+      let n = paths.first().map_or(0, |p| p[0].len());
+      let mut first = Array2::zeros((m, n));
+      let mut second = Array2::zeros((m, n));
+      for (i, path) in paths.iter().enumerate() {
+        first.row_mut(i).assign(&path[0]);
+        second.row_mut(i).assign(&path[1]);
+      }
+      (
+        first.into_pyarray(py).into_py_any(py).unwrap(),
+        second.into_pyarray(py).into_py_any(py).unwrap(),
+      )
+    })
+  }
 }
 
 #[cfg(test)]
