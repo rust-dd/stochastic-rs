@@ -43,9 +43,27 @@ fn main() {
     Some(false),
     Deterministic::new(21),
   );
+  // A quantile band from four thousand paths, and a few sample paths over
+  // it: the band is what the model does, the paths are what one draw of it
+  // looks like.
+  let batch = heston.sample_par(4_000);
+  let n = 65;
+  let step = (batch[0][0].len() - 1) as f64 / (n - 1) as f64;
+  println!("HESTON_BAND");
+  for q in [0.05_f64, 0.25, 0.5, 0.75, 0.95] {
+    let band: Vec<f64> = (0..n)
+      .map(|i| {
+        let col = (i as f64 * step).round() as usize;
+        let mut v: Vec<f64> = batch.iter().map(|p| p[0][col]).collect();
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        (v[(q * (v.len() - 1) as f64).round() as usize] * 100.0).round() / 100.0
+      })
+      .collect();
+    println!("{q} {band:?}");
+  }
   println!("HESTON");
-  for p in heston.sample_par(14) {
-    println!("{:?}", thin(p[0].as_slice().unwrap(), 65, 2));
+  for p in batch.iter().take(8) {
+    println!("{:?}", thin(p[0].as_slice().unwrap(), n, 2));
   }
 
   // The same seed at three Hurst exponents, so only the roughness differs.

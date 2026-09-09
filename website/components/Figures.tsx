@@ -1,111 +1,110 @@
-import { FBM_PATHS, HESTON_PATHS, SVI_RANGE, SVI_SMILES } from '@/lib/figures';
+import { BOX, FBM, HESTON, SVI, SVI_AXIS } from '@/lib/figures';
 
-const W = 320;
-const H = 140;
+const { w: W, h: H } = BOX;
 
-/// A framed plot: a caption, the drawing, and a line saying where the numbers
-/// came from. Every figure on this page is the crate's own output rather than
-/// an illustration, and the footnote is what makes that checkable.
 function Panel({
   title,
-  note,
+  params,
   children,
 }: {
   title: string;
-  note: string;
+  params: string;
   children: React.ReactNode;
 }) {
   return (
     <figure className="flex flex-col rounded-xl border border-fd-border bg-fd-card p-5">
-      <figcaption className="text-sm font-semibold">{title}</figcaption>
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="mt-4 w-full"
-        role="img"
-        aria-label={title}
-        preserveAspectRatio="none"
-        height={H}
-      >
+      <figcaption className="flex items-baseline justify-between gap-3">
+        <span className="text-sm font-semibold">{title}</span>
+        <span className="font-mono text-[11px] text-fd-muted-foreground">{params}</span>
+      </figcaption>
+      <svg viewBox={`0 0 ${W} ${H}`} className="mt-4 w-full" role="img" aria-label={title}>
         {children}
       </svg>
-      <p className="mt-4 text-xs leading-relaxed text-fd-muted-foreground">{note}</p>
     </figure>
+  );
+}
+
+/// A tick label inside the plot, in the figure's own units.
+function Tick({ x, y, children, anchor = 'start' }: {
+  x: number;
+  y: number;
+  children: React.ReactNode;
+  anchor?: 'start' | 'end';
+}) {
+  return (
+    <text
+      x={x}
+      y={y}
+      textAnchor={anchor}
+      className="fill-current font-mono text-[8px] opacity-50"
+    >
+      {children}
+    </text>
   );
 }
 
 export function Figures() {
   return (
     <section className="mt-24 w-full max-w-5xl">
-      <h2 className="text-2xl font-semibold tracking-tight">Real output</h2>
-      <p className="mt-2 max-w-2xl text-fd-muted-foreground">
-        Three figures, each drawn from numbers the crate produced — generated
-        by an example in the repository, thinned and rounded to keep the page
-        small, and otherwise untouched.
-      </p>
-
+      <h2 className="text-2xl font-semibold tracking-tight">What comes out</h2>
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
-        <Panel
-          title="Heston, fourteen paths"
-          note="κ = 2, θ = 0.04, ξ = 0.3, ρ = −0.7 over one year on a 512-point grid. The price component of a two-component system; the variance rides along beside it."
-        >
-          {HESTON_PATHS.map((points, i) => (
+        <Panel title="Heston" params="κ 2 · ξ 0.3 · ρ −0.7">
+          <polygon points={HESTON.band90} className="fill-current opacity-[0.07]" />
+          <polygon points={HESTON.band50} className="fill-current opacity-[0.12]" />
+          <line
+            x1={0}
+            x2={W}
+            y1={HESTON.start}
+            y2={HESTON.start}
+            className="stroke-current opacity-25"
+            strokeDasharray="3 3"
+            strokeWidth={0.7}
+          />
+          {HESTON.paths.map((points, i) => (
             <polyline
               key={i}
               points={points}
               fill="none"
-              stroke="currentColor"
-              strokeWidth={i === 0 ? 1.4 : 0.7}
-              strokeOpacity={i === 0 ? 0.95 : 0.32}
-              vectorEffect="non-scaling-stroke"
+              className="stroke-current opacity-30"
+              strokeWidth={0.7}
             />
           ))}
+          <polyline points={HESTON.median} fill="none" className="stroke-current" strokeWidth={1.6} />
+          <Tick x={2} y={10}>{HESTON.hi}</Tick>
+          <Tick x={2} y={H - 3}>{HESTON.lo}</Tick>
+          <Tick x={W - 2} y={HESTON.start - 4} anchor="end">S₀ 100</Tick>
         </Panel>
 
-        <Panel
-          title="Fractional Brownian motion"
-          note="H = 0.3, 0.5 and 0.8 from the top down, same seed, so only the Hurst exponent differs: anti-persistent, Brownian, persistent. Each band is scaled to its own range, because what separates them is roughness rather than size. Davies–Harte embedding, exact rather than approximate."
-        >
-          {FBM_PATHS.map(([h, points, base], i) => (
+        <Panel title="Fractional Brownian motion" params="one seed, three H">
+          {FBM.map(({ h, points, label }) => (
             <g key={h}>
-              <polyline
-                points={points}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={1}
-                strokeOpacity={0.85}
-                vectorEffect="non-scaling-stroke"
-              />
-              {i < FBM_PATHS.length - 1 && (
-                <line
-                  x1={0}
-                  x2={W}
-                  y1={base}
-                  y2={base}
-                  stroke="currentColor"
-                  strokeOpacity={0.12}
-                  strokeWidth={1}
-                  vectorEffect="non-scaling-stroke"
-                />
-              )}
+              <polyline points={points} fill="none" className="stroke-current" strokeWidth={0.9} />
+              <Tick x={2} y={label}>H {h}</Tick>
             </g>
           ))}
         </Panel>
 
-        <Panel
-          title="An SVI volatility surface"
-          note={`Four maturities from three months to two years, implied volatility against log-moneyness from −0.5 to +0.5, ${SVI_RANGE[0].toFixed(2)} to ${SVI_RANGE[1].toFixed(2)}. Each slice arbitrage-free by construction.`}
-        >
-          {SVI_SMILES.map(([tau, points], i) => (
-            <polyline
-              key={tau}
-              points={points}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.4}
-              strokeOpacity={0.3 + i * 0.22}
-              vectorEffect="non-scaling-stroke"
-            />
+        <Panel title="SVI surface" params="implied vol · log-moneyness">
+          <line
+            x1={W / 2}
+            x2={W / 2}
+            y1={0}
+            y2={H}
+            className="stroke-current opacity-20"
+            strokeDasharray="3 3"
+            strokeWidth={0.7}
+          />
+          {SVI.map(({ tau, points, end }) => (
+            <g key={tau}>
+              <polyline points={points} fill="none" className="stroke-current" strokeWidth={1.2} />
+              <Tick x={W - 2} y={end - 3} anchor="end">
+                {tau < 1 ? `${tau * 12}M` : `${tau}Y`}
+              </Tick>
+            </g>
           ))}
+          <Tick x={2} y={10}>{SVI_AXIS.hi.toFixed(2)}</Tick>
+          <Tick x={2} y={H - 3}>{SVI_AXIS.lo.toFixed(2)}</Tick>
+          <Tick x={W / 2 + 3} y={H - 3}>k 0</Tick>
         </Panel>
       </div>
     </section>
