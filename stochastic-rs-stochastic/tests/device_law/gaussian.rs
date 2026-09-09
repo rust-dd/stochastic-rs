@@ -30,7 +30,6 @@ use super::common::M;
 use super::common::agrees;
 use super::common::all_finite;
 use super::common::map_forms_agree;
-use super::common::reductions_match_the_paths;
 use super::common::terminal_mean;
 use super::common::terminal_std;
 use super::common::within;
@@ -476,60 +475,6 @@ fn the_two_map_forms_agree() {
     "GBM on the host",
   );
   map_forms_agree(
-    || {
-      Fou::<f32, _>::new(
-        0.7,
-        2.0,
-        1.0,
-        0.3,
-        253,
-        Some(0.0),
-        Some(1.0),
-        Deterministic::new(9),
-      )
-      .on::<Device>()
-    },
-    "fractional OU on the device",
-  );
-}
-
-/// Every reduction mode returns what folding the same backend's own paths
-/// gives, on the device and on the host.
-///
-/// The device folds in the kernel: it writes one value a path instead of the
-/// grid, which is the whole point of the mode — the store is the largest cost
-/// of a launch, and behind a bus the same bytes have to cross it. What that
-/// must not change is the answer.
-#[test]
-fn the_reductions_match_the_paths_they_fold() {
-  reductions_match_the_paths(
-    || {
-      Gbm::<f32, _>::new(
-        0.05,
-        0.2,
-        253,
-        Some(100.0),
-        Some(1.0),
-        Deterministic::new(3),
-      )
-      .on::<Device>()
-    },
-    "GBM on the device",
-  );
-  reductions_match_the_paths(
-    || {
-      Gbm::<f32, _>::new(
-        0.05,
-        0.2,
-        253,
-        Some(100.0),
-        Some(1.0),
-        Deterministic::new(3),
-      )
-    },
-    "GBM on the host",
-  );
-  reductions_match_the_paths(
     || {
       Fou::<f32, _>::new(
         0.7,

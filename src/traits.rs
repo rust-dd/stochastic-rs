@@ -62,7 +62,6 @@ pub use stochastic_rs_stochastic::device::FgnBackend;
 pub use stochastic_rs_stochastic::device::HostBackend;
 pub use stochastic_rs_stochastic::device::SheetBackend;
 pub use stochastic_rs_stochastic::euler::EulerBackend;
-pub use stochastic_rs_stochastic::euler::Reduce;
 pub use stochastic_rs_stochastic::traits::ComplexPathOutput;
 pub use stochastic_rs_stochastic::traits::CurveOutput;
 pub use stochastic_rs_stochastic::traits::MultiDimensional;

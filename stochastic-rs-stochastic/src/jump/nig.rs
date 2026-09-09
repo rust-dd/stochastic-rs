@@ -161,11 +161,6 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     self.backend.euler_paths_map_view(self, m, f)
   }
 
-  fn sample_reduce(&self, m: usize, reduce: crate::euler::Reduce) -> Vec<T> {
-    crate::euler::EulerBackend::try_euler_reduce(&self.backend, self, m, reduce)
-      .unwrap_or_else(crate::device::device_panic)
-  }
-
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
     self.backend.euler_paths(self, m)
   }

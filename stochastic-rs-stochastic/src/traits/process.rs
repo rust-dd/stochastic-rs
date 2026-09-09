@@ -465,25 +465,6 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
     self.sample_map(m, |path| f(path.view()))
   }
 
-  /// `m` paths folded to one value each, the fold running where the paths
-  /// are made.
-  ///
-  /// The other sampling calls all return the grid: `m × n` values, which on a
-  /// device is what the kernel must store and, behind a bus, what must cross
-  /// it. Most Monte Carlo does not want the grid — it wants a payoff, a
-  /// terminal value, a running extreme — and this hands the fold to the
-  /// kernel so the batch never has to exist outside it. What comes back is
-  /// exactly what folding the path on the host would have given.
-  ///
-  /// The host runs the same fold over its own paths, so a program written
-  /// against this reads the same on a laptop and on a card.
-  fn sample_reduce(&self, m: usize, reduce: crate::euler::Reduce) -> Vec<T>
-  where
-    Self: ProcessExt<T, Output = Array1<T>> + Sized,
-  {
-    self.sample_map_view(m, |path| reduce.fold_row(path))
-  }
-
   /// [`sample`](Self::sample), reporting a device failure as a
   /// [`DeviceError`] instead of panicking. On the host devices it cannot
   /// fail and the path is the one `sample` would have produced.

@@ -14,7 +14,6 @@ use parking_lot::Mutex;
 use super::EulerCoefficients;
 use super::EulerKernel;
 use super::EulerSpec;
-use super::Reduce;
 use super::kernel::Shape;
 use crate::device::DeviceError;
 use crate::device::DeviceInfo;
@@ -366,20 +365,18 @@ fn run<O>(
   curve: &[f32],
   lift: [&[f32]; 3],
   program: &[f32],
-  reduce: Reduce,
   finish: impl FnOnce(&[f32]) -> O,
 ) -> Result<O> {
   let shape = Shape::new(
     super::families::Family::from_code(args.family).expect("a declared family"),
     args.has_jumps != 0 || args.jump_law != 0,
     args.gamma_law != 0,
-  )
-  .with_reduce(reduce);
+  );
   ensure_context(ordinal, shape)?;
   let mut guard = CONTEXT.lock();
   let ctx = guard.as_mut().expect("initialised");
   let shared = MTLResourceOptions::StorageModeShared;
-  let total = args.components as usize * args.paths as usize * reduce.stride(args.steps as usize);
+  let total = args.components as usize * args.paths as usize * args.steps as usize;
   let bytes = (total * 4) as u64;
   if ctx.output.as_ref().is_none_or(|b| b.length() < bytes) {
     ctx.output = Some(ctx.device.new_buffer(bytes, shared));
@@ -485,55 +482,6 @@ impl EulerKernel<f32> for Metal {
     Ok(planes.index_axis_move(ndarray::Axis(0), 0))
   }
 
-  /// The launch lent rather than handed over: the buffer the kernel wrote is
-  /// shared memory the CPU can already read, so `f` reads the paths where
-  /// they lie. Nothing is copied and nothing is allocated for the batch.
-  /// The fold in the kernel: `m` values back instead of `m × n`.
-  ///
-  /// Nothing else in the engine changes the amount of memory a batch touches
-  /// this much. The store is the largest single cost of a launch here — a
-  /// kernel that writes only its last point runs the same arithmetic in a
-  /// third of the time — and on a card behind a bus the same bytes have to
-  /// cross it as well.
-  fn euler_kernel_reduce<P: EulerCoefficients<f32>>(
-    &self,
-    process: &P,
-    first: usize,
-    m: usize,
-    seed: u64,
-    reduce: Reduce,
-  ) -> Result<Vec<f32>> {
-    let reduce = reduce.folded();
-    let fractional = fgn_buffer(process.fgn_spec(), first, m, seed, self.ordinal)?;
-    launch_paths(
-      self.ordinal,
-      process.euler_spec(),
-      process.initial_state(),
-      process.grid_points(),
-      process.time_step(),
-      first,
-      m,
-      seed,
-      match fractional.as_ref() {
-        Some((buf, streams)) => Increments::Device(buf, *streams),
-        None => Increments::Hashed,
-      },
-      process.curves(),
-      process.jump_intensity(),
-      process.jump_sizes(),
-      process.step_first(),
-      process.gamma_draws(),
-      process.lift_spec(),
-      process.series_terms(),
-      process.table_spec(),
-      process.program_spec(),
-      reduce,
-      // The first plane again: one value a path, the component a one-state
-      // family reports.
-      |data, _| data[..m.min(data.len())].to_vec(),
-    )
-  }
-
   fn euler_kernel_lend<P: EulerCoefficients<f32>, O>(
     &self,
     process: &P,
@@ -566,7 +514,6 @@ impl EulerKernel<f32> for Metal {
       process.series_terms(),
       process.table_spec(),
       process.program_spec(),
-      Reduce::None,
       // The first plane is the matrix a one-component family reports; a
       // family with more writes its planes after it, and this form hands
       // back the first exactly as `euler_kernel` does.
@@ -685,7 +632,6 @@ fn launch_paths<O>(
   series: Option<u32>,
   table: Option<crate::euler::TableSpec<f32>>,
   program: Option<crate::euler::ProgramSpec<'_>>,
-  reduce: Reduce,
   finish: impl FnOnce(&[f32], usize) -> O,
 ) -> Result<O> {
   let (family, params) = spec.encode();
@@ -755,7 +701,6 @@ fn launch_paths<O>(
     &curve,
     lift_tables,
     &program_buf,
-    reduce,
     |data| finish(data, components),
   )
 }
@@ -802,7 +747,6 @@ fn device_paths(
     series,
     table,
     program,
-    Reduce::None,
     |data, components| {
       Array3::from_shape_vec((components, m, n), data.to_vec())
         .expect("the kernel returns components * m * n values")

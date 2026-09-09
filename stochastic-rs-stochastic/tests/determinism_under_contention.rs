@@ -28,7 +28,6 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::diffusion::fou::Fou;
 use stochastic_rs_stochastic::diffusion::gbm::Gbm;
 use stochastic_rs_stochastic::diffusion::ou::Ou;
-use stochastic_rs_stochastic::euler::Reduce;
 use stochastic_rs_stochastic::noise::fgn::Fgn;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
@@ -141,46 +140,4 @@ fn the_mean_reverting_diffusion_reproduces_its_seed_under_contention() {
   };
   let reference = build().sample_par(M);
   holds("OU", move || build().sample_par(M), reference);
-}
-
-/// The folded batch, which is the call the second sighting was inside.
-///
-/// A fold is one value a path rather than a whole grid, so a difference here
-/// is a difference in the paths behind it — the same question asked where it
-/// was actually seen to fail.
-#[test]
-fn a_folded_batch_reproduces_its_seed_under_contention() {
-  let build = || {
-    Fou::<f32, _>::new(
-      0.7,
-      2.0,
-      1.0,
-      0.3,
-      N,
-      Some(0.0),
-      Some(1.0),
-      Deterministic::new(9),
-    )
-  };
-  let reference = build().sample_reduce(M, Reduce::Terminal);
-  let build = Arc::new(build);
-  let reference = Arc::new(reference);
-  let workers: Vec<_> = (0..THREADS)
-    .map(|worker| {
-      let build = Arc::clone(&build);
-      let reference = Arc::clone(&reference);
-      thread::spawn(move || {
-        for round in 0..ROUNDS {
-          assert_eq!(
-            build().sample_reduce(M, Reduce::Terminal),
-            *reference,
-            "folded batch: worker {worker} round {round} is not the seed's fold"
-          );
-        }
-      })
-    })
-    .collect();
-  for worker in workers {
-    worker.join().expect("a worker panicked");
-  }
 }

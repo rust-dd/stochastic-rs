@@ -132,31 +132,3 @@ where
     "{what}: sample_map and sample_map_view disagree"
   );
 }
-
-/// `sample_reduce` returns what folding `sample_par`'s own paths would give,
-/// for every mode, on whichever backend the process carries.
-///
-/// The device folds in the kernel and never writes the grid; the host folds
-/// the grid it wrote. What must not differ is the answer, so the comparison
-/// is against the *same* backend's paths — the two backends draw different
-/// streams by construction, and only their laws are comparable.
-pub(crate) fn reductions_match_the_paths<P>(build: impl Fn() -> P, what: &str)
-where
-  P: ProcessExt<f32, Output = Array1<f32>>,
-{
-  use stochastic_rs_stochastic::euler::Reduce;
-  let paths = build().sample_par(M);
-  for reduce in [Reduce::Terminal, Reduce::Max, Reduce::Min, Reduce::Sum] {
-    let folded = paths
-      .iter()
-      .map(|p| reduce.fold_row(p.view()))
-      .collect::<Vec<f32>>();
-    let reduced = build().sample_reduce(M, reduce);
-    assert_eq!(reduced.len(), folded.len(), "{what} {reduce:?}: length");
-    let bad = reduced.iter().zip(&folded).filter(|(a, b)| a != b).count();
-    assert_eq!(
-      bad, 0,
-      "{what} {reduce:?}: {bad} of {M} differ from the folded paths"
-    );
-  }
-}

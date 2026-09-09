@@ -104,12 +104,6 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
     self.backend.generate_map(self, m, &self.seed, f)
   }
 
-  fn sample_reduce(&self, m: usize, reduce: crate::euler::Reduce) -> Vec<T> {
-    self
-      .backend
-      .generate_map(self, m, &self.seed, |row| reduce.fold_row(row))
-  }
-
   fn try_sample(&self) -> Result<Self::Output, DeviceError> {
     self.backend.try_generate(self, &self.seed)
   }

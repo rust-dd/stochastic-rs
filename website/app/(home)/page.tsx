@@ -59,7 +59,7 @@ function Hero() {
 
 const STATS: [string, string][] = [
   ['131', 'processes behind one trait'],
-  ['107 G', 'steps a second, folded on a GPU'],
+  ['17×', 'the CPU on a batch of 200 000 paths'],
   ['3 054', 'tests: laws, devices, reproducibility'],
   ['303', 'entries in the Python module'],
 ];
@@ -82,18 +82,18 @@ function Stats() {
 const THREAD: { title: string; body: string; code: string }[] = [
   {
     title: 'Sample a batch',
-    body: 'Every process is built the same way — parameters, grid, horizon, seed — and every one gives you a single path, a parallel batch, and the mapped and folded forms over it.',
+    body: 'Every process is built the same way — parameters, grid, horizon, seed — and every one gives you a single path, a parallel batch, and a mapped form over it.',
     code: `let gbm = Gbm::<f32, _>::new(
   0.05, 0.2, 1_024, Some(100.0), Some(1.0), Deterministic::new(7),
 );
 let paths = gbm.sample_par(1_000);`,
   },
   {
-    title: 'Move it to a GPU, and fold it there',
-    body: 'Naming a backend is the only change. A fold runs in the kernel and returns one value a path, so the bus carries a hundred thousand numbers rather than a hundred million — which is why it is worth 43× the CPU here and up to 102× the unfolded call on a Tesla T4.',
+    title: 'Move it to a GPU',
+    body: 'Naming a backend is the only change, and the mapped form reads the batch where the kernel wrote it rather than copying it out — which at two hundred thousand paths is 17× the same call on the CPU.',
     code: `let terminal: Vec<f32> = gbm
   .on::<Metal>()
-  .sample_reduce(100_000, Reduce::Terminal);`,
+  .sample_map_view(200_000, |p| p[p.len() - 1]);`,
   },
   {
     title: 'Price the same model in closed form',

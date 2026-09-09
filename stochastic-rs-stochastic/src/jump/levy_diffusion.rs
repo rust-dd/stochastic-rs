@@ -280,15 +280,6 @@ where
     }
   }
 
-  fn sample_reduce(&self, m: usize, reduce: crate::euler::Reduce) -> Vec<T> {
-    if self.device_ready() {
-      crate::euler::EulerBackend::try_euler_reduce(&self.backend, self, m, reduce)
-        .unwrap_or_else(crate::device::device_panic)
-    } else {
-      crate::traits::process::sample_map_chunked(self, m, |path| reduce.fold_row(path.view()))
-    }
-  }
-
   fn sample_par(&self, m: usize) -> Vec<Array1<T>> {
     if self.device_ready() {
       crate::euler::EulerBackend::euler_paths(&self.backend, self, m)

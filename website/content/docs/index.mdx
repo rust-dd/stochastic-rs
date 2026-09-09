@@ -15,8 +15,8 @@ configuration instead of quietly running it on the host.
 
 | | | |
 |:--|:--|:--|
-| **131** processes | **107 G** steps a second | **3 054** tests |
-| one trait, one device story | folded in the kernel, on an M4 Max | laws, devices, reproducibility |
+| **131** processes | **17×** the CPU | **3 054** tests |
+| one trait, one device story | on a batch of 200 000 paths | laws, devices, reproducibility |
 
 ## One thread, end to end
 
@@ -24,8 +24,8 @@ Four steps, each one real code that runs. Simulate a batch, fold it on a GPU,
 price the model analytically, and read a parameter back out of a path.
 
 **Sample a batch.** Every process is built the same way — parameters, grid,
-horizon, seed — and every one gives you `sample`, `sample_par` and the mapped
-and folded forms.
+horizon, seed — and every one gives you `sample`, `sample_par` and a mapped
+form over them.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -52,10 +52,10 @@ paths = gbm.sample_par(1_000)        # a (1000, 1024) numpy array
 </Tab>
 </Tabs>
 
-**Move it to a GPU, and fold it there.** `.on::<Metal>()` — or `device="cuda"`
-from Python — is the only change. `sample_reduce` returns one value a path
-instead of the whole grid, so the kernel does the fold and the bus carries a
-hundred thousand numbers rather than a hundred million.
+**Move it to a GPU.** `.on::<Metal>()` — or `device="cuda"` from Python — is
+the only change. The mapped form reads each row where the kernel wrote it
+instead of copying the batch out first, which is what makes the device worth
+its bus.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -63,17 +63,15 @@ hundred thousand numbers rather than a hundred million.
 ```rust
 use stochastic_rs::stochastic::device::Metal;
 
-let terminal: Vec<f32> = gbm.on::<Metal>().sample_reduce(100_000, Reduce::Terminal);
+let terminal: Vec<f32> = gbm.on::<Metal>().sample_map_view(200_000, |p| p[p.len() - 1]);
 ```
 
 </Tab>
 <Tab value="Python">
 
 ```python
-# `device=` is the same choice; the kernel-side fold is Rust-only for now,
-# so Python takes the batch back and folds it with numpy.
 gbm = srs.PyGbm(0.05, 0.2, 1024, x0=100.0, t=1.0, seed=7, device="cuda", dtype="f32")
-terminal = gbm.sample_par(100_000)[:, -1]
+terminal = gbm.sample_par(200_000)[:, -1]
 ```
 
 </Tab>
@@ -142,10 +140,8 @@ two kernels. 120 families carry 129 of the processes, and the two that need
 pipelines of their own have them.
 
 **The speed comes from the shape of the call.** Ask for the grid and you get
-the grid; ask for a borrowed view of it and nothing is copied; ask for a fold
-and the kernel never writes it. That last shape is worth 43× the CPU on an
-M4 Max and 18–102× the unfolded call on a Tesla T4. The numbers, the method,
-and what *did not* work are in [Benchmarks](/docs/benchmarks).
+the grid; ask for a borrowed view of itand nothing is copied. The numbers, the method, and what *did not* work are
+in [Benchmarks](/docs/benchmarks).
 
 **Correctness is measured against mathematics, not against yesterday.**
 Beyond the host-versus-device suite there is one that states each model's

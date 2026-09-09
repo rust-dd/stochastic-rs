@@ -169,33 +169,6 @@ GPU is shared and that row moves the most bytes of the six — 205 MB — so it
 is the most exposed to a neighbour. Read it as somewhere between 0.8 and 1.6
 rather than as a regression.
 
-### The fold in the kernel
-
-The same shapes, `sample_map_view` against `sample_reduce`, which returns one
-value a path instead of the whole grid:
-
-| paths | steps | mapped | reduced | | reduced |
-|---:|---:|-------:|--------:|---:|--------:|
-| 10 000 | 1 024 | 4.3 ms | **0.2 ms** | 18.2× | 43.3 G steps/s |
-| 50 000 | 1 024 | 62.5 ms | **0.6 ms** | 102.0× | 83.5 G steps/s |
-| 10 000 | 4 096 | 16.7 ms | **0.8 ms** | 21.9× | 53.6 G steps/s |
-
-**This is what makes the card worth its bus.** Every other entry point sends
-`paths × steps` four-byte values back across PCIe; this one sends `paths`, so
-the crossing shrinks by the grid factor — 205 MB becomes 200 KB in the middle
-row. The card stops waiting on the bus and starts running its kernel, which
-is why this is 18× to 102× where lending the buffer was 5× to 8×.
-
-Numbers that steep are worth checking against the hardware rather than
-believing. A T4 issues one instruction per warp scheduler per cycle over a
-warp of 32 threads: 4 × 32 × 40 SM × 1.59 GHz = **8.1 × 10¹² thread
-instructions a second**. At 85 G steps/s that is 95 instructions a step, at
-51 G it is 159. A GBM step — the counter hash, a Box-Muller pair, the Euler
-update — is roughly 40 to 50 with `__logf`/`__cosf`, so these sit at 30 to
-50 % of peak issue. Steep, and possible; the fast transcendentals are what
-put it there, since the accurate `logf` and `cosf` are tens of instructions
-each on their own.
-
 **The per-shape kernel did what it was for.** The monolithic body cost this
 same card 80 registers and **3 552 bytes of local memory per thread**, three
 blocks a multiprocessor, 37 % occupancy and 0.15 G steps/s against 0.21 on
@@ -329,13 +302,16 @@ stops dominating.
 The two host-side items that led this list have landed; what follows is what
 they left behind. Estimates are from arithmetic, not a profiler.
 
-1. **Reduce on the device and return the reduction.** The wall is now the bus,
-   and the bus cannot be made faster: 41 MB at 9.3 GB/s is 4.4 ms, and every
-   step's four bytes have to cross. This shape is capped near **3 G steps/s**
-   on a PCIe 3 card, and it already runs at 78–83 % of that. The only way
-   past is to stop returning `m · n` scalars — a payoff, a running maximum, a
-   Greek — computed in the kernel. *Design work, and the largest remaining
-   item by far.*
+1. **Send back less than the grid.** The wall is now the bus, and the bus
+   cannot be made faster: 41 MB at 9.3 GB/s is 4.4 ms, and every step's four
+   bytes have to cross. This shape is capped near **3 G steps/s** on a PCIe 3
+   card, and it already runs at 78–83 % of that. Nothing past that is a
+   kernel question — the only way is for the caller to say what it actually
+   wants back, and for that to be computed on the device. A fixed menu of
+   statistics is the wrong shape for it: the thing a caller wants is a payoff
+   it wrote, and the crate already has the machinery to carry one — the
+   `Expr` programs the kernel interprets for coefficients. *Design work, and
+   the largest remaining item by far.*
 2. **Overlap the copy with the launch.** `run` still synchronises between the
    kernel and the `dtoh`; `pipelined_paths` already alternates two streams,
    but only above the 1 GiB batch budget. Widening that gate would hide the

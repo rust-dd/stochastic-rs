@@ -178,88 +178,6 @@ pub(crate) enum Need {
   Uniforms,
 }
 
-use super::Reduce;
-
-impl Reduce {
-  /// The identity the accumulator starts at, as a C literal.
-  ///
-  /// The extremes are the largest finite magnitude of the precision rather
-  /// than `INFINITY`: that name is a `<math.h>` macro, and NVRTC compiles
-  /// with no host headers. A value past it would already be an infinity, so
-  /// nothing a launch can produce escapes the identity.
-  fn identity(self, lang: &Language<'_>) -> &'static str {
-    let wide = lang.real != "float";
-    match (self, wide) {
-      (Reduce::Max, false) => "(REAL)-3.402823466e+38",
-      (Reduce::Max, true) => "(REAL)-1.7976931348623157e+308",
-      (Reduce::Min, false) => "(REAL)3.402823466e+38",
-      (Reduce::Min, true) => "(REAL)1.7976931348623157e+308",
-      _ => "(REAL)0",
-    }
-  }
-
-  /// The fold, as a C expression over `acc[c]` and `reported[c]`.
-  fn fold(self) -> &'static str {
-    match self {
-      Reduce::Terminal => "reported[c]",
-      Reduce::Max => "acc[c] > reported[c] ? acc[c] : reported[c]",
-      Reduce::Min => "acc[c] < reported[c] ? acc[c] : reported[c]",
-      _ => "acc[c] + reported[c]",
-    }
-  }
-}
-
-/// The four splices a launch's output mode makes in the frame: the stride of
-/// a path in the buffer, the accumulator's declaration, and what the entry
-/// point, each step and the end of the loop do with a value.
-fn reduce_splices(reduce: Reduce, lang: &Language<'_>) -> [(&'static str, String); 5] {
-  let store = |index: &str| {
-    format!(
-      "        for (unsigned int c = 0u; c < COMPONENTS; c++) {{ out[(INDEX)c * plane + base{index}] = acc[c]; }}"
-    )
-  };
-  match reduce {
-    Reduce::None => [
-      ("STRIDE", "steps".to_string()),
-      ("ACC_DECL", String::new()),
-      (
-        "ACC_ENTRY",
-        "        for (unsigned int c = 0u; c < COMPONENTS; c++) { out[(INDEX)c * plane + base] = reported[c]; }".to_string(),
-      ),
-      (
-        "ACC_STEP",
-        "        for (unsigned int c = 0u; c < COMPONENTS; c++) { out[(INDEX)c * plane + base + i] = reported[c]; }".to_string(),
-      ),
-      ("ACC_STORE", String::new()),
-    ],
-    _ => [
-      ("STRIDE", "1u".to_string()),
-      (
-        "ACC_DECL",
-        format!(
-          "    REAL acc[4];\n    for (unsigned int c = 0u; c < 4u; c++) {{ acc[c] = {}; }}",
-          reduce.identity(lang)
-        ),
-      ),
-      (
-        "ACC_ENTRY",
-        format!(
-          "        for (unsigned int c = 0u; c < COMPONENTS; c++) {{ acc[c] = {}; }}",
-          reduce.fold()
-        ),
-      ),
-      (
-        "ACC_STEP",
-        format!(
-          "        for (unsigned int c = 0u; c < COMPONENTS; c++) {{ acc[c] = {}; }}",
-          reduce.fold()
-        ),
-      ),
-      ("ACC_STORE", store("")),
-    ],
-  }
-}
-
 pub(crate) const FRAME_BLOCKS: [(&str, Need); 14] = [
   (FRAME_LOCALS, Need::Always),
   (FRAME_SERIES_DRAW, Need::Series),
@@ -284,9 +202,8 @@ pub(crate) const FRAME_BLOCKS: [(&str, Need); 14] = [
 /// The 47-line block of [`FRAME_BLOCKS`].
 #[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
 const FRAME_LOCALS: &str = r#"    if (path >= paths) return;
-    INDEX base = (INDEX)path * STRIDE;
-    INDEX plane = (INDEX)paths * STRIDE;
-ACC_DECL
+    INDEX base = (INDEX)path * steps;
+    INDEX plane = (INDEX)paths * steps;
     REAL state[4];
     REAL reported[4];
     REAL noise[4];
@@ -418,7 +335,7 @@ const FRAME_ENTRY_REPORT: &str = r#"    for (unsigned int c = 0u; c < 4u; c++) {
     for (unsigned int c = 0u; c < 4u; c++) { noise[c] = (REAL)0; }
 REPORT
     if (step_first == 0u) {
-ACC_ENTRY
+        for (unsigned int c = 0u; c < COMPONENTS; c++) { out[(INDEX)c * plane + base] = reported[c]; }
     }"#;
 
 /// The step's own draws: the 64-bit cell key, a normal per noise component,
@@ -797,9 +714,8 @@ const FRAME_STEP: &str = r#"STEP
         }
         for (unsigned int c = 0u; c < 4u; c++) { reported[c] = state[c]; }
 REPORT
-ACC_STEP
+        for (unsigned int c = 0u; c < COMPONENTS; c++) { out[(INDEX)c * plane + base + i] = reported[c]; }
     }
-ACC_STORE
 "#;
 
 /// What a shading language substitutes into the kernel text.
@@ -974,8 +890,6 @@ pub(crate) struct Shape {
   pub(crate) components: u8,
   /// The launch draws gamma variates.
   pub(crate) gamma: bool,
-  /// What the launch writes: every step, or one folded value a path.
-  pub(crate) reduce: Reduce,
 }
 
 /// Whether `block` reads the identifier `name`.
@@ -1043,13 +957,7 @@ impl Shape {
       .any(|block| reads(block, "u") || reads(block, "u2")),
       noises: family.noises() as u8,
       components: family.components() as u8,
-      reduce: Reduce::None,
     }
-  }
-
-  /// The same shape, writing one folded value a path instead of every step.
-  pub(crate) fn with_reduce(self, reduce: Reduce) -> Self {
-    Self { reduce, ..self }
   }
 
   /// Whether the 512-slot convolution window is reachable at all.
@@ -1100,9 +1008,6 @@ pub(crate) fn render_for(lang: &Language<'_>, shape: Shape) -> String {
     }
     format!("{indent}{{\n{}\n{indent}}}", body.trim_end_matches('\n'))
   };
-  let body = reduce_splices(shape.reduce, lang)
-    .iter()
-    .fold(body, |body, (name, code)| body.replace(name, code));
   let body = body
     .replace("NOISES", &format!("{}u", shape.noises))
     .replace("COMPONENTS", &format!("{}u", shape.components))
@@ -1133,13 +1038,7 @@ pub(crate) fn render(lang: &Language<'_>) -> String {
     .iter()
     .map(|(block, _)| *block)
     .collect::<Vec<_>>()
-    .join("\n");
-  // The output mode's splices first: `ACC_STEP` has to become the store
-  // before `STEP` is substituted, or the substitution rewrites the middle of
-  // its name and the text stops being C.
-  let body = reduce_splices(Reduce::None, lang)
-    .iter()
-    .fold(body, |body, (name, code)| body.replace(name, code))
+    .join("\n")
     .replace("NOISES", "noises")
     .replace("COMPONENTS", "components")
     .replace("SERIES", super::families::C_SERIES.trim_end_matches('\n'))
@@ -1339,52 +1238,6 @@ mod tests {
         !source.contains("U64"),
         "{name}: the wide-integer placeholder survived rendering"
       );
-    }
-  }
-
-  /// Every output mode renders to C, in both languages.
-  ///
-  /// Nothing else covers this. `render` only ever asks for
-  /// [`Reduce::None`], `Shape::new` pins the same, and the two devices'
-  /// suites run on whichever machine has that device — so a mode's four
-  /// splices and its identity literal reach a compiler only when someone
-  /// calls `sample_reduce` on hardware. That is how `INFINITY` — a
-  /// `<math.h>` macro, and NVRTC compiles with no host headers — sat in the
-  /// `Max` and `Min` identities without anything noticing.
-  #[test]
-  fn every_reduction_renders_in_both_languages() {
-    use super::Shape;
-    use super::render_for;
-    use crate::euler::Reduce;
-    use crate::euler::families::Family;
-
-    let family = Family::GeometricBrownian;
-    for (name, lang) in languages() {
-      for reduce in [
-        Reduce::None,
-        Reduce::Terminal,
-        Reduce::Max,
-        Reduce::Min,
-        Reduce::Sum,
-      ] {
-        let shape = Shape::new(family, false, false).with_reduce(reduce);
-        let source = format!("{}{}", prelude(&lang), render_for(&lang, shape));
-        for placeholder in ["STOCH_", "ACC_", "STRIDE", "INDEX", "U64", "REAL "] {
-          assert!(
-            !source.contains(placeholder),
-            "{name} {reduce:?}: `{placeholder}` survived rendering"
-          );
-        }
-        assert!(
-          !source.contains("INFINITY"),
-          "{name} {reduce:?}: `INFINITY` is a math.h macro and NVRTC has no host headers"
-        );
-        let opens = source.matches('{').count();
-        let closes = source.matches('}').count();
-        assert_eq!(opens, closes, "{name} {reduce:?}: unbalanced braces");
-        let stores = source.matches("out[").count();
-        assert!(stores > 0, "{name} {reduce:?}: the kernel writes nothing");
-      }
     }
   }
 
