@@ -179,16 +179,10 @@ export function Figures() {
                   key={i}
                   points={line(p, sx, sy, 0, 1)}
                   fill="none"
-                  className="stroke-current opacity-35"
-                  strokeWidth={0.6}
+                  className="stroke-current opacity-55"
+                  strokeWidth={0.8}
                 />
               ))}
-              <polyline
-                points={line(heston.q50, sx, sy, 0, 1)}
-                fill="none"
-                className="stroke-current"
-                strokeWidth={1.5}
-              />
               <text
                 x={PLOT.w - 2}
                 y={sy(heston.q95[heston.q95.length - 1]) - 3}

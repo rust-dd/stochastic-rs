@@ -45,12 +45,13 @@ fn main() {
   );
   // A quantile band from four thousand paths, and a few sample paths over
   // it: the band is what the model does, the paths are what one draw of it
-  // looks like.
+  // looks like. No median — it is nearly flat here, and a thick line through
+  // the middle of a fan reads as a path when it is not one.
   let batch = heston.sample_par(4_000);
   let n = 65;
   let step = (batch[0][0].len() - 1) as f64 / (n - 1) as f64;
   println!("HESTON_BAND");
-  for q in [0.05_f64, 0.25, 0.5, 0.75, 0.95] {
+  for q in [0.05_f64, 0.25, 0.75, 0.95] {
     let band: Vec<f64> = (0..n)
       .map(|i| {
         let col = (i as f64 * step).round() as usize;
