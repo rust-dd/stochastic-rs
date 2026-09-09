@@ -1,11 +1,14 @@
 import Link from 'next/link';
 
+import { Figures } from '@/components/Figures';
+
 export default function HomePage() {
   return (
     <main className="flex flex-1 flex-col items-center px-6 pb-24">
       <Hero />
       <Stats />
       <Thread />
+      <Figures />
       <Tasks />
       <Why />
       <Close />
