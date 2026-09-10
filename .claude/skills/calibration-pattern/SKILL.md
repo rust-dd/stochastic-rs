@@ -208,7 +208,7 @@ attribution below is easy to get backwards.
   under `portfolio/optimizers/`. Reuse `calibration::run_nelder_mead`
   to preserve sample-standard-deviation stopping and convergence reporting.
   Bounded objectives and finite differences must clamp their inputs:
-  Basin 1.9.0 can evaluate outside the box during its line search.
+  do not rely on the solver's box handling to keep iterates feasible.
 - **`slsqp` crate** — when there are explicit bounds and you need
   constraints. Exactly **one** in-tree user:
   `calibration/heston_stoch_corr.rs`.
