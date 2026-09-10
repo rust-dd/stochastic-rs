@@ -152,11 +152,7 @@ fn resolve_fit_outcome(
 ) -> (Vec<f64>, bool, usize) {
   let converged = matches!(
     reason,
-    TerminationReason::ProjectedGradientTolerance
-      | TerminationReason::GradientTolerance
-      | TerminationReason::CostTolerance
-      | TerminationReason::TargetCost
-      | TerminationReason::SolverConverged
+    TerminationReason::CostTolerance | TerminationReason::SolverConverged
   );
   (best_param, converged, iterations as usize)
 }
@@ -350,11 +346,8 @@ mod tests {
   #[test]
   fn mle_result_signals_genuine_convergence() {
     let fitted = vec![1.23, 4.56];
-    let (params, converged, iterations) = resolve_fit_outcome(
-      fitted.clone(),
-      TerminationReason::ProjectedGradientTolerance,
-      17,
-    );
+    let (params, converged, iterations) =
+      resolve_fit_outcome(fitted.clone(), TerminationReason::SolverConverged, 17);
 
     assert_eq!(params, fitted);
     assert!(converged);
