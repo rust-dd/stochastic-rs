@@ -2,6 +2,7 @@
 name = "stochastic-rs-quant"
 version.workspace = true
 edition = "2024"
+rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
 description = "Quantitative finance: pricing, calibration, vol surfaces, instruments."
@@ -48,8 +49,7 @@ roots = { workspace = true }
 kendalls = { workspace = true }
 levenberg-marquardt = { workspace = true }
 linreg = { workspace = true }
-argmin = { workspace = true }
-argmin-math = { workspace = true, features = ["ndarray_latest-nolinalg", "vec"] }
+basin = { workspace = true }
 gauss-quad = { workspace = true }
 quadrature = { workspace = true }
 sci-rs = { workspace = true }

@@ -10,6 +10,14 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@1.89.0
+      - name: Cargo check (MSRV)
+        run: cargo check --workspace --no-default-features --all-targets
+
   # Quick check: every sub-crate compiles independently with default features.
   # This catches broken inter-crate boundaries before the heavier coverage job
   # exercises the full umbrella.

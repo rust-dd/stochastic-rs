@@ -19,7 +19,7 @@ struct's field names are estimator-specific (see
 
 | Module                 | What's inside                                                                  |
 |------------------------|--------------------------------------------------------------------------------|
-| `mle`                  | MLE for 1-D diffusions, 6 transition-density approximations (Euler, Ozaki, Shoji-Ozaki, Elerian, Kessler, Aït-Sahalia), L-BFGS via argmin. Plus the dedicated Heston MLE / NMLE-CEKF. |
+| `mle`                  | MLE for 1-D diffusions, 6 transition-density approximations (Euler, Ozaki, Shoji-Ozaki, Elerian, Kessler, Aït-Sahalia), L-BFGS-B via Basin. Plus the dedicated Heston MLE / NMLE-CEKF. |
 | `realized`             | Realised variance / bipower / MinRV / MedRV / flat-top kernel (Bartlett, Parzen, Tukey-Hanning, Cubic, Quadratic-Spectral) with BNHLS bandwidth. Semivariance, realised skew / kurtosis, HAR-RV, EWMA / RiskMetrics variance, Jacod pre-averaging, TSRV, multi-scale RV, BNS and Lee–Mykland jump tests. |
 | `normality`            | Jarque-Bera, Shapiro-Francia, Anderson-Darling                                 |
 | `stationarity`         | 9 `HypothesisTest` implementors: ADF, KPSS, Phillips-Perron, Leybourne-McCabe and ERS DF-GLS test unit-root/stationarity; Andrews-Ploberger and CUSUM test regression-parameter stability instead; Lo-MacKinlay tests the random-walk hypothesis; RESET tests linear functional form. See [Choosing a stationarity test](#choosing-a-stationarity-test) — the module's own name undersells how different these nine are. |

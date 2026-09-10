@@ -18,15 +18,15 @@ factor / strategy primitives.
 | Area               | What's inside                                                                                              |
 |--------------------|------------------------------------------------------------------------------------------------------------|
 | **Pricing**        | Closed-form (BSM, Bachelier with normal implied-vol inversion, Black76, Garman-Kohlhagen, Margrabe, Kirk, Geske compound, Stulz, Bjerksund-Stensland, digital / gap / supershare, geometric basket, Levy moment-matching, cliquet / forward-start chain). Fourier (Carr-Madan, Lewis, Gil-Pelaez) for Heston / Bates / Merton-jump / Kou / VG / CGMY / HKDE / double-Heston. Monte Carlo (basket, rainbow, cliquet, autocallable, spread). Finite difference (explicit / implicit / Crank-Nicolson, American); Heston PDE by ADI (Douglas / Craig-Sneyd / MCS / Hundsdorfer-Verwer on sinh meshes, Rannacher damping, down-and-out barrier). Bermudan LSM. Heston SLV (Guyon-Labordère). |
-| **Calibration**    | Heston (Cui analytic Jacobian + NMLE / PMLE / NMLE-CEKF seeds), SABR per-expiry caplet smile, Lévy (CGMY, VG, NIG, Merton-jump, Kou, bilateral gamma), SVJ, rough Bergomi, double-Heston, BSM (multi-maturity), HKDE, Hull-White (Jamshidian), G2++ and Black-Karasinski (trinomial-tree repricing) swaption grids via Nelder-Mead. Optional Tikhonov regularisation toward a parameter anchor on the Heston, SABR and swaption calibrators. |
-| **Vol surface**    | Implied-vol surface from market quotes, SVI / SSVI / eSSVI (anchored per-maturity slices with butterfly and calendar bounds), arbitrage-free interpolation, smile and skew analytics, SABR-smile fits.                                                |
+| **Calibration**    | Heston (Cui analytic Jacobian + NMLE / PMLE / NMLE-CEKF seeds), SABR per-expiry caplet smile, Lévy (CGMY, VG, NIG, Merton-jump, Kou, bilateral gamma), SVJ, rough Bergomi, double-Heston, BSM (multi-maturity), HKDE, Hull-White (Jamshidian), G2++ and Black-Karasinski (trinomial-tree repricing) swaption grids via Basin Nelder-Mead. Optional Tikhonov regularisation toward a parameter anchor on the Heston, SABR and swaption calibrators. |
+| **Vol surface**    | Implied-vol surface from market quotes, SVI / SSVI / eSSVI (anchored per-maturity slices with butterfly and calendar bounds), arbitrage-free interpolation, smile and skew analytics, SABR-smile fits with Basin L-BFGS-B.                                                |
 | **Risk**           | VaR (Gaussian / historical / Monte Carlo), CVaR / ES, drawdown metrics, Sharpe / Sortino / IR / Calmar (no hard-coded annualisation), instrument-level Greeks, bucket DV01, scenario / shock / curve-shift stress framework, XVA (EPE / ENE / PFE exposure profiles, CVA / DVA / bilateral / FCA / FBA / FVA, Hull-White swap exposure engine). |
 | **Credit**         | Merton structural model (PD, equity / debt, distance-to-default, credit spread, implied recovery), reduced-form survival / hazard curves, CDS pricing (ISDA daily-grid, fair spread, risky PV01), hazard bootstrap from CDS par-spread term structure, CDS index with ISDA standard-model upfront, CDO tranches under the one-factor Gaussian copula (ASB recursion, Vasicek large-pool limit), JLT migration matrices with pure-Rust Padé-13 matrix exponential. |
 | **Yield curves**   | Bootstrapping (deposit / FRA / future / swap / OIS helper), dual-curve tenor bootstrap against an OIS discount curve, Nelson-Siegel / Svensson, multi-curve (OIS discounting, tenor forecasting), discount-curve interpolation (linear / log-linear / cubic / monotone-convex). |
 | **Bonds**          | Fixed-rate / floating-rate / inflation-linked / amortizing bonds. YTM / Macaulay / modified duration / convexity / Z-spread / OAS. Vasicek / CIR / Hull-White short-rate bond pricing, callable / puttable coupon bonds on the Hull-White trinomial tree. |
 | **Cashflows**      | Coupon, leg, engine, schedule builder. Day-count + business-day conventions.                               |
 | **Instruments**    | Option (vanilla / barrier / Asian / lookback / digital), bond, swap, equity. Plus the `Instrument` / `PricingEngine` pair as a cross-engine comparison harness. |
-| **Portfolio**      | Covariance estimation (sample, Ledoit-Wolf, OAS), momentum, optimisers (mean-variance, MVO with constraints).                                                                                                              |
+| **Portfolio**      | Covariance estimation (sample, Ledoit-Wolf, OAS), momentum, and Basin Nelder-Mead optimizers (mean-variance, MVO with constraints).                                                                                                              |
 | **Microstructure** | Almgren-Chriss optimal execution, Kyle (1985) strategic-trading equilibria, Bouchaud propagator (power-law / exponential / custom kernels), Roll / Corwin-Schultz spread estimators, full price-time priority order book.                                                                              |
 | **Factors**        | PCA, two-pass Fama-MacBeth, Ledoit-Wolf shrinkage.                                                          |
 | **Strategies**     | Cointegrated pairs trading (hedge ratio, spread, z-score, signal generator), forecast-momentum-volatility regime engine, delta hedge.                                       |
@@ -55,7 +55,7 @@ factor / strategy primitives.
 | Equity / FX vanilla surface | `HestonCalibrator` (Levenberg–Marquardt on the Cui Jacobian, NMLE / PMLE / CEKF seeds), `DoubleHestonCalibrator`, `SVJCalibrator`, `LevyCalibrator`, `CgmysvCalibrator`, `HKDECalibrator`, `HscmCalibrator` | least squares on prices or implied vols |
 | One smile at one expiry | `SabrCalibrator` (equity / FX), `SabrCapletCalibrator` (shifted, rates), `SabrSmileCalibrator` (FX quotes: ATM, risk reversal, butterfly) | Hagan expansion |
 | A whole surface, arbitrage-free | `calibrate_essvi` (eSSVI slices) | butterfly and calendar bounds enforced |
-| Swaption grid | `HullWhiteSwaptionCalibrator` (Jamshidian), `G2ppSwaptionCalibrator`, `BlackKarasinskiSwaptionCalibrator` (trinomial tree repricing) | Nelder–Mead on the tree |
+| Swaption grid | `HullWhiteSwaptionCalibrator` (Jamshidian), `G2ppSwaptionCalibrator`, `BlackKarasinskiSwaptionCalibrator` (trinomial tree repricing) | Basin Nelder–Mead on the tree |
 | Rough volatility | `RBergomiCalibrator` (Wasserstein loss on mSOE samples) | Monte Carlo |
 | A trained surrogate | `HestonSurrogateCalibrator`, `RBergomiSurrogateCalibrator` (`ai` feature) | LM on the network's exact Jacobian |
 
@@ -209,6 +209,14 @@ print(g2.calibrate())                                    # (a, b, sigma, eta, rh
 ```
 </Tab>
 </Tabs>
+
+For these three swaption calibrators and `SabrCapletCalibrator`, `converged`
+means the sample standard deviation of the simplex objective values fell below
+`sd_tolerance`. Reaching `max_iters` or encountering nonfinite simplex costs
+returns `false`, while retaining the best parameters found. Earlier versions
+reported successful optimizer completion as convergence, so the same quote grid
+can now return `false`. Check both `converged` and `rmse` before using a fit.
+The SABR caplet Python tuple is `(alpha, beta, nu, rho, rmse, converged)`.
 
 ### eSSVI slices with arbitrage-free interpolation
 

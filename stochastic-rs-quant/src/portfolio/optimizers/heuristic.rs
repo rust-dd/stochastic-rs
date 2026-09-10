@@ -1,12 +1,13 @@
 //! Heuristic allocators: inverse-volatility and risk-parity.
 
-use argmin::core::CostFunction;
-use argmin::core::Executor;
-use argmin::solver::neldermead::NelderMead;
+use std::convert::Infallible;
+
+use basin::CostFunction;
 
 use super::helpers::dot;
 use super::helpers::mat_vec_mul;
 use super::helpers::softmax;
+use super::run_nelder_mead;
 use crate::portfolio::types::PortfolioResult;
 use crate::portfolio::types::empty_result;
 
@@ -69,8 +70,9 @@ pub fn optimize_risk_parity(mu: &[f64], cov: &[Vec<f64>], risk_free: f64) -> Por
   impl CostFunction for RiskParityCost {
     type Param = Vec<f64>;
     type Output = f64;
+    type Error = Infallible;
 
-    fn cost(&self, x: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
+    fn cost(&self, x: &Self::Param) -> Result<Self::Output, Self::Error> {
       let w = softmax(x);
       let sigma_w = mat_vec_mul(&self.cov, &w);
       let port_vol_sq = dot(&w, &sigma_w);
@@ -102,21 +104,8 @@ pub fn optimize_risk_parity(mu: &[f64], cov: &[Vec<f64>], risk_free: f64) -> Por
     simplex.push(point);
   }
 
-  let w = match NelderMead::new(simplex).with_sd_tolerance(1e-10) {
-    Ok(solver) => {
-      match Executor::new(cost, solver)
-        .configure(|state| state.max_iters(10000))
-        .run()
-      {
-        Ok(res) => {
-          let best_x = res.state.best_param.unwrap_or(x0);
-          softmax(&best_x)
-        }
-        Err(_) => vec![1.0 / n as f64; n],
-      }
-    }
-    Err(_) => vec![1.0 / n as f64; n],
-  };
+  let best_x = run_nelder_mead(cost, simplex, 10_000, 1e-10);
+  let w = softmax(&best_x);
 
   let expected_return = dot(&w, mu);
   let sigma_w = mat_vec_mul(cov, &w);

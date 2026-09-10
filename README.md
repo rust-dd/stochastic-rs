@@ -44,6 +44,14 @@ One workspace, one umbrella crate (`stochastic-rs`) that re-exports the sub-crat
 
 ## Installation
 
+The Rust crates require Rust 1.89 or newer.
+
+The workspace declares this minimum in `rust-version`. Cargo's edition-2024
+resolver uses it when choosing compatible dependency versions, so a fresh
+resolution can select an older release of a dependency. The MSRV CI job checks
+the workspace's libraries, tests, examples, and benchmarks with default features
+disabled. Optional feature combinations are checked separately on current Rust.
+
 ```toml
 [dependencies]
 stochastic-rs = "3.0.0-rc.1"

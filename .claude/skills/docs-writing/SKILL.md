@@ -362,7 +362,7 @@ references: [...]
 
 ## Optimiser
 
-<Levenberg-Marquardt (argmin), Differential Evolution, NMLE, NMLE-CEKF, Cui
+<Levenberg-Marquardt (`levenberg-marquardt`), L-BFGS-B / Nelder-Mead (`basin`), NMLE, NMLE-CEKF, Cui
 analytic Jacobian, etc. — one paragraph on why.>
 
 ## `CalibrationResult` fields

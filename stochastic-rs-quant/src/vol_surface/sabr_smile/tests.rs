@@ -1,4 +1,82 @@
 use super::*;
+use basin::CostFunction;
+use basin::Gradient;
+
+fn bounded_problem() -> objective::SabrSmileProblem {
+  objective::SabrSmileProblem {
+    s: 1.0,
+    r_d: 0.02,
+    r_f: 0.01,
+    tau: 0.5,
+    beta: 1.0,
+    sigma_atm: 0.2,
+    sigma_rr: 0.01,
+    sigma_bf: 0.002,
+    bounds_lo: vec![0.5, 0.5, 0.5, 0.5, 0.01, -0.99],
+    bounds_hi: vec![2.0, 2.0, 2.0, 2.0, 10.0, 0.99],
+  }
+}
+
+#[test]
+fn bounded_sabr_objective_clamps_strikes_and_model_parameters() {
+  let problem = bounded_problem();
+  let outside = vec![3.0, -0.1, 3.0, -0.1, 0.6, 1.2];
+  let boundary = vec![2.0, 0.5, 2.0, 0.5, 0.6, 0.99];
+  assert_eq!(
+    problem.cost(&outside).unwrap(),
+    problem.cost(&boundary).unwrap()
+  );
+  assert_eq!(
+    problem.gradient(&outside).unwrap(),
+    problem.gradient(&boundary).unwrap()
+  );
+}
+
+#[test]
+fn bounded_sabr_gradient_retains_the_derivative_at_the_upper_bound() {
+  let problem = bounded_problem();
+  let x = vec![2.0, 0.9, 1.1, 0.9, 0.6, 0.5];
+  let mut inside = x.clone();
+  inside[0] -= 1e-6;
+  let expected = (problem.cost(&x).unwrap() - problem.cost(&inside).unwrap()) / (x[0] - inside[0]);
+  let actual = problem.gradient(&x).unwrap()[0];
+  assert!(expected.abs() > 1e-6);
+  assert!((actual - expected).abs() < 1e-4 * expected.abs());
+}
+
+#[test]
+fn bounded_sabr_low_spot_calibration_returns_consistent_results() {
+  let quotes = SabrSmileQuotes {
+    tau: 0.5,
+    sigma_atm: 0.2,
+    sigma_rr: 0.01,
+    sigma_bf: 0.002,
+  };
+  for iterations in [0, 2] {
+    let calibrator = SabrSmileCalibrator::new(0.05, 0.02, 0.01, 1.0, quotes)
+      .with_strike_bounds(0.02, 0.08)
+      .with_basin_hopping_iters(iterations, iterations);
+    let result = calibrator.calibrate();
+    let x = vec![
+      result.k_rr_call,
+      result.k_rr_put,
+      result.k_bf_call,
+      result.k_bf_put,
+      result.params.nu,
+      result.params.rho,
+    ];
+    let mut problem = bounded_problem();
+    problem.s = calibrator.s;
+    problem.bounds_lo[..4].fill(calibrator.strike_lo);
+    problem.bounds_hi[..4].fill(calibrator.strike_hi);
+    for i in 0..x.len() {
+      assert!((problem.bounds_lo[i]..=problem.bounds_hi[i]).contains(&x[i]));
+    }
+    assert!(result.objective.is_finite());
+    assert_eq!(result.objective, problem.cost(&x).unwrap());
+    assert_eq!(result.success, result.objective < calibrator.success_tol);
+  }
+}
 
 #[test]
 fn test_sabr_smile_calibrate() {

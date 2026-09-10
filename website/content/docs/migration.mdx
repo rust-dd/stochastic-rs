@@ -74,6 +74,26 @@ differentiated the call.
   and the shifted caplet calibrator returns `f64::MAX` residuals instead of
   `NaN` for an out-of-domain trial point, so a Levenberg–Marquardt step no
   longer stalls on a non-finite loss.
+- `BlackKarasinskiSwaptionCalibrator`, `HullWhiteSwaptionCalibrator`,
+  `G2ppSwaptionCalibrator`, and `SabrCapletCalibrator` now report `converged`
+  only when the simplex objective spread falls below `sd_tolerance`.
+  An iteration limit or nonfinite simplex costs returns `false` with the
+  best parameters found. This also changes the final element of their
+  Python return tuples.
+
+## Optimizers and Rust version
+
+Basin replaces argmin for L-BFGS and Nelder–Mead fits. L-BFGS polishing
+can produce slightly different estimates because Basin skips curvature
+updates that fail its numerical threshold. Least-squares fits continue
+to use `levenberg-marquardt`; migrating them is a separate change that
+requires validating Basin's linear solve on poorly conditioned SVI models.
+
+The workspace now requires Rust 1.89 and declares it in `rust-version`.
+Cargo's edition-2024 resolver uses this minimum when selecting dependencies,
+which can favor older compatible releases during a fresh resolution.
+The MSRV check covers all workspace targets with default features disabled;
+optional feature combinations are checked separately on current Rust.
 
 ## Copulas
 

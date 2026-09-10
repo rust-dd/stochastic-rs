@@ -180,7 +180,7 @@ impl crate::traits::Calibrator for XyzCalibrator {
         initial: Option<Self::InitialGuess>,
     ) -> Result<Self::Output, Self::Error> {
         let guess = initial.unwrap_or([0.1, 0.5, 0.3]);
-        // ... call slsqp / argmin / your optimizer of choice ...
+        // ... call slsqp / basin / your optimizer of choice ...
         Ok(XyzCalibrationResult { /* ... */ })
     }
 }
@@ -201,11 +201,14 @@ attribution below is easy to get backwards.
   (`calibration/heston/{calibrator,lsq}.rs`), `HkdeCalibrator`
   (`calibration/hkde/calibrator.rs`), and both vol-surface fits
   (`vol_surface/svi.rs`, `vol_surface/ssvi/calibrate.rs`).
-- **`argmin` (LBFGS / Newton-CG / NelderMead)** — when the problem is
-  unconstrained or you want a pluggable line search. Used by
-  `calibration/hw_swaption.rs`, `calibration/sabr_caplet.rs`,
+- **`basin` (L-BFGS-B / Nelder-Mead)** — for bounded gradient fits and
+  derivative-free simplex fits. Used by `calibration/hw_swaption.rs`,
+  `calibration/tree_swaption/`, `calibration/sabr_caplet.rs`,
   `vol_surface/sabr_smile/objective.rs`, and the portfolio optimizers
-  under `portfolio/optimizers/`.
+  under `portfolio/optimizers/`. Reuse `calibration::run_nelder_mead`
+  to preserve sample-standard-deviation stopping and convergence reporting.
+  Bounded objectives and finite differences must clamp their inputs:
+  do not rely on the solver's box handling to keep iterates feasible.
 - **`slsqp` crate** — when there are explicit bounds and you need
   constraints. Exactly **one** in-tree user:
   `calibration/heston_stoch_corr.rs`.

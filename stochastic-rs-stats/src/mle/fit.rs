@@ -1,19 +1,21 @@
+use std::convert::Infallible;
 use std::fmt;
 
-use argmin::core::CostFunction;
-use argmin::core::Executor;
-use argmin::core::Gradient;
-use argmin::core::State;
-use argmin::core::TerminationReason;
-use argmin::core::TerminationStatus;
-use argmin::solver::linesearch::MoreThuenteLineSearch;
-use argmin::solver::quasinewton::LBFGS;
+use basin::BoxConstraints;
+use basin::CostFunction;
+use basin::CostTolerance;
+use basin::Executor;
+use basin::Gradient;
+use basin::LbfgsState;
+use basin::Lbfgsb;
+use basin::TerminationReason;
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use parking_lot::Mutex;
 
 use super::DiffusionModel;
 use super::density::DensityApprox;
+use crate::optim::more_thuente;
 
 /// Result of maximum likelihood estimation.
 #[derive(Clone, Debug)]
@@ -30,26 +32,17 @@ pub struct MleResult {
   pub aic: f64,
   /// Bayesian Information Criterion.
   pub bic: f64,
-  /// Whether the L-BFGS run reached a recognised convergence criterion
-  /// (`SolverConverged` / `TargetCostReached`).
+  /// Whether the L-BFGS-B run reached a recognised convergence criterion.
   ///
   /// `false` means the optimiser did not report clean convergence;
   /// [`params`](Self::params) then holds the best point found so far,
   /// which may equal the initial guess only if nothing better was ever
-  /// found. Two distinct cases collapse into `false`: if the optimiser
-  /// itself errored before completing a step, [`params`](Self::params)
-  /// is the untouched initial guess passed in via `model`'s parameters
-  /// at call time; if it instead terminated without error but without
-  /// meeting its own tolerance (max iterations, an internal line-search
-  /// exit, timeout, interrupt), [`params`](Self::params) is
-  /// `get_best_param()` — typically an improved point, not the initial
-  /// guess. Previously both cases were indistinguishable from a genuine
-  /// fit — a fallback was returned silently with no signal. Inspect this
-  /// field (or propagate it) before trusting [`params`](Self::params)
-  /// downstream.
+  /// found. If the optimiser reaches the iteration limit or the line search
+  /// cannot make progress,
+  /// [`params`](Self::params) still contains the best feasible point found.
+  /// Inspect this field before trusting [`params`](Self::params) downstream.
   pub converged: bool,
-  /// Number of L-BFGS iterations performed. `0` when the optimiser
-  /// errored before its first step, or when the model has no free
+  /// Number of L-BFGS-B iterations performed. `0` when the model has no free
   /// parameters to fit (trivially `converged = true` in that case).
   pub iterations: usize,
 }
@@ -71,13 +64,14 @@ impl fmt::Display for MleResult {
   }
 }
 
-/// Argmin problem wrapper for MLE optimisation.
+/// Basin problem wrapper for MLE optimisation.
 struct MleProblem<'a> {
   model: Mutex<&'a mut dyn DiffusionModel>,
   sample: ArrayView1<'a, f64>,
   dt: f64,
   density: DensityApprox,
-  bounds: Vec<(f64, f64)>,
+  lower: Vec<f64>,
+  upper: Vec<f64>,
 }
 
 impl MleProblem<'_> {
@@ -85,14 +79,15 @@ impl MleProblem<'_> {
     params
       .iter()
       .enumerate()
-      .map(|(i, &x)| x.clamp(self.bounds[i].0, self.bounds[i].1))
+      .map(|(i, &value)| value.clamp(self.lower[i], self.upper[i]))
       .collect()
   }
 
   fn eval_nll(&self, params: &[f64]) -> f64 {
-    let clamped = self.clamp(params);
+    // Line-search probes can leave the box, even with a bounded solver.
+    let params = self.clamp(params);
     let mut model = self.model.lock();
-    model.set_params(&clamped);
+    model.set_params(&params);
     let mut sum = 0.0;
     for i in 1..self.sample.len() {
       let t0 = (i - 1) as f64 * self.dt;
@@ -108,26 +103,26 @@ impl MleProblem<'_> {
 impl CostFunction for MleProblem<'_> {
   type Param = Vec<f64>;
   type Output = f64;
+  type Error = Infallible;
 
-  fn cost(&self, params: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
+  fn cost(&self, params: &Self::Param) -> Result<Self::Output, Self::Error> {
     Ok(self.eval_nll(params))
   }
 }
 
 impl Gradient for MleProblem<'_> {
-  type Param = Vec<f64>;
   type Gradient = Vec<f64>;
 
-  fn gradient(&self, params: &Self::Param) -> Result<Self::Gradient, argmin::core::Error> {
-    let clamped = self.clamp(params);
-    let n = clamped.len();
+  fn gradient(&self, params: &Self::Param) -> Result<Self::Gradient, Self::Error> {
+    let params = self.clamp(params);
+    let n = params.len();
     let mut grad = vec![0.0; n];
     for i in 0..n {
-      let h = 1e-7 * (1.0 + clamped[i].abs());
-      let mut p_plus = clamped.clone();
-      let mut p_minus = clamped.clone();
-      p_plus[i] = (clamped[i] + h).min(self.bounds[i].1);
-      p_minus[i] = (clamped[i] - h).max(self.bounds[i].0);
+      let h = 1e-7 * (1.0 + params[i].abs());
+      let mut p_plus = params.clone();
+      let mut p_minus = params.clone();
+      p_plus[i] = (params[i] + h).min(self.upper[i]);
+      p_minus[i] = (params[i] - h).max(self.lower[i]);
       let actual_2h = p_plus[i] - p_minus[i];
       if actual_2h > 0.0 {
         let fp = self.eval_nll(&p_plus);
@@ -139,35 +134,27 @@ impl Gradient for MleProblem<'_> {
   }
 }
 
-/// Resolves an L-BFGS [`Executor`] outcome into the parameter vector
-/// `fit_mle` should keep, plus the `converged` / `iterations` signals on
-/// [`MleResult`].
-///
-/// `Err` means the optimiser itself failed before completing a step:
-/// `init` is returned untouched and `converged` is `false` so callers can
-/// never mistake the fallback for a genuine fit (this is the case
-/// formerly handled by a silent `Err(_) => init`, with no signal that a
-/// fallback had occurred). On `Ok`, `converged` additionally requires
-/// argmin to report `SolverConverged` or `TargetCostReached` —
-/// `MaxItersReached`, `SolverExit` (e.g. an internal line-search
-/// failure), `Timeout` and `Interrupt` all mean the run stopped without
-/// meeting its own tolerance, so they also signal `false` even though
-/// the `Executor` itself did not error.
-fn resolve_fit_outcome(
-  result: Result<(Vec<f64>, TerminationStatus, u64), argmin::core::Error>,
-  init: &[f64],
-) -> (Vec<f64>, bool, usize) {
-  match result {
-    Ok((best_param, status, iters)) => {
-      let converged = matches!(
-        status,
-        TerminationStatus::Terminated(TerminationReason::SolverConverged)
-          | TerminationStatus::Terminated(TerminationReason::TargetCostReached)
-      );
-      (best_param, converged, iters as usize)
-    }
-    Err(_) => (init.to_vec(), false, 0),
+impl BoxConstraints for MleProblem<'_> {
+  fn lower(&self) -> &Self::Param {
+    &self.lower
   }
+
+  fn upper(&self) -> &Self::Param {
+    &self.upper
+  }
+}
+
+/// Resolves a Basin L-BFGS-B outcome into the public fit signals.
+fn resolve_fit_outcome(
+  best_param: Vec<f64>,
+  reason: TerminationReason,
+  iterations: u64,
+) -> (Vec<f64>, bool, usize) {
+  let converged = matches!(
+    reason,
+    TerminationReason::CostTolerance | TerminationReason::SolverConverged
+  );
+  (best_param, converged, iterations as usize)
 }
 
 /// Fit a 1-D SDE model by Maximum Likelihood Estimation.
@@ -178,7 +165,7 @@ fn resolve_fit_outcome(
 /// -\sum_{i=1}^{N} \ln p(X_{t_i}\mid X_{t_{i-1}};\theta,\Delta t)
 /// $$
 ///
-/// using L-BFGS (via argmin) with numerical gradient and projected box constraints.
+/// using Basin's L-BFGS-B solver with a numerical gradient and box constraints.
 ///
 /// # Arguments
 /// * `model`        - the SDE model (parameters will be set to the MLE values on return)
@@ -190,8 +177,8 @@ fn resolve_fit_outcome(
 /// # Returns
 /// An [`MleResult`] with estimated parameters, log-likelihood, AIC, BIC,
 /// and the `converged` / `iterations` optimiser signals. Always check
-/// `converged` before trusting `params` — a failed or non-converged run
-/// returns the initial guess rather than panicking or fabricating a fit.
+/// `converged` before trusting `params` — a non-converged run returns the
+/// best feasible point found rather than fabricating a successful fit.
 ///
 /// # References
 /// - Nocedal, J. (1980). *Mathematics of Computation*, 35(151), 773-782.
@@ -226,39 +213,40 @@ pub fn fit_mle(
   } else {
     let init: Vec<f64> = x0.to_vec();
 
+    let lower = bounds.iter().map(|bound| bound.0).collect::<Vec<_>>();
+    let upper = bounds.iter().map(|bound| bound.1).collect::<Vec<_>>();
     let problem = MleProblem {
       model: Mutex::new(&mut *model),
       sample,
       dt,
       density,
-      bounds: bounds.clone(),
+      lower,
+      upper,
     };
 
-    let linesearch = MoreThuenteLineSearch::new();
-    let solver = LBFGS::new(linesearch, 10);
-
-    let result = Executor::new(problem, solver)
-      .configure(|state| state.param(init.clone()).max_iters(200))
+    let solver = Lbfgsb::with_line_search(more_thuente()).with_tol_pg(f64::EPSILON.sqrt());
+    let state = LbfgsState::new(init, 10);
+    let result = Executor::new(problem, solver, state)
+      .max_iter(200)
+      .terminate_on(CostTolerance::new(f64::EPSILON))
       .run()
-      .map(|res| {
-        let best = res
-          .state
-          .get_best_param()
-          .cloned()
-          .unwrap_or_else(|| init.clone());
-        let status = res.state.get_termination_status().clone();
-        let iters = res.state.get_iter();
-        (best, status, iters)
-      });
+      .expect("MLE objective is infallible");
 
-    resolve_fit_outcome(result, &init)
+    resolve_fit_outcome(result.best_param().clone(), result.reason, result.iter())
   };
 
-  let clamped: Vec<f64> = best_params
+  // A convergence signal at an infeasible iterate does not certify the
+  // projected point whose likelihood and information criteria we report.
+  let converged = converged
+    && best_params
+      .iter()
+      .zip(&bounds)
+      .all(|(&value, &(lower, upper))| (lower..=upper).contains(&value));
+  let clamped = best_params
     .iter()
     .enumerate()
     .map(|(i, &x)| x.clamp(bounds[i].0, bounds[i].1))
-    .collect();
+    .collect::<Vec<_>>();
 
   model.set_params(&clamped);
 
@@ -288,60 +276,78 @@ pub fn fit_mle(
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_stochastic::diffusion::cir::Cir;
+
   use super::*;
 
   #[test]
-  fn mle_result_signals_fallback() {
-    let init = vec![1.0, 2.0, 3.0];
-    let forced_failure: Result<(Vec<f64>, TerminationStatus, u64), argmin::core::Error> =
-      Err(argmin::core::Error::msg("forced optimizer failure"));
+  fn bounded_mle_cost_rejects_negative_sigma_mirror_minimum() {
+    let sample = Array1::from_vec(vec![0.1, 0.2, 0.15]);
+    let mut model = Cir::new(1.0, 0.1, 3.0, 3, None, None, None, Deterministic::new(0));
+    let problem = MleProblem {
+      model: Mutex::new(&mut model),
+      sample: sample.view(),
+      dt: 0.01,
+      density: DensityApprox::Euler,
+      lower: vec![1e-4, 1e-6, 1e-6],
+      upper: vec![50.0, 10.0, 10.0],
+    };
+    let positive = problem.eval_nll(&[1.0, 0.1, 3.0]);
+    let negative = problem.eval_nll(&[1.0, 0.1, -3.0]);
+    let boundary = problem.eval_nll(&[1.0, 0.1, 1e-6]);
 
-    let (params, converged, iterations) = resolve_fit_outcome(forced_failure, &init);
+    assert_eq!(negative, boundary);
+    assert!(negative > positive);
+  }
 
-    assert_eq!(
-      params, init,
-      "a failed optimizer run must return the untouched initial guess"
-    );
-    assert!(
-      !converged,
-      "a failed optimizer run must never silently report converged = true"
-    );
-    assert_eq!(iterations, 0);
+  #[test]
+  fn bounded_mle_gradient_uses_the_feasible_boundary() {
+    let sample = Array1::from_vec(vec![0.1, 0.2, 0.15]);
+    let mut model = Cir::new(1.0, 0.1, 3.0, 3, None, None, None, Deterministic::new(0));
+    let problem = MleProblem {
+      model: Mutex::new(&mut model),
+      sample: sample.view(),
+      dt: 0.01,
+      density: DensityApprox::Euler,
+      lower: vec![1e-4, 1e-6, 1e-6],
+      upper: vec![50.0, 10.0, 10.0],
+    };
+    let outside = problem.gradient(&vec![1.0, 0.1, 13.0]).unwrap();
+    let boundary = problem.gradient(&vec![1.0, 0.1, 10.0]).unwrap();
+
+    // At this upper bound the likelihood improves toward smaller sigma.
+    assert!(boundary[2] > 0.0);
+    assert_eq!(outside, boundary);
   }
 
   #[test]
   fn mle_result_signals_non_convergence_without_error() {
-    // MaxItersReached (and SolverExit / Timeout / Interrupt) is a normal
-    // `Ok` termination from argmin's perspective, not an `Err` — but it
-    // still means the run never actually converged, so it must signal
-    // `converged = false` exactly like the `Err` branch.
-    let init = vec![0.5];
-    let stalled: Result<(Vec<f64>, TerminationStatus, u64), argmin::core::Error> = Ok((
-      init.clone(),
-      TerminationStatus::Terminated(TerminationReason::MaxItersReached),
-      200,
-    ));
+    let best = vec![0.5];
+    let (params, converged, iterations) =
+      resolve_fit_outcome(best.clone(), TerminationReason::MaxIter, 200);
 
-    let (params, converged, iterations) = resolve_fit_outcome(stalled, &init);
-
-    assert_eq!(params, init);
-    assert!(
-      !converged,
-      "MaxItersReached must not be reported as converged"
-    );
+    assert_eq!(params, best);
+    assert!(!converged, "MaxIter must not be reported as converged");
     assert_eq!(iterations, 200);
+  }
+
+  #[test]
+  fn mle_result_retains_best_point_on_solver_failure() {
+    let best = vec![1.0, 2.0, 3.0];
+    let (params, converged, iterations) =
+      resolve_fit_outcome(best.clone(), TerminationReason::SolverFailed, 7);
+
+    assert_eq!(params, best);
+    assert!(!converged);
+    assert_eq!(iterations, 7);
   }
 
   #[test]
   fn mle_result_signals_genuine_convergence() {
     let fitted = vec![1.23, 4.56];
-    let ok: Result<(Vec<f64>, TerminationStatus, u64), argmin::core::Error> = Ok((
-      fitted.clone(),
-      TerminationStatus::Terminated(TerminationReason::SolverConverged),
-      17,
-    ));
-
-    let (params, converged, iterations) = resolve_fit_outcome(ok, &[0.0, 0.0]);
+    let (params, converged, iterations) =
+      resolve_fit_outcome(fitted.clone(), TerminationReason::SolverConverged, 17);
 
     assert_eq!(params, fitted);
     assert!(converged);

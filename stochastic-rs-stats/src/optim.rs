@@ -1,10 +1,22 @@
-//! Small dependency-free optimisers shared by the estimator modules.
+//! Optimization helpers shared by the estimator modules.
 //!
 //! The square-root / mean-reverting calibrators (`gmm_cir`, `qmle`) minimise
 //! a smooth 3-parameter objective in log-space and the GARCH fitter a
 //! `p + q + 2`-parameter one; a compact Nelder-Mead simplex is enough for
 //! both, so the fixed-size entry point is a thin wrapper over the
 //! any-dimension one.
+
+use basin::MoreThuente;
+
+/// Moré–Thuente settings retained from the previous L-BFGS integrations.
+pub(crate) fn more_thuente() -> MoreThuente<f64> {
+  MoreThuente::new()
+    .ftol(1e-4)
+    .gtol(0.9)
+    .xtol(1e-10)
+    .stpmin(f64::EPSILON.sqrt())
+    .stpmax(f64::INFINITY)
+}
 
 /// Nelder-Mead simplex minimiser for a 3-parameter objective.
 ///

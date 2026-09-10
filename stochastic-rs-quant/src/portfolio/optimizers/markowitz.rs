@@ -1,8 +1,8 @@
 //! Markowitz mean-variance and Black-Litterman optimizers.
 
-use argmin::core::CostFunction;
-use argmin::core::Executor;
-use argmin::solver::neldermead::NelderMead;
+use std::convert::Infallible;
+
+use basin::CostFunction;
 
 use super::helpers::dot;
 use super::helpers::long_short_simplex;
@@ -10,6 +10,7 @@ use super::helpers::mat_inverse;
 use super::helpers::mat_vec_mul;
 use super::helpers::softmax;
 use super::helpers::tanh_weights;
+use super::run_nelder_mead;
 use crate::portfolio::types::PortfolioResult;
 use crate::portfolio::types::empty_result;
 
@@ -41,8 +42,9 @@ pub fn optimize_markowitz(
   impl CostFunction for MarkowitzCost {
     type Param = Vec<f64>;
     type Output = f64;
+    type Error = Infallible;
 
-    fn cost(&self, x: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
+    fn cost(&self, x: &Self::Param) -> Result<Self::Output, Self::Error> {
       let w = softmax(x);
       let sigma_w = mat_vec_mul(&self.cov, &w);
       let port_var = dot(&w, &sigma_w);
@@ -69,21 +71,8 @@ pub fn optimize_markowitz(
     simplex.push(point);
   }
 
-  let w = match NelderMead::new(simplex).with_sd_tolerance(1e-8) {
-    Ok(solver) => {
-      match Executor::new(cost, solver)
-        .configure(|state| state.max_iters(5000))
-        .run()
-      {
-        Ok(res) => {
-          let best_x = res.state.best_param.unwrap_or(x0);
-          softmax(&best_x)
-        }
-        Err(_) => vec![1.0 / n as f64; n],
-      }
-    }
-    Err(_) => vec![1.0 / n as f64; n],
-  };
+  let best_x = run_nelder_mead(cost, simplex, 5_000, 1e-8);
+  let w = softmax(&best_x);
 
   let expected_return = dot(&w, mu);
   let sigma_w = mat_vec_mul(cov, &w);
@@ -126,8 +115,9 @@ pub fn optimize_markowitz_long_short(
   impl CostFunction for LongShortCost {
     type Param = Vec<f64>;
     type Output = f64;
+    type Error = Infallible;
 
-    fn cost(&self, x: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
+    fn cost(&self, x: &Self::Param) -> Result<Self::Output, Self::Error> {
       let w = tanh_weights(x);
       let sigma_w = mat_vec_mul(&self.cov, &w);
       let port_var = dot(&w, &sigma_w);
@@ -145,24 +135,10 @@ pub fn optimize_markowitz_long_short(
     penalty: lambda,
   };
 
-  let x0 = vec![0.0; n];
   let simplex = long_short_simplex(n);
 
-  let w = match NelderMead::new(simplex).with_sd_tolerance(1e-8) {
-    Ok(solver) => {
-      match Executor::new(cost, solver)
-        .configure(|state| state.max_iters(5000))
-        .run()
-      {
-        Ok(res) => {
-          let best_x = res.state.best_param.unwrap_or(x0);
-          tanh_weights(&best_x)
-        }
-        Err(_) => vec![1.0 / n as f64; n],
-      }
-    }
-    Err(_) => vec![1.0 / n as f64; n],
-  };
+  let best_x = run_nelder_mead(cost, simplex, 5_000, 1e-8);
+  let w = tanh_weights(&best_x);
 
   let expected_return = dot(&w, mu);
   let sigma_w = mat_vec_mul(cov, &w);

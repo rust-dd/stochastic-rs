@@ -30,11 +30,11 @@
 //! J. Oblój, "Fine-tune your smile: Correction to Hagan et al.", Wilmott
 //! Magazine (2008).
 
-use argmin::core::CostFunction;
-use argmin::core::Executor;
-use argmin::core::State;
-use argmin::solver::neldermead::NelderMead;
+use std::convert::Infallible;
 
+use basin::CostFunction;
+
+use crate::calibration::run_nelder_mead;
 use crate::pricing::sabr::hagan_implied_vol;
 
 /// Calibrated parameter set for a Sabr caplet smile.
@@ -303,27 +303,8 @@ impl SabrCapletCalibrator {
       vec![a0, nu0, (rho0 + 0.2).clamp(-0.99, 0.99)],
     ];
 
-    let mut converged = true;
-    let best = match NelderMead::new(simplex.clone()).with_sd_tolerance(self.sd_tolerance) {
-      Ok(solver) => match Executor::new(problem.clone(), solver)
-        .configure(|s| s.max_iters(self.max_iters))
-        .run()
-      {
-        Ok(res) => res
-          .state
-          .get_best_param()
-          .cloned()
-          .unwrap_or_else(|| simplex[0].clone()),
-        Err(_) => {
-          converged = false;
-          simplex[0].clone()
-        }
-      },
-      Err(_) => {
-        converged = false;
-        simplex[0].clone()
-      }
-    };
+    let (best, converged) =
+      run_nelder_mead(problem.clone(), simplex, self.max_iters, self.sd_tolerance);
 
     let alpha = best[0].abs().max(1e-8);
     let nu = best[1].abs().max(1e-8);
@@ -381,8 +362,9 @@ struct SabrCapletCost {
 impl CostFunction for SabrCapletCost {
   type Param = Vec<f64>;
   type Output = f64;
+  type Error = Infallible;
 
-  fn cost(&self, x: &Self::Param) -> Result<f64, argmin::core::Error> {
+  fn cost(&self, x: &Self::Param) -> Result<f64, Self::Error> {
     let alpha = x[0].abs().max(1e-8);
     let nu = x[1].abs().max(1e-8);
     let rho = x[2].clamp(-0.9999, 0.9999);

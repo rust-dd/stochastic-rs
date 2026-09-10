@@ -1,9 +1,15 @@
-use argmin::core::CostFunction;
-use argmin::core::Executor;
-use argmin::core::Gradient;
-use argmin::core::State;
-use argmin::solver::linesearch::MoreThuenteLineSearch;
-use argmin::solver::quasinewton::LBFGS;
+use std::convert::Infallible;
+
+use basin::BoxConstraints;
+use basin::CostFunction;
+use basin::CostTolerance;
+use basin::Gradient;
+use basin::InnerExecutor;
+use basin::LbfgsState;
+use basin::Lbfgsb;
+use basin::MoreThuente;
+use basin::Problem;
+use basin::TerminationReason;
 use stochastic_rs_core::simd_rng::SimdRng;
 
 use crate::pricing::sabr::alpha_from_atm_vol;
@@ -54,7 +60,7 @@ pub(super) fn bf_premium_mismatch(
 /// matched by construction.
 pub(super) const NVARS: usize = 6;
 
-/// Problem definition for argmin optimization
+/// Problem definition for Basin optimization.
 #[derive(Clone)]
 pub(super) struct SabrSmileProblem {
   pub(super) s: f64,
@@ -65,27 +71,25 @@ pub(super) struct SabrSmileProblem {
   pub(super) sigma_atm: f64,
   pub(super) sigma_rr: f64,
   pub(super) sigma_bf: f64,
-  pub(super) bounds_lo: [f64; NVARS],
-  pub(super) bounds_hi: [f64; NVARS],
+  pub(super) bounds_lo: Vec<f64>,
+  pub(super) bounds_hi: Vec<f64>,
 }
 
 impl SabrSmileProblem {
-  fn clamp_params(&self, x: &[f64]) -> [f64; NVARS] {
-    let mut p = [0.0; NVARS];
-    for i in 0..NVARS {
-      p[i] = x[i].clamp(self.bounds_lo[i], self.bounds_hi[i]);
-    }
-    p
+  pub(super) fn clamp_params(&self, x: &[f64]) -> [f64; NVARS] {
+    std::array::from_fn(|i| x[i].clamp(self.bounds_lo[i], self.bounds_hi[i]))
   }
 }
 
 impl CostFunction for SabrSmileProblem {
   type Param = Vec<f64>;
   type Output = f64;
+  type Error = Infallible;
 
-  fn cost(&self, x: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
-    let p = self.clamp_params(x);
-    let (k_rr_c, k_rr_p, k_bf_c, k_bf_p, nu, rho) = (p[0], p[1], p[2], p[3], p[4], p[5]);
+  fn cost(&self, x: &Self::Param) -> Result<Self::Output, Self::Error> {
+    // Raw starts and line-search probes must satisfy Hagan's domain contract.
+    let x = self.clamp_params(x);
+    let (k_rr_c, k_rr_p, k_bf_c, k_bf_p, nu, rho) = (x[0], x[1], x[2], x[3], x[4], x[5]);
 
     let f = forward_fx(self.s, self.tau, self.r_d, self.r_f);
     let alpha = alpha_from_atm_vol(self.sigma_atm, f, self.tau, self.beta, rho, nu);
@@ -120,23 +124,41 @@ impl CostFunction for SabrSmileProblem {
 }
 
 impl Gradient for SabrSmileProblem {
-  type Param = Vec<f64>;
   type Gradient = Vec<f64>;
 
-  fn gradient(&self, x: &Self::Param) -> Result<Self::Gradient, argmin::core::Error> {
+  fn gradient(&self, x: &Self::Param) -> Result<Self::Gradient, Self::Error> {
+    let x = self.clamp_params(x);
     let eps = 1e-8;
-    let f0 = self.cost(x)?;
     let mut grad = vec![0.0; NVARS];
     for i in 0..NVARS {
-      let mut x_plus = x.clone();
-      x_plus[i] += eps;
-      grad[i] = (self.cost(&x_plus)? - f0) / eps;
+      let mut x_plus = x.to_vec();
+      let mut x_minus = x.to_vec();
+      x_plus[i] = (x_plus[i] + eps).min(self.bounds_hi[i]);
+      x_minus[i] = (x_minus[i] - eps).max(self.bounds_lo[i]);
+      let step = x_plus[i] - x_minus[i];
+      if step > 0.0 {
+        grad[i] = (self.cost(&x_plus)? - self.cost(&x_minus)?) / step;
+      }
     }
     Ok(grad)
   }
 }
 
-/// Basin-hopping with argmin L-BFGS
+impl BoxConstraints for SabrSmileProblem {
+  fn lower(&self) -> &Self::Param {
+    &self.bounds_lo
+  }
+
+  fn upper(&self) -> &Self::Param {
+    &self.bounds_hi
+  }
+}
+
+/// Basin-hopping with Basin L-BFGS-B.
+///
+/// Keep the existing SimdRng stream and skip every failed local solve. Basin's
+/// BasinHopping owns a ChaCha RNG, optimizes the initial point before hopping,
+/// and can accept failed candidates when the incumbent also failed.
 pub(super) fn basin_hopping_opt(
   x0: [f64; NVARS],
   niter: usize,
@@ -145,13 +167,25 @@ pub(super) fn basin_hopping_opt(
 ) -> ([f64; NVARS], f64) {
   let mut rng = SimdRng::from_seed(3);
 
-  let mut current_x = x0;
-  let mut current_f = problem.cost(&x0.to_vec()).unwrap_or(f64::INFINITY);
+  let mut current_x = problem.clamp_params(&x0);
+  let mut current_f = problem.cost(&current_x.to_vec()).unwrap_or(f64::INFINITY);
 
   let mut best_x = current_x;
   let mut best_f = current_f;
 
   let temp = 1.0_f64;
+
+  let linesearch = MoreThuente::new()
+    .ftol(1e-4)
+    .gtol(0.9)
+    .xtol(1e-10)
+    .stpmin(f64::EPSILON.sqrt())
+    .stpmax(f64::INFINITY);
+  let solver = Lbfgsb::with_line_search(linesearch).with_tol_pg(f64::EPSILON.sqrt());
+  let mut local = InnerExecutor::new(solver)
+    .max_iter(100)
+    .terminate_on(CostTolerance::new(f64::EPSILON));
+  let mut local_problem = Problem::new(problem.clone());
 
   for _ in 0..niter {
     let mut x_trial = current_x;
@@ -160,37 +194,33 @@ pub(super) fn basin_hopping_opt(
       *x = (*x).clamp(problem.bounds_lo[i], problem.bounds_hi[i]);
     }
 
-    let linesearch = MoreThuenteLineSearch::new()
-      .with_c(1e-4, 0.9)
-      .expect("Wolfe params (1e-4, 0.9) satisfy 0 < c1 < c2 < 1 by construction");
-    let solver = LBFGS::new(linesearch, 10);
-
     let x_init = x_trial.to_vec();
-    let res = Executor::new(problem.clone(), solver)
-      .configure(|state| state.param(x_init).max_iters(100))
-      .run();
+    let state = LbfgsState::new(x_init, 10);
+    let result = local
+      .run(&mut local_problem, state)
+      .expect("Sabr smile objective is infallible");
 
-    if let Ok(optimization_result) = res {
-      let state = optimization_result.state();
-      if let Some(param) = state.get_param() {
-        let cost = state.get_cost();
+    if result.reason != TerminationReason::SolverFailed {
+      let param = problem.clamp_params(result.param());
+      let cost = problem
+        .cost(&param.to_vec())
+        .expect("Sabr smile objective is infallible");
 
-        let delta = cost - current_f;
-        let accept = if delta <= 0.0 {
-          true
-        } else {
-          let u = rng.next_f64();
-          u < (-delta / temp).exp()
-        };
+      let delta = cost - current_f;
+      let accept = if delta <= 0.0 {
+        true
+      } else {
+        let u = rng.next_f64();
+        u < (-delta / temp).exp()
+      };
 
-        if accept {
-          current_x.copy_from_slice(&param[..NVARS]);
-          current_f = cost;
+      if accept {
+        current_x = param;
+        current_f = cost;
 
-          if cost < best_f {
-            best_f = cost;
-            best_x = current_x;
-          }
+        if cost < best_f {
+          best_f = cost;
+          best_x = current_x;
         }
       }
     }

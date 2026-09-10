@@ -70,7 +70,9 @@ impl SabrSmileCalibrator {
     let sigma_bf = self.quotes.sigma_bf;
     let f = forward_fx(s, tau, self.r_d, self.r_f);
 
-    let x0: [f64; NVARS] = [s + 0.1, s - 0.1, s + 0.1, s - 0.1, 0.6, 0.5];
+    let call_start = (s + 0.1).clamp(self.strike_lo, self.strike_hi);
+    let put_start = (s - 0.1).clamp(self.strike_lo, self.strike_hi);
+    let x0: [f64; NVARS] = [call_start, put_start, call_start, put_start, 0.6, 0.5];
 
     let niter = if tau < self.short_tenor_threshold {
       self.short_tenor_iters
@@ -87,14 +89,14 @@ impl SabrSmileCalibrator {
       sigma_atm,
       sigma_rr,
       sigma_bf,
-      bounds_lo: lo,
-      bounds_hi: hi,
+      bounds_lo: lo.to_vec(),
+      bounds_hi: hi.to_vec(),
     };
 
     let (x_best, f_best) = basin_hopping_opt(x0, niter, 0.0005, &problem);
 
-    let rho = x_best[5].clamp(-0.99, 0.99);
-    let nu = x_best[4].max(0.01);
+    let rho = x_best[5];
+    let nu = x_best[4];
     let alpha = alpha_from_atm_vol(sigma_atm, f, tau, self.beta, rho, nu);
 
     SabrSmileResult {

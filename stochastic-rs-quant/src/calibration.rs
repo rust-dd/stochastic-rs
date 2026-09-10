@@ -4,13 +4,92 @@
 //! \hat\theta=\arg\min_\theta\sum_i w_i\left(P_i^{model}(\theta)-P_i^{mkt}\right)^2
 //! $$
 //!
+use std::convert::Infallible;
 use std::sync::OnceLock;
 
+use basin::BasicSimplexState;
+use basin::CostFunction;
+use basin::Executor;
+use basin::NelderMead;
+use basin::SimplexState;
+use basin::TerminationCriterion;
+use basin::TerminationReason;
 use gauss_quad::GaussLegendre;
 use nalgebra::DVector;
 use stochastic_rs_distributions::RealExt;
 
 use crate::CalibrationLossScore;
+
+/// Preserves the existing sample-standard-deviation stopping rule for simplex fits.
+pub(crate) struct SimplexStandardDeviation {
+  tolerance: f64,
+}
+
+impl SimplexStandardDeviation {
+  pub(crate) fn new(tolerance: f64) -> Option<Self> {
+    (tolerance.is_finite() && tolerance >= 0.0).then_some(Self { tolerance })
+  }
+}
+
+impl<S> TerminationCriterion<S> for SimplexStandardDeviation
+where
+  S: SimplexState<Float = f64>,
+{
+  fn check(&mut self, state: &S) -> Option<TerminationReason> {
+    match sample_standard_deviation(state.costs()) {
+      Some(sd) => (sd < self.tolerance).then_some(TerminationReason::SimplexTolerance),
+      // Undefined spread must not silently disable the stopping rule.
+      None => Some(TerminationReason::SolverFailed),
+    }
+  }
+}
+
+fn sample_standard_deviation(values: &[f64]) -> Option<f64> {
+  if values.len() < 2 || values.iter().any(|value| !value.is_finite()) {
+    return None;
+  }
+  // Scaling keeps finite costs from overflowing the mean or squared deviations.
+  let scale = values.iter().map(|value| value.abs()).fold(0.0, f64::max);
+  if scale == 0.0 {
+    return Some(0.0);
+  }
+  let mean = values.iter().map(|value| value / scale).sum::<f64>() / values.len() as f64;
+  let squared_deviations = values
+    .iter()
+    .map(|value| (value / scale - mean).powi(2))
+    .sum::<f64>();
+  let sd = scale * (squared_deviations / (values.len() - 1) as f64).sqrt();
+  sd.is_finite().then_some(sd)
+}
+
+pub(crate) fn run_nelder_mead<P>(
+  problem: P,
+  simplex: Vec<Vec<f64>>,
+  max_iters: u64,
+  sd_tolerance: f64,
+) -> (Vec<f64>, bool)
+where
+  P: CostFunction<Param = Vec<f64>, Output = f64, Error = Infallible>,
+{
+  assert!(
+    simplex.len() >= 2,
+    "simplex must contain at least two vertices"
+  );
+  let fallback = simplex[0].clone();
+  let Some(criterion) = SimplexStandardDeviation::new(sd_tolerance) else {
+    return (fallback, false);
+  };
+  let state = BasicSimplexState::from_simplex(simplex);
+  let result = Executor::new(problem, NelderMead::new(), state)
+    .max_iter(max_iters)
+    .terminate_on(criterion)
+    .run()
+    .expect("calibration objective is infallible");
+  (
+    result.best_param().clone(),
+    result.reason == TerminationReason::SimplexTolerance,
+  )
+}
 
 pub mod bsm;
 pub mod cgmysv;
@@ -29,6 +108,93 @@ pub mod tree_swaption;
 
 #[cfg(test)]
 mod quadrature_tests;
+
+#[cfg(test)]
+mod optimizer_tests {
+  use std::convert::Infallible;
+
+  use basin::CostFunction;
+
+  use super::run_nelder_mead;
+  use super::sample_standard_deviation;
+
+  struct Sphere;
+
+  impl CostFunction for Sphere {
+    type Param = Vec<f64>;
+    type Output = f64;
+    type Error = Infallible;
+
+    fn cost(&self, x: &Self::Param) -> Result<Self::Output, Self::Error> {
+      Ok(x.iter().map(|value| value.powi(2)).sum())
+    }
+  }
+
+  #[test]
+  fn simplex_spread_uses_sample_standard_deviation() {
+    assert_eq!(sample_standard_deviation(&[1.0, 2.0, 3.0]), Some(1.0));
+    assert_eq!(sample_standard_deviation(&[0.0, 0.0]), Some(0.0));
+    assert_eq!(sample_standard_deviation(&[f64::MAX, f64::MAX]), Some(0.0));
+  }
+
+  #[test]
+  fn undefined_simplex_spread_is_rejected() {
+    for costs in [&[][..], &[1.0], &[0.0, f64::INFINITY], &[0.0, f64::NAN]] {
+      assert_eq!(sample_standard_deviation(costs), None);
+    }
+  }
+
+  #[test]
+  #[should_panic(expected = "simplex must contain at least two vertices")]
+  fn empty_simplex_has_an_explicit_precondition() {
+    run_nelder_mead(Sphere, vec![], 100, 1e-10);
+  }
+
+  #[test]
+  fn invalid_simplex_tolerance_returns_the_initial_point() {
+    let initial = vec![2.0];
+    for tolerance in [-1.0, f64::NAN, f64::INFINITY] {
+      let simplex = vec![initial.clone(), vec![3.0]];
+      let (best, converged) = run_nelder_mead(Sphere, simplex, 100, tolerance);
+      assert_eq!(best, initial);
+      assert!(!converged);
+    }
+  }
+
+  #[test]
+  fn iteration_limit_is_not_reported_as_convergence() {
+    let simplex = vec![vec![2.0], vec![3.0]];
+
+    let (_, converged) = run_nelder_mead(Sphere, simplex, 0, 1e-10);
+
+    assert!(!converged);
+  }
+
+  #[test]
+  fn nonfinite_simplex_costs_stop_without_convergence() {
+    struct Nonfinite;
+
+    impl CostFunction for Nonfinite {
+      type Param = Vec<f64>;
+      type Output = f64;
+      type Error = Infallible;
+
+      fn cost(&self, x: &Self::Param) -> Result<f64, Infallible> {
+        Ok(if x[0] > 0.0 { f64::INFINITY } else { 0.0 })
+      }
+    }
+
+    let state = basin::BasicSimplexState::from_simplex(vec![vec![0.0], vec![1.0]]);
+    let result = basin::Executor::new(Nonfinite, basin::NelderMead::new(), state)
+      .max_iter(100)
+      .terminate_on(super::SimplexStandardDeviation::new(1e-10).unwrap())
+      .run()
+      .unwrap();
+    assert_eq!(result.reason, basin::TerminationReason::SolverFailed);
+    assert_eq!(result.iter(), 0);
+    assert_eq!(result.best_param(), &vec![0.0]);
+  }
+}
 
 pub use bsm::BSMCalibrationResult;
 pub use bsm::BSMCalibrator;
