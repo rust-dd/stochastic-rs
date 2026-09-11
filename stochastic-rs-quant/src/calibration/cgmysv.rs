@@ -13,18 +13,18 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use levenberg_marquardt::LeastSquaresProblem;
-use levenberg_marquardt::LevenbergMarquardt;
 use nalgebra::DMatrix;
 use nalgebra::DVector;
-use nalgebra::Dyn;
-use nalgebra::Owned;
 
 use super::CalibrationHistory;
+
 /// Market data for a single maturity slice.
 pub use super::levy::MarketSlice;
 use crate::CalibrationLossScore;
 use crate::LossMetric;
+use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::LmOptions;
+use crate::calibration::least_squares::minimize;
 use crate::pricing::cgmysv::CgmysvModel;
 use crate::pricing::cgmysv::CgmysvParams;
 use crate::pricing::fourier::LewisPricer;
@@ -227,7 +227,7 @@ impl CgmysvCalibrator {
     }
     project(&mut problem.params);
 
-    let (result, report) = LevenbergMarquardt::new().minimize(problem);
+    let (result, report) = minimize(problem, LmOptions::default());
 
     let final_params = to_cgmysv_params(&result.params);
     let model_prices = result.compute_model_prices();
@@ -240,24 +240,36 @@ impl CgmysvCalibrator {
     CgmysvCalibrationResult {
       params: final_params,
       loss,
-      converged: report.termination.was_successful(),
-      iterations: report.number_of_evaluations,
+      converged: report.converged,
+      iterations: report.evaluations,
     }
   }
 }
 
-impl LeastSquaresProblem<f64, Dyn, Dyn> for CgmysvCalibrator {
-  type JacobianStorage = Owned<f64, Dyn, Dyn>;
-  type ParameterStorage = Owned<f64, Dyn>;
-  type ResidualStorage = Owned<f64, Dyn>;
-
+impl LeastSquaresProblem for CgmysvCalibrator {
   fn set_params(&mut self, params: &DVector<f64>) {
-    self.params = params.as_slice().to_vec();
-    project(&mut self.params);
+    self.params = params
+      .iter()
+      .zip(param_bounds())
+      .map(|(&coordinate, (lower, upper))| lower + (upper - lower) / (1.0 + (-coordinate).exp()))
+      .collect();
   }
 
   fn params(&self) -> DVector<f64> {
-    DVector::from_vec(self.params.clone())
+    // Smooth bounds avoid flat projected steps along weakly identified directions.
+    // The interior margin also permits a finite start at either physical bound.
+    DVector::from_iterator(
+      N_PARAMS,
+      self
+        .params
+        .iter()
+        .zip(param_bounds())
+        .map(|(&value, (lower, upper))| {
+          let margin = (upper - lower) * 1e-6;
+          let value = value.clamp(lower + margin, upper - margin);
+          ((value - lower) / (upper - value)).ln()
+        }),
+    )
   }
 
   fn residuals(&self) -> Option<DVector<f64>> {
@@ -329,6 +341,11 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for CgmysvCalibrator {
       }
     }
 
+    for (j, (lower, upper)) in param_bounds().into_iter().enumerate() {
+      let value = self.params[j];
+      let derivative = (value - lower) * (upper - value) / (upper - lower);
+      jac.column_mut(j).scale_mut(derivative);
+    }
     Some(jac)
   }
 }
@@ -389,9 +406,10 @@ mod tests {
       result.converged, result.iterations
     );
 
-    // RMSE should be small since we calibrate to synthetic data
+    assert!(result.converged, "CGMYSV exhausted its evaluation budget");
+    // The reference solver recovers these synthetic quotes to numerical precision.
     assert!(
-      result.loss.get(LossMetric::Rmse) < 5.0,
+      result.loss.get(LossMetric::Rmse) < 1e-6,
       "RMSE = {:.4}, should be small for synthetic data",
       result.loss.get(LossMetric::Rmse)
     );
@@ -413,5 +431,64 @@ mod tests {
     println!("Call prices: K=2400: {c1:.4}, K=2500: {c2:.4}, K=2600: {c3:.4}");
     assert!(c1 > c2 && c2 > c3, "calls must decrease in K");
     assert!(c1 > 0.0 && c3 > 0.0, "calls must be positive");
+  }
+
+  #[test]
+  fn optimizer_coordinates_preserve_both_signs_of_rho() {
+    let mut calibrator = CgmysvCalibrator::new(100.0, 0.03, 0.0, Vec::new());
+    for rho in [-4.0, 0.0, 4.0] {
+      calibrator.params = default_params();
+      calibrator.params[6] = rho;
+      let physical = calibrator.params.clone();
+      let coordinates = LeastSquaresProblem::params(&calibrator);
+      calibrator.set_params(&coordinates);
+      for (&actual, &expected) in calibrator.params.iter().zip(&physical) {
+        assert!((actual - expected).abs() < 1e-12);
+      }
+    }
+    for upper in [false, true] {
+      calibrator.params = param_bounds()
+        .map(|(lo, hi)| if upper { hi } else { lo })
+        .to_vec();
+      let coordinates = LeastSquaresProblem::params(&calibrator);
+      assert!(coordinates.iter().all(|v| v.is_finite()));
+      calibrator.set_params(&coordinates);
+      for (&value, (lo, hi)) in calibrator.params.iter().zip(param_bounds()) {
+        assert!(value > lo && value < hi);
+      }
+    }
+  }
+
+  #[test]
+  fn optimizer_jacobian_matches_finite_differences() {
+    let market = MarketSlice {
+      strikes: vec![95.0, 100.0, 105.0],
+      prices: vec![0.0; 3],
+      is_call: vec![true; 3],
+      tau: 0.5,
+    };
+    let mut calibrator = CgmysvCalibrator::new(100.0, 0.03, 0.0, vec![market]);
+    let coordinates = LeastSquaresProblem::params(&calibrator);
+    calibrator.set_params(&coordinates);
+    let jacobian = calibrator.jacobian().unwrap();
+    let step = 1e-5;
+    for j in 0..N_PARAMS {
+      let mut shifted = coordinates.clone();
+      shifted[j] += step;
+      calibrator.set_params(&shifted);
+      let up = calibrator.residuals().unwrap();
+      shifted[j] -= 2.0 * step;
+      calibrator.set_params(&shifted);
+      let down = calibrator.residuals().unwrap();
+      for i in 0..3 {
+        let numeric = (up[i] - down[i]) / (2.0 * step);
+        let relative = (jacobian[(i, j)] - numeric).abs() / (1.0 + numeric.abs());
+        assert!(
+          relative < 1e-5,
+          "row {i}, column {j}: {} vs {numeric}",
+          jacobian[(i, j)]
+        );
+      }
+    }
   }
 }

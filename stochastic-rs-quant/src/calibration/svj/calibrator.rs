@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use levenberg_marquardt::LevenbergMarquardt;
 use nalgebra::DVector;
 
 use super::SVJCalibrationResult;
@@ -10,9 +9,13 @@ use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::OptionType;
 use crate::calibration::CalibrationHistory;
+use crate::calibration::least_squares::LmOptions;
+use crate::calibration::least_squares::minimize;
 
 pub(super) const KAPPA_MIN: f64 = 1e-3;
+
 pub(super) const THETA_MIN: f64 = 1e-8;
+
 pub(super) const SIGMA_V_MIN: f64 = 1e-8;
 
 /// SVJ (Bates) least-squares calibrator using Levenberg-Marquardt.
@@ -139,7 +142,7 @@ impl SVJCalibrator {
     }
     problem.ensure_initial_guess();
 
-    let (result, report) = LevenbergMarquardt::new().minimize(problem);
+    let (result, report) = minimize(problem, LmOptions::default());
 
     let p = result.effective_params();
     let c_model = result.compute_model_prices_for(&p);
@@ -159,7 +162,7 @@ impl SVJCalibrator {
       mu_j: p.mu_j,
       sigma_j: p.sigma_j,
       loss,
-      converged: report.termination.was_successful(),
+      converged: report.converged,
     }
   }
 

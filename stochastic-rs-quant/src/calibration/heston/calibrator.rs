@@ -3,7 +3,6 @@ use std::rc::Rc;
 
 use anyhow::Result;
 use anyhow::bail;
-use levenberg_marquardt::LevenbergMarquardt;
 use nalgebra::DVector;
 use ndarray::Array1;
 use stochastic_rs_stats::heston_nml_cekf::HestonNmleCekfConfig;
@@ -17,6 +16,8 @@ use crate::LossMetric;
 use crate::OptionType;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::Regularization;
+use crate::calibration::least_squares::LmOptions;
+use crate::calibration::least_squares::minimize;
 
 #[derive(Clone)]
 /// Heston least-squares calibrator using Levenberg-Marquardt iterations.
@@ -179,12 +180,15 @@ impl HestonCalibrator {
     let mut problem = self.clone();
     problem.ensure_initial_guess();
 
-    let mut optimizer = LevenbergMarquardt::new().with_patience(self.optimizer_patience);
-    if let Some(tolerance) = self.optimizer_tolerance {
-      optimizer = optimizer.with_tol(tolerance);
-    }
-    let (result, report) = optimizer.minimize(problem);
-    let converged = report.termination.was_successful();
+    let (result, report) = minimize(
+      problem,
+      LmOptions {
+        tolerance: self.optimizer_tolerance,
+        patience: self.optimizer_patience,
+        pivoted_qr: true,
+      },
+    );
+    let converged = report.converged;
     let params = result.effective_params();
 
     let c_model = result.compute_model_prices_for_numeric(&params);

@@ -1,10 +1,10 @@
-use levenberg_marquardt::LeastSquaresProblem;
 use nalgebra::DVector;
 
 use super::HestonCalibrator;
 use super::HestonJacobianMethod;
 use super::HestonParams;
 use crate::OptionType;
+use crate::calibration::least_squares::LeastSquaresProblem;
 
 fn calibrator() -> HestonCalibrator {
   let mut calibrator = HestonCalibrator::new(

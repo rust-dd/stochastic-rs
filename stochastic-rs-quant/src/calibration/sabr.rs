@@ -28,18 +28,17 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use levenberg_marquardt::LeastSquaresProblem;
-use levenberg_marquardt::LevenbergMarquardt;
 use nalgebra::DMatrix;
 use nalgebra::DVector;
-use nalgebra::Dyn;
-use nalgebra::Owned;
 
 use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::OptionType;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::Regularization;
+use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::LmOptions;
+use crate::calibration::least_squares::minimize;
 use crate::pricing::sabr::SabrPricer;
 
 const RHO_BOUND: f64 = 0.9999;
@@ -287,8 +286,14 @@ impl SabrCalibrator {
     let mut problem = self.clone();
     problem.ensure_initial_guess();
 
-    let (result, report) = LevenbergMarquardt::new().minimize(problem);
-    let converged = report.termination.was_successful();
+    let (result, report) = minimize(
+      problem,
+      LmOptions {
+        pivoted_qr: false,
+        ..LmOptions::default()
+      },
+    );
+    let converged = report.converged;
     let p = result.effective_params();
     let c_model = result.compute_model_prices_for(&p);
     let loss = CalibrationLossScore::compute_selected(
@@ -413,11 +418,7 @@ impl SabrCalibrator {
   }
 }
 
-impl LeastSquaresProblem<f64, Dyn, Dyn> for SabrCalibrator {
-  type JacobianStorage = Owned<f64, Dyn, Dyn>;
-  type ParameterStorage = Owned<f64, Dyn>;
-  type ResidualStorage = Owned<f64, Dyn>;
-
+impl LeastSquaresProblem for SabrCalibrator {
   fn set_params(&mut self, params: &DVector<f64>) {
     let beta = self.effective_params().beta;
     let mut p = SabrParams {
