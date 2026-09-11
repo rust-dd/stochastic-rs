@@ -85,9 +85,22 @@ differentiated the call.
 
 Basin replaces argmin for L-BFGS and Nelder–Mead fits. L-BFGS polishing
 can produce slightly different estimates because Basin skips curvature
-updates that fail its numerical threshold. Least-squares fits continue
-to use `levenberg-marquardt`; migrating them is a separate change that
-requires validating Basin's linear solve on poorly conditioned SVI models.
+updates that fail its numerical threshold. Basin 1.11 also replaces
+`levenberg-marquardt` for least-squares calibration, including SVI, SSVI,
+and the AI surrogate. These fits use trust-region damping, with pivoted QR
+for stochastic-volatility and surrogate fits and Cholesky for the smaller
+pricing objectives.
+CGMYSV now optimizes in smooth bounded coordinates, as Heston already does,
+to maintain convergence on weakly identified surfaces. Calibrator constructors,
+parameter types, and result types are unchanged.
+The implementation of `levenberg_marquardt::LeastSquaresProblem` on the
+calibrators is removed; use the `Calibrator` trait to run a fit.
+
+Tolerance and patience settings retain their relative-tolerance and
+residual-evaluation-budget meanings. Evaluation counts and termination
+messages can differ between solvers. An exhausted budget, a failed model
+evaluation, or a numerical stall does not count as convergence; the fit
+returns the best accepted parameters.
 
 The workspace now requires Rust 1.89 and declares it in `rust-version`.
 Cargo's edition-2024 resolver uses this minimum when selecting dependencies,

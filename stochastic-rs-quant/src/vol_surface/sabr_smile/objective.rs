@@ -2,7 +2,6 @@ use std::convert::Infallible;
 
 use basin::BoxConstraints;
 use basin::CostFunction;
-use basin::CostTolerance;
 use basin::Gradient;
 use basin::InnerExecutor;
 use basin::LbfgsState;
@@ -176,15 +175,15 @@ pub(super) fn basin_hopping_opt(
   let temp = 1.0_f64;
 
   let linesearch = MoreThuente::new()
-    .ftol(1e-4)
-    .gtol(0.9)
-    .xtol(1e-10)
+    .with_sufficient_decrease_coefficient(1e-4)
+    .with_curvature_coefficient(0.9)
+    .with_relative_bracket_tolerance(1e-10)
     .stpmin(f64::EPSILON.sqrt())
     .stpmax(f64::INFINITY);
-  let solver = Lbfgsb::with_line_search(linesearch).with_tol_pg(f64::EPSILON.sqrt());
-  let mut local = InnerExecutor::new(solver)
-    .max_iter(100)
-    .terminate_on(CostTolerance::new(f64::EPSILON));
+  let solver = Lbfgsb::with_line_search(linesearch)
+    .with_absolute_projected_gradient_tolerance(f64::EPSILON.sqrt())
+    .with_absolute_cost_change_tolerance(f64::EPSILON);
+  let mut local = InnerExecutor::new(solver).max_iter(100);
   let mut local_problem = Problem::new(problem.clone());
 
   for _ in 0..niter {

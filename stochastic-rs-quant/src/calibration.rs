@@ -12,7 +12,6 @@ use basin::CostFunction;
 use basin::Executor;
 use basin::NelderMead;
 use basin::SimplexState;
-use basin::TerminationCriterion;
 use basin::TerminationReason;
 use gauss_quad::GaussLegendre;
 use nalgebra::DVector;
@@ -31,11 +30,8 @@ impl SimplexStandardDeviation {
   }
 }
 
-impl<S> TerminationCriterion<S> for SimplexStandardDeviation
-where
-  S: SimplexState<Float = f64>,
-{
-  fn check(&mut self, state: &S) -> Option<TerminationReason> {
+impl SimplexStandardDeviation {
+  fn check<S: SimplexState<Float = f64>>(&self, state: &S) -> Option<TerminationReason> {
     match sample_standard_deviation(state.costs()) {
       Some(sd) => (sd < self.tolerance).then_some(TerminationReason::SimplexTolerance),
       // Undefined spread must not silently disable the stopping rule.
@@ -82,7 +78,7 @@ where
   let state = BasicSimplexState::from_simplex(simplex);
   let result = Executor::new(problem, NelderMead::new(), state)
     .max_iter(max_iters)
-    .terminate_on(criterion)
+    .stop_when(move |state| criterion.check(state))
     .run()
     .expect("calibration objective is infallible");
   (
@@ -98,6 +94,8 @@ pub mod heston;
 pub mod heston_stoch_corr;
 pub mod hkde;
 pub mod hw_swaption;
+#[doc(hidden)]
+pub mod least_squares;
 pub mod levy;
 pub mod rbergomi;
 pub mod regularization;
@@ -187,7 +185,11 @@ mod optimizer_tests {
     let state = basin::BasicSimplexState::from_simplex(vec![vec![0.0], vec![1.0]]);
     let result = basin::Executor::new(Nonfinite, basin::NelderMead::new(), state)
       .max_iter(100)
-      .terminate_on(super::SimplexStandardDeviation::new(1e-10).unwrap())
+      .stop_when(|state| {
+        super::SimplexStandardDeviation::new(1e-10)
+          .unwrap()
+          .check(state)
+      })
       .run()
       .unwrap();
     assert_eq!(result.reason, basin::TerminationReason::SolverFailed);

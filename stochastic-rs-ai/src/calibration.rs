@@ -25,14 +25,13 @@ use std::cell::RefCell;
 
 use anyhow::Result;
 use anyhow::bail;
-use levenberg_marquardt::LeastSquaresProblem;
-use levenberg_marquardt::LevenbergMarquardt;
 use nalgebra::DMatrix;
 use nalgebra::DVector;
-use nalgebra::Dyn;
-use nalgebra::Owned;
 use ndarray::Array2;
 use stochastic_rs_quant::calibration::heston::HestonParams;
+use stochastic_rs_quant::calibration::least_squares::LeastSquaresProblem;
+use stochastic_rs_quant::calibration::least_squares::LmOptions;
+use stochastic_rs_quant::calibration::least_squares::minimize;
 use stochastic_rs_quant::calibration::rbergomi::RBergomiParams;
 use stochastic_rs_quant::calibration::rbergomi::RBergomiXi0;
 use stochastic_rs_quant::pricing::fourier::HestonFourier;
@@ -215,10 +214,14 @@ impl<'m, M: SurrogateModel> SurrogateCalibrator<'m, M> {
       x: x0,
       cache: RefCell::new(None),
     };
-    let (problem, report) = LevenbergMarquardt::new()
-      .with_tol(self.tolerance)
-      .with_patience(self.patience)
-      .minimize(problem);
+    let (problem, report) = minimize(
+      problem,
+      LmOptions {
+        tolerance: Some(self.tolerance),
+        patience: self.patience,
+        pivoted_qr: true,
+      },
+    );
     let (surface, _) = problem
       .evaluate()
       .ok_or_else(|| anyhow::anyhow!("the surrogate could not be evaluated at the solution"))?;
@@ -234,10 +237,10 @@ impl<'m, M: SurrogateModel> SurrogateCalibrator<'m, M> {
       params: problem.theta().iter().map(|&t| t as f64).collect(),
       rmse,
       max_error,
-      converged: report.termination.was_successful(),
+      converged: report.converged,
       in_bounds,
-      evaluations: report.number_of_evaluations,
-      message: format!("{:?}", report.termination),
+      evaluations: report.evaluations,
+      message: format!("{:?}", report.reason),
     })
   }
 }
@@ -292,11 +295,7 @@ impl<M: SurrogateModel> Problem<'_, M> {
   }
 }
 
-impl<M: SurrogateModel> LeastSquaresProblem<f64, Dyn, Dyn> for Problem<'_, M> {
-  type ResidualStorage = Owned<f64, Dyn>;
-  type JacobianStorage = Owned<f64, Dyn, Dyn>;
-  type ParameterStorage = Owned<f64, Dyn>;
-
+impl<M: SurrogateModel> LeastSquaresProblem for Problem<'_, M> {
   fn set_params(&mut self, x: &DVector<f64>) {
     self.x = x.clone();
     *self.cache.borrow_mut() = None;

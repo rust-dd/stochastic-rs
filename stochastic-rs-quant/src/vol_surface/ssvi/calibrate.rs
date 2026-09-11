@@ -1,12 +1,11 @@
-use levenberg_marquardt::LeastSquaresProblem;
-use levenberg_marquardt::LevenbergMarquardt;
 use nalgebra::DMatrix;
 use nalgebra::DVector;
-use nalgebra::Dyn;
-use nalgebra::Owned;
 
 use super::params::SsviParams;
 use super::params::SsviSlice;
+use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::LmOptions;
+use crate::calibration::least_squares::minimize;
 use crate::traits::RealExt;
 
 /// Calibrate SSVI global parameters $(\rho, \eta, \gamma)$ to multiple
@@ -47,10 +46,14 @@ pub fn calibrate_ssvi<T: RealExt>(
     params: init_f64.into_dvector(),
   };
 
-  let (result, _report) = LevenbergMarquardt::new()
-    .with_patience(200)
-    .with_tol(1e-12)
-    .minimize(problem);
+  let (result, _report) = minimize(
+    problem,
+    LmOptions {
+      tolerance: Some(1e-12),
+      patience: 200,
+      pivoted_qr: false,
+    },
+  );
 
   let mut p64 = SsviParams::<f64>::from_dvector(&result.params);
   // Enforce Gatheral-Jacquier 2014 power-law calendar-spread-free admissibility
@@ -81,11 +84,7 @@ struct SsviLmProblem {
   params: DVector<f64>,
 }
 
-impl LeastSquaresProblem<f64, Dyn, Dyn> for SsviLmProblem {
-  type ParameterStorage = Owned<f64, Dyn>;
-  type ResidualStorage = Owned<f64, Dyn>;
-  type JacobianStorage = Owned<f64, Dyn, Dyn>;
-
+impl LeastSquaresProblem for SsviLmProblem {
   fn set_params(&mut self, params: &DVector<f64>) {
     self.params.copy_from(params);
   }

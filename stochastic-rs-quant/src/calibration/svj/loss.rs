@@ -1,10 +1,7 @@
 use std::f64::consts::FRAC_1_PI;
 
-use levenberg_marquardt::LeastSquaresProblem;
 use nalgebra::DMatrix;
 use nalgebra::DVector;
-use nalgebra::Dyn;
-use nalgebra::Owned;
 use num_complex::Complex64;
 
 use super::SVJParams;
@@ -19,6 +16,7 @@ use crate::CalibrationLossScore;
 use crate::OptionType;
 use crate::calibration::CalibrationHistory;
 use crate::calibration::integrate_gl_to_convergence;
+use crate::calibration::least_squares::LeastSquaresProblem;
 
 /// Bates/SVJ characteristic function $\phi_T(\xi)$.
 ///
@@ -189,11 +187,7 @@ impl SVJCalibrator {
   }
 }
 
-impl LeastSquaresProblem<f64, Dyn, Dyn> for SVJCalibrator {
-  type JacobianStorage = Owned<f64, Dyn, Dyn>;
-  type ParameterStorage = Owned<f64, Dyn>;
-  type ResidualStorage = Owned<f64, Dyn>;
-
+impl LeastSquaresProblem for SVJCalibrator {
   fn set_params(&mut self, params: &DVector<f64>) {
     let p = SVJParams::from(params.clone()).projected();
     self.params = Some(p);

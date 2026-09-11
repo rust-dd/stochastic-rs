@@ -33,15 +33,15 @@ pub mod variance_gamma;
 use std::convert::Infallible;
 
 use basin::CostFunction;
-use basin::CostTolerance;
 use basin::Executor;
 use basin::Gradient;
-use basin::GradientTolerance;
 use basin::LbfgsState;
 use basin::Lbfgsb;
+
 pub use johnson_su::JohnsonSuFit;
 pub use johnson_su::johnson_su_fit;
 use ndarray::ArrayView1;
+
 pub use skew_t::SkewTFit;
 pub use skew_t::skew_t_fit;
 pub use variance_gamma::VarianceGammaFit;
@@ -108,12 +108,13 @@ struct Polish<F> {
 impl<F: Fn(&[f64]) -> f64 + Clone> Polish<F> {
   fn run(&self, theta: Vec<f64>) -> (Vec<f64>, usize) {
     let start_cost = (self.objective)(&theta);
-    let solver = Lbfgsb::with_line_search(more_thuente()).unbounded();
+    let solver = Lbfgsb::with_line_search(more_thuente())
+      .unbounded()
+      .with_absolute_gradient_tolerance(f64::EPSILON.sqrt())
+      .with_absolute_cost_change_tolerance(f64::EPSILON);
     let state = LbfgsState::new(theta.clone(), 10);
     let result = Executor::new(self.clone(), solver, state)
       .max_iter(200)
-      .terminate_on(GradientTolerance(f64::EPSILON.sqrt()))
-      .terminate_on(CostTolerance::new(f64::EPSILON))
       .run()
       .expect("distribution-fitting objective is infallible");
     let iters = result.iter() as usize;

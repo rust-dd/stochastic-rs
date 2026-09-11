@@ -4,19 +4,15 @@
 //! C=S_0e^{(b-r)T}N(d_1)-Ke^{-rT}N(d_2),\quad d_{1,2}=\frac{\ln(S_0/K)+(b\pm\tfrac12\sigma^2)T}{\sigma\sqrt T}
 //! $$
 //!
-use std::cell::RefCell;
-
-use levenberg_marquardt::LeastSquaresProblem;
-use levenberg_marquardt::LevenbergMarquardt;
 use nalgebra::DMatrix;
 use nalgebra::DVector;
-use nalgebra::Dyn;
-use nalgebra::Owned;
 
 use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::OptionType;
-use crate::calibration::CalibrationHistory;
+use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::LmOptions;
+use crate::calibration::least_squares::minimize;
 use crate::pricing::bsm::BSMCoc;
 use crate::pricing::bsm::BSMPricer;
 use crate::traits::ModelPricer;
@@ -167,10 +163,8 @@ pub struct BSMCalibrator {
   pub flat_t: Vec<f64>,
   /// Option type
   pub option_type: OptionType,
-  /// Which loss metrics to compute when recording history.
+  /// Loss metrics to include in the calibration result.
   pub loss_metrics: &'static [LossMetric],
-  /// Levenberg-Marquardt algorithm residauls.
-  calibration_history: RefCell<Vec<CalibrationHistory<BSMParams>>>,
 }
 
 impl BSMCalibrator {
@@ -201,7 +195,6 @@ impl BSMCalibrator {
       flat_t: vec![tau; n],
       option_type,
       loss_metrics: &LossMetric::ALL,
-      calibration_history: RefCell::new(Vec::new()),
     }
   }
 
@@ -246,15 +239,20 @@ impl BSMCalibrator {
       flat_t,
       option_type,
       loss_metrics: &LossMetric::ALL,
-      calibration_history: RefCell::new(Vec::new()),
     }
   }
 }
 
 impl BSMCalibrator {
   fn solve(&self) -> BSMCalibrationResult {
-    let (result, report) = LevenbergMarquardt::new().minimize(self.clone());
-    let converged = report.termination.was_successful();
+    let (result, report) = minimize(
+      self.clone(),
+      LmOptions {
+        pivoted_qr: false,
+        ..LmOptions::default()
+      },
+    );
+    let converged = report.converged;
     let fitted = result.effective_params();
     let c_model: Vec<f64> = result
       .c_market
@@ -295,7 +293,7 @@ impl BSMCalibrator {
   /// `effective_params` under the same name.
   ///
   /// [`set_params`](LeastSquaresProblem::set_params) alone does not keep
-  /// [`BSMPricer::new`] inside the box: `LevenbergMarquardt::minimize`
+  /// [`BSMPricer::new`] inside the box: the least-squares solver
   /// evaluates residuals and the Jacobian at the *starting* point before it
   /// has a step to hand back, so the first call into the pricer reads
   /// whatever the caller left in the `pub params` field. Projecting on read
@@ -320,11 +318,7 @@ impl BSMCalibrator {
   }
 }
 
-impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
-  type JacobianStorage = Owned<f64, Dyn, Dyn>;
-  type ParameterStorage = Owned<f64, Dyn>;
-  type ResidualStorage = Owned<f64, Dyn>;
-
+impl LeastSquaresProblem for BSMCalibrator {
   /// Levenberg-Marquardt is unconstrained and steps wherever the
   /// linearised model points, so the raw iterate is stored only after
   /// projection — the same hook `SabrCalibrator` uses (`HestonStochCorr`
@@ -339,43 +333,21 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for BSMCalibrator {
   }
 
   fn residuals(&self) -> Option<DVector<f64>> {
-    let n = self.c_market.len();
-    let mut c_model = DVector::zeros(n);
-    let mut vegas: Vec<f64> = Vec::with_capacity(n);
+    let mut residuals = DVector::zeros(self.c_market.len());
+    let model = BSMPricer::new(self.effective_params().v, BSMCoc::Bsm1973);
 
-    for (idx, _) in self.c_market.iter().enumerate() {
-      let model = BSMPricer::new(self.effective_params().v, BSMCoc::Bsm1973);
+    for (idx, &market) in self.c_market.iter().enumerate() {
       let (s, k, q, tau) = self.query(idx);
       let (call, put) = model.call_put(s, k, self.r, q, tau);
 
-      match self.option_type {
-        OptionType::Call => c_model[idx] = call,
-        OptionType::Put => c_model[idx] = put,
-      }
+      let price = match self.option_type {
+        OptionType::Call => call,
+        OptionType::Put => put,
+      };
 
-      // Collect vega for vega-weighted residuals (calibration in vol space)
+      // Vega weighting approximates calibration in implied-volatility space.
       let vega = model.vega(s, k, self.r, q, tau).abs().max(1e-8);
-      vegas.push(vega);
-
-      self
-        .calibration_history
-        .borrow_mut()
-        .push(CalibrationHistory {
-          residuals: c_model.clone() - self.c_market.clone(),
-          call_put: vec![(call, put)].into(),
-          params: self.effective_params(),
-          loss_scores: CalibrationLossScore::compute_selected(
-            self.c_market.as_slice(),
-            c_model.as_slice(),
-            self.loss_metrics,
-          ),
-        });
-    }
-
-    // Vega-weighted residuals approximate minimizing implied vol differences
-    let mut residuals = DVector::zeros(n);
-    for i in 0..n {
-      residuals[i] = (c_model[i] - self.c_market[i]) / vegas[i];
+      residuals[idx] = (price - market) / vega;
     }
 
     Some(residuals)

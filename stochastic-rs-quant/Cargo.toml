@@ -47,9 +47,8 @@ rand = { workspace = true }
 rayon = { workspace = true }
 roots = { workspace = true }
 kendalls = { workspace = true }
-levenberg-marquardt = { workspace = true }
 linreg = { workspace = true }
-basin = { workspace = true }
+basin = { workspace = true, features = ["nalgebra_v0_33"] }
 gauss-quad = { workspace = true }
 quadrature = { workspace = true }
 sci-rs = { workspace = true }

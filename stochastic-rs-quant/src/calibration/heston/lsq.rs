@@ -1,8 +1,5 @@
-use levenberg_marquardt::LeastSquaresProblem;
 use nalgebra::DMatrix;
 use nalgebra::DVector;
-use nalgebra::Dyn;
-use nalgebra::Owned;
 
 use super::calibrator::HestonCalibrator;
 use super::params::HestonJacobianMethod;
@@ -12,13 +9,10 @@ use super::transform::from_optimizer_coordinates;
 use super::transform::to_optimizer_coordinates;
 use crate::CalibrationLossScore;
 use crate::calibration::CalibrationHistory;
+use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::pricing::heston::HestonPricer;
 
-impl LeastSquaresProblem<f64, Dyn, Dyn> for HestonCalibrator {
-  type JacobianStorage = Owned<f64, Dyn, Dyn>;
-  type ParameterStorage = Owned<f64, Dyn>;
-  type ResidualStorage = Owned<f64, Dyn>;
-
+impl LeastSquaresProblem for HestonCalibrator {
   fn set_params(&mut self, params: &DVector<f64>) {
     self.params = Some(from_optimizer_coordinates(params));
   }

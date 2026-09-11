@@ -60,10 +60,8 @@ mod transform;
 use std::convert::Infallible;
 
 use basin::CostFunction;
-use basin::CostTolerance;
 use basin::Executor;
 use basin::Gradient;
-use basin::GradientTolerance;
 use basin::LbfgsState;
 use basin::Lbfgsb;
 use ndarray::Array1;
@@ -340,12 +338,13 @@ impl Problem {
   /// best point found during polishing improves the objective.
   fn polish(&self, theta: Vec<f64>) -> (Vec<f64>, usize) {
     let start_cost = self.objective(&theta);
-    let solver = Lbfgsb::with_line_search(more_thuente()).unbounded();
+    let solver = Lbfgsb::with_line_search(more_thuente())
+      .unbounded()
+      .with_absolute_gradient_tolerance(f64::EPSILON.sqrt())
+      .with_absolute_cost_change_tolerance(f64::EPSILON);
     let state = LbfgsState::new(theta.clone(), 10);
     let result = Executor::new(self.clone(), solver, state)
       .max_iter(200)
-      .terminate_on(GradientTolerance(f64::EPSILON.sqrt()))
-      .terminate_on(CostTolerance::new(f64::EPSILON))
       .run()
       .expect("GARCH objective is infallible");
     let iters = result.iter() as usize;

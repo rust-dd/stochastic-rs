@@ -1,10 +1,7 @@
 use std::f64::consts::PI;
 
-use levenberg_marquardt::LeastSquaresProblem;
 use nalgebra::DMatrix;
 use nalgebra::DVector;
-use nalgebra::Dyn;
-use nalgebra::Owned;
 
 use super::calibrator::HKDECalibrator;
 use super::params::ETA1_MIN;
@@ -18,6 +15,7 @@ use super::params::THETA_MIN;
 use crate::CalibrationLossScore;
 use crate::OptionType;
 use crate::calibration::CalibrationHistory;
+use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::pricing::bsm::BSMCoc;
 use crate::pricing::bsm::BSMPricer;
 use crate::pricing::fourier::HKDEFourier;
@@ -140,11 +138,7 @@ impl HKDECalibrator {
   }
 }
 
-impl LeastSquaresProblem<f64, Dyn, Dyn> for HKDECalibrator {
-  type JacobianStorage = Owned<f64, Dyn, Dyn>;
-  type ParameterStorage = Owned<f64, Dyn>;
-  type ResidualStorage = Owned<f64, Dyn>;
-
+impl LeastSquaresProblem for HKDECalibrator {
   fn set_params(&mut self, params: &DVector<f64>) {
     let p = HKDEParams::from(params.clone()).projected();
     self.params = Some(p);

@@ -33,7 +33,6 @@ num-complex = { workspace = true }
 rand = { workspace = true }
 roots = { workspace = true }
 kendalls = { workspace = true }
-levenberg-marquardt = { workspace = true }
 gauss-quad = { workspace = true }
 quadrature = { workspace = true }
 owens-t = { workspace = true }

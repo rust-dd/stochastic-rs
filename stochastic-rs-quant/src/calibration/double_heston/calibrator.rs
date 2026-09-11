@@ -1,12 +1,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use levenberg_marquardt::LeastSquaresProblem;
-use levenberg_marquardt::LevenbergMarquardt;
 use nalgebra::DMatrix;
 use nalgebra::DVector;
-use nalgebra::Dyn;
-use nalgebra::Owned;
 
 use super::loss::double_heston_call_price;
 use super::params::DoubleHestonParams;
@@ -15,6 +11,9 @@ use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::OptionType;
 use crate::calibration::CalibrationHistory;
+use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::LmOptions;
+use crate::calibration::least_squares::minimize;
 
 /// Double Heston least-squares calibrator using Levenberg-Marquardt.
 #[derive(Clone)]
@@ -118,7 +117,7 @@ impl DoubleHestonCalibrator {
     }
     problem.ensure_initial_guess();
 
-    let (result, report) = LevenbergMarquardt::new().minimize(problem);
+    let (result, report) = minimize(problem, LmOptions::default());
 
     let p = result.effective_params();
     let c_model = result.compute_model_prices_for(&p);
@@ -140,7 +139,7 @@ impl DoubleHestonCalibrator {
       sigma2: p.sigma2,
       rho2: p.rho2,
       loss,
-      converged: report.termination.was_successful(),
+      converged: report.converged,
     }
   }
 
@@ -200,11 +199,7 @@ impl crate::traits::Calibrator for DoubleHestonCalibrator {
   }
 }
 
-impl LeastSquaresProblem<f64, Dyn, Dyn> for DoubleHestonCalibrator {
-  type JacobianStorage = Owned<f64, Dyn, Dyn>;
-  type ParameterStorage = Owned<f64, Dyn>;
-  type ResidualStorage = Owned<f64, Dyn>;
-
+impl LeastSquaresProblem for DoubleHestonCalibrator {
   fn set_params(&mut self, params: &DVector<f64>) {
     let p = DoubleHestonParams::from(params.clone()).projected();
     self.params = Some(p);

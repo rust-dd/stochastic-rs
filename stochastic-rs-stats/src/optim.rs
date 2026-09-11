@@ -11,9 +11,9 @@ use basin::MoreThuente;
 /// Moré–Thuente settings retained from the previous L-BFGS integrations.
 pub(crate) fn more_thuente() -> MoreThuente<f64> {
   MoreThuente::new()
-    .ftol(1e-4)
-    .gtol(0.9)
-    .xtol(1e-10)
+    .with_sufficient_decrease_coefficient(1e-4)
+    .with_curvature_coefficient(0.9)
+    .with_relative_bracket_tolerance(1e-10)
     .stpmin(f64::EPSILON.sqrt())
     .stpmax(f64::INFINITY)
 }

@@ -1,4 +1,3 @@
-use levenberg_marquardt::LeastSquaresProblem;
 use nalgebra::DVector;
 
 use super::calibrator::HestonCalibrator;
@@ -14,6 +13,7 @@ use super::transform::canonicalize;
 use super::transform::from_optimizer_coordinates;
 use super::transform::to_optimizer_coordinates;
 use crate::OptionType;
+use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::traits::Calibrator;
 
 fn non_feller_params() -> HestonParams {

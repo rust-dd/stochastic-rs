@@ -24,7 +24,6 @@ use std::convert::Infallible;
 
 use basin::BoxConstraints;
 use basin::CostFunction;
-use basin::CostTolerance;
 use basin::Executor;
 use basin::Gradient;
 use basin::LbfgsState;
@@ -371,11 +370,12 @@ impl BoxConstraints for WhittleProblem {
 
 fn run_lbfgs(problem: &WhittleProblem, h_init: f64, v_init: f64) -> (f64, f64, f64) {
   let init = vec![h_init, v_init];
-  let solver = Lbfgsb::with_line_search(more_thuente()).with_tol_pg(f64::EPSILON.sqrt());
+  let solver = Lbfgsb::with_line_search(more_thuente())
+    .with_absolute_projected_gradient_tolerance(f64::EPSILON.sqrt())
+    .with_absolute_cost_change_tolerance(f64::EPSILON);
   let state = LbfgsState::new(init, 10);
   let result = Executor::new(problem.clone(), solver, state)
     .max_iter(200)
-    .terminate_on(CostTolerance::new(f64::EPSILON))
     .run()
     .expect("Whittle objective is infallible");
   let best = problem.clamp(result.best_param());
