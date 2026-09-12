@@ -24,8 +24,6 @@
 //!
 
 use ndarray::Array1;
-#[cfg(feature = "python")]
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -281,7 +279,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for HullWhite2FSampler<'_, T, S> {
 #[pyo3::prelude::pyclass]
 pub struct PyHullWhite2F {
   inner: Option<HullWhite2F<f64>>,
-  seeded: Option<HullWhite2F<f64, crate::simd_rng::Deterministic>>,
+  seeded: Option<HullWhite2F<f64, crate::python_device::SharedSeed>>,
   /// The device the class samples on, chosen at construction.
   device: crate::python_device::Device,
 }
@@ -323,7 +321,7 @@ impl PyHullWhite2F {
           x0,
           t,
           n,
-          Deterministic::new(s),
+          crate::python_device::SharedSeed::new(s),
         )),
       },
       None => Self {

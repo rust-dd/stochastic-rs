@@ -46,36 +46,53 @@ pub struct ExposureProfile {
 impl ExposureProfile {
   /// Reduces `mtm` (rows = scenario paths, columns = `times`) to the
   /// profile; `quantile` is the PFE level (e.g. 0.95).
+  ///
+  /// Panics on invalid dimensions, dates, quantiles or non-finite MtM values.
+  /// Use [`Self::try_from_mtm`] to handle invalid input without panicking.
   pub fn from_mtm(mtm: &Array2<f64>, times: Vec<f64>, quantile: f64) -> Self {
-    assert_eq!(mtm.ncols(), times.len(), "one MtM column per exposure date");
-    assert!(mtm.nrows() > 0, "the MtM matrix needs at least one path");
-    assert!(
+    Self::try_from_mtm(mtm, times, quantile).expect("invalid exposure data")
+  }
+
+  /// Reduces finite mark-to-market values to an exposure profile.
+  pub fn try_from_mtm(mtm: &Array2<f64>, times: Vec<f64>, quantile: f64) -> anyhow::Result<Self> {
+    anyhow::ensure!(
+      mtm.ncols() == times.len(),
+      "one MtM column per exposure date"
+    );
+    anyhow::ensure!(mtm.nrows() > 0, "the MtM matrix needs at least one path");
+    anyhow::ensure!(
       (0.0..=1.0).contains(&quantile),
       "quantile must lie in [0, 1]"
     );
-    assert!(
-      times.windows(2).all(|w| w[0] < w[1]) && times.first().is_some_and(|t| *t > 0.0),
-      "exposure dates must be positive and increasing"
+    anyhow::ensure!(
+      !times.is_empty()
+        && times.iter().all(|t| t.is_finite() && *t > 0.0)
+        && times.windows(2).all(|w| w[0] < w[1]),
+      "exposure dates must be finite, positive and increasing"
+    );
+    anyhow::ensure!(
+      mtm.iter().all(|v| v.is_finite()),
+      "MtM values must be finite"
     );
     let paths = mtm.nrows() as f64;
     let mut epe = Vec::with_capacity(times.len());
     let mut ene = Vec::with_capacity(times.len());
     let mut pfe = Vec::with_capacity(times.len());
     for col in mtm.columns() {
-      let mut positive: Vec<f64> = col.iter().map(|v| v.max(0.0)).collect();
+      let mut positive = col.iter().map(|v| v.max(0.0)).collect::<Vec<_>>();
       epe.push(positive.iter().sum::<f64>() / paths);
       ene.push(col.iter().map(|v| (-v).max(0.0)).sum::<f64>() / paths);
       positive.sort_by(|a, b| a.partial_cmp(b).expect("finite exposures"));
       let rank = ((positive.len() - 1) as f64 * quantile).round() as usize;
       pfe.push(positive[rank]);
     }
-    Self {
+    Ok(Self {
       times,
       epe,
       ene,
       pfe,
       quantile,
-    }
+    })
   }
 
   /// Profile from precomputed expected exposures (e.g. analytic ones).

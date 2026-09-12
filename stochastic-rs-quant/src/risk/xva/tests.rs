@@ -48,6 +48,21 @@ fn brownian_mtm(sigma: f64, times: &[f64], paths: usize, seed: u64) -> Array2<f6
 
 const TIMES: [f64; 4] = [0.5, 1.0, 1.5, 2.0];
 
+#[test]
+fn nonfinite_mtm_is_rejected_instead_of_becoming_zero_exposure() {
+  for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+    let mtm = Array2::from_shape_vec((2, 1), vec![100.0, invalid]).unwrap();
+    let error = ExposureProfile::try_from_mtm(&mtm, vec![1.0], 0.95).unwrap_err();
+    assert!(error.to_string().contains("MtM values must be finite"));
+  }
+}
+
+#[test]
+fn nonfinite_exposure_dates_are_rejected() {
+  let mtm = Array2::zeros((1, 1));
+  assert!(ExposureProfile::try_from_mtm(&mtm, vec![f64::INFINITY], 0.95).is_err());
+}
+
 /// `E[max(σW_t, 0)] = σ√t / √(2π)` and the PFE quantile is `σ√t Φ⁻¹(q)`.
 #[test]
 fn brownian_profile_matches_the_closed_forms() {

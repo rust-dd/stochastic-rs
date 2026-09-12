@@ -130,3 +130,63 @@ fn rejects_unsorted_slices() {
     EssviSlice::new(0.5, 0.02, -0.3, 0.1),
   ]);
 }
+
+#[test]
+fn equal_consecutive_slices_remain_calibratable() {
+  for rho in [0.0, -0.4, 0.7] {
+    let model = EssviSlice::new(1.0, 0.04, rho, 0.1);
+    let data = || SsviSlice {
+      log_moneyness: ks(),
+      total_variance: ks().iter().map(|&k| model.total_variance(k)).collect(),
+      theta: model.theta,
+    };
+    let surface = try_calibrate_essvi(&[data(), data()], &[1.0, 2.0]).unwrap();
+    assert!(surface.is_calendar_spread_free());
+    assert!(surface.is_butterfly_free());
+    for slice in &surface.slices {
+      for k in ks() {
+        assert!((slice.total_variance(k) - model.total_variance(k)).abs() < 1e-7);
+      }
+    }
+  }
+}
+
+/// Pasquazzi (2023), arXiv:2304.02106, Proposition 4.14: the wing-slope
+/// condition alone is necessary but does not exclude interior crossings.
+#[test]
+fn crossing_slices_fail_the_calendar_check() {
+  let early = EssviSlice::new(1.0, 0.04, 0.9, 0.1);
+  let late = EssviSlice::new(2.0, 0.05, 0.9, 0.2);
+  assert!(early.is_butterfly_free() && late.is_butterfly_free());
+  assert!(late.total_variance(-0.2) < early.total_variance(-0.2));
+  assert!(!EssviSurface::new(vec![early, late]).is_calendar_spread_free());
+}
+
+#[test]
+fn calibration_removes_interior_calendar_crossings() {
+  let data = |theta, psi| {
+    let model = EssviSlice::new(1.0, theta, 0.9, psi);
+    SsviSlice {
+      log_moneyness: ks(),
+      total_variance: ks().iter().map(|&k| model.total_variance(k)).collect(),
+      theta,
+    }
+  };
+  let surface = try_calibrate_essvi(&[data(0.04, 0.1), data(0.05, 0.2)], &[1.0, 2.0]).unwrap();
+  assert!(surface.is_calendar_spread_free());
+  for i in -100..=100 {
+    let k = i as f64 / 100.0;
+    for j in 0..20 {
+      let t = 1.0 + j as f64 / 20.0;
+      assert!(surface.total_variance(k, t + 0.05) >= surface.total_variance(k, t) - 1e-12);
+    }
+  }
+}
+
+#[test]
+fn infeasible_anchors_return_a_calibration_error() {
+  let params = SsviParams::new(-0.4, 0.6, 0.4);
+  let slices = ssvi_slices(&params, &[2.0, 1.0]);
+  let error = try_calibrate_essvi(&slices, &[1.0, 2.0]).unwrap_err();
+  assert!(error.to_string().contains("slice 1 has no admissible"));
+}

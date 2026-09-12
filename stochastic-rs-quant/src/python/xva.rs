@@ -17,10 +17,15 @@ impl PyExposureProfile {
   /// `mtm` is a `(paths, dates)` array of mark-to-market values.
   #[staticmethod]
   #[pyo3(signature = (mtm, times, quantile=0.95))]
-  fn from_mtm(mtm: numpy::PyReadonlyArray2<'_, f64>, times: Vec<f64>, quantile: f64) -> Self {
-    Self {
-      inner: xva::ExposureProfile::from_mtm(&mtm.as_array().to_owned(), times, quantile),
-    }
+  fn from_mtm(
+    mtm: numpy::PyReadonlyArray2<'_, f64>,
+    times: Vec<f64>,
+    quantile: f64,
+  ) -> PyResult<Self> {
+    Ok(Self {
+      inner: xva::ExposureProfile::try_from_mtm(&mtm.as_array().to_owned(), times, quantile)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?,
+    })
   }
 
   fn times(&self) -> Vec<f64> {

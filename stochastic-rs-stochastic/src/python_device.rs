@@ -4,13 +4,53 @@
 //! an ordinal, `"cuda:1"`, `"metal:0"`; without one the handle's default
 //! (`STOCHASTIC_RS_DEVICE`, else `0`) applies.
 
+use std::sync::Arc;
+
 use pyo3::PyResult;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::exceptions::PyValueError;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRng;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use crate::device::Backend;
 use crate::device::Cpu;
 use crate::device::DeviceInfo;
+
+/// Seed state shared by a Python process and its temporary backend instances.
+/// Derived child streams remain independent of the parent and one another.
+#[doc(hidden)]
+#[derive(Clone, Debug)]
+pub struct SharedSeed(Arc<Deterministic>);
+
+impl SharedSeed {
+  pub fn new(seed: u64) -> Self {
+    Self(Arc::new(Deterministic::new(seed)))
+  }
+}
+
+impl SeedExt for SharedSeed {
+  fn rng(&self) -> SimdRng {
+    self.0.rng()
+  }
+
+  fn derive(&self) -> Self {
+    Self(Arc::new(self.0.derive()))
+  }
+
+  fn rng_ext<R: SimdRngExt>(&self) -> R {
+    self.0.rng_ext()
+  }
+
+  fn reseed(&self, seed: u64) {
+    self.0.reseed(seed);
+  }
+
+  fn seed_value(&self) -> u64 {
+    self.0.seed_value()
+  }
+}
 
 /// Where a Python-side process samples, with the device ordinal where the
 /// back-end enumerates devices.

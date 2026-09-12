@@ -391,6 +391,9 @@ impl Operators {
   /// Bilinear interpolation of a grid vector at `(s, v)`; `top_scale` is
   /// `e^{−r_f t}` for the Dirichlet row at `v = V`.
   pub fn interpolate(&self, u: &[f64], s: f64, v: f64, top_scale: f64) -> f64 {
+    if !(self.s[0]..=self.s[self.m1]).contains(&s) || !(self.v[0]..=self.v[self.m2]).contains(&v) {
+      return f64::NAN;
+    }
     let value = |i: usize, j: usize| -> f64 {
       if i == 0 {
         0.0

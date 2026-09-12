@@ -6,8 +6,6 @@
 //!
 
 use ndarray::Array1;
-#[cfg(feature = "python")]
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -273,7 +271,7 @@ mod tests {
 #[pyo3::prelude::pyclass]
 pub struct PyHoLee {
   inner: Option<HoLee<f64>>,
-  seeded: Option<HoLee<f64, crate::simd_rng::Deterministic>>,
+  seeded: Option<HoLee<f64, crate::python_device::SharedSeed>>,
   /// The device the class samples on, chosen at construction.
   device: crate::python_device::Device,
 }
@@ -303,7 +301,7 @@ impl PyHoLee {
           sigma,
           n,
           t,
-          Deterministic::new(s),
+          crate::python_device::SharedSeed::new(s),
         )),
       },
       None => Self {

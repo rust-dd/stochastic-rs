@@ -28,7 +28,7 @@ pub enum FiniteDifferenceMethod {
 /// strike, rate, dividend yield, maturity and the option direction are the
 /// pricing *query* and travel as arguments to
 /// [`ModelPricer::price_call`], so one instance prices a whole
-/// strike/maturity grid. The grid itself (`s_max = 3s`, `dt = tau / t_n`)
+/// strike/maturity grid. The grid itself (`s_max = 3 max(s, k)`, `dt = tau / t_n`)
 /// is rebuilt inside every call from the query, so nothing derived from a
 /// spot or a maturity is cached across queries.
 ///
@@ -64,18 +64,9 @@ impl FiniteDifferencePricer {
   /// Validating constructor.
   ///
   /// # Panics
-  /// - if `v` is negative or `NaN`. The Pde coefficients use $\sigma^2$, so
-  ///   a negative volatility silently solves for its own absolute value —
-  ///   an answer to a question the caller did not ask.
-  /// - if `t_n` or `s_n` is `0`. These are grid *counts*, so zero is not a
-  ///   coarse grid but no grid: at `t_n = 0` the time loop never runs and
-  ///   the payoff is read straight off the initial grid as a small finite
-  ///   number indistinguishable from a cheap short-dated option, while
-  ///   `s_n = 0` underflows `s_n - 1`. Only one of the two announced
-  ///   itself. Both are case 1 of the crate's [failure
-  ///   convention](crate::traits::ModelPricer#how-pricing-fails).
-  ///
-  /// `v == 0` is the deterministic limit and stays accepted.
+  /// Panics for negative or NaN volatility, fewer than one time step, or
+  /// fewer than two spot intervals. The implicit schemes require an interior
+  /// spot node in addition to the two boundaries. Zero volatility is accepted.
   pub fn new(
     v: f64,
     t_n: usize,
@@ -92,8 +83,8 @@ impl FiniteDifferencePricer {
       "FiniteDifferencePricer::new: t_n must be at least 1 (got {t_n})"
     );
     assert!(
-      s_n >= 1,
-      "FiniteDifferencePricer::new: s_n must be at least 1 (got {s_n})"
+      s_n >= 2,
+      "FiniteDifferencePricer::new: s_n must be at least 2 (got {s_n})"
     );
     Self {
       v,
@@ -338,7 +329,7 @@ impl FdSolve<'_> {
 
   fn calculate_grid(&self) -> (f64, f64, Array1<f64>, usize) {
     let dt = self.tau / self.model.t_n as f64;
-    let s_max = self.s * 3.0;
+    let s_max = self.s.max(self.k) * 3.0;
     let ds = s_max / self.model.s_n as f64;
     let s_values = Array1::linspace(0.0, s_max, self.model.s_n + 1);
     let time_steps = self.model.t_n;
@@ -352,23 +343,26 @@ impl FdSolve<'_> {
     }
   }
 
-  fn boundary_condition(&self, s: f64, tau: f64) -> f64 {
-    let remaining = self.tau - tau;
-    match self.option_type {
+  fn boundary_condition(&self, s: f64, elapsed: f64) -> f64 {
+    let european = match self.option_type {
       OptionType::Call => {
         if s == 0.0 {
           0.0
         } else {
-          s * (-self.q * remaining).exp() - self.k * (-self.r * remaining).exp()
+          (s * (-self.q * elapsed).exp() - self.k * (-self.r * elapsed).exp()).max(0.0)
         }
       }
       OptionType::Put => {
         if s == 0.0 {
-          self.k * (-self.r * remaining).exp()
+          self.k * (-self.r * elapsed).exp()
         } else {
           0.0
         }
       }
+    };
+    match self.model.option_style {
+      OptionStyle::European => european,
+      OptionStyle::American => european.max(self.payoff(s)),
     }
   }
 
@@ -412,377 +406,4 @@ fn solve_tridiagonal(
 }
 
 #[cfg(test)]
-mod tests {
-  use stochastic_rs_stochastic::K;
-  use stochastic_rs_stochastic::S0;
-
-  use super::*;
-
-  fn atm_pricer(style: OptionStyle, r#type: OptionType, method: FiniteDifferenceMethod) -> f64 {
-    FiniteDifferencePricer::new(0.1, 10000, 250, style, method).price(S0, K, 0.05, 0.0, 1.0, r#type)
-  }
-
-  #[test]
-  fn eu_explicit_call() {
-    let call = atm_pricer(
-      OptionStyle::European,
-      OptionType::Call,
-      FiniteDifferenceMethod::Explicit,
-    );
-    assert!(call.is_finite() && call > 0.0);
-  }
-
-  #[test]
-  fn eu_implicit_call() {
-    let call = atm_pricer(
-      OptionStyle::European,
-      OptionType::Call,
-      FiniteDifferenceMethod::Implicit,
-    );
-    assert!(call.is_finite() && call > 0.0);
-  }
-
-  #[test]
-  fn eu_crank_nicolson_call() {
-    let call = atm_pricer(
-      OptionStyle::European,
-      OptionType::Call,
-      FiniteDifferenceMethod::CrankNicolson,
-    );
-    assert!(call.is_finite() && call > 0.0);
-  }
-
-  #[test]
-  fn am_explicit_call() {
-    let call = atm_pricer(
-      OptionStyle::American,
-      OptionType::Call,
-      FiniteDifferenceMethod::Explicit,
-    );
-    assert!(call.is_finite() && call > 0.0);
-  }
-
-  #[test]
-  fn am_implicit_call() {
-    let call = atm_pricer(
-      OptionStyle::American,
-      OptionType::Call,
-      FiniteDifferenceMethod::Implicit,
-    );
-    assert!(call.is_finite() && call > 0.0);
-  }
-
-  #[test]
-  fn am_crank_nicolson_call() {
-    let call = atm_pricer(
-      OptionStyle::American,
-      OptionType::Call,
-      FiniteDifferenceMethod::CrankNicolson,
-    );
-    assert!(call.is_finite() && call > 0.0);
-  }
-
-  #[test]
-  fn eu_explicit_put() {
-    let put = atm_pricer(
-      OptionStyle::European,
-      OptionType::Put,
-      FiniteDifferenceMethod::Explicit,
-    );
-    assert!(put.is_finite() && put > 0.0);
-  }
-
-  #[test]
-  fn eu_implicit_put() {
-    let put = atm_pricer(
-      OptionStyle::European,
-      OptionType::Put,
-      FiniteDifferenceMethod::Implicit,
-    );
-    assert!(put.is_finite() && put > 0.0);
-  }
-
-  #[test]
-  fn eu_crank_nicolson_put() {
-    let put = atm_pricer(
-      OptionStyle::European,
-      OptionType::Put,
-      FiniteDifferenceMethod::CrankNicolson,
-    );
-    assert!(put.is_finite() && put > 0.0);
-  }
-
-  #[test]
-  fn am_explicit_put() {
-    let put = atm_pricer(
-      OptionStyle::American,
-      OptionType::Put,
-      FiniteDifferenceMethod::Explicit,
-    );
-    assert!(put.is_finite() && put > 0.0);
-  }
-
-  #[test]
-  fn am_implicit_put() {
-    let put = atm_pricer(
-      OptionStyle::American,
-      OptionType::Put,
-      FiniteDifferenceMethod::Implicit,
-    );
-    assert!(put.is_finite() && put > 0.0);
-  }
-
-  #[test]
-  fn am_crank_nicolson_put() {
-    let put = atm_pricer(
-      OptionStyle::American,
-      OptionType::Put,
-      FiniteDifferenceMethod::CrankNicolson,
-    );
-    assert!(put.is_finite() && put > 0.0);
-  }
-
-  const S: f64 = 100.0;
-  const KK: f64 = 105.0;
-  const R: f64 = 0.05;
-  const TAU: f64 = 0.75;
-  const V: f64 = 0.25;
-
-  /// Cross-arch tolerance: 500 time steps of `exp`/tridiagonal arithmetic
-  /// accumulate a last bit that differs between aarch64-darwin and CI's
-  /// ubuntu x86_64.
-  const TOL: f64 = 1e-12;
-
-  /// Captured from `PricerExt::calculate_price()` **before** the
-  /// `ModelPricer` reshape, at `t_n = 500, s_n = 100` and **`q = 0`** —
-  /// the only dividend yield the pre-query pricer could express, since it
-  /// had no `q` field. Every one of the twelve `(method, style, type)`
-  /// combinations is pinned, so the `q` term added to the PDE is proven
-  /// inert at `q = 0` rather than merely believed to be.
-  #[test]
-  fn fd_model_pricer_matches_pre_refactor_goldens_at_zero_q() {
-    let cases: &[(FiniteDifferenceMethod, OptionStyle, OptionType, f64)] = &[
-      (
-        FiniteDifferenceMethod::Explicit,
-        OptionStyle::European,
-        OptionType::Call,
-        8.11461770850247,
-      ),
-      (
-        FiniteDifferenceMethod::Explicit,
-        OptionStyle::European,
-        OptionType::Put,
-        9.249887489204166,
-      ),
-      (
-        FiniteDifferenceMethod::Explicit,
-        OptionStyle::American,
-        OptionType::Call,
-        8.11461770850247,
-      ),
-      (
-        FiniteDifferenceMethod::Explicit,
-        OptionStyle::American,
-        OptionType::Put,
-        9.821824693576902,
-      ),
-      (
-        FiniteDifferenceMethod::Implicit,
-        OptionStyle::European,
-        OptionType::Call,
-        8.110495234182721,
-      ),
-      (
-        FiniteDifferenceMethod::Implicit,
-        OptionStyle::European,
-        OptionType::Put,
-        9.246048837934325,
-      ),
-      (
-        FiniteDifferenceMethod::Implicit,
-        OptionStyle::American,
-        OptionType::Call,
-        8.110495234182721,
-      ),
-      (
-        FiniteDifferenceMethod::Implicit,
-        OptionStyle::American,
-        OptionType::Put,
-        9.813744792158452,
-      ),
-      (
-        FiniteDifferenceMethod::CrankNicolson,
-        OptionStyle::European,
-        OptionType::Call,
-        8.112556939207138,
-      ),
-      (
-        FiniteDifferenceMethod::CrankNicolson,
-        OptionStyle::European,
-        OptionType::Put,
-        9.24796864891483,
-      ),
-      (
-        FiniteDifferenceMethod::CrankNicolson,
-        OptionStyle::American,
-        OptionType::Call,
-        8.112556939207138,
-      ),
-      (
-        FiniteDifferenceMethod::CrankNicolson,
-        OptionStyle::American,
-        OptionType::Put,
-        9.817753373035876,
-      ),
-    ];
-    for &(method, style, ot, expected) in cases {
-      let got =
-        FiniteDifferencePricer::new(V, 500, 100, style, method).price(S, KK, R, 0.0, TAU, ot);
-      assert!(
-        (got - expected).abs() < TOL,
-        "{method:?}/{style:?}/{ot:?}: got {got}, want {expected}"
-      );
-    }
-  }
-
-  /// The dividend-yield term this task added to the PDE actually moves the
-  /// price, in the direction and roughly the magnitude Black-Scholes says
-  /// it should. Without this, `q` could be threaded through and silently
-  /// ignored — the `pricing/slv.rs` failure mode.
-  #[test]
-  fn fd_dividend_yield_drives_the_price() {
-    let model = FiniteDifferencePricer::new(
-      V,
-      500,
-      100,
-      OptionStyle::European,
-      FiniteDifferenceMethod::CrankNicolson,
-    );
-    let no_div = model.price_call(S, KK, R, 0.0, TAU);
-    let with_div = model.price_call(S, KK, R, 0.08, TAU);
-    assert!(
-      with_div < no_div - 1.0,
-      "a large dividend yield must cut the call materially: {with_div} vs {no_div}"
-    );
-
-    use crate::pricing::bsm::BSMCoc;
-    use crate::pricing::bsm::BSMPricer;
-    let bs = BSMPricer::new(V, BSMCoc::Merton1973).price_call(S, KK, R, 0.08, TAU);
-    assert!(
-      (with_div - bs).abs() < 0.1,
-      "European FD with q must track Black-Scholes with the same q: {with_div} vs {bs}"
-    );
-  }
-
-  /// American exercise binds for a call once the dividend yield exceeds the
-  /// rate — the case that is unreachable without a `q` input, and the
-  /// reason the pre-query pricer's American and European calls were always
-  /// equal.
-  #[test]
-  fn fd_american_call_beats_european_under_dividends() {
-    let eu = FiniteDifferencePricer::new(
-      V,
-      500,
-      100,
-      OptionStyle::European,
-      FiniteDifferenceMethod::CrankNicolson,
-    )
-    .price_call(S, KK, 0.03, 0.10, TAU);
-    let am = FiniteDifferencePricer::new(
-      V,
-      500,
-      100,
-      OptionStyle::American,
-      FiniteDifferenceMethod::CrankNicolson,
-    )
-    .price_call(S, KK, 0.03, 0.10, TAU);
-    assert!(am > eu, "american {am} must exceed european {eu}");
-  }
-
-  /// The trait's European put-call parity is the wrong answer for an
-  /// American solve.
-  #[test]
-  fn fd_price_put_overrides_vanilla_parity() {
-    let model = FiniteDifferencePricer::new(
-      V,
-      500,
-      100,
-      OptionStyle::American,
-      FiniteDifferenceMethod::CrankNicolson,
-    );
-    let call = model.price_call(S, KK, R, 0.0, TAU);
-    let put = model.price_put(S, KK, R, 0.0, TAU);
-    let vanilla = call - S + KK * (-R * TAU).exp();
-    assert!(
-      put > vanilla + 1e-3,
-      "American put must exceed the European-parity value: {put} vs {vanilla}"
-    );
-  }
-
-  /// The capability the reshape exists for: one model, a whole grid.
-  #[test]
-  fn fd_one_model_prices_a_grid() {
-    let model = FiniteDifferencePricer::new(
-      V,
-      200,
-      80,
-      OptionStyle::European,
-      FiniteDifferenceMethod::CrankNicolson,
-    );
-    for &tau in &[0.25, 0.5, 1.0] {
-      let mut prev = f64::INFINITY;
-      for &k in &[90.0, 100.0, 110.0] {
-        let c = model.price_call(S, k, R, 0.02, tau);
-        assert!(c.is_finite() && c < prev, "call must fall in strike");
-        prev = c;
-      }
-    }
-  }
-
-  /// `t_n` and `s_n` are grid *counts*, so zero is not a coarse grid — it
-  /// is no grid. `t_n = 0` skips the time loop and returns the payoff read
-  /// straight off the initial grid: `0.6667` for an ATM call, a small
-  /// finite number that looks exactly like a cheap short-dated option.
-  /// `s_n = 0` is louder — it underflows `s_n - 1` — but neither is a
-  /// price, and only one of the two announced itself.
-  #[test]
-  #[should_panic(expected = "FiniteDifferencePricer::new: t_n must be at least 1 (got 0)")]
-  fn new_rejects_zero_time_steps() {
-    let _ = FiniteDifferencePricer::new(
-      0.25,
-      0,
-      100,
-      OptionStyle::European,
-      FiniteDifferenceMethod::CrankNicolson,
-    );
-  }
-
-  #[test]
-  #[should_panic(expected = "FiniteDifferencePricer::new: s_n must be at least 1 (got 0)")]
-  fn new_rejects_zero_price_steps() {
-    let _ = FiniteDifferencePricer::new(
-      0.25,
-      500,
-      0,
-      OptionStyle::European,
-      FiniteDifferenceMethod::CrankNicolson,
-    );
-  }
-
-  /// The PDE coefficients use `v²`, so a negative volatility prices as its
-  /// own absolute value — the solver silently answers a question the caller
-  /// did not ask rather than the one they did.
-  #[test]
-  #[should_panic(
-    expected = "FiniteDifferencePricer::new: v must be a non-negative volatility (got -0.25)"
-  )]
-  fn new_rejects_negative_volatility() {
-    let _ = FiniteDifferencePricer::new(
-      -0.25,
-      500,
-      100,
-      OptionStyle::European,
-      FiniteDifferenceMethod::CrankNicolson,
-    );
-  }
-}
+mod tests;
