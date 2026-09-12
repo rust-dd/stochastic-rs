@@ -3,7 +3,6 @@ use std::fmt;
 
 use basin::BoxConstraints;
 use basin::CostFunction;
-use basin::CostTolerance;
 use basin::Executor;
 use basin::Gradient;
 use basin::LbfgsState;
@@ -224,11 +223,12 @@ pub fn fit_mle(
       upper,
     };
 
-    let solver = Lbfgsb::with_line_search(more_thuente()).with_tol_pg(f64::EPSILON.sqrt());
+    let solver = Lbfgsb::with_line_search(more_thuente())
+      .with_absolute_projected_gradient_tolerance(f64::EPSILON.sqrt())
+      .with_absolute_cost_change_tolerance(f64::EPSILON);
     let state = LbfgsState::new(init, 10);
     let result = Executor::new(problem, solver, state)
       .max_iter(200)
-      .terminate_on(CostTolerance::new(f64::EPSILON))
       .run()
       .expect("MLE objective is infallible");
 

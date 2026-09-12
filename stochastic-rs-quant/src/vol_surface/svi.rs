@@ -18,13 +18,12 @@
 //!
 //! Reference: Gatheral & Jacquier (2012), arXiv:1204.0646
 
-use levenberg_marquardt::LeastSquaresProblem;
-use levenberg_marquardt::LevenbergMarquardt;
 use nalgebra::DMatrix;
 use nalgebra::DVector;
-use nalgebra::Dyn;
-use nalgebra::Owned;
 
+use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::LmOptions;
+use crate::calibration::least_squares::minimize;
 use crate::traits::RealExt;
 
 /// Raw SVI parameters: $\{a, b, \rho, m, \sigma\}$.
@@ -295,12 +294,19 @@ pub fn calibrate_svi<T: RealExt>(
     params: init_f64.into_dvector(),
   };
 
-  let (result, _report) = LevenbergMarquardt::new()
-    .with_patience(200)
-    .with_tol(1e-12)
-    .minimize(problem);
+  let (result, _report) = minimize(
+    problem,
+    LmOptions {
+      tolerance: Some(1e-12),
+      patience: 200,
+      pivoted_qr: false,
+    },
+  );
 
   let mut p64 = SviRawParams::<f64>::from_dvector(&result.params);
+  // The objective depends on sigma squared, so either sign represents the fit.
+  // Reflect before projecting to preserve its curvature at a negative solution.
+  p64.sigma = p64.sigma.abs();
   p64.project();
 
   SviRawParams {
@@ -352,11 +358,7 @@ struct SviLmProblem {
   params: DVector<f64>,
 }
 
-impl LeastSquaresProblem<f64, Dyn, Dyn> for SviLmProblem {
-  type ParameterStorage = Owned<f64, Dyn>;
-  type ResidualStorage = Owned<f64, Dyn>;
-  type JacobianStorage = Owned<f64, Dyn, Dyn>;
-
+impl LeastSquaresProblem for SviLmProblem {
   fn set_params(&mut self, params: &DVector<f64>) {
     self.params.copy_from(params);
   }
@@ -466,5 +468,57 @@ mod tests {
     assert!(jw.p_t > 0.0);
     assert!(jw.c_t > 0.0);
     assert!(jw.v_tilde > 0.0);
+  }
+
+  #[test]
+  fn calibration_preserves_the_smile_with_negative_sigma() {
+    let truth = SviRawParams::<f64>::new(0.04, 0.4, -0.4, 0.0, 0.2);
+    let ks = (-10..=10).map(|i| i as f64 * 0.1).collect::<Vec<_>>();
+    let ws = ks
+      .iter()
+      .map(|&k| truth.total_variance(k))
+      .collect::<Vec<_>>();
+    let initial = SviRawParams {
+      sigma: -0.3,
+      ..truth
+    };
+    let fitted = calibrate_svi(&ks, &ws, Some(initial));
+    assert!((fitted.sigma - truth.sigma).abs() < 1e-6);
+    for (&k, &w) in ks.iter().zip(&ws) {
+      assert!((fitted.total_variance(k) - w).abs() < 1e-10);
+    }
+  }
+
+  #[test]
+  fn calibration_recovers_poorly_conditioned_smiles() {
+    for (name, width, truth) in [
+      (
+        "narrow",
+        0.025,
+        SviRawParams::new(0.04, 0.2, -0.4, 0.05, 0.15),
+      ),
+      ("flat", 0.5, SviRawParams::new(0.04, 1e-5, -0.4, 0.05, 0.5)),
+      (
+        "correlated",
+        0.5,
+        SviRawParams::new(0.04, 0.2, -0.999, 0.05, 0.05),
+      ),
+    ] {
+      let ks = (-10..=10)
+        .map(|i| width * i as f64 / 10.0)
+        .collect::<Vec<_>>();
+      let ws = ks
+        .iter()
+        .map(|&k| truth.total_variance(k))
+        .collect::<Vec<_>>();
+      let fitted = calibrate_svi(&ks, &ws, None);
+      // Weakly identified parameters can differ while describing the same smile.
+      for (&k, &w) in ks.iter().zip(&ws) {
+        assert!(
+          (fitted.total_variance(k) - w).abs() < 1e-10,
+          "{name}: {fitted:?}"
+        );
+      }
+    }
   }
 }

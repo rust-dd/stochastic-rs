@@ -1,12 +1,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use levenberg_marquardt::LeastSquaresProblem;
-use levenberg_marquardt::LevenbergMarquardt;
 use nalgebra::DMatrix;
 use nalgebra::DVector;
-use nalgebra::Dyn;
-use nalgebra::Owned;
 
 use super::EPS;
 use super::loss::default_params;
@@ -21,6 +17,9 @@ use super::types::MarketSlice;
 use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::calibration::CalibrationHistory;
+use crate::calibration::least_squares::LeastSquaresProblem;
+use crate::calibration::least_squares::LmOptions;
+use crate::calibration::least_squares::minimize;
 
 /// Lévy model calibrator via Fourier pricing + Levenberg-Marquardt.
 ///
@@ -121,7 +120,13 @@ impl LevyCalibrator {
     }
     project_params(problem.model_type, &mut problem.params);
 
-    let (result, report) = LevenbergMarquardt::new().minimize(problem);
+    let (result, report) = minimize(
+      problem,
+      LmOptions {
+        pivoted_qr: false,
+        ..LmOptions::default()
+      },
+    );
 
     let final_params = result.params.clone();
     let c_model = result.compute_model_prices();
@@ -132,8 +137,8 @@ impl LevyCalibrator {
       params: final_params,
       model_type: self.model_type,
       loss,
-      converged: report.termination.was_successful(),
-      iterations: report.number_of_evaluations,
+      converged: report.converged,
+      iterations: report.evaluations,
     }
   }
 
@@ -213,11 +218,7 @@ impl LevyCalibrator {
   }
 }
 
-impl LeastSquaresProblem<f64, Dyn, Dyn> for LevyCalibrator {
-  type JacobianStorage = Owned<f64, Dyn, Dyn>;
-  type ParameterStorage = Owned<f64, Dyn>;
-  type ResidualStorage = Owned<f64, Dyn>;
-
+impl LeastSquaresProblem for LevyCalibrator {
   fn set_params(&mut self, params: &DVector<f64>) {
     let mut p: Vec<f64> = params.as_slice().to_vec();
     project_params(self.model_type, &mut p);

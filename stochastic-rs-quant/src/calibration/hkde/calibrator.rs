@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use levenberg_marquardt::LevenbergMarquardt;
 use nalgebra::DVector;
 
 use super::loss::compute_sqrt_weights;
@@ -11,6 +10,8 @@ use crate::CalibrationLossScore;
 use crate::LossMetric;
 use crate::OptionType;
 use crate::calibration::CalibrationHistory;
+use crate::calibration::least_squares::LmOptions;
+use crate::calibration::least_squares::minimize;
 
 /// Hkde least-squares calibrator using Levenberg-Marquardt.
 ///
@@ -158,7 +159,7 @@ impl HKDECalibrator {
     }
     problem.ensure_initial_guess();
 
-    let (result, report) = LevenbergMarquardt::new().minimize(problem);
+    let (result, report) = minimize(problem, LmOptions::default());
     let p = result.effective_params();
     let c_model = result.compute_model_prices_for(&p);
     let loss = CalibrationLossScore::compute_selected(
@@ -178,7 +179,7 @@ impl HKDECalibrator {
       eta1: p.eta1,
       eta2: p.eta2,
       loss,
-      converged: report.termination.was_successful(),
+      converged: report.converged,
     }
   }
 
