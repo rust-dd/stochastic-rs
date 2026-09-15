@@ -1,4 +1,4 @@
-use nalgebra::DVector;
+use ndarray::Array1;
 
 use super::calibrator::KAPPA_MIN;
 use super::calibrator::SIGMA_V_MIN;
@@ -72,16 +72,16 @@ impl SVJParams {
   }
 }
 
-impl From<SVJParams> for DVector<f64> {
+impl From<SVJParams> for Array1<f64> {
   fn from(p: SVJParams) -> Self {
-    DVector::from_vec(vec![
+    Array1::from_vec(vec![
       p.v0, p.kappa, p.theta, p.sigma_v, p.rho, p.lambda, p.mu_j, p.sigma_j,
     ])
   }
 }
 
-impl From<DVector<f64>> for SVJParams {
-  fn from(v: DVector<f64>) -> Self {
+impl From<Array1<f64>> for SVJParams {
+  fn from(v: Array1<f64>) -> Self {
     SVJParams {
       v0: v[0],
       kappa: v[1],

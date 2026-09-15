@@ -142,7 +142,7 @@ pub fn build_surface_from_model<M: ModelSurface + ?Sized>(
 /// for one here.
 ///
 /// ```
-/// use nalgebra::DVector;
+/// use ndarray::Array1;
 /// use stochastic_rs_quant::OptionType;
 /// use stochastic_rs_quant::calibration::{BSMCalibrator, BSMParams};
 /// use stochastic_rs_quant::pricing::bsm::{BSMCoc, BSMPricer};
@@ -151,8 +151,8 @@ pub fn build_surface_from_model<M: ModelSurface + ?Sized>(
 ///
 /// let (s, k, r, tau) = (100.0, 100.0, 0.05, 1.0);
 /// let call = BSMPricer::new(0.2, BSMCoc::Bsm1973).price_call(s, k, r, 0.0, tau);
-/// let calibrator = BSMCalibrator::new(BSMParams { v: 0.3 }, DVector::from_vec(vec![call]),
-///     DVector::from_vec(vec![s]), DVector::from_vec(vec![k]), r, None, None, None, tau,
+/// let calibrator = BSMCalibrator::new(BSMParams { v: 0.3 }, Array1::from_vec(vec![call]),
+///     Array1::from_vec(vec![s]), Array1::from_vec(vec![k]), r, None, None, None, tau,
 ///     OptionType::Call);
 /// let result = calibrator.calibrate(None).unwrap();
 /// let surface = build_surface_from_calibration(&result, s, r, 0.0, &[k], &[tau]);

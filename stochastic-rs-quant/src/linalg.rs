@@ -61,6 +61,20 @@ pub(crate) fn svd_thin(a: &Array2<f64>) -> Option<(Array2<f64>, Array1<f64>, Arr
   Some((u, sigma, vt))
 }
 
+/// Least-squares solution of `a x = y` through a truncated pseudo-inverse:
+/// singular values at or below `eps` are dropped, so a rank-deficient design
+/// gets the minimum-norm solution instead of an exploding one. `None` when the
+/// factorisation fails or the solution is not finite.
+pub(crate) fn lstsq_svd(a: &Array2<f64>, y: &Array1<f64>, eps: f64) -> Option<Array1<f64>> {
+  let (u, s, vt) = svd_thin(a)?;
+  let mut projected = u.t().dot(y);
+  for (value, sigma) in projected.iter_mut().zip(s.iter()) {
+    *value = if *sigma > eps { *value / sigma } else { 0.0 };
+  }
+  let x = vt.t().dot(&projected);
+  x.iter().all(|v| v.is_finite()).then_some(x)
+}
+
 /// `FloatExt`-generic SPD Cholesky through an `f64` round trip.
 pub(crate) fn spd_cholesky_lower_t<T: RealExt>(a: &Array2<T>) -> Option<Array2<T>> {
   let a64 = a.mapv(|v| v.to_f64().unwrap_or(f64::NAN));

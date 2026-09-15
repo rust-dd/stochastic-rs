@@ -13,11 +13,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use nalgebra::DMatrix;
-use nalgebra::DVector;
+use ndarray::Array1;
+use ndarray::Array2;
 
 use super::CalibrationHistory;
-
 /// Market data for a single maturity slice.
 pub use super::levy::MarketSlice;
 use crate::CalibrationLossScore;
@@ -247,7 +246,7 @@ impl CgmysvCalibrator {
 }
 
 impl LeastSquaresProblem for CgmysvCalibrator {
-  fn set_params(&mut self, params: &DVector<f64>) {
+  fn set_params(&mut self, params: &Array1<f64>) {
     self.params = params
       .iter()
       .zip(param_bounds())
@@ -255,11 +254,10 @@ impl LeastSquaresProblem for CgmysvCalibrator {
       .collect();
   }
 
-  fn params(&self) -> DVector<f64> {
+  fn params(&self) -> Array1<f64> {
     // Smooth bounds avoid flat projected steps along weakly identified directions.
     // The interior margin also permits a finite start at either physical bound.
-    DVector::from_iterator(
-      N_PARAMS,
+    Array1::from_iter(
       self
         .params
         .iter()
@@ -272,7 +270,7 @@ impl LeastSquaresProblem for CgmysvCalibrator {
     )
   }
 
-  fn residuals(&self) -> Option<DVector<f64>> {
+  fn residuals(&self) -> Option<Array1<f64>> {
     let model_prices = self.compute_model_prices();
     let n = self.flat_prices.len();
     let residuals: Vec<f64> = (0..n)
@@ -280,8 +278,8 @@ impl LeastSquaresProblem for CgmysvCalibrator {
       .collect();
 
     if self.record_history {
-      let r_vec = DVector::from_vec(residuals.clone());
-      let call_put = DVector::from_vec(vec![(0.0, 0.0); n]);
+      let r_vec = Array1::from_vec(residuals.clone());
+      let call_put = Array1::from_vec(vec![(0.0, 0.0); n]);
       let loss =
         CalibrationLossScore::compute_selected(&self.flat_prices, &model_prices, self.loss_metrics);
       self
@@ -295,12 +293,12 @@ impl LeastSquaresProblem for CgmysvCalibrator {
         });
     }
 
-    Some(DVector::from_vec(residuals))
+    Some(Array1::from_vec(residuals))
   }
 
-  fn jacobian(&self) -> Option<DMatrix<f64>> {
+  fn jacobian(&self) -> Option<Array2<f64>> {
     let n = self.flat_prices.len();
-    let mut jac = DMatrix::zeros(n, N_PARAMS);
+    let mut jac = Array2::zeros((n, N_PARAMS));
     let h = 1e-6;
 
     for j in 0..N_PARAMS {
@@ -344,7 +342,7 @@ impl LeastSquaresProblem for CgmysvCalibrator {
     for (j, (lower, upper)) in param_bounds().into_iter().enumerate() {
       let value = self.params[j];
       let derivative = (value - lower) * (upper - value) / (upper - lower);
-      jac.column_mut(j).scale_mut(derivative);
+      jac.column_mut(j).mapv_inplace(|v| v * derivative);
     }
     Some(jac)
   }

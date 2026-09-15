@@ -40,7 +40,6 @@ stochastic-rs-copulas = { workspace = true }
 ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
 ndarray-npy = { workspace = true }
 ndrustfft = { workspace = true }
-nalgebra = { workspace = true }
 num-traits = { workspace = true }
 num-complex = { workspace = true, features = ["rand"] }
 rand = { workspace = true }
@@ -48,10 +47,9 @@ rayon = { workspace = true }
 roots = { workspace = true }
 kendalls = { workspace = true }
 linreg = { workspace = true }
-basin = { workspace = true, features = ["nalgebra_v0_33"] }
+basin = { workspace = true, features = ["ndarray_v0_17"] }
 gauss-quad = { workspace = true }
 quadrature = { workspace = true }
-sci-rs = { workspace = true }
 slsqp = { workspace = true }
 implied-vol = { workspace = true }
 chrono = { workspace = true }

@@ -4,8 +4,8 @@
 //! C=S_0e^{(b-r)T}N(d_1)-Ke^{-rT}N(d_2),\quad d_{1,2}=\frac{\ln(S_0/K)+(b\pm\tfrac12\sigma^2)T}{\sigma\sqrt T}
 //! $$
 //!
-use nalgebra::DMatrix;
-use nalgebra::DVector;
+use ndarray::Array1;
+use ndarray::Array2;
 
 use crate::CalibrationLossScore;
 use crate::LossMetric;
@@ -125,14 +125,14 @@ impl BSMParams {
   }
 }
 
-impl From<BSMParams> for DVector<f64> {
+impl From<BSMParams> for Array1<f64> {
   fn from(params: BSMParams) -> Self {
-    DVector::from_vec(vec![params.v])
+    Array1::from_vec(vec![params.v])
   }
 }
 
-impl From<DVector<f64>> for BSMParams {
-  fn from(params: DVector<f64>) -> Self {
+impl From<Array1<f64>> for BSMParams {
+  fn from(params: Array1<f64>) -> Self {
     BSMParams { v: params[0] }
   }
 }
@@ -142,11 +142,11 @@ pub struct BSMCalibrator {
   /// Params to calibrate.
   pub params: BSMParams,
   /// Option prices from the market (flattened across all maturities).
-  pub c_market: DVector<f64>,
+  pub c_market: Array1<f64>,
   /// Underlying spot per quote.
-  pub s: DVector<f64>,
+  pub s: Array1<f64>,
   /// Strike per quote (flattened).
-  pub k: DVector<f64>,
+  pub k: Array1<f64>,
   /// Risk-free rate.
   pub r: f64,
   /// Domestic risk-free rate
@@ -171,9 +171,9 @@ impl BSMCalibrator {
   /// Create a calibrator for a single maturity slice (backwards compatible).
   pub fn new(
     params: BSMParams,
-    c_market: DVector<f64>,
-    s: DVector<f64>,
-    k: DVector<f64>,
+    c_market: Array1<f64>,
+    s: Array1<f64>,
+    k: Array1<f64>,
     r: f64,
     r_d: Option<f64>,
     r_f: Option<f64>,
@@ -228,9 +228,9 @@ impl BSMCalibrator {
 
     Self {
       params,
-      c_market: DVector::from_vec(flat_prices),
-      s: DVector::from_vec(flat_s),
-      k: DVector::from_vec(flat_strikes),
+      c_market: Array1::from_vec(flat_prices),
+      s: Array1::from_vec(flat_s),
+      k: Array1::from_vec(flat_strikes),
       r,
       r_d,
       r_f,
@@ -270,7 +270,7 @@ impl BSMCalibrator {
       })
       .collect();
     let loss = CalibrationLossScore::compute_selected(
-      result.c_market.as_slice(),
+      result.c_market.as_slice().unwrap(),
       &c_model,
       result.loss_metrics,
     );
@@ -324,16 +324,16 @@ impl LeastSquaresProblem for BSMCalibrator {
   /// projection — the same hook `SabrCalibrator` uses (`HestonStochCorr`
   /// carries `BOUNDS`, and Heston moves in bounded logistic coordinates
   /// instead).
-  fn set_params(&mut self, params: &DVector<f64>) {
+  fn set_params(&mut self, params: &Array1<f64>) {
     self.params = BSMParams::from(params.clone()).projected();
   }
 
-  fn params(&self) -> DVector<f64> {
+  fn params(&self) -> Array1<f64> {
     self.effective_params().into()
   }
 
-  fn residuals(&self) -> Option<DVector<f64>> {
-    let mut residuals = DVector::zeros(self.c_market.len());
+  fn residuals(&self) -> Option<Array1<f64>> {
+    let mut residuals = Array1::zeros(self.c_market.len());
     let model = BSMPricer::new(self.effective_params().v, BSMCoc::Bsm1973);
 
     for (idx, &market) in self.c_market.iter().enumerate() {
@@ -353,11 +353,11 @@ impl LeastSquaresProblem for BSMCalibrator {
     Some(residuals)
   }
 
-  fn jacobian(&self) -> Option<DMatrix<f64>> {
+  fn jacobian(&self) -> Option<Array2<f64>> {
     // For vega-weighted residuals r = (C_model - C_mkt)/Vega,
     // dr/dsigma = 1 - r * (Vomma / Vega)
     let n = self.c_market.len();
-    let mut J = DMatrix::zeros(n, 1);
+    let mut J = Array2::zeros((n, 1));
 
     for idx in 0..n {
       let model = BSMPricer::new(self.effective_params().v, BSMCoc::Bsm1973);

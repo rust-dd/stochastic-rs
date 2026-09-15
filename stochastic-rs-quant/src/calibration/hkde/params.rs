@@ -1,4 +1,4 @@
-use nalgebra::DVector;
+use ndarray::Array1;
 
 use super::super::periodic_map;
 
@@ -87,16 +87,16 @@ impl HKDEParams {
   }
 }
 
-impl From<HKDEParams> for DVector<f64> {
+impl From<HKDEParams> for Array1<f64> {
   fn from(p: HKDEParams) -> Self {
-    DVector::from_vec(vec![
+    Array1::from_vec(vec![
       p.v0, p.kappa, p.theta, p.sigma_v, p.rho, p.lambda, p.p_up, p.eta1, p.eta2,
     ])
   }
 }
 
-impl From<DVector<f64>> for HKDEParams {
-  fn from(v: DVector<f64>) -> Self {
+impl From<Array1<f64>> for HKDEParams {
+  fn from(v: Array1<f64>) -> Self {
     HKDEParams {
       v0: v[0],
       kappa: v[1],

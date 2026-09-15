@@ -28,8 +28,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use nalgebra::DMatrix;
-use nalgebra::DVector;
+use ndarray::Array1;
+use ndarray::Array2;
 
 use crate::CalibrationLossScore;
 use crate::LossMetric;
@@ -146,20 +146,20 @@ impl SabrParams {
 
 /// Lossless round-trip [α, β, ν, ρ]. Use `SabrParams::as_lm_vec` for the
 /// 3-vec [α, ν, ρ] form the Levenberg-Marquardt solver operates on.
-impl From<SabrParams> for DVector<f64> {
+impl From<SabrParams> for Array1<f64> {
   fn from(p: SabrParams) -> Self {
-    DVector::from_vec(vec![p.alpha, p.beta, p.nu, p.rho])
+    Array1::from_vec(vec![p.alpha, p.beta, p.nu, p.rho])
   }
 }
 
 /// Lossless round-trip from a 4-vec [α, β, ν, ρ]. Panics on a vector with
 /// fewer than 4 elements (e.g. an LM 3-vec).
-impl From<DVector<f64>> for SabrParams {
-  fn from(v: DVector<f64>) -> Self {
+impl From<Array1<f64>> for SabrParams {
+  fn from(v: Array1<f64>) -> Self {
     assert_eq!(
       v.len(),
       4,
-      "SabrParams::from(DVector) expects 4 elements [alpha, beta, nu, rho], got {}",
+      "SabrParams::from(Array1) expects 4 elements [alpha, beta, nu, rho], got {}",
       v.len()
     );
     SabrParams {
@@ -175,8 +175,8 @@ impl SabrParams {
   /// 3-vec [α, ν, ρ] used by the LM optimiser. β is excluded because the
   /// calibrator does not optimise it — β is a user-set CEV exponent. Use the
   /// 4-vec [`From`] / [`Into`] for lossless round-trip.
-  pub(crate) fn as_lm_vec(self) -> DVector<f64> {
-    DVector::from_vec(vec![self.alpha, self.nu, self.rho])
+  pub(crate) fn as_lm_vec(self) -> Array1<f64> {
+    Array1::from_vec(vec![self.alpha, self.nu, self.rho])
   }
 }
 
@@ -185,11 +185,11 @@ pub struct SabrCalibrator {
   /// Model parameter set (input or calibrated output).
   pub params: Option<SabrParams>,
   /// Observed market option prices used for calibration.
-  pub c_market: DVector<f64>,
+  pub c_market: Array1<f64>,
   /// Underlying spot/forward level.
-  pub s: DVector<f64>,
+  pub s: Array1<f64>,
   /// Strike level.
-  pub k: DVector<f64>,
+  pub k: Array1<f64>,
   /// Risk-free rate used for discounting.
   pub r: f64,
   /// Dividend yield / convenience yield.
@@ -211,9 +211,9 @@ pub struct SabrCalibrator {
 impl SabrCalibrator {
   pub fn new(
     params: Option<SabrParams>,
-    c_market: DVector<f64>,
-    s: DVector<f64>,
-    k: DVector<f64>,
+    c_market: Array1<f64>,
+    s: Array1<f64>,
+    k: Array1<f64>,
     r: f64,
     q: Option<f64>,
     tau: f64,
@@ -297,8 +297,8 @@ impl SabrCalibrator {
     let p = result.effective_params();
     let c_model = result.compute_model_prices_for(&p);
     let loss = CalibrationLossScore::compute_selected(
-      result.c_market.as_slice(),
-      c_model.as_slice(),
+      result.c_market.as_slice().unwrap(),
+      c_model.as_slice().unwrap(),
       result.loss_metrics,
     );
 
@@ -351,8 +351,8 @@ impl SabrCalibrator {
     .projected()
   }
 
-  fn compute_model_prices_for(&self, p: &SabrParams) -> DVector<f64> {
-    let mut c_model = DVector::zeros(self.c_market.len());
+  fn compute_model_prices_for(&self, p: &SabrParams) -> Array1<f64> {
+    let mut c_model = Array1::zeros(self.c_market.len());
     for i in 0..self.c_market.len() {
       let pr = SabrPricer::new(p.alpha, p.beta, p.nu, p.rho);
       let (call, put) = pr.call_put(
@@ -370,15 +370,15 @@ impl SabrCalibrator {
     c_model
   }
 
-  fn residuals_for(&self, p: &SabrParams) -> DVector<f64> {
+  fn residuals_for(&self, p: &SabrParams) -> Array1<f64> {
     self.c_market.clone() - self.compute_model_prices_for(p)
   }
 
-  fn numeric_jacobian(&self, p: &SabrParams) -> DMatrix<f64> {
+  fn numeric_jacobian(&self, p: &SabrParams) -> Array2<f64> {
     let n = self.c_market.len();
     let m = 3usize; // alpha, nu, rho
-    let base: DVector<f64> = p.as_lm_vec();
-    let mut J = DMatrix::zeros(n, m);
+    let base: Array1<f64> = p.as_lm_vec();
+    let mut J = Array2::zeros((n, m));
     for col in 0..m {
       let x = base[col];
       let mut h = 1e-5_f64.max(1e-3 * x.abs());
@@ -419,7 +419,7 @@ impl SabrCalibrator {
 }
 
 impl LeastSquaresProblem for SabrCalibrator {
-  fn set_params(&mut self, params: &DVector<f64>) {
+  fn set_params(&mut self, params: &Array1<f64>) {
     let beta = self.effective_params().beta;
     let mut p = SabrParams {
       alpha: params[0],
@@ -431,11 +431,11 @@ impl LeastSquaresProblem for SabrCalibrator {
     self.params = Some(p);
   }
 
-  fn params(&self) -> DVector<f64> {
+  fn params(&self) -> Array1<f64> {
     self.effective_params().as_lm_vec()
   }
 
-  fn residuals(&self) -> Option<DVector<f64>> {
+  fn residuals(&self) -> Option<Array1<f64>> {
     let p = self.effective_params();
     let c_model = self.compute_model_prices_for(&p);
     if self.record_history {
@@ -462,8 +462,8 @@ impl LeastSquaresProblem for SabrCalibrator {
             .into(),
           params: p,
           loss_scores: CalibrationLossScore::compute_selected(
-            self.c_market.as_slice(),
-            c_model.as_slice(),
+            self.c_market.as_slice().unwrap(),
+            c_model.as_slice().unwrap(),
             self.loss_metrics,
           ),
         });
@@ -477,7 +477,7 @@ impl LeastSquaresProblem for SabrCalibrator {
     }
   }
 
-  fn jacobian(&self) -> Option<DMatrix<f64>> {
+  fn jacobian(&self) -> Option<Array2<f64>> {
     let jacobian = self.numeric_jacobian(&self.effective_params());
     match &self.regularization {
       Some(reg) if reg.is_active() => Some(reg.augment_jacobian(jacobian, reg.jacobian_rows())),
@@ -491,7 +491,7 @@ mod tests {
   use super::*;
   use crate::traits::Calibrator;
 
-  /// Regression: `SabrParams ↔ DVector` round-trip must preserve β. The rc.0
+  /// Regression: `SabrParams ↔ Array1` round-trip must preserve β. The rc.0
   /// `From` impls used a 3-vec layout that silently dropped β on the way out
   /// and forced β = 1.0 on the way back, so any β ≠ 1 was unfittable.
   #[test]
@@ -503,7 +503,7 @@ mod tests {
         nu: 0.62,
         rho: -0.31,
       };
-      let v: DVector<f64> = p.into();
+      let v: Array1<f64> = p.into();
       let p2: SabrParams = v.into();
       assert!((p.alpha - p2.alpha).abs() < 1e-15);
       assert!(
@@ -597,7 +597,7 @@ mod tests {
 
 #[cfg(test)]
 mod regularization_tests {
-  use nalgebra::DVector;
+  use ndarray::Array1;
 
   use super::SabrCalibrator;
   use super::SabrParams;
@@ -621,9 +621,9 @@ mod regularization_tests {
         nu: 0.8,
         rho: 0.0,
       }),
-      DVector::from_vec(prices),
-      DVector::from_element(strikes.len(), s),
-      DVector::from_vec(strikes.to_vec()),
+      Array1::from_vec(prices),
+      Array1::from_elem(strikes.len(), s),
+      Array1::from_vec(strikes.to_vec()),
       r,
       None,
       tau,

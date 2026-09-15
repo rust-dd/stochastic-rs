@@ -1,4 +1,4 @@
-use nalgebra::DVector;
+use ndarray::Array1;
 use stochastic_rs::prelude::OptionType;
 use stochastic_rs::quant::calibration::bsm::BSMCalibrator;
 use stochastic_rs::quant::calibration::bsm::BSMParams;
@@ -44,12 +44,12 @@ where
 }
 
 pub fn cases() -> Vec<Case> {
-  let strikes = DVector::from_iterator(9, (0..9).map(|i| 80.0 + 5.0 * i as f64));
-  let spot = DVector::from_element(strikes.len(), 100.0);
+  let strikes = Array1::from_iter((0..9).map(|i| 80.0 + 5.0 * i as f64));
+  let spot = Array1::from_elem(strikes.len(), 100.0);
   let mut cases = Vec::new();
   for (name, start) in [("bsm/low_start", 0.1), ("bsm/high_start", 0.5)] {
     let model = BSMPricer::new(0.2, BSMCoc::Bsm1973);
-    let prices = strikes.map(|k| model.price_call(100.0, k, 0.03, 0.0, 1.0));
+    let prices = strikes.mapv(|k| model.price_call(100.0, k, 0.03, 0.0, 1.0));
     cases.push(calibration(
       name,
       BSMCalibrator::new(
@@ -69,7 +69,7 @@ pub fn cases() -> Vec<Case> {
   }
   let heston = HestonPricer::new(0.04, -0.6, 1.5, 0.04, 0.3, Some(0.0));
   let slices = [0.25, 1.0, 2.0].map(|tau| MarketSlice {
-    strikes: strikes.as_slice().to_vec(),
+    strikes: strikes.to_vec(),
     prices: strikes
       .iter()
       .map(|&k| heston.price_call(100.0, k, 0.03, 0.0, tau))
@@ -116,7 +116,7 @@ pub fn cases() -> Vec<Case> {
         nu: 0.8,
         rho: 0.0,
       }),
-      strikes.map(|k| sabr.call_put(100.0, k, 0.03, 0.0, 1.0).0),
+      strikes.mapv(|k| sabr.call_put(100.0, k, 0.03, 0.0, 1.0).0),
       spot,
       strikes.clone(),
       0.03,
@@ -153,7 +153,7 @@ pub fn cases() -> Vec<Case> {
         0.05,
         0.0,
         vec![MarketSlice {
-          strikes: strikes.as_slice().to_vec(),
+          strikes: strikes.to_vec(),
           prices: prices.to_vec(),
           is_call: vec![true; strikes.len()],
           tau: 1.0,

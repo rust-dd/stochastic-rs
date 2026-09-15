@@ -14,7 +14,7 @@ use basin::NelderMead;
 use basin::SimplexState;
 use basin::TerminationReason;
 use gauss_quad::GaussLegendre;
-use nalgebra::DVector;
+use ndarray::Array1;
 use stochastic_rs_distributions::RealExt;
 
 use crate::CalibrationLossScore;
@@ -347,8 +347,8 @@ pub(crate) fn periodic_map(x: f64, c: f64, d: f64) -> f64 {
 #[derive(Clone, Debug)]
 pub struct CalibrationHistory<T> {
   /// Residual vector from calibration objective.
-  pub residuals: DVector<f64>,
-  pub call_put: DVector<(f64, f64)>,
+  pub residuals: Array1<f64>,
+  pub call_put: Array1<(f64, f64)>,
   /// Model parameter set (input or calibrated output).
   pub params: T,
   /// Calibration loss metric configuration/result.

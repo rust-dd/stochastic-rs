@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use nalgebra::DMatrix;
+use ndarray::Array2;
 use rayon::prelude::*;
 use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_distributions::special::gamma_li;
@@ -181,10 +181,10 @@ fn build_msoe_kernel(h: f64, dt: f64, maturity: f64, terms: usize) -> (Vec<f64>,
   (lambdas, weights)
 }
 
-fn build_step_covariance(h: f64, dt: f64, lambdas: &[f64]) -> DMatrix<f64> {
+fn build_step_covariance(h: f64, dt: f64, lambdas: &[f64]) -> Array2<f64> {
   let n = lambdas.len();
   let dim = n + 2;
-  let mut sigma = DMatrix::<f64>::zeros(dim, dim);
+  let mut sigma = Array2::<f64>::zeros((dim, dim));
   let local_idx = dim - 1;
 
   sigma[(0, 0)] = dt;
@@ -221,12 +221,12 @@ fn build_step_covariance(h: f64, dt: f64, lambdas: &[f64]) -> DMatrix<f64> {
   sigma
 }
 
-fn cholesky_lower_with_jitter(mut sigma: DMatrix<f64>) -> DMatrix<f64> {
+fn cholesky_lower_with_jitter(mut sigma: Array2<f64>) -> Array2<f64> {
   let dim = sigma.nrows();
   let mut jitter = 1e-12;
   for _ in 0..8 {
-    if let Some(chol) = sigma.clone().cholesky() {
-      return chol.l();
+    if let Some(lower) = crate::linalg::spd_cholesky_lower(&sigma) {
+      return lower;
     }
     for i in 0..dim {
       sigma[(i, i)] += jitter;
@@ -235,7 +235,7 @@ fn cholesky_lower_with_jitter(mut sigma: DMatrix<f64>) -> DMatrix<f64> {
   }
 
   // Conservative fallback: keep marginal variances, drop correlations.
-  let mut l = DMatrix::<f64>::zeros(dim, dim);
+  let mut l = Array2::<f64>::zeros((dim, dim));
   for i in 0..dim {
     l[(i, i)] = sigma[(i, i)].max(1e-14).sqrt();
   }

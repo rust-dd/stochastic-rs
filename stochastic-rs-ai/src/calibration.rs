@@ -25,8 +25,7 @@ use std::cell::RefCell;
 
 use anyhow::Result;
 use anyhow::bail;
-use nalgebra::DMatrix;
-use nalgebra::DVector;
+use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_quant::calibration::heston::HestonParams;
 use stochastic_rs_quant::calibration::least_squares::LeastSquaresProblem;
@@ -198,13 +197,10 @@ impl<'m, M: SurrogateModel> SurrogateCalibrator<'m, M> {
     {
       bail!("{} initial values for {n} parameters", s.len());
     }
-    let x0 = DVector::from_iterator(
-      n,
-      (0..n).map(|j| match &start {
-        Some(s) => ((s[j] - 0.5 * (lb[j] + ub[j])) / (0.5 * (ub[j] - lb[j]))).clamp(-1.0, 1.0),
-        None => 0.0,
-      }),
-    );
+    let x0 = Array1::from_iter((0..n).map(|j| match &start {
+      Some(s) => ((s[j] - 0.5 * (lb[j] + ub[j])) / (0.5 * (ub[j] - lb[j]))).clamp(-1.0, 1.0),
+      None => 0.0,
+    }));
     let problem = Problem {
       model: self.model,
       market: &self.market,
@@ -265,7 +261,7 @@ struct Problem<'m, M: SurrogateModel> {
   weights: &'m [f64],
   lb: Vec<f64>,
   ub: Vec<f64>,
-  x: DVector<f64>,
+  x: Array1<f64>,
   cache: RefCell<Option<(Vec<f32>, Array2<f32>)>>,
 }
 
@@ -296,19 +292,18 @@ impl<M: SurrogateModel> Problem<'_, M> {
 }
 
 impl<M: SurrogateModel> LeastSquaresProblem for Problem<'_, M> {
-  fn set_params(&mut self, x: &DVector<f64>) {
+  fn set_params(&mut self, x: &Array1<f64>) {
     self.x = x.clone();
     *self.cache.borrow_mut() = None;
   }
 
-  fn params(&self) -> DVector<f64> {
+  fn params(&self) -> Array1<f64> {
     self.x.clone()
   }
 
-  fn residuals(&self) -> Option<DVector<f64>> {
+  fn residuals(&self) -> Option<Array1<f64>> {
     let (surface, _) = self.evaluate()?;
-    Some(DVector::from_iterator(
-      surface.len(),
+    Some(Array1::from_iter(
       surface
         .iter()
         .zip(self.market)
@@ -317,10 +312,10 @@ impl<M: SurrogateModel> LeastSquaresProblem for Problem<'_, M> {
     ))
   }
 
-  fn jacobian(&self) -> Option<DMatrix<f64>> {
+  fn jacobian(&self) -> Option<Array2<f64>> {
     let (_, jacobian) = self.evaluate()?;
     let (rows, cols) = jacobian.dim();
-    Some(DMatrix::from_fn(rows, cols, |k, j| {
+    Some(Array2::from_shape_fn((rows, cols), |(k, j)| {
       self.weights[k] * jacobian[(k, j)] as f64 * 0.5 * (self.ub[j] - self.lb[j])
     }))
   }

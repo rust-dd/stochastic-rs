@@ -151,7 +151,7 @@ impl PySabrCalibrator {
     q: Option<f64>,
     regularization: Option<(Vec<f64>, Vec<f64>)>,
   ) -> PyResult<Self> {
-    use nalgebra::DVector;
+    use ndarray::Array1;
     if strikes.len() != prices.len() {
       return Err(PyValueError::new_err(
         "strikes and prices must have equal length",
@@ -161,9 +161,9 @@ impl PySabrCalibrator {
     let ot = parse_option_type(option_type)?;
     let mut inner = crate::calibration::sabr::SabrCalibrator::new(
       None,
-      DVector::from_vec(prices),
-      DVector::from_vec(vec![s; n]),
-      DVector::from_vec(strikes),
+      Array1::from_vec(prices),
+      Array1::from_vec(vec![s; n]),
+      Array1::from_vec(strikes),
       r,
       q,
       tau,

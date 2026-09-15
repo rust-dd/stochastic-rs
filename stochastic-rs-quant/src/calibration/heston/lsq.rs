@@ -1,5 +1,5 @@
-use nalgebra::DMatrix;
-use nalgebra::DVector;
+use ndarray::Array1;
+use ndarray::Array2;
 
 use super::calibrator::HestonCalibrator;
 use super::params::HestonJacobianMethod;
@@ -13,19 +13,18 @@ use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::pricing::heston::HestonPricer;
 
 impl LeastSquaresProblem for HestonCalibrator {
-  fn set_params(&mut self, params: &DVector<f64>) {
+  fn set_params(&mut self, params: &Array1<f64>) {
     self.params = Some(from_optimizer_coordinates(params));
   }
 
-  fn params(&self) -> DVector<f64> {
+  fn params(&self) -> Array1<f64> {
     to_optimizer_coordinates(&self.effective_params())
   }
 
-  fn residuals(&self) -> Option<DVector<f64>> {
+  fn residuals(&self) -> Option<Array1<f64>> {
     let params_eff = self.effective_params();
     let c_model = self.compute_model_prices_for(&params_eff);
-    let weighted_residuals =
-      (self.c_market.clone() - c_model.clone()).component_mul(&self.residual_weights);
+    let weighted_residuals = (&self.c_market - &c_model) * &self.residual_weights;
 
     if self.record_history {
       self
@@ -58,8 +57,8 @@ impl LeastSquaresProblem for HestonCalibrator {
             .into(),
           params: params_eff.clone(),
           loss_scores: CalibrationLossScore::compute_selected(
-            self.c_market.as_slice(),
-            c_model.as_slice(),
+            self.c_market.as_slice().unwrap(),
+            c_model.as_slice().unwrap(),
             self.loss_metrics,
           ),
         });
@@ -73,7 +72,7 @@ impl LeastSquaresProblem for HestonCalibrator {
     }
   }
 
-  fn jacobian(&self) -> Option<DMatrix<f64>> {
+  fn jacobian(&self) -> Option<Array2<f64>> {
     let p = self.effective_params();
     let optimizer_coordinates = to_optimizer_coordinates(&p);
     let jacobian = match self.jacobian_method {

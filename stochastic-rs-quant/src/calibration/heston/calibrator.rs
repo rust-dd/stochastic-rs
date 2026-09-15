@@ -3,7 +3,6 @@ use std::rc::Rc;
 
 use anyhow::Result;
 use anyhow::bail;
-use nalgebra::DVector;
 use ndarray::Array1;
 use stochastic_rs_stats::heston_nml_cekf::HestonNmleCekfConfig;
 
@@ -31,11 +30,11 @@ pub struct HestonCalibrator {
   /// If None, an initial guess will be inferred using heston_mle (requires mle_* fields).
   pub params: Option<HestonParams>,
   /// Option prices from the market (flattened across all maturities).
-  pub c_market: DVector<f64>,
+  pub c_market: Array1<f64>,
   /// Underlying spot per quote (allows small variations per strike/maturity bucket).
-  pub s: DVector<f64>,
+  pub s: Array1<f64>,
   /// Strikes per quote (flattened).
-  pub k: DVector<f64>,
+  pub k: Array1<f64>,
   /// Risk-free rate.
   pub r: f64,
   /// Dividend yield.
@@ -45,7 +44,7 @@ pub struct HestonCalibrator {
   /// Option type of the quotes.
   pub option_type: OptionType,
   /// Positive row weights applied to price residuals and their Jacobian.
-  pub residual_weights: DVector<f64>,
+  pub residual_weights: Array1<f64>,
   /// Optional Tikhonov pull of `(v0, κ, θ, σ, ρ)` toward an anchor; `None`
   /// keeps the unregularised path.
   pub regularization: Option<Regularization>,
@@ -77,9 +76,9 @@ impl HestonCalibrator {
   /// Create a calibrator for a single maturity slice (backwards compatible).
   pub fn new(
     params: Option<HestonParams>,
-    c_market: DVector<f64>,
-    s: DVector<f64>,
-    k: DVector<f64>,
+    c_market: Array1<f64>,
+    s: Array1<f64>,
+    k: Array1<f64>,
     r: f64,
     q: Option<f64>,
     tau: f64,
@@ -106,7 +105,7 @@ impl HestonCalibrator {
       q,
       flat_t: vec![tau; n],
       option_type,
-      residual_weights: DVector::from_element(n, 1.0),
+      residual_weights: Array1::from_elem(n, 1.0),
       regularization: None,
       mle_s,
       mle_v,
@@ -150,14 +149,14 @@ impl HestonCalibrator {
 
     Self {
       params,
-      c_market: DVector::from_vec(flat_prices),
-      s: DVector::from_vec(flat_s),
-      k: DVector::from_vec(flat_strikes),
+      c_market: Array1::from_vec(flat_prices),
+      s: Array1::from_vec(flat_s),
+      k: Array1::from_vec(flat_strikes),
       r,
       q,
       flat_t,
       option_type,
-      residual_weights: DVector::from_element(quote_count, 1.0),
+      residual_weights: Array1::from_elem(quote_count, 1.0),
       regularization: None,
       mle_s: None,
       mle_v: None,
@@ -193,8 +192,8 @@ impl HestonCalibrator {
 
     let c_model = result.compute_model_prices_for_numeric(&params);
     let loss = CalibrationLossScore::compute_selected(
-      result.c_market.as_slice(),
-      c_model.as_slice(),
+      result.c_market.as_slice().unwrap(),
+      c_model.as_slice().unwrap(),
       result.loss_metrics,
     );
 
@@ -225,7 +224,7 @@ impl HestonCalibrator {
   ///
   /// Inverse Black-Scholes vega weights make the least-squares objective a
   /// first-order approximation to implied-volatility error.
-  pub fn set_residual_weights(&mut self, weights: impl Into<DVector<f64>>) -> Result<()> {
+  pub fn set_residual_weights(&mut self, weights: impl Into<Array1<f64>>) -> Result<()> {
     let mut weights = weights.into();
     if weights.len() != self.c_market.len() {
       bail!(

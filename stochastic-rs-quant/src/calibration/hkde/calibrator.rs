@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use nalgebra::DVector;
+use ndarray::Array1;
 
 use super::loss::compute_sqrt_weights;
 use super::params::HKDEParams;
@@ -24,11 +24,11 @@ pub struct HKDECalibrator {
   /// Current parameter iterate. `None` triggers the fallback initial guess.
   pub params: Option<HKDEParams>,
   /// Market option prices (flattened across all maturities).
-  pub c_market: DVector<f64>,
+  pub c_market: Array1<f64>,
   /// Underlying spot per quote.
-  pub s: DVector<f64>,
+  pub s: Array1<f64>,
   /// Strike per quote.
-  pub k: DVector<f64>,
+  pub k: Array1<f64>,
   /// Risk-free rate.
   pub r: f64,
   /// Dividend yield.
@@ -53,9 +53,9 @@ impl HKDECalibrator {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     params: Option<HKDEParams>,
-    c_market: DVector<f64>,
-    s: DVector<f64>,
-    k: DVector<f64>,
+    c_market: Array1<f64>,
+    s: Array1<f64>,
+    k: Array1<f64>,
     r: f64,
     q: Option<f64>,
     tau: f64,
@@ -73,12 +73,12 @@ impl HKDECalibrator {
     let flat_t = vec![tau; n];
     let q_val = q.unwrap_or(0.0);
     let sqrt_weights = compute_sqrt_weights(
-      s.as_slice(),
-      k.as_slice(),
+      s.as_slice().unwrap(),
+      k.as_slice().unwrap(),
       &flat_t,
       r,
       q_val,
-      c_market.as_slice(),
+      c_market.as_slice().unwrap(),
       option_type,
     );
 
@@ -136,9 +136,9 @@ impl HKDECalibrator {
 
     Self {
       params,
-      c_market: DVector::from_vec(flat_prices),
-      s: DVector::from_vec(flat_s),
-      k: DVector::from_vec(flat_strikes),
+      c_market: Array1::from_vec(flat_prices),
+      s: Array1::from_vec(flat_s),
+      k: Array1::from_vec(flat_strikes),
       r,
       q,
       flat_t,
@@ -163,8 +163,8 @@ impl HKDECalibrator {
     let p = result.effective_params();
     let c_model = result.compute_model_prices_for(&p);
     let loss = CalibrationLossScore::compute_selected(
-      result.c_market.as_slice(),
-      c_model.as_slice(),
+      result.c_market.as_slice().unwrap(),
+      c_model.as_slice().unwrap(),
       result.loss_metrics,
     );
 

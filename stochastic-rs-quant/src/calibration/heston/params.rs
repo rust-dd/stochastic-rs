@@ -1,4 +1,4 @@
-use nalgebra::DVector;
+use ndarray::Array1;
 use num_complex::Complex64;
 use stochastic_rs_stats::heston_mle::HestonMleResult;
 
@@ -154,9 +154,9 @@ impl From<HestonMleResult> for HestonParams {
   }
 }
 
-impl From<HestonParams> for DVector<f64> {
+impl From<HestonParams> for Array1<f64> {
   fn from(params: HestonParams) -> Self {
-    DVector::from_vec(vec![
+    Array1::from_vec(vec![
       params.v0,
       params.kappa,
       params.theta,
@@ -166,8 +166,8 @@ impl From<HestonParams> for DVector<f64> {
   }
 }
 
-impl From<DVector<f64>> for HestonParams {
-  fn from(params: DVector<f64>) -> Self {
+impl From<Array1<f64>> for HestonParams {
+  fn from(params: Array1<f64>) -> Self {
     HestonParams {
       v0: params[0],
       kappa: params[1],

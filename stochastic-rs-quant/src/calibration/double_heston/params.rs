@@ -1,4 +1,4 @@
-use nalgebra::DVector;
+use ndarray::Array1;
 
 use super::super::periodic_map;
 
@@ -114,16 +114,16 @@ impl crate::traits::ToModel for DoubleHestonParams {
   }
 }
 
-impl From<DoubleHestonParams> for DVector<f64> {
+impl From<DoubleHestonParams> for Array1<f64> {
   fn from(p: DoubleHestonParams) -> Self {
-    DVector::from_vec(vec![
+    Array1::from_vec(vec![
       p.v1_0, p.kappa1, p.theta1, p.sigma1, p.rho1, p.v2_0, p.kappa2, p.theta2, p.sigma2, p.rho2,
     ])
   }
 }
 
-impl From<DVector<f64>> for DoubleHestonParams {
-  fn from(v: DVector<f64>) -> Self {
+impl From<Array1<f64>> for DoubleHestonParams {
+  fn from(v: Array1<f64>) -> Self {
     DoubleHestonParams {
       v1_0: v[0],
       kappa1: v[1],

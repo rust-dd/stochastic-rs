@@ -8,7 +8,7 @@
 //! Run with:
 //!   cargo run --example calibration_demo
 
-use nalgebra::DVector;
+use ndarray::Array1;
 use stochastic_rs::prelude::*;
 use stochastic_rs::quant::OptionType;
 use stochastic_rs::quant::calibration::bsm::BSMCalibrator;
@@ -49,9 +49,9 @@ fn bsm_demo() {
 
   let calibrator = BSMCalibrator::new(
     BSMParams { v: 0.30 },
-    DVector::from_vec(market.clone()),
-    DVector::from_vec(vec![s0; strikes.len()]),
-    DVector::from_vec(strikes.clone()),
+    Array1::from_vec(market.clone()),
+    Array1::from_vec(vec![s0; strikes.len()]),
+    Array1::from_vec(strikes.clone()),
     r,
     None,
     None,

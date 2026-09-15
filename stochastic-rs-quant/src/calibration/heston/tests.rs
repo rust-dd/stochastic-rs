@@ -495,13 +495,13 @@ fn test_heston_cui_jacobian_matches_numeric() {
 
 /// Tikhonov pull of the Heston parameters toward an anchor.
 mod regularization {
-  use crate::calibration::least_squares::LeastSquaresProblem;
-  use nalgebra::DVector;
+  use ndarray::Array1;
 
   use crate::OptionType;
   use crate::calibration::Regularization;
   use crate::calibration::heston::HestonCalibrator;
   use crate::calibration::heston::HestonParams;
+  use crate::calibration::least_squares::LeastSquaresProblem;
   use crate::pricing::heston::HestonPricer;
   use crate::traits::Calibrator;
 
@@ -536,9 +536,9 @@ mod regularization {
         sigma: 0.6,
         rho: -0.3,
       }),
-      DVector::from_vec(prices),
-      DVector::from_element(strikes.len(), s),
-      DVector::from_vec(strikes.to_vec()),
+      Array1::from_vec(prices),
+      Array1::from_elem(strikes.len(), s),
+      Array1::from_vec(strikes.to_vec()),
       r,
       None,
       tau,
