@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use nalgebra::DVector;
+use ndarray::Array1;
 
 use super::SVJCalibrationResult;
 use super::SVJParams;
@@ -29,11 +29,11 @@ pub struct SVJCalibrator {
   /// Params to calibrate.
   pub params: Option<SVJParams>,
   /// Option prices from the market (flattened across all maturities).
-  pub c_market: DVector<f64>,
+  pub c_market: Array1<f64>,
   /// Underlying spot per quote.
-  pub s: DVector<f64>,
+  pub s: Array1<f64>,
   /// Strikes per quote (flattened).
-  pub k: DVector<f64>,
+  pub k: Array1<f64>,
   /// Risk-free rate.
   pub r: f64,
   /// Dividend yield.
@@ -64,9 +64,9 @@ impl SVJCalibrator {
   /// Create a calibrator for a single maturity slice (backwards compatible).
   pub fn new(
     params: Option<SVJParams>,
-    c_market: DVector<f64>,
-    s: DVector<f64>,
-    k: DVector<f64>,
+    c_market: Array1<f64>,
+    s: Array1<f64>,
+    k: Array1<f64>,
     r: f64,
     q: Option<f64>,
     tau: f64,
@@ -122,9 +122,9 @@ impl SVJCalibrator {
 
     Self {
       params,
-      c_market: DVector::from_vec(flat_prices),
-      s: DVector::from_vec(flat_s),
-      k: DVector::from_vec(flat_strikes),
+      c_market: Array1::from_vec(flat_prices),
+      s: Array1::from_vec(flat_s),
+      k: Array1::from_vec(flat_strikes),
       r,
       q,
       flat_t,
@@ -147,8 +147,8 @@ impl SVJCalibrator {
     let p = result.effective_params();
     let c_model = result.compute_model_prices_for(&p);
     let loss = CalibrationLossScore::compute_selected(
-      result.c_market.as_slice(),
-      c_model.as_slice(),
+      result.c_market.as_standard_layout().as_slice().unwrap(),
+      c_model.as_slice().unwrap(),
       result.loss_metrics,
     );
 

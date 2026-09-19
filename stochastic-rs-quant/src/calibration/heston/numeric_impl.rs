@@ -1,5 +1,5 @@
-use nalgebra::DMatrix;
-use nalgebra::DVector;
+use ndarray::Array1;
+use ndarray::Array2;
 use stochastic_rs_stats::heston_mle::nmle_heston;
 use stochastic_rs_stats::heston_mle::nmle_heston_with_delta;
 use stochastic_rs_stats::heston_mle::pmle_heston;
@@ -115,8 +115,8 @@ impl HestonCalibrator {
     canonicalize(&projected)
   }
 
-  pub(super) fn compute_model_prices_for_numeric(&self, params: &HestonParams) -> DVector<f64> {
-    let mut c_model = DVector::zeros(self.c_market.len());
+  pub(super) fn compute_model_prices_for_numeric(&self, params: &HestonParams) -> Array1<f64> {
+    let mut c_model = Array1::zeros(self.c_market.len());
 
     for (idx, _) in self.c_market.iter().enumerate() {
       let pricer = HestonPricer::new(
@@ -144,7 +144,7 @@ impl HestonCalibrator {
     c_model
   }
 
-  pub(super) fn compute_model_prices_for(&self, params: &HestonParams) -> DVector<f64> {
+  pub(super) fn compute_model_prices_for(&self, params: &HestonParams) -> Array1<f64> {
     match self.jacobian_method {
       HestonJacobianMethod::NumericFiniteDiff => self.compute_model_prices_for_numeric(params),
       HestonJacobianMethod::CuiAnalytic => self
@@ -153,19 +153,18 @@ impl HestonCalibrator {
     }
   }
 
-  pub(super) fn residuals_for(&self, params: &HestonParams) -> DVector<f64> {
-    (self.c_market.clone() - self.compute_model_prices_for(params))
-      .component_mul(&self.residual_weights)
+  pub(super) fn residuals_for(&self, params: &HestonParams) -> Array1<f64> {
+    (&self.c_market - &self.compute_model_prices_for(params)) * &self.residual_weights
   }
 
   /// Numerically approximate the residual Jacobian with respect to physical parameters.
   #[cfg(test)]
   #[allow(non_snake_case)]
-  pub(super) fn numeric_jacobian(&self, params: &HestonParams) -> DMatrix<f64> {
+  pub(super) fn numeric_jacobian(&self, params: &HestonParams) -> Array2<f64> {
     self.finite_difference_jacobian(params, false)
   }
 
-  pub(super) fn numeric_optimizer_jacobian(&self, params: &HestonParams) -> DMatrix<f64> {
+  pub(super) fn numeric_optimizer_jacobian(&self, params: &HestonParams) -> Array2<f64> {
     self.finite_difference_jacobian(params, true)
   }
 
@@ -174,11 +173,11 @@ impl HestonCalibrator {
     &self,
     params: &HestonParams,
     optimizer_denominator: bool,
-  ) -> DMatrix<f64> {
+  ) -> Array2<f64> {
     let n = self.c_market.len();
     let p = 5usize;
     let coordinates = to_optimizer_coordinates(params);
-    let mut J = DMatrix::zeros(n, p);
+    let mut J = Array2::zeros((n, p));
 
     for col in 0..p {
       let h = 1e-5 * (1.0 + coordinates[col].abs());
@@ -194,8 +193,8 @@ impl HestonCalibrator {
       let denominator = if optimizer_denominator {
         2.0 * h
       } else {
-        let plus_physical = DVector::from(params_plus);
-        let minus_physical = DVector::from(params_minus);
+        let plus_physical = Array1::from(params_plus);
+        let minus_physical = Array1::from(params_minus);
         plus_physical[col] - minus_physical[col]
       };
       let diff = (r_plus - r_minus) / denominator;

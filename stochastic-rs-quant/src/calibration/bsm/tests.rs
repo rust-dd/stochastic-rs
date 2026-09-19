@@ -99,9 +99,9 @@ fn calibrator_trait_returns_result() {
 
   let calibrator = BSMCalibrator::new(
     BSMParams { v: 0.4 },
-    DVector::from_vec(vec![call]),
-    DVector::from_vec(vec![s]),
-    DVector::from_vec(vec![k]),
+    Array1::from_vec(vec![call]),
+    Array1::from_vec(vec![s]),
+    Array1::from_vec(vec![k]),
     0.03,
     None,
     None,
@@ -132,9 +132,9 @@ fn synthetic(initial: f64) -> BSMCalibrator {
     .collect();
   BSMCalibrator::new(
     BSMParams { v: initial },
-    DVector::from_vec(prices),
-    DVector::from_vec(vec![s; strikes.len()]),
-    DVector::from_vec(strikes.to_vec()),
+    Array1::from_vec(prices),
+    Array1::from_vec(vec![s; strikes.len()]),
+    Array1::from_vec(strikes.to_vec()),
     r,
     None,
     None,
@@ -153,7 +153,7 @@ const TRUE_SIGMA: f64 = 0.25;
 #[test]
 fn sigma_is_reflected_not_clamped() {
   let mut cal = synthetic(0.2);
-  LeastSquaresProblem::set_params(&mut cal, &DVector::from_vec(vec![-0.3]));
+  LeastSquaresProblem::set_params(&mut cal, &Array1::from_vec(vec![-0.3]));
   assert_eq!(cal.params.v, 0.3, "a negative step must reflect, not clamp");
 
   let bsm = |v: f64| BSMPricer::new(v, BSMCoc::Bsm1973).price_call(100.0, 100.0, 0.03, 0.0, 0.5);
@@ -164,7 +164,7 @@ fn sigma_is_reflected_not_clamped() {
     bsm(0.3)
   );
 
-  LeastSquaresProblem::set_params(&mut cal, &DVector::from_vec(vec![f64::NAN]));
+  LeastSquaresProblem::set_params(&mut cal, &Array1::from_vec(vec![f64::NAN]));
   assert_eq!(cal.params.v, V_MIN, "a projection onto a set must be total");
 
   cal.set_initial_guess(BSMParams { v: -0.4 });

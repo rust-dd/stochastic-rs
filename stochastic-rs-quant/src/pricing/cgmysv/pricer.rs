@@ -7,6 +7,7 @@
 //!
 //! Reference: Kim, Y. S. (2021), arXiv:2101.11001, Section 4.
 
+use ndarray::Array1;
 use ndarray::Array2;
 use rayon::prelude::*;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -181,12 +182,10 @@ impl CgmysvPricer {
         x_data[base + 5] = sigma * s_val;
       }
 
-      let x_mat = nalgebra::DMatrix::from_row_slice(n_itm, n_basis, &x_data);
-      let y_nal = nalgebra::DVector::from_vec(y_vec);
-
-      let beta = match x_mat.clone().svd(true, true).solve(&y_nal, 1e-10) {
-        Ok(b) => b,
-        Err(_) => continue,
+      let x_mat = Array2::from_shape_vec((n_itm, n_basis), x_data)
+        .expect("design matrix holds n_itm * n_basis entries");
+      let Some(beta) = crate::linalg::lstsq_svd(&x_mat, &Array1::from_vec(y_vec), 1e-10) else {
+        continue;
       };
 
       for (row, &idx) in itm.iter().enumerate() {

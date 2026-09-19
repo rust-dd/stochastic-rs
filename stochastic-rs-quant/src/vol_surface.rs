@@ -190,7 +190,7 @@
 //! ### Sabr (per-slice, stitched with SSVI)
 //!
 //! ```
-//! use nalgebra::DVector;
+//! use ndarray::Array1;
 //! use stochastic_rs_quant::OptionType;
 //! use stochastic_rs_quant::calibration::{SabrCalibrator, SabrParams};
 //! use stochastic_rs_quant::pricing::sabr::SabrPricer;
@@ -210,8 +210,8 @@
 //!         SabrPricer::new(true_p.alpha, true_p.beta, true_p.nu, true_p.rho)
 //!             .price_call(s0, k, r, q, tau)
 //!     }).collect();
-//!     let cal = SabrCalibrator::new(None, prices.into(), DVector::from_element(strikes.len(), s0),
-//!         DVector::from_vec(strikes.to_vec()), r, Some(q), tau, OptionType::Call, false);
+//!     let cal = SabrCalibrator::new(None, prices.into(), Array1::from_elem(strikes.len(), s0),
+//!         Array1::from_vec(strikes.to_vec()), r, Some(q), tau, OptionType::Call, false);
 //!     cal.calibrate(None).unwrap()
 //! }).collect();
 //!
@@ -224,7 +224,7 @@
 //! ### BSM (implied vol extraction)
 //!
 //! ```
-//! use nalgebra::DVector;
+//! use ndarray::Array1;
 //! use stochastic_rs_quant::OptionType;
 //! use stochastic_rs_quant::calibration::{BSMCalibrator, BSMParams};
 //! use stochastic_rs_quant::pricing::bsm::{BSMCoc, BSMPricer};
@@ -237,8 +237,8 @@
 //! let true_sigma = 0.2;
 //! let call = BSMPricer::new(true_sigma, BSMCoc::Bsm1973).price_call(s, k, r, 0.0, 1.0);
 //!
-//! let cal = BSMCalibrator::new(BSMParams { v: 0.2 }, DVector::from_vec(vec![call]),
-//!     DVector::from_vec(vec![s]), DVector::from_vec(vec![k]), r, None, None, None, 1.0,
+//! let cal = BSMCalibrator::new(BSMParams { v: 0.2 }, Array1::from_vec(vec![call]),
+//!     Array1::from_vec(vec![s]), Array1::from_vec(vec![k]), r, None, None, None, 1.0,
 //!     OptionType::Call);
 //! let result = cal.calibrate(None).unwrap();
 //! // BSM gives flat vol — useful as a baseline, not a surface model.

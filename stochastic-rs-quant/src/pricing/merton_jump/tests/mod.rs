@@ -9,6 +9,7 @@ mod formula;
 mod lambda_zero;
 mod option_type;
 mod poison;
+mod volatility;
 
 /// `m` (Poisson-series term count) is capped at 20 in these tests:
 /// the pre-refactor term loop computed `n!` as a `usize` product, which
@@ -138,9 +139,7 @@ fn merton_greeks_match_finite_difference() {
   }
 }
 
-/// All 9 Greeks are finite for a representative `λ > 0` configuration —
-/// exercises the finite-difference path (vega/theta/vanna/charm/volga/veta)
-/// that the λ=0 test above cannot reach.
+/// All nine Greeks are finite with both diffusive and jump variance.
 #[test]
 fn merton_greeks_all_finite() {
   let m = merton(0.5, 0.3, 20);
@@ -301,12 +300,9 @@ const TOL: f64 = 1e-12;
 /// interval. The `6.6e-6` residual is `norm_cdf`'s Abramowitz-Stegun
 /// 7.1.26 error.
 ///
-/// The nine Greeks are adjudicated as numerical derivatives of that same
-/// characteristic-function price: the five first-order ones agree to
-/// between `3e-9` and `2e-6` relative, the four second-order ones to
-/// `4e-4` (both sides being finite differences there). Under the old `σ_n`
-/// the same comparison was off by 21 % to 111 %, and `volga` had the wrong
-/// sign.
+/// The volatility Greeks use independent 60-digit mpmath derivatives of
+/// the ten-term Poisson price with an erfc-based normal CDF. Veta permits
+/// the truncation error of its centred maturity difference.
 #[test]
 fn merton_pins_the_reference_price_and_greeks() {
   let m = merton(0.5, 0.4, 10);
@@ -319,18 +315,19 @@ fn merton_pins_the_reference_price_and_greeks() {
   let want = [
     0.4496816609264091,
     0.032071500866967965,
-    26.41969293408763,
+    26.419722807093007,
     -7.717747123159312,
     20.346027268272934,
-    0.5136783187698057,
+    0.5135917494280893,
     -0.27511605438235165,
-    3.6927971791556042,
-    -30.537329331892234,
+    3.691324142155106,
+    -30.536697717993075,
   ];
   let got = m.greeks(S, K, R, Q, TAU, OT).as_array();
   for (i, name) in Greeks::COMPONENT_NAMES.iter().enumerate() {
+    let tolerance = if *name == "veta" { 1e-8 } else { TOL };
     assert!(
-      (got[i] - want[i]).abs() < TOL,
+      (got[i] - want[i]).abs() < tolerance,
       "{name}: got {}, want {}",
       got[i],
       want[i]

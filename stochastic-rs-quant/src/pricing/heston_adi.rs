@@ -7,7 +7,7 @@
 //! Finite-difference solution of the Heston PDE with correlation by the
 //! Alternating Direction Implicit schemes of in 't Hout & Foulon (2008):
 //! sinh-stretched meshes clustering at the strike and at `v = 0` (§2.2,
-//! `S = 8K`, `V = 5`, `c = K/5`, `d = V/500`), second-order central
+//! `S ≥ 8K`, `V ≥ 5`, `c = K/5`, `d = V/500`), second-order central
 //! stencils with upwinding of `u_v` where the `v`-flow points outward, the
 //! call boundary conditions `u(0, v) = 0`, `u_s(S, v) = e^{−r_f t}`,
 //! `u(s, V) = s e^{−r_f t}`, and the Douglas, Craig–Sneyd, Modified
@@ -18,7 +18,8 @@
 //!
 //! The struct holds model and method state; the query `(s, k, r, q, τ)`
 //! travels as arguments with `r = r_d` and `q = r_f`, and the price is read
-//! off the grid by bilinear interpolation at `(s, v₀)`.
+//! off the grid by bilinear interpolation at `(s, v₀)`. The upper boundaries
+//! expand to at least twice the queried spot and initial variance.
 //!
 //! Reference: in 't Hout, K. J. & Foulon, S. (2010), *ADI finite difference
 //! schemes for option pricing in the Heston model with correlation*,
@@ -144,15 +145,24 @@ impl HestonAdiPricer {
 
   /// Solves the PDE for the call payoff and reads the price at `(s, v₀)`.
   fn solve_call(&self, s: f64, k: f64, r_d: f64, r_f: f64, tau: f64) -> f64 {
-    if !(s > 0.0 && k > 0.0 && tau > 0.0) || !s.is_finite() || !k.is_finite() {
+    if !(s > 0.0 && k > 0.0 && tau > 0.0 && self.v0 >= 0.0)
+      || [s, k, tau, r_d, r_f, self.v0]
+        .iter()
+        .any(|v| !v.is_finite())
+    {
       return f64::NAN;
     }
     let lower = self.barrier.unwrap_or(0.0);
     if lower >= k || s <= lower {
       return if s <= lower { 0.0 } else { f64::NAN };
     }
-    let s_mesh = strike_centred_mesh(lower, SPOT_CAP_STRIKES * k, k, self.m1);
-    let v_mesh = origin_centred_mesh(VARIANCE_CAP, self.m2);
+    let spot_cap = (SPOT_CAP_STRIKES * k).max(2.0 * s);
+    let variance_cap = VARIANCE_CAP.max(2.0 * self.v0);
+    if !spot_cap.is_finite() || !variance_cap.is_finite() {
+      return f64::NAN;
+    }
+    let s_mesh = strike_centred_mesh(lower, spot_cap, k, self.m1);
+    let v_mesh = origin_centred_mesh(variance_cap, self.m2);
     let ops = Operators::new(
       s_mesh,
       v_mesh,

@@ -1,7 +1,7 @@
 use std::f64::consts::FRAC_1_PI;
 
-use nalgebra::DMatrix;
-use nalgebra::DVector;
+use ndarray::Array1;
+use ndarray::Array2;
 use num_complex::Complex64;
 
 use super::super::integrate_gl_to_convergence;
@@ -111,9 +111,9 @@ pub(super) fn double_heston_call_price(
 }
 
 impl DoubleHestonCalibrator {
-  pub(super) fn compute_model_prices_for(&self, p: &DoubleHestonParams) -> DVector<f64> {
+  pub(super) fn compute_model_prices_for(&self, p: &DoubleHestonParams) -> Array1<f64> {
     let n = self.c_market.len();
-    let mut c_model = DVector::zeros(n);
+    let mut c_model = Array1::zeros(n);
     let q_val = self.q.unwrap_or(0.0);
 
     for idx in 0..n {
@@ -131,17 +131,17 @@ impl DoubleHestonCalibrator {
     c_model
   }
 
-  pub(super) fn residuals_for(&self, p: &DoubleHestonParams) -> DVector<f64> {
+  pub(super) fn residuals_for(&self, p: &DoubleHestonParams) -> Array1<f64> {
     self.c_market.clone() - self.compute_model_prices_for(p)
   }
 
   /// Central finite-difference Jacobian over the 10 parameters.
-  pub(super) fn numeric_jacobian(&self, params: &DoubleHestonParams) -> DMatrix<f64> {
+  pub(super) fn numeric_jacobian(&self, params: &DoubleHestonParams) -> Array2<f64> {
     let n = self.c_market.len();
     let p_dim = 10usize;
 
-    let base_params_vec: DVector<f64> = (*params).into();
-    let mut j_mat = DMatrix::zeros(n, p_dim);
+    let base_params_vec: Array1<f64> = (*params).into();
+    let mut j_mat = Array2::zeros((n, p_dim));
 
     for col in 0..p_dim {
       let x = base_params_vec[col];

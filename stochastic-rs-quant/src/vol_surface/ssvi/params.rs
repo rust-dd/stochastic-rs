@@ -1,4 +1,4 @@
-use nalgebra::DVector;
+use ndarray::Array1;
 
 use crate::traits::RealExt;
 
@@ -177,11 +177,11 @@ impl<T: RealExt> SsviParams<T> {
 }
 
 impl SsviParams<f64> {
-  pub(super) fn into_dvector(self) -> DVector<f64> {
-    DVector::from_vec(vec![self.rho, self.eta, self.gamma])
+  pub(super) fn into_dvector(self) -> Array1<f64> {
+    Array1::from_vec(vec![self.rho, self.eta, self.gamma])
   }
 
-  pub(super) fn from_dvector(v: &DVector<f64>) -> Self {
+  pub(super) fn from_dvector(v: &Array1<f64>) -> Self {
     SsviParams {
       rho: v[0],
       eta: v[1],

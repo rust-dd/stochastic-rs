@@ -36,8 +36,6 @@
 
 use ndarray::Array1;
 use ndarray::s;
-#[cfg(feature = "python")]
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
@@ -343,8 +341,8 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for BergomiSampler<T, S> {
 pub struct PyBergomi {
   inner_f32: Option<Bergomi<f32>>,
   inner_f64: Option<Bergomi<f64>>,
-  seeded_f32: Option<Bergomi<f32, crate::simd_rng::Deterministic>>,
-  seeded_f64: Option<Bergomi<f64, crate::simd_rng::Deterministic>>,
+  seeded_f32: Option<Bergomi<f32, crate::python_device::SharedSeed>>,
+  seeded_f64: Option<Bergomi<f64, crate::python_device::SharedSeed>>,
   /// The device the class samples on, chosen at construction.
   device: crate::python_device::Device,
 }
@@ -384,7 +382,7 @@ impl PyBergomi {
           rho as f32,
           n,
           t.map(|v| v as f32),
-          Deterministic::new(sd),
+          crate::python_device::SharedSeed::new(sd),
         ));
       }
       (Some(sd), _) => {
@@ -396,7 +394,7 @@ impl PyBergomi {
           rho,
           n,
           t,
-          Deterministic::new(sd),
+          crate::python_device::SharedSeed::new(sd),
         ));
       }
       (None, "f32") => {

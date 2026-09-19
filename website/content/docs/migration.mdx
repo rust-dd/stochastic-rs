@@ -91,10 +91,21 @@ and the AI surrogate. These fits use trust-region damping, with pivoted QR
 for stochastic-volatility and surrogate fits and Cholesky for the smaller
 pricing objectives.
 CGMYSV now optimizes in smooth bounded coordinates, as Heston already does,
-to maintain convergence on weakly identified surfaces. Calibrator constructors,
-parameter types, and result types are unchanged.
+to maintain convergence on weakly identified surfaces. Parameter types and
+result types are unchanged.
 The implementation of `levenberg_marquardt::LeastSquaresProblem` on the
 calibrators is removed; use the `Calibrator` trait to run a fit.
+
+`nalgebra` is no longer a direct workspace dependency; it can still appear
+transitively through dependencies such as `gauss-quad`. The least-squares calibrators
+(`BSMCalibrator`, `SabrCalibrator`, `HestonCalibrator`, `HKDECalibrator`,
+`DoubleHestonCalibrator`, `SVJCalibrator`) take their `c_market`, `s` and `k`
+quotes as `ndarray::Array1<f64>` instead of `nalgebra::DVector<f64>`, and
+their `From` conversions, `HestonCalibrator::set_residual_weights`,
+`Regularization`'s row helpers and `CalibrationHistory` follow. A `Vec<f64>`
+still converts with `.into()`, so call sites that passed `prices.into()` are
+unchanged; `DVector::from_vec(v)` becomes `Array1::from_vec(v)` and
+`DVector::from_element(n, x)` becomes `Array1::from_elem(n, x)`.
 
 Tolerance and patience settings retain their relative-tolerance and
 residual-evaluation-budget meanings. Evaluation counts and termination

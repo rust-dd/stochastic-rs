@@ -1,7 +1,7 @@
 // docs: quant#regularised-calibration
 //! Backs the regularised calibration example on the quant catalog page.
 
-use nalgebra::DVector;
+use ndarray::Array1;
 use stochastic_rs::quant::calibration::Regularization;
 use stochastic_rs::quant::calibration::SabrCalibrator;
 use stochastic_rs::quant::pricing::sabr::SabrPricer;
@@ -21,9 +21,9 @@ fn a_tikhonov_anchor_pulls_the_sabr_fit() {
   let calibrator = |regularization: Option<Regularization>| {
     let mut c = SabrCalibrator::new(
       None,
-      DVector::from_vec(prices.clone()),
-      DVector::from_element(strikes.len(), s),
-      DVector::from_vec(strikes.clone()),
+      Array1::from_vec(prices.clone()),
+      Array1::from_elem(strikes.len(), s),
+      Array1::from_vec(strikes.clone()),
       r,
       None,
       tau,

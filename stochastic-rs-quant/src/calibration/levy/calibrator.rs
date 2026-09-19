@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use nalgebra::DMatrix;
-use nalgebra::DVector;
+use ndarray::Array1;
+use ndarray::Array2;
 
 use super::EPS;
 use super::loss::default_params;
@@ -165,11 +165,11 @@ impl LevyCalibrator {
     p
   }
 
-  fn numeric_jacobian(&self) -> DMatrix<f64> {
+  fn numeric_jacobian(&self) -> Array2<f64> {
     let n = self.flat_prices.len();
     let m = param_count(self.model_type);
     let bounds = param_bounds(self.model_type);
-    let mut j_mat = DMatrix::zeros(n, m);
+    let mut j_mat = Array2::zeros((n, m));
     let base = self.effective_params();
 
     for col in 0..m {
@@ -219,17 +219,17 @@ impl LevyCalibrator {
 }
 
 impl LeastSquaresProblem for LevyCalibrator {
-  fn set_params(&mut self, params: &DVector<f64>) {
-    let mut p: Vec<f64> = params.as_slice().to_vec();
+  fn set_params(&mut self, params: &Array1<f64>) {
+    let mut p: Vec<f64> = params.to_vec();
     project_params(self.model_type, &mut p);
     self.params = p;
   }
 
-  fn params(&self) -> DVector<f64> {
-    DVector::from_vec(self.effective_params())
+  fn params(&self) -> Array1<f64> {
+    Array1::from_vec(self.effective_params())
   }
 
-  fn residuals(&self) -> Option<DVector<f64>> {
+  fn residuals(&self) -> Option<Array1<f64>> {
     let c_model = self.compute_model_prices();
     let n = self.flat_prices.len();
 
@@ -238,8 +238,7 @@ impl LeastSquaresProblem for LevyCalibrator {
         .calibration_history
         .borrow_mut()
         .push(CalibrationHistory {
-          residuals: DVector::from_iterator(
-            n,
+          residuals: Array1::from_iter(
             self
               .flat_prices
               .iter()
@@ -275,7 +274,7 @@ impl LeastSquaresProblem for LevyCalibrator {
         });
     }
 
-    let mut residuals = DVector::zeros(n);
+    let mut residuals = Array1::zeros(n);
     for i in 0..n {
       residuals[i] = self.flat_prices[i] - c_model[i];
     }
@@ -283,7 +282,7 @@ impl LeastSquaresProblem for LevyCalibrator {
     Some(residuals)
   }
 
-  fn jacobian(&self) -> Option<DMatrix<f64>> {
+  fn jacobian(&self) -> Option<Array2<f64>> {
     Some(self.numeric_jacobian())
   }
 }

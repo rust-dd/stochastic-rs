@@ -10,9 +10,8 @@
 //! data point closest to the money, `(k*, θ*)`, through `θ = θ* − ρ ψ k*`,
 //! which leaves `(ρ, ψ)` free; the Gatheral–Jacquier butterfly bounds become
 //! the cap `ψ ≤ min(ψ₊(ρ, k*, θ*), 4 / (1 + |ρ|))`, and the Hendriks–Martini
-//! calendar-spread conditions between consecutive slices (`θ` and `ψ`
-//! non-decreasing, `|Δ(ρψ) / Δψ| ≤ 1`) become the floor `ψ ≥ ψ₋(ρ)` plus the
-//! `θ > θ_prev` side condition through `ψ̂ = (θ* − θ_prev) / (ρ k*)`. Slices
+//! calendar-spread conditions add a floor on `ψ` and an upper bound that
+//! keeps `φ = ψ / θ` non-increasing. Equal-variance slices preserve `ρψ`. Slices
 //! are calibrated going forward in maturity, each by a bounded
 //! one-dimensional search in `ρ` (coarse grid, then golden-section
 //! refinement) with the best admissible `ψ` found by a golden-section search
@@ -26,7 +25,14 @@
 //! arXiv:1804.04924; Hendriks, S. & Martini, C. (2019), *The extended SSVI
 //! volatility surface*, Journal of Computational Finance 22(5); Gatheral, J.
 //! & Jacquier, A. (2014), *Arbitrage-free SVI volatility surfaces*,
-//! Quantitative Finance 14(1), 59–71.
+//! Quantitative Finance 14(1), 59–71. Calendar conditions include the
+//! correction in Pasquazzi (2023), *eSSVI Surface Calibration*, Proposition
+//! 4.14 and Section 2.1, arXiv:2304.02106.
+
+mod calibrate;
+
+pub use calibrate::calibrate_essvi;
+pub use calibrate::try_calibrate_essvi;
 
 use super::ssvi::SsviSlice;
 use crate::traits::RealExt;
@@ -94,10 +100,16 @@ fn calendar_free_pair<T: RealExt>(earlier: &EssviSlice<T>, later: &EssviSlice<T>
     return false;
   }
   let d_psi = later.psi - earlier.psi;
-  if d_psi <= tol {
-    return (later.rho * later.psi - earlier.rho * earlier.psi).abs() <= tol;
+  let d_skew = later.rho * later.psi - earlier.rho * earlier.psi;
+  if d_skew.abs() > d_psi + tol {
+    return false;
   }
-  ((later.rho * later.psi - earlier.rho * earlier.psi) / d_psi).abs() <= T::one() + tol
+  if later.psi * earlier.theta <= earlier.psi * later.theta {
+    return true;
+  }
+  let bound = (later.theta - earlier.theta)
+    * (later.psi * later.psi / later.theta - earlier.psi * earlier.psi / earlier.theta);
+  d_skew * d_skew <= bound + tol * tol
 }
 
 /// Extended SSVI surface: calibrated slices plus the arbitrage-free linear
@@ -175,192 +187,6 @@ impl<T: RealExt> EssviSurface<T> {
       .windows(2)
       .all(|w| calendar_free_pair(&w[0], &w[1]))
   }
-}
-
-/// Golden-section minimisation of a unimodal function on `[lo, hi]`.
-fn golden_section(f: &dyn Fn(f64) -> f64, mut lo: f64, mut hi: f64, iters: usize) -> f64 {
-  let inv_phi = (5.0_f64.sqrt() - 1.0) / 2.0;
-  let mut c = hi - inv_phi * (hi - lo);
-  let mut d = lo + inv_phi * (hi - lo);
-  let (mut fc, mut fd) = (f(c), f(d));
-  for _ in 0..iters {
-    if fc < fd {
-      hi = d;
-      d = c;
-      fd = fc;
-      c = hi - inv_phi * (hi - lo);
-      fc = f(c);
-    } else {
-      lo = c;
-      c = d;
-      fc = fd;
-      d = lo + inv_phi * (hi - lo);
-      fd = f(d);
-    }
-  }
-  0.5 * (lo + hi)
-}
-
-/// Anchored slice data in `f64`.
-struct AnchoredSlice {
-  ks: Vec<f64>,
-  ws: Vec<f64>,
-  k_star: f64,
-  theta_star: f64,
-}
-
-/// Admissible `ψ` interval for `ρ` on an anchored slice, given the previous
-/// slice; `None` when the bounds cross.
-fn psi_bounds(
-  rho: f64,
-  slice: &AnchoredSlice,
-  previous: Option<&EssviSlice<f64>>,
-) -> Option<(f64, f64)> {
-  let abs = 1.0 + rho.abs();
-  let (k, theta) = (slice.k_star, slice.theta_star);
-  let psi_plus =
-    -2.0 * rho * k / abs + (4.0 * rho * rho * k * k / (abs * abs) + 4.0 * theta / abs).sqrt();
-  let mut hi = psi_plus.min(4.0 / abs);
-  let mut lo = 1e-10_f64;
-  let rk = rho * k;
-  if rk > 0.0 {
-    hi = hi.min(theta / rk * (1.0 - 1e-9));
-  }
-  if let Some(prev) = previous {
-    let psi_minus = ((prev.psi - prev.rho * prev.psi) / (1.0 - rho))
-      .max((prev.psi + prev.rho * prev.psi) / (1.0 + rho));
-    lo = lo.max(psi_minus);
-    if rk.abs() > 0.0 {
-      let psi_hat = (theta - prev.theta) / rk;
-      if rk > 0.0 {
-        hi = hi.min(psi_hat);
-      } else {
-        lo = lo.max(psi_hat);
-      }
-    } else if theta <= prev.theta {
-      return None;
-    }
-  }
-  (lo < hi).then_some((lo, hi))
-}
-
-fn slice_sse(rho: f64, psi: f64, slice: &AnchoredSlice) -> f64 {
-  let theta = slice.theta_star - rho * psi * slice.k_star;
-  let model = EssviSlice::new(1.0, theta, rho, psi);
-  slice
-    .ks
-    .iter()
-    .zip(&slice.ws)
-    .map(|(&k, &w)| (model.total_variance(k) - w).powi(2))
-    .sum()
-}
-
-/// Best admissible `(ψ, sse)` for a given `ρ`.
-fn best_psi(
-  rho: f64,
-  slice: &AnchoredSlice,
-  previous: Option<&EssviSlice<f64>>,
-) -> Option<(f64, f64)> {
-  let (lo, hi) = psi_bounds(rho, slice, previous)?;
-  let f = |psi: f64| slice_sse(rho, psi, slice);
-  let psi = golden_section(&f, lo, hi, 80);
-  Some((psi, f(psi)))
-}
-
-/// Calibrates one anchored slice going forward from `previous`.
-fn calibrate_slice(
-  slice: &AnchoredSlice,
-  previous: Option<&EssviSlice<f64>>,
-  maturity: f64,
-) -> EssviSlice<f64> {
-  let objective = |rho: f64| best_psi(rho, slice, previous).map_or(f64::INFINITY, |(_, sse)| sse);
-  let grid: Vec<f64> = (0..81).map(|i| -0.99 + 1.98 * i as f64 / 80.0).collect();
-  let (mut best_rho, mut best_sse) = (0.0_f64, f64::INFINITY);
-  for &rho in &grid {
-    let sse = objective(rho);
-    if sse < best_sse {
-      best_sse = sse;
-      best_rho = rho;
-    }
-  }
-  let step = 1.98 / 80.0;
-  let refined = golden_section(
-    &objective,
-    (best_rho - step).max(-0.999),
-    (best_rho + step).min(0.999),
-    60,
-  );
-  let rho = if objective(refined) <= best_sse {
-    refined
-  } else {
-    best_rho
-  };
-  let (psi, _) = best_psi(rho, slice, previous).expect("the grid optimum is admissible");
-  EssviSlice::new(
-    maturity,
-    slice.theta_star - rho * psi * slice.k_star,
-    rho,
-    psi,
-  )
-}
-
-/// Calibrates eSSVI slices to `slices` (ascending `maturities`, one per
-/// slice) going forward in maturity, so that every slice is butterfly-free
-/// and every consecutive pair calendar-spread-free by construction. Each
-/// slice is anchored at its data point closest to the money.
-pub fn calibrate_essvi<T: RealExt>(slices: &[SsviSlice<T>], maturities: &[T]) -> EssviSurface<T> {
-  assert_eq!(slices.len(), maturities.len(), "one maturity per slice");
-  assert!(
-    !slices.is_empty(),
-    "eSSVI calibration needs at least one slice"
-  );
-  let mut out: Vec<EssviSlice<f64>> = Vec::with_capacity(slices.len());
-  for (slice, &maturity) in slices.iter().zip(maturities) {
-    let ks: Vec<f64> = slice
-      .log_moneyness
-      .iter()
-      .map(|k| k.to_f64().unwrap_or(0.0))
-      .collect();
-    let ws: Vec<f64> = slice
-      .total_variance
-      .iter()
-      .map(|w| w.to_f64().unwrap_or(0.0))
-      .collect();
-    assert!(
-      ks.len() >= 2 && ks.len() == ws.len(),
-      "a slice needs at least two quotes"
-    );
-    let anchor = (0..ks.len())
-      .min_by(|&i, &j| {
-        ks[i]
-          .abs()
-          .partial_cmp(&ks[j].abs())
-          .expect("finite log-moneyness")
-      })
-      .expect("non-empty");
-    let anchored = AnchoredSlice {
-      k_star: ks[anchor],
-      theta_star: ws[anchor],
-      ks,
-      ws,
-    };
-    let previous = out.last();
-    let calibrated = calibrate_slice(&anchored, previous, maturity.to_f64().unwrap_or(0.0));
-    out.push(calibrated);
-  }
-  EssviSurface::new(
-    out
-      .into_iter()
-      .map(|s| {
-        EssviSlice::new(
-          T::from_f64_fast(s.maturity),
-          T::from_f64_fast(s.theta),
-          T::from_f64_fast(s.rho),
-          T::from_f64_fast(s.psi),
-        )
-      })
-      .collect(),
-  )
 }
 
 #[cfg(test)]

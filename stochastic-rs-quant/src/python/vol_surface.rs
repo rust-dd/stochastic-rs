@@ -210,7 +210,7 @@ impl PyEssviSurface {
   /// `slices`: one `(log_moneyness, total_variance, theta_atm)` triplet per
   /// maturity, in ascending maturity order.
   #[staticmethod]
-  fn calibrate(maturities: Vec<f64>, slices: Vec<(Vec<f64>, Vec<f64>, f64)>) -> Self {
+  fn calibrate(maturities: Vec<f64>, slices: Vec<(Vec<f64>, Vec<f64>, f64)>) -> PyResult<Self> {
     let inner_slices: Vec<crate::vol_surface::ssvi::SsviSlice<f64>> = slices
       .into_iter()
       .map(
@@ -221,9 +221,10 @@ impl PyEssviSurface {
         },
       )
       .collect();
-    Self {
-      inner: crate::vol_surface::essvi::calibrate_essvi(&inner_slices, &maturities),
-    }
+    Ok(Self {
+      inner: crate::vol_surface::essvi::try_calibrate_essvi(&inner_slices, &maturities)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?,
+    })
   }
 
   /// `(maturity, theta, rho, psi)` per calibrated slice.

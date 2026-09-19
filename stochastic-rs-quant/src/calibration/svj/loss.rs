@@ -1,7 +1,7 @@
 use std::f64::consts::FRAC_1_PI;
 
-use nalgebra::DMatrix;
-use nalgebra::DVector;
+use ndarray::Array1;
+use ndarray::Array2;
 use num_complex::Complex64;
 
 use super::SVJParams;
@@ -90,9 +90,9 @@ pub(super) fn bates_call_price(p: &SVJParams, s: f64, k: f64, r: f64, q: f64, ta
 }
 
 impl SVJCalibrator {
-  pub(super) fn compute_model_prices_for(&self, p: &SVJParams) -> DVector<f64> {
+  pub(super) fn compute_model_prices_for(&self, p: &SVJParams) -> Array1<f64> {
     let n = self.c_market.len();
-    let mut c_model = DVector::zeros(n);
+    let mut c_model = Array1::zeros(n);
     let q_val = self.q.unwrap_or(0.0);
 
     for idx in 0..n {
@@ -110,17 +110,17 @@ impl SVJCalibrator {
     c_model
   }
 
-  fn residuals_for(&self, p: &SVJParams) -> DVector<f64> {
+  fn residuals_for(&self, p: &SVJParams) -> Array1<f64> {
     self.c_market.clone() - self.compute_model_prices_for(p)
   }
 
   /// Central finite-difference Jacobian.
-  fn numeric_jacobian(&self, params: &SVJParams) -> DMatrix<f64> {
+  fn numeric_jacobian(&self, params: &SVJParams) -> Array2<f64> {
     let n = self.c_market.len();
     let p = 8usize;
 
-    let base_params_vec: DVector<f64> = (*params).into();
-    let mut j_mat = DMatrix::zeros(n, p);
+    let base_params_vec: Array1<f64> = (*params).into();
+    let mut j_mat = Array2::zeros((n, p));
 
     for col in 0..p {
       let x = base_params_vec[col];
@@ -188,16 +188,16 @@ impl SVJCalibrator {
 }
 
 impl LeastSquaresProblem for SVJCalibrator {
-  fn set_params(&mut self, params: &DVector<f64>) {
+  fn set_params(&mut self, params: &Array1<f64>) {
     let p = SVJParams::from(params.clone()).projected();
     self.params = Some(p);
   }
 
-  fn params(&self) -> DVector<f64> {
+  fn params(&self) -> Array1<f64> {
     self.effective_params().into()
   }
 
-  fn residuals(&self) -> Option<DVector<f64>> {
+  fn residuals(&self) -> Option<Array1<f64>> {
     let params_eff = self.effective_params();
     let c_model = self.compute_model_prices_for(&params_eff);
 
@@ -224,8 +224,8 @@ impl LeastSquaresProblem for SVJCalibrator {
             .into(),
           params: params_eff,
           loss_scores: CalibrationLossScore::compute_selected(
-            self.c_market.as_slice(),
-            c_model.as_slice(),
+            self.c_market.as_standard_layout().as_slice().unwrap(),
+            c_model.as_slice().unwrap(),
             self.loss_metrics,
           ),
         });
@@ -234,7 +234,7 @@ impl LeastSquaresProblem for SVJCalibrator {
     Some(self.c_market.clone() - c_model)
   }
 
-  fn jacobian(&self) -> Option<DMatrix<f64>> {
+  fn jacobian(&self) -> Option<Array2<f64>> {
     Some(self.numeric_jacobian(&self.effective_params()))
   }
 }

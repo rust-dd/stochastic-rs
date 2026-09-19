@@ -1,5 +1,7 @@
 //! Internal math helpers shared across portfolio optimizers.
 
+use ndarray::Array2;
+
 pub(super) fn sample_mean(xs: &[f64]) -> f64 {
   if xs.is_empty() {
     0.0
@@ -108,7 +110,7 @@ pub(super) fn portfolio_vol_from_returns(
   pvar.sqrt() * periods_per_year.sqrt()
 }
 
-/// Matrix inversion via nalgebra's LU with partial pivoting. Faster and
+/// Matrix inversion via faer's LU with partial pivoting. Faster and
 /// more numerically stable than the previous hand-rolled Gauss-Jordan
 /// path on the typical 50-100×100 covariance matrices that
 /// Black-Litterman / mean-variance encounter. Returns `None` for
@@ -118,25 +120,13 @@ pub(super) fn mat_inverse(mat: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
   if n == 0 {
     return Some(Vec::new());
   }
-  let m = nalgebra::DMatrix::from_fn(n, n, |i, j| {
+  let m = Array2::from_shape_fn((n, n), |(i, j)| {
     mat
       .get(i)
       .and_then(|row| row.get(j))
       .copied()
       .unwrap_or(0.0)
   });
-  let inv = m.try_inverse()?;
-  // try_inverse internally checks for near-singularity; reject if the
-  // result has any non-finite entries (defence-in-depth against
-  // pathological inputs that LU partial pivoting accepts).
-  if inv.iter().any(|x| !x.is_finite()) {
-    return None;
-  }
-  let mut out = vec![vec![0.0; n]; n];
-  for i in 0..n {
-    for j in 0..n {
-      out[i][j] = inv[(i, j)];
-    }
-  }
-  Some(out)
+  let inv = crate::linalg::inverse_t(&m)?;
+  Some((0..n).map(|i| inv.row(i).to_vec()).collect())
 }

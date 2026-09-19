@@ -27,7 +27,6 @@ faer-ext = { workspace = true, features = ["ndarray"] }
 stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
 ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
-nalgebra = { workspace = true }
 num-traits = { workspace = true }
 num-complex = { workspace = true }
 rand = { workspace = true }

@@ -98,32 +98,9 @@ impl Merton1976Pricer {
   /// Validating constructor.
   ///
   /// # Panics
-  /// - if `v` is negative or `NaN`. Every use of `v` in the price squares
-  ///   it, so a negative volatility silently prices as its own absolute
-  ///   value; the Greeks are worse, since `with_v_bump` floors the bumped
-  ///   volatility at `1e-8` and both legs of the central difference then
-  ///   land on the floor, returning a `vega` of `0`.
-  /// - if `m` is `0`. It is the Poisson-series length, so an empty series
-  ///   runs the sum zero times and [`call_put`](Self::call_put) returns
-  ///   `(0.0, 0.0)` — the plausible-looking sentinel the crate's [failure
-  ///   convention](crate::traits::ModelPricer#how-pricing-fails) rules out,
-  ///   indistinguishable from a genuinely worthless option.
-  ///
-  /// `lambda` and `gamma` are deliberately **not** checked. `lambda == 0`
-  /// is a *supported* state rather than an invalid one — price and Greeks
-  /// both collapse to plain Black-Scholes at `v` there, which
-  /// `merton_price_lambda_zero_equals_bs` and
-  /// `merton_greeks_lambda_zero_equals_bs` pin — and a `gamma` outside
-  /// `[0, 1]` drives $\sigma^2 - \lambda z^2$ negative, which announces
-  /// itself as `NaN` rather than as a number.
-  ///
-  /// A **negative** `lambda` is neither, and the two halves still disagree
-  /// about it: the price is `NaN`, which is the convention, while the
-  /// Greeks' `λ ≤ 0` branch answers with the Black-Scholes value. Left
-  /// alone here because narrowing that branch to `λ == 0` would route a
-  /// negative intensity into `greek_series`'s
-  /// `NaN`-floor and turn a visible `NaN` into a confident `0.0`, which is
-  /// worse than the disagreement.
+  /// Panics if `v` is negative or `NaN`, or if the series length `m` is zero.
+  /// `lambda` and `gamma` are not validated. At zero intensity the model
+  /// reduces to Black-Scholes with volatility `v`.
   pub fn new(v: f64, lambda: f64, gamma: f64, m: usize, b: BSMCoc) -> Self {
     assert!(
       v >= 0.0,

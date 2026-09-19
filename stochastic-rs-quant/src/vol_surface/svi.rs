@@ -18,8 +18,8 @@
 //!
 //! Reference: Gatheral & Jacquier (2012), arXiv:1204.0646
 
-use nalgebra::DMatrix;
-use nalgebra::DVector;
+use ndarray::Array1;
+use ndarray::Array2;
 
 use crate::calibration::least_squares::LeastSquaresProblem;
 use crate::calibration::least_squares::LmOptions;
@@ -222,11 +222,11 @@ impl<T: RealExt> SviRawParams<T> {
 }
 
 impl SviRawParams<f64> {
-  fn into_dvector(self) -> DVector<f64> {
-    DVector::from_vec(vec![self.a, self.b, self.rho, self.m, self.sigma])
+  fn into_dvector(self) -> Array1<f64> {
+    Array1::from_vec(vec![self.a, self.b, self.rho, self.m, self.sigma])
   }
 
-  fn from_dvector(v: &DVector<f64>) -> Self {
+  fn from_dvector(v: &Array1<f64>) -> Self {
     SviRawParams {
       a: v[0],
       b: v[1],
@@ -355,32 +355,32 @@ fn svi_initial_guess(ks: &[f64], ws: &[f64]) -> SviRawParams<f64> {
 struct SviLmProblem {
   ks: Vec<f64>,
   ws: Vec<f64>,
-  params: DVector<f64>,
+  params: Array1<f64>,
 }
 
 impl LeastSquaresProblem for SviLmProblem {
-  fn set_params(&mut self, params: &DVector<f64>) {
-    self.params.copy_from(params);
+  fn set_params(&mut self, params: &Array1<f64>) {
+    self.params.assign(params);
   }
 
-  fn params(&self) -> DVector<f64> {
+  fn params(&self) -> Array1<f64> {
     self.params.clone()
   }
 
-  fn residuals(&self) -> Option<DVector<f64>> {
+  fn residuals(&self) -> Option<Array1<f64>> {
     let p = SviRawParams::<f64>::from_dvector(&self.params);
     let n = self.ks.len();
-    let mut r = DVector::zeros(n);
+    let mut r = Array1::zeros(n);
     for i in 0..n {
       r[i] = p.total_variance(self.ks[i]) - self.ws[i];
     }
     Some(r)
   }
 
-  fn jacobian(&self) -> Option<DMatrix<f64>> {
+  fn jacobian(&self) -> Option<Array2<f64>> {
     let p = SviRawParams::<f64>::from_dvector(&self.params);
     let n = self.ks.len();
-    let mut jac = DMatrix::zeros(n, 5);
+    let mut jac = Array2::zeros((n, 5));
 
     for i in 0..n {
       let dk = self.ks[i] - p.m;

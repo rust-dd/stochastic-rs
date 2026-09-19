@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use nalgebra::DMatrix;
-use nalgebra::DVector;
+use ndarray::Array1;
+use ndarray::Array2;
 
 use super::loss::double_heston_call_price;
 use super::params::DoubleHestonParams;
@@ -19,9 +19,9 @@ use crate::calibration::least_squares::minimize;
 #[derive(Clone)]
 pub struct DoubleHestonCalibrator {
   pub params: Option<DoubleHestonParams>,
-  pub c_market: DVector<f64>,
-  pub s: DVector<f64>,
-  pub k: DVector<f64>,
+  pub c_market: Array1<f64>,
+  pub s: Array1<f64>,
+  pub k: Array1<f64>,
   pub r: f64,
   pub q: Option<f64>,
   pub flat_t: Vec<f64>,
@@ -36,9 +36,9 @@ impl DoubleHestonCalibrator {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     params: Option<DoubleHestonParams>,
-    c_market: DVector<f64>,
-    s: DVector<f64>,
-    k: DVector<f64>,
+    c_market: Array1<f64>,
+    s: Array1<f64>,
+    k: Array1<f64>,
     r: f64,
     q: Option<f64>,
     tau: f64,
@@ -94,9 +94,9 @@ impl DoubleHestonCalibrator {
 
     Self {
       params,
-      c_market: DVector::from_vec(flat_prices),
-      s: DVector::from_vec(flat_s),
-      k: DVector::from_vec(flat_strikes),
+      c_market: Array1::from_vec(flat_prices),
+      s: Array1::from_vec(flat_s),
+      k: Array1::from_vec(flat_strikes),
       r,
       q,
       flat_t,
@@ -122,8 +122,8 @@ impl DoubleHestonCalibrator {
     let p = result.effective_params();
     let c_model = result.compute_model_prices_for(&p);
     let loss = CalibrationLossScore::compute_selected(
-      result.c_market.as_slice(),
-      c_model.as_slice(),
+      result.c_market.as_standard_layout().as_slice().unwrap(),
+      c_model.as_slice().unwrap(),
       result.loss_metrics,
     );
 
@@ -200,16 +200,16 @@ impl crate::traits::Calibrator for DoubleHestonCalibrator {
 }
 
 impl LeastSquaresProblem for DoubleHestonCalibrator {
-  fn set_params(&mut self, params: &DVector<f64>) {
+  fn set_params(&mut self, params: &Array1<f64>) {
     let p = DoubleHestonParams::from(params.clone()).projected();
     self.params = Some(p);
   }
 
-  fn params(&self) -> DVector<f64> {
+  fn params(&self) -> Array1<f64> {
     self.effective_params().into()
   }
 
-  fn residuals(&self) -> Option<DVector<f64>> {
+  fn residuals(&self) -> Option<Array1<f64>> {
     let params_eff = self.effective_params();
     let c_model = self.compute_model_prices_for(&params_eff);
 
@@ -236,8 +236,8 @@ impl LeastSquaresProblem for DoubleHestonCalibrator {
             .into(),
           params: params_eff,
           loss_scores: CalibrationLossScore::compute_selected(
-            self.c_market.as_slice(),
-            c_model.as_slice(),
+            self.c_market.as_standard_layout().as_slice().unwrap(),
+            c_model.as_slice().unwrap(),
             self.loss_metrics,
           ),
         });
@@ -246,7 +246,7 @@ impl LeastSquaresProblem for DoubleHestonCalibrator {
     Some(self.c_market.clone() - c_model)
   }
 
-  fn jacobian(&self) -> Option<DMatrix<f64>> {
+  fn jacobian(&self) -> Option<Array2<f64>> {
     Some(self.numeric_jacobian(&self.effective_params()))
   }
 }

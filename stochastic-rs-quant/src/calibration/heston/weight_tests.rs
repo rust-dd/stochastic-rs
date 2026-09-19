@@ -1,4 +1,4 @@
-use nalgebra::DVector;
+use ndarray::Array1;
 
 use super::HestonCalibrator;
 use super::HestonJacobianMethod;
@@ -37,7 +37,7 @@ fn residual_weights_scale_the_objective_rows_after_rms_normalization() {
   let raw = calibrator.residuals().unwrap();
 
   calibrator
-    .set_residual_weights(DVector::from_vec(vec![1.0, 2.0]))
+    .set_residual_weights(Array1::from_vec(vec![1.0, 2.0]))
     .unwrap();
   let weighted = calibrator.residuals().unwrap();
 
@@ -53,12 +53,12 @@ fn invalid_residual_weights_fail_without_mutating_existing_weights() {
 
   assert!(
     calibrator
-      .set_residual_weights(DVector::from_vec(vec![1.0]))
+      .set_residual_weights(Array1::from_vec(vec![1.0]))
       .is_err()
   );
   assert!(
     calibrator
-      .set_residual_weights(DVector::from_vec(vec![1.0, f64::NAN]))
+      .set_residual_weights(Array1::from_vec(vec![1.0, f64::NAN]))
       .is_err()
   );
   assert_eq!(calibrator.residual_weights, original);
@@ -74,7 +74,7 @@ fn analytic_residual_jacobian_uses_the_same_row_weights() {
     .unwrap();
 
   calibrator
-    .set_residual_weights(DVector::from_vec(vec![1.0, 2.0]))
+    .set_residual_weights(Array1::from_vec(vec![1.0, 2.0]))
     .unwrap();
   let (_, weighted) = calibrator
     .compute_model_prices_and_residual_jacobian_cui(&params)

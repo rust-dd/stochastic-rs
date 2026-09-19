@@ -5,6 +5,32 @@
 use super::*;
 use crate::pricing::heston::HestonPricer;
 
+#[test]
+fn spot_beyond_eight_strikes_keeps_the_intrinsic_value() {
+  let model = HestonAdiPricer::new(0.04, 2.0, 0.04, 0.3, -0.7).with_grid(40, 20, 20);
+  for spot in [80.0, 100.0, 200.0] {
+    let call = model.price_call(spot, 10.0, 0.0, 0.0, 1.0);
+    let put = model.price_put(spot, 10.0, 0.0, 0.0, 1.0);
+    assert!(
+      (call - (spot - 10.0)).abs() < 1e-3,
+      "spot {spot}: call {call}"
+    );
+    assert!((-1e-6..1e-3).contains(&put), "spot {spot}: put {put}");
+  }
+}
+
+#[test]
+fn initial_variance_beyond_five_matches_the_analytic_price() {
+  let model = HestonAdiPricer::new(6.0, 2.0, 0.04, 0.3, -0.7).with_grid(160, 80, 80);
+  let analytic = HestonPricer::new(6.0, -0.7, 2.0, 0.04, 0.3, Some(0.0));
+  let want = analytic.price_call(100.0, 100.0, 0.0, 0.0, 1.0);
+  let got = model.price_call(100.0, 100.0, 0.0, 0.0, 1.0);
+  assert!(
+    (got - want).abs() / want < 0.012,
+    "ADI {got}, analytic {want}"
+  );
+}
+
 /// `(κ, η, σ, ρ, r_d, r_f, T)` with `K = 100`.
 const TABLE_1: [(f64, f64, f64, f64, f64, f64, f64); 4] = [
   (1.5, 0.04, 0.3, -0.9, 0.025, 0.0, 1.0),
