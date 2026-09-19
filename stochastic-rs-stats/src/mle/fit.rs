@@ -151,7 +151,9 @@ fn resolve_fit_outcome(
 ) -> (Vec<f64>, bool, usize) {
   let converged = matches!(
     reason,
-    TerminationReason::CostTolerance | TerminationReason::SolverConverged
+    TerminationReason::CostTolerance
+      | TerminationReason::ProjectedGradientTolerance
+      | TerminationReason::SolverConverged
   );
   (best_param, converged, iterations as usize)
 }
@@ -280,6 +282,52 @@ mod tests {
   use stochastic_rs_stochastic::diffusion::cir::Cir;
 
   use super::*;
+
+  #[test]
+  fn mle_converges_at_initial_brownian_drift_optimum() {
+    struct BrownianDrift {
+      mu: f64,
+    }
+
+    impl DiffusionModel for BrownianDrift {
+      fn num_params(&self) -> usize {
+        1
+      }
+
+      fn params(&self) -> Array1<f64> {
+        ndarray::array![self.mu]
+      }
+
+      fn set_params(&mut self, params: &[f64]) {
+        self.mu = params[0];
+      }
+
+      fn param_names(&self) -> Vec<&str> {
+        vec!["mu"]
+      }
+
+      fn param_bounds(&self) -> Vec<(f64, f64)> {
+        vec![(-10.0, 10.0)]
+      }
+
+      fn drift(&self, _x: f64, _t: f64) -> f64 {
+        self.mu
+      }
+
+      fn diffusion(&self, _x: f64, _t: f64) -> f64 {
+        1.0
+      }
+    }
+
+    let sample = ndarray::array![0.0, 1.0, 0.0];
+    let mut model = BrownianDrift { mu: 0.0 };
+    let result = fit_mle(&mut model, sample.view(), 1.0, DensityApprox::Euler, None);
+
+    assert!(result.converged, "The initial drift is already the MLE");
+    assert_eq!(result.iterations, 0);
+    assert_eq!(result.params, ndarray::array![0.0]);
+    assert_eq!(model.mu, 0.0);
+  }
 
   #[test]
   fn bounded_mle_cost_rejects_negative_sigma_mirror_minimum() {
