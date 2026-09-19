@@ -122,7 +122,7 @@ impl DoubleHestonCalibrator {
     let p = result.effective_params();
     let c_model = result.compute_model_prices_for(&p);
     let loss = CalibrationLossScore::compute_selected(
-      result.c_market.as_slice().unwrap(),
+      result.c_market.as_standard_layout().as_slice().unwrap(),
       c_model.as_slice().unwrap(),
       result.loss_metrics,
     );
@@ -236,7 +236,7 @@ impl LeastSquaresProblem for DoubleHestonCalibrator {
             .into(),
           params: params_eff,
           loss_scores: CalibrationLossScore::compute_selected(
-            self.c_market.as_slice().unwrap(),
+            self.c_market.as_standard_layout().as_slice().unwrap(),
             c_model.as_slice().unwrap(),
             self.loss_metrics,
           ),

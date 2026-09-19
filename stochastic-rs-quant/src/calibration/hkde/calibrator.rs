@@ -73,12 +73,12 @@ impl HKDECalibrator {
     let flat_t = vec![tau; n];
     let q_val = q.unwrap_or(0.0);
     let sqrt_weights = compute_sqrt_weights(
-      s.as_slice().unwrap(),
-      k.as_slice().unwrap(),
+      s.as_standard_layout().as_slice().unwrap(),
+      k.as_standard_layout().as_slice().unwrap(),
       &flat_t,
       r,
       q_val,
-      c_market.as_slice().unwrap(),
+      c_market.as_standard_layout().as_slice().unwrap(),
       option_type,
     );
 
@@ -163,7 +163,7 @@ impl HKDECalibrator {
     let p = result.effective_params();
     let c_model = result.compute_model_prices_for(&p);
     let loss = CalibrationLossScore::compute_selected(
-      result.c_market.as_slice().unwrap(),
+      result.c_market.as_standard_layout().as_slice().unwrap(),
       c_model.as_slice().unwrap(),
       result.loss_metrics,
     );

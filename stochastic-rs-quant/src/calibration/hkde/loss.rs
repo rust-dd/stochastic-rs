@@ -182,7 +182,7 @@ impl LeastSquaresProblem for HKDECalibrator {
           call_put: call_put.into(),
           params: params_eff,
           loss_scores: CalibrationLossScore::compute_selected(
-            self.c_market.as_slice().unwrap(),
+            self.c_market.as_standard_layout().as_slice().unwrap(),
             c_model.as_slice().unwrap(),
             self.loss_metrics,
           ),

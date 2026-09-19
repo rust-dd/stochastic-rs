@@ -96,7 +96,8 @@ result types are unchanged.
 The implementation of `levenberg_marquardt::LeastSquaresProblem` on the
 calibrators is removed; use the `Calibrator` trait to run a fit.
 
-`nalgebra` is no longer a dependency. The least-squares calibrators
+`nalgebra` is no longer a direct workspace dependency; it can still appear
+transitively through dependencies such as `gauss-quad`. The least-squares calibrators
 (`BSMCalibrator`, `SabrCalibrator`, `HestonCalibrator`, `HKDECalibrator`,
 `DoubleHestonCalibrator`, `SVJCalibrator`) take their `c_market`, `s` and `k`
 quotes as `ndarray::Array1<f64>` instead of `nalgebra::DVector<f64>`, and

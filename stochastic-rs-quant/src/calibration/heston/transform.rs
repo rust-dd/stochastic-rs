@@ -68,7 +68,9 @@ pub(super) fn apply_chain_rule(
   assert_eq!(coordinates.len(), PARAMETER_COUNT);
   for (column, (coordinate, bounds)) in coordinates.iter().copied().zip(BOUNDS).enumerate() {
     let derivative = bounded_logistic_derivative(coordinate, bounds);
-    physical_jacobian.column_mut(column).mapv_inplace(|v| v * derivative);
+    physical_jacobian
+      .column_mut(column)
+      .mapv_inplace(|v| v * derivative);
   }
   physical_jacobian
 }

@@ -297,7 +297,7 @@ impl SabrCalibrator {
     let p = result.effective_params();
     let c_model = result.compute_model_prices_for(&p);
     let loss = CalibrationLossScore::compute_selected(
-      result.c_market.as_slice().unwrap(),
+      result.c_market.as_standard_layout().as_slice().unwrap(),
       c_model.as_slice().unwrap(),
       result.loss_metrics,
     );
@@ -462,7 +462,7 @@ impl LeastSquaresProblem for SabrCalibrator {
             .into(),
           params: p,
           loss_scores: CalibrationLossScore::compute_selected(
-            self.c_market.as_slice().unwrap(),
+            self.c_market.as_standard_layout().as_slice().unwrap(),
             c_model.as_slice().unwrap(),
             self.loss_metrics,
           ),
@@ -487,178 +487,7 @@ impl LeastSquaresProblem for SabrCalibrator {
 }
 
 #[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::traits::Calibrator;
-
-  /// Regression: `SabrParams ↔ Array1` round-trip must preserve β. The rc.0
-  /// `From` impls used a 3-vec layout that silently dropped β on the way out
-  /// and forced β = 1.0 on the way back, so any β ≠ 1 was unfittable.
-  #[test]
-  fn sabr_params_dvector_round_trip_preserves_beta() {
-    for &beta in &[0.0, 0.25, 0.5, 0.75, 1.0] {
-      let p = SabrParams {
-        alpha: 0.18,
-        beta,
-        nu: 0.62,
-        rho: -0.31,
-      };
-      let v: Array1<f64> = p.into();
-      let p2: SabrParams = v.into();
-      assert!((p.alpha - p2.alpha).abs() < 1e-15);
-      assert!(
-        (p.beta - p2.beta).abs() < 1e-15,
-        "β must round-trip: input {beta}, got {}",
-        p2.beta
-      );
-      assert!((p.nu - p2.nu).abs() < 1e-15);
-      assert!((p.rho - p2.rho).abs() < 1e-15);
-    }
-  }
-
-  #[test]
-  fn test_sabr_calibrate_price_based() {
-    let s = vec![100.0; 8];
-    let k = vec![80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0];
-    let r = 0.02;
-    let q = 0.01;
-    let tau = 0.5;
-
-    let true_p = SabrParams {
-      alpha: 0.2,
-      beta: 1.0,
-      nu: 0.6,
-      rho: -0.4,
-    };
-
-    // Build synthetic market prices
-    let mut c_market = Vec::new();
-    for &kk in &k {
-      let pr = SabrPricer::new(true_p.alpha, true_p.beta, true_p.nu, true_p.rho);
-      let (call, _) = pr.call_put(100.0, kk, r, q, tau);
-      c_market.push(call);
-    }
-
-    let calibrator = SabrCalibrator::new(
-      Some(SabrParams {
-        alpha: 0.15,
-        beta: 1.0,
-        nu: 0.8,
-        rho: 0.0,
-      }),
-      c_market.clone().into(),
-      s.clone().into(),
-      k.clone().into(),
-      r,
-      Some(q),
-      tau,
-      OptionType::Call,
-      true,
-    );
-
-    calibrator.calibrate(None).unwrap();
-  }
-
-  fn calibrator(s: f64, k: f64) -> SabrCalibrator {
-    SabrCalibrator::new(
-      None,
-      vec![1.0].into(),
-      vec![s].into(),
-      vec![k].into(),
-      0.02,
-      Some(0.01),
-      0.5,
-      OptionType::Call,
-      false,
-    )
-  }
-
-  /// `calibrate` must return `Err`, not panic, for a non-positive or `NaN`
-  /// spot/strike — it used to panic inside the Levenberg-Marquardt cost
-  /// callback because `s`/`k` fed `hagan_implied_vol` unchecked.
-  #[test]
-  fn sabr_calibrate_rejects_nonpositive_or_nan_spot_and_strike() {
-    for bad_s in [0.0, -50.0, f64::NAN] {
-      let err = calibrator(bad_s, 100.0).calibrate(None).unwrap_err();
-      assert!(
-        err.to_string().contains("s[0]"),
-        "s = {bad_s}: unexpected message {err}"
-      );
-    }
-    for bad_k in [0.0, -10.0, f64::NAN] {
-      let err = calibrator(100.0, bad_k).calibrate(None).unwrap_err();
-      assert!(
-        err.to_string().contains("k[0]"),
-        "k = {bad_k}: unexpected message {err}"
-      );
-    }
-  }
-}
+mod tests;
 
 #[cfg(test)]
-mod regularization_tests {
-  use ndarray::Array1;
-
-  use super::SabrCalibrator;
-  use super::SabrParams;
-  use crate::OptionType;
-  use crate::calibration::Regularization;
-  use crate::pricing::sabr::SabrPricer;
-  use crate::traits::Calibrator;
-
-  fn calibrator(regularization: Option<Regularization>) -> SabrCalibrator {
-    let (s, r, tau) = (100.0, 0.01, 1.0);
-    let strikes = [80.0, 90.0, 95.0, 100.0, 105.0, 110.0, 120.0];
-    let pricer = SabrPricer::new(0.2, 1.0, 0.6, -0.3);
-    let prices: Vec<f64> = strikes
-      .iter()
-      .map(|&k| pricer.call_put(s, k, r, 0.0, tau).0)
-      .collect();
-    let mut calibrator = SabrCalibrator::new(
-      Some(SabrParams {
-        alpha: 0.25,
-        beta: 1.0,
-        nu: 0.8,
-        rho: 0.0,
-      }),
-      Array1::from_vec(prices),
-      Array1::from_elem(strikes.len(), s),
-      Array1::from_vec(strikes.to_vec()),
-      r,
-      None,
-      tau,
-      OptionType::Call,
-      false,
-    );
-    calibrator.regularization = regularization;
-    calibrator
-  }
-
-  /// Unregularised, the synthetic smile gives back ν ≈ 0.6; a heavy anchor
-  /// at ν⁰ = 0.9 drags it there at the cost of fit.
-  #[test]
-  fn anchor_on_nu_pulls_the_fit() {
-    let plain = calibrator(None).calibrate(None).expect("calibration runs");
-    assert!((plain.nu - 0.6).abs() < 0.05, "plain nu {}", plain.nu);
-    let reg = Regularization::new(vec![0.2, 0.9, -0.3], vec![0.0, 1e4, 0.0]);
-    let pulled = calibrator(Some(reg))
-      .calibrate(None)
-      .expect("calibration runs");
-    assert!((pulled.nu - 0.9).abs() < 0.05, "pulled nu {}", pulled.nu);
-    assert!(
-      pulled.loss.get(crate::types::LossMetric::Rmse)
-        >= plain.loss.get(crate::types::LossMetric::Rmse)
-    );
-  }
-
-  #[test]
-  fn zero_weights_match_the_unregularised_calibration() {
-    let plain = calibrator(None).calibrate(None).expect("calibration runs");
-    let zero = calibrator(Some(Regularization::uniform(vec![0.2, 0.6, -0.3], 0.0)))
-      .calibrate(None)
-      .expect("calibration runs");
-    assert_eq!(plain.alpha, zero.alpha);
-    assert_eq!(plain.nu, zero.nu);
-    assert_eq!(plain.rho, zero.rho);
-  }
-}
+mod regularization_tests;

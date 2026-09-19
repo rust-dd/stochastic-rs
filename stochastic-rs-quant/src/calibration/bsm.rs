@@ -270,7 +270,7 @@ impl BSMCalibrator {
       })
       .collect();
     let loss = CalibrationLossScore::compute_selected(
-      result.c_market.as_slice().unwrap(),
+      result.c_market.as_standard_layout().as_slice().unwrap(),
       &c_model,
       result.loss_metrics,
     );
