@@ -1,4 +1,5 @@
-use nalgebra::DVector;
+use ndarray::Array1;
+use ndarray::Array2;
 
 use super::calibrator::HestonCalibrator;
 use super::params::HestonJacobianMethod;
@@ -42,9 +43,9 @@ fn synthetic_calibrator(
   let observations = strikes.len();
   let mut calibrator = HestonCalibrator::new(
     Some(initial),
-    DVector::zeros(observations),
-    DVector::from_element(observations, 100.0),
-    DVector::from_vec(strikes),
+    Array1::zeros(observations),
+    Array1::from_elem(observations, 100.0),
+    Array1::from_vec(strikes),
     0.02,
     Some(0.01),
     maturities[0],
@@ -60,7 +61,7 @@ fn synthetic_calibrator(
   calibrator
 }
 
-fn assert_jacobians_close(left: &nalgebra::DMatrix<f64>, right: &nalgebra::DMatrix<f64>) {
+fn assert_jacobians_close(left: &Array2<f64>, right: &Array2<f64>) {
   assert_eq!(left.shape(), right.shape());
   for row in 0..left.nrows() {
     for column in 0..left.ncols() {
@@ -87,9 +88,9 @@ fn bounded_transform_is_finite_monotone_and_round_trips() {
   assert!((round_trip.sigma - params.sigma).abs() < 1e-12);
   assert!((round_trip.rho - params.rho).abs() < 1e-12);
 
-  let mut previous = from_optimizer_coordinates(&DVector::from_element(5, -4.0));
+  let mut previous = from_optimizer_coordinates(&Array1::from_elem(5, -4.0));
   for coordinate in [-2.0, 0.0, 2.0, 4.0] {
-    let current = from_optimizer_coordinates(&DVector::from_element(5, coordinate));
+    let current = from_optimizer_coordinates(&Array1::from_elem(5, coordinate));
     assert!(current.v0 > previous.v0);
     assert!(current.kappa > previous.kappa);
     assert!(current.theta > previous.theta);
@@ -126,9 +127,9 @@ fn least_squares_set_params_is_monotone_without_periodic_reflection() {
     truth.clone(),
     HestonJacobianMethod::NumericFiniteDiff,
   );
-  calibrator.set_params(&DVector::from_element(5, -3.0));
+  calibrator.set_params(&Array1::from_elem(5, -3.0));
   let lower = calibrator.effective_params();
-  calibrator.set_params(&DVector::from_element(5, 3.0));
+  calibrator.set_params(&Array1::from_elem(5, 3.0));
   let upper = calibrator.effective_params();
 
   assert!(upper.v0 > lower.v0);

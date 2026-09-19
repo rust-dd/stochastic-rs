@@ -1,7 +1,7 @@
 use std::f64::consts::PI;
 
-use nalgebra::DMatrix;
-use nalgebra::DVector;
+use ndarray::Array1;
+use ndarray::Array2;
 
 use super::calibrator::HKDECalibrator;
 use super::params::ETA1_MIN;
@@ -40,13 +40,13 @@ impl HKDECalibrator {
     }
   }
 
-  pub(super) fn compute_model_prices_for(&self, p: &HKDEParams) -> DVector<f64> {
+  pub(super) fn compute_model_prices_for(&self, p: &HKDEParams) -> Array1<f64> {
     let n = self.c_market.len();
     let model = self.build_model(p);
     let r = self.r;
     let q = self.q.unwrap_or(0.0);
 
-    let mut c_model = DVector::zeros(n);
+    let mut c_model = Array1::zeros(n);
     for idx in 0..n {
       let price = model.price_option(
         self.s[idx],
@@ -61,10 +61,10 @@ impl HKDECalibrator {
     c_model
   }
 
-  pub(super) fn weighted_residuals_for(&self, p: &HKDEParams) -> DVector<f64> {
+  pub(super) fn weighted_residuals_for(&self, p: &HKDEParams) -> Array1<f64> {
     let c_model = self.compute_model_prices_for(p);
     let n = self.c_market.len();
-    let mut r = DVector::zeros(n);
+    let mut r = Array1::zeros(n);
     for i in 0..n {
       r[i] = self.sqrt_weights[i] * (c_model[i] - self.c_market[i]);
     }
@@ -72,11 +72,11 @@ impl HKDECalibrator {
   }
 
   /// Central finite-difference Jacobian of the weighted residuals.
-  pub(super) fn numeric_jacobian(&self, params: &HKDEParams) -> DMatrix<f64> {
+  pub(super) fn numeric_jacobian(&self, params: &HKDEParams) -> Array2<f64> {
     let n = self.c_market.len();
     let p_dim = 9usize;
-    let base_vec: DVector<f64> = (*params).into();
-    let mut j_mat = DMatrix::zeros(n, p_dim);
+    let base_vec: Array1<f64> = (*params).into();
+    let mut j_mat = Array2::zeros((n, p_dim));
 
     for col in 0..p_dim {
       let x = base_vec[col];
@@ -139,16 +139,16 @@ impl HKDECalibrator {
 }
 
 impl LeastSquaresProblem for HKDECalibrator {
-  fn set_params(&mut self, params: &DVector<f64>) {
+  fn set_params(&mut self, params: &Array1<f64>) {
     let p = HKDEParams::from(params.clone()).projected();
     self.params = Some(p);
   }
 
-  fn params(&self) -> DVector<f64> {
+  fn params(&self) -> Array1<f64> {
     self.effective_params().into()
   }
 
-  fn residuals(&self) -> Option<DVector<f64>> {
+  fn residuals(&self) -> Option<Array1<f64>> {
     let params_eff = self.effective_params();
     let c_model = self.compute_model_prices_for(&params_eff);
 
@@ -182,22 +182,22 @@ impl LeastSquaresProblem for HKDECalibrator {
           call_put: call_put.into(),
           params: params_eff,
           loss_scores: CalibrationLossScore::compute_selected(
-            self.c_market.as_slice(),
-            c_model.as_slice(),
+            self.c_market.as_standard_layout().as_slice().unwrap(),
+            c_model.as_slice().unwrap(),
             self.loss_metrics,
           ),
         });
     }
 
     let n = self.c_market.len();
-    let mut r = DVector::zeros(n);
+    let mut r = Array1::zeros(n);
     for i in 0..n {
       r[i] = self.sqrt_weights[i] * (c_model[i] - self.c_market[i]);
     }
     Some(r)
   }
 
-  fn jacobian(&self) -> Option<DMatrix<f64>> {
+  fn jacobian(&self) -> Option<Array2<f64>> {
     Some(self.numeric_jacobian(&self.effective_params()))
   }
 }

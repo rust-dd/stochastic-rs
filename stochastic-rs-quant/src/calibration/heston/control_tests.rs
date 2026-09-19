@@ -1,4 +1,4 @@
-use nalgebra::DVector;
+use ndarray::Array1;
 
 use super::*;
 use crate::OptionType;
@@ -12,9 +12,9 @@ fn calibrator() -> HestonCalibrator {
       sigma: 0.3,
       rho: -0.6,
     }),
-    DVector::from_vec(vec![5.0]),
-    DVector::from_vec(vec![100.0]),
-    DVector::from_vec(vec![100.0]),
+    Array1::from_vec(vec![5.0]),
+    Array1::from_vec(vec![100.0]),
+    Array1::from_vec(vec![100.0]),
     0.03,
     Some(0.01),
     0.25,

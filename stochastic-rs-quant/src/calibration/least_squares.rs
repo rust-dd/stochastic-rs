@@ -18,19 +18,19 @@ use basin::Solver;
 use basin::State;
 use basin::StepOutcome;
 use basin::TerminationReason;
-use nalgebra::DMatrix;
-use nalgebra::DVector;
+use ndarray::Array1;
+use ndarray::Array2;
 
 /// Internal bridge shared by the quant calibrators and the AI surrogate.
 /// Model coordinates and parameter projections remain owned by the calibrator.
 pub trait LeastSquaresProblem {
-  fn set_params(&mut self, params: &DVector<f64>);
+  fn set_params(&mut self, params: &Array1<f64>);
 
-  fn params(&self) -> DVector<f64>;
+  fn params(&self) -> Array1<f64>;
 
-  fn residuals(&self) -> Option<DVector<f64>>;
+  fn residuals(&self) -> Option<Array1<f64>>;
 
-  fn jacobian(&self) -> Option<DMatrix<f64>>;
+  fn jacobian(&self) -> Option<Array2<f64>>;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -60,12 +60,12 @@ pub struct LmReport {
 
 struct Objective<P> {
   model: RefCell<P>,
-  coordinates: RefCell<Option<DVector<f64>>>,
+  coordinates: RefCell<Option<Array1<f64>>>,
   evaluations: Cell<usize>,
 }
 
 impl<P: LeastSquaresProblem> Objective<P> {
-  fn at(&self, x: &DVector<f64>) -> std::cell::Ref<'_, P> {
+  fn at(&self, x: &Array1<f64>) -> std::cell::Ref<'_, P> {
     let mut coordinates = self.coordinates.borrow_mut();
     if coordinates.as_ref() != Some(x) {
       self.model.borrow_mut().set_params(x);
@@ -77,8 +77,8 @@ impl<P: LeastSquaresProblem> Objective<P> {
 }
 
 impl<P: LeastSquaresProblem> Residual for &Objective<P> {
-  type Param = DVector<f64>;
-  type Output = DVector<f64>;
+  type Param = Array1<f64>;
+  type Output = Array1<f64>;
   type Error = ();
 
   fn residual(&self, x: &Self::Param) -> Result<Self::Output, Self::Error> {
@@ -96,7 +96,7 @@ impl<P: LeastSquaresProblem> Residual for &Objective<P> {
 }
 
 impl<P: LeastSquaresProblem> Jacobian for &Objective<P> {
-  type Jacobian = DMatrix<f64>;
+  type Jacobian = Array2<f64>;
 
   fn jacobian(&self, x: &Self::Param) -> Result<Self::Jacobian, Self::Error> {
     let jacobian = self.at(x).jacobian().ok_or(())?;
@@ -134,7 +134,7 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
       },
     );
   }
-  let solver = LevenbergMarquardt::<DVector<f64>, DMatrix<f64>>::new()
+  let solver = LevenbergMarquardt::<Array1<f64>, Array2<f64>>::new()
     .with_damping(LmDamping::TrustRegion)
     .with_absolute_gradient_tolerance(None)
     .with_gradient_orthogonality_tolerance(gradient_tolerance)
@@ -161,12 +161,12 @@ pub fn minimize<P: LeastSquaresProblem>(problem: P, options: LmOptions) -> (P, L
 fn run<'a, P, So>(
   objective: &'a Objective<P>,
   solver: So,
-  initial: DVector<f64>,
+  initial: Array1<f64>,
   budget: usize,
-) -> (DVector<f64>, TerminationReason)
+) -> (Array1<f64>, TerminationReason)
 where
   P: LeastSquaresProblem,
-  So: Solver<&'a Objective<P>, NllsState<DVector<f64>>, Error = ()>,
+  So: Solver<&'a Objective<P>, NllsState<Array1<f64>>, Error = ()>,
 {
   let mut best = initial.clone();
   let reason = match Executor::new(objective, solver, NllsState::new(initial))
@@ -195,7 +195,7 @@ mod tests {
   use super::*;
 
   struct Rosenbrock {
-    x: DVector<f64>,
+    x: Array1<f64>,
     calls: Cell<usize>,
     fail_at: Option<usize>,
     reject_outside_domain: bool,
@@ -205,7 +205,7 @@ mod tests {
   impl Rosenbrock {
     fn new() -> Self {
       Self {
-        x: DVector::from_vec(vec![-1.2, 1.0]),
+        x: Array1::from_vec(vec![-1.2, 1.0]),
         calls: Cell::new(0),
         fail_at: None,
         reject_outside_domain: false,
@@ -215,35 +215,31 @@ mod tests {
   }
 
   impl LeastSquaresProblem for Rosenbrock {
-    fn set_params(&mut self, x: &DVector<f64>) {
+    fn set_params(&mut self, x: &Array1<f64>) {
       self.x.clone_from(x);
     }
 
-    fn params(&self) -> DVector<f64> {
+    fn params(&self) -> Array1<f64> {
       self.x.clone()
     }
 
-    fn residuals(&self) -> Option<DVector<f64>> {
+    fn residuals(&self) -> Option<Array1<f64>> {
       self.calls.set(self.calls.get() + 1);
       if self.fail_at == Some(self.calls.get()) {
         return None;
       }
       if self.reject_outside_domain && self.x[1] < -2.0 {
         self.nonfinite_trials.set(self.nonfinite_trials.get() + 1);
-        return Some(DVector::from_element(2, f64::NAN));
+        return Some(Array1::from_elem(2, f64::NAN));
       }
-      Some(DVector::from_vec(vec![
+      Some(Array1::from_vec(vec![
         10.0 * (self.x[1] - self.x[0].powi(2)),
         1.0 - self.x[0],
       ]))
     }
 
-    fn jacobian(&self) -> Option<DMatrix<f64>> {
-      Some(DMatrix::from_row_slice(
-        2,
-        2,
-        &[-20.0 * self.x[0], 10.0, -1.0, 0.0],
-      ))
+    fn jacobian(&self) -> Option<Array2<f64>> {
+      Array2::from_shape_vec((2, 2), vec![-20.0 * self.x[0], 10.0, -1.0, 0.0]).ok()
     }
   }
 
@@ -258,7 +254,7 @@ mod tests {
         },
       );
       assert!(report.converged, "{report:?}");
-      assert!((problem.x - DVector::from_element(2, 1.0)).norm() < 1e-8);
+      assert!(distance_to_optimum(&problem.x) < 1e-8);
       assert_eq!(report.evaluations, problem.calls.get());
     }
   }
@@ -322,7 +318,12 @@ mod tests {
       );
       assert!(problem.nonfinite_trials.get() > 0);
       assert!(report.converged, "{report:?}");
-      assert!((problem.x - DVector::from_element(2, 1.0)).norm() < 1e-8);
+      assert!(distance_to_optimum(&problem.x) < 1e-8);
     }
+  }
+
+  fn distance_to_optimum(x: &Array1<f64>) -> f64 {
+    let distance = x - &Array1::from_elem(2, 1.0);
+    distance.dot(&distance).sqrt()
   }
 }

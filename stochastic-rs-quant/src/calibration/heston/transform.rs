@@ -4,8 +4,8 @@
 //! optimizer therefore moves in unconstrained `z` coordinates, while analytic
 //! physical-parameter derivatives use the exact diagonal chain rule.
 
-use nalgebra::DMatrix;
-use nalgebra::DVector;
+use ndarray::Array1;
+use ndarray::Array2;
 
 use super::params::HestonParams;
 use super::params::P_KAPPA;
@@ -19,7 +19,7 @@ const INVERSE_UNIT_MARGIN: f64 = 1e-6;
 const BOUNDS: [(f64, f64); PARAMETER_COUNT] =
   [P_V0, P_KAPPA, P_THETA, P_SIGMA, (-RHO_BOUND, RHO_BOUND)];
 
-pub(super) fn to_optimizer_coordinates(params: &HestonParams) -> DVector<f64> {
+pub(super) fn to_optimizer_coordinates(params: &HestonParams) -> Array1<f64> {
   let physical = [
     params.v0,
     params.kappa,
@@ -27,8 +27,7 @@ pub(super) fn to_optimizer_coordinates(params: &HestonParams) -> DVector<f64> {
     params.sigma,
     params.rho,
   ];
-  DVector::from_iterator(
-    PARAMETER_COUNT,
+  Array1::from_iter(
     physical
       .into_iter()
       .zip(BOUNDS)
@@ -36,7 +35,7 @@ pub(super) fn to_optimizer_coordinates(params: &HestonParams) -> DVector<f64> {
   )
 }
 
-pub(super) fn from_optimizer_coordinates(coordinates: &DVector<f64>) -> HestonParams {
+pub(super) fn from_optimizer_coordinates(coordinates: &Array1<f64>) -> HestonParams {
   assert_eq!(
     coordinates.len(),
     PARAMETER_COUNT,
@@ -62,14 +61,16 @@ pub(super) fn canonicalize(params: &HestonParams) -> HestonParams {
 }
 
 pub(super) fn apply_chain_rule(
-  mut physical_jacobian: DMatrix<f64>,
-  coordinates: &DVector<f64>,
-) -> DMatrix<f64> {
+  mut physical_jacobian: Array2<f64>,
+  coordinates: &Array1<f64>,
+) -> Array2<f64> {
   assert_eq!(physical_jacobian.ncols(), PARAMETER_COUNT);
   assert_eq!(coordinates.len(), PARAMETER_COUNT);
   for (column, (coordinate, bounds)) in coordinates.iter().copied().zip(BOUNDS).enumerate() {
     let derivative = bounded_logistic_derivative(coordinate, bounds);
-    physical_jacobian.column_mut(column).scale_mut(derivative);
+    physical_jacobian
+      .column_mut(column)
+      .mapv_inplace(|v| v * derivative);
   }
   physical_jacobian
 }

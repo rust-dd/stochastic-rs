@@ -1,5 +1,5 @@
-use nalgebra::DMatrix;
-use nalgebra::DVector;
+use ndarray::Array1;
+use ndarray::Array2;
 
 use super::params::SsviParams;
 use super::params::SsviSlice;
@@ -81,22 +81,22 @@ struct SsviSliceF64 {
 
 struct SsviLmProblem {
   slices: Vec<SsviSliceF64>,
-  params: DVector<f64>,
+  params: Array1<f64>,
 }
 
 impl LeastSquaresProblem for SsviLmProblem {
-  fn set_params(&mut self, params: &DVector<f64>) {
-    self.params.copy_from(params);
+  fn set_params(&mut self, params: &Array1<f64>) {
+    self.params.assign(params);
   }
 
-  fn params(&self) -> DVector<f64> {
+  fn params(&self) -> Array1<f64> {
     self.params.clone()
   }
 
-  fn residuals(&self) -> Option<DVector<f64>> {
+  fn residuals(&self) -> Option<Array1<f64>> {
     let p = SsviParams::<f64>::from_dvector(&self.params);
     let n: usize = self.slices.iter().map(|s| s.log_moneyness.len()).sum();
-    let mut r = DVector::zeros(n);
+    let mut r = Array1::zeros(n);
     let mut idx = 0;
     for slice in &self.slices {
       for i in 0..slice.log_moneyness.len() {
@@ -125,10 +125,10 @@ impl LeastSquaresProblem for SsviLmProblem {
   /// \partial_{\gamma} w &= -\partial_{\phi} w \cdot \phi \ln \theta.
   /// \end{aligned}
   /// $$
-  fn jacobian(&self) -> Option<DMatrix<f64>> {
+  fn jacobian(&self) -> Option<Array2<f64>> {
     let p = SsviParams::<f64>::from_dvector(&self.params);
     let n: usize = self.slices.iter().map(|s| s.log_moneyness.len()).sum();
-    let mut jac = DMatrix::zeros(n, 3);
+    let mut jac = Array2::zeros((n, 3));
 
     let mut idx = 0;
     for slice in &self.slices {

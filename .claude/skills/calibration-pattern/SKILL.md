@@ -192,10 +192,15 @@ impl crate::traits::Calibrator for XyzCalibrator {
 Check the file you are copying from rather than assuming — the
 attribution below is easy to get backwards.
 
-- **`levenberg-marquardt` (v0.14)** — the workhorse, and the default
-  choice for a least-squares residual fit. You implement
-  `LeastSquaresProblem<f64, Dyn, Dyn>` and drive it with
-  `LevenbergMarquardt`. Used by `BSMCalibrator` (`calibration/bsm.rs`),
+- **`basin` Levenberg-Marquardt through `calibration::least_squares`** —
+  the workhorse, and the default choice for a least-squares residual fit.
+  You implement the crate's own `LeastSquaresProblem` (`set_params` /
+  `params` / `residuals` / `jacobian` over `ndarray::Array1<f64>` and
+  `Array2<f64>`) and drive it with `least_squares::minimize(problem,
+  LmOptions { .. })`, which runs basin's trust-region LM (pivoted QR or
+  Cholesky) and reports convergence plus the evaluation count. Quotes and
+  parameter vectors are `ndarray` types; `nalgebra` is not a dependency.
+  Used by `BSMCalibrator` (`calibration/bsm.rs`),
   `SabrCalibrator` (`calibration/sabr.rs`), `CgmysvCalibrator`
   (`calibration/cgmysv.rs`), `HestonCalibrator`
   (`calibration/heston/{calibrator,lsq}.rs`), `HkdeCalibrator`
@@ -222,9 +227,9 @@ Analytic Jacobians go on the `LeastSquaresProblem` impl — see
 `SsviLmProblem::jacobian` in
 `stochastic-rs-quant/src/vol_surface/ssvi/calibrate.rs`.
 
-**Do not** add a fifth optimizer crate; the four above cover everything
-we have needed. Adding another adds compile time without new
-capability.
+**Do not** add another optimizer crate; `basin`, `slsqp` and the
+hand-written route above cover everything we have needed. Adding another
+adds compile time without new capability.
 
 ## 5. The `Result<Output, Error>` contract
 
@@ -380,9 +385,8 @@ are single files. There is no `calibration/heston.rs` or
 `calibration/rbergomi.rs`.
 
 - `BSMCalibrator` (`calibration/bsm.rs`) — the simplest full example.
-  It is **not** closed-form: it implements
-  `LeastSquaresProblem<f64, Dyn, Dyn>` and is driven by
-  `LevenbergMarquardt`.
+  It is **not** closed-form: it implements the crate's
+  `LeastSquaresProblem` and is driven by `least_squares::minimize`.
 - `HestonCalibrator` (`calibration/heston/calibrator.rs`, with the
   problem in `calibration/heston/lsq.rs`) — 5-parameter LM with the Cui
   Jacobian.

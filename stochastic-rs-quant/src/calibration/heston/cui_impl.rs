@@ -1,7 +1,7 @@
 use std::f64::consts::FRAC_1_PI;
 
-use nalgebra::DMatrix;
-use nalgebra::DVector;
+use ndarray::Array1;
+use ndarray::Array2;
 use num_complex::Complex64;
 
 use super::calibrator::HestonCalibrator;
@@ -253,10 +253,10 @@ impl HestonCalibrator {
   pub(super) fn compute_model_prices_and_residual_jacobian_cui(
     &self,
     params: &HestonParams,
-  ) -> Option<(DVector<f64>, DMatrix<f64>)> {
+  ) -> Option<(Array1<f64>, Array2<f64>)> {
     let n = self.c_market.len();
-    let mut c_model = DVector::zeros(n);
-    let mut j_residual = DMatrix::zeros(n, 5);
+    let mut c_model = Array1::zeros(n);
+    let mut j_residual = Array2::zeros((n, 5));
 
     for idx in 0..n {
       let s = self.s[idx];
@@ -285,7 +285,7 @@ impl HestonCalibrator {
     Some((c_model, j_residual))
   }
 
-  pub(super) fn compute_model_prices_for_cui(&self, params: &HestonParams) -> Option<DVector<f64>> {
+  pub(super) fn compute_model_prices_for_cui(&self, params: &HestonParams) -> Option<Array1<f64>> {
     self
       .compute_model_prices_and_residual_jacobian_cui(params)
       .map(|(c_model, _)| c_model)

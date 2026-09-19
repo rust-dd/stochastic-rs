@@ -35,10 +35,8 @@ roots = { workspace = true }
 kendalls = { workspace = true }
 gauss-quad = { workspace = true }
 quadrature = { workspace = true }
-nalgebra = { workspace = true }
 anyhow = { workspace = true }
 wide = { workspace = true }
-sci-rs = { workspace = true }
 scilib = { workspace = true }
 linreg = { workspace = true }
 parking_lot = { workspace = true }

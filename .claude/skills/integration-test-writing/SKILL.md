@@ -295,7 +295,7 @@ For serialisation, parameter parsing, type conversions:
 #[test]
 fn params_roundtrip_through_dvector() {
     let p1 = SabrParams::new(0.2, 0.5, 0.3, -0.5);
-    let v: DVector<f64> = p1.clone().into();
+    let v: Array1<f64> = p1.clone().into();
     let p2 = SabrParams::from(v);
     assert_eq!(p1, p2);
 }

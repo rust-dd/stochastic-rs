@@ -18,8 +18,8 @@
 //! 1035–1038; Engl, H. W., Hanke, M. & Neubauer, A. (1996), *Regularization
 //! of Inverse Problems*, Kluwer, Ch. 5.
 
-use nalgebra::DMatrix;
-use nalgebra::DVector;
+use ndarray::Array1;
+use ndarray::Array2;
 
 /// Quadratic pull `Σ_j λ_j (θ_j − θ_j⁰)²` toward `anchor` with weights `λ`.
 #[derive(Clone, Debug, PartialEq)]
@@ -73,10 +73,9 @@ impl Regularization {
   }
 
   /// Residual rows `√λ_j (θ_j − θ_j⁰)`, whose squared norm is the penalty.
-  pub fn residual_rows(&self, params: &[f64]) -> DVector<f64> {
+  pub fn residual_rows(&self, params: &[f64]) -> Array1<f64> {
     self.check(params);
-    DVector::from_iterator(
-      self.dimension(),
+    Array1::from_iter(
       params
         .iter()
         .zip(&self.anchor)
@@ -86,34 +85,30 @@ impl Regularization {
   }
 
   /// Jacobian of the residual rows in the natural coordinates: `diag(√λ_j)`.
-  pub fn jacobian_rows(&self) -> DMatrix<f64> {
+  pub fn jacobian_rows(&self) -> Array2<f64> {
     let n = self.dimension();
-    DMatrix::from_fn(
-      n,
-      n,
-      |i, j| if i == j { self.weights[i].sqrt() } else { 0.0 },
+    Array2::from_shape_fn(
+      (n, n),
+      |(i, j)| if i == j { self.weights[i].sqrt() } else { 0.0 },
     )
   }
 
   /// Appends the residual rows to a residual vector.
-  pub fn augment_residuals(&self, residuals: DVector<f64>, params: &[f64]) -> DVector<f64> {
+  pub fn augment_residuals(&self, residuals: Array1<f64>, params: &[f64]) -> Array1<f64> {
     let rows = self.residual_rows(params);
-    DVector::from_iterator(
-      residuals.len() + rows.len(),
-      residuals.iter().chain(rows.iter()).copied(),
-    )
+    Array1::from_iter(residuals.iter().chain(rows.iter()).copied())
   }
 
   /// Appends `rows` (the Jacobian of the residual rows, already mapped into
   /// the optimiser's coordinates by the caller) under `jacobian`.
-  pub fn augment_jacobian(&self, jacobian: DMatrix<f64>, rows: DMatrix<f64>) -> DMatrix<f64> {
+  pub fn augment_jacobian(&self, jacobian: Array2<f64>, rows: Array2<f64>) -> Array2<f64> {
     assert_eq!(
       jacobian.ncols(),
       rows.ncols(),
       "Jacobian blocks must share the parameter count"
     );
     let (n, m) = (jacobian.nrows(), rows.nrows());
-    DMatrix::from_fn(n + m, jacobian.ncols(), |i, j| {
+    Array2::from_shape_fn((n + m, jacobian.ncols()), |(i, j)| {
       if i < n {
         jacobian[(i, j)]
       } else {
@@ -140,7 +135,7 @@ mod tests {
     let reg = Regularization::new(vec![1.0, -2.0, 0.5], vec![4.0, 0.0, 9.0]);
     let params = [1.5, 3.0, -0.5];
     let rows = reg.residual_rows(&params);
-    assert!((rows.norm_squared() - reg.penalty(&params)).abs() < 1e-14);
+    assert!((rows.dot(&rows) - reg.penalty(&params)).abs() < 1e-14);
     assert!((reg.penalty(&params) - (4.0 * 0.25 + 9.0 * 1.0)).abs() < 1e-14);
     assert_eq!(rows[1], 0.0);
     let jac = reg.jacobian_rows();
@@ -158,9 +153,9 @@ mod tests {
   #[test]
   fn augmentation_stacks_rows_under_the_market_block() {
     let reg = Regularization::uniform(vec![0.0, 0.0], 1.0);
-    let residuals = reg.augment_residuals(DVector::from_vec(vec![1.0, 2.0, 3.0]), &[0.5, -0.5]);
-    assert_eq!(residuals.as_slice(), &[1.0, 2.0, 3.0, 0.5, -0.5]);
-    let jac = reg.augment_jacobian(DMatrix::from_element(3, 2, 7.0), reg.jacobian_rows());
+    let residuals = reg.augment_residuals(Array1::from_vec(vec![1.0, 2.0, 3.0]), &[0.5, -0.5]);
+    assert_eq!(residuals.as_slice().unwrap(), &[1.0, 2.0, 3.0, 0.5, -0.5]);
+    let jac = reg.augment_jacobian(Array2::from_elem((3, 2), 7.0), reg.jacobian_rows());
     assert_eq!(jac.nrows(), 5);
     assert_eq!(jac[(2, 1)], 7.0);
     assert_eq!(jac[(3, 0)], 1.0);
