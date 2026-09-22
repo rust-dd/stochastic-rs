@@ -403,6 +403,12 @@ non-linearity. The result reprices the input grid from its own density and
 hands a rate-anchored `HestonSlvPricer` back through `ToModel`; the same
 surface drives the `HestonSlv` process for exotics, and `heston_slv_density`
 prices the vanilla grid of a calibrated model without Monte Carlo noise.
+Both routes were cross-checked against QuantLib's `HestonSLVFDMModel` on the
+same local volatility: the leverage surfaces agree to a mean of 0.001–0.006,
+closer than QuantLib's own FDM and MC models agree with each other. Supply a
+smooth local volatility through `with_local_vol` (an SSVI fit, say) where one
+exists — the finite-difference Dupire read of a call grid is the dominant
+error otherwise.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">

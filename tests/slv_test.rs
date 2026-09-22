@@ -234,3 +234,70 @@ fn slv_price_is_nan_beyond_the_calibrated_horizon() {
 fn normal_cdf(x: f64) -> f64 {
   stochastic_rs::distributions::special::norm_cdf(x)
 }
+
+/// The process and the pricer run the same recursion under the same
+/// surface, so a vanilla priced from the process's own paths agrees with the
+/// pricer's estimate within the two Monte Carlo errors.
+#[test]
+fn the_process_paths_and_the_pricer_agree_on_a_vanilla() {
+  use stochastic_rs::simd_rng::Deterministic;
+  use stochastic_rs::stochastic::volatility::heston_slv::HestonSlv;
+  use stochastic_rs::traits::ProcessExt;
+
+  let params = heston_params(0.7);
+  let (s0, r, q, k, tau) = (100.0, 0.03, 0.01, 105.0, 0.5);
+  let spots = Array1::<f64>::linspace(60.0, 160.0, 21);
+  let times = Array1::<f64>::from_vec(vec![0.1, 0.3, 0.5]);
+  let mut values = Array2::<f64>::from_elem((3, 21), 0.0);
+  for j in 0..3 {
+    for i in 0..21 {
+      values[[j, i]] = 0.18 + 0.1 * (spots[i] / 100.0 - 1.0).powi(2) + 0.05 * times[j];
+    }
+  }
+  let run = calibrate_leverage(
+    &params,
+    s0,
+    r,
+    q,
+    &Grid2D::new(times, spots, values),
+    &[tau],
+    &method(5_000, 5),
+  )
+  .unwrap();
+  let surface = run.leverage;
+
+  let pricer = HestonSlvPricer::new(params, surface.clone(), r, q)
+    .with_paths(40_000)
+    .with_steps_per_year(100)
+    .with_seed(21);
+  let estimate = pricer.price_call_estimate(s0, k, r, q, tau);
+
+  let n = 51;
+  let process = HestonSlv::<f64, _>::new(
+    Some(s0),
+    Some(params.v0),
+    params.kappa,
+    params.theta,
+    params.sigma,
+    params.rho,
+    r - q,
+    params.eta,
+    surface,
+    n,
+    Some(tau),
+    Deterministic::new(22),
+  );
+  let paths = 40_000;
+  let payoffs = process.sample_map(paths, |[s, _]| (s[n - 1] - k).max(0.0));
+  let mean = payoffs.iter().sum::<f64>() / paths as f64;
+  let var = payoffs.iter().map(|p| (p - mean).powi(2)).sum::<f64>() / (paths as f64 - 1.0);
+  let discount = (-r * tau).exp();
+  let (from_paths, path_err) = (discount * mean, discount * (var / paths as f64).sqrt());
+  let band = 3.0 * (path_err * path_err + estimate.std_err * estimate.std_err).sqrt();
+  assert!(
+    (from_paths - estimate.mean).abs() < band,
+    "process paths {from_paths} ± {path_err} vs pricer {} ± {}",
+    estimate.mean,
+    estimate.std_err
+  );
+}

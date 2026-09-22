@@ -13,6 +13,8 @@ use crate::traits::CalibrationResult;
 use crate::traits::Calibrator;
 use crate::traits::ModelPricer;
 use crate::traits::ToModel;
+use crate::vol_surface::ssvi::SsviParams;
+use crate::vol_surface::ssvi::SsviSurface;
 
 const S: f64 = 100.0;
 const R: f64 = 0.02;
@@ -213,6 +215,84 @@ fn a_supplied_local_vol_bypasses_dupire() {
     "flat local vol at sqrt(v0) is unit leverage"
   );
   assert!(result.rmse() < 0.15, "rmse {}", result.rmse());
+}
+
+/// The market route a desk runs: an arbitrage-free SSVI surface fitted to
+/// quotes stands in for the market, its calls are the input and its own
+/// Dupire local volatility is supplied on the grid, so no finite-difference
+/// Dupire is needed. Under a Heston model that does **not** generate this
+/// surface, at half mixing, both leverage routes reprice the SSVI calls.
+#[test]
+fn an_ssvi_surface_is_repriced_through_both_leverage_routes() {
+  let maturities = vec![0.25, 0.5, 0.75, 1.0];
+  let thetas = maturities
+    .iter()
+    .map(|&t: &f64| 0.04 * t + 0.002 * t.sqrt())
+    .collect::<Vec<_>>();
+  let ssvi = SsviSurface::new(SsviParams::new(-0.4, 0.8, 0.45), thetas, maturities.clone());
+  let strikes = Array1::linspace(70.0, 140.0, 36).to_vec();
+  let black = |k: f64, tau: f64| {
+    let forward = S * ((R - Q) * tau).exp();
+    let vol = ssvi.implied_vol((k / forward).ln(), tau);
+    let d1 = ((S / k).ln() + (R - Q + 0.5 * vol * vol) * tau) / (vol * tau.sqrt());
+    let d2 = d1 - vol * tau.sqrt();
+    S * (-Q * tau).exp() * norm_cdf(d1) - k * (-R * tau).exp() * norm_cdf(d2)
+  };
+  let calls = Array2::from_shape_fn((maturities.len(), strikes.len()), |(j, i)| {
+    black(strikes[i], maturities[j])
+  });
+  let local_vol = Array2::from_shape_fn((maturities.len(), strikes.len()), |(j, i)| {
+    let forward = S * ((R - Q) * maturities[j]).exp();
+    ssvi.local_vol((strikes[i] / forward).ln(), maturities[j])
+  });
+  assert!(
+    local_vol.iter().all(|v| v.is_finite() && *v > 0.0),
+    "the SSVI local vol is admissible on the grid"
+  );
+  let heston = HestonParams {
+    v0: 0.045,
+    kappa: 1.5,
+    theta: 0.04,
+    sigma: 0.35,
+    rho: -0.5,
+  };
+  let base = || {
+    HestonSlvCalibrator::new(S, R, Q, strikes.clone(), maturities.clone(), calls.clone())
+      .with_mixing(0.5)
+      .with_heston_params(heston.clone())
+      .with_local_vol(local_vol.clone())
+  };
+  let particle = base()
+    .with_particle_method(method())
+    .calibrate(None)
+    .unwrap();
+  let pde = base()
+    .with_fokker_planck(
+      FokkerPlanckMethod::default()
+        .with_nodes(161, 80)
+        .with_steps_per_year(100),
+    )
+    .calibrate(None)
+    .unwrap();
+  for (name, result) in [("particle", &particle), ("fokker-planck", &pde)] {
+    assert!(result.converged(), "{name}");
+    assert!(result.rmse() < 0.2, "{name}: rmse {}", result.rmse());
+    assert!(
+      result.max_error() < 0.6,
+      "{name}: worst error {}",
+      result.max_error()
+    );
+    let atm = result.leverage().interpolate(100.0, 0.5);
+    assert!((0.5..2.0).contains(&atm), "{name}: ATM leverage {atm}");
+  }
+  let (a, b) = (
+    particle.leverage().interpolate(100.0, 0.5),
+    pde.leverage().interpolate(100.0, 0.5),
+  );
+  assert!(
+    (a - b).abs() < 0.1,
+    "the two routes agree at the money: particle {a}, pde {b}"
+  );
 }
 
 #[test]
