@@ -34,7 +34,11 @@
 //! of the new density by the trapezoid rule on $|P|$, the leverage row (4.4)
 //! is rebuilt from it, and the step is redone, `Q` times. A column carrying
 //! no mass keeps the previous row's expectation, and the $t = 0$ row is
-//! replaced by the first computed one, as the reference does. The density
+//! replaced by the first computed one, as the reference does. Under
+//! $\eta = 0$ the variance is deterministic and the condition has the closed
+//! form $L = \sigma_{\text{LV}} / \sqrt{V_t}$, which is used directly: the
+//! central advection flux would otherwise leak a delta in the variance into
+//! its neighbouring cells, and there is nothing to estimate. The density
 //! starts as the cell average of the Dirac mass on the node `(x_0, v_0)`, so
 //! both are exact nodes of the meshes, which cluster there.
 //!
@@ -275,6 +279,15 @@ enum Source<'a> {
     local_vol: &'a Grid2D<f64>,
     previous: Vec<f64>,
   },
+  /// Under `η = 0` the variance is the deterministic
+  /// `V_t = θ + (v₀ − θ) e^{−κt}`, so the calibration condition has the
+  /// closed form `L = σ_LV / √V_t` and no density is needed to read it.
+  Deterministic {
+    local_vol: &'a Grid2D<f64>,
+    kappa: f64,
+    theta: f64,
+    v0: f64,
+  },
 }
 
 /// Calibrate the leverage surface by the forward Kolmogorov equation — the
@@ -299,9 +312,19 @@ pub fn calibrate_leverage_fokker_planck(
     .iter()
     .map(|x| clamp_leverage(local_vol.eval(0.0, x.exp()) / sqrt_v0))
     .collect::<Vec<_>>();
-  let source = Source::Calibrated {
-    local_vol,
-    previous: vec![params.v0.max(0.0); mesh.m1()],
+  let deterministic = params.sigma_mixed() == 0.0;
+  let source = if deterministic {
+    Source::Deterministic {
+      local_vol,
+      kappa: params.kappa,
+      theta: params.theta,
+      v0: params.v0.max(0.0),
+    }
+  } else {
+    Source::Calibrated {
+      local_vol,
+      previous: vec![params.v0.max(0.0); mesh.m1()],
+    }
   };
   let (rows, density) = march(
     &mesh,
@@ -317,7 +340,7 @@ pub fn calibrate_leverage_fokker_planck(
   for (k, (_, row)) in rows.iter().enumerate() {
     values.row_mut(k).assign(&Array1::from_vec(row.clone()));
   }
-  if rows.len() > 1 {
+  if rows.len() > 1 && !deterministic {
     let first = values.row(1).to_owned();
     values.row_mut(0).assign(&first);
   }
@@ -417,6 +440,34 @@ fn march(
           .x
           .iter()
           .map(|x| f.call(to, x.exp()))
+          .collect::<Vec<_>>();
+        let mut next = Level::new(mesh, carry, rho, xi, &row);
+        step(
+          mesh,
+          &along_v,
+          &mut prev,
+          &mut next,
+          dt,
+          method.theta,
+          douglas,
+          &p,
+          &mut p_next,
+          &mut buffers,
+        );
+        row
+      }
+      Source::Deterministic {
+        local_vol,
+        kappa,
+        theta,
+        v0,
+      } => {
+        let variance = *theta + (*v0 - *theta) * (-*kappa * to).exp();
+        let sqrt_v = variance.max(CONDITIONAL_VARIANCE_FLOOR).sqrt();
+        let row = mesh
+          .x
+          .iter()
+          .map(|x| clamp_leverage(local_vol.eval(to, x.exp()) / sqrt_v))
           .collect::<Vec<_>>();
         let mut next = Level::new(mesh, carry, rho, xi, &row);
         step(

@@ -149,34 +149,32 @@ fn the_calibration_lays_a_finite_surface_on_the_mesh_and_keeps_the_forward() {
   }
 }
 
-/// Under `eta = 0` at the long-run variance the variance stays put and the
-/// calibration condition is the closed form `L = sigma_LV / sqrt(v0)`: the
-/// trapezoid on `|P|` returns it up to the central scheme's leakage into the
-/// neighbouring variance cells.
+/// Under `eta = 0` the variance is deterministic and the calibration
+/// condition is the closed form `L = sigma_LV / sqrt(V_t)`, which the route
+/// takes directly at every node and every level, `t = 0` included; the
+/// density still marches under it and keeps its mass.
 #[test]
-fn eta_zero_at_the_long_run_variance_is_close_to_the_closed_form() {
+fn eta_zero_takes_the_closed_form_exactly() {
   let p = HestonSlvParams {
-    v0: 0.04,
-    theta: 0.04,
+    v0: 0.03,
+    theta: 0.05,
     ..params(0.0)
   };
   let grid = smiling_local_vol();
   let run = calibrate_leverage_fokker_planck(&p, S0, R, Q, &grid, &[0.5], &method()).unwrap();
   let lev = &run.leverage;
-  let mut worst = 0.0_f64;
-  for (j, &t) in lev.times().iter().enumerate().skip(1) {
+  for (j, &t) in lev.times().iter().enumerate() {
+    let variance = p.theta + (p.v0 - p.theta) * (-p.kappa * t).exp();
     for (i, &s) in lev.spots().iter().enumerate() {
-      if !(70.0..=140.0).contains(&s) {
-        continue;
-      }
-      let expected = grid.eval(t, s) / 0.2;
-      worst = worst.max((lev.values()[[j, i]] / expected - 1.0).abs());
+      let expected = grid.eval(t, s) / variance.sqrt();
+      let got = lev.values()[[j, i]];
+      assert!(
+        (got - expected).abs() < 1e-12,
+        "L({s}, {t}) = {got}, closed form {expected}"
+      );
     }
   }
-  assert!(
-    worst < 0.03,
-    "worst relative deviation from the closed form is {worst}"
-  );
+  assert!((run.density.mass[0] - 1.0).abs() < 1e-8);
 }
 
 #[test]
@@ -193,4 +191,71 @@ fn bad_settings_are_errors() {
   assert!(run(method().with_x_half_width(-1.0)).is_err());
   assert!(run(method().with_x_stretch(0.0)).is_err());
   assert!(calibrate_leverage_fokker_planck(&p, S0, R, Q, &grid, &[], &method()).is_err());
+}
+
+/// The reference's Heston sets C (Feller satisfied, a vol-of-vol of 0.9)
+/// and D (Feller violated, the density piles up at `v = 0`), under a unit
+/// leverage against the closed-form calls at the default mesh: the worst
+/// errors are 0.007 and 0.011 on a spot of 100, the mass is conserved in
+/// both, and the bounds are twice those errors. The Feller-violating set
+/// converges at a lower order, as the reference reports, but converges.
+#[test]
+fn the_reference_parameter_sets_reprice_the_closed_form_at_the_default_mesh() {
+  let sets = [
+    (
+      HestonSlvParams {
+        kappa: 5.0,
+        theta: 0.16,
+        sigma: 0.9,
+        rho: 0.1,
+        v0: 0.0625,
+        eta: 1.0,
+      },
+      0.015,
+    ),
+    (
+      HestonSlvParams {
+        kappa: 1.15,
+        theta: 0.0348,
+        sigma: 0.39,
+        rho: -0.64,
+        v0: 0.0348,
+        eta: 1.0,
+      },
+      0.022,
+    ),
+  ];
+  for (p, bound) in sets {
+    assert!(
+      (2.0 * p.kappa * p.theta >= p.sigma * p.sigma) == (bound < 0.02),
+      "the tighter bound belongs to the Feller-satisfying set"
+    );
+    let exact = HestonPricer::new(p.v0, p.rho, p.kappa, p.theta, p.sigma, Some(0.0));
+    let density = heston_slv_density(
+      &p,
+      S0,
+      0.04,
+      0.0,
+      &unit_leverage(),
+      &[0.25, 1.0],
+      &FokkerPlanckMethod::default(),
+    )
+    .unwrap();
+    for (index, tau) in [(0, 0.25), (1, 1.0)] {
+      assert!(
+        (density.mass[index] - 1.0).abs() < 1e-8,
+        "mass {}",
+        density.mass[index]
+      );
+      for k in [80.0, 90.0, 100.0, 110.0, 120.0] {
+        let fv = density.call_price(index, k, 0.04, tau);
+        let closed = exact.price_call(S0, k, 0.04, 0.0, tau);
+        assert!(
+          (fv - closed).abs() < bound,
+          "kappa = {}, tau = {tau}, K = {k}: finite volume {fv}, closed form {closed}",
+          p.kappa
+        );
+      }
+    }
+  }
 }
