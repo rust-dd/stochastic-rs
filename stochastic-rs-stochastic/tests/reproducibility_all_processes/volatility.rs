@@ -1,6 +1,6 @@
 //! `volatility/` slice of the exhaustive reproducibility guard — see
 //! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 131-type list, and shared methodology notes.
+//! derivation of the 132-type list, and shared methodology notes.
 //! `RoughHeston::new` does not accept `rho` — matching this crate's own
 //! `deterministic_parallelism_bates_rough_heston.rs`, the guard builds it
 //! then sets the public field directly before sampling.
@@ -13,7 +13,9 @@ use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
 use stochastic_rs_stochastic::volatility::fbates_svj::FBatesSvj;
 use stochastic_rs_stochastic::volatility::fheston::RoughHeston;
 use stochastic_rs_stochastic::volatility::heston::Heston;
+use stochastic_rs_stochastic::traits::Expr;
 use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
+use stochastic_rs_stochastic::volatility::heston_slv::HestonSlv;
 use stochastic_rs_stochastic::volatility::heston2d::Heston2D;
 use stochastic_rs_stochastic::volatility::hkde::Hkde;
 use stochastic_rs_stochastic::volatility::multifactor_heston::MultifactorHeston;
@@ -154,6 +156,21 @@ guard!(heston_log, "HestonLog", |s| HestonLog::new(
   Some(0.04),
   Some(1.0),
   Some(false),
+  s
+));
+
+guard!(heston_slv, "HestonSlv", |s| HestonSlv::new(
+  Some(100.0),
+  Some(0.04),
+  2.0,
+  0.04,
+  0.3,
+  -0.7,
+  0.05,
+  0.6,
+  Expr::lit(0.8) + Expr::x() * 0.002,
+  N,
+  Some(1.0),
   s
 ));
 

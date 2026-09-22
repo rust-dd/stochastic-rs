@@ -15,10 +15,10 @@ backends, and what the rest do.
 | fGN noise | `Fgn` (1) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` |
 | Sheet | `Fbs` (1) | `SheetBackend<T>` | SIMD + `ndrustfft` | same as `Cpu` | MSL sheet pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` |
 | Euler engine, one component | 91 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` |
-| Euler engine, systems | 38 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel |
+| Euler engine, systems | 39 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel |
 | Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `FVasicek`, `Cfgns`, `Cfbms`, `Cfou`, `JumpFou`, `JumpFOUCustom` (11, counted above) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same MSL kernel | fGN pipeline feeds the same NVRTC kernel |
 
-Every process reaches a device: `Fgn` and `Fbs` through pipelines of their own, the other 129 through the engine. The 129 processes on the engine cover the diffusions, the stochastic-volatility
+Every process reaches a device: `Fgn` and `Fbs` through pipelines of their own, the other 130 through the engine. The 130 processes on the engine cover the diffusions, the stochastic-volatility
 models under both their Euler and quadratic-exponential schemes (`Heston`,
 `HestonLog`, `DoubleHeston`, `Heston2D`, `Sabr`, `Bergomi`,
 `HestonStochCorr`, `BatesSvj`, `Hkde`), the short-rate models including the
@@ -128,9 +128,12 @@ grid:
   three now declare them — the first turned a per-step bucket search into a
   buffer read, the last seven time-only callables into six tabulated curves.
 - **A coefficient written as a Rust closure or a Python callable**
-  (`Cheyette`'s `sigma(t, x)`, `VolterraSde`'s drift and diffusion): a
+  (`Cheyette`'s `sigma(t, x)`, `VolterraSde`'s drift and diffusion,
+  `HestonSlv`'s leverage): a
   closure of time alone is tabulated as a curve the way `Cir2F`'s `phi(t)` is,
-  but one that reads the state has no representation a kernel can evaluate.
+  but one that reads the state has no representation a kernel can evaluate,
+  and neither has a coefficient tabulated as a `Grid2D` — a calibrated leverage
+  surface, say.
   Written as an `Expr` instead — `Expr::lit(0.01) + Expr::x().abs() * 0.4` —
   the same coefficient compiles to a short program the kernel interprets, and
   the process runs on the device; see "Coefficients as expressions" below.
@@ -175,7 +178,7 @@ grid:
 
 ### Coefficients as expressions
 
-`Cheyette` and `VolterraSde` take their coefficients as [`Fn2D`] callables of
+`Cheyette`, `VolterraSde` and `HestonSlv` take their coefficients as [`Fn2D`] callables of
 time and state. A Rust closure or a Python callable runs on the host only —
 nothing can evaluate it in a kernel — and the device build keeps such a
 process on the host, bit-identically to the `Cpu` build. Written as an
@@ -200,7 +203,7 @@ closure; a launch uploads it — two programs at most, `[len₁, len₂, (opcode
 constant)…]` in one small buffer — and before every step the kernel runs
 each program at the step's time and first state slot, handing the values to
 the family as `pv` and `pv2`. The `CheyetteLocalVol` family reads its
-volatility as `pv`; the `VolterraProgram` family, which steps under the
+volatility as `pv`, the `HestonSlv` family its leverage; the `VolterraProgram` family, which steps under the
 kernel's Markov lift, reads its drift and diffusion as `pv` and `pv2`. Each
 kernel — the C body CUDA and Metal render — carries the
 same sixteen-opcode interpreter, and the parity suite runs a probe program
@@ -208,7 +211,7 @@ with every opcode in use through all of them against the host's `Program::eval`.
 
 ## What a family is
 
-A process reaches a device by declaring which of the engine's **120 families**
+A process reaches a device by declaring which of the engine's **121 families**
 it steps, not by writing a kernel. A family is one entry in
 `stochastic-rs-stochastic/src/euler/families.rs` — its parameters, its state
 components, its noise components, one step expression per component and one
@@ -268,7 +271,8 @@ behind an `f64` type.
   `Fgn` returns it directly.
 - **Programs.** A coefficient written as an `Expr` travels to the kernel as
   postfix code and is interpreted before every step — `Cheyette`'s local
-  volatility, `VolterraSde`'s drift and diffusion — so the device runs the
+  volatility, `VolterraSde`'s drift and diffusion, `HestonSlv`'s leverage — so
+  the device runs the
   very same coefficient the host does, not a tabulation of it.
 - **Sheets.** `Fbs` runs its two-dimensional circulant embedding as a
   pipeline beside the fGN one. The embedding's eigenvalue roots are computed
@@ -441,6 +445,6 @@ is not a breaking change for its callers.
 
 A coefficient a process takes as a closure has no representation a kernel
 can evaluate; written as an `Expr` it compiles to a program the kernel
-interprets, which is how `Cheyette` and `VolterraSde` run on a device. `Sde`,
+interprets, which is how `Cheyette`, `VolterraSde` and `HestonSlv` run on a device. `Sde`,
 which drives its own loop over caller-supplied closures, is the one process
 whose `.on::<B>()` re-types without changing where it samples.

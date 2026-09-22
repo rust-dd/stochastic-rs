@@ -1839,6 +1839,24 @@ euler_families! {
     step { lv }
     report { x }
     lift { drift (pv) diffusion (pv2) shock (dz) },
+
+  /// The Heston stochastic-local volatility model: the log-spot by
+  /// Euler–Maruyama under the leverage `L(t, S)` the launch's first program
+  /// evaluates at the step's start and hands in as `pv`, the variance
+  /// truncated at zero under the mixed vol-of-vol `η σ`, which the host
+  /// folds into `sigma`. The two noise components are drawn independently
+  /// and correlated here, as the host sampler does with its own pair.
+  120 => HestonSlv { mu, kappa, theta, sigma, rho }
+    state (s, v)
+    noise (dw, dz)
+    step {
+      bind vp = positive(v);
+      bind db = rho * dw + sqrt(negate(rho * rho - lit(1.0))) * dz;
+      bind l = pv;
+      s * exp((mu - l * l * vp * lit(0.5)) * dt + l * sqrt(vp) * dw),
+      positive(v + kappa * (theta - vp) * dt + sigma * sqrt(vp) * db)
+    }
+    report { s, v },
 }
 
 #[cfg(test)]

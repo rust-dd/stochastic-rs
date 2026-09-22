@@ -18,6 +18,7 @@ pub mod fheston;
 pub mod heston;
 pub mod heston2d;
 pub mod heston_log;
+pub mod heston_slv;
 pub mod hkde;
 pub mod multifactor_heston;
 pub mod multifactor_sabr;

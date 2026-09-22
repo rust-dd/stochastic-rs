@@ -992,6 +992,16 @@ pub enum EulerSpec<T: FloatExt> {
     tail_exp: T,
     pi: T,
   },
+  /// The Heston stochastic-local volatility model `(s, v)` under the leverage
+  /// the launch's first program computes from `(t, s)`, the vol-of-vol
+  /// already mixed by `η`.
+  HestonSlv {
+    mu: T,
+    kappa: T,
+    theta: T,
+    sigma: T,
+    rho: T,
+  },
   /// CGMY under an exactly stepped CIR variance, the series sized in the step
   /// of each term's cell against the variance there: the arrival bound's rate
   /// at unit variance `rate0 = α / (2 C T)`, the drift coefficient `bcoef` per
@@ -1759,6 +1769,13 @@ impl<T: FloatExt> EulerSpec<T> {
       ),
       EulerSpec::CheyetteLocalVol { kappa } => (Family::CheyetteLocalVol.code(), pad([kappa])),
       EulerSpec::VolterraProgram => (Family::VolterraProgram.code(), pad([])),
+      EulerSpec::HestonSlv {
+        mu,
+        kappa,
+        theta,
+        sigma,
+        rho,
+      } => (Family::HestonSlv.code(), pad([mu, kappa, theta, sigma, rho])),
       EulerSpec::InverseStableSubordinator {
         alpha,
         c,
