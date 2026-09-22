@@ -11,6 +11,7 @@ use super::PyMcEstimate;
 use crate::calibration::heston::HestonParams;
 use crate::calibration::heston_slv::HestonSlvCalibrationResult;
 use crate::calibration::heston_slv::HestonSlvCalibrator;
+use crate::pricing::slv::FokkerPlanckMethod;
 use crate::pricing::slv::HestonSlvParams;
 use crate::pricing::slv::HestonSlvPricer;
 use crate::pricing::slv::LeverageSurface;
@@ -290,9 +291,14 @@ impl PyHestonSlvCalibrator {
   /// `heston` pins `(v0, kappa, theta, sigma, rho)` — the order
   /// `HestonCalibrator.calibrate` returns — and `heston_initial_guess` seeds
   /// the fit instead; `local_vol` supplies the local volatility on the same
-  /// grid instead of a Dupire read of the calls.
+  /// grid instead of a Dupire read of the calls. `method` is `"particle"`
+  /// (the Guyon–Henry-Labordère cloud, tuned by `n_particles`, `seed` and
+  /// the bandwidth constants) or `"fokker_planck"` (the finite-volume
+  /// forward Kolmogorov equation after Wyns & Du Toit, tuned by
+  /// `log_spot_nodes`, `variance_nodes` and `inner_iterations`);
+  /// `steps_per_year` serves both.
   #[new]
-  #[pyo3(signature = (s, r, q, strikes, maturities, calls, eta=1.0, heston=None, heston_initial_guess=None, local_vol=None, dupire_eps=1e-6, n_particles=100_000, steps_per_year=200, seed=42, bandwidth_factor=1.5, bandwidth_t_min=0.25))]
+  #[pyo3(signature = (s, r, q, strikes, maturities, calls, eta=1.0, heston=None, heston_initial_guess=None, local_vol=None, dupire_eps=1e-6, method="particle", n_particles=100_000, steps_per_year=200, seed=42, bandwidth_factor=1.5, bandwidth_t_min=0.25, log_spot_nodes=201, variance_nodes=100, inner_iterations=2))]
   fn new(
     s: f64,
     r: f64,
@@ -305,11 +311,15 @@ impl PyHestonSlvCalibrator {
     heston_initial_guess: Option<(f64, f64, f64, f64, f64)>,
     local_vol: Option<PyReadonlyArray2<'_, f64>>,
     dupire_eps: f64,
+    method: &str,
     n_particles: usize,
     steps_per_year: usize,
     seed: u64,
     bandwidth_factor: f64,
     bandwidth_t_min: f64,
+    log_spot_nodes: usize,
+    variance_nodes: usize,
+    inner_iterations: usize,
   ) -> PyResult<Self> {
     let heston_params = |(v0, kappa, theta, sigma, rho): (f64, f64, f64, f64, f64)| HestonParams {
       v0,
@@ -321,15 +331,28 @@ impl PyHestonSlvCalibrator {
     let calls = calls.as_array().to_owned();
     let mut inner = HestonSlvCalibrator::new(s, r, q, strikes, maturities, calls)
       .with_mixing(eta)
-      .with_dupire_eps(dupire_eps)
-      .with_particle_method(
+      .with_dupire_eps(dupire_eps);
+    inner = match method.to_ascii_lowercase().as_str() {
+      "particle" => inner.with_particle_method(
         ParticleMethod::default()
           .with_particles(n_particles)
           .with_steps_per_year(steps_per_year)
           .with_seed(seed)
           .with_bandwidth_factor(bandwidth_factor)
           .with_bandwidth_t_min(bandwidth_t_min),
-      );
+      ),
+      "fokker_planck" | "fokker-planck" | "pde" => inner.with_fokker_planck(
+        FokkerPlanckMethod::default()
+          .with_nodes(log_spot_nodes, variance_nodes)
+          .with_steps_per_year(steps_per_year)
+          .with_inner_iterations(inner_iterations),
+      ),
+      other => {
+        return Err(PyValueError::new_err(format!(
+          "method must be 'particle' or 'fokker_planck', got '{other}'"
+        )));
+      }
+    };
     if let Some(pinned) = heston {
       inner = inner.with_heston_params(heston_params(pinned));
     }

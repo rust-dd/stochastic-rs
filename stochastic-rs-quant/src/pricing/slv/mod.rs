@@ -22,11 +22,17 @@
 //! arXiv 1701.06001 (Cozma et al., control-variate particle method).
 
 pub mod calibration;
+pub mod fokker_planck;
 pub mod pricer;
 
 pub use calibration::ParticleCalibration;
 pub use calibration::ParticleMethod;
 pub use calibration::calibrate_leverage;
+pub use fokker_planck::FokkerPlanckCalibration;
+pub use fokker_planck::FokkerPlanckDensity;
+pub use fokker_planck::FokkerPlanckMethod;
+pub use fokker_planck::calibrate_leverage_fokker_planck;
+pub use fokker_planck::heston_slv_density;
 use ndarray::Array1;
 use ndarray::Array2;
 pub use pricer::HestonSlvPricer;

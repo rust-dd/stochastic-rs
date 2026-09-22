@@ -21,9 +21,12 @@
 //!    supplied on the same grid (an SSVI-derived surface, say).
 //! 3. **The leverage function** $L(t, S)$ — the Guyon–Henry-Labordère
 //!    particle method of
-//!    [`calibrate_leverage`](crate::pricing::slv::calibrate_leverage), which
-//!    makes the model reproduce the local-volatility surface, and with it the
-//!    vanillas, at any mixing fraction $\eta \in [0, 1]$.
+//!    [`calibrate_leverage`](crate::pricing::slv::calibrate_leverage), or the
+//!    finite-volume solution of the forward Kolmogorov equation of
+//!    [`calibrate_leverage_fokker_planck`](crate::pricing::slv::calibrate_leverage_fokker_planck)
+//!    ([`LeverageMethod`]); either makes the model reproduce the
+//!    local-volatility surface, and with it the vanillas, at any mixing
+//!    fraction $\eta \in [0, 1]$.
 //!
 //! $\eta$ is an input, not an output: the vanilla surface is reproduced for
 //! every value of it, and what it moves is the price of forward-starting and
@@ -31,9 +34,10 @@
 //! local-volatility model, $\eta = 1$ the Heston dynamics under a leverage
 //! correction.
 //!
-//! The fit quality reported is the in-sample repricing of the input calls by
-//! the calibration cloud itself at each maturity, which is how the method is
-//! judged in the literature.
+//! The fit quality reported is the in-sample repricing of the input calls
+//! from the calibration's own density at each maturity — the particle cloud's
+//! payoff averages, or the trapezoid rule over the finite-volume marginal —
+//! which is how the methods are judged in the literature.
 //!
 //! References: Guyon, J. & Henry-Labordère, P. (2012), *Being particular
 //! about calibration*, Risk 25(1); Lipton, A. (2002), *The vol smile
@@ -46,6 +50,7 @@ mod calibrator;
 mod result;
 
 pub use calibrator::HestonSlvCalibrator;
+pub use calibrator::LeverageMethod;
 pub use result::HestonSlvCalibrationResult;
 pub use result::HestonSlvFit;
 

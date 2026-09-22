@@ -265,3 +265,12 @@ def test_heston_slv_calibrates_a_heston_surface_and_prices():
     process = sr.PyHestonSlv(kappa, theta, sigma, rho, r - q, 0.7, surface, 65, s0=s, v0=v0, t=1.0, seed=5)
     paths, _ = process.sample_par(16)
     assert paths.shape == (16, 65)
+    pde = sr.HestonSlvCalibrator(
+        s, r, q, list(strikes), maturities, calls, eta=0.7, heston=(v0, kappa, theta, sigma, rho),
+        method="fokker_planck", log_spot_nodes=101, variance_nodes=50, steps_per_year=50,
+    ).calibrate()
+    assert pde.converged and pde.rmse < 1.0
+    assert pde.leverage().covers(100.0, 0.5)
+    assert 0.5 < pde.leverage().interpolate(100.0, 0.5) < 1.5
+    with pytest.raises(ValueError):
+        sr.HestonSlvCalibrator(s, r, q, list(strikes), maturities, calls, method="galerkin")

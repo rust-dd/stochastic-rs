@@ -7,6 +7,7 @@ use super::*;
 use crate::calibration::heston::HestonParams;
 use crate::pricing::fourier::HestonFourier;
 use crate::pricing::heston::HestonPricer;
+use crate::pricing::slv::FokkerPlanckMethod;
 use crate::pricing::slv::ParticleMethod;
 use crate::traits::CalibrationResult;
 use crate::traits::Calibrator;
@@ -103,6 +104,41 @@ fn a_heston_surface_under_its_own_parameters_gives_unit_leverage_and_reprices() 
     "repricing rmse {} on a spot of 100",
     result.rmse()
   );
+  assert!(result.max_error() < 1.0, "worst repricing error {}", result.max_error());
+}
+
+/// The same Gyöngy check through the forward Kolmogorov equation: the
+/// finite-volume leverage is unit in the centre and its marginal reprices
+/// the surface, with no Monte Carlo noise in either.
+#[test]
+fn the_fokker_planck_route_gives_unit_leverage_and_reprices() {
+  let result = calibrator(1.0)
+    .with_fokker_planck(
+      FokkerPlanckMethod::default()
+        .with_nodes(161, 80)
+        .with_steps_per_year(100),
+    )
+    .calibrate(None)
+    .unwrap();
+  assert!(result.converged());
+  let lev = result.leverage();
+  let mut central = Vec::new();
+  for (j, &t) in lev.times().iter().enumerate() {
+    if t < 0.2 {
+      continue;
+    }
+    for (i, &k) in lev.spots().iter().enumerate() {
+      if (85.0..=115.0).contains(&k) {
+        central.push((lev.values()[[j, i]] - 1.0).abs());
+      }
+    }
+  }
+  central.sort_by(f64::total_cmp);
+  let median = central[central.len() / 2];
+  let worst = central[central.len() - 1];
+  assert!(median < 0.05, "median |L - 1| over the central strikes is {median}");
+  assert!(worst < 0.25, "worst |L - 1| over the central strikes is {worst}");
+  assert!(result.rmse() < 0.25, "repricing rmse {}", result.rmse());
   assert!(result.max_error() < 1.0, "worst repricing error {}", result.max_error());
 }
 

@@ -13,14 +13,35 @@ use crate::calibration::heston::HestonCalibrator;
 use crate::calibration::heston::HestonParams;
 use crate::calibration::levy::MarketSlice;
 use crate::pricing::dupire::Dupire;
+use crate::pricing::slv::FokkerPlanckMethod;
 use crate::pricing::slv::HestonSlvParams;
+use crate::pricing::slv::LeverageSurface;
 use crate::pricing::slv::ParticleMethod;
 use crate::pricing::slv::calibrate_leverage;
+use crate::pricing::slv::calibrate_leverage_fokker_planck;
 use crate::traits::Calibrator;
 
 /// Largest deviation between a requested rate and the calibration rate that
 /// still counts as the same rate — the pricer's own match tolerance.
 pub(super) const RATE_MATCH_TOL: f64 = 1e-12;
+
+/// How the leverage surface is read off the local volatility: the
+/// Guyon–Henry-Labordère particle cloud, or the finite-volume solution of
+/// the forward Kolmogorov equation after Wyns & Du Toit. Both reproduce the
+/// vanilla surface; the cloud is cheap and noisy, the PDE deterministic and
+/// smooth, and the fit each reports is read off its own density.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum LeverageMethod {
+  Particle(ParticleMethod),
+  FokkerPlanck(FokkerPlanckMethod),
+}
+
+impl Default for LeverageMethod {
+  fn default() -> Self {
+    Self::Particle(ParticleMethod::default())
+  }
+}
 
 /// Heston SLV calibrator: a vanilla call surface in, a leverage-calibrated
 /// model out — the module doc has the three steps.
@@ -30,12 +51,14 @@ pub(super) const RATE_MATCH_TOL: f64 = 1e-12;
 /// builder knob with a default: the mixing fraction (`1`), the Heston
 /// parameters (fitted unless pinned), the local volatility (Dupire on the
 /// input calls unless supplied), the Dupire denominator floor, and the
-/// particle method.
+/// [`LeverageMethod`] (the particle cloud unless
+/// [`with_fokker_planck`](Self::with_fokker_planck) picks the PDE).
 ///
 /// Source:
 /// - Guyon & Henry-Labordère (2012), *Being particular about calibration*,
 ///   Risk 25(1)
 /// - Cozma, Mariapragassam & Reisinger (2017), arXiv:1701.06001, §3.4
+/// - Wyns & Du Toit (2016), arXiv:1611.02961, §4
 #[derive(Clone, Debug)]
 pub struct HestonSlvCalibrator {
   /// Spot.
@@ -62,8 +85,8 @@ pub struct HestonSlvCalibrator {
   pub local_vol: Option<Array2<f64>>,
   /// [`Dupire::eps`], the floor of the Dupire denominator.
   pub dupire_eps: f64,
-  /// The particle method's tuning.
-  pub method: ParticleMethod,
+  /// How the leverage is calibrated and tuned.
+  pub method: LeverageMethod,
 }
 
 impl HestonSlvCalibrator {
@@ -87,7 +110,7 @@ impl HestonSlvCalibrator {
       heston_initial_guess: None,
       local_vol: None,
       dupire_eps: 1e-6,
-      method: ParticleMethod::default(),
+      method: LeverageMethod::default(),
     }
   }
 
@@ -124,8 +147,16 @@ impl HestonSlvCalibrator {
     self
   }
 
+  /// Calibrate the leverage by the particle method with this tuning.
   pub fn with_particle_method(mut self, method: ParticleMethod) -> Self {
-    self.method = method;
+    self.method = LeverageMethod::Particle(method);
+    self
+  }
+
+  /// Calibrate the leverage by the forward Kolmogorov equation with this
+  /// tuning.
+  pub fn with_fokker_planck(mut self, method: FokkerPlanckMethod) -> Self {
+    self.method = LeverageMethod::FokkerPlanck(method);
     self
   }
 
@@ -245,6 +276,42 @@ impl HestonSlvCalibrator {
   }
 }
 
+impl HestonSlvCalibrator {
+  /// The leverage by the chosen method, and the input grid repriced from
+  /// that method's own density — the particle cloud's payoff averages, or
+  /// the trapezoid rule over the finite-volume marginal — row-major in the
+  /// maturities like `calls`.
+  fn leverage_and_model_prices(
+    &self,
+    params: &HestonSlvParams,
+    local_vol: &Grid2D<f64>,
+  ) -> Result<(LeverageSurface, Vec<f64>)> {
+    let mut model = Vec::with_capacity(self.maturities.len() * self.strikes.len());
+    match &self.method {
+      LeverageMethod::Particle(method) => {
+        let run = calibrate_leverage(params, self.s, self.r, self.q, local_vol, &self.maturities, method)?;
+        for (j, cloud) in run.snapshots.iter().enumerate() {
+          let discount = (-self.r * self.maturities[j]).exp();
+          let paths = cloud.len() as f64;
+          for &k in &self.strikes {
+            model.push(discount * cloud.iter().map(|s| (s - k).max(0.0)).sum::<f64>() / paths);
+          }
+        }
+        Ok((run.leverage, model))
+      }
+      LeverageMethod::FokkerPlanck(method) => {
+        let run = calibrate_leverage_fokker_planck(params, self.s, self.r, self.q, local_vol, &self.maturities, method)?;
+        for (j, &tau) in self.maturities.iter().enumerate() {
+          for &k in &self.strikes {
+            model.push(run.density.call_price(j, k, self.r, tau));
+          }
+        }
+        Ok((run.leverage, model))
+      }
+    }
+  }
+}
+
 /// The Dupire surface with its `NaN` cells filled: the stencil-boundary
 /// columns and any leading or trailing run take the nearest admissible cell
 /// of their row, an interior hole is interpolated linearly in strike between
@@ -300,41 +367,19 @@ impl Calibrator for HestonSlvCalibrator {
       eta: self.eta,
     };
     let local_vol = self.local_vol_grid()?;
-    let run = calibrate_leverage(
-      &params,
-      self.s,
-      self.r,
-      self.q,
-      &local_vol,
-      &self.maturities,
-      &self.method,
-    )?;
-
-    let n = self.maturities.len() * self.strikes.len();
-    let mut market = Vec::with_capacity(n);
-    let mut model = Vec::with_capacity(n);
-    for (j, cloud) in run.snapshots.iter().enumerate() {
-      let discount = (-self.r * self.maturities[j]).exp();
-      let paths = cloud.len() as f64;
-      for (i, &k) in self.strikes.iter().enumerate() {
-        market.push(self.calls[[j, i]]);
-        model.push(discount * cloud.iter().map(|s| (s - k).max(0.0)).sum::<f64>() / paths);
-      }
-    }
+    let (leverage, model) = self.leverage_and_model_prices(&params, &local_vol)?;
+    let market = self.calls.iter().copied().collect::<Vec<_>>();
     let loss = CalibrationLossScore::compute(&market, &model);
     let max_error = market
       .iter()
       .zip(model.iter())
       .map(|(a, b)| (a - b).abs())
       .fold(0.0, f64::max);
-    let leverage_finite = run.leverage.values().iter().all(|l| l.is_finite());
+    let leverage_finite = leverage.values().iter().all(|l| l.is_finite());
     let converged = heston_fit.as_ref().is_none_or(|f| f.converged) && leverage_finite && max_error.is_finite();
 
     Ok(HestonSlvCalibrationResult {
-      fit: HestonSlvFit {
-        params,
-        leverage: run.leverage,
-      },
+      fit: HestonSlvFit { params, leverage },
       heston: heston_fit,
       loss,
       max_error,

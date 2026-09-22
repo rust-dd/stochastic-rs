@@ -64,7 +64,7 @@ use super::HestonSlvParams;
 use super::LeverageSurface;
 
 /// Floor of the conditional-variance estimate before the square root.
-const CONDITIONAL_VARIANCE_FLOOR: f64 = 1e-8;
+pub(super) const CONDITIONAL_VARIANCE_FLOOR: f64 = 1e-8;
 
 /// The leverage is clamped to this band so a degenerate local volatility or
 /// an almost-empty kernel window cannot stall or blow up the cloud.
@@ -278,7 +278,7 @@ pub fn calibrate_leverage(
   })
 }
 
-fn validate(
+pub(super) fn validate(
   params: &HestonSlvParams,
   s0: f64,
   r: f64,
@@ -323,7 +323,7 @@ fn validate(
 
 /// `0 = t_0 < … < t_m`, every maturity a node, each interval split into
 /// `ceil(Δ · steps_per_year)` equal steps.
-fn time_grid(maturities: &[f64], steps_per_year: usize) -> Vec<f64> {
+pub(super) fn time_grid(maturities: &[f64], steps_per_year: usize) -> Vec<f64> {
   let mut times = vec![0.0];
   let mut prev = 0.0;
   for &maturity in maturities {
@@ -337,7 +337,7 @@ fn time_grid(maturities: &[f64], steps_per_year: usize) -> Vec<f64> {
   times
 }
 
-fn clamp_leverage(l: f64) -> f64 {
+pub(super) fn clamp_leverage(l: f64) -> f64 {
   l.clamp(LEVERAGE_BAND.0, LEVERAGE_BAND.1)
 }
 
