@@ -91,6 +91,7 @@ pub mod bsm;
 pub mod cgmysv;
 pub mod double_heston;
 pub mod heston;
+pub mod heston_slv;
 pub mod heston_stoch_corr;
 pub mod hkde;
 pub mod hw_swaption;

@@ -79,8 +79,9 @@ pub struct HestonSlvPricer {
 
 impl HestonSlvPricer {
   /// Pricer for a `leverage` surface calibrated at `(r, q)` — the pair passed
-  /// to [`calibrate_leverage`](super::calibrate_leverage), or `dupire.r` /
-  /// `dupire.q` for [`calibrate_from_dupire`](super::calibrate_from_dupire).
+  /// to [`calibrate_leverage`](super::calibrate_leverage), or the
+  /// calibrator's own rates for a surface out of
+  /// [`HestonSlvCalibrator`](crate::calibration::heston_slv::HestonSlvCalibrator).
   /// Pricing at any other rate panics.
   pub fn new(params: HestonSlvParams, leverage: LeverageSurface, r: f64, q: f64) -> Self {
     Self {
@@ -170,7 +171,7 @@ impl HestonSlvPricer {
       let mut v = self.params.v0;
 
       for step in 0..n_steps {
-        let t = (step as f64 + 1.0) * dt;
+        let t = step as f64 * dt;
         let dw_v = normals.sample_fast() * sqrt_dt;
         let dw_ind = normals.sample_fast() * sqrt_dt;
         let dw_x = self.params.rho * dw_v + rho_bar * dw_ind;
