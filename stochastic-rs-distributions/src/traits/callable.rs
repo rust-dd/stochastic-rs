@@ -9,6 +9,7 @@ use std::ops::Neg;
 use std::ops::Sub;
 
 use super::float::FloatExt;
+use super::grid::Grid2D;
 
 /// A coefficient of time and state written as an expression rather than a
 /// closure: `Expr::lit(0.01) + Expr::x().abs() * 0.4`. It evaluates on the
@@ -383,6 +384,10 @@ pub enum Fn2D<T: FloatExt> {
   /// A coefficient written as an [`Expr`], compiled: the one form a device
   /// kernel can evaluate.
   Expr(Program),
+  /// A coefficient tabulated on a `(t, x)` grid and read back by bilinear
+  /// interpolation — a calibrated leverage surface, a local volatility from
+  /// market data. Host only, like a closure.
+  Grid(Grid2D<T>),
   #[cfg(feature = "python")]
   Py(pyo3::Py<pyo3::PyAny>),
 }
@@ -393,6 +398,7 @@ impl<T: FloatExt> Clone for Fn2D<T> {
     match self {
       Fn2D::Native(f) => Fn2D::Native(*f),
       Fn2D::Expr(program) => Fn2D::Expr(program.clone()),
+      Fn2D::Grid(grid) => Fn2D::Grid(grid.clone()),
       #[cfg(feature = "python")]
       Fn2D::Py(callable) => Fn2D::Py(pyo3::Python::attach(|py| callable.clone_ref(py))),
     }
@@ -404,6 +410,7 @@ impl<T: FloatExt> Fn2D<T> {
     match self {
       Fn2D::Native(f) => f(t, u),
       Fn2D::Expr(program) => program.eval(t, u),
+      Fn2D::Grid(grid) => grid.eval(t, u),
       #[cfg(feature = "python")]
       Fn2D::Py(callable) => pyo3::Python::attach(|py| {
         let result: f64 = callable
@@ -432,6 +439,12 @@ impl<T: FloatExt> From<Expr> for Fn2D<T> {
 impl<T: FloatExt> From<Program> for Fn2D<T> {
   fn from(program: Program) -> Self {
     Fn2D::Expr(program)
+  }
+}
+
+impl<T: FloatExt> From<Grid2D<T>> for Fn2D<T> {
+  fn from(grid: Grid2D<T>) -> Self {
+    Fn2D::Grid(grid)
   }
 }
 

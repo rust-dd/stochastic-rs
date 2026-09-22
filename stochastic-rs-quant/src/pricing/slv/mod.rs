@@ -22,13 +22,23 @@
 //! arXiv 1701.06001 (Cozma et al., control-variate particle method).
 
 pub mod calibration;
+pub mod fokker_planck;
 pub mod pricer;
 
-pub use calibration::calibrate_from_dupire;
+pub use calibration::ParticleCalibration;
+pub use calibration::ParticleMethod;
 pub use calibration::calibrate_leverage;
+pub use fokker_planck::FokkerPlanckCalibration;
+pub use fokker_planck::FokkerPlanckDensity;
+pub use fokker_planck::FokkerPlanckMethod;
+pub use fokker_planck::calibrate_leverage_fokker_planck;
+pub use fokker_planck::heston_slv_density;
 use ndarray::Array1;
 use ndarray::Array2;
 pub use pricer::HestonSlvPricer;
+use stochastic_rs_distributions::traits::FloatExt;
+use stochastic_rs_distributions::traits::Fn2D;
+use stochastic_rs_distributions::traits::Grid2D;
 
 /// Heston model parameters augmented with the SLV mixing factor.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -55,31 +65,40 @@ impl HestonSlvParams {
   }
 }
 
-/// A 2-D grid storing the calibrated leverage function $L(S,t)$ with
-/// bilinear interpolation.
+/// The calibrated leverage function $L(S,t)$ on a `(spot, time)` grid, read
+/// back by bilinear interpolation.
 ///
-/// The grid is indexed by **absolute spot**, not by moneyness, so the span
-/// it holds calibrated values for is exactly `spots[0] ..= spots[last]` —
-/// [`spot_range`](Self::spot_range) — out to the last calibrated maturity
-/// [`horizon`](Self::horizon). [`interpolate`](Self::interpolate) answers
-/// every query, in-grid or not, by holding the nearest edge value flat.
-/// [`covers`](Self::covers) is the separate statement of which of those
-/// answers carry calibrated information.
-#[derive(Debug, Clone)]
+/// A newtype over [`Grid2D`] with the spot-first argument order the pricer
+/// speaks: the grid is indexed by **absolute spot**, not by moneyness, so
+/// the span it holds calibrated values for is exactly
+/// `spots[0] ..= spots[last]` — [`spot_range`](Self::spot_range) — out to
+/// the last calibrated maturity [`horizon`](Self::horizon).
+/// [`interpolate`](Self::interpolate) answers every query, in-grid or not,
+/// by holding the nearest edge value flat. [`covers`](Self::covers) is the
+/// separate statement of which of those answers carry calibrated
+/// information.
+///
+/// `From<LeverageSurface> for Fn2D` hands the same table to a process as
+/// its leverage coefficient — [`HestonSlv`] takes it that way — evaluated
+/// there in the `(t, S)` order every [`Fn2D`] uses.
+///
+/// [`HestonSlv`]: stochastic_rs_stochastic::volatility::heston_slv::HestonSlv
+#[derive(Debug, Clone, PartialEq)]
 pub struct LeverageSurface {
-  spots: Array1<f64>,
-  times: Array1<f64>,
-  values: Array2<f64>,
+  grid: Grid2D<f64>,
 }
 
 impl LeverageSurface {
   /// Build from pre-computed grid values. `values` has shape
   /// `(times.len(), spots.len())`.
+  ///
+  /// # Panics
+  ///
+  /// When either axis is empty or not strictly ascending, or when `values`
+  /// has another shape — [`Grid2D::new`]'s own conditions.
   pub fn new(spots: Array1<f64>, times: Array1<f64>, values: Array2<f64>) -> Self {
     Self {
-      spots,
-      times,
-      values,
+      grid: Grid2D::new(times, spots, values),
     }
   }
 
@@ -103,51 +122,38 @@ impl LeverageSurface {
   /// which is the other reason [`covers`](Self::covers) tests the query
   /// before this runs.
   pub fn interpolate(&self, s: f64, t: f64) -> f64 {
-    let si = fractional_index(&self.spots, s);
-    let ti = fractional_index(&self.times, t);
-
-    let i0 = (si.floor() as usize).min(self.spots.len() - 2);
-    let j0 = (ti.floor() as usize).min(self.times.len() - 2);
-    let i1 = i0 + 1;
-    let j1 = j0 + 1;
-
-    let ws = si - i0 as f64;
-    let wt = ti - j0 as f64;
-    let ws = ws.clamp(0.0, 1.0);
-    let wt = wt.clamp(0.0, 1.0);
-
-    let v00 = self.values[[j0, i0]];
-    let v10 = self.values[[j0, i1]];
-    let v01 = self.values[[j1, i0]];
-    let v11 = self.values[[j1, i1]];
-
-    (1.0 - wt) * ((1.0 - ws) * v00 + ws * v10) + wt * ((1.0 - ws) * v01 + ws * v11)
+    self.grid.eval(t, s)
   }
 
   /// Spot grid.
   pub fn spots(&self) -> &Array1<f64> {
-    &self.spots
+    self.grid.xs()
   }
 
   /// Time grid.
   pub fn times(&self) -> &Array1<f64> {
-    &self.times
+    self.grid.ts()
   }
 
   /// Raw grid values (shape: times × spots).
   pub fn values(&self) -> &Array2<f64> {
-    &self.values
+    self.grid.values()
+  }
+
+  /// The same table as the `(t, x)` grid every [`Fn2D`] speaks.
+  pub fn grid(&self) -> &Grid2D<f64> {
+    &self.grid
   }
 
   /// Inclusive spot span the surface holds calibrated values for:
   /// `(spots[0], spots[last])`.
   pub fn spot_range(&self) -> (f64, f64) {
-    (self.spots[0], self.spots[self.spots.len() - 1])
+    self.grid.x_range()
   }
 
   /// Last maturity the surface was calibrated out to: `times[last]`.
   pub fn horizon(&self) -> f64 {
-    self.times[self.times.len() - 1]
+    self.grid.t_range().1
   }
 
   /// Whether a `(spot, maturity)` query lands inside the box this surface
@@ -161,10 +167,10 @@ impl LeverageSurface {
   /// calibration spot — the whole point of the type — never leaves the grid.
   ///
   /// The lower maturity bound is `0` rather than `times[0]` on purpose. The
-  /// first row *is* the $t \to 0$ slice — [`calibrate_leverage`] evaluates it
-  /// against the initial particle cloud — so holding it back to `t = 0` is
-  /// the intended reading of the grid. Holding the last row *forward* past
-  /// the horizon is not: nothing was calibrated there.
+  /// first row *is* the $t = 0$ slice — [`calibrate_leverage`] sets it from
+  /// the initial variance — so holding it back to `t = 0` is the intended
+  /// reading of the grid. Holding the last row *forward* past the horizon is
+  /// not: nothing was calibrated there.
   ///
   /// A `NaN` in either coordinate compares false against both bounds and so
   /// reports `false`, which is what keeps
@@ -175,20 +181,18 @@ impl LeverageSurface {
   }
 }
 
-fn fractional_index(grid: &Array1<f64>, x: f64) -> f64 {
-  if x <= grid[0] {
-    return 0.0;
+impl From<LeverageSurface> for Grid2D<f64> {
+  fn from(surface: LeverageSurface) -> Self {
+    surface.grid
   }
-  let n = grid.len();
-  if x >= grid[n - 1] {
-    return (n - 1) as f64;
+}
+
+/// The surface as a process coefficient: `Fn2D::Grid`, evaluated as
+/// `L(t, S)`. A grid keeps the process on the host, as a closure does.
+impl<T: FloatExt> From<LeverageSurface> for Fn2D<T> {
+  fn from(surface: LeverageSurface) -> Self {
+    Fn2D::Grid(surface.grid.cast::<T>())
   }
-  for i in 0..n - 1 {
-    if x >= grid[i] && x < grid[i + 1] {
-      return i as f64 + (x - grid[i]) / (grid[i + 1] - grid[i]);
-    }
-  }
-  (n - 1) as f64
 }
 
 #[cfg(test)]
@@ -277,6 +281,20 @@ mod tests {
     );
   }
 
+  /// Handed to a process the table answers in the `(t, S)` order every
+  /// `Fn2D` uses, and the values are the surface's own.
+  #[test]
+  fn as_a_coefficient_the_surface_evaluates_in_time_state_order() {
+    let s = ramp();
+    let f = Fn2D::<f64>::from(s.clone());
+    assert!(f.program().is_none(), "a grid has no device program");
+    for (t, spot) in [(0.5, 95.0), (0.25, 80.0), (1.0, 120.0), (0.7, 200.0)] {
+      assert_eq!(f.call(t, spot), s.interpolate(spot, t));
+    }
+    let single = Fn2D::<f32>::from(s.clone());
+    assert!((single.call(0.5, 95.0) as f64 - s.interpolate(95.0, 0.5)).abs() < 1e-6);
+  }
+
   #[test]
   fn covers_is_the_grid_extent_and_not_a_tolerance() {
     let s = ramp();
@@ -286,7 +304,7 @@ mod tests {
     assert!(s.covers(80.0, 1.0), "both edges inclusive");
     assert!(
       s.covers(120.0, 0.0),
-      "t = 0 is inside — the first row is the t -> 0 slice"
+      "t = 0 is inside — the first row is the t = 0 slice"
     );
     assert!(
       s.covers(100.0, 0.01),

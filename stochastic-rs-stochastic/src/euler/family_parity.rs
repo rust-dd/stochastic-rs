@@ -685,6 +685,7 @@ fn family_name(spec: &EulerSpec<f32>) -> &'static str {
     EulerSpec::HawkesEvents { .. } => "HawkesEvents",
     EulerSpec::HawkesEvents2 { .. } => "HawkesEvents2",
     EulerSpec::CheyetteLocalVol { .. } => "CheyetteLocalVol",
+    EulerSpec::HestonSlv { .. } => "HestonSlv",
     EulerSpec::VolterraProgram => "VolterraProgram",
     EulerSpec::LiborMarket4 { .. } => "LiborMarket4",
     EulerSpec::InverseStableSubordinator { .. } => "InverseStableSubordinator",
@@ -1545,6 +1546,20 @@ fn every_two_component_family() -> Vec<SystemProbe<2>> {
     SystemProbe {
       spec: EulerSpec::CheyetteLocalVol { kappa: 0.5 },
       x0: [0.0, 0.0],
+      lift: None,
+      program: Some(ProbePrograms::pair()),
+    },
+    // The SLV spot under the probes' first program as its leverage, started
+    // at one so the program stays a moderate coefficient.
+    SystemProbe {
+      spec: EulerSpec::HestonSlv {
+        mu,
+        kappa,
+        theta,
+        sigma,
+        rho,
+      },
+      x0: [1.0, 0.04],
       lift: None,
       program: Some(ProbePrograms::pair()),
     },

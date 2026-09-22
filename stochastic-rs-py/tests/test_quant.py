@@ -223,3 +223,54 @@ def test_survival_curve_is_accepted_wherever_a_flat_hazard_is():
     with pytest.raises(ValueError):
         profile.cva("0.02", discount, 0.6)
 
+
+def test_heston_slv_calibrates_a_heston_surface_and_prices():
+    import numpy as np
+
+    s, r, q = 100.0, 0.02, 0.005
+    v0, kappa, theta, sigma, rho = 0.04, 2.0, 0.05, 0.4, -0.6
+    strikes = np.linspace(70.0, 140.0, 36)
+    maturities = [0.25, 0.5, 0.75, 1.0]
+    model = sr.HestonFourier(v0=v0, kappa=kappa, theta=theta, sigma=sigma, rho=rho, r=r, q=q)
+    calls = np.array([[model.price_call(s, k, r, q, t) for k in strikes] for t in maturities])
+    calibrator = sr.HestonSlvCalibrator(
+        s, r, q, list(strikes), maturities, calls, eta=0.7,
+        heston=(v0, kappa, theta, sigma, rho), n_particles=5_000, steps_per_year=50, seed=11,
+    )
+    result = calibrator.calibrate()
+    assert result.converged and result.heston() is None
+    assert result.params() == (kappa, theta, sigma, rho, v0, 0.7)
+    assert result.rates == (r, q)
+    assert math.isfinite(result.rmse) and result.rmse < 1.0
+    surface = result.leverage()
+    assert surface.values.shape == (len(surface.times), len(surface.spots))
+    assert surface.covers(100.0, 0.5) and not surface.covers(100.0, 1.5)
+    assert 0.5 < surface.interpolate(100.0, 0.5) < 1.5
+    pricer = result.to_model(n_paths=4_000, steps_per_year=50, seed=7)
+    assert pricer.calibration_rates == (r, q)
+    atm = pricer.price_call(s, 100.0, r, q, 0.5)
+    assert abs(atm - model.price_call(s, 100.0, r, q, 0.5)) < 1.5
+    estimate = pricer.price_call_estimate(s, 100.0, r, q, 0.5)
+    assert estimate.mean == atm and estimate.std_err > 0.0
+    assert math.isnan(pricer.price_call(1000.0, 1000.0, r, q, 0.5))
+    with pytest.raises(ValueError):
+        pricer.price_call(s, 100.0, 0.05, q, 0.5)
+    unanchored = sr.HestonSlvPricer(kappa, theta, sigma, rho, v0, 1.0, surface, n_paths=2_000, steps_per_year=25)
+    assert unanchored.calibration_rates is None
+    assert unanchored.price_call(s, 100.0, 0.05, 0.0, 0.5) > 0.0
+    with pytest.raises(ValueError):
+        sr.HestonSlvPricer(kappa, theta, sigma, rho, v0, 1.0, surface, r=r)
+    with pytest.raises(ValueError):
+        sr.HestonSlvCalibrator(s, r, q, list(strikes), maturities, calls, eta=2.0).calibrate()
+    process = sr.PyHestonSlv(kappa, theta, sigma, rho, r - q, 0.7, surface, 65, s0=s, v0=v0, t=1.0, seed=5)
+    paths, _ = process.sample_par(16)
+    assert paths.shape == (16, 65)
+    pde = sr.HestonSlvCalibrator(
+        s, r, q, list(strikes), maturities, calls, eta=0.7, heston=(v0, kappa, theta, sigma, rho),
+        method="fokker_planck", log_spot_nodes=101, variance_nodes=50, steps_per_year=50,
+    ).calibrate()
+    assert pde.converged and pde.rmse < 1.0
+    assert pde.leverage().covers(100.0, 0.5)
+    assert 0.5 < pde.leverage().interpolate(100.0, 0.5) < 1.5
+    with pytest.raises(ValueError):
+        sr.HestonSlvCalibrator(s, r, q, list(strikes), maturities, calls, method="galerkin")

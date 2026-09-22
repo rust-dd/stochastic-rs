@@ -347,7 +347,9 @@ fn the_two_rows_of_a_pair_are_independent() {
   let rows = device(N, 19).sample_map_view(2 * PAIRS, |r| probes.map(|i| r[i]));
   for (k, i) in probes.iter().enumerate() {
     let cols = rows
-      .chunks_exact(2)
+      .as_chunks::<2>()
+      .0
+      .iter()
       .map(|c| [c[0][k], c[1][k]])
       .collect::<Vec<_>>();
     let c = column_corr(&cols);
@@ -360,7 +362,9 @@ fn the_two_rows_of_a_pair_are_independent() {
   const M: usize = 2_000;
   let full = widen(device(N, 21).sample_par(2 * M));
   let pairs = full
-    .chunks_exact(2)
+    .as_chunks::<2>()
+    .0
+    .iter()
     .map(|c| (c[0].clone(), c[1].clone()))
     .collect::<Vec<_>>();
   for lag in [-2isize, -1, 0, 1, 2] {

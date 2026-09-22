@@ -158,6 +158,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_stochastic::volatility::fheston::PyRoughHeston;
   use stochastic_rs_stochastic::volatility::heston::PyHeston;
   use stochastic_rs_stochastic::volatility::heston_log::PyHestonLog;
+  use stochastic_rs_stochastic::volatility::heston_slv::PyHestonSlv;
   use stochastic_rs_stochastic::volatility::rbergomi::PyRoughBergomi;
   use stochastic_rs_stochastic::volatility::sabr::PySabr;
   use stochastic_rs_stochastic::volatility::svcgmy::PySvcgmy;
@@ -226,6 +227,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyBergomi>()?;
   m.add_class::<PyHeston>()?;
   m.add_class::<PyHestonLog>()?;
+  m.add_class::<PyHestonSlv>()?;
   m.add_class::<PyRoughBergomi>()?;
   m.add_class::<PySabr>()?;
   m.add_class::<PyRoughHeston>()?;
@@ -331,6 +333,9 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_quant::python::PyHestonCalibrator;
   use stochastic_rs_quant::python::PyHestonFourier;
   use stochastic_rs_quant::python::PyHestonPricer;
+  use stochastic_rs_quant::python::PyHestonSlvCalibrationResult;
+  use stochastic_rs_quant::python::PyHestonSlvCalibrator;
+  use stochastic_rs_quant::python::PyHestonSlvPricer;
   use stochastic_rs_quant::python::PyHscmCalibrator;
   use stochastic_rs_quant::python::PyHscmMarketOption;
   use stochastic_rs_quant::python::PyHscmModel;
@@ -339,6 +344,7 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_quant::python::PyImpliedVolSurface;
   use stochastic_rs_quant::python::PyKirkSpreadPricer;
   use stochastic_rs_quant::python::PyKouFourier;
+  use stochastic_rs_quant::python::PyLeverageSurface;
   use stochastic_rs_quant::python::PyLevyCalibrator;
   use stochastic_rs_quant::python::PyMCBarrierPricer;
   use stochastic_rs_quant::python::PyMarketSlice;
@@ -366,6 +372,8 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyBachelierPricer>()?;
   m.add_class::<PyHestonPricer>()?;
   m.add_class::<PyHestonAdiPricer>()?;
+  m.add_class::<PyLeverageSurface>()?;
+  m.add_class::<PyHestonSlvPricer>()?;
   m.add_class::<PySabrPricer>()?;
   m.add_class::<PyMerton1976Pricer>()?;
   m.add_class::<PyQuantoPricer>()?;
@@ -394,6 +402,8 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   m.add_class::<PyMarketSlice>()?;
   m.add_class::<PyBSMCalibrator>()?;
   m.add_class::<PyHestonCalibrator>()?;
+  m.add_class::<PyHestonSlvCalibrator>()?;
+  m.add_class::<PyHestonSlvCalibrationResult>()?;
   m.add_class::<PySabrCalibrator>()?;
   m.add_class::<PySVJCalibrator>()?;
   m.add_class::<PyDoubleHestonCalibrator>()?;

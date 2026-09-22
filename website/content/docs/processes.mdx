@@ -1,6 +1,6 @@
 ---
 title: Stochastic processes
-description: 131 stochastic processes — diffusion, jump, volatility, interest-rate, fractional / rough, and noise. Catalog organised by mathematical family.
+description: 132 stochastic processes — diffusion, jump, volatility, interest-rate, fractional / rough, and noise. Catalog organised by mathematical family.
 category: process
 since: 2.0.0
 status: stable
@@ -8,7 +8,7 @@ status: stable
 
 # Stochastic processes
 
-The `stochastic-rs-stochastic` crate ships **131 processes** organised
+The `stochastic-rs-stochastic` crate ships **132 processes** organised
 into eleven families (below). Every process implements
 [`ProcessExt<T>`](/docs/concepts/process-ext): `sample()` returns one path,
 `sample_map(m, f)` folds over `m` paths in parallel, and `sample_par(m)`
@@ -22,7 +22,7 @@ derive its own exhaustive guard list, so the two never disagree. That file
 excludes `src/traits/process.rs` deliberately: it contributes only blanket
 impls of *marker* traits keyed off a `P: ProcessExt<...>` bound
 (`OneDimensional`, `MultiDimensional`, …), never a concrete process type —
-counting those inflates 131 to 134, which is how earlier audits of this
+counting those inflates 132 to 135, which is how earlier audits of this
 page disagreed with each other.
 
 ## Families
@@ -32,7 +32,7 @@ page disagreed with each other.
 | **Diffusion**                  | 36    | OU, GBM (log + standard + correlated multi-asset), CIR, CEV, CKLS, Aït-Sahalia, Pearson, Jacobi, regime-switching, Fouque, Wishart (matrix-valued CIR) |
 | **Core building blocks**       | 20    | Brownian motion (+ bridge, correlated, correlated-fractional), fBM, Poisson (+ compound, custom jump sizes), Hawkes (+ multivariate), subordinators (α-stable, gamma, inverse-Gaussian, tempered-stable, Poisson, CTRW), linear fractional stable motion, naive (direct-convolution) Volterra |
 | **Jump**                       | 17    | Merton, Kou, CGMY, NIG, VG, bilateral gamma, KoBoL, RDTS, CTS, Bates, Lévy diffusion |
-| **Volatility**                 | 15    | Heston (+ log, 2D, multifactor), SABR (+ multifactor), Bergomi, rough Bergomi, rough Heston, double-Heston, BNS, HKDE, Bates SVJ (+ fractional), SVCGMY |
+| **Volatility**                 | 16    | Heston (+ log, 2D, multifactor, stochastic-local), SABR (+ multifactor), Bergomi, rough Bergomi, rough Heston, double-Heston, BNS, HKDE, Bates SVJ (+ fractional), SVCGMY |
 | **Interest rate**               | 16    | Vasicek (+ fractional), CIR++, CIR 2-factor, ADG (affine/quadratic-Gaussian multi-factor), Hull-White (1F + 2F), Black-Karasinski, Ho-Lee, HJM, LMM, BGM, Wu-Zhang, Duffie-Kan (+ jump), Cheyette (quasi-Gaussian, local volatility) |
 | **Autoregressive / GARCH**     | 9     | AR(p), MA(q), ARIMA, SARIMA, ARCH, GARCH, EGARCH, GJR-GARCH, AGARCH |
 | **Noise**                       | 6     | Fractional Gaussian noise, Gaussian noise, white noise, correlated FGN / GN, k-dimensional correlated increments from a correlation matrix |
@@ -116,6 +116,36 @@ variance only, so keep `HestonPow::Sqrt`. Reference: Andersen, L. (2008),
 *Efficient simulation of the Heston stochastic volatility model*, Journal of
 Computational Finance 11(3). (`.qe()` is Rust-only; the Python `Heston` uses the
 Euler scheme.)
+
+### Heston stochastic-local volatility
+
+The Heston model under a leverage function $L(t, S)$ and a mixing fraction
+$\eta$: $dS_t = \mu S_t\,dt + L(t, S_t)\sqrt{V_t}\,S_t\,dW^1_t$,
+$dV_t = \kappa(\theta - V_t)\,dt + \eta\sigma\sqrt{V_t}\,dW^2_t$. The leverage
+is an `Fn2D` of time and spot: an `Expr` reaches a device; a closure, a
+Python callable or a tabulated `Grid2D` — what a calibrated `LeverageSurface`
+converts into — keeps the process on the host. With $\eta = 1$ and
+$L \equiv 1$ the path is `HestonLog`'s, bit for bit. The
+[quant page](/docs/quant#heston-slv-leverage-calibration-by-the-particle-method)
+calibrates $L$ to a vanilla surface.
+
+<Tabs items={['Rust', 'Python']}>
+<Tab value="Rust">
+<RustExample path="tests/doctest_processes_heston_slv.rs" />
+</Tab>
+<Tab value="Python">
+```python
+import stochastic_rs as srs
+
+# leverage: a callable L(t, s), a (spots, times, values) triple of arrays, or
+# the LeverageSurface a HestonSlvCalibrator returns
+p = srs.PyHestonSlv(kappa=2.0, theta=0.04, sigma=0.3, rho=-0.7, mu=0.03, eta=0.6,
+                    leverage=lambda t, s: 1.2 - 0.003 * s, n=1000,
+                    s0=100.0, v0=0.04, t=1.0)
+s, v = p.sample()                   # both numpy arrays
+```
+</Tab>
+</Tabs>
 
 ### Fractional Brownian motion
 

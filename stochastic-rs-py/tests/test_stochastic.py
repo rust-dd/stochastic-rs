@@ -196,3 +196,28 @@ def test_device_argument_on_the_process_classes():
         noise = fgn.sample_par(3)
         assert noise.shape == (3, 64) and noise.dtype == np.float32
 
+
+
+def test_heston_slv_samples_under_a_callable_and_a_grid_leverage():
+    kwargs = dict(kappa=2.0, theta=0.04, sigma=0.3, rho=-0.7, mu=0.05, eta=0.6, n=65, s0=100.0, v0=0.04, t=1.0)
+    by_callable = sr.PyHestonSlv(leverage=lambda t, s: 0.8 + 0.002 * s, seed=3, **kwargs)
+    s, v = by_callable.sample()
+    assert s.shape == (65,) and v.shape == (65,)
+    assert s[0] == 100.0 and v[0] == 0.04 and np.all(v >= 0.0)
+    assert not by_callable.device_ready()
+    assert abs(by_callable.leverage(0.2, 100.0) - 1.0) < 1e-15
+    spots = np.linspace(1.0, 400.0, 400)
+    times = np.array([0.0, 1.0])
+    values = 0.8 + 0.002 * spots[None, :].repeat(2, axis=0)
+    by_grid = sr.PyHestonSlv(leverage=(spots, times, values), seed=3, **kwargs)
+    s_grid, v_grid = by_grid.sample()
+    assert np.array_equal(v_grid, v)
+    assert np.allclose(s_grid, s, rtol=1e-9)
+    ss, vs = by_grid.sample_par(8)
+    assert ss.shape == (8, 65) and vs.shape == (8, 65)
+    again, _ = sr.PyHestonSlv(leverage=(spots, times, values), seed=3, **kwargs).sample()
+    assert np.array_equal(again, s_grid)
+    with pytest.raises(ValueError):
+        sr.PyHestonSlv(leverage=(spots, times, values[:1]), **kwargs)
+    with pytest.raises(ValueError):
+        sr.PyHestonSlv(leverage=lambda t, s: 1.0, **{**kwargs, "eta": 1.5})

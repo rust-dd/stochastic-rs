@@ -1,6 +1,6 @@
 //! `interest/` slice of the exhaustive reproducibility guard — see
 //! `../reproducibility_all_processes.rs` for the full rationale, the
-//! derivation of the 131-type list, and shared methodology notes. Seven of
+//! derivation of the 132-type list, and shared methodology notes. Seven of
 //! these types (`Adg`, `BlackKarasinski`, `Cheyette`, `Cir2F`'s own `phi`, `CirPlusPlus`,
 //! `Hjm`, `HullWhite`, `HullWhite2F`) take an `impl Into<Fn1D<T>>`/
 //! `Fn2D<T>` curve parameter; a bare closure does not coerce to that bound

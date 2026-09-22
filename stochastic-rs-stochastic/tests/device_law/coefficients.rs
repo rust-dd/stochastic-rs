@@ -9,6 +9,7 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::traits::Expr;
 use stochastic_rs_stochastic::interest::cheyette::Cheyette;
 use stochastic_rs_stochastic::traits::ProcessExt;
+use stochastic_rs_stochastic::volatility::heston_slv::HestonSlv;
 use stochastic_rs_stochastic::volterra::kernel::ExponentialKernel;
 use stochastic_rs_stochastic::volterra::sve::VolterraSde;
 
@@ -16,6 +17,7 @@ use super::common::Device;
 use super::common::M;
 use super::common::agrees;
 use super::common::all_finite;
+use super::common::means_agree;
 use super::common::spreads_agree;
 use super::common::terminal_mean;
 use super::common::terminal_std;
@@ -147,6 +149,53 @@ fn volterra_sde_with_expression_coefficients_agrees_with_the_cpu_law() {
   );
 }
 
+fn affine_leverage(_t: f32, s: f32) -> f32 {
+  1.2 - 0.003 * s
+}
+
+/// The SLV spot under a leverage written as an expression that falls with
+/// the spot, and half the vol-of-vol: the spot's terminal spread reads the
+/// leverage, the mixing and the correlation, the variance's terminal mean
+/// and spread read the reversion and the mixed vol-of-vol, and none may go
+/// negative — the family truncates.
+#[test]
+fn heston_slv_with_an_expression_leverage_agrees_with_the_cpu_law() {
+  let build = || {
+    HestonSlv::<f32, _>::new(
+      Some(100.0),
+      Some(0.04),
+      2.0,
+      0.04,
+      0.5,
+      -0.7,
+      0.0,
+      0.5,
+      Expr::lit(1.2) - Expr::x() * 0.003,
+      N,
+      Some(1.0),
+      Deterministic::new(311),
+    )
+  };
+  let device = build().on::<Device>().sample_par(M);
+  let host = build().sample_par(M);
+  let plane = |paths: &[[Array1<f32>; 2]], k: usize| -> Vec<Array1<f32>> {
+    paths.iter().map(|p| p[k].clone()).collect()
+  };
+  let (ds, dv) = (plane(&device, 0), plane(&device, 1));
+  let (hs, hv) = (plane(&host, 0), plane(&host, 1));
+  all_finite(&ds, "HestonSlv spot");
+  all_finite(&dv, "HestonSlv variance");
+  assert!(
+    dv.iter().all(|p| p.iter().all(|v| *v >= 0.0)),
+    "a device variance went negative"
+  );
+  assert_eq!(ds[0][0], 100.0, "every path starts at the spot");
+  means_agree(&hs, &ds, "HestonSlv spot terminal mean");
+  spreads_agree(&hs, &ds, "HestonSlv spot terminal spread");
+  means_agree(&hv, &dv, "HestonSlv variance terminal mean");
+  spreads_agree(&hv, &dv, "HestonSlv variance terminal spread");
+}
+
 /// A coefficient written as a Rust closure has no program; the device build
 /// samples on the host and is the host build to the bit.
 #[test]
@@ -182,4 +231,22 @@ fn closure_coefficients_keep_cheyette_and_the_volterra_sde_on_the_host() {
     volterra().sample_par(4)
   );
   assert_eq!(volterra().on::<Device>().sample(), volterra().sample());
+  let slv = || {
+    HestonSlv::<f32, _>::new(
+      Some(100.0),
+      Some(0.04),
+      2.0,
+      0.04,
+      0.3,
+      -0.7,
+      0.0,
+      1.0,
+      affine_leverage as fn(f32, f32) -> f32,
+      32,
+      Some(1.0),
+      Deterministic::new(231),
+    )
+  };
+  assert_eq!(slv().on::<Device>().sample_par(4), slv().sample_par(4));
+  assert_eq!(slv().on::<Device>().sample(), slv().sample());
 }

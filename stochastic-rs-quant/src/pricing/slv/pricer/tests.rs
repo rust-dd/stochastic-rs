@@ -179,3 +179,29 @@ fn the_rate_guard_outranks_the_extent_guard() {
   let pricer = tune(HestonSlvPricer::new(params(), unit_leverage(), 0.05, 0.0));
   pricer.price_call(1000.0, 1000.0, 0.2, 0.0, 5.0);
 }
+
+/// `L ≡ 1` under the full vol-of-vol is the Heston model, so the Monte Carlo
+/// price has to land on the closed form: within three standard errors, plus
+/// the weak-order-one bias of the Euler scheme at 250 steps a year (Lord,
+/// Koekkoek & van Dijk 2010 put the absorption scheme's bias at this step
+/// size in the low cents for these parameters).
+#[test]
+fn unit_leverage_reprices_the_closed_form_heston_call() {
+  use crate::pricing::heston::HestonPricer;
+  let p = params();
+  let pricer = HestonSlvPricer::unanchored(p, unit_leverage())
+    .with_paths(60_000)
+    .with_steps_per_year(250)
+    .with_seed(99);
+  let (s, k, r, q, tau) = (100.0, 100.0, 0.03, 0.01, 0.5);
+  let estimate = pricer.price_call_estimate(s, k, r, q, tau);
+  let exact = HestonPricer::new(p.v0, p.rho, p.kappa, p.theta, p.sigma, Some(0.0))
+    .price_call(s, k, r, q, tau);
+  let band = 3.0 * estimate.std_err + 0.03;
+  assert!(
+    (estimate.mean - exact).abs() < band,
+    "slv {} ± {} vs heston {exact}",
+    estimate.mean,
+    estimate.std_err
+  );
+}
