@@ -24,6 +24,7 @@ pub use stochastic_rs_distributions::traits::Expr;
 pub use stochastic_rs_distributions::traits::FloatExt;
 pub use stochastic_rs_distributions::traits::Fn1D;
 pub use stochastic_rs_distributions::traits::Fn2D;
+pub use stochastic_rs_distributions::traits::Grid2D;
 pub use stochastic_rs_distributions::traits::Program;
 pub use stochastic_rs_distributions::traits::RealExt;
 pub use stochastic_rs_distributions::traits::SimdFloatExt;
