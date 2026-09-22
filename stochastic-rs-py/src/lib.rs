@@ -344,8 +344,8 @@ fn stochastic_rs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
   use stochastic_rs_quant::python::PyImpliedVolSurface;
   use stochastic_rs_quant::python::PyKirkSpreadPricer;
   use stochastic_rs_quant::python::PyKouFourier;
-  use stochastic_rs_quant::python::PyLevyCalibrator;
   use stochastic_rs_quant::python::PyLeverageSurface;
+  use stochastic_rs_quant::python::PyLevyCalibrator;
   use stochastic_rs_quant::python::PyMCBarrierPricer;
   use stochastic_rs_quant::python::PyMarketSlice;
   use stochastic_rs_quant::python::PyMcEstimate;

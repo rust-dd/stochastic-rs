@@ -75,7 +75,12 @@ fn a_grid_leverage_matches_the_closure_it_tabulates() {
   let values = Array2::from_shape_fn((2, 400), |(j, i)| affine_leverage(times[j], spots[i]));
   let grid = Grid2D::new(times, spots, values);
   let [s_grid, v_grid] = slv(1.0, grid, Deterministic::new(3)).sample();
-  let [s_fn, v_fn] = slv(1.0, affine_leverage as fn(f64, f64) -> f64, Deterministic::new(3)).sample();
+  let [s_fn, v_fn] = slv(
+    1.0,
+    affine_leverage as fn(f64, f64) -> f64,
+    Deterministic::new(3),
+  )
+  .sample();
   assert_eq!(v_grid, v_fn, "the variance never reads the leverage");
   for (a, b) in s_grid.iter().zip(s_fn.iter()) {
     assert!((a - b).abs() < 1e-9 * a.abs(), "grid {a} vs closure {b}");
@@ -110,8 +115,14 @@ fn only_an_expression_leverage_is_device_ready() {
 #[test]
 fn the_default_is_the_heston_default_under_unit_leverage() {
   let p = HestonSlv::<f64>::default();
-  assert_eq!((p.kappa, p.theta, p.sigma, p.rho, p.mu, p.eta), (2.0, 0.04, 0.3, -0.7, 0.05, 1.0));
-  assert_eq!((p.n, p.t, p.s0, p.v0), (252, Some(1.0), Some(100.0), Some(0.04)));
+  assert_eq!(
+    (p.kappa, p.theta, p.sigma, p.rho, p.mu, p.eta),
+    (2.0, 0.04, 0.3, -0.7, 0.05, 1.0)
+  );
+  assert_eq!(
+    (p.n, p.t, p.s0, p.v0),
+    (252, Some(1.0), Some(100.0), Some(0.04))
+  );
   assert!(p.device_ready(), "the default leverage is an expression");
   assert_eq!(p.leverage.call(0.3, 120.0), 1.0);
   let [s, v] = p.sample();

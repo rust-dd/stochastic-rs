@@ -1775,7 +1775,10 @@ impl<T: FloatExt> EulerSpec<T> {
         theta,
         sigma,
         rho,
-      } => (Family::HestonSlv.code(), pad([mu, kappa, theta, sigma, rho])),
+      } => (
+        Family::HestonSlv.code(),
+        pad([mu, kappa, theta, sigma, rho]),
+      ),
       EulerSpec::InverseStableSubordinator {
         alpha,
         c,

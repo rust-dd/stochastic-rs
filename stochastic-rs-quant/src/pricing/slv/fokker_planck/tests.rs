@@ -41,7 +41,8 @@ fn unit_leverage() -> Fn2D<f64> {
 #[test]
 fn a_unit_leverage_density_reprices_the_closed_form_heston_calls() {
   let p = params(1.0);
-  let density = heston_slv_density(&p, S0, R, Q, &unit_leverage(), &[0.25, 1.0], &method()).unwrap();
+  let density =
+    heston_slv_density(&p, S0, R, Q, &unit_leverage(), &[0.25, 1.0], &method()).unwrap();
   let exact = HestonPricer::new(p.v0, p.rho, p.kappa, p.theta, p.sigma, Some(0.0));
   for (index, tau) in [(0, 0.25), (1, 1.0)] {
     for k in [80.0, 90.0, 100.0, 110.0, 120.0] {
@@ -92,8 +93,14 @@ fn a_smaller_leverage_lowers_the_option_value() {
   let unit = heston_slv_density(&p, S0, R, Q, &unit_leverage(), &[0.5], &method()).unwrap();
   let damped: Fn2D<f64> = Expr::lit(0.8).into();
   let low = heston_slv_density(&p, S0, R, Q, &damped, &[0.5], &method()).unwrap();
-  let (c_unit, c_low) = (unit.call_price(0, 100.0, R, 0.5), low.call_price(0, 100.0, R, 0.5));
-  assert!(c_low < c_unit, "L = 0.8 prices {c_low}, L = 1 prices {c_unit}");
+  let (c_unit, c_low) = (
+    unit.call_price(0, 100.0, R, 0.5),
+    low.call_price(0, 100.0, R, 0.5),
+  );
+  assert!(
+    c_low < c_unit,
+    "L = 0.8 prices {c_low}, L = 1 prices {c_unit}"
+  );
   assert!((low.mass[0] - 1.0).abs() < 1e-8);
 }
 
@@ -113,19 +120,31 @@ fn smiling_local_vol() -> Grid2D<f64> {
 #[test]
 fn the_calibration_lays_a_finite_surface_on_the_mesh_and_keeps_the_forward() {
   let p = params(0.6);
-  let run = calibrate_leverage_fokker_planck(&p, S0, R, Q, &smiling_local_vol(), &[0.25, 0.75], &method()).unwrap();
+  let run =
+    calibrate_leverage_fokker_planck(&p, S0, R, Q, &smiling_local_vol(), &[0.25, 0.75], &method())
+      .unwrap();
   let lev = &run.leverage;
   assert_eq!(lev.times()[0], 0.0);
   assert_eq!(lev.horizon(), 0.75);
-  assert!(lev.spots().iter().any(|s| (s - S0).abs() < 1e-9), "the spot is a node");
-  assert_eq!(lev.values().row(0), lev.values().row(1), "row 0 is the first computed row");
+  assert!(
+    lev.spots().iter().any(|s| (s - S0).abs() < 1e-9),
+    "the spot is a node"
+  );
+  assert_eq!(
+    lev.values().row(0),
+    lev.values().row(1),
+    "row 0 is the first computed row"
+  );
   assert!(lev.values().iter().all(|l| l.is_finite() && *l > 0.0));
   let atm = lev.interpolate(S0, 0.5);
   assert!((0.5..2.0).contains(&atm), "ATM leverage {atm}");
   for (index, tau) in [(0, 0.25), (1, 0.75)] {
     let forward = S0 * ((R - Q) * tau).exp();
     let mean = run.density.spot_mean(index);
-    assert!((mean / forward - 1.0).abs() < 2e-3, "spot mean {mean} vs forward {forward}");
+    assert!(
+      (mean / forward - 1.0).abs() < 2e-3,
+      "spot mean {mean} vs forward {forward}"
+    );
     assert!((run.density.mass[index] - 1.0).abs() < 1e-8);
   }
 }
@@ -154,14 +173,19 @@ fn eta_zero_at_the_long_run_variance_is_close_to_the_closed_form() {
       worst = worst.max((lev.values()[[j, i]] / expected - 1.0).abs());
     }
   }
-  assert!(worst < 0.03, "worst relative deviation from the closed form is {worst}");
+  assert!(
+    worst < 0.03,
+    "worst relative deviation from the closed form is {worst}"
+  );
 }
 
 #[test]
 fn bad_settings_are_errors() {
   let p = params(1.0);
   let grid = smiling_local_vol();
-  let run = |m: FokkerPlanckMethod| calibrate_leverage_fokker_planck(&p, S0, R, Q, &grid, &[0.5], &m).map(|_| ());
+  let run = |m: FokkerPlanckMethod| {
+    calibrate_leverage_fokker_planck(&p, S0, R, Q, &grid, &[0.5], &m).map(|_| ())
+  };
   assert!(run(method().with_nodes(2, 60)).is_err());
   assert!(run(method().with_inner_iterations(0)).is_err());
   assert!(run(method().with_theta(0.0)).is_err());
@@ -170,4 +194,3 @@ fn bad_settings_are_errors() {
   assert!(run(method().with_x_stretch(0.0)).is_err());
   assert!(calibrate_leverage_fokker_planck(&p, S0, R, Q, &grid, &[], &method()).is_err());
 }
-

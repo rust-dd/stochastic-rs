@@ -58,7 +58,9 @@ impl Mesh {
       let share = -xi_lo / (xi_hi - xi_lo);
       let n_lo = ((intervals as f64 * share).round() as usize).clamp(1, intervals - 1);
       let n_hi = intervals - n_lo;
-      v.extend((0..=n_lo).map(|k| v0 + v_stretch * (xi_lo * (1.0 - k as f64 / n_lo as f64)).sinh()));
+      v.extend(
+        (0..=n_lo).map(|k| v0 + v_stretch * (xi_lo * (1.0 - k as f64 / n_lo as f64)).sinh()),
+      );
       v.extend((1..=n_hi).map(|k| v0 + v_stretch * (xi_hi * k as f64 / n_hi as f64).sinh()));
       v[n_lo] = v0;
       n_lo
@@ -104,7 +106,14 @@ impl Mesh {
       .wv
       .iter()
       .enumerate()
-      .map(|(j, wv)| wv * self.wx.iter().enumerate().map(|(i, wx)| wx * p[j * m1 + i]).sum::<f64>())
+      .map(|(j, wv)| {
+        wv * self
+          .wx
+          .iter()
+          .enumerate()
+          .map(|(i, wx)| wx * p[j * m1 + i])
+          .sum::<f64>()
+      })
       .sum()
   }
 
@@ -112,7 +121,14 @@ impl Mesh {
   pub fn marginal(&self, p: &[f64]) -> Vec<f64> {
     let m1 = self.m1();
     (0..m1)
-      .map(|i| self.wv.iter().enumerate().map(|(j, wv)| wv * p[j * m1 + i]).sum())
+      .map(|i| {
+        self
+          .wv
+          .iter()
+          .enumerate()
+          .map(|(j, wv)| wv * p[j * m1 + i])
+          .sum()
+      })
       .collect()
   }
 
@@ -125,7 +141,15 @@ impl Mesh {
       .iter()
       .zip(&self.v)
       .enumerate()
-      .map(|(j, (wv, vj))| wv * vj * self.wx.iter().enumerate().map(|(i, wx)| wx * p[j * m1 + i]).sum::<f64>())
+      .map(|(j, (wv, vj))| {
+        wv * vj
+          * self
+            .wx
+            .iter()
+            .enumerate()
+            .map(|(i, wx)| wx * p[j * m1 + i])
+            .sum::<f64>()
+      })
       .sum()
   }
 
@@ -159,7 +183,11 @@ fn cell_widths(nodes: &[f64]) -> Vec<f64> {
   (0..n)
     .map(|i| {
       let left = if i == 0 { 0.0 } else { nodes[i] - nodes[i - 1] };
-      let right = if i + 1 == n { 0.0 } else { nodes[i + 1] - nodes[i] };
+      let right = if i + 1 == n {
+        0.0
+      } else {
+        nodes[i + 1] - nodes[i]
+      };
       0.5 * (left + right)
     })
     .collect()
@@ -246,7 +274,11 @@ impl Direction {
   pub fn along_v(mesh: &Mesh, kappa: f64, theta: f64, xi: f64) -> Self {
     let (m1, m2) = (mesh.m1(), mesh.m2());
     let mut out = Self::empty(m1 * m2);
-    let diffusion = mesh.v.iter().map(|vj| 0.5 * xi * xi * vj).collect::<Vec<_>>();
+    let diffusion = mesh
+      .v
+      .iter()
+      .map(|vj| 0.5 * xi * xi * vj)
+      .collect::<Vec<_>>();
     let advection = (0..m2)
       .map(|j| {
         if j == 0 {
@@ -257,7 +289,9 @@ impl Direction {
       })
       .collect::<Vec<_>>();
     let (mut lo, mut di, mut up) = (vec![0.0; m2], vec![0.0; m2], vec![0.0; m2]);
-    line_stencil(&mesh.v, &mesh.wv, &diffusion, &advection, &mut lo, &mut di, &mut up);
+    line_stencil(
+      &mesh.v, &mesh.wv, &diffusion, &advection, &mut lo, &mut di, &mut up,
+    );
     for j in 0..m2 {
       for i in 0..m1 {
         let k = j * m1 + i;
@@ -321,7 +355,13 @@ impl Direction {
     for j in 0..m2 {
       let row = j * m1;
       for i in 0..m1 {
-        scratch.load(i, -c * self.lower[row + i], 1.0 - c * self.diag[row + i], -c * self.upper[row + i], rhs[row + i]);
+        scratch.load(
+          i,
+          -c * self.lower[row + i],
+          1.0 - c * self.diag[row + i],
+          -c * self.upper[row + i],
+          rhs[row + i],
+        );
       }
       scratch.solve(m1, &mut out[row..row + m1], 1);
     }
@@ -334,7 +374,13 @@ impl Direction {
     for i in 0..m1 {
       for j in 0..m2 {
         let k = j * m1 + i;
-        scratch.load(j, -c * self.lower[k], 1.0 - c * self.diag[k], -c * self.upper[k], rhs[k]);
+        scratch.load(
+          j,
+          -c * self.lower[k],
+          1.0 - c * self.diag[k],
+          -c * self.upper[k],
+          rhs[k],
+        );
       }
       scratch.solve(m2, &mut out[i..], m1);
     }
@@ -423,7 +469,11 @@ impl<'a> Mixed<'a> {
         let average = if cj == 1 {
           0.5 * (p[m1 + i_lo] + p[m1 + i_hi])
         } else {
-          0.25 * (p[j_lo * m1 + i_lo] + p[j_lo * m1 + i_hi] + p[j_hi * m1 + i_lo] + p[j_hi * m1 + i_hi])
+          0.25
+            * (p[j_lo * m1 + i_lo]
+              + p[j_lo * m1 + i_hi]
+              + p[j_hi * m1 + i_lo]
+              + p[j_hi * m1 + i_hi])
         };
         self.corners[cj * width + ci] = self.rho_xi * l_corner * v_corner * average;
       }
@@ -514,7 +564,9 @@ pub(super) fn step(
   for k in 0..n {
     b.rhs[k] = b.y0[k] - theta_dt * b.f1[k];
   }
-  next.x.solve_x(mesh, theta_dt, &b.rhs, &mut b.y1, &mut b.scratch);
+  next
+    .x
+    .solve_x(mesh, theta_dt, &b.rhs, &mut b.y1, &mut b.scratch);
   for k in 0..n {
     b.rhs[k] = b.y1[k] - theta_dt * b.f2[k];
   }
@@ -534,7 +586,9 @@ pub(super) fn step(
   for k in 0..n {
     b.rhs[k] = b.y0[k] - theta_dt * b.g1[k];
   }
-  next.x.solve_x(mesh, theta_dt, &b.rhs, &mut b.y1, &mut b.scratch);
+  next
+    .x
+    .solve_x(mesh, theta_dt, &b.rhs, &mut b.y1, &mut b.scratch);
   for k in 0..n {
     b.rhs[k] = b.y1[k] - theta_dt * b.g2[k];
   }

@@ -35,9 +35,12 @@ fn leverage_from_py(obj: &Bound<'_, PyAny>) -> PyResult<Fn2D<f64>> {
   let times = times.as_array().to_owned();
   let values = values.as_array().to_owned();
   if spots.is_empty() || times.is_empty() {
-    return Err(PyValueError::new_err("leverage: spots and times must not be empty"));
+    return Err(PyValueError::new_err(
+      "leverage: spots and times must not be empty",
+    ));
   }
-  if spots.windows(2).into_iter().any(|w| w[0] >= w[1]) || times.windows(2).into_iter().any(|w| w[0] >= w[1])
+  if spots.windows(2).into_iter().any(|w| w[0] >= w[1])
+    || times.windows(2).into_iter().any(|w| w[0] >= w[1])
   {
     return Err(PyValueError::new_err(
       "leverage: spots and times must be strictly ascending",
@@ -92,10 +95,14 @@ impl PyHestonSlv {
       return Err(PyValueError::new_err("rho must lie in [-1, 1]"));
     }
     if kappa < 0.0 || theta < 0.0 || sigma < 0.0 {
-      return Err(PyValueError::new_err("kappa, theta and sigma must be non-negative"));
+      return Err(PyValueError::new_err(
+        "kappa, theta and sigma must be non-negative",
+      ));
     }
     if s0.is_some_and(|s| s <= 0.0) || v0.is_some_and(|v| v < 0.0) {
-      return Err(PyValueError::new_err("s0 must be positive and v0 non-negative"));
+      return Err(PyValueError::new_err(
+        "s0 must be positive and v0 non-negative",
+      ));
     }
     let leverage = leverage_from_py(leverage)?;
     Ok(match seed {

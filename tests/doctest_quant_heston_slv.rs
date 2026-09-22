@@ -55,11 +55,18 @@ fn heston_slv_calibrates_a_vanilla_surface_and_prices_under_half_mixing() {
     .calibrate(None)
     .unwrap();
   assert!(result.converged());
-  assert!(result.rmse() < 1.0, "in-sample repricing rmse {}", result.rmse());
+  assert!(
+    result.rmse() < 1.0,
+    "in-sample repricing rmse {}",
+    result.rmse()
+  );
   assert!(result.leverage().covers(100.0, 0.5));
 
   // The pricer is anchored to the calibration rates and reprices the market.
-  let pricer = result.to_model(r, q).with_paths(4_000).with_steps_per_year(50);
+  let pricer = result
+    .to_model(r, q)
+    .with_paths(4_000)
+    .with_steps_per_year(50);
   let call = pricer.price_call(s, 100.0, r, q, 0.5);
   let market = model.price_call(s, 100.0, r, q, 0.5);
   assert!((call - market).abs() < 1.0, "slv {call} vs market {market}");

@@ -48,7 +48,9 @@ impl PyLeverageSurface {
     if spots.windows(2).into_iter().any(|w| w[0] >= w[1])
       || times.windows(2).into_iter().any(|w| w[0] >= w[1])
     {
-      return Err(PyValueError::new_err("spots and times must be strictly ascending"));
+      return Err(PyValueError::new_err(
+        "spots and times must be strictly ascending",
+      ));
     }
     if values.dim() != (times.len(), spots.len()) {
       return Err(PyValueError::new_err(format!(
@@ -127,7 +129,9 @@ impl PyHestonSlvPricer {
     seed: u64,
   ) -> PyResult<Self> {
     if v0 < 0.0 || theta < 0.0 || sigma < 0.0 || kappa < 0.0 {
-      return Err(PyValueError::new_err("kappa, theta, sigma and v0 must be non-negative"));
+      return Err(PyValueError::new_err(
+        "kappa, theta, sigma and v0 must be non-negative",
+      ));
     }
     if !(0.0..=1.0).contains(&eta) {
       return Err(PyValueError::new_err("eta must lie in [0, 1]"));
@@ -136,7 +140,9 @@ impl PyHestonSlvPricer {
       return Err(PyValueError::new_err("rho must lie in [-1, 1]"));
     }
     if n_paths == 0 || steps_per_year == 0 {
-      return Err(PyValueError::new_err("n_paths and steps_per_year must be positive"));
+      return Err(PyValueError::new_err(
+        "n_paths and steps_per_year must be positive",
+      ));
     }
     let params = HestonSlvParams {
       kappa,
@@ -179,7 +185,14 @@ impl PyHestonSlvPricer {
 
   /// The call price with its Monte Carlo error bar.
   #[pyo3(signature = (s, k, r, q, tau))]
-  fn price_call_estimate(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> PyResult<PyMcEstimate> {
+  fn price_call_estimate(
+    &self,
+    s: f64,
+    k: f64,
+    r: f64,
+    q: f64,
+    tau: f64,
+  ) -> PyResult<PyMcEstimate> {
     self.check_rates(r, q)?;
     Ok(self.inner.price_call_estimate(s, k, r, q, tau).into())
   }
@@ -207,10 +220,12 @@ impl PyHestonSlvPricer {
 impl PyHestonSlvPricer {
   fn check_rates(&self, r: f64, q: f64) -> PyResult<()> {
     match self.inner.calibration_rates {
-      Some((r0, q0)) if (r - r0).abs() > 1e-12 || (q - q0).abs() > 1e-12 => Err(PyValueError::new_err(format!(
-        "the leverage surface was calibrated at r={r0}, q={q0} but the query is at r={r}, q={q}; \
+      Some((r0, q0)) if (r - r0).abs() > 1e-12 || (q - q0).abs() > 1e-12 => {
+        Err(PyValueError::new_err(format!(
+          "the leverage surface was calibrated at r={r0}, q={q0} but the query is at r={r}, q={q}; \
          recalibrate at the query rates"
-      ))),
+        )))
+      }
       _ => Ok(()),
     }
   }
@@ -240,7 +255,15 @@ impl PyHestonSlvCalibrationResult {
   fn heston(&self) -> Option<(f64, f64, f64, f64, f64, bool, f64)> {
     self.inner.heston.as_ref().map(|fit| {
       let p = &fit.params;
-      (p.v0, p.kappa, p.theta, p.sigma, p.rho, fit.converged, fit.rmse())
+      (
+        p.v0,
+        p.kappa,
+        p.theta,
+        p.sigma,
+        p.rho,
+        fit.converged,
+        fit.rmse(),
+      )
     })
   }
 
@@ -376,7 +399,12 @@ impl PyHestonSlvCalibrator {
 
   /// Calibrate and return the pricer of the calibrated model.
   #[pyo3(signature = (n_paths=100_000, steps_per_year=200, seed=42))]
-  fn calibrate_to_model(&self, n_paths: usize, steps_per_year: usize, seed: u64) -> PyResult<PyHestonSlvPricer> {
+  fn calibrate_to_model(
+    &self,
+    n_paths: usize,
+    steps_per_year: usize,
+    seed: u64,
+  ) -> PyResult<PyHestonSlvPricer> {
     Ok(self.calibrate()?.to_model(n_paths, steps_per_year, seed))
   }
 

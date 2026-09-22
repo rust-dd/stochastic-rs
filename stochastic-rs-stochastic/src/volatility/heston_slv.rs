@@ -314,10 +314,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
   /// The leverage's program, read by the family as `pv`.
   fn program_spec(&self) -> Option<crate::euler::ProgramSpec<'_>> {
-    self.leverage.program().map(|first| crate::euler::ProgramSpec {
-      first,
-      second: None,
-    })
+    self
+      .leverage
+      .program()
+      .map(|first| crate::euler::ProgramSpec {
+        first,
+        second: None,
+      })
   }
 
   fn device_seed(&self) -> u64 {
@@ -488,7 +491,11 @@ impl<T: FloatExt> PathSampler<T> for HestonSlvSampler<'_, T> {
     let v = v
       .as_slice_mut()
       .expect("HestonSlv variance output must be contiguous");
-    assert_eq!(s.len(), v.len(), "spot and variance outputs must share a length");
+    assert_eq!(
+      s.len(),
+      v.len(),
+      "spot and variance outputs must share a length"
+    );
     self.fill_paths(s, v);
   }
 

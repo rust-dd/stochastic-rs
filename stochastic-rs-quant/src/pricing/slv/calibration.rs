@@ -257,7 +257,8 @@ pub fn calibrate_leverage(
       *slot = (xp.exp(), *vp);
     }
     sorted.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
-    let h = bandwidth_scale * local_vol.eval(t_next, s0) * t_next.max(method.bandwidth_t_min).sqrt();
+    let h =
+      bandwidth_scale * local_vol.eval(t_next, s0) * t_next.max(method.bandwidth_t_min).sqrt();
     let half_width = window_half_width(h);
     conditional
       .par_iter_mut()
@@ -293,10 +294,16 @@ pub(super) fn validate(
     bail!("the rates must be finite, got r = {r}, q = {q}");
   }
   if !(params.v0.is_finite() && params.v0 >= 0.0) {
-    bail!("v0 must be a finite non-negative variance, got {}", params.v0);
+    bail!(
+      "v0 must be a finite non-negative variance, got {}",
+      params.v0
+    );
   }
   if !(params.eta.is_finite() && params.eta >= 0.0) {
-    bail!("the mixing fraction eta must be finite and non-negative, got {}", params.eta);
+    bail!(
+      "the mixing fraction eta must be finite and non-negative, got {}",
+      params.eta
+    );
   }
   if !(params.rho.is_finite() && params.rho.abs() <= 1.0) {
     bail!("rho must be a correlation in [-1, 1], got {}", params.rho);
@@ -306,13 +313,22 @@ pub(super) fn validate(
       bail!("the Heston parameters must be finite");
     }
   }
-  if local_vol.values().iter().any(|v| !(v.is_finite() && *v >= 0.0)) {
-    bail!("the local volatility must be finite and non-negative everywhere; clean the Dupire surface first");
+  if local_vol
+    .values()
+    .iter()
+    .any(|v| !(v.is_finite() && *v >= 0.0))
+  {
+    bail!(
+      "the local volatility must be finite and non-negative everywhere; clean the Dupire surface first"
+    );
   }
   if snapshot_maturities.is_empty() {
     bail!("at least one snapshot maturity is needed: it is the surface's horizon");
   }
-  if snapshot_maturities.iter().any(|t| !(t.is_finite() && *t > 0.0)) {
+  if snapshot_maturities
+    .iter()
+    .any(|t| !(t.is_finite() && *t > 0.0))
+  {
     bail!("snapshot maturities must be finite and positive");
   }
   if snapshot_maturities.windows(2).any(|w| w[0] >= w[1]) {
@@ -381,7 +397,11 @@ fn conditional_variance(sorted: &[(f64, f64)], node: f64, h: f64, half_width: f6
     sum_w += w;
     sum_wv += w * v;
   }
-  if sum_w > 0.0 { sum_wv / sum_w } else { f64::NAN }
+  if sum_w > 0.0 {
+    sum_wv / sum_w
+  } else {
+    f64::NAN
+  }
 }
 
 /// A node no particle reaches takes the nearest node's estimate; a row no

@@ -72,10 +72,22 @@ fn calibrate_leverage_flat_vol_under_full_mixing_stays_near_one_at_the_money() {
   let times = Array1::from_vec(vec![0.1, 0.25, 0.5]);
   let lv = flat_local_vol(0.2, &spots, &times);
 
-  let run = calibrate_leverage(&params, 100.0, 0.05, 0.0, &lv, &[0.25, 0.5], &method(5_000, 123)).unwrap();
+  let run = calibrate_leverage(
+    &params,
+    100.0,
+    0.05,
+    0.0,
+    &lv,
+    &[0.25, 0.5],
+    &method(5_000, 123),
+  )
+  .unwrap();
   let leverage = &run.leverage;
   for &v in leverage.values().iter() {
-    assert!(v.is_finite() && v > 0.0, "leverage must be finite and positive");
+    assert!(
+      v.is_finite() && v > 0.0,
+      "leverage must be finite and positive"
+    );
   }
   let l_atm = leverage.interpolate(100.0, 0.25);
   assert!(
@@ -93,9 +105,13 @@ fn calibrate_leverage_eta_zero_is_the_closed_form() {
   let times = Array1::from_vec(vec![0.1, 0.25]);
   let lv = flat_local_vol(0.25, &spots, &times);
 
-  let run = calibrate_leverage(&params, 100.0, 0.05, 0.0, &lv, &[0.25], &method(2_000, 42)).unwrap();
+  let run =
+    calibrate_leverage(&params, 100.0, 0.05, 0.0, &lv, &[0.25], &method(2_000, 42)).unwrap();
   for &v in run.leverage.values().iter() {
-    assert!((v - 1.25).abs() < 1e-9, "eta=0 leverage={v} should be 0.25 / 0.2");
+    assert!(
+      (v - 1.25).abs() < 1e-9,
+      "eta=0 leverage={v} should be 0.25 / 0.2"
+    );
   }
 }
 
@@ -106,7 +122,16 @@ fn slv_pricer_produces_positive_monotone_prices() {
   let times = Array1::from_vec(vec![0.1, 0.25, 0.5, 1.0]);
   let lv = flat_local_vol(0.2, &spots, &times);
 
-  let run = calibrate_leverage(&params, 100.0, 0.05, 0.0, &lv, &[0.5, 1.0], &method(3_000, 99)).unwrap();
+  let run = calibrate_leverage(
+    &params,
+    100.0,
+    0.05,
+    0.0,
+    &lv,
+    &[0.5, 1.0],
+    &method(3_000, 99),
+  )
+  .unwrap();
   let pricer = HestonSlvPricer::new(params, run.leverage, 0.05, 0.0)
     .with_paths(20_000)
     .with_steps_per_year(100)
@@ -130,7 +155,13 @@ fn slv_pricer_flat_vol_is_black_scholes() {
   let lv = flat_local_vol(vol, &spots, &times);
 
   let run = calibrate_leverage(&params, s0, r, q, &lv, &[0.5], &method(2_000, 42)).unwrap();
-  assert!(run.leverage.values().iter().all(|l| (l - 1.0).abs() < 1e-12));
+  assert!(
+    run
+      .leverage
+      .values()
+      .iter()
+      .all(|l| (l - 1.0).abs() < 1e-12)
+  );
   let pricer = HestonSlvPricer::new(params, run.leverage, r, q)
     .with_paths(50_000)
     .with_steps_per_year(200)
@@ -193,7 +224,10 @@ fn slv_price_is_nan_beyond_the_calibrated_horizon() {
   assert!(at_horizon.is_finite() && at_horizon > 0.0);
   for tau in [0.51, 1.0, 5.0] {
     let out = pricer.price_call(100.0, 100.0, 0.05, 0.0, tau);
-    assert!(out.is_nan(), "tau={tau} is past the 0.5 horizon but priced at {out}");
+    assert!(
+      out.is_nan(),
+      "tau={tau} is past the 0.5 horizon but priced at {out}"
+    );
   }
 }
 

@@ -194,10 +194,17 @@ impl HestonSlvCalibrator {
       bail!("the spot must be finite and positive, got {}", self.s);
     }
     if !(self.r.is_finite() && self.q.is_finite()) {
-      bail!("the rates must be finite, got r = {}, q = {}", self.r, self.q);
+      bail!(
+        "the rates must be finite, got r = {}, q = {}",
+        self.r,
+        self.q
+      );
     }
     if !(self.eta.is_finite() && (0.0..=1.0).contains(&self.eta)) {
-      bail!("the mixing fraction eta must lie in [0, 1], got {}", self.eta);
+      bail!(
+        "the mixing fraction eta must lie in [0, 1], got {}",
+        self.eta
+      );
     }
     if self.strikes.iter().any(|k| !(k.is_finite() && *k > 0.0)) {
       bail!("strikes must be finite and positive");
@@ -229,7 +236,10 @@ impl HestonSlvCalibrator {
       );
     }
     if !(self.dupire_eps.is_finite() && self.dupire_eps > 0.0) {
-      bail!("dupire_eps must be finite and positive, got {}", self.dupire_eps);
+      bail!(
+        "dupire_eps must be finite and positive, got {}",
+        self.dupire_eps
+      );
     }
     Ok(())
   }
@@ -260,12 +270,16 @@ impl HestonSlvCalibrator {
   fn local_vol_grid(&self) -> Result<Grid2D<f64>> {
     let raw = match &self.local_vol {
       Some(lv) => lv.clone(),
-      None => Dupire::builder(self.strikes.clone(), self.maturities.clone(), self.calls.clone())
-        .r(self.r)
-        .q(self.q)
-        .eps(self.dupire_eps)
-        .build()
-        .local_vol_surface(),
+      None => Dupire::builder(
+        self.strikes.clone(),
+        self.maturities.clone(),
+        self.calls.clone(),
+      )
+      .r(self.r)
+      .q(self.q)
+      .eps(self.dupire_eps)
+      .build()
+      .local_vol_surface(),
     };
     let cleaned = clean_local_vol(raw, &self.maturities)?;
     Ok(Grid2D::new(
@@ -289,7 +303,15 @@ impl HestonSlvCalibrator {
     let mut model = Vec::with_capacity(self.maturities.len() * self.strikes.len());
     match &self.method {
       LeverageMethod::Particle(method) => {
-        let run = calibrate_leverage(params, self.s, self.r, self.q, local_vol, &self.maturities, method)?;
+        let run = calibrate_leverage(
+          params,
+          self.s,
+          self.r,
+          self.q,
+          local_vol,
+          &self.maturities,
+          method,
+        )?;
         for (j, cloud) in run.snapshots.iter().enumerate() {
           let discount = (-self.r * self.maturities[j]).exp();
           let paths = cloud.len() as f64;
@@ -300,7 +322,15 @@ impl HestonSlvCalibrator {
         Ok((run.leverage, model))
       }
       LeverageMethod::FokkerPlanck(method) => {
-        let run = calibrate_leverage_fokker_planck(params, self.s, self.r, self.q, local_vol, &self.maturities, method)?;
+        let run = calibrate_leverage_fokker_planck(
+          params,
+          self.s,
+          self.r,
+          self.q,
+          local_vol,
+          &self.maturities,
+          method,
+        )?;
         for (j, &tau) in self.maturities.iter().enumerate() {
           for &k in &self.strikes {
             model.push(run.density.call_price(j, k, self.r, tau));
@@ -376,7 +406,8 @@ impl Calibrator for HestonSlvCalibrator {
       .map(|(a, b)| (a - b).abs())
       .fold(0.0, f64::max);
     let leverage_finite = leverage.values().iter().all(|l| l.is_finite());
-    let converged = heston_fit.as_ref().is_none_or(|f| f.converged) && leverage_finite && max_error.is_finite();
+    let converged =
+      heston_fit.as_ref().is_none_or(|f| f.converged) && leverage_finite && max_error.is_finite();
 
     Ok(HestonSlvCalibrationResult {
       fit: HestonSlvFit { params, leverage },

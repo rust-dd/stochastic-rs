@@ -185,7 +185,10 @@ impl FokkerPlanckMethod {
     {
       bail!("the mesh stretches must be finite and positive");
     }
-    if self.x_half_width.is_some_and(|w| !(w.is_finite() && w > 0.0)) {
+    if self
+      .x_half_width
+      .is_some_and(|w| !(w.is_finite() && w > 0.0))
+    {
       bail!("x_half_width must be finite and positive");
     }
     let v_scale = params.v0.max(params.theta);
@@ -300,7 +303,15 @@ pub fn calibrate_leverage_fokker_planck(
     local_vol,
     previous: vec![params.v0.max(0.0); mesh.m1()],
   };
-  let (rows, density) = march(&mesh, params, r - q, snapshot_maturities, method, first_row, source);
+  let (rows, density) = march(
+    &mesh,
+    params,
+    r - q,
+    snapshot_maturities,
+    method,
+    first_row,
+    source,
+  );
   let mut times = rows.iter().map(|(t, _)| *t).collect::<Vec<_>>();
   let mut values = Array2::<f64>::zeros((rows.len(), mesh.m1()));
   for (k, (_, row)) in rows.iter().enumerate() {
@@ -402,12 +413,30 @@ fn march(
     let mut prev = Level::new(mesh, carry, rho, xi, &lev_prev);
     let lev_next = match &mut source {
       Source::Fixed(f) => {
-        let row = mesh.x.iter().map(|x| f.call(to, x.exp())).collect::<Vec<_>>();
+        let row = mesh
+          .x
+          .iter()
+          .map(|x| f.call(to, x.exp()))
+          .collect::<Vec<_>>();
         let mut next = Level::new(mesh, carry, rho, xi, &row);
-        step(mesh, &along_v, &mut prev, &mut next, dt, method.theta, douglas, &p, &mut p_next, &mut buffers);
+        step(
+          mesh,
+          &along_v,
+          &mut prev,
+          &mut next,
+          dt,
+          method.theta,
+          douglas,
+          &p,
+          &mut p_next,
+          &mut buffers,
+        );
         row
       }
-      Source::Calibrated { local_vol, previous } => {
+      Source::Calibrated {
+        local_vol,
+        previous,
+      } => {
         let mut guess = p.clone();
         let mut row = Vec::new();
         for _ in 0..method.inner_iterations {
@@ -421,10 +450,23 @@ fn march(
             .x
             .iter()
             .zip(&conditional)
-            .map(|(x, e)| clamp_leverage(local_vol.eval(to, x.exp()) / e.max(CONDITIONAL_VARIANCE_FLOOR).sqrt()))
+            .map(|(x, e)| {
+              clamp_leverage(local_vol.eval(to, x.exp()) / e.max(CONDITIONAL_VARIANCE_FLOOR).sqrt())
+            })
             .collect();
           let mut next = Level::new(mesh, carry, rho, xi, &row);
-          step(mesh, &along_v, &mut prev, &mut next, dt, method.theta, douglas, &p, &mut p_next, &mut buffers);
+          step(
+            mesh,
+            &along_v,
+            &mut prev,
+            &mut next,
+            dt,
+            method.theta,
+            douglas,
+            &p,
+            &mut p_next,
+            &mut buffers,
+          );
           guess.copy_from_slice(&p_next);
           *previous = conditional;
         }

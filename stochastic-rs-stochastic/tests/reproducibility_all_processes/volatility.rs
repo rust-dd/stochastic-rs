@@ -5,6 +5,7 @@
 //! `deterministic_parallelism_bates_rough_heston.rs`, the guard builds it
 //! then sets the public field directly before sampling.
 
+use stochastic_rs_stochastic::traits::Expr;
 use stochastic_rs_stochastic::volatility::HestonPow;
 use stochastic_rs_stochastic::volatility::bates_svj::BatesSvj;
 use stochastic_rs_stochastic::volatility::bergomi::Bergomi;
@@ -13,7 +14,6 @@ use stochastic_rs_stochastic::volatility::double_heston::DoubleHeston;
 use stochastic_rs_stochastic::volatility::fbates_svj::FBatesSvj;
 use stochastic_rs_stochastic::volatility::fheston::RoughHeston;
 use stochastic_rs_stochastic::volatility::heston::Heston;
-use stochastic_rs_stochastic::traits::Expr;
 use stochastic_rs_stochastic::volatility::heston_log::HestonLog;
 use stochastic_rs_stochastic::volatility::heston_slv::HestonSlv;
 use stochastic_rs_stochastic::volatility::heston2d::Heston2D;

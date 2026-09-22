@@ -98,13 +98,20 @@ fn a_heston_surface_under_its_own_parameters_gives_unit_leverage_and_reprices() 
     median < 0.05,
     "median |L - 1| over the central strikes is {median}"
   );
-  assert!(worst < 0.25, "worst |L - 1| over the central strikes is {worst}");
+  assert!(
+    worst < 0.25,
+    "worst |L - 1| over the central strikes is {worst}"
+  );
   assert!(
     result.rmse() < 0.25,
     "repricing rmse {} on a spot of 100",
     result.rmse()
   );
-  assert!(result.max_error() < 1.0, "worst repricing error {}", result.max_error());
+  assert!(
+    result.max_error() < 1.0,
+    "worst repricing error {}",
+    result.max_error()
+  );
 }
 
 /// The same Gyöngy check through the forward Kolmogorov equation: the
@@ -136,10 +143,20 @@ fn the_fokker_planck_route_gives_unit_leverage_and_reprices() {
   central.sort_by(f64::total_cmp);
   let median = central[central.len() / 2];
   let worst = central[central.len() - 1];
-  assert!(median < 0.05, "median |L - 1| over the central strikes is {median}");
-  assert!(worst < 0.25, "worst |L - 1| over the central strikes is {worst}");
+  assert!(
+    median < 0.05,
+    "median |L - 1| over the central strikes is {median}"
+  );
+  assert!(
+    worst < 0.25,
+    "worst |L - 1| over the central strikes is {worst}"
+  );
   assert!(result.rmse() < 0.25, "repricing rmse {}", result.rmse());
-  assert!(result.max_error() < 1.0, "worst repricing error {}", result.max_error());
+  assert!(
+    result.max_error() < 1.0,
+    "worst repricing error {}",
+    result.max_error()
+  );
 }
 
 /// Half the vol-of-vol moves the leverage away from one and the surface is
@@ -188,7 +205,11 @@ fn a_supplied_local_vol_bypasses_dupire() {
     .unwrap();
   assert!(result.converged());
   assert!(
-    result.leverage().values().iter().all(|l| (l - 1.0).abs() < 1e-12),
+    result
+      .leverage()
+      .values()
+      .iter()
+      .all(|l| (l - 1.0).abs() < 1e-12),
     "flat local vol at sqrt(v0) is unit leverage"
   );
   assert!(result.rmse() < 0.15, "rmse {}", result.rmse());
@@ -224,10 +245,14 @@ fn to_model_prices_at_the_calibration_rates() {
     .with_particle_method(method().with_particles(2_000))
     .calibrate(None)
     .unwrap();
-  let pricer = result.to_model(R, Q).with_paths(4_000).with_steps_per_year(50);
+  let pricer = result
+    .to_model(R, Q)
+    .with_paths(4_000)
+    .with_steps_per_year(50);
   let c = pricer.price_call(S, 100.0, R, Q, 0.5);
   assert!(c.is_finite() && c > 0.0);
-  let exact = HestonPricer::new(0.04, -0.6, 2.0, 0.05, 0.4, Some(0.0)).price_call(S, 100.0, R, Q, 0.5);
+  let exact =
+    HestonPricer::new(0.04, -0.6, 2.0, 0.05, 0.4, Some(0.0)).price_call(S, 100.0, R, Q, 0.5);
   assert!((c - exact).abs() < 1.0, "slv {c} vs heston {exact}");
   let via_trait = ToModel::to_model(&result, R, Q);
   assert_eq!(via_trait.calibration_rates, Some((R, Q)));
@@ -248,12 +273,19 @@ fn bad_inputs_are_errors() {
   let strikes = vec![90.0, 100.0, 110.0];
   let maturities = vec![0.5, 1.0];
   let calls = Array2::from_elem((2, 3), 5.0);
-  let base = || HestonSlvCalibrator::new(S, R, Q, strikes.clone(), maturities.clone(), calls.clone())
-    .with_heston_params(heston())
-    .with_particle_method(method().with_particles(10));
+  let base = || {
+    HestonSlvCalibrator::new(S, R, Q, strikes.clone(), maturities.clone(), calls.clone())
+      .with_heston_params(heston())
+      .with_particle_method(method().with_particles(10))
+  };
   assert!(base().with_mixing(1.5).calibrate(None).is_err());
   assert!(base().with_mixing(-0.1).calibrate(None).is_err());
-  assert!(base().with_local_vol(Array2::zeros((3, 3))).calibrate(None).is_err());
+  assert!(
+    base()
+      .with_local_vol(Array2::zeros((3, 3)))
+      .calibrate(None)
+      .is_err()
+  );
   let mut two_strikes = base();
   two_strikes.strikes = vec![90.0, 100.0];
   two_strikes.calls = Array2::from_elem((2, 2), 5.0);
@@ -296,7 +328,10 @@ fn dupire_cleaning_fills_the_boundary_and_the_holes_and_refuses_an_empty_row() {
   let cleaned = clean_local_vol(raw, &[0.5, 1.0]).unwrap();
   let row0 = cleaned.row(0).to_vec();
   assert_eq!(row0, vec![0.2, 0.2, 0.22, 0.24, 0.26, 0.26]);
-  assert_eq!(cleaned.row(1).to_vec(), vec![0.3, 0.3, 0.3, 0.31, 0.31, 0.31]);
+  assert_eq!(
+    cleaned.row(1).to_vec(),
+    vec![0.3, 0.3, 0.3, 0.31, 0.31, 0.31]
+  );
   let empty = Array2::from_elem((1, 3), nan);
   let err = clean_local_vol(empty, &[0.75]).unwrap_err();
   assert!(err.to_string().contains("0.75"));

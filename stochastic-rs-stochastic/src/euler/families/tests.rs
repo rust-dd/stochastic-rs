@@ -435,8 +435,16 @@ fn heston_slv_step_is_the_log_euler_scheme_under_the_program_leverage() {
   let db = rho * dw + (1.0 - rho * rho).sqrt() * dz;
   let s_next = s * ((mu - 0.5 * l * l * v) * dt + l * v.sqrt() * dw).exp();
   let v_next = v + kappa * (theta - v) * dt + sigma * v.sqrt() * db;
-  assert!((next[0] - s_next).abs() < 1e-12, "spot {} vs {s_next}", next[0]);
-  assert!((next[1] - v_next).abs() < 1e-15, "variance {} vs {v_next}", next[1]);
+  assert!(
+    (next[0] - s_next).abs() < 1e-12,
+    "spot {} vs {s_next}",
+    next[0]
+  );
+  assert!(
+    (next[1] - v_next).abs() < 1e-15,
+    "variance {} vs {v_next}",
+    next[1]
+  );
 }
 
 /// The Volterra family is its lift: the step is the lifted value, and the

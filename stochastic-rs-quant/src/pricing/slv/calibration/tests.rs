@@ -43,7 +43,16 @@ fn method(n: usize) -> ParticleMethod {
 #[test]
 fn eta_zero_at_the_long_run_variance_gives_the_local_vol_over_sqrt_v0() {
   let grid = local_vol_grid();
-  let run = calibrate_leverage(&params(0.0), 100.0, 0.02, 0.0, &grid, &[0.25, 1.0], &method(2_000)).unwrap();
+  let run = calibrate_leverage(
+    &params(0.0),
+    100.0,
+    0.02,
+    0.0,
+    &grid,
+    &[0.25, 1.0],
+    &method(2_000),
+  )
+  .unwrap();
   let lev = &run.leverage;
   assert_eq!(lev.times()[0], 0.0);
   assert_eq!(lev.horizon(), 1.0);
@@ -64,7 +73,8 @@ fn eta_zero_at_the_long_run_variance_gives_the_local_vol_over_sqrt_v0() {
 #[test]
 fn the_first_row_is_the_local_vol_over_sqrt_v0() {
   let grid = local_vol_grid();
-  let run = calibrate_leverage(&params(1.0), 100.0, 0.02, 0.0, &grid, &[0.5], &method(500)).unwrap();
+  let run =
+    calibrate_leverage(&params(1.0), 100.0, 0.02, 0.0, &grid, &[0.5], &method(500)).unwrap();
   for (i, &k) in run.leverage.spots().iter().enumerate() {
     assert_eq!(run.leverage.values()[[0, i]], grid.eval(0.0, k) / 0.2);
   }
@@ -79,7 +89,8 @@ fn snapshots_land_on_the_maturities_and_average_to_the_forward() {
   let grid = local_vol_grid();
   let (s0, r, q) = (100.0, 0.03, 0.01);
   let maturities = [0.1, 0.35, 1.0];
-  let run = calibrate_leverage(&params(1.0), s0, r, q, &grid, &maturities, &method(20_000)).unwrap();
+  let run =
+    calibrate_leverage(&params(1.0), s0, r, q, &grid, &maturities, &method(20_000)).unwrap();
   assert_eq!(run.snapshots.len(), maturities.len());
   for (cloud, &tau) in run.snapshots.iter().zip(maturities.iter()) {
     assert_eq!(cloud.len(), 20_000);
@@ -92,16 +103,30 @@ fn snapshots_land_on_the_maturities_and_average_to_the_forward() {
       "at tau = {tau}: cloud mean {mean}, forward {forward}, standard error {std_err}"
     );
   }
-  assert!(run.leverage.values().iter().all(|l| l.is_finite() && *l > 0.0));
+  assert!(
+    run
+      .leverage
+      .values()
+      .iter()
+      .all(|l| l.is_finite() && *l > 0.0)
+  );
 }
 
 #[test]
 fn the_seed_pins_the_surface() {
   let grid = local_vol_grid();
   let run = |seed: u64| {
-    calibrate_leverage(&params(1.0), 100.0, 0.02, 0.0, &grid, &[0.5], &method(1_000).with_seed(seed))
-      .unwrap()
-      .leverage
+    calibrate_leverage(
+      &params(1.0),
+      100.0,
+      0.02,
+      0.0,
+      &grid,
+      &[0.5],
+      &method(1_000).with_seed(seed),
+    )
+    .unwrap()
+    .leverage
   };
   assert_eq!(run(3), run(3));
   assert_ne!(run(3), run(4));

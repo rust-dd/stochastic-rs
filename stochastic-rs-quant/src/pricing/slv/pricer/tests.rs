@@ -195,7 +195,8 @@ fn unit_leverage_reprices_the_closed_form_heston_call() {
     .with_seed(99);
   let (s, k, r, q, tau) = (100.0, 100.0, 0.03, 0.01, 0.5);
   let estimate = pricer.price_call_estimate(s, k, r, q, tau);
-  let exact = HestonPricer::new(p.v0, p.rho, p.kappa, p.theta, p.sigma, Some(0.0)).price_call(s, k, r, q, tau);
+  let exact = HestonPricer::new(p.v0, p.rho, p.kappa, p.theta, p.sigma, Some(0.0))
+    .price_call(s, k, r, q, tau);
   let band = 3.0 * estimate.std_err + 0.03;
   assert!(
     (estimate.mean - exact).abs() < band,
