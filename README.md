@@ -54,7 +54,7 @@ disabled. Optional feature combinations are checked separately on current Rust.
 
 ```toml
 [dependencies]
-stochastic-rs = "3.0.0-rc.2"
+stochastic-rs = "3.0.0-rc.3"
 ```
 
 Device back-ends and other optional parts are cargo features (`cuda`,

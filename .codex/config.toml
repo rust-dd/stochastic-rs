@@ -1,3 +1,9 @@
 [mcp_servers.arxiv]
 command = "uvx"
 args = ["arxiv-mcp-server"]
+
+[mcp_servers.arxiv.tools.list_paper_latex_sections]
+approval_mode = "approve"
+
+[mcp_servers.arxiv.tools.get_paper_latex_section]
+approval_mode = "approve"

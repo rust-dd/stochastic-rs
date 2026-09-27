@@ -3,8 +3,8 @@ title: Migrating to v3
 description: Every breaking change between v2.6 and v3.0, grouped by crate, with the one-line replacement for each.
 ---
 
-v3 is an API-stabilisation release: no new pricing layer, no renamed
-crates. The changes below are the ones that stop a v2.6 program from
+v3 updates the sampling and pricing APIs without renaming crates.
+The changes below are the ones that stop a v2.6 program from
 compiling, in the order you are most likely to hit them. Each entry gives
 the replacement; the design behind it is on
 [design philosophy](/docs/concepts/design-philosophy).
@@ -80,6 +80,21 @@ differentiated the call.
   An iteration limit or nonfinite simplex costs returns `false` with the
   best parameters found. This also changes the final element of their
   Python return tuples.
+
+### Heston SLV calibration in rc.3
+
+`calibrate_leverage` takes a local-volatility `Grid2D<f64>`, snapshot
+maturities and a `ParticleMethod`, and returns `Result<ParticleCalibration>`.
+Use the result's leverage surface in place of the previously returned bare
+surface. The particle estimator uses the reference kernel and bandwidth,
+so recalibration can change existing numerical results.
+
+`HestonSlvCalibrator` replaces `calibrate_from_dupire`. Supply spot, rates
+and the market call grid explicitly; its `method` is a `LeverageMethod`
+selecting particles or the Fokker–Planck solver. `HestonSlvPricer` reads
+leverage at each step's start. See
+[Heston SLV calibration](/docs/quant#heston-slv-leverage-calibration)
+for the current Rust and Python interfaces.
 
 ## Optimizers and Rust version
 

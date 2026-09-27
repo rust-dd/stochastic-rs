@@ -1,98 +1,73 @@
 [workspace]
 members = [
+    "stochastic-rs-ai",
+    "stochastic-rs-copulas",
     "stochastic-rs-core",
     "stochastic-rs-distributions",
-    "stochastic-rs-stochastic",
-    "stochastic-rs-copulas",
-    "stochastic-rs-stats",
-    "stochastic-rs-quant",
-    "stochastic-rs-ai",
     "stochastic-rs-py",
+    "stochastic-rs-quant",
+    "stochastic-rs-stats",
+    "stochastic-rs-stochastic",
 ]
 
 [workspace.package]
-version = "3.0.0-rc.2"
+version = "3.0.0-rc.3"
 rust-version = "1.89"
 
 [workspace.dependencies]
-# Internal crates
-stochastic-rs-core = { path = "stochastic-rs-core", version = "3.0.0-rc.2" }
-stochastic-rs-distributions = { path = "stochastic-rs-distributions", version = "3.0.0-rc.2" }
-stochastic-rs-stochastic = { path = "stochastic-rs-stochastic", version = "3.0.0-rc.2" }
-stochastic-rs-copulas = { path = "stochastic-rs-copulas", version = "3.0.0-rc.2" }
-stochastic-rs-stats = { path = "stochastic-rs-stats", version = "3.0.0-rc.2" }
-stochastic-rs-quant = { path = "stochastic-rs-quant", version = "3.0.0-rc.2" }
-stochastic-rs-ai = { path = "stochastic-rs-ai", version = "3.0.0-rc.2" }
-
-# Math / numerical core
+anyhow = "1.0.89"
+basin = { version = "1.11.0", default-features = false }
+candle-core = "0.9.2"
+candle-datasets = "0.9.2"
+candle-nn = "0.9.2"
+chrono = "0.4.38"
+criterion = { version = "0.8", features = ["html_reports"] }
+cudarc = { version = "0.19.2", features = ["cuda-12080", "cuda-version-from-build-system"] }
 faer = "0.24.4"
 faer-ext = { version = "0.8.0", features = ["ndarray"] }
+flate2 = "1.1.2"
+gauss-quad = "0.3.1"
+hotpath = "0.14"
+implied-vol = "2.0.0"
+kendalls = "1.0.0"
+linreg = "0.2.0"
+metal = "0.33.0"
+mimalloc = "0.1.48"
 ndarray = { version = "0.17.2", features = ["rayon", "matrixmultiply-threading"] }
 ndarray-npy = "0.10.0"
 ndrustfft = "0.6.2"
 num-complex = { version = "0.4.6", features = ["rand"] }
 num-traits = "0.2.19"
-
-# RNG / parallel / SIMD
+numpy = "0.28"
+ordered-float = "5.0.0"
+owens-t = "0.1.5"
+parking_lot = "0.12.5"
+plotly = { version = "0.10.0", features = ["plotly_ndarray"] }
+polars = { version = "0.43.1", features = ["lazy"] }
+pyo3 = { version = "0.28", features = ["extension-module", "chrono"] }
+quadrature = "0.1.2"
 rand = "0.9.2"
 rand_distr = "0.5.1"
 rayon = "1.11.0"
-wide = "1.6.1"
-
-# Statistics / fitting / optimisation
+roots = "0.0.8"
+scilib = "1.0.0"
+slsqp = "1.0.0"
 # `statrs` is dev-deps only — used for cross-validating our closed-form
 # `DistributionExt` impls. Production code never delegates to it.
 statrs = "0.18.0"
-kendalls = "1.0.0"
-linreg = "0.2.0"
-basin = { version = "1.11.0", default-features = false }
-gauss-quad = "0.3.1"
-quadrature = "0.1.2"
-roots = "0.0.8"
-slsqp = "1.0.0"
-scilib = "1.0.0"
-owens-t = "0.1.5"
-
-# General utility
-anyhow = "1.0.89"
-parking_lot = "0.12.5"
-ordered-float = "5.0.0"
-chrono = "0.4.38"
-flate2 = "1.1.2"
-
-# Pricing-specific
-implied-vol = "2.0.0"
-
-# Visualisation
-plotly = { version = "0.10.0", features = ["plotly_ndarray"] }
-
-# Python bindings
-pyo3 = { version = "0.28", features = ["extension-module", "chrono"] }
-numpy = "0.28"
-
-# AI / ML
-candle-core = "0.9.2"
-candle-datasets = "0.9.2"
-candle-nn = "0.9.2"
-polars = { version = "0.43.1", features = ["lazy"] }
-
-# GPU
-cudarc = { version = "0.19.2", features = ["cuda-12080", "cuda-version-from-build-system"] }
-metal = "0.33.0"
-
-# Allocators / profiling
-mimalloc = "0.1.48"
-tikv-jemallocator = "0.6.1"
-hotpath = "0.14"
-
-# Yahoo finance
-time = { version = "0.3.36", features = ["formatting", "parsing"] }
-yahoo_finance_api = "2.3.0"
-tokio-test = "0.4.4"
-
-# Dev
-criterion = { version = "0.8", features = ["html_reports"] }
+stochastic-rs-ai = { path = "stochastic-rs-ai", version = "3.0.0-rc.3" }
+stochastic-rs-copulas = { path = "stochastic-rs-copulas", version = "3.0.0-rc.3" }
+stochastic-rs-core = { path = "stochastic-rs-core", version = "3.0.0-rc.3" }
+stochastic-rs-distributions = { path = "stochastic-rs-distributions", version = "3.0.0-rc.3" }
+stochastic-rs-quant = { path = "stochastic-rs-quant", version = "3.0.0-rc.3" }
+stochastic-rs-stats = { path = "stochastic-rs-stats", version = "3.0.0-rc.3" }
+stochastic-rs-stochastic = { path = "stochastic-rs-stochastic", version = "3.0.0-rc.3" }
 syn = { version = "3.0.3", default-features = false, features = ["full", "parsing"] }
+tikv-jemallocator = "0.6.1"
+time = { version = "0.3.36", features = ["formatting", "parsing"] }
+tokio-test = "0.4.4"
+wide = "1.6.1"
+yahoo_finance_api = "2.3.0"
 
 [package]
 name = "stochastic-rs"
@@ -110,13 +85,6 @@ categories = ["finance", "mathematics", "science", "simulation", "algorithms"]
 exclude = [ "**/*.tar.gz", "data/**", "trainsets/**", "notebooks/**", "src/ai/volatility/*TrainSet.txt.gz", ]
 
 [dependencies]
-stochastic-rs-core = { workspace = true }
-stochastic-rs-distributions = { workspace = true }
-stochastic-rs-stochastic = { workspace = true }
-stochastic-rs-copulas = { workspace = true }
-stochastic-rs-stats = { workspace = true }
-stochastic-rs-quant = { workspace = true }
-stochastic-rs-ai = { workspace = true, optional = true }
 anyhow = { workspace = true }
 candle-core = { workspace = true, optional = true }
 candle-datasets = { workspace = true, optional = true }
@@ -125,6 +93,7 @@ chrono = { workspace = true }
 cudarc = { workspace = true, optional = true, features = [ "cuda-12080", "cuda-version-from-build-system", ] }
 flate2 = { workspace = true }
 gauss-quad = { workspace = true }
+hotpath = { workspace = true, optional = true }
 implied-vol = { workspace = true }
 kendalls = { workspace = true }
 linreg = { workspace = true }
@@ -136,10 +105,11 @@ ndrustfft = { workspace = true }
 num-complex = { workspace = true, features = ["rand"] }
 num-traits = { workspace = true }
 numpy = { workspace = true, optional = true }
-pyo3 = { workspace = true, features = ["extension-module"], optional = true }
 ordered-float = { workspace = true }
 owens-t = { workspace = true }
+parking_lot = { workspace = true }
 polars = { workspace = true, features = ["lazy"], optional = true }
+pyo3 = { workspace = true, features = ["extension-module"], optional = true }
 quadrature = { workspace = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }
@@ -147,13 +117,18 @@ rayon = { workspace = true }
 roots = { workspace = true }
 scilib = { workspace = true }
 slsqp = { workspace = true }
+stochastic-rs-ai = { workspace = true, optional = true }
+stochastic-rs-copulas = { workspace = true }
+stochastic-rs-core = { workspace = true }
+stochastic-rs-distributions = { workspace = true }
+stochastic-rs-quant = { workspace = true }
+stochastic-rs-stats = { workspace = true }
+stochastic-rs-stochastic = { workspace = true }
 tikv-jemallocator = { workspace = true, optional = true }
 time = { workspace = true, features = [ "formatting", "parsing", ], optional = true }
 tokio-test = { workspace = true, optional = true }
 wide = { workspace = true }
-hotpath = { workspace = true, optional = true }
 yahoo_finance_api = { workspace = true, optional = true }
-parking_lot = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true, features = ["html_reports"] }
