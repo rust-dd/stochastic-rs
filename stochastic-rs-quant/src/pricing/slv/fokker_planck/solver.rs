@@ -8,190 +8,11 @@
 //! total mass `Σ ω_i ω'_j P_{i,j}` is constant in time up to the mixed flux
 //! at the two corners on `v = v_max`, where the density is negligible.
 
-/// The `(x, v)` mesh with its cell widths: `wx[i] = (Δx_i + Δx_{i+1}) / 2`,
-/// the width of the cell around node `i`, `Δx_1 = Δx_{m1+1} = 0`.
-pub(super) struct Mesh {
-  pub x: Vec<f64>,
-  pub v: Vec<f64>,
-  pub wx: Vec<f64>,
-  pub wv: Vec<f64>,
-  /// The node the density starts on.
-  pub i0: usize,
-  pub j0: usize,
-}
+use anyhow::Result;
 
-impl Mesh {
-  /// A log-spot mesh clustered at `x0` by `x = x0 + c sinh(ξ)` on a uniform
-  /// `ξ`, `x0` a node (`m1` is made odd), and a variance mesh clustered at
-  /// `v0` by `v = v0 + d sinh(ξ)` with `v = 0` and `v0` exact nodes — the
-  /// meshes of in 't Hout & Foulon (2010) that Wyns & Du Toit take over,
-  /// laid so the Dirac start sits on a node.
-  pub fn new(
-    x0: f64,
-    x_half_width: f64,
-    x_stretch: f64,
-    m1: usize,
-    v0: f64,
-    v_max: f64,
-    v_stretch: f64,
-    m2: usize,
-  ) -> Self {
-    let m1 = m1.max(3) | 1;
-    let half = (m1 - 1) / 2;
-    let xi_max = (x_half_width / x_stretch).asinh();
-    let d_xi = xi_max / half as f64;
-    let mut x = (0..m1)
-      .map(|i| x0 + x_stretch * ((i as f64 - half as f64) * d_xi).sinh())
-      .collect::<Vec<_>>();
-    x[half] = x0;
+use super::mesh::Mesh;
 
-    let m2 = m2.max(3);
-    let intervals = m2 - 1;
-    let mut v = Vec::with_capacity(m2);
-    let j0 = if v0 <= 0.0 {
-      let xi_hi = (v_max / v_stretch).asinh();
-      v.extend((0..m2).map(|j| v_stretch * (xi_hi * j as f64 / intervals as f64).sinh()));
-      0
-    } else {
-      let xi_lo = (-v0 / v_stretch).asinh();
-      let xi_hi = ((v_max - v0) / v_stretch).asinh();
-      let share = -xi_lo / (xi_hi - xi_lo);
-      let n_lo = ((intervals as f64 * share).round() as usize).clamp(1, intervals - 1);
-      let n_hi = intervals - n_lo;
-      v.extend(
-        (0..=n_lo).map(|k| v0 + v_stretch * (xi_lo * (1.0 - k as f64 / n_lo as f64)).sinh()),
-      );
-      v.extend((1..=n_hi).map(|k| v0 + v_stretch * (xi_hi * k as f64 / n_hi as f64).sinh()));
-      v[n_lo] = v0;
-      n_lo
-    };
-    v[0] = 0.0;
-    v[m2 - 1] = v_max;
-
-    let wx = cell_widths(&x);
-    let wv = cell_widths(&v);
-    Self {
-      x,
-      v,
-      wx,
-      wv,
-      i0: half,
-      j0,
-    }
-  }
-
-  pub fn m1(&self) -> usize {
-    self.x.len()
-  }
-
-  pub fn m2(&self) -> usize {
-    self.v.len()
-  }
-
-  pub fn len(&self) -> usize {
-    self.x.len() * self.v.len()
-  }
-
-  /// The cell-average Dirac at `(x0, v0)`: `1 / |Ω_{i0, j0}|` on that node.
-  pub fn dirac(&self) -> Vec<f64> {
-    let mut p = vec![0.0; self.len()];
-    p[self.j0 * self.m1() + self.i0] = 1.0 / (self.wx[self.i0] * self.wv[self.j0]);
-    p
-  }
-
-  /// `Σ_{i,j} ω_i ω'_j P_{i,j}`.
-  pub fn mass(&self, p: &[f64]) -> f64 {
-    let m1 = self.m1();
-    self
-      .wv
-      .iter()
-      .enumerate()
-      .map(|(j, wv)| {
-        wv * self
-          .wx
-          .iter()
-          .enumerate()
-          .map(|(i, wx)| wx * p[j * m1 + i])
-          .sum::<f64>()
-      })
-      .sum()
-  }
-
-  /// The marginal density of the log-spot, `Σ_j ω'_j P_{i,j}` per node.
-  pub fn marginal(&self, p: &[f64]) -> Vec<f64> {
-    let m1 = self.m1();
-    (0..m1)
-      .map(|i| {
-        self
-          .wv
-          .iter()
-          .enumerate()
-          .map(|(j, wv)| wv * p[j * m1 + i])
-          .sum()
-      })
-      .collect()
-  }
-
-  /// `Σ_{i,j} ω_i ω'_j v_j P_{i,j}`, the mean of the variance under the
-  /// (unnormalised) density.
-  pub fn variance_mean(&self, p: &[f64]) -> f64 {
-    let m1 = self.m1();
-    self
-      .wv
-      .iter()
-      .zip(&self.v)
-      .enumerate()
-      .map(|(j, (wv, vj))| {
-        wv * vj
-          * self
-            .wx
-            .iter()
-            .enumerate()
-            .map(|(i, wx)| wx * p[j * m1 + i])
-            .sum::<f64>()
-      })
-      .sum()
-  }
-
-  /// Wyns & Du Toit's (4.5): the trapezoid `Σ_j v_j |P_{i,j}| ω'_j /
-  /// Σ_j |P_{i,j}| ω'_j` per log-spot node, `None` where the column carries
-  /// no mass beyond round-off — below `threshold` of the heaviest column.
-  pub fn conditional_variance(&self, p: &[f64], threshold: f64) -> Vec<Option<f64>> {
-    let m1 = self.m1();
-    let sums = (0..m1)
-      .map(|i| {
-        let (mut num, mut den) = (0.0, 0.0);
-        for (j, (wv, vj)) in self.wv.iter().zip(&self.v).enumerate() {
-          let weight = p[j * m1 + i].abs() * wv;
-          num += vj * weight;
-          den += weight;
-        }
-        (num, den)
-      })
-      .collect::<Vec<_>>();
-    let heaviest = sums.iter().map(|(_, den)| *den).fold(0.0, f64::max);
-    sums
-      .into_iter()
-      .map(|(num, den)| (den > threshold * heaviest && den > 0.0).then(|| num / den))
-      .collect()
-  }
-}
-
-/// `ω_i = (Δx_i + Δx_{i+1}) / 2` with the two outer widths zero.
-fn cell_widths(nodes: &[f64]) -> Vec<f64> {
-  let n = nodes.len();
-  (0..n)
-    .map(|i| {
-      let left = if i == 0 { 0.0 } else { nodes[i] - nodes[i - 1] };
-      let right = if i + 1 == n {
-        0.0
-      } else {
-        nodes[i + 1] - nodes[i]
-      };
-      0.5 * (left + right)
-    })
-    .collect()
-}
+mod implicit;
 
 /// A direction operator: the three coefficients on the neighbours along one
 /// axis, per node, from the central advection flux
@@ -428,23 +249,56 @@ impl Scratch {
 /// The mixed part (2.22c) at one time level: the corner flux
 /// `ρ ξ L(x_{i−½}) v_{j−½} · (P_{i−1,j−1} + P_{i−1,j} + P_{i,j−1} + P_{i,j}) / 4`
 /// with the ghost values (2.24), replaced on the corner row above `v = 0`
-/// by the first-order forward mean of the row-`1` values, since the Heston
-/// boundary `v = 0` is attainable.
+/// by the first-order forward mean of the row-`1` values only when the
+/// Feller condition is violated and `v = 0` is attainable.
 pub(super) struct Mixed<'a> {
   mesh: &'a Mesh,
   rho_xi: f64,
   leverage: &'a [f64],
+  attainable: bool,
   corners: Vec<f64>,
 }
 
 impl<'a> Mixed<'a> {
-  pub fn new(mesh: &'a Mesh, rho: f64, xi: f64, leverage: &'a [f64]) -> Self {
+  pub fn new(mesh: &'a Mesh, rho: f64, xi: f64, leverage: &'a [f64], attainable: bool) -> Self {
     Self {
       mesh,
       rho_xi: rho * xi,
       leverage,
+      attainable,
       corners: vec![0.0; (mesh.m1() + 1) * (mesh.m2() + 1)],
     }
+  }
+
+  /// Coefficients of one corner flux, including repeated ghost-node
+  /// indices at the boundary. Shared by the ADI and fully implicit steps.
+  fn corner_entries(&self, ci: usize, cj: usize) -> [(usize, f64); 4] {
+    let mesh = self.mesh;
+    let (m1, m2) = (mesh.m1(), mesh.m2());
+    let v = match cj {
+      0 => 0.0,
+      _ if cj == m2 => mesh.v[m2 - 1],
+      _ => 0.5 * (mesh.v[cj - 1] + mesh.v[cj]),
+    };
+    let l = match ci {
+      0 => self.leverage[0],
+      _ if ci == m1 => self.leverage[m1 - 1],
+      _ => 0.5 * (self.leverage[ci - 1] + self.leverage[ci]),
+    };
+    let (i_lo, i_hi) = (ci.saturating_sub(1), ci.min(m1 - 1));
+    let j_lo = if cj == 1 && self.attainable {
+      1
+    } else {
+      cj.saturating_sub(1)
+    };
+    let j_hi = cj.min(m2 - 1);
+    let coefficient = 0.25 * self.rho_xi * l * v;
+    [
+      (j_lo * m1 + i_lo, coefficient),
+      (j_lo * m1 + i_hi, coefficient),
+      (j_hi * m1 + i_lo, coefficient),
+      (j_hi * m1 + i_hi, coefficient),
+    ]
   }
 
   /// `out = A0 p`.
@@ -453,29 +307,12 @@ impl<'a> Mixed<'a> {
     let (m1, m2) = (mesh.m1(), mesh.m2());
     let width = m1 + 1;
     for cj in 0..=m2 {
-      let v_corner = match cj {
-        0 => 0.0,
-        _ if cj == m2 => mesh.v[m2 - 1],
-        _ => 0.5 * (mesh.v[cj - 1] + mesh.v[cj]),
-      };
-      let (j_lo, j_hi) = (cj.saturating_sub(1), cj.min(m2 - 1));
       for ci in 0..=m1 {
-        let l_corner = match ci {
-          0 => self.leverage[0],
-          _ if ci == m1 => self.leverage[m1 - 1],
-          _ => 0.5 * (self.leverage[ci - 1] + self.leverage[ci]),
-        };
-        let (i_lo, i_hi) = (ci.saturating_sub(1), ci.min(m1 - 1));
-        let average = if cj == 1 {
-          0.5 * (p[m1 + i_lo] + p[m1 + i_hi])
-        } else {
-          0.25
-            * (p[j_lo * m1 + i_lo]
-              + p[j_lo * m1 + i_hi]
-              + p[j_hi * m1 + i_lo]
-              + p[j_hi * m1 + i_hi])
-        };
-        self.corners[cj * width + ci] = self.rho_xi * l_corner * v_corner * average;
+        self.corners[cj * width + ci] = self
+          .corner_entries(ci, cj)
+          .iter()
+          .map(|&(index, coefficient)| coefficient * p[index])
+          .sum();
       }
     }
     for j in 0..m2 {
@@ -496,10 +333,17 @@ pub(super) struct Level<'a> {
 }
 
 impl<'a> Level<'a> {
-  pub fn new(mesh: &'a Mesh, carry: f64, rho: f64, xi: f64, leverage: &'a [f64]) -> Self {
+  pub fn new(
+    mesh: &'a Mesh,
+    carry: f64,
+    rho: f64,
+    xi: f64,
+    leverage: &'a [f64],
+    attainable: bool,
+  ) -> Self {
     Self {
       x: Direction::along_x(mesh, carry, leverage),
-      mixed: Mixed::new(mesh, rho, xi, leverage),
+      mixed: Mixed::new(mesh, rho, xi, leverage, attainable),
     }
   }
 }
@@ -517,6 +361,7 @@ pub(super) struct StepBuffers {
   g2: Vec<f64>,
   rhs: Vec<f64>,
   scratch: Scratch,
+  implicit: implicit::ImplicitEuler,
 }
 
 impl StepBuffers {
@@ -533,13 +378,14 @@ impl StepBuffers {
       g2: vec![0.0; n],
       rhs: vec![0.0; n],
       scratch: Scratch::default(),
+      implicit: implicit::ImplicitEuler::default(),
     }
   }
 }
 
 /// One Hundsdorfer–Verwer step (Wyns & Du Toit (3.1)) from `w` at the level
-/// `prev` to the level `next`, or, with `douglas`, one Douglas step at
-/// `θ = 1` — the implicit-Euler form of the Rannacher start-up.
+/// `prev` to the level `next`, or a fully implicit Euler half-step for the
+/// Rannacher start-up. The latter includes the mixed derivative in its solve.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn step(
   mesh: &Mesh,
@@ -548,13 +394,16 @@ pub(super) fn step(
   next: &mut Level<'_>,
   dt: f64,
   theta: f64,
-  douglas: bool,
+  damping: bool,
   w: &[f64],
   out: &mut [f64],
   b: &mut StepBuffers,
-) {
+) -> Result<()> {
+  if damping {
+    return b.implicit.solve(mesh, along_v, next, dt, w, out);
+  }
   let n = w.len();
-  let theta_dt = if douglas { dt } else { theta * dt };
+  let theta_dt = theta * dt;
   prev.mixed.apply(w, &mut b.f0);
   prev.x.apply_x(mesh, w, &mut b.f1);
   along_v.apply_v(mesh, w, &mut b.f2);
@@ -571,10 +420,6 @@ pub(super) fn step(
     b.rhs[k] = b.y1[k] - theta_dt * b.f2[k];
   }
   along_v.solve_v(mesh, theta_dt, &b.rhs, &mut b.y2, &mut b.scratch);
-  if douglas {
-    out.copy_from_slice(&b.y2);
-    return;
-  }
   next.mixed.apply(&b.y2, &mut b.g0);
   next.x.apply_x(mesh, &b.y2, &mut b.g1);
   along_v.apply_v(mesh, &b.y2, &mut b.g2);
@@ -593,4 +438,8 @@ pub(super) fn step(
     b.rhs[k] = b.y1[k] - theta_dt * b.g2[k];
   }
   along_v.solve_v(mesh, theta_dt, &b.rhs, out, &mut b.scratch);
+  Ok(())
 }
+
+#[cfg(test)]
+mod tests;

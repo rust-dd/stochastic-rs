@@ -388,7 +388,7 @@ print(f"RMSE = {rmse:.6f} (converged={converged})")
 </Tab>
 </Tabs>
 
-### Heston SLV leverage calibration by the particle method
+### Heston SLV leverage calibration
 
 A vanilla call surface in, a Heston stochastic-local volatility model out:
 the Heston parameters are fitted to the quotes (or pinned), the Dupire local
@@ -399,7 +399,11 @@ particle method — a Gaussian kernel regression of $\mathbb{E}[V_t \mid S_t]$
 over an interacting particle cloud — or, with `with_fokker_planck`, by the
 Wyns–Du Toit finite-volume solution of the forward Kolmogorov equation,
 marched by the Hundsdorfer–Verwer ADI scheme with an inner iteration on the
-non-linearity. The result reprices the input grid from its own density and
+non-linearity. Its first two steps are replaced by four fully implicit Euler
+half-steps, including the mixed derivative, solved by sparse LU. The variance
+mesh resolves both zero and the initial variance; the forward mixed flux at
+zero is used only when the Feller condition is violated. The result reprices
+the input grid from its own density and
 hands a rate-anchored `HestonSlvPricer` back through `ToModel`; the same
 surface drives the `HestonSlv` process for exotics, and `heston_slv_density`
 prices the vanilla grid of a calibrated model without Monte Carlo noise.

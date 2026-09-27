@@ -221,3 +221,29 @@ def test_heston_slv_samples_under_a_callable_and_a_grid_leverage():
         sr.PyHestonSlv(leverage=(spots, times, values[:1]), **kwargs)
     with pytest.raises(ValueError):
         sr.PyHestonSlv(leverage=lambda t, s: 1.0, **{**kwargs, "eta": 1.5})
+
+
+def test_heston_slv_rejects_bad_inputs_with_python_errors():
+    kwargs = dict(kappa=2.0, theta=0.04, sigma=0.3, rho=-0.7, mu=0.05, eta=0.6, n=65)
+    unit = lambda t, s: 1.0
+    for bad in (
+        {"kappa": math.nan},
+        {"sigma": -0.1},
+        {"mu": math.inf},
+        {"s0": math.nan},
+        {"v0": -0.01},
+        {"t": 0.0},
+        {"t": -1.0},
+        {"t": math.nan},
+    ):
+        with pytest.raises(ValueError):
+            sr.PyHestonSlv(leverage=unit, **{**kwargs, **bad})
+    spots, times, ones = np.array([50.0, 150.0]), np.array([0.0, 1.0]), np.ones((2, 2))
+    with pytest.raises(ValueError, match="float64"):
+        sr.PyHestonSlv(leverage=(spots.astype(np.float32), times, ones), **kwargs)
+    with pytest.raises(ValueError):
+        sr.PyHestonSlv(leverage=(np.array([50.0, math.nan]), times, ones), **kwargs)
+    with pytest.raises(ValueError):
+        sr.PyHestonSlv(leverage=(spots, times, np.full((2, 2), math.nan)), **kwargs)
+    with pytest.raises(TypeError):
+        sr.PyHestonSlv(leverage=1.0, **kwargs)

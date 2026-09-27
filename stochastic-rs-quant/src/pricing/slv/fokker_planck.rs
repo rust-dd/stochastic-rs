@@ -28,19 +28,21 @@
 //! above the attainable boundary `v = 0`, every boundary flux zero so the
 //! numerical mass is conserved — and marched by the Hundsdorfer–Verwer ADI
 //! scheme of its §3 at $\theta = \tfrac12 + \tfrac{\sqrt3}{6}$, the first two
-//! steps replaced by four implicit-Euler half-steps (Rannacher). The
+//! steps replaced by four fully implicit Euler half-steps (Rannacher),
+//! solved by sparse LU, including the mixed derivative. The
 //! non-linearity is handled by the inner iteration of its §4: at each step
 //! the conditional expectation (4.5) is read off the current approximation
 //! of the new density by the trapezoid rule on $|P|$, the leverage row (4.4)
 //! is rebuilt from it, and the step is redone, `Q` times. A column carrying
 //! no mass keeps the previous row's expectation, and the $t = 0$ row is
-//! replaced by the first computed one, as the reference does. Under
+//! replaced by the row at the first full time step, as the reference does. Under
 //! $\eta = 0$ the variance is deterministic and the condition has the closed
 //! form $L = \sigma_{\text{LV}} / \sqrt{V_t}$, which is used directly: the
 //! central advection flux would otherwise leak a delta in the variance into
 //! its neighbouring cells, and there is nothing to estimate. The density
 //! starts as the cell average of the Dirac mass on the node `(x_0, v_0)`, so
-//! both are exact nodes of the meshes, which cluster there.
+//! both are exact nodes of the meshes. The variance mesh resolves `[0, v0]`
+//! uniformly and stretches above `v0`, so the zero boundary is also resolved.
 //!
 //! References: Wyns, M. & Du Toit, J. (2016), *A finite volume – alternating
 //! direction implicit approach for the calibration of stochastic local
@@ -61,9 +63,9 @@ use ndarray::Array2;
 use stochastic_rs_distributions::traits::Fn2D;
 use stochastic_rs_distributions::traits::Grid2D;
 
+use self::mesh::Mesh;
 use self::solver::Direction;
 use self::solver::Level;
-use self::solver::Mesh;
 use self::solver::StepBuffers;
 use self::solver::step;
 use super::HestonSlvParams;
@@ -73,6 +75,7 @@ use super::calibration::clamp_leverage;
 use super::calibration::time_grid;
 use super::calibration::validate;
 
+mod mesh;
 mod solver;
 
 /// A column whose mass is below this fraction of the heaviest column's is
@@ -97,8 +100,8 @@ pub struct FokkerPlanckMethod {
   pub inner_iterations: usize,
   /// The Hundsdorfer–Verwer parameter, `½ + √3/6` in the reference.
   pub theta: f64,
-  /// Rannacher start-up: the first two steps as four implicit-Euler
-  /// half-steps.
+  /// Rannacher start-up: the first two steps as four fully implicit Euler
+  /// half-steps, including the mixed derivative, solved by sparse LU.
   pub damping: bool,
   /// Half-width of the log-spot domain around `ln s0`; `None` takes `ln 30`.
   pub x_half_width: Option<f64>,
@@ -106,7 +109,8 @@ pub struct FokkerPlanckMethod {
   pub v_max: Option<f64>,
   /// Clustering scale `c` of the log-spot mesh `x = x0 + c sinh ξ`.
   pub x_stretch: f64,
-  /// Clustering scale of the variance mesh as a fraction of `max(v0, θ)`.
+  /// Stretching scale above `v0` as a fraction of `max(v0, θ)`; `[0, v0]`
+  /// is uniformly resolved with comparable spacing at the join.
   pub v_stretch: f64,
 }
 
@@ -334,14 +338,15 @@ pub fn calibrate_leverage_fokker_planck(
     method,
     first_row,
     source,
-  );
+  )?;
   let mut times = rows.iter().map(|(t, _)| *t).collect::<Vec<_>>();
   let mut values = Array2::<f64>::zeros((rows.len(), mesh.m1()));
   for (k, (_, row)) in rows.iter().enumerate() {
     values.row_mut(k).assign(&Array1::from_vec(row.clone()));
   }
   if rows.len() > 1 && !deterministic {
-    let first = values.row(1).to_owned();
+    let first_full_step = if method.damping { 2 } else { 1 };
+    let first = values.row(first_full_step).to_owned();
     values.row_mut(0).assign(&first);
   }
   times[0] = 0.0;
@@ -387,7 +392,7 @@ pub fn heston_slv_density(
     method,
     first_row,
     Source::Fixed(leverage),
-  );
+  )?;
   Ok(density)
 }
 
@@ -401,8 +406,9 @@ fn march(
   method: &FokkerPlanckMethod,
   first_row: Vec<f64>,
   mut source: Source<'_>,
-) -> (Vec<(f64, Vec<f64>)>, FokkerPlanckDensity) {
+) -> Result<(Vec<(f64, Vec<f64>)>, FokkerPlanckDensity)> {
   let (rho, xi, kappa, theta) = (params.rho, params.sigma_mixed(), params.kappa, params.theta);
+  let attainable = 2.0 * kappa * theta < xi * xi;
   let along_v = Direction::along_v(mesh, kappa, theta, xi);
   let mut buffers = StepBuffers::new(mesh.len());
   let grid = time_grid(snapshot_maturities, method.steps_per_year);
@@ -430,10 +436,10 @@ fn march(
   };
   let mut next_snapshot = 0;
 
-  for &(from, to, douglas) in &substeps {
+  for &(from, to, damping) in &substeps {
     let dt = to - from;
     let lev_prev = rows.last().expect("a row per level").1.clone();
-    let mut prev = Level::new(mesh, carry, rho, xi, &lev_prev);
+    let mut prev = Level::new(mesh, carry, rho, xi, &lev_prev, attainable);
     let lev_next = match &mut source {
       Source::Fixed(f) => {
         let row = mesh
@@ -441,7 +447,7 @@ fn march(
           .iter()
           .map(|x| f.call(to, x.exp()))
           .collect::<Vec<_>>();
-        let mut next = Level::new(mesh, carry, rho, xi, &row);
+        let mut next = Level::new(mesh, carry, rho, xi, &row, attainable);
         step(
           mesh,
           &along_v,
@@ -449,11 +455,11 @@ fn march(
           &mut next,
           dt,
           method.theta,
-          douglas,
+          damping,
           &p,
           &mut p_next,
           &mut buffers,
-        );
+        )?;
         row
       }
       Source::Deterministic {
@@ -469,7 +475,7 @@ fn march(
           .iter()
           .map(|x| clamp_leverage(local_vol.eval(to, x.exp()) / sqrt_v))
           .collect::<Vec<_>>();
-        let mut next = Level::new(mesh, carry, rho, xi, &row);
+        let mut next = Level::new(mesh, carry, rho, xi, &row, attainable);
         step(
           mesh,
           &along_v,
@@ -477,11 +483,11 @@ fn march(
           &mut next,
           dt,
           method.theta,
-          douglas,
+          damping,
           &p,
           &mut p_next,
           &mut buffers,
-        );
+        )?;
         row
       }
       Source::Calibrated {
@@ -505,7 +511,7 @@ fn march(
               clamp_leverage(local_vol.eval(to, x.exp()) / e.max(CONDITIONAL_VARIANCE_FLOOR).sqrt())
             })
             .collect();
-          let mut next = Level::new(mesh, carry, rho, xi, &row);
+          let mut next = Level::new(mesh, carry, rho, xi, &row, attainable);
           step(
             mesh,
             &along_v,
@@ -513,11 +519,11 @@ fn march(
             &mut next,
             dt,
             method.theta,
-            douglas,
+            damping,
             &p,
             &mut p_next,
             &mut buffers,
-          );
+          )?;
           guess.copy_from_slice(&p_next);
           *previous = conditional;
         }
@@ -533,7 +539,7 @@ fn march(
       next_snapshot += 1;
     }
   }
-  (rows, density)
+  Ok((rows, density))
 }
 
 #[cfg(test)]

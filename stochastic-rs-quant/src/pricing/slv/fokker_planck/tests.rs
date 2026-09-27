@@ -34,10 +34,8 @@ fn unit_leverage() -> Fn2D<f64> {
 }
 
 /// Under a unit leverage the model is Heston, whose calls have a closed
-/// form: the scheme's marginal has to reprice them. On this mesh — the
-/// reference's halved in each direction, its time step doubled — the worst
-/// error over the ladder is 0.008 on a spot of 100, and 0.003 at the default
-/// settings; the bound is twice the former.
+/// form: the scheme's marginal has to reprice them within two cents on a
+/// spot of 100, on a 121×60 mesh with 100 time steps per year.
 #[test]
 fn a_unit_leverage_density_reprices_the_closed_form_heston_calls() {
   let p = params(1.0);
@@ -114,7 +112,7 @@ fn smiling_local_vol() -> Grid2D<f64> {
 }
 
 /// The calibrated surface is laid on the log-spot mesh with the spot a node,
-/// starts at `t = 0` with the first computed row as the reference
+/// starts at `t = 0` with the first full time step's row as the reference
 /// prescribes, stays finite and positive, and the calibration's own
 /// marginal reprices the local-volatility model's forward.
 #[test]
@@ -132,8 +130,8 @@ fn the_calibration_lays_a_finite_surface_on_the_mesh_and_keeps_the_forward() {
   );
   assert_eq!(
     lev.values().row(0),
-    lev.values().row(1),
-    "row 0 is the first computed row"
+    lev.values().row(2),
+    "row 0 is the first full time step's row, after two half-steps"
   );
   assert!(lev.values().iter().all(|l| l.is_finite() && *l > 0.0));
   let atm = lev.interpolate(S0, 0.5);
@@ -196,8 +194,8 @@ fn bad_settings_are_errors() {
 /// The reference's Heston sets C (Feller satisfied, a vol-of-vol of 0.9)
 /// and D (Feller violated, the density piles up at `v = 0`), under a unit
 /// leverage against the closed-form calls at the default mesh: the worst
-/// errors are 0.007 and 0.011 on a spot of 100, the mass is conserved in
-/// both, and the bounds are twice those errors. The Feller-violating set
+/// errors must stay below 0.015 and 0.022 on a spot of 100, and mass must be
+/// conserved in both. The Feller-violating set
 /// converges at a lower order, as the reference reports, but converges.
 #[test]
 fn the_reference_parameter_sets_reprice_the_closed_form_at_the_default_mesh() {

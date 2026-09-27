@@ -45,6 +45,16 @@ impl PyLeverageSurface {
     if spots.is_empty() || times.is_empty() {
       return Err(PyValueError::new_err("spots and times must not be empty"));
     }
+    if spots
+      .iter()
+      .chain(times.iter())
+      .chain(values.iter())
+      .any(|x| !x.is_finite())
+    {
+      return Err(PyValueError::new_err(
+        "spots, times and values must be finite",
+      ));
+    }
     if spots.windows(2).into_iter().any(|w| w[0] >= w[1])
       || times.windows(2).into_iter().any(|w| w[0] >= w[1])
     {
@@ -128,9 +138,12 @@ impl PyHestonSlvPricer {
     steps_per_year: usize,
     seed: u64,
   ) -> PyResult<Self> {
-    if v0 < 0.0 || theta < 0.0 || sigma < 0.0 || kappa < 0.0 {
+    if [kappa, theta, sigma, v0]
+      .iter()
+      .any(|p| !(p.is_finite() && *p >= 0.0))
+    {
       return Err(PyValueError::new_err(
-        "kappa, theta, sigma and v0 must be non-negative",
+        "kappa, theta, sigma and v0 must be finite and non-negative",
       ));
     }
     if !(0.0..=1.0).contains(&eta) {

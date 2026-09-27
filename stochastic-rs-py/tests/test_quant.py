@@ -261,6 +261,12 @@ def test_heston_slv_calibrates_a_heston_surface_and_prices():
     with pytest.raises(ValueError):
         sr.HestonSlvPricer(kappa, theta, sigma, rho, v0, 1.0, surface, r=r)
     with pytest.raises(ValueError):
+        sr.HestonSlvPricer(math.nan, theta, sigma, rho, v0, 1.0, surface)
+    with pytest.raises(ValueError):
+        sr.LeverageSurface(np.array([80.0, math.nan]), np.array([0.5]), np.ones((1, 2)))
+    with pytest.raises(ValueError):
+        sr.LeverageSurface(np.array([80.0, 120.0]), np.array([0.5]), np.array([[1.0, math.nan]]))
+    with pytest.raises(ValueError):
         sr.HestonSlvCalibrator(s, r, q, list(strikes), maturities, calls, eta=2.0).calibrate()
     process = sr.PyHestonSlv(kappa, theta, sigma, rho, r - q, 0.7, surface, 65, s0=s, v0=v0, t=1.0, seed=5)
     paths, _ = process.sample_par(16)

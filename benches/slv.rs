@@ -3,10 +3,12 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs::quant::pricing::slv::FokkerPlanckMethod;
 use stochastic_rs::quant::pricing::slv::HestonSlvParams;
 use stochastic_rs::quant::pricing::slv::HestonSlvPricer;
 use stochastic_rs::quant::pricing::slv::ParticleMethod;
 use stochastic_rs::quant::pricing::slv::calibrate_leverage;
+use stochastic_rs::quant::pricing::slv::calibrate_leverage_fokker_planck;
 use stochastic_rs::traits::Grid2D;
 use stochastic_rs::traits::ModelPricer;
 
@@ -63,5 +65,31 @@ fn bench_slv_price_call(c: &mut Criterion) {
   });
 }
 
-criterion_group!(benches, bench_calibrate_leverage, bench_slv_price_call);
+fn bench_calibrate_fokker_planck(c: &mut Criterion) {
+  let params = params();
+  let lv = flat_local_vol();
+  let mut group = c.benchmark_group("slv/fokker_planck");
+  group.sample_size(10);
+  for (nx, nv) in [(101, 50), (201, 100)] {
+    let method = FokkerPlanckMethod::default().with_nodes(nx, nv);
+    group.bench_with_input(
+      criterion::BenchmarkId::from_parameter(format!("{nx}x{nv}")),
+      &method,
+      |b, method| {
+        b.iter(|| {
+          calibrate_leverage_fokker_planck(&params, 100.0, 0.05, 0.0, &lv, &[0.25, 0.5], method)
+            .unwrap()
+        });
+      },
+    );
+  }
+  group.finish();
+}
+
+criterion_group!(
+  benches,
+  bench_calibrate_leverage,
+  bench_slv_price_call,
+  bench_calibrate_fokker_planck
+);
 criterion_main!(benches);

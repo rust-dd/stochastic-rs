@@ -2,8 +2,10 @@ use numpy::IntoPyArray;
 use numpy::PyReadonlyArray1;
 use numpy::PyReadonlyArray2;
 use pyo3::IntoPyObjectExt;
+use pyo3::exceptions::PyTypeError;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::PyTuple;
 use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
@@ -23,13 +25,24 @@ fn leverage_from_py(obj: &Bound<'_, PyAny>) -> PyResult<Fn2D<f64>> {
     PyReadonlyArray1<'py, f64>,
     PyReadonlyArray2<'py, f64>,
   );
-  let (spots, times, values) = match obj.extract::<Triple<'_>>() {
-    Ok(triple) => triple,
-    Err(_) => (
+  let (spots, times, values) = if obj.is_instance_of::<PyTuple>() {
+    obj.extract::<Triple<'_>>().map_err(|e| {
+      PyValueError::new_err(format!(
+        "leverage: a (spots, times, values) triple must hold float64 arrays of one, one and two \
+         dimensions: {e}"
+      ))
+    })?
+  } else if obj.hasattr("spots")? && obj.hasattr("times")? && obj.hasattr("values")? {
+    (
       obj.getattr("spots")?.extract()?,
       obj.getattr("times")?.extract()?,
       obj.getattr("values")?.extract()?,
-    ),
+    )
+  } else {
+    return Err(PyTypeError::new_err(
+      "leverage must be a callable L(t, s), a (spots, times, values) triple of arrays, or an \
+       object with spots, times and values attributes such as LeverageSurface",
+    ));
   };
   let spots = spots.as_array().to_owned();
   let times = times.as_array().to_owned();
@@ -37,6 +50,16 @@ fn leverage_from_py(obj: &Bound<'_, PyAny>) -> PyResult<Fn2D<f64>> {
   if spots.is_empty() || times.is_empty() {
     return Err(PyValueError::new_err(
       "leverage: spots and times must not be empty",
+    ));
+  }
+  if spots
+    .iter()
+    .chain(times.iter())
+    .chain(values.iter())
+    .any(|x| !x.is_finite())
+  {
+    return Err(PyValueError::new_err(
+      "leverage: spots, times and values must be finite",
     ));
   }
   if spots.windows(2).into_iter().any(|w| w[0] >= w[1])
@@ -94,15 +117,26 @@ impl PyHestonSlv {
     if !(-1.0..=1.0).contains(&rho) {
       return Err(PyValueError::new_err("rho must lie in [-1, 1]"));
     }
-    if kappa < 0.0 || theta < 0.0 || sigma < 0.0 {
+    if [kappa, theta, sigma]
+      .iter()
+      .any(|p| !(p.is_finite() && *p >= 0.0))
+    {
       return Err(PyValueError::new_err(
-        "kappa, theta and sigma must be non-negative",
+        "kappa, theta and sigma must be finite and non-negative",
       ));
     }
-    if s0.is_some_and(|s| s <= 0.0) || v0.is_some_and(|v| v < 0.0) {
+    if !mu.is_finite() {
+      return Err(PyValueError::new_err("mu must be finite"));
+    }
+    if s0.is_some_and(|s| !(s.is_finite() && s > 0.0))
+      || v0.is_some_and(|v| !(v.is_finite() && v >= 0.0))
+    {
       return Err(PyValueError::new_err(
-        "s0 must be positive and v0 non-negative",
+        "s0 must be finite and positive, v0 finite and non-negative",
       ));
+    }
+    if t.is_some_and(|t| !(t.is_finite() && t > 0.0)) {
+      return Err(PyValueError::new_err("t must be finite and positive"));
     }
     let leverage = leverage_from_py(leverage)?;
     Ok(match seed {
