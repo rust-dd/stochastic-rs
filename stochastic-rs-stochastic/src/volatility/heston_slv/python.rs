@@ -1,7 +1,11 @@
+use std::panic::AssertUnwindSafe;
+use std::panic::catch_unwind;
+
 use numpy::IntoPyArray;
 use numpy::PyReadonlyArray1;
 use numpy::PyReadonlyArray2;
 use pyo3::IntoPyObjectExt;
+use pyo3::exceptions::PyRuntimeError;
 use pyo3::exceptions::PyTypeError;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -10,6 +14,19 @@ use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
 use crate::traits::Grid2D;
+
+/// Fn2D's Rust API is infallible, so a failed Python callback unwinds.
+/// Translate it at the Python boundary, including panics relayed by Rayon.
+fn callback_result<R>(operation: impl FnOnce() -> R) -> PyResult<R> {
+  catch_unwind(AssertUnwindSafe(operation)).map_err(|payload| {
+    let message = payload
+      .downcast_ref::<String>()
+      .map(String::as_str)
+      .or_else(|| payload.downcast_ref::<&str>().copied())
+      .unwrap_or("unknown sampler failure");
+    PyRuntimeError::new_err(format!("HestonSlv evaluation failed: {message}"))
+  })
+}
 
 /// The leverage a Python caller hands over: a callable `L(t, s)`, a
 /// `(spots, times, values)` triple of arrays, or any object carrying those
@@ -178,39 +195,39 @@ impl PyHestonSlv {
   }
 
   /// The leverage at `(t, s)`, as the sampler reads it.
-  fn leverage(&self, t: f64, s: f64) -> f64 {
-    crate::py_dispatch_f64!(self, |inner| inner.leverage.call(t, s))
+  fn leverage(&self, t: f64, s: f64) -> PyResult<f64> {
+    callback_result(|| crate::py_dispatch_f64!(self, |inner| inner.leverage.call(t, s)))
   }
 
   /// One path as the pair `(s, v)` of arrays.
-  fn sample<'py>(&self, py: Python<'py>) -> (Py<PyAny>, Py<PyAny>) {
-    crate::py_dispatch_f64!(self, |inner| {
-      let [s, v] = inner.sample();
-      (
-        s.into_pyarray(py).into_py_any(py).unwrap(),
-        v.into_pyarray(py).into_py_any(py).unwrap(),
-      )
-    })
+  /// A failed leverage callback raises `RuntimeError` with its error message.
+  fn sample<'py>(&self, py: Python<'py>) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
+    let [s, v] = callback_result(|| crate::py_dispatch_f64!(self, |inner| inner.sample()))?;
+    Ok((
+      s.into_pyarray(py).into_py_any(py)?,
+      v.into_pyarray(py).into_py_any(py)?,
+    ))
   }
 
   /// `m` paths as a pair of `(m, n)` arrays. A callable leverage is called
   /// back under the GIL at every step, so the parallel speed-up is bounded
   /// by those calls; a grid is interpolated in Rust.
-  fn sample_par<'py>(&self, py: Python<'py>, m: usize) -> (Py<PyAny>, Py<PyAny>) {
+  /// A failed leverage callback raises `RuntimeError` with its error message.
+  fn sample_par<'py>(&self, py: Python<'py>, m: usize) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
     crate::py_dispatch_f64!(self, |inner| {
       // The callbacks re-attach to the interpreter from the worker threads, so
       // the GIL must be released here or the parallel sampler deadlocks.
-      let samples = py.detach(|| inner.sample_par(m));
+      let samples = callback_result(|| py.detach(|| inner.sample_par(m)))?;
       let mut ss = ndarray::Array2::<f64>::zeros((m, inner.n));
       let mut vs = ndarray::Array2::<f64>::zeros((m, inner.n));
       for (i, [s, v]) in samples.iter().enumerate() {
         ss.row_mut(i).assign(s);
         vs.row_mut(i).assign(v);
       }
-      (
-        ss.into_pyarray(py).into_py_any(py).unwrap(),
-        vs.into_pyarray(py).into_py_any(py).unwrap(),
-      )
+      Ok((
+        ss.into_pyarray(py).into_py_any(py)?,
+        vs.into_pyarray(py).into_py_any(py)?,
+      ))
     })
   }
 }

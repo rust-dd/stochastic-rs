@@ -247,3 +247,18 @@ def test_heston_slv_rejects_bad_inputs_with_python_errors():
         sr.PyHestonSlv(leverage=(spots, times, np.full((2, 2), math.nan)), **kwargs)
     with pytest.raises(TypeError):
         sr.PyHestonSlv(leverage=1.0, **kwargs)
+
+
+@pytest.mark.parametrize("operation", ["leverage", "sample", "sample_par"])
+def test_heston_slv_callback_failures_are_runtime_errors(operation):
+    def broken(t, s):
+        raise RuntimeError("leverage callback failed")
+
+    process = sr.PyHestonSlv(2.0, 0.04, 0.3, -0.7, 0.05, 0.6, broken, 5, seed=7)
+    with pytest.raises(RuntimeError, match="leverage callback failed"):
+        if operation == "leverage":
+            process.leverage(0.0, 100.0)
+        elif operation == "sample":
+            process.sample()
+        else:
+            process.sample_par(3)
