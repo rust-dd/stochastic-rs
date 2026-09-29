@@ -1,24 +1,29 @@
 ---
 title: Tutorials
-description: End-to-end walkthroughs — Heston calibration, fBm Hurst estimation, vol-surface from quotes, AI surrogate training, pairs, risk, execution, interop.
+seo_title: "Tutorials: quant finance in Rust and Python"
+description: End-to-end walkthroughs in Rust and Python — the Heston model, Hurst estimation, SVI and SSVI surfaces, and GPU paths on a free Colab GPU.
 category: tutorial
 since: 2.0.0
 status: stable
 ---
 
-# Tutorials
-
 Long-form, end-to-end walkthroughs. Each tutorial builds one concrete
 artefact (a calibrated model, a vol surface, a backtested signal) from
 scratch, with full code in both Rust and Python.
+
+## Tutorials
+
+| Tutorial | What you build |
+|---|---|
+| [Heston: simulate, price and calibrate](/docs/tutorials/heston) | Heston paths under Euler and QE, closed-form, Fourier and ADI prices, a calibration to option prices and an estimate from time series |
+| [Estimate the Hurst exponent](/docs/tutorials/hurst-exponent) | A fractional Brownian path with a known $H$, four estimates of it, and a rule for choosing among the eight estimators |
+| [Fit an SVI volatility surface](/docs/tutorials/svi-volatility-surface) | A raw SVI fit checked for butterfly arbitrage, and an SSVI surface calibrated across maturities |
+| [GPU paths on a free Colab GPU](/docs/tutorials/gpu-paths-on-colab) | The Python module with the CUDA back-end, the same process sampled on the host and on the device, and a check that the two agree in law |
 
 ## Planned tutorials
 
 | Tutorial                              | What you build                                            |
 |---------------------------------------|-----------------------------------------------------------|
-| Heston calibration                    | Fit Heston to a market vol surface, generate Greeks       |
-| fBm Hurst estimation                  | Simulate fBM, recover H via Fukasawa                       |
-| Vol surface from quotes               | OTM quotes → IV grid → SVI/SSVI fit → arbitrage check     |
 | AI surrogate training                 | Train a Heston NN surrogate from scratch                   |
 | Pairs trading                         | Cointegration test → hedge ratio → z-score signal          |
 | Risk pipeline                         | VaR / CVaR / drawdown over a portfolio                     |
