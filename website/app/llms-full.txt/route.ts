@@ -1,51 +1,24 @@
-import { readFile, readdir } from 'node:fs/promises';
-import { join, relative, sep } from 'node:path';
+import { llmText, pagesInOrder } from '@/lib/source';
 import { SITE } from '@/lib/site';
 
 export const dynamic = 'force-static';
 
-const DOCS_DIR = join(process.cwd(), 'content', 'docs');
-
-async function mdxFiles(): Promise<string[]> {
-  const entries = await readdir(DOCS_DIR, { recursive: true });
-  return entries
-    .filter((entry) => entry.endsWith('.mdx'))
-    .map((entry) => join(DOCS_DIR, entry))
-    .sort();
-}
-
-/** `content/docs/concepts/traits.mdx` → `/docs/concepts/traits`. */
-function urlFor(file: string): string {
-  const slug = relative(DOCS_DIR, file)
-    .replace(/\.mdx$/, '')
-    .split(sep)
-    .filter((part) => part !== 'index');
-  return ['', 'docs', ...slug].join('/');
-}
-
 /**
- * Every documentation page concatenated as plain Markdown, so an assistant can
- * ingest the whole library in one fetch instead of crawling page by page.
+ * Every documentation page as Markdown, in sidebar order, so an assistant can
+ * ingest the whole library in one fetch. Built from the processed Markdown of
+ * each page, so the Rust examples are inlined code, not `<RustExample>` tags.
  */
 export async function GET(): Promise<Response> {
-  const files = await mdxFiles();
-
-  const sections = await Promise.all(
-    files.map(async (file) => {
-      const raw = await readFile(file, 'utf8');
-      const url = new URL(urlFor(file), SITE.url).toString();
-      return `<!-- ${url} -->\n\n${raw.trim()}\n`;
-    }),
-  );
+  const sections = await Promise.all(pagesInOrder().map(llmText));
 
   const body = [
     `# ${SITE.name} — full documentation`,
     '',
-    `> ${SITE.description}`,
+    `> ${SITE.definition}`,
     '',
     `Source: ${SITE.repository}`,
     '',
-    ...sections,
+    sections.join('\n---\n\n'),
   ].join('\n');
 
   return new Response(body, {
