@@ -3,7 +3,7 @@ message: "If you use stochastic-rs in your research, please cite it as below."
 title: "stochastic-rs: quantitative finance and stochastic process simulation in Rust"
 abstract: >-
   stochastic-rs is an open-source Rust library for quantitative finance and
-  stochastic process simulation. It provides 120+ stochastic processes
+  stochastic process simulation. It provides 130+ stochastic processes
   (diffusion, jump, fractional and rough volatility, short-rate, HJM, LMM),
   option pricing and model calibration (Black-Scholes-Merton, Heston, SABR,
   rough Bergomi, Levy, double Heston), volatility surface construction
