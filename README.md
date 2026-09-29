@@ -22,9 +22,11 @@ README only gets you installed and running.
 
 - [Getting started](https://stochastic.rust-dd.com/docs/getting-started/quickstart) — Rust and Python installation, first program
 - [Concepts](https://stochastic.rust-dd.com/docs/concepts/traits) — the traits (`ProcessExt`, `DistributionExt`, `ModelPricer`), seeding, feature flags, [design philosophy](https://stochastic.rust-dd.com/docs/concepts/design-philosophy)
+- [Tutorials](https://stochastic.rust-dd.com/docs/tutorials) — end to end, in Rust and Python: [the Heston model](https://stochastic.rust-dd.com/docs/tutorials/heston) (simulate, price, calibrate), [the Hurst exponent](https://stochastic.rust-dd.com/docs/tutorials/hurst-exponent), [SVI and SSVI volatility surfaces](https://stochastic.rust-dd.com/docs/tutorials/svi-volatility-surface) and [GPU paths on a free Colab GPU](https://stochastic.rust-dd.com/docs/tutorials/gpu-paths-on-colab)
 - [Processes](https://stochastic.rust-dd.com/docs/processes) · [Distributions](https://stochastic.rust-dd.com/docs/distributions) · [Copulas](https://stochastic.rust-dd.com/docs/copulas) · [Statistics](https://stochastic.rust-dd.com/docs/stats) · [Quant](https://stochastic.rust-dd.com/docs/quant) · [AI](https://stochastic.rust-dd.com/docs/ai) — the catalogues with selection guides
 - [GPU support](https://stochastic.rust-dd.com/docs/concepts/gpu-support) — what runs on which device today, precision, an executed T4 run
 - [Python](https://stochastic.rust-dd.com/docs/python) — the bindings, `device=`, NumPy interop
+- [Comparison with QuantLib and RustQuant](https://stochastic.rust-dd.com/docs/comparison) — where each library is the better choice
 - [Benchmarks](https://stochastic.rust-dd.com/docs/benchmarks) · [Migrating to v3](https://stochastic.rust-dd.com/docs/migration) · [Tutorials](https://stochastic.rust-dd.com/docs/tutorials)
 
 ## What is inside
@@ -35,7 +37,7 @@ One workspace, one umbrella crate (`stochastic-rs`) that re-exports the sub-crat
 |---|---|
 | `stochastic-rs-core` | the SIMD RNG and seed sources (`Deterministic`, `Unseeded`) |
 | `stochastic-rs-distributions` | SIMD samplers with closed-form pdf / cdf / characteristic function / moments, special functions |
-| `stochastic-rs-stochastic` | 131 processes behind one `ProcessExt` trait: diffusion, jump, stochastic and rough volatility, short rate, HJM / LMM, fractional noise, Volterra |
+| `stochastic-rs-stochastic` | 132 processes behind one `ProcessExt` trait: diffusion, jump, stochastic and rough volatility, short rate, HJM / LMM, fractional noise, Volterra |
 | `stochastic-rs-copulas` | 15 bivariate and 8 multivariate copulas, vine fitting, goodness of fit |
 | `stochastic-rs-stats` | Hurst and diffusion estimators, unit-root and cointegration tests, realised volatility, filters, extreme values, risk measures |
 | `stochastic-rs-quant` | closed-form, Fourier, PDE, lattice and Monte Carlo pricers, calibrators, vol surfaces, curves, credit, XVA, market microstructure |
@@ -116,7 +118,7 @@ A process samples on a device by re-typing it: `Gbm::new(...).on::<Metal>()`
 (`Cuda`, `Accelerate`), with `handle.probe()` to check the device
 first; from Python, `device="metal"` on the device-capable classes. The
 [GPU support](https://stochastic.rust-dd.com/docs/concepts/gpu-support) page has
-the support matrix, and [`notebooks/`](notebooks/) a Colab notebook that runs the
+the support matrix, and [`notebooks/`](https://github.com/rust-dd/stochastic-rs/tree/main/notebooks) a Colab notebook that runs the
 CUDA back-end on a free T4.
 
 ## Benchmarks
@@ -129,7 +131,7 @@ on CPU, Accelerate, Metal and cuFFT, and the per-release speedups.
 ## Citing
 
 The concept DOI [10.5281/zenodo.21553307](https://doi.org/10.5281/zenodo.21553307)
-always resolves to the latest release; [`CITATION.cff`](CITATION.cff) carries the
+always resolves to the latest release; [`CITATION.cff`](https://github.com/rust-dd/stochastic-rs/blob/main/CITATION.cff) carries the
 version DOI of the current one.
 
 ## Contributing
@@ -138,7 +140,7 @@ Bug reports, suggestions and pull requests are welcome on GitHub. The
 [contributing page](https://stochastic.rust-dd.com/docs/contributing) has the
 development rules; per-feature recipes (`add-diffusion-process`,
 `adding-distribution`, `calibration-pattern`, …) live under
-[`.claude/skills/`](.claude/skills/).
+[`.claude/skills/`](https://github.com/rust-dd/stochastic-rs/tree/main/.claude/skills).
 
 ## License
 

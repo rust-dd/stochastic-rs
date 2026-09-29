@@ -30,11 +30,25 @@ workspace. Every estimator is anchored to a published paper.
 ## Usage
 
 ```rust
-use ndarray::ArrayView1;
-use stochastic_rs_stats::hurst::whittle;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_stats::hurst::HurstEstimator;
+use stochastic_rs_stats::hurst::rs::RescaledRange;
+use stochastic_rs_stochastic::noise::fgn::Fgn;
+use stochastic_rs_stochastic::traits::ProcessExt;
 
-let res = whittle::estimate_from_prices(ArrayView1::from(&closes));
+// Fractional Gaussian noise with H = 0.3, then read H back from the path.
+let path = Fgn::<f64, _>::new(0.3, 4096, Some(1.0), Deterministic::new(7)).sample();
+let estimator = RescaledRange {
+    take_differences: false,
+    ..RescaledRange::default()
+};
+let est = estimator.estimate(path.view()).expect("a path long enough to estimate");
+assert!((est.hurst - 0.3).abs() < 0.1);
 ```
+
+The Fukasawa and Whittle estimators in `hurst::whittle` take price data
+(`estimate_from_prices(closes)`) and estimate the roughness of volatility,
+not the Hurst exponent of the path itself.
 
 ## Part of stochastic-rs
 
@@ -44,12 +58,13 @@ should depend on the umbrella crate, which re-exports everything:
 
 ```toml
 [dependencies]
-stochastic-rs = "3.0.0-beta.3"
+stochastic-rs = "3.0.0-rc.3"
 ```
 
 Depend on `stochastic-rs-stats` directly only when you want this slice and nothing else.
 
 - Documentation: [stochastic.rust-dd.com](https://stochastic.rust-dd.com)
+- Tutorials: [stochastic.rust-dd.com/docs/tutorials](https://stochastic.rust-dd.com/docs/tutorials)
 - API reference: [docs.rs/stochastic-rs-stats](https://docs.rs/stochastic-rs-stats)
 
 ## License

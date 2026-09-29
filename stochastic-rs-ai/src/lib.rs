@@ -1,6 +1,4 @@
-//! # stochastic-rs-ai
-//!
-//! Neural surrogate models for stochastic volatility.
+#![doc = include_str!("../README.md")]
 
 pub mod volatility;
 

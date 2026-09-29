@@ -38,8 +38,8 @@ let seed = Deterministic::new(42);
 ## Seeding rule
 
 The seed belongs to the **constructor**, not to an `Rng` you pass in later.
-Distributions in this workspace own their stream; a `fill_slice(rng, out)`
-call ignores the `rng` argument by design.
+Distributions in this workspace own their stream, so a bulk fill is
+`fill_slice(out)` with no RNG argument at all.
 
 ## Part of stochastic-rs
 
@@ -49,12 +49,13 @@ should depend on the umbrella crate, which re-exports everything:
 
 ```toml
 [dependencies]
-stochastic-rs = "3.0.0-beta.3"
+stochastic-rs = "3.0.0-rc.3"
 ```
 
 Depend on `stochastic-rs-core` directly only when you want this slice and nothing else.
 
 - Documentation: [stochastic.rust-dd.com](https://stochastic.rust-dd.com)
+- Tutorials: [stochastic.rust-dd.com/docs/tutorials](https://stochastic.rust-dd.com/docs/tutorials)
 - API reference: [docs.rs/stochastic-rs-core](https://docs.rs/stochastic-rs-core)
 
 ## License

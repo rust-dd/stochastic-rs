@@ -30,12 +30,11 @@ when the draw needs to be reproducible, matching the bivariate one below.
 use stochastic_rs_copulas::bivariate::clayton::Clayton;
 use stochastic_rs_copulas::traits::BivariateExt;
 
-let mut c = Clayton {
-    theta: Some(2.0),
-    ..Clayton::new()
-};
-let u = c.sample(10_000)?;               // Array2<f64>, shape (10000, 2)
-let v = c.sample_with_seed(10_000, 42)?; // reproducible
+let mut c = Clayton::new();
+c.set_tau(0.5);                 // Kendall's tau; the sampler needs it set
+c.set_theta(c.compute_theta()); // theta by Kendall inversion
+let u = c.sample(10_000).expect("tau is set");               // Array2<f64>, shape (10000, 2)
+let v = c.sample_with_seed(10_000, 42).expect("tau is set"); // reproducible
 ```
 
 Multivariate constructions take a tree of `PairCopula` variants:
@@ -45,8 +44,8 @@ use stochastic_rs_copulas::multivariate::cvine::CVine;
 use stochastic_rs_copulas::multivariate::dvine::PairCopula;
 use stochastic_rs_copulas::traits::MultivariateExt;
 
-let cv = CVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]])?;
-let draws = cv.sample_with_seed(10_000, 42)?;
+let cv = CVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).expect("a valid vine");
+let draws = cv.sample_with_seed(10_000, 42).expect("a valid vine");
 ```
 
 ## Part of stochastic-rs
@@ -57,12 +56,13 @@ should depend on the umbrella crate, which re-exports everything:
 
 ```toml
 [dependencies]
-stochastic-rs = "3.0.0-beta.3"
+stochastic-rs = "3.0.0-rc.3"
 ```
 
 Depend on `stochastic-rs-copulas` directly only when you want this slice and nothing else.
 
 - Documentation: [stochastic.rust-dd.com](https://stochastic.rust-dd.com)
+- Tutorials: [stochastic.rust-dd.com/docs/tutorials](https://stochastic.rust-dd.com/docs/tutorials)
 - API reference: [docs.rs/stochastic-rs-copulas](https://docs.rs/stochastic-rs-copulas)
 
 ## License
