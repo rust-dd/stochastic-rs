@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { Figures } from '@/components/Figures';
+import { FACTS } from '@/lib/facts';
 
 export default function HomePage() {
   return (
@@ -26,10 +27,12 @@ function Hero() {
         stochastic-rs
       </h1>
       <p className="mt-6 max-w-2xl text-balance text-lg text-fd-muted-foreground">
-        Simulate 131 stochastic processes, price and calibrate against them,
-        and move any of it to a GPU by naming one. The model does not change,
-        the numbers keep their law, and the crate tells you when a device
-        cannot take a configuration instead of quietly running it on the host.
+        stochastic-rs is an open-source quantitative-finance library for Rust
+        and Python. Simulate {FACTS.processes} stochastic processes, price and
+        calibrate against them, and move any of it to a GPU by naming one. The
+        model does not change, the numbers keep their law, and the crate tells
+        you when a device cannot take a configuration instead of quietly
+        running it on the host.
       </p>
 
       <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
@@ -61,10 +64,10 @@ function Hero() {
 }
 
 const STATS: [string, string][] = [
-  ['131', 'processes behind one trait'],
+  [String(FACTS.processes), 'processes behind one trait'],
   ['17×', 'the CPU on a batch of 200 000 paths'],
-  ['3 054', 'tests: laws, devices, reproducibility'],
-  ['303', 'entries in the Python module'],
+  [`${FACTS.testsFloor.toLocaleString('en-US').replace(',', ' ')}+`, 'tests: laws, devices, reproducibility'],
+  [String(FACTS.pythonEntries), 'entries in the Python module'],
 ];
 
 function Stats() {
@@ -174,22 +177,32 @@ function Code({ text }: { text: string }) {
 const TASKS: { title: string; body: string; links: [string, string][] }[] = [
   {
     title: 'To simulate',
-    body: '131 processes behind one trait — diffusions, jumps, stochastic volatility, short rates, fractional and rough, point processes, subordinators, conditional-variance time series. Heston and its rough relatives, Bates, SABR, CGMY, Hull-White, LMM, fBm and everything built on it.',
-    links: [['Processes', '/docs/processes']],
+    body: `${FACTS.processes} processes behind one trait — diffusions, jumps, stochastic volatility, short rates, fractional and rough, point processes, subordinators, conditional-variance time series. Heston and its rough relatives, Bates, SABR, CGMY, Hull-White, LMM, fBm and everything built on it.`,
+    links: [
+      ['Processes', '/docs/processes'],
+      ['GPU paths on Colab', '/docs/tutorials/gpu-paths-on-colab'],
+    ],
   },
   {
     title: 'To price or calibrate',
-    body: 'Analytic, Fourier, ADI and Monte Carlo pricers with first- and second-order Greeks. Fourteen calibrators behind one trait, SVI and SSVI surfaces, curves, bonds, credit and risk.',
-    links: [['Quant', '/docs/quant']],
+    body: `Analytic, Fourier, ADI and Monte Carlo pricers with first- and second-order Greeks; ${FACTS.calibrators} calibrators behind one trait, SVI and SSVI surfaces, curves, bonds, credit and risk.`,
+    links: [
+      ['Quant', '/docs/quant'],
+      ['Heston tutorial', '/docs/tutorials/heston'],
+      ['SVI surface tutorial', '/docs/tutorials/svi-volatility-surface'],
+    ],
   },
   {
     title: 'To estimate',
     body: 'Eight Hurst estimators, realised measures, jump tests, cointegration, changepoints, extreme value, GARCH fitting — each carrying the paper it came from.',
-    links: [['Stats', '/docs/stats']],
+    links: [
+      ['Stats', '/docs/stats'],
+      ['Hurst tutorial', '/docs/tutorials/hurst-exponent'],
+    ],
   },
   {
     title: 'To draw',
-    body: '36 SIMD distribution samplers, most with characteristic function, pdf, cdf and moments in closed form, and 23 copulas with fitting and goodness-of-fit.',
+    body: `${FACTS.distributions} SIMD distribution samplers, most with characteristic function, pdf, cdf and moments in closed form, and ${FACTS.copulas} copulas with fitting and goodness-of-fit.`,
     links: [
       ['Distributions', '/docs/distributions'],
       ['Copulas', '/docs/copulas'],
@@ -197,7 +210,7 @@ const TASKS: { title: string; body: string; links: [string, string][] }[] = [
   },
   {
     title: 'To do it from Python',
-    body: '303 entries, numpy in and numpy out, and the same device argument. Wheels for every platform, no feature flags to choose.',
+    body: `${FACTS.pythonEntries} entries, numpy in and numpy out, and the same device argument. Wheels for every platform, no feature flags to choose.`,
     links: [['Python', '/docs/python']],
   },
 ];
@@ -238,7 +251,7 @@ function Tasks() {
 const WHY: { title: string; body: string }[] = [
   {
     title: 'A declaration, not a kernel',
-    body: 'A family is written once in a small DSL — its state, its noise, its step — and the same text is rendered as CUDA C for NVRTC and as MSL for Metal. Adding a process means adding a declaration, not writing and debugging two kernels. 120 families carry 129 of the processes; the two that need pipelines of their own have them.',
+    body: `A family is written once in a small DSL — its state, its noise, its step — and the same text is rendered as CUDA C for NVRTC and as MSL for Metal. Adding a process means adding a declaration, not writing and debugging two kernels. ${FACTS.deviceFamilies} families carry ${FACTS.processesOnEngine} of the processes; the two that need pipelines of their own — fractional Gaussian noise and the fractional Brownian sheet — have them.`,
   },
   {
     title: 'The speed is in the shape of the call',

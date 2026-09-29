@@ -1,12 +1,11 @@
 ---
 title: Installation (Rust)
+seo_title: Install stochastic-rs for Rust (cargo)
 description: Add stochastic-rs to your Rust project — umbrella crate or per-sub-crate, with the right Cargo features and CPU / SIMD / GPU options.
 category: concept
 since: 2.0.0
 status: stable
 ---
-
-# Installation (Rust)
 
 The Rust crates require Rust 1.89 or newer.
 
@@ -32,7 +31,7 @@ sub-crates you need:
 ```toml
 [dependencies]
 stochastic-rs-distributions = "3.0.0-rc.1"   # SIMD distribution sampling
-stochastic-rs-stochastic = "3.0.0-rc.1"   # 131 process types
+stochastic-rs-stochastic = "3.0.0-rc.3"   # 132 process types
 stochastic-rs-copulas = "3.0.0-rc.1"   # bivariate / multivariate copulas
 stochastic-rs-stats = "3.0.0-rc.1"   # estimators
 stochastic-rs-quant = "3.0.0-rc.1"   # pricing / calibration / vol surface
@@ -44,7 +43,7 @@ Topology:
 ```
 stochastic-rs-core (simd_rng)
  └→ stochastic-rs-distributions (FloatExt, SimdFloatExt, distributions)
-     ├→ stochastic-rs-stochastic (ProcessExt + 131 processes)
+     ├→ stochastic-rs-stochastic (ProcessExt + 132 processes)
      ├→ stochastic-rs-copulas
      └→ stochastic-rs-stats
          └→ stochastic-rs-quant (ModelPricer, calibration, vol surface)

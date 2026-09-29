@@ -6,8 +6,6 @@ since: 2.5.4
 status: stable
 ---
 
-# Comparison with QuantLib and RustQuant
-
 There are three serious open-source options if you want to price
 derivatives without writing the numerics yourself:
 [QuantLib](https://github.com/lballabio/QuantLib) (C++, since 2000),
@@ -36,7 +34,7 @@ the wrong answer.
 |---|---|---|---|
 | Language | Rust | C++ | Rust |
 | Licence | MIT | BSD-style | Apache-2.0 |
-| Python | Native PyO3, 234 entries | SWIG wrappers | Early-stage (`rustquant` 0.0.x) |
+| Python | Native PyO3, 308 entries | SWIG wrappers | Early-stage (`rustquant` 0.0.x) |
 | Float precision | Generic `f32` / `f64` | `double` | `f64` |
 | SIMD / GPU | CPU SIMD, CUDA, Metal, Accelerate | None | None |
 | First released | 2024 | 2000 | 2023 |
@@ -46,7 +44,7 @@ the wrong answer.
 These are areas where the other two have little or nothing. Each is
 verified against the upstream source trees, not marketing copy.
 
-**Rough and fractional volatility.** 120+ processes including rough
+**Rough and fractional volatility.** 132 processes including rough
 Bergomi, rough Heston, fractional OU, fractional CIR, Volterra kernels
 and a Markovian lift. QuantLib ships one rough engine
 (`analyticroughhestonengine`); RustQuant has none. See
@@ -124,7 +122,7 @@ two standards, and we have no general data-loading layer.
 
 | Area | stochastic-rs | QuantLib | RustQuant |
 |---|---|---|---|
-| Stochastic processes | 120+ | ~20 | ~10 |
+| Stochastic processes | 132 | ~20 | ~10 |
 | Rough / fractional volatility | Extensive | One engine | None |
 | Fourier pricing | Heston, Bates, Merton, Kou, VG, CGMY, double Heston | Heston family | None |
 | Model calibration | Heston, SABR, SVJ, Lévy, rough Bergomi, double Heston, Hull-White | Broad | None |
