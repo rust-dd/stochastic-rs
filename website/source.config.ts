@@ -1,58 +1,38 @@
-import { defineConfig, defineDocs, frontmatterSchema } from 'fumadocs-mdx/config';
+import { defineConfig, defineDocs } from 'fumadocs-mdx/config';
+import lastModified from 'fumadocs-mdx/plugins/last-modified';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import { z } from 'zod';
+import { pageFrontmatter } from './lib/frontmatter';
+import { gitLastModified } from './lib/git-last-modified';
+import { remarkRustExample } from './lib/remark-rust-example';
 
-const referenceSchema = z.object({
-  author: z.string(),
-  year: z.number().int(),
-  title: z.string(),
-  doi: z.string().optional(),
-  arxiv: z.string().optional(),
-  url: z.string().url().optional(),
-});
-
-const stochasticRsFrontmatter = frontmatterSchema.extend({
-  category: z
-    .enum([
-      'process',
-      'distribution',
-      'copula',
-      'estimator',
-      'pricer',
-      'calibrator',
-      'concept',
-      'tutorial',
-      'reference',
-      'ai',
-    ])
-    .optional(),
-  subcategory: z.string().optional(),
-  crate: z
-    .string()
-    .regex(/^stochastic-rs(-[a-z]+)?$/)
-    .optional(),
-  module_path: z.string().optional(),
-  since: z
-    .string()
-    .regex(/^\d+\.\d+(\.\d+)?(-[a-z0-9.]+)?$/)
-    .optional(),
-  status: z.enum(['stable', 'experimental', 'deprecated']).optional(),
-  features: z.array(z.string()).default([]),
-  references: z.array(referenceSchema).default([]),
-  replaced_by: z.string().optional(),
-});
+/** Layout-only wrappers whose children are the content an assistant needs. */
+const TRANSPARENT = new Set(['Tabs', 'Tab', 'Callout']);
 
 export const docs = defineDocs({
   dir: 'content/docs',
   docs: {
-    schema: stochasticRsFrontmatter,
+    schema: pageFrontmatter,
+    postprocess: {
+      includeProcessedMarkdown: {
+        headingIds: false,
+        // `remarkLLMs` replaces any `filterElement` passed here with its own, so
+        // the wrappers are unwrapped through `stringify`, which it does forward.
+        // Emitting the children as flow content also drops the indentation a
+        // JSX parent would put in front of each fenced code block.
+        stringify: (node, _parent, state, info) => {
+          if (node.type !== 'mdxJsxFlowElement' || !TRANSPARENT.has(node.name ?? '')) return;
+          return state.containerFlow(node, info);
+        },
+      },
+    },
   },
 });
 
 export default defineConfig({
+  plugins: [lastModified({ versionControl: gitLastModified })],
   mdxOptions: {
-    remarkPlugins: [remarkMath],
+    remarkPlugins: [remarkMath, remarkRustExample],
     rehypePlugins: (v) => [rehypeKatex, ...v],
   },
 });

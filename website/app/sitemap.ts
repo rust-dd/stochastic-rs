@@ -8,26 +8,21 @@ import { SITE } from '@/lib/site';
  */
 function priorityFor(url: string): number {
   if (url === '/docs') return 0.9;
-  if (url.startsWith('/docs/getting-started')) return 0.8;
+  if (url.startsWith('/docs/getting-started') || url.startsWith('/docs/tutorials')) return 0.8;
   return 0.7;
 }
 
+/**
+ * `lastModified` is the last commit that touched the page's MDX, and is left
+ * out when git cannot say (see `lib/git-last-modified.ts`): a date that moves
+ * on every build teaches crawlers to ignore the field.
+ */
 export default function sitemap(): MetadataRoute.Sitemap {
-  const lastModified = new Date();
-
-  const home = {
-    url: SITE.url,
-    lastModified,
-    changeFrequency: 'weekly' as const,
-    priority: 1,
-  };
-
   const pages = source.getPages().map((page) => ({
     url: new URL(page.url, SITE.url).toString(),
-    lastModified,
-    changeFrequency: 'weekly' as const,
+    ...(page.data.lastModified ? { lastModified: page.data.lastModified } : {}),
     priority: priorityFor(page.url),
   }));
 
-  return [home, ...pages];
+  return [{ url: SITE.url, priority: 1 }, ...pages];
 }

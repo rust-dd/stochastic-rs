@@ -1,12 +1,10 @@
 ---
 title: DistributionExt
-description: Closed-form pdf, cdf, characteristic function, and moments for every distribution — 18 of 19 closed-form, with five named unimplemented moments.
+description: Closed-form pdf, cdf, characteristic function and moments for 33 of the 37 distribution types — a missing closed form panics, never returns zero.
 category: concept
 since: 2.0.0
 status: stable
 ---
-
-# `DistributionExt`
 
 Closed-form analytics for every distribution that has them.
 
@@ -36,15 +34,21 @@ pub trait DistributionExt {
 
 ## Coverage
 
-**18 / 19** distributions implement closed-form pdf, cdf, characteristic
-function, mean, and variance. The exception is `ComplexDistribution`,
-which is a wrapper used by Fourier-domain pricers and intentionally
-opaque.
+**33 of the 37** distribution types implement `DistributionExt`. The four
+that do not are `SimdDirichlet` and `SimdWishart` (vector- and
+matrix-valued draws, with their own inherent `pdf` / `log_pdf`),
+`SimdNonCentralChiSquared` (its noncentrality is supplied per draw; it backs
+the exact CIR transition density) and `ComplexDistribution` (a composition
+utility that pairs two distributions as the parts of a complex draw).
 
-For higher-order moments, **5 named distributions** carry
-`unimplemented!` for skewness and / or kurtosis — those are documented
-on each distribution's reference page. The remaining 14 ship full
-closed-form skewness and excess kurtosis.
+Implementing the trait does not mean every method has a closed form.
+`SimdGed`, `SimdSkellam` and the four `truncated` wrappers override only
+`pdf` / `cdf`, and nine types — `SimdAlphaStable`, `SimdBeta`,
+`SimdHypergeometric`, `SimdInverseGauss`, `SimdNormalInverseGauss`,
+`SimdVarianceGamma`, `SimdGig`, `SimdGeneralizedHyperbolic` and
+`SimdTemperedStable` — carry a named no-closed-form `unimplemented!()` on
+specific methods. `cargo doc -p stochastic-rs-distributions` renders exactly
+which methods each type overrides.
 
 ## Default behaviour: panic, never zero
 

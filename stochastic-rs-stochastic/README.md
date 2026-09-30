@@ -4,11 +4,11 @@
 
 # stochastic-rs-stochastic
 
-**Stochastic process simulation — 120+ processes**
+**Stochastic process simulation — 132 processes**
 
-The simulation engine: 120+ processes behind one `ProcessExt<T>` trait,
-generic over `f32` / `f64`, with optional GPU backends for the fractional
-family.
+The simulation engine: 132 processes behind one `ProcessExt<T>` trait,
+generic over `f32` / `f64`, each of which samples on CUDA, Metal or Apple
+Accelerate as well as on the CPU.
 
 ## What is in it
 
@@ -48,12 +48,13 @@ should depend on the umbrella crate, which re-exports everything:
 
 ```toml
 [dependencies]
-stochastic-rs = "3.0.0-beta.3"
+stochastic-rs = "3.0.0-rc.3"
 ```
 
 Depend on `stochastic-rs-stochastic` directly only when you want this slice and nothing else.
 
 - Documentation: [stochastic.rust-dd.com](https://stochastic.rust-dd.com)
+- Tutorials: [stochastic.rust-dd.com/docs/tutorials](https://stochastic.rust-dd.com/docs/tutorials)
 - API reference: [docs.rs/stochastic-rs-stochastic](https://docs.rs/stochastic-rs-stochastic)
 
 ## License

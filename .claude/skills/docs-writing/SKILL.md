@@ -1,6 +1,6 @@
 ---
 name: docs-writing
-description: Conventions for writing and maintaining stochastic-rs documentation pages under website/content/docs/. Nine section templates (process / distribution / pricer / calibrator / estimator / copula / AI surrogate / concept / tutorial), frontmatter schema, KaTeX gotchas, meta.json sidebar wiring, doctest-backed examples, and what the audit script does and does not enforce. Invoke whenever a new public type ships and needs documenting, or when fixing rot in existing pages.
+description: Conventions for writing and maintaining stochastic-rs documentation pages under website/content/docs/. Nine templates (process / distribution / pricer / calibrator / estimator / copula / AI surrogate / concept / tutorial), frontmatter schema, KaTeX gotchas, meta.json sidebar wiring, doctest-backed examples, and what the audit script does and does not enforce. Invoke whenever a new public type ships and needs documenting, or when fixing rot in existing pages.
 ---
 
 # Docs writing — stochastic-rs
@@ -8,8 +8,8 @@ description: Conventions for writing and maintaining stochastic-rs documentation
 The docs site lives under `website/` (Fumadocs + Next.js + MDX). Sections
 with a single page live as a flat `website/content/docs/<section>.mdx`;
 sections with multiple pages live as `website/content/docs/<section>/<name>.mdx`
-plus a `meta.json` sidebar manifest. Currently only `getting-started/`
-and `concepts/` are folder-form; everything else is flat.
+plus a `meta.json` sidebar manifest. `getting-started/`, `concepts/` and
+`tutorials/` are folder-form; everything else is flat.
 
 This SKILL is the **per-page authoring contract**. The audit script
 (`website/scripts/docs-audit.ts`) enforces every rule under §6 and §10.
@@ -29,8 +29,14 @@ calibrator         →  expand quant.mdx                §3.4 Calibrator
 stats estimator    →  expand stats.mdx                §3.5 Estimator
 NN surrogate       →  expand ai.mdx                   §3.7 AI surrogate
 trait / cross-cut  →  concepts/                       §3.8 Concept
-end-to-end use case →  expand tutorials.mdx            §3.9 Tutorial
+end-to-end use case →  tutorials/<slug>.mdx, plus a   §3.9 Tutorial
+                       row in tutorials/index.mdx
 ```
+
+There are no per-model pages: a model lives in its catalogue section, and a
+walkthrough that follows one model end to end (the Heston tutorial) is a
+tutorial. Keep it that way — a page per model multiplies the formulas and
+API tables that have to track the code.
 
 When a section page outgrows a single MDX file (≈ 600 lines), promote
 it to folder-form: create `<section>/index.mdx` (move the overview
@@ -58,6 +64,7 @@ reviewers expect them, not because a build will fail without them:
 ```yaml
 ---
 title: <human-readable name>
+seo_title: <optional, ≤ 60 chars — the search-result <title> when `title` is sidebar-sized>
 description: <one sentence, 20-160 chars — used for OG meta + search snippet>
 category: process | distribution | copula | estimator | pricer | calibrator | concept | tutorial | reference | ai
 subcategory: <free string — e.g. diffusion, jump, fourier> # optional
@@ -76,21 +83,31 @@ references:
 ---
 ```
 
-**Lints (audit script will fail the build):**
+The schema is `pageFrontmatter` in `website/lib/frontmatter.ts`; the build
+(`source.config.ts`) and `bun run lint:mdx` both read it, so they cannot
+disagree. It is written with the site's own zod, not as fumadocs'
+`frontmatterSchema.extend(…)` — fumadocs ships zod 4, and extending its
+schema with these fields erases their types.
 
-- `description` length 20–160 characters.
-- `module_path` must resolve in the workspace (the audit greps the Rust
-  source for the corresponding `pub struct` / `pub fn`).
-- `status: deprecated` requires a `replaced_by:` key pointing at the
-  successor page slug.
-- `references` empty array is allowed only on `concept` pages. Every
-  numerical / model page must cite at least one paper.
+**What `lint:mdx` hard-fails on** (it parses the block with a real YAML
+parser, `Bun.YAML`):
+
+- frontmatter that is not valid YAML — quote any value that contains a
+  colon followed by a space (`seo_title: "Quickstart: Rust and Python"`);
+- a key the schema does not declare (the check is `.strict()`);
+- `description` outside 20–160 characters (it warns outside 24–152);
+- `status: deprecated` without `replaced_by:`;
+- a body whose first line is a level-1 heading (`# …`) — the layout
+  already renders `title` as the page's one `<h1>`.
+
+Conventions nothing checks: `module_path` resolving in the workspace, and a
+numerical or model page citing at least one paper in `references`.
 
 ## 3. The section templates
 
-**Read this before using any template below.** The docs site is
-currently **26 `.mdx` files**, and outside `getting-started/` (4 pages)
-and `concepts/` (9 pages) it is one flat page per crate area:
+**Read this before using any template below.** Outside
+`getting-started/` (4 pages), `concepts/` (10 pages) and `tutorials/` (one
+page per walkthrough, §3.9) the docs site is one flat page per crate area:
 `processes.mdx`, `distributions.mdx`, `quant.mdx`, `stats.mdx`,
 `copulas.mdx`, `ai.mdx`, `tutorials.mdx`, plus `index`, `api`,
 `python`, `benchmarks`, `comparison`, `contributing`.
@@ -100,6 +117,8 @@ of its own. The templates below are the per-type *section* shape to
 write inside those aggregate pages. §1's promotion rule still applies if
 one outgrows ~600 lines — but nothing has yet, so do not create
 `processes/<name>.mdx` on the assumption that the folder form exists.
+The one folder of per-topic pages outside `getting-started/` and
+`concepts/` is `tutorials/` (§3.9).
 
 Each section below is a copy-paste-ready skeleton. Replace the angle-bracketed
 fields, keep the section ordering, do not invent extra top-level headers.
@@ -219,15 +238,14 @@ $$ \varphi(t) = \dots $$
 | Skewness      | $\dots$ (or "**not implemented** — see notes")    |
 | Excess kurtosis | $\dots$                                          |
 
-> **DistributionExt status note**: the coverage figure is tracked in the
-> auto-memory entry `project_distribution_ext_status` and restated in the
-> root `CLAUDE.md` ("18/19 implement closed-form; 5 named no-closed-form
-> `unimplemented!()` cases"). **Re-derive it before quoting it** — a raw
-> `impl ... DistributionExt` count over
-> `stochastic-rs-distributions/src` returns a different number (23) than
-> the per-distribution figure, because several files define more than
-> one type (`truncated.rs` alone has four). Cite the source, not a
-> number you counted in passing.
+> **DistributionExt status note**: the coverage figure lives in the root
+> `CLAUDE.md` and the module docs of `stochastic-rs-distributions/src/lib.rs`
+> (33 of the 37 distribution types implement the trait; 6 of those override
+> only `pdf` / `cdf`, 9 carry named no-closed-form `unimplemented!()` on
+> specific methods). **Re-derive it before quoting it** — a single-line
+> `impl ... DistributionExt` grep undercounts, because three impl headers
+> wrap onto a second line (CLAUDE.md gives the `-A1` command). Cite the
+> source, not a number you counted in passing.
 >
 > If a specific moment has no closed form, mark it explicitly as
 > `unimplemented!` with the anchored message the trait mandates, and say
@@ -517,7 +535,7 @@ Per `vol-surrogate-nn` SKILL. Required sections:
 9. References
 ```
 
-### 3.8 Concept page (`concepts/`, 9 pages — the only per-topic folder besides `getting-started/`)
+### 3.8 Concept page (`concepts/`, 10 pages)
 
 Free-form. Required ingredients:
 
@@ -528,9 +546,11 @@ Free-form. Required ingredients:
   `ProcessExt::sample()` vs `sample_par()`)
 - Cross-links to the SKILLs that operationalise the concept
 
-### 3.9 Tutorial section (one `tutorials.mdx`)
+### 3.9 Tutorial page (`tutorials/<slug>.mdx`, one per walkthrough)
 
-Long-form, end-to-end, narrative. Required structure:
+Long-form, end-to-end, narrative. One page per tutorial, its slug in
+`tutorials/meta.json` and a row in the table on `tutorials/index.mdx`.
+Required structure:
 
 ```
 1. What you'll build (screenshot or static IV-surface plot)
@@ -540,6 +560,18 @@ Long-form, end-to-end, narrative. Required structure:
 5. Result (numerical output, plot)
 6. Where to go next (3 cross-links)
 ```
+
+A tutorial states numbers, so the rules are stricter than elsewhere:
+
+- Rust examples are doctest files `tests/doctest_tutorials_<slug>_<task>.rs`
+  (first line `// docs: tutorials/<slug>`), each passing
+  `cargo test --test <file>`; reuse an existing `tests/doctest_*.rs` when it
+  shows exactly the step.
+- Every Python block is executed before it is committed, and an output in a
+  comment (`# 0.2064`) is one you observed with that seed.
+- Every formula and every argument name matches the code it describes, and
+  the papers go in frontmatter `references` (§8), each DOI checked against
+  its title (`https://api.crossref.org/works/<doi>`).
 
 ## 4. Cross-linking conventions
 
@@ -585,11 +617,11 @@ $$
 ## 6. `meta.json` (sidebar)
 
 Each *directory* has a `meta.json` declaring sidebar order. There are
-exactly **three** in the tree — `content/docs/meta.json`,
-`content/docs/getting-started/meta.json` and
-`content/docs/concepts/meta.json` — because those are the only
-directories. (There is no `processes/diffusion/meta.json`; there is no
-`processes/` directory at all.)
+**four** in the tree — `content/docs/meta.json`,
+`content/docs/getting-started/meta.json`,
+`content/docs/concepts/meta.json` and `content/docs/tutorials/meta.json` —
+because those are the only directories. (There is no
+`processes/diffusion/meta.json`; there is no `processes/` directory at all.)
 
 The root one, verbatim:
 
@@ -611,7 +643,7 @@ The root one, verbatim:
 }
 ```
 
-A folder entry (`getting-started`, `concepts`) refers to the directory
+A folder entry (`getting-started`, `concepts`, `tutorials`) refers to the directory
 and picks up that directory's own `meta.json`.
 
 `---Section---` strings render as non-clickable group headers, and the
@@ -623,8 +655,12 @@ unlike most rules in this SKILL.
 ## 7. The `<RustExample>` component (doctest-backed examples)
 
 For hero pages (top-50 traffic — landing, OU, GBM, Heston, BSM, ...), the
-Rust block is **not** inline. It is `<RustExample path="..." />`, which
-inlines a file from the workspace. The contract:
+Rust block is **not** inline. It is `<RustExample path="..." />`. It is not
+a runtime component: `website/lib/remark-rust-example.ts` replaces the tag
+at compile time with a fenced `rust` block holding the file (title = the
+path; an optional `highlight="1-3"` becomes the line-highlight meta). So the
+code reaches the HTML page, the page's Markdown twin and `llms-full.txt`
+alike, and a missing file fails the build. The contract:
 
 1. The referenced file must exist under `tests/doctest_*.rs` (or
    `examples/`) and pass `cargo test --workspace`.
@@ -639,10 +675,13 @@ where the corresponding source has changed since the pinned sha.
 
 ## 8. References block (auto-rendered)
 
-The frontmatter `references:` array is rendered into a `## References`
-section by the page layout. Hand-written `## References` headings are
-ignored unless the page is a `concept` (which legitimately has none in
-frontmatter).
+The frontmatter `references:` array is rendered as the page's closing
+`References` section by the page layout (`website/components/References.tsx`),
+added to the table of contents, emitted as `citation` in the page's JSON-LD
+and appended to its Markdown twin. Do not also hand-write a
+`## References` section on a page whose frontmatter carries references — it
+would render twice. A `concept` page with no frontmatter references may
+hand-write one.
 
 Citation format:
 
@@ -671,9 +710,10 @@ in the audit script's stdout (§10 — nothing is written to disk).
 
 ## 10. Audit script — what it enforces
 
-`website/scripts/docs-audit.ts` (123 lines) describes itself in its own
-header as "a working scaffold". **Only two checks are actually
-implemented**, and both hard-fail (`process.exit(1)`):
+`website/scripts/docs-audit.ts` describes itself in its own header as "a
+working scaffold". It first runs `scripts/lint-mdx.ts` (§2 lists what that
+fails on) and then implements two checks of its own, both hard failures
+(`process.exit(1)`):
 
 1. **meta.json coverage** — `checkMetaCoverage()`: an `.mdx` file missing
    from its directory's `pages` array. (`---Section---` divider entries
@@ -687,9 +727,6 @@ enforced by anything**:
 - a public-type-without-a-page differ
 - the DOI / arXiv soft-warn checker
 - `last-checked` sha age
-- any description length bound (the zod schema has no `.min`/`.max` on
-  `description` at all)
-- a `z.refine` tying `status: 'deprecated'` to `replaced_by`
 - a category-conditional check on empty `references`
 
 Frontmatter *shape* violations are caught, but by fumadocs' zod schema at
@@ -748,3 +785,33 @@ contract.
 - **First-person plural is fine** ("we use the Cui Jacobian"); first-person
   singular is not.
 - **Hungarian comments**: never. The site is English-only.
+
+## 13. Machine-readable surfaces (keep them working)
+
+The site serves every page to assistants and crawlers as well as to
+browsers. When you touch the layout or the content pipeline, keep these:
+
+- **Markdown twin** of every page at `/docs/<page>.md` (and `.mdx`, and
+  `/docs.md` for the index), from `app/llms.mdx/docs/[[...slug]]/route.ts`.
+  A request to `/docs/<page>` whose `Accept` header asks for `text/markdown`
+  is rewritten to the same route (`next.config.mjs`). The body is the
+  page's processed Markdown (`lib/source.ts` → `llmText`): Rust examples
+  inlined, the `<Tabs>` / `<Tab>` / `<Callout>` wrappers unwrapped.
+  fumadocs-core 16.8.9's `remarkLLMs` overrides any `filterElement` passed
+  to it, which is why `source.config.ts` unwraps those through `stringify`.
+- **`llms.txt`** (index, tutorials first, linking the `.md` twins) and
+  **`llms-full.txt`** (every page in sidebar order) are built from the same
+  processed Markdown, never from raw MDX.
+- **Social card** per page at `/og/docs/<slugs>/image.png`, set as
+  `og:image` / `twitter:image` by `generateMetadata`. A child route that
+  sets `openGraph` without `images` drops the root card — always pass one.
+- **JSON-LD**: `SoftwareSourceCode` + `Person` + `WebSite` in the root
+  layout (`lib/site.ts`), `TechArticle` + `BreadcrumbList` per docs page
+  (`lib/structured-data.ts`).
+- **Headline numbers** (processes, calibrators, Python entries, …) outside
+  the MDX come from `lib/facts.ts`; update it there, not in the copy.
+- **`lastModified`** comes from git (`lib/git-last-modified.ts`) and is
+  omitted in a shallow clone; set `VERCEL_DEEP_CLONE=true` on the Vercel
+  project for real dates in the sitemap and the page footer.
+- **Unknown docs URLs** return the static 404 (`dynamicParams = false` on
+  the docs route; `app/not-found.tsx` lists the likeliest pages).

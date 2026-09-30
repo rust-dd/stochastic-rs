@@ -56,12 +56,13 @@ should depend on the umbrella crate, which re-exports everything:
 
 ```toml
 [dependencies]
-stochastic-rs = "3.0.0-beta.3"
+stochastic-rs = "3.0.0-rc.3"
 ```
 
 Depend on `stochastic-rs-quant` directly only when you want this slice and nothing else.
 
 - Documentation: [stochastic.rust-dd.com](https://stochastic.rust-dd.com)
+- Tutorials: [stochastic.rust-dd.com/docs/tutorials](https://stochastic.rust-dd.com/docs/tutorials)
 - API reference: [docs.rs/stochastic-rs-quant](https://docs.rs/stochastic-rs-quant)
 
 ## License

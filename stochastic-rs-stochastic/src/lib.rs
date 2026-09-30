@@ -1,7 +1,4 @@
-//! # stochastic-rs-stochastic
-//!
-//! Stochastic process simulation: 140+ process types implementing `ProcessExt`.
-
+#![doc = include_str!("../README.md")]
 // Defaults to `warn`, which is how 94 broken doc links accumulated
 // unnoticed; deny so a regression fails the build instead of drifting.
 #![deny(rustdoc::broken_intra_doc_links)]

@@ -4,11 +4,11 @@ build-backend = "maturin"
 
 [project]
 name = "stochastic-rs"
-description = "Quantitative finance for Python, powered by Rust: 120+ stochastic processes, option pricing, model calibration, volatility surfaces, fixed income, risk and copulas — numpy-in / numpy-out."
+description = "Quantitative finance for Python, powered by Rust: 130+ stochastic processes, option pricing, model calibration, volatility surfaces, fixed income, risk and copulas — numpy-in / numpy-out."
 requires-python = ">=3.9"
 dynamic = ["version"]
 dependencies = ["numpy"]
-readme = "README.md"
+readme = "stochastic-rs-py/README.md"
 license = {text = "MIT"}
 keywords = [
   "quantitative-finance",

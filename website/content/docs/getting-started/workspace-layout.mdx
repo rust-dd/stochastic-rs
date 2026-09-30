@@ -6,8 +6,6 @@ since: 2.0.0
 status: stable
 ---
 
-# Workspace layout
-
 `stochastic-rs` is a Cargo workspace with **8 sub-crates** as siblings
 under the workspace root. The `stochastic-rs` umbrella crate keeps the
 v1.x public API by re-exporting everything via `pub use`.
@@ -21,7 +19,7 @@ stochastic-rs/                        (workspace root + umbrella crate)
 ├── stochastic-rs-stats/              MLE, Hurst, realised, stationarity, …
 ├── stochastic-rs-quant/              ModelPricer, calibration, vol surface
 ├── stochastic-rs-ai/                 Neural surrogates (feature-gated)
-└── stochastic-rs-py/                 PyO3 cdylib (234 entries)
+└── stochastic-rs-py/                 PyO3 cdylib (308 entries)
 ```
 
 ## Dependency topology

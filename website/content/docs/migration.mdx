@@ -11,7 +11,7 @@ the replacement; the design behind it is on
 
 ## Every process carries its sampling backend as a type parameter
 
-`Gbm<T, S>` became `Gbm<T, S, B = Cpu>` — on all 131 processes. The default
+`Gbm<T, S>` became `Gbm<T, S, B = Cpu>` — on all 132 processes. The default
 means existing constructors and type names keep working; what changes is
 struct literals and generic bounds.
 

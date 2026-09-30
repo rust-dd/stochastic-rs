@@ -6,8 +6,6 @@ since: 2.4.0
 status: stable
 ---
 
-# Sampling backends
-
 Every process selects **where** it samples — CPU, CUDA, Metal or Apple
 Accelerate — at **compile time**. A process is parameterised
 by a backend marker `B` (defaulting to `Cpu`); the `Backend` trait
@@ -59,7 +57,7 @@ says which markers it accepts:
   processes on the engine take their increments from it.
 - `SheetBackend<T>: Backend` — the two-dimensional circulant embedding behind
   the fractional Brownian field `Fbs`.
-- `EulerBackend<T>: Backend` — the Euler engine's device kernels, which 129
+- `EulerBackend<T>: Backend` — the Euler engine's device kernels, which 130
   processes step through; `Cpu` and `Accelerate` implement it as the host
   sampler.
 
@@ -94,7 +92,7 @@ precision, and what the Python entry point is — lives on
 [GPU support](/docs/concepts/gpu-support); this section explains the
 mechanism.
 
-All 131 processes carry the parameter and reach a device: 129 through the
+All 132 processes carry the parameter and reach a device: 130 through the
 Euler engine (`EulerBackend`), `Fgn` through its FFT pipeline (`FgnBackend`)
 and `Fbs` through the sheet pipeline (`SheetBackend`). What a device cannot
 carry is decided per configuration, not per type — see the one fallback rule

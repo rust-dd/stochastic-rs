@@ -1,21 +1,22 @@
 ---
 title: stochastic-rs
-description: Simulate 131 stochastic processes, price and calibrate against them, and move any of it to a GPU by naming one — in Rust or in Python.
+seo_title: "stochastic-rs docs: quant finance in Rust and Python"
+description: Simulate 132 stochastic processes, price and calibrate against them, and move any of it to a GPU by naming one — in Rust or in Python.
 category: concept
 status: stable
 since: 2.0.0
 ---
 
-# stochastic-rs
-
-Simulate **131 stochastic processes**, price and calibrate against them, and
+stochastic-rs is an open-source quantitative-finance library for Rust and
+Python. Simulate **132 stochastic processes**, price and calibrate against
+them, and
 move any of it to a GPU by naming one. The model does not change, the numbers
 keep their law, and the crate tells you when a device cannot take a
 configuration instead of quietly running it on the host.
 
 | | | |
 |:--|:--|:--|
-| **131** processes | **17×** the CPU | **3 054** tests |
+| **132** processes | **17×** the CPU | **3 000+** tests |
 | one trait, one device story | on a batch of 200 000 paths | laws, devices, reproducibility |
 
 ## One thread, end to end
@@ -107,11 +108,11 @@ let h = RescaledRange::default().estimate(fbm.view())?;         // 0.61 for a tr
 
 ## What are you here for?
 
-**To simulate.** 131 processes behind one trait — diffusions, jumps,
+**To simulate.** 132 processes behind one trait — diffusions, jumps,
 stochastic volatility, short rates, fractional and rough, point processes,
 subordinators, conditional-variance time series. Heston and its rough
 relatives, Bates, SABR, CGMY, Hull-White, LMM, fBm and everything built on
-it. → [Processes](/docs/processes)
+it. → [Processes](/docs/processes) · [Tutorials](/docs/tutorials)
 
 **To price or calibrate.** Analytic, Fourier, ADI and Monte Carlo pricers
 with first- and second-order Greeks; fifteen calibrators behind one
@@ -127,7 +128,7 @@ function, pdf, cdf and moments in closed form, and 23 copulas with fitting
 and goodness-of-fit. → [Distributions](/docs/distributions) ·
 [Copulas](/docs/copulas)
 
-**To do it from Python.** 303 entries, numpy in and numpy out, and the same
+**To do it from Python.** 308 entries, numpy in and numpy out, and the same
 `device=` argument. → [Python](/docs/python)
 
 ## Why this one
@@ -136,8 +137,9 @@ and goodness-of-fit. → [Distributions](/docs/distributions) ·
 family is written once in a small DSL — its state, its noise, its step — and
 the same text is rendered as CUDA C for NVRTC and as MSL for Metal. Adding a
 process means adding a declaration; it does not mean writing, or debugging,
-two kernels. 120 families carry 129 of the processes, and the two that need
-pipelines of their own have them.
+two kernels. 121 families carry 130 of the processes, and the two that need
+pipelines of their own — fractional Gaussian noise and the fractional
+Brownian sheet — have them.
 
 **The speed comes from the shape of the call.** Ask for the grid and you get
 the grid; ask for a borrowed view of itand nothing is copied. The numbers, the method, and what *did not* work are
