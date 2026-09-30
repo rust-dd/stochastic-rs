@@ -21,66 +21,72 @@ macro_rules! py_distribution {
     impl $py_name {
       #[new]
       #[pyo3(signature = ($($sig)*))]
-      fn new($($param: $pty,)* seed: Option<u64>, dtype: Option<&str>) -> Self {
-        match (seed, dtype.unwrap_or("f64")) {
-          (Some(sd), "f32") => Self {
-            inner_f32: Some($inner::new(
-              $(stochastic_rs_core::python::IntoF32::into_f32($param),)*
-              &stochastic_rs_core::simd_rng::Deterministic::new(sd),
-            )),
-            inner_f64: None,
-          },
-          (Some(sd), _) => Self {
-            inner_f32: None,
-            inner_f64: Some($inner::new(
-              $(stochastic_rs_core::python::IntoF64::into_f64($param),)*
-              &stochastic_rs_core::simd_rng::Deterministic::new(sd),
-            )),
-          },
-          (None, "f32") => Self {
-            inner_f32: Some($inner::new(
-              $(stochastic_rs_core::python::IntoF32::into_f32($param),)*
-              &stochastic_rs_core::simd_rng::Unseeded,
-            )),
-            inner_f64: None,
-          },
-          (None, _) => Self {
-            inner_f32: None,
-            inner_f64: Some($inner::new(
-              $(stochastic_rs_core::python::IntoF64::into_f64($param),)*
-              &stochastic_rs_core::simd_rng::Unseeded,
-            )),
-          },
-        }
+      fn new($($param: $pty,)* seed: Option<u64>, dtype: Option<&str>) -> pyo3::PyResult<Self> {
+        $crate::python::value_error_on_panic(|| {
+          match (seed, dtype.unwrap_or("f64")) {
+            (Some(sd), "f32") => Self {
+              inner_f32: Some($inner::new(
+                $(stochastic_rs_core::python::IntoF32::into_f32($param),)*
+                &stochastic_rs_core::simd_rng::Deterministic::new(sd),
+              )),
+              inner_f64: None,
+            },
+            (Some(sd), _) => Self {
+              inner_f32: None,
+              inner_f64: Some($inner::new(
+                $(stochastic_rs_core::python::IntoF64::into_f64($param),)*
+                &stochastic_rs_core::simd_rng::Deterministic::new(sd),
+              )),
+            },
+            (None, "f32") => Self {
+              inner_f32: Some($inner::new(
+                $(stochastic_rs_core::python::IntoF32::into_f32($param),)*
+                &stochastic_rs_core::simd_rng::Unseeded,
+              )),
+              inner_f64: None,
+            },
+            (None, _) => Self {
+              inner_f32: None,
+              inner_f64: Some($inner::new(
+                $(stochastic_rs_core::python::IntoF64::into_f64($param),)*
+                &stochastic_rs_core::simd_rng::Unseeded,
+              )),
+            },
+          }
+        })
       }
 
-      fn sample<'py>(&self, py: pyo3::Python<'py>, n: usize) -> pyo3::Py<pyo3::PyAny> {
-        use $crate::DistributionSampler;
-        use numpy::IntoPyArray;
-        use pyo3::IntoPyObjectExt;
-        if let Some(ref inner) = self.inner_f64 {
-          inner.sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
-        } else if let Some(ref inner) = self.inner_f32 {
-          inner.sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
-        } else {
-          unreachable!()
-        }
+      fn sample<'py>(&self, py: pyo3::Python<'py>, n: usize) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+        $crate::python::runtime_error_on_panic(|| {
+          use $crate::DistributionSampler;
+          use numpy::IntoPyArray;
+          use pyo3::IntoPyObjectExt;
+          if let Some(ref inner) = self.inner_f64 {
+            inner.sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
+          } else if let Some(ref inner) = self.inner_f32 {
+            inner.sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
+          } else {
+            unreachable!()
+          }
+        })
       }
 
-      fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize, n: usize) -> pyo3::Py<pyo3::PyAny> {
-        use $crate::DistributionSampler;
-        use numpy::IntoPyArray;
-        use pyo3::IntoPyObjectExt;
-        // `sample_matrix`'s parallel workers now fork deterministically from
-        // the parent's seed (see `DistributionSampler::fork`), so the seeded
-        // and unseeded cases no longer need different code paths here.
-        if let Some(ref inner) = self.inner_f64 {
-          inner.sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
-        } else if let Some(ref inner) = self.inner_f32 {
-          inner.sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
-        } else {
-          unreachable!()
-        }
+      fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize, n: usize) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+        $crate::python::runtime_error_on_panic(|| {
+          use $crate::DistributionSampler;
+          use numpy::IntoPyArray;
+          use pyo3::IntoPyObjectExt;
+          // `sample_matrix`'s parallel workers now fork deterministically from
+          // the parent's seed (see `DistributionSampler::fork`), so the seeded
+          // and unseeded cases no longer need different code paths here.
+          if let Some(ref inner) = self.inner_f64 {
+            inner.sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
+          } else if let Some(ref inner) = self.inner_f32 {
+            inner.sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
+          } else {
+            unreachable!()
+          }
+        })
       }
     }
   };
@@ -108,38 +114,44 @@ macro_rules! py_distribution_int {
     impl $py_name {
       #[new]
       #[pyo3(signature = ($($sig)*))]
-      fn new($($param: $pty,)* seed: Option<u64>) -> Self {
-        match seed {
-          Some(sd) => Self {
-            inner: $inner::new(
-              $($param,)*
-              &stochastic_rs_core::simd_rng::Deterministic::new(sd),
-            ),
-          },
-          None => Self {
-            inner: $inner::new(
-              $($param,)*
-              &stochastic_rs_core::simd_rng::Unseeded,
-            ),
-          },
-        }
+      fn new($($param: $pty,)* seed: Option<u64>) -> pyo3::PyResult<Self> {
+        $crate::python::value_error_on_panic(|| {
+          match seed {
+            Some(sd) => Self {
+              inner: $inner::new(
+                $($param,)*
+                &stochastic_rs_core::simd_rng::Deterministic::new(sd),
+              ),
+            },
+            None => Self {
+              inner: $inner::new(
+                $($param,)*
+                &stochastic_rs_core::simd_rng::Unseeded,
+              ),
+            },
+          }
+        })
       }
 
-      fn sample<'py>(&self, py: pyo3::Python<'py>, n: usize) -> pyo3::Py<pyo3::PyAny> {
-        use $crate::DistributionSampler;
-        use numpy::IntoPyArray;
-        use pyo3::IntoPyObjectExt;
-        self.inner.sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
+      fn sample<'py>(&self, py: pyo3::Python<'py>, n: usize) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+        $crate::python::runtime_error_on_panic(|| {
+          use $crate::DistributionSampler;
+          use numpy::IntoPyArray;
+          use pyo3::IntoPyObjectExt;
+          self.inner.sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
+        })
       }
 
-      fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize, n: usize) -> pyo3::Py<pyo3::PyAny> {
-        use $crate::DistributionSampler;
-        use numpy::IntoPyArray;
-        use pyo3::IntoPyObjectExt;
-        // `sample_matrix`'s parallel workers now fork deterministically from
-        // the parent's seed (see `DistributionSampler::fork`), so the seeded
-        // and unseeded cases no longer need different code paths here.
-        self.inner.sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
+      fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize, n: usize) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+        $crate::python::runtime_error_on_panic(|| {
+          use $crate::DistributionSampler;
+          use numpy::IntoPyArray;
+          use pyo3::IntoPyObjectExt;
+          // `sample_matrix`'s parallel workers now fork deterministically from
+          // the parent's seed (see `DistributionSampler::fork`), so the seeded
+          // and unseeded cases no longer need different code paths here.
+          self.inner.sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
+        })
       }
     }
   };
