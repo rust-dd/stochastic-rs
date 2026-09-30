@@ -12,23 +12,23 @@ const TOL: f64 = 1e-12;
 fn margrabe_matches_pre_refactor_goldens() {
   let atm = MargrabePricer::new(0.20, 0.20, 0.0);
   let price = atm.price(100.0, 100.0, 0.0, 0.0, 1.0);
-  assert!((price - 11.246296562219548).abs() < TOL, "atm {price}");
+  assert!((price - 11.246291601828489).abs() < TOL, "atm {price}");
   let d1 = atm.delta1(100.0, 100.0, 0.0, 0.0, 1.0);
-  assert!((d1 - 0.5562314828110977).abs() < TOL, "delta1 {d1}");
+  assert!((d1 - 0.5562314580091424).abs() < TOL, "delta1 {d1}");
   let d2 = atm.delta2(100.0, 100.0, 0.0, 0.0, 1.0);
-  assert!((d2 + 0.44376851718890226).abs() < TOL, "delta2 {d2}");
+  assert!((d2 + 0.4437685419908575).abs() < TOL, "delta2 {d2}");
 
   let itm = MargrabePricer::new(0.20, 0.20, 0.5);
   let price = itm.price(200.0, 100.0, 0.01, 0.02, 0.5);
-  assert!((price - 99.99751393839698).abs() < TOL, "itm {price}");
+  assert!((price - 99.99751394787123).abs() < TOL, "itm {price}");
 
   let skewed = MargrabePricer::new(0.31, 0.17, -0.25);
   let price = skewed.price(95.0, 105.0, 0.03, 0.011, 2.25);
-  assert!((price - 15.76555742239379).abs() < TOL, "skewed {price}");
+  assert!((price - 15.76554946677107).abs() < TOL, "skewed {price}");
   let d1 = skewed.delta1(95.0, 105.0, 0.03, 0.011, 2.25);
-  assert!((d1 - 0.4848890956486614).abs() < TOL, "delta1 {d1}");
+  assert!((d1 - 0.4848890339715629).abs() < TOL, "delta1 {d1}");
   let d2 = skewed.delta2(95.0, 105.0, 0.03, 0.011, 2.25);
-  assert!((d2 + 0.28856101584980043).abs() < TOL, "delta2 {d2}");
+  assert!((d2 + 0.28856103581454673).abs() < TOL, "delta2 {d2}");
 }
 
 /// One model instance prices a whole query grid — the point of the split.

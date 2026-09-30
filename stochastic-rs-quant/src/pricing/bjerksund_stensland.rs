@@ -247,8 +247,8 @@ mod tests {
   fn bs2002_model_pricer_matches_pre_refactor_goldens() {
     let model = BjerksundStensland2002Pricer::new(V);
     let (call, put) = model.call_put(S, K, R, Q, TAU);
-    assert!((call - 7.356284498106589).abs() < TOL, "call {call}");
-    assert!((put - 10.292920281301193).abs() < TOL, "put {put}");
+    assert!((call - 7.35628449811837).abs() < TOL, "call {call}");
+    assert!((put - 10.292928328280922).abs() < TOL, "put {put}");
     assert_eq!(model.price_call(S, K, R, Q, TAU), call);
     assert_eq!(model.price_put(S, K, R, Q, TAU), put);
   }

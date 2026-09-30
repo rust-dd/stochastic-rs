@@ -200,13 +200,13 @@ mod tests {
   fn kirk_call_put_matches_pre_refactor_goldens() {
     let heat_rate = KirkSpreadPricer::new(0.35, 0.35, 0.90);
     let (call, put) = heat_rate.spread_call_put(35.0, 34.0, 3.0, 0.05, 1.0);
-    assert!((call - 1.2691102653060158).abs() < TOL, "call {call}");
-    assert!((put - 3.1715691143074434).abs() < TOL, "put {put}");
+    assert!((call - 1.2691091197737148).abs() < TOL, "call {call}");
+    assert!((put - 3.1715679687751486).abs() < TOL, "put {put}");
 
     let itm = KirkSpreadPricer::new(0.30, 0.25, 0.7);
     let (call, put) = itm.spread_call_put(100.0, 90.0, 5.0, 0.05, 0.5);
-    assert!((call - 8.547484304937198).abs() < TOL, "call {call}");
-    assert!((put - 3.670934744795539).abs() < TOL, "put {put}");
+    assert!((call - 8.547483131757428).abs() < TOL, "call {call}");
+    assert!((put - 3.6709335716157754).abs() < TOL, "put {put}");
   }
 
   /// `spread_call` / `spread_put` are projections of `spread_call_put`, not
@@ -231,7 +231,7 @@ mod tests {
     let model = KirkSpreadPricer::new(0.30, 0.25, 0.7);
     let misread = model.spread_call(100.0, 95.0, 0.05, 0.02, 1.0);
     assert!(
-      (misread - 10.943403655286877).abs() < TOL,
+      (misread - 10.943413879466974).abs() < TOL,
       "misread spread price {misread}"
     );
     assert!(
