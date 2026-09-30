@@ -10,10 +10,10 @@ pub struct PyGaussianKDE {
 impl PyGaussianKDE {
   /// Construct a Gaussian KDE with explicit bandwidth.
   #[new]
-  fn new<'py>(data: PyReadonlyArray1<'py, f64>, bandwidth: f64) -> Self {
-    Self {
+  fn new<'py>(data: PyReadonlyArray1<'py, f64>, bandwidth: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::gaussian_kde::GaussianKde::new(data.as_array().to_owned(), bandwidth),
-    }
+    })
   }
 
   /// Construct a Gaussian KDE with Silverman's rule-of-thumb bandwidth.
@@ -50,11 +50,13 @@ impl PyTailIndex {
   /// Hill-style tail-exponent estimator (Mancini 2008). Provide pre-computed
   /// `mean` and `var` of the centred returns.
   #[new]
-  fn new<'py>(data: PyReadonlyArray1<'py, f64>, mean: f64, var: f64) -> Self {
-    let view = data.as_array();
-    let xi = crate::tail_index::estimate_tail_exponent(view, mean, var);
-    let alpha = crate::tail_index::tail_exponent_to_cgmy_alpha(xi);
-    Self { xi, alpha }
+  fn new<'py>(data: PyReadonlyArray1<'py, f64>, mean: f64, var: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let view = data.as_array();
+      let xi = crate::tail_index::estimate_tail_exponent(view, mean, var);
+      let alpha = crate::tail_index::tail_exponent_to_cgmy_alpha(xi);
+      Self { xi, alpha }
+    })
   }
 
   #[getter]
@@ -80,9 +82,11 @@ impl PyLeverage {
   /// a closing-price series.
   #[new]
   fn new<'py>(closes: PyReadonlyArray1<'py, f64>) -> PyResult<Self> {
-    let rho = crate::leverage::estimate_leverage_rho(closes.as_array())
-      .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-    Ok(Self { rho })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let rho = crate::leverage::estimate_leverage_rho(closes.as_array())
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+      Ok(Self { rho })
+    })?
   }
 
   #[getter]

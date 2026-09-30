@@ -60,18 +60,25 @@ impl PyHestonNMLECEKF {
   /// NMLE-CEKF (Wang et al. 2018) Heston estimator from spot path only.
   #[new]
   #[pyo3(signature = (s, r=0.0, delta=None, max_iters=12))]
-  fn new<'py>(s: PyReadonlyArray1<'py, f64>, r: f64, delta: Option<f64>, max_iters: usize) -> Self {
-    let default_cfg = crate::heston_nml_cekf::HestonNmleCekfConfig::default();
-    let cfg = crate::heston_nml_cekf::HestonNmleCekfConfig {
-      r,
-      delta: delta.unwrap_or(default_cfg.delta),
-      max_iters,
-      ..default_cfg
-    };
-    let arr = s.as_array();
-    Self {
-      inner: crate::heston_nml_cekf::nmle_cekf_heston(arr, cfg),
-    }
+  fn new<'py>(
+    s: PyReadonlyArray1<'py, f64>,
+    r: f64,
+    delta: Option<f64>,
+    max_iters: usize,
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let default_cfg = crate::heston_nml_cekf::HestonNmleCekfConfig::default();
+      let cfg = crate::heston_nml_cekf::HestonNmleCekfConfig {
+        r,
+        delta: delta.unwrap_or(default_cfg.delta),
+        max_iters,
+        ..default_cfg
+      };
+      let arr = s.as_array();
+      Self {
+        inner: crate::heston_nml_cekf::nmle_cekf_heston(arr, cfg),
+      }
+    })
   }
 
   #[getter]

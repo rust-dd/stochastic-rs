@@ -116,8 +116,8 @@ mod tests {
   fn asian_model_pricer_matches_pre_refactor_goldens() {
     let model = AsianPricer::new(V);
     let (call, put) = model.call_put(S, K, R, Q, TAU);
-    assert!((call - 3.277687317250958).abs() < TOL, "call {call}");
-    assert!((put - 7.067344328274338).abs() < TOL, "put {put}");
+    assert!((call - 3.2776906533992545).abs() < TOL, "call {call}");
+    assert!((put - 7.067347664422634).abs() < TOL, "put {put}");
     assert_eq!(model.price_call(S, K, R, Q, TAU), call);
     assert_eq!(model.price_put(S, K, R, Q, TAU), put);
   }

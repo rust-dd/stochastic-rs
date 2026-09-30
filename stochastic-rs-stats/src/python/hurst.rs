@@ -192,8 +192,8 @@ impl PyRescaledRange {
     min_window: usize,
     max_window: Option<usize>,
     n_windows: usize,
-  ) -> Self {
-    Self {
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::hurst::RescaledRange {
         anis_lloyd,
         take_differences,
@@ -201,7 +201,7 @@ impl PyRescaledRange {
         max_window,
         n_windows,
       },
-    }
+    })
   }
 
   fn estimate<'py>(&self, x: PyReadonlyArray1<'py, f64>) -> PyResult<PyHurstResult> {
@@ -230,8 +230,8 @@ impl PyDfa {
     n_windows: usize,
     overlap_pct: f64,
     assume_integrated: bool,
-  ) -> Self {
-    Self {
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::hurst::Dfa {
         order,
         min_window,
@@ -240,7 +240,7 @@ impl PyDfa {
         overlap_pct,
         assume_integrated,
       },
-    }
+    })
   }
 
   fn estimate<'py>(&self, x: PyReadonlyArray1<'py, f64>) -> PyResult<PyHurstResult> {
@@ -262,13 +262,13 @@ pub struct PyGph {
 impl PyGph {
   #[new]
   #[pyo3(signature = (bandwidth_alpha=0.6, take_differences=true))]
-  fn new(bandwidth_alpha: f64, take_differences: bool) -> Self {
-    Self {
+  fn new(bandwidth_alpha: f64, take_differences: bool) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::hurst::Gph {
         bandwidth_alpha,
         take_differences,
       },
-    }
+    })
   }
 
   fn estimate<'py>(&self, x: PyReadonlyArray1<'py, f64>) -> PyResult<PyHurstResult> {
@@ -290,15 +290,15 @@ pub struct PyWavelet {
 impl PyWavelet {
   #[new]
   #[pyo3(signature = (take_differences=true, j_min=2, j_max=None))]
-  fn new(take_differences: bool, j_min: usize, j_max: Option<usize>) -> Self {
-    Self {
+  fn new(take_differences: bool, j_min: usize, j_max: Option<usize>) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::hurst::Wavelet {
         wavelet: crate::hurst::WaveletKind::Daubechies4,
         take_differences,
         j_min,
         j_max,
       },
-    }
+    })
   }
 
   fn estimate<'py>(&self, x: PyReadonlyArray1<'py, f64>) -> PyResult<PyHurstResult> {
@@ -378,10 +378,10 @@ pub struct PyHiguchi {
 impl PyHiguchi {
   #[new]
   #[pyo3(signature = (kmax=32))]
-  fn new(kmax: usize) -> Self {
-    Self {
+  fn new(kmax: usize) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::fractal_dim::Higuchi { kmax },
-    }
+    })
   }
 
   /// Return the fractal dimension `D` via the
@@ -414,10 +414,10 @@ pub struct PyVariogram {
 impl PyVariogram {
   #[new]
   #[pyo3(signature = (p=2.0))]
-  fn new(p: f64) -> Self {
-    Self {
+  fn new(p: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::fractal_dim::Variogram { p },
-    }
+    })
   }
 
   /// Return the fractal dimension `D` via the
@@ -450,8 +450,8 @@ pub struct PyWhittle {
 impl PyWhittle {
   #[new]
   #[pyo3(signature = (m=1, delta=1.0/250.0, psi=1e-5, k_trunc=500, j_max=20))]
-  fn new(m: usize, delta: f64, psi: f64, k_trunc: usize, j_max: usize) -> Self {
-    Self {
+  fn new(m: usize, delta: f64, psi: f64, k_trunc: usize, j_max: usize) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::hurst::Whittle {
         m,
         delta,
@@ -459,7 +459,7 @@ impl PyWhittle {
         k_trunc,
         j_max,
       },
-    }
+    })
   }
 
   fn estimate<'py>(&self, x: PyReadonlyArray1<'py, f64>) -> PyResult<PyHurstResult> {
@@ -485,19 +485,21 @@ impl PyVariations {
   #[new]
   #[pyo3(signature = (kind="central_diff", k=2, p=2.0))]
   fn new(kind: &str, k: usize, p: f64) -> PyResult<Self> {
-    let kind = match kind {
-      "daubechies" => crate::hurst::VariationKind::Daubechies,
-      "central_diff" => crate::hurst::VariationKind::CentralDiff,
-      "power_variation" => crate::hurst::VariationKind::PowerVariation { k, p },
-      other => {
-        return Err(pyo3::exceptions::PyValueError::new_err(format!(
-          "unknown variation kind `{other}` (expected daubechies/central_diff/power_variation)"
-        )));
-      }
-    };
-    Ok(Self {
-      inner: crate::hurst::Variations { kind },
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let kind = match kind {
+        "daubechies" => crate::hurst::VariationKind::Daubechies,
+        "central_diff" => crate::hurst::VariationKind::CentralDiff,
+        "power_variation" => crate::hurst::VariationKind::PowerVariation { k, p },
+        other => {
+          return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "unknown variation kind `{other}` (expected daubechies/central_diff/power_variation)"
+          )));
+        }
+      };
+      Ok(Self {
+        inner: crate::hurst::Variations { kind },
+      })
+    })?
   }
 
   fn estimate<'py>(&self, x: PyReadonlyArray1<'py, f64>) -> PyResult<PyHurstResult> {

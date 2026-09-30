@@ -34,15 +34,17 @@ macro_rules! py_bivariate {
     impl $py_name {
       #[new]
       #[pyo3(signature = (theta=None, tau=None))]
-      fn new(theta: Option<f64>, tau: Option<f64>) -> Self {
-        let mut inner = ($ctor)();
-        if let Some(t) = theta {
-          BivariateExt::set_theta(&mut inner, t);
-        }
-        if let Some(t) = tau {
-          BivariateExt::set_tau(&mut inner, t);
-        }
-        Self { inner }
+      fn new(theta: Option<f64>, tau: Option<f64>) -> PyResult<Self> {
+        stochastic_rs_distributions::python::value_error_on_panic(|| {
+          let mut inner = ($ctor)();
+          if let Some(t) = theta {
+            BivariateExt::set_theta(&mut inner, t);
+          }
+          if let Some(t) = tau {
+            BivariateExt::set_tau(&mut inner, t);
+          }
+          Self { inner }
+        })
       }
 
       fn theta(&self) -> Option<f64> {
@@ -100,11 +102,17 @@ macro_rules! py_bivariate {
         n: usize,
         seed: Option<u64>,
       ) -> PyResult<pyo3::Bound<'py, numpy::PyArray2<f64>>> {
-        let arr: Array2<f64> = match seed {
-          Some(s) => BivariateExt::sample_with_seed(&mut self.inner, n, s).map_err(err_to_py)?,
-          None => BivariateExt::sample(&mut self.inner, n).map_err(err_to_py)?,
-        };
-        Ok(arr.into_pyarray(py))
+        stochastic_rs_distributions::python::runtime_error_on_panic(
+          || -> PyResult<pyo3::Bound<'py, numpy::PyArray2<f64>>> {
+            let arr: Array2<f64> = match seed {
+              Some(s) => {
+                BivariateExt::sample_with_seed(&mut self.inner, n, s).map_err(err_to_py)?
+              }
+              None => BivariateExt::sample(&mut self.inner, n).map_err(err_to_py)?,
+            };
+            Ok(arr.into_pyarray(py))
+          },
+        )?
       }
     }
   };
@@ -138,20 +146,31 @@ pub struct PyEmpiricalCopula2D {
 impl PyEmpiricalCopula2D {
   /// Build a 2D empirical copula from two equal-length series via rank-transform.
   #[new]
-  fn new<'py>(x: numpy::PyReadonlyArray1<'py, f64>, y: numpy::PyReadonlyArray1<'py, f64>) -> Self {
-    let x_arr = x.as_array().to_owned();
-    let y_arr = y.as_array().to_owned();
-    Self {
-      inner: crate::empirical::EmpiricalCopula2D::new_from_two_series(&x_arr, &y_arr),
-    }
+  fn new<'py>(
+    x: numpy::PyReadonlyArray1<'py, f64>,
+    y: numpy::PyReadonlyArray1<'py, f64>,
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let x_arr = x.as_array().to_owned();
+      let y_arr = y.as_array().to_owned();
+      Self {
+        inner: crate::empirical::EmpiricalCopula2D::new_from_two_series(&x_arr, &y_arr),
+      }
+    })
   }
 
   fn rank_data<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
     self.inner.rank_data.clone().into_pyarray(py)
   }
 
-  fn sample<'py>(&self, py: Python<'py>, n: usize) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
-    self.inner.sample(n).into_pyarray(py)
+  fn sample<'py>(
+    &self,
+    py: Python<'py>,
+    n: usize,
+  ) -> pyo3::PyResult<pyo3::Bound<'py, numpy::PyArray2<f64>>> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      self.inner.sample(n).into_pyarray(py)
+    })
   }
 }
 
@@ -199,12 +218,14 @@ macro_rules! py_two_parameter {
     impl $py_name {
       #[new]
       #[pyo3(signature = (theta=None, delta=None, tau=None))]
-      fn new(theta: Option<f64>, delta: Option<f64>, tau: Option<f64>) -> Self {
-        let mut inner = <$inner_path>::new(theta, delta, tau);
-        if let Some(t) = tau {
-          BivariateExt::set_tau(&mut inner, t);
-        }
-        Self { inner }
+      fn new(theta: Option<f64>, delta: Option<f64>, tau: Option<f64>) -> PyResult<Self> {
+        stochastic_rs_distributions::python::value_error_on_panic(|| {
+          let mut inner = <$inner_path>::new(theta, delta, tau);
+          if let Some(t) = tau {
+            BivariateExt::set_tau(&mut inner, t);
+          }
+          Self { inner }
+        })
       }
 
       fn theta(&self) -> Option<f64> {
@@ -277,11 +298,17 @@ macro_rules! py_two_parameter {
         n: usize,
         seed: Option<u64>,
       ) -> PyResult<pyo3::Bound<'py, numpy::PyArray2<f64>>> {
-        let arr: Array2<f64> = match seed {
-          Some(s) => BivariateExt::sample_with_seed(&mut self.inner, n, s).map_err(err_to_py)?,
-          None => BivariateExt::sample(&mut self.inner, n).map_err(err_to_py)?,
-        };
-        Ok(arr.into_pyarray(py))
+        stochastic_rs_distributions::python::runtime_error_on_panic(
+          || -> PyResult<pyo3::Bound<'py, numpy::PyArray2<f64>>> {
+            let arr: Array2<f64> = match seed {
+              Some(s) => {
+                BivariateExt::sample_with_seed(&mut self.inner, n, s).map_err(err_to_py)?
+              }
+              None => BivariateExt::sample(&mut self.inner, n).map_err(err_to_py)?,
+            };
+            Ok(arr.into_pyarray(py))
+          },
+        )?
       }
     }
   };

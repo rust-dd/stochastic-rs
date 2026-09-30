@@ -329,8 +329,8 @@ impl PyCompoundCustom {
     n: Option<usize>,
     t_max: Option<f64>,
     dtype: Option<&str>,
-  ) -> Self {
-    match dtype.unwrap_or("f64") {
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| match dtype.unwrap_or("f64") {
       "f32" => {
         let (jt_dist, customjt_dist) = pyo3::Python::attach(|py| {
           let a = jump_times_distribution.clone_ref(py);
@@ -375,37 +375,39 @@ impl PyCompoundCustom {
           )),
         }
       }
-    }
+    })
   }
 
   fn sample<'py>(
     &self,
     py: pyo3::Python<'py>,
-  ) -> (
+  ) -> pyo3::PyResult<(
     pyo3::Py<pyo3::PyAny>,
     pyo3::Py<pyo3::PyAny>,
     pyo3::Py<pyo3::PyAny>,
-  ) {
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
+  )> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      use pyo3::IntoPyObjectExt;
 
-    use crate::traits::ProcessExt;
-    if let Some(ref inner) = self.inner_f64 {
-      let [p, cum, j] = inner.sample();
-      (
-        p.into_pyarray(py).into_py_any(py).unwrap(),
-        cum.into_pyarray(py).into_py_any(py).unwrap(),
-        j.into_pyarray(py).into_py_any(py).unwrap(),
-      )
-    } else if let Some(ref inner) = self.inner_f32 {
-      let [p, cum, j] = inner.sample();
-      (
-        p.into_pyarray(py).into_py_any(py).unwrap(),
-        cum.into_pyarray(py).into_py_any(py).unwrap(),
-        j.into_pyarray(py).into_py_any(py).unwrap(),
-      )
-    } else {
-      unreachable!()
-    }
+      use crate::traits::ProcessExt;
+      if let Some(ref inner) = self.inner_f64 {
+        let [p, cum, j] = inner.sample();
+        (
+          p.into_pyarray(py).into_py_any(py).unwrap(),
+          cum.into_pyarray(py).into_py_any(py).unwrap(),
+          j.into_pyarray(py).into_py_any(py).unwrap(),
+        )
+      } else if let Some(ref inner) = self.inner_f32 {
+        let [p, cum, j] = inner.sample();
+        (
+          p.into_pyarray(py).into_py_any(py).unwrap(),
+          cum.into_pyarray(py).into_py_any(py).unwrap(),
+          j.into_pyarray(py).into_py_any(py).unwrap(),
+        )
+      } else {
+        unreachable!()
+      }
+    })
   }
 }

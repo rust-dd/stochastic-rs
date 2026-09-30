@@ -20,11 +20,14 @@ impl PyHullWhiteCallableBond {
     sigma: f64,
     horizon: f64,
     steps: usize,
-  ) -> Self {
-    let model = crate::lattice::HullWhiteTreeModel::new(initial_rate, mean_reversion, theta, sigma);
-    Self {
-      tree: crate::lattice::HullWhiteTree::new(model, horizon, steps),
-    }
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let model =
+        crate::lattice::HullWhiteTreeModel::new(initial_rate, mean_reversion, theta, sigma);
+      Self {
+        tree: crate::lattice::HullWhiteTree::new(model, horizon, steps),
+      }
+    })
   }
 
   /// Prices the bond; `calls` / `puts` are `(time, clean price)` lists.

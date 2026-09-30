@@ -104,39 +104,30 @@ pub fn ln_beta(a: f64, b: f64) -> f64 {
   ln_gamma(a) + ln_gamma(b) - ln_gamma(a + b)
 }
 
-/// Error function `erf(x)`.
-///
-/// Cody (1969) rational approximation transformed to the form used by W. J.
-/// Cody, *Rational Chebyshev approximations for the error function*,
-/// Math. Comp. **23** (1969) 631–637. Maximum relative error ~1.5e-7.
-/// Sufficient for distribution work here; for higher precision swap in
-/// `libm::erf` later if desired.
+/// Error function `erf(x)`, from the `libm` crate's port of fdlibm (the
+/// implementation in musl and FreeBSD libc).
+#[inline]
 pub fn erf(x: f64) -> f64 {
-  // Abramowitz & Stegun 7.1.26 — relative error < 1.5e-7.
-  let sign = if x < 0.0 { -1.0 } else { 1.0 };
-  let ax = x.abs();
-  let p = 0.327_591_1_f64;
-  let a1 = 0.254_829_592_f64;
-  let a2 = -0.284_496_736_f64;
-  let a3 = 1.421_413_741_f64;
-  let a4 = -1.453_152_027_f64;
-  let a5 = 1.061_405_429_f64;
-  let t = 1.0 / (1.0 + p * ax);
-  let y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * (-ax * ax).exp();
-  sign * y
+  libm::erf(x)
 }
 
-/// Complementary error function `erfc(x) = 1 − erf(x)`.
+/// Complementary error function `erfc(x) = 1 − erf(x)`, computed directly
+/// rather than as the difference, so the upper tail keeps its relative
+/// precision: `erfc(10)` is `2.09e-45`, where `1 − erf(10)` rounds to zero.
 #[inline]
 pub fn erfc(x: f64) -> f64 {
-  1.0 - erf(x)
+  libm::erfc(x)
 }
 
 /// Standard-normal quantile (inverse CDF).
 ///
 /// P. J. Acklam, *An algorithm for computing the inverse normal cumulative
-/// distribution function*, 2003. Maximum absolute error ≈ 1.15e-9 over
-/// `(0, 1)`; rebuilt without external lookup tables.
+/// distribution function*, 2003: the rational approximation (absolute error
+/// ≈ 1.15e-9) followed by the single Halley step on `Φ(x) − p` that Acklam
+/// gives for refining it, which brings the result to full double precision.
+/// The step runs on the lower half, where `Φ(x) − p` is a difference of small
+/// numbers; an upper-half `p` is mirrored through `1 − p`, which is exact for
+/// `p ≥ ½`.
 ///
 /// Returns NaN for a `p` outside `[0, 1]`.
 pub fn ndtri(p: f64) -> f64 {
@@ -149,7 +140,14 @@ pub fn ndtri(p: f64) -> f64 {
   if p == 1.0 {
     return f64::INFINITY;
   }
+  if p > 0.5 {
+    return -ndtri_lower(1.0 - p);
+  }
+  ndtri_lower(p)
+}
 
+/// [`ndtri`] on `(0, ½]`.
+fn ndtri_lower(p: f64) -> f64 {
   // Coefficients from Acklam (2003).
   const A: [f64; 6] = [
     -3.969_683_028_665_376_e1,
@@ -181,22 +179,24 @@ pub fn ndtri(p: f64) -> f64 {
     3.754_408_661_907_416,
   ];
 
-  let p_low = 0.025;
-  let p_high = 1.0 - p_low;
-
-  if p < p_low {
+  let x = if p < 0.025 {
     let q = (-2.0 * p.ln()).sqrt();
     (((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5])
       / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0)
-  } else if p <= p_high {
+  } else {
     let q = p - 0.5;
     let r = q * q;
     (((((A[0] * r + A[1]) * r + A[2]) * r + A[3]) * r + A[4]) * r + A[5]) * q
       / (((((B[0] * r + B[1]) * r + B[2]) * r + B[3]) * r + B[4]) * r + 1.0)
+  };
+
+  let e = 0.5 * erfc(-x / std::f64::consts::SQRT_2) - p;
+  let u = e * (2.0 * std::f64::consts::PI).sqrt() * (0.5 * x * x).exp();
+  // Past p ≈ 1e-308 the exponential overflows; the approximation stands alone.
+  if u.is_finite() {
+    x - u / (1.0 + 0.5 * x * u)
   } else {
-    let q = (-2.0 * (1.0 - p).ln()).sqrt();
-    -(((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5])
-      / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0)
+    x
   }
 }
 
@@ -206,10 +206,11 @@ pub fn norm_pdf(x: f64) -> f64 {
   (-0.5 * x * x).exp() / (2.0 * std::f64::consts::PI).sqrt()
 }
 
-/// Standard-normal cdf Φ(x) = ½(1 + erf(x/√2)).
+/// Standard-normal cdf Φ(x) = ½ erfc(−x/√2), which keeps its relative
+/// precision in the lower tail, where ½(1 + erf(x/√2)) cancels to zero.
 #[inline]
 pub fn norm_cdf(x: f64) -> f64 {
-  0.5 * (1.0 + erf(x / std::f64::consts::SQRT_2))
+  0.5 * erfc(-x / std::f64::consts::SQRT_2)
 }
 
 /// Regularised lower incomplete gamma P(a, x) = γ(a,x)/Γ(a).
@@ -404,6 +405,49 @@ mod tests {
       let back = norm_cdf(z);
       assert!(close(back, p, 1e-7), "p={p}, z={z}, back={back}");
     }
+  }
+
+  /// References from mpmath at 50 significant digits.
+  #[test]
+  fn erf_and_erfc_match_high_precision_references() {
+    let rel = |a: f64, b: f64| ((a - b) / b).abs();
+    assert!(rel(erf(0.5), 0.520_499_877_813_046_5) < 1e-15);
+    assert!(rel(erf(-1.2), -0.910_313_978_229_635_3) < 1e-15);
+    assert!(rel(erfc(0.5), 0.479_500_122_186_953_5) < 1e-15);
+    assert!(rel(erfc(5.0), 1.537_459_794_428_035e-12) < 1e-14);
+    assert!(rel(erfc(10.0), 2.088_487_583_762_545e-45) < 1e-14);
+    assert!(rel(erfc(26.0), 5.663_192_408_856_143e-296) < 1e-13);
+  }
+
+  #[test]
+  fn norm_cdf_keeps_the_lower_tail() {
+    let rel = |a: f64, b: f64| ((a - b) / b).abs();
+    assert!(rel(norm_cdf(-8.0), 6.220_960_574_271_784e-16) < 1e-14);
+    assert!(rel(norm_cdf(-1.0), 0.158_655_253_931_457_05) < 1e-15);
+    assert!(rel(norm_cdf(1.96), 0.975_002_104_851_779_5) < 1e-15);
+    assert!(rel(norm_cdf(6.0), 0.999_999_999_013_412_3) < 1e-15);
+    assert!(norm_cdf(-38.0) > 0.0);
+  }
+
+  #[test]
+  fn ndtri_matches_high_precision_references() {
+    for &(p, x) in &[
+      (1e-300, -37.047_096_299_361_2),
+      (1e-10, -6.361_340_902_404_057),
+      (0.001, -3.090_232_306_167_813_6),
+      (0.025, -1.959_963_984_540_054_3),
+      (0.3, -0.524_400_512_708_040_8),
+      (0.975, 1.959_963_984_540_053_8),
+      (0.999, 3.090_232_306_167_813),
+      (0.999_999_999_9, 6.361_340_889_697_422),
+    ] {
+      let got = ndtri(p);
+      assert!(
+        ((got - x) / x).abs() < 1e-14,
+        "ndtri({p}) = {got}, want {x}"
+      );
+    }
+    assert_eq!(ndtri(0.5), 0.0);
   }
 
   #[test]

@@ -18,15 +18,17 @@ impl PyRealizedMoments {
   /// volatility result (e.g. 252.0 for daily-to-annual).
   #[new]
   #[pyo3(signature = (returns, annualisation=1.0))]
-  fn new<'py>(returns: PyReadonlyArray1<'py, f64>, annualisation: f64) -> Self {
-    let view: ArrayView1<f64> = returns.as_array();
-    Self {
-      rv: crate::realized::variance::realized_variance(view),
-      rvol: crate::realized::variance::realized_volatility(view, annualisation),
-      skew: crate::realized::variance::realized_skewness(view),
-      kurt: crate::realized::variance::realized_kurtosis(view),
-      rq: crate::realized::variance::realized_quarticity(view),
-    }
+  fn new<'py>(returns: PyReadonlyArray1<'py, f64>, annualisation: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let view: ArrayView1<f64> = returns.as_array();
+      Self {
+        rv: crate::realized::variance::realized_variance(view),
+        rvol: crate::realized::variance::realized_volatility(view, annualisation),
+        skew: crate::realized::variance::realized_skewness(view),
+        kurt: crate::realized::variance::realized_kurtosis(view),
+        rq: crate::realized::variance::realized_quarticity(view),
+      }
+    })
   }
 
   #[getter]
@@ -68,14 +70,16 @@ impl PyBipowerVariation {
   /// Compute jump-robust bipower variation, minRV, medRV and tripower quarticity
   /// from a log-return series.
   #[new]
-  fn new<'py>(returns: PyReadonlyArray1<'py, f64>) -> Self {
-    let view: ArrayView1<f64> = returns.as_array();
-    Self {
-      bv: crate::realized::bipower::bipower_variation(view),
-      minrv: crate::realized::bipower::minrv(view),
-      medrv: crate::realized::bipower::medrv(view),
-      tpq: crate::realized::bipower::tripower_quarticity(view),
-    }
+  fn new<'py>(returns: PyReadonlyArray1<'py, f64>) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let view: ArrayView1<f64> = returns.as_array();
+      Self {
+        bv: crate::realized::bipower::bipower_variation(view),
+        minrv: crate::realized::bipower::minrv(view),
+        medrv: crate::realized::bipower::medrv(view),
+        tpq: crate::realized::bipower::tripower_quarticity(view),
+      }
+    })
   }
 
   #[getter]
@@ -109,10 +113,10 @@ impl PyBNSJumpTest {
   /// Barndorff-Nielsen / Shephard jump test on a log-return series.
   #[new]
   #[pyo3(signature = (returns, alpha=0.05))]
-  fn new<'py>(returns: PyReadonlyArray1<'py, f64>, alpha: f64) -> Self {
-    Self {
+  fn new<'py>(returns: PyReadonlyArray1<'py, f64>, alpha: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::realized::bipower::bns_jump_test(returns.as_array(), alpha),
-    }
+    })
   }
 
   #[getter]
@@ -143,10 +147,14 @@ impl PyLeeMyklandJumpTest {
   /// paper's 1% level.
   #[new]
   #[pyo3(signature = (returns, window, alpha=0.01))]
-  fn new<'py>(returns: PyReadonlyArray1<'py, f64>, window: usize, alpha: f64) -> Self {
-    Self {
+  fn new<'py>(
+    returns: PyReadonlyArray1<'py, f64>,
+    window: usize,
+    alpha: f64,
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::realized::lee_mykland::lee_mykland_test(returns.as_array(), window, alpha),
-    }
+    })
   }
 
   /// The paper's window rule: the smallest integer above
@@ -229,26 +237,29 @@ impl PyRealizedKernel {
     kernel: &str,
     bandwidth: Option<usize>,
   ) -> PyResult<Self> {
-    use crate::realized::kernel::KernelType;
-    let kt = match kernel.to_ascii_lowercase().as_str() {
-      "parzen" => KernelType::Parzen,
-      "bartlett" => KernelType::Bartlett,
-      "tukey_hanning" | "th" => KernelType::TukeyHanning,
-      "tukey_hanning2" | "th2" => KernelType::TukeyHanning2,
-      "cubic" => KernelType::Cubic,
-      "quadratic_spectral" | "qs" => KernelType::QuadraticSpectral,
-      o => {
-        return Err(pyo3::exceptions::PyValueError::new_err(format!(
-          "kernel must be one of parzen/bartlett/tukey_hanning/tukey_hanning2/cubic/quadratic_spectral, got '{o}'"
-        )));
-      }
-    };
-    let n = returns.as_array().len();
-    let h = bandwidth.unwrap_or_else(|| crate::realized::kernel::parzen_default_bandwidth(n, 1.0));
-    Ok(Self {
-      rk: crate::realized::kernel::realized_kernel(returns.as_array(), kt, h),
-      bandwidth: h,
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      use crate::realized::kernel::KernelType;
+      let kt = match kernel.to_ascii_lowercase().as_str() {
+        "parzen" => KernelType::Parzen,
+        "bartlett" => KernelType::Bartlett,
+        "tukey_hanning" | "th" => KernelType::TukeyHanning,
+        "tukey_hanning2" | "th2" => KernelType::TukeyHanning2,
+        "cubic" => KernelType::Cubic,
+        "quadratic_spectral" | "qs" => KernelType::QuadraticSpectral,
+        o => {
+          return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "kernel must be one of parzen/bartlett/tukey_hanning/tukey_hanning2/cubic/quadratic_spectral, got '{o}'"
+          )));
+        }
+      };
+      let n = returns.as_array().len();
+      let h =
+        bandwidth.unwrap_or_else(|| crate::realized::kernel::parzen_default_bandwidth(n, 1.0));
+      Ok(Self {
+        rk: crate::realized::kernel::realized_kernel(returns.as_array(), kt, h),
+        bandwidth: h,
+      })
+    })?
   }
 
   #[getter]
@@ -272,10 +283,10 @@ impl PyTwoScaleRV {
   /// Two-scale realised variance (Zhang-Mykland-Aït-Sahalia 2005).
   /// `prices`: log-price series; `k`: subsample step.
   #[new]
-  fn new<'py>(prices: PyReadonlyArray1<'py, f64>, k: usize) -> Self {
-    Self {
+  fn new<'py>(prices: PyReadonlyArray1<'py, f64>, k: usize) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       rv: crate::realized::two_scale::two_scale_rv(prices.as_array(), k),
-    }
+    })
   }
 
   #[getter]
@@ -293,10 +304,10 @@ pub struct PyPreAveragedVariance {
 impl PyPreAveragedVariance {
   /// Pre-averaging realised variance (Jacod et al. 2009) with explicit `theta`.
   #[new]
-  fn new<'py>(returns: PyReadonlyArray1<'py, f64>, theta: f64) -> Self {
-    Self {
+  fn new<'py>(returns: PyReadonlyArray1<'py, f64>, theta: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       value: crate::realized::pre_averaging::pre_averaged_variance(returns.as_array(), theta),
-    }
+    })
   }
 
   #[getter]
@@ -316,10 +327,10 @@ impl PyEwmaVariance {
   /// `lambda_` defaults to the RiskMetrics daily decay 0.94.
   #[new]
   #[pyo3(signature = (returns, lambda_=0.94))]
-  fn new<'py>(returns: PyReadonlyArray1<'py, f64>, lambda_: f64) -> Self {
-    Self {
+  fn new<'py>(returns: PyReadonlyArray1<'py, f64>, lambda_: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::realized::ewma::ewma_variance(returns.as_array(), lambda_),
-    }
+    })
   }
 
   /// Conditional variance series (same length as the input).
@@ -353,10 +364,10 @@ pub struct PyHarRv {
 impl PyHarRv {
   /// Fit HAR-RV (Corsi 2009) on a daily realised-variance history.
   #[new]
-  fn new<'py>(daily_rv: PyReadonlyArray1<'py, f64>) -> Self {
-    Self {
+  fn new<'py>(daily_rv: PyReadonlyArray1<'py, f64>) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::realized::har::HarRv::fit(daily_rv.as_array()),
-    }
+    })
   }
 
   #[getter]

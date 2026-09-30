@@ -10,10 +10,10 @@ pub struct PyHillEstimator {
 impl PyHillEstimator {
   /// Hill (1975) tail-index estimate from the `k` largest positive entries.
   #[new]
-  fn new<'py>(data: PyReadonlyArray1<'py, f64>, k: usize) -> Self {
-    Self {
+  fn new<'py>(data: PyReadonlyArray1<'py, f64>, k: usize) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::evt::hill_estimator(data.as_array(), k),
-    }
+    })
   }
 
   #[getter]
@@ -56,10 +56,10 @@ pub struct PyGpdFit {
 impl PyGpdFit {
   /// GPD maximum-likelihood fit to non-negative threshold excesses.
   #[new]
-  fn new<'py>(exceedances: PyReadonlyArray1<'py, f64>) -> Self {
-    Self {
+  fn new<'py>(exceedances: PyReadonlyArray1<'py, f64>) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::evt::gpd_fit(exceedances.as_array()),
-    }
+    })
   }
 
   /// Standard errors of `[sigma, xi]`.
@@ -123,10 +123,10 @@ pub struct PyPotFit {
 impl PyPotFit {
   /// Peaks-over-threshold tail model of `data` (losses) above `threshold`.
   #[new]
-  fn new<'py>(data: PyReadonlyArray1<'py, f64>, threshold: f64) -> Self {
-    Self {
+  fn new<'py>(data: PyReadonlyArray1<'py, f64>, threshold: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::evt::pot_fit(data.as_array(), threshold),
-    }
+    })
   }
 
   /// Tail quantile (Value-at-Risk) at level `p`.
@@ -195,10 +195,10 @@ pub struct PyGevFit {
 impl PyGevFit {
   /// GEV maximum-likelihood fit to block maxima.
   #[new]
-  fn new<'py>(maxima: PyReadonlyArray1<'py, f64>) -> Self {
-    Self {
+  fn new<'py>(maxima: PyReadonlyArray1<'py, f64>) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::evt::gev_fit(maxima.as_array()),
-    }
+    })
   }
 
   /// Return level exceeded once every `period` blocks on average.

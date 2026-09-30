@@ -146,15 +146,9 @@ pub trait BivariateExt {
     ud: stochastic_rs_distributions::uniform::SimdUniform<f64>,
     n: usize,
   ) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
-    if self.tau().is_none() {
-      return Err("Tau is not defined".into());
-    }
-
-    let tau = self.tau().unwrap();
-
-    if !(-1.0..1.0).contains(&tau) {
-      return Err("Tau must be in the interval (-1, 1)".into());
-    }
+    // The sampler inverts the conditional distribution, which reads `theta`
+    // alone; setting `tau` is only one way of arriving at it.
+    self.check_theta()?;
 
     let mut v = Array1::<f64>::zeros(n);
     ud.fill_slice(v.as_slice_mut().unwrap());
@@ -497,5 +491,23 @@ mod tests {
 
     let scalar = c.partial_derivative_scalar(0.3, 0.6).unwrap();
     assert!((0.0..=1.0).contains(&scalar));
+  }
+
+  #[test]
+  fn sampling_needs_theta_not_tau() {
+    let c = Clayton {
+      theta: Some(2.0),
+      ..Clayton::new()
+    };
+    let uv = c
+      .sample_with_seed(1_000, 7)
+      .expect("theta alone is enough to sample");
+    assert_eq!(uv.dim(), (1_000, 2));
+
+    let unset = Clayton::new()
+      .sample_with_seed(10, 7)
+      .unwrap_err()
+      .to_string();
+    assert!(unset.contains("theta is not set"), "{unset}");
   }
 }

@@ -188,16 +188,16 @@ fn merton_greeks_finite_at_m50() {
 /// Both values moved with the `σ_n` correction — they were `1.883107` and
 /// `4.290648`, computed with the diffusive variance scaled by `n/τ`. The
 /// call is adjudicated to `4.401577` by Gil-Pelaez inversion of the Merton
-/// characteristic function, which shares no code with the Poisson series;
-/// the `8.3e-6` gap is `norm_cdf`'s Abramowitz-Stegun 7.1.26 error, not a
-/// pricing difference. The put follows from it by the generalised parity
+/// characteristic function, which shares no code with the Poisson series,
+/// and the series lands on it; the `8.3e-6` gap it once showed was the
+/// Abramowitz-Stegun `erf` behind `norm_cdf`, since replaced. The put follows from it by the generalised parity
 /// `C - P = S - Ke^{-rτ}` asserted below, so the pair cannot drift apart.
 #[test]
 fn merton_price_m10_matches_the_reference_value() {
   let m = merton(0.5, 0.3, 10);
   let (call, put) = m.call_put(S, K, R, Q, TAU);
-  let want_call = 4.401_569_155_621_004;
-  let want_put = 6.809_109_918_595_418;
+  let want_call = 4.401_577_413_196_381;
+  let want_put = 6.809_118_176_170_799_5;
   assert!(
     (call - want_call).abs() < 1e-12,
     "call regressed: got {call}, want {want_call}"
@@ -294,11 +294,10 @@ const TOL: f64 = 1e-12;
 /// Every value here moved when `σ_n` was corrected from
 /// `√((d² + z²)·n/τ)` to `√(d² + z²·n/τ)`; each is adjudicated against a
 /// reference sharing no code with the pricer. The call was `1.963018` and
-/// is now `4.276112`, against `4.276118` from Gil-Pelaez inversion of the
-/// Merton characteristic function and `4.2717 ± 0.0061` from an 8M-path
-/// Monte Carlo — the old value sat **760 standard errors** below that
-/// interval. The `6.6e-6` residual is `norm_cdf`'s Abramowitz-Stegun
-/// 7.1.26 error.
+/// is now `4.276118`, the value Gil-Pelaez inversion of the Merton
+/// characteristic function gives, inside the `4.2717 ± 0.0061` of an
+/// 8M-path Monte Carlo — the old value sat **760 standard errors** below
+/// that interval.
 ///
 /// The volatility Greeks use independent 60-digit mpmath derivatives of
 /// the ten-term Poisson price with an erfc-based normal CDF. Veta permits
@@ -307,21 +306,21 @@ const TOL: f64 = 1e-12;
 fn merton_pins_the_reference_price_and_greeks() {
   let m = merton(0.5, 0.4, 10);
   let (call, put) = m.call_put(S, K, R, Q, TAU);
-  assert!((call - 4.276111556095045).abs() < TOL, "call {call}");
-  assert!((put - 6.683652319069461).abs() < TOL, "put {put}");
+  assert!((call - 4.276118145681529).abs() < TOL, "call {call}");
+  assert!((put - 6.68365890865595).abs() < TOL, "put {put}");
   assert_eq!(m.price_call(S, K, R, Q, TAU), call);
   assert_eq!(m.price_put(S, K, R, Q, TAU), put);
 
   let want = [
-    0.4496816609264091,
+    0.4496816679513633,
     0.032071500866967965,
-    26.419722807093007,
-    -7.717747123159312,
-    20.346027268272934,
-    0.5135917494280893,
-    -0.27511605438235165,
-    3.691324142155106,
-    -30.536697717993075,
+    26.419722807093013,
+    -7.7177657908489286,
+    20.3460243247274,
+    0.5135917494280899,
+    -0.27506665389864793,
+    3.6913241421551275,
+    -30.536697719973912,
   ];
   let got = m.greeks(S, K, R, Q, TAU, OT).as_array();
   for (i, name) in Greeks::COMPONENT_NAMES.iter().enumerate() {

@@ -158,6 +158,8 @@ pub use stochastic_rs_core::simd_rng;
 mod macros;
 
 pub mod float_impls;
+#[cfg(feature = "python")]
+pub mod python;
 mod simd_float_impls;
 pub mod special;
 pub mod traits;

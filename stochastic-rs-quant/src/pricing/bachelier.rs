@@ -177,14 +177,13 @@ mod tests {
   /// Reference: scipy 1.x, `F = 100 e^{0.0225}`, `d = (F − 105) / (20 √0.75)`,
   /// `call = e^{−0.0375} ((F − 105) Φ(d) + 20 √0.75 φ(d))` = 5.425620481357,
   /// `put = e^{−0.0375} ((105 − F) Φ(−d) + 20 √0.75 φ(d))` = 8.049840381737.
-  /// The tolerance follows the crate's `norm_cdf` (Abramowitz–Stegun 7.1.26
-  /// erf, 1.5e-7 absolute), which moves a price of this size by up to ~1e-5.
+  /// The tolerance is the references' own twelve-decimal rounding.
   #[test]
   fn matches_the_scipy_reference() {
     let (s, k, r, q, tau) = Q;
     let (call, put) = BachelierPricer::new(20.0).call_put(s, k, r, q, tau);
-    assert!((call - 5.425620481357).abs() < 5e-5, "call {call}");
-    assert!((put - 8.049840381737).abs() < 5e-5, "put {put}");
+    assert!((call - 5.425620481357).abs() < 1e-10, "call {call}");
+    assert!((put - 8.049840381737).abs() < 1e-10, "put {put}");
   }
 
   /// At the money the call is `e^{−rτ} σ_N √τ / √(2π)` exactly.

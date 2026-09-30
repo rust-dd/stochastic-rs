@@ -34,25 +34,27 @@ impl PyCdsIndex {
     effective_date: &str,
     maturity_date: &str,
   ) -> PyResult<Self> {
-    let names = names
-      .into_iter()
-      .map(|(weight, recovery, hazard)| {
-        Ok(IndexName {
-          weight,
-          recovery,
-          survival: survival_input(&hazard)?,
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let names = names
+        .into_iter()
+        .map(|(weight, recovery, hazard)| {
+          Ok(IndexName {
+            weight,
+            recovery,
+            survival: survival_input(&hazard)?,
+          })
         })
+        .collect::<PyResult<Vec<_>>>()?;
+      Ok(Self {
+        inner: CdsIndex::new(
+          names,
+          coupon,
+          notional,
+          parse_date(effective_date)?,
+          parse_date(maturity_date)?,
+        ),
       })
-      .collect::<PyResult<Vec<_>>>()?;
-    Ok(Self {
-      inner: CdsIndex::new(
-        names,
-        coupon,
-        notional,
-        parse_date(effective_date)?,
-        parse_date(maturity_date)?,
-      ),
-    })
+    })?
   }
 
   /// `(protection_leg, premium_leg, risky_annuity, fair_spread, net_npv)` from the buyer's side.
@@ -125,28 +127,30 @@ impl PyCdoTranche {
     quadrature_nodes: usize,
     loss_buckets: usize,
   ) -> PyResult<Self> {
-    let pool = pool
-      .into_iter()
-      .map(|(weight, recovery, hazard)| {
-        Ok(PoolName {
-          weight,
-          recovery,
-          survival: survival_input(&hazard)?,
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let pool = pool
+        .into_iter()
+        .map(|(weight, recovery, hazard)| {
+          Ok(PoolName {
+            weight,
+            recovery,
+            survival: survival_input(&hazard)?,
+          })
         })
+        .collect::<PyResult<Vec<_>>>()?;
+      Ok(Self {
+        inner: CdoTranche::new(
+          attachment,
+          detachment,
+          spread,
+          payment_times,
+          accrual,
+          correlation,
+        )
+        .with_resolution(quadrature_nodes, loss_buckets),
+        pool,
       })
-      .collect::<PyResult<Vec<_>>>()?;
-    Ok(Self {
-      inner: CdoTranche::new(
-        attachment,
-        detachment,
-        spread,
-        payment_times,
-        accrual,
-        correlation,
-      )
-      .with_resolution(quadrature_nodes, loss_buckets),
-      pool,
-    })
+    })?
   }
 
   /// Expected tranche loss at `t` per unit of pool notional.

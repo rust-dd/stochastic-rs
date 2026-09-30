@@ -12,15 +12,15 @@ pub struct PyMarketSlice {
 #[pymethods]
 impl PyMarketSlice {
   #[new]
-  fn new(strikes: Vec<f64>, prices: Vec<f64>, is_call: Vec<bool>, t: f64) -> Self {
-    Self {
+  fn new(strikes: Vec<f64>, prices: Vec<f64>, is_call: Vec<bool>, t: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::calibration::levy::MarketSlice {
         strikes,
         prices,
         is_call,
         tau: t,
       },
-    }
+    })
   }
 }
 
@@ -41,22 +41,24 @@ impl PyBSMCalibrator {
     q: Option<f64>,
     sigma_init: f64,
   ) -> PyResult<Self> {
-    let ot = parse_option_type(option_type)?;
-    let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
-      slices.into_iter().map(|s| s.inner).collect();
-    let params = crate::calibration::bsm::BSMParams { v: sigma_init };
-    Ok(Self {
-      inner: crate::calibration::bsm::BSMCalibrator::from_slices(
-        params,
-        &inner_slices,
-        s,
-        r,
-        None,
-        None,
-        q,
-        ot,
-      ),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let ot = parse_option_type(option_type)?;
+      let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
+        slices.into_iter().map(|s| s.inner).collect();
+      let params = crate::calibration::bsm::BSMParams { v: sigma_init };
+      Ok(Self {
+        inner: crate::calibration::bsm::BSMCalibrator::from_slices(
+          params,
+          &inner_slices,
+          s,
+          r,
+          None,
+          None,
+          q,
+          ot,
+        ),
+      })
+    })?
   }
 
   /// Run calibration. Returns `(sigma, converged, loss_rmse)`.
@@ -92,22 +94,24 @@ impl PyHestonCalibrator {
     q: Option<f64>,
     regularization: Option<(Vec<f64>, Vec<f64>)>,
   ) -> PyResult<Self> {
-    let ot = parse_option_type(option_type)?;
-    let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
-      slices.into_iter().map(|s| s.inner).collect();
-    let mut inner = crate::calibration::heston::HestonCalibrator::from_slices(
-      None,
-      &inner_slices,
-      s,
-      r,
-      q,
-      ot,
-      false,
-    );
-    if let Some((anchor, weights)) = regularization {
-      inner.regularization = Some(crate::calibration::Regularization::new(anchor, weights));
-    }
-    Ok(Self { inner })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let ot = parse_option_type(option_type)?;
+      let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
+        slices.into_iter().map(|s| s.inner).collect();
+      let mut inner = crate::calibration::heston::HestonCalibrator::from_slices(
+        None,
+        &inner_slices,
+        s,
+        r,
+        q,
+        ot,
+        false,
+      );
+      if let Some((anchor, weights)) = regularization {
+        inner.regularization = Some(crate::calibration::Regularization::new(anchor, weights));
+      }
+      Ok(Self { inner })
+    })?
   }
 
   /// Returns `(v0, kappa, theta, sigma, rho, converged, loss_rmse)`.
@@ -151,29 +155,31 @@ impl PySabrCalibrator {
     q: Option<f64>,
     regularization: Option<(Vec<f64>, Vec<f64>)>,
   ) -> PyResult<Self> {
-    use ndarray::Array1;
-    if strikes.len() != prices.len() {
-      return Err(PyValueError::new_err(
-        "strikes and prices must have equal length",
-      ));
-    }
-    let n = strikes.len();
-    let ot = parse_option_type(option_type)?;
-    let mut inner = crate::calibration::sabr::SabrCalibrator::new(
-      None,
-      Array1::from_vec(prices),
-      Array1::from_vec(vec![s; n]),
-      Array1::from_vec(strikes),
-      r,
-      q,
-      tau,
-      ot,
-      false,
-    );
-    if let Some((anchor, weights)) = regularization {
-      inner.regularization = Some(crate::calibration::Regularization::new(anchor, weights));
-    }
-    Ok(Self { inner })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      use ndarray::Array1;
+      if strikes.len() != prices.len() {
+        return Err(PyValueError::new_err(
+          "strikes and prices must have equal length",
+        ));
+      }
+      let n = strikes.len();
+      let ot = parse_option_type(option_type)?;
+      let mut inner = crate::calibration::sabr::SabrCalibrator::new(
+        None,
+        Array1::from_vec(prices),
+        Array1::from_vec(vec![s; n]),
+        Array1::from_vec(strikes),
+        r,
+        q,
+        tau,
+        ot,
+        false,
+      );
+      if let Some((anchor, weights)) = regularization {
+        inner.regularization = Some(crate::calibration::Regularization::new(anchor, weights));
+      }
+      Ok(Self { inner })
+    })?
   }
 
   /// Returns `(alpha, beta, nu, rho, converged, loss_rmse)`.
@@ -204,8 +210,14 @@ impl PySabrCapletCalibrator {
   /// SABR caplet smile calibrator — fits `(α, ν, ρ)` for a single expiry,
   /// β held fixed.
   #[new]
-  fn new(forward: f64, expiry: f64, beta: f64, strikes: Vec<f64>, market_vols: Vec<f64>) -> Self {
-    Self {
+  fn new(
+    forward: f64,
+    expiry: f64,
+    beta: f64,
+    strikes: Vec<f64>,
+    market_vols: Vec<f64>,
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::calibration::sabr_caplet::SabrCapletCalibrator::new(
         forward,
         expiry,
@@ -213,7 +225,7 @@ impl PySabrCapletCalibrator {
         strikes,
         market_vols,
       ),
-    }
+    })
   }
 
   /// Returns `(alpha, beta, nu, rho, rmse, converged)`.

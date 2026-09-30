@@ -320,35 +320,37 @@ impl PyHullWhite {
     seed: Option<u64>,
     device: Option<&str>,
   ) -> pyo3::PyResult<Self> {
-    let device = crate::python_device::Device::parse(device, "f64")?;
-    Ok(match seed {
-      Some(s) => Self {
-        device,
-        inner: None,
-        seeded: Some(HullWhite::new(
-          Fn1D::Py(theta),
-          alpha,
-          sigma,
-          n,
-          x0,
-          t,
-          crate::python_device::SharedSeed::new(s),
-        )),
-      },
-      None => Self {
-        device,
-        inner: Some(HullWhite::new(
-          Fn1D::Py(theta),
-          alpha,
-          sigma,
-          n,
-          x0,
-          t,
-          Unseeded,
-        )),
-        seeded: None,
-      },
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> pyo3::PyResult<Self> {
+      let device = crate::python_device::Device::parse(device, "f64")?;
+      Ok(match seed {
+        Some(s) => Self {
+          device,
+          inner: None,
+          seeded: Some(HullWhite::new(
+            Fn1D::Py(theta),
+            alpha,
+            sigma,
+            n,
+            x0,
+            t,
+            crate::python_device::SharedSeed::new(s),
+          )),
+        },
+        None => Self {
+          device,
+          inner: Some(HullWhite::new(
+            Fn1D::Py(theta),
+            alpha,
+            sigma,
+            n,
+            x0,
+            t,
+            Unseeded,
+          )),
+          seeded: None,
+        },
+      })
+    })?
   }
 
   /// The reason a device kernel cannot carry this configuration, if there is
@@ -366,36 +368,44 @@ impl PyHullWhite {
     self.device_fallback().is_none()
   }
 
-  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
+  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      use pyo3::IntoPyObjectExt;
 
-    use crate::traits::ProcessExt;
-    py_device_dispatch_f64!(self, |inner| inner
-      .sample()
-      .into_pyarray(py)
-      .into_py_any(py)
-      .unwrap())
+      use crate::traits::ProcessExt;
+      py_device_dispatch_f64!(self, |inner| inner
+        .sample()
+        .into_pyarray(py)
+        .into_py_any(py)
+        .unwrap())
+    })
   }
 
   /// `m` independent paths stacked into an `(m, n)` array. The GIL is
   /// released while the paths are generated; every `theta(t)` evaluation
   /// re-acquires it, so the Python callable is called from rayon workers
   /// one at a time.
-  fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
-    use ndarray::Array2;
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
+  fn sample_par<'py>(
+    &self,
+    py: pyo3::Python<'py>,
+    m: usize,
+  ) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use ndarray::Array2;
+      use numpy::IntoPyArray;
+      use pyo3::IntoPyObjectExt;
 
-    use crate::traits::ProcessExt;
-    py_device_dispatch_f64!(self, |inner| {
-      let paths = py.detach(|| inner.sample_par(m));
-      let n = paths.first().map_or(0, |p| p.len());
-      let mut result = Array2::zeros((m, n));
-      for (i, path) in paths.iter().enumerate() {
-        result.row_mut(i).assign(path);
-      }
-      result.into_pyarray(py).into_py_any(py).unwrap()
+      use crate::traits::ProcessExt;
+      py_device_dispatch_f64!(self, |inner| {
+        let paths = py.detach(|| inner.sample_par(m));
+        let n = paths.first().map_or(0, |p| p.len());
+        let mut result = Array2::zeros((m, n));
+        for (i, path) in paths.iter().enumerate() {
+          result.row_mut(i).assign(path);
+        }
+        result.into_pyarray(py).into_py_any(py).unwrap()
+      })
     })
   }
 }

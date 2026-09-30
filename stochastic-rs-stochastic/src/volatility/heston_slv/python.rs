@@ -125,62 +125,64 @@ impl PyHestonSlv {
     t: Option<f64>,
     seed: Option<u64>,
   ) -> PyResult<Self> {
-    if n < 2 {
-      return Err(PyValueError::new_err("n must be at least 2"));
-    }
-    if !(0.0..=1.0).contains(&eta) {
-      return Err(PyValueError::new_err("eta must lie in [0, 1]"));
-    }
-    if !(-1.0..=1.0).contains(&rho) {
-      return Err(PyValueError::new_err("rho must lie in [-1, 1]"));
-    }
-    if [kappa, theta, sigma]
-      .iter()
-      .any(|p| !(p.is_finite() && *p >= 0.0))
-    {
-      return Err(PyValueError::new_err(
-        "kappa, theta and sigma must be finite and non-negative",
-      ));
-    }
-    if !mu.is_finite() {
-      return Err(PyValueError::new_err("mu must be finite"));
-    }
-    if s0.is_some_and(|s| !(s.is_finite() && s > 0.0))
-      || v0.is_some_and(|v| !(v.is_finite() && v >= 0.0))
-    {
-      return Err(PyValueError::new_err(
-        "s0 must be finite and positive, v0 finite and non-negative",
-      ));
-    }
-    if t.is_some_and(|t| !(t.is_finite() && t > 0.0)) {
-      return Err(PyValueError::new_err("t must be finite and positive"));
-    }
-    let leverage = leverage_from_py(leverage)?;
-    Ok(match seed {
-      Some(s) => Self {
-        inner: None,
-        seeded: Some(HestonSlv::new(
-          s0,
-          v0,
-          kappa,
-          theta,
-          sigma,
-          rho,
-          mu,
-          eta,
-          leverage,
-          n,
-          t,
-          Deterministic::new(s),
-        )),
-      },
-      None => Self {
-        inner: Some(HestonSlv::new(
-          s0, v0, kappa, theta, sigma, rho, mu, eta, leverage, n, t, Unseeded,
-        )),
-        seeded: None,
-      },
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      if n < 2 {
+        return Err(PyValueError::new_err("n must be at least 2"));
+      }
+      if !(0.0..=1.0).contains(&eta) {
+        return Err(PyValueError::new_err("eta must lie in [0, 1]"));
+      }
+      if !(-1.0..=1.0).contains(&rho) {
+        return Err(PyValueError::new_err("rho must lie in [-1, 1]"));
+      }
+      if [kappa, theta, sigma]
+        .iter()
+        .any(|p| !(p.is_finite() && *p >= 0.0))
+      {
+        return Err(PyValueError::new_err(
+          "kappa, theta and sigma must be finite and non-negative",
+        ));
+      }
+      if !mu.is_finite() {
+        return Err(PyValueError::new_err("mu must be finite"));
+      }
+      if s0.is_some_and(|s| !(s.is_finite() && s > 0.0))
+        || v0.is_some_and(|v| !(v.is_finite() && v >= 0.0))
+      {
+        return Err(PyValueError::new_err(
+          "s0 must be finite and positive, v0 finite and non-negative",
+        ));
+      }
+      if t.is_some_and(|t| !(t.is_finite() && t > 0.0)) {
+        return Err(PyValueError::new_err("t must be finite and positive"));
+      }
+      let leverage = leverage_from_py(leverage)?;
+      Ok(match seed {
+        Some(s) => Self {
+          inner: None,
+          seeded: Some(HestonSlv::new(
+            s0,
+            v0,
+            kappa,
+            theta,
+            sigma,
+            rho,
+            mu,
+            eta,
+            leverage,
+            n,
+            t,
+            Deterministic::new(s),
+          )),
+        },
+        None => Self {
+          inner: Some(HestonSlv::new(
+            s0, v0, kappa, theta, sigma, rho, mu, eta, leverage, n, t, Unseeded,
+          )),
+          seeded: None,
+        },
+      })
+    })?
   }
 
   /// The reason a device kernel cannot carry this configuration: from
@@ -202,11 +204,15 @@ impl PyHestonSlv {
   /// One path as the pair `(s, v)` of arrays.
   /// A failed leverage callback raises `RuntimeError` with its error message.
   fn sample<'py>(&self, py: Python<'py>) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
-    let [s, v] = callback_result(|| crate::py_dispatch_f64!(self, |inner| inner.sample()))?;
-    Ok((
-      s.into_pyarray(py).into_py_any(py)?,
-      v.into_pyarray(py).into_py_any(py)?,
-    ))
+    stochastic_rs_distributions::python::runtime_error_on_panic(
+      || -> PyResult<(Py<PyAny>, Py<PyAny>)> {
+        let [s, v] = callback_result(|| crate::py_dispatch_f64!(self, |inner| inner.sample()))?;
+        Ok((
+          s.into_pyarray(py).into_py_any(py)?,
+          v.into_pyarray(py).into_py_any(py)?,
+        ))
+      },
+    )?
   }
 
   /// `m` paths as a pair of `(m, n)` arrays. A callable leverage is called
@@ -214,20 +220,24 @@ impl PyHestonSlv {
   /// by those calls; a grid is interpolated in Rust.
   /// A failed leverage callback raises `RuntimeError` with its error message.
   fn sample_par<'py>(&self, py: Python<'py>, m: usize) -> PyResult<(Py<PyAny>, Py<PyAny>)> {
-    crate::py_dispatch_f64!(self, |inner| {
-      // The callbacks re-attach to the interpreter from the worker threads, so
-      // the GIL must be released here or the parallel sampler deadlocks.
-      let samples = callback_result(|| py.detach(|| inner.sample_par(m)))?;
-      let mut ss = ndarray::Array2::<f64>::zeros((m, inner.n));
-      let mut vs = ndarray::Array2::<f64>::zeros((m, inner.n));
-      for (i, [s, v]) in samples.iter().enumerate() {
-        ss.row_mut(i).assign(s);
-        vs.row_mut(i).assign(v);
-      }
-      Ok((
-        ss.into_pyarray(py).into_py_any(py)?,
-        vs.into_pyarray(py).into_py_any(py)?,
-      ))
-    })
+    stochastic_rs_distributions::python::runtime_error_on_panic(
+      || -> PyResult<(Py<PyAny>, Py<PyAny>)> {
+        crate::py_dispatch_f64!(self, |inner| {
+          // The callbacks re-attach to the interpreter from the worker threads, so
+          // the GIL must be released here or the parallel sampler deadlocks.
+          let samples = callback_result(|| py.detach(|| inner.sample_par(m)))?;
+          let mut ss = ndarray::Array2::<f64>::zeros((m, inner.n));
+          let mut vs = ndarray::Array2::<f64>::zeros((m, inner.n));
+          for (i, [s, v]) in samples.iter().enumerate() {
+            ss.row_mut(i).assign(s);
+            vs.row_mut(i).assign(v);
+          }
+          Ok((
+            ss.into_pyarray(py).into_py_any(py)?,
+            vs.into_pyarray(py).into_py_any(py)?,
+          ))
+        })
+      },
+    )?
   }
 }

@@ -454,8 +454,8 @@ impl PyJumpFOUCustom {
     x0: Option<f64>,
     t: Option<f64>,
     dtype: Option<&str>,
-  ) -> Self {
-    match dtype.unwrap_or("f64") {
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| match dtype.unwrap_or("f64") {
       "f32" => Self {
         inner_f32: Some(JumpFOUCustom::new(
           hurst as f32,
@@ -486,47 +486,55 @@ impl PyJumpFOUCustom {
           Unseeded,
         )),
       },
-    }
+    })
   }
 
-  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
+  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      use pyo3::IntoPyObjectExt;
 
-    use crate::traits::ProcessExt;
-    if let Some(ref inner) = self.inner_f64 {
-      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-    } else if let Some(ref inner) = self.inner_f32 {
-      inner.sample().into_pyarray(py).into_py_any(py).unwrap()
-    } else {
-      unreachable!()
-    }
+      use crate::traits::ProcessExt;
+      if let Some(ref inner) = self.inner_f64 {
+        inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+      } else if let Some(ref inner) = self.inner_f32 {
+        inner.sample().into_pyarray(py).into_py_any(py).unwrap()
+      } else {
+        unreachable!()
+      }
+    })
   }
 
-  fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
-    use numpy::IntoPyArray;
-    use numpy::ndarray::Array2;
-    use pyo3::IntoPyObjectExt;
+  fn sample_par<'py>(
+    &self,
+    py: pyo3::Python<'py>,
+    m: usize,
+  ) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      use numpy::ndarray::Array2;
+      use pyo3::IntoPyObjectExt;
 
-    use crate::traits::ProcessExt;
-    if let Some(ref inner) = self.inner_f64 {
-      let paths = inner.sample_par(m);
-      let n = paths[0].len();
-      let mut result = Array2::<f64>::zeros((m, n));
-      for (i, path) in paths.iter().enumerate() {
-        result.row_mut(i).assign(path);
+      use crate::traits::ProcessExt;
+      if let Some(ref inner) = self.inner_f64 {
+        let paths = inner.sample_par(m);
+        let n = paths[0].len();
+        let mut result = Array2::<f64>::zeros((m, n));
+        for (i, path) in paths.iter().enumerate() {
+          result.row_mut(i).assign(path);
+        }
+        result.into_pyarray(py).into_py_any(py).unwrap()
+      } else if let Some(ref inner) = self.inner_f32 {
+        let paths = inner.sample_par(m);
+        let n = paths[0].len();
+        let mut result = Array2::<f32>::zeros((m, n));
+        for (i, path) in paths.iter().enumerate() {
+          result.row_mut(i).assign(path);
+        }
+        result.into_pyarray(py).into_py_any(py).unwrap()
+      } else {
+        unreachable!()
       }
-      result.into_pyarray(py).into_py_any(py).unwrap()
-    } else if let Some(ref inner) = self.inner_f32 {
-      let paths = inner.sample_par(m);
-      let n = paths[0].len();
-      let mut result = Array2::<f32>::zeros((m, n));
-      for (i, path) in paths.iter().enumerate() {
-        result.row_mut(i).assign(path);
-      }
-      result.into_pyarray(py).into_py_any(py).unwrap()
-    } else {
-      unreachable!()
-    }
+    })
   }
 }

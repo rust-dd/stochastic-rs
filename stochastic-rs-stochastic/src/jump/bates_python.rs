@@ -39,108 +39,115 @@ impl PyBates {
     use_sym: Option<bool>,
     seed: Option<u64>,
     dtype: Option<&str>,
-  ) -> Self {
-    let mut s = Self {
-      inner_f32: None,
-      inner_f64: None,
-      seeded_f32: None,
-      seeded_f64: None,
-    };
-    match dtype.unwrap_or("f64") {
-      "f32" => {
-        let jump_dist = crate::traits::CallableDist::new(distribution);
-        match seed {
-          Some(sd) => {
-            s.seeded_f32 = Some(Bates1996::new(
-              mu.map(|v| v as f32),
-              b.map(|v| v as f32),
-              r.map(|v| v as f32),
-              r_f.map(|v| v as f32),
-              lambda_ as f32,
-              k as f32,
-              alpha as f32,
-              beta as f32,
-              sigma as f32,
-              rho as f32,
-              jump_dist,
-              n,
-              s0.map(|v| v as f32),
-              v0.map(|v| v as f32),
-              t.map(|v| v as f32),
-              use_sym,
-              Deterministic::new(sd),
-            ));
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let mut s = Self {
+        inner_f32: None,
+        inner_f64: None,
+        seeded_f32: None,
+        seeded_f64: None,
+      };
+      match dtype.unwrap_or("f64") {
+        "f32" => {
+          let jump_dist = crate::traits::CallableDist::new(distribution);
+          match seed {
+            Some(sd) => {
+              s.seeded_f32 = Some(Bates1996::new(
+                mu.map(|v| v as f32),
+                b.map(|v| v as f32),
+                r.map(|v| v as f32),
+                r_f.map(|v| v as f32),
+                lambda_ as f32,
+                k as f32,
+                alpha as f32,
+                beta as f32,
+                sigma as f32,
+                rho as f32,
+                jump_dist,
+                n,
+                s0.map(|v| v as f32),
+                v0.map(|v| v as f32),
+                t.map(|v| v as f32),
+                use_sym,
+                Deterministic::new(sd),
+              ));
+            }
+            None => {
+              s.inner_f32 = Some(Bates1996::new(
+                mu.map(|v| v as f32),
+                b.map(|v| v as f32),
+                r.map(|v| v as f32),
+                r_f.map(|v| v as f32),
+                lambda_ as f32,
+                k as f32,
+                alpha as f32,
+                beta as f32,
+                sigma as f32,
+                rho as f32,
+                jump_dist,
+                n,
+                s0.map(|v| v as f32),
+                v0.map(|v| v as f32),
+                t.map(|v| v as f32),
+                use_sym,
+                Unseeded,
+              ));
+            }
           }
-          None => {
-            s.inner_f32 = Some(Bates1996::new(
-              mu.map(|v| v as f32),
-              b.map(|v| v as f32),
-              r.map(|v| v as f32),
-              r_f.map(|v| v as f32),
-              lambda_ as f32,
-              k as f32,
-              alpha as f32,
-              beta as f32,
-              sigma as f32,
-              rho as f32,
-              jump_dist,
-              n,
-              s0.map(|v| v as f32),
-              v0.map(|v| v as f32),
-              t.map(|v| v as f32),
-              use_sym,
-              Unseeded,
-            ));
+        }
+        _ => {
+          let jump_dist = crate::traits::CallableDist::new(distribution);
+          match seed {
+            Some(sd) => {
+              s.seeded_f64 = Some(Bates1996::new(
+                mu,
+                b,
+                r,
+                r_f,
+                lambda_,
+                k,
+                alpha,
+                beta,
+                sigma,
+                rho,
+                jump_dist,
+                n,
+                s0,
+                v0,
+                t,
+                use_sym,
+                Deterministic::new(sd),
+              ));
+            }
+            None => {
+              s.inner_f64 = Some(Bates1996::new(
+                mu, b, r, r_f, lambda_, k, alpha, beta, sigma, rho, jump_dist, n, s0, v0, t,
+                use_sym, Unseeded,
+              ));
+            }
           }
         }
       }
-      _ => {
-        let jump_dist = crate::traits::CallableDist::new(distribution);
-        match seed {
-          Some(sd) => {
-            s.seeded_f64 = Some(Bates1996::new(
-              mu,
-              b,
-              r,
-              r_f,
-              lambda_,
-              k,
-              alpha,
-              beta,
-              sigma,
-              rho,
-              jump_dist,
-              n,
-              s0,
-              v0,
-              t,
-              use_sym,
-              Deterministic::new(sd),
-            ));
-          }
-          None => {
-            s.inner_f64 = Some(Bates1996::new(
-              mu, b, r, r_f, lambda_, k, alpha, beta, sigma, rho, jump_dist, n, s0, v0, t, use_sym,
-              Unseeded,
-            ));
-          }
-        }
-      }
-    }
-    s
+      s
+    })
   }
 
-  fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
+  fn sample<'py>(
+    &self,
+    py: pyo3::Python<'py>,
+  ) -> pyo3::PyResult<(pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>)> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      use pyo3::IntoPyObjectExt;
 
-    use crate::traits::ProcessExt;
-    py_dispatch!(self, |inner| {
-      let [a, b] = inner.sample();
-      (
-        a.into_pyarray(py).into_py_any(py).unwrap(),
-        b.into_pyarray(py).into_py_any(py).unwrap(),
-      )
+      use crate::traits::ProcessExt;
+      py_dispatch!(self, |inner| {
+        let [a, b] = inner.sample();
+        (
+          a.into_pyarray(py).into_py_any(py).unwrap(),
+          b.into_pyarray(py).into_py_any(py).unwrap(),
+        )
+      })
     })
   }
 
@@ -148,25 +155,27 @@ impl PyBates {
     &self,
     py: pyo3::Python<'py>,
     m: usize,
-  ) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
-    use numpy::IntoPyArray;
-    use numpy::ndarray::Array2;
-    use pyo3::IntoPyObjectExt;
+  ) -> pyo3::PyResult<(pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>)> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      use numpy::ndarray::Array2;
+      use pyo3::IntoPyObjectExt;
 
-    use crate::traits::ProcessExt;
-    py_dispatch!(self, |inner| {
-      let samples = inner.sample_par(m);
-      let n = samples[0][0].len();
-      let mut r0 = Array2::zeros((m, n));
-      let mut r1 = Array2::zeros((m, n));
-      for (i, [a, b]) in samples.iter().enumerate() {
-        r0.row_mut(i).assign(a);
-        r1.row_mut(i).assign(b);
-      }
-      (
-        r0.into_pyarray(py).into_py_any(py).unwrap(),
-        r1.into_pyarray(py).into_py_any(py).unwrap(),
-      )
+      use crate::traits::ProcessExt;
+      py_dispatch!(self, |inner| {
+        let samples = inner.sample_par(m);
+        let n = samples[0][0].len();
+        let mut r0 = Array2::zeros((m, n));
+        let mut r1 = Array2::zeros((m, n));
+        for (i, [a, b]) in samples.iter().enumerate() {
+          r0.row_mut(i).assign(a);
+          r1.row_mut(i).assign(b);
+        }
+        (
+          r0.into_pyarray(py).into_py_any(py).unwrap(),
+          r1.into_pyarray(py).into_py_any(py).unwrap(),
+        )
+      })
     })
   }
 }

@@ -11,10 +11,10 @@ impl PyCusum {
   /// CUSUM control chart with reference value `k` (half the smallest shift in
   /// SD units) and threshold `h`.
   #[new]
-  fn new<'py>(series: PyReadonlyArray1<'py, f64>, k: f64, h: f64) -> Self {
-    Self {
+  fn new<'py>(series: PyReadonlyArray1<'py, f64>, k: f64, h: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::econometrics::changepoint::cusum(series.as_array(), k, h),
-    }
+    })
   }
 
   fn upper<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
@@ -44,10 +44,14 @@ impl PyPelt {
   /// changepoint. `min_size` enforces a minimum segment length.
   #[new]
   #[pyo3(signature = (series, penalty, min_size=1))]
-  fn new<'py>(series: PyReadonlyArray1<'py, f64>, penalty: f64, min_size: usize) -> Self {
-    Self {
+  fn new<'py>(
+    series: PyReadonlyArray1<'py, f64>,
+    penalty: f64,
+    min_size: usize,
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::econometrics::changepoint::pelt(series.as_array(), penalty, min_size),
-    }
+    })
   }
 
   #[getter]
@@ -72,14 +76,16 @@ impl PyPeriodogramFFT {
   /// FFT periodogram with default config (mean-detrend, Hann window, one-sided density).
   #[new]
   #[pyo3(signature = (signal, sampling_rate=1.0))]
-  fn new<'py>(signal: PyReadonlyArray1<'py, f64>, sampling_rate: f64) -> Self {
-    let cfg = crate::spectral::PeriodogramConfig {
-      sampling_rate,
-      ..crate::spectral::PeriodogramConfig::default()
-    };
-    Self {
-      inner: crate::spectral::periodogram_fft(signal.as_array(), cfg),
-    }
+  fn new<'py>(signal: PyReadonlyArray1<'py, f64>, sampling_rate: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let cfg = crate::spectral::PeriodogramConfig {
+        sampling_rate,
+        ..crate::spectral::PeriodogramConfig::default()
+      };
+      Self {
+        inner: crate::spectral::periodogram_fft(signal.as_array(), cfg),
+      }
+    })
   }
 
   fn frequencies(&self) -> Vec<f64> {

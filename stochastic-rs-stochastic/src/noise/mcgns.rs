@@ -424,51 +424,61 @@ impl PyMcgns {
     n: usize,
     t: Option<f64>,
     seed: Option<u64>,
-  ) -> Self {
-    let rho = rho.as_array().to_owned();
-    match seed {
-      Some(s) => Self {
-        inner: None,
-        seeded: Some(Mcgns::new(
-          rho,
-          n,
-          t,
-          stochastic_rs_core::simd_rng::Deterministic::new(s),
-        )),
-      },
-      None => Self {
-        inner: Some(Mcgns::new(rho, n, t, Unseeded)),
-        seeded: None,
-      },
-    }
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let rho = rho.as_array().to_owned();
+      match seed {
+        Some(s) => Self {
+          inner: None,
+          seeded: Some(Mcgns::new(
+            rho,
+            n,
+            t,
+            stochastic_rs_core::simd_rng::Deterministic::new(s),
+          )),
+        },
+        None => Self {
+          inner: Some(Mcgns::new(rho, n, t, Unseeded)),
+          seeded: None,
+        },
+      }
+    })
   }
 
   /// One `(k, n)` matrix of increments.
-  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
-    crate::py_dispatch_f64!(self, |inner| inner
-      .sample()
-      .into_pyarray(py)
-      .into_py_any(py)
-      .unwrap())
+  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      use pyo3::IntoPyObjectExt;
+      crate::py_dispatch_f64!(self, |inner| inner
+        .sample()
+        .into_pyarray(py)
+        .into_py_any(py)
+        .unwrap())
+    })
   }
 
   /// `m` independent increment matrices as a list of `(k, n)` arrays.
-  fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
-    crate::py_dispatch_f64!(self, |inner| {
-      let samples = inner.sample_par(m);
-      pyo3::types::PyList::new(
-        py,
-        samples
-          .iter()
-          .map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
-      )
-      .unwrap()
-      .into_py_any(py)
-      .unwrap()
+  fn sample_par<'py>(
+    &self,
+    py: pyo3::Python<'py>,
+    m: usize,
+  ) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      use pyo3::IntoPyObjectExt;
+      crate::py_dispatch_f64!(self, |inner| {
+        let samples = inner.sample_par(m);
+        pyo3::types::PyList::new(
+          py,
+          samples
+            .iter()
+            .map(|s| s.clone().into_pyarray(py).into_py_any(py).unwrap()),
+        )
+        .unwrap()
+        .into_py_any(py)
+        .unwrap()
+      })
     })
   }
 }

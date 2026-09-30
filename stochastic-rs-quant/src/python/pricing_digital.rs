@@ -35,16 +35,18 @@ impl PyCashOrNothingPricer {
     t: f64,
     option_type: &str,
   ) -> PyResult<Self> {
-    let ot = parse_option_type(option_type)?;
-    Ok(Self {
-      inner: crate::pricing::digital::CashOrNothingPricer::new(cash, sigma),
-      s,
-      k,
-      r,
-      q: r - b,
-      tau: t,
-      option_type: ot,
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let ot = parse_option_type(option_type)?;
+      Ok(Self {
+        inner: crate::pricing::digital::CashOrNothingPricer::new(cash, sigma),
+        s,
+        k,
+        r,
+        q: r - b,
+        tau: t,
+        option_type: ot,
+      })
+    })?
   }
 
   fn price(&self) -> f64 {
@@ -92,16 +94,18 @@ impl PyAssetOrNothingPricer {
   #[new]
   #[pyo3(signature = (s, k, r, b, sigma, t, option_type="call"))]
   fn new(s: f64, k: f64, r: f64, b: f64, sigma: f64, t: f64, option_type: &str) -> PyResult<Self> {
-    let ot = parse_option_type(option_type)?;
-    Ok(Self {
-      inner: crate::pricing::digital::AssetOrNothingPricer::new(sigma),
-      s,
-      k,
-      r,
-      q: r - b,
-      tau: t,
-      option_type: ot,
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let ot = parse_option_type(option_type)?;
+      Ok(Self {
+        inner: crate::pricing::digital::AssetOrNothingPricer::new(sigma),
+        s,
+        k,
+        r,
+        q: r - b,
+        tau: t,
+        option_type: ot,
+      })
+    })?
   }
 
   fn price(&self) -> f64 {
@@ -141,16 +145,18 @@ impl PyGapPricer {
     t: f64,
     option_type: &str,
   ) -> PyResult<Self> {
-    let ot = parse_option_type(option_type)?;
-    Ok(Self {
-      inner: crate::pricing::digital::GapPricer::new(k2, sigma),
-      s,
-      k1,
-      r,
-      q: r - b,
-      tau: t,
-      option_type: ot,
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let ot = parse_option_type(option_type)?;
+      Ok(Self {
+        inner: crate::pricing::digital::GapPricer::new(k2, sigma),
+        s,
+        k1,
+        r,
+        q: r - b,
+        tau: t,
+        option_type: ot,
+      })
+    })?
   }
 
   fn price(&self) -> f64 {
@@ -178,15 +184,23 @@ pub struct PySuperSharePricer {
 #[pymethods]
 impl PySuperSharePricer {
   #[new]
-  fn new(s: f64, x_low: f64, x_high: f64, r: f64, b: f64, sigma: f64, t: f64) -> Self {
-    Self {
+  fn new(
+    s: f64,
+    x_low: f64,
+    x_high: f64,
+    r: f64,
+    b: f64,
+    sigma: f64,
+    t: f64,
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::pricing::digital::SuperSharePricer::new(x_high, sigma),
       s,
       x_low,
       r,
       q: r - b,
       tau: t,
-    }
+    })
   }
 
   fn price(&self) -> f64 {

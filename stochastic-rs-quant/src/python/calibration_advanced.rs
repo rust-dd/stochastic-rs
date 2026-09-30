@@ -21,20 +21,22 @@ impl PySVJCalibrator {
     option_type: &str,
     q: Option<f64>,
   ) -> PyResult<Self> {
-    let ot = parse_option_type(option_type)?;
-    let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
-      slices.into_iter().map(|s| s.inner).collect();
-    Ok(Self {
-      inner: crate::calibration::svj::SVJCalibrator::from_slices(
-        None,
-        &inner_slices,
-        s,
-        r,
-        q,
-        ot,
-        false,
-      ),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let ot = parse_option_type(option_type)?;
+      let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
+        slices.into_iter().map(|s| s.inner).collect();
+      Ok(Self {
+        inner: crate::calibration::svj::SVJCalibrator::from_slices(
+          None,
+          &inner_slices,
+          s,
+          r,
+          q,
+          ot,
+          false,
+        ),
+      })
+    })?
   }
 
   /// Returns `(v0, kappa, theta, sigma_v, rho, lambda, mu_j, sigma_j, converged, loss_rmse)`.
@@ -75,20 +77,22 @@ impl PyDoubleHestonCalibrator {
     option_type: &str,
     q: Option<f64>,
   ) -> PyResult<Self> {
-    let ot = parse_option_type(option_type)?;
-    let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
-      slices.into_iter().map(|s| s.inner).collect();
-    Ok(Self {
-      inner: crate::calibration::double_heston::DoubleHestonCalibrator::from_slices(
-        None,
-        &inner_slices,
-        s,
-        r,
-        q,
-        ot,
-        false,
-      ),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let ot = parse_option_type(option_type)?;
+      let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
+        slices.into_iter().map(|s| s.inner).collect();
+      Ok(Self {
+        inner: crate::calibration::double_heston::DoubleHestonCalibrator::from_slices(
+          None,
+          &inner_slices,
+          s,
+          r,
+          q,
+          ot,
+          false,
+        ),
+      })
+    })?
   }
 
   /// Returns `(v1_0, kappa1, theta1, sigma1, rho1, v2_0, kappa2, theta2, sigma2, rho2, converged, loss_rmse)`.
@@ -127,24 +131,26 @@ impl PyLevyCalibrator {
   #[new]
   #[pyo3(signature = (slices, s, r, q, model))]
   fn new(slices: Vec<PyMarketSlice>, s: f64, r: f64, q: f64, model: &str) -> PyResult<Self> {
-    use crate::calibration::levy::LevyModelType;
-    let mt = match model.to_ascii_lowercase().as_str() {
-      "vg" | "variance_gamma" => LevyModelType::VarianceGamma,
-      "nig" => LevyModelType::Nig,
-      "cgmy" => LevyModelType::Cgmy,
-      "merton_jd" | "merton" | "mjd" => LevyModelType::MertonJD,
-      "kou" => LevyModelType::Kou,
-      o => {
-        return Err(PyValueError::new_err(format!(
-          "model must be one of vg/nig/cgmy/merton_jd/kou, got '{o}'"
-        )));
-      }
-    };
-    let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
-      slices.into_iter().map(|s| s.inner).collect();
-    Ok(Self {
-      inner: crate::calibration::levy::LevyCalibrator::new(mt, s, r, q, inner_slices),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      use crate::calibration::levy::LevyModelType;
+      let mt = match model.to_ascii_lowercase().as_str() {
+        "vg" | "variance_gamma" => LevyModelType::VarianceGamma,
+        "nig" => LevyModelType::Nig,
+        "cgmy" => LevyModelType::Cgmy,
+        "merton_jd" | "merton" | "mjd" => LevyModelType::MertonJD,
+        "kou" => LevyModelType::Kou,
+        o => {
+          return Err(PyValueError::new_err(format!(
+            "model must be one of vg/nig/cgmy/merton_jd/kou, got '{o}'"
+          )));
+        }
+      };
+      let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
+        slices.into_iter().map(|s| s.inner).collect();
+      Ok(Self {
+        inner: crate::calibration::levy::LevyCalibrator::new(mt, s, r, q, inner_slices),
+      })
+    })?
   }
 
   /// Returns `(params_vec, converged, loss_rmse, iterations)`.
@@ -180,20 +186,22 @@ impl PyHKDECalibrator {
     option_type: &str,
     q: Option<f64>,
   ) -> PyResult<Self> {
-    let ot = parse_option_type(option_type)?;
-    let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
-      slices.into_iter().map(|s| s.inner).collect();
-    Ok(Self {
-      inner: crate::calibration::hkde::HKDECalibrator::from_slices(
-        None,
-        &inner_slices,
-        s,
-        r,
-        q,
-        ot,
-        false,
-      ),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let ot = parse_option_type(option_type)?;
+      let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
+        slices.into_iter().map(|s| s.inner).collect();
+      Ok(Self {
+        inner: crate::calibration::hkde::HKDECalibrator::from_slices(
+          None,
+          &inner_slices,
+          s,
+          r,
+          q,
+          ot,
+          false,
+        ),
+      })
+    })?
   }
 
   /// Returns `(v0, kappa, theta, sigma_v, rho, lambda, p_up, eta1, eta2, converged, loss_rmse)`.
@@ -239,30 +247,33 @@ impl PyRBergomiCalibrator {
     max_iters: usize,
     paths: usize,
   ) -> PyResult<Self> {
-    use crate::calibration::rbergomi::*;
-    let inner_slices: Vec<RBergomiMarketSlice> = slices
-      .into_iter()
-      .map(|(tau, terminal_samples)| RBergomiMarketSlice {
-        tau,
-        terminal_samples,
-      })
-      .collect();
-    let params = RBergomiParams {
-      hurst,
-      rho,
-      eta,
-      xi0: RBergomiXi0::Constant(xi0),
-    };
-    let mut cfg = RBergomiCalibrationConfig {
-      max_iters,
-      paths,
-      ..RBergomiCalibrationConfig::default()
-    };
-    cfg.paths = paths;
-    let inner = RBergomiCalibrator::new(s0, r, params, inner_slices, cfg, false).map_err(|e| {
-      PyValueError::new_err(format!("RBergomi calibrator construction failed: {e}"))
-    })?;
-    Ok(Self { inner })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      use crate::calibration::rbergomi::*;
+      let inner_slices: Vec<RBergomiMarketSlice> = slices
+        .into_iter()
+        .map(|(tau, terminal_samples)| RBergomiMarketSlice {
+          tau,
+          terminal_samples,
+        })
+        .collect();
+      let params = RBergomiParams {
+        hurst,
+        rho,
+        eta,
+        xi0: RBergomiXi0::Constant(xi0),
+      };
+      let mut cfg = RBergomiCalibrationConfig {
+        max_iters,
+        paths,
+        ..RBergomiCalibrationConfig::default()
+      };
+      cfg.paths = paths;
+      let inner =
+        RBergomiCalibrator::new(s0, r, params, inner_slices, cfg, false).map_err(|e| {
+          PyValueError::new_err(format!("RBergomi calibrator construction failed: {e}"))
+        })?;
+      Ok(Self { inner })
+    })?
   }
 
   /// Returns `(hurst, rho, eta, xi0_const, final_loss, iterations, converged)`.
@@ -300,12 +311,14 @@ impl PyCgmysvCalibrator {
   /// CGMYSV (Carr-Geman-Madan-Yor + stochastic volatility) calibrator
   /// via Lewis Fourier pricing + Levenberg-Marquardt.
   #[new]
-  fn new(slices: Vec<PyMarketSlice>, s: f64, r: f64, q: f64) -> Self {
-    let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
-      slices.into_iter().map(|s| s.inner).collect();
-    Self {
-      inner: crate::calibration::cgmysv::CgmysvCalibrator::new(s, r, q, inner_slices),
-    }
+  fn new(slices: Vec<PyMarketSlice>, s: f64, r: f64, q: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let inner_slices: Vec<crate::calibration::levy::MarketSlice> =
+        slices.into_iter().map(|s| s.inner).collect();
+      Self {
+        inner: crate::calibration::cgmysv::CgmysvCalibrator::new(s, r, q, inner_slices),
+      }
+    })
   }
 
   /// Returns `(alpha, lambda_plus, lambda_minus, kappa, eta, zeta, rho, v0, converged, loss_rmse, iterations)`.

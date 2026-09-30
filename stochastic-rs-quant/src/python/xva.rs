@@ -132,8 +132,8 @@ impl PyHullWhiteSwapExposure {
     accrual: f64,
     fixed_rate: Option<f64>,
     steps_per_year: usize,
-  ) -> Self {
-    Self {
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: xva::irs::HullWhiteSwapExposure::new(
         mean_reversion,
         sigma,
@@ -143,7 +143,7 @@ impl PyHullWhiteSwapExposure {
         accrual,
       )
       .with_steps_per_year(steps_per_year),
-    }
+    })
   }
 
   /// Par fixed rate on `curve`.

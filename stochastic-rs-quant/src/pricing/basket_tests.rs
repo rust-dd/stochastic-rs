@@ -58,16 +58,16 @@ fn geometric_basket_matches_pre_refactor_goldens() {
   let s = array![100.0];
   let q = array![0.0];
   let call = single.price_call(s.view(), 100.0, 0.05, q.view(), 1.0);
-  assert!((call - 10.450575415435111).abs() < TOL, "n=1 call {call}");
+  assert!((call - 10.450583572185591).abs() < TOL, "n=1 call {call}");
   let put = single.price_put(s.view(), 100.0, 0.05, q.view(), 1.0);
-  assert!((put - 5.573517865506494).abs() < TOL, "n=1 put {put}");
+  assert!((put - 5.573526022256961).abs() < TOL, "n=1 put {put}");
 
   let (s, w, sig, q, rho) = asymmetric_basket();
   let model = GeometricBasketPricer::new(w, sig, rho);
   let call = model.price_call(s.view(), 97.5, 0.031, q.view(), 1.4);
-  assert!((call - 7.9321080037610905).abs() < TOL, "asym call {call}");
+  assert!((call - 7.932098932267414).abs() < TOL, "asym call {call}");
   let put = model.price_put(s.view(), 97.5, 0.031, q.view(), 1.4);
-  assert!((put - 7.226234312037958).abs() < TOL, "asym put {put}");
+  assert!((put - 7.226225240544302).abs() < TOL, "asym put {put}");
 }
 
 /// One model instance prices a whole strike and maturity grid — the point
@@ -135,16 +135,16 @@ fn arithmetic_basket_levy_matches_pre_refactor_goldens() {
   let (s, w, sig, q, rho) = asymmetric_basket();
   let model = ArithmeticBasketLevyPricer::new(w, sig, rho);
   let call = model.price_call(s.view(), 97.5, 0.031, q.view(), 1.4);
-  assert!((call - 9.750478538898065).abs() < TOL, "asym call {call}");
+  assert!((call - 9.750490615202775).abs() < TOL, "asym call {call}");
   let put = model.price_put(s.view(), 97.5, 0.031, q.view(), 1.4);
-  assert!((put - 6.581038540006583).abs() < TOL, "asym put {put}");
+  assert!((put - 6.581050616311284).abs() < TOL, "asym put {put}");
 
   let (s, w, sig, q, rho) = iid_basket(4, 0.30, 0.5);
   let model = ArithmeticBasketLevyPricer::new(w, sig, rho);
   let call = model.price_call(s.view(), 100.0, 0.04, q.view(), 1.0);
-  assert!((call - 11.361162412209948).abs() < TOL, "iid call {call}");
+  assert!((call - 11.361175507742354).abs() < TOL, "iid call {call}");
   let put = model.price_put(s.view(), 100.0, 0.04, q.view(), 1.0);
-  assert!((put - 7.440106327442262).abs() < TOL, "iid put {put}");
+  assert!((put - 7.44011942297468).abs() < TOL, "iid put {put}");
 }
 
 /// One model instance prices a whole strike grid — the point of the split.

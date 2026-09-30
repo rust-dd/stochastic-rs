@@ -11,10 +11,10 @@ pub struct PySviRawParams {
 #[pymethods]
 impl PySviRawParams {
   #[new]
-  fn new(a: f64, b: f64, rho: f64, m: f64, sigma: f64) -> Self {
-    Self {
+  fn new(a: f64, b: f64, rho: f64, m: f64, sigma: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::vol_surface::svi::SviRawParams::new(a, b, rho, m, sigma),
-    }
+    })
   }
 
   fn total_variance(&self, k: f64) -> f64 {
@@ -42,10 +42,10 @@ pub struct PySsviParams {
 #[pymethods]
 impl PySsviParams {
   #[new]
-  fn new(rho: f64, eta: f64, gamma: f64) -> Self {
-    Self {
+  fn new(rho: f64, eta: f64, gamma: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::vol_surface::ssvi::SsviParams::new(rho, eta, gamma),
-    }
+    })
   }
 
   fn total_variance(&self, k: f64, theta: f64) -> f64 {
@@ -139,10 +139,10 @@ pub struct PySviCalibrator {
 #[pymethods]
 impl PySviCalibrator {
   #[new]
-  fn new(log_moneyness: Vec<f64>, total_variance: Vec<f64>) -> Self {
-    Self {
+  fn new(log_moneyness: Vec<f64>, total_variance: Vec<f64>) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       fitted: crate::vol_surface::svi::calibrate_svi(&log_moneyness, &total_variance, None),
-    }
+    })
   }
 
   /// `(a, b, rho, m, sigma)`.
@@ -170,20 +170,22 @@ pub struct PySsviCalibrator {
 impl PySsviCalibrator {
   /// `slices`: list of `(log_moneyness, total_variance, theta_atm)` triplets.
   #[new]
-  fn new(slices: Vec<(Vec<f64>, Vec<f64>, f64)>) -> Self {
-    let inner_slices: Vec<crate::vol_surface::ssvi::SsviSlice<f64>> = slices
-      .into_iter()
-      .map(
-        |(log_moneyness, total_variance, theta)| crate::vol_surface::ssvi::SsviSlice {
-          log_moneyness,
-          total_variance,
-          theta,
-        },
-      )
-      .collect();
-    Self {
-      fitted: crate::vol_surface::ssvi::calibrate_ssvi(&inner_slices, None),
-    }
+  fn new(slices: Vec<(Vec<f64>, Vec<f64>, f64)>) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let inner_slices: Vec<crate::vol_surface::ssvi::SsviSlice<f64>> = slices
+        .into_iter()
+        .map(
+          |(log_moneyness, total_variance, theta)| crate::vol_surface::ssvi::SsviSlice {
+            log_moneyness,
+            total_variance,
+            theta,
+          },
+        )
+        .collect();
+      Self {
+        fitted: crate::vol_surface::ssvi::calibrate_ssvi(&inner_slices, None),
+      }
+    })
   }
 
   /// `(rho, eta, gamma)`.

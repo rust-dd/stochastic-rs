@@ -57,17 +57,19 @@ impl PySurvivalCurve {
   #[new]
   #[pyo3(signature = (times, hazard_rates, method="piecewise_constant_hazard"))]
   fn new(times: Vec<f64>, hazard_rates: Vec<f64>, method: &str) -> PyResult<Self> {
-    checked(&times, &hazard_rates, "hazard_rates")?;
-    if hazard_rates.iter().any(|h| *h < 0.0) {
-      return Err(PyValueError::new_err("hazard_rates must be non-negative"));
-    }
-    Ok(Self {
-      inner: SurvivalCurve::from_hazard_rates(
-        &Array1::from_vec(times),
-        &Array1::from_vec(hazard_rates),
-        interpolation(method)?,
-      ),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      checked(&times, &hazard_rates, "hazard_rates")?;
+      if hazard_rates.iter().any(|h| *h < 0.0) {
+        return Err(PyValueError::new_err("hazard_rates must be non-negative"));
+      }
+      Ok(Self {
+        inner: SurvivalCurve::from_hazard_rates(
+          &Array1::from_vec(times),
+          &Array1::from_vec(hazard_rates),
+          interpolation(method)?,
+        ),
+      })
+    })?
   }
 
   /// One hazard rate for every horizon.

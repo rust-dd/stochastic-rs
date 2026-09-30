@@ -153,7 +153,7 @@ pub fn fourier_model_surface_fft_with(
     .map(|&t| s * ((r - q) * t).exp())
     .collect();
 
-  let cm = CarrMadanPricer::new(n_pow2, alpha);
+  let cm = CarrMadanPricer::new(1 << n_pow2, alpha);
 
   let mut prices = Array2::<f64>::zeros((nt, nk));
 
@@ -233,6 +233,28 @@ mod tests {
       slice.implied_vols[0] > slice.implied_vols[atm_idx],
       "OTM put IV should be > ATM IV with rho=-0.7"
     );
+  }
+
+  #[test]
+  fn fft_surface_matches_the_quadrature_surface() {
+    let model = HestonFourier {
+      v0: 0.04,
+      kappa: 2.0,
+      theta: 0.04,
+      sigma: 0.3,
+      rho: -0.7,
+      r: 0.05,
+      q: 0.0,
+    };
+    let fft = fourier_model_surface_fft(&model, 100.0, 0.05, 0.0, &GRID_K, &GRID_T);
+    let quadrature = model.vol_surface(100.0, 0.05, 0.0, &GRID_K, &GRID_T);
+    let worst = fft
+      .ivs
+      .iter()
+      .zip(quadrature.ivs.iter())
+      .map(|(a, b)| (a - b).abs())
+      .fold(0.0, f64::max);
+    assert!(worst < 1e-3, "FFT and quadrature vols differ by {worst}");
   }
 
   #[test]

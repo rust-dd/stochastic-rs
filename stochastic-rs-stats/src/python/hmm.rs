@@ -15,15 +15,15 @@ impl PyGaussianHmm {
     transitions: numpy::PyReadonlyArray2<'py, f64>,
     means: PyReadonlyArray1<'py, f64>,
     stds: PyReadonlyArray1<'py, f64>,
-  ) -> Self {
-    Self {
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::econometrics::hmm::GaussianHmm::new(
         initial.as_array().to_owned(),
         transitions.as_array().to_owned(),
         means.as_array().to_owned(),
         stds.as_array().to_owned(),
       ),
-    }
+    })
   }
 
   fn n_states(&self) -> usize {

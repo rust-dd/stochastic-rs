@@ -30,11 +30,17 @@ when the draw needs to be reproducible, matching the bivariate one below.
 use stochastic_rs_copulas::bivariate::clayton::Clayton;
 use stochastic_rs_copulas::traits::BivariateExt;
 
-let mut c = Clayton::new();
-c.set_tau(0.5);                 // Kendall's tau; the sampler needs it set
-c.set_theta(c.compute_theta()); // theta by Kendall inversion
-let u = c.sample(10_000).expect("tau is set");               // Array2<f64>, shape (10000, 2)
-let v = c.sample_with_seed(10_000, 42).expect("tau is set"); // reproducible
+let c = Clayton {
+    theta: Some(2.0),
+    ..Clayton::new()
+};
+let u = c.sample(10_000).expect("theta is set");               // Array2<f64>, shape (10000, 2)
+let v = c.sample_with_seed(10_000, 42).expect("theta is set"); // reproducible
+
+// Or set Kendall's tau and invert it for theta.
+let mut from_tau = Clayton::new();
+from_tau.set_tau(0.5);
+from_tau.set_theta(from_tau.compute_theta());
 ```
 
 Multivariate constructions take a tree of `PairCopula` variants:

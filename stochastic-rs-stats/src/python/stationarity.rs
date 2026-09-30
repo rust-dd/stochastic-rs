@@ -22,40 +22,42 @@ impl PyADFTest {
     max_lags: Option<usize>,
     alpha: f64,
   ) -> PyResult<Self> {
-    use crate::stationarity::DeterministicTerm;
-    use crate::stationarity::LagSelection;
-    let det = match deterministic.to_ascii_lowercase().as_str() {
-      "n" | "none" => DeterministicTerm::None,
-      "c" | "constant" => DeterministicTerm::Constant,
-      "ct" | "trend" | "constant+trend" => DeterministicTerm::ConstantTrend,
-      o => {
-        return Err(pyo3::exceptions::PyValueError::new_err(format!(
-          "deterministic must be 'n', 'c' or 'ct', got '{o}'"
-        )));
-      }
-    };
-    let sel = match lag_selection.to_ascii_lowercase().as_str() {
-      "aic" => LagSelection::Aic,
-      "bic" => LagSelection::Bic,
-      s => match s.parse::<usize>() {
-        Ok(p) => LagSelection::Fixed(p),
-        Err(_) => {
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      use crate::stationarity::DeterministicTerm;
+      use crate::stationarity::LagSelection;
+      let det = match deterministic.to_ascii_lowercase().as_str() {
+        "n" | "none" => DeterministicTerm::None,
+        "c" | "constant" => DeterministicTerm::Constant,
+        "ct" | "trend" | "constant+trend" => DeterministicTerm::ConstantTrend,
+        o => {
           return Err(pyo3::exceptions::PyValueError::new_err(format!(
-            "lag_selection must be 'aic', 'bic', or a non-negative integer, got '{s}'"
+            "deterministic must be 'n', 'c' or 'ct', got '{o}'"
           )));
         }
-      },
-    };
-    let cfg = crate::stationarity::adf::AdfConfig {
-      deterministic: det,
-      lag_selection: sel,
-      max_lags,
-      alpha,
-    };
-    let view = y.as_array();
-    Ok(Self {
-      inner: crate::stationarity::adf::adf_test(view, cfg),
-    })
+      };
+      let sel = match lag_selection.to_ascii_lowercase().as_str() {
+        "aic" => LagSelection::Aic,
+        "bic" => LagSelection::Bic,
+        s => match s.parse::<usize>() {
+          Ok(p) => LagSelection::Fixed(p),
+          Err(_) => {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+              "lag_selection must be 'aic', 'bic', or a non-negative integer, got '{s}'"
+            )));
+          }
+        },
+      };
+      let cfg = crate::stationarity::adf::AdfConfig {
+        deterministic: det,
+        lag_selection: sel,
+        max_lags,
+        alpha,
+      };
+      let view = y.as_array();
+      Ok(Self {
+        inner: crate::stationarity::adf::adf_test(view, cfg),
+      })
+    })?
   }
 
   #[getter]
@@ -101,24 +103,26 @@ impl PyKPSSTest {
     lags: Option<usize>,
     alpha: f64,
   ) -> PyResult<Self> {
-    let t = match trend.to_ascii_lowercase().as_str() {
-      "level" | "c" => crate::stationarity::kpss::KpssTrend::Level,
-      "trend" | "ct" => crate::stationarity::kpss::KpssTrend::Trend,
-      o => {
-        return Err(pyo3::exceptions::PyValueError::new_err(format!(
-          "trend must be 'level' or 'trend', got '{o}'"
-        )));
-      }
-    };
-    let cfg = crate::stationarity::kpss::KpssConfig {
-      trend: t,
-      lags,
-      alpha,
-    };
-    let view = y.as_array();
-    Ok(Self {
-      inner: crate::stationarity::kpss::kpss_test(view, cfg),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let t = match trend.to_ascii_lowercase().as_str() {
+        "level" | "c" => crate::stationarity::kpss::KpssTrend::Level,
+        "trend" | "ct" => crate::stationarity::kpss::KpssTrend::Trend,
+        o => {
+          return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "trend must be 'level' or 'trend', got '{o}'"
+          )));
+        }
+      };
+      let cfg = crate::stationarity::kpss::KpssConfig {
+        trend: t,
+        lags,
+        alpha,
+      };
+      let view = y.as_array();
+      Ok(Self {
+        inner: crate::stationarity::kpss::kpss_test(view, cfg),
+      })
+    })?
   }
 
   #[getter]
@@ -154,36 +158,38 @@ impl PyPhillipsPerronTest {
     lags: Option<usize>,
     alpha: f64,
   ) -> PyResult<Self> {
-    use crate::stationarity::DeterministicTerm;
-    use crate::stationarity::phillips_perron::PpTestType;
-    let det = match deterministic.to_ascii_lowercase().as_str() {
-      "n" | "none" => DeterministicTerm::None,
-      "c" | "constant" => DeterministicTerm::Constant,
-      "ct" | "trend" => DeterministicTerm::ConstantTrend,
-      o => {
-        return Err(pyo3::exceptions::PyValueError::new_err(format!(
-          "deterministic must be 'n'/'c'/'ct', got '{o}'"
-        )));
-      }
-    };
-    let tt = match test_type.to_ascii_lowercase().as_str() {
-      "tau" => PpTestType::Tau,
-      "rho" => PpTestType::Rho,
-      o => {
-        return Err(pyo3::exceptions::PyValueError::new_err(format!(
-          "test_type must be 'tau' or 'rho', got '{o}'"
-        )));
-      }
-    };
-    let cfg = crate::stationarity::phillips_perron::PhillipsPerronConfig {
-      deterministic: det,
-      test_type: tt,
-      lags,
-      alpha,
-    };
-    Ok(Self {
-      inner: crate::stationarity::phillips_perron::phillips_perron_test(y.as_array(), cfg),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      use crate::stationarity::DeterministicTerm;
+      use crate::stationarity::phillips_perron::PpTestType;
+      let det = match deterministic.to_ascii_lowercase().as_str() {
+        "n" | "none" => DeterministicTerm::None,
+        "c" | "constant" => DeterministicTerm::Constant,
+        "ct" | "trend" => DeterministicTerm::ConstantTrend,
+        o => {
+          return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "deterministic must be 'n'/'c'/'ct', got '{o}'"
+          )));
+        }
+      };
+      let tt = match test_type.to_ascii_lowercase().as_str() {
+        "tau" => PpTestType::Tau,
+        "rho" => PpTestType::Rho,
+        o => {
+          return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "test_type must be 'tau' or 'rho', got '{o}'"
+          )));
+        }
+      };
+      let cfg = crate::stationarity::phillips_perron::PhillipsPerronConfig {
+        deterministic: det,
+        test_type: tt,
+        lags,
+        alpha,
+      };
+      Ok(Self {
+        inner: crate::stationarity::phillips_perron::phillips_perron_test(y.as_array(), cfg),
+      })
+    })?
   }
 
   #[getter]
@@ -220,38 +226,40 @@ impl PyERSTest {
     max_lags: Option<usize>,
     alpha: f64,
   ) -> PyResult<Self> {
-    use crate::stationarity::LagSelection;
-    use crate::stationarity::ers_dfgls::ErsTrend;
-    let tr = match trend.to_ascii_lowercase().as_str() {
-      "c" | "constant" => ErsTrend::Constant,
-      "ct" | "trend" => ErsTrend::ConstantTrend,
-      o => {
-        return Err(pyo3::exceptions::PyValueError::new_err(format!(
-          "trend must be 'c' or 'ct', got '{o}'"
-        )));
-      }
-    };
-    let sel = match lag_selection.to_ascii_lowercase().as_str() {
-      "aic" => LagSelection::Aic,
-      "bic" => LagSelection::Bic,
-      s => match s.parse::<usize>() {
-        Ok(p) => LagSelection::Fixed(p),
-        Err(_) => {
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      use crate::stationarity::LagSelection;
+      use crate::stationarity::ers_dfgls::ErsTrend;
+      let tr = match trend.to_ascii_lowercase().as_str() {
+        "c" | "constant" => ErsTrend::Constant,
+        "ct" | "trend" => ErsTrend::ConstantTrend,
+        o => {
           return Err(pyo3::exceptions::PyValueError::new_err(format!(
-            "lag_selection must be 'aic'/'bic'/integer, got '{s}'"
+            "trend must be 'c' or 'ct', got '{o}'"
           )));
         }
-      },
-    };
-    let cfg = crate::stationarity::ers_dfgls::ErsConfig {
-      trend: tr,
-      lag_selection: sel,
-      max_lags,
-      alpha,
-    };
-    Ok(Self {
-      inner: crate::stationarity::ers_dfgls::ers_dfgls_test(y.as_array(), cfg),
-    })
+      };
+      let sel = match lag_selection.to_ascii_lowercase().as_str() {
+        "aic" => LagSelection::Aic,
+        "bic" => LagSelection::Bic,
+        s => match s.parse::<usize>() {
+          Ok(p) => LagSelection::Fixed(p),
+          Err(_) => {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+              "lag_selection must be 'aic'/'bic'/integer, got '{s}'"
+            )));
+          }
+        },
+      };
+      let cfg = crate::stationarity::ers_dfgls::ErsConfig {
+        trend: tr,
+        lag_selection: sel,
+        max_lags,
+        alpha,
+      };
+      Ok(Self {
+        inner: crate::stationarity::ers_dfgls::ers_dfgls_test(y.as_array(), cfg),
+      })
+    })?
   }
 
   #[getter]
@@ -293,26 +301,28 @@ impl PyLeybourneMcCabeTest {
     bootstrap_seed: u64,
     alpha: f64,
   ) -> PyResult<Self> {
-    use crate::stationarity::leybourne_mccabe::LmTrend;
-    let tr = match trend.to_ascii_lowercase().as_str() {
-      "level" | "c" => LmTrend::Level,
-      "trend" | "ct" => LmTrend::Trend,
-      o => {
-        return Err(pyo3::exceptions::PyValueError::new_err(format!(
-          "trend must be 'level' or 'trend', got '{o}'"
-        )));
-      }
-    };
-    let cfg = crate::stationarity::leybourne_mccabe::LeybourneMcCabeConfig {
-      trend: tr,
-      ar_lags,
-      bootstrap_samples,
-      bootstrap_seed,
-      alpha,
-    };
-    Ok(Self {
-      inner: crate::stationarity::leybourne_mccabe::leybourne_mccabe_test(y.as_array(), cfg),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      use crate::stationarity::leybourne_mccabe::LmTrend;
+      let tr = match trend.to_ascii_lowercase().as_str() {
+        "level" | "c" => LmTrend::Level,
+        "trend" | "ct" => LmTrend::Trend,
+        o => {
+          return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "trend must be 'level' or 'trend', got '{o}'"
+          )));
+        }
+      };
+      let cfg = crate::stationarity::leybourne_mccabe::LeybourneMcCabeConfig {
+        trend: tr,
+        ar_lags,
+        bootstrap_samples,
+        bootstrap_seed,
+        alpha,
+      };
+      Ok(Self {
+        inner: crate::stationarity::leybourne_mccabe::leybourne_mccabe_test(y.as_array(), cfg),
+      })
+    })?
   }
 
   #[getter]

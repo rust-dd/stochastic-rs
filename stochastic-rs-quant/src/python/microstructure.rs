@@ -26,32 +26,34 @@ impl PyAlmgrenChrissPlan {
     epsilon: f64,
     direction: &str,
   ) -> PyResult<Self> {
-    use crate::microstructure::almgren_chriss::AlmgrenChrissParams;
-    use crate::microstructure::almgren_chriss::ExecutionDirection;
-    use crate::microstructure::almgren_chriss::optimal_execution;
-    let dir = match direction.to_ascii_lowercase().as_str() {
-      "sell" => ExecutionDirection::Sell,
-      "buy" => ExecutionDirection::Buy,
-      o => {
-        return Err(PyValueError::new_err(format!(
-          "direction must be 'sell' or 'buy', got '{o}'"
-        )));
-      }
-    };
-    let params = AlmgrenChrissParams {
-      total_shares,
-      direction: dir,
-      horizon,
-      n_intervals,
-      volatility,
-      gamma,
-      eta,
-      epsilon,
-      lambda: lambda_,
-    };
-    Ok(Self {
-      inner: optimal_execution(&params),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      use crate::microstructure::almgren_chriss::AlmgrenChrissParams;
+      use crate::microstructure::almgren_chriss::ExecutionDirection;
+      use crate::microstructure::almgren_chriss::optimal_execution;
+      let dir = match direction.to_ascii_lowercase().as_str() {
+        "sell" => ExecutionDirection::Sell,
+        "buy" => ExecutionDirection::Buy,
+        o => {
+          return Err(PyValueError::new_err(format!(
+            "direction must be 'sell' or 'buy', got '{o}'"
+          )));
+        }
+      };
+      let params = AlmgrenChrissParams {
+        total_shares,
+        direction: dir,
+        horizon,
+        n_intervals,
+        volatility,
+        gamma,
+        eta,
+        epsilon,
+        lambda: lambda_,
+      };
+      Ok(Self {
+        inner: optimal_execution(&params),
+      })
+    })?
   }
 
   fn inventory<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
@@ -98,10 +100,10 @@ pub struct PyKyleEquilibrium {
 impl PyKyleEquilibrium {
   /// Single-period Kyle (1985) equilibrium.
   #[new]
-  fn new(prior_variance: f64, noise_variance: f64) -> Self {
-    Self {
+  fn new(prior_variance: f64, noise_variance: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::microstructure::kyle::single_period_kyle(prior_variance, noise_variance),
-    }
+    })
   }
 
   #[getter]
@@ -209,10 +211,10 @@ fn parse_side(s: &str) -> PyResult<crate::order_book::Side> {
 #[pymethods]
 impl PyOrderBook {
   #[new]
-  fn new() -> Self {
-    Self {
+  fn new() -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::order_book::OrderBook::new(),
-    }
+    })
   }
 
   /// Add a limit order. Returns `(order_id, [(price, size, taker_id, maker_id)] of immediate fills)`.

@@ -17,9 +17,9 @@ const TOL: f64 = 1e-12;
 fn stulz_matches_pre_refactor_goldens() {
   let expected = [
     (RainbowPayoff::CallOnMin, 6.572032430799396),
-    (RainbowPayoff::CallOnMax, 21.3836021143453),
-    (RainbowPayoff::PutOnMin, 10.164180157272469),
-    (RainbowPayoff::PutOnMax, 3.0373392880150476),
+    (RainbowPayoff::CallOnMax, 21.383610504967564),
+    (RainbowPayoff::PutOnMin, 10.164194188628855),
+    (RainbowPayoff::PutOnMax, 3.037333647280917),
   ];
   for (payoff, want) in expected {
     let got = StulzRainbowPricer::new(payoff, 0.20, 0.30, 0.5)
@@ -32,9 +32,9 @@ fn stulz_matches_pre_refactor_goldens() {
   // the struct could not survive by coinciding with a default.
   let asymmetric = [
     (RainbowPayoff::CallOnMin, 4.089461008811323),
-    (RainbowPayoff::CallOnMax, 39.80815123244825),
-    (RainbowPayoff::PutOnMin, 18.459568337156256),
-    (RainbowPayoff::PutOnMax, 0.4223483563151831),
+    (RainbowPayoff::CallOnMax, 39.80815996542313),
+    (RainbowPayoff::PutOnMin, 18.45955780454247),
+    (RainbowPayoff::PutOnMax, 0.4223676219038168),
   ];
   for (payoff, want) in asymmetric {
     let got = StulzRainbowPricer::new(payoff, 0.33, 0.19, -0.4)
