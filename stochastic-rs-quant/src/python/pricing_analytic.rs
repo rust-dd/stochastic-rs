@@ -31,17 +31,19 @@ impl PyBSMPricer {
     option_type: &str,
     q: Option<f64>,
   ) -> PyResult<Self> {
-    let ot = parse_option_type(option_type)?;
-    let inner = crate::pricing::bsm::BSMPricer::new(v, crate::pricing::bsm::BSMCoc::default());
-    Ok(Self {
-      inner,
-      s,
-      k,
-      r,
-      q: q.unwrap_or(0.0),
-      tau,
-      option_type: ot,
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let ot = parse_option_type(option_type)?;
+      let inner = crate::pricing::bsm::BSMPricer::new(v, crate::pricing::bsm::BSMCoc::default());
+      Ok(Self {
+        inner,
+        s,
+        k,
+        r,
+        q: q.unwrap_or(0.0),
+        tau,
+        option_type: ot,
+      })
+    })?
   }
 
   fn price(&self) -> f64 {
@@ -131,16 +133,18 @@ impl PyHestonPricer {
     tau: f64,
     q: Option<f64>,
     lambda_: Option<f64>,
-  ) -> Self {
-    let inner = crate::pricing::heston::HestonPricer::new(v0, rho, kappa, theta, sigma, lambda_);
-    Self {
-      inner,
-      s,
-      k,
-      r,
-      q: q.unwrap_or(0.0),
-      tau,
-    }
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let inner = crate::pricing::heston::HestonPricer::new(v0, rho, kappa, theta, sigma, lambda_);
+      Self {
+        inner,
+        s,
+        k,
+        r,
+        q: q.unwrap_or(0.0),
+        tau,
+      }
+    })
   }
 
   fn price(&self) -> f64 {
@@ -183,16 +187,18 @@ impl PySabrPricer {
     rho: f64,
     tau: f64,
     q: Option<f64>,
-  ) -> Self {
-    let inner = crate::pricing::sabr::SabrPricer::new(alpha, beta, nu, rho);
-    Self {
-      inner,
-      s,
-      k,
-      r,
-      q: q.unwrap_or(0.0),
-      tau,
-    }
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let inner = crate::pricing::sabr::SabrPricer::new(alpha, beta, nu, rho);
+      Self {
+        inner,
+        s,
+        k,
+        r,
+        q: q.unwrap_or(0.0),
+        tau,
+      }
+    })
   }
 
   fn price(&self) -> f64 {
@@ -244,23 +250,25 @@ impl PyMerton1976Pricer {
     q: Option<f64>,
     m: usize,
   ) -> PyResult<Self> {
-    let ot = parse_option_type(option_type)?;
-    let inner = crate::pricing::merton_jump::Merton1976Pricer::new(
-      v,
-      lambda_,
-      gamma,
-      m,
-      crate::pricing::bsm::BSMCoc::Bsm1973,
-    );
-    Ok(Self {
-      inner,
-      s,
-      k,
-      r,
-      q: q.unwrap_or(0.0),
-      tau,
-      option_type: ot,
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let ot = parse_option_type(option_type)?;
+      let inner = crate::pricing::merton_jump::Merton1976Pricer::new(
+        v,
+        lambda_,
+        gamma,
+        m,
+        crate::pricing::bsm::BSMCoc::Bsm1973,
+      );
+      Ok(Self {
+        inner,
+        s,
+        k,
+        r,
+        q: q.unwrap_or(0.0),
+        tau,
+        option_type: ot,
+      })
+    })?
   }
 
   fn price(&self) -> f64 {
@@ -309,16 +317,18 @@ impl PyQuantoPricer {
     option_type: &str,
     q: Option<f64>,
   ) -> PyResult<Self> {
-    let option_type = parse_option_type(option_type)?;
-    Ok(Self {
-      inner: crate::pricing::quanto::QuantoPricer::new(v, v_fx, rho, r_f, fixed_rate),
-      s,
-      k,
-      r,
-      q: q.unwrap_or(0.0),
-      tau,
-      option_type,
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let option_type = parse_option_type(option_type)?;
+      Ok(Self {
+        inner: crate::pricing::quanto::QuantoPricer::new(v, v_fx, rho, r_f, fixed_rate),
+        s,
+        k,
+        r,
+        q: q.unwrap_or(0.0),
+        tau,
+        option_type,
+      })
+    })?
   }
 
   /// Price of the configured option type in domestic currency.
@@ -369,16 +379,18 @@ impl PyBachelierPricer {
     option_type: &str,
     q: Option<f64>,
   ) -> PyResult<Self> {
-    let option_type = parse_option_type(option_type)?;
-    Ok(Self {
-      inner: crate::pricing::bachelier::BachelierPricer::new(v),
-      s,
-      k,
-      r,
-      q: q.unwrap_or(0.0),
-      tau,
-      option_type,
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let option_type = parse_option_type(option_type)?;
+      Ok(Self {
+        inner: crate::pricing::bachelier::BachelierPricer::new(v),
+        s,
+        k,
+        r,
+        q: q.unwrap_or(0.0),
+        tau,
+        option_type,
+      })
+    })?
   }
 
   fn price(&self) -> f64 {
@@ -454,33 +466,36 @@ impl PyHestonAdiPricer {
     damping: bool,
     barrier: Option<f64>,
   ) -> PyResult<Self> {
-    use crate::pricing::heston_adi::AdiScheme;
-    let scheme = match scheme.to_ascii_lowercase().as_str() {
-      "douglas" | "do" => AdiScheme::Douglas,
-      "cs" | "craig_sneyd" | "craig-sneyd" => AdiScheme::CraigSneyd,
-      "mcs" | "modified_craig_sneyd" => AdiScheme::ModifiedCraigSneyd,
-      "hv" | "hundsdorfer_verwer" => AdiScheme::HundsdorferVerwer,
-      other => {
-        return Err(pyo3::exceptions::PyValueError::new_err(format!(
-          "scheme must be douglas/cs/mcs/hv, got '{other}'"
-        )));
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      use crate::pricing::heston_adi::AdiScheme;
+      let scheme = match scheme.to_ascii_lowercase().as_str() {
+        "douglas" | "do" => AdiScheme::Douglas,
+        "cs" | "craig_sneyd" | "craig-sneyd" => AdiScheme::CraigSneyd,
+        "mcs" | "modified_craig_sneyd" => AdiScheme::ModifiedCraigSneyd,
+        "hv" | "hundsdorfer_verwer" => AdiScheme::HundsdorferVerwer,
+        other => {
+          return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "scheme must be douglas/cs/mcs/hv, got '{other}'"
+          )));
+        }
+      };
+      let mut inner =
+        crate::pricing::heston_adi::HestonAdiPricer::new(v0, kappa, theta, sigma, rho)
+          .with_grid(m1, m2, steps)
+          .with_scheme(scheme)
+          .with_damping(damping);
+      if let Some(b) = barrier {
+        inner = inner.with_barrier(b);
       }
-    };
-    let mut inner = crate::pricing::heston_adi::HestonAdiPricer::new(v0, kappa, theta, sigma, rho)
-      .with_grid(m1, m2, steps)
-      .with_scheme(scheme)
-      .with_damping(damping);
-    if let Some(b) = barrier {
-      inner = inner.with_barrier(b);
-    }
-    Ok(Self {
-      inner,
-      s,
-      k,
-      r,
-      q: q.unwrap_or(0.0),
-      tau,
-    })
+      Ok(Self {
+        inner,
+        s,
+        k,
+        r,
+        q: q.unwrap_or(0.0),
+        tau,
+      })
+    })?
   }
 
   /// Call price (down-and-out call with a barrier).

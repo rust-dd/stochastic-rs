@@ -377,8 +377,8 @@ impl PyAdg {
     x0: Vec<f64>,
     t: Option<f64>,
     seed: Option<u64>,
-  ) -> Self {
-    match seed {
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| match seed {
       Some(s) => Self {
         inner: None,
         seeded: Some(Adg::new(
@@ -411,39 +411,47 @@ impl PyAdg {
         )),
         seeded: None,
       },
-    }
+    })
   }
 
-  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
+  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      use pyo3::IntoPyObjectExt;
 
-    use crate::traits::ProcessExt;
-    py_dispatch_f64!(self, |inner| inner
-      .sample()
-      .into_pyarray(py)
-      .into_py_any(py)
-      .unwrap())
+      use crate::traits::ProcessExt;
+      py_dispatch_f64!(self, |inner| inner
+        .sample()
+        .into_pyarray(py)
+        .into_py_any(py)
+        .unwrap())
+    })
   }
 
   /// `m` independent paths stacked into an `(m, factors, n)` array. The
   /// GIL is released while the paths are generated; the Python callables
   /// re-acquire it per evaluation.
-  fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
-    use ndarray::Array3;
-    use ndarray::Axis;
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
+  fn sample_par<'py>(
+    &self,
+    py: pyo3::Python<'py>,
+    m: usize,
+  ) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use ndarray::Array3;
+      use ndarray::Axis;
+      use numpy::IntoPyArray;
+      use pyo3::IntoPyObjectExt;
 
-    use crate::traits::ProcessExt;
-    py_dispatch_f64!(self, |inner| {
-      let paths = py.detach(|| inner.sample_par(m));
-      let (rows, cols) = paths.first().map_or((0, 0), |p| p.dim());
-      let mut result = Array3::zeros((m, rows, cols));
-      for (i, path) in paths.iter().enumerate() {
-        result.index_axis_mut(Axis(0), i).assign(path);
-      }
-      result.into_pyarray(py).into_py_any(py).unwrap()
+      use crate::traits::ProcessExt;
+      py_dispatch_f64!(self, |inner| {
+        let paths = py.detach(|| inner.sample_par(m));
+        let (rows, cols) = paths.first().map_or((0, 0), |p| p.dim());
+        let mut result = Array3::zeros((m, rows, cols));
+        for (i, path) in paths.iter().enumerate() {
+          result.index_axis_mut(Axis(0), i).assign(path);
+        }
+        result.into_pyarray(py).into_py_any(py).unwrap()
+      })
     })
   }
 }

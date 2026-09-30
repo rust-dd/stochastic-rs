@@ -11,10 +11,10 @@ pub struct PyBSMFourier {
 #[pymethods]
 impl PyBSMFourier {
   #[new]
-  fn new(sigma: f64, r: f64, q: f64) -> Self {
-    Self {
+  fn new(sigma: f64, r: f64, q: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::pricing::fourier::BSMFourier { sigma, r, q },
-    }
+    })
   }
 
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
@@ -30,8 +30,16 @@ pub struct PyHestonFourier {
 #[pymethods]
 impl PyHestonFourier {
   #[new]
-  fn new(v0: f64, kappa: f64, theta: f64, sigma: f64, rho: f64, r: f64, q: f64) -> Self {
-    Self {
+  fn new(
+    v0: f64,
+    kappa: f64,
+    theta: f64,
+    sigma: f64,
+    rho: f64,
+    r: f64,
+    q: f64,
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::pricing::fourier::HestonFourier {
         v0,
         kappa,
@@ -41,7 +49,7 @@ impl PyHestonFourier {
         r,
         q,
       },
-    }
+    })
   }
 
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
@@ -57,8 +65,8 @@ pub struct PyVarianceGammaFourier {
 #[pymethods]
 impl PyVarianceGammaFourier {
   #[new]
-  fn new(sigma: f64, theta: f64, nu: f64, r: f64, q: f64) -> Self {
-    Self {
+  fn new(sigma: f64, theta: f64, nu: f64, r: f64, q: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::pricing::fourier::VarianceGammaFourier {
         sigma,
         theta,
@@ -66,7 +74,7 @@ impl PyVarianceGammaFourier {
         r,
         q,
       },
-    }
+    })
   }
 
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
@@ -82,10 +90,10 @@ pub struct PyCGMYFourier {
 #[pymethods]
 impl PyCGMYFourier {
   #[new]
-  fn new(c: f64, g: f64, m: f64, y: f64, r: f64, q: f64) -> Self {
-    Self {
+  fn new(c: f64, g: f64, m: f64, y: f64, r: f64, q: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::pricing::fourier::CGMYFourier { c, g, m, y, r, q },
-    }
+    })
   }
 
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
@@ -101,8 +109,8 @@ pub struct PyMertonJDFourier {
 #[pymethods]
 impl PyMertonJDFourier {
   #[new]
-  fn new(sigma: f64, lambda: f64, mu_j: f64, sigma_j: f64, r: f64, q: f64) -> Self {
-    Self {
+  fn new(sigma: f64, lambda: f64, mu_j: f64, sigma_j: f64, r: f64, q: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::pricing::fourier::MertonJDFourier {
         sigma,
         lambda,
@@ -111,7 +119,7 @@ impl PyMertonJDFourier {
         r,
         q,
       },
-    }
+    })
   }
 
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
@@ -127,8 +135,16 @@ pub struct PyKouFourier {
 #[pymethods]
 impl PyKouFourier {
   #[new]
-  fn new(sigma: f64, lambda: f64, p_up: f64, eta1: f64, eta2: f64, r: f64, q: f64) -> Self {
-    Self {
+  fn new(
+    sigma: f64,
+    lambda: f64,
+    p_up: f64,
+    eta1: f64,
+    eta2: f64,
+    r: f64,
+    q: f64,
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::pricing::fourier::KouFourier {
         sigma,
         lambda,
@@ -138,7 +154,7 @@ impl PyKouFourier {
         r,
         q,
       },
-    }
+    })
   }
 
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
@@ -165,8 +181,8 @@ impl PyBatesFourier {
     sigma_j: f64,
     r: f64,
     q: f64,
-  ) -> Self {
-    Self {
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::pricing::fourier::BatesFourier {
         v0,
         kappa,
@@ -179,7 +195,7 @@ impl PyBatesFourier {
         r,
         q,
       },
-    }
+    })
   }
 
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
@@ -196,10 +212,10 @@ pub struct PyCarrMadanPricer {
 impl PyCarrMadanPricer {
   #[new]
   #[pyo3(signature = (n=4096, alpha=0.75))]
-  fn new(n: usize, alpha: f64) -> Self {
-    Self {
+  fn new(n: usize, alpha: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::pricing::fourier::CarrMadanPricer::new(n, alpha),
-    }
+    })
   }
 
   /// Price a Heston call.
@@ -255,24 +271,26 @@ impl PyNigFourier {
   #[new]
   #[pyo3(signature = (alpha, beta, delta, r, q=0.0))]
   fn new(alpha: f64, beta: f64, delta: f64, r: f64, q: f64) -> PyResult<Self> {
-    if alpha <= 0.0 {
-      return Err(PyValueError::new_err("alpha must be > 0"));
-    }
-    if beta.abs() >= alpha {
-      return Err(PyValueError::new_err("|beta| must be < alpha"));
-    }
-    if delta <= 0.0 {
-      return Err(PyValueError::new_err("delta must be > 0"));
-    }
-    Ok(Self {
-      inner: crate::pricing::fourier::NigFourier {
-        alpha,
-        beta,
-        delta,
-        r,
-        q,
-      },
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      if alpha <= 0.0 {
+        return Err(PyValueError::new_err("alpha must be > 0"));
+      }
+      if beta.abs() >= alpha {
+        return Err(PyValueError::new_err("|beta| must be < alpha"));
+      }
+      if delta <= 0.0 {
+        return Err(PyValueError::new_err("delta must be > 0"));
+      }
+      Ok(Self {
+        inner: crate::pricing::fourier::NigFourier {
+          alpha,
+          beta,
+          delta,
+          r,
+          q,
+        },
+      })
+    })?
   }
 }
 
@@ -297,8 +315,8 @@ impl PyDoubleHestonFourier {
     rho2: f64,
     r: f64,
     q: f64,
-  ) -> Self {
-    Self {
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::pricing::fourier::DoubleHestonFourier {
         v1_0,
         kappa1,
@@ -313,7 +331,7 @@ impl PyDoubleHestonFourier {
         r,
         q,
       },
-    }
+    })
   }
 
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
@@ -341,8 +359,8 @@ impl PyHKDEFourier {
     p_up: f64,
     eta1: f64,
     eta2: f64,
-  ) -> Self {
-    Self {
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::pricing::fourier::HKDEFourier {
         v0,
         kappa,
@@ -356,7 +374,7 @@ impl PyHKDEFourier {
         eta1,
         eta2,
       },
-    }
+    })
   }
 
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {

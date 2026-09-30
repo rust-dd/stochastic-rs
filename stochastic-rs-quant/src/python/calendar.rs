@@ -53,9 +53,11 @@ pub struct PyDayCount {
 impl PyDayCount {
   #[new]
   fn new(name: &str) -> PyResult<Self> {
-    Ok(Self {
-      inner: parse_day_count(name)?,
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: parse_day_count(name)?,
+      })
+    })?
   }
 
   fn year_fraction(&self, d1: NaiveDate, d2: NaiveDate) -> f64 {
@@ -99,9 +101,11 @@ pub struct PyBusinessDayConvention {
 impl PyBusinessDayConvention {
   #[new]
   fn new(name: &str) -> PyResult<Self> {
-    Ok(Self {
-      inner: parse_bdc(name)?,
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: parse_bdc(name)?,
+      })
+    })?
   }
 
   fn adjust(&self, date: NaiveDate, calendar: &PyCalendar) -> NaiveDate {
@@ -147,9 +151,11 @@ pub struct PyCalendar {
 impl PyCalendar {
   #[new]
   fn new(name: &str) -> PyResult<Self> {
-    Ok(Self {
-      inner: Calendar::new(parse_holiday_calendar(name)?),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        inner: Calendar::new(parse_holiday_calendar(name)?),
+      })
+    })?
   }
 
   #[staticmethod]
@@ -284,10 +290,10 @@ pub struct PyScheduleBuilder {
 #[pymethods]
 impl PyScheduleBuilder {
   #[new]
-  fn new(effective: NaiveDate, termination: NaiveDate) -> Self {
-    Self {
+  fn new(effective: NaiveDate, termination: NaiveDate) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: Some(ScheduleBuilder::new(effective, termination)),
-    }
+    })
   }
 
   fn frequency(&mut self, name: &str) -> PyResult<()> {

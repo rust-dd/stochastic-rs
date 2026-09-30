@@ -12,8 +12,10 @@ macro_rules! fit_class {
     impl $py {
       #[doc = $doc]
       #[new]
-      fn new<'py>(data: PyReadonlyArray1<'py, f64>) -> Self {
-        Self { inner: $fit(data.as_array()) }
+      fn new<'py>(data: PyReadonlyArray1<'py, f64>) -> PyResult<Self> {
+        stochastic_rs_distributions::python::value_error_on_panic(|| Self {
+          inner: $fit(data.as_array()),
+        })
       }
 
       /// Standard errors in the parameter order of the getters.
@@ -101,10 +103,10 @@ pub struct PyGpdPwm {
 impl PyGpdPwm {
   /// Hosking-Wallis probability-weighted-moment GPD estimate on excesses.
   #[new]
-  fn new<'py>(exceedances: PyReadonlyArray1<'py, f64>) -> Self {
-    Self {
+  fn new<'py>(exceedances: PyReadonlyArray1<'py, f64>) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::evt::gpd_pwm(exceedances.as_array()),
-    }
+    })
   }
 
   #[getter]

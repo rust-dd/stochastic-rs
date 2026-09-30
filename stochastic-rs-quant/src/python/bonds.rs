@@ -14,12 +14,12 @@ pub struct PyVasicekBond {
 #[pymethods]
 impl PyVasicekBond {
   #[new]
-  fn new(r_t: f64, theta: f64, mu: f64, sigma: f64, tau: f64) -> Self {
-    Self {
+  fn new(r_t: f64, theta: f64, mu: f64, sigma: f64, tau: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::bonds::vasicek::Vasicek { theta, mu, sigma },
       r_t,
       tau,
-    }
+    })
   }
 
   fn price(&self) -> f64 {
@@ -45,12 +45,12 @@ impl PyCIRBond {
   /// Construct CIR ZCB pricer. `theta` is the mean-reversion speed; `mu`
   /// is the long-run mean. See struct doc for the naming convention.
   #[new]
-  fn new(r_t: f64, theta: f64, mu: f64, sigma: f64, tau: f64) -> Self {
-    Self {
+  fn new(r_t: f64, theta: f64, mu: f64, sigma: f64, tau: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::bonds::cir::Cir { theta, mu, sigma },
       r_t,
       tau,
-    }
+    })
   }
 
   fn price(&self) -> f64 {
@@ -86,26 +86,28 @@ impl PyHullWhiteBond {
     p0_at_maturity: f64,
     f0_at_t: f64,
   ) -> PyResult<Self> {
-    if alpha <= 0.0 || sigma <= 0.0 {
-      return Err(PyValueError::new_err("alpha and sigma must be > 0"));
-    }
-    if tau < 0.0 {
-      return Err(PyValueError::new_err("tau must be >= 0"));
-    }
-    Ok(Self {
-      inner: crate::bonds::hull_white::HullWhite {
-        alpha,
-        sigma,
-        t,
-        p0_at_t,
-        p0_at_maturity,
-        f0_at_t,
-        pinned_tau: tau,
-        curve: None,
-      },
-      r_t,
-      tau,
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      if alpha <= 0.0 || sigma <= 0.0 {
+        return Err(PyValueError::new_err("alpha and sigma must be > 0"));
+      }
+      if tau < 0.0 {
+        return Err(PyValueError::new_err("tau must be >= 0"));
+      }
+      Ok(Self {
+        inner: crate::bonds::hull_white::HullWhite {
+          alpha,
+          sigma,
+          t,
+          p0_at_t,
+          p0_at_maturity,
+          f0_at_t,
+          pinned_tau: tau,
+          curve: None,
+        },
+        r_t,
+        tau,
+      })
+    })?
   }
 
   /// Build by projecting a calibrated [`DiscountCurve`] onto the time

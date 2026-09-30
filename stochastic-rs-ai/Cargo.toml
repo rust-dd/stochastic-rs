@@ -22,7 +22,7 @@ quant = ["dep:stochastic-rs-quant"]
 # helper. Plotly is optional so a caller that only trains/predicts doesn't
 # compile a plotting stack.
 viz = ["dep:plotly"]
-python = ["quant", "dep:pyo3", "dep:numpy"]
+python = ["quant", "dep:pyo3", "dep:numpy", "stochastic-rs-distributions/python"]
 # candle Metal back-end; `device::best_available` prefers a GPU it can reach at run time.
 # CUDA is not a feature here: candle-kernels needs a CUDA toolkit to build, which the
 # workspace-wide `--all-features` check cannot assume — enable `candle-core/cuda` in the

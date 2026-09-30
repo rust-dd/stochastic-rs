@@ -60,11 +60,13 @@ impl PyHullWhiteSwaptionCalibrator {
     curve: &PyDiscountCurve,
     notional: f64,
   ) -> PyResult<Self> {
-    Ok(Self {
-      quotes: parse_quotes(quotes)?,
-      curve: curve.inner.clone(),
-      notional,
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        quotes: parse_quotes(quotes)?,
+        curve: curve.inner.clone(),
+        notional,
+      })
+    })?
   }
 
   /// Returns `(mean_reversion, sigma, rmse, converged)`.
@@ -110,15 +112,17 @@ impl PyBlackKarasinskiSwaptionCalibrator {
     steps_per_year: usize,
     max_iters: u64,
   ) -> PyResult<Self> {
-    Ok(Self {
-      quotes: parse_quotes(quotes)?,
-      curve: curve.inner.clone(),
-      notional,
-      initial_rate,
-      long_run_rate,
-      steps_per_year,
-      max_iters,
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        quotes: parse_quotes(quotes)?,
+        curve: curve.inner.clone(),
+        notional,
+        initial_rate,
+        long_run_rate,
+        steps_per_year,
+        max_iters,
+      })
+    })?
   }
 
   /// Returns `(mean_reversion, sigma, rmse, converged)`.
@@ -170,14 +174,16 @@ impl PyG2ppSwaptionCalibrator {
     steps_per_year: usize,
     max_iters: u64,
   ) -> PyResult<Self> {
-    Ok(Self {
-      quotes: parse_quotes(quotes)?,
-      curve: curve.inner.clone(),
-      notional,
-      initial_rate,
-      steps_per_year,
-      max_iters,
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      Ok(Self {
+        quotes: parse_quotes(quotes)?,
+        curve: curve.inner.clone(),
+        notional,
+        initial_rate,
+        steps_per_year,
+        max_iters,
+      })
+    })?
   }
 
   /// Returns `(a, b, sigma, eta, rho, rmse, converged)`.

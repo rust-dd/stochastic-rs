@@ -414,110 +414,120 @@ impl PyRoughHeston {
     rho: Option<f64>,
     seed: Option<u64>,
     dtype: Option<&str>,
-  ) -> Self {
-    let mut obj = Self {
-      inner_f32: None,
-      inner_f64: None,
-      seeded_f32: None,
-      seeded_f64: None,
-    };
-    match (seed, dtype.unwrap_or("f64")) {
-      (Some(sd), "f32") => {
-        let mut m = RoughHeston::new(
-          hurst as f32,
-          v0.map(|v| v as f32),
-          theta as f32,
-          kappa as f32,
-          nu as f32,
-          c1.map(|v| v as f32),
-          c2.map(|v| v as f32),
-          t.map(|v| v as f32),
-          n,
-          Deterministic::new(sd),
-        );
-        m.mu = mu.map(|v| v as f32);
-        m.s0 = s0.map(|v| v as f32);
-        m.rho = rho.map(|v| v as f32);
-        obj.seeded_f32 = Some(m);
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let mut obj = Self {
+        inner_f32: None,
+        inner_f64: None,
+        seeded_f32: None,
+        seeded_f64: None,
+      };
+      match (seed, dtype.unwrap_or("f64")) {
+        (Some(sd), "f32") => {
+          let mut m = RoughHeston::new(
+            hurst as f32,
+            v0.map(|v| v as f32),
+            theta as f32,
+            kappa as f32,
+            nu as f32,
+            c1.map(|v| v as f32),
+            c2.map(|v| v as f32),
+            t.map(|v| v as f32),
+            n,
+            Deterministic::new(sd),
+          );
+          m.mu = mu.map(|v| v as f32);
+          m.s0 = s0.map(|v| v as f32);
+          m.rho = rho.map(|v| v as f32);
+          obj.seeded_f32 = Some(m);
+        }
+        (Some(sd), _) => {
+          let mut m = RoughHeston::new(
+            hurst,
+            v0,
+            theta,
+            kappa,
+            nu,
+            c1,
+            c2,
+            t,
+            n,
+            Deterministic::new(sd),
+          );
+          m.mu = mu;
+          m.s0 = s0;
+          m.rho = rho;
+          obj.seeded_f64 = Some(m);
+        }
+        (None, "f32") => {
+          let mut m = RoughHeston::new(
+            hurst as f32,
+            v0.map(|v| v as f32),
+            theta as f32,
+            kappa as f32,
+            nu as f32,
+            c1.map(|v| v as f32),
+            c2.map(|v| v as f32),
+            t.map(|v| v as f32),
+            n,
+            Unseeded,
+          );
+          m.mu = mu.map(|v| v as f32);
+          m.s0 = s0.map(|v| v as f32);
+          m.rho = rho.map(|v| v as f32);
+          obj.inner_f32 = Some(m);
+        }
+        (None, _) => {
+          let mut m = RoughHeston::new(hurst, v0, theta, kappa, nu, c1, c2, t, n, Unseeded);
+          m.mu = mu;
+          m.s0 = s0;
+          m.rho = rho;
+          obj.inner_f64 = Some(m);
+        }
       }
-      (Some(sd), _) => {
-        let mut m = RoughHeston::new(
-          hurst,
-          v0,
-          theta,
-          kappa,
-          nu,
-          c1,
-          c2,
-          t,
-          n,
-          Deterministic::new(sd),
-        );
-        m.mu = mu;
-        m.s0 = s0;
-        m.rho = rho;
-        obj.seeded_f64 = Some(m);
-      }
-      (None, "f32") => {
-        let mut m = RoughHeston::new(
-          hurst as f32,
-          v0.map(|v| v as f32),
-          theta as f32,
-          kappa as f32,
-          nu as f32,
-          c1.map(|v| v as f32),
-          c2.map(|v| v as f32),
-          t.map(|v| v as f32),
-          n,
-          Unseeded,
-        );
-        m.mu = mu.map(|v| v as f32);
-        m.s0 = s0.map(|v| v as f32);
-        m.rho = rho.map(|v| v as f32);
-        obj.inner_f32 = Some(m);
-      }
-      (None, _) => {
-        let mut m = RoughHeston::new(hurst, v0, theta, kappa, nu, c1, c2, t, n, Unseeded);
-        m.mu = mu;
-        m.s0 = s0;
-        m.rho = rho;
-        obj.inner_f64 = Some(m);
-      }
-    }
-    obj
-  }
-
-  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
-
-    use crate::traits::ProcessExt;
-    py_dispatch!(self, |inner| {
-      let [s, v] = inner.sample();
-      (s.into_pyarray(py), v.into_pyarray(py))
-        .into_py_any(py)
-        .unwrap()
+      obj
     })
   }
 
-  fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
-    use numpy::IntoPyArray;
-    use numpy::ndarray::Array2;
-    use pyo3::IntoPyObjectExt;
+  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      use pyo3::IntoPyObjectExt;
 
-    use crate::traits::ProcessExt;
-    py_dispatch!(self, |inner| {
-      let paths = inner.sample_par(m);
-      let n = paths[0][0].len();
-      let mut s_result = Array2::zeros((m, n));
-      let mut v_result = Array2::zeros((m, n));
-      for (i, [s, v]) in paths.iter().enumerate() {
-        s_result.row_mut(i).assign(s);
-        v_result.row_mut(i).assign(v);
-      }
-      (s_result.into_pyarray(py), v_result.into_pyarray(py))
-        .into_py_any(py)
-        .unwrap()
+      use crate::traits::ProcessExt;
+      py_dispatch!(self, |inner| {
+        let [s, v] = inner.sample();
+        (s.into_pyarray(py), v.into_pyarray(py))
+          .into_py_any(py)
+          .unwrap()
+      })
+    })
+  }
+
+  fn sample_par<'py>(
+    &self,
+    py: pyo3::Python<'py>,
+    m: usize,
+  ) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      use numpy::ndarray::Array2;
+      use pyo3::IntoPyObjectExt;
+
+      use crate::traits::ProcessExt;
+      py_dispatch!(self, |inner| {
+        let paths = inner.sample_par(m);
+        let n = paths[0][0].len();
+        let mut s_result = Array2::zeros((m, n));
+        let mut v_result = Array2::zeros((m, n));
+        for (i, [s, v]) in paths.iter().enumerate() {
+          s_result.row_mut(i).assign(s);
+          v_result.row_mut(i).assign(v);
+        }
+        (s_result.into_pyarray(py), v_result.into_pyarray(py))
+          .into_py_any(py)
+          .unwrap()
+      })
     })
   }
 }

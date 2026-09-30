@@ -360,8 +360,8 @@ impl PyCheyette {
     n: usize,
     t: Option<f64>,
     seed: Option<u64>,
-  ) -> Self {
-    match seed {
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| match seed {
       Some(s) => Self {
         inner: None,
         seeded: Some(Cheyette::new(
@@ -384,19 +384,24 @@ impl PyCheyette {
         )),
         seeded: None,
       },
-    }
+    })
   }
 
   /// One path of the state as the pair `(x, y)` of arrays.
-  fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
-    crate::py_dispatch_f64!(self, |inner| {
-      let [x, y] = inner.sample();
-      (
-        x.into_pyarray(py).into_py_any(py).unwrap(),
-        y.into_pyarray(py).into_py_any(py).unwrap(),
-      )
+  fn sample<'py>(
+    &self,
+    py: pyo3::Python<'py>,
+  ) -> pyo3::PyResult<(pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>)> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      use pyo3::IntoPyObjectExt;
+      crate::py_dispatch_f64!(self, |inner| {
+        let [x, y] = inner.sample();
+        (
+          x.into_pyarray(py).into_py_any(py).unwrap(),
+          y.into_pyarray(py).into_py_any(py).unwrap(),
+        )
+      })
     })
   }
 
@@ -407,23 +412,25 @@ impl PyCheyette {
     &self,
     py: pyo3::Python<'py>,
     m: usize,
-  ) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
-    crate::py_dispatch_f64!(self, |inner| {
-      // The callbacks re-attach to the interpreter from the worker threads, so
-      // the GIL must be released here or the parallel sampler deadlocks.
-      let samples = py.detach(|| inner.sample_par(m));
-      let mut xs = ndarray::Array2::<f64>::zeros((m, inner.n));
-      let mut ys = ndarray::Array2::<f64>::zeros((m, inner.n));
-      for (i, [x, y]) in samples.iter().enumerate() {
-        xs.row_mut(i).assign(x);
-        ys.row_mut(i).assign(y);
-      }
-      (
-        xs.into_pyarray(py).into_py_any(py).unwrap(),
-        ys.into_pyarray(py).into_py_any(py).unwrap(),
-      )
+  ) -> pyo3::PyResult<(pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>)> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      use pyo3::IntoPyObjectExt;
+      crate::py_dispatch_f64!(self, |inner| {
+        // The callbacks re-attach to the interpreter from the worker threads, so
+        // the GIL must be released here or the parallel sampler deadlocks.
+        let samples = py.detach(|| inner.sample_par(m));
+        let mut xs = ndarray::Array2::<f64>::zeros((m, inner.n));
+        let mut ys = ndarray::Array2::<f64>::zeros((m, inner.n));
+        for (i, [x, y]) in samples.iter().enumerate() {
+          xs.row_mut(i).assign(x);
+          ys.row_mut(i).assign(y);
+        }
+        (
+          xs.into_pyarray(py).into_py_any(py).unwrap(),
+          ys.into_pyarray(py).into_py_any(py).unwrap(),
+        )
+      })
     })
   }
 

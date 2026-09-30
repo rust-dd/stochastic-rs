@@ -21,15 +21,15 @@ pub struct PyAsianPricer {
 impl PyAsianPricer {
   #[new]
   #[pyo3(signature = (s, v, k, r, tau, q=None))]
-  fn new(s: f64, v: f64, k: f64, r: f64, tau: f64, q: Option<f64>) -> Self {
-    Self {
+  fn new(s: f64, v: f64, k: f64, r: f64, tau: f64, q: Option<f64>) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::pricing::asian::AsianPricer::new(v),
       s,
       k,
       r,
       q: q.unwrap_or(0.0),
       tau,
-    }
+    })
   }
 
   fn price(&self) -> f64 {
@@ -67,33 +67,35 @@ impl PyBarrierPricer {
     option_type: &str,
     rebate: f64,
   ) -> PyResult<Self> {
-    use crate::pricing::barrier::BarrierType;
-    let bt = match barrier_type.to_ascii_lowercase().as_str() {
-      "up_in" | "ui" | "upandin" => BarrierType::UpAndIn,
-      "up_out" | "uo" | "upandout" => BarrierType::UpAndOut,
-      "down_in" | "di" | "downandin" => BarrierType::DownAndIn,
-      "down_out" | "do" | "downandout" => BarrierType::DownAndOut,
-      o => {
-        return Err(PyValueError::new_err(format!(
-          "barrier_type must be one of up_in/up_out/down_in/down_out, got '{o}'"
-        )));
-      }
-    };
-    let ot = parse_option_type(option_type)?;
-    Ok(Self {
-      inner: crate::pricing::barrier::BarrierPricer {
-        s,
-        k,
-        h,
-        r,
-        q,
-        sigma,
-        tau: t,
-        rebate,
-        barrier_type: bt,
-        option_type: ot,
-      },
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      use crate::pricing::barrier::BarrierType;
+      let bt = match barrier_type.to_ascii_lowercase().as_str() {
+        "up_in" | "ui" | "upandin" => BarrierType::UpAndIn,
+        "up_out" | "uo" | "upandout" => BarrierType::UpAndOut,
+        "down_in" | "di" | "downandin" => BarrierType::DownAndIn,
+        "down_out" | "do" | "downandout" => BarrierType::DownAndOut,
+        o => {
+          return Err(PyValueError::new_err(format!(
+            "barrier_type must be one of up_in/up_out/down_in/down_out, got '{o}'"
+          )));
+        }
+      };
+      let ot = parse_option_type(option_type)?;
+      Ok(Self {
+        inner: crate::pricing::barrier::BarrierPricer {
+          s,
+          k,
+          h,
+          r,
+          q,
+          sigma,
+          tau: t,
+          rebate,
+          barrier_type: bt,
+          option_type: ot,
+        },
+      })
+    })?
   }
 
   fn price(&self) -> f64 {
@@ -120,19 +122,21 @@ impl PyFloatingLookbackPricer {
     s_min: Option<f64>,
     s_max: Option<f64>,
   ) -> PyResult<Self> {
-    let ot = parse_option_type(option_type)?;
-    Ok(Self {
-      inner: crate::pricing::lookback::FloatingLookbackPricer {
-        s,
-        s_min,
-        s_max,
-        r,
-        q,
-        sigma,
-        tau: t,
-        option_type: ot,
-      },
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let ot = parse_option_type(option_type)?;
+      Ok(Self {
+        inner: crate::pricing::lookback::FloatingLookbackPricer {
+          s,
+          s_min,
+          s_max,
+          r,
+          q,
+          sigma,
+          tau: t,
+          option_type: ot,
+        },
+      })
+    })?
   }
 
   fn price(&self) -> f64 {
@@ -168,16 +172,18 @@ impl PyBjerksundStensland2002Pricer {
     option_type: &str,
     q: Option<f64>,
   ) -> PyResult<Self> {
-    let ot = parse_option_type(option_type)?;
-    Ok(Self {
-      inner: crate::pricing::bjerksund_stensland::BjerksundStensland2002Pricer::new(v),
-      s,
-      k,
-      r,
-      q: q.unwrap_or(0.0),
-      tau,
-      option_type: ot,
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let ot = parse_option_type(option_type)?;
+      Ok(Self {
+        inner: crate::pricing::bjerksund_stensland::BjerksundStensland2002Pricer::new(v),
+        s,
+        k,
+        r,
+        q: q.unwrap_or(0.0),
+        tau,
+        option_type: ot,
+      })
+    })?
   }
 
   fn price(&self) -> f64 {
@@ -201,10 +207,10 @@ pub struct PyVarianceSwapPricer {
 #[pymethods]
 impl PyVarianceSwapPricer {
   #[new]
-  fn new(s: f64, r: f64, q: f64, t: f64) -> Self {
-    Self {
+  fn new(s: f64, r: f64, q: f64, t: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::pricing::variance_swap::VarianceSwapPricer { s, r, q, tau: t },
-    }
+    })
   }
 
   fn forward(&self) -> f64 {
@@ -247,31 +253,33 @@ impl PyCompoundPricer {
     sigma: f64,
     compound_type: &str,
   ) -> PyResult<Self> {
-    use crate::pricing::compound::CompoundType;
-    let ct = match compound_type.to_ascii_lowercase().as_str() {
-      "call_on_call" | "coc" => CompoundType::CallOnCall,
-      "call_on_put" | "cop" => CompoundType::CallOnPut,
-      "put_on_call" | "poc" => CompoundType::PutOnCall,
-      "put_on_put" | "pop" => CompoundType::PutOnPut,
-      o => {
-        return Err(PyValueError::new_err(format!(
-          "compound_type must be one of call_on_call/call_on_put/put_on_call/put_on_put, got '{o}'"
-        )));
-      }
-    };
-    Ok(Self {
-      inner: crate::pricing::compound::CompoundPricer {
-        s,
-        k1,
-        k2,
-        t1,
-        t2,
-        r,
-        q,
-        sigma,
-        compound_type: ct,
-      },
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      use crate::pricing::compound::CompoundType;
+      let ct = match compound_type.to_ascii_lowercase().as_str() {
+        "call_on_call" | "coc" => CompoundType::CallOnCall,
+        "call_on_put" | "cop" => CompoundType::CallOnPut,
+        "put_on_call" | "poc" => CompoundType::PutOnCall,
+        "put_on_put" | "pop" => CompoundType::PutOnPut,
+        o => {
+          return Err(PyValueError::new_err(format!(
+            "compound_type must be one of call_on_call/call_on_put/put_on_call/put_on_put, got '{o}'"
+          )));
+        }
+      };
+      Ok(Self {
+        inner: crate::pricing::compound::CompoundPricer {
+          s,
+          k1,
+          k2,
+          t1,
+          t2,
+          r,
+          q,
+          sigma,
+          compound_type: ct,
+        },
+      })
+    })?
   }
 
   fn price(&self) -> f64 {
@@ -287,8 +295,8 @@ pub struct PySimpleChooserPricer {
 #[pymethods]
 impl PySimpleChooserPricer {
   #[new]
-  fn new(s: f64, k: f64, r: f64, q: f64, sigma: f64, t1: f64, t: f64) -> Self {
-    Self {
+  fn new(s: f64, k: f64, r: f64, q: f64, sigma: f64, t1: f64, t: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::pricing::chooser::SimpleChooserPricer {
         s,
         k,
@@ -298,7 +306,7 @@ impl PySimpleChooserPricer {
         t1,
         tau: t,
       },
-    }
+    })
   }
 
   fn price(&self) -> f64 {
@@ -325,8 +333,8 @@ impl PyCliquetPricer {
     sigma: f64,
     local_floor: Option<f64>,
     local_cap: Option<f64>,
-  ) -> Self {
-    Self {
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::pricing::cliquet::CliquetPricer {
         s,
         notional,
@@ -338,7 +346,7 @@ impl PyCliquetPricer {
         local_floor,
         local_cap,
       },
-    }
+    })
   }
 
   fn price(&self) -> f64 {
@@ -366,20 +374,22 @@ impl PyFixedLookbackPricer {
     s_min: Option<f64>,
     s_max: Option<f64>,
   ) -> PyResult<Self> {
-    let ot = parse_option_type(option_type)?;
-    Ok(Self {
-      inner: crate::pricing::lookback::FixedLookbackPricer {
-        s,
-        k,
-        s_min,
-        s_max,
-        r,
-        q,
-        sigma,
-        tau: t,
-        option_type: ot,
-      },
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let ot = parse_option_type(option_type)?;
+      Ok(Self {
+        inner: crate::pricing::lookback::FixedLookbackPricer {
+          s,
+          k,
+          s_min,
+          s_max,
+          r,
+          q,
+          sigma,
+          tau: t,
+          option_type: ot,
+        },
+      })
+    })?
   }
 
   fn price(&self) -> f64 {
@@ -407,20 +417,22 @@ impl PyDoubleBarrierPricer {
     t: f64,
     option_type: &str,
   ) -> PyResult<Self> {
-    let ot = parse_option_type(option_type)?;
-    Ok(Self {
-      inner: crate::pricing::barrier::DoubleBarrierPricer {
-        s,
-        k,
-        h_upper,
-        h_lower,
-        r,
-        q,
-        sigma,
-        tau: t,
-        option_type: ot,
-      },
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let ot = parse_option_type(option_type)?;
+      Ok(Self {
+        inner: crate::pricing::barrier::DoubleBarrierPricer {
+          s,
+          k,
+          h_upper,
+          h_lower,
+          r,
+          q,
+          sigma,
+          tau: t,
+          option_type: ot,
+        },
+      })
+    })?
   }
 
   fn price(&self) -> f64 {
@@ -482,10 +494,10 @@ pub struct PyMCBarrierPricer {
 impl PyMCBarrierPricer {
   #[new]
   #[pyo3(signature = (n_paths=10000, n_steps=252))]
-  fn new(n_paths: usize, n_steps: usize) -> Self {
-    Self {
+  fn new(n_paths: usize, n_steps: usize) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::pricing::barrier::MCBarrierPricer { n_paths, n_steps },
-    }
+    })
   }
 
   /// `barrier_type`: one of "up_in" / "up_out" / "down_in" / "down_out".
@@ -534,15 +546,24 @@ pub struct PyKirkSpreadPricer {
 #[pymethods]
 impl PyKirkSpreadPricer {
   #[new]
-  fn new(f1: f64, f2: f64, x: f64, r: f64, v1: f64, v2: f64, corr: f64, tau: f64) -> Self {
-    Self {
+  fn new(
+    f1: f64,
+    f2: f64,
+    x: f64,
+    r: f64,
+    v1: f64,
+    v2: f64,
+    corr: f64,
+    tau: f64,
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::pricing::kirk::KirkSpreadPricer::new(v1, v2, corr),
       f1,
       f2,
       x,
       r,
       tau,
-    }
+    })
   }
 
   fn price(&self) -> f64 {

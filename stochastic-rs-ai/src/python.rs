@@ -59,13 +59,15 @@ macro_rules! py_surrogate {
       #[new]
       #[pyo3(signature = (hidden_dim=None))]
       fn new(hidden_dim: Option<usize>) -> PyResult<Self> {
-        let device = crate::device::best_available().map_err(err)?;
-        let inner = match hidden_dim {
-          Some(h) => <$inner>::with_hidden(&device, h),
-          None => <$inner>::new(&device),
-        }
-        .map_err(err)?;
-        Ok(Self { inner })
+        stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+          let device = crate::device::best_available().map_err(err)?;
+          let inner = match hidden_dim {
+            Some(h) => <$inner>::with_hidden(&device, h),
+            None => <$inner>::new(&device),
+          }
+          .map_err(err)?;
+          Ok(Self { inner })
+        })?
       }
 
       /// Trains on `(params, surfaces)` rows; returns the per-epoch RMSE

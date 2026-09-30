@@ -31,10 +31,10 @@ impl PyPCA {
   /// PCA on a `(T, N)` returns matrix; `k=0` keeps all factors.
   #[new]
   #[pyo3(signature = (returns, k=0))]
-  fn new<'py>(returns: numpy::PyReadonlyArray2<'py, f64>, k: usize) -> Self {
-    Self {
+  fn new<'py>(returns: numpy::PyReadonlyArray2<'py, f64>, k: usize) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::factors::pca::pca_decompose(returns.as_array(), k),
-    }
+    })
   }
 
   fn singular_values<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
@@ -79,10 +79,10 @@ impl PyFamaMacBeth {
   fn new<'py>(
     returns: numpy::PyReadonlyArray2<'py, f64>,
     factors: numpy::PyReadonlyArray2<'py, f64>,
-  ) -> Self {
-    Self {
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::factors::fama_macbeth::fama_macbeth(returns.as_array(), factors.as_array()),
-    }
+    })
   }
 
   fn gamma<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray1<f64>> {
@@ -122,10 +122,10 @@ impl PyPairsStrategy {
     x: numpy::PyReadonlyArray1<'py, f64>,
     entry_z: f64,
     exit_z: f64,
-  ) -> Self {
-    Self {
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::factors::pairs::pairs_signals(y.as_array(), x.as_array(), entry_z, exit_z),
-    }
+    })
   }
 
   #[getter]

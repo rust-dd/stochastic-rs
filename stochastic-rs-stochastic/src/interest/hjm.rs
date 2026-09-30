@@ -346,67 +346,71 @@ impl PyHjm {
     f0: Option<f64>,
     t: Option<f64>,
     seed: Option<u64>,
-  ) -> Self {
-    use crate::traits::Fn2D;
-    match seed {
-      Some(s) => Self {
-        inner: None,
-        seeded: Some(Hjm::new(
-          Fn1D::Py(a),
-          Fn1D::Py(b),
-          Fn2D::Py(p),
-          Fn2D::Py(q),
-          Fn2D::Py(v),
-          Fn2D::Py(alpha),
-          Fn2D::Py(sigma),
-          n,
-          r0,
-          p0,
-          f0,
-          t,
-          Deterministic::new(s),
-        )),
-      },
-      None => Self {
-        inner: Some(Hjm::new(
-          Fn1D::Py(a),
-          Fn1D::Py(b),
-          Fn2D::Py(p),
-          Fn2D::Py(q),
-          Fn2D::Py(v),
-          Fn2D::Py(alpha),
-          Fn2D::Py(sigma),
-          n,
-          r0,
-          p0,
-          f0,
-          t,
-          Unseeded,
-        )),
-        seeded: None,
-      },
-    }
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      use crate::traits::Fn2D;
+      match seed {
+        Some(s) => Self {
+          inner: None,
+          seeded: Some(Hjm::new(
+            Fn1D::Py(a),
+            Fn1D::Py(b),
+            Fn2D::Py(p),
+            Fn2D::Py(q),
+            Fn2D::Py(v),
+            Fn2D::Py(alpha),
+            Fn2D::Py(sigma),
+            n,
+            r0,
+            p0,
+            f0,
+            t,
+            Deterministic::new(s),
+          )),
+        },
+        None => Self {
+          inner: Some(Hjm::new(
+            Fn1D::Py(a),
+            Fn1D::Py(b),
+            Fn2D::Py(p),
+            Fn2D::Py(q),
+            Fn2D::Py(v),
+            Fn2D::Py(alpha),
+            Fn2D::Py(sigma),
+            n,
+            r0,
+            p0,
+            f0,
+            t,
+            Unseeded,
+          )),
+          seeded: None,
+        },
+      }
+    })
   }
 
   fn sample<'py>(
     &self,
     py: pyo3::Python<'py>,
-  ) -> (
+  ) -> pyo3::PyResult<(
     pyo3::Py<pyo3::PyAny>,
     pyo3::Py<pyo3::PyAny>,
     pyo3::Py<pyo3::PyAny>,
-  ) {
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
+  )> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      use pyo3::IntoPyObjectExt;
 
-    use crate::traits::ProcessExt;
-    py_dispatch_f64!(self, |inner| {
-      let [a, b, c] = inner.sample();
-      (
-        a.into_pyarray(py).into_py_any(py).unwrap(),
-        b.into_pyarray(py).into_py_any(py).unwrap(),
-        c.into_pyarray(py).into_py_any(py).unwrap(),
-      )
+      use crate::traits::ProcessExt;
+      py_dispatch_f64!(self, |inner| {
+        let [a, b, c] = inner.sample();
+        (
+          a.into_pyarray(py).into_py_any(py).unwrap(),
+          b.into_pyarray(py).into_py_any(py).unwrap(),
+          c.into_pyarray(py).into_py_any(py).unwrap(),
+        )
+      })
     })
   }
 
@@ -417,35 +421,37 @@ impl PyHjm {
     &self,
     py: pyo3::Python<'py>,
     m: usize,
-  ) -> (
+  ) -> pyo3::PyResult<(
     pyo3::Py<pyo3::PyAny>,
     pyo3::Py<pyo3::PyAny>,
     pyo3::Py<pyo3::PyAny>,
-  ) {
-    use ndarray::Array2;
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
+  )> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use ndarray::Array2;
+      use numpy::IntoPyArray;
+      use pyo3::IntoPyObjectExt;
 
-    use crate::traits::ProcessExt;
-    py_dispatch_f64!(self, |inner| {
-      let paths = py.detach(|| inner.sample_par(m));
-      let n = paths.first().map_or(0, |p| p[0].len());
-      let mut stacked = [
-        Array2::zeros((m, n)),
-        Array2::zeros((m, n)),
-        Array2::zeros((m, n)),
-      ];
-      for (i, [r, p, f]) in paths.iter().enumerate() {
-        stacked[0].row_mut(i).assign(r);
-        stacked[1].row_mut(i).assign(p);
-        stacked[2].row_mut(i).assign(f);
-      }
-      let [r, p, f] = stacked;
-      (
-        r.into_pyarray(py).into_py_any(py).unwrap(),
-        p.into_pyarray(py).into_py_any(py).unwrap(),
-        f.into_pyarray(py).into_py_any(py).unwrap(),
-      )
+      use crate::traits::ProcessExt;
+      py_dispatch_f64!(self, |inner| {
+        let paths = py.detach(|| inner.sample_par(m));
+        let n = paths.first().map_or(0, |p| p[0].len());
+        let mut stacked = [
+          Array2::zeros((m, n)),
+          Array2::zeros((m, n)),
+          Array2::zeros((m, n)),
+        ];
+        for (i, [r, p, f]) in paths.iter().enumerate() {
+          stacked[0].row_mut(i).assign(r);
+          stacked[1].row_mut(i).assign(p);
+          stacked[2].row_mut(i).assign(f);
+        }
+        let [r, p, f] = stacked;
+        (
+          r.into_pyarray(py).into_py_any(py).unwrap(),
+          p.into_pyarray(py).into_py_any(py).unwrap(),
+          f.into_pyarray(py).into_py_any(py).unwrap(),
+        )
+      })
     })
   }
 }

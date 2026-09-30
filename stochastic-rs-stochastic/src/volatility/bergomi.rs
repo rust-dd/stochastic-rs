@@ -364,56 +364,58 @@ impl PyBergomi {
     dtype: Option<&str>,
     device: Option<&str>,
   ) -> pyo3::PyResult<Self> {
-    let device = crate::python_device::Device::parse(device, dtype.unwrap_or("f64"))?;
-    let mut s = Self {
-      inner_f32: None,
-      inner_f64: None,
-      seeded_f32: None,
-      seeded_f64: None,
-      device,
-    };
-    match (seed, dtype.unwrap_or("f64")) {
-      (Some(sd), "f32") => {
-        s.seeded_f32 = Some(Bergomi::new(
-          nu as f32,
-          v0.map(|v| v as f32),
-          s0.map(|v| v as f32),
-          r as f32,
-          rho as f32,
-          n,
-          t.map(|v| v as f32),
-          crate::python_device::SharedSeed::new(sd),
-        ));
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> pyo3::PyResult<Self> {
+      let device = crate::python_device::Device::parse(device, dtype.unwrap_or("f64"))?;
+      let mut s = Self {
+        inner_f32: None,
+        inner_f64: None,
+        seeded_f32: None,
+        seeded_f64: None,
+        device,
+      };
+      match (seed, dtype.unwrap_or("f64")) {
+        (Some(sd), "f32") => {
+          s.seeded_f32 = Some(Bergomi::new(
+            nu as f32,
+            v0.map(|v| v as f32),
+            s0.map(|v| v as f32),
+            r as f32,
+            rho as f32,
+            n,
+            t.map(|v| v as f32),
+            crate::python_device::SharedSeed::new(sd),
+          ));
+        }
+        (Some(sd), _) => {
+          s.seeded_f64 = Some(Bergomi::new(
+            nu,
+            v0,
+            s0,
+            r,
+            rho,
+            n,
+            t,
+            crate::python_device::SharedSeed::new(sd),
+          ));
+        }
+        (None, "f32") => {
+          s.inner_f32 = Some(Bergomi::new(
+            nu as f32,
+            v0.map(|v| v as f32),
+            s0.map(|v| v as f32),
+            r as f32,
+            rho as f32,
+            n,
+            t.map(|v| v as f32),
+            Unseeded,
+          ));
+        }
+        (None, _) => {
+          s.inner_f64 = Some(Bergomi::new(nu, v0, s0, r, rho, n, t, Unseeded));
+        }
       }
-      (Some(sd), _) => {
-        s.seeded_f64 = Some(Bergomi::new(
-          nu,
-          v0,
-          s0,
-          r,
-          rho,
-          n,
-          t,
-          crate::python_device::SharedSeed::new(sd),
-        ));
-      }
-      (None, "f32") => {
-        s.inner_f32 = Some(Bergomi::new(
-          nu as f32,
-          v0.map(|v| v as f32),
-          s0.map(|v| v as f32),
-          r as f32,
-          rho as f32,
-          n,
-          t.map(|v| v as f32),
-          Unseeded,
-        ));
-      }
-      (None, _) => {
-        s.inner_f64 = Some(Bergomi::new(nu, v0, s0, r, rho, n, t, Unseeded));
-      }
-    }
-    Ok(s)
+      Ok(s)
+    })?
   }
 
   /// The reason a device kernel cannot carry this configuration, if there is
@@ -431,17 +433,22 @@ impl PyBergomi {
     self.device_fallback().is_none()
   }
 
-  fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
+  fn sample<'py>(
+    &self,
+    py: pyo3::Python<'py>,
+  ) -> pyo3::PyResult<(pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>)> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      use pyo3::IntoPyObjectExt;
 
-    use crate::traits::ProcessExt;
-    py_device_dispatch!(self, |inner| {
-      let [a, b] = inner.sample();
-      (
-        a.into_pyarray(py).into_py_any(py).unwrap(),
-        b.into_pyarray(py).into_py_any(py).unwrap(),
-      )
+      use crate::traits::ProcessExt;
+      py_device_dispatch!(self, |inner| {
+        let [a, b] = inner.sample();
+        (
+          a.into_pyarray(py).into_py_any(py).unwrap(),
+          b.into_pyarray(py).into_py_any(py).unwrap(),
+        )
+      })
     })
   }
 
@@ -449,25 +456,27 @@ impl PyBergomi {
     &self,
     py: pyo3::Python<'py>,
     m: usize,
-  ) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
-    use numpy::IntoPyArray;
-    use numpy::ndarray::Array2;
-    use pyo3::IntoPyObjectExt;
+  ) -> pyo3::PyResult<(pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>)> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      use numpy::ndarray::Array2;
+      use pyo3::IntoPyObjectExt;
 
-    use crate::traits::ProcessExt;
-    py_device_dispatch!(self, |inner| {
-      let samples = inner.sample_par(m);
-      let n = samples[0][0].len();
-      let mut r0 = Array2::zeros((m, n));
-      let mut r1 = Array2::zeros((m, n));
-      for (i, [a, b]) in samples.iter().enumerate() {
-        r0.row_mut(i).assign(a);
-        r1.row_mut(i).assign(b);
-      }
-      (
-        r0.into_pyarray(py).into_py_any(py).unwrap(),
-        r1.into_pyarray(py).into_py_any(py).unwrap(),
-      )
+      use crate::traits::ProcessExt;
+      py_device_dispatch!(self, |inner| {
+        let samples = inner.sample_par(m);
+        let n = samples[0][0].len();
+        let mut r0 = Array2::zeros((m, n));
+        let mut r1 = Array2::zeros((m, n));
+        for (i, [a, b]) in samples.iter().enumerate() {
+          r0.row_mut(i).assign(a);
+          r1.row_mut(i).assign(b);
+        }
+        (
+          r0.into_pyarray(py).into_py_any(py).unwrap(),
+          r1.into_pyarray(py).into_py_any(py).unwrap(),
+        )
+      })
     })
   }
 }

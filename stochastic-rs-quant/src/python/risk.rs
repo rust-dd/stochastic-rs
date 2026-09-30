@@ -20,32 +20,34 @@ impl PyVaR {
     method: &str,
     orientation: &str,
   ) -> PyResult<Self> {
-    use crate::risk::var::PnlOrLoss;
-    use crate::risk::var::VarMethod;
-    let m = match method.to_ascii_lowercase().as_str() {
-      "gaussian" => VarMethod::Gaussian,
-      "historical" => VarMethod::Historical,
-      "monte_carlo" | "mc" => VarMethod::MonteCarlo,
-      o => {
-        return Err(PyValueError::new_err(format!(
-          "method must be one of gaussian/historical/monte_carlo, got '{o}'"
-        )));
-      }
-    };
-    let pol = match orientation.to_ascii_lowercase().as_str() {
-      "pnl" => PnlOrLoss::Pnl,
-      "loss" => PnlOrLoss::Loss,
-      o => {
-        return Err(PyValueError::new_err(format!(
-          "orientation must be 'pnl' or 'loss', got '{o}'"
-        )));
-      }
-    };
-    let value = crate::risk::var::value_at_risk(samples.as_array(), confidence, pol, m);
-    Ok(Self {
-      value,
-      method: format!("{m:?}"),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      use crate::risk::var::PnlOrLoss;
+      use crate::risk::var::VarMethod;
+      let m = match method.to_ascii_lowercase().as_str() {
+        "gaussian" => VarMethod::Gaussian,
+        "historical" => VarMethod::Historical,
+        "monte_carlo" | "mc" => VarMethod::MonteCarlo,
+        o => {
+          return Err(PyValueError::new_err(format!(
+            "method must be one of gaussian/historical/monte_carlo, got '{o}'"
+          )));
+        }
+      };
+      let pol = match orientation.to_ascii_lowercase().as_str() {
+        "pnl" => PnlOrLoss::Pnl,
+        "loss" => PnlOrLoss::Loss,
+        o => {
+          return Err(PyValueError::new_err(format!(
+            "orientation must be 'pnl' or 'loss', got '{o}'"
+          )));
+        }
+      };
+      let value = crate::risk::var::value_at_risk(samples.as_array(), confidence, pol, m);
+      Ok(Self {
+        value,
+        method: format!("{m:?}"),
+      })
+    })?
   }
 
   #[getter]
@@ -74,30 +76,32 @@ impl PyExpectedShortfall {
     method: &str,
     orientation: &str,
   ) -> PyResult<Self> {
-    use crate::risk::var::PnlOrLoss;
-    use crate::risk::var::VarMethod;
-    let m = match method.to_ascii_lowercase().as_str() {
-      "gaussian" => VarMethod::Gaussian,
-      "historical" => VarMethod::Historical,
-      "monte_carlo" | "mc" => VarMethod::MonteCarlo,
-      o => {
-        return Err(PyValueError::new_err(format!(
-          "method must be one of gaussian/historical/monte_carlo, got '{o}'"
-        )));
-      }
-    };
-    let pol = match orientation.to_ascii_lowercase().as_str() {
-      "pnl" => PnlOrLoss::Pnl,
-      "loss" => PnlOrLoss::Loss,
-      o => {
-        return Err(PyValueError::new_err(format!(
-          "orientation must be 'pnl' or 'loss', got '{o}'"
-        )));
-      }
-    };
-    let value =
-      crate::risk::expected_shortfall::expected_shortfall(samples.as_array(), confidence, pol, m);
-    Ok(Self { value })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      use crate::risk::var::PnlOrLoss;
+      use crate::risk::var::VarMethod;
+      let m = match method.to_ascii_lowercase().as_str() {
+        "gaussian" => VarMethod::Gaussian,
+        "historical" => VarMethod::Historical,
+        "monte_carlo" | "mc" => VarMethod::MonteCarlo,
+        o => {
+          return Err(PyValueError::new_err(format!(
+            "method must be one of gaussian/historical/monte_carlo, got '{o}'"
+          )));
+        }
+      };
+      let pol = match orientation.to_ascii_lowercase().as_str() {
+        "pnl" => PnlOrLoss::Pnl,
+        "loss" => PnlOrLoss::Loss,
+        o => {
+          return Err(PyValueError::new_err(format!(
+            "orientation must be 'pnl' or 'loss', got '{o}'"
+          )));
+        }
+      };
+      let value =
+        crate::risk::expected_shortfall::expected_shortfall(samples.as_array(), confidence, pol, m);
+      Ok(Self { value })
+    })?
   }
 
   #[getter]
@@ -114,10 +118,10 @@ pub struct PyDrawdownStats {
 #[pymethods]
 impl PyDrawdownStats {
   #[new]
-  fn new<'py>(equity: numpy::PyReadonlyArray1<'py, f64>) -> Self {
-    Self {
+  fn new<'py>(equity: numpy::PyReadonlyArray1<'py, f64>) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::risk::drawdown::DrawdownStats::from_equity(equity.as_array()),
-    }
+    })
   }
 
   #[getter]

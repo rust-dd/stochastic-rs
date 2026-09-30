@@ -39,40 +39,42 @@ impl PyLeverageSurface {
     times: PyReadonlyArray1<'_, f64>,
     values: PyReadonlyArray2<'_, f64>,
   ) -> PyResult<Self> {
-    let spots = spots.as_array().to_owned();
-    let times = times.as_array().to_owned();
-    let values = values.as_array().to_owned();
-    if spots.is_empty() || times.is_empty() {
-      return Err(PyValueError::new_err("spots and times must not be empty"));
-    }
-    if spots
-      .iter()
-      .chain(times.iter())
-      .chain(values.iter())
-      .any(|x| !x.is_finite())
-    {
-      return Err(PyValueError::new_err(
-        "spots, times and values must be finite",
-      ));
-    }
-    if spots.windows(2).into_iter().any(|w| w[0] >= w[1])
-      || times.windows(2).into_iter().any(|w| w[0] >= w[1])
-    {
-      return Err(PyValueError::new_err(
-        "spots and times must be strictly ascending",
-      ));
-    }
-    if values.dim() != (times.len(), spots.len()) {
-      return Err(PyValueError::new_err(format!(
-        "values must have shape (times, spots) = ({}, {}), got {:?}",
-        times.len(),
-        spots.len(),
-        values.dim()
-      )));
-    }
-    Ok(Self {
-      inner: LeverageSurface::new(spots, times, values),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let spots = spots.as_array().to_owned();
+      let times = times.as_array().to_owned();
+      let values = values.as_array().to_owned();
+      if spots.is_empty() || times.is_empty() {
+        return Err(PyValueError::new_err("spots and times must not be empty"));
+      }
+      if spots
+        .iter()
+        .chain(times.iter())
+        .chain(values.iter())
+        .any(|x| !x.is_finite())
+      {
+        return Err(PyValueError::new_err(
+          "spots, times and values must be finite",
+        ));
+      }
+      if spots.windows(2).into_iter().any(|w| w[0] >= w[1])
+        || times.windows(2).into_iter().any(|w| w[0] >= w[1])
+      {
+        return Err(PyValueError::new_err(
+          "spots and times must be strictly ascending",
+        ));
+      }
+      if values.dim() != (times.len(), spots.len()) {
+        return Err(PyValueError::new_err(format!(
+          "values must have shape (times, spots) = ({}, {}), got {:?}",
+          times.len(),
+          spots.len(),
+          values.dim()
+        )));
+      }
+      Ok(Self {
+        inner: LeverageSurface::new(spots, times, values),
+      })
+    })?
   }
 
   /// `L(s, t)` by bilinear interpolation, the nearest edge held flat outside
@@ -138,48 +140,50 @@ impl PyHestonSlvPricer {
     steps_per_year: usize,
     seed: u64,
   ) -> PyResult<Self> {
-    if [kappa, theta, sigma, v0]
-      .iter()
-      .any(|p| !(p.is_finite() && *p >= 0.0))
-    {
-      return Err(PyValueError::new_err(
-        "kappa, theta, sigma and v0 must be finite and non-negative",
-      ));
-    }
-    if !(0.0..=1.0).contains(&eta) {
-      return Err(PyValueError::new_err("eta must lie in [0, 1]"));
-    }
-    if !(-1.0..=1.0).contains(&rho) {
-      return Err(PyValueError::new_err("rho must lie in [-1, 1]"));
-    }
-    if n_paths == 0 || steps_per_year == 0 {
-      return Err(PyValueError::new_err(
-        "n_paths and steps_per_year must be positive",
-      ));
-    }
-    let params = HestonSlvParams {
-      kappa,
-      theta,
-      sigma,
-      rho,
-      v0,
-      eta,
-    };
-    let inner = match (r, q) {
-      (Some(r), Some(q)) => HestonSlvPricer::new(params, leverage.inner, r, q),
-      (None, None) => HestonSlvPricer::unanchored(params, leverage.inner),
-      _ => {
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      if [kappa, theta, sigma, v0]
+        .iter()
+        .any(|p| !(p.is_finite() && *p >= 0.0))
+      {
         return Err(PyValueError::new_err(
-          "pass both r and q to anchor the pricer to the calibration rates, or neither",
+          "kappa, theta, sigma and v0 must be finite and non-negative",
         ));
       }
-    };
-    Ok(Self {
-      inner: inner
-        .with_paths(n_paths)
-        .with_steps_per_year(steps_per_year)
-        .with_seed(seed),
-    })
+      if !(0.0..=1.0).contains(&eta) {
+        return Err(PyValueError::new_err("eta must lie in [0, 1]"));
+      }
+      if !(-1.0..=1.0).contains(&rho) {
+        return Err(PyValueError::new_err("rho must lie in [-1, 1]"));
+      }
+      if n_paths == 0 || steps_per_year == 0 {
+        return Err(PyValueError::new_err(
+          "n_paths and steps_per_year must be positive",
+        ));
+      }
+      let params = HestonSlvParams {
+        kappa,
+        theta,
+        sigma,
+        rho,
+        v0,
+        eta,
+      };
+      let inner = match (r, q) {
+        (Some(r), Some(q)) => HestonSlvPricer::new(params, leverage.inner, r, q),
+        (None, None) => HestonSlvPricer::unanchored(params, leverage.inner),
+        _ => {
+          return Err(PyValueError::new_err(
+            "pass both r and q to anchor the pricer to the calibration rates, or neither",
+          ));
+        }
+      };
+      Ok(Self {
+        inner: inner
+          .with_paths(n_paths)
+          .with_steps_per_year(steps_per_year)
+          .with_seed(seed),
+      })
+    })?
   }
 
   /// Raises when the pricer is anchored and `(r, q)` is not the calibration
@@ -357,49 +361,52 @@ impl PyHestonSlvCalibrator {
     variance_nodes: usize,
     inner_iterations: usize,
   ) -> PyResult<Self> {
-    let heston_params = |(v0, kappa, theta, sigma, rho): (f64, f64, f64, f64, f64)| HestonParams {
-      v0,
-      kappa,
-      theta,
-      sigma,
-      rho,
-    };
-    let calls = calls.as_array().to_owned();
-    let mut inner = HestonSlvCalibrator::new(s, r, q, strikes, maturities, calls)
-      .with_mixing(eta)
-      .with_dupire_eps(dupire_eps);
-    inner = match method.to_ascii_lowercase().as_str() {
-      "particle" => inner.with_particle_method(
-        ParticleMethod::default()
-          .with_particles(n_particles)
-          .with_steps_per_year(steps_per_year)
-          .with_seed(seed)
-          .with_bandwidth_factor(bandwidth_factor)
-          .with_bandwidth_t_min(bandwidth_t_min),
-      ),
-      "fokker_planck" | "fokker-planck" | "pde" => inner.with_fokker_planck(
-        FokkerPlanckMethod::default()
-          .with_nodes(log_spot_nodes, variance_nodes)
-          .with_steps_per_year(steps_per_year)
-          .with_inner_iterations(inner_iterations),
-      ),
-      other => {
-        return Err(PyValueError::new_err(format!(
-          "method must be 'particle' or 'fokker_planck', got '{other}'"
-        )));
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let heston_params =
+        |(v0, kappa, theta, sigma, rho): (f64, f64, f64, f64, f64)| HestonParams {
+          v0,
+          kappa,
+          theta,
+          sigma,
+          rho,
+        };
+      let calls = calls.as_array().to_owned();
+      let mut inner = HestonSlvCalibrator::new(s, r, q, strikes, maturities, calls)
+        .with_mixing(eta)
+        .with_dupire_eps(dupire_eps);
+      inner = match method.to_ascii_lowercase().as_str() {
+        "particle" => inner.with_particle_method(
+          ParticleMethod::default()
+            .with_particles(n_particles)
+            .with_steps_per_year(steps_per_year)
+            .with_seed(seed)
+            .with_bandwidth_factor(bandwidth_factor)
+            .with_bandwidth_t_min(bandwidth_t_min),
+        ),
+        "fokker_planck" | "fokker-planck" | "pde" => inner.with_fokker_planck(
+          FokkerPlanckMethod::default()
+            .with_nodes(log_spot_nodes, variance_nodes)
+            .with_steps_per_year(steps_per_year)
+            .with_inner_iterations(inner_iterations),
+        ),
+        other => {
+          return Err(PyValueError::new_err(format!(
+            "method must be 'particle' or 'fokker_planck', got '{other}'"
+          )));
+        }
+      };
+      if let Some(pinned) = heston {
+        inner = inner.with_heston_params(heston_params(pinned));
       }
-    };
-    if let Some(pinned) = heston {
-      inner = inner.with_heston_params(heston_params(pinned));
-    }
-    if let Some(guess) = heston_initial_guess {
-      inner = inner.with_heston_initial_guess(heston_params(guess));
-    }
-    if let Some(lv) = local_vol {
-      let lv = lv.as_array().to_owned();
-      inner = inner.with_local_vol(lv);
-    }
-    Ok(Self { inner })
+      if let Some(guess) = heston_initial_guess {
+        inner = inner.with_heston_initial_guess(heston_params(guess));
+      }
+      if let Some(lv) = local_vol {
+        let lv = lv.as_array().to_owned();
+        inner = inner.with_local_vol(lv);
+      }
+      Ok(Self { inner })
+    })?
   }
 
   fn calibrate(&self) -> PyResult<PyHestonSlvCalibrationResult> {

@@ -143,10 +143,10 @@ pub struct PyMultiCurve {
 #[pymethods]
 impl PyMultiCurve {
   #[new]
-  fn new(discount: &PyDiscountCurve) -> Self {
-    Self {
+  fn new(discount: &PyDiscountCurve) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::curves::multi_curve::MultiCurve::new(discount.inner.clone()),
-    }
+    })
   }
 
   /// Registers `curve` as the forecast curve of `tenor` (e.g. `"3M"`).
@@ -187,10 +187,10 @@ pub struct PyNelsonSiegel {
 #[pymethods]
 impl PyNelsonSiegel {
   #[new]
-  fn new(beta0: f64, beta1: f64, beta2: f64, lambda: f64) -> Self {
-    Self {
+  fn new(beta0: f64, beta1: f64, beta2: f64, lambda: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::curves::nelson_siegel::NelsonSiegel::new(beta0, beta1, beta2, lambda),
-    }
+    })
   }
 
   /// Fit Nelson-Siegel parameters to market zero rates.
@@ -231,13 +231,13 @@ impl PyZeroCouponInflationCurve {
   fn new<'py>(
     pillars: numpy::PyReadonlyArray1<'py, f64>,
     breakevens: numpy::PyReadonlyArray1<'py, f64>,
-  ) -> Self {
-    Self {
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
       inner: crate::inflation::curve::ZeroCouponInflationCurve::new(
         pillars.as_array().to_owned(),
         breakevens.as_array().to_owned(),
       ),
-    }
+    })
   }
 
   /// Forward CPI index ratio $I(0, T)/I(0, 0) = (1 + b(T))^T$.

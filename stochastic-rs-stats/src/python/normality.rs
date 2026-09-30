@@ -10,11 +10,13 @@ pub struct PyJarqueBera {
 impl PyJarqueBera {
   #[new]
   #[pyo3(signature = (sample, alpha=0.05))]
-  fn new<'py>(sample: PyReadonlyArray1<'py, f64>, alpha: f64) -> Self {
-    let cfg = crate::normality::jarque_bera::JarqueBeraConfig { alpha };
-    let view = sample.as_array();
-    let inner = crate::normality::jarque_bera::jarque_bera_test(view, cfg);
-    Self { inner }
+  fn new<'py>(sample: PyReadonlyArray1<'py, f64>, alpha: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let cfg = crate::normality::jarque_bera::JarqueBeraConfig { alpha };
+      let view = sample.as_array();
+      let inner = crate::normality::jarque_bera::jarque_bera_test(view, cfg);
+      Self { inner }
+    })
   }
 
   #[getter]
@@ -52,11 +54,13 @@ pub struct PyAndersonDarling {
 impl PyAndersonDarling {
   #[new]
   #[pyo3(signature = (sample, alpha=0.05))]
-  fn new<'py>(sample: PyReadonlyArray1<'py, f64>, alpha: f64) -> Self {
-    let cfg = crate::normality::anderson_darling::AndersonDarlingConfig { alpha };
-    let view = sample.as_array();
-    let inner = crate::normality::anderson_darling::anderson_darling_normal_test(view, cfg);
-    Self { inner }
+  fn new<'py>(sample: PyReadonlyArray1<'py, f64>, alpha: f64) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let cfg = crate::normality::anderson_darling::AndersonDarlingConfig { alpha };
+      let view = sample.as_array();
+      let inner = crate::normality::anderson_darling::anderson_darling_normal_test(view, cfg);
+      Self { inner }
+    })
   }
 
   #[getter]
@@ -94,15 +98,17 @@ impl PyShapiroFrancia {
     alpha: f64,
     bootstrap_samples: usize,
     bootstrap_seed: u64,
-  ) -> Self {
-    let cfg = crate::normality::shapiro_francia::ShapiroFranciaConfig {
-      alpha,
-      bootstrap_samples,
-      bootstrap_seed,
-    };
-    let view = sample.as_array();
-    let inner = crate::normality::shapiro_francia::shapiro_francia_test(view, cfg);
-    Self { inner }
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let cfg = crate::normality::shapiro_francia::ShapiroFranciaConfig {
+        alpha,
+        bootstrap_samples,
+        bootstrap_seed,
+      };
+      let view = sample.as_array();
+      let inner = crate::normality::shapiro_francia::shapiro_francia_test(view, cfg);
+      Self { inner }
+    })
   }
 
   #[getter]

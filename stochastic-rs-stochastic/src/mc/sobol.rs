@@ -467,12 +467,16 @@ impl PySobolSeq {
   /// on the Owen-type scramble.
   #[new]
   #[pyo3(signature = (n_dims, seed=None))]
-  fn new(n_dims: usize, seed: Option<u64>) -> Self {
-    let inner = match seed {
-      Some(s) => SobolSeq::scrambled(n_dims, &stochastic_rs_core::simd_rng::Deterministic::new(s)),
-      None => SobolSeq::new(n_dims),
-    };
-    Self { inner }
+  fn new(n_dims: usize, seed: Option<u64>) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let inner = match seed {
+        Some(s) => {
+          SobolSeq::scrambled(n_dims, &stochastic_rs_core::simd_rng::Deterministic::new(s))
+        }
+        None => SobolSeq::new(n_dims),
+      };
+      Self { inner }
+    })
   }
 
   /// `(n_points, n_dims)` array of points in `[0, 1)`.
@@ -480,9 +484,11 @@ impl PySobolSeq {
     &self,
     py: pyo3::Python<'py>,
     n_points: usize,
-  ) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
-    use numpy::IntoPyArray;
-    self.inner.sample::<f64>(n_points).into_pyarray(py)
+  ) -> pyo3::PyResult<pyo3::Bound<'py, numpy::PyArray2<f64>>> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      self.inner.sample::<f64>(n_points).into_pyarray(py)
+    })
   }
 
   #[getter]

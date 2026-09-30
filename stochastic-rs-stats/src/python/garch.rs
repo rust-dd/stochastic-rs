@@ -24,29 +24,31 @@ impl PyGarchFit {
     q: usize,
     mean: &str,
   ) -> PyResult<Self> {
-    let kind = match kind.to_ascii_lowercase().as_str() {
-      "garch" => GarchKind::Garch,
-      "gjr" | "gjr-garch" | "gjrgarch" => GarchKind::GjrGarch,
-      "egarch" => GarchKind::Egarch,
-      other => {
-        return Err(PyValueError::new_err(format!(
-          "kind must be one of garch/gjr/egarch, got '{other}'"
-        )));
-      }
-    };
-    let mean = match mean.to_ascii_lowercase().as_str() {
-      "constant" => MeanSpec::Constant,
-      "zero" => MeanSpec::Zero,
-      other => {
-        return Err(PyValueError::new_err(format!(
-          "mean must be one of constant/zero, got '{other}'"
-        )));
-      }
-    };
-    let spec = GarchSpec { kind, p, q, mean };
-    Ok(Self {
-      inner: crate::garch::garch_fit(returns.as_array(), spec),
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> PyResult<Self> {
+      let kind = match kind.to_ascii_lowercase().as_str() {
+        "garch" => GarchKind::Garch,
+        "gjr" | "gjr-garch" | "gjrgarch" => GarchKind::GjrGarch,
+        "egarch" => GarchKind::Egarch,
+        other => {
+          return Err(PyValueError::new_err(format!(
+            "kind must be one of garch/gjr/egarch, got '{other}'"
+          )));
+        }
+      };
+      let mean = match mean.to_ascii_lowercase().as_str() {
+        "constant" => MeanSpec::Constant,
+        "zero" => MeanSpec::Zero,
+        other => {
+          return Err(PyValueError::new_err(format!(
+            "mean must be one of constant/zero, got '{other}'"
+          )));
+        }
+      };
+      let spec = GarchSpec { kind, p, q, mean };
+      Ok(Self {
+        inner: crate::garch::garch_fit(returns.as_array(), spec),
+      })
+    })?
   }
 
   /// Parameter names in the order of `params()`.

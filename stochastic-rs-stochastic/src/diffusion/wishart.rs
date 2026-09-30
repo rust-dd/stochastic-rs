@@ -631,54 +631,64 @@ impl PyWishart {
     n: usize,
     t: Option<f64>,
     seed: Option<u64>,
-  ) -> Self {
-    let (b, a, x0) = (
-      b.as_array().to_owned(),
-      a.as_array().to_owned(),
-      x0.as_array().to_owned(),
-    );
-    match seed {
-      Some(s) => Self {
-        inner: None,
-        seeded: Some(Wishart::new(
-          alpha,
-          b,
-          a,
-          x0,
-          n,
-          t,
-          stochastic_rs_core::simd_rng::Deterministic::new(s),
-        )),
-      },
-      None => Self {
-        inner: Some(Wishart::new(alpha, b, a, x0, n, t, Unseeded)),
-        seeded: None,
-      },
-    }
+  ) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let (b, a, x0) = (
+        b.as_array().to_owned(),
+        a.as_array().to_owned(),
+        x0.as_array().to_owned(),
+      );
+      match seed {
+        Some(s) => Self {
+          inner: None,
+          seeded: Some(Wishart::new(
+            alpha,
+            b,
+            a,
+            x0,
+            n,
+            t,
+            stochastic_rs_core::simd_rng::Deterministic::new(s),
+          )),
+        },
+        None => Self {
+          inner: Some(Wishart::new(alpha, b, a, x0, n, t, Unseeded)),
+          seeded: None,
+        },
+      }
+    })
   }
 
   /// One `(n, d, d)` array of matrices along the grid.
-  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::Py<pyo3::PyAny> {
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
-    crate::py_dispatch_f64!(self, |inner| inner
-      .sample()
-      .into_pyarray(py)
-      .into_py_any(py)
-      .unwrap())
+  fn sample<'py>(&self, py: pyo3::Python<'py>) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      use pyo3::IntoPyObjectExt;
+      crate::py_dispatch_f64!(self, |inner| inner
+        .sample()
+        .into_pyarray(py)
+        .into_py_any(py)
+        .unwrap())
+    })
   }
 
   /// `m` independent paths as a list of `(n, d, d)` arrays.
-  fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize) -> pyo3::Py<pyo3::PyAny> {
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
-    crate::py_dispatch_f64!(self, |inner| {
-      let paths: Vec<pyo3::Py<pyo3::PyAny>> = inner
-        .sample_par(m)
-        .into_iter()
-        .map(|p| p.into_pyarray(py).into_py_any(py).unwrap())
-        .collect();
-      paths.into_py_any(py).unwrap()
+  fn sample_par<'py>(
+    &self,
+    py: pyo3::Python<'py>,
+    m: usize,
+  ) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      use pyo3::IntoPyObjectExt;
+      crate::py_dispatch_f64!(self, |inner| {
+        let paths: Vec<pyo3::Py<pyo3::PyAny>> = inner
+          .sample_par(m)
+          .into_iter()
+          .map(|p| p.into_pyarray(py).into_py_any(py).unwrap())
+          .collect();
+        paths.into_py_any(py).unwrap()
+      })
     })
   }
 

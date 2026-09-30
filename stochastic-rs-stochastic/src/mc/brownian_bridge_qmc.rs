@@ -243,16 +243,18 @@ impl PyBrownianBridgeQmc {
   /// scramble of the underlying sequence.
   #[new]
   #[pyo3(signature = (steps, horizon, seed=None))]
-  fn new(steps: usize, horizon: f64, seed: Option<u64>) -> Self {
-    let inner = match seed {
-      Some(s) => BrownianBridgeQmc::scrambled(
-        steps,
-        horizon,
-        &stochastic_rs_core::simd_rng::Deterministic::new(s),
-      ),
-      None => BrownianBridgeQmc::new(steps, horizon),
-    };
-    Self { inner }
+  fn new(steps: usize, horizon: f64, seed: Option<u64>) -> pyo3::PyResult<Self> {
+    stochastic_rs_distributions::python::value_error_on_panic(|| {
+      let inner = match seed {
+        Some(s) => BrownianBridgeQmc::scrambled(
+          steps,
+          horizon,
+          &stochastic_rs_core::simd_rng::Deterministic::new(s),
+        ),
+        None => BrownianBridgeQmc::new(steps, horizon),
+      };
+      Self { inner }
+    })
   }
 
   /// `(n_paths, steps)` array of Brownian levels `W_{t_1} … W_{t_m}`.

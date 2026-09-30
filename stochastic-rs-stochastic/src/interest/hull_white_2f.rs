@@ -306,41 +306,43 @@ impl PyHullWhite2F {
     seed: Option<u64>,
     device: Option<&str>,
   ) -> pyo3::PyResult<Self> {
-    let device = crate::python_device::Device::parse(device, "f64")?;
-    Ok(match seed {
-      Some(s) => Self {
-        device,
-        inner: None,
-        seeded: Some(HullWhite2F::new(
-          Fn1D::Py(theta),
-          a,
-          sigma1,
-          sigma2,
-          rho,
-          b,
-          x0,
-          t,
-          n,
-          crate::python_device::SharedSeed::new(s),
-        )),
-      },
-      None => Self {
-        device,
-        inner: Some(HullWhite2F::new(
-          Fn1D::Py(theta),
-          a,
-          sigma1,
-          sigma2,
-          rho,
-          b,
-          x0,
-          t,
-          n,
-          Unseeded,
-        )),
-        seeded: None,
-      },
-    })
+    stochastic_rs_distributions::python::value_error_on_panic(|| -> pyo3::PyResult<Self> {
+      let device = crate::python_device::Device::parse(device, "f64")?;
+      Ok(match seed {
+        Some(s) => Self {
+          device,
+          inner: None,
+          seeded: Some(HullWhite2F::new(
+            Fn1D::Py(theta),
+            a,
+            sigma1,
+            sigma2,
+            rho,
+            b,
+            x0,
+            t,
+            n,
+            crate::python_device::SharedSeed::new(s),
+          )),
+        },
+        None => Self {
+          device,
+          inner: Some(HullWhite2F::new(
+            Fn1D::Py(theta),
+            a,
+            sigma1,
+            sigma2,
+            rho,
+            b,
+            x0,
+            t,
+            n,
+            Unseeded,
+          )),
+          seeded: None,
+        },
+      })
+    })?
   }
 
   /// The reason a device kernel cannot carry this configuration, if there is
@@ -358,17 +360,22 @@ impl PyHullWhite2F {
     self.device_fallback().is_none()
   }
 
-  fn sample<'py>(&self, py: pyo3::Python<'py>) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
+  fn sample<'py>(
+    &self,
+    py: pyo3::Python<'py>,
+  ) -> pyo3::PyResult<(pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>)> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use numpy::IntoPyArray;
+      use pyo3::IntoPyObjectExt;
 
-    use crate::traits::ProcessExt;
-    py_device_dispatch_f64!(self, |inner| {
-      let [a, b] = inner.sample();
-      (
-        a.into_pyarray(py).into_py_any(py).unwrap(),
-        b.into_pyarray(py).into_py_any(py).unwrap(),
-      )
+      use crate::traits::ProcessExt;
+      py_device_dispatch_f64!(self, |inner| {
+        let [a, b] = inner.sample();
+        (
+          a.into_pyarray(py).into_py_any(py).unwrap(),
+          b.into_pyarray(py).into_py_any(py).unwrap(),
+        )
+      })
     })
   }
 
@@ -380,25 +387,27 @@ impl PyHullWhite2F {
     &self,
     py: pyo3::Python<'py>,
     m: usize,
-  ) -> (pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>) {
-    use ndarray::Array2;
-    use numpy::IntoPyArray;
-    use pyo3::IntoPyObjectExt;
+  ) -> pyo3::PyResult<(pyo3::Py<pyo3::PyAny>, pyo3::Py<pyo3::PyAny>)> {
+    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+      use ndarray::Array2;
+      use numpy::IntoPyArray;
+      use pyo3::IntoPyObjectExt;
 
-    use crate::traits::ProcessExt;
-    py_device_dispatch_f64!(self, |inner| {
-      let paths = py.detach(|| inner.sample_par(m));
-      let n = paths.first().map_or(0, |p| p[0].len());
-      let mut first = Array2::zeros((m, n));
-      let mut second = Array2::zeros((m, n));
-      for (i, path) in paths.iter().enumerate() {
-        first.row_mut(i).assign(&path[0]);
-        second.row_mut(i).assign(&path[1]);
-      }
-      (
-        first.into_pyarray(py).into_py_any(py).unwrap(),
-        second.into_pyarray(py).into_py_any(py).unwrap(),
-      )
+      use crate::traits::ProcessExt;
+      py_device_dispatch_f64!(self, |inner| {
+        let paths = py.detach(|| inner.sample_par(m));
+        let n = paths.first().map_or(0, |p| p[0].len());
+        let mut first = Array2::zeros((m, n));
+        let mut second = Array2::zeros((m, n));
+        for (i, path) in paths.iter().enumerate() {
+          first.row_mut(i).assign(&path[0]);
+          second.row_mut(i).assign(&path[1]);
+        }
+        (
+          first.into_pyarray(py).into_py_any(py).unwrap(),
+          second.into_pyarray(py).into_py_any(py).unwrap(),
+        )
+      })
     })
   }
 }
