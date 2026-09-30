@@ -11,7 +11,7 @@ members = [
 ]
 
 [workspace.package]
-version = "3.0.0-rc.3"
+version = "3.0.0-rc.4"
 rust-version = "1.89"
 
 [workspace.dependencies]
@@ -56,13 +56,13 @@ slsqp = "1.0.0"
 # `statrs` is dev-deps only — used for cross-validating our closed-form
 # `DistributionExt` impls. Production code never delegates to it.
 statrs = "0.18.0"
-stochastic-rs-ai = { path = "stochastic-rs-ai", version = "3.0.0-rc.3" }
-stochastic-rs-copulas = { path = "stochastic-rs-copulas", version = "3.0.0-rc.3" }
-stochastic-rs-core = { path = "stochastic-rs-core", version = "3.0.0-rc.3" }
-stochastic-rs-distributions = { path = "stochastic-rs-distributions", version = "3.0.0-rc.3" }
-stochastic-rs-quant = { path = "stochastic-rs-quant", version = "3.0.0-rc.3" }
-stochastic-rs-stats = { path = "stochastic-rs-stats", version = "3.0.0-rc.3" }
-stochastic-rs-stochastic = { path = "stochastic-rs-stochastic", version = "3.0.0-rc.3" }
+stochastic-rs-ai = { path = "stochastic-rs-ai", version = "3.0.0-rc.4" }
+stochastic-rs-copulas = { path = "stochastic-rs-copulas", version = "3.0.0-rc.4" }
+stochastic-rs-core = { path = "stochastic-rs-core", version = "3.0.0-rc.4" }
+stochastic-rs-distributions = { path = "stochastic-rs-distributions", version = "3.0.0-rc.4" }
+stochastic-rs-quant = { path = "stochastic-rs-quant", version = "3.0.0-rc.4" }
+stochastic-rs-stats = { path = "stochastic-rs-stats", version = "3.0.0-rc.4" }
+stochastic-rs-stochastic = { path = "stochastic-rs-stochastic", version = "3.0.0-rc.4" }
 syn = { version = "3.0.3", default-features = false, features = ["full", "parsing"] }
 tikv-jemallocator = "0.6.1"
 time = { version = "0.3.36", features = ["formatting", "parsing"] }

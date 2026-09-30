@@ -167,6 +167,16 @@ three-way convention (invalid parameter → panic; not computable → documented
 - `Fbm` / `Fgn` on a device backend draw their own stream; host and
   device paths agree in distribution, not bit for bit.
 
+## Closed-form values that change
+
+From rc.4, `erf`, `erfc`, `norm_cdf` and `ndtri` in
+`stochastic_rs_distributions::special` are exact to double precision; v2.6
+used Abramowitz–Stegun 7.1.26 for `erf` (1.5e-7 relative) and Acklam's
+approximation for `ndtri` (1.15e-9). Closed-form prices, Greeks and implied
+volatilities move in the seventh significant digit or later, so a test that
+pinned one to more digits needs re-pinning. The tails no longer cancel:
+`norm_cdf(-10)` is 7.6e-24, not 0.
+
 ## Prelude and hub
 
 - `MultivariateExt` joined the prelude (the linear-algebra stack moved to
@@ -186,6 +196,10 @@ three-way convention (invalid parameter → panic; not computable → documented
   entry point for the Euler engine.
 - The AI classes (`HestonNn`, `RBergomiNn`, `OneFactorNn`,
   `calibrate_surrogate`) are behind the `ai` feature.
+- From rc.4, a panic in a constructor raises `ValueError` and one in
+  `sample` / `sample_par` raises `RuntimeError`, not
+  `pyo3_runtime.PanicException` (a `BaseException`); code that caught
+  `PanicException` around those calls catches the ordinary exception instead.
 
 ## What is not a breaking change
 
