@@ -1,5 +1,7 @@
 {
   "$schema": "https://context7.com/schema/context7.json",
+  "url": "https://context7.com/rust-dd/stochastic-rs",
+  "public_key": "pk_55Guna9pYbHz0AtehUEh4",
   "projectTitle": "stochastic-rs",
   "description": "Quantitative finance for Rust and Python: 130+ stochastic processes on the CPU and GPU, option pricing, model calibration, volatility surfaces, statistics and copulas.",
   "folders": [],
