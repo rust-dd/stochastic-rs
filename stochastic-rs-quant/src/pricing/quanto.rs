@@ -111,15 +111,14 @@ mod tests {
   ///   1.5 * (105 * np.exp(-0.04) * norm.cdf(-d2) - 100 * np.exp((b - 0.08) * 0.5) * norm.cdf(-d1))  # 12.2976985036
   /// A 4·10⁶-path Monte Carlo of the domestic-measure joint lognormal
   /// (`S·E` drifting at `r − q`, `E` at `r − r_f`, no quanto-drift assumption)
-  /// gave 5.29214 ± 0.00532 for the call. The tolerance follows the crate's
-  /// `norm_cdf` (Abramowitz–Stegun 7.1.26 erf, 1.5e-7 absolute), which moves
-  /// a price of this size by up to ~3e-5.
+  /// gave 5.29214 ± 0.00532 for the call. The tolerance is the references'
+  /// own ten-decimal rounding.
   #[test]
   fn matches_the_reiner_formula_on_the_haug_example() {
     let (s, k, r, q, tau) = Q;
     let (call, put) = MODEL.call_put(s, k, r, q, tau);
-    assert!((call - 5.2936847941).abs() < 1e-4, "call {call}");
-    assert!((put - 12.2976985036).abs() < 1e-4, "put {put}");
+    assert!((call - 5.2936847941).abs() < 1e-9, "call {call}");
+    assert!((put - 12.2976985036).abs() < 1e-9, "put {put}");
     assert!((MODEL.forward(s, q, tau) - 150.2101470686).abs() < 1e-9);
   }
 

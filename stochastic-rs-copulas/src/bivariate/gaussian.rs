@@ -259,13 +259,8 @@ mod tests {
 
   /// Φ₂(0,0;ρ) = 1/4 + asin(ρ)/(2π); ρ=0.5 → 1/3 exactly.
   ///
-  /// Tolerance is `1e-6`, not the formula's own `f64` precision: `cdf`
-  /// routes through [`stochastic_rs_distributions::special::norm_cdf`],
-  /// whose `erf` is the Abramowitz-Stegun 7.1.26 rational approximation
-  /// (~1.5e-7 relative error by its own doc comment). At this exactly
-  /// symmetric point the two `norm_cdf` calls should cancel to `0.0` in
-  /// `Φ(x) + Φ(y) - 1`, so the approximation's residual at `x=0` (~1e-9)
-  /// leaks directly into the result.
+  /// At this exactly symmetric point the two `norm_cdf` calls cancel to
+  /// `0.0` in `Φ(x) + Φ(y) - 1`, so the result is the formula's own.
   #[test]
   fn gaussian_cdf_matches_closed_form_at_origin() {
     let mut c = GaussianCopula::new();
@@ -274,10 +269,10 @@ mod tests {
     let cdf = c.cdf(&x).unwrap()[0];
     let expected = 0.25 + (0.5_f64).asin() / (2.0 * std::f64::consts::PI);
     assert!(
-      approx(cdf, expected, 1e-6),
+      approx(cdf, expected, 1e-12),
       "got {cdf}, expected {expected}"
     );
-    assert!(approx(cdf, 1.0 / 3.0, 1e-6), "got {cdf}, expected 1/3");
+    assert!(approx(cdf, 1.0 / 3.0, 1e-12), "got {cdf}, expected 1/3");
   }
 
   /// ρ=0.6 → τ → compute_theta → ρ.
@@ -322,11 +317,8 @@ mod tests {
 
   /// percent_point(partial_derivative(u,v), v) == u.
   ///
-  /// Tolerance `1e-6` (not raw `f64` precision): the round trip crosses
-  /// `norm_cdf`'s ~1.5e-7-relative-error `erf` approximation twice (once
-  /// in `partial_derivative`, once in `percent_point`), see
-  /// [`gaussian_cdf_matches_closed_form_at_origin`] for the same root
-  /// cause.
+  /// The round trip crosses `norm_cdf` twice (once in
+  /// `partial_derivative`, once in `percent_point`).
   #[test]
   fn gaussian_h_inverse_roundtrip() {
     let mut c = GaussianCopula::new();
@@ -337,7 +329,7 @@ mod tests {
     let u_back = c
       .percent_point(&Array1::from_vec(vec![p]), &Array1::from_vec(vec![v]))
       .unwrap()[0];
-    assert!(approx(u_back, u, 1e-6), "got {u_back}, expected {u}");
+    assert!(approx(u_back, u, 1e-12), "got {u_back}, expected {u}");
   }
 
   #[test]

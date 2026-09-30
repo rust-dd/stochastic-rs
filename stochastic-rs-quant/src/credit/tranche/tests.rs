@@ -51,9 +51,9 @@ fn zero_correlation_loss_distribution_is_binomial() {
   let t = 3.0;
   let p_true = pool[0].survival.default_probability(t);
   // The factor integrand round-trips p through the crate's `ndtri`/`norm_cdf`
-  // pair (Abramowitz–Stegun erf, 1.5e-7), so the recursion sees this p.
+  // pair, so the recursion sees this p.
   let p = norm_cdf(ndtri(p_true));
-  assert!((p - p_true).abs() < 1e-6);
+  assert!((p - p_true).abs() < 1e-14);
   let dist = tranche.loss_distribution(&pool, t);
   let unit_loss = ((1.0 - recovery) / n as f64 * (n * 1000) as f64).round() as usize;
   let mut binom = 1.0;

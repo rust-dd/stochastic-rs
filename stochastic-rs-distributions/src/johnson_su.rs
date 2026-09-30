@@ -270,10 +270,7 @@ mod tests {
   }
 
   /// `scipy.stats.johnsonsu(a=γ, b=δ, loc=ξ, scale=λ)`: pdf / cdf on a grid
-  /// and `stats('mvsk')`, `median`, `ppf`. The pdf and moments agree to
-  /// 1e-12; the cdf and quantile inherit the crate's `erf` (A&S 7.1.26,
-  /// 1.5e-7) and `ndtri` (Acklam, 1.15e-9) accuracy, so they are held at
-  /// 3e-6 and 1e-7 respectively.
+  /// and `stats('mvsk')`, `median`, `ppf`, all agreeing to 1e-12.
   #[test]
   fn matches_scipy_johnsonsu() {
     let cases: [((f64, f64, f64, f64), [(f64, f64, f64); 6], [f64; 7]); 2] = [
@@ -322,7 +319,7 @@ mod tests {
       let dist = SimdJohnsonSu::<f64>::new(g, d, xi, lam, &Unseeded);
       for (x, pdf, cdf) in grid {
         assert!(close(dist.pdf(x), pdf, 1e-12), "pdf({x}) = {}", dist.pdf(x));
-        assert!(close(dist.cdf(x), cdf, 3e-6), "cdf({x}) = {}", dist.cdf(x));
+        assert!(close(dist.cdf(x), cdf, 1e-12), "cdf({x}) = {}", dist.cdf(x));
       }
       assert!(close(dist.mean(), stats[0], 1e-12), "mean {}", dist.mean());
       assert!(
@@ -346,17 +343,17 @@ mod tests {
         dist.median()
       );
       assert!(
-        close(dist.inv_cdf(0.9), stats[5], 1e-7),
+        close(dist.inv_cdf(0.9), stats[5], 1e-12),
         "ppf(0.9) {}",
         dist.inv_cdf(0.9)
       );
       assert!(
-        close(dist.inv_cdf(0.05), stats[6], 1e-7),
+        close(dist.inv_cdf(0.05), stats[6], 1e-12),
         "ppf(0.05) {}",
         dist.inv_cdf(0.05)
       );
       for p in [0.01, 0.3, 0.5, 0.8, 0.99] {
-        assert!((dist.cdf(dist.inv_cdf(p)) - p).abs() < 1e-6);
+        assert!((dist.cdf(dist.inv_cdf(p)) - p).abs() < 1e-12);
       }
     }
   }
