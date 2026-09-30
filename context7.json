@@ -27,9 +27,9 @@
   "excludeFiles": ["CLAUDE.md", "MIGRATION.md", "CUDA_BENCHMARK.md"],
   "rules": [
     "Bring the core traits into scope with `use stochastic_rs::prelude::*;` (ProcessExt, ModelPricer, Calibrator, DistributionExt, BivariateExt).",
-    "A process is built from its parameters, the step count `n`, an optional start value `x0` and horizon `t`, and a seed source: `Unseeded` or `Deterministic::new(seed)` from `stochastic_rs::simd_rng`. Call `sample()` for one path and `sample_par(m)` for `m` paths in parallel.",
+    "Build a process from its parameters, the step count `n`, an optional start `x0` and horizon `t`, and a seed: `Unseeded` or `Deterministic::new(seed)` from `stochastic_rs::simd_rng`. `sample()` gives one path, `sample_par(m)` gives `m` paths in parallel.",
     "In Rust a pricer holds only the model parameters and takes the query as arguments: `price_call(s, k, r, q, tau)` / `price_put(s, k, r, q, tau)`.",
-    "In Python (`import stochastic_rs as srs`), processes and distributions carry a `Py` prefix (`srs.PyHeston`, `srs.PyOu`, `srs.PyGbm`); pricers, calibrators and estimators do not (`srs.HestonPricer`, `srs.HestonCalibrator`, `srs.FukasawaHurst`). Arrays go in and come out as NumPy.",
+    "In Python (`import stochastic_rs as srs`), processes and distributions carry a `Py` prefix (`srs.PyHeston`, `srs.PyGbm`); pricers, calibrators and estimators do not (`srs.HestonPricer`, `srs.HestonCalibrator`). Arrays are NumPy in and out.",
     "Sample on a GPU with `.on::<Cuda>()` or `.on::<Metal>()` (cargo features `cuda` / `metal`); in Python pass `device=\"cuda\"` or `device=\"metal\"`, which needs a source build with that feature — the PyPI wheels are CPU-only.",
     "Draw randomness from the crate's own generators (`SimdRng`, `SimdNormal` and the other `Simd*` distributions, seeded at construction), not from `rand::thread_rng` or `rand_distr` distributions."
   ],
