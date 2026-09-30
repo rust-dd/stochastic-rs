@@ -22,11 +22,18 @@ const COVERED: &[&str] = &[
   "Arima",
   "BilateralGamma",
   "BlackKarasinski",
+  "Bm",
+  "BrownianBridge",
+  "Cgns",
   "Cir",
   "Egarch",
+  "Fgn",
   "GammaSubordinator",
   "Garch",
+  "Gbm",
+  "GbmLog",
   "GjrGarch",
+  "Gn",
   "Gompertz",
   "HoLee",
   "HullWhite",
@@ -45,7 +52,7 @@ const COVERED: &[&str] = &[
 
 /// The floor the covered count may not fall below. Raise it with the wave
 /// that earns it; never lower it.
-const FLOOR: usize = 26;
+const FLOOR: usize = 33;
 
 /// Every `ProcessExt` implementor the crate declares, by type name.
 fn declared_processes() -> BTreeSet<String> {

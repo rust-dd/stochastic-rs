@@ -16,7 +16,9 @@ mod laws {
   pub(crate) mod autoregressive;
   pub(crate) mod bounded;
   pub(crate) mod common;
+  pub(crate) mod diffusion;
   pub(crate) mod inventory;
   pub(crate) mod levy;
+  pub(crate) mod noise;
   pub(crate) mod short_rate;
 }
