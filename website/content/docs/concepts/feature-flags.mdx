@@ -15,13 +15,18 @@ Rust core.
 | Feature           | Owner crate                 | Pulls in                             | Use when                                  |
 |-------------------|-----------------------------|--------------------------------------|-------------------------------------------|
 | `ai`              | umbrella                    | `stochastic-rs-ai`, `candle-core`    | NN volatility surrogates                  |
-| `cuda`     | `-stochastic`               | `cudarc` + cuFFT + NVRTC             | NVIDIA GPU: FGN / fBM (cuFFT) and the Euler engine kernels for `Gbm` / `Ou` / `Cir` (`Cuda` backend, `f32` or `f64`) |
+| `cuda`            | `-stochastic`               | `cudarc` + cuFFT + NVRTC             | NVIDIA GPU: FGN / fBM (cuFFT) and the Euler engine kernels every other process runs on (`Cuda` backend, `f32` or `f64`) |
 | `metal`           | `-stochastic`               | `metal`                             | Apple GPU: FGN / fBM and the Euler engine in hand-written MSL (`Metal` backend, `f32`) |
 | `accelerate`      | `-stochastic`               | Apple vDSP (system framework)       | macOS CPU-FFT FGN / fBM (`Accelerate` backend; a host device for every process) |
 | `python`          | `-py` (cdylib)              | `pyo3`, `numpy`                      | Building the wheel via maturin            |
 | `ai-metal`        | umbrella                    | `candle-core/metal`                  | candle's Metal back-end for surrogate training (`ai::device::best_available`); CUDA comes from `candle-core/cuda` in the consuming manifest |
 | `ai`, `metal`, `cuda`, `accelerate` | `-py` | the sub-crate features above | Source-build extras of the Python module (`maturin develop --features …`): the surrogates + `calibrate_surrogate`, and the device back-ends behind the process classes' `device=`; none of them is in the published wheels |
-| `hotpath`         | umbrella                    | `tracing-subscriber`                 | Hot-path profiling helpers                |
+| `hotpath`         | umbrella                    | `hotpath`                            | Hot-path profiling: per-function timing of the instrumented paths |
+| `hotpath-alloc`   | umbrella                    | `hotpath` with allocation tracking   | The same profiling plus per-function allocation counts |
+| `jemalloc`        | umbrella                    | `tikv-jemallocator`                  | jemalloc as the global allocator; it wins if `mimalloc` is enabled too |
+| `mimalloc`        | umbrella                    | `mimalloc`                           | mimalloc as the global allocator          |
+| `viz`             | umbrella → `-quant`, `-ai`  | `plotly`                             | HTML plots: the SABR smile calibrator's plots, and the surrogate fit plots when `ai` is on too (`viz` alone does not pull in `ai`) |
+| `yahoo`           | umbrella → `-quant`         | `yahoo_finance_api`, `polars`, `time`, `tokio-test` | Experimental: downloading Yahoo Finance market data into cleaned OHLCV series (`quant::yahoo`, `market::yahoo_provider`) |
 | `dual-stream-rng` | `-core`, `-distributions`   | none (additive)                      | ~2–6 % bulk Normal-Ziggurat speedup on Apple Silicon (Exp at parity) — see [seeding](/docs/concepts/seeding#dual-stream-rng-feature) |
 
 The GPU / accelerator features above select a sampling backend chosen at compile
@@ -35,9 +40,9 @@ relevant sub-crate. Example from the umbrella `Cargo.toml`:
 ```toml
 [features]
 default = []
-ai      = ["stochastic-rs-ai"]
-cuda = ["dep:cudarc", "stochastic-rs-stochastic/cuda"]
-metal       = ["dep:metal", "stochastic-rs-stochastic/metal"]
+ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]
+cuda = ["dep:cudarc", "cudarc/cufft", "stochastic-rs-stochastic/cuda"]
+metal = ["dep:metal", "stochastic-rs-stochastic/metal"]
 dual-stream-rng = [
   "stochastic-rs-core/dual-stream-rng",
   "stochastic-rs-distributions/dual-stream-rng",
@@ -48,7 +53,7 @@ If you depend on a sub-crate directly (recommended for lean builds),
 you enable the feature on that sub-crate:
 
 ```toml
-stochastic-rs-stats = { version = "3.0.0-beta.3" }
+stochastic-rs-stats = { version = "3.0.0-rc.3" }
 ```
 
 ## Common gotchas
@@ -63,7 +68,7 @@ stochastic-rs-stats = { version = "3.0.0-beta.3" }
 ## Defining a new feature
 
 When adding a new optional dependency, follow the
-[feature-flag-management SKILL](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/feature-flag-management/SKILL.md).
+[feature-flag-management SKILL](https://github.com/rust-dd/stochastic-rs/blob/main/.claude/skills/feature-flag-management/SKILL.md).
 The short version:
 
 1. Add the feature on the **owner** sub-crate (where the optional
