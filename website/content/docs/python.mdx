@@ -194,3 +194,10 @@ SKILL (comprehensive) or
 - **`sample_par(m, n)` shape**. The returned array is `(m, n)`, with
   `m` independent paths along axis 0. This matches NumPy's row-major
   default for downstream `.mean(axis=0)` reductions.
+- **Errors are ordinary exceptions**. A constructor that rejects its
+  arguments raises `ValueError`, and a process, distribution or copula
+  whose sampling fails raises `RuntimeError`, both carrying the Rust
+  message, so `except Exception` catches them. Other methods (densities,
+  pricing, calibration, estimation) raise `ValueError` where they check
+  their inputs; an unchecked failure inside one still surfaces as
+  `pyo3_runtime.PanicException`, which derives from `BaseException`.
