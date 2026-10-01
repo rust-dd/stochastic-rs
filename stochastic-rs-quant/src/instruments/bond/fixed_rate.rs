@@ -177,6 +177,10 @@ impl<T: RealExt> FixedRateBond<T> {
   }
 
   /// Macaulay duration in years.
+  ///
+  /// Returns `NaN` when the price at `yield_to_maturity` is not positive and
+  /// finite, for example for a matured bond or a yield outside the domain of the
+  /// compounding.
   pub fn macaulay_duration(
     &self,
     settlement_date: NaiveDate,
@@ -194,6 +198,10 @@ impl<T: RealExt> FixedRateBond<T> {
   }
 
   /// Modified duration computed by a finite-difference yield bump.
+  ///
+  /// Returns `NaN` when the price at `yield_to_maturity` is not positive and
+  /// finite, for example for a matured bond or a yield outside the domain of the
+  /// compounding.
   pub fn modified_duration(
     &self,
     settlement_date: NaiveDate,
@@ -211,6 +219,10 @@ impl<T: RealExt> FixedRateBond<T> {
   }
 
   /// Convexity computed by a finite-difference yield bump.
+  ///
+  /// Returns `NaN` when the price at `yield_to_maturity` is not positive and
+  /// finite, for example for a matured bond or a yield outside the domain of the
+  /// compounding.
   pub fn convexity(
     &self,
     settlement_date: NaiveDate,
@@ -390,6 +402,9 @@ impl<T: RealExt> FixedRateBond<T> {
   }
 
   /// Approximate par asset-swap spread for the remaining bond life.
+  ///
+  /// Returns `NaN` when the bond has no remaining coupons (a zero annuity), where
+  /// the spread is undefined.
   pub fn asset_swap_spread_from_dirty_price(
     &self,
     valuation_date: NaiveDate,
@@ -399,7 +414,7 @@ impl<T: RealExt> FixedRateBond<T> {
   ) -> T {
     let annuity = fixed_leg_spread_annuity(&self.leg, valuation_date, discount_day_count, curves);
     if annuity.abs() <= T::min_positive_val() {
-      return T::zero();
+      return T::nan();
     }
 
     let maturity_tau = discount_day_count.year_fraction(valuation_date, self.maturity_date());
@@ -410,6 +425,9 @@ impl<T: RealExt> FixedRateBond<T> {
   }
 
   /// Approximate par asset-swap spread from a clean price.
+  ///
+  /// Returns `NaN` when the bond has no remaining coupons (a zero annuity), where
+  /// the spread is undefined.
   pub fn asset_swap_spread_from_clean_price(
     &self,
     settlement_date: NaiveDate,

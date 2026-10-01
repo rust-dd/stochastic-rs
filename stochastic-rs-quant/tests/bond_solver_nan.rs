@@ -7,10 +7,12 @@ use stochastic_rs_quant::calendar::DayCountConvention;
 use stochastic_rs_quant::calendar::Frequency;
 use stochastic_rs_quant::calendar::ScheduleBuilder;
 use stochastic_rs_quant::cashflows::NotionalSchedule;
+use stochastic_rs_quant::curves::Compounding;
 use stochastic_rs_quant::curves::DiscountCurve;
 use stochastic_rs_quant::curves::InterpolationMethod;
 use stochastic_rs_quant::instruments::AmortizingFixedRateBond;
 use stochastic_rs_quant::instruments::FixedRateBond;
+use stochastic_rs_quant::instruments::ZeroCouponBond;
 
 fn d(y: i32, m: u32, day: u32) -> NaiveDate {
   NaiveDate::from_ymd_opt(y, m, day).unwrap()
@@ -160,4 +162,115 @@ fn analytics_still_report_a_fair_price() {
   assert!(a.macaulay_duration > 0.0 && a.macaulay_duration < 3.0);
   assert!(a.modified_duration > 0.0);
   assert!(a.convexity > 0.0);
+}
+
+const COMPOUNDINGS: [Compounding; 3] = [
+  Compounding::Continuous,
+  Compounding::Simple,
+  Compounding::Periodic(2),
+];
+
+#[test]
+fn zero_coupon_yield_of_an_impossible_price_is_nan() {
+  let zcb = ZeroCouponBond::<f64>::new(100.0, d(2027, 1, 15));
+  let dcc = DayCountConvention::Actual365Fixed;
+  for compounding in COMPOUNDINGS {
+    for price in [f64::NAN, 0.0, -5.0, f64::INFINITY] {
+      let y = zcb.yield_to_maturity(d(2024, 4, 15), price, dcc, compounding);
+      assert!(y.is_nan(), "{compounding} price {price} gave yield {y}");
+    }
+  }
+}
+
+#[test]
+fn zero_coupon_yield_of_a_matured_bond_is_nan() {
+  let zcb = ZeroCouponBond::<f64>::new(100.0, d(2027, 1, 15));
+  let dcc = DayCountConvention::Actual365Fixed;
+  for compounding in COMPOUNDINGS {
+    for settlement in [d(2027, 1, 15), d(2027, 6, 1)] {
+      let y = zcb.yield_to_maturity(settlement, 100.0, dcc, compounding);
+      assert!(
+        y.is_nan(),
+        "{compounding} settlement {settlement} gave yield {y}"
+      );
+    }
+  }
+}
+
+#[test]
+fn zero_coupon_yield_still_inverts_a_fair_price() {
+  let zcb = ZeroCouponBond::<f64>::new(100.0, d(2027, 1, 15));
+  let dcc = DayCountConvention::Actual365Fixed;
+  for compounding in COMPOUNDINGS {
+    let price = zcb.price_from_yield(d(2024, 4, 15), 0.04, dcc, compounding);
+    let y = zcb.yield_to_maturity(d(2024, 4, 15), price, dcc, compounding);
+    assert!((y - 0.04).abs() < 1e-12, "{compounding} gave yield {y}");
+  }
+}
+
+#[test]
+fn duration_and_convexity_of_a_matured_bond_are_nan() {
+  let b = bond();
+  let comp = b.standard_yield_compounding();
+  let dcc = DayCountConvention::Actual365Fixed;
+  let settlement = d(2027, 6, 1);
+  let macaulay = b.macaulay_duration(settlement, 0.04, dcc, comp);
+  assert!(macaulay.is_nan(), "macaulay duration {macaulay}");
+  let modified = b.modified_duration(settlement, 0.04, dcc, comp);
+  assert!(modified.is_nan(), "modified duration {modified}");
+  let convexity = b.convexity(settlement, 0.04, dcc, comp);
+  assert!(convexity.is_nan(), "convexity {convexity}");
+}
+
+#[test]
+fn duration_and_convexity_at_a_non_finite_yield_are_nan() {
+  let b = bond();
+  let dcc = DayCountConvention::Actual365Fixed;
+  for compounding in COMPOUNDINGS {
+    for y in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+      let macaulay = b.macaulay_duration(d(2024, 4, 15), y, dcc, compounding);
+      assert!(
+        macaulay.is_nan(),
+        "{compounding} yield {y} gave macaulay duration {macaulay}"
+      );
+      let modified = b.modified_duration(d(2024, 4, 15), y, dcc, compounding);
+      assert!(
+        modified.is_nan(),
+        "{compounding} yield {y} gave modified duration {modified}"
+      );
+      let convexity = b.convexity(d(2024, 4, 15), y, dcc, compounding);
+      assert!(
+        convexity.is_nan(),
+        "{compounding} yield {y} gave convexity {convexity}"
+      );
+    }
+  }
+}
+
+#[test]
+fn analytics_of_a_matured_bond_are_nan() {
+  let b = bond();
+  let comp = b.standard_yield_compounding();
+  let a = b.analytics_from_clean_price(
+    d(2027, 6, 1),
+    100.0,
+    DayCountConvention::Actual365Fixed,
+    comp,
+  );
+  assert!(a.yield_to_maturity.is_nan());
+  assert!(a.macaulay_duration.is_nan());
+  assert!(a.modified_duration.is_nan());
+  assert!(a.convexity.is_nan());
+}
+
+#[test]
+fn asset_swap_spread_of_a_matured_bond_is_nan() {
+  let b = bond();
+  let curve = flat_curve(0.04);
+  let dcc = DayCountConvention::Actual365Fixed;
+  let settlement = d(2027, 6, 1);
+  let dirty = b.asset_swap_spread_from_dirty_price(settlement, 100.0, dcc, &curve);
+  assert!(dirty.is_nan(), "dirty price spread {dirty}");
+  let clean = b.asset_swap_spread_from_clean_price(settlement, 100.0, dcc, &curve);
+  assert!(clean.is_nan(), "clean price spread {clean}");
 }

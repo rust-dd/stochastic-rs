@@ -184,8 +184,8 @@ pub(crate) fn macaulay_duration_for_leg<T: RealExt>(
     yield_day_count,
     compounding,
   );
-  if dirty_price <= T::zero() {
-    return T::zero();
+  if !(dirty_price.is_finite() && dirty_price > T::zero()) {
+    return T::nan();
   }
 
   let weighted = leg
@@ -217,8 +217,8 @@ pub(crate) fn modified_duration_for_leg<T: RealExt>(
     yield_day_count,
     compounding,
   );
-  if price <= T::zero() {
-    return T::zero();
+  if !(price.is_finite() && price > T::zero()) {
+    return T::nan();
   }
 
   let y = yield_to_maturity.to_f64().unwrap();
@@ -262,8 +262,8 @@ pub(crate) fn convexity_for_leg<T: RealExt>(
     yield_day_count,
     compounding,
   );
-  if price <= T::zero() {
-    return T::zero();
+  if !(price.is_finite() && price > T::zero()) {
+    return T::nan();
   }
 
   let y = yield_to_maturity.to_f64().unwrap();
