@@ -16,6 +16,8 @@ use chrono::Weekday;
 
 mod lunar;
 
+pub use lunar::LUNAR_TABLE_YEARS;
+
 /// Identifies which holiday calendar to use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -28,16 +30,22 @@ pub enum HolidayCalendar {
   Target,
   /// Tokyo Stock Exchange calendar.
   Tokyo,
-  /// Hong Kong Stock Exchange (HKEX) calendar. Lunar holidays use a
-  /// hardcoded lookup table covering 2020-2025; a lunar lookup outside
-  /// that window trips a debug assertion, and in release builds falls
-  /// back to fixed-date holidays only, under-reporting lunar closures.
+  /// Hong Kong Stock Exchange (HKEX) calendar. Its lunar-calendar holidays
+  /// (Lunar New Year, Ching Ming, the Birthday of the Buddha, Tuen Ng, the
+  /// day after Mid-Autumn, Chung Yeung) are tabulated for
+  /// [`LUNAR_TABLE_YEARS`]; outside that range only the rule-based
+  /// (fixed-date and Easter) holidays are reported. The lunar dates from
+  /// 2028 on are computed from the Hong Kong Observatory calendar and are
+  /// not yet gazetted.
   Hkex,
   /// Australian Securities Exchange (ASX) calendar.
   Asx,
-  /// Singapore Exchange (SGX) calendar. Lunar / Islamic / Hindu
-  /// holidays use a hardcoded lookup table covering 2020-2025; the same
-  /// out-of-window behaviour as [`HolidayCalendar::Hkex`] applies.
+  /// Singapore Exchange (SGX) calendar. Chinese New Year, Vesak Day, Hari
+  /// Raya Puasa, Hari Raya Haji and Deepavali are tabulated for
+  /// [`LUNAR_TABLE_YEARS`]; outside that range only the rule-based
+  /// (fixed-date and Easter) holidays are reported. From 2028 on, Vesak Day
+  /// and the Islamic and Hindu holidays are astronomical estimates until the
+  /// Ministry of Manpower gazettes them.
   Sgx,
   /// B3 / BoVespa (São Paulo) calendar. Black Awareness Day is a
   /// holiday from 2024 onwards only.
