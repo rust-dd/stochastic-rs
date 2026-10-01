@@ -21,7 +21,7 @@ Linux, macOS and Windows — the same code the
 pip install stochastic-rs
 ```
 
-Python 3.9 or newer. NumPy is the only dependency.
+Python 3.11 or newer. NumPy is the only dependency.
 
 ## Quickstart
 
