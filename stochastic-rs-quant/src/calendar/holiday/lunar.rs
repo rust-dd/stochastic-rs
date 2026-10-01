@@ -25,6 +25,9 @@ use chrono::Weekday;
 
 use super::easter_sunday;
 
+#[cfg(test)]
+mod gazette_tests;
+
 /// A lunar-calendar holiday under its local name. Each variant belongs to
 /// exactly one exchange, so a row closes only that exchange.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -249,17 +252,16 @@ pub(super) fn is_hkex_holiday(date: NaiveDate) -> bool {
   let w = date.weekday();
   use Weekday::*;
 
-  // New Year's Day (Jan 1, observed Mon if weekend).
-  if (m == 1 && d == 1 && w != Sat && w != Sun)
-    || (m == 1 && d == 2 && w == Mon)
-    || (m == 1 && d == 3 && w == Mon)
-  {
+  // The first day of January, or the next day when it is a Sunday; a Saturday
+  // is not substituted (Cap. 149 Schedule (b)).
+  if (m == 1 && d == 1 && w != Sat && w != Sun) || (m == 1 && d == 2 && w == Mon) {
     return true;
   }
 
   let easter = easter_sunday(y);
 
-  // Good Friday, day after Good Friday (HKEX convention), Easter Monday.
+  // Good Friday, the day following it and Easter Monday (Cap. 149 Schedule
+  // (g)-(i)).
   if date == easter - Duration::days(2)
     || date == easter - Duration::days(1)
     || date == easter + Duration::days(1)
@@ -282,12 +284,12 @@ pub(super) fn is_hkex_holiday(date: NaiveDate) -> bool {
     return true;
   }
 
-  // Christmas Day + Boxing Day, observed.
-  if (m == 12 && d == 25 && w != Sat && w != Sun) || (m == 12 && d == 27 && matches!(w, Mon | Tue))
-  {
-    return true;
-  }
-  if (m == 12 && d == 26 && w != Sat && w != Sun) || (m == 12 && d == 28 && matches!(w, Mon | Tue))
+  // Christmas Day, or the second weekday after it when it is a Sunday, and the
+  // first weekday after it (Cap. 149 Schedule (q), (r)). Saturday counts as a
+  // weekday, so 27 December closes only as the Monday after a Saturday
+  // Christmas or the Tuesday after a Sunday one.
+  if m == 12
+    && ((matches!(d, 25 | 26) && w != Sat && w != Sun) || (d == 27 && matches!(w, Mon | Tue)))
   {
     return true;
   }
