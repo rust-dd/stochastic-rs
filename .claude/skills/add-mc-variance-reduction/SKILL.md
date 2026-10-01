@@ -68,16 +68,29 @@ variance, and reports `std_err = sqrt(s² / n)`. Fewer than two samples have
 no variance estimate: no samples give a `NaN` mean and `std_err`, one sample
 a `NaN` `std_err`. A `NaN` or infinite payoff keeps the `std_err` `NaN`.
 
-The helper is a thin wrapper over the crate-private `mc::Welford`
-accumulator. State that receives its samples in batches (MLMC's per-level
-statistics) holds a `Welford` per stream and `extend`s it with each batch;
-`count()`, `mean()` and `sample_variance()` read it back. There is one
-recurrence in the crate.
+The helper is a thin wrapper over the public `mc::Welford` accumulator.
+State that receives its samples in batches (MLMC's per-level statistics)
+holds a `Welford` per stream and `extend`s it with each batch; `count()`,
+`mean()`, `sample_variance()` and `std_err()` read it back, and
+`McEstimate::from(&acc)` turns it into the result type. `Welford::merge`
+combines two accumulators (Chan, Golub and LeVeque 1983, eq. 1.5). There is
+one recurrence in the crate.
 
 Never write a `sum` / `sum_sq` loop of your own. `sum_sq / n − mean²`
 cancels on a near-constant payoff (a negative variance, a `NaN` `std_err`)
 and a running `f32` sum stops growing past 2^24. Serial and parallel twins
-share the helper, so they cannot drift onto different formulas.
+share the accumulator, so they cannot drift onto different formulas.
+
+A parallel estimator goes through `mc::par_welford(n, sample)`, never through
+a `Vec` of all the samples and never through rayon's `reduce`. A `Vec` leaves
+a serial pass over every sample after the parallel region (Amdahl: about 3 ns
+a path, +60% on a cheap payoff); `reduce` shapes its merge tree by the pool,
+so the last bits change with the thread count. `par_welford` cuts the indices
+into the data-derived chunks of `ProcessExt::sample_par`, folds each chunk
+into its own `Welford` in parallel and merges the chunks sequentially in
+chunk order. The draws of `T::normal_array` are unseeded, so an estimator
+built on it is still not reproducible; give a new technique a seeded entry
+point if it needs to be.
 
 ### The estimator signature
 
