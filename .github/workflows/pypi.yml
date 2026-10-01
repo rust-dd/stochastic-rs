@@ -75,21 +75,45 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+      # One step per interpreter, passed by absolute path: letting maturin
+      # discover them would build every CPython the runner image ships, a
+      # future 3.15 included.
       - uses: actions/setup-python@v5
+        id: py311
         with:
-          # 3.14t first, as in the macos job.
-          python-version: |
-            3.14t
-            3.11
-            3.12
-            3.13
-            3.14
+          python-version: "3.11"
+          architecture: x64
+      - uses: actions/setup-python@v5
+        id: py312
+        with:
+          python-version: "3.12"
+          architecture: x64
+      - uses: actions/setup-python@v5
+        id: py313
+        with:
+          python-version: "3.13"
+          architecture: x64
+      - uses: actions/setup-python@v5
+        id: py314
+        with:
+          python-version: "3.14"
+          architecture: x64
+      - uses: actions/setup-python@v5
+        id: py314t
+        with:
+          python-version: "3.14t"
           architecture: x64
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: x64
-          args: --release --out dist --find-interpreter
+          args: >-
+            --release --out dist --interpreter
+            ${{ steps.py311.outputs.python-path }}
+            ${{ steps.py312.outputs.python-path }}
+            ${{ steps.py313.outputs.python-path }}
+            ${{ steps.py314.outputs.python-path }}
+            ${{ steps.py314t.outputs.python-path }}
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
