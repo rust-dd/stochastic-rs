@@ -209,7 +209,7 @@ where
       return;
     }
 
-    let mut fgn = Array1::<T>::zeros(self.fgn.out_len);
+    let mut fgn = Array1::<T>::zeros(self.fgn.n());
     self
       .fgn
       .fill_cpu(&mut self.normal, fgn.as_slice_mut().unwrap());
@@ -315,14 +315,7 @@ where
   }
 
   fn fgn_spec(&self) -> Option<crate::euler::FgnSpec<'_, T>> {
-    Some(crate::euler::FgnSpec {
-      sqrt_eigenvalues: self.fgn.sqrt_eigenvalues.as_slice().expect("contiguous"),
-      n: self.fgn.n,
-      offset: self.fgn.offset,
-      hurst: self.fgn.hurst.to_f64().unwrap_or(0.5),
-      t: self.fgn.t.unwrap_or(T::one()).to_f64().unwrap_or(1.0),
-      streams: 1,
-    })
+    Some(self.fgn.fgn_spec(1))
   }
 
   /// The Poisson intensity the exponential inter-arrival law amounts to. A

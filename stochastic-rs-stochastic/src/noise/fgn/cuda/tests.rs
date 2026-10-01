@@ -55,9 +55,9 @@ fn cuda_non_power_of_two_n() {
 #[test]
 fn cuda_eigenvalues_structural() {
   let fgn = Fgn::<f64>::new(0.72, 2048, Some(1.0), Unseeded);
-  let eigs = &*fgn.sqrt_eigenvalues;
+  let eigs = fgn.sqrt_eigenvalues();
 
-  assert_eq!(eigs.len(), 2 * fgn.n);
+  assert_eq!(eigs.len(), 2 * fgn.padded_n);
   assert!(eigs.iter().all(|&v| v >= 0.0));
 
   for i in 1..eigs.len() / 2 {
@@ -84,7 +84,7 @@ fn cuda_scale_matches_cpu() {
     let fgn = Fgn::<f64>::new(0.7, n, Some(2.0), Unseeded);
     let cpu_scale = fgn.scale;
 
-    let out_size = fgn.n - fgn.offset;
+    let out_size = fgn.padded_n - fgn.offset;
     let scale_steps = out_size.max(1);
     let cuda_scale = (scale_steps as f64).powf(-0.7) * 2.0_f64.powf(0.7);
 

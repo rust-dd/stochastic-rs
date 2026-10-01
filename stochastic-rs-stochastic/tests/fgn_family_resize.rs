@@ -10,6 +10,7 @@ use stochastic_rs_stochastic::diffusion::fou::Fou;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
 use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
 use stochastic_rs_stochastic::noise::cfgns::Cfgns;
+use stochastic_rs_stochastic::noise::fgn::Fgn;
 use stochastic_rs_stochastic::process::cfbms::Cfbms;
 use stochastic_rs_stochastic::process::fbm::Fbm;
 
@@ -23,6 +24,13 @@ fn assert_resized(path: &Array1<f64>, n: usize) {
 
 fn seed() -> Deterministic {
   Deterministic::new(7)
+}
+
+#[test]
+fn fgn_resizes_through_with_steps() {
+  let p = Fgn::<f64, _>::new(0.7, 10, Some(1.0), seed()).with_steps(1000);
+  assert_eq!(p.n(), 1000);
+  assert_resized(&p.sample(), 1000);
 }
 
 #[test]

@@ -166,7 +166,7 @@ table points, `CORRELATED_STREAMS = 4`.
 | `jump_intensity()` / `jump_sizes()` | default `None` | `JumpSizes` carries 7 laws |
 | `gamma_draws()` | default `None` | `GammaDraws { first, second }` |
 | `step_first()` | default `false` | `true` when the first grid point is itself a draw |
-| `fgn_spec()` | default `None` | `FgnSpec { sqrt_eigenvalues, n, offset, hurst, t, streams }` |
+| `fgn_spec()` | default `None` | `Some(self.fgn.fgn_spec(streams))` — the embedded `Fgn` builds the `FgnSpec` |
 | `lift_spec()` | default `None` | `LiftSpec { decay, weight, drift_scale, drift_boundary, diffusion_boundary, x0 }` |
 | `series_terms()` | default `None` | `Some(j)` terms per path for a family with a `series` clause — exactly when, the launch asserts both ways |
 | `table_spec()` | default `None` | `Some(TableSpec { points, u_max })` for a family with a `table` clause — same both-ways assert; `points ≤ TABLE_SLOTS` |

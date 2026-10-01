@@ -214,14 +214,11 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     m: usize,
     seed: &S2,
   ) -> Result<Array2<T>> {
-    let n = self.n;
+    let n = self.padded_n;
     let offset = self.offset;
-    let hurst = self.hurst.to_f64().unwrap();
-    let t = self.t.unwrap_or(T::one()).to_f64().unwrap();
-    let eig_t = self
-      .sqrt_eigenvalues
-      .as_slice()
-      .expect("eigenvalues are contiguous");
+    let hurst = self.hurst().to_f64().unwrap();
+    let t = self.t().unwrap_or(T::one()).to_f64().unwrap();
+    let eig_t = self.sqrt_eigenvalues();
     sample_f32::<T, S2>(eig_t, n, m, offset, hurst, t, seed)
   }
 }

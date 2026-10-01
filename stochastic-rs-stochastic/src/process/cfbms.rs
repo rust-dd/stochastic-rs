@@ -299,14 +299,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
   /// the pipeline draws `2 · m` paths in the one batched call and the step
   /// reads its second stream from the buffer's next `paths` rows.
   fn fgn_spec(&self) -> Option<crate::euler::FgnSpec<'_, T>> {
-    Some(crate::euler::FgnSpec {
-      sqrt_eigenvalues: self.fgn.sqrt_eigenvalues.as_slice().expect("contiguous"),
-      n: self.fgn.n,
-      offset: self.fgn.offset,
-      hurst: self.fgn.hurst.to_f64().unwrap_or(0.5),
-      t: self.fgn.t.unwrap_or(T::one()).to_f64().unwrap_or(1.0),
-      streams: 2,
-    })
+    Some(self.fgn.fgn_spec(2))
   }
 
   fn host_sample(&self) -> [Array1<T>; 2] {

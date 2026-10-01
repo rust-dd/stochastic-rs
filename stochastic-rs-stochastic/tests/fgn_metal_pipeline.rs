@@ -203,11 +203,12 @@ fn reference_entry(
   u: usize,
   j: usize,
 ) -> (f64, f64) {
-  let traj = 2 * fgn.n;
+  let eigs = fgn.sqrt_eigenvalues();
+  let traj = eigs.len();
   let (mut xr, mut xi) = (0.0, 0.0);
-  for k in 0..traj {
+  for (k, &eig) in eigs.iter().enumerate() {
     let q = u01x4(2 * u as u64 * traj as u64 + k as u64, seed);
-    let eig = fgn.sqrt_eigenvalues[k] as f64;
+    let eig = eig as f64;
     let zr = (-2.0 * (q[0] + 1e-10).ln()).sqrt() * (std::f64::consts::TAU * q[1]).cos() * eig;
     let zi = (-2.0 * (q[2] + 1e-10).ln()).sqrt() * (std::f64::consts::TAU * q[3]).cos() * eig;
     let a = -std::f64::consts::TAU * (j * k % traj) as f64 / traj as f64;
@@ -215,7 +216,7 @@ fn reference_entry(
     xr += zr * cs - zi * sn;
     xi += zr * sn + zi * cs;
   }
-  let out_size = fgn.n - fgn.offset;
+  let out_size = fgn.n();
   let scale = (out_size.max(1) as f64).powf(-HURST);
   (xr * scale, xi * scale)
 }
@@ -463,9 +464,9 @@ fn the_lending_map_returns_rows_in_path_order() {
     for handle in [Metal::default(), Metal::default().with_batch_budget(budget)] {
       let fgn =
         Fgn::<f32, _>::new(HURST as f32, n, Some(1.0), Deterministic::new(13)).with_backend(handle);
-      fgn.seed.reseed(13);
+      fgn.seed().reseed(13);
       let mapped = fgn.sample_map_view(M, |row| (row[0], row[row.len() - 1]));
-      fgn.seed.reseed(13);
+      fgn.seed().reseed(13);
       let owned = fgn.sample_par(M);
       assert_eq!(mapped.len(), M);
       for (i, (first, last)) in mapped.iter().enumerate() {

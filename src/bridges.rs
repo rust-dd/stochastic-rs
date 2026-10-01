@@ -109,7 +109,7 @@ mod tests {
     );
 
     let rebuilt = fgn_from_hurst_result(&result, 4096, Some(1.0), Deterministic::new(7));
-    assert_eq!(rebuilt.hurst, result.hurst);
+    assert_eq!(rebuilt.hurst(), result.hurst);
 
     let resampled = rebuilt.sample();
     let reestimated = estimator.estimate(resampled.view()).unwrap();

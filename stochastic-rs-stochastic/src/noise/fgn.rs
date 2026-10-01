@@ -61,12 +61,12 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
   fn sampler(&self) -> FgnSampler<'_, T, S, B> {
     FgnSampler {
       fgn: self,
-      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), T::one(), self.seed()),
     }
   }
 
   fn sample(&self) -> Self::Output {
-    self.backend.generate(self, &self.seed)
+    self.backend.generate(self, self.seed())
   }
 
   /// The `m` paths are generated in **one batched backend call**.
@@ -83,7 +83,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
   /// [`FgnBackend`](crate::device::FgnBackend)'s doc for the full per-backend
   /// table.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
-    self.backend.generate_batch(self, m, &self.seed)
+    self.backend.generate_batch(self, m, self.seed())
   }
 
   /// Through the same batched call [`sample_par`](Self::sample_par) takes.
@@ -93,7 +93,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
     self
       .backend
-      .generate_map(self, m, &self.seed, |row| f(&row.to_owned()))
+      .generate_map(self, m, self.seed(), |row| f(&row.to_owned()))
   }
 
   fn sample_map_view<R: Send>(
@@ -101,18 +101,18 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
     m: usize,
     f: impl Fn(ndarray::ArrayView1<T>) -> R + Sync,
   ) -> Vec<R> {
-    self.backend.generate_map(self, m, &self.seed, f)
+    self.backend.generate_map(self, m, self.seed(), f)
   }
 
   fn try_sample(&self) -> Result<Self::Output, DeviceError> {
-    self.backend.try_generate(self, &self.seed)
+    self.backend.try_generate(self, self.seed())
   }
 
   /// [`sample_par`](Self::sample_par) as one batched backend call, the
   /// device's error instead of its panic. On the CPU devices this is always
   /// `Ok` and bit-identical to `sample_par`.
   fn try_sample_par(&self, m: usize) -> Result<Vec<Self::Output>, DeviceError> {
-    self.backend.try_generate_batch(self, m, &self.seed)
+    self.backend.try_generate_batch(self, m, self.seed())
   }
 }
 
@@ -134,7 +134,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FgnSampler<'_
   }
 
   fn sample(&mut self) -> Array1<T> {
-    let out_len = self.fgn.out_len;
+    let out_len = self.fgn.n();
     array1_from_fill(out_len, |out| self.fgn.fill_cpu(&mut self.normal, out))
   }
 }

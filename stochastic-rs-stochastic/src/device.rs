@@ -564,7 +564,7 @@ impl<T: FloatExt> FgnBackend<T> for Cpu {
       .into_par_iter()
       .map(|path_seed| {
         let mut normal = SimdNormal::<T>::new(T::zero(), T::one(), &path_seed);
-        array1_from_fill(fgn.out_len, |out| fgn.fill_cpu(&mut normal, out))
+        array1_from_fill(fgn.n(), |out| fgn.fill_cpu(&mut normal, out))
       })
       // `Vec::into_par_iter()` → `.map()` is an `IndexedParallelIterator`,
       // so `.collect()` restores index order regardless of completion
@@ -645,7 +645,7 @@ macro_rules! gpu_backend {
           // host that copy costs several times the transfer.
           Ok(match batch.as_slice() {
             Some(flat) => flat
-              .par_chunks(fgn.out_len.max(1))
+              .par_chunks(fgn.n().max(1))
               .map(|row| f(ndarray::ArrayView1::from(row)))
               .collect(),
             None => batch

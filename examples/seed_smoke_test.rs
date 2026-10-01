@@ -174,7 +174,7 @@ fn main() {
   println!("Fgn same instance × 2 samples → different paths ✓");
 
   let fgn_h = Fgn::<f64, _>::new(h, n, Some(t), Deterministic::new(0));
-  fgn_h.seed.reseed(seed);
+  fgn_h.seed().reseed(seed);
   let p_h = fgn_h.sample().to_vec();
   assert_eq!(
     first_diff(&p_c, &p_h),
@@ -184,7 +184,7 @@ fn main() {
   println!("Fgn reseed(seed) → identical to Deterministic(seed) stream ✓");
 
   let fgn_i = Fgn::<f64, _>::new(h, n, Some(t), Unseeded);
-  fgn_i.seed.reseed(seed);
+  fgn_i.seed().reseed(seed);
   let _ = fgn_i.sample();
   println!("Fgn Unseeded.reseed(...) → no panic, sample still works ✓");
 

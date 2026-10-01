@@ -663,11 +663,11 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     seed_src: &S2,
     device: &crate::device::Cuda,
   ) -> Result<Array2<T>> {
-    let n = self.n;
+    let n = self.padded_n;
     let offset = self.offset;
     let out_size = n - offset;
-    let hurst = self.hurst.to_f64().unwrap();
-    let t = self.t.unwrap_or(T::one()).to_f64().unwrap();
+    let hurst = self.hurst().to_f64().unwrap();
+    let t = self.t().unwrap_or(T::one()).to_f64().unwrap();
     let seed = seed_src.seed_value();
     // Per path: 2 * traj_size complex scalars of work buffer plus the output row.
     let rows = index_rows(
@@ -685,7 +685,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
       let len = rows.min(m - first);
       let chunk = if TypeId::of::<T>() == TypeId::of::<f32>() {
         let eigs: Vec<f32> = self
-          .sqrt_eigenvalues
+          .sqrt_eigenvalues()
           .iter()
           .map(|x| x.to_f32().unwrap())
           .collect();
@@ -694,7 +694,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
         // `f64` is what the type says, so a failing double-precision launch is
         // reported, never quietly replaced by the `f32` kernel.
         let eigs: Vec<f64> = self
-          .sqrt_eigenvalues
+          .sqrt_eigenvalues()
           .iter()
           .map(|x| x.to_f64().unwrap())
           .collect();

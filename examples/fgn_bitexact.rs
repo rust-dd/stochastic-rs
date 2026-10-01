@@ -22,18 +22,21 @@ fn main() {
       let fgn_a = Fgn::<f64, _>::new(h, n, Some(1.0), Unseeded);
       let fgn_b = Fgn::<f64, _>::new(h, n, Some(1.0), Unseeded);
 
-      assert_eq!(fgn_a.sqrt_eigenvalues.len(), fgn_b.sqrt_eigenvalues.len());
+      assert_eq!(
+        fgn_a.sqrt_eigenvalues().len(),
+        fgn_b.sqrt_eigenvalues().len()
+      );
       let max_diff: f64 = fgn_a
-        .sqrt_eigenvalues
+        .sqrt_eigenvalues()
         .iter()
-        .zip(fgn_b.sqrt_eigenvalues.iter())
+        .zip(fgn_b.sqrt_eigenvalues().iter())
         .map(|(a, b)| (a - b).abs())
         .fold(0.0_f64, f64::max);
 
       assert_eq!(max_diff, 0.0, "eigenvalues differ for H={h}, n={n}");
       println!(
         "  H={h:.1}, n={n:>5}: eigenvalues bit-exact (len={})",
-        fgn_a.sqrt_eigenvalues.len()
+        fgn_a.sqrt_eigenvalues().len()
       );
     }
   }

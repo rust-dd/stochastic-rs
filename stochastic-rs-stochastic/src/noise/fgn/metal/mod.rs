@@ -555,7 +555,7 @@ impl<S: SeedExt, B> Fgn<f32, S, B> {
     seed_src: &S2,
     device: &crate::device::Metal,
   ) -> Result<Array2<f32>> {
-    let out_size = self.n - self.offset;
+    let out_size = self.padded_n - self.offset;
     let mut out = Array2::<f32>::zeros((m, out_size));
     self.over_metal_chunks(m, seed_src, device, |chunk, rows| {
       let mut dst = out.slice_mut(ndarray::s![chunk.first..chunk.first + chunk.len, ..]);
@@ -583,7 +583,7 @@ impl<S: SeedExt, B> Fgn<f32, S, B> {
     f: impl Fn(ndarray::ArrayView1<f32>) -> R + Sync,
   ) -> Result<Vec<R>> {
     use rayon::prelude::*;
-    let out_size = (self.n - self.offset).max(1);
+    let out_size = (self.padded_n - self.offset).max(1);
     let mut out = Vec::with_capacity(m);
     self.over_metal_chunks(m, seed_src, device, |_, rows| {
       out.par_extend(
@@ -607,12 +607,9 @@ impl<S: SeedExt, B> Fgn<f32, S, B> {
     device: &crate::device::Metal,
     mut consume: impl FnMut(&Chunk, &[f32]) -> Result<()>,
   ) -> Result<()> {
-    let (n, offset) = (self.n, self.offset);
+    let (n, offset) = (self.padded_n, self.offset);
     let out_size = n - offset;
-    let eigs = self
-      .sqrt_eigenvalues
-      .as_slice()
-      .expect("the eigenvalues are contiguous");
+    let eigs = self.sqrt_eigenvalues();
     let seed = seed_src.seed_value() as u32;
     for chunk in chunks(n, out_size, m, device) {
       let launch = Launch {
@@ -620,8 +617,8 @@ impl<S: SeedExt, B> Fgn<f32, S, B> {
         n,
         m: chunk.len,
         offset,
-        hurst: self.hurst as f64,
-        t: self.t.unwrap_or(1.0) as f64,
+        hurst: self.hurst() as f64,
+        t: self.t().unwrap_or(1.0) as f64,
         seed,
         first_cell: (chunk.first * 2 * n) as u64,
         ordinal: device.ordinal,
