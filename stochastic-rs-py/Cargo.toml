@@ -32,13 +32,13 @@ accelerate = ["stochastic-rs-stochastic/accelerate"]
 ai = ["dep:stochastic-rs-ai"]
 default = []
 [dependencies]
+ndarray = { workspace = true }
+numpy = { workspace = true }
+pyo3 = { workspace = true, features = ["extension-module"] }
+stochastic-rs-ai = { workspace = true, features = ["python"], optional = true }
+stochastic-rs-copulas = { workspace = true, features = ["python"] }
 stochastic-rs-core = { workspace = true, features = ["python"] }
 stochastic-rs-distributions = { workspace = true, features = ["python"] }
-stochastic-rs-stochastic = { workspace = true, features = ["python"] }
-stochastic-rs-copulas = { workspace = true, features = ["python"] }
-stochastic-rs-stats = { workspace = true, features = ["python"] }
 stochastic-rs-quant = { workspace = true, features = ["python"] }
-stochastic-rs-ai = { workspace = true, features = ["python"], optional = true }
-pyo3 = { workspace = true, features = ["extension-module"] }
-numpy = { workspace = true }
-ndarray = { workspace = true }
+stochastic-rs-stats = { workspace = true, features = ["python"] }
+stochastic-rs-stochastic = { workspace = true, features = ["python"] }

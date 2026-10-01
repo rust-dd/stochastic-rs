@@ -53,7 +53,7 @@ subdirectory; `[workspace]`, `[workspace.dependencies]`, `[package]`,
 [features]
 ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]
 cuda = ["dep:cudarc", "cudarc/cufft", "stochastic-rs-stochastic/cuda"]
-metal = ["dep:metal", "stochastic-rs-stochastic/metal"]
+metal = ["stochastic-rs-stochastic/metal"]
 viz = ["stochastic-rs-quant/viz", "stochastic-rs-ai?/viz"]
 ```
 
@@ -63,7 +63,7 @@ Three things that example teaches which a made-up one would not:
   reaches `-stochastic` only — forwarding to a crate that lacks the
   feature is a hard cargo error.
 - **`dep:` for optional dependencies the umbrella owns itself**
-  (`dep:cudarc`, `dep:metal`), alongside the
+  (`dep:cudarc`, `dep:stochastic-rs-ai`), alongside the
   `<crate>/<feature>` forwards.
 - **`crate?/feature`** — the weak-dependency form, as in
   `stochastic-rs-ai?/viz`: enable `-ai`'s `viz` *only if* `-ai` is

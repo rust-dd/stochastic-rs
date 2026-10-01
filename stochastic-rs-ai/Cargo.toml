@@ -44,6 +44,6 @@ rand = { workspace = true }
 num-traits = { workspace = true }
 anyhow = { workspace = true }
 parking_lot = { workspace = true }
-plotly = { workspace = true, features = ["plotly_ndarray"], optional = true }
+plotly = { workspace = true, optional = true }
 pyo3 = { workspace = true, features = ["extension-module"], optional = true }
 numpy = { workspace = true, optional = true }

@@ -172,4 +172,16 @@ fn test_sabr_smile_calibrate() {
     assert!(res.success);
     assert!(res.objective < 1e-3, "Objective too large for tenor {}", i);
   }
+
+  #[cfg(feature = "viz")]
+  {
+    let page = std::env::temp_dir()
+      .join("stochastic-rs")
+      .join("sabr_smile_many.html");
+    assert!(
+      std::fs::read_to_string(page)
+        .unwrap()
+        .contains("Plotly.newPlot")
+    );
+  }
 }
