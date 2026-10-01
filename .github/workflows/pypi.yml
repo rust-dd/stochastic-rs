@@ -15,6 +15,7 @@ permissions:
 
 env:
   PYTHON_INTERPRETERS: python3.11 python3.12 python3.13 python3.14 python3.14t
+  WHEEL_ABI_TAGS: cp311 cp312 cp313 cp314 cp314t
 
 jobs:
   linux:
@@ -38,6 +39,12 @@ jobs:
           target: ${{ matrix.platform.target }}
           manylinux: ${{ matrix.platform.manylinux }}
           args: --release --out dist --interpreter ${{ env.PYTHON_INTERPRETERS }}
+      - name: Check the wheel set
+        shell: bash
+        run: |
+          diff -u -L built -L expected \
+            <(printf '%s\n' dist/*.whl | sed -E 's|^dist/stochastic_rs-[^-]+-[^-]+-([^-]+)-.*|\1|' | sort) \
+            <(tr ' ' '\n' <<< "$WHEEL_ABI_TAGS" | sort)
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -64,6 +71,12 @@ jobs:
         with:
           target: aarch64
           args: --release --out dist --interpreter ${{ env.PYTHON_INTERPRETERS }}
+      - name: Check the wheel set
+        shell: bash
+        run: |
+          diff -u -L built -L expected \
+            <(printf '%s\n' dist/*.whl | sed -E 's|^dist/stochastic_rs-[^-]+-[^-]+-([^-]+)-.*|\1|' | sort) \
+            <(tr ' ' '\n' <<< "$WHEEL_ABI_TAGS" | sort)
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -114,6 +127,12 @@ jobs:
             ${{ steps.py313.outputs.python-path }}
             ${{ steps.py314.outputs.python-path }}
             ${{ steps.py314t.outputs.python-path }}
+      - name: Check the wheel set
+        shell: bash
+        run: |
+          diff -u -L built -L expected \
+            <(printf '%s\n' dist/*.whl | sed -E 's|^dist/stochastic_rs-[^-]+-[^-]+-([^-]+)-.*|\1|' | sort) \
+            <(tr ' ' '\n' <<< "$WHEEL_ABI_TAGS" | sort)
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
