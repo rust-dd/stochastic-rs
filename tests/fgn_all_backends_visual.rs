@@ -13,6 +13,12 @@ mod all_backends {
   use stochastic_rs::stochastic::process::fbm::Fbm;
   use stochastic_rs::traits::ProcessExt;
 
+  /// A series name and its y-values.
+  type Series = (String, Vec<f64>);
+
+  /// A panel title and the series plotted in it.
+  type Panel = (String, Vec<Series>);
+
   /// Minimal grid-of-subplots HTML writer for this file's visual tests only
   /// (`stochastic-rs-viz`'s `GridPlotter` was removed workspace-wide; this
   /// keeps just the rows/cols layout + per-panel title annotation it used to
@@ -21,7 +27,7 @@ mod all_backends {
   /// `panels` is `(panel title, [(series name, y-values)])`; every series in
   /// a panel is plotted against an implicit `0..1`-normalized index axis.
   fn grid_plot(
-    panels: &[(String, Vec<(String, Vec<f64>)>)],
+    panels: &[Panel],
     cols: usize,
     title: &str,
     show_legend: bool,
@@ -217,7 +223,7 @@ mod all_backends {
         .into_iter()
         .enumerate()
         .map(|(i, p)| (format!("path {}", i + 1), p))
-        .collect::<Vec<(String, Vec<f64>)>>()
+        .collect::<Vec<Series>>()
     };
 
     let mut panels = Vec::with_capacity(hursts.len() * 4);
