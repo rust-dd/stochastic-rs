@@ -49,22 +49,11 @@ fn plain_mc(
   dim: usize,
   payoff: &dyn Fn(&Array1<f64>) -> f64,
 ) -> mc::McEstimate<f64> {
-  let mut sum = 0.0;
-  let mut sum_sq = 0.0;
+  let mut acc = mc::Welford::default();
   for _ in 0..n_paths {
-    let z = f64::normal_array(dim, 0.0, 1.0);
-    let y = payoff(&z);
-    sum += y;
-    sum_sq += y * y;
+    acc.push(payoff(&f64::normal_array(dim, 0.0, 1.0)));
   }
-  let n = n_paths as f64;
-  let mean = sum / n;
-  let var = sum_sq / n - mean * mean;
-  mc::McEstimate {
-    mean,
-    std_err: (var / n).sqrt(),
-    n_samples: n_paths,
-  }
+  mc::McEstimate::from(&acc)
 }
 
 // 1. Variance reduction vs BS analytical
