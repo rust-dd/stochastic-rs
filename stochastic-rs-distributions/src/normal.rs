@@ -342,8 +342,7 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdNormal<T, N, R> {
   /// 16 lanes per iteration, so the two independent engine state updates
   /// can overlap the batches' table lookups on an out-of-order core. The
   /// branch is a monomorphised constant — single-stream codegen is
-  /// unchanged. Measured +3–10 % on 128-bit NEON (the gather chain
-  /// dominates the rest of the cost).
+  /// unchanged.
   fn fill_zig_impl<const STANDARD: bool>(buf: &mut [T], rng: &mut R, mean: T, std_dev: T) {
     let len = buf.len();
     let tables = zig_tables();

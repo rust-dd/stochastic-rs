@@ -188,8 +188,6 @@ loader, a new distribution backend):
 
 ## 6. Reference: feature flags currently in the workspace
 
-| Feature | Crates that publish it | Notes |
-|---|---|---|
 Verify against the `[features]` blocks before trusting this table —
 it is a summary, and the sub-crate columns are the part that drifts.
 
