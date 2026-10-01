@@ -62,7 +62,6 @@
 //!   *Journal of Statistical Computation and Simulation* 78(6), 567-581.
 
 use std::error::Error;
-use std::f64;
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -287,7 +286,7 @@ impl NestedArchimedean {
   fn positive_stable<R: Rng + ?Sized>(rng: &mut R, alpha: f64) -> f64 {
     debug_assert!(alpha > 0.0 && alpha < 1.0);
     let u: f64 = rng.random::<f64>().clamp(1e-15, 1.0 - 1e-15);
-    let theta = f64::consts::PI * u;
+    let theta = std::f64::consts::PI * u;
     let w_uniform: f64 = rng.random::<f64>().clamp(1e-15, 1.0 - 1e-15);
     let w = -w_uniform.ln();
     let s_a = (alpha * theta).sin();

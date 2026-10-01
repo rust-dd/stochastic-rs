@@ -4,7 +4,6 @@
 //! C_\theta(u,v)=-\frac1\theta\log\!\left(1+\frac{(e^{-\theta u}-1)(e^{-\theta v}-1)}{e^{-\theta}-1}\right)
 //! $$
 //!
-use core::f64;
 use std::error::Error;
 
 use gauss_quad::GaussLegendre;

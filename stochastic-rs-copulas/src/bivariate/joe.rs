@@ -15,7 +15,6 @@
 //! Springer, Family BB1 / table 4.1.
 
 use std::error::Error;
-use std::f64;
 
 use ndarray::Array1;
 use ndarray::Array2;

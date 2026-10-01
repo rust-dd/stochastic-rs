@@ -33,7 +33,6 @@
 //! Springer, Example 3.6.
 
 use std::error::Error;
-use std::f64;
 
 use ndarray::Array1;
 use ndarray::Array2;

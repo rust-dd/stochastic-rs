@@ -48,7 +48,6 @@
 //!   Princeton UP, §7.5.
 
 use std::error::Error;
-use std::f64;
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -214,7 +213,7 @@ impl TMultivariate {
   /// normaliser kept as a separate term for log-pdf composition.
   fn t_log_pdf(x: f64, nu: f64) -> f64 {
     let log_norm =
-      ln_gamma(0.5 * (nu + 1.0)) - 0.5 * (nu * f64::consts::PI).ln() - ln_gamma(0.5 * nu);
+      ln_gamma(0.5 * (nu + 1.0)) - 0.5 * (nu * std::f64::consts::PI).ln() - ln_gamma(0.5 * nu);
     let log_kernel = -0.5 * (nu + 1.0) * (1.0 + x * x / nu).ln();
     log_norm + log_kernel
   }
@@ -288,7 +287,7 @@ impl TMultivariate {
     }
     for i in 0..d {
       for j in (i + 1)..d {
-        let rho = (0.5 * f64::consts::PI * tau[[i, j]])
+        let rho = (0.5 * std::f64::consts::PI * tau[[i, j]])
           .sin()
           .clamp(-0.999_999, 0.999_999);
         corr[[i, j]] = rho;
@@ -325,7 +324,7 @@ impl TMultivariate {
     let nu = self.nu;
     let log_norm = ln_gamma(0.5 * (nu + d))
       - ln_gamma(0.5 * nu)
-      - 0.5 * d * (nu * f64::consts::PI).ln()
+      - 0.5 * d * (nu * std::f64::consts::PI).ln()
       - 0.5 * log_det;
     let mut out = Array1::<f64>::zeros(z.nrows());
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {

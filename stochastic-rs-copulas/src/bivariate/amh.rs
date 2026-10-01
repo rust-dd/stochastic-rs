@@ -19,7 +19,6 @@
 //! Springer, Example 4.23 / Table 4.1 (family (3)).
 
 use std::error::Error;
-use std::f64;
 
 use ndarray::Array1;
 use ndarray::Array2;
