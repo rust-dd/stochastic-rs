@@ -113,8 +113,8 @@ pub(crate) fn yield_to_maturity_from_dirty_price_for_leg<T: RealExt>(
   yield_day_count: DayCountConvention,
   compounding: Compounding,
 ) -> T {
-  if dirty_price <= T::zero() {
-    return T::zero();
+  if !(dirty_price.is_finite() && dirty_price > T::zero()) {
+    return T::nan();
   }
 
   let target = dirty_price.to_f64().unwrap();
@@ -157,20 +157,7 @@ pub(crate) fn yield_to_maturity_from_dirty_price_for_leg<T: RealExt>(
     return T::from_f64_fast(high);
   }
   if f_low * f_high > 0.0 {
-    // Bracketing failed (typical: deeply distressed bond with dirty price
-    // exceeding all coupons, or yield outside the expanded search range).
-    // Saturate to the boundary closest to the target rather than panicking
-    // so callers can still produce a finite (approximate) yield.
-    eprintln!(
-      "[stochastic-rs-quant] warning: yield-to-maturity bracket failed for \
-       dirty price {} between {low} and {high}; saturating to boundary",
-      dirty_price.to_f64().unwrap()
-    );
-    return if f_low.abs() < f_high.abs() {
-      T::from_f64_fast(low)
-    } else {
-      T::from_f64_fast(high)
-    };
+    return T::nan();
   }
 
   let mut convergency = SimpleConvergency {
@@ -179,14 +166,7 @@ pub(crate) fn yield_to_maturity_from_dirty_price_for_leg<T: RealExt>(
   };
   match find_root_brent(low, high, f, &mut convergency) {
     Ok(root) => T::from_f64_fast(root),
-    Err(_) => {
-      eprintln!(
-        "[stochastic-rs-quant] warning: Brent root finder failed for \
-         yield-to-maturity (dirty price {}); returning midpoint",
-        dirty_price.to_f64().unwrap()
-      );
-      T::from_f64_fast(0.5 * (low + high))
-    }
+    Err(_) => T::nan(),
   }
 }
 
@@ -353,8 +333,8 @@ pub(crate) fn solve_constant_spread_for_leg<T: RealExt>(
   curves: &(impl CurveProvider<T> + ?Sized),
   option_cost: T,
 ) -> T {
-  if market_dirty_price <= T::zero() {
-    return T::zero();
+  if !(market_dirty_price.is_finite() && market_dirty_price > T::zero()) {
+    return T::nan();
   }
 
   let target = market_dirty_price.to_f64().unwrap();
@@ -392,16 +372,7 @@ pub(crate) fn solve_constant_spread_for_leg<T: RealExt>(
   }
 
   if f_low * f_high > 0.0 {
-    eprintln!(
-      "[stochastic-rs-quant] warning: constant-spread bracket failed for \
-       dirty price {} between {low} and {high}; saturating to boundary",
-      market_dirty_price.to_f64().unwrap()
-    );
-    return if f_low.abs() < f_high.abs() {
-      T::from_f64_fast(low)
-    } else {
-      T::from_f64_fast(high)
-    };
+    return T::nan();
   }
 
   let mut convergency = SimpleConvergency {
@@ -410,14 +381,7 @@ pub(crate) fn solve_constant_spread_for_leg<T: RealExt>(
   };
   match find_root_brent(low, high, f, &mut convergency) {
     Ok(root) => T::from_f64_fast(root),
-    Err(_) => {
-      eprintln!(
-        "[stochastic-rs-quant] warning: Brent root finder failed for \
-         constant spread (dirty price {}); returning midpoint",
-        market_dirty_price.to_f64().unwrap()
-      );
-      T::from_f64_fast(0.5 * (low + high))
-    }
+    Err(_) => T::nan(),
   }
 }
 

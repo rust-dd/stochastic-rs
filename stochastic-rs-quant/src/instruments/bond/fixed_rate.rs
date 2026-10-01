@@ -137,6 +137,9 @@ impl<T: RealExt> FixedRateBond<T> {
   }
 
   /// Solve the yield-to-maturity implied by a dirty price.
+  ///
+  /// Returns `NaN` when the price is not positive and finite, or when no yield
+  /// in the expanded search bracket reproduces it.
   pub fn yield_to_maturity_from_dirty_price(
     &self,
     settlement_date: NaiveDate,
@@ -154,6 +157,10 @@ impl<T: RealExt> FixedRateBond<T> {
   }
 
   /// Solve the yield-to-maturity implied by a clean price.
+  ///
+  /// Returns `NaN` when the dirty price (clean price plus accrued interest) is
+  /// not positive and finite, or when no yield in the expanded search bracket
+  /// reproduces it.
   pub fn yield_to_maturity_from_clean_price(
     &self,
     settlement_date: NaiveDate,
@@ -221,6 +228,10 @@ impl<T: RealExt> FixedRateBond<T> {
   }
 
   /// Full analytics implied by the current curve stack.
+  ///
+  /// The yield, durations and convexity are `NaN` when the curve price is not
+  /// positive and finite, or when no yield in the expanded search bracket
+  /// reproduces it.
   pub fn analytics_from_curve(
     &self,
     valuation_date: NaiveDate,
@@ -241,6 +252,10 @@ impl<T: RealExt> FixedRateBond<T> {
   }
 
   /// Full analytics implied by a clean market price.
+  ///
+  /// The yield, durations and convexity are `NaN` when the dirty price (clean
+  /// price plus accrued interest) is not positive and finite, or when no yield
+  /// in the expanded search bracket reproduces it.
   pub fn analytics_from_clean_price(
     &self,
     settlement_date: NaiveDate,
@@ -277,6 +292,9 @@ impl<T: RealExt> FixedRateBond<T> {
   }
 
   /// Solve the Z-spread implied by a dirty market price.
+  ///
+  /// Returns `NaN` when the price is not positive and finite, or when no spread
+  /// in the expanded search bracket reproduces it.
   pub fn z_spread_from_dirty_price(
     &self,
     valuation_date: NaiveDate,
@@ -295,6 +313,10 @@ impl<T: RealExt> FixedRateBond<T> {
   }
 
   /// Solve the Z-spread implied by a clean market price.
+  ///
+  /// Returns `NaN` when the dirty price (clean price plus accrued interest) is
+  /// not positive and finite, or when no spread in the expanded search bracket
+  /// reproduces it.
   pub fn z_spread_from_clean_price(
     &self,
     settlement_date: NaiveDate,
@@ -324,6 +346,9 @@ impl<T: RealExt> FixedRateBond<T> {
   }
 
   /// Solve the OAS implied by a dirty market price and an embedded option value.
+  ///
+  /// Returns `NaN` when the price is not positive and finite, or when no spread
+  /// in the expanded search bracket reproduces it net of the option value.
   pub fn option_adjusted_spread_from_dirty_price(
     &self,
     valuation_date: NaiveDate,
@@ -343,6 +368,10 @@ impl<T: RealExt> FixedRateBond<T> {
   }
 
   /// Solve the OAS implied by a clean market price and an embedded option value.
+  ///
+  /// Returns `NaN` when the dirty price (clean price plus accrued interest) is
+  /// not positive and finite, or when no spread in the expanded search bracket
+  /// reproduces it net of the option value.
   pub fn option_adjusted_spread_from_clean_price(
     &self,
     settlement_date: NaiveDate,
