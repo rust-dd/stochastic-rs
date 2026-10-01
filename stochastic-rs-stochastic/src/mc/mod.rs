@@ -72,30 +72,62 @@ impl<T: FloatExt + std::fmt::Display> std::fmt::Display for McEstimate<T> {
 pub(crate) fn estimate_from_samples<T: FloatExt>(
   samples: impl IntoIterator<Item = T>,
 ) -> McEstimate<T> {
-  let mut n = 0usize;
-  let mut mean = 0.0f64;
-  let mut m2 = 0.0f64;
-  for y in samples {
-    let y = y.to_f64().unwrap_or(f64::NAN);
-    n += 1;
-    let delta = y - mean;
-    mean += delta / n as f64;
-    m2 += delta * (y - mean);
+  let mut acc = Welford::default();
+  acc.extend(samples);
+  McEstimate {
+    mean: T::from_f64_fast(acc.mean()),
+    std_err: T::from_f64_fast((acc.sample_variance() / acc.count() as f64).sqrt()),
+    n_samples: acc.count(),
   }
-  let (mean, std_err) = match n {
-    0 => (f64::NAN, f64::NAN),
-    1 => (mean, f64::NAN),
+}
+
+/// Running mean and corrected sum of squares of a stream of samples, updated
+/// one sample at a time in `f64` whatever the sample type, so neither a
+/// near-zero variance nor a long `f32` run loses the result to cancellation.
+/// The samples may arrive in any number of batches: the state after the last
+/// one is the state after the whole stream.
+///
+/// Reference: Welford, B. P. (1962), "Note on a Method for Calculating
+/// Corrected Sums of Squares and Products", Technometrics 4(3), 419–420,
+/// DOI: 10.1080/00401706.1962.10490022.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Welford {
+  n: usize,
+  mean: f64,
+  m2: f64,
+}
+
+impl Welford {
+  /// Fold `samples` into the running state.
+  pub(crate) fn extend<T: FloatExt>(&mut self, samples: impl IntoIterator<Item = T>) {
+    for y in samples {
+      let y = y.to_f64().unwrap_or(f64::NAN);
+      self.n += 1;
+      let delta = y - self.mean;
+      self.mean += delta / self.n as f64;
+      self.m2 += delta * (y - self.mean);
+    }
+  }
+
+  /// Number of samples folded in so far.
+  pub(crate) fn count(&self) -> usize {
+    self.n
+  }
+
+  /// Mean of the samples, `NaN` before the first one.
+  pub(crate) fn mean(&self) -> f64 {
+    if self.n == 0 { f64::NAN } else { self.mean }
+  }
+
+  /// Sample variance on the `n − 1` denominator, floored at zero. `NaN` for
+  /// fewer than two samples, and once a `NaN` or infinite sample has been seen.
+  pub(crate) fn sample_variance(&self) -> f64 {
+    if self.n < 2 {
+      return f64::NAN;
+    }
     // `clamp`, not `max`: `NaN.max(0.0)` is `0.0`, which would report a
     // poisoned stream as exactly known.
-    _ => (
-      mean,
-      (m2.clamp(0.0, f64::INFINITY) / (n as f64 - 1.0) / n as f64).sqrt(),
-    ),
-  };
-  McEstimate {
-    mean: T::from_f64_fast(mean),
-    std_err: T::from_f64_fast(std_err),
-    n_samples: n,
+    self.m2.clamp(0.0, f64::INFINITY) / (self.n as f64 - 1.0)
   }
 }
 

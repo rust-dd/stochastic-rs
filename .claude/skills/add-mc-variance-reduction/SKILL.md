@@ -68,6 +68,12 @@ variance, and reports `std_err = sqrt(s² / n)`. Fewer than two samples have
 no variance estimate: no samples give a `NaN` mean and `std_err`, one sample
 a `NaN` `std_err`. A `NaN` or infinite payoff keeps the `std_err` `NaN`.
 
+The helper is a thin wrapper over the crate-private `mc::Welford`
+accumulator. State that receives its samples in batches (MLMC's per-level
+statistics) holds a `Welford` per stream and `extend`s it with each batch;
+`count()`, `mean()` and `sample_variance()` read it back. There is one
+recurrence in the crate.
+
 Never write a `sum` / `sum_sq` loop of your own. `sum_sq / n − mean²`
 cancels on a near-constant payoff (a negative variance, a `NaN` `std_err`)
 and a running `f32` sum stops growing past 2^24. Serial and parallel twins
@@ -198,7 +204,11 @@ E[P_∞] ≈ E[P_0] + Σ_l E[P_l - P_{l-1}]
 
 with `P_l` evaluated on `2^l` time steps. The number of paths
 decreases geometrically with level. See `mc/mlmc.rs` for the workspace
-implementation and Giles (2015) for the algorithmic details.
+implementation. It follows Giles (2008), *Operations Research* 56(3),
+607-617 (DOI 10.1287/opre.1070.0496): the allocation is its eq. (12),
+`N_l = ⌈2ε⁻² √(V_l/C_l) Σ√(V_k C_k)⌉`, where `V_l` is the variance of one
+level sample, estimated per level as the `n − 1` sample variance (the paper
+leaves the denominator open); Giles (2015) has the algorithmic details.
 
 ## 6. Common Random Numbers (CRN)
 
@@ -280,9 +290,10 @@ The `mc/` module is nine files under
 - `stratified.rs` — the only module with **seeded** entry points
   (`stratified_normals_1d_seeded`, `stratified_normals_seeded`).
 - `sobol.rs`, `halton.rs` — in-tree low-discrepancy generators.
-- `mlmc.rs` — `Mlmc::new(epsilon, l_min, l_max, n0)` +
-  `estimate(level_sampler) -> MlmcResult<T>`; note it returns its own
-  result type, not `McEstimate`.
+- `mlmc.rs` — `Mlmc::new(epsilon, l_min, l_max, n0)` (`n0 ≥ 2`, a level
+  variance needs two samples) + `estimate(level_sampler) -> MlmcResult<T>`;
+  note it returns its own result type, not `McEstimate`. Its per-level
+  mean and variance come from `mc::Welford`.
 - `lsm.rs` — Longstaff-Schwartz, `Lsm::new(r, tau, n_basis)` +
   `price(paths, payoff)`. Ungated — the least-squares solve runs on the
   pure-Rust `faer`, so it is in every build —
