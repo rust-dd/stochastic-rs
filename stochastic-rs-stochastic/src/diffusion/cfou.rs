@@ -33,26 +33,29 @@ use crate::traits::ProcessExt;
 ///
 /// Reference: Alazemi, Alsenafi, Chen, Zhou (2024), arXiv:2406.18004
 /// (see the module docs for the full citation).
+///
+/// The fields are private because the embedded fGN driver caches a spectrum
+/// derived from `hurst`, `n` and `t`: read the parameters through the getters
+/// and change them through the `with_*` setters, which rebuild it. Assigning
+/// to a field does not compile:
+///
+/// ```compile_fail,E0616
+/// use stochastic_rs_core::simd_rng::Unseeded;
+/// use stochastic_rs_stochastic::diffusion::cfou::Cfou;
+/// let mut p = Cfou::<f64>::new(0.7, 1.0, 0.5, 0.2, 10, None, None, None, Unseeded);
+/// p.n = 1000;
+/// ```
 #[derive(Clone)]
 pub struct Cfou<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Hurst exponent of the driving fractional Brownian motion.
-  pub hurst: T,
-  /// Real part of the complex mean-reversion coefficient (`lambda > 0`).
-  pub lambda: T,
-  /// Imaginary-frequency part of the complex mean-reversion coefficient.
-  pub omega: T,
-  /// Noise intensity parameter in `sqrt(a) d\zeta_t` (`a > 0`).
-  pub a: T,
-  /// Number of points sampled along the complex fOU path.
-  pub n: usize,
-  /// Initial value of the real part `X_1(0)`.
-  pub x1_0: Option<T>,
-  /// Initial value of the imaginary part `X_2(0)`.
-  pub x2_0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
-  pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
-  pub seed: S,
+  hurst: T,
+  lambda: T,
+  omega: T,
+  a: T,
+  n: usize,
+  x1_0: Option<T>,
+  x2_0: Option<T>,
+  t: Option<T>,
+  seed: S,
   fgn: Fgn<T, Unseeded, B>,
 }
 
@@ -83,8 +86,125 @@ impl<T: FloatExt, S: SeedExt> Cfou<T, S, Cpu> {
       x2_0,
       t,
       seed,
-      fgn: Fgn::new(hurst, n - 1, t, Unseeded),
+      fgn: Self::fgn_for(hurst, n, t),
     }
+  }
+
+  /// The fGN driver of a path with `n` points (one increment per step),
+  /// shared by `new()` and every `with_*` setter that feeds it so they
+  /// can never drift apart.
+  fn fgn_for(hurst: T, n: usize, t: Option<T>) -> Fgn<T, Unseeded, Cpu> {
+    Fgn::new(hurst, n - 1, t, Unseeded)
+  }
+
+  /// Replace `hurst`; rebuilds the embedded `fgn`.
+  pub fn with_hurst(mut self, hurst: T) -> Self {
+    self.hurst = hurst;
+    self.fgn = Self::fgn_for(hurst, self.n, self.t);
+    self
+  }
+
+  /// Replace `lambda`. Panics if `lambda <= 0`, matching `new()`'s own
+  /// assertion.
+  pub fn with_lambda(mut self, lambda: T) -> Self {
+    assert!(lambda > T::zero(), "lambda must be positive");
+    self.lambda = lambda;
+    self
+  }
+
+  /// Replace `omega`, all else unchanged.
+  pub fn with_omega(mut self, omega: T) -> Self {
+    self.omega = omega;
+    self
+  }
+
+  /// Replace `a`. Panics if `a <= 0`, matching `new()`'s own assertion.
+  pub fn with_a(mut self, a: T) -> Self {
+    assert!(a > T::zero(), "a must be positive");
+    self.a = a;
+    self
+  }
+
+  /// Replace the number of simulation steps `n`; rebuilds the embedded
+  /// `fgn`. Panics if `n < 2`, matching `new()`'s own assertion.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+    self.n = n;
+    self.fgn = Self::fgn_for(self.hurst, n, self.t);
+    self
+  }
+
+  /// Replace `x1_0`, all else unchanged.
+  pub fn with_x1_0(mut self, x1_0: Option<T>) -> Self {
+    self.x1_0 = x1_0;
+    self
+  }
+
+  /// Replace `x2_0`, all else unchanged.
+  pub fn with_x2_0(mut self, x2_0: Option<T>) -> Self {
+    self.x2_0 = x2_0;
+    self
+  }
+
+  /// Replace the simulation horizon `t`; rebuilds the embedded `fgn`.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self.fgn = Self::fgn_for(self.hurst, self.n, t);
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged. `fgn`'s own
+  /// seed is a never-read dummy, so this does not touch it.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B> Cfou<T, S, B> {
+  /// Hurst exponent of the driving fractional Brownian motion.
+  pub fn hurst(&self) -> T {
+    self.hurst
+  }
+
+  /// Real part of the complex mean-reversion coefficient (`lambda > 0`).
+  pub fn lambda(&self) -> T {
+    self.lambda
+  }
+
+  /// Imaginary-frequency part of the complex mean-reversion coefficient.
+  pub fn omega(&self) -> T {
+    self.omega
+  }
+
+  /// Noise intensity parameter in `sqrt(a) d\zeta_t` (`a > 0`).
+  pub fn a(&self) -> T {
+    self.a
+  }
+
+  /// Number of points sampled along the complex fOU path.
+  pub fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Initial value of the real part `X_1(0)`.
+  pub fn x1_0(&self) -> Option<T> {
+    self.x1_0
+  }
+
+  /// Initial value of the imaginary part `X_2(0)`.
+  pub fn x2_0(&self) -> Option<T> {
+    self.x2_0
+  }
+
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  pub fn t(&self) -> Option<T> {
+    self.t
+  }
+
+  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  pub fn seed(&self) -> &S {
+    &self.seed
   }
 }
 

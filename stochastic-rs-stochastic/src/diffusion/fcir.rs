@@ -27,28 +27,29 @@ use crate::traits::ProcessExt;
 /// Fractional Cox-Ingersoll-Ross (Fcir) process.
 /// dX(t) = theta(mu - X(t))dt + sigma * sqrt(X(t))dW^H(t)
 /// where X(t) is the Fcir process.
+///
+/// The fields are private because the embedded fGN driver caches a spectrum
+/// derived from `hurst`, `n` and `t`: read the parameters through the getters
+/// and change them through the `with_*` setters, which rebuild it. Assigning
+/// to a field does not compile:
+///
+/// ```compile_fail,E0616
+/// use stochastic_rs_core::simd_rng::Unseeded;
+/// use stochastic_rs_stochastic::diffusion::fcir::Fcir;
+/// let mut p = Fcir::<f64>::new(0.7, 1.0, 0.04, 0.1, 10, None, None, None, Unseeded);
+/// p.n = 1000;
+/// ```
 #[derive(Clone)]
 pub struct Fcir<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Hurst exponent controlling roughness and long-memory.
-  pub hurst: T,
-  /// Mean-reversion speed (κ in the module header). Multiplies
-  /// `(mu - X_t)`, despite the field's own name.
-  pub theta: T,
-  /// Long-run mean level (θ in the module header). The level `X`
-  /// reverts to between fractional-noise shocks.
-  pub mu: T,
-  /// Diffusion scale σ multiplying `√X_t dB_t^H`.
-  pub sigma: T,
-  /// Number of points sampled along the fCIR path.
-  pub n: usize,
-  /// Initial value X₀ of the fCIR path.
-  pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
-  pub t: Option<T>,
-  /// Enables symmetric/truncated update variant when true.
-  pub use_sym: Option<bool>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
-  pub seed: S,
+  hurst: T,
+  theta: T,
+  mu: T,
+  sigma: T,
+  n: usize,
+  x0: Option<T>,
+  t: Option<T>,
+  use_sym: Option<bool>,
+  seed: S,
   fgn: Fgn<T, Unseeded, B>,
 }
 
@@ -62,7 +63,9 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
   /// non-negative — floored at zero by default, or reflected when
   /// [`use_sym`](Self::use_sym) is `true`. A violation not paired with
   /// `use_sym = Some(true)` unconditionally prints a one-line diagnostic
-  /// to stderr — including in release builds; it never panics.
+  /// to stderr — including in release builds; it never panics. The
+  /// `with_*` setters, like [`Cir`](crate::diffusion::cir::Cir)'s, do not
+  /// repeat that diagnostic.
   #[must_use]
   pub fn new(
     hurst: T,
@@ -95,8 +98,124 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
       t,
       use_sym,
       seed,
-      fgn: Fgn::new(hurst, n - 1, t, Unseeded),
+      fgn: Self::fgn_for(hurst, n, t),
     }
+  }
+
+  /// The fGN driver of a path with `n` points (one increment per step),
+  /// shared by `new()` and every `with_*` setter that feeds it so they
+  /// can never drift apart.
+  fn fgn_for(hurst: T, n: usize, t: Option<T>) -> Fgn<T, Unseeded, Cpu> {
+    Fgn::new(hurst, n - 1, t, Unseeded)
+  }
+
+  /// Replace `hurst`; rebuilds the embedded `fgn`.
+  pub fn with_hurst(mut self, hurst: T) -> Self {
+    self.hurst = hurst;
+    self.fgn = Self::fgn_for(hurst, self.n, self.t);
+    self
+  }
+
+  /// Replace `theta`, all else unchanged.
+  pub fn with_theta(mut self, theta: T) -> Self {
+    self.theta = theta;
+    self
+  }
+
+  /// Replace `mu`, all else unchanged.
+  pub fn with_mu(mut self, mu: T) -> Self {
+    self.mu = mu;
+    self
+  }
+
+  /// Replace `sigma`, all else unchanged.
+  pub fn with_sigma(mut self, sigma: T) -> Self {
+    self.sigma = sigma;
+    self
+  }
+
+  /// Replace the number of simulation steps `n`; rebuilds the embedded
+  /// `fgn`. Panics if `n < 2`, matching `new()`'s own assertion.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+    self.n = n;
+    self.fgn = Self::fgn_for(self.hurst, n, self.t);
+    self
+  }
+
+  /// Replace `x0`, all else unchanged.
+  pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    self.x0 = x0;
+    self
+  }
+
+  /// Replace the simulation horizon `t`; rebuilds the embedded `fgn`.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self.fgn = Self::fgn_for(self.hurst, self.n, t);
+    self
+  }
+
+  /// Replace `use_sym`, all else unchanged.
+  pub fn with_use_sym(mut self, use_sym: Option<bool>) -> Self {
+    self.use_sym = use_sym;
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged. `fgn`'s own
+  /// seed is a never-read dummy, so this does not touch it.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B> Fcir<T, S, B> {
+  /// Hurst exponent controlling roughness and long-memory.
+  pub fn hurst(&self) -> T {
+    self.hurst
+  }
+
+  /// Mean-reversion speed (κ in the module header). Multiplies
+  /// `(mu - X_t)`, despite the field's own name.
+  pub fn theta(&self) -> T {
+    self.theta
+  }
+
+  /// Long-run mean level (θ in the module header). The level `X`
+  /// reverts to between fractional-noise shocks.
+  pub fn mu(&self) -> T {
+    self.mu
+  }
+
+  /// Diffusion scale σ multiplying `√X_t dB_t^H`.
+  pub fn sigma(&self) -> T {
+    self.sigma
+  }
+
+  /// Number of points sampled along the fCIR path.
+  pub fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Initial value X₀ of the fCIR path.
+  pub fn x0(&self) -> Option<T> {
+    self.x0
+  }
+
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  pub fn t(&self) -> Option<T> {
+    self.t
+  }
+
+  /// Enables symmetric/truncated update variant when true.
+  pub fn use_sym(&self) -> Option<bool> {
+    self.use_sym
+  }
+
+  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  pub fn seed(&self) -> &S {
+    &self.seed
   }
 }
 

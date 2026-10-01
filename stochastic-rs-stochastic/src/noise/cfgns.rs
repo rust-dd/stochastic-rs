@@ -17,19 +17,27 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+/// Two correlated fractional Gaussian noises `Z = L η^H` on `n` points over
+/// `[0, t]`.
+///
+/// The fields are private because the embedded fGN driver caches a spectrum
+/// derived from `hurst`, `n` and `t`: read the parameters through the getters
+/// and change them through the `with_*` setters, which rebuild it. Assigning
+/// to a field does not compile:
+///
+/// ```compile_fail,E0616
+/// use stochastic_rs_core::simd_rng::Unseeded;
+/// use stochastic_rs_stochastic::noise::cfgns::Cfgns;
+/// let mut p = Cfgns::<f64>::new(0.7, 0.3, 10, None, Unseeded);
+/// p.n = 1000;
+/// ```
 #[derive(Clone)]
 pub struct Cfgns<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Hurst exponent controlling roughness and long-memory.
-  pub hurst: T,
-  /// Instantaneous correlation ρ between the two output fGn streams.
-  pub rho: T,
-  /// Number of points sampled along each correlated-fGn stream.
-  pub n: usize,
-  /// Simulation horizon [0, t] for both streams (defaults to 1 when
-  /// omitted).
-  pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
-  pub seed: S,
+  hurst: T,
+  rho: T,
+  n: usize,
+  t: Option<T>,
+  seed: S,
   fgn: Fgn<T, Unseeded, B>,
 }
 
@@ -50,8 +58,87 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
       n,
       t,
       seed,
-      fgn: Fgn::new(hurst, n, t, Unseeded),
+      fgn: Self::fgn_for(hurst, n, t),
     }
+  }
+
+  /// The fGN driver of a pair of `n`-point noises (one increment per
+  /// point), shared by `new()` and every `with_*` setter that feeds it so
+  /// they can never drift apart.
+  fn fgn_for(hurst: T, n: usize, t: Option<T>) -> Fgn<T, Unseeded, Cpu> {
+    Fgn::new(hurst, n, t, Unseeded)
+  }
+
+  /// Replace `hurst`; rebuilds the embedded `fgn`. Panics if `hurst` is
+  /// outside `[0, 1]`, matching `new()`'s own assertion.
+  pub fn with_hurst(mut self, hurst: T) -> Self {
+    assert!(
+      (T::zero()..=T::one()).contains(&hurst),
+      "Hurst parameter must be in (0, 1)"
+    );
+    self.hurst = hurst;
+    self.fgn = Self::fgn_for(hurst, self.n, self.t);
+    self
+  }
+
+  /// Replace `rho`. Panics if `rho` is outside `[-1, 1]`, matching `new()`'s
+  /// own assertion.
+  pub fn with_rho(mut self, rho: T) -> Self {
+    assert!(
+      (-T::one()..=T::one()).contains(&rho),
+      "Correlation coefficient must be in [-1, 1]"
+    );
+    self.rho = rho;
+    self
+  }
+
+  /// Replace the number of points `n`; rebuilds the embedded `fgn`.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    self.n = n;
+    self.fgn = Self::fgn_for(self.hurst, n, self.t);
+    self
+  }
+
+  /// Replace the simulation horizon `t`; rebuilds the embedded `fgn`.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self.fgn = Self::fgn_for(self.hurst, self.n, t);
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged. `fgn`'s own
+  /// seed is a never-read dummy, so this does not touch it.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B> Cfgns<T, S, B> {
+  /// Hurst exponent controlling roughness and long-memory.
+  pub fn hurst(&self) -> T {
+    self.hurst
+  }
+
+  /// Instantaneous correlation ρ between the two output fGn streams.
+  pub fn rho(&self) -> T {
+    self.rho
+  }
+
+  /// Number of points sampled along each correlated-fGn stream.
+  pub fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Simulation horizon [0, t] for both streams (defaults to 1 when
+  /// omitted).
+  pub fn t(&self) -> Option<T> {
+    self.t
+  }
+
+  /// Seed strategy (compile-time: [`Unseeded`] or [`Deterministic`]).
+  pub fn seed(&self) -> &S {
+    &self.seed
   }
 }
 

@@ -274,6 +274,6 @@ fn lambda_is_single_sourced_at_construction() {
   assert_eq!(b.cpoisson.poisson.lambda, LAMBDA);
 
   let j = jump_fou_with_jumps(SEED);
-  assert_eq!(j.lambda, LAMBDA);
-  assert_eq!(j.cpoisson.poisson.lambda, LAMBDA);
+  assert_eq!(j.lambda(), LAMBDA);
+  assert_eq!(j.cpoisson().poisson.lambda, LAMBDA);
 }

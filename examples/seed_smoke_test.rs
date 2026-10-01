@@ -92,7 +92,7 @@ fn main() {
   // (bit-for-bit). Lets calibration loops sweep seeds without rebuilding
   // the process, which is the main motivation for the `reseed` API.
   let fbm_h = Fbm::<f64, _>::new(h, n, Some(t), Deterministic::new(0));
-  fbm_h.seed.reseed(seed);
+  fbm_h.seed().reseed(seed);
   let path_h = fbm_h.sample().to_vec();
   let diff_h = first_diff(&path_c, &path_h);
   println!(
@@ -106,9 +106,9 @@ fn main() {
 
   // After reseed, two replays of the same seed match.
   let fbm_i = Fbm::<f64, _>::new(h, n, Some(t), Deterministic::new(0));
-  fbm_i.seed.reseed(123);
+  fbm_i.seed().reseed(123);
   let path_i1 = fbm_i.sample().to_vec();
-  fbm_i.seed.reseed(123);
+  fbm_i.seed().reseed(123);
   let path_i2 = fbm_i.sample().to_vec();
   let diff_i = first_diff(&path_i1, &path_i2);
   println!(
@@ -123,7 +123,7 @@ fn main() {
   // Spec: `Unseeded.reseed(seed)` is silently a no-op (no fixed state to
   // assign to). The call must compile and have no observable effect.
   let fbm_j = Fbm::<f64, _>::new(h, n, Some(t), Unseeded);
-  fbm_j.seed.reseed(seed); // no-op, should not panic
+  fbm_j.seed().reseed(seed); // no-op, should not panic
   let _ = fbm_j.sample();
   println!("Unseeded.reseed(...) → no panic, sample still works ✓");
 

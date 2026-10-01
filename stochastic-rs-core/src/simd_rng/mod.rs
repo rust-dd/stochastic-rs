@@ -177,7 +177,7 @@ pub trait SeedExt: Clone + Send + Sync + 'static {
   /// `state`, so a subsequent `rng()` / `rng_ext()` / `derive()` produces
   /// the stream rooted at the new `seed`. Lets a single
   /// `ProcessExt`-style instance replay or sweep different seeds without
-  /// rebuilding the process — `fbm.seed.reseed(seed); fbm.sample();`.
+  /// rebuilding the process — `fbm.seed().reseed(seed); fbm.sample();`.
   fn reseed(&self, _seed: u64) {}
 
   /// Returns a fresh `u64` seed value, advancing internal state exactly as

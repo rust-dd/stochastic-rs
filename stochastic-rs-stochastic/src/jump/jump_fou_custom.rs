@@ -4,6 +4,8 @@
 //! dX_t=\kappa(\theta-X_t)dt+\sigma dB_t^H+dJ_t
 //! $$
 //!
+mod params;
+
 use std::any::Any;
 
 use ndarray::Array1;
@@ -33,74 +35,37 @@ use crate::traits::ProcessExt;
 /// used to read `fgn.sampler()`, which draws from `fgn`'s own dead
 /// `Unseeded` field; fixed since the field is private and non-breaking to
 /// rewire.)
+///
+/// The fields are private because the embedded fGN driver caches a spectrum
+/// derived from `hurst`, `n` and `t`: read the parameters through the getters
+/// and change them through the `with_*` setters, which rebuild it. Assigning
+/// to a field does not compile:
+///
+/// ```compile_fail,E0616
+/// use stochastic_rs_core::simd_rng::Unseeded;
+/// use stochastic_rs_distributions::scalar::ScalarNormal;
+/// use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
+/// let times = ScalarNormal::<f64>::new(0.5, 0.01);
+/// let sizes = ScalarNormal::<f64>::new(0.0, 0.1);
+/// let mut p = JumpFOUCustom::new(0.7, 1.0, 0.0, 0.2, 10, None, None, times, sizes, Unseeded);
+/// p.n = 1000;
+/// ```
 pub struct JumpFOUCustom<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Hurst exponent H of the driving fractional Gaussian noise (roughness
-  /// / long-memory of the diffusion part; H = 0.5 recovers a standard
-  /// OU-with-jumps).
-  pub hurst: T,
-  /// Mean-reversion speed (κ in the module header's `dX_t=κ(θ−X_t)dt+...`).
-  /// Multiplies `(mu - X_t)`, despite the field's own name.
-  pub theta: T,
-  /// Long-run mean level (θ in the module header). The level `X` reverts
-  /// to between jumps.
-  pub mu: T,
-  /// Diffusion scale for the fractional-Gaussian-noise term (σ in the
-  /// module header).
-  pub sigma: T,
-  /// Number of points sampled along the fOU-plus-jumps path.
-  pub n: usize,
-  /// Initial value X₀ of the fOU-plus-jumps path.
-  pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
-  pub t: Option<T>,
-  /// User-supplied inter-arrival-time distribution for jumps (must sample
-  /// strictly positive values).
-  pub jump_times: D,
-  /// User-supplied jump-size distribution added directly to the path at
-  /// each jump.
-  pub jump_sizes: D,
+  hurst: T,
+  theta: T,
+  mu: T,
+  sigma: T,
+  n: usize,
+  x0: Option<T>,
+  t: Option<T>,
+  jump_times: D,
+  jump_sizes: D,
   fgn: Fgn<T, Unseeded, B>,
-  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
-  pub seed: S,
-}
-
-impl<T, D, S: SeedExt> JumpFOUCustom<T, D, S, Cpu>
-where
-  T: FloatExt,
-  D: Distribution<T> + Send + Sync,
-{
-  pub fn new(
-    hurst: T,
-    theta: T,
-    mu: T,
-    sigma: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    jump_times: D,
-    jump_sizes: D,
-    seed: S,
-  ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-
-    Self {
-      hurst,
-      mu,
-      sigma,
-      theta,
-      n,
-      x0,
-      t,
-      jump_times,
-      jump_sizes,
-      fgn: Fgn::new(hurst, n - 1, t, Unseeded),
-      seed,
-    }
-  }
+  seed: S,
 }
 
 impl<T, D, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>

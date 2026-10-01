@@ -18,16 +18,25 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+/// Fractional Brownian motion on `n` points over `[0, t]`.
+///
+/// The fields are private because the embedded fGN driver caches a spectrum
+/// derived from `hurst`, `n` and `t`: read the parameters through the getters
+/// and change them through the `with_*` setters, which rebuild it. Assigning
+/// to a field does not compile:
+///
+/// ```compile_fail,E0616
+/// use stochastic_rs_core::simd_rng::Unseeded;
+/// use stochastic_rs_stochastic::process::fbm::Fbm;
+/// let mut p = Fbm::<f64>::new(0.7, 10, None, Unseeded);
+/// p.n = 1000;
+/// ```
 #[derive(Clone)]
 pub struct Fbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Hurst parameter (`0 < H < 1`) controlling roughness and memory.
-  pub hurst: T,
-  /// Number of discrete time points in the generated path.
-  pub n: usize,
-  /// Simulation horizon [0, t] for the path (defaults to `1` if `None`).
-  pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
-  pub seed: S,
+  hurst: T,
+  n: usize,
+  t: Option<T>,
+  seed: S,
   fgn: Fgn<T, Unseeded, B>,
 }
 
@@ -41,7 +50,7 @@ pub struct Fbm<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 /// and only borrows `fgn` for its cached FFT plan/eigenvalues), so unlike
 /// [`Vasicek`](crate::interest::vasicek::Vasicek)'s embedded `Ou` there is
 /// no seed-derivation subtlety here: every setter that feeds `fgn`
-/// rebuilds it with the exact expression `new()` itself uses.
+/// rebuilds it through the one helper `new()` itself builds it with.
 impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
   pub fn new(hurst: T, n: usize, t: Option<T>, seed: S) -> Self {
     assert!(n >= 2, "n must be at least 2");
@@ -51,14 +60,21 @@ impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
       n,
       t,
       seed,
-      fgn: Fgn::new(hurst, n - 1, t, Unseeded),
+      fgn: Self::fgn_for(hurst, n, t),
     }
+  }
+
+  /// The fGN driver of a path with `n` points (one increment per step),
+  /// shared by `new()` and every `with_*` setter that feeds it so they
+  /// can never drift apart.
+  fn fgn_for(hurst: T, n: usize, t: Option<T>) -> Fgn<T, Unseeded, Cpu> {
+    Fgn::new(hurst, n - 1, t, Unseeded)
   }
 
   /// Replace `hurst`; rebuilds the embedded `fgn`.
   pub fn with_hurst(mut self, hurst: T) -> Self {
     self.hurst = hurst;
-    self.fgn = Fgn::new(hurst, self.n - 1, self.t, Unseeded);
+    self.fgn = Self::fgn_for(hurst, self.n, self.t);
     self
   }
 
@@ -67,14 +83,14 @@ impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
   pub fn with_steps(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must be at least 2");
     self.n = n;
-    self.fgn = Fgn::new(self.hurst, n - 1, self.t, Unseeded);
+    self.fgn = Self::fgn_for(self.hurst, n, self.t);
     self
   }
 
   /// Replace the simulation horizon `t`; rebuilds the embedded `fgn`.
   pub fn with_horizon(mut self, t: Option<T>) -> Self {
     self.t = t;
-    self.fgn = Fgn::new(self.hurst, self.n - 1, t, Unseeded);
+    self.fgn = Self::fgn_for(self.hurst, self.n, t);
     self
   }
 
@@ -83,6 +99,28 @@ impl<T: FloatExt, S: SeedExt> Fbm<T, S, Cpu> {
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B> Fbm<T, S, B> {
+  /// Hurst parameter (`0 < H < 1`) controlling roughness and memory.
+  pub fn hurst(&self) -> T {
+    self.hurst
+  }
+
+  /// Number of discrete time points in the generated path.
+  pub fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Simulation horizon [0, t] for the path (defaults to `1` if `None`).
+  pub fn t(&self) -> Option<T> {
+    self.t
+  }
+
+  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  pub fn seed(&self) -> &S {
+    &self.seed
   }
 }
 
