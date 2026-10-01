@@ -14,10 +14,12 @@ use parking_lot::Mutex;
 use super::EulerCoefficients;
 use super::EulerKernel;
 use super::EulerSpec;
+use super::FgnSpec;
 use super::kernel::Shape;
 use crate::device::DeviceError;
 use crate::device::DeviceInfo;
 use crate::device::Metal;
+use crate::device::launch_len;
 
 type Result<T> = std::result::Result<T, DeviceError>;
 
@@ -251,6 +253,27 @@ pub(crate) fn metal_device(ordinal: usize) -> Result<Device> {
   }
 }
 
+/// `buffer` when Metal actually allocated it, or the out-of-memory error the
+/// batch loops answer by halving the chunk.
+///
+/// `new_buffer` and `new_buffer_with_data` hand a refused allocation back as
+/// a `Buffer` around nil — a request past `maxBufferLength` or past what the
+/// device has left, and an empty one too — and its `contents` is then null.
+/// Every buffer this crate allocates is shared storage, whose contents are
+/// never null once it exists, so that is what the check reads.
+pub(crate) fn checked_buffer(buffer: Buffer, bytes: u64) -> Result<Buffer> {
+  use metal::foreign_types::ForeignType;
+  if buffer.as_ptr().is_null() || buffer.contents().is_null() {
+    // There is no object to release, and dropping the handle would send
+    // `release` through a null pointer.
+    std::mem::forget(buffer);
+    return Err(DeviceError::OutOfMemory(format!(
+      "Metal could not allocate {bytes} bytes"
+    )));
+  }
+  Ok(buffer)
+}
+
 /// Half of what the device at `ordinal` says it is comfortable holding,
 /// cached after the first query.
 ///
@@ -372,29 +395,36 @@ fn run<O>(
     args.has_jumps != 0 || args.jump_law != 0,
     args.gamma_law != 0,
   );
+  // The kernel finds every value it writes or reads by a `uint` index: the
+  // output's planes, and a fractional launch's increment rows.
+  let (paths, steps) = (args.paths as usize, args.steps as usize);
+  let total = args.components as usize * paths * steps;
+  launch_len::<u32>(total, "out")?;
+  launch_len::<u32>(args.increments as usize * paths * steps, "incs")?;
   ensure_context(ordinal, shape)?;
   let mut guard = CONTEXT.lock();
   let ctx = guard.as_mut().expect("initialised");
   let shared = MTLResourceOptions::StorageModeShared;
-  let total = args.components as usize * args.paths as usize * args.steps as usize;
-  let bytes = (total * 4) as u64;
-  if ctx.output.as_ref().is_none_or(|b| b.length() < bytes) {
-    ctx.output = Some(ctx.device.new_buffer(bytes, shared));
-  }
-  let out_buf = ctx.output.take().expect("just sized");
-  let ctx = guard.as_ref().expect("initialised");
-  let pipeline = ctx.pipelines.get(&shape).expect("compiled for this shape");
   // Every small argument travels inside the command buffer rather than in a
   // buffer of its own: `setBytes` takes up to four kilobytes, which is all
   // but the largest curve, and an allocation per launch is a driver call the
   // launch does not need. A curve past that gets a buffer.
-  let big_curve = (curve.len() * 4 >= SET_BYTES_MAX).then(|| {
-    ctx.device.new_buffer_with_data(
-      curve.as_ptr() as *const _,
-      std::mem::size_of_val(curve) as u64,
-      shared,
-    )
-  });
+  let big_curve = (curve.len() * 4 >= SET_BYTES_MAX)
+    .then(|| {
+      let bytes = std::mem::size_of_val(curve) as u64;
+      let buffer = ctx
+        .device
+        .new_buffer_with_data(curve.as_ptr() as *const _, bytes, shared);
+      checked_buffer(buffer, bytes)
+    })
+    .transpose()?;
+  let bytes = (total * 4) as u64;
+  if ctx.output.as_ref().is_none_or(|b| b.length() < bytes) {
+    ctx.output = Some(checked_buffer(ctx.device.new_buffer(bytes, shared), bytes)?);
+  }
+  let out_buf = ctx.output.take().expect("just sized");
+  let ctx = guard.as_ref().expect("initialised");
+  let pipeline = ctx.pipelines.get(&shape).expect("compiled for this shape");
   let cmd = ctx.queue.new_command_buffer();
   {
     let enc = cmd.new_compute_command_encoder();
@@ -432,6 +462,8 @@ fn run<O>(
   cmd.wait_until_completed();
   drop(guard);
   let ptr = out_buf.contents() as *const f32;
+  // SAFETY: shared storage the launch has finished writing, checked to exist
+  // when it was allocated and at least `total` floats long.
   let out = finish(unsafe { std::slice::from_raw_parts(ptr, total) });
   let mut guard = CONTEXT.lock();
   if let Some(ctx) = guard.as_mut()
@@ -565,6 +597,30 @@ impl EulerKernel<f32> for Metal {
   fn batch_budget(&self) -> usize {
     self.batch_budget.min(working_set(self.ordinal))
   }
+
+  /// The kernel holds every buffer index in a `uint`: a path writes
+  /// `components` planes of `steps` values and, for a fractional launch,
+  /// reads `streams` increment rows — which the fGN pipeline wrote first,
+  /// indexing its own buffers in `uint` as well.
+  fn index_rows(
+    &self,
+    rows: usize,
+    spec: EulerSpec<f32>,
+    steps: usize,
+    fgn: Option<FgnSpec<'_, f32>>,
+  ) -> usize {
+    let (family, _) = spec.encode();
+    let planes = super::families::Family::from_code(family)
+      .expect("a declared family")
+      .components();
+    let streams = fgn.as_ref().map_or(0, |f| f.streams);
+    let rows =
+      crate::device::rows_within_index_limit(rows, planes.max(streams) * steps, u32::MAX as usize);
+    match fgn {
+      Some(f) => crate::noise::fgn::metal::index_rows(rows, f.streams, f.n),
+      None => rows,
+    }
+  }
 }
 
 /// The fGN pipeline's output for a launch of `m` paths, with the stream count
@@ -651,18 +707,20 @@ fn launch_paths<O>(
   let series_n = crate::euler::series_terms(family, n, series);
   let series_live = crate::euler::series_live(family);
   let (table_n, table_u0) = crate::euler::table_terms(family, table);
+  let streams = match increments {
+    Increments::Hashed => 0,
+    Increments::Device(_, streams) => streams,
+  };
+  let (steps, paths, first_path) = crate::euler::launch_scalars(n, first, m, streams)?;
   let args = EulerArgs {
     family,
     components: components as u32,
     noises: noises as u32,
     seed: (seed ^ (seed >> 32)) as u32,
-    steps: n as u32,
-    paths: m as u32,
-    first_path: first as u32,
-    increments: match increments {
-      Increments::Hashed => 0,
-      Increments::Device(_, streams) => streams,
-    },
+    steps,
+    paths,
+    first_path,
+    increments: streams,
     n_curves,
     has_jumps: u32::from(jump_lambda.is_some()),
     jump_law: law,

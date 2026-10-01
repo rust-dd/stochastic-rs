@@ -52,6 +52,8 @@ use stochastic_rs_core::simd_rng::SeedExt;
 pub(crate) use self::kernels::MSL_COMMON;
 use super::Fgn;
 use crate::device::DeviceError;
+use crate::device::launch_len;
+use crate::euler::metal::checked_buffer;
 
 type Result<T> = std::result::Result<T, DeviceError>;
 
@@ -113,11 +115,17 @@ static OUT_POOL: Mutex<Vec<Buffer>> = Mutex::new(Vec::new());
 
 /// A read-out buffer of at least `bytes`, taken out of [`OUT_POOL`] so no
 /// other caller can be handed the same one.
-fn take_out_buffer(dev: &Device, bytes: u64) -> Buffer {
+fn take_out_buffer(dev: &Device, bytes: u64) -> Result<Buffer> {
   let mut pool = OUT_POOL.lock();
   match pool.iter().position(|b| b.length() >= bytes) {
-    Some(i) => pool.remove(i),
-    None => dev.new_buffer(bytes.max(4), MTLResourceOptions::StorageModeShared),
+    Some(i) => Ok(pool.remove(i)),
+    None => {
+      let bytes = bytes.max(4);
+      checked_buffer(
+        dev.new_buffer(bytes, MTLResourceOptions::StorageModeShared),
+        bytes,
+      )
+    }
   }
 }
 
@@ -282,12 +290,26 @@ fn run_pipeline(launch: Launch<'_>, out: &Buffer) -> Result<usize> {
   } = launch;
   let traj_size = 2 * n;
   let out_size = n - offset;
+  // A launch of no rows has nothing to compute, and Metal answers the empty
+  // buffer it would ask for with nil.
+  if m == 0 {
+    return Ok(out_size);
+  }
   let scale = (out_size.max(1) as f32).powf(-(hurst as f32)) * (t as f32).powf(hurst as f32);
   let log_n = traj_size.trailing_zeros() as usize;
   let parity = ((first_cell / traj_size as u64) & 1) as u32;
   let base_cell = first_cell - u64::from(parity) * traj_size as u64;
   let transforms = (parity as usize + m).div_ceil(2);
   let total = transforms * traj_size;
+  // The kernels find every value by a `uint` index — into the transforms'
+  // real and imaginary halves and into the read-out — and the read-out names
+  // its row as an `int` before comparing it with `rows`.
+  launch_len::<u32>(total, "real")?;
+  launch_len::<u32>(m * out_size, "output")?;
+  launch_len::<i32>(m, "rows")?;
+  let ts_u32 = launch_len::<u32>(traj_size, "traj_size")?;
+  let os = launch_len::<u32>(out_size, "out_size")?;
+  let rows = launch_len::<u32>(m, "rows")?;
 
   ensure_ctx(ordinal)?;
   // Clone the handles out of the global lock so another size can encode
@@ -312,19 +334,20 @@ fn run_pipeline(launch: Launch<'_>, out: &Buffer) -> Result<usize> {
         && s.t_bits == tb
     },
     || {
-      let real_buf = dev.new_buffer((total * 4) as u64, shared);
-      let imag_buf = dev.new_buffer((total * 4) as u64, shared);
-      let eig_buf = dev.new_buffer_with_data(
-        sqrt_eigs.as_ptr() as *const _,
-        (sqrt_eigs.len() * 4) as u64,
-        shared,
-      );
+      let bytes = (total * 4) as u64;
+      let real_buf = checked_buffer(dev.new_buffer(bytes, shared), bytes)?;
+      let imag_buf = checked_buffer(dev.new_buffer(bytes, shared), bytes)?;
+      let eig_bytes = (sqrt_eigs.len() * 4) as u64;
+      let eig_buf = checked_buffer(
+        dev.new_buffer_with_data(sqrt_eigs.as_ptr() as *const _, eig_bytes, shared),
+        eig_bytes,
+      )?;
       let bit_rev = build_bit_reverse_table(traj_size);
-      let rev_buf = dev.new_buffer_with_data(
-        bit_rev.as_ptr() as *const _,
-        (bit_rev.len() * 4) as u64,
-        shared,
-      );
+      let rev_bytes = (bit_rev.len() * 4) as u64;
+      let rev_buf = checked_buffer(
+        dev.new_buffer_with_data(bit_rev.as_ptr() as *const _, rev_bytes, shared),
+        rev_bytes,
+      )?;
       Ok(SizedMetal {
         real_buf,
         imag_buf,
@@ -343,7 +366,6 @@ fn run_pipeline(launch: Launch<'_>, out: &Buffer) -> Result<usize> {
   // Single command buffer for the entire pipeline
   let cmd = ctx.queue.new_command_buffer();
   let tg = MTLSize::new(256, 1, 1);
-  let ts_u32 = traj_size as u32;
   let (tile_log, tile_stages) = tile_plan(
     log_n,
     ctx.tile_pso.max_total_threads_per_threadgroup() as usize,
@@ -391,8 +413,6 @@ fn run_pipeline(launch: Launch<'_>, out: &Buffer) -> Result<usize> {
   // transform.
   {
     let single = log_n - tile_stages == 1;
-    let os = out_size as u32;
-    let rows = m as u32;
     let enc = cmd.new_compute_command_encoder();
     enc.set_compute_pipeline_state(if single {
       &ctx.readout2_pso
@@ -454,7 +474,7 @@ pub(crate) fn sample_f32_buffer(
   if let Some(done) = LENT.with_borrow_mut(Option::take) {
     return_out_buffer(done);
   }
-  let out = take_out_buffer(&dev, (launch.out_len() * 4) as u64);
+  let out = take_out_buffer(&dev, (launch.out_len() * 4) as u64)?;
   let out_size = run_pipeline(launch, &out)?;
   LENT.with_borrow_mut(|slot| *slot = Some(out.clone()));
   Ok((out, out_size))
@@ -470,7 +490,7 @@ fn with_f32_rows<R>(launch: Launch<'_>, consume: impl FnOnce(&[f32]) -> Result<R
   ensure_ctx(launch.ordinal)?;
   let dev = CTX.lock().as_ref().unwrap().device.clone();
   let len = launch.out_len();
-  let out = take_out_buffer(&dev, (len * 4) as u64);
+  let out = take_out_buffer(&dev, (len * 4) as u64)?;
   let result = run_pipeline(launch, &out).and_then(|_| {
     // SAFETY: shared storage the launch has finished writing into, of at
     // least `len` floats by construction, and held by nobody else.
@@ -487,17 +507,33 @@ struct Chunk {
   len: usize,
 }
 
+/// `rows` cut down until a launch of `streams` paths a row, of an `n`-point
+/// embedding, keeps every index inside the `uint` the kernels hold it in.
+///
+/// A path is charged a whole transform of `2n` points. Two paths share one,
+/// but a launch that starts on the second of a pair computes the transform in
+/// front of it as well, so the charge bounds the real and imaginary buffers
+/// however the batch is cut — and with them the read-out, at no more than
+/// `n` values a path, and the `int` it names a row by.
+pub(crate) fn index_rows(rows: usize, streams: usize, n: usize) -> usize {
+  crate::device::rows_within_index_limit(rows, streams * 2 * n, u32::MAX as usize)
+}
+
 /// The rows of `m` paths cut into launches that fit the device's batch
-/// budget. One seed serves the whole batch and each chunk carries the count
-/// of elements already produced, so the result is the same whatever the
-/// budget — the property `chunk_tests` pins.
+/// budget and the kernels' index range. One seed serves the whole batch and
+/// each chunk carries the count of elements already produced, so the result
+/// is the same whatever the budget — the property `chunk_tests` pins.
 fn chunks(fgn_n: usize, out_size: usize, m: usize, device: &crate::device::Metal) -> Vec<Chunk> {
   let budget = device
     .batch_budget
     .min(crate::euler::metal::working_set(device.ordinal));
   // A row costs half a transform's `real`/`imag` — two paths come out of one
   // — plus its own output row.
-  let rows = crate::device::chunk_rows(budget, 2 * fgn_n + out_size, 4);
+  let rows = index_rows(
+    crate::device::chunk_rows(budget, 2 * fgn_n + out_size, 4),
+    1,
+    fgn_n,
+  );
   let mut first = 0;
   let mut out = Vec::new();
   while first < m {
@@ -629,5 +665,16 @@ mod chunk_tests {
     assert_eq!(fbm(3).sample_par(3), fbm(3).sample_par(3));
     assert_ne!(fbm(3).sample_par(1), fbm(4).sample_par(1));
     assert_eq!(fbm(3).sample(), fbm(3).sample());
+  }
+
+  /// An empty fractional batch still runs the engine's fGN launch, for no
+  /// rows. Metal answers an empty buffer request with nil, so that launch
+  /// must not ask for one: it is a batch of nothing, not a device failure.
+  #[test]
+  fn an_empty_fractional_batch_is_not_a_device_failure() {
+    use crate::process::fbm::Fbm;
+    let fbm = Fbm::<f32, _>::new(0.7, 256, Some(1.0), Deterministic::new(3)).on::<Metal>();
+    let paths = fbm.try_sample_par(0).expect("no paths is not a failure");
+    assert!(paths.is_empty());
   }
 }

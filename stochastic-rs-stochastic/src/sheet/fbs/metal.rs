@@ -17,6 +17,8 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use super::Fbs;
 use super::SheetLaunch;
 use crate::device::DeviceError;
+use crate::device::launch_len;
+use crate::euler::metal::checked_buffer;
 use crate::noise::fgn::metal::MSL_COMMON;
 use crate::noise::fgn::metal::build_bit_reverse_table;
 use crate::traits::FloatExt;
@@ -203,19 +205,18 @@ fn encode_fft(
   ctx: &SheetCtx,
   real: &Buffer,
   imag: &Buffer,
-  n: usize,
+  n: u32,
   total: usize,
 ) {
   let tg = MTLSize::new(256, 1, 1);
   let grid = MTLSize::new((total / 2) as u64, 1, 1);
-  let n_u32 = n as u32;
   for stage in 0..n.trailing_zeros() {
     let hs = 1u32 << stage;
     let enc = cmd.new_compute_command_encoder();
     enc.set_compute_pipeline_state(&ctx.butterfly_pso);
     enc.set_buffer(0, Some(real), 0);
     enc.set_buffer(1, Some(imag), 0);
-    enc.set_bytes(2, 4, &n_u32 as *const u32 as *const _);
+    enc.set_bytes(2, 4, &n as *const u32 as *const _);
     enc.set_bytes(3, 4, &hs as *const u32 as *const _);
     enc.dispatch_threads(grid, tg);
     enc.end_encoding();
@@ -239,6 +240,15 @@ fn sample_chunk(
   let cells = big_m * big_n;
   let total = sheets * cells;
   let out_len = sheets * m * n;
+  // Every kernel finds its values, and its own thread, by a `uint` index:
+  // `total` cells in each work buffer, `out_len` values in the read-out.
+  launch_len::<u32>(total, "total")?;
+  launch_len::<u32>(out_len, "out_len")?;
+  let cells_u32 = launch_len::<u32>(cells, "cells")?;
+  let rows_u32 = launch_len::<u32>(big_m, "rows")?;
+  let cols_u32 = launch_len::<u32>(big_n, "cols")?;
+  let m_u32 = launch_len::<u32>(m, "m")?;
+  let n_u32 = launch_len::<u32>(n, "n")?;
 
   ensure_ctx(ordinal)?;
   // Clone the handles out of the global lock so another size can encode
@@ -252,23 +262,30 @@ fn sample_chunk(
     &mut sized,
     |s| s.m == m && s.n == n && s.sheets == sheets && s.key == sheet.key,
     || {
-      let floats = |len: usize| dev.new_buffer((len * 4) as u64, shared);
-      let table = |rev: &[u32]| {
-        dev.new_buffer_with_data(rev.as_ptr() as *const _, (rev.len() * 4) as u64, shared)
+      let floats = |len: usize| {
+        let bytes = (len * 4) as u64;
+        checked_buffer(dev.new_buffer(bytes, shared), bytes)
       };
+      let table = |values: &[u32]| {
+        let bytes = (values.len() * 4) as u64;
+        checked_buffer(
+          dev.new_buffer_with_data(values.as_ptr() as *const _, bytes, shared),
+          bytes,
+        )
+      };
+      let lam_bytes = (sheet.lam.len() * 4) as u64;
       Ok(SizedSheet {
-        real: floats(total),
-        imag: floats(total),
-        real_t: floats(total),
-        imag_t: floats(total),
-        out: floats(out_len),
-        lam: dev.new_buffer_with_data(
-          sheet.lam.as_ptr() as *const _,
-          (sheet.lam.len() * 4) as u64,
-          shared,
-        ),
-        rev_cols: table(&build_bit_reverse_table(big_n)),
-        rev_rows: table(&build_bit_reverse_table(big_m)),
+        real: floats(total)?,
+        imag: floats(total)?,
+        real_t: floats(total)?,
+        imag_t: floats(total)?,
+        out: floats(out_len)?,
+        lam: checked_buffer(
+          dev.new_buffer_with_data(sheet.lam.as_ptr() as *const _, lam_bytes, shared),
+          lam_bytes,
+        )?,
+        rev_cols: table(&build_bit_reverse_table(big_n))?,
+        rev_rows: table(&build_bit_reverse_table(big_m))?,
         m,
         n,
         sheets,
@@ -279,9 +296,6 @@ fn sample_chunk(
 
   let cmd = ctx.queue.new_command_buffer();
   let tg = MTLSize::new(256, 1, 1);
-  let cells_u32 = cells as u32;
-  let rows_u32 = big_m as u32;
-  let cols_u32 = big_n as u32;
   let first_cell = (first * cells) as u64;
 
   // 1. Draw, scale, scatter bit-reversed along the rows.
@@ -301,7 +315,7 @@ fn sample_chunk(
   }
 
   // 2. The row transforms.
-  encode_fft(cmd, &ctx, &s.real, &s.imag, big_n, total);
+  encode_fft(cmd, &ctx, &s.real, &s.imag, cols_u32, total);
 
   // 3. Transpose, bit-reversing the new rows.
   {
@@ -320,12 +334,10 @@ fn sample_chunk(
   }
 
   // 4. The column transforms.
-  encode_fft(cmd, &ctx, &s.real_t, &s.imag_t, big_m, total);
+  encode_fft(cmd, &ctx, &s.real_t, &s.imag_t, rows_u32, total);
 
   // 5. Read out the leading block, shifted and corrected.
   {
-    let m_u32 = m as u32;
-    let n_u32 = n as u32;
     let enc = cmd.new_compute_command_encoder();
     enc.set_compute_pipeline_state(&ctx.extract_pso);
     enc.set_buffer(0, Some(&s.real_t), 0);
@@ -375,7 +387,13 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
     let budget = device
       .batch_budget
       .min(crate::euler::metal::working_set(device.ordinal));
-    let rows = crate::device::chunk_rows(budget, 4 * cells + m * n, 4);
+    // A sheet is `cells` values of each work buffer, every one found by a
+    // `uint` index.
+    let rows = crate::device::rows_within_index_limit(
+      crate::device::chunk_rows(budget, 4 * cells + m * n, 4),
+      cells,
+      u32::MAX as usize,
+    );
     let mut out = Vec::with_capacity(sheets);
     let mut first = 0;
     while first < sheets {

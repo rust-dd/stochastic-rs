@@ -2042,6 +2042,21 @@ pub trait EulerKernel<T: FloatExt>: Backend {
   /// Bytes of path data one launch may hold.
   fn batch_budget(&self) -> usize;
 
+  /// `rows` cut down, where it has to be, until one launch of that many
+  /// paths computes no index outside the integer type this device's kernels
+  /// hold it in: the launch of `spec` over `steps` grid points, its increment
+  /// rows, and — when `fgn` is set — the fGN pipeline it runs first.
+  ///
+  /// Never below one path: a single path past the range still reaches the
+  /// launch, which refuses it rather than wrap.
+  fn index_rows(
+    &self,
+    rows: usize,
+    spec: EulerSpec<T>,
+    steps: usize,
+    fgn: Option<FgnSpec<'_, T>>,
+  ) -> usize;
+
   /// The whole system batch under `seed`, chunked to the budget.
   fn euler_system_batch<const D: usize, P: EulerSystem<T, D>>(
     &self,
@@ -2055,11 +2070,12 @@ pub trait EulerKernel<T: FloatExt>: Backend {
     // Bergomi family reports four where its process takes two. Both the
     // budget and the assembled array follow the launch, not `D`, or the
     // chunks do not fit the array they are assigned into.
-    let (code, _) = process.euler_spec().encode();
+    let spec = process.euler_spec();
+    let (code, _) = spec.encode();
     let planes = families::Family::from_code(code)
       .expect("a declared family")
       .components();
-    let rows = crate::device::chunk_rows(self.batch_budget(), n * planes, std::mem::size_of::<T>());
+    let rows = launch_rows(self, n * planes, spec, n, process.fgn_spec());
     if m <= rows {
       return self.euler_system_kernel(process, 0, m, seed);
     }
@@ -2083,7 +2099,7 @@ pub trait EulerKernel<T: FloatExt>: Backend {
     seed: u64,
   ) -> Result<Array2<T>, DeviceError> {
     let n = process.grid_points();
-    let rows = crate::device::chunk_rows(self.batch_budget(), n, std::mem::size_of::<T>());
+    let rows = launch_rows(self, n, process.euler_spec(), n, process.fgn_spec());
     if m <= rows {
       return self.euler_kernel(process, 0, m, seed);
     }
@@ -2097,6 +2113,46 @@ pub trait EulerKernel<T: FloatExt>: Backend {
     })?;
     Ok(out)
   }
+}
+
+/// Paths one launch of `kernel` may hold: as many as its budget fits at
+/// `per_path` scalars a path, cut down by [`EulerKernel::index_rows`] to what
+/// its kernels can index. Every batch loop of the engine sizes its chunks
+/// here, so none of them can hand a launch an index that wraps.
+fn launch_rows<T: FloatExt, K: EulerKernel<T>>(
+  kernel: &K,
+  per_path: usize,
+  spec: EulerSpec<T>,
+  steps: usize,
+  fgn: Option<FgnSpec<'_, T>>,
+) -> usize {
+  let rows = crate::device::chunk_rows(kernel.batch_budget(), per_path, std::mem::size_of::<T>());
+  kernel.index_rows(rows, spec, steps, fgn)
+}
+
+/// The kernel's `steps`, `paths` and `first_path` for a launch of paths
+/// `first .. first + m` over `n` grid points, as the `unsigned int`s the
+/// shared body takes them in, or the launch's error — never a wrapped value.
+///
+/// The body also counts a path's batch-global index `first_path + path`,
+/// which keys its noise, and its increment row `path * increments` in 32
+/// bits, so the launch keeps both inside that range too: past it two paths
+/// would draw the same noise, or one would read another's increments.
+#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+pub(crate) fn launch_scalars(
+  n: usize,
+  first: usize,
+  m: usize,
+  increments: u32,
+) -> Result<(u32, u32, u32), DeviceError> {
+  use crate::device::launch_len;
+  launch_len::<u32>(first + m, "first_path + paths")?;
+  launch_len::<u32>(m * increments as usize, "paths * increments")?;
+  Ok((
+    launch_len(n, "steps")?,
+    launch_len(m, "paths")?,
+    launch_len(first, "first_path")?,
+  ))
 }
 
 /// How a backend handle produces Euler paths for the processes it serves:
@@ -2649,11 +2705,8 @@ macro_rules! kernel_euler_backend {
     ) -> Result<Vec<R>, DeviceError> {
       use rayon::prelude::*;
       let seed = process.device_seed();
-      let rows = crate::device::chunk_rows(
-        <Self as EulerKernel<$scalar>>::batch_budget(self),
-        process.grid_points(),
-        std::mem::size_of::<$scalar>(),
-      );
+      let steps = process.grid_points();
+      let rows = launch_rows(self, steps, process.euler_spec(), steps, process.fgn_spec());
       let mut out = Vec::with_capacity(m);
       // `over_chunks`, so a chunk too large for the device is retried at half
       // the size rather than failing the batch.
@@ -2715,11 +2768,8 @@ macro_rules! kernel_euler_backend {
     ) -> Result<Vec<R>, DeviceError> {
       use rayon::prelude::*;
       let seed = process.device_seed();
-      let rows = crate::device::chunk_rows(
-        <Self as EulerKernel<$scalar>>::batch_budget(self),
-        process.grid_points(),
-        std::mem::size_of::<$scalar>(),
-      );
+      let steps = process.grid_points();
+      let rows = launch_rows(self, steps, process.euler_spec(), steps, process.fgn_spec());
       let mut out = Vec::with_capacity(m);
       // `over_chunks`, so a chunk too large for the device is retried at half
       // the size rather than failing the batch.
@@ -2792,11 +2842,8 @@ macro_rules! kernel_euler_backend {
     ) -> Result<Vec<R>, DeviceError> {
       use rayon::prelude::*;
       let seed = process.device_seed();
-      let rows = crate::device::chunk_rows(
-        <Self as EulerKernel<$scalar>>::batch_budget(self),
-        process.grid_points() * D,
-        std::mem::size_of::<$scalar>(),
-      );
+      let steps = process.grid_points();
+      let rows = launch_rows(self, steps * D, process.euler_spec(), steps, process.fgn_spec());
       let mut out = Vec::with_capacity(m);
       // `over_chunks`, so a chunk too large for the device is retried at half
       // the size rather than failing the batch.

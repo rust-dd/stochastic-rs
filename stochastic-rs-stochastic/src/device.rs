@@ -292,6 +292,28 @@ pub(crate) fn over_chunks(
   Ok(())
 }
 
+/// The largest row count, at most `rows` and at least one, whose
+/// `rows · elements_per_row` stays within `limit`.
+///
+/// A chunk planner passes the budget's rows through this with what one row
+/// of its kernels indexes and the largest value the kernels' index type
+/// holds, so no chunk it cuts can wrap an index on the device. The floor of
+/// one keeps a row too large on its own reaching its launch, whose
+/// [`launch_len`] checks refuse it rather than wrap.
+#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+pub(crate) fn rows_within_index_limit(rows: usize, elements_per_row: usize, limit: usize) -> usize {
+  let per_row = elements_per_row.max(1);
+  rows.min(limit / per_row).max(1)
+}
+
+/// `len` as the integer type a kernel takes it in, or the launch's error when
+/// it does not fit — never the wrapped value an `as` cast would hand over.
+#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+pub(crate) fn launch_len<I: TryFrom<usize>>(len: usize, what: &str) -> Result<I, DeviceError> {
+  I::try_from(len)
+    .map_err(|_| DeviceError::Launch(format!("{what}: {len} exceeds the kernel index range")))
+}
+
 /// How many per-size device states (FFT plans, buffers) a back-end keeps.
 /// Only the native CUDA and Metal fGN samplers cache per-size state, so a
 /// build without them has no caller.
@@ -954,5 +976,23 @@ mod tests {
   fn cpu_marker_has_the_sheet_capability() {
     fn assert_sheet<B: SheetBackend<f64>>() {}
     assert_sheet::<Cpu>();
+  }
+}
+
+#[cfg(test)]
+mod index_limits {
+  use super::*;
+
+  #[test]
+  fn rows_shrink_to_fit_the_index_range() {
+    assert_eq!(rows_within_index_limit(10, 100, 1_000), 10);
+    assert_eq!(rows_within_index_limit(10, 300, 1_000), 3);
+    assert_eq!(rows_within_index_limit(10, 5_000, 1_000), 1);
+  }
+
+  #[test]
+  fn a_launch_length_past_i32_is_an_error() {
+    assert!(launch_len::<i32>(i32::MAX as usize + 1, "gen_scale").is_err());
+    assert_eq!(launch_len::<i32>(42, "gen_scale").unwrap(), 42);
   }
 }

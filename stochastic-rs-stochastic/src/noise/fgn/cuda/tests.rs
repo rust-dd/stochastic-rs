@@ -234,3 +234,18 @@ fn cuda_fbm_honours_its_own_seed() {
   assert_ne!(fbm(3).sample_par(1), fbm(4).sample_par(1));
   assert_eq!(fbm(3).sample(), fbm(3).sample());
 }
+
+/// The kernels index the work buffer with an `int`, at `4n` values a path of
+/// an `n`-point embedding: the cap stops a launch exactly there, charges a
+/// two-stream row twice, keeps a budget that already fits, and lets a single
+/// path past the range through to the launch that refuses it.
+#[test]
+fn cuda_index_rows_keep_the_work_buffer_inside_int() {
+  use super::sampler::index_rows;
+
+  let limit = i32::MAX as usize;
+  assert_eq!(index_rows(usize::MAX, 1, 1024), limit / 4096);
+  assert_eq!(index_rows(usize::MAX, 2, 1024), limit / 8192);
+  assert_eq!(index_rows(5, 1, 1024), 5);
+  assert_eq!(index_rows(5, 1, 1 << 30), 1);
+}

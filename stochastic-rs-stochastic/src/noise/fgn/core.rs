@@ -195,8 +195,12 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     let mut fgn = Array1::<T>::zeros(self.out_len);
 
     T::with_fgn_complex_scratch(len, |rnd| {
-      // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to [T; 2]
-      let flat = unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * len) };
+      debug_assert_eq!(rnd.len(), len);
+      // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to
+      // [T; 2], so the scratch is twice its own length in scalars — measured on
+      // the slice handed over, not on the length asked for.
+      let flat =
+        unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * rnd.len()) };
       let normal =
         stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), T::one(), seed);
       normal.fill_slice(flat);
@@ -229,8 +233,12 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   ) {
     let len = 2 * self.n;
     T::with_fgn_complex_scratch(len, |rnd| {
-      // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to [T; 2]
-      let flat = unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * len) };
+      debug_assert_eq!(rnd.len(), len);
+      // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to
+      // [T; 2], so the scratch is twice its own length in scalars — measured on
+      // the slice handed over, not on the length asked for.
+      let flat =
+        unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * rnd.len()) };
       normal.fill_slice(flat);
       for (z, &w) in rnd.iter_mut().zip(self.sqrt_eigenvalues.iter()) {
         z.re = z.re * w;
@@ -266,8 +274,12 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     let mut fgn_im = Array1::<T>::zeros(self.out_len);
 
     T::with_fgn_complex_scratch(len, |rnd| {
-      // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to [T; 2]
-      let flat = unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * len) };
+      debug_assert_eq!(rnd.len(), len);
+      // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to
+      // [T; 2], so the scratch is twice its own length in scalars — measured on
+      // the slice handed over, not on the length asked for.
+      let flat =
+        unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * rnd.len()) };
       let normal =
         stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), T::one(), seed);
       normal.fill_slice(flat);
