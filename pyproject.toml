@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "stochastic-rs"
 description = "Quantitative finance for Python, powered by Rust: 130+ stochastic processes, option pricing, model calibration, volatility surfaces, fixed income, risk and copulas — numpy-in / numpy-out."
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dynamic = ["version"]
 dependencies = ["numpy"]
 readme = "stochastic-rs-py/README.md"
@@ -35,11 +35,10 @@ classifiers = [
   "Operating System :: Microsoft :: Windows",
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.9",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Rust",
   "Topic :: Office/Business :: Financial",

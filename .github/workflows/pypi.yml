@@ -4,39 +4,40 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Upload the built wheels to PyPI"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+env:
+  PYTHON_INTERPRETERS: python3.11 python3.12 python3.13 python3.14 python3.14t
+
 jobs:
   linux:
     runs-on: ${{ matrix.platform.runner }}
+    timeout-minutes: 120
     strategy:
+      fail-fast: false
       matrix:
         platform:
           - runner: ubuntu-22.04
             target: x86_64
             manylinux: auto
-          - runner: ubuntu-22.04
+          - runner: ubuntu-24.04-arm
             target: aarch64
             manylinux: 2_28
-            container: quay.io/pypa/manylinux_2_28_aarch64
-            qemu: true
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: 3.x
-      - name: Set up QEMU
-        if: ${{ matrix.platform.qemu }}
-        uses: docker/setup-qemu-action@v3
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --find-interpreter
           manylinux: ${{ matrix.platform.manylinux }}
-          container: ${{ matrix.platform.container }}
+          args: --release --out dist --interpreter ${{ env.PYTHON_INTERPRETERS }}
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
@@ -44,53 +45,60 @@ jobs:
           path: dist
 
   macos:
-    runs-on: ${{ matrix.platform.runner }}
-    strategy:
-      matrix:
-        platform:
-          - runner: macos-14
-            target: aarch64
+    runs-on: macos-14
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: 3.x
+          # 3.14t goes first: its bin dir ships a free-threaded python3.14, and
+          # the version listed last is first on PATH, so it would shadow 3.14.
+          python-version: |
+            3.14t
+            3.11
+            3.12
+            3.13
+            3.14
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          target: ${{ matrix.platform.target }}
-          args: --release --out dist --find-interpreter
+          target: aarch64
+          args: --release --out dist --interpreter ${{ env.PYTHON_INTERPRETERS }}
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-macos-${{ matrix.platform.target }}
+          name: wheels-macos-aarch64
           path: dist
 
   windows:
     runs-on: windows-latest
-    strategy:
-      matrix:
-        platform:
-          - target: x64
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: 3.x
-          architecture: ${{ matrix.platform.target }}
+          # 3.14t first, as in the macos job.
+          python-version: |
+            3.14t
+            3.11
+            3.12
+            3.13
+            3.14
+          architecture: x64
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          target: ${{ matrix.platform.target }}
+          target: x64
           args: --release --out dist --find-interpreter
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-windows-${{ matrix.platform.target }}
+          name: wheels-windows-x64
           path: dist
 
   sdist:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Build sdist
@@ -104,10 +112,42 @@ jobs:
           name: wheels-sdist
           path: dist
 
+  smoke:
+    needs: [linux, macos, windows]
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            artifact: wheels-linux-x86_64
+          - os: ubuntu-24.04-arm
+            artifact: wheels-linux-aarch64
+          - os: macos-14
+            artifact: wheels-macos-aarch64
+          - os: windows-latest
+            artifact: wheels-windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist
+      - name: Install the built wheel and import it
+        shell: bash
+        run: |
+          python -m pip install numpy
+          python -m pip install --no-index --find-links dist --pre stochastic-rs
+          python -c "import stochastic_rs as sr; import numpy as np; p = sr.PyGbm(mu=0.05, sigma=0.2, n=16, x0=1.0, seed=1); assert np.isfinite(p.sample()).all()"
+
   publish:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: [linux, macos, windows, sdist]
+    needs: [linux, macos, windows, sdist, smoke]
+    if: github.event_name == 'release' || inputs.publish
     environment: pypi
     permissions:
       id-token: write
