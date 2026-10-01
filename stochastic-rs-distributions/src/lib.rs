@@ -239,6 +239,8 @@ pub mod wishart;
 macro_rules! impl_distribution_sampler_float {
   ($($dist:ty),+ $(,)?) => {
     $(
+      impl<T: SimdFloatExt> crate::traits::distribution::Sealed for $dist {}
+
       impl<T: SimdFloatExt> DistributionSampler<T> for $dist {
         #[inline]
         fn fill_slice(&self, out: &mut [T]) {
@@ -257,6 +259,8 @@ macro_rules! impl_distribution_sampler_float {
 macro_rules! impl_distribution_sampler_int {
   ($($dist:ty),+ $(,)?) => {
     $(
+      impl<T: num_traits::PrimInt> crate::traits::distribution::Sealed for $dist {}
+
       impl<T: num_traits::PrimInt> DistributionSampler<T> for $dist {
         #[inline]
         fn fill_slice(&self, out: &mut [T]) {
@@ -275,6 +279,8 @@ macro_rules! impl_distribution_sampler_int {
 macro_rules! impl_distribution_sampler_float_const_n {
   ($($dist:ty),+ $(,)?) => {
     $(
+      impl<T: SimdFloatExt, const N: usize> crate::traits::distribution::Sealed for $dist {}
+
       impl<T: SimdFloatExt, const N: usize> DistributionSampler<T> for $dist {
         #[inline]
         fn fill_slice(&self, out: &mut [T]) {

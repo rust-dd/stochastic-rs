@@ -122,6 +122,12 @@ fn worker_count(total: usize) -> usize {
   total.div_ceil(MIN_PAR_CHUNK).max(1).min(total)
 }
 
+mod sealed {
+  pub trait Sealed {}
+}
+
+pub(crate) use sealed::Sealed;
+
 /// Rust-side bulk sampling API for distribution structs.
 ///
 /// Implementors provide `fill_slice`; `sample_n` and `sample_matrix` are
@@ -132,7 +138,19 @@ fn worker_count(total: usize) -> usize {
 /// Construct with `Deterministic::new(seed)` for reproducible output; `Self`
 /// stores everything sampling needs, so these methods take no `Rng` of
 /// their own.
-pub trait DistributionSampler<T> {
+///
+/// Sealed: only this crate implements it, because the provided methods hand
+/// uninitialized storage to [`fill_slice`](Self::fill_slice).
+///
+/// ```compile_fail,E0277
+/// use stochastic_rs_distributions::DistributionSampler;
+/// struct Mine;
+/// impl DistributionSampler<f64> for Mine {
+///   fn fill_slice(&self, _out: &mut [f64]) {}
+///   fn fork(&self, _stream_idx: u64) -> Self { Mine }
+/// }
+/// ```
+pub trait DistributionSampler<T>: Sealed {
   /// Fills `out` by drawing from this sampler's own internal SIMD RNG
   /// stream, seeded at construction.
   fn fill_slice(&self, out: &mut [T]);
