@@ -132,6 +132,10 @@ impl PyCustomJt {
     })
   }
 
+  /// `m` independent paths stacked into an `(m, n)` array. The GIL is
+  /// released while the paths are generated; every draw of the inter-arrival
+  /// law re-acquires it, so the Python callable is called from rayon workers
+  /// one at a time.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,
@@ -144,16 +148,16 @@ impl PyCustomJt {
 
       use crate::traits::ProcessExt;
       if let Some(ref inner) = self.inner_f64 {
-        let paths = inner.sample_par(m);
-        let n = paths[0].len();
+        let paths = py.detach(|| inner.sample_par(m));
+        let n = paths.first().map_or(0, |p| p.len());
         let mut result = Array2::<f64>::zeros((m, n));
         for (i, path) in paths.iter().enumerate() {
           result.row_mut(i).assign(path);
         }
         result.into_pyarray(py).into_py_any(py).unwrap()
       } else if let Some(ref inner) = self.inner_f32 {
-        let paths = inner.sample_par(m);
-        let n = paths[0].len();
+        let paths = py.detach(|| inner.sample_par(m));
+        let n = paths.first().map_or(0, |p| p.len());
         let mut result = Array2::<f32>::zeros((m, n));
         for (i, path) in paths.iter().enumerate() {
           result.row_mut(i).assign(path);

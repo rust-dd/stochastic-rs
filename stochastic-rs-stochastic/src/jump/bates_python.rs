@@ -151,6 +151,10 @@ impl PyBates {
     })
   }
 
+  /// `m` independent paths as a pair of `(m, n)` arrays, the price and the
+  /// variance. The GIL is released while the paths are generated; every draw
+  /// of the jump-size law re-acquires it, so the Python callable is called
+  /// from rayon workers one at a time.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,
@@ -163,8 +167,8 @@ impl PyBates {
 
       use crate::traits::ProcessExt;
       py_dispatch!(self, |inner| {
-        let samples = inner.sample_par(m);
-        let n = samples[0][0].len();
+        let samples = py.detach(|| inner.sample_par(m));
+        let n = samples.first().map_or(0, |p| p[0].len());
         let mut r0 = Array2::zeros((m, n));
         let mut r1 = Array2::zeros((m, n));
         for (i, [a, b]) in samples.iter().enumerate() {
