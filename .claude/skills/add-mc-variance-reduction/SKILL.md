@@ -35,7 +35,8 @@ QMC); Giles 2015 for MLMC.
 pub struct McEstimate<T: FloatExt> {
     /// Estimated mean.
     pub mean: T,
-    /// Standard error of the estimate.
+    /// Standard error of the estimate: the sample standard deviation (`n − 1`
+    /// denominator) over `√n`. `NaN` when fewer than two samples were used.
     pub std_err: T,
     /// Number of samples used.
     pub n_samples: usize,
@@ -56,6 +57,21 @@ There is **no `vr_factor` method**; compute the ratio yourself in the
 Estimators always return `McEstimate<T>`, never raw `f64`. This keeps
 the variance information attached to the point estimate; callers
 asking for a CI never have to chase down the standard error separately.
+
+### One accumulator for every estimator
+
+Every estimator hands its per-path values to the crate-private
+`mc::estimate_from_samples(samples)` and returns what it gives back. The
+helper accumulates in `f64` with Welford's update (Welford 1962,
+DOI 10.1080/00401706.1962.10490022) whatever `T` is, uses the `n − 1` sample
+variance, and reports `std_err = sqrt(s² / n)`. Fewer than two samples have
+no variance estimate: no samples give a `NaN` mean and `std_err`, one sample
+a `NaN` `std_err`. A `NaN` or infinite payoff keeps the `std_err` `NaN`.
+
+Never write a `sum` / `sum_sq` loop of your own. `sum_sq / n − mean²`
+cancels on a near-constant payoff (a negative variance, a `NaN` `std_err`)
+and a running `f32` sum stops growing past 2^24. Serial and parallel twins
+share the helper, so they cannot drift onto different formulas.
 
 ### The estimator signature
 
@@ -98,28 +114,19 @@ pinned numbers.
 For an SDE driven by `Z ~ N(0, 1)`:
 
 ```rust
-// mc/antithetic.rs — the shipped body, abridged
+// mc/antithetic.rs — the shipped body
 pub fn estimate<T, F>(n_paths: usize, dim: usize, payoff: F) -> McEstimate<T>
 where T: FloatExt, F: Fn(&Array1<T>) -> T
 {
     let two = T::from_f64_fast(2.0);
-    let (mut sum, mut sum_sq) = (T::zero(), T::zero());
-
-    for _ in 0..n_paths {
+    estimate_from_samples((0..n_paths).map(|_| {
         // The workspace's own Gaussian draw. Per `dev-rules` §7a,
         // `rand_distr::StandardNormal` and `StdRng` belong to `benches/`
         // — never to library code.
         let z = T::normal_array(dim, T::zero(), T::one());
         let neg_z = z.mapv(|v| -v);
-        let y = (payoff(&z) + payoff(&neg_z)) / two;
-        sum += y;
-        sum_sq += y * y;
-    }
-
-    let n = T::from_usize_(n_paths);
-    let mean = sum / n;
-    let variance = sum_sq / n - mean * mean;
-    McEstimate { mean, std_err: (variance / n).sqrt(), n_samples: n_paths }
+        (payoff(&z) + payoff(&neg_z)) / two
+    }))
 }
 ```
 
@@ -239,6 +246,9 @@ say so in a comment rather than pretending it is deterministic.
 
 - **Do not** return a raw `f64` mean without a stderr. Always
   `McEstimate<T>`.
+- **Do not** compute the variance by hand (`sum_sq / n − mean²`, or a
+  per-estimator two-pass loop). Route the per-path values through
+  `estimate_from_samples` (see §1).
 - **Do not** apply antithetic to discontinuous payoffs (digital
   options, indicator functions). Variance can go up.
 - **Do not** silently reuse one sample for both the control-variate
@@ -260,7 +270,8 @@ say so in a comment rather than pretending it is deterministic.
 The `mc/` module is nine files under
 `stochastic-rs-stochastic/src/mc/`:
 
-- `mod.rs` — `McEstimate<T>` and the module re-exports. Start here.
+- `mod.rs` — `McEstimate<T>`, the shared `estimate_from_samples`
+  accumulator and the module re-exports. Start here.
 - `antithetic.rs` — `estimate` / `estimate_par`; the template for a new
   technique's signature.
 - `control_variates.rs` — single control variate; see §3 on its

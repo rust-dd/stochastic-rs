@@ -12,6 +12,7 @@ use ndarray::Array1;
 use ndarray::parallel::prelude::*;
 
 use super::McEstimate;
+use super::estimate_from_samples;
 use crate::traits::FloatExt;
 
 /// Antithetic variates MC estimate (sequential).
@@ -24,27 +25,11 @@ where
   F: Fn(&Array1<T>) -> T,
 {
   let two = T::from_f64_fast(2.0);
-  let mut sum = T::zero();
-  let mut sum_sq = T::zero();
-
-  for _ in 0..n_paths {
+  estimate_from_samples((0..n_paths).map(|_| {
     let z = T::normal_array(dim, T::zero(), T::one());
     let neg_z = z.mapv(|v| -v);
-    let y = (payoff(&z) + payoff(&neg_z)) / two;
-    sum += y;
-    sum_sq += y * y;
-  }
-
-  let n = T::from_usize_(n_paths);
-  let mean = sum / n;
-  let variance = sum_sq / n - mean * mean;
-  let std_err = (variance / n).sqrt();
-
-  McEstimate {
-    mean,
-    std_err,
-    n_samples: n_paths,
-  }
+    (payoff(&z) + payoff(&neg_z)) / two
+  }))
 }
 
 /// Antithetic variates MC estimate (parallel via rayon).
@@ -63,17 +48,7 @@ where
     })
     .collect();
 
-  let n = T::from_usize_(n_paths);
-  let sum: T = results.iter().copied().sum();
-  let mean = sum / n;
-  let var: T = results.iter().map(|&y| (y - mean) * (y - mean)).sum::<T>() / n;
-  let std_err = (var / n).sqrt();
-
-  McEstimate {
-    mean,
-    std_err,
-    n_samples: n_paths,
-  }
+  estimate_from_samples(results)
 }
 
 #[cfg(test)]
@@ -91,16 +66,8 @@ mod tests {
     let av = estimate(n, dim, payoff);
 
     // Plain MC for comparison
-    let mut sum = 0.0;
-    let mut sum_sq = 0.0;
-    for _ in 0..n {
-      let z = f64::normal_array(dim, 0.0, 1.0);
-      let y = payoff(&z);
-      sum += y;
-      sum_sq += y * y;
-    }
-    let plain_var = sum_sq / n as f64 - (sum / n as f64).powi(2);
-    let plain_se = (plain_var / n as f64).sqrt();
+    let plain_se =
+      estimate_from_samples((0..n).map(|_| payoff(&f64::normal_array(dim, 0.0, 1.0)))).std_err;
 
     let expected = 1.0 / (2.0 * std::f64::consts::PI).sqrt();
     assert!(
