@@ -35,8 +35,8 @@ pub enum HolidayCalendar {
   Hkex,
   /// Australian Securities Exchange (ASX) calendar.
   Asx,
-  /// Singapore Exchange (SGX) calendar. Lunar, Islamic and Hindu closures cover only
-  /// [`LUNAR_TABLE_YEARS`] (2028 on estimated, not gazetted); rule-based holidays cover every year.
+  /// Singapore Exchange (SGX) calendar. Rule-based holidays cover every year; lunar, Islamic and
+  /// Hindu ones cover [`LUNAR_TABLE_YEARS`] (from 2028: lunar computed, Islamic/Hindu estimated).
   Sgx,
   /// B3 / BoVespa (São Paulo) calendar. Black Awareness Day is a
   /// holiday from 2024 onwards only.

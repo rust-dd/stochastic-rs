@@ -3,8 +3,8 @@
 //! $\mathbb{E}\[P_L\] = \mathbb{E}\[P_0\]
 //!   + \sum_{\ell=1}^{L}\mathbb{E}[P_\ell - P_{\ell-1}]$
 //!
-//! Giles (2008) eq. (12) allocation at cost $C_\ell \propto h_\ell^{-1}$ ($M = 2$); $V_\ell$ is the
-//! per-level `n − 1` sample variance (Welford); levels grow while $|\hat Y_L| > \epsilon/\sqrt{2}$:
+//! Levels grow while $|\hat Y_L| > \epsilon/\sqrt{2}$; $V_\ell$ is the per-level `n − 1` variance.
+//! Giles (2008) eq. (12) allocation at cost $C_\ell \propto h_\ell^{-1}$ ($M = 2$):
 //!
 //! $$
 //! N_\ell = \Bigl\lceil 2\epsilon^{-2}\sqrt{V_\ell / C_\ell}\,

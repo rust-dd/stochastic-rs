@@ -61,7 +61,7 @@ impl<T: FloatExt + std::fmt::Display> std::fmt::Display for McEstimate<T> {
 }
 
 /// Streaming mean and variance in `f64`: Welford's update per sample, Chan–Golub–LeVeque's
-/// pairwise update on `merge`. Immune to the `sum_sq / n − mean²` cancellation and the `f32` stall.
+/// pairwise update on `merge`. Avoids the `sum_sq / n − mean²` cancellation and `f32` swamping.
 ///
 /// ```
 /// use stochastic_rs_stochastic::mc::Welford;
