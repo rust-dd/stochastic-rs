@@ -190,6 +190,10 @@ name = "poisson_process"
 harness = false
 
 [[bench]]
+name = "mc_antithetic"
+harness = false
+
+[[bench]]
 name = "mle"
 harness = false
 
