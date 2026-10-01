@@ -149,10 +149,10 @@ fn nfix<T: SimdFloatExt, R: SimdRngExt>(hz: i32, iz: usize, tables: &ZigTables, 
 ///
 /// The third generic, `R: SimdRngExt`, selects the backing RNG. The default
 /// [`SimdRng`] is the single-stream production engine; the
-/// `dual-stream-rng` cargo feature enables `R = SimdRngDual` via the
+/// `unstable-dual-stream-rng` cargo feature enables `R = SimdRngDual` via the
 /// `SimdNormalDual` type alias, whose Ziggurat main loop consumes two
 /// independent engine batches per iteration
-/// ([`SimdRngExt::HAS_PAIR_ILP`]). Measured +3–10 % (≈5 % typical) on
+/// ([`SimdRngExt::HAS_PAIR_ILP`]). Measured 2–6 % on
 /// 128-bit NEON Normal fills — modest because the table-gather chain
 /// dominates; expected to matter more on wider-SIMD hardware.
 pub struct SimdNormal<T: SimdFloatExt, const N: usize = 64, R: SimdRngExt = SimdRng> {

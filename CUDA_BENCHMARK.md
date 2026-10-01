@@ -14,11 +14,12 @@ path length, `m` = number of paths.
 The portable CubeCL backend was removed in 3.0.0-rc.2: it duplicated the native
 CUDA and Metal kernels and was slower on the same hardware.
 
-Build with the `mimalloc` global allocator — the batch path allocates one
-`Array1` per path, so the default Windows allocator otherwise bottlenecks it:
+The bench runs on the system allocator (the library installs none). The batch
+path allocates one `Array1` per path, so the batch rows carry allocator overhead
+on Windows:
 
 ```bash
-cargo bench --bench fgn_cuda --features "cuda,mimalloc"
+cargo bench --bench fgn_cuda --features cuda
 ```
 
 ### Single path (`sample`, m = 1)

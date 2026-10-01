@@ -13,7 +13,7 @@ regression detection.
 
 ## Bench suites
 
-The workspace ships **33 bench files** under `benches/`. The
+The workspace ships **32 bench files** under `benches/`. The
 default-feature suites cover stochastic processes, distribution
 sampling, pricers, risk, microstructure, and lattice methods. The
 remaining suites are feature-gated to backends or optional dependencies.
@@ -37,8 +37,7 @@ rl_rough            hurst          ndarray_overhead     sampler_compare
 | `fgn_metal`           | `metal`                              |
 | `fgn_accelerate`      | `accelerate`                         |
 | `fgn_all_backends`    | `metal`, `accelerate`                |
-| `hotpath_profile`     | `hotpath`                            |
-| `dual_stream_compare` | `dual-stream-rng`                    |
+| `dual_stream_compare` | `unstable-dual-stream-rng`           |
 
 ## FGN — CPU vs CUDA native
 
@@ -528,11 +527,11 @@ Drivers (sub-crate paths):
   the Xoshiro256++ / Xoshiro128++ seed paths use `u64::from_le_bytes`
   for big-endian portability.
 
-### Opt-in: dual-stream RNG (`dual-stream-rng` feature)
+### Opt-in: dual-stream RNG (`unstable-dual-stream-rng` feature)
 
 ```toml
 [dependencies]
-stochastic-rs = { version = "3.0.0-rc.1", features = ["dual-stream-rng"] }
+stochastic-rs = { version = "3.0.0-rc.1", features = ["unstable-dual-stream-rng"] }
 ```
 
 Unlocks `stochastic_rs_core::simd_rng_dual::SimdRngDual` (two parallel
@@ -542,7 +541,7 @@ independent engine batches per iteration (`SimdRngExt::next_i32x8_pair`,
 gated on the `HAS_PAIR_ILP` const — single-stream codegen is
 unchanged). Measured against the single-stream `SimdNormal::fill_slice`
 on Apple Silicon, 2026-06-11
-(`cargo bench --bench dual_stream_compare --features dual-stream-rng`):
+(`cargo bench --bench dual_stream_compare --features unstable-dual-stream-rng`):
 
 |         n | single (`SimdNormal`) | dual (`SimdNormalDual`) |    Δ   |
 |----------:|----------------------:|------------------------:|-------:|

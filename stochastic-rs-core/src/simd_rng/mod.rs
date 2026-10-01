@@ -311,7 +311,7 @@ impl SeedExt for Deterministic {
 /// `SimdNormal<T, N, R>` and friends are monomorphised against this trait so
 /// the same struct definition serves both the single-stream [`SimdRng`] and
 /// the experimental dual-stream `SimdRngDual` (gated behind the
-/// `dual-stream-rng` feature). Implementations override
+/// `unstable-dual-stream-rng` feature). Implementations override
 /// [`HAS_PAIR_ILP`](Self::HAS_PAIR_ILP) and [`next_i32x8_pair`](Self::next_i32x8_pair)
 /// when they can usefully expose two independent batches per call —
 /// consumers branch on the const to pick a 16-lane unrolled body, otherwise

@@ -123,7 +123,7 @@ backing SIMD RNG. The default is the single-stream
 the experimental dual-stream variant
 [`SimdRngDual`](https://docs.rs/stochastic-rs-core/latest/stochastic_rs_core/simd_rng_dual/struct.SimdRngDual.html)
 is reachable through the
-[`dual-stream-rng`](#dual-stream-rng-feature) cargo feature.
+[`unstable-dual-stream-rng`](#unstable-dual-stream-rng-feature) cargo feature.
 
 ```rust
 pub trait SimdRngExt: rand::RngCore + Sized + Send + 'static {
@@ -152,13 +152,13 @@ parameter explicitly so the same struct serves both backends:
 
 <RustExample path="tests/doctest_concepts_seeding_dual_stream.rs" />
 
-## `dual-stream-rng` feature
+## `unstable-dual-stream-rng` feature
 
 Opt-in via cargo feature:
 
 ```toml
 [dependencies]
-stochastic-rs = { version = "3.0.0-rc.1", features = ["dual-stream-rng"] }
+stochastic-rs = { version = "3.0.0-rc.1", features = ["unstable-dual-stream-rng"] }
 ```
 
 Unlocks `SimdRngDual`, `SimdNormalDual`, `SimdExpDual`, `SimdExpZigDual`.
@@ -201,7 +201,7 @@ them:
 ```
 
 Result on Apple Silicon (M-series, criterion
-`cargo bench --bench dual_stream_compare --features dual-stream-rng`,
+`cargo bench --bench dual_stream_compare --features unstable-dual-stream-rng`,
 2026-06-11):
 
 |         n | single (`SimdNormal`) | dual (`SimdNormalDual`) |    Δ   |

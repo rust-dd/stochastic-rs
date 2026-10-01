@@ -41,7 +41,7 @@ fn best_ks_p_value(
 
 /// The dual-engine pair path interleaves batches from engines A and B —
 /// every lane (including B's) must still be N(0, 1).
-#[cfg(feature = "dual-stream-rng")]
+#[cfg(feature = "unstable-dual-stream-rng")]
 #[test]
 fn simd_normal_dual_pair_path_matches_theoretical_distribution() {
   const N: usize = 40_000;

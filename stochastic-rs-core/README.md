@@ -19,8 +19,8 @@ from here.
   overhead) and `Deterministic::new(seed)` (reproducible, `AtomicU64`-backed
   so `derive()` can fan out independent child streams from one source).
 - **`SimdRngDual`** — an experimental two-engine variant behind the
-  `dual-stream-rng` feature. Roughly 5–11% faster on ziggurat-based bulk
-  fills on Apple Silicon; its stream is *not* bit-compatible with `SimdRng`.
+  `unstable-dual-stream-rng` feature. About 2–6% faster on ziggurat-based
+  bulk fills on Apple Silicon; its stream is *not* bit-compatible with `SimdRng`.
 
 ## Usage
 

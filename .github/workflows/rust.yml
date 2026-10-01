@@ -54,6 +54,7 @@ jobs:
           - "viz"
           - "python"
           - "ai,viz"
+          - "unstable-dual-stream-rng"
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable

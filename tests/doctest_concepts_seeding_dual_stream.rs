@@ -1,9 +1,9 @@
 // docs: concepts/seeding#simdrngext-generic-backing-rng
 //! Backs the single- vs dual-stream `SimdNormal` example on the seeding
-//! concept page. `SimdNormalDual` only exists under `dual-stream-rng`,
+//! concept page. `SimdNormalDual` only exists under `unstable-dual-stream-rng`,
 //! so the whole file is gated on that feature.
 
-#![cfg(feature = "dual-stream-rng")]
+#![cfg(feature = "unstable-dual-stream-rng")]
 
 use stochastic_rs::distributions::SimdNormalDual;
 use stochastic_rs::distributions::normal::SimdNormal;

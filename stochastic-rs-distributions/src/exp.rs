@@ -120,7 +120,7 @@ fn efix<T: SimdFloatExt, R: SimdRngExt>(
 /// [`SimdRng`] (single-stream); the experimental
 /// `SimdRngDual` (dual-stream) is reachable via the
 /// `SimdExpZigDual` type alias when the
-/// `dual-stream-rng` feature is enabled.
+/// `unstable-dual-stream-rng` feature is enabled.
 pub struct SimdExpZig<T: SimdFloatExt, const N: usize = 64, R: SimdRngExt = SimdRng> {
   lambda: T,
   buffer: UnsafeCell<[T; N]>,

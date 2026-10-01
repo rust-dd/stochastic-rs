@@ -4,16 +4,6 @@
 #![allow(clippy::too_many_arguments)]
 //#![warn(missing_docs)]
 
-// Mutually exclusive global allocators. If both features are enabled (e.g.
-// `cargo check --all-features` for CI smoke testing), `jemalloc` wins.
-#[cfg(all(feature = "mimalloc", not(feature = "jemalloc")))]
-#[global_allocator]
-static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
-
-#[cfg(feature = "jemalloc")]
-#[global_allocator]
-static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
-
 #[cfg(feature = "ai")]
 pub use stochastic_rs_ai as ai;
 pub use stochastic_rs_copulas as copulas;

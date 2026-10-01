@@ -200,23 +200,23 @@ pub mod normal_inverse_gauss;
 
 /// Type alias for `SimdNormal` backed by the experimental dual-stream RNG.
 ///
-/// Enabled by the `dual-stream-rng` cargo feature. Production code continues
+/// Enabled by the `unstable-dual-stream-rng` cargo feature. Production code continues
 /// to use the default [`normal::SimdNormal`] alias parameter
 /// (`R = SimdRng`); switching to this alias picks the same struct
 /// monomorphised over `SimdRngDual`, which unrolls the Ziggurat hot loop
-/// 2× for ≈ 5–11 % extra throughput on bulk Normal fills.
-#[cfg(feature = "dual-stream-rng")]
+/// 2× for ≈ 2–6 % extra throughput on bulk Normal fills.
+#[cfg(feature = "unstable-dual-stream-rng")]
 pub type SimdNormalDual<T, const N: usize = 64> =
   normal::SimdNormal<T, N, stochastic_rs_core::simd_rng_dual::SimdRngDual>;
 
 /// Type alias for [`exp::SimdExp`] backed by the experimental dual-stream
 /// RNG. Same trade-offs as [`SimdNormalDual`].
-#[cfg(feature = "dual-stream-rng")]
+#[cfg(feature = "unstable-dual-stream-rng")]
 pub type SimdExpDual<T> = exp::SimdExp<T, stochastic_rs_core::simd_rng_dual::SimdRngDual>;
 
 /// Type alias for [`exp::SimdExpZig`] (the bulk-fill primitive that powers
 /// [`exp::SimdExp`]) backed by the dual-stream RNG.
-#[cfg(feature = "dual-stream-rng")]
+#[cfg(feature = "unstable-dual-stream-rng")]
 pub type SimdExpZigDual<T, const N: usize = 64> =
   exp::SimdExpZig<T, N, stochastic_rs_core::simd_rng_dual::SimdRngDual>;
 pub mod dirichlet;

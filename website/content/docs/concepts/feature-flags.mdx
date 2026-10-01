@@ -21,12 +21,8 @@ Rust core.
 | `python`          | `-py` (cdylib)              | `pyo3`, `numpy`                      | Building the wheel via maturin            |
 | `ai-metal`        | umbrella                    | `candle-core/metal`                  | candle's Metal back-end for surrogate training (`ai::device::best_available`); CUDA comes from `candle-core/cuda` in the consuming manifest |
 | `ai`, `metal`, `cuda`, `accelerate` | `-py` | the sub-crate features above | Source-build extras of the Python module (`maturin develop --features …`): the surrogates + `calibrate_surrogate`, and the device back-ends behind the process classes' `device=`; none of them is in the published wheels |
-| `hotpath`         | umbrella                    | `hotpath`                            | Hot-path profiling: per-function timing of the instrumented paths |
-| `hotpath-alloc`   | umbrella                    | `hotpath` with allocation tracking   | The same profiling plus per-function allocation counts |
-| `jemalloc`        | umbrella                    | `tikv-jemallocator`                  | jemalloc as the global allocator; it wins if `mimalloc` is enabled too |
-| `mimalloc`        | umbrella                    | `mimalloc`                           | mimalloc as the global allocator          |
 | `viz`             | umbrella → `-quant`, `-ai`  | `plotly`                             | HTML plots: the SABR smile calibrator's plots, and the surrogate fit plots when `ai` is on too (`viz` alone does not pull in `ai`) |
-| `dual-stream-rng` | `-core`, `-distributions`   | none (additive)                      | ~2–6 % bulk Normal-Ziggurat speedup on Apple Silicon (Exp at parity) — see [seeding](/docs/concepts/seeding#dual-stream-rng-feature) |
+| `unstable-dual-stream-rng` | `-core`, `-distributions`   | none (additive)                      | ~2–6 % bulk Normal-Ziggurat speedup on Apple Silicon (Exp at parity); outside the stability promise — see [seeding](/docs/concepts/seeding#unstable-dual-stream-rng-feature) |
 
 The GPU / accelerator features above select a sampling backend chosen at compile
 time with `.on::<B>()` — see the [Backends](/docs/concepts/backends) concept page.
@@ -42,9 +38,9 @@ default = []
 ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]
 cuda = ["dep:cudarc", "cudarc/cufft", "stochastic-rs-stochastic/cuda"]
 metal = ["dep:metal", "stochastic-rs-stochastic/metal"]
-dual-stream-rng = [
-  "stochastic-rs-core/dual-stream-rng",
-  "stochastic-rs-distributions/dual-stream-rng",
+unstable-dual-stream-rng = [
+  "stochastic-rs-core/unstable-dual-stream-rng",
+  "stochastic-rs-distributions/unstable-dual-stream-rng",
 ]
 ```
 

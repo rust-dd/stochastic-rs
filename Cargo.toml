@@ -27,13 +27,11 @@ faer = "0.24.4"
 faer-ext = { version = "0.8.0", features = ["ndarray"] }
 flate2 = "1.1.2"
 gauss-quad = "0.3.1"
-hotpath = "0.14"
 implied-vol = "2.0.0"
 kendalls = "1.0.0"
 libm = "0.2.16"
 linreg = "0.2.0"
 metal = "0.33.0"
-mimalloc = "0.1.48"
 ndarray = { version = "0.17.2", features = ["rayon", "matrixmultiply-threading"] }
 ndarray-npy = "0.10.0"
 ndrustfft = "0.6.2"
@@ -63,7 +61,6 @@ stochastic-rs-quant = { path = "stochastic-rs-quant", version = "3.0.0-rc.4" }
 stochastic-rs-stats = { path = "stochastic-rs-stats", version = "3.0.0-rc.4" }
 stochastic-rs-stochastic = { path = "stochastic-rs-stochastic", version = "3.0.0-rc.4" }
 syn = { version = "3.0.3", default-features = false, features = ["full", "parsing"] }
-tikv-jemallocator = "0.6.1"
 wide = "1.6.1"
 
 [package]
@@ -83,19 +80,14 @@ exclude = [ "**/*.tar.gz", "data/**", "trainsets/**", "notebooks/**", "src/ai/vo
 
 [dependencies]
 anyhow = { workspace = true }
-candle-core = { workspace = true, optional = true }
-candle-datasets = { workspace = true, optional = true }
-candle-nn = { workspace = true, optional = true }
 chrono = { workspace = true }
 cudarc = { workspace = true, optional = true, features = [ "cuda-12080", "cuda-version-from-build-system", ] }
 flate2 = { workspace = true }
 gauss-quad = { workspace = true }
-hotpath = { workspace = true, optional = true }
 implied-vol = { workspace = true }
 kendalls = { workspace = true }
 linreg = { workspace = true }
 metal = { workspace = true, optional = true }
-mimalloc = { workspace = true, optional = true }
 ndarray = { workspace = true, features = [ "rayon", "matrixmultiply-threading", ] }
 ndarray-npy = { workspace = true }
 ndrustfft = { workspace = true }
@@ -120,7 +112,6 @@ stochastic-rs-distributions = { workspace = true }
 stochastic-rs-quant = { workspace = true }
 stochastic-rs-stats = { workspace = true }
 stochastic-rs-stochastic = { workspace = true }
-tikv-jemallocator = { workspace = true, optional = true }
 wide = { workspace = true }
 
 [dev-dependencies]
@@ -251,14 +242,9 @@ name = "slv"
 harness = false
 
 [[bench]]
-name = "hotpath_profile"
-harness = false
-required-features = ["hotpath"]
-
-[[bench]]
 name = "dual_stream_compare"
 harness = false
-required-features = ["dual-stream-rng"]
+required-features = ["unstable-dual-stream-rng"]
 
 [[bench]]
 name = "ndarray_overhead"
@@ -289,17 +275,14 @@ ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]
 ai-metal = ["ai", "stochastic-rs-ai/metal"]
 cuda = ["dep:cudarc", "cudarc/cufft", "stochastic-rs-stochastic/cuda"]
 default = []
-# Experimental: opt in to the dual-stream RNG (`SimdRngDual` /
-# `SimdNormalDual`). ~5–11% speedup on Ziggurat-based Normal/Exp bulk
-# fills on Apple Silicon; deterministic output differs from the
-# single-stream `SimdRng`. See `stochastic-rs-core` feature doc.
-dual-stream-rng = [
-    "stochastic-rs-core/dual-stream-rng",
-    "stochastic-rs-distributions/dual-stream-rng",
+# Experimental dual-stream RNG engine (`SimdRngDual`): ~2–6 % faster bulk Normal fills on Apple
+# Silicon; its seeded stream differs from `SimdRng`.
+unstable-dual-stream-rng = [
+    "stochastic-rs-core/unstable-dual-stream-rng",
+    "stochastic-rs-distributions/unstable-dual-stream-rng",
 ]
 accelerate = ["stochastic-rs-stochastic/accelerate"]
 metal = ["dep:metal", "stochastic-rs-stochastic/metal"]
-jemalloc = ["dep:tikv-jemallocator"]
 # Python bindings live in `stochastic-rs-py` (separate cdylib). Enabling
 # `python` here just turns on the upstream feature flags so the umbrella
 # build is consistent with the cdylib build. The actual Python module
@@ -314,14 +297,11 @@ python = [
     "stochastic-rs-stats/python",
     "stochastic-rs-quant/python",
 ]
-mimalloc = ["dep:mimalloc"]
 # Plotly-backed HTML plotting: `stochastic-rs-quant`'s SABR-smile plotter and,
 # when `ai` is also enabled, `stochastic-rs-ai`'s fit-plot helper. Uses a weak
 # dependency feature (`stochastic-rs-ai?/viz`) so enabling `viz` alone does
 # not pull in the (heavy, optional) `ai` sub-crate on its own.
 viz = ["stochastic-rs-quant/viz", "stochastic-rs-ai?/viz"]
-hotpath = ["dep:hotpath", "hotpath/hotpath"]
-hotpath-alloc = ["hotpath", "hotpath/hotpath-alloc"]
 
 [lib]
 name = "stochastic_rs"

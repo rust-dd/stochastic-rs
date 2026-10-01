@@ -15,11 +15,8 @@ categories = ["mathematics", "science", "algorithms"]
 [features]
 default = []
 python = ["dep:pyo3", "dep:numpy", "stochastic-rs-core/python"]
-# Forwards `dual-stream-rng` to `stochastic-rs-core` and unlocks the
-# `SimdNormalDual` / `SimdExpDual` / `SimdExpZigDual` aliases (Ziggurat main
-# loop consumes two independent engine batches per iteration). Experimental:
-# measured ≈ +5 % (Normal) / parity (Exp) on 128-bit NEON.
-dual-stream-rng = ["stochastic-rs-core/dual-stream-rng"]
+# Enables the experimental `SimdRngDual` engine for seeded streams: ~2–6 % faster bulk Normal fills on NEON, Exp at parity.
+unstable-dual-stream-rng = ["stochastic-rs-core/unstable-dual-stream-rng"]
 
 [dependencies]
 libm = { workspace = true }

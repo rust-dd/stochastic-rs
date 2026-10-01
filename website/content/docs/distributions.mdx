@@ -182,7 +182,7 @@ Every distribution follows the same `new(args, &seed)` constructor pattern — p
 [`Deterministic::new(u64)`](/docs/concepts/seeding) for a reproducible
 stream. See the [seeding concept page](/docs/concepts/seeding) for the
 full design (including `SeedExt::reseed`, the generic `R: SimdRngExt`
-backing RNG, and the experimental `dual-stream-rng` feature). Note the
+backing RNG, and the experimental `unstable-dual-stream-rng` feature). Note the
 seed is taken **by reference** and comes last. `SimdNormal` stands in for
 any distribution below; substitute the parameters of the one you want:
 

@@ -198,12 +198,10 @@ it is a summary, and the sub-crate columns are the part that drifts.
 | `cuda` | `-stochastic`, umbrella | Native CUDA via **cudarc** + cuFFT + NVRTC. The `gpu*` aliases were removed before 3.0. |
 | `metal` | `-stochastic`, umbrella | Apple Silicon GPU via the `metal` crate; f32 only. |
 | `accelerate` | `-stochastic`, umbrella | Apple vDSP / AMX — a **CPU** path despite sitting beside the GPU flags. |
-| `dual-stream-rng` | `-core`, `-distributions`, umbrella | Experimental `SimdRngDual`; changes deterministic output. |
+| `unstable-dual-stream-rng` | `-core`, `-distributions`, umbrella | Experimental `SimdRngDual`; changes deterministic output. |
 | `python` | `-distributions`, `-stochastic`, `-quant`, `-stats`, `-copulas`, umbrella | PyO3 bindings. Note `-py` has **no** `python` feature — it forces `pyo3/extension-module` unconditionally. |
 | `ai` | umbrella | Pulls `-ai` and turns on its `quant` bridge feature. |
 | `quant` / `viz` | `-ai` | `quant` gates `predict_implied_vol_surface`; `viz` gates the plot helper. |
-| `hotpath` / `hotpath-alloc` | umbrella | Profiling-mode build. |
-| `jemalloc` / `mimalloc` | umbrella | Allocator swaps. |
 
 ## Related SKILLs
 

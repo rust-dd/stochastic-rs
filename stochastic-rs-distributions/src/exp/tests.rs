@@ -76,7 +76,7 @@ fn simd_exp_matches_theoretical_distribution() {
 
 /// The dual-engine pair path interleaves batches from engines A and B —
 /// every lane (including B's) must still be Exp(λ).
-#[cfg(feature = "dual-stream-rng")]
+#[cfg(feature = "unstable-dual-stream-rng")]
 #[test]
 fn simd_exp_zig_dual_pair_path_matches_theoretical_distribution() {
   const N: usize = 40_000;

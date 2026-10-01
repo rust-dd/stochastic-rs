@@ -79,8 +79,7 @@ The gated benches in tree today, with their exact feature sets:
 | `fgn_all_backends` | `["metal", "accelerate"]` |
 | `fgn_accelerate` | `["accelerate"]` |
 | `fgn_metal` | `["metal"]` |
-| `hotpath_profile` | `["hotpath"]` |
-| `dual_stream_compare` | `["dual-stream-rng"]` |
+| `dual_stream_compare` | `["unstable-dual-stream-rng"]` |
 
 Without the gate, cargo tries to compile the bench regardless and you
 get a compilation error rather than a skip.
@@ -190,8 +189,8 @@ does this for you.
 
 ## 8. Reference benches
 
-`benches/` holds 32 `.rs` files plus one `distributions/` **directory**,
-matched one-to-one by 33 `[[bench]]` entries. Check whether your target
+`benches/` holds 31 `.rs` files plus one `distributions/` **directory**,
+matched one-to-one by 32 `[[bench]]` entries. Check whether your target
 is a file or a directory before editing.
 
 - `benches/distributions/` — sweep over distribution × sample-count.
@@ -201,8 +200,8 @@ is a file or a directory before editing.
 - `benches/option.rs` — end-to-end pricing with reduced sample count.
 - `benches/risk.rs` — VaR / ES estimators on synthetic samples.
 - `benches/dist_multicore.rs` — `sample_par` parallelism vs serial.
-- `benches/sampler_compare.rs`, `benches/hotpath_profile.rs` — the
-  sampler-v3 refactor's own measurement harnesses.
+- `benches/sampler_compare.rs` — the sampler-v3 refactor's own
+  measurement harness.
 
 ## 9. Registering a new bench
 

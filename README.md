@@ -60,7 +60,7 @@ stochastic-rs = "3.0.0-rc.4"
 ```
 
 Device back-ends and other optional parts are cargo features (`cuda`,
-`metal`, `accelerate`, `ai`, `dual-stream-rng`);
+`metal`, `accelerate`, `ai`, `unstable-dual-stream-rng`);
 the [installation guide](https://stochastic.rust-dd.com/docs/getting-started/installation-rust)
 and the [feature flags](https://stochastic.rust-dd.com/docs/concepts/feature-flags)
 page list them with what each pulls in. Sub-crates can be depended on directly
