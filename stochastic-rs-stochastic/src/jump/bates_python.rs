@@ -151,10 +151,8 @@ impl PyBates {
     })
   }
 
-  /// `m` independent paths as a pair of `(m, n)` arrays, the price and the
-  /// variance. The GIL is released while the paths are generated; every draw
-  /// of the jump-size law re-acquires it, so the Python callable is called
-  /// from rayon workers one at a time.
+  /// `m` paths as a pair of `(m, n)` arrays, price and variance. The GIL is released while they are
+  /// generated; the Python law runs on rayon workers, one call at a time.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,

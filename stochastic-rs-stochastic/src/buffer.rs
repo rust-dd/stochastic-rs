@@ -5,9 +5,8 @@
 //! the zeroing pass costs 3.5–6% of a full `sample()` (more around
 //! cache-boundary sizes) and every element is overwritten anyway.
 //!
-//! The module is crate-private: the helper hands `fill` an uninitialised
-//! slice and relies on it to write every element, which only the crate's own
-//! call sites guarantee.
+//! Crate-private: `fill` gets an uninitialised slice and must write every element, which only the
+//! crate's own call sites guarantee.
 //!
 //! ```compile_fail,E0603
 //! use stochastic_rs_stochastic::buffer::array1_from_fill;

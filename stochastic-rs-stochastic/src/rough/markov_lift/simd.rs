@@ -7,8 +7,7 @@ use crate::traits::FloatExt;
 /// `f64` with `f64x4` (4-wide) and `f32` with `f32x8` (8-wide).
 ///
 /// # Panics
-/// Every method panics unless all of its slice arguments have the same
-/// length: the lane loops load and store without per-element bounds checks.
+/// Unless a method's slice arguments share one length: its lane loops skip bounds checks.
 pub trait RoughSimd: FloatExt {
   /// Single-path factor reduction: $\sum_l (w_l e_l)\,(H_l + J_l)$ with
   /// `we[l] = w_l * e_l` pre-merged.

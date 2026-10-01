@@ -60,11 +60,8 @@ use crate::traits::ProcessExt;
 /// widening `Merton`/`Kou`/`LevyDiffusion`/`Bates1996` needed, applied here
 /// last.)
 ///
-/// The fields are private because the embedded fGN driver caches a spectrum
-/// derived from `hurst`, `n` and `t`, and the jump driver is derived from
-/// `lambda`, `n`, `t` and `seed`: read the parameters through the getters and
-/// change them through the `with_*` setters, which rebuild both. Assigning to
-/// a field does not compile:
+/// Fields are private: the fGN and jump drivers derive from `hurst`, `lambda`, `n`, `t` and `seed`,
+/// so parameters are read through getters and changed through the rebuilding `with_*` setters.
 ///
 /// ```compile_fail,E0616
 /// use stochastic_rs_core::simd_rng::Unseeded;
@@ -465,10 +462,8 @@ impl PyJumpFou {
     })
   }
 
-  /// `m` independent paths stacked into an `(m, n)` array. The GIL is
-  /// released while the paths are generated; every draw of the jump-size law
-  /// re-acquires it, so the Python callable is called from rayon workers one
-  /// at a time.
+  /// `m` paths as an `(m, n)` array. The GIL is released while they are generated; the Python
+  /// law runs on rayon workers, one call at a time.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,

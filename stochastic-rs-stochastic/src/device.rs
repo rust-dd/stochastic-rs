@@ -292,14 +292,8 @@ pub(crate) fn over_chunks(
   Ok(())
 }
 
-/// The largest row count, at most `rows` and at least one, whose
-/// `rows · elements_per_row` stays within `limit`.
-///
-/// A chunk planner passes the budget's rows through this with what one row
-/// of its kernels indexes and the largest value the kernels' index type
-/// holds, so no chunk it cuts can wrap an index on the device. The floor of
-/// one keeps a row too large on its own reaching its launch, whose
-/// [`launch_len`] checks refuse it rather than wrap.
+/// Caps a planner's rows so no chunk wraps a kernel index; the floor of one lets an oversized row
+/// reach its launch, whose [`launch_len`] check refuses it rather than wrap.
 #[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
 pub(crate) fn rows_within_index_limit(rows: usize, elements_per_row: usize, limit: usize) -> usize {
   let per_row = elements_per_row.max(1);

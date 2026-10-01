@@ -3,32 +3,17 @@
 //! $\mathbb{E}\[P_L\] = \mathbb{E}\[P_0\]
 //!   + \sum_{\ell=1}^{L}\mathbb{E}[P_\ell - P_{\ell-1}]$
 //!
-//! Adaptive MLMC with the optimal sample allocation of Giles (2008), eq. (12),
-//! written with the cost $C_\ell \propto h_\ell^{-1}$ of a level-$\ell$ sample,
-//! which is $2^\ell$ Euler–Maruyama steps for the refinement factor $M = 2$
-//! (the constant of proportionality cancels):
+//! Giles (2008) eq. (12) allocation at cost $C_\ell \propto h_\ell^{-1}$ ($M = 2$); $V_\ell$ is the
+//! per-level `n − 1` sample variance (Welford); levels grow while $|\hat Y_L| > \epsilon/\sqrt{2}$:
 //!
 //! $$
 //! N_\ell = \Bigl\lceil 2\epsilon^{-2}\sqrt{V_\ell / C_\ell}\,
 //!   \sum_{k=0}^{L}\sqrt{V_k C_k}\Bigr\rceil
 //! $$
 //!
-//! $V_\ell$ is the variance of a single sample of level $\ell$ (§2 of the
-//! paper). The paper estimates it from the samples drawn so far (§5, steps
-//! 2–4) without fixing the denominator; here it is the unbiased sample variance
-//! (`n − 1`), accumulated per level with Welford's update in `f64`, so a level
-//! with a large offset and a small spread keeps its variance. The level count
-//! grows, up to `l_max`, while $|\hat Y_L| > \epsilon/\sqrt{2}$ (§4.2, $M = 2$).
-//!
-//! References:
-//! - Giles, M.B. (2008), "Multilevel Monte Carlo Path Simulation",
-//!   *Operations Research* 56(3), 607-617. DOI: 10.1287/opre.1070.0496 — the
-//!   estimator, the allocation (eq. 12) and the algorithm (§5).
-//! - Giles, M.B. (2015), "Multilevel Monte Carlo methods", *Acta Numerica*
-//!   24, 259-328. DOI: 10.1017/S096249291500001X
-//! - Welford, B.P. (1962), "Note on a Method for Calculating Corrected Sums of
-//!   Squares and Products", *Technometrics* 4(3), 419-420.
-//!   DOI: 10.1080/00401706.1962.10490022 — the per-level mean and variance.
+//! Giles (2008), "Multilevel Monte Carlo Path Simulation", DOI: 10.1287/opre.1070.0496.
+//! Giles (2015), "Multilevel Monte Carlo methods", DOI: 10.1017/S096249291500001X.
+//! Welford (1962), "Note on a Method for Calculating Corrected Sums of Squares and Products", DOI: 10.1080/00401706.1962.10490022.
 
 use ndarray::Array1;
 
@@ -67,8 +52,7 @@ impl<T: FloatExt> Mlmc<T> {
   ///
   /// # Panics
   ///
-  /// If `epsilon` is not positive, `l_max < l_min`, or `n0 < 2` (a level
-  /// variance needs two samples).
+  /// If `epsilon <= 0`, `l_max < l_min` or `n0 < 2`.
   pub fn new(epsilon: T, l_min: usize, l_max: usize, n0: usize) -> Self {
     assert!(epsilon > T::zero(), "epsilon must be positive");
     assert!(l_max >= l_min, "l_max must be >= l_min");
@@ -174,9 +158,8 @@ mod tests {
 
   use super::*;
 
-  /// One continuing stream per level: level `l` alternates `base_l ± δ_l` with
-  /// `δ_l² = ¼·2⁻ˡ`, and only level 0 sits on `base0`. The sample variance
-  /// after `n` draws is known in closed form, see [`alternating_variance`].
+  /// Level `l` alternates `base_l ± δ_l` with `δ_l² = ¼·2⁻ˡ` (only level 0 on `base0`), so its
+  /// sample variance after `n` draws has the closed form [`alternating_variance`].
   fn alternating_levels(base0: f64) -> impl Fn(usize, usize) -> Array1<f64> {
     let drawn = RefCell::new(vec![0usize; 16]);
     move |level, n| {
@@ -213,9 +196,8 @@ mod tests {
     assert!(result.samples_per_level.iter().all(|&n| n == 100));
   }
 
-  /// Level 0 sits on an offset of 1e8 with a spread of 0.5: the cancelled
-  /// variance reads `0.0`, which allocates it one sample, while its true
-  /// variance asks for more than the initial 500.
+  /// Level 0 sits on an offset of 1e8 with spread 0.5: the cancelled variance reads `0.0` and
+  /// allocates one sample, while the true one asks for more than the initial 500.
   #[test]
   fn an_offset_level_keeps_its_variance_and_its_samples() {
     let result = Mlmc::new(0.05, 2, 4, 500).estimate(alternating_levels(1.0e8));

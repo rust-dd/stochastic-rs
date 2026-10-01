@@ -247,9 +247,8 @@ macro_rules! sheet_precision {
       let cells = big_m * big_n;
       let total = sheets * cells;
       let out_len = sheets * m * n;
-      // The draw and the transpose index `data[2 * tid + 1]` for every `tid`
-      // below `total`, in `int`, so the work buffers' whole length must fit
-      // it too; the read-out stays inside the same buffer.
+      // The draw and the transpose index `data[2 * tid + 1]` for each `tid` below `total` in `int`,
+      // so the work buffers' whole length must fit it; the read-out stays inside that buffer.
       launch_len::<i32>(2 * total, "data")?;
       let cells_i = launch_len::<i32>(cells, "cells")?;
       let total_i = launch_len::<i32>(total, "total")?;

@@ -88,9 +88,8 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-      # One step per interpreter, passed by absolute path: letting maturin
-      # discover them would build every CPython the runner image ships, a
-      # future 3.15 included.
+      # One step per interpreter, passed by absolute path: letting maturin discover them would build
+      # every CPython the runner image ships, a future 3.15 included.
       - uses: actions/setup-python@v5
         id: py311
         with:

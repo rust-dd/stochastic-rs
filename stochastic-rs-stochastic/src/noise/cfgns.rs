@@ -20,10 +20,8 @@ use crate::traits::ProcessExt;
 /// Two correlated fractional Gaussian noises `Z = L η^H` on `n` points over
 /// `[0, t]`.
 ///
-/// The fields are private because the embedded fGN driver caches a spectrum
-/// derived from `hurst`, `n` and `t`: read the parameters through the getters
-/// and change them through the `with_*` setters, which rebuild it. Assigning
-/// to a field does not compile:
+/// Fields are private: the fGN driver caches a spectrum derived from `hurst`, `n` and `t`, so
+/// parameters are read through getters and changed through the cache-rebuilding `with_*` setters.
 ///
 /// ```compile_fail,E0616
 /// use stochastic_rs_core::simd_rng::Unseeded;
@@ -62,9 +60,7 @@ impl<T: FloatExt, S: SeedExt> Cfgns<T, S, Cpu> {
     }
   }
 
-  /// The fGN driver of a pair of `n`-point noises (one increment per
-  /// point), shared by `new()` and every `with_*` setter that feeds it so
-  /// they can never drift apart.
+  /// Shared by `new()` and the `with_*` setters so they cannot drift.
   fn fgn_for(hurst: T, n: usize, t: Option<T>) -> Fgn<T, Unseeded, Cpu> {
     Fgn::new(hurst, n, t, Unseeded)
   }

@@ -521,10 +521,8 @@ impl PyKou {
     })
   }
 
-  /// `m` independent paths stacked into an `(m, n)` array. The GIL is
-  /// released while the paths are generated; every draw of the jump-size law
-  /// re-acquires it, so the Python callable is called from rayon workers one
-  /// at a time.
+  /// `m` paths as an `(m, n)` array. The GIL is released while they are generated; the Python
+  /// law runs on rayon workers, one call at a time.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,

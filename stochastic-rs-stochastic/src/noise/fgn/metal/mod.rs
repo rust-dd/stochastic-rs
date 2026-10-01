@@ -301,9 +301,8 @@ fn run_pipeline(launch: Launch<'_>, out: &Buffer) -> Result<usize> {
   let base_cell = first_cell - u64::from(parity) * traj_size as u64;
   let transforms = (parity as usize + m).div_ceil(2);
   let total = transforms * traj_size;
-  // The kernels find every value by a `uint` index — into the transforms'
-  // real and imaginary halves and into the read-out — and the read-out names
-  // its row as an `int` before comparing it with `rows`.
+  // Every value is found by a `uint` index (the transform halves, the read-out), and the read-out
+  // names its row as an `int` before comparing it with `rows`.
   launch_len::<u32>(total, "real")?;
   launch_len::<u32>(m * out_size, "output")?;
   launch_len::<i32>(m, "rows")?;
@@ -507,22 +506,14 @@ struct Chunk {
   len: usize,
 }
 
-/// `rows` cut down until a launch of `streams` paths a row, of an `n`-point
-/// embedding, keeps every index inside the `uint` the kernels hold it in.
-///
-/// A path is charged a whole transform of `2n` points. Two paths share one,
-/// but a launch that starts on the second of a pair computes the transform in
-/// front of it as well, so the charge bounds the real and imaginary buffers
-/// however the batch is cut — and with them the read-out, at no more than
-/// `n` values a path, and the `int` it names a row by.
+/// `rows` cut until a launch keeps every index in the kernels' `uint`. Each path is charged a whole
+/// `2n`-point transform, since a launch starting mid-pair also computes the one in front of it.
 pub(crate) fn index_rows(rows: usize, streams: usize, n: usize) -> usize {
   crate::device::rows_within_index_limit(rows, streams * 2 * n, u32::MAX as usize)
 }
 
-/// The rows of `m` paths cut into launches that fit the device's batch
-/// budget and the kernels' index range. One seed serves the whole batch and
-/// each chunk carries the count of elements already produced, so the result
-/// is the same whatever the budget — the property `chunk_tests` pins.
+/// `m` rows cut into launches within the batch budget and index range; one seed and a running
+/// element count keep the result independent of the budget, as `chunk_tests` pins.
 fn chunks(fgn_n: usize, out_size: usize, m: usize, device: &crate::device::Metal) -> Vec<Chunk> {
   let budget = device
     .batch_budget
@@ -664,9 +655,8 @@ mod chunk_tests {
     assert_eq!(fbm(3).sample(), fbm(3).sample());
   }
 
-  /// An empty fractional batch still runs the engine's fGN launch, for no
-  /// rows. Metal answers an empty buffer request with nil, so that launch
-  /// must not ask for one: it is a batch of nothing, not a device failure.
+  /// An empty fractional batch still runs the fGN launch, for no rows; Metal answers an empty
+  /// buffer request with nil, so the launch must not make one.
   #[test]
   fn an_empty_fractional_batch_is_not_a_device_failure() {
     use crate::process::fbm::Fbm;

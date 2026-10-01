@@ -253,14 +253,8 @@ pub(crate) fn metal_device(ordinal: usize) -> Result<Device> {
   }
 }
 
-/// `buffer` when Metal actually allocated it, or the out-of-memory error the
-/// batch loops answer by halving the chunk.
-///
-/// `new_buffer` and `new_buffer_with_data` hand a refused allocation back as
-/// a `Buffer` around nil — a request past `maxBufferLength` or past what the
-/// device has left, and an empty one too — and its `contents` is then null.
-/// Every buffer this crate allocates is shared storage, whose contents are
-/// never null once it exists, so that is what the check reads.
+/// `buffer` if Metal allocated it, else the out-of-memory error the batch loops halve on: a refused
+/// allocation comes back as a nil `Buffer`, and existing shared storage never has null `contents`.
 pub(crate) fn checked_buffer(buffer: Buffer, bytes: u64) -> Result<Buffer> {
   use metal::foreign_types::ForeignType;
   if buffer.as_ptr().is_null() || buffer.contents().is_null() {
@@ -598,10 +592,8 @@ impl EulerKernel<f32> for Metal {
     self.batch_budget.min(working_set(self.ordinal))
   }
 
-  /// The kernel holds every buffer index in a `uint`: a path writes
-  /// `components` planes of `steps` values and, for a fractional launch,
-  /// reads `streams` increment rows — which the fGN pipeline wrote first,
-  /// indexing its own buffers in `uint` as well.
+  /// Every buffer index is a `uint`: a path writes `components` planes of `steps` values and, when
+  /// fractional, reads `streams` increment rows the fGN pipeline wrote, indexed in `uint` as well.
   fn index_rows(
     &self,
     rows: usize,

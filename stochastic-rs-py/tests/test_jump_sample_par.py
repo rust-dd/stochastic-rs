@@ -1,17 +1,5 @@
-"""`sample_par` on a Python-callable jump law must not deadlock.
-
-Seven process classes take a Python callable as their jump law: `PyMerton`,
-`PyKou`, `PyLevyDiffusion`, `PyJumpFou`, `PyJumpFOUCustom`, `PyBates` and
-`PyCustomJt`. Their `sample_par` runs the paths on rayon's workers, and every
-draw of the law re-attaches to the interpreter there. A wrapper that keeps the
-GIL while it waits for those workers hangs for any `m >= 2`: the caller holds
-the lock the workers are waiting for.
-
-The watchdog has to sit outside the process under test. The hung thread holds
-the GIL, so a `Thread.join(timeout)` inside the same interpreter could never
-get back to the assertion that follows it. Each case therefore runs in its own
-interpreter under `subprocess.run(timeout=...)`, which kills a hung child and
-turns the hang into an ordinary test failure.
+"""`sample_par` on a Python-callable jump law must not deadlock. A hung case keeps the GIL, so each
+runs in its own interpreter under `subprocess.run(timeout=...)`, which turns a hang into a failure.
 """
 
 from __future__ import annotations
@@ -28,10 +16,8 @@ _TIMEOUT_SECONDS = 30
 _PATHS = 8
 _N = 64
 
-# Constructor calls, evaluated in the child interpreter, where `sr` is the
-# extension and `law()` builds a Python jump law. Bates' `alpha` and `beta` are
-# the variance drift's intercept and slope, kappa * theta and kappa, so 0.08
-# and 2.0 are kappa = 2.0 and theta = 0.04.
+# Constructor calls run in the child, where `sr` is the extension and `law()` a Python jump law.
+# Bates' `alpha` and `beta` are kappa * theta and kappa: 0.08 and 2.0 mean kappa 2.0, theta 0.04.
 _CASES = {
     "merton": f"sr.PyMerton(alpha=0.05, sigma=0.2, lambda_=5.0, theta=0.0, distribution=law(), n={_N}, x0=1.0, t=1.0, seed=1)",
     "kou": f"sr.PyKou(alpha=0.05, sigma=0.2, lambda_=5.0, theta=0.0, distribution=law(), n={_N}, x0=1.0, t=1.0, seed=1)",

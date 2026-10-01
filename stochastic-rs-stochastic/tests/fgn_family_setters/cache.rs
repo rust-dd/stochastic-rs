@@ -1,6 +1,5 @@
-//! Each cache-feeding setter alone on a process that differs from the target
-//! only in that parameter. The chains in `chains` would let a later setter's
-//! rebuild hide a setter that forgot its own.
+//! Each cache-feeding setter alone, so a later setter's rebuild in a chain cannot hide one that
+//! forgot its own.
 
 use stochastic_rs_distributions::scalar::ScalarNormal;
 use stochastic_rs_stochastic::ProcessExt;

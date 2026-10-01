@@ -694,10 +694,8 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
     self.batch_budget
   }
 
-  /// The kernel indexes its output in 64 bits but counts a path, and its
-  /// increment row `path * increments`, in an `unsigned int`; the fGN
-  /// pipeline a fractional launch runs first indexes its work buffer in an
-  /// `int`.
+  /// The output is indexed in 64 bits, a path and its increment row `path * increments` in an
+  /// `unsigned int`, and the fGN pipeline a fractional launch runs first in an `int`.
   fn index_rows(
     &self,
     rows: usize,

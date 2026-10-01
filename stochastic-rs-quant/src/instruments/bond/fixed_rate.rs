@@ -158,9 +158,8 @@ impl<T: RealExt> FixedRateBond<T> {
 
   /// Solve the yield-to-maturity implied by a clean price.
   ///
-  /// Returns `NaN` when the dirty price (clean price plus accrued interest) is
-  /// not positive and finite, or when no yield in the expanded search bracket
-  /// reproduces it.
+  /// Returns `NaN` for a dirty price (clean plus accrued) that is not positive and finite or that
+  /// no yield in the expanded search bracket reproduces.
   pub fn yield_to_maturity_from_clean_price(
     &self,
     settlement_date: NaiveDate,
@@ -178,9 +177,8 @@ impl<T: RealExt> FixedRateBond<T> {
 
   /// Macaulay duration in years.
   ///
-  /// Returns `NaN` when the price at `yield_to_maturity` is not positive and
-  /// finite, for example for a matured bond or a yield outside the domain of the
-  /// compounding.
+  /// Returns `NaN` when the price at `yield_to_maturity` is not positive and finite (a matured
+  /// bond, a yield outside the compounding's domain).
   pub fn macaulay_duration(
     &self,
     settlement_date: NaiveDate,
@@ -199,9 +197,8 @@ impl<T: RealExt> FixedRateBond<T> {
 
   /// Modified duration computed by a finite-difference yield bump.
   ///
-  /// Returns `NaN` when the price at `yield_to_maturity` is not positive and
-  /// finite, for example for a matured bond or a yield outside the domain of the
-  /// compounding.
+  /// Returns `NaN` when the price at `yield_to_maturity` is not positive and finite (a matured
+  /// bond, a yield outside the compounding's domain).
   pub fn modified_duration(
     &self,
     settlement_date: NaiveDate,
@@ -220,9 +217,8 @@ impl<T: RealExt> FixedRateBond<T> {
 
   /// Convexity computed by a finite-difference yield bump.
   ///
-  /// Returns `NaN` when the price at `yield_to_maturity` is not positive and
-  /// finite, for example for a matured bond or a yield outside the domain of the
-  /// compounding.
+  /// Returns `NaN` when the price at `yield_to_maturity` is not positive and finite (a matured
+  /// bond, a yield outside the compounding's domain).
   pub fn convexity(
     &self,
     settlement_date: NaiveDate,
@@ -241,9 +237,8 @@ impl<T: RealExt> FixedRateBond<T> {
 
   /// Full analytics implied by the current curve stack.
   ///
-  /// The yield, durations and convexity are `NaN` when the curve price is not
-  /// positive and finite, or when no yield in the expanded search bracket
-  /// reproduces it.
+  /// The yield, durations and convexity are `NaN` when the curve price is not positive and finite,
+  /// or when no yield in the expanded search bracket reproduces it.
   pub fn analytics_from_curve(
     &self,
     valuation_date: NaiveDate,
@@ -265,9 +260,8 @@ impl<T: RealExt> FixedRateBond<T> {
 
   /// Full analytics implied by a clean market price.
   ///
-  /// The yield, durations and convexity are `NaN` when the dirty price (clean
-  /// price plus accrued interest) is not positive and finite, or when no yield
-  /// in the expanded search bracket reproduces it.
+  /// The yield, durations and convexity are `NaN` for a dirty price (clean plus accrued) that is
+  /// not positive and finite or that no yield in the expanded search bracket reproduces.
   pub fn analytics_from_clean_price(
     &self,
     settlement_date: NaiveDate,
@@ -326,9 +320,8 @@ impl<T: RealExt> FixedRateBond<T> {
 
   /// Solve the Z-spread implied by a clean market price.
   ///
-  /// Returns `NaN` when the dirty price (clean price plus accrued interest) is
-  /// not positive and finite, or when no spread in the expanded search bracket
-  /// reproduces it.
+  /// Returns `NaN` for a dirty price (clean plus accrued) that is not positive and finite or that
+  /// no spread in the expanded search bracket reproduces.
   pub fn z_spread_from_clean_price(
     &self,
     settlement_date: NaiveDate,
@@ -381,9 +374,8 @@ impl<T: RealExt> FixedRateBond<T> {
 
   /// Solve the OAS implied by a clean market price and an embedded option value.
   ///
-  /// Returns `NaN` when the dirty price (clean price plus accrued interest) is
-  /// not positive and finite, or when no spread in the expanded search bracket
-  /// reproduces it net of the option value.
+  /// Returns `NaN` for a dirty price (clean plus accrued) that is not positive and finite or that
+  /// no spread in the expanded search bracket reproduces net of the option value.
   pub fn option_adjusted_spread_from_clean_price(
     &self,
     settlement_date: NaiveDate,

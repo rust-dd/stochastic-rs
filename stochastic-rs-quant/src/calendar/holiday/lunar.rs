@@ -1,22 +1,12 @@
-//! HKEX and SGX holiday calendars. Their lunar-calendar holidays follow the
-//! Chinese lunisolar, Islamic and Hindu calendars, so the exchange closures
-//! they cause are tabulated per year.
+//! HKEX and SGX calendars; their lunisolar, Islamic and Hindu holidays are tabulated per year.
 //!
-//! Hong Kong sources: General Holidays Ordinance (Cap. 149), Schedule and
-//! s 6(2); the general-holiday lists at gov.hk; the HKEX trading calendar and
-//! holiday schedule; the Hong Kong Observatory Gregorian–lunar calendar
-//! conversion tables. Singapore sources: Holidays Act 1998, ss 4(2) and 5(2);
-//! the Ministry of Manpower (MOM) public-holiday lists; the SGX CDP
-//! settlement-holiday lists.
+//! Hong Kong: General Holidays Ordinance (Cap. 149), Schedule and s 6(2); gov.hk and HKEX lists.
+//! Hong Kong Observatory, Gregorian–lunar calendar conversion tables.
+//! Singapore: Holidays Act 1998, ss 4(2) and 5(2); MOM public-holiday and SGX CDP settlement lists.
+//! Office of the Mufti, Singapore, "Determining the Beginning of Ramadan 1445H/2024", 2024.
 //!
-//! Singapore dates MOM has not gazetted are estimates. Vesak Day falls on the
-//! fifteenth day of the fourth Chinese lunar month. Hari Raya Puasa and Hari
-//! Raya Haji follow the MABIMS crescent criterion MUIS applies: altitude at
-//! least 3° and elongation at least 6.4° at sunset in Singapore (Office of the
-//! Mufti, Singapore, "Determining the Beginning of Ramadan 1445H/2024", 2024).
-//! Deepavali falls on Naraka Chaturdashi, the day whose sunrise lies in the
-//! fourteenth tithi before the new moon at which the Sun is in sidereal Libra
-//! (Lahiri ayanamsa).
+//! Ungazetted SGX dates are estimates: Vesak on day 15 of lunar month 4, Hari Raya by MABIMS
+//! (altitude ≥ 3°, elongation ≥ 6.4° at sunset), Deepavali on Naraka Chaturdashi (Lahiri ayanamsa).
 
 use chrono::Datelike;
 use chrono::Duration;
@@ -58,20 +48,12 @@ enum LunarHoliday {
   Deepavali,
 }
 
-/// Years for which the HKEX and SGX lunar-calendar closures are tabulated.
-/// Outside this range those two calendars report only their rule-based
-/// (fixed-date and Easter) holidays.
+/// Years for which the HKEX and SGX lunar-calendar closures are tabulated; outside it those two
+/// calendars report only their rule-based (fixed-date and Easter) holidays.
 pub const LUNAR_TABLE_YEARS: std::ops::RangeInclusive<i32> = 2020..=2030;
 
-/// Weekday exchange closures caused by the lunar-calendar holidays,
-/// `(year, month, day, holiday)`, for [`LUNAR_TABLE_YEARS`]. A holiday that
-/// falls on a Saturday has no row: Saturday is not a trading day and neither
-/// exchange substitutes it. A Sunday holiday is recorded on its substitute
-/// day. In Hong Kong a holiday that lands on another general holiday adds the
-/// next free day (Cap. 149 s 6(2)); in Singapore a Sunday holiday moves to the
-/// next day that is not already a public holiday (Holidays Act s 4(2)), and
-/// two holidays on one weekday share it. Outside the window the HKEX and SGX
-/// calendars report only their rule-based holidays.
+/// Weekday closures `(year, month, day, holiday)` for [`LUNAR_TABLE_YEARS`]. Saturday holidays have
+/// no row; Sunday ones sit on their substitute day (Cap. 149 s 6(2), Holidays Act s 4(2)).
 static LUNAR_TABLE: &[(i32, u32, u32, LunarHoliday)] = &[
   // 2020 HKEX — gov.hk general holidays 2020, HKEX holiday schedule 2020
   (2020, 1, 27, LunarHoliday::LunarNewYear),
@@ -226,10 +208,8 @@ static LUNAR_TABLE: &[(i32, u32, u32, LunarHoliday)] = &[
   (2030, 5, 9, LunarHoliday::BuddhasBirthday),
   (2030, 6, 5, LunarHoliday::DragonBoat),
   (2030, 9, 13, LunarHoliday::MidAutumnNext),
-  // 2030 SGX — HKO lunar calendar 2030 for Chinese New Year; Vesak Day, Hari Raya
-  // Puasa and Hari Raya Haji are estimates until MOM gazettes them. The Deepavali
-  // estimate, 26 October, is a Saturday; Hari Raya Puasa shares 4 February with
-  // Chinese New Year, which adds no day unless the President appoints one (s 5(2)).
+  // 2030 SGX — HKO lunar calendar 2030 for Chinese New Year, the rest estimates; Deepavali (26 Oct)
+  // is a Saturday, and Hari Raya Puasa shares 4 Feb with Chinese New Year, adding no day (s 5(2)).
   (2030, 2, 4, LunarHoliday::ChineseNewYear),
   (2030, 2, 5, LunarHoliday::ChineseNewYear),
   (2030, 2, 4, LunarHoliday::EidAlFitr),
@@ -244,9 +224,8 @@ fn lunar_holiday_on(date: NaiveDate, tag: LunarHoliday) -> bool {
     .any(|&(yr, mo, da, t)| yr == y && mo == m && da == d && t == tag)
 }
 
-/// HKEX (Hong Kong Stock Exchange) calendar: the rule-based general holidays
-/// plus the lunar-calendar closures in [`LUNAR_TABLE`]. Outside
-/// [`LUNAR_TABLE_YEARS`] only the rule-based holidays are reported.
+/// HKEX (Hong Kong Stock Exchange) calendar: the rule-based general holidays plus the closures in
+/// [`LUNAR_TABLE`], which cover only [`LUNAR_TABLE_YEARS`].
 pub(super) fn is_hkex_holiday(date: NaiveDate) -> bool {
   let (y, m, d) = (date.year(), date.month(), date.day());
   let w = date.weekday();
@@ -284,10 +263,8 @@ pub(super) fn is_hkex_holiday(date: NaiveDate) -> bool {
     return true;
   }
 
-  // Christmas Day, or the second weekday after it when it is a Sunday, and the
-  // first weekday after it (Cap. 149 Schedule (q), (r)). Saturday counts as a
-  // weekday, so 27 December closes only as the Monday after a Saturday
-  // Christmas or the Tuesday after a Sunday one.
+  // Christmas Day (the second weekday after it when a Sunday) and the first weekday after it, with
+  // Saturday a weekday (Cap. 149 Schedule (q), (r)), so 27 December closes only on Mon or Tue.
   if m == 12
     && ((matches!(d, 25 | 26) && w != Sat && w != Sun) || (d == 27 && matches!(w, Mon | Tue)))
   {
@@ -311,10 +288,8 @@ pub(super) fn is_hkex_holiday(date: NaiveDate) -> bool {
   false
 }
 
-/// SGX (Singapore Exchange) calendar: the rule-based public holidays, a
-/// Sunday one observed on the Monday, plus the lunar-calendar closures in
-/// [`LUNAR_TABLE`]. Outside [`LUNAR_TABLE_YEARS`] only the rule-based
-/// holidays are reported.
+/// SGX (Singapore Exchange) calendar: the rule-based public holidays (a Sunday one on the Monday)
+/// plus the closures in [`LUNAR_TABLE`], which cover only [`LUNAR_TABLE_YEARS`].
 pub(super) fn is_sgx_holiday(date: NaiveDate) -> bool {
   let (_y, m, d) = (date.year(), date.month(), date.day());
   let w = date.weekday();

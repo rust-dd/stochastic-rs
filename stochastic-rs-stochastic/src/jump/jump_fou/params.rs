@@ -1,6 +1,5 @@
-//! The parameter API of [`JumpFou`]: construction, the getters and the
-//! `with_*` setters that keep the cached fGN driver and the jump driver in
-//! step with the parameters they derive from.
+//! [`JumpFou`]'s construction, getters and `with_*` setters, which keep the cached fGN driver and
+//! the jump driver in step with the parameters they derive from.
 
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -18,11 +17,8 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Builds the compound-Poisson jump driver internally from `jump_dist`
-  /// and `lambda`, seeded from `seed` (see [`cpoisson`](Self::cpoisson)) —
-  /// the caller supplies the jump-size distribution and intensity directly
-  /// instead of pre-building a `Poisson`/`CompoundPoisson` pair and
-  /// threading a third, independent seed through it by hand.
+  /// Builds the compound-Poisson jump driver from `jump_dist` and `lambda`, seeded from `seed`
+  /// (see [`cpoisson`](Self::cpoisson)), so no `Poisson`/`CompoundPoisson` pair is built by hand.
   pub fn new(
     hurst: T,
     theta: T,
@@ -52,17 +48,13 @@ where
     }
   }
 
-  /// The fGN driver of a path with `n` points (one increment per step),
-  /// shared by `new()` and every `with_*` setter that feeds it so they
-  /// can never drift apart.
+  /// Shared by `new()` and the `with_*` setters so they cannot drift.
   fn fgn_for(hurst: T, n: usize, t: Option<T>) -> Fgn<T, Unseeded, Cpu> {
     Fgn::new(hurst, n - 1, t, Unseeded)
   }
 
-  /// The compound-Poisson jump driver of one parameter set: `jump_dist`
-  /// arriving at rate `lambda` on the `n`-point grid over `[0, t]`, seeded
-  /// with a child of `seed`. The one place `new()` and every setter that
-  /// feeds the driver build it, so it cannot disagree with them.
+  /// `jump_dist` arriving at rate `lambda` on the `n`-point grid over `[0, t]`, seeded with a child
+  /// of `seed`; shared by `new()` and the `with_*` setters so they cannot drift.
   fn jump_driver(
     jump_dist: D,
     lambda: T,
@@ -127,9 +119,8 @@ where
     self
   }
 
-  /// Replace the number of simulation steps `n`; rebuilds the embedded
-  /// `fgn` and `cpoisson`. Panics if `n < 2`, matching `new()`'s own
-  /// assertion.
+  /// Replace the number of simulation steps `n`; rebuilds the embedded `fgn` and `cpoisson`.
+  /// Panics if `n < 2`, matching `new()`'s own assertion.
   pub fn with_steps(mut self, n: usize) -> Self {
     assert!(n >= 2, "n must be at least 2");
     self.n = n;
@@ -151,10 +142,8 @@ where
     self.rebuild_cpoisson()
   }
 
-  /// Replace the seed strategy's value; re-derives `cpoisson`'s own seed
-  /// from it exactly as `new()` does, so the result matches a fresh
-  /// construction with this seed. `fgn`'s own seed is a never-read dummy,
-  /// so it is not touched.
+  /// Replace the seed; re-derives `cpoisson`'s seed from it as `new()` does, so the result matches
+  /// a fresh construction. The embedded `fgn`'s seed is a never-read dummy and stays untouched.
   pub fn with_seed(mut self, seed: S) -> Self {
     self.seed = seed;
     self.rebuild_cpoisson()
@@ -166,9 +155,8 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Hurst exponent H of the driving fractional Gaussian noise (roughness
-  /// / long-memory of the diffusion part; H = 0.5 recovers a standard
-  /// OU-with-jumps).
+  /// Hurst exponent H of the driving fractional Gaussian noise; H = 0.5 recovers an OU process
+  /// with jumps.
   pub fn hurst(&self) -> T {
     self.hurst
   }
@@ -206,41 +194,20 @@ where
     self.t
   }
 
-  /// Jump (Poisson) intensity λ — arrival rate of the jumps added to the
-  /// fOU path. Single source of truth: `sampler()` reads this value
-  /// directly (not `cpoisson.poisson.lambda`) for the jump-arrival rate;
-  /// [`with_lambda`](Self::with_lambda) rebuilds
-  /// [`cpoisson`](Self::cpoisson) so the two never disagree.
+  /// Jump intensity λ, which the sampler reads instead of `cpoisson().poisson.lambda`;
+  /// [`with_lambda`](Self::with_lambda) rebuilds [`cpoisson`](Self::cpoisson) so the two agree.
   pub fn lambda(&self) -> T {
     self.lambda
   }
 
-  /// Compound-Poisson jump driver adding `dJ_t` on top of the fOU path.
-  /// Fully seed-reproducible: [`new`](Self::new) builds it internally from
-  /// `seed` (`seed.clone().derive()` — a hash-mixed child, decorrelated
-  /// from but a deterministic function of the same `seed` the diffusion
-  /// component consults directly), and `sampler()` derives a fresh,
-  /// chunk-local basis off its seed for every chunk, mirroring the
-  /// diffusion component's own per-chunk `self.seed`-derived basis.
-  ///
-  /// `sampler()` reads only the driver's `distribution` (the jump-size law)
-  /// and [`lambda`](Self::lambda) — **not** `cpoisson().poisson.lambda` —
-  /// on the sampling path; `poisson.{n,t_max,seed}` are inert there
-  /// (`grid_increments` never consults them). That inertness is scoped to
-  /// *this type's own* sampling, though: the driver is a `CompoundPoisson`
-  /// in its own right, and calling `.sample()` on it directly (bypassing
-  /// `JumpFou` entirely) drives it through `Poisson::sample_impl`, which
-  /// *does* branch on `.n`/`.t_max` and *does* consult `.seed` — genuinely
-  /// live there. That is why it is exposed for inspection, and why every
-  /// setter that feeds it (`lambda`, `n`, `t`, `seed`, the jump law)
-  /// rebuilds it: it always agrees with the process it belongs to.
+  /// Compound-Poisson jump driver, seeded by [`new`](Self::new) with a child of `seed` and rebuilt
+  /// by every setter that feeds it; sampling reads only its jump-size law and `lambda`.
   pub fn cpoisson(&self) -> &CompoundPoisson<T, D, S> {
     &self.cpoisson
   }
 
-  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`). Consulted
-  /// directly by the diffusion component; [`cpoisson`](Self::cpoisson)'s own
-  /// seed (derived from this value) drives the jump component.
+  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`), read by the diffusion component;
+  /// [`cpoisson`](Self::cpoisson)'s seed, a child of it, drives the jumps.
   pub fn seed(&self) -> &S {
     &self.seed
   }

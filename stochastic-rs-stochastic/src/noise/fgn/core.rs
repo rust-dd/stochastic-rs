@@ -239,9 +239,8 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
 
     T::with_fgn_complex_scratch(len, |rnd| {
       debug_assert_eq!(rnd.len(), len);
-      // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to
-      // [T; 2], so the scratch is twice its own length in scalars — measured on
-      // the slice handed over, not on the length asked for.
+      // SAFETY: Complex<T> is repr(C) with the layout of [T; 2], so the scratch is twice its
+      // length in scalars, measured on the slice handed over, not on the length asked for.
       let flat =
         unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * rnd.len()) };
       let normal =
@@ -277,9 +276,8 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     let len = 2 * self.padded_n;
     T::with_fgn_complex_scratch(len, |rnd| {
       debug_assert_eq!(rnd.len(), len);
-      // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to
-      // [T; 2], so the scratch is twice its own length in scalars — measured on
-      // the slice handed over, not on the length asked for.
+      // SAFETY: Complex<T> is repr(C) with the layout of [T; 2], so the scratch is twice its
+      // length in scalars, measured on the slice handed over, not on the length asked for.
       let flat =
         unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * rnd.len()) };
       normal.fill_slice(flat);
@@ -318,9 +316,8 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
 
     T::with_fgn_complex_scratch(len, |rnd| {
       debug_assert_eq!(rnd.len(), len);
-      // SAFETY: Complex<T> is repr(C) with layout {re: T, im: T}, identical to
-      // [T; 2], so the scratch is twice its own length in scalars — measured on
-      // the slice handed over, not on the length asked for.
+      // SAFETY: Complex<T> is repr(C) with the layout of [T; 2], so the scratch is twice its
+      // length in scalars, measured on the slice handed over, not on the length asked for.
       let flat =
         unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * rnd.len()) };
       let normal =

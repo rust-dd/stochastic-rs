@@ -60,15 +60,8 @@ impl<T: FloatExt + std::fmt::Display> std::fmt::Display for McEstimate<T> {
   }
 }
 
-/// Streaming mean and variance of a sample stream, accumulated in `f64`.
-///
-/// Samples are folded in one at a time with Welford's update, and two
-/// accumulators are combined with the pairwise update of Chan, Golub and
-/// LeVeque, so a stream can be cut into batches or spread over threads, folded
-/// piecewise and merged. The state is three numbers whatever the sample count,
-/// and `f64` whatever the sample type: unlike running `sum` and `sum_sq` it
-/// neither cancels on a near-constant stream (`sum_sq / n − mean²` goes
-/// negative) nor stalls once an `f32` sum passes 2^24.
+/// Streaming mean and variance in `f64`: Welford's update per sample, Chan–Golub–LeVeque's
+/// pairwise update on `merge`. Immune to the `sum_sq / n − mean²` cancellation and the `f32` stall.
 ///
 /// ```
 /// use stochastic_rs_stochastic::mc::Welford;
@@ -84,14 +77,8 @@ impl<T: FloatExt + std::fmt::Display> std::fmt::Display for McEstimate<T> {
 /// assert!((left.sample_variance() - 63.7).abs() < 1e-12);
 /// ```
 ///
-/// References:
-/// - Welford, B. P. (1962), "Note on a Method for Calculating Corrected Sums of
-///   Squares and Products", Technometrics 4(3), 419–420,
-///   DOI: 10.1080/00401706.1962.10490022 — the single-sample update.
-/// - Chan, T. F., Golub, G. H., LeVeque, R. J. (1983), "Algorithms for
-///   Computing the Sample Variance: Analysis and Recommendations", The American
-///   Statistician 37(3), 242–247, DOI: 10.1080/00031305.1983.10483115 — the
-///   pairwise update, eq. (1.5).
+/// Welford (1962), "Note on a Method for Calculating Corrected Sums of Squares and Products", DOI: 10.1080/00401706.1962.10490022.
+/// Chan, Golub, LeVeque (1983), "Algorithms for Computing the Sample Variance: Analysis and Recommendations", DOI: 10.1080/00031305.1983.10483115.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Welford {
   n: usize,
@@ -110,19 +97,8 @@ impl Welford {
     self.m2 += delta * (y - self.mean);
   }
 
-  /// Combines `other` into `self`, as if its samples had been pushed after the
-  /// ones already here.
-  ///
-  /// With `m` and `n` samples, means `a` and `b` and corrected sums of squares
-  /// `S_a` and `S_b`, the merged sum of squares is
-  /// `S_a + S_b + m n / (m + n) · (b − a)²` (Chan, Golub and LeVeque 1983,
-  /// eq. 1.5b, written with the means in place of the sums) and the merged mean
-  /// is `a + (b − a) · n / (m + n)`. Merging an empty accumulator, in either
-  /// direction, changes nothing, and a `NaN` or infinite sample on either side
-  /// leaves the variance `NaN`, as it would in one stream.
-  ///
-  /// Floating-point addition is not associative, so the merged state depends on
-  /// the order of the merges: a reproducible reduction merges in a fixed order.
+  /// Combines `other` into `self` as if its samples followed these (Chan, Golub and LeVeque 1983,
+  /// eq. 1.5b). The bits depend on the merge order, so a reproducible reduction fixes it.
   pub fn merge(&mut self, other: &Welford) {
     if other.n == 0 {
       return;
@@ -187,19 +163,10 @@ impl<T: FloatExt> From<&Welford> for McEstimate<T> {
   }
 }
 
-/// Mean and standard error of i.i.d. samples, accumulated with Welford's
-/// update in `f64` so neither a near-zero variance nor a long `f32` run loses
-/// the result to cancellation.
+/// Mean and standard error of i.i.d. samples through [`Welford`]: `sqrt(s² / n)` on the `n − 1`
+/// sample variance, `NaN` with fewer than two samples or a non-finite one.
 ///
-/// The standard error is `sqrt(s² / n)` with the sample variance `s²` on the
-/// `n − 1` denominator, floored at zero. Fewer than two samples carry no
-/// variance estimate, so the standard error is `NaN`, and no samples at all
-/// also give a `NaN` mean. A `NaN` or infinite sample makes the standard error
-/// `NaN` rather than a small plausible number.
-///
-/// Reference: Welford, B. P. (1962), "Note on a Method for Calculating
-/// Corrected Sums of Squares and Products", Technometrics 4(3), 419–420,
-/// DOI: 10.1080/00401706.1962.10490022.
+/// Welford (1962), "Note on a Method for Calculating Corrected Sums of Squares and Products", DOI: 10.1080/00401706.1962.10490022.
 pub(crate) fn estimate_from_samples<T: FloatExt>(
   samples: impl IntoIterator<Item = T>,
 ) -> McEstimate<T> {
@@ -208,27 +175,14 @@ pub(crate) fn estimate_from_samples<T: FloatExt>(
   McEstimate::from(&acc)
 }
 
-/// Run lengths the parallel reduction of `n` samples is cut into.
-///
-/// A pure function of `n` alone, the same split `ProcessExt::sample_par` uses
-/// (`chunk_count`, `chunk_lens`), and never of the rayon pool: the boundaries
-/// fix which samples each partial accumulator holds, so they fix the bits of
-/// the merged result.
+/// Run lengths of a parallel reduction over `n` samples: the split `sample_par` uses, a function of
+/// `n` alone and never of the pool, because the boundaries fix the merged result's bits.
 fn par_chunk_lens(n: usize) -> impl Iterator<Item = usize> {
   chunk_lens(n, chunk_count(n))
 }
 
-/// Folds `sample(0)`, `sample(1)`, ..., `sample(n - 1)` into one [`Welford`] on
-/// the rayon pool, without collecting the samples.
-///
-/// The indices are cut into the runs of `par_chunk_lens`, each run is folded
-/// into its own accumulator in parallel (in increasing index order within the
-/// run), and the run accumulators are merged sequentially in run order. The
-/// split and the merge order depend on `n` alone, so for a deterministic
-/// `sample` the result is bit-identical on any pool size and on every run;
-/// rayon's own `reduce` would shape its merge tree by the pool and change the
-/// last bits with it. The sequential tail is one merge per run, at most
-/// `MAX_CHUNKS` of them, however many samples there are.
+/// Folds `sample(0..n)` into one [`Welford`] without collecting: runs fold in parallel and merge in
+/// run order, so the bits never depend on the pool size, as they would under rayon's `reduce`.
 pub(crate) fn par_welford<T: FloatExt>(n: usize, sample: impl Fn(usize) -> T + Sync) -> Welford {
   let mut start = 0;
   let runs = par_chunk_lens(n)

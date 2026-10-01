@@ -2042,13 +2042,8 @@ pub trait EulerKernel<T: FloatExt>: Backend {
   /// Bytes of path data one launch may hold.
   fn batch_budget(&self) -> usize;
 
-  /// `rows` cut down, where it has to be, until one launch of that many
-  /// paths computes no index outside the integer type this device's kernels
-  /// hold it in: the launch of `spec` over `steps` grid points, its increment
-  /// rows, and — when `fgn` is set — the fGN pipeline it runs first.
-  ///
-  /// Never below one path: a single path past the range still reaches the
-  /// launch, which refuses it rather than wrap.
+  /// `rows` cut until a launch of `spec` over `steps` points, with the `fgn` pipeline first, stays
+  /// in the kernels' index type; never below one, so a lone oversized path is refused, not wrapped.
   fn index_rows(
     &self,
     rows: usize,
@@ -2115,10 +2110,8 @@ pub trait EulerKernel<T: FloatExt>: Backend {
   }
 }
 
-/// Paths one launch of `kernel` may hold: as many as its budget fits at
-/// `per_path` scalars a path, cut down by [`EulerKernel::index_rows`] to what
-/// its kernels can index. Every batch loop of the engine sizes its chunks
-/// here, so none of them can hand a launch an index that wraps.
+/// Paths one launch may hold: the budget at `per_path` scalars each, cut by
+/// [`EulerKernel::index_rows`]. Every engine batch loop sizes chunks here, so none wraps an index.
 fn launch_rows<T: FloatExt, K: EulerKernel<T>>(
   kernel: &K,
   per_path: usize,
@@ -2130,14 +2123,8 @@ fn launch_rows<T: FloatExt, K: EulerKernel<T>>(
   kernel.index_rows(rows, spec, steps, fgn)
 }
 
-/// The kernel's `steps`, `paths` and `first_path` for a launch of paths
-/// `first .. first + m` over `n` grid points, as the `unsigned int`s the
-/// shared body takes them in, or the launch's error — never a wrapped value.
-///
-/// The body also counts a path's batch-global index `first_path + path`,
-/// which keys its noise, and its increment row `path * increments` in 32
-/// bits, so the launch keeps both inside that range too: past it two paths
-/// would draw the same noise, or one would read another's increments.
+/// The body's `steps`, `paths`, `first_path` as `unsigned int`s, or the launch's error; `first + m`
+/// and `m · increments` are checked too: past 32 bits two paths would share noise or increments.
 #[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
 pub(crate) fn launch_scalars(
   n: usize,

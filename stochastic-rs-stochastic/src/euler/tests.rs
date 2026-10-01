@@ -63,10 +63,8 @@ fn cpu_backend_is_the_process_sampler() {
   assert_eq!(gbm().on::<Cpu>().sample_par(0).len(), 0);
 }
 
-/// The launch scalars are the `unsigned int`s the shared kernel body takes,
-/// and the body keys a path's noise on `first_path + path` and finds its
-/// increment row at `path * increments`, both in 32 bits: a launch that would
-/// carry either past that range is refused rather than handed a wrapped one.
+/// The body keys noise on `first_path + path` and rows on `path * increments`, both in 32 bits,
+/// so a launch past that range is refused rather than handed a wrapped value.
 #[test]
 fn launch_scalars_refuse_a_wrapped_index() {
   let last = u32::MAX as usize;
@@ -431,11 +429,8 @@ mod devices {
     );
   }
 
-  /// Every index the Metal kernels compute is a `uint`, so however large the
-  /// budget, the engine cuts no launch past that range — for a plane of
-  /// values, and for the fGN pipeline a fractional launch runs first, whose
-  /// two rows a path of `2n` points bind a correlated pair before its two
-  /// planes do. It stops at the range, and keeps rows that already fit.
+  /// Metal indexes in `uint`, so no launch passes that range: a plane of values, or the `2n`-point
+  /// fGN rows that bind a correlated pair before its planes do. Rows that already fit are kept.
   #[cfg(feature = "metal")]
   #[test]
   fn metal_index_rows_stop_at_the_uint_range() {
@@ -456,10 +451,8 @@ mod devices {
     assert_eq!(rows, limit / (fgn.streams * 2 * fgn.n));
   }
 
-  /// The CUDA kernel indexes its output in 64 bits, so nothing but the
-  /// `unsigned int` it counts a path in bounds a Gaussian launch; a
-  /// fractional one is bound by the fGN pipeline it runs first, whose work
-  /// buffer is indexed in `int` at `4n` values a path.
+  /// A Gaussian CUDA launch is bound only by the `unsigned int` path count; a fractional one by the
+  /// fGN work buffer, indexed in `int` at `4n` values a path.
   #[cfg(feature = "cuda")]
   #[test]
   fn cuda_index_rows_bound_paths_and_the_fgn_buffer() {
@@ -482,9 +475,8 @@ mod devices {
     assert_eq!(rows, i32::MAX as usize / (4 * n));
   }
 
-  /// Metal hands an allocation it cannot make back as a buffer around nil;
-  /// the check reports it as the out-of-memory error the batch loops halve
-  /// on, without dropping the nil handle, and lets a real buffer through.
+  /// A refused Metal allocation (a nil buffer) is the out-of-memory error the batch loops halve on,
+  /// reported without dropping the nil handle; a real buffer passes.
   #[cfg(feature = "metal")]
   #[test]
   fn metal_refused_allocation_is_out_of_memory() {

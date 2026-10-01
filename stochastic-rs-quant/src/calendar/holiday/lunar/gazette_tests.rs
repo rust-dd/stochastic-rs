@@ -18,11 +18,8 @@ const HKEX: &str = "
   2027: 01-01 02-08 02-09 03-26 03-29 04-05 05-13 06-09 07-01 09-16 10-01 10-08 12-27
 ";
 
-/// Singapore's weekday public holidays with their announced Monday
-/// substitutes, `year: MM-DD ...`: the MOM list of each year, which the SGX CDP
-/// settlement-holiday lists repeat for 2020–2026. Polling Day (2020-07-10,
-/// 2023-09-01) is declared under the election Acts, not the Holidays Act, so
-/// the calendar leaves it to `Calendar::add_holiday`.
+/// Singapore's weekday public holidays and Monday substitutes, `year: MM-DD ...`, per MOM (and SGX
+/// CDP for 2020–2026). Polling Days fall under the election Acts, so users add them themselves.
 const SGX: &str = "
   2020: 01-01 01-27 04-10 05-01 05-07 05-25 07-31 08-10 12-25
   2021: 01-01 02-12 04-02 05-13 05-26 07-20 08-09 11-04

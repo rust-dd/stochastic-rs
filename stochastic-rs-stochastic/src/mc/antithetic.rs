@@ -34,11 +34,8 @@ where
 
 /// Antithetic variates MC estimate (parallel via rayon).
 ///
-/// The paths are cut into a fixed number of chunks that depends on `n_paths`
-/// alone. Each chunk folds its payoffs into its own [`Welford`](super::Welford)
-/// accumulator on a worker and the chunk accumulators are merged in chunk
-/// order, so no per-path storage is kept and the serial tail is one merge per
-/// chunk.
+/// Chunked by `n_paths` alone, one [`Welford`](super::Welford) per chunk on the pool, merged in
+/// chunk order: no per-path storage, and bits that do not depend on the thread count.
 pub fn estimate_par<T, F>(n_paths: usize, dim: usize, payoff: F) -> McEstimate<T>
 where
   T: FloatExt,
@@ -84,9 +81,8 @@ mod tests {
     );
   }
 
-  /// The pair average of `max(Z, 0)` is `|Z| / 2`: mean `1/√(2π)`, variance
-  /// `(1 − 2/π) / 4`. A wrong chunk weighting in the parallel merge would move
-  /// the standard error, which a constant payoff cannot show.
+  /// The pair average of `max(Z, 0)` is `|Z| / 2` (mean `1/√(2π)`, variance `(1 − 2/π) / 4`): a
+  /// wrong chunk weighting in the merge moves the standard error, which a constant payoff hides.
   #[test]
   fn antithetic_par_matches_the_analytic_moments() {
     let n = 200_000;

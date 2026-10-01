@@ -30,22 +30,13 @@ pub enum HolidayCalendar {
   Target,
   /// Tokyo Stock Exchange calendar.
   Tokyo,
-  /// Hong Kong Stock Exchange (HKEX) calendar. Its lunar-calendar holidays
-  /// (Lunar New Year, Ching Ming, the Birthday of the Buddha, Tuen Ng, the
-  /// day after Mid-Autumn, Chung Yeung) are tabulated for
-  /// [`LUNAR_TABLE_YEARS`]; outside that range only the rule-based
-  /// (fixed-date and Easter) holidays are reported. The lunar dates from
-  /// 2028 on are computed from the Hong Kong Observatory calendar and are
-  /// not yet gazetted.
+  /// Hong Kong Stock Exchange (HKEX) calendar. Lunar closures cover [`LUNAR_TABLE_YEARS`] only
+  /// (2028 on computed from the HKO calendar, not gazetted); rule-based holidays cover every year.
   Hkex,
   /// Australian Securities Exchange (ASX) calendar.
   Asx,
-  /// Singapore Exchange (SGX) calendar. Chinese New Year, Vesak Day, Hari
-  /// Raya Puasa, Hari Raya Haji and Deepavali are tabulated for
-  /// [`LUNAR_TABLE_YEARS`]; outside that range only the rule-based
-  /// (fixed-date and Easter) holidays are reported. From 2028 on, Vesak Day
-  /// and the Islamic and Hindu holidays are astronomical estimates until the
-  /// Ministry of Manpower gazettes them.
+  /// Singapore Exchange (SGX) calendar. Lunar, Islamic and Hindu closures cover only
+  /// [`LUNAR_TABLE_YEARS`] (2028 on estimated, not gazetted); rule-based holidays cover every year.
   Sgx,
   /// B3 / BoVespa (São Paulo) calendar. Black Awareness Day is a
   /// holiday from 2024 onwards only.

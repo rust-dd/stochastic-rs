@@ -44,10 +44,8 @@ pub(crate) fn counter_offset(seed: u64) -> u64 {
   z ^ (z >> 31)
 }
 
-/// `rows` cut down until a launch of `streams` paths a row, of an `n`-point
-/// embedding, keeps every index inside the `int` the kernels hold it in. A
-/// path is `2n` complex values of work buffer and the generate kernel writes
-/// `data[2 * tid + 1]`, so a path costs `4n` of that range.
+/// `rows` cut until a launch of `streams` paths a row keeps every index in the kernels' `int`: a
+/// path is `2n` complex work values and the kernel writes `data[2 * tid + 1]`, so it costs `4n`.
 pub(crate) fn index_rows(rows: usize, streams: usize, n: usize) -> usize {
   crate::device::rows_within_index_limit(rows, streams * 4 * n, i32::MAX as usize)
 }

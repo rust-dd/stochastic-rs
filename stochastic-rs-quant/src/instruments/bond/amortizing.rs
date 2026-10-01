@@ -112,9 +112,8 @@ impl<T: RealExt> AmortizingFixedRateBond<T> {
 
   /// Full analytics implied by the current curve stack.
   ///
-  /// The yield, durations and convexity are `NaN` when the curve price is not
-  /// positive and finite, or when no yield in the expanded search bracket
-  /// reproduces it.
+  /// The yield, durations and convexity are `NaN` when the curve price is not positive and finite,
+  /// or when no yield in the expanded search bracket reproduces it.
   pub fn analytics_from_curve(
     &self,
     valuation_date: NaiveDate,

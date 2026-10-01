@@ -1,6 +1,5 @@
-//! The parameter API of [`JumpFOUCustom`]: construction, the getters and the
-//! `with_*` setters that keep the cached fGN driver in step with the
-//! parameters it derives from.
+//! [`JumpFOUCustom`]'s construction, getters and `with_*` setters, which keep the cached fGN driver
+//! in step with the parameters it derives from.
 
 use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -45,9 +44,7 @@ where
     }
   }
 
-  /// The fGN driver of a path with `n` points (one increment per step),
-  /// shared by `new()` and every `with_*` setter that feeds it so they
-  /// can never drift apart.
+  /// Shared by `new()` and the `with_*` setters so they cannot drift.
   fn fgn_for(hurst: T, n: usize, t: Option<T>) -> Fgn<T, Unseeded, Cpu> {
     Fgn::new(hurst, n - 1, t, Unseeded)
   }
@@ -124,9 +121,8 @@ where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Hurst exponent H of the driving fractional Gaussian noise (roughness
-  /// / long-memory of the diffusion part; H = 0.5 recovers a standard
-  /// OU-with-jumps).
+  /// Hurst exponent H of the driving fractional Gaussian noise; H = 0.5 recovers an OU process
+  /// with jumps.
   pub fn hurst(&self) -> T {
     self.hurst
   }
