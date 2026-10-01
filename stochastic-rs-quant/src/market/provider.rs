@@ -1,17 +1,5 @@
-//! Market-data provider abstraction.
-//!
-//! A [`MarketDataProvider`] decouples the rest of the library (vol-surface
-//! construction, portfolio return series, calibration) from where the data
-//! comes from. [`MockProvider`] is an in-memory implementation backed by
-//! fixtures for offline, reproducible tests; a live source implements the
-//! trait in the caller's crate.
-//!
-//! The trait is **synchronous**: a live network provider blocks internally.
-//! A streaming / async-first provider surface is a separate concern left
-//! for a future `MarketStreamProvider`.
-//!
-//! Reference: the layered abstraction follows the QuantLib market-data
-//! design.
+//! [`MarketDataProvider`] decouples surface construction, return series and calibration from the
+//! data source; the trait is synchronous, so a live network provider blocks internally.
 
 use std::collections::HashMap;
 
@@ -29,9 +17,7 @@ pub enum ReturnKind {
   Absolute,
 }
 
-/// OHLCV price history for a single symbol. Timestamps are Unix-epoch
-/// seconds so the type carries no calendar / `time` crate dependency and
-/// is available in the default build.
+/// OHLCV price history for a single symbol; timestamps are Unix-epoch seconds.
 #[derive(Debug, Clone)]
 pub struct PriceHistory {
   /// Ticker symbol.
