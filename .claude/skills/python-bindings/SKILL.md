@@ -254,7 +254,7 @@ Python smoke is on the maturin path under
 
 PyO3 `#[pyclass]` wrappers default to `Send + Sync`. For `unsendable` types
 (those holding `Rc<RefCell<...>>`, `RefCell<...>`, or non-`Send` external
-handles like `YahooConnector`), add `unsendable`:
+handles), add `unsendable`:
 
 ```rust
 #[pyclass(name = "RBergomiCalibrator", unsendable)]

@@ -361,8 +361,8 @@ impl ImpliedVolSurface {
   /// with carry $(r, q)$, then runs [`Self::try_from_quotes`].
   ///
   /// Works against any [`MarketDataProvider`](crate::market::provider::MarketDataProvider) —
-  /// the in-memory `MockProvider` for offline tests / examples, or the live
-  /// Yahoo connector behind the `yahoo` feature.
+  /// the in-memory `MockProvider` for offline tests / examples, or a live
+  /// provider supplied by the caller.
   pub fn from_provider<P: crate::market::provider::MarketDataProvider>(
     provider: &P,
     symbol: &str,

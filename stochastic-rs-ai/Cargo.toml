@@ -37,7 +37,6 @@ stochastic-rs-quant = { workspace = true, optional = true }
 candle-core = { workspace = true }
 candle-datasets = { workspace = true }
 candle-nn = { workspace = true }
-polars = { workspace = true, features = ["lazy"] }
 ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
 ndarray-npy = { workspace = true }
 flate2 = { workspace = true }

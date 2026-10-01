@@ -14,7 +14,6 @@ categories = ["finance", "mathematics", "simulation"]
 
 [features]
 default = []
-yahoo = ["dep:yahoo_finance_api", "dep:time", "dep:polars", "dep:tokio-test"]
 python = [
     "dep:pyo3",
     "dep:numpy",
@@ -60,10 +59,6 @@ plotly = { workspace = true, features = ["plotly_ndarray"], optional = true }
 flate2 = { workspace = true }
 owens-t = { workspace = true }
 wide = { workspace = true }
-time = { workspace = true, features = ["formatting", "parsing"], optional = true }
-polars = { workspace = true, features = ["lazy"], optional = true }
-yahoo_finance_api = { workspace = true, optional = true }
-tokio-test = { workspace = true, optional = true }
 pyo3 = { workspace = true, features = ["extension-module"], optional = true }
 numpy = { workspace = true, optional = true }
 

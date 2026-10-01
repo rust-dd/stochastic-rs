@@ -2,17 +2,16 @@
 //!
 //! A [`MarketDataProvider`] decouples the rest of the library (vol-surface
 //! construction, portfolio return series, calibration) from where the data
-//! comes from. The concrete `crate::yahoo` connector is one
-//! implementation; [`MockProvider`] is an in-memory implementation backed
-//! by fixtures for offline, reproducible tests.
+//! comes from. [`MockProvider`] is an in-memory implementation backed by
+//! fixtures for offline, reproducible tests; a live source implements the
+//! trait in the caller's crate.
 //!
-//! The trait is **synchronous**: a live network provider blocks internally
-//! (the Yahoo connector wraps its async call in a current-thread runtime).
+//! The trait is **synchronous**: a live network provider blocks internally.
 //! A streaming / async-first provider surface is a separate concern left
 //! for a future `MarketStreamProvider`.
 //!
 //! Reference: the layered abstraction follows the QuantLib market-data
-//! design and the plan in `docs/YAHOO_INTEGRATION_PLAN.md` §2.
+//! design.
 
 use std::collections::HashMap;
 
@@ -157,8 +156,8 @@ impl OptionChain {
 
 /// Source of historical and option-chain market data.
 ///
-/// Implementors: [`MockProvider`] (in-memory fixtures, offline) and
-/// `crate::yahoo`'s connector (live, behind the `yahoo` feature).
+/// Implementors: [`MockProvider`] (in-memory fixtures, offline) or a live
+/// connector supplied by the caller.
 pub trait MarketDataProvider {
   /// Historical OHLCV between `start` and `end` (Unix epoch seconds).
   fn price_history(&self, symbol: &str, start: f64, end: f64) -> anyhow::Result<PriceHistory>;

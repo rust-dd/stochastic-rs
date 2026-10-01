@@ -51,9 +51,9 @@ jobs:
         features:
           - "" # default
           - "ai"
-          - "yahoo"
+          - "viz"
           - "python"
-          - "ai,yahoo"
+          - "ai,viz"
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable

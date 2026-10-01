@@ -6,8 +6,8 @@ description: Conventions for adding / propagating Cargo features across the stoc
 # Feature flag management — stochastic-rs
 
 The workspace has 8 sub-crates, several of which carry optional
-dependencies (`cuda`, `gpu`, `metal`, `accelerate`, `python`,
-`yahoo`, `ai`, `hotpath`). Dense linear algebra is deliberately NOT one
+dependencies (`cuda`, `metal`, `accelerate`, `python`,
+`viz`, `ai`). Dense linear algebra is deliberately NOT one
 of them: it runs on the pure-Rust `faer`, always compiled in — there is
 no linalg feature and no system-BLAS dependency. Without discipline, `cargo check --all-features`
 explodes with "feature X needed but not propagated" or, worse, an
@@ -26,16 +26,16 @@ compiled in single-crate isolation but blew up under
 ```toml
 # In stochastic-rs-quant/Cargo.toml:
 [dependencies]
-yahoo_finance_api = { workspace = true, optional = true }
+plotly = { workspace = true, optional = true }
 
 [features]
-yahoo = ["dep:yahoo_finance_api"]
+viz = ["dep:plotly"]
 ```
 
-Why: the `dep:` prefix tells Cargo that "yahoo" is a feature **only**,
+Why: the `dep:` prefix tells Cargo that "viz" is a feature **only**,
 and never a transitive enable. Without `dep:`, `cargo` auto-creates a
-feature named `yahoo_finance_api` whenever the crate has an optional
-dep of that name, and any sub-crate that lists `yahoo_finance_api` as a
+feature named `plotly` whenever the crate has an optional
+dep of that name, and any sub-crate that lists `plotly` as a
 plain dep silently activates it. That's the exact failure mode we hit
 in rc.0.
 
@@ -81,8 +81,8 @@ two crates but only on `default` in a third compiles inconsistently).
 For a sub-crate's *own* internal feature (not exposed via the umbrella):
 
 ```rust
-// stochastic-rs-quant/src/yahoo.rs
-#![cfg(feature = "yahoo")]   // module-level guard
+// stochastic-rs-stochastic/tests/fgn_metal_pipeline.rs
+#![cfg(feature = "metal")]   // file-level guard
 
 // or, at item level:
 #[cfg(feature = "metal")]
@@ -200,7 +200,6 @@ it is a summary, and the sub-crate columns are the part that drifts.
 | `accelerate` | `-stochastic`, umbrella | Apple vDSP / AMX — a **CPU** path despite sitting beside the GPU flags. |
 | `dual-stream-rng` | `-core`, `-distributions`, umbrella | Experimental `SimdRngDual`; changes deterministic output. |
 | `python` | `-distributions`, `-stochastic`, `-quant`, `-stats`, `-copulas`, umbrella | PyO3 bindings. Note `-py` has **no** `python` feature — it forces `pyo3/extension-module` unconditionally. |
-| `yahoo` | `-quant`, umbrella | Live-data tests; experimental. |
 | `ai` | umbrella | Pulls `-ai` and turns on its `quant` bridge feature. |
 | `quant` / `viz` | `-ai` | `quant` gates `predict_implied_vol_surface`; `viz` gates the plot helper. |
 | `hotpath` / `hotpath-alloc` | umbrella | Profiling-mode build. |

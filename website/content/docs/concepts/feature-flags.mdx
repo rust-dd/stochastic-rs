@@ -26,7 +26,6 @@ Rust core.
 | `jemalloc`        | umbrella                    | `tikv-jemallocator`                  | jemalloc as the global allocator; it wins if `mimalloc` is enabled too |
 | `mimalloc`        | umbrella                    | `mimalloc`                           | mimalloc as the global allocator          |
 | `viz`             | umbrella → `-quant`, `-ai`  | `plotly`                             | HTML plots: the SABR smile calibrator's plots, and the surrogate fit plots when `ai` is on too (`viz` alone does not pull in `ai`) |
-| `yahoo`           | umbrella → `-quant`         | `yahoo_finance_api`, `polars`, `time`, `tokio-test` | Experimental: downloading Yahoo Finance market data into cleaned OHLCV series (`quant::yahoo`, `market::yahoo_provider`) |
 | `dual-stream-rng` | `-core`, `-distributions`   | none (additive)                      | ~2–6 % bulk Normal-Ziggurat speedup on Apple Silicon (Exp at parity) — see [seeding](/docs/concepts/seeding#dual-stream-rng-feature) |
 
 The GPU / accelerator features above select a sampling backend chosen at compile
