@@ -17,6 +17,7 @@
 //!
 //! [`CompoundPoisson`]: https://docs.rs/stochastic-rs-stochastic
 use rand::Rng;
+use rand::RngExt;
 use rand::distr::Distribution;
 
 use crate::special::ndtri;

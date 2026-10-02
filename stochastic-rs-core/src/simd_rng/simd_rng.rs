@@ -1,8 +1,10 @@
 //! Single-stream [`SimdRng`] struct, construction, scalar / batch sampling,
-//! and the [`rand::RngCore`] implementation. Bulk fill helpers live in
+//! and the [`rand::TryRng`] implementation. Bulk fill helpers live in
 //! [`super::fill`].
 
-use rand::RngCore;
+use core::convert::Infallible;
+
+use rand::TryRng;
 use wide::f32x8;
 use wide::f64x4;
 use wide::i32x8;
@@ -151,25 +153,27 @@ impl Default for SimdRng {
   }
 }
 
-impl RngCore for SimdRng {
+impl TryRng for SimdRng {
+  type Error = Infallible;
+
   #[inline(always)]
-  fn next_u32(&mut self) -> u32 {
-    self.next_u64() as u32
+  fn try_next_u32(&mut self) -> Result<u32, Infallible> {
+    self.try_next_u64().map(|x| x as u32)
   }
 
   #[inline(always)]
-  fn next_u64(&mut self) -> u64 {
+  fn try_next_u64(&mut self) -> Result<u64, Infallible> {
     let idx = self.u64_idx;
     if idx >= 4 {
       self.u64_buf = self.f64_engine.next().to_array();
       self.u64_idx = 1;
-      return self.u64_buf[0];
+      return Ok(self.u64_buf[0]);
     }
     self.u64_idx = idx + 1;
-    self.u64_buf[idx]
+    Ok(self.u64_buf[idx])
   }
 
-  fn fill_bytes(&mut self, dest: &mut [u8]) {
+  fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Infallible> {
     let mut written = 0;
     let total = dest.len();
     while self.u64_idx < 4 && total - written >= 8 {
@@ -187,7 +191,7 @@ impl RngCore for SimdRng {
       written += 32;
     }
     if written == total {
-      return;
+      return Ok(());
     }
     self.u64_buf = self.f64_engine.next().to_array();
     self.u64_idx = 0;
@@ -203,5 +207,6 @@ impl RngCore for SimdRng {
       dest[written..written + take].copy_from_slice(&bytes[..take]);
       self.u64_idx += 1;
     }
+    Ok(())
   }
 }

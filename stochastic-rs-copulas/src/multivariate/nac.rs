@@ -66,6 +66,7 @@ use std::error::Error;
 use ndarray::Array1;
 use ndarray::Array2;
 use rand::Rng;
+use rand::RngExt;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_distributions::gamma::SimdGamma;

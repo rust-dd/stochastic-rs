@@ -2,6 +2,7 @@
 //! (lane width 8, decomposed into two AVX2-friendly `f64x4` halves).
 
 use rand::Rng;
+use rand::RngExt;
 use wide::f32x8;
 use wide::f64x4;
 use wide::f64x8;

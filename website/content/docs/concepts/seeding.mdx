@@ -126,7 +126,7 @@ is reachable through the
 [`unstable-dual-stream-rng`](#unstable-dual-stream-rng-feature) cargo feature.
 
 ```rust
-pub trait SimdRngExt: rand::RngCore + Sized + Send + 'static {
+pub trait SimdRngExt: rand::Rng + Sized + Send + 'static {
   const HAS_PAIR_ILP: bool = false;
 
   fn new() -> Self;
@@ -143,7 +143,7 @@ pub trait SimdRngExt: rand::RngCore + Sized + Send + 'static {
 }
 ```
 
-The `rand::RngCore` supertrait is why any `SimdRngExt` (including
+The `rand::Rng` supertrait is why any `SimdRngExt` (including
 `SimdRng`) can be handed anywhere a `rand::Rng` is expected — e.g. to
 `rand::distr::Distribution::sample`.
 

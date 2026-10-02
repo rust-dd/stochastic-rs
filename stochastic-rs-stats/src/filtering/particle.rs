@@ -14,7 +14,7 @@ use std::fmt::Display;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
-use rand::RngCore;
+use rand::Rng;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRng;

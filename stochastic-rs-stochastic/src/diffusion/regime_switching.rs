@@ -15,6 +15,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use rand::RngExt;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;

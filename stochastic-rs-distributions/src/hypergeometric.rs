@@ -17,6 +17,7 @@ use std::cell::UnsafeCell;
 
 use num_traits::PrimInt;
 use rand::Rng;
+use rand::RngExt;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Unseeded;
 

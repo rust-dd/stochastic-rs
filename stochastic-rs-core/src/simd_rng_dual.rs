@@ -21,13 +21,14 @@
 //!   f32_b ────────────► consumer (lanes 8..16)
 //! ```
 
+use core::convert::Infallible;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use rand::RngCore;
+use rand::TryRng;
 use wide::f32x8;
 use wide::f64x4;
 use wide::i32x8;
@@ -422,20 +423,22 @@ impl crate::simd_rng::SimdRngExt for SimdRngDual {
   }
 }
 
-impl RngCore for SimdRngDual {
+impl TryRng for SimdRngDual {
+  type Error = Infallible;
+
   #[inline(always)]
-  fn next_u32(&mut self) -> u32 {
-    self.next_u64() as u32
+  fn try_next_u32(&mut self) -> Result<u32, Infallible> {
+    self.try_next_u64().map(|x| x as u32)
   }
 
   #[inline(always)]
-  fn next_u64(&mut self) -> u64 {
+  fn try_next_u64(&mut self) -> Result<u64, Infallible> {
     // Pull one u64 from engine A; ignore B for the scalar path.
     let arr = self.f64_a.next().to_array();
-    arr[0]
+    Ok(arr[0])
   }
 
-  fn fill_bytes(&mut self, dest: &mut [u8]) {
+  fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Infallible> {
     let mut written = 0;
     let total = dest.len();
     while total - written >= 64 {
@@ -452,16 +455,17 @@ impl RngCore for SimdRngDual {
       written += 64;
     }
     while total - written >= 8 {
-      let v = self.next_u64();
+      let v = self.try_next_u64()?;
       dest[written..written + 8].copy_from_slice(&v.to_le_bytes());
       written += 8;
     }
     if written < total {
-      let v = self.next_u64();
+      let v = self.try_next_u64()?;
       let bytes = v.to_le_bytes();
       let take = total - written;
       dest[written..written + take].copy_from_slice(&bytes[..take]);
     }
+    Ok(())
   }
 }
 

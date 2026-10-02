@@ -12,8 +12,9 @@ from here.
 ## What is in it
 
 - **`SimdRng`** — a xoshiro-based generator with SIMD bulk fills
-  (`fill_uniform_f64`, `fill_ziggurat`, …). Implements `rand::RngCore`, so it
-  drops into anything expecting an `Rng`.
+  (`fill_uniform_f64`, `fill_ziggurat`, …). Implements
+  `rand::TryRng<Error = Infallible>`, hence `rand::Rng` and `rand::RngExt`, so
+  it drops into anything expecting an `Rng`.
 - **`SeedExt`** — the workspace seeding contract. Two implementations:
   `Unseeded` (a fresh, globally unique stream per construction, zero
   overhead) and `Deterministic::new(seed)` (reproducible, `AtomicU64`-backed

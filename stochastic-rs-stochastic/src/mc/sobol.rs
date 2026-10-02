@@ -38,7 +38,7 @@
 use std::sync::OnceLock;
 
 use ndarray::Array2;
-use rand::RngCore;
+use rand::Rng;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRng;
 
