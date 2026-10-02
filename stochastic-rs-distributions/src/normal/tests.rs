@@ -217,3 +217,28 @@ fn fill_with_is_deterministic_in_the_caller_rng() {
   assert_eq!(fill(5), fill(5));
   assert_ne!(fill(5), fill(6));
 }
+
+/// The affine-free fill behind `FloatExt`'s thread-local stream equals a seeded `N(0, 1)` stream's bulk fill.
+#[test]
+fn fill_standard_equals_the_standard_stream_fill() {
+  for len in [7usize, 16, 1003] {
+    let mut stream = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(21));
+    let mut twin = stream.clone();
+    let (mut a, mut b) = (vec![0.0f64; len], vec![0.0f64; len]);
+    stream.fill_slice(&mut a);
+    SimdNormal::<f64>::fill_standard(&mut twin.state_mut().rng, &mut b);
+    assert!(
+      a.iter().zip(&b).all(|(x, y)| x.to_bits() == y.to_bits()),
+      "f64, len {len}"
+    );
+    let mut stream = SimdNormal::<f32>::new(0.0, 1.0).seeded(&Deterministic::new(21));
+    let mut twin = stream.clone();
+    let (mut a, mut b) = (vec![0.0f32; len], vec![0.0f32; len]);
+    stream.fill_slice(&mut a);
+    SimdNormal::<f32>::fill_standard(&mut twin.state_mut().rng, &mut b);
+    assert!(
+      a.iter().zip(&b).all(|(x, y)| x.to_bits() == y.to_bits()),
+      "f32, len {len}"
+    );
+  }
+}

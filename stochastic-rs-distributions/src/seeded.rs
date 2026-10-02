@@ -50,6 +50,11 @@ impl<D: SimdDistribution, R: SimdRngExt> Seeded<D, R> {
     self.dist
   }
 
+  /// The stream state, for crate kernels that draw through one of its parts directly.
+  pub(crate) fn state_mut(&mut self) -> &mut D::State<R> {
+    &mut self.state
+  }
+
   /// An independent child stream for worker `stream_idx`; advances this stream's fork basis.
   pub fn fork(&mut self, stream_idx: u64) -> Self {
     let call_basis = derive_seed(&mut self.basis);

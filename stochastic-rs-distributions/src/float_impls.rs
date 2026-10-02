@@ -8,7 +8,6 @@ use num_complex::Complex;
 
 use crate::normal::SimdNormal;
 use crate::seeded::Seeded;
-use crate::traits::DistributionSampler;
 use crate::traits::FloatExt;
 use crate::traits::RealExt;
 
@@ -77,7 +76,8 @@ impl FloatExt for f64 {
     }
     STANDARD_NORMAL_F64.with(|cell| {
       let mut slot = cell.borrow_mut();
-      slot.get_or_insert_with(Seeded::default).fill_slice(out);
+      let stream = slot.get_or_insert_with(Seeded::default);
+      SimdNormal::<f64>::fill_standard(&mut stream.state_mut().rng, out);
     });
   }
 
@@ -115,7 +115,8 @@ impl FloatExt for f32 {
     }
     STANDARD_NORMAL_F32.with(|cell| {
       let mut slot = cell.borrow_mut();
-      slot.get_or_insert_with(Seeded::default).fill_slice(out);
+      let stream = slot.get_or_insert_with(Seeded::default);
+      SimdNormal::<f32>::fill_standard(&mut stream.state_mut().rng, out);
     });
   }
 
