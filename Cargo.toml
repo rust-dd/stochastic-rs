@@ -245,6 +245,10 @@ name = "ai_surrogate"
 harness = false
 required-features = ["ai"]
 
+[[bench]]
+name = "jump_processes"
+harness = false
+
 [[example]]
 name = "cuda_fgn_analysis"
 required-features = ["cuda"]
