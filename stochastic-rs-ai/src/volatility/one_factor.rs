@@ -68,10 +68,8 @@ impl OneFactorNn {
 
   /// Predict an implied-volatility surface for the given parameter vector.
   ///
-  /// Returns a flat `Vec<f32>` of length [`OUTPUT_DIM`] in row-major order
-  /// (maturity-major). Pass the result to
-  /// `stochastic_rs_quant::vol_surface::ImpliedVolSurface::from_flat_iv_grid`
-  /// to consume the prediction with the rest of the pricing toolchain.
+  /// Returns a flat `Vec<f32>` of length [`OUTPUT_DIM`]: one block per [`grid::MATURITIES`] entry,
+  /// with columns in [`STRIKES`] order, ascending.
   pub fn predict_surface(&self, params: &[f32; INPUT_DIM]) -> Result<Vec<f32>> {
     self.inner.predict_surface(params)
   }
@@ -82,7 +80,9 @@ impl OneFactorNn {
 
   /// Bridge to `stochastic-rs-quant`: predict and package as
   /// [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface).
-  /// Available with the `quant` cargo feature.
+  ///
+  /// Pass [`STRIKES`] times the spot, [`grid::MATURITIES`] and the forwards; the surface
+  /// comes back with ascending strikes. Available with the `quant` cargo feature.
   #[cfg(feature = "quant")]
   pub fn predict_implied_vol_surface(
     &self,

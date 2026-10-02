@@ -1,13 +1,16 @@
 //! Strike-maturity grid of the shipped training sets (zero rates, `S0 = 1`), from
 //! <https://github.com/amuguruza/NN-StochVol-Calibrations>; a surface is flat and maturity-major.
+//!
+//! Horvath, Muguruza, Tomas, "Deep Learning Volatility", arXiv:1901.09647 (§4.1.1 lists this grid).
 
-/// Relative strike nodes `K / S0`, ascending.
+/// The notebooks' strike axis, ascending: `K / S0` for the Bergomi sets, `S0 / K` for Heston
+/// (see [`heston::STRIKES`](super::heston::STRIKES)).
 pub const MONEYNESS: [f64; 11] = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5];
 
 /// Maturities in years, ascending.
 pub const MATURITIES: [f64; 8] = [0.1, 0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.0];
 
-/// Length of a flat surface: `MATURITIES.len()` blocks of `MONEYNESS.len()` strikes.
+/// `OUTPUT_DIM` of every shipped surrogate.
 pub const LEN: usize = MONEYNESS.len() * MATURITIES.len();
 
 pub(crate) const fn inverse<const N: usize>(nodes: [f64; N]) -> [f64; N] {
