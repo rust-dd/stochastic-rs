@@ -1,8 +1,5 @@
-//! # Trait definitions
-//!
-//! Foundational traits for distributions, organised into focused submodules:
-//! [`float`] (numeric / SIMD), [`distribution`] (characteristic function,
-//! sampling), [`callable`] (`Fn1D` / `Fn2D`), [`grid`] (a tabulated `Fn2D`).
+//! Distribution traits: [`float`] (numeric / SIMD), [`distribution`] (chf, sampling),
+//! [`callable`] (`Fn1D` / `Fn2D`) and [`grid`] (a tabulated `Fn2D`).
 
 pub mod callable;
 pub mod distribution;

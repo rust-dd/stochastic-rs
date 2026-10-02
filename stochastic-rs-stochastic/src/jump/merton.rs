@@ -21,12 +21,6 @@
 //! recognises them at runtime; any other `D` keeps the process on the host,
 //! through the same `ProcessExt` calls.
 //!
-//! Python bindings (under the `python` feature) need a monomorphic type
-//! signature, so the `PyMerton` wrapper fixes `D = CallableDist<T>`. If
-//! you need a different jump distribution from Python, prefer the SVJ /
-//! Bates calibrators, or compose your own wrapper struct on the Rust side
-//! and re-bind via PyO3.
-//!
 
 use std::any::Any;
 
