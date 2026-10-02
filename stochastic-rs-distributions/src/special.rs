@@ -78,9 +78,12 @@ pub fn digamma(x: f64) -> f64 {
   if x <= 0.0 && x.fract() == 0.0 {
     return f64::NAN;
   }
-  // For x ≤ 0 use the reflection formula ψ(1−x) = ψ(x) + π cot(πx)
+  // Reflection ψ(1−x) = ψ(x) + π cot(πx); since cot has period π, x − round(x) can stand in
+  // for x and keeps cot accurate next to the poles.
   if x < 0.5 {
-    return digamma(1.0 - x) - std::f64::consts::PI * (std::f64::consts::PI * x).tan().recip();
+    let reduced = x - x.round();
+    return digamma(1.0 - x)
+      - std::f64::consts::PI * (std::f64::consts::PI * reduced).tan().recip();
   }
   let mut y = x;
   let mut sum = 0.0;
@@ -433,6 +436,26 @@ mod tests {
       -2.0_f64.ln() * 2.0 - 0.577_215_664_901_532_9,
       1e-9
     ));
+  }
+
+  /// mpmath at 60 digits next to the poles, where the reflection's `π cot(πx)` dominates `ψ`.
+  #[test]
+  fn digamma_keeps_its_accuracy_next_to_the_poles() {
+    for (x, want) in [
+      (-0.999_999, -999_999.577_184_264_3),
+      (-0.999_999_999, -1_000_000_027.859_147_9),
+      (-10.000_001, 1_000_002.352_497_794_8),
+      (-29.999_999, -999_996.581_197_320_5),
+    ] {
+      let got = digamma(x);
+      assert!(
+        ((got - want) / want).abs() < 1e-15,
+        "digamma({x}) = {got}, want {want}"
+      );
+    }
+    for pole in [0.0, -1.0, -7.0] {
+      assert!(digamma(pole).is_nan(), "digamma({pole}) must be NaN");
+    }
   }
 
   #[test]
