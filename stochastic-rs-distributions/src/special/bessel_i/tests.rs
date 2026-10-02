@@ -192,7 +192,7 @@ const SCALED_REFERENCE: [(f64, f64, f64); 8] = [
 ];
 
 /// `ln(e^{-x} I_ν(x))`, mostly where `e^{-x} I_ν(x)` under- or overflows.
-const LN_REFERENCE: [(f64, f64, f64); 10] = [
+const LN_REFERENCE: [(f64, f64, f64); 13] = [
   (2_000.0, 1_500.0, -1_202.055_542_216_106_2),
   (60.0, 1.0e-200, -27_861.238_120_185_815),
   (3.0, 1.0e-150, -1_040.034_492_858_228_5),
@@ -203,6 +203,9 @@ const LN_REFERENCE: [(f64, f64, f64); 10] = [
   (0.75, 1.5, -1.326_824_751_504_904_3),
   (0.0, 1e300, -346.306_702_482_311_55),
   (60.0, 5e-310, -42_961.733_459_200_47),
+  (3.0, 5e-324, -2_237.191_416_775_051_5),
+  (60.0, 5e-324, -44_896.621_319_540_14),
+  (51.0, 2e-322, -37_966.070_914_623_69),
 ];
 
 #[test]
@@ -306,6 +309,8 @@ fn edge_values_follow_the_limits() {
   assert_eq!(bessel_ie(1.0, f64::INFINITY), 0.0);
   assert!(rel(bessel_ie(0.0, 1e308), 3.989_422_804_014_327e-155) <= 1e-15);
   assert_eq!(bessel_i(0.0, 1e308), f64::INFINITY);
+  assert!(rel(bessel_i(0.5, 5e-324), 1.773_504_888_603_627_4e-162) <= 1e-15);
+  assert!(rel(bessel_i(-0.5, 5e-324), 3.589_613_857_049_051e161) <= 1e-15);
   assert_eq!(ln_bessel_ie(0.0, 0.0), 0.0);
   assert_eq!(ln_bessel_ie(2.0, 0.0), f64::NEG_INFINITY);
   assert!(ln_bessel_ie(1.0, -1.0).is_nan());

@@ -9,6 +9,7 @@
 //! - NIST DLMF §§10.25–10.41, <https://dlmf.nist.gov/10> (10.25.2 series, 10.27.1–2 negative orders, 10.28.2 Wronskian, 10.40.1 Hankel, 10.41.3/10.41.10 uniform)
 
 use std::f64::consts::FRAC_2_PI;
+use std::f64::consts::LN_2;
 use std::f64::consts::TAU;
 
 use super::bessel_k::bessel_ke;
@@ -135,7 +136,7 @@ pub fn ln_bessel_ie(nu: f64, x: f64) -> f64 {
     if g.is_sign_negative() != s.is_sign_negative() {
       return f64::NAN;
     }
-    return nu * (0.5 * x).ln() - g.abs().ln() + s.abs().ln() - x;
+    return nu * (x.ln() - LN_2) - g.abs().ln() + s.abs().ln() - x;
   }
   evaluate(nu, x, true).ln()
 }
@@ -162,7 +163,7 @@ fn evaluate(nu: f64, x: f64, scaled: bool) -> f64 {
     return positive_order(nu, x, scaled);
   }
   if x < SERIES_MAX_X {
-    let value = (0.5 * x).powf(nu) / gamma_succ(nu) * series(nu, x);
+    let value = x.powf(nu) * (-nu).exp2() / gamma_succ(nu) * series(nu, x);
     return if scaled { value * (-x).exp() } else { value };
   }
   let a = -nu;
@@ -226,9 +227,15 @@ fn uniform(nu: f64, x: f64) -> (f64, f64, f64) {
   let z = x / nu;
   let root = z.hypot(1.0);
   let p = 1.0 / root;
-  // `asinh(1/z)` overflows for subnormal `z`; the log form cancels for large `z`.
+  // `asinh(1/z)` overflows for tiny `z`, the log form cancels for large `z`; `ln x − ln ν` stands
+  // in for `ln z` only once `z = x / ν` underflows, as it loses bits next to `z = 1`.
   let tail = if z < 1.0 {
-    (1.0 + root).ln() - z.ln()
+    let ln_z = if z.is_normal() {
+      z.ln()
+    } else {
+      x.ln() - nu.ln()
+    };
+    (1.0 + root).ln() - ln_z
   } else {
     (1.0 / z).asinh()
   };
