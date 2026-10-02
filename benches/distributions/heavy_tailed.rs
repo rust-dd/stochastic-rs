@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use criterion::BenchmarkId;
 use criterion::Criterion;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs::distributions::alpha_stable::SimdAlphaStable;
 use stochastic_rs::distributions::generalized_inverse_gauss::SimdGig;
 use stochastic_rs::distributions::normal_inverse_gauss::SimdNormalInverseGauss;

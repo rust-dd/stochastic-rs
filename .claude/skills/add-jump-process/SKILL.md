@@ -226,9 +226,9 @@ Normal-Inverse-Gaussian distribution is `SimdNormalInverseGauss`
 (`stochastic-rs-distributions/src/normal_inverse_gauss.rs`), and being
 `Simd*` it is not eligible for the jump slot.
 
-The trait comes from `rand::distr::Distribution` (`rand_distr` is a dev-dependency) — our own types
-implement it, and it is how `.sample()` resolves. Per `dev-rules` §7a the concrete `rand_distr`
-distributions stay out of library code.
+The trait comes from `rand::distr::Distribution` (`rand_distr` is not a dependency of this crate) —
+our own types implement it, and it is how `.sample()` resolves. Per `dev-rules` §7a the concrete
+`rand_distr` distributions stay out of library code.
 
 ## 4. Construction-time parameter validation
 

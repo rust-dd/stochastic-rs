@@ -60,9 +60,11 @@ Library code, tests and examples draw randomness from the workspace's own
 RNG and distributions. `rand::rng()` and every concrete `rand_distr`
 distribution (`Normal`, `Exp`, `Gamma`, `Poisson`, `StandardNormal`, …) are
 reserved for `benches/` and the `src/tests/bench_*` plot harnesses, where
-`rand_distr` is a dev-dependency and the *baseline being measured*. The
-`rand` crate itself stays a dependency for its traits (`Rng`, `RngExt`,
-`rand::distr::Distribution`, `rand::seq::SliceRandom`).
+`rand_distr` is a dev-dependency (of the umbrella and
+`stochastic-rs-distributions`, the only crates that declare it) and the
+*baseline being measured*. The `rand` crate itself stays a dependency for
+its traits (`Rng`, `RngExt`, `rand::distr::Distribution`,
+`rand::seq::SliceRandom`).
 
 | Need | Use |
 |------|-----|
@@ -87,10 +89,11 @@ Two traps worth naming:
   Older notes describing a two-argument `fill_slice(_rng, out)` that
   ignored its first parameter, or a `fill_slice_fast` companion, are
   stale: neither exists.
-- **Name the trait through `rand::distr::Distribution`.** `rand_distr` is a
-  dev-dependency, so library code cannot import it; our own `Simd*` types
-  implement the same trait, which is how `.sample()` resolves. Removing
-  those impls would break downstream users.
+- **Name the trait through `rand::distr::Distribution`.** `rand_distr` is
+  not a dependency of any library crate (only a dev-dependency of the
+  umbrella and `stochastic-rs-distributions`), so library code cannot
+  import it; our own `Simd*` types implement the same trait, which is how
+  `.sample()` resolves. Removing those impls would break downstream users.
 
 ## 8. Latest dependency versions
 
