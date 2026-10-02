@@ -46,6 +46,7 @@ fn rotl_u32x8(x: u32x8, k: u32) -> u32x8 {
 }
 
 /// 4-lane parallel xoshiro256++ engine (identical to the single-stream variant).
+#[derive(Clone, Debug)]
 struct Xoshiro256PP4 {
   s0: u64x4,
   s1: u64x4,
@@ -97,6 +98,7 @@ impl Xoshiro256PP4 {
   }
 }
 
+#[derive(Clone, Debug)]
 struct Xoshiro128PP8 {
   s0: u32x8,
   s1: u32x8,
@@ -175,6 +177,7 @@ fn initial_seed() -> u64 {
 /// Carries two of each underlying engine; the public methods that target
 /// bulk consumers expose both streams so the OoO core can pipeline state
 /// updates against the consumer's compute / memory ops.
+#[derive(Clone, Debug)]
 pub struct SimdRngDual {
   f64_a: Xoshiro256PP4,
   f64_b: Xoshiro256PP4,
@@ -362,6 +365,8 @@ impl Default for SimdRngDual {
     Self::new()
   }
 }
+
+impl crate::simd_rng::engine_seal::Sealed for SimdRngDual {}
 
 impl crate::simd_rng::SimdRngExt for SimdRngDual {
   /// Two independent xoshiro engines means

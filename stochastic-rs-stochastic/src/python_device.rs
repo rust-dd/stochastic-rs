@@ -30,6 +30,8 @@ impl SharedSeed {
   }
 }
 
+impl stochastic_rs_core::simd_rng::seed_seal::Sealed for SharedSeed {}
+
 impl SeedExt for SharedSeed {
   fn rng(&self) -> SimdRng {
     self.0.rng()

@@ -22,6 +22,7 @@
 //! u_{k+1}=F(u_k),\quad x_k = \mathrm{transform}(u_k)
 //! $$
 
+use std::fmt::Debug;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -40,6 +41,16 @@ pub use xoshiro::Xoshiro128PP8;
 pub use xoshiro::Xoshiro256PP4;
 use xoshiro::splitmix64_mix;
 use xoshiro::splitmix64_next;
+
+pub(crate) mod engine_seal {
+  pub trait Sealed {}
+}
+
+/// Not part of the public API: `stochastic-rs-stochastic` implements it for its Python seed source.
+#[doc(hidden)]
+pub mod seed_seal {
+  pub trait Sealed {}
+}
 
 /// Golden-ratio increment for the global seed counter.
 const SEED_GAMMA: u64 = 0x9e37_79b9_7f4a_7c15;
@@ -157,7 +168,9 @@ pub fn derive_fork_seed(parent_seed: u64, stream_idx: u64) -> u64 {
 /// outer `&mut`.
 ///
 /// All branching is resolved at compile time via monomorphisation.
-pub trait SeedExt: Clone + Send + Sync + 'static {
+///
+/// Sealed: seed sources are [`Unseeded`] and [`Deterministic`].
+pub trait SeedExt: seed_seal::Sealed + Clone + Send + Sync + 'static {
   /// Create an independent [`SimdRng`] and advance internal state.
   fn rng(&self) -> SimdRng;
 
@@ -239,6 +252,8 @@ impl Clone for Deterministic {
   }
 }
 
+impl seed_seal::Sealed for Unseeded {}
+
 impl SeedExt for Unseeded {
   #[inline(always)]
   fn rng(&self) -> SimdRng {
@@ -264,6 +279,8 @@ impl SeedExt for Unseeded {
     next_global_seed()
   }
 }
+
+impl seed_seal::Sealed for Deterministic {}
 
 impl SeedExt for Deterministic {
   #[inline(always)]
@@ -302,7 +319,11 @@ impl SeedExt for Deterministic {
 /// when they can usefully expose two independent batches per call —
 /// consumers branch on the const to pick a 16-lane unrolled body, otherwise
 /// they stay on the cheaper 8-lane body.
-pub trait SimdRngExt: rand::Rng + Sized + Send + 'static {
+///
+/// Sealed: implemented by [`SimdRng`] and the experimental `SimdRngDual` only.
+pub trait SimdRngExt:
+  engine_seal::Sealed + rand::Rng + Clone + Debug + Sized + Send + Sync + 'static
+{
   /// `true` when [`next_i32x8_pair`](Self::next_i32x8_pair) returns two
   /// independent batches whose state updates can run in parallel. The
   /// single-stream impl leaves this at the default `false`; the dual-stream
@@ -345,6 +366,8 @@ pub trait SimdRngExt: rand::Rng + Sized + Send + 'static {
   /// Bulk-fill `out` with `U(0, 1)` `f32` values.
   fn fill_uniform_f32(&mut self, out: &mut [f32]);
 }
+
+impl engine_seal::Sealed for SimdRng {}
 
 impl SimdRngExt for SimdRng {
   #[inline(always)]

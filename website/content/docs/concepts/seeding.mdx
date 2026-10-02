@@ -66,10 +66,9 @@ pub trait SeedExt: Clone + Send + Sync + 'static {
 }
 ```
 
-`Unseeded` and `Deterministic` are the two stock implementations. Custom
-seed sources are possible (e.g. an atomically-shared counter for
-test-suite reproducibility) but the two built-ins cover almost every use
-case.
+`Unseeded` and `Deterministic` are the only implementations: the trait is
+sealed, so the library can add methods without breaking callers. To reproduce
+a run, seed a `Deterministic` source instead of writing your own.
 
 ## Reseeding in place
 
@@ -126,7 +125,7 @@ is reachable through the
 [`unstable-dual-stream-rng`](#unstable-dual-stream-rng-feature) cargo feature.
 
 ```rust
-pub trait SimdRngExt: rand::Rng + Sized + Send + 'static {
+pub trait SimdRngExt: rand::Rng + Clone + Debug + Sized + Send + Sync + 'static {
   const HAS_PAIR_ILP: bool = false;
 
   fn new() -> Self;
@@ -145,7 +144,8 @@ pub trait SimdRngExt: rand::Rng + Sized + Send + 'static {
 
 The `rand::Rng` supertrait is why any `SimdRngExt` (including
 `SimdRng`) can be handed anywhere a `rand::Rng` is expected — e.g. to
-`rand::distr::Distribution::sample`.
+`rand::distr::Distribution::sample`. The trait is sealed: `SimdRng` and the
+experimental `SimdRngDual` are its only implementations.
 
 `SimdNormal<T, N, R>` and `SimdExp<T, R>` carry the `R: SimdRngExt`
 parameter explicitly so the same struct serves both backends:

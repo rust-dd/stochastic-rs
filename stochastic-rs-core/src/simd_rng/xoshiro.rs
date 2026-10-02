@@ -54,6 +54,7 @@ pub(super) const F64_MAGIC: u64 = 0x3FF0_0000_0000_0000;
 pub(super) const F32_MAGIC: u32 = 0x3F80_0000;
 
 /// 4-lane parallel xoshiro256++ engine (64-bit output per lane).
+#[derive(Clone, Debug)]
 pub struct Xoshiro256PP4 {
   s0: u64x4,
   s1: u64x4,
@@ -91,6 +92,7 @@ impl Xoshiro256PP4 {
 }
 
 /// 8-lane parallel xoshiro128++ engine (32-bit output per lane).
+#[derive(Clone, Debug)]
 pub struct Xoshiro128PP8 {
   s0: u32x8,
   s1: u32x8,
