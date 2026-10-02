@@ -24,6 +24,7 @@ const SMALL_UNIFORM_THRESHOLD: usize = 16;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdUniform<T> {
   low: T,
+  high: T,
   scale: T,
 }
 
@@ -35,6 +36,7 @@ impl<T: SimdFloatExt> SimdUniform<T> {
     assert!(low.is_finite() && high.is_finite(), "bounds must be finite");
     Self {
       low,
+      high,
       scale: high - low,
     }
   }
@@ -48,9 +50,9 @@ impl<T: SimdFloatExt> SimdUniform<T> {
     self.low
   }
 
-  /// The upper bound `b`, formed as `low + (high - low)`.
+  /// The upper bound `b`.
   pub fn high(&self) -> T {
-    self.low + self.scale
+    self.high
   }
 
   fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [T]) {
@@ -157,13 +159,13 @@ impl<T: SimdFloatExt> Distribution<T> for SimdUniform<T> {
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdUniform<T> {
   fn pdf(&self, x: f64) -> f64 {
     let a = self.low.to_f64().unwrap();
-    let b = a + self.scale.to_f64().unwrap();
+    let b = self.high.to_f64().unwrap();
     if x >= a && x <= b { 1.0 / (b - a) } else { 0.0 }
   }
 
   fn cdf(&self, x: f64) -> f64 {
     let a = self.low.to_f64().unwrap();
-    let b = a + self.scale.to_f64().unwrap();
+    let b = self.high.to_f64().unwrap();
     if x < a {
       0.0
     } else if x >= b {
@@ -213,7 +215,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdUniform<T> {
   fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
     // φ(t) = (e^{itb} - e^{ita}) / (it(b-a))
     let a = self.low.to_f64().unwrap();
-    let b = a + self.scale.to_f64().unwrap();
+    let b = self.high.to_f64().unwrap();
     if t == 0.0 {
       return num_complex::Complex64::new(1.0, 0.0);
     }
@@ -224,7 +226,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdUniform<T> {
 
   fn moment_generating_function(&self, t: f64) -> f64 {
     let a = self.low.to_f64().unwrap();
-    let b = a + self.scale.to_f64().unwrap();
+    let b = self.high.to_f64().unwrap();
     if t == 0.0 {
       return 1.0;
     }

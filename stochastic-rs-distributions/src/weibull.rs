@@ -23,6 +23,7 @@ use crate::traits::distribution::SimdKernel;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdWeibull<T> {
   lambda: T,
+  k: T,
   inv_k: T,
 }
 
@@ -38,10 +39,7 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
   /// Creates a Weibull distribution.
   ///
   /// - `lambda` — scale λ > 0 (matches the module header's λ).
-  /// - `k` — shape k > 0 (matches the module header's k). Stored
-  ///   internally as `1/k` to avoid a division on every sample/pdf/cdf
-  ///   call — this constructor's own `k` parameter is the literal shape,
-  ///   not its reciprocal.
+  /// - `k` — shape k > 0 (matches the module header's k).
   pub fn new(lambda: T, k: T) -> Self {
     assert!(
       lambda > T::zero() && k > T::zero(),
@@ -49,6 +47,7 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
     );
     Self {
       lambda,
+      k,
       inv_k: T::one() / k,
     }
   }
@@ -58,9 +57,9 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
     self.lambda
   }
 
-  /// The shape `k`, formed as `1 / (1/k)` from the stored reciprocal.
+  /// The shape `k`.
   pub fn k(&self) -> T {
-    T::one() / self.inv_k
+    self.k
   }
 
   /// `λ·E^{1/k}` over `Exp(1)` magnitudes drawn in 64-blocks, the power running 8-wide.
@@ -147,7 +146,7 @@ impl<T: SimdFloatExt> Distribution<T> for SimdWeibull<T> {
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdWeibull<T> {
   fn pdf(&self, x: f64) -> f64 {
     let lambda = self.lambda.to_f64().unwrap();
-    let k = 1.0 / self.inv_k.to_f64().unwrap();
+    let k = self.k.to_f64().unwrap();
     if x < 0.0 {
       0.0
     } else {
@@ -158,7 +157,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdWeibull<T> {
 
   fn cdf(&self, x: f64) -> f64 {
     let lambda = self.lambda.to_f64().unwrap();
-    let k = 1.0 / self.inv_k.to_f64().unwrap();
+    let k = self.k.to_f64().unwrap();
     if x < 0.0 {
       0.0
     } else {
@@ -187,7 +186,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdWeibull<T> {
 
   fn mode(&self) -> f64 {
     let lambda = self.lambda.to_f64().unwrap();
-    let k = 1.0 / self.inv_k.to_f64().unwrap();
+    let k = self.k.to_f64().unwrap();
     if k > 1.0 {
       lambda * ((k - 1.0) / k).powf(1.0 / k)
     } else {
