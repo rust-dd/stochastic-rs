@@ -1,4 +1,5 @@
 //! Seeded-stream fixture: every law's stream from two seeds, pinned so that any moved draw fails.
+//! Re-pin: `STREAM_SNAPSHOT_REGEN=1 cargo test -p stochastic-rs-distributions --features unstable-dual-stream-rng --test stream_snapshots -- --ignored print_constants`.
 
 mod stream_snapshots {
   pub mod constants;
@@ -8,11 +9,14 @@ mod stream_snapshots {
 
 use std::path::Path;
 
+use ndarray::Array2;
 use ndarray::array;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_distributions::DistributionSampler;
+#[cfg(feature = "unstable-dual-stream-rng")]
+use stochastic_rs_distributions::SimdNormalDual;
 use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
 use stochastic_rs_distributions::beta::SimdBeta;
 use stochastic_rs_distributions::binomial::SimdBinomial;
@@ -58,13 +62,19 @@ use stream_snapshots::snapshot::Snapshot;
 const SEEDS: [u64; 2] = [42, 7];
 /// Inverse of `Deterministic`'s splitmix64 increment mod 2^64, so a wrapped state difference still counts steps.
 const INV_GOLDEN: u64 = 0xf1de_83e1_9937_733d;
+/// `sample_matrix(64, 1024)` fans out to four workers of this many values each.
+const CHUNK: usize = 16_384;
 
 fn seeds_consumed(det: &Deterministic, seed: u64) -> u64 {
   det.current().wrapping_sub(seed).wrapping_mul(INV_GOLDEN)
 }
 
-/// Seed budget, first eight raw draws and ten hashes over single, bulk, matrix and fork draws;
-/// `sample_matrix` runs on the global pool, its output depends on `(m, n)` and the seed alone.
+fn chunk_firsts<T: Copy + Bits>(matrix: &Array2<T>) -> impl Iterator<Item = u64> + '_ {
+  matrix.iter().step_by(CHUNK).map(|x| x.bits())
+}
+
+/// Seed budget, first eight draws, step and chunk heads and ten hashes over single, bulk, matrix and fork
+/// draws; `sample_matrix` runs on the global pool, its output depends on `(m, n)` and the seed alone.
 fn capture<D, T>(seed: u64, make: impl Fn(&Deterministic) -> D) -> Snapshot
 where
   D: DistributionSampler<T> + Distribution<T> + Send,
@@ -79,30 +89,65 @@ where
     .collect::<Vec<_>>();
   let mut first8 = [0u64; 8];
   first8.copy_from_slice(&single[..8]);
+  let mut step_heads = [0u64; 8];
+  let mut chunk_heads = [0u64; 8];
   let mut hashes = [0u64; 10];
   hashes[0] = fnv1a(single.iter().copied());
-  let mut buf = vec![T::default(); 1000];
+  let mut buf = vec![T::default(); 1003];
   d.fill_slice(&mut buf);
+  step_heads[0] = buf[0].bits();
   hashes[1] = fnv1a(buf.iter().map(|x| x.bits()));
   let mut small = vec![T::default(); 7];
   d.fill_slice(&mut small);
+  step_heads[1] = small[0].bits();
   hashes[2] = fnv1a(small.iter().map(|x| x.bits()));
-  hashes[3] = fnv1a((0..70).map(|_| d.sample(&mut dummy).bits()));
-  hashes[4] = fnv1a(d.sample_n(1000).iter().map(|x| x.bits()));
-  hashes[5] = fnv1a(d.sample_matrix(2, 8).iter().map(|x| x.bits()));
-  hashes[6] = fnv1a(d.sample_matrix(64, 1024).iter().map(|x| x.bits()));
+  let pops = (0..70)
+    .map(|_| d.sample(&mut dummy).bits())
+    .collect::<Vec<_>>();
+  // A twin without the two direct fills shares the leftover pops; the head is the first pop that differs.
+  let unfilled = make(&Deterministic::new(seed));
+  let unfilled_pops = (0..170)
+    .map(|_| unfilled.sample(&mut dummy).bits())
+    .collect::<Vec<_>>();
+  let refill = pops
+    .iter()
+    .zip(&unfilled_pops[100..])
+    .position(|(a, b)| a != b)
+    .expect("the direct fills moved none of the 70 pops");
+  step_heads[2] = pops[refill];
+  hashes[3] = fnv1a(pops.iter().copied());
+  let drawn = d.sample_n(1000);
+  step_heads[3] = drawn[0].bits();
+  hashes[4] = fnv1a(drawn.iter().map(|x| x.bits()));
+  let pair = d.sample_matrix(2, 8);
+  step_heads[4] = pair[[0, 0]].bits();
+  hashes[5] = fnv1a(pair.iter().map(|x| x.bits()));
+  let wide = d.sample_matrix(64, 1024);
+  step_heads[5] = wide[[0, 0]].bits();
+  for (head, bits) in chunk_heads[..4].iter_mut().zip(chunk_firsts(&wide)) {
+    *head = bits;
+  }
+  hashes[6] = fnv1a(wide.iter().map(|x| x.bits()));
   let mut fork_buf = vec![T::default(); 64];
   d.fork(0).fill_slice(&mut fork_buf);
+  step_heads[6] = fork_buf[0].bits();
   hashes[7] = fnv1a(fork_buf.iter().map(|x| x.bits()));
   d.fork(1).fill_slice(&mut fork_buf);
+  step_heads[7] = fork_buf[0].bits();
   hashes[8] = fnv1a(fork_buf.iter().map(|x| x.bits()));
   let twin = make(&Deterministic::new(seed));
   let _ = twin.sample_matrix(64, 1024);
-  hashes[9] = fnv1a(twin.sample_matrix(64, 1024).iter().map(|x| x.bits()));
+  let second = twin.sample_matrix(64, 1024);
+  for (head, bits) in chunk_heads[4..].iter_mut().zip(chunk_firsts(&second)) {
+    *head = bits;
+  }
+  hashes[9] = fnv1a(second.iter().map(|x| x.bits()));
   Snapshot {
     seed,
     seeds_consumed,
     first8,
+    step_heads,
+    chunk_heads,
     hashes,
   }
 }
@@ -125,6 +170,8 @@ fn capture_single<F: FnMut() -> Vec<u64>>(
     seed,
     seeds_consumed,
     first8,
+    step_heads: [0; 8],
+    chunk_heads: [0; 8],
     hashes,
   }
 }
@@ -142,11 +189,18 @@ fn check_close(name: &str, kind: ScalarKind, capture: impl Fn(u64) -> Snapshot) 
       got.seeds_consumed, want.seeds_consumed,
       "{name} seed {seed}: seed budget"
     );
-    for (i, (g, w)) in got.first8.iter().zip(&want.first8).enumerate() {
-      assert!(
-        kind.close(*g, *w),
-        "{name} seed {seed}: first8[{i}] = {g:#018x}, pinned {w:#018x}"
-      );
+    let parts = [
+      ("first8", &got.first8[..], &want.first8[..]),
+      ("step_heads", &got.step_heads[..], &want.step_heads[..]),
+      ("chunk_heads", &got.chunk_heads[..], &want.chunk_heads[..]),
+    ];
+    for (part, got_part, want_part) in parts {
+      for (i, (g, w)) in got_part.iter().zip(want_part).enumerate() {
+        assert!(
+          kind.close(*g, *w),
+          "{name} seed {seed}: {part}[{i}] = {g:#018x}, pinned {w:#018x}"
+        );
+      }
     }
   }
 }
@@ -190,8 +244,9 @@ macro_rules! snapshot_cases {
 }
 
 macro_rules! snapshot_singles {
-  ($( $name:ident : $kind:expr, |$det:ident| $build:expr ; )*) => {
+  ($( $(#[$attr:meta])* $name:ident : $kind:expr, |$det:ident| $build:expr ; )*) => {
     $(
+      $(#[$attr])*
       mod $name {
         use super::*;
 
@@ -209,10 +264,13 @@ macro_rules! snapshot_singles {
     )*
 
     fn all_singles() -> Vec<(&'static str, Box<dyn Fn(u64) -> Snapshot>)> {
-      vec![$((
-        stringify!($name),
-        Box::new(|seed| capture_single(seed, |$det| $build)) as Box<dyn Fn(u64) -> Snapshot>,
-      )),*]
+      vec![$(
+        $(#[$attr])*
+        (
+          stringify!($name),
+          Box::new(|seed| capture_single(seed, |$det| $build)) as Box<dyn Fn(u64) -> Snapshot>,
+        )
+      ),*]
     }
   };
 }
@@ -224,6 +282,8 @@ snapshot_cases! {
   exp_f32: ScalarKind::F32, f32, |det| SimdExp::<f32>::new(1.8, det);
   uniform_f64: ScalarKind::F64, f64, |det| SimdUniform::<f64>::new(-2.0, 3.0, det);
   uniform_f32: ScalarKind::F32, f32, |det| SimdUniform::<f32>::new(-2.0, 3.0, det);
+  uniform_unit_f64: ScalarKind::F64, f64, |det| SimdUniform::<f64>::new(0.0, 1.0, det);
+  uniform_unit_f32: ScalarKind::F32, f32, |det| SimdUniform::<f32>::new(0.0, 1.0, det);
   gamma_f64: ScalarKind::F64, f64, |det| SimdGamma::<f64>::new(2.5, 1.5, det);
   gamma_f32: ScalarKind::F32, f32, |det| SimdGamma::<f32>::new(2.5, 1.5, det);
   gamma_boost_f64: ScalarKind::F64, f64, |det| SimdGamma::<f64>::new(0.5, 2.0, det);
@@ -262,6 +322,8 @@ snapshot_cases! {
   gig_b_f32: ScalarKind::F32, f32, |det| SimdGig::<f32>::new(0.2, 0.01, 1.0, det);
   gig_c_f64: ScalarKind::F64, f64, |det| SimdGig::<f64>::new(3.0, 1.0, 1.0, det);
   gig_c_f32: ScalarKind::F32, f32, |det| SimdGig::<f32>::new(3.0, 1.0, 1.0, det);
+  gig_negative_f64: ScalarKind::F64, f64, |det| SimdGig::<f64>::new(-0.5, 2.0, 0.5, det);
+  gig_negative_f32: ScalarKind::F32, f32, |det| SimdGig::<f32>::new(-0.5, 2.0, 0.5, det);
   inverse_gauss_f64: ScalarKind::F64, f64, |det| SimdInverseGauss::<f64>::new(1.5, 3.0, det);
   inverse_gauss_f32: ScalarKind::F32, f32, |det| SimdInverseGauss::<f32>::new(1.5, 3.0, det);
   skew_t_f64: ScalarKind::F64, f64, |det| SimdSkewT::<f64>::new(5.0, -0.3, det);
@@ -288,6 +350,8 @@ snapshot_cases! {
   poisson_large_u64: ScalarKind::Int, u64, |det| SimdPoisson::<u64>::new(800.0, det);
   binomial_btrs_u32: ScalarKind::Int, u32, |det| SimdBinomial::<u32>::new(60, 0.4, det);
   binomial_waiting_u32: ScalarKind::Int, u32, |det| SimdBinomial::<u32>::new(15, 0.3, det);
+  binomial_btrs_flip_u32: ScalarKind::Int, u32, |det| SimdBinomial::<u32>::new(60, 0.7, det);
+  binomial_waiting_flip_u32: ScalarKind::Int, u32, |det| SimdBinomial::<u32>::new(15, 0.8, det);
   geometric_u64: ScalarKind::Int, u64, |det| SimdGeometric::<u64>::new(0.15, det);
   hypergeometric_u32: ScalarKind::Int, u32, |det| SimdHypergeometric::<u32>::new(60, 25, 20, det);
 }
@@ -337,6 +401,22 @@ snapshot_singles! {
     let d = SimdTruncatedNormal::<f32>::new(0.0, 1.0, -1.0, 2.0, det);
     move || vec![d.sample_fast().bits()]
   };
+  truncated_normal_exp_tail_f64: ScalarKind::F64, |det| {
+    let d = SimdTruncatedNormal::<f64>::new(0.0, 1.0, 3.0, 6.0, det);
+    move || vec![d.sample_fast().bits()]
+  };
+  truncated_normal_uniform_tail_f64: ScalarKind::F64, |det| {
+    let d = SimdTruncatedNormal::<f64>::new(0.0, 1.0, 3.0, 3.4, det);
+    move || vec![d.sample_fast().bits()]
+  };
+  truncated_normal_mirrored_f64: ScalarKind::F64, |det| {
+    let d = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -6.0, -3.0, det);
+    move || vec![d.sample_fast().bits()]
+  };
+  truncated_normal_inverse_cdf_f64: ScalarKind::F64, |det| {
+    let d = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -0.05, 0.05, det);
+    move || vec![d.sample_fast().bits()]
+  };
   truncated_exp_f64: ScalarKind::F64, |det| {
     let d = SimdTruncatedExp::<f64>::new(2.0, 0.0, 1.5, det);
     move || vec![d.sample_fast().bits()]
@@ -372,12 +452,33 @@ snapshot_singles! {
       vec![z.re.bits(), z.im.bits()]
     }
   };
+  #[cfg(feature = "unstable-dual-stream-rng")]
+  normal_dual_f64: ScalarKind::F64, |det| {
+    let d = SimdNormalDual::<f64>::new(0.3, 1.7, det);
+    let mut rng = SimdRng::from_seed(1);
+    move || vec![d.sample(&mut rng).bits()]
+  };
+  #[cfg(feature = "unstable-dual-stream-rng")]
+  normal_dual_f32: ScalarKind::F32, |det| {
+    let d = SimdNormalDual::<f32>::new(0.3, 1.7, det);
+    let mut rng = SimdRng::from_seed(1);
+    move || vec![d.sample(&mut rng).bits()]
+  };
 }
 
-/// Writes `constants.rs`; run only for an intentional re-pin with a `### Numerical changes` entry.
+/// Writes `constants.rs` under `STREAM_SNAPSHOT_REGEN=1`, only for a re-pin with a `### Numerical changes` entry.
 #[test]
-#[ignore = "generator: cargo test -p stochastic-rs-distributions --test stream_snapshots -- --ignored print_constants"]
+#[ignore = "re-pin generator, gated on STREAM_SNAPSHOT_REGEN=1 (command in the module doc)"]
 fn print_constants() {
+  if std::env::var("STREAM_SNAPSHOT_REGEN").as_deref() != Ok("1") {
+    println!("print_constants: set STREAM_SNAPSHOT_REGEN=1 to rewrite constants.rs");
+    return;
+  }
+  if cfg!(not(feature = "unstable-dual-stream-rng")) {
+    panic!(
+      "regenerate with --features unstable-dual-stream-rng so the dual-stream cases keep their constants"
+    );
+  }
   let mut text = String::from(
     "//! Generated by `print_constants` in `../stream_snapshots.rs`; rerun it only for an intentional re-pin.\n\nuse super::snapshot::Snapshot;\n\n",
   );

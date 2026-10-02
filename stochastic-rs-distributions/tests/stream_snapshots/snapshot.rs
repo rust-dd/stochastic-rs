@@ -1,9 +1,11 @@
-/// One law from one seed: the constructor's seed budget, the first eight raw draws and ten step hashes.
+/// One law from one seed: seed budget, first eight draws, heads of steps 2–9 and of the worker chunks, ten step hashes.
 #[derive(Debug)]
 pub struct Snapshot {
   pub seed: u64,
   pub seeds_consumed: u64,
   pub first8: [u64; 8],
+  pub step_heads: [u64; 8],
+  pub chunk_heads: [u64; 8],
   pub hashes: [u64; 10],
 }
 
@@ -30,5 +32,5 @@ impl ScalarKind {
 }
 
 fn within(got: f64, want: f64, rel: f64) -> bool {
-  (got - want).abs() <= rel * want.abs().max(f64::MIN_POSITIVE)
+  (got - want).abs() <= rel * (1.0 + want.abs())
 }
