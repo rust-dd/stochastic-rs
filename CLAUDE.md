@@ -35,9 +35,10 @@ cargo build -p stochastic-rs-distributions                     # build single su
 ```
 
 `--exclude stochastic-rs-py` keeps the Rust gate independent of a Python toolchain: the crate has no Rust
-tests (its pytest suite runs in the `python_smoke` job). A plain `cargo test --workspace` also links since
-pyo3 0.29 dropped `extension-module`, but needs a shared libpython at build and run time (`PYO3_PYTHON`
-picks it). Never export `PYO3_BUILD_EXTENSION_MODULE` in a shell; it is for maturin.
+tests (its pytest suite runs in the `python_smoke` job). A plain `cargo test --workspace` also links now
+that no manifest enables pyo3's deprecated `extension-module` feature, but needs a shared libpython at
+build and run time (`PYO3_PYTHON` picks it). Never export `PYO3_BUILD_EXTENSION_MODULE` in a shell; it
+is for maturin.
 
 ## Clippy usage
 

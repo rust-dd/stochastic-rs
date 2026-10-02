@@ -40,7 +40,8 @@ the rc.1 → rc.2 cycle exists exactly because we caught issues post-bump
 and had to revert.
 
 The `stochastic-rs-py` crate is excluded from `cargo test`: it has no Rust
-tests, and its wheel is built by maturin and tested with pytest in stage 7.
+tests, its pytest suite runs in the `python_smoke` job, and its wheels are
+built and smoke-tested in stage 7.
 
 ## Stage 2 — version bumps (9 crates)
 
