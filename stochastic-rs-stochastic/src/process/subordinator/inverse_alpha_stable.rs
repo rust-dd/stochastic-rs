@@ -10,6 +10,8 @@ use std::marker::PhantomData;
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use super::sample_positive_stable;
@@ -145,7 +147,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       t_max,
       u_steps: self.u_steps,
       u_max0,
-      uniform: SimdUniform::<f64>::new(0.0, 1.0, &self.seed),
+      uniform: SimdUniform::<f64>::new(0.0, 1.0).seeded(&self.seed),
       _marker: PhantomData,
     }
   }
@@ -226,12 +228,12 @@ pub struct InverseAlphaStableSubordinatorSampler<T: FloatExt> {
   t_max: f64,
   u_steps: usize,
   u_max0: f64,
-  uniform: SimdUniform<f64>,
+  uniform: Seeded<SimdUniform<f64>>,
   _marker: PhantomData<T>,
 }
 
 impl<T: FloatExt> InverseAlphaStableSubordinatorSampler<T> {
-  fn simulate_direct_path(&self, u_max: f64) -> (Vec<f64>, Vec<f64>) {
+  fn simulate_direct_path(&mut self, u_max: f64) -> (Vec<f64>, Vec<f64>) {
     let m = self.u_steps;
     let du = u_max / (m - 1) as f64;
     // In logs, where the increment's own factors are summed: `(c·du)^{1/α}`
@@ -241,7 +243,7 @@ impl<T: FloatExt> InverseAlphaStableSubordinatorSampler<T> {
     let mut d = vec![0.0; m];
     for i in 1..m {
       u[i] = i as f64 * du;
-      d[i] = d[i - 1] + sample_positive_stable(self.alpha, log_scale, &self.uniform);
+      d[i] = d[i - 1] + sample_positive_stable(self.alpha, log_scale, &mut self.uniform);
     }
     (u, d)
   }

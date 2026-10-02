@@ -175,7 +175,7 @@ mod tests {
 
   #[test]
   fn anderson_darling_rejects_uniform_sample() {
-    let dist = SimdUniform::<f64>::new(0.0, 1.0, &Deterministic::new(42));
+    let mut dist = SimdUniform::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(42));
     let mut x = vec![0.0; 4000];
     dist.fill_slice(&mut x);
 

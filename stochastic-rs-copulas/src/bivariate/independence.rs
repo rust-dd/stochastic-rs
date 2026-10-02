@@ -11,6 +11,7 @@ use ndarray::Array2;
 use ndarray::Axis;
 use ndarray::stack;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use super::CopulaType;
@@ -80,9 +81,9 @@ impl BivariateExt for Independence {
   }
 
   fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
-    let ud = SimdUniform::<f64>::new(0.0, 1.0, &Unseeded);
-    let u = Array1::from_vec((0..n).map(|_| ud.sample_fast()).collect());
-    let v = Array1::from_vec((0..n).map(|_| ud.sample_fast()).collect());
+    let mut ud = SimdUniform::<f64>::new(0.0, 1.0).seeded(&Unseeded);
+    let u = Array1::from_vec((0..n).map(|_| ud.sample()).collect());
+    let v = Array1::from_vec((0..n).map(|_| ud.sample()).collect());
     Ok(stack![Axis(1), u, v])
   }
 

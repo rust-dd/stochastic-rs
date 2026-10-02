@@ -46,6 +46,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::chi_square::SimdChiSquared;
+use crate::gamma::GammaState;
 use crate::normal::SimdNormal;
 use crate::seeded::StreamState;
 use crate::simd_rng::SimdRng;
@@ -62,7 +63,8 @@ pub struct SimdWishart<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   /// Lower-triangular Cholesky factor of the scale matrix $V$.
   chol: Array2<f64>,
   /// Per-row diagonal $\chi^2_{\nu - j + 1}$ samplers (one per dim).
-  diag_chi: Vec<SimdChiSquared<T, R>>,
+  diag_chi: Vec<SimdChiSquared<T>>,
+  diag_states: UnsafeCell<Vec<GammaState<T, R>>>,
   /// Auxiliary standard normal for off-diagonal Bartlett entries.
   normal: UnsafeCell<StreamState<T, R, 64>>,
 }
@@ -80,9 +82,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdWishart<T, R> {
 
     let chol = cholesky_lower(&scale).expect("scale matrix must be positive definite");
 
-    let diag_chi: Vec<SimdChiSquared<T, R>> = (0..p)
-      .map(|j| SimdChiSquared::<T, R>::new(T::from_f64_fast(nu - j as f64), seed))
-      .collect();
+    let diag_chi = (0..p)
+      .map(|j| SimdChiSquared::<T>::new(T::from_f64_fast(nu - j as f64)))
+      .collect::<Vec<_>>();
+    let diag_states = UnsafeCell::new(diag_chi.iter().map(|c| c.init::<R, S>(seed).0).collect());
     let normal = UnsafeCell::new(SimdNormal::<T>::standard().init::<R, S>(seed).0);
 
     Self {
@@ -90,6 +93,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdWishart<T, R> {
       p,
       chol,
       diag_chi,
+      diag_states,
       normal,
     }
   }
@@ -102,8 +106,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdWishart<T, R> {
   pub fn sample_fast(&self) -> Array2<f64> {
     // Build A: lower-triangular with χ² diagonal and N(0, 1) sub-diagonal.
     let mut a = Array2::<f64>::zeros((self.p, self.p));
+    let diag_states = unsafe { &mut *self.diag_states.get() };
     for j in 0..self.p {
-      let chi2_j = self.diag_chi[j].sample_fast().to_f64().unwrap();
+      let chi2_j = self.diag_chi[j].next(&mut diag_states[j]).to_f64().unwrap();
       a[[j, j]] = chi2_j.max(0.0).sqrt();
       for i in (j + 1)..self.p {
         a[[i, j]] = SimdNormal::<T>::standard()

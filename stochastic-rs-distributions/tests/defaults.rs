@@ -24,18 +24,18 @@ fn defaults_sample_finite() {
   let mut d = SimdNormal::<f64>::default().seeded(&Unseeded);
   assert!(all_finite(|| d.sample()));
 
-  let d = SimdUniform::<f64>::default();
-  assert!(all_finite(|| d.sample_fast()));
+  let mut d = SimdUniform::<f64>::default().seeded(&Unseeded);
+  assert!(all_finite(|| d.sample()));
 
-  let d = SimdExp::<f64>::default();
-  assert!(all_finite(|| d.sample_fast()));
+  let mut d = SimdExp::<f64>::default().seeded(&Unseeded);
+  assert!(all_finite(|| d.sample()));
 
-  let d = SimdGamma::<f64>::default();
-  assert!(all_finite(|| d.sample_fast()));
+  let mut d = SimdGamma::<f64>::default().seeded(&Unseeded);
+  assert!(all_finite(|| d.sample()));
 
-  let d = SimdLogNormal::<f64>::default();
-  assert!(all_finite(|| d.sample_fast()));
+  let mut d = SimdLogNormal::<f64>::default().seeded(&Unseeded);
+  assert!(all_finite(|| d.sample()));
 
-  let d = SimdStudentT::<f64>::default();
-  assert!(all_finite(|| d.sample_fast()));
+  let mut d = SimdStudentT::<f64>::default().seeded(&Unseeded);
+  assert!(all_finite(|| d.sample()));
 }

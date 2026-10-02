@@ -181,7 +181,7 @@ fn main() {
   );
   run_case(
     "Exp<f64>(ref)",
-    &SimdExp::<f64>::new(1.5, &Unseeded),
+    &SimdExp::<f64>::new(1.5).seeded(&Unseeded),
     2048,
     2048,
     &single,
@@ -214,7 +214,7 @@ fn main() {
   );
   run_case(
     "Exp<f64>",
-    &SimdExp::<f64>::new(1.5, &Unseeded),
+    &SimdExp::<f64>::new(1.5).seeded(&Unseeded),
     fm,
     fnn,
     &single,
@@ -222,7 +222,7 @@ fn main() {
   );
   run_case(
     "Uniform<f64>",
-    &SimdUniform::<f64>::new(0.0, 1.0, &Unseeded),
+    &SimdUniform::<f64>::new(0.0, 1.0).seeded(&Unseeded),
     fm,
     fnn,
     &single,
@@ -230,7 +230,7 @@ fn main() {
   );
   run_case(
     "Cauchy<f64>",
-    &SimdCauchy::<f64>::new(0.0, 1.0, &Unseeded),
+    &SimdCauchy::<f64>::new(0.0, 1.0).seeded(&Unseeded),
     fm,
     fnn,
     &single,
@@ -238,7 +238,7 @@ fn main() {
   );
   run_case(
     "LogNormal<f64>",
-    &SimdLogNormal::<f64>::new(0.2, 0.8, &Unseeded),
+    &SimdLogNormal::<f64>::new(0.2, 0.8).seeded(&Unseeded),
     fm,
     fnn,
     &single,
@@ -246,7 +246,7 @@ fn main() {
   );
   run_case(
     "Gamma<f64>",
-    &SimdGamma::<f64>::new(2.0, 2.0, &Unseeded),
+    &SimdGamma::<f64>::new(2.0, 2.0).seeded(&Unseeded),
     fm,
     fnn,
     &single,
@@ -254,7 +254,7 @@ fn main() {
   );
   run_case(
     "ChiSq<f64>",
-    &SimdChiSquared::<f64>::new(5.0, &Unseeded),
+    &SimdChiSquared::<f64>::new(5.0).seeded(&Unseeded),
     fm,
     fnn,
     &single,
@@ -262,7 +262,7 @@ fn main() {
   );
   run_case(
     "StudentT<f64>",
-    &SimdStudentT::<f64>::new(5.0, &Unseeded),
+    &SimdStudentT::<f64>::new(5.0).seeded(&Unseeded),
     fm,
     fnn,
     &single,
@@ -270,7 +270,7 @@ fn main() {
   );
   run_case(
     "Beta<f64>",
-    &SimdBeta::<f64>::new(2.0, 2.0, &Unseeded),
+    &SimdBeta::<f64>::new(2.0, 2.0).seeded(&Unseeded),
     fm,
     fnn,
     &single,
@@ -278,7 +278,7 @@ fn main() {
   );
   run_case(
     "Weibull<f64>",
-    &SimdWeibull::<f64>::new(1.0, 1.5, &Unseeded),
+    &SimdWeibull::<f64>::new(1.0, 1.5).seeded(&Unseeded),
     fm,
     fnn,
     &single,
@@ -286,7 +286,7 @@ fn main() {
   );
   run_case(
     "Pareto<f64>",
-    &SimdPareto::<f64>::new(1.0, 1.5, &Unseeded),
+    &SimdPareto::<f64>::new(1.0, 1.5).seeded(&Unseeded),
     fm,
     fnn,
     &single,

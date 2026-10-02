@@ -44,7 +44,9 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::beta::BetaState;
 use crate::beta::SimdBeta;
+use crate::gamma::GammaState;
 use crate::gamma::SimdGamma;
 use crate::normal::SimdNormal;
 use crate::seeded::StreamState;
@@ -379,7 +381,8 @@ pub struct SimdTruncatedBeta<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   beta: T,
   lower: T,
   upper: T,
-  base: SimdBeta<T, R>,
+  base: SimdBeta<T>,
+  base_state: UnsafeCell<BetaState<T, R>>,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedBeta<T, R> {
@@ -398,19 +401,23 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedBeta<T, R> {
       "bounds must lie in [0,1]"
     );
     assert!(lower < upper, "lower < upper");
+    let base = SimdBeta::<T>::new(alpha, beta);
+    let base_state = UnsafeCell::new(base.init::<R, S>(seed).0);
     Self {
       alpha,
       beta,
       lower,
       upper,
-      base: SimdBeta::<T, R>::new(alpha, beta, seed),
+      base,
+      base_state,
     }
   }
 
   #[inline]
   pub fn sample_fast(&self) -> T {
+    let base_state = unsafe { &mut *self.base_state.get() };
     for _ in 0..1000 {
-      let x = self.base.sample_fast();
+      let x = self.base.next(base_state);
       if x >= self.lower && x <= self.upper {
         return x;
       }
@@ -480,7 +487,8 @@ pub struct SimdTruncatedGamma<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   scale: T,
   lower: T,
   upper: T,
-  base: SimdGamma<T, R>,
+  base: SimdGamma<T>,
+  base_state: UnsafeCell<GammaState<T, R>>,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedGamma<T, R> {
@@ -497,19 +505,23 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedGamma<T, R> {
     assert!(scale > T::zero(), "scale > 0");
     assert!(lower >= T::zero(), "lower ≥ 0");
     assert!(lower < upper, "lower < upper");
+    let base = SimdGamma::<T>::new(shape, scale);
+    let base_state = UnsafeCell::new(base.init::<R, S>(seed).0);
     Self {
       shape,
       scale,
       lower,
       upper,
-      base: SimdGamma::<T, R>::new(shape, scale, seed),
+      base,
+      base_state,
     }
   }
 
   #[inline]
   pub fn sample_fast(&self) -> T {
+    let base_state = unsafe { &mut *self.base_state.get() };
     for _ in 0..1000 {
-      let x = self.base.sample_fast();
+      let x = self.base.next(base_state);
       if x >= self.lower && x <= self.upper {
         return x;
       }

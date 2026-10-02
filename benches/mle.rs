@@ -5,6 +5,8 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::pareto::SimdPareto;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stats::evt::block_maxima;
@@ -249,7 +251,7 @@ fn bench_garch_fit(c: &mut Criterion) {
 fn bench_evt_fit(c: &mut Criterion) {
   let mut group = c.benchmark_group("evt_fit");
   group.measurement_time(Duration::from_secs(5));
-  let dist = SimdPareto::<f64>::new(1.0, 3.0, &Deterministic::new(7));
+  let mut dist = SimdPareto::<f64>::new(1.0, 3.0).seeded(&Deterministic::new(7));
   let mut losses = vec![0.0; 20_000];
   dist.fill_slice(&mut losses);
   let losses = ndarray::Array1::from(losses);

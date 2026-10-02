@@ -466,12 +466,12 @@ the speedups grow with the parameters:
 | `SimdGev` (internal SIMD RNG, was thread-RNG per draw) | ~20 ns | 10.0 ns | 2× |
 | `SimdTruncatedExp` (cached CDF bounds + internal RNG) | ~15 ns | 5.0 ns | ~3× |
 | `SimdGed` (SIMD bulk fill + buffered sampling) | 20.2 ns | 16.3 ns | 1.2× |
-| `SimdWeibull` `sample_fast` (buffered, single-pass fill) | 10.7 ns | 8.4 ns | 1.3× |
+| `SimdWeibull` buffered draw (single-pass fill) | 10.7 ns | 8.4 ns | 1.3× |
 | `SimdStudentT` fill (64-element sub-fills above the SIMD threshold) | 8.9 ns | 7.0 ns | 1.3× |
 | `SimdBeta` fill | 12.9 ns | 10.6 ns | 1.2× |
 
 Context anchors from the same session: `SimdNormal` fill ≈ 1.7–2.0 ns,
-`SimdExpZig` fill ≈ 1.5 ns, uniform fill ≈ 0.35 ns per sample;
+`SimdExp` fill ≈ 1.5 ns, uniform fill ≈ 0.35 ns per sample;
 `SimdGamma` (scalar Marsaglia-Tsang squeeze over the buffered SIMD
 sources) ≈ 5–6.3 ns vs 14–17.7 ns for `rand_distr::Gamma` on a thread
 RNG. The binomial BTRS path also beats `rand_distr`'s BTPE (29.5 ns at
@@ -535,8 +535,8 @@ stochastic-rs = { version = "3.0.0-rc.1", features = ["unstable-dual-stream-rng"
 ```
 
 Unlocks `stochastic_rs_core::simd_rng_dual::SimdRngDual` (two parallel
-xoshiro engines, the `R` of a `Seeded::<SimdNormal<f64>, SimdRngDual>`
-stream) and the `SimdExpZigDual` alias. The Ziggurat main loop consumes two
+xoshiro engines, the `R` of a `Seeded::<SimdNormal<f64>, SimdRngDual>` or
+`Seeded::<SimdExp<f64>, SimdRngDual>` stream). The Ziggurat main loop consumes two
 independent engine batches per iteration (`SimdRngExt::next_i32x8_pair`,
 gated on the `HAS_PAIR_ILP` const — single-stream codegen is
 unchanged). Measured against the single-stream `SimdNormal::fill_slice`

@@ -34,10 +34,13 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::SimdFloatExt;
 use super::studentt::SimdStudentT;
+use super::studentt::StudentTState;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
 use crate::special::ln_gamma;
 use crate::traits::DistributionExt;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 const SMALL_SKEW_T_THRESHOLD: usize = 16;
 
@@ -49,7 +52,8 @@ pub struct SimdSkewT<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   a: f64,
   b: f64,
   c: f64,
-  student: SimdStudentT<T, R>,
+  student: SimdStudentT<T>,
+  student_state: UnsafeCell<StudentTState<T, R>>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
   simd_rng: UnsafeCell<R>,
@@ -67,7 +71,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdSkewT<T, R> {
       / (std::f64::consts::PI * (eta_f - 2.0)).sqrt();
     let a = 4.0 * lambda_f * c * (eta_f - 2.0) / (eta_f - 1.0);
     let b = (1.0 + 3.0 * lambda_f * lambda_f - a * a).sqrt();
-    let student = SimdStudentT::<T, R>::new(eta, seed);
+    let student = SimdStudentT::<T>::new(eta);
+    let student_state = UnsafeCell::new(student.init::<R, S>(seed).0);
     let stream_seed = seed.next_seed();
     Self {
       eta,
@@ -76,6 +81,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdSkewT<T, R> {
       b,
       c,
       student,
+      student_state,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
       simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
@@ -117,6 +123,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdSkewT<T, R> {
   /// probability `(1 + λ)/2` and the left-hand scale `−(1 − λ)` otherwise.
   pub fn fill_slice(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
+    let student_state = unsafe { &mut *self.student_state.get() };
     let eta = self.eta.to_f64().unwrap();
     let lambda = self.lambda.to_f64().unwrap();
     let scale = ((eta - 2.0) / eta).sqrt();
@@ -126,7 +133,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdSkewT<T, R> {
     let p_right = T::from_f64_fast(0.5 * (1.0 + lambda));
     if out.len() < SMALL_SKEW_T_THRESHOLD {
       for x in out.iter_mut() {
-        let w = self.student.sample_fast().abs();
+        let w = self.student.next(student_state).abs();
         let u = T::sample_uniform_simd(rng);
         *x = if u < p_right { right * w } else { left * w } + shift;
       }
@@ -136,7 +143,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdSkewT<T, R> {
     let mut ubuf = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.student.fill_slice(&mut tbuf);
+      self.student.fill(student_state, &mut tbuf);
       T::fill_uniform_simd(rng, &mut ubuf);
       for i in 0..64 {
         let w = tbuf[i].abs();
@@ -149,7 +156,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdSkewT<T, R> {
     }
     if !rem.is_empty() {
       let n = rem.len();
-      self.student.fill_slice(&mut tbuf[..n]);
+      self.student.fill(student_state, &mut tbuf[..n]);
       T::fill_uniform_simd(rng, &mut ubuf[..n]);
       for i in 0..n {
         let w = tbuf[i].abs();

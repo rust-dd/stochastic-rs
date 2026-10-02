@@ -198,7 +198,7 @@ mod tests {
 
   #[test]
   fn shapiro_francia_rejects_skewed_sample() {
-    let dist = SimdExp::<f64>::new(1.0, &Deterministic::new(11));
+    let mut dist = SimdExp::<f64>::new(1.0).seeded(&Deterministic::new(11));
     let mut x = vec![0.0; 700];
     dist.fill_slice(&mut x);
 

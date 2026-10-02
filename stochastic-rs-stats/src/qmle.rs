@@ -294,7 +294,9 @@ mod tests {
       );
       let shape = d / 2.0 + n_pois;
       let chi2 = if shape > 0.0 {
-        SimdGamma::<f64>::new(shape, 2.0, &Deterministic::new(gamma_seed)).sample_fast()
+        SimdGamma::<f64>::new(shape, 2.0)
+          .seeded(&Deterministic::new(gamma_seed))
+          .sample()
       } else {
         0.0
       };

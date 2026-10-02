@@ -197,7 +197,7 @@ Ok(stack![Axis(1), u, v])
 ```
 
 It errors if `tau` is unset or outside `(-1, 1)`, draws both uniforms
-from one `SimdUniform<f64>`, and returns an `(n, 2)` `Array2<f64>`
+from one seeded `SimdUniform<f64>` stream, and returns an `(n, 2)` `Array2<f64>`
 wrapped in `Result`. `sample(&self, ..)` takes `&self`, not `&mut self`.
 
 What you supply is `percent_point` — either a closed form, or nothing

@@ -98,10 +98,9 @@ pub fn chi_square_critical_value(alpha: f64, df: usize) -> f64 {
     df >= 1,
     "chi-square test needs at least 1 degree of freedom"
   );
-  use stochastic_rs_core::simd_rng::Unseeded;
   use stochastic_rs_distributions::DistributionExt;
   use stochastic_rs_distributions::chi_square::SimdChiSquared;
-  SimdChiSquared::<f64>::new(df as f64, &Unseeded).inv_cdf(1.0 - alpha)
+  SimdChiSquared::<f64>::new(df as f64).inv_cdf(1.0 - alpha)
 }
 
 /// Pearson's chi-square goodness-of-fit statistic for pre-binned counts.
@@ -152,10 +151,9 @@ pub fn chi_square_gof_test(
   }
 
   let df = observed.len() - 1;
-  use stochastic_rs_core::simd_rng::Unseeded;
   use stochastic_rs_distributions::DistributionExt;
   use stochastic_rs_distributions::chi_square::SimdChiSquared;
-  let chi2 = SimdChiSquared::<f64>::new(df as f64, &Unseeded);
+  let chi2 = SimdChiSquared::<f64>::new(df as f64);
   let p_value = (1.0 - chi2.cdf(statistic)).clamp(0.0, 1.0);
   let critical_value = chi2.inv_cdf(1.0 - cfg.alpha);
 

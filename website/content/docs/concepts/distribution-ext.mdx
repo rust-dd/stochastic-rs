@@ -1,6 +1,6 @@
 ---
 title: DistributionExt
-description: Closed-form pdf, cdf, characteristic function and moments for 33 of the 37 distribution types — a missing closed form panics, never returns zero.
+description: Closed-form pdf, cdf, characteristic function and moments for 32 of the 36 distribution types — a missing closed form panics, never returns zero.
 category: concept
 since: 2.0.0
 status: stable
@@ -34,7 +34,7 @@ pub trait DistributionExt {
 
 ## Coverage
 
-**33 of the 37** distribution types implement `DistributionExt`. The four
+**32 of the 36** distribution types implement `DistributionExt`. The four
 that do not are `SimdDirichlet` and `SimdWishart` (vector- and
 matrix-valued draws, with their own inherent `pdf` / `log_pdf`),
 `SimdNonCentralChiSquared` (its noncentrality is supplied per draw; it backs

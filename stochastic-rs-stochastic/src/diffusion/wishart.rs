@@ -194,7 +194,9 @@ impl<T: FloatExt, S: SeedExt> StepDraws<T, S> {
         return T::zero();
       }
       return dt
-        * SimdGamma::<T>::new(T::from_f64_fast(jumps as f64), two, &self.seed).sample_fast();
+        * SimdGamma::<T>::new(T::from_f64_fast(jumps as f64), two)
+          .seeded(&self.seed)
+          .sample();
     }
     if self.ncx2[r].is_none() {
       self.ncx2[r] = Some(SimdNonCentralChiSquared::<T>::new(df, &self.seed));

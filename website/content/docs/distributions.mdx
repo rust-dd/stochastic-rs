@@ -1,15 +1,15 @@
 ---
 title: Distributions
 seo_title: Probability distributions in Rust and Python
-description: 26 of 36 SIMD distribution structs with full Python + closed-form parity. Bulk samplers; ziggurat, rejection, inversion.
+description: 26 of 35 SIMD distribution structs with full Python + closed-form parity. Bulk samplers; ziggurat, rejection, inversion.
 category: distribution
 since: 2.0.0
 status: stable
 ---
 
-The `stochastic-rs-distributions` crate ships **36** `Simd*` distribution
+The `stochastic-rs-distributions` crate ships **35** `Simd*` distribution
 structs (`grep -rc "^pub struct Simd" stochastic-rs-distributions/src --include='*.rs'`),
-plus `ComplexDistribution` (37 total). This page's table covers the
+plus `ComplexDistribution` (36 total). This page's table covers the
 **26** that carry the full package — every one of them has:
 
 - A `Simd<Name><T>` struct that implements `rand::distr::Distribution<T>`
@@ -22,16 +22,12 @@ plus `ComplexDistribution` (37 total). This page's table covers the
   for Python use
 - A KS-test against the analytic CDF
 
-**Not shown here** — 10 more real, public `Simd*` types that don't carry
-the full package (26 + 10 = 36), plus `ComplexDistribution` outside that
+**Not shown here** — 9 more real, public `Simd*` types that don't carry
+the full package (26 + 9 = 35), plus `ComplexDistribution` outside that
 count entirely:
 
 - `Ged`, `Skellam`, and the four `Truncated{Normal,Exp,Beta,Gamma}`
   wrappers (6) implement `DistributionExt` but have no Python binding.
-- `SimdExpZig` is the ziggurat-table `Exp(1)` primitive that
-  `SimdExp` and other samplers build on internally — the same
-  distribution as the `Exponential` row below, exposed as a lower-level
-  type, not a distinct continuous distribution of its own.
 - `SimdNonCentralChiSquared` is structurally different from every type in
   this table: its noncentrality parameter is supplied per draw
   (`sample_ncp(ncp)`), not fixed at construction, so it implements neither
@@ -43,7 +39,7 @@ count entirely:
   per draw), so the scalar `rand::distr::Distribution<T>` shape does not
   apply; each exposes its own `sample_fast`/`log_pdf` instead.
 
-That accounts for all 36. `ComplexDistribution` is a 37th, separate type
+That accounts for all 35. `ComplexDistribution` is a 36th, separate type
 (not `Simd`-prefixed) that samples `Complex<T>` directly and is the one
 type with no `DistributionExt` impl at all (see `CLAUDE.md`'s note on the
 trait). The API docs (`cargo doc -p stochastic-rs-distributions`) are the

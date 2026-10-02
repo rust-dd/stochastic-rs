@@ -69,6 +69,7 @@ use rand::Rng;
 use rand::RngExt;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SimdRng;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::gamma::SimdGamma;
 
 use super::CopulaType;
@@ -336,8 +337,9 @@ impl NestedArchimedean {
         // fires on every row (the root frailty has no parent to inherit
         // determinism from).
         let sub_seed = rng.random::<u64>();
-        let g = SimdGamma::<f64>::new(1.0 / node.theta, 1.0, &Deterministic::new(sub_seed));
-        g.sample_fast()
+        let mut g =
+          SimdGamma::<f64>::new(1.0 / node.theta, 1.0).seeded(&Deterministic::new(sub_seed));
+        g.sample()
       }
       (NacFamily::Gumbel, None) => {
         // Root Gumbel frailty: V ~ S_+(1/θ). The θ = 1 case is the

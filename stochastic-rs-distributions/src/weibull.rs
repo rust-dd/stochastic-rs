@@ -4,28 +4,37 @@
 //! f(x)=\frac{k}{\lambda}\left(\frac{x}{\lambda}\right)^{k-1}e^{-(x/\lambda)^k},\ x\ge0
 //! $$
 //!
-use std::cell::Cell;
-use std::cell::UnsafeCell;
+//! Sampling: `λ·E^{1/k}` with `E ~ Exp(1)`, inversion, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
 
 use rand::Rng;
 use rand::distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
-use super::exp::SimdExpZig;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use super::exp::SimdExp;
+use crate::seeded::Buffered;
+use crate::seeded::StreamState;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
-pub struct SimdWeibull<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+/// Weibull law with scale `lambda` and shape `k`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdWeibull<T> {
   lambda: T,
   inv_k: T,
-  exp1: SimdExpZig<T, 64, R>,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  stream_seed: Cell<u64>,
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdWeibull<T, R> {
+/// A stream that transforms its own `Exp(1)` sub-stream, plus its single-draw buffer.
+#[doc(hidden)]
+#[derive(Clone, Debug)]
+pub struct ExpDerivedState<T: SimdFloatExt, R: SimdRngExt> {
+  exp: StreamState<T, R, 64>,
+  buf: Buffered<T, 16>,
+}
+
+impl<T: SimdFloatExt> SimdWeibull<T> {
   /// Creates a Weibull distribution.
   ///
   /// - `lambda` — scale λ > 0 (matches the module header's λ).
@@ -33,70 +42,36 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdWeibull<T, R> {
   ///   internally as `1/k` to avoid a division on every sample/pdf/cdf
   ///   call — this constructor's own `k` parameter is the literal shape,
   ///   not its reciprocal.
-  ///
-  /// The RNG is seeded from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  pub fn new<S: crate::simd_rng::SeedExt>(lambda: T, k: T, seed: &S) -> Self {
+  pub fn new(lambda: T, k: T) -> Self {
     assert!(
       lambda > T::zero() && k > T::zero(),
       "lambda must satisfy `lambda > T::zero() && k > T::zero()`, got lambda = {lambda:?}, k = {k:?}"
     );
-    let exp1 = SimdExpZig::new(T::one(), seed);
-    // No own engine to seed — reuse exp1's already-captured stream_seed as
-    // this sampler's fork anchor (see SimdBeta::new for the same pattern).
-    // Its own independent `Cell`, so this fork cursor advances on its own.
-    let stream_seed = Cell::new(exp1.stream_seed.get());
     Self {
       lambda,
       inv_k: T::one() / k,
-      exp1,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      stream_seed,
     }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.lambda,
-      T::one() / self.inv_k,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
+  /// The scale `λ`.
+  pub fn lambda(&self) -> T {
+    self.lambda
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
-  /// Draws from a pre-filled buffer of `λ · E^{1/k}` values (E ~ Exp(1)).
-  #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
+  /// The shape `k`, formed as `1 / (1/k)` from the stored reciprocal.
+  pub fn k(&self) -> T {
+    T::one() / self.inv_k
   }
 
-  /// Fills `out` with `λ · E^{1/k}` samples using the internal SIMD RNG
-  /// stream — the only stream this sampler draws from (see the
-  /// crate-level RNG policy). Exp(1) magnitudes are drawn in 64-blocks into
-  /// a stack buffer and the power transform runs 8-wide, so `out` is
-  /// written exactly once (no fill-then-transform double pass).
-  pub fn fill_slice(&self, out: &mut [T]) {
+  /// `λ·E^{1/k}` over `Exp(1)` magnitudes drawn in 64-blocks, the power running 8-wide.
+  fn fill_parts<R: SimdRngExt>(&self, exp: &mut StreamState<T, R, 64>, out: &mut [T]) {
+    let exp1 = SimdExp::<T>::standard();
     let lambda = T::splat(self.lambda);
     let inv_k = self.inv_k;
     let mut tmp = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.exp1.fill_slice(&mut tmp);
+      exp1.fill(exp, &mut tmp);
       for (sub, e8) in chunk
         .as_chunks_mut::<8>()
         .0
@@ -109,7 +84,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdWeibull<T, R> {
     }
     if !rem.is_empty() {
       let n = rem.len();
-      self.exp1.fill_slice(&mut tmp[..n]);
+      exp1.fill(exp, &mut tmp[..n]);
       let mut off = 0;
       let (sub, sub_rem) = rem.as_chunks_mut::<8>();
       for s in sub.iter_mut() {
@@ -125,38 +100,51 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdWeibull<T, R> {
     }
   }
 
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.lambda * SimdExp::<T>::standard().draw_with(rng).powf(self.inv_k)
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdWeibull<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.lambda, T::one() / self.inv_k, &Unseeded)
+impl<T: SimdFloatExt> Sealed for SimdWeibull<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdWeibull<T> {
+  type State<R: SimdRngExt> = ExpDerivedState<T, R>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (ExpDerivedState<T, R>, u64) {
+    let (exp, basis) = SimdExp::<T>::standard().init::<R, S>(seed);
+    (
+      ExpDerivedState {
+        exp,
+        buf: Buffered::new(),
+      },
+      basis,
+    )
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdWeibull<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction. Use `Deterministic`
-  /// in the constructor for reproducibility.
-  #[inline(always)]
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
+impl<T: SimdFloatExt> SimdKernel for SimdWeibull<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut ExpDerivedState<T, R>, out: &mut [T]) {
+    self.fill_parts(&mut state.exp, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut ExpDerivedState<T, R>) -> T {
+    let ExpDerivedState { exp, buf } = state;
+    buf.pop(|b| self.fill_parts(exp, b))
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdWeibull<T, R> {
+impl<T: SimdFloatExt> Distribution<T> for SimdWeibull<T> {
+  /// `λ·E^{1/k}` with one scalar Ziggurat `Exp(1)` draw on the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdWeibull<T> {
   fn pdf(&self, x: f64) -> f64 {
     let lambda = self.lambda.to_f64().unwrap();
     let k = 1.0 / self.inv_k.to_f64().unwrap();
@@ -247,7 +235,22 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdWeib
   }
 }
 
-py_distribution_legacy!(PyWeibull, SimdWeibull,
+py_distribution!(PyWeibull, SimdWeibull,
   sig: (lambda_, k, seed=None, dtype=None),
   params: (lambda_: f64, k: f64)
 );
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::tests::scalar_ks_best_p;
+  use crate::traits::DistributionExt as _;
+
+  /// The honest `Distribution` draws from the caller's rng and agrees with the cdf.
+  #[test]
+  fn scalar_sample_matches_cdf() {
+    let d = SimdWeibull::<f64>::new(2.0, 1.5);
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+    assert!(best > 0.01, "best p = {best}");
+  }
+}

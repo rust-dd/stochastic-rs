@@ -20,8 +20,6 @@ use stochastic_rs_core::simd_rng_dual::SimdRngDual;
 use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
-#[cfg(feature = "unstable-dual-stream-rng")]
-use stochastic_rs_distributions::SimdExpDual;
 use stochastic_rs_distributions::SimdKernel;
 use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
 use stochastic_rs_distributions::beta::SimdBeta;
@@ -338,33 +336,33 @@ macro_rules! snapshot_singles {
 snapshot_cases_seeded! {
   normal_f64: ScalarKind::F64, f64, SimdNormal::<f64>::new(0.3, 1.7);
   normal_f32: ScalarKind::F32, f32, SimdNormal::<f32>::new(0.3, 1.7);
+  exp_f64: ScalarKind::F64, f64, SimdExp::<f64>::new(1.8);
+  exp_f32: ScalarKind::F32, f32, SimdExp::<f32>::new(1.8);
+  uniform_f64: ScalarKind::F64, f64, SimdUniform::<f64>::new(-2.0, 3.0);
+  uniform_f32: ScalarKind::F32, f32, SimdUniform::<f32>::new(-2.0, 3.0);
+  uniform_unit_f64: ScalarKind::F64, f64, SimdUniform::<f64>::new(0.0, 1.0);
+  uniform_unit_f32: ScalarKind::F32, f32, SimdUniform::<f32>::new(0.0, 1.0);
+  gamma_f64: ScalarKind::F64, f64, SimdGamma::<f64>::new(2.5, 1.5);
+  gamma_f32: ScalarKind::F32, f32, SimdGamma::<f32>::new(2.5, 1.5);
+  gamma_boost_f64: ScalarKind::F64, f64, SimdGamma::<f64>::new(0.5, 2.0);
+  gamma_boost_f32: ScalarKind::F32, f32, SimdGamma::<f32>::new(0.5, 2.0);
+  chi_squared_f64: ScalarKind::F64, f64, SimdChiSquared::<f64>::new(6.0);
+  chi_squared_f32: ScalarKind::F32, f32, SimdChiSquared::<f32>::new(6.0);
+  beta_f64: ScalarKind::F64, f64, SimdBeta::<f64>::new(2.5, 4.0);
+  beta_f32: ScalarKind::F32, f32, SimdBeta::<f32>::new(2.5, 4.0);
+  lognormal_f64: ScalarKind::F64, f64, SimdLogNormal::<f64>::new(0.2, 0.6);
+  lognormal_f32: ScalarKind::F32, f32, SimdLogNormal::<f32>::new(0.2, 0.6);
+  student_t_f64: ScalarKind::F64, f64, SimdStudentT::<f64>::new(6.0);
+  student_t_f32: ScalarKind::F32, f32, SimdStudentT::<f32>::new(6.0);
+  cauchy_f64: ScalarKind::F64, f64, SimdCauchy::<f64>::new(1.0, 0.5);
+  cauchy_f32: ScalarKind::F32, f32, SimdCauchy::<f32>::new(1.0, 0.5);
+  weibull_f64: ScalarKind::F64, f64, SimdWeibull::<f64>::new(2.0, 1.5);
+  weibull_f32: ScalarKind::F32, f32, SimdWeibull::<f32>::new(2.0, 1.5);
+  pareto_f64: ScalarKind::F64, f64, SimdPareto::<f64>::new(1.0, 1.16);
+  pareto_f32: ScalarKind::F32, f32, SimdPareto::<f32>::new(1.0, 1.16);
 }
 
 snapshot_cases! {
-  exp_f64: ScalarKind::F64, f64, |det| SimdExp::<f64>::new(1.8, det);
-  exp_f32: ScalarKind::F32, f32, |det| SimdExp::<f32>::new(1.8, det);
-  uniform_f64: ScalarKind::F64, f64, |det| SimdUniform::<f64>::new(-2.0, 3.0, det);
-  uniform_f32: ScalarKind::F32, f32, |det| SimdUniform::<f32>::new(-2.0, 3.0, det);
-  uniform_unit_f64: ScalarKind::F64, f64, |det| SimdUniform::<f64>::new(0.0, 1.0, det);
-  uniform_unit_f32: ScalarKind::F32, f32, |det| SimdUniform::<f32>::new(0.0, 1.0, det);
-  gamma_f64: ScalarKind::F64, f64, |det| SimdGamma::<f64>::new(2.5, 1.5, det);
-  gamma_f32: ScalarKind::F32, f32, |det| SimdGamma::<f32>::new(2.5, 1.5, det);
-  gamma_boost_f64: ScalarKind::F64, f64, |det| SimdGamma::<f64>::new(0.5, 2.0, det);
-  gamma_boost_f32: ScalarKind::F32, f32, |det| SimdGamma::<f32>::new(0.5, 2.0, det);
-  chi_squared_f64: ScalarKind::F64, f64, |det| SimdChiSquared::<f64>::new(6.0, det);
-  chi_squared_f32: ScalarKind::F32, f32, |det| SimdChiSquared::<f32>::new(6.0, det);
-  beta_f64: ScalarKind::F64, f64, |det| SimdBeta::<f64>::new(2.5, 4.0, det);
-  beta_f32: ScalarKind::F32, f32, |det| SimdBeta::<f32>::new(2.5, 4.0, det);
-  lognormal_f64: ScalarKind::F64, f64, |det| SimdLogNormal::<f64>::new(0.2, 0.6, det);
-  lognormal_f32: ScalarKind::F32, f32, |det| SimdLogNormal::<f32>::new(0.2, 0.6, det);
-  student_t_f64: ScalarKind::F64, f64, |det| SimdStudentT::<f64>::new(6.0, det);
-  student_t_f32: ScalarKind::F32, f32, |det| SimdStudentT::<f32>::new(6.0, det);
-  cauchy_f64: ScalarKind::F64, f64, |det| SimdCauchy::<f64>::new(1.0, 0.5, det);
-  cauchy_f32: ScalarKind::F32, f32, |det| SimdCauchy::<f32>::new(1.0, 0.5, det);
-  weibull_f64: ScalarKind::F64, f64, |det| SimdWeibull::<f64>::new(2.0, 1.5, det);
-  weibull_f32: ScalarKind::F32, f32, |det| SimdWeibull::<f32>::new(2.0, 1.5, det);
-  pareto_f64: ScalarKind::F64, f64, |det| SimdPareto::<f64>::new(1.0, 1.16, det);
-  pareto_f32: ScalarKind::F32, f32, |det| SimdPareto::<f32>::new(1.0, 1.16, det);
   alpha_stable_f64: ScalarKind::F64, f64, |det| SimdAlphaStable::<f64>::new(1.7, 0.3, 1.0, 0.0, det);
   alpha_stable_f32: ScalarKind::F32, f32, |det| SimdAlphaStable::<f32>::new(1.7, 0.3, 1.0, 0.0, det);
   alpha_stable_cauchy_f64: ScalarKind::F64, f64, |det| SimdAlphaStable::<f64>::new(1.0, 0.3, 1.0, 0.0, det);
@@ -527,15 +525,13 @@ snapshot_singles! {
   };
   #[cfg(feature = "unstable-dual-stream-rng")]
   exp_dual_f64: ScalarKind::F64, |det| {
-    let d = SimdExpDual::<f64>::new(1.8, det);
-    let mut rng = SimdRng::from_seed(1);
-    move || vec![d.sample(&mut rng).bits()]
+    let mut d = Seeded::<SimdExp<f64>, SimdRngDual>::new(SimdExp::new(1.8), det);
+    move || vec![d.sample().bits()]
   };
   #[cfg(feature = "unstable-dual-stream-rng")]
   exp_dual_f32: ScalarKind::F32, |det| {
-    let d = SimdExpDual::<f32>::new(1.8, det);
-    let mut rng = SimdRng::from_seed(1);
-    move || vec![d.sample(&mut rng).bits()]
+    let mut d = Seeded::<SimdExp<f32>, SimdRngDual>::new(SimdExp::new(1.8), det);
+    move || vec![d.sample().bits()]
   };
 }
 

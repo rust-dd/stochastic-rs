@@ -5,7 +5,7 @@
 //!
 //! ## Choosing a distribution
 //!
-//! The website's distributions catalog groups these 36 types (37 counting
+//! The website's distributions catalog groups these 35 types (36 counting
 //! [`complex::ComplexDistribution`]) by sampling strategy; this section
 //! groups them by modeling role instead — the axis that actually decides
 //! which one to reach for.
@@ -56,8 +56,7 @@
 //! **Positive support** (durations, volatilities, waiting times):
 //! [`exp::SimdExp`] has constant hazard (memoryless); [`weibull::SimdWeibull`]
 //! generalizes it with a hazard that can rise or fall over time, and is
-//! built directly on [`exp::SimdExpZig`] — the same ziggurat primitive
-//! [`exp::SimdExp`] itself wraps.
+//! built directly on [`exp::SimdExp`]'s ziggurat.
 //! [`gamma::SimdGamma`] is the waiting-time-for-`k`-events story and the
 //! internal building block for [`beta::SimdBeta`] (ratio of two Gammas),
 //! [`chi_square::SimdChiSquared`] (`= 2·Gamma(k/2, 1)`),
@@ -193,11 +192,15 @@ pub mod binomial;
 pub mod cauchy;
 pub mod chi_square;
 pub mod complex;
+pub mod dirichlet;
 pub mod exp;
 pub mod gamma;
+pub mod ged;
 pub mod generalized_hyperbolic;
 pub mod generalized_inverse_gauss;
 pub mod geometric;
+pub mod gev;
+pub mod gpd;
 pub mod hypergeometric;
 pub mod inverse_gauss;
 pub mod johnson_su;
@@ -205,21 +208,6 @@ pub mod lognormal;
 pub mod non_central_chi_squared;
 pub mod normal;
 pub mod normal_inverse_gauss;
-
-/// Type alias for [`exp::SimdExp`] backed by the experimental dual-stream
-/// RNG, which unrolls the Ziggurat hot loop 2×.
-#[cfg(feature = "unstable-dual-stream-rng")]
-pub type SimdExpDual<T> = exp::SimdExp<T, stochastic_rs_core::simd_rng_dual::SimdRngDual>;
-
-/// Type alias for [`exp::SimdExpZig`] (the bulk-fill primitive that powers
-/// [`exp::SimdExp`]) backed by the dual-stream RNG.
-#[cfg(feature = "unstable-dual-stream-rng")]
-pub type SimdExpZigDual<T, const N: usize = 64> =
-  exp::SimdExpZig<T, N, stochastic_rs_core::simd_rng_dual::SimdRngDual>;
-pub mod dirichlet;
-pub mod ged;
-pub mod gev;
-pub mod gpd;
 pub mod pareto;
 pub mod poisson;
 pub mod scalar;
@@ -273,33 +261,8 @@ macro_rules! impl_distribution_sampler_int {
   };
 }
 
-macro_rules! impl_distribution_sampler_float_const_n {
-  ($($dist:ty),+ $(,)?) => {
-    $(
-      impl<T: SimdFloatExt, const N: usize> crate::traits::distribution::Sealed for $dist {}
-
-      impl<T: SimdFloatExt, const N: usize> DistributionSampler<T> for $dist {
-        #[inline]
-        fn fill_slice(&mut self, out: &mut [T]) {
-          Self::fill_slice(self, out)
-        }
-
-        #[inline]
-        fn fork(&mut self, stream_idx: u64) -> Self {
-          Self::fork(self, stream_idx)
-        }
-      }
-    )+
-  };
-}
-
 impl_distribution_sampler_float!(
   alpha_stable::SimdAlphaStable<T>,
-  beta::SimdBeta<T>,
-  cauchy::SimdCauchy<T>,
-  chi_square::SimdChiSquared<T>,
-  exp::SimdExp<T>,
-  gamma::SimdGamma<T>,
   ged::SimdGed<T>,
   generalized_hyperbolic::SimdGeneralizedHyperbolic<T>,
   generalized_inverse_gauss::SimdGig<T>,
@@ -307,15 +270,10 @@ impl_distribution_sampler_float!(
   gpd::SimdGpd<T>,
   inverse_gauss::SimdInverseGauss<T>,
   johnson_su::SimdJohnsonSu<T>,
-  lognormal::SimdLogNormal<T>,
   normal_inverse_gauss::SimdNormalInverseGauss<T>,
-  pareto::SimdPareto<T>,
   skew_t::SimdSkewT<T>,
-  studentt::SimdStudentT<T>,
   tempered_stable::SimdTemperedStable<T>,
-  uniform::SimdUniform<T>,
   variance_gamma::SimdVarianceGamma<T>,
-  weibull::SimdWeibull<T>,
 );
 
 impl_distribution_sampler_int!(
@@ -324,5 +282,3 @@ impl_distribution_sampler_int!(
   hypergeometric::SimdHypergeometric<T>,
   poisson::SimdPoisson<T>,
 );
-
-impl_distribution_sampler_float_const_n!(exp::SimdExpZig<T, N>,);

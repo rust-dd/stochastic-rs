@@ -1,11 +1,11 @@
 use ndarray::ArrayView1;
-use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::KolmogorovSmirnovConfig;
 use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::kolmogorov_smirnov_test;
 
 use super::SimdNormal;
+use crate::tests::scalar_ks_best_p;
 use crate::traits::DistributionExt as _;
 use crate::traits::DistributionSampler;
 use crate::traits::SimdDistribution;
@@ -188,19 +188,7 @@ fn the_fourth_and_sixth_moments_match_the_normal() {
 #[test]
 fn scalar_sample_matches_cdf() {
   let d = SimdNormal::<f64>::new(-0.75, 1.35);
-  let best = [2718u64, 999, 42]
-    .into_iter()
-    .map(|seed| {
-      let mut rng = SimdRng::from_seed(seed);
-      let xs = (0..20_000).map(|_| d.sample(&mut rng)).collect::<Vec<_>>();
-      kolmogorov_smirnov_test(
-        ArrayView1::from(&xs),
-        |x| d.cdf(x),
-        KolmogorovSmirnovConfig::default(),
-      )
-      .p_value
-    })
-    .fold(0.0_f64, f64::max);
+  let best = scalar_ks_best_p(&d, |x| d.cdf(x));
   assert!(best > 0.01, "best p = {best}");
 }
 

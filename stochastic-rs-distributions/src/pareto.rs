@@ -4,91 +4,67 @@
 //! f(x)=\alpha x_m^\alpha x^{-(\alpha+1)},\ x\ge x_m
 //! $$
 //!
-use std::cell::Cell;
-use std::cell::UnsafeCell;
+//! Sampling: inversion, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
 
 use rand::Rng;
 use rand::distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::Buffered;
+use crate::seeded::StreamState;
+use crate::source::uniform53;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 const SMALL_PARETO_THRESHOLD: usize = 16;
 
-pub struct SimdPareto<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+/// Pareto (Type I) law with scale `x_m` and tail index `alpha`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdPareto<T> {
   x_m: T,
   alpha: T,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<R>,
-  stream_seed: Cell<u64>,
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdPareto<T, R> {
+impl<T: SimdFloatExt> SimdPareto<T> {
   /// Creates a Pareto (Type I) distribution.
   ///
   /// - `x_m` — minimum/scale x_m > 0 (matches the module header's x_m);
   ///   also the mode.
   /// - `alpha` — tail index α > 0 (matches the module header's α);
   ///   controls which moments exist (mean requires α>1, variance α>2).
-  pub fn new<S: crate::simd_rng::SeedExt>(x_m: T, alpha: T, seed: &S) -> Self {
+  pub fn new(x_m: T, alpha: T) -> Self {
     assert!(
       x_m > T::zero() && alpha > T::zero(),
       "x_m must satisfy `x_m > T::zero() && alpha > T::zero()`, got x_m = {x_m:?}, alpha = {alpha:?}"
     );
-    let stream_seed = seed.next_seed();
-    Self {
-      x_m,
-      alpha,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed: Cell::new(stream_seed),
-    }
+    Self { x_m, alpha }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.x_m,
-      self.alpha,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
+  /// The scale `x_m`.
+  pub fn x_m(&self) -> T {
+    self.x_m
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
+  /// The tail index `α`.
+  pub fn alpha(&self) -> T {
+    self.alpha
+  }
+
+  /// `x_m·(1 − u)^{−1/α}`, the inverse cdf at `u`; `1 − u` is held at the smallest positive value.
   #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
+  fn invert(&self, u: T, neg_inv_alpha: T) -> T {
+    let base = (T::one() - u).max(T::min_positive_val());
+    self.x_m * (base.ln() * neg_inv_alpha).exp()
   }
 
-  /// Fills `out` using the internal SIMD RNG stream — the only stream this
-  /// sampler draws from (see the crate-level RNG policy).
-  pub fn fill_slice(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
+  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [T]) {
     if out.len() < SMALL_PARETO_THRESHOLD {
       let neg_inv_alpha = -T::one() / self.alpha;
-      let eps = T::min_positive_val();
       for x in out.iter_mut() {
-        let u = T::sample_uniform_simd(rng);
-        let base = (T::one() - u).max(eps);
-        *x = self.x_m * (base.ln() * neg_inv_alpha).exp();
+        *x = self.invert(T::sample_uniform_simd(rng), neg_inv_alpha);
       }
       return;
     }
@@ -114,37 +90,52 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdPareto<T, R> {
     }
   }
 
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    let u = T::from_f64_fast(uniform53(rng.next_u64()));
+    self.invert(u, -T::one() / self.alpha)
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdPareto<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.x_m, self.alpha, &Unseeded)
+impl<T: SimdFloatExt> Sealed for SimdPareto<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdPareto<T> {
+  type State<R: SimdRngExt> = StreamState<T, R, 16>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (StreamState<T, R, 16>, u64) {
+    let stream_seed = seed.next_seed();
+    (
+      StreamState {
+        rng: R::from_seed(stream_seed),
+        buf: Buffered::new(),
+      },
+      stream_seed,
+    )
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdPareto<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction. Use `Deterministic`
-  /// in the constructor for reproducibility.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
+impl<T: SimdFloatExt> SimdKernel for SimdPareto<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+    self.fill_parts(&mut state.rng, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>) -> T {
+    let StreamState { rng, buf } = state;
+    buf.pop(|b| self.fill_parts(rng, b))
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdPareto<T, R> {
+impl<T: SimdFloatExt> Distribution<T> for SimdPareto<T> {
+  /// The inverse cdf at one 53-bit uniform from the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdPareto<T> {
   fn pdf(&self, x: f64) -> f64 {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
@@ -243,6 +234,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdPare
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::tests::scalar_ks_best_p;
   use crate::traits::DistributionExt;
 
   /// Backs the doc comments on `mean`/`variance`/`skewness`/`kurtosis`:
@@ -251,7 +243,7 @@ mod tests {
   /// thresholds — mean is the only finite moment it has.
   #[test]
   fn pareto_80_20_moments_match_documented_thresholds() {
-    let p = SimdPareto::<f64>::new(1.0, 1.16, &Unseeded);
+    let p = SimdPareto::<f64>::new(1.0, 1.16);
     assert!(
       p.mean().is_finite(),
       "alpha=1.16 > 1, mean should be finite"
@@ -268,15 +260,23 @@ mod tests {
   /// Above every threshold, all four moments must be finite real numbers.
   #[test]
   fn pareto_high_alpha_moments_are_all_finite() {
-    let p = SimdPareto::<f64>::new(1.0, 5.0, &Unseeded);
+    let p = SimdPareto::<f64>::new(1.0, 5.0);
     assert!(p.mean().is_finite());
     assert!(p.variance().is_finite());
     assert!(p.skewness().is_finite());
     assert!(p.kurtosis().is_finite());
   }
+
+  /// The honest `Distribution` draws from the caller's rng and agrees with the cdf.
+  #[test]
+  fn scalar_sample_matches_cdf() {
+    let d = SimdPareto::<f64>::new(1.0, 1.16);
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+    assert!(best > 0.01, "best p = {best}");
+  }
 }
 
-py_distribution_legacy!(PyPareto, SimdPareto,
+py_distribution!(PyPareto, SimdPareto,
   sig: (x_m, alpha, seed=None, dtype=None),
   params: (x_m: f64, alpha: f64)
 );

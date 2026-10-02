@@ -4,84 +4,81 @@
 //! X\sim\chi^2_\nu,\quad f(x)=\frac{1}{2^{\nu/2}\Gamma(\nu/2)}x^{\nu/2-1}e^{-x/2}
 //! $$
 //!
-use std::cell::Cell;
+//! Sampling: `Gamma(k/2, 2)` by Marsaglia, G., Tsang, W.W. (2000), "A simple method for generating gamma variables", *ACM TOMS* 26(3), 363-372, DOI 10.1145/358407.358414.
 
 use rand::Rng;
 use rand::distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
+use super::gamma::GammaState;
 use super::gamma::SimdGamma;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
-pub struct SimdChiSquared<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+/// Chi-squared law with `k` degrees of freedom: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdChiSquared<T> {
   df: T,
-  gamma: SimdGamma<T, R>,
-  stream_seed: Cell<u64>,
+  gamma: SimdGamma<T>,
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdChiSquared<T, R> {
+impl<T: SimdFloatExt> SimdChiSquared<T> {
   /// Creates a chi-squared distribution, reparametrized internally as
   /// `Gamma(k/2, scale=2)` (a χ²_k variate is exactly `2·Gamma(k/2, 1)`).
   ///
   /// - `k` — degrees of freedom (the module header's own ν).
-  ///
-  /// RNGs come from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  pub fn new<S: crate::simd_rng::SeedExt>(k: T, seed: &S) -> Self {
-    let gamma = SimdGamma::<T, R>::new(k * T::from(0.5).unwrap(), T::from(2.0).unwrap(), seed);
-    // No own engine to seed — reuse gamma's already-captured stream_seed as
-    // this sampler's fork anchor (see SimdBeta::new for the same pattern).
-    // Its own independent `Cell`, so this fork cursor advances on its own.
-    let stream_seed = Cell::new(gamma.stream_seed.get());
+  pub fn new(k: T) -> Self {
     Self {
       df: k,
-      gamma,
-      stream_seed,
+      gamma: SimdGamma::new(k * T::from(0.5).unwrap(), T::from(2.0).unwrap()),
     }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(self.df, &crate::simd_rng::Deterministic::new(child_seed))
+  /// The degrees of freedom `k`.
+  pub fn k(&self) -> T {
+    self.df
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.gamma.draw_with(rng)
+  }
+}
+
+impl<T: SimdFloatExt> Sealed for SimdChiSquared<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdChiSquared<T> {
+  type State<R: SimdRngExt> = GammaState<T, R>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (GammaState<T, R>, u64) {
+    self.gamma.init::<R, S>(seed)
+  }
+}
+
+impl<T: SimdFloatExt> SimdKernel for SimdChiSquared<T> {
+  type Item = T;
+
   #[inline]
-  pub fn sample_fast(&self) -> T {
-    self.gamma.sample_fast()
+  fn fill<R: SimdRngExt>(&self, state: &mut GammaState<T, R>, out: &mut [T]) {
+    self.gamma.fill(state, out);
   }
 
-  /// Fills `out` using the internal SIMD RNG stream — the only stream this
-  /// sampler draws from (see the crate-level RNG policy).
-  pub fn fill_slice(&self, out: &mut [T]) {
-    self.gamma.fill_slice(out);
-  }
-}
-
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdChiSquared<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.df, &Unseeded)
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut GammaState<T, R>) -> T {
+    self.gamma.next(state)
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdChiSquared<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction. Use `Deterministic`
-  /// in the constructor for reproducibility.
-  fn sample<Rr: Rng + ?Sized>(&self, rng: &mut Rr) -> T {
-    self.gamma.sample(rng)
+impl<T: SimdFloatExt> Distribution<T> for SimdChiSquared<T> {
+  /// One scalar `Gamma(k/2, 2)` draw on the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdChiSquared<T, R> {
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdChiSquared<T> {
   fn pdf(&self, x: f64) -> f64 {
     if x <= 0.0 {
       return 0.0;
@@ -193,7 +190,22 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdChiS
   }
 }
 
-py_distribution_legacy!(PyChiSquared, SimdChiSquared,
+py_distribution!(PyChiSquared, SimdChiSquared,
   sig: (k, seed=None, dtype=None),
   params: (k: f64)
 );
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::tests::scalar_ks_best_p;
+  use crate::traits::DistributionExt as _;
+
+  /// The honest `Distribution` draws from the caller's rng and agrees with the cdf.
+  #[test]
+  fn scalar_sample_matches_cdf() {
+    let d = SimdChiSquared::<f64>::new(6.0);
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+    assert!(best > 0.01, "best p = {best}");
+  }
+}

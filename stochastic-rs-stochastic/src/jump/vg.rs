@@ -202,7 +202,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       mu: self.mu,
       sigma: self.sigma,
       x0: self.x0.unwrap_or(T::zero()),
-      gamma: SimdGamma::<T>::new(dt / self.nu, self.nu, &self.seed),
+      gamma: SimdGamma::<T>::new(dt / self.nu, self.nu).seeded(&self.seed),
       normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
     }
   }
@@ -247,7 +247,7 @@ pub struct VgSampler<T: FloatExt> {
   mu: T,
   sigma: T,
   x0: T,
-  gamma: SimdGamma<T>,
+  gamma: Seeded<SimdGamma<T>>,
   normal: Seeded<SimdNormal<T>>,
 }
 

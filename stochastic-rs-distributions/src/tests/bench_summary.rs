@@ -129,113 +129,105 @@ fn bench_summary_table() {
   }
 
   {
-    let mut rng = rand::rng();
-    let simd = SimdLogNormal::<f32>::new(0.2, 0.8, &Unseeded);
+    let mut simd = SimdLogNormal::<f32>::new(0.2, 0.8).seeded(&Unseeded);
     let mut rng2 = rand::rng();
     let rd = rand_distr::LogNormal::<f32>::new(0.2, 0.8).unwrap();
     time_f32(
       &mut rows,
       n_f,
       "LogNormal",
-      || simd.sample(&mut rng),
+      || simd.sample(),
       || rd.sample(&mut rng2),
     );
   }
 
   {
-    let mut rng = rand::rng();
-    let simd = SimdExp::<f32>::new(1.5, &Unseeded);
+    let mut simd = SimdExp::<f32>::new(1.5).seeded(&Unseeded);
     let mut rng2 = rand::rng();
     let rd = rand_distr::Exp::<f32>::new(1.5).unwrap();
     time_f32(
       &mut rows,
       n_f,
       "Exp",
-      || simd.sample(&mut rng),
+      || simd.sample(),
       || rd.sample(&mut rng2),
     );
   }
 
   {
-    let mut rng = rand::rng();
-    let simd = SimdCauchy::<f32>::new(0.0, 1.0, &Unseeded);
+    let mut simd = SimdCauchy::<f32>::new(0.0, 1.0).seeded(&Unseeded);
     let mut rng2 = rand::rng();
     let rd = rand_distr::Cauchy::<f32>::new(0.0, 1.0).unwrap();
     time_f32(
       &mut rows,
       n_f,
       "Cauchy",
-      || simd.sample(&mut rng),
+      || simd.sample(),
       || rd.sample(&mut rng2),
     );
   }
 
   {
-    let mut rng = rand::rng();
-    let simd = SimdGamma::<f32>::new(2.0, 2.0, &Unseeded);
+    let mut simd = SimdGamma::<f32>::new(2.0, 2.0).seeded(&Unseeded);
     let mut rng2 = rand::rng();
     let rd = rand_distr::Gamma::<f32>::new(2.0, 2.0).unwrap();
     time_f32(
       &mut rows,
       n_f,
       "Gamma",
-      || simd.sample(&mut rng),
+      || simd.sample(),
       || rd.sample(&mut rng2),
     );
   }
 
   {
-    let mut rng = rand::rng();
-    let simd = SimdWeibull::<f32>::new(1.0, 1.5, &Unseeded);
+    let mut simd = SimdWeibull::<f32>::new(1.0, 1.5).seeded(&Unseeded);
     let mut rng2 = rand::rng();
     let rd = rand_distr::Weibull::<f32>::new(1.0, 1.5).unwrap();
     time_f32(
       &mut rows,
       n_f,
       "Weibull",
-      || simd.sample(&mut rng),
+      || simd.sample(),
       || rd.sample(&mut rng2),
     );
   }
 
   {
-    let mut rng = rand::rng();
-    let simd = SimdBeta::<f32>::new(2.0, 2.0, &Unseeded);
+    let mut simd = SimdBeta::<f32>::new(2.0, 2.0).seeded(&Unseeded);
     let mut rng2 = rand::rng();
     let rd = rand_distr::Beta::<f32>::new(2.0, 2.0).unwrap();
     time_f32(
       &mut rows,
       n_f,
       "Beta",
-      || simd.sample(&mut rng),
+      || simd.sample(),
       || rd.sample(&mut rng2),
     );
   }
 
   {
-    let mut rng = rand::rng();
-    let simd = SimdChiSquared::<f32>::new(5.0, &Unseeded);
+    let mut simd = SimdChiSquared::<f32>::new(5.0).seeded(&Unseeded);
     let mut rng2 = rand::rng();
     let rd = rand_distr::ChiSquared::<f32>::new(5.0).unwrap();
     time_f32(
       &mut rows,
       n_f,
       "ChiSquared",
-      || simd.sample(&mut rng),
+      || simd.sample(),
       || rd.sample(&mut rng2),
     );
   }
 
   {
-    let mut rng = rand::rng();
-    let simd = SimdStudentT::<f32>::new(5.0, &Unseeded);
+    let mut simd = SimdStudentT::<f32>::new(5.0).seeded(&Unseeded);
     let mut rng2 = rand::rng();
     let rd = rand_distr::StudentT::<f32>::new(5.0).unwrap();
     time_f32(
       &mut rows,
       n_f,
       "StudentT",
-      || simd.sample(&mut rng),
+      || simd.sample(),
       || rd.sample(&mut rng2),
     );
   }
@@ -256,7 +248,7 @@ fn bench_summary_table() {
 
   #[allow(unused)]
   {
-    let _ = SimdPareto::<f64>::new(1.0, 1.5, &Unseeded);
+    let _ = SimdPareto::<f64>::new(1.0, 1.5);
   }
 
   println!(

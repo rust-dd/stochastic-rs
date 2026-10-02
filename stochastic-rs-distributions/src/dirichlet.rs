@@ -20,17 +20,23 @@
 //! `DistributionExt` `pdf(f64) -> f64` signature does not apply; we
 //! expose `log_pdf(&[f64]) -> f64` as a free method on the struct.
 
+use std::cell::UnsafeCell;
+
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::gamma::GammaState;
 use crate::gamma::SimdGamma;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
 use crate::traits::SimdFloatExt;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 pub struct SimdDirichlet<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   alpha: Vec<T>,
-  gammas: Vec<SimdGamma<T, R>>,
+  gammas: Vec<SimdGamma<T>>,
+  states: UnsafeCell<Vec<GammaState<T, R>>>,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdDirichlet<T, R> {
@@ -45,9 +51,14 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdDirichlet<T, R> {
     }
     let gammas = alpha
       .iter()
-      .map(|&a| SimdGamma::<T, R>::new(a, T::one(), seed))
-      .collect();
-    Self { alpha, gammas }
+      .map(|&a| SimdGamma::<T>::new(a, T::one()))
+      .collect::<Vec<_>>();
+    let states = UnsafeCell::new(gammas.iter().map(|g| g.init::<R, S>(seed).0).collect());
+    Self {
+      alpha,
+      gammas,
+      states,
+    }
   }
 
   pub fn dim(&self) -> usize {
@@ -63,9 +74,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdDirichlet<T, R> {
       self.alpha.len(),
       "out and α must have the same dim"
     );
+    let states = unsafe { &mut *self.states.get() };
     let mut sum = T::zero();
-    for (x, g) in out.iter_mut().zip(self.gammas.iter()) {
-      *x = g.sample_fast();
+    for ((x, g), st) in out.iter_mut().zip(&self.gammas).zip(states.iter_mut()) {
+      *x = g.next(st);
       sum += *x;
     }
     if sum > T::zero() {
@@ -74,7 +86,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdDirichlet<T, R> {
       }
       return;
     }
-    self.simplex_from_logs(out);
+    self.simplex_from_logs(states, out);
   }
 
   /// The simplex point recovered from log draws, for the case where every
@@ -88,9 +100,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdDirichlet<T, R> {
   /// whole vector came back NaN.
   #[cold]
   #[inline(never)]
-  fn simplex_from_logs(&self, out: &mut [T]) {
-    for (x, g) in out.iter_mut().zip(self.gammas.iter()) {
-      *x = g.sample_log_fast();
+  fn simplex_from_logs(&self, states: &mut [GammaState<T, R>], out: &mut [T]) {
+    for ((x, g), st) in out.iter_mut().zip(&self.gammas).zip(states.iter_mut()) {
+      *x = g.next_log(st);
     }
     let peak = out
       .iter()

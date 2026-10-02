@@ -16,6 +16,7 @@ use std::cell::UnsafeCell;
 use stochastic_rs_core::simd_rng::SeedExt;
 
 use crate::chi_square::SimdChiSquared;
+use crate::gamma::GammaState;
 use crate::gamma::SimdGamma;
 use crate::normal::SimdNormal;
 use crate::poisson::SimdPoisson;
@@ -44,7 +45,7 @@ fn poisson_mixture_sample<T: SimdFloatExt, S: SeedExt>(df: T, lambda: T, seed: &
     0
   };
   let shape = df / two + T::from_f64_fast(mixture_jumps as f64);
-  SimdGamma::<T>::new(shape, two, seed).sample_fast()
+  SimdGamma::<T>::new(shape, two).seeded(seed).sample()
 }
 
 /// Stateful noncentral chi-squared sampler: `df` is fixed at construction,
@@ -66,7 +67,8 @@ fn poisson_mixture_sample<T: SimdFloatExt, S: SeedExt>(df: T, lambda: T, seed: &
 pub struct SimdNonCentralChiSquared<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   df: T,
   normal: UnsafeCell<StreamState<T, R, 64>>,
-  chisq: Option<SimdChiSquared<T, R>>,
+  chisq: Option<SimdChiSquared<T>>,
+  chisq_state: UnsafeCell<Option<GammaState<T, R>>>,
   stream_seed: Cell<u64>,
 }
 
@@ -84,7 +86,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNonCentralChiSquared<T, R> {
   pub fn new<S: SeedExt>(df: T, seed: &S) -> Self {
     let rem = df - T::one();
     let (normal, basis) = SimdNormal::<T>::standard().init::<R, S>(seed);
-    let chisq = (rem > T::from_f64_fast(1e-10)).then(|| SimdChiSquared::<T, R>::new(rem, seed));
+    let chisq = (rem > T::from_f64_fast(1e-10)).then(|| SimdChiSquared::<T>::new(rem));
+    let chisq_state = UnsafeCell::new(chisq.map(|c| c.init::<R, S>(seed).0));
     // No own engine to seed for the df<1 Poisson-mixture branch — reuse
     // normal's already-captured stream_seed as this sampler's fork anchor
     // (see SimdChiSquared::new for the same pattern), so repeated df<1
@@ -94,6 +97,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNonCentralChiSquared<T, R> {
       df,
       normal: UnsafeCell::new(normal),
       chisq,
+      chisq_state,
       stream_seed,
     }
   }
@@ -123,9 +127,9 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNonCentralChiSquared<T, R> {
     }
     let z = SimdNormal::<T>::standard().next(unsafe { &mut *self.normal.get() }) + ncp.sqrt();
     let sq = z * z;
-    match &self.chisq {
-      Some(chisq) => chisq.sample_fast() + sq,
-      None => sq,
+    match (&self.chisq, unsafe { &mut *self.chisq_state.get() }) {
+      (Some(chisq), Some(state)) => chisq.next(state) + sq,
+      _ => sq,
     }
   }
 }

@@ -28,12 +28,12 @@ Three patterns, in order of preference:
 
 | Pattern         | When to use                                             | Reference impl |
 |-----------------|---------------------------------------------------------|----------------|
-| Transformation  | Closed-form `F^{-1}(U)` exists and is fast to evaluate. | `SimdExp` (`exp.rs`), `SimdLogNormal` |
-| Ziggurat        | Density is unimodal & smooth; need throughput.          | `SimdNormal`, `SimdExpZig` (`exp.rs`) |
+| Transformation  | Closed-form `F^{-1}(U)` exists and is fast to evaluate. | `SimdPareto` (`pareto.rs`), `SimdLogNormal` |
+| Ziggurat        | Density is unimodal & smooth; need throughput.          | `SimdNormal`, `SimdExp` (`exp.rs`) |
 | Rejection       | Density has heavy tails or a kink; need correctness.     | `SimdGamma`, `SimdBinomial` (BTRS), `SimdTruncated*` |
 | Subordination   | The law is a normal mean-variance mixture.               | `SimdNormalInverseGauss` (over `SimdInverseGauss`) |
 
-Note the naming: the exponential is `SimdExp` / `SimdExpZig` in
+Note the naming: the exponential is `SimdExp` in
 `exp.rs`, not `SimdExponential`; the Normal-Inverse-Gaussian is
 `SimdNormalInverseGauss` in `normal_inverse_gauss.rs`, not `SimdNig`.
 There is no `SimdInverseGamma` and no `SimdCgmy` — CGMY exists in this
@@ -300,8 +300,8 @@ Parameters only, no interior mutability — that is what makes it `Sync`.
   the **only** types eligible for a process's `D: Distribution<T> +
   Send + Sync` jump slot, because `Simd*` types own an `UnsafeCell`
   buffer and are `!Sync`. See `dev-rules` §7a.
-- `SimdExp` / `SimdExpZig` (`exp.rs`) — transformation and ziggurat
-  variants of the same law, side by side.
+- `SimdExp` (`exp.rs`) — the exponential ziggurat, its state a
+  `StreamState<T, R, 64>` like `SimdNormal`'s.
 - `SimdGamma` (`gamma.rs`) — rejection (Marsaglia-Tsang) with a
   transformation fallback for shape ≤ 1.
 - `SimdNormalInverseGauss` (`normal_inverse_gauss.rs`) — subordination:

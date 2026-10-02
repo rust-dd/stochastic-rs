@@ -232,7 +232,7 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     || rd_normal.sample(&mut r2),
   );
 
-  let d_cauchy = SimdCauchy::<f32>::new(0.0, 1.0, &Unseeded);
+  let mut d_cauchy = SimdCauchy::<f32>::new(0.0, 1.0).seeded(&Unseeded);
   let rd_cauchy = rand_distr::Cauchy::<f32>::new(0.0, 1.0).unwrap();
   add_continuous_pair(
     &mut plot,
@@ -241,11 +241,11 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     (-10.0, 10.0),
     100,
     n,
-    || d_cauchy.sample(&mut r1),
+    || d_cauchy.sample(),
     || rd_cauchy.sample(&mut r2),
   );
 
-  let d_lognormal = SimdLogNormal::<f32>::new(0.0, 1.0, &Unseeded);
+  let mut d_lognormal = SimdLogNormal::<f32>::new(0.0, 1.0).seeded(&Unseeded);
   let rd_lognormal = rand_distr::LogNormal::<f32>::new(0.0, 1.0).unwrap();
   add_continuous_pair(
     &mut plot,
@@ -254,11 +254,11 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     (0.0, 8.0),
     100,
     n,
-    || d_lognormal.sample(&mut r1),
+    || d_lognormal.sample(),
     || rd_lognormal.sample(&mut r2),
   );
 
-  let d_pareto = SimdPareto::<f32>::new(1.0, 1.5, &Unseeded);
+  let mut d_pareto = SimdPareto::<f32>::new(1.0, 1.5).seeded(&Unseeded);
   let rd_pareto = rand_distr::Pareto::<f32>::new(1.0, 1.5).unwrap();
   add_continuous_pair(
     &mut plot,
@@ -267,11 +267,11 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     (0.0, 10.0),
     100,
     n,
-    || d_pareto.sample(&mut r1),
+    || d_pareto.sample(),
     || rd_pareto.sample(&mut r2),
   );
 
-  let d_weibull = SimdWeibull::<f32>::new(1.0, 1.5, &Unseeded);
+  let mut d_weibull = SimdWeibull::<f32>::new(1.0, 1.5).seeded(&Unseeded);
   let rd_weibull = rand_distr::Weibull::<f32>::new(1.0, 1.5).unwrap();
   add_continuous_pair(
     &mut plot,
@@ -280,11 +280,11 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     (0.0, 3.0),
     100,
     n,
-    || d_weibull.sample(&mut r1),
+    || d_weibull.sample(),
     || rd_weibull.sample(&mut r2),
   );
 
-  let d_gamma = SimdGamma::<f32>::new(2.0, 2.0, &Unseeded);
+  let mut d_gamma = SimdGamma::<f32>::new(2.0, 2.0).seeded(&Unseeded);
   let rd_gamma = rand_distr::Gamma::<f32>::new(2.0, 2.0).unwrap();
   add_continuous_pair(
     &mut plot,
@@ -293,11 +293,11 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     (0.0, 20.0),
     120,
     n,
-    || d_gamma.sample(&mut r1),
+    || d_gamma.sample(),
     || rd_gamma.sample(&mut r2),
   );
 
-  let d_beta = SimdBeta::<f32>::new(2.0, 2.0, &Unseeded);
+  let mut d_beta = SimdBeta::<f32>::new(2.0, 2.0).seeded(&Unseeded);
   let rd_beta = rand_distr::Beta::<f32>::new(2.0, 2.0).unwrap();
   add_continuous_pair(
     &mut plot,
@@ -306,7 +306,7 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     (0.0, 1.0),
     100,
     n,
-    || d_beta.sample(&mut r1),
+    || d_beta.sample(),
     || rd_beta.sample(&mut r2),
   );
 
@@ -337,9 +337,8 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     || rd_nig.sample(&mut r2),
   );
 
-  let d_studentt = SimdStudentT::<f32>::new(5.0, &Unseeded);
+  let mut d_studentt = SimdStudentT::<f32>::new(5.0).seeded(&Unseeded);
   let rd_studentt = rand_distr::StudentT::<f32>::new(5.0).unwrap();
-  let mut r1_t = rng();
   add_continuous_pair(
     &mut plot,
     subplot_axes(3, 2),
@@ -347,7 +346,7 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     (-5.0, 5.0),
     120,
     n,
-    || d_studentt.sample(&mut r1_t),
+    || d_studentt.sample(),
     || rd_studentt.sample(&mut r2),
   );
 
@@ -400,7 +399,7 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     || rd_poisson.sample(&mut r2) as u32,
   );
 
-  let d_uniform = SimdUniform::<f32>::new(0.0, 1.0, &Unseeded);
+  let mut d_uniform = SimdUniform::<f32>::new(0.0, 1.0).seeded(&Unseeded);
   let rd_uniform = rand_distr::Uniform::<f32>::new(0.0, 1.0).unwrap();
   add_continuous_pair(
     &mut plot,
@@ -409,11 +408,11 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     (0.0, 1.0),
     100,
     n,
-    || d_uniform.sample(&mut r1),
+    || d_uniform.sample(),
     || rd_uniform.sample(&mut r2),
   );
 
-  let d_exp = SimdExp::<f32>::new(1.5, &Unseeded);
+  let mut d_exp = SimdExp::<f32>::new(1.5).seeded(&Unseeded);
   let rd_exp = rand_distr::Exp::<f32>::new(1.5).unwrap();
   add_continuous_pair(
     &mut plot,
@@ -422,11 +421,11 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     (0.0, 4.0),
     100,
     n,
-    || d_exp.sample(&mut r1),
+    || d_exp.sample(),
     || rd_exp.sample(&mut r2),
   );
 
-  let d_chisq = SimdChiSquared::<f32>::new(5.0, &Unseeded);
+  let mut d_chisq = SimdChiSquared::<f32>::new(5.0).seeded(&Unseeded);
   let rd_chisq = rand_distr::ChiSquared::<f32>::new(5.0).unwrap();
   add_continuous_pair(
     &mut plot,
@@ -435,7 +434,7 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     (0.0, 20.0),
     100,
     n,
-    || d_chisq.sample(&mut r1),
+    || d_chisq.sample(),
     || rd_chisq.sample(&mut r2),
   );
 

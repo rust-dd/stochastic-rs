@@ -37,11 +37,14 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
+use crate::gamma::GammaState;
 use crate::gamma::SimdGamma;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
 use crate::traits::DistributionExt;
 use crate::traits::SimdFloatExt;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 const SMALL_GED_THRESHOLD: usize = 16;
 
@@ -49,7 +52,8 @@ pub struct SimdGed<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   mu: T,
   alpha: T,
   beta: T,
-  gamma: SimdGamma<T, R>,
+  gamma: SimdGamma<T>,
+  gamma_state: UnsafeCell<GammaState<T, R>>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
   simd_rng: UnsafeCell<R>,
@@ -70,13 +74,15 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGed<T, R> {
     assert!(alpha > T::zero(), "α must be > 0");
     assert!(beta > T::zero(), "β must be > 0");
     let inv_beta = T::one() / beta;
-    let gamma = SimdGamma::<T, R>::new(inv_beta, T::one(), seed);
+    let gamma = SimdGamma::<T>::new(inv_beta, T::one());
+    let gamma_state = UnsafeCell::new(gamma.init::<R, S>(seed).0);
     let stream_seed = seed.next_seed();
     Self {
       mu,
       alpha,
       beta,
       gamma,
+      gamma_state,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
       simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
@@ -122,10 +128,11 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGed<T, R> {
   /// from the internal SIMD RNG's integer stream.
   pub fn fill_slice(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
+    let gamma_state = unsafe { &mut *self.gamma_state.get() };
     let inv_beta = T::one() / self.beta;
     if out.len() < SMALL_GED_THRESHOLD {
       for x in out.iter_mut() {
-        let mag = self.gamma.sample_fast().powf(inv_beta);
+        let mag = self.gamma.next(gamma_state).powf(inv_beta);
         let signed = if rng.next_i32() >= 0 { mag } else { -mag };
         *x = self.alpha * signed + self.mu;
       }
@@ -135,7 +142,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGed<T, R> {
     let mut ybuf = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.gamma.fill_slice(&mut ybuf);
+      self.gamma.fill(gamma_state, &mut ybuf);
       for (sub, y8) in chunk
         .as_chunks_mut::<8>()
         .0
@@ -151,7 +158,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGed<T, R> {
       }
     }
     for x in rem.iter_mut() {
-      let mag = self.gamma.sample_fast().powf(inv_beta);
+      let mag = self.gamma.next(gamma_state).powf(inv_beta);
       let signed = if rng.next_i32() >= 0 { mag } else { -mag };
       *x = self.alpha * signed + self.mu;
     }

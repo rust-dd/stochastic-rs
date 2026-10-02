@@ -98,24 +98,15 @@
 //!
 //! ## Coverage — every type in this crate, or its omission reason
 //!
-//! This crate exposes 32 public sampler structs (grep of `pub struct` +
+//! This crate exposes 31 public sampler structs (grep of `pub struct` +
 //! the `DistributionExt`/`DistributionSampler` impl blocks across
-//! `src/`); the umbrella crate-doc's own "29 types (30 counting
-//! `ComplexDistribution`)" tally and this task's original "31 types"
-//! framing both undercount by treating [`SimdExpZig`] as an internal
-//! primitive of [`SimdExp`] rather than its own catalog entry — it *is*
-//! a separate public struct with its own independent `DistributionExt`
-//! impl (confirmed by reading the source, not just grepping for
-//! same-line `impl ... for`, since this one's `for` wraps to the next
-//! line), so it gets its own row below rather than being silently
-//! folded into `SimdExp`'s.
+//! `src/`).
 //!
 //! | Type | Tested via | Notes |
 //! |------|-----------|-------|
 //! | `SimdNormal` | KS, own cdf | `src/normal/tests.rs` (refactored — not re-tested in `gof_continuous.rs` to avoid duplicate coverage) |
 //! | `SimdUniform` | KS, own cdf | `gof_continuous.rs` |
 //! | `SimdExp` | KS, own cdf | `src/exp/tests.rs` (refactored) |
-//! | `SimdExpZig` | KS, own cdf | `src/exp/tests.rs` (refactored); bit-identical to `SimdExp`'s path (delegation), tested separately anyway per "silent omission is not fine" |
 //! | `SimdGamma` | KS, own cdf | `src/gamma.rs` (refactored), incl. the `alpha < 1` boosted branch |
 //! | `SimdLogNormal` | KS, own cdf | `gof_continuous.rs` |
 //! | `SimdBeta` | KS, own cdf | `gof_continuous.rs` |
@@ -145,7 +136,7 @@
 //! | `SimdDirichlet` | **omitted** | simplex-valued (vector output), no `DistributionExt`; own `pdf`/`log_pdf` take a `&[T]`, not the scalar shape this suite's tests assume |
 //! | `SimdWishart` | **omitted** | SPD-matrix-valued, no `DistributionExt`; same reasoning as `SimdDirichlet` one dimension up |
 //!
-//! 26 of 32 types get a real KS-or-chi-square-against-cdf test (24 own
+//! 25 of 31 types get a real KS-or-chi-square-against-cdf test (23 own
 //! cdf + 2 borrowed); the remaining 6 are named above with the specific
 //! reason each one cannot be tested this way — none are silently
 //! skipped.

@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_distributions::uniform::SimdUniform;
@@ -192,8 +195,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       dt,
       c: C,
       b_t,
-      uniform: SimdUniform::<T>::new(T::zero(), T::one(), &self.seed),
-      exp: SimdExp::<T>::new(T::one(), &self.seed),
+      uniform: SimdUniform::<T>::new(T::zero(), T::one()).seeded(&self.seed),
+      exp: SimdExp::<T>::new(T::one()).seeded(&self.seed),
       seed: self.seed.derive(),
     }
   }
@@ -282,8 +285,8 @@ pub struct RdtsSampler<T: FloatExt, S: SeedExt> {
   dt: T,
   c: T,
   b_t: T,
-  uniform: SimdUniform<T>,
-  exp: SimdExp<T>,
+  uniform: Seeded<SimdUniform<T>>,
+  exp: Seeded<SimdExp<T>>,
   seed: S,
 }
 
@@ -303,7 +306,7 @@ impl<T: FloatExt, S: SeedExt> RdtsSampler<T, S> {
 
     let mut U = Array1::<T>::zeros(size);
     self.uniform.fill_slice(U.as_slice_mut().unwrap());
-    let E = Array1::from_shape_fn(size, |_| self.exp.sample_fast());
+    let E = Array1::from_shape_fn(size, |_| self.exp.sample());
     let P = Poisson::new(T::one(), Some(size), None, self.seed.derive()).sample();
     let mut tau_raw = Array1::<T>::zeros(size);
     self.uniform.fill_slice(tau_raw.as_slice_mut().unwrap());
@@ -312,7 +315,7 @@ impl<T: FloatExt, S: SeedExt> RdtsSampler<T, S> {
     let mut jump_size = Array1::<T>::zeros(size);
 
     for j in 1..size {
-      let v_j = if self.uniform.sample_fast() < T::from_f64_fast(0.5) {
+      let v_j = if self.uniform.sample() < T::from_f64_fast(0.5) {
         self.lambda_plus
       } else {
         -self.lambda_minus

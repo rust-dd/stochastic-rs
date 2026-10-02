@@ -196,10 +196,10 @@ impl TMultivariate {
     let g = Array2::from_shape_fn((n, d), |_| normal.sample());
     let z = g.dot(&l.t());
     // W ~ χ²_ν / ν, independently per row.
-    let chi = SimdChiSquared::<f64>::new(self.nu, seed);
+    let mut chi = SimdChiSquared::<f64>::new(self.nu).seeded(seed);
     let mut u = Array2::<f64>::zeros((n, d));
     for r in 0..n {
-      let w_raw = chi.sample_fast();
+      let w_raw = chi.sample();
       let w = (w_raw / self.nu).max(1e-300);
       let scale = 1.0 / w.sqrt();
       for c in 0..d {
@@ -480,12 +480,12 @@ impl MultivariateExt for TMultivariate {
     let m = 4000usize;
     let mut out = Array1::<f64>::zeros(n);
     let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Unseeded);
-    let chi = SimdChiSquared::<f64>::new(self.nu, &Unseeded);
+    let mut chi = SimdChiSquared::<f64>::new(self.nu).seeded(&Unseeded);
     let g = Array2::from_shape_fn((m, self.dim), |_| normal.sample());
     let y = g.dot(&l.t());
     let mut w_buf = vec![0.0f64; m];
     for v in w_buf.iter_mut() {
-      let w = (chi.sample_fast() / self.nu).max(1e-300);
+      let w = (chi.sample() / self.nu).max(1e-300);
       *v = 1.0 / w.sqrt();
     }
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {

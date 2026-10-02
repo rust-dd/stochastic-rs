@@ -6,7 +6,6 @@
 //!
 
 use ndarray::Array1;
-use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::SimdDistribution;
@@ -432,11 +431,12 @@ impl<T: FloatExt, S: SeedExt> DuffieKanJumpExpSampler<T, S> {
     r[0] = self.r0;
     x[0] = self.x0;
 
-    let exp_dist = SimdExp::<T>::new(self.lambda, &self.seed);
+    let mut exp_dist = SimdExp::<T>::new(self.lambda).seeded(&self.seed);
     let mut jump_dist = SimdNormal::<T>::new(T::zero(), self.jump_scale).seeded(&self.seed);
 
-    let mut rng = self.seed.rng();
-    let mut next_jump_time = exp_dist.sample(&mut rng);
+    // A draw no engine reads; skipping it would move every stream seeded after this one.
+    self.seed.next_seed();
+    let mut next_jump_time = exp_dist.sample();
 
     for i in 1..self.n {
       let current_time = T::from_usize_(i) * dt;
@@ -452,7 +452,7 @@ impl<T: FloatExt, S: SeedExt> DuffieKanJumpExpSampler<T, S> {
       while next_jump_time <= current_time {
         let jump_x = jump_dist.sample();
         jump_sum_x += jump_x;
-        next_jump_time += exp_dist.sample(&mut rng);
+        next_jump_time += exp_dist.sample();
       }
 
       r[i] = r_old + dr;

@@ -179,7 +179,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       dt,
       sqrt_dt: dt.sqrt(),
       normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
-      uniform: SimdUniform::<T>::new(T::zero(), T::one(), &self.seed),
+      uniform: SimdUniform::<T>::new(T::zero(), T::one()).seeded(&self.seed),
       jump_normal: SimdNormal::<T>::new(self.mu_j, self.sigma_j).seeded(&self.seed),
     }
   }
@@ -231,7 +231,7 @@ pub struct HawkesJDSampler<T: FloatExt> {
   dt: T,
   sqrt_dt: T,
   normal: Seeded<SimdNormal<T>>,
-  uniform: SimdUniform<T>,
+  uniform: Seeded<SimdUniform<T>>,
   jump_normal: Seeded<SimdNormal<T>>,
 }
 
@@ -256,7 +256,7 @@ impl<T: FloatExt> HawkesJDSampler<T> {
 
       // Hawkes intensity: check for jump in [t_{i-1}, t_i]
       let jump_prob = lambda * self.dt;
-      let u = self.uniform.sample_fast();
+      let u = self.uniform.sample();
       let jump = if u < jump_prob {
         // Jump occurs — excite intensity
         lambda += self.alpha;

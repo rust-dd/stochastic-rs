@@ -67,7 +67,7 @@ fn scalar_exp_matches_simd_exp_cdf() {
     let dist = ScalarExp::<f64>::new(lambda);
     let mut rng = SimdRng::from_seed(seed);
     let xs = (0..N).map(|_| dist.sample(&mut rng)).collect::<Vec<_>>();
-    let reference = stochastic_rs_distributions::exp::SimdExp::<f64>::new(lambda, &Unseeded);
+    let reference = stochastic_rs_distributions::exp::SimdExp::<f64>::new(lambda);
     (
       xs,
       Box::new(move |x| reference.cdf(x)) as Box<dyn Fn(f64) -> f64>,

@@ -168,7 +168,9 @@ mod tests {
     // coin flips genuinely drive the data and get their own seed, distinct
     // from the one behind `normal_sample`.
     let mut coin = vec![0.0_f64; x.len()];
-    SimdUniform::<f64>::new(0.0, 1.0, &Deterministic::new(43)).fill_slice(&mut coin);
+    SimdUniform::<f64>::new(0.0, 1.0)
+      .seeded(&Deterministic::new(43))
+      .fill_slice(&mut coin);
     for (v, u) in x.iter_mut().zip(&coin) {
       *v += if *u < 0.5 { -2.0 } else { 2.0 };
     }

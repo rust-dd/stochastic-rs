@@ -259,11 +259,8 @@ impl<T: FloatExt, S: SeedExt> BnsSampler<T, S> {
     s[0] = self.s0;
     sigma2[0] = self.sigma2_0;
 
-    // Generators are built here (not held across the process) because their
-    // internal UnsafeCell-backed buffers are not `Sync`. Each draws a stream
-    // derived from `self.seed` in the legacy order, so a `Deterministic` seed
-    // makes the whole path reproducible.
-    let jump_dist = SimdGamma::<T>::new(self.jump_shape, T::one(), &self.seed);
+    // Each stream draws from `self.seed` in a fixed order, so a `Deterministic` seed reproduces the path.
+    let mut jump_dist = SimdGamma::<T>::new(self.jump_shape, T::one()).seeded(&self.seed);
     let mut normal_dist = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed);
     let mut rng = self.seed.rng();
     for i in 1..self.n {
@@ -274,7 +271,7 @@ impl<T: FloatExt, S: SeedExt> BnsSampler<T, S> {
       // 2. Sum N Gamma(ω, 1) jump sizes to form ΔZ.
       let mut dz = T::zero();
       for _ in 0..n_jumps {
-        dz += jump_dist.sample_fast();
+        dz += jump_dist.sample();
       }
 
       // 3. Variance update: σ²_t = e^{-λΔt} σ²_{t-Δt} + ΔZ.

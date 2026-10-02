@@ -161,7 +161,7 @@ Opt-in via cargo feature:
 stochastic-rs = { version = "3.0.0-rc.1", features = ["unstable-dual-stream-rng"] }
 ```
 
-Unlocks `SimdRngDual` (a `Seeded::<SimdNormal<f64>, SimdRngDual>` stream), `SimdExpDual`, `SimdExpZigDual`.
+Unlocks `SimdRngDual`, the engine of a `Seeded::<SimdNormal<f64>, SimdRngDual>` or `Seeded::<SimdExp<f64>, SimdRngDual>` stream.
 
 ### Why dual-stream — the idea
 

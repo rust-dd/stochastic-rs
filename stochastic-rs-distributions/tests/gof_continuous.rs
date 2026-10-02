@@ -1,7 +1,7 @@
 //! Kolmogorov-Smirnov goodness-of-fit: continuous samplers against their
 //! own `cdf`. See `tests/gof_support/mod.rs` for the full design
 //! rationale, citations, alpha, and the complete per-type coverage
-//! table. `SimdNormal`, `SimdExp`, `SimdExpZig` and `SimdGamma` are
+//! table. `SimdNormal`, `SimdExp` and `SimdGamma` are
 //! covered by their own (refactored) in-crate unit tests instead of
 //! here, to avoid duplicate coverage — see that table for exactly where
 //! each type's test lives.
@@ -18,6 +18,8 @@ mod gof_support;
 
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::DistributionExt;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::beta::SimdBeta;
 use stochastic_rs_distributions::cauchy::SimdCauchy;
 use stochastic_rs_distributions::chi_square::SimdChiSquared;
@@ -41,9 +43,9 @@ const N: usize = 20_000;
 #[test]
 fn simd_uniform_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
-    let dist = SimdUniform::<f64>::new(-2.0, 3.0, &Deterministic::new(seed));
+    let dist = SimdUniform::<f64>::new(-2.0, 3.0);
     let mut xs = vec![0.0; N];
-    dist.fill_slice(&mut xs);
+    dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
       Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
@@ -54,9 +56,9 @@ fn simd_uniform_matches_own_cdf() {
 #[test]
 fn simd_lognormal_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
-    let dist = SimdLogNormal::<f64>::new(0.2, 0.6, &Deterministic::new(seed));
+    let dist = SimdLogNormal::<f64>::new(0.2, 0.6);
     let mut xs = vec![0.0; N];
-    dist.fill_slice(&mut xs);
+    dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
       Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
@@ -67,9 +69,9 @@ fn simd_lognormal_matches_own_cdf() {
 #[test]
 fn simd_beta_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
-    let dist = SimdBeta::<f64>::new(2.5, 4.0, &Deterministic::new(seed));
+    let dist = SimdBeta::<f64>::new(2.5, 4.0);
     let mut xs = vec![0.0; N];
-    dist.fill_slice(&mut xs);
+    dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
       Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
@@ -80,9 +82,9 @@ fn simd_beta_matches_own_cdf() {
 #[test]
 fn simd_cauchy_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
-    let dist = SimdCauchy::<f64>::new(1.0, 0.5, &Deterministic::new(seed));
+    let dist = SimdCauchy::<f64>::new(1.0, 0.5);
     let mut xs = vec![0.0; N];
-    dist.fill_slice(&mut xs);
+    dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
       Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
@@ -93,9 +95,9 @@ fn simd_cauchy_matches_own_cdf() {
 #[test]
 fn simd_chi_squared_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
-    let dist = SimdChiSquared::<f64>::new(6.0, &Deterministic::new(seed));
+    let dist = SimdChiSquared::<f64>::new(6.0);
     let mut xs = vec![0.0; N];
-    dist.fill_slice(&mut xs);
+    dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
       Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
@@ -106,9 +108,9 @@ fn simd_chi_squared_matches_own_cdf() {
 #[test]
 fn simd_studentt_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
-    let dist = SimdStudentT::<f64>::new(6.0, &Deterministic::new(seed));
+    let dist = SimdStudentT::<f64>::new(6.0);
     let mut xs = vec![0.0; N];
-    dist.fill_slice(&mut xs);
+    dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
       Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
@@ -121,9 +123,9 @@ fn simd_studentt_matches_own_cdf() {
 #[test]
 fn simd_pareto_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
-    let dist = SimdPareto::<f64>::new(1.0, 1.16, &Deterministic::new(seed));
+    let dist = SimdPareto::<f64>::new(1.0, 1.16);
     let mut xs = vec![0.0; N];
-    dist.fill_slice(&mut xs);
+    dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
       Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
@@ -134,9 +136,9 @@ fn simd_pareto_matches_own_cdf() {
 #[test]
 fn simd_weibull_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
-    let dist = SimdWeibull::<f64>::new(2.0, 1.5, &Deterministic::new(seed));
+    let dist = SimdWeibull::<f64>::new(2.0, 1.5);
     let mut xs = vec![0.0; N];
-    dist.fill_slice(&mut xs);
+    dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
       Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
