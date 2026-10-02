@@ -18,7 +18,6 @@ Rust core.
 | `cuda`            | `-stochastic`               | `cudarc` + cuFFT + NVRTC             | NVIDIA GPU: FGN / fBM (cuFFT) and the Euler engine kernels every other process runs on (`Cuda` backend, `f32` or `f64`) |
 | `metal`           | `-stochastic`               | `metal`                             | Apple GPU: FGN / fBM and the Euler engine in hand-written MSL (`Metal` backend, `f32`) |
 | `accelerate`      | `-stochastic`               | Apple vDSP (system framework)       | macOS CPU-FFT FGN / fBM (`Accelerate` backend; a host device for every process) |
-| `python`          | `-py` (cdylib)              | `pyo3`, `numpy`                      | Building the wheel via maturin            |
 | `ai-metal`        | umbrella                    | `candle-core/metal`                  | Experimental: candle's Metal back-end for surrogate training (`ai::device::best_available`); CUDA comes from `candle-core/cuda` in the consuming manifest |
 | `ai`, `metal`, `cuda`, `accelerate` | `-py` | the sub-crate features above | Source-build extras of the Python module (`maturin develop --features …`): the surrogates + `calibrate_surrogate`, and the device back-ends behind the process classes' `device=`; none of them is in the published wheels |
 | `viz`             | umbrella → `-quant`, `-ai`  | `plotly`                             | HTML plots: the SABR smile calibrator's plots, and the surrogate fit plots when `ai` is on too (`viz` alone does not pull in `ai`) |

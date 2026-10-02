@@ -462,6 +462,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for RoughBergomiSampler<T, S> {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyRoughBergomi {
   inner_f32: Option<RoughBergomi<f32>>,

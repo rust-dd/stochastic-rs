@@ -1,5 +1,6 @@
 use super::*;
 
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyHeston {
   inner_f32: Option<Heston<f32>>,

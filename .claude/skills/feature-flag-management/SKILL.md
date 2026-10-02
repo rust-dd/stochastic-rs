@@ -197,7 +197,7 @@ it is a summary, and the sub-crate columns are the part that drifts.
 | `metal` | `-stochastic`, umbrella | Apple Silicon GPU via the `metal` crate; f32 only. |
 | `accelerate` | `-stochastic`, umbrella | Apple vDSP / AMX — a **CPU** path despite sitting beside the GPU flags. |
 | `unstable-dual-stream-rng` | `-core`, `-distributions`, umbrella | Experimental `SimdRngDual`; changes deterministic output. |
-| `python` | `-distributions`, `-stochastic`, `-quant`, `-stats`, `-copulas`, umbrella | PyO3 bindings. Note `-py` has **no** `python` feature — it forces `pyo3/extension-module` unconditionally. |
+| `python` | `-core`, `-distributions`, `-stochastic`, `-copulas`, `-stats`, `-quant`, `-ai` | Internal PyO3 wrapper code that `stochastic-rs-py` switches on; modules and classes are `#[doc(hidden)]`, outside the stability promise. The umbrella has no `python` feature. |
 | `ai` | umbrella | Pulls `-ai` and turns on its `quant` bridge feature. |
 | `quant` / `viz` | `-ai` | `quant` gates `predict_implied_vol_surface`; `viz` gates the plot helper. |
 

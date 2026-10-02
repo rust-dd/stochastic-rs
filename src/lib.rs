@@ -15,9 +15,6 @@ pub use stochastic_rs_stochastic as stochastic;
 pub mod bridges;
 pub mod traits;
 
-// Python bindings will live in `stochastic-rs-py` (Phase 6 follow-up).
-// The umbrella `python` feature is currently a no-op pending that migration.
-
 /// Convenience prelude that re-exports the most commonly used types and traits.
 ///
 /// Bring this in scope to get the canonical trait set (`ProcessExt`,

@@ -491,6 +491,7 @@ mod tests {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyMultiGbm {
   inner: Option<MultiGbm<f64>>,

@@ -48,6 +48,7 @@ pub mod stationarity;
 pub mod tail_index;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub mod python;
 
 #[cfg(test)]

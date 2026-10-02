@@ -451,6 +451,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for WuZhangDSampler<T, S> {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyWuZhangD {
   inner_f32: Option<WuZhangD<f32>>,

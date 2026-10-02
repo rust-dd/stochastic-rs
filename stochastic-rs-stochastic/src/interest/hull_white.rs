@@ -297,6 +297,7 @@ impl<T: FloatExt> PathSampler<T> for HullWhiteSampler<'_, T> {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyHullWhite {
   inner: Option<HullWhite<f64>>,

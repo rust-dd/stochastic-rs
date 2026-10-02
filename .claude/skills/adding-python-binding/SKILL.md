@@ -72,6 +72,10 @@ impl PyFoo {
 }
 ```
 
+A wrapper inside a crate's `pub mod python` needs nothing (the module is hidden); one
+defined in a process file of `stochastic-rs-stochastic` needs `#[doc(hidden)]` directly
+above its `#[pyclass]`. `tests/python_surface_hidden.rs` checks both.
+
 For **clone-able value types** that may be passed *back* from Python
 into another Rust function, add `from_py_object`:
 

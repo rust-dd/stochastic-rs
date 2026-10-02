@@ -82,8 +82,6 @@ cudarc = { workspace = true, optional = true }
 ndarray = { workspace = true }
 num-complex = { workspace = true }
 num-traits = { workspace = true }
-numpy = { workspace = true, optional = true }
-pyo3 = { workspace = true, optional = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }
 stochastic-rs-ai = { workspace = true, optional = true }
@@ -277,20 +275,6 @@ unstable-dual-stream-rng = [
 ]
 accelerate = ["stochastic-rs-stochastic/accelerate"]
 metal = ["stochastic-rs-stochastic/metal"]
-# Python bindings live in `stochastic-rs-py` (separate cdylib). Enabling
-# `python` here just turns on the upstream feature flags so the umbrella
-# build is consistent with the cdylib build. The actual Python module
-# (`stochastic_rs`) is produced by `cargo build -p stochastic-rs-py` or
-# via `maturin develop` from the `stochastic-rs-py` directory.
-python = [
-    "dep:pyo3",
-    "dep:numpy",
-    "stochastic-rs-distributions/python",
-    "stochastic-rs-stochastic/python",
-    "stochastic-rs-copulas/python",
-    "stochastic-rs-stats/python",
-    "stochastic-rs-quant/python",
-]
 # Plotly-backed HTML plotting: `stochastic-rs-quant`'s SABR-smile plotter and,
 # when `ai` is also enabled, `stochastic-rs-ai`'s fit-plot helper. Uses a weak
 # dependency feature (`stochastic-rs-ai?/viz`) so enabling `viz` alone does
@@ -308,6 +292,6 @@ codegen-units = 1
 lto = true
 
 [package.metadata.docs.rs]
-# Avoid `all-features = true`: it pulls in native GPU SDKs (cudarc, metal) and the pyo3 link, none of which build cleanly on docs.rs.
+# Avoid `all-features = true`: it pulls in native GPU SDKs (cudarc, metal), which do not build on docs.rs.
 features = ["ai", "viz"]
 rustdoc-args = ["--html-in-header", "docs/katex-header.html"]

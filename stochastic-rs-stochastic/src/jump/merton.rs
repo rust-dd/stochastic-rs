@@ -550,6 +550,7 @@ where
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyMerton {
   inner_f32: Option<Merton<f32, crate::traits::CallableDist<f32>>>,

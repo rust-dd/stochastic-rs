@@ -610,6 +610,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for WishartSampler<T, S> {
 mod tests;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyWishart {
   inner: Option<Wishart<f64>>,

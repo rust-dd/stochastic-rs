@@ -368,6 +368,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for BgmSampler<T, S> {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyBgm {
   inner_f32: Option<Bgm<f32>>,

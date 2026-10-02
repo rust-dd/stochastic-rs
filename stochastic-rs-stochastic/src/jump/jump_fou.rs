@@ -350,6 +350,7 @@ backend_switch!([T, D, S: SeedExt] JumpFou<T, D, S> { hurst, theta, mu, sigma, n
   where T: FloatExt, D: Distribution<T> + Send + Sync);
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyJumpFou {
   inner_f32: Option<JumpFou<f32, crate::traits::CallableDist<f32>>>,

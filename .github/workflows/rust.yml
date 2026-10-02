@@ -41,8 +41,7 @@ jobs:
         run: cargo check -p ${{ matrix.crate }} --no-default-features
 
   # Umbrella + features matrix. Covers feature combinations that exercise
-  # cross-crate cfg-gated code (notably the python+gpu Array2 overlap caught
-  # by the 2026-05-07 audit §4.1).
+  # cross-crate cfg-gated code.
   check_umbrella:
     runs-on: ubuntu-latest
     strategy:
@@ -52,7 +51,6 @@ jobs:
           - "" # default
           - "ai"
           - "viz"
-          - "python"
           - "ai,viz"
           - "unstable-dual-stream-rng"
     steps:
@@ -100,6 +98,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Cargo check (metal + accelerate)
         run: cargo check -p stochastic-rs-stochastic --features metal,accelerate --all-targets
+      - name: Cargo check (python + metal + accelerate)
+        run: cargo check -p stochastic-rs-py --features metal,accelerate --all-targets
 
   # cudarc loads libcuda at run time, so the native CUDA back-end compiles on
   # a runner without a GPU or toolkit (the cuda-12080 pin stands in for the
@@ -116,6 +116,8 @@ jobs:
         run: cargo check -p stochastic-rs-stochastic --features cuda --all-targets
       - name: Clippy (cuda)
         run: cargo clippy -p stochastic-rs-stochastic --features cuda --all-targets -- -D warnings
+      - name: Cargo check (python + cuda)
+        run: cargo check -p stochastic-rs-py --features cuda --all-targets
 
   # The docs site's Rust code blocks are `<RustExample path="tests/doctest_*.rs" />`
   # includes rather than hand-copied text, so there is nothing to diff for

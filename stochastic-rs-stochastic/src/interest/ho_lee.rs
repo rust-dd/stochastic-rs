@@ -268,6 +268,7 @@ mod tests {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyHoLee {
   inner: Option<HoLee<f64>>,

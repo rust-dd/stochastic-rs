@@ -321,6 +321,7 @@ impl<T: FloatExt, S: SeedExt, B> Hjm<T, S, B> {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyHjm {
   inner: Option<Hjm<f64>>,

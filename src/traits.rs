@@ -1,14 +1,7 @@
 //! # Traits — umbrella re-export hub.
 //!
-//! Mirrors every trait each sub-crate exports from its own `traits` module,
-//! under the same feature gates. Hub membership is **independent of prelude
-//! membership**: a trait kept out of [`crate::prelude`] — because it has no
-//! in-tree implementors, or because it is feature-gated and the prelude is
-//! deliberately feature-flag-free — still belongs here, and
-//! `website/content/docs/concepts/prelude.mdx` tells readers to "reach via
-//! `traits::*`" on exactly that basis. `MultivariateExt`, `CallableDist`,
-//! `ShortRatePricer`, `VanillaEuropeanCall` and `GreeksExt` are all in that
-//! position.
+//! Mirrors every trait each sub-crate exports from its own `traits` module; a trait kept out of
+//! [`crate::prelude`] (`ShortRatePricer`, `VanillaEuropeanCall`, `GreeksExt`) still resolves here.
 //!
 //! The quant half of the mirror is derivable, so a future omission is
 //! measurable rather than a matter of reading:
@@ -26,8 +19,6 @@
 pub use stochastic_rs_copulas::traits::BivariateExt;
 pub use stochastic_rs_copulas::traits::MultivariateExt;
 pub use stochastic_rs_copulas::traits::TailDependence;
-#[cfg(feature = "python")]
-pub use stochastic_rs_distributions::traits::CallableDist;
 pub use stochastic_rs_distributions::traits::DistributionExt;
 pub use stochastic_rs_distributions::traits::DistributionSampler;
 pub use stochastic_rs_distributions::traits::Expr;

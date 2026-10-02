@@ -3013,6 +3013,7 @@ mod tests;
 pub mod precision_guard {}
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub mod python {
   //! Python surface of the device layer: probing a device and choosing the
   //! ordinal. Sampling on a device goes through the process classes'

@@ -230,6 +230,7 @@ mod tests {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyBrownianBridgeQmc {
   inner: BrownianBridgeQmc,

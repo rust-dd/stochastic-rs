@@ -481,6 +481,7 @@ impl<T: FloatExt> PathSampler<T> for ReferenceVolterraSampler<T> {
 // macro because the constructor takes a [`VolterraKernelSpec`] sum type, not
 // the flat positional `(f64, f64, ...)` parameter list the macro assumes.
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyVolterra {
   inner: Option<Volterra<f64>>,

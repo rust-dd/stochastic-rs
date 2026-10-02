@@ -77,6 +77,7 @@ where
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyCustomJt {
   inner_f32: Option<CustomJt<f32, crate::traits::CallableDist<f32>>>,

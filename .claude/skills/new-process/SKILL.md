@@ -379,7 +379,9 @@ the same names with Rust types, in `new()`'s order.
 ```
 
 A process generic over a distribution has no monomorphic signature, so it gets a
-hand-written `#[pyclass]` fixing `D = CallableDist<T>` instead — see `PyMerton`.
+hand-written `#[pyclass]` fixing `D = CallableDist<T>` instead — see `PyMerton`. Put
+`#[doc(hidden)]` on the line above that `#[pyclass]` (the macros already carry it);
+`tests/python_surface_hidden.rs` fails without it.
 
 Register in the single flat `#[pymodule]` of `stochastic-rs-py/src/lib.rs` (its only
 source file): a `use` in the `// Stochastic — <dir>` banner group, then

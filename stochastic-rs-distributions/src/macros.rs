@@ -11,6 +11,7 @@ macro_rules! py_distribution {
     sig: ($($sig:tt)*),
     params: ($($param:ident : $pty:ty),* $(,)?)
   ) => {
+    #[doc(hidden)]
     #[pyo3::prelude::pyclass(unsendable)]
     pub struct $py_name {
       inner_f32: Option<$inner<f32>>,
@@ -105,6 +106,7 @@ macro_rules! py_distribution_int {
     sig: ($($sig:tt)*),
     params: ($($param:ident : $pty:ty),* $(,)?)
   ) => {
+    #[doc(hidden)]
     #[pyo3::prelude::pyclass(unsendable)]
     pub struct $py_name {
       inner: $inner<i64>,

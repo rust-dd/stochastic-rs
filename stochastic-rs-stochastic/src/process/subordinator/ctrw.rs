@@ -394,6 +394,7 @@ impl<T: FloatExt> PathSampler<T> for CtrwSampler<T> {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyCtrw {
   inner_f32: Option<Ctrw<f32>>,

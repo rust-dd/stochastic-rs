@@ -415,6 +415,7 @@ where
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyKou {
   inner_f32: Option<Kou<f32, crate::traits::CallableDist<f32>>>,

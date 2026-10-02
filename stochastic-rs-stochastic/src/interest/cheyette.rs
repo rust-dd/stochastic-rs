@@ -340,6 +340,7 @@ impl<T: FloatExt> PathSampler<T> for CheyetteSampler<'_, T> {
 mod tests;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyCheyette {
   inner: Option<Cheyette<f64>>,

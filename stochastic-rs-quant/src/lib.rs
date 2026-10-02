@@ -214,4 +214,5 @@ pub use types::OptionStyle;
 pub use types::OptionType;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub mod python;

@@ -339,10 +339,11 @@ impl Program {
 pub enum Fn1D<T: FloatExt> {
   Native(fn(T) -> T),
   #[cfg(feature = "python")]
+  #[doc(hidden)]
   Py(pyo3::Py<pyo3::PyAny>),
 }
 
-/// Manual, not `#[derive(Clone)]`: `pyo3::Py<PyAny>` (0.28) has no
+/// Manual, not `#[derive(Clone)]`: `pyo3::Py<PyAny>` has no
 /// unconditional `Clone` impl, only `clone_ref(py)`, which needs a GIL
 /// token — mirrors the GIL-acquisition pattern [`Fn1D::call`]'s own `Py`
 /// arm already uses.
@@ -389,6 +390,7 @@ pub enum Fn2D<T: FloatExt> {
   /// market data. Host only, like a closure.
   Grid(Grid2D<T>),
   #[cfg(feature = "python")]
+  #[doc(hidden)]
   Py(pyo3::Py<pyo3::PyAny>),
 }
 
@@ -460,6 +462,7 @@ impl<T: FloatExt> Fn2D<T> {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub struct CallableDist<T: FloatExt> {
   callable: pyo3::Py<pyo3::PyAny>,
   _phantom: std::marker::PhantomData<T>,

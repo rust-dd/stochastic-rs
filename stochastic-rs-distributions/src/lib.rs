@@ -159,6 +159,7 @@ mod macros;
 
 pub mod float_impls;
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub mod python;
 mod simd_float_impls;
 pub mod special;

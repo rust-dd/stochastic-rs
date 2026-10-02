@@ -384,6 +384,7 @@ where
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyLevyDiffusion {
   inner_f32: Option<LevyDiffusion<f32, crate::traits::CallableDist<f32>>>,
