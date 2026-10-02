@@ -128,9 +128,8 @@ bivariate copulas.
   `.valuation(curve)` — and keeping the four in a default import made the
   harness look like the architecture. Reach via `traits::*`.
 
-These are intentionally left out so the prelude is feature-flag-free —
-`use stochastic_rs::prelude::*;` works on every supported feature
-combination without surprises.
+The prelude is feature-flag-free: `use stochastic_rs::prelude::*;` works on
+every supported feature combination without surprises.
 
 "Reach via `traits::*`" is a promise the hub has to keep, so
 `tests/prelude_completeness.rs` names every trait on this list and fails to

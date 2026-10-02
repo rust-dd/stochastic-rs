@@ -48,16 +48,8 @@ fn all_twenty_five_documented_prelude_items_resolve() {
   // and prelude.mdx list is still a real prelude export. Nothing to run.
 }
 
-/// The other half of the documented contract: a trait kept **out** of the
-/// prelude is still reachable via `stochastic_rs::traits::*`. CLAUDE.md says
-/// that for `GreeksExt` and the `Instrument`/`PricingEngine` four,
-/// and `prelude.mdx`'s "What is *not* in the prelude (and why)" section
-/// repeats it — but nothing forced the hub to keep the promise, and
-/// `ShortRatePricer` (half of the headline `ModelPricer`/`ShortRatePricer`
-/// pair) and `VanillaEuropeanCall` had both fallen through it, reachable only
-/// as the much longer `stochastic_rs::quant::traits::…`.
-///
-/// Every bullet of that section is named below.
+/// A trait kept out of the prelude stays reachable via `stochastic_rs::traits::*`, as CLAUDE.md and
+/// `prelude.mdx` promise; every bullet of "What is *not* in the prelude" is named below.
 mod prelude_excluded_traits_stay_hub_reachable {
   use stochastic_rs::traits::FgnBackend;
   use stochastic_rs::traits::GreeksExt;
