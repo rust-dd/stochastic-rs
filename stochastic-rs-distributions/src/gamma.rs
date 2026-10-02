@@ -121,7 +121,7 @@ impl<T: SimdFloatExt> SimdGamma<T> {
   }
 
   /// One unscaled Marsaglia–Tsang draw `d·v` of `Gamma(d + 1/3, 1)`.
-  #[inline]
+  #[inline(always)]
   fn mt_one<S: MtSource<T>>(src: &mut S, d: T, c: T) -> T {
     let c1 = T::from(0.0331).unwrap();
     let half = T::from(0.5).unwrap();
@@ -143,7 +143,7 @@ impl<T: SimdFloatExt> SimdGamma<T> {
     }
   }
 
-  #[inline]
+  #[inline(always)]
   fn draw<S: MtSource<T>>(&self, src: &mut S, d: T, c: T, inv_alpha: Option<T>) -> T {
     let g = Self::mt_one(src, d, c);
     match inv_alpha {
@@ -160,8 +160,18 @@ impl<T: SimdFloatExt> SimdGamma<T> {
   ) {
     let (d, c, inv_alpha) = self.squeeze();
     let mut src = (normal, rng);
-    for x in out.iter_mut() {
-      *x = self.draw(&mut src, d, c, inv_alpha);
+    // One loop per branch, so the boost test is not paid per draw.
+    match inv_alpha {
+      Some(inv_alpha) => {
+        for x in out.iter_mut() {
+          *x = self.draw(&mut src, d, c, Some(inv_alpha));
+        }
+      }
+      None => {
+        for x in out.iter_mut() {
+          *x = self.draw(&mut src, d, c, None);
+        }
+      }
     }
   }
 
