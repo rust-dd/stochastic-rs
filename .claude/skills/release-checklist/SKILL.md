@@ -33,6 +33,9 @@ cargo test --workspace --exclude stochastic-rs-py --no-fail-fast
 cargo clippy --workspace --all-targets -- -D warnings
 cargo check --workspace --all-features                       # catches the §4.1 feature-flag traps
 cargo check --workspace --no-default-features                # baseline build still works
+
+# 1.3 CUDA tests on the GPU runner (billed); wait for green, re-run = remove and re-add the label
+gh pr edit <release-pr> --add-label cuda   # or, once cuda.yml is on main: gh workflow run cuda.yml --ref <branch>
 ```
 
 If any of those fail, **stop**. Do not bump versions on a broken HEAD —

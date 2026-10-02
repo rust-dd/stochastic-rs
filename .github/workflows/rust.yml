@@ -103,7 +103,7 @@ jobs:
 
   # cudarc loads libcuda at run time, so the native CUDA back-end compiles on
   # a runner without a GPU or toolkit (the cuda-12080 pin stands in for the
-  # missing nvcc). Check-only: the kernels run on the maintainer's CUDA box.
+  # missing nvcc). Check-only: cuda.yml runs the kernels on the GPU runner.
   check_cuda:
     runs-on: ubuntu-latest
     timeout-minutes: 30

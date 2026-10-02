@@ -1,0 +1,87 @@
+name: CUDA
+
+# A free runner builds the test binaries and the billed GPU runner only runs them,
+# so a pull request starts it by the `cuda` label, which only maintainers can add.
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+  release:
+    types: [prereleased]
+
+permissions:
+  contents: read
+
+# The label is in the group: a run for another label must not cancel a cuda run.
+concurrency:
+  group: cuda-${{ github.ref }}-${{ github.event.label.name }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: CUDA test archive
+    if: github.event_name != 'pull_request' || github.event.label.name == 'cuda'
+    # 22.04, not latest: the archive must load on the GPU image, whose glibc may be older.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: cuda
+      - name: Install nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+      # cudarc loads libcuda at run time, so no CUDA toolkit is needed to compile.
+      - name: Archive the CUDA test binaries
+        env:
+          # Debuginfo only bloats the archive the GPU job has to download and unpack.
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: cargo nextest archive --locked -p stochastic-rs-stochastic --features cuda --lib --test device_law --archive-file cuda-tests.tar.zst
+      - name: Upload the archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: cuda-tests
+          path: cuda-tests.tar.zst
+          retention-days: 1
+          # The archive is already zstd-compressed.
+          compression-level: 0
+          if-no-files-found: error
+
+  test:
+    name: CUDA tests (T4)
+    needs: build
+    if: github.event_name != 'pull_request' || github.event.label.name == 'cuda'
+    runs-on: gpu-t4
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+      - name: Download the archive
+        uses: actions/download-artifact@v4
+        with:
+          name: cuda-tests
+      - name: GPU, glibc and CUDA libraries
+        run: |
+          nvidia-smi
+          ldd --version | head -n 1
+          ldconfig -p | grep -E 'libcuda\.so|libnvrtc|libcufft' || echo 'no CUDA libraries in the linker cache'
+      - name: Run the CUDA tests
+        env:
+          # Every device_law test and the lib tests the cuda feature adds, less the host-only
+          # euler::kernel::tests; a new cuda lib test outside these modules needs its own term.
+          CUDA_TESTS: >-
+            binary_id(=stochastic-rs-stochastic::device_law)
+            | (binary_id(=stochastic-rs-stochastic)
+            & (test(/^noise::fgn::cuda::/)
+            | test(/^euler::tests::devices::/)
+            | test(=euler::family_parity::every_family_runs_on_the_device)))
+        run: cargo-nextest nextest run --archive-file cuda-tests.tar.zst --workspace-remap . --profile ci --no-tests=fail -E "$CUDA_TESTS"
