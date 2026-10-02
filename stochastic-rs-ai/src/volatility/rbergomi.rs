@@ -163,7 +163,8 @@ mod tests {
       .iter()
       .zip(p2.iter())
       .map(|(a, b)| (a - b).abs())
-      .fold(0.0_f32, f32::max);
+      .max_by(f32::total_cmp)
+      .unwrap();
     assert!(max_diff < 1e-4);
 
     let _ = fs::remove_dir_all(&save_dir);

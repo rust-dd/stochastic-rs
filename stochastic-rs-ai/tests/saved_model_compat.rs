@@ -22,6 +22,7 @@ fn a_model_saved_with_candle_0_9_2_predicts_the_same_surface() {
     .iter()
     .zip(&expected)
     .map(|(a, b)| (a - b).abs())
-    .fold(0.0_f32, f32::max);
+    .max_by(f32::total_cmp)
+    .unwrap();
   assert!(max_diff < 1e-6, "max |diff| {max_diff}");
 }
