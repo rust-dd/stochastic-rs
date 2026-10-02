@@ -1,10 +1,12 @@
 //! The bulk `DistributionSampler` paths of a seeded stream: shape, replay, thread-count independence.
 
+use num_complex::Complex;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::complex::ComplexDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
@@ -144,4 +146,28 @@ fn distribution_sample_draws_from_the_caller_rng() {
   };
   assert_eq!(draws(1), draws(1));
   assert_ne!(draws(1), draws(999_999));
+}
+
+/// One 64-wide bulk chunk equals 64 pops: each part refills its 64-buffer with the same kernel call.
+#[test]
+fn complex_fill_matches_pops_over_one_chunk() {
+  let law = ComplexDistribution::new(
+    SimdNormal::<f64>::new(0.0, 1.0),
+    SimdNormal::<f64>::new(0.5, 2.0),
+  );
+  let bits = |zs: &[Complex<f64>]| {
+    zs.iter()
+      .map(|z| (z.re.to_bits(), z.im.to_bits()))
+      .collect::<Vec<_>>()
+  };
+  let fill = |seed: u64| {
+    let mut out = vec![Complex::new(0.0, 0.0); 64];
+    law.seeded(&Deterministic::new(seed)).fill_slice(&mut out);
+    bits(&out)
+  };
+  let mut twin = law.seeded(&Deterministic::new(9));
+  let pops = (0..64).map(|_| twin.sample()).collect::<Vec<_>>();
+  assert_eq!(fill(9), bits(&pops));
+  assert_eq!(fill(9), fill(9));
+  assert_ne!(fill(9), fill(10));
 }
