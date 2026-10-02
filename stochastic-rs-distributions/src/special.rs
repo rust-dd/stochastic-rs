@@ -30,10 +30,14 @@ const LANCZOS_C: [f64; 9] = [
 ];
 
 /// Logarithm of the gamma function, accurate to ~14 decimal digits.
+/// +∞ at the poles, NaN where Γ(x) < 0.
 ///
 /// Lanczos (1964, DOI 10.1137/0701008) with Godfrey's g = 7, n = 9 coefficients.
 #[inline]
 pub fn ln_gamma(x: f64) -> f64 {
+  if x <= 0.0 && x.fract() == 0.0 {
+    return f64::INFINITY;
+  }
   if x < 0.5 {
     // Reflection: ln Γ(x) = ln(π / sin(πx)) − ln Γ(1−x)
     return (std::f64::consts::PI / sinpi(x)).ln() - ln_gamma(1.0 - x);
@@ -386,6 +390,13 @@ mod tests {
     // Γ(n) = (n−1)! for positive integer n.
     assert!(close(ln_gamma(5.0), 24.0_f64.ln(), 1e-10));
     assert!(close(ln_gamma(10.0), 362880.0_f64.ln(), 1e-9));
+  }
+
+  #[test]
+  fn ln_gamma_is_infinite_at_every_pole() {
+    for pole in [0.0, -0.0, -1.0, -2.0, -7.0] {
+      assert_eq!(ln_gamma(pole), f64::INFINITY, "ln_gamma({pole})");
+    }
   }
 
   /// mpmath at 60 digits; on (−1, 2), poles included, the error is a few ulp,
