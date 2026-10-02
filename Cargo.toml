@@ -243,6 +243,11 @@ harness = false
 name = "special_functions"
 harness = false
 
+[[bench]]
+name = "ai_surrogate"
+harness = false
+required-features = ["ai"]
+
 [[example]]
 name = "cuda_fgn_analysis"
 required-features = ["cuda"]
