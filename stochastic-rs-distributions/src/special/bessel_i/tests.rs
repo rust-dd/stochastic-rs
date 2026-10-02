@@ -266,7 +266,7 @@ fn integer_orders_match_cephes() {
   }
 }
 
-/// DLMF 10.28.2 against the independent `bessel_ke`, on both sides of each region boundary.
+/// DLMF 10.28.2 with `bessel_ke` across the region boundaries; where `bessel_i` is built on it (ν ≤ 50, 2 ≤ x short of Hankel) it checks consistency only.
 #[test]
 fn wronskian_with_bessel_k_holds() {
   for nu in [0.3, 7.5, 49.5, 50.5, 75.2] {

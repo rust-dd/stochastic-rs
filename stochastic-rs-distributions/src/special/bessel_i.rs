@@ -6,7 +6,7 @@
 //! - Thompson, Barnett (1987), "Modified Bessel functions I_ν(z) and K_ν(z) of real order and complex argument, to selected accuracy", Comput. Phys. Commun. 47(2-3), DOI 10.1016/0010-4655(87)90111-1
 //! - Thompson, Barnett (1986), "Coulomb and Bessel functions of complex arguments and order", J. Comput. Phys. 64(2), DOI 10.1016/0021-9991(86)90046-X (Lentz's method for CF1)
 //! - Olver (1954), "The asymptotic expansion of Bessel functions of large order", Phil. Trans. R. Soc. A 247, DOI 10.1098/rsta.1954.0021
-//! - NIST DLMF §§10.25–10.41, <https://dlmf.nist.gov/10> (10.25.2 series, 10.27.1–2 negative orders, 10.28.2 Wronskian, 10.40.1 Hankel, 10.41.3/10.41.10 uniform)
+//! - NIST DLMF §§10.25–10.41, <https://dlmf.nist.gov/10> (10.25.2 series, 10.27.1–2 negative orders, 10.28.2 Wronskian, 10.40.1 Hankel, 10.41.3/10.41.9 uniform)
 
 use std::f64::consts::FRAC_2_PI;
 use std::f64::consts::LN_2;
@@ -24,7 +24,7 @@ const HANKEL_MIN_X: f64 = 50.0;
 const MAX_TERMS: usize = 64;
 const CF1_MAX_ITER: usize = 100_000;
 
-/// Coefficients of $u_k(p) = p^k \sum_j c_{k,j} p^{2j}$, `k = 1..=10`, from DLMF 10.41.10.
+/// Coefficients of $U_k(p) = p^k \sum_j c_{k,j} p^{2j}$, `k = 1..=10`, from DLMF 10.41.9 (recursion; 10.41.10 lists U₁–U₃).
 const DEBYE: [&[f64]; 10] = [
   &[0.125, -0.20833333333333334],
   &[0.0703125, -0.4010416666666667, 0.3342013888888889],
