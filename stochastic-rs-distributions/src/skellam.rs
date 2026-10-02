@@ -10,8 +10,8 @@
 //!
 //! Used in sports / queueing models (goal difference, queue net flow), and
 //! more generally any count-difference application. Sampling is a trivial
-//! two-Poisson subtraction; the PMF and CDF go through the modified Bessel
-//! recurrence.
+//! two-Poisson subtraction; the PMF and CDF go through the scaled modified
+//! Bessel function [`crate::special::ln_bessel_ie`].
 //!
 //! Reference: Skellam, J.G. (1946), "The frequency distribution of the
 //! difference between two Poisson variates belonging to different
@@ -25,6 +25,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::poisson::SimdPoisson;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
+use crate::special::ln_bessel_ie;
 use crate::traits::DistributionExt;
 
 pub struct SimdSkellam<R: SimdRngExt = SimdRng> {
@@ -76,11 +77,10 @@ impl<R: SimdRngExt> DistributionExt for SimdSkellam<R> {
   /// PMF $P(X = k)$. The argument is a float by convention; only the
   /// rounded integer part is meaningful.
   fn pdf(&self, x: f64) -> f64 {
-    let k = x.round() as i64;
-    let mu_prod = self.mu1 * self.mu2;
-    let ratio = (self.mu1 / self.mu2).powf(0.5 * k as f64);
-    let bessel = modified_bessel_i_n(k.unsigned_abs() as i64, 2.0 * mu_prod.sqrt());
-    (-(self.mu1 + self.mu2)).exp() * ratio * bessel
+    let k = x.round();
+    let gap = self.mu1.sqrt() - self.mu2.sqrt();
+    let z = 2.0 * (self.mu1 * self.mu2).sqrt();
+    (0.5 * k * (self.mu1 / self.mu2).ln() - gap * gap + ln_bessel_ie(k.abs(), z)).exp()
   }
 
   /// CDF via summation of the PMF on a truncated range. Skellam tails
@@ -96,33 +96,6 @@ impl<R: SimdRngExt> DistributionExt for SimdSkellam<R> {
     }
     s.clamp(0.0, 1.0)
   }
-}
-
-/// Modified Bessel function of the first kind $I_n(x)$ for non-negative
-/// integer $n$ via the power series (good for moderate `x`; for very
-/// large `x` we fall back to an asymptotic). Adequate for Skellam PMF
-/// evaluation in the bulk; production usage with `μ ≫ 100` may want a
-/// dedicated routine.
-fn modified_bessel_i_n(n: i64, x: f64) -> f64 {
-  if x < 0.0 {
-    return modified_bessel_i_n(n, -x) * if n.rem_euclid(2) == 0 { 1.0 } else { -1.0 };
-  }
-  if x == 0.0 {
-    return if n == 0 { 1.0 } else { 0.0 };
-  }
-  let half_x = 0.5 * x;
-  let log_term = (n as f64) * half_x.ln();
-  let mut term = (log_term - crate::special::ln_gamma(n as f64 + 1.0)).exp();
-  let mut sum = term;
-  let y = half_x * half_x;
-  for k in 1..200 {
-    term *= y / (k as f64 * (n as f64 + k as f64));
-    sum += term;
-    if term < 1e-18 * sum.abs() {
-      break;
-    }
-  }
-  sum
 }
 
 #[cfg(test)]
@@ -166,6 +139,25 @@ mod tests {
       (total - 1.0).abs() < 1e-6,
       "Skellam(2, 2) PMF sum = {total}, expected ≈ 1"
     );
+  }
+
+  /// Exact pmf from `mpmath.besseli` at 60 digits; the old 200-term series collapsed
+  /// once μ₁ + μ₂ reached a few hundred.
+  #[test]
+  fn skellam_pmf_matches_mpmath_at_large_rates() {
+    for ((mu1, mu2, k), want) in [
+      ((2.0, 2.0, 0.0), 0.207_001_921_223_986_7),
+      ((2.0, 1.5, -3.0), 0.034_258_044_673_158_364),
+      ((50.0, 40.0, 10.0), 0.042_109_756_037_380_416),
+      ((400.0, 300.0, 100.0), 0.015_081_203_817_903_906),
+      ((400.0, 300.0, 40.0), 0.001_147_244_606_054_886_6),
+    ] {
+      let got = SimdSkellam::<SimdRng>::new(mu1, mu2, &Unseeded).pdf(k);
+      assert!(
+        ((got - want) / want).abs() < 1e-12,
+        "Skellam({mu1}, {mu2}) pmf({k}) = {got}, want {want}"
+      );
+    }
   }
 
   /// CDF at the right tail must reach 1.
