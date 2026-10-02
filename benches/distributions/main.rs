@@ -20,6 +20,8 @@ use stochastic_rs::distributions::uniform::SimdUniform;
 use stochastic_rs::distributions::weibull::SimdWeibull;
 use stochastic_rs::simd_rng::Unseeded;
 
+mod discrete;
+mod heavy_tailed;
 mod plot;
 
 const SMALL: usize = 1_000;
@@ -369,6 +371,13 @@ criterion_group!(
   bench_poisson,
   bench_pareto,
   bench_uniform,
+  heavy_tailed::bench_alpha_stable,
+  heavy_tailed::bench_nig,
+  heavy_tailed::bench_gig,
+  heavy_tailed::bench_tempered_stable,
+  heavy_tailed::bench_skew_t,
+  discrete::bench_binomial,
+  discrete::bench_hypergeometric,
   plot::generate_shape_comparison_plot,
 );
 
