@@ -49,6 +49,10 @@ pub(crate) mod engine_seal {
 /// Not part of the public API: `stochastic-rs-stochastic` implements it for its Python seed source.
 #[doc(hidden)]
 pub mod seed_seal {
+  #[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot implement the sealed trait `SeedExt`",
+    note = "use `Unseeded` or `Deterministic`"
+  )]
   pub trait Sealed {}
 }
 
@@ -151,25 +155,8 @@ pub fn derive_fork_seed(parent_seed: u64, stream_idx: u64) -> u64 {
   splitmix64_mix(parent_seed ^ stream_idx)
 }
 
-/// Compile-time seed strategy for zero-overhead determinism control.
-///
-/// Two built-in implementations:
-/// - [`Unseeded`] — fresh random RNG each time (default, zero cost)
-/// - [`Deterministic`] — reproducible streams from a fixed seed
-///
-/// Each call to [`rng()`](SeedExt::rng) produces an independent [`SimdRng`]
-/// **and advances** the seed's internal state, so successive calls produce
-/// different streams. [`derive()`](SeedExt::derive) likewise advances state
-/// and returns a child seed for propagation to sub-components.
-///
-/// State is stored with interior mutability (atomic for [`Deterministic`])
-/// so methods take `&self` and remain callable from `&self` Process contexts
-/// — e.g. `ProcessExt::sample(&self)` can advance the seed without an
-/// outer `&mut`.
-///
-/// All branching is resolved at compile time via monomorphisation.
-///
-/// Sealed: seed sources are [`Unseeded`] and [`Deterministic`].
+/// Sealed seed source: [`Unseeded`] draws fresh entropy, [`Deterministic`] replays a fixed stream.
+/// State advances through `&self`, so `ProcessExt::sample(&self)` can draw without an outer `&mut`.
 pub trait SeedExt: seed_seal::Sealed + Clone + Send + Sync + 'static {
   /// Create an independent [`SimdRng`] and advance internal state.
   fn rng(&self) -> SimdRng;
@@ -309,18 +296,8 @@ impl SeedExt for Deterministic {
   }
 }
 
-/// Common interface for the SIMD RNG backends used by generic distributions.
-///
-/// `SimdNormal<T, N, R>` and friends are monomorphised against this trait so
-/// the same struct definition serves both the single-stream [`SimdRng`] and
-/// the experimental dual-stream `SimdRngDual` (gated behind the
-/// `unstable-dual-stream-rng` feature). Implementations override
-/// [`HAS_PAIR_ILP`](Self::HAS_PAIR_ILP) and [`next_i32x8_pair`](Self::next_i32x8_pair)
-/// when they can usefully expose two independent batches per call —
-/// consumers branch on the const to pick a 16-lane unrolled body, otherwise
-/// they stay on the cheaper 8-lane body.
-///
-/// Sealed: implemented by [`SimdRng`] and the experimental `SimdRngDual` only.
+/// SIMD RNG engine the distributions are generic over, sealed to [`SimdRng`] and the
+/// experimental `SimdRngDual`.
 pub trait SimdRngExt:
   engine_seal::Sealed + rand::Rng + Clone + Debug + Sized + Send + Sync + 'static
 {
