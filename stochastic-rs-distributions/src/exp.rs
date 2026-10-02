@@ -187,9 +187,9 @@ fn exp_batch8<T: SimdFloatExt, R: SimdRngExt>(
   }
 }
 
-/// Exp(1) Ziggurat fill scaled by `factor` (= 1/λ) at the store; with `R::HAS_PAIR_ILP` it takes 16 lanes
-/// per step from two engines, so their state updates overlap the table lookups.
-#[inline]
+/// Exp(1) Ziggurat fill scaled by `factor` (= 1/λ) at the store; kept out of line because inlined into a
+/// pop loop's refill this kernel slows the loop.
+#[inline(never)]
 fn fill_exp_scaled<T: SimdFloatExt, R: SimdRngExt>(buf: &mut [T], rng: &mut R, factor: T) {
   let tables = exp_zig_tables();
   let len = buf.len();

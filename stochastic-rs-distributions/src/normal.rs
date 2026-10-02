@@ -239,8 +239,9 @@ fn zig_batch8<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
   }
 }
 
-/// Core Ziggurat fill, 8 lanes on the fast-accept path; with `R::HAS_PAIR_ILP` it takes 16 lanes per step
-/// from two engines, so their state updates overlap the table lookups.
+/// Core Ziggurat fill (16 lanes per step from two engines with `R::HAS_PAIR_ILP`); kept out of line because
+/// inlined into a pop loop's refill this kernel slows the loop.
+#[inline(never)]
 fn fill_zig_impl<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
   buf: &mut [T],
   rng: &mut R,

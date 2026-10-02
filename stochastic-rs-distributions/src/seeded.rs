@@ -127,8 +127,7 @@ impl<T: Copy + Zero, const N: usize> Buffered<T, N> {
     x
   }
 
-  /// Out of line, so the bulk kernel is not inlined into every pop site of a hot loop.
-  #[inline(never)]
+  #[inline]
   fn refill(&mut self, refill: impl FnOnce(&mut [T])) {
     refill(&mut self.buf);
     self.idx = 0;

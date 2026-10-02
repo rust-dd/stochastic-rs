@@ -152,6 +152,8 @@ impl<T: SimdFloatExt> SimdGamma<T> {
     }
   }
 
+  /// Kept out of line because inlined into a pop loop's refill this rejection kernel slows the loop.
+  #[inline(never)]
   fn fill_parts<R: SimdRngExt>(
     &self,
     normal: &mut StreamState<T, R, 64>,
