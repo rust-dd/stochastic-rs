@@ -80,7 +80,7 @@ impl<T: FloatExt, S: SeedExt, B> Ctrw<T, S, B> {}
 
 #[expect(
   clippy::large_enum_variant,
-  reason = "a stream holds its 64-wide buffer inline; boxing it would allocate per sampler build"
+  reason = "temporary until Task 18 ports SimdInverseGauss: clippy flags the unported `Ig` holder, not the streams it cannot size"
 )]
 enum WaitingSampler<T: FloatExt> {
   Exp(Seeded<SimdExp<T>>),
@@ -91,7 +91,7 @@ enum WaitingSampler<T: FloatExt> {
 
 #[expect(
   clippy::large_enum_variant,
-  reason = "a stream holds its 64-wide buffer inline; boxing it would allocate per sampler build"
+  reason = "temporary until Task 18 ports SimdAlphaStable: clippy flags the unported `Stable` holder, not the streams it cannot size"
 )]
 enum JumpSampler<T: FloatExt> {
   Normal(Seeded<SimdNormal<T>>),
