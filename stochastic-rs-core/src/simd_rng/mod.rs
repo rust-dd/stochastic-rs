@@ -182,18 +182,6 @@ pub trait SeedExt: Clone + Send + Sync + 'static {
 
   /// Draws the next `u64` seed, advancing the source exactly as [`rng`](Self::rng) and
   /// [`rng_ext`](Self::rng_ext) do; two reads give two values.
-  ///
-  /// Samplers with their own internal stream store the returned value (as
-  /// `stream_seed`, in an interior-mutable cell) as the initial *fork
-  /// basis* for a parallel fan-out (e.g.
-  /// `stochastic-rs-distributions`' `DistributionSampler::fork`). Each
-  /// worker's fork reads and advances that cell via
-  /// [`derive_seed`] to get its own fresh basis, then derives its stream
-  /// with [`derive_fork_seed(basis, stream_idx)`](derive_fork_seed) — one
-  /// read-and-advance per worker, not one per fan-out call — so repeated
-  /// fan-outs from the same sampler never replay, while two
-  /// identically-seeded samplers issuing the same sequence of forks still
-  /// agree call-for-call.
   fn next_seed(&self) -> u64;
 }
 

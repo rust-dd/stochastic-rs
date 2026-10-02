@@ -30,3 +30,12 @@ fn reseeding_replays_the_sequence() {
 fn an_unseeded_source_never_repeats() {
   assert_ne!(Unseeded.next_seed(), Unseeded.next_seed());
 }
+
+#[test]
+fn rng_and_next_seed_advance_the_source_by_the_same_step() {
+  let by_rng = Deterministic::new(7);
+  let by_seed = Deterministic::new(7);
+  let _ = by_rng.rng();
+  let _ = by_seed.next_seed();
+  assert_eq!(by_rng.current(), by_seed.current());
+}
