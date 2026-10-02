@@ -1,5 +1,6 @@
 use std::hint::black_box;
 
+use criterion::BatchSize;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
@@ -50,10 +51,11 @@ fn bench_ai_surrogate(c: &mut Criterion) {
 
   let mut group = c.benchmark_group("ai_surrogate");
   group.bench_function("train_epoch/rows_2048", |b| {
-    b.iter(|| {
-      let mut nn = StochVolNn::new(spec(), &device).unwrap();
-      black_box(nn.train(&params, &surfaces, &cfg).unwrap())
-    })
+    b.iter_batched_ref(
+      || StochVolNn::new(spec(), &device).unwrap(),
+      |nn| black_box(nn.train(&params, &surfaces, &cfg).unwrap()),
+      BatchSize::PerIteration,
+    )
   });
   group.bench_function("jacobian", |b| {
     b.iter(|| black_box(trained.predict_surface_with_jacobian(&theta).unwrap()))
