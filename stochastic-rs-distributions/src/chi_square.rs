@@ -31,6 +31,10 @@ impl<T: SimdFloatExt> SimdChiSquared<T> {
   ///
   /// - `k` — degrees of freedom (the module header's own ν).
   pub fn new(k: T) -> Self {
+    assert!(
+      k > T::zero(),
+      "k must satisfy `k > T::zero()`, got k = {k:?}"
+    );
     Self {
       df: k,
       gamma: SimdGamma::new(k * T::from(0.5).unwrap(), T::from(2.0).unwrap()),
@@ -207,5 +211,11 @@ mod tests {
     let d = SimdChiSquared::<f64>::new(6.0);
     let best = scalar_ks_best_p(&d, |x| d.cdf(x));
     assert!(best > 0.01, "best p = {best}");
+  }
+
+  #[test]
+  #[should_panic(expected = "k must satisfy `k > T::zero()`, got k = 0.0")]
+  fn new_rejects_zero_degrees_of_freedom() {
+    SimdChiSquared::<f64>::new(0.0);
   }
 }
