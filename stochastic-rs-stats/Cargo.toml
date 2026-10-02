@@ -32,7 +32,7 @@ ndrustfft = { workspace = true }
 num-complex = { workspace = true }
 numpy = { workspace = true, optional = true }
 parking_lot = { workspace = true }
-pyo3 = { workspace = true, features = ["extension-module"], optional = true }
+pyo3 = { workspace = true, optional = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }
 stochastic-rs-core = { workspace = true }

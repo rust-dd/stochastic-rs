@@ -29,7 +29,7 @@ kendalls = { workspace = true }
 ndarray = { workspace = true }
 numpy = { workspace = true, optional = true }
 owens-t = { workspace = true }
-pyo3 = { workspace = true, features = ["extension-module"], optional = true }
+pyo3 = { workspace = true, optional = true }
 rand = { workspace = true }
 roots = { workspace = true }
 stochastic-rs-core = { workspace = true }

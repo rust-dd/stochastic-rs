@@ -39,9 +39,8 @@ If any of those fail, **stop**. Do not bump versions on a broken HEAD —
 the rc.1 → rc.2 cycle exists exactly because we caught issues post-bump
 and had to revert.
 
-The `stochastic-rs-py` crate is excluded from `cargo test` because it is
-a `cdylib` requiring a Python extension-module link (handled by maturin,
-not cargo). It is built and tested in stage 7.
+The `stochastic-rs-py` crate is excluded from `cargo test`: it has no Rust
+tests, and its wheel is built by maturin and tested with pytest in stage 7.
 
 ## Stage 2 — version bumps (9 crates)
 
@@ -203,10 +202,10 @@ Windows and sdist legs and then publishes them itself:
 
 So there is no `twine`, no TestPyPI hop, and nothing to run locally.
 Every leg builds with the default feature set — the linalg stack is the
-pure-Rust `faer`, so there is no per-platform BLAS wiring. Note that the
-`stochastic-rs-py` crate has no `python` feature: it forces
-`pyo3/extension-module` unconditionally, which is exactly why
-`cargo test --workspace` needs `--exclude stochastic-rs-py`.
+pure-Rust `faer`, so there is no per-platform BLAS wiring. Note that
+`stochastic-rs-py` has no `python` feature: it enables the library crates'
+internal `python` features itself, and maturin (>= 1.9.4) sets
+`PYO3_BUILD_EXTENSION_MODULE` for its cargo call.
 
 A local wheel for debugging one platform:
 

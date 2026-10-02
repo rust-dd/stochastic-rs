@@ -38,7 +38,7 @@ ndarray = { workspace = true }
 ndarray-npy = { workspace = true }
 numpy = { workspace = true, optional = true }
 plotly = { workspace = true, optional = true }
-pyo3 = { workspace = true, features = ["extension-module"], optional = true }
+pyo3 = { workspace = true, optional = true }
 rand = { workspace = true }
 stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true, optional = true }

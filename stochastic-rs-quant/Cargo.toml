@@ -44,7 +44,7 @@ numpy = { workspace = true, optional = true }
 ordered-float = { workspace = true }
 owens-t = { workspace = true }
 plotly = { workspace = true, optional = true }
-pyo3 = { workspace = true, features = ["extension-module"], optional = true }
+pyo3 = { workspace = true, optional = true }
 quadrature = { workspace = true }
 rayon = { workspace = true }
 roots = { workspace = true }

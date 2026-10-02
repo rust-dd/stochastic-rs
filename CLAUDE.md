@@ -34,13 +34,10 @@ cargo check -p stochastic-rs --features ai                     # with AI surroga
 cargo build -p stochastic-rs-distributions                     # build single sub-crate
 ```
 
-`--exclude stochastic-rs-py` is required, not optional: that crate forces
-`pyo3/extension-module` unconditionally, so a plain `cargo test --workspace`
-fails to link on any machine (there is no host Python providing the
-extension-module symbols outside a `maturin`-built `.so`) — confirmed by
-reproducing the linker error on a clean checkout. CI's `test` job
-(`.github/workflows/rust.yml`) works around the same constraint the same
-way.
+`--exclude stochastic-rs-py` keeps the Rust gate independent of a Python toolchain: the crate has no Rust
+tests (its pytest suite runs in the `python_smoke` job). A plain `cargo test --workspace` also links since
+pyo3 0.29 dropped `extension-module`, but needs a shared libpython at build and run time (`PYO3_PYTHON`
+picks it). Never export `PYO3_BUILD_EXTENSION_MODULE` in a shell; it is for maturin.
 
 ## Clippy usage
 

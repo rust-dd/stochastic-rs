@@ -178,10 +178,8 @@ cargo build --benches -p stochastic-rs --features cuda       # if applicable
 ```
 
 Use `-p stochastic-rs`, **not** `--workspace`: every bench lives in the
-umbrella, and `--workspace` drags in `stochastic-rs-py`, which forces
-`pyo3/extension-module` unconditionally and fails to link outside a
-maturin build (same reason `cargo test --workspace` needs
-`--exclude stochastic-rs-py` — see `CLAUDE.md`).
+umbrella, and `--workspace` drags in `stochastic-rs-py`, with the PyO3
+wrapper code and a libpython link (see `CLAUDE.md`).
 
 If any leg fails, the bench has drifted from the lib's API. Fix
 before commit; the §6.1 trap was exactly a bench that hadn't compiled

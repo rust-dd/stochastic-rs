@@ -30,7 +30,7 @@ building from source — that needs a Rust toolchain.
 
 ## Build from source
 
-You need the Rust toolchain (`rustup`), Python 3.11 or newer, and `maturin`.
+You need the Rust toolchain (`rustup`), Python 3.11 or newer, and `maturin` 1.9.4 or newer.
 
 ```bash
 git clone https://github.com/dancixx/stochastic-rs.git
@@ -39,7 +39,7 @@ cd stochastic-rs
 python -m venv .venv
 source .venv/bin/activate
 
-pip install maturin
+pip install "maturin>=1.9.4"
 maturin develop --release --manifest-path stochastic-rs-py/Cargo.toml
 ```
 

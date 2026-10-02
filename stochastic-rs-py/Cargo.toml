@@ -11,14 +11,7 @@ publish = false
 
 [lib]
 crate-type = ["cdylib", "rlib"]
-# Kept `false` deliberately: this crate forces `pyo3/extension-module`
-# unconditionally (see `[dependencies]` below), which makes even `cargo
-# build -p stochastic-rs-py` fail to link outside `maturin` (no libpython to
-# resolve extension-module symbols against). `cargo test --doc` cannot build
-# this crate's lib at all, on any platform, regardless of this flag — CI's
-# doc-test step already excludes the package with `--exclude
-# stochastic-rs-py` for the same reason. There are also zero fenced doc
-# examples in its one source file today.
+# No doc examples here; the Python surface is tested by the pytest suite.
 doctest = false
 
 [features]
@@ -35,7 +28,7 @@ default = []
 [dependencies]
 ndarray = { workspace = true }
 numpy = { workspace = true }
-pyo3 = { workspace = true, features = ["extension-module"] }
+pyo3 = { workspace = true }
 stochastic-rs-ai = { workspace = true, features = ["python"], optional = true }
 stochastic-rs-copulas = { workspace = true, features = ["python"] }
 stochastic-rs-core = { workspace = true, features = ["python"] }

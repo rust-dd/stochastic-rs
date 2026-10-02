@@ -24,7 +24,7 @@ ndarray = { workspace = true }
 num-complex = { workspace = true }
 num-traits = { workspace = true }
 numpy = { workspace = true, optional = true }
-pyo3 = { workspace = true, features = ["extension-module"], optional = true }
+pyo3 = { workspace = true, optional = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }
 rayon = { workspace = true }
