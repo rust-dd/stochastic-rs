@@ -37,7 +37,7 @@ relevant sub-crate. Example from the umbrella `Cargo.toml`:
 default = []
 ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]
 cuda = ["dep:cudarc", "cudarc/cufft", "stochastic-rs-stochastic/cuda"]
-metal = ["dep:metal", "stochastic-rs-stochastic/metal"]
+metal = ["stochastic-rs-stochastic/metal"]
 unstable-dual-stream-rng = [
   "stochastic-rs-core/unstable-dual-stream-rng",
   "stochastic-rs-distributions/unstable-dual-stream-rng",

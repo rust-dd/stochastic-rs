@@ -31,6 +31,7 @@ accelerate = ["stochastic-rs-stochastic/accelerate"]
 # `maturin develop --features ai`.
 ai = ["dep:stochastic-rs-ai"]
 default = []
+
 [dependencies]
 ndarray = { workspace = true }
 numpy = { workspace = true }
