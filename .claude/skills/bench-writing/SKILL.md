@@ -80,6 +80,7 @@ The gated benches in tree today, with their exact feature sets:
 | `fgn_accelerate` | `["accelerate"]` |
 | `fgn_metal` | `["metal"]` |
 | `dual_stream_compare` | `["unstable-dual-stream-rng"]` |
+| `ai_surrogate` | `["ai"]` |
 
 Without the gate, cargo tries to compile the bench regardless and you
 get a compilation error rather than a skip.
@@ -189,8 +190,8 @@ does this for you.
 
 ## 8. Reference benches
 
-`benches/` holds 31 `.rs` files plus one `distributions/` **directory**,
-matched one-to-one by 32 `[[bench]]` entries. Check whether your target
+`benches/` holds 33 `.rs` files plus one `distributions/` **directory**,
+matched one-to-one by 34 `[[bench]]` entries. Check whether your target
 is a file or a directory before editing.
 
 - `benches/distributions/` — sweep over distribution × sample-count.
