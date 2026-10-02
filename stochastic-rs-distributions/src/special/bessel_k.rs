@@ -23,7 +23,7 @@
 //! - Thompson, I.J., Barnett, A.R. (1987), "Modified Bessel functions
 //!   I_ν(z) and K_ν(z) of real order and complex argument, to selected
 //!   accuracy", *Computer Physics Communications* 47(2-3), 245-257.
-//!   DOI: 10.1016/0010-4655(87)90107-8
+//!   DOI: 10.1016/0010-4655(87)90111-1
 //! - Press, Teukolsky, Vetterling, Flannery (2007), *Numerical Recipes*,
 //!   3rd ed., §6.6.
 
@@ -90,7 +90,11 @@ fn temme_gammas(mu: f64) -> (f64, f64) {
 /// If `x` is not positive.
 pub fn bessel_ke(nu: f64, x: f64) -> f64 {
   assert!(x > 0.0, "bessel_ke needs x > 0, got {x}");
-  let nu = nu.abs();
+  ke_pair(nu.abs(), x).0
+}
+
+/// Scaled $(e^x K_\nu(x), e^x K_{\nu+1}(x))$ for `nu ≥ 0` and `x > 0`.
+pub(super) fn ke_pair(nu: f64, x: f64) -> (f64, f64) {
   let nl = (nu + 0.5).floor() as usize;
   let mu = nu - nl as f64;
   let mu2 = mu * mu;
@@ -106,7 +110,7 @@ pub fn bessel_ke(nu: f64, x: f64) -> f64 {
     rkmu = rk1;
     rk1 = rktemp;
   }
-  rkmu
+  (rkmu, rk1)
 }
 
 /// $K_\nu(x)$ for real `nu` and `x > 0`.
