@@ -211,6 +211,9 @@ impl StochVolNn {
   /// and the prediction must already be in the IV (sigma) domain — the
   /// surrogates trained on Romano-Touzi data satisfy both.
   ///
+  /// `strikes` follow the network's column order; the surface comes back with ascending
+  /// strikes.
+  ///
   /// `forwards` carries the per-maturity forward used to compute log-moneyness
   /// and total variance inside the surface struct.
   ///
@@ -238,8 +241,11 @@ impl StochVolNn {
       );
     }
     let pred = self.predict_surface(params)?;
+    let mut order = (0..n_k).collect::<Vec<usize>>();
+    order.sort_by(|&a, &b| strikes[a].total_cmp(&strikes[b]));
     let ivs =
-      Array2::<f64>::from_shape_vec((n_t, n_k), pred.into_iter().map(|v| v as f64).collect())?;
+      Array2::<f64>::from_shape_fn((n_t, n_k), |(t, k)| f64::from(pred[t * n_k + order[k]]));
+    let strikes = order.iter().map(|&k| strikes[k]).collect();
     Ok(
       stochastic_rs_quant::vol_surface::ImpliedVolSurface::from_iv_grid(
         strikes, maturities, forwards, ivs,

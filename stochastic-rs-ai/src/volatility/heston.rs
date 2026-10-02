@@ -35,13 +35,18 @@ use super::common::StochVolModelSpec;
 use super::common::StochVolNn;
 use super::common::TrainConfig;
 use super::common::TrainReport;
+use super::grid;
 
 pub const MODEL_ID: &str = "heston";
 pub const INPUT_DIM: usize = 5;
-pub const OUTPUT_DIM: usize = 88;
+pub const OUTPUT_DIM: usize = grid::LEN;
 pub const DEFAULT_HIDDEN_DIM: usize = 30;
 pub const PARAM_LB: [f32; INPUT_DIM] = [0.0001, -0.95, 0.01, 0.01, 1.0];
 pub const PARAM_UB: [f32; INPUT_DIM] = [0.04, -0.1, 1.0, 0.2, 10.0];
+
+/// `K / S0` of output column `i`, descending: the shipped set is indexed by inverse moneyness
+/// `S0 / K`, so these are the reciprocals of [`grid::MONEYNESS`].
+pub const STRIKES: [f64; grid::MONEYNESS.len()] = grid::inverse(grid::MONEYNESS);
 
 pub struct HestonNn {
   inner: StochVolNn,
@@ -77,12 +82,8 @@ impl HestonNn {
 
   /// Predict an implied-volatility surface for the given parameter vector.
   ///
-  /// Returns a flat `Vec<f32>` of length [`OUTPUT_DIM`] in row-major order
-  /// (maturity-major). To bridge into the rest of the library, feed the
-  /// result directly into
-  /// `stochastic_rs_quant::vol_surface::ImpliedVolSurface::from_flat_iv_grid`
-  /// together with the strike / maturity / forward grid the model was
-  /// trained on.
+  /// Returns a flat `Vec<f32>` of length [`OUTPUT_DIM`], maturity-major, with columns in
+  /// [`STRIKES`] order, descending; `predict_implied_vol_surface` sorts them ascending.
   pub fn predict_surface(&self, params: &[f32; INPUT_DIM]) -> Result<Vec<f32>> {
     self.inner.predict_surface(params)
   }
@@ -94,8 +95,8 @@ impl HestonNn {
   /// Bridge to `stochastic-rs-quant`: predict and package as
   /// [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface).
   ///
-  /// `strikes`, `maturities`, `forwards` describe the grid the network was
-  /// trained on. Available with the `quant` cargo feature.
+  /// Pass [`STRIKES`] times the spot, [`grid::MATURITIES`] and the forwards; the surface
+  /// comes back with ascending strikes. Available with the `quant` cargo feature.
   #[cfg(feature = "quant")]
   pub fn predict_implied_vol_surface(
     &self,
@@ -203,10 +204,6 @@ mod tests {
     };
     model.train(&params, &surfaces, &cfg)?;
 
-    // 8 maturities × 11 strikes = OUTPUT_DIM 88.
-    let strikes: Vec<f64> = (0..11).map(|i| 0.5 + 0.1 * i as f64).collect();
-    let maturities: Vec<f64> = vec![0.1, 0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.0];
-    let forwards = vec![1.0; maturities.len()];
     let sample = [
       params[[0, 0]],
       params[[0, 1]],
@@ -214,12 +211,25 @@ mod tests {
       params[[0, 3]],
       params[[0, 4]],
     ];
-
-    let surface =
-      model.predict_implied_vol_surface(&sample, strikes.clone(), maturities.clone(), forwards)?;
-    assert_eq!(surface.ivs.dim(), (maturities.len(), strikes.len()));
-    assert_eq!(surface.strikes.len(), strikes.len());
-    assert_eq!(surface.maturities.len(), maturities.len());
+    let flat = model.predict_surface(&sample)?;
+    let n_t = grid::MATURITIES.len();
+    let surface = model.predict_implied_vol_surface(
+      &sample,
+      STRIKES.to_vec(),
+      grid::MATURITIES.to_vec(),
+      vec![1.0; n_t],
+    )?;
+    assert_eq!(surface.ivs.dim(), (n_t, STRIKES.len()));
+    assert!(surface.strikes.windows(2).all(|w| w[0] < w[1]));
+    for t in 0..n_t {
+      for i in 0..STRIKES.len() {
+        let col = STRIKES.len() - 1 - i;
+        assert_eq!(
+          surface.ivs[[t, col]],
+          f64::from(flat[t * STRIKES.len() + i])
+        );
+      }
+    }
     Ok(())
   }
 

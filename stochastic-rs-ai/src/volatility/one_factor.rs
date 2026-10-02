@@ -8,6 +8,9 @@
 //! Source:
 //! - <https://github.com/amuguruza/NN-StochVol-Calibrations>
 //! - `1Factor/Flat Forward Variance/NN1Factor.ipynb`
+//!
+//! Input order `[xi0, nu, beta, rho]`: forward variance, vol-of-vol, mean-reversion speed and
+//! correlation, as titled in the notebook.
 
 use std::path::Path;
 
@@ -19,13 +22,17 @@ use super::common::StochVolModelSpec;
 use super::common::StochVolNn;
 use super::common::TrainConfig;
 use super::common::TrainReport;
+use super::grid;
 
 pub const MODEL_ID: &str = "one_factor";
 pub const INPUT_DIM: usize = 4;
-pub const OUTPUT_DIM: usize = 88;
+pub const OUTPUT_DIM: usize = grid::LEN;
 pub const DEFAULT_HIDDEN_DIM: usize = 30;
 pub const PARAM_LB: [f32; INPUT_DIM] = [0.01, 0.5, 0.0, -1.0];
 pub const PARAM_UB: [f32; INPUT_DIM] = [0.16, 4.0, 10.0, 0.0];
+
+/// `K / S0` of output column `i`, ascending.
+pub const STRIKES: [f64; grid::MONEYNESS.len()] = grid::MONEYNESS;
 
 pub struct OneFactorNn {
   inner: StochVolNn,

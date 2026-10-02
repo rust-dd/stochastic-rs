@@ -8,6 +8,9 @@
 //! Source:
 //! - <https://github.com/amuguruza/NN-StochVol-Calibrations>
 //! - `RoughBergomi/Flat Forward Variance/NNRoughBergomi.ipynb`
+//!
+//! Input order `[xi0, nu, rho, H]`: forward variance, vol-of-vol, correlation and Hurst exponent,
+//! as titled in the notebook.
 
 use std::path::Path;
 
@@ -19,13 +22,17 @@ use super::common::StochVolModelSpec;
 use super::common::StochVolNn;
 use super::common::TrainConfig;
 use super::common::TrainReport;
+use super::grid;
 
 pub const MODEL_ID: &str = "rbergomi";
 pub const INPUT_DIM: usize = 4;
-pub const OUTPUT_DIM: usize = 88;
+pub const OUTPUT_DIM: usize = grid::LEN;
 pub const DEFAULT_HIDDEN_DIM: usize = 30;
 pub const PARAM_LB: [f32; INPUT_DIM] = [0.01, 0.3, -0.95, 0.025];
 pub const PARAM_UB: [f32; INPUT_DIM] = [0.16, 4.0, -0.1, 0.5];
+
+/// `K / S0` of output column `i`, ascending.
+pub const STRIKES: [f64; grid::MONEYNESS.len()] = grid::MONEYNESS;
 
 pub struct RBergomiNn {
   inner: StochVolNn,
