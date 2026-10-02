@@ -16,6 +16,8 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_distributions::DistributionSampler;
 #[cfg(feature = "unstable-dual-stream-rng")]
+use stochastic_rs_distributions::SimdExpDual;
+#[cfg(feature = "unstable-dual-stream-rng")]
 use stochastic_rs_distributions::SimdNormalDual;
 use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
 use stochastic_rs_distributions::beta::SimdBeta;
@@ -89,7 +91,7 @@ where
     .collect::<Vec<_>>();
   let mut first8 = [0u64; 8];
   first8.copy_from_slice(&single[..8]);
-  let mut step_heads = [0u64; 8];
+  let mut step_heads = [0u64; 9];
   let mut chunk_heads = [0u64; 8];
   let mut hashes = [0u64; 10];
   hashes[0] = fnv1a(single.iter().copied());
@@ -97,43 +99,48 @@ where
   d.fill_slice(&mut buf);
   step_heads[0] = buf[0].bits();
   hashes[1] = fnv1a(buf.iter().map(|x| x.bits()));
-  let mut small = vec![T::default(); 7];
-  d.fill_slice(&mut small);
+  // Only a fill of 8 to 15 values tells the `< 16` scalar branch from the SIMD path's scalar tail.
+  let mut small = [T::default(); 18];
+  let (seven, eleven) = small.split_at_mut(7);
+  d.fill_slice(seven);
+  d.fill_slice(eleven);
   step_heads[1] = small[0].bits();
+  step_heads[2] = small[7].bits();
   hashes[2] = fnv1a(small.iter().map(|x| x.bits()));
-  let pops = (0..70)
+  // A 32-, 64- or 128-value buffer keeps 28 of the first 100 pops; 40 more refill it once, by its own size.
+  let pops = (0..40)
     .map(|_| d.sample(&mut dummy).bits())
     .collect::<Vec<_>>();
   // A twin without the two direct fills shares the leftover pops; the head is the first pop that differs.
   let unfilled = make(&Deterministic::new(seed));
-  let unfilled_pops = (0..170)
+  let unfilled_pops = (0..140)
     .map(|_| unfilled.sample(&mut dummy).bits())
     .collect::<Vec<_>>();
   let refill = pops
     .iter()
     .zip(&unfilled_pops[100..])
     .position(|(a, b)| a != b)
-    .expect("the direct fills moved none of the 70 pops");
-  step_heads[2] = pops[refill];
+    .expect("the direct fills moved none of the 40 pops");
+  step_heads[3] = pops[refill];
   hashes[3] = fnv1a(pops.iter().copied());
   let drawn = d.sample_n(1000);
-  step_heads[3] = drawn[0].bits();
+  step_heads[4] = drawn[0].bits();
   hashes[4] = fnv1a(drawn.iter().map(|x| x.bits()));
   let pair = d.sample_matrix(2, 8);
-  step_heads[4] = pair[[0, 0]].bits();
+  step_heads[5] = pair[[0, 0]].bits();
   hashes[5] = fnv1a(pair.iter().map(|x| x.bits()));
   let wide = d.sample_matrix(64, 1024);
-  step_heads[5] = wide[[0, 0]].bits();
+  step_heads[6] = wide[[0, 0]].bits();
   for (head, bits) in chunk_heads[..4].iter_mut().zip(chunk_firsts(&wide)) {
     *head = bits;
   }
   hashes[6] = fnv1a(wide.iter().map(|x| x.bits()));
   let mut fork_buf = vec![T::default(); 64];
   d.fork(0).fill_slice(&mut fork_buf);
-  step_heads[6] = fork_buf[0].bits();
+  step_heads[7] = fork_buf[0].bits();
   hashes[7] = fnv1a(fork_buf.iter().map(|x| x.bits()));
   d.fork(1).fill_slice(&mut fork_buf);
-  step_heads[7] = fork_buf[0].bits();
+  step_heads[8] = fork_buf[0].bits();
   hashes[8] = fnv1a(fork_buf.iter().map(|x| x.bits()));
   let twin = make(&Deterministic::new(seed));
   let _ = twin.sample_matrix(64, 1024);
@@ -152,7 +159,7 @@ where
   }
 }
 
-/// The single-draw hashes for the laws without `fill_slice`/`fork`; `draw` yields one draw's bits.
+/// Steps 1 and 4 for the laws without `fill_slice`/`fork`; `draw` yields one draw's bits.
 fn capture_single<F: FnMut() -> Vec<u64>>(
   seed: u64,
   build: impl FnOnce(&Deterministic) -> F,
@@ -163,14 +170,17 @@ fn capture_single<F: FnMut() -> Vec<u64>>(
   let single = (0..100).flat_map(|_| draw()).collect::<Vec<_>>();
   let mut first8 = [0u64; 8];
   first8.copy_from_slice(&single[..8]);
+  let tail = (0..40).flat_map(|_| draw()).collect::<Vec<_>>();
+  let mut step_heads = [0u64; 9];
+  step_heads[3] = tail[0];
   let mut hashes = [0u64; 10];
   hashes[0] = fnv1a(single.iter().copied());
-  hashes[3] = fnv1a((0..70).flat_map(|_| draw()));
+  hashes[3] = fnv1a(tail.iter().copied());
   Snapshot {
     seed,
     seeds_consumed,
     first8,
-    step_heads: [0; 8],
+    step_heads,
     chunk_heads: [0; 8],
     hashes,
   }
@@ -461,6 +471,18 @@ snapshot_singles! {
   #[cfg(feature = "unstable-dual-stream-rng")]
   normal_dual_f32: ScalarKind::F32, |det| {
     let d = SimdNormalDual::<f32>::new(0.3, 1.7, det);
+    let mut rng = SimdRng::from_seed(1);
+    move || vec![d.sample(&mut rng).bits()]
+  };
+  #[cfg(feature = "unstable-dual-stream-rng")]
+  exp_dual_f64: ScalarKind::F64, |det| {
+    let d = SimdExpDual::<f64>::new(1.8, det);
+    let mut rng = SimdRng::from_seed(1);
+    move || vec![d.sample(&mut rng).bits()]
+  };
+  #[cfg(feature = "unstable-dual-stream-rng")]
+  exp_dual_f32: ScalarKind::F32, |det| {
+    let d = SimdExpDual::<f32>::new(1.8, det);
     let mut rng = SimdRng::from_seed(1);
     move || vec![d.sample(&mut rng).bits()]
   };
