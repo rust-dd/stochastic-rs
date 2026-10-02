@@ -1,7 +1,9 @@
 //! The stateless laws and their seeded streams cross thread boundaries; the asserts are compile-time.
 
 use stochastic_rs_core::simd_rng::SimdRng;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::beta::SimdBeta;
 use stochastic_rs_distributions::cauchy::SimdCauchy;
 use stochastic_rs_distributions::chi_square::SimdChiSquared;
@@ -16,6 +18,13 @@ use stochastic_rs_distributions::uniform::SimdUniform;
 use stochastic_rs_distributions::weibull::SimdWeibull;
 
 fn assert_send_sync<T: Send + Sync>() {}
+
+/// Checked against the trait bounds alone: every law's stream is `Send + Sync` on every engine.
+fn assert_seeded_send_sync<D: SimdDistribution, R: SimdRngExt>() {
+  assert_send_sync::<Seeded<D, R>>();
+}
+
+const _: fn() = assert_seeded_send_sync::<SimdNormal<f64>, SimdRng>;
 
 const _: fn() = assert_send_sync::<SimdNormal<f64>>;
 const _: fn() = assert_send_sync::<SimdNormal<f32>>;

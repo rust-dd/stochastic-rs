@@ -117,7 +117,7 @@ pub(crate) use sealed::Sealed;
 /// A law whose parameters are plain data and whose stream state lives in [`Seeded`]; sealed to this crate.
 pub trait SimdDistribution: Sealed + Clone + Send + Sync + 'static {
   #[doc(hidden)]
-  type State<R: SimdRngExt>: Send + Clone + Debug;
+  type State<R: SimdRngExt>: Send + Sync + Clone + Debug;
 
   /// Draws the sub-streams in the law's fixed order; returns the fork basis.
   #[doc(hidden)]
