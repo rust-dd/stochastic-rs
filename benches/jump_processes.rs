@@ -5,6 +5,7 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
+use stochastic_rs::distributions::scalar::ScalarExp;
 use stochastic_rs::distributions::scalar::ScalarNormal;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::jump::kou::Kou;
@@ -51,6 +52,21 @@ fn bench_jump_processes(c: &mut Criterion) {
     );
     group.bench_with_input(BenchmarkId::new("kou", n), &n, |b, _| {
       b.iter(|| black_box(kou.sample()))
+    });
+
+    let kou_exp = Kou::new(
+      0.03,
+      0.2,
+      LAMBDA,
+      0.0,
+      ScalarExp::new(10.0),
+      n,
+      Some(0.0),
+      Some(1.0),
+      Unseeded,
+    );
+    group.bench_with_input(BenchmarkId::new("kou_exp", n), &n, |b, _| {
+      b.iter(|| black_box(kou_exp.sample()))
     });
 
     let levy = LevyDiffusion::new(
