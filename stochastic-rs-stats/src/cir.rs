@@ -11,13 +11,12 @@
 //! Term Structure of Interest Rates", *Econometrica* 53(2), 385-407.
 //! DOI: 10.2307/1911242
 //!
-use num_complex::Complex64;
-use scilib::math::bessel::i_nu;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::non_central_chi_squared;
 use stochastic_rs_distributions::special::gamma;
+use stochastic_rs_distributions::special::ln_bessel_ie;
 
 /// Samples one exact Cox-Ingersoll-Ross transition with an entropy-seeded RNG.
 ///
@@ -60,9 +59,8 @@ pub fn pdf(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64, future_state: f64)
       std::cmp::Ordering::Greater => 0.0,
     };
   }
-  let bessel = i_nu(q, Complex64::new(2.0 * (u * v).sqrt(), 0.0));
-
-  c * (-u - v).exp() * (v / u).powf(q / 2.0) * bessel.re
+  let gap = u.sqrt() - v.sqrt();
+  (c.ln() - gap * gap + 0.5 * q * (v / u).ln() + ln_bessel_ie(q, 2.0 * (u * v).sqrt())).exp()
 }
 
 /// Cox-Ingersoll-Ross (Cir) process Asymptotic PDF.

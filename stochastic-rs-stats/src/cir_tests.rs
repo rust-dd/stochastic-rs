@@ -69,3 +69,25 @@ fn zero_initial_state_reduces_to_the_central_chi_square_density() {
   let density = pdf(2.0, 0.04, 0.4, 1.0, 0.0, 0.03);
   assert!(density.is_finite() && density > 0.0);
 }
+
+/// `mpmath.besseli` at 80 digits, including `q < 0`, `z` in the thousands and `q` near 2000,
+/// the regimes the old power series could not reach.
+#[test]
+fn transition_density_matches_mpmath() {
+  for ((theta, mu, sigma, t, r_t, x), want) in [
+    ((2.0, 0.04, 0.3, 0.5, 0.05, 0.05), 11.078_458_423_438_674),
+    ((0.5, 0.02, 0.3, 1.0, 0.03, 0.01), 14.035_771_834_181_954),
+    (
+      (0.5, 0.05, 0.1, 1.0 / 252.0, 0.05, 0.0505),
+      264.242_211_771_611_84,
+    ),
+    ((1.0, 0.1, 0.01, 1.0, 8.6e-5, 0.0632), 282.151_624_977_580_8),
+    ((1.0, 0.1, 0.01, 1.0, 0.05, 0.0816), 224.405_805_350_199_4),
+  ] {
+    let got = pdf(theta, mu, sigma, t, r_t, x);
+    assert!(
+      ((got - want) / want).abs() < 1e-11,
+      "pdf({theta}, {mu}, {sigma}, {t}, {r_t}, {x}) = {got}, want {want}"
+    );
+  }
+}

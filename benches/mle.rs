@@ -65,6 +65,14 @@ fn bench_density_eval(c: &mut Criterion) {
     b.iter(|| black_box(DensityApprox::Exact.density(&ou, 0.5, 0.55, 0.0, 0.01)))
   });
 
+  group.bench_function(BenchmarkId::new("Cir", "Exact"), |b| {
+    b.iter(|| black_box(DensityApprox::Exact.density(&cir, 0.4, 0.41, 0.0, dt)))
+  });
+
+  group.bench_function(BenchmarkId::new("Cir", "transition_pdf"), |b| {
+    b.iter(|| black_box(stochastic_rs::stats::cir::pdf(3.0, 0.3, 0.2, dt, 0.4, 0.41)))
+  });
+
   group.finish();
 }
 

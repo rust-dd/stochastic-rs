@@ -48,7 +48,6 @@ rand = "0.9.2"
 rand_distr = "0.5.1"
 rayon = "1.11.0"
 roots = "0.0.8"
-scilib = "1.0.0"
 slsqp = "1.0.0"
 # `statrs` is dev-deps only — used for cross-validating our closed-form
 # `DistributionExt` impls. Production code never delegates to it.
@@ -88,7 +87,6 @@ numpy = { workspace = true, optional = true }
 pyo3 = { workspace = true, features = ["extension-module"], optional = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }
-scilib = { workspace = true }
 stochastic-rs-ai = { workspace = true, optional = true }
 stochastic-rs-copulas = { workspace = true }
 stochastic-rs-core = { workspace = true }
@@ -239,6 +237,10 @@ harness = false
 
 [[bench]]
 name = "sampler_compare"
+harness = false
+
+[[bench]]
+name = "special_functions"
 harness = false
 
 [[example]]

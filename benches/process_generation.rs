@@ -10,6 +10,8 @@ use rand_distr::Distribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::ou::Ou;
+use stochastic_rs::stochastic::jump::cgmy::Cgmy;
+use stochastic_rs::stochastic::jump::cts::Cts;
 use stochastic_rs::stochastic::noise::gn::Gn;
 use stochastic_rs::stochastic::process::bm::Bm;
 use stochastic_rs::traits::ProcessExt;
@@ -127,6 +129,26 @@ fn bench_process_generation(c: &mut Criterion) {
       );
     });
   }
+
+  group.bench_function("process/Cts.sample", |b| {
+    let cts = Cts::<f64, _>::new(4.0, 7.0, 0.6, 1_000, 1_024, Some(0.0), Some(1.0), Unseeded);
+    b.iter(|| black_box(cts.sample()));
+  });
+
+  group.bench_function("process/Cgmy.sample", |b| {
+    let cgmy = Cgmy::<f64, _>::new(
+      0.5,
+      4.0,
+      7.0,
+      0.6,
+      1_000,
+      1_024,
+      Some(0.0),
+      Some(1.0),
+      Unseeded,
+    );
+    b.iter(|| black_box(cgmy.sample()));
+  });
 
   group.finish();
 }

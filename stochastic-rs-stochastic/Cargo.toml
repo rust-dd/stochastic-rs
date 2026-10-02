@@ -35,7 +35,6 @@ pyo3 = { workspace = true, features = ["extension-module"], optional = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }
 rayon = { workspace = true }
-scilib = { workspace = true }
 stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
 wide = { workspace = true }

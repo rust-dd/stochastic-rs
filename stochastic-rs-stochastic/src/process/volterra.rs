@@ -68,19 +68,11 @@ pub enum VolterraKernelSpec {
 impl VolterraKernelSpec {
   /// Precomputes this kernel's parameter-derived terms once, ahead of the
   /// $O(n^2)$ convolution in [`ReferenceVolterraSampler::fill_path`].
-  ///
-  /// [`VolterraKernelSpec::FractionalBM`]'s $\Gamma(H+1/2)$ is a Weierstrass
-  /// infinite product (`scilib::math::basic::gamma`) iterated to a fixed
-  /// relative-error threshold — measured at ~2.7ms per call, which used to
-  /// be paid on every `(i, j)` pair of the kernel loop instead of once, the
-  /// way this crate's other `scilib::gamma` call sites do. `h` is fixed for
-  /// the sampler's lifetime, so the value prepared here is identical to the
-  /// one every per-pair call used to produce.
   fn prepare<T: FloatExt>(&self) -> PreparedVolterraKernel<T> {
     match self {
       VolterraKernelSpec::FractionalBM { h } => PreparedVolterraKernel::FractionalBM {
         exp: T::from_f64_fast(*h - 0.5),
-        gamma_val: T::from_f64_fast(scilib::math::basic::gamma(*h + 0.5)),
+        gamma_val: T::from_f64_fast(stochastic_rs_distributions::special::gamma(*h + 0.5)),
       },
       VolterraKernelSpec::PowerLaw { gamma } => PreparedVolterraKernel::PowerLaw {
         gamma: T::from_f64_fast(*gamma),
