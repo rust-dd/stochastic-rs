@@ -29,13 +29,11 @@ const LANCZOS_C: [f64; 9] = [
   1.505_632_735_149_311_6e-7,
 ];
 
-/// Logarithm of the gamma function, accurate to ~14 decimal digits.
-/// +∞ at the poles, NaN where Γ(x) < 0.
-///
+/// Logarithm of the gamma function to ~14 digits; +∞ at the poles, NaN where Γ(x) < 0.
 /// Lanczos (1964, DOI 10.1137/0701008) with Godfrey's g = 7, n = 9 coefficients.
 #[inline]
 pub fn ln_gamma(x: f64) -> f64 {
-  if x <= 0.0 && x.fract() == 0.0 {
+  if is_pole(x) {
     return f64::INFINITY;
   }
   if x < 0.5 {
@@ -54,7 +52,7 @@ pub fn ln_gamma(x: f64) -> f64 {
 /// Gamma function: Lanczos for `x ≥ 0.5`, Euler's reflection below; NaN at the
 /// poles, the non-positive integers.
 pub fn gamma(x: f64) -> f64 {
-  if x <= 0.0 && x.fract() == 0.0 {
+  if is_pole(x) {
     return f64::NAN;
   }
   if x < 0.5 {
@@ -62,6 +60,12 @@ pub fn gamma(x: f64) -> f64 {
   } else {
     ln_gamma(x).exp()
   }
+}
+
+/// The non-positive integers, where Γ, ln Γ and ψ have their poles.
+#[inline]
+fn is_pole(x: f64) -> bool {
+  x <= 0.0 && x.fract() == 0.0
 }
 
 /// `sin(πx)` with `x` reduced to `[-½, ½]` before scaling, so it keeps its
@@ -72,14 +76,10 @@ pub(crate) fn sinpi(x: f64) -> f64 {
   if n % 2.0 == 0.0 { s } else { -s }
 }
 
-/// Digamma function ψ(x) = Γ'(x)/Γ(x).
-///
-/// Recurrence (ψ(x) = ψ(x+1) − 1/x) lifts the argument above 6, then an
-/// asymptotic expansion in 1/x.
-///
-/// Returns NaN at the poles, the non-positive integers.
+/// Digamma ψ(x) = Γ'(x)/Γ(x): the recurrence ψ(x) = ψ(x+1) − 1/x lifts x above 6, then an
+/// asymptotic series in 1/x; NaN at the poles.
 pub fn digamma(x: f64) -> f64 {
-  if x <= 0.0 && x.fract() == 0.0 {
+  if is_pole(x) {
     return f64::NAN;
   }
   // Reflection ψ(1−x) = ψ(x) + π cot(πx); since cot has period π, x − round(x) can stand in
