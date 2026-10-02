@@ -9,7 +9,7 @@ mod params;
 use std::any::Any;
 
 use ndarray::Array1;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -351,7 +351,7 @@ backend_switch!([T, D, S: SeedExt] JumpFOUCustom<T, D, S> { hurst, theta, mu, si
 
 #[cfg(test)]
 mod tests {
-  use rand_distr::Distribution;
+  use rand::distr::Distribution;
 
   use super::*;
   use crate::traits::ProcessExt;

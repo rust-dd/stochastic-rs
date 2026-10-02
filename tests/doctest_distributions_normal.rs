@@ -1,7 +1,7 @@
 // docs: distributions#normal-bulk-sampling-and-closed-form-moments
 //! Backs the Normal example on the distributions catalog page.
 
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::SeedExt;

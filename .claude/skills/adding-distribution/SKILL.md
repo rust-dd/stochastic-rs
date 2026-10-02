@@ -8,7 +8,7 @@ description: How to add a univariate distribution to stochastic-rs-distributions
 Each distribution lives at `stochastic-rs-distributions/src/<name>.rs`
 and ships a `SimdXxx<T>` struct that implements:
 
-1. The `rand_distr::Distribution<T>` trait (per-sample `sample(rng)`).
+1. The `rand::distr::Distribution<T>` trait (per-sample `sample(rng)`).
 2. A bulk filler `fill_slice(&self, out: &mut [T])` — no RNG argument;
    it advances the type's own internal stream.
 3. `DistributionExt` for closed-form pdf / cdf / characteristic
@@ -87,12 +87,8 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdFoo<T, N, R> {
     pub fn fill_slice(&self, out: &mut [T]) { /* ... */ }
 }
 
-// `use rand_distr::Distribution;` — NOT `rand::distributions`, which
-// does not exist on rand 0.9 (the workspace pins rand 0.9.2 /
-// rand_distr 0.5.1). Per `dev-rules` §7a the trait import stays even
-// though the concrete `rand_distr` distributions are banned from
-// library code: our own `Simd*` types implement it, and it is how
-// `.sample()` resolves.
+// `use rand::distr::Distribution;` — not `rand_distr`, a dev-dependency (`dev-rules` §7a).
+// Our `Simd*` types implement it; it is how `.sample()` resolves.
 impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> Distribution<T> for SimdFoo<T, N, R> {
     fn sample<Rr: rand::Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
         // Draws from the type's OWN internal stream, seeded at

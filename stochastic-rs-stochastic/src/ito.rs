@@ -14,7 +14,7 @@
 //! [`crate::sde::Sde`] (`<T: FloatExt>`) or any of the strongly-typed
 //! [`crate::traits::ProcessExt`] processes.
 use ndarray::Array1;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs_distributions::scalar::ScalarNormal;
 
 /// A structure defining the drift and diffusion functions of the SDE.

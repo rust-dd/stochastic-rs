@@ -9,7 +9,7 @@ use std::cell::UnsafeCell;
 use std::sync::OnceLock;
 
 use rand::Rng;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Unseeded;
 use wide::i32x8;
 

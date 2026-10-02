@@ -4,7 +4,7 @@
 
 use ndarray::Array1;
 use rand::Rng;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::scalar::ScalarExp;

@@ -40,7 +40,7 @@
 use std::cell::UnsafeCell;
 
 use rand::Rng;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 

@@ -17,7 +17,7 @@
 //!
 //! [`CompoundPoisson`]: https://docs.rs/stochastic-rs-stochastic
 use rand::Rng;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 
 use crate::special::ndtri;
 use crate::traits::FloatExt;
@@ -113,7 +113,7 @@ impl<T: FloatExt> Distribution<T> for ScalarExp<T> {
 
 #[cfg(test)]
 mod tests {
-  use rand_distr::Distribution;
+  use rand::distr::Distribution;
   use stochastic_rs_core::simd_rng::SimdRng;
 
   use super::ScalarExp;

@@ -145,7 +145,7 @@ pub trait SimdRngExt: rand::RngCore + Sized + Send + 'static {
 
 The `rand::RngCore` supertrait is why any `SimdRngExt` (including
 `SimdRng`) can be handed anywhere a `rand::Rng` is expected — e.g. to
-`rand_distr::Distribution::sample`.
+`rand::distr::Distribution::sample`.
 
 `SimdNormal<T, N, R>` and `SimdExp<T, R>` carry the `R: SimdRngExt`
 parameter explicitly so the same struct serves both backends:

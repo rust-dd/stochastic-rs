@@ -7,7 +7,7 @@
 //! ## Generic distribution parameter `D`
 //!
 //! `Merton<T, D, S>` is generic over the jump-size distribution `D`, which
-//! must implement [`rand_distr::Distribution<T>`]. Common choices:
+//! must implement [`rand::distr::Distribution<T>`]. Common choices:
 //!
 //! - [`ScalarNormal<T>`](stochastic_rs_distributions::scalar::ScalarNormal)
 //!   for the classical normal-jump Merton (1976) model
@@ -25,7 +25,7 @@
 use std::any::Any;
 
 use ndarray::Array1;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;

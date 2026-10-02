@@ -6,7 +6,7 @@ description: How to add a jump-diffusion / Lévy / compound-Poisson process to s
 # Add jump process — stochastic-rs-stochastic
 
 A jump process in `stochastic-rs-stochastic` is parameterised by a
-**generic** jump-size distribution `D: rand_distr::Distribution<T> +
+**generic** jump-size distribution `D: rand::distr::Distribution<T> +
 Send + Sync`, keeping the jump kernel orthogonal from the diffusion.
 Compound-Poisson arrivals are handled by
 `crate::process::cpoisson::CompoundPoisson`, which the new process
@@ -24,7 +24,7 @@ there, not repeated here.
 // stochastic-rs-stochastic/src/jump/merton.rs (reference)
 
 use ndarray::Array1;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -226,9 +226,9 @@ Normal-Inverse-Gaussian distribution is `SimdNormalInverseGauss`
 (`stochastic-rs-distributions/src/normal_inverse_gauss.rs`), and being
 `Simd*` it is not eligible for the jump slot.
 
-The `rand_distr::Distribution` *trait* import stays — our own types
-implement it, and it is how `.sample()` resolves. Per `dev-rules` §7a
-only the concrete `rand_distr` distributions are out of library code.
+The trait comes from `rand::distr::Distribution` (`rand_distr` is a dev-dependency) — our own types
+implement it, and it is how `.sample()` resolves. Per `dev-rules` §7a the concrete `rand_distr`
+distributions stay out of library code.
 
 ## 4. Construction-time parameter validation
 

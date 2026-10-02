@@ -26,12 +26,12 @@ num-traits = { workspace = true }
 numpy = { workspace = true, optional = true }
 pyo3 = { workspace = true, optional = true }
 rand = { workspace = true }
-rand_distr = { workspace = true }
 rayon = { workspace = true }
 stochastic-rs-core = { workspace = true }
 wide = { workspace = true }
 
 [dev-dependencies]
+rand_distr = { workspace = true }
 # `statrs` is dev-only — used to cross-validate closed-form `DistributionExt`
 # impls in `tests/distribution_ext_vs_reference.rs`. Production code never
 # delegates to statrs.

@@ -186,7 +186,7 @@ use ndarray::Array3;
 use ndarray::ArrayView1;
 use ndarray::s;
 use rand::Rng;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::scalar::ScalarNormal;
 

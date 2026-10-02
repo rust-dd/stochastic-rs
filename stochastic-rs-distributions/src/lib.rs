@@ -110,7 +110,7 @@
 //! [`non_central_chi_squared::SimdNonCentralChiSquared`] is structurally
 //! different again: its noncentrality parameter is supplied per draw
 //! (`sample_ncp(ncp)`, not at construction), it implements neither
-//! `rand_distr::Distribution` nor [`crate::traits::DistributionExt`], and
+//! `rand::distr::Distribution` nor [`crate::traits::DistributionExt`], and
 //! its purpose in this crate is narrow — backing the exact CIR transition
 //! density (`stochastic-rs-stats::cir`). For `0 < df < 1`, where the
 //! Gaussian-shift decomposition doesn't exist, `sample_ncp` falls back per
@@ -495,13 +495,13 @@ mod distribution_sampler_tests {
     assert_eq!(under_4, under_8, "4-thread and 8-thread pools diverged");
   }
 
-  /// `rand_distr::Distribution::sample`'s `rng` argument is documented as
+  /// `rand::distr::Distribution::sample`'s `rng` argument is documented as
   /// unused across every `Simd*` type — feeding it two genuinely different
   /// external RNGs must not change the output of a `Deterministic`-seeded
   /// sampler.
   #[test]
-  fn rand_distr_sample_uses_internal_stream() {
-    use rand_distr::Distribution;
+  fn distribution_sample_uses_internal_stream() {
+    use rand::distr::Distribution;
 
     let poisson_a = SimdPoisson::<u64>::new(4.5, &Deterministic::new(7));
     let poisson_b = SimdPoisson::<u64>::new(4.5, &Deterministic::new(7));

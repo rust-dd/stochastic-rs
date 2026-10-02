@@ -1,7 +1,7 @@
 //! [`JumpFou`]'s construction, getters and `with_*` setters, which keep the cached fGN driver and
 //! the jump driver in step with the parameters they derive from.
 
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 

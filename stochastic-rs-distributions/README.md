@@ -42,7 +42,7 @@ dist.fill_slice(&mut xs);            // amortised SIMD fill
 For a single draw from a shared RNG in a `Sync` context:
 
 ```rust
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs_distributions::scalar::ScalarNormal;
 
 let d = ScalarNormal::<f64>::new(0.0, 1.0);

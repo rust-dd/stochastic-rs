@@ -34,7 +34,6 @@ numpy = { workspace = true, optional = true }
 parking_lot = { workspace = true }
 pyo3 = { workspace = true, optional = true }
 rand = { workspace = true }
-rand_distr = { workspace = true }
 stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
 stochastic-rs-stochastic = { workspace = true }

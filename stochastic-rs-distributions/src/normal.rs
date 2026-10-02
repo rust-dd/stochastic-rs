@@ -9,7 +9,7 @@ use std::cell::UnsafeCell;
 use std::sync::OnceLock;
 
 use rand::Rng;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use wide::i32x8;
 
 use super::SimdFloatExt;

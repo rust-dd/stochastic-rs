@@ -476,7 +476,7 @@ impl<T: FloatExt> CallableDist<T> {
 }
 
 #[cfg(feature = "python")]
-impl<T: FloatExt> rand_distr::Distribution<T> for CallableDist<T> {
+impl<T: FloatExt> rand::distr::Distribution<T> for CallableDist<T> {
   fn sample<R: rand::Rng + ?Sized>(&self, _rng: &mut R) -> T {
     pyo3::Python::attach(|py| {
       let result: f64 = self.callable.call0(py).unwrap().extract::<f64>(py).unwrap();

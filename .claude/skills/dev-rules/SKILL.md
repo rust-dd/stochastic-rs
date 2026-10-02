@@ -54,14 +54,15 @@ Do not rewrite algorithms that already exist in well-maintained crates (e.g., `f
 
 Randomness is the standing exception — see §7a.
 
-## 7a. `rand` and `rand_distr` belong to benchmarks only
+## 7a. `rand::rng()` and `rand_distr` belong to benchmarks only
 
 Library code, tests and examples draw randomness from the workspace's own
-RNG and distributions. `rand::rng()`, `rand::thread_rng()` and every
-concrete `rand_distr` distribution (`Normal`, `Exp`, `Gamma`, `Poisson`,
-`StandardNormal`, …) are reserved for `benches/` and the `src/tests/bench_*`
-plot harnesses, where `rand_distr` is the *baseline being measured* and
-must stay.
+RNG and distributions. `rand::rng()` and every concrete `rand_distr`
+distribution (`Normal`, `Exp`, `Gamma`, `Poisson`, `StandardNormal`, …) are
+reserved for `benches/` and the `src/tests/bench_*` plot harnesses, where
+`rand_distr` is a dev-dependency and the *baseline being measured*. The
+`rand` crate itself stays a dependency for its traits (`Rng`, `RngExt`,
+`rand::distr::Distribution`, `rand::seq::SliceRandom`).
 
 | Need | Use |
 |------|-----|
@@ -86,10 +87,10 @@ Two traps worth naming:
   Older notes describing a two-argument `fill_slice(_rng, out)` that
   ignored its first parameter, or a `fill_slice_fast` companion, are
   stale: neither exists.
-- **The `rand_distr::Distribution` trait import stays.** Our own `Simd*`
-  types implement it, so `use rand_distr::Distribution;` is still how
-  `.sample()` resolves. Removing those impls would break downstream users;
-  only the concrete `rand_distr` *distributions* are out.
+- **Name the trait through `rand::distr::Distribution`.** `rand_distr` is a
+  dev-dependency, so library code cannot import it; our own `Simd*` types
+  implement the same trait, which is how `.sample()` resolves. Removing
+  those impls would break downstream users.
 
 ## 8. Latest dependency versions
 
