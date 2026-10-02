@@ -398,6 +398,7 @@ impl<T: FloatExt> PathSampler<T> for BlackKarasinskiSampler<'_, T> {
 mod python;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub use python::PyBlackKarasinski;
 
 #[cfg(test)]

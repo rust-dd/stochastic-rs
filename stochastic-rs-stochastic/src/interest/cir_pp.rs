@@ -418,6 +418,7 @@ impl<T: FloatExt> PathSampler<T> for CirPlusPlusSampler<'_, T> {
 mod python;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub use python::PyCirPlusPlus;
 
 #[cfg(test)]

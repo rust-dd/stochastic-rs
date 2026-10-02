@@ -679,4 +679,5 @@ mod tests;
 #[path = "bates_python.rs"]
 mod python;
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub use python::PyBates;

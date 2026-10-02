@@ -80,7 +80,9 @@ Not every two-component process uses the macro: `Heston` itself has a
 (whose jump distribution crosses the boundary as a `CallableDist`).
 Reach for a hand-written wrapper when the constructor takes something
 the macro cannot express — a Python callable, or a third type parameter
-like `Heston`'s scheme selector.
+like `Heston`'s scheme selector. Such a wrapper carries `#[doc(hidden)]` on the
+line above its `#[pyclass]` (and above a `pub use python::…` re-export of it);
+`tests/python_surface_hidden.rs` enforces both.
 
 Invoke at the **bottom of the process's source file**, e.g.
 `stochastic-rs-stochastic/src/diffusion/gbm.rs`:

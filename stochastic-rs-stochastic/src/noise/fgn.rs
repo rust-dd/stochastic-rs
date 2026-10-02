@@ -18,6 +18,7 @@ pub use core::Fgn;
 
 use ndarray::Array1;
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub use python::PyFgn;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::normal::SimdNormal;

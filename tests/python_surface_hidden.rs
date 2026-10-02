@@ -1,19 +1,9 @@
-//! The library crates' `python` feature is internal: every `pub mod python` and every
-//! `#[pyclass]` outside such a module is `#[doc(hidden)]`, so no wrapper class is documented API.
+//! The library crates' `python` feature is internal: every `pub mod python…`, `pyclass` attribute and
+//! `pub use` of a `python…` path outside a hidden `python` module is `#[doc(hidden)]`.
 
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
-
-const LIBRARY_CRATES: [&str; 7] = [
-  "stochastic-rs-ai",
-  "stochastic-rs-copulas",
-  "stochastic-rs-core",
-  "stochastic-rs-distributions",
-  "stochastic-rs-quant",
-  "stochastic-rs-stats",
-  "stochastic-rs-stochastic",
-];
 
 /// Crates whose wrappers all live under a hidden `pub mod python`.
 const WRAPPERS_IN_PYTHON_MODULE: [&str; 5] = [
@@ -23,6 +13,18 @@ const WRAPPERS_IN_PYTHON_MODULE: [&str; 5] = [
   "stochastic-rs-quant",
   "stochastic-rs-stats",
 ];
+
+fn library_crates(root: &Path) -> Vec<String> {
+  let mut names = fs::read_dir(root)
+    .unwrap()
+    .map(|entry| entry.unwrap())
+    .filter(|entry| entry.path().join("Cargo.toml").is_file())
+    .map(|entry| entry.file_name().to_string_lossy().into_owned())
+    .filter(|name| name.starts_with("stochastic-rs-") && name != "stochastic-rs-py")
+    .collect::<Vec<_>>();
+  names.sort();
+  names
+}
 
 fn rust_files(dir: &Path, files: &mut Vec<PathBuf>) {
   for entry in fs::read_dir(dir).unwrap() {
@@ -45,22 +47,32 @@ fn hidden_above(lines: &[&str], index: usize) -> bool {
 }
 
 fn is_public_python_module(line: &str) -> bool {
-  let line = line.trim_start();
-  line.starts_with("pub mod python ")
-    || line.starts_with("pub mod python;")
-    || line.starts_with("pub mod python_device")
+  line.trim_start().starts_with("pub mod python")
 }
 
-fn is_pyclass(line: &str) -> bool {
+fn is_pyclass_attribute(line: &str) -> bool {
   let line = line.trim_start();
-  line.starts_with("#[pyclass") || line.starts_with("#[pyo3::prelude::pyclass")
+  line.starts_with("#[") && line.contains("pyclass")
+}
+
+fn is_python_reexport(line: &str) -> bool {
+  let line = line.trim_start();
+  line.starts_with("pub use ")
+    && line
+      .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+      .any(|word| word.starts_with("python"))
 }
 
 #[test]
 fn the_python_surface_of_every_library_crate_is_doc_hidden() {
   let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+  let crates = library_crates(root);
+  assert!(
+    !crates.is_empty(),
+    "no stochastic-rs-* library crate next to the umbrella"
+  );
   let mut leaks = Vec::new();
-  for name in LIBRARY_CRATES {
+  for name in &crates {
     let src = root.join(name).join("src");
     let mut files = Vec::new();
     rust_files(&src, &mut files);
@@ -68,11 +80,12 @@ fn the_python_surface_of_every_library_crate_is_doc_hidden() {
     for file in files {
       let text = fs::read_to_string(&file).unwrap();
       let lines = text.lines().collect::<Vec<_>>();
-      let exempt = WRAPPERS_IN_PYTHON_MODULE.contains(&name) && in_python_module_file(&src, &file);
+      let exempt =
+        WRAPPERS_IN_PYTHON_MODULE.contains(&name.as_str()) && in_python_module_file(&src, &file);
       for (index, line) in lines.iter().enumerate() {
-        let leaked = (is_public_python_module(line) || (is_pyclass(line) && !exempt))
-          && !hidden_above(&lines, index);
-        if leaked {
+        let exposed = is_public_python_module(line)
+          || (!exempt && (is_pyclass_attribute(line) || is_python_reexport(line)));
+        if exposed && !hidden_above(&lines, index) {
           let relative = file.strip_prefix(root).unwrap().display();
           leaks.push(format!("{relative}:{}", index + 1));
         }
