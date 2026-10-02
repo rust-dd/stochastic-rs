@@ -14,7 +14,6 @@ use stochastic_rs_core::simd_rng::SimdRngExt;
 use super::SimdFloatExt;
 use crate::seeded::Buffered;
 use crate::seeded::StreamState;
-use crate::source::uniform53;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
@@ -89,7 +88,7 @@ impl<T: SimdFloatExt> SimdCauchy<T> {
   }
 
   pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
-    self.invert(T::from_f64_fast(uniform53(rng.next_u64())))
+    self.invert(T::sample_uniform(rng))
   }
 }
 
@@ -126,7 +125,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdCauchy<T> {
 }
 
 impl<T: SimdFloatExt> Distribution<T> for SimdCauchy<T> {
-  /// The inverse cdf at one 53-bit uniform from the caller's rng.
+  /// The inverse cdf at one `[0, 1)` uniform from the caller's rng (53 bits for `f64`, 24 for `f32`).
   fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
     self.draw_with(rng)
   }

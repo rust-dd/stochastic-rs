@@ -27,7 +27,6 @@ use super::normal::SimdNormal;
 use crate::seeded::Buffered;
 use crate::seeded::StreamState;
 use crate::source::AnyRng;
-use crate::source::Source;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
@@ -75,7 +74,7 @@ impl<T: SimdFloatExt, G: Rng + ?Sized> MtSource<T> for AnyRng<'_, G> {
 
   #[inline]
   fn uniform(&mut self) -> T {
-    T::from_f64_fast(self.next_f64())
+    T::sample_uniform(self.0)
   }
 }
 

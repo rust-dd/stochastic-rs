@@ -13,7 +13,6 @@ use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use crate::seeded::Buffered;
 use crate::seeded::StreamState;
-use crate::source::uniform53;
 use crate::traits::SimdFloatExt;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
@@ -104,7 +103,7 @@ impl<T: SimdFloatExt> SimdUniform<T> {
   }
 
   pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
-    self.low + self.scale * T::from_f64_fast(uniform53(rng.next_u64()))
+    self.low + self.scale * T::sample_uniform(rng)
   }
 }
 
@@ -149,7 +148,7 @@ impl<T: SimdFloatExt> SimdKernel for SimdUniform<T> {
 }
 
 impl<T: SimdFloatExt> Distribution<T> for SimdUniform<T> {
-  /// `low + scale·u` with one 53-bit uniform `u` from the caller's rng.
+  /// `low + scale·u` with one `[0, 1)` uniform `u` from the caller's rng (53 bits for `f64`, 24 for `f32`).
   fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
     self.draw_with(rng)
   }
@@ -250,5 +249,28 @@ mod tests {
     let d = SimdUniform::<f64>::new(-2.0, 3.0);
     let best = scalar_ks_best_p(&d, |x| d.cdf(x));
     assert!(best > 0.01, "best p = {best}");
+  }
+
+  /// At the rng's largest output the honest `f32` draw stays below `high`, where a 53-bit uniform rounds up to one.
+  #[test]
+  fn honest_f32_draw_stays_below_high() {
+    struct Top;
+    impl rand::TryRng for Top {
+      type Error = std::convert::Infallible;
+
+      fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+        Ok(u32::MAX)
+      }
+
+      fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+        Ok(u64::MAX)
+      }
+
+      fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Self::Error> {
+        dst.fill(u8::MAX);
+        Ok(())
+      }
+    }
+    assert!(SimdUniform::<f32>::unit().sample(&mut Top) < 1.0);
   }
 }
