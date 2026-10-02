@@ -15,7 +15,7 @@ stochastic-rs/                        (workspace root + umbrella)
 ├── stochastic-rs-copulas/            — BivariateExt + copulas (15 bivariate + 8 multivariate)
 ├── stochastic-rs-stats/              — estimators
 ├── stochastic-rs-quant/              — pricing/calibration/vol_surface + ModelPricer/ShortRatePricer/ToModel
-├── stochastic-rs-ai/                 — neural surrogates + surrogate→Calibrator bridge (feature-gated upstream)
+├── stochastic-rs-ai/                 — experimental neural surrogates + surrogate→Calibrator bridge (feature-gated upstream, outside the stability promise)
 └── stochastic-rs-py/                 — pyo3 cdylib (308 entries: 286 PyO3 classes + 22 pyfunctions, plus 3 classes + 1 pyfunction behind the py `ai` feature (source builds only), across distributions/stochastic/quant/copulas/stats; AI bindings behind the py `ai` feature). Built via `maturin` (see pyproject.toml `[tool.maturin] manifest-path`)
 ```
 

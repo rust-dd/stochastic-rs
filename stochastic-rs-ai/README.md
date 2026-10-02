@@ -6,22 +6,40 @@
 
 **Neural-network volatility surrogates**
 
+> **Experimental.** This crate is outside the stability promise of stochastic-rs 3.x: its API, the saved-model format and the candle types in its signatures (`Device`) can change in any release. It ships no pretrained weights.
+
 Trained networks that replace an expensive pricing routine with a
 sub-millisecond forward pass.
 
 ## What is in it
 
 - **Surrogates** — Heston, one-factor Bergomi and rough Bergomi implied
-  volatility surfaces.
+  volatility surfaces on one fixed grid of 11 strikes and 8 maturities
+  (`volatility::grid`).
 - **`StochVolModelSpec`** — the input/output contract shared by every
   surrogate.
-- **Scalers** — `BoundedScaler` and `StandardScaler` for pre- and
-  post-normalisation.
-- **Training** — gzip-npy training set loading, a candle-backed network,
-  and a train / save / load round trip.
+- **Training** — gzip-npy training set loading, a candle-backed network with
+  its input and output scaling built in, and a train / save / load round trip.
+- **Calibration** — with the `quant` feature, Levenberg–Marquardt on the
+  network's exact Jacobian, behind quant's `Calibrator` trait.
 
-Inference feeds `ImpliedVolSurface::from_flat_iv_grid` in
-`stochastic-rs-quant`, so a surrogate is a drop-in for the analytic surface.
+With the `quant` feature, `predict_implied_vol_surface` returns quant's `ImpliedVolSurface`:
+pass the model's `STRIKES` times the spot, `volatility::grid::MATURITIES` and one forward per
+maturity, and the strikes come back ascending.
+
+## Training data
+
+The three gzip-npy training sets the tests use (about 52 MB, in `tests/data`) are
+copies of [amuguruza/NN-StochVol-Calibrations](https://github.com/amuguruza/NN-StochVol-Calibrations/tree/master/Data)
+(MIT, © 2019 Aitor Muguruza; licence text in `tests/data/LICENSE`). They live in the
+repository, not in the crates.io package. The Heston set is indexed by inverse moneyness; see
+`volatility::heston::STRIKES`.
+
+## Requirements
+
+Rust 1.89 or newer. On Apple Silicon (aarch64 macOS) Rust 1.94 or newer: candle 0.11.0
+uses the NEON fp16 intrinsics that stabilised in 1.94. A candle release that carries
+[huggingface/candle#3845](https://github.com/huggingface/candle/pull/3845) lifts this.
 
 ## Usage
 

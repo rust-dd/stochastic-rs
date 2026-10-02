@@ -41,7 +41,7 @@ One workspace, one umbrella crate (`stochastic-rs`) that re-exports the sub-crat
 | `stochastic-rs-copulas` | 15 bivariate and 8 multivariate copulas, vine fitting, goodness of fit |
 | `stochastic-rs-stats` | Hurst and diffusion estimators, unit-root and cointegration tests, realised volatility, filters, extreme values, risk measures |
 | `stochastic-rs-quant` | closed-form, Fourier, PDE, lattice and Monte Carlo pricers, calibrators, vol surfaces, curves, credit, XVA, market microstructure |
-| `stochastic-rs-ai` | neural volatility surrogates and surrogate calibration (`ai` feature) |
+| `stochastic-rs-ai` | experimental neural volatility surrogates and surrogate calibration (`ai` feature) |
 | `stochastic-rs-py` | the Python module: every distribution, process, pricer, copula and estimator, NumPy in and out |
 
 ## Installation
@@ -65,6 +65,9 @@ the [installation guide](https://stochastic.rust-dd.com/docs/getting-started/ins
 and the [feature flags](https://stochastic.rust-dd.com/docs/concepts/feature-flags)
 page list them with what each pulls in. Sub-crates can be depended on directly
 for lean builds.
+
+The `ai` feature and the `stochastic-rs-ai` crate are experimental and outside the
+stability promise.
 
 ```bash
 pip install stochastic-rs
