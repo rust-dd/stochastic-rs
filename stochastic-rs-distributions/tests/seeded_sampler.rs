@@ -148,26 +148,51 @@ fn distribution_sample_draws_from_the_caller_rng() {
   assert_ne!(draws(1), draws(999_999));
 }
 
-/// One 64-wide bulk chunk equals 64 pops: each part refills its 64-buffer with the same kernel call.
+/// Three 64-wide bulk chunks equal 192 pops: each part refills its 64-buffer with the same kernel call.
 #[test]
-fn complex_fill_matches_pops_over_one_chunk() {
+fn complex_fill_matches_pops_over_three_chunks() {
   let law = ComplexDistribution::new(
     SimdNormal::<f64>::new(0.0, 1.0),
     SimdNormal::<f64>::new(0.5, 2.0),
   );
-  let bits = |zs: &[Complex<f64>]| {
-    zs.iter()
-      .map(|z| (z.re.to_bits(), z.im.to_bits()))
-      .collect::<Vec<_>>()
-  };
   let fill = |seed: u64| {
-    let mut out = vec![Complex::new(0.0, 0.0); 64];
+    let mut out = vec![Complex::new(0.0, 0.0); 192];
     law.seeded(&Deterministic::new(seed)).fill_slice(&mut out);
-    bits(&out)
+    complex_bits(&out)
   };
   let mut twin = law.seeded(&Deterministic::new(9));
-  let pops = (0..64).map(|_| twin.sample()).collect::<Vec<_>>();
-  assert_eq!(fill(9), bits(&pops));
+  let pops = (0..192).map(|_| twin.sample()).collect::<Vec<_>>();
+  assert_eq!(fill(9), complex_bits(&pops));
   assert_eq!(fill(9), fill(9));
   assert_ne!(fill(9), fill(10));
+}
+
+/// A 100-value fill (a second chunk and a tail) equals twin part streams filled directly, seeded in the same order.
+#[test]
+fn complex_fill_matches_its_part_streams_past_one_chunk() {
+  let (re_law, im_law) = (
+    SimdNormal::<f64>::new(0.0, 1.0),
+    SimdNormal::<f64>::new(0.5, 2.0),
+  );
+  let mut out = vec![Complex::new(0.0, 0.0); 100];
+  ComplexDistribution::new(re_law, im_law)
+    .seeded(&Deterministic::new(9))
+    .fill_slice(&mut out);
+  let seed = Deterministic::new(9);
+  let (mut re, mut im) = (re_law.seeded(&seed), im_law.seeded(&seed));
+  let (mut re_out, mut im_out) = (vec![0.0; 100], vec![0.0; 100]);
+  re.fill_slice(&mut re_out);
+  im.fill_slice(&mut im_out);
+  let parts = re_out
+    .iter()
+    .zip(&im_out)
+    .map(|(r, i)| Complex::new(*r, *i))
+    .collect::<Vec<_>>();
+  assert_eq!(complex_bits(&out), complex_bits(&parts));
+}
+
+fn complex_bits(zs: &[Complex<f64>]) -> Vec<(u64, u64)> {
+  zs.iter()
+    .map(|z| (z.re.to_bits(), z.im.to_bits()))
+    .collect()
 }
