@@ -107,7 +107,12 @@ mod tests {
     ));
     write_surface_fit_plot_html(&out, "fit", &[0.9, 1.0, 1.1], &[0.5, 1.0, 2.0], &iv, &iv).unwrap();
     let html = fs::read_to_string(&out).unwrap();
-    assert!(html.contains("Actual T=0.50") && html.contains("Pred T=2.00"));
+    for t in ["0.50", "1.00", "2.00"] {
+      assert_eq!(html.matches(&format!("Actual T={t}")).count(), 1);
+      assert_eq!(html.matches(&format!("Pred T={t}")).count(), 1);
+    }
+    assert_eq!(html.matches("Actual T=").count(), 3);
+    assert_eq!(html.matches("Pred T=").count(), 3);
     fs::remove_file(&out).unwrap();
   }
 
