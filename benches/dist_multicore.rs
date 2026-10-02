@@ -148,8 +148,9 @@ where
   let tn = bench_pool(multi, dist, m, n, warmup, runs);
   let speedup = t1 / tn;
   let values = m * n;
+  let (t1_us, tn_us) = (t1 * 1_000.0, tn * 1_000.0);
   println!(
-    "{name:>18} | m={m:<5} n={n:<5} values={values:<10} | 1T={t1:>8.2} ms | MT={tn:>8.2} ms | speedup={speedup:>5.2}x"
+    "{name:>18} | m={m:<5} n={n:<5} values={values:<10} | 1T={t1_us:>9.1} us | MT={tn_us:>9.1} us | speedup={speedup:>5.2}x"
   );
 }
 
