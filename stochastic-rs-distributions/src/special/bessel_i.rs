@@ -1,5 +1,5 @@
 //! $I_\nu(x)$ for real order: Debye's uniform expansion above order 50, the ascending series
-//! for `x < 2`, Hankel's expansion for `x ≥ 50(1 + ν²)`, Temme/Steed with the Wronskian between.
+//! for `x < 2`, Hankel's expansion for `x ≥ max(50, ν²/2)`, Temme/Steed with the Wronskian between.
 //!
 //! References:
 //! - Temme (1975), "On the numerical evaluation of the modified Bessel function of the third kind", J. Comput. Phys. 19(3), DOI 10.1016/0021-9991(75)90082-0
@@ -206,7 +206,7 @@ fn positive_order(nu: f64, x: f64, scaled: bool) -> f64 {
     let (eta, eta_minus_z, prefactor) = uniform(nu, x);
     return exp_times(if scaled { eta_minus_z } else { eta }, prefactor);
   }
-  let ie = if x >= HANKEL_MIN_X * (1.0 + nu * nu) {
+  let ie = if x >= HANKEL_MIN_X.max(0.5 * nu * nu) {
     hankel(nu, x)
   } else {
     let (kv, kv1) = ke_pair(nu, x);
@@ -262,8 +262,8 @@ fn series(nu: f64, x: f64) -> f64 {
   sum
 }
 
-/// DLMF 10.40.1 for $e^{-x} I_\nu(x)$; from `x = 50 (1 + ν²)` on, the terms
-/// reach ε long before they start to grow.
+/// DLMF 10.40.1 for $e^{-x} I_\nu(x)$; from `x = max(50, ν²/2)` on, the terms
+/// reach ε within about 20 of them, long before they start to grow.
 fn hankel(nu: f64, x: f64) -> f64 {
   let mu = 4.0 * nu * nu;
   let mut term = 1.0;

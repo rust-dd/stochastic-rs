@@ -27,6 +27,7 @@ fn bench_bessel_i(c: &mut Criterion) {
     ("series", 0.78, 1.0),
     ("temme", 0.78, 40.0),
     ("hankel", 4.0, 5_065.0),
+    ("cir_daily", 44.0, 10_124.0),
     ("uniform", 1_999.0, 2_452.0),
     ("reflection", -0.78, 4.3),
   ] {
