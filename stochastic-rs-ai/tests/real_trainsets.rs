@@ -96,8 +96,8 @@ fn rbergomi_set_trains() -> Result<()> {
 #[cfg(feature = "quant")]
 #[test]
 fn heston_set_is_the_fourier_surface_on_inverse_strikes() -> Result<()> {
+  use stochastic_rs_ai::calibration::heston_params_from_surrogate;
   use stochastic_rs_ai::volatility::grid;
-  use stochastic_rs_quant::pricing::heston::HestonPricer;
   use stochastic_rs_quant::vol_surface::ModelSurface;
 
   let (params, surfaces) = load_trainset_gzip_npy(
@@ -110,10 +110,10 @@ fn heston_set_is_the_fourier_surface_on_inverse_strikes() -> Result<()> {
   let ascending = heston::STRIKES.iter().rev().copied().collect::<Vec<f64>>();
   let (mut on_inverse, mut on_direct) = (Vec::new(), Vec::new());
   for r in (0..params.nrows()).step_by(params.nrows() / 30) {
-    let p = params.row(r).mapv(f64::from);
-    let pricer = HestonPricer::new(p[0], p[1], p[4], p[3], p[2], None);
-    let inverse = pricer.vol_surface(1.0, 0.0, 0.0, &ascending, &grid::MATURITIES);
-    let direct = pricer.vol_surface(1.0, 0.0, 0.0, &grid::MONEYNESS, &grid::MATURITIES);
+    let p = params.row(r).mapv(f64::from).to_vec();
+    let model = heston_params_from_surrogate(&p).to_model(0.0, 0.0);
+    let inverse = model.vol_surface(1.0, 0.0, 0.0, &ascending, &grid::MATURITIES);
+    let direct = model.vol_surface(1.0, 0.0, 0.0, &grid::MONEYNESS, &grid::MATURITIES);
     for t in 0..grid::MATURITIES.len() {
       for i in 0..n_k {
         let want = f64::from(surfaces[[r, t * n_k + i]]);
@@ -122,13 +122,19 @@ fn heston_set_is_the_fourier_surface_on_inverse_strikes() -> Result<()> {
       }
     }
   }
+  // A NaN sorts last, so the median counts a failed inversion as the worst error; the
+  // short-maturity wings fail to invert (2.7% of the cells), hence the 5% bound.
+  let nan_share = on_inverse.iter().filter(|x| x.is_nan()).count() as f64 / on_inverse.len() as f64;
   let median = |mut v: Vec<f64>| {
-    v.retain(|x| x.is_finite());
     v.sort_by(f64::total_cmp);
     v[v.len() / 2]
   };
   let (inverse, direct) = (median(on_inverse), median(on_direct));
-  assert!(inverse < 1e-4, "median |dIV| on inverse strikes: {inverse}");
+  assert!(
+    nan_share < 0.05,
+    "NaN share of the Fourier surface on inverse strikes: {nan_share}"
+  );
+  assert!(inverse < 1e-5, "median |dIV| on inverse strikes: {inverse}");
   assert!(
     direct > 10.0 * inverse,
     "direct strikes: {direct} vs inverse {inverse}"
