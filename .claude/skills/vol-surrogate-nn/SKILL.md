@@ -279,7 +279,7 @@ rather than relying on the default.
 eyeball training-target IV against surrogate prediction. If the wings
 diverge, the training set is too small or the network too narrow
 (`hidden_dim` is your only architectural dial). The helper is covered by unit
-tests in `plot.rs`; the old `viz`-gated real-data tests are gone.
+tests in `plot.rs`.
 
 ## 10. Anti-patterns
 

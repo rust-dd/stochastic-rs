@@ -59,8 +59,8 @@ stochastic-rs-stats = { version = "3.0.0-rc.4" }
 - **`cuda` requires the CUDA toolkit on the build machine.** CI builds do not install it by default.
 - **`ai` is heavy and experimental.** It pulls in `candle-core`, which is a
   substantial ML stack, and `stochastic-rs-ai` is outside the stability promise.
-  On Apple Silicon it needs Rust 1.94 (candle 0.11 uses the NEON fp16
-  intrinsics) until a candle release carries
+  On Apple Silicon (or any aarch64 target with the `fp16` target feature) it needs
+  Rust 1.94 (candle 0.11 uses the NEON fp16 intrinsics) until a candle release carries
   [huggingface/candle#3845](https://github.com/huggingface/candle/pull/3845).
   Only enable when you actually need NN surrogates.
 

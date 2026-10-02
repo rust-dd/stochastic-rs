@@ -37,8 +37,9 @@ repository, not in the crates.io package. The Heston set is indexed by inverse m
 
 ## Requirements
 
-Rust 1.89 or newer. On Apple Silicon (aarch64 macOS) Rust 1.94 or newer: candle 0.11.0
-uses the NEON fp16 intrinsics that stabilised in 1.94. A candle release that carries
+Rust 1.89 or newer. On Apple Silicon (or any aarch64 target with the `fp16` target
+feature) Rust 1.94 or newer: candle 0.11.0 uses the NEON fp16 intrinsics that stabilised
+in 1.94. A candle release that carries
 [huggingface/candle#3845](https://github.com/huggingface/candle/pull/3845) lifts this.
 
 ## Usage

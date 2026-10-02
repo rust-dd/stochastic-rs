@@ -46,7 +46,8 @@ One workspace, one umbrella crate (`stochastic-rs`) that re-exports the sub-crat
 
 ## Installation
 
-The Rust crates require Rust 1.89 or newer.
+The Rust crates require Rust 1.89 or newer; on Apple Silicon the `ai` feature needs
+Rust 1.94 or newer.
 
 The workspace declares this minimum in `rust-version`. Cargo's edition-2024
 resolver uses it when choosing compatible dependency versions, so a fresh

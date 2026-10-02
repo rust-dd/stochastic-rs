@@ -34,15 +34,17 @@ data (MIT, © 2019 Aitor Muguruza) and are not part of the crates.io package.
 ## The grid
 
 All three surrogates predict an implied-volatility surface on one fixed grid:
-11 relative strikes `K / S0` from 0.5 to 1.5 and 8 maturities from 0.1 to 2.0
-years, at zero rates — a flat, maturity-major vector of 88 values
+11 strike nodes from 0.5 to 1.5 and 8 maturities from 0.1 to 2.0 years, at zero
+rates — a flat, maturity-major vector of 88 values
 (`volatility::grid::{MONEYNESS, MATURITIES}`). A grid of another size returns `Err`; the
-values are not checked, so use these constants.
+values are not checked, so pass the model's `STRIKES` (times the spot) and
+`grid::MATURITIES`.
 
-- `one_factor::STRIKES` and `rbergomi::STRIKES` are the moneyness nodes.
+- `one_factor::STRIKES` and `rbergomi::STRIKES` are the nodes as `K / S0`, ascending
+  from 0.5 to 1.5.
 - The shipped Heston set is indexed by inverse moneyness `S0 / K`, so
-  `heston::STRIKES` descends from 2 to 2/3; `predict_implied_vol_surface` sorts
-  the strikes it is given into ascending order.
+  `heston::STRIKES` (`K / S0`) descends from 2 to 2/3; `predict_implied_vol_surface`
+  sorts the strikes it is given into ascending order.
 
 ## How they work
 
@@ -87,7 +89,7 @@ Every surrogate carries a `train_save_load_roundtrip` unit test that:
 4. Reloads and asserts inference parity
 
 This guards the on-disk format from silent regressions. The integration test
-`tests/real_trainsets.rs` trains each surrogate on the first 2 000 rows of its
+`stochastic-rs-ai/tests/real_trainsets.rs` trains each surrogate on the first 2 000 rows of its
 training set, checks the parameters stay inside the training box and that the
 validation error falls, and prices the Heston set with the Fourier pricer to pin
 its strike axis.
