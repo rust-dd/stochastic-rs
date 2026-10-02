@@ -369,7 +369,7 @@ mod tests {
   }
 }
 
-py_distribution!(PyBeta, SimdBeta,
+py_distribution_legacy!(PyBeta, SimdBeta,
   sig: (alpha, beta, seed=None, dtype=None),
   params: (alpha: f64, beta: f64)
 );

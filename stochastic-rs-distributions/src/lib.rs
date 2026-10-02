@@ -157,17 +157,22 @@ pub use stochastic_rs_core::simd_rng;
 #[macro_use]
 mod macros;
 
+#[cfg(doctest)]
+mod doctest_seals;
 pub mod float_impls;
 #[cfg(feature = "python")]
 #[doc(hidden)]
 pub mod python;
+pub mod seeded;
 mod simd_float_impls;
+mod source;
 pub mod special;
 pub mod traits;
 
 #[cfg(test)]
 mod tests;
 
+pub use crate::seeded::Seeded;
 #[cfg(feature = "python")]
 pub use crate::traits::CallableDist;
 pub use crate::traits::DistributionExt;
@@ -178,7 +183,9 @@ pub use crate::traits::Fn1D;
 pub use crate::traits::Fn2D;
 pub use crate::traits::Program;
 pub use crate::traits::RealExt;
+pub use crate::traits::SimdDistribution;
 pub use crate::traits::SimdFloatExt;
+pub use crate::traits::SimdKernel;
 
 pub mod alpha_stable;
 pub mod beta;
@@ -199,19 +206,8 @@ pub mod non_central_chi_squared;
 pub mod normal;
 pub mod normal_inverse_gauss;
 
-/// Type alias for `SimdNormal` backed by the experimental dual-stream RNG.
-///
-/// Enabled by the `unstable-dual-stream-rng` cargo feature. Production code continues
-/// to use the default [`normal::SimdNormal`] alias parameter
-/// (`R = SimdRng`); switching to this alias picks the same struct
-/// monomorphised over `SimdRngDual`, which unrolls the Ziggurat hot loop
-/// 2× for ≈ 2–6 % extra throughput on bulk Normal fills.
-#[cfg(feature = "unstable-dual-stream-rng")]
-pub type SimdNormalDual<T, const N: usize = 64> =
-  normal::SimdNormal<T, N, stochastic_rs_core::simd_rng_dual::SimdRngDual>;
-
 /// Type alias for [`exp::SimdExp`] backed by the experimental dual-stream
-/// RNG. Same trade-offs as [`SimdNormalDual`].
+/// RNG, which unrolls the Ziggurat hot loop 2×.
 #[cfg(feature = "unstable-dual-stream-rng")]
 pub type SimdExpDual<T> = exp::SimdExp<T, stochastic_rs_core::simd_rng_dual::SimdRngDual>;
 
@@ -244,13 +240,13 @@ macro_rules! impl_distribution_sampler_float {
 
       impl<T: SimdFloatExt> DistributionSampler<T> for $dist {
         #[inline]
-        fn fill_slice(&self, out: &mut [T]) {
-          self.fill_slice(out);
+        fn fill_slice(&mut self, out: &mut [T]) {
+          Self::fill_slice(self, out)
         }
 
         #[inline]
-        fn fork(&self, stream_idx: u64) -> Self {
-          self.fork(stream_idx)
+        fn fork(&mut self, stream_idx: u64) -> Self {
+          Self::fork(self, stream_idx)
         }
       }
     )+
@@ -262,15 +258,15 @@ macro_rules! impl_distribution_sampler_int {
     $(
       impl<T: num_traits::PrimInt> crate::traits::distribution::Sealed for $dist {}
 
-      impl<T: num_traits::PrimInt> DistributionSampler<T> for $dist {
+      impl<T: num_traits::PrimInt + Send> DistributionSampler<T> for $dist {
         #[inline]
-        fn fill_slice(&self, out: &mut [T]) {
-          self.fill_slice(out);
+        fn fill_slice(&mut self, out: &mut [T]) {
+          Self::fill_slice(self, out)
         }
 
         #[inline]
-        fn fork(&self, stream_idx: u64) -> Self {
-          self.fork(stream_idx)
+        fn fork(&mut self, stream_idx: u64) -> Self {
+          Self::fork(self, stream_idx)
         }
       }
     )+
@@ -284,13 +280,13 @@ macro_rules! impl_distribution_sampler_float_const_n {
 
       impl<T: SimdFloatExt, const N: usize> DistributionSampler<T> for $dist {
         #[inline]
-        fn fill_slice(&self, out: &mut [T]) {
-          self.fill_slice(out);
+        fn fill_slice(&mut self, out: &mut [T]) {
+          Self::fill_slice(self, out)
         }
 
         #[inline]
-        fn fork(&self, stream_idx: u64) -> Self {
-          self.fork(stream_idx)
+        fn fork(&mut self, stream_idx: u64) -> Self {
+          Self::fork(self, stream_idx)
         }
       }
     )+
@@ -329,188 +325,4 @@ impl_distribution_sampler_int!(
   poisson::SimdPoisson<T>,
 );
 
-impl_distribution_sampler_float_const_n!(normal::SimdNormal<T, N>, exp::SimdExpZig<T, N>,);
-
-#[cfg(test)]
-mod distribution_sampler_tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-  use stochastic_rs_core::simd_rng::SimdRng;
-  use stochastic_rs_core::simd_rng::Unseeded;
-
-  use super::DistributionSampler;
-  use super::normal::SimdNormal;
-  use super::poisson::SimdPoisson;
-
-  #[test]
-  fn sample_n_returns_requested_length() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
-    let out = dist.sample_n(1024);
-    assert_eq!(out.len(), 1024);
-  }
-
-  #[test]
-  fn sample_matrix_float_has_expected_shape() {
-    let dist = SimdNormal::<f32>::new(0.0, 1.0, &Unseeded);
-    let out = dist.sample_matrix(32, 64);
-    assert_eq!(out.shape(), &[32, 64]);
-  }
-
-  #[test]
-  fn sample_matrix_int_has_expected_shape() {
-    let dist = SimdPoisson::<i64>::new(1.5, &Unseeded);
-    let out = dist.sample_matrix(16, 8);
-    assert_eq!(out.shape(), &[16, 8]);
-  }
-
-  /// Two identically-seeded objects must produce identical output through
-  /// EVERY public sampling path. Guards the Clone-reseed and fresh-SimdRng
-  /// leaks found by the 2026-08-11 API review (empirically: Poisson
-  /// `sample_n` and all types' parallel `sample_matrix` diverged under
-  /// `Deterministic` seeds because `sample_n` handed a freshly-seeded
-  /// `SimdRng` into `fill_slice`, and `SimdPoisson` — unlike most other
-  /// types — actually drew from that argument instead of its own stream).
-  #[test]
-  fn sample_n_deterministic_all_paths() {
-    let poisson_a = SimdPoisson::<u64>::new(4.5, &Deterministic::new(42));
-    let poisson_b = SimdPoisson::<u64>::new(4.5, &Deterministic::new(42));
-    assert_eq!(poisson_a.sample_n(64), poisson_b.sample_n(64));
-
-    let normal_a = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
-    let normal_b = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
-    assert_eq!(normal_a.sample_n(64), normal_b.sample_n(64));
-  }
-
-  /// `sample_matrix`'s parallel fan-out (`rayon::scope` + per-chunk workers)
-  /// must stay bit-identical across two identically-`Deterministic`-seeded
-  /// samplers. Before the `DistributionSampler::fork` fix, each worker
-  /// cloned `self` and every `Simd*` `Clone` impl reseeds from `Unseeded`,
-  /// so the seeded stream was lost the moment `sample_matrix` went
-  /// multi-threaded. Forced onto a 4-thread pool so the parallel branch
-  /// (`workers > 1`) is actually exercised regardless of the ambient
-  /// environment's core count.
-  #[test]
-  fn sample_matrix_parallel_deterministic() {
-    let pool = rayon::ThreadPoolBuilder::new()
-      .num_threads(4)
-      .build()
-      .expect("failed to build 4-thread pool");
-    let (a, b) = pool.install(|| {
-      let dist_a = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
-      let dist_b = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
-      (
-        dist_a.sample_matrix(200, 2000),
-        dist_b.sample_matrix(200, 2000),
-      )
-    });
-    assert_eq!(a, b);
-  }
-
-  /// A second follow-up review (2026-08-11) caught that the fix above only
-  /// proved two *separately-constructed* samplers agree on their *first*
-  /// call — `fork` derived every worker's seed from a value frozen at
-  /// construction, so a single object's `sample_matrix` replayed the exact
-  /// same matrix on every call. "Construct once, call `sample_matrix` per
-  /// Monte Carlo iteration" is the library's central usage pattern, so this
-  /// was a real bug, not a theoretical one. `fork` now advances an
-  /// interior-mutable basis on every parallel-path call; this test asserts
-  /// two consecutive calls diverge, for both `Deterministic` and
-  /// `Unseeded` (repeat calls must advance regardless of seeding strategy).
-  #[test]
-  fn sample_matrix_repeat_calls_advance() {
-    let pool = rayon::ThreadPoolBuilder::new()
-      .num_threads(4)
-      .build()
-      .expect("failed to build 4-thread pool");
-    pool.install(|| {
-      let det = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
-      let call1 = det.sample_matrix(200, 2000);
-      let call2 = det.sample_matrix(200, 2000);
-      assert_ne!(
-        call1, call2,
-        "Deterministic sample_matrix replayed the same matrix on a repeat call"
-      );
-
-      let unseeded = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
-      let call1 = unseeded.sample_matrix(200, 2000);
-      let call2 = unseeded.sample_matrix(200, 2000);
-      assert_ne!(
-        call1, call2,
-        "Unseeded sample_matrix replayed the same matrix on a repeat call"
-      );
-    });
-  }
-
-  /// Companion to [`sample_matrix_repeat_calls_advance`]: advancing the
-  /// fork basis per call must not break cross-object reproducibility.
-  /// Two identically-`Deterministic`-seeded objects still need to agree
-  /// call-for-call (their live states advance in lockstep from an
-  /// identical starting point), and a small *serial* call sandwiched
-  /// between the two parallel calls (below the fork threshold, so it never
-  /// touches the fork basis) must not desynchronize them.
-  #[test]
-  fn sample_matrix_call_sequence_deterministic() {
-    let pool = rayon::ThreadPoolBuilder::new()
-      .num_threads(4)
-      .build()
-      .expect("failed to build 4-thread pool");
-    pool.install(|| {
-      let dist_a = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
-      let dist_b = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
-
-      let a_call1 = dist_a.sample_matrix(200, 2000);
-      let b_call1 = dist_b.sample_matrix(200, 2000);
-      assert_eq!(a_call1, b_call1, "first parallel call diverged");
-
-      // Below MIN_PAR_CHUNK: takes the serial `fill_slice` path, which
-      // must not perturb either object's fork basis.
-      let a_serial = dist_a.sample_matrix(2, 8);
-      let b_serial = dist_b.sample_matrix(2, 8);
-      assert_eq!(a_serial, b_serial, "serial call diverged");
-
-      let a_call2 = dist_a.sample_matrix(200, 2000);
-      let b_call2 = dist_b.sample_matrix(200, 2000);
-      assert_eq!(a_call2, b_call2, "second parallel call diverged");
-      assert_ne!(a_call1, a_call2, "second parallel call replayed the first");
-    });
-  }
-
-  /// sample_matrix must be bit-identical across thread-pool sizes, not merely for
-  /// a fixed pool — the A1-a fix left worker count tied to current_num_threads().
-  #[test]
-  fn sample_matrix_is_thread_count_independent() {
-    let sample_under = |threads: usize| {
-      rayon::ThreadPoolBuilder::new()
-        .num_threads(threads)
-        .build()
-        .expect("failed to build pool")
-        .install(|| {
-          let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
-          dist.sample_matrix(200, 2000)
-        })
-    };
-    let under_1 = sample_under(1);
-    let under_4 = sample_under(4);
-    let under_8 = sample_under(8);
-    assert_eq!(under_1, under_4, "1-thread and 4-thread pools diverged");
-    assert_eq!(under_4, under_8, "4-thread and 8-thread pools diverged");
-  }
-
-  /// `rand::distr::Distribution::sample`'s `rng` argument is documented as
-  /// unused across every `Simd*` type — feeding it two genuinely different
-  /// external RNGs must not change the output of a `Deterministic`-seeded
-  /// sampler.
-  #[test]
-  fn distribution_sample_uses_internal_stream() {
-    use rand::distr::Distribution;
-
-    let poisson_a = SimdPoisson::<u64>::new(4.5, &Deterministic::new(7));
-    let poisson_b = SimdPoisson::<u64>::new(4.5, &Deterministic::new(7));
-    let mut external_rng_1 = SimdRng::from_seed(1);
-    let mut external_rng_2 = SimdRng::from_seed(999_999);
-    for _ in 0..32 {
-      let a = poisson_a.sample(&mut external_rng_1);
-      let b = poisson_b.sample(&mut external_rng_2);
-      assert_eq!(a, b);
-    }
-  }
-}
+impl_distribution_sampler_float_const_n!(exp::SimdExpZig<T, N>,);

@@ -32,9 +32,11 @@ analytics and SIMD-accelerated bulk generation.
 
 ```rust
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
-let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
+let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(42));
 let mut xs = vec![0.0; 10_000];
 dist.fill_slice(&mut xs);            // amortised SIMD fill
 ```

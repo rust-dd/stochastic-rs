@@ -283,7 +283,7 @@ impl<T: PrimInt, R: SimdRngExt> crate::traits::DistributionExt for SimdHypergeom
   }
 }
 
-py_distribution_int!(PyHypergeometric, SimdHypergeometric,
+py_distribution_int_legacy!(PyHypergeometric, SimdHypergeometric,
   sig: (n_total, k_success, n_draws, seed=None),
   params: (n_total: u32, k_success: u32, n_draws: u32)
 );

@@ -32,6 +32,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -290,7 +293,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       decay,
       diff_scale: self.sigma,
       theta: &self.theta,
-      normal: SimdNormal::<T>::new(T::zero(), ou_std, &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), ou_std).seeded(&self.seed),
     }
   }
 
@@ -347,7 +350,7 @@ pub struct BlackKarasinskiSampler<'a, T: FloatExt> {
   /// baked into the Gaussian source's `std_dev` (see the struct doc).
   diff_scale: T,
   theta: &'a Fn1D<T>,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> BlackKarasinskiSampler<'_, T> {

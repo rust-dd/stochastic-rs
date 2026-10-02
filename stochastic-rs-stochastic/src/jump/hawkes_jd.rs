@@ -16,6 +16,8 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
@@ -176,9 +178,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       x0: self.x0.unwrap_or(T::zero()),
       dt,
       sqrt_dt: dt.sqrt(),
-      normal: SimdNormal::<T, 64>::new(T::zero(), T::one(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
       uniform: SimdUniform::<T>::new(T::zero(), T::one(), &self.seed),
-      jump_normal: SimdNormal::<T, 64>::new(self.mu_j, self.sigma_j, &self.seed),
+      jump_normal: SimdNormal::<T>::new(self.mu_j, self.sigma_j).seeded(&self.seed),
     }
   }
 
@@ -228,9 +230,9 @@ pub struct HawkesJDSampler<T: FloatExt> {
   x0: T,
   dt: T,
   sqrt_dt: T,
-  normal: SimdNormal<T, 64>,
+  normal: Seeded<SimdNormal<T>>,
   uniform: SimdUniform<T>,
-  jump_normal: SimdNormal<T, 64>,
+  jump_normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> HawkesJDSampler<T> {
@@ -249,7 +251,7 @@ impl<T: FloatExt> HawkesJDSampler<T> {
 
     for i in 1..out.len() {
       // Diffusion
-      let dw = self.normal.sample_fast() * self.sqrt_dt;
+      let dw = self.normal.sample() * self.sqrt_dt;
       let drift = (self.mu - self.sigma * self.sigma / two) * self.dt;
 
       // Hawkes intensity: check for jump in [t_{i-1}, t_i]
@@ -258,7 +260,7 @@ impl<T: FloatExt> HawkesJDSampler<T> {
       let jump = if u < jump_prob {
         // Jump occurs — excite intensity
         lambda += self.alpha;
-        self.jump_normal.sample_fast()
+        self.jump_normal.sample()
       } else {
         T::zero()
       };

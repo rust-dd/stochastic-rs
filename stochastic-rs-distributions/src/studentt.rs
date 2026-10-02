@@ -14,14 +14,17 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use super::SimdFloatExt;
 use super::chi_square::SimdChiSquared;
 use super::normal::SimdNormal;
+use crate::seeded::StreamState;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 const SMALL_STUDENT_T_THRESHOLD: usize = 16;
 
 pub struct SimdStudentT<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   nu: T,
-  normal: SimdNormal<T, 64, R>,
+  normal: UnsafeCell<StreamState<T, R, 64>>,
   chisq: SimdChiSquared<T, R>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
@@ -38,7 +41,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdStudentT<T, R> {
   /// RNGs come from a [`SeedExt`](crate::simd_rng::SeedExt) source; each
   /// sub-component (normal, chisq, main rng) gets an independent stream.
   pub fn new<S: crate::simd_rng::SeedExt>(nu: T, seed: &S) -> Self {
-    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
+    let normal = UnsafeCell::new(SimdNormal::<T>::standard().init::<R, S>(seed).0);
     let chisq = SimdChiSquared::new(nu, seed);
     let stream_seed = seed.next_seed();
     Self {
@@ -83,7 +86,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdStudentT<T, R> {
     let rng = unsafe { &mut *self.simd_rng.get() };
     if out.len() < SMALL_STUDENT_T_THRESHOLD {
       for x in out.iter_mut() {
-        let z = self.normal.sample(rng);
+        let z = SimdNormal::<T>::standard().next(unsafe { &mut *self.normal.get() });
         let v = self.chisq.sample(rng);
         *x = z / (v / self.nu).sqrt();
       }
@@ -94,7 +97,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdStudentT<T, R> {
     let mut vbuf = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.normal.fill_standard_fast(&mut zbuf);
+      SimdNormal::<T>::fill_standard(&mut unsafe { &mut *self.normal.get() }.rng, &mut zbuf);
       self.chisq.fill_slice(&mut vbuf);
       for (sub, (z8, v8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
         zbuf
@@ -109,7 +112,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdStudentT<T, R> {
     }
     if !rem.is_empty() {
       let n = rem.len();
-      self.normal.fill_standard_fast(&mut zbuf[..n]);
+      SimdNormal::<T>::fill_standard(&mut unsafe { &mut *self.normal.get() }.rng, &mut zbuf[..n]);
       self.chisq.fill_slice(&mut vbuf[..n]);
       for i in 0..n {
         rem[i] = zbuf[i] / (vbuf[i] / self.nu).sqrt();
@@ -364,7 +367,7 @@ mod tests {
   }
 }
 
-py_distribution!(PyStudentT, SimdStudentT,
+py_distribution_legacy!(PyStudentT, SimdStudentT,
   sig: (nu, seed=None, dtype=None),
   params: (nu: f64)
 );

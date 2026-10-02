@@ -535,16 +535,16 @@ stochastic-rs = { version = "3.0.0-rc.1", features = ["unstable-dual-stream-rng"
 ```
 
 Unlocks `stochastic_rs_core::simd_rng_dual::SimdRngDual` (two parallel
-xoshiro engines) and the `stochastic_rs::distributions::SimdNormalDual` /
-`SimdExpZigDual` aliases. The Ziggurat main loop consumes two
+xoshiro engines, the `R` of a `Seeded::<SimdNormal<f64>, SimdRngDual>`
+stream) and the `SimdExpZigDual` alias. The Ziggurat main loop consumes two
 independent engine batches per iteration (`SimdRngExt::next_i32x8_pair`,
 gated on the `HAS_PAIR_ILP` const — single-stream codegen is
 unchanged). Measured against the single-stream `SimdNormal::fill_slice`
 on Apple Silicon, 2026-06-11
 (`cargo bench --bench dual_stream_compare --features unstable-dual-stream-rng`):
 
-|         n | single (`SimdNormal`) | dual (`SimdNormalDual`) |    Δ   |
-|----------:|----------------------:|------------------------:|-------:|
+|         n | single (`SimdRng`) | dual (`SimdRngDual`) |    Δ   |
+|----------:|-------------------:|---------------------:|-------:|
 |        64 |              120.6 ns |                117.5 ns |  −2.6% |
 |       256 |              494.2 ns |                467.9 ns |  −5.3% |
 |     4 096 |               7.87 µs |                 7.42 µs |  −5.7% |

@@ -19,6 +19,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -329,8 +332,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       rho: self.rho,
       dt,
       use_sym: self.use_sym.unwrap_or(false),
-      n1: SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed),
-      n2: SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed),
+      n1: SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed),
+      n2: SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed),
     }
   }
 
@@ -373,8 +376,8 @@ pub struct HestonLogSampler<T: FloatExt> {
   rho: T,
   dt: T,
   use_sym: bool,
-  n1: SimdNormal<T>,
-  n2: SimdNormal<T>,
+  n1: Seeded<SimdNormal<T>>,
+  n2: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> HestonLogSampler<T> {

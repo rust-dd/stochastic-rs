@@ -328,6 +328,8 @@ fn log_gauss_pdf(x: f64, mean: f64, std: f64) -> f64 {
 mod tests {
   use ndarray::array;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
@@ -447,8 +449,8 @@ mod tests {
 
   #[test]
   fn baum_welch_log_likelihood_does_not_decrease() {
-    let dist0 = SimdNormal::<f64>::new(-1.0, 0.5, &Deterministic::new(1));
-    let dist1 = SimdNormal::<f64>::new(1.5, 0.4, &Deterministic::new(2));
+    let mut dist0 = SimdNormal::<f64>::new(-1.0, 0.5).seeded(&Deterministic::new(1));
+    let mut dist1 = SimdNormal::<f64>::new(1.5, 0.4).seeded(&Deterministic::new(2));
     let mut a = vec![0.0_f64; 100];
     let mut b = vec![0.0_f64; 100];
     dist0.fill_slice(&mut a);

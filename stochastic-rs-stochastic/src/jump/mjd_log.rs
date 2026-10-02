@@ -16,6 +16,9 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
@@ -223,8 +226,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       None
     };
 
-    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    let jump_normal = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
+    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed);
+    let jump_normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed);
 
     MjdLogSampler {
       n: self.n,
@@ -285,8 +288,8 @@ pub struct MjdLogSampler<T: FloatExt> {
   drift_ln: T,
   rng: SimdRng,
   pois: Option<SimdPoisson<u32>>,
-  normal: SimdNormal<T>,
-  jump_normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
+  jump_normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> MjdLogSampler<T> {

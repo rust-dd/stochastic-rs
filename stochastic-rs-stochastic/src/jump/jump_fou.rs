@@ -25,6 +25,8 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -118,7 +120,7 @@ where
       x0: self.x0.unwrap_or(T::zero()),
       dt: self.fgn.dt(),
       fgn: &self.fgn,
-      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed.derive()),
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed.derive()),
       jump_distribution: &self.cpoisson.distribution,
       lambda: self.lambda,
       jump_seed: self.cpoisson.seed.derive(),
@@ -208,7 +210,7 @@ where
   x0: T,
   dt: T,
   fgn: &'a Fgn<T, Unseeded, B>,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
   jump_distribution: &'a D,
   lambda: T,
   jump_seed: S,

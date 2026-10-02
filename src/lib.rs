@@ -21,7 +21,7 @@ pub mod traits;
 /// `FloatExt`, `ModelPricer`, `BivariateExt`, …) and the option-type enums
 /// without pulling them one by one.
 ///
-/// Currently 25 items in 6 groups — re-derive with
+/// Currently 28 items in 6 groups — re-derive with
 /// `awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"` — the
 /// leading indentation matters, since a bare `grep -c "pub use"` also matches
 /// this very comment and reports two too many — and update
@@ -38,6 +38,7 @@ pub mod traits;
 /// let path = bm.sample();
 /// ```
 pub mod prelude {
+  pub use stochastic_rs_distributions::Seeded;
   pub use stochastic_rs_quant::Moneyness;
   pub use stochastic_rs_quant::OptionStyle;
   pub use stochastic_rs_quant::OptionType;
@@ -59,7 +60,9 @@ pub mod prelude {
   pub use crate::traits::PathSampler;
   pub use crate::traits::ProcessExt;
   pub use crate::traits::RealExt;
+  pub use crate::traits::SimdDistribution;
   pub use crate::traits::SimdFloatExt;
+  pub use crate::traits::SimdKernel;
   pub use crate::traits::TailDependence;
   pub use crate::traits::TimeExt;
   pub use crate::traits::ToModel;

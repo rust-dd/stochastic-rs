@@ -264,7 +264,7 @@ impl<T: PrimInt, R: SimdRngExt> crate::traits::DistributionExt for SimdPoisson<T
   }
 }
 
-py_distribution_int!(PyPoissonD, SimdPoisson,
+py_distribution_int_legacy!(PyPoissonD, SimdPoisson,
   sig: (lambda_, seed=None),
   params: (lambda_: f64)
 );

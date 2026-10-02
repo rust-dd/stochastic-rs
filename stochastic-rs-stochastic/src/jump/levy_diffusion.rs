@@ -13,6 +13,9 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -243,7 +246,7 @@ where
       jump_distribution: &self.cpoisson.distribution,
       lambda: self.lambda,
       jump_seed: self.cpoisson.seed.derive(),
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
@@ -329,7 +332,7 @@ where
   jump_distribution: &'a D,
   lambda: T,
   jump_seed: S,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T, D, S: SeedExt> LevyDiffusionSampler<'_, T, D, S>

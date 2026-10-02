@@ -5,15 +5,16 @@ use std::cell::RefCell;
 
 use ndarray::Array1;
 use num_complex::Complex;
-use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::normal::SimdNormal;
+use crate::seeded::Seeded;
+use crate::traits::DistributionSampler;
 use crate::traits::FloatExt;
 use crate::traits::RealExt;
 
 thread_local! {
-  static STANDARD_NORMAL_F64: RefCell<Option<Box<SimdNormal<f64, 64>>>> = const { RefCell::new(None) };
-  static STANDARD_NORMAL_F32: RefCell<Option<Box<SimdNormal<f32, 64>>>> = const { RefCell::new(None) };
+  static STANDARD_NORMAL_F64: RefCell<Option<Seeded<SimdNormal<f64>>>> = const { RefCell::new(None) };
+  static STANDARD_NORMAL_F32: RefCell<Option<Seeded<SimdNormal<f32>>>> = const { RefCell::new(None) };
   static FGN_SCRATCH_F64: RefCell<Vec<Complex<f64>>> = const { RefCell::new(Vec::new()) };
   static FGN_SCRATCH_F32: RefCell<Vec<Complex<f32>>> = const { RefCell::new(Vec::new()) };
 }
@@ -76,8 +77,7 @@ impl FloatExt for f64 {
     }
     STANDARD_NORMAL_F64.with(|cell| {
       let mut slot = cell.borrow_mut();
-      let dist = slot.get_or_insert_with(|| Box::new(SimdNormal::new(0.0, 1.0, &Unseeded)));
-      dist.fill_standard_fast(out);
+      slot.get_or_insert_with(Seeded::default).fill_slice(out);
     });
   }
 
@@ -115,8 +115,7 @@ impl FloatExt for f32 {
     }
     STANDARD_NORMAL_F32.with(|cell| {
       let mut slot = cell.borrow_mut();
-      let dist = slot.get_or_insert_with(|| Box::new(SimdNormal::new(0.0, 1.0, &Unseeded)));
-      dist.fill_standard_fast(out);
+      slot.get_or_insert_with(Seeded::default).fill_slice(out);
     });
   }
 

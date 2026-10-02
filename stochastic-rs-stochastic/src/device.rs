@@ -19,6 +19,7 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::parallel::prelude::*;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -557,7 +558,7 @@ impl<T: FloatExt> FgnBackend<T> for Cpu {
       .collect::<Vec<_>>()
       .into_par_iter()
       .map(|path_seed| {
-        let mut normal = SimdNormal::<T>::new(T::zero(), T::one(), &path_seed);
+        let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&path_seed);
         array1_from_fill(fgn.n(), |out| fgn.fill_cpu(&mut normal, out))
       })
       // `Vec::into_par_iter()` → `.map()` is an `IndexedParallelIterator`,

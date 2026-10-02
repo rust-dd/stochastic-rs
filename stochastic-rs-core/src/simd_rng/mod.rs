@@ -165,9 +165,8 @@ pub trait SeedExt: seed_seal::Sealed + Clone + Send + Sync + 'static {
   #[doc(hidden)]
   fn derive(&self) -> Self;
 
-  /// Create any [`SimdRngExt`] impl from this seed source, advancing the
-  /// internal state. Used by generic distributions that are parametric over
-  /// the underlying RNG type (e.g. `SimdNormal<T, N, R>`).
+  /// Create any [`SimdRngExt`] engine from this seed source, advancing the internal state;
+  /// the engine-generic streams use it (e.g. `Seeded<D, R>` in `stochastic-rs-distributions`).
   fn rng_ext<R: SimdRngExt>(&self) -> R;
 
   /// Reset the internal seed state in place where meaningful.

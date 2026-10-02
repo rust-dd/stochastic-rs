@@ -11,6 +11,8 @@
 
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::ndtri;
 
@@ -123,7 +125,8 @@ pub fn shapiro_francia_test(
   let obs_stat = shapiro_francia_statistic_sorted(&obs);
 
   let n = sample.len();
-  let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(cfg.bootstrap_seed));
+  let mut normals =
+    SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(cfg.bootstrap_seed));
   let mut normal_draw = vec![0.0; n];
 
   let mut left_tail_hits = 0usize;
@@ -149,6 +152,8 @@ pub fn shapiro_francia_test(
 mod tests {
   use ndarray::ArrayView1;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::exp::SimdExp;
   use stochastic_rs_distributions::normal::SimdNormal;
 
@@ -160,7 +165,7 @@ mod tests {
   /// distribution's own SIMD stream, so seeding an external `StdRng` has no
   /// effect on the data at all.
   fn normal_sample(seed: u64, n: usize) -> Vec<f64> {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
     let mut x = vec![0.0; n];
     dist.fill_slice(&mut x);
     x

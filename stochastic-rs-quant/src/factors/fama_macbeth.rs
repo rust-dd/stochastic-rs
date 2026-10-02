@@ -128,6 +128,8 @@ pub fn try_fama_macbeth(
 #[cfg(test)]
 mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
@@ -139,14 +141,14 @@ mod tests {
     let k = 1usize;
     let true_premium = 0.005_f64;
     let true_intercept = 0.001_f64;
-    let factor_dist = SimdNormal::<f64>::new(0.0, 0.02, &Deterministic::new(1));
+    let mut factor_dist = SimdNormal::<f64>::new(0.0, 0.02).seeded(&Deterministic::new(1));
     let mut factors_buf = vec![0.0_f64; t];
     factor_dist.fill_slice(&mut factors_buf);
     let factors = Array2::from_shape_vec((t, k), factors_buf.clone()).unwrap();
-    let beta_dist = SimdNormal::<f64>::new(1.0, 0.3, &Deterministic::new(2));
+    let mut beta_dist = SimdNormal::<f64>::new(1.0, 0.3).seeded(&Deterministic::new(2));
     let mut betas_buf = vec![0.0_f64; n];
     beta_dist.fill_slice(&mut betas_buf);
-    let resid_dist = SimdNormal::<f64>::new(0.0, 0.005, &Deterministic::new(3));
+    let mut resid_dist = SimdNormal::<f64>::new(0.0, 0.005).seeded(&Deterministic::new(3));
     let mut resid_buf = vec![0.0_f64; t * n];
     resid_dist.fill_slice(&mut resid_buf);
     let mut returns = Array2::<f64>::zeros((t, n));
@@ -166,7 +168,7 @@ mod tests {
 
   #[test]
   fn fama_macbeth_betas_match_first_pass_ols_dimensions() {
-    let dist = SimdNormal::<f64>::new(0.0, 0.01, &Deterministic::new(5));
+    let mut dist = SimdNormal::<f64>::new(0.0, 0.01).seeded(&Deterministic::new(5));
     let mut buf = vec![0.0_f64; 120 * 5];
     dist.fill_slice(&mut buf);
     let returns = Array2::from_shape_vec((120, 5), buf).unwrap();

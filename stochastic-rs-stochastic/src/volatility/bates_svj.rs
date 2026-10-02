@@ -23,6 +23,7 @@ use ndarray::Array1;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
@@ -457,7 +458,7 @@ impl<T: FloatExt, S: SeedExt> BatesSvjSampler<T, S> {
     let drift = self.drift;
     let kappa_j = self.kappa_j;
 
-    let z_std = SimdNormal::<f64, 64>::new(0.0, 1.0, &self.seed);
+    let mut z_std = SimdNormal::<f64>::new(0.0, 1.0).seeded(&self.seed);
     let mut rng = self.seed.rng();
 
     let pois = if self.lambda > T::zero() {
@@ -481,7 +482,7 @@ impl<T: FloatExt, S: SeedExt> BatesSvjSampler<T, S> {
         let k: u32 = pois.sample(&mut rng);
         if k > 0 {
           let kf = T::from_usize_(k as usize);
-          let z0: f64 = z_std.sample_fast();
+          let z0: f64 = z_std.sample();
           jump_sum_z = self.nu * kf + self.omega * kf.sqrt() * T::from_f64_fast(z0);
         }
       }

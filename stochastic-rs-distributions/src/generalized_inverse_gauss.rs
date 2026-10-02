@@ -665,7 +665,7 @@ mod tests {
   }
 }
 
-py_distribution!(PyGig, SimdGig,
+py_distribution_legacy!(PyGig, SimdGig,
   sig: (lambda, chi, psi, seed=None, dtype=None),
   params: (lambda: f64, chi: f64, psi: f64)
 );

@@ -129,7 +129,7 @@ where T: FloatExt, D: Distribution<T> + Send + Sync
       jump_distribution: &self.cpoisson.distribution,   // borrow: read-only params
       lambda: self.lambda,
       jump_seed: self.cpoisson.seed.derive(),           // own: chunk-local basis
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 }

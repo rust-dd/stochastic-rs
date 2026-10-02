@@ -7,6 +7,8 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -145,7 +147,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
   fn sampler(&self) -> FbmSampler<'_, T, S, B> {
     FbmSampler {
       fbm: self,
-      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed.derive()),
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed.derive()),
     }
   }
 
@@ -205,7 +207,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
 #[doc(hidden)]
 pub struct FbmSampler<'a, T: FloatExt, S: SeedExt, B> {
   fbm: &'a Fbm<T, S, B>,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FbmSampler<'_, T, S, B> {

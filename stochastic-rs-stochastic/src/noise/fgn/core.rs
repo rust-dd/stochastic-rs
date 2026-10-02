@@ -13,6 +13,8 @@ use num_complex::Complex;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 
 use crate::device::Cpu;
 use crate::device::DeviceError;
@@ -243,8 +245,8 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
       // length in scalars, measured on the slice handed over, not on the length asked for.
       let flat =
         unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * rnd.len()) };
-      let normal =
-        stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), T::one(), seed);
+      let mut normal =
+        stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), T::one()).seeded(seed);
       normal.fill_slice(flat);
       for (z, &w) in rnd.iter_mut().zip(self.sqrt_eigenvalues.iter()) {
         z.re = z.re * w;
@@ -270,7 +272,9 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   #[inline]
   pub(crate) fn fill_cpu(
     &self,
-    normal: &mut stochastic_rs_distributions::normal::SimdNormal<T>,
+    normal: &mut stochastic_rs_distributions::Seeded<
+      stochastic_rs_distributions::normal::SimdNormal<T>,
+    >,
     out: &mut [T],
   ) {
     let len = 2 * self.padded_n;
@@ -320,8 +324,8 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
       // length in scalars, measured on the slice handed over, not on the length asked for.
       let flat =
         unsafe { std::slice::from_raw_parts_mut(rnd.as_mut_ptr() as *mut T, 2 * rnd.len()) };
-      let normal =
-        stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), T::one(), seed);
+      let mut normal =
+        stochastic_rs_distributions::normal::SimdNormal::<T>::new(T::zero(), T::one()).seeded(seed);
       normal.fill_slice(flat);
       for (z, &w) in rnd.iter_mut().zip(self.sqrt_eigenvalues.iter()) {
         z.re = z.re * w;

@@ -6,6 +6,8 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use rand_distr::Distribution;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::beta::SimdBeta;
 use stochastic_rs::distributions::cauchy::SimdCauchy;
 use stochastic_rs::distributions::chi_square::SimdChiSquared;
@@ -18,6 +20,7 @@ use stochastic_rs::distributions::poisson::SimdPoisson;
 use stochastic_rs::distributions::studentt::SimdStudentT;
 use stochastic_rs::distributions::uniform::SimdUniform;
 use stochastic_rs::distributions::weibull::SimdWeibull;
+use stochastic_rs::simd_rng::SimdRng;
 use stochastic_rs::simd_rng::Unseeded;
 
 mod discrete;
@@ -34,31 +37,29 @@ fn bench_normal(c: &mut Criterion) {
   group.warm_up_time(Duration::from_millis(500));
 
   for &(label, n) in SIZES {
-    group.bench_with_input(BenchmarkId::new("simd/f32/N=32", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist: SimdNormal<f32, 32> = SimdNormal::new(0.0, 1.0, &Unseeded);
+    group.bench_with_input(BenchmarkId::new("seeded/f32", label), &n, |b, &n| {
+      let mut dist = SimdNormal::<f32>::new(0.0, 1.0).seeded(&Unseeded);
       b.iter(|| {
         let mut s = 0.0f32;
         for _ in 0..n {
-          s += dist.sample(&mut rng);
+          s += dist.sample();
         }
         black_box(s)
       });
     });
-    group.bench_with_input(BenchmarkId::new("simd/f32/N=64", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist: SimdNormal<f32, 64> = SimdNormal::new(0.0, 1.0, &Unseeded);
+    group.bench_with_input(BenchmarkId::new("seeded/f64", label), &n, |b, &n| {
+      let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Unseeded);
       b.iter(|| {
-        let mut s = 0.0f32;
+        let mut s = 0.0f64;
         for _ in 0..n {
-          s += dist.sample(&mut rng);
+          s += dist.sample();
         }
         black_box(s)
       });
     });
-    group.bench_with_input(BenchmarkId::new("simd/f64/N=32", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist: SimdNormal<f64, 32> = SimdNormal::new(0.0, 1.0, &Unseeded);
+    group.bench_with_input(BenchmarkId::new("scalar/f64", label), &n, |b, &n| {
+      let mut rng = SimdRng::from_seed(7);
+      let dist = SimdNormal::<f64>::new(0.0, 1.0);
       b.iter(|| {
         let mut s = 0.0f64;
         for _ in 0..n {
@@ -67,15 +68,12 @@ fn bench_normal(c: &mut Criterion) {
         black_box(s)
       });
     });
-    group.bench_with_input(BenchmarkId::new("simd/f64/N=64", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist: SimdNormal<f64, 64> = SimdNormal::new(0.0, 1.0, &Unseeded);
+    group.bench_with_input(BenchmarkId::new("fill_slice/f64", label), &n, |b, &n| {
+      let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Unseeded);
+      let mut out = vec![0.0f64; n];
       b.iter(|| {
-        let mut s = 0.0f64;
-        for _ in 0..n {
-          s += dist.sample(&mut rng);
-        }
-        black_box(s)
+        dist.fill_slice(&mut out);
+        black_box(&out);
       });
     });
     group.bench_with_input(BenchmarkId::new("rand_distr/f32", label), &n, |b, &n| {
@@ -100,6 +98,21 @@ fn bench_normal(c: &mut Criterion) {
         black_box(s)
       });
     });
+    group.bench_with_input(
+      BenchmarkId::new("rand_distr_simdrng/f64", label),
+      &n,
+      |b, &n| {
+        let mut rng = SimdRng::from_seed(7);
+        let dist = rand_distr::Normal::<f64>::new(0.0, 1.0).unwrap();
+        b.iter(|| {
+          let mut s = 0.0f64;
+          for _ in 0..n {
+            s += dist.sample(&mut rng);
+          }
+          black_box(s)
+        });
+      },
+    );
   }
 
   group.finish();
@@ -124,7 +137,7 @@ fn bench_exp(c: &mut Criterion) {
     });
     group.bench_with_input(BenchmarkId::new("simd/f32/N=64", label), &n, |b, &n| {
       let mut rng = rand::rng();
-      let dist: SimdExpZig<f32, 64> = SimdExpZig::new(1.5, &Unseeded);
+      let dist: SimdExpZig<f32> = SimdExpZig::new(1.5, &Unseeded);
       b.iter(|| {
         let mut s = 0.0f32;
         for _ in 0..n {
@@ -146,7 +159,7 @@ fn bench_exp(c: &mut Criterion) {
     });
     group.bench_with_input(BenchmarkId::new("simd/f64/N=64", label), &n, |b, &n| {
       let mut rng = rand::rng();
-      let dist: SimdExpZig<f64, 64> = SimdExpZig::new(1.5, &Unseeded);
+      let dist: SimdExpZig<f64> = SimdExpZig::new(1.5, &Unseeded);
       b.iter(|| {
         let mut s = 0.0f64;
         for _ in 0..n {

@@ -17,6 +17,8 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -351,7 +353,7 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorrSampler<T, S> {
     let gen_noise = |seed: &S| -> Array1<T> {
       let mut gn = Array1::<T>::zeros(n_steps);
       if let Some(slice) = gn.as_slice_mut() {
-        let normal = SimdNormal::<T>::new(zero, sqrt_dt, seed);
+        let mut normal = SimdNormal::<T>::new(zero, sqrt_dt).seeded(seed);
         normal.fill_slice(slice);
       }
       gn

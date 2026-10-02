@@ -353,7 +353,7 @@ impl<T: PrimInt, R: SimdRngExt> crate::traits::DistributionExt for SimdBinomial<
   }
 }
 
-py_distribution_int!(PyBinomial, SimdBinomial,
+py_distribution_int_legacy!(PyBinomial, SimdBinomial,
   sig: (n, p, seed=None),
   params: (n: u32, p: f64)
 );

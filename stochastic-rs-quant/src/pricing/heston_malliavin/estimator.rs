@@ -1,6 +1,7 @@
 //! Seeded Monte Carlo estimation under correlated Heston dynamics.
 
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::HestonMalliavinError;
@@ -232,7 +233,7 @@ impl HestonMalliavinEstimator {
     HestonMalliavinError,
   > {
     let pairs = self.config.paths / 2;
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(self.config.seed));
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(self.config.seed));
     let mut statistics = OnlineCovariance::<OBSERVABLES>::default();
     let mut comparison_statistics = OnlineScalar::default();
     let mut bump_difference_statistics = OnlineScalar::default();
@@ -246,10 +247,10 @@ impl HestonMalliavinEstimator {
 
     for pair in 0..pairs {
       for draw in &mut variance_normals {
-        *draw = normal.sample_fast();
+        *draw = normal.sample();
       }
       for draw in &mut orthogonal_normals {
-        *draw = normal.sample_fast();
+        *draw = normal.sample();
       }
 
       let positive =

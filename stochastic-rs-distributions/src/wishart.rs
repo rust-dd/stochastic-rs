@@ -39,15 +39,20 @@
 //! - Smith, W.B., Hocking, R.R. (1972), "Algorithm AS 53: Wishart
 //!   variate generator", *Applied Statistics* 21(3), 341-345.
 
+use std::cell::UnsafeCell;
+
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::chi_square::SimdChiSquared;
 use crate::normal::SimdNormal;
+use crate::seeded::StreamState;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
 use crate::traits::SimdFloatExt;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 pub struct SimdWishart<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   /// Degrees of freedom $\nu > p - 1$.
@@ -59,7 +64,7 @@ pub struct SimdWishart<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   /// Per-row diagonal $\chi^2_{\nu - j + 1}$ samplers (one per dim).
   diag_chi: Vec<SimdChiSquared<T, R>>,
   /// Auxiliary standard normal for off-diagonal Bartlett entries.
-  normal: SimdNormal<T, 64, R>,
+  normal: UnsafeCell<StreamState<T, R, 64>>,
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> SimdWishart<T, R> {
@@ -78,7 +83,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdWishart<T, R> {
     let diag_chi: Vec<SimdChiSquared<T, R>> = (0..p)
       .map(|j| SimdChiSquared::<T, R>::new(T::from_f64_fast(nu - j as f64), seed))
       .collect();
-    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
+    let normal = UnsafeCell::new(SimdNormal::<T>::standard().init::<R, S>(seed).0);
 
     Self {
       nu,
@@ -101,7 +106,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdWishart<T, R> {
       let chi2_j = self.diag_chi[j].sample_fast().to_f64().unwrap();
       a[[j, j]] = chi2_j.max(0.0).sqrt();
       for i in (j + 1)..self.p {
-        a[[i, j]] = self.normal.sample_fast().to_f64().unwrap();
+        a[[i, j]] = SimdNormal::<T>::standard()
+          .next(unsafe { &mut *self.normal.get() })
+          .to_f64()
+          .unwrap();
       }
     }
     // X = L · A · Aᵀ · Lᵀ. Compute step by step: M = L · A, then X = M · Mᵀ.

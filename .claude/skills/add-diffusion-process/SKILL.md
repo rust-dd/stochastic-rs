@@ -198,7 +198,7 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Foo<T, S> {
             // The Gaussian source carries dt.sqrt() as its std, so the
             // recursion multiplies by sigma alone. Seeded from `&self.seed`
             // — this is the `derive()` the reproducibility rule requires.
-            normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+            normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
         }
     }
 }
@@ -237,8 +237,9 @@ Four conventions in there:
   per step. Per `dev-rules` §7a, `rand_distr::StandardNormal` is
   reserved for `benches/` — library code uses the workspace's own
   `Simd*` distributions. `fill_slice(out)` takes no RNG argument at
-  all — the seed goes to the constructor, by reference:
-  `SimdNormal::<T>::new(mean, std, &self.seed)`.
+  all — the seed binds the stream once, by reference:
+  `SimdNormal::<T>::new(mean, std).seeded(&self.seed)`, a
+  `Seeded<SimdNormal<T>>` sampler field.
 - **Fold constants into the noise.** Putting `dt.sqrt()` in the
   distribution's std keeps it out of the inner loop.
 - Use `T::from_f64_fast` / `T::from_usize_` (not `T::from`) at the

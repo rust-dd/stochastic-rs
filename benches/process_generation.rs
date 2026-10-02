@@ -7,6 +7,8 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use rand_distr::Distribution;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::ou::Ou;
@@ -25,7 +27,7 @@ fn bench_process_generation(c: &mut Criterion) {
     let std_dev = (1.0f64 / (n.saturating_sub(1).max(1) as f64)).sqrt();
 
     group.bench_with_input(BenchmarkId::new("normal/fill_slice", n), &n, |b, &n| {
-      let dist = SimdNormal::<f64, 64>::new(0.0, std_dev, &Unseeded);
+      let mut dist = SimdNormal::<f64>::new(0.0, std_dev).seeded(&Unseeded);
       let mut out = vec![0.0f64; n.saturating_sub(1)];
       b.iter(|| {
         dist.fill_slice(&mut out);
@@ -110,7 +112,7 @@ fn bench_process_generation(c: &mut Criterion) {
       },
     );
 
-    let dist = SimdNormal::<f64, 64>::new(0.0, std_dev, &Unseeded);
+    let mut dist = SimdNormal::<f64>::new(0.0, std_dev).seeded(&Unseeded);
     let mut increments = vec![0.0f64; n.saturating_sub(1)];
     dist.fill_slice(&mut increments);
 

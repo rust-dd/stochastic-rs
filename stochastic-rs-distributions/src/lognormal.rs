@@ -13,15 +13,17 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::SimdFloatExt;
 use super::normal::SimdNormal;
+use crate::seeded::StreamState;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
+use crate::traits::distribution::SimdDistribution;
 
 pub struct SimdLogNormal<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   mu: T,
   sigma: T,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
-  normal: SimdNormal<T, 64, R>,
+  normal: UnsafeCell<StreamState<T, R, 64>>,
   stream_seed: Cell<u64>,
 }
 
@@ -47,14 +49,14 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
       sigma > T::zero(),
       "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
     );
-    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
-    let stream_seed = Cell::new(normal.stream_seed.get());
+    let (normal, basis) = SimdNormal::<T>::standard().init::<R, S>(seed);
+    let stream_seed = Cell::new(basis);
     Self {
       mu,
       sigma,
       buffer: UnsafeCell::new([T::zero(); 16]),
       index: UnsafeCell::new(16),
-      normal,
+      normal: UnsafeCell::new(normal),
       stream_seed,
     }
   }
@@ -97,7 +99,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
     let mut tmp = [T::zero(); 16];
     let (chunks, rem) = out.as_chunks_mut::<16>();
     for chunk in chunks {
-      self.normal.fill_16(&mut tmp);
+      SimdNormal::<T>::fill_standard(&mut unsafe { &mut *self.normal.get() }.rng, &mut tmp[..16]);
       for half in 0..2 {
         let base = half * 8;
         let mut a = [T::zero(); 8];
@@ -108,7 +110,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
       }
     }
     if !rem.is_empty() {
-      self.normal.fill_slice(&mut tmp[..rem.len()]);
+      SimdNormal::<T>::fill_standard(
+        &mut unsafe { &mut *self.normal.get() }.rng,
+        &mut tmp[..rem.len()],
+      );
       let mut done = 0;
       while done + 8 <= rem.len() {
         let mut a = [T::zero(); 8];
@@ -238,7 +243,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdLogNormal<T, R> {
   }
 }
 
-py_distribution!(PyLogNormal, SimdLogNormal,
+py_distribution_legacy!(PyLogNormal, SimdLogNormal,
   sig: (mu, sigma, seed=None, dtype=None),
   params: (mu: f64, sigma: f64)
 );

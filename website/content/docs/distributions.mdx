@@ -177,61 +177,71 @@ print(counts.mean(), counts.var())           # both ≈ 4.0
 
 ### Construction
 
-Every distribution follows the same `new(args, &seed)` constructor pattern — pass
-[`Unseeded`](/docs/concepts/seeding) for an auto-seeded RNG or
-[`Deterministic::new(u64)`](/docs/concepts/seeding) for a reproducible
-stream. See the [seeding concept page](/docs/concepts/seeding) for the
-full design (including `SeedExt::reseed`, the generic `R: SimdRngExt`
-backing RNG, and the experimental `unstable-dual-stream-rng` feature). Note the
-seed is taken **by reference** and comes last. `SimdNormal` stands in for
-any distribution below; substitute the parameters of the one you want:
+A distribution is a stateless law: `new(args)` takes its parameters only, and
+`.seeded(&seed)` binds it to a seeded stream, a `Seeded<D>` — pass
+[`Unseeded`](/docs/concepts/seeding) for an auto-seeded stream or
+[`Deterministic::new(u64)`](/docs/concepts/seeding) for a reproducible one.
+See the [seeding concept page](/docs/concepts/seeding) for the full design
+(including `SeedExt::reseed`, the `R: SimdRngExt` engine parameter of
+`Seeded<D, R>`, and the experimental `unstable-dual-stream-rng` feature).
+`SimdNormal` stands in for any distribution below; substitute the parameters
+of the one you want:
 
 ```rust
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::Unseeded;
 
-// auto-seeded
-let d = SimdNormal::<f64>::new(/* mean */ 0.0, /* std_dev */ 1.0, &Unseeded);
+// the law: parameters only, `Copy` and `Send + Sync`
+let law = SimdNormal::<f64>::new(/* mean */ 0.0, /* std_dev */ 1.0);
 
-// reproducible
-let d = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
+// auto-seeded stream
+let mut s = law.seeded(&Unseeded);
+
+// reproducible stream
+let mut s = law.seeded(&Deterministic::new(42));
 
 // share one seed source across sub-components
 let shared = Deterministic::new(42);
-let d = SimdNormal::<f64>::new(0.0, 1.0, &shared);
+let mut s = law.seeded(&shared);
 ```
 
 ### Sampling
 
 ```rust
 use rand::distr::Distribution;
+use stochastic_rs::distributions::DistributionSampler;
 use stochastic_rs::simd_rng::SeedExt;
 
-// Single sample, via the project's own RNG (see the seeding concept page).
+// One scalar draw from the rng you pass: the law itself holds no stream.
 // `SeedExt` is what brings `.rng()` into scope.
 let mut rng = Deterministic::new(0).rng();
-let x: f64 = d.sample(&mut rng);
+let x: f64 = law.sample(&mut rng);
 
-// Bulk fill (uses the distribution's own internal RNG, applies SIMD)
+// The seeded stream: buffered single draws and SIMD bulk fills, all on `&mut self`
+let y = s.sample();
 let mut buf = vec![0.0_f64; 10_000];
-d.fill_slice(&mut buf);
+s.fill_slice(&mut buf);
 ```
+
+`Seeded::clone` is a snapshot (both copies continue identically), and
+`s.fork(i)` derives an independent child stream for worker `i`.
 
 ### Closed-form analytics
 
 `DistributionExt` is `f64`-only (not generic over `T`) and every method
 defaults to a `type_name`-annotated `unimplemented!()`, overridden per
-distribution where a closed form exists:
+distribution where a closed form exists. It lives on the law, not on the
+stream:
 
 ```rust
 use stochastic_rs::traits::DistributionExt;
 
-let pdf = d.pdf(0.5);
-let cdf = d.cdf(0.5);
-let cf = d.characteristic_function(2.0); // Complex64
-let m1 = d.mean();
-let m2 = d.variance();
+let pdf = law.pdf(0.5);
+let cdf = law.cdf(0.5);
+let cf = law.characteristic_function(2.0); // Complex64
+let m2 = law.variance();
 ```
 
 ## Adding a new distribution

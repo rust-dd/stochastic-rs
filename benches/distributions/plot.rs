@@ -21,6 +21,7 @@ use plotly::layout::GridPattern;
 use plotly::layout::LayoutGrid;
 use rand::rng;
 use rand_distr::Distribution;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::beta::SimdBeta;
 use stochastic_rs::distributions::binomial::SimdBinomial;
 use stochastic_rs::distributions::cauchy::SimdCauchy;
@@ -218,7 +219,7 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
   let mut r1 = rand::rng();
   let mut r2 = rand::rng();
 
-  let d_normal: SimdNormal<f32> = SimdNormal::new(0.0, 1.0, &Unseeded);
+  let mut d_normal = SimdNormal::<f32>::new(0.0, 1.0).seeded(&Unseeded);
   let rd_normal = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
   add_continuous_pair(
     &mut plot,
@@ -227,7 +228,7 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     (-4.0, 4.0),
     100,
     n,
-    || d_normal.sample(&mut r1),
+    || d_normal.sample(),
     || rd_normal.sample(&mut r2),
   );
 

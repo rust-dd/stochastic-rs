@@ -556,7 +556,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdExp<
   }
 }
 
-py_distribution!(PyExp, SimdExp,
+py_distribution_legacy!(PyExp, SimdExp,
   sig: (lambda_, seed=None, dtype=None),
   params: (lambda_: f64)
 );

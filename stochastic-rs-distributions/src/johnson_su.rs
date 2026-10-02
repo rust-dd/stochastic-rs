@@ -34,10 +34,13 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::SimdFloatExt;
 use super::normal::SimdNormal;
+use crate::seeded::StreamState;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
 use crate::special::ndtri;
 use crate::special::norm_cdf;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 const SMALL_JSU_THRESHOLD: usize = 16;
 
@@ -48,7 +51,7 @@ pub struct SimdJohnsonSu<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   delta: T,
   xi: T,
   lambda: T,
-  normal: SimdNormal<T, 64, R>,
+  normal: UnsafeCell<StreamState<T, R, 64>>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
   stream_seed: Cell<u64>,
@@ -59,7 +62,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdJohnsonSu<T, R> {
   pub fn new<S: crate::simd_rng::SeedExt>(gamma: T, delta: T, xi: T, lambda: T, seed: &S) -> Self {
     assert!(delta > T::zero(), "JohnsonSu: delta must be positive");
     assert!(lambda > T::zero(), "JohnsonSu: lambda must be positive");
-    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
+    let normal = UnsafeCell::new(SimdNormal::<T>::standard().init::<R, S>(seed).0);
     let stream_seed = seed.next_seed();
     Self {
       gamma,
@@ -116,7 +119,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdJohnsonSu<T, R> {
   pub fn fill_slice(&self, out: &mut [T]) {
     if out.len() < SMALL_JSU_THRESHOLD {
       for x in out.iter_mut() {
-        *x = self.transform(self.normal.sample_fast());
+        *x = self.transform(SimdNormal::<T>::standard().next(unsafe { &mut *self.normal.get() }));
       }
       return;
     }
@@ -128,7 +131,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdJohnsonSu<T, R> {
     let mut zbuf = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.normal.fill_standard_fast(&mut zbuf);
+      SimdNormal::<T>::fill_standard(&mut unsafe { &mut *self.normal.get() }.rng, &mut zbuf);
       for (sub, z8) in chunk
         .as_chunks_mut::<8>()
         .0
@@ -142,7 +145,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdJohnsonSu<T, R> {
     }
     if !rem.is_empty() {
       let n = rem.len();
-      self.normal.fill_standard_fast(&mut zbuf[..n]);
+      SimdNormal::<T>::fill_standard(&mut unsafe { &mut *self.normal.get() }.rng, &mut zbuf[..n]);
       for i in 0..n {
         rem[i] = self.transform(zbuf[i]);
       }
@@ -384,7 +387,7 @@ mod tests {
   }
 }
 
-py_distribution!(PyJohnsonSu, SimdJohnsonSu,
+py_distribution_legacy!(PyJohnsonSu, SimdJohnsonSu,
   sig: (gamma, delta, xi, lambda, seed=None, dtype=None),
   params: (gamma: f64, delta: f64, xi: f64, lambda: f64)
 );

@@ -26,15 +26,18 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::SimdFloatExt;
 use super::normal::SimdNormal;
+use crate::seeded::StreamState;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 pub struct SimdGamma<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   alpha: T,
   scale: T,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
-  normal: SimdNormal<T, 64, R>,
+  normal: UnsafeCell<StreamState<T, R, 64>>,
   simd_rng: UnsafeCell<R>,
   pub(crate) stream_seed: Cell<u64>,
 }
@@ -54,7 +57,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
       alpha > T::zero() && scale > T::zero(),
       "alpha must satisfy `alpha > T::zero() && scale > T::zero()`, got alpha = {alpha:?}, scale = {scale:?}"
     );
-    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
+    let normal = UnsafeCell::new(SimdNormal::<T>::standard().init::<R, S>(seed).0);
     let stream_seed = seed.next_seed();
     Self {
       alpha,
@@ -99,11 +102,11 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
   /// One scalar Marsaglia-Tsang draw of `d·v` (unscaled `Gamma(α_eff, 1)`),
   /// used by short fills, tails and the rare SIMD lane rejections.
   #[inline]
-  fn sample_mt_one(rng: &mut R, normal: &SimdNormal<T, 64, R>, d: T, c: T) -> T {
+  fn sample_mt_one(rng: &mut R, normal: &mut StreamState<T, R, 64>, d: T, c: T) -> T {
     let c1 = T::from(0.0331).unwrap();
     let half = T::from(0.5).unwrap();
     loop {
-      let z = normal.sample_fast();
+      let z = SimdNormal::<T>::standard().next(normal);
       let t = T::one() + c * z;
       let v = t * t * t;
       if v <= T::zero() {
@@ -143,7 +146,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
     };
     let d = alpha_eff - third;
     let c = T::one() / (nine * d).sqrt();
-    let g = Self::sample_mt_one(rng, &self.normal, d, c);
+    let g = Self::sample_mt_one(rng, unsafe { &mut *self.normal.get() }, d, c);
     let log_core = self.scale.ln() + g.ln();
     if boosted {
       // `1 - u` lands the uniform in `(0, 1]`, so the log is finite where
@@ -159,6 +162,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
   /// sampler draws from (see the crate-level RNG policy).
   pub fn fill_slice(&self, out: &mut [T]) {
     let rng = unsafe { &mut *self.simd_rng.get() };
+    let normal = unsafe { &mut *self.normal.get() };
     let third = T::from(1.0 / 3.0).unwrap();
     let nine = T::from(9.0).unwrap();
     let boosted = self.alpha < T::one();
@@ -173,13 +177,13 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
     if boosted {
       let inv_alpha = T::one() / self.alpha;
       for x in out.iter_mut() {
-        let g = Self::sample_mt_one(rng, &self.normal, d, c);
+        let g = Self::sample_mt_one(rng, normal, d, c);
         let u = T::sample_uniform_simd(rng);
         *x = self.scale * g * u.powf(inv_alpha);
       }
     } else {
       for x in out.iter_mut() {
-        *x = self.scale * Self::sample_mt_one(rng, &self.normal, d, c);
+        *x = self.scale * Self::sample_mt_one(rng, normal, d, c);
       }
     }
   }
@@ -344,7 +348,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdGamma<T, R> {
   }
 }
 
-py_distribution!(PyGamma, SimdGamma,
+py_distribution_legacy!(PyGamma, SimdGamma,
   sig: (alpha, scale, seed=None, dtype=None),
   params: (alpha: f64, scale: f64)
 );

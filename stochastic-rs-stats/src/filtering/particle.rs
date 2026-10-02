@@ -18,6 +18,7 @@ use rand::Rng;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRng;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::traits::SimdFloatExt;
@@ -270,8 +271,9 @@ pub fn gaussian_random_walk_transition(
     let d = prev.len();
     let mut out = Array1::<f64>::zeros(d);
     for j in 0..d {
-      let dist = SimdNormal::<f64>::new(0.0, scales[j], &Deterministic::new(rng.next_u64()));
-      out[j] = prev[j] + dist.sample_fast();
+      let mut dist =
+        SimdNormal::<f64>::new(0.0, scales[j]).seeded(&Deterministic::new(rng.next_u64()));
+      out[j] = prev[j] + dist.sample();
     }
     out
   }
@@ -279,14 +281,16 @@ pub fn gaussian_random_walk_transition(
 
 #[cfg(test)]
 mod tests {
+  use rand::distr::Distribution;
+  use stochastic_rs_distributions::DistributionSampler;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
 
   #[test]
   fn particle_filter_tracks_random_walk() {
-    let truth_dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(1));
-    let obs_noise = SimdNormal::<f64>::new(0.0, 0.2, &Deterministic::new(2));
+    let mut truth_dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(1));
+    let mut obs_noise = SimdNormal::<f64>::new(0.0, 0.2).seeded(&Deterministic::new(2));
     let n = 200;
     let mut x_true = vec![0.0_f64; n];
     let mut steps = vec![0.0_f64; n];
@@ -298,19 +302,12 @@ mod tests {
     }
     let observations: Vec<f64> = (0..n).map(|i| x_true[i] + obs_buf[i]).collect();
     let scale = 1.0;
-    let init = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(3));
-    let init_fn = move |rng: &mut SimdRng| {
-      let _ = rng;
-      let mut a = [0.0_f64];
-      init.fill_slice(&mut a);
-      Array1::from(vec![a[0]])
-    };
-    let transition_dist = SimdNormal::<f64>::new(0.0, scale, &Deterministic::new(5));
+    let init_fn =
+      move |rng: &mut SimdRng| Array1::from(vec![SimdNormal::<f64>::new(0.0, 1.0).sample(rng)]);
     let transition = move |prev: ArrayView1<f64>, rng: &mut SimdRng| {
-      let _ = rng;
-      let mut a = [0.0_f64];
-      transition_dist.fill_slice(&mut a);
-      Array1::from(vec![prev[0] + a[0]])
+      Array1::from(vec![
+        prev[0] + SimdNormal::<f64>::new(0.0, scale).sample(rng),
+      ])
     };
     let log_obs = move |x: ArrayView1<f64>, y: ArrayView1<f64>| {
       let z = (y[0] - x[0]) / 0.2;
@@ -331,11 +328,8 @@ mod tests {
   #[test]
   fn ess_falls_after_step_with_skewed_likelihood() {
     let init = move |_rng: &mut SimdRng| Array1::from(vec![0.0_f64]);
-    let transition_dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(11));
-    let transition = move |prev: ArrayView1<f64>, _rng: &mut SimdRng| {
-      let mut a = [0.0_f64];
-      transition_dist.fill_slice(&mut a);
-      Array1::from(vec![prev[0] + a[0]])
+    let transition = move |prev: ArrayView1<f64>, rng: &mut SimdRng| {
+      Array1::from(vec![prev[0] + SimdNormal::<f64>::new(0.0, 1.0).sample(rng)])
     };
     let log_obs = |x: ArrayView1<f64>, y: ArrayView1<f64>| {
       let z = (y[0] - x[0]) / 0.05;

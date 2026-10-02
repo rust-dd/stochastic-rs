@@ -31,6 +31,8 @@ use ndarray::Array3;
 use ndarray::s;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::non_central_chi_squared::SimdNonCentralChiSquared;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -161,7 +163,7 @@ fn assert_symmetric<T: FloatExt>(x: &Array2<T>, name: &str) {
 struct StepDraws<T: FloatExt, S: SeedExt> {
   alpha: T,
   seed: S,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
   ncx2: Vec<Option<SimdNonCentralChiSquared<T>>>,
 }
 
@@ -170,7 +172,7 @@ impl<T: FloatExt, S: SeedExt> StepDraws<T, S> {
     Self {
       alpha,
       seed: seed.derive(),
-      normal: SimdNormal::<T>::new(T::zero(), T::one(), seed),
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(seed),
       ncx2: (0..d).map(|_| None).collect(),
     }
   }
@@ -226,7 +228,7 @@ fn coordinate_step<T: FloatExt, S: SeedExt>(z: &mut Array2<T>, dt: T, draws: &mu
   let u11_next = draws.squared_bessel(r, u11, dt);
   let u_off_next: Vec<T> = u_off
     .iter()
-    .map(|u| *u + sqrt_dt * draws.normal.sample_fast())
+    .map(|u| *u + sqrt_dt * draws.normal.sample())
     .collect();
   let mut z00 = u11_next;
   for u in &u_off_next {

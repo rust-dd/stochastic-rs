@@ -147,8 +147,8 @@ The `rand::Rng` supertrait is why any `SimdRngExt` (including
 `rand::distr::Distribution::sample`. The trait is sealed: `SimdRng` and the
 experimental `SimdRngDual` are its only implementations.
 
-`SimdNormal<T, N, R>` and `SimdExp<T, R>` carry the `R: SimdRngExt`
-parameter explicitly so the same struct serves both backends:
+A seeded stream names its engine, `Seeded<D, R: SimdRngExt = SimdRng>`, so
+one stateless law serves both backends:
 
 <RustExample path="tests/doctest_concepts_seeding_dual_stream.rs" />
 
@@ -161,7 +161,7 @@ Opt-in via cargo feature:
 stochastic-rs = { version = "3.0.0-rc.1", features = ["unstable-dual-stream-rng"] }
 ```
 
-Unlocks `SimdRngDual`, `SimdNormalDual`, `SimdExpDual`, `SimdExpZigDual`.
+Unlocks `SimdRngDual` (a `Seeded::<SimdNormal<f64>, SimdRngDual>` stream), `SimdExpDual`, `SimdExpZigDual`.
 
 ### Why dual-stream — the idea
 
@@ -204,8 +204,8 @@ Result on Apple Silicon (M-series, criterion
 `cargo bench --bench dual_stream_compare --features unstable-dual-stream-rng`,
 2026-06-11):
 
-|         n | single (`SimdNormal`) | dual (`SimdNormalDual`) |    Δ   |
-|----------:|----------------------:|------------------------:|-------:|
+|         n | single (`SimdRng`) | dual (`SimdRngDual`) |    Δ   |
+|----------:|-------------------:|---------------------:|-------:|
 |        64 |              120.6 ns |                117.5 ns |  −2.6% |
 |       256 |              494.2 ns |                467.9 ns |  −5.3% |
 |     4 096 |               7.87 µs |                 7.42 µs |  −5.7% |

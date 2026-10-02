@@ -47,10 +47,13 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::beta::SimdBeta;
 use crate::gamma::SimdGamma;
 use crate::normal::SimdNormal;
+use crate::seeded::StreamState;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
 use crate::traits::DistributionExt;
 use crate::traits::SimdFloatExt;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 /// Which of Robert (1995)'s proposals a one-sided standardised interval
 /// $[a, b]$ with $a \ge 0$ takes.
@@ -105,7 +108,7 @@ pub struct SimdTruncatedNormal<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   std_dev: T,
   lower: T,
   upper: T,
-  base: SimdNormal<T, 64, R>,
+  base: UnsafeCell<StreamState<T, R, 64>>,
   /// Cached CDF values $F(\text{lower})$ / $F(\text{upper})$ and their
   /// difference — the normalising constant of the density and the affine
   /// map of the inverse-CDF fallback in tight intervals.
@@ -151,7 +154,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedNormal<T, R> {
       std_dev,
       lower,
       upper,
-      base: SimdNormal::<T, 64, R>::new(mean, std_dev, seed),
+      base: UnsafeCell::new(SimdNormal::new(mean, std_dev).init::<R, S>(seed).0),
       f_lo,
       f_up,
       norm_mass: f_up - f_lo,
@@ -169,8 +172,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTruncatedNormal<T, R> {
   pub fn sample_fast(&self) -> T {
     if self.norm_mass > 0.05 {
       // Plain rejection — fast path.
+      let base = SimdNormal::new(self.mean, self.std_dev);
+      let state = unsafe { &mut *self.base.get() };
       for _ in 0..1000 {
-        let x = self.base.sample_fast();
+        let x = base.next(state);
         if x >= self.lower && x <= self.upper {
           return x;
         }

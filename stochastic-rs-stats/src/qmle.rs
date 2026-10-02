@@ -234,6 +234,7 @@ pub fn mle_ou_closed_form<T: FloatExt>(series: ArrayView1<T>, dt: f64) -> QmleRe
 mod tests {
   use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::gamma::SimdGamma;
   use stochastic_rs_distributions::normal::SimdNormal;
   use stochastic_rs_distributions::poisson::SimdPoisson;
@@ -253,11 +254,11 @@ mod tests {
   ) -> Array1<f64> {
     let a = (-kappa * dt).exp();
     let sd = (sigma * sigma * (1.0 - a * a) / (2.0 * kappa)).sqrt();
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
     let mut path = Array1::<f64>::zeros(n);
     path[0] = x0;
     for t in 1..n {
-      let z = normal.sample_fast();
+      let z = normal.sample();
       path[t] = theta + (path[t - 1] - theta) * a + sd * z;
     }
     path

@@ -251,7 +251,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdUnif
   }
 }
 
-py_distribution!(PyUniform, SimdUniform,
+py_distribution_legacy!(PyUniform, SimdUniform,
   sig: (low, high, seed=None, dtype=None),
   params: (low: f64, high: f64)
 );

@@ -9,6 +9,8 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::distributions::special::norm_cdf;
 use stochastic_rs::simd_rng::Deterministic;
@@ -333,11 +335,8 @@ fn mlmc_convergence_rates_and_bs_comparison() {
   let tau = 1.0;
   let bs = bs_call(s0, k, r, sigma, tau);
 
-  // Fixed-level sampling to measure α and β. The stream is seeded through the
-  // distribution constructor because `fill_slice` discards any `Rng` handed to
-  // it — an unseeded stream made the rate estimates below a fresh coin flip on
-  // every run.
-  let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(2718));
+  // Fixed-level sampling to measure α and β, seeded: an unseeded stream made the rate estimates a coin flip.
+  let mut normals = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(2718));
   let n_per_level = 20_000;
   let max_level = 6;
   let mut level_means = Vec::new();
@@ -420,6 +419,7 @@ fn mlmc_convergence_rates_and_bs_comparison() {
 
   // Full MLMC estimate vs BS
   let mlmc = Mlmc::new(0.5, 2, 8, 2000);
+  let normals = std::cell::RefCell::new(normals);
   let sampler = |level: usize, n: usize| -> Array1<f64> {
     let m_fine = 2usize.pow(level as u32 + 1);
     let dt_fine = tau / m_fine as f64;
@@ -429,7 +429,7 @@ fn mlmc_convergence_rates_and_bs_comparison() {
     let mut z = vec![0.0_f64; m_fine];
 
     for i in 0..n {
-      normals.fill_slice(&mut z);
+      normals.borrow_mut().fill_slice(&mut z);
       let mut s_f = s0;
       for &zj in z.iter() {
         s_f += r * s_f * dt_fine + sigma * s_f * sqrt_dt_fine * zj;

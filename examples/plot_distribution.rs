@@ -19,7 +19,7 @@ use stochastic_rs::traits::DistributionSampler;
 fn main() {
   let alpha = 2.0;
   let scale = 2.0;
-  let dist = SimdGamma::<f64>::new(alpha, scale, &Deterministic::new(7));
+  let mut dist = SimdGamma::<f64>::new(alpha, scale, &Deterministic::new(7));
 
   let samples = dist.sample_n(50_000);
   let mut plot = Plot::new();

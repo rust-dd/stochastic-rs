@@ -14,6 +14,9 @@
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::traits::Expr;
 use stochastic_rs_distributions::traits::Program;
@@ -226,7 +229,7 @@ pub(crate) struct ProbeSampler {
   spec: EulerSpec<f32>,
   x0: f32,
   dt: f32,
-  normal: SimdNormal<f32>,
+  normal: Seeded<SimdNormal<f32>>,
   lift: Option<ProbeLift>,
   program: Option<ProbePrograms>,
 }
@@ -477,7 +480,7 @@ impl ProcessExt<f32> for Probe {
       spec: self.spec,
       x0: self.x0,
       dt,
-      normal: SimdNormal::<f32>::new(0.0, dt.sqrt(), &Deterministic::new(7)),
+      normal: SimdNormal::<f32>::new(0.0, dt.sqrt()).seeded(&Deterministic::new(7)),
       lift: self.lift.clone(),
       program: self.program.clone(),
     }
@@ -1199,7 +1202,7 @@ pub(crate) struct SystemProbeSampler<const D: usize> {
   spec: EulerSpec<f32>,
   x0: [f32; D],
   dt: f32,
-  normal: SimdNormal<f32>,
+  normal: Seeded<SimdNormal<f32>>,
   lift: Option<ProbeLift>,
   program: Option<ProbePrograms>,
 }
@@ -1450,7 +1453,7 @@ impl<const D: usize> ProcessExt<f32> for SystemProbe<D> {
       spec: self.spec,
       x0: self.x0,
       dt,
-      normal: SimdNormal::<f32>::new(0.0, dt.sqrt(), &Deterministic::new(7)),
+      normal: SimdNormal::<f32>::new(0.0, dt.sqrt()).seeded(&Deterministic::new(7)),
       lift: self.lift.clone(),
       program: self.program.clone(),
     }

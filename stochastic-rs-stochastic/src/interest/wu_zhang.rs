@@ -18,6 +18,8 @@ use ndarray::Axis;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -177,8 +179,12 @@ fn fill_wu_zhang_pair<T: FloatExt, S: SeedExt>(
     return;
   }
   let sqrt_dt = dt.sqrt();
-  SimdNormal::<T>::new(T::zero(), sqrt_dt, seed).fill_slice(&mut f[1..]);
-  SimdNormal::<T>::new(T::zero(), sqrt_dt, seed).fill_slice(&mut v[1..]);
+  SimdNormal::<T>::new(T::zero(), sqrt_dt)
+    .seeded(seed)
+    .fill_slice(&mut f[1..]);
+  SimdNormal::<T>::new(T::zero(), sqrt_dt)
+    .seeded(seed)
+    .fill_slice(&mut v[1..]);
   for j in 1..f.len() {
     let v_old = v[j - 1].max(T::zero());
     let f_old = f[j - 1].max(T::zero());

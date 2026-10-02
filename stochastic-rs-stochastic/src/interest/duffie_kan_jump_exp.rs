@@ -9,6 +9,7 @@ use ndarray::Array1;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::normal::SimdNormal;
 
@@ -432,7 +433,7 @@ impl<T: FloatExt, S: SeedExt> DuffieKanJumpExpSampler<T, S> {
     x[0] = self.x0;
 
     let exp_dist = SimdExp::<T>::new(self.lambda, &self.seed);
-    let jump_dist = SimdNormal::<T, 64>::new(T::zero(), self.jump_scale, &self.seed);
+    let mut jump_dist = SimdNormal::<T>::new(T::zero(), self.jump_scale).seeded(&self.seed);
 
     let mut rng = self.seed.rng();
     let mut next_jump_time = exp_dist.sample(&mut rng);
@@ -449,7 +450,7 @@ impl<T: FloatExt, S: SeedExt> DuffieKanJumpExpSampler<T, S> {
 
       let mut jump_sum_x = T::zero();
       while next_jump_time <= current_time {
-        let jump_x = jump_dist.sample(&mut rng);
+        let jump_x = jump_dist.sample();
         jump_sum_x += jump_x;
         next_jump_time += exp_dist.sample(&mut rng);
       }

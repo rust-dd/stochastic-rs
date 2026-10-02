@@ -36,10 +36,13 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use super::SimdFloatExt;
 use super::gamma::SimdGamma;
 use super::normal::SimdNormal;
+use crate::seeded::StreamState;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
 use crate::special::bessel_k::bessel_ke;
 use crate::special::ln_gamma;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 const SMALL_VG_THRESHOLD: usize = 16;
 
@@ -51,7 +54,7 @@ pub struct SimdVarianceGamma<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   theta: T,
   mu: T,
   gamma: SimdGamma<T, R>,
-  normal: SimdNormal<T, 64, R>,
+  normal: UnsafeCell<StreamState<T, R, 64>>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
   stream_seed: Cell<u64>,
@@ -64,7 +67,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdVarianceGamma<T, R> {
     assert!(sigma > T::zero(), "VG: sigma must be positive");
     assert!(nu > T::zero(), "VG: nu must be positive");
     let gamma = SimdGamma::<T, R>::new(T::one() / nu, nu, seed);
-    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
+    let normal = UnsafeCell::new(SimdNormal::<T>::standard().init::<R, S>(seed).0);
     let stream_seed = seed.next_seed();
     Self {
       sigma,
@@ -116,7 +119,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdVarianceGamma<T, R> {
     if out.len() < SMALL_VG_THRESHOLD {
       for x in out.iter_mut() {
         let g = self.gamma.sample_fast();
-        let z = self.normal.sample_fast();
+        let z = SimdNormal::<T>::standard().next(unsafe { &mut *self.normal.get() });
         *x = self.mu + self.theta * g + self.sigma * g.sqrt() * z;
       }
       return;
@@ -129,7 +132,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdVarianceGamma<T, R> {
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
       self.gamma.fill_slice(&mut gbuf);
-      self.normal.fill_standard_fast(&mut zbuf);
+      SimdNormal::<T>::fill_standard(&mut unsafe { &mut *self.normal.get() }.rng, &mut zbuf);
       for (sub, (g8, z8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
         gbuf
           .as_chunks::<8>()
@@ -146,7 +149,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdVarianceGamma<T, R> {
     if !rem.is_empty() {
       let n = rem.len();
       self.gamma.fill_slice(&mut gbuf[..n]);
-      self.normal.fill_standard_fast(&mut zbuf[..n]);
+      SimdNormal::<T>::fill_standard(&mut unsafe { &mut *self.normal.get() }.rng, &mut zbuf[..n]);
       for i in 0..n {
         rem[i] = self.mu + self.theta * gbuf[i] + self.sigma * gbuf[i].sqrt() * zbuf[i];
       }
@@ -393,7 +396,7 @@ mod tests {
   }
 }
 
-py_distribution!(PyVarianceGamma, SimdVarianceGamma,
+py_distribution_legacy!(PyVarianceGamma, SimdVarianceGamma,
   sig: (sigma, nu, theta, mu, seed=None, dtype=None),
   params: (sigma: f64, nu: f64, theta: f64, mu: f64)
 );

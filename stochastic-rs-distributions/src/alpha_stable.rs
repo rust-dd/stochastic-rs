@@ -410,7 +410,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdAlph
   }
 }
 
-py_distribution!(PyAlphaStable, SimdAlphaStable,
+py_distribution_legacy!(PyAlphaStable, SimdAlphaStable,
   sig: (alpha, beta, scale, location, seed=None, dtype=None),
   params: (alpha: f64, beta: f64, scale: f64, location: f64)
 );

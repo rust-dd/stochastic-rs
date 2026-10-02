@@ -193,7 +193,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdChiS
   }
 }
 
-py_distribution!(PyChiSquared, SimdChiSquared,
+py_distribution_legacy!(PyChiSquared, SimdChiSquared,
   sig: (k, seed=None, dtype=None),
   params: (k: f64)
 );

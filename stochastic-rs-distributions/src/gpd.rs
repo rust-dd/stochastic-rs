@@ -418,7 +418,7 @@ mod tests {
   }
 }
 
-py_distribution!(PyGpd, SimdGpd,
+py_distribution_legacy!(PyGpd, SimdGpd,
   sig: (mu, sigma, xi, seed=None, dtype=None),
   params: (mu: f64, sigma: f64, xi: f64)
 );

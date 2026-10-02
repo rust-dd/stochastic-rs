@@ -170,7 +170,7 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 ///
 /// [`advance_chunk_seed`](Self::advance_chunk_seed) exists for one
 /// remaining legitimate case: a `sampler()` that clones because the clone
-/// feeds a *persistent* engine (e.g. a buffered `SimdNormal`) built once per
+/// feeds a *persistent* engine (e.g. a `Seeded` normal stream) built once per
 /// chunk and reused across every path in that chunk via the engine's own
 /// internal advancement, never re-consulting the `Deterministic`-level seed
 /// per path — see [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus).
@@ -281,13 +281,8 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// and `.sample()` still draws fresh randomness on every call regardless of
 /// how many times the process was cloned beforehand.
 ///
-/// This is a deliberate choice, and it intentionally diverges from
-/// `stochastic-rs-distributions`, where `Clone` on a distribution (e.g.
-/// [`SimdNormal`](stochastic_rs_distributions::normal::SimdNormal))
-/// re-seeds independently by design ("cloning a stochastic source means
-/// 'give me an independent stream'"). The two crates answer different
-/// questions: a distribution is typically cloned to obtain an unrelated
-/// sampler, while a process is typically cloned to answer "same model, one
+/// This is a deliberate choice, the one a seeded stream ([`Seeded`](stochastic_rs_distributions::Seeded))
+/// makes as well: a process is typically cloned to answer "same model, one
 /// parameter changed" — `let bumped = base.clone(); bumped.kappa += h;` —
 /// which only isolates `h`'s effect if `bumped` and `base` share the same
 /// underlying noise. That is the common-random-numbers technique behind

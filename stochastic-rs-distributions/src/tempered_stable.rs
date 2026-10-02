@@ -41,8 +41,11 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::SimdFloatExt;
 use super::normal::SimdNormal;
+use crate::seeded::StreamState;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 /// Positive tempered stable law with stability `alpha ∈ (0, 1)`, tilting
 /// `lambda ≥ 0` and scale `theta > 0`.
@@ -54,7 +57,7 @@ pub struct SimdTemperedStable<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   tilt: f64,
   /// $\theta^{1/\alpha}$.
   scale: f64,
-  normal: SimdNormal<T, 64, R>,
+  normal: UnsafeCell<StreamState<T, R, 64>>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
   simd_rng: UnsafeCell<R>,
@@ -102,7 +105,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTemperedStable<T, R> {
     );
     assert!(theta_f > 0.0, "TemperedStable: theta must be positive");
     let scale = theta_f.powf(1.0 / alpha_f);
-    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
+    let normal = UnsafeCell::new(SimdNormal::<T>::standard().init::<R, S>(seed).0);
     let stream_seed = seed.next_seed();
     Self {
       alpha,
@@ -155,7 +158,13 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTemperedStable<T, R> {
     let lambda = self.tilt;
     let pi = std::f64::consts::PI;
     let uniform = |rng: &mut R| T::sample_uniform_simd(rng).to_f64().unwrap();
-    let normal = || self.normal.sample_fast().to_f64().unwrap();
+    let normal_state = unsafe { &mut *self.normal.get() };
+    let mut normal = || {
+      SimdNormal::<T>::standard()
+        .next(normal_state)
+        .to_f64()
+        .unwrap()
+    };
     let exponential = |rng: &mut R| -uniform(rng).max(1e-300).ln();
 
     let lambda_alpha = lambda.powf(alpha);
@@ -433,7 +442,7 @@ mod tests {
   }
 }
 
-py_distribution!(PyTemperedStable, SimdTemperedStable,
+py_distribution_legacy!(PyTemperedStable, SimdTemperedStable,
   sig: (alpha, lambda, theta, seed=None, dtype=None),
   params: (alpha: f64, lambda: f64, theta: f64)
 );

@@ -8,6 +8,7 @@ use crate::exp::SimdExp;
 use crate::exp::SimdExpZig;
 use crate::lognormal::SimdLogNormal;
 use crate::normal::SimdNormal;
+use crate::traits::SimdDistribution;
 
 #[test]
 #[ignore = "perf benchmark (5-10M sample loop): run with --ignored or via cargo bench"]
@@ -17,22 +18,21 @@ fn bench_normal_simd_vs_rand() {
 
   {
     let mut rng = rand::rng();
-    let d: SimdNormal<f32> = SimdNormal::new(0.0, 1.0, &Unseeded);
+    let mut d = SimdNormal::<f32>::new(0.0, 1.0).seeded(&Unseeded);
     let rd = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
     let mut s = 0.0f32;
     for _ in 0..warmup {
-      s += d.sample(&mut rng);
+      s += d.sample();
       s += rd.sample(&mut rng);
     }
     std::hint::black_box(s);
   }
 
-  let mut rng = rand::rng();
-  let simd: SimdNormal<f32> = SimdNormal::new(0.0, 1.0, &Unseeded);
+  let mut simd = SimdNormal::<f32>::new(0.0, 1.0).seeded(&Unseeded);
   let mut s_sum = 0.0f32;
   let t0 = Instant::now();
   for _ in 0..n {
-    s_sum += simd.sample(&mut rng);
+    s_sum += simd.sample();
   }
   let dt_s = t0.elapsed();
 

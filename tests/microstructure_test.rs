@@ -2,6 +2,8 @@
 
 use ndarray::Array1;
 use ndarray::array;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::quant::microstructure::AlmgrenChrissParams;
 use stochastic_rs::quant::microstructure::ExecutionDirection;
@@ -97,7 +99,7 @@ fn impact_propagator_path_is_cumulative() {
 fn roll_recovers_spread_under_simulated_bounce() {
   let mid = 50.0_f64;
   let s = 0.05;
-  let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(17));
+  let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(17));
   let mut signs = vec![0.0_f64; 20_000];
   dist.fill_slice(&mut signs);
   let p = Array1::from_iter(signs.iter().map(|&z| {

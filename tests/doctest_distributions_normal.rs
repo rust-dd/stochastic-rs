@@ -2,6 +2,8 @@
 //! Backs the Normal example on the distributions catalog page.
 
 use rand::distr::Distribution;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::SeedExt;
@@ -10,17 +12,18 @@ use stochastic_rs::traits::DistributionExt;
 #[test]
 fn normal_bulk_sample_and_closed_form() {
   let seed = Deterministic::new(42);
-  let d = SimdNormal::<f64>::new(/* mean */ 0.0, /* std */ 1.0, &seed);
+  let d = SimdNormal::<f64>::new(/* mean */ 0.0, /* std */ 1.0);
 
-  // Single sample, drawn from the project's own RNG (not `rand::thread_rng`).
+  // One scalar draw from the rng you pass, here the project's own `SimdRng`.
   let mut rng = seed.rng();
   let _x: f64 = d.sample(&mut rng);
 
-  // Bulk fill (uses internal RNG)
+  // Bulk fill from a seeded stream of the same law.
+  let mut stream = d.seeded(&seed);
   let mut buf = vec![0.0_f64; 10_000];
-  d.fill_slice(&mut buf);
+  stream.fill_slice(&mut buf);
 
-  // Closed-form analytics
+  // Closed-form analytics stay on the stateless law.
   assert!((d.mean() - 0.0).abs() < 1e-12);
   assert!((d.variance() - 1.0).abs() < 1e-12);
   let pdf = d.pdf(0.0); // 1/sqrt(2*pi) ~= 0.3989

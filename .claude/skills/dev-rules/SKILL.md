@@ -81,14 +81,12 @@ RNG and exist precisely for that slot.
 
 Two traps worth naming:
 
-- **`fill_slice(out)` takes no RNG at all.** Every `Simd*` bulk fill is
-  `pub fn fill_slice(&self, out: &mut [T])` — one argument. The type
-  draws from its own internal stream, seeded at construction, so there
-  is nowhere to hand an external `StdRng`; the seed must go to the
-  constructor (`SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42))`).
-  Older notes describing a two-argument `fill_slice(_rng, out)` that
-  ignored its first parameter, or a `fill_slice_fast` companion, are
-  stale: neither exists.
+- **The stream lives in `Seeded`.** A ported `Simd*` law holds parameters
+  only; `.seeded(&Deterministic::new(42))` binds it to a stream, and
+  `sample` / `fill_slice` / `sample_n` / `sample_matrix` then run on
+  `&mut self` (`SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(42))`).
+  `fill_slice(out)` takes no RNG: the seed goes to `.seeded`, never to a
+  draw; a bulk fill driven by an external rng is `fill_with(&mut rng, out)`.
 - **Name the trait through `rand::distr::Distribution`.** `rand_distr` is
   not a dependency of any library crate (only a dev-dependency of the
   umbrella and `stochastic-rs-distributions`), so library code cannot

@@ -36,6 +36,8 @@ use ndrustfft::ndfft;
 use num_complex::Complex;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -270,9 +272,9 @@ impl<T: FloatExt, S: SeedExt> FbsSampler<T, S> {
     let fft_handler0 = FftHandler::<T>::new(big_m);
     let fft_handler1 = FftHandler::<T>::new(big_n);
 
-    let normal = SimdNormal::<T, 64>::new(T::zero(), T::one(), &self.seed);
+    let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed);
     let z = Array2::from_shape_fn((big_m, big_n), |_| {
-      Complex::new(normal.sample_fast(), normal.sample_fast())
+      Complex::new(normal.sample(), normal.sample())
     });
 
     let prod = self.lam.mapv(|v| Complex::new(v, T::zero())) * z;
@@ -293,7 +295,7 @@ impl<T: FloatExt, S: SeedExt> FbsSampler<T, S> {
 
     // Stein's correction: the random linear function √(2c₂) (t₁ Z₁ + t₂ Z₂),
     // whose increments carry exactly the c₂‖s − t‖² the embedding took out.
-    let normal_scalar = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
+    let mut normal_scalar = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed);
     let mut z_buf = [T::zero(); 2];
     normal_scalar.fill_slice(&mut z_buf);
     let z1 = z_buf[0];

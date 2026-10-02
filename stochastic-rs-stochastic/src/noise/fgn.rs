@@ -21,6 +21,8 @@ use ndarray::Array1;
 #[doc(hidden)]
 pub use python::PyFgn;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -62,7 +64,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
   fn sampler(&self) -> FgnSampler<'_, T, S, B> {
     FgnSampler {
       fgn: self,
-      normal: SimdNormal::<T>::new(T::zero(), T::one(), self.seed()),
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(self.seed()),
     }
   }
 
@@ -123,7 +125,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
 #[doc(hidden)]
 pub struct FgnSampler<'a, T: FloatExt, S: SeedExt, B> {
   fgn: &'a Fgn<T, S, B>,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FgnSampler<'_, T, S, B> {

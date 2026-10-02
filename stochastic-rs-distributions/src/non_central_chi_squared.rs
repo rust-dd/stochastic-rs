@@ -11,6 +11,7 @@
 //! $\chi^2_\nu(\lambda) = \mathrm{Gamma}(\nu/2 + J,\ 2)$ with
 //! $J \sim \mathrm{Poisson}(\lambda/2)$, valid for every $\nu > 0$.
 use std::cell::Cell;
+use std::cell::UnsafeCell;
 
 use stochastic_rs_core::simd_rng::SeedExt;
 
@@ -18,10 +19,13 @@ use crate::chi_square::SimdChiSquared;
 use crate::gamma::SimdGamma;
 use crate::normal::SimdNormal;
 use crate::poisson::SimdPoisson;
+use crate::seeded::StreamState;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
 use crate::traits::FloatExt;
 use crate::traits::SimdFloatExt;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 /// Exact Poisson-mixture draw (module header §29.4): `χ²_df(λ) =
 /// Gamma(df/2 + J, 2)` with `J ~ Poisson(λ/2)`, valid for every `df > 0`
@@ -61,7 +65,7 @@ fn poisson_mixture_sample<T: SimdFloatExt, S: SeedExt>(df: T, lambda: T, seed: &
 /// neither buffers anything in that regime.
 pub struct SimdNonCentralChiSquared<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   df: T,
-  normal: SimdNormal<T, 64, R>,
+  normal: UnsafeCell<StreamState<T, R, 64>>,
   chisq: Option<SimdChiSquared<T, R>>,
   stream_seed: Cell<u64>,
 }
@@ -79,16 +83,16 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNonCentralChiSquared<T, R> {
   /// which instead reseeds a fresh Poisson-mixture draw every call.
   pub fn new<S: SeedExt>(df: T, seed: &S) -> Self {
     let rem = df - T::one();
-    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
+    let (normal, basis) = SimdNormal::<T>::standard().init::<R, S>(seed);
     let chisq = (rem > T::from_f64_fast(1e-10)).then(|| SimdChiSquared::<T, R>::new(rem, seed));
     // No own engine to seed for the df<1 Poisson-mixture branch — reuse
     // normal's already-captured stream_seed as this sampler's fork anchor
     // (see SimdChiSquared::new for the same pattern), so repeated df<1
     // draws advance instead of replaying the same sub-stream.
-    let stream_seed = Cell::new(normal.stream_seed.get());
+    let stream_seed = Cell::new(basis);
     Self {
       df,
-      normal,
+      normal: UnsafeCell::new(normal),
       chisq,
       stream_seed,
     }
@@ -117,7 +121,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNonCentralChiSquared<T, R> {
         &crate::simd_rng::Deterministic::new(child_seed),
       );
     }
-    let z = self.normal.sample_fast() + ncp.sqrt();
+    let z = SimdNormal::<T>::standard().next(unsafe { &mut *self.normal.get() }) + ncp.sqrt();
     let sq = z * z;
     match &self.chisq {
       Some(chisq) => chisq.sample_fast() + sq,

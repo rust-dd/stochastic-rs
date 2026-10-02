@@ -11,14 +11,18 @@ use std::path::Path;
 
 use ndarray::Array2;
 use ndarray::array;
+use num_traits::Zero;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SimdRng;
+#[cfg(feature = "unstable-dual-stream-rng")]
+use stochastic_rs_core::simd_rng_dual::SimdRngDual;
 use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 #[cfg(feature = "unstable-dual-stream-rng")]
 use stochastic_rs_distributions::SimdExpDual;
-#[cfg(feature = "unstable-dual-stream-rng")]
-use stochastic_rs_distributions::SimdNormalDual;
+use stochastic_rs_distributions::SimdKernel;
 use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
 use stochastic_rs_distributions::beta::SimdBeta;
 use stochastic_rs_distributions::binomial::SimdBinomial;
@@ -77,30 +81,31 @@ fn chunk_firsts<T: Copy + Bits>(matrix: &Array2<T>) -> impl Iterator<Item = u64>
 
 /// Seed budget, first eight draws, step and chunk heads and ten hashes over single, bulk, matrix and fork
 /// draws; `sample_matrix` runs on the global pool, its output depends on `(m, n)` and the seed alone.
-fn capture<D, T>(seed: u64, make: impl Fn(&Deterministic) -> D) -> Snapshot
+fn capture_steps<D, T>(
+  seed: u64,
+  make: impl Fn(&Deterministic) -> D,
+  mut pop: impl FnMut(&mut D) -> T,
+) -> Snapshot
 where
-  D: DistributionSampler<T> + Distribution<T> + Send,
-  T: Copy + Default + Bits + Send,
+  D: DistributionSampler<T> + Send,
+  T: Copy + Zero + Bits + Send,
 {
   let det = Deterministic::new(seed);
-  let d = make(&det);
+  let mut d = make(&det);
   let seeds_consumed = seeds_consumed(&det, seed);
-  let mut dummy = SimdRng::from_seed(1);
-  let single = (0..100)
-    .map(|_| d.sample(&mut dummy).bits())
-    .collect::<Vec<_>>();
+  let single = (0..100).map(|_| pop(&mut d).bits()).collect::<Vec<_>>();
   let mut first8 = [0u64; 8];
   first8.copy_from_slice(&single[..8]);
   let mut step_heads = [0u64; 9];
   let mut chunk_heads = [0u64; 8];
   let mut hashes = [0u64; 10];
   hashes[0] = fnv1a(single.iter().copied());
-  let mut buf = vec![T::default(); 1003];
+  let mut buf = vec![T::zero(); 1003];
   d.fill_slice(&mut buf);
   step_heads[0] = buf[0].bits();
   hashes[1] = fnv1a(buf.iter().map(|x| x.bits()));
   // Only a fill of 8 to 15 values tells the `< 16` scalar branch from the SIMD path's scalar tail.
-  let mut small = [T::default(); 18];
+  let mut small = [T::zero(); 18];
   let (seven, eleven) = small.split_at_mut(7);
   d.fill_slice(seven);
   d.fill_slice(eleven);
@@ -108,13 +113,11 @@ where
   step_heads[2] = small[7].bits();
   hashes[2] = fnv1a(small.iter().map(|x| x.bits()));
   // A 32-, 64- or 128-value buffer keeps 28 of the first 100 pops; 40 more refill it once, by its own size.
-  let pops = (0..40)
-    .map(|_| d.sample(&mut dummy).bits())
-    .collect::<Vec<_>>();
+  let pops = (0..40).map(|_| pop(&mut d).bits()).collect::<Vec<_>>();
   // A twin without the two direct fills shares the leftover pops; the head is the first pop that differs.
-  let unfilled = make(&Deterministic::new(seed));
+  let mut unfilled = make(&Deterministic::new(seed));
   let unfilled_pops = (0..140)
-    .map(|_| unfilled.sample(&mut dummy).bits())
+    .map(|_| pop(&mut unfilled).bits())
     .collect::<Vec<_>>();
   let refill = pops
     .iter()
@@ -135,14 +138,14 @@ where
     *head = bits;
   }
   hashes[6] = fnv1a(wide.iter().map(|x| x.bits()));
-  let mut fork_buf = vec![T::default(); 64];
+  let mut fork_buf = vec![T::zero(); 64];
   d.fork(0).fill_slice(&mut fork_buf);
   step_heads[7] = fork_buf[0].bits();
   hashes[7] = fnv1a(fork_buf.iter().map(|x| x.bits()));
   d.fork(1).fill_slice(&mut fork_buf);
   step_heads[8] = fork_buf[0].bits();
   hashes[8] = fnv1a(fork_buf.iter().map(|x| x.bits()));
-  let twin = make(&Deterministic::new(seed));
+  let mut twin = make(&Deterministic::new(seed));
   let _ = twin.sample_matrix(64, 1024);
   let second = twin.sample_matrix(64, 1024);
   for (head, bits) in chunk_heads[4..].iter_mut().zip(chunk_firsts(&second)) {
@@ -157,6 +160,25 @@ where
     chunk_heads,
     hashes,
   }
+}
+
+/// The steps on a not yet ported law, whose `Distribution::sample` pops its own stream.
+fn capture<D, T>(seed: u64, make: impl Fn(&Deterministic) -> D) -> Snapshot
+where
+  D: DistributionSampler<T> + Distribution<T> + Send,
+  T: Copy + Zero + Bits + Send,
+{
+  let mut dummy = SimdRng::from_seed(1);
+  capture_steps(seed, make, move |d: &mut D| d.sample(&mut dummy))
+}
+
+/// The steps on a `Seeded` stream; the constants are the ones captured on the old API.
+fn capture_seeded<D, T>(seed: u64, make: impl Fn() -> D) -> Snapshot
+where
+  D: SimdKernel<Item = T>,
+  T: Copy + Zero + Bits + Send + Sync + 'static,
+{
+  capture_steps(seed, |det| make().seeded(det), Seeded::sample)
 }
 
 /// Steps 1 and 4 for the laws without `fill_slice`/`fork`; `draw` yields one draw's bits.
@@ -253,6 +275,34 @@ macro_rules! snapshot_cases {
   };
 }
 
+macro_rules! snapshot_cases_seeded {
+  ($( $name:ident : $kind:expr, $scalar:ty, $make:expr ; )*) => {
+    $(
+      mod $name {
+        use super::*;
+
+        #[test]
+        fn close() {
+          check_close(stringify!($name), $kind, |seed| capture_seeded::<_, $scalar>(seed, || $make));
+        }
+
+        #[test]
+        #[cfg_attr(not(all(target_arch = "aarch64", target_os = "macos")), ignore)]
+        fn exact() {
+          check_exact(stringify!($name), |seed| capture_seeded::<_, $scalar>(seed, || $make));
+        }
+      }
+    )*
+
+    fn all_seeded() -> Vec<(&'static str, Box<dyn Fn(u64) -> Snapshot>)> {
+      vec![$((
+        stringify!($name),
+        Box::new(|seed| capture_seeded::<_, $scalar>(seed, || $make)) as Box<dyn Fn(u64) -> Snapshot>,
+      )),*]
+    }
+  };
+}
+
 macro_rules! snapshot_singles {
   ($( $(#[$attr:meta])* $name:ident : $kind:expr, |$det:ident| $build:expr ; )*) => {
     $(
@@ -285,9 +335,12 @@ macro_rules! snapshot_singles {
   };
 }
 
+snapshot_cases_seeded! {
+  normal_f64: ScalarKind::F64, f64, SimdNormal::<f64>::new(0.3, 1.7);
+  normal_f32: ScalarKind::F32, f32, SimdNormal::<f32>::new(0.3, 1.7);
+}
+
 snapshot_cases! {
-  normal_f64: ScalarKind::F64, f64, |det| SimdNormal::<f64>::new(0.3, 1.7, det);
-  normal_f32: ScalarKind::F32, f32, |det| SimdNormal::<f32>::new(0.3, 1.7, det);
   exp_f64: ScalarKind::F64, f64, |det| SimdExp::<f64>::new(1.8, det);
   exp_f32: ScalarKind::F32, f32, |det| SimdExp::<f32>::new(1.8, det);
   uniform_f64: ScalarKind::F64, f64, |det| SimdUniform::<f64>::new(-2.0, 3.0, det);
@@ -452,27 +505,25 @@ snapshot_singles! {
     move || vec![d.sample_fast().bits()]
   };
   complex_normal_f64: ScalarKind::F64, |det| {
-    let d = ComplexDistribution::new(
-      SimdNormal::<f64>::new(0.0, 1.0, det),
-      SimdNormal::<f64>::new(0.5, 2.0, det),
-    );
-    let mut rng = SimdRng::from_seed(1);
+    let mut s = ComplexDistribution::new(
+      SimdNormal::<f64>::new(0.0, 1.0),
+      SimdNormal::<f64>::new(0.5, 2.0),
+    )
+    .seeded(det);
     move || {
-      let z = d.sample(&mut rng);
+      let z = s.sample();
       vec![z.re.bits(), z.im.bits()]
     }
   };
   #[cfg(feature = "unstable-dual-stream-rng")]
   normal_dual_f64: ScalarKind::F64, |det| {
-    let d = SimdNormalDual::<f64>::new(0.3, 1.7, det);
-    let mut rng = SimdRng::from_seed(1);
-    move || vec![d.sample(&mut rng).bits()]
+    let mut d = Seeded::<SimdNormal<f64>, SimdRngDual>::new(SimdNormal::new(0.3, 1.7), det);
+    move || vec![d.sample().bits()]
   };
   #[cfg(feature = "unstable-dual-stream-rng")]
   normal_dual_f32: ScalarKind::F32, |det| {
-    let d = SimdNormalDual::<f32>::new(0.3, 1.7, det);
-    let mut rng = SimdRng::from_seed(1);
-    move || vec![d.sample(&mut rng).bits()]
+    let mut d = Seeded::<SimdNormal<f32>, SimdRngDual>::new(SimdNormal::new(0.3, 1.7), det);
+    move || vec![d.sample().bits()]
   };
   #[cfg(feature = "unstable-dual-stream-rng")]
   exp_dual_f64: ScalarKind::F64, |det| {
@@ -505,7 +556,11 @@ fn print_constants() {
     "//! Generated by `print_constants` in `../stream_snapshots.rs`; rerun it only for an intentional re-pin.\n\nuse super::snapshot::Snapshot;\n\n",
   );
   let mut names = Vec::new();
-  for (name, capture) in all_cases().into_iter().chain(all_singles()) {
+  for (name, capture) in all_cases()
+    .into_iter()
+    .chain(all_seeded())
+    .chain(all_singles())
+  {
     let snapshots = SEEDS.map(capture);
     text.push_str(&format!(
       "pub const {}: [Snapshot; 2] = {snapshots:#?};\n\n",

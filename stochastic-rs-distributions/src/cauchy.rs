@@ -216,7 +216,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdCauc
   }
 }
 
-py_distribution!(PyCauchy, SimdCauchy,
+py_distribution_legacy!(PyCauchy, SimdCauchy,
   sig: (x0, gamma_, seed=None, dtype=None),
   params: (x0: f64, gamma_: f64)
 );

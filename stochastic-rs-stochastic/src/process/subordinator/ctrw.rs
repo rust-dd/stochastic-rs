@@ -1,6 +1,8 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
 use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::gamma::SimdGamma;
@@ -83,8 +85,12 @@ enum WaitingSampler<T: FloatExt> {
   PosStable { alpha: f64, log_scale: f64 },
 }
 
+#[expect(
+  clippy::large_enum_variant,
+  reason = "a stream holds its 64-wide buffer inline; boxing it would allocate per sampler build"
+)]
 enum JumpSampler<T: FloatExt> {
-  Normal(SimdNormal<T>),
+  Normal(Seeded<SimdNormal<T>>),
   Stable(SimdAlphaStable<T>),
   Rademacher(T),
 }
@@ -212,7 +218,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     let jumps = match self.jumps {
       CtrwJumpLaw::Normal { mean, std } => {
         assert!(std > T::zero(), "Ctrw normal jumps require std > 0");
-        JumpSampler::Normal(SimdNormal::new(mean, std, &self.seed))
+        JumpSampler::Normal(SimdNormal::new(mean, std).seeded(&self.seed))
       }
       CtrwJumpLaw::SymmetricStable { alpha, scale } => {
         assert!(
@@ -325,7 +331,7 @@ pub struct CtrwSampler<T: FloatExt> {
 }
 
 impl<T: FloatExt> CtrwSampler<T> {
-  fn draw_wait(&self) -> f64 {
+  fn draw_wait(&mut self) -> f64 {
     match &self.waiting {
       WaitingSampler::Exp(d) => d.sample_fast().to_f64().unwrap(),
       WaitingSampler::Gamma(d) => d.sample_fast().to_f64().unwrap(),
@@ -337,9 +343,9 @@ impl<T: FloatExt> CtrwSampler<T> {
     .max(1e-12)
   }
 
-  fn draw_jump(&self) -> f64 {
-    match &self.jumps {
-      JumpSampler::Normal(d) => d.sample_fast().to_f64().unwrap(),
+  fn draw_jump(&mut self) -> f64 {
+    match &mut self.jumps {
+      JumpSampler::Normal(d) => d.sample().to_f64().unwrap(),
       JumpSampler::Stable(d) => d.sample_fast().to_f64().unwrap(),
       JumpSampler::Rademacher(scale) => {
         if self.uniform.sample_fast() < 0.5 {

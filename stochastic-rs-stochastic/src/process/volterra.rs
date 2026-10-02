@@ -33,6 +33,9 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -299,7 +302,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> Proc
           n: self.n,
           dt,
           sqrt_dt: dt.sqrt(),
-          normal: SimdNormal::<T, 64>::new(T::zero(), T::one(), &self.seed),
+          normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
         })
       }
     }
@@ -381,6 +384,10 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> Proc
 /// branch.
 #[doc(hidden)]
 #[non_exhaustive]
+#[expect(
+  clippy::large_enum_variant,
+  reason = "a stream holds its 64-wide buffer inline; boxing it would allocate per sampler build"
+)]
 pub enum VolterraSampler<T: FloatExt + RoughSimd, S: SeedExt> {
   Lift(VolterraSdeSampler<T, RlKernel<T>, S>),
   Reference(ReferenceVolterraSampler<T>),
@@ -419,7 +426,7 @@ pub struct ReferenceVolterraSampler<T: FloatExt> {
   n: usize,
   dt: T,
   sqrt_dt: T,
-  normal: SimdNormal<T, 64>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> ReferenceVolterraSampler<T> {

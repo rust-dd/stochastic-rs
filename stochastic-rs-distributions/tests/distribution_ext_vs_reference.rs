@@ -38,7 +38,7 @@ fn close(a: f64, b: f64, abs_tol: f64, rel_tol: f64) -> bool {
 
 #[test]
 fn normal_matches_statrs() {
-  let ours = SimdNormal::<f64>::new(1.5, 2.5, &Unseeded);
+  let ours = SimdNormal::<f64>::new(1.5, 2.5);
   let theirs = statrs::distribution::Normal::new(1.5, 2.5).unwrap();
   for &x in &[-3.0, -1.0, 0.0, 1.5, 4.0] {
     assert!(close(ours.pdf(x), theirs.pdf(x), 1e-12, 1e-10));

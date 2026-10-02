@@ -65,6 +65,8 @@ use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -152,7 +154,7 @@ fn fill_bgm_row<T: FloatExt, S: SeedExt>(row: &mut [T], x0: T, lambda: T, sqrt_d
   if row.len() == 1 {
     return;
   }
-  let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, seed);
+  let mut normal = SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(seed);
   normal.fill_slice(&mut row[1..]);
   for j in 1..row.len() {
     let f_old = row[j - 1];

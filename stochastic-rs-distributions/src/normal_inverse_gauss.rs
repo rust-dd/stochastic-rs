@@ -14,8 +14,11 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use super::SimdFloatExt;
 use super::inverse_gauss::SimdInverseGauss;
 use super::normal::SimdNormal;
+use crate::seeded::StreamState;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 const SMALL_NIG_THRESHOLD: usize = 16;
 
@@ -25,7 +28,7 @@ pub struct SimdNormalInverseGauss<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   delta: T,
   mu: T,
   ig: SimdInverseGauss<T, R>,
-  normal: SimdNormal<T, 64, R>,
+  normal: UnsafeCell<StreamState<T, R, 64>>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
   stream_seed: Cell<u64>,
@@ -59,7 +62,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNormalInverseGauss<T, R> {
     let ig_mean = delta / gamma;
     let ig_shape = delta * delta;
     let ig = SimdInverseGauss::<T, R>::new(ig_mean, ig_shape, seed);
-    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
+    let normal = UnsafeCell::new(SimdNormal::<T>::standard().init::<R, S>(seed).0);
     let stream_seed = seed.next_seed();
     Self {
       alpha,
@@ -114,7 +117,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNormalInverseGauss<T, R> {
     if out.len() < SMALL_NIG_THRESHOLD {
       for x in out.iter_mut() {
         let d = self.ig.sample_fast();
-        let z = self.normal.sample_fast();
+        let z = SimdNormal::<T>::standard().next(unsafe { &mut *self.normal.get() });
         *x = self.mu + self.beta * d + d.sqrt() * z;
       }
       return;
@@ -126,7 +129,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNormalInverseGauss<T, R> {
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
       self.ig.fill_slice(&mut dbuf);
-      self.normal.fill_standard_fast(&mut zbuf);
+      SimdNormal::<T>::fill_standard(&mut unsafe { &mut *self.normal.get() }.rng, &mut zbuf);
       for (sub, (d8, z8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
         dbuf
           .as_chunks::<8>()
@@ -143,7 +146,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNormalInverseGauss<T, R> {
     if !rem.is_empty() {
       let n = rem.len();
       self.ig.fill_slice(&mut dbuf[..n]);
-      self.normal.fill_standard_fast(&mut zbuf[..n]);
+      SimdNormal::<T>::fill_standard(&mut unsafe { &mut *self.normal.get() }.rng, &mut zbuf[..n]);
       for i in 0..n {
         let d = dbuf[i];
         let z = zbuf[i];
@@ -289,7 +292,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt
   }
 }
 
-py_distribution!(PyNormalInverseGauss, SimdNormalInverseGauss,
+py_distribution_legacy!(PyNormalInverseGauss, SimdNormalInverseGauss,
   sig: (alpha, beta, delta, mu, seed=None, dtype=None),
   params: (alpha: f64, beta: f64, delta: f64, mu: f64)
 );

@@ -247,7 +247,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdWeib
   }
 }
 
-py_distribution!(PyWeibull, SimdWeibull,
+py_distribution_legacy!(PyWeibull, SimdWeibull,
   sig: (lambda_, k, seed=None, dtype=None),
   params: (lambda_: f64, k: f64)
 );

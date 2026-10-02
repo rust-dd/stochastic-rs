@@ -55,6 +55,7 @@ use ndarray::Axis;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::chi_square::SimdChiSquared;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::beta_i;
@@ -191,8 +192,8 @@ impl TMultivariate {
     let d = self.dim;
     let l = self.chol_lower.as_ref().unwrap();
     // Z ~ N(0, Σ) by L · G with G ~ N(0, I).
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, seed);
-    let g = Array2::from_shape_fn((n, d), |_| normal.sample_fast());
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(seed);
+    let g = Array2::from_shape_fn((n, d), |_| normal.sample());
     let z = g.dot(&l.t());
     // W ~ χ²_ν / ν, independently per row.
     let chi = SimdChiSquared::<f64>::new(self.nu, seed);
@@ -478,9 +479,9 @@ impl MultivariateExt for TMultivariate {
     let n = z.nrows();
     let m = 4000usize;
     let mut out = Array1::<f64>::zeros(n);
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Unseeded);
     let chi = SimdChiSquared::<f64>::new(self.nu, &Unseeded);
-    let g = Array2::from_shape_fn((m, self.dim), |_| normal.sample_fast());
+    let g = Array2::from_shape_fn((m, self.dim), |_| normal.sample());
     let y = g.dot(&l.t());
     let mut w_buf = vec![0.0f64; m];
     for v in w_buf.iter_mut() {

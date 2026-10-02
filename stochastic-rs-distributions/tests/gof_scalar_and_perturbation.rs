@@ -30,6 +30,8 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionExt;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 use stochastic_rs_distributions::scalar::ScalarExp;
@@ -50,7 +52,7 @@ fn scalar_normal_matches_simd_normal_cdf() {
     let dist = ScalarNormal::<f64>::new(mean, std);
     let mut rng = SimdRng::from_seed(seed);
     let xs = (0..N).map(|_| dist.sample(&mut rng)).collect::<Vec<_>>();
-    let reference = SimdNormal::<f64>::new(mean, std, &Unseeded);
+    let reference = SimdNormal::<f64>::new(mean, std);
     (
       xs,
       Box::new(move |x| reference.cdf(x)) as Box<dyn Fn(f64) -> f64>,
@@ -83,10 +85,10 @@ fn perturbation_demo_ks_catches_shifted_mean() {
   let best_case_p = gof_support::SEEDS
     .into_iter()
     .map(|seed| {
-      let sampler = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+      let mut sampler = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
       let mut xs = vec![0.0_f64; M];
       sampler.fill_slice(&mut xs);
-      let wrong_reference = SimdNormal::<f64>::new(shift, 1.0, &Unseeded);
+      let wrong_reference = SimdNormal::<f64>::new(shift, 1.0);
       kolmogorov_smirnov_test(
         ArrayView1::from(&xs),
         |x| wrong_reference.cdf(x),

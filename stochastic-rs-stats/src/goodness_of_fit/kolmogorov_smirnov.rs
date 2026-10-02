@@ -206,6 +206,8 @@ mod tests {
   use ndarray::ArrayView1;
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::DistributionExt;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
   use stochastic_rs_distributions::uniform::SimdUniform;
 
@@ -244,9 +246,9 @@ mod tests {
     let best_p = [42u64, 999, 2718]
       .into_iter()
       .map(|seed| {
-        let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+        let dist = SimdNormal::<f64>::new(0.0, 1.0);
         let mut x = vec![0.0; 5_000];
-        dist.fill_slice(&mut x);
+        dist.seeded(&Deterministic::new(seed)).fill_slice(&mut x);
         kolmogorov_smirnov_test(
           ArrayView1::from(&x),
           |v| dist.cdf(v),
@@ -267,7 +269,7 @@ mod tests {
     let dist = SimdUniform::<f64>::new(0.0, 1.0, &Deterministic::new(1));
     let mut x = vec![0.0; 2_000];
     dist.fill_slice(&mut x);
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(1));
+    let normal = SimdNormal::<f64>::new(0.0, 1.0);
     let res = kolmogorov_smirnov_test(
       ArrayView1::from(&x),
       |v| normal.cdf(v),

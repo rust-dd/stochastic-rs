@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -129,7 +132,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   fn sampler(&self) -> GnSampler<T> {
     GnSampler {
       n: self.n,
-      normal: SimdNormal::<T>::new(T::zero(), self.dt().sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), self.dt().sqrt()).seeded(&self.seed),
     }
   }
 
@@ -170,7 +173,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 #[doc(hidden)]
 pub struct GnSampler<T: FloatExt> {
   n: usize,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> GnSampler<T> {
@@ -204,7 +207,7 @@ impl<T: FloatExt, S: SeedExt, B> Gn<T, S, B> {
       return;
     }
     let std_dev = self.dt().sqrt();
-    let normal = SimdNormal::<T>::new(T::zero(), std_dev, &self.seed);
+    let mut normal = SimdNormal::<T>::new(T::zero(), std_dev).seeded(&self.seed);
     normal.fill_slice(&mut out[..len]);
   }
 

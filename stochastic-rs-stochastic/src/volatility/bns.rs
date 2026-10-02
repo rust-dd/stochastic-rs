@@ -51,6 +51,7 @@ use rand::RngExt;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::FloatExt;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::normal::SimdNormal;
 
@@ -263,7 +264,7 @@ impl<T: FloatExt, S: SeedExt> BnsSampler<T, S> {
     // derived from `self.seed` in the legacy order, so a `Deterministic` seed
     // makes the whole path reproducible.
     let jump_dist = SimdGamma::<T>::new(self.jump_shape, T::one(), &self.seed);
-    let normal_dist = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
+    let mut normal_dist = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed);
     let mut rng = self.seed.rng();
     for i in 1..self.n {
       // 1. Number of jumps in [t_{i-1}, t_i] from the compound-Poisson
@@ -281,7 +282,7 @@ impl<T: FloatExt, S: SeedExt> BnsSampler<T, S> {
 
       // 4. Asset update under risk-neutral log-Euler.
       let v_prev = sigma2[i - 1];
-      let eps = normal_dist.sample_fast();
+      let eps = normal_dist.sample();
       let log_inc =
         (self.mu - v_prev * T::from_f64_fast(0.5)) * dt + v_prev.sqrt() * dt.sqrt() * eps;
       s[i] = s[i - 1] * log_inc.exp();

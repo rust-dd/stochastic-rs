@@ -13,6 +13,8 @@ use crate::normal::SimdNormal;
 use crate::pareto::SimdPareto;
 use crate::poisson::SimdPoisson;
 use crate::studentt::SimdStudentT;
+use crate::traits::DistributionSampler;
+use crate::traits::SimdDistribution;
 use crate::weibull::SimdWeibull;
 
 struct Row {
@@ -114,15 +116,14 @@ fn bench_summary_table() {
   let mut rows: Vec<Row> = Vec::new();
 
   {
-    let mut rng = rand::rng();
-    let simd: SimdNormal<f32> = SimdNormal::new(0.0, 1.0, &Unseeded);
+    let mut simd = SimdNormal::<f32>::new(0.0, 1.0).seeded(&Unseeded);
     let mut rng2 = rand::rng();
     let rd = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
     time_f32(
       &mut rows,
       n_f,
       "Normal",
-      || simd.sample(&mut rng),
+      || simd.sample(),
       || rd.sample(&mut rng2),
     );
   }
@@ -276,7 +277,7 @@ fn bench_summary_table() {
   let total = 5_000_000usize;
   for &size in &[8, 16, 64, 256, 1024, 10_000, 100_000] {
     let iters = total / size;
-    let simd = SimdNormal::<f32>::new(0.0, 1.0, &Unseeded);
+    let mut simd = SimdNormal::<f32>::new(0.0, 1.0).seeded(&Unseeded);
     let rd = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
     let mut buf = vec![0.0f32; size];
 

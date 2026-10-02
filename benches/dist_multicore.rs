@@ -1,10 +1,12 @@
 use std::hint::black_box;
 use std::time::Instant;
 
+use num_traits::Zero;
 use rand_distr::Distribution;
 use rayon::ThreadPool;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::alpha_stable::SimdAlphaStable;
 use stochastic_rs::distributions::beta::SimdBeta;
 use stochastic_rs::distributions::binomial::SimdBinomial;
@@ -41,10 +43,10 @@ fn bench_pool<T, D>(
 ) -> f64
 where
   D: DistributionSampler<T> + Clone + Send,
-  T: Default + Clone + Send,
+  T: Copy + Zero + Send,
 {
   for _ in 0..warmup {
-    let dist_run = dist.clone();
+    let mut dist_run = dist.clone();
     pool.install(move || {
       let out = dist_run.sample_matrix(m, n);
       black_box(out);
@@ -53,7 +55,7 @@ where
 
   let mut times_ms = Vec::with_capacity(runs);
   for _ in 0..runs {
-    let dist_run = dist.clone();
+    let mut dist_run = dist.clone();
     let t0 = Instant::now();
     pool.install(move || {
       let out = dist_run.sample_matrix(m, n);
@@ -65,7 +67,7 @@ where
 }
 
 fn bench_normal_fill_slice(n: usize, warmup: usize, runs: usize) -> (f64, f64, f64) {
-  let simd = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
+  let mut simd = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Unseeded);
   let rand_distr = rand_distr::Normal::<f64>::new(0.0, 1.0).expect("valid normal params");
   let mut out = vec![0.0f64; n];
   let iters = (262_144 / n.max(1)).clamp(1, 16_384);
@@ -138,7 +140,7 @@ fn bench_normal_fill_slice(n: usize, warmup: usize, runs: usize) -> (f64, f64, f
 fn run_case<T, D>(name: &str, dist: &D, m: usize, n: usize, single: &ThreadPool, multi: &ThreadPool)
 where
   D: DistributionSampler<T> + Clone + Send,
-  T: Default + Clone + Send,
+  T: Copy + Zero + Send,
 {
   let warmup = 2;
   let runs = 7;
@@ -171,7 +173,7 @@ fn main() {
 
   run_case(
     "Normal<f64>(ref)",
-    &SimdNormal::<f64>::new(0.0, 1.0, &Unseeded),
+    &SimdNormal::<f64>::new(0.0, 1.0).seeded(&Unseeded),
     2048,
     2048,
     &single,
@@ -204,7 +206,7 @@ fn main() {
 
   run_case(
     "Normal<f64>",
-    &SimdNormal::<f64>::new(0.0, 1.0, &Unseeded),
+    &SimdNormal::<f64>::new(0.0, 1.0).seeded(&Unseeded),
     fm,
     fnn,
     &single,

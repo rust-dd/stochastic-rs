@@ -31,6 +31,8 @@ use std::ffi::c_void;
 
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 
 use super::Fgn;
 use crate::device::DeviceError;
@@ -149,7 +151,8 @@ fn sample_f32<T: FloatExt, S: SeedExt>(
 
     real.resize(total, 0.0);
     imag.resize(total, 0.0);
-    let normal = stochastic_rs_distributions::normal::SimdNormal::<f32>::new(0.0, 1.0, seed);
+    let mut normal =
+      stochastic_rs_distributions::normal::SimdNormal::<f32>::new(0.0, 1.0).seeded(seed);
     normal.fill_slice(real.as_mut_slice());
     normal.fill_slice(imag.as_mut_slice());
 

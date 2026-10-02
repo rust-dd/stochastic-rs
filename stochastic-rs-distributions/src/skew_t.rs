@@ -469,7 +469,7 @@ mod tests {
   }
 }
 
-py_distribution!(PySkewT, SimdSkewT,
+py_distribution_legacy!(PySkewT, SimdSkewT,
   sig: (eta, lambda, seed=None, dtype=None),
   params: (eta: f64, lambda: f64)
 );

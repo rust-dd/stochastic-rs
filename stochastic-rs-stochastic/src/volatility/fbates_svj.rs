@@ -39,6 +39,7 @@ use ndarray::Array1;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 use stochastic_rs_distributions::special::gamma;
@@ -443,7 +444,7 @@ impl<T: FloatExt, S: SeedExt> FBatesSvjSampler<T, S> {
     let kappa_j = (self.nu + half * self.omega * self.omega).exp() - T::one();
 
     // Jump RNG
-    let z_std = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
+    let mut z_std = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed);
     let mut rng = self.seed.rng();
     let lambda_dt = self.lambda.to_f64().unwrap() * dt.to_f64().unwrap();
     let pois = if lambda_dt > 0.0 {
@@ -480,7 +481,7 @@ impl<T: FloatExt, S: SeedExt> FBatesSvjSampler<T, S> {
         let n_jumps: u32 = pois.sample(&mut rng);
         if n_jumps > 0 {
           let kf = T::from_f64_fast(n_jumps as f64);
-          let z0 = z_std.sample_fast();
+          let z0 = z_std.sample();
           jump_sum = self.nu * kf + self.omega * kf.sqrt() * z0;
         }
       }

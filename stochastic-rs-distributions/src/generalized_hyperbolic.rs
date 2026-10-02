@@ -43,9 +43,12 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use super::SimdFloatExt;
 use super::generalized_inverse_gauss::SimdGig;
 use super::normal::SimdNormal;
+use crate::seeded::StreamState;
 use crate::simd_rng::SimdRng;
 use crate::simd_rng::SimdRngExt;
 use crate::special::bessel_k::bessel_ke;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 const SMALL_GH_THRESHOLD: usize = 16;
 
@@ -57,7 +60,7 @@ pub struct SimdGeneralizedHyperbolic<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   delta: T,
   mu: T,
   gig: SimdGig<T, R>,
-  normal: SimdNormal<T, 64, R>,
+  normal: UnsafeCell<StreamState<T, R, 64>>,
   buffer: UnsafeCell<[T; 16]>,
   index: UnsafeCell<usize>,
   stream_seed: Cell<u64>,
@@ -80,7 +83,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGeneralizedHyperbolic<T, R> {
       "GH: alpha must exceed |beta|"
     );
     let gig = SimdGig::<T, R>::new(lambda, delta * delta, alpha * alpha - beta * beta, seed);
-    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
+    let normal = UnsafeCell::new(SimdNormal::<T>::standard().init::<R, S>(seed).0);
     let stream_seed = seed.next_seed();
     Self {
       lambda,
@@ -134,7 +137,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGeneralizedHyperbolic<T, R> {
     if out.len() < SMALL_GH_THRESHOLD {
       for x in out.iter_mut() {
         let w = self.gig.sample_fast();
-        let z = self.normal.sample_fast();
+        let z = SimdNormal::<T>::standard().next(unsafe { &mut *self.normal.get() });
         *x = self.mu + self.beta * w + w.sqrt() * z;
       }
       return;
@@ -146,7 +149,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGeneralizedHyperbolic<T, R> {
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
       self.gig.fill_slice(&mut wbuf);
-      self.normal.fill_standard_fast(&mut zbuf);
+      SimdNormal::<T>::fill_standard(&mut unsafe { &mut *self.normal.get() }.rng, &mut zbuf);
       for (sub, (w8, z8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
         wbuf
           .as_chunks::<8>()
@@ -162,7 +165,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGeneralizedHyperbolic<T, R> {
     if !rem.is_empty() {
       let n = rem.len();
       self.gig.fill_slice(&mut wbuf[..n]);
-      self.normal.fill_standard_fast(&mut zbuf[..n]);
+      SimdNormal::<T>::fill_standard(&mut unsafe { &mut *self.normal.get() }.rng, &mut zbuf[..n]);
       for i in 0..n {
         rem[i] = self.mu + self.beta * wbuf[i] + wbuf[i].sqrt() * zbuf[i];
       }
@@ -451,7 +454,7 @@ mod tests {
   }
 }
 
-py_distribution!(PyGeneralizedHyperbolic, SimdGeneralizedHyperbolic,
+py_distribution_legacy!(PyGeneralizedHyperbolic, SimdGeneralizedHyperbolic,
   sig: (lambda, alpha, beta, delta, mu, seed=None, dtype=None),
   params: (lambda: f64, alpha: f64, beta: f64, delta: f64, mu: f64)
 );
