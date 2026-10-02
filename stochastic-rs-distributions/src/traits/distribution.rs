@@ -172,7 +172,8 @@ pub trait DistributionSampler<T: Copy + Zero + Send>: Sealed {
     if m == 0 || n == 0 {
       return Array2::<T>::zeros((m, n));
     }
-    if worker_count(m.saturating_mul(n)) == 1 {
+    let workers = worker_count(m.saturating_mul(n));
+    if workers == 1 {
       let mut out = Array2::<T>::zeros((m, n));
       self.fill_slice(
         out
@@ -186,7 +187,6 @@ pub trait DistributionSampler<T: Copy + Zero + Send>: Sealed {
     let flat = out
       .as_slice_mut()
       .expect("sample_matrix output is contiguous");
-    let workers = worker_count(flat.len());
     let chunk_len = flat.len().div_ceil(workers);
     let forked = (0..workers)
       .map(|idx| self.fork(idx as u64))
