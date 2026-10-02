@@ -326,10 +326,12 @@ impl<T: SimdFloatExt> SimdNormal<T> {
     Self { mean, std_dev }
   }
 
+  /// The mean `μ`; on a concrete type it shadows the `f64` `DistributionExt::mean`.
   pub fn mean(&self) -> T {
     self.mean
   }
 
+  /// The standard deviation `σ`.
   pub fn std_dev(&self) -> T {
     self.std_dev
   }

@@ -40,10 +40,12 @@ impl<D: SimdDistribution, R: SimdRngExt> Seeded<D, R> {
     Self { dist, state, basis }
   }
 
+  /// The law this stream draws.
   pub fn dist(&self) -> &D {
     &self.dist
   }
 
+  /// The law, with the stream state dropped.
   pub fn into_dist(self) -> D {
     self.dist
   }

@@ -131,6 +131,7 @@ pub trait SimdDistribution: Sealed + Clone + Send + Sync + 'static {
 
 /// A law with a bulk SIMD kernel and a buffered single draw; sealed, the kernels are the crate's own.
 pub trait SimdKernel: SimdDistribution {
+  /// One draw: the scalar of a univariate law, `Complex<T>` for `ComplexDistribution`.
   type Item: Copy + Zero + Send + Sync + 'static;
 
   #[doc(hidden)]
@@ -147,6 +148,7 @@ pub trait SimdKernel: SimdDistribution {
 
 /// Bulk sampling API of a [`Seeded`] stream; sealed, only `Seeded` implements it.
 pub trait DistributionSampler<T: Copy + Zero + Send>: Sealed {
+  /// Fills `out` from the stream's engine in bulk, past the single-draw buffer that `sample` pops.
   fn fill_slice(&mut self, out: &mut [T]);
 
   /// An independent child stream for worker `stream_idx`; advances this stream's fork basis.
@@ -154,6 +156,7 @@ pub trait DistributionSampler<T: Copy + Zero + Send>: Sealed {
   where
     Self: Sized;
 
+  /// `n` draws in a new array: the values `fill_slice` gives an `n`-slice.
   fn sample_n(&mut self, n: usize) -> Array1<T> {
     let mut out = Array1::<T>::zeros(n);
     self.fill_slice(out.as_slice_mut().expect("sample_n output is contiguous"));
