@@ -11,7 +11,7 @@ documentation = "https://docs.rs/stochastic-rs-ai"
 repository = "https://github.com/rust-dd/stochastic-rs"
 keywords = ["volatility", "neural-network", "finance", "quant", "surrogate"]
 categories = ["finance", "mathematics", "science"]
-exclude = ["src/volatility/*TrainSet.txt.gz", "**/*.gz"]
+exclude = ["tests/**"]
 
 [features]
 default = []

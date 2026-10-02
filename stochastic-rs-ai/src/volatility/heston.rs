@@ -118,17 +118,9 @@ impl crate::calibration::SurrogateModel for HestonNn {
 #[cfg(test)]
 mod tests {
   use std::fs;
-  #[cfg(feature = "viz")]
-  use std::path::Path;
 
   use super::*;
-  #[cfg(feature = "viz")]
-  use crate::volatility::common::load_trainset_gzip_npy;
-  #[cfg(feature = "viz")]
-  use crate::volatility::common::rmse_1d;
   use crate::volatility::common::synthetic_surface_dataset;
-  #[cfg(feature = "viz")]
-  use crate::volatility::common::write_surface_fit_plot_html;
 
   #[test]
   fn train_save_load_roundtrip() -> Result<()> {
@@ -217,64 +209,6 @@ mod tests {
         );
       }
     }
-    Ok(())
-  }
-
-  #[cfg(feature = "viz")]
-  #[test]
-  fn real_trainset_fit_plot() -> Result<()> {
-    let trainset_path = Path::new("src/ai/volatility/HestonTrainSet.txt.gz");
-    if !trainset_path.exists() {
-      return Ok(());
-    }
-
-    let device = Device::Cpu;
-    let (params, surfaces) =
-      load_trainset_gzip_npy(trainset_path, INPUT_DIM, OUTPUT_DIM, Some(8_000))?;
-
-    let mut model = HestonNn::new(&device)?;
-    let cfg = TrainConfig {
-      test_ratio: 0.15,
-      batch_size: 64,
-      epochs: 30,
-      learning_rate: 1e-3,
-      random_seed: 42,
-      shuffle: true,
-    };
-    let report = model.train(&params, &surfaces, &cfg)?;
-    let sample_idx = surfaces.nrows() / 3;
-    let sample = [
-      params[[sample_idx, 0]],
-      params[[sample_idx, 1]],
-      params[[sample_idx, 2]],
-      params[[sample_idx, 3]],
-      params[[sample_idx, 4]],
-    ];
-    let pred = model.predict_surface(&sample)?;
-    let actual = surfaces.row(sample_idx).to_vec();
-    let fit_rmse = rmse_1d(&actual, &pred)?;
-
-    let out = Path::new("target/nn_fit_plots/heston_fit.html");
-    let strikes = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5];
-    let maturities = [0.1, 0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.0];
-    write_surface_fit_plot_html(
-      out,
-      &format!(
-        "Heston NN Fit - sample {} - RMSE {:.5}",
-        sample_idx, fit_rmse
-      ),
-      &strikes,
-      &maturities,
-      &actual,
-      &pred,
-    )?;
-    println!(
-      "Heston fit plot written to {} (sample_rmse={:.6}, final_val_rmse={:.6})",
-      out.display(),
-      fit_rmse,
-      report.epochs.last().map(|e| e.val_rmse).unwrap_or(f32::NAN)
-    );
-    assert!(out.exists());
     Ok(())
   }
 }

@@ -195,6 +195,10 @@ jobs:
       # python_smoke job. Mirrors the coverage job's feature set for parity.
       - name: cargo nextest run (workspace)
         run: cargo nextest run --workspace --exclude stochastic-rs-py --profile ci
+      # The workspace run leaves quant and viz off; they gate the ai crate's
+      # calibration, Heston-pin and plot tests.
+      - name: cargo nextest run (ai surrogates, quant and viz)
+        run: cargo nextest run -p stochastic-rs-ai --features quant,viz --profile ci
       # nextest does not run doctests; this gates the crates' doc examples
       # (e.g. the README quickstart rendered on docs.rs) that plain `cargo
       # test` used to cover. `--release` reuses the artifacts built above.

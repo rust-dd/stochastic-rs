@@ -93,3 +93,28 @@ pub fn write_surface_fit_plot_html<P: AsRef<Path>>(
   plot.write_html(output_html);
   Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn writes_one_panel_per_maturity() {
+    let iv = vec![0.2_f32; 9];
+    let out = std::env::temp_dir().join(format!(
+      "stochastic_rs_fit_plot_{}.html",
+      std::process::id()
+    ));
+    write_surface_fit_plot_html(&out, "fit", &[0.9, 1.0, 1.1], &[0.5, 1.0, 2.0], &iv, &iv).unwrap();
+    let html = fs::read_to_string(&out).unwrap();
+    assert!(html.contains("Actual T=0.50") && html.contains("Pred T=2.00"));
+    fs::remove_file(&out).unwrap();
+  }
+
+  #[test]
+  fn rejects_a_surface_of_the_wrong_length() {
+    let out = std::env::temp_dir().join("stochastic_rs_fit_plot_rejected.html");
+    let result = write_surface_fit_plot_html(&out, "fit", &[0.9, 1.0], &[1.0], &[0.2], &[0.2, 0.2]);
+    assert!(result.is_err());
+  }
+}
