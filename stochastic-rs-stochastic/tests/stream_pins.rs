@@ -4,6 +4,7 @@ use stochastic_rs_stochastic::interest::duffie_kan_jump_exp::DuffieKanJumpExp;
 use stochastic_rs_stochastic::jump::mjd_log::MjdLog;
 use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::process::subordinator::poisson_subordinator::PoissonSubordinator;
+use stochastic_rs_stochastic::traits::PathSampler;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::bates_svj::BatesSvj;
 use stochastic_rs_stochastic::volatility::fbates_svj::FBatesSvj;
@@ -25,13 +26,43 @@ fn pin(label: &str, got: &Array1<f64>, golden: [u64; 8]) {
   }
 }
 
+fn poisson_horizon() -> Poisson<f64, Deterministic> {
+  Poisson::new(2.0 * LAMBDA, None, Some(1.0), Deterministic::new(SEED))
+}
+
+fn poisson_subordinator() -> PoissonSubordinator<f64, Deterministic> {
+  PoissonSubordinator::new(LAMBDA, N, Some(0.0), Some(1.0), Deterministic::new(SEED))
+}
+
+fn duffie_kan_jump_exp() -> DuffieKanJumpExp<f64, Deterministic> {
+  DuffieKanJumpExp::new(
+    0.5,
+    0.04,
+    0.5,
+    -0.3,
+    0.01,
+    0.0,
+    0.0,
+    0.01,
+    0.0,
+    0.5,
+    0.0,
+    0.005,
+    LAMBDA,
+    0.05,
+    N,
+    Some(0.05),
+    Some(0.05),
+    Some(1.0),
+    Deterministic::new(SEED),
+  )
+}
+
 #[test]
 fn poisson_horizon_mode_is_pinned() {
-  let path =
-    Poisson::<f64, _>::new(2.0 * LAMBDA, None, Some(1.0), Deterministic::new(SEED)).sample();
   pin(
     "Poisson horizon",
-    &path,
+    &poisson_horizon().sample(),
     [
       0,
       4580482050277747696,
@@ -41,6 +72,26 @@ fn poisson_horizon_mode_is_pinned() {
       4594241694543480592,
       4594793799711395387,
       4595579018267019823,
+    ],
+  );
+}
+
+#[test]
+fn poisson_horizon_second_sample_is_pinned() {
+  let poisson = poisson_horizon();
+  let _ = poisson.sample();
+  pin(
+    "Poisson horizon second sample",
+    &poisson.sample(),
+    [
+      0,
+      4574690019242942904,
+      4582618979664212649,
+      4585517622389001898,
+      4587098389376111786,
+      4588102407659260246,
+      4593673876712254019,
+      4593929842152705273,
     ],
   );
 }
@@ -189,11 +240,9 @@ fn hkde_is_pinned() {
 
 #[test]
 fn poisson_subordinator_is_pinned() {
-  let path =
-    PoissonSubordinator::new(LAMBDA, N, Some(0.0), Some(1.0), Deterministic::new(SEED)).sample();
   pin(
     "PoissonSubordinator",
-    &path,
+    &poisson_subordinator().sample(),
     [
       0,
       4607182418800017408,
@@ -208,29 +257,28 @@ fn poisson_subordinator_is_pinned() {
 }
 
 #[test]
+fn poisson_subordinator_second_sample_is_pinned() {
+  let subordinator = poisson_subordinator();
+  let _ = subordinator.sample();
+  pin(
+    "PoissonSubordinator second sample",
+    &subordinator.sample(),
+    [
+      0,
+      4611686018427387904,
+      4616189618054758400,
+      4617315517961601024,
+      4619567317775286272,
+      4621256167635550208,
+      4621819117588971520,
+      4621819117588971520,
+    ],
+  );
+}
+
+#[test]
 fn duffie_kan_jump_exp_is_pinned() {
-  let [_, x] = DuffieKanJumpExp::new(
-    0.5,
-    0.04,
-    0.5,
-    -0.3,
-    0.01,
-    0.0,
-    0.0,
-    0.01,
-    0.0,
-    0.5,
-    0.0,
-    0.005,
-    LAMBDA,
-    0.05,
-    N,
-    Some(0.05),
-    Some(0.05),
-    Some(1.0),
-    Deterministic::new(SEED),
-  )
-  .sample();
+  let [_, x] = duffie_kan_jump_exp().sample();
   pin(
     "DuffieKanJumpExp",
     &x,
@@ -243,6 +291,28 @@ fn duffie_kan_jump_exp_is_pinned() {
       13817240560671561989,
       13807076140597773348,
       13807229549475133900,
+    ],
+  );
+}
+
+#[test]
+fn duffie_kan_jump_exp_second_path_is_pinned() {
+  let process = duffie_kan_jump_exp();
+  let mut sampler = process.sampler();
+  let _ = sampler.sample();
+  let [_, x] = sampler.sample();
+  pin(
+    "DuffieKanJumpExp second path",
+    &x,
+    [
+      4587366580439587226,
+      4587569697339465309,
+      4587818465185563992,
+      4576760201237618572,
+      4576973597746040297,
+      4562957084017166208,
+      13800948920510040906,
+      4581223291369818866,
     ],
   );
 }
