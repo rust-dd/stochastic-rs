@@ -43,6 +43,14 @@ jobs:
           # Debuginfo only bloats the archive the GPU job has to download and unpack.
           CARGO_PROFILE_DEV_DEBUG: "0"
         run: cargo nextest archive -p stochastic-rs-stochastic --features cuda --lib --test device_law --archive-file cuda-tests.tar.zst
+      # The GPU image ships the driver but not NVRTC or cuFFT; NVIDIA's wheels carry the CUDA 12.8 runtime libraries.
+      - name: Fetch the NVRTC and cuFFT runtime libraries
+        run: |
+          python3 -m pip download --no-deps --only-binary=:all: -d wheels 'nvidia-cuda-nvrtc-cu12~=12.8.0' 'nvidia-cufft-cu12~=11.3.3'
+          mkdir -p wheels/x cuda-libs
+          for w in wheels/*.whl; do python3 -m zipfile -e "$w" wheels/x; done
+          find wheels/x -name 'lib*.so*' -exec cp {} cuda-libs/ \;
+          ls -l cuda-libs
       - name: Upload the archive
         uses: actions/upload-artifact@v4
         with:
@@ -51,6 +59,13 @@ jobs:
           retention-days: 1
           # The archive is already zstd-compressed.
           compression-level: 0
+          if-no-files-found: error
+      - name: Upload the runtime libraries
+        uses: actions/upload-artifact@v4
+        with:
+          name: cuda-libs
+          path: cuda-libs
+          retention-days: 1
           if-no-files-found: error
 
   test:
@@ -69,13 +84,20 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: cuda-tests
+      - name: Download the runtime libraries
+        uses: actions/download-artifact@v4
+        with:
+          name: cuda-libs
+          path: cuda-libs
       - name: GPU, glibc and CUDA libraries
         run: |
           nvidia-smi
           ldd --version | head -n 1
-          ldconfig -p | grep -E 'libcuda\.so|libnvrtc|libcufft' || echo 'no CUDA libraries in the linker cache'
+          ldconfig -p | grep -E 'libcuda\.so' || echo 'no libcuda in the linker cache'
+          ls -l cuda-libs
       - name: Run the CUDA tests
         env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/cuda-libs
           # Every device_law test and the lib tests the cuda feature adds, less the host-only
           # euler::kernel::tests; a new cuda lib test outside these modules needs its own term.
           CUDA_TESTS: >-
