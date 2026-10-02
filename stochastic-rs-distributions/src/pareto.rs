@@ -38,7 +38,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdPareto<T, R> {
       x_m > T::zero() && alpha > T::zero(),
       "x_m must satisfy `x_m > T::zero() && alpha > T::zero()`, got x_m = {x_m:?}, alpha = {alpha:?}"
     );
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       x_m,
       alpha,

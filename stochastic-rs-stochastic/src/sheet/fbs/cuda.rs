@@ -447,7 +447,7 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
   ) -> Result<Vec<Array2<T>>> {
     let (m, n) = (self.m, self.n);
     let cells = self.cells();
-    let seed = self.seed.seed_value();
+    let seed = self.seed.next_seed();
     // A sheet is `cells` complex values of work buffer, which the kernels
     // index as `data[2 * tid + 1]` in `int`.
     let rows = crate::device::rows_within_index_limit(

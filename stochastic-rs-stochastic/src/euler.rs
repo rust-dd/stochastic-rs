@@ -2857,13 +2857,13 @@ kernel_euler_backend!(crate::device::Cuda, [T: FloatExt] T);
 /// `Deterministic`, fresh entropy for `Unseeded`, and advancing either way so
 /// two launches from one process do not replay.
 ///
-/// This is [`SeedExt::seed_value`] and nothing else — the workspace draws its
+/// This is [`SeedExt::next_seed`] and nothing else — the workspace draws its
 /// randomness from its own generator, never from `rand`. Public because
 /// `EulerCoefficients` is: an out-of-tree process needs it to answer
 /// `device_seed`.
 #[doc(hidden)]
 pub fn draw_seed<S: SeedExt>(seed: &S) -> u64 {
-  seed.seed_value()
+  seed.next_seed()
 }
 
 impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> EulerCoefficients<T> for Gbm<T, S, B> {

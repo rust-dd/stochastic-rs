@@ -71,7 +71,7 @@ The narrow exception: if your `sampler()` must `clone()` the seed
 (because the clone feeds a persistent engine reused across a whole
 chunk), you must also override `advance_chunk_seed`. `CirPlusPlus`
 (`interest/cir_pp.rs`) is the in-tree example:
-`fn advance_chunk_seed(&self) { self.seed.seed_value(); }`.
+`fn advance_chunk_seed(&self) { self.seed.next_seed(); }`.
 
 ## 2. The struct + constructor
 

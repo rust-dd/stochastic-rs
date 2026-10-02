@@ -601,7 +601,7 @@ impl<S: SeedExt, B> Fgn<f32, S, B> {
     let (n, offset) = (self.padded_n, self.offset);
     let out_size = n - offset;
     let eigs = self.sqrt_eigenvalues();
-    let seed = seed_src.seed_value() as u32;
+    let seed = seed_src.next_seed() as u32;
     for chunk in chunks(n, out_size, m, device) {
       let launch = Launch {
         sqrt_eigs: eigs,

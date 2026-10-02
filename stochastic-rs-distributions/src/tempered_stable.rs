@@ -103,7 +103,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTemperedStable<T, R> {
     assert!(theta_f > 0.0, "TemperedStable: theta must be positive");
     let scale = theta_f.powf(1.0 / alpha_f);
     let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       alpha,
       lambda,

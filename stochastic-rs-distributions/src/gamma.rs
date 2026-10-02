@@ -55,7 +55,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
       "alpha must satisfy `alpha > T::zero() && scale > T::zero()`, got alpha = {alpha:?}, scale = {scale:?}"
     );
     let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       alpha,
       scale,

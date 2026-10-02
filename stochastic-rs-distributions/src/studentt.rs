@@ -40,7 +40,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdStudentT<T, R> {
   pub fn new<S: crate::simd_rng::SeedExt>(nu: T, seed: &S) -> Self {
     let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
     let chisq = SimdChiSquared::new(nu, seed);
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       nu,
       normal,

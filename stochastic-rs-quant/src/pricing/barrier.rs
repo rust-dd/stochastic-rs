@@ -285,7 +285,7 @@ impl MCBarrierPricer {
     barrier_type: BarrierType,
     option_type: OptionType,
   ) -> McEstimate<f64> {
-    let base = Unseeded.seed_value();
+    let base = Unseeded.next_seed();
     self.price_from(s, k, h, r, sigma, t, barrier_type, option_type, base)
   }
 

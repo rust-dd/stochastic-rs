@@ -383,7 +383,7 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
       corr: self.correction().to_f32().unwrap(),
       key: self.launch_key(),
     };
-    let seed = self.seed.seed_value() as u32;
+    let seed = self.seed.next_seed() as u32;
     let budget = device
       .batch_budget
       .min(crate::euler::metal::working_set(device.ordinal));

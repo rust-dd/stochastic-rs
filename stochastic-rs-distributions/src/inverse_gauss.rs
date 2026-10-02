@@ -42,7 +42,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdInverseGauss<T, R> {
       "mu must satisfy `mu > T::zero() && lambda > T::zero()`, got mu = {mu:?}, lambda = {lambda:?}"
     );
     let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       mu,
       lambda,

@@ -60,7 +60,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdJohnsonSu<T, R> {
     assert!(delta > T::zero(), "JohnsonSu: delta must be positive");
     assert!(lambda > T::zero(), "JohnsonSu: lambda must be positive");
     let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       gamma,
       delta,

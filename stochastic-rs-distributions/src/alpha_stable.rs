@@ -64,7 +64,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdAlphaStable<T, R> {
       scale > T::zero(),
       "scale must satisfy `scale > T::zero()`, got scale = {scale:?}"
     );
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       alpha,
       beta,

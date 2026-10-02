@@ -37,7 +37,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdUniform<T, R> {
   pub fn new<S: crate::simd_rng::SeedExt>(low: T, high: T, seed: &S) -> Self {
     assert!(high > low, "SimdUniform: high must be greater than low");
     assert!(low.is_finite() && high.is_finite(), "bounds must be finite");
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       low,
       scale: high - low,

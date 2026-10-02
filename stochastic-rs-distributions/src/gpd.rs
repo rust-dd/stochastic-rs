@@ -81,7 +81,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGpd<T, R> {
   ///   negative for a tail bounded at μ − σ/ξ.
   pub fn new<S: SeedExt>(mu: T, sigma: T, xi: T, seed: &S) -> Self {
     assert!(sigma > T::zero(), "σ must be positive");
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       mu,
       sigma,

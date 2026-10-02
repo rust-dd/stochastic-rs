@@ -81,7 +81,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGeneralizedHyperbolic<T, R> {
     );
     let gig = SimdGig::<T, R>::new(lambda, delta * delta, alpha * alpha - beta * beta, seed);
     let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       lambda,
       alpha,

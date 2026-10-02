@@ -313,7 +313,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   /// replaying (see this file's own git history), and
   /// reordering it would trade this asymmetry for that regression.
   fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
+    self.seed.next_seed();
   }
 
   fn sampler(&self) -> CirPlusPlusSampler<'_, T> {

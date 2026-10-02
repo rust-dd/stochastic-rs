@@ -38,7 +38,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdCauchy<T, R> {
       gamma > T::zero(),
       "gamma must satisfy `gamma > T::zero()`, got gamma = {gamma:?}"
     );
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       x0,
       gamma,

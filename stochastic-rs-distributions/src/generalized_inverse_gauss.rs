@@ -250,7 +250,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGig<T, R> {
     assert!(psi_f > 0.0, "GIG: psi must be positive");
     let beta = (chi_f * psi_f).sqrt();
     let setup = Setup::new(lambda_f.abs(), beta);
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       lambda,
       chi,

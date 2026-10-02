@@ -142,7 +142,7 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdExpZig<T, N, R> {
       "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
     );
     assert!(N >= 8, "buffer size must be at least 8");
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       lambda,
       buffer: UnsafeCell::new([T::zero(); N]),

@@ -68,7 +68,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdSkewT<T, R> {
     let a = 4.0 * lambda_f * c * (eta_f - 2.0) / (eta_f - 1.0);
     let b = (1.0 + 3.0 * lambda_f * lambda_f - a * a).sqrt();
     let student = SimdStudentT::<T, R>::new(eta, seed);
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       eta,
       lambda,

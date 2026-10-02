@@ -267,7 +267,7 @@ fn the_device_rows_are_the_transform_they_claim_to_be() {
       } else {
         Metal::default().with_batch_budget((2 * n.next_power_of_two() + n) * 4 * budget_rows)
       };
-      let seed = Deterministic::new(31).seed_value() as u32;
+      let seed = Deterministic::new(31).next_seed() as u32;
       let fgn =
         Fgn::<f32, _>::new(HURST as f32, n, Some(1.0), Deterministic::new(31)).with_backend(handle);
       let rows = fgn.sample_par(m);

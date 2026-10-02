@@ -298,7 +298,7 @@ crate-wide guard and a new process must appear in it. See
   jumps, so it reads as confusing. Use `Scalar*`.
 - **Do not** invent `seed.advance(...)`, `seed.into_rng()` or a
   `seeded(...)` constructor. `SeedExt`'s full surface is `rng()`,
-  `derive()`, `rng_ext::<R>()`, `reseed(s)`, `seed_value()`.
+  `derive()`, `rng_ext::<R>()`, `reseed(s)`, `next_seed()`.
 - **Do not** borrow `&self.cpoisson` into the sampler. Borrow the
   read-only `distribution`, but **own** a `.seed.derive()`.
 - **Do not** recompute the compensator inside the per-step loop. Fold

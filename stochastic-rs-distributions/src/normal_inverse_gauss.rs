@@ -60,7 +60,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdNormalInverseGauss<T, R> {
     let ig_shape = delta * delta;
     let ig = SimdInverseGauss::<T, R>::new(ig_mean, ig_shape, seed);
     let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       alpha,
       beta,

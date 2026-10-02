@@ -666,7 +666,7 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
     let out_size = n - offset;
     let hurst = self.hurst().to_f64().unwrap();
     let t = self.t().unwrap_or(T::one()).to_f64().unwrap();
-    let seed = seed_src.seed_value();
+    let seed = seed_src.next_seed();
     // Per path: 2 * traj_size complex scalars of work buffer plus the output row.
     let rows = index_rows(
       crate::device::chunk_rows(

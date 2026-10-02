@@ -120,7 +120,7 @@ impl<T: PrimInt, R: SimdRngExt> SimdBinomial<T, R> {
   /// The core constructor — `new()` and `with_seed()` delegate here.
   pub fn new<S: crate::simd_rng::SeedExt>(n: u32, p: f64, seed: &S) -> Self {
     assert!((0.0..=1.0).contains(&p), "p must be in [0, 1]");
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       n,
       p,

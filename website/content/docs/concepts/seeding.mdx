@@ -62,7 +62,7 @@ pub trait SeedExt: Clone + Send + Sync + 'static {
   fn derive(&self) -> Self; // child seed for sub-components
   fn rng_ext<R: SimdRngExt>(&self) -> R; // generic backing RNG (see below)
   fn reseed(&self, seed: u64) {} // optional in-place reset
-  fn seed_value(&self) -> u64; // fresh seed, advancing state like rng()/rng_ext()
+  fn next_seed(&self) -> u64; // fresh seed, advancing state like rng()/rng_ext()
 }
 ```
 

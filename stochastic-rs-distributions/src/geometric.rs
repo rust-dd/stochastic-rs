@@ -34,7 +34,7 @@ impl<T: PrimInt, R: SimdRngExt> SimdGeometric<T, R> {
   /// - `p` — per-trial success probability p ∈ (0, 1].
   pub fn new<S: crate::simd_rng::SeedExt>(p: f64, seed: &S) -> Self {
     assert!(p > 0.0 && p <= 1.0, "p must be in (0, 1]");
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       p,
       buffer: UnsafeCell::new([T::zero(); 16]),

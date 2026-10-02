@@ -47,8 +47,8 @@ impl SeedExt for SharedSeed {
     self.0.reseed(seed);
   }
 
-  fn seed_value(&self) -> u64 {
-    self.0.seed_value()
+  fn next_seed(&self) -> u64 {
+    self.0.next_seed()
   }
 }
 

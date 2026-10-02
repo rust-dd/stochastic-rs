@@ -344,7 +344,7 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   /// a persistent engine reused across a whole chunk rather than being
   /// re-derived per path — see
   /// [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus)'s override,
-  /// `fn advance_chunk_seed(&self) { self.seed.seed_value(); }` — so each
+  /// `fn advance_chunk_seed(&self) { self.seed.next_seed(); }` — so each
   /// chunk's clone snapshots a distinct state instead of every chunk
   /// replaying the same one, and repeated top-level `sample()` calls
   /// advance instead of replaying the first path forever.

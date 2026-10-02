@@ -67,7 +67,7 @@ impl<T: PrimInt, R: SimdRngExt> SimdPoisson<T, R> {
       lambda > 0.0,
       "lambda must satisfy `lambda > 0.0`, got lambda = {lambda:?}"
     );
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       lambda,
       cdf: Self::build_cdf(lambda),
@@ -141,7 +141,7 @@ impl<T: PrimInt, R: SimdRngExt> Clone for SimdPoisson<T, R> {
     // Reuses the already-built `cdf` table (Unseeded is stateless, so a
     // fresh `Self::new` would only redo that O(cdf length) work for no
     // benefit).
-    let stream_seed = Unseeded.seed_value();
+    let stream_seed = Unseeded.next_seed();
     Self {
       lambda: self.lambda,
       cdf: self.cdf.clone(),

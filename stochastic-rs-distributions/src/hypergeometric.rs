@@ -86,7 +86,7 @@ impl<T: PrimInt, R: SimdRngExt> SimdHypergeometric<T, R> {
     assert!(k_success <= n_total, "k_success must be ≤ n_total");
     assert!(n_draws <= n_total, "n_draws must be ≤ n_total");
     let (k_min, cdf) = Self::build_cdf(n_total, k_success, n_draws);
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       n_total,
       k_success,

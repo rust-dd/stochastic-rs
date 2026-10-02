@@ -71,7 +71,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGed<T, R> {
     assert!(beta > T::zero(), "β must be > 0");
     let inv_beta = T::one() / beta;
     let gamma = SimdGamma::<T, R>::new(inv_beta, T::one(), seed);
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       mu,
       alpha,

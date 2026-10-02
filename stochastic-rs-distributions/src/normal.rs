@@ -186,7 +186,7 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdNormal<T, N, R> {
       "std_dev must satisfy `std_dev > T::zero()`, got std_dev = {std_dev:?}"
     );
     assert!(N >= 8, "buffer size must be at least 8");
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       mean,
       std_dev,

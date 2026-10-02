@@ -65,7 +65,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdVarianceGamma<T, R> {
     assert!(nu > T::zero(), "VG: nu must be positive");
     let gamma = SimdGamma::<T, R>::new(T::one() / nu, nu, seed);
     let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
-    let stream_seed = seed.seed_value();
+    let stream_seed = seed.next_seed();
     Self {
       sigma,
       nu,
