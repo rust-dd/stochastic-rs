@@ -92,9 +92,9 @@
 //! 0.92 over six seeds and sixteen times the sample when asked again. See
 //! `integration-test-writing` skill §1.1 for why every sampler below is
 //! *reconstructed inside the seed closure* rather than handed a seeded
-//! external `Rng`: `Simd*` samplers ignore any `Rng` argument and draw
-//! from their own internally seeded stream, so the seed must reach the
-//! constructor.
+//! external `Rng`: a stateless law's seed reaches its stream through
+//! `.seeded(&seed)`, and a not-yet-ported sampler ignores any `Rng`
+//! argument and draws from the stream its constructor seeds.
 //!
 //! ## Coverage — every type in this crate, or its omission reason
 //!
