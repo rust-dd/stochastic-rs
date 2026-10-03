@@ -42,7 +42,9 @@ build and run time (`PYO3_PYTHON` picks it). Never export `PYO3_BUILD_EXTENSION_
 is for maturin.
 
 `Cargo.lock` is committed and CI passes `--locked`; a manifest change and its
-lockfile update go in the same commit.
+lockfile update go in the same commit. The Apple back-ends are gated with
+`all(feature = "metal", target_os = "macos")` (likewise `accelerate`), never a
+bare `feature = "metal"`.
 
 ## Clippy usage
 

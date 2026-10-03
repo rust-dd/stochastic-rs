@@ -5,7 +5,7 @@
 //! sampling capability — for the scalar its kernels compute in: the host
 //! for `f64` and `f32`, an Apple GPU for `f32` alone.
 
-#[cfg(feature = "metal")]
+#[cfg(all(feature = "metal", target_os = "macos"))]
 use stochastic_rs::stochastic::device::Metal;
 use stochastic_rs::traits::Backend;
 use stochastic_rs::traits::Cpu;
@@ -19,8 +19,8 @@ fn cpu_marker_is_a_backend_with_the_fgn_capability() {
   assert_marker::<Cpu>();
   assert_fgn_f64::<Cpu>();
   assert_fgn_f32::<Cpu>();
-  #[cfg(feature = "metal")]
+  #[cfg(all(feature = "metal", target_os = "macos"))]
   assert_marker::<Metal>();
-  #[cfg(feature = "metal")]
+  #[cfg(all(feature = "metal", target_os = "macos"))]
   assert_fgn_f32::<Metal>();
 }

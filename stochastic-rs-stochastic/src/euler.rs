@@ -138,7 +138,10 @@ pub struct LiftSpec<'a, T> {
 /// The lift tables and scalars a launch binds: `[decay, weight, drift_scale]`
 /// (empty when the process has no lift), the `has_lift` flag, the node count
 /// and the two boundary terms plus the start the lift adds back each step.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 pub(crate) fn encode_lift<'a, T: FloatExt>(
   lift: Option<&LiftSpec<'a, T>>,
 ) -> ([&'a [T]; 3], u32, u32, T, T, T) {
@@ -187,7 +190,10 @@ pub struct ProgramSpec<'a> {
 
 /// The program buffer a launch binds — `[len₁, len₂, pairs…]` in
 /// [`PROGRAM_SLOTS`] floats — and how many programs it holds.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 pub(crate) fn encode_programs<T: FloatExt>(spec: Option<&ProgramSpec<'_>>) -> (Vec<T>, u32) {
   let mut out = vec![T::zero(); PROGRAM_SLOTS];
   let Some(spec) = spec else {
@@ -228,7 +234,10 @@ pub const HISTORY_SLOTS: usize = 512;
 /// kernels' "none" sentinel; a history family whose grid exceeds
 /// [`HISTORY_SLOTS`] never reaches a launch through `ProcessExt`, so an
 /// oversize grid here is a caller bypassing that guard.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 pub(crate) fn history_slot(family: u32, n: usize) -> u32 {
   match families::Family::from_code(family).and_then(families::Family::history_slot) {
     Some(slot) => {
@@ -254,7 +263,10 @@ pub const SERIES_SLOTS: usize = 512;
 /// declaring the wrong family — and a grid beyond [`SERIES_SLOTS`] never
 /// reaches a launch through `ProcessExt`, so an oversize one here is a caller
 /// bypassing that guard.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 pub(crate) fn series_terms(family: u32, n: usize, terms: Option<u32>) -> u32 {
   let family = families::Family::from_code(family);
   let has_series = family.is_some_and(families::Family::has_series);
@@ -280,7 +292,10 @@ pub(crate) fn series_terms(family: u32, n: usize, terms: Option<u32>) -> u32 {
 
 /// Whether the launch's family sizes its series terms in their own step
 /// rather than in the preamble, as the kernels read it.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 pub(crate) fn series_live(family: u32) -> u32 {
   u32::from(families::Family::from_code(family).is_some_and(families::Family::series_live))
 }
@@ -306,7 +321,10 @@ pub struct TableSpec<T> {
 /// for a family without a `table` clause. A family with one is never launched
 /// without a spec and a family without one never with, and a table beyond
 /// [`TABLE_SLOTS`] never reaches a launch through `ProcessExt`.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 pub(crate) fn table_terms<T: FloatExt>(family: u32, spec: Option<TableSpec<T>>) -> (u32, T) {
   let has_table = families::Family::from_code(family).is_some_and(families::Family::has_table);
   assert!(
@@ -334,7 +352,10 @@ pub(crate) fn table_terms<T: FloatExt>(family: u32, spec: Option<TableSpec<T>>) 
 /// A curve shorter than the grid is extended with its last value rather than
 /// read out of bounds — a host tabulation that stops one short is a
 /// declaration slip, not a reason to fault a kernel.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 pub(crate) fn flatten_curves<T: FloatExt>(curves: Option<Vec<Vec<T>>>, n: usize) -> (Vec<T>, u32) {
   let Some(curves) = curves else {
     return (Vec::new(), 0);
@@ -1049,7 +1070,10 @@ impl<T: FloatExt> EulerSpec<T> {
   /// layout is the kernels' ABI and stays inside the crate, so it can widen
   /// for a new family without a breaking change. Only the device kernels
   /// read it, so a build without any device feature has no caller.
-  #[cfg_attr(not(any(feature = "metal", feature = "cuda")), allow(dead_code))]
+  #[cfg_attr(
+    not(any(all(feature = "metal", target_os = "macos"), feature = "cuda")),
+    allow(dead_code)
+  )]
   pub(crate) fn encode(&self) -> (u32, [T; PARAM_SLOTS]) {
     use families::Family;
     match *self {
@@ -2125,7 +2149,10 @@ fn launch_rows<T: FloatExt, K: EulerKernel<T>>(
 
 /// The body's `steps`, `paths`, `first_path` as `unsigned int`s, or the launch's error; `first + m`
 /// and `m · increments` are checked too: past 32 bits two paths would share noise or increments.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 pub(crate) fn launch_scalars(
   n: usize,
   first: usize,
@@ -2654,14 +2681,14 @@ macro_rules! host_euler_backend {
 }
 
 host_euler_backend!(Cpu);
-#[cfg(feature = "accelerate")]
+#[cfg(all(feature = "accelerate", target_os = "macos"))]
 host_euler_backend!(crate::device::Accelerate);
 
 /// A device kernel is an Euler backend: one seed per call, chunks to the
 /// handle's budget, the map applied per chunk in parallel. One impl per
 /// handle rather than a blanket one, which coherence would not allow beside
 /// the host impls above.
-#[cfg(any(feature = "cuda", feature = "metal"))]
+#[cfg(any(feature = "cuda", all(feature = "metal", target_os = "macos")))]
 macro_rules! kernel_euler_backend {
   ($handle:ty, [$($gen:tt)*] $scalar:ty) => {
     impl<$($gen)*> EulerBackend<$scalar> for $handle {
@@ -2848,7 +2875,7 @@ macro_rules! kernel_euler_backend {
   };
 }
 
-#[cfg(feature = "metal")]
+#[cfg(all(feature = "metal", target_os = "macos"))]
 kernel_euler_backend!(crate::device::Metal, [] f32);
 #[cfg(feature = "cuda")]
 kernel_euler_backend!(crate::device::Cuda, [T: FloatExt] T);
@@ -2985,11 +3012,14 @@ pub mod cuda;
 // The generated C artifacts have no consumer until `cuda` or `metal` renders
 // a kernel from them; the declarations, the family codes and the host step
 // stay compiled either way, so a family is checked without a GPU.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 pub(crate) mod families;
-#[cfg(any(feature = "cuda", feature = "metal"))]
+#[cfg(any(feature = "cuda", all(feature = "metal", target_os = "macos")))]
 pub(crate) mod kernel;
-#[cfg(feature = "metal")]
+#[cfg(all(feature = "metal", target_os = "macos"))]
 #[doc(hidden)]
 pub mod metal;
 
@@ -3009,7 +3039,7 @@ mod tests;
 /// let gbm = Gbm::<f64, _>::new(0.05, 0.2, 16, None, None, Unseeded);
 /// let _ = gbm.on::<Metal>().sample();
 /// ```
-#[cfg(feature = "metal")]
+#[cfg(all(feature = "metal", target_os = "macos"))]
 pub mod precision_guard {}
 
 #[cfg(feature = "python")]

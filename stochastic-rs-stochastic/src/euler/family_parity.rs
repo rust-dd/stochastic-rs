@@ -2270,12 +2270,12 @@ fn every_family_has_a_probe() {
 /// The kernels the native back-ends run are generated, so what this checks is
 /// that each generated body compiles into a launchable kernel and produces a
 /// path that stays in the reals.
-#[cfg(any(feature = "metal", feature = "cuda"))]
+#[cfg(any(all(feature = "metal", target_os = "macos"), feature = "cuda"))]
 #[test]
 fn every_family_runs_on_the_device() {
   #[cfg(feature = "cuda")]
   type Device = crate::device::Cuda;
-  #[cfg(all(feature = "metal", not(feature = "cuda")))]
+  #[cfg(all(all(feature = "metal", target_os = "macos"), not(feature = "cuda")))]
   type Device = crate::device::Metal;
 
   for probe in every_family() {

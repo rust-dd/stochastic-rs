@@ -151,7 +151,10 @@
 /// lines of C, and an edit to one of its concerns should not be an edit inside
 /// a four-hundred-line string. [`render`] joins them in this order, so the
 /// text a kernel is built from is exactly what a single constant gave.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 /// What a block is there for, and so whether a kernel rendered for one shape
 /// keeps it. [`Need::Always`] is the frame itself — the guard, the state, the
 /// draws, the write-out; the rest is what one family or one launch reaches
@@ -200,7 +203,10 @@ pub(crate) const FRAME_BLOCKS: [(&str, Need); 14] = [
 /// history, series and table blocks write into.
 ///
 /// The 47-line block of [`FRAME_BLOCKS`].
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 const FRAME_LOCALS: &str = r#"    if (path >= paths) return;
     INDEX base = (INDEX)path * steps;
     INDEX plane = (INDEX)paths * steps;
@@ -256,7 +262,10 @@ const FRAME_LOCALS: &str = r#"    if (path >= paths) return;
 /// in, then clears the draw registers.
 ///
 /// The 33-line block of [`FRAME_BLOCKS`].
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 const FRAME_SERIES_DRAW: &str = r#"    if (series_n != 0u) {
         for (unsigned int c = 0u; c < 4u; c++) { state[c] = x0[c]; }
         for (unsigned int k = 0u; k < 512u; k++) { block[k] = (REAL)0; }
@@ -296,7 +305,10 @@ SERIES
 /// the launch's own horizon.
 ///
 /// The 30-line block of [`FRAME_BLOCKS`].
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 const FRAME_TABLE_DRAW: &str = r#"    REAL iv = (REAL)0;
     REAL tv = (REAL)0;
     REAL table_inc[1];
@@ -330,7 +342,10 @@ TABLE
 /// family's first point is itself a step.
 ///
 /// The 6-line block of [`FRAME_BLOCKS`].
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 const FRAME_ENTRY_REPORT: &str = r#"    for (unsigned int c = 0u; c < 4u; c++) { state[c] = x0[c]; reported[c] = x0[c]; }
     for (unsigned int c = 0u; c < 4u; c++) { noise[c] = (REAL)0; }
 REPORT
@@ -343,7 +358,10 @@ REPORT
 /// values at this step, and the two spare uniforms.
 ///
 /// The 43-line block of [`FRAME_BLOCKS`].
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 const FRAME_NOISE: &str = r#"    for (unsigned int i = (step_first != 0u ? 0u : 1u); i < steps; i++) {
         // The path and the step enter the key as two words, never as one
         // product: `p * steps + i` in 32 bits wraps at 2^31 path-steps --
@@ -391,7 +409,10 @@ const FRAME_NOISE: &str = r#"    for (unsigned int i = (step_first != 0u ? 0u : 
 /// a step costs, and most families read neither.
 ///
 /// One of the [`FRAME_BLOCKS`].
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 const FRAME_UNIFORMS: &str = r#"        unsigned int hu = (g ^ 2135587861u) ^ (seed * 2654435761u);
         hu ^= hu >> 16; hu *= 2246822519u; hu ^= hu >> 13; hu *= 3266489917u; hu ^= hu >> 16;
         u = (REAL)hu * (REAL)2.3283064e-10;
@@ -404,7 +425,10 @@ const FRAME_UNIFORMS: &str = r#"        unsigned int hu = (g ^ 2135587861u) ^ (s
 /// the moment it arrives.
 ///
 /// The 32-line block of [`FRAME_BLOCKS`].
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 const FRAME_SERIES_LIVE: &str = r#"        sj = (REAL)0;
         if (series_n != 0u) {
             if (series_live != 0u) {
@@ -442,7 +466,10 @@ SERIES
 /// built.
 ///
 /// The 11-line block of [`FRAME_BLOCKS`].
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 const FRAME_TABLE_LIVE: &str = r#"        if (table_n != 0u) {
             REAL ti = dt * (REAL)i;
             while (tp < table_n && block[tp] < ti) { tp++; }
@@ -460,7 +487,10 @@ const FRAME_TABLE_LIVE: &str = r#"        if (table_n != 0u) {
 /// that carries a shape below one.
 ///
 /// The 52-line block of [`FRAME_BLOCKS`].
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 const FRAME_COUNTS: &str = r#"        if (has_jumps != 0u) {
             REAL ell = STOCH_EXP(-jump_lambda * dt);
             REAL prod = (REAL)1;
@@ -519,7 +549,10 @@ const FRAME_COUNTS: &str = r#"        if (has_jumps != 0u) {
 /// one launch.
 ///
 /// The 108-line block of [`FRAME_BLOCKS`].
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 const FRAME_JUMP_LAWS: &str = r#"        js = (REAL)0;
         if (jump_law == 1u) {
             unsigned int ja = (g ^ 1103515245u) ^ (seed * 2654435761u);
@@ -640,7 +673,10 @@ const FRAME_JUMP_LAWS: &str = r#"        js = (REAL)0;
 /// so the step reads its coefficients as plain values.
 ///
 /// The 31-line block of [`FRAME_BLOCKS`].
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 const FRAME_PROGRAM: &str = r#"        if (program_n != 0u) {
             for (unsigned int w = 0u; w < program_n; w++) {
                 unsigned int plen = (unsigned int)program[w];
@@ -677,7 +713,10 @@ const FRAME_PROGRAM: &str = r#"        if (program_n != 0u) {
 /// lift, along with the two 176-slot histories it walks.
 ///
 /// One of the [`FRAME_BLOCKS`].
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 const FRAME_LIFT: &str = r#"        if (has_lift != 0u) {
 LIFT
             REAL hist = (REAL)0;
@@ -691,7 +730,10 @@ LIFT
 /// 512-slot block it walks.
 ///
 /// One of the [`FRAME_BLOCKS`].
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 const FRAME_HISTORY: &str = r#"        if (hist_slot != 4294967295u) {
 HISTORY
             unsigned int hi = (step_first != 0u) ? i : (i - 1u);
@@ -704,7 +746,10 @@ HISTORY
 /// ends an iteration.
 ///
 /// One of the [`FRAME_BLOCKS`].
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 const FRAME_STEP: &str = r#"STEP
         if (has_lift != 0u) {
             for (unsigned int l = 0u; l < lift_n; l++) {
@@ -769,7 +814,7 @@ pub(crate) struct Language<'a> {
 /// Compiled without the `metal` feature as well, for the same reason
 /// [`cuda_language`] is: the rendering checks below cover every table on any
 /// machine.
-#[cfg_attr(not(feature = "metal"), allow(dead_code))]
+#[cfg_attr(not(all(feature = "metal", target_os = "macos")), allow(dead_code))]
 pub(crate) fn metal_language() -> Language<'static> {
   Language {
     real: "float",

@@ -155,7 +155,7 @@ If a test depends on a Cargo feature (e.g. uses a `metal`-gated
 backend), gate the *test* explicitly:
 
 ```rust
-#[cfg(feature = "metal")]
+#[cfg(all(feature = "metal", target_os = "macos"))]
 #[test]
 fn metal_backend_test() { /* ... */ }
 ```
@@ -163,7 +163,7 @@ fn metal_backend_test() { /* ... */ }
 If the entire test module depends on a feature, gate the module:
 
 ```rust
-#![cfg(feature = "metal")]
+#![cfg(all(feature = "metal", target_os = "macos"))]
 mod metal_tests {
     // ...
 }

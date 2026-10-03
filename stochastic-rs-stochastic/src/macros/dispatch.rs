@@ -61,7 +61,7 @@ macro_rules! py_on_device_f64 {
         let $p = $inner;
         $body
       }
-      #[cfg(feature = "accelerate")]
+      #[cfg(all(feature = "accelerate", target_os = "macos"))]
       $crate::python_device::Device::Accelerate => {
         let owned = $inner.clone().with_backend($crate::device::Accelerate);
         let $p = &owned;
@@ -92,7 +92,7 @@ macro_rules! py_on_device_f32 {
         let $p = $inner;
         $body
       }
-      #[cfg(feature = "accelerate")]
+      #[cfg(all(feature = "accelerate", target_os = "macos"))]
       $crate::python_device::Device::Accelerate => {
         let owned = $inner.clone().with_backend($crate::device::Accelerate);
         let $p = &owned;
@@ -106,7 +106,7 @@ macro_rules! py_on_device_f32 {
         let $p = &owned;
         $body
       }
-      #[cfg(feature = "metal")]
+      #[cfg(all(feature = "metal", target_os = "macos"))]
       $crate::python_device::Device::Metal(ordinal) => {
         let owned = $inner
           .clone()

@@ -273,7 +273,7 @@ seed it advances is the process's own. Examples: `MultiGbmLaunch`, `McgnsLaunch`
 
 **4a. Device law** — `tests/device_law/<group>.rs`, declared
 `pub(crate) mod <group>;` inside the `mod device_law { .. }` block of
-`tests/device_law.rs`. The binary is gated `#![cfg(any(feature = "metal", feature =
+`tests/device_law.rs`. The binary is gated `#![cfg(any(all(feature = "metal", target_os = "macos"), feature =
 "cuda"))]` and is `f32` throughout. Groups — pick by what the comparison must allow for,
 not by source directory: `bounded`, `conditional_variance`, `curves`, `fractional`,
 `gaussian`, `jumps`, `levy`, `memory`, `rows`, `systems`. Helpers in
@@ -470,7 +470,7 @@ All three clippy runs matter, and the `cuda` one compiles on a machine with no G
 batch path, and a launch scalar added to one and not the others is an arity error only
 that build shows — the history/series/table scalars once shipped that way for three
 commits. A helper only device launches call is dead code in the no-feature build, so give it the crate's guard, as `flatten_curves` and `history_slot`
-in `euler.rs` have — `#[cfg_attr(not(any(feature = "cuda", feature = "metal")),
+in `euler.rs` have — `#[cfg_attr(not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
 allow(dead_code))]`. `src/lib.rs` carries
 `#![deny(rustdoc::broken_intra_doc_links)]`, so a mistyped `[`Foo`]` fails `cargo doc`
 rather than warning.

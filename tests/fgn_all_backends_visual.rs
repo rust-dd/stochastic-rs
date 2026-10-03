@@ -1,7 +1,7 @@
 //! Side-by-side comparison of the Fgn backends: CPU, Metal, Accelerate.
 //! Plots autocovariance vectors and trajectories for each.
 
-#[cfg(all(feature = "metal", feature = "accelerate"))]
+#[cfg(all(feature = "metal", feature = "accelerate", target_os = "macos"))]
 mod all_backends {
   use ndarray::Array1;
   use stochastic_rs::simd_rng::Unseeded;

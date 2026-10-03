@@ -22,7 +22,7 @@
 //! DOI: 10.1093/biomet/74.1.95; Dietrich & Newsam (1997), SIAM J. Sci.
 //! Comput. 18(4), DOI: 10.1137/S1064827592240555.
 
-#![cfg(feature = "metal")]
+#![cfg(all(feature = "metal", target_os = "macos"))]
 
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;

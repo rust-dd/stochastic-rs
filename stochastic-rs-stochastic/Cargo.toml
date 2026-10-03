@@ -25,7 +25,6 @@ faer = { workspace = true }
 faer-ext = { workspace = true }
 gauss-quad = { workspace = true }
 log = { workspace = true }
-metal = { workspace = true, optional = true }
 ndarray = { workspace = true }
 ndrustfft = { workspace = true }
 num-complex = { workspace = true }
@@ -40,3 +39,6 @@ stochastic-rs-distributions = { workspace = true }
 wide = { workspace = true }
 
 [dev-dependencies]
+
+[target.'cfg(target_os = "macos")'.dependencies]
+metal = { workspace = true, optional = true }
