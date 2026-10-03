@@ -194,9 +194,9 @@ silent-correctness bug in jump-process implementations.
 
 `D` must be `Distribution<T> + Send + Sync`.
 
-A jump-size law is any stateless `Simd*` type: it is `Send + Sync`, and its `Distribution::sample(&mut rng)` draws from
-the generator the process holds. The sampler's own stream (`normal: Seeded<SimdNormal<T>>` above) is the other slot;
-do not confuse the two.
+A jump-size law is any scalar continuous `Simd*` type except `SimdNonCentralChiSquared` (per-draw noncentrality): it is
+`Send + Sync`, and its `Distribution::sample(&mut rng)` draws from the generator the process holds. The sampler's own
+stream (`normal: Seeded<SimdNormal<T>>` above) is the other slot; do not confuse the two.
 
 ```rust
 // Merton's own Default: the canonical choice for the jump slot
@@ -209,7 +209,7 @@ impl<T: FloatExt> Default for Merton<T, SimdNormal<T>, Unseeded> {
 
 The device engine recognises `SimdNormal` and `SimdExp` only. Notably absent is a signed asymmetric double-exponential,
 the actual Kou (2002) jump law: `Kou` ships no `Default` for that reason; do not substitute `SimdNormal`. There is no
-`SimdNig` either: the Normal-Inverse-Gaussian law is `SimdNormalInverseGauss`, a jump law like every stateless `Simd*`.
+`SimdNig` either: the Normal-Inverse-Gaussian law is `SimdNormalInverseGauss`, itself a valid jump law.
 
 The trait comes from `rand::distr::Distribution` (`rand_distr` is not a dependency of this crate) —
 our own types implement it, and it is how `.sample()` resolves. Per `dev-rules` §7a the concrete

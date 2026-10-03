@@ -72,8 +72,9 @@ its traits (`Rng`, `RngExt`, `rand::distr::Distribution`,
 | Bulk Gaussian / exponential / … draws | `SimdNormal`, `SimdExp`, `SimdGamma`, `SimdPoisson`, seeded via `Deterministic::new(s)` or `Unseeded` |
 | A distribution a *process* will drive (`D: Distribution<T> + Send + Sync`) | the stateless `SimdNormal`, `SimdExp`, ... themselves |
 
-A process's jump-size slot takes any stateless `Simd*` law: it holds parameters only, so it is `Send + Sync`, and
-`Distribution::sample(&mut rng)` draws from the generator the process passes. A `Seeded` stream is not a law.
+A process's jump-size slot takes any scalar continuous `Simd*` law except `SimdNonCentralChiSquared` (its noncentrality
+is a per-draw argument): it holds parameters only, so it is `Send + Sync`, and `Distribution::sample(&mut rng)` draws
+from the generator the process passes. A `Seeded` stream is not a law.
 
 Two traps worth naming:
 
