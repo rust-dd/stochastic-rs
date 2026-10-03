@@ -272,6 +272,7 @@ criterion_group!(
   bench_uniform,
   heavy_tailed::bench_alpha_stable,
   heavy_tailed::bench_nig,
+  heavy_tailed::bench_inverse_gauss,
   heavy_tailed::bench_gig,
   heavy_tailed::bench_tempered_stable,
   heavy_tailed::bench_skew_t,
