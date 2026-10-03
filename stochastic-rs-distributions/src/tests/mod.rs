@@ -2,8 +2,13 @@
 
 use ndarray::ArrayView1;
 use num_complex::Complex64;
+use num_traits::ToPrimitive;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SimdRng;
+use stochastic_rs_stats::goodness_of_fit::chi_square::ChiSquareGofConfig;
+use stochastic_rs_stats::goodness_of_fit::chi_square::bin_observed;
+use stochastic_rs_stats::goodness_of_fit::chi_square::chi_square_gof_test;
+use stochastic_rs_stats::goodness_of_fit::chi_square::pool_integer_bins;
 use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::KolmogorovSmirnovConfig;
 use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::kolmogorov_smirnov_test;
 
@@ -24,6 +29,27 @@ pub(crate) fn scalar_ks_best_p<D: Distribution<f64>>(d: &D, cdf: impl Fn(f64) ->
         KolmogorovSmirnovConfig::default(),
       )
       .p_value
+    })
+    .fold(0.0_f64, f64::max)
+}
+
+/// Best pooled-bin chi-square p-value (Cochran's `min_expected = 5`) of 20 000 honest integer draws over three seeds.
+pub(crate) fn scalar_chi_square_best_p<T: ToPrimitive, D: Distribution<T>>(
+  d: &D,
+  (k_lo, k_hi): (i64, i64),
+  cdf: impl Fn(i64) -> f64,
+) -> f64 {
+  const N: usize = 20_000;
+  let (edges, probs) = pool_integer_bins(N as u64, k_lo, k_hi, &cdf, 5.0);
+  [2718u64, 999, 42]
+    .into_iter()
+    .map(|seed| {
+      let mut rng = SimdRng::from_seed(seed);
+      let xs = (0..N)
+        .map(|_| d.sample(&mut rng).to_i64().expect("draw fits i64"))
+        .collect::<Vec<_>>();
+      let observed = bin_observed(&xs, &edges);
+      chi_square_gof_test(&observed, &probs, ChiSquareGofConfig::default()).p_value
     })
     .fold(0.0_f64, f64::max)
 }

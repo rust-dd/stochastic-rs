@@ -15,65 +15,104 @@
 //!
 //! Reference: Skellam, J.G. (1946), "The frequency distribution of the
 //! difference between two Poisson variates belonging to different
-//! populations", *Journal of the Royal Statistical Society* 109(3), 296.
+//! populations", *Journal of the Royal Statistical Society* 109(3), 296,
+//! DOI 10.2307/2981372.
 
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use crate::poisson::SimdPoisson;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::StreamState;
 use crate::special::ln_bessel_ie;
 use crate::traits::DistributionExt;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
-pub struct SimdSkellam<R: SimdRngExt = SimdRng> {
+/// Skellam law of `N₁ − N₂` for independent Poisson counts of rates `mu1` and `mu2`: parameters only; a
+/// [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SimdSkellam {
   mu1: f64,
   mu2: f64,
-  p1: SimdPoisson<u32, R>,
-  p2: SimdPoisson<u32, R>,
+  p1: SimdPoisson<u32>,
+  p2: SimdPoisson<u32>,
 }
 
-impl<R: SimdRngExt> SimdSkellam<R> {
+impl SimdSkellam {
   /// Construct a Skellam$(\mu_1, \mu_2)$ random variable.
   ///
   /// - `mu1` — rate μ₁ > 0 of the minuend Poisson N₁ (matches the module
   ///   header's μ₁).
   /// - `mu2` — rate μ₂ > 0 of the subtrahend Poisson N₂ (matches the
   ///   module header's μ₂). The output is `N₁ - N₂`.
-  pub fn new<S: SeedExt>(mu1: f64, mu2: f64, seed: &S) -> Self {
-    assert!(mu1 > 0.0 && mu2 > 0.0, "μ₁, μ₂ must be positive");
+  pub fn new(mu1: f64, mu2: f64) -> Self {
+    assert!(mu1 > 0.0, "mu1 must satisfy `mu1 > 0.0`, got mu1 = {mu1:?}");
+    assert!(mu2 > 0.0, "mu2 must satisfy `mu2 > 0.0`, got mu2 = {mu2:?}");
     Self {
       mu1,
       mu2,
-      p1: SimdPoisson::<u32, R>::new(mu1, seed),
-      p2: SimdPoisson::<u32, R>::new(mu2, seed),
+      p1: SimdPoisson::new(mu1),
+      p2: SimdPoisson::new(mu2),
     }
   }
 
-  /// Single integer sample $N_1 - N_2$ via the trivial Poisson subtraction.
-  #[inline]
-  pub fn sample_fast(&self) -> i64 {
-    let n1 = self.p1.sample_fast();
-    let n2 = self.p2.sample_fast();
+  /// The minuend rate `μ₁`.
+  pub fn mu1(&self) -> f64 {
+    self.mu1
+  }
+
+  /// The subtrahend rate `μ₂`.
+  pub fn mu2(&self) -> f64 {
+    self.mu2
+  }
+
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> i64 {
+    let n1 = self.p1.draw_with(rng);
+    let n2 = self.p2.draw_with(rng);
     n1 as i64 - n2 as i64
   }
 }
 
-impl<R: SimdRngExt> Clone for SimdSkellam<R> {
-  fn clone(&self) -> Self {
-    Self::new(self.mu1, self.mu2, &Unseeded)
+impl Sealed for SimdSkellam {}
+
+impl SimdDistribution for SimdSkellam {
+  type State<R: SimdRngExt> = (StreamState<u32, R, 16>, StreamState<u32, R, 16>);
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (Self::State<R>, u64) {
+    let (p1, basis) = self.p1.init::<R, S>(seed);
+    let (p2, _) = self.p2.init::<R, S>(seed);
+    ((p1, p2), basis)
   }
 }
 
-impl<R: SimdRngExt> Distribution<i64> for SimdSkellam<R> {
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> i64 {
-    self.sample_fast()
+impl SimdKernel for SimdSkellam {
+  type Item = i64;
+
+  fn fill<R: SimdRngExt>(&self, state: &mut Self::State<R>, out: &mut [i64]) {
+    for x in out.iter_mut() {
+      *x = self.next(state);
+    }
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut Self::State<R>) -> i64 {
+    let n1 = self.p1.next(&mut state.0);
+    let n2 = self.p2.next(&mut state.1);
+    n1 as i64 - n2 as i64
   }
 }
 
-impl<R: SimdRngExt> DistributionExt for SimdSkellam<R> {
+impl Distribution<i64> for SimdSkellam {
+  /// Two Poisson table inversions, `N₁` then `N₂`, on the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> i64 {
+    self.draw_with(rng)
+  }
+}
+
+impl DistributionExt for SimdSkellam {
   /// PMF $P(X = k)$. The argument is a float by convention; only the
   /// rounded integer part is meaningful.
   fn pdf(&self, x: f64) -> f64 {
@@ -100,18 +139,21 @@ impl<R: SimdRngExt> DistributionExt for SimdSkellam<R> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Unseeded;
+
   use super::*;
+  use crate::tests::scalar_chi_square_best_p;
 
   /// Mean and variance match $\mu_1 - \mu_2$ and $\mu_1 + \mu_2$ within
   /// 3σ on 30k samples.
   #[test]
   fn skellam_sample_moments() {
-    let s = SimdSkellam::<SimdRng>::new(3.0, 2.0, &Unseeded);
+    let mut s = SimdSkellam::new(3.0, 2.0).seeded(&Unseeded);
     let n = 30_000;
     let mut sum = 0.0;
     let mut sum_sq = 0.0;
     for _ in 0..n {
-      let x = s.sample_fast() as f64;
+      let x = s.sample() as f64;
       sum += x;
       sum_sq += x * x;
     }
@@ -130,7 +172,7 @@ mod tests {
   /// PMF normalises to 1 within the support window.
   #[test]
   fn skellam_pmf_normalised() {
-    let s = SimdSkellam::<SimdRng>::new(2.0, 2.0, &Unseeded);
+    let s = SimdSkellam::new(2.0, 2.0);
     let mut total = 0.0;
     for k in -30..=30 {
       total += s.pdf(k as f64);
@@ -152,7 +194,7 @@ mod tests {
       ((400.0, 300.0, 100.0), 0.015_081_203_817_903_906),
       ((400.0, 300.0, 40.0), 0.001_147_244_606_054_886_6),
     ] {
-      let got = SimdSkellam::<SimdRng>::new(mu1, mu2, &Unseeded).pdf(k);
+      let got = SimdSkellam::new(mu1, mu2).pdf(k);
       assert!(
         ((got - want) / want).abs() < 1e-12,
         "Skellam({mu1}, {mu2}) pmf({k}) = {got}, want {want}"
@@ -163,8 +205,16 @@ mod tests {
   /// CDF at the right tail must reach 1.
   #[test]
   fn skellam_cdf_tail_unity() {
-    let s = SimdSkellam::<SimdRng>::new(2.0, 1.5, &Unseeded);
+    let s = SimdSkellam::new(2.0, 1.5);
     let c = s.cdf(50.0);
     assert!((c - 1.0).abs() < 1e-6, "Skellam CDF at +∞ ≈ {c}");
+  }
+
+  /// The honest `Distribution` draws from the caller's rng and agrees with the cdf.
+  #[test]
+  fn scalar_sample_matches_cdf() {
+    let d = SimdSkellam::new(9.0, 5.0);
+    let best = scalar_chi_square_best_p(&d, (-26, 34), |k| d.cdf(k as f64));
+    assert!(best > 0.01, "best p = {best}");
   }
 }

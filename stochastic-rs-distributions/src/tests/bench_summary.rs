@@ -233,15 +233,14 @@ fn bench_summary_table() {
   }
 
   {
-    let mut rng = rand::rng();
-    let simd = SimdPoisson::<u32>::new(4.0, &Unseeded);
+    let mut simd = SimdPoisson::<u32>::new(4.0).seeded(&Unseeded);
     let mut rng2 = rand::rng();
     let rd = rand_distr::Poisson::<f64>::new(4.0).unwrap();
     time_u32(
       &mut rows,
       n_i,
       "Poisson",
-      || simd.sample(&mut rng),
+      || simd.sample(),
       || rd.sample(&mut rng2) as u32,
     );
   }

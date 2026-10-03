@@ -235,6 +235,7 @@ pub fn bin_observed(samples: &[i64], edges: &[i64]) -> Vec<u64> {
 mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::DistributionExt;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::poisson::SimdPoisson;
 
   use super::ChiSquareGofConfig;
@@ -262,7 +263,7 @@ mod tests {
   /// (telescoping cdf differences), regardless of window tightness.
   #[test]
   fn pool_integer_bins_conserves_total_mass() {
-    let dist = SimdPoisson::<u64>::new(10.0, &Deterministic::new(1));
+    let dist = SimdPoisson::<u64>::new(10.0);
     let (_, probs) = pool_integer_bins(20_000, 0, 30, |k| dist.cdf(k as f64), 5.0);
     let total = probs.iter().sum::<f64>();
     assert!((total - 1.0).abs() < 1e-9, "bin mass sums to {total}");
@@ -271,7 +272,7 @@ mod tests {
   /// Every pooled bin must clear the requested `min_expected` floor.
   #[test]
   fn pool_integer_bins_respects_min_expected() {
-    let dist = SimdPoisson::<u64>::new(10.0, &Deterministic::new(1));
+    let dist = SimdPoisson::<u64>::new(10.0);
     let n = 5_000u64;
     let (_, probs) = pool_integer_bins(n, 0, 30, |k| dist.cdf(k as f64), 5.0);
     for &p in &probs {
@@ -291,10 +292,9 @@ mod tests {
     let best_p = [7u64, 123, 555]
       .into_iter()
       .map(|seed| {
-        let dist = SimdPoisson::<u64>::new(10.0, &Deterministic::new(seed));
-        let samples = (0..N)
-          .map(|_| dist.sample_fast() as i64)
-          .collect::<Vec<_>>();
+        let dist = SimdPoisson::<u64>::new(10.0);
+        let mut stream = dist.clone().seeded(&Deterministic::new(seed));
+        let samples = (0..N).map(|_| stream.sample() as i64).collect::<Vec<_>>();
         let (edges, expected_prob) =
           pool_integer_bins(N as u64, 0, 35, |k| dist.cdf(k.max(0) as f64), 5.0);
         let observed = bin_observed(&samples, &edges);
@@ -311,11 +311,9 @@ mod tests {
   #[test]
   fn rejects_mismatched_poisson_rate() {
     const N: usize = 20_000;
-    let sampler = SimdPoisson::<u64>::new(10.0, &Deterministic::new(3));
-    let reference = SimdPoisson::<u64>::new(16.0, &Deterministic::new(3));
-    let samples = (0..N)
-      .map(|_| sampler.sample_fast() as i64)
-      .collect::<Vec<_>>();
+    let mut sampler = SimdPoisson::<u64>::new(10.0).seeded(&Deterministic::new(3));
+    let reference = SimdPoisson::<u64>::new(16.0);
+    let samples = (0..N).map(|_| sampler.sample() as i64).collect::<Vec<_>>();
     let (edges, expected_prob) =
       pool_integer_bins(N as u64, 0, 45, |k| reference.cdf(k.max(0) as f64), 5.0);
     let observed = bin_observed(&samples, &edges);

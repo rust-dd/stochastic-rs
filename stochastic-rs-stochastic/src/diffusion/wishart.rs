@@ -164,7 +164,7 @@ struct StepDraws<T: FloatExt, S: SeedExt> {
   alpha: T,
   seed: S,
   normal: Seeded<SimdNormal<T>>,
-  ncx2: Vec<Option<SimdNonCentralChiSquared<T>>>,
+  ncx2: Vec<Option<Seeded<SimdNonCentralChiSquared<T>>>>,
 }
 
 impl<T: FloatExt, S: SeedExt> StepDraws<T, S> {
@@ -186,7 +186,7 @@ impl<T: FloatExt, S: SeedExt> StepDraws<T, S> {
     if df <= T::zero() {
       let half = (ncp / two).to_f64().unwrap_or(0.0);
       let jumps = if half > 0.0 {
-        SimdPoisson::<u64>::new(half, &self.seed).sample_fast()
+        SimdPoisson::<u64>::new(half).seeded(&self.seed).sample()
       } else {
         0
       };
@@ -199,10 +199,10 @@ impl<T: FloatExt, S: SeedExt> StepDraws<T, S> {
           .sample();
     }
     if self.ncx2[r].is_none() {
-      self.ncx2[r] = Some(SimdNonCentralChiSquared::<T>::new(df, &self.seed));
+      self.ncx2[r] = Some(SimdNonCentralChiSquared::<T>::new(df).seeded(&self.seed));
     }
     dt * self.ncx2[r]
-      .as_ref()
+      .as_mut()
       .expect("sampler built above")
       .sample_ncp(ncp)
   }

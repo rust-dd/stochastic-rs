@@ -290,7 +290,9 @@ mod tests {
       let pois_seed = seed ^ (t as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15);
       let gamma_seed = seed ^ (t as u64).wrapping_mul(0xbf58_476d_1ce4_e5b9);
       let n_pois: f64 = f64::from(
-        SimdPoisson::<u32>::new(lambda / 2.0, &Deterministic::new(pois_seed)).sample_fast(),
+        SimdPoisson::<u32>::new(lambda / 2.0)
+          .seeded(&Deterministic::new(pois_seed))
+          .sample(),
       );
       let shape = d / 2.0 + n_pois;
       let chi2 = if shape > 0.0 {

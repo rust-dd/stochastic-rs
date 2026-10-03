@@ -6,7 +6,6 @@ use statrs::distribution::Continuous as _;
 use statrs::distribution::ContinuousCDF as _;
 use statrs::distribution::Discrete as _;
 use statrs::distribution::DiscreteCDF as _;
-use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionExt;
 use stochastic_rs_distributions::beta::SimdBeta;
 use stochastic_rs_distributions::binomial::SimdBinomial;
@@ -169,7 +168,7 @@ fn weibull_matches_statrs() {
 
 #[test]
 fn binomial_matches_statrs() {
-  let ours = SimdBinomial::<u32>::new(10, 0.4, &Unseeded);
+  let ours = SimdBinomial::<u32>::new(10, 0.4);
   let theirs = statrs::distribution::Binomial::new(0.4, 10).unwrap();
   for k in 0..=10 {
     assert!(close(ours.pdf(k as f64), theirs.pmf(k), 1e-9, 1e-9));
@@ -179,7 +178,7 @@ fn binomial_matches_statrs() {
 
 #[test]
 fn poisson_matches_statrs() {
-  let ours = SimdPoisson::<u32>::new(3.5, &Unseeded);
+  let ours = SimdPoisson::<u32>::new(3.5);
   let theirs = statrs::distribution::Poisson::new(3.5).unwrap();
   for k in 0..15 {
     assert!(close(ours.pdf(k as f64), theirs.pmf(k), 1e-9, 1e-9));
@@ -189,7 +188,7 @@ fn poisson_matches_statrs() {
 
 #[test]
 fn hypergeometric_matches_statrs() {
-  let ours = SimdHypergeometric::<u32>::new(20, 7, 12, &Unseeded);
+  let ours = SimdHypergeometric::<u32>::new(20, 7, 12);
   let theirs = statrs::distribution::Hypergeometric::new(20, 7, 12).unwrap();
   for k in 0..=7 {
     assert!(close(ours.pdf(k as f64), theirs.pmf(k), 1e-9, 1e-9));

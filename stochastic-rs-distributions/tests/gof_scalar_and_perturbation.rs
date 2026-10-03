@@ -28,7 +28,6 @@ use ndarray::ArrayView1;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SimdRng;
-use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionExt;
 use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::SimdDistribution;
@@ -117,11 +116,9 @@ fn perturbation_demo_chi_square_catches_mismatched_rate() {
   let best_case_p = gof_support::SEEDS
     .into_iter()
     .map(|seed| {
-      let sampler = SimdPoisson::<u64>::new(true_lambda, &Deterministic::new(seed));
-      let xs = (0..M)
-        .map(|_| sampler.sample_fast() as i64)
-        .collect::<Vec<_>>();
-      let wrong_reference = SimdPoisson::<u64>::new(wrong_lambda, &Unseeded);
+      let mut sampler = SimdPoisson::<u64>::new(true_lambda).seeded(&Deterministic::new(seed));
+      let xs = (0..M).map(|_| sampler.sample() as i64).collect::<Vec<_>>();
+      let wrong_reference = SimdPoisson::<u64>::new(wrong_lambda);
       let (edges, expected_prob) =
         pool_integer_bins(M as u64, k_lo, k_hi, |k| wrong_reference.cdf(k as f64), 5.0);
       let observed = bin_observed(&xs, &edges);

@@ -7,6 +7,7 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::complex::ComplexDistribution;
+use stochastic_rs_distributions::dirichlet::SimdDirichlet;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
@@ -26,16 +27,28 @@ fn sample_matrix_float_has_expected_shape() {
 
 #[test]
 fn sample_matrix_int_has_expected_shape() {
-  let mut dist = SimdPoisson::<i64>::new(1.5, &Unseeded);
+  let mut dist = SimdPoisson::<i64>::new(1.5).seeded(&Unseeded);
   let out = dist.sample_matrix(16, 8);
   assert_eq!(out.shape(), &[16, 8]);
+}
+
+/// A Dirichlet matrix holds `m` simplex points of the law's dimension, the stream's next `m` draws in order.
+#[test]
+fn dirichlet_sample_matrix_rows_are_consecutive_draws() {
+  let law = SimdDirichlet::<f64>::new(vec![1.0, 2.0, 3.0]);
+  let out = law.clone().seeded(&Deterministic::new(5)).sample_matrix(7);
+  assert_eq!(out.shape(), &[7, 3]);
+  let mut twin = law.seeded(&Deterministic::new(5));
+  for row in out.rows() {
+    assert_eq!(row.to_vec(), twin.sample());
+  }
 }
 
 /// Two identically seeded samplers agree on every public bulk path.
 #[test]
 fn sample_n_deterministic_all_paths() {
-  let mut poisson_a = SimdPoisson::<u64>::new(4.5, &Deterministic::new(42));
-  let mut poisson_b = SimdPoisson::<u64>::new(4.5, &Deterministic::new(42));
+  let mut poisson_a = SimdPoisson::<u64>::new(4.5).seeded(&Deterministic::new(42));
+  let mut poisson_b = SimdPoisson::<u64>::new(4.5).seeded(&Deterministic::new(42));
   assert_eq!(poisson_a.sample_n(64), poisson_b.sample_n(64));
 
   let mut normal_a = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(42));

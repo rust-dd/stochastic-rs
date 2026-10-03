@@ -18,9 +18,9 @@
 
 use ndarray::Array1;
 use rand::RngExt;
-use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use crate::device::Cpu;
@@ -433,11 +433,8 @@ impl<T: FloatExt, S: SeedExt> HkdeSampler<T, S> {
     let k_bar = self.k_bar;
     let mut rng = self.seed.rng();
 
-    let pois = if self.lambda > T::zero() {
-      Some(SimdPoisson::<u32>::new(
-        (self.lambda * dt).to_f64().unwrap(),
-        &self.seed,
-      ))
+    let mut pois = if self.lambda > T::zero() {
+      Some(SimdPoisson::<u32>::new((self.lambda * dt).to_f64().unwrap()).seeded(&self.seed))
     } else {
       None
     };
@@ -451,8 +448,8 @@ impl<T: FloatExt, S: SeedExt> HkdeSampler<T, S> {
 
       // Kou jumps
       let mut jump_log = T::zero();
-      if let Some(pois) = &pois {
-        let k: u32 = pois.sample(&mut rng);
+      if let Some(pois) = &mut pois {
+        let k: u32 = pois.sample();
         for _ in 0..k {
           jump_log += self.sample_kou_jump(&mut rng);
         }

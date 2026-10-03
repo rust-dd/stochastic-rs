@@ -20,7 +20,6 @@
 //!
 
 use ndarray::Array1;
-use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::SimdDistribution;
@@ -459,13 +458,11 @@ impl<T: FloatExt, S: SeedExt> BatesSvjSampler<T, S> {
     let kappa_j = self.kappa_j;
 
     let mut z_std = SimdNormal::<f64>::new(0.0, 1.0).seeded(&self.seed);
-    let mut rng = self.seed.rng();
+    // One seed is skipped: the pinned streams that follow take theirs after it.
+    self.seed.next_seed();
 
-    let pois = if self.lambda > T::zero() {
-      Some(SimdPoisson::<u32>::new(
-        (self.lambda * dt).to_f64().unwrap(),
-        &self.seed,
-      ))
+    let mut pois = if self.lambda > T::zero() {
+      Some(SimdPoisson::<u32>::new((self.lambda * dt).to_f64().unwrap()).seeded(&self.seed))
     } else {
       None
     };
@@ -478,8 +475,8 @@ impl<T: FloatExt, S: SeedExt> BatesSvjSampler<T, S> {
       let sqrt_v = v_prev.sqrt();
 
       let mut jump_sum_z = T::zero();
-      if let Some(pois) = &pois {
-        let k: u32 = pois.sample(&mut rng);
+      if let Some(pois) = &mut pois {
+        let k: u32 = pois.sample();
         if k > 0 {
           let kf = T::from_usize_(k as usize);
           let z0: f64 = z_std.sample();

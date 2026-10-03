@@ -158,7 +158,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       mu,
       eps,
       small_jump_drift,
-      poisson: SimdPoisson::<u32>::new(lambda0 * dt, &self.seed),
+      poisson: SimdPoisson::<u32>::new(lambda0 * dt).seeded(&self.seed),
       uniform: SimdUniform::<f64>::new(0.0, 1.0).seeded(&self.seed),
     }
   }
@@ -206,7 +206,7 @@ pub struct TemperedStableSubordinatorSampler<T: FloatExt> {
   mu: f64,
   eps: f64,
   small_jump_drift: f64,
-  poisson: SimdPoisson<u32>,
+  poisson: Seeded<SimdPoisson<u32>>,
   uniform: Seeded<SimdUniform<f64>>,
 }
 
@@ -221,7 +221,7 @@ impl<T: FloatExt> TemperedStableSubordinatorSampler<T> {
     }
     let mut level = self.x0.to_f64().unwrap();
     for x in out[1..].iter_mut() {
-      let n_candidates = self.poisson.sample_fast() as usize;
+      let n_candidates = self.poisson.sample() as usize;
       let mut jump_sum = 0.0f64;
       for _ in 0..n_candidates {
         let u = clamp_open01(self.uniform.sample());

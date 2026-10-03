@@ -30,14 +30,17 @@ count entirely:
   wrappers (6) implement `DistributionExt` but have no Python binding.
 - `SimdNonCentralChiSquared` is structurally different from every type in
   this table: its noncentrality parameter is supplied per draw
-  (`sample_ncp(ncp)`), not fixed at construction, so it implements neither
+  (`sample_ncp(ncp)` on its seeded stream, `sample_ncp_with(&mut rng, ncp)`
+  on the law), not fixed at construction, so it implements neither
   `rand::distr::Distribution` nor `DistributionExt` nor `fill_slice` — see
   its own module docs. It backs the exact CIR transition density
   (`stochastic-rs-stats/src/cir.rs`) via the free function
   `non_central_chi_squared::sample(df, lambda, seed)`.
 - `Dirichlet` and `Wishart` are multivariate (a `Vec<T>` / `Array2<f64>`
-  per draw), so the scalar `rand::distr::Distribution<T>` shape does not
-  apply; each exposes its own `sample_fast`/`log_pdf` instead.
+  per draw), so their seeded streams draw through their own `sample`
+  (`sample_into` and `sample_matrix(m)` for `Dirichlet`, `sample_inverse`
+  for `Wishart`) instead of `fill_slice`, and each exposes its own
+  `log_pdf`.
 
 That accounts for all 35. `ComplexDistribution` is a 36th, separate type
 (not `Simd`-prefixed) that samples `Complex<T>` directly and is the one

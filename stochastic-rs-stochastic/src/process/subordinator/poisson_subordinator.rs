@@ -1,8 +1,8 @@
 use ndarray::Array1;
-use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
 use crate::buffer::array1_from_fill;
@@ -99,11 +99,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     let t_max = self.t.unwrap_or(T::one());
     let dt = t_max / T::from_usize_(n_increments);
     let lambda_dt = (self.lambda * dt).to_f64().unwrap();
+    let poisson = SimdPoisson::<u32>::new(lambda_dt).seeded(&self.seed);
+    // One seed is skipped: the pinned streams that follow take theirs after it.
+    self.seed.next_seed();
     PoissonSubordinatorSampler {
       n: self.n,
       x0,
-      poisson: SimdPoisson::<u32>::new(lambda_dt, &self.seed),
-      rng: self.seed.rng(),
+      poisson,
     }
   }
 
@@ -139,14 +141,13 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   }
 }
 
-/// Reusable [`PoissonSubordinator`] sampling state: the owned Poisson driver
-/// and its RNG. Each step adds a `Poisson(lambda * dt)` unit-jump count.
+/// Reusable [`PoissonSubordinator`] sampling state: the owned Poisson stream.
+/// Each step adds a `Poisson(lambda * dt)` unit-jump count.
 #[doc(hidden)]
 pub struct PoissonSubordinatorSampler<T: FloatExt> {
   n: usize,
   x0: T,
-  poisson: SimdPoisson<u32>,
-  rng: SimdRng,
+  poisson: Seeded<SimdPoisson<u32>>,
 }
 
 impl<T: FloatExt> PoissonSubordinatorSampler<T> {
@@ -159,7 +160,7 @@ impl<T: FloatExt> PoissonSubordinatorSampler<T> {
       return;
     }
     for i in 1..out.len() {
-      let k = self.poisson.sample(&mut self.rng) as usize;
+      let k = self.poisson.sample() as usize;
       out[i] = out[i - 1] + T::from_usize_(k);
     }
   }

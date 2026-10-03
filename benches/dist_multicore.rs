@@ -190,7 +190,7 @@ fn main() {
   );
   run_case(
     "Poisson<i64>(ref)",
-    &SimdPoisson::<i64>::new(1.5, &Unseeded),
+    &SimdPoisson::<i64>::new(1.5).seeded(&Unseeded),
     2048,
     2048,
     &single,
@@ -320,7 +320,7 @@ fn main() {
 
   run_case(
     "Poisson<i64>",
-    &SimdPoisson::<i64>::new(2.5, &Unseeded),
+    &SimdPoisson::<i64>::new(2.5).seeded(&Unseeded),
     fm,
     fnn,
     &single,
@@ -328,7 +328,7 @@ fn main() {
   );
   run_case(
     "Geometric<u64>",
-    &SimdGeometric::<u64>::new(0.3, &Unseeded),
+    &SimdGeometric::<u64>::new(0.3).seeded(&Unseeded),
     fm,
     fnn,
     &single,
@@ -336,7 +336,7 @@ fn main() {
   );
   run_case(
     "Binomial<u32>",
-    &SimdBinomial::<u32>::new(32, 0.3, &Unseeded),
+    &SimdBinomial::<u32>::new(32, 0.3).seeded(&Unseeded),
     im,
     inn,
     &single,
@@ -344,7 +344,7 @@ fn main() {
   );
   run_case(
     "Hypergeo<u32>",
-    &SimdHypergeometric::<u32>::new(500, 80, 32, &Unseeded),
+    &SimdHypergeometric::<u32>::new(500, 80, 32).seeded(&Unseeded),
     im,
     inn,
     &single,

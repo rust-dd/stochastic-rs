@@ -13,6 +13,7 @@ use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 use stochastic_rs_distributions::scalar::ScalarExp;
 use stochastic_rs_distributions::scalar::ScalarNormal;
@@ -141,10 +142,10 @@ where
     return increments;
   }
 
-  let poisson = SimdPoisson::<u32>::new(lambda_dt, seed);
+  let mut poisson = SimdPoisson::<u32>::new(lambda_dt).seeded(seed);
   let mut rng = seed.rng();
   for i in 1..n {
-    let jump_count = poisson.sample(&mut rng);
+    let jump_count = poisson.sample();
     let mut jump_sum = T::zero();
     for _ in 0..jump_count {
       jump_sum += distribution.sample(&mut rng);
@@ -229,11 +230,11 @@ where
     return increments;
   }
 
-  let poisson = SimdPoisson::<u32>::new(lambda_dt, seed);
+  let mut poisson = SimdPoisson::<u32>::new(lambda_dt).seeded(seed);
   seed.derive(); // skip one to differ from grid_increments
   let mut rng = seed.rng();
   for i in 1..n {
-    let jump_count = poisson.sample(&mut rng);
+    let jump_count = poisson.sample();
     increments[i] = relative_jump_from_count(distribution, jump_count, &mut rng);
   }
 

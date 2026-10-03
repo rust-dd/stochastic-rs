@@ -229,22 +229,21 @@ fn bench_poisson_simd_vs_rand() {
 
   {
     let mut rng = rand::rng();
-    let d = SimdPoisson::<u32>::new(4.0, &Unseeded);
+    let mut d = SimdPoisson::<u32>::new(4.0).seeded(&Unseeded);
     let rd = rand_distr::Poisson::<f64>::new(4.0).unwrap();
     let mut s: u64 = 0;
     for _ in 0..warmup {
-      s += d.sample(&mut rng) as u64;
+      s += d.sample() as u64;
       s += rd.sample(&mut rng) as u64;
     }
     std::hint::black_box(s);
   }
 
-  let mut rng = rand::rng();
-  let simd = SimdPoisson::<u32>::new(4.0, &Unseeded);
+  let mut simd = SimdPoisson::<u32>::new(4.0).seeded(&Unseeded);
   let mut s_sum: u64 = 0;
   let t0 = Instant::now();
   for _ in 0..n {
-    s_sum += simd.sample(&mut rng) as u64;
+    s_sum += simd.sample() as u64;
   }
   let dt_s = t0.elapsed();
 

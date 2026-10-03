@@ -14,6 +14,7 @@ mod gof_support;
 
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::DistributionExt;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::truncated::SimdTruncatedBeta;
 use stochastic_rs_distributions::truncated::SimdTruncatedExp;
 use stochastic_rs_distributions::truncated::SimdTruncatedGamma;
@@ -24,8 +25,9 @@ const N: usize = 20_000;
 #[test]
 fn simd_truncated_normal_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
-    let dist = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -1.0, 2.0, &Deterministic::new(seed));
-    let xs = (0..N).map(|_| dist.sample_fast()).collect::<Vec<_>>();
+    let dist = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -1.0, 2.0);
+    let mut stream = dist.seeded(&Deterministic::new(seed));
+    let xs = (0..N).map(|_| stream.sample()).collect::<Vec<_>>();
     (
       xs,
       Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
@@ -36,8 +38,9 @@ fn simd_truncated_normal_matches_own_cdf() {
 #[test]
 fn simd_truncated_exp_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
-    let dist = SimdTruncatedExp::<f64>::new(2.0, 0.0, 1.5, &Deterministic::new(seed));
-    let xs = (0..N).map(|_| dist.sample_fast()).collect::<Vec<_>>();
+    let dist = SimdTruncatedExp::<f64>::new(2.0, 0.0, 1.5);
+    let mut stream = dist.seeded(&Deterministic::new(seed));
+    let xs = (0..N).map(|_| stream.sample()).collect::<Vec<_>>();
     (
       xs,
       Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
@@ -48,8 +51,9 @@ fn simd_truncated_exp_matches_own_cdf() {
 #[test]
 fn simd_truncated_beta_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
-    let dist = SimdTruncatedBeta::<f64>::new(2.0, 2.0, 0.2, 0.8, &Deterministic::new(seed));
-    let xs = (0..N).map(|_| dist.sample_fast()).collect::<Vec<_>>();
+    let dist = SimdTruncatedBeta::<f64>::new(2.0, 2.0, 0.2, 0.8);
+    let mut stream = dist.seeded(&Deterministic::new(seed));
+    let xs = (0..N).map(|_| stream.sample()).collect::<Vec<_>>();
     (
       xs,
       Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
@@ -60,8 +64,9 @@ fn simd_truncated_beta_matches_own_cdf() {
 #[test]
 fn simd_truncated_gamma_matches_own_cdf() {
   gof_support::assert_ks_accepts(N, |seed| {
-    let dist = SimdTruncatedGamma::<f64>::new(2.0, 1.0, 1.0, 5.0, &Deterministic::new(seed));
-    let xs = (0..N).map(|_| dist.sample_fast()).collect::<Vec<_>>();
+    let dist = SimdTruncatedGamma::<f64>::new(2.0, 1.0, 1.0, 5.0);
+    let mut stream = dist.seeded(&Deterministic::new(seed));
+    let xs = (0..N).map(|_| stream.sample()).collect::<Vec<_>>();
     (
       xs,
       Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,

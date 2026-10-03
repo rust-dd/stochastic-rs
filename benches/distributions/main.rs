@@ -16,7 +16,6 @@ use stochastic_rs::distributions::gamma::SimdGamma;
 use stochastic_rs::distributions::lognormal::SimdLogNormal;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::distributions::pareto::SimdPareto;
-use stochastic_rs::distributions::poisson::SimdPoisson;
 use stochastic_rs::distributions::studentt::SimdStudentT;
 use stochastic_rs::distributions::uniform::SimdUniform;
 use stochastic_rs::distributions::weibull::SimdWeibull;
@@ -223,39 +222,6 @@ bench_dist!(
   rand_distr::Uniform::<f64>::new(0.0, 1.0).unwrap()
 );
 
-fn bench_poisson(c: &mut Criterion) {
-  let mut group = c.benchmark_group("Poisson");
-  group.measurement_time(Duration::from_secs(3));
-  group.warm_up_time(Duration::from_millis(500));
-
-  for &(label, n) in SIZES {
-    group.bench_with_input(BenchmarkId::new("simd", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist = SimdPoisson::<u32>::new(4.0, &Unseeded);
-      b.iter(|| {
-        let mut s = 0u64;
-        for _ in 0..n {
-          s += dist.sample(&mut rng) as u64;
-        }
-        black_box(s)
-      });
-    });
-    group.bench_with_input(BenchmarkId::new("rand_distr", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist = rand_distr::Poisson::<f64>::new(4.0).unwrap();
-      b.iter(|| {
-        let mut s = 0u64;
-        for _ in 0..n {
-          s += dist.sample(&mut rng) as u64;
-        }
-        black_box(s)
-      });
-    });
-  }
-
-  group.finish();
-}
-
 criterion_group!(
   benches,
   bench_normal,
@@ -267,7 +233,7 @@ criterion_group!(
   bench_beta,
   bench_chi_squared,
   bench_studentt,
-  bench_poisson,
+  discrete::bench_poisson,
   bench_pareto,
   bench_uniform,
   heavy_tailed::bench_alpha_stable,

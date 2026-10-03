@@ -220,30 +220,3 @@ pub mod uniform;
 pub mod variance_gamma;
 pub mod weibull;
 pub mod wishart;
-
-macro_rules! impl_distribution_sampler_int {
-  ($($dist:ty),+ $(,)?) => {
-    $(
-      impl<T: num_traits::PrimInt> crate::traits::distribution::Sealed for $dist {}
-
-      impl<T: num_traits::PrimInt + Send> DistributionSampler<T> for $dist {
-        #[inline]
-        fn fill_slice(&mut self, out: &mut [T]) {
-          Self::fill_slice(self, out)
-        }
-
-        #[inline]
-        fn fork(&mut self, stream_idx: u64) -> Self {
-          Self::fork(self, stream_idx)
-        }
-      }
-    )+
-  };
-}
-
-impl_distribution_sampler_int!(
-  binomial::SimdBinomial<T>,
-  geometric::SimdGeometric<T>,
-  hypergeometric::SimdHypergeometric<T>,
-  poisson::SimdPoisson<T>,
-);

@@ -285,7 +285,9 @@ mod tests {
     let lambda = x_t * 4.0 * kappa * a / (s2 * (1.0 - a));
     // χ'²_d(λ) = χ²_{d + 2N}, N ~ Poisson(λ/2); central χ²_k = Gamma(k/2, 2).
     let n_pois: f64 = f64::from(
-      SimdPoisson::<u32>::new(lambda / 2.0, &Deterministic::new(pois_seed)).sample_fast(),
+      SimdPoisson::<u32>::new(lambda / 2.0)
+        .seeded(&Deterministic::new(pois_seed))
+        .sample(),
     );
     let shape = d / 2.0 + n_pois;
     let chi2 = if shape > 0.0 {

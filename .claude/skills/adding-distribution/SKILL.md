@@ -307,9 +307,9 @@ Parameters only, no interior mutability — that is what makes it `Sync`.
 - `SimdNormalInverseGauss` (`normal_inverse_gauss.rs`) — subordination:
   draws an `SimdInverseGauss` mixing variable, then a `SimdNormal`.
   The reference for composing one distribution out of two.
-- `SimdTruncatedNormal` / `Exp` / `Beta` / `Gamma` (`truncated.rs`) —
-  four truncated laws in one file; the reference for rejection with a
-  documented acceptance ratio.
+- `SimdTruncatedNormal` / `Exp` / `Beta` / `Gamma` (`truncated/`) —
+  four truncated laws behind the `truncated.rs` hub; the reference for
+  rejection with a documented acceptance ratio.
 
 ## Related SKILLs
 

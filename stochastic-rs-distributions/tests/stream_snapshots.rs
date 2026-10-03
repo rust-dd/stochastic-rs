@@ -12,9 +12,7 @@ use std::path::Path;
 use ndarray::Array2;
 use ndarray::array;
 use num_traits::Zero;
-use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_core::simd_rng::SimdRng;
 #[cfg(feature = "unstable-dual-stream-rng")]
 use stochastic_rs_core::simd_rng_dual::SimdRngDual;
 use stochastic_rs_distributions::DistributionSampler;
@@ -160,26 +158,20 @@ where
   }
 }
 
-/// The steps on a not yet ported law, whose `Distribution::sample` pops its own stream.
-fn capture<D, T>(seed: u64, make: impl Fn(&Deterministic) -> D) -> Snapshot
-where
-  D: DistributionSampler<T> + Distribution<T> + Send,
-  T: Copy + Zero + Bits + Send,
-{
-  let mut dummy = SimdRng::from_seed(1);
-  capture_steps(seed, make, move |d: &mut D| d.sample(&mut dummy))
-}
-
 /// The steps on a `Seeded` stream; the constants are the ones captured on the old API.
-fn capture_seeded<D, T>(seed: u64, make: impl Fn() -> D) -> Snapshot
+fn capture<D, T>(seed: u64, make: impl Fn() -> D) -> Snapshot
 where
   D: SimdKernel<Item = T>,
   T: Copy + Zero + Bits + Send + Sync + 'static,
 {
-  capture_steps(seed, |det| make().seeded(det), Seeded::sample)
+  capture_steps(
+    seed,
+    |det| make().seeded(det),
+    |s: &mut Seeded<D>| s.sample(),
+  )
 }
 
-/// Steps 1 and 4 for the laws without `fill_slice`/`fork`; `draw` yields one draw's bits.
+/// Steps 1 and 4 only, for the laws pinned without bulk draws; `draw` yields one draw's bits.
 fn capture_single<F: FnMut() -> Vec<u64>>(
   seed: u64,
   build: impl FnOnce(&Deterministic) -> F,
@@ -246,34 +238,6 @@ fn check_exact(name: &str, capture: impl Fn(u64) -> Snapshot) {
 }
 
 macro_rules! snapshot_cases {
-  ($( $name:ident : $kind:expr, $scalar:ty, |$det:ident| $make:expr ; )*) => {
-    $(
-      mod $name {
-        use super::*;
-
-        #[test]
-        fn close() {
-          check_close(stringify!($name), $kind, |seed| capture::<_, $scalar>(seed, |$det| $make));
-        }
-
-        #[test]
-        #[cfg_attr(not(all(target_arch = "aarch64", target_os = "macos")), ignore)]
-        fn exact() {
-          check_exact(stringify!($name), |seed| capture::<_, $scalar>(seed, |$det| $make));
-        }
-      }
-    )*
-
-    fn all_cases() -> Vec<(&'static str, Box<dyn Fn(u64) -> Snapshot>)> {
-      vec![$((
-        stringify!($name),
-        Box::new(|seed| capture::<_, $scalar>(seed, |$det| $make)) as Box<dyn Fn(u64) -> Snapshot>,
-      )),*]
-    }
-  };
-}
-
-macro_rules! snapshot_cases_seeded {
   ($( $name:ident : $kind:expr, $scalar:ty, $make:expr ; )*) => {
     $(
       mod $name {
@@ -281,21 +245,21 @@ macro_rules! snapshot_cases_seeded {
 
         #[test]
         fn close() {
-          check_close(stringify!($name), $kind, |seed| capture_seeded::<_, $scalar>(seed, || $make));
+          check_close(stringify!($name), $kind, |seed| capture::<_, $scalar>(seed, || $make));
         }
 
         #[test]
         #[cfg_attr(not(all(target_arch = "aarch64", target_os = "macos")), ignore)]
         fn exact() {
-          check_exact(stringify!($name), |seed| capture_seeded::<_, $scalar>(seed, || $make));
+          check_exact(stringify!($name), |seed| capture::<_, $scalar>(seed, || $make));
         }
       }
     )*
 
-    fn all_seeded() -> Vec<(&'static str, Box<dyn Fn(u64) -> Snapshot>)> {
+    fn all_cases() -> Vec<(&'static str, Box<dyn Fn(u64) -> Snapshot>)> {
       vec![$((
         stringify!($name),
-        Box::new(|seed| capture_seeded::<_, $scalar>(seed, || $make)) as Box<dyn Fn(u64) -> Snapshot>,
+        Box::new(|seed| capture::<_, $scalar>(seed, || $make)) as Box<dyn Fn(u64) -> Snapshot>,
       )),*]
     }
   };
@@ -333,7 +297,7 @@ macro_rules! snapshot_singles {
   };
 }
 
-snapshot_cases_seeded! {
+snapshot_cases! {
   normal_f64: ScalarKind::F64, f64, SimdNormal::<f64>::new(0.3, 1.7);
   normal_f32: ScalarKind::F32, f32, SimdNormal::<f32>::new(0.3, 1.7);
   exp_f64: ScalarKind::F64, f64, SimdExp::<f64>::new(1.8);
@@ -402,105 +366,102 @@ snapshot_cases_seeded! {
   gpd_exp_f32: ScalarKind::F32, f32, SimdGpd::<f32>::new(0.0, 1.0, 0.0);
   gpd_bounded_f64: ScalarKind::F64, f64, SimdGpd::<f64>::new(0.0, 1.0, -0.3);
   gpd_bounded_f32: ScalarKind::F32, f32, SimdGpd::<f32>::new(0.0, 1.0, -0.3);
-}
-
-snapshot_cases! {
-  poisson_u32: ScalarKind::Int, u32, |det| SimdPoisson::<u32>::new(12.0, det);
-  poisson_u64: ScalarKind::Int, u64, |det| SimdPoisson::<u64>::new(12.0, det);
-  poisson_i64: ScalarKind::Int, i64, |det| SimdPoisson::<i64>::new(12.0, det);
-  poisson_large_u64: ScalarKind::Int, u64, |det| SimdPoisson::<u64>::new(800.0, det);
-  binomial_btrs_u32: ScalarKind::Int, u32, |det| SimdBinomial::<u32>::new(60, 0.4, det);
-  binomial_waiting_u32: ScalarKind::Int, u32, |det| SimdBinomial::<u32>::new(15, 0.3, det);
-  binomial_btrs_flip_u32: ScalarKind::Int, u32, |det| SimdBinomial::<u32>::new(60, 0.7, det);
-  binomial_waiting_flip_u32: ScalarKind::Int, u32, |det| SimdBinomial::<u32>::new(15, 0.8, det);
-  geometric_u64: ScalarKind::Int, u64, |det| SimdGeometric::<u64>::new(0.15, det);
-  hypergeometric_u32: ScalarKind::Int, u32, |det| SimdHypergeometric::<u32>::new(60, 25, 20, det);
+  poisson_u32: ScalarKind::Int, u32, SimdPoisson::<u32>::new(12.0);
+  poisson_u64: ScalarKind::Int, u64, SimdPoisson::<u64>::new(12.0);
+  poisson_i64: ScalarKind::Int, i64, SimdPoisson::<i64>::new(12.0);
+  poisson_large_u64: ScalarKind::Int, u64, SimdPoisson::<u64>::new(800.0);
+  binomial_btrs_u32: ScalarKind::Int, u32, SimdBinomial::<u32>::new(60, 0.4);
+  binomial_waiting_u32: ScalarKind::Int, u32, SimdBinomial::<u32>::new(15, 0.3);
+  binomial_btrs_flip_u32: ScalarKind::Int, u32, SimdBinomial::<u32>::new(60, 0.7);
+  binomial_waiting_flip_u32: ScalarKind::Int, u32, SimdBinomial::<u32>::new(15, 0.8);
+  geometric_u64: ScalarKind::Int, u64, SimdGeometric::<u64>::new(0.15);
+  hypergeometric_u32: ScalarKind::Int, u32, SimdHypergeometric::<u32>::new(60, 25, 20);
 }
 
 snapshot_singles! {
   skellam: ScalarKind::Int, |det| {
-    let d = SimdSkellam::<SimdRng>::new(9.0, 5.0, det);
-    move || vec![d.sample_fast().bits()]
+    let mut s = SimdSkellam::new(9.0, 5.0).seeded(det);
+    move || vec![s.sample().bits()]
   };
   dirichlet_f64: ScalarKind::F64, |det| {
-    let d = SimdDirichlet::<f64>::new(vec![1.0, 2.0, 3.0], det);
+    let mut s = SimdDirichlet::<f64>::new(vec![1.0, 2.0, 3.0]).seeded(det);
     let mut out = vec![0.0f64; 3];
     move || {
-      d.sample_into(&mut out);
+      s.sample_into(&mut out);
       out.iter().map(|x| x.bits()).collect()
     }
   };
   dirichlet_f32: ScalarKind::F32, |det| {
-    let d = SimdDirichlet::<f32>::new(vec![1.0, 2.0, 3.0], det);
+    let mut s = SimdDirichlet::<f32>::new(vec![1.0, 2.0, 3.0]).seeded(det);
     let mut out = vec![0.0f32; 3];
     move || {
-      d.sample_into(&mut out);
+      s.sample_into(&mut out);
       out.iter().map(|x| x.bits()).collect()
     }
   };
   wishart_f64: ScalarKind::F64, |det| {
-    let d = SimdWishart::<f64>::new(5.0, array![[1.0, 0.3], [0.3, 2.0]], det);
-    move || d.sample_fast().iter().map(|x| x.bits()).collect()
+    let mut s = SimdWishart::<f64>::new(5.0, array![[1.0, 0.3], [0.3, 2.0]]).seeded(det);
+    move || s.sample().iter().map(|x| x.bits()).collect()
   };
   ncx2_f64: ScalarKind::F64, |det| {
-    let d = SimdNonCentralChiSquared::<f64>::new(3.0, det);
-    move || vec![d.sample_ncp(2.5).bits()]
+    let mut s = SimdNonCentralChiSquared::<f64>::new(3.0).seeded(det);
+    move || vec![s.sample_ncp(2.5).bits()]
   };
   ncx2_f32: ScalarKind::F32, |det| {
-    let d = SimdNonCentralChiSquared::<f32>::new(3.0, det);
-    move || vec![d.sample_ncp(2.5).bits()]
+    let mut s = SimdNonCentralChiSquared::<f32>::new(3.0).seeded(det);
+    move || vec![s.sample_ncp(2.5).bits()]
   };
   ncx2_mixture_f64: ScalarKind::F64, |det| {
-    let d = SimdNonCentralChiSquared::<f64>::new(0.3, det);
-    move || vec![d.sample_ncp(2.0).bits()]
+    let mut s = SimdNonCentralChiSquared::<f64>::new(0.3).seeded(det);
+    move || vec![s.sample_ncp(2.0).bits()]
   };
   truncated_normal_f64: ScalarKind::F64, |det| {
-    let d = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -1.0, 2.0, det);
-    move || vec![d.sample_fast().bits()]
+    let mut s = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -1.0, 2.0).seeded(det);
+    move || vec![s.sample().bits()]
   };
   truncated_normal_f32: ScalarKind::F32, |det| {
-    let d = SimdTruncatedNormal::<f32>::new(0.0, 1.0, -1.0, 2.0, det);
-    move || vec![d.sample_fast().bits()]
+    let mut s = SimdTruncatedNormal::<f32>::new(0.0, 1.0, -1.0, 2.0).seeded(det);
+    move || vec![s.sample().bits()]
   };
   truncated_normal_exp_tail_f64: ScalarKind::F64, |det| {
-    let d = SimdTruncatedNormal::<f64>::new(0.0, 1.0, 3.0, 6.0, det);
-    move || vec![d.sample_fast().bits()]
+    let mut s = SimdTruncatedNormal::<f64>::new(0.0, 1.0, 3.0, 6.0).seeded(det);
+    move || vec![s.sample().bits()]
   };
   truncated_normal_uniform_tail_f64: ScalarKind::F64, |det| {
-    let d = SimdTruncatedNormal::<f64>::new(0.0, 1.0, 3.0, 3.4, det);
-    move || vec![d.sample_fast().bits()]
+    let mut s = SimdTruncatedNormal::<f64>::new(0.0, 1.0, 3.0, 3.4).seeded(det);
+    move || vec![s.sample().bits()]
   };
   truncated_normal_mirrored_f64: ScalarKind::F64, |det| {
-    let d = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -6.0, -3.0, det);
-    move || vec![d.sample_fast().bits()]
+    let mut s = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -6.0, -3.0).seeded(det);
+    move || vec![s.sample().bits()]
   };
   truncated_normal_inverse_cdf_f64: ScalarKind::F64, |det| {
-    let d = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -0.05, 0.05, det);
-    move || vec![d.sample_fast().bits()]
+    let mut s = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -0.05, 0.05).seeded(det);
+    move || vec![s.sample().bits()]
   };
   truncated_exp_f64: ScalarKind::F64, |det| {
-    let d = SimdTruncatedExp::<f64>::new(2.0, 0.0, 1.5, det);
-    move || vec![d.sample_fast().bits()]
+    let mut s = SimdTruncatedExp::<f64>::new(2.0, 0.0, 1.5).seeded(det);
+    move || vec![s.sample().bits()]
   };
   truncated_exp_f32: ScalarKind::F32, |det| {
-    let d = SimdTruncatedExp::<f32>::new(2.0, 0.0, 1.5, det);
-    move || vec![d.sample_fast().bits()]
+    let mut s = SimdTruncatedExp::<f32>::new(2.0, 0.0, 1.5).seeded(det);
+    move || vec![s.sample().bits()]
   };
   truncated_beta_f64: ScalarKind::F64, |det| {
-    let d = SimdTruncatedBeta::<f64>::new(2.0, 2.0, 0.2, 0.8, det);
-    move || vec![d.sample_fast().bits()]
+    let mut s = SimdTruncatedBeta::<f64>::new(2.0, 2.0, 0.2, 0.8).seeded(det);
+    move || vec![s.sample().bits()]
   };
   truncated_beta_f32: ScalarKind::F32, |det| {
-    let d = SimdTruncatedBeta::<f32>::new(2.0, 2.0, 0.2, 0.8, det);
-    move || vec![d.sample_fast().bits()]
+    let mut s = SimdTruncatedBeta::<f32>::new(2.0, 2.0, 0.2, 0.8).seeded(det);
+    move || vec![s.sample().bits()]
   };
   truncated_gamma_f64: ScalarKind::F64, |det| {
-    let d = SimdTruncatedGamma::<f64>::new(2.0, 1.0, 1.0, 5.0, det);
-    move || vec![d.sample_fast().bits()]
+    let mut s = SimdTruncatedGamma::<f64>::new(2.0, 1.0, 1.0, 5.0).seeded(det);
+    move || vec![s.sample().bits()]
   };
   truncated_gamma_f32: ScalarKind::F32, |det| {
-    let d = SimdTruncatedGamma::<f32>::new(2.0, 1.0, 1.0, 5.0, det);
-    move || vec![d.sample_fast().bits()]
+    let mut s = SimdTruncatedGamma::<f32>::new(2.0, 1.0, 1.0, 5.0).seeded(det);
+    move || vec![s.sample().bits()]
   };
   complex_normal_f64: ScalarKind::F64, |det| {
     let mut s = ComplexDistribution::new(
@@ -552,11 +513,7 @@ fn print_constants() {
     "//! Generated by `print_constants` in `../stream_snapshots.rs`; rerun it only for an intentional re-pin.\n\nuse super::snapshot::Snapshot;\n\n",
   );
   let mut names = Vec::new();
-  for (name, capture) in all_cases()
-    .into_iter()
-    .chain(all_seeded())
-    .chain(all_singles())
-  {
+  for (name, capture) in all_cases().into_iter().chain(all_singles()) {
     let snapshots = SEEDS.map(capture);
     text.push_str(&format!(
       "pub const {}: [Snapshot; 2] = {snapshots:#?};\n\n",

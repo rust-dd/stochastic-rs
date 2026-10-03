@@ -55,6 +55,11 @@ impl<D: SimdDistribution, R: SimdRngExt> Seeded<D, R> {
     &mut self.state
   }
 
+  /// The law and the stream state at once, for the bespoke streams of the laws without a scalar kernel.
+  pub(crate) fn parts_mut(&mut self) -> (&D, &mut D::State<R>) {
+    (&self.dist, &mut self.state)
+  }
+
   /// An independent child stream for worker `stream_idx`; advances this stream's fork basis.
   pub fn fork(&mut self, stream_idx: u64) -> Self {
     let call_basis = derive_seed(&mut self.basis);
@@ -152,10 +157,19 @@ impl<T: Copy + Zero, const N: usize> Debug for Buffered<T, N> {
 
 /// One engine plus one single-draw buffer, the state of every leaf kernel.
 #[doc(hidden)]
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct StreamState<T: Copy + Zero, R: SimdRngExt, const N: usize> {
   pub rng: R,
   pub buf: Buffered<T, N>,
+}
+
+impl<T: Copy + Zero, R: SimdRngExt, const N: usize> Debug for StreamState<T, R, N> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("StreamState")
+      .field("rng", &self.rng)
+      .field("buf", &self.buf)
+      .finish()
+  }
 }
 
 impl<T: Copy + Zero, R: SimdRngExt, const N: usize> StreamState<T, R, N> {

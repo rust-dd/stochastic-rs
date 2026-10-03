@@ -17,6 +17,7 @@ mod gof_support;
 
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::DistributionExt;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::binomial::SimdBinomial;
 use stochastic_rs_distributions::geometric::SimdGeometric;
 use stochastic_rs_distributions::hypergeometric::SimdHypergeometric;
@@ -30,10 +31,9 @@ const N: usize = 20_000;
 fn simd_binomial_btrs_path_matches_own_cdf() {
   let (k_lo, k_hi) = gof_support::window(24.0, 14.4, Some(0), Some(60));
   gof_support::assert_chi_square_accepts(N, k_lo, k_hi, |seed| {
-    let dist = SimdBinomial::<u32>::new(60, 0.4, &Deterministic::new(seed));
-    let xs = (0..N)
-      .map(|_| dist.sample_fast() as i64)
-      .collect::<Vec<_>>();
+    let dist = SimdBinomial::<u32>::new(60, 0.4);
+    let mut stream = dist.seeded(&Deterministic::new(seed));
+    let xs = (0..N).map(|_| stream.sample() as i64).collect::<Vec<_>>();
     (
       xs,
       Box::new(move |k: i64| dist.cdf(k as f64)) as Box<dyn Fn(i64) -> f64>,
@@ -46,10 +46,9 @@ fn simd_binomial_btrs_path_matches_own_cdf() {
 fn simd_binomial_waiting_time_path_matches_own_cdf() {
   let (k_lo, k_hi) = gof_support::window(4.5, 3.15, Some(0), Some(15));
   gof_support::assert_chi_square_accepts(N, k_lo, k_hi, |seed| {
-    let dist = SimdBinomial::<u32>::new(15, 0.3, &Deterministic::new(seed));
-    let xs = (0..N)
-      .map(|_| dist.sample_fast() as i64)
-      .collect::<Vec<_>>();
+    let dist = SimdBinomial::<u32>::new(15, 0.3);
+    let mut stream = dist.seeded(&Deterministic::new(seed));
+    let xs = (0..N).map(|_| stream.sample() as i64).collect::<Vec<_>>();
     (
       xs,
       Box::new(move |k: i64| dist.cdf(k as f64)) as Box<dyn Fn(i64) -> f64>,
@@ -66,10 +65,9 @@ fn simd_geometric_matches_own_cdf() {
   let var = (1.0 - p) / (p * p);
   let (k_lo, k_hi) = gof_support::window(mean, var, Some(1), None);
   gof_support::assert_chi_square_accepts(N, k_lo, k_hi, |seed| {
-    let dist = SimdGeometric::<u64>::new(p, &Deterministic::new(seed));
-    let xs = (0..N)
-      .map(|_| dist.sample_fast() as i64)
-      .collect::<Vec<_>>();
+    let dist = SimdGeometric::<u64>::new(p);
+    let mut stream = dist.seeded(&Deterministic::new(seed));
+    let xs = (0..N).map(|_| stream.sample() as i64).collect::<Vec<_>>();
     (
       xs,
       Box::new(move |k: i64| dist.cdf(k as f64)) as Box<dyn Fn(i64) -> f64>,
@@ -87,11 +85,9 @@ fn simd_hypergeometric_matches_own_cdf() {
       / (n_total as f64 * n_total as f64 * (n_total as f64 - 1.0));
   let (k_lo, k_hi) = gof_support::window(mean, var, Some(0), Some(n_draws as i64));
   gof_support::assert_chi_square_accepts(N, k_lo, k_hi, |seed| {
-    let dist =
-      SimdHypergeometric::<u32>::new(n_total, k_success, n_draws, &Deterministic::new(seed));
-    let xs = (0..N)
-      .map(|_| dist.sample_fast() as i64)
-      .collect::<Vec<_>>();
+    let dist = SimdHypergeometric::<u32>::new(n_total, k_success, n_draws);
+    let mut stream = dist.clone().seeded(&Deterministic::new(seed));
+    let xs = (0..N).map(|_| stream.sample() as i64).collect::<Vec<_>>();
     (
       xs,
       Box::new(move |k: i64| dist.cdf(k as f64)) as Box<dyn Fn(i64) -> f64>,
@@ -104,10 +100,9 @@ fn simd_poisson_matches_own_cdf() {
   let lambda = 12.0;
   let (k_lo, k_hi) = gof_support::window(lambda, lambda, Some(0), None);
   gof_support::assert_chi_square_accepts(N, k_lo, k_hi, |seed| {
-    let dist = SimdPoisson::<u64>::new(lambda, &Deterministic::new(seed));
-    let xs = (0..N)
-      .map(|_| dist.sample_fast() as i64)
-      .collect::<Vec<_>>();
+    let dist = SimdPoisson::<u64>::new(lambda);
+    let mut stream = dist.clone().seeded(&Deterministic::new(seed));
+    let xs = (0..N).map(|_| stream.sample() as i64).collect::<Vec<_>>();
     (
       xs,
       Box::new(move |k: i64| dist.cdf(k as f64)) as Box<dyn Fn(i64) -> f64>,
@@ -125,10 +120,9 @@ fn simd_poisson_large_lambda_matches_own_cdf() {
   let lambda = 800.0;
   let (k_lo, k_hi) = gof_support::window(lambda, lambda, Some(0), None);
   gof_support::assert_chi_square_accepts(N, k_lo, k_hi, |seed| {
-    let dist = SimdPoisson::<u64>::new(lambda, &Deterministic::new(seed));
-    let xs = (0..N)
-      .map(|_| dist.sample_fast() as i64)
-      .collect::<Vec<_>>();
+    let dist = SimdPoisson::<u64>::new(lambda);
+    let mut stream = dist.clone().seeded(&Deterministic::new(seed));
+    let xs = (0..N).map(|_| stream.sample() as i64).collect::<Vec<_>>();
     (
       xs,
       Box::new(move |k: i64| dist.cdf(k as f64)) as Box<dyn Fn(i64) -> f64>,
@@ -143,12 +137,9 @@ fn simd_skellam_matches_own_cdf() {
   let (mu1, mu2) = (9.0, 5.0);
   let (k_lo, k_hi) = gof_support::window(mu1 - mu2, mu1 + mu2, None, None);
   gof_support::assert_chi_square_accepts(N, k_lo, k_hi, |seed| {
-    let dist = SimdSkellam::<stochastic_rs_distributions::simd_rng::SimdRng>::new(
-      mu1,
-      mu2,
-      &Deterministic::new(seed),
-    );
-    let xs = (0..N).map(|_| dist.sample_fast()).collect::<Vec<_>>();
+    let dist = SimdSkellam::new(mu1, mu2);
+    let mut stream = dist.clone().seeded(&Deterministic::new(seed));
+    let xs = (0..N).map(|_| stream.sample()).collect::<Vec<_>>();
     (
       xs,
       Box::new(move |k: i64| dist.cdf(k as f64)) as Box<dyn Fn(i64) -> f64>,

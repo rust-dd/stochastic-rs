@@ -366,7 +366,7 @@ impl<T: FloatExt, S: SeedExt> SvcgmySampler<T, S> {
     let df = T::from_usize_(4) * self.kappa * self.eta / self.zeta.powi(2);
 
     // 1) Simulate v on the grid via noncentral chi-square
-    let nchi2 = SimdNonCentralChiSquared::<T>::new(df, &self.seed);
+    let mut nchi2 = SimdNonCentralChiSquared::<T>::new(df).seeded(&self.seed);
     for i in 1..self.n {
       let ncp = f2 * c * v[i - 1] * exp_kdt;
       v[i] = nchi2.sample_ncp(ncp) / (f2 * c);

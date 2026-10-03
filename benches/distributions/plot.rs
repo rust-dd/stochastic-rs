@@ -19,7 +19,6 @@ use plotly::common::LineShape;
 use plotly::common::Mode;
 use plotly::layout::GridPattern;
 use plotly::layout::LayoutGrid;
-use rand::rng;
 use rand_distr::Distribution;
 use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::beta::SimdBeta;
@@ -216,7 +215,6 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
   );
 
   let n = 50_000;
-  let mut r1 = rand::rng();
   let mut r2 = rand::rng();
 
   let mut d_normal = SimdNormal::<f32>::new(0.0, 1.0).seeded(&Unseeded);
@@ -349,7 +347,7 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     || rd_studentt.sample(&mut r2),
   );
 
-  let d_binomial = SimdBinomial::<u32>::new(10, 0.3, &Unseeded);
+  let mut d_binomial = SimdBinomial::<u32>::new(10, 0.3).seeded(&Unseeded);
   let rd_binomial = rand_distr::Binomial::new(10, 0.3).unwrap();
   add_discrete_pair(
     &mut plot,
@@ -357,24 +355,23 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     "Binomial(10,0.3)",
     10,
     n,
-    || d_binomial.sample(&mut r1),
+    || d_binomial.sample(),
     || rd_binomial.sample(&mut r2) as u32,
   );
 
-  let d_geometric = SimdGeometric::<u32>::new(0.25, &Unseeded);
+  let mut d_geometric = SimdGeometric::<u32>::new(0.25).seeded(&Unseeded);
   let rd_geometric = rand_distr::Geometric::new(0.25).unwrap();
-  let mut r1_g = rng();
   add_discrete_pair(
     &mut plot,
     subplot_axes(3, 4),
     "Geometric(0.25)",
     20,
     n,
-    || d_geometric.sample(&mut r1_g),
+    || d_geometric.sample(),
     || rd_geometric.sample(&mut r2) as u32,
   );
 
-  let d_hg = SimdHypergeometric::<u32>::new(20, 5, 6, &Unseeded);
+  let mut d_hg = SimdHypergeometric::<u32>::new(20, 5, 6).seeded(&Unseeded);
   let rd_hg = rand_distr::Hypergeometric::new(20, 5, 6).unwrap();
   add_discrete_pair(
     &mut plot,
@@ -382,11 +379,11 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     "HyperGeo(20,5,6)",
     6,
     n,
-    || d_hg.sample(&mut r1),
+    || d_hg.sample(),
     || rd_hg.sample(&mut r2) as u32,
   );
 
-  let d_poisson = SimdPoisson::<u32>::new(4.0, &Unseeded);
+  let mut d_poisson = SimdPoisson::<u32>::new(4.0).seeded(&Unseeded);
   let rd_poisson = rand_distr::Poisson::<f64>::new(4.0).unwrap();
   add_discrete_pair(
     &mut plot,
@@ -394,7 +391,7 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     "Poisson(4)",
     15,
     n,
-    || d_poisson.sample(&mut r1),
+    || d_poisson.sample(),
     || rd_poisson.sample(&mut r2) as u32,
   );
 
