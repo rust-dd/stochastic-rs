@@ -26,7 +26,7 @@ transparent to users.
 The umbrella re-exports `ndarray`, `num_complex`, `num_traits`, `rand` and
 `chrono` (as `stochastic_rs::ndarray` and so on) because callers build and pass
 their types; use these paths or depend on the same versions. `wide` (the SIMD
-vectors of `SimdFloatExt` and `SimdRngExt`) and `anyhow` (calibrator errors)
+vectors of `SimdFloatExt` and `SimdRngExt`) and `anyhow` (calibration and SLV errors)
 also appear in public signatures. A semver-incompatible release of any of these
 seven crates (for a 0.x crate, a minor bump such as ndarray 0.17 → 0.18) is a
 major release of `stochastic-rs`.

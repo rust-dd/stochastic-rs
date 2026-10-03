@@ -1,4 +1,4 @@
-//! The umbrella re-exports the third-party crates whose types appear in its public API.
+//! The umbrella re-exports the crates whose types callers build and pass across its API.
 
 use stochastic_rs::chrono::NaiveDate;
 use stochastic_rs::distributions::normal::SimdNormal;
