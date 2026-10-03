@@ -1,6 +1,4 @@
 //! Truncated beta and gamma: rejection from the base law, with the clamped midpoint after 1000 rejections.
-//!
-//! Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.3, DOI 10.1007/978-1-4613-8643-8.
 
 use rand::Rng;
 use rand::distr::Distribution;
@@ -31,6 +29,8 @@ fn reject<T: SimdFloatExt>(lower: T, upper: T, mut base: impl FnMut() -> T) -> T
 
 /// Truncated beta law on $[\text{lower}, \text{upper}] \subseteq [0, 1]$, parameters only: a [`Seeded`](crate::Seeded)
 /// stream draws it by rejection, falling back to the interval's midpoint after 1000 misses.
+///
+/// Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.3, DOI 10.1007/978-1-4613-8643-8.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdTruncatedBeta<T> {
   base: SimdBeta<T>,
@@ -160,6 +160,8 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
 
 /// Truncated $\mathrm{Gamma}(k, \theta)$ on $[\text{lower}, \text{upper}]$, $\text{lower} \ge 0$, parameters only: a
 /// [`Seeded`](crate::Seeded) stream draws it by rejection, falling back to the interval's midpoint after 1000 misses.
+///
+/// Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.3, DOI 10.1007/978-1-4613-8643-8.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdTruncatedGamma<T> {
   base: SimdGamma<T>,

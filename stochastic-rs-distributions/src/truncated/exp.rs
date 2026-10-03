@@ -1,6 +1,4 @@
 //! Truncated exponential: inversion of the survival function referred to the lower bound.
-//!
-//! Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
 
 use rand::Rng;
 use rand::distr::Distribution;
@@ -16,6 +14,8 @@ use crate::traits::distribution::SimdKernel;
 
 /// Truncated exponential law $\mathrm{Exp}(\lambda)$ on $[\text{lower}, \text{upper}]$, $\text{lower} \ge 0$:
 /// parameters only; a [`Seeded`](crate::Seeded) stream draws it.
+///
+/// Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdTruncatedExp<T> {
   lambda: T,
