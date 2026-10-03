@@ -161,6 +161,41 @@ fn distribution_sample_draws_from_the_caller_rng() {
   assert_ne!(draws(1), draws(999_999));
 }
 
+/// `fill_with` takes one word from the caller's rng and fills like a stream seeded by that word, table laws included.
+#[test]
+fn fill_with_is_the_fill_of_a_stream_seeded_by_one_rng_word() {
+  use rand::Rng;
+  use stochastic_rs_distributions::SimdKernel;
+
+  let poisson = SimdPoisson::<u32>::new(1000.0);
+  let normal = SimdNormal::<f64>::new(0.0, 1.0);
+  for len in [5usize, 16, 1003] {
+    let (mut rng, mut twin) = (SimdRng::from_seed(11), SimdRng::from_seed(11));
+    let mut got = vec![0u32; len];
+    poisson.fill_with(&mut rng, &mut got);
+    let mut want = vec![0u32; len];
+    poisson
+      .clone()
+      .seeded(&Deterministic::new(twin.next_u64()))
+      .fill_slice(&mut want);
+    assert_eq!(got, want, "Poisson, len {len}");
+    let mut got = vec![0.0f64; len];
+    normal.fill_with(&mut rng, &mut got);
+    let mut want = vec![0.0f64; len];
+    normal
+      .seeded(&Deterministic::new(twin.next_u64()))
+      .fill_slice(&mut want);
+    assert!(
+      got
+        .iter()
+        .zip(&want)
+        .all(|(a, b)| a.to_bits() == b.to_bits()),
+      "Normal, len {len}"
+    );
+    assert_eq!(rng.next_u64(), twin.next_u64(), "len {len}: rng words used");
+  }
+}
+
 /// Three 64-wide bulk chunks equal 192 pops: each part refills its 64-buffer with the same kernel call.
 #[test]
 fn complex_fill_matches_pops_over_three_chunks() {

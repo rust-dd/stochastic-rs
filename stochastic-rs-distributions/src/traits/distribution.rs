@@ -142,7 +142,8 @@ pub trait SimdKernel: SimdDistribution {
 
   /// Bulk SIMD fill driven by any rng: one `u64` from `rng` seeds a private stream.
   fn fill_with<G: Rng + ?Sized>(&self, rng: &mut G, out: &mut [Self::Item]) {
-    Seeded::<Self, SimdRng>::new(self.clone(), &Deterministic::new(rng.next_u64())).fill_slice(out);
+    let (mut state, _) = self.init::<SimdRng, _>(&Deterministic::new(rng.next_u64()));
+    self.fill(&mut state, out);
   }
 }
 
