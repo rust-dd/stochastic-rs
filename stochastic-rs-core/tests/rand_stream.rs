@@ -147,6 +147,32 @@ fn simd_rng_is_usable_as_a_dyn_rng() {
   assert_ne!(dyn_rng.next_u64(), dyn_rng.next_u64());
 }
 
+/// Lengths cover whole words, short and long tails and crossing the 4-word buffer, from every buffer offset.
+#[test]
+fn fill_bytes_takes_the_words_next_u64_returns() {
+  for offset in 0..4 {
+    for len in [3usize, 8, 12, 20, 31, 32, 37, 64, 75] {
+      let (mut rng, mut twin) = (SimdRng::from_seed(7), SimdRng::from_seed(7));
+      for _ in 0..offset {
+        rng.next_u64();
+        twin.next_u64();
+      }
+      let mut got = vec![0u8; len];
+      rng.fill_bytes(&mut got);
+      let want = (0..len.div_ceil(8))
+        .flat_map(|_| twin.next_u64().to_le_bytes())
+        .take(len)
+        .collect::<Vec<_>>();
+      assert_eq!(got, want, "offset {offset}, length {len}");
+      assert_eq!(
+        rng.next_u64(),
+        twin.next_u64(),
+        "offset {offset}, length {len}: the word after the fill"
+      );
+    }
+  }
+}
+
 #[test]
 fn fill_bytes_writes_every_byte_at_every_length_and_buffer_offset() {
   for offset in 0..5 {

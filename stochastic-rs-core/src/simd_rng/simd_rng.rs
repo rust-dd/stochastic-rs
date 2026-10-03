@@ -174,39 +174,27 @@ impl TryRng for SimdRng {
     Ok(self.u64_buf[idx])
   }
 
+  /// The little-endian bytes of the words `next_u64` would return; a tail discards its word's unused bytes.
   fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Infallible> {
-    let mut written = 0;
-    let total = dest.len();
-    while self.u64_idx < 4 && total - written >= 8 {
-      let v = self.u64_buf[self.u64_idx];
+    let (words, tail) = dest.as_chunks_mut::<8>();
+    let (buffered, words) = words.split_at_mut(words.len().min(4 - self.u64_idx));
+    for word in buffered {
+      *word = self.u64_buf[self.u64_idx].to_le_bytes();
       self.u64_idx += 1;
-      dest[written..written + 8].copy_from_slice(&v.to_le_bytes());
-      written += 8;
     }
-    while total - written >= 32 {
-      let block = self.f64_engine.next().to_array();
-      dest[written..written + 8].copy_from_slice(&block[0].to_le_bytes());
-      dest[written + 8..written + 16].copy_from_slice(&block[1].to_le_bytes());
-      dest[written + 16..written + 24].copy_from_slice(&block[2].to_le_bytes());
-      dest[written + 24..written + 32].copy_from_slice(&block[3].to_le_bytes());
-      written += 32;
+    // Past the buffered words, four words at a time are a fresh block, as four `next_u64` calls would draw.
+    let (blocks, words) = words.as_chunks_mut::<4>();
+    for block in blocks {
+      for (word, w) in block.iter_mut().zip(self.f64_engine.next().to_array()) {
+        *word = w.to_le_bytes();
+      }
     }
-    if written == total {
-      return Ok(());
+    for word in words {
+      *word = self.try_next_u64()?.to_le_bytes();
     }
-    self.u64_buf = self.f64_engine.next().to_array();
-    self.u64_idx = 0;
-    while total - written >= 8 {
-      let v = self.u64_buf[self.u64_idx];
-      self.u64_idx += 1;
-      dest[written..written + 8].copy_from_slice(&v.to_le_bytes());
-      written += 8;
-    }
-    if written < total {
-      let bytes = self.u64_buf[self.u64_idx].to_le_bytes();
-      let take = total - written;
-      dest[written..written + take].copy_from_slice(&bytes[..take]);
-      self.u64_idx += 1;
+    if !tail.is_empty() {
+      let n = tail.len();
+      tail.copy_from_slice(&self.try_next_u64()?.to_le_bytes()[..n]);
     }
     Ok(())
   }
