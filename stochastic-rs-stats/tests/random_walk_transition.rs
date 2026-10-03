@@ -2,7 +2,7 @@ use ndarray::array;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_stats::filtering::particle::gaussian_random_walk_transition;
 
-const PIN: [u64; 2] = [4607382133634470021, 4612166311110089933];
+const PIN: [u64; 2] = [4607775976925510098, 4610527332073300406];
 
 fn step(seed: u64) -> Vec<u64> {
   let transition = gaussian_random_walk_transition(array![0.1, 0.2]);

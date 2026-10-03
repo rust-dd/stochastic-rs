@@ -14,11 +14,10 @@ use std::fmt::Display;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
-use rand::Rng;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRng;
-use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::traits::SimdFloatExt;
@@ -261,19 +260,17 @@ where
   }
 }
 
-/// Convenience: a Gaussian random-walk transition with diagonal step variance,
-/// useful as the `transition` argument when the latent state follows a
-/// driftless random walk.
+/// A driftless Gaussian random-walk `transition`: component `j` steps by an `N(0, scales[j]^2)` draw
+/// from the filter's rng.
 pub fn gaussian_random_walk_transition(
   scales: Array1<f64>,
 ) -> impl Fn(ArrayView1<f64>, &mut SimdRng) -> Array1<f64> {
+  let laws = scales.mapv(|scale| SimdNormal::<f64>::new(0.0, scale));
   move |prev, rng| {
     let d = prev.len();
     let mut out = Array1::<f64>::zeros(d);
     for j in 0..d {
-      let mut dist =
-        SimdNormal::<f64>::new(0.0, scales[j]).seeded(&Deterministic::new(rng.next_u64()));
-      out[j] = prev[j] + dist.sample();
+      out[j] = prev[j] + laws[j].sample(rng);
     }
     out
   }
@@ -281,8 +278,8 @@ pub fn gaussian_random_walk_transition(
 
 #[cfg(test)]
 mod tests {
-  use rand::distr::Distribution;
   use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
