@@ -116,8 +116,9 @@ impl<T: Copy + Zero, const N: usize> Buffered<T, N> {
     }
   }
 
-  /// Pops one value, refilling the whole buffer through `refill` when it is empty.
-  #[inline]
+  /// Pops one value, refilling the whole buffer through `refill` when it is empty. Always inlined: once the
+  /// inlined refill makes it large, LLVM may outline it and charge a call to every draw.
+  #[inline(always)]
   pub fn pop(&mut self, refill: impl FnOnce(&mut [T])) -> T {
     if self.idx >= N {
       self.refill(refill);
