@@ -12,8 +12,10 @@ use wide::u32x8;
 use wide::u64x4;
 
 use super::next_global_seed;
-use super::xoshiro::F32_MAGIC;
-use super::xoshiro::F64_MAGIC;
+use super::xoshiro::F32_MAGIC_X8;
+use super::xoshiro::F32_ONE_X8;
+use super::xoshiro::F64_MAGIC_X4;
+use super::xoshiro::F64_ONE_X4;
 use super::xoshiro::Xoshiro128PP8;
 use super::xoshiro::Xoshiro256PP4;
 use super::xoshiro::splitmix64_next;
@@ -94,16 +96,14 @@ impl SimdRng {
   #[inline(always)]
   pub fn next_f64(&mut self) -> f64 {
     if self.f64_scalar_idx >= 8 {
-      let magic = u64x4::splat(F64_MAGIC);
-      let one = f64x4::splat(1.0);
       let buf_ptr = self.f64_scalar_buf.as_mut_ptr();
       unsafe {
-        let bits0 = (self.f64_engine.next() >> 12u32) | magic;
+        let bits0 = (self.f64_engine.next() >> 12u32) | F64_MAGIC_X4;
         let f0: f64x4 = core::mem::transmute::<u64x4, f64x4>(bits0);
-        core::ptr::write_unaligned(buf_ptr as *mut f64x4, f0 - one);
-        let bits1 = (self.f64_engine.next() >> 12u32) | magic;
+        core::ptr::write_unaligned(buf_ptr as *mut f64x4, f0 - F64_ONE_X4);
+        let bits1 = (self.f64_engine.next() >> 12u32) | F64_MAGIC_X4;
         let f1: f64x4 = core::mem::transmute::<u64x4, f64x4>(bits1);
-        core::ptr::write_unaligned(buf_ptr.add(4) as *mut f64x4, f1 - one);
+        core::ptr::write_unaligned(buf_ptr.add(4) as *mut f64x4, f1 - F64_ONE_X4);
       }
       self.f64_scalar_idx = 0;
     }
@@ -121,9 +121,9 @@ impl SimdRng {
     if self.f32_scalar_idx >= 8 {
       let buf_ptr = self.f32_scalar_buf.as_mut_ptr();
       unsafe {
-        let bits = (self.f32_engine.next() >> 9u32) | u32x8::splat(F32_MAGIC);
+        let bits = (self.f32_engine.next() >> 9u32) | F32_MAGIC_X8;
         let f: f32x8 = core::mem::transmute::<u32x8, f32x8>(bits);
-        core::ptr::write_unaligned(buf_ptr as *mut f32x8, f - f32x8::splat(1.0));
+        core::ptr::write_unaligned(buf_ptr as *mut f32x8, f - F32_ONE_X8);
       }
       self.f32_scalar_idx = 0;
     }

@@ -141,6 +141,13 @@ impl Xoshiro128PP8 {
 const F64_MAGIC: u64 = 0x3FF0_0000_0000_0000;
 /// IEEE-754 bit pattern of `1.0_f32`.
 const F32_MAGIC: u32 = 0x3F80_0000;
+
+// Built at compile time: a run-time `splat` of a constant lowers to `memset_pattern16` calls on Darwin.
+const F64_MAGIC_X4: u64x4 = u64x4::splat(F64_MAGIC);
+const F64_ONE_X4: f64x4 = f64x4::splat(1.0);
+const F32_MAGIC_X8: u32x8 = u32x8::splat(F32_MAGIC);
+const F32_ONE_X8: f32x8 = f32x8::splat(1.0);
+
 const SEED_GAMMA: u64 = 0x9e37_79b9_7f4a_7c15;
 
 #[inline]
@@ -241,19 +248,17 @@ impl SimdRngDual {
   /// [`crate::simd_rng::SimdRng::fill_uniform_f64`]).
   #[inline]
   pub fn fill_uniform_f64(&mut self, out: &mut [f64]) {
-    let magic = u64x4::splat(F64_MAGIC);
-    let one = f64x4::splat(1.0);
     let len = out.len();
     let ptr = out.as_mut_ptr();
 
     let pair_chunks = len / 8;
     for i in 0..pair_chunks {
-      let bits_a = (self.f64_a.next() >> 12u32) | magic;
-      let bits_b = (self.f64_b.next() >> 12u32) | magic;
+      let bits_a = (self.f64_a.next() >> 12u32) | F64_MAGIC_X4;
+      let bits_b = (self.f64_b.next() >> 12u32) | F64_MAGIC_X4;
       let fa: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits_a) };
       let fb: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits_b) };
-      let ra = fa - one;
-      let rb = fb - one;
+      let ra = fa - F64_ONE_X4;
+      let rb = fb - F64_ONE_X4;
       unsafe {
         core::ptr::write_unaligned(ptr.add(i * 8) as *mut f64x4, ra);
         core::ptr::write_unaligned(ptr.add(i * 8 + 4) as *mut f64x4, rb);
@@ -262,17 +267,17 @@ impl SimdRngDual {
 
     let mut written = pair_chunks * 8;
     while written + 4 <= len {
-      let bits = (self.f64_a.next() >> 12u32) | magic;
+      let bits = (self.f64_a.next() >> 12u32) | F64_MAGIC_X4;
       let f: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits) };
       unsafe {
-        core::ptr::write_unaligned(ptr.add(written) as *mut f64x4, f - one);
+        core::ptr::write_unaligned(ptr.add(written) as *mut f64x4, f - F64_ONE_X4);
       }
       written += 4;
     }
     if written < len {
-      let bits = (self.f64_a.next() >> 12u32) | magic;
+      let bits = (self.f64_a.next() >> 12u32) | F64_MAGIC_X4;
       let f: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits) };
-      let arr: [f64; 4] = (f - one).to_array();
+      let arr: [f64; 4] = (f - F64_ONE_X4).to_array();
       let tail = unsafe { core::slice::from_raw_parts_mut(ptr.add(written), len - written) };
       tail.copy_from_slice(&arr[..len - written]);
     }
@@ -283,19 +288,17 @@ impl SimdRngDual {
   /// back to a scalar copy.
   #[inline]
   pub fn fill_uniform_f32(&mut self, out: &mut [f32]) {
-    let magic = u32x8::splat(F32_MAGIC);
-    let one = f32x8::splat(1.0);
     let len = out.len();
     let ptr = out.as_mut_ptr();
 
     let pair_chunks = len / 16;
     for i in 0..pair_chunks {
-      let bits_a = (self.f32_a.next() >> 9u32) | magic;
-      let bits_b = (self.f32_b.next() >> 9u32) | magic;
+      let bits_a = (self.f32_a.next() >> 9u32) | F32_MAGIC_X8;
+      let bits_b = (self.f32_b.next() >> 9u32) | F32_MAGIC_X8;
       let fa: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits_a) };
       let fb: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits_b) };
-      let ra = fa - one;
-      let rb = fb - one;
+      let ra = fa - F32_ONE_X8;
+      let rb = fb - F32_ONE_X8;
       unsafe {
         core::ptr::write_unaligned(ptr.add(i * 16) as *mut f32x8, ra);
         core::ptr::write_unaligned(ptr.add(i * 16 + 8) as *mut f32x8, rb);
@@ -304,17 +307,17 @@ impl SimdRngDual {
 
     let mut written = pair_chunks * 16;
     while written + 8 <= len {
-      let bits = (self.f32_a.next() >> 9u32) | magic;
+      let bits = (self.f32_a.next() >> 9u32) | F32_MAGIC_X8;
       let f: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits) };
       unsafe {
-        core::ptr::write_unaligned(ptr.add(written) as *mut f32x8, f - one);
+        core::ptr::write_unaligned(ptr.add(written) as *mut f32x8, f - F32_ONE_X8);
       }
       written += 8;
     }
     if written < len {
-      let bits = (self.f32_a.next() >> 9u32) | magic;
+      let bits = (self.f32_a.next() >> 9u32) | F32_MAGIC_X8;
       let f: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits) };
-      let arr: [f32; 8] = (f - one).to_array();
+      let arr: [f32; 8] = (f - F32_ONE_X8).to_array();
       let tail = unsafe { core::slice::from_raw_parts_mut(ptr.add(written), len - written) };
       tail.copy_from_slice(&arr[..len - written]);
     }
@@ -326,16 +329,14 @@ impl SimdRngDual {
   #[inline(always)]
   pub fn next_f64(&mut self) -> f64 {
     if self.f64_scalar_idx >= 8 {
-      let magic = u64x4::splat(F64_MAGIC);
-      let one = f64x4::splat(1.0);
       let buf_ptr = self.f64_scalar_buf.as_mut_ptr();
       unsafe {
-        let bits_a = (self.f64_a.next() >> 12u32) | magic;
-        let bits_b = (self.f64_b.next() >> 12u32) | magic;
+        let bits_a = (self.f64_a.next() >> 12u32) | F64_MAGIC_X4;
+        let bits_b = (self.f64_b.next() >> 12u32) | F64_MAGIC_X4;
         let fa: f64x4 = core::mem::transmute::<u64x4, f64x4>(bits_a);
         let fb: f64x4 = core::mem::transmute::<u64x4, f64x4>(bits_b);
-        core::ptr::write_unaligned(buf_ptr as *mut f64x4, fa - one);
-        core::ptr::write_unaligned(buf_ptr.add(4) as *mut f64x4, fb - one);
+        core::ptr::write_unaligned(buf_ptr as *mut f64x4, fa - F64_ONE_X4);
+        core::ptr::write_unaligned(buf_ptr.add(4) as *mut f64x4, fb - F64_ONE_X4);
       }
       self.f64_scalar_idx = 0;
     }
@@ -411,9 +412,9 @@ impl crate::simd_rng::SimdRngExt for SimdRngDual {
   fn next_f32(&mut self) -> f32 {
     // Single-sample f32 path: pull from engine A, magic-number to [0, 1),
     // discard B's lanes (the dual-stream payoff lives in the bulk fills).
-    let bits = (self.f32_a.next() >> 9u32) | u32x8::splat(F32_MAGIC);
+    let bits = (self.f32_a.next() >> 9u32) | F32_MAGIC_X8;
     let f: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits) };
-    let arr: [f32; 8] = (f - f32x8::splat(1.0)).to_array();
+    let arr: [f32; 8] = (f - F32_ONE_X8).to_array();
     arr[0]
   }
 
