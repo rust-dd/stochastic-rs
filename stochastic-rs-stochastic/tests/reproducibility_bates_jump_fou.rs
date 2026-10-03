@@ -27,7 +27,7 @@
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::jump::bates::Bates1996;
 use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
 use stochastic_rs_stochastic::traits::ProcessExt;
@@ -42,7 +42,7 @@ const LAMBDA: f64 = 50.0;
 /// objects) can only come from the jump increments themselves, not a
 /// residual deterministic drift shift — the same isolation technique the
 /// task's own RED-phase measurement used (see the task report).
-fn bates_with_jumps(seed: u64) -> Bates1996<f64, ScalarNormal<f64>, Deterministic> {
+fn bates_with_jumps(seed: u64) -> Bates1996<f64, SimdNormal<f64>, Deterministic> {
   Bates1996::new(
     Some(0.05),
     None,
@@ -54,7 +54,7 @@ fn bates_with_jumps(seed: u64) -> Bates1996<f64, ScalarNormal<f64>, Deterministi
     1.5,
     0.3,
     -0.6,
-    ScalarNormal::new(0.0, 0.05),
+    SimdNormal::new(0.0, 0.05),
     N,
     Some(100.0),
     Some(0.04),
@@ -64,7 +64,7 @@ fn bates_with_jumps(seed: u64) -> Bates1996<f64, ScalarNormal<f64>, Deterministi
   )
 }
 
-fn bates_lambda(lambda: f64, seed: u64) -> Bates1996<f64, ScalarNormal<f64>, Deterministic> {
+fn bates_lambda(lambda: f64, seed: u64) -> Bates1996<f64, SimdNormal<f64>, Deterministic> {
   Bates1996::new(
     Some(0.05),
     None,
@@ -76,7 +76,7 @@ fn bates_lambda(lambda: f64, seed: u64) -> Bates1996<f64, ScalarNormal<f64>, Det
     1.5,
     0.3,
     -0.6,
-    ScalarNormal::new(0.0, 0.05),
+    SimdNormal::new(0.0, 0.05),
     N,
     Some(100.0),
     Some(0.04),
@@ -86,14 +86,14 @@ fn bates_lambda(lambda: f64, seed: u64) -> Bates1996<f64, ScalarNormal<f64>, Det
   )
 }
 
-fn jump_fou_with_jumps(seed: u64) -> JumpFou<f64, ScalarNormal<f64>, Deterministic> {
+fn jump_fou_with_jumps(seed: u64) -> JumpFou<f64, SimdNormal<f64>, Deterministic> {
   JumpFou::new(
     0.65,
     1.5,
     0.0,
     0.2,
     LAMBDA,
-    ScalarNormal::new(0.0, 0.05),
+    SimdNormal::new(0.0, 0.05),
     N,
     Some(0.0),
     Some(1.0),
@@ -101,14 +101,14 @@ fn jump_fou_with_jumps(seed: u64) -> JumpFou<f64, ScalarNormal<f64>, Determinist
   )
 }
 
-fn jump_fou_lambda(lambda: f64, seed: u64) -> JumpFou<f64, ScalarNormal<f64>, Deterministic> {
+fn jump_fou_lambda(lambda: f64, seed: u64) -> JumpFou<f64, SimdNormal<f64>, Deterministic> {
   JumpFou::new(
     0.65,
     1.5,
     0.0,
     0.2,
     lambda,
-    ScalarNormal::new(0.0, 0.05),
+    SimdNormal::new(0.0, 0.05),
     N,
     Some(0.0),
     Some(1.0),

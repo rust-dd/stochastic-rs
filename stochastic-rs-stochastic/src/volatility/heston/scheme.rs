@@ -145,7 +145,7 @@ impl HestonScheme for AndersenQe {
 
     // Independent noise sub-streams: normals (Z_V for the quadratic branch and
     // Z for the asset) via the buffered SimdNormal, a uniform stream for the
-    // exponential branch. Built here because SimdNormal is not `Sync`. `seed`
+    // exponential branch. `seed`
     // is `HestonSampler`'s own owned basis (already chunk-decorrelated by
     // `sampler()`'s one derive), so `normal` consumes it directly; `urng`
     // still derives *from* it — a second, within-chunk hop that keeps the

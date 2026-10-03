@@ -210,7 +210,6 @@ pub mod normal;
 pub mod normal_inverse_gauss;
 pub mod pareto;
 pub mod poisson;
-pub mod scalar;
 pub mod skellam;
 pub mod skew_t;
 pub mod studentt;

@@ -43,10 +43,10 @@ use crate::traits::ProcessExt;
 ///
 /// ```compile_fail,E0616
 /// use stochastic_rs_core::simd_rng::Unseeded;
-/// use stochastic_rs_distributions::scalar::ScalarNormal;
+/// use stochastic_rs_distributions::normal::SimdNormal;
 /// use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
-/// let times = ScalarNormal::<f64>::new(0.5, 0.01);
-/// let sizes = ScalarNormal::<f64>::new(0.0, 0.1);
+/// let times = SimdNormal::<f64>::new(0.5, 0.01);
+/// let sizes = SimdNormal::<f64>::new(0.0, 0.1);
 /// let mut p = JumpFOUCustom::new(0.7, 1.0, 0.0, 0.2, 10, None, None, times, sizes, Unseeded);
 /// p.n = 1000;
 /// ```

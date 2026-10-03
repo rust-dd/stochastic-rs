@@ -1,7 +1,7 @@
 //! Each cache-feeding setter alone, so a later setter's rebuild in a chain cannot hide one that
 //! forgot its own.
 
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::ProcessExt;
 use stochastic_rs_stochastic::diffusion::cfou::Cfou;
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
@@ -161,7 +161,7 @@ fn jump_fou_custom_cache_setters_match_fresh_construction() {
       n,
       Some(0.0),
       t,
-      ScalarNormal::new(0.5, 0.01),
+      SimdNormal::new(0.5, 0.01),
       jump_law(0.1),
       seed(7),
     )

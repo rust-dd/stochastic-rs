@@ -6,8 +6,8 @@ use ndarray::Array1;
 use ndarray::Array3;
 use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_distributions::scalar::ScalarExp;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::traits::Fn1D;
 use stochastic_rs_stochastic::correlation::heston_stoch_corr::HestonStochCorr;
 use stochastic_rs_stochastic::diffusion::fouque::FouqueOU2D;
@@ -1095,7 +1095,7 @@ fn bates_1996_agrees_with_the_cpu_law() {
         2.0,
         0.3,
         -0.7,
-        ScalarNormal::<f32>::new(-0.02, 0.05),
+        SimdNormal::<f32>::new(-0.02, 0.05),
         253,
         Some(100.0),
         Some(0.04),
@@ -1166,7 +1166,7 @@ fn bates_1996_reflection_moves_the_boundary() {
         2.0,
         0.6,
         -0.5,
-        ScalarNormal::<f32>::new(-0.02, 0.05),
+        SimdNormal::<f32>::new(-0.02, 0.05),
         253,
         Some(100.0),
         Some(0.04),
@@ -1211,7 +1211,7 @@ fn bates_1996_compounds_several_jumps_a_step() {
       2.0,
       0.3,
       -0.5,
-      ScalarExp::<f32>::new(5.0),
+      SimdExp::<f32>::new(5.0),
       26,
       Some(100.0),
       Some(0.04),

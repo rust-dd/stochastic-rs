@@ -188,7 +188,7 @@ use ndarray::s;
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::noise::fgn::Fgn;
 use crate::device::Cpu;
@@ -356,15 +356,10 @@ where
     }
   }
 
-  /// Fills `out` with one Brownian increment per dimension, i.i.d.
-  /// $\mathcal{N}(0, \Delta t)$, drawn from `rng`.
-  ///
-  /// The draw goes through [`ScalarNormal`] — the workspace normal that
-  /// inverts its CDF against the *caller's* generator — rather than a
-  /// `Simd*` distribution, which owns a stream of its own and would leave
-  /// `rng` unused.
+  /// Fills `out` with i.i.d. $\mathcal{N}(0, \Delta t)$ Brownian increments, one per dimension.
+  /// The draw goes through `SimdNormal`'s scalar `Distribution` impl, which draws from the *caller's* generator.
   pub(super) fn fill_gauss_increment(&self, out: &mut [T], sqrt_dt: T, rng: &mut impl Rng) {
-    let standard = ScalarNormal::new(T::zero(), T::one());
+    let standard = SimdNormal::new(T::zero(), T::one());
     for x in out.iter_mut() {
       *x = standard.sample(rng) * sqrt_dt;
     }

@@ -37,8 +37,8 @@ use crate::traits::ProcessExt;
 /// this crate. This model's own definition (module doc above) is a
 /// double-exponential log-jump `log Y ~ p·Exp(η₁) − (1−p)·Exp(η₂)`, and the
 /// crate does not yet ship an asymmetric-double-exponential distribution
-/// type (`stochastic_rs_distributions::scalar` has `ScalarNormal` /
-/// `ScalarExp`, not a signed double-exponential) — a genuine gap, not an
+/// type (`stochastic_rs_distributions` has `SimdNormal` / `SimdExp`, not a
+/// signed double-exponential) — a genuine gap, not an
 /// oversight of this note. A Gaussian `D` does not approximate that law in
 /// the tails, which is the entire reason Kou (2002) exists as a distinct
 /// model from Merton (1976), so shipping a `Default` here would silently

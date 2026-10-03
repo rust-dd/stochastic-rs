@@ -1,5 +1,5 @@
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::ProcessExt;
 use stochastic_rs_stochastic::diffusion::cfou::Cfou;
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
@@ -350,7 +350,7 @@ fn jump_fou_custom_setters_match_fresh_construction() {
     16,
     Some(0.1),
     Some(2.0),
-    ScalarNormal::new(0.4, 0.01),
+    SimdNormal::new(0.4, 0.01),
     jump_law(0.5),
     seed(1),
   )
@@ -361,7 +361,7 @@ fn jump_fou_custom_setters_match_fresh_construction() {
   .with_steps(64)
   .with_x0(Some(0.0))
   .with_horizon(Some(1.0))
-  .with_jump_times(ScalarNormal::new(0.5, 0.01))
+  .with_jump_times(SimdNormal::new(0.5, 0.01))
   .with_jump_sizes(jump_law(0.1))
   .with_seed(seed(7));
   let fresh = JumpFOUCustom::<f64, _, _>::new(
@@ -372,7 +372,7 @@ fn jump_fou_custom_setters_match_fresh_construction() {
     64,
     Some(0.0),
     Some(1.0),
-    ScalarNormal::new(0.5, 0.01),
+    SimdNormal::new(0.5, 0.01),
     jump_law(0.1),
     seed(7),
   );

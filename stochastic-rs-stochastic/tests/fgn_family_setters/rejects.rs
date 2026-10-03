@@ -1,4 +1,4 @@
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::diffusion::cfou::Cfou;
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
 use stochastic_rs_stochastic::diffusion::fgbm::Fgbm;
@@ -63,7 +63,7 @@ fn cfou() -> Cfou<f64> {
   Cfou::new(0.7, 1.0, 0.5, 0.2, 16, None, None, None, Default::default())
 }
 
-fn jump_fou() -> JumpFou<f64, ScalarNormal<f64>> {
+fn jump_fou() -> JumpFou<f64, SimdNormal<f64>> {
   JumpFou::new(
     0.7,
     1.0,
@@ -78,7 +78,7 @@ fn jump_fou() -> JumpFou<f64, ScalarNormal<f64>> {
   )
 }
 
-fn jump_fou_custom() -> JumpFOUCustom<f64, ScalarNormal<f64>> {
+fn jump_fou_custom() -> JumpFOUCustom<f64, SimdNormal<f64>> {
   JumpFOUCustom::new(
     0.7,
     1.0,
@@ -87,7 +87,7 @@ fn jump_fou_custom() -> JumpFOUCustom<f64, ScalarNormal<f64>> {
     16,
     None,
     None,
-    ScalarNormal::new(0.5, 0.01),
+    SimdNormal::new(0.5, 0.01),
     jump_law(0.1),
     Default::default(),
   )

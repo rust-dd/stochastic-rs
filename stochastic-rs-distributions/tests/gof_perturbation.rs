@@ -1,78 +1,21 @@
-//! Two things live in this file — see `tests/gof_support/mod.rs` for the
-//! full design rationale, citations, and alpha:
-//!
-//! 1. `ScalarNormal` / `ScalarExp` (`src/scalar.rs`) have no
-//!    `DistributionExt` of their own — they are stateless, sample from
-//!    the *caller's* `Rng` (unlike every `Simd*` type), and exist purely
-//!    to satisfy the `Send + Sync` bound `stochastic-rs-stochastic`'s
-//!    jump-size slot needs. Their own doc comments claim they are
-//!    "exact" draws from the same Normal / Exponential family
-//!    `SimdNormal` / `SimdExp` implement, so this suite tests them
-//!    against *that* sibling's already-validated `cdf` — a deliberately
-//!    named exception to "test against your own cdf" (there is no
-//!    "own" cdf here), not a silent substitution.
-//!
-//! 2. A **deliberate-perturbation** demonstration: this suite's own
-//!    machinery is proven to have power, not merely to never fire, by
-//!    feeding each test a sampler tested against a *wrong* reference
-//!    (a shifted Normal location; a mismatched Poisson rate) and
-//!    checking every one of the three pinned seeds rejects — the
-//!    mirror image of the "worst-of-three must still accept" mandate
-//!    used everywhere else in this suite: here, the *most generous*
-//!    (highest) p-value across the three seeds must still clear
-//!    rejection, so the demonstration itself isn't a lucky seed.
+//! Deliberate-perturbation demonstrations: the KS and chi-square harnesses reject a visibly wrong reference in
+//! every pinned seed (design, citations and alpha in `tests/gof_support/mod.rs`).
 
 mod gof_support;
 
 use ndarray::ArrayView1;
-use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_distributions::DistributionExt;
 use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
-use stochastic_rs_distributions::scalar::ScalarExp;
-use stochastic_rs_distributions::scalar::ScalarNormal;
 use stochastic_rs_stats::goodness_of_fit::chi_square::ChiSquareGofConfig;
 use stochastic_rs_stats::goodness_of_fit::chi_square::bin_observed;
 use stochastic_rs_stats::goodness_of_fit::chi_square::chi_square_gof_test;
 use stochastic_rs_stats::goodness_of_fit::chi_square::pool_integer_bins;
 use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::KolmogorovSmirnovConfig;
 use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::kolmogorov_smirnov_test;
-
-const N: usize = 20_000;
-
-#[test]
-fn scalar_normal_matches_simd_normal_cdf() {
-  let (mean, std) = (-0.75, 1.35);
-  gof_support::assert_ks_accepts(N, |seed| {
-    let dist = ScalarNormal::<f64>::new(mean, std);
-    let mut rng = SimdRng::from_seed(seed);
-    let xs = (0..N).map(|_| dist.sample(&mut rng)).collect::<Vec<_>>();
-    let reference = SimdNormal::<f64>::new(mean, std);
-    (
-      xs,
-      Box::new(move |x| reference.cdf(x)) as Box<dyn Fn(f64) -> f64>,
-    )
-  });
-}
-
-#[test]
-fn scalar_exp_matches_simd_exp_cdf() {
-  let lambda = 1.8;
-  gof_support::assert_ks_accepts(N, |seed| {
-    let dist = ScalarExp::<f64>::new(lambda);
-    let mut rng = SimdRng::from_seed(seed);
-    let xs = (0..N).map(|_| dist.sample(&mut rng)).collect::<Vec<_>>();
-    let reference = stochastic_rs_distributions::exp::SimdExp::<f64>::new(lambda);
-    (
-      xs,
-      Box::new(move |x| reference.cdf(x)) as Box<dyn Fn(f64) -> f64>,
-    )
-  });
-}
 
 /// A `SimdNormal(0, 1)` sampler tested against a *deliberately shifted*
 /// `SimdNormal(0.15, 1)` reference must be rejected — every one of the

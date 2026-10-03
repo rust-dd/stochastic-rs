@@ -14,9 +14,9 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
-use stochastic_rs_distributions::scalar::ScalarExp;
-use stochastic_rs_distributions::scalar::ScalarNormal;
 
 use super::poisson::Poisson;
 use crate::device::Cpu;
@@ -63,43 +63,32 @@ where
 {
 }
 
-/// The Euler engine's description of `distribution`, when it is one of the
-/// size laws the device kernels draw: the scalar normal ([`ScalarNormal`])
-/// and the scalar exponential ([`ScalarExp`]), the latter as the
-/// double-exponential law that only ever jumps up. The SIMD laws are not
-/// among them: they hold thread-local buffers and are not `Sync`, so a
-/// process cannot carry them as its `D`. The type is inspected at runtime
-/// through [`Any`] — which is why a process on the engine asks `'static` of
-/// its `D` — and that is what lets it stay generic over `D: Distribution<T>`
-/// on the host and still hand a recognised law to the device; a closure, a
-/// Python callable or any other law returns `None`, and the process samples
-/// on the host.
+/// The Euler engine's description of `distribution` when it is a law the kernels draw: `SimdNormal`,
+/// or `SimdExp` as the double-exponential law that only jumps up; any other law stays on the host.
 pub(crate) fn device_jump_sizes<T: FloatExt, D: Any>(
   distribution: &D,
 ) -> Option<crate::euler::JumpSizes<T>> {
   let any: &dyn Any = distribution;
-  if let Some(normal) = any.downcast_ref::<ScalarNormal<T>>() {
+  if let Some(normal) = any.downcast_ref::<SimdNormal<T>>() {
     return Some(crate::euler::JumpSizes::Normal {
       mean: normal.mean(),
       sd: normal.std_dev(),
     });
   }
   device_arrival_rate(distribution).map(|rate| crate::euler::JumpSizes::DoubleExponential {
-    // Every draw takes the up branch: the kernels compare a uniform in
-    // `[0, 1)` against `p_up`, and `2` — not `1`, which a uniform rounded up
-    // to `1.0` in single precision would fail — is "always".
+    // Every draw takes the up branch: the kernels compare a uniform in `[0, 1)` against `p_up`, and `2`
+    // (not `1`, which a uniform rounded up to `1.0` in f32 would fail) means "always".
     p_up: T::from_f64_fast(2.0),
     eta_up: rate,
     eta_down: rate,
   })
 }
 
-/// The rate of `distribution` when it is the scalar exponential law
-/// [`device_jump_sizes`] recognises: what makes a user-supplied inter-arrival
-/// law a Poisson arrival stream the kernels draw. `None` for any other type.
+/// The rate of `distribution` when it is the `SimdExp` law [`device_jump_sizes`] recognises: what makes an
+/// inter-arrival law a Poisson arrival stream the kernels draw.
 pub(crate) fn device_arrival_rate<T: FloatExt, D: Any>(distribution: &D) -> Option<T> {
   (distribution as &dyn Any)
-    .downcast_ref::<ScalarExp<T>>()
+    .downcast_ref::<SimdExp<T>>()
     .map(|exp| exp.lambda())
 }
 

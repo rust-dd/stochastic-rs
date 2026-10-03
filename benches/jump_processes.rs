@@ -5,8 +5,8 @@ use criterion::BenchmarkId;
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
-use stochastic_rs::distributions::scalar::ScalarExp;
-use stochastic_rs::distributions::scalar::ScalarNormal;
+use stochastic_rs::distributions::exp::SimdExp;
+use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::jump::kou::Kou;
 use stochastic_rs::stochastic::jump::levy_diffusion::LevyDiffusion;
@@ -29,7 +29,7 @@ fn bench_jump_processes(c: &mut Criterion) {
       0.2,
       LAMBDA,
       0.0,
-      ScalarNormal::new(0.0, 0.1),
+      SimdNormal::new(0.0, 0.1),
       n,
       Some(0.0),
       Some(1.0),
@@ -44,7 +44,7 @@ fn bench_jump_processes(c: &mut Criterion) {
       0.2,
       LAMBDA,
       0.0,
-      ScalarNormal::new(0.0, 0.12),
+      SimdNormal::new(0.0, 0.12),
       n,
       Some(0.0),
       Some(1.0),
@@ -59,7 +59,7 @@ fn bench_jump_processes(c: &mut Criterion) {
       0.2,
       LAMBDA,
       0.0,
-      ScalarExp::new(10.0),
+      SimdExp::new(10.0),
       n,
       Some(0.0),
       Some(1.0),
@@ -73,7 +73,7 @@ fn bench_jump_processes(c: &mut Criterion) {
       0.01,
       0.2,
       LAMBDA,
-      ScalarNormal::new(0.0, 0.08),
+      SimdNormal::new(0.0, 0.08),
       n,
       Some(0.0),
       Some(1.0),

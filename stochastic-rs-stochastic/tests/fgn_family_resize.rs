@@ -1,6 +1,6 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::ProcessExt;
 use stochastic_rs_stochastic::diffusion::cfou::Cfou;
 use stochastic_rs_stochastic::diffusion::fcir::Fcir;
@@ -113,7 +113,7 @@ fn cfou_resizes_through_with_steps() {
 
 #[test]
 fn jump_fou_resizes_through_with_steps() {
-  let law = ScalarNormal::<f64>::new(0.0, 0.1);
+  let law = SimdNormal::<f64>::new(0.0, 0.1);
   let p = JumpFou::<f64, _, _>::new(
     0.7,
     1.0,
@@ -132,8 +132,8 @@ fn jump_fou_resizes_through_with_steps() {
 
 #[test]
 fn jump_fou_custom_resizes_through_with_steps() {
-  let times = ScalarNormal::<f64>::new(0.5, 0.01);
-  let sizes = ScalarNormal::<f64>::new(0.0, 0.1);
+  let times = SimdNormal::<f64>::new(0.5, 0.01);
+  let sizes = SimdNormal::<f64>::new(0.0, 0.1);
   let p = JumpFOUCustom::<f64, _, _>::new(
     0.7,
     1.0,

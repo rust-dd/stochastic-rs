@@ -9,7 +9,7 @@
 //! type-specific wrinkle documented below. `Bates1996` caches a
 //! correlated-Gaussian generator (`cgns`) keyed on `(rho, n, t)`, exactly
 //! like `BatesSvj`/`Hkde`; its `cpoisson: CompoundPoisson<T, D, S>` field has
-//! no `PartialEq` (nor does `D = ScalarNormal<f64>`), so it is excluded from
+//! no `PartialEq`, so it is excluded from
 //! the generic field-equality snapshot and instead checked via
 //! `Poisson::lambda`, a directly comparable sub-field.
 //!
@@ -74,7 +74,7 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::jump::bates::Bates1996;
 use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs_stochastic::process::poisson::Poisson;
@@ -84,7 +84,7 @@ fn finite2(out: &[Array1<f64>; 2]) -> bool {
   out.iter().all(|a| a.iter().all(|v| v.is_finite()))
 }
 
-fn bates_base_seeded<S: SeedExt>(seed: S) -> Bates1996<f64, ScalarNormal<f64>, S> {
+fn bates_base_seeded<S: SeedExt>(seed: S) -> Bates1996<f64, SimdNormal<f64>, S> {
   Bates1996::new(
     Some(0.05),
     None,
@@ -96,7 +96,7 @@ fn bates_base_seeded<S: SeedExt>(seed: S) -> Bates1996<f64, ScalarNormal<f64>, S
     1.5,
     0.3,
     -0.7,
-    ScalarNormal::new(0.0, 1.0),
+    SimdNormal::new(0.0, 1.0),
     256,
     Some(100.0),
     Some(0.04),
@@ -106,13 +106,13 @@ fn bates_base_seeded<S: SeedExt>(seed: S) -> Bates1996<f64, ScalarNormal<f64>, S
   )
 }
 
-fn bates_base() -> Bates1996<f64, ScalarNormal<f64>> {
+fn bates_base() -> Bates1996<f64, SimdNormal<f64>> {
   bates_base_seeded(Unseeded)
 }
 
 // A named struct, not a tuple: `std` only implements `Debug`/`PartialEq` for
-// tuples up to arity 12. `cpoisson` is deliberately excluded (neither
-// `CompoundPoisson` nor `ScalarNormal` implement `PartialEq`); it is
+// tuples up to arity 12. `cpoisson` is deliberately excluded
+// (`CompoundPoisson` does not implement `PartialEq`); it is
 // checked behaviorally instead, in `bates_with_cpoisson_round_trip...`.
 #[derive(Debug, PartialEq)]
 struct BatesFields {
@@ -133,7 +133,7 @@ struct BatesFields {
   use_sym: Option<bool>,
 }
 
-fn bates_fields<S: SeedExt>(x: &Bates1996<f64, ScalarNormal<f64>, S>) -> BatesFields {
+fn bates_fields<S: SeedExt>(x: &Bates1996<f64, SimdNormal<f64>, S>) -> BatesFields {
   BatesFields {
     mu: x.mu,
     b: x.b,
@@ -212,7 +212,7 @@ fn bates_with_mu_rejects_when_no_drift_spec_remains() {
 fn bates_with_cpoisson_round_trip_and_reaches_sampler() {
   let wide_cpoisson = || {
     CompoundPoisson::new(
-      ScalarNormal::new(0.0, 5.0),
+      SimdNormal::new(0.0, 5.0),
       Poisson::new(4.0, Some(256), Some(1.0), Unseeded),
       Unseeded,
     )
@@ -278,7 +278,7 @@ fn bates_with_cpoisson_changes_sampled_intensity() {
       1.5,
       0.3,
       -0.7,
-      ScalarNormal::new(0.0, 1.0),
+      SimdNormal::new(0.0, 1.0),
       256,
       Some(100.0),
       Some(0.04),
@@ -289,7 +289,7 @@ fn bates_with_cpoisson_changes_sampled_intensity() {
   };
 
   let swapped_driver = CompoundPoisson::new(
-    ScalarNormal::new(0.0, 1.0),
+    SimdNormal::new(0.0, 1.0),
     Poisson::new(swapped_lambda, Some(256), Some(1.0), Unseeded),
     Deterministic::new(seed),
   );
@@ -339,7 +339,7 @@ fn bates_with_lambda_syncs_cpoisson_and_changes_sampled_path() {
       1.5,
       0.3,
       -0.7,
-      ScalarNormal::new(0.0, 1.0),
+      SimdNormal::new(0.0, 1.0),
       256,
       Some(100.0),
       Some(0.04),
@@ -366,7 +366,7 @@ fn bates_with_lambda_syncs_cpoisson_and_changes_sampled_path() {
     1.5,
     0.3,
     -0.7,
-    ScalarNormal::new(0.0, 1.0),
+    SimdNormal::new(0.0, 1.0),
     256,
     Some(100.0),
     Some(0.04),
@@ -450,7 +450,7 @@ fn bates_with_horizon_round_trip() {
 /// *no RNG draw at all* — confirmed by reading that function before relying
 /// on it here. What remains is `s[i] = s[i-1]*(1 + drift*dt)`, computed
 /// identically regardless of `Unseeded`'s actual entropy.
-fn degenerate_bates<S: SeedExt>(t: Option<f64>, seed: S) -> Bates1996<f64, ScalarNormal<f64>, S> {
+fn degenerate_bates<S: SeedExt>(t: Option<f64>, seed: S) -> Bates1996<f64, SimdNormal<f64>, S> {
   Bates1996::new(
     Some(0.05),
     None,
@@ -462,7 +462,7 @@ fn degenerate_bates<S: SeedExt>(t: Option<f64>, seed: S) -> Bates1996<f64, Scala
     0.0,
     0.0,
     0.0, // rho: irrelevant here, the noise it would scale is already zero
-    ScalarNormal::new(0.0, 1.0),
+    SimdNormal::new(0.0, 1.0),
     257,
     Some(100.0),
     Some(0.0), // v0 = 0

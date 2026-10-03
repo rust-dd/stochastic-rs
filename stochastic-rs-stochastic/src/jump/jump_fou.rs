@@ -67,9 +67,9 @@ use crate::traits::ProcessExt;
 ///
 /// ```compile_fail,E0616
 /// use stochastic_rs_core::simd_rng::Unseeded;
-/// use stochastic_rs_distributions::scalar::ScalarNormal;
+/// use stochastic_rs_distributions::normal::SimdNormal;
 /// use stochastic_rs_stochastic::jump::jump_fou::JumpFou;
-/// let law = ScalarNormal::<f64>::new(0.0, 0.1);
+/// let law = SimdNormal::<f64>::new(0.0, 0.1);
 /// let mut p = JumpFou::new(0.7, 1.0, 0.0, 0.2, 2.0, law, 10, None, None, Unseeded);
 /// p.n = 1000;
 /// ```
