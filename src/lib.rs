@@ -4,6 +4,12 @@
 #![allow(clippy::too_many_arguments)]
 //#![warn(missing_docs)]
 
+// Types of these crates appear in the public API; the re-exports name the versions callers must match.
+pub use chrono;
+pub use ndarray;
+pub use num_complex;
+pub use num_traits;
+pub use rand;
 #[cfg(feature = "ai")]
 pub use stochastic_rs_ai as ai;
 pub use stochastic_rs_copulas as copulas;

@@ -21,7 +21,8 @@ stochastic-rs/                        (workspace root + umbrella)
 
 The umbrella crate `stochastic-rs` keeps the existing public API
 (`stochastic_rs::stochastic::diffusion::gbm::GBM`, etc.) — sub-crate split is
-transparent to users.
+transparent to users. It also re-exports `chrono`, `ndarray`, `num_complex`,
+`num_traits` and `rand`, the third-party crates whose types appear in that API.
 
 ## Build & test
 

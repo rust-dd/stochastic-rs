@@ -64,6 +64,15 @@ stochastic-rs-core (simd_rng)
 Default build (`cargo build`) is feature-light and links no GPU, no BLAS,
 and no Python. Pick features explicitly for the workload at hand.
 
+## Public dependencies
+
+Types of five third-party crates appear in the public API, so the umbrella
+re-exports them: `stochastic_rs::ndarray`, `stochastic_rs::num_complex`,
+`stochastic_rs::num_traits`, `stochastic_rs::rand` and `stochastic_rs::chrono`.
+Use these paths, or depend on the same version, when passing arrays, complex
+numbers, dates or RNGs across the API; a major release of any of them is a
+major release of `stochastic-rs`.
+
 ## SIMD support
 
 Numerical hot paths (FGN Davies-Harte, all `Simd*` distributions,

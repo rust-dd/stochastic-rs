@@ -70,6 +70,29 @@ for lean builds.
 The `ai` feature and the `stochastic-rs-ai` crate are experimental and outside the
 stability promise.
 
+### Public dependencies
+
+Types of five third-party crates appear in the public API, so the umbrella
+re-exports them: `stochastic_rs::ndarray`, `stochastic_rs::num_complex`,
+`stochastic_rs::num_traits`, `stochastic_rs::rand` and `stochastic_rs::chrono`.
+Use these paths, or depend on the same version, when passing arrays, complex
+numbers, dates or RNGs across the API; a major release of any of them is a
+major release of `stochastic-rs`.
+
+```rust
+use stochastic_rs::ndarray::Array1;
+use stochastic_rs::prelude::*;
+use stochastic_rs::simd_rng::Unseeded;
+use stochastic_rs::stochastic::process::bm::Bm;
+
+fn total(path: &Array1<f64>) -> f64 {
+  path.sum()
+}
+
+let path = Bm::<f64>::new(16, Some(1.0), Unseeded).sample();
+assert!(total(&path).is_finite());
+```
+
 ```bash
 pip install stochastic-rs
 ```
