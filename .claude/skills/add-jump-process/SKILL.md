@@ -28,7 +28,6 @@ use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::normal::SimdNormal;
-use stochastic_rs_distributions::scalar::ScalarNormal;
 
 use crate::process::cpoisson::CompoundPoisson;
 use crate::process::poisson::Poisson;
@@ -193,38 +192,24 @@ silent-correctness bug in jump-process implementations.
 
 ## 3. Choosing `D` — this is where `dev-rules` §7a binds
 
-`D` must be `Distribution<T> + Send + Sync`. That bound rules out the
-`Simd*` distributions: they own an `UnsafeCell` sample buffer and are
-`!Sync` by construction. Use the stateless `Scalar*` types from
-`stochastic_rs_distributions::scalar`, which sample from the caller's
-RNG and exist precisely for this slot:
+`D` must be `Distribution<T> + Send + Sync`.
+
+A jump-size law is any stateless `Simd*` type: it is `Send + Sync`, and its `Distribution::sample(&mut rng)` draws from
+the generator the process holds. The sampler's own stream (`normal: Seeded<SimdNormal<T>>` above) is the other slot;
+do not confuse the two.
 
 ```rust
-// Merton's own Default — the canonical choice for the jump slot
-impl<T: FloatExt> Default for Merton<T, ScalarNormal<T>, Unseeded> {
+// Merton's own Default: the canonical choice for the jump slot
+impl<T: FloatExt> Default for Merton<T, SimdNormal<T>, Unseeded> {
   fn default() -> Self {
-    Self::new(/* … */, ScalarNormal::new(T::zero(), T::from_f64_fast(0.1)), /* … */)
+    Self::new(/* ... */, SimdNormal::new(T::zero(), T::from_f64_fast(0.1)), /* ... */)
   }
 }
 ```
 
-The `Simd*` types still appear in a jump process — but on the
-*diffusion* side, where the sampler owns them locally (`normal:
-SimdNormal<T>` above). Do not confuse the two slots.
-
-Available `Scalar*` types today are `ScalarNormal` and `ScalarExp`
-(`stochastic-rs-distributions/src/scalar.rs`). Notably absent: a signed
-**asymmetric double-exponential**, which is the actual Kou (2002) jump
-law. `Kou` therefore ships **no `Default`** and its own type doc says so
-— a Gaussian `D` would silently hand out Merton-with-Gaussian-jumps
-under the `Kou` name. If you need Kou's true law, write the
-distribution first (see `adding-distribution`); do not substitute
-`ScalarNormal`.
-
-There is no `SimdDoubleExponential` and no `SimdNig`. The
-Normal-Inverse-Gaussian distribution is `SimdNormalInverseGauss`
-(`stochastic-rs-distributions/src/normal_inverse_gauss.rs`), and being
-`Simd*` it is not eligible for the jump slot.
+The device engine recognises `SimdNormal` and `SimdExp` only. Notably absent is a signed asymmetric double-exponential,
+the actual Kou (2002) jump law: `Kou` ships no `Default` for that reason; do not substitute `SimdNormal`. There is no
+`SimdNig` either: the Normal-Inverse-Gaussian law is `SimdNormalInverseGauss`, a jump law like every stateless `Simd*`.
 
 The trait comes from `rand::distr::Distribution` (`rand_distr` is not a dependency of this crate) —
 our own types implement it, and it is how `.sample()` resolves. Per `dev-rules` §7a the concrete
@@ -273,7 +258,7 @@ mod tests {
   /// 3. Seeded determinism — non-negotiable.
   #[test]
   fn seeded_is_deterministic() {
-    let a = Merton::new(/* … */, ScalarNormal::new(0.0, 0.1), 100, None, None,
+    let a = Merton::new(/* … */, SimdNormal::new(0.0, 0.1), 100, None, None,
                         Deterministic::new(42));
     let b = a.clone();
     assert_eq!(a.sample(), b.sample());
@@ -293,9 +278,6 @@ crate-wide guard and a new process must appear in it. See
 
 - **Do not** use `Box<dyn Distribution<T>>`. Use the generic `D`
   parameter — `dev-rules` §3.
-- **Do not** put a `Simd*` distribution in the jump slot. It is `!Sync`
-  and will not compile; the error is about `Send + Sync`, not about
-  jumps, so it reads as confusing. Use `Scalar*`.
 - **Do not** invent `seed.advance(...)`, `seed.into_rng()` or a
   `seeded(...)` constructor. `SeedExt`'s full surface is `rng()`,
   `derive()`, `rng_ext::<R>()`, `reseed(s)`, `next_seed()`.
@@ -309,7 +291,7 @@ crate-wide guard and a new process must appear in it. See
 ## 8. Reference impls
 
 - `Merton` (`jump/merton.rs`) — GBM + generic jumps; `Default` at
-  `D = ScalarNormal<T>`; full `with_*` setter set. The template.
+  `D = SimdNormal<T>`; full `with_*` setter set. The template.
 - `Kou` (`jump/kou.rs`) — same sampler recursion as Merton, different
   `D`, deliberately no `Default`. Read its type doc for why.
 - `Bates1996` (`jump/bates.rs`) — Heston + generic jumps; the

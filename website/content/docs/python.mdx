@@ -187,6 +187,9 @@ SKILL (comprehensive) or
   optional argument to `.sample(n, seed=None)`. Either way, pass an
   explicit seed for tests; rely on the thread-local default for
   production sampling.
+- **One distribution object, many threads**. Calls on a distribution such as `PyNormal` serialise on a lock and continue
+  the object's one stream, so `sample(n)` from several threads returns disjoint consecutive blocks; give each thread its
+  own object and seed for independent streams.
 - **Dtype shims**. `IntoF32` / `IntoF64` shims convert Python `float`
   parameters to the requested dtype. **All distribution parameters are
   `f64`-typed** in the macro — the shim handles down-conversion to `f32`

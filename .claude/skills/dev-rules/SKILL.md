@@ -70,14 +70,10 @@ its traits (`Rng`, `RngExt`, `rand::distr::Distribution`,
 |------|-----|
 | A raw RNG | `SimdRng::new()`, or `SimdRng::from_seed(s)` when reproducible |
 | Bulk Gaussian / exponential / … draws | `SimdNormal`, `SimdExp`, `SimdGamma`, `SimdPoisson`, seeded via `Deterministic::new(s)` or `Unseeded` |
-| A distribution a *process* will drive (`D: Distribution<T> + Send + Sync`) | `ScalarNormal`, `ScalarExp` from `stochastic_rs_distributions::scalar` |
+| A distribution a *process* will drive (`D: Distribution<T> + Send + Sync`) | the stateless `SimdNormal`, `SimdExp`, ... themselves |
 
-The last row is not a style preference. `Simd*` distributions own an
-`UnsafeCell` sample buffer, so they are `!Sync` by construction and cannot
-satisfy the `Send + Sync` bound that `ProcessExt` propagates into the
-jump-size slot of `CompoundPoisson`, `Bates1996`, `LevyDiffusion` and
-`JumpFOUCustom`. The stateless `Scalar*` types sample from the caller's
-RNG and exist precisely for that slot.
+A process's jump-size slot takes any stateless `Simd*` law: it holds parameters only, so it is `Send + Sync`, and
+`Distribution::sample(&mut rng)` draws from the generator the process passes. A `Seeded` stream is not a law.
 
 Two traps worth naming:
 

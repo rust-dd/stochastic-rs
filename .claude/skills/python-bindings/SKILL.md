@@ -43,11 +43,10 @@ dtype=None`; `params` lists only the distribution parameters — the macro
 appends `seed` and `dtype` itself.
 
 What you get:
-- `PyNormal` `#[pyclass(unsendable)]` — note that `py_distribution!`
-  **does** emit `unsendable`, while the `py_process_*!` macros do not.
-- Two inner slots, `inner_f32` / `inner_f64`. Unlike the process macros
-  there are no separate `seeded_*` slots: the seed is folded straight
-  into the constructor as `&Deterministic::new(sd)` (or `&Unseeded`).
+- `PyNormal` holds `Mutex<Seeded<SimdNormal<_>>>` and is a plain `#[pyclass]`: concurrent callers serialise on the
+  lock (the `py_process_*!` macros are unchanged).
+- Two inner slots, `inner_f32` / `inner_f64`; the seed is folded into the constructor as
+  `.seeded(&Deterministic::new(sd))` (or `&Unseeded`).
 - `__new__(mean, std_dev, seed=None, dtype=None)` — `seed: Option<u64>`,
   `dtype: Option<&str>` ∈ {"f32", "f64"}, default f64
 - `sample(n)` returning `numpy.ndarray`

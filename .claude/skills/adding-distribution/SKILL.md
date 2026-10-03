@@ -267,28 +267,12 @@ root — there are no per-crate `CLAUDE.md` files, so do not look for
 - **Do not** skip the LaTeX `//!` header — the rust-docs need the
   formula for users skimming.
 
-## 8a. When the distribution must be `Sync`
+## 8a. Jump-size laws
 
-`Simd*` types are `!Sync` because of the `UnsafeCell` buffer, so they
-cannot be handed to a process that requires
-`D: Distribution<T> + Send + Sync` (the jump-size slot of
-`CompoundPoisson`, `Bates1996`, `LevyDiffusion`, `JumpFOUCustom`). If the
-new distribution is a plausible jump size, also add a stateless companion
-in `scalar.rs`:
-
-```rust
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScalarFoo<T> { a: T, b: T }
-
-impl<T: FloatExt> Distribution<T> for ScalarFoo<T> {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> T {
-        // inverse CDF or another closed form, drawn from the caller's rng
-    }
-}
-```
-
-Parameters only, no interior mutability — that is what makes it `Sync`.
-`ScalarNormal` and `ScalarExp` are the reference impls.
+A process's jump-size slot (`D: Distribution<T> + Send + Sync`: `CompoundPoisson`, `Bates1996`,
+`LevyDiffusion`, `JumpFOUCustom`, …) takes the stateless `Simd*` law itself: it holds parameters only, so it
+is `Send + Sync`, and `draw_with` gives it the honest `Distribution::sample(&mut rng)`. `SimdNormal` is the
+reference impl; the device engine recognises `SimdNormal` and `SimdExp`.
 
 ## 9. Reference impls
 
@@ -296,10 +280,6 @@ Parameters only, no interior mutability — that is what makes it `Sync`.
   the stateless shape: `SimdNormal<T>` holds `mean` / `std_dev` only,
   its `State<R>` is a `StreamState<T, R, 64>` (the 64-wide buffer lives
   in the stream), and the engine is chosen on `Seeded<SimdNormal<T>, R>`.
-- `ScalarNormal` / `ScalarExp` (`scalar.rs`) — stateless and `Sync`;
-  the **only** types eligible for a process's `D: Distribution<T> +
-  Send + Sync` jump slot, because `Simd*` types own an `UnsafeCell`
-  buffer and are `!Sync`. See `dev-rules` §7a.
 - `SimdExp` (`exp.rs`) — the exponential ziggurat, its state a
   `StreamState<T, R, 64>` like `SimdNormal`'s.
 - `SimdGamma` (`gamma.rs`) — rejection (Marsaglia-Tsang) with a
