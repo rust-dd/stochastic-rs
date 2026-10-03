@@ -33,3 +33,10 @@ pub fn runtime_error_on_panic<T>(f: impl FnOnce() -> T) -> PyResult<T> {
   catch_unwind(AssertUnwindSafe(f))
     .map_err(|payload| PyRuntimeError::new_err(panic_message(payload)))
 }
+
+/// Locks a stream; a panic caught by [`runtime_error_on_panic`] leaves it valid, so a poisoned lock is recovered.
+pub fn lock_stream<T>(stream: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+  stream
+    .lock()
+    .unwrap_or_else(std::sync::PoisonError::into_inner)
+}

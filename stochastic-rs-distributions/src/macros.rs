@@ -12,10 +12,10 @@ macro_rules! py_distribution {
     params: ($($param:ident : $pty:ty),* $(,)?)
   ) => {
     #[doc(hidden)]
-    #[pyo3::prelude::pyclass(unsendable)]
+    #[pyo3::prelude::pyclass]
     pub struct $py_name {
-      inner_f32: Option<$crate::Seeded<$inner<f32>>>,
-      inner_f64: Option<$crate::Seeded<$inner<f64>>>,
+      inner_f32: Option<std::sync::Mutex<$crate::Seeded<$inner<f32>>>>,
+      inner_f64: Option<std::sync::Mutex<$crate::Seeded<$inner<f64>>>>,
     }
 
     #[pyo3::prelude::pymethods]
@@ -27,61 +27,61 @@ macro_rules! py_distribution {
           use $crate::SimdDistribution;
           match (seed, dtype.unwrap_or("f64")) {
             (Some(sd), "f32") => Self {
-              inner_f32: Some(
+              inner_f32: Some(std::sync::Mutex::new(
                 $inner::new($(stochastic_rs_core::python::IntoF32::into_f32($param),)*)
                   .seeded(&stochastic_rs_core::simd_rng::Deterministic::new(sd)),
-              ),
+              )),
               inner_f64: None,
             },
             (Some(sd), _) => Self {
               inner_f32: None,
-              inner_f64: Some(
+              inner_f64: Some(std::sync::Mutex::new(
                 $inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param),)*)
                   .seeded(&stochastic_rs_core::simd_rng::Deterministic::new(sd)),
-              ),
+              )),
             },
             (None, "f32") => Self {
-              inner_f32: Some(
+              inner_f32: Some(std::sync::Mutex::new(
                 $inner::new($(stochastic_rs_core::python::IntoF32::into_f32($param),)*)
                   .seeded(&stochastic_rs_core::simd_rng::Unseeded),
-              ),
+              )),
               inner_f64: None,
             },
             (None, _) => Self {
               inner_f32: None,
-              inner_f64: Some(
+              inner_f64: Some(std::sync::Mutex::new(
                 $inner::new($(stochastic_rs_core::python::IntoF64::into_f64($param),)*)
                   .seeded(&stochastic_rs_core::simd_rng::Unseeded),
-              ),
+              )),
             },
           }
         })
       }
 
-      fn sample<'py>(&mut self, py: pyo3::Python<'py>, n: usize) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+      fn sample<'py>(&self, py: pyo3::Python<'py>, n: usize) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
         $crate::python::runtime_error_on_panic(|| {
           use $crate::DistributionSampler;
           use numpy::IntoPyArray;
           use pyo3::IntoPyObjectExt;
-          if let Some(ref mut inner) = self.inner_f64 {
-            inner.sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
-          } else if let Some(ref mut inner) = self.inner_f32 {
-            inner.sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
+          if let Some(ref inner) = self.inner_f64 {
+            $crate::python::lock_stream(inner).sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
+          } else if let Some(ref inner) = self.inner_f32 {
+            $crate::python::lock_stream(inner).sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
           } else {
             unreachable!()
           }
         })
       }
 
-      fn sample_par<'py>(&mut self, py: pyo3::Python<'py>, m: usize, n: usize) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+      fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize, n: usize) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
         $crate::python::runtime_error_on_panic(|| {
           use $crate::DistributionSampler;
           use numpy::IntoPyArray;
           use pyo3::IntoPyObjectExt;
-          if let Some(ref mut inner) = self.inner_f64 {
-            inner.sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
-          } else if let Some(ref mut inner) = self.inner_f32 {
-            inner.sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
+          if let Some(ref inner) = self.inner_f64 {
+            $crate::python::lock_stream(inner).sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
+          } else if let Some(ref inner) = self.inner_f32 {
+            $crate::python::lock_stream(inner).sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
           } else {
             unreachable!()
           }
@@ -105,9 +105,9 @@ macro_rules! py_distribution_int {
     params: ($($param:ident : $pty:ty),* $(,)?)
   ) => {
     #[doc(hidden)]
-    #[pyo3::prelude::pyclass(unsendable)]
+    #[pyo3::prelude::pyclass]
     pub struct $py_name {
-      inner: $crate::Seeded<$inner<i64>>,
+      inner: std::sync::Mutex<$crate::Seeded<$inner<i64>>>,
     }
 
     #[pyo3::prelude::pymethods]
@@ -119,31 +119,35 @@ macro_rules! py_distribution_int {
           use $crate::SimdDistribution;
           match seed {
             Some(sd) => Self {
-              inner: $inner::new($($param,)*)
-                .seeded(&stochastic_rs_core::simd_rng::Deterministic::new(sd)),
+              inner: std::sync::Mutex::new(
+                $inner::new($($param,)*)
+                  .seeded(&stochastic_rs_core::simd_rng::Deterministic::new(sd)),
+              ),
             },
             None => Self {
-              inner: $inner::new($($param,)*).seeded(&stochastic_rs_core::simd_rng::Unseeded),
+              inner: std::sync::Mutex::new(
+                $inner::new($($param,)*).seeded(&stochastic_rs_core::simd_rng::Unseeded),
+              ),
             },
           }
         })
       }
 
-      fn sample<'py>(&mut self, py: pyo3::Python<'py>, n: usize) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+      fn sample<'py>(&self, py: pyo3::Python<'py>, n: usize) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
         $crate::python::runtime_error_on_panic(|| {
           use $crate::DistributionSampler;
           use numpy::IntoPyArray;
           use pyo3::IntoPyObjectExt;
-          self.inner.sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
+          $crate::python::lock_stream(&self.inner).sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
         })
       }
 
-      fn sample_par<'py>(&mut self, py: pyo3::Python<'py>, m: usize, n: usize) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
+      fn sample_par<'py>(&self, py: pyo3::Python<'py>, m: usize, n: usize) -> pyo3::PyResult<pyo3::Py<pyo3::PyAny>> {
         $crate::python::runtime_error_on_panic(|| {
           use $crate::DistributionSampler;
           use numpy::IntoPyArray;
           use pyo3::IntoPyObjectExt;
-          self.inner.sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
+          $crate::python::lock_stream(&self.inner).sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
         })
       }
     }
