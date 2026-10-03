@@ -154,7 +154,7 @@ impl<T: SimdFloatExt> SimdWishart<T> {
     self.p
   }
 
-  /// `L·A·Aᵀ·Lᵀ` for Bartlett's lower-triangular `A`: `√χ²_{ν−j}` on the diagonal, `N(0, 1)` below, row by row.
+  /// `L·A·Aᵀ·Lᵀ` for Bartlett's lower-triangular `A`: `√χ²_{ν−j}` on the diagonal, `N(0, 1)` below, column by column.
   fn bartlett<S: BartlettSource<T>>(&self, src: &mut S) -> Array2<f64> {
     let mut a = Array2::<f64>::zeros((self.p, self.p));
     for (j, chi2) in self.diag.iter().enumerate() {

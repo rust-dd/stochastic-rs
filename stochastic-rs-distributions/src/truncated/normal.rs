@@ -39,8 +39,7 @@ struct TailSetup {
 impl TailSetup {
   fn new(a: f64, b: f64, mirrored: bool) -> Self {
     let alpha_star = 0.5 * (a + (a * a + 4.0).sqrt());
-    // Not Robert's rule (2.1): at two proposal means of width the exponential's overshoot of `b` and the uniform's
-    // worst weight `e^-2` cost about the same, and both proposals are exact, so the threshold only moves the speed.
+    // Not Robert's faster rule (2.1): switching would move the pinned `truncated_normal_uniform_tail_f64` stream.
     let proposal = if b - a >= 2.0 / alpha_star {
       TailProposal::Exponential { alpha_star }
     } else {
@@ -183,8 +182,8 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     }
   }
 
-  /// Robert (1995) accept-reject on the standardised one-sided interval: past about 4σ `F(lower)` and `F(upper)` both
-  /// round to 1 and the inverse transform returns `+inf`, so neither proposal forms a cdf.
+  /// Robert (1995) accept-reject on the standardised one-sided interval, which forms no cdf: deep in a tail
+  /// `F(upper) − F(lower)` loses its digits, and past about 8.3σ both round to 1 and inversion returns `+inf`.
   fn tail_sample<S: TruncatedNormalSource<T>>(&self, setup: TailSetup, src: &mut S) -> T {
     let z = match setup.proposal {
       TailProposal::Exponential { alpha_star } => loop {
@@ -326,7 +325,7 @@ mod tests {
   }
 
   /// Draws in bounds and a conditional mean against Simpson quadrature of `exp(-a t - t²/2)`, the density of `Z - a`,
-  /// which forms no cdf: past 4σ the inverse transform put 17 % of [8, 8.5] and all of [10, 12] at `+inf`.
+  /// which forms no cdf: the inverse transform put 17 % of [8, 8.5] and all of [10, 12] at `+inf`.
   fn assert_far_tail_means(mut draws: impl FnMut(SimdTruncatedNormal<f64>) -> Vec<f64>) {
     for (lo, hi) in [(8.0_f64, 8.5_f64), (10.0, 12.0), (-12.0, -10.0)] {
       let xs = draws(SimdTruncatedNormal::<f64>::new(0.0, 1.0, lo, hi));

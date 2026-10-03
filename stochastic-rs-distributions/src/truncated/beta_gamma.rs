@@ -29,8 +29,8 @@ fn reject<T: SimdFloatExt>(lower: T, upper: T, mut base: impl FnMut() -> T) -> T
   (lower + upper) * T::from_f64_fast(0.5)
 }
 
-/// Truncated beta law on $[\text{lower}, \text{upper}] \subseteq [0, 1]$: parameters only; a
-/// [`Seeded`](crate::Seeded) stream draws it.
+/// Truncated beta law on $[\text{lower}, \text{upper}] \subseteq [0, 1]$, parameters only: a [`Seeded`](crate::Seeded)
+/// stream draws it by rejection, falling back to the interval's midpoint after 1000 misses.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdTruncatedBeta<T> {
   base: SimdBeta<T>,
@@ -158,8 +158,8 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
   }
 }
 
-/// Truncated gamma law $\mathrm{Gamma}(k, \theta)$ on $[\text{lower}, \text{upper}]$, $\text{lower} \ge 0$:
-/// parameters only; a [`Seeded`](crate::Seeded) stream draws it.
+/// Truncated $\mathrm{Gamma}(k, \theta)$ on $[\text{lower}, \text{upper}]$, $\text{lower} \ge 0$, parameters only: a
+/// [`Seeded`](crate::Seeded) stream draws it by rejection, falling back to the interval's midpoint after 1000 misses.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdTruncatedGamma<T> {
   base: SimdGamma<T>,

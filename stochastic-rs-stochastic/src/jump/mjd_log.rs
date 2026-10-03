@@ -202,8 +202,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> MjdLogSampler<T> {
-    // The Poisson driver, the diffusion and the jump-size sources take their seeds from `self.seed` in the legacy
-    // `sample()`'s order, so the first fill reproduces it; reuse advances them for independent paths.
+    // The sources take their seeds from `self.seed` in a fixed order the pinned streams depend on; reuse advances them
+    // for independent paths.
     let dt = self.dt();
     let sqrt_dt = dt.sqrt();
     let drift = self.drift();
