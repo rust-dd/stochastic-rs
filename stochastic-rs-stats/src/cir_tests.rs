@@ -8,13 +8,19 @@ fn exact_moments(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64) -> (f64, f64
   (mean, variance)
 }
 
-/// A transition variance below the double range leaves the conditional mean instead of `0/0`.
+/// A zero or subnormal `σ²` overflows the χ² parameters; the draw is the conditional mean, not `NaN` or `∞`.
 #[test]
 fn vanishing_variance_returns_the_conditional_mean() {
   let (theta, mu, t) = (0.5_f64, 0.04, 1.0);
-  for r_t in [0.0, 0.03] {
-    let mean = r_t * (-theta * t).exp() + mu * -(-theta * t).exp_m1();
-    assert_eq!(sample_seeded(theta, mu, 1e-200, t, r_t, 7), mean);
+  for sigma in [1e-200, 1e-155] {
+    for r_t in [0.0, 0.03] {
+      let mean = r_t * (-theta * t).exp() + mu * -(-theta * t).exp_m1();
+      assert_eq!(
+        sample_seeded(theta, mu, sigma, t, r_t, 7),
+        mean,
+        "sigma = {sigma:e}, r_t = {r_t}"
+      );
+    }
   }
 }
 

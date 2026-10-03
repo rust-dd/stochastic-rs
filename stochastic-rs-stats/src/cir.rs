@@ -89,12 +89,12 @@ fn sample_with_seed<S: SeedExt>(
   let one_minus_decay = -(-theta * t).exp_m1();
   let sigma_squared = sigma * sigma;
   let scale = sigma_squared * one_minus_decay / (4.0 * theta);
-  if scale == 0.0 {
-    // The transition variance underflowed: the draw is its conditional mean, where `r_t·decay/scale` would be `0/0`.
-    return r_t * decay + mu * one_minus_decay;
-  }
   let degrees_of_freedom = 4.0 * theta * mu / sigma_squared;
   let noncentrality = r_t * decay / scale;
+  if !(degrees_of_freedom.is_finite() && noncentrality.is_finite()) {
+    // A χ² parameter past the double range leaves a spread negligible beside the mean: the draw is that mean.
+    return r_t * decay + mu * one_minus_decay;
+  }
   scale * non_central_chi_squared::sample(degrees_of_freedom, noncentrality, seed)
 }
 
