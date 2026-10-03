@@ -177,8 +177,26 @@ mod tests {
     assert_eq!(obs_base.observer_count(), 0);
   }
 
+  const LOG_CHILD: &str = "STOCHASTIC_RS_QUANT_LOG_CHILD";
+
   #[test]
   fn poisoned_registry_recovers_and_warns_through_log() {
+    // `log` keeps one logger per process, so the capture runs in a child process of this binary
+    // and the other unit tests never share it; poisoning needs the private registry.
+    if std::env::var_os(LOG_CHILD).is_none() {
+      let name = "market::observable::tests::poisoned_registry_recovers_and_warns_through_log";
+      let out = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([name, "--exact"])
+        .env(LOG_CHILD, "1")
+        .output()
+        .unwrap();
+      let stdout = String::from_utf8_lossy(&out.stdout);
+      assert!(
+        out.status.success() && stdout.contains("1 passed"),
+        "{stdout}"
+      );
+      return;
+    }
     log::set_logger(&CAPTURE).unwrap();
     log::set_max_level(log::LevelFilter::Warn);
     let obs_base = ObservableBase::new();
