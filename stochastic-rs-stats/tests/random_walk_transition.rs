@@ -23,3 +23,9 @@ fn the_step_replays_and_depends_on_the_rng() {
 fn the_step_is_pinned() {
   assert_eq!(step(5), PIN);
 }
+
+#[test]
+#[should_panic(expected = "scales[1] must satisfy `scales[1] > 0`, got scales[1] = 0")]
+fn a_non_positive_scale_is_named_when_the_transition_is_built() {
+  let _ = gaussian_random_walk_transition(array![0.1, 0.0]);
+}

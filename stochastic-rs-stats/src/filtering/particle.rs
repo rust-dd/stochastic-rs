@@ -261,11 +261,21 @@ where
 }
 
 /// A driftless Gaussian random-walk `transition`: component `j` steps by an `N(0, scales[j]^2)` draw
-/// from the filter's rng.
+/// from the filter's rng; panics if a scale is not positive.
 pub fn gaussian_random_walk_transition(
   scales: Array1<f64>,
 ) -> impl Fn(ArrayView1<f64>, &mut SimdRng) -> Array1<f64> {
-  let laws = scales.mapv(|scale| SimdNormal::<f64>::new(0.0, scale));
+  let laws = scales
+    .iter()
+    .enumerate()
+    .map(|(j, &scale)| {
+      assert!(
+        scale > 0.0,
+        "scales[{j}] must satisfy `scales[{j}] > 0`, got scales[{j}] = {scale}"
+      );
+      SimdNormal::<f64>::new(0.0, scale)
+    })
+    .collect::<Vec<_>>();
   move |prev, rng| {
     let d = prev.len();
     let mut out = Array1::<f64>::zeros(d);
