@@ -170,3 +170,7 @@ impl Foo for Bar {
   }
 }
 ```
+
+## 13. Library diagnostics go through `log`
+
+Library code reports through the `log` facade (`log::warn!`, `log::trace!`), never `eprintln!`, and never installs a subscriber; binaries, benches and tests do.
