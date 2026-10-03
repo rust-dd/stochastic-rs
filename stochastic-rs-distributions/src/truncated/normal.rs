@@ -1,6 +1,4 @@
 //! Truncated normal: rejection on the base normal, Robert's one-sided tail proposals, or the inverse cdf.
-//!
-//! Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.3, DOI 10.1007/978-1-4613-8643-8.
 
 use rand::Rng;
 use rand::distr::Distribution;
@@ -57,6 +55,7 @@ impl TailSetup {
 /// cdf constants; a [`Seeded`](crate::Seeded) stream draws it.
 ///
 /// Robert, C.P. (1995), "Simulation of truncated normal variables", *Statistics and Computing* 5(2), 121-125, DOI 10.1007/BF00143942.
+/// Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.3, DOI 10.1007/978-1-4613-8643-8.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdTruncatedNormal<T> {
   base: SimdNormal<T>,
