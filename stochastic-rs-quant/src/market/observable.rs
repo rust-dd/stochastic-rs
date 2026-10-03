@@ -123,6 +123,7 @@ impl Observable for ObservableBase {
 
 #[cfg(test)]
 mod tests {
+  use std::cell::RefCell;
   use std::sync::atomic::AtomicUsize;
   use std::sync::atomic::Ordering;
 
@@ -132,7 +133,7 @@ mod tests {
 
   use super::*;
 
-  struct Capture(Mutex<Vec<String>>);
+  struct Capture;
 
   impl Log for Capture {
     fn enabled(&self, _: &Metadata) -> bool {
@@ -140,13 +141,20 @@ mod tests {
     }
 
     fn log(&self, record: &Record) {
-      self.0.lock().unwrap().push(record.args().to_string());
+      let message = record.args().to_string();
+      RECORDS.with_borrow_mut(|records| records.push(message));
     }
 
     fn flush(&self) {}
   }
 
-  static CAPTURE: Capture = Capture(Mutex::new(Vec::new()));
+  // One process-wide logger, installed by whichever capture test runs first;
+  // each test thread reads back only the records it logged itself.
+  static CAPTURE: Capture = Capture;
+
+  thread_local! {
+    static RECORDS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+  }
 
   struct Counter(AtomicUsize);
 
@@ -177,27 +185,9 @@ mod tests {
     assert_eq!(obs_base.observer_count(), 0);
   }
 
-  const LOG_CHILD: &str = "STOCHASTIC_RS_QUANT_LOG_CHILD";
-
   #[test]
   fn poisoned_registry_recovers_and_warns_through_log() {
-    // `log` keeps one logger per process, so the capture runs in a child process of this binary
-    // and the other unit tests never share it; poisoning needs the private registry.
-    if std::env::var_os(LOG_CHILD).is_none() {
-      let name = "market::observable::tests::poisoned_registry_recovers_and_warns_through_log";
-      let out = std::process::Command::new(std::env::current_exe().unwrap())
-        .args([name, "--exact"])
-        .env(LOG_CHILD, "1")
-        .output()
-        .unwrap();
-      let stdout = String::from_utf8_lossy(&out.stdout);
-      assert!(
-        out.status.success() && stdout.contains("1 passed"),
-        "{stdout}"
-      );
-      return;
-    }
-    log::set_logger(&CAPTURE).unwrap();
+    let _ = log::set_logger(&CAPTURE);
     log::set_max_level(log::LevelFilter::Warn);
     let obs_base = ObservableBase::new();
     let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -206,11 +196,12 @@ mod tests {
     }));
     assert!(panicked.is_err());
     assert_eq!(obs_base.observer_count(), 0);
-    let records = CAPTURE.0.lock().unwrap();
+    let records = RECORDS.take();
     assert!(
       records
         .iter()
-        .any(|m| m.contains("observable mutex poisoned"))
+        .any(|m| m.contains("observable mutex poisoned")),
+      "{records:?}"
     );
   }
 }
