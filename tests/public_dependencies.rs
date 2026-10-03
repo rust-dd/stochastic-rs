@@ -21,6 +21,11 @@ fn is_zero(z: Complex64) -> bool {
 
 fn is_distribution<D: Distribution<f64>>(_: &D) {}
 
+fn _real_ext_is_the_reexported_float<T: RealExt>() {
+  fn float<U: stochastic_rs::num_traits::Float>() {}
+  float::<T>();
+}
+
 #[test]
 fn reexported_ndarray_is_the_array_type_of_the_api() {
   let path = Bm::<f64>::new(16, Some(1.0), Unseeded).sample();
