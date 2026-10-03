@@ -34,7 +34,7 @@ mod fill;
 mod simd_rng;
 #[cfg(test)]
 mod tests;
-mod xoshiro;
+pub(crate) mod xoshiro;
 
 pub use simd_rng::SimdRng;
 pub use xoshiro::Xoshiro128PP8;

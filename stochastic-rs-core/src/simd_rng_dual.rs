@@ -35,6 +35,11 @@ use wide::i32x8;
 use wide::u32x8;
 use wide::u64x4;
 
+use crate::simd_rng::xoshiro::F32_MAGIC_X8;
+use crate::simd_rng::xoshiro::F32_ONE_X8;
+use crate::simd_rng::xoshiro::F64_MAGIC_X4;
+use crate::simd_rng::xoshiro::F64_ONE_X4;
+
 #[inline(always)]
 fn rotl_u64x4(x: u64x4, k: u32) -> u64x4 {
   (x << k) | (x >> (64 - k))
@@ -136,17 +141,6 @@ impl Xoshiro128PP8 {
     result
   }
 }
-
-/// IEEE-754 bit pattern of `1.0_f64`.
-const F64_MAGIC: u64 = 0x3FF0_0000_0000_0000;
-/// IEEE-754 bit pattern of `1.0_f32`.
-const F32_MAGIC: u32 = 0x3F80_0000;
-
-// Built at compile time: a run-time `splat` of a constant lowers to `memset_pattern16` calls on Darwin.
-const F64_MAGIC_X4: u64x4 = u64x4::splat(F64_MAGIC);
-const F64_ONE_X4: f64x4 = f64x4::splat(1.0);
-const F32_MAGIC_X8: u32x8 = u32x8::splat(F32_MAGIC);
-const F32_ONE_X8: f32x8 = f32x8::splat(1.0);
 
 const SEED_GAMMA: u64 = 0x9e37_79b9_7f4a_7c15;
 

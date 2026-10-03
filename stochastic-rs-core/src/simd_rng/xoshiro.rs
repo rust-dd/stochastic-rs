@@ -56,10 +56,10 @@ const F64_MAGIC: u64 = 0x3FF0_0000_0000_0000;
 const F32_MAGIC: u32 = 0x3F80_0000;
 
 // Built at compile time: a run-time `splat` of a constant lowers to `memset_pattern16` calls on Darwin.
-pub(super) const F64_MAGIC_X4: u64x4 = u64x4::splat(F64_MAGIC);
-pub(super) const F64_ONE_X4: f64x4 = f64x4::splat(1.0);
-pub(super) const F32_MAGIC_X8: u32x8 = u32x8::splat(F32_MAGIC);
-pub(super) const F32_ONE_X8: f32x8 = f32x8::splat(1.0);
+pub(crate) const F64_MAGIC_X4: u64x4 = u64x4::splat(F64_MAGIC);
+pub(crate) const F64_ONE_X4: f64x4 = f64x4::splat(1.0);
+pub(crate) const F32_MAGIC_X8: u32x8 = u32x8::splat(F32_MAGIC);
+pub(crate) const F32_ONE_X8: f32x8 = f32x8::splat(1.0);
 
 /// 4-lane parallel xoshiro256++ engine (64-bit output per lane).
 #[derive(Clone, Debug)]
