@@ -42,8 +42,12 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
   /// The base [`SimdBeta`] `Beta(alpha, beta)`, both > 0, renormalised on `[lower, upper] ⊆ [0, 1]`, `lower < upper`.
   pub fn new(alpha: T, beta: T, lower: T, upper: T) -> Self {
     assert!(
-      alpha > T::zero() && beta > T::zero(),
-      "alpha must satisfy `alpha > T::zero() && beta > T::zero()`, got alpha = {alpha:?}, beta = {beta:?}"
+      alpha > T::zero(),
+      "alpha must satisfy `alpha > T::zero()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta > T::zero(),
+      "beta must satisfy `beta > T::zero()`, got beta = {beta:?}"
     );
     let lo = lower.to_f64().unwrap();
     let up = upper.to_f64().unwrap();
@@ -297,6 +301,13 @@ mod tests {
       let x = tb.sample();
       assert!((0.2..=0.8).contains(&x));
     }
+  }
+
+  /// A bad `beta` shape is reported as `beta`, not as `alpha`.
+  #[test]
+  #[should_panic(expected = "beta must satisfy `beta > T::zero()`, got beta = -1.0")]
+  fn truncated_beta_names_a_bad_beta() {
+    SimdTruncatedBeta::<f64>::new(2.0, -1.0, 0.2, 0.8);
   }
 
   /// Truncated Gamma stays in bounds.
