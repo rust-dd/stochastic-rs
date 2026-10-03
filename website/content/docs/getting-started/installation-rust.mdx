@@ -77,9 +77,9 @@ major release of `stochastic-rs`.
 ## SIMD support
 
 Numerical hot paths (FGN Davies-Harte, all `Simd*` distributions,
-`fill_slice` / `fill_slice_fast`) use the [`wide`](https://crates.io/crates/wide)
-crate for portable SIMD. Lane widths in this codebase are uniformly
-**8-lane** types:
+`fill_slice` on a seeded stream, `fill_with` from any rng) use the
+[`wide`](https://crates.io/crates/wide) crate for portable SIMD. Lane
+widths in this codebase are uniformly **8-lane** types:
 
 - `f32x8` — 8 × `f32` = 256 bits (AVX2 / NEON-pair)
 - `f64x8` — 8 × `f64` = 512 bits (AVX-512, or 2 × AVX2 / 2 × NEON fallback)
@@ -101,9 +101,9 @@ unlock real SIMD, opt into a higher CPU baseline (next subsection).
 
 Default builds target the plain `x86-64` / `aarch64` baseline so the
 resulting binary or wheel runs on any CPU of the same architecture.
-For SIMD-heavy paths (`SimdNormal::fill_slice_fast`, `Fgn` Davies-Harte,
-`sample_par`, …) the gap between `v1` and a tuned target is large
-enough to be worth raising the floor:
+For SIMD-heavy paths (`fill_slice` on a seeded `SimdNormal` stream,
+`Fgn` Davies-Harte, `sample_par`, …) the gap between `v1` and a tuned
+target is large enough to be worth raising the floor:
 
 ```bash
 # Local dev / benchmarks: every feature the build host supports.

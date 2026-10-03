@@ -515,8 +515,9 @@ Drivers (sub-crate paths):
 - `stochastic-rs-distributions::exp` — fused `1/λ` scaling into the
   SIMD store inside `fill_exp_scaled`, removing the second-pass
   `scale_in_place`.
-- `stochastic-rs-distributions::uniform` — `fill_slice_fast`
-  short-circuits to `rng.fill_uniform_f64(out)` for the `[0, 1)` case
+- `stochastic-rs-distributions::uniform` — the bulk fill (`fill_slice`
+  on a seeded stream, `fill_with` from any rng) short-circuits to
+  `rng.fill_uniform_f64(out)` for the `[0, 1)` case
   (the dominant pattern) and falls back to a single SIMD affine pass
   otherwise.
 - `stochastic-rs-distributions::lib` — `<f64 as SimdFloatExt>::simd_from_i32x8`
