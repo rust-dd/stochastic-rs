@@ -68,8 +68,8 @@ pub struct BlackKarasinski<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// convention — but is not made silently well-behaved: `a = 0` is a
   /// literal `0/0` in the mean term, so every point after `r0` comes out
   /// `NaN`, and `a < 0` makes the log-rate diverge instead of mean-revert.
-  /// [`BlackKarasinski::new`] unconditionally warns to stderr when this
-  /// happens; it never panics.
+  /// [`BlackKarasinski::new`] emits a `log::warn!` when this happens; it
+  /// never panics.
   pub a: T,
   /// Diffusion scale σ multiplying `dW_t` in the log-rate SDE.
   pub sigma: T,
@@ -104,8 +104,7 @@ impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
   ///
   /// `a <= 0` is accepted rather than rejected — matching this crate's
   /// [`Cir::new`](crate::diffusion::cir::Cir::new) boundary-condition
-  /// precedent — but unconditionally prints a one-line diagnostic to
-  /// stderr, including in release builds: the exact-OU step divides by `a`
+  /// precedent — but emits a `log::warn!`: the exact-OU step divides by `a`
   /// in both its mean and variance terms, so `a = 0` poisons every point
   /// after `r0` with `NaN` and `a < 0` makes the log-rate diverge instead
   /// of mean-revert. Never panics.
@@ -119,8 +118,8 @@ impl<T: FloatExt, S: SeedExt> BlackKarasinski<T, S> {
     seed: S,
   ) -> Self {
     if a <= T::zero() {
-      eprintln!(
-        "warning: BlackKarasinski::new: mean-reversion speed a <= 0; the \
+      log::warn!(
+        "BlackKarasinski::new: mean-reversion speed a <= 0; the \
          exact-OU step divides by a in both its mean and variance terms, so \
          a = 0 produces a literal 0/0 in the mean term (every point after r0 \
          comes out NaN) and a < 0 makes the log-rate diverge instead of \
@@ -472,7 +471,7 @@ mod tests {
     }
   }
 
-  /// `a <= 0` must be accepted (never panic — construction warns to stderr
+  /// `a <= 0` must be accepted (never panic — construction emits a `log::warn!`
   /// instead) but is documented as producing an unusable path: `a = 0` is a
   /// literal 0/0 in the mean term, poisoning every point after `r0` with
   /// `NaN`; `a < 0` stays finite but diverges instead of mean-reverting.

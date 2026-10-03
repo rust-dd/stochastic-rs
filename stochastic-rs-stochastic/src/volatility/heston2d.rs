@@ -155,8 +155,7 @@ fn validate_params<T: FloatExt>(
   }
 }
 
-/// Warns to stderr — unconditionally, including in release builds — for
-/// each asset whose variance factor violates the Feller condition
+/// Emits a `log::warn!` for each asset whose variance factor violates the Feller condition
 /// `2·kappa·theta ≥ sigma²` without `use_sym = Some(true)`. Mirrors
 /// [`crate::diffusion::cir::Cir::new`]: sub-Feller parameters are
 /// accepted, not rejected, since the Euler step already floors (or
@@ -173,8 +172,8 @@ fn warn_on_feller_violation<T: FloatExt>(
   for i in 0..2 {
     let feller_lhs = T::from_f64_fast(2.0) * kappa[i] * theta[i];
     if feller_lhs < sigma[i] * sigma[i] {
-      eprintln!(
-        "warning: Heston2D::new: asset {i} does not satisfy the Feller \
+      log::warn!(
+        "Heston2D::new: asset {i} does not satisfy the Feller \
          condition (2*kappa*theta < sigma^2) and use_sym is not set to \
          true; its variance floors at zero on every boundary hit instead \
          of reflecting — pass use_sym = Some(true) for the standard \

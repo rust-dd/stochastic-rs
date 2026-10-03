@@ -54,7 +54,7 @@ fast allocator.
 ### cuFFT batch pipeline breakdown
 
 Per-call breakdown of `cuda` (cuFFT) `sample_par`, measured in-process
-with `STOCHASTIC_RS_CUDA_PROFILE=1` (env-gated phase timing in the sampler).
+with a `log` subscriber enabled at `trace` for `stochastic_rs_stochastic::noise::fgn::cuda` (phase timing in the sampler); `STOCHASTIC_RS_CUDA_PROFILE=1 cargo bench --bench fgn_cuda --features cuda` installs one in the bench.
 `compute` = on-device RNG + batched FFT + extract; `dtoh` = device→host transfer
 + the parallel host copy.
 

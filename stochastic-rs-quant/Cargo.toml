@@ -36,6 +36,7 @@ faer = { workspace = true }
 faer-ext = { workspace = true }
 gauss-quad = { workspace = true }
 implied-vol = { workspace = true }
+log = { workspace = true }
 ndarray = { workspace = true }
 ndrustfft = { workspace = true }
 num-complex = { workspace = true }

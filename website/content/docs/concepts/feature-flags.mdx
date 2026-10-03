@@ -55,6 +55,9 @@ stochastic-rs-stats = { version = "3.0.0-rc.4" }
 - **Linear algebra needs no feature at all.** Cholesky, SVD, eigen and
   least squares run on the pure-Rust `faer` and are always compiled in;
   the BLAS-backed feature flag from 2.x was removed in 3.0.
+- **Diagnostics go through `log`.** A constructor given a parameter regime it
+  accepts but handles with a boundary rule (a sub-Feller CIR, say) emits a
+  `log::warn!`; install any `log` subscriber to see it.
 - **`cuda` requires the CUDA toolkit on the build machine.** CI builds do not install it by default.
 - **`ai` is heavy and experimental.** It pulls in `candle-core`, which is a
   substantial ML stack, and `stochastic-rs-ai` is outside the stability promise.

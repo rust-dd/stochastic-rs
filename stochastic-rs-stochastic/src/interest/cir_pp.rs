@@ -103,8 +103,7 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
   ///
   /// The Feller condition and its sub-Feller mitigation apply to the
   /// underlying CIR factor `x_t` exactly as in [`Cir::new`]: a violation
-  /// not paired with `use_sym = Some(true)` unconditionally prints a
-  /// one-line diagnostic to stderr — including in release builds — and
+  /// not paired with `use_sym = Some(true)` emits a `log::warn!` and
   /// never panics.
   pub fn new(
     kappa: T,
@@ -118,8 +117,8 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
     seed: S,
   ) -> Self {
     if T::from_usize_(2) * kappa * theta < sigma.powi(2) && use_sym != Some(true) {
-      eprintln!(
-        "warning: CirPlusPlus::new: Feller condition violated (2*kappa*theta < sigma^2) \
+      log::warn!(
+        "CirPlusPlus::new: Feller condition violated (2*kappa*theta < sigma^2) \
          without use_sym = Some(true); the underlying CIR factor floors at zero on every \
          boundary hit instead of reflecting — pass use_sym = Some(true) for the standard \
          sub-Feller mitigation"

@@ -10,7 +10,28 @@ use stochastic_rs::stochastic::device::Cuda;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
+struct StderrLogger;
+
+impl log::Log for StderrLogger {
+  fn enabled(&self, _: &log::Metadata) -> bool {
+    true
+  }
+
+  fn log(&self, record: &log::Record) {
+    eprintln!("{}", record.args());
+  }
+
+  fn flush(&self) {}
+}
+
+static LOGGER: StderrLogger = StderrLogger;
+
 fn bench_fgn_single_path_cpu_vs_cuda(c: &mut Criterion) {
+  if std::env::var_os("STOCHASTIC_RS_CUDA_PROFILE").is_some() {
+    let _ = log::set_logger(&LOGGER);
+    log::set_max_level(log::LevelFilter::Trace);
+  }
+
   let mut group = c.benchmark_group("FGN_single_path_cpu_vs_cuda");
   group.measurement_time(Duration::from_secs(3));
   group.warm_up_time(Duration::from_millis(700));

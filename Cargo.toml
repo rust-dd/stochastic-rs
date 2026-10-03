@@ -30,6 +30,7 @@ implied-vol = "2.0.0"
 kendalls = "1.0.0"
 libm = "0.2.16"
 linreg = "0.2.0"
+log = "0.4.34"
 metal = "0.33.0"
 ndarray = { version = "0.17.2", features = ["rayon", "matrixmultiply-threading"] }
 ndarray-npy = "0.10.0"
@@ -94,6 +95,7 @@ stochastic-rs-stochastic = { workspace = true }
 [dev-dependencies]
 anyhow = { workspace = true }
 criterion = { workspace = true }
+log = { workspace = true }
 ndarray-npy = { workspace = true }
 owens-t = { workspace = true }
 plotly = { workspace = true }

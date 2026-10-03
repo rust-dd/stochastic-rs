@@ -326,7 +326,7 @@ fn sample_f32<T: FloatExt>(
       })
     },
   )?;
-  let profile = std::env::var("STOCHASTIC_RS_CUDA_PROFILE").is_ok();
+  let profile = log::log_enabled!(log::Level::Trace);
   let tstart = std::time::Instant::now();
 
   // 1. Fused generate normals + scale by eigenvalues
@@ -401,7 +401,7 @@ fn sample_f32<T: FloatExt>(
 
   let fgn = array2_from_vec_f32::<T>(host, m, out_size);
   if profile {
-    eprintln!(
+    log::trace!(
       "CUDAPROF f32 n={n} m={m} compute={:.2?} dtoh={:.2?} total={:.2?}",
       t_compute,
       t_dtoh.saturating_sub(t_compute),

@@ -63,8 +63,8 @@ impl ObservableBase {
   /// Number of registered observers still alive.
   ///
   /// **Poisoning policy:** if a previous observer panicked while holding
-  /// the registry lock, recover by reading the inner state (eprintln for
-  /// observability) rather than crashing the process. The cleared set
+  /// the registry lock, recover by reading the inner state (a `log::warn!`
+  /// for observability) rather than crashing the process. The cleared set
   /// of registrations may be slightly lossy in that scenario, which is
   /// the better outcome than a process-wide crash for a long-running
   /// market-data feed.
@@ -72,8 +72,8 @@ impl ObservableBase {
     let mut obs = match self.observers.lock() {
       Ok(g) => g,
       Err(p) => {
-        eprintln!(
-          "warning: observable mutex poisoned (observer panicked); recovering and retaining live weaks"
+        log::warn!(
+          "observable mutex poisoned (observer panicked); recovering and retaining live weaks"
         );
         p.into_inner()
       }
@@ -88,7 +88,7 @@ impl Observable for ObservableBase {
     let mut obs = match self.observers.lock() {
       Ok(g) => g,
       Err(p) => {
-        eprintln!("warning: observable mutex poisoned during register; recovering");
+        log::warn!("observable mutex poisoned during register; recovering");
         p.into_inner()
       }
     };
@@ -102,7 +102,7 @@ impl Observable for ObservableBase {
       let mut obs = match self.observers.lock() {
         Ok(g) => g,
         Err(p) => {
-          eprintln!("warning: observable mutex poisoned during notify; recovering");
+          log::warn!("observable mutex poisoned during notify; recovering");
           p.into_inner()
         }
       };
@@ -126,7 +126,27 @@ mod tests {
   use std::sync::atomic::AtomicUsize;
   use std::sync::atomic::Ordering;
 
+  use log::Log;
+  use log::Metadata;
+  use log::Record;
+
   use super::*;
+
+  struct Capture(Mutex<Vec<String>>);
+
+  impl Log for Capture {
+    fn enabled(&self, _: &Metadata) -> bool {
+      true
+    }
+
+    fn log(&self, record: &Record) {
+      self.0.lock().unwrap().push(record.args().to_string());
+    }
+
+    fn flush(&self) {}
+  }
+
+  static CAPTURE: Capture = Capture(Mutex::new(Vec::new()));
 
   struct Counter(AtomicUsize);
 
@@ -155,5 +175,24 @@ mod tests {
       assert_eq!(obs_base.observer_count(), 1);
     }
     assert_eq!(obs_base.observer_count(), 0);
+  }
+
+  #[test]
+  fn poisoned_registry_recovers_and_warns_through_log() {
+    log::set_logger(&CAPTURE).unwrap();
+    log::set_max_level(log::LevelFilter::Warn);
+    let obs_base = ObservableBase::new();
+    let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+      let _guard = obs_base.observers.lock().unwrap();
+      panic!("poison the registry");
+    }));
+    assert!(panicked.is_err());
+    assert_eq!(obs_base.observer_count(), 0);
+    let records = CAPTURE.0.lock().unwrap();
+    assert!(
+      records
+        .iter()
+        .any(|m| m.contains("observable mutex poisoned"))
+    );
   }
 }

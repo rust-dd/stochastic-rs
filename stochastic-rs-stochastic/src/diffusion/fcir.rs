@@ -60,10 +60,8 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
   /// rejected, since the discretised step already keeps every sample
   /// non-negative — floored at zero by default, or reflected when
   /// [`use_sym`](Self::use_sym) is `true`. A violation not paired with
-  /// `use_sym = Some(true)` unconditionally prints a one-line diagnostic
-  /// to stderr — including in release builds; it never panics. The
-  /// `with_*` setters, like [`Cir`](crate::diffusion::cir::Cir)'s, do not
-  /// repeat that diagnostic.
+  /// `use_sym = Some(true)` emits a `log::warn!` and never panics; the `with_*` setters, like
+  /// [`Cir`](crate::diffusion::cir::Cir)'s, do not repeat it.
   #[must_use]
   pub fn new(
     hurst: T,
@@ -78,8 +76,8 @@ impl<T: FloatExt, S: SeedExt> Fcir<T, S, Cpu> {
   ) -> Self {
     assert!(n >= 2, "n must be at least 2");
     if T::from_usize_(2) * theta * mu < sigma.powi(2) && use_sym != Some(true) {
-      eprintln!(
-        "warning: Fcir::new: Feller condition violated (2*theta*mu < sigma^2) \
+      log::warn!(
+        "Fcir::new: Feller condition violated (2*theta*mu < sigma^2) \
          without use_sym = Some(true); the path floors at zero on every \
          boundary hit instead of reflecting — pass use_sym = Some(true) for \
          the standard sub-Feller mitigation"
