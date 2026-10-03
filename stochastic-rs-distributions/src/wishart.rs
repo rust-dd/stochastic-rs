@@ -110,17 +110,17 @@ impl<T: SimdFloatExt, G: Rng + ?Sized> BartlettSource<T> for AnyRng<'_, G> {
 }
 
 impl<T: SimdFloatExt> SimdWishart<T> {
-  /// Construct a Wishart$(\nu, V)$ generator.
-  ///
-  /// `scale` is the $p \times p$ positive-definite scale matrix; the
-  /// constructor Cholesky-factorises it eagerly so subsequent draws are
-  /// cheap. Returns a panic on a non-SPD scale matrix or on $\nu \le p - 1$.
+  /// Wishart$(\nu, V)$ for a $p \times p$ positive-definite `scale`, $p \ge 1$, Cholesky-factorised once here.
+  /// Panics on an empty, non-square or non-SPD `scale`, or on $\nu \le p - 1$.
   pub fn new(nu: f64, scale: Array2<f64>) -> Self {
     let p = scale.nrows();
-    assert_eq!(
-      scale.ncols(),
-      p,
-      "scale must satisfy `scale.ncols() == scale.nrows()`, got shape = {:?}",
+    assert!(
+      p >= 1,
+      "scale must satisfy `scale.nrows() >= 1`, got scale.nrows() = {p}"
+    );
+    assert!(
+      scale.ncols() == p,
+      "scale must satisfy `scale.ncols() == scale.nrows()`, got scale.shape() = {:?}",
       scale.shape()
     );
     assert!(
@@ -376,5 +376,20 @@ mod tests {
     // Non-SPD test matrix (negative eigenvalue).
     let bad = array![[1.0, 2.0], [2.0, 1.0]];
     assert!(w.log_pdf(&bad).is_nan());
+  }
+
+  /// An empty scale is named before the `nu > p - 1` bound, which `p = 0` cannot form.
+  #[test]
+  #[should_panic(expected = "scale must satisfy `scale.nrows() >= 1`, got scale.nrows() = 0")]
+  fn an_empty_scale_is_rejected() {
+    SimdWishart::<f64>::new(3.0, Array2::zeros((0, 0)));
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "scale must satisfy `scale.ncols() == scale.nrows()`, got scale.shape() = [2, 3]"
+  )]
+  fn a_non_square_scale_is_rejected() {
+    SimdWishart::<f64>::new(3.0, Array2::zeros((2, 3)));
   }
 }
