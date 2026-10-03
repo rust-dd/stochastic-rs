@@ -198,7 +198,7 @@ fn pdf_integrates_to_one() {
   assert!((s - 1.0).abs() < 1e-6, "integral = {s}");
 }
 
-/// One case per generator regime.
+/// All three generator regimes, the unshifted ratio-of-uniforms one also at a negative `λ`.
 #[test]
 fn scalar_sample_raw_moments_match_the_bessel_ratios() {
   for (lambda, chi, psi) in [
