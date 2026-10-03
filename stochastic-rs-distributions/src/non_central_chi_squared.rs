@@ -56,6 +56,15 @@ impl<T: SimdFloatExt, G: Rng + ?Sized> MixtureSource<T> for AnyRng<'_, G> {
   }
 }
 
+/// Panics unless `ncp ≥ 0`, so a negative or `NaN` noncentrality fails on both decompositions alike.
+#[inline]
+fn check_ncp<T: SimdFloatExt>(ncp: T) {
+  assert!(
+    ncp >= T::zero(),
+    "ncp must satisfy `ncp >= T::zero()`, got ncp = {ncp:?}"
+  );
+}
+
 /// The Poisson mixture `Gamma(df/2 + J, 2)` with `J ~ Poisson(ncp/2)`, the only exact form for `0 < df < 1`.
 fn poisson_mixture<T: SimdFloatExt>(df: T, ncp: T, mut src: impl MixtureSource<T>) -> T {
   let two = T::from_f64_fast(2.0);
@@ -106,8 +115,10 @@ impl<T: SimdFloatExt> SimdNonCentralChiSquared<T> {
     self.df
   }
 
-  /// One draw of `χ²_df(ncp)` on the caller's rng: the shift for `df ≥ 1`, the Poisson mixture below.
+  /// One draw of `χ²_df(ncp)` on the caller's rng, the shift for `df ≥ 1` and the Poisson mixture below; panics
+  /// unless `ncp ≥ 0`.
   pub fn sample_ncp_with<G: Rng + ?Sized>(&self, rng: &mut G, ncp: T) -> T {
+    check_ncp(ncp);
     if self.df < T::one() {
       return poisson_mixture(self.df, ncp, AnyRng(rng));
     }
@@ -140,9 +151,10 @@ impl<T: SimdFloatExt> SimdDistribution for SimdNonCentralChiSquared<T> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> Seeded<SimdNonCentralChiSquared<T>, R> {
-  /// One draw of `χ²_df(ncp)`; `ncp` must be non-negative (unchecked: a negative one gives `NaN` through `√ncp`).
+  /// One draw of `χ²_df(ncp)` from the stream; panics unless `ncp ≥ 0`.
   #[inline]
   pub fn sample_ncp(&mut self, ncp: T) -> T {
+    check_ncp(ncp);
     let (law, state) = self.parts_mut();
     if law.df < T::one() {
       let child = Deterministic::new(derive_seed(&mut state.cursor));
@@ -157,21 +169,16 @@ impl<T: SimdFloatExt, R: SimdRngExt> Seeded<SimdNonCentralChiSquared<T>, R> {
   }
 }
 
-/// One-shot noncentral chi-squared draw, exact for every `df > 0`.
-///
-/// For `df ≥ 1` this uses the Gaussian-shift decomposition of
-/// [`SimdNonCentralChiSquared`]; for `0 < df < 1`, where that decomposition
-/// does not exist, it falls back to the exact Poisson mixture
-/// `χ²_df(λ) = Gamma(df/2 + J, 2)` with `J ~ Poisson(λ/2)`. Constructs the
-/// sub-samplers per call — for repeated `df ≥ 1` draws hold a
-/// [`SimdNonCentralChiSquared`] instead.
-pub fn sample<T: FloatExt, S: SeedExt>(df: T, lambda: T, seed: &S) -> T {
+/// One-shot `χ²_df(ncp)` draw, the shift for `df ≥ 1` and the Poisson mixture below; panics unless `ncp ≥ 0`.
+/// It builds the laws on every call, so repeated draws belong on a [`SimdNonCentralChiSquared`] stream.
+pub fn sample<T: FloatExt, S: SeedExt>(df: T, ncp: T, seed: &S) -> T {
   if df >= T::one() {
     return SimdNonCentralChiSquared::<T>::new(df)
       .seeded(seed)
-      .sample_ncp(lambda);
+      .sample_ncp(ncp);
   }
-  poisson_mixture(df, lambda, seed)
+  check_ncp(ncp);
+  poisson_mixture(df, ncp, seed)
 }
 
 #[cfg(test)]
@@ -181,12 +188,20 @@ mod tests {
 
   use super::*;
 
-  /// Backs `sample_ncp`'s own doc comment: a negative `ncp` is documented
-  /// to poison the draw with `NaN` via `ncp.sqrt()`, unvalidated.
+  /// A negative or `NaN` noncentrality panics on both decompositions and through every entry point.
   #[test]
-  fn sample_ncp_negative_is_nan() {
-    let mut s = SimdNonCentralChiSquared::<f64>::new(3.0).seeded(&Unseeded);
-    assert!(s.sample_ncp(-1.0).is_nan());
+  fn negative_or_nan_ncp_is_rejected() {
+    for (df, ncp) in [(3.0, -1.0), (0.3, -1.0), (3.0, f64::NAN), (0.3, f64::NAN)] {
+      let law = SimdNonCentralChiSquared::<f64>::new(df);
+      let seeded = std::panic::catch_unwind(|| law.seeded(&Unseeded).sample_ncp(ncp));
+      let honest =
+        std::panic::catch_unwind(|| law.sample_ncp_with(&mut SimdRng::from_seed(1), ncp));
+      let one_shot = std::panic::catch_unwind(|| sample(df, ncp, &Deterministic::new(1)));
+      assert!(
+        seeded.is_err() && honest.is_err() && one_shot.is_err(),
+        "df = {df}, ncp = {ncp} was accepted"
+      );
+    }
   }
 
   /// Non-negative `ncp` (including exactly zero) must stay finite.
