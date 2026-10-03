@@ -67,7 +67,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> MtSource<T> for (&mut StreamState<T, R, 64>
 }
 
 impl<T: SimdFloatExt, G: Rng + ?Sized> MtSource<T> for AnyRng<'_, G> {
-  #[inline]
+  /// Kept out of line because inlined into the forced-inline trial this scalar ziggurat slows the honest draw.
+  #[inline(never)]
   fn normal(&mut self) -> T {
     SimdNormal::<T>::standard().draw_with(self.0)
   }
