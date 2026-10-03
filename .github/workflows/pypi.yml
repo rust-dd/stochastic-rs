@@ -38,7 +38,7 @@ jobs:
         with:
           target: ${{ matrix.platform.target }}
           manylinux: ${{ matrix.platform.manylinux }}
-          args: --release --out dist --interpreter ${{ env.PYTHON_INTERPRETERS }}
+          args: --release --locked --out dist --interpreter ${{ env.PYTHON_INTERPRETERS }}
       - name: Check the wheel set
         shell: bash
         run: |
@@ -70,7 +70,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: aarch64
-          args: --release --out dist --interpreter ${{ env.PYTHON_INTERPRETERS }}
+          args: --release --locked --out dist --interpreter ${{ env.PYTHON_INTERPRETERS }}
       - name: Check the wheel set
         shell: bash
         run: |
@@ -120,7 +120,7 @@ jobs:
         with:
           target: x64
           args: >-
-            --release --out dist --interpreter
+            --release --locked --out dist --interpreter
             ${{ steps.py311.outputs.python-path }}
             ${{ steps.py312.outputs.python-path }}
             ${{ steps.py313.outputs.python-path }}

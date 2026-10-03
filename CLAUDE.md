@@ -41,6 +41,9 @@ that no manifest enables pyo3's deprecated `extension-module` feature, but needs
 build and run time (`PYO3_PYTHON` picks it). Never export `PYO3_BUILD_EXTENSION_MODULE` in a shell; it
 is for maturin.
 
+`Cargo.lock` is committed and CI passes `--locked`; a manifest change and its
+lockfile update go in the same commit.
+
 ## Clippy usage
 
 Always run `cargo clippy` to adopt the latest compiler recommendations.

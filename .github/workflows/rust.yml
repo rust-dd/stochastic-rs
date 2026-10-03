@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@1.89.0
       - name: Cargo check (MSRV)
-        run: cargo check --workspace --no-default-features --all-targets
+        run: cargo check --workspace --no-default-features --all-targets --locked
 
   # Quick check: every sub-crate compiles independently with default features.
   # This catches broken inter-crate boundaries before the heavier coverage job
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - name: Cargo check (${{ matrix.crate }})
-        run: cargo check -p ${{ matrix.crate }} --no-default-features
+        run: cargo check -p ${{ matrix.crate }} --no-default-features --locked
 
   # Umbrella + features matrix. Covers feature combinations that exercise
   # cross-crate cfg-gated code.
@@ -59,9 +59,9 @@ jobs:
       - name: Cargo check (features=${{ matrix.features }})
         run: |
           if [ -z "${{ matrix.features }}" ]; then
-            cargo check -p stochastic-rs --all-targets
+            cargo check -p stochastic-rs --all-targets --locked
           else
-            cargo check -p stochastic-rs --all-targets --features "${{ matrix.features }}"
+            cargo check -p stochastic-rs --all-targets --features "${{ matrix.features }}" --locked
           fi
 
   # Lint + format gates. Catches drift independently of the feature matrix.
@@ -75,17 +75,17 @@ jobs:
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
       - name: cargo clippy (workspace)
-        run: cargo clippy --workspace --no-default-features --all-targets -- -D warnings
+        run: cargo clippy --workspace --no-default-features --all-targets --locked -- -D warnings
       # All six library crates deny `rustdoc::broken_intra_doc_links` at their
       # crate root, but nothing else in this workflow runs rustdoc — the doctest
       # gate does not exercise the lint, so 171 broken links once accumulated
       # unnoticed. This step is what makes the deny bite.
       - name: cargo doc (intra-doc links, deny warnings)
-        run: cargo doc --workspace --no-deps
+        run: cargo doc --workspace --no-deps --locked
         env:
           RUSTDOCFLAGS: -D warnings
       - name: Cargo check (stochastic-rs-py, features=ai)
-        run: cargo check -p stochastic-rs-py --features ai
+        run: cargo check -p stochastic-rs-py --features ai --locked
 
   # metal + accelerate only compile on macOS, so no linux job can lint them;
   # this is the one arm of the CI that runs on a mac. Check-only: the point
@@ -97,9 +97,9 @@ jobs:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - name: Cargo check (metal + accelerate)
-        run: cargo check -p stochastic-rs-stochastic --features metal,accelerate --all-targets
+        run: cargo check -p stochastic-rs-stochastic --features metal,accelerate --all-targets --locked
       - name: Cargo check (python + metal + accelerate)
-        run: cargo check -p stochastic-rs-py --features metal,accelerate --all-targets
+        run: cargo check -p stochastic-rs-py --features metal,accelerate --all-targets --locked
 
   # cudarc loads libcuda at run time, so the native CUDA back-end compiles on
   # a runner without a GPU or toolkit (the cuda-12080 pin stands in for the
@@ -113,11 +113,11 @@ jobs:
         with:
           components: clippy
       - name: Cargo check (cuda)
-        run: cargo check -p stochastic-rs-stochastic --features cuda --all-targets
+        run: cargo check -p stochastic-rs-stochastic --features cuda --all-targets --locked
       - name: Clippy (cuda)
-        run: cargo clippy -p stochastic-rs-stochastic --features cuda --all-targets -- -D warnings
+        run: cargo clippy -p stochastic-rs-stochastic --features cuda --all-targets --locked -- -D warnings
       - name: Cargo check (python + cuda)
-        run: cargo check -p stochastic-rs-py --features cuda --all-targets
+        run: cargo check -p stochastic-rs-py --features cuda --all-targets --locked
 
   # The docs site's Rust code blocks are `<RustExample path="tests/doctest_*.rs" />`
   # includes rather than hand-copied text, so there is nothing to diff for
@@ -163,7 +163,7 @@ jobs:
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install maturin numpy pytest scipy
       - name: maturin develop
-        run: .venv/bin/maturin develop --release
+        run: .venv/bin/maturin develop --release --locked
       - name: Run python_smoke.py
         # `-u` flushes prints so the last `[OK]`/`[FAIL]` line before any
         # crash shows up in the log; `-X faulthandler` prints a C+Python
@@ -197,16 +197,16 @@ jobs:
       # stochastic-rs-py` because the cdylib is exercised by pytest in the
       # python_smoke job. Mirrors the coverage job's feature set for parity.
       - name: cargo nextest run (workspace)
-        run: cargo nextest run --workspace --exclude stochastic-rs-py --profile ci
+        run: cargo nextest run --workspace --exclude stochastic-rs-py --profile ci --locked
       # The workspace run leaves quant and viz off; they gate the ai crate's
       # calibration, Heston-pin and plot tests.
       - name: cargo nextest run (ai surrogates, quant and viz)
-        run: cargo nextest run -p stochastic-rs-ai --features quant,viz --profile ci
+        run: cargo nextest run -p stochastic-rs-ai --features quant,viz --profile ci --locked
       # nextest does not run doctests; this gates the crates' doc examples
       # (e.g. the README quickstart rendered on docs.rs) that plain `cargo
       # test` used to cover. `--release` reuses the artifacts built above.
       - name: cargo test --doc (workspace)
-        run: cargo test --release --workspace --exclude stochastic-rs-py --doc
+        run: cargo test --release --workspace --exclude stochastic-rs-py --doc --locked
 
   # Full test run with coverage. Heavyweight + instrumented, so it
   # only runs on pushes to main; the fast `test` job gates pull requests.
@@ -254,7 +254,7 @@ jobs:
         # unique by the %p pid above) and the `ci-coverage` profile prints the
         # running (N/total) counter; grcov then merges every profraw as before.
         run: |
-          cargo nextest run --release --workspace --exclude stochastic-rs-py --profile ci-coverage
+          cargo nextest run --release --workspace --exclude stochastic-rs-py --profile ci-coverage --locked
 
       - name: Generate coverage report
         run: |

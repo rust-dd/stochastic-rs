@@ -83,6 +83,11 @@ grep -r '"X-1.Y.Z"' Cargo.toml stochastic-rs-*/Cargo.toml || echo "clean"
 
 # 2.2 Workspace re-resolves
 cargo metadata --no-deps --format-version=1 | jq '.packages[] | {name, version}' | grep stochastic-rs
+
+# 2.3 The bump rewrites the 9 workspace versions in the committed Cargo.lock;
+#     commit it with the bump, or the umbrella `cargo publish` aborts on a dirty tree
+cargo update --workspace
+git add Cargo.lock
 ```
 
 ## Stage 3 — `MIGRATION.md` and `CITATION.cff`
