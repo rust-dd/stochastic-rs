@@ -22,6 +22,7 @@ use stochastic_rs_distributions::special::ln_bessel_ie;
 ///
 /// `theta` is the mean-reversion speed and `mu` is the long-run mean. Invalid
 /// or non-finite inputs return `NaN`; at `t == 0` the current state is returned.
+/// A `sigma` so small that the χ² parameters overflow returns the conditional mean (relative spread < 1e-154).
 pub fn sample(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64) -> f64 {
   sample_with_seed(theta, mu, sigma, t, r_t, &Unseeded)
 }
@@ -91,8 +92,9 @@ fn sample_with_seed<S: SeedExt>(
   let scale = sigma_squared * one_minus_decay / (4.0 * theta);
   let degrees_of_freedom = 4.0 * theta * mu / sigma_squared;
   let noncentrality = r_t * decay / scale;
-  if !(degrees_of_freedom.is_finite() && noncentrality.is_finite()) {
-    // A χ² parameter past the double range leaves a spread negligible beside the mean: the draw is that mean.
+  if !(degrees_of_freedom + noncentrality).is_finite() {
+    // The relative spread is at most `2/√(df + ncp)`, below 1.5e-154 once the sum leaves the double range: the draw is
+    // the conditional mean.
     return r_t * decay + mu * one_minus_decay;
   }
   scale * non_central_chi_squared::sample(degrees_of_freedom, noncentrality, seed)

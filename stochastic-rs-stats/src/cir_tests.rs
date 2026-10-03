@@ -8,19 +8,24 @@ fn exact_moments(theta: f64, mu: f64, sigma: f64, t: f64, r_t: f64) -> (f64, f64
   (mean, variance)
 }
 
-/// A zero or subnormal `σ²` overflows the χ² parameters; the draw is the conditional mean, not `NaN` or `∞`.
+/// A vanishing `σ²` pushes `df + ncp` past the double range, through a term or, in the last case, only their sum:
+/// the draw is the conditional mean, not `NaN` or `∞`.
 #[test]
 fn vanishing_variance_returns_the_conditional_mean() {
   let (theta, mu, t) = (0.5_f64, 0.04, 1.0);
-  for sigma in [1e-200, 1e-155] {
-    for r_t in [0.0, 0.03] {
-      let mean = r_t * (-theta * t).exp() + mu * -(-theta * t).exp_m1();
-      assert_eq!(
-        sample_seeded(theta, mu, sigma, t, r_t, 7),
-        mean,
-        "sigma = {sigma:e}, r_t = {r_t}"
-      );
-    }
+  for (sigma, r_t) in [
+    (1e-200, 0.0),
+    (1e-200, 0.03),
+    (1e-155, 0.0),
+    (1e-155, 0.03),
+    (2.83e-155, 0.026),
+  ] {
+    let mean = r_t * (-theta * t).exp() + mu * -(-theta * t).exp_m1();
+    assert_eq!(
+      sample_seeded(theta, mu, sigma, t, r_t, 7),
+      mean,
+      "sigma = {sigma:e}, r_t = {r_t}"
+    );
   }
 }
 
