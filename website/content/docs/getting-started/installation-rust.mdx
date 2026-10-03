@@ -66,11 +66,12 @@ and no Python. Pick features explicitly for the workload at hand.
 
 ## Public dependencies
 
-Types of five third-party crates appear in the public API, so the umbrella
-re-exports them: `stochastic_rs::ndarray`, `stochastic_rs::num_complex`,
-`stochastic_rs::num_traits`, `stochastic_rs::rand` and `stochastic_rs::chrono`.
-Use these paths, or depend on the same version, when passing arrays, complex
-numbers, dates or RNGs across the API; a major release of any of them is a
+The umbrella re-exports `ndarray`, `num_complex`, `num_traits`, `rand` and
+`chrono` (as `stochastic_rs::ndarray` and so on) because callers build and pass
+their types; use these paths or depend on the same versions. `wide` (the SIMD
+vectors of `SimdFloatExt` and `SimdRngExt`) and `anyhow` (calibrator errors)
+also appear in public signatures. A semver-incompatible release of any of these
+seven crates (for a 0.x crate, a minor bump such as ndarray 0.17 → 0.18) is a
 major release of `stochastic-rs`.
 
 ## SIMD support

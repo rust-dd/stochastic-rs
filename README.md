@@ -70,13 +70,22 @@ for lean builds.
 The `ai` feature and the `stochastic-rs-ai` crate are experimental and outside the
 stability promise.
 
+```bash
+pip install stochastic-rs
+```
+
+The wheels are CPU-only and carry the whole surface on Linux, macOS and Windows
+(linear algebra is pure Rust). A source build with a device back-end:
+`maturin develop --release --features metal` (or `cuda`) in a checkout.
+
 ### Public dependencies
 
-Types of five third-party crates appear in the public API, so the umbrella
-re-exports them: `stochastic_rs::ndarray`, `stochastic_rs::num_complex`,
-`stochastic_rs::num_traits`, `stochastic_rs::rand` and `stochastic_rs::chrono`.
-Use these paths, or depend on the same version, when passing arrays, complex
-numbers, dates or RNGs across the API; a major release of any of them is a
+The umbrella re-exports `ndarray`, `num_complex`, `num_traits`, `rand` and
+`chrono` (as `stochastic_rs::ndarray` and so on) because callers build and pass
+their types; use these paths or depend on the same versions. `wide` (the SIMD
+vectors of `SimdFloatExt` and `SimdRngExt`) and `anyhow` (calibrator errors)
+also appear in public signatures. A semver-incompatible release of any of these
+seven crates (for a 0.x crate, a minor bump such as ndarray 0.17 → 0.18) is a
 major release of `stochastic-rs`.
 
 ```rust
@@ -92,14 +101,6 @@ fn total(path: &Array1<f64>) -> f64 {
 let path = Bm::<f64>::new(16, Some(1.0), Unseeded).sample();
 assert!(total(&path).is_finite());
 ```
-
-```bash
-pip install stochastic-rs
-```
-
-The wheels are CPU-only and carry the whole surface on Linux, macOS and Windows
-(linear algebra is pure Rust). A source build with a device back-end:
-`maturin develop --release --features metal` (or `cuda`) in a checkout.
 
 ## Quickstart
 

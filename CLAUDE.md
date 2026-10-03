@@ -21,8 +21,15 @@ stochastic-rs/                        (workspace root + umbrella)
 
 The umbrella crate `stochastic-rs` keeps the existing public API
 (`stochastic_rs::stochastic::diffusion::gbm::GBM`, etc.) — sub-crate split is
-transparent to users. It also re-exports `chrono`, `ndarray`, `num_complex`,
-`num_traits` and `rand`, the third-party crates whose types appear in that API.
+transparent to users.
+
+The umbrella re-exports `ndarray`, `num_complex`, `num_traits`, `rand` and
+`chrono` (as `stochastic_rs::ndarray` and so on) because callers build and pass
+their types; use these paths or depend on the same versions. `wide` (the SIMD
+vectors of `SimdFloatExt` and `SimdRngExt`) and `anyhow` (calibrator errors)
+also appear in public signatures. A semver-incompatible release of any of these
+seven crates (for a 0.x crate, a minor bump such as ndarray 0.17 → 0.18) is a
+major release of `stochastic-rs`.
 
 ## Build & test
 
