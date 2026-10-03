@@ -93,7 +93,7 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// `process.on::<Cuda>()`); the backend marker propagates to the
 /// process's noise source with no runtime branch. Only the fractional family
 /// (built on [`Fgn`](crate::noise::fgn::Fgn)) exposes GPU backends today, and a
-/// GPU marker only exists when its feature is compiled.
+/// GPU marker only exists when its feature is compiled (the Apple ones on macOS only).
 ///
 /// ## Sampling architecture
 ///

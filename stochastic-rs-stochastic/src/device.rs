@@ -4,8 +4,9 @@
 //! the [`Backend`] trait monomorphises `sample` / `sample_par` to that backend
 //! with **no runtime branch**. Switch backend by handing `.on` a handle,
 //! `process.on::<Cuda>()` — the marker must be in scope, and the GPU
-//! markers only exist when their feature is compiled, so selecting an
-//! unavailable backend is a compile error rather than a runtime fallback.
+//! markers only exist when their feature is compiled (the Apple ones on macOS
+//! only), so selecting an unavailable backend is a compile error rather than a
+//! runtime fallback.
 //!
 //! The capability traits ([`FgnBackend`], [`crate::euler::EulerBackend`]) take
 //! the scalar as a type parameter, and a device implements them only for the
@@ -608,7 +609,7 @@ impl<T: FloatExt> FgnBackend<T> for Cpu {
 /// keeps an `Unseeded` inner `Fgn` and hands over its own seed, so a
 /// `Deterministic` wrapper reproduces its device paths too.
 ///
-/// Gated with the impls that invoke it: both sit behind a backend feature, so
+/// Gated with the impls that invoke it: both sit behind a backend's cfg, so
 /// a build without one would leave this defined and never expanded.
 #[cfg(any(feature = "cuda", all(feature = "metal", target_os = "macos")))]
 macro_rules! gpu_backend_owning {
@@ -642,7 +643,7 @@ macro_rules! gpu_backend_owning {
 /// batch has to cross into host memory before anything can read it: the map
 /// form therefore takes that batch and walks its rows, which still saves the
 /// per-row copy the trait's default would add. Each marker and its impl are
-/// gated on the backend's feature.
+/// gated on the backend's cfg.
 macro_rules! gpu_backend {
   ($cfg:meta, $marker:ident => $sampler:ident, $($scalar:ty),+) => {
     $(
@@ -871,7 +872,7 @@ host_sheet_backend!(Accelerate);
 
 /// Generates a [`SheetBackend`] impl for a GPU marker whose `$sampler` returns
 /// the batch's sheets. Each marker and its impl are gated on the backend's
-/// feature, and each marker implements the capability for the scalars its
+/// cfg, and each marker implements the capability for the scalars its
 /// kernels compute in.
 macro_rules! gpu_sheet_backend {
   ($cfg:meta, $marker:ident => $sampler:ident, $($scalar:ty),+) => {
