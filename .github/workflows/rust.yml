@@ -87,7 +87,7 @@ jobs:
       - name: Cargo check (stochastic-rs-py, features=ai)
         run: cargo check -p stochastic-rs-py --features ai --locked
 
-  # metal + accelerate only compile on macOS, so no linux job can lint them;
+  # The Apple back-end code compiles only on macOS, so no linux job can lint it;
   # this is the one arm of the CI that runs on a mac. Check-only: the point
   # is that the gated code keeps compiling, not to run the GPU.
   check_macos_backends:
@@ -110,6 +110,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Cargo check (metal + accelerate on Linux)
         run: cargo check -p stochastic-rs --features metal,accelerate --all-targets --locked
+      - name: Cargo check (stochastic, metal + accelerate on Linux)
+        run: cargo check -p stochastic-rs-stochastic --features metal,accelerate --all-targets --locked
+      - name: Cargo check (python + metal + accelerate on Linux)
+        run: cargo check -p stochastic-rs-py --features metal,accelerate --all-targets --locked
 
   # cudarc loads libcuda at run time, so the native CUDA back-end compiles on
   # a runner without a GPU or toolkit (the cuda-12080 pin stands in for the
