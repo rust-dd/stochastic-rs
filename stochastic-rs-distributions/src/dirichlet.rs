@@ -190,7 +190,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> Seeded<SimdDirichlet<T>, R> {
     out
   }
 
-  /// `m` simplex points, one per row, in draw order.
+  /// `m` rows of `dim()` simplex points in draw order, not the `m × n` scalars of
+  /// [`DistributionSampler::sample_matrix`](crate::traits::DistributionSampler::sample_matrix).
   pub fn sample_matrix(&mut self, m: usize) -> Array2<T> {
     let mut out = Array2::<T>::zeros((m, self.dist().dim()));
     for mut row in out.rows_mut() {
