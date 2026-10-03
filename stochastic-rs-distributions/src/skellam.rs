@@ -44,13 +44,19 @@ pub struct SimdSkellam {
 impl SimdSkellam {
   /// Construct a Skellam$(\mu_1, \mu_2)$ random variable.
   ///
-  /// - `mu1` — rate μ₁ > 0 of the minuend Poisson N₁ (matches the module
+  /// - `mu1` — finite rate μ₁ > 0 of the minuend Poisson N₁ (matches the module
   ///   header's μ₁).
-  /// - `mu2` — rate μ₂ > 0 of the subtrahend Poisson N₂ (matches the
+  /// - `mu2` — finite rate μ₂ > 0 of the subtrahend Poisson N₂ (matches the
   ///   module header's μ₂). The output is `N₁ - N₂`.
   pub fn new(mu1: f64, mu2: f64) -> Self {
-    assert!(mu1 > 0.0, "mu1 must satisfy `mu1 > 0.0`, got mu1 = {mu1:?}");
-    assert!(mu2 > 0.0, "mu2 must satisfy `mu2 > 0.0`, got mu2 = {mu2:?}");
+    assert!(
+      mu1 > 0.0 && mu1.is_finite(),
+      "mu1 must satisfy `mu1 > 0.0 && mu1.is_finite()`, got mu1 = {mu1:?}"
+    );
+    assert!(
+      mu2 > 0.0 && mu2.is_finite(),
+      "mu2 must satisfy `mu2 > 0.0 && mu2.is_finite()`, got mu2 = {mu2:?}"
+    );
     Self {
       mu1,
       mu2,
@@ -143,6 +149,13 @@ mod tests {
 
   use super::*;
   use crate::tests::scalar_chi_square_best_p;
+
+  /// An infinite rate is named by its own argument before it reaches the Poisson table.
+  #[test]
+  #[should_panic(expected = "mu2 must satisfy `mu2 > 0.0 && mu2.is_finite()`, got mu2 = inf")]
+  fn skellam_infinite_rate_is_rejected() {
+    SimdSkellam::new(1.0, f64::INFINITY);
+  }
 
   /// Mean and variance match $\mu_1 - \mu_2$ and $\mu_1 + \mu_2$ within
   /// 3σ on 30k samples.

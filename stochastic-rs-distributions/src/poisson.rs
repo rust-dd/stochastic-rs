@@ -60,14 +60,14 @@ impl<T: PrimInt> SimdPoisson<T> {
 
   /// Creates a Poisson distribution.
   ///
-  /// - `lambda` — rate λ > 0 (matches the module header's λ); mean and
+  /// - `lambda` — finite rate λ > 0 (matches the module header's λ); mean and
   ///   variance are both λ. Stored at construction — see this type's
   ///   internal `build_cdf` for why the cumulative table must be built
   ///   in log space once λ ≳ 745.
   pub fn new(lambda: f64) -> Self {
     assert!(
-      lambda > 0.0,
-      "lambda must satisfy `lambda > 0.0`, got lambda = {lambda:?}"
+      lambda > 0.0 && lambda.is_finite(),
+      "lambda must satisfy `lambda > 0.0 && lambda.is_finite()`, got lambda = {lambda:?}"
     );
     Self {
       lambda,
@@ -257,6 +257,15 @@ mod tests {
       "λ=800 sample mean drift: {mean}"
     );
     assert!((dist.mean() - 800.0).abs() < 1e-9);
+  }
+
+  /// An infinite rate turned the table build's log-pmf `NaN`, so neither exit fired and the table grew without bound.
+  #[test]
+  #[should_panic(
+    expected = "lambda must satisfy `lambda > 0.0 && lambda.is_finite()`, got lambda = inf"
+  )]
+  fn poisson_infinite_lambda_is_rejected() {
+    SimdPoisson::<u64>::new(f64::INFINITY);
   }
 
   /// Log-space build must reproduce the small-λ table semantics.
