@@ -84,8 +84,8 @@ grep -r '"X-1.Y.Z"' Cargo.toml stochastic-rs-*/Cargo.toml || echo "clean"
 # 2.2 Workspace re-resolves
 cargo metadata --no-deps --format-version=1 | jq '.packages[] | {name, version}' | grep stochastic-rs
 
-# 2.3 The bump rewrites the 9 workspace versions in the committed Cargo.lock;
-#     commit it with the bump, or the umbrella `cargo publish` aborts on a dirty tree
+# 2.3 After the bump, `cargo update --workspace` rewrites the 9 workspace versions in the
+#     committed Cargo.lock; commit it with the bump, or the umbrella `cargo publish` aborts
 cargo update --workspace
 git add Cargo.lock
 ```
@@ -237,6 +237,7 @@ revisited, it needs a cross-compilation lane, not a `macos-13` entry.
 ```bash
 # 8.1 Bump main to next-dev version (open the next rc / patch cycle)
 # (manual edit Cargo.toml workspace.package.version → "X.Y.Z+1-dev" or "X.Y+1.0-dev")
+cargo update --workspace && git add Cargo.lock
 
 # 8.2 Verify docs.rs picked up the build (auto-triggered on crates.io publish)
 open https://docs.rs/stochastic-rs/X.Y.Z/
