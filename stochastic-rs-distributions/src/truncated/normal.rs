@@ -65,7 +65,7 @@ pub struct SimdTruncatedNormal<T> {
   f_lo: f64,
   f_up: f64,
   norm_mass: f64,
-  /// Set when the interval lies wholly on one side of the mean, where the inverse cdf loses its digits first.
+  /// Set when the interval lies wholly on one side of `μ`, where the inverse cdf loses its digits first.
   tail: Option<TailSetup>,
 }
 
@@ -109,20 +109,20 @@ impl<T: SimdFloatExt, G: Rng + ?Sized> TruncatedNormalSource<T> for AnyRng<'_, G
 }
 
 impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
-  /// The base [`SimdNormal`] `N(mean, std_dev²)`, `std_dev > 0`, renormalised on `[lower, upper]`, `lower < upper`.
-  pub fn new(mean: T, std_dev: T, lower: T, upper: T) -> Self {
+  /// The parent [`SimdNormal`] `N(mu, sigma²)`, `sigma > 0`, renormalised on `[lower, upper]`, `lower < upper`.
+  pub fn new(mu: T, sigma: T, lower: T, upper: T) -> Self {
     assert!(
-      std_dev > T::zero(),
-      "std_dev must satisfy `std_dev > T::zero()`, got std_dev = {std_dev:?}"
+      sigma > T::zero(),
+      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
     );
     assert!(
       lower < upper,
       "lower must satisfy `lower < upper`, got lower = {lower:?}, upper = {upper:?}"
     );
-    let mean_f64 = mean.to_f64().unwrap();
-    let std_f64 = std_dev.to_f64().unwrap();
-    let a_std = (lower.to_f64().unwrap() - mean_f64) / std_f64;
-    let b_std = (upper.to_f64().unwrap() - mean_f64) / std_f64;
+    let mu_f64 = mu.to_f64().unwrap();
+    let sigma_f64 = sigma.to_f64().unwrap();
+    let a_std = (lower.to_f64().unwrap() - mu_f64) / sigma_f64;
+    let b_std = (upper.to_f64().unwrap() - mu_f64) / sigma_f64;
     let f_lo = norm_cdf_scalar(a_std);
     let f_up = norm_cdf_scalar(b_std);
     // A left-tail interval is reflected into the right tail, so the tail sampler only sees `a >= 0`.
@@ -134,7 +134,7 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
       None
     };
     Self {
-      base: SimdNormal::new(mean, std_dev),
+      base: SimdNormal::new(mu, sigma),
       lower,
       upper,
       f_lo,
@@ -144,13 +144,13 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     }
   }
 
-  /// The untruncated base's mean `μ`, not the mean of the truncated law.
-  pub fn mean(&self) -> T {
+  /// The parent normal's location `μ`, not the truncated law's mean.
+  pub fn mu(&self) -> T {
     self.base.mean()
   }
 
-  /// The untruncated base's standard deviation `σ`.
-  pub fn std_dev(&self) -> T {
+  /// The parent normal's scale `σ`, not the truncated law's standard deviation.
+  pub fn sigma(&self) -> T {
     self.base.std_dev()
   }
 
@@ -261,10 +261,10 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     if x < lo || x > up {
       return 0.0;
     }
-    let mean = self.base.mean().to_f64().unwrap();
-    let std = self.base.std_dev().to_f64().unwrap();
-    let z = (x - mean) / std;
-    let phi = (-0.5 * z * z).exp() / ((2.0 * std::f64::consts::PI).sqrt() * std);
+    let mu = self.base.mean().to_f64().unwrap();
+    let sigma = self.base.std_dev().to_f64().unwrap();
+    let z = (x - mu) / sigma;
+    let phi = (-0.5 * z * z).exp() / ((2.0 * std::f64::consts::PI).sqrt() * sigma);
     phi / self.norm_mass
   }
 
@@ -277,10 +277,10 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     if x >= up {
       return 1.0;
     }
-    let mean = self.base.mean().to_f64().unwrap();
-    let std = self.base.std_dev().to_f64().unwrap();
-    let f_x = norm_cdf_scalar((x - mean) / std);
-    let f_lo = norm_cdf_scalar((lo - mean) / std);
+    let mu = self.base.mean().to_f64().unwrap();
+    let sigma = self.base.std_dev().to_f64().unwrap();
+    let f_x = norm_cdf_scalar((x - mu) / sigma);
+    let f_lo = norm_cdf_scalar((lo - mu) / sigma);
     (f_x - f_lo) / self.norm_mass
   }
 }
@@ -399,5 +399,15 @@ mod tests {
     assert_eq!(tn.pdf(1.5), 0.0);
     assert_eq!(tn.cdf(-2.0), 0.0);
     assert_eq!(tn.cdf(2.0), 1.0);
+  }
+
+  /// `mu()` and `sigma()` read back the parent's arguments, not moments of the truncated law.
+  #[test]
+  fn getters_return_the_parent_parameters() {
+    let tn = SimdTruncatedNormal::<f64>::new(0.5, 2.0, 1.0, 4.0);
+    assert_eq!(
+      (tn.mu(), tn.sigma(), tn.lower(), tn.upper()),
+      (0.5, 2.0, 1.0, 4.0)
+    );
   }
 }
