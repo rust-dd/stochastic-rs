@@ -130,6 +130,10 @@ fn sample_exp1_one<T: SimdFloatExt, S: Source + ?Sized>(rng: &mut S, tables: &Ex
   }
 }
 
+/// The 256-layer index mask, built at compile time: a run-time `splat` of a constant becomes
+/// `memset_pattern16` calls on Darwin.
+const LAYER_MASK: i32x8 = i32x8::splat(0xFF);
+
 /// One 8-lane exponential Ziggurat batch from `hz` into `out[..8]`, scaled by `factor` (= 1/λ).
 #[inline(always)]
 fn exp_batch8<T: SimdFloatExt, R: SimdRngExt>(
@@ -140,7 +144,7 @@ fn exp_batch8<T: SimdFloatExt, R: SimdRngExt>(
   rng: &mut R,
   out: &mut [T],
 ) {
-  let iz = hz & i32x8::splat(0xFF);
+  let iz = hz & LAYER_MASK;
   let iz_arr = iz.to_array();
   let abs_hz = hz.abs();
   unsafe {

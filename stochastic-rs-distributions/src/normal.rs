@@ -162,6 +162,10 @@ fn sample_one_standard<T: SimdFloatExt, S: Source + ?Sized>(rng: &mut S, tables:
   }
 }
 
+/// The 128-layer index mask, built at compile time: a run-time `splat` of a constant becomes
+/// `memset_pattern16` calls on Darwin.
+const LAYER_MASK: i32x8 = i32x8::splat(127);
+
 /// One 8-lane Ziggurat batch from `hz` into `out[..8]`; `STANDARD` compiles the affine map out.
 #[inline(always)]
 fn zig_batch8<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
@@ -174,7 +178,7 @@ fn zig_batch8<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
   rng: &mut R,
   out: &mut [T],
 ) {
-  let iz = hz & i32x8::splat(127);
+  let iz = hz & LAYER_MASK;
   let iz_arr = iz.to_array();
   unsafe {
     let kn_vals = i32x8::new([
