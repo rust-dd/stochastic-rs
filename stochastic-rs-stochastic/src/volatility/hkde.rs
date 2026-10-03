@@ -449,7 +449,7 @@ impl<T: FloatExt, S: SeedExt> HkdeSampler<T, S> {
       // Kou jumps
       let mut jump_log = T::zero();
       if let Some(pois) = &mut pois {
-        let k: u32 = pois.sample();
+        let k = pois.sample();
         for _ in 0..k {
           jump_log += self.sample_kou_jump(&mut rng);
         }

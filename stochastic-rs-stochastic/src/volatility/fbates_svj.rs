@@ -478,7 +478,7 @@ impl<T: FloatExt, S: SeedExt> FBatesSvjSampler<T, S> {
       // Jump component
       let mut jump_sum = T::zero();
       if let Some(pois) = &mut pois {
-        let n_jumps: u32 = pois.sample();
+        let n_jumps = pois.sample();
         if n_jumps > 0 {
           let kf = T::from_f64_fast(n_jumps as f64);
           let z0 = z_std.sample();

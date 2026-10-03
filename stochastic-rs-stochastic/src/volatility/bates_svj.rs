@@ -476,7 +476,7 @@ impl<T: FloatExt, S: SeedExt> BatesSvjSampler<T, S> {
 
       let mut jump_sum_z = T::zero();
       if let Some(pois) = &mut pois {
-        let k: u32 = pois.sample();
+        let k = pois.sample();
         if k > 0 {
           let kf = T::from_usize_(k as usize);
           let z0: f64 = z_std.sample();

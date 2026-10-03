@@ -307,7 +307,7 @@ impl<T: FloatExt> MjdLogSampler<T> {
 
       let mut jump_sum = T::zero();
       if let Some(pois) = &mut self.pois {
-        let k: u32 = pois.sample();
+        let k = pois.sample();
         if k > 0 {
           let kf = T::from_usize_(k as usize);
           let mut z0 = [T::zero(); 1];
