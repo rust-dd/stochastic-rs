@@ -26,6 +26,10 @@ pub struct SimdAlphaStable<T> {
   beta: T,
   scale: T,
   location: T,
+  /// $B_{\alpha,\beta} = \arctan(\beta\tan(\pi\alpha/2))/\alpha$ of the `α ≠ 1` formula.
+  cms_b: T,
+  /// $S_{\alpha,\beta} = (1 + \beta^2\tan^2(\pi\alpha/2))^{1/(2\alpha)}$ of the `α ≠ 1` formula.
+  cms_s: T,
 }
 
 /// The formula the stability index selects.
@@ -60,11 +64,15 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
       scale > T::zero(),
       "scale must satisfy `scale > T::zero()`, got scale = {scale:?}"
     );
+    let tan_term = (T::from_f64_fast(std::f64::consts::PI) * alpha / T::from(2.0).unwrap()).tan();
+    let beta_tan = beta * tan_term;
     Self {
       alpha,
       beta,
       scale,
       location,
+      cms_b: beta_tan.atan() / alpha,
+      cms_s: (T::one() + beta_tan * beta_tan).powf(T::one() / (T::from(2.0).unwrap() * alpha)),
     }
   }
 
@@ -146,19 +154,15 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
   /// The scalar twin of the 8-lane `α ≠ 1` branch, with the same cosine floor.
   fn general_one(&self, u: T, e: T) -> T {
     let alpha = self.alpha;
-    let tan_term = (T::from_f64_fast(std::f64::consts::PI) * alpha / T::from(2.0).unwrap()).tan();
-    let beta_tan = self.beta * tan_term;
-    let b = beta_tan.atan() / alpha;
-    let s = (T::one() + beta_tan * beta_tan).powf(T::one() / (T::from(2.0).unwrap() * alpha));
     let u = Self::clamp_open_unit(u);
     let e = Self::clamp_open_unit(e);
     let v = T::pi() * (u - T::from(0.5).unwrap());
     let w = -e.ln();
-    let phi = alpha * (v + b);
+    let phi = alpha * (v + self.cms_b);
     let denom = v.cos().max(T::epsilon()).powf(T::one() / alpha);
     let ratio = ((v - phi).cos() / w).max(T::min_positive_val());
     let tail = ratio.powf((T::one() - alpha) / alpha);
-    self.location + self.scale * s * (phi.sin() / denom) * tail
+    self.location + self.scale * self.cms_s * (phi.sin() / denom) * tail
   }
 
   fn fill_gaussian_branch<R: SimdRngExt>(&self, out: &mut [T], rng: &mut R) {
@@ -201,15 +205,9 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
 
   fn fill_alpha_not_one_branch<R: SimdRngExt>(&self, out: &mut [T], rng: &mut R) {
     let alpha = self.alpha;
-    let beta = self.beta;
-    let tan_term = (T::from_f64_fast(std::f64::consts::PI) * alpha / T::from(2.0).unwrap()).tan();
-    let beta_tan = beta * tan_term;
-    let b = (beta_tan).atan() / alpha;
-    let s = (T::one() + beta_tan * beta_tan).powf(T::one() / (T::from(2.0).unwrap() * alpha));
-
     let a = T::splat(alpha);
-    let b_v = T::splat(b);
-    let s_v = T::splat(s);
+    let b_v = T::splat(self.cms_b);
+    let s_v = T::splat(self.cms_s);
     let scale = T::splat(self.scale);
     let loc = T::splat(self.location);
     let pi = T::splat(T::pi());
