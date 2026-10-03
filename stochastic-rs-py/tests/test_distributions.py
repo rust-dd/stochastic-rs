@@ -10,6 +10,9 @@ sampling path. Run after `maturin develop` from the workspace root:
 
 from __future__ import annotations
 
+import subprocess
+import sys
+
 import numpy as np
 import pytest
 import stochastic_rs as sr
@@ -114,15 +117,51 @@ def test_normal_calls_continue_one_stream():
     assert not np.array_equal(first, second)
 
 
-def test_one_normal_survives_concurrent_callers():
-    from concurrent.futures import ThreadPoolExecutor
+_CONCURRENT_CALLERS = """
+import sys
+import threading
 
-    d = sr.PyNormal(0.0, 1.0, seed=1)
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        blocks = list(pool.map(lambda _: d.sample(1024), range(8)))
-    serial = sr.PyNormal(0.0, 1.0, seed=1)
-    want = np.concatenate([serial.sample(1024) for _ in range(8)])
-    assert np.array_equal(np.sort(np.concatenate(blocks)), np.sort(want))
+import stochastic_rs as sr
+
+assert "numpy" not in sys.modules
+d = sr.PyNormal(0.0, 1.0, seed=1)
+barrier = threading.Barrier(8)
+blocks = [[] for _ in range(8)]
+
+
+def work(i):
+    barrier.wait()
+    for k in range(4):
+        blocks[i].append(d.sample(257) if (i + k) % 2 else d.sample_par(4, 16384))
+
+
+threads = [threading.Thread(target=work, args=(i,)) for i in range(8)]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+got = [b for per_thread in blocks for b in per_thread]
+vectors = sorted(b.tobytes() for b in got if b.ndim == 1)
+matrices = sorted(b.tobytes() for b in got if b.ndim == 2)
+twin_v, twin_m = sr.PyNormal(0.0, 1.0, seed=1), sr.PyNormal(0.0, 1.0, seed=1)
+assert vectors == sorted(twin_v.sample(257).tobytes() for _ in vectors)
+assert matrices == sorted(twin_m.sample_par(4, 16384).tobytes() for _ in matrices)
+"""
+
+
+def test_one_normal_survives_concurrent_callers():
+    """A deadlock would hold the GIL, so the callers run in a fresh interpreter (numpy not yet
+    imported, as on a cold start) that a timeout turns into a failure."""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", _CONCURRENT_CALLERS],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail("concurrent calls on one distribution deadlocked", pytrace=False)
+    assert result.returncode == 0, result.stderr
 
 
 def test_a_failed_call_leaves_the_stream_usable():

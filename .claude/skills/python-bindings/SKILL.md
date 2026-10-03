@@ -43,8 +43,10 @@ dtype=None`; `params` lists only the distribution parameters — the macro
 appends `seed` and `dtype` itself.
 
 What you get:
-- `PyNormal` holds `Mutex<Seeded<SimdNormal<_>>>` and is a plain `#[pyclass]`: concurrent callers serialise on the
-  lock (the `py_process_*!` macros are unchanged).
+- `PyNormal` holds `Mutex<Seeded<SimdNormal<_>>>` and is a plain `#[pyclass]`. `sample` / `sample_par` take the lock
+  only inside `py.detach` and convert to NumPy after re-attaching: a caller blocked on the lock while attached deadlocks
+  with a holder that needs the interpreter (NumPy's first import, a free-threaded GC pause). Concurrent callers
+  serialise on the lock. The `py_process_*!` macros are unchanged.
 - Two inner slots, `inner_f32` / `inner_f64`; the seed is folded into the constructor as
   `.seeded(&Deterministic::new(sd))` (or `&Unseeded`).
 - `__new__(mean, std_dev, seed=None, dtype=None)` — `seed: Option<u64>`,

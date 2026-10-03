@@ -64,9 +64,9 @@ macro_rules! py_distribution {
           use numpy::IntoPyArray;
           use pyo3::IntoPyObjectExt;
           if let Some(ref inner) = self.inner_f64 {
-            $crate::python::lock_stream(inner).sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
+            py.detach(|| $crate::python::lock_stream(inner).sample_n(n)).into_pyarray(py).into_py_any(py).unwrap()
           } else if let Some(ref inner) = self.inner_f32 {
-            $crate::python::lock_stream(inner).sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
+            py.detach(|| $crate::python::lock_stream(inner).sample_n(n)).into_pyarray(py).into_py_any(py).unwrap()
           } else {
             unreachable!()
           }
@@ -79,9 +79,9 @@ macro_rules! py_distribution {
           use numpy::IntoPyArray;
           use pyo3::IntoPyObjectExt;
           if let Some(ref inner) = self.inner_f64 {
-            $crate::python::lock_stream(inner).sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
+            py.detach(|| $crate::python::lock_stream(inner).sample_matrix(m, n)).into_pyarray(py).into_py_any(py).unwrap()
           } else if let Some(ref inner) = self.inner_f32 {
-            $crate::python::lock_stream(inner).sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
+            py.detach(|| $crate::python::lock_stream(inner).sample_matrix(m, n)).into_pyarray(py).into_py_any(py).unwrap()
           } else {
             unreachable!()
           }
@@ -138,7 +138,7 @@ macro_rules! py_distribution_int {
           use $crate::DistributionSampler;
           use numpy::IntoPyArray;
           use pyo3::IntoPyObjectExt;
-          $crate::python::lock_stream(&self.inner).sample_n(n).into_pyarray(py).into_py_any(py).unwrap()
+          py.detach(|| $crate::python::lock_stream(&self.inner).sample_n(n)).into_pyarray(py).into_py_any(py).unwrap()
         })
       }
 
@@ -147,7 +147,7 @@ macro_rules! py_distribution_int {
           use $crate::DistributionSampler;
           use numpy::IntoPyArray;
           use pyo3::IntoPyObjectExt;
-          $crate::python::lock_stream(&self.inner).sample_matrix(m, n).into_pyarray(py).into_py_any(py).unwrap()
+          py.detach(|| $crate::python::lock_stream(&self.inner).sample_matrix(m, n)).into_pyarray(py).into_py_any(py).unwrap()
         })
       }
     }
