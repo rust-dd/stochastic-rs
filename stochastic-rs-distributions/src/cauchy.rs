@@ -12,7 +12,6 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
-use crate::seeded::Buffered;
 use crate::seeded::StreamState;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
@@ -98,14 +97,7 @@ impl<T: SimdFloatExt> SimdDistribution for SimdCauchy<T> {
   type State<R: SimdRngExt> = StreamState<T, R, 16>;
 
   fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (StreamState<T, R, 16>, u64) {
-    let stream_seed = seed.next_seed();
-    (
-      StreamState {
-        rng: R::from_seed(stream_seed),
-        buf: Buffered::new(),
-      },
-      stream_seed,
-    )
+    StreamState::init(seed)
   }
 }
 

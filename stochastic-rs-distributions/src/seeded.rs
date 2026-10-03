@@ -157,3 +157,17 @@ pub struct StreamState<T: Copy + Zero, R: SimdRngExt, const N: usize> {
   pub rng: R,
   pub buf: Buffered<T, N>,
 }
+
+impl<T: Copy + Zero, R: SimdRngExt, const N: usize> StreamState<T, R, N> {
+  /// The engine from one seed draw, which is also the fork basis: every single-engine law's `init`.
+  pub(crate) fn init<S: SeedExt>(seed: &S) -> (Self, u64) {
+    let stream_seed = seed.next_seed();
+    (
+      Self {
+        rng: R::from_seed(stream_seed),
+        buf: Buffered::new(),
+      },
+      stream_seed,
+    )
+  }
+}
