@@ -56,12 +56,12 @@ impl<T: SimdFloatExt, G: Rng + ?Sized> MixtureSource<T> for AnyRng<'_, G> {
   }
 }
 
-/// Panics unless `ncp ≥ 0`, so a negative or `NaN` noncentrality fails on both decompositions alike.
+/// Panics unless `0 ≤ ncp < ∞`, so a negative, infinite or `NaN` noncentrality fails on both decompositions alike.
 #[inline]
 fn check_ncp<T: SimdFloatExt>(ncp: T) {
   assert!(
-    ncp >= T::zero(),
-    "ncp must satisfy `ncp >= T::zero()`, got ncp = {ncp:?}"
+    ncp >= T::zero() && ncp.is_finite(),
+    "ncp must satisfy `ncp >= T::zero() && ncp.is_finite()`, got ncp = {ncp:?}"
   );
 }
 
@@ -116,7 +116,7 @@ impl<T: SimdFloatExt> SimdNonCentralChiSquared<T> {
   }
 
   /// One draw of `χ²_df(ncp)` on the caller's rng, the shift for `df ≥ 1` and the Poisson mixture below; panics
-  /// unless `ncp ≥ 0`.
+  /// unless `0 ≤ ncp < ∞`.
   pub fn sample_ncp_with<G: Rng + ?Sized>(&self, rng: &mut G, ncp: T) -> T {
     check_ncp(ncp);
     if self.df < T::one() {
@@ -151,7 +151,7 @@ impl<T: SimdFloatExt> SimdDistribution for SimdNonCentralChiSquared<T> {
 }
 
 impl<T: SimdFloatExt, R: SimdRngExt> Seeded<SimdNonCentralChiSquared<T>, R> {
-  /// One draw of `χ²_df(ncp)` from the stream; panics unless `ncp ≥ 0`.
+  /// One draw of `χ²_df(ncp)` from the stream; panics unless `0 ≤ ncp < ∞`.
   #[inline]
   pub fn sample_ncp(&mut self, ncp: T) -> T {
     check_ncp(ncp);
@@ -169,7 +169,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> Seeded<SimdNonCentralChiSquared<T>, R> {
   }
 }
 
-/// One-shot `χ²_df(ncp)` draw, the shift for `df ≥ 1` and the Poisson mixture below; panics unless `ncp ≥ 0`.
+/// One-shot `χ²_df(ncp)` draw, the shift for `df ≥ 1` and the Poisson mixture below; panics unless `0 ≤ ncp < ∞`.
 /// It builds the laws on every call, so repeated draws belong on a [`SimdNonCentralChiSquared`] stream.
 pub fn sample<T: FloatExt, S: SeedExt>(df: T, ncp: T, seed: &S) -> T {
   if df >= T::one() {
@@ -188,19 +188,26 @@ mod tests {
 
   use super::*;
 
-  /// A negative or `NaN` noncentrality panics on both decompositions and through every entry point.
+  /// A negative, infinite or `NaN` noncentrality panics naming `ncp`, on both decompositions and every entry point.
   #[test]
-  fn negative_or_nan_ncp_is_rejected() {
-    for (df, ncp) in [(3.0, -1.0), (0.3, -1.0), (3.0, f64::NAN), (0.3, f64::NAN)] {
-      let law = SimdNonCentralChiSquared::<f64>::new(df);
-      let seeded = std::panic::catch_unwind(|| law.seeded(&Unseeded).sample_ncp(ncp));
-      let honest =
-        std::panic::catch_unwind(|| law.sample_ncp_with(&mut SimdRng::from_seed(1), ncp));
-      let one_shot = std::panic::catch_unwind(|| sample(df, ncp, &Deterministic::new(1)));
-      assert!(
-        seeded.is_err() && honest.is_err() && one_shot.is_err(),
-        "df = {df}, ncp = {ncp} was accepted"
-      );
+  fn negative_or_non_finite_ncp_is_rejected() {
+    let names_ncp = |r: std::thread::Result<f64>| {
+      r.err()
+        .and_then(|e| e.downcast::<String>().ok())
+        .is_some_and(|m| m.starts_with("ncp must satisfy"))
+    };
+    for df in [3.0, 0.3] {
+      for ncp in [-1.0, f64::NAN, f64::INFINITY] {
+        let law = SimdNonCentralChiSquared::<f64>::new(df);
+        let seeded = std::panic::catch_unwind(|| law.seeded(&Unseeded).sample_ncp(ncp));
+        let honest =
+          std::panic::catch_unwind(|| law.sample_ncp_with(&mut SimdRng::from_seed(1), ncp));
+        let one_shot = std::panic::catch_unwind(|| sample(df, ncp, &Deterministic::new(1)));
+        assert!(
+          names_ncp(seeded) && names_ncp(honest) && names_ncp(one_shot),
+          "df = {df}, ncp = {ncp} was not rejected as `ncp`"
+        );
+      }
     }
   }
 
