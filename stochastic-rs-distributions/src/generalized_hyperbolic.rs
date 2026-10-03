@@ -75,10 +75,13 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
   /// Construct a GH$(\lambda, \alpha, \beta, \delta, \mu)$ over an internal
   /// GIG$(\lambda, \delta^2, \alpha^2 - \beta^2)$ clock.
   pub fn new(lambda: T, alpha: T, beta: T, delta: T, mu: T) -> Self {
-    assert!(delta > T::zero(), "GH: delta must be positive");
     assert!(
-      alpha > T::zero() && alpha > beta.abs(),
-      "GH: alpha must exceed |beta|"
+      alpha > beta.abs(),
+      "alpha must satisfy `alpha > beta.abs()`, got alpha = {alpha:?}, beta = {beta:?}"
+    );
+    assert!(
+      delta > T::zero(),
+      "delta must satisfy `delta > T::zero()`, got delta = {delta:?}"
     );
     Self {
       lambda,
@@ -458,7 +461,7 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "alpha must exceed |beta|")]
+  #[should_panic(expected = "alpha must satisfy `alpha > beta.abs()`")]
   fn rejects_beta_outside_alpha() {
     let _ = SimdGeneralizedHyperbolic::<f64>::new(1.0, 1.0, 1.0, 1.0, 0.0);
   }

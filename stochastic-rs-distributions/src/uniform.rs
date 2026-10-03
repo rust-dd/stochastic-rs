@@ -31,8 +31,18 @@ impl<T: SimdFloatExt> SimdUniform<T> {
   /// # Panics
   /// `high <= low` or a bound that is not finite.
   pub fn new(low: T, high: T) -> Self {
-    assert!(high > low, "SimdUniform: high must be greater than low");
-    assert!(low.is_finite() && high.is_finite(), "bounds must be finite");
+    assert!(
+      low.is_finite(),
+      "low must satisfy `low.is_finite()`, got low = {low:?}"
+    );
+    assert!(
+      high.is_finite(),
+      "high must satisfy `high.is_finite()`, got high = {high:?}"
+    );
+    assert!(
+      low < high,
+      "low must satisfy `low < high`, got low = {low:?}, high = {high:?}"
+    );
     Self {
       low,
       high,

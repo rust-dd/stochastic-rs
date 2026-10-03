@@ -62,10 +62,13 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
   ///   `mean() = mu + delta·beta/gamma`.
   pub fn new(alpha: T, beta: T, delta: T, mu: T) -> Self {
     assert!(
-      alpha > T::zero() && alpha > beta.abs(),
-      "Nig: alpha must be > |beta|"
+      alpha > beta.abs(),
+      "alpha must satisfy `alpha > beta.abs()`, got alpha = {alpha:?}, beta = {beta:?}"
     );
-    assert!(delta > T::zero(), "Nig: delta must be positive");
+    assert!(
+      delta > T::zero(),
+      "delta must satisfy `delta > T::zero()`, got delta = {delta:?}"
+    );
     let gamma = (alpha * alpha - beta * beta).sqrt();
     Self {
       alpha,

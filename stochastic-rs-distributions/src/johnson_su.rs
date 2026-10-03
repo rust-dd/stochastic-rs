@@ -56,8 +56,14 @@ pub struct SimdJohnsonSu<T> {
 impl<T: SimdFloatExt> SimdJohnsonSu<T> {
   /// Construct a Johnson SU$(\gamma, \delta, \xi, \lambda)$.
   pub fn new(gamma: T, delta: T, xi: T, lambda: T) -> Self {
-    assert!(delta > T::zero(), "JohnsonSu: delta must be positive");
-    assert!(lambda > T::zero(), "JohnsonSu: lambda must be positive");
+    assert!(
+      delta > T::zero(),
+      "delta must satisfy `delta > T::zero()`, got delta = {delta:?}"
+    );
+    assert!(
+      lambda > T::zero(),
+      "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
+    );
     Self {
       gamma,
       delta,

@@ -92,7 +92,10 @@ impl FloatExt for f64 {
   }
 
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
-    assert!(std_dev > 0.0, "std_dev must be positive");
+    assert!(
+      std_dev > 0.0,
+      "std_dev must satisfy `std_dev > 0.0`, got std_dev = {std_dev:?}"
+    );
     let mut out = Array1::<f64>::zeros(n);
     if n == 0 {
       return out;
@@ -131,7 +134,10 @@ impl FloatExt for f32 {
   }
 
   fn normal_array(n: usize, mean: Self, std_dev: Self) -> Array1<Self> {
-    assert!(std_dev > 0.0, "std_dev must be positive");
+    assert!(
+      std_dev > 0.0,
+      "std_dev must satisfy `std_dev > 0.0`, got std_dev = {std_dev:?}"
+    );
     let mut out = Array1::<f32>::zeros(n);
     if n == 0 {
       return out;

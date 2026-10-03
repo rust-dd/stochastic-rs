@@ -239,11 +239,17 @@ pub struct SimdGig<T> {
 impl<T: SimdFloatExt> SimdGig<T> {
   /// Construct a GIG$(\lambda, \chi, \psi)$.
   pub fn new(lambda: T, chi: T, psi: T) -> Self {
+    assert!(
+      chi > T::zero(),
+      "chi must satisfy `chi > T::zero()`, got chi = {chi:?}"
+    );
+    assert!(
+      psi > T::zero(),
+      "psi must satisfy `psi > T::zero()`, got psi = {psi:?}"
+    );
     let lambda_f = lambda.to_f64().unwrap();
     let chi_f = chi.to_f64().unwrap();
     let psi_f = psi.to_f64().unwrap();
-    assert!(chi_f > 0.0, "GIG: chi must be positive");
-    assert!(psi_f > 0.0, "GIG: psi must be positive");
     let beta = (chi_f * psi_f).sqrt();
     Self {
       lambda,

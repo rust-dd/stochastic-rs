@@ -92,13 +92,16 @@ impl<T: SimdFloatExt> SimdTemperedStable<T> {
     let theta_f = theta.to_f64().unwrap();
     assert!(
       alpha_f > 0.0 && alpha_f < 1.0,
-      "TemperedStable: alpha must lie in (0, 1)"
+      "alpha must satisfy `alpha > 0.0 && alpha < 1.0`, got alpha = {alpha:?}"
     );
     assert!(
       lambda_f >= 0.0,
-      "TemperedStable: lambda must be non-negative"
+      "lambda must satisfy `lambda >= 0.0`, got lambda = {lambda:?}"
     );
-    assert!(theta_f > 0.0, "TemperedStable: theta must be positive");
+    assert!(
+      theta_f > 0.0,
+      "theta must satisfy `theta > 0.0`, got theta = {theta:?}"
+    );
     let scale = theta_f.powf(1.0 / alpha_f);
     Self {
       alpha,
@@ -432,7 +435,7 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "alpha must lie in (0, 1)")]
+  #[should_panic(expected = "alpha must satisfy `alpha > 0.0 && alpha < 1.0`")]
   fn rejects_alpha_of_one() {
     let _ = SimdTemperedStable::<f64>::new(1.0, 1.0, 1.0);
   }

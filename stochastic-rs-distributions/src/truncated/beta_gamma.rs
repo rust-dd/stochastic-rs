@@ -52,8 +52,12 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
     let lo = lower.to_f64().unwrap();
     let up = upper.to_f64().unwrap();
     assert!(
-      (0.0..=1.0).contains(&lo) && (0.0..=1.0).contains(&up),
-      "lower and upper must satisfy `0 <= lower, upper <= 1`, got lower = {lower:?}, upper = {upper:?}"
+      (0.0..=1.0).contains(&lo),
+      "lower must satisfy `0.0 <= lower <= 1.0`, got lower = {lower:?}"
+    );
+    assert!(
+      (0.0..=1.0).contains(&up),
+      "upper must satisfy `0.0 <= upper <= 1.0`, got upper = {upper:?}"
     );
     assert!(
       lower < upper,

@@ -51,8 +51,12 @@ impl<T: SimdFloatExt> SimdBeta<T> {
   ///   — same word, unrelated role in each).
   pub fn new(alpha: T, beta: T) -> Self {
     assert!(
-      alpha > T::zero() && beta > T::zero(),
-      "alpha must satisfy `alpha > T::zero() && beta > T::zero()`, got alpha = {alpha:?}, beta = {beta:?}"
+      alpha > T::zero(),
+      "alpha must satisfy `alpha > T::zero()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta > T::zero(),
+      "beta must satisfy `beta > T::zero()`, got beta = {beta:?}"
     );
     Self {
       alpha,

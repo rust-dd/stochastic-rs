@@ -68,8 +68,14 @@ impl<T: SimdFloatExt> SimdSkewT<T> {
   pub fn new(eta: T, lambda: T) -> Self {
     let eta_f = eta.to_f64().unwrap();
     let lambda_f = lambda.to_f64().unwrap();
-    assert!(eta_f > 2.0, "SkewT: eta must exceed 2");
-    assert!(lambda_f.abs() < 1.0, "SkewT: lambda must lie in (-1, 1)");
+    assert!(
+      eta_f > 2.0,
+      "eta must satisfy `eta > 2.0`, got eta = {eta:?}"
+    );
+    assert!(
+      lambda_f.abs() < 1.0,
+      "lambda must satisfy `lambda.abs() < 1.0`, got lambda = {lambda:?}"
+    );
     let c = (ln_gamma(0.5 * (eta_f + 1.0)) - ln_gamma(0.5 * eta_f)).exp()
       / (std::f64::consts::PI * (eta_f - 2.0)).sqrt();
     let a = 4.0 * lambda_f * c * (eta_f - 2.0) / (eta_f - 1.0);
@@ -482,7 +488,7 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "eta must exceed 2")]
+  #[should_panic(expected = "eta must satisfy `eta > 2.0`")]
   fn rejects_small_eta() {
     let _ = SimdSkewT::<f64>::new(2.0, 0.0);
   }

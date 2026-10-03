@@ -57,8 +57,12 @@ impl<T: SimdFloatExt> SimdGamma<T> {
   ///   you have a rate-parametrized β instead.
   pub fn new(alpha: T, scale: T) -> Self {
     assert!(
-      alpha > T::zero() && scale > T::zero(),
-      "alpha must satisfy `alpha > T::zero() && scale > T::zero()`, got alpha = {alpha:?}, scale = {scale:?}"
+      alpha > T::zero(),
+      "alpha must satisfy `alpha > T::zero()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      scale > T::zero(),
+      "scale must satisfy `scale > T::zero()`, got scale = {scale:?}"
     );
     Self { alpha, scale }
   }

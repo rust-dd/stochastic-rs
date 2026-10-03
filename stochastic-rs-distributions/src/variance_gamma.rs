@@ -69,8 +69,14 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
   /// Construct a VG$(\sigma, \nu, \theta, \mu)$ over an internal gamma
   /// subordinator with shape $1/\nu$ and scale $\nu$.
   pub fn new(sigma: T, nu: T, theta: T, mu: T) -> Self {
-    assert!(sigma > T::zero(), "VG: sigma must be positive");
-    assert!(nu > T::zero(), "VG: nu must be positive");
+    assert!(
+      sigma > T::zero(),
+      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      nu > T::zero(),
+      "nu must satisfy `nu > T::zero()`, got nu = {nu:?}"
+    );
     Self {
       sigma,
       nu,

@@ -225,7 +225,7 @@ fn deterministic_seed_reproduces_stream() {
 }
 
 #[test]
-#[should_panic(expected = "chi must be positive")]
+#[should_panic(expected = "chi must satisfy `chi > T::zero()`")]
 fn rejects_zero_chi() {
   let _ = SimdGig::<f64>::new(1.0, 0.0, 1.0);
 }

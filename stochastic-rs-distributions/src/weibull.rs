@@ -42,8 +42,12 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
   /// - `k` — shape k > 0 (matches the module header's k).
   pub fn new(lambda: T, k: T) -> Self {
     assert!(
-      lambda > T::zero() && k > T::zero(),
-      "lambda must satisfy `lambda > T::zero() && k > T::zero()`, got lambda = {lambda:?}, k = {k:?}"
+      lambda > T::zero(),
+      "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      k > T::zero(),
+      "k must satisfy `k > T::zero()`, got k = {k:?}"
     );
     Self {
       lambda,

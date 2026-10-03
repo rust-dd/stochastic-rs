@@ -61,8 +61,12 @@ impl<T: SimdFloatExt> SimdInverseGauss<T> {
   ///   the name, this is a shape, not a rate — variance = μ³/λ).
   pub fn new(mu: T, lambda: T) -> Self {
     assert!(
-      mu > T::zero() && lambda > T::zero(),
-      "mu must satisfy `mu > T::zero() && lambda > T::zero()`, got mu = {mu:?}, lambda = {lambda:?}"
+      mu > T::zero(),
+      "mu must satisfy `mu > T::zero()`, got mu = {mu:?}"
+    );
+    assert!(
+      lambda > T::zero(),
+      "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
     );
     Self { mu, lambda }
   }
