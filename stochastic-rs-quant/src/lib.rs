@@ -62,12 +62,11 @@
 //! - [`strategies`] — strategy primitives (currently `DeltaHedge`); a richer
 //!   `Strategy` trait + back-test engine tracked for 2.x.
 //!
-//! ### Microstructure & live data
+//! ### Microstructure
 //! - [`microstructure`] — Almgren-Chriss optimal execution, Kyle's λ,
 //!   propagator impact, Roll / Corwin-Schultz spread estimators.
 //! - [`order_book`] — limit-order-book data structures (`Side`, `Order`,
 //!   `Trade`, `OrderBook`) with matching and cancel.
-//! - `yahoo` (feature-gated) — Yahoo Finance integration (experimental).
 //!
 //! ### Cross-cutting
 //! - [`traits`] — public trait surface ([`traits::ModelPricer`],
@@ -206,11 +205,6 @@ pub mod order_book;
 /// — not currently consumed by the calibration or vol-surface pipelines.
 pub mod fourier_malliavin;
 
-/// Yahoo Finance integration (experimental). Hidden behind the `yahoo`
-/// feature; see `yahoo` module docs for stability caveats.
-#[cfg(feature = "yahoo")]
-pub mod yahoo;
-
 pub mod types;
 
 pub use types::CalibrationLossScore;
@@ -220,4 +214,5 @@ pub use types::OptionStyle;
 pub use types::OptionType;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub mod python;

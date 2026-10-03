@@ -63,6 +63,18 @@ fn cpu_backend_is_the_process_sampler() {
   assert_eq!(gbm().on::<Cpu>().sample_par(0).len(), 0);
 }
 
+/// The body keys noise on `first_path + path` and rows on `path * increments`, both in 32 bits,
+/// so a launch past that range is refused rather than handed a wrapped value.
+#[test]
+fn launch_scalars_refuse_a_wrapped_index() {
+  let last = u32::MAX as usize;
+  assert_eq!(launch_scalars(253, 7, 3, 0), Ok((253, 3, 7)));
+  assert!(launch_scalars(253, last - 2, 2, 0).is_ok());
+  assert!(launch_scalars(253, last - 1, 2, 0).is_err());
+  assert!(launch_scalars(253, 0, last / 2 + 1, 2).is_err());
+  assert!(launch_scalars(last + 1, 0, 1, 0).is_err());
+}
+
 #[test]
 fn switching_the_backend_keeps_the_parameters() {
   let gbm = Gbm::new(0.05, 0.2, 64, Some(100.0), Some(2.0), Unseeded).on::<Cpu>();
@@ -173,7 +185,7 @@ fn device_seed_follows_the_seed_source() {
 /// deterministic in its seed; the device kernels share one integer hash for
 /// their uniforms, so two device back-ends agree seed for seed up to the
 /// `f32` libm rounding of Box–Muller.
-#[cfg(any(feature = "metal", feature = "cuda"))]
+#[cfg(any(all(feature = "metal", target_os = "macos"), feature = "cuda"))]
 mod devices {
   use ndarray::Array2;
 
@@ -268,7 +280,7 @@ mod devices {
     assert!(paths.iter().all(|&x| x >= 0.0), "{label}");
   }
 
-  #[cfg(feature = "metal")]
+  #[cfg(all(feature = "metal", target_os = "macos"))]
   #[test]
   fn metal_native_chunks_are_bit_identical_to_one_launch() {
     use crate::device::Metal;
@@ -295,7 +307,7 @@ mod devices {
   /// launch has to advance itself, and a two-stream launch has to advance it
   /// by `streams` rows a path. Both are places a batch can silently repeat or
   /// overlap its own noise, which no statistic of a single batch reveals.
-  #[cfg(feature = "metal")]
+  #[cfg(all(feature = "metal", target_os = "macos"))]
   #[test]
   fn metal_fractional_chunks_are_bit_identical_to_one_launch() {
     use stochastic_rs_core::simd_rng::Deterministic;
@@ -417,7 +429,72 @@ mod devices {
     );
   }
 
-  #[cfg(feature = "metal")]
+  /// Metal indexes in `uint`, so no launch passes that range: a plane of values, or the `2n`-point
+  /// fGN rows that bind a correlated pair before its planes do. Rows that already fit are kept.
+  #[cfg(all(feature = "metal", target_os = "macos"))]
+  #[test]
+  fn metal_index_rows_stop_at_the_uint_range() {
+    use crate::device::Metal;
+    use crate::process::cfbms::Cfbms;
+
+    let limit = u32::MAX as usize;
+    let one = gbm::<f32>(1).euler_spec();
+    assert_eq!(
+      Metal::default().index_rows(usize::MAX, one, 253, None),
+      limit / 253
+    );
+    assert_eq!(Metal::default().index_rows(7, one, 253, None), 7);
+    let pair = Cfbms::<f32, _>::new(0.7, 0.0, 1024, Some(1.0), Deterministic::new(5));
+    let fgn = pair.fgn_spec().expect("a fractional pair");
+    let steps = pair.grid_points();
+    let rows = Metal::default().index_rows(usize::MAX, pair.euler_spec(), steps, pair.fgn_spec());
+    assert_eq!(rows, limit / (fgn.streams * 2 * fgn.n));
+  }
+
+  /// A Gaussian CUDA launch is bound only by the `unsigned int` path count; a fractional one by the
+  /// fGN work buffer, indexed in `int` at `4n` values a path.
+  #[cfg(feature = "cuda")]
+  #[test]
+  fn cuda_index_rows_bound_paths_and_the_fgn_buffer() {
+    use crate::device::Cuda;
+    use crate::process::fbm::Fbm;
+
+    let device = Cuda::default();
+    let one = gbm::<f32>(1);
+    let rows = device.index_rows(usize::MAX, one.euler_spec(), one.grid_points(), None);
+    assert_eq!(rows, u32::MAX as usize);
+
+    let fbm = Fbm::<f32, _>::new(0.7, 1024, Some(1.0), Deterministic::new(5));
+    let n = fbm.fgn_spec().expect("a fractional process").n;
+    let rows = device.index_rows(
+      usize::MAX,
+      fbm.euler_spec(),
+      fbm.grid_points(),
+      fbm.fgn_spec(),
+    );
+    assert_eq!(rows, i32::MAX as usize / (4 * n));
+  }
+
+  /// A refused Metal allocation (a nil buffer) is the out-of-memory error the batch loops halve on,
+  /// reported without dropping the nil handle; a real buffer passes.
+  #[cfg(all(feature = "metal", target_os = "macos"))]
+  #[test]
+  fn metal_refused_allocation_is_out_of_memory() {
+    use ::metal::MTLResourceOptions;
+
+    use crate::euler::metal::checked_buffer;
+    use crate::euler::metal::metal_device;
+
+    let device = metal_device(0).expect("this Mac has a Metal device");
+    let shared = MTLResourceOptions::StorageModeShared;
+    let bytes = 1u64 << 50;
+    let refused = checked_buffer(device.new_buffer(bytes, shared), bytes);
+    assert!(refused.is_err_and(|e| e.is_out_of_memory()));
+    let granted = checked_buffer(device.new_buffer(64, shared), 64).expect("64 bytes");
+    assert!(granted.length() >= 64);
+  }
+
+  #[cfg(all(feature = "metal", target_os = "macos"))]
   #[test]
   fn metal_native_matrix_matches_the_rows_and_chunks() {
     use crate::device::Metal;
@@ -436,7 +513,7 @@ mod devices {
     assert_eq!(chunked, matrix);
   }
 
-  #[cfg(feature = "metal")]
+  #[cfg(all(feature = "metal", target_os = "macos"))]
   #[test]
   fn metal_native_probe_and_try_sample_par() {
     let info = crate::device::Metal::default()
@@ -452,7 +529,7 @@ mod devices {
     assert_eq!(paths.len(), 5);
   }
 
-  #[cfg(feature = "metal")]
+  #[cfg(all(feature = "metal", target_os = "macos"))]
   #[test]
   fn metal_native_backend_matches_the_moments() {
     gbm_moments_hold::<f32, crate::device::Metal>("Metal");

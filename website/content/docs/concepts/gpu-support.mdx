@@ -28,7 +28,7 @@ curve-driven ones (`HullWhite`, `HullWhite2F`, `HoLee`, `BlackKarasinski`,
 `FVasicek`), the fractional processes, the jump models (`MjdLog`, `BatesSvj`,
 `Hkde`, `HawkesJD`, `DuffieKanJumpExp`, and the ones generic over a
 user-supplied size law — `Merton`, `Kou`, `LevyDiffusion`, `Bates1996`,
-`JumpFou`, `JumpFOUCustom` — whose `ScalarNormal` or `ScalarExp` law the
+`JumpFou`, `JumpFOUCustom` — whose `SimdNormal` or `SimdExp` law the
 engine recognises at runtime and draws in the kernel, Bates's as the product
 `∏(1 + y) − 1` its multiplicative jump needs; any other law keeps the process
 on the host through the same calls), the Lévy processes whose increment

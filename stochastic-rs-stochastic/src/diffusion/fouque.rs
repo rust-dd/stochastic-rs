@@ -13,6 +13,8 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -214,8 +216,8 @@ impl<T: FloatExt, S: SeedExt> FouqueOU2DSampler<T, S> {
     let mut gn_x = vec![T::zero(); n_increments];
     let mut gn_y = vec![T::zero(); n_increments];
 
-    let nx = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    let ny = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
+    let mut nx = SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed);
+    let mut ny = SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed);
     nx.fill_slice(&mut gn_x);
     ny.fill_slice(&mut gn_y);
 

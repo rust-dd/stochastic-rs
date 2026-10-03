@@ -25,83 +25,71 @@
 //! by Methods of Translation", *Biometrika* 36(1/2), 149-176.
 //! DOI: 10.1093/biomet/36.1-2.149
 
-use std::cell::Cell;
-use std::cell::UnsafeCell;
-
 use rand::Rng;
-use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
+use rand::distr::Distribution;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
+use super::lognormal::NormalDerivedState;
 use super::normal::SimdNormal;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::Buffered;
+use crate::seeded::StreamState;
 use crate::special::ndtri;
 use crate::special::norm_cdf;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 const SMALL_JSU_THRESHOLD: usize = 16;
 
 /// Johnson SU distribution with shapes `γ`, `δ > 0`, location `ξ` and
-/// scale `λ > 0`.
-pub struct SimdJohnsonSu<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+/// scale `λ > 0`; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdJohnsonSu<T> {
   gamma: T,
   delta: T,
   xi: T,
   lambda: T,
-  normal: SimdNormal<T, 64, R>,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  stream_seed: Cell<u64>,
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdJohnsonSu<T, R> {
+impl<T: SimdFloatExt> SimdJohnsonSu<T> {
   /// Construct a Johnson SU$(\gamma, \delta, \xi, \lambda)$.
-  pub fn new<S: crate::simd_rng::SeedExt>(gamma: T, delta: T, xi: T, lambda: T, seed: &S) -> Self {
-    assert!(delta > T::zero(), "JohnsonSu: delta must be positive");
-    assert!(lambda > T::zero(), "JohnsonSu: lambda must be positive");
-    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
-    let stream_seed = seed.seed_value();
+  pub fn new(gamma: T, delta: T, xi: T, lambda: T) -> Self {
+    assert!(
+      delta > T::zero(),
+      "delta must satisfy `delta > T::zero()`, got delta = {delta:?}"
+    );
+    assert!(
+      lambda > T::zero(),
+      "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
+    );
     Self {
       gamma,
       delta,
       xi,
       lambda,
-      normal,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      stream_seed: Cell::new(stream_seed),
     }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.gamma,
-      self.delta,
-      self.xi,
-      self.lambda,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
+  /// The skew shape `γ`.
+  pub fn gamma(&self) -> T {
+    self.gamma
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
-  #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
+  /// The tail-weight shape `δ`.
+  pub fn delta(&self) -> T {
+    self.delta
+  }
+
+  /// The location `ξ`.
+  pub fn xi(&self) -> T {
+    self.xi
+  }
+
+  /// The scale `λ`.
+  pub fn lambda(&self) -> T {
+    self.lambda
   }
 
   #[inline]
@@ -110,13 +98,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdJohnsonSu<T, R> {
     self.xi + self.lambda * (y.exp() - (-y).exp()) / T::from_f64_fast(2.0)
   }
 
-  /// Fills `out` with $\xi + \lambda\sinh((Z - \gamma)/\delta)$ from the
-  /// internal normal stream, the hyperbolic sine evaluated 8-wide as
-  /// $(e^y - e^{-y})/2$.
-  pub fn fill_slice(&self, out: &mut [T]) {
+  fn fill_parts<R: SimdRngExt>(&self, normal: &mut StreamState<T, R, 64>, out: &mut [T]) {
     if out.len() < SMALL_JSU_THRESHOLD {
       for x in out.iter_mut() {
-        *x = self.transform(self.normal.sample_fast());
+        *x = self.transform(SimdNormal::<T>::standard().next(normal));
       }
       return;
     }
@@ -128,7 +113,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdJohnsonSu<T, R> {
     let mut zbuf = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.normal.fill_standard_fast(&mut zbuf);
+      SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf);
       for (sub, z8) in chunk
         .as_chunks_mut::<8>()
         .0
@@ -142,19 +127,15 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdJohnsonSu<T, R> {
     }
     if !rem.is_empty() {
       let n = rem.len();
-      self.normal.fill_standard_fast(&mut zbuf[..n]);
+      SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf[..n]);
       for i in 0..n {
         rem[i] = self.transform(zbuf[i]);
       }
     }
   }
 
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.transform(SimdNormal::<T>::standard().draw_with(rng))
   }
 
   fn params(&self) -> (f64, f64, f64, f64) {
@@ -173,27 +154,48 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdJohnsonSu<T, R> {
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdJohnsonSu<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.gamma, self.delta, self.xi, self.lambda, &Unseeded)
+impl<T: SimdFloatExt> Sealed for SimdJohnsonSu<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdJohnsonSu<T> {
+  type State<R: SimdRngExt> = NormalDerivedState<T, R>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (NormalDerivedState<T, R>, u64) {
+    let (normal, _) = SimdNormal::<T>::standard().init::<R, S>(seed);
+    // No engine reads this second draw: it is the basis, and it keeps the seed budget later streams depend on.
+    let basis = seed.next_seed();
+    (
+      NormalDerivedState {
+        normal,
+        buf: Buffered::new(),
+      },
+      basis,
+    )
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdJohnsonSu<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
+impl<T: SimdFloatExt> SimdKernel for SimdJohnsonSu<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut NormalDerivedState<T, R>, out: &mut [T]) {
+    self.fill_parts(&mut state.normal, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut NormalDerivedState<T, R>) -> T {
+    let NormalDerivedState { normal, buf } = state;
+    buf.pop(|b| self.fill_parts(normal, b))
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdJohnsonSu<T, R> {
+impl<T: SimdFloatExt> Distribution<T> for SimdJohnsonSu<T> {
+  /// `ξ + λ·sinh((Z − γ)/δ)` of one scalar normal draw on the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdJohnsonSu<T> {
   fn pdf(&self, x: f64) -> f64 {
     let (gamma, delta, xi, lambda) = self.params();
     let y = (x - xi) / lambda;
@@ -263,7 +265,9 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
+  use crate::tests::scalar_ks_best_p;
   use crate::traits::DistributionExt;
+  use crate::traits::DistributionSampler;
 
   fn close(a: f64, b: f64, rel: f64) -> bool {
     (a - b).abs() <= rel * b.abs().max(1e-300)
@@ -316,7 +320,7 @@ mod tests {
       ),
     ];
     for ((g, d, xi, lam), grid, stats) in cases {
-      let dist = SimdJohnsonSu::<f64>::new(g, d, xi, lam, &Unseeded);
+      let dist = SimdJohnsonSu::<f64>::new(g, d, xi, lam);
       for (x, pdf, cdf) in grid {
         assert!(close(dist.pdf(x), pdf, 1e-12), "pdf({x}) = {}", dist.pdf(x));
         assert!(close(dist.cdf(x), cdf, 1e-12), "cdf({x}) = {}", dist.cdf(x));
@@ -361,10 +365,10 @@ mod tests {
   /// The SIMD sinh transform reproduces the closed-form mean and variance.
   #[test]
   fn sample_moments_match_closed_forms() {
-    let dist = SimdJohnsonSu::<f64>::new(-0.5, 1.5, 0.2, 2.0, &Deterministic::new(5));
+    let dist = SimdJohnsonSu::<f64>::new(-0.5, 1.5, 0.2, 2.0);
     let n = 200_000;
     let mut xs = vec![0.0; n];
-    dist.fill_slice(&mut xs);
+    dist.seeded(&Deterministic::new(5)).fill_slice(&mut xs);
     let mean = xs.iter().sum::<f64>() / n as f64;
     let var = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64;
     assert!((mean - dist.mean()).abs() < 0.02, "mean {mean}");
@@ -375,11 +379,18 @@ mod tests {
   }
 
   #[test]
+  fn scalar_sample_matches_cdf() {
+    let d = SimdJohnsonSu::<f64>::new(-0.5, 1.5, 0.2, 2.0);
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+    assert!(best > 0.01, "best p = {best}");
+  }
+
+  #[test]
   fn deterministic_seed_reproduces_stream() {
-    let a = SimdJohnsonSu::<f64>::new(1.0, 0.8, -1.0, 0.5, &Deterministic::new(7));
-    let b = SimdJohnsonSu::<f64>::new(1.0, 0.8, -1.0, 0.5, &Deterministic::new(7));
+    let mut a = SimdJohnsonSu::<f64>::new(1.0, 0.8, -1.0, 0.5).seeded(&Deterministic::new(7));
+    let mut b = SimdJohnsonSu::<f64>::new(1.0, 0.8, -1.0, 0.5).seeded(&Deterministic::new(7));
     for _ in 0..256 {
-      assert_eq!(a.sample_fast(), b.sample_fast());
+      assert_eq!(a.sample(), b.sample());
     }
   }
 }

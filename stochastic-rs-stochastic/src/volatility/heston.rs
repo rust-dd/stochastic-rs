@@ -557,4 +557,5 @@ mod tests;
 mod python;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub use python::PyHeston;

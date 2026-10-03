@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -118,7 +121,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     let std_dev = (self.t.unwrap_or(T::one()) / T::from_usize_(n_increments)).sqrt();
     BmSampler {
       n: self.n,
-      normal: SimdNormal::<T>::new(T::zero(), std_dev, &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), std_dev).seeded(&self.seed),
     }
   }
 
@@ -159,7 +162,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 #[doc(hidden)]
 pub struct BmSampler<T: FloatExt> {
   n: usize,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> BmSampler<T> {

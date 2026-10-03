@@ -81,12 +81,14 @@ fn phillips_ouliaris_critical_values_two_var() -> (f64, f64, f64) {
 mod tests {
   use ndarray::Array1;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
 
   fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
-    let dist = SimdNormal::<f64>::new(0.0, sigma, &Deterministic::new(seed));
+    let mut dist = SimdNormal::<f64>::new(0.0, sigma).seeded(&Deterministic::new(seed));
     let mut steps = vec![0.0_f64; n];
     dist.fill_slice(&mut steps);
     let mut out = Array1::<f64>::zeros(n);
@@ -99,7 +101,7 @@ mod tests {
   #[test]
   fn engle_granger_rejects_under_cointegration() {
     let x = random_walk(7, 500, 1.0);
-    let dist = SimdNormal::<f64>::new(0.0, 0.05, &Deterministic::new(11));
+    let mut dist = SimdNormal::<f64>::new(0.0, 0.05).seeded(&Deterministic::new(11));
     let mut eps = vec![0.0_f64; 500];
     dist.fill_slice(&mut eps);
     let mut y = Array1::<f64>::zeros(500);

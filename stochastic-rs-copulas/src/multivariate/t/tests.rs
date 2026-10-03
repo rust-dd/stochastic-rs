@@ -64,11 +64,12 @@ fn t_copula_pdf_at_center() {
   let det: f64 = 1.0 - 0.3 * 0.3;
   let f_mv = (ln_gamma(0.5 * (nu + 2.0))
     - ln_gamma(0.5 * nu)
-    - (nu * f64::consts::PI).ln()
+    - (nu * std::f64::consts::PI).ln()
     - 0.5 * det.ln())
   .exp();
   let f_marg =
-    (ln_gamma(0.5 * (nu + 1.0)) - ln_gamma(0.5 * nu) - 0.5 * (nu * f64::consts::PI).ln()).exp();
+    (ln_gamma(0.5 * (nu + 1.0)) - ln_gamma(0.5 * nu) - 0.5 * (nu * std::f64::consts::PI).ln())
+      .exp();
   let expected = f_mv / (f_marg * f_marg);
   assert!(
     (pdf - expected).abs() / expected < 1e-10,

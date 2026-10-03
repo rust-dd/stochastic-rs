@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::inverse_gauss::SimdInverseGauss;
 
 use crate::buffer::array1_from_fill;
@@ -122,7 +125,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     IgSampler {
       n: self.n,
       x0: self.x0.unwrap_or(T::zero()),
-      ig_dist: SimdInverseGauss::<T>::new(mean, shape, &self.seed),
+      ig_dist: SimdInverseGauss::<T>::new(mean, shape).seeded(&self.seed),
     }
   }
 
@@ -164,7 +167,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 pub struct IgSampler<T: FloatExt> {
   n: usize,
   x0: T,
-  ig_dist: SimdInverseGauss<T>,
+  ig_dist: Seeded<SimdInverseGauss<T>>,
 }
 
 impl<T: FloatExt> IgSampler<T> {

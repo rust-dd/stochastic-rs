@@ -44,7 +44,7 @@ fn parse_day_count(name: &str) -> PyResult<DayCountConvention> {
 }
 
 #[pyclass(module = "stochastic_rs", name = "DayCount", from_py_object)]
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct PyDayCount {
   inner: DayCountConvention,
 }
@@ -92,7 +92,7 @@ fn parse_bdc(name: &str) -> PyResult<BusinessDayConvention> {
   name = "BusinessDayConvention",
   from_py_object
 )]
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct PyBusinessDayConvention {
   inner: BusinessDayConvention,
 }

@@ -9,9 +9,10 @@
 //! DOI: 10.1007/978-0-387-21617-1
 
 use ndarray::Array1;
-use ndarray::parallel::prelude::*;
 
 use super::McEstimate;
+use super::estimate_from_samples;
+use super::par_welford;
 use crate::traits::FloatExt;
 
 /// Antithetic variates MC estimate (sequential).
@@ -24,56 +25,29 @@ where
   F: Fn(&Array1<T>) -> T,
 {
   let two = T::from_f64_fast(2.0);
-  let mut sum = T::zero();
-  let mut sum_sq = T::zero();
-
-  for _ in 0..n_paths {
+  estimate_from_samples((0..n_paths).map(|_| {
     let z = T::normal_array(dim, T::zero(), T::one());
     let neg_z = z.mapv(|v| -v);
-    let y = (payoff(&z) + payoff(&neg_z)) / two;
-    sum += y;
-    sum_sq += y * y;
-  }
-
-  let n = T::from_usize_(n_paths);
-  let mean = sum / n;
-  let variance = sum_sq / n - mean * mean;
-  let std_err = (variance / n).sqrt();
-
-  McEstimate {
-    mean,
-    std_err,
-    n_samples: n_paths,
-  }
+    (payoff(&z) + payoff(&neg_z)) / two
+  }))
 }
 
 /// Antithetic variates MC estimate (parallel via rayon).
+///
+/// Chunked by `n_paths` alone, one [`Welford`](super::Welford) per chunk on the pool, merged in
+/// chunk order: no per-path storage, and bits that do not depend on the thread count.
 pub fn estimate_par<T, F>(n_paths: usize, dim: usize, payoff: F) -> McEstimate<T>
 where
   T: FloatExt,
   F: Fn(&Array1<T>) -> T + Sync,
 {
   let two = T::from_f64_fast(2.0);
-  let results: Vec<T> = (0..n_paths)
-    .into_par_iter()
-    .map(|_| {
-      let z = T::normal_array(dim, T::zero(), T::one());
-      let neg_z = z.mapv(|v| -v);
-      (payoff(&z) + payoff(&neg_z)) / two
-    })
-    .collect();
-
-  let n = T::from_usize_(n_paths);
-  let sum: T = results.iter().copied().sum();
-  let mean = sum / n;
-  let var: T = results.iter().map(|&y| (y - mean) * (y - mean)).sum::<T>() / n;
-  let std_err = (var / n).sqrt();
-
-  McEstimate {
-    mean,
-    std_err,
-    n_samples: n_paths,
-  }
+  let acc = par_welford(n_paths, |_| {
+    let z = T::normal_array(dim, T::zero(), T::one());
+    let neg_z = z.mapv(|v| -v);
+    (payoff(&z) + payoff(&neg_z)) / two
+  });
+  McEstimate::from(&acc)
 }
 
 #[cfg(test)]
@@ -91,16 +65,8 @@ mod tests {
     let av = estimate(n, dim, payoff);
 
     // Plain MC for comparison
-    let mut sum = 0.0;
-    let mut sum_sq = 0.0;
-    for _ in 0..n {
-      let z = f64::normal_array(dim, 0.0, 1.0);
-      let y = payoff(&z);
-      sum += y;
-      sum_sq += y * y;
-    }
-    let plain_var = sum_sq / n as f64 - (sum / n as f64).powi(2);
-    let plain_se = (plain_var / n as f64).sqrt();
+    let plain_se =
+      estimate_from_samples((0..n).map(|_| payoff(&f64::normal_array(dim, 0.0, 1.0)))).std_err;
 
     let expected = 1.0 / (2.0 * std::f64::consts::PI).sqrt();
     assert!(
@@ -113,5 +79,26 @@ mod tests {
       "AV std_err {:.6} should be <= plain {plain_se:.6}",
       av.std_err
     );
+  }
+
+  /// The pair average of `max(Z, 0)` is `|Z| / 2` (mean `1/√(2π)`, variance `(1 − 2/π) / 4`): a
+  /// wrong chunk weighting in the merge moves the standard error, which a constant payoff hides.
+  #[test]
+  fn antithetic_par_matches_the_analytic_moments() {
+    let n = 200_000;
+    let est = estimate_par(n, 1, |z: &Array1<f64>| z[0].max(0.0));
+    let mean = 1.0 / (2.0 * std::f64::consts::PI).sqrt();
+    let std_err = ((1.0 - 2.0 / std::f64::consts::PI) / 4.0 / n as f64).sqrt();
+    assert!(
+      (est.mean - mean).abs() < 5.0 * std_err,
+      "mean {} against {mean}",
+      est.mean
+    );
+    assert!(
+      (est.std_err / std_err - 1.0).abs() < 0.05,
+      "std_err {} against {std_err}",
+      est.std_err
+    );
+    assert_eq!(est.n_samples, n);
   }
 }

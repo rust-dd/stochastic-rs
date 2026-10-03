@@ -111,6 +111,9 @@ impl<T: RealExt> AmortizingFixedRateBond<T> {
   }
 
   /// Full analytics implied by the current curve stack.
+  ///
+  /// The yield, durations and convexity are `NaN` when the curve price is not positive and finite,
+  /// or when no yield in the expanded search bracket reproduces it.
   pub fn analytics_from_curve(
     &self,
     valuation_date: NaiveDate,
@@ -148,6 +151,9 @@ impl<T: RealExt> AmortizingFixedRateBond<T> {
   }
 
   /// Solve the Z-spread implied by a dirty market price.
+  ///
+  /// Returns `NaN` when the price is not positive and finite, or when no spread
+  /// in the expanded search bracket reproduces it.
   pub fn z_spread_from_dirty_price(
     &self,
     valuation_date: NaiveDate,

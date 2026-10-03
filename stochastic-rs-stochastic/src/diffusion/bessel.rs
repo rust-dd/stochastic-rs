@@ -25,6 +25,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -75,10 +78,8 @@ impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
   /// away from 0 — the direct analogue of [`Cir::new`](crate::diffusion::cir::Cir::new)'s
   /// Feller condition. Parameters violating it are accepted rather than
   /// rejected: the discretized step floors at zero by default, or reflects
-  /// about zero when [`use_sym`](Self::use_sym) is `true`. A violation not
-  /// paired with `use_sym = Some(true)` unconditionally prints a one-line
-  /// diagnostic to stderr — including in release builds — and never panics
-  /// (matching `Cir::new`).
+  /// about zero when [`use_sym`](Self::use_sym) is `true`. A violation not paired with
+  /// `use_sym = Some(true)` emits a `log::warn!` and never panics (matching `Cir::new`).
   pub fn new(
     delta: T,
     n: usize,
@@ -88,8 +89,8 @@ impl<T: FloatExt, S: SeedExt> SquaredBessel<T, S> {
     seed: S,
   ) -> Self {
     if delta < T::from_usize_(2) && use_sym != Some(true) {
-      eprintln!(
-        "warning: SquaredBessel::new: dimension below the strict-positivity \
+      log::warn!(
+        "SquaredBessel::new: dimension below the strict-positivity \
          threshold (delta < 2) without use_sym = Some(true); the path floors \
          at zero on every boundary hit instead of reflecting — pass \
          use_sym = Some(true) for the standard sub-boundary mitigation"
@@ -229,7 +230,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       delta: self.delta,
       diff_scale: T::from_usize_(2),
       use_sym: self.use_sym.unwrap_or(false),
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
@@ -275,7 +276,7 @@ pub struct SquaredBesselSampler<T: FloatExt> {
   delta: T,
   diff_scale: T,
   use_sym: bool,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> SquaredBesselSampler<T> {
@@ -381,9 +382,8 @@ pub struct Bessel<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
 impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
   /// Create a new Bessel process.
   ///
-  /// Same δ ≥ 2 strict-positivity threshold and the same unconditional
-  /// stderr diagnostic (never a panic) as
-  /// [`SquaredBessel::new`] — see there for the full rationale.
+  /// Same δ ≥ 2 strict-positivity threshold and the same `log::warn!`
+  /// (never a panic) as [`SquaredBessel::new`] — see there for the full rationale.
   pub fn new(
     delta: T,
     n: usize,
@@ -393,8 +393,8 @@ impl<T: FloatExt, S: SeedExt> Bessel<T, S> {
     seed: S,
   ) -> Self {
     if delta < T::from_usize_(2) && use_sym != Some(true) {
-      eprintln!(
-        "warning: Bessel::new: dimension below the strict-positivity \
+      log::warn!(
+        "Bessel::new: dimension below the strict-positivity \
          threshold (delta < 2) without use_sym = Some(true); the path floors \
          at zero on every boundary hit instead of reflecting — pass \
          use_sym = Some(true) for the standard sub-boundary mitigation"
@@ -535,7 +535,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       delta: self.delta,
       diff_scale: T::from_usize_(2),
       use_sym: self.use_sym.unwrap_or(false),
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
@@ -583,7 +583,7 @@ pub struct BesselSampler<T: FloatExt> {
   delta: T,
   diff_scale: T,
   use_sym: bool,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> BesselSampler<T> {

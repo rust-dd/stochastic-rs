@@ -28,4 +28,5 @@ pub mod process_coupling;
 pub mod univariate;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub mod python;

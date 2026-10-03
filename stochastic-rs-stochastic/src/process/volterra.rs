@@ -33,6 +33,9 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -68,19 +71,11 @@ pub enum VolterraKernelSpec {
 impl VolterraKernelSpec {
   /// Precomputes this kernel's parameter-derived terms once, ahead of the
   /// $O(n^2)$ convolution in [`ReferenceVolterraSampler::fill_path`].
-  ///
-  /// [`VolterraKernelSpec::FractionalBM`]'s $\Gamma(H+1/2)$ is a Weierstrass
-  /// infinite product (`scilib::math::basic::gamma`) iterated to a fixed
-  /// relative-error threshold — measured at ~2.7ms per call, which used to
-  /// be paid on every `(i, j)` pair of the kernel loop instead of once, the
-  /// way this crate's other `scilib::gamma` call sites do. `h` is fixed for
-  /// the sampler's lifetime, so the value prepared here is identical to the
-  /// one every per-pair call used to produce.
   fn prepare<T: FloatExt>(&self) -> PreparedVolterraKernel<T> {
     match self {
       VolterraKernelSpec::FractionalBM { h } => PreparedVolterraKernel::FractionalBM {
         exp: T::from_f64_fast(*h - 0.5),
-        gamma_val: T::from_f64_fast(scilib::math::basic::gamma(*h + 0.5)),
+        gamma_val: T::from_f64_fast(stochastic_rs_distributions::special::gamma(*h + 0.5)),
       },
       VolterraKernelSpec::PowerLaw { gamma } => PreparedVolterraKernel::PowerLaw {
         gamma: T::from_f64_fast(*gamma),
@@ -307,7 +302,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> Proc
           n: self.n,
           dt,
           sqrt_dt: dt.sqrt(),
-          normal: SimdNormal::<T, 64>::new(T::zero(), T::one(), &self.seed),
+          normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
         })
       }
     }
@@ -389,6 +384,10 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> Proc
 /// branch.
 #[doc(hidden)]
 #[non_exhaustive]
+#[expect(
+  clippy::large_enum_variant,
+  reason = "a stream holds its 64-wide buffer inline; boxing it would allocate per sampler build"
+)]
 pub enum VolterraSampler<T: FloatExt + RoughSimd, S: SeedExt> {
   Lift(VolterraSdeSampler<T, RlKernel<T>, S>),
   Reference(ReferenceVolterraSampler<T>),
@@ -427,7 +426,7 @@ pub struct ReferenceVolterraSampler<T: FloatExt> {
   n: usize,
   dt: T,
   sqrt_dt: T,
-  normal: SimdNormal<T, 64>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> ReferenceVolterraSampler<T> {
@@ -489,6 +488,7 @@ impl<T: FloatExt> PathSampler<T> for ReferenceVolterraSampler<T> {
 // macro because the constructor takes a [`VolterraKernelSpec`] sum type, not
 // the flat positional `(f64, f64, ...)` parameter list the macro assumes.
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyVolterra {
   inner: Option<Volterra<f64>>,

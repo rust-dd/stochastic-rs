@@ -42,85 +42,57 @@
 //! - Coles, S. (2001), *An Introduction to Statistical Modeling of Extreme
 //!   Values*, Springer, ch. 4.
 
-use std::cell::Cell;
-use std::cell::UnsafeCell;
-
 use rand::Rng;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::StreamState;
 use crate::traits::DistributionExt;
 use crate::traits::SimdFloatExt;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 const SMALL_GPD_THRESHOLD: usize = 16;
 
 /// Generalized Pareto distribution with location `μ`, scale `σ > 0` and
-/// shape `ξ`.
-///
-/// Sampling uses the closed-form inverse CDF from the module docs on the
-/// internal SIMD RNG — bulk fills vectorise the `ln` / `powf` chain 8-wide.
-pub struct SimdGpd<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+/// shape `ξ`; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdGpd<T> {
   mu: T,
   sigma: T,
   xi: T,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<R>,
-  stream_seed: Cell<u64>,
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdGpd<T, R> {
+impl<T: SimdFloatExt> SimdGpd<T> {
   /// Construct a GPD$(\mu, \sigma, \xi)$.
   ///
   /// - `mu` — location μ, the lower end of the support.
   /// - `sigma` — scale σ > 0.
   /// - `xi` — shape ξ; positive for a heavy tail, zero for the exponential,
   ///   negative for a tail bounded at μ − σ/ξ.
-  pub fn new<S: SeedExt>(mu: T, sigma: T, xi: T, seed: &S) -> Self {
-    assert!(sigma > T::zero(), "σ must be positive");
-    let stream_seed = seed.seed_value();
-    Self {
-      mu,
-      sigma,
-      xi,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed: Cell::new(stream_seed),
-    }
+  pub fn new(mu: T, sigma: T, xi: T) -> Self {
+    assert!(
+      sigma > T::zero(),
+      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
+    );
+    Self { mu, sigma, xi }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.mu,
-      self.sigma,
-      self.xi,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
+  /// The location `μ`.
+  pub fn mu(&self) -> T {
+    self.mu
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
-  #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
+  /// The scale `σ`.
+  pub fn sigma(&self) -> T {
+    self.sigma
+  }
+
+  /// The shape `ξ`.
+  pub fn xi(&self) -> T {
+    self.xi
   }
 
   /// Clamp a uniform draw to the open unit interval so the `ln` / `powf`
@@ -131,10 +103,15 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGpd<T, R> {
     x.max(eps).min(T::one() - eps)
   }
 
-  /// One inverse-CDF draw on the internal RNG.
   #[inline]
-  fn sample_one(&self, rng: &mut R, exponential: bool) -> T {
-    let u = Self::clamp_open_unit(T::sample_uniform_simd(rng));
+  fn is_exponential(&self) -> bool {
+    self.xi.to_f64().unwrap().abs() < 1e-12
+  }
+
+  /// The inverse cdf at `1 − u`, which is uniform when `u` is.
+  #[inline]
+  fn invert(&self, u: T, exponential: bool) -> T {
+    let u = Self::clamp_open_unit(u);
     if exponential {
       self.mu - self.sigma * u.ln()
     } else {
@@ -142,15 +119,11 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGpd<T, R> {
     }
   }
 
-  /// Fills `out` with GPD samples using the internal SIMD RNG stream — the
-  /// only stream this sampler draws from (see the crate-level RNG policy).
-  /// The inverse-CDF transform runs 8-wide.
-  pub fn fill_slice(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    let exponential = self.xi.to_f64().unwrap().abs() < 1e-12;
+  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [T]) {
+    let exponential = self.is_exponential();
     if out.len() < SMALL_GPD_THRESHOLD {
       for x in out.iter_mut() {
-        *x = self.sample_one(rng, exponential);
+        *x = self.invert(T::sample_uniform_simd(rng), exponential);
       }
       return;
     }
@@ -172,16 +145,12 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGpd<T, R> {
       *chunk = T::simd_to_array(x);
     }
     for x in rem.iter_mut() {
-      *x = self.sample_one(rng, exponential);
+      *x = self.invert(T::sample_uniform_simd(rng), exponential);
     }
   }
 
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.invert(T::sample_uniform(rng), self.is_exponential())
   }
 
   /// Support as `(lo, hi)`: `[μ, ∞)` for ξ ≥ 0, `[μ, μ − σ/ξ]` for ξ < 0.
@@ -205,28 +174,39 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGpd<T, R> {
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdGpd<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.mu, self.sigma, self.xi, &Unseeded)
+impl<T: SimdFloatExt> Sealed for SimdGpd<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdGpd<T> {
+  type State<R: SimdRngExt> = StreamState<T, R, 16>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (StreamState<T, R, 16>, u64) {
+    StreamState::init(seed)
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdGpd<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction. Use `Deterministic`
-  /// in the constructor for reproducibility.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
+impl<T: SimdFloatExt> SimdKernel for SimdGpd<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+    self.fill_parts(&mut state.rng, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>) -> T {
+    let StreamState { rng, buf } = state;
+    buf.pop(|b| self.fill_parts(rng, b))
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> DistributionExt for SimdGpd<T, R> {
+impl<T: SimdFloatExt> Distribution<T> for SimdGpd<T> {
+  /// The inverse cdf at one `[0, 1)` uniform from the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: SimdFloatExt> DistributionExt for SimdGpd<T> {
   fn pdf(&self, x: f64) -> f64 {
     let (mu, sigma, xi) = self.params();
     let z = (x - mu) / sigma;
@@ -338,14 +318,16 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
+  use crate::tests::scalar_ks_best_p;
+  use crate::traits::DistributionSampler;
 
   /// Exponential limit (ξ = 0): the sample mean of 30k draws must sit at σ.
   #[test]
   fn gpd_exponential_sample_mean() {
-    let d = SimdGpd::<f64>::new(0.0, 2.0, 0.0, &Deterministic::new(3));
+    let d = SimdGpd::<f64>::new(0.0, 2.0, 0.0);
     let n = 30_000;
     let mut xs = vec![0.0; n];
-    d.fill_slice(&mut xs);
+    d.seeded(&Deterministic::new(3)).fill_slice(&mut xs);
     let mean = xs.iter().sum::<f64>() / n as f64;
     assert!((mean - 2.0).abs() < 0.05, "mean = {mean}");
   }
@@ -354,10 +336,10 @@ mod tests {
   /// leaves the support.
   #[test]
   fn gpd_bounded_tail_moments_and_support() {
-    let d = SimdGpd::<f64>::new(1.0, 1.0, -0.3, &Deterministic::new(5));
+    let d = SimdGpd::<f64>::new(1.0, 1.0, -0.3);
     let n = 30_000;
     let mut xs = vec![0.0; n];
-    d.fill_slice(&mut xs);
+    d.seeded(&Deterministic::new(5)).fill_slice(&mut xs);
     let mean = xs.iter().sum::<f64>() / n as f64;
     assert!((mean - d.mean()).abs() < 0.02, "mean = {mean}");
     let (lo, hi) = d.support();
@@ -365,11 +347,20 @@ mod tests {
     assert!(xs.iter().all(|x| *x >= lo && *x <= hi + 1e-9));
   }
 
+  #[test]
+  fn scalar_sample_matches_cdf() {
+    for xi in [0.0, 0.3, -0.3] {
+      let d = SimdGpd::<f64>::new(0.0, 1.0, xi);
+      let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+      assert!(best > 0.01, "xi = {xi}: best p = {best}");
+    }
+  }
+
   /// PDF integrates to one over the support (midpoint rule) for a heavy
   /// tail.
   #[test]
   fn gpd_pdf_normalised() {
-    let d = SimdGpd::<f64>::new(0.0, 1.0, 0.3, &Unseeded);
+    let d = SimdGpd::<f64>::new(0.0, 1.0, 0.3);
     let n = 200_000usize;
     let up = 5_000.0_f64;
     let h = up / n as f64;
@@ -381,7 +372,7 @@ mod tests {
   #[test]
   fn gpd_cdf_inverse_round_trip() {
     for xi in [0.3_f64, 0.0, -0.3] {
-      let d = SimdGpd::<f64>::new(0.5, 2.0, xi, &Unseeded);
+      let d = SimdGpd::<f64>::new(0.5, 2.0, xi);
       for p in [0.05_f64, 0.3, 0.5, 0.7, 0.95] {
         let x = d.inv_cdf(p);
         assert!(
@@ -396,10 +387,10 @@ mod tests {
 
   #[test]
   fn gpd_deterministic_seed_reproduces_stream() {
-    let a = SimdGpd::<f64>::new(0.5, 1.2, 0.3, &Deterministic::new(7));
-    let b = SimdGpd::<f64>::new(0.5, 1.2, 0.3, &Deterministic::new(7));
+    let mut a = SimdGpd::<f64>::new(0.5, 1.2, 0.3).seeded(&Deterministic::new(7));
+    let mut b = SimdGpd::<f64>::new(0.5, 1.2, 0.3).seeded(&Deterministic::new(7));
     for _ in 0..256 {
-      assert_eq!(a.sample_fast(), b.sample_fast());
+      assert_eq!(a.sample(), b.sample());
     }
   }
 
@@ -407,11 +398,11 @@ mod tests {
   /// loses the skewness and kurtosis.
   #[test]
   fn gpd_moment_thresholds() {
-    let d = SimdGpd::<f64>::new(0.0, 1.0, 0.3, &Unseeded);
+    let d = SimdGpd::<f64>::new(0.0, 1.0, 0.3);
     assert!(d.mean().is_finite() && d.variance().is_finite());
     assert!(d.skewness().is_finite());
     assert!(d.kurtosis().is_nan());
-    let heavy = SimdGpd::<f64>::new(0.0, 1.0, 0.6, &Unseeded);
+    let heavy = SimdGpd::<f64>::new(0.0, 1.0, 0.6);
     assert!(heavy.mean().is_finite());
     assert_eq!(heavy.variance(), f64::INFINITY);
     assert!(heavy.skewness().is_nan());

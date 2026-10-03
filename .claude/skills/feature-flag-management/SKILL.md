@@ -6,8 +6,8 @@ description: Conventions for adding / propagating Cargo features across the stoc
 # Feature flag management — stochastic-rs
 
 The workspace has 8 sub-crates, several of which carry optional
-dependencies (`cuda`, `gpu`, `metal`, `accelerate`, `python`,
-`yahoo`, `ai`, `hotpath`). Dense linear algebra is deliberately NOT one
+dependencies (`cuda`, `metal`, `accelerate`, `python`,
+`viz`, `ai`). Dense linear algebra is deliberately NOT one
 of them: it runs on the pure-Rust `faer`, always compiled in — there is
 no linalg feature and no system-BLAS dependency. Without discipline, `cargo check --all-features`
 explodes with "feature X needed but not propagated" or, worse, an
@@ -26,16 +26,16 @@ compiled in single-crate isolation but blew up under
 ```toml
 # In stochastic-rs-quant/Cargo.toml:
 [dependencies]
-yahoo_finance_api = { workspace = true, optional = true }
+plotly = { workspace = true, optional = true }
 
 [features]
-yahoo = ["dep:yahoo_finance_api"]
+viz = ["dep:plotly"]
 ```
 
-Why: the `dep:` prefix tells Cargo that "yahoo" is a feature **only**,
+Why: the `dep:` prefix tells Cargo that "viz" is a feature **only**,
 and never a transitive enable. Without `dep:`, `cargo` auto-creates a
-feature named `yahoo_finance_api` whenever the crate has an optional
-dep of that name, and any sub-crate that lists `yahoo_finance_api` as a
+feature named `plotly` whenever the crate has an optional
+dep of that name, and any sub-crate that lists `plotly` as a
 plain dep silently activates it. That's the exact failure mode we hit
 in rc.0.
 
@@ -53,7 +53,7 @@ subdirectory; `[workspace]`, `[workspace.dependencies]`, `[package]`,
 [features]
 ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]
 cuda = ["dep:cudarc", "cudarc/cufft", "stochastic-rs-stochastic/cuda"]
-metal = ["dep:metal", "stochastic-rs-stochastic/metal"]
+metal = ["stochastic-rs-stochastic/metal"]
 viz = ["stochastic-rs-quant/viz", "stochastic-rs-ai?/viz"]
 ```
 
@@ -63,7 +63,7 @@ Three things that example teaches which a made-up one would not:
   reaches `-stochastic` only — forwarding to a crate that lacks the
   feature is a hard cargo error.
 - **`dep:` for optional dependencies the umbrella owns itself**
-  (`dep:cudarc`, `dep:metal`), alongside the
+  (`dep:cudarc`, `dep:stochastic-rs-ai`), alongside the
   `<crate>/<feature>` forwards.
 - **`crate?/feature`** — the weak-dependency form, as in
   `stochastic-rs-ai?/viz`: enable `-ai`'s `viz` *only if* `-ai` is
@@ -81,11 +81,11 @@ two crates but only on `default` in a third compiles inconsistently).
 For a sub-crate's *own* internal feature (not exposed via the umbrella):
 
 ```rust
-// stochastic-rs-quant/src/yahoo.rs
-#![cfg(feature = "yahoo")]   // module-level guard
+// stochastic-rs-stochastic/tests/fgn_metal_pipeline.rs
+#![cfg(all(feature = "metal", target_os = "macos"))]   // file-level guard
 
-// or, at item level:
-#[cfg(feature = "metal")]
+// or, at item level (Apple back-ends also gate on the target):
+#[cfg(all(feature = "metal", target_os = "macos"))]
 pub struct Metal;
 ```
 
@@ -188,23 +188,18 @@ loader, a new distribution backend):
 
 ## 6. Reference: feature flags currently in the workspace
 
-| Feature | Crates that publish it | Notes |
-|---|---|---|
 Verify against the `[features]` blocks before trusting this table —
 it is a summary, and the sub-crate columns are the part that drifts.
 
 | Feature | Crates that publish it | Notes |
 |---|---|---|
 | `cuda` | `-stochastic`, umbrella | Native CUDA via **cudarc** + cuFFT + NVRTC. The `gpu*` aliases were removed before 3.0. |
-| `metal` | `-stochastic`, umbrella | Apple Silicon GPU via the `metal` crate; f32 only. |
-| `accelerate` | `-stochastic`, umbrella | Apple vDSP / AMX — a **CPU** path despite sitting beside the GPU flags. |
-| `dual-stream-rng` | `-core`, `-distributions`, umbrella | Experimental `SimdRngDual`; changes deterministic output. |
-| `python` | `-distributions`, `-stochastic`, `-quant`, `-stats`, `-copulas`, umbrella | PyO3 bindings. Note `-py` has **no** `python` feature — it forces `pyo3/extension-module` unconditionally. |
-| `yahoo` | `-quant`, umbrella | Live-data tests; experimental. |
+| `metal` | `-stochastic`, umbrella | Apple Silicon GPU via the `metal` crate; f32 only. The dependency is `[target.'cfg(target_os = "macos")'.dependencies]`; the feature is inert elsewhere. |
+| `accelerate` | `-stochastic`, umbrella | Apple vDSP / AMX — a **CPU** path despite sitting beside the GPU flags. Gated on `target_os = "macos"`; inert elsewhere. |
+| `unstable-dual-stream-rng` | `-core`, `-distributions`, umbrella | Experimental `SimdRngDual`; changes deterministic output. |
+| `python` | `-core`, `-distributions`, `-stochastic`, `-copulas`, `-stats`, `-quant`, `-ai` | Internal PyO3 wrapper code that `stochastic-rs-py` switches on; modules and classes are `#[doc(hidden)]`, outside the stability promise. The umbrella has no `python` feature. |
 | `ai` | umbrella | Pulls `-ai` and turns on its `quant` bridge feature. |
 | `quant` / `viz` | `-ai` | `quant` gates `predict_implied_vol_surface`; `viz` gates the plot helper. |
-| `hotpath` / `hotpath-alloc` | umbrella | Profiling-mode build. |
-| `jemalloc` / `mimalloc` | umbrella | Allocator swaps. |
 
 ## Related SKILLs
 

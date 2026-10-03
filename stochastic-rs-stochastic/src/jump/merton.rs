@@ -7,37 +7,32 @@
 //! ## Generic distribution parameter `D`
 //!
 //! `Merton<T, D, S>` is generic over the jump-size distribution `D`, which
-//! must implement [`rand_distr::Distribution<T>`]. Common choices:
+//! must implement [`rand::distr::Distribution<T>`]. Common choices:
 //!
-//! - [`ScalarNormal<T>`](stochastic_rs_distributions::scalar::ScalarNormal)
+//! - [`SimdNormal<T>`](stochastic_rs_distributions::normal::SimdNormal)
 //!   for the classical normal-jump Merton (1976) model
-//! - [`ScalarExp<T>`](stochastic_rs_distributions::scalar::ScalarExp) for
+//! - [`SimdExp<T>`](stochastic_rs_distributions::exp::SimdExp) for
 //!   one-sided exponential jumps
-//! - any user-defined `Distribution<T>` that is `Send + Sync + 'static` — the
-//!   engine inspects it through `Any` — which the SIMD laws, with their
-//!   thread-local buffers, are not
+//! - any user-defined `Distribution<T>` that is `Send + Sync + 'static` (the
+//!   engine inspects it through `Any`)
 //!
-//! On a device the engine draws the two scalar laws above in the kernel and
+//! On a device the engine draws the two laws above in the kernel and
 //! recognises them at runtime; any other `D` keeps the process on the host,
 //! through the same `ProcessExt` calls.
-//!
-//! Python bindings (under the `python` feature) need a monomorphic type
-//! signature, so the `PyMerton` wrapper fixes `D = CallableDist<T>`. If
-//! you need a different jump distribution from Python, prefer the SVJ /
-//! Bates calibrators, or compose your own wrapper struct on the Rust side
-//! and re-bind via PyO3.
 //!
 
 use std::any::Any;
 
 use ndarray::Array1;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 #[cfg(feature = "python")]
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
-use stochastic_rs_distributions::scalar::ScalarNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
@@ -260,15 +255,9 @@ where
   }
 }
 
-/// α=0.03, σ=0.2, λ=1.0, θ=0.0, x₀=0, with a `ScalarNormal(0, 0.1)` jump
-/// size — `D = ScalarNormal<T>` per this crate's jump-size-distribution
-/// convention (`Sync`-safe, drives the shared RNG — see
-/// `stochastic-rs-distributions::scalar`). The log-jump (not the jump
-/// factor `Y` itself) is Gaussian, `N(0, 0.1)` — the classical
-/// lognormal-jump Merton (1976) model this file's own top doc names. t=1,
-/// n=252 — one trading year of daily steps (this crate's `Default`
-/// convention).
-impl<T: FloatExt> Default for Merton<T, ScalarNormal<T>, Unseeded> {
+/// `alpha = 0.03`, `sigma = 0.2`, `lambda = 1`, `theta = 0`, `x0 = 0`, `t = 1`, `n = 252` with `SimdNormal(0, 0.1)`
+/// log-jumps: the classical Merton (1976) model.
+impl<T: FloatExt> Default for Merton<T, SimdNormal<T>, Unseeded> {
   fn default() -> Self {
     let n = 252;
     let t = Some(T::one());
@@ -277,7 +266,7 @@ impl<T: FloatExt> Default for Merton<T, ScalarNormal<T>, Unseeded> {
       T::from_f64_fast(0.2),
       T::one(),
       T::zero(),
-      ScalarNormal::new(T::zero(), T::from_f64_fast(0.1)),
+      SimdNormal::new(T::zero(), T::from_f64_fast(0.1)),
       n,
       Some(T::zero()),
       t,
@@ -409,7 +398,7 @@ where
       jump_distribution: &self.cpoisson.distribution,
       lambda: self.lambda,
       jump_seed: self.cpoisson.seed.derive(),
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
@@ -495,7 +484,7 @@ where
   jump_distribution: &'a D,
   lambda: T,
   jump_seed: S,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T, D, S: SeedExt> MertonSampler<'_, T, D, S>
@@ -550,6 +539,7 @@ where
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyMerton {
   inner_f32: Option<Merton<f32, crate::traits::CallableDist<f32>>>,
@@ -656,6 +646,8 @@ impl PyMerton {
     })
   }
 
+  /// `m` paths as an `(m, n)` array. The GIL is released while they are generated; the Python
+  /// law runs on rayon workers, one call at a time.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,
@@ -668,8 +660,8 @@ impl PyMerton {
 
       use crate::traits::ProcessExt;
       py_dispatch!(self, |inner| {
-        let paths = inner.sample_par(m);
-        let n = paths[0].len();
+        let paths = py.detach(|| inner.sample_par(m));
+        let n = paths.first().map_or(0, |p| p.len());
         let mut result = Array2::zeros((m, n));
         for (i, path) in paths.iter().enumerate() {
           result.row_mut(i).assign(path);

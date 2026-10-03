@@ -8,6 +8,9 @@
 //! Source:
 //! - <https://github.com/amuguruza/NN-StochVol-Calibrations>
 //! - `1Factor/Flat Forward Variance/NN1Factor.ipynb`
+//!
+//! Input order `[xi0, nu, beta, rho]`: forward variance, vol-of-vol, mean-reversion speed and
+//! correlation, as titled in the notebook.
 
 use std::path::Path;
 
@@ -19,13 +22,17 @@ use super::common::StochVolModelSpec;
 use super::common::StochVolNn;
 use super::common::TrainConfig;
 use super::common::TrainReport;
+use super::grid;
 
 pub const MODEL_ID: &str = "one_factor";
 pub const INPUT_DIM: usize = 4;
-pub const OUTPUT_DIM: usize = 88;
+pub const OUTPUT_DIM: usize = grid::LEN;
 pub const DEFAULT_HIDDEN_DIM: usize = 30;
 pub const PARAM_LB: [f32; INPUT_DIM] = [0.01, 0.5, 0.0, -1.0];
 pub const PARAM_UB: [f32; INPUT_DIM] = [0.16, 4.0, 10.0, 0.0];
+
+/// `K / S0` of output column `i`, ascending.
+pub const STRIKES: [f64; grid::MONEYNESS.len()] = grid::MONEYNESS;
 
 pub struct OneFactorNn {
   inner: StochVolNn,
@@ -61,10 +68,8 @@ impl OneFactorNn {
 
   /// Predict an implied-volatility surface for the given parameter vector.
   ///
-  /// Returns a flat `Vec<f32>` of length [`OUTPUT_DIM`] in row-major order
-  /// (maturity-major). Pass the result to
-  /// `stochastic_rs_quant::vol_surface::ImpliedVolSurface::from_flat_iv_grid`
-  /// to consume the prediction with the rest of the pricing toolchain.
+  /// Returns a flat `Vec<f32>` of length [`OUTPUT_DIM`]: one block per [`grid::MATURITIES`] entry,
+  /// with columns in [`STRIKES`] order, ascending.
   pub fn predict_surface(&self, params: &[f32; INPUT_DIM]) -> Result<Vec<f32>> {
     self.inner.predict_surface(params)
   }
@@ -75,7 +80,9 @@ impl OneFactorNn {
 
   /// Bridge to `stochastic-rs-quant`: predict and package as
   /// [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface).
-  /// Available with the `quant` cargo feature.
+  ///
+  /// Pass [`STRIKES`] times the spot, [`grid::MATURITIES`] and the forwards; the surface
+  /// comes back with ascending strikes. Available with the `quant` cargo feature.
   #[cfg(feature = "quant")]
   pub fn predict_implied_vol_surface(
     &self,
@@ -110,17 +117,9 @@ impl crate::calibration::SurrogateModel for OneFactorNn {
 #[cfg(test)]
 mod tests {
   use std::fs;
-  #[cfg(feature = "viz")]
-  use std::path::Path;
 
   use super::*;
-  #[cfg(feature = "viz")]
-  use crate::volatility::common::load_trainset_gzip_npy;
-  #[cfg(feature = "viz")]
-  use crate::volatility::common::rmse_1d;
   use crate::volatility::common::synthetic_surface_dataset;
-  #[cfg(feature = "viz")]
-  use crate::volatility::common::write_surface_fit_plot_html;
 
   #[test]
   fn train_save_load_roundtrip() -> Result<()> {
@@ -162,67 +161,11 @@ mod tests {
       .iter()
       .zip(p2.iter())
       .map(|(a, b)| (a - b).abs())
-      .fold(0.0_f32, f32::max);
+      .max_by(f32::total_cmp)
+      .unwrap();
     assert!(max_diff < 1e-4);
 
     let _ = fs::remove_dir_all(&save_dir);
-    Ok(())
-  }
-
-  #[cfg(feature = "viz")]
-  #[test]
-  fn real_trainset_fit_plot() -> Result<()> {
-    let trainset_path = Path::new("src/ai/volatility/Bergomi1FactorTrainSet.txt.gz");
-    if !trainset_path.exists() {
-      return Ok(());
-    }
-
-    let device = Device::Cpu;
-    let (params, surfaces) =
-      load_trainset_gzip_npy(trainset_path, INPUT_DIM, OUTPUT_DIM, Some(12_000))?;
-
-    let mut model = OneFactorNn::new(&device)?;
-    let cfg = TrainConfig {
-      test_ratio: 0.15,
-      batch_size: 64,
-      epochs: 30,
-      learning_rate: 1e-3,
-      random_seed: 42,
-      shuffle: true,
-    };
-    let report = model.train(&params, &surfaces, &cfg)?;
-    let sample_idx = surfaces.nrows() / 3;
-    let sample = [
-      params[[sample_idx, 0]],
-      params[[sample_idx, 1]],
-      params[[sample_idx, 2]],
-      params[[sample_idx, 3]],
-    ];
-    let pred = model.predict_surface(&sample)?;
-    let actual = surfaces.row(sample_idx).to_vec();
-    let fit_rmse = rmse_1d(&actual, &pred)?;
-
-    let out = Path::new("target/nn_fit_plots/one_factor_fit.html");
-    let strikes = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5];
-    let maturities = [0.1, 0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.0];
-    write_surface_fit_plot_html(
-      out,
-      &format!(
-        "1Factor Bergomi NN Fit - sample {} - RMSE {:.5}",
-        sample_idx, fit_rmse
-      ),
-      &strikes,
-      &maturities,
-      &actual,
-      &pred,
-    )?;
-    println!(
-      "1Factor fit plot written to {} (sample_rmse={:.6}, final_val_rmse={:.6})",
-      out.display(),
-      fit_rmse,
-      report.epochs.last().map(|e| e.val_rmse).unwrap_or(f32::NAN)
-    );
-    assert!(out.exists());
     Ok(())
   }
 }

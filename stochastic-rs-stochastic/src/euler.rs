@@ -138,7 +138,10 @@ pub struct LiftSpec<'a, T> {
 /// The lift tables and scalars a launch binds: `[decay, weight, drift_scale]`
 /// (empty when the process has no lift), the `has_lift` flag, the node count
 /// and the two boundary terms plus the start the lift adds back each step.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 pub(crate) fn encode_lift<'a, T: FloatExt>(
   lift: Option<&LiftSpec<'a, T>>,
 ) -> ([&'a [T]; 3], u32, u32, T, T, T) {
@@ -187,7 +190,10 @@ pub struct ProgramSpec<'a> {
 
 /// The program buffer a launch binds — `[len₁, len₂, pairs…]` in
 /// [`PROGRAM_SLOTS`] floats — and how many programs it holds.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 pub(crate) fn encode_programs<T: FloatExt>(spec: Option<&ProgramSpec<'_>>) -> (Vec<T>, u32) {
   let mut out = vec![T::zero(); PROGRAM_SLOTS];
   let Some(spec) = spec else {
@@ -228,7 +234,10 @@ pub const HISTORY_SLOTS: usize = 512;
 /// kernels' "none" sentinel; a history family whose grid exceeds
 /// [`HISTORY_SLOTS`] never reaches a launch through `ProcessExt`, so an
 /// oversize grid here is a caller bypassing that guard.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 pub(crate) fn history_slot(family: u32, n: usize) -> u32 {
   match families::Family::from_code(family).and_then(families::Family::history_slot) {
     Some(slot) => {
@@ -254,7 +263,10 @@ pub const SERIES_SLOTS: usize = 512;
 /// declaring the wrong family — and a grid beyond [`SERIES_SLOTS`] never
 /// reaches a launch through `ProcessExt`, so an oversize one here is a caller
 /// bypassing that guard.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 pub(crate) fn series_terms(family: u32, n: usize, terms: Option<u32>) -> u32 {
   let family = families::Family::from_code(family);
   let has_series = family.is_some_and(families::Family::has_series);
@@ -280,7 +292,10 @@ pub(crate) fn series_terms(family: u32, n: usize, terms: Option<u32>) -> u32 {
 
 /// Whether the launch's family sizes its series terms in their own step
 /// rather than in the preamble, as the kernels read it.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 pub(crate) fn series_live(family: u32) -> u32 {
   u32::from(families::Family::from_code(family).is_some_and(families::Family::series_live))
 }
@@ -306,7 +321,10 @@ pub struct TableSpec<T> {
 /// for a family without a `table` clause. A family with one is never launched
 /// without a spec and a family without one never with, and a table beyond
 /// [`TABLE_SLOTS`] never reaches a launch through `ProcessExt`.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 pub(crate) fn table_terms<T: FloatExt>(family: u32, spec: Option<TableSpec<T>>) -> (u32, T) {
   let has_table = families::Family::from_code(family).is_some_and(families::Family::has_table);
   assert!(
@@ -334,7 +352,10 @@ pub(crate) fn table_terms<T: FloatExt>(family: u32, spec: Option<TableSpec<T>>) 
 /// A curve shorter than the grid is extended with its last value rather than
 /// read out of bounds — a host tabulation that stops one short is a
 /// declaration slip, not a reason to fault a kernel.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 pub(crate) fn flatten_curves<T: FloatExt>(curves: Option<Vec<Vec<T>>>, n: usize) -> (Vec<T>, u32) {
   let Some(curves) = curves else {
     return (Vec::new(), 0);
@@ -1049,7 +1070,10 @@ impl<T: FloatExt> EulerSpec<T> {
   /// layout is the kernels' ABI and stays inside the crate, so it can widen
   /// for a new family without a breaking change. Only the device kernels
   /// read it, so a build without any device feature has no caller.
-  #[cfg_attr(not(any(feature = "metal", feature = "cuda")), allow(dead_code))]
+  #[cfg_attr(
+    not(any(all(feature = "metal", target_os = "macos"), feature = "cuda")),
+    allow(dead_code)
+  )]
   pub(crate) fn encode(&self) -> (u32, [T; PARAM_SLOTS]) {
     use families::Family;
     match *self {
@@ -2042,6 +2066,16 @@ pub trait EulerKernel<T: FloatExt>: Backend {
   /// Bytes of path data one launch may hold.
   fn batch_budget(&self) -> usize;
 
+  /// `rows` cut until a launch of `spec` over `steps` points, with the `fgn` pipeline first, stays
+  /// in the kernels' index type; never below one, so a lone oversized path is refused, not wrapped.
+  fn index_rows(
+    &self,
+    rows: usize,
+    spec: EulerSpec<T>,
+    steps: usize,
+    fgn: Option<FgnSpec<'_, T>>,
+  ) -> usize;
+
   /// The whole system batch under `seed`, chunked to the budget.
   fn euler_system_batch<const D: usize, P: EulerSystem<T, D>>(
     &self,
@@ -2055,11 +2089,12 @@ pub trait EulerKernel<T: FloatExt>: Backend {
     // Bergomi family reports four where its process takes two. Both the
     // budget and the assembled array follow the launch, not `D`, or the
     // chunks do not fit the array they are assigned into.
-    let (code, _) = process.euler_spec().encode();
+    let spec = process.euler_spec();
+    let (code, _) = spec.encode();
     let planes = families::Family::from_code(code)
       .expect("a declared family")
       .components();
-    let rows = crate::device::chunk_rows(self.batch_budget(), n * planes, std::mem::size_of::<T>());
+    let rows = launch_rows(self, n * planes, spec, n, process.fgn_spec());
     if m <= rows {
       return self.euler_system_kernel(process, 0, m, seed);
     }
@@ -2083,7 +2118,7 @@ pub trait EulerKernel<T: FloatExt>: Backend {
     seed: u64,
   ) -> Result<Array2<T>, DeviceError> {
     let n = process.grid_points();
-    let rows = crate::device::chunk_rows(self.batch_budget(), n, std::mem::size_of::<T>());
+    let rows = launch_rows(self, n, process.euler_spec(), n, process.fgn_spec());
     if m <= rows {
       return self.euler_kernel(process, 0, m, seed);
     }
@@ -2097,6 +2132,41 @@ pub trait EulerKernel<T: FloatExt>: Backend {
     })?;
     Ok(out)
   }
+}
+
+/// Paths one launch may hold: the budget at `per_path` scalars each, cut by
+/// [`EulerKernel::index_rows`]. Every engine batch loop sizes chunks here, so none wraps an index.
+fn launch_rows<T: FloatExt, K: EulerKernel<T>>(
+  kernel: &K,
+  per_path: usize,
+  spec: EulerSpec<T>,
+  steps: usize,
+  fgn: Option<FgnSpec<'_, T>>,
+) -> usize {
+  let rows = crate::device::chunk_rows(kernel.batch_budget(), per_path, std::mem::size_of::<T>());
+  kernel.index_rows(rows, spec, steps, fgn)
+}
+
+/// The body's `steps`, `paths`, `first_path` as `unsigned int`s, or the launch's error; `first + m`
+/// and `m · increments` are checked too: past 32 bits two paths would share noise or increments.
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
+pub(crate) fn launch_scalars(
+  n: usize,
+  first: usize,
+  m: usize,
+  increments: u32,
+) -> Result<(u32, u32, u32), DeviceError> {
+  use crate::device::launch_len;
+  launch_len::<u32>(first + m, "first_path + paths")?;
+  launch_len::<u32>(m * increments as usize, "paths * increments")?;
+  Ok((
+    launch_len(n, "steps")?,
+    launch_len(m, "paths")?,
+    launch_len(first, "first_path")?,
+  ))
 }
 
 /// How a backend handle produces Euler paths for the processes it serves:
@@ -2611,14 +2681,14 @@ macro_rules! host_euler_backend {
 }
 
 host_euler_backend!(Cpu);
-#[cfg(feature = "accelerate")]
+#[cfg(all(feature = "accelerate", target_os = "macos"))]
 host_euler_backend!(crate::device::Accelerate);
 
 /// A device kernel is an Euler backend: one seed per call, chunks to the
 /// handle's budget, the map applied per chunk in parallel. One impl per
 /// handle rather than a blanket one, which coherence would not allow beside
 /// the host impls above.
-#[cfg(any(feature = "cuda", feature = "metal"))]
+#[cfg(any(feature = "cuda", all(feature = "metal", target_os = "macos")))]
 macro_rules! kernel_euler_backend {
   ($handle:ty, [$($gen:tt)*] $scalar:ty) => {
     impl<$($gen)*> EulerBackend<$scalar> for $handle {
@@ -2649,11 +2719,8 @@ macro_rules! kernel_euler_backend {
     ) -> Result<Vec<R>, DeviceError> {
       use rayon::prelude::*;
       let seed = process.device_seed();
-      let rows = crate::device::chunk_rows(
-        <Self as EulerKernel<$scalar>>::batch_budget(self),
-        process.grid_points(),
-        std::mem::size_of::<$scalar>(),
-      );
+      let steps = process.grid_points();
+      let rows = launch_rows(self, steps, process.euler_spec(), steps, process.fgn_spec());
       let mut out = Vec::with_capacity(m);
       // `over_chunks`, so a chunk too large for the device is retried at half
       // the size rather than failing the batch.
@@ -2715,11 +2782,8 @@ macro_rules! kernel_euler_backend {
     ) -> Result<Vec<R>, DeviceError> {
       use rayon::prelude::*;
       let seed = process.device_seed();
-      let rows = crate::device::chunk_rows(
-        <Self as EulerKernel<$scalar>>::batch_budget(self),
-        process.grid_points(),
-        std::mem::size_of::<$scalar>(),
-      );
+      let steps = process.grid_points();
+      let rows = launch_rows(self, steps, process.euler_spec(), steps, process.fgn_spec());
       let mut out = Vec::with_capacity(m);
       // `over_chunks`, so a chunk too large for the device is retried at half
       // the size rather than failing the batch.
@@ -2792,11 +2856,8 @@ macro_rules! kernel_euler_backend {
     ) -> Result<Vec<R>, DeviceError> {
       use rayon::prelude::*;
       let seed = process.device_seed();
-      let rows = crate::device::chunk_rows(
-        <Self as EulerKernel<$scalar>>::batch_budget(self),
-        process.grid_points() * D,
-        std::mem::size_of::<$scalar>(),
-      );
+      let steps = process.grid_points();
+      let rows = launch_rows(self, steps * D, process.euler_spec(), steps, process.fgn_spec());
       let mut out = Vec::with_capacity(m);
       // `over_chunks`, so a chunk too large for the device is retried at half
       // the size rather than failing the batch.
@@ -2814,7 +2875,7 @@ macro_rules! kernel_euler_backend {
   };
 }
 
-#[cfg(feature = "metal")]
+#[cfg(all(feature = "metal", target_os = "macos"))]
 kernel_euler_backend!(crate::device::Metal, [] f32);
 #[cfg(feature = "cuda")]
 kernel_euler_backend!(crate::device::Cuda, [T: FloatExt] T);
@@ -2823,13 +2884,13 @@ kernel_euler_backend!(crate::device::Cuda, [T: FloatExt] T);
 /// `Deterministic`, fresh entropy for `Unseeded`, and advancing either way so
 /// two launches from one process do not replay.
 ///
-/// This is [`SeedExt::seed_value`] and nothing else — the workspace draws its
+/// This is [`SeedExt::next_seed`] and nothing else — the workspace draws its
 /// randomness from its own generator, never from `rand`. Public because
 /// `EulerCoefficients` is: an out-of-tree process needs it to answer
 /// `device_seed`.
 #[doc(hidden)]
 pub fn draw_seed<S: SeedExt>(seed: &S) -> u64 {
-  seed.seed_value()
+  seed.next_seed()
 }
 
 impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> EulerCoefficients<T> for Gbm<T, S, B> {
@@ -2951,11 +3012,14 @@ pub mod cuda;
 // The generated C artifacts have no consumer until `cuda` or `metal` renders
 // a kernel from them; the declarations, the family codes and the host step
 // stay compiled either way, so a family is checked without a GPU.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 pub(crate) mod families;
-#[cfg(any(feature = "cuda", feature = "metal"))]
+#[cfg(any(feature = "cuda", all(feature = "metal", target_os = "macos")))]
 pub(crate) mod kernel;
-#[cfg(feature = "metal")]
+#[cfg(all(feature = "metal", target_os = "macos"))]
 #[doc(hidden)]
 pub mod metal;
 
@@ -2975,10 +3039,11 @@ mod tests;
 /// let gbm = Gbm::<f64, _>::new(0.05, 0.2, 16, None, None, Unseeded);
 /// let _ = gbm.on::<Metal>().sample();
 /// ```
-#[cfg(feature = "metal")]
+#[cfg(all(feature = "metal", target_os = "macos"))]
 pub mod precision_guard {}
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub mod python {
   //! Python surface of the device layer: probing a device and choosing the
   //! ordinal. Sampling on a device goes through the process classes'

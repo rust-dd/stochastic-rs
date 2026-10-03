@@ -2,6 +2,8 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stats::econometrics::GaussianHmm;
@@ -12,7 +14,7 @@ use stochastic_rs::stats::econometrics::johansen_test;
 use stochastic_rs::stats::econometrics::pelt;
 
 fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
-  let dist = SimdNormal::<f64>::new(0.0, sigma, &Deterministic::new(seed));
+  let mut dist = SimdNormal::<f64>::new(0.0, sigma).seeded(&Deterministic::new(seed));
   let mut steps = vec![0.0_f64; n];
   dist.fill_slice(&mut steps);
   let mut out = Array1::<f64>::zeros(n);
@@ -48,7 +50,7 @@ fn pelt_segment_count_increases_with_lower_penalty() {
 #[test]
 fn engle_granger_full_pipeline() {
   let x = random_walk(31, 400, 1.0);
-  let dist = SimdNormal::<f64>::new(0.0, 0.05, &Deterministic::new(33));
+  let mut dist = SimdNormal::<f64>::new(0.0, 0.05).seeded(&Deterministic::new(33));
   let mut eps = vec![0.0_f64; 400];
   dist.fill_slice(&mut eps);
   let y: Array1<f64> = (0..400)
@@ -81,7 +83,7 @@ fn johansen_eigenvalues_decreasing_in_magnitude() {
 
 #[test]
 fn granger_pvalue_in_unit_interval() {
-  let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(71));
+  let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(71));
   let mut buf_a = vec![0.0_f64; 300];
   let mut buf_b = vec![0.0_f64; 300];
   dist.fill_slice(&mut buf_a);
@@ -94,8 +96,8 @@ fn granger_pvalue_in_unit_interval() {
 
 #[test]
 fn hmm_log_likelihood_finite_after_fit() {
-  let dist0 = SimdNormal::<f64>::new(-2.0, 0.5, &Deterministic::new(1));
-  let dist1 = SimdNormal::<f64>::new(2.0, 0.5, &Deterministic::new(2));
+  let mut dist0 = SimdNormal::<f64>::new(-2.0, 0.5).seeded(&Deterministic::new(1));
+  let mut dist1 = SimdNormal::<f64>::new(2.0, 0.5).seeded(&Deterministic::new(2));
   let mut a = vec![0.0_f64; 200];
   let mut b = vec![0.0_f64; 200];
   dist0.fill_slice(&mut a);

@@ -1,4 +1,4 @@
-#[cfg(feature = "metal")]
+#[cfg(all(feature = "metal", target_os = "macos"))]
 mod metal_validation {
   use stochastic_rs::simd_rng::Unseeded;
   use stochastic_rs::stochastic::device::Metal;

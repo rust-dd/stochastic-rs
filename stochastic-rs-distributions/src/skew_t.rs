@@ -25,108 +25,104 @@
 //! Estimation", *International Economic Review* 35(3), 705-730.
 //! DOI: 10.2307/2527081
 
-use std::cell::Cell;
-use std::cell::UnsafeCell;
-
 use rand::Rng;
-use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
+use rand::distr::Distribution;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
 use super::studentt::SimdStudentT;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use super::studentt::StudentTState;
+use crate::seeded::Buffered;
 use crate::special::ln_gamma;
 use crate::traits::DistributionExt;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 const SMALL_SKEW_T_THRESHOLD: usize = 16;
 
 /// Hansen's standardised skewed Student-t with `η > 2` degrees of freedom
-/// and skew `λ ∈ (−1, 1)`.
-pub struct SimdSkewT<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+/// and skew `λ ∈ (−1, 1)`; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdSkewT<T> {
   eta: T,
   lambda: T,
   a: f64,
   b: f64,
   c: f64,
-  student: SimdStudentT<T, R>,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<R>,
-  stream_seed: Cell<u64>,
+  student: SimdStudentT<T>,
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdSkewT<T, R> {
+/// A skew-t stream: the Student-t sub-stream, the engine of the side flips and the single-draw buffer.
+#[doc(hidden)]
+#[derive(Clone, Debug)]
+pub struct SkewTState<T: SimdFloatExt, R: SimdRngExt> {
+  student: StudentTState<T, R>,
+  rng: R,
+  buf: Buffered<T, 16>,
+}
+
+impl<T: SimdFloatExt> SimdSkewT<T> {
   /// Construct Hansen's skew-t$(\eta, \lambda)$.
-  pub fn new<S: crate::simd_rng::SeedExt>(eta: T, lambda: T, seed: &S) -> Self {
+  pub fn new(eta: T, lambda: T) -> Self {
     let eta_f = eta.to_f64().unwrap();
     let lambda_f = lambda.to_f64().unwrap();
-    assert!(eta_f > 2.0, "SkewT: eta must exceed 2");
-    assert!(lambda_f.abs() < 1.0, "SkewT: lambda must lie in (-1, 1)");
+    assert!(
+      eta_f > 2.0,
+      "eta must satisfy `eta > 2.0`, got eta = {eta:?}"
+    );
+    assert!(
+      lambda_f.abs() < 1.0,
+      "lambda must satisfy `lambda.abs() < 1.0`, got lambda = {lambda:?}"
+    );
     let c = (ln_gamma(0.5 * (eta_f + 1.0)) - ln_gamma(0.5 * eta_f)).exp()
       / (std::f64::consts::PI * (eta_f - 2.0)).sqrt();
     let a = 4.0 * lambda_f * c * (eta_f - 2.0) / (eta_f - 1.0);
     let b = (1.0 + 3.0 * lambda_f * lambda_f - a * a).sqrt();
-    let student = SimdStudentT::<T, R>::new(eta, seed);
-    let stream_seed = seed.seed_value();
     Self {
       eta,
       lambda,
       a,
       b,
       c,
-      student,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed: Cell::new(stream_seed),
+      student: SimdStudentT::new(eta),
     }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.eta,
-      self.lambda,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
+  /// The degrees of freedom `η`.
+  pub fn eta(&self) -> T {
+    self.eta
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
-  #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
+  /// The skew `λ`.
+  pub fn lambda(&self) -> T {
+    self.lambda
   }
 
-  /// Fills `out` from the two-piece representation: a unit-variance
-  /// Student-t magnitude gets the right-hand scale `1 + λ` with
-  /// probability `(1 + λ)/2` and the left-hand scale `−(1 − λ)` otherwise.
-  pub fn fill_slice(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
+  /// The right and left side scales, the shift `−a/b` and the right side's probability `(1 + λ)/2`.
+  fn pieces(&self) -> (T, T, T, T) {
     let eta = self.eta.to_f64().unwrap();
     let lambda = self.lambda.to_f64().unwrap();
     let scale = ((eta - 2.0) / eta).sqrt();
-    let right = T::from_f64_fast((1.0 + lambda) * scale / self.b);
-    let left = T::from_f64_fast(-(1.0 - lambda) * scale / self.b);
-    let shift = T::from_f64_fast(-self.a / self.b);
-    let p_right = T::from_f64_fast(0.5 * (1.0 + lambda));
+    (
+      T::from_f64_fast((1.0 + lambda) * scale / self.b),
+      T::from_f64_fast(-(1.0 - lambda) * scale / self.b),
+      T::from_f64_fast(-self.a / self.b),
+      T::from_f64_fast(0.5 * (1.0 + lambda)),
+    )
+  }
+
+  fn fill_parts<R: SimdRngExt>(
+    &self,
+    student: &mut StudentTState<T, R>,
+    rng: &mut R,
+    out: &mut [T],
+  ) {
+    let (right, left, shift, p_right) = self.pieces();
     if out.len() < SMALL_SKEW_T_THRESHOLD {
       for x in out.iter_mut() {
-        let w = self.student.sample_fast().abs();
+        let w = self.student.next(student).abs();
         let u = T::sample_uniform_simd(rng);
         *x = if u < p_right { right * w } else { left * w } + shift;
       }
@@ -136,7 +132,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdSkewT<T, R> {
     let mut ubuf = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.student.fill_slice(&mut tbuf);
+      self.student.fill(student, &mut tbuf);
       T::fill_uniform_simd(rng, &mut ubuf);
       for i in 0..64 {
         let w = tbuf[i].abs();
@@ -149,7 +145,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdSkewT<T, R> {
     }
     if !rem.is_empty() {
       let n = rem.len();
-      self.student.fill_slice(&mut tbuf[..n]);
+      self.student.fill(student, &mut tbuf[..n]);
       T::fill_uniform_simd(rng, &mut ubuf[..n]);
       for i in 0..n {
         let w = tbuf[i].abs();
@@ -162,12 +158,11 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdSkewT<T, R> {
     }
   }
 
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    let (right, left, shift, p_right) = self.pieces();
+    let w = self.student.draw_with(rng).abs();
+    let u = T::sample_uniform(rng);
+    (if u < p_right { right * w } else { left * w }) + shift
   }
 
   /// The mode $-a/b$, where the two pieces meet.
@@ -199,27 +194,48 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdSkewT<T, R> {
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdSkewT<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.eta, self.lambda, &Unseeded)
+impl<T: SimdFloatExt> Sealed for SimdSkewT<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdSkewT<T> {
+  type State<R: SimdRngExt> = SkewTState<T, R>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (SkewTState<T, R>, u64) {
+    let (student, _) = self.student.init::<R, S>(seed);
+    let stream_seed = seed.next_seed();
+    (
+      SkewTState {
+        student,
+        rng: R::from_seed(stream_seed),
+        buf: Buffered::new(),
+      },
+      stream_seed,
+    )
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdSkewT<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD streams seeded at construction.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
+impl<T: SimdFloatExt> SimdKernel for SimdSkewT<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut SkewTState<T, R>, out: &mut [T]) {
+    self.fill_parts(&mut state.student, &mut state.rng, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut SkewTState<T, R>) -> T {
+    let SkewTState { student, rng, buf } = state;
+    buf.pop(|b| self.fill_parts(student, rng, b))
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> DistributionExt for SimdSkewT<T, R> {
+impl<T: SimdFloatExt> Distribution<T> for SimdSkewT<T> {
+  /// One scalar Student-t magnitude, then one uniform for its side, from the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: SimdFloatExt> DistributionExt for SimdSkewT<T> {
   fn pdf(&self, z: f64) -> f64 {
     let eta = self.eta.to_f64().unwrap();
     let w = (self.b * z + self.a) / self.side(z);
@@ -299,6 +315,8 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
+  use crate::tests::scalar_ks_best_p;
+  use crate::traits::DistributionSampler;
 
   fn close(a: f64, b: f64, rel: f64) -> bool {
     (a - b).abs() <= rel * b.abs().max(1e-300)
@@ -350,7 +368,7 @@ mod tests {
       ),
     ];
     for ((eta, lambda), grid, ppf, moments) in cases {
-      let d = SimdSkewT::<f64>::new(eta, lambda, &Unseeded);
+      let d = SimdSkewT::<f64>::new(eta, lambda);
       for (z, pdf, cdf) in grid {
         assert!(close(d.pdf(z), pdf, 1e-12), "pdf({z}) = {}", d.pdf(z));
         assert!(close(d.cdf(z), cdf, 1e-11), "cdf({z}) = {}", d.cdf(z));
@@ -380,7 +398,7 @@ mod tests {
   /// The density integrates to one with zero mean and unit variance.
   #[test]
   fn density_is_standardised() {
-    let d = SimdSkewT::<f64>::new(5.0, -0.3, &Unseeded);
+    let d = SimdSkewT::<f64>::new(5.0, -0.3);
     let (lo, hi, n) = (-60.0_f64, 60.0_f64, 1_200_000usize);
     let h = (hi - lo) / n as f64;
     let (mut mass, mut m1, mut m2) = (0.0, 0.0, 0.0);
@@ -401,10 +419,10 @@ mod tests {
   #[test]
   fn sample_moments_match_closed_forms() {
     for (eta, lambda, seed) in [(5.0, -0.3, 3u64), (8.0, 0.4, 5)] {
-      let d = SimdSkewT::<f64>::new(eta, lambda, &Deterministic::new(seed));
+      let d = SimdSkewT::<f64>::new(eta, lambda);
       let n = 400_000;
       let mut xs = vec![0.0; n];
-      d.fill_slice(&mut xs);
+      d.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
       let mean = xs.iter().sum::<f64>() / n as f64;
       let var = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64;
       let m3 = xs.iter().map(|x| (x - mean).powi(3)).sum::<f64>() / n as f64;
@@ -454,18 +472,25 @@ mod tests {
   }
 
   #[test]
+  fn scalar_sample_matches_cdf() {
+    let d = SimdSkewT::<f64>::new(5.0, -0.3);
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+    assert!(best > 0.01, "best p = {best}");
+  }
+
+  #[test]
   fn deterministic_seed_reproduces_stream() {
-    let a = SimdSkewT::<f64>::new(5.0, -0.3, &Deterministic::new(7));
-    let b = SimdSkewT::<f64>::new(5.0, -0.3, &Deterministic::new(7));
+    let mut a = SimdSkewT::<f64>::new(5.0, -0.3).seeded(&Deterministic::new(7));
+    let mut b = SimdSkewT::<f64>::new(5.0, -0.3).seeded(&Deterministic::new(7));
     for _ in 0..256 {
-      assert_eq!(a.sample_fast(), b.sample_fast());
+      assert_eq!(a.sample(), b.sample());
     }
   }
 
   #[test]
-  #[should_panic(expected = "eta must exceed 2")]
+  #[should_panic(expected = "eta must satisfy `eta > 2.0`")]
   fn rejects_small_eta() {
-    let _ = SimdSkewT::<f64>::new(2.0, 0.0, &Unseeded);
+    let _ = SimdSkewT::<f64>::new(2.0, 0.0);
   }
 }
 

@@ -166,7 +166,7 @@ table points, `CORRELATED_STREAMS = 4`.
 | `jump_intensity()` / `jump_sizes()` | default `None` | `JumpSizes` carries 7 laws |
 | `gamma_draws()` | default `None` | `GammaDraws { first, second }` |
 | `step_first()` | default `false` | `true` when the first grid point is itself a draw |
-| `fgn_spec()` | default `None` | `FgnSpec { sqrt_eigenvalues, n, offset, hurst, t, streams }` |
+| `fgn_spec()` | default `None` | `Some(self.fgn.fgn_spec(streams))` — the embedded `Fgn` builds the `FgnSpec` |
 | `lift_spec()` | default `None` | `LiftSpec { decay, weight, drift_scale, drift_boundary, diffusion_boundary, x0 }` |
 | `series_terms()` | default `None` | `Some(j)` terms per path for a family with a `series` clause — exactly when, the launch asserts both ways |
 | `table_spec()` | default `None` | `Some(TableSpec { points, u_max })` for a family with a `table` clause — same both-ways assert; `points ≤ TABLE_SLOTS` |
@@ -273,7 +273,7 @@ seed it advances is the process's own. Examples: `MultiGbmLaunch`, `McgnsLaunch`
 
 **4a. Device law** — `tests/device_law/<group>.rs`, declared
 `pub(crate) mod <group>;` inside the `mod device_law { .. }` block of
-`tests/device_law.rs`. The binary is gated `#![cfg(any(feature = "metal", feature =
+`tests/device_law.rs`. The binary is gated `#![cfg(any(all(feature = "metal", target_os = "macos"), feature =
 "cuda"))]` and is `f32` throughout. Groups — pick by what the comparison must allow for,
 not by source directory: `bounded`, `conditional_variance`, `curves`, `fractional`,
 `gaussian`, `jumps`, `levy`, `memory`, `rows`, `systems`. Helpers in
@@ -379,7 +379,9 @@ the same names with Rust types, in `new()`'s order.
 ```
 
 A process generic over a distribution has no monomorphic signature, so it gets a
-hand-written `#[pyclass]` fixing `D = CallableDist<T>` instead — see `PyMerton`.
+hand-written `#[pyclass]` fixing `D = CallableDist<T>` instead — see `PyMerton`. Put
+`#[doc(hidden)]` on the line above that `#[pyclass]` (the macros already carry it) and
+above any `pub use python::…` re-export of it; `tests/python_surface_hidden.rs` fails without it.
 
 Register in the single flat `#[pymodule]` of `stochastic-rs-py/src/lib.rs` (its only
 source file): a `use` in the `// Stochastic — <dir>` banner group, then
@@ -468,7 +470,7 @@ All three clippy runs matter, and the `cuda` one compiles on a machine with no G
 batch path, and a launch scalar added to one and not the others is an arity error only
 that build shows — the history/series/table scalars once shipped that way for three
 commits. A helper only device launches call is dead code in the no-feature build, so give it the crate's guard, as `flatten_curves` and `history_slot`
-in `euler.rs` have — `#[cfg_attr(not(any(feature = "cuda", feature = "metal")),
+in `euler.rs` have — `#[cfg_attr(not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
 allow(dead_code))]`. `src/lib.rs` carries
 `#![deny(rustdoc::broken_intra_doc_links)]`, so a mistyped `[`Foo`]` fails `cargo doc`
 rather than warning.

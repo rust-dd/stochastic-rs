@@ -30,6 +30,8 @@ impl SharedSeed {
   }
 }
 
+impl stochastic_rs_core::simd_rng::seed_seal::Sealed for SharedSeed {}
+
 impl SeedExt for SharedSeed {
   fn rng(&self) -> SimdRng {
     self.0.rng()
@@ -47,8 +49,8 @@ impl SeedExt for SharedSeed {
     self.0.reseed(seed);
   }
 
-  fn seed_value(&self) -> u64 {
-    self.0.seed_value()
+  fn next_seed(&self) -> u64 {
+    self.0.next_seed()
   }
 }
 
@@ -114,18 +116,26 @@ impl Device {
     let (compiled, what, feature) = match self {
       Device::Cpu => (true, "", ""),
       Device::Accelerate => (
-        cfg!(feature = "accelerate"),
+        cfg!(all(feature = "accelerate", target_os = "macos")),
         "Accelerate back-end",
-        "accelerate",
+        "the accelerate feature on macOS",
       ),
-      Device::Cuda(_) => (cfg!(feature = "cuda"), "native CUDA runtime", "cuda"),
-      Device::Metal(_) => (cfg!(feature = "metal"), "native Metal runtime", "metal"),
+      Device::Cuda(_) => (
+        cfg!(feature = "cuda"),
+        "native CUDA runtime",
+        "the cuda feature",
+      ),
+      Device::Metal(_) => (
+        cfg!(all(feature = "metal", target_os = "macos")),
+        "native Metal runtime",
+        "the metal feature on macOS",
+      ),
     };
     if compiled {
       Ok(())
     } else {
       Err(PyValueError::new_err(format!(
-        "this build has no {what}; rebuild with the {feature} feature"
+        "this build has no {what}; rebuild with {feature}"
       )))
     }
   }
@@ -149,11 +159,11 @@ impl Device {
   pub fn probe(self) -> PyResult<DeviceInfo> {
     let info = match self {
       Device::Cpu => Cpu.probe(),
-      #[cfg(feature = "accelerate")]
+      #[cfg(all(feature = "accelerate", target_os = "macos"))]
       Device::Accelerate => crate::device::Accelerate.probe(),
       #[cfg(feature = "cuda")]
       Device::Cuda(o) => crate::device::Cuda::new(o).probe(),
-      #[cfg(feature = "metal")]
+      #[cfg(all(feature = "metal", target_os = "macos"))]
       Device::Metal(o) => crate::device::Metal::new(o).probe(),
       #[allow(unreachable_patterns)]
       _ => unreachable!("check_compiled rejects the devices this build lacks"),

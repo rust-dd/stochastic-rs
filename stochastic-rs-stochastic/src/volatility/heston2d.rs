@@ -23,6 +23,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -152,8 +155,7 @@ fn validate_params<T: FloatExt>(
   }
 }
 
-/// Warns to stderr — unconditionally, including in release builds — for
-/// each asset whose variance factor violates the Feller condition
+/// Emits a `log::warn!` for each asset whose variance factor violates the Feller condition
 /// `2·kappa·theta ≥ sigma²` without `use_sym = Some(true)`. Mirrors
 /// [`crate::diffusion::cir::Cir::new`]: sub-Feller parameters are
 /// accepted, not rejected, since the Euler step already floors (or
@@ -170,8 +172,8 @@ fn warn_on_feller_violation<T: FloatExt>(
   for i in 0..2 {
     let feller_lhs = T::from_f64_fast(2.0) * kappa[i] * theta[i];
     if feller_lhs < sigma[i] * sigma[i] {
-      eprintln!(
-        "warning: Heston2D::new: asset {i} does not satisfy the Feller \
+      log::warn!(
+        "Heston2D::new: asset {i} does not satisfy the Feller \
          condition (2*kappa*theta < sigma^2) and use_sym is not set to \
          true; its variance floors at zero on every boundary hit instead \
          of reflecting — pass use_sym = Some(true) for the standard \
@@ -320,7 +322,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
     let sqrt_dt = dt.sqrt();
     // Derived streams preserve the historical e1..e4 draw order for seeded reproducibility.
     let normals =
-      std::array::from_fn(|_| SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed.derive()));
+      std::array::from_fn(|_| SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed.derive()));
     Heston2DSampler {
       n: self.n,
       x0: [
@@ -381,7 +383,7 @@ pub struct Heston2DSampler<T: FloatExt> {
   chol: [T; 10],
   dt: T,
   use_sym: bool,
-  normals: [SimdNormal<T>; 4],
+  normals: [Seeded<SimdNormal<T>>; 4],
 }
 
 impl<T: FloatExt> Heston2DSampler<T> {
@@ -394,7 +396,7 @@ impl<T: FloatExt> Heston2DSampler<T> {
     let mut e2 = Array1::<T>::zeros(n_steps);
     let mut e3 = Array1::<T>::zeros(n_steps);
     let mut e4 = Array1::<T>::zeros(n_steps);
-    let [n1, n2, n3, n4] = &self.normals;
+    let [n1, n2, n3, n4] = &mut self.normals;
     n1.fill_slice(e1.as_slice_mut().expect("noise slice contiguous"));
     n2.fill_slice(e2.as_slice_mut().expect("noise slice contiguous"));
     n3.fill_slice(e3.as_slice_mut().expect("noise slice contiguous"));

@@ -1,12 +1,14 @@
 // docs: distributions#poisson-discrete-count-distribution
 //! Backs the Poisson example on the distributions catalog page.
 
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::poisson::SimdPoisson;
 use stochastic_rs::simd_rng::Deterministic;
 
 #[test]
 fn poisson_bulk_sample_mean() {
-  let d = SimdPoisson::<u32>::new(/* lambda */ 4.0, &Deterministic::new(42));
+  let mut d = SimdPoisson::<u32>::new(/* lambda */ 4.0).seeded(&Deterministic::new(42));
   let mut buf = vec![0_u32; 10_000];
   d.fill_slice(&mut buf);
 

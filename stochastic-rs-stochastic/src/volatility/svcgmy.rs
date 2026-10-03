@@ -21,11 +21,13 @@
 //!
 
 use ndarray::Array1;
-use scilib::math::basic::gamma;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::non_central_chi_squared::SimdNonCentralChiSquared;
+use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::device::Cpu;
@@ -364,7 +366,7 @@ impl<T: FloatExt, S: SeedExt> SvcgmySampler<T, S> {
     let df = T::from_usize_(4) * self.kappa * self.eta / self.zeta.powi(2);
 
     // 1) Simulate v on the grid via noncentral chi-square
-    let nchi2 = SimdNonCentralChiSquared::<T>::new(df, &self.seed);
+    let mut nchi2 = SimdNonCentralChiSquared::<T>::new(df).seeded(&self.seed);
     for i in 1..self.n {
       let ncp = f2 * c * v[i - 1] * exp_kdt;
       v[i] = nchi2.sample_ncp(ncp) / (f2 * c);
@@ -374,13 +376,13 @@ impl<T: FloatExt, S: SeedExt> SvcgmySampler<T, S> {
     let J = self.j;
     let size = J + 1; // index 0 is reserved (Γ0=0)
 
-    let uniform = SimdUniform::<T>::new(T::zero(), T::one(), &self.seed);
-    let exp = SimdExp::<T>::new(T::one(), &self.seed);
+    let mut uniform = SimdUniform::<T>::new(T::zero(), T::one()).seeded(&self.seed);
+    let mut exp = SimdExp::<T>::new(T::one()).seeded(&self.seed);
 
     // U_j ~ Unif(0,1), E_j ~ Exp(1), τ_j ~ Unif(0,T)
     let mut U = Array1::<T>::zeros(size);
     uniform.fill_slice(U.as_slice_mut().unwrap());
-    let E = Array1::from_shape_fn(size, |_| exp.sample_fast());
+    let E = Array1::from_shape_fn(size, |_| exp.sample());
     let mut tau_raw = Array1::<T>::zeros(size);
     uniform.fill_slice(tau_raw.as_slice_mut().unwrap());
     let tau = tau_raw * t_max;
@@ -423,7 +425,7 @@ impl<T: FloatExt, S: SeedExt> SvcgmySampler<T, S> {
       for j in 1..=J {
         if tau[j] > t_1 && tau[j] <= t {
           // V_j is chosen as λ+ or -λ- with prob 1/2
-          let v_j = if uniform.sample_fast() < T::from_f64_fast(0.5) {
+          let v_j = if uniform.sample() < T::from_f64_fast(0.5) {
             self.lambda_plus
           } else {
             -self.lambda_minus

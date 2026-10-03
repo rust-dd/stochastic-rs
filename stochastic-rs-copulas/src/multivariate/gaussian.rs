@@ -12,6 +12,7 @@ use ndarray::Axis;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
@@ -178,8 +179,8 @@ impl GaussianMultivariate {
     let d = self.dim;
     let l = self.chol_lower.as_ref().unwrap(); // (d x d)
     // Sample standard normals G ~ N(0, I) of shape (n x d)
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, seed);
-    let g = Array2::from_shape_fn((n, d), |_| normal.sample_fast());
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(seed);
+    let g = Array2::from_shape_fn((n, d), |_| normal.sample());
     // z = g * L^T
     let z = g.dot(&l.t());
     // Transform to uniforms using standard normal CDF
@@ -263,8 +264,8 @@ impl MultivariateExt for GaussianMultivariate {
     let mut out = Array1::<f64>::zeros(n);
 
     // Pre-sample standard normals for efficiency: (m x d)
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
-    let g = Array2::from_shape_fn((m_samples, self.dim), |_| normal.sample_fast());
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Unseeded);
+    let g = Array2::from_shape_fn((m_samples, self.dim), |_| normal.sample());
     let y = g.dot(&l.t()); // (m x d) ~ MVN(0, corr)
 
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {

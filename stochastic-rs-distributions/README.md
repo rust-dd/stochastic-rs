@@ -21,10 +21,6 @@ analytics and SIMD-accelerated bulk generation.
 - **`DistributionExt`** — closed-form pdf, cdf, characteristic function and
   moments. 18 of 19 families implement it in closed form; the remaining
   gaps raise `unimplemented!` by name rather than returning a silent zero.
-- **`scalar` module** — `ScalarNormal` and `ScalarExp`: stateless,
-  `Copy + Send + Sync` samplers that draw from the caller's RNG. Use these
-  wherever a process requires `D: Distribution<T> + Send + Sync`; the
-  `Simd*` types are `!Sync` by construction.
 - **`FloatExt` / `SimdFloatExt`** — the numeric trait bounds the whole
   workspace is generic over.
 
@@ -32,20 +28,22 @@ analytics and SIMD-accelerated bulk generation.
 
 ```rust
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
-let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42));
+let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(42));
 let mut xs = vec![0.0; 10_000];
 dist.fill_slice(&mut xs);            // amortised SIMD fill
 ```
 
-For a single draw from a shared RNG in a `Sync` context:
+For a single draw from a shared generator:
 
 ```rust
-use rand_distr::Distribution;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use rand::distr::Distribution;
+use stochastic_rs_distributions::normal::SimdNormal;
 
-let d = ScalarNormal::<f64>::new(0.0, 1.0);
+let d = SimdNormal::<f64>::new(0.0, 1.0);
 let z = d.sample(&mut rng);
 ```
 

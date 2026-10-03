@@ -35,7 +35,6 @@
 //! analogue of Student's t-distribution", *Biometrika* 42(1/2), 258-260.
 
 use std::error::Error;
-use std::f64;
 
 use gauss_quad::GaussLegendre;
 use ndarray::Array1;

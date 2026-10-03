@@ -4,6 +4,8 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::ndtri;
 
@@ -30,7 +32,7 @@ fn flat_hazard(h: f64) -> SurvivalCurve<f64> {
 
 /// Brownian MtM `V_t = σ W_t` on the dates `times`, `paths` rows, pinned seed.
 fn brownian_mtm(sigma: f64, times: &[f64], paths: usize, seed: u64) -> Array2<f64> {
-  let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+  let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
   let mut z = vec![0.0; paths * times.len()];
   normal.fill_slice(&mut z);
   let mut mtm = Array2::<f64>::zeros((paths, times.len()));

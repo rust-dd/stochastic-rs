@@ -7,14 +7,16 @@ description: How to add a neural-network volatility surrogate to stochastic-rs-a
 
 `stochastic-rs-ai` hosts neural-network surrogates for stochastic-vol
 models — calibration-time replacements for expensive Heston / rBergomi
-pricers. The crate is feature-gated upstream (`--features ai` on the
-umbrella).
+pricers. The crate is experimental, outside the stability promise, and
+feature-gated upstream (`--features ai` on the umbrella).
 
 The whole crate is small and worth reading end to end before adding a
 surrogate: `stochastic-rs-ai/src/volatility/` is four reusable modules
 under `common/` plus **three** thin model wrappers (`heston.rs`,
 `one_factor.rs`, `rbergomi.rs`). A new surrogate is a fourth wrapper —
-you almost certainly write no new network code at all.
+you almost certainly write no new network code at all. The strike-maturity
+grid is `volatility/grid.rs`; a wrapper's `OUTPUT_DIM` is `grid::LEN` and it
+exports `STRIKES`.
 
 ## 1. Architecture: one shared engine, thin per-model wrappers
 
@@ -27,7 +29,9 @@ volatility/common/
   dataset.rs   load_trainset_gzip_npy, rmse_1d
   metadata.rs  save/load metadata serialisation
   plot.rs      write_surface_fit_plot_html     <- #[cfg(feature = "viz")]
+volatility/grid.rs     MONEYNESS, MATURITIES, LEN (shared grid)
 volatility/heston.rs | one_factor.rs | rbergomi.rs   <- the wrappers
+stochastic-rs-ai/tests/  real_trainsets.rs, saved_model_compat.rs, data/ (fixtures; excluded from the package)
 ```
 
 `FeedForwardNet` is `pub(super)` and fixed: **3 hidden ELU layers of
@@ -82,10 +86,11 @@ Copy `heston.rs`. A wrapper is public constants + a newtype over
 ```rust
 pub const MODEL_ID: &str = "heston";
 pub const INPUT_DIM: usize = 5;
-pub const OUTPUT_DIM: usize = 88;
+pub const OUTPUT_DIM: usize = grid::LEN;
 pub const DEFAULT_HIDDEN_DIM: usize = 30;
 pub const PARAM_LB: [f32; INPUT_DIM] = [0.0001, -0.95, 0.01, 0.01, 1.0];
 pub const PARAM_UB: [f32; INPUT_DIM] = [0.04, -0.1, 1.0, 0.2, 10.0];
+pub const STRIKES: [f64; grid::MONEYNESS.len()] = grid::MONEYNESS; // Heston: grid::inverse(grid::MONEYNESS)
 
 pub struct HestonNn {
   inner: StochVolNn,
@@ -185,6 +190,11 @@ you, and the BoundedScaler will silently scale the wrong parameter by
 the wrong bounds. Pin the generator's column order in the wrapper's
 module doc.
 
+The shipped sets are upstream copies in `stochastic-rs-ai/tests/data` (MIT).
+The Heston set is indexed by inverse moneyness `S0 / K`, not `K / S0`. A new
+set must state its strike axis and be pinned against a pricer, the way
+`heston_set_is_the_fourier_surface_on_inverse_strikes` pins Heston.
+
 ## 6. Prediction and the `ImpliedVolSurface` bridge
 
 Two methods, and the second is feature-gated:
@@ -209,7 +219,8 @@ for a batch.
 then reshapes. A transpose bug here silently rotates the surface and the
 calibrator fits the wrong vol; the shape check catches a *wrong count*,
 not a *wrong order*, so verify the order on a deliberately non-square
-grid.
+grid. `predict_implied_vol_surface` sorts the strikes you give (the network's
+column order) into ascending order, permuting the columns along.
 
 The `quant` feature on `stochastic-rs-ai` is a bridge feature
 (`quant = ["dep:stochastic-rs-quant"]`) and the umbrella's `ai` feature
@@ -267,7 +278,8 @@ rather than relying on the default.
 `#[cfg(feature = "viz")]` and writes HTML — never `.show()`. Use it to
 eyeball training-target IV against surrogate prediction. If the wings
 diverge, the training set is too small or the network too narrow
-(`hidden_dim` is your only architectural dial).
+(`hidden_dim` is your only architectural dial). The helper is covered by unit
+tests in `plot.rs`.
 
 ## 10. Anti-patterns
 
@@ -296,5 +308,6 @@ diverge, the training set is too small or the network too narrow
 - `add-fractional-process` — the data-generating process behind an
   rBergomi-class training set.
 - `feature-flag-management` — `ai` / `quant` / `viz` propagation.
-- `python-bindings` — AI bindings are **not** shipped (deferred past
-  2.x); there is no `PyHestonNn`.
+- `python-bindings` — the ai classes (`HestonNn`, `RBergomiNn`, `OneFactorNn`,
+  `calibrate_surrogate`) live in `stochastic-rs-ai/src/python.rs` behind the
+  py crate's `ai` feature; the published wheels leave them out.

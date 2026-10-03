@@ -30,6 +30,8 @@ use ndarray::Axis;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
@@ -134,7 +136,9 @@ impl VineMultivariate {
       let buf = g
         .as_slice_mut()
         .expect("VineMultivariate sample buffer must be contiguous");
-      SimdNormal::<f64>::new(0.0, 1.0, seed).fill_slice(buf);
+      SimdNormal::<f64>::new(0.0, 1.0)
+        .seeded(seed)
+        .fill_slice(buf);
     }
     let z = g.dot(&l.t());
     let mut u = z.clone();
@@ -270,7 +274,9 @@ impl MultivariateExt for VineMultivariate {
       let buf = g
         .as_slice_mut()
         .expect("VineMultivariate cdf MC buffer must be contiguous");
-      SimdNormal::<f64>::new(0.0, 1.0, &Unseeded).fill_slice(buf);
+      SimdNormal::<f64>::new(0.0, 1.0)
+        .seeded(&Unseeded)
+        .fill_slice(buf);
     }
     let y = g.dot(&l.t());
     let mut out = Array1::<f64>::zeros(z.nrows());

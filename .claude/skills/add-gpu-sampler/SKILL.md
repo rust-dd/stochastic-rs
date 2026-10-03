@@ -49,9 +49,9 @@ a new back-end:
 | Handle | Feature | What it is | Precisions |
 |---|---|---|---|
 | `Cpu` | *(none — always available)* | Default `B` for every process | `f32` / `f64` |
-| `Accelerate` | `accelerate` | Apple vDSP / AMX — a **CPU** path, not a GPU | `f32` / `f64` |
+| `Accelerate` | `accelerate` (macOS only) | Apple vDSP / AMX — a **CPU** path, not a GPU | `f32` / `f64` |
 | `Cuda` | `cuda` | `cudarc` + cuFFT + NVRTC, fused Philox kernel | `f32` / `f64` |
-| `Metal` | `metal` | Hand-written MSL via the `metal` crate | `f32` |
+| `Metal` | `metal` (macOS only) | Hand-written MSL via the `metal` crate | `f32` |
 
 The backends take the bare names (`cuda`, `metal`); the `gpu*` aliases and
 the `cuda-native` spelling were **removed before 3.0**. There is no

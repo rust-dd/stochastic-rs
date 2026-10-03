@@ -62,14 +62,13 @@ pub trait SeedExt: Clone + Send + Sync + 'static {
   fn derive(&self) -> Self; // child seed for sub-components
   fn rng_ext<R: SimdRngExt>(&self) -> R; // generic backing RNG (see below)
   fn reseed(&self, seed: u64) {} // optional in-place reset
-  fn seed_value(&self) -> u64; // fresh seed, advancing state like rng()/rng_ext()
+  fn next_seed(&self) -> u64; // fresh seed, advancing state like rng()/rng_ext()
 }
 ```
 
-`Unseeded` and `Deterministic` are the two stock implementations. Custom
-seed sources are possible (e.g. an atomically-shared counter for
-test-suite reproducibility) but the two built-ins cover almost every use
-case.
+`Unseeded` and `Deterministic` are the only implementations: the trait is
+sealed, so the library can add methods without breaking callers. To reproduce
+a run, seed a `Deterministic` source instead of writing your own.
 
 ## Reseeding in place
 
@@ -123,10 +122,10 @@ backing SIMD RNG. The default is the single-stream
 the experimental dual-stream variant
 [`SimdRngDual`](https://docs.rs/stochastic-rs-core/latest/stochastic_rs_core/simd_rng_dual/struct.SimdRngDual.html)
 is reachable through the
-[`dual-stream-rng`](#dual-stream-rng-feature) cargo feature.
+[`unstable-dual-stream-rng`](#unstable-dual-stream-rng-feature) cargo feature.
 
 ```rust
-pub trait SimdRngExt: rand::RngCore + Sized + Send + 'static {
+pub trait SimdRngExt: rand::Rng + Clone + Debug + Sized + Send + Sync + 'static {
   const HAS_PAIR_ILP: bool = false;
 
   fn new() -> Self;
@@ -143,25 +142,26 @@ pub trait SimdRngExt: rand::RngCore + Sized + Send + 'static {
 }
 ```
 
-The `rand::RngCore` supertrait is why any `SimdRngExt` (including
+The `rand::Rng` supertrait is why any `SimdRngExt` (including
 `SimdRng`) can be handed anywhere a `rand::Rng` is expected — e.g. to
-`rand_distr::Distribution::sample`.
+`rand::distr::Distribution::sample`. The trait is sealed: `SimdRng` and the
+experimental `SimdRngDual` are its only implementations.
 
-`SimdNormal<T, N, R>` and `SimdExp<T, R>` carry the `R: SimdRngExt`
-parameter explicitly so the same struct serves both backends:
+A seeded stream names its engine, `Seeded<D, R: SimdRngExt = SimdRng>`, so
+one stateless law serves both backends:
 
 <RustExample path="tests/doctest_concepts_seeding_dual_stream.rs" />
 
-## `dual-stream-rng` feature
+## `unstable-dual-stream-rng` feature
 
 Opt-in via cargo feature:
 
 ```toml
 [dependencies]
-stochastic-rs = { version = "3.0.0-rc.1", features = ["dual-stream-rng"] }
+stochastic-rs = { version = "3.0.0-rc.1", features = ["unstable-dual-stream-rng"] }
 ```
 
-Unlocks `SimdRngDual`, `SimdNormalDual`, `SimdExpDual`, `SimdExpZigDual`.
+Unlocks `SimdRngDual`, the engine of a `Seeded::<SimdNormal<f64>, SimdRngDual>` or `Seeded::<SimdExp<f64>, SimdRngDual>` stream.
 
 ### Why dual-stream — the idea
 
@@ -201,11 +201,11 @@ them:
 ```
 
 Result on Apple Silicon (M-series, criterion
-`cargo bench --bench dual_stream_compare --features dual-stream-rng`,
+`cargo bench --bench dual_stream_compare --features unstable-dual-stream-rng`,
 2026-06-11):
 
-|         n | single (`SimdNormal`) | dual (`SimdNormalDual`) |    Δ   |
-|----------:|----------------------:|------------------------:|-------:|
+|         n | single (`SimdRng`) | dual (`SimdRngDual`) |    Δ   |
+|----------:|-------------------:|---------------------:|-------:|
 |        64 |              120.6 ns |                117.5 ns |  −2.6% |
 |       256 |              494.2 ns |                467.9 ns |  −5.3% |
 |     4 096 |               7.87 µs |                 7.42 µs |  −5.7% |

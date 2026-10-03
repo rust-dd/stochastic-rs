@@ -33,14 +33,16 @@
 //! use ndarray::ArrayView1;
 //! use stochastic_rs_core::simd_rng::Deterministic;
 //! use stochastic_rs_distributions::DistributionExt;
+//! use stochastic_rs_distributions::DistributionSampler;
+//! use stochastic_rs_distributions::SimdDistribution;
 //! use stochastic_rs_distributions::gamma::SimdGamma;
 //! use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::{
 //!     KolmogorovSmirnovConfig, kolmogorov_smirnov_test,
 //! };
 //!
-//! let dist = SimdGamma::<f64>::new(2.5, 1.5, &Deterministic::new(42));
+//! let dist = SimdGamma::<f64>::new(2.5, 1.5);
 //! let mut sample = vec![0.0; 20_000];
-//! dist.fill_slice(&mut sample);
+//! dist.seeded(&Deterministic::new(42)).fill_slice(&mut sample);
 //!
 //! let res = kolmogorov_smirnov_test(
 //!     ArrayView1::from(&sample),

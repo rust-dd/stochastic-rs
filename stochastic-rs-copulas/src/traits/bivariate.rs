@@ -11,6 +11,10 @@ use roots::SimpleConvergency;
 use roots::find_root_brent;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::bivariate::CopulaType as BivariateCopulaType;
 
@@ -122,20 +126,13 @@ pub trait BivariateExt {
   }
 
   fn sample(&self, n: usize) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
-    self.sample_with_uniform(
-      stochastic_rs_distributions::uniform::SimdUniform::<f64>::new(0.0, 1.0, &Unseeded),
-      n,
-    )
+    self.sample_with_uniform(SimdUniform::<f64>::new(0.0, 1.0).seeded(&Unseeded), n)
   }
 
   /// Deterministic sampler. Returns the same paths for a fixed `seed`.
   fn sample_with_seed(&self, n: usize, seed: u64) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
     self.sample_with_uniform(
-      stochastic_rs_distributions::uniform::SimdUniform::<f64>::new(
-        0.0,
-        1.0,
-        &Deterministic::new(seed),
-      ),
+      SimdUniform::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed)),
       n,
     )
   }
@@ -143,7 +140,7 @@ pub trait BivariateExt {
   #[doc(hidden)]
   fn sample_with_uniform(
     &self,
-    ud: stochastic_rs_distributions::uniform::SimdUniform<f64>,
+    mut ud: Seeded<SimdUniform<f64>>,
     n: usize,
   ) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
     // The sampler inverts the conditional distribution, which reads `theta`

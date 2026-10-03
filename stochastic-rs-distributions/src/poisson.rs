@@ -4,28 +4,31 @@
 //! \mathbb{P}(N=k)=e^{-\lambda}\frac{\lambda^k}{k!},\ k\in\mathbb N_0
 //! $$
 //!
-use std::cell::Cell;
-use std::cell::UnsafeCell;
+//! Sampling: inversion on a cached cumulative table, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §X.3, DOI 10.1007/978-1-4613-8643-8.
+
+use std::marker::PhantomData;
 
 use num_traits::PrimInt;
 use rand::Rng;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::StreamState;
+use crate::source::uniform53;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
-pub struct SimdPoisson<T: PrimInt, R: SimdRngExt = SimdRng> {
+/// Poisson law with rate `lambda`: parameters and the cumulative table; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SimdPoisson<T: PrimInt> {
   lambda: f64,
   cdf: Box<[f64]>,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<R>,
-  stream_seed: Cell<u64>,
+  out: PhantomData<T>,
 }
 
-impl<T: PrimInt, R: SimdRngExt> SimdPoisson<T, R> {
+impl<T: PrimInt> SimdPoisson<T> {
   /// Builds the cumulative table from log-space pmf increments
   /// `ln pmf_k = -λ + k ln λ - ln Γ(k+1)`. The naive multiplicative
   /// recurrence starts at `exp(-λ)`, which underflows to 0 for λ ≳ 745 and
@@ -57,126 +60,85 @@ impl<T: PrimInt, R: SimdRngExt> SimdPoisson<T, R> {
 
   /// Creates a Poisson distribution.
   ///
-  /// - `lambda` — rate λ > 0 (matches the module header's λ); mean and
+  /// - `lambda` — finite rate λ > 0 (matches the module header's λ); mean and
   ///   variance are both λ. Stored at construction — see this type's
   ///   internal `build_cdf` for why the cumulative table must be built
   ///   in log space once λ ≳ 745.
-  pub fn new<S: crate::simd_rng::SeedExt>(lambda: f64, seed: &S) -> Self {
+  pub fn new(lambda: f64) -> Self {
     assert!(
-      lambda > 0.0,
-      "lambda must satisfy `lambda > 0.0`, got lambda = {lambda:?}"
+      lambda > 0.0 && lambda.is_finite(),
+      "lambda must satisfy `lambda > 0.0 && lambda.is_finite()`, got lambda = {lambda:?}"
     );
-    let stream_seed = seed.seed_value();
     Self {
       lambda,
       cdf: Self::build_cdf(lambda),
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed: Cell::new(stream_seed),
+      out: PhantomData,
     }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.lambda,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
-  }
-
-  /// Returns a single sample using the internal SIMD RNG.
-  #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
-  }
-
-  /// Fills `out` using the internal SIMD RNG stream — the only stream this
-  /// sampler draws from (see the crate-level RNG policy). A draw that
-  /// overflows `T` saturates to `T::max_value()` rather than silently
-  /// reporting a `0` count; `debug_assert!` surfaces the overflow in debug
-  /// builds so undersized output types are caught during testing.
-  pub fn fill_slice(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    for x in out.iter_mut() {
-      let u: f64 = rng.random();
-      let k = self.cdf.partition_point(|&p| p < u);
-      let cast = num_traits::cast(k);
-      debug_assert!(
-        cast.is_some(),
-        "Poisson draw {k} overflowed the output integer type"
-      );
-      *x = cast.unwrap_or(T::max_value());
-    }
-  }
-
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
-  }
-}
-
-impl<T: PrimInt, R: SimdRngExt> Clone for SimdPoisson<T, R> {
-  fn clone(&self) -> Self {
-    // Cloning a stochastic source means "give me an independent stream", so
-    // the clone is auto-seeded regardless of how the original was created.
-    // Reuses the already-built `cdf` table (Unseeded is stateless, so a
-    // fresh `Self::new` would only redo that O(cdf length) work for no
-    // benefit).
-    let stream_seed = Unseeded.seed_value();
-    Self {
-      lambda: self.lambda,
-      cdf: self.cdf.clone(),
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed: Cell::new(stream_seed),
-    }
-  }
-}
-
-impl<T: PrimInt, R: SimdRngExt> Distribution<T> for SimdPoisson<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction. Use `Deterministic`
-  /// in the constructor for reproducibility.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
-  }
-}
-
-impl<T: PrimInt, R: SimdRngExt> SimdPoisson<T, R> {
-  /// The rate parameter λ (stored at construction — the old
-  /// `-ln(cdf[0])` recovery breaks down once `e^{-λ}` underflows).
-  #[inline]
-  fn lambda(&self) -> f64 {
+  /// The rate `λ`.
+  pub fn lambda(&self) -> f64 {
     self.lambda
   }
+
+  /// The count whose cumulative probability first reaches `u`; an overflow of `T` saturates (and asserts in debug).
+  #[inline]
+  fn index_of(&self, u: f64) -> T {
+    let k = self.cdf.partition_point(|&p| p < u);
+    let cast = num_traits::cast(k);
+    debug_assert!(
+      cast.is_some(),
+      "Poisson draw {k} overflowed the output integer type"
+    );
+    cast.unwrap_or(T::max_value())
+  }
+
+  /// Kept out of line because inlined into a consumer's per-step pop the table search slows that loop by about 30 %.
+  #[inline(never)]
+  fn fill_parts<G: Rng + ?Sized>(&self, rng: &mut G, out: &mut [T]) {
+    for x in out.iter_mut() {
+      *x = self.index_of(uniform53(rng.next_u64()));
+    }
+  }
+
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.index_of(uniform53(rng.next_u64()))
+  }
 }
 
-impl<T: PrimInt, R: SimdRngExt> crate::traits::DistributionExt for SimdPoisson<T, R> {
+impl<T: PrimInt + Send + Sync + 'static> Sealed for SimdPoisson<T> {}
+
+impl<T: PrimInt + Send + Sync + 'static> SimdDistribution for SimdPoisson<T> {
+  type State<R: SimdRngExt> = StreamState<T, R, 16>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (StreamState<T, R, 16>, u64) {
+    StreamState::init(seed)
+  }
+}
+
+impl<T: PrimInt + Send + Sync + 'static> SimdKernel for SimdPoisson<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+    self.fill_parts(&mut state.rng, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>) -> T {
+    let StreamState { rng, buf } = state;
+    buf.pop(|b| self.fill_parts(rng, b))
+  }
+}
+
+impl<T: PrimInt + Send + Sync + 'static> Distribution<T> for SimdPoisson<T> {
+  /// The table inversion of one 53-bit uniform from the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
   fn pdf(&self, x: f64) -> f64 {
     if x < 0.0 || x.fract() != 0.0 {
       return 0.0;
@@ -273,16 +235,22 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::SimdPoisson;
+  use crate::tests::scalar_chi_square_best_p;
   use crate::traits::DistributionExt;
+  use crate::traits::DistributionSampler;
+  use crate::traits::SimdDistribution;
 
   /// λ ≳ 745 made the old multiplicative table build spin forever on an
   /// underflowed `exp(-λ)`; the log-space build must terminate and sample
   /// with the right mean.
   #[test]
   fn poisson_large_lambda_table_terminates() {
-    let dist = SimdPoisson::<u64>::new(800.0, &Deterministic::new(3));
+    let dist = SimdPoisson::<u64>::new(800.0);
     let mut buf = vec![0u64; 4096];
-    dist.fill_slice(&mut buf);
+    dist
+      .clone()
+      .seeded(&Deterministic::new(3))
+      .fill_slice(&mut buf);
     let mean = buf.iter().map(|&x| x as f64).sum::<f64>() / buf.len() as f64;
     assert!(
       (mean - 800.0).abs() < 3.0,
@@ -291,10 +259,19 @@ mod tests {
     assert!((dist.mean() - 800.0).abs() < 1e-9);
   }
 
+  /// An infinite rate turned the table build's log-pmf `NaN`, so neither exit fired and the table grew without bound.
+  #[test]
+  #[should_panic(
+    expected = "lambda must satisfy `lambda > 0.0 && lambda.is_finite()`, got lambda = inf"
+  )]
+  fn poisson_infinite_lambda_is_rejected() {
+    SimdPoisson::<u64>::new(f64::INFINITY);
+  }
+
   /// Log-space build must reproduce the small-λ table semantics.
   #[test]
   fn poisson_small_lambda_moments() {
-    let dist = SimdPoisson::<u32>::new(3.5, &Deterministic::new(11));
+    let mut dist = SimdPoisson::<u32>::new(3.5).seeded(&Deterministic::new(11));
     let mut buf = vec![0u32; 100_000];
     dist.fill_slice(&mut buf);
     let n = buf.len() as f64;
@@ -309,5 +286,15 @@ mod tests {
       / n;
     assert!((mean - 3.5).abs() < 0.05, "mean drift: {mean}");
     assert!((var - 3.5).abs() < 0.15, "variance drift: {var}");
+  }
+
+  /// The honest `Distribution` draws from the caller's rng and agrees with the cdf, the log-space table included.
+  #[test]
+  fn scalar_sample_matches_cdf() {
+    for (lambda, window) in [(12.0, (0, 40)), (800.0, (574, 1027))] {
+      let d = SimdPoisson::<u64>::new(lambda);
+      let best = scalar_chi_square_best_p(&d, window, |k| d.cdf(k as f64));
+      assert!(best > 0.01, "Poisson({lambda}): best p = {best}");
+    }
   }
 }

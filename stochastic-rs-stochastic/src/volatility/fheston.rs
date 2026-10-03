@@ -386,6 +386,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for RoughHestonSampler<T, S> {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyRoughHeston {
   inner_f32: Option<RoughHeston<f32>>,

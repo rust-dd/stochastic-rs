@@ -102,9 +102,8 @@ impl CalibrationResult for SurrogateCalibrationResult {
   }
 }
 
-/// Levenberg–Marquardt calibration of a surrogate to a market surface given
-/// on the surrogate's grid (flat, row-major `maturities × strikes`, in
-/// implied volatility).
+/// Levenberg–Marquardt calibration of a surrogate to market implied vols on its grid: flat,
+/// maturity-major, columns in the model's `STRIKES` order (descending for Heston).
 pub struct SurrogateCalibrator<'m, M: SurrogateModel> {
   model: &'m M,
   market: Vec<f64>,

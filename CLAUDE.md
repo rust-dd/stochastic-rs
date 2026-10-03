@@ -15,13 +15,21 @@ stochastic-rs/                        (workspace root + umbrella)
 ├── stochastic-rs-copulas/            — BivariateExt + copulas (15 bivariate + 8 multivariate)
 ├── stochastic-rs-stats/              — estimators
 ├── stochastic-rs-quant/              — pricing/calibration/vol_surface + ModelPricer/ShortRatePricer/ToModel
-├── stochastic-rs-ai/                 — neural surrogates + surrogate→Calibrator bridge (feature-gated upstream)
+├── stochastic-rs-ai/                 — experimental neural surrogates + surrogate→Calibrator bridge (feature-gated upstream, outside the stability promise)
 └── stochastic-rs-py/                 — pyo3 cdylib (308 entries: 286 PyO3 classes + 22 pyfunctions, plus 3 classes + 1 pyfunction behind the py `ai` feature (source builds only), across distributions/stochastic/quant/copulas/stats; AI bindings behind the py `ai` feature). Built via `maturin` (see pyproject.toml `[tool.maturin] manifest-path`)
 ```
 
 The umbrella crate `stochastic-rs` keeps the existing public API
 (`stochastic_rs::stochastic::diffusion::gbm::GBM`, etc.) — sub-crate split is
 transparent to users.
+
+The umbrella re-exports `ndarray`, `num_complex`, `num_traits`, `rand` and
+`chrono` (as `stochastic_rs::ndarray` and so on) because callers build and pass
+their types; use these paths or depend on the same versions. `wide` (the SIMD
+vectors of `SimdFloatExt` and `SimdRngExt`) and `anyhow` (calibration and SLV errors)
+also appear in public signatures. A semver-incompatible release of any of these
+seven crates (for a 0.x crate, a minor bump such as ndarray 0.17 → 0.18) is a
+major release of `stochastic-rs`.
 
 ## Build & test
 
@@ -34,13 +42,16 @@ cargo check -p stochastic-rs --features ai                     # with AI surroga
 cargo build -p stochastic-rs-distributions                     # build single sub-crate
 ```
 
-`--exclude stochastic-rs-py` is required, not optional: that crate forces
-`pyo3/extension-module` unconditionally, so a plain `cargo test --workspace`
-fails to link on any machine (there is no host Python providing the
-extension-module symbols outside a `maturin`-built `.so`) — confirmed by
-reproducing the linker error on a clean checkout. CI's `test` job
-(`.github/workflows/rust.yml`) works around the same constraint the same
-way.
+`--exclude stochastic-rs-py` keeps the Rust gate independent of a Python toolchain: the crate has no Rust
+tests (its pytest suite runs in the `python_smoke` job). A plain `cargo test --workspace` also links now
+that no manifest enables pyo3's deprecated `extension-module` feature, but needs a shared libpython at
+build and run time (`PYO3_PYTHON` picks it). Never export `PYO3_BUILD_EXTENSION_MODULE` in a shell; it
+is for maturin.
+
+`Cargo.lock` is committed and CI passes `--locked`; a manifest change and its
+lockfile update go in the same commit. The Apple back-ends are gated with
+`all(feature = "metal", target_os = "macos")` (likewise `accelerate`), never a
+bare `feature = "metal"`.
 
 ## Clippy usage
 
@@ -68,7 +79,8 @@ older summary.
 - `GreeksExt` — no-argument Greeks for the **2** query-bundled Monte Carlo Malliavin estimators only (`GbmMalliavinGreeks`, `HestonMalliavinGreeks`), whose `greeks()` override shares one simulation across the accessors. Not the crate's Greeks interface and not in the prelude — a pricer's Greeks are the inherent method above
 - `Fn1D` / `Fn2D` — type-erased callables of time (and state) a process takes as coefficients (`Cheyette`, `VolterraSde`, `Hjm`, `HestonSlv`); `Fn2D::Expr(Program)` holds a coefficient written as an `Expr` (`stochastic-rs-distributions/src/traits/callable.rs`: sixteen node kinds, `From<Expr> for Fn2D` compiles to a ≤ 62-op postfix `Program`, stack ≤ 8), the one form the device kernels interpret — a Rust closure, a Python callable or a tabulated `Fn2D::Grid(Grid2D)` (`traits/grid.rs`, bilinear with a flat hold outside the grid; what a calibrated `LeverageSurface` converts into) keeps such a process on the host
 - `CalendarExt` — pluggable holiday calendars for business day adjustment (`is_business_day`)
-- `DistributionExt` — characteristic function / pdf / cdf / moments. **33** of the **37** distribution types implement it (`grep -rhE -A1 "impl.*DistributionExt" stochastic-rs-distributions/src --include='*.rs' | grep -oE "for (Simd[A-Za-z]+|ComplexDistribution)" | sed 's/for //' | sort -u | wc -l` — the `-A1` is load-bearing, three impl headers wrap onto a second line and a single-line grep undercounts to 23). The four without it are `SimdDirichlet`, `SimdWishart`, `SimdNonCentralChiSquared` and `ComplexDistribution`. Coverage **inside** an impl is uneven, so "implements `DistributionExt`" is not "has every closed form": 6 of the 33 (`SimdGed`, `SimdSkellam`, the four `truncated` wrappers) override only `pdf`/`cdf`, and 9 (`SimdAlphaStable`, `SimdBeta`, `SimdHypergeometric`, `SimdInverseGauss`, `SimdNormalInverseGauss`, `SimdVarianceGamma`, `SimdGig`, `SimdGeneralizedHyperbolic`, `SimdTemperedStable`) carry named no-closed-form `unimplemented!()` on specific methods. The authoritative per-type breakdown is the module docs in `stochastic-rs-distributions/src/lib.rs`. Defaults `unimplemented!("... is not implemented for {type}")`, **never `0.0`**.
+- `SimdDistribution` / `SimdKernel` / `Seeded<D, R>` — a stateless law, its SIMD kernel, and the seeded stream that implements the sealed `&mut self` `DistributionSampler` (D18); `.seeded(&seed)` binds, `fill_with(&mut rng, out)` bulk-fills from any rng
+- `DistributionExt` — characteristic function / pdf / cdf / moments. **32** of the **36** distribution types implement it (`grep -rhE -A1 "impl.*DistributionExt" stochastic-rs-distributions/src --include='*.rs' | grep -oE "for (Simd[A-Za-z]+|ComplexDistribution)" | sed 's/for //' | sort -u | wc -l` — the `-A1` is load-bearing: two impl headers wrap onto a second line). The four without it are `SimdDirichlet`, `SimdWishart`, `SimdNonCentralChiSquared` and `ComplexDistribution`. Coverage **inside** an impl is uneven, so "implements `DistributionExt`" is not "has every closed form": 6 of the 32 (`SimdGed`, `SimdSkellam`, the four `truncated` wrappers) override only `pdf`/`cdf`, and 9 (`SimdAlphaStable`, `SimdBeta`, `SimdHypergeometric`, `SimdInverseGauss`, `SimdNormalInverseGauss`, `SimdVarianceGamma`, `SimdGig`, `SimdGeneralizedHyperbolic`, `SimdTemperedStable`) carry named no-closed-form `unimplemented!()` on specific methods. The authoritative per-type breakdown is the module docs in `stochastic-rs-distributions/src/lib.rs`. Defaults `unimplemented!("... is not implemented for {type}")`, **never `0.0`**.
 
 ## Prelude
 
@@ -76,16 +88,16 @@ older summary.
 use stochastic_rs::prelude::*;
 ```
 
-Brings **25** items in 6 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"`):
+Brings **28** items in 6 groups (`awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"`):
 
 - **Trait core**: `RealExt`, `FloatExt`, `SimdFloatExt`, `ProcessExt`, `BivariateExt`, `MultivariateExt`, `DistributionExt`, `DistributionSampler`, `TimeExt`
 - **Pricing**: `ModelPricer`
 - **Calibration**: `Calibrator`, `CalibrationResult`, `ToModel`
 - **Option types**: `Moneyness`, `OptionStyle`, `OptionType`
-- **Backend / sampling**: `Backend`, `Cpu`, `PathSampler`, `VolterraKernel`
+- **Backend / sampling**: `Backend`, `Cpu`, `PathSampler`, `VolterraKernel`, `Seeded`, `SimdDistribution`, `SimdKernel`
 - **Estimation**: `HurstEstimator`, `FractalDimEstimator`, `HypothesisTest`, `DiffusionModel`, `TailDependence`
 
-`MultivariateExt` joined the prelude in 3.0, when the linalg stack moved to the pure-Rust faer and its feature-gate exclusion reason died. `CallableDist` (python-only) stays reachable via `traits::*` but out of the prelude to keep it feature-flag-free. Same for `ShortRatePricer` (prices off a yield curve, not a spot/strike query), the two markers `VanillaEuropeanCall` / `ToShortRateModel`, and `GreeksExt` (2 implementors, both Monte Carlo estimators, 0 generic consumers — a no-argument trait beside a query-taking `ModelPricer` advertised a symmetry the crate does not have). The `Instrument`/`InstrumentExt`/`PricingEngine`/`PricingResult` four left the prelude in 3.0: two instruments and two engines (three engine×instrument pairings) are a cross-engine comparison harness for validating models on the same European vanilla, not a third pricing layer — the crate's two layers are `ModelPricer` (spot/strike query) and the instruments' `.valuation(curve)`. All four stay hub-reachable via `traits::*`, as are `FgnBackend`, `SheetBackend` and `EulerBackend` (the fGN, sheet-pipeline and Euler-engine capability subtraits of the prelude's `Backend` device marker — named only when writing generic code over backends). `EulerKernel` and `EulerSystem` left the hub in 3.0: with `EulerSpec`, `EulerCoefficients`, the lift/table/program specs and the slot caps they are the engine's own machinery — `pub` for the crate's tests and probes, `#[doc(hidden)]`, outside the stability promise (see the `euler` module doc's "What is public here").
+`MultivariateExt` joined the prelude in 3.0, when the linalg stack moved to the pure-Rust faer and its feature-gate exclusion reason died. `ShortRatePricer` (prices off a yield curve, not a spot/strike query), the two markers `VanillaEuropeanCall` / `ToShortRateModel`, and `GreeksExt` (2 implementors, both Monte Carlo estimators, 0 generic consumers — a no-argument trait beside a query-taking `ModelPricer` advertised a symmetry the crate does not have) stay reachable via `traits::*` but out of the prelude. The `Instrument`/`InstrumentExt`/`PricingEngine`/`PricingResult` four left the prelude in 3.0: two instruments and two engines (three engine×instrument pairings) are a cross-engine comparison harness for validating models on the same European vanilla, not a third pricing layer — the crate's two layers are `ModelPricer` (spot/strike query) and the instruments' `.valuation(curve)`. All four stay hub-reachable via `traits::*`, as are `FgnBackend`, `SheetBackend` and `EulerBackend` (the fGN, sheet-pipeline and Euler-engine capability subtraits of the prelude's `Backend` device marker — named only when writing generic code over backends). `EulerKernel` and `EulerSystem` left the hub in 3.0: with `EulerSpec`, `EulerCoefficients`, the lift/table/program specs and the slot caps they are the engine's own machinery — `pub` for the crate's tests and probes, `#[doc(hidden)]`, outside the stability promise (see the `euler` module doc's "What is public here").
 
 Hub membership is **independent of prelude membership**: `src/traits.rs` mirrors every trait each sub-crate exports from its own `traits` module, prelude-excluded ones included. The quant half is derivable, and `tests/prelude_completeness.rs` turns a dropped re-export into a compile error:
 

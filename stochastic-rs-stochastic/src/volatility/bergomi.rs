@@ -337,6 +337,7 @@ impl<T: FloatExt, S: SeedExt> PathSampler<T> for BergomiSampler<T, S> {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyBergomi {
   inner_f32: Option<Bergomi<f32>>,

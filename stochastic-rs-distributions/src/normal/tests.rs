@@ -1,10 +1,15 @@
 use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::KolmogorovSmirnovConfig;
 use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::kolmogorov_smirnov_test;
 
 use super::SimdNormal;
+use crate::tests::scalar_ks_best_p;
 use crate::traits::DistributionExt as _;
+use crate::traits::DistributionSampler;
+use crate::traits::SimdDistribution;
+use crate::traits::SimdKernel;
 
 const SEEDS: [u64; 3] = [2718, 999, 42];
 
@@ -41,14 +46,18 @@ fn best_ks_p_value(
 
 /// The dual-engine pair path interleaves batches from engines A and B —
 /// every lane (including B's) must still be N(0, 1).
-#[cfg(feature = "dual-stream-rng")]
+#[cfg(feature = "unstable-dual-stream-rng")]
 #[test]
 fn simd_normal_dual_pair_path_matches_theoretical_distribution() {
   const N: usize = 40_000;
   let best_p = best_ks_p_value(N, |seed| {
-    let dist = crate::SimdNormalDual::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+    let dist = SimdNormal::<f64>::new(0.0, 1.0);
+    let mut stream = crate::Seeded::<_, stochastic_rs_core::simd_rng_dual::SimdRngDual>::new(
+      dist,
+      &Deterministic::new(seed),
+    );
     let mut samples = vec![0.0_f64; N];
-    dist.fill_standard_fast(&mut samples);
+    stream.fill_slice(&mut samples);
     assert!(samples.iter().all(|x| x.is_finite()));
     (samples, Box::new(move |x| dist.cdf(x)))
   });
@@ -64,7 +73,7 @@ fn simd_normal_matches_theoretical_distribution() {
   let mu = -0.75_f64;
   let sigma = 1.35_f64;
 
-  let dist = SimdNormal::<f64>::new(mu, sigma, &Deterministic::new(0x4e07));
+  let mut dist = SimdNormal::<f64>::new(mu, sigma).seeded(&Deterministic::new(0x4e07));
   let mut samples = vec![0.0_f64; N];
   dist.fill_slice(&mut samples);
 
@@ -81,9 +90,11 @@ fn simd_normal_matches_theoretical_distribution() {
   );
 
   let best_p = best_ks_p_value(N, |seed| {
-    let dist = SimdNormal::<f64>::new(mu, sigma, &Deterministic::new(seed));
+    let dist = SimdNormal::<f64>::new(mu, sigma);
     let mut samples = vec![0.0_f64; N];
-    dist.fill_slice(&mut samples);
+    dist
+      .seeded(&Deterministic::new(seed))
+      .fill_slice(&mut samples);
     (samples, Box::new(move |x| dist.cdf(x)))
   });
   assert!(
@@ -112,7 +123,7 @@ fn the_ziggurat_tail_reaches_past_its_boundary() {
   const TAIL_PROBABILITY: f64 = 6.334_248_366_623_984e-5;
   let (mut counted, mut widest) = (0usize, 0.0_f64);
   for seed in SEEDS {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
     let mut samples = vec![0.0_f64; CHUNK];
     for _ in 0..CHUNKS {
       dist.fill_slice(&mut samples);
@@ -144,7 +155,7 @@ fn the_fourth_and_sixth_moments_match_the_normal() {
   const CHUNKS: usize = 4;
   let (mut m2, mut m4, mut m6) = (0.0_f64, 0.0_f64, 0.0_f64);
   for seed in SEEDS {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
     let mut samples = vec![0.0_f64; CHUNK];
     for _ in 0..CHUNKS {
       dist.fill_slice(&mut samples);
@@ -171,4 +182,63 @@ fn the_fourth_and_sixth_moments_match_the_normal() {
     m6 / m2.powi(3),
     5.0 * sixth_se
   );
+}
+
+/// The honest `Distribution` draws from the caller's rng and agrees with the cdf.
+#[test]
+fn scalar_sample_matches_cdf() {
+  let d = SimdNormal::<f64>::new(-0.75, 1.35);
+  let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+  assert!(best > 0.01, "best p = {best}");
+}
+
+/// A clone of a stream is a snapshot: both copies continue from the same position.
+#[test]
+fn seeded_clone_is_a_snapshot() {
+  let mut s = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(3));
+  for _ in 0..10 {
+    s.sample();
+  }
+  let mut c = s.clone();
+  for _ in 0..100 {
+    assert_eq!(s.sample().to_bits(), c.sample().to_bits());
+  }
+}
+
+#[test]
+fn fill_with_is_deterministic_in_the_caller_rng() {
+  let d = SimdNormal::<f64>::new(0.0, 1.0);
+  let fill = |seed: u64| {
+    let mut rng = SimdRng::from_seed(seed);
+    let mut out = [0.0f64; 16];
+    d.fill_with(&mut rng, &mut out);
+    out.map(f64::to_bits)
+  };
+  assert_eq!(fill(5), fill(5));
+  assert_ne!(fill(5), fill(6));
+}
+
+/// The affine-free fill behind `FloatExt`'s thread-local stream equals a seeded `N(0, 1)` stream's bulk fill.
+#[test]
+fn fill_standard_equals_the_standard_stream_fill() {
+  for len in [7usize, 16, 1003] {
+    let mut stream = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(21));
+    let mut twin = stream.clone();
+    let (mut a, mut b) = (vec![0.0f64; len], vec![0.0f64; len]);
+    stream.fill_slice(&mut a);
+    SimdNormal::<f64>::fill_standard(&mut twin.state_mut().rng, &mut b);
+    assert!(
+      a.iter().zip(&b).all(|(x, y)| x.to_bits() == y.to_bits()),
+      "f64, len {len}"
+    );
+    let mut stream = SimdNormal::<f32>::new(0.0, 1.0).seeded(&Deterministic::new(21));
+    let mut twin = stream.clone();
+    let (mut a, mut b) = (vec![0.0f32; len], vec![0.0f32; len]);
+    stream.fill_slice(&mut a);
+    SimdNormal::<f32>::fill_standard(&mut twin.state_mut().rng, &mut b);
+    assert!(
+      a.iter().zip(&b).all(|(x, y)| x.to_bits() == y.to_bits()),
+      "f32, len {len}"
+    );
+  }
 }

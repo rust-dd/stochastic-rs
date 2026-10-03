@@ -41,12 +41,13 @@ One workspace, one umbrella crate (`stochastic-rs`) that re-exports the sub-crat
 | `stochastic-rs-copulas` | 15 bivariate and 8 multivariate copulas, vine fitting, goodness of fit |
 | `stochastic-rs-stats` | Hurst and diffusion estimators, unit-root and cointegration tests, realised volatility, filters, extreme values, risk measures |
 | `stochastic-rs-quant` | closed-form, Fourier, PDE, lattice and Monte Carlo pricers, calibrators, vol surfaces, curves, credit, XVA, market microstructure |
-| `stochastic-rs-ai` | neural volatility surrogates and surrogate calibration (`ai` feature) |
+| `stochastic-rs-ai` | experimental neural volatility surrogates and surrogate calibration (`ai` feature) |
 | `stochastic-rs-py` | the Python module: every distribution, process, pricer, copula and estimator, NumPy in and out |
 
 ## Installation
 
-The Rust crates require Rust 1.89 or newer.
+The Rust crates require Rust 1.89 or newer; on Apple Silicon the `ai` feature needs
+Rust 1.94 or newer.
 
 The workspace declares this minimum in `rust-version`. Cargo's edition-2024
 resolver uses it when choosing compatible dependency versions, so a fresh
@@ -60,11 +61,14 @@ stochastic-rs = "3.0.0-rc.4"
 ```
 
 Device back-ends and other optional parts are cargo features (`cuda`,
-`metal`, `accelerate`, `ai`, `dual-stream-rng`);
+`metal`, `accelerate`, `ai`, `unstable-dual-stream-rng`; `metal` and `accelerate` apply on macOS only);
 the [installation guide](https://stochastic.rust-dd.com/docs/getting-started/installation-rust)
 and the [feature flags](https://stochastic.rust-dd.com/docs/concepts/feature-flags)
 page list them with what each pulls in. Sub-crates can be depended on directly
 for lean builds.
+
+The `ai` feature and the `stochastic-rs-ai` crate are experimental and outside the
+stability promise.
 
 ```bash
 pip install stochastic-rs
@@ -73,6 +77,30 @@ pip install stochastic-rs
 The wheels are CPU-only and carry the whole surface on Linux, macOS and Windows
 (linear algebra is pure Rust). A source build with a device back-end:
 `maturin develop --release --features metal` (or `cuda`) in a checkout.
+
+### Public dependencies
+
+The umbrella re-exports `ndarray`, `num_complex`, `num_traits`, `rand` and
+`chrono` (as `stochastic_rs::ndarray` and so on) because callers build and pass
+their types; use these paths or depend on the same versions. `wide` (the SIMD
+vectors of `SimdFloatExt` and `SimdRngExt`) and `anyhow` (calibration and SLV errors)
+also appear in public signatures. A semver-incompatible release of any of these
+seven crates (for a 0.x crate, a minor bump such as ndarray 0.17 → 0.18) is a
+major release of `stochastic-rs`.
+
+```rust
+use stochastic_rs::ndarray::Array1;
+use stochastic_rs::prelude::*;
+use stochastic_rs::simd_rng::Unseeded;
+use stochastic_rs::stochastic::process::bm::Bm;
+
+fn total(path: &Array1<f64>) -> f64 {
+  path.sum()
+}
+
+let path = Bm::<f64>::new(16, Some(1.0), Unseeded).sample();
+assert!(total(&path).is_finite());
+```
 
 ## Quickstart
 

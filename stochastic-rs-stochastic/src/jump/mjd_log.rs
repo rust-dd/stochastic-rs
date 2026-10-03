@@ -12,10 +12,11 @@
 //!
 
 use ndarray::Array1;
-use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
@@ -201,10 +202,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     Self: 's;
 
   fn sampler(&self) -> MjdLogSampler<T> {
-    // RNG, the Poisson jump-count driver, the diffusion source and the
-    // jump-size source are derived from `self.seed` in the same order as the
-    // legacy `sample()`, so the first fill reproduces it bit-for-bit; all
-    // owned sources advance on reuse for independent paths.
+    // The sources take their seeds from `self.seed` in a fixed order the pinned streams depend on; reuse advances them
+    // for independent paths.
     let dt = self.dt();
     let sqrt_dt = dt.sqrt();
     let drift = self.drift();
@@ -212,19 +211,17 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     let half = T::from_f64_fast(0.5);
     let drift_ln = (drift - self.lambda * kappa_j - half * self.sigma * self.sigma) * dt;
 
-    let rng = self.seed.rng();
+    // One seed is skipped: the pinned streams that follow take theirs after it.
+    self.seed.next_seed();
 
     let pois = if self.lambda > T::zero() {
-      Some(SimdPoisson::<u32>::new(
-        (self.lambda * dt).to_f64().unwrap(),
-        &self.seed,
-      ))
+      Some(SimdPoisson::<u32>::new((self.lambda * dt).to_f64().unwrap()).seeded(&self.seed))
     } else {
       None
     };
 
-    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
-    let jump_normal = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
+    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed);
+    let jump_normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed);
 
     MjdLogSampler {
       n: self.n,
@@ -233,7 +230,6 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       omega: self.omega,
       s0: self.s0.unwrap_or(T::one()),
       drift_ln,
-      rng,
       pois,
       normal,
       jump_normal,
@@ -272,9 +268,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
   }
 }
 
-/// Reusable [`MjdLog`] sampling state: owns the jump-count RNG, the Poisson
-/// driver and both Gaussian sources (diffusion and jump-size) so a
-/// Monte-Carlo loop pays their setup once.
+/// Reusable [`MjdLog`] sampling state: owns the Poisson driver and both Gaussian sources (diffusion and jump-size),
+/// so a Monte-Carlo loop pays their setup once.
 #[doc(hidden)]
 pub struct MjdLogSampler<T: FloatExt> {
   n: usize,
@@ -283,10 +278,9 @@ pub struct MjdLogSampler<T: FloatExt> {
   omega: T,
   s0: T,
   drift_ln: T,
-  rng: SimdRng,
-  pois: Option<SimdPoisson<u32>>,
-  normal: SimdNormal<T>,
-  jump_normal: SimdNormal<T>,
+  pois: Option<Seeded<SimdPoisson<u32>>>,
+  normal: Seeded<SimdNormal<T>>,
+  jump_normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> MjdLogSampler<T> {
@@ -312,8 +306,8 @@ impl<T: FloatExt> MjdLogSampler<T> {
       let diff = self.sigma * *z;
 
       let mut jump_sum = T::zero();
-      if let Some(pois) = &self.pois {
-        let k: u32 = pois.sample(&mut self.rng);
+      if let Some(pois) = &mut self.pois {
+        let k = pois.sample();
         if k > 0 {
           let kf = T::from_usize_(k as usize);
           let mut z0 = [T::zero(); 1];

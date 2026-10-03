@@ -4,19 +4,23 @@
 //! f(x)=\frac{1}{\sigma\sqrt{2\pi}}\exp\!\left(-\frac{(x-\mu)^2}{2\sigma^2}\right)
 //! $$
 //!
-use std::cell::Cell;
-use std::cell::UnsafeCell;
+//! Sampling: Marsaglia, G., Tsang, W.W. (2000), "The Ziggurat Method for Generating Random Variables", *Journal of Statistical Software* 5(8), DOI 10.18637/jss.v005.i08.
+
 use std::sync::OnceLock;
 
 use rand::Rng;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 use wide::i32x8;
 
-use super::SimdFloatExt;
-use crate::simd_rng::SeedExt;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
-use crate::simd_rng::Unseeded;
+use crate::seeded::StreamState;
+use crate::source::AnyRng;
+use crate::source::Source;
+use crate::traits::SimdFloatExt;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 /// Precomputed lookup tables for the Ziggurat algorithm (normal distribution).
 /// `kn` holds threshold integers for the fast-accept test,
@@ -93,7 +97,12 @@ pub(crate) fn zig_tables() -> &'static ZigTables {
 /// rejection sampling for intermediate rectangles.
 #[cold]
 #[inline(never)]
-fn nfix<T: SimdFloatExt, R: SimdRngExt>(hz: i32, iz: usize, tables: &ZigTables, rng: &mut R) -> T {
+fn nfix<T: SimdFloatExt, S: Source + ?Sized>(
+  hz: i32,
+  iz: usize,
+  tables: &ZigTables,
+  rng: &mut S,
+) -> T {
   const R_TAIL: f64 = 3.442620;
   /// `1 / R_TAIL`, the scale of the tail's exponential draw.
   const R_TAIL_INV: f64 = 0.2904764;
@@ -140,254 +149,126 @@ fn nfix<T: SimdFloatExt, R: SimdRngExt>(hz: i32, iz: usize, tables: &ZigTables, 
   }
 }
 
-/// SIMD-accelerated normal (Gaussian) distribution using the Ziggurat algorithm.
-/// ~97% of samples use a branchless SIMD fast path (integer compare + multiply),
-/// with scalar fallback only for the rare ~3% edge cases.
-///
-/// The const generic `N` controls the internal buffer size for `sample()` calls.
-/// Larger values reduce per-sample overhead but use more stack space.
-///
-/// The third generic, `R: SimdRngExt`, selects the backing RNG. The default
-/// [`SimdRng`] is the single-stream production engine; the
-/// `dual-stream-rng` cargo feature enables `R = SimdRngDual` via the
-/// `SimdNormalDual` type alias, whose Ziggurat main loop consumes two
-/// independent engine batches per iteration
-/// ([`SimdRngExt::HAS_PAIR_ILP`]). Measured +3–10 % (≈5 % typical) on
-/// 128-bit NEON Normal fills — modest because the table-gather chain
-/// dominates; expected to matter more on wider-SIMD hardware.
-pub struct SimdNormal<T: SimdFloatExt, const N: usize = 64, R: SimdRngExt = SimdRng> {
-  mean: T,
-  std_dev: T,
-  buffer: UnsafeCell<[T; N]>,
-  index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<R>,
-  pub(crate) stream_seed: Cell<u64>,
+/// One standard normal draw on the scalar Ziggurat path, from a SIMD engine or the caller's rng.
+#[inline]
+fn sample_one_standard<T: SimdFloatExt, S: Source + ?Sized>(rng: &mut S, tables: &ZigTables) -> T {
+  let hz = rng.next_i32();
+  let iz = (hz & 127) as usize;
+  if (hz.unsigned_abs() as i64) < tables.kn[iz] as i64 {
+    T::from_f64_fast(hz as f64 * tables.wn[iz])
+  } else {
+    nfix::<T, S>(hz, iz, tables, rng)
+  }
 }
 
-impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdNormal<T, N, R> {
-  /// Creates a normal distribution with the given mean, standard deviation,
-  /// and seed strategy.
-  ///
-  /// Mirrors the `Gbm::new(..., seed: S)`-style constructor used elsewhere
-  /// in the workspace so seed handling is uniform across processes and
-  /// distributions. Pass [`Unseeded`] for an
-  /// auto-seeded RNG, or [`Deterministic::new(seed)`](crate::simd_rng::Deterministic)
-  /// for a reproducible stream.
-  ///
-  /// The seed source is taken by reference so a single seed can fan out
-  /// independent RNGs to several sub-components (e.g. `SimdStudentT`
-  /// builds both a `SimdNormal` and a `SimdChiSquared` from one seed),
-  /// each call advancing the source's internal state.
-  #[inline]
-  pub fn new<S: SeedExt>(mean: T, std_dev: T, seed: &S) -> Self {
-    let _ = zig_tables();
-    assert!(
-      std_dev > T::zero(),
-      "std_dev must satisfy `std_dev > T::zero()`, got std_dev = {std_dev:?}"
-    );
-    assert!(N >= 8, "buffer size must be at least 8");
-    let stream_seed = seed.seed_value();
-    Self {
-      mean,
-      std_dev,
-      buffer: UnsafeCell::new([T::zero(); N]),
-      index: UnsafeCell::new(N),
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed: Cell::new(stream_seed),
-    }
-  }
+/// The 128-layer index mask, built at compile time: a run-time `splat` of a constant becomes
+/// `memset_pattern16` calls on Darwin.
+const LAYER_MASK: i32x8 = i32x8::splat(127);
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.mean,
-      self.std_dev,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
-  }
+/// One 8-lane Ziggurat batch from `hz` into `out[..8]`; `STANDARD` compiles the affine map out.
+#[inline(always)]
+fn zig_batch8<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
+  hz: i32x8,
+  tables: &ZigTables,
+  mean: T,
+  std_dev: T,
+  mean_simd: T::Simd,
+  std_dev_simd: T::Simd,
+  rng: &mut R,
+  out: &mut [T],
+) {
+  let iz = hz & LAYER_MASK;
+  let iz_arr = iz.to_array();
+  unsafe {
+    let kn_vals = i32x8::new([
+      *tables.kn.get_unchecked(iz_arr[0] as usize),
+      *tables.kn.get_unchecked(iz_arr[1] as usize),
+      *tables.kn.get_unchecked(iz_arr[2] as usize),
+      *tables.kn.get_unchecked(iz_arr[3] as usize),
+      *tables.kn.get_unchecked(iz_arr[4] as usize),
+      *tables.kn.get_unchecked(iz_arr[5] as usize),
+      *tables.kn.get_unchecked(iz_arr[6] as usize),
+      *tables.kn.get_unchecked(iz_arr[7] as usize),
+    ]);
+    let abs_hz = hz.abs();
+    let accept = abs_hz.simd_lt(kn_vals);
 
-  /// Returns a single N(mean, std_dev) sample using the internal SIMD RNG.
-  #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= N {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
-  }
+    let wn_arr: [T; 8] = if T::PREFERS_F32_WN {
+      [
+        T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[0] as usize)),
+        T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[1] as usize)),
+        T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[2] as usize)),
+        T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[3] as usize)),
+        T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[4] as usize)),
+        T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[5] as usize)),
+        T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[6] as usize)),
+        T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[7] as usize)),
+      ]
+    } else {
+      [
+        T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[0] as usize)),
+        T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[1] as usize)),
+        T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[2] as usize)),
+        T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[3] as usize)),
+        T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[4] as usize)),
+        T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[5] as usize)),
+        T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[6] as usize)),
+        T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[7] as usize)),
+      ]
+    };
+    let hz_float = T::simd_from_i32x8(hz);
+    let result = hz_float * T::simd_from_array(wn_arr);
 
-  /// Fills a slice with normally distributed samples using the internal
-  /// SIMD RNG stream — the only stream this sampler draws from (see the
-  /// crate-level RNG policy: the seed goes to the constructor, not to
-  /// sampling calls).
-  #[inline]
-  pub fn fill_slice(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    Self::fill_ziggurat(out, rng, self.mean, self.std_dev);
-  }
-
-  /// Fills exactly 16 elements with normally distributed samples.
-  /// Optimized hot-path for small fixed-size buffers.
-  #[inline]
-  pub fn fill_16(&self, out16: &mut [T]) {
-    debug_assert!(out16.len() >= 16);
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    Self::fill_ziggurat(&mut out16[..16], rng, self.mean, self.std_dev);
-  }
-
-  /// Refills the internal sample buffer (used by the `Distribution::sample` trait impl).
-  fn refill_buffer(&self) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    let buf = unsafe { &mut *self.buffer.get() };
-    Self::fill_ziggurat(buf.as_mut_slice(), rng, self.mean, self.std_dev);
-    unsafe {
-      *self.index.get() = 0;
-    }
-  }
-
-  /// Processes one 8-lane Ziggurat batch from `hz` into `out[..8]`.
-  /// `STANDARD` folds the mean / std_dev scaling away at compile time.
-  #[inline(always)]
-  fn zig_batch8<const STANDARD: bool>(
-    hz: i32x8,
-    tables: &ZigTables,
-    mean: T,
-    std_dev: T,
-    mean_simd: T::Simd,
-    std_dev_simd: T::Simd,
-    rng: &mut R,
-    out: &mut [T],
-  ) {
-    let iz = hz & i32x8::splat(127);
-    let iz_arr = iz.to_array();
-    unsafe {
-      let kn_vals = i32x8::new([
-        *tables.kn.get_unchecked(iz_arr[0] as usize),
-        *tables.kn.get_unchecked(iz_arr[1] as usize),
-        *tables.kn.get_unchecked(iz_arr[2] as usize),
-        *tables.kn.get_unchecked(iz_arr[3] as usize),
-        *tables.kn.get_unchecked(iz_arr[4] as usize),
-        *tables.kn.get_unchecked(iz_arr[5] as usize),
-        *tables.kn.get_unchecked(iz_arr[6] as usize),
-        *tables.kn.get_unchecked(iz_arr[7] as usize),
-      ]);
-      let abs_hz = hz.abs();
-      let accept = abs_hz.simd_lt(kn_vals);
-
-      let wn_arr: [T; 8] = if T::PREFERS_F32_WN {
-        [
-          T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[0] as usize)),
-          T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[1] as usize)),
-          T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[2] as usize)),
-          T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[3] as usize)),
-          T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[4] as usize)),
-          T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[5] as usize)),
-          T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[6] as usize)),
-          T::from_f32_fast(*tables.wn_f32.get_unchecked(iz_arr[7] as usize)),
-        ]
+    if accept.all() {
+      let scaled = if STANDARD {
+        result
       } else {
-        [
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[0] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[1] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[2] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[3] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[4] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[5] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[6] as usize)),
-          T::from_f64_fast(*tables.wn.get_unchecked(iz_arr[7] as usize)),
-        ]
+        mean_simd + std_dev_simd * result
       };
-      let hz_float = T::simd_from_i32x8(hz);
-      let result = hz_float * T::simd_from_array(wn_arr);
-
-      if accept.all() {
-        let scaled = if STANDARD {
-          result
+      out[..8].copy_from_slice(&T::simd_to_array(scaled));
+    } else {
+      let hz_arr = hz.to_array();
+      let accept_arr = accept.to_array();
+      let result_arr = T::simd_to_array(result);
+      for i in 0..8 {
+        let z = if accept_arr[i] != 0 {
+          result_arr[i]
         } else {
-          mean_simd + std_dev_simd * result
+          nfix::<T, R>(hz_arr[i], iz_arr[i] as usize, tables, rng)
         };
-        out[..8].copy_from_slice(&T::simd_to_array(scaled));
-      } else {
-        let hz_arr = hz.to_array();
-        let accept_arr = accept.to_array();
-        let result_arr = T::simd_to_array(result);
-        for i in 0..8 {
-          let z = if accept_arr[i] != 0 {
-            result_arr[i]
-          } else {
-            nfix::<T, R>(hz_arr[i], iz_arr[i] as usize, tables, rng)
-          };
-          out[i] = if STANDARD { z } else { mean + std_dev * z };
-        }
+        out[i] = if STANDARD { z } else { mean + std_dev * z };
       }
     }
   }
+}
 
-  /// Core Ziggurat fill: generates `N(mean, std_dev)` (or `N(0, 1)` when
-  /// `STANDARD`) samples into `buf` — 8-wide SIMD on the fast-accept path
-  /// (~97% of samples), scalar `nfix` for the rare edge cases.
-  ///
-  /// When the bound `R` reports [`SimdRngExt::HAS_PAIR_ILP`] the main loop
-  /// consumes [`next_i32x8_pair`](SimdRngExt::next_i32x8_pair) and processes
-  /// 16 lanes per iteration, so the two independent engine state updates
-  /// can overlap the batches' table lookups on an out-of-order core. The
-  /// branch is a monomorphised constant — single-stream codegen is
-  /// unchanged. Measured +3–10 % on 128-bit NEON (the gather chain
-  /// dominates the rest of the cost).
-  fn fill_zig_impl<const STANDARD: bool>(buf: &mut [T], rng: &mut R, mean: T, std_dev: T) {
-    let len = buf.len();
-    let tables = zig_tables();
-    if len < SMALL_NORMAL_THRESHOLD {
-      for x in buf.iter_mut() {
-        let z = Self::sample_one_standard(rng, tables);
-        *x = if STANDARD { z } else { mean + std_dev * z };
-      }
-      return;
+/// Core Ziggurat fill (16 lanes per step from two engines with `R::HAS_PAIR_ILP`); kept out of line because
+/// inlined into a pop loop's refill this kernel slows the loop.
+#[inline(never)]
+fn fill_zig_impl<T: SimdFloatExt, R: SimdRngExt, const STANDARD: bool>(
+  buf: &mut [T],
+  rng: &mut R,
+  mean: T,
+  std_dev: T,
+) {
+  let len = buf.len();
+  let tables = zig_tables();
+  if len < SMALL_NORMAL_THRESHOLD {
+    for x in buf.iter_mut() {
+      let z = sample_one_standard::<T, R>(rng, tables);
+      *x = if STANDARD { z } else { mean + std_dev * z };
     }
-    let mean_simd = T::splat(mean);
-    let std_dev_simd = T::splat(std_dev);
-    let mut filled = 0;
+    return;
+  }
+  let mean_simd = T::splat(mean);
+  let std_dev_simd = T::splat(std_dev);
+  let mut filled = 0;
 
-    if R::HAS_PAIR_ILP {
-      while filled + 16 <= len {
-        let (hz_a, hz_b) = rng.next_i32x8_pair();
-        Self::zig_batch8::<STANDARD>(
-          hz_a,
-          tables,
-          mean,
-          std_dev,
-          mean_simd,
-          std_dev_simd,
-          rng,
-          &mut buf[filled..filled + 8],
-        );
-        Self::zig_batch8::<STANDARD>(
-          hz_b,
-          tables,
-          mean,
-          std_dev,
-          mean_simd,
-          std_dev_simd,
-          rng,
-          &mut buf[filled + 8..filled + 16],
-        );
-        filled += 16;
-      }
-    }
-    while filled + 8 <= len {
-      let hz = rng.next_i32x8();
-      Self::zig_batch8::<STANDARD>(
-        hz,
+  if R::HAS_PAIR_ILP {
+    while filled + 16 <= len {
+      let (hz_a, hz_b) = rng.next_i32x8_pair();
+      zig_batch8::<T, R, STANDARD>(
+        hz_a,
         tables,
         mean,
         std_dev,
@@ -396,40 +277,125 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdNormal<T, N, R> {
         rng,
         &mut buf[filled..filled + 8],
       );
-      filled += 8;
-    }
-    while filled < len {
-      let z = Self::sample_one_standard(rng, tables);
-      buf[filled] = if STANDARD { z } else { mean + std_dev * z };
-      filled += 1;
+      zig_batch8::<T, R, STANDARD>(
+        hz_b,
+        tables,
+        mean,
+        std_dev,
+        mean_simd,
+        std_dev_simd,
+        rng,
+        &mut buf[filled + 8..filled + 16],
+      );
+      filled += 16;
     }
   }
-
-  /// `N(mean, std_dev)` fill — thin wrapper over [`Self::fill_zig_impl`].
-  #[inline]
-  fn fill_ziggurat(buf: &mut [T], rng: &mut R, mean: T, std_dev: T) {
-    Self::fill_zig_impl::<false>(buf, rng, mean, std_dev);
+  while filled + 8 <= len {
+    let hz = rng.next_i32x8();
+    zig_batch8::<T, R, STANDARD>(
+      hz,
+      tables,
+      mean,
+      std_dev,
+      mean_simd,
+      std_dev_simd,
+      rng,
+      &mut buf[filled..filled + 8],
+    );
+    filled += 8;
+  }
+  while filled < len {
+    let z = sample_one_standard::<T, R>(rng, tables);
+    buf[filled] = if STANDARD { z } else { mean + std_dev * z };
+    filled += 1;
   }
 }
 
-/// N(0, 1) — the standard normal distribution.
-impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> Default for SimdNormal<T, N, R> {
+/// Normal law `N(mean, std_dev)`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdNormal<T> {
+  mean: T,
+  std_dev: T,
+}
+
+impl<T: SimdFloatExt> SimdNormal<T> {
+  /// # Panics
+  /// `std_dev <= 0`.
+  pub fn new(mean: T, std_dev: T) -> Self {
+    let _ = zig_tables();
+    assert!(
+      std_dev > T::zero(),
+      "std_dev must satisfy `std_dev > T::zero()`, got std_dev = {std_dev:?}"
+    );
+    Self { mean, std_dev }
+  }
+
+  /// The mean `μ`; on a concrete type it shadows the `f64` `DistributionExt::mean`.
+  pub fn mean(&self) -> T {
+    self.mean
+  }
+
+  /// The standard deviation `σ`.
+  pub fn std_dev(&self) -> T {
+    self.std_dev
+  }
+
+  pub(crate) fn standard() -> Self {
+    Self {
+      mean: T::zero(),
+      std_dev: T::one(),
+    }
+  }
+
+  pub(crate) fn fill_standard<R: SimdRngExt>(rng: &mut R, out: &mut [T]) {
+    fill_zig_impl::<T, R, true>(out, rng, T::zero(), T::one());
+  }
+
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    let z = sample_one_standard::<T, _>(&mut AnyRng(rng), zig_tables());
+    self.mean + self.std_dev * z
+  }
+}
+
+impl<T: SimdFloatExt> Default for SimdNormal<T> {
   fn default() -> Self {
-    Self::new(T::zero(), T::one(), &Unseeded)
+    Self::new(T::zero(), T::one())
   }
 }
 
-impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> Clone for SimdNormal<T, N, R> {
-  fn clone(&self) -> Self {
-    // Cloning a stochastic source means "give me an independent stream", so
-    // the clone is auto-seeded regardless of how the original was created.
-    Self::new(self.mean, self.std_dev, &Unseeded)
+impl<T: SimdFloatExt> Sealed for SimdNormal<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdNormal<T> {
+  type State<R: SimdRngExt> = StreamState<T, R, 64>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (StreamState<T, R, 64>, u64) {
+    StreamState::init(seed)
   }
 }
 
-impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> crate::traits::DistributionExt
-  for SimdNormal<T, N, R>
-{
+impl<T: SimdFloatExt> SimdKernel for SimdNormal<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 64>, out: &mut [T]) {
+    fill_zig_impl::<T, R, false>(out, &mut state.rng, self.mean, self.std_dev);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 64>) -> T {
+    let StreamState { rng, buf } = state;
+    buf.pop(|b| fill_zig_impl::<T, R, false>(b, rng, self.mean, self.std_dev))
+  }
+}
+
+impl<T: SimdFloatExt> Distribution<T> for SimdNormal<T> {
+  /// One scalar Ziggurat draw from the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdNormal<T> {
   fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
     let mu = self.mean.to_f64().unwrap();
     let sigma = self.std_dev.to_f64().unwrap();
@@ -489,52 +455,6 @@ impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> crate::traits::Distribution
     let mu = self.mean.to_f64().unwrap();
     let s = self.std_dev.to_f64().unwrap();
     (mu * t + 0.5 * s * s * t * t).exp()
-  }
-}
-
-impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> SimdNormal<T, N, R> {
-  /// Fills a slice with standard normal N(0,1) samples using the internal SIMD RNG.
-  pub fn fill_standard_fast(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    Self::fill_ziggurat_standard(out, rng);
-  }
-
-  /// Generates a single standard normal N(0,1) sample using the scalar Ziggurat path.
-  #[inline]
-  fn sample_one_standard(rng: &mut R, tables: &ZigTables) -> T {
-    let hz = rng.next_i32();
-    let iz = (hz & 127) as usize;
-    if (hz.unsigned_abs() as i64) < tables.kn[iz] as i64 {
-      T::from_f64_fast(hz as f64 * tables.wn[iz])
-    } else {
-      nfix::<T, R>(hz, iz, tables, rng)
-    }
-  }
-
-  /// Core Ziggurat fill for standard normal N(0,1) samples — thin wrapper
-  /// over [`Self::fill_zig_impl`] with the scaling compiled out.
-  #[inline]
-  fn fill_ziggurat_standard(buf: &mut [T], rng: &mut R) {
-    Self::fill_zig_impl::<true>(buf, rng, T::zero(), T::one());
-  }
-}
-
-impl<T: SimdFloatExt, const N: usize, R: SimdRngExt> Distribution<T> for SimdNormal<T, N, R> {
-  /// Returns a single N(mean, std_dev) sample.
-  /// Internally draws from a pre-filled buffer and refills it when exhausted.
-  ///
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction. Use `Deterministic`
-  /// in the constructor for reproducibility.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= N {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
   }
 }
 

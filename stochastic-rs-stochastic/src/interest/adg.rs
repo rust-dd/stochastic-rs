@@ -17,6 +17,8 @@ use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -134,7 +136,7 @@ impl<T: FloatExt, S: SeedExt, B> Adg<T, S, B> {
     if row.len() == 1 {
       return;
     }
-    let normal = SimdNormal::<T>::new(T::zero(), dt.sqrt(), seed);
+    let mut normal = SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(seed);
     normal.fill_slice(&mut row[1..]);
     for j in 1..row.len() {
       let t = T::from_usize_(j) * dt;
@@ -354,6 +356,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> PathSampler<T>
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyAdg {
   inner: Option<Adg<f64>>,

@@ -24,6 +24,7 @@ pub use gamma_subordinator::GammaSubordinator;
 pub use ig_subordinator::IGSubordinator;
 pub use inverse_alpha_stable::InverseAlphaStableSubordinator;
 pub use poisson_subordinator::PoissonSubordinator;
+use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::uniform::SimdUniform;
 pub use tempered_stable::TemperedStableSubordinator;
 
@@ -51,10 +52,10 @@ pub(crate) fn clamp_open01(u: f64) -> f64 {
 pub(crate) fn sample_positive_stable(
   alpha: f64,
   log_scale: f64,
-  uniform: &SimdUniform<f64>,
+  uniform: &mut Seeded<SimdUniform<f64>>,
 ) -> f64 {
-  let u = clamp_open01(uniform.sample_fast()) * PI;
-  let w = -clamp_open01(uniform.sample_fast()).ln();
+  let u = clamp_open01(uniform.sample()) * PI;
+  let w = -clamp_open01(uniform.sample()).ln();
   let log_x = log_scale - u.sin().ln() / alpha
     + ((1.0 - alpha) / alpha) * (((1.0 - alpha) * u).sin().ln() - w.ln());
   (alpha * u).sin() * log_x.exp()

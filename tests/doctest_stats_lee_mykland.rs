@@ -2,6 +2,8 @@
 //! Backs the Lee–Mykland example on the stats page.
 
 use ndarray::Array1;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stats::realized::lee_mykland::lee_mykland_test;
@@ -10,7 +12,7 @@ use stochastic_rs::stats::realized::lee_mykland::lee_mykland_window;
 #[test]
 fn lee_mykland_locates_a_planted_jump() {
   // Stand-in for a day of 5-minute log-returns with one news jump in it.
-  let dist = SimdNormal::<f64>::new(0.0, 0.001, &Deterministic::new(42));
+  let mut dist = SimdNormal::<f64>::new(0.0, 0.001).seeded(&Deterministic::new(42));
   let mut returns = Array1::<f64>::zeros(2_000);
   dist.fill_slice(returns.as_slice_mut().unwrap());
   returns[1_200] = 0.02;

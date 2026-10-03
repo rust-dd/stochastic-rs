@@ -211,6 +211,9 @@ impl StochVolNn {
   /// and the prediction must already be in the IV (sigma) domain — the
   /// surrogates trained on Romano-Touzi data satisfy both.
   ///
+  /// `strikes` follow the network's column order; the surface comes back with ascending
+  /// strikes.
+  ///
   /// `forwards` carries the per-maturity forward used to compute log-moneyness
   /// and total variance inside the surface struct.
   ///
@@ -238,8 +241,11 @@ impl StochVolNn {
       );
     }
     let pred = self.predict_surface(params)?;
+    let mut order = (0..n_k).collect::<Vec<usize>>();
+    order.sort_by(|&a, &b| strikes[a].total_cmp(&strikes[b]));
     let ivs =
-      Array2::<f64>::from_shape_vec((n_t, n_k), pred.into_iter().map(|v| v as f64).collect())?;
+      Array2::<f64>::from_shape_fn((n_t, n_k), |(t, k)| f64::from(pred[t * n_k + order[k]]));
+    let strikes = order.iter().map(|&k| strikes[k]).collect();
     Ok(
       stochastic_rs_quant::vol_surface::ImpliedVolSurface::from_iv_grid(
         strikes, maturities, forwards, ivs,
@@ -322,5 +328,64 @@ impl StochVolNn {
       .load(dir.join(WEIGHTS_FILE))
       .with_context(|| format!("failed to load weights from {:?}", dir.join(WEIGHTS_FILE)))?;
     Ok(model)
+  }
+}
+
+#[cfg(all(test, feature = "quant"))]
+mod tests {
+  use super::*;
+  use crate::volatility::common::synthetic_surface_dataset;
+
+  const N_T: usize = 2;
+  const N_K: usize = 5;
+
+  fn trained() -> Result<StochVolNn> {
+    let (lb, ub) = ([0.0_f32; 2], [1.0_f32; 2]);
+    let spec = StochVolModelSpec::new("bridge", 2, N_T * N_K, 8, lb.to_vec(), ub.to_vec())?;
+    let (params, surfaces) = synthetic_surface_dataset(&lb, &ub, 64, N_T * N_K, 5);
+    let mut nn = StochVolNn::new(spec, &Device::Cpu)?;
+    let cfg = TrainConfig {
+      epochs: 3,
+      ..TrainConfig::default()
+    };
+    nn.train(&params, &surfaces, &cfg)?;
+    Ok(nn)
+  }
+
+  #[test]
+  fn surface_bridge_pairs_each_strike_with_its_own_column() -> Result<()> {
+    let nn = trained()?;
+    let params = [0.3_f32, 0.6];
+    let flat = nn.predict_surface(&params)?;
+    let maturities = vec![0.5, 1.0];
+    let build = |strikes: &[f64]| {
+      nn.predict_implied_vol_surface(
+        &params,
+        strikes.to_vec(),
+        maturities.clone(),
+        vec![1.0; N_T],
+      )
+    };
+
+    let ascending = [0.8, 0.9, 1.0, 1.1, 1.2];
+    let unchanged = build(&ascending)?;
+    assert_eq!(unchanged.strikes, ascending);
+    for ((t, k), iv) in unchanged.ivs.indexed_iter() {
+      assert_eq!(*iv, f64::from(flat[t * N_K + k]));
+    }
+
+    let rotated = [0.9, 1.0, 1.1, 1.2, 0.8];
+    let shuffled = [1.1, 0.8, 1.2, 0.9, 1.0];
+    for strikes in [rotated, shuffled] {
+      let surface = build(&strikes)?;
+      assert_eq!(surface.strikes, ascending);
+      for t in 0..N_T {
+        for (j, strike) in strikes.iter().enumerate() {
+          let k = surface.strikes.iter().position(|s| s == strike).unwrap();
+          assert_eq!(surface.ivs[[t, k]], f64::from(flat[t * N_K + j]));
+        }
+      }
+    }
+    Ok(())
   }
 }

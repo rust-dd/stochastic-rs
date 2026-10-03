@@ -2,6 +2,7 @@
 //! (lane width 8, decomposed into two AVX2-friendly `f64x4` halves).
 
 use rand::Rng;
+use rand::RngExt;
 use wide::f32x8;
 use wide::f64x4;
 use wide::f64x8;
@@ -25,58 +26,72 @@ fn fill_f64_zero_one<R: Rng + ?Sized>(rng: &mut R, out: &mut [f64]) {
 impl SimdFloatExt for f32 {
   type Simd = f32x8;
 
+  #[inline]
   fn splat(val: f32) -> f32x8 {
     f32x8::splat(val)
   }
 
+  #[inline]
   fn simd_from_array(arr: [f32; 8]) -> f32x8 {
     f32x8::from(arr)
   }
 
+  #[inline]
   fn simd_to_array(v: f32x8) -> [f32; 8] {
     v.to_array()
   }
 
+  #[inline]
   fn simd_ln(v: f32x8) -> f32x8 {
     v.ln()
   }
 
+  #[inline]
   fn simd_sqrt(v: f32x8) -> f32x8 {
     v.sqrt()
   }
 
+  #[inline]
   fn simd_cos(v: f32x8) -> f32x8 {
     v.cos()
   }
 
+  #[inline]
   fn simd_sin(v: f32x8) -> f32x8 {
     v.sin()
   }
 
+  #[inline]
   fn simd_exp(v: f32x8) -> f32x8 {
     v.exp()
   }
 
+  #[inline]
   fn simd_tan(v: f32x8) -> f32x8 {
     v.tan()
   }
 
+  #[inline]
   fn simd_max(a: f32x8, b: f32x8) -> f32x8 {
     a.max(b)
   }
 
+  #[inline]
   fn simd_powf(v: f32x8, exp: f32) -> f32x8 {
     v.powf_simd(f32x8::splat(exp))
   }
 
+  #[inline]
   fn fill_uniform<R: Rng + ?Sized>(rng: &mut R, out: &mut [f32]) {
     fill_f32_zero_one(rng, out)
   }
 
+  #[inline]
   fn fill_uniform_simd<R: crate::simd_rng::SimdRngExt>(rng: &mut R, out: &mut [f32]) {
     rng.fill_uniform_f32(out);
   }
 
+  #[inline]
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> f32 {
     rng.random()
   }
@@ -86,6 +101,7 @@ impl SimdFloatExt for f32 {
     rng.next_f32()
   }
 
+  #[inline]
   fn simd_from_i32x8(v: wide::i32x8) -> f32x8 {
     v.round_float()
   }
@@ -96,58 +112,72 @@ impl SimdFloatExt for f32 {
 impl SimdFloatExt for f64 {
   type Simd = f64x8;
 
+  #[inline]
   fn splat(val: f64) -> f64x8 {
     f64x8::splat(val)
   }
 
+  #[inline]
   fn simd_from_array(arr: [f64; 8]) -> f64x8 {
     f64x8::from(arr)
   }
 
+  #[inline]
   fn simd_to_array(v: f64x8) -> [f64; 8] {
     v.to_array()
   }
 
+  #[inline]
   fn simd_ln(v: f64x8) -> f64x8 {
     v.ln()
   }
 
+  #[inline]
   fn simd_sqrt(v: f64x8) -> f64x8 {
     v.sqrt()
   }
 
+  #[inline]
   fn simd_cos(v: f64x8) -> f64x8 {
     v.cos()
   }
 
+  #[inline]
   fn simd_sin(v: f64x8) -> f64x8 {
     v.sin()
   }
 
+  #[inline]
   fn simd_exp(v: f64x8) -> f64x8 {
     v.exp()
   }
 
+  #[inline]
   fn simd_tan(v: f64x8) -> f64x8 {
     v.tan()
   }
 
+  #[inline]
   fn simd_max(a: f64x8, b: f64x8) -> f64x8 {
     a.max(b)
   }
 
+  #[inline]
   fn simd_powf(v: f64x8, exp: f64) -> f64x8 {
     v.powf_simd(f64x8::splat(exp))
   }
 
+  #[inline]
   fn fill_uniform<R: Rng + ?Sized>(rng: &mut R, out: &mut [f64]) {
     fill_f64_zero_one(rng, out)
   }
 
+  #[inline]
   fn fill_uniform_simd<R: crate::simd_rng::SimdRngExt>(rng: &mut R, out: &mut [f64]) {
     rng.fill_uniform_f64(out);
   }
 
+  #[inline]
   fn sample_uniform<R: Rng + ?Sized>(rng: &mut R) -> f64 {
     rng.random()
   }
@@ -157,6 +187,7 @@ impl SimdFloatExt for f64 {
     rng.next_f64()
   }
 
+  #[inline]
   fn simd_from_i32x8(v: wide::i32x8) -> f64x8 {
     // `wide::f64x8::from_i32x8` falls back to 8 scalar `as f64` casts on
     // AVX2 (no AVX-512). Going through `f64x4::from_i32x4` uses a single

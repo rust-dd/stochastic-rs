@@ -12,6 +12,8 @@ use rayon::prelude::*;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::norm_cdf;
 
@@ -285,7 +287,7 @@ impl MCBarrierPricer {
     barrier_type: BarrierType,
     option_type: OptionType,
   ) -> McEstimate<f64> {
-    let base = Unseeded.seed_value();
+    let base = Unseeded.next_seed();
     self.price_from(s, k, h, r, sigma, t, barrier_type, option_type, base)
   }
 
@@ -332,7 +334,7 @@ impl MCBarrierPricer {
         // Golden-ratio stride keeps consecutive path seeds far apart in the
         // splitmix state space, so neighbouring paths do not share a stream.
         let seed = base_seed.wrapping_add((path as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15));
-        let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+        let mut normals = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
         let mut z_buf = vec![0.0_f64; self.n_steps];
         normals.fill_slice(&mut z_buf);
 

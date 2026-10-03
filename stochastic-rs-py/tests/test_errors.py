@@ -26,6 +26,12 @@ def test_distribution_constructor_raises_value_error():
         sr.PyNormal(0.0, -1.0)
 
 
+def test_distribution_constructor_names_the_rejected_argument():
+    want = r"scale must satisfy `scale > T::zero\(\)`, got scale = 0\.0"
+    with pytest.raises(ValueError, match=want):
+        sr.PyGamma(2.0, 0.0)
+
+
 def test_hand_written_process_constructor_raises_value_error():
     with pytest.raises(ValueError, match="one entry per asset"):
         sr.PyMultiGbm([0.05, 0.03], [0.2], np.eye(2), 16, [100.0, 100.0])

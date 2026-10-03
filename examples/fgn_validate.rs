@@ -199,7 +199,7 @@ fn plot_eigenvalues(hursts: &[f64], colors: &[String]) {
 
   for (i, &h) in hursts.iter().enumerate() {
     let fgn = Fgn::<f64, _>::new(h, N, Some(T_HORIZON), Unseeded);
-    let eig_vals: Vec<f64> = fgn.sqrt_eigenvalues.iter().copied().collect();
+    let eig_vals = fgn.sqrt_eigenvalues().to_vec();
     let indices: Vec<f64> = (0..eig_vals.len()).map(|j| j as f64).collect();
 
     plot.add_trace(

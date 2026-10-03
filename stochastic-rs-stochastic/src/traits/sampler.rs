@@ -8,8 +8,8 @@ use crate::device::DeviceError;
 ///
 /// Implementation detail behind [`ProcessExt`](super::ProcessExt)'s
 /// `sample` / `sample_par` / `sample_map`; not part of the public surface.
-/// Owns what `sample()` used to rebuild per call: distribution state
-/// (`SimdNormal`, Poisson drivers, …), precomputed scales, FFT scratch, and
+/// Owns what `sample()` used to rebuild per call: distribution streams
+/// (`Seeded` normals, Poisson drivers, …), precomputed scales, FFT scratch, and
 /// sub-samplers for wrapper processes. `sample_into` overwrites a
 /// caller-owned buffer with no allocation and no RNG setup — the regime where
 /// short-path Monte Carlo measured 1.8–3× over per-path `sample()` calls.

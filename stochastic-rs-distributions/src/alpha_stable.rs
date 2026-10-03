@@ -4,37 +4,43 @@
 //! \varphi_X(u)=\exp\!\left(i\delta u-\gamma^\alpha |u|^\alpha\left[1-i\beta\operatorname{sgn}(u)\omega(u,\alpha)\right]\right)
 //! $$
 //!
-use std::cell::Cell;
-use std::cell::UnsafeCell;
+//! Sampling: Chambers, J.M., Mallows, C.L., Stuck, B.W. (1976), "A Method for Simulating Stable Random Variables", *Journal of the American Statistical Association* 71(354), 340-344, DOI 10.1080/01621459.1976.10480344.
+//! Scale, location and the `α = 1` case: Weron, R. (1996), "On the Chambers-Mallows-Stuck method for simulating skewed stable random variables", *Statistics & Probability Letters* 28(2), 165-171, DOI 10.1016/0167-7152(95)00113-1.
 
 use rand::Rng;
-use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
+use rand::distr::Distribution;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::StreamState;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
-/// SIMD-backed alpha-stable distribution sampled with the
-/// Chambers-Mallows-Stuck method.
-///
-/// Parameters follow a common `(alpha, beta, scale, location)` form:
-/// - `alpha in (0, 2]` is the stability index
-/// - `beta in [-1, 1]` is the skewness
-/// - `scale > 0`
-/// - `location` is the shift
-pub struct SimdAlphaStable<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+/// Alpha-stable law `S_α(scale, β, location)` in the `S₁` parametrization: parameters only; a
+/// [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdAlphaStable<T> {
   alpha: T,
   beta: T,
   scale: T,
   location: T,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<R>,
-  stream_seed: Cell<u64>,
+  /// $B_{\alpha,\beta} = \arctan(\beta\tan(\pi\alpha/2))/\alpha$ of the `α ≠ 1` formula.
+  cms_b: T,
+  /// $S_{\alpha,\beta} = (1 + \beta^2\tan^2(\pi\alpha/2))^{1/(2\alpha)}$ of the `α ≠ 1` formula.
+  cms_s: T,
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdAlphaStable<T, R> {
+/// The formula the stability index selects.
+#[derive(Clone, Copy)]
+enum Branch {
+  Gaussian,
+  UnitIndex,
+  General,
+}
+
+impl<T: SimdFloatExt> SimdAlphaStable<T> {
   /// Creates an alpha-stable distribution, Chambers-Mallows-Stuck sampled.
   ///
   /// - `alpha` — stability index α ∈ (0, 2] (matches the module header's
@@ -45,13 +51,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdAlphaStable<T, R> {
   ///   role, same word).
   /// - `location` — shift δ applied after the γ-scaled draw (matches the
   ///   module header's δ).
-  pub fn new<S: crate::simd_rng::SeedExt>(
-    alpha: T,
-    beta: T,
-    scale: T,
-    location: T,
-    seed: &S,
-  ) -> Self {
+  pub fn new(alpha: T, beta: T, scale: T, location: T) -> Self {
     assert!(
       alpha > T::zero() && alpha <= T::from(2.0).unwrap(),
       "alpha must satisfy `alpha > T::zero() && alpha <= T::from(2.0).unwrap()`, got alpha = {alpha:?}"
@@ -64,48 +64,47 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdAlphaStable<T, R> {
       scale > T::zero(),
       "scale must satisfy `scale > T::zero()`, got scale = {scale:?}"
     );
-    let stream_seed = seed.seed_value();
+    let tan_term = (T::from_f64_fast(std::f64::consts::PI) * alpha / T::from(2.0).unwrap()).tan();
+    let beta_tan = beta * tan_term;
     Self {
       alpha,
       beta,
       scale,
       location,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed: Cell::new(stream_seed),
+      cms_b: beta_tan.atan() / alpha,
+      cms_s: (T::one() + beta_tan * beta_tan).powf(T::one() / (T::from(2.0).unwrap() * alpha)),
     }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.alpha,
-      self.beta,
-      self.scale,
-      self.location,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
+  /// The stability index `α`.
+  pub fn alpha(&self) -> T {
+    self.alpha
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
-  #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
+  /// The skewness `β`.
+  pub fn beta(&self) -> T {
+    self.beta
+  }
+
+  /// The scale `γ`.
+  pub fn scale(&self) -> T {
+    self.scale
+  }
+
+  /// The location `δ`.
+  pub fn location(&self) -> T {
+    self.location
+  }
+
+  fn branch(&self) -> Branch {
+    let eps = T::from(1e-6).unwrap();
+    if (self.alpha - T::from(2.0).unwrap()).abs() < eps {
+      Branch::Gaussian
+    } else if (self.alpha - T::one()).abs() < eps {
+      Branch::UnitIndex
+    } else {
+      Branch::General
     }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
   }
 
   fn clamp_open_unit(x: T) -> T {
@@ -119,7 +118,54 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdAlphaStable<T, R> {
     }
   }
 
-  fn fill_gaussian_branch(&self, out: &mut [T], rng: &mut R) {
+  /// `σX + (2/π)βσ ln σ + μ` turns Weron's `X ~ S₁(1, β, 0)` into `S₁(σ, β, μ)`; this is its constant part.
+  fn unit_index_location(&self) -> T {
+    let two_over_pi = T::from(2.0).unwrap() / T::from_f64_fast(std::f64::consts::PI);
+    self.location + two_over_pi * self.beta * self.scale * self.scale.ln()
+  }
+
+  /// One `α = 1` draw from the angle uniform `u` and the exponential's uniform `e`.
+  #[inline]
+  fn unit_index_one(&self, u: T, e: T, location: T) -> T {
+    let pi = T::from_f64_fast(std::f64::consts::PI);
+    let half_pi = pi / T::from(2.0).unwrap();
+    let two_over_pi = T::from(2.0).unwrap() / pi;
+    let u = Self::clamp_open_unit(u);
+    let e = Self::clamp_open_unit(e);
+    let v = pi * (u - T::from(0.5).unwrap());
+    let w = -e.ln();
+    let a = half_pi + self.beta * v;
+    let mut ratio = (half_pi * w * v.cos()) / a.abs().max(T::min_positive_val());
+    if ratio <= T::min_positive_val() {
+      ratio = T::min_positive_val();
+    }
+    let term = a * v.tan() - self.beta * ratio.ln();
+    location + self.scale * two_over_pi * term
+  }
+
+  /// The scalar twin of the 8-lane Box–Muller branch.
+  fn gaussian_one(&self, u1: T, u2: T) -> T {
+    let u1 = Self::clamp_open_unit(u1);
+    let u2 = Self::clamp_open_unit(u2);
+    let z = (-T::from(2.0).unwrap() * u1.ln()).sqrt() * (T::two_pi() * u2).cos();
+    self.location + self.scale * T::from(2.0).unwrap().sqrt() * z
+  }
+
+  /// The scalar twin of the 8-lane `α ≠ 1` branch, with the same cosine floor.
+  fn general_one(&self, u: T, e: T) -> T {
+    let alpha = self.alpha;
+    let u = Self::clamp_open_unit(u);
+    let e = Self::clamp_open_unit(e);
+    let v = T::pi() * (u - T::from(0.5).unwrap());
+    let w = -e.ln();
+    let phi = alpha * (v + self.cms_b);
+    let denom = v.cos().max(T::epsilon()).powf(T::one() / alpha);
+    let ratio = ((v - phi).cos() / w).max(T::min_positive_val());
+    let tail = ratio.powf((T::one() - alpha) / alpha);
+    self.location + self.scale * self.cms_s * (phi.sin() / denom) * tail
+  }
+
+  fn fill_gaussian_branch<R: SimdRngExt>(&self, out: &mut [T], rng: &mut R) {
     let two = T::splat(T::from(2.0).unwrap());
     let pi2 = T::splat(T::two_pi());
     let scale = T::splat(self.scale * T::from(2.0).unwrap().sqrt());
@@ -157,17 +203,11 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdAlphaStable<T, R> {
     }
   }
 
-  fn fill_alpha_not_one_branch(&self, out: &mut [T], rng: &mut R) {
+  fn fill_alpha_not_one_branch<R: SimdRngExt>(&self, out: &mut [T], rng: &mut R) {
     let alpha = self.alpha;
-    let beta = self.beta;
-    let tan_term = (T::from_f64_fast(std::f64::consts::PI) * alpha / T::from(2.0).unwrap()).tan();
-    let beta_tan = beta * tan_term;
-    let b = (beta_tan).atan() / alpha;
-    let s = (T::one() + beta_tan * beta_tan).powf(T::one() / (T::from(2.0).unwrap() * alpha));
-
     let a = T::splat(alpha);
-    let b_v = T::splat(b);
-    let s_v = T::splat(s);
+    let b_v = T::splat(self.cms_b);
+    let s_v = T::splat(self.cms_s);
     let scale = T::splat(self.scale);
     let loc = T::splat(self.location);
     let pi = T::splat(T::pi());
@@ -229,84 +269,70 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdAlphaStable<T, R> {
     }
   }
 
-  fn fill_alpha_one_branch(&self, out: &mut [T], rng: &mut R) {
-    let pi = T::from_f64_fast(std::f64::consts::PI);
-    let half_pi = pi / T::from(2.0).unwrap();
-    let two_over_pi = T::from(2.0).unwrap() / pi;
-    let beta = self.beta;
-    let scale = self.scale;
-    let loc = self.location;
+  fn fill_alpha_one_branch<R: SimdRngExt>(&self, out: &mut [T], rng: &mut R) {
+    let location = self.unit_index_location();
     for x in out.iter_mut() {
-      let mut u = T::sample_uniform_simd(rng);
-      let mut e = T::sample_uniform_simd(rng);
-      u = Self::clamp_open_unit(u);
-      e = Self::clamp_open_unit(e);
-      let v = pi * (u - T::from(0.5).unwrap());
-      let w = -e.ln();
-      let a = half_pi + beta * v;
-      let mut ratio = (half_pi * w * v.cos()) / a.abs().max(T::min_positive_val());
-      if ratio <= T::min_positive_val() {
-        ratio = T::min_positive_val();
-      }
-      let term = a * v.tan() - beta * ratio.ln();
-      *x = loc + scale * two_over_pi * term;
+      let u = T::sample_uniform_simd(rng);
+      let e = T::sample_uniform_simd(rng);
+      *x = self.unit_index_one(u, e, location);
     }
   }
 
-  /// Fills `out` using the internal SIMD RNG stream — the only stream this
-  /// sampler draws from (see the crate-level RNG policy).
-  pub fn fill_slice(&self, out: &mut [T]) {
+  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [T]) {
     if out.is_empty() {
       return;
     }
-
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    let eps = T::from(1e-6).unwrap();
-
-    if (self.alpha - T::from(2.0).unwrap()).abs() < eps {
-      self.fill_gaussian_branch(out, rng);
-      return;
+    match self.branch() {
+      Branch::Gaussian => self.fill_gaussian_branch(out, rng),
+      Branch::UnitIndex => self.fill_alpha_one_branch(out, rng),
+      Branch::General => self.fill_alpha_not_one_branch(out, rng),
     }
-
-    if (self.alpha - T::one()).abs() < eps {
-      self.fill_alpha_one_branch(out, rng);
-      return;
-    }
-
-    self.fill_alpha_not_one_branch(out, rng);
   }
 
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    let u = T::sample_uniform(rng);
+    let e = T::sample_uniform(rng);
+    match self.branch() {
+      Branch::Gaussian => self.gaussian_one(u, e),
+      Branch::UnitIndex => self.unit_index_one(u, e, self.unit_index_location()),
+      Branch::General => self.general_one(u, e),
     }
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdAlphaStable<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.alpha, self.beta, self.scale, self.location, &Unseeded)
+impl<T: SimdFloatExt> Sealed for SimdAlphaStable<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdAlphaStable<T> {
+  type State<R: SimdRngExt> = StreamState<T, R, 16>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (StreamState<T, R, 16>, u64) {
+    StreamState::init(seed)
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdAlphaStable<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction. Use `Deterministic`
-  /// in the constructor for reproducibility.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
+impl<T: SimdFloatExt> SimdKernel for SimdAlphaStable<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+    self.fill_parts(&mut state.rng, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>) -> T {
+    let StreamState { rng, buf } = state;
+    buf.pop(|b| self.fill_parts(rng, b))
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdAlphaStable<T, R> {
+impl<T: SimdFloatExt> Distribution<T> for SimdAlphaStable<T> {
+  /// One scalar Chambers–Mallows–Stuck draw from two uniforms of the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdAlphaStable<T> {
   /// No closed form. Use numerical CF inversion (FFT or quadrature) on top.
   fn pdf(&self, _x: f64) -> f64 {
     unimplemented!(
@@ -420,6 +446,12 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
+  use crate::normal::SimdNormal;
+  use crate::tests::assert_ecf_matches;
+  use crate::tests::scalar_draws;
+  use crate::tests::scalar_ks_best_p;
+  use crate::traits::DistributionExt;
+  use crate::traits::DistributionSampler;
 
   /// Every single-precision draw is finite.
   ///
@@ -435,9 +467,9 @@ mod tests {
   #[test]
   fn single_precision_draws_stay_finite() {
     for alpha in [0.9_f64, 1.1, 1.5, 1.7, 1.9] {
-      let dist = SimdAlphaStable::<f32>::new(alpha as f32, 0.2, 1.0, 0.0, &Deterministic::new(2));
+      let dist = SimdAlphaStable::<f32>::new(alpha as f32, 0.2, 1.0, 0.0);
       let mut out = vec![0.0_f32; 360_000];
-      dist.fill_slice(&mut out);
+      dist.seeded(&Deterministic::new(2)).fill_slice(&mut out);
       let bad = out.iter().filter(|x| !x.is_finite()).count();
       assert_eq!(
         bad,
@@ -450,9 +482,39 @@ mod tests {
 
   #[test]
   fn alpha_stable_samples_are_finite() {
-    let dist = SimdAlphaStable::<f64>::new(1.7_f64, 0.3, 1.0, 0.0, &Deterministic::new(0xa1fa));
+    let dist = SimdAlphaStable::<f64>::new(1.7_f64, 0.3, 1.0, 0.0);
     let mut xs = vec![0.0_f64; 1024];
-    dist.fill_slice(&mut xs);
+    dist.seeded(&Deterministic::new(0xa1fa)).fill_slice(&mut xs);
     assert!(xs.iter().all(|x| x.is_finite()));
+  }
+
+  /// The unit-index case has `β ≠ 0` and `σ ≠ 1`, where Weron's `(2/π)βσ ln σ` shift is visible.
+  #[test]
+  fn scalar_sample_matches_the_characteristic_function() {
+    for (alpha, beta, scale, location) in [
+      (1.7, 0.3, 1.0, 0.0),
+      (0.8, -0.6, 1.5, 0.4),
+      (1.0, 0.5, 2.0, 0.3),
+    ] {
+      let d = SimdAlphaStable::<f64>::new(alpha, beta, scale, location);
+      let xs = scalar_draws(&d, 11, 200_000);
+      assert_ecf_matches(&xs, |u| d.characteristic_function(u), &format!("α={alpha}"));
+    }
+  }
+
+  #[test]
+  fn unit_index_stream_matches_the_characteristic_function() {
+    let d = SimdAlphaStable::<f64>::new(1.0, 0.5, 2.0, 0.3);
+    let mut xs = vec![0.0; 200_000];
+    d.seeded(&Deterministic::new(5)).fill_slice(&mut xs);
+    assert_ecf_matches(&xs, |u| d.characteristic_function(u), "seeded α=1");
+  }
+
+  #[test]
+  fn scalar_gaussian_index_matches_the_normal_cdf() {
+    let d = SimdAlphaStable::<f64>::new(2.0, 0.0, 1.0, 0.0);
+    let normal = SimdNormal::<f64>::new(0.0, std::f64::consts::SQRT_2);
+    let best = scalar_ks_best_p(&d, |x| normal.cdf(x));
+    assert!(best > 0.01, "best p = {best}");
   }
 }

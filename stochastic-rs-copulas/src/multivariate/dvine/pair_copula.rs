@@ -27,8 +27,6 @@
 //! constructions of multiple dependence", *Insurance: Mathematics and
 //! Economics* 44(2), 182-198, Table 1 and Appendix.
 
-use std::f64;
-
 use stochastic_rs_distributions::special::beta_i;
 use stochastic_rs_distributions::special::ln_gamma;
 use stochastic_rs_distributions::special::ndtri;
@@ -264,7 +262,7 @@ fn student_t_cdf(x: f64, nu: f64) -> f64 {
 /// Newton-refined quantile and `log_density` evaluation.
 fn student_t_log_pdf(x: f64, nu: f64) -> f64 {
   let log_norm =
-    ln_gamma(0.5 * (nu + 1.0)) - 0.5 * (nu * f64::consts::PI).ln() - ln_gamma(0.5 * nu);
+    ln_gamma(0.5 * (nu + 1.0)) - 0.5 * (nu * std::f64::consts::PI).ln() - ln_gamma(0.5 * nu);
   let log_kernel = -0.5 * (nu + 1.0) * (1.0 + x * x / nu).ln();
   log_norm + log_kernel
 }

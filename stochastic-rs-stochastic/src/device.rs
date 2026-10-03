@@ -4,8 +4,9 @@
 //! the [`Backend`] trait monomorphises `sample` / `sample_par` to that backend
 //! with **no runtime branch**. Switch backend by handing `.on` a handle,
 //! `process.on::<Cuda>()` — the marker must be in scope, and the GPU
-//! markers only exist when their feature is compiled, so selecting an
-//! unavailable backend is a compile error rather than a runtime fallback.
+//! markers only exist when their feature is compiled (the Apple ones on macOS
+//! only), so selecting an unavailable backend is a compile error rather than a
+//! runtime fallback.
 //!
 //! The capability traits ([`FgnBackend`], [`crate::euler::EulerBackend`]) take
 //! the scalar as a type parameter, and a device implements them only for the
@@ -19,15 +20,16 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::parallel::prelude::*;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::noise::fgn::Fgn;
 use crate::sheet::fbs::Fbs;
 use crate::traits::FloatExt;
-#[cfg(feature = "accelerate")]
+#[cfg(all(feature = "accelerate", target_os = "macos"))]
 use crate::traits::process::chunk_count;
-#[cfg(feature = "accelerate")]
+#[cfg(all(feature = "accelerate", target_os = "macos"))]
 use crate::traits::process::chunk_lens;
 
 /// CPU backend — the default `B` for every process.
@@ -77,7 +79,7 @@ impl Cuda {
 }
 
 /// Hand-written MSL via the `metal` crate. f32 only — Apple GPUs lack f64.
-#[cfg(feature = "metal")]
+#[cfg(all(feature = "metal", target_os = "macos"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Metal {
   /// Which device to open: the index into `Device::all()`, `0` being the system default.
@@ -87,7 +89,7 @@ pub struct Metal {
   pub batch_budget: usize,
 }
 
-#[cfg(feature = "metal")]
+#[cfg(all(feature = "metal", target_os = "macos"))]
 impl Default for Metal {
   /// Ordinal from `STOCHASTIC_RS_DEVICE` (else `0`), budget from
   /// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` (else [`DEFAULT_BATCH_BUDGET_BYTES`]).
@@ -99,7 +101,7 @@ impl Default for Metal {
   }
 }
 
-#[cfg(feature = "metal")]
+#[cfg(all(feature = "metal", target_os = "macos"))]
 impl Metal {
   /// The device at `ordinal` with the default batch budget.
   pub fn new(ordinal: usize) -> Self {
@@ -119,7 +121,7 @@ impl Metal {
 }
 
 /// Apple vDSP / AMX (FFI system framework, macOS).
-#[cfg(feature = "accelerate")]
+#[cfg(all(feature = "accelerate", target_os = "macos"))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Accelerate;
 
@@ -224,14 +226,20 @@ impl DeviceInfo {
 }
 
 // Read by the `Default` impls of the device handles, `cuda` and `metal`.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 /// `STOCHASTIC_RS_DEVICE` parsed as an ordinal; anything unparsable is `0`.
 pub(crate) fn device_from_env(value: Option<&str>) -> usize {
   value.and_then(|s| s.trim().parse().ok()).unwrap_or(0)
 }
 
 // Read by the `Default` impls of the device handles, `cuda` and `metal`.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 /// The ordinal a device handle starts with: `STOCHASTIC_RS_DEVICE`, else `0`.
 pub(crate) fn env_ordinal() -> usize {
   device_from_env(std::env::var("STOCHASTIC_RS_DEVICE").ok().as_deref())
@@ -240,7 +248,10 @@ pub(crate) fn env_ordinal() -> usize {
 /// Default cap on the path data one device launch materialises: 1 GiB.
 pub const DEFAULT_BATCH_BUDGET_BYTES: usize = 1 << 30;
 
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 /// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` parsed; anything that is not a positive
 /// number is the default.
 pub(crate) fn budget_from_env(value: Option<&str>) -> usize {
@@ -250,7 +261,10 @@ pub(crate) fn budget_from_env(value: Option<&str>) -> usize {
     .unwrap_or(DEFAULT_BATCH_BUDGET_BYTES)
 }
 
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 /// The batch budget a device handle starts with: `STOCHASTIC_RS_DEVICE_BATCH_BYTES`,
 /// else [`DEFAULT_BATCH_BUDGET_BYTES`].
 pub(crate) fn env_budget() -> usize {
@@ -292,15 +306,43 @@ pub(crate) fn over_chunks(
   Ok(())
 }
 
+/// Caps a planner's rows so no chunk wraps a kernel index; the floor of one lets an oversized row
+/// reach its launch, whose [`launch_len`] check refuses it rather than wrap.
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
+pub(crate) fn rows_within_index_limit(rows: usize, elements_per_row: usize, limit: usize) -> usize {
+  let per_row = elements_per_row.max(1);
+  rows.min(limit / per_row).max(1)
+}
+
+/// `len` as the integer type a kernel takes it in, or the launch's error when
+/// it does not fit — never the wrapped value an `as` cast would hand over.
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
+pub(crate) fn launch_len<I: TryFrom<usize>>(len: usize, what: &str) -> Result<I, DeviceError> {
+  I::try_from(len)
+    .map_err(|_| DeviceError::Launch(format!("{what}: {len} exceeds the kernel index range")))
+}
+
 /// How many per-size device states (FFT plans, buffers) a back-end keeps.
 /// Only the native CUDA and Metal fGN samplers cache per-size state, so a
 /// build without them has no caller.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 pub(crate) const CACHE_SLOTS: usize = 4;
 
 /// The cached state matching `matches`, moved to the most-recent slot, or a
 /// freshly built one after evicting the least-recent when the cache is full.
-#[cfg_attr(not(any(feature = "cuda", feature = "metal")), allow(dead_code))]
+#[cfg_attr(
+  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  allow(dead_code)
+)]
 pub(crate) fn lru_slot<C, E>(
   cache: &mut Vec<C>,
   matches: impl Fn(&C) -> bool,
@@ -350,13 +392,13 @@ impl Backend for Cuda {
     crate::euler::cuda::probe(self.ordinal)
   }
 }
-#[cfg(feature = "metal")]
+#[cfg(all(feature = "metal", target_os = "macos"))]
 impl Backend for Metal {
   fn probe(&self) -> Result<DeviceInfo, DeviceError> {
     crate::euler::metal::probe(self.ordinal)
   }
 }
-#[cfg(feature = "accelerate")]
+#[cfg(all(feature = "accelerate", target_os = "macos"))]
 impl Backend for Accelerate {
   fn probe(&self) -> Result<DeviceInfo, DeviceError> {
     Ok(DeviceInfo::host("Accelerate", "host CPU (Apple vDSP)"))
@@ -374,7 +416,7 @@ pub trait HostBackend: Backend {}
 
 impl HostBackend for Cpu {}
 
-#[cfg(feature = "accelerate")]
+#[cfg(all(feature = "accelerate", target_os = "macos"))]
 impl HostBackend for Accelerate {}
 
 /// The fGN sampling capability of a [`Backend`]: circulant-embedding
@@ -541,8 +583,8 @@ impl<T: FloatExt> FgnBackend<T> for Cpu {
       .collect::<Vec<_>>()
       .into_par_iter()
       .map(|path_seed| {
-        let mut normal = SimdNormal::<T>::new(T::zero(), T::one(), &path_seed);
-        array1_from_fill(fgn.out_len, |out| fgn.fill_cpu(&mut normal, out))
+        let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&path_seed);
+        array1_from_fill(fgn.n(), |out| fgn.fill_cpu(&mut normal, out))
       })
       // `Vec::into_par_iter()` → `.map()` is an `IndexedParallelIterator`,
       // so `.collect()` restores index order regardless of completion
@@ -567,9 +609,9 @@ impl<T: FloatExt> FgnBackend<T> for Cpu {
 /// keeps an `Unseeded` inner `Fgn` and hands over its own seed, so a
 /// `Deterministic` wrapper reproduces its device paths too.
 ///
-/// Gated with the impls that invoke it: both sit behind a backend feature, so
+/// Gated with the impls that invoke it: both sit behind a backend's cfg, so
 /// a build without one would leave this defined and never expanded.
-#[cfg(any(feature = "cuda", feature = "metal"))]
+#[cfg(any(feature = "cuda", all(feature = "metal", target_os = "macos")))]
 macro_rules! gpu_backend_owning {
   ($sampler:ident, $scalar:ty) => {
     fn try_generate<S: SeedExt, S2: SeedExt>(
@@ -601,11 +643,11 @@ macro_rules! gpu_backend_owning {
 /// batch has to cross into host memory before anything can read it: the map
 /// form therefore takes that batch and walks its rows, which still saves the
 /// per-row copy the trait's default would add. Each marker and its impl are
-/// gated on the backend's feature.
+/// gated on the backend's cfg.
 macro_rules! gpu_backend {
-  ($feat:literal, $marker:ident => $sampler:ident, $($scalar:ty),+) => {
+  ($cfg:meta, $marker:ident => $sampler:ident, $($scalar:ty),+) => {
     $(
-      #[cfg(feature = $feat)]
+      #[cfg($cfg)]
       impl FgnBackend<$scalar> for $marker {
         gpu_backend_owning!($sampler, $scalar);
 
@@ -623,7 +665,7 @@ macro_rules! gpu_backend {
           // host that copy costs several times the transfer.
           Ok(match batch.as_slice() {
             Some(flat) => flat
-              .par_chunks(fgn.out_len.max(1))
+              .par_chunks(fgn.n().max(1))
               .map(|row| f(ndarray::ArrayView1::from(row)))
               .collect(),
             None => batch
@@ -643,14 +685,14 @@ macro_rules! gpu_backend {
 // in: the native CUDA kernels are templated on float and double, the Metal
 // FFT pipeline is single precision. `Fgn<f64>` on `Metal` is therefore a
 // compile error, not an `f32` computation behind an `f64` type.
-gpu_backend!("cuda", Cuda => sample_cuda_impl, f32, f64);
+gpu_backend!(feature = "cuda", Cuda => sample_cuda_impl, f32, f64);
 
 /// Metal is the one backend that shares memory with the host, so its map
 /// form is the only one that can skip the batch entirely: `map_metal_impl`
 /// hands `f` the rows of the launch's own output buffer. The two owning
 /// methods are the macro's, unchanged — what differs is only that a caller
 /// who folds the batch does not pay for a copy of it.
-#[cfg(feature = "metal")]
+#[cfg(all(feature = "metal", target_os = "macos"))]
 impl FgnBackend<f32> for Metal {
   gpu_backend_owning!(sample_metal_impl, f32);
 
@@ -680,7 +722,7 @@ impl FgnBackend<f32> for Metal {
 /// task per chunk instead of one task per path), which does not change
 /// wall-clock throughput once `chunk_count(m)` meets or exceeds the core
 /// count (see `MAX_CHUNKS`'s doc).
-#[cfg(feature = "accelerate")]
+#[cfg(all(feature = "accelerate", target_os = "macos"))]
 impl<T: FloatExt> FgnBackend<T> for Accelerate {
   fn try_generate<S: SeedExt, S2: SeedExt>(
     &self,
@@ -825,17 +867,17 @@ macro_rules! host_sheet_backend {
 }
 
 host_sheet_backend!(Cpu);
-#[cfg(feature = "accelerate")]
+#[cfg(all(feature = "accelerate", target_os = "macos"))]
 host_sheet_backend!(Accelerate);
 
 /// Generates a [`SheetBackend`] impl for a GPU marker whose `$sampler` returns
 /// the batch's sheets. Each marker and its impl are gated on the backend's
-/// feature, and each marker implements the capability for the scalars its
+/// cfg, and each marker implements the capability for the scalars its
 /// kernels compute in.
 macro_rules! gpu_sheet_backend {
-  ($feat:literal, $marker:ident => $sampler:ident, $($scalar:ty),+) => {
+  ($cfg:meta, $marker:ident => $sampler:ident, $($scalar:ty),+) => {
     $(
-      #[cfg(feature = $feat)]
+      #[cfg($cfg)]
       impl SheetBackend<$scalar> for $marker {
         fn try_sheet<S: SeedExt>(
           &self,
@@ -861,8 +903,8 @@ macro_rules! gpu_sheet_backend {
   };
 }
 
-gpu_sheet_backend!("cuda", Cuda => sample_cuda_sheets, f32, f64);
-gpu_sheet_backend!("metal", Metal => sample_metal_sheets, f32);
+gpu_sheet_backend!(feature = "cuda", Cuda => sample_cuda_sheets, f32, f64);
+gpu_sheet_backend!(all(feature = "metal", target_os = "macos"), Metal => sample_metal_sheets, f32);
 
 #[cfg(test)]
 mod tests {
@@ -954,5 +996,23 @@ mod tests {
   fn cpu_marker_has_the_sheet_capability() {
     fn assert_sheet<B: SheetBackend<f64>>() {}
     assert_sheet::<Cpu>();
+  }
+}
+
+#[cfg(test)]
+mod index_limits {
+  use super::*;
+
+  #[test]
+  fn rows_shrink_to_fit_the_index_range() {
+    assert_eq!(rows_within_index_limit(10, 100, 1_000), 10);
+    assert_eq!(rows_within_index_limit(10, 300, 1_000), 3);
+    assert_eq!(rows_within_index_limit(10, 5_000, 1_000), 1);
+  }
+
+  #[test]
+  fn a_launch_length_past_i32_is_an_error() {
+    assert!(launch_len::<i32>(i32::MAX as usize + 1, "gen_scale").is_err());
+    assert_eq!(launch_len::<i32>(42, "gen_scale").unwrap(), 42);
   }
 }

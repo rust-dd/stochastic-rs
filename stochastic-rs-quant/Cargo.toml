@@ -14,7 +14,6 @@ categories = ["finance", "mathematics", "simulation"]
 
 [features]
 default = []
-yahoo = ["dep:yahoo_finance_api", "dep:time", "dep:polars", "dep:tokio-test"]
 python = [
     "dep:pyo3",
     "dep:numpy",
@@ -30,42 +29,32 @@ python = [
 viz = ["dep:plotly"]
 
 [dependencies]
+anyhow = { workspace = true }
+basin = { workspace = true, features = ["ndarray_v0_17"] }
+chrono = { workspace = true }
 faer = { workspace = true }
-faer-ext = { workspace = true, features = ["ndarray"] }
-stochastic-rs-core = { workspace = true }
-stochastic-rs-distributions = { workspace = true }
-stochastic-rs-stochastic = { workspace = true }
-stochastic-rs-stats = { workspace = true }
-stochastic-rs-copulas = { workspace = true }
-ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
-ndarray-npy = { workspace = true }
+faer-ext = { workspace = true }
+gauss-quad = { workspace = true }
+implied-vol = { workspace = true }
+log = { workspace = true }
+ndarray = { workspace = true }
 ndrustfft = { workspace = true }
+num-complex = { workspace = true }
 num-traits = { workspace = true }
-num-complex = { workspace = true, features = ["rand"] }
-rand = { workspace = true }
+numpy = { workspace = true, optional = true }
+ordered-float = { workspace = true }
+owens-t = { workspace = true }
+plotly = { workspace = true, optional = true }
+pyo3 = { workspace = true, optional = true }
+quadrature = { workspace = true }
 rayon = { workspace = true }
 roots = { workspace = true }
-kendalls = { workspace = true }
-linreg = { workspace = true }
-basin = { workspace = true, features = ["ndarray_v0_17"] }
-gauss-quad = { workspace = true }
-quadrature = { workspace = true }
 slsqp = { workspace = true }
-implied-vol = { workspace = true }
-chrono = { workspace = true }
-parking_lot = { workspace = true }
-anyhow = { workspace = true }
-ordered-float = { workspace = true }
-plotly = { workspace = true, features = ["plotly_ndarray"], optional = true }
-flate2 = { workspace = true }
-owens-t = { workspace = true }
-wide = { workspace = true }
-time = { workspace = true, features = ["formatting", "parsing"], optional = true }
-polars = { workspace = true, features = ["lazy"], optional = true }
-yahoo_finance_api = { workspace = true, optional = true }
-tokio-test = { workspace = true, optional = true }
-pyo3 = { workspace = true, features = ["extension-module"], optional = true }
-numpy = { workspace = true, optional = true }
+stochastic-rs-copulas = { workspace = true }
+stochastic-rs-core = { workspace = true }
+stochastic-rs-distributions = { workspace = true }
+stochastic-rs-stats = { workspace = true }
+stochastic-rs-stochastic = { workspace = true }
 
 [dev-dependencies]
 syn = { workspace = true }

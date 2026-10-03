@@ -331,6 +331,8 @@ fn decide(stat: f64, kind: ApStatistic, k: usize, pi0: f64, alpha: f64) -> (f64,
 mod tests {
   use ndarray::Array2;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
@@ -342,7 +344,7 @@ mod tests {
     break_frac: Option<f64>,
     seed: u64,
   ) -> (Array1<f64>, Array2<f64>) {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
     let mut x_col = Array1::<f64>::zeros(n);
     dist.fill_slice(x_col.as_slice_mut().unwrap());
     let mut design = Array2::<f64>::zeros((n, 2));
@@ -355,7 +357,7 @@ mod tests {
         Some(t) if i >= t => beta2,
         _ => beta1,
       };
-      let eps = 0.5 * dist.sample_fast();
+      let eps = 0.5 * dist.sample();
       y[i] = b0 + b1 * x_col[i] + eps;
     }
     (y, design)

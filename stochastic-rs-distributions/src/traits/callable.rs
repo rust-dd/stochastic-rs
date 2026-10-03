@@ -1,6 +1,5 @@
 //! Type-erased `Fn1D` / `Fn2D` callables, the [`Expr`] coefficient language
-//! and its compiled [`Program`], and the Python-feature-gated `CallableDist`
-//! adapter.
+//! and its compiled [`Program`].
 
 use std::ops::Add;
 use std::ops::Div;
@@ -339,13 +338,12 @@ impl Program {
 pub enum Fn1D<T: FloatExt> {
   Native(fn(T) -> T),
   #[cfg(feature = "python")]
+  #[doc(hidden)]
   Py(pyo3::Py<pyo3::PyAny>),
 }
 
-/// Manual, not `#[derive(Clone)]`: `pyo3::Py<PyAny>` (0.28) has no
-/// unconditional `Clone` impl, only `clone_ref(py)`, which needs a GIL
-/// token — mirrors the GIL-acquisition pattern [`Fn1D::call`]'s own `Py`
-/// arm already uses.
+/// Manual, not derived: `pyo3::Py<PyAny>` has no `Clone`, only `clone_ref(py)`, which needs a GIL
+/// token, so this attaches to the interpreter the way [`Fn1D::call`]'s `Py` arm does.
 impl<T: FloatExt> Clone for Fn1D<T> {
   fn clone(&self) -> Self {
     match self {
@@ -389,6 +387,7 @@ pub enum Fn2D<T: FloatExt> {
   /// market data. Host only, like a closure.
   Grid(Grid2D<T>),
   #[cfg(feature = "python")]
+  #[doc(hidden)]
   Py(pyo3::Py<pyo3::PyAny>),
 }
 
@@ -460,6 +459,7 @@ impl<T: FloatExt> Fn2D<T> {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub struct CallableDist<T: FloatExt> {
   callable: pyo3::Py<pyo3::PyAny>,
   _phantom: std::marker::PhantomData<T>,
@@ -476,7 +476,7 @@ impl<T: FloatExt> CallableDist<T> {
 }
 
 #[cfg(feature = "python")]
-impl<T: FloatExt> rand_distr::Distribution<T> for CallableDist<T> {
+impl<T: FloatExt> rand::distr::Distribution<T> for CallableDist<T> {
   fn sample<R: rand::Rng + ?Sized>(&self, _rng: &mut R) -> T {
     pyo3::Python::attach(|py| {
       let result: f64 = self.callable.call0(py).unwrap().extract::<f64>(py).unwrap();

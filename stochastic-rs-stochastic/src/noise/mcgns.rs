@@ -17,6 +17,8 @@ use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -83,7 +85,7 @@ impl<T: FloatExt, S: SeedExt, B> Mcgns<T, S, B> {
       return;
     }
     let sqrt_dt = self.dt().sqrt();
-    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, seed);
+    let mut normal = SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(seed);
     let mut white = Array2::<T>::zeros((k, self.n));
     for mut row in white.rows_mut() {
       normal.fill_slice(row.as_slice_mut().expect("Mcgns rows must be contiguous"));
@@ -406,6 +408,7 @@ mod tests {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyMcgns {
   inner: Option<Mcgns<f64>>,

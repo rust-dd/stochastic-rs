@@ -149,10 +149,8 @@ impl ImpliedVolSurface {
 
   /// Build a surface directly from a pre-computed implied-vol grid.
   ///
-  /// Useful when the IVs come from an upstream source that already inverted
-  /// (or never needed to invert) Black-Scholes — for example AI surrogates
-  /// such as `stochastic_rs_ai::volatility::HestonNn::predict_surface`,
-  /// which output IVs directly in the standard `(N_T, N_K)` layout.
+  /// Useful when the IVs arrive already inverted. A surrogate's columns follow its own `STRIKES`,
+  /// descending for Heston: use `predict_implied_vol_surface`, which sorts them.
   ///
   /// A `total_variance` cell is NaN wherever the supplied implied volatility
   /// is not finite and positive.
@@ -201,11 +199,8 @@ impl ImpliedVolSurface {
 
   /// Build a surface from an AI surrogate's flat output vector.
   ///
-  /// Bridges `stochastic_rs_ai::volatility::StochVolNn::predict_surface`
-  /// (and the specialized `HestonNn` / `RBergomiNn` / `OneFactorNn` wrappers)
-  /// to the vol-surface pipeline. The neural network returns a flat
-  /// `Vec<f32>` of length `N_T * N_K` in row-major `(maturity, strike)`
-  /// order; this constructor reshapes and lifts to `f64`.
+  /// Bridges a surrogate's `predict_surface` output, flat and row-major `(maturity, strike)`.
+  /// Columns follow its `STRIKES`, descending for Heston: use `predict_implied_vol_surface` there.
   ///
   /// # Arguments
   /// * `strikes` — strike prices in ascending order, length `N_K`
@@ -221,7 +216,7 @@ impl ImpliedVolSurface {
   /// let strikes = vec![90.0, 100.0, 110.0];
   /// let maturities = vec![0.5, 1.0];
   /// let forwards = vec![101.0, 102.0];
-  /// // In practice this comes from `StochVolNn::predict_surface(&params)?`;
+  /// // In practice a surrogate's `predict_surface(&params)?` with ascending `STRIKES`;
   /// // a literal grid keeps this example free of a trained surrogate.
   /// let flat: Vec<f32> = vec![0.22, 0.20, 0.21, 0.24, 0.22, 0.23];
   /// let surf = ImpliedVolSurface::from_flat_iv_grid(
@@ -359,10 +354,6 @@ impl ImpliedVolSurface {
   /// the `(OptionQuote, forwards)` inputs via
   /// [`OptionChain::to_surface_inputs`](crate::market::provider::OptionChain::to_surface_inputs)
   /// with carry $(r, q)$, then runs [`Self::try_from_quotes`].
-  ///
-  /// Works against any [`MarketDataProvider`](crate::market::provider::MarketDataProvider) —
-  /// the in-memory `MockProvider` for offline tests / examples, or the live
-  /// Yahoo connector behind the `yahoo` feature.
   pub fn from_provider<P: crate::market::provider::MarketDataProvider>(
     provider: &P,
     symbol: &str,

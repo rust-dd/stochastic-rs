@@ -5,11 +5,11 @@
 //! the eight distribution-taking types named there, driven at `LAMBDA = 50`
 //! so a jump-component reproducibility bug cannot hide behind a
 //! diffusion-only comparison; `JumpFOUCustom` is the sixth (its jump
-//! timing/size draws use two independent `ScalarExp` distributions instead
-//! of one `ScalarNormal`) and one of the ten backend-generic types besides.
+//! timing/size draws use two independent `SimdExp` distributions instead
+//! of one `SimdNormal`) and one of the ten backend-generic types besides.
 
-use stochastic_rs_distributions::scalar::ScalarExp;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::jump::bates::Bates1996;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGamma;
 use stochastic_rs_stochastic::jump::bilateral_gamma::BilateralGammaMotion;
@@ -44,7 +44,7 @@ guard!(bates1996, "Bates1996", |s| Bates1996::new(
   1.5,
   0.3,
   -0.6,
-  ScalarNormal::new(0.0, 0.05),
+  SimdNormal::new(0.0, 0.05),
   N,
   Some(100.0),
   Some(0.04),
@@ -106,7 +106,7 @@ guard!(jump_fou, "JumpFou", |s| JumpFou::new(
   0.0,
   0.2,
   LAMBDA,
-  ScalarNormal::new(0.0, 0.05),
+  SimdNormal::new(0.0, 0.05),
   N,
   Some(0.0),
   Some(1.0),
@@ -122,8 +122,8 @@ guard!(jump_fou_custom, "JumpFOUCustom", |s| {
     N,
     Some(0.0),
     Some(1.0),
-    ScalarExp::new(20.0),
-    ScalarExp::new(5.0),
+    SimdExp::new(20.0),
+    SimdExp::new(5.0),
     s,
   )
 });
@@ -147,7 +147,7 @@ guard!(kou, "Kou", |s| Kou::new(
   0.2,
   LAMBDA,
   0.0,
-  ScalarNormal::new(0.0, 0.12),
+  SimdNormal::new(0.0, 0.12),
   N,
   Some(0.0),
   Some(1.0),
@@ -158,7 +158,7 @@ guard!(levy_diffusion, "LevyDiffusion", |s| LevyDiffusion::new(
   0.01,
   0.2,
   LAMBDA,
-  ScalarNormal::new(0.0, 0.08),
+  SimdNormal::new(0.0, 0.08),
   N,
   Some(0.0),
   Some(1.0),
@@ -170,7 +170,7 @@ guard!(merton, "Merton", |s| Merton::new(
   0.2,
   LAMBDA,
   0.0,
-  ScalarNormal::new(0.0, 0.1),
+  SimdNormal::new(0.0, 0.1),
   N,
   Some(0.0),
   Some(1.0),

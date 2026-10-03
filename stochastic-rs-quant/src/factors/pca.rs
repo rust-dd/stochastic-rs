@@ -116,6 +116,8 @@ pub fn try_pca_decompose<T: RealExt>(
 #[cfg(test)]
 mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
@@ -126,7 +128,7 @@ mod tests {
 
   #[test]
   fn pca_recovers_single_factor_in_collinear_data() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(7));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(7));
     let mut z = vec![0.0_f64; 200];
     dist.fill_slice(&mut z);
     let mut x = Array2::<f64>::zeros((200, 3));
@@ -142,7 +144,7 @@ mod tests {
 
   #[test]
   fn pca_explained_variance_sums_to_one() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(9));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(9));
     let mut buf = vec![0.0_f64; 200 * 4];
     dist.fill_slice(&mut buf);
     let r = Array2::from_shape_vec((200, 4), buf).unwrap();
@@ -153,7 +155,7 @@ mod tests {
 
   #[test]
   fn pca_loadings_unit_norm() {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(11));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(11));
     let mut buf = vec![0.0_f64; 100 * 3];
     dist.fill_slice(&mut buf);
     let r = Array2::from_shape_vec((100, 3), buf).unwrap();

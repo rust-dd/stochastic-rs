@@ -160,6 +160,8 @@ mod tests {
   use ndarray::Array1;
   use ndarray::Array2;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
@@ -170,7 +172,7 @@ mod tests {
   }
 
   fn normal_pair(n: usize, noise_sigma: f64, seed: u64) -> (Array1<f64>, Array1<f64>) {
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
     let mut x = Array1::zeros(n);
     dist.fill_slice(x.as_slice_mut().unwrap());
     let mut noise = Array1::zeros(n);

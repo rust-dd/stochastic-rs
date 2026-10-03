@@ -4,87 +4,72 @@
 //! f(x)=\frac{\Gamma((\nu+1)/2)}{\sqrt{\nu\pi}\,\Gamma(\nu/2)}\left(1+\frac{x^2}{\nu}\right)^{-(\nu+1)/2}
 //! $$
 //!
-use std::cell::Cell;
-use std::cell::UnsafeCell;
+//! Sampling: `Z/sqrt(V/ν)` with `V ~ χ²_ν`, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §IX.5, DOI 10.1007/978-1-4613-8643-8.
 
 use rand::Rng;
-use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
+use rand::distr::Distribution;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
 use super::chi_square::SimdChiSquared;
+use super::gamma::GammaState;
 use super::normal::SimdNormal;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::Buffered;
+use crate::seeded::StreamState;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 const SMALL_STUDENT_T_THRESHOLD: usize = 16;
 
-pub struct SimdStudentT<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+/// Student's t law with `nu` degrees of freedom: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdStudentT<T> {
   nu: T,
-  normal: SimdNormal<T, 64, R>,
-  chisq: SimdChiSquared<T, R>,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<R>,
-  stream_seed: Cell<u64>,
+  chisq: SimdChiSquared<T>,
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdStudentT<T, R> {
+/// A Student-t stream: the normal and chi-squared sub-streams and the single-draw buffer.
+#[doc(hidden)]
+#[derive(Clone, Debug)]
+pub struct StudentTState<T: SimdFloatExt, R: SimdRngExt> {
+  normal: StreamState<T, R, 64>,
+  chisq: GammaState<T, R>,
+  buf: Buffered<T, 16>,
+}
+
+impl<T: SimdFloatExt> SimdStudentT<T> {
   /// Creates a Student's t-distribution via `Z/sqrt(V/nu)`, `Z` standard
   /// normal, `V ~ ChiSquared(nu)`.
   ///
   /// - `nu` — degrees of freedom ν (matches the module header's ν).
-  ///
-  /// RNGs come from a [`SeedExt`](crate::simd_rng::SeedExt) source; each
-  /// sub-component (normal, chisq, main rng) gets an independent stream.
-  pub fn new<S: crate::simd_rng::SeedExt>(nu: T, seed: &S) -> Self {
-    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
-    let chisq = SimdChiSquared::new(nu, seed);
-    let stream_seed = seed.seed_value();
+  pub fn new(nu: T) -> Self {
+    assert!(
+      nu > T::zero(),
+      "nu must satisfy `nu > T::zero()`, got nu = {nu:?}"
+    );
     Self {
       nu,
-      normal,
-      chisq,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed: Cell::new(stream_seed),
+      chisq: SimdChiSquared::new(nu),
     }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(self.nu, &crate::simd_rng::Deterministic::new(child_seed))
+  /// The degrees of freedom `ν`.
+  pub fn nu(&self) -> T {
+    self.nu
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
-  #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
-  }
-
-  /// Fills `out` using the internal SIMD RNG stream — the only stream this
-  /// sampler draws from (see the crate-level RNG policy).
-  pub fn fill_slice(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
+  fn fill_parts<R: SimdRngExt>(
+    &self,
+    normal: &mut StreamState<T, R, 64>,
+    chisq: &mut GammaState<T, R>,
+    out: &mut [T],
+  ) {
     if out.len() < SMALL_STUDENT_T_THRESHOLD {
       for x in out.iter_mut() {
-        let z = self.normal.sample(rng);
-        let v = self.chisq.sample(rng);
+        let z = SimdNormal::<T>::standard().next(normal);
+        let v = self.chisq.next(chisq);
         *x = z / (v / self.nu).sqrt();
       }
       return;
@@ -94,8 +79,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdStudentT<T, R> {
     let mut vbuf = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.normal.fill_standard_fast(&mut zbuf);
-      self.chisq.fill_slice(&mut vbuf);
+      SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf);
+      self.chisq.fill(chisq, &mut vbuf);
       for (sub, (z8, v8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
         zbuf
           .as_chunks::<8>()
@@ -109,54 +94,74 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdStudentT<T, R> {
     }
     if !rem.is_empty() {
       let n = rem.len();
-      self.normal.fill_standard_fast(&mut zbuf[..n]);
-      self.chisq.fill_slice(&mut vbuf[..n]);
+      SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf[..n]);
+      self.chisq.fill(chisq, &mut vbuf[..n]);
       for i in 0..n {
         rem[i] = zbuf[i] / (vbuf[i] / self.nu).sqrt();
       }
     }
   }
 
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    let z = SimdNormal::<T>::standard().draw_with(rng);
+    let v = self.chisq.draw_with(rng);
+    z / (v / self.nu).sqrt()
   }
 }
 
 /// ν=5 — matches this crate's own `tests/distribution_ext_vs_reference.rs`
 /// fixture, also used by the umbrella crate's workspace-root
 /// `benches/distributions.rs` and `benches/dist_multicore.rs`.
-impl<T: SimdFloatExt, R: SimdRngExt> Default for SimdStudentT<T, R> {
+impl<T: SimdFloatExt> Default for SimdStudentT<T> {
   fn default() -> Self {
-    Self::new(T::from(5.0).unwrap(), &Unseeded)
+    Self::new(T::from(5.0).unwrap())
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdStudentT<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.nu, &Unseeded)
+impl<T: SimdFloatExt> Sealed for SimdStudentT<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdStudentT<T> {
+  type State<R: SimdRngExt> = StudentTState<T, R>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (StudentTState<T, R>, u64) {
+    let (normal, _) = SimdNormal::<T>::standard().init::<R, S>(seed);
+    let (chisq, _) = self.chisq.init::<R, S>(seed);
+    // No engine reads this fourth draw: it is the basis, and it keeps the seed budget later streams depend on.
+    let basis = seed.next_seed();
+    (
+      StudentTState {
+        normal,
+        chisq,
+        buf: Buffered::new(),
+      },
+      basis,
+    )
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdStudentT<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction. Use `Deterministic`
-  /// in the constructor for reproducibility.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
+impl<T: SimdFloatExt> SimdKernel for SimdStudentT<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut StudentTState<T, R>, out: &mut [T]) {
+    self.fill_parts(&mut state.normal, &mut state.chisq, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut StudentTState<T, R>) -> T {
+    let StudentTState { normal, chisq, buf } = state;
+    buf.pop(|b| self.fill_parts(normal, chisq, b))
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdStudentT<T, R> {
+impl<T: SimdFloatExt> Distribution<T> for SimdStudentT<T> {
+  /// `Z/sqrt(V/ν)` from one scalar normal and one scalar chi-squared draw on the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
   fn pdf(&self, x: f64) -> f64 {
     let nu = self.nu.to_f64().unwrap();
     // f(x) = Γ((ν+1)/2) / (√(νπ) Γ(ν/2)) · (1 + x²/ν)^(−(ν+1)/2)
@@ -294,7 +299,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdStud
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::SimdRng;
+
   use super::*;
+  use crate::tests::scalar_ks_best_p;
   use crate::traits::DistributionExt;
 
   /// Backs the doc comments on `mean`/`variance`/`skewness`/`kurtosis`:
@@ -304,7 +312,7 @@ mod tests {
   /// inside kurtosis's divergent-but-defined middle band (`2 < nu <= 4`).
   #[test]
   fn studentt_low_nu_moments_match_documented_thresholds() {
-    let t = SimdStudentT::<f64>::new(3.0, &Unseeded);
+    let t = SimdStudentT::<f64>::new(3.0);
     assert_eq!(t.mean(), 0.0, "nu=3 > 1, mean should be 0");
     assert!(
       t.variance().is_finite(),
@@ -332,7 +340,7 @@ mod tests {
   /// a kurtosis from at all).
   #[test]
   fn studentt_nu_two_variance_diverges_kurtosis_is_nan() {
-    let t = SimdStudentT::<f64>::new(2.0, &Unseeded);
+    let t = SimdStudentT::<f64>::new(2.0);
     assert_eq!(t.mean(), 0.0, "nu=2 > 1, mean should be 0");
     assert_eq!(
       t.variance(),
@@ -348,7 +356,7 @@ mod tests {
   /// At `nu = 1` (Cauchy) neither mean nor variance exists.
   #[test]
   fn studentt_nu_one_is_cauchy_like() {
-    let t = SimdStudentT::<f64>::new(1.0, &Unseeded);
+    let t = SimdStudentT::<f64>::new(1.0);
     assert!(t.mean().is_nan(), "nu=1 has no mean");
     assert!(t.variance().is_nan(), "nu=1 has no variance");
   }
@@ -356,11 +364,37 @@ mod tests {
   /// Above every threshold, all four moments must be finite real numbers.
   #[test]
   fn studentt_high_nu_moments_are_all_finite() {
-    let t = SimdStudentT::<f64>::new(10.0, &Unseeded);
+    let t = SimdStudentT::<f64>::new(10.0);
     assert!(t.mean().is_finite());
     assert!(t.variance().is_finite());
     assert!(t.skewness().is_finite());
     assert!(t.kurtosis().is_finite());
+  }
+
+  /// The honest `Distribution` draws from the caller's rng and agrees with the cdf.
+  #[test]
+  fn scalar_sample_matches_cdf() {
+    let d = SimdStudentT::<f64>::new(6.0);
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+    assert!(best > 0.01, "best p = {best}");
+  }
+
+  /// Every 5-wide `fill_with` builds a fresh stream from the caller's rng and takes the small-slice path.
+  #[test]
+  fn fill_with_is_deterministic_in_the_caller_rng() {
+    let d = SimdStudentT::<f64>::new(6.0);
+    let fill = |seed: u64| {
+      let mut rng = SimdRng::from_seed(seed);
+      let mut out = [0.0f64; 5];
+      (0..4_000)
+        .flat_map(|_| {
+          d.fill_with(&mut rng, &mut out);
+          out.map(f64::to_bits)
+        })
+        .collect::<Vec<_>>()
+    };
+    assert_eq!(fill(5), fill(5));
+    assert_ne!(fill(5), fill(6));
   }
 }
 

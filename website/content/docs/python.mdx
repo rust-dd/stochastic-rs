@@ -28,7 +28,7 @@ Python entry, so this is the only correct place to count from.
 
 See [Installation (Python)](/docs/getting-started/installation-python).
 
-The neural surrogates (`HestonNn`, `RBergomiNn`, `OneFactorNn`) and
+The experimental neural surrogates (`HestonNn`, `RBergomiNn`, `OneFactorNn`) and
 `calibrate_surrogate` are not in the published wheels — candle is heavy — and
 come with a source build: `maturin develop --features ai` from the workspace
 root. The same goes for the device back-ends of the Euler engine and the fGN
@@ -187,6 +187,9 @@ SKILL (comprehensive) or
   optional argument to `.sample(n, seed=None)`. Either way, pass an
   explicit seed for tests; rely on the thread-local default for
   production sampling.
+- **One distribution object, many threads**. Calls on a distribution such as `PyNormal` draw with the GIL released and
+  take turns on the object's lock, continuing its one stream, so `sample(n)` from several threads returns disjoint
+  consecutive blocks; give each thread its own object and seed for independent streams.
 - **Dtype shims**. `IntoF32` / `IntoF64` shims convert Python `float`
   parameters to the requested dtype. **All distribution parameters are
   `f64`-typed** in the macro — the shim handles down-conversion to `f32`

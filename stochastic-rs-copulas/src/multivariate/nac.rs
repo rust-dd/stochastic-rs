@@ -62,13 +62,14 @@
 //!   *Journal of Statistical Computation and Simulation* 78(6), 567-581.
 
 use std::error::Error;
-use std::f64;
 
 use ndarray::Array1;
 use ndarray::Array2;
 use rand::Rng;
+use rand::RngExt;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SimdRng;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::gamma::SimdGamma;
 
 use super::CopulaType;
@@ -287,7 +288,7 @@ impl NestedArchimedean {
   fn positive_stable<R: Rng + ?Sized>(rng: &mut R, alpha: f64) -> f64 {
     debug_assert!(alpha > 0.0 && alpha < 1.0);
     let u: f64 = rng.random::<f64>().clamp(1e-15, 1.0 - 1e-15);
-    let theta = f64::consts::PI * u;
+    let theta = std::f64::consts::PI * u;
     let w_uniform: f64 = rng.random::<f64>().clamp(1e-15, 1.0 - 1e-15);
     let w = -w_uniform.ln();
     let s_a = (alpha * theta).sin();
@@ -336,8 +337,9 @@ impl NestedArchimedean {
         // fires on every row (the root frailty has no parent to inherit
         // determinism from).
         let sub_seed = rng.random::<u64>();
-        let g = SimdGamma::<f64>::new(1.0 / node.theta, 1.0, &Deterministic::new(sub_seed));
-        g.sample_fast()
+        let mut g =
+          SimdGamma::<f64>::new(1.0 / node.theta, 1.0).seeded(&Deterministic::new(sub_seed));
+        g.sample()
       }
       (NacFamily::Gumbel, None) => {
         // Root Gumbel frailty: V ~ S_+(1/θ). The θ = 1 case is the

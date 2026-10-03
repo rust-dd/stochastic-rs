@@ -48,7 +48,7 @@
 //! exactly that fitted-parameter case. This test does not implement the
 //! Lilliefors correction, and does not need to: every caller in this
 //! workspace constructs the candidate distribution with parameters
-//! chosen *before* sampling (e.g. `SimdGamma::new(2.5, 1.5, seed)`) and
+//! chosen *before* sampling (e.g. `SimdGamma::new(2.5, 1.5).seeded(seed)`) and
 //! tests the resulting draws against that same, already-fixed `cdf` —
 //! the parameters are never re-estimated from the sample under test, so
 //! the plain (non-Lilliefors) table is the correct one. A future caller
@@ -206,6 +206,8 @@ mod tests {
   use ndarray::ArrayView1;
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::DistributionExt;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
   use stochastic_rs_distributions::uniform::SimdUniform;
 
@@ -244,9 +246,9 @@ mod tests {
     let best_p = [42u64, 999, 2718]
       .into_iter()
       .map(|seed| {
-        let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
+        let dist = SimdNormal::<f64>::new(0.0, 1.0);
         let mut x = vec![0.0; 5_000];
-        dist.fill_slice(&mut x);
+        dist.seeded(&Deterministic::new(seed)).fill_slice(&mut x);
         kolmogorov_smirnov_test(
           ArrayView1::from(&x),
           |v| dist.cdf(v),
@@ -264,10 +266,10 @@ mod tests {
   /// A uniform sample tested against a standard normal CDF must reject.
   #[test]
   fn rejects_uniform_against_normal_cdf() {
-    let dist = SimdUniform::<f64>::new(0.0, 1.0, &Deterministic::new(1));
+    let mut dist = SimdUniform::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(1));
     let mut x = vec![0.0; 2_000];
     dist.fill_slice(&mut x);
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(1));
+    let normal = SimdNormal::<f64>::new(0.0, 1.0);
     let res = kolmogorov_smirnov_test(
       ArrayView1::from(&x),
       |v| normal.cdf(v),

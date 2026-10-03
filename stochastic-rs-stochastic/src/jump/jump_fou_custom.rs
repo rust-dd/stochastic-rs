@@ -4,13 +4,17 @@
 //! dX_t=\kappa(\theta-X_t)dt+\sigma dB_t^H+dJ_t
 //! $$
 //!
+mod params;
+
 use std::any::Any;
 
 use ndarray::Array1;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -33,74 +37,35 @@ use crate::traits::ProcessExt;
 /// used to read `fgn.sampler()`, which draws from `fgn`'s own dead
 /// `Unseeded` field; fixed since the field is private and non-breaking to
 /// rewire.)
+///
+/// Fields are private: the fGN driver caches a spectrum derived from `hurst`, `n` and `t`, so
+/// parameters are read through getters and changed through the cache-rebuilding `with_*` setters.
+///
+/// ```compile_fail,E0616
+/// use stochastic_rs_core::simd_rng::Unseeded;
+/// use stochastic_rs_distributions::normal::SimdNormal;
+/// use stochastic_rs_stochastic::jump::jump_fou_custom::JumpFOUCustom;
+/// let times = SimdNormal::<f64>::new(0.5, 0.01);
+/// let sizes = SimdNormal::<f64>::new(0.0, 0.1);
+/// let mut p = JumpFOUCustom::new(0.7, 1.0, 0.0, 0.2, 10, None, None, times, sizes, Unseeded);
+/// p.n = 1000;
+/// ```
 pub struct JumpFOUCustom<T, D, S: SeedExt = Unseeded, B = Cpu>
 where
   T: FloatExt,
   D: Distribution<T> + Send + Sync,
 {
-  /// Hurst exponent H of the driving fractional Gaussian noise (roughness
-  /// / long-memory of the diffusion part; H = 0.5 recovers a standard
-  /// OU-with-jumps).
-  pub hurst: T,
-  /// Mean-reversion speed (κ in the module header's `dX_t=κ(θ−X_t)dt+...`).
-  /// Multiplies `(mu - X_t)`, despite the field's own name.
-  pub theta: T,
-  /// Long-run mean level (θ in the module header). The level `X` reverts
-  /// to between jumps.
-  pub mu: T,
-  /// Diffusion scale for the fractional-Gaussian-noise term (σ in the
-  /// module header).
-  pub sigma: T,
-  /// Number of points sampled along the fOU-plus-jumps path.
-  pub n: usize,
-  /// Initial value X₀ of the fOU-plus-jumps path.
-  pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
-  pub t: Option<T>,
-  /// User-supplied inter-arrival-time distribution for jumps (must sample
-  /// strictly positive values).
-  pub jump_times: D,
-  /// User-supplied jump-size distribution added directly to the path at
-  /// each jump.
-  pub jump_sizes: D,
+  hurst: T,
+  theta: T,
+  mu: T,
+  sigma: T,
+  n: usize,
+  x0: Option<T>,
+  t: Option<T>,
+  jump_times: D,
+  jump_sizes: D,
   fgn: Fgn<T, Unseeded, B>,
-  /// Seed strategy (compile-time: `Unseeded` or `Deterministic`).
-  pub seed: S,
-}
-
-impl<T, D, S: SeedExt> JumpFOUCustom<T, D, S, Cpu>
-where
-  T: FloatExt,
-  D: Distribution<T> + Send + Sync,
-{
-  pub fn new(
-    hurst: T,
-    theta: T,
-    mu: T,
-    sigma: T,
-    n: usize,
-    x0: Option<T>,
-    t: Option<T>,
-    jump_times: D,
-    jump_sizes: D,
-    seed: S,
-  ) -> Self {
-    assert!(n >= 2, "n must be at least 2");
-
-    Self {
-      hurst,
-      mu,
-      sigma,
-      theta,
-      n,
-      x0,
-      t,
-      jump_times,
-      jump_sizes,
-      fgn: Fgn::new(hurst, n - 1, t, Unseeded),
-      seed,
-    }
-  }
+  seed: S,
 }
 
 impl<T, D, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
@@ -131,7 +96,7 @@ where
       x0: self.x0.unwrap_or(T::zero()),
       dt: self.fgn.dt(),
       fgn: &self.fgn,
-      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed.derive()),
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed.derive()),
       jump_times: &self.jump_times,
       jump_sizes: &self.jump_sizes,
       rng: self.seed.rng(),
@@ -221,7 +186,7 @@ where
   x0: T,
   dt: T,
   fgn: &'a Fgn<T, Unseeded, B>,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
   jump_times: &'a D,
   jump_sizes: &'a D,
   rng: SimdRng,
@@ -244,7 +209,7 @@ where
       return;
     }
 
-    let mut fgn = Array1::<T>::zeros(self.fgn.out_len);
+    let mut fgn = Array1::<T>::zeros(self.fgn.n());
     self
       .fgn
       .fill_cpu(&mut self.normal, fgn.as_slice_mut().unwrap());
@@ -350,14 +315,7 @@ where
   }
 
   fn fgn_spec(&self) -> Option<crate::euler::FgnSpec<'_, T>> {
-    Some(crate::euler::FgnSpec {
-      sqrt_eigenvalues: self.fgn.sqrt_eigenvalues.as_slice().expect("contiguous"),
-      n: self.fgn.n,
-      offset: self.fgn.offset,
-      hurst: self.fgn.hurst.to_f64().unwrap_or(0.5),
-      t: self.fgn.t.unwrap_or(T::one()).to_f64().unwrap_or(1.0),
-      streams: 1,
-    })
+    Some(self.fgn.fgn_spec(1))
   }
 
   /// The Poisson intensity the exponential inter-arrival law amounts to. A
@@ -395,7 +353,7 @@ backend_switch!([T, D, S: SeedExt] JumpFOUCustom<T, D, S> { hurst, theta, mu, si
 
 #[cfg(test)]
 mod tests {
-  use rand_distr::Distribution;
+  use rand::distr::Distribution;
 
   use super::*;
   use crate::traits::ProcessExt;
@@ -432,6 +390,7 @@ mod tests {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyJumpFOUCustom {
   inner_f32: Option<JumpFOUCustom<f32, crate::traits::CallableDist<f32>>>,
@@ -505,6 +464,8 @@ impl PyJumpFOUCustom {
     })
   }
 
+  /// `m` paths as an `(m, n)` array. The GIL is released while they are generated; the Python
+  /// laws run on rayon workers, one call at a time.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,
@@ -517,16 +478,16 @@ impl PyJumpFOUCustom {
 
       use crate::traits::ProcessExt;
       if let Some(ref inner) = self.inner_f64 {
-        let paths = inner.sample_par(m);
-        let n = paths[0].len();
+        let paths = py.detach(|| inner.sample_par(m));
+        let n = paths.first().map_or(0, |p| p.len());
         let mut result = Array2::<f64>::zeros((m, n));
         for (i, path) in paths.iter().enumerate() {
           result.row_mut(i).assign(path);
         }
         result.into_pyarray(py).into_py_any(py).unwrap()
       } else if let Some(ref inner) = self.inner_f32 {
-        let paths = inner.sample_par(m);
-        let n = paths[0].len();
+        let paths = py.detach(|| inner.sample_par(m));
+        let n = paths.first().map_or(0, |p| p.len());
         let mut result = Array2::<f32>::zeros((m, n));
         for (i, path) in paths.iter().enumerate() {
           result.row_mut(i).assign(path);

@@ -97,6 +97,8 @@ mod tests {
   use ndarray::array;
   use ndarray::stack;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
@@ -124,7 +126,7 @@ mod tests {
   /// binding — this is `GaussianUnivariate`'s equivalent real call site).
   #[test]
   fn gaussian_univariate_output_feeds_a_real_bivariate_copula() {
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(11));
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(11));
     let mut x = Array1::<f64>::zeros(600);
     normal.fill_slice(x.as_slice_mut().unwrap());
     let mut y = Array1::<f64>::zeros(600);

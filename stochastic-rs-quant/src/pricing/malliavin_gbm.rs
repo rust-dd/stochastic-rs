@@ -106,9 +106,8 @@ fn laplace_cdf(x: f64, l: f64) -> f64 {
 /// the estimator a *function* of its query.
 ///
 /// The seed reaches the Gaussian stream through the constructor chain
-/// `Gbm::new(…, seed) → SimdNormal::new(…, &seed)` and never through an
-/// `Rng` argument, which the workspace's SIMD distributions accept and
-/// ignore.
+/// `Gbm::new(…, seed) → SimdNormal::new(…).seeded(&seed)` and never through an
+/// `Rng` argument.
 ///
 /// `sample_paths` hands the process a **clone** of
 /// this seed rather than a derived child, so the pricer's own state does

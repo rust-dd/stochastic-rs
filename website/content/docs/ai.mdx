@@ -1,7 +1,7 @@
 ---
 title: AI surrogates
 seo_title: Neural volatility surrogates in Rust
-description: Neural-network volatility surrogates — Heston, one-factor Bergomi, rough Bergomi. Trained offline, inference at sub-millisecond speeds via candle.
+description: Experimental neural volatility surrogates for Heston, one-factor Bergomi and rough Bergomi, trained offline with sub-millisecond inference via candle.
 category: ai
 since: 2.0.0
 status: experimental
@@ -12,89 +12,87 @@ The `stochastic-rs-ai` crate ships neural-network volatility surrogates
 for fast pricing / calibration. The crate is feature-gated behind
 `ai`; it pulls in `candle-core` for the inference runtime.
 
-> **Status: experimental.** The surrogates are useful for warm-starting
-> a calibrator or for sub-millisecond price approximations in a feedback
-> loop, not as the primary pricing surface for production trading.
+> **Status: experimental.** `stochastic-rs-ai` is outside the stability
+> promise of stochastic-rs 3.x: its API, the saved-model format and the candle
+> types in its signatures (`candle_core::Device`) can change in any release, and
+> no pretrained weights are published. The surrogates are useful for
+> warm-starting a calibrator or for sub-millisecond price approximations in a
+> feedback loop, not as the primary pricing surface for production trading.
 
 ## Models shipped
 
-| Model              | Spec module                                | Training-set archive            |
-|--------------------|--------------------------------------------|----------------------------------|
-| **Heston**         | `volatility::heston::HestonNn`             | `HestonTrainSet.txt.gz`          |
-| **One-factor Bergomi** | `volatility::one_factor::OneFactorNn`  | `Bergomi1FactorTrainSet.txt.gz`  |
-| **Rough Bergomi**  | `volatility::rbergomi::RBergomiNn`         | `rBergomiTrainSet.txt.gz`        |
+| Model                  | Spec module                           | Training set (repository only, `stochastic-rs-ai/tests/data`) |
+|------------------------|---------------------------------------|---------------------------------------------------------------|
+| **Heston**             | `volatility::heston::HestonNn`        | `HestonTrainSet.txt.gz`                                       |
+| **One-factor Bergomi** | `volatility::one_factor::OneFactorNn` | `Bergomi1FactorTrainSet.txt.gz`                               |
+| **Rough Bergomi**      | `volatility::rbergomi::RBergomiNn`    | `rBergomiTrainSet.txt.gz`                                     |
+
+The training sets are copies of the
+[NN-StochVol-Calibrations](https://github.com/amuguruza/NN-StochVol-Calibrations/tree/master/Data)
+data (MIT, © 2019 Aitor Muguruza) and are not part of the crates.io package.
+
+## The grid
+
+All three surrogates predict an implied-volatility surface on one fixed grid:
+11 strike nodes from 0.5 to 1.5 and 8 maturities from 0.1 to 2.0 years, at zero
+rates — a flat, maturity-major vector of 88 values
+(`volatility::grid::{MONEYNESS, MATURITIES}`). A grid of another size returns `Err`; the
+values are not checked, so pass the model's `STRIKES` (times the spot) and
+`grid::MATURITIES`.
+
+- `one_factor::STRIKES` and `rbergomi::STRIKES` are the nodes as `K / S0`, ascending
+  from 0.5 to 1.5.
+- The shipped Heston set is indexed by inverse moneyness `S0 / K`, so
+  `heston::STRIKES` (`K / S0`) descends from 2 to 2/3; `predict_implied_vol_surface`
+  sorts the strikes it is given into ascending order.
 
 ## How they work
 
-Each surrogate maps `(model parameters, strike grid, expiry grid) →
-implied-vol surface`. The surrogate is a small MLP (3–5 hidden layers)
-trained offline on a Fourier-pricer-generated dataset. At inference
-time the pipeline is:
+Each surrogate maps `model parameters → implied-vol surface` on the grid
+above. The surrogate is a small MLP (three hidden ELU layers of width 30,
+`hidden_dim` widens them) trained offline on a pricer-generated dataset. At
+inference time the pipeline is:
 
-1. Normalise the inputs via `BoundedScaler` / `StandardScaler`.
+1. Scale the parameters to `[-1, 1]` with the training box (`PARAM_LB` /
+   `PARAM_UB`); values outside the box are not clamped.
 2. Forward-pass through the MLP.
-3. Denormalise the output to a flat IV grid.
-4. Hand the grid to `ImpliedVolSurface::from_flat_iv_grid` for
-   downstream pricing or smile / skew analytics.
+3. De-standardise the output with the training-set mean and standard deviation
+   to a flat IV grid.
+4. `predict_implied_vol_surface` (feature `quant`) hands the grid to
+   `ImpliedVolSurface::from_iv_grid` for downstream pricing or smile / skew
+   analytics.
 
 ## Example — Heston surrogate inference
 
-`HestonNn` is not generic and is not constructed from a bare path string —
-`load` takes a model directory plus a `candle_core::Device`, and
-`predict_surface` takes a fixed-size `[f32; INPUT_DIM]` parameter array
-(`INPUT_DIM = 5`) rather than separate strike/expiry vectors (the strike
-and maturity grid is baked into the training set; use
-`predict_implied_vol_surface`, gated behind this crate's own `quant`
-feature, to get a full `ImpliedVolSurface` back). That grid is **not**
-arbitrary: `strikes.len() * maturities.len()` must equal the model's
-`OUTPUT_DIM`, which for `HestonNn` is fixed at `88` — any other shape
-returns `Err("model output_dim 88 does not match strikes×maturities …")`.
-No trained `.safetensors` model ships in this repository — only the
-gzip-npy training sets the round-trip test consumes — so this block is
-illustrative rather than compiled:
+`HestonNn` is not generic. `load` takes a model directory plus a
+`candle_core::Device`, and `predict_surface` takes a fixed-size `[f32; INPUT_DIM]`
+parameter array (`INPUT_DIM = 5`). `predict_implied_vol_surface`, behind this
+crate's own `quant` feature, returns a full `ImpliedVolSurface`: pass the model's
+`STRIKES` scaled by the spot and `grid::MATURITIES`, with the forward of every
+maturity — equal to the spot at zero rates. No trained `.safetensors` model ships
+with the crate, so the example trains a throwaway network on a synthetic target and
+reloads it the way a trained model travels.
 
 <Tabs items={['Rust']}>
 <Tab value="Rust">
-```rust
-use candle_core::Device;
-use stochastic_rs::ai::volatility::heston;
-use stochastic_rs::ai::volatility::heston::HestonNn;
-
-let device = Device::Cpu;
-let nn = HestonNn::load("path/to/trained/heston", &device)?;
-
-// Five parameters, each within `heston::PARAM_LB` / `heston::PARAM_UB`
-// (module constants, not associated ones):
-//   LB = [0.0001, -0.95, 0.01, 0.01, 1.0]
-//   UB = [0.04,   -0.1,  1.0,  0.2,  10.0]
-// `BoundedScaler` does not clamp, so out-of-range values are silently
-// mapped outside the training domain.
-let params: [f32; heston::INPUT_DIM] = [0.03, -0.5, 0.3, 0.04, 2.0];
-
-// 11 strikes x 8 maturities = 88 = heston::OUTPUT_DIM.
-let strikes: Vec<f64> = (0..11).map(|i| 70.0 + 6.0 * i as f64).collect();
-let maturities = vec![0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0];
-let forwards = vec![100.0; maturities.len()];
-
-// Inference returns a full ImpliedVolSurface in <1ms
-let surface = nn.predict_implied_vol_surface(&params, strikes, maturities, forwards)?;
-// `ivs` is the raw (maturities x strikes) grid; there is no `iv_at(k, t)`
-// point-query helper today, so read it directly or use `smile_slice`.
-println!("1y smile: {:?}", surface.smile_slice(/* maturity_idx */ 4));
-```
+<RustExample path="tests/doctest_ai_surrogate_inference.rs" />
 </Tab>
 </Tabs>
 
 ## Training round-trip
 
-Every surrogate ships a `train_save_load_<model>` integration test that:
+Every surrogate carries a `train_save_load_roundtrip` unit test that:
 
-1. Loads a known training-set archive
+1. Generates a small synthetic training set
 2. Trains the MLP for a few epochs
-3. Saves to `safetensors`
+3. Saves the `safetensors` weights and a `metadata.txt` to a directory
 4. Reloads and asserts inference parity
 
-This guards the on-disk format from silent regressions.
+This guards the on-disk format from silent regressions. The integration test
+`stochastic-rs-ai/tests/real_trainsets.rs` trains each surrogate on the first 2 000 rows of its
+training set, checks the parameters stay inside the training box and that the
+validation error falls, and prices the Heston set with the Fourier pricer to pin
+its strike axis.
 
 ## Calibrating with a surrogate
 
@@ -114,7 +112,9 @@ works on any `StochVolNn`; `HestonSurrogateCalibrator` and
 / `RBergomiParams` and implement `Calibrator` + `ToModel`, so the fitted
 surrogate drops straight into the vol-surface pipeline. The result reports
 whether $\hat\theta$ stayed inside the training box: the network is untrained
-outside it, and a solution on the boundary is a warning, not an answer.
+outside it, and a solution on the boundary is a warning, not an answer. The market
+surface must be given on the surrogate's own grid (`heston::STRIKES` for Heston), so
+interpolate quotes onto it first.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -161,6 +161,6 @@ let mut model = HestonNn::new(&device)?;      // trains and predicts on that dev
 
 See the
 [`vol-surrogate-nn`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/vol-surrogate-nn/SKILL.md)
-SKILL. It covers `StochVolModelSpec`, `BoundedScaler` / `StandardScaler`
-conventions, gzip-npy training-set loading, the round-trip test, and
-`predict_surface` integration with `ImpliedVolSurface::from_flat_iv_grid`.
+SKILL. It covers `StochVolModelSpec`, the grid constants, gzip-npy training-set
+loading, the round-trip test, and `predict_implied_vol_surface` integration with
+`ImpliedVolSurface`.

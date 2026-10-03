@@ -54,42 +54,41 @@ Do not rewrite algorithms that already exist in well-maintained crates (e.g., `f
 
 Randomness is the standing exception — see §7a.
 
-## 7a. `rand` and `rand_distr` belong to benchmarks only
+## 7a. `rand::rng()` and `rand_distr` belong to benchmarks only
 
 Library code, tests and examples draw randomness from the workspace's own
-RNG and distributions. `rand::rng()`, `rand::thread_rng()` and every
-concrete `rand_distr` distribution (`Normal`, `Exp`, `Gamma`, `Poisson`,
-`StandardNormal`, …) are reserved for `benches/` and the `src/tests/bench_*`
-plot harnesses, where `rand_distr` is the *baseline being measured* and
-must stay.
+RNG and distributions. `rand::rng()` and every concrete `rand_distr`
+distribution (`Normal`, `Exp`, `Gamma`, `Poisson`, `StandardNormal`, …) are
+reserved for `benches/` and the `src/tests/bench_*` plot harnesses, where
+`rand_distr` is a dev-dependency (of the umbrella and
+`stochastic-rs-distributions`, the only crates that declare it) and the
+*baseline being measured*. The `rand` crate itself stays a dependency for
+its traits (`Rng`, `RngExt`, `rand::distr::Distribution`,
+`rand::seq::SliceRandom`).
 
 | Need | Use |
 |------|-----|
 | A raw RNG | `SimdRng::new()`, or `SimdRng::from_seed(s)` when reproducible |
 | Bulk Gaussian / exponential / … draws | `SimdNormal`, `SimdExp`, `SimdGamma`, `SimdPoisson`, seeded via `Deterministic::new(s)` or `Unseeded` |
-| A distribution a *process* will drive (`D: Distribution<T> + Send + Sync`) | `ScalarNormal`, `ScalarExp` from `stochastic_rs_distributions::scalar` |
+| A distribution a *process* will drive (`D: Distribution<T> + Send + Sync`) | the stateless `SimdNormal`, `SimdExp`, ... themselves |
 
-The last row is not a style preference. `Simd*` distributions own an
-`UnsafeCell` sample buffer, so they are `!Sync` by construction and cannot
-satisfy the `Send + Sync` bound that `ProcessExt` propagates into the
-jump-size slot of `CompoundPoisson`, `Bates1996`, `LevyDiffusion` and
-`JumpFOUCustom`. The stateless `Scalar*` types sample from the caller's
-RNG and exist precisely for that slot.
+A process's jump-size slot takes any scalar continuous `Simd*` law except `SimdNonCentralChiSquared` (its noncentrality
+is a per-draw argument): it holds parameters only, so it is `Send + Sync`, and `Distribution::sample(&mut rng)` draws
+from the generator the process passes. A `Seeded` stream is not a law.
 
 Two traps worth naming:
 
-- **`fill_slice(out)` takes no RNG at all.** Every `Simd*` bulk fill is
-  `pub fn fill_slice(&self, out: &mut [T])` — one argument. The type
-  draws from its own internal stream, seeded at construction, so there
-  is nowhere to hand an external `StdRng`; the seed must go to the
-  constructor (`SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42))`).
-  Older notes describing a two-argument `fill_slice(_rng, out)` that
-  ignored its first parameter, or a `fill_slice_fast` companion, are
-  stale: neither exists.
-- **The `rand_distr::Distribution` trait import stays.** Our own `Simd*`
-  types implement it, so `use rand_distr::Distribution;` is still how
-  `.sample()` resolves. Removing those impls would break downstream users;
-  only the concrete `rand_distr` *distributions* are out.
+- **The stream lives in `Seeded`.** A ported `Simd*` law holds parameters
+  only; `.seeded(&Deterministic::new(42))` binds it to a stream, and
+  `sample` / `fill_slice` / `sample_n` / `sample_matrix` then run on
+  `&mut self` (`SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(42))`).
+  `fill_slice(out)` takes no RNG: the seed goes to `.seeded`, never to a
+  draw; a bulk fill driven by an external rng is `fill_with(&mut rng, out)`.
+- **Name the trait through `rand::distr::Distribution`.** `rand_distr` is
+  not a dependency of any library crate (only a dev-dependency of the
+  umbrella and `stochastic-rs-distributions`), so library code cannot
+  import it; our own `Simd*` types implement the same trait, which is how
+  `.sample()` resolves. Removing those impls would break downstream users.
 
 ## 8. Latest dependency versions
 
@@ -171,3 +170,7 @@ impl Foo for Bar {
   }
 }
 ```
+
+## 13. Library diagnostics go through `log`
+
+Library code reports through the `log` facade (`log::warn!`, `log::trace!`), never `eprintln!`, and never installs a subscriber; binaries, benches and tests do.

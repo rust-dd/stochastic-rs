@@ -33,7 +33,6 @@
 //! probabilities", *Ann. Math. Statist.* 27(4), 1075-1090.
 
 use std::error::Error;
-use std::f64;
 
 use ndarray::Array1;
 use ndarray::Array2;

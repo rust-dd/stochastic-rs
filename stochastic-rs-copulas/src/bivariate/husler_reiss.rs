@@ -30,7 +30,6 @@
 //! Probab. Lett.* 7(4), 283-286.
 
 use std::error::Error;
-use std::f64;
 
 use ndarray::Array1;
 use ndarray::Array2;

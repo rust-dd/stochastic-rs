@@ -1,6 +1,8 @@
 use ndarray::Array1;
 use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::pareto::SimdPareto;
 
 use super::*;
@@ -168,7 +170,7 @@ fn hill_recovers_a_pareto_tail_index() {
   let closest = [2718u64, 999, 42]
     .into_iter()
     .map(|seed| {
-      let dist = SimdPareto::<f64>::new(1.0, 3.0, &Deterministic::new(seed));
+      let mut dist = SimdPareto::<f64>::new(1.0, 3.0).seeded(&Deterministic::new(seed));
       let mut xs = vec![0.0; 20_000];
       dist.fill_slice(&mut xs);
       let h = hill_estimator(Array1::from(xs).view(), 500);

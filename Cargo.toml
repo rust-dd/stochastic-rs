@@ -17,45 +17,41 @@ rust-version = "1.89"
 [workspace.dependencies]
 anyhow = "1.0.89"
 basin = { version = "1.11.0", default-features = false }
-candle-core = "0.9.2"
-candle-datasets = "0.9.2"
-candle-nn = "0.9.2"
+candle-core = "0.11.0"
+candle-nn = "0.11.0"
 chrono = "0.4.38"
 criterion = { version = "0.8", features = ["html_reports"] }
 cudarc = { version = "0.19.2", features = ["cuda-12080", "cuda-version-from-build-system"] }
-faer = "0.24.4"
+faer = { version = "0.24.4", default-features = false, features = ["std", "rayon", "sparse-linalg"] }
 faer-ext = { version = "0.8.0", features = ["ndarray"] }
 flate2 = "1.1.2"
 gauss-quad = "0.3.1"
-hotpath = "0.14"
 implied-vol = "2.0.0"
 kendalls = "1.0.0"
 libm = "0.2.16"
 linreg = "0.2.0"
+log = "0.4.34"
 metal = "0.33.0"
-mimalloc = "0.1.48"
 ndarray = { version = "0.17.2", features = ["rayon", "matrixmultiply-threading"] }
 ndarray-npy = "0.10.0"
 ndrustfft = "0.6.2"
-num-complex = { version = "0.4.6", features = ["rand"] }
+num-complex = "0.4.6"
 num-traits = "0.2.19"
-numpy = "0.28"
+numpy = "0.29"
 ordered-float = "5.0.0"
 owens-t = "0.1.5"
 parking_lot = "0.12.5"
-plotly = { version = "0.10.0", features = ["plotly_ndarray"] }
-polars = { version = "0.43.1", features = ["lazy"] }
-pyo3 = { version = "0.28", features = ["extension-module", "chrono"] }
+plotly = "0.14.1"
+pyo3 = { version = "0.29.3", features = ["chrono"] }
 quadrature = "0.1.2"
-rand = "0.9.2"
-rand_distr = "0.5.1"
+rand = "0.10.3"
+rand_distr = "0.6.0"
 rayon = "1.11.0"
 roots = "0.0.8"
-scilib = "1.0.0"
 slsqp = "1.0.0"
 # `statrs` is dev-deps only — used for cross-validating our closed-form
 # `DistributionExt` impls. Production code never delegates to it.
-statrs = "0.18.0"
+statrs = "0.19.1"
 stochastic-rs-ai = { path = "stochastic-rs-ai", version = "3.0.0-rc.4" }
 stochastic-rs-copulas = { path = "stochastic-rs-copulas", version = "3.0.0-rc.4" }
 stochastic-rs-core = { path = "stochastic-rs-core", version = "3.0.0-rc.4" }
@@ -64,11 +60,7 @@ stochastic-rs-quant = { path = "stochastic-rs-quant", version = "3.0.0-rc.4" }
 stochastic-rs-stats = { path = "stochastic-rs-stats", version = "3.0.0-rc.4" }
 stochastic-rs-stochastic = { path = "stochastic-rs-stochastic", version = "3.0.0-rc.4" }
 syn = { version = "3.0.3", default-features = false, features = ["full", "parsing"] }
-tikv-jemallocator = "0.6.1"
-time = { version = "0.3.36", features = ["formatting", "parsing"] }
-tokio-test = "0.4.4"
 wide = "1.6.1"
-yahoo_finance_api = "2.3.0"
 
 [package]
 name = "stochastic-rs"
@@ -86,38 +78,12 @@ categories = ["finance", "mathematics", "science", "simulation", "algorithms"]
 exclude = [ "**/*.tar.gz", "data/**", "trainsets/**", "notebooks/**", "src/ai/volatility/*TrainSet.txt.gz", ]
 
 [dependencies]
-anyhow = { workspace = true }
-candle-core = { workspace = true, optional = true }
-candle-datasets = { workspace = true, optional = true }
-candle-nn = { workspace = true, optional = true }
 chrono = { workspace = true }
-cudarc = { workspace = true, optional = true, features = [ "cuda-12080", "cuda-version-from-build-system", ] }
-flate2 = { workspace = true }
-gauss-quad = { workspace = true }
-hotpath = { workspace = true, optional = true }
-implied-vol = { workspace = true }
-kendalls = { workspace = true }
-linreg = { workspace = true }
-metal = { workspace = true, optional = true }
-mimalloc = { workspace = true, optional = true }
-ndarray = { workspace = true, features = [ "rayon", "matrixmultiply-threading", ] }
-ndarray-npy = { workspace = true }
-ndrustfft = { workspace = true }
-num-complex = { workspace = true, features = ["rand"] }
+cudarc = { workspace = true, optional = true }
+ndarray = { workspace = true }
+num-complex = { workspace = true }
 num-traits = { workspace = true }
-numpy = { workspace = true, optional = true }
-ordered-float = { workspace = true }
-owens-t = { workspace = true }
-parking_lot = { workspace = true }
-polars = { workspace = true, features = ["lazy"], optional = true }
-pyo3 = { workspace = true, features = ["extension-module"], optional = true }
-quadrature = { workspace = true }
 rand = { workspace = true }
-rand_distr = { workspace = true }
-rayon = { workspace = true }
-roots = { workspace = true }
-scilib = { workspace = true }
-slsqp = { workspace = true }
 stochastic-rs-ai = { workspace = true, optional = true }
 stochastic-rs-copulas = { workspace = true }
 stochastic-rs-core = { workspace = true }
@@ -125,17 +91,17 @@ stochastic-rs-distributions = { workspace = true }
 stochastic-rs-quant = { workspace = true }
 stochastic-rs-stats = { workspace = true }
 stochastic-rs-stochastic = { workspace = true }
-tikv-jemallocator = { workspace = true, optional = true }
-time = { workspace = true, features = [ "formatting", "parsing", ], optional = true }
-tokio-test = { workspace = true, optional = true }
-wide = { workspace = true }
-yahoo_finance_api = { workspace = true, optional = true }
 
 [dev-dependencies]
-criterion = { workspace = true, features = ["html_reports"] }
-plotly = { workspace = true, features = ["plotly_ndarray"] }
+anyhow = { workspace = true }
+criterion = { workspace = true }
+log = { workspace = true }
+ndarray-npy = { workspace = true }
+owens-t = { workspace = true }
+plotly = { workspace = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }
+rayon = { workspace = true }
 
 [[bench]]
 name = "calibration"
@@ -187,6 +153,10 @@ required-features = ["metal"]
 
 [[bench]]
 name = "poisson_process"
+harness = false
+
+[[bench]]
+name = "mc_antithetic"
 harness = false
 
 [[bench]]
@@ -255,14 +225,9 @@ name = "slv"
 harness = false
 
 [[bench]]
-name = "hotpath_profile"
-harness = false
-required-features = ["hotpath"]
-
-[[bench]]
 name = "dual_stream_compare"
 harness = false
-required-features = ["dual-stream-rng"]
+required-features = ["unstable-dual-stream-rng"]
 
 [[bench]]
 name = "ndarray_overhead"
@@ -270,6 +235,19 @@ harness = false
 
 [[bench]]
 name = "sampler_compare"
+harness = false
+
+[[bench]]
+name = "special_functions"
+harness = false
+
+[[bench]]
+name = "ai_surrogate"
+harness = false
+required-features = ["ai"]
+
+[[bench]]
+name = "jump_processes"
 harness = false
 
 [[example]]
@@ -289,50 +267,24 @@ name = "cuda_engine_profile"
 required-features = ["cuda"]
 
 [features]
+# Experimental: `stochastic-rs-ai` is outside the stability promise.
 ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]
 ai-metal = ["ai", "stochastic-rs-ai/metal"]
 cuda = ["dep:cudarc", "cudarc/cufft", "stochastic-rs-stochastic/cuda"]
 default = []
-# Experimental: opt in to the dual-stream RNG (`SimdRngDual` /
-# `SimdNormalDual`). ~5–11% speedup on Ziggurat-based Normal/Exp bulk
-# fills on Apple Silicon; deterministic output differs from the
-# single-stream `SimdRng`. See `stochastic-rs-core` feature doc.
-dual-stream-rng = [
-    "stochastic-rs-core/dual-stream-rng",
-    "stochastic-rs-distributions/dual-stream-rng",
+# Experimental dual-stream RNG engine (`SimdRngDual`): ~2–6 % faster bulk Normal fills on Apple
+# Silicon; its seeded stream differs from `SimdRng`.
+unstable-dual-stream-rng = [
+    "stochastic-rs-core/unstable-dual-stream-rng",
+    "stochastic-rs-distributions/unstable-dual-stream-rng",
 ]
 accelerate = ["stochastic-rs-stochastic/accelerate"]
-metal = ["dep:metal", "stochastic-rs-stochastic/metal"]
-jemalloc = ["dep:tikv-jemallocator"]
-# Python bindings live in `stochastic-rs-py` (separate cdylib). Enabling
-# `python` here just turns on the upstream feature flags so the umbrella
-# build is consistent with the cdylib build. The actual Python module
-# (`stochastic_rs`) is produced by `cargo build -p stochastic-rs-py` or
-# via `maturin develop` from the `stochastic-rs-py` directory.
-python = [
-    "dep:pyo3",
-    "dep:numpy",
-    "stochastic-rs-distributions/python",
-    "stochastic-rs-stochastic/python",
-    "stochastic-rs-copulas/python",
-    "stochastic-rs-stats/python",
-    "stochastic-rs-quant/python",
-]
-mimalloc = ["dep:mimalloc"]
+metal = ["stochastic-rs-stochastic/metal"]
 # Plotly-backed HTML plotting: `stochastic-rs-quant`'s SABR-smile plotter and,
 # when `ai` is also enabled, `stochastic-rs-ai`'s fit-plot helper. Uses a weak
 # dependency feature (`stochastic-rs-ai?/viz`) so enabling `viz` alone does
 # not pull in the (heavy, optional) `ai` sub-crate on its own.
 viz = ["stochastic-rs-quant/viz", "stochastic-rs-ai?/viz"]
-yahoo = [
-    "dep:time",
-    "dep:yahoo_finance_api",
-    "dep:polars",
-    "dep:tokio-test",
-    "stochastic-rs-quant/yahoo",
-]
-hotpath = ["dep:hotpath", "hotpath/hotpath"]
-hotpath-alloc = ["hotpath", "hotpath/hotpath-alloc"]
 
 [lib]
 name = "stochastic_rs"
@@ -345,7 +297,6 @@ codegen-units = 1
 lto = true
 
 [package.metadata.docs.rs]
-# Avoid `all-features = true`: it pulls in native GPU SDKs (cudarc, metal), pyo3 link, and yahoo's tokio-test dev-only feature, none
-# of which build cleanly on docs.rs.
-features = ["ai", "yahoo", "viz"]
+# Avoid `all-features = true`: it pulls in native GPU SDKs (cudarc, metal), which do not build on docs.rs.
+features = ["ai", "viz"]
 rustdoc-args = ["--html-in-header", "docs/katex-header.html"]

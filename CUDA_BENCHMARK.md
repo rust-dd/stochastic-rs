@@ -14,11 +14,13 @@ path length, `m` = number of paths.
 The portable CubeCL backend was removed in 3.0.0-rc.2: it duplicated the native
 CUDA and Metal kernels and was slower on the same hardware.
 
-Build with the `mimalloc` global allocator — the batch path allocates one
-`Array1` per path, so the default Windows allocator otherwise bottlenecks it:
+The PC tables in this section were measured with `mimalloc` installed as the
+global allocator; the crate itself sets no allocator. The batch path allocates
+one `Array1` per path, so on the system allocator its rows carry per-path
+allocator overhead on Windows until re-measured:
 
 ```bash
-cargo bench --bench fgn_cuda --features "cuda,mimalloc"
+cargo bench --bench fgn_cuda --features cuda
 ```
 
 ### Single path (`sample`, m = 1)
@@ -52,7 +54,7 @@ fast allocator.
 ### cuFFT batch pipeline breakdown
 
 Per-call breakdown of `cuda` (cuFFT) `sample_par`, measured in-process
-with `STOCHASTIC_RS_CUDA_PROFILE=1` (env-gated phase timing in the sampler).
+with a `log` subscriber enabled at `trace` for `stochastic_rs_stochastic::noise::fgn::cuda` (phase timing in the sampler); `STOCHASTIC_RS_CUDA_PROFILE=1 cargo bench --bench fgn_cuda --features cuda` installs one in the bench.
 `compute` = on-device RNG + batched FFT + extract; `dtoh` = device→host transfer
 + the parallel host copy.
 

@@ -26,97 +26,96 @@
 //! Gamma Process and Option Pricing", *European Finance Review* 2(1),
 //! 79-105. DOI: 10.1023/A:1009703431535
 
-use std::cell::Cell;
-use std::cell::UnsafeCell;
-
 use rand::Rng;
-use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
+use rand::distr::Distribution;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
+use super::gamma::GammaState;
 use super::gamma::SimdGamma;
 use super::normal::SimdNormal;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::Buffered;
+use crate::seeded::StreamState;
 use crate::special::bessel_k::bessel_ke;
 use crate::special::ln_gamma;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 const SMALL_VG_THRESHOLD: usize = 16;
 
 /// Variance-gamma distribution with volatility `σ > 0`, variance rate
-/// `ν > 0` of the gamma clock, drift `θ` and location `μ`.
-pub struct SimdVarianceGamma<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+/// `ν > 0` of the gamma clock, drift `θ` and location `μ`; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdVarianceGamma<T> {
   sigma: T,
   nu: T,
   theta: T,
   mu: T,
-  gamma: SimdGamma<T, R>,
-  normal: SimdNormal<T, 64, R>,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  stream_seed: Cell<u64>,
+  gamma: SimdGamma<T>,
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdVarianceGamma<T, R> {
+/// A VG stream: the gamma-clock and normal sub-streams and the single-draw buffer.
+#[doc(hidden)]
+#[derive(Clone, Debug)]
+pub struct VgState<T: SimdFloatExt, R: SimdRngExt> {
+  gamma: GammaState<T, R>,
+  normal: StreamState<T, R, 64>,
+  buf: Buffered<T, 16>,
+}
+
+impl<T: SimdFloatExt> SimdVarianceGamma<T> {
   /// Construct a VG$(\sigma, \nu, \theta, \mu)$ over an internal gamma
   /// subordinator with shape $1/\nu$ and scale $\nu$.
-  pub fn new<S: crate::simd_rng::SeedExt>(sigma: T, nu: T, theta: T, mu: T, seed: &S) -> Self {
-    assert!(sigma > T::zero(), "VG: sigma must be positive");
-    assert!(nu > T::zero(), "VG: nu must be positive");
-    let gamma = SimdGamma::<T, R>::new(T::one() / nu, nu, seed);
-    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
-    let stream_seed = seed.seed_value();
+  pub fn new(sigma: T, nu: T, theta: T, mu: T) -> Self {
+    assert!(
+      sigma > T::zero(),
+      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      nu > T::zero(),
+      "nu must satisfy `nu > T::zero()`, got nu = {nu:?}"
+    );
     Self {
       sigma,
       nu,
       theta,
       mu,
-      gamma,
-      normal,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      stream_seed: Cell::new(stream_seed),
+      gamma: SimdGamma::new(T::one() / nu, nu),
     }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.sigma,
-      self.nu,
-      self.theta,
-      self.mu,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
+  /// The volatility `σ`.
+  pub fn sigma(&self) -> T {
+    self.sigma
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
-  #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
+  /// The variance rate `ν` of the gamma clock.
+  pub fn nu(&self) -> T {
+    self.nu
   }
 
-  /// Fills `out` from the gamma-time Brownian mixture on the internal SIMD
-  /// streams; the gamma clock and the normal each refill their own buffer.
-  pub fn fill_slice(&self, out: &mut [T]) {
+  /// The drift `θ`.
+  pub fn theta(&self) -> T {
+    self.theta
+  }
+
+  /// The location `μ`.
+  pub fn mu(&self) -> T {
+    self.mu
+  }
+
+  fn fill_parts<R: SimdRngExt>(
+    &self,
+    gamma: &mut GammaState<T, R>,
+    normal: &mut StreamState<T, R, 64>,
+    out: &mut [T],
+  ) {
     if out.len() < SMALL_VG_THRESHOLD {
       for x in out.iter_mut() {
-        let g = self.gamma.sample_fast();
-        let z = self.normal.sample_fast();
+        let g = self.gamma.next(gamma);
+        let z = SimdNormal::<T>::standard().next(normal);
         *x = self.mu + self.theta * g + self.sigma * g.sqrt() * z;
       }
       return;
@@ -128,8 +127,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdVarianceGamma<T, R> {
     let mut zbuf = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.gamma.fill_slice(&mut gbuf);
-      self.normal.fill_standard_fast(&mut zbuf);
+      self.gamma.fill(gamma, &mut gbuf);
+      SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf);
       for (sub, (g8, z8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
         gbuf
           .as_chunks::<8>()
@@ -145,20 +144,18 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdVarianceGamma<T, R> {
     }
     if !rem.is_empty() {
       let n = rem.len();
-      self.gamma.fill_slice(&mut gbuf[..n]);
-      self.normal.fill_standard_fast(&mut zbuf[..n]);
+      self.gamma.fill(gamma, &mut gbuf[..n]);
+      SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf[..n]);
       for i in 0..n {
         rem[i] = self.mu + self.theta * gbuf[i] + self.sigma * gbuf[i].sqrt() * zbuf[i];
       }
     }
   }
 
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    let g = self.gamma.draw_with(rng);
+    let z = SimdNormal::<T>::standard().draw_with(rng);
+    self.mu + self.theta * g + self.sigma * g.sqrt() * z
   }
 
   fn params(&self) -> (f64, f64, f64, f64) {
@@ -171,27 +168,49 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdVarianceGamma<T, R> {
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdVarianceGamma<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.sigma, self.nu, self.theta, self.mu, &Unseeded)
+impl<T: SimdFloatExt> Sealed for SimdVarianceGamma<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdVarianceGamma<T> {
+  type State<R: SimdRngExt> = VgState<T, R>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (VgState<T, R>, u64) {
+    let (gamma, _) = self.gamma.init::<R, S>(seed);
+    let (normal, _) = SimdNormal::<T>::standard().init::<R, S>(seed);
+    let basis = seed.next_seed();
+    (
+      VgState {
+        gamma,
+        normal,
+        buf: Buffered::new(),
+      },
+      basis,
+    )
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdVarianceGamma<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD streams seeded at construction.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
+impl<T: SimdFloatExt> SimdKernel for SimdVarianceGamma<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut VgState<T, R>, out: &mut [T]) {
+    self.fill_parts(&mut state.gamma, &mut state.normal, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut VgState<T, R>) -> T {
+    let VgState { gamma, normal, buf } = state;
+    buf.pop(|b| self.fill_parts(gamma, normal, b))
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdVarianceGamma<T, R> {
+impl<T: SimdFloatExt> Distribution<T> for SimdVarianceGamma<T> {
+  /// `μ + θG + σ√G·Z` from one scalar gamma and one scalar normal draw on the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
   /// Madan–Carr–Chang eq. 23, evaluated in log space through the scaled
   /// Bessel function; at `x = μ` the $y^a K_a(y)$ limit $2^{a-1}\Gamma(a)$
   /// for $a = 1/\nu - 1/2 > 0$, `+∞` otherwise.
@@ -280,7 +299,10 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
+  use crate::tests::assert_moments_within;
+  use crate::tests::scalar_draws;
   use crate::traits::DistributionExt;
+  use crate::traits::DistributionSampler;
 
   fn close(a: f64, b: f64, rel: f64) -> bool {
     (a - b).abs() <= rel * b.abs().max(1e-300)
@@ -292,7 +314,7 @@ mod tests {
   /// `x = μ` limit for ν = 1/2.
   #[test]
   fn pdf_matches_the_mixture_integral() {
-    let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05, &Unseeded);
+    let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05);
     let grid = [
       (-1.0, 0.007_426_216_254_428_035),
       (-0.3, 0.684_113_783_523_804_4),
@@ -308,7 +330,7 @@ mod tests {
         d.pdf(x)
       );
     }
-    let heavy = SimdVarianceGamma::<f64>::new(1.0, 2.0, 0.3, 0.0, &Unseeded);
+    let heavy = SimdVarianceGamma::<f64>::new(1.0, 2.0, 0.3, 0.0);
     let grid = [
       (-1.0, 0.093_258_741_713_085_1),
       (-0.3, 0.387_808_764_238_471_16),
@@ -331,7 +353,7 @@ mod tests {
   /// integrated central moments of the mixture).
   #[test]
   fn moments_and_transforms_match_the_reference() {
-    let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05, &Unseeded);
+    let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05);
     assert!(close(d.mean(), -0.05, 1e-15));
     assert!(close(d.variance(), 0.045, 1e-15));
     assert!(close(d.skewness() * 0.045_f64.powf(1.5), -0.0065, 1e-12));
@@ -340,11 +362,11 @@ mod tests {
     assert!(
       close(cf.re, 0.988_478_712_093_533_1, 1e-12) && close(cf.im, -0.034_245_228_379_174_4, 1e-12)
     );
-    let heavy = SimdVarianceGamma::<f64>::new(1.0, 2.0, 0.3, 0.0, &Unseeded);
+    let heavy = SimdVarianceGamma::<f64>::new(1.0, 2.0, 0.3, 0.0);
     assert!(close(heavy.variance(), 1.18, 1e-15));
     assert!(close(heavy.skewness() * 1.18_f64.powf(1.5), 2.016, 1e-12));
     assert!(close((heavy.kurtosis() + 3.0) * 1.18 * 1.18, 14.886, 1e-12));
-    let symmetric = SimdVarianceGamma::<f64>::new(0.3, 0.7, 0.0, 0.0, &Unseeded);
+    let symmetric = SimdVarianceGamma::<f64>::new(0.3, 0.7, 0.0, 0.0);
     assert_eq!(symmetric.skewness(), 0.0);
     assert!(close(symmetric.kurtosis(), 3.0 * 0.7, 1e-12));
     assert!(d.moment_generating_function(50.0).is_nan());
@@ -353,7 +375,7 @@ mod tests {
 
   #[test]
   fn pdf_integrates_to_one() {
-    let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05, &Unseeded);
+    let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05);
     let (lo, hi, n) = (-6.0_f64, 6.0_f64, 600_000usize);
     let h = (hi - lo) / n as f64;
     let s: f64 = (0..n).map(|k| d.pdf(lo + (k as f64 + 0.5) * h) * h).sum();
@@ -364,10 +386,10 @@ mod tests {
   /// match the closed forms.
   #[test]
   fn sample_moments_match_closed_forms() {
-    let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05, &Deterministic::new(11));
+    let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05);
     let n = 400_000;
     let mut xs = vec![0.0; n];
-    d.fill_slice(&mut xs);
+    d.seeded(&Deterministic::new(11)).fill_slice(&mut xs);
     let mean = xs.iter().sum::<f64>() / n as f64;
     let var = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64;
     let m3 = xs.iter().map(|x| (x - mean).powi(3)).sum::<f64>() / n as f64;
@@ -384,11 +406,19 @@ mod tests {
   }
 
   #[test]
+  fn scalar_sample_moments_match_closed_forms() {
+    let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05);
+    let xs = scalar_draws(&d, 19, 200_000);
+    let m3 = d.skewness() * d.variance().powf(1.5);
+    assert_moments_within(&xs, d.mean(), d.variance(), Some(m3), 6.0, "VG");
+  }
+
+  #[test]
   fn deterministic_seed_reproduces_stream() {
-    let a = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05, &Deterministic::new(7));
-    let b = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05, &Deterministic::new(7));
+    let mut a = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05).seeded(&Deterministic::new(7));
+    let mut b = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05).seeded(&Deterministic::new(7));
     for _ in 0..256 {
-      assert_eq!(a.sample_fast(), b.sample_fast());
+      assert_eq!(a.sample(), b.sample());
     }
   }
 }

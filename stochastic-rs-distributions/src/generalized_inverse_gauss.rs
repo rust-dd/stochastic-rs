@@ -38,17 +38,17 @@
 //!   Inverse Gaussian Distribution*, Lecture Notes in Statistics 9,
 //!   Springer. DOI: 10.1007/978-1-4612-5698-4
 
-use std::cell::Cell;
-use std::cell::UnsafeCell;
-
 use rand::Rng;
-use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
+use rand::distr::Distribution;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::StreamState;
 use crate::special::bessel_k::bessel_ke;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 /// Which Hörmann–Leydold generator the parameters select.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,7 +63,7 @@ enum Regime {
 
 /// Precomputed generator state for the quasi-density $g(y \mid \lambda, \beta)$
 /// with $\lambda \ge 0$.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct Setup {
   lambda: f64,
   beta: f64,
@@ -161,12 +161,11 @@ impl Setup {
 
   /// One draw from $g(\cdot \mid \lambda, \beta)$ using uniforms and (for the
   /// shifted ratio-of-uniforms) nothing else.
-  fn draw<T: SimdFloatExt, R: SimdRngExt>(&self, rng: &mut R) -> f64 {
-    let uniform = |rng: &mut R| T::sample_uniform_simd(rng).to_f64().unwrap();
+  fn draw(&self, mut uniform: impl FnMut() -> f64) -> f64 {
     match self.regime {
       Regime::Hat => loop {
-        let u = uniform(rng);
-        let v = uniform(rng) * (self.a1 + self.a2 + self.a3);
+        let u = uniform();
+        let v = uniform() * (self.a1 + self.a2 + self.a3);
         let (x, log_h) = if v <= self.a1 {
           (self.x0 * v / self.a1, 0.0)
         } else if v <= self.a1 + self.a2 {
@@ -188,8 +187,8 @@ impl Setup {
         }
       },
       Regime::RatioOfUniforms => loop {
-        let u = uniform(rng) * self.u_plus;
-        let v = uniform(rng);
+        let u = uniform() * self.u_plus;
+        let v = uniform();
         // The ratio-of-uniforms region is `0 < v ≤ sqrt(g(u/v))`, so `v = 0`
         // is not a point of it — but a single-precision uniform hands back
         // an exact zero once in about 8.4 million draws, and then `u/v` is
@@ -206,8 +205,8 @@ impl Setup {
         }
       },
       Regime::RatioOfUniformsShifted => loop {
-        let u = self.u_minus + uniform(rng) * (self.u_plus - self.u_minus);
-        let v = uniform(rng);
+        let u = self.u_minus + uniform() * (self.u_plus - self.u_minus);
+        let v = uniform();
         // The same `v = 0` exclusion. A `λ > 2` shape escapes it on its
         // own — `log g` at infinity is a NaN there and the test fails —
         // but this regime also takes every `λ < 1` with `β > 3`, which has
@@ -225,8 +224,9 @@ impl Setup {
 }
 
 /// Generalized inverse Gaussian distribution GIG$(\lambda, \chi, \psi)$ with
-/// `chi > 0` and `psi > 0`.
-pub struct SimdGig<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+/// `chi > 0` and `psi > 0`; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdGig<T> {
   lambda: T,
   chi: T,
   psi: T,
@@ -234,84 +234,67 @@ pub struct SimdGig<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   /// $\alpha = \sqrt{\psi/\chi}$, the scale taken out of the quasi-density.
   scale_out: f64,
   invert: bool,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<R>,
-  stream_seed: Cell<u64>,
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdGig<T, R> {
+impl<T: SimdFloatExt> SimdGig<T> {
   /// Construct a GIG$(\lambda, \chi, \psi)$.
-  pub fn new<S: crate::simd_rng::SeedExt>(lambda: T, chi: T, psi: T, seed: &S) -> Self {
+  pub fn new(lambda: T, chi: T, psi: T) -> Self {
+    assert!(
+      chi > T::zero(),
+      "chi must satisfy `chi > T::zero()`, got chi = {chi:?}"
+    );
+    assert!(
+      psi > T::zero(),
+      "psi must satisfy `psi > T::zero()`, got psi = {psi:?}"
+    );
     let lambda_f = lambda.to_f64().unwrap();
     let chi_f = chi.to_f64().unwrap();
     let psi_f = psi.to_f64().unwrap();
-    assert!(chi_f > 0.0, "GIG: chi must be positive");
-    assert!(psi_f > 0.0, "GIG: psi must be positive");
     let beta = (chi_f * psi_f).sqrt();
-    let setup = Setup::new(lambda_f.abs(), beta);
-    let stream_seed = seed.seed_value();
     Self {
       lambda,
       chi,
       psi,
-      setup,
+      setup: Setup::new(lambda_f.abs(), beta),
       scale_out: (psi_f / chi_f).sqrt(),
       invert: lambda_f < 0.0,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed: Cell::new(stream_seed),
     }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.lambda,
-      self.chi,
-      self.psi,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
+  /// The index `λ`.
+  pub fn lambda(&self) -> T {
+    self.lambda
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
+  /// The weight `χ` of the `1/x` term.
+  pub fn chi(&self) -> T {
+    self.chi
+  }
+
+  /// The weight `ψ` of the `x` term.
+  pub fn psi(&self) -> T {
+    self.psi
+  }
+
+  /// A quasi-density draw `y` mapped to the law: `1/y` for negative `λ`, then the scale `1/α`.
   #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
+  fn rescale(&self, y: f64) -> T {
+    let y = if self.invert { 1.0 / y } else { y };
+    T::from_f64_fast(y / self.scale_out)
   }
 
-  /// Fills `out` with GIG draws; the rejection loops are scalar on the
-  /// internal SIMD uniform stream.
-  pub fn fill_slice(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
+  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [T]) {
     for x in out.iter_mut() {
-      let y = self.setup.draw::<T, R>(rng);
-      let y = if self.invert { 1.0 / y } else { y };
-      *x = T::from_f64_fast(y / self.scale_out);
+      *x = self.rescale(
+        self
+          .setup
+          .draw(|| T::sample_uniform_simd(rng).to_f64().unwrap()),
+      );
     }
   }
 
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.rescale(self.setup.draw(|| T::sample_uniform(rng).to_f64().unwrap()))
   }
 
   fn params(&self) -> (f64, f64, f64) {
@@ -331,27 +314,39 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGig<T, R> {
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdGig<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.lambda, self.chi, self.psi, &Unseeded)
+impl<T: SimdFloatExt> Sealed for SimdGig<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdGig<T> {
+  type State<R: SimdRngExt> = StreamState<T, R, 16>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (StreamState<T, R, 16>, u64) {
+    StreamState::init(seed)
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdGig<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
+impl<T: SimdFloatExt> SimdKernel for SimdGig<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+    self.fill_parts(&mut state.rng, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>) -> T {
+    let StreamState { rng, buf } = state;
+    buf.pop(|b| self.fill_parts(rng, b))
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdGig<T, R> {
+impl<T: SimdFloatExt> Distribution<T> for SimdGig<T> {
+  /// One scalar Hörmann–Leydold draw on the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
   fn pdf(&self, x: f64) -> f64 {
     if x <= 0.0 {
       return 0.0;
@@ -419,253 +414,10 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdGig<
   }
 }
 
-#[cfg(test)]
-mod tests {
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::*;
-  use crate::traits::DistributionExt;
-
-  fn close(a: f64, b: f64, rel: f64) -> bool {
-    (a - b).abs() <= rel * b.abs().max(1e-300)
-  }
-
-  /// `scipy.stats.geninvgauss(p=λ, b=√(χψ), scale=√(χ/ψ))`: pdf on a grid,
-  /// `stats('mvsk')` and the closed-form mode, across all three sampler
-  /// regimes, λ = 0 and λ < 0.
-  #[test]
-  fn matches_scipy_geninvgauss() {
-    let cases: [((f64, f64, f64), [f64; 5], [f64; 5]); 6] = [
-      (
-        (-0.5, 1.0, 4.0),
-        [
-          0.514_242_212_635_176_6,
-          1.128_379_167_095_512_8,
-          0.241_970_724_519_143_34,
-          0.014_866_286_152_953_675,
-          1.083_102_992_885_464e-5,
-        ],
-        [
-          0.5,
-          0.125_000_000_000_000_06,
-          2.121_320_343_559_638_4,
-          7.499_999_999_999_998,
-          0.25,
-        ],
-      ),
-      (
-        (0.3, 2.0, 0.5),
-        [
-          0.000_207_154_166_797_105_37,
-          0.181_109_435_668_869_9,
-          0.267_440_855_009_698,
-          0.211_388_022_266_015_88,
-          0.070_972_459_002_713_6,
-        ],
-        [
-          3.510_406_673_837_61,
-          9.931_159_688_231_931,
-          2.266_483_108_101_507_8,
-          8.099_683_845_591_92,
-          1.041_311_123_146_740_7,
-        ],
-      ),
-      (
-        (1.5, 0.2, 3.0),
-        [
-          0.253_779_589_649_395,
-          0.693_107_485_732_857_7,
-          0.511_710_317_868_987,
-          0.169_750_934_196_500_7,
-          0.003_072_457_210_418_208_3,
-        ],
-        [
-          1.112_701_665_379_257_9,
-          0.683_064_446_160_988_5,
-          1.592_679_045_829_844,
-          3.836_661_502_533_310_4,
-          0.473_984_815_243_096_27,
-        ],
-      ),
-      (
-        (0.0, 1.0, 1.0),
-        [
-          0.076_115_931_334_513_58,
-          0.680_494_457_892_701_8,
-          0.436_886_089_924_687_64,
-          0.170_123_614_473_175_45,
-          0.017_641_156_063_218_862,
-        ],
-        [
-          1.429_625_398_260_401_7,
-          1.815_422_017_169_591_4,
-          2.517_766_867_950_683,
-          10.168_858_438_704_254,
-          0.414_213_562_373_095_15,
-        ],
-      ),
-      (
-        (-2.0, 3.0, 0.3),
-        [
-          0.000_819_140_933_607_579_6,
-          1.004_441_689_077_8,
-          0.522_040_719_315_402_3,
-          0.118_902_526_154_247_41,
-          0.007_609_761_673_871_839,
-        ],
-        [
-          1.130_335_190_237_882_4,
-          1.186_774_422_790_675,
-          4.513_096_168_856_083,
-          41.651_500_096_330_146,
-          0.488_088_481_701_516_3,
-        ],
-      ),
-      (
-        (0.2, 0.01, 1.0),
-        [
-          1.746_805_491_733_430_1,
-          0.410_753_646_911_001,
-          0.184_652_538_917_075_06,
-          0.064_486_644_906_236_72,
-          0.006_923_528_656_657_863,
-        ],
-        [
-          0.639_899_966_429_868_3,
-          1.136_287_952_394_739,
-          3.603_221_141_680_864_4,
-          19.812_668_188_757_524,
-          0.006_225_774_829_854_98,
-        ],
-      ),
-    ];
-    for ((lambda, chi, psi), pdf, stats) in cases {
-      let d = SimdGig::<f64>::new(lambda, chi, psi, &Unseeded);
-      for (x, want) in [0.1, 0.5, 1.0, 2.0, 5.0].into_iter().zip(pdf) {
-        assert!(
-          close(d.pdf(x), want, 1e-11),
-          "λ={lambda}: pdf({x}) = {}",
-          d.pdf(x)
-        );
-      }
-      assert!(
-        close(d.mean(), stats[0], 1e-11),
-        "λ={lambda}: mean {}",
-        d.mean()
-      );
-      assert!(
-        close(d.variance(), stats[1], 1e-10),
-        "λ={lambda}: variance {}",
-        d.variance()
-      );
-      assert!(
-        close(d.skewness(), stats[2], 1e-9),
-        "λ={lambda}: skewness {}",
-        d.skewness()
-      );
-      assert!(
-        close(d.kurtosis(), stats[3], 1e-8),
-        "λ={lambda}: kurtosis {}",
-        d.kurtosis()
-      );
-      assert!(
-        close(d.mode(), stats[4], 1e-12),
-        "λ={lambda}: mode {}",
-        d.mode()
-      );
-      assert!(close(d.moment_generating_function(0.0), 1.0, 1e-12));
-    }
-  }
-
-  /// Each generator regime reproduces the Bessel-ratio mean and variance.
-  #[test]
-  fn sample_moments_match_closed_forms_in_every_regime() {
-    let cases = [
-      (0.2, 0.01, 1.0, Regime::Hat),
-      (0.3, 2.0, 0.5, Regime::RatioOfUniforms),
-      (-2.0, 3.0, 0.3, Regime::RatioOfUniforms),
-      (3.0, 4.0, 4.0, Regime::RatioOfUniformsShifted),
-      (0.5, 1.0, 25.0, Regime::RatioOfUniformsShifted),
-    ];
-    for (lambda, chi, psi, regime) in cases {
-      let d = SimdGig::<f64>::new(lambda, chi, psi, &Deterministic::new(11));
-      assert_eq!(d.setup.regime, regime, "λ={lambda}");
-      let n = 400_000;
-      let mut xs = vec![0.0; n];
-      d.fill_slice(&mut xs);
-      assert!(xs.iter().all(|x| *x > 0.0));
-      let mean = xs.iter().sum::<f64>() / n as f64;
-      let var = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64;
-      assert!(
-        (mean - d.mean()).abs() / d.mean() < 0.01,
-        "λ={lambda}: mean {mean} vs {}",
-        d.mean()
-      );
-      assert!(
-        (var - d.variance()).abs() / d.variance() < 0.05,
-        "λ={lambda}: var {var} vs {}",
-        d.variance()
-      );
-    }
-  }
-
-  #[test]
-  fn pdf_integrates_to_one() {
-    let d = SimdGig::<f64>::new(0.3, 2.0, 0.5, &Unseeded);
-    let (hi, n) = (80.0_f64, 400_000usize);
-    let h = hi / n as f64;
-    let s: f64 = (0..n).map(|k| d.pdf((k as f64 + 0.5) * h) * h).sum();
-    assert!((s - 1.0).abs() < 1e-6, "integral = {s}");
-  }
-
-  #[test]
-  fn deterministic_seed_reproduces_stream() {
-    let a = SimdGig::<f64>::new(0.3, 2.0, 0.5, &Deterministic::new(7));
-    let b = SimdGig::<f64>::new(0.3, 2.0, 0.5, &Deterministic::new(7));
-    for _ in 0..256 {
-      assert_eq!(a.sample_fast(), b.sample_fast());
-    }
-  }
-
-  #[test]
-  #[should_panic(expected = "chi must be positive")]
-  fn rejects_zero_chi() {
-    let _ = SimdGig::<f64>::new(1.0, 0.0, 1.0, &Unseeded);
-  }
-
-  /// Every single-precision draw lands inside the support.
-  ///
-  /// Both ratio-of-uniforms regimes draw from `0 < v ≤ sqrt(g(u/v))`, and
-  /// `v = 0` is not a point of that region — but a single-precision uniform
-  /// hands back an exact zero about once in 8.4 million draws, `u/v` is
-  /// then `+inf`, and for `λ < 1` both sides of the acceptance test come
-  /// out `-inf`, so the infinity leaves as a draw. At `λ < 0` the same
-  /// event shows as an exact zero, since that branch inverts what it drew
-  /// — which is how the generalized hyperbolic family picks it up through
-  /// its mixing clock. The seeds are pinned where the offending uniform
-  /// lands early: 182 puts it at draw 7303 of the un-shifted regime, 571 at
-  /// draw 8052 of the mode-shifted one that `β = √(χψ) > 3` selects.
-  #[test]
-  fn single_precision_draws_stay_in_the_support() {
-    for (lambda, chi, psi, seed, draws) in [
-      (-0.5_f32, 1.0_f32, 1.0_f32, 182u64, 8_192usize),
-      (0.0, 1.0, 1.0, 182, 8_192),
-      (0.5, 1.0, 1.0, 182, 8_192),
-      (0.5, 100.0, 100.0, 571, 16_384),
-    ] {
-      let d = SimdGig::<f32>::new(lambda, chi, psi, &Deterministic::new(seed));
-      let mut out = vec![0.0_f32; draws];
-      d.fill_slice(&mut out);
-      let bad = out.iter().filter(|x| !x.is_finite() || **x <= 0.0).count();
-      assert_eq!(
-        bad, 0,
-        "lambda = {lambda}, chi = {chi}, psi = {psi}: {bad} of {draws} draws outside (0, inf)"
-      );
-    }
-  }
-}
-
 py_distribution!(PyGig, SimdGig,
   sig: (lambda, chi, psi, seed=None, dtype=None),
   params: (lambda: f64, chi: f64, psi: f64)
 );
+
+#[cfg(test)]
+mod tests;

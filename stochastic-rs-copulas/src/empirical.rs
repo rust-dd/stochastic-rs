@@ -8,6 +8,8 @@ use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 /// Empirical copula (2D) - rank-based transformation
@@ -70,23 +72,23 @@ impl EmpiricalCopula2D {
   /// observed `(u, v)` pairs, which is the standard nonparametric
   /// bootstrap for an empirical copula (Deheuvels, 1979).
   pub fn sample(&self, n: usize) -> Array2<f64> {
-    self.sample_with_uniform(SimdUniform::<f64>::new(0.0, 1.0, &Unseeded), n)
+    self.sample_with_uniform(SimdUniform::<f64>::new(0.0, 1.0).seeded(&Unseeded), n)
   }
 
   /// Deterministic counterpart of [`EmpiricalCopula2D::sample`]: the same
   /// `seed` reproduces the same `n` bootstrap draws.
   pub fn sample_with_seed(&self, n: usize, seed: u64) -> Array2<f64> {
     self.sample_with_uniform(
-      SimdUniform::<f64>::new(0.0, 1.0, &Deterministic::new(seed)),
+      SimdUniform::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed)),
       n,
     )
   }
 
-  fn sample_with_uniform(&self, ud: SimdUniform<f64>, n: usize) -> Array2<f64> {
+  fn sample_with_uniform(&self, mut ud: Seeded<SimdUniform<f64>>, n: usize) -> Array2<f64> {
     let n_rows = self.rank_data.nrows();
     let mut out = Array2::<f64>::zeros((n, 2));
     for i in 0..n {
-      let idx = ((ud.sample_fast() * n_rows as f64) as usize).min(n_rows - 1);
+      let idx = ((ud.sample() * n_rows as f64) as usize).min(n_rows - 1);
       out[[i, 0]] = self.rank_data[[idx, 0]];
       out[[i, 1]] = self.rank_data[[idx, 1]];
     }

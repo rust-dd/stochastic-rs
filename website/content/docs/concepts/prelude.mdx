@@ -1,6 +1,6 @@
 ---
 title: Prelude
-description: stochastic_rs::prelude — 25 items in six groups that cover ~95% of day-to-day usage. What is in the prelude and what is intentionally kept out.
+description: stochastic_rs::prelude — 28 items in six groups that cover ~95% of day-to-day usage. What is in the prelude and what is intentionally kept out.
 category: concept
 since: 2.0.0
 status: stable
@@ -10,7 +10,7 @@ status: stable
 use stochastic_rs::prelude::*;
 ```
 
-Brings **25 items in 6 groups** — re-derive with
+Brings **28 items in 6 groups** — re-derive with
 `awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"` against
 `src/lib.rs` any time an item is added or removed; this count has drifted
 before (it read "20 items" for several releases after `VolterraKernel`
@@ -68,11 +68,12 @@ The three enums that cover ~all option specs in the library. `Moneyness`
 ATM / ITM / OTM; `OptionStyle` European / American / Bermudan; `OptionType`
 Call / Put.
 
-## Backend / sampling (4)
+## Backend / sampling (7)
 
 ```
 Backend, Cpu,
-PathSampler, VolterraKernel
+PathSampler, VolterraKernel,
+Seeded, SimdDistribution, SimdKernel
 ```
 
 `Backend` is the compute-backend dispatch trait behind `Fgn`/`Fbm`'s
@@ -82,7 +83,10 @@ and reached via `stochastic_rs::stochastic::device` instead. `PathSampler`
 is the `sample()`/`sample_into()` abstraction `ProcessExt::sampler()`
 returns. `VolterraKernel` is the nodes/weights/evaluate trait behind the
 Markovian-lift rough-process family (`RlKernel`, `ExponentialKernel`,
-`GammaKernel`, `SumOfExponentials`).
+`GammaKernel`, `SumOfExponentials`). `SimdDistribution` makes `.seeded(&seed)`
+resolve on a stateless law such as `SimdNormal`, binding it to a `Seeded`
+stream whose draws take `&mut self`; `SimdKernel` adds `fill_with(&mut rng,
+out)`, a bulk fill driven by any `rand` rng.
 
 ## Estimation (5)
 
@@ -103,7 +107,6 @@ bivariate copulas.
 
 ## What is *not* in the prelude (and why)
 
-- `CallableDist` — `python`-only; same reason.
 - `ShortRatePricer` — the short-rate half of the pricing pair. Its query is
   a yield curve and a drift offset rather than a spot and a strike, so it
   answers a different question from `ModelPricer` and does not belong beside
@@ -129,9 +132,8 @@ bivariate copulas.
   `.valuation(curve)` — and keeping the four in a default import made the
   harness look like the architecture. Reach via `traits::*`.
 
-These are intentionally left out so the prelude is feature-flag-free —
-`use stochastic_rs::prelude::*;` works on every supported feature
-combination without surprises.
+The prelude is feature-flag-free: `use stochastic_rs::prelude::*;` works on
+every supported feature combination without surprises.
 
 "Reach via `traits::*`" is a promise the hub has to keep, so
 `tests/prelude_completeness.rs` names every trait on this list and fails to

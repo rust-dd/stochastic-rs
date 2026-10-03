@@ -48,7 +48,6 @@
 //!   Princeton UP, §7.5.
 
 use std::error::Error;
-use std::f64;
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -56,6 +55,7 @@ use ndarray::Axis;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::chi_square::SimdChiSquared;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::beta_i;
@@ -192,14 +192,14 @@ impl TMultivariate {
     let d = self.dim;
     let l = self.chol_lower.as_ref().unwrap();
     // Z ~ N(0, Σ) by L · G with G ~ N(0, I).
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, seed);
-    let g = Array2::from_shape_fn((n, d), |_| normal.sample_fast());
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(seed);
+    let g = Array2::from_shape_fn((n, d), |_| normal.sample());
     let z = g.dot(&l.t());
     // W ~ χ²_ν / ν, independently per row.
-    let chi = SimdChiSquared::<f64>::new(self.nu, seed);
+    let mut chi = SimdChiSquared::<f64>::new(self.nu).seeded(seed);
     let mut u = Array2::<f64>::zeros((n, d));
     for r in 0..n {
-      let w_raw = chi.sample_fast();
+      let w_raw = chi.sample();
       let w = (w_raw / self.nu).max(1e-300);
       let scale = 1.0 / w.sqrt();
       for c in 0..d {
@@ -214,7 +214,7 @@ impl TMultivariate {
   /// normaliser kept as a separate term for log-pdf composition.
   fn t_log_pdf(x: f64, nu: f64) -> f64 {
     let log_norm =
-      ln_gamma(0.5 * (nu + 1.0)) - 0.5 * (nu * f64::consts::PI).ln() - ln_gamma(0.5 * nu);
+      ln_gamma(0.5 * (nu + 1.0)) - 0.5 * (nu * std::f64::consts::PI).ln() - ln_gamma(0.5 * nu);
     let log_kernel = -0.5 * (nu + 1.0) * (1.0 + x * x / nu).ln();
     log_norm + log_kernel
   }
@@ -288,7 +288,7 @@ impl TMultivariate {
     }
     for i in 0..d {
       for j in (i + 1)..d {
-        let rho = (0.5 * f64::consts::PI * tau[[i, j]])
+        let rho = (0.5 * std::f64::consts::PI * tau[[i, j]])
           .sin()
           .clamp(-0.999_999, 0.999_999);
         corr[[i, j]] = rho;
@@ -325,7 +325,7 @@ impl TMultivariate {
     let nu = self.nu;
     let log_norm = ln_gamma(0.5 * (nu + d))
       - ln_gamma(0.5 * nu)
-      - 0.5 * d * (nu * f64::consts::PI).ln()
+      - 0.5 * d * (nu * std::f64::consts::PI).ln()
       - 0.5 * log_det;
     let mut out = Array1::<f64>::zeros(z.nrows());
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {
@@ -479,13 +479,13 @@ impl MultivariateExt for TMultivariate {
     let n = z.nrows();
     let m = 4000usize;
     let mut out = Array1::<f64>::zeros(n);
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
-    let chi = SimdChiSquared::<f64>::new(self.nu, &Unseeded);
-    let g = Array2::from_shape_fn((m, self.dim), |_| normal.sample_fast());
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Unseeded);
+    let mut chi = SimdChiSquared::<f64>::new(self.nu).seeded(&Unseeded);
+    let g = Array2::from_shape_fn((m, self.dim), |_| normal.sample());
     let y = g.dot(&l.t());
     let mut w_buf = vec![0.0f64; m];
     for v in w_buf.iter_mut() {
-      let w = (chi.sample_fast() / self.nu).max(1e-300);
+      let w = (chi.sample() / self.nu).max(1e-300);
       *v = 1.0 / w.sqrt();
     }
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {

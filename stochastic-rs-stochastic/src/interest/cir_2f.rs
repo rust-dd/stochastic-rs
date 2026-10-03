@@ -29,30 +29,27 @@ use crate::traits::Fn1D;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+/// Two-additive-factor shift-extended CIR short-rate model `r = x + y + φ(t)`.
+///
+/// Fields are private so the shared-grid assertion of [`new`](Self::new) cannot be bypassed: the
+/// getters hand the factors out read-only and `with_x` / `with_y` assert it again.
+///
+/// ```compile_fail,E0616
+/// use stochastic_rs_core::simd_rng::Unseeded;
+/// use stochastic_rs_stochastic::diffusion::cir::Cir;
+/// use stochastic_rs_stochastic::interest::cir_2f::Cir2F;
+/// let factor = |n| Cir::new(1.0_f64, 0.04, 0.2, n, Some(0.04), Some(1.0), Some(false), Unseeded);
+/// let mut p = Cir2F::new(factor(10), factor(10), (|t: f64| t) as fn(f64) -> f64, Unseeded);
+/// p.x.n = 1000;
+/// ```
 pub struct Cir2F<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// First CIR factor `x_t` (own κ₁/θ₁/σ₁ carried inside the wrapped
-  /// [`Cir`]). [`new`](Self::new) overwrites this factor's `seed` field with
-  /// an independent child derived from the outer `seed` — whatever seed the
-  /// `Cir` was constructed with is discarded, so the outer `seed` is the
-  /// single source of truth for both factors' randomness.
-  pub x: Cir<T, S>,
-  /// Second CIR factor `y_t` (own κ₂/θ₂/σ₂ carried inside the wrapped
-  /// [`Cir`]). Same seed-overwrite behavior as [`x`](Self::x) — [`new`](Self::new)
-  /// assigns it its own independent child, derived from the outer `seed`
-  /// right after `x`'s, so the two factors never share a stream.
-  pub y: Cir<T, S>,
-  /// Deterministic time-dependent shift φ(t) added to `x_t + y_t` so the
-  /// output short rate `r_t = x_t + y_t + φ(t)` can be fitted to an
-  /// initial term structure (shift extension, as in CIR++).
-  pub phi: Fn1D<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
-  /// Authoritative: [`new`](Self::new) derives `x`'s and `y`'s own seeds
-  /// from this value (two independent children, in that order), overwriting
-  /// whatever seed the caller constructed `x`/`y` with.
-  pub seed: S,
+  x: Cir<T, S>,
+  y: Cir<T, S>,
+  phi: Fn1D<T>,
+  seed: S,
   /// The sampling backend: [`Cpu`] by default, a device handle after
   /// [`on`](Self::on).
-  pub backend: B,
+  backend: B,
 }
 
 impl<T: FloatExt, S: SeedExt> Cir2F<T, S> {
@@ -65,18 +62,12 @@ impl<T: FloatExt, S: SeedExt> Cir2F<T, S> {
   /// roughly double `Cir::new`'s own arity for no benefit. What `new` does
   /// take over is seeding: `x.seed` and `y.seed` are overwritten with two
   /// independent children derived from `seed` (`derive()`, never `clone()`,
-  /// so the factors run mutually uncorrelated streams — see the `x`/`y`
-  /// field docs), so the outer `seed` is the only seed that matters.
+  /// so the factors run mutually uncorrelated streams — see
+  /// [`x`](Self::x) and [`y`](Self::y)), so the outer `seed` is the only
+  /// seed that matters.
   pub fn new(mut x: Cir<T, S>, mut y: Cir<T, S>, phi: impl Into<Fn1D<T>>, seed: S) -> Self {
-    assert_eq!(x.n, y.n, "x and y Cir factors must use the same n");
-    if let (Some(tx), Some(ty)) = (x.t, y.t) {
-      assert!(
-        (tx - ty).abs() <= T::from_f64_fast(1e-12),
-        "x and y Cir factors must use the same time horizon"
-      );
-    }
-    x.seed = seed.derive();
-    y.seed = seed.derive();
+    Self::assert_same_grid(&x, &y);
+    Self::seed_factors(&mut x, &mut y, &seed);
     Self {
       backend: Cpu,
       x,
@@ -87,7 +78,81 @@ impl<T: FloatExt, S: SeedExt> Cir2F<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Cir2F<T, S, B> {}
+impl<T: FloatExt, S: SeedExt, B> Cir2F<T, S, B> {
+  /// The factors are summed point by point, so they must share the grid.
+  fn assert_same_grid(x: &Cir<T, S>, y: &Cir<T, S>) {
+    assert_eq!(x.n, y.n, "x and y Cir factors must use the same n");
+    if let (Some(tx), Some(ty)) = (x.t, y.t) {
+      assert!(
+        (tx - ty).abs() <= T::from_f64_fast(1e-12),
+        "x and y Cir factors must use the same time horizon"
+      );
+    }
+  }
+
+  /// Gives each factor an independent child of `seed`, `x` first, so the
+  /// outer seed is the only source of both factors' randomness.
+  fn seed_factors(x: &mut Cir<T, S>, y: &mut Cir<T, S>, seed: &S) {
+    x.seed = seed.derive();
+    y.seed = seed.derive();
+  }
+
+  /// Replace the first factor; it takes over the outgoing factor's seed. Panics unless its grid
+  /// matches `y`'s, as in `new()`; a new grid needs a new `Cir2F`.
+  pub fn with_x(mut self, mut x: Cir<T, S>) -> Self {
+    Self::assert_same_grid(&x, &self.y);
+    x.seed = self.x.seed;
+    self.x = x;
+    self
+  }
+
+  /// Replace the second factor; it takes over the outgoing factor's seed. Panics unless its grid
+  /// matches `x`'s, as in `new()`; a new grid needs a new `Cir2F`.
+  pub fn with_y(mut self, mut y: Cir<T, S>) -> Self {
+    Self::assert_same_grid(&self.x, &y);
+    y.seed = self.y.seed;
+    self.y = y;
+    self
+  }
+
+  /// Replace the deterministic shift φ(t), all else unchanged.
+  pub fn with_phi(mut self, phi: impl Into<Fn1D<T>>) -> Self {
+    self.phi = phi.into();
+    self
+  }
+
+  /// Replace the seed and re-derive both factors' seeds from it as `new()` does, so the result
+  /// matches a fresh construction.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    Self::seed_factors(&mut self.x, &mut self.y, &seed);
+    self.seed = seed;
+    self
+  }
+
+  /// First CIR factor `x_t` (κ₁, θ₁, σ₁). Its seed is a child of the outer `seed` drawn by
+  /// [`new`](Self::new); the seed the [`Cir`] was built with is discarded.
+  pub fn x(&self) -> &Cir<T, S> {
+    &self.x
+  }
+
+  /// Second CIR factor `y_t` (κ₂, θ₂, σ₂). Its seed is the outer `seed`'s child drawn right after
+  /// [`x`](Self::x)'s, so the two factors never share a stream.
+  pub fn y(&self) -> &Cir<T, S> {
+    &self.y
+  }
+
+  /// Deterministic shift φ(t) in `r_t = x_t + y_t + φ(t)`, fitted to the initial term structure
+  /// (shift extension, as in CIR++).
+  pub fn phi(&self) -> &Fn1D<T> {
+    &self.phi
+  }
+
+  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  /// [`new`](Self::new) derives both factors' seeds from it, `x` first.
+  pub fn seed(&self) -> &S {
+    &self.seed
+  }
+}
 
 /// The Euler engine's view of the two-factor CIR model: both factors step in
 /// the kernel and the reported short rate is their shifted sum, which is the

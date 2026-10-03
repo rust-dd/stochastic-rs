@@ -3,8 +3,8 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
+use rand::distr::Distribution;
 use stochastic_rs::distributions::normal::SimdNormal;
-use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::SimdRng;
 use stochastic_rs::stats::filtering::ParticleFilter;
 use stochastic_rs::stats::filtering::UkfState;
@@ -13,17 +13,10 @@ use stochastic_rs::stats::filtering::unscented_kalman_step;
 
 #[test]
 fn particle_filter_with_systematic_resampling_runs_to_completion() {
-  let init_dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(1));
-  let init_fn = move |_rng: &mut SimdRng| {
-    let mut a = [0.0_f64];
-    init_dist.fill_slice(&mut a);
-    Array1::from(vec![a[0]])
-  };
-  let trans_dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(2));
-  let transition = move |prev: ArrayView1<f64>, _rng: &mut SimdRng| {
-    let mut a = [0.0_f64];
-    trans_dist.fill_slice(&mut a);
-    Array1::from(vec![prev[0] + a[0]])
+  let init_fn =
+    move |rng: &mut SimdRng| Array1::from(vec![SimdNormal::<f64>::new(0.0, 1.0).sample(rng)]);
+  let transition = move |prev: ArrayView1<f64>, rng: &mut SimdRng| {
+    Array1::from(vec![prev[0] + SimdNormal::<f64>::new(0.0, 1.0).sample(rng)])
   };
   let log_obs = |x: ArrayView1<f64>, y: ArrayView1<f64>| {
     let z = (y[0] - x[0]) / 0.5;

@@ -4,16 +4,12 @@
 #![allow(clippy::too_many_arguments)]
 //#![warn(missing_docs)]
 
-// Mutually exclusive global allocators. If both features are enabled (e.g.
-// `cargo check --all-features` for CI smoke testing), `jemalloc` wins.
-#[cfg(all(feature = "mimalloc", not(feature = "jemalloc")))]
-#[global_allocator]
-static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
-
-#[cfg(feature = "jemalloc")]
-#[global_allocator]
-static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
-
+// Types of these crates appear in the public API; the re-exports name the versions callers must match.
+pub use chrono;
+pub use ndarray;
+pub use num_complex;
+pub use num_traits;
+pub use rand;
 #[cfg(feature = "ai")]
 pub use stochastic_rs_ai as ai;
 pub use stochastic_rs_copulas as copulas;
@@ -25,16 +21,13 @@ pub use stochastic_rs_stochastic as stochastic;
 pub mod bridges;
 pub mod traits;
 
-// Python bindings will live in `stochastic-rs-py` (Phase 6 follow-up).
-// The umbrella `python` feature is currently a no-op pending that migration.
-
 /// Convenience prelude that re-exports the most commonly used types and traits.
 ///
 /// Bring this in scope to get the canonical trait set (`ProcessExt`,
 /// `FloatExt`, `ModelPricer`, `BivariateExt`, …) and the option-type enums
 /// without pulling them one by one.
 ///
-/// Currently 25 items in 6 groups — re-derive with
+/// Currently 28 items in 6 groups — re-derive with
 /// `awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"` — the
 /// leading indentation matters, since a bare `grep -c "pub use"` also matches
 /// this very comment and reports two too many — and update
@@ -51,6 +44,7 @@ pub mod traits;
 /// let path = bm.sample();
 /// ```
 pub mod prelude {
+  pub use stochastic_rs_distributions::Seeded;
   pub use stochastic_rs_quant::Moneyness;
   pub use stochastic_rs_quant::OptionStyle;
   pub use stochastic_rs_quant::OptionType;
@@ -72,7 +66,9 @@ pub mod prelude {
   pub use crate::traits::PathSampler;
   pub use crate::traits::ProcessExt;
   pub use crate::traits::RealExt;
+  pub use crate::traits::SimdDistribution;
   pub use crate::traits::SimdFloatExt;
+  pub use crate::traits::SimdKernel;
   pub use crate::traits::TailDependence;
   pub use crate::traits::TimeExt;
   pub use crate::traits::ToModel;

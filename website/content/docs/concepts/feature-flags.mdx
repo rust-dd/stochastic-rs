@@ -14,20 +14,14 @@ Rust core.
 
 | Feature           | Owner crate                 | Pulls in                             | Use when                                  |
 |-------------------|-----------------------------|--------------------------------------|-------------------------------------------|
-| `ai`              | umbrella                    | `stochastic-rs-ai`, `candle-core`    | NN volatility surrogates                  |
+| `ai`              | umbrella                    | `stochastic-rs-ai`, `candle-core`    | Experimental: NN volatility surrogates, outside the stability promise |
 | `cuda`            | `-stochastic`               | `cudarc` + cuFFT + NVRTC             | NVIDIA GPU: FGN / fBM (cuFFT) and the Euler engine kernels every other process runs on (`Cuda` backend, `f32` or `f64`) |
-| `metal`           | `-stochastic`               | `metal`                             | Apple GPU: FGN / fBM and the Euler engine in hand-written MSL (`Metal` backend, `f32`) |
-| `accelerate`      | `-stochastic`               | Apple vDSP (system framework)       | macOS CPU-FFT FGN / fBM (`Accelerate` backend; a host device for every process) |
-| `python`          | `-py` (cdylib)              | `pyo3`, `numpy`                      | Building the wheel via maturin            |
-| `ai-metal`        | umbrella                    | `candle-core/metal`                  | candle's Metal back-end for surrogate training (`ai::device::best_available`); CUDA comes from `candle-core/cuda` in the consuming manifest |
+| `metal`           | `-stochastic`               | `metal`                             | Apple GPU: FGN / fBM and the Euler engine in hand-written MSL (`Metal` backend, `f32`) (macOS only; inert on other targets) |
+| `accelerate`      | `-stochastic`               | Apple vDSP (system framework)       | macOS CPU-FFT FGN / fBM (`Accelerate` backend; a host device for every process) (macOS only; inert on other targets) |
+| `ai-metal`        | umbrella                    | `candle-core/metal`                  | Experimental: candle's Metal back-end for surrogate training (`ai::device::best_available`); CUDA comes from `candle-core/cuda` in the consuming manifest |
 | `ai`, `metal`, `cuda`, `accelerate` | `-py` | the sub-crate features above | Source-build extras of the Python module (`maturin develop --features …`): the surrogates + `calibrate_surrogate`, and the device back-ends behind the process classes' `device=`; none of them is in the published wheels |
-| `hotpath`         | umbrella                    | `hotpath`                            | Hot-path profiling: per-function timing of the instrumented paths |
-| `hotpath-alloc`   | umbrella                    | `hotpath` with allocation tracking   | The same profiling plus per-function allocation counts |
-| `jemalloc`        | umbrella                    | `tikv-jemallocator`                  | jemalloc as the global allocator; it wins if `mimalloc` is enabled too |
-| `mimalloc`        | umbrella                    | `mimalloc`                           | mimalloc as the global allocator          |
 | `viz`             | umbrella → `-quant`, `-ai`  | `plotly`                             | HTML plots: the SABR smile calibrator's plots, and the surrogate fit plots when `ai` is on too (`viz` alone does not pull in `ai`) |
-| `yahoo`           | umbrella → `-quant`         | `yahoo_finance_api`, `polars`, `time`, `tokio-test` | Experimental: downloading Yahoo Finance market data into cleaned OHLCV series (`quant::yahoo`, `market::yahoo_provider`) |
-| `dual-stream-rng` | `-core`, `-distributions`   | none (additive)                      | ~2–6 % bulk Normal-Ziggurat speedup on Apple Silicon (Exp at parity) — see [seeding](/docs/concepts/seeding#dual-stream-rng-feature) |
+| `unstable-dual-stream-rng` | `-core`, `-distributions`   | none (additive)                      | ~2–6 % bulk Normal-Ziggurat speedup on Apple Silicon (Exp at parity); outside the stability promise — see [seeding](/docs/concepts/seeding#unstable-dual-stream-rng-feature) |
 
 The GPU / accelerator features above select a sampling backend chosen at compile
 time with `.on::<B>()` — see the [Backends](/docs/concepts/backends) concept page.
@@ -42,10 +36,10 @@ relevant sub-crate. Example from the umbrella `Cargo.toml`:
 default = []
 ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]
 cuda = ["dep:cudarc", "cudarc/cufft", "stochastic-rs-stochastic/cuda"]
-metal = ["dep:metal", "stochastic-rs-stochastic/metal"]
-dual-stream-rng = [
-  "stochastic-rs-core/dual-stream-rng",
-  "stochastic-rs-distributions/dual-stream-rng",
+metal = ["stochastic-rs-stochastic/metal"]
+unstable-dual-stream-rng = [
+  "stochastic-rs-core/unstable-dual-stream-rng",
+  "stochastic-rs-distributions/unstable-dual-stream-rng",
 ]
 ```
 
@@ -61,9 +55,20 @@ stochastic-rs-stats = { version = "3.0.0-rc.4" }
 - **Linear algebra needs no feature at all.** Cholesky, SVD, eigen and
   least squares run on the pure-Rust `faer` and are always compiled in;
   the BLAS-backed feature flag from 2.x was removed in 3.0.
+- **`metal` and `accelerate` are inert off macOS.** The features and their
+  dependencies apply to `target_os = "macos"` only, so enabling them on Linux
+  or Windows compiles without the Apple back-ends instead of failing to link
+  a framework.
+- **Diagnostics go through `log`.** A constructor given a parameter regime it
+  accepts but handles with a boundary rule (a sub-Feller CIR, say) emits a
+  `log::warn!`; install any `log` subscriber to see it.
 - **`cuda` requires the CUDA toolkit on the build machine.** CI builds do not install it by default.
-- **`ai` is heavy.** It pulls in `candle-core`, which is a substantial
-  ML stack. Only enable when you actually need NN surrogates.
+- **`ai` is heavy and experimental.** It pulls in `candle-core`, which is a
+  substantial ML stack, and `stochastic-rs-ai` is outside the stability promise.
+  On Apple Silicon (or any aarch64 target with the `fp16` target feature) it needs
+  Rust 1.94 (candle 0.11 uses the NEON fp16 intrinsics) until a candle release carries
+  [huggingface/candle#3845](https://github.com/huggingface/candle/pull/3845).
+  Only enable when you actually need NN surrogates.
 
 ## Defining a new feature
 

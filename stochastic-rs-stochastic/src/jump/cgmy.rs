@@ -29,10 +29,13 @@
 //!   representation this file's `fill_path` implements.
 
 use ndarray::Array1;
-use scilib::math::basic::gamma;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::special::gamma;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::buffer::array1_from_fill;
@@ -224,8 +227,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       t_max,
       dt,
       b_t,
-      uniform: SimdUniform::<T>::new(T::zero(), T::one(), &self.seed),
-      exp: SimdExp::<T>::new(T::one(), &self.seed),
+      uniform: SimdUniform::<T>::new(T::zero(), T::one()).seeded(&self.seed),
+      exp: SimdExp::<T>::new(T::one()).seeded(&self.seed),
       seed: self.seed.derive(),
     }
   }
@@ -314,8 +317,8 @@ pub struct CgmySampler<T: FloatExt, S: SeedExt> {
   t_max: T,
   dt: T,
   b_t: T,
-  uniform: SimdUniform<T>,
-  exp: SimdExp<T>,
+  uniform: Seeded<SimdUniform<T>>,
+  exp: Seeded<SimdExp<T>>,
   seed: S,
 }
 
@@ -337,7 +340,7 @@ impl<T: FloatExt, S: SeedExt> CgmySampler<T, S> {
     let mut U = Array1::<T>::zeros(size);
     self.uniform.fill_slice(U.as_slice_mut().unwrap());
     // E_j ~ Exp(1)
-    let E = Array1::from_shape_fn(size, |_| self.exp.sample_fast());
+    let E = Array1::from_shape_fn(size, |_| self.exp.sample());
 
     // P_j = Γ_j (PPP/Gamma arrival times), P[0]=0, P[1]=Γ_1, ...
     let P = Poisson::new(T::one(), Some(size), None, self.seed.derive()).sample();
@@ -351,7 +354,7 @@ impl<T: FloatExt, S: SeedExt> CgmySampler<T, S> {
 
     // NOTE: Here V_j is +G or -M with 0.5-0.5 probability
     for j in 1..size {
-      let v_j = if self.uniform.sample_fast() < T::from_f64_fast(0.5) {
+      let v_j = if self.uniform.sample() < T::from_f64_fast(0.5) {
         self.lambda_plus
       } else {
         -self.lambda_minus

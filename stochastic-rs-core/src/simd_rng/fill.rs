@@ -8,8 +8,10 @@ use wide::u32x8;
 use wide::u64x4;
 
 use super::simd_rng::SimdRng;
-use super::xoshiro::F32_MAGIC;
-use super::xoshiro::F64_MAGIC;
+use super::xoshiro::F32_MAGIC_X8;
+use super::xoshiro::F32_ONE_X8;
+use super::xoshiro::F64_MAGIC_X4;
+use super::xoshiro::F64_ONE_X4;
 
 impl SimdRng {
   /// Fills `out` with uniform `f64` values in `[0, 1)` using direct SIMD
@@ -20,17 +22,15 @@ impl SimdRng {
   /// scalar variant) in exchange for a fully vectorised pipeline.
   #[inline]
   pub fn fill_uniform_f64(&mut self, out: &mut [f64]) {
-    let magic = u64x4::splat(F64_MAGIC);
-    let one = f64x4::splat(1.0);
     let len = out.len();
     let full_chunks = len / 4;
     let ptr = out.as_mut_ptr();
 
     for i in 0..full_chunks {
       let u = self.f64_engine.next();
-      let bits = (u >> 12u32) | magic;
+      let bits = (u >> 12u32) | F64_MAGIC_X4;
       let f: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits) };
-      let result = f - one;
+      let result = f - F64_ONE_X4;
       unsafe {
         core::ptr::write_unaligned(ptr.add(i * 4) as *mut f64x4, result);
       }
@@ -39,9 +39,9 @@ impl SimdRng {
     let tail = len - full_chunks * 4;
     if tail > 0 {
       let u = self.f64_engine.next();
-      let bits = (u >> 12u32) | magic;
+      let bits = (u >> 12u32) | F64_MAGIC_X4;
       let f: f64x4 = unsafe { core::mem::transmute::<u64x4, f64x4>(bits) };
-      let arr: [f64; 4] = (f - one).to_array();
+      let arr: [f64; 4] = (f - F64_ONE_X4).to_array();
       let dst = unsafe { core::slice::from_raw_parts_mut(ptr.add(full_chunks * 4), tail) };
       dst.copy_from_slice(&arr[..tail]);
     }
@@ -53,17 +53,15 @@ impl SimdRng {
   /// zero integer-to-float conversion cost.
   #[inline]
   pub fn fill_uniform_f32(&mut self, out: &mut [f32]) {
-    let magic = u32x8::splat(F32_MAGIC);
-    let one = f32x8::splat(1.0);
     let len = out.len();
     let full_chunks = len / 8;
     let ptr = out.as_mut_ptr();
 
     for i in 0..full_chunks {
       let u = self.f32_engine.next();
-      let bits = (u >> 9u32) | magic;
+      let bits = (u >> 9u32) | F32_MAGIC_X8;
       let f: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits) };
-      let result = f - one;
+      let result = f - F32_ONE_X8;
       unsafe {
         core::ptr::write_unaligned(ptr.add(i * 8) as *mut f32x8, result);
       }
@@ -72,9 +70,9 @@ impl SimdRng {
     let tail = len - full_chunks * 8;
     if tail > 0 {
       let u = self.f32_engine.next();
-      let bits = (u >> 9u32) | magic;
+      let bits = (u >> 9u32) | F32_MAGIC_X8;
       let f: f32x8 = unsafe { core::mem::transmute::<u32x8, f32x8>(bits) };
-      let arr: [f32; 8] = (f - one).to_array();
+      let arr: [f32; 8] = (f - F32_ONE_X8).to_array();
       let dst = unsafe { core::slice::from_raw_parts_mut(ptr.add(full_chunks * 8), tail) };
       dst.copy_from_slice(&arr[..tail]);
     }

@@ -1,4 +1,5 @@
 //! Dumps Fgn reference data (eigenvalues + deterministic paths) to npy files.
+use ndarray::aview1;
 use ndarray_npy::write_npy;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
@@ -12,7 +13,7 @@ fn main() {
 
   for &(h, n) in cases {
     let fgn = Fgn::new(h, n, Some(1.0), Deterministic::new(seed));
-    let eig = fgn.sqrt_eigenvalues.as_ref().clone();
+    let eig = aview1(fgn.sqrt_eigenvalues());
     let path = fgn.sample();
 
     let tag = format!("h{}_n{}", (h * 100.0) as u32, n);

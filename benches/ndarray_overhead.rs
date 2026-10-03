@@ -16,6 +16,9 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::Array1;
 use rayon::prelude::*;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::Seeded;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::gbm::Gbm;
@@ -25,7 +28,12 @@ use stochastic_rs::traits::ProcessExt;
 /// Mirrors the exact recurrence of `Gbm::sample` (x0 = 1, Euler scheme) so
 /// the reuse variants measure only the allocation/setup difference.
 #[inline]
-fn gbm_fill(path: &mut [f64], normal: &SimdNormal<f64>, drift_scale: f64, diff_scale: f64) {
+fn gbm_fill(
+  path: &mut [f64],
+  normal: &mut Seeded<SimdNormal<f64>>,
+  drift_scale: f64,
+  diff_scale: f64,
+) {
   path[0] = 1.0;
   let mut prev = 1.0f64;
   let tail = &mut path[1..];
@@ -77,8 +85,8 @@ fn bench_ndarray_overhead(c: &mut Criterion) {
       b.iter(|| {
         let mut arr = Array1::<f64>::uninit(n);
         let slice = unsafe { std::slice::from_raw_parts_mut(arr.as_mut_ptr() as *mut f64, n) };
-        let normal = SimdNormal::<f64>::new(0.0, sqrt_dt, &Unseeded);
-        gbm_fill(slice, &normal, drift_scale, diff_scale);
+        let mut normal = SimdNormal::<f64>::new(0.0, sqrt_dt).seeded(&Unseeded);
+        gbm_fill(slice, &mut normal, drift_scale, diff_scale);
         black_box(unsafe { arr.assume_init() })
       });
     });
@@ -93,10 +101,10 @@ fn bench_ndarray_overhead(c: &mut Criterion) {
         let dt = 1.0f64 / (n - 1) as f64;
         let drift_scale = 0.05 * dt;
         let diff_scale = 0.2f64;
-        let normal = SimdNormal::<f64>::new(0.0, dt.sqrt(), &Unseeded);
+        let mut normal = SimdNormal::<f64>::new(0.0, dt.sqrt()).seeded(&Unseeded);
         let mut path = vec![0.0f64; n];
         b.iter(|| {
-          gbm_fill(&mut path, &normal, drift_scale, diff_scale);
+          gbm_fill(&mut path, &mut normal, drift_scale, diff_scale);
           black_box(path[n - 1])
         });
       },

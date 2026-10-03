@@ -98,7 +98,8 @@ macro_rules! py_surrogate {
         report_dict(py, &report)
       }
 
-      /// Implied-volatility surface (flat, row-major maturities × strikes) at `params`.
+      /// Implied-vol surface at `params`, flat and maturity-major: 8 maturities from 0.1 to 2.0,
+      /// each with 11 strikes: 0.5 to 1.5 times the spot, Heston 2 down to 2/3 times the spot.
       fn predict_surface<'py>(&self, py: Python<'py>, params: Vec<f64>) -> PyResult<Bound<'py, numpy::PyArray1<f64>>> {
         let p: Vec<f32> = params.iter().map(|&v| v as f32).collect();
         let out = SurrogateModel::nn(&self.inner).predict_surface(&p).map_err(err)?;

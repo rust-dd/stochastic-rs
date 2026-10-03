@@ -1197,7 +1197,7 @@ fn page(label: &str, host: &[Array1<f32>], device: &[Array1<f32>], path: &str) {
   plot.write_html(path);
 }
 
-fn main() {
+pub(crate) fn main() {
   let dir = "target/metal_vs_cpu";
   fs::create_dir_all(dir).expect("output directory");
 

@@ -23,17 +23,14 @@ python = [
 
 [dependencies]
 faer = { workspace = true }
-faer-ext = { workspace = true, features = ["ndarray"] }
-stochastic-rs-core = { workspace = true }
-stochastic-rs-distributions = { workspace = true }
-ndarray = { workspace = true, features = ["rayon", "matrixmultiply-threading"] }
-num-traits = { workspace = true }
-num-complex = { workspace = true }
+faer-ext = { workspace = true }
+gauss-quad = { workspace = true }
+kendalls = { workspace = true }
+ndarray = { workspace = true }
+numpy = { workspace = true, optional = true }
+owens-t = { workspace = true }
+pyo3 = { workspace = true, optional = true }
 rand = { workspace = true }
 roots = { workspace = true }
-kendalls = { workspace = true }
-gauss-quad = { workspace = true }
-quadrature = { workspace = true }
-owens-t = { workspace = true }
-pyo3 = { workspace = true, features = ["extension-module"], optional = true }
-numpy = { workspace = true, optional = true }
+stochastic-rs-core = { workspace = true }
+stochastic-rs-distributions = { workspace = true }

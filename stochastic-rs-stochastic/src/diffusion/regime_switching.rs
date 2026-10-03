@@ -15,8 +15,11 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use rand::RngExt;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -410,7 +413,7 @@ impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusionSampler<T, S> {
 
     let mut dw = Array1::<T>::zeros(n_inc);
     let dw_slice = dw.as_slice_mut().unwrap();
-    let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
+    let mut normal = SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed);
     normal.fill_slice(dw_slice);
 
     let mut rng = self.seed.rng();

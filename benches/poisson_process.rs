@@ -13,6 +13,7 @@ use rand::rng;
 use rand_distr::Distribution;
 use rand_distr::Exp;
 use rand_distr::Normal;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::exp::SimdExp;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::process::ccustom::CompoundCustom;
@@ -22,8 +23,8 @@ use stochastic_rs::stochastic::process::poisson::Poisson;
 use stochastic_rs::traits::ProcessExt;
 
 fn legacy_sample_n(n: usize, lambda: f64) -> Array1<f64> {
-  let distr = SimdExp::<f64>::new(lambda, &Unseeded);
-  let exponentials = Array1::from_shape_fn(n, |_| distr.sample_fast());
+  let mut distr = SimdExp::<f64>::new(lambda).seeded(&Unseeded);
+  let exponentials = Array1::from_shape_fn(n, |_| distr.sample());
   let mut poisson = Array1::<f64>::zeros(n);
   for i in 1..n {
     poisson[i] = poisson[i - 1] + exponentials[i - 1];
@@ -32,12 +33,12 @@ fn legacy_sample_n(n: usize, lambda: f64) -> Array1<f64> {
 }
 
 fn legacy_sample_tmax(lambda: f64, t_max: f64) -> Array1<f64> {
-  let distr = SimdExp::<f64>::new(lambda, &Unseeded);
+  let mut distr = SimdExp::<f64>::new(lambda).seeded(&Unseeded);
   let mut poisson = Array1::from(vec![0.0_f64]);
   let mut t = 0.0_f64;
 
   while t < t_max {
-    t += distr.sample(&mut rng());
+    t += distr.sample();
     if t < t_max {
       poisson
         .push(Axis(0), Array0::from_elem(Dim(()), t).view())

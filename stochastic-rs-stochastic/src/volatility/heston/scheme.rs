@@ -6,6 +6,7 @@
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::Heston;
@@ -144,13 +145,13 @@ impl HestonScheme for AndersenQe {
 
     // Independent noise sub-streams: normals (Z_V for the quadratic branch and
     // Z for the asset) via the buffered SimdNormal, a uniform stream for the
-    // exponential branch. Built here because SimdNormal is not `Sync`. `seed`
-    // is `HestonSampler`'s own owned basis (already chunk-decorrelated by
-    // `sampler()`'s one derive), so `normal` consumes it directly; `urng`
-    // still derives *from* it — a second, within-chunk hop that keeps the
-    // two sub-streams independent without affecting cross-chunk decorrelation,
-    // since it operates entirely on an already-decorrelated basis.
-    let normal = SimdNormal::<T>::new(T::zero(), T::one(), seed);
+    // exponential branch. `seed` is `HestonSampler`'s own owned basis (already
+    // chunk-decorrelated by `sampler()`'s one derive), so `normal` consumes it
+    // directly; `urng` still derives *from* it — a second, within-chunk hop
+    // that keeps the two sub-streams independent without affecting cross-chunk
+    // decorrelation, since it operates entirely on an already-decorrelated
+    // basis.
+    let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(seed);
     let mut urng = seed.derive().rng();
 
     let mut log_s = s0.ln();
@@ -168,7 +169,7 @@ impl HestonScheme for AndersenQe {
         let b2 = inv - one + (inv * (inv - one)).sqrt();
         let a = m / (one + b2);
         let b = b2.sqrt();
-        let zv = normal.sample_fast();
+        let zv = normal.sample();
         a * (b + zv) * (b + zv)
       } else {
         // Exponential branch (eq. 29, 30, 25): mass p at 0 + exponential tail.
@@ -184,7 +185,7 @@ impl HestonScheme for AndersenQe {
 
       // Asset (eq. 33). The real drift μΔ is added on top of the QE
       // correlation/Itô constants; Z is independent of V_next.
-      let z = normal.sample_fast();
+      let z = normal.sample();
       let vol = (k34 * (v_prev + v_next)).max(T::zero()).sqrt();
       log_s = log_s + mu * dt + k0 + k1 * v_prev + k2 * v_next + vol * z;
 

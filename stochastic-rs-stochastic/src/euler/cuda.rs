@@ -17,6 +17,7 @@ use parking_lot::Mutex;
 use super::EulerCoefficients;
 use super::EulerKernel;
 use super::EulerSpec;
+use super::FgnSpec;
 use super::kernel::Shape;
 use crate::device::Cuda;
 use crate::device::DeviceError;
@@ -419,6 +420,8 @@ where
     use_jumps != 0 || jump_law != 0,
     gamma_law != 0,
   );
+  let use_incs = increments.map_or(0, |(_, streams)| streams);
+  let (steps, paths, first_path) = super::launch_scalars(n, first, m, use_incs)?;
   ensure_kernels(ordinal, shape, real)?;
   let out_len = components as usize * m * n;
   let mut guard = KERNELS.lock();
@@ -442,11 +445,9 @@ where
     .clone_htod(&params[..])
     .map_err(|e| driver_error("htod params", e))?;
   let sqrt_dt = dt.sqrt();
-  let (steps, paths, first_path) = (n as u32, m as u32, first as u32);
   // The kernel always binds the increment pointer; an unused slot gets one
   // element rather than a null. A supplied slice was written on this device by
   // the fGN pipeline and is bound where it lies.
-  let use_incs = increments.map_or(0, |(_, streams)| streams);
   let owned;
   let d_incs = match increments {
     Some((slice, _)) => slice,
@@ -693,6 +694,23 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
     self.batch_budget
   }
 
+  /// The output is indexed in 64 bits, a path and its increment row `path * increments` in an
+  /// `unsigned int`, and the fGN pipeline a fractional launch runs first in an `int`.
+  fn index_rows(
+    &self,
+    rows: usize,
+    _spec: EulerSpec<T>,
+    _steps: usize,
+    fgn: Option<FgnSpec<'_, T>>,
+  ) -> usize {
+    let streams = fgn.as_ref().map_or(1, |f| f.streams);
+    let rows = crate::device::rows_within_index_limit(rows, streams, u32::MAX as usize);
+    match fgn {
+      Some(f) => crate::noise::fgn::cuda::sampler::index_rows(rows, f.streams, f.n),
+      None => rows,
+    }
+  }
+
   /// Chunks alternate between two streams: while chunk `k` copies back
   /// through pinned memory, chunk `k + 1` is already computing.
   fn euler_kernel_batch<P: EulerCoefficients<T>>(
@@ -702,7 +720,7 @@ impl<T: FloatExt> EulerKernel<T> for Cuda {
     seed: u64,
   ) -> Result<Array2<T>> {
     let n = process.grid_points();
-    let rows = crate::device::chunk_rows(self.batch_budget, n, std::mem::size_of::<T>());
+    let rows = super::launch_rows(self, n, process.euler_spec(), n, process.fgn_spec());
     if m <= rows {
       return self.euler_kernel(process, 0, m, seed);
     }
@@ -1039,15 +1057,15 @@ fn launch_chunk<R>(
 where
   R: DeviceRepr + ValidAsZeroBits + Copy + num_traits::Float + CachedOut,
 {
+  let use_incs = increments.map_or(0, |(_, streams)| streams);
+  let (steps, paths, first_path) = super::launch_scalars(n, first, m, use_incs)?;
   let d_params = stream
     .clone_htod(&params[..])
     .map_err(|e| driver_error("htod params", e))?;
   let sqrt_dt = dt.sqrt();
-  let (steps, paths, first_path) = (n as u32, m as u32, first as u32);
   // The kernel always binds the increment pointer; an unused slot gets one
   // element rather than a null. A supplied slice was written on this device by
   // the fGN pipeline and is bound where it lies.
-  let use_incs = increments.map_or(0, |(_, streams)| streams);
   let owned;
   let d_incs = match increments {
     Some((slice, _)) => slice,
