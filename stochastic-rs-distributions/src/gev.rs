@@ -83,7 +83,10 @@ impl<T: SimdFloatExt> SimdGev<T> {
   /// - `xi` — shape ξ (matches the module header's ξ); sign selects
   ///   Fréchet (ξ>0), Gumbel (ξ=0), or reverse-Weibull (ξ<0).
   pub fn new(mu: T, sigma: T, xi: T) -> Self {
-    assert!(sigma > T::zero(), "σ must be positive");
+    assert!(
+      sigma > T::zero(),
+      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
+    );
     Self { mu, sigma, xi }
   }
 

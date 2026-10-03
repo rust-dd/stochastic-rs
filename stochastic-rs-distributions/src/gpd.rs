@@ -73,7 +73,10 @@ impl<T: SimdFloatExt> SimdGpd<T> {
   /// - `xi` — shape ξ; positive for a heavy tail, zero for the exponential,
   ///   negative for a tail bounded at μ − σ/ξ.
   pub fn new(mu: T, sigma: T, xi: T) -> Self {
-    assert!(sigma > T::zero(), "σ must be positive");
+    assert!(
+      sigma > T::zero(),
+      "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
+    );
     Self { mu, sigma, xi }
   }
 

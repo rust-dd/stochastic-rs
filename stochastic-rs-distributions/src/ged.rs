@@ -76,8 +76,14 @@ impl<T: SimdFloatExt> SimdGed<T> {
   ///   β=1 is Laplace, β=2 is Gaussian). Consumed internally as `1/beta`
   ///   into a `Gamma(1/beta, 1)` magnitude sampler.
   pub fn new(mu: T, alpha: T, beta: T) -> Self {
-    assert!(alpha > T::zero(), "α must be > 0");
-    assert!(beta > T::zero(), "β must be > 0");
+    assert!(
+      alpha > T::zero(),
+      "alpha must satisfy `alpha > T::zero()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta > T::zero(),
+      "beta must satisfy `beta > T::zero()`, got beta = {beta:?}"
+    );
     Self {
       mu,
       alpha,
