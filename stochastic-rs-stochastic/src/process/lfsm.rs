@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
 
 use crate::buffer::array1_from_fill;
@@ -180,13 +183,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
     let kernel_scale = dt.powf(d);
     let innovation_scale = self.scale * dt.powf(T::one() / self.alpha);
 
-    let stable = SimdAlphaStable::<T>::new(
-      self.alpha,
-      self.beta,
-      innovation_scale,
-      T::zero(),
-      &self.seed,
-    );
+    let stable = SimdAlphaStable::<T>::new(self.alpha, self.beta, innovation_scale, T::zero())
+      .seeded(&self.seed);
 
     // Moving-average weights `w_k = dt^d ((k+1)^d - k^d)` are deterministic,
     // so they are computed once and reused across samples.
@@ -278,7 +276,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 pub struct LfsmSampler<T: FloatExt> {
   n: usize,
   x0: T,
-  stable: SimdAlphaStable<T>,
+  stable: Seeded<SimdAlphaStable<T>>,
   weights: Array1<T>,
 }
 

@@ -4,112 +4,107 @@
 //! f(x)=\sqrt{\frac{\lambda}{2\pi x^3}}\exp\!\left(-\frac{\lambda(x-\mu)^2}{2\mu^2 x}\right),\ x>0
 //! $$
 //!
-use std::cell::Cell;
-use std::cell::UnsafeCell;
+//! Sampling: Michael, J.R., Schucany, W.R., Haas, R.W. (1976), "Generating Random Variates Using Transformations with Multiple Roots", *The American Statistician* 30(2), 88-90, DOI 10.1080/00031305.1976.10479147.
 
 use rand::Rng;
 use rand::distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
 use super::normal::SimdNormal;
+use crate::seeded::Buffered;
 use crate::seeded::StreamState;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
 const SMALL_INVERSE_GAUSS_THRESHOLD: usize = 16;
 
-pub struct SimdInverseGauss<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+/// Inverse Gaussian law with mean `mu` and shape `lambda`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdInverseGauss<T> {
   mu: T,
   lambda: T,
-  normal: UnsafeCell<StreamState<T, R, 64>>,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<R>,
-  pub(crate) stream_seed: Cell<u64>,
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdInverseGauss<T, R> {
+/// A stream with its own standard normal sub-stream, its own uniform engine and its single-draw buffer.
+#[doc(hidden)]
+#[derive(Clone, Debug)]
+pub struct NormalPlusOwnState<T: SimdFloatExt, R: SimdRngExt> {
+  pub(crate) normal: StreamState<T, R, 64>,
+  pub(crate) rng: R,
+  pub(crate) buf: Buffered<T, 16>,
+}
+
+impl<T: SimdFloatExt, R: SimdRngExt> NormalPlusOwnState<T, R> {
+  /// The normal sub-stream, then the engine; the engine's seed is the fork basis.
+  pub(crate) fn init<S: SeedExt>(seed: &S) -> (Self, u64) {
+    let (normal, _) = SimdNormal::<T>::standard().init::<R, S>(seed);
+    let stream_seed = seed.next_seed();
+    (
+      Self {
+        normal,
+        rng: R::from_seed(stream_seed),
+        buf: Buffered::new(),
+      },
+      stream_seed,
+    )
+  }
+}
+
+impl<T: SimdFloatExt> SimdInverseGauss<T> {
   /// Creates an inverse-Gaussian distribution.
   ///
   /// - `mu` — mean μ > 0 (matches the module header's μ).
   /// - `lambda` — shape λ > 0 (matches the module header's λ; despite
   ///   the name, this is a shape, not a rate — variance = μ³/λ).
-  ///
-  /// RNGs come from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  pub fn new<S: crate::simd_rng::SeedExt>(mu: T, lambda: T, seed: &S) -> Self {
+  pub fn new(mu: T, lambda: T) -> Self {
     assert!(
       mu > T::zero() && lambda > T::zero(),
       "mu must satisfy `mu > T::zero() && lambda > T::zero()`, got mu = {mu:?}, lambda = {lambda:?}"
     );
-    let normal = UnsafeCell::new(SimdNormal::<T>::standard().init::<R, S>(seed).0);
-    let stream_seed = seed.next_seed();
-    Self {
-      mu,
-      lambda,
-      normal,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed: Cell::new(stream_seed),
-    }
+    Self { mu, lambda }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.mu,
-      self.lambda,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
+  /// The mean `μ`.
+  pub fn mu(&self) -> T {
+    self.mu
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
+  /// The shape `λ`.
+  pub fn lambda(&self) -> T {
+    self.lambda
+  }
+
+  /// One Michael–Schucany–Haas draw from the normal `z` and the uniform `u`.
   #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
+  fn msh(&self, z: T, u: T) -> T {
+    let two = T::from(2.0).unwrap();
+    let four = T::from(4.0).unwrap();
+    let w = z * z;
+    let t1 = self.mu + (self.mu * self.mu * w) / (two * self.lambda);
+    let rad = (four * self.mu * self.lambda * w + self.mu * self.mu * w * w).sqrt();
+    // The small root as `μ²/big` rather than `t1 − (μ/2λ)·rad`, which cancels once `w` is large and in `f32`
+    // can come out zero or negative, where the law is strictly positive.
+    let big = t1 + (self.mu / (two * self.lambda)) * rad;
+    let small = self.mu * self.mu / big;
+    let check = self.mu / (self.mu + small);
+    if u < check { small } else { big }
   }
 
-  /// Fills `out` using the internal SIMD RNG stream — the only stream this
-  /// sampler draws from (see the crate-level RNG policy).
-  pub fn fill_slice(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
+  fn fill_parts<R: SimdRngExt>(
+    &self,
+    normal: &mut StreamState<T, R, 64>,
+    rng: &mut R,
+    out: &mut [T],
+  ) {
     if out.len() < SMALL_INVERSE_GAUSS_THRESHOLD {
-      let two = T::from(2.0).unwrap();
-      let four = T::from(4.0).unwrap();
       for x in out.iter_mut() {
-        let z = SimdNormal::<T>::standard().next(unsafe { &mut *self.normal.get() });
-        let u = T::sample_uniform_simd(rng);
-        let w = z * z;
-        let t1 = self.mu + (self.mu * self.mu * w) / (two * self.lambda);
-        let rad = (four * self.mu * self.lambda * w + self.mu * self.mu * w * w).sqrt();
-        // The two roots as a sum and a quotient rather than a difference.
-        // `t1` and `(mu / 2 lambda) * rad` agree to five digits once `w` is
-        // large, so their difference loses most of its significance and in
-        // `f32` can come out zero or negative — where the law is strictly
-        // positive, and the caller's `sqrt` of it is a NaN. Multiplying by
-        // the conjugate leaves `mu^2` over a sum of positives, and the large
-        // root is that same sum.
-        let big = t1 + (self.mu / (two * self.lambda)) * rad;
-        let xr = self.mu * self.mu / big;
-        let check = self.mu / (self.mu + xr);
-        *x = if u < check { xr } else { big };
+        *x = self.msh(
+          SimdNormal::<T>::standard().next(normal),
+          T::sample_uniform_simd(rng),
+        );
       }
       return;
     }
@@ -121,7 +116,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdInverseGauss<T, R> {
     let mut ubuf = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      SimdNormal::<T>::fill_standard(&mut unsafe { &mut *self.normal.get() }.rng, &mut zbuf);
+      SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf);
       T::fill_uniform_simd(rng, &mut ubuf);
       for (sub, (z8, u8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
         zbuf
@@ -134,7 +129,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdInverseGauss<T, R> {
         let w = z * z;
         let t1 = mu + (mu * mu * w) / (two * lam);
         let rad = T::simd_sqrt(four * mu * lam * w + mu * mu * w * w);
-        // The conjugate form of the small root; see the scalar path above.
+        // The conjugate form of the small root; see `msh`.
         let alt = t1 + (mu / (two * lam)) * rad;
         let x = (mu * mu) / alt;
         let check = mu / (mu + x);
@@ -148,58 +143,53 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdInverseGauss<T, R> {
     }
     if !rem.is_empty() {
       let n = rem.len();
-      SimdNormal::<T>::fill_standard(&mut unsafe { &mut *self.normal.get() }.rng, &mut zbuf[..n]);
+      SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf[..n]);
       T::fill_uniform_simd(rng, &mut ubuf[..n]);
-      let two_s = T::from(2.0).unwrap();
-      let four_s = T::from(4.0).unwrap();
       for i in 0..n {
-        let z = zbuf[i];
-        let u = ubuf[i];
-        let w = z * z;
-        let mu_s = self.mu;
-        let lam_s = self.lambda;
-        let t1 = mu_s + (mu_s * mu_s * w) / (two_s * lam_s);
-        let rad = (four_s * mu_s * lam_s * w + mu_s * mu_s * w * w).sqrt();
-        // The conjugate form of the small root; see the scalar path above.
-        let big = t1 + (mu_s / (two_s * lam_s)) * rad;
-        let x = mu_s * mu_s / big;
-        let check = mu_s / (mu_s + x);
-        rem[i] = if u < check { x } else { big };
+        rem[i] = self.msh(zbuf[i], ubuf[i]);
       }
     }
   }
 
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    let z = SimdNormal::<T>::standard().draw_with(rng);
+    self.msh(z, T::sample_uniform(rng))
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdInverseGauss<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.mu, self.lambda, &Unseeded)
+impl<T: SimdFloatExt> Sealed for SimdInverseGauss<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdInverseGauss<T> {
+  type State<R: SimdRngExt> = NormalPlusOwnState<T, R>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (NormalPlusOwnState<T, R>, u64) {
+    NormalPlusOwnState::init(seed)
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdInverseGauss<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction. Use `Deterministic`
-  /// in the constructor for reproducibility.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
+impl<T: SimdFloatExt> SimdKernel for SimdInverseGauss<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut NormalPlusOwnState<T, R>, out: &mut [T]) {
+    self.fill_parts(&mut state.normal, &mut state.rng, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut NormalPlusOwnState<T, R>) -> T {
+    let NormalPlusOwnState { normal, rng, buf } = state;
+    buf.pop(|b| self.fill_parts(normal, rng, b))
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdInverseGauss<T, R> {
+impl<T: SimdFloatExt> Distribution<T> for SimdInverseGauss<T> {
+  /// One scalar Michael–Schucany–Haas draw: a normal, then a uniform, from the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdInverseGauss<T> {
   fn pdf(&self, x: f64) -> f64 {
     let mu = self.mu.to_f64().unwrap();
     let lambda = self.lambda.to_f64().unwrap();
@@ -289,7 +279,21 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdInve
   }
 }
 
-py_distribution_legacy!(PyInverseGauss, SimdInverseGauss,
+py_distribution!(PyInverseGauss, SimdInverseGauss,
   sig: (mu, lambda_, seed=None, dtype=None),
   params: (mu: f64, lambda_: f64)
 );
+
+#[cfg(test)]
+mod tests {
+  use super::SimdInverseGauss;
+  use crate::tests::scalar_ks_best_p;
+  use crate::traits::DistributionExt;
+
+  #[test]
+  fn scalar_sample_matches_cdf() {
+    let d = SimdInverseGauss::<f64>::new(1.5, 3.0);
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+    assert!(best > 0.01, "best p = {best}");
+  }
+}

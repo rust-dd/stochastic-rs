@@ -295,7 +295,7 @@ fn main() {
   );
   run_case(
     "InvGauss<f64>",
-    &SimdInverseGauss::<f64>::new(1.0, 2.0, &Unseeded),
+    &SimdInverseGauss::<f64>::new(1.0, 2.0).seeded(&Unseeded),
     fm,
     fnn,
     &single,
@@ -303,7 +303,7 @@ fn main() {
   );
   run_case(
     "Nig<f64>",
-    &SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.0, &Unseeded),
+    &SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.0).seeded(&Unseeded),
     fm,
     fnn,
     &single,
@@ -311,7 +311,7 @@ fn main() {
   );
   run_case(
     "AlphaStable<f64>",
-    &SimdAlphaStable::<f64>::new(1.7, 0.3, 1.0, 0.0, &Unseeded),
+    &SimdAlphaStable::<f64>::new(1.7, 0.3, 1.0, 0.0).seeded(&Unseeded),
     fm,
     fnn,
     &single,

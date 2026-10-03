@@ -221,26 +221,6 @@ pub mod variance_gamma;
 pub mod weibull;
 pub mod wishart;
 
-macro_rules! impl_distribution_sampler_float {
-  ($($dist:ty),+ $(,)?) => {
-    $(
-      impl<T: SimdFloatExt> crate::traits::distribution::Sealed for $dist {}
-
-      impl<T: SimdFloatExt> DistributionSampler<T> for $dist {
-        #[inline]
-        fn fill_slice(&mut self, out: &mut [T]) {
-          Self::fill_slice(self, out)
-        }
-
-        #[inline]
-        fn fork(&mut self, stream_idx: u64) -> Self {
-          Self::fork(self, stream_idx)
-        }
-      }
-    )+
-  };
-}
-
 macro_rules! impl_distribution_sampler_int {
   ($($dist:ty),+ $(,)?) => {
     $(
@@ -260,21 +240,6 @@ macro_rules! impl_distribution_sampler_int {
     )+
   };
 }
-
-impl_distribution_sampler_float!(
-  alpha_stable::SimdAlphaStable<T>,
-  ged::SimdGed<T>,
-  generalized_hyperbolic::SimdGeneralizedHyperbolic<T>,
-  generalized_inverse_gauss::SimdGig<T>,
-  gev::SimdGev<T>,
-  gpd::SimdGpd<T>,
-  inverse_gauss::SimdInverseGauss<T>,
-  johnson_su::SimdJohnsonSu<T>,
-  normal_inverse_gauss::SimdNormalInverseGauss<T>,
-  skew_t::SimdSkewT<T>,
-  tempered_stable::SimdTemperedStable<T>,
-  variance_gamma::SimdVarianceGamma<T>,
-);
 
 impl_distribution_sampler_int!(
   binomial::SimdBinomial<T>,

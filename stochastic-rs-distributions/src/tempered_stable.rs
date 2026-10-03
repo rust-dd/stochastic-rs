@@ -32,24 +32,24 @@
 //! Transactions on Modeling and Computer Simulation* 19(4), Article 18.
 //! DOI: 10.1145/1596519.1596523
 
-use std::cell::Cell;
-use std::cell::UnsafeCell;
-
 use rand::Rng;
 use rand::distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
-use super::normal::SimdNormal;
+use super::inverse_gauss::NormalPlusOwnState;
 use crate::seeded::StreamState;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::source::AnyRng;
+use crate::source::NormalUniformSource;
+use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
 
 /// Positive tempered stable law with stability `alpha ∈ (0, 1)`, tilting
-/// `lambda ≥ 0` and scale `theta > 0`.
-pub struct SimdTemperedStable<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+/// `lambda ≥ 0` and scale `theta > 0`; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdTemperedStable<T> {
   alpha: T,
   lambda: T,
   theta: T,
@@ -57,11 +57,6 @@ pub struct SimdTemperedStable<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
   tilt: f64,
   /// $\theta^{1/\alpha}$.
   scale: f64,
-  normal: UnsafeCell<StreamState<T, R, 64>>,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<R>,
-  stream_seed: Cell<u64>,
 }
 
 /// $\mathcal S(x) = \sin x / x$.
@@ -89,9 +84,9 @@ fn zolotarev_a(alpha: f64, u: f64) -> f64 {
   (b0 * zolotarev_ratio(alpha, u)).powf(-1.0 / (1.0 - alpha))
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdTemperedStable<T, R> {
+impl<T: SimdFloatExt> SimdTemperedStable<T> {
   /// Construct a tempered stable$(\alpha, \lambda, \theta)$.
-  pub fn new<S: crate::simd_rng::SeedExt>(alpha: T, lambda: T, theta: T, seed: &S) -> Self {
+  pub fn new(alpha: T, lambda: T, theta: T) -> Self {
     let alpha_f = alpha.to_f64().unwrap();
     let lambda_f = lambda.to_f64().unwrap();
     let theta_f = theta.to_f64().unwrap();
@@ -105,67 +100,39 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTemperedStable<T, R> {
     );
     assert!(theta_f > 0.0, "TemperedStable: theta must be positive");
     let scale = theta_f.powf(1.0 / alpha_f);
-    let normal = UnsafeCell::new(SimdNormal::<T>::standard().init::<R, S>(seed).0);
-    let stream_seed = seed.next_seed();
     Self {
       alpha,
       lambda,
       theta,
       tilt: lambda_f * scale,
       scale,
-      normal,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed: Cell::new(stream_seed),
     }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.alpha,
-      self.lambda,
-      self.theta,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
+  /// The stability index `α`.
+  pub fn alpha(&self) -> T {
+    self.alpha
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
-  #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
+  /// The tilting `λ`.
+  pub fn lambda(&self) -> T {
+    self.lambda
+  }
+
+  /// The scale `θ`.
+  pub fn theta(&self) -> T {
+    self.theta
   }
 
   /// One draw of $S_{\alpha,\lambda'}$ with $\lambda' = $ `self.tilt` —
   /// Devroye's Appendix algorithm, step for step.
-  fn draw_unit(&self, rng: &mut R) -> f64 {
+  fn draw_unit<S: NormalUniformSource<T>>(&self, src: &mut S) -> f64 {
     let alpha = self.alpha.to_f64().unwrap();
     let lambda = self.tilt;
     let pi = std::f64::consts::PI;
-    let uniform = |rng: &mut R| T::sample_uniform_simd(rng).to_f64().unwrap();
-    let normal_state = unsafe { &mut *self.normal.get() };
-    let mut normal = || {
-      SimdNormal::<T>::standard()
-        .next(normal_state)
-        .to_f64()
-        .unwrap()
-    };
-    let exponential = |rng: &mut R| -uniform(rng).max(1e-300).ln();
+    let uniform = |src: &mut S| src.uniform().to_f64().unwrap();
+    let normal = |src: &mut S| src.normal().to_f64().unwrap();
+    let exponential = |src: &mut S| -uniform(src).max(1e-300).ln();
 
     let lambda_alpha = lambda.powf(alpha);
     let gamma = lambda_alpha * alpha * (1.0 - alpha);
@@ -181,11 +148,11 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTemperedStable<T, R> {
 
     loop {
       let (u, z, zeta, zed) = loop {
-        let v = uniform(rng);
-        let w_prime = uniform(rng);
+        let v = uniform(src);
+        let w_prime = uniform(src);
         let u = if gamma >= 1.0 {
           if v < w1 / (w1 + w2) {
-            normal().abs() / sqrt_gamma
+            normal(src).abs() / sqrt_gamma
           } else {
             pi * (1.0 - w_prime * w_prime)
           }
@@ -194,7 +161,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTemperedStable<T, R> {
         } else {
           pi * (1.0 - w_prime * w_prime)
         };
-        let w = uniform(rng);
+        let w = uniform(src);
         let zeta = zolotarev_ratio(alpha, u).sqrt();
         let phi = (sqrt_gamma + alpha * zeta).powf(1.0 / alpha);
         let zed = phi / (phi - sqrt_gamma_pow);
@@ -227,16 +194,17 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTemperedStable<T, R> {
       let a2 = delta;
       let a3 = zed / a;
       let s = a1 + a2 + a3;
-      let v_prime = uniform(rng);
+      let v_prime = uniform(src);
       let mut n_prime = 0.0;
       let mut e_prime = 0.0;
+      // The paper's appendix prints `V' < a2/s` for the middle piece; the mixture needs `(a1 + a2)/s`.
       let x = if v_prime < a1 / s {
-        n_prime = normal();
+        n_prime = normal(src);
         m - delta * n_prime.abs()
       } else if v_prime < (a1 + a2) / s {
-        m + uniform(rng) * delta
+        m + uniform(src) * delta
       } else {
-        e_prime = exponential(rng);
+        e_prime = exponential(src);
         m + delta + e_prime * a3
       };
       let e = -z.ln();
@@ -255,21 +223,20 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTemperedStable<T, R> {
     }
   }
 
-  /// Fills `out` with tempered stable draws; the double rejection is scalar
-  /// on the internal SIMD uniform and normal streams.
-  pub fn fill_slice(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
+  fn fill_parts<R: SimdRngExt>(
+    &self,
+    normal: &mut StreamState<T, R, 64>,
+    rng: &mut R,
+    out: &mut [T],
+  ) {
+    let mut src = (normal, rng);
     for x in out.iter_mut() {
-      *x = T::from_f64_fast(self.scale * self.draw_unit(rng));
+      *x = T::from_f64_fast(self.scale * self.draw_unit(&mut src));
     }
   }
 
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    T::from_f64_fast(self.scale * self.draw_unit(&mut AnyRng(rng)))
   }
 
   fn params(&self) -> (f64, f64, f64) {
@@ -296,27 +263,39 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdTemperedStable<T, R> {
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdTemperedStable<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.alpha, self.lambda, self.theta, &Unseeded)
+impl<T: SimdFloatExt> Sealed for SimdTemperedStable<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdTemperedStable<T> {
+  type State<R: SimdRngExt> = NormalPlusOwnState<T, R>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (NormalPlusOwnState<T, R>, u64) {
+    NormalPlusOwnState::init(seed)
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdTemperedStable<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD streams seeded at construction.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
+impl<T: SimdFloatExt> SimdKernel for SimdTemperedStable<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut NormalPlusOwnState<T, R>, out: &mut [T]) {
+    self.fill_parts(&mut state.normal, &mut state.rng, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut NormalPlusOwnState<T, R>) -> T {
+    let NormalPlusOwnState { normal, rng, buf } = state;
+    buf.pop(|b| self.fill_parts(normal, rng, b))
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdTemperedStable<T, R> {
+impl<T: SimdFloatExt> Distribution<T> for SimdTemperedStable<T> {
+  /// One scalar Devroye double rejection on the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdTemperedStable<T> {
   fn mean(&self) -> f64 {
     self.cumulant(1)
   }
@@ -358,7 +337,10 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
+  use crate::tests::assert_moments_within;
+  use crate::tests::scalar_draws;
   use crate::traits::DistributionExt;
+  use crate::traits::DistributionSampler;
 
   fn laplace_transform(xs: &[f64], u: f64) -> f64 {
     xs.iter().map(|x| (-u * x).exp()).sum::<f64>() / xs.len() as f64
@@ -376,10 +358,10 @@ mod tests {
       (0.3, 4.0, 2.0, 3),
       (0.9, 30.0, 0.5, 4),
     ] {
-      let d = SimdTemperedStable::<f64>::new(alpha, lambda, theta, &Deterministic::new(seed));
+      let d = SimdTemperedStable::<f64>::new(alpha, lambda, theta);
       let n = 300_000;
       let mut xs = vec![0.0; n];
-      d.fill_slice(&mut xs);
+      d.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
       assert!(xs.iter().all(|x| *x > 0.0 && x.is_finite()));
       for u in [0.5, 1.0, 2.0] {
         let want = (theta * (lambda.powf(alpha) - (u + lambda).powf(alpha))).exp();
@@ -395,10 +377,10 @@ mod tests {
   /// Cumulant moments: sample mean and variance against κ₁, κ₂.
   #[test]
   fn sample_moments_match_the_cumulants() {
-    let d = SimdTemperedStable::<f64>::new(0.6, 2.0, 1.5, &Deterministic::new(9));
+    let d = SimdTemperedStable::<f64>::new(0.6, 2.0, 1.5);
     let n = 400_000;
     let mut xs = vec![0.0; n];
-    d.fill_slice(&mut xs);
+    d.seeded(&Deterministic::new(9)).fill_slice(&mut xs);
     let mean = xs.iter().sum::<f64>() / n as f64;
     let var = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64;
     assert!(
@@ -421,28 +403,42 @@ mod tests {
   }
 
   #[test]
+  fn scalar_sample_moments_match_the_cumulants() {
+    let d = SimdTemperedStable::<f64>::new(0.6, 2.0, 1.5);
+    let xs = scalar_draws(&d, 13, 200_000);
+    assert_moments_within(
+      &xs,
+      d.cumulant(1),
+      d.cumulant(2),
+      None,
+      6.0,
+      "tempered stable",
+    );
+  }
+
+  #[test]
   fn untilted_law_has_infinite_mean() {
-    let d = SimdTemperedStable::<f64>::new(0.5, 0.0, 1.0, &Unseeded);
+    let d = SimdTemperedStable::<f64>::new(0.5, 0.0, 1.0);
     assert_eq!(d.mean(), f64::INFINITY);
   }
 
   #[test]
   fn deterministic_seed_reproduces_stream() {
-    let a = SimdTemperedStable::<f64>::new(0.7, 1.0, 1.0, &Deterministic::new(7));
-    let b = SimdTemperedStable::<f64>::new(0.7, 1.0, 1.0, &Deterministic::new(7));
+    let mut a = SimdTemperedStable::<f64>::new(0.7, 1.0, 1.0).seeded(&Deterministic::new(7));
+    let mut b = SimdTemperedStable::<f64>::new(0.7, 1.0, 1.0).seeded(&Deterministic::new(7));
     for _ in 0..256 {
-      assert_eq!(a.sample_fast(), b.sample_fast());
+      assert_eq!(a.sample(), b.sample());
     }
   }
 
   #[test]
   #[should_panic(expected = "alpha must lie in (0, 1)")]
   fn rejects_alpha_of_one() {
-    let _ = SimdTemperedStable::<f64>::new(1.0, 1.0, 1.0, &Unseeded);
+    let _ = SimdTemperedStable::<f64>::new(1.0, 1.0, 1.0);
   }
 }
 
-py_distribution_legacy!(PyTemperedStable, SimdTemperedStable,
+py_distribution!(PyTemperedStable, SimdTemperedStable,
   sig: (alpha, lambda, theta, seed=None, dtype=None),
   params: (alpha: f64, lambda: f64, theta: f64)
 );

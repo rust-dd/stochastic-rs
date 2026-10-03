@@ -40,23 +40,24 @@
 //! - Jenkinson, A.F. (1955), "The frequency distribution of the annual
 //!   maximum (or minimum) values of meteorological elements",
 //!   *Quarterly Journal of the Royal Meteorological Society* 81, 158-171.
+//!   DOI: 10.1002/qj.49708134804
 //! - Coles, S. (2001), *An Introduction to Statistical Modeling of
 //!   Extreme Values*, Springer.
 //! - McNeil, A.J., Frey, R., Embrechts, P. (2015),
 //!   *Quantitative Risk Management*, Princeton UP, §7.2.
 
-use std::cell::Cell;
-use std::cell::UnsafeCell;
-
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::Buffered;
+use crate::seeded::StreamState;
 use crate::traits::DistributionExt;
 use crate::traits::SimdFloatExt;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 const SMALL_GEV_THRESHOLD: usize = 16;
 
@@ -67,69 +68,39 @@ const EULER_MASCHERONI: f64 = 0.577_215_664_901_532_9;
 const APERY: f64 = 1.202_056_903_159_594_3;
 
 /// Generalized Extreme Value distribution. Three free parameters: location
-/// `μ`, scale `σ > 0`, shape `ξ`.
-///
-/// Sampling uses the closed-form inverse CDF from the module docs on the
-/// internal SIMD RNG — bulk fills vectorise the `ln` / `powf` chain 8-wide.
-pub struct SimdGev<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+/// `μ`, scale `σ > 0`, shape `ξ`; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdGev<T> {
   mu: T,
   sigma: T,
   xi: T,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<R>,
-  stream_seed: Cell<u64>,
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdGev<T, R> {
+impl<T: SimdFloatExt> SimdGev<T> {
   /// Construct a GEV$(\mu, \sigma, \xi)$.
   ///
   /// - `mu` — location μ (matches the module header's μ).
   /// - `sigma` — scale σ > 0 (matches the module header's σ).
   /// - `xi` — shape ξ (matches the module header's ξ); sign selects
   ///   Fréchet (ξ>0), Gumbel (ξ=0), or reverse-Weibull (ξ<0).
-  pub fn new<S: SeedExt>(mu: T, sigma: T, xi: T, seed: &S) -> Self {
+  pub fn new(mu: T, sigma: T, xi: T) -> Self {
     assert!(sigma > T::zero(), "σ must be positive");
-    let stream_seed = seed.next_seed();
-    Self {
-      mu,
-      sigma,
-      xi,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed: Cell::new(stream_seed),
-    }
+    Self { mu, sigma, xi }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.mu,
-      self.sigma,
-      self.xi,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
+  /// The location `μ`.
+  pub fn mu(&self) -> T {
+    self.mu
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
-  #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
+  /// The scale `σ`.
+  pub fn sigma(&self) -> T {
+    self.sigma
+  }
+
+  /// The shape `ξ`.
+  pub fn xi(&self) -> T {
+    self.xi
   }
 
   /// Clamp a uniform draw to the open unit interval so the `ln` chain stays
@@ -140,10 +111,14 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGev<T, R> {
     x.max(eps).min(T::one() - eps)
   }
 
-  /// One inverse-CDF draw on the internal RNG.
   #[inline]
-  fn sample_one(&self, rng: &mut R, gumbel: bool) -> T {
-    let u = Self::clamp_open_unit(T::sample_uniform_simd(rng));
+  fn is_gumbel(&self) -> bool {
+    self.xi.to_f64().unwrap().abs() < 1e-12
+  }
+
+  #[inline]
+  fn invert(&self, u: T, gumbel: bool) -> T {
+    let u = Self::clamp_open_unit(u);
     let m_ln_u = -u.ln();
     if gumbel {
       self.mu - self.sigma * m_ln_u.ln()
@@ -152,15 +127,11 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGev<T, R> {
     }
   }
 
-  /// Fills `out` with GEV samples using the internal SIMD RNG stream — the
-  /// only stream this sampler draws from (see the crate-level RNG policy).
-  /// The inverse-CDF transform runs 8-wide.
-  pub fn fill_slice(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    let gumbel = self.xi.to_f64().unwrap().abs() < 1e-12;
+  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [T]) {
+    let gumbel = self.is_gumbel();
     if out.len() < SMALL_GEV_THRESHOLD {
       for x in out.iter_mut() {
-        *x = self.sample_one(rng, gumbel);
+        *x = self.invert(T::sample_uniform_simd(rng), gumbel);
       }
       return;
     }
@@ -182,16 +153,12 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGev<T, R> {
       *chunk = T::simd_to_array(x);
     }
     for x in rem.iter_mut() {
-      *x = self.sample_one(rng, gumbel);
+      *x = self.invert(T::sample_uniform_simd(rng), gumbel);
     }
   }
 
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.invert(T::sample_uniform(rng), self.is_gumbel())
   }
 
   fn params(&self) -> (f64, f64, f64) {
@@ -219,28 +186,46 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGev<T, R> {
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdGev<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.mu, self.sigma, self.xi, &Unseeded)
+impl<T: SimdFloatExt> Sealed for SimdGev<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdGev<T> {
+  type State<R: SimdRngExt> = StreamState<T, R, 16>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (StreamState<T, R, 16>, u64) {
+    let stream_seed = seed.next_seed();
+    (
+      StreamState {
+        rng: R::from_seed(stream_seed),
+        buf: Buffered::new(),
+      },
+      stream_seed,
+    )
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdGev<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction. Use `Deterministic`
-  /// in the constructor for reproducibility.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
+impl<T: SimdFloatExt> SimdKernel for SimdGev<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+    self.fill_parts(&mut state.rng, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>) -> T {
+    let StreamState { rng, buf } = state;
+    buf.pop(|b| self.fill_parts(rng, b))
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> DistributionExt for SimdGev<T, R> {
+impl<T: SimdFloatExt> Distribution<T> for SimdGev<T> {
+  /// The inverse cdf at one `[0, 1)` uniform from the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: SimdFloatExt> DistributionExt for SimdGev<T> {
   fn pdf(&self, x: f64) -> f64 {
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
@@ -373,17 +358,20 @@ impl<T: SimdFloatExt, R: SimdRngExt> DistributionExt for SimdGev<T, R> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Unseeded;
+
   use super::*;
+  use crate::tests::scalar_ks_best_p;
 
   /// Gumbel (ξ = 0): mean = μ + γσ (Euler-Mascheroni γ ≈ 0.5772157).
   /// Sample mean must match within 3σ on 30k draws.
   #[test]
   fn gev_gumbel_sample_mean_euler() {
-    let g = SimdGev::<f64>::new(0.0, 1.0, 0.0, &Unseeded);
+    let mut g = SimdGev::<f64>::new(0.0, 1.0, 0.0).seeded(&Unseeded);
     let n = 30_000;
     let mut sum = 0.0;
     for _ in 0..n {
-      sum += g.sample_fast();
+      sum += g.sample();
     }
     let mean = sum / n as f64;
     let euler = 0.577_215_664_901_532_9_f64;
@@ -398,11 +386,11 @@ mod tests {
   #[test]
   fn gev_frechet_sample_mean_closed_form() {
     let xi = 0.5_f64;
-    let g = SimdGev::<f64>::new(0.0, 1.0, xi, &Unseeded);
+    let mut g = SimdGev::<f64>::new(0.0, 1.0, xi).seeded(&Unseeded);
     let n = 30_000;
     let mut sum = 0.0;
     for _ in 0..n {
-      sum += g.sample_fast();
+      sum += g.sample();
     }
     let mean = sum / n as f64;
     let gamma_term: f64 = crate::special::ln_gamma(1.0 - xi).exp();
@@ -414,10 +402,19 @@ mod tests {
     );
   }
 
+  #[test]
+  fn scalar_sample_matches_cdf() {
+    for xi in [0.0, 0.3, -0.3] {
+      let d = SimdGev::<f64>::new(0.0, 1.0, xi);
+      let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+      assert!(best > 0.01, "xi = {xi}: best p = {best}");
+    }
+  }
+
   /// PDF integrates to 1 within the support (numerical Riemann).
   #[test]
   fn gev_pdf_normalised_gumbel() {
-    let g = SimdGev::<f64>::new(0.0, 1.0, 0.0, &Unseeded);
+    let g = SimdGev::<f64>::new(0.0, 1.0, 0.0);
     let n = 5000usize;
     let lo = -10.0_f64;
     let up = 30.0_f64;
@@ -429,7 +426,7 @@ mod tests {
   /// CDF matches inverse-CDF identity: F(F⁻¹(u)) = u on a grid.
   #[test]
   fn gev_cdf_inverse_round_trip() {
-    let g = SimdGev::<f64>::new(0.0, 1.0, 0.2, &Unseeded);
+    let g = SimdGev::<f64>::new(0.0, 1.0, 0.2);
     for u in [0.1_f64, 0.3, 0.5, 0.7, 0.9] {
       // X = μ - σ/ξ · (1 - (-ln U)^{-ξ})
       let m_ln_u = -u.ln();
@@ -444,10 +441,10 @@ mod tests {
   #[test]
   fn gev_deterministic_seed_reproduces_stream() {
     use stochastic_rs_core::simd_rng::Deterministic;
-    let a = SimdGev::<f64>::new(0.5, 1.2, 0.3, &Deterministic::new(7));
-    let b = SimdGev::<f64>::new(0.5, 1.2, 0.3, &Deterministic::new(7));
+    let mut a = SimdGev::<f64>::new(0.5, 1.2, 0.3).seeded(&Deterministic::new(7));
+    let mut b = SimdGev::<f64>::new(0.5, 1.2, 0.3).seeded(&Deterministic::new(7));
     for _ in 0..256 {
-      assert_eq!(a.sample_fast(), b.sample_fast());
+      assert_eq!(a.sample(), b.sample());
     }
   }
 
@@ -455,12 +452,13 @@ mod tests {
   #[test]
   fn gev_reverse_weibull_bounded_support() {
     let xi = -0.5_f64;
-    let g = SimdGev::<f64>::new(0.0, 1.0, xi, &Unseeded);
+    let g = SimdGev::<f64>::new(0.0, 1.0, xi);
     let (lo, hi) = g.support();
     assert_eq!(lo, f64::NEG_INFINITY);
     assert_eq!(hi, -1.0 / xi); // = 2.0
+    let mut stream = g.seeded(&Unseeded);
     for _ in 0..2_000 {
-      let x = g.sample_fast();
+      let x = stream.sample();
       assert!(
         x <= hi + 1e-9,
         "Reverse Weibull sample {x} exceeds bound {hi}"
@@ -469,7 +467,7 @@ mod tests {
   }
 }
 
-py_distribution_legacy!(PyGev, SimdGev,
+py_distribution!(PyGev, SimdGev,
   sig: (mu, sigma, xi, seed=None, dtype=None),
   params: (mu: f64, sigma: f64, xi: f64)
 );

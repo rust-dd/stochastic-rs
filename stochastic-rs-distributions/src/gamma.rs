@@ -27,6 +27,7 @@ use super::normal::SimdNormal;
 use crate::seeded::Buffered;
 use crate::seeded::StreamState;
 use crate::source::AnyRng;
+use crate::source::NormalUniformSource;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
@@ -45,38 +46,6 @@ pub struct GammaState<T: SimdFloatExt, R: SimdRngExt> {
   normal: StreamState<T, R, 64>,
   rng: R,
   buf: Buffered<T, 16>,
-}
-
-/// The standard normal and the uniform a Marsaglia–Tsang trial consumes, from a stream or the caller's rng.
-trait MtSource<T> {
-  fn normal(&mut self) -> T;
-
-  fn uniform(&mut self) -> T;
-}
-
-impl<T: SimdFloatExt, R: SimdRngExt> MtSource<T> for (&mut StreamState<T, R, 64>, &mut R) {
-  #[inline]
-  fn normal(&mut self) -> T {
-    SimdNormal::<T>::standard().next(self.0)
-  }
-
-  #[inline]
-  fn uniform(&mut self) -> T {
-    T::sample_uniform_simd(self.1)
-  }
-}
-
-impl<T: SimdFloatExt, G: Rng + ?Sized> MtSource<T> for AnyRng<'_, G> {
-  /// Kept out of line because inlined into the forced-inline trial this scalar ziggurat slows the honest draw.
-  #[inline(never)]
-  fn normal(&mut self) -> T {
-    SimdNormal::<T>::standard().draw_with(self.0)
-  }
-
-  #[inline]
-  fn uniform(&mut self) -> T {
-    T::sample_uniform(self.0)
-  }
 }
 
 impl<T: SimdFloatExt> SimdGamma<T> {
@@ -122,7 +91,7 @@ impl<T: SimdFloatExt> SimdGamma<T> {
 
   /// One unscaled Marsaglia–Tsang draw `d·v` of `Gamma(d + 1/3, 1)`.
   #[inline(always)]
-  fn mt_one<S: MtSource<T>>(src: &mut S, d: T, c: T) -> T {
+  fn mt_one<S: NormalUniformSource<T>>(src: &mut S, d: T, c: T) -> T {
     let c1 = T::from(0.0331).unwrap();
     let half = T::from(0.5).unwrap();
     loop {
@@ -144,7 +113,7 @@ impl<T: SimdFloatExt> SimdGamma<T> {
   }
 
   #[inline(always)]
-  fn draw<S: MtSource<T>>(&self, src: &mut S, d: T, c: T, inv_alpha: Option<T>) -> T {
+  fn draw<S: NormalUniformSource<T>>(&self, src: &mut S, d: T, c: T, inv_alpha: Option<T>) -> T {
     let g = Self::mt_one(src, d, c);
     match inv_alpha {
       Some(inv_alpha) => self.scale * g * src.uniform().powf(inv_alpha),
@@ -177,7 +146,7 @@ impl<T: SimdFloatExt> SimdGamma<T> {
     }
   }
 
-  fn log_draw<S: MtSource<T>>(&self, src: &mut S) -> T {
+  fn log_draw<S: NormalUniformSource<T>>(&self, src: &mut S) -> T {
     let (d, c, inv_alpha) = self.squeeze();
     let log_core = self.scale.ln() + Self::mt_one(src, d, c).ln();
     if inv_alpha.is_some() {

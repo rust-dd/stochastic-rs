@@ -140,7 +140,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       theta: self.theta,
       sigma: self.sigma,
       x0: self.x0.unwrap_or(T::zero()),
-      ig_dist: SimdInverseGauss::<T>::new(dt, shape, &self.seed),
+      ig_dist: SimdInverseGauss::<T>::new(dt, shape).seeded(&self.seed),
       normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
     }
   }
@@ -185,7 +185,7 @@ pub struct NigSampler<T: FloatExt> {
   theta: T,
   sigma: T,
   x0: T,
-  ig_dist: SimdInverseGauss<T>,
+  ig_dist: Seeded<SimdInverseGauss<T>>,
   normal: Seeded<SimdNormal<T>>,
 }
 

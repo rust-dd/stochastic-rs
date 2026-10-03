@@ -5,7 +5,6 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::traits::DistributionExt;
 use stochastic_rs_distributions::variance_gamma::SimdVarianceGamma;
 
@@ -48,7 +47,7 @@ fn log_density(x: &[f64], sigma: f64, nu: f64, theta: f64, mu: f64) -> f64 {
   if !(sigma > 0.0 && sigma.is_finite() && nu > 0.0 && nu.is_finite() && theta.is_finite()) {
     return 1e300;
   }
-  let d = SimdVarianceGamma::<f64>::new(sigma, nu, theta, mu, &Deterministic::new(0));
+  let d = SimdVarianceGamma::<f64>::new(sigma, nu, theta, mu);
   negative_log_likelihood(x, |v| d.pdf(v).ln())
 }
 

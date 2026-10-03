@@ -78,24 +78,16 @@ impl<T: FloatExt, S: SeedExt> Ctrw<T, S> {
 
 impl<T: FloatExt, S: SeedExt, B> Ctrw<T, S, B> {}
 
-#[expect(
-  clippy::large_enum_variant,
-  reason = "temporary until Task 18 ports SimdInverseGauss: clippy flags the unported `Ig` holder, not the streams it cannot size"
-)]
 enum WaitingSampler<T: FloatExt> {
   Exp(Seeded<SimdExp<T>>),
   Gamma(Seeded<SimdGamma<T>>),
-  Ig(SimdInverseGauss<T>),
+  Ig(Seeded<SimdInverseGauss<T>>),
   PosStable { alpha: f64, log_scale: f64 },
 }
 
-#[expect(
-  clippy::large_enum_variant,
-  reason = "temporary until Task 18 ports SimdAlphaStable: clippy flags the unported `Stable` holder, not the streams it cannot size"
-)]
 enum JumpSampler<T: FloatExt> {
   Normal(Seeded<SimdNormal<T>>),
-  Stable(SimdAlphaStable<T>),
+  Stable(Seeded<SimdAlphaStable<T>>),
   Rademacher(T),
 }
 
@@ -205,7 +197,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
           mu > T::zero() && lambda > T::zero(),
           "Ctrw Ig waiting requires mu > 0 and lambda > 0"
         );
-        WaitingSampler::Ig(SimdInverseGauss::<T>::new(mu, lambda, &self.seed))
+        WaitingSampler::Ig(SimdInverseGauss::<T>::new(mu, lambda).seeded(&self.seed))
       }
       CtrwWaitingLaw::PositiveStable { alpha, scale } => {
         assert!(
@@ -229,13 +221,9 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
           alpha > T::zero() && alpha <= T::from_usize_(2) && scale > T::zero(),
           "Ctrw stable jumps require alpha in (0,2] and scale > 0"
         );
-        JumpSampler::Stable(SimdAlphaStable::<T>::new(
-          alpha,
-          T::zero(),
-          scale,
-          T::zero(),
-          &self.seed,
-        ))
+        JumpSampler::Stable(
+          SimdAlphaStable::<T>::new(alpha, T::zero(), scale, T::zero()).seeded(&self.seed),
+        )
       }
       CtrwJumpLaw::Rademacher { scale } => {
         assert!(scale > T::zero(), "Ctrw rademacher jumps require scale > 0");
@@ -339,7 +327,7 @@ impl<T: FloatExt> CtrwSampler<T> {
     match &mut self.waiting {
       WaitingSampler::Exp(d) => d.sample().to_f64().unwrap(),
       WaitingSampler::Gamma(d) => d.sample().to_f64().unwrap(),
-      WaitingSampler::Ig(d) => d.sample_fast().to_f64().unwrap(),
+      WaitingSampler::Ig(d) => d.sample().to_f64().unwrap(),
       WaitingSampler::PosStable { alpha, log_scale } => {
         sample_positive_stable(*alpha, *log_scale, &mut self.uniform)
       }
@@ -350,7 +338,7 @@ impl<T: FloatExt> CtrwSampler<T> {
   fn draw_jump(&mut self) -> f64 {
     match &mut self.jumps {
       JumpSampler::Normal(d) => d.sample().to_f64().unwrap(),
-      JumpSampler::Stable(d) => d.sample_fast().to_f64().unwrap(),
+      JumpSampler::Stable(d) => d.sample().to_f64().unwrap(),
       JumpSampler::Rademacher(scale) => {
         if self.uniform.sample() < 0.5 {
           scale.to_f64().unwrap()

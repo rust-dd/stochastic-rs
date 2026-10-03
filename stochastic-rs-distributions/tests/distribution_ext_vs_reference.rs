@@ -262,7 +262,7 @@ fn gpd_matches_scipy() {
     ),
   ];
   for (xi, grid, stats) in cases {
-    let ours = SimdGpd::<f64>::new(0.0, 1.0, xi, &Unseeded);
+    let ours = SimdGpd::<f64>::new(0.0, 1.0, xi);
     for [x, pdf, cdf] in grid {
       assert!(close(ours.pdf(x), pdf, 1e-12, 1e-12), "xi={xi} pdf({x})");
       assert!(close(ours.cdf(x), cdf, 1e-12, 1e-12), "xi={xi} cdf({x})");
@@ -359,7 +359,7 @@ fn gev_matches_scipy() {
     ),
   ];
   for (xi, grid, stats) in cases {
-    let ours = SimdGev::<f64>::new(0.5, 1.5, xi, &Unseeded);
+    let ours = SimdGev::<f64>::new(0.5, 1.5, xi);
     for [x, pdf, cdf] in grid {
       assert!(close(ours.pdf(x), pdf, 1e-12, 1e-12), "xi={xi} pdf({x})");
       assert!(close(ours.cdf(x), cdf, 1e-12, 1e-12), "xi={xi} cdf({x})");

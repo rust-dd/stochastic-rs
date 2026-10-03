@@ -29,8 +29,8 @@ pub struct SimdLogNormal<T> {
 #[doc(hidden)]
 #[derive(Clone, Debug)]
 pub struct NormalDerivedState<T: SimdFloatExt, R: SimdRngExt> {
-  normal: StreamState<T, R, 64>,
-  buf: Buffered<T, 16>,
+  pub(crate) normal: StreamState<T, R, 64>,
+  pub(crate) buf: Buffered<T, 16>,
 }
 
 impl<T: SimdFloatExt> SimdLogNormal<T> {

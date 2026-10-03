@@ -310,9 +310,8 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     || rd_beta.sample(&mut r2),
   );
 
-  let d_ig = SimdInverseGauss::<f32>::new(1.0, 2.0, &Unseeded);
+  let mut d_ig = SimdInverseGauss::<f32>::new(1.0, 2.0).seeded(&Unseeded);
   let rd_ig = rand_distr::InverseGaussian::<f32>::new(1.0, 2.0).unwrap();
-  let mut r1_local = rng();
   add_continuous_pair(
     &mut plot,
     subplot_axes(2, 4),
@@ -320,11 +319,11 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     (0.0, 3.0),
     100,
     n,
-    || d_ig.sample(&mut r1_local),
+    || d_ig.sample(),
     || rd_ig.sample(&mut r2),
   );
 
-  let d_nig = SimdNormalInverseGauss::<f32>::new(2.0, 0.0, 1.0, 0.0, &Unseeded);
+  let mut d_nig = SimdNormalInverseGauss::<f32>::new(2.0, 0.0, 1.0, 0.0).seeded(&Unseeded);
   let rd_nig = rand_distr::NormalInverseGaussian::<f32>::new(2.0, 0.0).unwrap();
   add_continuous_pair(
     &mut plot,
@@ -333,7 +332,7 @@ pub(crate) fn generate_shape_comparison_plot(_c: &mut Criterion) {
     (-3.0, 3.0),
     100,
     n,
-    || d_nig.sample(&mut r1),
+    || d_nig.sample(),
     || rd_nig.sample(&mut r2),
   );
 
