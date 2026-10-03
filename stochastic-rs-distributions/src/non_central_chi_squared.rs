@@ -4,12 +4,11 @@
 //! X\sim\chi^2_\nu(\lambda),\quad f_X(x)=\tfrac12 e^{-(x+\lambda)/2}(x/\lambda)^{\nu/4-1/2}I_{\nu/2-1}(\sqrt{\lambda x})
 //! $$
 //!
-//! Reference: Johnson, Kotz & Balakrishnan (1995), *Continuous Univariate
-//! Distributions* vol. 2, §29.2 — decomposition
-//! $\chi^2_\nu(\lambda) = \chi^2_{\nu-1} + (Z + \sqrt{\lambda})^2$ for $\nu \ge 1$,
-//! and §29.4 — Poisson mixture
-//! $\chi^2_\nu(\lambda) = \mathrm{Gamma}(\nu/2 + J,\ 2)$ with
-//! $J \sim \mathrm{Poisson}(\lambda/2)$, valid for every $\nu > 0$.
+//! Sampling: the shift $\chi^2_\nu(\lambda) = \chi^2_{\nu-1} + (Z + \sqrt{\lambda})^2$ for $\nu \ge 1$, else the Poisson
+//! mixture $\mathrm{Gamma}(\nu/2 + J,\ 2)$ with $J \sim \mathrm{Poisson}(\lambda/2)$, valid for every $\nu > 0$.
+//!
+//! - Johnson, N.L., Kotz, S., Balakrishnan, N. (1995), *Continuous Univariate Distributions*, vol. 2, 2nd ed., Wiley, ch. 29.
+//! - Abramowitz, M., Stegun, I.A. (1964), *Handbook of Mathematical Functions*, NBS AMS 55, eq. 26.4.25 (the Poisson mixture).
 use rand::Rng;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -57,7 +56,7 @@ impl<T: SimdFloatExt, G: Rng + ?Sized> MixtureSource<T> for AnyRng<'_, G> {
   }
 }
 
-/// `Gamma(df/2 + J, 2)` with `J ~ Poisson(ncp/2)` (§29.4), the only exact form for `0 < df < 1`.
+/// The Poisson mixture `Gamma(df/2 + J, 2)` with `J ~ Poisson(ncp/2)`, the only exact form for `0 < df < 1`.
 fn poisson_mixture<T: SimdFloatExt>(df: T, ncp: T, mut src: impl MixtureSource<T>) -> T {
   let two = T::from_f64_fast(2.0);
   let half_lambda = (ncp / two).to_f64().unwrap_or(f64::NAN);
@@ -107,7 +106,7 @@ impl<T: SimdFloatExt> SimdNonCentralChiSquared<T> {
     self.df
   }
 
-  /// One draw of `χ²_df(ncp)` on the caller's rng: the §29.2 shift for `df ≥ 1`, the §29.4 mixture below.
+  /// One draw of `χ²_df(ncp)` on the caller's rng: the shift for `df ≥ 1`, the Poisson mixture below.
   pub fn sample_ncp_with<G: Rng + ?Sized>(&self, rng: &mut G, ncp: T) -> T {
     if self.df < T::one() {
       return poisson_mixture(self.df, ncp, AnyRng(rng));
@@ -227,7 +226,7 @@ mod tests {
     );
   }
 
-  /// `0 < df < 1` takes the Poisson mixture, mean `df + λ` and variance `2(df + 2λ)` (§29.4); treating `df` as one would
+  /// `0 < df < 1` takes the Poisson mixture, mean `df + λ` and variance `2(df + 2λ)`; treating `df` as one would
   /// give 3.0 / 10.0 here against 2.3 / 8.6, tens of standard errors off.
   #[test]
   fn sample_ncp_df_below_one_matches_closed_form_moments() {
