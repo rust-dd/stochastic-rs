@@ -26,12 +26,15 @@ impl log::Log for StderrLogger {
 
 static LOGGER: StderrLogger = StderrLogger;
 
-fn bench_fgn_single_path_cpu_vs_cuda(c: &mut Criterion) {
+fn profiled_criterion() -> Criterion {
   if std::env::var_os("STOCHASTIC_RS_CUDA_PROFILE").is_some() {
     let _ = log::set_logger(&LOGGER);
     log::set_max_level(log::LevelFilter::Trace);
   }
+  Criterion::default()
+}
 
+fn bench_fgn_single_path_cpu_vs_cuda(c: &mut Criterion) {
   let mut group = c.benchmark_group("FGN_single_path_cpu_vs_cuda");
   group.measurement_time(Duration::from_secs(3));
   group.warm_up_time(Duration::from_millis(700));
@@ -102,9 +105,9 @@ fn bench_fgn_batch_cpu_vs_cuda(c: &mut Criterion) {
   group.finish();
 }
 
-criterion_group!(
-  benches,
-  bench_fgn_single_path_cpu_vs_cuda,
-  bench_fgn_batch_cpu_vs_cuda
-);
+criterion_group! {
+  name = benches;
+  config = profiled_criterion();
+  targets = bench_fgn_single_path_cpu_vs_cuda, bench_fgn_batch_cpu_vs_cuda
+}
 criterion_main!(benches);
