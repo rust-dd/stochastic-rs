@@ -222,6 +222,10 @@ impl<T: SimdFloatExt> Distribution<T> for SimdNormalInverseGauss<T> {
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdNormalInverseGauss<T> {
   fn pdf(&self, x: f64) -> Option<f64> {
+    // The density vanishes at ±∞, where the exponent below would read ∞ − ∞.
+    if x.is_infinite() {
+      return Some(0.0);
+    }
     // f(x) = (αδ/π) exp(δγ + β(x−μ)) K₁(α q(x)) / q(x), γ = sqrt(α²−β²),
     // q(x) = sqrt(δ² + (x−μ)²). Barndorff-Nielsen (1997) eq. 3.
     //
@@ -439,5 +443,12 @@ mod tests {
       out_a.iter().all(|x| x.is_finite()),
       "all samples must be finite, got {out_a:?}"
     );
+  }
+
+  #[test]
+  fn pdf_vanishes_at_infinity() {
+    let d = SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.0);
+    assert_eq!(d.pdf(f64::INFINITY), Some(0.0));
+    assert_eq!(d.pdf(f64::NEG_INFINITY), Some(0.0));
   }
 }

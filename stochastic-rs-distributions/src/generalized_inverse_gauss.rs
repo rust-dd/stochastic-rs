@@ -360,7 +360,7 @@ impl<T: SimdFloatExt> Distribution<T> for SimdGig<T> {
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
   fn pdf(&self, x: f64) -> Option<f64> {
-    if x <= 0.0 {
+    if x <= 0.0 || x == f64::INFINITY {
       return Some(0.0);
     }
     let (lambda, chi, psi) = self.params();
@@ -406,6 +406,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
   /// $(\psi/(\psi - 2t))^{\lambda/2}\,K_\lambda(\sqrt{\chi(\psi - 2t)})/K_\lambda(\sqrt{\chi\psi})$
   /// for $t < \psi/2$, `NaN` beyond.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    if t == f64::NEG_INFINITY {
+      return Some(0.0);
+    }
     let (lambda, chi, psi) = self.params();
     let shifted = psi - 2.0 * t;
     if shifted <= 0.0 {

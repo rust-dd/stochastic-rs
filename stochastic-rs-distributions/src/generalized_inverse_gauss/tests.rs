@@ -266,3 +266,13 @@ fn single_precision_draws_stay_in_the_support() {
     );
   }
 }
+
+/// `pdf(∞) = 0` for every index (`λ ≥ 1` reads `∞ − ∞` in log space) and `E[e^{tX}] → 0` as `t → −∞`.
+#[test]
+fn pdf_and_mgf_at_infinity() {
+  for lambda in [-0.5, 1.0, 2.0] {
+    let d = SimdGig::<f64>::new(lambda, 1.0, 2.0);
+    assert_eq!(d.pdf(f64::INFINITY), Some(0.0));
+    assert_eq!(d.moment_generating_function(f64::NEG_INFINITY), Some(0.0));
+  }
+}

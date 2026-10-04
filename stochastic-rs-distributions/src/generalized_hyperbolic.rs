@@ -268,6 +268,10 @@ impl<T: SimdFloatExt> Distribution<T> for SimdGeneralizedHyperbolic<T> {
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbolic<T> {
   fn pdf(&self, x: f64) -> Option<f64> {
+    // The density vanishes at ±∞, where the log-space kernel would read ∞ − ∞.
+    if x.is_infinite() {
+      return Some(0.0);
+    }
     let (lambda, alpha, beta, delta, mu) = self.params();
     let gamma = (alpha * alpha - beta * beta).sqrt();
     let d = x - mu;
@@ -508,6 +512,23 @@ mod tests {
   #[should_panic(expected = "alpha must satisfy `alpha > beta.abs()`")]
   fn rejects_beta_outside_alpha() {
     let _ = SimdGeneralizedHyperbolic::<f64>::new(1.0, 1.0, 1.0, 1.0, 0.0);
+  }
+
+  /// The density is 0 at ±∞ for every order, `λ = ½` (where `order · ln(root)` reads `0 · ∞`) included.
+  #[test]
+  fn pdf_vanishes_at_infinity() {
+    for lambda in [0.5, 1.0, -1.5] {
+      let d = SimdGeneralizedHyperbolic::<f64>::new(lambda, 2.0, 0.5, 1.5, -0.2);
+      assert_eq!(d.pdf(f64::INFINITY), Some(0.0));
+      assert_eq!(d.pdf(f64::NEG_INFINITY), Some(0.0));
+    }
+  }
+
+  /// An index of `1e300` returns from the density instead of climbing `1e300` Bessel recurrence steps.
+  #[test]
+  fn a_huge_index_returns() {
+    let d = SimdGeneralizedHyperbolic::<f64>::new(1e300, 2.0, 0.5, 1.0, 0.0);
+    assert!(d.pdf(0.0).is_some());
   }
 }
 

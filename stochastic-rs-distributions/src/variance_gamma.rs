@@ -236,6 +236,10 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
   /// Bessel function; at `x = μ` the $y^a K_a(y)$ limit $2^{a-1}\Gamma(a)$
   /// for $a = 1/\nu - 1/2 > 0$, `+∞` otherwise.
   fn pdf(&self, x: f64) -> Option<f64> {
+    // The density vanishes at ±∞, where the log-space kernel would read ∞ − ∞.
+    if x.is_infinite() {
+      return Some(0.0);
+    }
     let (sigma, nu, theta, mu) = self.params();
     let a = 1.0 / nu - 0.5;
     let root = (2.0 * sigma * sigma / nu + theta * theta).sqrt();
@@ -464,6 +468,13 @@ mod tests {
     for _ in 0..256 {
       assert_eq!(a.sample(), b.sample());
     }
+  }
+
+  #[test]
+  fn pdf_vanishes_at_infinity() {
+    let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05);
+    assert_eq!(d.pdf(f64::INFINITY), Some(0.0));
+    assert_eq!(d.pdf(f64::NEG_INFINITY), Some(0.0));
   }
 }
 
