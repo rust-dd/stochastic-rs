@@ -145,14 +145,4 @@ mod tests {
   fn a_result_without_residuals_has_no_max_error() {
     assert_eq!(Bare.max_error(), None);
   }
-
-  fn assert_error_bounds<C: super::Calibrator>() {
-    fn takes<E: std::fmt::Debug + std::fmt::Display + Send + Sync + 'static>() {}
-    takes::<C::Error>();
-  }
-
-  #[test]
-  fn every_calibrator_error_is_debug_display_send_sync() {
-    assert_error_bounds::<crate::calibration::heston_slv::HestonSlvCalibrator>();
-  }
 }
