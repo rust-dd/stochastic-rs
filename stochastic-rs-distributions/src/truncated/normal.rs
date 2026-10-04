@@ -391,16 +391,32 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     Some(((2.0 * std::f64::consts::PI).sqrt() * sigma * self.norm_mass).ln() + 0.5 * m[2])
   }
 
+  /// Combined in log space, so only a true overflow reads `+∞`; NaN once `[lower, upper]` lies about 37.5σ from
+  /// `μ` or from `μ + σ²t`, where its mass under that normal is subnormal.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
     let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
     let (alpha, beta) = self.standardised_bounds()?;
-    let shifted = norm_cdf_scalar(beta - sigma * t) - norm_cdf_scalar(alpha - sigma * t);
-    Some((mu * t + 0.5 * sigma * sigma * t * t).exp() * shifted / self.norm_mass)
+    let shift = sigma * t;
+    let shifted = lower_tail_mass(alpha - shift, beta - shift);
+    let mass = lower_tail_mass(alpha, beta);
+    if !(shifted.is_normal() && mass.is_normal()) {
+      return Some(f64::NAN);
+    }
+    Some((mu * t + 0.5 * shift * shift + shifted.ln() - mass.ln()).exp())
   }
 }
 
 fn norm_cdf_scalar(z: f64) -> f64 {
   0.5 * (1.0 + crate::special::erf(z / std::f64::consts::SQRT_2))
+}
+
+/// `Φ(hi) − Φ(lo)`, mirrored to `Φ(−lo) − Φ(−hi)` when `lo > 0`, so an interval right of 0 subtracts tail values.
+fn lower_tail_mass(lo: f64, hi: f64) -> f64 {
+  if lo > 0.0 {
+    crate::special::norm_cdf(-lo) - crate::special::norm_cdf(-hi)
+  } else {
+    crate::special::norm_cdf(hi) - crate::special::norm_cdf(lo)
+  }
 }
 
 #[cfg(test)]

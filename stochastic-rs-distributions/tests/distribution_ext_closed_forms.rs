@@ -114,6 +114,39 @@ fn truncated_normal_moments_quantile_entropy_mgf() {
   assert!(rel(open_up.median().unwrap(), 1.075_932_306_215_886_5) < 1e-10);
 }
 
+/// Shifts that push `Φ(β − σt) − Φ(α − σt)` into a tail, where `½(1 + erf)` cancels to `0`; past about 37.5σ, NaN.
+#[test]
+fn truncated_normal_mgf_keeps_its_digits_in_the_tails() {
+  let wide = (0.5, 2.0, -1.0, 2.0);
+  let unit = (0.0, 1.0, -1.0, 2.0);
+  for ((mu, sigma, lo, hi), t, want) in [
+    (wide, 5.0, 1_296.723_268_057_360_7),
+    (wide, 8.0, 319_575.726_542_293),
+    (wide, 12.0, 626_360_794.958_813_9),
+    (wide, -5.0, 8.737_252_652_651_392),
+    (wide, -8.0, 107.205_713_039_732_1),
+    (wide, -12.0, 3_848.493_734_026_422),
+    (unit, 5.0, 442.499_503_296_239_2),
+    (unit, 8.0, 95_167.839_586_433_01),
+    (unit, 12.0, 173_013_666.043_281_8),
+    (unit, -5.0, 10.381_908_950_081_09),
+    (unit, -8.0, 123.452_787_497_440_77),
+    (unit, -12.0, 4_338.275_508_681_898),
+    (unit, 38.0, 1.857_786_844_469_511_4e30),
+    ((0.0, 1.0, 8.0, 9.0), 1.0, 3_390.812_654_431_423),
+  ] {
+    let got = SimdTruncatedNormal::<f64>::new(mu, sigma, lo, hi)
+      .moment_generating_function(t)
+      .unwrap();
+    assert!(
+      rel(got, want) < 1e-12,
+      "TN({mu}, {sigma}, [{lo}, {hi}]) mgf({t}) = {got}, expected {want}"
+    );
+  }
+  let far = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -1.0, 2.0).moment_generating_function(40.0);
+  assert!(far.unwrap().is_nan(), "mgf(40) = {far:?}");
+}
+
 #[test]
 fn truncated_exponential_moments_quantile_entropy_mgf() {
   let d = SimdTruncatedExp::<f64>::new(1.5, 0.5, 2.5);
