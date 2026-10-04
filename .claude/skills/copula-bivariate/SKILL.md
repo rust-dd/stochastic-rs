@@ -93,8 +93,6 @@ carries `theta` / `tau` as `Option<f64>` (unset until `fit` or
 ```rust
 // stochastic-rs-copulas/src/bivariate/clayton.rs (reference)
 
-use std::f64;
-
 use ndarray::Array1;
 use ndarray::Array2;
 
@@ -198,9 +196,11 @@ let u = self.percent_point(&c, &v)?;
 Ok(stack![Axis(1), u, v])
 ```
 
-It errors if `tau` is unset or outside `(-1, 1)`, draws both uniforms
-from one seeded `SimdUniform<f64>` stream, and returns an `(n, 2)` `Array2<f64>`
-wrapped in `Result`. `sample(&self, ..)` takes `&self`, not `&mut self`.
+It is gated by the family's `check_fit`, which reads `theta`, not `tau`:
+`NotFitted` while `theta` is unset, `InvalidParameter` when it is outside
+`theta_bounds` or in `invalid_thetas`. It draws both uniforms from one seeded
+`SimdUniform<f64>` stream and returns an `(n, 2)` `Array2<f64>` wrapped in
+`Result`. `sample(&self, ..)` takes `&self`, not `&mut self`.
 
 What you supply is `percent_point` — either a closed form, or nothing
 at all, in which case `percent_point_numerical` Brent-inverts your
