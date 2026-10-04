@@ -1,32 +1,18 @@
 ---
 title: Comparison with QuantLib and RustQuant
-description: An honest feature-coverage comparison of stochastic-rs, QuantLib and RustQuant, including where each library is the better choice.
+description: A feature-coverage comparison of stochastic-rs, QuantLib and RustQuant, including where each library is the better choice.
 category: reference
 since: 2.5.4
 status: stable
 ---
 
-There are three serious open-source options if you want to price
-derivatives without writing the numerics yourself:
-[QuantLib](https://github.com/lballabio/QuantLib) (C++, since 2000),
-[RustQuant](https://github.com/avhz/RustQuant) (Rust), and stochastic-rs.
-They overlap less than the descriptions suggest. This page is a
-feature-coverage comparison, including the cases where stochastic-rs is
-the wrong answer.
+Three open-source options price derivatives without you writing the numerics: [QuantLib](https://github.com/lballabio/QuantLib) (C++, since 2000), [RustQuant](https://github.com/avhz/RustQuant) (Rust), and stochastic-rs. They overlap less than their descriptions suggest. This page compares feature coverage, including the cases where stochastic-rs is the wrong choice.
 
 ## Short version
 
-- **You are modelling volatility** — rough volatility, stochastic
-  volatility, calibration to a smile, path simulation, Greeks by
-  Malliavin calculus. Pick stochastic-rs. Nothing else in open source
-  covers this depth.
-- **You are booking and settling real cash products** across many
-  jurisdictions — convertibles, callables, commodities, exotic coupon
-  structures. Pick QuantLib. Its instrument and calendar coverage is
-  two decades ahead.
-- **You want a small, dependency-light Rust crate with automatic
-  differentiation** and you only need vanilla instruments. Look at
-  RustQuant.
+- **You are modelling volatility** — rough volatility, stochastic volatility, calibration to a smile, path simulation, Greeks by Malliavin calculus. Pick stochastic-rs.
+- **You are booking and settling real cash products** across many jurisdictions — convertibles, commodities, exotic coupon structures. Pick QuantLib: its instrument and calendar coverage is far wider.
+- **You want a small, dependency-light Rust crate with automatic differentiation** and need only vanilla instruments. Look at RustQuant.
 
 ## At a glance
 
@@ -35,88 +21,45 @@ the wrong answer.
 | Language | Rust | C++ | Rust |
 | Licence | MIT | BSD-style | Apache-2.0 |
 | Python | Native PyO3, 308 entries | SWIG wrappers | Early-stage (`rustquant` 0.0.x) |
-| Float precision | Generic `f32` / `f64` | `double` | `f64` |
+| Float precision | Generic `f32` / `f64` simulation | `double` | `f64` |
 | SIMD / GPU | CPU SIMD, CUDA, Metal, Accelerate | None | None |
 | First released | 2024 | 2000 | 2023 |
 
 ## Where stochastic-rs is ahead
 
-These are areas where the other two have little or nothing. Each is
-verified against the upstream source trees, not marketing copy.
+Areas where the other two have little or nothing:
 
-**Rough and fractional volatility.** 132 processes including rough
-Bergomi, rough Heston, fractional OU, fractional CIR, Volterra kernels
-and a Markovian lift. QuantLib ships one rough engine
-(`analyticroughhestonengine`); RustQuant has none. See
-[processes](/docs/processes).
+**Rough and fractional volatility.** 132 processes including rough Bergomi, rough Heston, fractional OU, fractional CIR, Volterra kernels and a Markovian lift. QuantLib ships one rough engine (`analyticroughhestonengine`); RustQuant has none. See [processes](/docs/processes).
 
-**Malliavin Greeks.** Thalmaier and El Khatib weight schemes, plus a
-Fourier-Malliavin volatility estimator. Neither of the others implements
-Malliavin calculus at all.
+**Malliavin Greeks.** Thalmaier and El Khatib weight schemes, plus a Fourier-Malliavin volatility estimator. Neither of the others implements Malliavin calculus.
 
-**Statistical estimation.** Hurst exponent (Fukasawa, R/S, DFA, GPH,
-wavelet, Whittle), maximum likelihood for 1-D diffusions with six
-transition-density approximations, realised variance with BNHLS
-bandwidth, a full stationarity battery (ADF, KPSS, Phillips-Perron,
-ERS-DFGLS, Leybourne-McCabe), HMM, changepoint, particle filter, UKF.
-QuantLib has descriptive statistics but not econometric estimators. See
-[statistics](/docs/stats).
+**Statistical estimation.** Hurst exponent (Fukasawa, R/S, DFA, GPH, wavelet, Whittle), maximum likelihood for 1-D diffusions with six transition-density approximations, realised variance with BNHLS bandwidth, a full stationarity battery (ADF, KPSS, Phillips-Perron, ERS-DFGLS, Leybourne-McCabe), HMM, changepoint, particle filter, UKF. QuantLib has descriptive statistics but not econometric estimators. See [statistics](/docs/stats).
 
-**Copulas.** Thirteen bivariate families plus C-vine, D-vine, R-vine and
-nested Archimedean constructions. QuantLib's `ql/math/copulas` covers the
-basic families only. See [copulas](/docs/copulas).
+**Copulas.** Fifteen bivariate families plus C-vine, D-vine, R-vine and nested Archimedean constructions. QuantLib's `ql/math/copulas` covers the basic families only. See [copulas](/docs/copulas).
 
-**Hardware acceleration.** SIMD sampling on CPU, with CUDA, Metal and
-Accelerate backends for the fractional Gaussian noise family. Neither
-alternative attempts this. See [benchmarks](/docs/benchmarks).
+**Hardware acceleration.** SIMD sampling on the CPU, and every process on CUDA, Metal or Accelerate. Neither alternative attempts this. See [GPU support](/docs/concepts/gpu-support) and [benchmarks](/docs/benchmarks).
 
-**Python that is not a wrapper.** 234 native PyO3 entries, numpy in and
-numpy out, no SWIG layer and no C++ toolchain needed to install. See
-[Python bindings](/docs/python).
+**Native Python.** 308 PyO3 entries, NumPy in and NumPy out, no SWIG layer and no C++ toolchain needed to install. See [Python bindings](/docs/python).
 
-## Where QuantLib is still the better choice
+## Where QuantLib is the better choice
 
-Being candid about this matters more than winning a table.
+**Instrument coverage.** QuantLib has convertible bonds, asset swaps, bond forwards, BMA swaps, range accruals, digital and capped/floored coupons, non-standard swaps, and swing and storage options for energy. stochastic-rs has none of these.
 
-**Instrument coverage.** QuantLib has convertible bonds, callable and
-puttable bonds with call schedules, asset swaps, bond forwards, BMA
-swaps, range accruals, digital and capped/floored coupons, non-standard
-swaps, and swing and storage options for energy. stochastic-rs has none
-of these.
+**Calendars and conventions.** Roughly forty holiday calendars against our eight (United States, United Kingdom, TARGET, Tokyo, HKEX, ASX, SGX, B3). To settle a EUR trade against German, French or Italian holidays, QuantLib is the only option.
 
-**Calendars and conventions.** Roughly forty holiday calendars against
-our eight (United States, United Kingdom, TARGET, Tokyo, HKEX, ASX,
-SGX, B3). If you need to settle a EUR trade against German, French or
-Italian holidays today, QuantLib is the only option.
+**Interpolation.** Around twenty-four interpolators including Chebyshev, Lagrange, kernel, convex-monotone variants and 2-D bicubic. We ship four curve interpolators.
 
-**Interpolation.** Around twenty-four interpolators including Chebyshev,
-Lagrange, kernel, convex-monotone variants and 2-D bicubic. We ship four
-curve interpolators.
+**American options at machine precision.** QuantLib implements Barone-Adesi-Whaley, Ju-Zhong and the QD+/QD-FP engines. We have Bjerksund-Stensland 2002, a CRR lattice, finite differences and Bermudan LSM, which is enough for most work but not for the last few basis points.
 
-**American options at machine precision.** QuantLib implements
-Barone-Adesi-Whaley, Ju-Zhong and the modern QD+/QD-FP engines. We have
-Bjerksund-Stensland 2002, a CRR lattice, finite differences and Bermudan
-LSM, which is enough for most work but not for the last few basis points.
+**Market models.** QuantLib's LMM framework includes products, pathwise Greeks, callability bounds and correlation parameterisations. Our LMM is a drift-coupled simulator without the product layer.
 
-**Market models.** QuantLib's LMM framework includes products, pathwise
-Greeks, callability bounds and correlation parameterisations. Our LMM is
-a drift-coupled simulator without the product layer.
-
-**Institutional familiarity.** Twenty-five years of production use and
-audit trails count for something in a regulated setting.
+**Institutional familiarity.** Twenty-five years of production use and audit trails count in a regulated setting.
 
 ## Where RustQuant fits
 
-RustQuant's distinguishing feature is `RustQuant_autodiff`, an adjoint
-automatic differentiation engine. stochastic-rs has no AAD — our Greeks
-come from closed forms, Malliavin weights or finite differences. If
-gradient-based work is central to your problem and vanilla instruments
-are sufficient, that is a real advantage.
+RustQuant's distinguishing feature is `RustQuant_autodiff`, an adjoint automatic differentiation engine. stochastic-rs has no AAD — its Greeks come from closed forms, Malliavin weights or finite differences. If gradient-based work is central to your problem and vanilla instruments suffice, that is a real advantage.
 
-It also ships ISO-3166 country codes and ISO-10383 market identifier
-codes, a small machine-learning module, and CSV/JSON/Parquet data
-loading. We cover ISO-4217 currencies (162 of them) but not the other
-two standards, and we have no general data-loading layer.
+It also ships ISO-3166 country codes and ISO-10383 market identifier codes, a small machine-learning module, and CSV/JSON/Parquet data loading. We cover ISO-4217 currencies (162 of them) but not the other two standards, and have no general data-loading layer.
 
 ## Feature coverage
 
@@ -125,11 +68,11 @@ two standards, and we have no general data-loading layer.
 | Stochastic processes | 132 | ~20 | ~10 |
 | Rough / fractional volatility | Extensive | One engine | None |
 | Fourier pricing | Heston, Bates, Merton, Kou, VG, CGMY, double Heston | Heston family | None |
-| Model calibration | Heston, SABR, SVJ, Lévy, rough Bergomi, double Heston, Hull-White | Broad | None |
-| Volatility surfaces | SVI, SSVI, SABR smile, arbitrage repair | SABR, ZABR, optionlet stripping | None |
+| Model calibration | Heston, Heston SLV, SABR, SVJ, Lévy, rough Bergomi, double Heston, Hull-White, G2++, Black-Karasinski | Broad | None |
+| Volatility surfaces | SVI, SSVI, eSSVI, SABR smile | SABR, ZABR, optionlet stripping | None |
 | Yield curves | Bootstrap, Nelson-Siegel, Svensson, multi-curve | Comprehensive | Basic |
-| Credit | Merton, hazard bootstrap, CDS, JLT migration | Comprehensive | None |
-| XVA / counterparty exposure | None | Partial | None |
+| Credit | Merton, hazard bootstrap, CDS, CDS index, CDO tranches, JLT migration | Comprehensive | None |
+| XVA / counterparty exposure | Exposure profiles, CVA / DVA / FVA | Partial | None |
 | Automatic differentiation | None | Via XAD fork | Native |
 | Serialisation | None | Boost | Serde |
 | Market microstructure | Almgren-Chriss, Kyle, propagator, order book | None | Order book |
@@ -137,36 +80,16 @@ two standards, and we have no general data-loading layer.
 
 ## Known gaps in stochastic-rs
 
-Beyond the instrument and calendar coverage above, these are the gaps we
-consider most significant, listed so you can judge whether they block
-you:
+Beyond the instrument and calendar coverage above, the gaps we consider most significant:
 
-1. **No automatic differentiation.** All sensitivities are closed-form,
-   Malliavin or bumped.
-2. **No serialisation.** Curves, calibration results and surfaces cannot
-   currently be persisted; there are no `serde` derives in the
-   workspace.
-3. **No XVA engine.** The building blocks exist — Monte Carlo, short-rate
-   models, survival curves, copulas — but there is no exposure
-   simulation, netting or collateral layer.
-4. **QMC path construction stops at Brownian motion.**
-   `BrownianBridgeQmc` (`stochastic::mc`) joins `SobolSeq` — the full
-   21201-dimension Joe-Kuo table with Owen-type scrambling — to the
-   Brownian-bridge dimension allocation, so Brownian levels and increments
-   come out of a low-discrepancy sequence with the coarse features in the
-   leading coordinates. The processes themselves still draw their own
-   Gaussian stream: QMC reaches a model by feeding those increments into
-   an explicit Euler loop, not through `ProcessExt::sample`, and there is
-   no PCA path construction (the `pca` module under `quant::factors` is
-   portfolio factor extraction, unrelated to path generation).
-5. **No commodities.** No seasonal forward curves, no Schwartz-Smith, no
-   storage or swing optionality.
-6. **No discrete dividends.** Equity pricing assumes a continuous
-   dividend yield.
+1. **No automatic differentiation.** All sensitivities are closed-form, Malliavin or bumped.
+2. **No serialisation.** Curves, calibration results and surfaces cannot be persisted; there are no `serde` derives in the workspace.
+3. **No netting or collateral layer.** Exposure profiles and CVA / DVA / FVA exist, but there is no netting-set or collateral modelling.
+4. **QMC path construction stops at Brownian motion.** `BrownianBridgeQmc` (`stochastic::mc`) builds Brownian levels and increments from a scrambled Sobol sequence, but the processes draw their own Gaussian stream: QMC reaches a model through an explicit Euler loop fed with those increments, not through `ProcessExt::sample`, and there is no PCA path construction.
+5. **No commodities.** No seasonal forward curves, no Schwartz-Smith, no storage or swing optionality.
+6. **No discrete dividends.** Equity pricing assumes a continuous dividend yield.
 
 ## Notes for QuantLib users
-
-The concept mapping is closer than the syntax suggests:
 
 | QuantLib | stochastic-rs |
 |---|---|
@@ -178,15 +101,8 @@ The concept mapping is closer than the syntax suggests:
 | `YieldTermStructure` | `curves::DiscountCurve` |
 | `Schedule` | `calendar::schedule` |
 
-The main structural difference is that stochastic-rs avoids `&dyn` and
-`Box<dyn>` in hot paths. Where QuantLib hands you a polymorphic engine
-pointer, we use concrete types and generics, so the engine choice is a
-compile-time decision rather than a runtime one. See
-[design philosophy](/docs/concepts/design-philosophy).
+The main structural difference is that stochastic-rs avoids `&dyn` and `Box<dyn>` in hot paths: where QuantLib hands you a polymorphic engine pointer, stochastic-rs uses concrete types and generics, so the engine choice is made at compile time.
 
 ## Using them together
 
-These are not mutually exclusive. A common arrangement is QuantLib for
-the fixed-income and settlement layer, and stochastic-rs for volatility
-modelling, calibration and simulation — reached from Python, where both
-are importable side by side.
+They are not mutually exclusive. A common arrangement is QuantLib for the fixed-income and settlement layer and stochastic-rs for volatility modelling, calibration and simulation, both imported side by side from Python.
