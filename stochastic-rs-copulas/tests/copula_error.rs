@@ -43,6 +43,10 @@ fn an_invalid_parameter_names_itself_in_the_crate_form() {
 fn a_bivariate_fit_needs_two_observations() {
   let one = array![[0.5_f64, 0.5]];
   let short = CopulaError::InsufficientData { needed: 2, got: 1 };
+  assert_eq!(
+    short.to_string(),
+    "too few observations: 1, at least 2 needed"
+  );
   assert_eq!(Clayton::new().fit(&one).unwrap_err(), short);
   assert_eq!(Bb1::default().fit(&one).unwrap_err(), short);
   assert_eq!(Bb7::default().fit(&one).unwrap_err(), short);

@@ -52,10 +52,7 @@ impl fmt::Display for CopulaError {
         )
       }
       CopulaError::InsufficientData { needed, got } => {
-        write!(
-          f,
-          "too little data: {got} observations, at least {needed} needed"
-        )
+        write!(f, "too few observations: {got}, at least {needed} needed")
       }
       CopulaError::MarginalOutOfRange => f.write_str("marginal values must lie in [0, 1]"),
       CopulaError::MarginalNotUniform => {
