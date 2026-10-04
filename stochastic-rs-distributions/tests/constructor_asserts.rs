@@ -246,236 +246,175 @@ fn every_rejected_argument_is_named_with_its_value() {
   assert!(wrong.is_empty(), "{}", wrong.join("\n"));
 }
 
-type Case = (&'static str, &'static str, Box<dyn FnOnce() + UnwindSafe>);
+/// One constructor driven through its float parameters: their names in order, a valid point, the call.
+struct Ctor {
+  names: &'static [&'static str],
+  base: &'static [f64],
+  build: fn(&[f64]),
+}
 
-/// Every float parameter of every constructor rejects NaN (and infinity, where a bound may not be infinite) by name.
+macro_rules! ctor {
+  ($names:expr, $base:expr, |$p:ident| $call:expr) => {
+    Ctor {
+      names: &$names,
+      base: &$base,
+      build: |$p: &[f64]| {
+        let _ = $call;
+      },
+    }
+  };
+}
+
+fn ctors() -> Vec<Ctor> {
+  vec![
+    ctor!(
+      ["alpha", "beta", "scale", "location"],
+      [1.5, 0.3, 1.0, 0.0],
+      |p| { SimdAlphaStable::<f64>::new(p[0], p[1], p[2], p[3]) }
+    ),
+    ctor!(["alpha", "beta"], [2.0, 3.0], |p| SimdBeta::<f64>::new(
+      p[0], p[1]
+    )),
+    ctor!(["p"], [0.3], |p| SimdBinomial::<u32>::new(10, p[0])),
+    ctor!(["x0", "gamma"], [0.0, 1.0], |p| SimdCauchy::<f64>::new(
+      p[0], p[1]
+    )),
+    ctor!(["k"], [3.0], |p| SimdChiSquared::<f64>::new(p[0])),
+    ctor!(["lambda"], [1.0], |p| SimdExp::<f64>::new(p[0])),
+    ctor!(["alpha", "scale"], [2.0, 1.5], |p| SimdGamma::<f64>::new(
+      p[0], p[1]
+    )),
+    ctor!(["mu", "alpha", "beta"], [0.0, 1.0, 1.5], |p| {
+      SimdGed::<f64>::new(p[0], p[1], p[2])
+    }),
+    ctor!(
+      ["lambda", "alpha", "beta", "delta", "mu"],
+      [1.0, 2.0, 0.5, 1.0, 0.0],
+      |p| { SimdGeneralizedHyperbolic::<f64>::new(p[0], p[1], p[2], p[3], p[4]) }
+    ),
+    ctor!(["lambda", "chi", "psi"], [0.5, 1.0, 2.0], |p| {
+      SimdGig::<f64>::new(p[0], p[1], p[2])
+    }),
+    ctor!(["p"], [0.3], |p| SimdGeometric::<u32>::new(p[0])),
+    ctor!(["mu", "sigma", "xi"], [0.0, 1.0, 0.1], |p| {
+      SimdGev::<f64>::new(p[0], p[1], p[2])
+    }),
+    ctor!(["mu", "sigma", "xi"], [0.0, 1.0, 0.1], |p| {
+      SimdGpd::<f64>::new(p[0], p[1], p[2])
+    }),
+    ctor!(["mu", "lambda"], [1.0, 2.0], |p| {
+      SimdInverseGauss::<f64>::new(p[0], p[1])
+    }),
+    ctor!(
+      ["gamma", "delta", "xi", "lambda"],
+      [0.5, 1.5, 0.0, 1.0],
+      |p| { SimdJohnsonSu::<f64>::new(p[0], p[1], p[2], p[3]) }
+    ),
+    ctor!(["mu", "sigma"], [0.0, 0.5], |p| SimdLogNormal::<f64>::new(
+      p[0], p[1]
+    )),
+    ctor!(["df"], [2.0], |p| SimdNonCentralChiSquared::<f64>::new(
+      p[0]
+    )),
+    ctor!(["mean", "std_dev"], [0.0, 1.0], |p| SimdNormal::<f64>::new(
+      p[0], p[1]
+    )),
+    ctor!(
+      ["alpha", "beta", "delta", "mu"],
+      [2.0, 0.5, 1.0, 0.0],
+      |p| { SimdNormalInverseGauss::<f64>::new(p[0], p[1], p[2], p[3]) }
+    ),
+    ctor!(["x_m", "alpha"], [1.0, 1.5], |p| SimdPareto::<f64>::new(
+      p[0], p[1]
+    )),
+    ctor!(["eta", "lambda"], [5.0, 0.2], |p| SimdSkewT::<f64>::new(
+      p[0], p[1]
+    )),
+    ctor!(["nu"], [5.0], |p| SimdStudentT::<f64>::new(p[0])),
+    ctor!(["alpha", "lambda", "theta"], [0.5, 1.0, 1.0], |p| {
+      SimdTemperedStable::<f64>::new(p[0], p[1], p[2])
+    }),
+    ctor!(["sigma", "nu", "theta", "mu"], [0.2, 0.5, -0.1, 0.0], |p| {
+      SimdVarianceGamma::<f64>::new(p[0], p[1], p[2], p[3])
+    }),
+    ctor!(["lambda", "k"], [1.0, 1.5], |p| SimdWeibull::<f64>::new(
+      p[0], p[1]
+    )),
+    ctor!(["nu"], [3.0], |p| {
+      SimdWishart::<f64>::new(p[0], array![[1.0, 0.0], [0.0, 1.0]])
+    }),
+    ctor!(
+      ["alpha", "beta", "lower", "upper"],
+      [2.0, 2.0, 0.1, 0.9],
+      |p| { SimdTruncatedBeta::<f64>::new(p[0], p[1], p[2], p[3]) }
+    ),
+    ctor!(["lambda", "lower", "upper"], [1.0, 0.0, 1.0], |p| {
+      SimdTruncatedExp::<f64>::new(p[0], p[1], p[2])
+    }),
+    ctor!(
+      ["shape", "scale", "lower", "upper"],
+      [2.0, 1.0, 0.0, 1.0],
+      |p| { SimdTruncatedGamma::<f64>::new(p[0], p[1], p[2], p[3]) }
+    ),
+    ctor!(
+      ["mu", "sigma", "lower", "upper"],
+      [0.0, 1.0, -1.0, 1.0],
+      |p| { SimdTruncatedNormal::<f64>::new(p[0], p[1], p[2], p[3]) }
+    ),
+    ctor!(["low", "high"], [0.0, 1.0], |p| SimdUniform::<f64>::new(
+      p[0], p[1]
+    )),
+  ]
+}
+
+const NON_FINITE: [f64; 3] = [f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
+
+/// Every finiteness assert names its parameter and value: NaN and ±∞ at each float parameter (NaN only at a
+/// truncation bound, which may be infinite) and at each entry of Wishart's scale and Dirichlet's concentrations.
 #[test]
-fn a_non_finite_parameter_is_rejected_by_name() {
-  let nan = f64::NAN;
-  let inf = f64::INFINITY;
-  let cases: Vec<Case> = vec![
-    (
-      "mean",
-      "mean.is_finite()",
-      Box::new(move || {
-        let _ = SimdNormal::<f64>::new(nan, 1.0);
-      }),
-    ),
-    (
-      "std_dev",
-      "std_dev.is_finite()",
-      Box::new(move || {
-        let _ = SimdNormal::<f64>::new(0.0, inf);
-      }),
-    ),
-    (
-      "lambda",
-      "lambda.is_finite()",
-      Box::new(move || {
-        let _ = SimdExp::<f64>::new(inf);
-      }),
-    ),
-    (
-      "alpha",
-      "alpha.is_finite()",
-      Box::new(move || {
-        let _ = SimdGamma::<f64>::new(nan, 1.0);
-      }),
-    ),
-    (
-      "scale",
-      "scale.is_finite()",
-      Box::new(move || {
-        let _ = SimdGamma::<f64>::new(2.0, inf);
-      }),
-    ),
-    (
-      "alpha",
-      "alpha.is_finite()",
-      Box::new(move || {
-        let _ = SimdBeta::<f64>::new(nan, 2.0);
-      }),
-    ),
-    (
-      "gamma",
-      "gamma.is_finite()",
-      Box::new(move || {
-        let _ = SimdCauchy::<f64>::new(0.0, inf);
-      }),
-    ),
-    (
-      "k",
-      "k.is_finite()",
-      Box::new(move || {
-        let _ = SimdChiSquared::<f64>::new(nan);
-      }),
-    ),
-    (
-      "sigma",
-      "sigma.is_finite()",
-      Box::new(move || {
-        let _ = SimdLogNormal::<f64>::new(0.0, inf);
-      }),
-    ),
-    (
-      "nu",
-      "nu.is_finite()",
-      Box::new(move || {
-        let _ = SimdStudentT::<f64>::new(inf);
-      }),
-    ),
-    (
-      "k",
-      "k.is_finite()",
-      Box::new(move || {
-        let _ = SimdWeibull::<f64>::new(1.0, nan);
-      }),
-    ),
-    (
-      "alpha",
-      "alpha.is_finite()",
-      Box::new(move || {
-        let _ = SimdPareto::<f64>::new(1.0, inf);
-      }),
-    ),
-    (
-      "alpha",
-      "alpha.is_finite()",
-      Box::new(move || {
-        let _ = SimdGed::<f64>::new(0.0, inf, 1.5);
-      }),
-    ),
-    (
-      "xi",
-      "xi.is_finite()",
-      Box::new(move || {
-        let _ = SimdGev::<f64>::new(0.0, 1.0, nan);
-      }),
-    ),
-    (
-      "sigma",
-      "sigma.is_finite()",
-      Box::new(move || {
-        let _ = SimdGpd::<f64>::new(0.0, inf, 0.1);
-      }),
-    ),
-    (
-      "mu",
-      "mu.is_finite()",
-      Box::new(move || {
-        let _ = SimdInverseGauss::<f64>::new(nan, 1.0);
-      }),
-    ),
-    (
-      "delta",
-      "delta.is_finite()",
-      Box::new(move || {
-        let _ = SimdJohnsonSu::<f64>::new(0.5, inf, 0.0, 1.0);
-      }),
-    ),
-    (
-      "delta",
-      "delta.is_finite()",
-      Box::new(move || {
-        let _ = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, nan, 0.0);
-      }),
-    ),
-    (
-      "chi",
-      "chi.is_finite()",
-      Box::new(move || {
-        let _ = SimdGig::<f64>::new(0.5, inf, 2.0);
-      }),
-    ),
-    (
-      "alpha",
-      "alpha.is_finite()",
-      Box::new(move || {
-        let _ = SimdNormalInverseGauss::<f64>::new(nan, 0.5, 1.0, 0.0);
-      }),
-    ),
-    (
-      "eta",
-      "eta.is_finite()",
-      Box::new(move || {
-        let _ = SimdSkewT::<f64>::new(inf, 0.2);
-      }),
-    ),
-    (
-      "lambda",
-      "lambda.is_finite()",
-      Box::new(move || {
-        let _ = SimdTemperedStable::<f64>::new(0.5, nan, 1.0);
-      }),
-    ),
-    (
-      "sigma",
-      "sigma.is_finite()",
-      Box::new(move || {
-        let _ = SimdVarianceGamma::<f64>::new(inf, 0.5, -0.1, 0.0);
-      }),
-    ),
-    (
-      "scale",
-      "scale.is_finite()",
-      Box::new(move || {
-        let _ = SimdAlphaStable::<f64>::new(1.5, 0.3, nan, 0.0);
-      }),
-    ),
-    (
-      "p",
-      "p.is_finite()",
-      Box::new(move || {
-        let _ = SimdBinomial::<u32>::new(10, nan);
-      }),
-    ),
-    (
-      "p",
-      "p.is_finite()",
-      Box::new(move || {
-        let _ = SimdGeometric::<u32>::new(nan);
-      }),
-    ),
-    (
-      "df",
-      "df.is_finite()",
-      Box::new(move || {
-        let _ = SimdNonCentralChiSquared::<f64>::new(nan);
-      }),
-    ),
-    (
-      "lower",
-      "!lower.is_nan()",
-      Box::new(move || {
-        let _ = SimdTruncatedNormal::<f64>::new(0.0, 1.0, nan, 1.0);
-      }),
-    ),
-    (
-      "upper",
-      "!upper.is_nan()",
-      Box::new(move || {
-        let _ = SimdTruncatedExp::<f64>::new(1.0, 0.0, nan);
-      }),
-    ),
-    (
-      "scale",
-      "scale.is_finite()",
-      Box::new(move || {
-        let _ = SimdTruncatedGamma::<f64>::new(2.0, inf, 0.0, 1.0);
-      }),
-    ),
-    (
-      "alpha",
-      "alpha.is_finite()",
-      Box::new(move || {
-        let _ = SimdTruncatedBeta::<f64>::new(nan, 2.0, 0.1, 0.9);
-      }),
-    ),
-  ];
-  for (name, predicate, build) in cases {
-    let text = panic_text(build);
-    let want = format!("{name} must satisfy `{predicate}`, got {name} = ");
-    assert!(text.contains(&want), "expected `{want}…`, got: {text}");
+fn every_finiteness_assert_names_its_parameter() {
+  let mut params = 0;
+  for c in ctors() {
+    for (i, &name) in c.names.iter().enumerate() {
+      let bound = name == "lower" || name == "upper";
+      let (pred, bad) = if bound {
+        (format!("!{name}.is_nan()"), &NON_FINITE[..1])
+      } else {
+        (format!("{name}.is_finite()"), &NON_FINITE[..])
+      };
+      for &v in bad {
+        let mut p = c.base.to_vec();
+        p[i] = v;
+        let build = c.build;
+        let want = format!("{name} must satisfy `{pred}`, got {name} = {v:?}");
+        assert_eq!(panic_text(move || build(&p)), want);
+      }
+      params += 1;
+    }
+  }
+  assert_eq!(
+    params, 78,
+    "the 76 asserts the policy added plus SimdUniform's two"
+  );
+  for (i, j) in [(0, 0), (0, 1), (1, 0), (1, 1)] {
+    for v in NON_FINITE {
+      let mut scale = array![[1.0, 0.0], [0.0, 1.0]];
+      scale[[i, j]] = v;
+      let want =
+        format!("scale must satisfy `scale[[i, j]].is_finite()`, got scale[[{i}, {j}]] = {v:?}");
+      assert_eq!(
+        panic_text(move || SimdWishart::<f64>::new(3.0, scale)),
+        want
+      );
+    }
+  }
+  for k in 0..3 {
+    for v in NON_FINITE {
+      let mut alpha = vec![1.0, 2.0, 3.0];
+      alpha[k] = v;
+      let want = format!("alpha must satisfy `alpha[k].is_finite()`, got alpha[{k}] = {v:?}");
+      assert_eq!(panic_text(move || SimdDirichlet::<f64>::new(alpha)), want);
+    }
   }
   assert!(
     SimdTruncatedExp::<f64>::new(1.0, 0.0, f64::INFINITY)
