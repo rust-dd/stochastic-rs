@@ -107,11 +107,11 @@ impl TMultivariate {
 
   /// Construct directly from a correlation matrix and degrees of freedom.
   pub fn new_with(corr: Array2<f64>, nu: f64) -> Result<Self, CopulaError> {
-    if nu <= 0.0 || nu.is_nan() {
+    if !nu.is_finite() || nu <= 0.0 {
       return Err(CopulaError::InvalidParameter {
         name: "nu",
         value: nu,
-        constraint: "nu > 0".into(),
+        constraint: "0 < nu < ∞".into(),
       });
     }
     let dim = corr.nrows();
@@ -138,16 +138,14 @@ impl TMultivariate {
     self.nu
   }
 
-  /// Override the degrees of freedom $\nu$. Useful when the user picks
-  /// $\nu$ from an external calibration (e.g. tail-coefficient match) and
-  /// wants the copula to skip its own optimisation. Returns an error if
-  /// $\nu \le 0$.
+  /// Override $\nu$, e.g. from an external tail-coefficient calibration, skipping the fit's own search; an error
+  /// unless $0 < \nu < \infty$.
   pub fn set_nu(&mut self, nu: f64) -> Result<(), CopulaError> {
-    if nu <= 0.0 || nu.is_nan() {
+    if !nu.is_finite() || nu <= 0.0 {
       return Err(CopulaError::InvalidParameter {
         name: "nu",
         value: nu,
-        constraint: "nu > 0".into(),
+        constraint: "0 < nu < ∞".into(),
       });
     }
     self.nu = nu;

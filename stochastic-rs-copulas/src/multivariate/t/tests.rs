@@ -183,8 +183,28 @@ fn t_multivariate_exposes_nu() {
     CopulaError::InvalidParameter {
       name: "nu",
       value: 0.0,
-      constraint: "nu > 0".into(),
+      constraint: "0 < nu < ∞".into(),
     }
   );
   assert_eq!(cop.nu(), 12.0, "a failed set_nu must not mutate the field");
+}
+
+/// An infinite `nu` is an error from both entry points of either t-copula, so no χ² law is built with `k = ∞`.
+#[test]
+fn an_infinite_nu_is_rejected_by_name() {
+  let want = CopulaError::InvalidParameter {
+    name: "nu",
+    value: f64::INFINITY,
+    constraint: "0 < nu < ∞".into(),
+  };
+  let corr = array![[1.0, 0.3], [0.3, 1.0]];
+  assert_eq!(
+    TMultivariate::new_with(corr.clone(), f64::INFINITY).unwrap_err(),
+    want
+  );
+  let mut cop = TMultivariate::new_with(corr, 4.0).unwrap();
+  assert_eq!(cop.set_nu(f64::INFINITY).unwrap_err(), want);
+  assert_eq!(cop.nu(), 4.0);
+  let mut bivariate = crate::bivariate::t_copula::TCopula::with_nu(4.0);
+  assert_eq!(bivariate.set_nu(f64::INFINITY).unwrap_err(), want);
 }

@@ -87,7 +87,7 @@ impl TCopula {
   pub fn with_nu(nu: f64) -> Self {
     let mut c = Self::default();
     if let Err(e) = c.set_nu(nu) {
-      panic!("nu must be positive, got {nu}: {e}");
+      panic!("{e}");
     }
     c
   }
@@ -97,15 +97,14 @@ impl TCopula {
     self.nu
   }
 
-  /// Override the degrees of freedom. Mirrors the feature-gated
-  /// `TMultivariate::set_nu`; returns an error instead of silently
-  /// accepting a value (e.g. negative or NaN) that produces NaN downstream.
+  /// Override the degrees of freedom, as `TMultivariate::set_nu` does: a value outside `0 < nu < ∞` is an error,
+  /// not a NaN downstream.
   pub fn set_nu(&mut self, nu: f64) -> Result<(), CopulaError> {
-    if nu <= 0.0 || nu.is_nan() {
+    if !nu.is_finite() || nu <= 0.0 {
       return Err(CopulaError::InvalidParameter {
         name: "nu",
         value: nu,
-        constraint: "nu > 0".into(),
+        constraint: "0 < nu < ∞".into(),
       });
     }
     self.nu = nu;
