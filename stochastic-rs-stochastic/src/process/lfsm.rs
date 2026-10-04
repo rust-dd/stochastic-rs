@@ -100,7 +100,7 @@ impl<T: FloatExt, S: SeedExt, B> Lfsm<T, S, B> {}
 impl<T: FloatExt, S: SeedExt, B> Lfsm<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
   }
 }
 
@@ -345,5 +345,11 @@ mod tests {
     let x = p.sample();
     assert_eq!(x.len(), 256);
     assert!(x.iter().all(|v| v.is_finite()));
+  }
+
+  #[test]
+  fn n_eq_1_samples_one_point() {
+    let p = Lfsm::new(1.5_f64, 0.0, 0.75, 1.0, 1, Some(0.0), Some(1.0), Unseeded);
+    assert_eq!(p.sample().to_vec(), vec![0.0]);
   }
 }

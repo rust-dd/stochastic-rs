@@ -490,6 +490,23 @@ mod tests {
       Unseeded,
     );
   }
+
+  #[test]
+  fn n_eq_1_keeps_initial_values() {
+    let p = MultifactorSabr::<f64, _>::new(
+      Some(1.0),
+      Some(0.2),
+      vec![],
+      vec![0.5],
+      vec![-0.3],
+      vec![0.4],
+      1,
+      Some(1.0),
+      Unseeded,
+    );
+    let [f, v] = p.sample();
+    assert_eq!((f.to_vec(), v.to_vec()), (vec![1.0], vec![0.2]));
+  }
 }
 
 #[cfg(test)]

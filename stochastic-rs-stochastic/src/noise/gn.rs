@@ -219,7 +219,7 @@ impl<T: FloatExt, S: SeedExt, B> Gn<T, S, B> {
   }
 
   pub fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize_(self.n)
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n.max(1))
   }
 }
 

@@ -86,7 +86,7 @@ impl<T: FloatExt, S: SeedExt, B> BilateralGamma<T, S, B> {}
 impl<T: FloatExt, S: SeedExt, B> BilateralGamma<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
   }
 }
 
@@ -312,7 +312,7 @@ impl<T: FloatExt, S: SeedExt, B> BilateralGammaMotion<T, S, B> {}
 impl<T: FloatExt, S: SeedExt, B> BilateralGammaMotion<T, S, B> {
   #[inline]
   fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
   }
 }
 
