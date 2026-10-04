@@ -135,10 +135,7 @@ impl<T: FloatExt> VolterraKernel<T> for RlKernel<T> {
     t.powf(self.hurst - T::from_f64_fast(0.5)) / self.gamma_h_half
   }
 
-  /// $\int_0^{dt} K(u)\,du = \delta t^{H+1/2}/\Gamma(H+3/2)$, the closed
-  /// form obtained by integrating $u^{H-1/2}/\Gamma(H+1/2)$ term-by-term —
-  /// this is the quantity [`MarkovLift`](crate::rough::markov_lift::MarkovLift)
-  /// hard-codes as `dt_pow_h_plus_half / gamma_h_plus_three_half`.
+  /// $\int_0^{dt} K(u)\,du = \delta t^{H+1/2}/\Gamma(H+3/2)$.
   fn integral_from_zero(&self, dt: T) -> T {
     let h_f64 = self
       .hurst
