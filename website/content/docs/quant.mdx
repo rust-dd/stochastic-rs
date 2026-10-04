@@ -330,8 +330,6 @@ print(equity.expected_tranche_loss(5.0), equity.large_pool_expected_tranche_loss
 </Tab>
 </Tabs>
 
-<a id="heston-fourier-pricer-with-cui-analytic-jacobian" />
-
 ### Heston — semi-closed-form pricer
 
 `HestonPricer` evaluates the Heston (1993) semi-closed form with the characteristic function in the "little Heston trap" form of Albrecher et al. (2007), and returns all nine first- and second-order Greeks through `greeks(s, k, r, q, tau, option_type)`.
