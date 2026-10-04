@@ -85,13 +85,22 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
       delta > T::zero(),
       "delta must satisfy `delta > T::zero()`, got delta = {delta:?}"
     );
-    let gamma = (alpha * alpha - beta * beta).sqrt();
+    let ig_mu = delta / (alpha * alpha - beta * beta).sqrt();
+    let ig_lambda = delta * delta;
+    assert!(
+      ig_mu > T::zero() && ig_mu.is_finite(),
+      "delta must satisfy `0 < delta / (alpha * alpha - beta * beta).sqrt() < ∞`, got delta = {delta:?}, alpha = {alpha:?}, beta = {beta:?}"
+    );
+    assert!(
+      ig_lambda > T::zero() && ig_lambda.is_finite(),
+      "delta must satisfy `0 < delta * delta < ∞`, got delta = {delta:?}"
+    );
     Self {
       alpha,
       beta,
       delta,
       mu,
-      ig: SimdInverseGauss::new(delta / gamma, delta * delta),
+      ig: SimdInverseGauss::new(ig_mu, ig_lambda),
     }
   }
 

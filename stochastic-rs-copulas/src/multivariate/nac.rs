@@ -397,6 +397,20 @@ impl NestedArchimedean {
     }
   }
 
+  /// The root Clayton frailty is `Gamma(1/θ, 1)`, so `θ = 0` (or a `θ` so small that `1/θ` overflows) has no
+  /// frailty to draw.
+  fn check_root_frailty(&self) -> Result<(), CopulaError> {
+    let shape = 1.0 / self.root.theta;
+    if self.family == NacFamily::Clayton && !(shape > 0.0 && shape.is_finite()) {
+      return Err(CopulaError::InvalidParameter {
+        name: "theta",
+        value: self.root.theta,
+        constraint: "0 < 1 / theta < ∞".into(),
+      });
+    }
+    Ok(())
+  }
+
   /// Recursive CDF evaluator: returns $C(u_{\text{tree}})$ for the sub-tree
   /// rooted at `node`. Used both directly (whole-tree CDF) and indirectly
   /// (via finite differences) for density estimation.
@@ -419,12 +433,14 @@ impl MultivariateExt for NestedArchimedean {
   }
 
   fn sample(&self, n: usize) -> Result<Array2<f64>, CopulaError> {
+    self.check_root_frailty()?;
     Ok(self.sample_with(n, &mut SimdRng::new()))
   }
 
   /// Reproducible counterpart of [`MultivariateExt::sample`]: the same
   /// `seed` always yields the same matrix.
   fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, CopulaError> {
+    self.check_root_frailty()?;
     Ok(self.sample_with(n, &mut SimdRng::from_seed(seed)))
   }
 

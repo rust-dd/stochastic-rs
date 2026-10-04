@@ -93,12 +93,17 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
       nu > T::zero(),
       "nu must satisfy `nu > T::zero()`, got nu = {nu:?}"
     );
+    let shape = T::one() / nu;
+    assert!(
+      shape.is_finite(),
+      "nu must satisfy `(1 / nu).is_finite()`, got nu = {nu:?}"
+    );
     Self {
       sigma,
       nu,
       theta,
       mu,
-      gamma: SimdGamma::new(T::one() / nu, nu),
+      gamma: SimdGamma::new(shape, nu),
     }
   }
 

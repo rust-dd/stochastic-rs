@@ -94,11 +94,16 @@ impl<T: SimdFloatExt> SimdGed<T> {
       beta > T::zero(),
       "beta must satisfy `beta > T::zero()`, got beta = {beta:?}"
     );
+    let shape = T::one() / beta;
+    assert!(
+      shape.is_finite(),
+      "beta must satisfy `(1 / beta).is_finite()`, got beta = {beta:?}"
+    );
     Self {
       mu,
       alpha,
       beta,
-      gamma: SimdGamma::new(T::one() / beta, T::one()),
+      gamma: SimdGamma::new(shape, T::one()),
     }
   }
 

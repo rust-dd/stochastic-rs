@@ -188,3 +188,23 @@ fn nac_fit_rejects_with_descriptive_error() {
   let data = ndarray::Array2::<f64>::from_elem((10, 2), 0.5);
   assert!(matches!(nac.fit(data), Err(CopulaError::Unsupported(_))));
 }
+
+/// A root Clayton `θ` whose frailty shape `1/θ` is not finite is a named error from `sample`, not a panic.
+#[test]
+fn nac_clayton_root_without_a_frailty_is_rejected_by_name() {
+  for theta in [0.0, 1e-320] {
+    let nac = NestedArchimedean::new(
+      NacFamily::Clayton,
+      NacNode::leaf_group(theta, vec![0, 1]),
+      2,
+    )
+    .unwrap();
+    let want = CopulaError::InvalidParameter {
+      name: "theta",
+      value: theta,
+      constraint: "0 < 1 / theta < ∞".into(),
+    };
+    assert_eq!(nac.sample(4).unwrap_err(), want);
+    assert_eq!(nac.sample_with_seed(4, 7).unwrap_err(), want);
+  }
+}

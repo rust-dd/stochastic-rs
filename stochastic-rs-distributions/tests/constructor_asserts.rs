@@ -213,6 +213,30 @@ fn every_rejected_argument_is_named_with_its_value() {
       panic_text(|| SimdDirichlet::<f64>::new(vec![1.0, f64::INFINITY])),
       "alpha must satisfy `alpha[k].is_finite()`, got alpha[1] = inf",
     ),
+    (
+      panic_text(|| SimdGed::<f64>::new(0.0, 1.0, 1e-320)),
+      "beta must satisfy `(1 / beta).is_finite()`, got beta = 1e-320",
+    ),
+    (
+      panic_text(|| SimdVarianceGamma::<f64>::new(0.2, 1e-320, 0.0, 0.0)),
+      "nu must satisfy `(1 / nu).is_finite()`, got nu = 1e-320",
+    ),
+    (
+      panic_text(|| SimdGeneralizedHyperbolic::<f64>::new(0.5, 2.0, 0.5, 1e200, 0.0)),
+      "delta must satisfy `0 < delta * delta < ∞`, got delta = 1e200",
+    ),
+    (
+      panic_text(|| SimdGeneralizedHyperbolic::<f64>::new(0.5, 1e200, 0.5, 1.0, 0.0)),
+      "alpha must satisfy `0 < alpha * alpha - beta * beta < ∞`, got alpha = 1e200, beta = 0.5",
+    ),
+    (
+      panic_text(|| SimdNormalInverseGauss::<f64>::new(1e-170, 0.0, 1.0, 0.0)),
+      "delta must satisfy `0 < delta / (alpha * alpha - beta * beta).sqrt() < ∞`, got delta = 1.0, alpha = 1e-170, beta = 0.0",
+    ),
+    (
+      panic_text(|| SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1e200, 0.0)),
+      "delta must satisfy `0 < delta * delta < ∞`, got delta = 1e200",
+    ),
   ];
   let wrong = cases
     .iter()

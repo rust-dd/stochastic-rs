@@ -103,13 +103,23 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
       delta > T::zero(),
       "delta must satisfy `delta > T::zero()`, got delta = {delta:?}"
     );
+    let chi = delta * delta;
+    let psi = alpha * alpha - beta * beta;
+    assert!(
+      chi > T::zero() && chi.is_finite(),
+      "delta must satisfy `0 < delta * delta < ∞`, got delta = {delta:?}"
+    );
+    assert!(
+      psi > T::zero() && psi.is_finite(),
+      "alpha must satisfy `0 < alpha * alpha - beta * beta < ∞`, got alpha = {alpha:?}, beta = {beta:?}"
+    );
     Self {
       lambda,
       alpha,
       beta,
       delta,
       mu,
-      gig: SimdGig::new(lambda, delta * delta, alpha * alpha - beta * beta),
+      gig: SimdGig::new(lambda, chi, psi),
     }
   }
 
