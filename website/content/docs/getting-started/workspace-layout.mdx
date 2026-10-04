@@ -6,7 +6,7 @@ since: 2.0.0
 status: stable
 ---
 
-`stochastic-rs` is a Cargo workspace with **8 sub-crates** as siblings under the workspace root. The `stochastic-rs` umbrella crate re-exports each of them as a module: `stochastic_rs::stochastic` is `stochastic_rs_stochastic`, `stochastic_rs::quant` is `stochastic_rs_quant`, and so on.
+`stochastic-rs` is a Cargo workspace with **8 sub-crates** as siblings under the workspace root. The `stochastic-rs` umbrella crate re-exports six of them as modules — `stochastic_rs::distributions`, `stochastic`, `copulas`, `stats`, `quant`, and `ai` with the `ai` feature — and `stochastic-rs-core`'s RNG module as `stochastic_rs::simd_rng`. `stochastic-rs-py` builds the Python module and is not re-exported.
 
 ```
 stochastic-rs/                        (workspace root + umbrella crate)
@@ -23,23 +23,25 @@ stochastic-rs/                        (workspace root + umbrella crate)
 ## Dependency topology
 
 ```
-        stochastic-rs-core (simd_rng)
-                  │
-                  ▼
-   stochastic-rs-distributions (FloatExt, SimdFloatExt)
-        ┌─────────┬─────────┐
-        ▼         ▼         ▼
-   stochastic   copulas   stats
-        │                   │
-        └────────┬──────────┘
-                 ▼
-            stochastic-rs-quant
-                 │
-                 ▼
-                 ai
+stochastic-rs-core (simd_rng)
+          │
+          ▼
+stochastic-rs-distributions (FloatExt, SimdFloatExt)
+          ├──────────────────────────────┐
+          ▼                              ▼
+stochastic-rs-stochastic        stochastic-rs-copulas
+          │                              │
+          ▼                              │
+stochastic-rs-stats                      │
+          │                              │
+          ▼                              │
+stochastic-rs-quant ◄────────────────────┘
+          │
+          ▼  (optional)
+stochastic-rs-ai
 ```
 
-The PyO3 crate (`stochastic-rs-py`) depends on the others and builds the `stochastic_rs` Python module from them.
+An arrow points to a crate that depends on the one above it. Every crate also depends directly on `stochastic-rs-core`; `stochastic-rs-stats` also on `-distributions`, and `stochastic-rs-quant` on `-distributions` and `-stochastic`. `stochastic-rs-ai` reaches `-quant` through its optional `quant` feature, which the umbrella's `ai` feature turns on. The umbrella and `stochastic-rs-py` depend on all of them, `-ai` optionally.
 
 ## Why depend on a sub-crate
 

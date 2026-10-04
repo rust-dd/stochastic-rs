@@ -20,7 +20,7 @@ Then:
 
 <RustExample path="tests/doctest_install_imports.rs" />
 
-The umbrella re-exports every sub-crate as a module (`stochastic_rs::stochastic`, `stochastic_rs::quant`, …).
+The umbrella re-exports the sub-crates as modules (`stochastic_rs::stochastic`, `stochastic_rs::quant`, …; `ai` with its feature) and `stochastic-rs-core`'s RNG module as `stochastic_rs::simd_rng`.
 
 ## Per-sub-crate (lean)
 
@@ -36,16 +36,16 @@ stochastic-rs-quant = "3.0.0-rc.4"   # pricing / calibration / vol surface
 stochastic-rs-ai = "3.0.0-rc.4"   # experimental neural surrogates (candle)
 ```
 
-Topology:
+What each sub-crate pulls in from the workspace:
 
 ```
-stochastic-rs-core (simd_rng)
- └→ stochastic-rs-distributions (FloatExt, SimdFloatExt, distributions)
-     ├→ stochastic-rs-stochastic (ProcessExt + 132 processes)
-     ├→ stochastic-rs-copulas
-     └→ stochastic-rs-stats
-         └→ stochastic-rs-quant (ModelPricer, calibration, vol surface)
-             └→ stochastic-rs-ai
+stochastic-rs-core            (simd_rng; no workspace dependency)
+stochastic-rs-distributions   core
+stochastic-rs-stochastic      core, distributions
+stochastic-rs-copulas         core, distributions
+stochastic-rs-stats           core, distributions, stochastic
+stochastic-rs-quant           core, distributions, stochastic, copulas, stats
+stochastic-rs-ai              core; quant with its `quant` feature
 ```
 
 ## Cargo features
@@ -97,7 +97,7 @@ RUSTFLAGS="-C target-cpu=x86-64-v3" cargo build --release
 
 ## GPU support
 
-Every process can sample on a device backend: `cuda` (NVIDIA), `metal` (Apple GPUs) and `accelerate` (Apple vDSP on the CPU). See [GPU support](/docs/concepts/gpu-support) for what runs where.
+Every process can sample on a GPU through `cuda` (NVIDIA) or `metal` (Apple GPUs); `accelerate` routes the fGN FFT through Apple's vDSP on the CPU. See [GPU support](/docs/concepts/gpu-support) for what runs where.
 
 ### The `.on::<B>()` selector
 
@@ -183,4 +183,18 @@ Cholesky, SVD, eigendecompositions and least squares run on the pure-Rust [`faer
 
 <RustExample path="tests/doctest_install_verify.rs" />
 
-Run it as a test, or put the body in the `fn main` of your own crate and `cargo run --release`. Continue with the [Quickstart](/docs/getting-started/quickstart).
+The same check as a `src/main.rs` of your own crate:
+
+```rust
+use stochastic_rs::prelude::*;
+use stochastic_rs::simd_rng::Unseeded;
+use stochastic_rs::stochastic::diffusion::ou::Ou;
+
+fn main() {
+  let p = Ou::<f64, _>::new(2.0, 0.0, 1.0, 1_000, Some(0.0), Some(1.0), Unseeded);
+  let path = p.sample();
+  println!("OU path of length {}", path.len());
+}
+```
+
+`cargo run --release` prints `OU path of length 1000`. Continue with the [Quickstart](/docs/getting-started/quickstart).
