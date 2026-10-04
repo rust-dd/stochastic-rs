@@ -558,16 +558,18 @@ mod expr_tests {
     assert!(g.program().is_none());
   }
 
-  /// Too deep an expression is refused when it compiles, not when a kernel's stack overflows.
+  /// The bounds are exact: 62 ops and a stack of 8 compile, one op or one slot more is refused.
   #[test]
-  fn a_program_deeper_than_the_kernels_stack_is_refused() {
-    let mut deep = Expr::x();
-    for _ in 0..9 {
-      deep = Expr::x() * (Expr::x() + deep);
-    }
-    assert_eq!(deep.compile(), Err(ProgramError::TooDeep { depth: 19 }));
-    let long = (0..40).fold(Expr::x(), |acc, _| acc + Expr::t());
-    assert_eq!(long.compile(), Err(ProgramError::TooLong { ops: 81 }));
-    assert!(Fn2D::<f64>::try_from(long).is_err());
+  fn a_program_longer_or_deeper_than_the_kernels_hold_is_refused() {
+    let sum = |terms: usize| (0..terms).fold(Expr::x(), |acc, _| acc + Expr::t());
+    let chain = |leaves: usize| (1..leaves).fold(Expr::x(), |acc, _| Expr::x() + acc);
+    assert_eq!((-sum(30)).compile().map(|p| p.len()), Ok(62));
+    assert_eq!(sum(31).compile(), Err(ProgramError::TooLong { ops: 63 }));
+    assert_eq!(chain(8).compile().map(|p| p.depth()), Ok(8));
+    assert_eq!(chain(9).compile(), Err(ProgramError::TooDeep { depth: 9 }));
+    assert_eq!(
+      Fn2D::<f64>::try_from(sum(31)).err(),
+      Some(ProgramError::TooLong { ops: 63 })
+    );
   }
 }
