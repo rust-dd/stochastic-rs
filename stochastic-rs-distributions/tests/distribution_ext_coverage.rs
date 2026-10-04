@@ -259,8 +259,8 @@ fn rows() -> Vec<Row> {
   ]
 }
 
-/// Which methods answer at a fixed probe (x = 0.6, p = 0.3, t = 0.4); the probe need not lie in a
-/// law's support, since whether a method answers depends on the law and its parameters, not the point.
+/// Which methods answer at a fixed probe (x = 0.6, p = 0.3, t = 0.4), inside or outside a law's
+/// support; only `SimdPareto`'s mgf also depends on the point (`None` for t < 0).
 fn answers(law: &dyn DistributionExt) -> [bool; 12] {
   let cf: Option<Complex64> = law.characteristic_function(0.4);
   [
@@ -308,7 +308,7 @@ fn every_implementor_in_src_has_a_row() {
   );
 }
 
-/// The type after `impl … DistributionExt for` in every `.rs` file under `dir`, comment lines skipped.
+/// The type after `impl … DistributionExt for` in each `.rs` file under `dir`, skipping comments.
 fn implementors(dir: &Path) -> BTreeSet<String> {
   let mut found = BTreeSet::new();
   for entry in std::fs::read_dir(dir).expect("src is readable") {

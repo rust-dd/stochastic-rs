@@ -259,14 +259,19 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdBeta<T> {
     self.quantile(0.5)
   }
 
+  /// `NaN` where no mode is unique: the U-shaped law (α, β < 1) and the uniform one (α = β = 1).
   fn mode(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
-    if a > 1.0 && b > 1.0 {
-      Some((a - 1.0) / (a + b - 2.0))
+    Some(if a > 1.0 && b > 1.0 {
+      (a - 1.0) / (a + b - 2.0)
+    } else if (a < 1.0 && b < 1.0) || (a == 1.0 && b == 1.0) {
+      f64::NAN
+    } else if a < b {
+      0.0
     } else {
-      Some(f64::NAN)
-    }
+      1.0
+    })
   }
 
   fn variance(&self) -> Option<f64> {
@@ -377,6 +382,37 @@ mod tests {
     let d = SimdBeta::<f64>::new(2.5, 4.0);
     let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
     assert!(best > 0.01, "best p = {best}");
+  }
+
+  /// One shape ≤ 1, the other ≥ 1: the density is monotone and the mode is the end it rises toward.
+  #[test]
+  fn mode_answers_every_shape_regime() {
+    let law = |a: f64, b: f64| SimdBeta::<f64>::new(a, b);
+    assert_eq!(law(2.0, 5.0).mode(), Some(0.2));
+    for ((a, b), want) in [
+      ((0.5, 3.0), 0.0),
+      ((1.0, 3.0), 0.0),
+      ((0.5, 1.0), 0.0),
+      ((3.0, 0.5), 1.0),
+      ((3.0, 1.0), 1.0),
+      ((1.0, 0.5), 1.0),
+    ] {
+      let d = law(a, b);
+      assert_eq!(d.mode(), Some(want), "Beta({a}, {b})");
+      let pdf = [0.05, 0.5, 0.95].map(|x| d.pdf(x).unwrap());
+      let rises_to_one = pdf[0] < pdf[1] && pdf[1] < pdf[2];
+      let falls_from_zero = pdf[0] > pdf[1] && pdf[1] > pdf[2];
+      assert!(
+        if want == 1.0 {
+          rises_to_one
+        } else {
+          falls_from_zero
+        },
+        "Beta({a}, {b}) pdf {pdf:?}"
+      );
+    }
+    assert!(law(0.5, 0.5).mode().unwrap().is_nan());
+    assert!(law(1.0, 1.0).mode().unwrap().is_nan());
   }
 }
 

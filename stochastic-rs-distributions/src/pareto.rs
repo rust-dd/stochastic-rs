@@ -221,11 +221,16 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdPareto<T> {
     Some((xm / a).ln() + 1.0 / a + 1.0)
   }
 
-  /// `NaN` for every `t > 0`: the Pareto tail decays only polynomially
-  /// (`~x^{-alpha-1}`), too slowly for `e^{tx}` to be integrable at any
-  /// positive `t`, regardless of `alpha`.
-  fn moment_generating_function(&self, _t: f64) -> Option<f64> {
-    Some(f64::NAN)
+  /// `NaN` for `t > 0`, where the polynomial tail diverges; `None` for `t < 0`, where the mgf is
+  /// `α(−x_m t)^α Γ(−α, −x_m t)` and `special` has no incomplete gamma of negative order.
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    if t < 0.0 {
+      None
+    } else if t == 0.0 {
+      Some(1.0)
+    } else {
+      Some(f64::NAN)
+    }
   }
 }
 
@@ -253,6 +258,15 @@ mod tests {
       p.moment_generating_function(0.5).unwrap().is_nan(),
       "MGF at t > 0 must be NaN"
     );
+  }
+
+  /// No mgf for t > 0, 1 at t = 0, and for t < 0 one that exists but has no closed form here.
+  #[test]
+  fn mgf_answers_by_the_sign_of_t() {
+    let p = SimdPareto::<f64>::new(1.0, 3.0);
+    assert!(p.moment_generating_function(0.4).unwrap().is_nan());
+    assert_eq!(p.moment_generating_function(0.0), Some(1.0));
+    assert!(p.moment_generating_function(-0.4).is_none());
   }
 
   /// Above every threshold, all four moments must be finite real numbers.
