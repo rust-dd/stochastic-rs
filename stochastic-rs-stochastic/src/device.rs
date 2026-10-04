@@ -411,7 +411,7 @@ pub(crate) fn device_panic<T>(e: DeviceError) -> T {
   panic!("{e}; probe the device handle with `Backend::probe(&device)` before sampling on it")
 }
 
-/// A compile-time device marker, sealed to the four handles of this module: `probe` is the one run-time
+/// A compile-time device marker, sealed to the handles this module declares: `probe` is the one run-time
 /// question it answers, the sampling stays a compile-time choice (`.on::<B>()`, zero runtime branching).
 pub trait Backend: sealed::Sealed + Clone + Send + Sync {
   /// Opens the device behind this marker and describes it, or says why it
@@ -425,7 +425,7 @@ pub trait Backend: sealed::Sealed + Clone + Send + Sync {
 mod sealed {
   #[diagnostic::on_unimplemented(
     message = "`{Self}` cannot implement the sealed trait `Backend`",
-    note = "the device handles are `Cpu`, `Accelerate`, `Cuda` and `Metal`"
+    note = "a new device is added inside stochastic-rs-stochastic; today's handles are `Cpu`, `Accelerate`, `Cuda` and `Metal`"
   )]
   pub trait Sealed {}
 }

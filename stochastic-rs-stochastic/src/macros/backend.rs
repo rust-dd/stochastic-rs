@@ -137,8 +137,7 @@ macro_rules! backend_switch {
     $(where $($wc:tt)*)?
   ) => {
     impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
-      /// The same process on backend `B2`, using that backend's default handle
-      /// (ordinal `0`, the default batch budget).
+      /// The same process on host backend `B2` (`Cpu`, or `Accelerate` on macOS) with its default handle.
       pub fn on<B2: $crate::device::HostBackend + Default>(self) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
@@ -146,8 +145,8 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The same process on an explicit handle: `Cuda::new(1)`, `Metal::default().with_batch_budget(256 << 20)`,
-      /// or `Cuda::from_env()?` for the device and budget of `STOCHASTIC_RS_DEVICE` / `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
+      /// The same process on an explicit host handle: `with_backend(Cpu)`, or `with_backend(Accelerate)` with the
+      /// `accelerate` feature on macOS.
       pub fn with_backend<B2: $crate::device::HostBackend>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
@@ -155,8 +154,7 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The handle `on` or `with_backend` put here, ordinal and batch budget included: what [`probe`](Self::probe)
-      /// opens, and the one way to read back a choice the type alone does not record.
+      /// The host handle `on` or `with_backend` put here: what [`probe`](Self::probe) opens.
       pub fn backend(&self) -> &B {
         &self.backend
       }

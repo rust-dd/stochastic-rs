@@ -15,7 +15,7 @@ switches with a turbofish or an explicit handle:
 ```rust
 let fbm = Fbm::<f64, _>::new(0.7, 1024, None, Deterministic::new(42));
 let a = fbm.clone().on::<Cuda>().sample_par(256);              // B::default()
-let b = fbm.on(Cuda::new(1).with_batch_budget(1 << 28)); // explicit
+let b = fbm.with_backend(Cuda::new(1).with_batch_budget(1 << 28)); // explicit
 ```
 
 A handle only exists when its feature is compiled, and it implements a
@@ -23,8 +23,7 @@ capability only for the precisions its kernels compute in, so selecting
 an unavailable backend — or `f64` on a `f32`-only device — is a
 **compile error**, not a silent fallback. Read
 `stochastic-rs-stochastic/src/device.rs` in full before touching any of
-this: it is 742 lines, current, and it is the contract. `euler.rs` (510
-lines) is the second half.
+this: it is current, and it is the contract. `euler.rs` is the second half.
 
 ## 0. What a back-end owes the caller
 

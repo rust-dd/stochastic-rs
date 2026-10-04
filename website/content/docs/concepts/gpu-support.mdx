@@ -333,7 +333,8 @@ The handle names the device: `Cuda::new(1)` (CUDA ordinal),
 the backend's default handle, and `handle.probe()` reports the device opened.
 `Cuda::from_env()` / `Metal::from_env()` read `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`; `Default` is ordinal `0` with the default budget.
 From Python the name carries the ordinal: `device="cuda:1"`,
-`probe_device("metal:0")`.
+`probe_device("metal:0")`. A bare `"cuda"` or `"metal"` reads both variables; a
+name with an ordinal reads only `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
 
 ## When the device is missing
 

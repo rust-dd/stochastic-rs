@@ -152,7 +152,7 @@ a literal does not compile. `Cuda::from_env()` reads `STOCHASTIC_RS_DEVICE` and
 value it cannot use — so an unchanged program picks its device only where it
 asked to, and there is no process-wide state: two processes on two GPUs are
 two handles. `Cpu` and `Accelerate` carry nothing. `probe()` on a handle
-reports the device it opens; `process.backend()` returns the handle it holds.
+reports the device it opens.
 
 ## Probing a device and handling its failures
 
