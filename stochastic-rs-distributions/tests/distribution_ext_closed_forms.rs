@@ -209,3 +209,20 @@ fn hypergeometric_excess_kurtosis() {
       .is_nan()
   );
 }
+
+/// Where the general formulas read `0/0`: an empty or one-item population, and the `N = 2` two-point law.
+#[test]
+fn hypergeometric_mean_variance_skewness_at_the_edges() {
+  let law = SimdHypergeometric::<u32>::new;
+  assert_eq!(law(0, 0, 0).mean(), Some(0.0));
+  assert_eq!(law(0, 0, 0).median(), Some(0.0));
+  assert_eq!(law(0, 0, 0).variance(), Some(0.0));
+  assert_eq!(law(1, 1, 1).variance(), Some(0.0));
+  assert_eq!(law(1, 0, 1).variance(), Some(0.0));
+  assert_eq!(law(2, 1, 1).skewness(), Some(0.0));
+  assert!(rel(law(3, 1, 2).skewness().unwrap(), -0.7071067811865475) < 1e-14);
+  assert!(rel(law(20, 7, 12).skewness().unwrap(), -0.06218121795609882) < 1e-12);
+  assert!(law(5, 2, 5).skewness().unwrap().is_nan());
+  assert!(law(20, 0, 12).skewness().unwrap().is_nan());
+  assert!(law(1, 1, 1).skewness().unwrap().is_nan());
+}

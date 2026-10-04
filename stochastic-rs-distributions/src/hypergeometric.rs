@@ -236,6 +236,9 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdHypergeometric<T> {
   }
 
   fn mean(&self) -> Option<f64> {
+    if self.n_total == 0 {
+      return Some(0.0);
+    }
     Some(self.n_draws as f64 * self.k_success as f64 / self.n_total as f64)
   }
 
@@ -250,17 +253,28 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdHypergeometric<T> {
     Some(((n + 1.0) * (k + 1.0) / (big_n + 2.0)).floor())
   }
 
+  /// Zero at `N ≤ 1`, a point mass where `(N − 1)` reads `0/0`.
   fn variance(&self) -> Option<f64> {
     let n = self.n_draws as f64;
     let k = self.k_success as f64;
     let big_n = self.n_total as f64;
+    if big_n <= 1.0 {
+      return Some(0.0);
+    }
     Some(n * k * (big_n - k) * (big_n - n) / (big_n * big_n * (big_n - 1.0)))
   }
 
+  /// `NaN` for a point mass; at `N = 2` the only other law is Bernoulli(½), where `(N − 2)` reads `0/0`.
   fn skewness(&self) -> Option<f64> {
+    if self.variance()? == 0.0 {
+      return Some(f64::NAN);
+    }
     let n = self.n_draws as f64;
     let k = self.k_success as f64;
     let big_n = self.n_total as f64;
+    if big_n == 2.0 {
+      return Some(0.0);
+    }
     Some(
       ((big_n - 2.0 * k) * (big_n - 1.0).sqrt() * (big_n - 2.0 * n))
         / ((n * k * (big_n - k) * (big_n - n)).sqrt() * (big_n - 2.0)),
