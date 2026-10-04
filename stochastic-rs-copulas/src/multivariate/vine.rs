@@ -165,10 +165,16 @@ impl MultivariateExt for VineMultivariate {
   }
 
   fn fit(&mut self, X: Array2<f64>) -> Result<(), CopulaError> {
-    if X.nrows() < 2 || X.ncols() < 2 {
+    if X.ncols() < 2 {
+      return Err(CopulaError::InvalidStructure(format!(
+        "a vine copula needs dim >= 2, got {}",
+        X.ncols()
+      )));
+    }
+    if X.nrows() < 2 {
       return Err(CopulaError::InsufficientData {
         needed: 2,
-        got: X.nrows().min(X.ncols()),
+        got: X.nrows(),
       });
     }
     let tau = kendall_tau(&X);

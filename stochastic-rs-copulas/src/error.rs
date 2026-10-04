@@ -16,13 +16,13 @@ pub enum CopulaError {
   NotFitted,
   /// The data's column count (or a tree's leaf count) does not match the copula's dimension.
   DimensionMismatch { expected: usize, got: usize },
-  /// Fewer observations or dimensions than the fit needs.
+  /// Fewer observations than the fit needs.
   InsufficientData { needed: usize, got: usize },
   /// A pseudo-observation outside `[0, 1]`.
   MarginalOutOfRange,
   /// The pseudo-observations fail the uniformity check a copula fit assumes.
   MarginalNotUniform,
-  /// A correlation matrix or vine/NAC tree that is not well-formed.
+  /// Not well-formed: a correlation matrix, a vine or NAC tree, or fewer than two dimensions.
   InvalidStructure(String),
   /// The family has no such operation (an Archimedean generator, an unimplemented fit).
   Unsupported(String),

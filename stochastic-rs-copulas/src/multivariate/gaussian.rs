@@ -209,10 +209,16 @@ impl MultivariateExt for GaussianMultivariate {
 
   /// Fit the Gaussian copula from U in (0,1)^{n x d}.
   fn fit(&mut self, X: Array2<f64>) -> Result<(), CopulaError> {
-    if X.nrows() < 2 || X.ncols() < 2 {
+    if X.ncols() < 2 {
+      return Err(CopulaError::InvalidStructure(format!(
+        "a Gaussian copula needs dim >= 2, got {}",
+        X.ncols()
+      )));
+    }
+    if X.nrows() < 2 {
       return Err(CopulaError::InsufficientData {
         needed: 2,
-        got: X.nrows().min(X.ncols()),
+        got: X.nrows(),
       });
     }
     // Basic range check

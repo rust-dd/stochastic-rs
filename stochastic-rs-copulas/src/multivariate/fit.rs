@@ -256,7 +256,9 @@ pub fn fit_vine(
 ) -> Result<VineFit, CopulaError> {
   let d = u.ncols();
   if d < 2 {
-    return Err(CopulaError::InsufficientData { needed: 2, got: d });
+    return Err(CopulaError::InvalidStructure(format!(
+      "a vine needs dim >= 2, got {d}"
+    )));
   }
   if u.nrows() < 10 {
     return Err(CopulaError::InsufficientData {

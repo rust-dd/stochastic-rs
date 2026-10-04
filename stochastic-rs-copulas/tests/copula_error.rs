@@ -6,7 +6,13 @@ use stochastic_rs_copulas::CopulaError;
 use stochastic_rs_copulas::bivariate::bb1::Bb1;
 use stochastic_rs_copulas::bivariate::bb7::Bb7;
 use stochastic_rs_copulas::bivariate::clayton::Clayton;
+use stochastic_rs_copulas::multivariate::fit::PairFamily;
+use stochastic_rs_copulas::multivariate::fit::SelectionCriterion;
+use stochastic_rs_copulas::multivariate::fit::VineStructure;
+use stochastic_rs_copulas::multivariate::fit::fit_vine;
+use stochastic_rs_copulas::multivariate::gaussian::GaussianMultivariate;
 use stochastic_rs_copulas::traits::BivariateExt;
+use stochastic_rs_copulas::traits::MultivariateExt;
 
 fn assert_send_sync<T: Send + Sync + std::error::Error + 'static>() {}
 
@@ -38,4 +44,25 @@ fn a_bivariate_fit_needs_two_observations() {
   assert_eq!(Clayton::new().fit(&one).unwrap_err(), short);
   assert_eq!(Bb1::default().fit(&one).unwrap_err(), short);
   assert_eq!(Bb7::default().fit(&one).unwrap_err(), short);
+}
+
+#[test]
+fn a_multivariate_fit_tells_too_few_dimensions_from_too_few_observations() {
+  let mut gaussian = GaussianMultivariate::new();
+  let one_column = gaussian.fit(Array2::from_elem((100, 1), 0.5)).unwrap_err();
+  assert!(
+    matches!(one_column, CopulaError::InvalidStructure(_)),
+    "{one_column:?}"
+  );
+  assert_eq!(
+    gaussian.fit(Array2::from_elem((1, 3), 0.5)).unwrap_err(),
+    CopulaError::InsufficientData { needed: 2, got: 1 }
+  );
+  let vine = fit_vine(
+    &Array2::from_elem((100, 1), 0.5),
+    VineStructure::DVine,
+    &PairFamily::ALL,
+    SelectionCriterion::Aic,
+  );
+  assert!(matches!(vine, Err(CopulaError::InvalidStructure(_))));
 }
