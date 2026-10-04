@@ -33,26 +33,16 @@ references:
     arxiv: "1905.04852"
 ---
 
-The Hurst exponent $H \in (0, 1)$ measures the long memory of a series.
-Fractional Brownian motion $B^H$ has increments that are positively correlated
-for $H > \tfrac12$, negatively for $H < \tfrac12$, and independent at
-$H = \tfrac12$, where it is Brownian motion. This tutorial simulates fractional
-Brownian motion with a known $H$, reads $H$ back with four of the library's
-estimators, and says which estimator to trust for which data.
+The Hurst exponent $H \in (0, 1)$ measures the long memory of a series. Fractional Brownian motion $B^H$ has increments that are positively correlated for $H > \tfrac12$, negatively for $H < \tfrac12$, and independent at $H = \tfrac12$, where it is Brownian motion. This tutorial simulates fractional Brownian motion with a known $H$, reads $H$ back with four of the library's estimators, and says which estimator to trust for which data.
 
 ## What you'll build
 
-One path with $H = 0.7$, four estimates of $H$ from it — two of them with a
-standard error — and a rule for choosing among the eight estimators the
-library ships.
+One path with $H = 0.7$, four estimates of $H$ from it — two of them with a standard error — and a rule for choosing among the eight estimators the library ships.
 
 ## Prerequisites
 
 - Rust: `stochastic-rs`, no features. Python: `pip install stochastic-rs`.
-- The estimators live in `stochastic_rs::stats::hurst` (`Higuchi` and
-  `Variogram` in `stats::fractal_dim`) and share one trait, `HurstEstimator`, whose
-  `estimate(path)` returns a `HurstResult` with the point estimate, an optional
-  standard error and the regression diagnostics.
+- The estimators live in `stochastic_rs::stats::hurst` (`Higuchi` and `Variogram` in `stats::fractal_dim`) and share one trait, `HurstEstimator`, whose `estimate(path)` returns a `HurstResult` with the point estimate, an optional standard error and the regression diagnostics.
 
 ## Step 1 — simulate a path with a known H
 
@@ -62,9 +52,7 @@ $$
 \mathbb{E}\big[B^H_t B^H_s\big] = \tfrac12\left(t^{2H} + s^{2H} - |t - s|^{2H}\right).
 $$
 
-`Fbm` builds the path from fractional Gaussian noise (`Fgn`), which it samples
-exactly by circulant embedding (Davies–Harte), so the path has this covariance
-up to floating-point rounding, not up to a discretisation error.
+`Fbm` builds the path from fractional Gaussian noise (`Fgn`), which it samples exactly by circulant embedding (Davies–Harte), so the path has this covariance up to floating-point rounding, not up to a discretisation error.
 
 ```python
 import stochastic_rs as srs
@@ -72,9 +60,7 @@ import stochastic_rs as srs
 path = srs.PyFbm(0.7, 4096, t=1.0, seed=1).sample()  # 4096 points on [0, 1]
 ```
 
-In Rust the same line is
-`Fbm::<f64, _>::new(0.7, 4_096, Some(1.0), Deterministic::new(1)).sample()`,
-which opens the example in step 2.
+In Rust the same line is `Fbm::<f64, _>::new(0.7, 4_096, Some(1.0), Deterministic::new(1)).sample()`, which opens the example in step 2.
 
 ## Step 2 — estimate H
 
@@ -102,24 +88,14 @@ print(f"Higuchi  H = {srs.Higuchi().estimate_hurst(path).hurst:.3f}")
 </Tab>
 </Tabs>
 
-Every default here takes the level path — the fBm itself — and differences or
-integrates it internally. Two things to know before feeding it your own data:
+Every default here takes the level path — the fBm itself — and differences or integrates it internally. Two things to know before feeding it your own data:
 
-- **Increments instead of levels.** For a noise series such as fractional
-  Gaussian noise or returns, pass `take_differences=False` to
-  `RescaledRange`, `Gph` and `Wavelet`, and `assume_integrated=True` to `Dfa`
-  only if you have already cumulated the noise into a walk.
-- **Higuchi returns a fractal dimension.** `Higuchi` and `Variogram` estimate
-  the fractal dimension $D$ of the curve; `estimate_hurst` (Python) or the
-  `HurstEstimator` impl (Rust) converts it as $H = 2 - D$, clamped to
-  $(0, 1)$. Call `estimate` for $D$ itself when a degenerate fit should stay
-  visible instead of being squashed to a boundary value.
+- **Increments instead of levels.** For a noise series such as fractional Gaussian noise or returns, pass `take_differences=False` to `RescaledRange`, `Gph` and `Wavelet`, and `assume_integrated=True` to `Dfa` only if you have already cumulated the noise into a walk.
+- **Higuchi returns a fractal dimension.** `Higuchi` and `Variogram` estimate the fractal dimension $D$ of the curve; `estimate_hurst` (Python) or the `HurstEstimator` impl (Rust) converts it as $H = 2 - D$, clamped to $(0, 1)$. Call `estimate` for $D$ itself when a degenerate fit should stay visible instead of being squashed to a boundary value.
 
 ## Step 3 — choose an estimator
 
-Seven of the eight estimators measure the same thing, the self-similarity
-exponent of the series you hand them, by different routes; one measures
-something else.
+Seven of the eight estimators measure the same thing, the self-similarity exponent of the series you hand them, by different routes; one measures something else.
 
 | Estimator | Reach for it when |
 |---|---|
@@ -130,26 +106,13 @@ something else.
 | `RescaledRange` | you want the classic statistic: cheap and historical, but the least reliable of the group in finite samples |
 | `Whittle` | you are estimating the **roughness of volatility** from a realised-variance series |
 
-`Whittle` (and `FukasawaHurst` in Python) implements the adapted Whittle
-estimator of Fukasawa, Takabatake and Westphal (2019): it estimates the
-Hurst exponent of a *latent volatility* process from log realised variance
-aggregated from intraday returns (`FukasawaHurst.from_prices(closes)`,
-`FukasawaHurst.from_log_rv(log_rv)`). Handed a directly sampled path it does
-not fail — it returns a number unrelated to that path's exponent — so build
-its input from prices, not from a simulated `Fgn`.
+`Whittle` (and `FukasawaHurst` in Python) implements the adapted Whittle estimator of Fukasawa, Takabatake and Westphal (2019): it estimates the Hurst exponent of a *latent volatility* process from log realised variance aggregated from intraday returns (`FukasawaHurst.from_prices(closes)`, `FukasawaHurst.from_log_rv(log_rv)`). Handed a directly sampled path it does not fail — it returns a number unrelated to that path's exponent — so build its input from prices, not from a simulated `Fgn`.
 
-The estimators also have hard minimum lengths with their defaults: 32
-observations for `RescaledRange` and `Dfa`, 64 for `Gph` and `Wavelet`, 30
-for `Whittle`. Those are validation floors, not sample sizes to aim for — a
-log-log regression wants thousands of points.
+The estimators also have hard minimum lengths with their defaults: 32 observations for `RescaledRange` and `Dfa`, 64 for `Gph` and `Wavelet`, 30 for `Whittle`. Those are validation floors, not sample sizes to aim for — a log-log regression wants thousands of points.
 
 ## Result
 
-On this path the four estimates land within 0.07 of the true 0.7, and the two
-standard errors (0.053 for GPH, 0.032 for the wavelet estimator) say how far
-apart to expect estimates on paths of this length. Rerun with other seeds and
-lengths and the spread of each estimator is the thing to watch: that spread,
-more than any one estimate, is what the choice of estimator changes.
+On this path the four estimates land within 0.07 of the true 0.7, and the two standard errors (0.053 for GPH, 0.032 for the wavelet estimator) say how far apart to expect estimates on paths of this length. Rerun with other seeds and lengths and the spread of each estimator is the thing to watch: that spread, more than any one estimate, is what the choice of estimator changes.
 
 ## Where to go next
 

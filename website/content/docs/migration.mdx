@@ -1,47 +1,23 @@
 ---
 title: Migrating to v3
-description: Every breaking change between v2.6 and v3.0, grouped by crate, with the one-line replacement for each.
+description: The breaking changes between v2.6 and v3.0 that most programs hit, grouped by area, with the replacement for each.
 ---
 
-v3 updates the sampling and pricing APIs without renaming crates.
-The changes below are the ones that stop a v2.6 program from
-compiling, in the order you are most likely to hit them. Each entry gives
-the replacement; the design behind it is on
-[design philosophy](/docs/concepts/design-philosophy).
+v3 updates the sampling and pricing APIs without renaming crates. The changes below are the ones most likely to stop a v2.6 program from compiling, in the order you are likely to hit them. [`MIGRATION.md`](https://github.com/rust-dd/stochastic-rs/blob/main/MIGRATION.md) in the repository lists every breaking change with before/after code.
 
 ## Every process carries its sampling backend as a type parameter
 
-`Gbm<T, S>` became `Gbm<T, S, B = Cpu>` — on all 132 processes. The default
-means existing constructors and type names keep working; what changes is
-struct literals and generic bounds.
+`Gbm<T, S>` became `Gbm<T, S, B = Cpu>` on all 132 processes. Thanks to the default, existing constructors and type names keep working; struct literals and generic bounds change.
 
-- **Struct literals** name the handle: `backend: Cpu` where 2.x had
-  `backend: std::marker::PhantomData` (or build through the constructor).
-- **Generic code** over a process spells the third parameter:
-  `fn f<T, S, B: HostBackend>(p: &Gbm<T, S, B>)`. `HostBackend`,
-  `FgnBackend` and `EulerBackend` are the three capability traits a bound
-  can name; see [GPU support](/docs/concepts/gpu-support) for which process
-  accepts which.
-- **Device sampling** is `.on::<Metal>()` (or `Cuda`, `Accelerate`) on the
-  process, or `with_backend(Cuda::new(1))` with an explicit handle; the
-  `backend` field holds that handle as a value (`backend: Cpu` in a struct
-  literal). A configuration the kernels cannot carry samples on the host
-  bit-identically, and `device_ready()` on `ProcessExt` says so beforehand.
-- **CubeCL is gone.** The backend was removed in 3.0.0-rc.2 because it
-  duplicated the native CUDA and Metal kernels and ran slower on the same
-  hardware. Vulkan and WebGPU targets are no longer served; use `Cuda` on
-  NVIDIA and `Metal` on Apple GPUs.
-- **Fallible sampling** is on the trait: `ProcessExt::try_sample()` /
-  `try_sample_par(m)` return `Result<_, DeviceError>` for every process
-  (always `Ok` on the host); the inherent `try_sample_par` of `Gbm` / `Ou` /
-  `Cir` / `Fgn` moved there, `try_sample_matrix` stays inherent.
+- **Struct literals** name the handle: `backend: Cpu` where 2.x had `backend: std::marker::PhantomData` (or build through the constructor).
+- **Generic code** over a process spells the third parameter: `fn f<T, S, B: HostBackend>(p: &Gbm<T, S, B>)`. `HostBackend`, `FgnBackend`, `SheetBackend` and `EulerBackend` are the capability traits a bound can name; see [GPU support](/docs/concepts/gpu-support) for which process accepts which.
+- **Device sampling** is `.on::<Metal>()` (or `Cuda`, `Accelerate`) on the process, or `with_backend(Cuda::new(1))` with an explicit handle. A configuration the kernels cannot carry samples on the host bit-identically, and `device_ready()` on `ProcessExt` says so beforehand.
+- **CubeCL is gone.** Vulkan and WebGPU targets are no longer served; use `Cuda` on NVIDIA and `Metal` on Apple GPUs.
+- **Fallible sampling** is on the trait: `ProcessExt::try_sample()` / `try_sample_par(m)` return `Result<_, DeviceError>` for every process (always `Ok` on the host); the inherent `try_sample_par` of `Gbm` / `Ou` / `Cir` / `Fgn` moved there, `try_sample_matrix` stays inherent.
 
 ## `PricerExt` is gone; pricers are models
 
-The bundled-market-data trait (`calculate_call_put()`, `calculate_price()`,
-`implied_volatility()`) is removed. Every pricer that implemented it is now
-a *model*: the struct holds model parameters only and the query travels as
-arguments through `ModelPricer`:
+The bundled-market-data trait (`calculate_call_put()`, `calculate_price()`, `implied_volatility()`) is removed. The struct holds model parameters only, and the query travels as arguments through `ModelPricer`:
 
 ```rust
 // v2.6
@@ -49,161 +25,71 @@ let p = HestonPricer::builder().s(100.0).k(100.0).r(0.03).tau(0.5)
     .v0(0.04).theta(0.04).kappa(2.0).sigma(0.5).rho(-0.7).build();
 let (call, put) = p.calculate_call_put();
 
-// v3
-let p = HestonPricer::new(0.04, 0.04, 2.0, 0.5, -0.7);
+// v3: HestonPricer::new(v0, rho, kappa, theta, sigma, lambda)
+let p = HestonPricer::new(0.04, -0.7, 2.0, 0.04, 0.5, None);
 let call = p.price_call(100.0, 100.0, 0.03, 0.0, 0.5);
 let put  = p.price_put(100.0, 100.0, 0.03, 0.0, 0.5);
 ```
 
-The affected types and what each lost: `HestonPricer`, `Merton1976Pricer`,
-`SabrPricer` (absorbs the old `SabrModel`), `HestonStochCorrPricer` (absorbs
-`HscmModel`), `KirkSpreadPricer`, `FiniteDifferencePricer` (and gained a
-dividend yield in the PDE drift), `GbmMalliavinPricer`, `SnellEnvelopePricer`,
-`BjerksundStensland2002Pricer`. Their `…Builder` types are removed with
-them; `implied_volatility`, `char_func`, `forward()`, `sigma()` and
-`price_detailed` take the `(s, k, r, q, tau)` query. `TimeExt` is untouched
-and stays on the two instruments. Put Greeks on `HestonPricer` are new: the
-`greeks(…, OptionType::Put)` call differentiates the put, where v2 always
-differentiated the call.
+`calculate_call_put()` becomes `call_put(s, k, r, q, tau)` and `calculate_price()` becomes `price_call(...)`. The affected types: `HestonPricer`, `Merton1976Pricer`, `SabrPricer` (absorbs the old `SabrModel`), `HestonStochCorrPricer` (absorbs `HscmModel`), `KirkSpreadPricer`, `FiniteDifferencePricer` (and gained a dividend yield in the PDE drift), `GbmMalliavinPricer`, `SnellEnvelopePricer`, `BjerksundStensland2002Pricer`. Their `…Builder` types are removed with them; `implied_volatility`, `char_func`, `forward()`, `sigma()` and `price_detailed` take the `(s, k, r, q, tau)` query. `KirkSpreadPricer` has no pricing trait: its methods are `spread_call_put` / `spread_call` / `spread_put` with the query `(f1, f2, x, r, tau)`. `TimeExt` is untouched and stays on the two instruments. `HestonPricer::greeks(…, OptionType::Put)` now differentiates the put, where v2 always differentiated the call.
 
 ## Calibrators
 
-- Every calibrator has a public `regularization: Option<Regularization>`
-  field; a struct literal must set it (`None` reproduces v2).
-- `SabrCalibrator::new` asserts that strikes and vols have the same length,
-  and the shifted caplet calibrator returns `f64::MAX` residuals instead of
-  `NaN` for an out-of-domain trial point, so a Levenberg–Marquardt step no
-  longer stalls on a non-finite loss.
-- `BlackKarasinskiSwaptionCalibrator`, `HullWhiteSwaptionCalibrator`,
-  `G2ppSwaptionCalibrator`, and `SabrCapletCalibrator` now report `converged`
-  only when the simplex objective spread falls below `sd_tolerance`.
-  An iteration limit or nonfinite simplex costs returns `false` with the
-  best parameters found. This also changes the final element of their
-  Python return tuples.
+- `HestonCalibrator`, `SabrCalibrator` and the three swaption calibrators (`HullWhiteSwaptionCalibrator`, `BlackKarasinskiSwaptionCalibrator`, `G2ppSwaptionCalibrator`) have a public `regularization: Option<Regularization>` field; a struct literal must set it (`None` reproduces v2).
+- `SabrCalibrator::new` asserts that strikes and vols have the same length, and the shifted caplet calibrator returns `f64::MAX` residuals instead of `NaN` for an out-of-domain trial point, so a Levenberg–Marquardt step does not stall on a non-finite loss.
+- `BlackKarasinskiSwaptionCalibrator`, `HullWhiteSwaptionCalibrator`, `G2ppSwaptionCalibrator` and `SabrCapletCalibrator` report `converged` only when the simplex objective spread falls below `sd_tolerance`. An iteration limit or nonfinite simplex costs return `false` with the best parameters found. This also changes the final element of their Python return tuples.
 
-### Heston SLV calibration in rc.3
+### Heston SLV calibration
 
-`calibrate_leverage` takes a local-volatility `Grid2D<f64>`, snapshot
-maturities and a `ParticleMethod`, and returns `Result<ParticleCalibration>`.
-Use the result's leverage surface in place of the previously returned bare
-surface. The particle estimator uses the reference kernel and bandwidth,
-so recalibration can change existing numerical results.
+`calibrate_leverage` takes a local-volatility `Grid2D<f64>`, snapshot maturities and a `ParticleMethod`, and returns `Result<ParticleCalibration>`. Use the result's leverage surface in place of the previously returned bare surface. The particle estimator uses the reference kernel and bandwidth, so recalibration can change existing numerical results.
 
-`HestonSlvCalibrator` replaces `calibrate_from_dupire`. Supply spot, rates
-and the market call grid explicitly; its `method` is a `LeverageMethod`
-selecting particles or the Fokker–Planck solver. `HestonSlvPricer` reads
-leverage at each step's start. See
-[Heston SLV calibration](/docs/quant#heston-slv-leverage-calibration)
-for the current Rust and Python interfaces.
+`HestonSlvCalibrator` replaces `calibrate_from_dupire`. Supply spot, rates and the market call grid explicitly; its `method` is a `LeverageMethod` selecting particles or the Fokker–Planck solver. `HestonSlvPricer` reads leverage at each step's start. See [Heston SLV calibration](/docs/quant#heston-slv-leverage-calibration) for the Rust and Python interfaces.
 
 ## Optimizers and Rust version
 
-Basin replaces argmin for L-BFGS and Nelder–Mead fits. L-BFGS polishing
-can produce slightly different estimates because Basin skips curvature
-updates that fail its numerical threshold. Basin 1.11 also replaces
-`levenberg-marquardt` for least-squares calibration, including SVI, SSVI,
-and the AI surrogate. These fits use trust-region damping, with pivoted QR
-for stochastic-volatility and surrogate fits and Cholesky for the smaller
-pricing objectives.
-CGMYSV now optimizes in smooth bounded coordinates, as Heston already does,
-to maintain convergence on weakly identified surfaces. Parameter types and
-result types are unchanged.
-The implementation of `levenberg_marquardt::LeastSquaresProblem` on the
-calibrators is removed; use the `Calibrator` trait to run a fit.
+Basin replaces argmin for L-BFGS and Nelder–Mead fits. L-BFGS polishing can produce slightly different estimates because Basin skips curvature updates that fail its numerical threshold. Basin also replaces `levenberg-marquardt` for least-squares calibration, including SVI, SSVI and the AI surrogate; these fits use trust-region damping, with pivoted QR for stochastic-volatility and surrogate fits and Cholesky for the smaller pricing objectives. CGMYSV optimizes in smooth bounded coordinates, as Heston does; parameter and result types are unchanged. The `levenberg_marquardt::LeastSquaresProblem` implementations on the calibrators are removed; use the `Calibrator` trait to run a fit.
 
-`nalgebra` is no longer a direct workspace dependency; it can still appear
-transitively through dependencies such as `gauss-quad`. The least-squares calibrators
-(`BSMCalibrator`, `SabrCalibrator`, `HestonCalibrator`, `HKDECalibrator`,
-`DoubleHestonCalibrator`, `SVJCalibrator`) take their `c_market`, `s` and `k`
-quotes as `ndarray::Array1<f64>` instead of `nalgebra::DVector<f64>`, and
-their `From` conversions, `HestonCalibrator::set_residual_weights`,
-`Regularization`'s row helpers and `CalibrationHistory` follow. A `Vec<f64>`
-still converts with `.into()`, so call sites that passed `prices.into()` are
-unchanged; `DVector::from_vec(v)` becomes `Array1::from_vec(v)` and
-`DVector::from_element(n, x)` becomes `Array1::from_elem(n, x)`.
+`nalgebra` is no longer a direct workspace dependency; it can still appear transitively through dependencies such as `gauss-quad`. The least-squares calibrators (`BSMCalibrator`, `SabrCalibrator`, `HestonCalibrator`, `HKDECalibrator`, `DoubleHestonCalibrator`, `SVJCalibrator`) take their `c_market`, `s` and `k` quotes as `ndarray::Array1<f64>` instead of `nalgebra::DVector<f64>`, and their `From` conversions, `HestonCalibrator::set_residual_weights`, `Regularization`'s row helpers and `CalibrationHistory` follow. A `Vec<f64>` still converts with `.into()`, so call sites that passed `prices.into()` are unchanged; `DVector::from_vec(v)` becomes `Array1::from_vec(v)` and `DVector::from_element(n, x)` becomes `Array1::from_elem(n, x)`.
 
-Tolerance and patience settings retain their relative-tolerance and
-residual-evaluation-budget meanings. Evaluation counts and termination
-messages can differ between solvers. An exhausted budget, a failed model
-evaluation, or a numerical stall does not count as convergence; the fit
-returns the best accepted parameters.
+Tolerance and patience settings keep their relative-tolerance and residual-evaluation-budget meanings. Evaluation counts and termination messages can differ between solvers. An exhausted budget, a failed model evaluation or a numerical stall does not count as convergence; the fit returns the best accepted parameters.
 
-The workspace now requires Rust 1.89 and declares it in `rust-version`.
-Cargo's edition-2024 resolver uses this minimum when selecting dependencies,
-which can favor older compatible releases during a fresh resolution.
-The MSRV check covers all workspace targets with default features disabled;
-optional feature combinations are checked separately on current Rust.
+The workspace requires Rust 1.89 and declares it in `rust-version`. Cargo's edition-2024 resolver uses this minimum when selecting dependencies, which can favour older compatible releases during a fresh resolution.
 
 ## Copulas
 
-- `Clayton::partial_derivative` returns the conditional distribution
-  (the h-function), as the other Archimedean copulas do. v2 returned zeros
-  for every input because of an inverted `ndarray` predicate.
-- `BB1` and `BB7` are new variants of `CopulaType`; an exhaustive `match`
-  on that enum needs the two arms.
+- `Clayton::partial_derivative` returns the conditional distribution (the h-function), as the other Archimedean copulas do; v2 returned zeros for every input.
+- `BB1` and `BB7` are new variants of `CopulaType`.
 
 ## Growing enums are `#[non_exhaustive]`
 
-73 enums that will keep gaining variants (`CopulaType`, `EulerSpec`,
-`HazardInterpolation`, the scheme and family selectors, …) carry
-`#[non_exhaustive]`. Downstream `match` statements need a `_ =>` arm.
-Closed sets — `OptionType`, `OptionStyle`, `Moneyness`, the day-count
-conventions — stay exhaustive.
+Enums that will keep gaining variants (`CopulaType`, `HazardInterpolation`, the scheme and family selectors, …) carry `#[non_exhaustive]`, so a downstream `match` needs a `_ =>` arm. Closed sets — `OptionType`, `OptionStyle`, `Moneyness`, the day-count conventions — stay exhaustive.
 
 ## Parameter asserts name the parameter and its value
 
-Constructors that rejected a bad parameter with a bare `assert!` now panic
-with `"sigma must be positive, got -0.2"`. If a test pinned the old
-message through `#[should_panic(expected = …)]`, update the string. The
-three-way convention (invalid parameter → panic; not computable → documented
-`NaN`; data-dependent failure → `Result`) is in
-[design philosophy §6](/docs/concepts/design-philosophy).
+Constructors that rejected a bad parameter with a bare `assert!` now panic with a message of the form ``sigma must satisfy `sigma > 0.0`, got sigma = -0.2``. If a test pinned the old message through `#[should_panic(expected = …)]`, update the string. The error convention (invalid parameter → panic; not computable → documented `NaN`; data-dependent failure → `Result`) is in [design philosophy](/docs/concepts/design-philosophy#error-convention).
 
 ## Sampling results that change for a given seed
 
-- `RoughBergomi` uses the Bennedsen–Lunde–Pakkanen hybrid scheme (κ = 1)
-  instead of the exact covariance Cholesky path; paths for a fixed seed
-  differ from v2, distributions agree.
-- `Fbm` / `Fgn` on a device backend draw their own stream; host and
-  device paths agree in distribution, not bit for bit.
+- `RoughBergomi` uses the Bennedsen–Lunde–Pakkanen hybrid scheme (κ = 1) instead of the exact covariance Cholesky path; paths for a fixed seed differ from v2, distributions agree.
+- `Fbm` / `Fgn` on a device backend draw their own stream; host and device paths agree in distribution, not bit for bit.
 
 ## Closed-form values that change
 
-From rc.4, `erf`, `erfc`, `norm_cdf` and `ndtri` in
-`stochastic_rs_distributions::special` are exact to double precision; v2.6
-used Abramowitz–Stegun 7.1.26 for `erf` (1.5e-7 relative) and Acklam's
-approximation for `ndtri` (1.15e-9). Closed-form prices, Greeks and implied
-volatilities move in the seventh significant digit or later, so a test that
-pinned one to more digits needs re-pinning. The tails no longer cancel:
-`norm_cdf(-10)` is 7.6e-24, not 0.
+`erf`, `erfc`, `norm_cdf` and `ndtri` in `stochastic_rs_distributions::special` are exact to double precision; v2.6 used Abramowitz–Stegun 7.1.26 for `erf` (1.5e-7 relative) and Acklam's approximation for `ndtri` (1.15e-9). Closed-form prices, Greeks and implied volatilities move in the seventh significant digit or later, so a test that pinned one to more digits needs re-pinning. The tails no longer cancel: `norm_cdf(-10)` is 7.6e-24, not 0.
 
 ## Prelude and hub
 
-- `MultivariateExt` joined the prelude (the linear-algebra stack moved to
-  pure-Rust `faer`, so the feature-gate reason for excluding it died).
-- `Instrument`, `InstrumentExt`, `PricingEngine`, `PricingResult` and
-  `GreeksExt` left the prelude; import them from `stochastic_rs::traits::*`.
-- The `openblas` / `nalgebra` linear-algebra features are gone with the
-  `faer` move; no feature is needed for the multivariate copulas.
+- `MultivariateExt` joined the prelude.
+- `Instrument`, `InstrumentExt`, `PricingEngine`, `PricingResult` and `GreeksExt` left the prelude; import them from `stochastic_rs::traits::*`.
+- The `openblas` / `nalgebra` linear-algebra features are gone with the move to `faer`; no feature is needed for the multivariate copulas.
 
 ## Python
 
-- The wheel is CPU-only. `metal`, `cuda`, `accelerate` and `ai` are
-  `maturin` build features; a class or function
-  behind one of them raises `ValueError` with a rebuild hint when it is
-  called from a build that lacks it.
-- `device=` on the device-capable classes is the device
-  entry point for the Euler engine.
-- The AI classes (`HestonNn`, `RBergomiNn`, `OneFactorNn`,
-  `calibrate_surrogate`) are behind the `ai` feature.
-- From rc.4, a panic in a constructor raises `ValueError` and one in
-  `sample` / `sample_par` raises `RuntimeError`, not
-  `pyo3_runtime.PanicException` (a `BaseException`); code that caught
-  `PanicException` around those calls catches the ordinary exception instead.
+- The wheel is CPU-only. `metal`, `cuda`, `accelerate` and `ai` are `maturin` build features; a class or function behind one of them raises `ValueError` with a rebuild hint when it is called from a build that lacks it.
+- `device=` on the device-capable classes is the device entry point for the Euler engine.
+- The AI classes (`HestonNn`, `RBergomiNn`, `OneFactorNn`, `calibrate_surrogate`) are behind the `ai` feature.
+- A panic in a constructor raises `ValueError` and one in `sample` / `sample_par` raises `RuntimeError`, not `pyo3_runtime.PanicException` (a `BaseException`); code that caught `PanicException` around those calls catches the ordinary exception instead.
 
 ## What is not a breaking change
 
-Widening a process's bound from `HostBackend` to `EulerBackend` (a process
-gaining a device kernel), a new `CopulaType` or `EulerSpec` variant, a new
-prelude item, and a new pricer or calibrator: all of these are additive
-and arrive in minor releases.
+Widening a process's bound from `HostBackend` to `EulerBackend` (a process gaining a device kernel), a new `CopulaType` variant, a new prelude item, and a new pricer or calibrator: all of these are additive and arrive in minor releases.
