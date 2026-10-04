@@ -183,6 +183,8 @@ Library code reports through the `log` facade (`log::warn!`, `log::trace!`), nev
   Every float parameter is finite (`x.is_finite()`; a truncation bound may be infinite, so `!x.is_nan()`).
   A method that can panic says so inside its ≤ 2-line doc (`…; panics if x ≤ 0`), never under a separate
   `# Panics` heading. The literal-only Fourier model structs validate once they have constructors.
+  In copulas `new` panics, while `try_new` and `from_tau` return `Result<_, CopulaError>` for the
+  same preconditions.
 - **A data-dependent failure → `Result`**: a calibration that produces no result, an estimate on
   too little or degenerate data, a device that cannot be opened. Non-convergence is `Ok` with
   `converged() == false`, never `Err`. quant and ai return `anyhow::Error`, copulas `CopulaError`,

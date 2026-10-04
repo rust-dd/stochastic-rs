@@ -51,7 +51,11 @@ draws and the stream state, in a fixed order), `SimdKernel::{fill, next}`
 (the SIMD kernel and the buffered single draw), and `draw_with` (the
 scalar algorithm behind the honest `Distribution::sample`). `Seeded`
 supplies everything else — no `UnsafeCell`, no `Cell`, no seed argument
-on the constructor.
+on the constructor. The constructor asserts follow `dev-rules` §14: a
+finiteness assert per float parameter first (`!x.is_nan()` for a
+truncation bound, which may be infinite), then one domain assert per
+argument, and a derived inner-law parameter checked under the
+wrapper's own parameter name.
 
 ```rust
 // stochastic-rs-distributions/src/foo.rs
@@ -76,6 +80,8 @@ pub struct SimdFoo<T> {
 
 impl<T: SimdFloatExt> SimdFoo<T> {
     pub fn new(a: T, b: T) -> Self {
+        assert!(a.is_finite(), "a must satisfy `a.is_finite()`, got a = {a:?}");
+        assert!(b.is_finite(), "b must satisfy `b.is_finite()`, got b = {b:?}");
         assert!(b > T::zero(), "b must satisfy `b > T::zero()`, got b = {b:?}");
         Self { a, b }
     }
