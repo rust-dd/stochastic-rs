@@ -62,9 +62,8 @@ pub trait DistributionExt {
     None
   }
 
-  /// `E[e⁰] = 1` for every law, so the default answers `Some(1.0)` at `t = 0` and `None` elsewhere.
-  fn moment_generating_function(&self, t: f64) -> Option<f64> {
-    (t == 0.0).then_some(1.0)
+  fn moment_generating_function(&self, _t: f64) -> Option<f64> {
+    None
   }
 }
 

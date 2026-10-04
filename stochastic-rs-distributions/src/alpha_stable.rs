@@ -387,6 +387,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdAlphaStable<T> {
   }
 
   fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
+    if t == 0.0 {
+      return Some(num_complex::Complex64::new(1.0, 0.0));
+    }
     // Standard S1 parameterisation:
     //   φ(t) = exp{ iμt − |c·t|^α [ 1 − iβ sgn(t) Φ ] }
     // where Φ = tan(πα/2) for α ≠ 1, and Φ = −(2/π) ln|t| for α = 1.

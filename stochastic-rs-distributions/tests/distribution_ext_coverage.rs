@@ -260,7 +260,7 @@ fn rows() -> Vec<Row> {
 }
 
 /// Which methods answer at a fixed probe (x = 0.6, p = 0.3, t = 0.4), inside or outside a law's
-/// support; the mgf also depends on t: `Some(1.0)` at 0 for every law, `None` below 0 for Pareto.
+/// support; only `SimdPareto`'s mgf also depends on the point (`None` for t < 0).
 fn answers(law: &dyn DistributionExt) -> [bool; 12] {
   let cf: Option<Complex64> = law.characteristic_function(0.4);
   [
@@ -295,14 +295,30 @@ fn each_law_answers_exactly_its_closed_forms() {
   }
 }
 
+/// `E[e^{0·X}] = 1`: a cf or mgf that answers anywhere is exactly 1 at t = 0, and one that never
+/// does stays `None`; the α = 1 stable laws join because their cf formula is `0·∞` at t = 0.
 #[test]
-fn every_mgf_is_one_at_zero() {
-  let off = rows()
-    .into_iter()
-    .map(|(name, law, _)| (name, law.moment_generating_function(0.0)))
-    .filter(|(_, m)| *m != Some(1.0))
-    .collect::<Vec<_>>();
-  assert!(off.is_empty(), "E[e^0] = 1 for every law: {off:?}");
+fn every_answering_cf_and_mgf_is_exactly_one_at_zero() {
+  let one = Complex64::new(1.0, 0.0);
+  let alpha_one = [0.0, 0.5, -1.0].map(|beta| -> Row {
+    (
+      "SimdAlphaStable",
+      Box::new(SimdAlphaStable::<f64>::new(1.0, beta, 1.0, 0.0)),
+      [true; 12],
+    )
+  });
+  let mut off = Vec::new();
+  for (name, law, expected) in rows().into_iter().chain(alpha_one) {
+    let cf = law.characteristic_function(0.0);
+    let mgf = law.moment_generating_function(0.0);
+    if cf != expected[0].then_some(one) {
+      off.push(format!("{name} cf(0) = {cf:?}"));
+    }
+    if mgf != expected[11].then_some(1.0) {
+      off.push(format!("{name} mgf(0) = {mgf:?}"));
+    }
+  }
+  assert!(off.is_empty(), "{off:?}");
 }
 
 #[test]

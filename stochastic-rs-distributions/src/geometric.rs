@@ -200,6 +200,9 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdGeometric<T> {
   }
 
   fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
+    if t == 0.0 {
+      return Some(num_complex::Complex64::new(1.0, 0.0));
+    }
     // φ(t) = p e^{it} / (1 - (1-p) e^{it})
     let eit = num_complex::Complex64::new(0.0, t).exp();
     Some(eit.scale(self.p) / (num_complex::Complex64::new(1.0, 0.0) - eit.scale(1.0 - self.p)))

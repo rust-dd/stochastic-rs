@@ -349,13 +349,13 @@ impl<T: FloatExt, S: SeedExt> DistributionExt for Gbm<T, S> {
 mod tests {
   use super::*;
 
-  /// The lognormal terminal law: ten closed forms, no cf, and an mgf known only at t = 0.
+  /// The lognormal terminal law: ten closed forms, and `None` for its cf and mgf, which have none.
   #[test]
   fn the_terminal_law_answers_exactly_its_closed_forms() {
     let gbm = Gbm::new(0.05_f64, 0.2, 10, Some(100.0), Some(1.0), Unseeded);
     assert!(gbm.characteristic_function(0.4).is_none());
     assert!(gbm.moment_generating_function(0.4).is_none());
-    assert_eq!(gbm.moment_generating_function(0.0), Some(1.0));
+    assert!(gbm.moment_generating_function(0.0).is_none());
     assert!(gbm.pdf(100.0).is_some() && gbm.cdf(100.0).is_some() && gbm.quantile(0.3).is_some());
     assert!(gbm.mean().is_some() && gbm.median().is_some() && gbm.mode().is_some());
     assert!(gbm.variance().is_some() && gbm.skewness().is_some() && gbm.entropy().is_some());
@@ -378,6 +378,8 @@ mod tests {
       assert!(gbm.skewness().is_none());
       assert!(gbm.kurtosis().is_none());
       assert!(gbm.entropy().is_none());
+      assert!(gbm.moment_generating_function(0.0).is_none());
+      assert!(gbm.characteristic_function(0.0).is_none());
     }
   }
 

@@ -321,6 +321,9 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdBinomial<T> {
   }
 
   fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
+    if t == 0.0 {
+      return Some(num_complex::Complex64::new(1.0, 0.0));
+    }
     // φ(t) = (1 - p + p e^{it})^n
     let z = num_complex::Complex64::new(1.0 - self.p, 0.0)
       + num_complex::Complex64::new(0.0, t).exp().scale(self.p);
