@@ -1,4 +1,5 @@
-//! `CopulaError` is one `Send + Sync` enum: it crosses threads, `?` converts into `anyhow`, and a message names its parameter.
+//! `CopulaError` is one `Send + Sync` enum that `?` converts into `anyhow`; each failure has its
+//! own variant, and a message names its parameter.
 
 use ndarray::Array2;
 use ndarray::array;

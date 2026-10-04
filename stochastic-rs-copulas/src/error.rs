@@ -1,4 +1,5 @@
-//! The one error type of the crate; `#[non_exhaustive]`, `Send + Sync`, so it crosses threads and `?` into `anyhow`.
+//! The crate's one error type: `#[non_exhaustive]` and `Send + Sync`, so it crosses threads and
+//! `?` converts it into `anyhow::Error`.
 
 use std::fmt;
 
@@ -6,7 +7,7 @@ use std::fmt;
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum CopulaError {
-  /// A parameter outside its domain; `constraint` is the predicate it failed, in the crate's assert form.
+  /// A parameter outside its domain; `constraint` is the failed predicate, in the assert form.
   InvalidParameter {
     name: &'static str,
     value: f64,
