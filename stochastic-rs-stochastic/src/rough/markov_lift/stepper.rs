@@ -32,9 +32,7 @@ impl<T: FloatExt> MarkovLift<T> {
   pub(crate) fn lift(&self) -> &VolterraLift<T, RlKernel<T>> {
     &self.inner
   }
-}
 
-impl<T: FloatExt> MarkovLift<T> {
   /// Integrate a single path. `dw` carries Brownian increments on the same
   /// grid as the output (length $n{-}1$).
   pub fn simulate<F, G>(&self, x0: T, f: F, g: G, dw: &[T]) -> Array1<T>

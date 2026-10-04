@@ -173,8 +173,6 @@ impl<T: FloatExt, S: SeedExt> Volterra<T, S> {
   }
 }
 
-impl<T: FloatExt, S: SeedExt, B> Volterra<T, S, B> {}
-
 impl<T: FloatExt> Volterra<T, Unseeded> {
   /// Fractional Brownian motion with Hurst parameter $H$.
   pub fn fbm(h: f64, n: usize, t: Option<T>) -> Self {

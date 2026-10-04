@@ -108,9 +108,7 @@ impl<T: FloatExt, K: VolterraKernel<T>> VolterraLift<T, K> {
       dt,
     }
   }
-}
 
-impl<T: FloatExt, K: VolterraKernel<T>> VolterraLift<T, K> {
   /// Integrate a single path. `dw` carries Brownian increments on the same
   /// grid as the output (length $n{-}1$). `f`/`g` receive $(t_n, X_n)$ — the
   /// *current* simulation time and state, not just the state — so
