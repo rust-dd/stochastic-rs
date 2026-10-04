@@ -261,7 +261,7 @@ pub(crate) fn device_from_env(value: Option<&str>) -> Result<usize, DeviceError>
   allow(dead_code)
 )]
 pub(crate) fn env_ordinal() -> Result<usize, DeviceError> {
-  device_from_env(std::env::var("STOCHASTIC_RS_DEVICE").ok().as_deref())
+  device_from_env(env_text("STOCHASTIC_RS_DEVICE")?.as_deref())
 }
 
 /// Default cap on the path data one device launch materialises: 1 GiB.
@@ -297,11 +297,26 @@ pub(crate) fn budget_from_env(value: Option<&str>) -> Result<usize, DeviceError>
   allow(dead_code)
 )]
 pub(crate) fn env_budget() -> Result<usize, DeviceError> {
-  budget_from_env(
-    std::env::var("STOCHASTIC_RS_DEVICE_BATCH_BYTES")
-      .ok()
-      .as_deref(),
-  )
+  budget_from_env(env_text("STOCHASTIC_RS_DEVICE_BATCH_BYTES")?.as_deref())
+}
+
+#[cfg_attr(
+  not(any(
+    feature = "cuda",
+    all(feature = "metal", target_os = "macos"),
+    feature = "python"
+  )),
+  allow(dead_code)
+)]
+/// `name`'s value, `None` when unset; a value that is not unicode is a `Config` error, never read as unset.
+fn env_text(name: &str) -> Result<Option<String>, DeviceError> {
+  match std::env::var(name) {
+    Ok(value) => Ok(Some(value)),
+    Err(std::env::VarError::NotPresent) => Ok(None),
+    Err(std::env::VarError::NotUnicode(raw)) => Err(DeviceError::Config(format!(
+      "{name} must be valid unicode, got {raw:?}"
+    ))),
+  }
 }
 
 /// Paths of `n` `elem`-byte scalars that fit `budget`, at least one.
