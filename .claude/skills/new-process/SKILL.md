@@ -572,7 +572,7 @@ shrinks as the engine grows (empty today) — check the nine documented ways rou
 - [ ] `//!` header with the LaTeX SDE and the paper reference (title, authors, DOI/arXiv)
 - [ ] `pub` fields, `seed: S`, `backend: B = Cpu`, `Option<T>` optionals, `n >= 2` assert
 - [ ] `new(..)`, a `with_*` per field, `Default` at `n = 252`, `t = 1`; `pub mod` registered alphabetically
-- [ ] `#[doc(hidden)]` sampler implementing `PathSampler<T>`; `ProcessExt<T>` implementing only `sampler()`
+- [ ] `#[doc(hidden)]` sampler implementing `PathSampler<T>`; `ProcessExt<T>` implementing only `sampler()`; each impl preceded by its `crate::traits::Sealed` marker
 - [ ] `sampler()` derives (`self.seed.derive()`), constructs no `Unseeded`, races no shared atomic
 - [ ] `backend_switch!` with the right arm and **every** field named
 - [ ] Family declared in `families.rs`; the six DSL traps checked

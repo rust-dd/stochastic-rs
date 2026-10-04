@@ -12,11 +12,8 @@ use stochastic_rs::prelude::*;
 
 Brings **27 items in 6 groups** — re-derive with
 `awk '/pub mod prelude/,/^}/' src/lib.rs | grep -c "^  pub use"` against
-`src/lib.rs` any time an item is added or removed; this count has drifted
-before (it read "20 items" for several releases after `VolterraKernel`
-joined the fifth group without a sixth being added for `Backend`/`Cpu`/
-`VolterraKernel`). The six lists below are name groupings for reference, not
-standalone Rust statements — see
+`src/lib.rs` any time an item is added or removed. The six lists below are
+name groupings for reference, not standalone Rust statements — see
 [Importing concrete types](#importing-concrete-types) for a compiled,
 runnable example.
 

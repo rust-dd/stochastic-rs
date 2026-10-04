@@ -9,7 +9,7 @@ pub mod sampler;
 mod sealed {
   #[diagnostic::on_unimplemented(
     message = "`{Self}` cannot implement the sealed traits `ProcessExt` and `PathSampler`",
-    note = "a process is added inside stochastic-rs-stochastic (see the new-process skill)"
+    note = "wrap or compose an in-tree process; a new process is added inside stochastic-rs-stochastic"
   )]
   pub trait Sealed {}
 }

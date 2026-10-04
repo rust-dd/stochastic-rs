@@ -5,7 +5,7 @@ use stochastic_rs_distributions::traits::FloatExt;
 use crate::device::DeviceError;
 
 /// Mutable sampling state behind `ProcessExt::sample*`: the streams, scales and scratch one path
-/// draws from; `sample_into` refills a caller buffer. Sealed and `#[doc(hidden)]`: an implementation detail.
+/// draws from; `sample_into` refills a caller buffer.
 #[doc(hidden)]
 pub trait PathSampler<T: FloatExt>: Send + crate::traits::Sealed {
   type Output: Send;

@@ -1,6 +1,6 @@
 //! # Traits — umbrella re-export hub.
 //!
-//! Mirrors every trait each sub-crate exports from its own `traits` module; a trait kept out of
+//! Mirrors every documented trait each sub-crate exports from its own `traits` module; a trait kept out of
 //! [`crate::prelude`] (`ShortRatePricer`, `VanillaEuropeanCall`, `GreeksExt`) still resolves here.
 //!
 //! The quant half of the mirror is derivable, so a future omission is
