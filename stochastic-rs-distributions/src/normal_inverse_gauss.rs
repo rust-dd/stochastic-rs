@@ -85,7 +85,12 @@ impl<T: SimdFloatExt> SimdNormalInverseGauss<T> {
       delta > T::zero(),
       "delta must satisfy `delta > T::zero()`, got delta = {delta:?}"
     );
-    let ig_mu = delta / (alpha * alpha - beta * beta).sqrt();
+    let psi = alpha * alpha - beta * beta;
+    assert!(
+      psi > T::zero() && psi.is_finite(),
+      "alpha must satisfy `0 < alpha * alpha - beta * beta < ∞`, got alpha = {alpha:?}, beta = {beta:?}"
+    );
+    let ig_mu = delta / psi.sqrt();
     let ig_lambda = delta * delta;
     assert!(
       ig_mu > T::zero() && ig_mu.is_finite(),

@@ -232,7 +232,11 @@ fn every_rejected_argument_is_named_with_its_value() {
     ),
     (
       panic_text(|| SimdNormalInverseGauss::<f64>::new(1e-170, 0.0, 1.0, 0.0)),
-      "delta must satisfy `0 < delta / (alpha * alpha - beta * beta).sqrt() < ∞`, got delta = 1.0, alpha = 1e-170, beta = 0.0",
+      "alpha must satisfy `0 < alpha * alpha - beta * beta < ∞`, got alpha = 1e-170, beta = 0.0",
+    ),
+    (
+      panic_text(|| SimdNormalInverseGauss::<f64>::new(1e-160, 0.0, 1e150, 0.0)),
+      "delta must satisfy `0 < delta / (alpha * alpha - beta * beta).sqrt() < ∞`, got delta = 1e150, alpha = 1e-160, beta = 0.0",
     ),
     (
       panic_text(|| SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1e200, 0.0)),
