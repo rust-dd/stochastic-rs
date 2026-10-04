@@ -179,6 +179,9 @@ A distribution is a stateless law: `new(args)` takes its parameters only, and
 `.seeded(&seed)` binds it to a seeded stream, a `Seeded<D>` — pass
 [`Unseeded`](/docs/concepts/seeding) for an auto-seeded stream or
 [`Deterministic::new(u64)`](/docs/concepts/seeding) for a reproducible one.
+Every float parameter must be finite — a truncation bound may be infinite but
+not NaN — or `new` panics naming the parameter; the constructor docs do not
+repeat this per type.
 See the [seeding concept page](/docs/concepts/seeding) for the full design
 (including `SeedExt::reseed`, the `R: SimdRngExt` engine parameter of
 `Seeded<D, R>`, and the experimental `unstable-dual-stream-rng` feature).

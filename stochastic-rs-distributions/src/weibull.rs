@@ -42,6 +42,14 @@ impl<T: SimdFloatExt> SimdWeibull<T> {
   /// - `k` — shape k > 0 (matches the module header's k).
   pub fn new(lambda: T, k: T) -> Self {
     assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      k.is_finite(),
+      "k must satisfy `k.is_finite()`, got k = {k:?}"
+    );
+    assert!(
       lambda > T::zero(),
       "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
     );

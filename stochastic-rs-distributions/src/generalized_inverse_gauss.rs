@@ -240,6 +240,18 @@ impl<T: SimdFloatExt> SimdGig<T> {
   /// Construct a GIG$(\lambda, \chi, \psi)$.
   pub fn new(lambda: T, chi: T, psi: T) -> Self {
     assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      chi.is_finite(),
+      "chi must satisfy `chi.is_finite()`, got chi = {chi:?}"
+    );
+    assert!(
+      psi.is_finite(),
+      "psi must satisfy `psi.is_finite()`, got psi = {psi:?}"
+    );
+    assert!(
       chi > T::zero(),
       "chi must satisfy `chi > T::zero()`, got chi = {chi:?}"
     );

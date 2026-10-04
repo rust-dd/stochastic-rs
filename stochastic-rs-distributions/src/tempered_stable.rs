@@ -87,6 +87,18 @@ fn zolotarev_a(alpha: f64, u: f64) -> f64 {
 impl<T: SimdFloatExt> SimdTemperedStable<T> {
   /// Construct a tempered stable$(\alpha, \lambda, \theta)$.
   pub fn new(alpha: T, lambda: T, theta: T) -> Self {
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      theta.is_finite(),
+      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
+    );
     let alpha_f = alpha.to_f64().unwrap();
     let lambda_f = lambda.to_f64().unwrap();
     let theta_f = theta.to_f64().unwrap();

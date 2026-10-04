@@ -100,6 +100,10 @@ impl<T: SimdFloatExt> SimdNonCentralChiSquared<T> {
   /// The law of `χ²_df(·)` with `df` degrees of freedom ν > 0; the central `χ²_{df−1}` term is dropped when `df ≈ 1`.
   pub fn new(df: T) -> Self {
     assert!(
+      df.is_finite(),
+      "df must satisfy `df.is_finite()`, got df = {df:?}"
+    );
+    assert!(
       df > T::zero(),
       "df must satisfy `df > T::zero()`, got df = {df:?}"
     );

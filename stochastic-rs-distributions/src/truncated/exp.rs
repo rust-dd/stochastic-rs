@@ -38,6 +38,18 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
   /// The base `Exp(lambda)`, `lambda > 0`, renormalised on `[lower, upper]`, `0 ≤ lower < upper` (`upper` may be infinite).
   pub fn new(lambda: T, lower: T, upper: T) -> Self {
     assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      !lower.is_nan(),
+      "lower must satisfy `!lower.is_nan()`, got lower = {lower:?}"
+    );
+    assert!(
+      !upper.is_nan(),
+      "upper must satisfy `!upper.is_nan()`, got upper = {upper:?}"
+    );
+    assert!(
       lambda > T::zero(),
       "lambda must satisfy `lambda > T::zero()`, got lambda = {lambda:?}"
     );

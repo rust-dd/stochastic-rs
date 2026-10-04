@@ -84,6 +84,18 @@ impl<T: SimdFloatExt> SimdGev<T> {
   ///   Fréchet (ξ>0), Gumbel (ξ=0), or reverse-Weibull (ξ<0).
   pub fn new(mu: T, sigma: T, xi: T) -> Self {
     assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      xi.is_finite(),
+      "xi must satisfy `xi.is_finite()`, got xi = {xi:?}"
+    );
+    assert!(
       sigma > T::zero(),
       "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
     );

@@ -53,6 +53,22 @@ impl<T: SimdFloatExt> SimdAlphaStable<T> {
   ///   module header's δ).
   pub fn new(alpha: T, beta: T, scale: T, location: T) -> Self {
     assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
+    assert!(
+      scale.is_finite(),
+      "scale must satisfy `scale.is_finite()`, got scale = {scale:?}"
+    );
+    assert!(
+      location.is_finite(),
+      "location must satisfy `location.is_finite()`, got location = {location:?}"
+    );
+    assert!(
       alpha > T::zero() && alpha <= T::from(2.0).unwrap(),
       "alpha must satisfy `alpha > T::zero() && alpha <= T::from(2.0).unwrap()`, got alpha = {alpha:?}"
     );

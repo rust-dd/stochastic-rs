@@ -46,6 +46,10 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
   /// - `nu` — degrees of freedom ν (matches the module header's ν).
   pub fn new(nu: T) -> Self {
     assert!(
+      nu.is_finite(),
+      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
+    );
+    assert!(
       nu > T::zero(),
       "nu must satisfy `nu > T::zero()`, got nu = {nu:?}"
     );

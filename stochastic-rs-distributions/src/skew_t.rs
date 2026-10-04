@@ -66,6 +66,14 @@ pub struct SkewTState<T: SimdFloatExt, R: SimdRngExt> {
 impl<T: SimdFloatExt> SimdSkewT<T> {
   /// Construct Hansen's skew-t$(\eta, \lambda)$.
   pub fn new(eta: T, lambda: T) -> Self {
+    assert!(
+      eta.is_finite(),
+      "eta must satisfy `eta.is_finite()`, got eta = {eta:?}"
+    );
+    assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
     let eta_f = eta.to_f64().unwrap();
     let lambda_f = lambda.to_f64().unwrap();
     assert!(

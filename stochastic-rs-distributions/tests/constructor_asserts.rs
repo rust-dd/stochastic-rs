@@ -6,18 +6,34 @@ use std::panic::catch_unwind;
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_distributions::FloatExt;
+use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
 use stochastic_rs_distributions::beta::SimdBeta;
+use stochastic_rs_distributions::binomial::SimdBinomial;
+use stochastic_rs_distributions::cauchy::SimdCauchy;
+use stochastic_rs_distributions::chi_square::SimdChiSquared;
+use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::gamma::SimdGamma;
+use stochastic_rs_distributions::ged::SimdGed;
 use stochastic_rs_distributions::generalized_hyperbolic::SimdGeneralizedHyperbolic;
 use stochastic_rs_distributions::generalized_inverse_gauss::SimdGig;
+use stochastic_rs_distributions::geometric::SimdGeometric;
+use stochastic_rs_distributions::gev::SimdGev;
+use stochastic_rs_distributions::gpd::SimdGpd;
 use stochastic_rs_distributions::inverse_gauss::SimdInverseGauss;
 use stochastic_rs_distributions::johnson_su::SimdJohnsonSu;
+use stochastic_rs_distributions::lognormal::SimdLogNormal;
+use stochastic_rs_distributions::non_central_chi_squared::SimdNonCentralChiSquared;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::normal_inverse_gauss::SimdNormalInverseGauss;
 use stochastic_rs_distributions::pareto::SimdPareto;
 use stochastic_rs_distributions::skew_t::SimdSkewT;
+use stochastic_rs_distributions::studentt::SimdStudentT;
 use stochastic_rs_distributions::tempered_stable::SimdTemperedStable;
 use stochastic_rs_distributions::traits::Grid2D;
 use stochastic_rs_distributions::truncated::SimdTruncatedBeta;
+use stochastic_rs_distributions::truncated::SimdTruncatedExp;
+use stochastic_rs_distributions::truncated::SimdTruncatedGamma;
+use stochastic_rs_distributions::truncated::SimdTruncatedNormal;
 use stochastic_rs_distributions::uniform::SimdUniform;
 use stochastic_rs_distributions::variance_gamma::SimdVarianceGamma;
 use stochastic_rs_distributions::weibull::SimdWeibull;
@@ -185,4 +201,242 @@ fn every_rejected_argument_is_named_with_its_value() {
     .map(|(got, want)| format!("got  {got:?}\nwant {want:?}"))
     .collect::<Vec<_>>();
   assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+}
+
+type Case = (&'static str, &'static str, Box<dyn FnOnce() + UnwindSafe>);
+
+/// Every float parameter of every constructor rejects NaN (and infinity, where a bound may not be infinite) by name.
+#[test]
+fn a_non_finite_parameter_is_rejected_by_name() {
+  let nan = f64::NAN;
+  let inf = f64::INFINITY;
+  let cases: Vec<Case> = vec![
+    (
+      "mean",
+      "mean.is_finite()",
+      Box::new(move || {
+        let _ = SimdNormal::<f64>::new(nan, 1.0);
+      }),
+    ),
+    (
+      "std_dev",
+      "std_dev.is_finite()",
+      Box::new(move || {
+        let _ = SimdNormal::<f64>::new(0.0, inf);
+      }),
+    ),
+    (
+      "lambda",
+      "lambda.is_finite()",
+      Box::new(move || {
+        let _ = SimdExp::<f64>::new(inf);
+      }),
+    ),
+    (
+      "alpha",
+      "alpha.is_finite()",
+      Box::new(move || {
+        let _ = SimdGamma::<f64>::new(nan, 1.0);
+      }),
+    ),
+    (
+      "scale",
+      "scale.is_finite()",
+      Box::new(move || {
+        let _ = SimdGamma::<f64>::new(2.0, inf);
+      }),
+    ),
+    (
+      "alpha",
+      "alpha.is_finite()",
+      Box::new(move || {
+        let _ = SimdBeta::<f64>::new(nan, 2.0);
+      }),
+    ),
+    (
+      "gamma",
+      "gamma.is_finite()",
+      Box::new(move || {
+        let _ = SimdCauchy::<f64>::new(0.0, inf);
+      }),
+    ),
+    (
+      "k",
+      "k.is_finite()",
+      Box::new(move || {
+        let _ = SimdChiSquared::<f64>::new(nan);
+      }),
+    ),
+    (
+      "sigma",
+      "sigma.is_finite()",
+      Box::new(move || {
+        let _ = SimdLogNormal::<f64>::new(0.0, inf);
+      }),
+    ),
+    (
+      "nu",
+      "nu.is_finite()",
+      Box::new(move || {
+        let _ = SimdStudentT::<f64>::new(inf);
+      }),
+    ),
+    (
+      "k",
+      "k.is_finite()",
+      Box::new(move || {
+        let _ = SimdWeibull::<f64>::new(1.0, nan);
+      }),
+    ),
+    (
+      "alpha",
+      "alpha.is_finite()",
+      Box::new(move || {
+        let _ = SimdPareto::<f64>::new(1.0, inf);
+      }),
+    ),
+    (
+      "alpha",
+      "alpha.is_finite()",
+      Box::new(move || {
+        let _ = SimdGed::<f64>::new(0.0, inf, 1.5);
+      }),
+    ),
+    (
+      "xi",
+      "xi.is_finite()",
+      Box::new(move || {
+        let _ = SimdGev::<f64>::new(0.0, 1.0, nan);
+      }),
+    ),
+    (
+      "sigma",
+      "sigma.is_finite()",
+      Box::new(move || {
+        let _ = SimdGpd::<f64>::new(0.0, inf, 0.1);
+      }),
+    ),
+    (
+      "mu",
+      "mu.is_finite()",
+      Box::new(move || {
+        let _ = SimdInverseGauss::<f64>::new(nan, 1.0);
+      }),
+    ),
+    (
+      "delta",
+      "delta.is_finite()",
+      Box::new(move || {
+        let _ = SimdJohnsonSu::<f64>::new(0.5, inf, 0.0, 1.0);
+      }),
+    ),
+    (
+      "delta",
+      "delta.is_finite()",
+      Box::new(move || {
+        let _ = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, nan, 0.0);
+      }),
+    ),
+    (
+      "chi",
+      "chi.is_finite()",
+      Box::new(move || {
+        let _ = SimdGig::<f64>::new(0.5, inf, 2.0);
+      }),
+    ),
+    (
+      "alpha",
+      "alpha.is_finite()",
+      Box::new(move || {
+        let _ = SimdNormalInverseGauss::<f64>::new(nan, 0.5, 1.0, 0.0);
+      }),
+    ),
+    (
+      "eta",
+      "eta.is_finite()",
+      Box::new(move || {
+        let _ = SimdSkewT::<f64>::new(inf, 0.2);
+      }),
+    ),
+    (
+      "lambda",
+      "lambda.is_finite()",
+      Box::new(move || {
+        let _ = SimdTemperedStable::<f64>::new(0.5, nan, 1.0);
+      }),
+    ),
+    (
+      "sigma",
+      "sigma.is_finite()",
+      Box::new(move || {
+        let _ = SimdVarianceGamma::<f64>::new(inf, 0.5, -0.1, 0.0);
+      }),
+    ),
+    (
+      "scale",
+      "scale.is_finite()",
+      Box::new(move || {
+        let _ = SimdAlphaStable::<f64>::new(1.5, 0.3, nan, 0.0);
+      }),
+    ),
+    (
+      "p",
+      "p.is_finite()",
+      Box::new(move || {
+        let _ = SimdBinomial::<u32>::new(10, nan);
+      }),
+    ),
+    (
+      "p",
+      "p.is_finite()",
+      Box::new(move || {
+        let _ = SimdGeometric::<u32>::new(nan);
+      }),
+    ),
+    (
+      "df",
+      "df.is_finite()",
+      Box::new(move || {
+        let _ = SimdNonCentralChiSquared::<f64>::new(nan);
+      }),
+    ),
+    (
+      "lower",
+      "!lower.is_nan()",
+      Box::new(move || {
+        let _ = SimdTruncatedNormal::<f64>::new(0.0, 1.0, nan, 1.0);
+      }),
+    ),
+    (
+      "upper",
+      "!upper.is_nan()",
+      Box::new(move || {
+        let _ = SimdTruncatedExp::<f64>::new(1.0, 0.0, nan);
+      }),
+    ),
+    (
+      "scale",
+      "scale.is_finite()",
+      Box::new(move || {
+        let _ = SimdTruncatedGamma::<f64>::new(2.0, inf, 0.0, 1.0);
+      }),
+    ),
+    (
+      "alpha",
+      "alpha.is_finite()",
+      Box::new(move || {
+        let _ = SimdTruncatedBeta::<f64>::new(nan, 2.0, 0.1, 0.9);
+      }),
+    ),
+  ];
+  for (name, predicate, build) in cases {
+    let text = panic_text(build);
+    let want = format!("{name} must satisfy `{predicate}`, got {name} = ");
+    assert!(text.contains(&want), "expected `{want}…`, got: {text}");
+  }
+  assert!(
+    SimdTruncatedExp::<f64>::new(1.0, 0.0, f64::INFINITY)
+      .upper()
+      .is_infinite()
+  );
 }

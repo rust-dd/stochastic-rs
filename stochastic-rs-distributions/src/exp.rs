@@ -255,6 +255,10 @@ impl<T: SimdFloatExt> SimdExp<T> {
   /// # Panics
   /// `lambda <= 0`.
   pub fn new(lambda: T) -> Self {
+    assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
     let _ = exp_zig_tables();
     assert!(
       lambda > T::zero(),

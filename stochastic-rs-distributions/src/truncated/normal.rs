@@ -115,6 +115,22 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
   /// The parent [`SimdNormal`] `N(mu, sigma²)`, `sigma > 0`, renormalised on `[lower, upper]`, `lower < upper`.
   pub fn new(mu: T, sigma: T, lower: T, upper: T) -> Self {
     assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      !lower.is_nan(),
+      "lower must satisfy `!lower.is_nan()`, got lower = {lower:?}"
+    );
+    assert!(
+      !upper.is_nan(),
+      "upper must satisfy `!upper.is_nan()`, got upper = {upper:?}"
+    );
+    assert!(
       sigma > T::zero(),
       "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
     );

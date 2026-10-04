@@ -57,6 +57,22 @@ impl<T: SimdFloatExt> SimdJohnsonSu<T> {
   /// Construct a Johnson SU$(\gamma, \delta, \xi, \lambda)$.
   pub fn new(gamma: T, delta: T, xi: T, lambda: T) -> Self {
     assert!(
+      gamma.is_finite(),
+      "gamma must satisfy `gamma.is_finite()`, got gamma = {gamma:?}"
+    );
+    assert!(
+      delta.is_finite(),
+      "delta must satisfy `delta.is_finite()`, got delta = {delta:?}"
+    );
+    assert!(
+      xi.is_finite(),
+      "xi must satisfy `xi.is_finite()`, got xi = {xi:?}"
+    );
+    assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(
       delta > T::zero(),
       "delta must satisfy `delta > T::zero()`, got delta = {delta:?}"
     );

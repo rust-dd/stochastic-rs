@@ -75,6 +75,18 @@ impl<T: SimdFloatExt> SimdGed<T> {
   ///   into a `Gamma(1/beta, 1)` magnitude sampler.
   pub fn new(mu: T, alpha: T, beta: T) -> Self {
     assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
+    assert!(
       alpha > T::zero(),
       "alpha must satisfy `alpha > T::zero()`, got alpha = {alpha:?}"
     );

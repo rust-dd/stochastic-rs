@@ -322,6 +322,14 @@ impl<T: SimdFloatExt> SimdNormal<T> {
   /// # Panics
   /// `std_dev <= 0`.
   pub fn new(mean: T, std_dev: T) -> Self {
+    assert!(
+      mean.is_finite(),
+      "mean must satisfy `mean.is_finite()`, got mean = {mean:?}"
+    );
+    assert!(
+      std_dev.is_finite(),
+      "std_dev must satisfy `std_dev.is_finite()`, got std_dev = {std_dev:?}"
+    );
     let _ = zig_tables();
     assert!(
       std_dev > T::zero(),

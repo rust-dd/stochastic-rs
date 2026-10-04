@@ -38,6 +38,10 @@ impl<T: PrimInt> SimdGeometric<T> {
   /// - `p` — per-trial success probability p ∈ (0, 1].
   pub fn new(p: f64) -> Self {
     assert!(
+      p.is_finite(),
+      "p must satisfy `p.is_finite()`, got p = {p:?}"
+    );
+    assert!(
       p > 0.0 && p <= 1.0,
       "p must satisfy `p > 0.0 && p <= 1.0`, got p = {p:?}"
     );

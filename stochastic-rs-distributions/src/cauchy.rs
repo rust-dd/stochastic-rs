@@ -35,6 +35,14 @@ impl<T: SimdFloatExt> SimdCauchy<T> {
   ///   half-width at half-maximum).
   pub fn new(x0: T, gamma: T) -> Self {
     assert!(
+      x0.is_finite(),
+      "x0 must satisfy `x0.is_finite()`, got x0 = {x0:?}"
+    );
+    assert!(
+      gamma.is_finite(),
+      "gamma must satisfy `gamma.is_finite()`, got gamma = {gamma:?}"
+    );
+    assert!(
       gamma > T::zero(),
       "gamma must satisfy `gamma > T::zero()`, got gamma = {gamma:?}"
     );

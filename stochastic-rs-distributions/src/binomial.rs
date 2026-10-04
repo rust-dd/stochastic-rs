@@ -119,6 +119,10 @@ impl<T: PrimInt> SimdBinomial<T> {
   ///   module header's p).
   pub fn new(n: u32, p: f64) -> Self {
     assert!(
+      p.is_finite(),
+      "p must satisfy `p.is_finite()`, got p = {p:?}"
+    );
+    assert!(
       (0.0..=1.0).contains(&p),
       "p must satisfy `0.0 <= p <= 1.0`, got p = {p:?}"
     );

@@ -64,6 +64,22 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
   /// The base [`SimdBeta`] `Beta(alpha, beta)`, both > 0, renormalised on `[lower, upper] ⊆ [0, 1]`, `lower < upper`.
   pub fn new(alpha: T, beta: T, lower: T, upper: T) -> Self {
     assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
+    assert!(
+      !lower.is_nan(),
+      "lower must satisfy `!lower.is_nan()`, got lower = {lower:?}"
+    );
+    assert!(
+      !upper.is_nan(),
+      "upper must satisfy `!upper.is_nan()`, got upper = {upper:?}"
+    );
+    assert!(
       alpha > T::zero(),
       "alpha must satisfy `alpha > T::zero()`, got alpha = {alpha:?}"
     );
@@ -244,6 +260,22 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
   /// The base [`SimdGamma`] `Gamma(shape, scale)` (`shape` is its `alpha`), both > 0, renormalised on `[lower, upper]`,
   /// `0 ≤ lower < upper`.
   pub fn new(shape: T, scale: T, lower: T, upper: T) -> Self {
+    assert!(
+      shape.is_finite(),
+      "shape must satisfy `shape.is_finite()`, got shape = {shape:?}"
+    );
+    assert!(
+      scale.is_finite(),
+      "scale must satisfy `scale.is_finite()`, got scale = {scale:?}"
+    );
+    assert!(
+      !lower.is_nan(),
+      "lower must satisfy `!lower.is_nan()`, got lower = {lower:?}"
+    );
+    assert!(
+      !upper.is_nan(),
+      "upper must satisfy `!upper.is_nan()`, got upper = {upper:?}"
+    );
     assert!(
       shape > T::zero(),
       "shape must satisfy `shape > T::zero()`, got shape = {shape:?}"

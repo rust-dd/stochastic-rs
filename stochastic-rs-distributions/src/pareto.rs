@@ -35,6 +35,14 @@ impl<T: SimdFloatExt> SimdPareto<T> {
   ///   controls which moments exist (mean requires α>1, variance α>2).
   pub fn new(x_m: T, alpha: T) -> Self {
     assert!(
+      x_m.is_finite(),
+      "x_m must satisfy `x_m.is_finite()`, got x_m = {x_m:?}"
+    );
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
       x_m > T::zero(),
       "x_m must satisfy `x_m > T::zero()`, got x_m = {x_m:?}"
     );

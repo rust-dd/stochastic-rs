@@ -76,6 +76,26 @@ impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
   /// GIG$(\lambda, \delta^2, \alpha^2 - \beta^2)$ clock.
   pub fn new(lambda: T, alpha: T, beta: T, delta: T, mu: T) -> Self {
     assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
+    assert!(
+      delta.is_finite(),
+      "delta must satisfy `delta.is_finite()`, got delta = {delta:?}"
+    );
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
       alpha > beta.abs(),
       "alpha must satisfy `alpha > beta.abs()`, got alpha = {alpha:?}, beta = {beta:?}"
     );

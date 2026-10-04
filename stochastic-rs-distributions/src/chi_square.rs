@@ -32,6 +32,10 @@ impl<T: SimdFloatExt> SimdChiSquared<T> {
   /// - `k` — degrees of freedom (the module header's own ν).
   pub fn new(k: T) -> Self {
     assert!(
+      k.is_finite(),
+      "k must satisfy `k.is_finite()`, got k = {k:?}"
+    );
+    assert!(
       k > T::zero(),
       "k must satisfy `k > T::zero()`, got k = {k:?}"
     );

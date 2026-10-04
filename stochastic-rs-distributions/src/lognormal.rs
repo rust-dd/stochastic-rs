@@ -43,6 +43,14 @@ impl<T: SimdFloatExt> SimdLogNormal<T> {
   ///   (matches the module header's σ), must be > 0.
   pub fn new(mu: T, sigma: T) -> Self {
     assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
       sigma > T::zero(),
       "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
     );

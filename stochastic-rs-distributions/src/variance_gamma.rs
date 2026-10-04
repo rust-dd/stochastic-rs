@@ -70,6 +70,22 @@ impl<T: SimdFloatExt> SimdVarianceGamma<T> {
   /// subordinator with shape $1/\nu$ and scale $\nu$.
   pub fn new(sigma: T, nu: T, theta: T, mu: T) -> Self {
     assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    assert!(
+      nu.is_finite(),
+      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
+    );
+    assert!(
+      theta.is_finite(),
+      "theta must satisfy `theta.is_finite()`, got theta = {theta:?}"
+    );
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
       sigma > T::zero(),
       "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
     );

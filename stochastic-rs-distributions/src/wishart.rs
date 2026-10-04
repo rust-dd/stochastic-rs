@@ -113,6 +113,10 @@ impl<T: SimdFloatExt> SimdWishart<T> {
   /// Wishart$(\nu, V)$ for a $p \times p$ positive-definite `scale`, $p \ge 1$, Cholesky-factorised once here.
   /// Panics on an empty, non-square or non-SPD `scale`, or on $\nu \le p - 1$.
   pub fn new(nu: f64, scale: Array2<f64>) -> Self {
+    assert!(
+      nu.is_finite(),
+      "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
+    );
     let p = scale.nrows();
     assert!(
       p >= 1,

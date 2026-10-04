@@ -61,6 +61,14 @@ impl<T: SimdFloatExt> SimdInverseGauss<T> {
   ///   the name, this is a shape, not a rate — variance = μ³/λ).
   pub fn new(mu: T, lambda: T) -> Self {
     assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
+    );
+    assert!(
       mu > T::zero(),
       "mu must satisfy `mu > T::zero()`, got mu = {mu:?}"
     );

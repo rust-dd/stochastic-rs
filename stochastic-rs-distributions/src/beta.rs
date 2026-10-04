@@ -51,6 +51,14 @@ impl<T: SimdFloatExt> SimdBeta<T> {
   ///   — same word, unrelated role in each).
   pub fn new(alpha: T, beta: T) -> Self {
     assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
+    assert!(
       alpha > T::zero(),
       "alpha must satisfy `alpha > T::zero()`, got alpha = {alpha:?}"
     );
