@@ -156,7 +156,7 @@ impl FourierModelExt for RegimeSwitchingModel {
     Cumulants {
       c1: (self.r - self.q - 0.5 * mean_sig2) * t,
       c2: mean_sig2 * t,
-      c4: 3.0 * mean_sig4 * t,
+      c4: Some(3.0 * mean_sig4 * t),
     }
   }
 }
@@ -204,7 +204,8 @@ impl CosPricer {
     };
 
     let cum = model.cumulants(t);
-    let width = self.l * (cum.c2.abs().sqrt() + cum.c4.abs().powf(0.25)).max(0.1);
+    let width =
+      self.l * (cum.c2.abs().sqrt() + cum.c4.map_or(0.0, |c| c.abs().powf(0.25))).max(0.1);
     let a = cum.c1 - width;
     let b = cum.c1 + width;
     let bma = b - a;

@@ -96,10 +96,11 @@ impl FourierModelExt for HKDEFourier {
     let c4_j =
       24.0 * self.lam * t * (self.p_up / self.eta1.powi(4) + (1.0 - self.p_up) / self.eta2.powi(4));
 
+    // The Heston part's fourth cumulant is not computed; the jump part alone widens the grid.
     Cumulants {
       c1: c1_h + c1_j,
       c2: c2_h + c2_j,
-      c4: c4_j,
+      c4: Some(c4_j),
     }
   }
 }
@@ -169,7 +170,7 @@ impl FourierModelExt for BatesFourier {
     Cumulants {
       c1: c1_h + c1_j,
       c2: c2_h + c2_j,
-      c4: 0.0,
+      c4: None,
     }
   }
 }

@@ -153,11 +153,10 @@ impl FrftCarrMadanPricer {
     if !cumulants.c2.is_finite() || cumulants.c2 <= 0.0 {
       return Self::default();
     }
-    let c4_term = if cumulants.c4.is_finite() && cumulants.c4 >= 0.0 {
-      cumulants.c4.sqrt()
-    } else {
-      0.0
-    };
+    let c4_term = cumulants
+      .c4
+      .filter(|c| c.is_finite() && *c >= 0.0)
+      .map_or(0.0, f64::sqrt);
     let half_width = l_factor * (cumulants.c2.abs() + c4_term).sqrt();
     if !half_width.is_finite() || half_width <= 0.0 {
       return Self::default();

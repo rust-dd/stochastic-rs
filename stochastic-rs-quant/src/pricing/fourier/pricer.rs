@@ -121,11 +121,10 @@ impl CarrMadanPricer {
     if !cumulants.c2.is_finite() || cumulants.c2 <= 0.0 || !s.is_finite() || s <= 0.0 {
       return Self::default();
     }
-    let c4_term = if cumulants.c4.is_finite() && cumulants.c4 >= 0.0 {
-      cumulants.c4.sqrt()
-    } else {
-      0.0
-    };
+    let c4_term = cumulants
+      .c4
+      .filter(|c| c.is_finite() && *c >= 0.0)
+      .map_or(0.0, f64::sqrt);
     let cumulant_buffer = l_factor * (cumulants.c2.abs() + c4_term).sqrt();
     let required_half_width = s.ln().abs() + cumulant_buffer;
     if !required_half_width.is_finite() || required_half_width <= 0.0 {
@@ -375,7 +374,7 @@ mod tests {
       Cumulants {
         c1: 0.0,
         c2: 0.04,
-        c4: 0.0,
+        c4: Some(0.0),
       }
     }
   }

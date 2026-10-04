@@ -45,8 +45,8 @@ pub struct Cumulants {
   pub c1: f64,
   /// Second cumulant (variance of log-return).
   pub c2: f64,
-  /// Fourth cumulant.
-  pub c4: f64,
+  /// Fourth cumulant; `None` for a model that does not compute it (the Heston family, Bates).
+  pub c4: Option<f64>,
 }
 
 /// Trait for models that expose a characteristic function of the log-price,
@@ -378,11 +378,10 @@ mod tests {
     let (log_strikes, _) = pricer.price_call_surface(&model, s, 0.05, t);
     let half_width = (log_strikes[log_strikes.len() - 1] - log_strikes[0]) / 2.0;
     let cumulants = model.cumulants(t);
-    let c4_term = if cumulants.c4.is_finite() && cumulants.c4 >= 0.0 {
-      cumulants.c4.sqrt()
-    } else {
-      0.0
-    };
+    let c4_term = cumulants
+      .c4
+      .filter(|c| c.is_finite() && *c >= 0.0)
+      .map_or(0.0, f64::sqrt);
     let expected_buffer = 12.0 * (cumulants.c2.abs() + c4_term).sqrt();
     let expected_half_width = s.ln().abs() + expected_buffer;
     assert!(

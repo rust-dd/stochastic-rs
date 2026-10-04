@@ -84,7 +84,7 @@ impl FourierModelExt for HestonFourier {
     let n2 = sigma2 * (self.theta - 2.0 * self.v0);
     let c2 = (n0 + n1 * ekt + n2 * ekt * ekt) / (8.0 * kappa3);
 
-    Cumulants { c1, c2, c4: 0.0 }
+    Cumulants { c1, c2, c4: None }
   }
 }
 
@@ -202,7 +202,7 @@ impl FourierModelExt for DoubleHestonFourier {
 
     let c1 = (self.r - self.q) * t - 0.5 * (int_v1 + int_v2);
     let c2 = int_v1 + int_v2;
-    Cumulants { c1, c2, c4: 0.0 }
+    Cumulants { c1, c2, c4: None }
   }
 }
 
@@ -302,28 +302,12 @@ mod tests {
     }
   }
 
-  /// `c4` is left at the placeholder `0.0`. Finite-differencing shows the
-  /// true fourth cumulant is small but genuinely nonzero (order `1e-3` at
-  /// `t=1`, comparable to `c2 \approx 0.043`), so `0.0` is not an exact
-  /// match — but it is not "provably wrong" in the sense that matters for
-  /// [`super::CosEngine`]: the true Heston fourth-cumulant closed form
-  /// (Fang-Oosterlee Table 11) is a ~30-term expression with high
-  /// hand-transcription risk, and `cos_heston_matches_quadrature` in
-  /// `cos.rs` confirms `CosEngine::default()` (`L=10`) already prices
-  /// correctly against an independent reference once `c2` alone is fixed —
-  /// the `+sqrt(c4)` term in the truncation width is extra safety margin on
-  /// top of an already-adequate `L \cdot \sqrt{c2}`, not load-bearing for
-  /// correctness at this `L`. This test records the checked-but-not-fixed
-  /// decision rather than leaving it unexamined.
+  /// Heston's fourth cumulant has a closed form the crate does not compute; `None` says so
+  /// (finite differences give ~1e-3, not zero).
   #[test]
-  fn heston_c4_is_a_documented_zero_approximation() {
+  fn heston_c4_is_not_computed() {
     let model = task1_params();
-    let c4_fd = fd_c4(&model, 1.0);
-    let c4 = model.cumulants(1.0).c4;
-    assert_eq!(c4, 0.0, "cumulants().c4 is the documented placeholder");
-    assert!(
-      c4_fd > 1e-4,
-      "true c4 should be clearly nonzero (order 1e-3), got {c4_fd}"
-    );
+    assert!(model.cumulants(1.0).c4.is_none());
+    assert!(fd_c4(&model, 1.0) > 1e-4);
   }
 }

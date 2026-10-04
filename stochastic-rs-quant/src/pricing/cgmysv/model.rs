@@ -145,7 +145,7 @@ impl FourierModelExt for CgmysvModel {
     Cumulants {
       c1: (fp - fm).im / (2.0 * h),
       c2: -(fp - 2.0 * f0 + fm).re / (h * h),
-      c4: (f2p - 4.0 * fp + 6.0 * f0 - 4.0 * fm + f2m).re / h.powi(4),
+      c4: Some((f2p - 4.0 * fp + 6.0 * f0 - 4.0 * fm + f2m).re / h.powi(4)),
     }
   }
 }

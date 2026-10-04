@@ -127,7 +127,7 @@ impl CosEngine {
     option_type: OptionType,
   ) -> f64 {
     let cumulants = model.cumulants(t);
-    let width_arg = cumulants.c2 + cumulants.c4.sqrt();
+    let width_arg = cumulants.c2 + cumulants.c4.map_or(0.0, f64::sqrt);
     if !(width_arg.is_finite() && width_arg > 0.0) {
       return f64::NAN;
     }
@@ -386,7 +386,7 @@ mod tests {
         super::super::Cumulants {
           c1: 0.0,
           c2: 0.04,
-          c4: 0.0,
+          c4: Some(0.0),
         }
       }
     }
