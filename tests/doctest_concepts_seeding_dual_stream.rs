@@ -17,5 +17,5 @@ fn single_and_dual_stream_normal_agree_on_moments() {
   let n_dual = Seeded::<_, SimdRngDual>::new(n, &Deterministic::new(42));
 
   assert!((n.mean() - n_dual.dist().mean()).abs() < 1e-12);
-  assert!((n.variance() - n_dual.dist().variance()).abs() < 1e-12);
+  assert!((n.variance().unwrap() - n_dual.dist().variance().unwrap()).abs() < 1e-12);
 }

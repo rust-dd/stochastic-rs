@@ -35,7 +35,7 @@ fn reexported_ndarray_is_the_array_type_of_the_api() {
 #[test]
 fn reexported_num_complex_is_the_complex_type_of_the_api() {
   let normal = SimdNormal::<f64>::new(0.0, 1.0);
-  assert!(!is_zero(normal.characteristic_function(1.0)));
+  assert!(!is_zero(normal.characteristic_function(1.0).unwrap()));
 }
 
 #[test]

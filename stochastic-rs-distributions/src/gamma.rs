@@ -223,34 +223,34 @@ impl<T: SimdFloatExt> SimdKernel for SimdGamma<T> {
 }
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGamma<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     if x <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
     // f(x) = x^(α−1) e^(−x/θ) / (θ^α Γ(α))
     let log_pdf =
       (alpha - 1.0) * x.ln() - x / scale - alpha * scale.ln() - crate::special::ln_gamma(alpha);
-    log_pdf.exp()
+    Some(log_pdf.exp())
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     if x <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
-    crate::special::gamma_p(alpha, x / scale)
+    Some(crate::special::gamma_p(alpha, x / scale))
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn quantile(&self, p: f64) -> Option<f64> {
     // Newton-bisection hybrid on the CDF.
     if p <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     if p >= 1.0 {
-      return f64::INFINITY;
+      return Some(f64::INFINITY);
     }
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
@@ -273,72 +273,74 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGamma<T> {
       let dx = f / pdf;
       let new_x = (x - dx).max(x * 1e-12);
       if (new_x - x).abs() < 1e-14 * x.max(1.0) {
-        return new_x;
+        return Some(new_x);
       }
       x = new_x;
     }
-    x
+    Some(x)
   }
 
-  fn mean(&self) -> f64 {
-    self.alpha.to_f64().unwrap() * self.scale.to_f64().unwrap()
+  fn mean(&self) -> Option<f64> {
+    Some(self.alpha.to_f64().unwrap() * self.scale.to_f64().unwrap())
   }
 
-  fn mode(&self) -> f64 {
+  fn mode(&self) -> Option<f64> {
     let alpha = self.alpha.to_f64().unwrap();
     if alpha < 1.0 {
-      0.0
+      Some(0.0)
     } else {
-      (alpha - 1.0) * self.scale.to_f64().unwrap()
+      Some((alpha - 1.0) * self.scale.to_f64().unwrap())
     }
   }
 
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
-    alpha * scale * scale
+    Some(alpha * scale * scale)
   }
 
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     let alpha = self.alpha.to_f64().unwrap();
-    2.0 / alpha.sqrt()
+    Some(2.0 / alpha.sqrt())
   }
 
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     // Excess kurtosis.
     let alpha = self.alpha.to_f64().unwrap();
-    6.0 / alpha
+    Some(6.0 / alpha)
   }
 
-  fn moment_generating_function(&self, t: f64) -> f64 {
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
     if t < 1.0 / scale {
-      (1.0 - scale * t).powf(-alpha)
+      Some((1.0 - scale * t).powf(-alpha))
     } else {
-      f64::INFINITY
+      Some(f64::INFINITY)
     }
   }
 
-  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+  fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
     // φ(t) = (1 − i θ t)^{−α}
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
     let denom = num_complex::Complex64::new(1.0, -scale * t);
-    denom.powf(-alpha)
+    Some(denom.powf(-alpha))
   }
 
-  fn entropy(&self) -> f64 {
+  fn entropy(&self) -> Option<f64> {
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
-    alpha
-      + scale.ln()
-      + crate::special::ln_gamma(alpha)
-      + (1.0 - alpha) * crate::special::digamma(alpha)
+    Some(
+      alpha
+        + scale.ln()
+        + crate::special::ln_gamma(alpha)
+        + (1.0 - alpha) * crate::special::digamma(alpha),
+    )
   }
 
-  fn median(&self) -> f64 {
-    self.inv_cdf(0.5)
+  fn median(&self) -> Option<f64> {
+    self.quantile(0.5)
   }
 }
 
@@ -390,7 +392,7 @@ mod tests {
         assert!(samples.iter().all(|x| x.is_finite() && *x > 0.0));
         kolmogorov_smirnov_test(
           ArrayView1::from(&samples),
-          |x| dist.cdf(x),
+          |x| dist.cdf(x).unwrap(),
           KolmogorovSmirnovConfig::default(),
         )
         .p_value
@@ -416,7 +418,7 @@ mod tests {
         assert!(samples.iter().all(|x| x.is_finite() && *x >= 0.0));
         kolmogorov_smirnov_test(
           ArrayView1::from(&samples),
-          |x| dist.cdf(x),
+          |x| dist.cdf(x).unwrap(),
           KolmogorovSmirnovConfig::default(),
         )
         .p_value
@@ -433,7 +435,7 @@ mod tests {
   fn scalar_sample_matches_cdf() {
     for (alpha, scale) in [(2.5, 1.5), (0.5, 2.0)] {
       let d = SimdGamma::<f64>::new(alpha, scale);
-      let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+      let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
       assert!(best > 0.01, "Gamma({alpha}, {scale}): best p = {best}");
     }
   }

@@ -236,24 +236,24 @@ impl<T: SimdFloatExt> Distribution<T> for SimdSkewT<T> {
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdSkewT<T> {
-  fn pdf(&self, z: f64) -> f64 {
+  fn pdf(&self, z: f64) -> Option<f64> {
     let eta = self.eta.to_f64().unwrap();
     let w = (self.b * z + self.a) / self.side(z);
-    self.b * self.c * (1.0 + w * w / (eta - 2.0)).powf(-0.5 * (eta + 1.0))
+    Some(self.b * self.c * (1.0 + w * w / (eta - 2.0)).powf(-0.5 * (eta + 1.0)))
   }
 
-  fn cdf(&self, z: f64) -> f64 {
+  fn cdf(&self, z: f64) -> Option<f64> {
     let lambda = self.lambda.to_f64().unwrap();
     let w = (self.b * z + self.a) / self.side(z) * self.t_scale();
-    let t = self.student.cdf(w);
-    if z < self.knot() {
+    let t = self.student.cdf(w)?;
+    Some(if z < self.knot() {
       (1.0 - lambda) * t
     } else {
       0.5 * (1.0 - lambda) + (1.0 + lambda) * (t - 0.5)
-    }
+    })
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn quantile(&self, p: f64) -> Option<f64> {
     let lambda = self.lambda.to_f64().unwrap();
     let split = 0.5 * (1.0 - lambda);
     let (side, q) = if p < split {
@@ -261,52 +261,56 @@ impl<T: SimdFloatExt> DistributionExt for SimdSkewT<T> {
     } else {
       (1.0 + lambda, (p - split) / (1.0 + lambda) + 0.5)
     };
-    (side * self.student.inv_cdf(q) / self.t_scale() - self.a) / self.b
+    Some((side * self.student.quantile(q)? / self.t_scale() - self.a) / self.b)
   }
 
-  fn mean(&self) -> f64 {
-    0.0
+  fn mean(&self) -> Option<f64> {
+    Some(0.0)
   }
 
-  fn median(&self) -> f64 {
-    self.inv_cdf(0.5)
+  fn median(&self) -> Option<f64> {
+    self.quantile(0.5)
   }
 
-  fn mode(&self) -> f64 {
-    self.knot()
+  fn mode(&self) -> Option<f64> {
+    Some(self.knot())
   }
 
-  fn variance(&self) -> f64 {
-    1.0
+  fn variance(&self) -> Option<f64> {
+    Some(1.0)
   }
 
   /// $\mathbb E z^3$ from the two-piece moments; `NaN` for $\eta \le 3$.
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     let eta = self.eta.to_f64().unwrap();
     if eta <= 3.0 {
-      return f64::NAN;
+      return Some(f64::NAN);
     }
     let l = self.lambda.to_f64().unwrap();
     let (a, b) = (self.a, self.b);
     let m3w = self.abs_third_moment();
-    (4.0 * l * (1.0 + l * l) * m3w - 3.0 * a * (1.0 + 3.0 * l * l) + 2.0 * a.powi(3)) / b.powi(3)
+    Some(
+      (4.0 * l * (1.0 + l * l) * m3w - 3.0 * a * (1.0 + 3.0 * l * l) + 2.0 * a.powi(3)) / b.powi(3),
+    )
   }
 
   /// Excess kurtosis $\mathbb E z^4 - 3$; `NaN` for $\eta \le 4$.
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     let eta = self.eta.to_f64().unwrap();
     if eta <= 4.0 {
-      return f64::NAN;
+      return Some(f64::NAN);
     }
     let l = self.lambda.to_f64().unwrap();
     let (a, b) = (self.a, self.b);
     let m3w = self.abs_third_moment();
     let m4w = 3.0 * (eta - 2.0) / (eta - 4.0);
-    ((1.0 + 10.0 * l * l + 5.0 * l.powi(4)) * m4w - 16.0 * a * l * (1.0 + l * l) * m3w
-      + 6.0 * a * a * (1.0 + 3.0 * l * l)
-      - 3.0 * a.powi(4))
-      / b.powi(4)
-      - 3.0
+    Some(
+      ((1.0 + 10.0 * l * l + 5.0 * l.powi(4)) * m4w - 16.0 * a * l * (1.0 + l * l) * m3w
+        + 6.0 * a * a * (1.0 + 3.0 * l * l)
+        - 3.0 * a.powi(4))
+        / b.powi(4)
+        - 3.0,
+    )
   }
 }
 
@@ -370,28 +374,36 @@ mod tests {
     for ((eta, lambda), grid, ppf, moments) in cases {
       let d = SimdSkewT::<f64>::new(eta, lambda);
       for (z, pdf, cdf) in grid {
-        assert!(close(d.pdf(z), pdf, 1e-12), "pdf({z}) = {}", d.pdf(z));
-        assert!(close(d.cdf(z), cdf, 1e-11), "cdf({z}) = {}", d.cdf(z));
+        assert!(
+          close(d.pdf(z).unwrap(), pdf, 1e-12),
+          "pdf({z}) = {}",
+          d.pdf(z).unwrap()
+        );
+        assert!(
+          close(d.cdf(z).unwrap(), cdf, 1e-11),
+          "cdf({z}) = {}",
+          d.cdf(z).unwrap()
+        );
       }
       for (p, want) in [0.05, 0.5, 0.9].into_iter().zip(ppf) {
         assert!(
-          close(d.inv_cdf(p), want, 1e-9),
+          close(d.quantile(p).unwrap(), want, 1e-9),
           "ppf({p}) = {}",
-          d.inv_cdf(p)
+          d.quantile(p).unwrap()
         );
       }
       assert!(
-        close(d.skewness(), moments[0], 1e-7),
+        close(d.skewness().unwrap(), moments[0], 1e-7),
         "skewness {}",
-        d.skewness()
+        d.skewness().unwrap()
       );
       assert!(
-        close(d.kurtosis() + 3.0, moments[1], 1e-7),
+        close(d.kurtosis().unwrap() + 3.0, moments[1], 1e-7),
         "kurtosis {}",
-        d.kurtosis()
+        d.kurtosis().unwrap()
       );
-      assert_eq!(d.median(), d.inv_cdf(0.5));
-      assert!(close(d.mode(), -d.a / d.b, 1e-15));
+      assert_eq!(d.median().unwrap(), d.quantile(0.5).unwrap());
+      assert!(close(d.mode().unwrap(), -d.a / d.b, 1e-15));
     }
   }
 
@@ -404,7 +416,7 @@ mod tests {
     let (mut mass, mut m1, mut m2) = (0.0, 0.0, 0.0);
     for k in 0..n {
       let z = lo + (k as f64 + 0.5) * h;
-      let f = d.pdf(z) * h;
+      let f = d.pdf(z).unwrap() * h;
       mass += f;
       m1 += z * f;
       m2 += z * z * f;
@@ -435,25 +447,26 @@ mod tests {
       // coin toss. It is asserted only where the sixth moment exists.
       if eta > 6.0 {
         assert!(
-          (m3 - d.skewness()).abs() < 0.05,
+          (m3 - d.skewness().unwrap()).abs() < 0.05,
           "m3 {m3} vs {}",
-          d.skewness()
+          d.skewness().unwrap()
         );
       }
-      // Bowley's quartile skewness converges whatever the tails do, and the
-      // distribution's own `inv_cdf` says what it should be. The band is
-      // five standard errors, each quantile's being
-      // `sqrt(p(1-p)/n) / pdf(q_p)` (Serfling 1980, §2.3.3) carried through
-      // the ratio by its partial derivatives.
+      // Bowley's quartile skewness converges whatever the tails do and `quantile` gives its target;
+      // band: five delta-method SEs, each `sqrt(p(1-p)/n) / pdf(q_p)` (Serfling 1980, §2.3.3).
       let mut sorted = xs.clone();
       sorted.sort_by(f64::total_cmp);
       let sample_at = |p: f64| sorted[((n as f64) * p) as usize];
       let bowley = |a: f64, b: f64, c: f64| (c + a - 2.0 * b) / (c - a);
       let sampled = bowley(sample_at(0.25), sample_at(0.5), sample_at(0.75));
-      let (q1, q2, q3) = (d.inv_cdf(0.25), d.inv_cdf(0.5), d.inv_cdf(0.75));
+      let (q1, q2, q3) = (
+        d.quantile(0.25).unwrap(),
+        d.quantile(0.5).unwrap(),
+        d.quantile(0.75).unwrap(),
+      );
       let want = bowley(q1, q2, q3);
       let spread = q3 - q1;
-      let quantile_se = |p: f64, q: f64| (p * (1.0 - p) / n as f64).sqrt() / d.pdf(q);
+      let quantile_se = |p: f64, q: f64| (p * (1.0 - p) / n as f64).sqrt() / d.pdf(q).unwrap();
       let band = 5.0
         * (((1.0 + want) / spread * quantile_se(0.25, q1)).powi(2)
           + (2.0 / spread * quantile_se(0.5, q2)).powi(2)
@@ -474,7 +487,7 @@ mod tests {
   #[test]
   fn scalar_sample_matches_cdf() {
     let d = SimdSkewT::<f64>::new(5.0, -0.3);
-    let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
     assert!(best > 0.01, "best p = {best}");
   }
 

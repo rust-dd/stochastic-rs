@@ -83,9 +83,9 @@ impl<T: SimdFloatExt> Distribution<T> for SimdChiSquared<T> {
 }
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdChiSquared<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     if x <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let k = self.df.to_f64().unwrap();
     let half_k = 0.5 * k;
@@ -94,23 +94,23 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdChiSquared<T> {
       - 0.5 * x
       - half_k * std::f64::consts::LN_2
       - crate::special::ln_gamma(half_k);
-    log_pdf.exp()
+    Some(log_pdf.exp())
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     if x <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let k = self.df.to_f64().unwrap();
-    crate::special::gamma_p(0.5 * k, 0.5 * x)
+    Some(crate::special::gamma_p(0.5 * k, 0.5 * x))
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn quantile(&self, p: f64) -> Option<f64> {
     if p <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     if p >= 1.0 {
-      return f64::INFINITY;
+      return Some(f64::INFINITY);
     }
     let k = self.df.to_f64().unwrap();
     // χ²_k = 2 · Gamma(α=k/2, scale=1) → use gamma quantile via Newton's
@@ -134,62 +134,64 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdChiSquared<T> {
       let dx = f / pdf;
       let new_x = (x - dx).max(x * 1e-12);
       if (new_x - x).abs() < 1e-14 * x.max(1.0) {
-        return new_x;
+        return Some(new_x);
       }
       x = new_x;
     }
-    x
+    Some(x)
   }
 
-  fn mean(&self) -> f64 {
-    self.df.to_f64().unwrap()
+  fn mean(&self) -> Option<f64> {
+    Some(self.df.to_f64().unwrap())
   }
 
-  fn median(&self) -> f64 {
+  fn median(&self) -> Option<f64> {
     // Wilson-Hilferty approximation k * (1 - 2/(9k))³.
     let k = self.df.to_f64().unwrap();
-    k * (1.0 - 2.0 / (9.0 * k)).powi(3)
+    Some(k * (1.0 - 2.0 / (9.0 * k)).powi(3))
   }
 
-  fn mode(&self) -> f64 {
+  fn mode(&self) -> Option<f64> {
     let k = self.df.to_f64().unwrap();
-    (k - 2.0).max(0.0)
+    Some((k - 2.0).max(0.0))
   }
 
-  fn variance(&self) -> f64 {
-    2.0 * self.df.to_f64().unwrap()
+  fn variance(&self) -> Option<f64> {
+    Some(2.0 * self.df.to_f64().unwrap())
   }
 
-  fn skewness(&self) -> f64 {
-    (8.0 / self.df.to_f64().unwrap()).sqrt()
+  fn skewness(&self) -> Option<f64> {
+    Some((8.0 / self.df.to_f64().unwrap()).sqrt())
   }
 
-  fn kurtosis(&self) -> f64 {
-    12.0 / self.df.to_f64().unwrap()
+  fn kurtosis(&self) -> Option<f64> {
+    Some(12.0 / self.df.to_f64().unwrap())
   }
 
-  fn entropy(&self) -> f64 {
+  fn entropy(&self) -> Option<f64> {
     let k = self.df.to_f64().unwrap();
     let half_k = 0.5 * k;
-    half_k
-      + std::f64::consts::LN_2
-      + crate::special::ln_gamma(half_k)
-      + (1.0 - half_k) * crate::special::digamma(half_k)
+    Some(
+      half_k
+        + std::f64::consts::LN_2
+        + crate::special::ln_gamma(half_k)
+        + (1.0 - half_k) * crate::special::digamma(half_k),
+    )
   }
 
-  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+  fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
     // φ(t) = (1 - 2it)^(-k/2)
     let k = self.df.to_f64().unwrap();
     let one_minus_2it = num_complex::Complex64::new(1.0, -2.0 * t);
-    one_minus_2it.powf(-0.5 * k)
+    Some(one_minus_2it.powf(-0.5 * k))
   }
 
-  fn moment_generating_function(&self, t: f64) -> f64 {
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
     let k = self.df.to_f64().unwrap();
     if t < 0.5 {
-      (1.0 - 2.0 * t).powf(-0.5 * k)
+      Some((1.0 - 2.0 * t).powf(-0.5 * k))
     } else {
-      f64::INFINITY
+      Some(f64::INFINITY)
     }
   }
 }
@@ -209,7 +211,7 @@ mod tests {
   #[test]
   fn scalar_sample_matches_cdf() {
     let d = SimdChiSquared::<f64>::new(6.0);
-    let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
     assert!(best > 0.01, "best p = {best}");
   }
 

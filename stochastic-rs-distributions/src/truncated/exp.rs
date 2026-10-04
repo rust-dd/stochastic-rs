@@ -121,29 +121,29 @@ impl<T: SimdFloatExt> Distribution<T> for SimdTruncatedExp<T> {
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let lo = self.lower.to_f64().unwrap();
     let up = self.upper.to_f64().unwrap();
     if x < lo || x > up {
-      return 0.0;
+      return Some(0.0);
     }
     let lam = self.lambda.to_f64().unwrap();
     // Referred to `lower` for the same reason the draw is; the leading
     // `e^{-λ·lower}` cancels between the density and the interval's mass.
-    lam * (-lam * (x - lo)).exp() / (1.0 - self.tail_ratio)
+    Some(lam * (-lam * (x - lo)).exp() / (1.0 - self.tail_ratio))
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     let lo = self.lower.to_f64().unwrap();
     let up = self.upper.to_f64().unwrap();
     if x <= lo {
-      return 0.0;
+      return Some(0.0);
     }
     if x >= up {
-      return 1.0;
+      return Some(1.0);
     }
     let lam = self.lambda.to_f64().unwrap();
-    (1.0 - (-lam * (x - lo)).exp()) / (1.0 - self.tail_ratio)
+    Some((1.0 - (-lam * (x - lo)).exp()) / (1.0 - self.tail_ratio))
   }
 }
 
@@ -161,11 +161,11 @@ mod tests {
   fn truncated_exp_cdf_round_trips() {
     let te = SimdTruncatedExp::<f64>::new(2.0, 0.0, 1.5);
     for x in [0.0, 0.3, 0.7, 1.0, 1.5] {
-      let f = te.cdf(x);
+      let f = te.cdf(x).unwrap();
       assert!((0.0..=1.0).contains(&f));
     }
-    assert_eq!(te.cdf(-0.1), 0.0);
-    assert_eq!(te.cdf(2.0), 1.0);
+    assert_eq!(te.cdf(-0.1).unwrap(), 0.0);
+    assert_eq!(te.cdf(2.0).unwrap(), 1.0);
   }
 
   /// Truncated exponential samples in bounds with the right approximate
@@ -227,7 +227,7 @@ mod tests {
   #[test]
   fn scalar_sample_matches_cdf() {
     let d = SimdTruncatedExp::<f64>::new(2.0, 0.0, 1.5);
-    let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
     assert!(best > 0.01, "best p = {best}");
   }
 }

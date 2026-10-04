@@ -135,55 +135,55 @@ impl<T: PrimInt + Send + Sync + 'static> Distribution<T> for SimdGeometric<T> {
 impl<T: PrimInt> crate::traits::DistributionExt for SimdGeometric<T> {
   // Convention here: support k ∈ {1, 2, ...} (the "shifted" geometric, P(X=k) = (1-p)^(k-1) p).
 
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     if x < 1.0 || x.fract() != 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let k = x as u64;
-    (1.0 - self.p).powi(k as i32 - 1) * self.p
+    Some((1.0 - self.p).powi(k as i32 - 1) * self.p)
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     if x < 1.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let k = x.floor() as u64;
-    1.0 - (1.0 - self.p).powi(k as i32)
+    Some(1.0 - (1.0 - self.p).powi(k as i32))
   }
 
-  fn inv_cdf(&self, prob: f64) -> f64 {
+  fn quantile(&self, prob: f64) -> Option<f64> {
     // Smallest k such that 1-(1-p)^k ≥ prob ⟹ k = ⌈ln(1-prob)/ln(1-p)⌉
     if prob <= 0.0 {
-      return 1.0;
+      return Some(1.0);
     }
     if prob >= 1.0 {
-      return f64::INFINITY;
+      return Some(f64::INFINITY);
     }
-    ((1.0 - prob).ln() / (1.0 - self.p).ln()).ceil()
+    Some(((1.0 - prob).ln() / (1.0 - self.p).ln()).ceil())
   }
 
-  fn mean(&self) -> f64 {
-    1.0 / self.p
+  fn mean(&self) -> Option<f64> {
+    Some(1.0 / self.p)
   }
 
-  fn median(&self) -> f64 {
-    (-(2.0_f64.ln()) / (1.0 - self.p).ln()).ceil()
+  fn median(&self) -> Option<f64> {
+    Some((-(2.0_f64.ln()) / (1.0 - self.p).ln()).ceil())
   }
 
-  fn mode(&self) -> f64 {
-    1.0
+  fn mode(&self) -> Option<f64> {
+    Some(1.0)
   }
 
-  fn variance(&self) -> f64 {
-    (1.0 - self.p) / (self.p * self.p)
+  fn variance(&self) -> Option<f64> {
+    Some((1.0 - self.p) / (self.p * self.p))
   }
 
-  fn skewness(&self) -> f64 {
-    (2.0 - self.p) / (1.0 - self.p).sqrt()
+  fn skewness(&self) -> Option<f64> {
+    Some((2.0 - self.p) / (1.0 - self.p).sqrt())
   }
 
-  fn kurtosis(&self) -> f64 {
-    6.0 + self.p * self.p / (1.0 - self.p)
+  fn kurtosis(&self) -> Option<f64> {
+    Some(6.0 + self.p * self.p / (1.0 - self.p))
   }
 
   /// `p = 1.0` is a valid, documented parameter (see [`Self::new`]) — the
@@ -193,24 +193,24 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdGeometric<T> {
   /// `x * ln(x) -> 0` as `x -> 0+` (universal in entropy formulas, e.g.
   /// Shannon entropy) is applied explicitly instead so `p = 1.0` returns
   /// the mathematically correct `0.0` rather than `NaN`.
-  fn entropy(&self) -> f64 {
+  fn entropy(&self) -> Option<f64> {
     let q = 1.0 - self.p;
     let q_term = if q > 0.0 { q * q.ln() } else { 0.0 };
-    -(q_term + self.p * self.p.ln()) / self.p
+    Some(-(q_term + self.p * self.p.ln()) / self.p)
   }
 
-  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+  fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
     // φ(t) = p e^{it} / (1 - (1-p) e^{it})
     let eit = num_complex::Complex64::new(0.0, t).exp();
-    eit.scale(self.p) / (num_complex::Complex64::new(1.0, 0.0) - eit.scale(1.0 - self.p))
+    Some(eit.scale(self.p) / (num_complex::Complex64::new(1.0, 0.0) - eit.scale(1.0 - self.p)))
   }
 
-  fn moment_generating_function(&self, t: f64) -> f64 {
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
     let q = 1.0 - self.p;
     if q * t.exp() < 1.0 {
-      self.p * t.exp() / (1.0 - q * t.exp())
+      Some(self.p * t.exp() / (1.0 - q * t.exp()))
     } else {
-      f64::INFINITY
+      Some(f64::INFINITY)
     }
   }
 }
@@ -236,7 +236,7 @@ mod tests {
   fn entropy_at_p_one_is_zero_not_nan() {
     let g = SimdGeometric::<u64>::new(1.0);
     assert_eq!(
-      g.entropy(),
+      g.entropy().unwrap(),
       0.0,
       "p=1.0 is degenerate, entropy must be exactly 0"
     );
@@ -247,7 +247,7 @@ mod tests {
   #[test]
   fn entropy_at_interior_p_is_finite_and_positive() {
     let g = SimdGeometric::<u64>::new(0.3);
-    let h = g.entropy();
+    let h = g.entropy().unwrap();
     assert!(h.is_finite() && h > 0.0, "entropy at p=0.3 was {h}");
   }
 
@@ -298,9 +298,13 @@ mod tests {
       if p >= 1.0 {
         let bad = buf.iter().filter(|&&x| x != 1).count();
         assert_eq!(bad, 0, "p=1.0: {bad}/{N} draws were not 1");
-        assert_eq!(dist.mean(), 1.0, "p=1.0: mean() must be exactly 1.0");
         assert_eq!(
-          dist.variance(),
+          dist.mean().unwrap(),
+          1.0,
+          "p=1.0: mean() must be exactly 1.0"
+        );
+        assert_eq!(
+          dist.variance().unwrap(),
           0.0,
           "p=1.0: variance() must be exactly 0.0"
         );
@@ -318,12 +322,12 @@ mod tests {
         .sum::<f64>()
         / n;
 
-      let expected_mean = dist.mean();
-      let expected_var = dist.variance();
+      let expected_mean = dist.mean().unwrap();
+      let expected_var = dist.variance().unwrap();
       // mu4 from the (shift-invariant) excess-kurtosis closed form gives
       // the plug-in variance estimator's own standard error:
       // Var(S^2) ~= (mu4 - sigma^4) / n.
-      let mu4 = (dist.kurtosis() + 3.0) * expected_var * expected_var;
+      let mu4 = (dist.kurtosis().unwrap() + 3.0) * expected_var * expected_var;
       let se_mean = (expected_var / n).sqrt();
       let se_var = ((mu4 - expected_var * expected_var) / n).sqrt();
 
@@ -356,7 +360,7 @@ mod tests {
   #[test]
   fn scalar_sample_matches_cdf() {
     let d = SimdGeometric::<u64>::new(0.15);
-    let best = scalar_chi_square_best_p(&d, (1, 50), |k| d.cdf(k as f64));
+    let best = scalar_chi_square_best_p(&d, (1, 50), |k| d.cdf(k as f64).unwrap());
     assert!(best > 0.01, "best p = {best}");
   }
 }

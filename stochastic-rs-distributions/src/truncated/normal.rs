@@ -255,33 +255,33 @@ impl<T: SimdFloatExt> Distribution<T> for SimdTruncatedNormal<T> {
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let lo = self.lower.to_f64().unwrap();
     let up = self.upper.to_f64().unwrap();
     if x < lo || x > up {
-      return 0.0;
+      return Some(0.0);
     }
     let mu = self.base.mean().to_f64().unwrap();
     let sigma = self.base.std_dev().to_f64().unwrap();
     let z = (x - mu) / sigma;
     let phi = (-0.5 * z * z).exp() / ((2.0 * std::f64::consts::PI).sqrt() * sigma);
-    phi / self.norm_mass
+    Some(phi / self.norm_mass)
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     let lo = self.lower.to_f64().unwrap();
     let up = self.upper.to_f64().unwrap();
     if x <= lo {
-      return 0.0;
+      return Some(0.0);
     }
     if x >= up {
-      return 1.0;
+      return Some(1.0);
     }
     let mu = self.base.mean().to_f64().unwrap();
     let sigma = self.base.std_dev().to_f64().unwrap();
     let f_x = norm_cdf_scalar((x - mu) / sigma);
     let f_lo = norm_cdf_scalar((lo - mu) / sigma);
-    (f_x - f_lo) / self.norm_mass
+    Some((f_x - f_lo) / self.norm_mass)
   }
 }
 
@@ -316,7 +316,7 @@ mod tests {
     let n = 1_000;
     let h = 3.0 / n as f64;
     let s: f64 = (0..n)
-      .map(|k| tn.pdf(-1.0 + (k as f64 + 0.5) * h) * h)
+      .map(|k| tn.pdf(-1.0 + (k as f64 + 0.5) * h).unwrap() * h)
       .sum();
     assert!(
       (s - 1.0).abs() < 5e-3,
@@ -385,7 +385,7 @@ mod tests {
       (-0.05, 0.05),
     ] {
       let d = SimdTruncatedNormal::<f64>::new(0.0, 1.0, lo, hi);
-      let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+      let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
       assert!(best > 0.01, "[{lo}, {hi}]: best p = {best}");
     }
   }
@@ -395,10 +395,10 @@ mod tests {
   #[test]
   fn truncated_pdf_cdf_outside_bounds() {
     let tn = SimdTruncatedNormal::<f64>::new(0.0, 1.0, -1.0, 1.0);
-    assert_eq!(tn.pdf(-1.5), 0.0);
-    assert_eq!(tn.pdf(1.5), 0.0);
-    assert_eq!(tn.cdf(-2.0), 0.0);
-    assert_eq!(tn.cdf(2.0), 1.0);
+    assert_eq!(tn.pdf(-1.5).unwrap(), 0.0);
+    assert_eq!(tn.pdf(1.5).unwrap(), 0.0);
+    assert_eq!(tn.cdf(-2.0).unwrap(), 0.0);
+    assert_eq!(tn.cdf(2.0).unwrap(), 1.0);
   }
 
   /// `mu()` and `sigma()` read back the parent's arguments, not moments of the truncated law.

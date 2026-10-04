@@ -134,9 +134,8 @@ impl TCopula {
     if x >= 0.0 { 1.0 - half } else { half }
   }
 
-  /// Quantile $t_\nu^{-1}(p)$: Cornish-Fisher-style normal seed refined by
-  /// 40 Newton steps on `[0, 1]`. Identical to the routine in
-  /// `stochastic_rs_distributions::studentt::SimdStudentT::inv_cdf`.
+  /// Quantile $t_\nu^{-1}(p)$: a Cornish-Fisher normal seed refined by 40 Newton steps on `[0, 1]`,
+  /// identical to `stochastic_rs_distributions::studentt::SimdStudentT::quantile`.
   fn t_quantile(p: f64, nu: f64) -> f64 {
     if p <= 0.0 {
       return f64::NEG_INFINITY;

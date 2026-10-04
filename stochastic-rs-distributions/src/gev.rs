@@ -221,133 +221,135 @@ impl<T: SimdFloatExt> Distribution<T> for SimdGev<T> {
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdGev<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
     let xi = self.xi.to_f64().unwrap();
     let z = (x - mu) / sigma;
     if xi.abs() < 1e-12 {
       let m_z = -z;
-      (-z - m_z.exp()).exp() / sigma
+      Some((-z - m_z.exp()).exp() / sigma)
     } else {
       let t = 1.0 + xi * z;
       if t <= 0.0 {
-        return 0.0;
+        return Some(0.0);
       }
       let inv_xi = 1.0 / xi;
       let t_inv_xi = t.powf(-inv_xi);
       let t_pow = t.powf(-inv_xi - 1.0);
-      (1.0 / sigma) * t_pow * (-t_inv_xi).exp()
+      Some((1.0 / sigma) * t_pow * (-t_inv_xi).exp())
     }
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
     let xi = self.xi.to_f64().unwrap();
     let z = (x - mu) / sigma;
     if xi.abs() < 1e-12 {
-      (-(-z).exp()).exp()
+      Some((-(-z).exp()).exp())
     } else {
       let t = 1.0 + xi * z;
       if t <= 0.0 {
-        return if xi > 0.0 { 0.0 } else { 1.0 };
+        return Some(if xi > 0.0 { 0.0 } else { 1.0 });
       }
-      (-(t.powf(-1.0 / xi))).exp()
+      Some((-(t.powf(-1.0 / xi))).exp())
     }
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn quantile(&self, p: f64) -> Option<f64> {
     let (mu, sigma, xi) = self.params();
     let m_ln_p = -p.ln();
     if xi.abs() < 1e-12 {
-      mu - sigma * m_ln_p.ln()
+      Some(mu - sigma * m_ln_p.ln())
     } else {
-      mu + sigma / xi * (m_ln_p.powf(-xi) - 1.0)
+      Some(mu + sigma / xi * (m_ln_p.powf(-xi) - 1.0))
     }
   }
 
   /// $\mu + \sigma(\Gamma(1-\xi) - 1)/\xi$ for $\xi < 1$ ($\mu + \gamma_E\sigma$
   /// at $\xi = 0$); `+∞` for $\xi \ge 1$.
-  fn mean(&self) -> f64 {
+  fn mean(&self) -> Option<f64> {
     let (mu, sigma, xi) = self.params();
     if xi.abs() < 1e-12 {
-      mu + EULER_MASCHERONI * sigma
+      Some(mu + EULER_MASCHERONI * sigma)
     } else if xi < 1.0 {
-      mu + sigma * (crate::special::gamma(1.0 - xi) - 1.0) / xi
+      Some(mu + sigma * (crate::special::gamma(1.0 - xi) - 1.0) / xi)
     } else {
-      f64::INFINITY
+      Some(f64::INFINITY)
     }
   }
 
-  fn median(&self) -> f64 {
+  fn median(&self) -> Option<f64> {
     let (mu, sigma, xi) = self.params();
     if xi.abs() < 1e-12 {
-      mu - sigma * std::f64::consts::LN_2.ln()
+      Some(mu - sigma * std::f64::consts::LN_2.ln())
     } else {
-      mu + sigma * (std::f64::consts::LN_2.powf(-xi) - 1.0) / xi
+      Some(mu + sigma * (std::f64::consts::LN_2.powf(-xi) - 1.0) / xi)
     }
   }
 
-  fn mode(&self) -> f64 {
+  fn mode(&self) -> Option<f64> {
     let (mu, sigma, xi) = self.params();
     if xi.abs() < 1e-12 {
-      mu
+      Some(mu)
     } else {
-      mu + sigma * ((1.0 + xi).powf(-xi) - 1.0) / xi
+      Some(mu + sigma * ((1.0 + xi).powf(-xi) - 1.0) / xi)
     }
   }
 
   /// $\sigma^2(g_2 - g_1^2)/\xi^2$ with $g_k = \Gamma(1 - k\xi)$ for
   /// $\xi < 1/2$ ($\sigma^2\pi^2/6$ at $\xi = 0$); `+∞` for $\xi \ge 1/2$.
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let (_, sigma, xi) = self.params();
     if xi.abs() < 1e-12 {
-      sigma * sigma * std::f64::consts::PI.powi(2) / 6.0
+      Some(sigma * sigma * std::f64::consts::PI.powi(2) / 6.0)
     } else if xi < 0.5 {
       let g1 = crate::special::gamma(1.0 - xi);
       let g2 = crate::special::gamma(1.0 - 2.0 * xi);
-      sigma * sigma * (g2 - g1 * g1) / (xi * xi)
+      Some(sigma * sigma * (g2 - g1 * g1) / (xi * xi))
     } else {
-      f64::INFINITY
+      Some(f64::INFINITY)
     }
   }
 
   /// `NaN` for $\xi \ge 1/3$, where the third moment is undefined.
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     let (_, _, xi) = self.params();
     if xi.abs() < 1e-12 {
-      12.0 * 6.0_f64.sqrt() * APERY / std::f64::consts::PI.powi(3)
+      Some(12.0 * 6.0_f64.sqrt() * APERY / std::f64::consts::PI.powi(3))
     } else if xi < 1.0 / 3.0 {
       let g1 = crate::special::gamma(1.0 - xi);
       let g2 = crate::special::gamma(1.0 - 2.0 * xi);
       let g3 = crate::special::gamma(1.0 - 3.0 * xi);
-      xi.signum() * (g3 - 3.0 * g2 * g1 + 2.0 * g1.powi(3)) / (g2 - g1 * g1).powf(1.5)
+      Some(xi.signum() * (g3 - 3.0 * g2 * g1 + 2.0 * g1.powi(3)) / (g2 - g1 * g1).powf(1.5))
     } else {
-      f64::NAN
+      Some(f64::NAN)
     }
   }
 
   /// Excess kurtosis; `NaN` for $\xi \ge 1/4$.
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     let (_, _, xi) = self.params();
     if xi.abs() < 1e-12 {
-      12.0 / 5.0
+      Some(12.0 / 5.0)
     } else if xi < 0.25 {
       let g1 = crate::special::gamma(1.0 - xi);
       let g2 = crate::special::gamma(1.0 - 2.0 * xi);
       let g3 = crate::special::gamma(1.0 - 3.0 * xi);
       let g4 = crate::special::gamma(1.0 - 4.0 * xi);
-      (g4 - 4.0 * g3 * g1 + 6.0 * g2 * g1 * g1 - 3.0 * g1.powi(4)) / (g2 - g1 * g1).powi(2) - 3.0
+      Some(
+        (g4 - 4.0 * g3 * g1 + 6.0 * g2 * g1 * g1 - 3.0 * g1.powi(4)) / (g2 - g1 * g1).powi(2) - 3.0,
+      )
     } else {
-      f64::NAN
+      Some(f64::NAN)
     }
   }
 
   /// $\log\sigma + \gamma_E(\xi + 1) + 1$.
-  fn entropy(&self) -> f64 {
+  fn entropy(&self) -> Option<f64> {
     let (_, sigma, xi) = self.params();
-    sigma.ln() + EULER_MASCHERONI * (xi + 1.0) + 1.0
+    Some(sigma.ln() + EULER_MASCHERONI * (xi + 1.0) + 1.0)
   }
 }
 
@@ -401,7 +403,7 @@ mod tests {
   fn scalar_sample_matches_cdf() {
     for xi in [0.0, 0.3, -0.3] {
       let d = SimdGev::<f64>::new(0.0, 1.0, xi);
-      let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+      let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
       assert!(best > 0.01, "xi = {xi}: best p = {best}");
     }
   }
@@ -414,7 +416,9 @@ mod tests {
     let lo = -10.0_f64;
     let up = 30.0_f64;
     let h = (up - lo) / n as f64;
-    let s: f64 = (0..n).map(|k| g.pdf(lo + (k as f64 + 0.5) * h) * h).sum();
+    let s: f64 = (0..n)
+      .map(|k| g.pdf(lo + (k as f64 + 0.5) * h).unwrap() * h)
+      .sum();
     assert!((s - 1.0).abs() < 1e-3, "Gumbel PDF integrates to {s}");
   }
 
@@ -426,7 +430,7 @@ mod tests {
       // X = μ - σ/ξ · (1 - (-ln U)^{-ξ})
       let m_ln_u = -u.ln();
       let x = -(1.0 / 0.2) * (1.0 - m_ln_u.powf(-0.2));
-      let f = g.cdf(x);
+      let f = g.cdf(x).unwrap();
       assert!((f - u).abs() < 1e-10, "F({x}) = {f}, expected {u}");
     }
   }

@@ -33,7 +33,7 @@ fn perturbation_demo_ks_catches_shifted_mean() {
       let wrong_reference = SimdNormal::<f64>::new(shift, 1.0);
       kolmogorov_smirnov_test(
         ArrayView1::from(&xs),
-        |x| wrong_reference.cdf(x),
+        |x| wrong_reference.cdf(x).unwrap(),
         KolmogorovSmirnovConfig::default(),
       )
       .p_value
@@ -62,8 +62,13 @@ fn perturbation_demo_chi_square_catches_mismatched_rate() {
       let mut sampler = SimdPoisson::<u64>::new(true_lambda).seeded(&Deterministic::new(seed));
       let xs = (0..M).map(|_| sampler.sample() as i64).collect::<Vec<_>>();
       let wrong_reference = SimdPoisson::<u64>::new(wrong_lambda);
-      let (edges, expected_prob) =
-        pool_integer_bins(M as u64, k_lo, k_hi, |k| wrong_reference.cdf(k as f64), 5.0);
+      let (edges, expected_prob) = pool_integer_bins(
+        M as u64,
+        k_lo,
+        k_hi,
+        |k| wrong_reference.cdf(k as f64).unwrap(),
+        5.0,
+      );
       let observed = bin_observed(&xs, &edges);
       chi_square_gof_test(&observed, &expected_prob, ChiSquareGofConfig::default()).p_value
     })

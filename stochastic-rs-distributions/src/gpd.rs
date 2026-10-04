@@ -207,109 +207,115 @@ impl<T: SimdFloatExt> Distribution<T> for SimdGpd<T> {
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdGpd<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let (mu, sigma, xi) = self.params();
     let z = (x - mu) / sigma;
     if z < 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     if xi.abs() < 1e-12 {
-      (-z).exp() / sigma
+      Some((-z).exp() / sigma)
     } else {
       let t = 1.0 + xi * z;
       if t <= 0.0 {
-        return 0.0;
+        return Some(0.0);
       }
-      t.powf(-1.0 / xi - 1.0) / sigma
+      Some(t.powf(-1.0 / xi - 1.0) / sigma)
     }
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     let (mu, sigma, xi) = self.params();
     let z = (x - mu) / sigma;
     if z < 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     if xi.abs() < 1e-12 {
-      1.0 - (-z).exp()
+      Some(1.0 - (-z).exp())
     } else {
       let t = 1.0 + xi * z;
       if t <= 0.0 {
-        return 1.0;
+        return Some(1.0);
       }
-      1.0 - t.powf(-1.0 / xi)
+      Some(1.0 - t.powf(-1.0 / xi))
     }
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn quantile(&self, p: f64) -> Option<f64> {
     let (mu, sigma, xi) = self.params();
     if xi.abs() < 1e-12 {
-      mu - sigma * (1.0 - p).ln()
+      Some(mu - sigma * (1.0 - p).ln())
     } else {
-      mu + sigma / xi * ((1.0 - p).powf(-xi) - 1.0)
+      Some(mu + sigma / xi * ((1.0 - p).powf(-xi) - 1.0))
     }
   }
 
   /// `+∞` for ξ ≥ 1, where the mean integral diverges.
-  fn mean(&self) -> f64 {
+  fn mean(&self) -> Option<f64> {
     let (mu, sigma, xi) = self.params();
     if xi < 1.0 {
-      mu + sigma / (1.0 - xi)
+      Some(mu + sigma / (1.0 - xi))
     } else {
-      f64::INFINITY
+      Some(f64::INFINITY)
     }
   }
 
-  fn median(&self) -> f64 {
+  fn median(&self) -> Option<f64> {
     let (mu, sigma, xi) = self.params();
     if xi.abs() < 1e-12 {
-      mu + sigma * std::f64::consts::LN_2
+      Some(mu + sigma * std::f64::consts::LN_2)
     } else {
-      mu + sigma * (2.0_f64.powf(xi) - 1.0) / xi
+      Some(mu + sigma * (2.0_f64.powf(xi) - 1.0) / xi)
     }
   }
 
   /// The density is decreasing for ξ > −1, so the mode sits at μ; below
   /// that it rises to the upper end of the support.
-  fn mode(&self) -> f64 {
+  fn mode(&self) -> Option<f64> {
     let (mu, sigma, xi) = self.params();
-    if xi < -1.0 { mu - sigma / xi } else { mu }
+    if xi < -1.0 {
+      Some(mu - sigma / xi)
+    } else {
+      Some(mu)
+    }
   }
 
   /// `+∞` for ξ ≥ 1/2.
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let (_, sigma, xi) = self.params();
     if xi < 0.5 {
-      sigma * sigma / ((1.0 - xi).powi(2) * (1.0 - 2.0 * xi))
+      Some(sigma * sigma / ((1.0 - xi).powi(2) * (1.0 - 2.0 * xi)))
     } else {
-      f64::INFINITY
+      Some(f64::INFINITY)
     }
   }
 
   /// `NaN` for ξ ≥ 1/3, where the third moment is undefined.
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     let (_, _, xi) = self.params();
     if xi < 1.0 / 3.0 {
-      2.0 * (1.0 + xi) * (1.0 - 2.0 * xi).sqrt() / (1.0 - 3.0 * xi)
+      Some(2.0 * (1.0 + xi) * (1.0 - 2.0 * xi).sqrt() / (1.0 - 3.0 * xi))
     } else {
-      f64::NAN
+      Some(f64::NAN)
     }
   }
 
   /// Excess kurtosis; `NaN` for ξ ≥ 1/4.
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     let (_, _, xi) = self.params();
     if xi < 0.25 {
-      3.0 * (1.0 - 2.0 * xi) * (2.0 * xi * xi + xi + 3.0) / ((1.0 - 3.0 * xi) * (1.0 - 4.0 * xi))
-        - 3.0
+      Some(
+        3.0 * (1.0 - 2.0 * xi) * (2.0 * xi * xi + xi + 3.0) / ((1.0 - 3.0 * xi) * (1.0 - 4.0 * xi))
+          - 3.0,
+      )
     } else {
-      f64::NAN
+      Some(f64::NAN)
     }
   }
 
-  fn entropy(&self) -> f64 {
+  fn entropy(&self) -> Option<f64> {
     let (_, sigma, xi) = self.params();
-    sigma.ln() + xi + 1.0
+    Some(sigma.ln() + xi + 1.0)
   }
 }
 
@@ -341,7 +347,7 @@ mod tests {
     let mut xs = vec![0.0; n];
     d.seeded(&Deterministic::new(5)).fill_slice(&mut xs);
     let mean = xs.iter().sum::<f64>() / n as f64;
-    assert!((mean - d.mean()).abs() < 0.02, "mean = {mean}");
+    assert!((mean - d.mean().unwrap()).abs() < 0.02, "mean = {mean}");
     let (lo, hi) = d.support();
     assert_eq!((lo, hi), (1.0, 1.0 + 1.0 / 0.3));
     assert!(xs.iter().all(|x| *x >= lo && *x <= hi + 1e-9));
@@ -351,7 +357,7 @@ mod tests {
   fn scalar_sample_matches_cdf() {
     for xi in [0.0, 0.3, -0.3] {
       let d = SimdGpd::<f64>::new(0.0, 1.0, xi);
-      let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+      let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
       assert!(best > 0.01, "xi = {xi}: best p = {best}");
     }
   }
@@ -364,7 +370,9 @@ mod tests {
     let n = 200_000usize;
     let up = 5_000.0_f64;
     let h = up / n as f64;
-    let s: f64 = (0..n).map(|k| d.pdf((k as f64 + 0.5) * h) * h).sum();
+    let s: f64 = (0..n)
+      .map(|k| d.pdf((k as f64 + 0.5) * h).unwrap() * h)
+      .sum();
     assert!((s - 1.0).abs() < 2e-3, "PDF integrates to {s}");
   }
 
@@ -374,14 +382,14 @@ mod tests {
     for xi in [0.3_f64, 0.0, -0.3] {
       let d = SimdGpd::<f64>::new(0.5, 2.0, xi);
       for p in [0.05_f64, 0.3, 0.5, 0.7, 0.95] {
-        let x = d.inv_cdf(p);
+        let x = d.quantile(p).unwrap();
         assert!(
-          (d.cdf(x) - p).abs() < 1e-12,
+          (d.cdf(x).unwrap() - p).abs() < 1e-12,
           "xi={xi}: F(F^-1({p})) = {}",
-          d.cdf(x)
+          d.cdf(x).unwrap()
         );
       }
-      assert!((d.cdf(d.median()) - 0.5).abs() < 1e-12);
+      assert!((d.cdf(d.median().unwrap()).unwrap() - 0.5).abs() < 1e-12);
     }
   }
 
@@ -399,13 +407,13 @@ mod tests {
   #[test]
   fn gpd_moment_thresholds() {
     let d = SimdGpd::<f64>::new(0.0, 1.0, 0.3);
-    assert!(d.mean().is_finite() && d.variance().is_finite());
-    assert!(d.skewness().is_finite());
-    assert!(d.kurtosis().is_nan());
+    assert!(d.mean().unwrap().is_finite() && d.variance().unwrap().is_finite());
+    assert!(d.skewness().unwrap().is_finite());
+    assert!(d.kurtosis().unwrap().is_nan());
     let heavy = SimdGpd::<f64>::new(0.0, 1.0, 0.6);
-    assert!(heavy.mean().is_finite());
-    assert_eq!(heavy.variance(), f64::INFINITY);
-    assert!(heavy.skewness().is_nan());
+    assert!(heavy.mean().unwrap().is_finite());
+    assert_eq!(heavy.variance().unwrap(), f64::INFINITY);
+    assert!(heavy.skewness().unwrap().is_nan());
   }
 }
 

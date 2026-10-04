@@ -148,66 +148,66 @@ impl<T: SimdFloatExt> Distribution<T> for SimdWeibull<T> {
 }
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdWeibull<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let lambda = self.lambda.to_f64().unwrap();
     let k = self.k.to_f64().unwrap();
     if x < 0.0 {
-      0.0
+      Some(0.0)
     } else {
       let r = x / lambda;
-      (k / lambda) * r.powf(k - 1.0) * (-r.powf(k)).exp()
+      Some((k / lambda) * r.powf(k - 1.0) * (-r.powf(k)).exp())
     }
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     let lambda = self.lambda.to_f64().unwrap();
     let k = self.k.to_f64().unwrap();
     if x < 0.0 {
-      0.0
+      Some(0.0)
     } else {
-      1.0 - (-(x / lambda).powf(k)).exp()
+      Some(1.0 - (-(x / lambda).powf(k)).exp())
     }
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn quantile(&self, p: f64) -> Option<f64> {
     let lambda = self.lambda.to_f64().unwrap();
     let inv_k = self.inv_k.to_f64().unwrap();
-    lambda * (-(1.0 - p).ln()).powf(inv_k)
+    Some(lambda * (-(1.0 - p).ln()).powf(inv_k))
   }
 
-  fn mean(&self) -> f64 {
+  fn mean(&self) -> Option<f64> {
     use crate::special::gamma;
     let lambda = self.lambda.to_f64().unwrap();
     let inv_k = self.inv_k.to_f64().unwrap();
-    lambda * gamma(1.0 + inv_k)
+    Some(lambda * gamma(1.0 + inv_k))
   }
 
-  fn median(&self) -> f64 {
+  fn median(&self) -> Option<f64> {
     let lambda = self.lambda.to_f64().unwrap();
     let inv_k = self.inv_k.to_f64().unwrap();
-    lambda * (std::f64::consts::LN_2).powf(inv_k)
+    Some(lambda * (std::f64::consts::LN_2).powf(inv_k))
   }
 
-  fn mode(&self) -> f64 {
+  fn mode(&self) -> Option<f64> {
     let lambda = self.lambda.to_f64().unwrap();
     let k = self.k.to_f64().unwrap();
     if k > 1.0 {
-      lambda * ((k - 1.0) / k).powf(1.0 / k)
+      Some(lambda * ((k - 1.0) / k).powf(1.0 / k))
     } else {
-      0.0
+      Some(0.0)
     }
   }
 
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     use crate::special::gamma;
     let lambda = self.lambda.to_f64().unwrap();
     let inv_k = self.inv_k.to_f64().unwrap();
     let g1 = gamma(1.0 + inv_k);
     let g2 = gamma(1.0 + 2.0 * inv_k);
-    lambda * lambda * (g2 - g1 * g1)
+    Some(lambda * lambda * (g2 - g1 * g1))
   }
 
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     use crate::special::gamma;
     let inv_k = self.inv_k.to_f64().unwrap();
     let g1 = gamma(1.0 + inv_k);
@@ -216,10 +216,10 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdWeibull<T> {
     let mu = g1;
     let sigma2 = g2 - g1 * g1;
     let sigma = sigma2.sqrt();
-    (g3 - 3.0 * mu * sigma2 - mu.powi(3)) / sigma.powi(3)
+    Some((g3 - 3.0 * mu * sigma2 - mu.powi(3)) / sigma.powi(3))
   }
 
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     use crate::special::gamma;
     let inv_k = self.inv_k.to_f64().unwrap();
     let g1 = gamma(1.0 + inv_k);
@@ -227,14 +227,17 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdWeibull<T> {
     let g3 = gamma(1.0 + 3.0 * inv_k);
     let g4 = gamma(1.0 + 4.0 * inv_k);
     let sigma2 = g2 - g1 * g1;
-    (-6.0 * g1.powi(4) + 12.0 * g1 * g1 * g2 - 3.0 * g2 * g2 - 4.0 * g1 * g3 + g4) / sigma2.powi(2)
+    Some(
+      (-6.0 * g1.powi(4) + 12.0 * g1 * g1 * g2 - 3.0 * g2 * g2 - 4.0 * g1 * g3 + g4)
+        / sigma2.powi(2),
+    )
   }
 
-  fn entropy(&self) -> f64 {
+  fn entropy(&self) -> Option<f64> {
     let lambda = self.lambda.to_f64().unwrap();
     let inv_k = self.inv_k.to_f64().unwrap();
     let euler = 0.577_215_664_901_532_9_f64;
-    euler * (1.0 - inv_k) + (lambda * inv_k).ln() + 1.0
+    Some(euler * (1.0 - inv_k) + (lambda * inv_k).ln() + 1.0)
   }
 }
 
@@ -253,7 +256,7 @@ mod tests {
   #[test]
   fn scalar_sample_matches_cdf() {
     let d = SimdWeibull::<f64>::new(2.0, 1.5);
-    let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
     assert!(best > 0.01, "best p = {best}");
   }
 }

@@ -79,8 +79,8 @@ One rule for every crate, from the distributions up to the calibrators:
   model's domain, a Greek at an expired option, an implied volatility with no
   root: legitimate states, returned as `f64::NAN` from methods whose docs say
   when. A function that semantically must compute a number never returns 0
-  in its place; unimplemented closed forms `unimplemented!` with the type
-  and method named.
+  in its place; a closed form a law does not have is `None`
+  (`DistributionExt`), not a sentinel.
 - **Data-dependent failure → `Result::Err`.** The optimiser did not converge,
   a correlation matrix estimated from data is not positive-definite, a fit
   rejected its input, a vine could not be built from the supplied pairs:

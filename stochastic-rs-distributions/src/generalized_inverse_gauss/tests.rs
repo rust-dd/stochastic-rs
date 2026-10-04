@@ -123,37 +123,41 @@ fn matches_scipy_geninvgauss() {
     let d = SimdGig::<f64>::new(lambda, chi, psi);
     for (x, want) in [0.1, 0.5, 1.0, 2.0, 5.0].into_iter().zip(pdf) {
       assert!(
-        close(d.pdf(x), want, 1e-11),
+        close(d.pdf(x).unwrap(), want, 1e-11),
         "λ={lambda}: pdf({x}) = {}",
-        d.pdf(x)
+        d.pdf(x).unwrap()
       );
     }
     assert!(
-      close(d.mean(), stats[0], 1e-11),
+      close(d.mean().unwrap(), stats[0], 1e-11),
       "λ={lambda}: mean {}",
-      d.mean()
+      d.mean().unwrap()
     );
     assert!(
-      close(d.variance(), stats[1], 1e-10),
+      close(d.variance().unwrap(), stats[1], 1e-10),
       "λ={lambda}: variance {}",
-      d.variance()
+      d.variance().unwrap()
     );
     assert!(
-      close(d.skewness(), stats[2], 1e-9),
+      close(d.skewness().unwrap(), stats[2], 1e-9),
       "λ={lambda}: skewness {}",
-      d.skewness()
+      d.skewness().unwrap()
     );
     assert!(
-      close(d.kurtosis(), stats[3], 1e-8),
+      close(d.kurtosis().unwrap(), stats[3], 1e-8),
       "λ={lambda}: kurtosis {}",
-      d.kurtosis()
+      d.kurtosis().unwrap()
     );
     assert!(
-      close(d.mode(), stats[4], 1e-12),
+      close(d.mode().unwrap(), stats[4], 1e-12),
       "λ={lambda}: mode {}",
-      d.mode()
+      d.mode().unwrap()
     );
-    assert!(close(d.moment_generating_function(0.0), 1.0, 1e-12));
+    assert!(close(
+      d.moment_generating_function(0.0).unwrap(),
+      1.0,
+      1e-12
+    ));
   }
 }
 
@@ -177,14 +181,14 @@ fn sample_moments_match_closed_forms_in_every_regime() {
     let mean = xs.iter().sum::<f64>() / n as f64;
     let var = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64;
     assert!(
-      (mean - d.mean()).abs() / d.mean() < 0.01,
+      (mean - d.mean().unwrap()).abs() / d.mean().unwrap() < 0.01,
       "λ={lambda}: mean {mean} vs {}",
-      d.mean()
+      d.mean().unwrap()
     );
     assert!(
-      (var - d.variance()).abs() / d.variance() < 0.05,
+      (var - d.variance().unwrap()).abs() / d.variance().unwrap() < 0.05,
       "λ={lambda}: var {var} vs {}",
-      d.variance()
+      d.variance().unwrap()
     );
   }
 }
@@ -194,7 +198,9 @@ fn pdf_integrates_to_one() {
   let d = SimdGig::<f64>::new(0.3, 2.0, 0.5);
   let (hi, n) = (80.0_f64, 400_000usize);
   let h = hi / n as f64;
-  let s: f64 = (0..n).map(|k| d.pdf((k as f64 + 0.5) * h) * h).sum();
+  let s: f64 = (0..n)
+    .map(|k| d.pdf((k as f64 + 0.5) * h).unwrap() * h)
+    .sum();
   assert!((s - 1.0).abs() < 1e-6, "integral = {s}");
 }
 

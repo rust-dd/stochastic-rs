@@ -251,7 +251,7 @@ mod tests {
         dist.seeded(&Deterministic::new(seed)).fill_slice(&mut x);
         kolmogorov_smirnov_test(
           ArrayView1::from(&x),
-          |v| dist.cdf(v),
+          |v| dist.cdf(v).unwrap(),
           KolmogorovSmirnovConfig::default(),
         )
         .p_value
@@ -272,7 +272,7 @@ mod tests {
     let normal = SimdNormal::<f64>::new(0.0, 1.0);
     let res = kolmogorov_smirnov_test(
       ArrayView1::from(&x),
-      |v| normal.cdf(v),
+      |v| normal.cdf(v).unwrap(),
       KolmogorovSmirnovConfig::default(),
     );
     assert!(res.reject, "expected rejection, got {res:?}");

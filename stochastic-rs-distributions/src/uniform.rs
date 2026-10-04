@@ -159,80 +159,84 @@ impl<T: SimdFloatExt> Distribution<T> for SimdUniform<T> {
 }
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdUniform<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let a = self.low.to_f64().unwrap();
     let b = self.high.to_f64().unwrap();
-    if x >= a && x <= b { 1.0 / (b - a) } else { 0.0 }
-  }
-
-  fn cdf(&self, x: f64) -> f64 {
-    let a = self.low.to_f64().unwrap();
-    let b = self.high.to_f64().unwrap();
-    if x < a {
-      0.0
-    } else if x >= b {
-      1.0
+    if x >= a && x <= b {
+      Some(1.0 / (b - a))
     } else {
-      (x - a) / (b - a)
+      Some(0.0)
     }
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
+    let a = self.low.to_f64().unwrap();
+    let b = self.high.to_f64().unwrap();
+    if x < a {
+      Some(0.0)
+    } else if x >= b {
+      Some(1.0)
+    } else {
+      Some((x - a) / (b - a))
+    }
+  }
+
+  fn quantile(&self, p: f64) -> Option<f64> {
     let a = self.low.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
-    a + p * scale
+    Some(a + p * scale)
   }
 
-  fn mean(&self) -> f64 {
-    self.low.to_f64().unwrap() + 0.5 * self.scale.to_f64().unwrap()
+  fn mean(&self) -> Option<f64> {
+    Some(self.low.to_f64().unwrap() + 0.5 * self.scale.to_f64().unwrap())
   }
 
-  fn median(&self) -> f64 {
+  fn median(&self) -> Option<f64> {
     self.mean()
   }
 
-  fn mode(&self) -> f64 {
+  fn mode(&self) -> Option<f64> {
     // Any point in [a, b] is a mode; report the midpoint.
     self.mean()
   }
 
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let scale = self.scale.to_f64().unwrap();
-    scale * scale / 12.0
+    Some(scale * scale / 12.0)
   }
 
-  fn skewness(&self) -> f64 {
-    0.0
+  fn skewness(&self) -> Option<f64> {
+    Some(0.0)
   }
 
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     // Excess kurtosis.
-    -6.0 / 5.0
+    Some(-6.0 / 5.0)
   }
 
-  fn entropy(&self) -> f64 {
-    self.scale.to_f64().unwrap().ln()
+  fn entropy(&self) -> Option<f64> {
+    Some(self.scale.to_f64().unwrap().ln())
   }
 
-  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+  fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
     // φ(t) = (e^{itb} - e^{ita}) / (it(b-a))
     let a = self.low.to_f64().unwrap();
     let b = self.high.to_f64().unwrap();
     if t == 0.0 {
-      return num_complex::Complex64::new(1.0, 0.0);
+      return Some(num_complex::Complex64::new(1.0, 0.0));
     }
     let eitb = num_complex::Complex64::new(0.0, t * b).exp();
     let eita = num_complex::Complex64::new(0.0, t * a).exp();
-    (eitb - eita) / num_complex::Complex64::new(0.0, t * (b - a))
+    Some((eitb - eita) / num_complex::Complex64::new(0.0, t * (b - a)))
   }
 
-  fn moment_generating_function(&self, t: f64) -> f64 {
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
     let a = self.low.to_f64().unwrap();
     let b = self.high.to_f64().unwrap();
     if t == 0.0 {
-      return 1.0;
+      return Some(1.0);
     }
-    ((b * t).exp() - (a * t).exp()) / (t * (b - a))
+    Some(((b * t).exp() - (a * t).exp()) / (t * (b - a)))
   }
 }
 
@@ -251,7 +255,7 @@ mod tests {
   #[test]
   fn scalar_sample_matches_cdf() {
     let d = SimdUniform::<f64>::new(-2.0, 3.0);
-    let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
     assert!(best > 0.01, "best p = {best}");
   }
 

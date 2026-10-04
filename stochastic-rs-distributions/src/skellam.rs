@@ -121,25 +121,25 @@ impl Distribution<i64> for SimdSkellam {
 impl DistributionExt for SimdSkellam {
   /// PMF $P(X = k)$. The argument is a float by convention; only the
   /// rounded integer part is meaningful.
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let k = x.round();
     let gap = self.mu1.sqrt() - self.mu2.sqrt();
     let z = 2.0 * (self.mu1 * self.mu2).sqrt();
-    (0.5 * k * (self.mu1 / self.mu2).ln() - gap * gap + ln_bessel_ie(k.abs(), z)).exp()
+    Some((0.5 * k * (self.mu1 / self.mu2).ln() - gap * gap + ln_bessel_ie(k.abs(), z)).exp())
   }
 
   /// CDF via summation of the PMF on a truncated range. Skellam tails
   /// drop super-exponentially so summing ±10·sqrt(μ₁+μ₂) lanes is
   /// numerically tight.
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     let k_max = x.floor() as i64;
     let radius = (10.0 * (self.mu1 + self.mu2).sqrt()) as i64;
     let lower = -radius;
     let mut s = 0.0_f64;
     for k in lower..=k_max {
-      s += self.pdf(k as f64);
+      s += self.pdf(k as f64)?;
     }
-    s.clamp(0.0, 1.0)
+    Some(s.clamp(0.0, 1.0))
   }
 }
 
@@ -188,7 +188,7 @@ mod tests {
     let s = SimdSkellam::new(2.0, 2.0);
     let mut total = 0.0;
     for k in -30..=30 {
-      total += s.pdf(k as f64);
+      total += s.pdf(k as f64).unwrap();
     }
     assert!(
       (total - 1.0).abs() < 1e-6,
@@ -207,7 +207,7 @@ mod tests {
       ((400.0, 300.0, 100.0), 0.015_081_203_817_903_906),
       ((400.0, 300.0, 40.0), 0.001_147_244_606_054_886_6),
     ] {
-      let got = SimdSkellam::new(mu1, mu2).pdf(k);
+      let got = SimdSkellam::new(mu1, mu2).pdf(k).unwrap();
       assert!(
         ((got - want) / want).abs() < 1e-12,
         "Skellam({mu1}, {mu2}) pmf({k}) = {got}, want {want}"
@@ -219,7 +219,7 @@ mod tests {
   #[test]
   fn skellam_cdf_tail_unity() {
     let s = SimdSkellam::new(2.0, 1.5);
-    let c = s.cdf(50.0);
+    let c = s.cdf(50.0).unwrap();
     assert!((c - 1.0).abs() < 1e-6, "Skellam CDF at +∞ ≈ {c}");
   }
 
@@ -227,7 +227,7 @@ mod tests {
   #[test]
   fn scalar_sample_matches_cdf() {
     let d = SimdSkellam::new(9.0, 5.0);
-    let best = scalar_chi_square_best_p(&d, (-26, 34), |k| d.cdf(k as f64));
+    let best = scalar_chi_square_best_p(&d, (-26, 34), |k| d.cdf(k as f64).unwrap());
     assert!(best > 0.01, "best p = {best}");
   }
 }

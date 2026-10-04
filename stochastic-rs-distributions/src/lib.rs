@@ -28,7 +28,7 @@
 //! approximately. [`alpha_stable::SimdAlphaStable`] generalizes further
 //! (`α=2` is [`normal::SimdNormal`], `α=1, β=0` is
 //! [`cauchy::SimdCauchy`], again exactly), but at general `α` it has no
-//! closed-form `pdf`/`cdf`/`inv_cdf` at all and often infinite variance —
+//! closed-form `pdf`/`cdf`/`quantile` at all and often infinite variance —
 //! reach for it only when the stable/self-similar-sum property itself
 //! matters, not merely "heavy tails." [`normal_inverse_gauss::SimdNormalInverseGauss`]
 //! is the usual alternative when you want a *skewed* heavy tail with
@@ -121,18 +121,12 @@
 //! family — it pairs two independent distributions as the real and
 //! imaginary parts of a `Complex<T>` draw.
 //!
-//! ## `DistributionExt` coverage is uneven — check before you rely on it
+//! ## `DistributionExt` answers `None` where a law has no closed form
 //!
-//! A type "implementing [`crate::traits::DistributionExt`]" does not mean
-//! every method has a closed form. [`ged::SimdGed`] and
-//! [`skellam::SimdSkellam`] each override only `pdf`/`cdf`; the four
-//! [`truncated`] wrappers do the same. None of these six expose
-//! `mean`/`variance`/`inv_cdf`/etc. — calling them panics with the
-//! default `unimplemented!("... not implemented for {type_name}")`.
-//! [`dirichlet::SimdDirichlet`], [`wishart::SimdWishart`],
-//! [`non_central_chi_squared::SimdNonCentralChiSquared`] and
-//! [`complex::ComplexDistribution`] implement none of it at all — see the
-//! cluster notes above for what each offers instead. If you need a
+//! Every method returns `Option`: [`ged::SimdGed`], [`skellam::SimdSkellam`] and the four
+//! [`truncated`] wrappers answer `pdf`/`cdf` and `None` elsewhere until their closed forms land;
+//! [`dirichlet::SimdDirichlet`], [`wishart::SimdWishart`], [`non_central_chi_squared::SimdNonCentralChiSquared`]
+//! and [`complex::ComplexDistribution`] do not implement the trait at all (see the cluster notes above). If you need a
 //! specific moment programmatically rather than deriving it by hand,
 //! confirm the override exists (`cargo doc -p stochastic-rs-distributions`
 //! renders exactly what's overridden) before depending on it.

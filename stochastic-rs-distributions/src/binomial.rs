@@ -235,14 +235,14 @@ impl<T: PrimInt + Send + Sync + 'static> Distribution<T> for SimdBinomial<T> {
 }
 
 impl<T: PrimInt> crate::traits::DistributionExt for SimdBinomial<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     if x < 0.0 || x.fract() != 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let k = x as i64;
     let n = self.n as i64;
     if k > n {
-      return 0.0;
+      return Some(0.0);
     }
     // P(X=k) = exp( ln Γ(n+1) − ln Γ(k+1) − ln Γ(n−k+1) + k ln p + (n−k) ln(1−p) )
     let log_pmf = crate::special::ln_gamma((n + 1) as f64)
@@ -250,28 +250,32 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdBinomial<T> {
       - crate::special::ln_gamma((n - k + 1) as f64)
       + k as f64 * self.p.ln()
       + (n - k) as f64 * (1.0 - self.p).ln();
-    log_pmf.exp()
+    Some(log_pmf.exp())
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     if x < 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let k = x.floor() as i64;
     let n = self.n as i64;
     if k >= n {
-      return 1.0;
+      return Some(1.0);
     }
     // CDF(k) = I_{1−p}(n−k, k+1)
-    crate::special::beta_i((n - k) as f64, (k + 1) as f64, 1.0 - self.p)
+    Some(crate::special::beta_i(
+      (n - k) as f64,
+      (k + 1) as f64,
+      1.0 - self.p,
+    ))
   }
 
-  fn inv_cdf(&self, prob: f64) -> f64 {
+  fn quantile(&self, prob: f64) -> Option<f64> {
     if prob <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     if prob >= 1.0 {
-      return self.n as f64;
+      return Some(self.n as f64);
     }
     // Linear scan from a Gaussian-approximation seed.
     let mean = self.n as f64 * self.p;
@@ -280,51 +284,51 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdBinomial<T> {
       .round()
       .clamp(0.0, self.n as f64) as i64;
     // Walk up if cdf(k) < prob, walk down if cdf(k−1) ≥ prob.
-    while self.cdf(k as f64) < prob && k < self.n as i64 {
+    while self.cdf(k as f64) < Some(prob) && k < self.n as i64 {
       k += 1;
     }
-    while k > 0 && self.cdf((k - 1) as f64) >= prob {
+    while k > 0 && self.cdf((k - 1) as f64) >= Some(prob) {
       k -= 1;
     }
-    k as f64
+    Some(k as f64)
   }
 
-  fn mean(&self) -> f64 {
-    self.n as f64 * self.p
+  fn mean(&self) -> Option<f64> {
+    Some(self.n as f64 * self.p)
   }
 
-  fn median(&self) -> f64 {
+  fn median(&self) -> Option<f64> {
     // Either floor(np) or ceil(np); pick the integer-valued median.
-    (self.n as f64 * self.p).floor()
+    Some((self.n as f64 * self.p).floor())
   }
 
-  fn mode(&self) -> f64 {
-    ((self.n as f64 + 1.0) * self.p).floor()
+  fn mode(&self) -> Option<f64> {
+    Some(((self.n as f64 + 1.0) * self.p).floor())
   }
 
-  fn variance(&self) -> f64 {
-    self.n as f64 * self.p * (1.0 - self.p)
+  fn variance(&self) -> Option<f64> {
+    Some(self.n as f64 * self.p * (1.0 - self.p))
   }
 
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     let q = 1.0 - self.p;
-    (q - self.p) / (self.n as f64 * self.p * q).sqrt()
+    Some((q - self.p) / (self.n as f64 * self.p * q).sqrt())
   }
 
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     let q = 1.0 - self.p;
-    (1.0 - 6.0 * self.p * q) / (self.n as f64 * self.p * q)
+    Some((1.0 - 6.0 * self.p * q) / (self.n as f64 * self.p * q))
   }
 
-  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+  fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
     // φ(t) = (1 - p + p e^{it})^n
     let z = num_complex::Complex64::new(1.0 - self.p, 0.0)
       + num_complex::Complex64::new(0.0, t).exp().scale(self.p);
-    z.powi(self.n as i32)
+    Some(z.powi(self.n as i32))
   }
 
-  fn moment_generating_function(&self, t: f64) -> f64 {
-    (1.0 - self.p + self.p * t.exp()).powi(self.n as i32)
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    Some((1.0 - self.p + self.p * t.exp()).powi(self.n as i32))
   }
 }
 
@@ -365,8 +369,8 @@ mod tests {
     let mut buf = vec![0u32; 50_000];
     dist.seeded(&Deterministic::new(42)).fill_slice(&mut buf);
     let (mean, var) = moments(&buf);
-    let expected_mean = dist.mean();
-    let expected_var = dist.variance();
+    let expected_mean = dist.mean().unwrap();
+    let expected_var = dist.variance().unwrap();
     assert!(
       (mean - expected_mean).abs() < 0.05,
       "mean drift: got {mean}, expected {expected_mean}"
@@ -385,8 +389,8 @@ mod tests {
     let mut buf = vec![0u32; 50_000];
     dist.seeded(&Deterministic::new(7)).fill_slice(&mut buf);
     let (mean, var) = moments(&buf);
-    let expected_mean = dist.mean();
-    let expected_var = dist.variance();
+    let expected_mean = dist.mean().unwrap();
+    let expected_var = dist.variance().unwrap();
     assert!(
       (mean - expected_mean).abs() < 0.5,
       "wait-method mean drift: got {mean}, expected {expected_mean}"
@@ -406,8 +410,8 @@ mod tests {
     dist.seeded(&Deterministic::new(11)).fill_slice(&mut buf);
     let (mean, var) = moments(&buf);
     assert!(buf.iter().all(|&x| x <= n));
-    assert!((mean - dist.mean()).abs() < 0.5);
-    assert!((var / dist.variance() - 1.0).abs() < 0.15);
+    assert!((mean - dist.mean().unwrap()).abs() < 0.5);
+    assert!((var / dist.variance().unwrap() - 1.0).abs() < 0.15);
   }
 
   #[test]
@@ -428,14 +432,14 @@ mod tests {
     let (mean, var) = moments(&buf);
     assert!(buf.iter().all(|&x| x <= n));
     assert!(
-      (mean - dist.mean()).abs() < 0.5,
+      (mean - dist.mean().unwrap()).abs() < 0.5,
       "BTRS mean drift: got {mean}, expected {}",
-      dist.mean()
+      dist.mean().unwrap()
     );
     assert!(
-      (var / dist.variance() - 1.0).abs() < 0.05,
+      (var / dist.variance().unwrap() - 1.0).abs() < 0.05,
       "BTRS variance drift: got {var}, expected {}",
-      dist.variance()
+      dist.variance().unwrap()
     );
   }
 
@@ -452,7 +456,7 @@ mod tests {
       counts[x as usize] += 1;
     }
     for (k, _) in counts.iter().enumerate().take(50 + 1).skip(30) {
-      let pmf = dist.pdf(k as f64);
+      let pmf = dist.pdf(k as f64).unwrap();
       let expected = pmf * SAMPLES as f64;
       let got = counts[k] as f64;
       let se = (expected * (1.0 - pmf)).sqrt();
@@ -468,7 +472,7 @@ mod tests {
   fn scalar_sample_matches_cdf() {
     for (n, p, window) in [(60, 0.4, (0, 54)), (15, 0.3, (0, 15))] {
       let d = SimdBinomial::<u32>::new(n, p);
-      let best = scalar_chi_square_best_p(&d, window, |k| d.cdf(k as f64));
+      let best = scalar_chi_square_best_p(&d, window, |k| d.cdf(k as f64).unwrap());
       assert!(best > 0.01, "Binomial({n}, {p}): best p = {best}");
     }
   }

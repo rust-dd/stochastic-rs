@@ -235,21 +235,12 @@ $$ \varphi(t) = \dots $$
 |---------------|---------------------------------------------------|
 | Mean          | $\dots$                                           |
 | Variance      | $\dots$                                           |
-| Skewness      | $\dots$ (or "**not implemented** — see notes")    |
+| Skewness      | $\dots$ (or "`None` — no closed form")            |
 | Excess kurtosis | $\dots$                                          |
 
-> **DistributionExt status note**: the coverage figure lives in the root
-> `CLAUDE.md` and the module docs of `stochastic-rs-distributions/src/lib.rs`
-> (33 of the 37 distribution types implement the trait; 6 of those override
-> only `pdf` / `cdf`, 9 carry named no-closed-form `unimplemented!()` on
-> specific methods). **Re-derive it before quoting it** — a single-line
-> `impl ... DistributionExt` grep undercounts, because three impl headers
-> wrap onto a second line (CLAUDE.md gives the `-A1` command). Cite the
-> source, not a number you counted in passing.
+> **DistributionExt status note**: every method returns `Option`; `stochastic-rs-distributions/tests/distribution_ext_coverage.rs` pins which cells are `Some` per type — read it instead of counting impls (a single-line `impl ... DistributionExt` grep undercounts because three headers wrap; CLAUDE.md gives the `-A1` command).
 >
-> If a specific moment has no closed form, mark it explicitly as
-> `unimplemented!` with the anchored message the trait mandates, and say
-> so on the page. Never leave it as a silent zero.
+> A moment with no closed form is `None`, never a silent zero; say so on the page.
 
 ## Examples
 

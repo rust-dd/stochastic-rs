@@ -333,77 +333,60 @@ impl<T: SimdFloatExt> Distribution<T> for SimdAlphaStable<T> {
 }
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdAlphaStable<T> {
-  /// No closed form. Use numerical CF inversion (FFT or quadrature) on top.
-  fn pdf(&self, _x: f64) -> f64 {
-    unimplemented!(
-      "DistributionExt::pdf for SimdAlphaStable has no closed form (use numerical Fourier inversion of `characteristic_function`)"
-    )
-  }
-
-  fn cdf(&self, _x: f64) -> f64 {
-    unimplemented!(
-      "DistributionExt::cdf for SimdAlphaStable has no closed form (use numerical Fourier inversion of `characteristic_function`)"
-    )
-  }
-
-  fn inv_cdf(&self, _p: f64) -> f64 {
-    unimplemented!("DistributionExt::inv_cdf for SimdAlphaStable has no closed form")
-  }
-
-  fn mean(&self) -> f64 {
+  fn mean(&self) -> Option<f64> {
     let alpha = self.alpha.to_f64().unwrap();
     if alpha > 1.0 {
-      self.location.to_f64().unwrap()
+      Some(self.location.to_f64().unwrap())
     } else {
-      f64::NAN
+      Some(f64::NAN)
     }
   }
 
-  fn median(&self) -> f64 {
+  fn median(&self) -> Option<f64> {
     // For α-stable, the median equals the location parameter when β = 0.
     if self.beta.to_f64().unwrap() == 0.0 {
-      self.location.to_f64().unwrap()
+      Some(self.location.to_f64().unwrap())
     } else {
-      f64::NAN
+      Some(f64::NAN)
     }
   }
 
-  fn mode(&self) -> f64 {
+  fn mode(&self) -> Option<f64> {
     if self.beta.to_f64().unwrap() == 0.0 {
-      self.location.to_f64().unwrap()
+      Some(self.location.to_f64().unwrap())
     } else {
-      f64::NAN
+      Some(f64::NAN)
     }
   }
 
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let alpha = self.alpha.to_f64().unwrap();
     if alpha == 2.0 {
       // Gaussian limit: σ² = 2 c²
       let c = self.scale.to_f64().unwrap();
-      2.0 * c * c
+      Some(2.0 * c * c)
     } else {
-      f64::INFINITY
+      Some(f64::INFINITY)
     }
   }
 
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     if self.alpha.to_f64().unwrap() == 2.0 {
-      0.0
+      Some(0.0)
     } else {
-      f64::NAN
+      Some(f64::NAN)
     }
   }
 
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     if self.alpha.to_f64().unwrap() == 2.0 {
-      0.0
+      Some(0.0)
     } else {
-      f64::NAN
+      Some(f64::NAN)
     }
   }
 
-  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+  fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
     // Standard S1 parameterisation:
     //   φ(t) = exp{ iμt − |c·t|^α [ 1 − iβ sgn(t) Φ ] }
     // where Φ = tan(πα/2) for α ≠ 1, and Φ = −(2/π) ln|t| for α = 1.
@@ -420,18 +403,18 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdAlphaStable<T> {
     };
     let bracket = num_complex::Complex64::new(1.0, -beta * sgn_t * phi);
     let exponent = num_complex::Complex64::new(0.0, mu * t) - bracket.scale(abs_ct_alpha);
-    exponent.exp()
+    Some(exponent.exp())
   }
 
-  fn moment_generating_function(&self, _t: f64) -> f64 {
+  fn moment_generating_function(&self, _t: f64) -> Option<f64> {
     if self.alpha.to_f64().unwrap() == 2.0 {
       // Gaussian limit: M(t) = exp(μt + c²t²)
       let mu = self.location.to_f64().unwrap();
       let c = self.scale.to_f64().unwrap();
-      (mu * _t + c * c * _t * _t).exp()
+      Some((mu * _t + c * c * _t * _t).exp())
     } else {
       // MGF only exists in the Gaussian limit (α = 2).
-      f64::NAN
+      Some(f64::NAN)
     }
   }
 }
@@ -498,7 +481,11 @@ mod tests {
     ] {
       let d = SimdAlphaStable::<f64>::new(alpha, beta, scale, location);
       let xs = scalar_draws(&d, 11, 200_000);
-      assert_ecf_matches(&xs, |u| d.characteristic_function(u), &format!("α={alpha}"));
+      assert_ecf_matches(
+        &xs,
+        |u| d.characteristic_function(u).unwrap(),
+        &format!("α={alpha}"),
+      );
     }
   }
 
@@ -507,14 +494,14 @@ mod tests {
     let d = SimdAlphaStable::<f64>::new(1.0, 0.5, 2.0, 0.3);
     let mut xs = vec![0.0; 200_000];
     d.seeded(&Deterministic::new(5)).fill_slice(&mut xs);
-    assert_ecf_matches(&xs, |u| d.characteristic_function(u), "seeded α=1");
+    assert_ecf_matches(&xs, |u| d.characteristic_function(u).unwrap(), "seeded α=1");
   }
 
   #[test]
   fn scalar_gaussian_index_matches_the_normal_cdf() {
     let d = SimdAlphaStable::<f64>::new(2.0, 0.0, 1.0, 0.0);
     let normal = SimdNormal::<f64>::new(0.0, std::f64::consts::SQRT_2);
-    let best = scalar_ks_best_p(&d, |x| normal.cdf(x));
+    let best = scalar_ks_best_p(&d, |x| normal.cdf(x).unwrap());
     assert!(best > 0.01, "best p = {best}");
   }
 }

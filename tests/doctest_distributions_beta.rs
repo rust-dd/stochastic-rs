@@ -16,6 +16,6 @@ fn beta_bounded_support_and_moments() {
 
   // E[X] = alpha / (alpha + beta) = 2/7
   // Var  = alpha*beta / ((alpha+beta)^2 * (alpha+beta+1)) = 10/(49*8)
-  assert!((d.mean() - 2.0 / 7.0).abs() < 1e-12);
-  assert!((d.variance() - 10.0 / (49.0 * 8.0)).abs() < 1e-12);
+  assert!((d.mean().unwrap() - 2.0 / 7.0).abs() < 1e-12);
+  assert!((d.variance().unwrap() - 10.0 / (49.0 * 8.0)).abs() < 1e-12);
 }

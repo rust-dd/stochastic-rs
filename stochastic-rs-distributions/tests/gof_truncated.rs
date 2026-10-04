@@ -30,7 +30,7 @@ fn simd_truncated_normal_matches_own_cdf() {
     let xs = (0..N).map(|_| stream.sample()).collect::<Vec<_>>();
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -43,7 +43,7 @@ fn simd_truncated_exp_matches_own_cdf() {
     let xs = (0..N).map(|_| stream.sample()).collect::<Vec<_>>();
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -56,7 +56,7 @@ fn simd_truncated_beta_matches_own_cdf() {
     let xs = (0..N).map(|_| stream.sample()).collect::<Vec<_>>();
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -69,7 +69,7 @@ fn simd_truncated_gamma_matches_own_cdf() {
     let xs = (0..N).map(|_| stream.sample()).collect::<Vec<_>>();
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }

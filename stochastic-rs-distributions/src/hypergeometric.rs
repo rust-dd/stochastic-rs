@@ -172,9 +172,9 @@ impl<T: PrimInt + Send + Sync + 'static> Distribution<T> for SimdHypergeometric<
 }
 
 impl<T: PrimInt> crate::traits::DistributionExt for SimdHypergeometric<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     if x < 0.0 || x.fract() != 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let k = x as i64;
     let big_n = self.n_total as i64;
@@ -183,7 +183,7 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdHypergeometric<T> {
     let k_min = (n - (big_n - big_k)).max(0);
     let k_max = n.min(big_k);
     if k < k_min || k > k_max {
-      return 0.0;
+      return Some(0.0);
     }
     // P = C(K, k) C(N−K, n−k) / C(N, n) — compute via log-Γ for stability.
     let lg = |z: i64| crate::special::ln_gamma((z + 1) as f64);
@@ -191,12 +191,12 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdHypergeometric<T> {
       - lg(n - k)
       - lg(big_n - big_k - (n - k))
       - (lg(big_n) - lg(n) - lg(big_n - n));
-    log_pmf.exp()
+    Some(log_pmf.exp())
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     if x < 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let k = x.floor() as i64;
     let big_n = self.n_total as i64;
@@ -205,72 +205,67 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdHypergeometric<T> {
     let k_min = (n - (big_n - big_k)).max(0);
     let k_max = n.min(big_k);
     if k >= k_max {
-      return 1.0;
+      return Some(1.0);
     }
     // No closed form — sum the pmf from k_min to ⌊x⌋.
     let mut acc = 0.0;
     for j in k_min..=k {
-      acc += self.pdf(j as f64);
+      acc += self.pdf(j as f64)?;
     }
-    acc.clamp(0.0, 1.0)
+    Some(acc.clamp(0.0, 1.0))
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn quantile(&self, p: f64) -> Option<f64> {
     let big_n = self.n_total as i64;
     let big_k = self.k_success as i64;
     let n = self.n_draws as i64;
     let k_min = (n - (big_n - big_k)).max(0);
     let k_max = n.min(big_k);
     if p <= 0.0 {
-      return k_min as f64;
+      return Some(k_min as f64);
     }
     if p >= 1.0 {
-      return k_max as f64;
+      return Some(k_max as f64);
     }
     let mut acc = 0.0;
     for j in k_min..=k_max {
-      acc += self.pdf(j as f64);
+      acc += self.pdf(j as f64)?;
       if acc >= p {
-        return j as f64;
+        return Some(j as f64);
       }
     }
-    k_max as f64
+    Some(k_max as f64)
   }
 
-  fn mean(&self) -> f64 {
-    self.n_draws as f64 * self.k_success as f64 / self.n_total as f64
+  fn mean(&self) -> Option<f64> {
+    Some(self.n_draws as f64 * self.k_success as f64 / self.n_total as f64)
   }
 
-  fn median(&self) -> f64 {
-    self.mean().floor()
+  fn median(&self) -> Option<f64> {
+    Some(self.mean()?.floor())
   }
 
-  fn mode(&self) -> f64 {
+  fn mode(&self) -> Option<f64> {
     let n = self.n_draws as f64;
     let k = self.k_success as f64;
     let big_n = self.n_total as f64;
-    ((n + 1.0) * (k + 1.0) / (big_n + 2.0)).floor()
+    Some(((n + 1.0) * (k + 1.0) / (big_n + 2.0)).floor())
   }
 
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let n = self.n_draws as f64;
     let k = self.k_success as f64;
     let big_n = self.n_total as f64;
-    n * k * (big_n - k) * (big_n - n) / (big_n * big_n * (big_n - 1.0))
+    Some(n * k * (big_n - k) * (big_n - n) / (big_n * big_n * (big_n - 1.0)))
   }
 
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     let n = self.n_draws as f64;
     let k = self.k_success as f64;
     let big_n = self.n_total as f64;
-    ((big_n - 2.0 * k) * (big_n - 1.0).sqrt() * (big_n - 2.0 * n))
-      / ((n * k * (big_n - k) * (big_n - n)).sqrt() * (big_n - 2.0))
-  }
-
-  /// MGF involves the hypergeometric function; not implemented in closed form.
-  fn moment_generating_function(&self, _t: f64) -> f64 {
-    unimplemented!(
-      "DistributionExt::moment_generating_function for SimdHypergeometric requires the Gauss hypergeometric ₂F₁; not implemented"
+    Some(
+      ((big_n - 2.0 * k) * (big_n - 1.0).sqrt() * (big_n - 2.0 * n))
+        / ((n * k * (big_n - k) * (big_n - n)).sqrt() * (big_n - 2.0)),
     )
   }
 }
@@ -310,14 +305,14 @@ mod tests {
       / n;
     assert!(buf.iter().all(|&x| x <= 100));
     assert!(
-      (mean - dist.mean()).abs() < 0.1,
+      (mean - dist.mean().unwrap()).abs() < 0.1,
       "mean drift: {mean} vs {}",
-      dist.mean()
+      dist.mean().unwrap()
     );
     assert!(
-      (var / dist.variance() - 1.0).abs() < 0.05,
+      (var / dist.variance().unwrap() - 1.0).abs() < 0.05,
       "variance drift: {var} vs {}",
-      dist.variance()
+      dist.variance().unwrap()
     );
   }
 
@@ -335,7 +330,7 @@ mod tests {
       counts[x as usize] += 1;
     }
     for (k, &got) in counts.iter().enumerate().take(14).skip(4) {
-      let pmf = dist.pdf(k as f64);
+      let pmf = dist.pdf(k as f64).unwrap();
       let expected = pmf * SAMPLES as f64;
       let se = (expected * (1.0 - pmf)).sqrt();
       assert!(
@@ -349,7 +344,7 @@ mod tests {
   #[test]
   fn scalar_sample_matches_cdf() {
     let d = SimdHypergeometric::<u32>::new(60, 25, 20);
-    let best = scalar_chi_square_best_p(&d, (0, 20), |k| d.cdf(k as f64));
+    let best = scalar_chi_square_best_p(&d, (0, 20), |k| d.cdf(k as f64).unwrap());
     assert!(best > 0.01, "best p = {best}");
   }
 }

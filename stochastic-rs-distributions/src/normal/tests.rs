@@ -59,7 +59,7 @@ fn simd_normal_dual_pair_path_matches_theoretical_distribution() {
     let mut samples = vec![0.0_f64; N];
     stream.fill_slice(&mut samples);
     assert!(samples.iter().all(|x| x.is_finite()));
-    (samples, Box::new(move |x| dist.cdf(x)))
+    (samples, Box::new(move |x| dist.cdf(x).unwrap()))
   });
   assert!(
     best_p > 0.01,
@@ -95,7 +95,7 @@ fn simd_normal_matches_theoretical_distribution() {
     dist
       .seeded(&Deterministic::new(seed))
       .fill_slice(&mut samples);
-    (samples, Box::new(move |x| dist.cdf(x)))
+    (samples, Box::new(move |x| dist.cdf(x).unwrap()))
   });
   assert!(
     best_p > 0.01,
@@ -188,7 +188,7 @@ fn the_fourth_and_sixth_moments_match_the_normal() {
 #[test]
 fn scalar_sample_matches_cdf() {
   let d = SimdNormal::<f64>::new(-0.75, 1.35);
-  let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+  let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
   assert!(best > 0.01, "best p = {best}");
 }
 

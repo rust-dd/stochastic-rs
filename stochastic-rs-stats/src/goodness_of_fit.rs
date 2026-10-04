@@ -46,7 +46,7 @@
 //!
 //! let res = kolmogorov_smirnov_test(
 //!     ArrayView1::from(&sample),
-//!     |x| dist.cdf(x),
+//!     |x| dist.cdf(x).unwrap(),
 //!     KolmogorovSmirnovConfig::default(),
 //! );
 //! assert!(!res.reject, "KS should not reject a sampler against its own cdf");

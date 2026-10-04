@@ -139,89 +139,93 @@ impl<T: PrimInt + Send + Sync + 'static> Distribution<T> for SimdPoisson<T> {
 }
 
 impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     if x < 0.0 || x.fract() != 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let k = x as i64;
     let lambda = self.lambda();
     // P(N=k) = exp(−λ) λ^k / k! = exp(k ln λ − λ − ln Γ(k+1))
     let log_pmf = k as f64 * lambda.ln() - lambda - crate::special::ln_gamma((k + 1) as f64);
-    log_pmf.exp()
+    Some(log_pmf.exp())
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     if x < 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let k = x.floor() as usize;
     if k >= self.cdf.len() {
-      1.0
+      Some(1.0)
     } else {
-      self.cdf[k]
+      Some(self.cdf[k])
     }
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn quantile(&self, p: f64) -> Option<f64> {
     if p <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     if p >= 1.0 {
-      return f64::INFINITY;
+      return Some(f64::INFINITY);
     }
     // Use the cached cumulative table built in `build_cdf`.
     match self.cdf.iter().position(|&c| c >= p) {
-      Some(k) => k as f64,
-      None => (self.cdf.len() - 1) as f64,
+      Some(k) => Some(k as f64),
+      None => Some((self.cdf.len() - 1) as f64),
     }
   }
 
-  fn mean(&self) -> f64 {
-    self.lambda()
+  fn mean(&self) -> Option<f64> {
+    Some(self.lambda())
   }
 
-  fn median(&self) -> f64 {
+  fn median(&self) -> Option<f64> {
     // Approximation: ⌊λ + 1/3 - 0.02/λ⌋
     let l = self.lambda();
-    (l + 1.0 / 3.0 - 0.02 / l).floor()
+    Some((l + 1.0 / 3.0 - 0.02 / l).floor())
   }
 
-  fn mode(&self) -> f64 {
-    self.lambda().floor()
+  fn mode(&self) -> Option<f64> {
+    Some(self.lambda().floor())
   }
 
-  fn variance(&self) -> f64 {
-    self.lambda()
+  fn variance(&self) -> Option<f64> {
+    Some(self.lambda())
   }
 
-  fn skewness(&self) -> f64 {
-    1.0 / self.lambda().sqrt()
+  fn skewness(&self) -> Option<f64> {
+    Some(1.0 / self.lambda().sqrt())
   }
 
-  fn kurtosis(&self) -> f64 {
-    1.0 / self.lambda()
+  fn kurtosis(&self) -> Option<f64> {
+    Some(1.0 / self.lambda())
   }
 
-  fn entropy(&self) -> f64 {
+  fn entropy(&self) -> Option<f64> {
     // Closed form not elementary; fall back to an asymptotic expansion that's
     // accurate to leading order: H(λ) ≈ ½ ln(2π e λ) - 1/(12λ) - 1/(24λ²) - ...
     let l = self.lambda();
-    0.5 * (2.0 * std::f64::consts::PI * std::f64::consts::E * l).ln()
-      - 1.0 / (12.0 * l)
-      - 1.0 / (24.0 * l * l)
-      - 19.0 / (360.0 * l.powi(3))
+    Some(
+      0.5 * (2.0 * std::f64::consts::PI * std::f64::consts::E * l).ln()
+        - 1.0 / (12.0 * l)
+        - 1.0 / (24.0 * l * l)
+        - 19.0 / (360.0 * l.powi(3)),
+    )
   }
 
-  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+  fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
     // φ(t) = exp(λ (e^{it} - 1))
     let eit = num_complex::Complex64::new(0.0, t).exp();
-    (eit - num_complex::Complex64::new(1.0, 0.0))
-      .scale(self.lambda())
-      .exp()
+    Some(
+      (eit - num_complex::Complex64::new(1.0, 0.0))
+        .scale(self.lambda())
+        .exp(),
+    )
   }
 
-  fn moment_generating_function(&self, t: f64) -> f64 {
-    (self.lambda() * (t.exp() - 1.0)).exp()
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    Some((self.lambda() * (t.exp() - 1.0)).exp())
   }
 }
 
@@ -256,7 +260,7 @@ mod tests {
       (mean - 800.0).abs() < 3.0,
       "λ=800 sample mean drift: {mean}"
     );
-    assert!((dist.mean() - 800.0).abs() < 1e-9);
+    assert!((dist.mean().unwrap() - 800.0).abs() < 1e-9);
   }
 
   /// An infinite rate turned the table build's log-pmf `NaN`, so neither exit fired and the table grew without bound.
@@ -293,7 +297,7 @@ mod tests {
   fn scalar_sample_matches_cdf() {
     for (lambda, window) in [(12.0, (0, 40)), (800.0, (574, 1027))] {
       let d = SimdPoisson::<u64>::new(lambda);
-      let best = scalar_chi_square_best_p(&d, window, |k| d.cdf(k as f64));
+      let best = scalar_chi_square_best_p(&d, window, |k| d.cdf(k as f64).unwrap());
       assert!(best > 0.01, "Poisson({lambda}): best p = {best}");
     }
   }

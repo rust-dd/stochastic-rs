@@ -242,25 +242,25 @@ fn bench_distribution_ext(c: &mut Criterion) {
   let gamma = SimdGamma::<f64>::new(2.0, 1.5);
   let poisson = SimdPoisson::<u32>::new(4.0);
   group.bench_function("pdf/normal", |b| {
-    b.iter(|| black_box(xs.iter().map(|&x| normal.pdf(x)).sum::<f64>()))
+    b.iter(|| black_box(xs.iter().map(|&x| normal.pdf(x).unwrap()).sum::<f64>()))
   });
   group.bench_function("cdf/normal", |b| {
-    b.iter(|| black_box(xs.iter().map(|&x| normal.cdf(x)).sum::<f64>()))
+    b.iter(|| black_box(xs.iter().map(|&x| normal.cdf(x).unwrap()).sum::<f64>()))
   });
   group.bench_function("quantile/normal", |b| {
-    b.iter(|| black_box(ps.iter().map(|&p| normal.inv_cdf(p)).sum::<f64>()))
+    b.iter(|| black_box(ps.iter().map(|&p| normal.quantile(p).unwrap()).sum::<f64>()))
   });
   group.bench_function("pdf/student_t", |b| {
-    b.iter(|| black_box(xs.iter().map(|&x| student.pdf(x)).sum::<f64>()))
+    b.iter(|| black_box(xs.iter().map(|&x| student.pdf(x).unwrap()).sum::<f64>()))
   });
   group.bench_function("pdf/johnson_su", |b| {
-    b.iter(|| black_box(xs.iter().map(|&x| johnson.pdf(x)).sum::<f64>()))
+    b.iter(|| black_box(xs.iter().map(|&x| johnson.pdf(x).unwrap()).sum::<f64>()))
   });
   group.bench_function("cdf/gamma", |b| {
-    b.iter(|| black_box(xs.iter().map(|&x| gamma.cdf(x.abs())).sum::<f64>()))
+    b.iter(|| black_box(xs.iter().map(|&x| gamma.cdf(x.abs()).unwrap()).sum::<f64>()))
   });
   group.bench_function("pdf/poisson", |b| {
-    b.iter(|| black_box(ks.iter().map(|&k| poisson.pdf(k)).sum::<f64>()))
+    b.iter(|| black_box(ks.iter().map(|&k| poisson.pdf(k).unwrap()).sum::<f64>()))
   });
   group.finish();
 }

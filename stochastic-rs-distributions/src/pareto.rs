@@ -130,60 +130,64 @@ impl<T: SimdFloatExt> Distribution<T> for SimdPareto<T> {
 }
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdPareto<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
     if x < xm {
-      0.0
+      Some(0.0)
     } else {
-      a * xm.powf(a) / x.powf(a + 1.0)
+      Some(a * xm.powf(a) / x.powf(a + 1.0))
     }
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
-    if x < xm { 0.0 } else { 1.0 - (xm / x).powf(a) }
+    if x < xm {
+      Some(0.0)
+    } else {
+      Some(1.0 - (xm / x).powf(a))
+    }
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn quantile(&self, p: f64) -> Option<f64> {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
-    xm / (1.0 - p).powf(1.0 / a)
+    Some(xm / (1.0 - p).powf(1.0 / a))
   }
 
   /// `+∞`, not `NaN`, at `alpha <= 1`: the mean integral `∫x·f(x)dx`
   /// diverges to a definite (infinite) value at these — commonly used —
   /// shape parameters (e.g. the classic "80/20" Pareto has `alpha ≈ 1.16`).
-  fn mean(&self) -> f64 {
+  fn mean(&self) -> Option<f64> {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
     if a > 1.0 {
-      xm * a / (a - 1.0)
+      Some(xm * a / (a - 1.0))
     } else {
-      f64::INFINITY
+      Some(f64::INFINITY)
     }
   }
 
-  fn median(&self) -> f64 {
+  fn median(&self) -> Option<f64> {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
-    xm * 2.0_f64.powf(1.0 / a)
+    Some(xm * 2.0_f64.powf(1.0 / a))
   }
 
-  fn mode(&self) -> f64 {
-    self.x_m.to_f64().unwrap()
+  fn mode(&self) -> Option<f64> {
+    Some(self.x_m.to_f64().unwrap())
   }
 
   /// `+∞`, not `NaN`, at `alpha <= 2`: same divergent-integral reason as
   /// `mean`, one moment order up.
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
     if a > 2.0 {
-      xm * xm * a / ((a - 1.0).powi(2) * (a - 2.0))
+      Some(xm * xm * a / ((a - 1.0).powi(2) * (a - 2.0)))
     } else {
-      f64::INFINITY
+      Some(f64::INFINITY)
     }
   }
 
@@ -191,37 +195,37 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdPareto<T> {
   /// central moment does not merely diverge to a signed infinity here — it
   /// is not defined at all, so `NaN` is the honest answer rather than a
   /// sign choice.
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     if a > 3.0 {
-      2.0 * (1.0 + a) / (a - 3.0) * ((a - 2.0) / a).sqrt()
+      Some(2.0 * (1.0 + a) / (a - 3.0) * ((a - 2.0) / a).sqrt())
     } else {
-      f64::NAN
+      Some(f64::NAN)
     }
   }
 
   /// `NaN` at `alpha <= 4`, for the same reason as `skewness` one moment
   /// order up.
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     if a > 4.0 {
-      6.0 * (a.powi(3) + a.powi(2) - 6.0 * a - 2.0) / (a * (a - 3.0) * (a - 4.0))
+      Some(6.0 * (a.powi(3) + a.powi(2) - 6.0 * a - 2.0) / (a * (a - 3.0) * (a - 4.0)))
     } else {
-      f64::NAN
+      Some(f64::NAN)
     }
   }
 
-  fn entropy(&self) -> f64 {
+  fn entropy(&self) -> Option<f64> {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
-    (xm / a).ln() + 1.0 / a + 1.0
+    Some((xm / a).ln() + 1.0 / a + 1.0)
   }
 
   /// `NaN` for every `t > 0`: the Pareto tail decays only polynomially
   /// (`~x^{-alpha-1}`), too slowly for `e^{tx}` to be integrable at any
   /// positive `t`, regardless of `alpha`.
-  fn moment_generating_function(&self, _t: f64) -> f64 {
-    f64::NAN
+  fn moment_generating_function(&self, _t: f64) -> Option<f64> {
+    Some(f64::NAN)
   }
 }
 
@@ -239,14 +243,14 @@ mod tests {
   fn pareto_80_20_moments_match_documented_thresholds() {
     let p = SimdPareto::<f64>::new(1.0, 1.16);
     assert!(
-      p.mean().is_finite(),
+      p.mean().unwrap().is_finite(),
       "alpha=1.16 > 1, mean should be finite"
     );
-    assert_eq!(p.variance(), f64::INFINITY, "alpha=1.16 <= 2");
-    assert!(p.skewness().is_nan(), "alpha=1.16 <= 3");
-    assert!(p.kurtosis().is_nan(), "alpha=1.16 <= 4");
+    assert_eq!(p.variance().unwrap(), f64::INFINITY, "alpha=1.16 <= 2");
+    assert!(p.skewness().unwrap().is_nan(), "alpha=1.16 <= 3");
+    assert!(p.kurtosis().unwrap().is_nan(), "alpha=1.16 <= 4");
     assert!(
-      p.moment_generating_function(0.5).is_nan(),
+      p.moment_generating_function(0.5).unwrap().is_nan(),
       "MGF at t > 0 must be NaN"
     );
   }
@@ -255,17 +259,17 @@ mod tests {
   #[test]
   fn pareto_high_alpha_moments_are_all_finite() {
     let p = SimdPareto::<f64>::new(1.0, 5.0);
-    assert!(p.mean().is_finite());
-    assert!(p.variance().is_finite());
-    assert!(p.skewness().is_finite());
-    assert!(p.kurtosis().is_finite());
+    assert!(p.mean().unwrap().is_finite());
+    assert!(p.variance().unwrap().is_finite());
+    assert!(p.skewness().unwrap().is_finite());
+    assert!(p.kurtosis().unwrap().is_finite());
   }
 
   /// The honest `Distribution` draws from the caller's rng and agrees with the cdf.
   #[test]
   fn scalar_sample_matches_cdf() {
     let d = SimdPareto::<f64>::new(1.0, 1.16);
-    let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
     assert!(best > 0.01, "best p = {best}");
   }
 }

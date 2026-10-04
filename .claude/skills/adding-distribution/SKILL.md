@@ -17,10 +17,10 @@ and ships a stateless `SimdXxx<T>` law (parameters only) that implements:
    function / moments.
 4. The `py_distribution!` macro at the bottom for Python exposure.
 
-The §1.5 audit note "DistributionExt is 18/19 closed-form (not 3/19)"
-plus the `feedback_no_statrs_distributions` memory entry are the
-load-bearing constraints: closed-form math, written from scratch in
-this crate, never `statrs::distribution::*`.
+The `feedback_no_statrs_distributions` memory entry and the `Option`
+contract of `DistributionExt` are the load-bearing constraints:
+closed-form math, written from scratch in this crate, never
+`statrs::distribution::*`.
 
 ## 1. Pick a sampling strategy
 
@@ -133,35 +133,25 @@ algorithm.
 ## 3. DistributionExt — closed-form math
 
 ```rust
-impl<T: FloatExt> DistributionExt<T> for SimdFoo<T> {
-    /// PDF f(x). MUST be closed-form. Use special functions from
-    /// `crate::special::*` — never `statrs::distribution::*`.
-    fn pdf(&self, x: T) -> T { /* derive from scratch */ }
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdFoo<T> {
+  /// Every method returns `Option<f64>` (the trait is `f64`-only); `Some` where the law has a
+  /// closed form, and no override — the default `None` — where it has none. Never `Some(0.0)` for a gap.
+  fn pdf(&self, x: f64) -> Option<f64> { /* derive from scratch, special functions from `crate::special` */ }
 
-    /// CDF F(x). MUST be closed-form (or an erf / regularised
-    /// incomplete gamma call from `crate::special`).
-    fn cdf(&self, x: T) -> T { /* ... */ }
+  fn cdf(&self, x: f64) -> Option<f64> { /* erf / regularised incomplete gamma or beta from `crate::special` */ }
 
-    /// Characteristic function φ(u) = E[exp(i u X)]. MUST be derived
-    /// from the canonical reference paper — NIG: Barndorff-Nielsen 1997
-    /// eq. 3; CGMY: Carr-Geman-Madan-Yor 2002 eq. 3.4; etc.
-    fn cf(&self, u: T) -> num_complex::Complex<T> { /* ... */ }
+  /// Characteristic function from the canonical paper (NIG: Barndorff-Nielsen 1997 eq. 3; CGMY: Carr-Geman-Madan-Yor 2002 eq. 3.4).
+  fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> { /* … */ }
 
-    /// Moments. Provide as many as the literature gives in closed form;
-    /// mark unimplemented ones with `unimplemented!("not implemented for {}", type_name)`,
-    /// NEVER return 0.0 (that hides the gap).
-    fn mean(&self) -> T { /* ... */ }
-    fn variance(&self) -> T { /* ... */ }
-    fn skewness(&self) -> T { unimplemented!("skewness not implemented for SimdFoo") }
-    fn kurtosis(&self) -> T { unimplemented!("kurtosis not implemented for SimdFoo") }
+  fn quantile(&self, p: f64) -> Option<f64> { /* the inverse cdf, or leave the default when there is none */ }
+
+  fn mean(&self) -> Option<f64> { /* … */ }
+
+  fn variance(&self) -> Option<f64> { /* … */ }
 }
 ```
 
-The 5 currently-unimplemented `unimplemented!` distributions (per the
-`project_distribution_ext_status` memory) are intentional: where the
-literature has no closed form (e.g. NIG raw moments require Bessel-K
-identities), the panic is a documentation device — users should use
-empirical moments via `crate::estimators::*`.
+A method with no closed form is simply not overridden. `tests/distribution_ext_coverage.rs` lists, per type, which cells are `Some`: add the new type's row there with the same reference point, and a row to `tests/distribution_ext_vs_reference.rs` or `tests/distribution_ext_closed_forms.rs` with values from an independent source (`statrs` where it has the law, `mpmath` otherwise).
 
 ## 4. Source-file documentation
 
@@ -246,7 +236,7 @@ root — there are no per-crate `CLAUDE.md` files, so do not look for
 - The root `CLAUDE.md`'s workspace layout does not enumerate individual
   distributions, so a new one usually needs no edit there. Update it
   only if you change something it does state — e.g. the
-  `DistributionExt` coverage line ("**18/19** implement closed-form"),
+  `DistributionExt` bullet's counts,
   or the `stochastic-rs-py` entry count if you add a Python binding.
 - Distributions are **not** in the prelude individually; users reach
   them at `stochastic_rs::distributions::foo::SimdFoo`. Only a new
@@ -256,8 +246,7 @@ root — there are no per-crate `CLAUDE.md` files, so do not look for
 
 - **Do not** import `statrs::distribution::*`. The
   `feedback_no_statrs_distributions` memory entry is explicit.
-- **Do not** return `0.0` from unimplemented moments. Use
-  `unimplemented!("...")` so callers fail loudly.
+- **Do not** return `Some(0.0)` for a moment the law has no closed form for; leave the default `None`, and never `unimplemented!()` — a panic in a trait method is not an error channel.
 - **Do not** put a seed or an engine on the law. One constructor,
   `new(params..)`, parameters only; `.seeded(&seed)` binds the stream.
 - **Do not** ignore the rng `Distribution::sample` receives: it is the

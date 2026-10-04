@@ -196,67 +196,71 @@ impl<T: SimdFloatExt> Distribution<T> for SimdJohnsonSu<T> {
 }
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdJohnsonSu<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let (gamma, delta, xi, lambda) = self.params();
     let y = (x - xi) / lambda;
     let z = gamma + delta * y.asinh();
-    delta / (lambda * (2.0 * std::f64::consts::PI).sqrt()) / (1.0 + y * y).sqrt()
-      * (-0.5 * z * z).exp()
+    Some(
+      delta / (lambda * (2.0 * std::f64::consts::PI).sqrt()) / (1.0 + y * y).sqrt()
+        * (-0.5 * z * z).exp(),
+    )
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     let (gamma, delta, xi, lambda) = self.params();
-    norm_cdf(gamma + delta * ((x - xi) / lambda).asinh())
+    Some(norm_cdf(gamma + delta * ((x - xi) / lambda).asinh()))
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn quantile(&self, p: f64) -> Option<f64> {
     let (gamma, delta, xi, lambda) = self.params();
-    xi + lambda * ((ndtri(p) - gamma) / delta).sinh()
+    Some(xi + lambda * ((ndtri(p) - gamma) / delta).sinh())
   }
 
   /// $\xi - \lambda\sqrt\omega\sinh\Omega$.
-  fn mean(&self) -> f64 {
+  fn mean(&self) -> Option<f64> {
     let (_, _, xi, lambda) = self.params();
     let (omega, big) = self.omegas();
-    xi - lambda * omega.sqrt() * big.sinh()
+    Some(xi - lambda * omega.sqrt() * big.sinh())
   }
 
   /// $\xi + \lambda\sinh(-\gamma/\delta)$.
-  fn median(&self) -> f64 {
+  fn median(&self) -> Option<f64> {
     let (gamma, delta, xi, lambda) = self.params();
-    xi + lambda * (-gamma / delta).sinh()
+    Some(xi + lambda * (-gamma / delta).sinh())
   }
 
   /// $\tfrac12\lambda^2(\omega - 1)(\omega\cosh 2\Omega + 1)$.
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let (_, _, _, lambda) = self.params();
     let (omega, big) = self.omegas();
-    0.5 * lambda * lambda * (omega - 1.0) * (omega * (2.0 * big).cosh() + 1.0)
+    Some(0.5 * lambda * lambda * (omega - 1.0) * (omega * (2.0 * big).cosh() + 1.0))
   }
 
   /// $-\lambda^3\sqrt\omega(\omega-1)^2[\omega(\omega+2)\sinh 3\Omega + 3\sinh\Omega]/(4\,\mathrm{Var}^{3/2})$.
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     let (_, _, _, lambda) = self.params();
     let (omega, big) = self.omegas();
-    let var = self.variance();
-    -lambda.powi(3)
-      * omega.sqrt()
-      * (omega - 1.0).powi(2)
-      * (omega * (omega + 2.0) * (3.0 * big).sinh() + 3.0 * big.sinh())
-      / (4.0 * var.powf(1.5))
+    let var = self.variance()?;
+    Some(
+      -lambda.powi(3)
+        * omega.sqrt()
+        * (omega - 1.0).powi(2)
+        * (omega * (omega + 2.0) * (3.0 * big).sinh() + 3.0 * big.sinh())
+        / (4.0 * var.powf(1.5)),
+    )
   }
 
   /// Excess kurtosis
   /// $\lambda^4(\omega-1)^2[\omega^2(\omega^4 + 2\omega^3 + 3\omega^2 - 3)\cosh 4\Omega + 4\omega^2(\omega+2)\cosh 2\Omega + 3(2\omega+1)]/(8\,\mathrm{Var}^2) - 3$.
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     let (_, _, _, lambda) = self.params();
     let (omega, big) = self.omegas();
-    let var = self.variance();
+    let var = self.variance()?;
     let w2 = omega * omega;
     let bracket = w2 * (w2 * w2 + 2.0 * omega.powi(3) + 3.0 * w2 - 3.0) * (4.0 * big).cosh()
       + 4.0 * w2 * (omega + 2.0) * (2.0 * big).cosh()
       + 3.0 * (2.0 * omega + 1.0);
-    lambda.powi(4) * (omega - 1.0).powi(2) * bracket / (8.0 * var * var) - 3.0
+    Some(lambda.powi(4) * (omega - 1.0).powi(2) * bracket / (8.0 * var * var) - 3.0)
   }
 }
 
@@ -322,42 +326,54 @@ mod tests {
     for ((g, d, xi, lam), grid, stats) in cases {
       let dist = SimdJohnsonSu::<f64>::new(g, d, xi, lam);
       for (x, pdf, cdf) in grid {
-        assert!(close(dist.pdf(x), pdf, 1e-12), "pdf({x}) = {}", dist.pdf(x));
-        assert!(close(dist.cdf(x), cdf, 1e-12), "cdf({x}) = {}", dist.cdf(x));
+        assert!(
+          close(dist.pdf(x).unwrap(), pdf, 1e-12),
+          "pdf({x}) = {}",
+          dist.pdf(x).unwrap()
+        );
+        assert!(
+          close(dist.cdf(x).unwrap(), cdf, 1e-12),
+          "cdf({x}) = {}",
+          dist.cdf(x).unwrap()
+        );
       }
-      assert!(close(dist.mean(), stats[0], 1e-12), "mean {}", dist.mean());
       assert!(
-        close(dist.variance(), stats[1], 1e-12),
+        close(dist.mean().unwrap(), stats[0], 1e-12),
+        "mean {}",
+        dist.mean().unwrap()
+      );
+      assert!(
+        close(dist.variance().unwrap(), stats[1], 1e-12),
         "variance {}",
-        dist.variance()
+        dist.variance().unwrap()
       );
       assert!(
-        close(dist.skewness(), stats[2], 1e-11),
+        close(dist.skewness().unwrap(), stats[2], 1e-11),
         "skewness {}",
-        dist.skewness()
+        dist.skewness().unwrap()
       );
       assert!(
-        close(dist.kurtosis(), stats[3], 1e-11),
+        close(dist.kurtosis().unwrap(), stats[3], 1e-11),
         "kurtosis {}",
-        dist.kurtosis()
+        dist.kurtosis().unwrap()
       );
       assert!(
-        close(dist.median(), stats[4], 1e-12),
+        close(dist.median().unwrap(), stats[4], 1e-12),
         "median {}",
-        dist.median()
+        dist.median().unwrap()
       );
       assert!(
-        close(dist.inv_cdf(0.9), stats[5], 1e-12),
+        close(dist.quantile(0.9).unwrap(), stats[5], 1e-12),
         "ppf(0.9) {}",
-        dist.inv_cdf(0.9)
+        dist.quantile(0.9).unwrap()
       );
       assert!(
-        close(dist.inv_cdf(0.05), stats[6], 1e-12),
+        close(dist.quantile(0.05).unwrap(), stats[6], 1e-12),
         "ppf(0.05) {}",
-        dist.inv_cdf(0.05)
+        dist.quantile(0.05).unwrap()
       );
       for p in [0.01, 0.3, 0.5, 0.8, 0.99] {
-        assert!((dist.cdf(dist.inv_cdf(p)) - p).abs() < 1e-12);
+        assert!((dist.cdf(dist.quantile(p).unwrap()).unwrap() - p).abs() < 1e-12);
       }
     }
   }
@@ -371,9 +387,9 @@ mod tests {
     dist.seeded(&Deterministic::new(5)).fill_slice(&mut xs);
     let mean = xs.iter().sum::<f64>() / n as f64;
     let var = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64;
-    assert!((mean - dist.mean()).abs() < 0.02, "mean {mean}");
+    assert!((mean - dist.mean().unwrap()).abs() < 0.02, "mean {mean}");
     assert!(
-      (var - dist.variance()).abs() / dist.variance() < 0.03,
+      (var - dist.variance().unwrap()).abs() / dist.variance().unwrap() < 0.03,
       "var {var}"
     );
   }
@@ -381,7 +397,7 @@ mod tests {
   #[test]
   fn scalar_sample_matches_cdf() {
     let d = SimdJohnsonSu::<f64>::new(-0.5, 1.5, 0.2, 2.0);
-    let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
     assert!(best > 0.01, "best p = {best}");
   }
 

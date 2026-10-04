@@ -162,31 +162,35 @@ impl<T: SimdFloatExt> Distribution<T> for SimdStudentT<T> {
 }
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let nu = self.nu.to_f64().unwrap();
     // f(x) = Γ((ν+1)/2) / (√(νπ) Γ(ν/2)) · (1 + x²/ν)^(−(ν+1)/2)
     let log_norm = crate::special::ln_gamma(0.5 * (nu + 1.0))
       - 0.5 * (nu * std::f64::consts::PI).ln()
       - crate::special::ln_gamma(0.5 * nu);
     let log_kernel = -0.5 * (nu + 1.0) * (1.0 + x * x / nu).ln();
-    (log_norm + log_kernel).exp()
+    Some((log_norm + log_kernel).exp())
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     // For x ≥ 0:  F(x) = 1 − ½ I_{ν/(ν+x²)}(ν/2, ½)
     // By symmetry F(−x) = 1 − F(x).
     let nu = self.nu.to_f64().unwrap();
     let t = nu / (nu + x * x);
     let half = 0.5 * crate::special::beta_i(0.5 * nu, 0.5, t);
-    if x >= 0.0 { 1.0 - half } else { half }
+    if x >= 0.0 {
+      Some(1.0 - half)
+    } else {
+      Some(half)
+    }
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn quantile(&self, p: f64) -> Option<f64> {
     if p <= 0.0 {
-      return f64::NEG_INFINITY;
+      return Some(f64::NEG_INFINITY);
     }
     if p >= 1.0 {
-      return f64::INFINITY;
+      return Some(f64::INFINITY);
     }
     let nu = self.nu.to_f64().unwrap();
     // Use the Cornish-Fisher-style normal seed and refine with Newton's method.
@@ -210,31 +214,31 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
       let dx = f / pdf;
       let new_x = x - dx;
       if (new_x - x).abs() < 1e-14 * (1.0 + x.abs()) {
-        return new_x;
+        return Some(new_x);
       }
       x = new_x;
     }
-    x
+    Some(x)
   }
 
   /// `NaN` at `nu <= 1` (`nu = 1` is the Cauchy distribution — see
   /// [`crate::cauchy`]'s `SimdCauchy::mean`, same underlying non-convergent
   /// integral): the mean does not exist there, so it is `NaN` rather than
   /// `0.0` even though `0.0` is what every finite-mean case below returns.
-  fn mean(&self) -> f64 {
+  fn mean(&self) -> Option<f64> {
     if self.nu.to_f64().unwrap() > 1.0 {
-      0.0
+      Some(0.0)
     } else {
-      f64::NAN
+      Some(f64::NAN)
     }
   }
 
-  fn median(&self) -> f64 {
-    0.0
+  fn median(&self) -> Option<f64> {
+    Some(0.0)
   }
 
-  fn mode(&self) -> f64 {
-    0.0
+  fn mode(&self) -> Option<f64> {
+    Some(0.0)
   }
 
   /// Three-way split on `nu`, all mathematically forced by the tail
@@ -242,58 +246,60 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
   /// `nu/(nu-2)`; `1 < nu <= 2` (`nu = 2` is the common finance choice for
   /// "just barely infinite variance") diverges to `+∞`, a definite value;
   /// `nu <= 1` has no mean to build a variance from at all, so `NaN`.
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let nu = self.nu.to_f64().unwrap();
     if nu > 2.0 {
-      nu / (nu - 2.0)
+      Some(nu / (nu - 2.0))
     } else if nu > 1.0 {
-      f64::INFINITY
+      Some(f64::INFINITY)
     } else {
-      f64::NAN
+      Some(f64::NAN)
     }
   }
 
   /// `NaN` at `nu <= 3`: `nu = 3` is itself a common fat-tail choice in
   /// finance, and it already sits at this threshold — the third central
   /// moment does not exist there, so skewness is `NaN`, not `0.0`.
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     if self.nu.to_f64().unwrap() > 3.0 {
-      0.0
+      Some(0.0)
     } else {
-      f64::NAN
+      Some(f64::NAN)
     }
   }
 
   /// Three-way split mirroring `variance` one moment order up: finite for
   /// `nu > 4`, `+∞` for `2 < nu <= 4` (a definite divergence), `NaN` for
   /// `nu <= 2` (no variance to build on).
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     let nu = self.nu.to_f64().unwrap();
     if nu > 4.0 {
-      6.0 / (nu - 4.0)
+      Some(6.0 / (nu - 4.0))
     } else if nu > 2.0 {
-      f64::INFINITY
+      Some(f64::INFINITY)
     } else {
-      f64::NAN
+      Some(f64::NAN)
     }
   }
 
-  fn entropy(&self) -> f64 {
+  fn entropy(&self) -> Option<f64> {
     let nu = self.nu.to_f64().unwrap();
     let half_nu = 0.5 * nu;
     let half_nu_p1 = 0.5 * (nu + 1.0);
-    half_nu_p1 * (crate::special::digamma(half_nu_p1) - crate::special::digamma(half_nu))
-      + 0.5 * nu.ln()
-      + crate::special::ln_gamma(half_nu)
-      - crate::special::ln_gamma(half_nu_p1)
-      + 0.5 * std::f64::consts::PI.ln()
+    Some(
+      half_nu_p1 * (crate::special::digamma(half_nu_p1) - crate::special::digamma(half_nu))
+        + 0.5 * nu.ln()
+        + crate::special::ln_gamma(half_nu)
+        - crate::special::ln_gamma(half_nu_p1)
+        + 0.5 * std::f64::consts::PI.ln(),
+    )
   }
 
   /// `NaN` for every `nu`: the Student-t tail decays polynomially
   /// (`~|x|^{-nu-1}`), too slowly for `e^{tx}` to be integrable at any
   /// `t != 0`, regardless of how large `nu` is.
-  fn moment_generating_function(&self, _t: f64) -> f64 {
-    f64::NAN
+  fn moment_generating_function(&self, _t: f64) -> Option<f64> {
+    Some(f64::NAN)
   }
 }
 
@@ -313,22 +319,22 @@ mod tests {
   #[test]
   fn studentt_low_nu_moments_match_documented_thresholds() {
     let t = SimdStudentT::<f64>::new(3.0);
-    assert_eq!(t.mean(), 0.0, "nu=3 > 1, mean should be 0");
+    assert_eq!(t.mean().unwrap(), 0.0, "nu=3 > 1, mean should be 0");
     assert!(
-      t.variance().is_finite(),
+      t.variance().unwrap().is_finite(),
       "nu=3 > 2, variance should be finite"
     );
     assert!(
-      t.skewness().is_nan(),
+      t.skewness().unwrap().is_nan(),
       "nu=3 is not > 3, skewness must be NaN"
     );
     assert_eq!(
-      t.kurtosis(),
+      t.kurtosis().unwrap(),
       f64::INFINITY,
       "nu=3 is in (2,4], kurtosis diverges to +inf"
     );
     assert!(
-      t.moment_generating_function(0.5).is_nan(),
+      t.moment_generating_function(0.5).unwrap().is_nan(),
       "MGF must be NaN for every nu"
     );
   }
@@ -341,14 +347,14 @@ mod tests {
   #[test]
   fn studentt_nu_two_variance_diverges_kurtosis_is_nan() {
     let t = SimdStudentT::<f64>::new(2.0);
-    assert_eq!(t.mean(), 0.0, "nu=2 > 1, mean should be 0");
+    assert_eq!(t.mean().unwrap(), 0.0, "nu=2 > 1, mean should be 0");
     assert_eq!(
-      t.variance(),
+      t.variance().unwrap(),
       f64::INFINITY,
       "nu=2 is in (1,2], variance diverges to +inf"
     );
     assert!(
-      t.kurtosis().is_nan(),
+      t.kurtosis().unwrap().is_nan(),
       "nu=2 is not > 2, kurtosis must be NaN"
     );
   }
@@ -357,25 +363,25 @@ mod tests {
   #[test]
   fn studentt_nu_one_is_cauchy_like() {
     let t = SimdStudentT::<f64>::new(1.0);
-    assert!(t.mean().is_nan(), "nu=1 has no mean");
-    assert!(t.variance().is_nan(), "nu=1 has no variance");
+    assert!(t.mean().unwrap().is_nan(), "nu=1 has no mean");
+    assert!(t.variance().unwrap().is_nan(), "nu=1 has no variance");
   }
 
   /// Above every threshold, all four moments must be finite real numbers.
   #[test]
   fn studentt_high_nu_moments_are_all_finite() {
     let t = SimdStudentT::<f64>::new(10.0);
-    assert!(t.mean().is_finite());
-    assert!(t.variance().is_finite());
-    assert!(t.skewness().is_finite());
-    assert!(t.kurtosis().is_finite());
+    assert!(t.mean().unwrap().is_finite());
+    assert!(t.variance().unwrap().is_finite());
+    assert!(t.skewness().unwrap().is_finite());
+    assert!(t.kurtosis().unwrap().is_finite());
   }
 
   /// The honest `Distribution` draws from the caller's rng and agrees with the cdf.
   #[test]
   fn scalar_sample_matches_cdf() {
     let d = SimdStudentT::<f64>::new(6.0);
-    let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
     assert!(best > 0.01, "best p = {best}");
   }
 

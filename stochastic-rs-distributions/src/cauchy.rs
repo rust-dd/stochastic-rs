@@ -124,75 +124,74 @@ impl<T: SimdFloatExt> Distribution<T> for SimdCauchy<T> {
 }
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdCauchy<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let x0 = self.x0.to_f64().unwrap();
     let g = self.gamma.to_f64().unwrap();
-    1.0 / (std::f64::consts::PI * g * (1.0 + ((x - x0) / g).powi(2)))
+    Some(1.0 / (std::f64::consts::PI * g * (1.0 + ((x - x0) / g).powi(2))))
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     let x0 = self.x0.to_f64().unwrap();
     let g = self.gamma.to_f64().unwrap();
-    0.5 + ((x - x0) / g).atan() / std::f64::consts::PI
+    Some(0.5 + ((x - x0) / g).atan() / std::f64::consts::PI)
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn quantile(&self, p: f64) -> Option<f64> {
     let x0 = self.x0.to_f64().unwrap();
     let g = self.gamma.to_f64().unwrap();
-    x0 + g * (std::f64::consts::PI * (p - 0.5)).tan()
+    Some(x0 + g * (std::f64::consts::PI * (p - 0.5)).tan())
   }
 
-  /// `NaN`, not "unimplemented": the defining integral `∫x·f(x)dx` does not
-  /// converge absolutely, so the Cauchy distribution provably has no mean —
+  /// `NaN`, not `None`: `∫x·f(x)dx` does not converge absolutely, so the law provably has no mean —
   /// median/mode (both `x0`) are the location statistics to use instead.
-  fn mean(&self) -> f64 {
-    f64::NAN
+  fn mean(&self) -> Option<f64> {
+    Some(f64::NAN)
   }
 
-  fn median(&self) -> f64 {
-    self.x0.to_f64().unwrap()
+  fn median(&self) -> Option<f64> {
+    Some(self.x0.to_f64().unwrap())
   }
 
-  fn mode(&self) -> f64 {
-    self.x0.to_f64().unwrap()
+  fn mode(&self) -> Option<f64> {
+    Some(self.x0.to_f64().unwrap())
   }
 
   /// `+∞`, not `NaN`: unlike the mean, the variance integral diverges to a
   /// definite (infinite) value rather than failing to converge at all.
-  fn variance(&self) -> f64 {
-    f64::INFINITY
+  fn variance(&self) -> Option<f64> {
+    Some(f64::INFINITY)
   }
 
   /// `NaN`: skewness is a ratio built from the (nonexistent) mean and a
   /// third central moment that itself does not converge.
-  fn skewness(&self) -> f64 {
-    f64::NAN
+  fn skewness(&self) -> Option<f64> {
+    Some(f64::NAN)
   }
 
   /// `NaN`: kurtosis is a ratio built from the (nonexistent) mean and a
   /// fourth central moment that itself does not converge.
-  fn kurtosis(&self) -> f64 {
-    f64::NAN
+  fn kurtosis(&self) -> Option<f64> {
+    Some(f64::NAN)
   }
 
-  fn entropy(&self) -> f64 {
+  fn entropy(&self) -> Option<f64> {
     let g = self.gamma.to_f64().unwrap();
-    (4.0 * std::f64::consts::PI * g).ln()
+    Some((4.0 * std::f64::consts::PI * g).ln())
   }
 
-  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+  fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
     // φ(t) = exp(it x₀ - γ |t|)
     let x0 = self.x0.to_f64().unwrap();
     let g = self.gamma.to_f64().unwrap();
-    num_complex::Complex64::new(-g * t.abs(), t * x0).exp()
+    Some(num_complex::Complex64::new(-g * t.abs(), t * x0).exp())
   }
 
   /// `NaN`: the MGF `E[e^{tX}]` diverges for every `t != 0` because the
   /// Cauchy tail decays only as `1/x^2`, too slowly for `e^{tx}` to be
   /// integrable — use `characteristic_function` instead, which exists for
   /// every Cauchy parameter.
-  fn moment_generating_function(&self, _t: f64) -> f64 {
-    f64::NAN
+  fn moment_generating_function(&self, _t: f64) -> Option<f64> {
+    Some(f64::NAN)
   }
 }
 
@@ -213,23 +212,31 @@ mod tests {
   #[test]
   fn cauchy_moments_are_non_finite_as_documented() {
     let c = SimdCauchy::<f64>::new(1.5, 2.0);
-    assert!(c.mean().is_nan(), "mean must be NaN, got {}", c.mean());
-    assert_eq!(c.variance(), f64::INFINITY, "variance must be +inf");
-    assert!(c.skewness().is_nan(), "skewness must be NaN");
-    assert!(c.kurtosis().is_nan(), "kurtosis must be NaN");
     assert!(
-      c.moment_generating_function(0.5).is_nan(),
+      c.mean().unwrap().is_nan(),
+      "mean must be NaN, got {}",
+      c.mean().unwrap()
+    );
+    assert_eq!(
+      c.variance().unwrap(),
+      f64::INFINITY,
+      "variance must be +inf"
+    );
+    assert!(c.skewness().unwrap().is_nan(), "skewness must be NaN");
+    assert!(c.kurtosis().unwrap().is_nan(), "kurtosis must be NaN");
+    assert!(
+      c.moment_generating_function(0.5).unwrap().is_nan(),
       "MGF at t != 0 must be NaN"
     );
-    assert_eq!(c.median(), 1.5, "median must equal x0");
-    assert_eq!(c.mode(), 1.5, "mode must equal x0");
+    assert_eq!(c.median().unwrap(), 1.5, "median must equal x0");
+    assert_eq!(c.mode().unwrap(), 1.5, "mode must equal x0");
   }
 
   /// The honest `Distribution` draws from the caller's rng and agrees with the cdf.
   #[test]
   fn scalar_sample_matches_cdf() {
     let d = SimdCauchy::<f64>::new(1.0, 0.5);
-    let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
     assert!(best > 0.01, "best p = {best}");
   }
 }

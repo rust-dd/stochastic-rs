@@ -143,71 +143,71 @@ impl<T: SimdFloatExt> SimdKernel for SimdLogNormal<T> {
 }
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdLogNormal<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     if x <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
     let z = (x.ln() - mu) / sigma;
-    crate::special::norm_pdf(z) / (sigma * x)
+    Some(crate::special::norm_pdf(z) / (sigma * x))
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     if x <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
-    crate::special::norm_cdf((x.ln() - mu) / sigma)
+    Some(crate::special::norm_cdf((x.ln() - mu) / sigma))
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn quantile(&self, p: f64) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
-    (mu + sigma * crate::special::ndtri(p)).exp()
+    Some((mu + sigma * crate::special::ndtri(p)).exp())
   }
 
-  fn mean(&self) -> f64 {
+  fn mean(&self) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
-    (mu + 0.5 * sigma * sigma).exp()
+    Some((mu + 0.5 * sigma * sigma).exp())
   }
 
-  fn median(&self) -> f64 {
-    self.mu.to_f64().unwrap().exp()
+  fn median(&self) -> Option<f64> {
+    Some(self.mu.to_f64().unwrap().exp())
   }
 
-  fn mode(&self) -> f64 {
+  fn mode(&self) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
-    (mu - sigma * sigma).exp()
+    Some((mu - sigma * sigma).exp())
   }
 
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
     let s2 = sigma * sigma;
-    (s2.exp() - 1.0) * (2.0 * mu + s2).exp()
+    Some((s2.exp() - 1.0) * (2.0 * mu + s2).exp())
   }
 
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     let sigma = self.sigma.to_f64().unwrap();
     let s2 = sigma * sigma;
-    (s2.exp() + 2.0) * (s2.exp() - 1.0).sqrt()
+    Some((s2.exp() + 2.0) * (s2.exp() - 1.0).sqrt())
   }
 
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     // Excess kurtosis.
     let sigma = self.sigma.to_f64().unwrap();
     let s2 = sigma * sigma;
-    (4.0 * s2).exp() + 2.0 * (3.0 * s2).exp() + 3.0 * (2.0 * s2).exp() - 6.0
+    Some((4.0 * s2).exp() + 2.0 * (3.0 * s2).exp() + 3.0 * (2.0 * s2).exp() - 6.0)
   }
 
-  fn entropy(&self) -> f64 {
+  fn entropy(&self) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
-    0.5 + 0.5 * (2.0 * std::f64::consts::PI * sigma * sigma).ln() + mu
+    Some(0.5 + 0.5 * (2.0 * std::f64::consts::PI * sigma * sigma).ln() + mu)
   }
 }
 
@@ -233,7 +233,7 @@ mod tests {
   #[test]
   fn scalar_sample_matches_cdf() {
     let d = SimdLogNormal::<f64>::new(0.2, 0.6);
-    let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
     assert!(best > 0.01, "best p = {best}");
   }
 }

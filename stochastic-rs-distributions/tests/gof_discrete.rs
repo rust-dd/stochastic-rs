@@ -36,7 +36,7 @@ fn simd_binomial_btrs_path_matches_own_cdf() {
     let xs = (0..N).map(|_| stream.sample() as i64).collect::<Vec<_>>();
     (
       xs,
-      Box::new(move |k: i64| dist.cdf(k as f64)) as Box<dyn Fn(i64) -> f64>,
+      Box::new(move |k: i64| dist.cdf(k as f64).unwrap()) as Box<dyn Fn(i64) -> f64>,
     )
   });
 }
@@ -51,7 +51,7 @@ fn simd_binomial_waiting_time_path_matches_own_cdf() {
     let xs = (0..N).map(|_| stream.sample() as i64).collect::<Vec<_>>();
     (
       xs,
-      Box::new(move |k: i64| dist.cdf(k as f64)) as Box<dyn Fn(i64) -> f64>,
+      Box::new(move |k: i64| dist.cdf(k as f64).unwrap()) as Box<dyn Fn(i64) -> f64>,
     )
   });
 }
@@ -70,7 +70,7 @@ fn simd_geometric_matches_own_cdf() {
     let xs = (0..N).map(|_| stream.sample() as i64).collect::<Vec<_>>();
     (
       xs,
-      Box::new(move |k: i64| dist.cdf(k as f64)) as Box<dyn Fn(i64) -> f64>,
+      Box::new(move |k: i64| dist.cdf(k as f64).unwrap()) as Box<dyn Fn(i64) -> f64>,
     )
   });
 }
@@ -90,7 +90,7 @@ fn simd_hypergeometric_matches_own_cdf() {
     let xs = (0..N).map(|_| stream.sample() as i64).collect::<Vec<_>>();
     (
       xs,
-      Box::new(move |k: i64| dist.cdf(k as f64)) as Box<dyn Fn(i64) -> f64>,
+      Box::new(move |k: i64| dist.cdf(k as f64).unwrap()) as Box<dyn Fn(i64) -> f64>,
     )
   });
 }
@@ -105,7 +105,7 @@ fn simd_poisson_matches_own_cdf() {
     let xs = (0..N).map(|_| stream.sample() as i64).collect::<Vec<_>>();
     (
       xs,
-      Box::new(move |k: i64| dist.cdf(k as f64)) as Box<dyn Fn(i64) -> f64>,
+      Box::new(move |k: i64| dist.cdf(k as f64).unwrap()) as Box<dyn Fn(i64) -> f64>,
     )
   });
 }
@@ -125,7 +125,7 @@ fn simd_poisson_large_lambda_matches_own_cdf() {
     let xs = (0..N).map(|_| stream.sample() as i64).collect::<Vec<_>>();
     (
       xs,
-      Box::new(move |k: i64| dist.cdf(k as f64)) as Box<dyn Fn(i64) -> f64>,
+      Box::new(move |k: i64| dist.cdf(k as f64).unwrap()) as Box<dyn Fn(i64) -> f64>,
     )
   });
 }
@@ -142,7 +142,7 @@ fn simd_skellam_matches_own_cdf() {
     let xs = (0..N).map(|_| stream.sample()).collect::<Vec<_>>();
     (
       xs,
-      Box::new(move |k: i64| dist.cdf(k as f64)) as Box<dyn Fn(i64) -> f64>,
+      Box::new(move |k: i64| dist.cdf(k as f64).unwrap()) as Box<dyn Fn(i64) -> f64>,
     )
   });
 }

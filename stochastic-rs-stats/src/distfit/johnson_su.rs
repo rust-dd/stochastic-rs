@@ -46,7 +46,9 @@ fn log_density(x: &[f64], gamma: f64, delta: f64, xi: f64, lambda: f64) -> f64 {
     return 1e300;
   }
   let d = SimdJohnsonSu::<f64>::new(gamma, delta, xi, lambda);
-  negative_log_likelihood(x, |v| d.pdf(v).ln())
+  negative_log_likelihood(x, |v| {
+    d.pdf(v).expect("SimdJohnsonSu has a closed-form pdf").ln()
+  })
 }
 
 /// Johnson SU maximum-likelihood fit of `data`.

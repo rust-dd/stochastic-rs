@@ -237,7 +237,7 @@ impl<T: SimdFloatExt> Distribution<T> for SimdGeneralizedHyperbolic<T> {
 }
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbolic<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let (lambda, alpha, beta, delta, mu) = self.params();
     let gamma = (alpha * alpha - beta * beta).sqrt();
     let d = x - mu;
@@ -249,58 +249,52 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
       - lambda * delta.ln()
       - (bessel_ke(lambda, delta * gamma).ln() - delta * gamma);
     let y = alpha * root;
-    (log_norm + order * root.ln() + bessel_ke(order, y).ln() - y + beta * d).exp()
+    Some((log_norm + order * root.ln() + bessel_ke(order, y).ln() - y + beta * d).exp())
   }
 
-  fn cdf(&self, _x: f64) -> f64 {
-    unimplemented!("DistributionExt::cdf for SimdGeneralizedHyperbolic has no closed form")
-  }
-
-  fn inv_cdf(&self, _p: f64) -> f64 {
-    unimplemented!("DistributionExt::inv_cdf for SimdGeneralizedHyperbolic has no closed form")
-  }
-
-  fn mean(&self) -> f64 {
+  fn mean(&self) -> Option<f64> {
     let (_, _, beta, _, mu) = self.params();
-    mu + beta * self.gig.raw_moment(1)
+    Some(mu + beta * self.gig.raw_moment(1))
   }
 
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
     let (ew, var, _, _) = self.clock_moments();
-    ew + beta * beta * var
+    Some(ew + beta * beta * var)
   }
 
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
     let (ew, var, mu3, _) = self.clock_moments();
     let m2 = ew + beta * beta * var;
-    (beta.powi(3) * mu3 + 3.0 * beta * var) / m2.powf(1.5)
+    Some((beta.powi(3) * mu3 + 3.0 * beta * var) / m2.powf(1.5))
   }
 
   /// Excess kurtosis.
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
     let (ew, var, mu3, mu4) = self.clock_moments();
     let m2 = ew + beta * beta * var;
     let ew2 = self.gig.raw_moment(2);
-    (beta.powi(4) * mu4 + 6.0 * beta * beta * (mu3 + ew * var) + 3.0 * ew2) / (m2 * m2) - 3.0
+    Some((beta.powi(4) * mu4 + 6.0 * beta * beta * (mu3 + ew * var) + 3.0 * ew2) / (m2 * m2) - 3.0)
   }
 
   /// $e^{\mu t}\bigl(\tfrac{\alpha^2-\beta^2}{\alpha^2-(\beta+t)^2}\bigr)^{\lambda/2}
   /// K_\lambda\bigl(\delta\sqrt{\alpha^2-(\beta+t)^2}\bigr)/K_\lambda\bigl(\delta\sqrt{\alpha^2-\beta^2}\bigr)$
   /// for $|\beta + t| < \alpha$, `NaN` beyond.
-  fn moment_generating_function(&self, t: f64) -> f64 {
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
     let (lambda, alpha, beta, delta, mu) = self.params();
     let shifted = alpha * alpha - (beta + t).powi(2);
     if shifted <= 0.0 {
-      return f64::NAN;
+      return Some(f64::NAN);
     }
     let gamma = (alpha * alpha - beta * beta).sqrt();
     let gt = shifted.sqrt();
-    (mu * t).exp() * (gamma * gamma / shifted).powf(0.5 * lambda) * bessel_ke(lambda, delta * gt)
-      / bessel_ke(lambda, delta * gamma)
-      * (delta * (gamma - gt)).exp()
+    Some(
+      (mu * t).exp() * (gamma * gamma / shifted).powf(0.5 * lambda) * bessel_ke(lambda, delta * gt)
+        / bessel_ke(lambda, delta * gamma)
+        * (delta * (gamma - gt)).exp(),
+    )
   }
 }
 
@@ -369,22 +363,26 @@ mod tests {
       let d = SimdGeneralizedHyperbolic::<f64>::new(lambda, alpha, beta, delta, mu);
       for (x, want) in [-2.0, -0.5, 0.0, 0.3, 1.0, 3.0].into_iter().zip(pdf) {
         assert!(
-          close(d.pdf(x), want, 1e-9),
+          close(d.pdf(x).unwrap(), want, 1e-9),
           "λ={lambda}: pdf({x}) = {} vs {want}",
-          d.pdf(x)
+          d.pdf(x).unwrap()
         );
       }
       assert!(
-        (d.mean() - mean).abs() < 1e-10,
+        (d.mean().unwrap() - mean).abs() < 1e-10,
         "λ={lambda}: mean {}",
-        d.mean()
+        d.mean().unwrap()
       );
       assert!(
-        close(d.variance(), var, 1e-10),
+        close(d.variance().unwrap(), var, 1e-10),
         "λ={lambda}: variance {}",
-        d.variance()
+        d.variance().unwrap()
       );
-      assert!(close(d.moment_generating_function(0.0), 1.0, 1e-12));
+      assert!(close(
+        d.moment_generating_function(0.0).unwrap(),
+        1.0,
+        1e-12
+      ));
     }
   }
 
@@ -396,16 +394,20 @@ mod tests {
     let nig = SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.3);
     for x in [-3.0, -1.0, 0.0, 0.3, 1.0, 2.5, 6.0] {
       assert!(
-        close(gh.pdf(x), nig.pdf(x), 1e-11),
+        close(gh.pdf(x).unwrap(), nig.pdf(x).unwrap(), 1e-11),
         "pdf({x}): {} vs {}",
-        gh.pdf(x),
-        nig.pdf(x)
+        gh.pdf(x).unwrap(),
+        nig.pdf(x).unwrap()
       );
     }
-    assert!(close(gh.mean(), nig.mean(), 1e-11));
-    assert!(close(gh.variance(), nig.variance(), 1e-10));
-    assert!(close(gh.skewness(), nig.skewness(), 1e-9));
-    assert!(close(gh.kurtosis(), nig.kurtosis(), 1e-8));
+    assert!(close(gh.mean().unwrap(), nig.mean().unwrap(), 1e-11));
+    assert!(close(
+      gh.variance().unwrap(),
+      nig.variance().unwrap(),
+      1e-10
+    ));
+    assert!(close(gh.skewness().unwrap(), nig.skewness().unwrap(), 1e-9));
+    assert!(close(gh.kurtosis().unwrap(), nig.kurtosis().unwrap(), 1e-8));
   }
 
   #[test]
@@ -413,7 +415,9 @@ mod tests {
     let d = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2);
     let (lo, hi, n) = (-30.0_f64, 30.0_f64, 600_000usize);
     let h = (hi - lo) / n as f64;
-    let s: f64 = (0..n).map(|k| d.pdf(lo + (k as f64 + 0.5) * h) * h).sum();
+    let s: f64 = (0..n)
+      .map(|k| d.pdf(lo + (k as f64 + 0.5) * h).unwrap() * h)
+      .sum();
     assert!((s - 1.0).abs() < 1e-6, "integral = {s}");
   }
 
@@ -427,16 +431,16 @@ mod tests {
     let var = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64;
     let m3 = xs.iter().map(|x| (x - mean).powi(3)).sum::<f64>() / n as f64;
     assert!(
-      (mean - d.mean()).abs() < 0.01,
+      (mean - d.mean().unwrap()).abs() < 0.01,
       "mean {mean} vs {}",
-      d.mean()
+      d.mean().unwrap()
     );
     assert!(
-      (var - d.variance()).abs() / d.variance() < 0.02,
+      (var - d.variance().unwrap()).abs() / d.variance().unwrap() < 0.02,
       "var {var}"
     );
     assert!(
-      (m3 / var.powf(1.5) - d.skewness()).abs() < 0.05,
+      (m3 / var.powf(1.5) - d.skewness().unwrap()).abs() < 0.05,
       "skew {}",
       m3 / var.powf(1.5)
     );
@@ -446,7 +450,14 @@ mod tests {
   fn scalar_sample_moments_match_closed_forms() {
     let d = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2);
     let xs = scalar_draws(&d, 23, 200_000);
-    assert_moments_within(&xs, d.mean(), d.variance(), None, 6.0, "GH");
+    assert_moments_within(
+      &xs,
+      d.mean().unwrap(),
+      d.variance().unwrap(),
+      None,
+      6.0,
+      "GH",
+    );
   }
 
   #[test]

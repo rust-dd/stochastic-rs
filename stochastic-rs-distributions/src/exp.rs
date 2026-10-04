@@ -316,71 +316,71 @@ impl<T: SimdFloatExt> Distribution<T> for SimdExp<T> {
 }
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdExp<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let lambda = self.lambda.to_f64().unwrap();
     if x < 0.0 {
-      0.0
+      Some(0.0)
     } else {
-      lambda * (-lambda * x).exp()
+      Some(lambda * (-lambda * x).exp())
     }
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     let lambda = self.lambda.to_f64().unwrap();
     if x < 0.0 {
-      0.0
+      Some(0.0)
     } else {
-      1.0 - (-lambda * x).exp()
+      Some(1.0 - (-lambda * x).exp())
     }
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn quantile(&self, p: f64) -> Option<f64> {
     let lambda = self.lambda.to_f64().unwrap();
-    -(1.0 - p).ln() / lambda
+    Some(-(1.0 - p).ln() / lambda)
   }
 
-  fn mean(&self) -> f64 {
-    1.0 / self.lambda.to_f64().unwrap()
+  fn mean(&self) -> Option<f64> {
+    Some(1.0 / self.lambda.to_f64().unwrap())
   }
 
-  fn median(&self) -> f64 {
-    std::f64::consts::LN_2 / self.lambda.to_f64().unwrap()
+  fn median(&self) -> Option<f64> {
+    Some(std::f64::consts::LN_2 / self.lambda.to_f64().unwrap())
   }
 
-  fn mode(&self) -> f64 {
-    0.0
+  fn mode(&self) -> Option<f64> {
+    Some(0.0)
   }
 
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let l = self.lambda.to_f64().unwrap();
-    1.0 / (l * l)
+    Some(1.0 / (l * l))
   }
 
-  fn skewness(&self) -> f64 {
-    2.0
+  fn skewness(&self) -> Option<f64> {
+    Some(2.0)
   }
 
-  fn kurtosis(&self) -> f64 {
-    6.0
+  fn kurtosis(&self) -> Option<f64> {
+    Some(6.0)
   }
 
-  fn entropy(&self) -> f64 {
-    1.0 - self.lambda.to_f64().unwrap().ln()
+  fn entropy(&self) -> Option<f64> {
+    Some(1.0 - self.lambda.to_f64().unwrap().ln())
   }
 
-  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+  fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
     // φ(t) = λ / (λ - it)
     let lambda = self.lambda.to_f64().unwrap();
     let denom = num_complex::Complex64::new(lambda, -t);
-    num_complex::Complex64::new(lambda, 0.0) / denom
+    Some(num_complex::Complex64::new(lambda, 0.0) / denom)
   }
 
-  fn moment_generating_function(&self, t: f64) -> f64 {
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
     let lambda = self.lambda.to_f64().unwrap();
     if t < lambda {
-      lambda / (lambda - t)
+      Some(lambda / (lambda - t))
     } else {
-      f64::INFINITY
+      Some(f64::INFINITY)
     }
   }
 }

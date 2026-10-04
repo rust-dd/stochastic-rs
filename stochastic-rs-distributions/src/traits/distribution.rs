@@ -15,96 +15,55 @@ use stochastic_rs_core::simd_rng::SimdRngExt;
 use crate::seeded::Seeded;
 use crate::seeded::worker_count;
 
-/// Analytical descriptors of a distribution.
-///
-/// All methods are provided with default implementations that **panic** via
-/// [`unimplemented!()`]. Implementors override the methods that have a known
-/// closed form for that distribution. This is intentional: silently returning
-/// zero (the previous default) masked missing implementations and produced
-/// downstream numerical bugs in pricing / calibration code.
+/// Closed-form analytics of a law — `None` where the law has no closed form for that quantity, never
+/// a silent zero; `kurtosis` is the excess kurtosis, `quantile` the inverse cdf.
 pub trait DistributionExt {
-  fn characteristic_function(&self, _t: f64) -> Complex64 {
-    unimplemented!(
-      "DistributionExt::characteristic_function is not implemented for {}",
-      std::any::type_name::<Self>()
-    )
+  fn characteristic_function(&self, _t: f64) -> Option<Complex64> {
+    None
   }
 
-  fn pdf(&self, _x: f64) -> f64 {
-    unimplemented!(
-      "DistributionExt::pdf is not implemented for {}",
-      std::any::type_name::<Self>()
-    )
+  fn pdf(&self, _x: f64) -> Option<f64> {
+    None
   }
 
-  fn cdf(&self, _x: f64) -> f64 {
-    unimplemented!(
-      "DistributionExt::cdf is not implemented for {}",
-      std::any::type_name::<Self>()
-    )
+  fn cdf(&self, _x: f64) -> Option<f64> {
+    None
   }
 
-  fn inv_cdf(&self, _p: f64) -> f64 {
-    unimplemented!(
-      "DistributionExt::inv_cdf is not implemented for {}",
-      std::any::type_name::<Self>()
-    )
+  fn quantile(&self, _p: f64) -> Option<f64> {
+    None
   }
 
-  fn mean(&self) -> f64 {
-    unimplemented!(
-      "DistributionExt::mean is not implemented for {}",
-      std::any::type_name::<Self>()
-    )
+  fn mean(&self) -> Option<f64> {
+    None
   }
 
-  fn median(&self) -> f64 {
-    unimplemented!(
-      "DistributionExt::median is not implemented for {}",
-      std::any::type_name::<Self>()
-    )
+  fn median(&self) -> Option<f64> {
+    None
   }
 
-  fn mode(&self) -> f64 {
-    unimplemented!(
-      "DistributionExt::mode is not implemented for {}",
-      std::any::type_name::<Self>()
-    )
+  fn mode(&self) -> Option<f64> {
+    None
   }
 
-  fn variance(&self) -> f64 {
-    unimplemented!(
-      "DistributionExt::variance is not implemented for {}",
-      std::any::type_name::<Self>()
-    )
+  fn variance(&self) -> Option<f64> {
+    None
   }
 
-  fn skewness(&self) -> f64 {
-    unimplemented!(
-      "DistributionExt::skewness is not implemented for {}",
-      std::any::type_name::<Self>()
-    )
+  fn skewness(&self) -> Option<f64> {
+    None
   }
 
-  fn kurtosis(&self) -> f64 {
-    unimplemented!(
-      "DistributionExt::kurtosis is not implemented for {}",
-      std::any::type_name::<Self>()
-    )
+  fn kurtosis(&self) -> Option<f64> {
+    None
   }
 
-  fn entropy(&self) -> f64 {
-    unimplemented!(
-      "DistributionExt::entropy is not implemented for {}",
-      std::any::type_name::<Self>()
-    )
+  fn entropy(&self) -> Option<f64> {
+    None
   }
 
-  fn moment_generating_function(&self, _t: f64) -> f64 {
-    unimplemented!(
-      "DistributionExt::moment_generating_function is not implemented for {}",
-      std::any::type_name::<Self>()
-    )
+  fn moment_generating_function(&self, _t: f64) -> Option<f64> {
+    None
   }
 }
 

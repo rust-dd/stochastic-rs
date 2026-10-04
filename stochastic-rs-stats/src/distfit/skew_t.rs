@@ -48,7 +48,12 @@ fn log_density(x: &[f64], mu: f64, sigma: f64, eta: f64, lambda: f64) -> f64 {
   }
   let d = SimdSkewT::<f64>::new(eta, lambda);
   let log_sigma = sigma.ln();
-  negative_log_likelihood(x, |v| d.pdf((v - mu) / sigma).ln() - log_sigma)
+  negative_log_likelihood(x, |v| {
+    d.pdf((v - mu) / sigma)
+      .expect("SimdSkewT has a closed-form pdf")
+      .ln()
+      - log_sigma
+  })
 }
 
 /// Hansen skew-t maximum-likelihood fit of `data`.

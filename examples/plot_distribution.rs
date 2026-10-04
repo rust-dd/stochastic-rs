@@ -31,11 +31,14 @@ fn main() {
   );
 
   let n_grid = 200;
-  let x_max = dist.mean() + 5.0 * dist.variance().sqrt();
+  let x_max = dist.mean().unwrap() + 5.0 * dist.variance().unwrap().sqrt();
   let xs = (0..=n_grid)
     .map(|i| x_max * i as f64 / n_grid as f64)
     .collect::<Vec<f64>>();
-  let ys = xs.iter().map(|&x| dist.pdf(x)).collect::<Vec<f64>>();
+  let ys = xs
+    .iter()
+    .map(|&x| dist.pdf(x).unwrap())
+    .collect::<Vec<f64>>();
   plot.add_trace(
     Scatter::new(xs, ys)
       .name("pdf")

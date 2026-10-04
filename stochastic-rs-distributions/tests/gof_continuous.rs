@@ -48,7 +48,7 @@ fn simd_uniform_matches_own_cdf() {
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -61,7 +61,7 @@ fn simd_lognormal_matches_own_cdf() {
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -74,7 +74,7 @@ fn simd_beta_matches_own_cdf() {
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -87,7 +87,7 @@ fn simd_cauchy_matches_own_cdf() {
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -100,7 +100,7 @@ fn simd_chi_squared_matches_own_cdf() {
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -113,7 +113,7 @@ fn simd_studentt_matches_own_cdf() {
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -128,7 +128,7 @@ fn simd_pareto_matches_own_cdf() {
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -141,7 +141,7 @@ fn simd_weibull_matches_own_cdf() {
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -154,7 +154,7 @@ fn simd_inverse_gauss_matches_own_cdf() {
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -168,7 +168,7 @@ fn simd_ged_matches_own_cdf() {
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -181,7 +181,7 @@ fn simd_gpd_heavy_tail_matches_own_cdf() {
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -194,7 +194,7 @@ fn simd_gpd_exponential_matches_own_cdf() {
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -207,7 +207,7 @@ fn simd_gpd_bounded_tail_matches_own_cdf() {
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -220,7 +220,7 @@ fn simd_johnson_su_matches_own_cdf() {
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -233,7 +233,7 @@ fn simd_skew_t_matches_own_cdf() {
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -272,7 +272,7 @@ fn simd_variance_gamma_matches_own_integrated_cdf() {
     let dist = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05);
     let mut xs = vec![0.0; N];
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
-    let cdf = integrated_cdf(move |x| dist.pdf(x), -4.0, 4.0, 400_000);
+    let cdf = integrated_cdf(move |x| dist.pdf(x).unwrap(), -4.0, 4.0, 400_000);
     (xs, Box::new(cdf) as Box<dyn Fn(f64) -> f64>)
   });
 }
@@ -283,7 +283,7 @@ fn simd_gig_matches_own_integrated_cdf() {
     let dist = SimdGig::<f64>::new(0.3, 2.0, 0.5);
     let mut xs = vec![0.0; N];
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
-    let cdf = integrated_cdf(move |x| dist.pdf(x), 0.0, 120.0, 600_000);
+    let cdf = integrated_cdf(move |x| dist.pdf(x).unwrap(), 0.0, 120.0, 600_000);
     (xs, Box::new(cdf) as Box<dyn Fn(f64) -> f64>)
   });
 }
@@ -294,7 +294,7 @@ fn simd_gig_small_beta_regime_matches_own_integrated_cdf() {
     let dist = SimdGig::<f64>::new(0.2, 0.01, 1.0);
     let mut xs = vec![0.0; N];
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
-    let cdf = integrated_cdf(move |x| dist.pdf(x), 0.0, 60.0, 600_000);
+    let cdf = integrated_cdf(move |x| dist.pdf(x).unwrap(), 0.0, 60.0, 600_000);
     (xs, Box::new(cdf) as Box<dyn Fn(f64) -> f64>)
   });
 }
@@ -305,7 +305,7 @@ fn simd_generalized_hyperbolic_matches_own_integrated_cdf() {
     let dist = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2);
     let mut xs = vec![0.0; N];
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
-    let cdf = integrated_cdf(move |x| dist.pdf(x), -25.0, 25.0, 500_000);
+    let cdf = integrated_cdf(move |x| dist.pdf(x).unwrap(), -25.0, 25.0, 500_000);
     (xs, Box::new(cdf) as Box<dyn Fn(f64) -> f64>)
   });
 }
@@ -318,7 +318,7 @@ fn simd_gev_gumbel_matches_own_cdf() {
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -331,7 +331,7 @@ fn simd_gev_frechet_matches_own_cdf() {
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }
@@ -344,7 +344,7 @@ fn simd_gev_reverse_weibull_matches_own_cdf() {
     dist.seeded(&Deterministic::new(seed)).fill_slice(&mut xs);
     (
       xs,
-      Box::new(move |x| dist.cdf(x)) as Box<dyn Fn(f64) -> f64>,
+      Box::new(move |x| dist.cdf(x).unwrap()) as Box<dyn Fn(f64) -> f64>,
     )
   });
 }

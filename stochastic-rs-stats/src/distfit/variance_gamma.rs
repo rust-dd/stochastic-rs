@@ -48,7 +48,11 @@ fn log_density(x: &[f64], sigma: f64, nu: f64, theta: f64, mu: f64) -> f64 {
     return 1e300;
   }
   let d = SimdVarianceGamma::<f64>::new(sigma, nu, theta, mu);
-  negative_log_likelihood(x, |v| d.pdf(v).ln())
+  negative_log_likelihood(x, |v| {
+    d.pdf(v)
+      .expect("SimdVarianceGamma has a closed-form pdf")
+      .ln()
+  })
 }
 
 /// Variance-gamma maximum-likelihood fit of `data`.

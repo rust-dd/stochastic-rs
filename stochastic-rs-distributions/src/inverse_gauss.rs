@@ -194,91 +194,88 @@ impl<T: SimdFloatExt> Distribution<T> for SimdInverseGauss<T> {
 }
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdInverseGauss<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let lambda = self.lambda.to_f64().unwrap();
     if x <= 0.0 {
-      0.0
+      Some(0.0)
     } else {
-      (lambda / (2.0 * std::f64::consts::PI * x.powi(3))).sqrt()
-        * (-lambda * (x - mu).powi(2) / (2.0 * mu * mu * x)).exp()
+      Some(
+        (lambda / (2.0 * std::f64::consts::PI * x.powi(3))).sqrt()
+          * (-lambda * (x - mu).powi(2) / (2.0 * mu * mu * x)).exp(),
+      )
     }
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let lambda = self.lambda.to_f64().unwrap();
     if x <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     // F(x) = Φ(√(λ/x)·(x/μ-1)) + e^(2λ/μ) Φ(-√(λ/x)·(x/μ+1))
     let sqrt_lambda_over_x = (lambda / x).sqrt();
     let a = sqrt_lambda_over_x * (x / mu - 1.0);
     let b = sqrt_lambda_over_x * (x / mu + 1.0);
-    crate::special::norm_cdf(a) + (2.0 * lambda / mu).exp() * crate::special::norm_cdf(-b)
+    Some(crate::special::norm_cdf(a) + (2.0 * lambda / mu).exp() * crate::special::norm_cdf(-b))
   }
 
-  /// Inverse Gaussian quantile has no closed form.
-  fn inv_cdf(&self, _p: f64) -> f64 {
-    unimplemented!(
-      "DistributionExt::inv_cdf for SimdInverseGauss has no closed form (use a numerical root-finder on cdf)"
-    )
+  fn mean(&self) -> Option<f64> {
+    Some(self.mu.to_f64().unwrap())
   }
 
-  fn mean(&self) -> f64 {
-    self.mu.to_f64().unwrap()
-  }
-
-  fn median(&self) -> f64 {
+  fn median(&self) -> Option<f64> {
     // No closed form and no simple bound-based approximation used here;
     // callers that need a reference value should use `mean()` explicitly
     // instead of assuming this method provides one.
-    f64::NAN
+    Some(f64::NAN)
   }
 
-  fn mode(&self) -> f64 {
+  fn mode(&self) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let lambda = self.lambda.to_f64().unwrap();
-    mu * ((1.0 + 9.0 * mu * mu / (4.0 * lambda * lambda)).sqrt() - 3.0 * mu / (2.0 * lambda))
+    Some(mu * ((1.0 + 9.0 * mu * mu / (4.0 * lambda * lambda)).sqrt() - 3.0 * mu / (2.0 * lambda)))
   }
 
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let lambda = self.lambda.to_f64().unwrap();
-    mu.powi(3) / lambda
+    Some(mu.powi(3) / lambda)
   }
 
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let lambda = self.lambda.to_f64().unwrap();
-    3.0 * (mu / lambda).sqrt()
+    Some(3.0 * (mu / lambda).sqrt())
   }
 
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let lambda = self.lambda.to_f64().unwrap();
-    15.0 * mu / lambda
+    Some(15.0 * mu / lambda)
   }
 
-  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+  fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
     // φ(t) = exp(λ/μ · (1 - sqrt(1 - 2 i μ² t / λ)))
     let mu = self.mu.to_f64().unwrap();
     let lambda = self.lambda.to_f64().unwrap();
     let inner = num_complex::Complex64::new(1.0, -2.0 * mu * mu * t / lambda);
-    (num_complex::Complex64::new(1.0, 0.0) - inner.sqrt())
-      .scale(lambda / mu)
-      .exp()
+    Some(
+      (num_complex::Complex64::new(1.0, 0.0) - inner.sqrt())
+        .scale(lambda / mu)
+        .exp(),
+    )
   }
 
-  fn moment_generating_function(&self, t: f64) -> f64 {
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
     // M(t) = exp(λ/μ · (1 - sqrt(1 - 2 μ² t / λ)))
     let mu = self.mu.to_f64().unwrap();
     let lambda = self.lambda.to_f64().unwrap();
     let arg = 1.0 - 2.0 * mu * mu * t / lambda;
     if arg < 0.0 {
-      f64::INFINITY
+      Some(f64::INFINITY)
     } else {
-      ((lambda / mu) * (1.0 - arg.sqrt())).exp()
+      Some(((lambda / mu) * (1.0 - arg.sqrt())).exp())
     }
   }
 }
@@ -297,7 +294,7 @@ mod tests {
   #[test]
   fn scalar_sample_matches_cdf() {
     let d = SimdInverseGauss::<f64>::new(1.5, 3.0);
-    let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
     assert!(best > 0.01, "best p = {best}");
   }
 }

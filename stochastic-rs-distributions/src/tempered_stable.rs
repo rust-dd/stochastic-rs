@@ -299,39 +299,41 @@ impl<T: SimdFloatExt> Distribution<T> for SimdTemperedStable<T> {
 }
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdTemperedStable<T> {
-  fn mean(&self) -> f64 {
-    self.cumulant(1)
+  fn mean(&self) -> Option<f64> {
+    Some(self.cumulant(1))
   }
 
-  fn variance(&self) -> f64 {
-    self.cumulant(2)
+  fn variance(&self) -> Option<f64> {
+    Some(self.cumulant(2))
   }
 
-  fn skewness(&self) -> f64 {
-    self.cumulant(3) / self.cumulant(2).powf(1.5)
+  fn skewness(&self) -> Option<f64> {
+    Some(self.cumulant(3) / self.cumulant(2).powf(1.5))
   }
 
   /// Excess kurtosis $\kappa_4/\kappa_2^2$.
-  fn kurtosis(&self) -> f64 {
-    self.cumulant(4) / self.cumulant(2).powi(2)
+  fn kurtosis(&self) -> Option<f64> {
+    Some(self.cumulant(4) / self.cumulant(2).powi(2))
   }
 
   /// $\exp\bigl(\theta(\lambda^\alpha - (\lambda - t)^\alpha)\bigr)$ for $t \le \lambda$, `NaN` beyond.
-  fn moment_generating_function(&self, t: f64) -> f64 {
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
     let (alpha, lambda, theta) = self.params();
     if t > lambda {
-      return f64::NAN;
+      return Some(f64::NAN);
     }
-    (theta * (lambda.powf(alpha) - (lambda - t).powf(alpha))).exp()
+    Some((theta * (lambda.powf(alpha) - (lambda - t).powf(alpha))).exp())
   }
 
   /// $\exp\bigl(\theta(\lambda^\alpha - (\lambda - iu)^\alpha)\bigr)$.
-  fn characteristic_function(&self, u: f64) -> num_complex::Complex64 {
+  fn characteristic_function(&self, u: f64) -> Option<num_complex::Complex64> {
     use num_complex::Complex64;
     let (alpha, lambda, theta) = self.params();
-    (Complex64::new(theta * lambda.powf(alpha), 0.0)
-      - Complex64::new(lambda, -u).powf(alpha) * theta)
-      .exp()
+    Some(
+      (Complex64::new(theta * lambda.powf(alpha), 0.0)
+        - Complex64::new(lambda, -u).powf(alpha) * theta)
+        .exp(),
+    )
   }
 }
 
@@ -387,21 +389,21 @@ mod tests {
     let mean = xs.iter().sum::<f64>() / n as f64;
     let var = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64;
     assert!(
-      (mean - d.mean()).abs() / d.mean() < 0.01,
+      (mean - d.mean().unwrap()).abs() / d.mean().unwrap() < 0.01,
       "mean {mean} vs {}",
-      d.mean()
+      d.mean().unwrap()
     );
     assert!(
-      (var - d.variance()).abs() / d.variance() < 0.03,
+      (var - d.variance().unwrap()).abs() / d.variance().unwrap() < 0.03,
       "var {var} vs {}",
-      d.variance()
+      d.variance().unwrap()
     );
-    assert!((d.mean() - 1.5 * 0.6 * 2.0_f64.powf(-0.4)).abs() < 1e-14);
-    assert!((d.variance() - 1.5 * 0.6 * 0.4 * 2.0_f64.powf(-1.4)).abs() < 1e-14);
-    assert!(d.skewness() > 0.0 && d.kurtosis() > 0.0);
-    assert!((d.moment_generating_function(0.0) - 1.0).abs() < 1e-15);
-    assert!(d.moment_generating_function(3.0).is_nan());
-    let cf = d.characteristic_function(0.0);
+    assert!((d.mean().unwrap() - 1.5 * 0.6 * 2.0_f64.powf(-0.4)).abs() < 1e-14);
+    assert!((d.variance().unwrap() - 1.5 * 0.6 * 0.4 * 2.0_f64.powf(-1.4)).abs() < 1e-14);
+    assert!(d.skewness().unwrap() > 0.0 && d.kurtosis().unwrap() > 0.0);
+    assert!((d.moment_generating_function(0.0).unwrap() - 1.0).abs() < 1e-15);
+    assert!(d.moment_generating_function(3.0).unwrap().is_nan());
+    let cf = d.characteristic_function(0.0).unwrap();
     assert!((cf.re - 1.0).abs() < 1e-15 && cf.im.abs() < 1e-15);
   }
 
@@ -422,7 +424,7 @@ mod tests {
   #[test]
   fn untilted_law_has_infinite_mean() {
     let d = SimdTemperedStable::<f64>::new(0.5, 0.0, 1.0);
-    assert_eq!(d.mean(), f64::INFINITY);
+    assert_eq!(d.mean().unwrap(), f64::INFINITY);
   }
 
   #[test]

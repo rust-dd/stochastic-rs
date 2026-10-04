@@ -196,7 +196,7 @@ impl<T: SimdFloatExt> Distribution<T> for SimdNormalInverseGauss<T> {
 }
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdNormalInverseGauss<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     // f(x) = (αδ/π) exp(δγ + β(x−μ)) K₁(α q(x)) / q(x), γ = sqrt(α²−β²),
     // q(x) = sqrt(δ² + (x−μ)²). Barndorff-Nielsen (1997) eq. 3.
     //
@@ -213,63 +213,57 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdNormalInverseGauss<
     let m = self.mu.to_f64().unwrap();
     let gamma = (a * a - b * b).sqrt();
     let q = (d * d + (x - m) * (x - m)).sqrt();
-    a * d / std::f64::consts::PI
-      * (d * gamma + b * (x - m) - a * q).exp()
-      * crate::special::bessel_k1e(a * q)
-      / q
+    Some(
+      a * d / std::f64::consts::PI
+        * (d * gamma + b * (x - m) - a * q).exp()
+        * crate::special::bessel_k1e(a * q)
+        / q,
+    )
   }
 
-  fn cdf(&self, _x: f64) -> f64 {
-    unimplemented!("DistributionExt::cdf for SimdNormalInverseGauss has no closed form")
-  }
-
-  fn inv_cdf(&self, _p: f64) -> f64 {
-    unimplemented!("DistributionExt::inv_cdf for SimdNormalInverseGauss has no closed form")
-  }
-
-  fn mean(&self) -> f64 {
+  fn mean(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
     let d = self.delta.to_f64().unwrap();
     let m = self.mu.to_f64().unwrap();
     let gamma = (a * a - b * b).sqrt();
-    m + d * b / gamma
+    Some(m + d * b / gamma)
   }
 
-  fn median(&self) -> f64 {
-    f64::NAN
+  fn median(&self) -> Option<f64> {
+    Some(f64::NAN)
   }
 
-  fn mode(&self) -> f64 {
+  fn mode(&self) -> Option<f64> {
     // For NIG the mode is μ + δβ / sqrt(α² − β²) · (1 − ...) — no simple closed form.
-    f64::NAN
+    Some(f64::NAN)
   }
 
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
     let d = self.delta.to_f64().unwrap();
     let gamma = (a * a - b * b).sqrt();
-    d * a * a / gamma.powi(3)
+    Some(d * a * a / gamma.powi(3))
   }
 
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
     let d = self.delta.to_f64().unwrap();
     let gamma = (a * a - b * b).sqrt();
-    3.0 * b / (a * (d * gamma).sqrt())
+    Some(3.0 * b / (a * (d * gamma).sqrt()))
   }
 
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
     let d = self.delta.to_f64().unwrap();
     let gamma = (a * a - b * b).sqrt();
-    3.0 * (1.0 + 4.0 * b * b / (a * a)) / (d * gamma)
+    Some(3.0 * (1.0 + 4.0 * b * b / (a * a)) / (d * gamma))
   }
 
-  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+  fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
     // φ(t) = exp{ iμt + δ (γ - sqrt(α² - (β + it)²)) },  γ = sqrt(α² - β²)
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
@@ -280,10 +274,10 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdNormalInverseGauss<
     let inner = num_complex::Complex64::new(a * a, 0.0) - beta_plus_it * beta_plus_it;
     let exponent = num_complex::Complex64::new(0.0, m * t)
       + (num_complex::Complex64::new(gamma, 0.0) - inner.sqrt()).scale(d);
-    exponent.exp()
+    Some(exponent.exp())
   }
 
-  fn moment_generating_function(&self, t: f64) -> f64 {
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
     // M(t) = exp{ μt + δ (γ - sqrt(α² - (β + t)²)) }
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
@@ -293,9 +287,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdNormalInverseGauss<
     let bt = b + t;
     let inner = a * a - bt * bt;
     if inner < 0.0 {
-      f64::INFINITY
+      Some(f64::INFINITY)
     } else {
-      (m * t + d * (gamma - inner.sqrt())).exp()
+      Some((m * t + d * (gamma - inner.sqrt())).exp())
     }
   }
 }
@@ -321,8 +315,15 @@ mod tests {
   fn scalar_sample_matches_moments_and_characteristic_function() {
     let d = SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.1);
     let xs = scalar_draws(&d, 17, 200_000);
-    assert_moments_within(&xs, d.mean(), d.variance(), None, 6.0, "NIG");
-    assert_ecf_matches(&xs, |u| d.characteristic_function(u), "NIG");
+    assert_moments_within(
+      &xs,
+      d.mean().unwrap(),
+      d.variance().unwrap(),
+      None,
+      6.0,
+      "NIG",
+    );
+    assert_ecf_matches(&xs, |u| d.characteristic_function(u).unwrap(), "NIG");
   }
 
   fn trapezoid(lo: f64, hi: f64, n: usize, mut f: impl FnMut(f64) -> f64) -> f64 {
@@ -342,7 +343,7 @@ mod tests {
   #[test]
   fn nig_pdf_integrates_to_one() {
     let dist = SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.0);
-    let integral = trapezoid(-40.0, 40.0, 400_000, |x| dist.pdf(x));
+    let integral = trapezoid(-40.0, 40.0, 400_000, |x| dist.pdf(x).unwrap());
     assert!(
       (integral - 1.0).abs() < 1e-6,
       "NIG pdf integral = {integral}, expected 1.0"
@@ -353,8 +354,8 @@ mod tests {
   #[test]
   fn nig_pdf_first_moment_matches_mean() {
     let dist = SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.0);
-    let first_moment = trapezoid(-40.0, 40.0, 400_000, |x| x * dist.pdf(x));
-    let expected = dist.mean();
+    let first_moment = trapezoid(-40.0, 40.0, 400_000, |x| x * dist.pdf(x).unwrap());
+    let expected = dist.mean().unwrap();
     assert!(
       (first_moment - expected).abs() < 1e-5,
       "first moment = {first_moment}, mean() = {expected}"
@@ -366,8 +367,8 @@ mod tests {
     let mu = 0.5;
     let dist = SimdNormalInverseGauss::<f64>::new(2.0, 0.0, 1.0, mu);
     for &h in &[0.1_f64, 0.5, 1.0, 2.0, 5.0] {
-      let left = dist.pdf(mu - h);
-      let right = dist.pdf(mu + h);
+      let left = dist.pdf(mu - h).unwrap();
+      let right = dist.pdf(mu + h).unwrap();
       assert!(
         (left - right).abs() < 1e-14,
         "pdf not symmetric at h={h}: f(mu-h)={left}, f(mu+h)={right}"
@@ -384,7 +385,7 @@ mod tests {
   #[test]
   fn nig_pdf_finite_for_large_deviation() {
     let dist = SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.0);
-    let p = dist.pdf(2000.0);
+    let p = dist.pdf(2000.0).unwrap();
     assert!(p.is_finite(), "pdf(2000.0) = {p}, expected a finite value");
     assert_eq!(
       p, 0.0,
@@ -401,7 +402,7 @@ mod tests {
     let dist = SimdNormalInverseGauss::<f64>::new(2.0, 1.9, 1.0, 0.0);
     for i in 1..=200 {
       let x = i as f64 * 10.0;
-      let p = dist.pdf(x);
+      let p = dist.pdf(x).unwrap();
       assert!(
         p.is_finite() && p >= 0.0,
         "pdf({x}) = {p}, expected finite >= 0"

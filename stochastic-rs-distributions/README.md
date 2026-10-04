@@ -19,8 +19,8 @@ analytics and SIMD-accelerated bulk generation.
   plus `SimdDirichlet` and `SimdWishart`. Ziggurat, rejection, inversion or
   transformation sampling depending on the family.
 - **`DistributionExt`** — closed-form pdf, cdf, characteristic function and
-  moments. 18 of 19 families implement it in closed form; the remaining
-  gaps raise `unimplemented!` by name rather than returning a silent zero.
+  moments. Every method returns `Option`: `Some` where the family has a
+  closed form, `None` where it has none — never a silent zero.
 - **`FloatExt` / `SimdFloatExt`** — the numeric trait bounds the whole
   workspace is generic over.
 

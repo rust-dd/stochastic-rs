@@ -130,11 +130,11 @@ impl<T: SimdFloatExt> Distribution<T> for SimdTruncatedBeta<T> {
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let lo = self.lower.to_f64().unwrap();
     let up = self.upper.to_f64().unwrap();
     if x < lo || x > up {
-      return 0.0;
+      return Some(0.0);
     }
     let a = self.base.alpha().to_f64().unwrap();
     let b = self.base.beta().to_f64().unwrap();
@@ -143,22 +143,22 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
     let log_kernel = (a - 1.0) * x.ln() + (b - 1.0) * (1.0 - x).ln();
     let base_pdf = (log_norm + log_kernel).exp();
     let norm_mass = self.cdf_helper(up) - self.cdf_helper(lo);
-    base_pdf / norm_mass.max(1e-300)
+    Some(base_pdf / norm_mass.max(1e-300))
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     let lo = self.lower.to_f64().unwrap();
     let up = self.upper.to_f64().unwrap();
     if x <= lo {
-      return 0.0;
+      return Some(0.0);
     }
     if x >= up {
-      return 1.0;
+      return Some(1.0);
     }
     let f_x = self.cdf_helper(x);
     let f_lo = self.cdf_helper(lo);
     let f_up = self.cdf_helper(up);
-    (f_x - f_lo) / (f_up - f_lo).max(1e-300)
+    Some((f_x - f_lo) / (f_up - f_lo).max(1e-300))
   }
 }
 
@@ -260,11 +260,11 @@ impl<T: SimdFloatExt> Distribution<T> for SimdTruncatedGamma<T> {
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdTruncatedGamma<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let lo = self.lower.to_f64().unwrap();
     let up = self.upper.to_f64().unwrap();
     if x < lo || x > up {
-      return 0.0;
+      return Some(0.0);
     }
     let k = self.base.alpha().to_f64().unwrap();
     let theta = self.base.scale().to_f64().unwrap();
@@ -272,22 +272,22 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedGamma<T> {
     let log_kernel = (k - 1.0) * x.ln() - x / theta;
     let base_pdf = (log_norm + log_kernel).exp();
     let mass = self.cdf_helper(up) - self.cdf_helper(lo);
-    base_pdf / mass.max(1e-300)
+    Some(base_pdf / mass.max(1e-300))
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     let lo = self.lower.to_f64().unwrap();
     let up = self.upper.to_f64().unwrap();
     if x <= lo {
-      return 0.0;
+      return Some(0.0);
     }
     if x >= up {
-      return 1.0;
+      return Some(1.0);
     }
     let f_x = self.cdf_helper(x);
     let f_lo = self.cdf_helper(lo);
     let f_up = self.cdf_helper(up);
-    (f_x - f_lo) / (f_up - f_lo).max(1e-300)
+    Some((f_x - f_lo) / (f_up - f_lo).max(1e-300))
   }
 }
 
@@ -330,10 +330,10 @@ mod tests {
   #[test]
   fn scalar_sample_matches_cdf() {
     let beta = SimdTruncatedBeta::<f64>::new(2.0, 2.0, 0.2, 0.8);
-    let best = scalar_ks_best_p(&beta, |x| beta.cdf(x));
+    let best = scalar_ks_best_p(&beta, |x| beta.cdf(x).unwrap());
     assert!(best > 0.01, "beta: best p = {best}");
     let gamma = SimdTruncatedGamma::<f64>::new(2.0, 1.0, 1.0, 5.0);
-    let best = scalar_ks_best_p(&gamma, |x| gamma.cdf(x));
+    let best = scalar_ks_best_p(&gamma, |x| gamma.cdf(x).unwrap());
     assert!(best > 0.01, "gamma: best p = {best}");
   }
 }

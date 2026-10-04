@@ -196,16 +196,16 @@ impl<T: SimdFloatExt> Distribution<T> for SimdGed<T> {
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdGed<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
     let z = ((x - mu) / a).abs();
     let log_pdf = b.ln() - (2.0 * a).ln() - crate::special::ln_gamma(1.0 / b) - z.powf(b);
-    log_pdf.exp()
+    Some(log_pdf.exp())
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
@@ -214,9 +214,9 @@ impl<T: SimdFloatExt> DistributionExt for SimdGed<T> {
     let zb = z.abs().powf(b);
     let half_inc = 0.5 * crate::special::gamma_p(1.0 / b, zb);
     if z >= 0.0 {
-      0.5 + half_inc
+      Some(0.5 + half_inc)
     } else {
-      0.5 - half_inc
+      Some(0.5 - half_inc)
     }
   }
 }
@@ -257,7 +257,7 @@ mod tests {
   #[test]
   fn scalar_sample_matches_cdf() {
     let d = SimdGed::<f64>::new(0.0, 1.0, 1.5);
-    let best = scalar_ks_best_p(&d, |x| d.cdf(x));
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
     assert!(best > 0.01, "best p = {best}");
   }
 
@@ -269,7 +269,9 @@ mod tests {
     let lo = -20.0_f64;
     let up = 20.0_f64;
     let h = (up - lo) / n as f64;
-    let s: f64 = (0..n).map(|k| g.pdf(lo + (k as f64 + 0.5) * h) * h).sum();
+    let s: f64 = (0..n)
+      .map(|k| g.pdf(lo + (k as f64 + 0.5) * h).unwrap() * h)
+      .sum();
     assert!(
       (s - 1.0).abs() < 1e-3,
       "GED(0, 1, 1.5) PDF integrates to {s}"
@@ -280,7 +282,7 @@ mod tests {
   #[test]
   fn ged_cdf_at_mu_is_half() {
     let g = SimdGed::<f64>::new(1.5, 0.8, 1.7);
-    let c = g.cdf(1.5);
+    let c = g.cdf(1.5).unwrap();
     assert!(
       (c - 0.5).abs() < 1e-10,
       "GED(1.5, 0.8, 1.7) CDF at μ = {c}, expected 0.5"

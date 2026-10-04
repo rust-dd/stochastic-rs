@@ -347,48 +347,40 @@ impl<T: SimdFloatExt> Distribution<T> for SimdGig<T> {
 }
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     if x <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let (lambda, chi, psi) = self.params();
     let b = (chi * psi).sqrt();
     let log_norm =
       0.5 * lambda * (psi / chi).ln() - std::f64::consts::LN_2 - (bessel_ke(lambda, b).ln() - b);
-    (log_norm + (lambda - 1.0) * x.ln() - 0.5 * (chi / x + psi * x)).exp()
+    Some((log_norm + (lambda - 1.0) * x.ln() - 0.5 * (chi / x + psi * x)).exp())
   }
 
-  fn cdf(&self, _x: f64) -> f64 {
-    unimplemented!("DistributionExt::cdf for SimdGig has no closed form")
-  }
-
-  fn inv_cdf(&self, _p: f64) -> f64 {
-    unimplemented!("DistributionExt::inv_cdf for SimdGig has no closed form")
-  }
-
-  fn mean(&self) -> f64 {
-    self.raw_moment(1)
+  fn mean(&self) -> Option<f64> {
+    Some(self.raw_moment(1))
   }
 
   /// $\bigl(\lambda - 1 + \sqrt{(\lambda-1)^2 + \chi\psi}\bigr)/\psi$.
-  fn mode(&self) -> f64 {
+  fn mode(&self) -> Option<f64> {
     let (lambda, chi, psi) = self.params();
-    (lambda - 1.0 + ((lambda - 1.0).powi(2) + chi * psi).sqrt()) / psi
+    Some((lambda - 1.0 + ((lambda - 1.0).powi(2) + chi * psi).sqrt()) / psi)
   }
 
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let m1 = self.raw_moment(1);
-    self.raw_moment(2) - m1 * m1
+    Some(self.raw_moment(2) - m1 * m1)
   }
 
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     let (m1, m2, m3) = (self.raw_moment(1), self.raw_moment(2), self.raw_moment(3));
     let var = m2 - m1 * m1;
-    (m3 - 3.0 * m1 * m2 + 2.0 * m1.powi(3)) / var.powf(1.5)
+    Some((m3 - 3.0 * m1 * m2 + 2.0 * m1.powi(3)) / var.powf(1.5))
   }
 
   /// Excess kurtosis.
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     let (m1, m2, m3, m4) = (
       self.raw_moment(1),
       self.raw_moment(2),
@@ -396,21 +388,23 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
       self.raw_moment(4),
     );
     let var = m2 - m1 * m1;
-    (m4 - 4.0 * m1 * m3 + 6.0 * m1 * m1 * m2 - 3.0 * m1.powi(4)) / (var * var) - 3.0
+    Some((m4 - 4.0 * m1 * m3 + 6.0 * m1 * m1 * m2 - 3.0 * m1.powi(4)) / (var * var) - 3.0)
   }
 
   /// $(\psi/(\psi - 2t))^{\lambda/2}\,K_\lambda(\sqrt{\chi(\psi - 2t)})/K_\lambda(\sqrt{\chi\psi})$
   /// for $t < \psi/2$, `NaN` beyond.
-  fn moment_generating_function(&self, t: f64) -> f64 {
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
     let (lambda, chi, psi) = self.params();
     let shifted = psi - 2.0 * t;
     if shifted <= 0.0 {
-      return f64::NAN;
+      return Some(f64::NAN);
     }
     let b = (chi * psi).sqrt();
     let bt = (chi * shifted).sqrt();
-    (psi / shifted).powf(0.5 * lambda) * bessel_ke(lambda, bt) / bessel_ke(lambda, b)
-      * (b - bt).exp()
+    Some(
+      (psi / shifted).powf(0.5 * lambda) * bessel_ke(lambda, bt) / bessel_ke(lambda, b)
+        * (b - bt).exp(),
+    )
   }
 }
 

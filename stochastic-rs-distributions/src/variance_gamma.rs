@@ -214,7 +214,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
   /// Madan–Carr–Chang eq. 23, evaluated in log space through the scaled
   /// Bessel function; at `x = μ` the $y^a K_a(y)$ limit $2^{a-1}\Gamma(a)$
   /// for $a = 1/\nu - 1/2 > 0$, `+∞` otherwise.
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let (sigma, nu, theta, mu) = self.params();
     let a = 1.0 / nu - 0.5;
     let root = (2.0 * sigma * sigma / nu + theta * theta).sqrt();
@@ -226,71 +226,65 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
     let d = x - mu;
     if d == 0.0 {
       if a <= 0.0 {
-        return f64::INFINITY;
+        return Some(f64::INFINITY);
       }
       let scale = sigma * sigma / (root * root);
-      return (log_norm + a * scale.ln() + (a - 1.0) * std::f64::consts::LN_2 + ln_gamma(a)).exp();
+      return Some(
+        (log_norm + a * scale.ln() + (a - 1.0) * std::f64::consts::LN_2 + ln_gamma(a)).exp(),
+      );
     }
     let y = d.abs() * root / (sigma * sigma);
     let log_kernel =
       theta * d / (sigma * sigma) + a * (d.abs() / root).ln() + bessel_ke(a, y).ln() - y;
-    (log_norm + log_kernel).exp()
+    Some((log_norm + log_kernel).exp())
   }
 
-  fn cdf(&self, _x: f64) -> f64 {
-    unimplemented!("DistributionExt::cdf for SimdVarianceGamma has no closed form")
-  }
-
-  fn inv_cdf(&self, _p: f64) -> f64 {
-    unimplemented!("DistributionExt::inv_cdf for SimdVarianceGamma has no closed form")
-  }
-
-  fn mean(&self) -> f64 {
+  fn mean(&self) -> Option<f64> {
     let (_, _, theta, mu) = self.params();
-    mu + theta
+    Some(mu + theta)
   }
 
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let (sigma, nu, theta, _) = self.params();
-    sigma * sigma + nu * theta * theta
+    Some(sigma * sigma + nu * theta * theta)
   }
 
   /// $(2\theta^3\nu^2 + 3\theta\sigma^2\nu)/(\sigma^2 + \nu\theta^2)^{3/2}$.
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     let (sigma, nu, theta, _) = self.params();
     let var = sigma * sigma + nu * theta * theta;
-    (2.0 * theta.powi(3) * nu * nu + 3.0 * theta * sigma * sigma * nu) / var.powf(1.5)
+    Some((2.0 * theta.powi(3) * nu * nu + 3.0 * theta * sigma * sigma * nu) / var.powf(1.5))
   }
 
   /// Excess kurtosis from the fourth central moment
   /// $\theta^4(3\nu^2 + 6\nu^3) + 6\theta^2\sigma^2(\nu + 2\nu^2) + 3\sigma^4(1 + \nu)$.
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     let (sigma, nu, theta, _) = self.params();
     let var = sigma * sigma + nu * theta * theta;
     let m4 = theta.powi(4) * (3.0 * nu * nu + 6.0 * nu.powi(3))
       + 6.0 * theta * theta * sigma * sigma * (nu + 2.0 * nu * nu)
       + 3.0 * sigma.powi(4) * (1.0 + nu);
-    m4 / (var * var) - 3.0
+    Some(m4 / (var * var) - 3.0)
   }
 
   /// $e^{\mu t}(1 - \theta\nu t - \tfrac12\sigma^2\nu t^2)^{-1/\nu}$ where
   /// the base is positive, `NaN` outside that domain.
-  fn moment_generating_function(&self, t: f64) -> f64 {
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
     let (sigma, nu, theta, mu) = self.params();
     let base = 1.0 - theta * nu * t - 0.5 * sigma * sigma * nu * t * t;
     if base <= 0.0 {
-      f64::NAN
+      Some(f64::NAN)
     } else {
-      (mu * t).exp() * base.powf(-1.0 / nu)
+      Some((mu * t).exp() * base.powf(-1.0 / nu))
     }
   }
 
   /// $e^{iu\mu}(1 - i\theta\nu u + \tfrac12\sigma^2\nu u^2)^{-1/\nu}$.
-  fn characteristic_function(&self, u: f64) -> num_complex::Complex64 {
+  fn characteristic_function(&self, u: f64) -> Option<num_complex::Complex64> {
     use num_complex::Complex64;
     let (sigma, nu, theta, mu) = self.params();
     let base = Complex64::new(1.0 + 0.5 * sigma * sigma * nu * u * u, -theta * nu * u);
-    Complex64::new(0.0, mu * u).exp() * base.powf(-1.0 / nu)
+    Some(Complex64::new(0.0, mu * u).exp() * base.powf(-1.0 / nu))
   }
 }
 
@@ -325,9 +319,9 @@ mod tests {
     ];
     for (x, want) in grid {
       assert!(
-        close(d.pdf(x), want, 1e-9),
+        close(d.pdf(x).unwrap(), want, 1e-9),
         "pdf({x}) = {} vs {want}",
-        d.pdf(x)
+        d.pdf(x).unwrap()
       );
     }
     let heavy = SimdVarianceGamma::<f64>::new(1.0, 2.0, 0.3, 0.0);
@@ -340,13 +334,13 @@ mod tests {
     ];
     for (x, want) in grid {
       assert!(
-        close(heavy.pdf(x), want, 1e-9),
+        close(heavy.pdf(x).unwrap(), want, 1e-9),
         "pdf({x}) = {} vs {want}",
-        heavy.pdf(x)
+        heavy.pdf(x).unwrap()
       );
     }
     // ν = 2 puts the order of K at zero: the density diverges at μ.
-    assert_eq!(heavy.pdf(0.0), f64::INFINITY);
+    assert_eq!(heavy.pdf(0.0).unwrap(), f64::INFINITY);
   }
 
   /// Closed-form moments against the same reference (numerically
@@ -354,23 +348,43 @@ mod tests {
   #[test]
   fn moments_and_transforms_match_the_reference() {
     let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05);
-    assert!(close(d.mean(), -0.05, 1e-15));
-    assert!(close(d.variance(), 0.045, 1e-15));
-    assert!(close(d.skewness() * 0.045_f64.powf(1.5), -0.0065, 1e-12));
-    assert!(close((d.kurtosis() + 3.0) * 0.045 * 0.045, 0.00975, 1e-12));
-    let cf = d.characteristic_function(0.7);
+    assert!(close(d.mean().unwrap(), -0.05, 1e-15));
+    assert!(close(d.variance().unwrap(), 0.045, 1e-15));
+    assert!(close(
+      d.skewness().unwrap() * 0.045_f64.powf(1.5),
+      -0.0065,
+      1e-12
+    ));
+    assert!(close(
+      (d.kurtosis().unwrap() + 3.0) * 0.045 * 0.045,
+      0.00975,
+      1e-12
+    ));
+    let cf = d.characteristic_function(0.7).unwrap();
     assert!(
       close(cf.re, 0.988_478_712_093_533_1, 1e-12) && close(cf.im, -0.034_245_228_379_174_4, 1e-12)
     );
     let heavy = SimdVarianceGamma::<f64>::new(1.0, 2.0, 0.3, 0.0);
-    assert!(close(heavy.variance(), 1.18, 1e-15));
-    assert!(close(heavy.skewness() * 1.18_f64.powf(1.5), 2.016, 1e-12));
-    assert!(close((heavy.kurtosis() + 3.0) * 1.18 * 1.18, 14.886, 1e-12));
+    assert!(close(heavy.variance().unwrap(), 1.18, 1e-15));
+    assert!(close(
+      heavy.skewness().unwrap() * 1.18_f64.powf(1.5),
+      2.016,
+      1e-12
+    ));
+    assert!(close(
+      (heavy.kurtosis().unwrap() + 3.0) * 1.18 * 1.18,
+      14.886,
+      1e-12
+    ));
     let symmetric = SimdVarianceGamma::<f64>::new(0.3, 0.7, 0.0, 0.0);
-    assert_eq!(symmetric.skewness(), 0.0);
-    assert!(close(symmetric.kurtosis(), 3.0 * 0.7, 1e-12));
-    assert!(d.moment_generating_function(50.0).is_nan());
-    assert!(close(d.moment_generating_function(0.0), 1.0, 1e-15));
+    assert_eq!(symmetric.skewness().unwrap(), 0.0);
+    assert!(close(symmetric.kurtosis().unwrap(), 3.0 * 0.7, 1e-12));
+    assert!(d.moment_generating_function(50.0).unwrap().is_nan());
+    assert!(close(
+      d.moment_generating_function(0.0).unwrap(),
+      1.0,
+      1e-15
+    ));
   }
 
   #[test]
@@ -378,7 +392,9 @@ mod tests {
     let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05);
     let (lo, hi, n) = (-6.0_f64, 6.0_f64, 600_000usize);
     let h = (hi - lo) / n as f64;
-    let s: f64 = (0..n).map(|k| d.pdf(lo + (k as f64 + 0.5) * h) * h).sum();
+    let s: f64 = (0..n)
+      .map(|k| d.pdf(lo + (k as f64 + 0.5) * h).unwrap() * h)
+      .sum();
     assert!((s - 1.0).abs() < 1e-6, "integral = {s}");
   }
 
@@ -393,13 +409,13 @@ mod tests {
     let mean = xs.iter().sum::<f64>() / n as f64;
     let var = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64;
     let m3 = xs.iter().map(|x| (x - mean).powi(3)).sum::<f64>() / n as f64;
-    assert!((mean - d.mean()).abs() < 2e-3, "mean {mean}");
+    assert!((mean - d.mean().unwrap()).abs() < 2e-3, "mean {mean}");
     assert!(
-      (var - d.variance()).abs() / d.variance() < 0.02,
+      (var - d.variance().unwrap()).abs() / d.variance().unwrap() < 0.02,
       "var {var}"
     );
     assert!(
-      (m3 / var.powf(1.5) - d.skewness()).abs() < 0.05,
+      (m3 / var.powf(1.5) - d.skewness().unwrap()).abs() < 0.05,
       "skew {}",
       m3 / var.powf(1.5)
     );
@@ -409,8 +425,15 @@ mod tests {
   fn scalar_sample_moments_match_closed_forms() {
     let d = SimdVarianceGamma::<f64>::new(0.2, 0.5, -0.1, 0.05);
     let xs = scalar_draws(&d, 19, 200_000);
-    let m3 = d.skewness() * d.variance().powf(1.5);
-    assert_moments_within(&xs, d.mean(), d.variance(), Some(m3), 6.0, "VG");
+    let m3 = d.skewness().unwrap() * d.variance().unwrap().powf(1.5);
+    assert_moments_within(
+      &xs,
+      d.mean().unwrap(),
+      d.variance().unwrap(),
+      Some(m3),
+      6.0,
+      "VG",
+    );
   }
 
   #[test]
