@@ -63,7 +63,7 @@ pub trait FloatExt: RealExt + SimdFloatExt {
 }
 ```
 
-`f32` and `f64` implement all three. `RealExt` asks for scalar math only, so a custom scalar — an AAD dual number, a higher-precision float — can implement it and flow through everything bounded on it. `FloatExt` adds the 8-lane SIMD surface and RNG-backed fills, and `SimdFloatExt` is sealed to `f32`/`f64`. Analytic pricing code is bounded on `RealExt`; path generation and Monte Carlo on `FloatExt`.
+`f32` and `f64` implement all three. `RealExt` asks for scalar math only, so a custom scalar — an AAD dual number, a higher-precision float — can implement it and flow through everything bounded on it. `SimdFloatExt` adds the 8-lane SIMD surface and the uniform fills and is sealed to `f32`/`f64`; `FloatExt` adds the batched normal fill and the fGN scratch on top. Analytic pricing code is bounded on `RealExt`; path generation and Monte Carlo on `FloatExt`.
 
 ## `ProcessExt<T>`
 

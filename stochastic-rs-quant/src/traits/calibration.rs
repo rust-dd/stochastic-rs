@@ -115,7 +115,7 @@ pub trait CalibrationResult {
     None
   }
 
-  /// Worst absolute pricing error on the calibration grid; `None` for a calibrator that keeps no residuals.
+  /// Worst absolute pricing error on the calibration grid; `None` unless the calibrator records it.
   fn max_error(&self) -> Option<f64> {
     None
   }
