@@ -80,7 +80,7 @@ explicitly. There is **no process-wide device state** — two processes on
 two GPUs are two handles — so never reintroduce a global selector or a
 global budget.
 
-`Backend: Copy + Default + Send + Sync` requires exactly one method,
+`Backend` (sealed to the four handles; `Copy + Send + Sync`) requires exactly one method,
 `fn probe(&self) -> Result<DeviceInfo, DeviceError>`, which opens the
 device and reports `{ backend, name, precisions, ordinal }` or says why
 it cannot be used. `DeviceError` has three kinds: `Unavailable`,

@@ -11,6 +11,8 @@
 
 #[macro_use]
 mod macros;
+#[cfg(doctest)]
+mod doctest_seals;
 mod linalg;
 
 pub mod traits;

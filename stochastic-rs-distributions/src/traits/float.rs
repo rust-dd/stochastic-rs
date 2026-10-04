@@ -50,9 +50,21 @@ pub trait RealExt:
   fn min_positive_val() -> Self;
 }
 
-/// 8-lane SIMD surface over a [`RealExt`] scalar, plus the uniform RNG
-/// fills the SIMD samplers draw from.
-pub trait SimdFloatExt: RealExt {
+mod sealed {
+  #[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot implement the sealed trait `SimdFloatExt`",
+    note = "`f32` and `f64` are the simulation scalars; a custom scalar stops at `RealExt`"
+  )]
+  pub trait Sealed {}
+
+  impl Sealed for f32 {}
+
+  impl Sealed for f64 {}
+}
+
+/// 8-lane SIMD surface over a [`RealExt`] scalar plus the uniform RNG fills the SIMD samplers
+/// draw from; sealed, `f32` and `f64` are its only implementors.
+pub trait SimdFloatExt: RealExt + sealed::Sealed {
   type Simd: Copy
     + std::ops::Mul<Output = Self::Simd>
     + std::ops::Add<Output = Self::Simd>
@@ -85,9 +97,8 @@ pub trait SimdFloatExt: RealExt {
   const PREFERS_F32_WN: bool = false;
 }
 
-/// The full simulation-grade float: [`RealExt`] scalar arithmetic,
-/// [`SimdFloatExt`] lanes, and the batched standard-normal / fGN scratch
-/// machinery every path sampler draws through.
+/// The full simulation-grade float: [`RealExt`] arithmetic, [`SimdFloatExt`] lanes and the batched
+/// normal / fGN scratch every sampler draws through; sealed through `SimdFloatExt`.
 pub trait FloatExt: RealExt + SimdFloatExt {
   fn fill_standard_normal_slice(out: &mut [Self]);
   #[inline]

@@ -13,14 +13,21 @@ use super::Heston;
 use crate::traits::FloatExt;
 use crate::volatility::HestonPow;
 
-/// Compile-time selector for the variance-discretisation scheme that
-/// [`Heston::sample`](super::Heston) runs. The schemes are zero-sized
-/// marker types and the choice is a type parameter, so each variant is
-/// monomorphised separately:
-/// the default [`Euler`] path keeps its exact code generation (no runtime
-/// branch on the scheme), and [`AndersenQe`] is a wholly independent code
-/// path selected at compile time via [`Heston::qe`].
-pub trait HestonScheme: Send + Sync + 'static {
+mod sealed {
+  #[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot implement the sealed trait `HestonScheme`",
+    note = "the variance schemes are `Euler` and `AndersenQe`"
+  )]
+  pub trait Sealed {}
+}
+
+impl sealed::Sealed for Euler {}
+
+impl sealed::Sealed for AndersenQe {}
+
+/// Compile-time selector of the variance discretisation [`Heston`](super::Heston) runs: a zero-sized
+/// marker per scheme, so each is monomorphised on its own; sealed to [`Euler`] and [`AndersenQe`].
+pub trait HestonScheme: sealed::Sealed + Send + Sync + 'static {
   /// Generate `[stock path, variance path]` under this scheme, drawing from
   /// `seed` — a basis owned by the calling
   /// [`HestonSampler`](super::HestonSampler), derived once at its

@@ -125,20 +125,6 @@ impl Metal {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Accelerate;
 
-/// A compile-time device marker. Implemented by every marker type in this
-/// module; a process parameterised by `B: Backend` monomorphises to that
-/// device with zero runtime branching.
-///
-/// The trait itself carries **no algorithm** — what a device can actually
-/// compute is expressed by capability subtraits ([`FgnBackend`] is the first;
-/// a future accelerated path engine adds its own without touching this
-/// trait or any implementor). Bounding on `Backend` says "this type is
-/// device-parameterised"; bounding on a capability says what the device
-/// must know how to do.
-///
-/// The `Send + Sync` supertraits let a backend-parameterised process satisfy
-/// the `ProcessExt: Send + Sync` bound and be shared across rayon worker
-/// threads — every marker is a zero-sized unit struct, so this is free.
 /// Why a device could not serve a request.
 ///
 /// Returned by [`Backend::probe`] and the `try_*` device calls
@@ -367,12 +353,9 @@ pub(crate) fn device_panic<T>(e: DeviceError) -> T {
   panic!("{e}; probe the device handle with `Backend::probe(&device)` before sampling on it")
 }
 
-/// A device marker.
-///
-/// [`probe`](Self::probe) is the one run-time question a marker answers:
-/// whether the device behind it can be used right now, and what it is. The
-/// sampling itself stays a compile-time choice (`.on::<B>()`).
-pub trait Backend: Copy + Send + Sync {
+/// A compile-time device marker, sealed to the four handles of this module: `probe` is the one run-time
+/// question it answers, the sampling stays a compile-time choice (`.on::<B>()`, zero runtime branching).
+pub trait Backend: sealed::Sealed + Copy + Send + Sync {
   /// Opens the device behind this marker and describes it, or says why it
   /// cannot be used (no device, runtime missing, kernels failing to
   /// compile). The CPU devices are always `Ok`. A `sample*` call on a device
@@ -380,6 +363,25 @@ pub trait Backend: Copy + Send + Sync {
   /// return it.
   fn probe(&self) -> Result<DeviceInfo, DeviceError>;
 }
+
+mod sealed {
+  #[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot implement the sealed trait `Backend`",
+    note = "the device handles are `Cpu`, `Accelerate`, `Cuda` and `Metal`"
+  )]
+  pub trait Sealed {}
+}
+
+impl sealed::Sealed for Cpu {}
+
+#[cfg(feature = "cuda")]
+impl sealed::Sealed for Cuda {}
+
+#[cfg(all(feature = "metal", target_os = "macos"))]
+impl sealed::Sealed for Metal {}
+
+#[cfg(all(feature = "accelerate", target_os = "macos"))]
+impl sealed::Sealed for Accelerate {}
 
 impl Backend for Cpu {
   fn probe(&self) -> Result<DeviceInfo, DeviceError> {
@@ -405,13 +407,8 @@ impl Backend for Accelerate {
   }
 }
 
-/// Host capability: the process samples on the CPU through its own
-/// [`ProcessExt`](crate::traits::ProcessExt) sampler. Every process carries a
-/// backend parameter `B` and accepts at least the host devices in `on::<B2>()`;
-/// a process whose bound is this trait has no device kernel yet, and gaining
-/// one later only widens the bound (to [`crate::euler::EulerBackend`] or
-/// [`FgnBackend`]), which breaks no caller. [`Cpu`] and `Accelerate` (vDSP, a
-/// CPU device) implement it.
+/// Host capability: the process samples on the CPU through its own sampler. Every process accepts
+/// at least the host devices in `on::<B2>()`; the family is sealed, so a wider bound later breaks nobody.
 pub trait HostBackend: Backend {}
 
 impl HostBackend for Cpu {}

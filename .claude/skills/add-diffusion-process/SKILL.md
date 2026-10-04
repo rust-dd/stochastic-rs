@@ -410,7 +410,8 @@ that line if your new process is material.
   driver. See `add-fractional-process`.
 - `Heston` (`volatility/heston.rs`) — `Output = [Array1<T>; 2]`, and a
   third type parameter `Sch: HestonScheme = Euler` selecting the
-  discretisation at compile time.
+  discretisation at compile time (`HestonScheme` is sealed: a new scheme
+  is added in `heston/scheme.rs`, nowhere else).
 - `CirPlusPlus` (`interest/cir_pp.rs`) — the one process that overrides
   `advance_chunk_seed`; read it before writing a clone-based `sampler()`.
 
