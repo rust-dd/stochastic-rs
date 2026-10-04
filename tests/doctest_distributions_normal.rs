@@ -24,7 +24,7 @@ fn normal_bulk_sample_and_closed_form() {
   stream.fill_slice(&mut buf);
 
   // Closed-form analytics stay on the stateless law.
-  assert!((d.mean() - 0.0).abs() < 1e-12);
+  assert!((DistributionExt::mean(&d).unwrap() - 0.0).abs() < 1e-12);
   assert!((d.variance().unwrap() - 1.0).abs() < 1e-12);
   let pdf = d.pdf(0.0).unwrap(); // 1/sqrt(2*pi) ~= 0.3989
   let cdf = d.cdf(1.96).unwrap(); // ~= 0.975
