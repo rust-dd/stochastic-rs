@@ -53,15 +53,19 @@ impl ProbePrograms {
   /// so the kernels' interpreters are checked opcode by opcode.
   fn pair() -> Self {
     Self {
-      first: Program::compile(&(Expr::x() * -0.5 + Expr::t() * 0.1 - Expr::lit(0.02))),
-      second: Some(Program::compile(
-        &((Expr::lit(0.3) + Expr::x().abs() * 0.2)
-          .min(Expr::lit(0.6))
-          .max(0.05)
-          * (-Expr::x() * Expr::x()).exp()
-          + Expr::x().powf(2.0).sqrt().tanh() / 4.0
-          + (Expr::lit(1.0) + Expr::t()).ln() * 0.1),
-      )),
+      first: Program::compile(&(Expr::x() * -0.5 + Expr::t() * 0.1 - Expr::lit(0.02)))
+        .expect("the probe program fits the kernel bounds"),
+      second: Some(
+        Program::compile(
+          &((Expr::lit(0.3) + Expr::x().abs() * 0.2)
+            .min(Expr::lit(0.6))
+            .max(0.05)
+            * (-Expr::x() * Expr::x()).exp()
+            + Expr::x().powf(2.0).sqrt().tanh() / 4.0
+            + (Expr::lit(1.0) + Expr::t()).ln() * 0.1),
+        )
+        .expect("the probe program fits the kernel bounds"),
+      ),
     }
   }
 

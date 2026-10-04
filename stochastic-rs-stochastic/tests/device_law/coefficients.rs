@@ -50,7 +50,7 @@ fn cheyette_with_an_expression_volatility_agrees_with_the_cpu_law() {
     Cheyette::<f32, _>::new(
       forward_curve as fn(f32) -> f32,
       0.5,
-      Expr::lit(0.01) + Expr::x().abs() * 0.4,
+      (Expr::lit(0.01) + Expr::x().abs() * 0.4).compile().unwrap(),
       N,
       Some(1.0),
       Deterministic::new(211),
@@ -96,8 +96,10 @@ fn a_noiseless_volterra_equation_agrees_point_for_point() {
   let build = || {
     VolterraSde::<f32, _, _>::new(
       ExponentialKernel::new(2.0_f32, 1.0),
-      Expr::lit(0.3) - Expr::x() * 0.5 + Expr::t() * 0.2,
-      Expr::lit(0.0),
+      (Expr::lit(0.3) - Expr::x() * 0.5 + Expr::t() * 0.2)
+        .compile()
+        .unwrap(),
+      Expr::lit(0.0).compile().unwrap(),
       N,
       Some(0.2),
       Some(1.0),
@@ -122,8 +124,8 @@ fn volterra_sde_with_expression_coefficients_agrees_with_the_cpu_law() {
   let build = || {
     VolterraSde::<f32, _, _>::new(
       ExponentialKernel::new(2.0_f32, 1.0),
-      Expr::x() * -0.5,
-      Expr::lit(0.3) + Expr::x().abs() * 0.1,
+      (Expr::x() * -0.5).compile().unwrap(),
+      (Expr::lit(0.3) + Expr::x().abs() * 0.1).compile().unwrap(),
       N,
       Some(0.2),
       Some(1.0),
@@ -170,7 +172,7 @@ fn heston_slv_with_an_expression_leverage_agrees_with_the_cpu_law() {
       -0.7,
       0.0,
       0.5,
-      Expr::lit(1.2) - Expr::x() * 0.003,
+      (Expr::lit(1.2) - Expr::x() * 0.003).compile().unwrap(),
       N,
       Some(1.0),
       Deterministic::new(311),

@@ -150,7 +150,7 @@ impl<T: FloatExt> Default for HestonSlv<T, Unseeded> {
       T::from_f64_fast(-0.7),
       T::from_f64_fast(0.05),
       T::one(),
-      Expr::lit(1.0),
+      Expr::lit(1.0).compile().expect("one constant is one op"),
       252,
       Some(T::one()),
       Unseeded,

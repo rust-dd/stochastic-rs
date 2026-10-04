@@ -20,6 +20,7 @@ use super::grid::Grid2D;
 /// engine's own function table carries, so every node here has one meaning on
 /// the host and in every kernel.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum Expr {
   /// The time argument.
   T,
@@ -121,8 +122,8 @@ impl Expr {
     }
   }
 
-  /// The postfix program of this expression.
-  pub fn compile(&self) -> Program {
+  /// The postfix program of this expression, or why it exceeds the kernels' bounds.
+  pub fn compile(&self) -> Result<Program, ProgramError> {
     Program::compile(self)
   }
 
@@ -226,6 +227,35 @@ impl Neg for Expr {
   }
 }
 
+/// Why an [`Expr`] has no [`Program`]: it exceeds a bound the device kernels' fixed arrays hold.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ProgramError {
+  /// More than [`Program::MAX_OPS`] operations.
+  TooLong { ops: usize },
+  /// A stack deeper than [`Program::MAX_DEPTH`].
+  TooDeep { depth: usize },
+}
+
+impl std::fmt::Display for ProgramError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      ProgramError::TooLong { ops } => write!(
+        f,
+        "an expression compiles to at most {} operations, this one needs {ops}",
+        Program::MAX_OPS
+      ),
+      ProgramError::TooDeep { depth } => write!(
+        f,
+        "an expression may need a stack of at most {}, this one needs {depth}",
+        Program::MAX_DEPTH
+      ),
+    }
+  }
+}
+
+impl std::error::Error for ProgramError {}
+
 /// An [`Expr`] compiled to postfix code: one `(opcode, constant)` pair per
 /// node, run on a stack. Codes `0`–`2` push the time, the state and a
 /// constant; `3`–`9` are the binary `+ − × ÷ ^ max min`; `10`–`15` the unary
@@ -244,30 +274,21 @@ impl Program {
   /// The deepest stack a program may need.
   pub const MAX_DEPTH: usize = 8;
 
-  /// The postfix program of `expr`.
-  ///
-  /// # Panics
-  /// If the expression needs more than [`Self::MAX_OPS`] operations or a
-  /// stack deeper than [`Self::MAX_DEPTH`].
-  pub fn compile(expr: &Expr) -> Self {
+  /// The postfix program of `expr`, or the bound it exceeds.
+  pub fn compile(expr: &Expr) -> Result<Self, ProgramError> {
     let mut ops = Vec::new();
     let (mut depth, mut deepest) = (0usize, 0usize);
     expr.emit(&mut ops, &mut depth, &mut deepest);
-    assert!(
-      ops.len() <= Self::MAX_OPS,
-      "an expression compiles to at most {} operations, this one needs {}",
-      Self::MAX_OPS,
-      ops.len()
-    );
-    assert!(
-      deepest <= Self::MAX_DEPTH,
-      "an expression may need a stack of at most {}, this one needs {deepest}",
-      Self::MAX_DEPTH
-    );
-    Self {
+    if ops.len() > Self::MAX_OPS {
+      return Err(ProgramError::TooLong { ops: ops.len() });
+    }
+    if deepest > Self::MAX_DEPTH {
+      return Err(ProgramError::TooDeep { depth: deepest });
+    }
+    Ok(Self {
       ops,
       depth: deepest,
-    }
+    })
   }
 
   /// The value at `(t, x)`, by running the code on a stack exactly as the
@@ -314,7 +335,7 @@ impl Program {
     stack[0]
   }
 
-  /// The `(opcode, constant)` pairs in order.
+  #[doc(hidden)]
   pub fn ops(&self) -> &[(u32, f64)] {
     &self.ops
   }
@@ -335,6 +356,7 @@ impl Program {
   }
 }
 
+#[non_exhaustive]
 pub enum Fn1D<T: FloatExt> {
   Native(fn(T) -> T),
   #[cfg(feature = "python")]
@@ -377,6 +399,7 @@ impl<T: FloatExt> From<fn(T) -> T> for Fn1D<T> {
   }
 }
 
+#[non_exhaustive]
 pub enum Fn2D<T: FloatExt> {
   Native(fn(T, T) -> T),
   /// A coefficient written as an [`Expr`], compiled: the one form a device
@@ -429,9 +452,11 @@ impl<T: FloatExt> From<fn(T, T) -> T> for Fn2D<T> {
   }
 }
 
-impl<T: FloatExt> From<Expr> for Fn2D<T> {
-  fn from(expr: Expr) -> Self {
-    Fn2D::Expr(expr.compile())
+impl<T: FloatExt> TryFrom<Expr> for Fn2D<T> {
+  type Error = ProgramError;
+
+  fn try_from(expr: Expr) -> Result<Self, ProgramError> {
+    Ok(Fn2D::Expr(expr.compile()?))
   }
 }
 
@@ -512,7 +537,7 @@ mod expr_tests {
   /// deeper than the kernels carry.
   #[test]
   fn a_program_runs_its_expression() {
-    let program = sample().compile();
+    let program = sample().compile().unwrap();
     assert!(program.depth() <= Program::MAX_DEPTH && program.depth() >= 2);
     assert!(program.len() <= Program::MAX_OPS);
     for (t, x) in [(0.0_f64, 0.0_f64), (0.5, -0.3), (1.0, 2.5), (0.2, 0.7)] {
@@ -526,22 +551,23 @@ mod expr_tests {
   /// A callable built from an expression runs the program.
   #[test]
   fn a_callable_from_an_expression_runs_the_program() {
-    let f: Fn2D<f64> = (Expr::x() * 2.0 + Expr::t()).into();
+    let f: Fn2D<f64> = (Expr::x() * 2.0 + Expr::t()).try_into().unwrap();
     assert!(f.program().is_some());
     assert_eq!(f.call(0.5, 1.5), 3.5);
     let g: Fn2D<f64> = Fn2D::Native(|t, x| t + x);
     assert!(g.program().is_none());
   }
 
-  /// Too deep an expression is refused at compile time rather than
-  /// overflowing a kernel's stack.
+  /// Too deep an expression is refused when it compiles, not when a kernel's stack overflows.
   #[test]
-  #[should_panic(expected = "a stack of at most 8")]
   fn a_program_deeper_than_the_kernels_stack_is_refused() {
     let mut deep = Expr::x();
     for _ in 0..9 {
       deep = Expr::x() * (Expr::x() + deep);
     }
-    let _ = deep.compile();
+    assert_eq!(deep.compile(), Err(ProgramError::TooDeep { depth: 19 }));
+    let long = (0..40).fold(Expr::x(), |acc, _| acc + Expr::t());
+    assert_eq!(long.compile(), Err(ProgramError::TooLong { ops: 81 }));
+    assert!(Fn2D::<f64>::try_from(long).is_err());
   }
 }

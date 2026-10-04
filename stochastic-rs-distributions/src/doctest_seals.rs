@@ -1,4 +1,4 @@
-//! `compile_fail` checks: the sealed traits reject a downstream implementation, and a stream without a kernel has no bulk fill.
+//! compile_fail checks: the sealed traits reject a downstream impl, a stream without a kernel has no bulk fill, a non-exhaustive callable needs a wildcard arm.
 
 /// ```compile_fail,E0277
 /// use stochastic_rs_distributions::DistributionSampler;
@@ -32,3 +32,15 @@ pub struct SimdDistributionIsSealed;
 /// s.fill_slice(&mut [0.0; 2]);
 /// ```
 pub struct SeededDirichletHasNoFillSlice;
+
+/// ```compile_fail,E0004
+/// use stochastic_rs_distributions::traits::Fn2D;
+/// fn kind(f: &Fn2D<f64>) -> &'static str {
+///   match f {
+///     Fn2D::Native(_) => "closure",
+///     Fn2D::Expr(_) => "program",
+///     Fn2D::Grid(_) => "grid",
+///   }
+/// }
+/// ```
+pub struct Fn2DNeedsAWildcardArm;

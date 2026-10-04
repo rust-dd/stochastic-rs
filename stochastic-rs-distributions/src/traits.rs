@@ -12,6 +12,7 @@ pub use callable::Expr;
 pub use callable::Fn1D;
 pub use callable::Fn2D;
 pub use callable::Program;
+pub use callable::ProgramError;
 pub use distribution::DistributionExt;
 pub use distribution::DistributionSampler;
 pub use distribution::SimdDistribution;

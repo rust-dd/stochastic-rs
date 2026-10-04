@@ -189,7 +189,7 @@ process on the host, bit-identically to the `Cpu` build. Written as an
 use stochastic_rs::traits::Expr;
 
 // σ(t, x) = 0.01 + 0.4 |x|, a displaced local volatility
-let sigma = Expr::lit(0.01) + Expr::x().abs() * 0.4;
+let sigma = (Expr::lit(0.01) + Expr::x().abs() * 0.4).compile()?;
 let cheyette = Cheyette::<f32, _>::new(f0, 0.5, sigma, 252, Some(1.0), seed).on::<Cuda>();
 ```
 
@@ -197,9 +197,11 @@ let cheyette = Cheyette::<f32, _>::new(f0, 0.5, sigma, 252, Some(1.0), seed).on:
 constant; the arithmetic operators, `sqrt`, `exp`, `ln`, `abs`, `tanh`,
 `powf`, `max` and `min` build the tree — the vocabulary the engine's own
 function table has, so every node means one thing on the host and in every
-kernel. `From<Expr> for Fn2D` compiles the tree to a postfix [`Program`] of at
-most 62 operations on a stack of at most 8, checked at compile time on the
-host. The host evaluates that program wherever it would have called the
+kernel. `Expr::compile()` (or `Fn2D::try_from`) turns the tree into a postfix
+[`Program`] of at most 62 operations on a stack of at most 8, and returns
+`ProgramError` instead of a program that no kernel could run;
+`HestonSlv::new(.., leverage.compile()?, ..)` is the shape. The host evaluates
+that program wherever it would have called the
 closure; a launch uploads it — two programs at most, `[len₁, len₂, (opcode,
 constant)…]` in one small buffer — and before every step the kernel runs
 each program at the step's time and first state slot, handing the values to
