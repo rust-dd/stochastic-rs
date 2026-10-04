@@ -95,7 +95,7 @@ fn rows() -> Vec<Row> {
       "SimdGed",
       Box::new(SimdGed::<f64>::new(0.3, 1.5, 1.3)),
       [
-        false, true, true, false, false, false, false, false, false, false, false, false,
+        false, true, true, true, true, true, true, true, true, true, true, false,
       ],
     ),
     (
@@ -137,7 +137,7 @@ fn rows() -> Vec<Row> {
       "SimdHypergeometric",
       Box::new(SimdHypergeometric::<u32>::new(20, 7, 12)),
       [
-        false, true, true, true, true, true, true, true, true, false, false, false,
+        false, true, true, true, true, true, true, true, true, true, false, false,
       ],
     ),
     (
@@ -185,7 +185,7 @@ fn rows() -> Vec<Row> {
       "SimdSkellam",
       Box::new(SimdSkellam::new(3.0, 1.5)),
       [
-        false, true, true, false, false, false, false, false, false, false, false, false,
+        true, true, true, false, true, false, false, true, true, true, false, true,
       ],
     ),
     (
@@ -213,28 +213,28 @@ fn rows() -> Vec<Row> {
       "SimdTruncatedBeta",
       Box::new(SimdTruncatedBeta::<f64>::new(2.0, 3.0, 0.2, 0.7)),
       [
-        false, true, true, false, false, false, false, false, false, false, false, false,
+        false, true, true, true, true, true, true, true, false, false, false, false,
       ],
     ),
     (
       "SimdTruncatedExp",
       Box::new(SimdTruncatedExp::<f64>::new(1.5, 0.5, 2.5)),
       [
-        false, true, true, false, false, false, false, false, false, false, false, false,
+        false, true, true, true, true, true, true, true, false, false, true, true,
       ],
     ),
     (
       "SimdTruncatedGamma",
       Box::new(SimdTruncatedGamma::<f64>::new(2.5, 1.2, 0.8, 4.0)),
       [
-        false, true, true, false, false, false, false, false, false, false, false, false,
+        false, true, true, true, true, true, true, true, false, false, false, false,
       ],
     ),
     (
       "SimdTruncatedNormal",
       Box::new(SimdTruncatedNormal::<f64>::new(0.5, 2.0, -1.0, 2.0)),
       [
-        false, true, true, false, false, false, false, false, false, false, false, false,
+        false, true, true, true, true, true, true, true, true, true, true, true,
       ],
     ),
     (

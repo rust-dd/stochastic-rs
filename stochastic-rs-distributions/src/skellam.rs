@@ -13,11 +13,9 @@
 //! two-Poisson subtraction; the PMF and CDF go through the scaled modified
 //! Bessel function [`crate::special::ln_bessel_ie`].
 //!
-//! Reference: Skellam, J.G. (1946), "The frequency distribution of the
-//! difference between two Poisson variates belonging to different
-//! populations", *Journal of the Royal Statistical Society* 109(3), 296,
-//! DOI 10.2307/2981372.
+//! Reference: Skellam, J. G. (1946), "The Frequency Distribution of the Difference Between Two Poisson Variates Belonging to Different Populations", *Journal of the Royal Statistical Society* 109(3), 296, DOI 10.2307/2981372 (cf and mgf are the products of the two Poisson transforms).
 
+use num_complex::Complex64;
 use rand::Rng;
 use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -119,10 +117,12 @@ impl Distribution<i64> for SimdSkellam {
 }
 
 impl DistributionExt for SimdSkellam {
-  /// PMF $P(X = k)$. The argument is a float by convention; only the
-  /// rounded integer part is meaningful.
+  /// PMF $P(X = k)$; zero off the integers, as [`SimdPoisson`]'s.
   fn pdf(&self, x: f64) -> Option<f64> {
-    let k = x.round();
+    if x.fract() != 0.0 {
+      return Some(0.0);
+    }
+    let k = x;
     let gap = self.mu1.sqrt() - self.mu2.sqrt();
     let z = 2.0 * (self.mu1 * self.mu2).sqrt();
     Some((0.5 * k * (self.mu1 / self.mu2).ln() - gap * gap + ln_bessel_ie(k.abs(), z)).exp())
@@ -140,6 +140,33 @@ impl DistributionExt for SimdSkellam {
       s += self.pdf(k as f64)?;
     }
     Some(s.clamp(0.0, 1.0))
+  }
+
+  /// Kept as the two Poisson factors `μ(e^{±it} − 1)`: the expanded `−(μ₁ + μ₂) + …` misses 1 at `t = 0` by rounding.
+  fn characteristic_function(&self, t: f64) -> Option<Complex64> {
+    let one = Complex64::new(1.0, 0.0);
+    let e = Complex64::new(0.0, t).exp();
+    Some(((e - one) * self.mu1 + (e.conj() - one) * self.mu2).exp())
+  }
+
+  fn mean(&self) -> Option<f64> {
+    Some(self.mu1 - self.mu2)
+  }
+
+  fn variance(&self) -> Option<f64> {
+    Some(self.mu1 + self.mu2)
+  }
+
+  fn skewness(&self) -> Option<f64> {
+    Some((self.mu1 - self.mu2) / (self.mu1 + self.mu2).powf(1.5))
+  }
+
+  fn kurtosis(&self) -> Option<f64> {
+    Some(1.0 / (self.mu1 + self.mu2))
+  }
+
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    Some((self.mu1 * t.exp_m1() + self.mu2 * (-t).exp_m1()).exp())
   }
 }
 

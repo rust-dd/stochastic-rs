@@ -1,4 +1,7 @@
 //! Truncated beta and gamma: rejection from the base law, with the clamped midpoint after 1000 rejections.
+//!
+//! Reference: Coffey, C. S. & Muller, K. E. (2000), "Properties of doubly-truncated gamma variables", *Communications in Statistics - Theory and Methods* 29(4), 851-857, DOI 10.1080/03610920008832519 (truncated gamma moments).
+//! Reference: Johnson, N. L., Kotz, S. & Balakrishnan, N. (1995), *Continuous Univariate Distributions*, vol. 2, 2nd ed., Wiley, ch. 25, ISBN 0-471-58494-0 (beta moments; the truncated ones renormalise the incomplete beta ratio).
 
 use rand::Rng;
 use rand::distr::Distribution;
@@ -95,6 +98,16 @@ impl<T: SimdFloatExt> SimdTruncatedBeta<T> {
     let b = self.base.beta().to_f64().unwrap();
     crate::special::beta_i(a, b, x.clamp(0.0, 1.0))
   }
+
+  /// $E[X^m]$ on the truncation: $B(\alpha+m, \beta)/B(\alpha, \beta)\,[I_b(\alpha+m, \beta) - I_a(\alpha+m, \beta)]/M$.
+  fn raw_moment(&self, m: f64) -> Option<f64> {
+    let (a, b) = (self.base.alpha().to_f64()?, self.base.beta().to_f64()?);
+    let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
+    let mass = self.cdf_helper(up) - self.cdf_helper(lo);
+    let shifted = crate::special::beta_i(a + m, b, up) - crate::special::beta_i(a + m, b, lo);
+    let ratio = (crate::special::ln_beta(a + m, b) - crate::special::ln_beta(a, b)).exp();
+    Some(ratio * shifted / mass)
+  }
 }
 
 impl<T: SimdFloatExt> Sealed for SimdTruncatedBeta<T> {}
@@ -159,6 +172,49 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
     let f_lo = self.cdf_helper(lo);
     let f_up = self.cdf_helper(up);
     Some((f_x - f_lo) / (f_up - f_lo).max(1e-300))
+  }
+
+  fn quantile(&self, p: f64) -> Option<f64> {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
+    let (f_lo, f_up) = (
+      self.cdf_helper(self.lower.to_f64()?),
+      self.cdf_helper(self.upper.to_f64()?),
+    );
+    self.base.quantile(f_lo + p * (f_up - f_lo))
+  }
+
+  fn mean(&self) -> Option<f64> {
+    self.raw_moment(1.0)
+  }
+
+  fn median(&self) -> Option<f64> {
+    self.quantile(0.5)
+  }
+
+  /// Off the interior mode the density is monotone, U-shaped or flat on the interval: the higher end wins, a tie has no unique mode.
+  fn mode(&self) -> Option<f64> {
+    let (a, b) = (self.base.alpha().to_f64()?, self.base.beta().to_f64()?);
+    let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
+    if a > 1.0 && b > 1.0 {
+      return Some(((a - 1.0) / (a + b - 2.0)).clamp(lo, up));
+    }
+    let term = |e: f64, y: f64| if e == 0.0 { 0.0 } else { e * y.ln() };
+    let log_kernel = |x: f64| term(a - 1.0, x) + term(b - 1.0, 1.0 - x);
+    let (at_lo, at_up) = (log_kernel(lo), log_kernel(up));
+    Some(if at_lo > at_up {
+      lo
+    } else if at_up > at_lo {
+      up
+    } else {
+      f64::NAN
+    })
+  }
+
+  fn variance(&self) -> Option<f64> {
+    let m1 = self.raw_moment(1.0)?;
+    Some(self.raw_moment(2.0)? - m1 * m1)
   }
 }
 
@@ -225,6 +281,17 @@ impl<T: SimdFloatExt> SimdTruncatedGamma<T> {
     let theta = self.base.scale().to_f64().unwrap();
     crate::special::gamma_p(k, x / theta)
   }
+
+  /// $E[X^m]$ on the truncation: $\theta^m \Gamma(k+m)/\Gamma(k)\,[P(k+m, b/\theta) - P(k+m, a/\theta)]/M$.
+  fn raw_moment(&self, m: f64) -> Option<f64> {
+    let (k, theta) = (self.base.alpha().to_f64()?, self.base.scale().to_f64()?);
+    let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
+    let mass = self.cdf_helper(up) - self.cdf_helper(lo);
+    let shifted =
+      crate::special::gamma_p(k + m, up / theta) - crate::special::gamma_p(k + m, lo / theta);
+    let ratio = (crate::special::ln_gamma(k + m) - crate::special::ln_gamma(k)).exp();
+    Some(theta.powf(m) * ratio * shifted / mass)
+  }
 }
 
 impl<T: SimdFloatExt> Sealed for SimdTruncatedGamma<T> {}
@@ -288,6 +355,40 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedGamma<T> {
     let f_lo = self.cdf_helper(lo);
     let f_up = self.cdf_helper(up);
     Some((f_x - f_lo) / (f_up - f_lo).max(1e-300))
+  }
+
+  fn quantile(&self, p: f64) -> Option<f64> {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
+    let (f_lo, f_up) = (
+      self.cdf_helper(self.lower.to_f64()?),
+      self.cdf_helper(self.upper.to_f64()?),
+    );
+    self.base.quantile(f_lo + p * (f_up - f_lo))
+  }
+
+  fn mean(&self) -> Option<f64> {
+    self.raw_moment(1.0)
+  }
+
+  fn median(&self) -> Option<f64> {
+    self.quantile(0.5)
+  }
+
+  fn mode(&self) -> Option<f64> {
+    let (k, theta) = (self.base.alpha().to_f64()?, self.base.scale().to_f64()?);
+    let (lo, up) = (self.lower.to_f64()?, self.upper.to_f64()?);
+    Some(if k >= 1.0 {
+      ((k - 1.0) * theta).clamp(lo, up)
+    } else {
+      lo
+    })
+  }
+
+  fn variance(&self) -> Option<f64> {
+    let m1 = self.raw_moment(1.0)?;
+    Some(self.raw_moment(2.0)? - m1 * m1)
   }
 }
 

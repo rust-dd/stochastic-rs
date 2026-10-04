@@ -24,11 +24,9 @@
 //! (Nelson 1991 EGARCH, Bollerslev 1987 GARCH-t variant).
 //!
 //! References:
-//! - Subbotin, M.T. (1923), "On the law of frequency of error",
-//!   *Matematicheskii Sbornik* 31, 296-301.
-//! - Nelson, D.B. (1991), "Conditional heteroskedasticity in asset
-//!   returns: a new approach", *Econometrica* 59, 347-370.
-//! - Nadarajah, S. (2005), "A generalized normal distribution", *Journal of Applied Statistics* 32(7), 685-694, DOI 10.1080/02664760500079464.
+//! - Subbotin, M.T. (1923), "On the law of frequency of error", *Matematicheskii Sbornik* 31, 296-301.
+//! - Nelson, D. B. (1991), "Conditional Heteroskedasticity in Asset Returns: A New Approach", *Econometrica* 59(2), 347-370, DOI 10.2307/2938260 (the density and its variance).
+//! - Nadarajah, S. (2005), "A generalized normal distribution", *Journal of Applied Statistics* 32(7), 685-694, DOI 10.1080/02664760500079464 (variance, kurtosis, Shannon entropy).
 
 use rand::Rng;
 use rand::distr::Distribution;
@@ -218,6 +216,50 @@ impl<T: SimdFloatExt> DistributionExt for SimdGed<T> {
     } else {
       Some(0.5 - half_inc)
     }
+  }
+
+  fn quantile(&self, p: f64) -> Option<f64> {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
+    let (mu, a, b) = (self.mu.to_f64()?, self.alpha.to_f64()?, self.beta.to_f64()?);
+    let u = 2.0 * p - 1.0;
+    let g = SimdGamma::<f64>::new(1.0 / b, 1.0).quantile(u.abs())?;
+    Some(mu + u.signum() * a * g.powf(1.0 / b))
+  }
+
+  fn mean(&self) -> Option<f64> {
+    self.mu.to_f64()
+  }
+
+  fn median(&self) -> Option<f64> {
+    self.mu.to_f64()
+  }
+
+  fn mode(&self) -> Option<f64> {
+    self.mu.to_f64()
+  }
+
+  fn variance(&self) -> Option<f64> {
+    let (a, b) = (self.alpha.to_f64()?, self.beta.to_f64()?);
+    // In log space: `Γ(3/β)` overflows below β ≈ 0.0175 while the variance is still finite.
+    let ln_g = crate::special::ln_gamma;
+    Some(a * a * (ln_g(3.0 / b) - ln_g(1.0 / b)).exp())
+  }
+
+  fn skewness(&self) -> Option<f64> {
+    Some(0.0)
+  }
+
+  fn kurtosis(&self) -> Option<f64> {
+    let b = self.beta.to_f64()?;
+    let ln_g = crate::special::ln_gamma;
+    Some((ln_g(5.0 / b) + ln_g(1.0 / b) - 2.0 * ln_g(3.0 / b)).exp() - 3.0)
+  }
+
+  fn entropy(&self) -> Option<f64> {
+    let (a, b) = (self.alpha.to_f64()?, self.beta.to_f64()?);
+    Some(1.0 / b - b.ln() + (2.0 * a).ln() + crate::special::ln_gamma(1.0 / b))
   }
 }
 

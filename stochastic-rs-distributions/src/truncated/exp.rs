@@ -1,4 +1,6 @@
 //! Truncated exponential: inversion of the survival function referred to the lower bound.
+//!
+//! Reference: Johnson, N. L., Kotz, S. & Balakrishnan, N. (1994), *Continuous Univariate Distributions*, vol. 1, 2nd ed., Wiley, ch. 19, ISBN 0-471-58495-9 (the doubly truncated exponential's moments are its renormalised integrals).
 
 use rand::Rng;
 use rand::distr::Distribution;
@@ -80,6 +82,19 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
     let v = 1.0 - u * (1.0 - self.tail_ratio);
     T::from_f64_fast(self.lower.to_f64().unwrap() - v.ln() / self.lambda.to_f64().unwrap())
   }
+
+  /// `upper − lower`, infinite for an open tail.
+  fn length(&self) -> Option<f64> {
+    Some(self.upper.to_f64()? - self.lower.to_f64()?)
+  }
+
+  /// $L r/(1-r)$ with $r = e^{-\lambda L}$, the pull of the upper cut on the mean; `0` for an open tail (`∞ · 0`).
+  fn tail_mass_moment(&self) -> Option<f64> {
+    if self.tail_ratio == 0.0 {
+      return Some(0.0);
+    }
+    Some(self.length()? * self.tail_ratio / (1.0 - self.tail_ratio))
+  }
 }
 
 impl<T: SimdFloatExt> Sealed for SimdTruncatedExp<T> {}
@@ -144,6 +159,63 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     }
     let lam = self.lambda.to_f64().unwrap();
     Some((1.0 - (-lam * (x - lo)).exp()) / (1.0 - self.tail_ratio))
+  }
+
+  fn quantile(&self, p: f64) -> Option<f64> {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
+    let (lam, lo) = (self.lambda.to_f64()?, self.lower.to_f64()?);
+    Some(lo - (1.0 - p * (1.0 - self.tail_ratio)).ln() / lam)
+  }
+
+  fn mean(&self) -> Option<f64> {
+    let (lam, lo) = (self.lambda.to_f64()?, self.lower.to_f64()?);
+    Some(lo + 1.0 / lam - self.tail_mass_moment()?)
+  }
+
+  fn median(&self) -> Option<f64> {
+    self.quantile(0.5)
+  }
+
+  fn mode(&self) -> Option<f64> {
+    self.lower.to_f64()
+  }
+
+  fn variance(&self) -> Option<f64> {
+    let lam = self.lambda.to_f64()?;
+    if self.tail_ratio == 0.0 {
+      return Some(1.0 / (lam * lam));
+    }
+    let (len, r) = (self.length()?, self.tail_ratio);
+    Some(1.0 / (lam * lam) - len * len * r / ((1.0 - r) * (1.0 - r)))
+  }
+
+  fn entropy(&self) -> Option<f64> {
+    let lam = self.lambda.to_f64()?;
+    Some(((1.0 - self.tail_ratio) / lam).ln() + 1.0 - lam * self.tail_mass_moment()?)
+  }
+
+  /// Finite for every `t` on a bounded interval (`λL e^{λ·lower}/(1 − r)` at `t = λ`); an open tail diverges from `t = λ` on.
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    if t == 0.0 {
+      return Some(1.0);
+    }
+    let (lam, lo, len) = (self.lambda.to_f64()?, self.lower.to_f64()?, self.length()?);
+    if len.is_infinite() {
+      return Some(if t < lam {
+        (t * lo).exp() * lam / (lam - t)
+      } else {
+        f64::INFINITY
+      });
+    }
+    let s = t - lam;
+    let integral = if s == 0.0 {
+      len
+    } else {
+      (s * len).exp_m1() / s
+    };
+    Some((t * lo).exp() * lam * integral / (1.0 - self.tail_ratio))
   }
 }
 

@@ -121,8 +121,8 @@
 //! family — it pairs two independent distributions as the real and
 //! imaginary parts of a `Complex<T>` draw.
 //!
-//! **`DistributionExt`** answers `None` where a law has no closed form: [`ged::SimdGed`],
-//! [`skellam::SimdSkellam`] and the [`truncated`] wrappers answer only `pdf` and `cdf`.
+//! **`DistributionExt`** answers `None` where a law has no closed form, such as a GED characteristic
+//! function or a Skellam quantile; `tests/distribution_ext_coverage.rs` pins every cell.
 //!
 //! One further, unrelated note while it's on this page:
 //! [`geometric::SimdGeometric`]'s documented domain for its success

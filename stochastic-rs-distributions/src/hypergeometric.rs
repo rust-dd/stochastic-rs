@@ -8,10 +8,8 @@
 //! support via the log-space pmf recurrence — one uniform plus a binary
 //! search per draw instead of the naive `n_draws` Bernoulli trials.
 //!
-//! Reference: Kachitvichyanukul, V., Schmeiser, B.W. (1985), "Computer
-//! generation of hypergeometric random variates", *Journal of Statistical
-//! Computation and Simulation* 22, 127-145, DOI: 10.1080/00949658508810839
-//! (inverse-transform family).
+//! Reference: Kachitvichyanukul, V., Schmeiser, B.W. (1985), "Computer generation of hypergeometric random variates", *Journal of Statistical Computation and Simulation* 22, 127-145, DOI 10.1080/00949658508810839 (inverse-transform family).
+//! Reference: Johnson, N. L., Kemp, A. W. & Kotz, S. (2005), *Univariate Discrete Distributions*, 3rd ed., Wiley, §6.3, DOI 10.1002/0471715816 (moments).
 use std::marker::PhantomData;
 
 use num_traits::PrimInt;
@@ -267,6 +265,30 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdHypergeometric<T> {
       ((big_n - 2.0 * k) * (big_n - 1.0).sqrt() * (big_n - 2.0 * n))
         / ((n * k * (big_n - k) * (big_n - n)).sqrt() * (big_n - 2.0)),
     )
+  }
+
+  /// `NaN` for a point mass; at `N ≤ 3` the law sits on two adjacent points, where the closed form's
+  /// `(N − 2)(N − 3)` reads `0/0` and the excess kurtosis is `1/Var − 6`.
+  fn kurtosis(&self) -> Option<f64> {
+    let var = self.variance()?;
+    if var == 0.0 {
+      return Some(f64::NAN);
+    }
+    let (n, k, big_n) = (
+      self.n_draws as f64,
+      self.k_success as f64,
+      self.n_total as f64,
+    );
+    if big_n <= 3.0 {
+      return Some(1.0 / var - 6.0);
+    }
+    let numerator = (big_n - 1.0)
+      * big_n
+      * big_n
+      * (big_n * (big_n + 1.0) - 6.0 * k * (big_n - k) - 6.0 * n * (big_n - n))
+      + 6.0 * n * k * (big_n - k) * (big_n - n) * (5.0 * big_n - 6.0);
+    let denominator = n * k * (big_n - k) * (big_n - n) * (big_n - 2.0) * (big_n - 3.0);
+    Some(numerator / denominator)
   }
 }
 

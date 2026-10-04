@@ -238,6 +238,9 @@ pub fn gamma_p(a: f64, x: f64) -> f64 {
   if x == 0.0 {
     return 0.0;
   }
+  if x == f64::INFINITY {
+    return 1.0;
+  }
   if x < a + 1.0 {
     gser(a, x)
   } else {
@@ -534,6 +537,8 @@ mod tests {
     assert!(close(gamma_p(1.0, 1.0), 1.0 - (-1.0_f64).exp(), 1e-12));
     // P(½, x) = erf(√x)
     assert!(close(gamma_p(0.5, 1.0), erf(1.0), 1e-6));
+    assert_eq!(gamma_p(2.5, f64::INFINITY), 1.0);
+    assert_eq!(gamma_q(2.5, f64::INFINITY), 0.0);
   }
 
   #[test]

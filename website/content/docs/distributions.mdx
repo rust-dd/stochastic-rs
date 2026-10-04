@@ -106,8 +106,8 @@ comment (`stochastic-rs-distributions/src/lib.rs`). Short version:
 | Signed count data | `Skellam` — the only discrete type here that can go negative |
 | Covariance matrices, simplex proportions | `Wishart`, `Dirichlet` — both skip `DistributionExt` entirely for their own inherent density methods |
 
-`DistributionExt` coverage is uneven: `Ged`, `Skellam` and the four
-`Truncated*` wrappers answer `pdf`/`cdf` and `None` for the rest;
+`DistributionExt` coverage per cell is pinned by
+`stochastic-rs-distributions/tests/distribution_ext_coverage.rs`;
 `Dirichlet`, `Wishart`, `SimdNonCentralChiSquared` and
 `ComplexDistribution` implement none of it. `.mean()` / `.variance()` are
 `Option`s: `None` says the law has no closed form.

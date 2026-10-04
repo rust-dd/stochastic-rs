@@ -40,10 +40,10 @@ the exact CIR transition density) and `ComplexDistribution` (a composition
 utility that pairs two distributions as the parts of a complex draw).
 
 Implementing the trait does not mean every method has a closed form:
-`SimdGed`, `SimdSkellam` and the four `truncated` wrappers answer `pdf`/`cdf`
-only, eight laws (`SimdCauchy`, `SimdChiSquared`, `SimdExp`, `SimdGamma`,
+eight laws (`SimdCauchy`, `SimdChiSquared`, `SimdExp`, `SimdGamma`,
 `SimdGeometric`, `SimdNormal`, `SimdPoisson`, `SimdUniform`) answer all twelve
-methods, and the other eighteen answer `None` on specific methods;
+methods, and the other twenty-four answer `None` on specific methods (a GED
+characteristic function, a Skellam quantile);
 `stochastic-rs-distributions/tests/distribution_ext_coverage.rs` is the exact
 matrix.
 

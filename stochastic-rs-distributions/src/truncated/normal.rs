@@ -1,4 +1,7 @@
 //! Truncated normal: rejection on the base normal, Robert's one-sided tail proposals, or the inverse cdf.
+//!
+//! Reference: Johnson, N. L., Kotz, S. & Balakrishnan, N. (1994), *Continuous Univariate Distributions*, vol. 1, 2nd ed., Wiley, ch. 13 §10.1, ISBN 0-471-58495-9 (truncated normal moments).
+//! Reference: Kan, R. & Robotti, C. (2017), "On Moments of Folded and Truncated Multivariate Normal Distributions", *Journal of Computational and Graphical Statistics* 26(4), 930-934, DOI 10.1080/10618600.2017.1322092 (the moment recursion at n = 1 and the mgf).
 
 use rand::Rng;
 use rand::distr::Distribution;
@@ -218,6 +221,36 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
   fn affine(&self, z: f64) -> T {
     T::from_f64_fast(self.base.mean().to_f64().unwrap() + self.base.std_dev().to_f64().unwrap() * z)
   }
+
+  /// `((lower − μ)/σ, (upper − μ)/σ)`; an infinite bound stays infinite.
+  fn standardised_bounds(&self) -> Option<(f64, f64)> {
+    let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
+    Some((
+      (self.lower.to_f64()? - mu) / sigma,
+      (self.upper.to_f64()? - mu) / sigma,
+    ))
+  }
+
+  /// $z^k \varphi(z)$, and `0` at an infinite bound, where `∞ · 0` would read NaN.
+  fn tail_term(z: f64, k: i32) -> f64 {
+    if z.is_infinite() {
+      0.0
+    } else {
+      z.powi(k) * crate::special::norm_pdf(z)
+    }
+  }
+
+  /// Standardised raw moments $E[Z^k]$, $k \le 4$, by the integration-by-parts recursion
+  /// $E[Z^k] = (k-1)E[Z^{k-2}] + (\alpha^{k-1}\varphi(\alpha) - \beta^{k-1}\varphi(\beta))/Z$.
+  fn standardised_moments(&self) -> Option<[f64; 5]> {
+    let (alpha, beta) = self.standardised_bounds()?;
+    let term = |k: i32| (Self::tail_term(alpha, k) - Self::tail_term(beta, k)) / self.norm_mass;
+    let mut m = [1.0, term(0), 0.0, 0.0, 0.0];
+    for k in 2..=4 {
+      m[k] = (k as f64 - 1.0) * m[k - 2] + term(k as i32 - 1);
+    }
+    Some(m)
+  }
 }
 
 impl<T: SimdFloatExt> Sealed for SimdTruncatedNormal<T> {}
@@ -282,6 +315,64 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     let f_x = norm_cdf_scalar((x - mu) / sigma);
     let f_lo = norm_cdf_scalar((lo - mu) / sigma);
     Some((f_x - f_lo) / self.norm_mass)
+  }
+
+  fn quantile(&self, p: f64) -> Option<f64> {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
+    let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
+    Some(mu + sigma * crate::special::ndtri(self.f_lo + p * self.norm_mass))
+  }
+
+  fn mean(&self) -> Option<f64> {
+    let m = self.standardised_moments()?;
+    Some(self.base.mean().to_f64()? + self.base.std_dev().to_f64()? * m[1])
+  }
+
+  fn median(&self) -> Option<f64> {
+    self.quantile(0.5)
+  }
+
+  fn mode(&self) -> Option<f64> {
+    let mu = self.base.mean().to_f64()?;
+    Some(mu.clamp(self.lower.to_f64()?, self.upper.to_f64()?))
+  }
+
+  fn variance(&self) -> Option<f64> {
+    let m = self.standardised_moments()?;
+    let sigma = self.base.std_dev().to_f64()?;
+    Some(sigma * sigma * (m[2] - m[1] * m[1]))
+  }
+
+  fn skewness(&self) -> Option<f64> {
+    let m = self.standardised_moments()?;
+    let var = m[2] - m[1] * m[1];
+    Some((m[3] - 3.0 * m[1] * m[2] + 2.0 * m[1].powi(3)) / var.powf(1.5))
+  }
+
+  fn kurtosis(&self) -> Option<f64> {
+    let m = self.standardised_moments()?;
+    let var = m[2] - m[1] * m[1];
+    Some(
+      (m[4] - 4.0 * m[1] * m[3] + 6.0 * m[1] * m[1] * m[2] - 3.0 * m[1].powi(4)) / (var * var)
+        - 3.0,
+    )
+  }
+
+  fn entropy(&self) -> Option<f64> {
+    let sigma = self.base.std_dev().to_f64()?;
+    let (alpha, beta) = self.standardised_bounds()?;
+    let tail = (Self::tail_term(alpha, 1) - Self::tail_term(beta, 1)) / self.norm_mass;
+    let scale = (2.0 * std::f64::consts::PI * std::f64::consts::E).sqrt() * sigma * self.norm_mass;
+    Some(scale.ln() + 0.5 * tail)
+  }
+
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
+    let (alpha, beta) = self.standardised_bounds()?;
+    let shifted = norm_cdf_scalar(beta - sigma * t) - norm_cdf_scalar(alpha - sigma * t);
+    Some((mu * t + 0.5 * sigma * sigma * t * t).exp() * shifted / self.norm_mass)
   }
 }
 
