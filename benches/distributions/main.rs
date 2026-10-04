@@ -15,6 +15,7 @@ use stochastic_rs::distributions::exp::SimdExp;
 use stochastic_rs::distributions::gamma::SimdGamma;
 use stochastic_rs::distributions::johnson_su::SimdJohnsonSu;
 use stochastic_rs::distributions::lognormal::SimdLogNormal;
+use stochastic_rs::distributions::non_central_chi_squared::SimdNonCentralChiSquared;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::distributions::pareto::SimdPareto;
 use stochastic_rs::distributions::poisson::SimdPoisson;
@@ -264,6 +265,27 @@ fn bench_distribution_ext(c: &mut Criterion) {
   group.finish();
 }
 
+/// The one per-draw construction path: `sample_ncp` below `df = 1` builds its Poisson and Gamma laws
+/// per draw, so a constructor assert is paid on every sample here.
+fn bench_ncx2_per_draw_construction(c: &mut Criterion) {
+  let mut group = c.benchmark_group("NonCentralChiSquared/sample_ncp");
+  group.measurement_time(Duration::from_secs(3));
+  group.warm_up_time(Duration::from_millis(500));
+  for &(label, n) in SIZES {
+    group.bench_with_input(BenchmarkId::new("df=0.5", label), &n, |b, &n| {
+      let mut stream = SimdNonCentralChiSquared::<f64>::new(0.5).seeded(&Unseeded);
+      b.iter(|| {
+        let mut s = 0.0_f64;
+        for _ in 0..n {
+          s += stream.sample_ncp(1.5);
+        }
+        black_box(s)
+      });
+    });
+  }
+  group.finish();
+}
+
 criterion_group!(
   benches,
   bench_normal,
@@ -287,6 +309,7 @@ criterion_group!(
   discrete::bench_binomial,
   discrete::bench_hypergeometric,
   bench_distribution_ext,
+  bench_ncx2_per_draw_construction,
   plot::generate_shape_comparison_plot,
 );
 
