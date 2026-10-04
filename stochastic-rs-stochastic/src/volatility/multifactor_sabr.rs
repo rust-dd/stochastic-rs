@@ -156,7 +156,7 @@ impl<T: FloatExt, S: SeedExt, B> MultifactorSabr<T, S, B> {
   }
 
   fn dt(&self) -> T {
-    self.t.unwrap_or(T::one()) / T::from_usize_(self.n - 1)
+    self.t.unwrap_or(T::one()) / T::from_usize_(self.n.saturating_sub(1).max(1))
   }
 }
 
@@ -506,6 +506,7 @@ mod tests {
     );
     let [f, v] = p.sample();
     assert_eq!((f.to_vec(), v.to_vec()), (vec![1.0], vec![0.2]));
+    assert_eq!(crate::euler::EulerSystem::<f64, 2>::time_step(&p), 1.0);
   }
 }
 
