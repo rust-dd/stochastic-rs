@@ -371,5 +371,7 @@ mod tests {
     let rel = (k.exp_sum(t) / k.gamma_h_half / exact - 1.0).abs();
     assert!(rel < 5e-3, "rel={rel}");
     assert_eq!(k.scaled_weights.len(), k.nodes.len());
+    assert_eq!(k.evaluate(t), exact);
+    assert_ne!(k.evaluate(t), k.exp_sum(t));
   }
 }
