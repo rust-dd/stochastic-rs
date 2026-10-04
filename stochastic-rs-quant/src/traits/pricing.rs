@@ -93,7 +93,7 @@ impl Greeks {
 /// 1. **Invalid model parameter — panic** in a constructor or setter, one `assert!` per argument
 ///    naming it and its value; that method's doc says `panics if …`.
 /// 2. **Not computable at this point — [`f64::NAN`], documented**: a strike outside a Fourier grid, a
-///    yield at $\tau = 0$, an unexposed Greek, a *query* outside its domain (a non-positive strike: never a panic).
+///    yield at $\tau = 0$, an unexposed Greek in a `Greeks` aggregate, a *query* outside its domain (a non-positive strike: never a panic).
 /// 3. **Calibration produced no result — [`Result::Err`]**, the one fallible channel; non-convergence is
 ///    `Ok` with `converged() == false`.
 ///

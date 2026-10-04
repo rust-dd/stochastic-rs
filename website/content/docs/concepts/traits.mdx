@@ -179,9 +179,9 @@ not generic over `T`. It is what a pricer's inherent
 `AssetOrNothingPricer` all share that one signature, because they hold model
 state only and price a grid from a single instance.
 
-`GreeksExt` is a **separate**, narrower trait: one required accessor
-(`delta`), `Option` accessors for the rest (`None` where the estimator
-exposes nothing; `greeks()` writes NaN there), and an aggregating
+`GreeksExt` is a **separate**, narrower trait: nine accessors that all
+return `Option<f64>` (`delta` required, the other eight `None` unless the
+estimator exposes them; `greeks()` writes NaN there) and an aggregating
 `greeks()` — all taking `&self` and nothing else. Only the Monte Carlo
 Malliavin estimators (`GbmMalliavinGreeks`, `HestonMalliavinGreeks`)
 implement it, and for them the bundled query is the point: their `greeks()`
