@@ -189,7 +189,8 @@ impl MultivariateExt for CVine {
 
   fn fit(&mut self, _X: Array2<f64>) -> Result<(), CopulaError> {
     Err(CopulaError::Unsupported(
-      "CVine::fit is not implemented: build the tree with CVine::new and seed each pair copula from Kendall tau".into(),
+      "CVine::fit is not implemented: use multivariate::fit::fit_vine with VineStructure::CVine"
+        .into(),
     ))
   }
 
@@ -342,17 +343,14 @@ mod tests {
     assert!(CVine::new(1, vec![]).is_err());
   }
 
-  /// `fit` returns a descriptive not-implemented error.
+  /// `fit` is `Unsupported` and points at the vine fitter.
   #[test]
   fn cvine_fit_rejects_with_descriptive_error() {
     let mut cv = CVine::independence(3).unwrap();
     let data = ndarray::Array2::<f64>::from_elem((10, 3), 0.5);
-    let res = cv.fit(data);
-    assert!(res.is_err());
-    let msg = res.unwrap_err().to_string();
-    assert!(
-      msg.contains("not implemented") || msg.contains("MLE"),
-      "fit error should point at the unimplemented sequential MLE; got: {msg}"
-    );
+    match cv.fit(data) {
+      Err(CopulaError::Unsupported(hint)) => assert!(hint.contains("fit_vine"), "{hint}"),
+      other => panic!("expected Unsupported, got {other:?}"),
+    }
   }
 }

@@ -121,12 +121,11 @@ fn nac_snc_violation_rejected() {
     leaves: vec![0],
     children: vec![bad_inner],
   };
-  let res = NestedArchimedean::new(NacFamily::Clayton, bad_root, 2);
-  assert!(res.is_err(), "SNC violation must error");
-  assert!(
-    res.unwrap_err().to_string().contains("SNC"),
-    "error message should mention SNC"
-  );
+  let err = NestedArchimedean::new(NacFamily::Clayton, bad_root, 2).unwrap_err();
+  let CopulaError::InvalidStructure(why) = &err else {
+    panic!("expected InvalidStructure, got {err:?}");
+  };
+  assert!(why.contains("sufficient nesting condition"), "{why}");
 }
 
 /// Below-family-minimum θ must be rejected per family.
@@ -148,7 +147,10 @@ fn nac_leaf_index_validation() {
   assert!(NestedArchimedean::new(NacFamily::Clayton, dup_root, 3).is_err());
   // Missing (covers 0,2 only, dim=3)
   let miss = NacNode::leaf_group(2.0, vec![0, 2]);
-  assert!(NestedArchimedean::new(NacFamily::Clayton, miss, 3).is_err());
+  assert!(matches!(
+    NestedArchimedean::new(NacFamily::Clayton, miss, 3),
+    Err(CopulaError::InvalidStructure(_))
+  ));
   // Out of range
   let oor = NacNode::leaf_group(2.0, vec![0, 1, 5]);
   assert!(NestedArchimedean::new(NacFamily::Clayton, oor, 3).is_err());
@@ -178,18 +180,11 @@ fn nac_clayton_independence_cdf() {
   );
 }
 
-/// `fit` must return a descriptive error pointing at structure learning
-/// not being implemented.
+/// `fit` is `Unsupported`: the tree structure is not learned from data.
 #[test]
 fn nac_fit_rejects_with_descriptive_error() {
   let root = NacNode::leaf_group(2.0, vec![0, 1]);
   let mut nac = NestedArchimedean::new(NacFamily::Clayton, root, 2).unwrap();
   let data = ndarray::Array2::<f64>::from_elem((10, 2), 0.5);
-  let res = nac.fit(data);
-  assert!(res.is_err());
-  let msg = res.unwrap_err().to_string();
-  assert!(
-    msg.contains("structure") || msg.contains("not implemented"),
-    "fit error should explain that structure learning is not implemented; got: {msg}"
-  );
+  assert!(matches!(nac.fit(data), Err(CopulaError::Unsupported(_))));
 }

@@ -187,10 +187,10 @@ impl NestedArchimedean {
     let mut index_order = Vec::with_capacity(dim);
     root.collect_leaves(&mut index_order);
     if index_order.len() != dim {
-      return Err(CopulaError::DimensionMismatch {
-        expected: dim,
-        got: index_order.len(),
-      });
+      return Err(CopulaError::InvalidStructure(format!(
+        "the NAC tree has {} leaves but dim = {dim}",
+        index_order.len()
+      )));
     }
     let mut seen = vec![false; dim];
     for &j in &index_order {
@@ -239,7 +239,7 @@ impl NestedArchimedean {
     }
     if !is_root && node.theta < parent_theta {
       return Err(CopulaError::InvalidStructure(format!(
-        "SNC violation: child theta {} < parent theta {} ({family:?})",
+        "sufficient nesting condition violated: child theta {:?} < parent theta {:?} ({family:?})",
         node.theta, parent_theta
       )));
     }
@@ -434,7 +434,9 @@ impl MultivariateExt for NestedArchimedean {
     // parameter fit (Okhrin-Okhrin-Schmid 2013 HAC structure selection) is
     // not yet implemented.
     Err(CopulaError::Unsupported(
-      "NestedArchimedean::fit is not implemented: build the tree with NestedArchimedean::new and seed theta from kendall_tau".into(),
+      "NestedArchimedean::fit is not implemented: build the tree with NestedArchimedean::new \
+       and seed theta from kendall_tau"
+        .into(),
     ))
   }
 

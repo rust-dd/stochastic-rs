@@ -14,7 +14,7 @@ pub enum CopulaError {
   },
   /// The copula was queried before `fit`, `set_theta` or a correlation matrix gave it parameters.
   NotFitted,
-  /// The data's column count (or a tree's leaf count) does not match the copula's dimension.
+  /// The data's column count does not match the copula's dimension.
   DimensionMismatch { expected: usize, got: usize },
   /// Fewer observations than the fit needs.
   InsufficientData { needed: usize, got: usize },
