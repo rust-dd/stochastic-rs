@@ -129,8 +129,8 @@ exact independence.
 ## Acceleration
 
 Default implementation: CPU SIMD via `f64x4` / `f32x8` where the sampler
-allows. GPU backends (`cuda`, `metal`) are opt-in features and currently
-ship for FGN / fBM only — see the [add-gpu-sampler SKILL](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/add-gpu-sampler/SKILL.md).
+allows. Every process also reaches a device backend (the opt-in `cuda` and
+`metal` features) through `.on::<B>()` — see [Sampling backends](/docs/concepts/backends).
 
 ## Construction patterns
 
