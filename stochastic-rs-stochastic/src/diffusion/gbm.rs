@@ -333,6 +333,12 @@ impl<T: FloatExt, S: SeedExt> DistributionExt for Gbm<T, S> {
     Some((s2.exp() + 2.0) * (s2.exp() - 1.0).sqrt())
   }
 
+  fn kurtosis(&self) -> Option<f64> {
+    let (_, ln_sigma) = self.terminal_lognormal_params()?;
+    let s2 = ln_sigma * ln_sigma;
+    Some((4.0 * s2).exp() + 2.0 * (3.0 * s2).exp() + 3.0 * (2.0 * s2).exp() - 6.0)
+  }
+
   fn entropy(&self) -> Option<f64> {
     let (ln_mu, ln_sigma) = self.terminal_lognormal_params()?;
     Some(0.5 + 0.5 * (2.0 * std::f64::consts::PI * ln_sigma * ln_sigma).ln() + ln_mu)
@@ -343,30 +349,35 @@ impl<T: FloatExt, S: SeedExt> DistributionExt for Gbm<T, S> {
 mod tests {
   use super::*;
 
-  /// The lognormal terminal law: nine closed forms, and `None` for the three it has no closed form for.
+  /// The lognormal terminal law: ten closed forms, and `None` for its cf and mgf, which have none.
   #[test]
   fn the_terminal_law_answers_exactly_its_closed_forms() {
     let gbm = Gbm::new(0.05_f64, 0.2, 10, Some(100.0), Some(1.0), Unseeded);
     assert!(gbm.characteristic_function(0.4).is_none());
+    assert!(gbm.moment_generating_function(0.4).is_none());
     assert!(gbm.pdf(100.0).is_some() && gbm.cdf(100.0).is_some() && gbm.quantile(0.3).is_some());
     assert!(gbm.mean().is_some() && gbm.median().is_some() && gbm.mode().is_some());
     assert!(gbm.variance().is_some() && gbm.skewness().is_some() && gbm.entropy().is_some());
-    assert!(gbm.kurtosis().is_none() && gbm.moment_generating_function(0.4).is_none());
+    // scipy.stats.lognorm(0.2).stats(moments="k"): the terminal law's sigma * sqrt(t) is 0.2.
+    assert!((gbm.kurtosis().unwrap() - 0.678_365_777_175_437_2).abs() < 1e-12);
   }
 
   #[test]
   fn a_degenerate_terminal_law_has_no_closed_forms() {
-    let gbm = Gbm::new(0.05_f64, 0.0, 10, Some(100.0), Some(1.0), Unseeded);
-
-    assert!(gbm.pdf(100.0).is_none());
-    assert!(gbm.cdf(100.0).is_none());
-    assert!(gbm.quantile(0.5).is_none());
-    assert!(gbm.mean().is_none());
-    assert!(gbm.mode().is_none());
-    assert!(gbm.median().is_none());
-    assert!(gbm.variance().is_none());
-    assert!(gbm.skewness().is_none());
-    assert!(gbm.entropy().is_none());
+    let no_volatility = Gbm::new(0.05_f64, 0.0, 10, Some(100.0), Some(1.0), Unseeded);
+    let no_horizon = Gbm::new(0.05_f64, 0.2, 10, Some(100.0), Some(0.0), Unseeded);
+    for gbm in [no_volatility, no_horizon] {
+      assert!(gbm.pdf(100.0).is_none());
+      assert!(gbm.cdf(100.0).is_none());
+      assert!(gbm.quantile(0.5).is_none());
+      assert!(gbm.mean().is_none());
+      assert!(gbm.mode().is_none());
+      assert!(gbm.median().is_none());
+      assert!(gbm.variance().is_none());
+      assert!(gbm.skewness().is_none());
+      assert!(gbm.kurtosis().is_none());
+      assert!(gbm.entropy().is_none());
+    }
   }
 
   #[test]
