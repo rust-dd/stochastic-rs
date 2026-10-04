@@ -345,10 +345,10 @@ fn svi_initial_guess(ks: &[f64], ws: &[f64]) -> SviRawParams<f64> {
 
   SviRawParams {
     a: w_mean * 0.5,
-    b: slope.abs().max(0.01),
+    b: slope.abs().max_or_nan(0.01),
     rho: slope.signum() * 0.3,
     m: k_mean,
-    sigma: (k_range * 0.3).max(0.01),
+    sigma: (k_range * 0.3).max_or_nan(0.01),
   }
 }
 
@@ -400,6 +400,22 @@ impl LeastSquaresProblem for SviLmProblem {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn a_nan_quote_is_not_clamped_out_of_the_initial_guess() {
+    assert!(
+      svi_initial_guess(&[f64::NAN, 0.0, 0.1], &[0.05, 0.04, 0.05])
+        .sigma
+        .is_nan()
+    );
+    assert!(
+      svi_initial_guess(&[-0.1, 0.0, 0.1], &[0.05, f64::NAN, 0.05])
+        .b
+        .is_nan()
+    );
+    let finite = svi_initial_guess(&[-0.1, 0.0, 0.1], &[0.05, 0.04, 0.05]);
+    assert!((finite.sigma - 0.06).abs() < 1e-15 && finite.b == 0.01);
+  }
 
   #[test]
   fn svi_evaluation() {
