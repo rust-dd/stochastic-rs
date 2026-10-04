@@ -11,6 +11,7 @@ use roots::find_root_brent;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::RealExt;
 use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::uniform::SimdUniform;
@@ -198,7 +199,7 @@ pub trait BivariateExt {
     empirical_cdf.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Greater));
     let empirical_cdf = Array1::from(empirical_cdf);
     let uniform = Array1::linspace(0.0, 1.0, u.len());
-    let ks = (empirical_cdf - uniform).fold(0.0_f64, |acc, &d| acc.max(d.abs()));
+    let ks = (empirical_cdf - uniform).fold(0.0_f64, |acc, &d| acc.max_or_nan(d.abs()));
 
     if ks > 1.627 / (u.len() as f64).sqrt() {
       return Err(CopulaError::MarginalNotUniform);

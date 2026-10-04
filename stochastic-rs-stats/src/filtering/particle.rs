@@ -111,14 +111,21 @@ where
     }
   }
 
+  /// The largest log-weight, NaN if any is; the NaN flag is its own reduction so the max still vectorizes.
+  fn max_log_weight(&self) -> f64 {
+    let (max, nan) = self
+      .log_weights
+      .iter()
+      .fold((f64::NEG_INFINITY, false), |(max, nan), &lw| {
+        (max.max(lw), nan | lw.is_nan())
+      });
+    if nan { f64::NAN } else { max }
+  }
+
   /// Mean state across particles, weighted by the current normalised weights.
   pub fn mean_state(&self) -> Array1<f64> {
     let (n, d) = self.particles.dim();
-    let max_lw = self
-      .log_weights
-      .iter()
-      .cloned()
-      .fold(f64::NEG_INFINITY, f64::max);
+    let max_lw = self.max_log_weight();
     let weights: Vec<f64> = self
       .log_weights
       .iter()
@@ -137,11 +144,7 @@ where
 
   /// Effective sample size $1 / \sum w_i^2$ in the natural scale.
   pub fn effective_sample_size(&self) -> f64 {
-    let max_lw = self
-      .log_weights
-      .iter()
-      .cloned()
-      .fold(f64::NEG_INFINITY, f64::max);
+    let max_lw = self.max_log_weight();
     let weights: Vec<f64> = self
       .log_weights
       .iter()
@@ -186,11 +189,7 @@ where
   /// Normalise the log-weights in place; returns the log-sum-exp
   /// normalising constant (the step's incremental log-likelihood).
   fn normalise_log_weights(&mut self) -> f64 {
-    let max_lw = self
-      .log_weights
-      .iter()
-      .cloned()
-      .fold(f64::NEG_INFINITY, f64::max);
+    let max_lw = self.max_log_weight();
     let log_total: f64 = self
       .log_weights
       .iter()
@@ -206,11 +205,7 @@ where
 
   fn resample(&mut self) {
     let (n, d) = self.particles.dim();
-    let max_lw = self
-      .log_weights
-      .iter()
-      .cloned()
-      .fold(f64::NEG_INFINITY, f64::max);
+    let max_lw = self.max_log_weight();
     let weights: Vec<f64> = self
       .log_weights
       .iter()
@@ -348,5 +343,18 @@ mod tests {
     let n = pf.particles.nrows() as f64;
     pf.step(y.view());
     assert!(pf.effective_sample_size() < n);
+  }
+
+  #[test]
+  fn a_nan_log_weight_makes_the_log_weight_shift_nan() {
+    let init = |_rng: &mut SimdRng| Array1::from(vec![0.0_f64]);
+    let transition = |prev: ArrayView1<f64>, _rng: &mut SimdRng| prev.to_owned();
+    let log_obs = |_x: ArrayView1<f64>, _y: ArrayView1<f64>| 0.0;
+    let mut pf = ParticleFilter::new(4, init, transition, log_obs, 3);
+    pf.log_weights = Array1::from(vec![-1.0, -0.5, -2.0, -3.0]);
+    assert_eq!(pf.max_log_weight(), -0.5);
+    pf.log_weights[2] = f64::NAN;
+    assert!(pf.max_log_weight().is_nan());
+    assert!(pf.effective_sample_size().is_nan());
   }
 }

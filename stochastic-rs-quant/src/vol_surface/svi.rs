@@ -340,8 +340,8 @@ fn svi_initial_guess(ks: &[f64], ws: &[f64]) -> SviRawParams<f64> {
     0.0
   };
 
-  let k_range = ks.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
-    - ks.iter().cloned().fold(f64::INFINITY, f64::min);
+  let k_range = ks.iter().cloned().fold(f64::NEG_INFINITY, f64::max_or_nan)
+    - ks.iter().cloned().fold(f64::INFINITY, f64::min_or_nan);
 
   SviRawParams {
     a: w_mean * 0.5,

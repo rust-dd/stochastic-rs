@@ -38,7 +38,10 @@ impl<T: FloatExt> MtPayoff<T> {
         (basket - *strike).max(T::zero())
       }
       Self::WorstOfPut { strike } => {
-        let worst = st.iter().copied().fold(T::infinity(), |a, b| a.min(b));
+        let worst = st
+          .iter()
+          .copied()
+          .fold(T::infinity(), |a, b| a.min_or_nan(b));
         (*strike - worst).max(T::zero())
       }
     }

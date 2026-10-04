@@ -263,3 +263,11 @@ fn gpd_pwm_matches_the_hosking_wallis_formulas() {
 fn gpd_pwm_rejects_a_single_excess() {
   let _ = gpd_pwm(array![1.0_f64].view());
 }
+
+/// A NaN observation is a NaN block maximum; `f64::max` would hide it behind its neighbours.
+#[test]
+fn a_nan_observation_makes_its_block_maximum_nan() {
+  let maxima = block_maxima(array![1.0_f64, 2.0, f64::NAN, 0.5, 3.0, 1.0].view(), 3);
+  assert!(maxima[0].is_nan());
+  assert_eq!(maxima[1], 3.0);
+}

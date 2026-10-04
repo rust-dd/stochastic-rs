@@ -39,7 +39,7 @@ pub fn calibrate_ssvi<T: RealExt>(
     .iter()
     .map(|s| s.theta)
     .filter(|t| t.is_finite() && *t > 0.0)
-    .fold(0.0_f64, f64::max);
+    .fold(0.0_f64, f64::max_or_nan);
 
   let problem = SsviLmProblem {
     slices: slices_f64,

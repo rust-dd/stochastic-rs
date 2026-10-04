@@ -26,6 +26,7 @@ use num_complex::Complex64;
 
 use super::fourier::Cumulants;
 use super::fourier::FourierModelExt;
+use crate::traits::RealExt;
 
 fn mat_inf_norm(a: &Array2<Complex64>) -> f64 {
   // ndarray's `mapv(Complex64::norm)` + per-row sum + max gives us the
@@ -35,7 +36,7 @@ fn mat_inf_norm(a: &Array2<Complex64>) -> f64 {
     .rows()
     .into_iter()
     .map(|row| row.sum())
-    .fold(0.0_f64, f64::max)
+    .fold(0.0_f64, f64::max_or_nan)
 }
 
 fn matrix_exp_complex(a: &Array2<Complex64>) -> Array2<Complex64> {

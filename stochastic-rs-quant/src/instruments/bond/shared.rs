@@ -425,7 +425,7 @@ fn min_yield_for_leg<T: RealExt>(
             .to_f64()
             .unwrap()
         })
-        .fold(0.0f64, f64::max);
+        .fold(0.0f64, f64::max_or_nan);
       if max_tau <= 0.0 {
         -1.0
       } else {

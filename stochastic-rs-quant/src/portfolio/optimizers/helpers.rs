@@ -2,6 +2,8 @@
 
 use ndarray::Array2;
 
+use crate::traits::RealExt;
+
 pub(super) fn sample_mean(xs: &[f64]) -> f64 {
   if xs.is_empty() {
     0.0
@@ -39,7 +41,7 @@ pub(super) fn softmax(x: &[f64]) -> Vec<f64> {
     return Vec::new();
   }
 
-  let max_x = x.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+  let max_x = x.iter().cloned().fold(f64::NEG_INFINITY, f64::max_or_nan);
   let exps: Vec<f64> = x.iter().map(|&v| (v - max_x).exp()).collect();
   let sum: f64 = exps.iter().sum();
 

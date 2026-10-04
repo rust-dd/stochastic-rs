@@ -3,6 +3,8 @@
 //! 1998 parameters) on unconstrained coordinates, which the callers map onto
 //! their parameter domains.
 
+use stochastic_rs_distributions::RealExt;
+
 /// Minimises `f` from `start` with initial simplex steps `steps`; returns
 /// the best vertex after `max_iter` iterations or once the simplex spread
 /// falls below `tolerance`.
@@ -43,9 +45,9 @@ pub(crate) fn nelder_mead(
         v.iter()
           .zip(&simplex[0])
           .map(|(a, b)| (a - b).abs())
-          .fold(0.0, f64::max)
+          .fold(0.0, f64::max_or_nan)
       })
-      .fold(0.0, f64::max);
+      .fold(0.0, f64::max_or_nan);
     if spread < tolerance && (values[n] - values[0]).abs() < tolerance {
       break;
     }
