@@ -1,7 +1,7 @@
 //! Pure-jump Lévy and jump-diffusion Fourier models: Variance Gamma, CGMY, Merton jump-diffusion,
 //! Kou double-exponential and Normal Inverse Gaussian.
 //!
-//! Cumulants of the jump parts: Cont & Tankov (2004), Financial Modelling with Jump Processes, Prop. 3.13 (κₙ = λ t E[Yⁿ]).
+//! Cumulants of the jump parts: Cont & Tankov (2004), Financial Modelling with Jump Processes, Chapman & Hall/CRC, DOI 10.1201/9780203485217, Prop. 3.13 (κₙ = λ t E[Yⁿ]).
 
 use num_complex::Complex64;
 
