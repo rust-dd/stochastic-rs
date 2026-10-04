@@ -299,8 +299,8 @@ pub trait BivariateExt {
       X_prime[[i, 1]] = X[[i, 1]] + delta[i];
     }
 
-    let f = self.cdf(X).unwrap();
-    let f_prime = self.cdf(&X_prime).unwrap();
+    let f = self.cdf(X)?;
+    let f_prime = self.cdf(&X_prime)?;
 
     let mut deriv = Array1::zeros(n);
     for i in 0..n {
