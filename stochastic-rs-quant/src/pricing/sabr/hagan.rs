@@ -24,8 +24,8 @@ pub fn forward_fx(s: f64, tau: f64, r_d: f64, r_f: f64) -> f64 {
 /// +\tfrac{(2-3\rho^2)\nu^2}{24}\Bigr)\tau\Bigr]
 /// $$
 ///
-/// Panics if `alpha <= 0` or `rho` is not strictly inside $(-1, 1)$ (the $x(z)$ denominator carries $1-\rho$);
-/// a non-positive `k` or `f` is a query outside the domain and returns NaN.
+/// Panics if `alpha <= 0` or `rho` is not strictly inside $(-1, 1)$ (the $x(z)$ denominator carries $1-\rho$); a non-positive
+/// `k` or `f`, or a negative or non-finite `tau` (`tau = 0` is the leading-order limit), is outside the domain and returns NaN.
 pub fn hagan_implied_vol(
   k: f64,
   f: f64,
@@ -40,7 +40,7 @@ pub fn hagan_implied_vol(
     rho > -1.0 && rho < 1.0,
     "rho must lie strictly inside (-1, 1) (got {rho})"
   );
-  if !(k > 0.0 && f > 0.0) {
+  if !(k > 0.0 && f > 0.0 && tau.is_finite() && tau >= 0.0) {
     return f64::NAN;
   }
 

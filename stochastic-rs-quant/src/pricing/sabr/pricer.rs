@@ -108,8 +108,8 @@ impl SabrPricer {
     forward_fx(s, tau, r, q)
   }
 
-  /// Hagan (2002) general-β implied vol at `k` against [`forward`](Self::forward): NaN for a non-positive `k` or forward,
-  /// possibly non-positive on a legal parameter set ([`call_put`](Self::call_put) screens it); panics on an invalid `alpha` / `rho` field.
+  /// Hagan (2002) general-β implied vol at `k` against [`forward`](Self::forward); NaN for a non-positive `k` or forward or a negative or
+  /// non-finite `tau`, possibly non-positive on legal parameters (see [`call_put`](Self::call_put)); panics on an invalid `alpha` / `rho`.
   pub fn sigma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     hagan_implied_vol(
       k,
