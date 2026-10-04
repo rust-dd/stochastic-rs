@@ -254,29 +254,43 @@ impl FourierModelExt for NigFourier {
 mod tests {
   use super::*;
 
-  /// Cont & Tankov (2004) Prop. 3.13: κ₄ = λ t E[Y⁴] for the compound-Poisson part.
+  /// κ₄ = λ t E[Y⁴] (Cont & Tankov 2004, Prop. 3.13), pinned to mpmath's 4th derivative at 0 of
+  /// each model's own log-chf.
   #[test]
   fn merton_and_kou_fourth_cumulants_are_the_jump_moments() {
-    let merton = MertonJDFourier {
-      sigma: 0.2,
-      lambda: 0.5,
-      mu_j: -0.1,
-      sigma_j: 0.15,
-      r: 0.03,
-      q: 0.0,
+    let merton = |sigma, lambda, mu_j, sigma_j, t| {
+      let model = MertonJDFourier {
+        sigma,
+        lambda,
+        mu_j,
+        sigma_j,
+        r: 0.03,
+        q: 0.0,
+      };
+      model.cumulants(t).c4.unwrap()
     };
-    let expected = 0.5 * 2.0 * ((-0.1_f64).powi(4) + 6.0 * 0.01 * 0.0225 + 3.0 * 0.15_f64.powi(4));
-    assert!((merton.cumulants(2.0).c4.unwrap() - expected).abs() < 1e-15);
-    let kou = KouFourier {
-      sigma: 0.2,
-      lambda: 0.8,
-      p_up: 0.4,
-      eta1: 10.0,
-      eta2: 5.0,
-      r: 0.03,
-      q: 0.0,
+    let kou = |sigma, lambda, p_up, eta1, eta2, t| {
+      let model = KouFourier {
+        sigma,
+        lambda,
+        p_up,
+        eta1,
+        eta2,
+        r: 0.03,
+        q: 0.0,
+      };
+      model.cumulants(t).c4.unwrap()
     };
-    let expected = 24.0 * 0.8 * 1.5 * (0.4 / 10.0_f64.powi(4) + 0.6 / 5.0_f64.powi(4));
-    assert!((kou.cumulants(1.5).c4.unwrap() - expected).abs() < 1e-15);
+    for (got, want) in [
+      (merton(0.2, 0.5, -0.1, 0.15, 2.0), 0.00296875),
+      (merton(0.12, 0.4, -0.12, 0.18, 1.0), 0.0024624),
+      (kou(0.2, 0.8, 0.4, 10.0, 5.0, 1.5), 0.0288),
+      (kou(0.15, 3.0, 0.2, 25.0, 10.0, 1.0), 0.005796864),
+    ] {
+      assert!(
+        ((got - want) / want).abs() < 1e-14,
+        "c4 = {got}, mpmath {want}"
+      );
+    }
   }
 }
