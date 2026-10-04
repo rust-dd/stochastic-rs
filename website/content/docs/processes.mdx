@@ -312,6 +312,27 @@ gpu = srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7, dtype="f32", device="me
 </Tab>
 </Tabs>
 
+## Generic SDE solver
+
+`Sde` integrates a user-supplied $d$-dimensional Itô SDE $dX_t = a(X_t, t)\,dt + b(X_t, t)\,dW_t$ from a drift closure and a diffusion-matrix closure, with Euler–Maruyama, Milstein, SRK2 or SRK4 (`SdeMethod`), under Brownian or fractional noise (`NoiseModel`). It is not a `ProcessExt` implementor: `solve` returns all paths as an `Array3<T>` of shape `[n_paths, steps + 1, dim]`. `.on::<B>()` re-types it; under `NoiseModel::Fractional` the fGN increments come from `Fgn::on::<B>()`, while the integration loop and Gaussian noise run on the host. It has no Python class.
+
+```rust
+use stochastic_rs::ndarray::{array, Array1, Array2};
+use stochastic_rs::simd_rng::SimdRng;
+use stochastic_rs::stochastic::sde::{NoiseModel, Sde, SdeMethod};
+
+// dS = mu S dt + sigma S dW
+let (mu, sigma) = (0.05_f64, 0.2_f64);
+let sde = Sde::new(
+  move |x: &Array1<f64>, _t: f64| array![mu * x[0]],
+  move |x: &Array1<f64>, _t: f64| Array2::from_elem((1, 1), sigma * x[0]),
+  NoiseModel::Gaussian,
+  None,
+);
+let mut rng = SimdRng::from_seed(42);
+let paths = sde.solve(&array![100.0], 0.0, 1.0, 0.001, 100, SdeMethod::Milstein, &mut rng); // [100, 1001, 1]
+```
+
 ## Volterra (stochastic Volterra equations)
 
 Solved by Markovian lift at `O(n N')` rather than the naive `O(n^2)` convolution. See `stochastic_rs::stochastic::volterra`.

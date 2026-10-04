@@ -23,7 +23,7 @@ Every process reaches a device: `Fgn` and `Fbs` through pipelines of their own, 
 The engine steps a bounded forward recursion over four scalar state slots and four shocks. These configurations exceed it and sample on the host, bit-identically to the `Cpu` build, whatever the backend; `device_fallback()` names the reason:
 
 - **History models on a long grid.** `RoughHeston`, `FBatesSvj`, `RoughBergomi`, `Lfsm`, `Arima`, `Sarima` and `Volterra`'s reference-convolution branch read their whole past each step, which the kernels carry for grids up to 512 points.
-- **Coefficients written as a Rust closure, a Python callable or a `Grid2D`** (`Cheyette`'s `sigma(t, x)`, `VolterraSde`'s drift and diffusion, `HestonSlv`'s leverage). Written as an `Expr`, the same coefficient runs on the device — see below.
+- **Coefficients of the state written as a Rust closure, a Python callable or a `Grid2D`** (`Cheyette`'s `sigma(t, x)`, `VolterraSde`'s drift and diffusion, `HestonSlv`'s leverage). Written as an `Expr`, the same coefficient runs on the device — see below. A coefficient of time alone, such as Hull–White's `theta(t)`, is tabulated on the grid and runs on the device, whether it is a Rust function or a Python callable.
 - **Too many coupled dimensions.** `Wishart` above `d = 2` or below degree 3; `Lmm`, `MultiGbm` and `Mcgns` above four components; `MultifactorHeston` with three or more factors; `RegimeSwitchingDiffusion` with five or more regimes; `MultivariateHawkes` above two components or with per-pair decays.
 - **Point processes on their own clock.** `Hawkes`, `MultivariateHawkes`, `Poisson`, `CompoundPoisson`, `CustomJt` and `CompoundCustom` in horizon mode, where the output length is the number of events; `CustomJt` / `CompoundCustom` with an inter-arrival law other than the exponential; `Ctrw` with gamma, inverse-Gaussian or stable waits.
 - **Jump-size laws other than `SimdNormal` / `SimdExp`** for the processes generic over one (`Merton`, `Kou`, `LevyDiffusion`, `Bates1996`, `JumpFou`, `JumpFOUCustom`).
@@ -34,7 +34,7 @@ The engine steps a bounded forward recursion over four scalar state slots and fo
 
 ### Coefficients as expressions
 
-`Cheyette`, `VolterraSde` and `HestonSlv` take their coefficients as `Fn2D` callables of time and state. A Rust closure or a Python callable runs on the host only. Written as an `Expr`, the same coefficient reaches the device:
+`Cheyette`, `VolterraSde` and `HestonSlv` take their coefficients as `Fn2D` callables of time and state. A Rust closure or a Python callable of the state runs on the host only (a closure of time alone is tabulated on the grid and reaches the device). Written as an `Expr`, the same coefficient reaches the device:
 
 ```rust
 use stochastic_rs::traits::Expr;
@@ -73,7 +73,7 @@ Probing a device, handling its failures and choosing an ordinal are on [Sampling
 
 ## From Python
 
-89 process classes take `device=` (`PyGbm(..., dtype="f32", device="metal")`); a class without it samples on the host. The name is one of `"cpu"`, `"accelerate"`, `"cuda"`, `"metal"`, optionally with an ordinal (`"cuda:1"`); one the build does not carry raises `ValueError` with a rebuild hint, and the device is probed when the object is built. Arrays come back in the class's dtype, and the `f32`-only Metal backend needs `dtype="f32"`. A class also answers `device_ready()` and `device_fallback()` for the configuration it holds. The published wheels are CPU-only; the device backends need a source build — `maturin develop --features metal` on a Mac, `--features cuda` on an NVIDIA machine. See [Python bindings](/docs/python#devices).
+89 process classes take `device=` (`PyGbm(..., dtype="f32", device="metal")`); the ones without it, listed on [Python bindings](/docs/python#devices), sample on the host. The name is one of `"cpu"`, `"accelerate"`, `"cuda"`, `"metal"`, optionally with an ordinal (`"cuda:1"`); one the build does not carry raises `ValueError` with a rebuild hint, and the device is probed when the object is built. Arrays come back in the class's dtype, and the `f32`-only Metal backend needs `dtype="f32"`. A class also answers `device_ready()` and `device_fallback()` for the configuration it holds. The published wheels are CPU-only; the device backends need a source build — `maturin develop --features metal` on a Mac, `--features cuda` on an NVIDIA machine. See [Python bindings](/docs/python#devices).
 
 ## Trying the CUDA back-end without a CUDA machine
 

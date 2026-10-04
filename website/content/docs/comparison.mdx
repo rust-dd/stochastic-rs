@@ -37,7 +37,7 @@ Areas where the other two have little or nothing:
 
 **Copulas.** Fifteen bivariate families plus C-vine, D-vine, R-vine and nested Archimedean constructions. QuantLib's `ql/math/copulas` covers the basic families only. See [copulas](/docs/copulas).
 
-**Hardware acceleration.** SIMD sampling on the CPU, and every process on CUDA, Metal or Accelerate. Neither alternative attempts this. See [GPU support](/docs/concepts/gpu-support) and [benchmarks](/docs/benchmarks).
+**Hardware acceleration.** SIMD sampling on the CPU, every process on a CUDA or Metal GPU, and Apple's vDSP FFT (Accelerate) for fractional Gaussian noise. Neither alternative attempts this. See [GPU support](/docs/concepts/gpu-support) and [benchmarks](/docs/benchmarks).
 
 **Native Python.** 308 PyO3 entries, NumPy in and NumPy out, no SWIG layer and no C++ toolchain needed to install. See [Python bindings](/docs/python).
 

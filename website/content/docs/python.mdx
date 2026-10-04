@@ -81,7 +81,7 @@ srs.probe_device("metal")             # {'backend': 'Metal', 'name': 'Apple M2 M
 srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7, device="cuda:1")   # second CUDA GPU
 ```
 
-89 process classes take `device=` (`PyGbm(..., dtype="f32", device="metal")`); a class without it samples on the host. The name is checked against the build (`ValueError` with a rebuild hint), a single-precision device needs `dtype="f32"` (`ValueError` otherwise), and the device is probed when the object is built (`RuntimeError` if it cannot be opened); `sample()` / `sample_par(m)` then run on it and return arrays in the class's dtype. `device="cpu"` is the default. `device_ready()` and `device_fallback()` say whether the configuration a class holds runs on its device.
+89 process classes take `device=` (`PyGbm(..., dtype="f32", device="metal")`). The process classes without it sample on the host: `PyAdg`, `PyBates`, `PyBgm`, `PyCheyette`, `PyCompoundCustom`, `PyCompoundPoisson`, `PyCtrw`, `PyCustomJt`, `PyHestonSlv`, `PyHjm`, `PyJumpFou`, `PyJumpFOUCustom`, `PyKou`, `PyLevyDiffusion`, `PyMcgns`, `PyMerton`, `PyMultiGbm`, `PyRoughBergomi`, `PyRoughHeston`, `PyVolterra`, `PyWishart`, `PyWuZhangD`. The name is checked against the build (`ValueError` with a rebuild hint), a single-precision device needs `dtype="f32"` (`ValueError` otherwise), and the device is probed when the object is built (`RuntimeError` if it cannot be opened); `sample()` / `sample_par(m)` then run on it and return arrays in the class's dtype. `device="cpu"` is the default. `device_ready()` and `device_fallback()` say whether the configuration a class holds runs on its device.
 
 ## Credit curves
 
