@@ -78,12 +78,17 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
   /// `lower − ln(V)/λ` with `V = 1 − u(1 − tail_ratio)` in `(tail_ratio, 1]`: in the cdf form `1 − e^{−λx}` both bounds
   /// round to 1 once `λ·lower` passes about 36.
   #[inline]
-  fn invert(&self, u: f64) -> T {
+  fn inverse_cdf(&self, u: f64) -> f64 {
     let v = 1.0 - u * (1.0 - self.tail_ratio);
-    T::from_f64_fast(self.lower.to_f64().unwrap() - v.ln() / self.lambda.to_f64().unwrap())
+    self.lower.to_f64().unwrap() - v.ln() / self.lambda.to_f64().unwrap()
   }
 
-  /// `upper − lower`, infinite for an open tail.
+  #[inline]
+  fn invert(&self, u: f64) -> T {
+    T::from_f64_fast(self.inverse_cdf(u))
+  }
+
+  /// Infinite for an open tail.
   fn length(&self) -> Option<f64> {
     Some(self.upper.to_f64()? - self.lower.to_f64()?)
   }
@@ -157,8 +162,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     if !(0.0..=1.0).contains(&p) {
       return Some(f64::NAN);
     }
-    let (lam, lo) = (self.lambda.to_f64()?, self.lower.to_f64()?);
-    Some(lo - (1.0 - p * (1.0 - self.tail_ratio)).ln() / lam)
+    Some(self.inverse_cdf(p))
   }
 
   fn mean(&self) -> Option<f64> {

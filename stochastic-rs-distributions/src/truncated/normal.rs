@@ -211,18 +211,28 @@ impl<T: SimdFloatExt> SimdTruncatedNormal<T> {
     self.affine(z)
   }
 
-  /// Inverse-CDF sample: $X = F^{-1}(F(\text{lower}) + U \cdot (F(\text{upper}) - F(\text{lower})))$.
   fn inverse_cdf_sample<S: TruncatedNormalSource<T>>(&self, src: &mut S) -> T {
-    let q = self.f_lo + src.uniform() * (self.f_up - self.f_lo);
-    self.affine(crate::special::ndtri(q))
+    T::from_f64_fast(self.inverse_cdf(src.uniform()))
+  }
+
+  /// $F^{-1}(F(\text{lower}) + u (F(\text{upper}) - F(\text{lower})))$, shared by the inverse-cdf draw and the quantile.
+  fn inverse_cdf(&self, u: f64) -> f64 {
+    self.unstandardise(crate::special::ndtri(
+      self.f_lo + u * (self.f_up - self.f_lo),
+    ))
   }
 
   #[inline]
   fn affine(&self, z: f64) -> T {
-    T::from_f64_fast(self.base.mean().to_f64().unwrap() + self.base.std_dev().to_f64().unwrap() * z)
+    T::from_f64_fast(self.unstandardise(z))
   }
 
-  /// `((lower − μ)/σ, (upper − μ)/σ)`; an infinite bound stays infinite.
+  #[inline]
+  fn unstandardise(&self, z: f64) -> f64 {
+    self.base.mean().to_f64().unwrap() + self.base.std_dev().to_f64().unwrap() * z
+  }
+
+  /// An infinite bound stays infinite.
   fn standardised_bounds(&self) -> Option<(f64, f64)> {
     let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
     Some((
@@ -321,13 +331,11 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     if !(0.0..=1.0).contains(&p) {
       return Some(f64::NAN);
     }
-    let (mu, sigma) = (self.base.mean().to_f64()?, self.base.std_dev().to_f64()?);
-    Some(mu + sigma * crate::special::ndtri(self.f_lo + p * self.norm_mass))
+    Some(self.inverse_cdf(p))
   }
 
   fn mean(&self) -> Option<f64> {
-    let m = self.standardised_moments()?;
-    Some(self.base.mean().to_f64()? + self.base.std_dev().to_f64()? * m[1])
+    Some(self.unstandardise(self.standardised_moments()?[1]))
   }
 
   fn median(&self) -> Option<f64> {
@@ -360,12 +368,11 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     )
   }
 
+  /// `−E[ln f(X)] = ln(√(2π)σZ) + E[Z²]/2`, with `E[Z²]` from the moment recursion.
   fn entropy(&self) -> Option<f64> {
+    let m = self.standardised_moments()?;
     let sigma = self.base.std_dev().to_f64()?;
-    let (alpha, beta) = self.standardised_bounds()?;
-    let tail = (Self::tail_term(alpha, 1) - Self::tail_term(beta, 1)) / self.norm_mass;
-    let scale = (2.0 * std::f64::consts::PI * std::f64::consts::E).sqrt() * sigma * self.norm_mass;
-    Some(scale.ln() + 0.5 * tail)
+    Some(((2.0 * std::f64::consts::PI).sqrt() * sigma * self.norm_mass).ln() + 0.5 * m[2])
   }
 
   fn moment_generating_function(&self, t: f64) -> Option<f64> {

@@ -30,6 +30,25 @@ fn reject<T: SimdFloatExt>(lower: T, upper: T, mut base: impl FnMut() -> T) -> T
   (lower + upper) * T::from_f64_fast(0.5)
 }
 
+/// The parent's quantile at the renormalised level `F(lower) + p(F(upper) − F(lower))`.
+fn renormalised_quantile(
+  base: &impl DistributionExt,
+  lower: f64,
+  upper: f64,
+  p: f64,
+) -> Option<f64> {
+  if !(0.0..=1.0).contains(&p) {
+    return Some(f64::NAN);
+  }
+  let (f_lo, f_up) = (base.cdf(lower)?, base.cdf(upper)?);
+  base.quantile(f_lo + p * (f_up - f_lo))
+}
+
+fn raw_variance(raw_moment: impl Fn(f64) -> Option<f64>) -> Option<f64> {
+  let m1 = raw_moment(1.0)?;
+  Some(raw_moment(2.0)? - m1 * m1)
+}
+
 /// Truncated beta law on $[\text{lower}, \text{upper}] \subseteq [0, 1]$, parameters only: a [`Seeded`](crate::Seeded)
 /// stream draws it by rejection, falling back to the interval's midpoint after 1000 misses.
 ///
@@ -175,14 +194,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
-    if !(0.0..=1.0).contains(&p) {
-      return Some(f64::NAN);
-    }
-    let (f_lo, f_up) = (
-      self.cdf_helper(self.lower.to_f64()?),
-      self.cdf_helper(self.upper.to_f64()?),
-    );
-    self.base.quantile(f_lo + p * (f_up - f_lo))
+    renormalised_quantile(&self.base, self.lower.to_f64()?, self.upper.to_f64()?, p)
   }
 
   fn mean(&self) -> Option<f64> {
@@ -213,8 +225,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedBeta<T> {
   }
 
   fn variance(&self) -> Option<f64> {
-    let m1 = self.raw_moment(1.0)?;
-    Some(self.raw_moment(2.0)? - m1 * m1)
+    raw_variance(|m| self.raw_moment(m))
   }
 }
 
@@ -358,14 +369,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedGamma<T> {
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
-    if !(0.0..=1.0).contains(&p) {
-      return Some(f64::NAN);
-    }
-    let (f_lo, f_up) = (
-      self.cdf_helper(self.lower.to_f64()?),
-      self.cdf_helper(self.upper.to_f64()?),
-    );
-    self.base.quantile(f_lo + p * (f_up - f_lo))
+    renormalised_quantile(&self.base, self.lower.to_f64()?, self.upper.to_f64()?, p)
   }
 
   fn mean(&self) -> Option<f64> {
@@ -387,8 +391,7 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedGamma<T> {
   }
 
   fn variance(&self) -> Option<f64> {
-    let m1 = self.raw_moment(1.0)?;
-    Some(self.raw_moment(2.0)? - m1 * m1)
+    raw_variance(|m| self.raw_moment(m))
   }
 }
 
