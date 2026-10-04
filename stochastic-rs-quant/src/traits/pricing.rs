@@ -90,20 +90,12 @@ impl Greeks {
 /// a strike/maturity grid would cost more than it buys, so the three failure
 /// modes are separated by kind instead:
 ///
-/// 1. **Invalid parameter — panic**, with a message naming the parameter and
-///    its value (`"strike k must be strictly positive (got -1)"`). A
-///    non-positive strike or a negative variance is programmer error, not a
-///    market state, and there is no answer to return. `hagan_implied_vol` and
-///    `SnellEnvelopePricer::validate_query` set the message style. A method
-///    that can panic carries a `# Panics` section.
-/// 2. **Not computable at this point — [`f64::NAN`], documented.** The inputs
-///    are legitimate but the quantity is genuinely undefined *here*: a strike
-///    outside a Fourier pricer's truncation grid, a second derivative at a
-///    grid boundary, a central difference in $\tau$ that would step past
-///    expiry, a yield at $\tau = 0$, a Greek this pricer does not expose. Any
-///    method that can return `NaN` says so in its own doc.
-/// 3. **Calibration did not converge — [`Result::Err`].** Calibration is the
-///    one part of the crate with a fallible return channel, and it keeps it.
+/// 1. **Invalid model parameter — panic** in a constructor or setter, one `assert!` per argument
+///    naming it and its value; that method's doc says `panics if …`.
+/// 2. **Not computable at this point — [`f64::NAN`], documented**: a strike outside a Fourier grid, a
+///    yield at $\tau = 0$, an unexposed Greek, a *query* outside its domain (a non-positive strike: never a panic).
+/// 3. **Calibration produced no result — [`Result::Err`]**, the one fallible channel; non-convergence is
+///    `Ok` with `converged() == false`.
 ///
 /// What the convention rules out is the fourth option: a **plausible-looking
 /// sentinel**. Returning `0.0` from a failed volatility inversion hands the
@@ -243,14 +235,8 @@ pub trait VanillaEuropeanCall: ModelPricer {
 /// [`ModelPricer`] advertised a symmetry the crate does not have. Reach it as
 /// `stochastic_rs::traits::GreeksExt` (or `crate::traits::GreeksExt` in-tree).
 ///
-/// Only [`delta`](Self::delta) is required; an implementor that does not
-/// compute a higher-order Greek inherits [`f64::NAN`] from the default impl.
-/// Those defaults are case 2 of [the failure
-/// convention](ModelPricer#how-pricing-fails), and the reason they are `NAN`
-/// rather than `0.0` is that a Greek genuinely *is* zero sometimes — the vega
-/// of a deep in-the-money digital, the gamma of a forward. A zero default
-/// would make "this estimator does not expose vega" indistinguishable from
-/// "vega is zero here", and the two call for opposite responses.
+/// Only [`delta`](Self::delta) is required; an accessor the estimator does not compute is `None`
+/// (not `0.0`: a Greek genuinely is zero sometimes), and `greeks()` writes NaN for it in the aggregate.
 ///
 /// First-order: [`delta`](Self::delta), [`vega`](Self::vega),
 /// [`theta`](Self::theta), [`rho`](Self::rho).
@@ -258,74 +244,61 @@ pub trait VanillaEuropeanCall: ModelPricer {
 /// [`charm`](Self::charm), [`volga`](Self::volga), [`veta`](Self::veta).
 pub trait GreeksExt {
   /// Delta — $\partial V / \partial S$.
-  fn delta(&self) -> f64;
+  fn delta(&self) -> Option<f64>;
 
-  /// Gamma — $\partial^2 V / \partial S^2$. Defaults to NaN when not implemented.
-  fn gamma(&self) -> f64 {
-    f64::NAN
+  /// Gamma — $\partial^2 V / \partial S^2$; `None` when the estimator does not expose it.
+  fn gamma(&self) -> Option<f64> {
+    None
   }
 
-  /// Vega — $\partial V / \partial \sigma$. Defaults to NaN when not implemented.
-  fn vega(&self) -> f64 {
-    f64::NAN
+  /// Vega — $\partial V / \partial \sigma$; `None` when not exposed.
+  fn vega(&self) -> Option<f64> {
+    None
   }
 
-  /// Theta — $\partial V / \partial t$. Defaults to NaN when not implemented.
-  fn theta(&self) -> f64 {
-    f64::NAN
+  /// Theta — $\partial V / \partial t$; `None` when not exposed.
+  fn theta(&self) -> Option<f64> {
+    None
   }
 
-  /// Rho — $\partial V / \partial r$. Defaults to NaN when not implemented.
-  fn rho(&self) -> f64 {
-    f64::NAN
+  /// Rho — $\partial V / \partial r$; `None` when not exposed.
+  fn rho(&self) -> Option<f64> {
+    None
   }
 
-  /// Vanna — $\partial^2 V / \partial S \partial \sigma$ (DvegaDspot).
-  /// Defaults to NaN when not implemented.
-  fn vanna(&self) -> f64 {
-    f64::NAN
+  /// Vanna — $\partial^2 V / \partial S \partial \sigma$; `None` when not exposed.
+  fn vanna(&self) -> Option<f64> {
+    None
   }
 
-  /// Charm — $\partial^2 V / \partial S \partial t$ (delta decay).
-  /// Defaults to NaN when not implemented.
-  fn charm(&self) -> f64 {
-    f64::NAN
+  /// Charm — $\partial^2 V / \partial S \partial t$; `None` when not exposed.
+  fn charm(&self) -> Option<f64> {
+    None
   }
 
-  /// Volga / vomma — $\partial^2 V / \partial \sigma^2$ (vega convexity).
-  /// Defaults to NaN when not implemented.
-  fn volga(&self) -> f64 {
-    f64::NAN
+  /// Volga — $\partial^2 V / \partial \sigma^2$; `None` when not exposed.
+  fn volga(&self) -> Option<f64> {
+    None
   }
 
-  /// Veta — $\partial^2 V / \partial \sigma \partial t$ (vega decay).
-  /// Defaults to NaN when not implemented.
-  fn veta(&self) -> f64 {
-    f64::NAN
+  /// Veta — $\partial^2 V / \partial \sigma \partial t$; `None` when not exposed.
+  fn veta(&self) -> Option<f64> {
+    None
   }
 
-  /// Aggregate every Greek into a single [`Greeks`] struct.
-  ///
-  /// The default impl simply calls every accessor — fine for analytical
-  /// pricers where each method is deterministic. **Monte Carlo pricers
-  /// must override this method**, because calling each Greek individually
-  /// would run a fresh independent simulation and produce a [`Greeks`]
-  /// struct that mixes estimators from disjoint sample paths
-  /// (mathematically inconsistent — e.g. delta/gamma sourced from different
-  /// random draws). MC pricers should compute every Greek that can share
-  /// paths in a single pass; see [`crate::pricing::malliavin_greeks`] for
-  /// a worked example.
+  /// Every Greek in one [`Greeks`], NaN where an accessor is `None`. A Monte Carlo estimator
+  /// overrides this to draw all of them from one simulation instead of one per accessor.
   fn greeks(&self) -> Greeks {
     Greeks {
-      delta: self.delta(),
-      gamma: self.gamma(),
-      vega: self.vega(),
-      theta: self.theta(),
-      rho: self.rho(),
-      vanna: self.vanna(),
-      charm: self.charm(),
-      volga: self.volga(),
-      veta: self.veta(),
+      delta: self.delta().unwrap_or(f64::NAN),
+      gamma: self.gamma().unwrap_or(f64::NAN),
+      vega: self.vega().unwrap_or(f64::NAN),
+      theta: self.theta().unwrap_or(f64::NAN),
+      rho: self.rho().unwrap_or(f64::NAN),
+      vanna: self.vanna().unwrap_or(f64::NAN),
+      charm: self.charm().unwrap_or(f64::NAN),
+      volga: self.volga().unwrap_or(f64::NAN),
+      veta: self.veta().unwrap_or(f64::NAN),
     }
   }
 }
@@ -333,6 +306,7 @@ pub trait GreeksExt {
 #[cfg(test)]
 mod greeks_array_tests {
   use super::Greeks;
+  use super::GreeksExt;
 
   #[test]
   fn as_array_matches_component_names_order() {
@@ -351,5 +325,23 @@ mod greeks_array_tests {
     assert_eq!(arr.len(), Greeks::COMPONENT_NAMES.len());
     assert_eq!(arr[0], g.delta);
     assert_eq!(arr[8], g.veta);
+  }
+
+  struct DeltaOnly;
+
+  impl GreeksExt for DeltaOnly {
+    fn delta(&self) -> Option<f64> {
+      Some(0.5)
+    }
+  }
+
+  #[test]
+  fn an_unexposed_greek_is_none_and_nan_in_the_aggregate() {
+    let g = DeltaOnly;
+    assert_eq!(g.delta(), Some(0.5));
+    assert_eq!(g.vega(), None);
+    let all = g.greeks();
+    assert_eq!(all.delta, 0.5);
+    assert!(all.vega.is_nan());
   }
 }

@@ -222,20 +222,20 @@ impl GbmMalliavinGreeks {
 }
 
 impl crate::traits::GreeksExt for GbmMalliavinGreeks {
-  fn delta(&self) -> f64 {
-    GbmMalliavinGreeks::delta(self)
+  fn delta(&self) -> Option<f64> {
+    Some(GbmMalliavinGreeks::delta(self))
   }
 
-  fn gamma(&self) -> f64 {
-    GbmMalliavinGreeks::gamma(self)
+  fn gamma(&self) -> Option<f64> {
+    Some(GbmMalliavinGreeks::gamma(self))
   }
 
-  fn vega(&self) -> f64 {
-    GbmMalliavinGreeks::vega(self)
+  fn vega(&self) -> Option<f64> {
+    Some(GbmMalliavinGreeks::vega(self))
   }
 
-  fn rho(&self) -> f64 {
-    GbmMalliavinGreeks::rho_greek(self)
+  fn rho(&self) -> Option<f64> {
+    Some(GbmMalliavinGreeks::rho_greek(self))
   }
 
   /// Override the trait default — calling `delta()`/`gamma()`/`vega()`/`rho()`

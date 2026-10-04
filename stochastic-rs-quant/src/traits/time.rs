@@ -59,15 +59,8 @@ pub trait TimeExt {
     None
   }
 
-  /// Resolve the time-to-maturity τ from `tau()` or, if absent, from
-  /// `(eval, expiration)` via the convention returned by [`dcc`](Self::dcc)
-  /// (defaults to Actual/365 Fixed).
-  ///
-  /// Returns `f64::NAN` when neither path is available — consistent with the
-  /// crate's missing-data convention (`Greeks::default = Greeks::nan()`,
-  /// `CalibrationResult::max_error` defaults to NaN). Downstream pricers that
-  /// multiply or `.exp()` this value will produce NaN prices that callers can
-  /// detect with `.is_finite()`.
+  /// τ from `tau()`, else from `(eval, expiration)` under [`dcc`](Self::dcc) (Actual/365 Fixed by
+  /// default); `NaN` when neither is available, so a price built on it is NaN too.
   fn tau_or_from_dates(&self) -> f64 {
     if let Some(tau) = self.tau() {
       return tau;

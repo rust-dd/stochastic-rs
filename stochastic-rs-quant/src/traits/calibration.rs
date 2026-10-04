@@ -65,8 +65,8 @@ pub trait Calibrator {
   /// Calibration output. Must implement [`CalibrationResult`] and produce
   /// the same [`Params`](Self::Params).
   type Output: CalibrationResult<Params = Self::Params>;
-  /// Error returned when calibration cannot produce a result.
-  type Error;
+  /// Error returned when calibration cannot produce a result; `anyhow::Error` satisfies the bound.
+  type Error: std::fmt::Debug + std::fmt::Display + Send + Sync + 'static;
 
   /// Run calibration. Pass `None` to let the calibrator infer an initial guess.
   ///
@@ -125,11 +125,44 @@ pub trait CalibrationResult {
     None
   }
 
-  /// Worst-case absolute pricing error on the calibration grid. Returns
-  /// [`f64::NAN`] by default — calibrators that record the residual
-  /// vector should override this. Many calibration pipelines care more
-  /// about the worst residual than the RMSE.
-  fn max_error(&self) -> f64 {
-    f64::NAN
+  /// Worst absolute pricing error on the calibration grid; `None` for a calibrator that keeps no residuals.
+  fn max_error(&self) -> Option<f64> {
+    None
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::CalibrationResult;
+
+  struct Bare;
+
+  impl CalibrationResult for Bare {
+    type Params = ();
+
+    fn rmse(&self) -> f64 {
+      0.1
+    }
+
+    fn converged(&self) -> bool {
+      true
+    }
+
+    fn params(&self) -> Self::Params {}
+  }
+
+  #[test]
+  fn a_result_without_residuals_has_no_max_error() {
+    assert_eq!(Bare.max_error(), None);
+  }
+
+  fn assert_error_bounds<C: super::Calibrator>() {
+    fn takes<E: std::fmt::Debug + std::fmt::Display + Send + Sync + 'static>() {}
+    takes::<C::Error>();
+  }
+
+  #[test]
+  fn every_calibrator_error_is_debug_display_send_sync() {
+    assert_error_bounds::<crate::calibration::heston_slv::HestonSlvCalibrator>();
   }
 }

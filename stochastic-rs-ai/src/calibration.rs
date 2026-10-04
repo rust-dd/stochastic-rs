@@ -37,6 +37,7 @@ use stochastic_rs_quant::pricing::fourier::HestonFourier;
 use stochastic_rs_quant::pricing::rbergomi::RBergomiPricer;
 use stochastic_rs_quant::traits::CalibrationResult;
 use stochastic_rs_quant::traits::Calibrator;
+use stochastic_rs_quant::traits::RealExt;
 use stochastic_rs_quant::traits::ToModel;
 
 use crate::volatility::common::StochVolNn;
@@ -97,8 +98,8 @@ impl CalibrationResult for SurrogateCalibrationResult {
     Some(&self.message)
   }
 
-  fn max_error(&self) -> f64 {
-    self.max_error
+  fn max_error(&self) -> Option<f64> {
+    Some(self.max_error)
   }
 }
 
@@ -226,7 +227,9 @@ impl<'m, M: SurrogateModel> SurrogateCalibrator<'m, M> {
       .map(|(&f, &m)| f as f64 - m)
       .collect();
     let rmse = (errors.iter().map(|e| e * e).sum::<f64>() / errors.len() as f64).sqrt();
-    let max_error = errors.iter().fold(0.0_f64, |acc, e| acc.max(e.abs()));
+    let max_error = errors
+      .iter()
+      .fold(0.0_f64, |acc, e| acc.max_or_nan(e.abs()));
     let in_bounds = problem.x.iter().all(|x| x.abs() <= 1.0 + 1e-9);
     Ok(SurrogateCalibrationResult {
       params: problem.theta().iter().map(|&t| t as f64).collect(),
@@ -420,8 +423,8 @@ impl CalibrationResult for HestonSurrogateResult {
     Some(&self.fit.message)
   }
 
-  fn max_error(&self) -> f64 {
-    self.fit.max_error
+  fn max_error(&self) -> Option<f64> {
+    Some(self.fit.max_error)
   }
 }
 
@@ -507,8 +510,8 @@ impl CalibrationResult for RBergomiSurrogateResult {
     Some(&self.fit.message)
   }
 
-  fn max_error(&self) -> f64 {
-    self.fit.max_error
+  fn max_error(&self) -> Option<f64> {
+    Some(self.fit.max_error)
   }
 }
 
