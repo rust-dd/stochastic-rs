@@ -104,14 +104,15 @@ bivariate copulas.
 
 ## What is *not* in the prelude (and why)
 
-- `ShortRatePricer` — the short-rate half of the pricing pair. Its query is
-  a yield curve and a drift offset rather than a spot and a strike, so it
-  answers a different question from `ModelPricer` and does not belong beside
-  it in a default import. Reach via `traits::*`.
-- `VanillaEuropeanCall` / `ToShortRateModel` — markers you implement rather
-  than call: the first asserts a `ModelPricer` really is a European vanilla
-  call so `vol_surface` can invert it, the second bridges a short-rate
-  calibration to its lattice model from the result alone. Reach via
+- `ShortRatePricer` / `ToShortRateModel` — the short-rate family, imported
+  from `traits` together. `ShortRatePricer` is the short-rate half of the
+  pricing pair: its query is a yield curve and a drift offset rather than a
+  spot and a strike, so it answers a different question from `ModelPricer`
+  and does not belong beside it in a default import. `ToShortRateModel`
+  bridges a short-rate calibration to its lattice model from the result
+  alone. Reach via `traits::*`.
+- `VanillaEuropeanCall` — a marker you implement: it asserts a `ModelPricer`
+  really is a European vanilla call so `vol_surface` can invert it. Reach via
   `traits::*`.
 - `GreeksExt` — two implementors, both Monte Carlo Malliavin estimators that
   bundle their query by necessity, and no generic consumer in the workspace.
