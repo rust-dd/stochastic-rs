@@ -83,15 +83,19 @@ fn temme_gammas(mu: f64) -> (f64, f64) {
   (gam1, scale * odd.cosh())
 }
 
-/// Exponentially scaled $e^{x} K_\nu(x)$ for real `nu`; NaN unless `x > 0`.
+/// Exponentially scaled $e^{x} K_\nu(x)$ for real `nu`; NaN unless `x > 0` and `nu` is finite, 0 at `x = ∞`.
 pub fn bessel_ke(nu: f64, x: f64) -> f64 {
-  if x.is_nan() || x <= 0.0 {
+  if !nu.is_finite() || x.is_nan() || x <= 0.0 {
     return f64::NAN;
+  }
+  if x == f64::INFINITY {
+    return 0.0;
   }
   ke_pair(nu.abs(), x).0
 }
 
-/// Scaled $(e^x K_\nu(x), e^x K_{\nu+1}(x))$ for `nu ≥ 0` and `x > 0`.
+/// Scaled $(e^x K_\nu(x), e^x K_{\nu+1}(x))$ for `nu ≥ 0` and `x > 0`; both infinite once the upward recurrence
+/// overflows, since `K` grows with the order.
 pub(super) fn ke_pair(nu: f64, x: f64) -> (f64, f64) {
   let nl = (nu + 0.5).floor() as usize;
   let mu = nu - nl as f64;
@@ -104,6 +108,9 @@ pub(super) fn ke_pair(nu: f64, x: f64) -> (f64, f64) {
     steed_pair(x, mu, mu2, xi)
   };
   for i in 1..=nl {
+    if !rk1.is_finite() {
+      return (rk1, rk1);
+    }
     let rktemp = (mu + i as f64) * xi2 * rk1 + rkmu;
     rkmu = rk1;
     rk1 = rktemp;
@@ -111,12 +118,12 @@ pub(super) fn ke_pair(nu: f64, x: f64) -> (f64, f64) {
   (rkmu, rk1)
 }
 
-/// $K_\nu(x)$ for real `nu`; NaN unless `x > 0`.
+/// $K_\nu(x)$ for real `nu`; NaN unless `x > 0` and `nu` is finite, 0 at `x = ∞`.
 pub fn bessel_k(nu: f64, x: f64) -> f64 {
   bessel_ke(nu, x) * (-x).exp()
 }
 
-/// Temme's series: scaled $(K_\mu, K_{\mu+1})$ for `x < 2`.
+/// Temme's series: scaled $(K_\mu, K_{\mu+1})$ for `x < 2`, NaN where it does not converge.
 fn temme_pair(x: f64, mu: f64, mu2: f64, xi2: f64) -> (f64, f64) {
   let x2 = 0.5 * x;
   let pimu = std::f64::consts::PI * mu;
@@ -155,12 +162,14 @@ fn temme_pair(x: f64, mu: f64, mu2: f64, xi2: f64) -> (f64, f64) {
       break;
     }
   }
-  assert!(converged, "Temme series for K_nu did not converge");
+  if !converged {
+    return (f64::NAN, f64::NAN);
+  }
   let scale = x.exp();
   (sum * scale, sum1 * xi2 * scale)
 }
 
-/// Steed's CF2: scaled $(K_\mu, K_{\mu+1})$ for `x ≥ 2`.
+/// Steed's CF2: scaled $(K_\mu, K_{\mu+1})$ for `x ≥ 2`, NaN where it does not converge.
 fn steed_pair(x: f64, mu: f64, mu2: f64, xi: f64) -> (f64, f64) {
   let mut b = 2.0 * (1.0 + x);
   let mut d = 1.0 / b;
@@ -193,10 +202,9 @@ fn steed_pair(x: f64, mu: f64, mu2: f64, xi: f64) -> (f64, f64) {
       break;
     }
   }
-  assert!(
-    converged,
-    "Steed continued fraction for K_nu did not converge"
-  );
+  if !converged {
+    return (f64::NAN, f64::NAN);
+  }
   h *= a1;
   let rkmu = (std::f64::consts::PI / (2.0 * x)).sqrt() / s;
   let rk1 = rkmu * (mu + x + 0.5 - h) * xi;
@@ -300,5 +308,22 @@ mod tests {
     assert!(bessel_ke(0.5, 0.0).is_nan());
     assert!(bessel_k(0.5, -2.0).is_nan());
     assert!(bessel_k(0.5, f64::NAN).is_nan());
+  }
+
+  #[test]
+  fn k_nu_is_nan_for_a_non_finite_order_and_zero_at_infinity() {
+    assert!(bessel_ke(f64::NAN, 1.0).is_nan());
+    assert!(bessel_k(f64::INFINITY, 1.0).is_nan());
+    assert!(bessel_k(f64::NEG_INFINITY, 3.0).is_nan());
+    assert_eq!(bessel_k(0.5, f64::INFINITY), 0.0);
+    assert_eq!(bessel_ke(2.5, f64::INFINITY), 0.0);
+  }
+
+  /// A series that cannot converge returns NaN, and the upward recurrence stops at its first `∞`.
+  #[test]
+  fn k_nu_returns_at_extreme_arguments() {
+    assert!(bessel_ke(0.5, 5e-324).is_nan());
+    assert!(bessel_ke(1e300, 1.5).is_nan());
+    assert_eq!(bessel_ke(1e17, 1.5), f64::INFINITY);
   }
 }
