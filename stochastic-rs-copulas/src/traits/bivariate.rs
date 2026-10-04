@@ -133,9 +133,9 @@ pub trait BivariateExt {
     mut ud: Seeded<SimdUniform<f64>>,
     n: usize,
   ) -> Result<ndarray::Array2<f64>, CopulaError> {
-    // The sampler inverts the conditional distribution, which reads `theta`
-    // alone; setting `tau` is only one way of arriving at it.
-    self.check_theta()?;
+    // The family's `check_fit` is the gate: a copula parameterised outside `theta` passes it,
+    // a `tau` without a `theta` does not.
+    self.check_fit()?;
 
     let mut v = Array1::<f64>::zeros(n);
     ud.fill_slice(v.as_slice_mut().unwrap());
@@ -377,6 +377,62 @@ mod tests {
     }
   }
 
+  /// Parameterised outside `theta`, like `MarshallOlkin::with_alpha_beta`; the h-function is `u`.
+  struct ParameterisedWithoutTheta;
+
+  impl BivariateExt for ParameterisedWithoutTheta {
+    fn r#type(&self) -> BivariateCopulaType {
+      BivariateCopulaType::MarshallOlkin
+    }
+
+    fn tau(&self) -> Option<f64> {
+      None
+    }
+
+    fn set_tau(&mut self, _tau: f64) {}
+
+    fn theta(&self) -> Option<f64> {
+      None
+    }
+
+    fn theta_bounds(&self) -> (f64, f64) {
+      (0.0, 1.0)
+    }
+
+    fn invalid_thetas(&self) -> Vec<f64> {
+      vec![]
+    }
+
+    fn set_theta(&mut self, _theta: f64) {}
+
+    fn compute_theta(&self) -> f64 {
+      0.0
+    }
+
+    fn tail_dependence(&self) -> TailDependence<f64> {
+      TailDependence {
+        lower: 0.0,
+        upper: 0.0,
+      }
+    }
+
+    fn check_fit(&self) -> Result<(), CopulaError> {
+      Ok(())
+    }
+
+    fn pdf(&self, x: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+      Ok(Array1::ones(x.nrows()))
+    }
+
+    fn cdf(&self, x: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+      Ok(&x.column(0) * &x.column(1))
+    }
+
+    fn partial_derivative(&self, x: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+      Ok(x.column(0).to_owned())
+    }
+  }
+
   /// A type with no `generator` override reaches the trait default, which names its `r#type()`.
   #[test]
   fn generator_default_returns_anchored_not_archimedean_err() {
@@ -479,5 +535,14 @@ mod tests {
       Clayton::new().sample_with_seed(10, 7).unwrap_err(),
       CopulaError::NotFitted
     );
+  }
+
+  #[test]
+  fn sampling_gates_on_the_family_check_fit() {
+    let uv = ParameterisedWithoutTheta
+      .sample_with_seed(64, 7)
+      .expect("check_fit passes without a theta");
+    assert_eq!(uv.dim(), (64, 2));
+    assert!(uv.iter().all(|x| (0.0..=1.0).contains(x)));
   }
 }
