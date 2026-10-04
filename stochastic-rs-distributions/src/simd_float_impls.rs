@@ -11,6 +11,8 @@ use wide::i32x8;
 
 use crate::traits::SimdFloatExt;
 
+mod markov_lift;
+
 fn fill_f32_zero_one<R: Rng + ?Sized>(rng: &mut R, out: &mut [f32]) {
   for x in out.iter_mut() {
     *x = rng.random();
@@ -107,6 +109,40 @@ impl SimdFloatExt for f32 {
   }
 
   const PREFERS_F32_WN: bool = true;
+
+  #[inline(always)]
+  fn history_sum_fused(we: &[Self], h_state: &[Self], j_state: &[Self]) -> Self {
+    markov_lift::f32_lanes::history_sum_fused(we, h_state, j_state)
+  }
+
+  #[inline(always)]
+  fn update_state_fused(
+    h_state: &mut [Self],
+    j_state: &mut [Self],
+    exp_neg: &[Self],
+    omx: &[Self],
+    f_prev: Self,
+    g_dw: Self,
+  ) {
+    markov_lift::f32_lanes::update_state_fused(h_state, j_state, exp_neg, omx, f_prev, g_dw)
+  }
+
+  #[inline(always)]
+  fn batch_history_accumulate(we_l: Self, h_row: &[Self], j_row: &[Self], history: &mut [Self]) {
+    markov_lift::f32_lanes::batch_history_accumulate(we_l, h_row, j_row, history)
+  }
+
+  #[inline(always)]
+  fn batch_update_state(
+    e_l: Self,
+    omx_l: Self,
+    h_row: &mut [Self],
+    j_row: &mut [Self],
+    f_prev: &[Self],
+    g_dw: &[Self],
+  ) {
+    markov_lift::f32_lanes::batch_update_state(e_l, omx_l, h_row, j_row, f_prev, g_dw)
+  }
 }
 
 impl SimdFloatExt for f64 {
@@ -200,4 +236,38 @@ impl SimdFloatExt for f64 {
   }
 
   const PREFERS_F32_WN: bool = false;
+
+  #[inline(always)]
+  fn history_sum_fused(we: &[Self], h_state: &[Self], j_state: &[Self]) -> Self {
+    markov_lift::f64_lanes::history_sum_fused(we, h_state, j_state)
+  }
+
+  #[inline(always)]
+  fn update_state_fused(
+    h_state: &mut [Self],
+    j_state: &mut [Self],
+    exp_neg: &[Self],
+    omx: &[Self],
+    f_prev: Self,
+    g_dw: Self,
+  ) {
+    markov_lift::f64_lanes::update_state_fused(h_state, j_state, exp_neg, omx, f_prev, g_dw)
+  }
+
+  #[inline(always)]
+  fn batch_history_accumulate(we_l: Self, h_row: &[Self], j_row: &[Self], history: &mut [Self]) {
+    markov_lift::f64_lanes::batch_history_accumulate(we_l, h_row, j_row, history)
+  }
+
+  #[inline(always)]
+  fn batch_update_state(
+    e_l: Self,
+    omx_l: Self,
+    h_row: &mut [Self],
+    j_row: &mut [Self],
+    f_prev: &[Self],
+    g_dw: &[Self],
+  ) {
+    markov_lift::f64_lanes::batch_update_state(e_l, omx_l, h_row, j_row, f_prev, g_dw)
+  }
 }

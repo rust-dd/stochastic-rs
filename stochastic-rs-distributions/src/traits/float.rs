@@ -95,6 +95,33 @@ pub trait SimdFloatExt: RealExt + sealed::Sealed {
 
   fn simd_from_i32x8(v: wide::i32x8) -> Self::Simd;
   const PREFERS_F32_WN: bool = false;
+
+  /// Markov-lift factor reduction $\sum_l (w_l e_l)(H_l + J_l)$ for one path; `we` is `w_l e_l` pre-merged.
+  #[doc(hidden)]
+  fn history_sum_fused(we: &[Self], h_state: &[Self], j_state: &[Self]) -> Self;
+
+  #[doc(hidden)]
+  fn update_state_fused(
+    h_state: &mut [Self],
+    j_state: &mut [Self],
+    exp_neg: &[Self],
+    omx: &[Self],
+    f_prev: Self,
+    g_dw: Self,
+  );
+
+  #[doc(hidden)]
+  fn batch_history_accumulate(we_l: Self, h_row: &[Self], j_row: &[Self], history: &mut [Self]);
+
+  #[doc(hidden)]
+  fn batch_update_state(
+    e_l: Self,
+    omx_l: Self,
+    h_row: &mut [Self],
+    j_row: &mut [Self],
+    f_prev: &[Self],
+    g_dw: &[Self],
+  );
 }
 
 /// The full simulation-grade float: [`RealExt`] arithmetic, [`SimdFloatExt`] lanes and the batched

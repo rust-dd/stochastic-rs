@@ -36,7 +36,6 @@ rand = { workspace = true }
 rayon = { workspace = true }
 stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
-wide = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 metal = { workspace = true, optional = true }

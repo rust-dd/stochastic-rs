@@ -21,7 +21,6 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::markov_lift::MarkovLift;
-use super::markov_lift::RoughSimd;
 use super::rl_fbm::RlFBm;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
@@ -85,7 +84,7 @@ impl<T: FloatExt, S: SeedExt> RlBlackScholes<T, S> {
   }
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt, B> RlBlackScholes<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B> RlBlackScholes<T, S, B> {
   /// Generate $m$ independent fractional Black–Scholes asset paths.
   /// Each path is $S_0 \exp(rt - \tfrac{1}{2}\sigma^2 t^{2H} + \sigma W^H_t)$
   /// applied pointwise to a batch of RL-fBM paths.
@@ -114,8 +113,8 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B> RlBlackScholes<T, S, B> {
 /// as its node constants and boundary terms; the family steps the lifted fBm
 /// in its second slot and the closed-form spot in the first, with the
 /// deterministic exponent tabulated as a curve.
-impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
-  crate::euler::EulerCoefficients<T> for RlBlackScholes<T, S, B>
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for RlBlackScholes<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::RiemannLiouvilleBlackScholes {
@@ -175,14 +174,14 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
   }
 }
 
-backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] RlBlackScholes<T, S> { hurst, s0, r, sigma, n, t, degree, seed, fbm } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] RlBlackScholes<T, S> { hurst, s0, r, sigma, n, t, degree, seed, fbm } via euler);
 
-impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for RlBlackScholes<T, S, B>
 {
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for RlBlackScholes<T, S, B>
 {
   type Output = Array1<T>;
@@ -261,7 +260,7 @@ pub struct RlBlackScholesSampler<T: FloatExt, S: SeedExt> {
   markov: MarkovLift<T>,
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> RlBlackScholesSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> RlBlackScholesSampler<T, S> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -283,9 +282,9 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlBlackScholesSampler<T, S> {
   }
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> crate::traits::Sealed for RlBlackScholesSampler<T, S> {}
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for RlBlackScholesSampler<T, S> {}
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> PathSampler<T> for RlBlackScholesSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for RlBlackScholesSampler<T, S> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {

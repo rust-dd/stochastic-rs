@@ -22,12 +22,10 @@
 //! scatter-gather overhead of `f64x4::from([a, b, c, d])`. Reference:
 //! Bilokon & Wong (2026), p. 16 of J. Appl. Probab. 2026.
 
-mod simd;
 mod stepper;
 
 #[cfg(test)]
 mod tests;
 
-pub use simd::RoughSimd;
 pub use stepper::BATCH_TILE;
 pub use stepper::MarkovLift;

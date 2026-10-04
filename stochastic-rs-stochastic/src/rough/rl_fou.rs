@@ -18,7 +18,6 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::markov_lift::MarkovLift;
-use super::markov_lift::RoughSimd;
 use super::rl_fbm::RlFBm;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
@@ -84,7 +83,7 @@ impl<T: FloatExt, S: SeedExt> RlFOU<T, S> {
   }
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt, B> RlFOU<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B> RlFOU<T, S, B> {
   /// Generate $m$ independent RFSV log-volatility paths as an $(m, n)$ array.
   /// The RL-fBM noise is generated in a single batch via
   /// [`RlFBm::sample_batch`], then each path is Euler-integrated independently.
@@ -109,8 +108,8 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B> RlFOU<T, S, B> {
 /// The Euler engine's view: the lift the inner fBm carries goes to the device
 /// as its node constants and boundary terms; the family steps the lifted fBm
 /// in its second slot and this process's own recursion in the first.
-impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
-  crate::euler::EulerCoefficients<T> for RlFOU<T, S, B>
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for RlFOU<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::RiemannLiouvilleOu {
@@ -155,16 +154,14 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
   }
 }
 
-backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] RlFOU<T, S> { hurst, kappa, mu, nu, n, x0, t, degree, seed, fbm } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] RlFOU<T, S> { hurst, kappa, mu, nu, n, x0, t, degree, seed, fbm } via euler);
 
-impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
   for RlFOU<T, S, B>
 {
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
-  for RlFOU<T, S, B>
-{
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for RlFOU<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
     = RlFOUSampler<T, S>
@@ -238,7 +235,7 @@ pub struct RlFOUSampler<T: FloatExt, S: SeedExt> {
   markov: MarkovLift<T>,
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> RlFOUSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> RlFOUSampler<T, S> {
   fn fill_path(&mut self, out: &mut [T]) {
     if out.is_empty() {
       return;
@@ -259,9 +256,9 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlFOUSampler<T, S> {
   }
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> crate::traits::Sealed for RlFOUSampler<T, S> {}
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for RlFOUSampler<T, S> {}
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> PathSampler<T> for RlFOUSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for RlFOUSampler<T, S> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {

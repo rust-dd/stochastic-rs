@@ -21,7 +21,7 @@
 //! $O(nN')$. Two entry points:
 //!
 //! - [`simulate`](VolterraLift::simulate) — single path, SIMD across the
-//!   $N'$ quadrature factors via [`RoughSimd`].
+//!   $N'$ quadrature factors via the hidden `SimdFloatExt` lane kernels.
 //! - [`simulate_batch`](VolterraLift::simulate_batch) /
 //!   [`simulate_batch_par`](VolterraLift::simulate_batch_par) — $m$ paths in
 //!   one pass, SIMD across the *path* axis at each factor $l$, the latter
@@ -39,7 +39,6 @@ use ndarray::ArrayViewMut2;
 use ndarray::Axis;
 use ndarray::parallel::prelude::*;
 
-use crate::rough::markov_lift::RoughSimd;
 use crate::traits::FloatExt;
 use crate::volterra::kernel::VolterraKernel;
 
@@ -111,7 +110,7 @@ impl<T: FloatExt, K: VolterraKernel<T>> VolterraLift<T, K> {
   }
 }
 
-impl<T: FloatExt + RoughSimd, K: VolterraKernel<T>> VolterraLift<T, K> {
+impl<T: FloatExt, K: VolterraKernel<T>> VolterraLift<T, K> {
   /// Integrate a single path. `dw` carries Brownian increments on the same
   /// grid as the output (length $n{-}1$). `f`/`g` receive $(t_n, X_n)$ — the
   /// *current* simulation time and state, not just the state — so

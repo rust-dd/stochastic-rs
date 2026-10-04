@@ -46,4 +46,3 @@ pub use crate::mc::mlmc::MlmcResult;
 pub use crate::mc::sobol::SobolSeq;
 pub use crate::rough::kernel::RlKernel;
 pub use crate::rough::markov_lift::MarkovLift;
-pub use crate::rough::markov_lift::RoughSimd;

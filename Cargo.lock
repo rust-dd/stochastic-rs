@@ -3457,7 +3457,6 @@ dependencies = [
  "rayon",
  "stochastic-rs-core",
  "stochastic-rs-distributions",
- "wide",
 ]
 
 [[package]]

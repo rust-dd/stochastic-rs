@@ -1,52 +1,17 @@
+//! Fused Markov-lift factor kernels behind the hidden `SimdFloatExt` methods: `f64` on `f64x4`,
+//! `f32` on `f32x8`; every kernel panics unless its slice arguments share one length (the lane loops skip bounds checks).
+
 use wide::f32x8;
 use wide::f64x4;
 
-use crate::traits::FloatExt;
+pub(crate) mod f64_lanes {
+  use super::*;
 
-/// Per-scalar SIMD kernel for the inner factor / path loops. Implemented for
-/// `f64` with `f64x4` (4-wide) and `f32` with `f32x8` (8-wide).
-///
-/// # Panics
-/// Unless a method's slice arguments share one length: its lane loops skip bounds checks.
-pub trait RoughSimd: FloatExt {
-  /// Single-path factor reduction: $\sum_l (w_l e_l)\,(H_l + J_l)$ with
-  /// `we[l] = w_l * e_l` pre-merged.
-  fn history_sum_fused(we: &[Self], h_state: &[Self], j_state: &[Self]) -> Self;
-
-  /// Single-path fused state update using pre-computed
-  /// $\mathrm{omx}_l = (1 - e_l)/x_l$.
-  fn update_state_fused(
-    h_state: &mut [Self],
-    j_state: &mut [Self],
-    exp_neg: &[Self],
-    omx: &[Self],
-    f_prev: Self,
-    g_dw: Self,
-  );
-
-  /// Batch path reduction for a single factor $l$:
-  /// `history[p] += we_l * (h_row[p] + j_row[p])` for all paths $p$.
-  fn batch_history_accumulate(we_l: Self, h_row: &[Self], j_row: &[Self], history: &mut [Self]);
-
-  /// Batch state update for a single factor $l$:
-  /// - `h_row[p] = e_l * h_row[p] + f_prev[p] * omx_l`
-  /// - `j_row[p] = e_l * (g_dw[p] + j_row[p])`
-  fn batch_update_state(
-    e_l: Self,
-    omx_l: Self,
-    h_row: &mut [Self],
-    j_row: &mut [Self],
-    f_prev: &[Self],
-    g_dw: &[Self],
-  );
-}
-
-impl RoughSimd for f64 {
   #[inline]
-  fn history_sum_fused(we: &[f64], h_state: &[f64], j_state: &[f64]) -> f64 {
+  pub(crate) fn history_sum_fused(we: &[f64], h_state: &[f64], j_state: &[f64]) -> f64 {
     assert!(
       h_state.len() == we.len() && j_state.len() == we.len(),
-      "RoughSimd::history_sum_fused: we, h_state and j_state must have the same length ({}, {}, {})",
+      "SimdFloatExt::history_sum_fused: we, h_state and j_state must have the same length ({}, {}, {})",
       we.len(),
       h_state.len(),
       j_state.len()
@@ -71,7 +36,7 @@ impl RoughSimd for f64 {
   }
 
   #[inline]
-  fn update_state_fused(
+  pub(crate) fn update_state_fused(
     h_state: &mut [f64],
     j_state: &mut [f64],
     exp_neg: &[f64],
@@ -83,7 +48,7 @@ impl RoughSimd for f64 {
       j_state.len() == h_state.len()
         && exp_neg.len() == h_state.len()
         && omx.len() == h_state.len(),
-      "RoughSimd::update_state_fused: h_state, j_state, exp_neg and omx must have the same length ({}, {}, {}, {})",
+      "SimdFloatExt::update_state_fused: h_state, j_state, exp_neg and omx must have the same length ({}, {}, {}, {})",
       h_state.len(),
       j_state.len(),
       exp_neg.len(),
@@ -115,10 +80,15 @@ impl RoughSimd for f64 {
   }
 
   #[inline]
-  fn batch_history_accumulate(we_l: f64, h_row: &[f64], j_row: &[f64], history: &mut [f64]) {
+  pub(crate) fn batch_history_accumulate(
+    we_l: f64,
+    h_row: &[f64],
+    j_row: &[f64],
+    history: &mut [f64],
+  ) {
     assert!(
       h_row.len() == history.len() && j_row.len() == history.len(),
-      "RoughSimd::batch_history_accumulate: history, h_row and j_row must have the same length ({}, {}, {})",
+      "SimdFloatExt::batch_history_accumulate: history, h_row and j_row must have the same length ({}, {}, {})",
       history.len(),
       h_row.len(),
       j_row.len()
@@ -142,7 +112,7 @@ impl RoughSimd for f64 {
   }
 
   #[inline]
-  fn batch_update_state(
+  pub(crate) fn batch_update_state(
     e_l: f64,
     omx_l: f64,
     h_row: &mut [f64],
@@ -152,7 +122,7 @@ impl RoughSimd for f64 {
   ) {
     assert!(
       j_row.len() == h_row.len() && f_prev.len() == h_row.len() && g_dw.len() == h_row.len(),
-      "RoughSimd::batch_update_state: h_row, j_row, f_prev and g_dw must have the same length ({}, {}, {}, {})",
+      "SimdFloatExt::batch_update_state: h_row, j_row, f_prev and g_dw must have the same length ({}, {}, {}, {})",
       h_row.len(),
       j_row.len(),
       f_prev.len(),
@@ -182,12 +152,14 @@ impl RoughSimd for f64 {
   }
 }
 
-impl RoughSimd for f32 {
+pub(crate) mod f32_lanes {
+  use super::*;
+
   #[inline]
-  fn history_sum_fused(we: &[f32], h_state: &[f32], j_state: &[f32]) -> f32 {
+  pub(crate) fn history_sum_fused(we: &[f32], h_state: &[f32], j_state: &[f32]) -> f32 {
     assert!(
       h_state.len() == we.len() && j_state.len() == we.len(),
-      "RoughSimd::history_sum_fused: we, h_state and j_state must have the same length ({}, {}, {})",
+      "SimdFloatExt::history_sum_fused: we, h_state and j_state must have the same length ({}, {}, {})",
       we.len(),
       h_state.len(),
       j_state.len()
@@ -212,7 +184,7 @@ impl RoughSimd for f32 {
   }
 
   #[inline]
-  fn update_state_fused(
+  pub(crate) fn update_state_fused(
     h_state: &mut [f32],
     j_state: &mut [f32],
     exp_neg: &[f32],
@@ -224,7 +196,7 @@ impl RoughSimd for f32 {
       j_state.len() == h_state.len()
         && exp_neg.len() == h_state.len()
         && omx.len() == h_state.len(),
-      "RoughSimd::update_state_fused: h_state, j_state, exp_neg and omx must have the same length ({}, {}, {}, {})",
+      "SimdFloatExt::update_state_fused: h_state, j_state, exp_neg and omx must have the same length ({}, {}, {}, {})",
       h_state.len(),
       j_state.len(),
       exp_neg.len(),
@@ -256,10 +228,15 @@ impl RoughSimd for f32 {
   }
 
   #[inline]
-  fn batch_history_accumulate(we_l: f32, h_row: &[f32], j_row: &[f32], history: &mut [f32]) {
+  pub(crate) fn batch_history_accumulate(
+    we_l: f32,
+    h_row: &[f32],
+    j_row: &[f32],
+    history: &mut [f32],
+  ) {
     assert!(
       h_row.len() == history.len() && j_row.len() == history.len(),
-      "RoughSimd::batch_history_accumulate: history, h_row and j_row must have the same length ({}, {}, {})",
+      "SimdFloatExt::batch_history_accumulate: history, h_row and j_row must have the same length ({}, {}, {})",
       history.len(),
       h_row.len(),
       j_row.len()
@@ -283,7 +260,7 @@ impl RoughSimd for f32 {
   }
 
   #[inline]
-  fn batch_update_state(
+  pub(crate) fn batch_update_state(
     e_l: f32,
     omx_l: f32,
     h_row: &mut [f32],
@@ -293,7 +270,7 @@ impl RoughSimd for f32 {
   ) {
     assert!(
       j_row.len() == h_row.len() && f_prev.len() == h_row.len() && g_dw.len() == h_row.len(),
-      "RoughSimd::batch_update_state: h_row, j_row, f_prev and g_dw must have the same length ({}, {}, {}, {})",
+      "SimdFloatExt::batch_update_state: h_row, j_row, f_prev and g_dw must have the same length ({}, {}, {}, {})",
       h_row.len(),
       j_row.len(),
       f_prev.len(),
@@ -353,20 +330,20 @@ unsafe fn store_f32x8(dst: &mut [f32], base: usize, v: f32x8) {
 
 #[cfg(test)]
 mod length_checks {
-  use super::RoughSimd;
+  use crate::traits::SimdFloatExt;
 
   #[test]
   #[should_panic(expected = "same length")]
   fn history_sum_fused_rejects_short_state_f64() {
     let we = [1.0f64; 8];
-    let _ = <f64 as RoughSimd>::history_sum_fused(&we, &[0.0; 8], &[0.0; 4]);
+    let _ = <f64 as SimdFloatExt>::history_sum_fused(&we, &[0.0; 8], &[0.0; 4]);
   }
 
   #[test]
   #[should_panic(expected = "same length")]
   fn history_sum_fused_rejects_short_state_f32() {
     let we = [1.0f32; 16];
-    let _ = <f32 as RoughSimd>::history_sum_fused(&we, &[0.0; 8], &[0.0; 16]);
+    let _ = <f32 as SimdFloatExt>::history_sum_fused(&we, &[0.0; 8], &[0.0; 16]);
   }
 
   #[test]
@@ -374,7 +351,7 @@ mod length_checks {
   fn update_state_fused_rejects_short_table_f64() {
     let mut h = [0.0f64; 8];
     let mut j = [0.0f64; 8];
-    <f64 as RoughSimd>::update_state_fused(&mut h, &mut j, &[1.0; 8], &[1.0; 4], 0.1, 0.2);
+    <f64 as SimdFloatExt>::update_state_fused(&mut h, &mut j, &[1.0; 8], &[1.0; 4], 0.1, 0.2);
   }
 
   #[test]
@@ -382,21 +359,21 @@ mod length_checks {
   fn update_state_fused_rejects_short_table_f32() {
     let mut h = [0.0f32; 16];
     let mut j = [0.0f32; 16];
-    <f32 as RoughSimd>::update_state_fused(&mut h, &mut j, &[1.0; 8], &[1.0; 16], 0.1, 0.2);
+    <f32 as SimdFloatExt>::update_state_fused(&mut h, &mut j, &[1.0; 8], &[1.0; 16], 0.1, 0.2);
   }
 
   #[test]
   #[should_panic(expected = "same length")]
   fn batch_history_accumulate_rejects_short_row_f64() {
     let mut history = [0.0f64; 8];
-    <f64 as RoughSimd>::batch_history_accumulate(0.5, &[0.0; 8], &[0.0; 4], &mut history);
+    <f64 as SimdFloatExt>::batch_history_accumulate(0.5, &[0.0; 8], &[0.0; 4], &mut history);
   }
 
   #[test]
   #[should_panic(expected = "same length")]
   fn batch_history_accumulate_rejects_short_row_f32() {
     let mut history = [0.0f32; 16];
-    <f32 as RoughSimd>::batch_history_accumulate(0.5, &[0.0; 8], &[0.0; 16], &mut history);
+    <f32 as SimdFloatExt>::batch_history_accumulate(0.5, &[0.0; 8], &[0.0; 16], &mut history);
   }
 
   #[test]
@@ -404,7 +381,7 @@ mod length_checks {
   fn batch_update_state_rejects_short_rows_f64() {
     let mut h = [0.0f64; 8];
     let mut j: [f64; 0] = [];
-    <f64 as RoughSimd>::batch_update_state(0.5, 0.1, &mut h, &mut j, &[], &[]);
+    <f64 as SimdFloatExt>::batch_update_state(0.5, 0.1, &mut h, &mut j, &[], &[]);
   }
 
   #[test]
@@ -412,6 +389,6 @@ mod length_checks {
   fn batch_update_state_rejects_short_rows_f32() {
     let mut h = [0.0f32; 16];
     let mut j = [0.0f32; 16];
-    <f32 as RoughSimd>::batch_update_state(0.5, 0.1, &mut h, &mut j, &[0.0; 16], &[0.0; 8]);
+    <f32 as SimdFloatExt>::batch_update_state(0.5, 0.1, &mut h, &mut j, &[0.0; 16], &[0.0; 8]);
   }
 }
