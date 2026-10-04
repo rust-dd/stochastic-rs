@@ -16,49 +16,21 @@ fn sabr_pricer_basic() {
   assert!(d.is_finite());
 }
 
-/// `SabrPricer::sigma`'s `# Panics` section documents that a non-positive
-/// spot (hence non-positive forward) panics; this pins that it actually
-/// does, and with the message the section promises.
+/// A non-positive spot (hence forward) or strike is a query outside the domain: NaN, never a panic.
 #[test]
-#[should_panic(expected = "forward f must be strictly positive")]
-fn sabr_pricer_sigma_panics_on_nonpositive_spot() {
-  let _ = SabrPricer::new(0.11, 1.0, 0.6, 0.5).sigma(-3.724, 3.8, 0.065, 0.022, 0.5);
+fn sabr_pricer_sigma_is_nan_for_a_nonpositive_spot_or_strike() {
+  let pricer = SabrPricer::new(0.11, 1.0, 0.6, 0.5);
+  assert!(pricer.sigma(-3.724, 3.8, 0.065, 0.022, 0.5).is_nan());
+  assert!(pricer.sigma(3.724, -3.8, 0.065, 0.022, 0.5).is_nan());
 }
 
-/// Same guarantee, for a non-positive strike.
 #[test]
-#[should_panic(expected = "strike k must be strictly positive")]
-fn sabr_pricer_sigma_panics_on_nonpositive_strike() {
-  let _ = SabrPricer::new(0.11, 1.0, 0.6, 0.5).sigma(3.724, -3.8, 0.065, 0.022, 0.5);
-}
-
-/// `SabrPricer::price_call`'s `# Panics` section documents that a
-/// non-positive forward panics rather than degrading to `0.0`; this pins
-/// that it actually does. (Held over from the former `SabrModel`, whose
-/// four fields and pricing path this type absorbed.)
-#[test]
-#[should_panic(expected = "forward f must be strictly positive")]
-fn sabr_price_call_panics_on_nonpositive_spot() {
-  let model = SabrPricer {
-    alpha: 0.2,
-    beta: 1.0,
-    nu: 0.6,
-    rho: -0.3,
-  };
-  let _ = model.price_call(-100.0, 100.0, 0.02, 0.0, 1.0);
-}
-
-/// Same guarantee, for a non-positive strike.
-#[test]
-#[should_panic(expected = "strike k must be strictly positive")]
-fn sabr_price_call_panics_on_nonpositive_strike() {
-  let model = SabrPricer {
-    alpha: 0.2,
-    beta: 1.0,
-    nu: 0.6,
-    rho: -0.3,
-  };
-  let _ = model.price_call(100.0, -10.0, 0.02, 0.0, 1.0);
+fn sabr_price_is_nan_for_a_nonpositive_spot_or_strike() {
+  let model = SabrPricer::new(0.2, 1.0, 0.6, -0.3);
+  for (s, k) in [(-100.0, 100.0), (100.0, -10.0)] {
+    assert!(model.price_call(s, k, 0.02, 0.0, 1.0).is_nan());
+    assert!(model.price_put(s, k, 0.02, 0.0, 1.0).is_nan());
+  }
 }
 
 /// The Hagan (2002) expansion is a small-τ asymptotic, and its bracket
@@ -445,9 +417,15 @@ fn rejects_rho_at_one() {
 }
 
 #[test]
-#[should_panic(expected = "strike k must be strictly positive")]
-fn rejects_a_nonpositive_strike() {
-  let _ = hagan_implied_vol(0.0, 100.0, 1.0, 0.2, 1.0, 0.5, -0.3);
+fn a_zero_strike_is_nan() {
+  assert!(hagan_implied_vol(0.0, 100.0, 1.0, 0.2, 1.0, 0.5, -0.3).is_nan());
+}
+
+/// The parameter asserts run first, so an invalid `alpha` panics whatever the query.
+#[test]
+#[should_panic(expected = "alpha must be strictly positive")]
+fn an_invalid_alpha_panics_even_at_a_query_outside_the_domain() {
+  let _ = hagan_implied_vol(-1.0, 100.0, 1.0, 0.0, 1.0, 0.5, -0.3);
 }
 
 #[test]

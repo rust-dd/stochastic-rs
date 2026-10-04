@@ -116,7 +116,10 @@ impl<T: FloatExt, S: SeedExt> MultifactorSabr<T, S> {
       );
       assert!(nu[k] >= T::zero(), "nu[{k}] must be non-negative");
       let r = rho[k].to_f64().unwrap();
-      assert!(r.abs() < 1.0, "rho[{k}] must lie strictly in (-1, 1)");
+      assert!(
+        r.abs() < 1.0,
+        "rho[{k}] must satisfy `rho[k].abs() < 1.0`, got rho[{k}] = {r:?}"
+      );
     }
     for w in knots.windows(2) {
       assert!(w[0] < w[1], "knots must be strictly increasing");

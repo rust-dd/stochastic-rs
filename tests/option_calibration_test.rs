@@ -195,10 +195,8 @@ fn sabr_caplet_calibration_recovers_self_consistent_params() {
   assert_eq!(res.shift, 0.0);
 }
 
-/// Reviewer repro: negative forward and negative strikes, no shift
-/// configured (the default). `hagan_implied_vol` now asserts `k > 0` /
-/// `f > 0`, so this used to panic inside the Nelder-Mead cost callback
-/// instead of surfacing through `Calibrator::calibrate`'s `Result`.
+/// A negative forward and strikes with no shift configured: `calibrate` answers `Err` naming the forward
+/// before the Hagan expansion sees them.
 #[test]
 fn sabr_caplet_calibration_rejects_negative_forward_without_shift() {
   use stochastic_rs::quant::calibration::SabrCapletCalibrator;

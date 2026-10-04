@@ -108,25 +108,8 @@ impl SabrPricer {
     forward_fx(s, tau, r, q)
   }
 
-  /// Implied volatility from the Hagan (2002) general-β expansion,
-  /// evaluated at `k` against [`forward`](Self::forward).
-  ///
-  /// # Panics
-  /// Panics if `k` or the forward is not strictly positive, if
-  /// `self.alpha` is not strictly positive, or if `self.rho` does not lie
-  /// strictly inside $(-1, 1)$ — see
-  /// [`hagan_implied_vol`](crate::pricing::sabr::hagan_implied_vol)'s own
-  /// `# Panics` section, which this inherits unchanged. A non-positive spot
-  /// or strike is invalid input for this equity/FX model, not a market
-  /// state to accommodate, so this panics rather than degrading silently;
-  /// [`SabrCalibrator`](crate::calibration::sabr::SabrCalibrator) validates
-  /// `s`/`k` before ever constructing a `SabrPricer` from calibrated data,
-  /// so this only fires when one is built directly from bad input.
-  ///
-  /// Validating the arguments does **not** make the result usable as a
-  /// volatility: the expansion can still evaluate to a non-positive number
-  /// on a legal parameter combination, which is why
-  /// [`call_put`](Self::call_put) screens it rather than pricing off it.
+  /// Hagan (2002) general-β implied vol at `k` against [`forward`](Self::forward): NaN for a non-positive `k` or forward,
+  /// possibly non-positive on a legal parameter set ([`call_put`](Self::call_put) screens it); panics on an invalid `alpha` / `rho` field.
   pub fn sigma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     hagan_implied_vol(
       k,
@@ -152,35 +135,8 @@ impl SabrPricer {
     )
   }
 
-  /// Call and put price at one query point.
-  ///
-  /// Returns [`f64::NAN`] for **both** legs when [`sigma`](Self::sigma)
-  /// comes out non-finite or not strictly positive, rather than letting a
-  /// degenerate volatility propagate into `d1`/`d2`. That is case 2 of the
-  /// crate's [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails) — not
-  /// computable here — and not case 1, because every individual argument is
-  /// already legal by the time this branch is reachable: `sigma` panics
-  /// first on a non-positive `k` or forward, a non-positive `alpha`, or a
-  /// `rho` outside $(-1, 1)$.
-  ///
-  /// What is left is a *parameter combination*. Hagan (2002) is a small-τ
-  /// asymptotic expansion whose bracket $1 + (a + b + c)\tau$ turns negative
-  /// once the correction term outgrows it, and the ν² coefficient
-  /// $c = (2 - 3\rho^2)\nu^2 / 24$ is itself negative for
-  /// $|\rho| > \sqrt{2/3}$: at $(\alpha, \beta, \nu, \rho) = (0.2, 1, 3,
-  /// -0.9)$ and $\tau = 10$ the expansion returns $\sigma = -0.3925$. Every
-  /// one of those four values lies inside
-  /// [`SabrCalibrator`](crate::calibration::sabr::SabrCalibrator)'s own
-  /// projection box, so this is a calibration-output shape rather than a
-  /// user-input one — panicking would abort a whole calibration over a
-  /// single bad probe point, where `NaN` marks that residual invalid and
-  /// leaves the rest of the grid alone.
-  ///
-  /// This floored both legs to `0.0` before, the contract the former
-  /// `SabrModel` documented. A zero call *and* a zero put is not a price any
-  /// instrument has, and unlike `NaN` a zero does not propagate, so a
-  /// residual computed against it looked merely bad rather than invalid.
+  /// Call and put price at one query point; both legs are NaN when [`sigma`](Self::sigma) is not finite and positive — a query
+  /// outside the domain, or a legal parameter set where Hagan's small-τ bracket turns negative (`(0.2, 1, 3, -0.9)` at τ = 10).
   pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
     let sigma = self.sigma(s, k, r, q, tau);
     if !sigma.is_finite() || sigma <= 0.0 {
@@ -225,17 +181,8 @@ impl SabrPricer {
 }
 
 impl ModelPricer for SabrPricer {
-  /// # Panics
-  /// Panics if `k`, or the forward derived from `s`, is not strictly
-  /// positive — see [`sigma`](SabrPricer::sigma)'s `# Panics` section.
-  /// [`ModelPricer`] has no fallible return channel, so a non-positive spot
-  /// or strike in a strike/maturity grid aborts the whole grid rather than
-  /// degrading that one point to `0.0` — deliberately: a non-positive spot
-  /// or strike is invalid input for this equity/FX model, not a value worth
-  /// pricing as if it were merely deep out-of-the-money.
-  ///
-  /// Returns [`f64::NAN`] on a degenerate Hagan volatility — see
-  /// [`call_put`](SabrPricer::call_put).
+  /// NaN for a query outside the domain or a degenerate Hagan volatility, see [`call_put`](SabrPricer::call_put); panics only on
+  /// an invalid `alpha` / `rho` field.
   fn price_call(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.call_put(s, k, r, q, tau).0
   }

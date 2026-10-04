@@ -658,4 +658,15 @@ mod tests {
       "BatesFourier Trap form: finite positive bounded call required at T=5y, ρ=-0.9, got {call}"
     );
   }
+
+  #[test]
+  #[should_panic(expected = "s must satisfy `s.is_finite() && s > 0.0`")]
+  fn cumulant_sizing_rejects_a_non_positive_spot_instead_of_a_default_grid() {
+    let model = crate::pricing::fourier::BSMFourier {
+      sigma: 0.2,
+      r: 0.05,
+      q: 0.0,
+    };
+    let _ = CarrMadanPricer::cumulant_sized(&model, 1.0, -100.0, 12.0);
+  }
 }

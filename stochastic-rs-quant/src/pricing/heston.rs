@@ -86,21 +86,18 @@ impl HestonPricer {
   ///   divides by $\sigma^2$
   /// - if `rho` is outside `[-1, 1]` or `NaN` — not a correlation
   pub fn new(v0: f64, rho: f64, kappa: f64, theta: f64, sigma: f64, lambda: Option<f64>) -> Self {
-    assert!(
-      v0 >= 0.0,
-      "HestonPricer::new: v0 must be a non-negative variance (got {v0})"
-    );
+    assert!(v0 >= 0.0, "v0 must satisfy `v0 >= 0.0`, got v0 = {v0:?}");
     assert!(
       theta >= 0.0,
-      "HestonPricer::new: theta must be a non-negative variance (got {theta})"
+      "theta must satisfy `theta >= 0.0`, got theta = {theta:?}"
     );
     assert!(
       sigma > 0.0,
-      "HestonPricer::new: sigma must be strictly positive (got {sigma})"
+      "sigma must satisfy `sigma > 0.0`, got sigma = {sigma:?}"
     );
     assert!(
       (-1.0..=1.0).contains(&rho),
-      "HestonPricer::new: rho must be in [-1, 1] (got {rho})"
+      "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = {rho:?}"
     );
     Self {
       v0,

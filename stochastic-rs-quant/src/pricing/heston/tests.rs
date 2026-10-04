@@ -368,7 +368,7 @@ mod construction_validation {
   use super::*;
 
   #[test]
-  #[should_panic(expected = "HestonPricer::new: v0 must be a non-negative variance (got -0.01)")]
+  #[should_panic(expected = "v0 must satisfy `v0 >= 0.0`, got v0 = -0.01")]
   fn new_rejects_negative_v0() {
     let _ = HestonPricer::new(-0.01, -0.7, 1.5, 0.04, 0.3, Some(0.0));
   }
@@ -376,7 +376,7 @@ mod construction_validation {
   /// `NaN >= 0.0` is `false`, so the same assert catches a poisoned `v0`
   /// before it reaches a price that would come back `NaN` with no origin.
   #[test]
-  #[should_panic(expected = "HestonPricer::new: v0 must be a non-negative variance (got NaN)")]
+  #[should_panic(expected = "v0 must satisfy `v0 >= 0.0`, got v0 = NaN")]
   fn new_rejects_nan_v0() {
     let _ = HestonPricer::new(f64::NAN, -0.7, 1.5, 0.04, 0.3, Some(0.0));
   }
@@ -385,7 +385,7 @@ mod construction_validation {
   /// check — leaving it out would have replaced the old asymmetry with a new
   /// one.
   #[test]
-  #[should_panic(expected = "HestonPricer::new: theta must be a non-negative variance (got -0.04)")]
+  #[should_panic(expected = "theta must satisfy `theta >= 0.0`, got theta = -0.04")]
   fn new_rejects_negative_theta() {
     let _ = HestonPricer::new(0.04, -0.7, 1.5, -0.04, 0.3, Some(0.0));
   }
@@ -394,19 +394,19 @@ mod construction_validation {
   /// degenerate-but-priceable state here — it is `inf · 0` inside `C`, which
   /// reaches the caller as a `NaN` price with nothing naming the cause.
   #[test]
-  #[should_panic(expected = "HestonPricer::new: sigma must be strictly positive (got 0)")]
+  #[should_panic(expected = "sigma must satisfy `sigma > 0.0`, got sigma = 0.0")]
   fn new_rejects_zero_sigma() {
     let _ = HestonPricer::new(0.04, -0.7, 1.5, 0.04, 0.0, Some(0.0));
   }
 
   #[test]
-  #[should_panic(expected = "HestonPricer::new: sigma must be strictly positive (got -0.3)")]
+  #[should_panic(expected = "sigma must satisfy `sigma > 0.0`, got sigma = -0.3")]
   fn new_rejects_negative_sigma() {
     let _ = HestonPricer::new(0.04, -0.7, 1.5, 0.04, -0.3, Some(0.0));
   }
 
   #[test]
-  #[should_panic(expected = "HestonPricer::new: rho must be in [-1, 1] (got -1.5)")]
+  #[should_panic(expected = "rho must satisfy `(-1.0..=1.0).contains(&rho)`, got rho = -1.5")]
   fn new_rejects_out_of_range_rho() {
     let _ = HestonPricer::new(0.04, -1.5, 1.5, 0.04, 0.3, Some(0.0));
   }

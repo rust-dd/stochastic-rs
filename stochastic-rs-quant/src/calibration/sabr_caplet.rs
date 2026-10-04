@@ -79,17 +79,8 @@ pub struct SabrCapletCalibrationResult {
 }
 
 impl SabrCapletCalibrationResult {
-  /// Convert to a [`SabrPricer`](crate::pricing::sabr::SabrPricer) for pricing /
-  /// vol-surface generation.
-  ///
-  /// `alpha`/`nu`/`rho` stay in *shifted* coordinates whenever
-  /// `self.shift != 0.0`: [`ModelPricer`](crate::traits::ModelPricer)'s
-  /// `price_call` forwards `s`/`k` into the Hagan expansion undisplaced, so
-  /// pricing with this model requires shifting `s` and `k` by `self.shift`
-  /// yourself first — passing the original unshifted (possibly negative)
-  /// values reproduces the same panic this shift exists to avoid.
-  /// [`Self::to_shifted_volatility`] does the shifting internally and is
-  /// the safer conversion whenever `shift` is nonzero.
+  /// A [`SabrPricer`](crate::pricing::sabr::SabrPricer) in shifted coordinates when `shift != 0`: shift `s` and `k` yourself
+  /// (an unshifted non-positive one prices as NaN) or use [`Self::to_shifted_volatility`], which shifts internally.
   pub fn to_model(&self) -> crate::pricing::sabr::SabrPricer {
     crate::pricing::sabr::SabrPricer {
       alpha: self.alpha,

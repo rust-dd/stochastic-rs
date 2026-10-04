@@ -102,8 +102,8 @@ impl CarrMadanPricer {
   /// dominant accuracy gain for production Heston / Bates / Lévy
   /// calibration workloads.
   ///
-  /// Falls back to the default `(n=4096, η=0.25)` when cumulants are not
-  /// finite. `alpha` is left at the default damping coefficient (0.75).
+  /// Panics unless `s`, `l_factor` and the model's second cumulant are finite and positive; `alpha` stays the
+  /// default damping (0.75).
   ///
   /// # Example
   /// ```
@@ -117,19 +117,26 @@ impl CarrMadanPricer {
   /// assert!(price.is_finite() && price > 0.0);
   /// ```
   pub fn cumulant_sized(model: &impl FourierModelExt, t: f64, s: f64, l_factor: f64) -> Self {
+    assert!(
+      s.is_finite() && s > 0.0,
+      "s must satisfy `s.is_finite() && s > 0.0`, got s = {s:?}"
+    );
+    assert!(
+      l_factor.is_finite() && l_factor > 0.0,
+      "l_factor must satisfy `l_factor.is_finite() && l_factor > 0.0`, got l_factor = {l_factor:?}"
+    );
     let cumulants = model.cumulants(t);
-    if !cumulants.c2.is_finite() || cumulants.c2 <= 0.0 || !s.is_finite() || s <= 0.0 {
-      return Self::default();
-    }
+    let c2 = cumulants.c2;
+    assert!(
+      c2.is_finite() && c2 > 0.0,
+      "cumulants.c2 must satisfy `c2.is_finite() && c2 > 0.0`, got c2 = {c2:?}"
+    );
     let c4_term = cumulants
       .c4
       .filter(|c| c.is_finite() && *c >= 0.0)
       .map_or(0.0, f64::sqrt);
-    let cumulant_buffer = l_factor * (cumulants.c2.abs() + c4_term).sqrt();
+    let cumulant_buffer = l_factor * (c2.abs() + c4_term).sqrt();
     let required_half_width = s.ln().abs() + cumulant_buffer;
-    if !required_half_width.is_finite() || required_half_width <= 0.0 {
-      return Self::default();
-    }
     let n = 4096_usize;
     let eta = PI / required_half_width;
     Self {
