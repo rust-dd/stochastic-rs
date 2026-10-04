@@ -1,134 +1,44 @@
 ---
 title: Design philosophy
-description: Why the library is shaped the way it is — generic over float, no statrs, paper-anchored implementations, comparison-test mandatory, plus non-goals.
+description: Why the library is shaped the way it is — generic simulation, paper-anchored implementations, one error convention, what is stable, and the non-goals.
 category: concept
 since: 2.0.0
 status: stable
 ---
 
-What follows is the short version of the development rules at
-[`.claude/skills/dev-rules/SKILL.md`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/dev-rules/SKILL.md).
-If you contribute to the library, read that SKILL once. If you only
-*use* the library, this page is enough.
+## Generic over float where it simulates
 
-## 1. Generic over float
+Processes, distribution samplers and Monte Carlo code are generic over `T: FloatExt`, implemented by `f32` and `f64`: `f32` halves the memory traffic and is the only precision Apple GPUs have. Closed-form analytics — `DistributionExt`, `ModelPricer`, `Greeks` — work in `f64`, and analytic code bounded on `RealExt` also accepts a custom scalar such as an AAD dual number (see [traits](/docs/concepts/traits#realext-simdfloatext-floatext)).
 
-Every numerical type is generic over `T: FloatExt`. We support `f32`
-and `f64`. Reasons: GPU memory bandwidth (`f32`), embedded targets,
-and the option for higher-precision drop-ins later.
+## Paper-anchored implementations
 
-This means the library never hard-codes `f64`. If you contribute, your
-new pricer / process / estimator must also be generic. The only
-exception is glue code that inherently lives in one precision (e.g.
-`numpy` interop with `dtype=float64`).
-
-## 2. Paper-anchored implementations
-
-Every model and algorithm carries a paper citation in the source file —
-this is the convention itself (a module-level doc comment), not a
-runnable snippet:
+Every model and algorithm cites its paper in the source file:
 
 ```rust
 //! Reference: Heston (1993). DOI: 10.1093/rfs/6.2.327
 ```
 
-The implementation **follows the paper exactly** — no simplifications,
-no "I think this is equivalent" rewrites. If a formula in the paper
-looks numerically unstable, the fix is to cite the *correction* paper
-that addresses the instability, not to silently rewrite.
+The implementation follows the paper's formulas, without simplifications; where a formula is numerically unstable, it follows a cited correction instead of an unpublished rewrite. Comparison tests check implementations against the papers' numerical examples.
 
-Comparison tests anchor the implementation to numerical tables in the
-paper.
+## `ndarray` in and out
 
-## 3. No `statrs` for distribution math
+Numerical arrays in the API are `ndarray` types (`Array1<T>`, `Array2<T>`, views), re-exported as `stochastic_rs::ndarray`.
 
-Distribution closed forms are written from scratch in
-`stochastic-rs-distributions`, never delegated to
-`statrs::distribution::*`. The reasoning is on the
-[DistributionExt page](/docs/concepts/distribution-ext#why-no-statrsdistribution).
-
-## 4. `ndarray` everywhere, never `Vec<T>`
-
-All numerical arrays are `ndarray::Array1<T>` / `Array2<T>`. The library
-already depends on `ndarray` and `ndrustfft`. Don't
-re-introduce `Vec<T>` for numerical data — it complicates SIMD and
-bulk-fill paths.
-
-## 5. Comparison test + criterion bench mandatory
-
-A new module ships with both:
-
-- A **comparison test** under `tests/` that validates output against the
-  reference implementation (Python, R, MATLAB, or paper tables).
-- A **criterion benchmark** under `benches/` that tracks performance.
-
-This rule is enforced by review, not CI — there is no automated check
-that a new module shipped tests + benches.
-
-## 6. Three-way error convention
+## Error convention
 
 One rule for every crate, from the distributions up to the calibrators:
 
-- **Invalid parameter → panic, naming the parameter and its value.** A negative
-  volatility, a Hurst exponent outside `[0, 1]`, a `theta` outside a copula's
-  admissible interval, a grid with fewer than two points: programmer errors,
-  not runtime states, so constructors and setters `assert!` them with a
-  message of the form ``sigma must satisfy `sigma > 0`, got sigma = -0.2``.
-  Never a silent clamp, a silent zero or a silent `None`.
-- **Not computable at this point → `NaN`, documented.** A price outside a
-  model's domain, a Greek at an expired option, an implied volatility with no
-  root: legitimate states, returned as `f64::NAN` from methods whose docs say
-  when. A function that semantically must compute a number never returns 0
-  in its place; a closed form a law does not have is `None`
-  (`DistributionExt`), not a sentinel. A *query* argument outside the
-  domain — a non-positive strike, a maturity of zero — is this case too;
-  only a model parameter in a constructor panics.
-- **Data-dependent failure → `Result::Err`.** A calibration produced no
-  result, a correlation matrix estimated from data is not positive-definite,
-  a fit rejected its input, a vine could not be built from the supplied pairs:
-  the caller needs a graceful path, so `Calibrator::calibrate`, the copula
-  `fit`/`new_with_corr`/vine constructors and the estimators return
-  `Result`; a calibration that ran but did not converge is `Ok` with
-  `converged() == false`. `Calibrator::Error` is bounded
-  `Debug + Display + Send + Sync + 'static`; the in-tree calibrators set it
-  to `anyhow::Error`.
-- **Environmental failure on a device → probe first, then `Result` or a
-  panic that says so.** No GPU behind a marker, a runtime that will not
-  start, a kernel that will not compile, an allocation that fails:
-  `handle.probe()` reports it as a `DeviceError` before any sampling, and
-  the `try_sample_par` / `try_*` calls return the same error at sampling
-  time. The plain `sample*` calls keep the `ProcessExt` signature and panic
-  with that error's message, so a device failure is never a silent host
-  fallback and never a bare unwrap.
+- **Invalid parameter → panic, naming the parameter and its value.** A negative volatility, a Hurst exponent outside `[0, 1]`, a `theta` outside a copula's admissible interval, a grid with fewer than two points: programmer errors, not runtime states, so constructors, setters and the functions that take model parameters `assert!` them with a message of the form ``sigma must satisfy `sigma > 0.0`, got sigma = -0.2``. Never a silent clamp, a silent zero or a silent `None`.
+- **Not computable at this point → `NaN`, documented.** A price outside a model's domain, a Greek at an expired option, an implied volatility with no root: legitimate states, returned as `f64::NAN` from methods whose docs say when. A function that must compute a number never returns 0 in its place; a closed form a law does not have is `None` (`DistributionExt`), not a sentinel. A *query* argument outside the domain — a non-positive strike, a maturity of zero — is this case too; only a broken precondition on a model parameter or an empty input panics.
+- **Data-dependent failure → `Result::Err`.** A calibration produced no result, a correlation matrix estimated from data is not positive-definite, a fit rejected its input, a vine could not be built from the supplied pairs: the caller needs a graceful path, so `Calibrator::calibrate`, the copula `fit` / `new_with_corr` / vine constructors and the estimators return `Result` (`anyhow::Error` in quant, `CopulaError` in copulas); a calibration that ran but did not converge is `Ok` with `converged() == false`. `Calibrator::Error` is bounded `Debug + Display + Send + Sync + 'static`.
+- **Environmental failure on a device → probe first, then `Result` or a panic that says so.** No GPU behind a marker, a runtime that will not start, a kernel that will not compile, an allocation that fails: `handle.probe()` reports it as a `DeviceError` before any sampling, and the `try_sample` / `try_sample_par` calls return the same error at sampling time. The plain `sample*` calls panic with that error's message, so a device failure is never a silent host fallback.
 
-## 7. What is stable and what may grow
+## What is stable and what may grow
 
-Enums that catalogue an open set — copula families, day-count and holiday
-conventions, interpolation and finite-difference schemes, loss metrics, error
-kinds — are `#[non_exhaustive]`, so a new family or scheme is not a breaking
-change; match them with a wildcard arm. Enums that are closed by definition
-(`OptionType`, `OptionStyle`, `Moneyness`, the payer/receiver and up/down ×
-in/out kinds) stay exhaustive. Processes and pricers with public fields are
-constructed through `new` and the `with_*` setters; a struct literal is not
-a supported construction (a public-field process also carries its backend
-handle, `backend: Cpu`), so adding a field is not a breaking change for code
-that follows the constructors.
+Enums that catalogue an open set — copula families, day-count and holiday conventions, interpolation and finite-difference schemes, loss metrics, error kinds — are `#[non_exhaustive]`, so a new family or scheme is not a breaking change; match them with a wildcard arm. Enums that are closed by definition (`OptionType`, `OptionStyle`, `Moneyness`, the payer/receiver and up/down × in/out kinds) stay exhaustive. Processes and pricers with public fields are built through `new` and the `with_*` setters; a struct literal is not a supported construction (a public-field process also carries its backend handle, `backend: Cpu`), so adding a field is not a breaking change for code that uses the constructors.
 
-## Explicit non-goals
+## Non-goals
 
-- **Not a general-purpose Monte Carlo engine.** We have variance-reduction
-  techniques (antithetic, control variate, stratified, importance,
-  quasi-MC, MLMC), but the design priority is *quant-finance* MC, not
-  general PDE / SDE solving. (For the latter, look at `nalgebra-glm`,
-  `pyo3-numpy`, or research-grade libraries like `dolfin`.)
-
-- **Not a scipy.stats clone.** We ship the distributions and estimators
-  we need for the workflows the library is designed for. Asks like
-  "please add a Pearson-VII distribution" without a clear quant-finance
-  use case will be politely declined.
-
-- **Not a closed-source-quant replacement.** The vol-surface pipeline,
-  the calibrators, and the risk metrics are competitive but specifically
-  scoped: liquid-equity vanilla / lightly-exotic. Production deployments
-  in fixed-income / credit / OTC commodities will likely need their own
-  layer on top.
+- **Not a general-purpose SDE / PDE solver.** The Monte Carlo toolkit (antithetic, control variate, stratified, importance sampling, quasi-MC, MLMC) and the PDE pricers serve quant-finance models.
+- **Not a scipy.stats clone.** The distributions and estimators are the ones quant-finance workflows need; a law without such a use case is out of scope.
+- **Not a full production pricing stack.** The vol-surface pipeline, calibrators and risk metrics target liquid equity vanilla and lightly exotic products; fixed-income, credit and OTC-commodity deployments will likely need their own layer on top (see [Comparison](/docs/comparison)).

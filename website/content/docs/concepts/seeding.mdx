@@ -1,17 +1,12 @@
 ---
 title: Seeding & RNG
-description: The uniform `new(args, &seed)` constructor pattern, the `SeedExt` strategies (`Unseeded` / `Deterministic`), in-place reseeding, and dual-stream RNG.
+description: How processes and distributions take a seed, the `SeedExt` strategies (`Unseeded` / `Deterministic`), in-place reseeding, and the dual-stream RNG.
 category: concept
 since: 2.2.0
 status: stable
 ---
 
-Every stochastic source in `stochastic-rs` — both processes
-([`ProcessExt`](/docs/concepts/process-ext)) and distributions
-([`DistributionExt`](/docs/concepts/distribution-ext)) — uses the same
-seed-handling pattern: a single canonical constructor `new(args, &seed)`
-that takes a [`SeedExt`](#seedext) strategy. There is no `with_seed(u64)`
-or `from_seed_source(&seed)` — those collapsed into `new` in 2.2.0.
+Every stochastic source takes a [`SeedExt`](#seedext) strategy. A process takes it by value as the last constructor argument, `new(args…, seed)`; a distribution is a stateless law that binds to a seeded stream with `.seeded(&seed)` (see [Distributions](/docs/distributions#construction)).
 
 ## The two seed strategies
 
@@ -20,109 +15,59 @@ use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::Unseeded;
 ```
 
-| Strategy                | Behaviour                                       | When to use                              |
-|-------------------------|-------------------------------------------------|------------------------------------------|
-| **`Unseeded`**          | Auto-seeded from a globally-unique sequence (see [contention](#auto-seeding-and-contention)). | Default production sampling, no need for reproducibility. |
-| **`Deterministic(u64)`**| Reproducible stream rooted at the seed.         | Unit tests, regression baselines, kalibration sweeps. |
+| Strategy                  | Behaviour                                       | When to use                              |
+|---------------------------|-------------------------------------------------|------------------------------------------|
+| **`Unseeded`**            | Auto-seeded from a globally unique sequence.    | Production sampling that need not be reproducible. |
+| **`Deterministic::new(u64)`** | Reproducible stream rooted at the seed.     | Unit tests, regression baselines, calibration sweeps. |
 
 <RustExample path="tests/doctest_concepts_seeding_gbm.rs" />
 
 ## Auto-seeding and contention
 
-`Unseeded` draws each RNG's seed from one global golden-ratio sequence
-(`base, base+γ, base+2γ, …`, each mixed through SplitMix64). To keep that
-draw off a shared atomic on every construction, each thread reserves a
-**block** of $2^{18}$ consecutive steps and walks its block locally:
-
-```
-global atomic ──reserve 2^18·γ──► thread A's block ──► seed, seed+γ, …  (no atomic)
-              ──reserve 2^18·γ──► thread B's block ──► disjoint range
-```
-
-The block ranges are disjoint and γ is odd, so every seed is still a
-distinct multiple of γ — the same global-uniqueness contract as a
-per-construction atomic, but with one atomic per $2^{18}$ seeds instead of
-one per seed. Before this scheme the shared counter was hit once per RNG
-construction; under parallel Monte-Carlo that cache line ping-ponged across
-cores and serialised the workers. Removing it is the main reason short-path
-parallel sampling got faster (see
-[ProcessExt → performance](/docs/concepts/process-ext#performance)). The
-generator itself, the SplitMix64 seed expansion, and the whole
-`Deterministic` path are unchanged — `Deterministic` never touches this
-counter, so seeded streams are bit-identical to before.
+`Unseeded` draws each RNG's seed from one global golden-ratio sequence (`base, base+γ, base+2γ, …`, each mixed through SplitMix64). Each thread reserves a **block** of $2^{18}$ consecutive steps from the global counter and walks it locally, so parallel construction touches the shared atomic once per $2^{18}$ seeds instead of once per seed. The blocks are disjoint and γ is odd, so every seed is still distinct. `Deterministic` never touches this counter.
 
 ## SeedExt
 
-`SeedExt` is the trait that lets a process or distribution accept any
-seed strategy uniformly:
+`SeedExt` lets a process or distribution accept either strategy:
 
 ```rust
 pub trait SeedExt: Clone + Send + Sync + 'static {
   fn rng(&self) -> SimdRng; // single-stream RNG
-  fn derive(&self) -> Self; // child seed for sub-components
   fn rng_ext<R: SimdRngExt>(&self) -> R; // generic backing RNG (see below)
   fn reseed(&self, seed: u64) {} // optional in-place reset
   fn next_seed(&self) -> u64; // fresh seed, advancing state like rng()/rng_ext()
 }
 ```
 
-`Unseeded` and `Deterministic` are the only implementations: the trait is
-sealed, so the library can add methods without breaking callers. To reproduce
-a run, seed a `Deterministic` source instead of writing your own.
+`Unseeded` and `Deterministic` are the only implementations; the trait is sealed. A `Deterministic` clone is a snapshot of its state, not a shared handle.
 
 ## Reseeding in place
 
-`SeedExt::reseed(seed)` lets you swap a `Deterministic` source's
-internal `state` without rebuilding the process. The typical use case is
-a kalibration loop that sweeps many seeds for the same parameterised
-process:
+`SeedExt::reseed(seed)` resets a `Deterministic` source without rebuilding the process — for example a calibration loop that sweeps many seeds for one parameterised process:
 
 <RustExample path="tests/doctest_concepts_seeding_reseed.rs" />
 
-| Source           | `reseed(s)` behaviour                                       |
-|------------------|-------------------------------------------------------------|
-| `Unseeded`       | Silently no-op (auto-seeded streams have nothing to assign).|
-| `Deterministic`  | Atomically `state.store(s)` — next stream-advance starts from `s`. |
+| Source           | `reseed(s)` behaviour                                         |
+|------------------|---------------------------------------------------------------|
+| `Unseeded`       | No-op (auto-seeded streams have nothing to reset).            |
+| `Deterministic`  | The next stream advance starts from `s`.                      |
 
-The same `Deterministic::new(s)` would then produce a bit-for-bit
-identical stream — this is the invariant that lets calibration replay
-specific paths.
+After `reseed(s)` the process draws bit-for-bit what `Deterministic::new(s)` would, which lets a calibration replay specific paths.
 
 ## Reproducibility invariants
 
-The smoke test
-[`examples/seed_smoke_test.rs`](https://github.com/dancixx/stochastic-rs/blob/main/examples/seed_smoke_test.rs)
-validates these end-to-end:
-
-1. **`Unseeded` × 2** — two instances produce divergent paths.
+1. **`Unseeded` × 2** — two instances produce different paths.
 2. **`Deterministic(seed)` × 2** — bit-for-bit identical paths.
-3. **Different seeds** — divergent paths.
-4. **Same instance, repeated `sample()`** — each call advances internal
-   state, so successive paths differ.
-5. **`reseed(s)` + sample** — reproduces what `Deterministic::new(s)`
-   would produce.
-6. **`Unseeded.reseed(s)`** — no-op, no panic, sample still works.
+3. **Different seeds** — different paths.
+4. **Same instance, repeated `sample()`** — each call advances the state, so successive paths differ.
+5. **`reseed(s)` + sample** — reproduces what `Deterministic::new(s)` would produce.
+6. **`Unseeded.reseed(s)`** — no-op, no panic, sampling still works.
 
-These are **serial** invariants. The sampler-level behaviour — distinct
-paths under reuse, no seed collision across the $2^{18}$ block boundary, and
-parallel independence for `sample_par` / `sample_map` — is validated
-separately in
-[`tests/sampler_v3_rng.rs`](https://github.com/dancixx/stochastic-rs/blob/main/tests/sampler_v3_rng.rs).
-Parallel sampling is bit-reproducible too: `sample_par` / `sample_map` return
-bit-identical output for the same seed and the same `m` under any Rayon
-thread-pool size, because each chunk's sampler is built sequentially before
-any work reaches Rayon. See
-[ProcessExt → parallel sampling and determinism](/docs/concepts/process-ext#parallel-sampling-and-determinism).
+Parallel sampling is bit-reproducible too: `sample_par` / `sample_map` return bit-identical output for the same seed and the same `m` under any Rayon thread-pool size. See [ProcessExt → parallel sampling and determinism](/docs/concepts/process-ext#parallel-sampling-and-determinism).
 
 ## SimdRngExt — generic backing RNG
 
-`SimdRngExt` is the trait that lets a distribution be generic over its
-backing SIMD RNG. The default is the single-stream
-[`SimdRng`](https://docs.rs/stochastic-rs-core/latest/stochastic_rs_core/simd_rng/struct.SimdRng.html),
-the experimental dual-stream variant
-[`SimdRngDual`](https://docs.rs/stochastic-rs-core/latest/stochastic_rs_core/simd_rng_dual/struct.SimdRngDual.html)
-is reachable through the
-[`unstable-dual-stream-rng`](#unstable-dual-stream-rng-feature) cargo feature.
+`SimdRngExt` lets a seeded stream be generic over its backing SIMD RNG. The default is the single-stream [`SimdRng`](https://docs.rs/stochastic-rs-core/latest/stochastic_rs_core/simd_rng/struct.SimdRng.html); the experimental dual-stream [`SimdRngDual`](https://docs.rs/stochastic-rs-core/latest/stochastic_rs_core/simd_rng_dual/struct.SimdRngDual.html) comes with the [`unstable-dual-stream-rng`](#unstable-dual-stream-rng-feature) cargo feature.
 
 ```rust
 pub trait SimdRngExt: rand::Rng + Clone + Debug + Sized + Send + Sync + 'static {
@@ -142,114 +87,32 @@ pub trait SimdRngExt: rand::Rng + Clone + Debug + Sized + Send + Sync + 'static 
 }
 ```
 
-The `rand::Rng` supertrait is why any `SimdRngExt` (including
-`SimdRng`) can be handed anywhere a `rand::Rng` is expected — e.g. to
-`rand::distr::Distribution::sample`. The trait is sealed: `SimdRng` and the
-experimental `SimdRngDual` are its only implementations.
+Through the `rand::Rng` supertrait, any `SimdRngExt` (including `SimdRng`) works wherever a `rand::Rng` is expected — e.g. `rand::distr::Distribution::sample`. The trait is sealed: `SimdRng` and `SimdRngDual` are its only implementations.
 
-A seeded stream names its engine, `Seeded<D, R: SimdRngExt = SimdRng>`, so
-one stateless law serves both backends:
+A seeded stream names its engine, `Seeded<D, R: SimdRngExt = SimdRng>`, so one stateless law serves both:
 
 <RustExample path="tests/doctest_concepts_seeding_dual_stream.rs" />
 
 ## `unstable-dual-stream-rng` feature
 
-Opt-in via cargo feature:
-
 ```toml
 [dependencies]
-stochastic-rs = { version = "3.0.0-rc.1", features = ["unstable-dual-stream-rng"] }
+stochastic-rs = { version = "3.0.0-rc.4", features = ["unstable-dual-stream-rng"] }
 ```
 
 Unlocks `SimdRngDual`, the engine of a `Seeded::<SimdNormal<f64>, SimdRngDual>` or `Seeded::<SimdExp<f64>, SimdRngDual>` stream.
 
-### Why dual-stream — the idea
+`SimdRngDual` carries two independent xoshiro engines. The ziggurat fill in `SimdNormal` / `SimdExp` draws one batch from each per iteration, and with no data dependency between them an out-of-order core overlaps the two batches' table lookups. On Apple Silicon that makes bulk Normal fills 2–6 % faster; Exp fills measure at parity and uniform fills gain nothing (numbers on [Benchmarks](/docs/benchmarks#dual-stream-rng)).
 
-`Xoshiro256++` (and its 32-bit sibling) is a *non-cryptographic, fast,
-high-quality* PRNG whose next-state function is a fixed recurrence
-`s_{k+1} = f(s_k)`. Generating a SIMD batch is straightforward (four
-parallel 64-bit lanes from one ymm state), but generating *two
-consecutive batches* from the same engine is a hard serial dependency:
-the second batch's state update can only start after the first one's
-result is committed. On a modern out-of-order CPU this dependency
-chain limits how many RNG ops you can issue per cycle, even though the
-execution units sit idle.
+Trade-offs:
 
-The Ziggurat sampler in `SimdNormal` / `SimdExp` makes the bottleneck
-worse: every 8-lane batch needs **16 scalar table lookups**
-(`kn[iz]`, `wn[iz]`) before the SIMD multiply / FMA / store can fire.
-Those loads are also serial against the RNG output that produced
-`iz`. So one batch's pipeline looks like:
+- **Deterministic streams differ.** `SimdRngDual::from_seed(s)` does not reproduce `SimdRng::from_seed(s)`'s output. The statistical properties are the same (KS-tested for Normal / Exp / LogNormal), but a test that pins specific numbers fails after switching.
+- **Doubled RNG state**, roughly 768 bits per `SimdRngDual` against ~384 for `SimdRng`.
+- **Architecture-dependent gain.** Measured on Apple Silicon; on CPUs with smaller reorder buffers the gain is likely smaller or zero.
+- **Non-ziggurat distributions are unaffected.** Cauchy, Pareto, Beta, Gamma and NIG are bound by SIMD transcendentals (`ln`, `exp`, `cos`, `sin`, `powf`), not by the RNG.
 
-```
-  xoshiro step ──► iz = hz & 127 ──► 16 scalar loads ──► SIMD math ──► store
-       │
-       └─ next xoshiro step can NOT begin until this state is written
-```
-
-The dual-stream engine sidesteps this by carrying **two independent
-state pairs** (`engine_a`, `engine_b`), each with its own xoshiro
-recurrence. The Ziggurat fast-path then issues one batch from `a` and
-another from `b` per iteration, and the OoO core is free to interleave
-them:
-
-```
-  engine_a step ──► iz_a ──► 16 loads for a ──► SIMD math a ──► store a
-  engine_b step ──► iz_b ──► 16 loads for b ──► SIMD math b ──► store b
-       ↑                                                       ↑
-       └───── these two streams have no data dependency ───────┘
-```
-
-Result on Apple Silicon (M-series, criterion
-`cargo bench --bench dual_stream_compare --features unstable-dual-stream-rng`,
-2026-06-11):
-
-|         n | single (`SimdRng`) | dual (`SimdRngDual`) |    Δ   |
-|----------:|-------------------:|---------------------:|-------:|
-|        64 |              120.6 ns |                117.5 ns |  −2.6% |
-|       256 |              494.2 ns |                467.9 ns |  −5.3% |
-|     4 096 |               7.87 µs |                 7.42 µs |  −5.7% |
-|    65 536 |              126.2 µs |                122.4 µs |  −3.0% |
-| 1 048 576 |               2.02 ms |                 1.97 ms |  −2.2% |
-
-The gain is modest on 128-bit NEON because the scalar table-gather
-chain dominates the batch cost; wider-SIMD hardware is expected to
-benefit more. Exponential fills measure at parity. Uniform fills are
-*not* engine-bound (the per-chunk body is just a direct SIMD store, no
-table lookups, no rejection sampling), so they show no speedup beyond
-noise — the OoO core already saturates its store ports without help.
-
-### Trade-offs
-
-- **Deterministic streams diverge.** `SimdRngDual::from_seed(s)` does
-  not reproduce `SimdRng::from_seed(s)`'s bit-exact output — it seeds
-  two independent engines through SplitMix64 with different offsets,
-  so the lane interleaving is fundamentally different. Statistical
-  properties are identical (KS-test validated for Normal / Exp /
-  LogNormal). A pinned-seed regression test that asserts specific
-  numbers will fail after switching backends.
-- **Doubled RNG state.** Two `Xoshiro256++` engines (256 bits each) +
-  two `Xoshiro128++` engines (128 bits each) = roughly 768 bits of
-  state per `SimdRngDual`, vs ~384 bits for `SimdRng`. Negligible
-  unless you allocate millions of instances.
-- **Architecture-dependent gain.** Measured on Apple Silicon. On
-  CPUs with smaller reorder buffers (older x86, embedded ARM) the
-  win is likely smaller or zero.
-- **Non-Ziggurat distributions are unaffected.** The Cauchy / Pareto /
-  Beta / Gamma / NIG paths bottleneck on the `wide` SIMD
-  transcendentals (`ln`, `exp`, `cos`, `sin`, `powf`), not on the
-  RNG — switching backends does not help them.
-
-The feature is **default-off**. Production code continues to use the
-single-stream `SimdRng`; opt in only if your workload is
-Ziggurat-dominated (Normal, Exp, LogNormal) and you can tolerate the
-deterministic-stream change.
+The feature is off by default and outside the stability promise. Enable it only for ziggurat-dominated workloads (Normal, Exp, LogNormal) that can accept the changed streams.
 
 ## End-to-end example
 
 <RustExample path="tests/doctest_concepts_seeding_end_to_end.rs" />
-
-See also: [`ProcessExt`](/docs/concepts/process-ext) for the trait
-itself, and the
-[smoke test](https://github.com/dancixx/stochastic-rs/blob/main/examples/seed_smoke_test.rs)
-for an executable specification.
