@@ -15,8 +15,8 @@ use stochastic_rs_core::simd_rng::SimdRngExt;
 use crate::seeded::Seeded;
 use crate::seeded::worker_count;
 
-/// Closed-form analytics of a law — `None` where the law has no closed form for that quantity, never
-/// a silent zero; `kurtosis` is the excess kurtosis, `quantile` the inverse cdf.
+/// Closed forms of a law: `None` where it has none, never a silent zero; `Some(NaN)` only where the
+/// quantity provably does not exist or the argument lies outside its domain; `kurtosis` is excess.
 pub trait DistributionExt {
   fn characteristic_function(&self, _t: f64) -> Option<Complex64> {
     None

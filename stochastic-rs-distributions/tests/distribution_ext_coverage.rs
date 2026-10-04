@@ -81,6 +81,13 @@ fn every_closed_form_of_the_base_commit_still_answers_and_no_other_does() {
     "SimdAlphaStable",
     &SimdAlphaStable::<f64>::new(1.5, 0.3, 1.0, 0.0),
     [
+      true, false, false, false, true, false, false, true, true, true, false, true,
+    ],
+  );
+  check(
+    "SimdAlphaStable",
+    &SimdAlphaStable::<f64>::new(1.5, 0.0, 1.0, 0.0),
+    [
       true, false, false, false, true, true, true, true, true, true, false, true,
     ],
   );
@@ -149,7 +156,7 @@ fn every_closed_form_of_the_base_commit_still_answers_and_no_other_does() {
     "SimdInverseGauss",
     &SimdInverseGauss::<f64>::new(1.0, 2.0),
     [
-      true, true, true, false, true, true, true, true, true, true, false, true,
+      true, true, true, false, true, false, true, true, true, true, false, true,
     ],
   );
   check(
@@ -171,7 +178,7 @@ fn every_closed_form_of_the_base_commit_still_answers_and_no_other_does() {
     "SimdNormalInverseGauss",
     &SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.0),
     [
-      true, true, false, false, true, true, true, true, true, true, false, true,
+      true, true, false, false, true, false, false, true, true, true, false, true,
     ],
   );
   check(

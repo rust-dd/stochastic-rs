@@ -41,11 +41,11 @@ utility that pairs two distributions as the parts of a complex draw).
 
 Implementing the trait does not mean every method has a closed form:
 `SimdGed`, `SimdSkellam` and the four `truncated` wrappers answer `pdf`/`cdf`
-only, nine types (`SimdAlphaStable`, `SimdBeta`, `SimdHypergeometric`,
-`SimdInverseGauss`, `SimdNormalInverseGauss`, `SimdVarianceGamma`, `SimdGig`,
-`SimdGeneralizedHyperbolic`, `SimdTemperedStable`) answer `None` on specific
-methods; `stochastic-rs-distributions/tests/distribution_ext_coverage.rs` is
-the exact matrix.
+only, eight laws (`SimdCauchy`, `SimdChiSquared`, `SimdExp`, `SimdGamma`,
+`SimdGeometric`, `SimdNormal`, `SimdPoisson`, `SimdUniform`) answer all twelve
+methods, and the other eighteen answer `None` on specific methods;
+`stochastic-rs-distributions/tests/distribution_ext_coverage.rs` is the exact
+matrix.
 
 ## A missing closed form is None, never zero
 
@@ -53,6 +53,8 @@ Project rule: a quantity the law has no closed form for is `None`, never a
 silent `0.0` — a v1.x bug where a zero kurtosis made a calibration converge
 on garbage is why; the previous `unimplemented!()` panic became the `Option`
 in 3.0 so a generic consumer can test instead of catching a panic.
+`Some(NaN)` is reserved for a quantity that provably does not exist (the
+Cauchy mean) or an argument outside the method's domain.
 
 <RustExample path="tests/doctest_concepts_missing_closed_form.rs" />
 

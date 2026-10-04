@@ -342,12 +342,12 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdAlphaStable<T> {
     }
   }
 
+  /// The location when β = 0, where the law is symmetric and unimodal; no closed form otherwise.
   fn median(&self) -> Option<f64> {
-    // For α-stable, the median equals the location parameter when β = 0.
     if self.beta.to_f64().unwrap() == 0.0 {
       Some(self.location.to_f64().unwrap())
     } else {
-      Some(f64::NAN)
+      None
     }
   }
 
@@ -355,7 +355,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdAlphaStable<T> {
     if self.beta.to_f64().unwrap() == 0.0 {
       Some(self.location.to_f64().unwrap())
     } else {
-      Some(f64::NAN)
+      None
     }
   }
 

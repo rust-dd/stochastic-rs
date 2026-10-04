@@ -224,13 +224,6 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdInverseGauss<T> {
     Some(self.mu.to_f64().unwrap())
   }
 
-  fn median(&self) -> Option<f64> {
-    // No closed form and no simple bound-based approximation used here;
-    // callers that need a reference value should use `mean()` explicitly
-    // instead of assuming this method provides one.
-    Some(f64::NAN)
-  }
-
   fn mode(&self) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let lambda = self.lambda.to_f64().unwrap();

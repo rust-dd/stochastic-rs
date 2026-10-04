@@ -230,15 +230,6 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdNormalInverseGauss<
     Some(m + d * b / gamma)
   }
 
-  fn median(&self) -> Option<f64> {
-    Some(f64::NAN)
-  }
-
-  fn mode(&self) -> Option<f64> {
-    // For NIG the mode is μ + δβ / sqrt(α² − β²) · (1 − ...) — no simple closed form.
-    Some(f64::NAN)
-  }
-
   fn variance(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
