@@ -1,5 +1,5 @@
 //! Re-exports of upstream traits so `crate::traits::Foo` resolves inside the stats sub-crate;
-//! `HypothesisTest` is defined in distributions, where copulas can implement it too, and re-exported here.
+//! `HypothesisTest` is defined in distributions, where copulas can implement it too.
 
 pub use stochastic_rs_distributions::traits::DistributionExt;
 pub use stochastic_rs_distributions::traits::DistributionSampler;

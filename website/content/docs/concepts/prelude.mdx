@@ -95,9 +95,10 @@ TailDependence
 The stats and copula trait surface. Without these in scope a first
 `.estimate()` call does not compile at all, which is why they were added —
 `HurstEstimator` covers the eight Hurst estimators, `FractalDimEstimator`
-the fractal-dimension family, `HypothesisTest` all sixteen result types (`grep -rhE 'HypothesisTest for' stochastic-rs-stats/src stochastic-rs-copulas/src --include='*.rs' | wc -l`; the copulas `GofResult` is the sixteenth)
+the fractal-dimension family, `HypothesisTest` all sixteen result types (`grep -rhE 'HypothesisTest for' stochastic-rs-stats/src stochastic-rs-copulas/src --include='*.rs' | wc -l`)
 across stationarity, structural-break, random-walk, functional-form,
-normality and autocorrelation testing, `DiffusionModel` the parametric-SDE
+normality, goodness-of-fit (Kolmogorov-Smirnov, chi-square, the copula
+`GofResult`) and autocorrelation testing, `DiffusionModel` the parametric-SDE
 estimators, and `TailDependence` the upper/lower tail coefficients on
 bivariate copulas.
 

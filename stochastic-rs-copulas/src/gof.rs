@@ -70,7 +70,7 @@ pub struct GofResult {
   pub replications: usize,
 }
 
-/// The bootstrap p-value is reported; no alpha is fixed, so there is no rejection decision.
+/// No alpha is fixed, so there is no rejection decision; the bootstrap p-value stays in `p_value`.
 impl stochastic_rs_distributions::traits::HypothesisTest for GofResult {
   fn statistic(&self) -> f64 {
     self.statistic
