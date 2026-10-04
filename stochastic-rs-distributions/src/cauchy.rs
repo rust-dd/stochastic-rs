@@ -186,12 +186,10 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdCauchy<T> {
     Some(num_complex::Complex64::new(-g * t.abs(), t * x0).exp())
   }
 
-  /// `NaN`: the MGF `E[e^{tX}]` diverges for every `t != 0` because the
-  /// Cauchy tail decays only as `1/x^2`, too slowly for `e^{tx}` to be
-  /// integrable — use `characteristic_function` instead, which exists for
-  /// every Cauchy parameter.
-  fn moment_generating_function(&self, _t: f64) -> Option<f64> {
-    Some(f64::NAN)
+  /// 1 at `t = 0`, else `NaN`: the `1/x^2` tail makes `E[e^{tX}]` diverge for every `t != 0`; use
+  /// `characteristic_function`, which exists for every Cauchy parameter.
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    Some(if t == 0.0 { 1.0 } else { f64::NAN })
   }
 }
 

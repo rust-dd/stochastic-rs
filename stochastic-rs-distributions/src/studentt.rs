@@ -295,11 +295,10 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
     )
   }
 
-  /// `NaN` for every `nu`: the Student-t tail decays polynomially
-  /// (`~|x|^{-nu-1}`), too slowly for `e^{tx}` to be integrable at any
-  /// `t != 0`, regardless of how large `nu` is.
-  fn moment_generating_function(&self, _t: f64) -> Option<f64> {
-    Some(f64::NAN)
+  /// 1 at `t = 0`, else `NaN`: the `|x|^{-nu-1}` tail makes `E[e^{tX}]` diverge at every `t != 0`,
+  /// however large `nu` is.
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    Some(if t == 0.0 { 1.0 } else { f64::NAN })
   }
 }
 

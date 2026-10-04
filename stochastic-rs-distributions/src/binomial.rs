@@ -328,6 +328,9 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdBinomial<T> {
   }
 
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    if t == 0.0 {
+      return Some(1.0);
+    }
     Some((1.0 - self.p + self.p * t.exp()).powi(self.n as i32))
   }
 }

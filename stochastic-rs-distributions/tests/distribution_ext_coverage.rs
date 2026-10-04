@@ -260,7 +260,7 @@ fn rows() -> Vec<Row> {
 }
 
 /// Which methods answer at a fixed probe (x = 0.6, p = 0.3, t = 0.4), inside or outside a law's
-/// support; only `SimdPareto`'s mgf also depends on the point (`None` for t < 0).
+/// support; the mgf also depends on t: `Some(1.0)` at 0 for every law, `None` below 0 for Pareto.
 fn answers(law: &dyn DistributionExt) -> [bool; 12] {
   let cf: Option<Complex64> = law.characteristic_function(0.4);
   [
@@ -293,6 +293,16 @@ fn each_law_answers_exactly_its_closed_forms() {
       );
     }
   }
+}
+
+#[test]
+fn every_mgf_is_one_at_zero() {
+  let off = rows()
+    .into_iter()
+    .map(|(name, law, _)| (name, law.moment_generating_function(0.0)))
+    .filter(|(_, m)| *m != Some(1.0))
+    .collect::<Vec<_>>();
+  assert!(off.is_empty(), "E[e^0] = 1 for every law: {off:?}");
 }
 
 #[test]

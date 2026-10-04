@@ -283,6 +283,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
   /// K_\lambda\bigl(\delta\sqrt{\alpha^2-(\beta+t)^2}\bigr)/K_\lambda\bigl(\delta\sqrt{\alpha^2-\beta^2}\bigr)$
   /// for $|\beta + t| < \alpha$, `NaN` beyond.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    if t == 0.0 {
+      return Some(1.0);
+    }
     let (lambda, alpha, beta, delta, mu) = self.params();
     let shifted = alpha * alpha - (beta + t).powi(2);
     if shifted <= 0.0 {

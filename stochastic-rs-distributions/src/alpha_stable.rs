@@ -406,12 +406,14 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdAlphaStable<T> {
     Some(exponent.exp())
   }
 
-  fn moment_generating_function(&self, _t: f64) -> Option<f64> {
-    if self.alpha.to_f64().unwrap() == 2.0 {
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    if t == 0.0 {
+      Some(1.0)
+    } else if self.alpha.to_f64().unwrap() == 2.0 {
       // Gaussian limit: M(t) = exp(μt + c²t²)
       let mu = self.location.to_f64().unwrap();
       let c = self.scale.to_f64().unwrap();
-      Some((mu * _t + c * c * _t * _t).exp())
+      Some((mu * t + c * c * t * t).exp())
     } else {
       // MGF only exists in the Gaussian limit (α = 2).
       Some(f64::NAN)

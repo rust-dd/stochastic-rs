@@ -207,7 +207,9 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdGeometric<T> {
 
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
     let q = 1.0 - self.p;
-    if q * t.exp() < 1.0 {
+    if t == 0.0 {
+      Some(1.0)
+    } else if q * t.exp() < 1.0 {
       Some(self.p * t.exp() / (1.0 - q * t.exp()))
     } else {
       Some(f64::INFINITY)
