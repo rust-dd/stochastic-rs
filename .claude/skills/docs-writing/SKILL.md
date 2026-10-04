@@ -238,7 +238,7 @@ $$ \varphi(t) = \dots $$
 | Skewness      | $\dots$ (or "`None` — no closed form")            |
 | Excess kurtosis | $\dots$                                          |
 
-> **DistributionExt status note**: every method returns `Option`; `stochastic-rs-distributions/tests/distribution_ext_coverage.rs` pins which cells are `Some` per type — read it instead of counting impls (a single-line `impl ... DistributionExt` grep undercounts because three headers wrap; CLAUDE.md gives the `-A1` command).
+> **DistributionExt status note**: every method returns `Option`; `stochastic-rs-distributions/tests/distribution_ext_coverage.rs` is the authority on which cells are `Some` per type — read it instead of counting impls.
 >
 > A moment with no closed form is `None`, never a silent zero; say so on the page.
 

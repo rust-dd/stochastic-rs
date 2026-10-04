@@ -121,15 +121,8 @@
 //! family — it pairs two independent distributions as the real and
 //! imaginary parts of a `Complex<T>` draw.
 //!
-//! ## `DistributionExt` answers `None` where a law has no closed form
-//!
-//! Every method returns `Option`: [`ged::SimdGed`], [`skellam::SimdSkellam`] and the four
-//! [`truncated`] wrappers answer `pdf`/`cdf` and `None` elsewhere until their closed forms land;
-//! [`dirichlet::SimdDirichlet`], [`wishart::SimdWishart`], [`non_central_chi_squared::SimdNonCentralChiSquared`]
-//! and [`complex::ComplexDistribution`] do not implement the trait at all (see the cluster notes above). If you need a
-//! specific moment programmatically rather than deriving it by hand,
-//! confirm the override exists (`cargo doc -p stochastic-rs-distributions`
-//! renders exactly what's overridden) before depending on it.
+//! **`DistributionExt`** answers `None` where a law has no closed form: [`ged::SimdGed`],
+//! [`skellam::SimdSkellam`] and the [`truncated`] wrappers answer only `pdf` and `cdf`.
 //!
 //! One further, unrelated note while it's on this page:
 //! [`geometric::SimdGeometric`]'s documented domain for its success

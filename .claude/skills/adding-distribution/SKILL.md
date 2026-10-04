@@ -188,7 +188,7 @@ mod tests {
         let mut stream = SimdFoo::<f64>::new(2.0, 3.0).seeded(&Deterministic::new(42));
         let mut samples = vec![0.0; 100_000];
         stream.fill_slice(&mut samples);
-        let p = ks_test(&samples, |x| d.cdf(x));
+        let p = ks_test(&samples, |x| d.cdf(x).unwrap());
         assert!(p > 0.05, "KS p-value = {p}");
     }
 

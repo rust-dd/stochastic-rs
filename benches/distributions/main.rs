@@ -225,8 +225,7 @@ bench_dist!(
   rand_distr::Uniform::<f64>::new(0.0, 1.0).unwrap()
 );
 
-/// What the consumer loops call per point: a normal pdf/cdf/quantile, the two distfit densities, an
-/// incomplete-gamma cdf and a Poisson pmf — the surface a consumer loop pays for per point.
+/// The per-point cost a likelihood or goodness-of-fit loop pays for a density, cdf or quantile.
 fn bench_distribution_ext(c: &mut Criterion) {
   let mut group = c.benchmark_group("DistributionExt");
   group.measurement_time(Duration::from_secs(3));

@@ -235,7 +235,7 @@ on the law, not on the stream:
 ```rust
 use stochastic_rs::traits::DistributionExt;
 
-let pdf = law.pdf(0.5).unwrap();                       // Some for every law with a density
+let pdf = law.pdf(0.5).unwrap();                       // Some for every law with a closed-form density
 let cdf = law.cdf(0.5).unwrap();
 let cf = law.characteristic_function(2.0);             // Option<Complex64>
 let m2 = law.variance().expect("a closed-form variance");
