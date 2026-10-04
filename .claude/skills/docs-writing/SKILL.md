@@ -383,7 +383,7 @@ analytic Jacobian, etc. — one paragraph on why.>
 | `converged()`  | `bool`               | Convergence flag             |
 | `iterations()` | `Option<usize>`      | Optimiser iterations, if recorded (default `None`) |
 | `message()`    | `Option<&str>`       | Solver message (default `None`) |
-| `max_error()`  | `f64`                | Worst per-quote error (default `f64::NAN`) |
+| `max_error()`  | `Option<f64>`        | Worst per-quote error, if recorded (default `None`) |
 | `loss_score()` | `Option<&CalibrationLossScore>` | Richer loss breakdown (default `None`) |
 
 ## Example

@@ -131,10 +131,10 @@ is a plain `f64` struct of nine named fields (`delta`, `gamma`, `vega`,
 exposes nothing.
 
 `GreeksExt` is **not** that interface. Its accessors take `&self` and
-nothing else, so only an estimator that already owns its query can
-implement it: the Monte Carlo Malliavin pair `GbmMalliavinGreeks` and
-`HestonMalliavinGreeks`, whose `greeks()` override runs a single simulation
-so the returned estimators share their paths — see the
+nothing else and return `Option<f64>`, so only an estimator that already
+owns its query can implement it: the Monte Carlo Malliavin pair
+`GbmMalliavinGreeks` and `HestonMalliavinGreeks`, whose `greeks()` override
+runs a single simulation so the returned estimators share their paths — see the
 [greeks-pattern SKILL](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/greeks-pattern/SKILL.md)
 for that single-pass protocol. It is reached via
 `stochastic_rs::traits::GreeksExt`, not the prelude.

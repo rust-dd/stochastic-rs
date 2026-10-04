@@ -139,7 +139,7 @@ pub trait Calibrator {
   type InitialGuess;
   type Params: Clone;
   type Output: CalibrationResult<Params = Self::Params>;
-  type Error;
+  type Error: std::fmt::Debug + std::fmt::Display + Send + Sync + 'static;
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error>;
 }
 
@@ -157,8 +157,8 @@ pub trait CalibrationResult {
   fn message(&self) -> Option<&str> {
     None
   }
-  fn max_error(&self) -> f64 {
-    f64::NAN
+  fn max_error(&self) -> Option<f64> {
+    None
   }
 }
 ```
@@ -166,7 +166,7 @@ pub trait CalibrationResult {
 `calibrate(None)` lets the calibrator infer its own initial guess.
 `CalibrationResult` carries the calibrated `Params` (via `.params()`),
 the RMSE, and a convergence flag. `iterations()`, `message()` and
-`max_error()` are optional — they default to `None` / `None` / `f64::NAN`,
+`max_error()` are optional — all three default to `None`,
 and only the calibrators that record them override. See
 the [Quant catalog](/docs/quant) for the calibrators that ship today.
 
@@ -180,7 +180,8 @@ not generic over `T`. It is what a pricer's inherent
 state only and price a grid from a single instance.
 
 `GreeksExt` is a **separate**, narrower trait: one required accessor
-(`delta`), NaN-defaulted accessors for the rest, and an aggregating
+(`delta`), `Option` accessors for the rest (`None` where the estimator
+exposes nothing; `greeks()` writes NaN there), and an aggregating
 `greeks()` — all taking `&self` and nothing else. Only the Monte Carlo
 Malliavin estimators (`GbmMalliavinGreeks`, `HestonMalliavinGreeks`)
 implement it, and for them the bundled query is the point: their `greeks()`

@@ -81,13 +81,15 @@ One rule for every crate, from the distributions up to the calibrators:
   when. A function that semantically must compute a number never returns 0
   in its place; a closed form a law does not have is `None`
   (`DistributionExt`), not a sentinel.
-- **Data-dependent failure → `Result::Err`.** The optimiser did not converge,
-  a correlation matrix estimated from data is not positive-definite, a fit
-  rejected its input, a vine could not be built from the supplied pairs:
+- **Data-dependent failure → `Result::Err`.** A calibration produced no
+  result, a correlation matrix estimated from data is not positive-definite,
+  a fit rejected its input, a vine could not be built from the supplied pairs:
   the caller needs a graceful path, so `Calibrator::calibrate`, the copula
   `fit`/`new_with_corr`/vine constructors and the estimators return
-  `Result`. `Calibrator::Error` is a free associated type; the in-tree
-  calibrators set it to `anyhow::Error`.
+  `Result`; a calibration that ran but did not converge is `Ok` with
+  `converged() == false`. `Calibrator::Error` is bounded
+  `Debug + Display + Send + Sync + 'static`; the in-tree calibrators set it
+  to `anyhow::Error`.
 - **Environmental failure on a device → probe first, then `Result` or a
   panic that says so.** No GPU behind a marker, a runtime that will not
   start, a kernel that will not compile, an allocation that fails:

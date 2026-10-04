@@ -25,7 +25,7 @@ pub trait Calibrator {
     type InitialGuess;                       // typically [f64; N] or Option<[f64; N]>
     type Params: Clone;                      // the calibrated parameter struct
     type Output: CalibrationResult<Params = Self::Params>;
-    type Error;                              // anyhow::Error in production code
+    type Error: Debug + Display + Send + Sync + 'static;   // anyhow::Error
 
     fn calibrate(
         &self,
@@ -44,7 +44,7 @@ pub trait CalibrationResult {
     fn loss_score(&self) -> Option<&CalibrationLossScore> { None }
     fn iterations(&self) -> Option<usize> { None }
     fn message(&self) -> Option<&str> { None }
-    fn max_error(&self) -> f64 { f64::NAN }   // NaN, not Option
+    fn max_error(&self) -> Option<f64> { None }
 }
 
 pub trait ToModel {
