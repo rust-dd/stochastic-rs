@@ -64,6 +64,7 @@ against `stochastic-rs-quant/src/traits/*.rs` and
 `stochastic-rs-distributions/src/traits/distribution.rs` before trusting an
 older summary.
 
+- Error policy — panic for a broken constructor precondition, `Result` for data, documented NaN out of domain, `None` for an absent capability, NaN-propagating reductions (`max_or_nan`): `.claude/skills/dev-rules/SKILL.md` §14.
 - `RealExt` — scalar real-number bound (arithmetic, conversions, constants — no SIMD, no RNG); the bound analytic pricing code takes, and the door a custom scalar (AAD dual, tape node) can implement; lives in `stochastic-rs-distributions::traits`
 - `SimdFloatExt` — 8-lane SIMD surface over `RealExt`, plus the uniform RNG fills; sealed (`f32`/`f64`); carries the four hidden Markov-lift kernels (`history_sum_fused` …), so `T: FloatExt` is the only bound the rough family needs
 - `FloatExt` — the full simulation-grade bound: `RealExt + SimdFloatExt` + batched normal-fill/fGN scratch; sealed through `SimdFloatExt` (only `f32`/`f64` implement it), so anything bounded on it is closed to custom scalars by construction

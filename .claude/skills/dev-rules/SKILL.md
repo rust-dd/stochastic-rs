@@ -174,3 +174,28 @@ impl Foo for Bar {
 ## 13. Library diagnostics go through `log`
 
 Library code reports through the `log` facade (`log::warn!`, `log::trace!`), never `eprintln!`, and never installs a subscriber; binaries, benches and tests do.
+
+## 14. Error policy — one channel per cause, in every crate
+
+- **A parameter precondition broken in a constructor or setter → panic**, one `assert!` per
+  argument, the predicate spelled in the message and the value last:
+  ``assert!(sigma > T::zero(), "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}");``
+  Every float parameter is finite (`x.is_finite()`; a truncation bound may be infinite, so `!x.is_nan()`).
+  A method that can panic says so inside its ≤ 2-line doc (`…; panics if x ≤ 0`), never under a separate
+  `# Panics` heading. The literal-only Fourier model structs validate once they have constructors.
+- **A data-dependent failure → `Result`**: a calibration that produces no result, an estimate on
+  too little or degenerate data, a device that cannot be opened. Non-convergence is `Ok` with
+  `converged() == false`, never `Err`. quant and ai return `anyhow::Error`, copulas `CopulaError`,
+  the devices `DeviceError`; `Calibrator::Error: Debug + Display + Send + Sync + 'static`. The risk
+  estimators (`empirical_cvar`, `historical_var`) still panic on an empty sample; whether short or
+  degenerate data there becomes a `Result` is one pending decision for all of them.
+- **A numerical evaluation outside its domain, or an inversion with no root → documented `NaN`**:
+  a yield at `tau <= 0`, an implied volatility with no root, a Bessel K at `x <= 0`, a pricing
+  *query* with a non-positive strike or spot. A `0.0` or any other plausible number is never a
+  sentinel, and a query argument never panics — only a model parameter does.
+- **A capability an implementor does not have → `Option::None`**: `DistributionExt`, `GreeksExt`,
+  `CalibrationResult::max_error`, `Cumulants.c4`. `None` is "no closed form / not computed";
+  `Some(f64::NAN)` is "computed, undefined at this point".
+- **A reduction never drops a NaN.** `f64::max`/`min` return the other operand when one is NaN;
+  use `RealExt::max_or_nan` / `min_or_nan` (`.fold(0.0, f64::max_or_nan)`) wherever the folded
+  values can be NaN, so a NaN input surfaces as a NaN output instead of a silently smaller maximum.
