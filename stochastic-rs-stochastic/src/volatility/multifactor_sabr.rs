@@ -477,6 +477,22 @@ mod tests {
     assert_eq!(v1, v2, "vol path must be seed-deterministic");
   }
 
+  #[test]
+  #[should_panic(expected = "rho[1] must satisfy `rho[k].abs() < 1.0`, got rho[1] = 1.0")]
+  fn a_unit_correlation_is_named_with_its_bucket() {
+    let _ = MultifactorSabr::<f64, _>::new(
+      Some(1.0),
+      Some(0.2),
+      vec![0.5],
+      vec![0.5, 0.5],
+      vec![-0.3, 1.0],
+      vec![0.4, 0.3],
+      64,
+      Some(1.0),
+      Unseeded,
+    );
+  }
+
   /// Coefficient-vector length mismatch is rejected.
   #[test]
   #[should_panic(expected = "beta must have")]

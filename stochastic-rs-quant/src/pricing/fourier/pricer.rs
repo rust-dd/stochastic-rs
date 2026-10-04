@@ -489,4 +489,28 @@ mod tests {
       );
     }
   }
+
+  #[test]
+  #[should_panic(
+    expected = "l_factor must satisfy `l_factor.is_finite() && l_factor > 0.0`, got l_factor = 0.0"
+  )]
+  fn cumulant_sizing_rejects_a_non_positive_l_factor() {
+    let model = BSMFourier {
+      sigma: 0.2,
+      r: 0.05,
+      q: 0.0,
+    };
+    let _ = CarrMadanPricer::cumulant_sized(&model, 1.0, 100.0, 0.0);
+  }
+
+  #[test]
+  #[should_panic(expected = "cumulants.c2 must satisfy `c2.is_finite() && c2 > 0.0`, got c2 = 0.0")]
+  fn cumulant_sizing_rejects_a_vanishing_second_cumulant() {
+    let model = BSMFourier {
+      sigma: 0.2,
+      r: 0.05,
+      q: 0.0,
+    };
+    let _ = CarrMadanPricer::cumulant_sized(&model, 0.0, 100.0, 12.0);
+  }
 }

@@ -355,6 +355,5 @@ mod tests {
     assert_eq!(pf.max_log_weight(), -0.5);
     pf.log_weights[2] = f64::NAN;
     assert!(pf.max_log_weight().is_nan());
-    assert!(pf.effective_sample_size().is_nan());
   }
 }

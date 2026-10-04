@@ -231,3 +231,16 @@ py_process_2x1d!(PyCgns, Cgns,
   params: (rho: f64, n: usize, t: Option<f64>),
   device
 );
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  #[should_panic(
+    expected = "rho must satisfy `(-T::one()..=T::one()).contains(&rho)`, got rho = 1.5"
+  )]
+  fn a_correlation_outside_the_unit_interval_is_named_with_its_value() {
+    let _ = Cgns::<f64, Unseeded>::new(1.5, 8, Some(1.0), Unseeded);
+  }
+}
