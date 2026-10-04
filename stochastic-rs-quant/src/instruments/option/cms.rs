@@ -168,6 +168,7 @@ impl<T: RealExt, V: VolatilityModel<T>> CmsFloorlet<T, V> {
   }
 }
 
+/// A fixing at `t_fix <= 0` is known, so it pays its intrinsic value on `s0` without a vol or a convexity adjustment.
 #[allow(clippy::too_many_arguments)]
 fn price_cms_payoff<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   strike: T,
@@ -182,6 +183,10 @@ fn price_cms_payoff<T: RealExt, V: VolatilityModel<T> + ?Sized>(
   vol: &V,
   is_caplet: bool,
 ) -> T {
+  if t_fix <= T::zero() {
+    let moneyness = if is_caplet { s0 - strike } else { strike - s0 };
+    return notional * accrual * discount * moneyness.max_or_nan(T::zero());
+  }
   let sigma = vol.implied_volatility(s0, strike, t_fix);
   let ca =
     hagan_linear_tsr_convexity_adjustment(s0, sigma, t_fix, swap_years, fixed_freq, payment_delay);
@@ -197,6 +202,47 @@ fn price_cms_payoff<T: RealExt, V: VolatilityModel<T> + ?Sized>(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::instruments::option::volatility::SabrVolatility;
+
+  #[test]
+  fn a_known_fixing_pays_its_intrinsic_value_without_the_vol_model() {
+    let vol = SabrVolatility::new(0.035_f64, 0.5, 0.4, -0.2);
+    let caplet = |t_fix: f64| {
+      CmsCaplet {
+        strike: 0.02,
+        notional: 1e6,
+        accrual_factor: 1.0,
+        discount_factor: 0.97,
+        forward_cms: 0.03,
+        t_fix,
+        swap_years: 10.0,
+        fixed_freq: 2.0,
+        payment_delay: 0.0,
+        vol,
+      }
+      .price()
+    };
+    let floorlet = |t_fix: f64| {
+      CmsFloorlet {
+        strike: 0.04,
+        notional: 1e6,
+        accrual_factor: 1.0,
+        discount_factor: 0.97,
+        forward_cms: 0.03,
+        t_fix,
+        swap_years: 10.0,
+        fixed_freq: 2.0,
+        payment_delay: 0.0,
+        vol,
+      }
+      .price()
+    };
+    for t_fix in [-0.5, 0.0] {
+      assert!((caplet(t_fix) - 9700.0).abs() < 1e-6, "t_fix = {t_fix}");
+      assert!((floorlet(t_fix) - 9700.0).abs() < 1e-6, "t_fix = {t_fix}");
+    }
+    assert!(caplet(0.5).is_finite() && caplet(0.5) != caplet(0.0));
+  }
 
   #[test]
   fn convexity_factor_is_negative_for_standard_swap() {
