@@ -229,6 +229,7 @@ pub trait BivariateExt {
     y: &Array1<f64>,
     V: &Array1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
     let n = y.len();
     let mut results = Array1::zeros(n);
 
@@ -253,10 +254,7 @@ pub trait BivariateExt {
       let lo = f64::EPSILON;
       let f_lo = h(lo);
       if let Some(e) = inner_err.borrow_mut().take() {
-        return Err(CopulaError::Numerical(format!(
-          "{:?} h-inverse failed at (y={y_i}, v={v_i}): {e}",
-          self.r#type()
-        )));
+        return Err(e);
       }
       if f_lo >= 0.0 {
         results[i] = lo;
@@ -269,10 +267,7 @@ pub trait BivariateExt {
       };
       let root = find_root_brent(lo, 1.0, h, &mut convergency);
       if let Some(e) = inner_err.borrow_mut().take() {
-        return Err(CopulaError::Numerical(format!(
-          "{:?} h-inverse failed at (y={y_i}, v={v_i}): {e}",
-          self.r#type()
-        )));
+        return Err(e);
       }
       results[i] = root.map_err(|e| {
         CopulaError::Numerical(format!(
@@ -328,10 +323,10 @@ mod tests {
   use crate::bivariate::amh::Amh;
   use crate::bivariate::clayton::Clayton;
 
-  /// Minimal non-Archimedean stand-in that does **not** override
-  /// `generator` at all — proves the trait-default body (not any family's
-  /// own hand-written stub) is what actually answers the call.
-  struct DummyNonArchimedean;
+  /// Overrides no provided method, so every default body answers for it; `pdf` and `cdf` fail.
+  struct DummyNonArchimedean {
+    theta: Option<f64>,
+  }
 
   impl BivariateExt for DummyNonArchimedean {
     fn r#type(&self) -> BivariateCopulaType {
@@ -345,7 +340,7 @@ mod tests {
     fn set_tau(&mut self, _tau: f64) {}
 
     fn theta(&self) -> Option<f64> {
-      None
+      self.theta
     }
 
     fn theta_bounds(&self) -> (f64, f64) {
@@ -385,33 +380,27 @@ mod tests {
   /// A type with no `generator` override reaches the trait default, which names its `r#type()`.
   #[test]
   fn generator_default_returns_anchored_not_archimedean_err() {
-    let dummy = DummyNonArchimedean;
-    let t = array![0.5_f64, 0.8];
-    let msg = dummy.generator(&t).unwrap_err().to_string();
-    assert!(
-      msg.contains("is not Archimedean"),
-      "unexpected message: {msg}"
-    );
-    assert!(
-      msg.starts_with("Fgm"),
-      "expected the r#type() Debug label as prefix, got: {msg}"
+    let dummy = DummyNonArchimedean { theta: None };
+    assert_eq!(
+      dummy.generator(&array![0.5_f64, 0.8]).unwrap_err(),
+      CopulaError::Unsupported("Fgm is not Archimedean: no generator".into())
     );
   }
 
-  /// The unfitted dummy fails inside `partial_derivative_scalar` (its
-  /// `check_fit` refuses), and the failure must come back as an `Err`
-  /// naming the family and the query — not as a panic, and never as a
-  /// fabricated `EPSILON` quantile.
+  /// An unfitted copula is `NotFitted` before any solve, and a failing `partial_derivative` keeps
+  /// its own variant: neither becomes a panic or a fabricated `EPSILON` quantile.
   #[test]
   fn percent_point_numerical_propagates_inner_errors_instead_of_panicking() {
-    let dummy = DummyNonArchimedean;
-    let err = dummy
-      .percent_point_numerical(&array![0.5_f64], &array![0.5_f64])
-      .expect_err("a failing partial_derivative must surface as Err");
-    let msg = err.to_string();
-    assert!(
-      msg.contains("h-inverse") && msg.contains("no parameters yet"),
-      "unexpected message: {msg}"
+    let (y, v) = (array![0.5_f64], array![0.5_f64]);
+    let unfitted = DummyNonArchimedean { theta: None };
+    assert_eq!(
+      unfitted.percent_point_numerical(&y, &v).unwrap_err(),
+      CopulaError::NotFitted
+    );
+    let fitted = DummyNonArchimedean { theta: Some(0.5) };
+    assert_eq!(
+      fitted.percent_point_numerical(&y, &v).unwrap_err(),
+      CopulaError::Unsupported("not implemented for DummyNonArchimedean".into())
     );
   }
 
@@ -486,10 +475,9 @@ mod tests {
       .expect("theta alone is enough to sample");
     assert_eq!(uv.dim(), (1_000, 2));
 
-    let unset = Clayton::new()
-      .sample_with_seed(10, 7)
-      .unwrap_err()
-      .to_string();
-    assert!(unset.contains("no parameters yet"), "{unset}");
+    assert_eq!(
+      Clayton::new().sample_with_seed(10, 7).unwrap_err(),
+      CopulaError::NotFitted
+    );
   }
 }

@@ -168,8 +168,8 @@ fn t_copula_manual_nu_override() {
   assert!(bad.is_err(), "ν=0 must be rejected");
 }
 
-/// `nu()`/`set_nu()` mirror `TCopula`'s naming and validation contract
-/// exactly, including the byte-identical error string on invalid input.
+/// `nu()`/`set_nu()` mirror `TCopula`'s naming and validation contract, the invalid-input error
+/// included.
 #[test]
 fn t_multivariate_exposes_nu() {
   let corr = array![[1.0, 0.3], [0.3, 1.0]];
@@ -178,6 +178,13 @@ fn t_multivariate_exposes_nu() {
   assert!(cop.set_nu(12.0).is_ok());
   assert_eq!(cop.nu(), 12.0);
   let err = cop.set_nu(0.0).unwrap_err();
-  assert_eq!(err.to_string(), "nu must satisfy `nu > 0`, got nu = 0");
+  assert_eq!(
+    err,
+    CopulaError::InvalidParameter {
+      name: "nu",
+      value: 0.0,
+      constraint: "nu > 0".into(),
+    }
+  );
   assert_eq!(cop.nu(), 12.0, "a failed set_nu must not mutate the field");
 }

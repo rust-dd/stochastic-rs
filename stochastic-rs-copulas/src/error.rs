@@ -26,7 +26,7 @@ pub enum CopulaError {
   InvalidStructure(String),
   /// The family has no such operation (an Archimedean generator, an unimplemented fit).
   Unsupported(String),
-  /// A numerical inversion failed or did not converge.
+  /// A numerical inversion did not converge.
   Numerical(String),
 }
 
