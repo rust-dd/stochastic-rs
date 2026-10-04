@@ -151,6 +151,59 @@ fn truncated_exponential_moments_quantile_entropy_mgf() {
   assert_eq!(open.moment_generating_function(2.0), Some(f64::INFINITY));
 }
 
+/// A small `λL` or a narrow interval, where `1/λ − Lr/(1 − r)` and `1/λ² − L²r/(1 − r)²` cancel.
+#[test]
+fn truncated_exponential_keeps_its_digits_at_small_rate_times_length() {
+  let slow = SimdTruncatedExp::<f64>::new(1e-6, 0.0, 1.0);
+  assert!(rel(slow.mean().unwrap(), 0.499_999_916_666_666_66) < 1e-14);
+  assert!(rel(slow.variance().unwrap(), 0.083_333_333_333_329_17) < 1e-14);
+  assert!((slow.entropy().unwrap() - -4.166_666_666_666_562e-14).abs() < 1e-15);
+  assert!(
+    rel(
+      slow.moment_generating_function(0.5).unwrap(),
+      1.297_442_487_564_068_9
+    ) < 1e-14
+  );
+  let slower = SimdTruncatedExp::<f64>::new(1e-8, 0.0, 1.0);
+  assert!(rel(slower.mean().unwrap(), 0.499_999_999_166_666_65) < 1e-14);
+  let narrow = SimdTruncatedExp::<f64>::new(2.0, 10.0, 10.000001);
+  assert!(rel(narrow.mean().unwrap(), 10.000_000_499_999_834) < 1e-15);
+  assert!(rel(narrow.variance().unwrap(), 8.333_333_320_858_326e-14) < 1e-13);
+  assert!(rel(narrow.entropy().unwrap(), -13.815_510_558_712_841) < 1e-14);
+  for (lam, mean, variance, entropy) in [
+    (
+      1.0,
+      2.229_252_958_731_601,
+      0.020_575_477_741_809_06,
+      -0.703_499_170_835_587_7,
+    ),
+    (
+      0.999,
+      2.229_273_534_464_577_5,
+      0.020_575_988_130_067_956,
+      -0.703_478_605_390_519_9,
+    ),
+  ] {
+    let d = SimdTruncatedExp::<f64>::new(lam, 2.0, 2.5);
+    assert!(rel(d.mean().unwrap(), mean) < 1e-14, "lambda = {lam}");
+    assert!(
+      rel(d.variance().unwrap(), variance) < 1e-14,
+      "lambda = {lam}"
+    );
+    assert!(rel(d.entropy().unwrap(), entropy) < 1e-14, "lambda = {lam}");
+  }
+  for (lam, variance) in [
+    (2.0, 0.019_831_601_448_051_92),
+    (1.998, 0.019_833_526_942_032_24),
+  ] {
+    let d = SimdTruncatedExp::<f64>::new(lam, 2.0, 2.5);
+    assert!(
+      rel(d.variance().unwrap(), variance) < 1e-14,
+      "lambda = {lam}"
+    );
+  }
+}
+
 #[test]
 fn truncated_gamma_moments_quantile_mode() {
   let d = SimdTruncatedGamma::<f64>::new(2.5, 1.2, 0.8, 4.0);

@@ -87,14 +87,6 @@ impl<T: SimdFloatExt> SimdTruncatedExp<T> {
   fn length(&self) -> Option<f64> {
     Some(self.upper.to_f64()? - self.lower.to_f64()?)
   }
-
-  /// $L r/(1-r)$ with $r = e^{-\lambda L}$, the pull of the upper cut on the mean; `0` for an open tail (`∞ · 0`).
-  fn tail_mass_moment(&self) -> Option<f64> {
-    if self.tail_ratio == 0.0 {
-      return Some(0.0);
-    }
-    Some(self.length()? * self.tail_ratio / (1.0 - self.tail_ratio))
-  }
 }
 
 impl<T: SimdFloatExt> Sealed for SimdTruncatedExp<T> {}
@@ -171,7 +163,11 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
 
   fn mean(&self) -> Option<f64> {
     let (lam, lo) = (self.lambda.to_f64()?, self.lower.to_f64()?);
-    Some(lo + 1.0 / lam - self.tail_mass_moment()?)
+    if self.tail_ratio == 0.0 {
+      return Some(lo + 1.0 / lam);
+    }
+    let len = self.length()?;
+    Some(lo + len * mean_fraction(lam * len))
   }
 
   fn median(&self) -> Option<f64> {
@@ -187,13 +183,17 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     if self.tail_ratio == 0.0 {
       return Some(1.0 / (lam * lam));
     }
-    let (len, r) = (self.length()?, self.tail_ratio);
-    Some(1.0 / (lam * lam) - len * len * r / ((1.0 - r) * (1.0 - r)))
+    let len = self.length()?;
+    Some(len * len * variance_fraction(lam * len))
   }
 
   fn entropy(&self) -> Option<f64> {
     let lam = self.lambda.to_f64()?;
-    Some(((1.0 - self.tail_ratio) / lam).ln() + 1.0 - lam * self.tail_mass_moment()?)
+    if self.tail_ratio == 0.0 {
+      return Some(1.0 - lam.ln());
+    }
+    let x = lam * self.length()?;
+    Some((-(-x).exp_m1() / lam).ln() + x * mean_fraction(x))
   }
 
   /// Finite for every `t` on a bounded interval (`λL e^{λ·lower}/(1 − r)` at `t = λ`); an open tail diverges from `t = λ` on.
@@ -215,7 +215,60 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     } else {
       (s * len).exp_m1() / s
     };
-    Some((t * lo).exp() * lam * integral / (1.0 - self.tail_ratio))
+    Some((t * lo).exp() * lam * integral / -(-lam * len).exp_m1())
+  }
+}
+
+/// The $x^{2k-1}$ coefficients $-B_{2k}/(2k)!$, $k = 1..=7$, of `mean_fraction` past its constant ½, rounded to `f64`.
+const MEAN_SERIES: [f64; 7] = [
+  -0.08333333333333333,
+  0.001388888888888889,
+  -3.306878306878307e-05,
+  8.267195767195768e-07,
+  -2.08767569878681e-08,
+  5.284190138687493e-10,
+  -1.3382536530684679e-11,
+];
+
+/// The $x^{2k-2}$ coefficients $(2k-1)B_{2k}/(2k)!$, $k = 1..=12$, of `variance_fraction`, rounded to `f64`.
+const VARIANCE_SERIES: [f64; 12] = [
+  0.08333333333333333,
+  -0.004166666666666667,
+  0.00016534391534391533,
+  -5.787037037037037e-06,
+  1.8789081289081288e-07,
+  -5.812609152556243e-09,
+  1.7397297489890083e-10,
+  -5.084520444483875e-12,
+  1.4596305495672335e-13,
+  -4.1322505272603176e-15,
+  1.1568905939556482e-16,
+  -3.2095268777368804e-18,
+];
+
+/// $1/x - 1/(e^x - 1)$ at $x = \lambda L$: the mean's offset from `lower` over `L`; below `x = 0.5` the two terms
+/// cancel, so it takes the Bernoulli series there.
+fn mean_fraction(x: f64) -> f64 {
+  if x < 0.5 {
+    let x2 = x * x;
+    0.5 + x * MEAN_SERIES.iter().rev().fold(0.0, |acc, &c| acc * x2 + c)
+  } else {
+    1.0 / x - 1.0 / x.exp_m1()
+  }
+}
+
+/// $1/x^2 - 1/(4\sinh^2(x/2))$ at $x = \lambda L$: the variance over $L^2$; the series below `x = 1`, where the
+/// difference amplifies `sinh`'s rounding past 12-fold.
+fn variance_fraction(x: f64) -> f64 {
+  if x < 1.0 {
+    let x2 = x * x;
+    VARIANCE_SERIES
+      .iter()
+      .rev()
+      .fold(0.0, |acc, &c| acc * x2 + c)
+  } else {
+    let s = (0.5 * x).sinh();
+    1.0 / (x * x) - 1.0 / (4.0 * s * s)
   }
 }
 
