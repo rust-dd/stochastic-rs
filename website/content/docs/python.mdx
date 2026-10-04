@@ -7,39 +7,17 @@ since: 2.0.0
 status: stable
 ---
 
-The `stochastic_rs` Python package wraps the Rust crates via PyO3. The
-surface is **308 entries**: 286 PyO3 classes plus 22 free functions across
-distributions, stochastic processes, pricers, calibrators, copulas, and
-stats — every class ships in every wheel (the linear algebra is the
-pure-Rust `faer`, so the 13 formerly BLAS-gated classes need no feature
-any more). Four more registrations — three surrogate classes and
-`calibrate_surrogate` — are behind the `ai` feature and reach only a source
-build.
-
-**Derivation**: `bun run python:parity` (from `website/`) regenerates
-`public/python-parity.json` by parsing every `m.add_class::<PyXxx>()` and
-`m.add_function(pyo3::wrap_pyfunction!(...))` call in
-`stochastic-rs-py/src/lib.rs`'s `#[pymodule]` function — the single place
-that determines what the compiled module actually exposes. A `#[pyclass]`
-defined in a sub-crate but never registered there would not be a real
-Python entry, so this is the only correct place to count from.
+The `stochastic_rs` Python package wraps the Rust crates via PyO3: **308 entries**, 286 classes and 22 functions across distributions, stochastic processes, pricers, calibrators, copulas and stats, all in every wheel. Four more — three surrogate classes and `calibrate_surrogate` — are behind the `ai` feature and come only with a source build.
 
 ## Installation
 
 See [Installation (Python)](/docs/getting-started/installation-python).
 
-The experimental neural surrogates (`HestonNn`, `RBergomiNn`, `OneFactorNn`) and
-`calibrate_surrogate` are not in the published wheels — candle is heavy — and
-come with a source build: `maturin develop --features ai` from the workspace
-root. The same goes for the device back-ends of the Euler engine and the fGN
-samplers: `--features metal`, `cuda`, `accelerate`.
+The experimental neural surrogates (`HestonNn`, `RBergomiNn`, `OneFactorNn`) and `calibrate_surrogate` are not in the published wheels and come with a source build: `maturin develop --features ai` from the workspace root. The same goes for the device back-ends of the Euler engine and the fGN samplers: `--features metal`, `cuda`, `accelerate`.
 
 ## NumPy interop
 
-All `sample()` calls return `numpy.ndarray`. Bulk samplers
-(`sample_par(m, n)`) return `(m, n)`-shaped arrays. The default dtype
-is `float64`; pass `dtype="f32"` where the underlying sampler supports
-it.
+Every `sample()` returns NumPy arrays. A one-dimensional process's `sample_par(m)` returns an `(m, n)` array, `m` independent paths along axis 0; a distribution's `sample_par(m, n)` returns an `(m, n)` array of draws. The default dtype is `float64`; pass `dtype="f32"` where the class takes it.
 
 ## End-to-end example — simulate, estimate, price
 
@@ -54,11 +32,7 @@ ou = srs.PyOu(theta=2.0, mu=0.0, sigma=1.0, n=4096, x0=0.0, t=1.0, seed=42)
 path = ou.sample()                    # shape (4096,)
 
 # 2. Estimate the Hurst exponent of an fBM path (stats crate). RescaledRange
-# takes a level series directly (its default take_differences=True handles
-# the first-differencing) — unlike FukasawaHurst, which estimates a
-# different quantity (latent-volatility roughness from a realized-variance
-# series) and would silently return nonsense fed a raw path; see the
-# statistics catalog page's Hurst section.
+# takes a level series and differences it itself.
 fgn = srs.PyFgn(hurst=0.4, n=4096, t=1.0, seed=42)
 fbm = np.cumsum(fgn.sample())
 hurst = srs.RescaledRange().estimate(fbm)
@@ -72,18 +46,18 @@ pricer = srs.HestonPricer(
 call, put = pricer.call_put()
 print("Heston call =", call)
 
-# 4. Sample from a Clayton copula (copulas crate). theta/tau are the only
-# constructor args — seed is a sample()-time argument, and sample(n) returns
-# one (n, 2) array rather than a (u, v) tuple.
+# 4. Sample from a Clayton copula (copulas crate). The seed goes to sample(),
+# which returns one (n, 2) array.
 cop = srs.Clayton(theta=2.0)
 uv = cop.sample(10_000, seed=42)
 u, v = uv[:, 0], uv[:, 1]
 print("τ̂ =", srs.kendall_tau_matrix(np.column_stack([u, v]))[0, 1])
 ```
 
-## Bulk sampling — `sample_par(m, n)`
+## Bulk sampling — `sample_par(m)`
 
 ```python
+import numpy as np
 import stochastic_rs as srs
 
 # 100_000 GBM paths × 252 daily steps in parallel
@@ -96,61 +70,22 @@ mc_call = np.exp(-0.05) * payoffs.mean()
 print("MC call =", mc_call)
 ```
 
-The models driven by Python callables — `PyHullWhite(theta, …)`, `PyAdg`,
-`PyHjm`, `PyCheyette` — have `sample_par` too. They release the GIL while the paths are
-generated and re-acquire it for each callback evaluation, so the callables
-run from the worker threads one at a time. `PyAdg.sample_par(m)` returns an
-`(m, factors, n)` array and `PyHjm.sample_par(m)` three `(m, n)` arrays
-(short rate, bond price, forward rate).
+The models driven by Python callables — `PyHullWhite(theta, …)`, `PyAdg`, `PyHjm`, `PyCheyette` — have `sample_par` too. They release the GIL while the paths are generated and re-acquire it for each callback evaluation, so the callables run from the worker threads one at a time. `PyAdg.sample_par(m)` returns an `(m, factors, n)` array and `PyHjm.sample_par(m)` three `(m, n)` arrays (short rate, bond price, forward rate).
 
 ## Devices
 
-`probe_device(name)` opens a device (`"cpu"`, `"accelerate"`, `"cuda"`,
-`"metal"`, optionally with an ordinal:
-`"cuda:1"`) and returns a dict with `backend`, `name`, `precisions` and
-`ordinal`; a device this build does not carry raises `ValueError` with a rebuild
-hint, one that is compiled in but cannot be opened raises `RuntimeError` with the
-runtime's own message. Without an ordinal the device comes from
-`STOCHASTIC_RS_DEVICE` (else `0`), and the batch budget from
-`STOCHASTIC_RS_DEVICE_BATCH_BYTES` (else 1 GiB), for `"cuda:1"` too; a variable
-holding anything but a whole number (zero or more for the device, more than zero
-for the budget) raises `ValueError`. A device failure while sampling is a
-`RuntimeError` too.
+`probe_device(name)` opens a device (`"cpu"`, `"accelerate"`, `"cuda"`, `"metal"`, optionally with an ordinal: `"cuda:1"`) and returns a dict with `backend`, `name`, `precisions` and `ordinal`; a device this build does not carry raises `ValueError` with a rebuild hint, and one that is compiled in but cannot be opened raises `RuntimeError` with the runtime's own message. Without an ordinal the device comes from `STOCHASTIC_RS_DEVICE` (else `0`), and the batch budget from `STOCHASTIC_RS_DEVICE_BATCH_BYTES` (else 1 GiB), for `"cuda:1"` too; a variable holding anything but a whole number (zero or more for the device, more than zero for the budget) raises `ValueError`. A device failure while sampling is a `RuntimeError` too.
 
 ```python
 srs.probe_device("metal")             # {'backend': 'Metal', 'name': 'Apple M2 Max', 'precisions': ['f32'], 'ordinal': 0}
 srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7, device="cuda:1")   # second CUDA GPU
 ```
 
-Every class whose process reaches a device takes `device=` — all 81 of them,
-the Euler engine's families and the fGN family alike:
-`PyGbm(..., dtype="f32", device="metal")`. (Until September 2026 only 47 did,
-and the other 34 — the jump laws, the subordinators, the conditional-variance
-models, `PyHawkes`, `PyPoisson` — were host-only from Python although their
-Rust processes had kernels.)
-The name is checked against the build (`ValueError` with a rebuild hint), a
-single-precision device needs `dtype="f32"` (`ValueError` otherwise), and the
-device is probed when the object is built (`RuntimeError` if it cannot be
-opened), so `sample()` / `sample_par(m)` then run on it and return arrays in
-the class's dtype. `device="cpu"` is the default and samples exactly as
-before. Two fGN-driven processes stay on the host from Python: `PyJumpFou`
-and `PyJumpFOUCustom` carry a Python callable as their jump law, which cannot
-travel to a kernel, and `Sde` has no Python class because it takes Rust
-closures for its drift and diffusion. The device classes hand the launch
-buffer over as one NumPy array without re-laying it into rows.
-
-```python
-srs.probe_device("metal")   # {'backend': 'Metal', 'name': 'Apple M2 Max', 'precisions': ['f32'], 'ordinal': 0}
-```
+89 process classes take `device=` (`PyGbm(..., dtype="f32", device="metal")`); a class without it samples on the host. The name is checked against the build (`ValueError` with a rebuild hint), a single-precision device needs `dtype="f32"` (`ValueError` otherwise), and the device is probed when the object is built (`RuntimeError` if it cannot be opened); `sample()` / `sample_par(m)` then run on it and return arrays in the class's dtype. `device="cpu"` is the default. `device_ready()` and `device_fallback()` say whether the configuration a class holds runs on its device.
 
 ## Credit curves
 
-`SurvivalCurve` is the term structure of default: build it from hazard
-rates, survival probabilities or default probabilities on a pillar grid
-(`SurvivalCurve.flat(h)` for one rate everywhere), and pass it anywhere a
-flat hazard rate is accepted — `ExposureProfile.cva` / `dva` /
-`bilateral_cva`, the `(weight, recovery, hazard)` triplets of `CdsIndex`
-and `CdoTranche`.
+`SurvivalCurve` is the term structure of default: build it from hazard rates, survival probabilities or default probabilities on a pillar grid (`SurvivalCurve.flat(h)` for one rate everywhere), and pass it anywhere a flat hazard rate is accepted — `ExposureProfile.cva` / `dva` / `bilateral_cva`, the `(weight, recovery, hazard)` triplets of `CdsIndex` and `CdoTranche`.
 
 ```python
 curve = srs.SurvivalCurve([1.0, 3.0, 5.0], [0.010, 0.015, 0.020])
@@ -159,51 +94,9 @@ profile.cva(curve, discount, lgd=0.6)              # same call as with a float
 index = srs.CdsIndex([(0.5, 0.4, curve), (0.5, 0.4, 0.02)], 0.01, 1e7, "2026-03-20", "2031-06-20")
 ```
 
-## Four pipelines
-
-There are four ways a Rust type ends up in the Python package:
-
-1. **`py_distribution!` / `py_distribution_int!` macros** — distributions
-   wrap automatically when you invoke the macro at the bottom of the
-   source file.
-2. **`py_process_*!` macros** — processes use `py_process_1d!`,
-   `py_process_2x1d!`, or `py_process_2d!` depending on shape.
-3. **`py_bivariate!` macro** — bivariate copulas, in
-   `stochastic-rs-copulas/src/python.rs`.
-4. **Hand-written `#[pyclass]` blocks** — pricers, calibrators, vol
-   surfaces, and estimators are wrapped by hand across the
-   `stochastic-rs-quant/src/python/` and `stochastic-rs-stats/src/python/`
-   directories (one file per topic — `pricing_analytic.rs`,
-   `calibration_basic.rs`, `stationarity.rs`, `hurst.rs`, …).
-
-For the file-by-file recipe see the
-[`python-bindings`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/python-bindings/SKILL.md)
-SKILL (comprehensive) or
-[`adding-python-binding`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/adding-python-binding/SKILL.md)
-(quickstart).
-
 ## Common gotchas
 
-- **Seed reproducibility**. Every process and distribution wrapper
-  supports `__init__(..., seed=None)`. Bivariate copulas differ: `theta`/
-  `tau` are the only constructor arguments, and the seed is instead an
-  optional argument to `.sample(n, seed=None)`. Either way, pass an
-  explicit seed for tests; rely on the thread-local default for
-  production sampling.
-- **One distribution object, many threads**. Calls on a distribution such as `PyNormal` draw with the GIL released and
-  take turns on the object's lock, continuing its one stream, so `sample(n)` from several threads returns disjoint
-  consecutive blocks; give each thread its own object and seed for independent streams.
-- **Dtype shims**. `IntoF32` / `IntoF64` shims convert Python `float`
-  parameters to the requested dtype. **All distribution parameters are
-  `f64`-typed** in the macro — the shim handles down-conversion to `f32`
-  when `dtype="f32"`.
-- **`sample_par(m, n)` shape**. The returned array is `(m, n)`, with
-  `m` independent paths along axis 0. This matches NumPy's row-major
-  default for downstream `.mean(axis=0)` reductions.
-- **Errors are ordinary exceptions**. A constructor that rejects its
-  arguments raises `ValueError`, and a process, distribution or copula
-  whose sampling fails raises `RuntimeError`, both carrying the Rust
-  message, so `except Exception` catches them. Other methods (densities,
-  pricing, calibration, estimation) raise `ValueError` where they check
-  their inputs; an unchecked failure inside one still surfaces as
-  `pyo3_runtime.PanicException`, which derives from `BaseException`.
+- **Seed reproducibility.** Every process and distribution class takes `seed=None` in its constructor. Bivariate copulas differ: `theta` / `tau` are their constructor arguments, and the seed is an optional argument to `.sample(n, seed=None)`. Pass an explicit seed for tests.
+- **One distribution object, many threads.** Calls on a distribution such as `PyNormal` draw with the GIL released and take turns on the object's lock, continuing its one stream, so `sample(n)` from several threads returns disjoint consecutive blocks; give each thread its own object and seed for independent streams.
+- **Parameters are Python floats.** They are taken as `f64` and converted when `dtype="f32"`.
+- **Errors are ordinary exceptions.** A constructor that rejects its arguments raises `ValueError`, and a process, distribution or copula whose sampling fails raises `RuntimeError`, both carrying the Rust message, so `except Exception` catches them. Other methods (densities, pricing, calibration, estimation) raise `ValueError` where they check their inputs; an unchecked failure inside one still surfaces as `pyo3_runtime.PanicException`, which derives from `BaseException`.

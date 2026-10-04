@@ -8,16 +8,9 @@ status: experimental
 features: ["ai"]
 ---
 
-The `stochastic-rs-ai` crate ships neural-network volatility surrogates
-for fast pricing / calibration. The crate is feature-gated behind
-`ai`; it pulls in `candle-core` for the inference runtime.
+The `stochastic-rs-ai` crate ships neural-network volatility surrogates for fast pricing and calibration. It is behind the `ai` feature and uses `candle-core` as its runtime.
 
-> **Status: experimental.** `stochastic-rs-ai` is outside the stability
-> promise of stochastic-rs 3.x: its API, the saved-model format and the candle
-> types in its signatures (`candle_core::Device`) can change in any release, and
-> no pretrained weights are published. The surrogates are useful for
-> warm-starting a calibrator or for sub-millisecond price approximations in a
-> feedback loop, not as the primary pricing surface for production trading.
+> **Status: experimental.** `stochastic-rs-ai` is outside the stability promise of stochastic-rs 3.x: its API, the saved-model format and the candle types in its signatures (`candle_core::Device`) can change in any release, and no pretrained weights are published. Use the surrogates to warm-start a calibrator or for sub-millisecond price approximations in a feedback loop, not as the primary pricing surface for production trading.
 
 ## Models shipped
 
@@ -27,51 +20,27 @@ for fast pricing / calibration. The crate is feature-gated behind
 | **One-factor Bergomi** | `volatility::one_factor::OneFactorNn` | `Bergomi1FactorTrainSet.txt.gz`                               |
 | **Rough Bergomi**      | `volatility::rbergomi::RBergomiNn`    | `rBergomiTrainSet.txt.gz`                                     |
 
-The training sets are copies of the
-[NN-StochVol-Calibrations](https://github.com/amuguruza/NN-StochVol-Calibrations/tree/master/Data)
-data (MIT, © 2019 Aitor Muguruza) and are not part of the crates.io package.
+The training sets are copies of the [NN-StochVol-Calibrations](https://github.com/amuguruza/NN-StochVol-Calibrations/tree/master/Data) data (MIT, © 2019 Aitor Muguruza) and are not part of the crates.io package.
 
 ## The grid
 
-All three surrogates predict an implied-volatility surface on one fixed grid:
-11 strike nodes from 0.5 to 1.5 and 8 maturities from 0.1 to 2.0 years, at zero
-rates — a flat, maturity-major vector of 88 values
-(`volatility::grid::{MONEYNESS, MATURITIES}`). A grid of another size returns `Err`; the
-values are not checked, so pass the model's `STRIKES` (times the spot) and
-`grid::MATURITIES`.
+All three surrogates predict an implied-volatility surface on one fixed grid: 11 strike nodes from 0.5 to 1.5 and 8 maturities from 0.1 to 2.0 years, at zero rates — a flat, maturity-major vector of 88 values (`volatility::grid::{MONEYNESS, MATURITIES}`). A grid of another size returns `Err`; the values are not checked, so pass the model's `STRIKES` (times the spot) and `grid::MATURITIES`.
 
-- `one_factor::STRIKES` and `rbergomi::STRIKES` are the nodes as `K / S0`, ascending
-  from 0.5 to 1.5.
-- The shipped Heston set is indexed by inverse moneyness `S0 / K`, so
-  `heston::STRIKES` (`K / S0`) descends from 2 to 2/3; `predict_implied_vol_surface`
-  sorts the strikes it is given into ascending order.
+- `one_factor::STRIKES` and `rbergomi::STRIKES` are the nodes as `K / S0`, ascending from 0.5 to 1.5.
+- The shipped Heston set is indexed by inverse moneyness `S0 / K`, so `heston::STRIKES` (`K / S0`) descends from 2 to 2/3; `predict_implied_vol_surface` sorts the strikes it is given into ascending order.
 
 ## How they work
 
-Each surrogate maps `model parameters → implied-vol surface` on the grid
-above. The surrogate is a small MLP (three hidden ELU layers of width 30,
-`hidden_dim` widens them) trained offline on a pricer-generated dataset. At
-inference time the pipeline is:
+Each surrogate maps model parameters to the implied-vol surface on the grid above. It is a small MLP (three hidden ELU layers of width 30; `hidden_dim` widens them) trained offline on a pricer-generated dataset. At inference time:
 
-1. Scale the parameters to `[-1, 1]` with the training box (`PARAM_LB` /
-   `PARAM_UB`); values outside the box are not clamped.
+1. Scale the parameters to `[-1, 1]` with the training box (`PARAM_LB` / `PARAM_UB`); values outside the box are not clamped.
 2. Forward-pass through the MLP.
-3. De-standardise the output with the training-set mean and standard deviation
-   to a flat IV grid.
-4. `predict_implied_vol_surface` (feature `quant`) hands the grid to
-   `ImpliedVolSurface::from_iv_grid` for downstream pricing or smile / skew
-   analytics.
+3. De-standardise the output with the training-set mean and standard deviation to a flat IV grid.
+4. `predict_implied_vol_surface` (feature `quant`) hands the grid to `ImpliedVolSurface::from_iv_grid` for downstream pricing or smile / skew analytics.
 
 ## Example — Heston surrogate inference
 
-`HestonNn` is not generic. `load` takes a model directory plus a
-`candle_core::Device`, and `predict_surface` takes a fixed-size `[f32; INPUT_DIM]`
-parameter array (`INPUT_DIM = 5`). `predict_implied_vol_surface`, behind this
-crate's own `quant` feature, returns a full `ImpliedVolSurface`: pass the model's
-`STRIKES` scaled by the spot and `grid::MATURITIES`, with the forward of every
-maturity — equal to the spot at zero rates. No trained `.safetensors` model ships
-with the crate, so the example trains a throwaway network on a synthetic target and
-reloads it the way a trained model travels.
+`HestonNn` is not generic. `load` takes a model directory plus a `candle_core::Device`, and `predict_surface` takes a fixed-size `[f32; INPUT_DIM]` parameter array (`INPUT_DIM = 5`). `predict_implied_vol_surface`, behind this crate's own `quant` feature, returns a full `ImpliedVolSurface`: pass the model's `STRIKES` scaled by the spot and `grid::MATURITIES`, with the forward of every maturity — equal to the spot at zero rates. No trained model ships with the crate, so the example trains a throwaway network on a synthetic target and reloads it from disk.
 
 <Tabs items={['Rust']}>
 <Tab value="Rust">
@@ -79,42 +48,19 @@ reloads it the way a trained model travels.
 </Tab>
 </Tabs>
 
-## Training round-trip
+## Saving and loading
 
-Every surrogate carries a `train_save_load_roundtrip` unit test that:
-
-1. Generates a small synthetic training set
-2. Trains the MLP for a few epochs
-3. Saves the `safetensors` weights and a `metadata.txt` to a directory
-4. Reloads and asserts inference parity
-
-This guards the on-disk format from silent regressions. The integration test
-`stochastic-rs-ai/tests/real_trainsets.rs` trains each surrogate on the first 2 000 rows of its
-training set, checks the parameters stay inside the training box and that the
-validation error falls, and prices the Heston set with the Fourier pricer to pin
-its strike axis.
+`save(dir)` writes the weights as `weights.safetensors` plus a `metadata.txt` into a directory, and `load(dir, &device)` reads them back. The weights are stored device-independently, so a model trained on a GPU loads on the CPU and vice versa.
 
 ## Calibrating with a surrogate
 
-The second step of Horvath, Muguruza & Tomas (2021): once a network $\tilde F$
-reproduces the implied-volatility surface on its fixed strike–maturity grid, a
-calibration is the deterministic least-squares problem
+The second step of Horvath, Muguruza & Tomas (2021): once a network $\tilde F$ reproduces the implied-volatility surface on its fixed strike–maturity grid, a calibration is the deterministic least-squares problem
 
 $$
 \hat\theta = \arg\min_{\theta}\ \sum_{ij} w_{ij}^2\bigl(\tilde F(\theta)_{ij} - \sigma^{\text{mkt}}_{ij}\bigr)^2 ,
 $$
 
-solved with Levenberg–Marquardt on the surrogate's **exact Jacobian**
-(reverse-mode differentiation through the network, one backward pass per grid
-point) — the pricer never runs during the calibration. `SurrogateCalibrator`
-works on any `StochVolNn`; `HestonSurrogateCalibrator` and
-`RBergomiSurrogateCalibrator` add the parameter mapping to quant's `HestonParams`
-/ `RBergomiParams` and implement `Calibrator` + `ToModel`, so the fitted
-surrogate drops straight into the vol-surface pipeline. The result reports
-whether $\hat\theta$ stayed inside the training box: the network is untrained
-outside it, and a solution on the boundary is a warning, not an answer. The market
-surface must be given on the surrogate's own grid (`heston::STRIKES` for Heston), so
-interpolate quotes onto it first.
+solved with Levenberg–Marquardt on the surrogate's **exact Jacobian** (reverse-mode differentiation through the network, one backward pass per grid point); the pricer never runs during the calibration. `SurrogateCalibrator` works on any `StochVolNn`; `HestonSurrogateCalibrator` and `RBergomiSurrogateCalibrator` add the parameter mapping to quant's `HestonParams` / `RBergomiParams` and implement `Calibrator` + `ToModel`, so the fitted surrogate drops into the vol-surface pipeline. The result reports whether $\hat\theta$ stayed inside the training box: the network is untrained outside it, and a solution on the boundary is a warning, not an answer. The market surface must be given on the surrogate's own grid (`heston::STRIKES` for Heston), so interpolate quotes onto it first.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -133,21 +79,13 @@ print(fit["params"], fit["rmse"], fit["converged"], fit["in_bounds"])
 surface, jacobian = model.predict_surface_with_jacobian(fit["params"])
 ```
 
-> Requires the `ai` feature. The example trains a tiny network on a synthetic
-> surface so it runs without the bundled train sets; with a production
-> surrogate, load it with `HestonNn::load` instead.
+> Requires the `ai` feature. The example trains a tiny network on a synthetic surface so it runs without the bundled train sets; with a production surrogate, load it with `HestonNn::load` instead.
 </Tab>
 </Tabs>
 
 ## Training on the GPU
 
-candle runs on the CPU by default. The umbrella's `ai-metal` feature (macOS)
-compiles candle's Metal back-end; for CUDA enable `candle-core/cuda` in your own
-manifest (candle's kernels need a CUDA toolkit to build, so the crate cannot
-carry that feature). `ai::device::best_available()` detects the fastest device
-at run time — pass it to any surrogate constructor instead of `Device::Cpu`.
-Weights are stored device-independently, so a model trained on a GPU loads on
-the CPU and vice versa.
+candle runs on the CPU by default. The umbrella's `ai-metal` feature (macOS) compiles candle's Metal back-end; for CUDA, enable `candle-core/cuda` in your own manifest (candle's kernels need a CUDA toolkit to build, so the crate cannot carry that feature). `ai::device::best_available()` picks the fastest device at run time — pass it to any surrogate constructor instead of `Device::Cpu`.
 
 ```rust
 use stochastic_rs::ai::device::best_available;
@@ -156,11 +94,3 @@ use stochastic_rs::ai::volatility::heston::HestonNn;
 let device = best_available()?;               // Cuda / Metal / Cpu
 let mut model = HestonNn::new(&device)?;      // trains and predicts on that device
 ```
-
-## Adding a surrogate
-
-See the
-[`vol-surrogate-nn`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/vol-surrogate-nn/SKILL.md)
-SKILL. It covers `StochVolModelSpec`, the grid constants, gzip-npy training-set
-loading, the round-trip test, and `predict_implied_vol_surface` integration with
-`ImpliedVolSurface`.

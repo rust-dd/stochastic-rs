@@ -7,22 +7,7 @@ since: 2.0.0
 status: stable
 ---
 
-The `stochastic-rs-stochastic` crate ships **132 processes** organised
-into eleven families (below). Every process implements
-[`ProcessExt<T>`](/docs/concepts/process-ext): `sample()` returns one path,
-`sample_map(m, f)` folds over `m` paths in parallel, and `sample_par(m)`
-returns `Vec<Output>` (one `ndarray::Array1<T>` per path for single-factor
-models).
-
-**Derivation**: `grep -rn "ProcessExt<T> for\|ProcessExt<T," stochastic-rs-stochastic/src --include='*.rs' | grep -v /traits/ | wc -l`
-— the same command and per-directory breakdown that
-`stochastic-rs-stochastic/tests/reproducibility_all_processes.rs` uses to
-derive its own exhaustive guard list, so the two never disagree. That file
-excludes `src/traits/process.rs` deliberately: it contributes only blanket
-impls of *marker* traits keyed off a `P: ProcessExt<...>` bound
-(`OneDimensional`, `MultiDimensional`, …), never a concrete process type —
-counting those inflates 132 to 135, which is how earlier audits of this
-page disagreed with each other.
+The `stochastic-rs-stochastic` crate ships **132 processes** in eleven families (below). Every process implements [`ProcessExt<T>`](/docs/concepts/process-ext): `sample()` returns one path, `sample_map(m, f)` maps over `m` paths in parallel, and `sample_par(m)` returns `Vec<Output>` (one `ndarray::Array1<T>` per path for single-factor models).
 
 ## Families
 
@@ -40,9 +25,7 @@ page disagreed with each other.
 | **Sheet**                       | 1     | Fractional Brownian sheet (`Fbs`) |
 | **Volterra**                    | 3     | See the Volterra section below |
 
-Every row lists representative examples, not an exhaustive per-type list —
-the exhaustive list (one line per type) is the guard file linked above, or
-`cargo doc` for the API reference.
+Each row lists representative examples; [docs.rs](https://docs.rs/stochastic-rs-stochastic) has the full list.
 
 ## Choosing a family
 
@@ -52,11 +35,11 @@ the exhaustive list (one line per type) is the guard file linked above, or
 | Mean reversion | `Ou` (Gaussian), `Cir` (positive, square-root), `Vasicek` / `HullWhite` for rates | `CirPlusPlus` to fit a term structure, `Cheyette` for a quasi-Gaussian HJM |
 | Stochastic volatility | `Heston` (Euler / QE schemes), `Sabr`, `Bergomi` | `DoubleHeston`, `MultifactorHeston`, `HestonStochCorr`, `HestonSlv` |
 | Rough volatility | `RoughBergomi` (hybrid scheme), `RoughHeston`, `RlHeston` (Markov lift) | the `volterra` module for a general kernel |
-| Long memory / fractional noise | `Fgn` → `Fbm`, `Fou`, `Fcir`, `Fgbm` | these are the processes with FFT device backends |
+| Long memory / fractional noise | `Fgn` → `Fbm`, `Fou`, `Fcir`, `Fgbm` | all driven by the fGN FFT pipeline, on the host or a device |
 | Jumps | `Merton`, `Kou`, `Bates1996`, `CompoundPoisson`, `Hawkes` | `LevyDiffusion` with any `Distribution` for the jump size |
 | Several correlated assets | `Mcgns` (driver) → `MultiGbm`, `Wishart` (covariance) | `Cfgns` for correlated fractional noise |
 | A rates curve, not a rate | `Hjm`, `Lmm`, `Bgm`, `Adg` | `G2pp`-style two-factor: `HullWhite2F`, `Cir2F` |
-| Time-series style | `Ar`, `Arima`, `Garch` / `Egarch` / `GjrGarch`, `Sarima` | the stats crate fits them |
+| Time-series style | `ARp`, `Arima`, `Garch` / `Egarch` / `GjrGarch`, `Sarima` | the stats crate fits them |
 
 ## Examples
 
@@ -81,9 +64,7 @@ paths = p.sample_par(10_000)        # shape (10_000, 1000)
 
 ### Heston stochastic volatility
 
-Two-factor model $dS_t = \mu S_t\,dt + \sqrt{V_t}\,S_t\,dW^1_t$,
-$dV_t = \kappa(\theta - V_t)\,dt + \sigma\sqrt{V_t}\,dW^2_t$ with
-$d\langle W^1, W^2\rangle_t = \rho\,dt$.
+Two-factor model $dS_t = \mu S_t\,dt + \sqrt{V_t}\,S_t\,dW^1_t$, $dV_t = \kappa(\theta - V_t)\,dt + \sigma\sqrt{V_t}\,dW^2_t$ with $d\langle W^1, W^2\rangle_t = \rho\,dt$.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -102,31 +83,15 @@ s, v = p.sample()                   # both numpy arrays
 
 #### Discretisation schemes
 
-`sample()` integrates the variance with the **Euler** full-truncation scheme by
-default. For large `κ`, high `|ρ|`, or long maturities Euler carries a noticeable
-discretisation bias; switch to the Andersen (2008) **Quadratic-Exponential (QE)**
-scheme at compile time with `.qe()`:
+`sample()` integrates the variance with the **Euler** full-truncation scheme by default. For large `κ`, high `|ρ|` or long maturities Euler carries a noticeable discretisation bias; switch to the Andersen (2008) **Quadratic-Exponential (QE)** scheme with `.qe()`:
 
 <RustExample path="tests/doctest_processes_heston_qe.rs" />
 
-The scheme is a zero-sized type parameter (`Heston<T, S, Sch>`), so the choice is
-monomorphised with no per-step branch. QE is defined for the square-root (CIR)
-variance only, so keep `HestonPow::Sqrt`. Reference: Andersen, L. (2008),
-*Efficient simulation of the Heston stochastic volatility model*, Journal of
-Computational Finance 11(3). (`.qe()` is Rust-only; the Python `Heston` uses the
-Euler scheme.)
+The scheme is a zero-sized type parameter (`Heston<T, S, Sch, B>`), so the choice costs no per-step branch. QE is defined for the square-root (CIR) variance only, so keep `HestonPow::Sqrt`. Reference: Andersen, L. (2008), *Efficient simulation of the Heston stochastic volatility model*, Journal of Computational Finance 11(3). `.qe()` is Rust-only; the Python `PyHeston` uses the Euler scheme.
 
 ### Heston stochastic-local volatility
 
-The Heston model under a leverage function $L(t, S)$ and a mixing fraction
-$\eta$: $dS_t = \mu S_t\,dt + L(t, S_t)\sqrt{V_t}\,S_t\,dW^1_t$,
-$dV_t = \kappa(\theta - V_t)\,dt + \eta\sigma\sqrt{V_t}\,dW^2_t$. The leverage
-is an `Fn2D` of time and spot: an `Expr` reaches a device; a closure, a
-Python callable or a tabulated `Grid2D` — what a calibrated `LeverageSurface`
-converts into — keeps the process on the host. With $\eta = 1$ and
-$L \equiv 1$ the path is `HestonLog`'s, bit for bit. The
-[quant page](/docs/quant#heston-slv-leverage-calibration)
-calibrates $L$ to a vanilla surface.
+The Heston model under a leverage function $L(t, S)$ and a mixing fraction $\eta$: $dS_t = \mu S_t\,dt + L(t, S_t)\sqrt{V_t}\,S_t\,dW^1_t$, $dV_t = \kappa(\theta - V_t)\,dt + \eta\sigma\sqrt{V_t}\,dW^2_t$. The leverage is an `Fn2D` of time and spot: an `Expr` reaches a device; a closure, a Python callable or a tabulated `Grid2D` — what a calibrated `LeverageSurface` converts into — keeps the process on the host. With $\eta = 1$ and $L \equiv 1$ the path is `HestonLog`'s, bit for bit. The [quant page](/docs/quant#heston-slv-leverage-calibration) calibrates $L$ to a vanilla surface.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -148,9 +113,7 @@ s, v = p.sample()                   # both numpy arrays
 
 ### Fractional Brownian motion
 
-Roughness controlled by the Hurst parameter $H \in (0, 1)$.
-$H = 0.5$ recovers standard Brownian motion; $H < 0.5$ is rough,
-$H > 0.5$ is persistent.
+Roughness controlled by the Hurst parameter $H \in (0, 1)$. $H = 0.5$ recovers standard Brownian motion; $H < 0.5$ is rough, $H > 0.5$ is persistent.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -170,7 +133,7 @@ fbm = np.cumsum(increments)         # fBM = cumsum(fGN)
 
 ### Quasi-Monte Carlo paths (Sobol + Brownian bridge)
 
-`SobolSeq` now carries Joe and Kuo's full `new-joe-kuo-6.21201` direction table (any dimension up to 21201) and an Owen-type scramble (`SobolSeq::scrambled`, random linear scrambling plus digital shift) for randomised-QMC error bars. `BrownianBridgeQmc` turns one Sobol point per path into Brownian levels by bridge bisection — terminal value first, then midpoints — so the sequence's best-equidistributed coordinates carry the path's coarsest features; `increments()` hands the same paths to an Euler loop.
+`SobolSeq` carries Joe and Kuo's full `new-joe-kuo-6.21201` direction table (any dimension up to 21201) and an Owen-type scramble (`SobolSeq::scrambled`, random linear scrambling plus digital shift) for randomised-QMC error bars. `BrownianBridgeQmc` turns one Sobol point per path into Brownian levels by bridge bisection — terminal value first, then midpoints — so the sequence's best-equidistributed coordinates carry the path's coarsest features; `increments()` hands the same paths to an Euler loop.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -215,7 +178,7 @@ print(np.corrcoef(np.log(terminal).T))    # ≈ rho
 
 ### Wishart process (stochastic covariance)
 
-`Wishart` simulates the matrix-valued diffusion `dX = (α aᵀa + bX + Xbᵀ) dt + √X dW a + aᵀ dWᵀ √X` on the positive semidefinite cone: the matrix CIR behind the Gouriéroux–Sufana and Da Fonseca–Grasselli–Tebaldi stochastic-covariance models. Every grid step is sampled **exactly** with the Ahdida–Alfonsi (2013) splitting (one noncentral χ² and `r` Gaussians per coordinate after an extended Cholesky of the remaining block), so any degree `α ≥ d − 1` is admissible and the paths never leave the cone. The closed-form mean and Laplace transform ship alongside for validation. Each path is one `(n, d, d)` array.
+`Wishart` simulates the matrix-valued diffusion `dX = (α aᵀa + bX + Xbᵀ) dt + √X dW a + aᵀ dWᵀ √X` on the positive semidefinite cone: the matrix CIR behind the Gouriéroux–Sufana and Da Fonseca–Grasselli–Tebaldi stochastic-covariance models. Every grid step is sampled **exactly** with the Ahdida–Alfonsi (2013) splitting (one noncentral χ² and `r` Gaussians per coordinate after an extended Cholesky of the remaining block), so any degree `α ≥ d − 1` is admissible and the paths never leave the cone. The closed-form mean and Laplace transform are available for validation. Each path is one `(n, d, d)` array.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -265,12 +228,7 @@ print(model.zero_bond(1.0, 3.0, 0.0, 0.0))      # P_0(3) / P_0(1) at the zero st
 
 ### Construction
 
-Every process follows the same `new(args…, seed)` pattern — the model
-parameters first, then `n`, `x0`, `t`, and the seed source **last**
-(mirrors the distribution constructors — see the [seeding concept
-page](/docs/concepts/seeding)). The seed argument is a value implementing
-[`SeedExt`](/docs/concepts/seeding). `Gbm` stands in for any process
-below; substitute the parameters of the one you want:
+Every process follows the same `new(args…, seed)` pattern — the model parameters first, then `n`, `x0`, `t`, and the seed source **last**, a value implementing [`SeedExt`](/docs/concepts/seeding). `Gbm` stands in for any process below:
 
 ```rust
 use stochastic_rs::simd_rng::Deterministic;
@@ -291,17 +249,11 @@ let p = Gbm::<f64, _>::new(
 );
 ```
 
-Use `Deterministic` in tests so they replay bit-exactly; pass a shared
-`Deterministic` to several processes when chaining correlated factors —
-each call to `seed.rng()` / `seed.rng_ext()` atomically advances the
-internal counter, so the streams diverge despite the shared root seed.
-`SeedExt::reseed(u64)` swaps a `Deterministic` source in place to sweep
-seeds without rebuilding the process.
+Use `Deterministic` in tests so they replay bit-exactly, and give each process its own `Deterministic::new(seed)`: a clone of a `Deterministic` is a snapshot, so processes built from clones of one source draw identical paths. `SeedExt::reseed(u64)` resets a `Deterministic` source in place to sweep seeds without rebuilding the process.
 
 ### Sampling
 
-Continuing with the same `p` from above. `sample` / `sample_par` are
-`ProcessExt` methods, so the trait has to be in scope:
+Continuing with `p` from above. `sample` / `sample_par` are `ProcessExt` methods, so the trait has to be in scope:
 
 ```rust
 use stochastic_rs::traits::ProcessExt;
@@ -310,20 +262,11 @@ let path = p.sample(); // Array1<f64>, length n
 let paths = p.sample_par(64); // Vec<Array1<f64>>, 64 paths of length n
 ```
 
-`sample_par(m)` uses Rayon. Each path gets a deterministic seed
-derived from the master seed plus the path index, so the result is
-thread-count-independent.
+`sample_par(m)` runs on Rayon. With a `Deterministic` seed its output is bit-identical for any thread count (see [determinism](/docs/concepts/process-ext#parallel-sampling-and-determinism)).
 
 ### Acceleration
 
-CPU SIMD (`f64x4` / `f32x8`) is on by default. The fractional / fGN family
-(`Fgn`, `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `Cfou`, `Cfgns`, `JumpFou`,
-`JumpFOUCustom`, and the generic `Sde`) additionally picks a sampling
-**backend** at compile time with `.on::<B>()`.
-`Cuda` only exists when the `cuda` feature is compiled, which
-needs an NVIDIA CUDA 12.x toolkit and GPU — not available in the CI
-runners that build this site, so this block is illustrative rather than
-compiled:
+The CPU path uses SIMD (`f32x8` / `f64x8`). Every process also takes a sampling **backend** at compile time with `.on::<B>()`; `Cuda` only exists when the `cuda` feature is compiled:
 
 ```rust
 use stochastic_rs::simd_rng::Unseeded;
@@ -332,59 +275,21 @@ use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::traits::ProcessExt;
 
 let fgn = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded);
-let path = fgn.on::<Cuda>().sample(); // FFT on the GPU, zero runtime branch
+let path = fgn.on::<Cuda>().sample(); // FFT on the GPU
 ```
 
-Backends: `Cpu` (default), `Cuda` (`cuda`), `Metal` (`metal`),
-`Accelerate` (`accelerate`) — each handle exists only when its feature is
-compiled, so an
-unavailable backend is a compile error, not a runtime fallback. See the
-[Backends](/docs/concepts/backends) concept page and the
-[Feature flags](/docs/concepts/feature-flags) matrix.
-
-## Adding a new process
-
-If you contribute, the four relevant SKILLs are:
-
-- [`add-diffusion-process`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/add-diffusion-process/SKILL.md) — GBM / OU / CIR / Heston-style
-- [`add-jump-process`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/add-jump-process/SKILL.md) — Merton-jump / Kou / Bates / compound-Poisson
-- [`add-fractional-process`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/add-fractional-process/SKILL.md) — fBM / rough Bergomi / fractional CIR
-- [`add-gpu-sampler`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/add-gpu-sampler/SKILL.md) — CUDA / Metal port
-
-Each contains the file-by-file recipe.
+Backends: `Cpu` (default), `Cuda` (`cuda`), `Metal` (`metal`), `Accelerate` (`accelerate`); each handle exists only when its feature is compiled, so an unavailable backend is a compile error. See [Backends](/docs/concepts/backends) and the [Feature flags](/docs/concepts/feature-flags) matrix.
 
 ## Euler engine
 
-What the engine runs on today, per backend and precision, is tabulated on
-[GPU support](/docs/concepts/gpu-support).
-
-The sampling backend is a **type parameter of every process**
-(`Name<T, S, B = Cpu>`, switched with `.on::<B>()`); the Euler engine is the
-capability behind the device markers for `Gbm`, `Ou` and `Cir`:
-`gbm.on::<Metal>().sample_par(m)` samples through `ProcessExt` as usual.
-On `Cpu` (and `Accelerate`) that is the process's own sampler, so nothing is
-re-implemented on the host: GBM keeps its exact log-normal scheme, OU and CIR
-their SIMD steppers. Every other process accepts the host markers only until it
-gains a kernel (see the backends concept page). The GPU back-ends
-run one device thread per path with the whole Euler–Maruyama recursion in the
-kernel and counter-hashed Box–Muller normals (`sample_par` is one launch for
-all `m` paths):
+The sampling backend is a **type parameter of every process** (`Name<T, S, B = Cpu>`, switched with `.on::<B>()`), and the Euler engine is the device capability behind 130 of the 132: `gbm.on::<Metal>().sample_par(m)` samples through `ProcessExt` as usual. On `Cpu` (and `Accelerate`) that is the process's own sampler — GBM keeps its exact log-normal scheme, OU and CIR their SIMD steppers. The GPU back-ends run one device thread per path with the whole Euler–Maruyama recursion in the kernel and counter-hashed Box–Muller normals (`sample_par` is one launch for all `m` paths):
 
 | Backend | Feature | Device | Precision |
 |---|---|---|---|
 | `Cuda` | `cuda` | NVIDIA, cudarc + NVRTC | `f32` or `f64`, after `T` |
-| `Metal` | `metal` | Apple GPUs, hand-written MSL | `f32` |
+| `Metal` | `metal` | Apple GPUs, MSL | `f32` |
 
-The device seed is drawn from the process's own seed source (the same
-`Deterministic` seed value gives the same paths, consecutive calls advance the
-stream, `Unseeded` draws fresh entropy).
-The device kernels share one integer hash for their uniforms, so the device
-back-ends agree with each other seed for seed up to libm rounding; the host
-path is the process's own stream, so CPU and device paths agree in
-distribution rather than bit for bit. A process joins the engine by declaring one
-of its families inside the crate; 130 of the 132 do, and every process answers
-`device_ready()` for the configuration it holds — a `false` samples on the
-host, bit-identically to the `Cpu` build.
+The device seed is drawn from the process's own seed source (the same `Deterministic` seed value gives the same paths, consecutive calls advance the stream, `Unseeded` draws fresh entropy). The device kernels share one integer hash for their uniforms, so the device back-ends agree with each other seed for seed up to libm rounding; the host path is the process's own stream, so CPU and device paths agree in distribution rather than bit for bit. Every process answers `device_ready()` for the configuration it holds — a `false` samples on the host, bit-identically to the `Cpu` build. [GPU support](/docs/concepts/gpu-support) tabulates what runs where.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -409,8 +314,7 @@ gpu = srs.PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7, dtype="f32", device="me
 
 ## Volterra (stochastic Volterra equations)
 
-Solved by Markovian lift at `O(n N')` rather than the naive `O(n^2)`
-convolution. See `stochastic_rs::stochastic::volterra`.
+Solved by Markovian lift at `O(n N')` rather than the naive `O(n^2)` convolution. See `stochastic_rs::stochastic::volterra`.
 
 | Type | What it is |
 |---|---|
@@ -418,5 +322,4 @@ convolution. See `stochastic_rs::stochastic::volterra`.
 | `VolterraSquareRoot` | The Volterra Heston variance leg, nonnegative by construction |
 | `GaussianPolynomialVolatility` | Volatility as a polynomial of a Gaussian Volterra process, incl. the quintic parameterisation |
 
-Kernels implementing `VolterraKernel`: `RlKernel` (Riemann–Liouville),
-`ExponentialKernel` (exact at one mode), `GammaKernel`, `SumOfExponentials`.
+Kernels implementing `VolterraKernel`: `RlKernel` (Riemann–Liouville), `ExponentialKernel` (exact at one mode), `GammaKernel`, `SumOfExponentials`.

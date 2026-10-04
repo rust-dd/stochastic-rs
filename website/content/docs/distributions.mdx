@@ -1,52 +1,26 @@
 ---
 title: Distributions
 seo_title: Probability distributions in Rust and Python
-description: 26 of 35 SIMD distribution structs with full Python + closed-form parity. Bulk samplers; ziggurat, rejection, inversion.
+description: 35 SIMD distribution samplers with closed-form pdf, cdf, characteristic function and moments, bulk fills, and Python classes for 26 of them.
 category: distribution
 since: 2.0.0
 status: stable
 ---
 
-The `stochastic-rs-distributions` crate ships **35** `Simd*` distribution
-structs (`grep -rc "^pub struct Simd" stochastic-rs-distributions/src --include='*.rs'`),
-plus `ComplexDistribution` (36 total). This page's table covers the
-**26** that carry the full package — every one of them has:
+The `stochastic-rs-distributions` crate ships **35** `Simd*` distributions plus `ComplexDistribution`. The 26 in the tables below each have:
 
-- A `Simd<Name><T>` struct that implements `rand::distr::Distribution<T>`
-- A bulk filler `fill_slice(dst)` that draws from the distribution's own
-  internal RNG (no separate `rng`-explicit / `_fast` pair)
-- A
-  [`DistributionExt`](/docs/concepts/distribution-ext)
-  impl — `Option`-valued closed-form pdf / cdf / characteristic function / moments
-- A `py_distribution!`- or `py_distribution_int!`-generated `#[pyclass]`
-  for Python use
-- A KS-test against the analytic CDF
+- a stateless `Simd<Name><T>` law that implements `rand::distr::Distribution<T>`;
+- a seeded stream (`.seeded(&seed)`) with a SIMD bulk fill, `fill_slice`;
+- a [`DistributionExt`](/docs/concepts/distribution-ext) impl — `Option`-valued closed-form pdf / cdf / characteristic function / moments;
+- a Python class (`PyNormal`, `PyBeta`, …) that samples.
 
-**Not shown here** — 9 more real, public `Simd*` types that don't carry
-the full package (26 + 9 = 35), plus `ComplexDistribution` outside that
-count entirely:
+The other nine:
 
-- `Ged`, `Skellam`, and the four `Truncated{Normal,Exp,Beta,Gamma}`
-  wrappers (6) implement `DistributionExt` but have no Python binding.
-- `SimdNonCentralChiSquared` is structurally different from every type in
-  this table: its noncentrality parameter is supplied per draw
-  (`sample_ncp(ncp)` on its seeded stream, `sample_ncp_with(&mut rng, ncp)`
-  on the law), not fixed at construction, so it implements neither
-  `rand::distr::Distribution` nor `DistributionExt` nor `fill_slice` — see
-  its own module docs. It backs the exact CIR transition density
-  (`stochastic-rs-stats/src/cir.rs`) via the free function
-  `non_central_chi_squared::sample(df, lambda, seed)`.
-- `Dirichlet` and `Wishart` are multivariate (a `Vec<T>` / `Array2<f64>`
-  per draw), so their seeded streams draw through their own `sample`
-  (`sample_into` and `sample_matrix(m)` for `Dirichlet`, `sample_inverse`
-  for `Wishart`) instead of `fill_slice`, and each exposes its own
-  `log_pdf`.
+- `Ged`, `Skellam` and the four `Truncated{Normal,Exp,Beta,Gamma}` wrappers implement `DistributionExt` but have no Python class.
+- `SimdNonCentralChiSquared` takes its noncentrality per draw (`sample_ncp(ncp)` on its seeded stream, `sample_ncp_with(&mut rng, ncp)` on the law), so it implements neither `rand::distr::Distribution` nor `DistributionExt` nor `fill_slice`. It backs the exact CIR transition density.
+- `Dirichlet` and `Wishart` are multivariate (a `Vec<T>` / `Array2<f64>` per draw); their seeded streams draw through their own methods (`sample_into` and `sample_matrix(m)` for `Dirichlet`, `sample_inverse` for `Wishart`) instead of `fill_slice`, and each has its own `log_pdf`.
 
-That accounts for all 35. `ComplexDistribution` is a 36th, separate type
-(not `Simd`-prefixed) that samples `Complex<T>` directly and is the one
-type with no `DistributionExt` impl at all (see `CLAUDE.md`'s note on the
-trait). The API docs (`cargo doc -p stochastic-rs-distributions`) are the
-exhaustive reference for all of them.
+`ComplexDistribution` samples `Complex<T>` directly and has no `DistributionExt` impl. The API docs (`cargo doc -p stochastic-rs-distributions`) cover all of them.
 
 ## The list
 
@@ -88,29 +62,22 @@ exhaustive reference for all of them.
 
 ## Choosing a distribution
 
-The tables above group by sampling strategy; this groups by modeling role
-instead. The full version — with the honest "these are actually the same
-distribution" call-outs and every citation — lives in the crate's own doc
-comment (`stochastic-rs-distributions/src/lib.rs`). Short version:
+The tables above group by sampling strategy; this one groups by modelling role. The crate-level rustdoc of `stochastic-rs-distributions` has the full guide with citations.
 
 | Need | Reach for |
 |---|---|
 | Symmetric, light-tailed, unbounded | `Normal` (default), or `Ged` to tune peakedness — `Ged` is never power-law heavy-tailed, for any shape parameter |
 | Heavy-tailed, unbounded (financial returns) | `StudentT` (`ν=1` **is** `Cauchy`, exactly) or `AlphaStable` (generalizes `Normal` at `α=2` and `Cauchy` at `α=1, β=0`, but has no closed-form pdf/cdf at general `α`); `NormalInverseGauss` or `VarianceGamma` for a skewed heavy tail with finite variance and closed-form moments (neither has a closed-form cdf); `SkewT` for Hansen's standardised skewed t with closed-form cdf and quantile — the GARCH innovation density; `JohnsonSu` when you want skew with light tails and every moment closed-form; `GeneralizedHyperbolic` is the parent family of `NormalInverseGauss` (λ = −1/2) and `VarianceGamma` over a `Gig` clock |
-| Extreme-value tails | `Gev` for block maxima, `Gpd` for excesses over a threshold — a different job from bulk return modeling; both carry closed-form moments with the usual $\xi$ existence thresholds, and `stats::evt` fits them |
+| Extreme-value tails | `Gev` for block maxima, `Gpd` for excesses over a threshold — a different job from bulk return modelling; both carry closed-form moments with the usual $\xi$ existence thresholds, and `stats::evt` fits them |
 | Positive, duration/volatility-shaped | `Exponential` (constant hazard), `Weibull` (rising or falling hazard), `Gamma` (waiting time; backs `Beta`/`ChiSquared`/`Ged`/`Dirichlet` internally), `LogNormal` (multiplicative growth), `InverseGauss` (first-passage time) |
-| Genuine power-law heavy tail, positive support | `Pareto` — the only positive-support type here with real threshold-dependent moment existence |
-| Bounded `[0, 1]` or `[a, b]` | `Beta`, `Uniform`, or a `Truncated*` wrapper — the four `Truncated*` types aren't a family to pick among, just "which base distribution, restricted to an interval" |
+| Genuine power-law heavy tail, positive support | `Pareto` — the only positive-support type here with threshold-dependent moment existence |
+| Bounded `[0, 1]` or `[a, b]` | `Beta`, `Uniform`, or a `Truncated*` wrapper (a base distribution restricted to an interval) |
 | Discrete counts, with replacement | `Poisson`, `Binomial` |
 | Discrete counts, without replacement (finite population) | `Hypergeometric` — that assumption, not a tuning knob, separates it from `Binomial` |
 | Signed count data | `Skellam` — the only discrete type here that can go negative |
-| Covariance matrices, simplex proportions | `Wishart`, `Dirichlet` — both skip `DistributionExt` entirely for their own inherent density methods |
+| Covariance matrices, simplex proportions | `Wishart`, `Dirichlet` — both have their own density methods instead of `DistributionExt` |
 
-`DistributionExt` coverage per cell is pinned by
-`stochastic-rs-distributions/tests/distribution_ext_coverage.rs`;
-`Dirichlet`, `Wishart`, `SimdNonCentralChiSquared` and
-`ComplexDistribution` implement none of it. `.mean()` / `.variance()` are
-`Option`s: `None` says the law has no closed form.
+`.mean()` / `.variance()` are `Option`s: `None` says the law has no closed form.
 
 ## Examples
 
@@ -123,18 +90,15 @@ comment (`stochastic-rs-distributions/src/lib.rs`). Short version:
 <Tab value="Python">
 ```python
 import stochastic_rs as srs
-import numpy as np
 
 d = srs.PyNormal(mean=0.0, std_dev=1.0, seed=42)
-samples = d.sample(10_000)                   # numpy.ndarray
-matrix  = d.sample_par(100, 10_000)          # shape (100, 10_000)
-
-# Closed-form analytics
-print(d.mean(), d.variance())                # 0.0 1.0
-print(d.pdf(0.0), d.cdf(1.96))               # 0.3989, 0.975
+samples = d.sample(10_000)                   # numpy.ndarray, shape (10_000,)
+matrix = d.sample_par(100, 10_000)           # shape (100, 10_000)
 ```
 </Tab>
 </Tabs>
+
+The Python classes sample (`sample(n)`, `sample_par(m, n)`); the closed-form analytics are on the Rust side.
 
 ### Beta — bounded support distribution
 
@@ -149,7 +113,6 @@ import stochastic_rs as srs
 d = srs.PyBeta(alpha=2.0, beta=5.0, seed=42)
 samples = d.sample(1000)
 print(samples.min(), samples.max())          # in [0, 1]
-print(d.mean(), d.variance())                # 0.2857, 0.0255
 ```
 </Tab>
 </Tabs>
@@ -175,18 +138,7 @@ print(counts.mean(), counts.var())           # both ≈ 4.0
 
 ### Construction
 
-A distribution is a stateless law: `new(args)` takes its parameters only, and
-`.seeded(&seed)` binds it to a seeded stream, a `Seeded<D>` — pass
-[`Unseeded`](/docs/concepts/seeding) for an auto-seeded stream or
-[`Deterministic::new(u64)`](/docs/concepts/seeding) for a reproducible one.
-Every float parameter must be finite — a truncation bound may be infinite but
-not NaN — or `new` panics naming the parameter; the constructor docs do not
-repeat this per type.
-See the [seeding concept page](/docs/concepts/seeding) for the full design
-(including `SeedExt::reseed`, the `R: SimdRngExt` engine parameter of
-`Seeded<D, R>`, and the experimental `unstable-dual-stream-rng` feature).
-`SimdNormal` stands in for any distribution below; substitute the parameters
-of the one you want:
+A distribution is a stateless law: `new(args)` takes its parameters only, and `.seeded(&seed)` binds it to a seeded stream, a `Seeded<D>` — pass [`Unseeded`](/docs/concepts/seeding) for an auto-seeded stream or [`Deterministic::new(u64)`](/docs/concepts/seeding) for a reproducible one. Every float parameter must be finite (a truncation bound may be infinite but not NaN), or `new` panics naming the parameter. The [seeding page](/docs/concepts/seeding) covers `SeedExt::reseed`, the `R: SimdRngExt` engine parameter of `Seeded<D, R>` and the experimental `unstable-dual-stream-rng` feature. `SimdNormal` stands in for any distribution below:
 
 ```rust
 use stochastic_rs::distributions::SimdDistribution;
@@ -216,7 +168,7 @@ use stochastic_rs::distributions::DistributionSampler;
 use stochastic_rs::simd_rng::SeedExt;
 
 // One scalar draw from the rng you pass: the law itself holds no stream.
-// `SeedExt` is what brings `.rng()` into scope.
+// `SeedExt` brings `.rng()` into scope.
 let mut rng = Deterministic::new(0).rng();
 let x: f64 = law.sample(&mut rng);
 
@@ -226,14 +178,11 @@ let mut buf = vec![0.0_f64; 10_000];
 s.fill_slice(&mut buf);
 ```
 
-`Seeded::clone` is a snapshot (both copies continue identically), and
-`s.fork(i)` derives an independent child stream for worker `i`.
+`Seeded::clone` is a snapshot (both copies continue identically), and `s.fork(i)` derives an independent child stream for worker `i`.
 
 ### Closed-form analytics
 
-`DistributionExt` is `f64`-only (not generic over `T`) and every method
-returns `Option`, `Some` where the distribution has a closed form. It lives
-on the law, not on the stream:
+`DistributionExt` is `f64`-only (not generic over `T`) and every method returns `Option`, `Some` where the distribution has a closed form. It lives on the law, not on the stream:
 
 ```rust
 use stochastic_rs::traits::DistributionExt;
@@ -243,10 +192,3 @@ let cdf = law.cdf(0.5).unwrap();
 let cf = law.characteristic_function(2.0);             // Option<Complex64>
 let m2 = law.variance().expect("a closed-form variance");
 ```
-
-## Adding a new distribution
-
-See the
-[`adding-distribution`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/adding-distribution/SKILL.md)
-SKILL — file-by-file recipe including the `py_distribution!` macro at
-the bottom.
