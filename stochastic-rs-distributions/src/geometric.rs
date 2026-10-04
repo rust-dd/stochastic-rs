@@ -140,19 +140,27 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdGeometric<T> {
   // Convention here: support k ∈ {1, 2, ...} (the "shifted" geometric, P(X=k) = (1-p)^(k-1) p).
 
   fn pdf(&self, x: f64) -> Option<f64> {
+    if x.is_nan() {
+      return Some(f64::NAN);
+    }
     if x < 1.0 || x.fract() != 0.0 {
       return Some(0.0);
     }
-    let k = x as u64;
-    Some((1.0 - self.p).powi(k as i32 - 1) * self.p)
+    // At `p = 1` the general form below reads `0 · ln 0` for `x = 1`.
+    if x == 1.0 {
+      return Some(self.p);
+    }
+    Some(self.p * ((x - 1.0) * (-self.p).ln_1p()).exp())
   }
 
   fn cdf(&self, x: f64) -> Option<f64> {
+    if x.is_nan() {
+      return Some(f64::NAN);
+    }
     if x < 1.0 {
       return Some(0.0);
     }
-    let k = x.floor() as u64;
-    Some(1.0 - (1.0 - self.p).powi(k as i32))
+    Some(-(x.floor() * (-self.p).ln_1p()).exp_m1())
   }
 
   fn quantile(&self, prob: f64) -> Option<f64> {
@@ -371,5 +379,31 @@ mod tests {
     let d = SimdGeometric::<u64>::new(0.15);
     let best = scalar_chi_square_best_p(&d, (1, 50), |k| d.cdf(k as f64).unwrap());
     assert!(best > 0.01, "best p = {best}");
+  }
+
+  /// NaN answers NaN, and counts past `i32::MAX` or a small `p`, where `1 − (1 − p)^k` cancels, keep the closed
+  /// form; references from mpmath.
+  #[test]
+  fn cdf_and_pmf_follow_the_closed_form_at_any_count() {
+    let g = SimdGeometric::<u64>::new(0.3);
+    assert!(g.cdf(f64::NAN).unwrap().is_nan() && g.pdf(f64::NAN).unwrap().is_nan());
+    for x in [-1.0, 0.0] {
+      assert_eq!((g.cdf(x), g.pdf(x)), (Some(0.0), Some(0.0)), "x = {x}");
+    }
+    assert!((g.cdf(3.0).unwrap() - 0.657).abs() < 1e-15);
+    assert!((g.pdf(3.0).unwrap() - 0.147).abs() < 1e-15);
+    for x in [3e9, 1e10, f64::INFINITY] {
+      assert_eq!((g.cdf(x), g.pdf(x)), (Some(1.0), Some(0.0)), "x = {x}");
+    }
+    let rare = SimdGeometric::<u64>::new(1e-10);
+    let rel = |got: f64, want: f64| (got - want).abs() / want;
+    assert!(rel(rare.cdf(3.0).unwrap(), 2.999_999_999_7e-10) < 1e-14);
+    assert!(rel(rare.cdf(1e10).unwrap(), 0.632_120_558_846_951_6) < 1e-14);
+    assert!(rel(rare.pdf(1e10).unwrap(), 3.678_794_411_898_363e-11) < 1e-14);
+    let sure = SimdGeometric::<u64>::new(1.0);
+    assert_eq!(
+      (sure.pdf(1.0), sure.pdf(2.0), sure.cdf(1.0)),
+      (Some(1.0), Some(0.0), Some(1.0))
+    );
   }
 }
