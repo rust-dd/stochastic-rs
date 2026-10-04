@@ -167,6 +167,8 @@ impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> Fbs<T, S, B> {
 
 backend_switch!([T: FloatExt, S: SeedExt] Fbs<T, S> { hurst, m, n, r, seed, lam, c2 } via sheet);
 
+impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> crate::traits::Sealed for Fbs<T, S, B> {}
+
 impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> ProcessExt<T> for Fbs<T, S, B> {
   type Output = Array2<T>;
   type Sampler<'s>
@@ -313,6 +315,8 @@ impl<T: FloatExt, S: SeedExt> FbsSampler<T, S> {
     field
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for FbsSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for FbsSampler<T, S> {
   type Output = Array2<T>;

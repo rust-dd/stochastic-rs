@@ -234,6 +234,8 @@ pub(crate) struct ProbeSampler {
   program: Option<ProbePrograms>,
 }
 
+impl crate::traits::Sealed for ProbeSampler {}
+
 impl PathSampler<f32> for ProbeSampler {
   type Output = Array1<f32>;
 
@@ -466,6 +468,8 @@ impl PathSampler<f32> for ProbeSampler {
     out
   }
 }
+
+impl crate::traits::Sealed for Probe {}
 
 impl ProcessExt<f32> for Probe {
   type Output = Array1<f32>;
@@ -1207,6 +1211,8 @@ pub(crate) struct SystemProbeSampler<const D: usize> {
   program: Option<ProbePrograms>,
 }
 
+impl<const D: usize> crate::traits::Sealed for SystemProbeSampler<D> {}
+
 impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
   type Output = [Array1<f32>; D];
 
@@ -1439,6 +1445,8 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
     out
   }
 }
+
+impl<const D: usize> crate::traits::Sealed for SystemProbe<D> {}
 
 impl<const D: usize> ProcessExt<f32> for SystemProbe<D> {
   type Output = [Array1<f32>; D];

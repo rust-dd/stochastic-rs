@@ -292,6 +292,13 @@ where
 
 backend_switch!([T: FloatExt + RoughSimd, K, S: SeedExt] VolterraSquareRoot<T, K, S> { kernel, kappa, theta, nu, n, v0, t, seed, lift } via euler where  K: VolterraKernel<T> + Send + Sync);
 
+impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for VolterraSquareRoot<T, K, S, B>
+where
+  K: VolterraKernel<T> + Send + Sync,
+{
+}
+
 impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for VolterraSquareRoot<T, K, S, B>
 where
@@ -407,6 +414,13 @@ fn truncate<T: FloatExt>(x: T) -> T {
   } else {
     x
   }
+}
+
+impl<T: FloatExt + RoughSimd, K, S: SeedExt> crate::traits::Sealed
+  for VolterraSquareRootSampler<T, K, S>
+where
+  K: VolterraKernel<T> + Send + Sync,
+{
 }
 
 impl<T: FloatExt + RoughSimd, K, S: SeedExt> PathSampler<T> for VolterraSquareRootSampler<T, K, S>

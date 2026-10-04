@@ -7,11 +7,12 @@ status: stable
 ---
 
 Every stochastic process in `stochastic-rs-stochastic` — diffusion, jump,
-volatility, interest, rough, noise — implements `ProcessExt<T>`. The public
-surface is three methods:
+volatility, interest, rough, noise — implements `ProcessExt<T>`, which is
+sealed: a new process is added inside the crate. The public surface is three
+methods:
 
 ```rust
-pub trait ProcessExt<T: FloatExt>: Send + Sync {
+pub trait ProcessExt<T: FloatExt>: Send + Sync + Sealed {
   type Output: Send;
 
   /// One sampled path.

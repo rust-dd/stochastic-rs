@@ -211,6 +211,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] SquaredBessel<T, S> { delta, n, x0, t, use_sym, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for SquaredBessel<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for SquaredBessel<T, S, B>
 {
@@ -302,6 +307,8 @@ impl<T: FloatExt> SquaredBesselSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for SquaredBesselSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for SquaredBesselSampler<T> {
   type Output = Array1<T>;
@@ -517,6 +524,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Bessel<T, S> { delta, n, x0, t, use_sym, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Bessel<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Bessel<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -612,6 +624,8 @@ impl<T: FloatExt> BesselSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for BesselSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for BesselSampler<T> {
   type Output = Array1<T>;

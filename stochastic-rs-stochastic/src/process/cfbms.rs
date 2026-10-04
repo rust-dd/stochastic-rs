@@ -145,6 +145,11 @@ impl<T: FloatExt, S: SeedExt, B> Cfbms<T, S, B> {
 
 backend_switch!([T: FloatExt, S: SeedExt] Cfbms<T, S> { hurst, rho, n, t, seed } via fgn euler);
 
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::traits::Sealed for Cfbms<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
   for Cfbms<T, S, B>
 {
@@ -225,6 +230,11 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> CfbmsSampler<'_, T, S, B> {
       .try_fill_paths(fbm1, fbm2)
       .unwrap_or_else(crate::device::device_panic)
   }
+}
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed
+  for CfbmsSampler<'_, T, S, B>
+{
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for CfbmsSampler<'_, T, S, B> {

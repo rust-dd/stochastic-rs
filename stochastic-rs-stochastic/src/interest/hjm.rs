@@ -190,6 +190,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Hjm<T, S> { a, b, p, q, v, alpha, sigma, n, r0, p0, f0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Hjm<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Hjm<T, S, B> {
   type Output = [Array1<T>; 3];
   type Sampler<'s>
@@ -247,6 +252,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 pub struct HjmSampler<'a, T: FloatExt, S: SeedExt, B> {
   hjm: &'a Hjm<T, S, B>,
   seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for HjmSampler<'_, T, S, B>
+{
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> PathSampler<T>

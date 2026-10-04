@@ -289,6 +289,13 @@ where
   }
 }
 
+impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for VolterraSde<T, K, S, B>
+where
+  K: VolterraKernel<T> + Send + Sync,
+{
+}
+
 impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for VolterraSde<T, K, S, B>
 where
@@ -436,6 +443,11 @@ where
     );
     out.copy_from_slice(path.as_slice().expect("lift path must be contiguous"));
   }
+}
+
+impl<T: FloatExt + RoughSimd, K, S: SeedExt> crate::traits::Sealed for VolterraSdeSampler<T, K, S> where
+  K: VolterraKernel<T> + Send + Sync
+{
 }
 
 impl<T: FloatExt + RoughSimd, K, S: SeedExt> PathSampler<T> for VolterraSdeSampler<T, K, S>

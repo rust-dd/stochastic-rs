@@ -157,6 +157,11 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
 
 backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] RlFOU<T, S> { hurst, kappa, mu, nu, n, x0, t, degree, seed, fbm } via euler);
 
+impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for RlFOU<T, S, B>
+{
+}
+
 impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for RlFOU<T, S, B>
 {
@@ -253,6 +258,8 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlFOUSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt + RoughSimd, S: SeedExt> crate::traits::Sealed for RlFOUSampler<T, S> {}
 
 impl<T: FloatExt + RoughSimd, S: SeedExt> PathSampler<T> for RlFOUSampler<T, S> {
   type Output = Array1<T>;

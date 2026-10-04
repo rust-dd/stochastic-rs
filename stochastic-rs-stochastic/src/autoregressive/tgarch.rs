@@ -171,6 +171,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] GjrGarch<T, S> { omega, alpha, gamma, beta, n, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for GjrGarch<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for GjrGarch<T, S, B>
 {
@@ -339,6 +344,8 @@ impl<T: FloatExt> GjrGarchSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for GjrGarchSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for GjrGarchSampler<T> {
   type Output = Array1<T>;

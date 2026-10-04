@@ -259,6 +259,14 @@ where
 
 backend_switch!([T, D, S: SeedExt] CustomJt<T, D, S> { n, t_max, distribution, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
 
+impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for CustomJt<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
+{
+}
+
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for CustomJt<T, D, S, B>
 where
   T: FloatExt,
@@ -387,6 +395,13 @@ where
     }
     Array1::from(x)
   }
+}
+
+impl<T, D> crate::traits::Sealed for CustomJtSampler<'_, T, D>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
 }
 
 impl<T, D> PathSampler<T> for CustomJtSampler<'_, T, D>

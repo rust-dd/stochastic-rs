@@ -19,7 +19,7 @@ A new process implements `ProcessExt<T>`
 associated items and one method — not `sample()`:**
 
 ```rust
-pub trait ProcessExt<T: FloatExt>: Send + Sync {
+pub trait ProcessExt<T: FloatExt>: Send + Sync + crate::traits::Sealed {
     type Output: Send;
 
     /// Reusable sampling state. #[doc(hidden)] — implementation detail.
@@ -45,7 +45,7 @@ The sampler itself implements `PathSampler<T>`
 (`traits/sampler.rs`), which is two methods:
 
 ```rust
-pub trait PathSampler<T: FloatExt>: Send {
+pub trait PathSampler<T: FloatExt>: Send + crate::traits::Sealed {
     type Output: Send;
     fn sample_into(&mut self, out: &mut Self::Output);  // overwrite, no alloc
     fn sample(&mut self) -> Self::Output;               // allocate + fill
@@ -180,6 +180,8 @@ For an Euler-Maruyama discretisation, split the work in two:
 `PathSampler` impl runs the recursion.
 
 ```rust
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for Foo<T, S> {}
+
 impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Foo<T, S> {
     type Output = Array1<T>;
     type Sampler<'s> = FooSampler<T> where Self: 's;
@@ -219,6 +221,8 @@ impl<T: FloatExt> FooSampler<T> {
         }
     }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for FooSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for FooSampler<T> {
     type Output = Array1<T>;

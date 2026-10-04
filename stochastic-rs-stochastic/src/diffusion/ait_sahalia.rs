@@ -138,6 +138,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] AitSahalia<T, S> { am1, a0, a1, a2, b0, b1, b2, b3, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for AitSahalia<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for AitSahalia<T, S, B>
 {
@@ -243,6 +248,8 @@ impl<T: FloatExt> AitSahaliaSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for AitSahaliaSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for AitSahaliaSampler<T> {
   type Output = Array1<T>;

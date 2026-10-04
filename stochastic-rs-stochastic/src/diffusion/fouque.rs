@@ -132,6 +132,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] FouqueOU2D<T, S> { kappa, theta, epsilon, alpha, n, x0, y0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for FouqueOU2D<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for FouqueOU2D<T, S, B>
 {
@@ -233,6 +238,8 @@ impl<T: FloatExt, S: SeedExt> FouqueOU2DSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for FouqueOU2DSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for FouqueOU2DSampler<T, S> {
   type Output = [Array1<T>; 2];

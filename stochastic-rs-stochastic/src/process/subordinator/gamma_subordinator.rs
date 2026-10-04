@@ -92,6 +92,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] GammaSubordinator<T, S> { nu, rate, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for GammaSubordinator<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for GammaSubordinator<T, S, B>
 {
@@ -173,6 +178,8 @@ impl<T: FloatExt> GammaSubordinatorSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for GammaSubordinatorSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for GammaSubordinatorSampler<T> {
   type Output = Array1<T>;

@@ -129,6 +129,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] NonLinearSDE<T, S> { am1, a0, a1, a2, b0, b1, b2, b3, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for NonLinearSDE<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for NonLinearSDE<T, S, B>
 {
@@ -233,6 +238,8 @@ impl<T: FloatExt> NonLinearSdeSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for NonLinearSdeSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for NonLinearSdeSampler<T> {
   type Output = Array1<T>;

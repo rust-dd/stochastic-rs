@@ -102,6 +102,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] ModifiedCIR<T, S> { kappa, sigma, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for ModifiedCIR<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for ModifiedCIR<T, S, B>
 {
@@ -188,6 +193,8 @@ impl<T: FloatExt> ModifiedCirSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for ModifiedCirSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for ModifiedCirSampler<T> {
   type Output = Array1<T>;

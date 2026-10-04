@@ -120,6 +120,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Arima<T, S> { ar_coefs, ma_coefs, d, sigma, n, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Arima<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Arima<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -281,6 +286,8 @@ pub(crate) fn impulse_response<T: FloatExt>(
   }
   filter(&unit).to_vec()
 }
+
+impl<T: FloatExt> crate::traits::Sealed for ArimaSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for ArimaSampler<T> {
   type Output = Array1<T>;

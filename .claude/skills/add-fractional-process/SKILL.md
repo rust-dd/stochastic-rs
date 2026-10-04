@@ -64,6 +64,8 @@ impl<T: FloatExt, S: SeedExt, B> Fou<T, S, B> {
     }
 }
 
+impl<T: FloatExt, S: SeedExt, B: Backend> crate::traits::Sealed for Fou<T, S, B> {}
+
 impl<T: FloatExt, S: SeedExt, B: Backend> ProcessExt<T> for Fou<T, S, B> {
     type Output = Array1<T>;
     type Sampler<'s> = FouSampler<'s, T, S, B> where Self: 's;

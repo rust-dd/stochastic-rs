@@ -121,6 +121,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Verhulst<T, S> { r, k, sigma, n, x0, t, clamp, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Verhulst<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for Verhulst<T, S, B>
 {
@@ -216,6 +221,8 @@ impl<T: FloatExt> VerhulstSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for VerhulstSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for VerhulstSampler<T> {
   type Output = Array1<T>;

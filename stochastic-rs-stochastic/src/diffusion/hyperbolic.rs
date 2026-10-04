@@ -92,6 +92,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Hyperbolic<T, S> { kappa, sigma, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Hyperbolic<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for Hyperbolic<T, S, B>
 {
@@ -177,6 +182,8 @@ impl<T: FloatExt> HyperbolicSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for HyperbolicSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for HyperbolicSampler<T> {
   type Output = Array1<T>;

@@ -60,7 +60,6 @@ pub use stochastic_rs_stochastic::traits::ComplexPathOutput;
 pub use stochastic_rs_stochastic::traits::CurveOutput;
 pub use stochastic_rs_stochastic::traits::MultiDimensional;
 pub use stochastic_rs_stochastic::traits::OneDimensional;
-pub use stochastic_rs_stochastic::traits::PathSampler;
 pub use stochastic_rs_stochastic::traits::ProcessExt;
 pub use stochastic_rs_stochastic::traits::TwoDimensional;
 pub use stochastic_rs_stochastic::traits::VariableDimensional;

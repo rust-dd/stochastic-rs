@@ -176,6 +176,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] TengSCP<T, S> { kappa, mu, sigma, rho0, n, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for TengSCP<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for TengSCP<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -274,6 +279,8 @@ impl<T: FloatExt> TengSCPSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for TengSCPSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for TengSCPSampler<T> {
   type Output = Array1<T>;

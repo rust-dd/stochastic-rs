@@ -56,7 +56,8 @@ per-call mutable state and implementing `PathSampler<T>` (`src/traits/sampler.rs
 `type Output`, `sample_into(&mut self, out: &mut Self::Output)`, `sample(&mut self)
 -> Self::Output` (allocate via `crate::buffer::array1_from_fill(n, |out| ..)`).
 `ProcessExt<T>` then needs only `type Output`, `type Sampler<'s>` and `fn sampler(&self)
--> Self::Sampler<'_>`.
+-> Self::Sampler<'_>`. Both traits are sealed: write `impl<…> crate::traits::Sealed for Foo<…> {}`
+and `… for FooSampler<…> {}` with the impl's own generics directly above each impl.
 
 **Seed derivation — read the "Reproducibility requirement on implementors" block
 on `ProcessExt` in `src/traits/process.rs` before writing `sampler()`.** Its rules:

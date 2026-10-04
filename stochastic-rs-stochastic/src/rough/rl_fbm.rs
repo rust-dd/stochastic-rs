@@ -189,6 +189,11 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
 
 backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] RlFBm<T, S> { hurst, n, t, degree, seed, markov } via euler);
 
+impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for RlFBm<T, S, B>
+{
+}
+
 impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for RlFBm<T, S, B>
 {
@@ -275,6 +280,8 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlFBmSampler<T, S> {
     out.copy_from_slice(path.as_slice().expect("markov path contiguous"));
   }
 }
+
+impl<T: FloatExt + RoughSimd, S: SeedExt> crate::traits::Sealed for RlFBmSampler<T, S> {}
 
 impl<T: FloatExt + RoughSimd, S: SeedExt> PathSampler<T> for RlFBmSampler<T, S> {
   type Output = Array1<T>;

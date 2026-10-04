@@ -202,6 +202,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Cheyette<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for Cheyette<T, S, B>
 {
@@ -316,6 +321,8 @@ impl<T: FloatExt> CheyetteSampler<'_, T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for CheyetteSampler<'_, T> {}
 
 impl<T: FloatExt> PathSampler<T> for CheyetteSampler<'_, T> {
   type Output = [Array1<T>; 2];

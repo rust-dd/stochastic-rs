@@ -259,6 +259,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] HestonStochCorr<T, S> { r, s0, v0, kappa_v, mu_v, sigma_v, rho0, kappa_r, mu_r, sigma_r, rho2, n, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for HestonStochCorr<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for HestonStochCorr<T, S, B>
 {
@@ -406,6 +411,8 @@ impl<T: FloatExt, S: SeedExt> HestonStochCorrSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for HestonStochCorrSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for HestonStochCorrSampler<T, S> {
   type Output = [Array1<T>; 3];

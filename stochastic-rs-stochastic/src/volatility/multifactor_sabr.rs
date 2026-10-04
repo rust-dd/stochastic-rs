@@ -219,6 +219,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] MultifactorSabr<T, S> { f0, alpha0, knots, beta, rho, nu, n, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for MultifactorSabr<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for MultifactorSabr<T, S, B>
 {
@@ -347,6 +352,8 @@ impl<T: FloatExt, S: SeedExt> MultifactorSabrSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for MultifactorSabrSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for MultifactorSabrSampler<T, S> {
   type Output = [Array1<T>; 2];

@@ -102,6 +102,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Jacobi<T, S> { alpha, beta, sigma, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Jacobi<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Jacobi<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -194,6 +199,8 @@ impl<T: FloatExt> JacobiSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for JacobiSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for JacobiSampler<T> {
   type Output = Array1<T>;

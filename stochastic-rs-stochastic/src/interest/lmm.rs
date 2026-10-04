@@ -282,6 +282,11 @@ impl<T: FloatExt, S: SeedExt, B> Lmm<T, S, B> {
 #[doc(hidden)]
 pub struct LmmLaunch<'a, T: FloatExt, S: SeedExt, B>(&'a Lmm<T, S, B>);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for LmmLaunch<'_, T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for LmmLaunch<'_, T, S, B>
 {
@@ -302,6 +307,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 pub struct LmmLaunchSampler<T: FloatExt, S: SeedExt> {
   inner: LmmSampler<T, S>,
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for LmmLaunchSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for LmmLaunchSampler<T, S> {
   type Output = [Array1<T>; 4];
@@ -417,6 +424,11 @@ fn rows_to_matrix<T: FloatExt>(slots: [Array1<T>; 4], m: usize) -> Array2<T> {
 }
 
 backend_switch!([T: FloatExt, S: SeedExt] Lmm<T, S> { tenor, l0, sigma, chol, n, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Lmm<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Lmm<T, S, B> {
   type Output = Array2<T>;
@@ -661,6 +673,8 @@ impl<T: FloatExt, S: SeedExt> LmmSampler<T, S> {
     let _ = path.slice(s![.., ..]);
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for LmmSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for LmmSampler<T, S> {
   type Output = Array2<T>;

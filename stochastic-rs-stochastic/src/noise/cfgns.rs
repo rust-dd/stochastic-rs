@@ -170,6 +170,11 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> Cfgns<T, S, B> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::traits::Sealed for Cfgns<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
   for Cfgns<T, S, B>
 {
@@ -237,6 +242,11 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> CfgnsSampler<'_, T, S, B> {
     fgn1_out.copy_from_slice(fgn1.as_slice().expect("Cfgns noise 1 must be contiguous"));
     fgn2_out.copy_from_slice(fgn2.as_slice().expect("Cfgns noise 2 must be contiguous"));
   }
+}
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed
+  for CfgnsSampler<'_, T, S, B>
+{
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for CfgnsSampler<'_, T, S, B> {

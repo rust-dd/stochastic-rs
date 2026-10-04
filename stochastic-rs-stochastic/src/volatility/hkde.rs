@@ -314,6 +314,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Hkde<T, S> { mu, kappa, theta, sigma_v, rho, v0, lambda, p_up, eta1, eta2, n, s0, t, use_sym, seed, cgns } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Hkde<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Hkde<T, S, B> {
   type Output = [Array1<T>; 2];
   type Sampler<'s>
@@ -470,6 +475,8 @@ impl<T: FloatExt, S: SeedExt> HkdeSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for HkdeSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for HkdeSampler<T, S> {
   type Output = [Array1<T>; 2];

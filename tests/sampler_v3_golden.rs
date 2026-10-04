@@ -34,10 +34,10 @@ use stochastic_rs::stochastic::jump::merton::Merton;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs::stochastic::process::poisson::Poisson;
+use stochastic_rs::stochastic::traits::PathSampler;
 use stochastic_rs::stochastic::volatility::HestonPow;
 use stochastic_rs::stochastic::volatility::heston::Heston;
 use stochastic_rs::stochastic::volatility::sabr::Sabr;
-use stochastic_rs::traits::PathSampler;
 use stochastic_rs::traits::ProcessExt;
 
 const N: usize = 8;

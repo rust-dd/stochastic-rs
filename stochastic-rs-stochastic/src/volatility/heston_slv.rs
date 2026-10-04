@@ -337,6 +337,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for HestonSlv<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for HestonSlv<T, S, B>
 {
@@ -482,6 +487,8 @@ impl<T: FloatExt> HestonSlvSampler<'_, T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for HestonSlvSampler<'_, T> {}
 
 impl<T: FloatExt> PathSampler<T> for HestonSlvSampler<'_, T> {
   type Output = [Array1<T>; 2];

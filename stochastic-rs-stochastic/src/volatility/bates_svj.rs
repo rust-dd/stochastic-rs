@@ -359,6 +359,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] BatesSvj<T, S> { mu, b, r, r_f, lambda, nu, omega, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, seed, cgns } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for BatesSvj<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for BatesSvj<T, S, B>
 {
@@ -497,6 +502,8 @@ impl<T: FloatExt, S: SeedExt> BatesSvjSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for BatesSvjSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for BatesSvjSampler<T, S> {
   type Output = [Array1<T>; 2];

@@ -216,6 +216,11 @@ impl<T: FloatExt, S: SeedExt, B> Cfou<T, S, B> {
 #[doc(hidden)]
 pub struct CfouParts<'a, T: FloatExt, S: SeedExt, B>(&'a Cfou<T, S, B>);
 
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::traits::Sealed for CfouParts<'_, T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
   for CfouParts<'_, T, S, B>
 {
@@ -238,6 +243,11 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> 
 /// two real rows as each path comes off it.
 #[doc(hidden)]
 pub struct CfouPartsSampler<'a, T: FloatExt, S: SeedExt, B>(CfouSampler<'a, T, S, B>);
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed
+  for CfouPartsSampler<'_, T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for CfouPartsSampler<'_, T, S, B> {
   type Output = [Array1<T>; 2];
@@ -331,6 +341,11 @@ fn join_complex<T: FloatExt>([x1, x2]: [Array1<T>; 2]) -> Array1<Complex<T>> {
 }
 
 backend_switch!([T: FloatExt, S: SeedExt] Cfou<T, S> { hurst, lambda, omega, a, n, x1_0, x2_0, t, seed } via fgn euler);
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::traits::Sealed for Cfou<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
   for Cfou<T, S, B>
@@ -440,6 +455,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> CfouSampler<'_, T, S, B> {
       .unwrap_or_else(crate::device::device_panic)
   }
 }
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed for CfouSampler<'_, T, S, B> {}
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for CfouSampler<'_, T, S, B> {
   type Output = Array1<Complex<T>>;

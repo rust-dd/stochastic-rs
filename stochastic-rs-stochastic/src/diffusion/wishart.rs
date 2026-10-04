@@ -369,6 +369,11 @@ impl<T: FloatExt, S: SeedExt, B> Wishart<T, S, B> {
 #[doc(hidden)]
 pub struct WishartLaunch<'a, T: FloatExt, S: SeedExt, B>(&'a Wishart<T, S, B>);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for WishartLaunch<'_, T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for WishartLaunch<'_, T, S, B>
 {
@@ -389,6 +394,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 pub struct WishartLaunchSampler<T: FloatExt, S: SeedExt> {
   inner: WishartSampler<T, S>,
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for WishartLaunchSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for WishartLaunchSampler<T, S> {
   type Output = [Array1<T>; 3];
@@ -487,6 +494,11 @@ fn slots_to_matrices<T: FloatExt>(slots: [Array1<T>; 3]) -> Array3<T> {
 }
 
 backend_switch!([T: FloatExt, S: SeedExt] Wishart<T, S> { alpha, b, a, x0, n, t, seed, step } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Wishart<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Wishart<T, S, B> {
   type Output = Array3<T>;
@@ -592,6 +604,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 pub struct WishartSampler<T: FloatExt, S: SeedExt> {
   process: Wishart<T, S>,
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for WishartSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for WishartSampler<T, S> {
   type Output = Array3<T>;

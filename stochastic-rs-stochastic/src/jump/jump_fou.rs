@@ -91,6 +91,14 @@ where
   seed: S,
 }
 
+impl<T, D, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for JumpFou<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
+{
+}
+
 impl<T, D, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
   for JumpFou<T, D, S, B>
 where
@@ -248,6 +256,14 @@ where
         + jump_increments[i];
     }
   }
+}
+
+impl<T, D, S: SeedExt, B> crate::traits::Sealed for JumpFouSampler<'_, T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+  B: FgnBackend<T>,
+{
 }
 
 impl<T, D, S: SeedExt, B> PathSampler<T> for JumpFouSampler<'_, T, D, S, B>

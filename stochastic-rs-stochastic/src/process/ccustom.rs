@@ -165,6 +165,15 @@ where
 
 backend_switch!([T, D1, D2, S: SeedExt] CompoundCustom<T, D1, D2, S> { n, t_max, jumps_distribution, jump_times_distribution, customjt, seed } via euler where  T: FloatExt,  D1: Distribution<T> + Send + Sync,  D2: Distribution<T> + Send + Sync);
 
+impl<T, D1, D2, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for CompoundCustom<T, D1, D2, S, B>
+where
+  T: FloatExt,
+  D1: Distribution<T> + Send + Sync + Any,
+  D2: Distribution<T> + Send + Sync + Any,
+{
+}
+
 impl<T, D1, D2, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for CompoundCustom<T, D1, D2, S, B>
 where
@@ -290,6 +299,14 @@ where
 
     [p, cum_jupms, jumps]
   }
+}
+
+impl<T, D1, D2, S: SeedExt> crate::traits::Sealed for CompoundCustomSampler<'_, T, D1, D2, S>
+where
+  T: FloatExt,
+  D1: Distribution<T> + Send + Sync,
+  D2: Distribution<T> + Send + Sync,
+{
 }
 
 impl<T, D1, D2, S: SeedExt> PathSampler<T> for CompoundCustomSampler<'_, T, D1, D2, S>

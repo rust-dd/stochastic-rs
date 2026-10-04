@@ -184,6 +184,11 @@ impl<T: FloatExt, S: SeedExt, B> FJacobi<T, S, B> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::traits::Sealed for FJacobi<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
   for FJacobi<T, S, B>
 {
@@ -279,6 +284,11 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FJacobiSampler<'_, T, S, B> {
       .try_fill_path(out)
       .unwrap_or_else(crate::device::device_panic)
   }
+}
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed
+  for FJacobiSampler<'_, T, S, B>
+{
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FJacobiSampler<'_, T, S, B> {

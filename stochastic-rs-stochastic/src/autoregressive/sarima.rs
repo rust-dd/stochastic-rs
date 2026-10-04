@@ -174,6 +174,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Sarima<T, S> { non_seasonal_ar_coefs, non_seasonal_ma_coefs, seasonal_ar_coefs, seasonal_ma_coefs, d, D, s, sigma, n, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Sarima<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Sarima<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -359,6 +364,8 @@ pub(crate) fn sarima_filter<T: FloatExt>(
   }
   integrated
 }
+
+impl<T: FloatExt> crate::traits::Sealed for SarimaSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for SarimaSampler<T> {
   type Output = Array1<T>;

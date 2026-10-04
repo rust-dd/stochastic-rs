@@ -177,6 +177,11 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
 
 backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] RlBlackScholes<T, S> { hurst, s0, r, sigma, n, t, degree, seed, fbm } via euler);
 
+impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for RlBlackScholes<T, S, B>
+{
+}
+
 impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for RlBlackScholes<T, S, B>
 {
@@ -277,6 +282,8 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlBlackScholesSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt + RoughSimd, S: SeedExt> crate::traits::Sealed for RlBlackScholesSampler<T, S> {}
 
 impl<T: FloatExt + RoughSimd, S: SeedExt> PathSampler<T> for RlBlackScholesSampler<T, S> {
   type Output = Array1<T>;

@@ -94,6 +94,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Wn<T, S> { n, mean, std_dev, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Wn<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Wn<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -159,6 +164,8 @@ impl<T: FloatExt> WnSampler<T> {
     self.normal.fill_slice(&mut out[..len]);
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for WnSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for WnSampler<T> {
   type Output = Array1<T>;

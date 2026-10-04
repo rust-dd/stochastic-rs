@@ -137,6 +137,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] BilateralGamma<T, S> { alpha_p, lambda_p, alpha_m, lambda_m, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for BilateralGamma<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for BilateralGamma<T, S, B>
 {
@@ -221,6 +226,8 @@ impl<T: FloatExt> BilateralGammaSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for BilateralGammaSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for BilateralGammaSampler<T> {
   type Output = Array1<T>;
@@ -356,6 +363,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] BilateralGammaMotion<T, S> { sigma, alpha_p, lambda_p, alpha_m, lambda_m, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for BilateralGammaMotion<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for BilateralGammaMotion<T, S, B>
 {
@@ -448,6 +460,8 @@ impl<T: FloatExt> BilateralGammaMotionSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for BilateralGammaMotionSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for BilateralGammaMotionSampler<T> {
   type Output = Array1<T>;

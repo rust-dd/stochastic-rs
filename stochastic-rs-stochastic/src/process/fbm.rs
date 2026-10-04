@@ -130,6 +130,11 @@ impl<T: FloatExt> Default for Fbm<T, Unseeded, Cpu> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::traits::Sealed for Fbm<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
   for Fbm<T, S, B>
 {
@@ -231,6 +236,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FbmSampler<'_, T, S, B> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed for FbmSampler<'_, T, S, B> {}
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FbmSampler<'_, T, S, B> {
   type Output = Array1<T>;

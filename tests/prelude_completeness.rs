@@ -33,7 +33,6 @@ use stochastic_rs::prelude::Moneyness;
 use stochastic_rs::prelude::MultivariateExt;
 use stochastic_rs::prelude::OptionStyle;
 use stochastic_rs::prelude::OptionType;
-use stochastic_rs::prelude::PathSampler;
 use stochastic_rs::prelude::ProcessExt;
 use stochastic_rs::prelude::RealExt;
 use stochastic_rs::prelude::Seeded;
@@ -46,7 +45,7 @@ use stochastic_rs::prelude::ToModel;
 use stochastic_rs::prelude::VolterraKernel;
 
 #[test]
-fn all_twenty_eight_documented_prelude_items_resolve() {
+fn all_twenty_seven_documented_prelude_items_resolve() {
   // The import above is the assertion: if it compiles, every name CLAUDE.md
   // and prelude.mdx list is still a real prelude export. Nothing to run.
 }

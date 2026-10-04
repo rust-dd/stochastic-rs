@@ -178,6 +178,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Poisson<T, S> { lambda, n, t_max, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Poisson<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Poisson<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -311,6 +316,8 @@ impl<T: FloatExt> PoissonSampler<T> {
     Array1::from(poisson)
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for PoissonSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for PoissonSampler<T> {
   type Output = Array1<T>;

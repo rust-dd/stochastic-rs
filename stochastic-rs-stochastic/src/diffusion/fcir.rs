@@ -213,6 +213,11 @@ impl<T: FloatExt, S: SeedExt, B> Fcir<T, S, B> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::traits::Sealed for Fcir<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
   for Fcir<T, S, B>
 {
@@ -308,6 +313,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FcirSampler<'_, T, S, B> {
       .unwrap_or_else(crate::device::device_panic)
   }
 }
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed for FcirSampler<'_, T, S, B> {}
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FcirSampler<'_, T, S, B> {
   type Output = Array1<T>;

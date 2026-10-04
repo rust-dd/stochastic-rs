@@ -272,6 +272,11 @@ impl<T: FloatExt, S: SeedExt, B> RegimeSwitchingDiffusion<T, S, B> {
 
 backend_switch!([T: FloatExt, S: SeedExt] RegimeSwitchingDiffusion<T, S> { mu, q_matrix, vols, initial_state, n, s0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for RegimeSwitchingDiffusion<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for RegimeSwitchingDiffusion<T, S, B>
 {
@@ -431,6 +436,8 @@ impl<T: FloatExt, S: SeedExt> RegimeSwitchingDiffusionSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for RegimeSwitchingDiffusionSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for RegimeSwitchingDiffusionSampler<T, S> {
   type Output = [Array1<T>; 2];

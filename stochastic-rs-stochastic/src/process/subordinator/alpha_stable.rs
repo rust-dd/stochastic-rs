@@ -99,6 +99,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] AlphaStableSubordinator<T, S> { alpha, c, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for AlphaStableSubordinator<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for AlphaStableSubordinator<T, S, B>
 {
@@ -186,6 +191,8 @@ impl<T: FloatExt> AlphaStableSubordinatorSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for AlphaStableSubordinatorSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for AlphaStableSubordinatorSampler<T> {
   type Output = Array1<T>;

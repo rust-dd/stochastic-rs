@@ -134,6 +134,11 @@ pub struct MultifactorHestonLaunch<'a, T: FloatExt, const K: usize, S: SeedExt, 
   &'a MultifactorHeston<T, K, S, B>,
 );
 
+impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>>
+  crate::traits::Sealed for MultifactorHestonLaunch<'_, T, K, S, B>
+{
+}
+
 impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for MultifactorHestonLaunch<'_, T, K, S, B>
 {
@@ -155,6 +160,11 @@ impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> 
 #[doc(hidden)]
 pub struct MultifactorHestonLaunchSampler<T: FloatExt, const K: usize, S: SeedExt> {
   inner: MultifactorHestonSampler<T, K, S>,
+}
+
+impl<T: FloatExt, const K: usize, S: SeedExt> crate::traits::Sealed
+  for MultifactorHestonLaunchSampler<T, K, S>
+{
 }
 
 impl<T: FloatExt, const K: usize, S: SeedExt> PathSampler<T>
@@ -241,6 +251,11 @@ fn slots_to_output<T: FloatExt, const K: usize>(
 }
 
 backend_switch!([T: FloatExt, const K: usize, S: SeedExt] MultifactorHeston<T, K, S> { s0, v0, kappa, theta, sigma, rho, mu, n, t, seed, cgns } via euler);
+
+impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>>
+  crate::traits::Sealed for MultifactorHeston<T, K, S, B>
+{
+}
 
 impl<T: FloatExt, const K: usize, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for MultifactorHeston<T, K, S, B>
@@ -400,6 +415,11 @@ impl<T: FloatExt, const K: usize, S: SeedExt> MultifactorHestonSampler<T, K, S> 
       }
     }
   }
+}
+
+impl<T: FloatExt, const K: usize, S: SeedExt> crate::traits::Sealed
+  for MultifactorHestonSampler<T, K, S>
+{
 }
 
 impl<T: FloatExt, const K: usize, S: SeedExt> PathSampler<T> for MultifactorHestonSampler<T, K, S> {

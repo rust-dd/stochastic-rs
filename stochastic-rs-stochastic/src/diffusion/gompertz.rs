@@ -101,6 +101,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Gompertz<T, S> { a, b, sigma, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Gompertz<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for Gompertz<T, S, B>
 {
@@ -193,6 +198,8 @@ impl<T: FloatExt> GompertzSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for GompertzSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for GompertzSampler<T> {
   type Output = Array1<T>;

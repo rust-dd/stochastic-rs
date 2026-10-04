@@ -304,6 +304,13 @@ where
 
 backend_switch!([T: FloatExt + RoughSimd, K, S: SeedExt] GaussianPolynomialVolatility<T, K, S> { kernel, coefficients, n, t, seed, lift } via euler where  K: VolterraKernel<T> + Send + Sync);
 
+impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for GaussianPolynomialVolatility<T, K, S, B>
+where
+  K: VolterraKernel<T> + Send + Sync,
+{
+}
+
 impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for GaussianPolynomialVolatility<T, K, S, B>
 where
@@ -432,6 +439,13 @@ where
       *o = acc;
     }
   }
+}
+
+impl<T: FloatExt + RoughSimd, K, S: SeedExt> crate::traits::Sealed
+  for GaussianPolynomialVolatilitySampler<T, K, S>
+where
+  K: VolterraKernel<T> + Send + Sync,
+{
 }
 
 impl<T: FloatExt + RoughSimd, K, S: SeedExt> PathSampler<T>

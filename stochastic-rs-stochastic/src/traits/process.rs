@@ -307,7 +307,7 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// caller invokes once, from outside, before ever calling `sample()` — the
 /// two are unrelated, and this section's guarantee holds no matter how any
 /// individual type's `sampler()` is implemented.
-pub trait ProcessExt<T: FloatExt>: Send + Sync {
+pub trait ProcessExt<T: FloatExt>: Send + Sync + crate::traits::Sealed {
   type Output: Send;
 
   /// Reusable sampling state. Implementation detail of the `sample*` methods,

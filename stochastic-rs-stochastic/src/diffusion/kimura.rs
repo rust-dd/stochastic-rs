@@ -93,6 +93,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Kimura<T, S> { a, sigma, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Kimura<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Kimura<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -181,6 +186,8 @@ impl<T: FloatExt> KimuraSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for KimuraSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for KimuraSampler<T> {
   type Output = Array1<T>;

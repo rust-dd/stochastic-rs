@@ -271,6 +271,11 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
 
 backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] Volterra<T, S> { kernel, n, t, seed, engine, lift } via euler);
 
+impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Volterra<T, S, B>
+{
+}
+
 impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for Volterra<T, S, B>
 {
@@ -393,6 +398,8 @@ pub enum VolterraSampler<T: FloatExt + RoughSimd, S: SeedExt> {
   Reference(ReferenceVolterraSampler<T>),
 }
 
+impl<T: FloatExt + RoughSimd, S: SeedExt> crate::traits::Sealed for VolterraSampler<T, S> {}
+
 impl<T: FloatExt + RoughSimd, S: SeedExt> PathSampler<T> for VolterraSampler<T, S> {
   type Output = Array1<T>;
 
@@ -467,6 +474,8 @@ impl<T: FloatExt> ReferenceVolterraSampler<T> {
     out.copy_from_slice(path.as_slice().expect("reference path must be contiguous"));
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for ReferenceVolterraSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for ReferenceVolterraSampler<T> {
   type Output = Array1<T>;

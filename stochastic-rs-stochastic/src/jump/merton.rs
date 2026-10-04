@@ -365,6 +365,14 @@ where
 
 backend_switch!([T, D, S: SeedExt] Merton<T, D, S> { alpha, sigma, lambda, theta, n, x0, t, cpoisson, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
 
+impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Merton<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
+{
+}
+
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Merton<T, D, S, B>
 where
   T: FloatExt,
@@ -515,6 +523,13 @@ where
       out[i] = out[i - 1] + self.drift_dt + self.sigma * gn[i - 1] + jump_increments[i];
     }
   }
+}
+
+impl<T, D, S: SeedExt> crate::traits::Sealed for MertonSampler<'_, T, D, S>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
 }
 
 impl<T, D, S: SeedExt> PathSampler<T> for MertonSampler<'_, T, D, S>

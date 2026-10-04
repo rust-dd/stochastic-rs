@@ -102,6 +102,8 @@ seed; it must **never** borrow `&self.cpoisson` wholesale, or every
 chunk races on the same shared atomic during the parallel region.
 
 ```rust
+impl<T, D, S: SeedExt> crate::traits::Sealed for Merton<T, D, S> where T: FloatExt, D: Distribution<T> + Send + Sync {}
+
 impl<T, D, S: SeedExt> ProcessExt<T> for Merton<T, D, S>
 where T: FloatExt, D: Distribution<T> + Send + Sync
 {
@@ -137,6 +139,8 @@ where T: FloatExt, D: Distribution<T> + Send + Sync
 and the path fill itself:
 
 ```rust
+impl<T, D, S: SeedExt> crate::traits::Sealed for MertonSampler<'_, T, D, S> where T: FloatExt, D: Distribution<T> + Send + Sync {}
+
 impl<T, D, S: SeedExt> PathSampler<T> for MertonSampler<'_, T, D, S>
 where T: FloatExt, D: Distribution<T> + Send + Sync
 {

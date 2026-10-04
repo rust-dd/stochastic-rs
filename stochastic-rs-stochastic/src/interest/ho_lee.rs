@@ -128,6 +128,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] HoLee<T, S> { f_T, theta, sigma, n, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for HoLee<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for HoLee<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -230,6 +235,8 @@ impl<T: FloatExt> HoLeeSampler<'_, T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for HoLeeSampler<'_, T> {}
 
 impl<T: FloatExt> PathSampler<T> for HoLeeSampler<'_, T> {
   type Output = Array1<T>;

@@ -160,6 +160,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] HullWhite2F<T, S> { theta, a, sigma1, sigma2, rho, b, x0, t, n, seed, cgns } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for HullWhite2F<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for HullWhite2F<T, S, B>
 {
@@ -249,6 +254,8 @@ impl<T: FloatExt, S: SeedExt> HullWhite2FSampler<'_, T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for HullWhite2FSampler<'_, T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for HullWhite2FSampler<'_, T, S> {
   type Output = [Array1<T>; 2];

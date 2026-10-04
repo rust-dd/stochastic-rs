@@ -146,6 +146,8 @@ impl<T: FloatExt> Default for Ou<T, Unseeded> {
 
 backend_switch!([T: FloatExt, S: SeedExt] Ou<T, S> { theta, mu, sigma, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> crate::traits::Sealed for Ou<T, S, B> {}
+
 impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Ou<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -228,6 +230,8 @@ impl<T: FloatExt> OuSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for OuSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for OuSampler<T> {
   type Output = Array1<T>;

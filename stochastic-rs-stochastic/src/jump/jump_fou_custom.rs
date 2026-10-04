@@ -68,6 +68,14 @@ where
   seed: S,
 }
 
+impl<T, D, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for JumpFOUCustom<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
+{
+}
+
 impl<T, D, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
   for JumpFOUCustom<T, D, S, B>
 where
@@ -242,6 +250,14 @@ where
         + jump_sum;
     }
   }
+}
+
+impl<T, D, B> crate::traits::Sealed for JumpFOUCustomSampler<'_, T, D, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+  B: FgnBackend<T>,
+{
 }
 
 impl<T, D, B> PathSampler<T> for JumpFOUCustomSampler<'_, T, D, B>

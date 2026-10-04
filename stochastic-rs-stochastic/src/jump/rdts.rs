@@ -167,6 +167,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Rdts<T, S> { lambda_plus, lambda_minus, alpha, n, j, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Rdts<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Rdts<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -360,6 +365,8 @@ impl<T: FloatExt, S: SeedExt> RdtsSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for RdtsSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for RdtsSampler<T, S> {
   type Output = Array1<T>;

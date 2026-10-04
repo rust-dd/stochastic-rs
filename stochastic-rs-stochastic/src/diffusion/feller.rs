@@ -121,6 +121,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] FellerLogistic<T, S> { kappa, theta, sigma, n, x0, t, use_sym, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for FellerLogistic<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for FellerLogistic<T, S, B>
 {
@@ -216,6 +221,8 @@ impl<T: FloatExt> FellerLogisticSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for FellerLogisticSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for FellerLogisticSampler<T> {
   type Output = Array1<T>;

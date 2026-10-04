@@ -68,7 +68,8 @@ only for the precision its kernels compute in: `Cuda` for `f32` and `f64`,
 `f64` type. Generic code spells the scalar in the bound: `B: EulerBackend<T>`.
 
 Bound on `Backend` to say "device-parameterised"; bound on a capability when
-the code actually samples through it.
+the code actually samples through it. The family is sealed to the four handles
+in the table below; a new device is added inside the crate.
 
 | Marker        | Feature                          | Backs onto                             | Hardware            |
 |---------------|----------------------------------|----------------------------------------|---------------------|

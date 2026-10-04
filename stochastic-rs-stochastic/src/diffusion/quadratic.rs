@@ -110,6 +110,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Quadratic<T, S> { alpha, beta, gamma, sigma, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Quadratic<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for Quadratic<T, S, B>
 {
@@ -201,6 +206,8 @@ impl<T: FloatExt> QuadraticSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for QuadraticSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for QuadraticSampler<T> {
   type Output = Array1<T>;

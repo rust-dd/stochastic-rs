@@ -205,6 +205,11 @@ fn fill_wu_zhang_pair<T: FloatExt, S: SeedExt>(
 #[doc(hidden)]
 pub struct WuZhangPair<'a, T: FloatExt, S: SeedExt, B>(&'a WuZhangD<T, S, B>, usize);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for WuZhangPair<'_, T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for WuZhangPair<'_, T, S, B>
 {
@@ -229,6 +234,11 @@ pub struct WuZhangPairSampler<'a, T: FloatExt, S: SeedExt, B> {
   model: &'a WuZhangD<T, S, B>,
   pair: usize,
   seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for WuZhangPairSampler<'_, T, S, B>
+{
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> PathSampler<T>
@@ -307,6 +317,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 }
 
 backend_switch!([T: FloatExt, S: SeedExt] WuZhangD<T, S> { alpha, beta, nu, lambda, x0, v0, xn, t, n, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for WuZhangD<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for WuZhangD<T, S, B>
@@ -441,6 +456,8 @@ impl<T: FloatExt, S: SeedExt> WuZhangDSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for WuZhangDSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for WuZhangDSampler<T, S> {
   type Output = Array2<T>;

@@ -50,6 +50,8 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed for Fgn<T, S, B> {}
+
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -127,6 +129,8 @@ pub struct FgnSampler<'a, T: FloatExt, S: SeedExt, B> {
   fgn: &'a Fgn<T, S, B>,
   normal: Seeded<SimdNormal<T>>,
 }
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed for FgnSampler<'_, T, S, B> {}
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FgnSampler<'_, T, S, B> {
   type Output = Array1<T>;

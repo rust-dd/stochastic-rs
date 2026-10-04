@@ -258,6 +258,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] BlackKarasinski<T, S> { theta, a, sigma, n, r0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for BlackKarasinski<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for BlackKarasinski<T, S, B>
 {
@@ -379,6 +384,8 @@ impl<T: FloatExt> BlackKarasinskiSampler<'_, T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for BlackKarasinskiSampler<'_, T> {}
 
 impl<T: FloatExt> PathSampler<T> for BlackKarasinskiSampler<'_, T> {
   type Output = Array1<T>;

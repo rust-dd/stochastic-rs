@@ -228,6 +228,11 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
 
 backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] RlHeston<T, S> { hurst, s0, v0, kappa, theta, nu, rho, mu, n, t, degree, seed, cgns, markov } via euler);
 
+impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for RlHeston<T, S, B>
+{
+}
+
 impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for RlHeston<T, S, B>
 {
@@ -331,6 +336,8 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlHestonSampler<'_, T, S> {
     }
   }
 }
+
+impl<T: FloatExt + RoughSimd, S: SeedExt> crate::traits::Sealed for RlHestonSampler<'_, T, S> {}
 
 impl<T: FloatExt + RoughSimd, S: SeedExt> PathSampler<T> for RlHestonSampler<'_, T, S> {
   type Output = [Array1<T>; 2];

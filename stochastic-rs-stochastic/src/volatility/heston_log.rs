@@ -305,6 +305,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] HestonLog<T, S> { mu, b, r, r_f, kappa, theta, xi, rho, n, s0, v0, t, use_sym, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for HestonLog<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for HestonLog<T, S, B>
 {
@@ -431,6 +436,8 @@ impl<T: FloatExt> HestonLogSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for HestonLogSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for HestonLogSampler<T> {
   type Output = [Array1<T>; 2];

@@ -296,6 +296,14 @@ where
 
 backend_switch!([T, D, S: SeedExt] CompoundPoisson<T, D, S> { distribution, poisson, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
 
+impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for CompoundPoisson<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
+{
+}
+
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for CompoundPoisson<T, D, S, B>
 where
@@ -407,6 +415,13 @@ where
 
     [poisson, cum_jupms, jumps]
   }
+}
+
+impl<T, D, S: SeedExt> crate::traits::Sealed for CompoundPoissonSampler<'_, T, D, S>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
 }
 
 impl<T, D, S: SeedExt> PathSampler<T> for CompoundPoissonSampler<'_, T, D, S>

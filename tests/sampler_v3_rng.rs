@@ -8,9 +8,9 @@ use ndarray::Array1;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::gbm::Gbm;
+use stochastic_rs::stochastic::traits::PathSampler;
 use stochastic_rs::stochastic::volatility::HestonPow;
 use stochastic_rs::stochastic::volatility::heston::Heston;
-use stochastic_rs::traits::PathSampler;
 use stochastic_rs::traits::ProcessExt;
 
 fn key(p: &Array1<f64>) -> Vec<u64> {

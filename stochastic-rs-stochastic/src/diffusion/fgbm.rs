@@ -149,6 +149,11 @@ impl<T: FloatExt, S: SeedExt, B> Fgbm<T, S, B> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::traits::Sealed for Fgbm<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
   for Fgbm<T, S, B>
 {
@@ -238,6 +243,8 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FgbmSampler<'_, T, S, B> {
       .unwrap_or_else(crate::device::device_panic)
   }
 }
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed for FgbmSampler<'_, T, S, B> {}
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FgbmSampler<'_, T, S, B> {
   type Output = Array1<T>;

@@ -59,7 +59,7 @@ pub trait RealExt:
   // from_usize_, from_f64_fast, pi, two_pi, min_positive_val
 }
 
-pub trait SimdFloatExt: RealExt {
+pub trait SimdFloatExt: RealExt + Sealed {
   type Simd; // f32x8 / f64x8
   // splat, simd_ln/exp/sqrt/…, fill_uniform, sample_uniform
 }
@@ -73,17 +73,18 @@ pub trait FloatExt: RealExt + SimdFloatExt {
 `RealExt` asks for nothing beyond scalar math, so a custom scalar — an AAD
 dual number, a higher-precision float — can implement it and flow through
 everything bounded on it. `FloatExt` additionally demands the 8-lane SIMD
-surface and RNG-backed fills, so `f32`/`f64` are its only possible
-implementors — the right bound for code that simulates, and a closed door
-by construction. Analytic pricing code is bounded on `RealExt`; path
-generation and Monte Carlo on `FloatExt`.
+surface and RNG-backed fills, and `SimdFloatExt` is sealed to `f32`/`f64` —
+the right bound for code that simulates, and a closed door by construction.
+Analytic pricing code is bounded on `RealExt`; path generation and Monte
+Carlo on `FloatExt`.
 
 ## `ProcessExt<T>`
 
-Every stochastic process implements `ProcessExt<T>`:
+Every stochastic process implements `ProcessExt<T>`, sealed to the crate's
+own processes:
 
 ```rust
-pub trait ProcessExt<T: FloatExt>: Send + Sync {
+pub trait ProcessExt<T: FloatExt>: Send + Sync + Sealed {
   type Output: Send; // Array1<T>, [Array1<T>; N], Array2<T>, …
   fn sample(&self) -> Self::Output;
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Self::Output) -> R + Sync) -> Vec<R>;

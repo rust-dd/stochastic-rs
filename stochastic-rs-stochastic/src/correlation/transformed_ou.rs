@@ -177,6 +177,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] TransformedOU<T, S> { kappa, mu, sigma, rho0, transform, n, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for TransformedOU<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for TransformedOU<T, S, B>
 {
@@ -273,6 +278,8 @@ impl<T: FloatExt> TransformedOUSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for TransformedOUSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for TransformedOUSampler<T> {
   type Output = Array1<T>;

@@ -284,6 +284,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] CirPlusPlus<T, S> { kappa, theta, sigma, phi, n, x0, t, use_sym, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for CirPlusPlus<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for CirPlusPlus<T, S, B>
 {
@@ -396,6 +401,8 @@ impl<T: FloatExt> CirPlusPlusSampler<'_, T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for CirPlusPlusSampler<'_, T> {}
 
 impl<T: FloatExt> PathSampler<T> for CirPlusPlusSampler<'_, T> {
   type Output = Array1<T>;

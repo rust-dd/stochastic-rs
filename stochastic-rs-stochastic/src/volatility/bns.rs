@@ -178,6 +178,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Bns<T, S> { s0, sigma2_0, lambda, mu, nu, jump_shape, n, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Bns<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Bns<T, S, B> {
   /// `(log-stock path, variance σ² path)`.
   type Output = [Array1<T>; 2];
@@ -286,6 +291,8 @@ impl<T: FloatExt, S: SeedExt> BnsSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for BnsSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for BnsSampler<T, S> {
   type Output = [Array1<T>; 2];

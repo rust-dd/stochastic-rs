@@ -134,6 +134,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] ARp<T, S> { phi, sigma, n, x0, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for ARp<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for ARp<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -258,6 +263,8 @@ impl<T: FloatExt> ARpSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for ARpSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for ARpSampler<T> {
   type Output = Array1<T>;

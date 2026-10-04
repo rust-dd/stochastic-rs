@@ -231,6 +231,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] KoBoL<T, S> { d, p, q, lambda_plus, lambda_minus, alpha, n, j, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for KoBoL<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for KoBoL<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -428,6 +433,8 @@ impl<T: FloatExt, S: SeedExt> KoBoLSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for KoBoLSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for KoBoLSampler<T, S> {
   type Output = Array1<T>;

@@ -155,6 +155,11 @@ impl<T: FloatExt, S: SeedExt, B> Adg<T, S, B> {
 #[doc(hidden)]
 pub struct AdgRow<'a, T: FloatExt, S: SeedExt, B>(&'a Adg<T, S, B>, usize);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for AdgRow<'_, T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for AdgRow<'_, T, S, B>
 {
@@ -179,6 +184,11 @@ pub struct AdgRowSampler<'a, T: FloatExt, S: SeedExt, B> {
   adg: &'a Adg<T, S, B>,
   factor: usize,
   seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for AdgRowSampler<'_, T, S, B>
+{
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> PathSampler<T>
@@ -249,6 +259,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 }
 
 backend_switch!([T: FloatExt, S: SeedExt] Adg<T, S> { k, theta, sigma, phi, b, c, n, xn, x0, t, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Adg<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Adg<T, S, B> {
   type Output = Array2<T>;
@@ -331,6 +346,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
 pub struct AdgSampler<'a, T: FloatExt, S: SeedExt, B> {
   adg: &'a Adg<T, S, B>,
   seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for AdgSampler<'_, T, S, B>
+{
 }
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> PathSampler<T>
