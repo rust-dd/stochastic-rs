@@ -63,8 +63,9 @@ pub struct HullWhiteCalibrationResult {
   pub model_prices: Vec<f64>,
   /// Per-quote market prices in the same order.
   pub market_prices: Vec<f64>,
-  /// Time-0 short rate and drift offset the tree model starts from; inputs of the calibrator, not calibrated.
+  /// Time-0 short rate the tree model starts from; not calibrated.
   pub initial_rate: f64,
+  /// Constant drift offset of the tree model; not calibrated.
   pub theta: f64,
 }
 

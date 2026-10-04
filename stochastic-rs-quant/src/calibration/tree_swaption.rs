@@ -135,8 +135,9 @@ pub struct BlackKarasinskiCalibrationResult {
   pub converged: bool,
   pub model_prices: Vec<f64>,
   pub market_prices: Vec<f64>,
-  /// Time-0 short rate and long-run level the tree reverts to; inputs of the calibrator.
+  /// Time-0 short rate the tree model starts from; not calibrated.
   pub initial_rate: f64,
+  /// Long-run level the log-rate reverts to, in rate units; not calibrated.
   pub long_run_rate: f64,
 }
 
