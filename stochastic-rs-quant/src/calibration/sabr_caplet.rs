@@ -11,19 +11,8 @@
 //! against the supplied per-strike Black-76 implied volatilities by
 //! Nelder-Mead.
 //!
-//! ## Negative and near-zero forwards
-//!
-//! The underlying Hagan expansion requires a strictly positive forward and
-//! strike. EUR, JPY and CHF caplet forwards were routinely negative from
-//! roughly 2015 to 2022, so [`SabrCapletCalibrator`] carries a `shift`
-//! displacing both before they reach the expansion — the same
-//! $F_s=F+\text{shift}$, $K_s=K+\text{shift}$ convention as
-//! [`ShiftedSabrVolatility`](crate::instruments::option::ShiftedSabrVolatility).
-//! `shift` defaults to `0.0` (set it with
-//! [`SabrCapletCalibrator::with_shift`]), which reproduces the unshifted
-//! formula exactly. `calibrate` returns `Err` naming the offending value
-//! rather than panicking when the configured shift still leaves the
-//! forward or a strike non-positive.
+//! A negative rate forward is a real market state, so `shift` (default `0.0`) displaces the forward and every strike before the expansion,
+//! as in [`ShiftedSabrVolatility`](crate::instruments::option::ShiftedSabrVolatility); `calibrate` answers `Err` while one stays non-positive.
 //!
 //! Reference: P. S. Hagan, D. Kumar, A. S. Lesniewski, D. E. Woodward,
 //! "Managing Smile Risk", Wilmott Magazine (2002). Shift convention:
@@ -224,11 +213,8 @@ impl SabrCapletCalibrator {
     self.forward + self.shift
   }
 
-  /// Checks that `shift` makes the forward and every strike strictly
-  /// positive, as the underlying Hagan expansion requires. Called from
-  /// [`Calibrator::calibrate`](crate::traits::Calibrator::calibrate) so an
-  /// insufficient shift surfaces as `Err`, naming the offending value,
-  /// instead of panicking inside the Nelder-Mead cost callback.
+  /// `Err` naming the first value `shift` leaves non-positive — the forward or a strike — where the Hagan expansion would feed NaN
+  /// residuals to the Nelder–Mead fit.
   fn validate_shift(&self) -> Result<(), anyhow::Error> {
     let shift = self.shift;
     let forward = self.forward;
