@@ -111,7 +111,8 @@ bivariate copulas.
 - `VanillaEuropeanCall` / `ToShortRateModel` — markers you implement rather
   than call: the first asserts a `ModelPricer` really is a European vanilla
   call so `vol_surface` can invert it, the second bridges a short-rate
-  calibration to its model. Reach via `traits::*`.
+  calibration to its lattice model from the result alone. Reach via
+  `traits::*`.
 - `GreeksExt` — two implementors, both Monte Carlo Malliavin estimators that
   bundle their query by necessity, and no generic consumer in the workspace.
   The five analytic pricers that aggregate Greeks do it through an inherent

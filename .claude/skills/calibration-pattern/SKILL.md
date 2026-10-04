@@ -53,10 +53,10 @@ pub trait ToModel {
 }
 
 // Short-rate results bridge through a separate trait whose Model has
-// NO ModelPricer bound — it prices off a curve, not a spot/strike query.
+// NO ModelPricer bound — it prices off a curve, not a spot/strike query; the result carries the curve-side inputs.
 pub trait ToShortRateModel {
     type Model;
-    fn to_short_rate_model(&self, initial_rate: f64, theta: f64) -> Self::Model;
+    fn to_short_rate_model(&self) -> Self::Model;
 }
 ```
 

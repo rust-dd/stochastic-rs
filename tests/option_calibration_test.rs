@@ -103,6 +103,8 @@ fn hw_calibration_recovers_self_consistent_params() {
     quotes: &quotes,
     curve: &curve,
     notional: 1.0,
+    initial_rate: 0.03,
+    theta: 0.03,
     initial_guess: Some((0.03, 0.008)),
     max_iters: 400,
     sd_tolerance: 1e-10,

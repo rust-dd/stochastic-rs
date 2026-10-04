@@ -202,7 +202,7 @@ quotes = [(1.0, 2.0, 0.22, 0.5, "payer"), (2.0, 2.0, 0.20, 0.5, "payer")]   # (e
 
 bk = srs.BlackKarasinskiSwaptionCalibrator(quotes, curve, initial_rate=0.03, long_run_rate=0.03, steps_per_year=8)
 print(bk.calibrate(initial_guess=(0.1, 0.2)))          # (a, sigma, rmse, converged)
-hw = srs.HullWhiteSwaptionCalibrator(quotes, curve)
+hw = srs.HullWhiteSwaptionCalibrator(quotes, curve, initial_rate=0.03, theta=0.03)
 print(hw.calibrate())                                    # (a, sigma, rmse, converged) via Jamshidian
 g2 = srs.G2ppSwaptionCalibrator(quotes, curve, initial_rate=0.03, steps_per_year=4, max_iters=200)
 print(g2.calibrate())                                    # (a, b, sigma, eta, rho, rmse, converged)
