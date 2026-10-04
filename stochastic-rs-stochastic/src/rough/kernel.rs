@@ -39,38 +39,17 @@ pub struct RlKernel<T: FloatExt> {
   /// Gauss–Laguerre nodes $(x_l)_{l=1}^{N'}$.
   pub nodes: Array1<T>,
   /// Scaled weights $w_l = w^{\mathrm{GL}}_l\, e^{x_l}/\Gamma(1/2-H)$.
-  pub weights: Array1<T>,
+  pub scaled_weights: Array1<T>,
   /// Cached $\Gamma(H+1/2)$ used by the Markov-lift update formula.
   pub gamma_h_half: T,
-  /// `weights` normalised by $\Gamma(H+1/2)$: $w_l/\Gamma(H+1/2)$. Backs
-  /// the [`VolterraKernel`] impl below, so that its `weights()` and
-  /// `evaluate()` describe the same kernel $K(t) = t^{H-1/2}/\Gamma(H+1/2)$
-  /// used by the SDE in the [`rough`](crate::rough) module docs.
-  ///
-  /// **Do not divide by `gamma_h_half` again when consuming this field (or
-  /// the trait's `weights()`/`evaluate()`/`integral_from_zero()`) — the
-  /// $1/\Gamma(H+1/2)$ factor is already folded in here.** Doing so would
-  /// not panic; it would silently produce a kernel too small by that
-  /// factor. `weights` itself stays un-normalised for a *different*,
-  /// non-trait call path:
-  /// [`MarkovLift`](crate::rough::markov_lift::MarkovLift) reads the
-  /// **inherent** (un-normalised) `weights`/`evaluate` directly and
-  /// applies $1/\Gamma(H+1/2)$ itself, once, outside the per-mode sum, as
-  /// an optimisation. A kernel-generic stepper driven through
-  /// [`VolterraKernel`] instead must not carry that split over — see the
-  /// invariant stated on [`VolterraKernel::weights`].
+  /// `scaled_weights / Γ(H+1/2)`: the weights behind the [`VolterraKernel`] impl, so its `weights()`,
+  /// `evaluate()` and `integral_from_zero()` describe one kernel, $K(t) = t^{H-1/2}/\Gamma(H+1/2)$.
   pub normalized_weights: Array1<T>,
 }
 
 impl<T: FloatExt> RlKernel<T> {
-  /// Quadrature degrees at or below this are confirmed numerically stable.
-  /// Above it, the underlying `gen_laguerre_nodes_weights` measurably
-  /// starts producing non-finite weights — independently confirmed finite
-  /// through 175, non-finite somewhere in 176–189, for every Hurst tested
-  /// — and it does so silently, with no panic: `weights`/
-  /// `normalized_weights` just turn `NaN`, and every Markov-lift path
-  /// built from them follows. [`RlKernel::new`] enforces this as a hard
-  /// ceiling rather than handing back a NaN-poisoned kernel.
+  /// Highest stable quadrature degree: above it (first failure measured in 176–189 for every Hurst tested) the
+  /// Laguerre weights turn `NaN` silently, so [`RlKernel::new`] panics rather than return a poisoned kernel.
   pub const MAX_STABLE_DEGREE: usize = 175;
 
   /// Default quadrature degree for a grid of $N$ points: $\lfloor\log N\rfloor + 20$,
@@ -118,7 +97,7 @@ impl<T: FloatExt> RlKernel<T> {
     Self {
       hurst,
       nodes,
-      weights,
+      scaled_weights: weights,
       gamma_h_half: T::from_f64_fast(gamma(h_f64 + 0.5)),
       normalized_weights,
     }
@@ -130,11 +109,11 @@ impl<T: FloatExt> RlKernel<T> {
     self.nodes.len()
   }
 
-  /// Evaluate the exp-sum approximation $\sum_l w_l\, e^{-x_l t} \approx t^{H-1/2}$.
+  /// The exponential-sum approximation $\sum_l w_l e^{-x_l t} \approx t^{H-1/2}$ (unnormalised); the exact kernel is `VolterraKernel::evaluate`.
   #[must_use]
-  pub fn evaluate(&self, t: T) -> T {
+  pub fn exp_sum(&self, t: T) -> T {
     let mut acc = T::zero();
-    for (x, w) in self.nodes.iter().zip(self.weights.iter()) {
+    for (x, w) in self.nodes.iter().zip(self.scaled_weights.iter()) {
       acc += *w * (-*x * t).exp();
     }
     acc
@@ -146,23 +125,12 @@ impl<T: FloatExt> VolterraKernel<T> for RlKernel<T> {
     &self.nodes
   }
 
-  // Deliberately not `&self.weights`: this trait method's contract is the
-  // *normalised* kernel (see `normalized_weights`'s field doc), so returning
-  // the un-normalised `weights` field here would be the actual bug.
-  #[allow(clippy::misnamed_getters)]
   fn weights(&self) -> &Array1<T> {
     &self.normalized_weights
   }
 
-  /// Exact closed form $K(t) = t^{H-1/2}/\Gamma(H+1/2)$ — the kernel that
-  /// the `rough` module's SDE actually uses (see the
-  /// [module docs](crate::rough)) — computed directly, **not** through the
-  /// exponential sum. The inherent [`RlKernel::evaluate`] is itself only an
-  /// approximation of $t^{H-1/2}$ (see its own docs), so routing the exact
-  /// reference value through it would make `evaluate` inherit the fit's
-  /// approximation error instead of supplying the ground truth that
-  /// [`nodes`](VolterraKernel::nodes)/[`weights`](VolterraKernel::weights)
-  /// are fitted against.
+  /// Exact $K(t) = t^{H-1/2}/\Gamma(H+1/2)$, computed directly: the ground truth the exp-sum fit (`exp_sum`) is judged
+  /// against, so routing it through the approximation would hide the fit's own error.
   fn evaluate(&self, t: T) -> T {
     t.powf(self.hurst - T::from_f64_fast(0.5)) / self.gamma_h_half
   }
@@ -235,11 +203,7 @@ mod tests {
   use super::gen_laguerre_nodes_weights;
   use crate::volterra::VolterraKernel;
 
-  /// `VolterraKernel::evaluate` must be the *exact* closed-form kernel
-  /// $t^{H-1/2}/\Gamma(H+1/2)$, computed independently of both the exp-sum
-  /// fit and of `RlKernel`'s own cached `gamma_h_half` — it is the ground
-  /// truth the fit is judged against, not a rescaling of the (approximate)
-  /// inherent `evaluate`.
+  /// Fits the exact kernel independently of the quadrature and of `gamma_h_half`: the ground truth, not a rescaled `exp_sum`.
   #[test]
   fn volterra_kernel_evaluate_matches_independent_closed_form() {
     let hurst = 0.3_f64;
@@ -323,7 +287,7 @@ mod tests {
     let k = RlKernel::<f64>::new(hurst, 40);
     let exponent = hurst - 0.5;
     for t in [0.2_f64, 1.0, 5.0] {
-      let approx = k.evaluate(t);
+      let approx = k.exp_sum(t);
       let truth = t.powf(exponent);
       let rel = (approx - truth).abs() / truth;
       assert!(rel < 5e-3, "t={t} approx={approx} truth={truth} rel={rel}");
@@ -396,5 +360,16 @@ mod tests {
   fn degree_default_scales_with_log_n() {
     assert_eq!(RlKernel::<f64>::default_degree(1000), 26);
     assert_eq!(RlKernel::<f64>::default_degree(10_000), 29);
+  }
+
+  /// The exp-sum approximation and the exact kernel are two different numbers, reachable by two names.
+  #[test]
+  fn exp_sum_and_evaluate_are_distinct() {
+    let k = RlKernel::<f64>::new(0.1, 40);
+    let t = 0.7_f64;
+    let exact = VolterraKernel::evaluate(&k, t);
+    let rel = (k.exp_sum(t) / k.gamma_h_half / exact - 1.0).abs();
+    assert!(rel < 5e-3, "rel={rel}");
+    assert_eq!(k.scaled_weights.len(), k.nodes.len());
   }
 }

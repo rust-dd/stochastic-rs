@@ -182,10 +182,9 @@ what `evaluate` returns, and `integral_from_zero` must be that same
 `K`'s integral. Any normalising constant (e.g. Riemann-Liouville's
 `1/Γ(H+1/2)`) is **already folded into** `weights`, `evaluate` and
 `integral_from_zero` — a kernel-generic caller must not apply another
-one on top. `MarkovLift` deliberately does the opposite: it reads
-`RlKernel`'s *inherent*, un-normalised `weights`/`evaluate` and applies
-the factor once, outside the sum. That split is specific to
-`MarkovLift`'s hand-written loop; do not copy it into anything built on
+one on top. `RlKernel`'s *inherent*, un-normalised `scaled_weights`/`exp_sum`
+sit outside that contract (`MarkovLift` is `VolterraLift<T, RlKernel<T>>`
+and reads only the trait methods); never feed them to anything built on
 the trait.
 
 Existing implementors: `ExponentialKernel`, `GammaKernel`,

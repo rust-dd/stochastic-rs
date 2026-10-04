@@ -35,25 +35,8 @@ use crate::traits::FloatExt;
 pub trait VolterraKernel<T: FloatExt>: Clone {
   /// Quadrature nodes $x_l$.
   fn nodes(&self) -> &Array1<T>;
-  /// Scaled weights $w_l$, already absorbing any normalising constant.
-  ///
-  /// **Invariant, true for every implementor**: $\sum_l w_l\, e^{-x_l t}
-  /// \approx K(t)$ using *these* $w_l$ (`weights()[l]`) and $x_l$
-  /// (`nodes()[l]`), where $K$ is exactly what
-  /// [`evaluate`](Self::evaluate) returns; and
-  /// [`integral_from_zero`](Self::integral_from_zero) is $\int_0^{dt}
-  /// K(u)\,du$ for that same $K$. A kernel-generic caller **must** build
-  /// per-mode products from these trait methods alone and **must not**
-  /// apply any further normalising factor on top (e.g. the
-  /// Riemann–Liouville kernel's $1/\Gamma(H+1/2)$) — it is already folded
-  /// into `weights`, `evaluate`, and `integral_from_zero` here. The
-  /// existing [`MarkovLift`](crate::rough::markov_lift::MarkovLift)
-  /// deliberately does the opposite: it reads
-  /// [`RlKernel`]'s *inherent*, un-normalised `weights`/`evaluate`,
-  /// applying that factor itself,
-  /// once, outside the sum. That split belongs to `MarkovLift`'s own
-  /// hand-written loop and must not be copied into a kernel-generic
-  /// stepper built on this trait.
+  /// Normalised weights: $\sum_l w_l e^{-x_l t} \approx K(t)$ with `evaluate`'s $K$ and `integral_from_zero`'s integral, nothing to
+  /// renormalise on top; `RlKernel::scaled_weights` / `exp_sum` are an un-normalised pair outside this contract.
   fn weights(&self) -> &Array1<T>;
   /// Number of exponential factors $N'$.
   fn degree(&self) -> usize {
@@ -173,7 +156,7 @@ impl<T: FloatExt> GammaKernel<T> {
     let mut weights = Array1::<T>::zeros(degree);
     for l in 0..degree {
       nodes[l] = rl.nodes[l] + lambda;
-      weights[l] = rl.weights[l] / rl.gamma_h_half;
+      weights[l] = rl.scaled_weights[l] / rl.gamma_h_half;
     }
     Self {
       hurst,
