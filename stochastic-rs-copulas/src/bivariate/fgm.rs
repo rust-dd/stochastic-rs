@@ -15,12 +15,11 @@
 //! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
 //! Springer, Example 3.12.
 
-use std::error::Error;
-
 use ndarray::Array1;
 use ndarray::Array2;
 
 use crate::bivariate::CopulaType;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -81,7 +80,7 @@ impl BivariateExt for Fgm {
   }
 
   /// Density $c(u,v) = 1 + \theta(1 - 2u)(1 - 2v)$.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -96,7 +95,7 @@ impl BivariateExt for Fgm {
   }
 
   /// CDF $C(u,v) = uv + \theta u(1-u) v(1-v)$.
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -111,7 +110,7 @@ impl BivariateExt for Fgm {
   }
 
   /// $\partial_v C(u,v) = u + \theta u (1-u)(1 - 2v)$.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);

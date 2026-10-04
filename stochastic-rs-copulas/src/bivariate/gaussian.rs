@@ -32,8 +32,6 @@
 //! Reference: Owen, D.B. (1956), "Tables for computing bivariate normal
 //! probabilities", *Ann. Math. Statist.* 27(4), 1075-1090.
 
-use std::error::Error;
-
 use ndarray::Array1;
 use ndarray::Array2;
 use owens_t::biv_norm;
@@ -41,6 +39,7 @@ use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::bivariate::CopulaType;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -111,7 +110,7 @@ impl BivariateExt for GaussianCopula {
   /// 2\rho xy)/(2(1-\rho^2))\}$ with $x = \Phi^{-1}(u)$, $y = \Phi^{-1}(v)$
   /// — the ratio of the bivariate normal density to the product of its
   /// marginals.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
     let one_minus_rho2 = 1.0 - rho * rho;
@@ -136,7 +135,7 @@ impl BivariateExt for GaussianCopula {
   /// $C(u,v) = \Phi_2(x,y;\rho) = \Phi(x) + \Phi(y) - 1 + Q(x,y;\rho)$,
   /// with $Q$ the `owens_t::biv_norm` survival probability (see module
   /// header for the inclusion-exclusion derivation).
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
     let u_col = x.column(0);
@@ -181,7 +180,7 @@ impl BivariateExt for GaussianCopula {
   /// gives the mathematically correct directional limit (by continuity of
   /// `\Phi`/`\Phi^{-1}` on the open interval) without a family of
   /// hardcoded special cases.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
     let sqrt_one_minus_rho2 = (1.0 - rho * rho).sqrt();
@@ -202,7 +201,7 @@ impl BivariateExt for GaussianCopula {
   /// $u$ at fixed $v$: solving $\Phi((\Phi^{-1}(u) - \rho y)/\sqrt{1-\rho^2})
   /// = p$ for $u$ gives $u = \Phi(\Phi^{-1}(p)\sqrt{1-\rho^2} + \rho y)$,
   /// with $y = \Phi^{-1}(v)$.
-  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
     let sqrt_one_minus_rho2 = (1.0 - rho * rho).sqrt();

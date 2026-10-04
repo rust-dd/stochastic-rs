@@ -4,12 +4,12 @@
 //! C_\theta(u,v)=\left(u^{-\theta}+v^{-\theta}-1\right)^{-1/\theta},\ \theta>0
 //! $$
 //!
-use std::error::Error;
 
 use ndarray::Array1;
 use ndarray::Array2;
 
 use super::CopulaType;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -69,7 +69,7 @@ impl BivariateExt for Clayton {
     self.theta = Some(theta);
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let theta = self.theta.unwrap();
@@ -84,7 +84,7 @@ impl BivariateExt for Clayton {
   /// (`b.powf(c)` with `b = 1` and `c = -∞`, an IEEE `pow` special case
   /// that evaluates to `1.0` regardless) that happens to leave `a` — not
   /// `1.0` — as the answer, i.e. `(uv)^{-1}`.
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0);
@@ -106,7 +106,7 @@ impl BivariateExt for Clayton {
   /// `(u^{-θ}+v^{-θ}-1)^{-1/θ}` hits the same `1^{-∞}` removable
   /// singularity as `pdf` there and evaluates to the constant `1.0` for
   /// every `u,v > 0`, not `uv`.
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0);
@@ -150,7 +150,7 @@ impl BivariateExt for Clayton {
   /// (`U=V`, Kendall's τ ≈ 1) instead of independent — the same defect
   /// class as [`crate::bivariate::frank::Frank::percent_point`]'s
   /// pre-fix `θ = 0` branch.
-  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let theta = self.theta.unwrap();
@@ -175,7 +175,7 @@ impl BivariateExt for Clayton {
   /// formula hits the same `1^{-∞}` removable singularity as `pdf`/`cdf`
   /// there (`B = v^0+u^0-1 = 1`, raised to `(-1-θ)/θ → -∞`), leaving `A =
   /// v^{-1}` — not `u` — as the answer, so it needs its own branch.
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0);

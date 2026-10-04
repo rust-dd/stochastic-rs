@@ -29,8 +29,6 @@
 //! vectors: between independence and complete dependence", *Statist.
 //! Probab. Lett.* 7(4), 283-286.
 
-use std::error::Error;
-
 use ndarray::Array1;
 use ndarray::Array2;
 use roots::SimpleConvergency;
@@ -39,6 +37,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
 
 use crate::bivariate::CopulaType;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -146,7 +145,7 @@ impl BivariateExt for HuslerReiss {
   /// (\lambda/2)\varphi(\alpha)/y]$ with $x = -\ln u$, $y = -\ln v$,
   /// $\alpha = 1/\lambda + (\lambda/2)\ln(x/y)$, $\beta = 2/\lambda -
   /// \alpha$. Uses the Hüsler-Reiss identity for stability.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
     let u_col = x.column(0);
@@ -171,7 +170,7 @@ impl BivariateExt for HuslerReiss {
     Ok(out)
   }
 
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
     let u_col = x.column(0);
@@ -217,7 +216,7 @@ impl BivariateExt for HuslerReiss {
   /// the real formula at `v` clamped just inside `(0,1)` for both
   /// boundaries instead — continuous in `v`, so it tracks the true
   /// one-sided limit.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
     let u_col = x.column(0);

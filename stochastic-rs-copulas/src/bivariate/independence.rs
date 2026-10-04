@@ -4,7 +4,6 @@
 //! C(u,v)=uv
 //! $$
 //!
-use std::error::Error;
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -15,6 +14,7 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use super::CopulaType;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -74,24 +74,24 @@ impl BivariateExt for Independence {
     self.theta = Some(theta);
   }
 
-  fn fit(&mut self, _X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn fit(&mut self, _X: &Array2<f64>) -> Result<(), CopulaError> {
     self.tau = Some(0.0);
     self.theta = Some(0.0);
     Ok(())
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample(&self, n: usize) -> Result<Array2<f64>, CopulaError> {
     let mut ud = SimdUniform::<f64>::new(0.0, 1.0).seeded(&Unseeded);
     let u = Array1::from_vec((0..n).map(|_| ud.sample()).collect());
     let v = Array1::from_vec((0..n).map(|_| ud.sample()).collect());
     Ok(stack![Axis(1), u, v])
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok(t.ln())
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     let in_range = X.map_axis(Axis(1), |row| {
       row.iter().all(|&val| (0.0..=1.0).contains(&val))
     });
@@ -101,23 +101,19 @@ impl BivariateExt for Independence {
     Ok(out)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     let U = X.column(0);
     let V = X.column(1);
 
     Ok(&U * &V)
   }
 
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn std::error::Error>> {
+  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     let V = X.column(1);
     Ok(V.to_owned())
   }
 
-  fn percent_point(
-    &self,
-    y: &Array1<f64>,
-    _V: &Array1<f64>,
-  ) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn percent_point(&self, y: &Array1<f64>, _V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok(y.to_owned())
   }
 

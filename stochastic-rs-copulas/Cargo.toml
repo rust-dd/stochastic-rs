@@ -34,3 +34,6 @@ rand = { workspace = true }
 roots = { workspace = true }
 stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }

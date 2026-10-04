@@ -17,14 +17,13 @@
 //! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
 //! Springer, Example 3.11.
 
-use std::error::Error;
-
 use ndarray::Array1;
 use ndarray::Array2;
 use roots::SimpleConvergency;
 use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -107,7 +106,7 @@ impl BivariateExt for Plackett {
 
   /// Density (Nelsen 2006 eq.3.3.8):
   /// $c(u,v) = \frac{\theta [1 + (\theta-1)(u + v - 2 u v)]}{\{[1 + (\theta-1)(u + v)]^2 - 4 u v \theta (\theta - 1)\}^{3/2}}$.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -134,7 +133,7 @@ impl BivariateExt for Plackett {
   }
 
   /// CDF (closed form for $\theta \neq 1$).
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -157,7 +156,7 @@ impl BivariateExt for Plackett {
   }
 
   /// $\partial_v C(u,v) = \frac{1}{2}\left[1 - \frac{1 + (\theta-1)(u+v) - 2 u \theta}{\sqrt{\{\cdots\}}}\right]$.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);

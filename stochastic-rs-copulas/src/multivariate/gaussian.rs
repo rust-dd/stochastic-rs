@@ -4,7 +4,6 @@
 //! C_\Sigma(u)=\Phi_\Sigma\!\left(\Phi^{-1}(u_1),\dots,\Phi^{-1}(u_d)\right)
 //! $$
 //!
-use std::error::Error;
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -21,6 +20,7 @@ use super::CopulaType;
 use super::linalg::is_spd;
 use super::linalg::spd_cholesky_lower;
 use super::linalg::spd_inverse;
+use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
 
 #[derive(Debug, Clone, Default)]
@@ -42,10 +42,12 @@ impl GaussianMultivariate {
   }
 
   /// Create directly from a correlation matrix.
-  pub fn new_with_corr(corr: Array2<f64>) -> Result<Self, Box<dyn Error>> {
+  pub fn new_with_corr(corr: Array2<f64>) -> Result<Self, CopulaError> {
     let dim = corr.nrows();
     if dim != corr.ncols() {
-      return Err("Correlation matrix must be square".into());
+      return Err(CopulaError::InvalidStructure(
+        "the correlation matrix must be square".into(),
+      ));
     }
     let mut g = Self::new();
     g.set_corr(corr)?;
@@ -57,20 +59,22 @@ impl GaussianMultivariate {
     self.corr.as_ref()
   }
 
-  fn set_corr(&mut self, corr: Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn set_corr(&mut self, corr: Array2<f64>) -> Result<(), CopulaError> {
     let dim = corr.nrows();
     self.dim = dim;
 
-    let l_arr = spd_cholesky_lower(&corr)
-      .ok_or_else(|| -> Box<dyn Error> { "Correlation matrix is not positive definite".into() })?;
+    let l_arr = spd_cholesky_lower(&corr).ok_or_else(|| {
+      CopulaError::InvalidStructure("the correlation matrix is not positive definite".into())
+    })?;
     let mut log_det = 0.0;
     for i in 0..dim {
       log_det += l_arr[[i, i]].ln();
     }
     log_det *= 2.0;
 
-    let inv_arr = spd_inverse(&corr)
-      .ok_or_else(|| -> Box<dyn Error> { "Failed to invert correlation matrix".into() })?;
+    let inv_arr = spd_inverse(&corr).ok_or_else(|| {
+      CopulaError::InvalidStructure("the correlation matrix could not be inverted".into())
+    })?;
 
     self.corr = Some(corr);
     self.inv_corr = Some(inv_arr);
@@ -156,13 +160,13 @@ impl GaussianMultivariate {
     is_spd(a)
   }
 
-  fn require_fitted(&self) -> Result<(), Box<dyn Error>> {
+  fn require_fitted(&self) -> Result<(), CopulaError> {
     if self.corr.is_none()
       || self.inv_corr.is_none()
       || self.chol_lower.is_none()
       || self.log_det_corr.is_none()
     {
-      return Err("Fit the copula or provide a correlation matrix first".into());
+      return Err(CopulaError::NotFitted);
     }
     Ok(())
   }
@@ -170,11 +174,7 @@ impl GaussianMultivariate {
   /// Shared sampling core for [`MultivariateExt::sample`] and
   /// [`MultivariateExt::sample_with_seed`]; monomorphised per seed
   /// strategy so the unseeded path pays no extra cost.
-  fn sample_from_seed<S: SeedExt>(
-    &self,
-    n: usize,
-    seed: &S,
-  ) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample_from_seed<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
     self.require_fitted()?;
     let d = self.dim;
     let l = self.chol_lower.as_ref().unwrap(); // (d x d)
@@ -199,22 +199,25 @@ impl MultivariateExt for GaussianMultivariate {
     CopulaType::Gaussian
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample(&self, n: usize) -> Result<Array2<f64>, CopulaError> {
     self.sample_from_seed(n, &Unseeded)
   }
 
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, CopulaError> {
     self.sample_from_seed(n, &Deterministic::new(seed))
   }
 
   /// Fit the Gaussian copula from U in (0,1)^{n x d}.
-  fn fit(&mut self, X: Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn fit(&mut self, X: Array2<f64>) -> Result<(), CopulaError> {
     if X.nrows() < 2 || X.ncols() < 2 {
-      return Err("Need at least 2 samples and 2 dimensions".into());
+      return Err(CopulaError::InsufficientData {
+        needed: 2,
+        got: X.nrows().min(X.ncols()),
+      });
     }
     // Basic range check
     if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
-      return Err("Input data must be in [0,1] for Gaussian copula fit".into());
+      return Err(CopulaError::MarginalOutOfRange);
     }
     self.dim = X.ncols();
     let z = self.transform_to_normal(&X);
@@ -223,18 +226,21 @@ impl MultivariateExt for GaussianMultivariate {
     Ok(())
   }
 
-  fn check_fit(&self, X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn check_fit(&self, X: &Array2<f64>) -> Result<(), CopulaError> {
     self.require_fitted()?;
     if X.ncols() != self.dim {
-      return Err("Dimension mismatch".into());
+      return Err(CopulaError::DimensionMismatch {
+        expected: self.dim,
+        got: X.ncols(),
+      });
     }
     if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
-      return Err("Input X must be in [0,1] for Gaussian copula".into());
+      return Err(CopulaError::MarginalOutOfRange);
     }
     Ok(())
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let z = self.transform_to_normal(X); // n x d
     let inv = self.inv_corr.as_ref().unwrap();
@@ -255,7 +261,7 @@ impl MultivariateExt for GaussianMultivariate {
     Ok(out)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let z = self.transform_to_normal(X); // n x d
     let l = self.chol_lower.as_ref().unwrap(); // d x d

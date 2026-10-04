@@ -32,12 +32,11 @@
 //! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
 //! Springer, Example 3.6.
 
-use std::error::Error;
-
 use ndarray::Array1;
 use ndarray::Array2;
 
 use crate::bivariate::CopulaType;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -139,17 +138,11 @@ impl BivariateExt for MarshallOlkin {
     self.beta = None;
   }
 
-  /// Overrides the default `theta`-only guard: a legitimate
-  /// [`MarshallOlkin::with_alpha_beta`] construction leaves `theta` as
-  /// `None`, which the generic check would otherwise misreport as unfit —
-  /// the same dual-parameterization accommodation
-  /// [`MarshallOlkin::tail_dependence`] already needs. Gating `pdf` / `cdf`
-  /// / `partial_derivative` behind this turns the unfit case into the
-  /// family-standard `Err("Fit the copula first")` instead of a panic from
-  /// `resolve_params().expect(..)`.
-  fn check_fit(&self) -> Result<(), Box<dyn Error>> {
+  /// [`MarshallOlkin::with_alpha_beta`] leaves `theta` unset, so either parameterisation counts as
+  /// fitted; an unfit copula answers `NotFitted` instead of panicking in `resolve_params`.
+  fn check_fit(&self) -> Result<(), CopulaError> {
     if self.theta.is_none() && (self.alpha.is_none() || self.beta.is_none()) {
-      return Err("Fit the copula first".into());
+      return Err(CopulaError::NotFitted);
     }
     Ok(())
   }
@@ -157,7 +150,7 @@ impl BivariateExt for MarshallOlkin {
   /// Absolutely continuous density. Returns `0` exactly on the singular
   /// curve $u^\alpha = v^\beta$ and `(1 - \alpha) u^{-\alpha}` /
   /// `(1 - \beta) v^{-\beta}` in the two open sectors.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
     let u_col = x.column(0);
@@ -186,7 +179,7 @@ impl BivariateExt for MarshallOlkin {
   }
 
   /// CDF $C_{\alpha,\beta}(u,v) = \min(u^{1-\alpha} v, u v^{1-\beta})$.
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
     let u_col = x.column(0);
@@ -220,7 +213,7 @@ impl BivariateExt for MarshallOlkin {
 
   /// $\partial_u C$. Continuous everywhere except across the singular
   /// curve (where it jumps).
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
     let u_col = x.column(0);

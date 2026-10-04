@@ -178,6 +178,6 @@ fn t_multivariate_exposes_nu() {
   assert!(cop.set_nu(12.0).is_ok());
   assert_eq!(cop.nu(), 12.0);
   let err = cop.set_nu(0.0).unwrap_err();
-  assert_eq!(err.to_string(), "Degrees of freedom must be positive");
+  assert_eq!(err.to_string(), "nu must satisfy `nu > 0`, got nu = 0");
   assert_eq!(cop.nu(), 12.0, "a failed set_nu must not mutate the field");
 }

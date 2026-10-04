@@ -4,12 +4,12 @@
 //! C_\theta(u,v)=\exp\!\left(-\left(({-\ln u})^\theta+({-\ln v})^\theta\right)^{1/\theta}\right),\ \theta\ge1
 //! $$
 //!
-use std::error::Error;
 
 use ndarray::Array1;
 use ndarray::Array2;
 
 use super::CopulaType;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -73,11 +73,11 @@ impl BivariateExt for Gumbel {
     self.theta = Some(theta);
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok((-t.ln()).powf(self.theta.unwrap()))
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0);
@@ -99,7 +99,7 @@ impl BivariateExt for Gumbel {
     Ok(out)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0);
@@ -118,7 +118,7 @@ impl BivariateExt for Gumbel {
     Ok(cdfs)
   }
 
-  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     if self.theta.unwrap() == 1.0 {
@@ -138,7 +138,7 @@ impl BivariateExt for Gumbel {
   /// bypassing this method entirely), so `Gumbel::sample` was never
   /// affected by this bug — only a direct `partial_derivative` call at
   /// `θ = 1` was wrong.
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn std::error::Error>> {
+  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0);

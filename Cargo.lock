@@ -3325,6 +3325,7 @@ dependencies = [
 name = "stochastic-rs-copulas"
 version = "3.0.0-rc.4"
 dependencies = [
+ "anyhow",
  "faer",
  "faer-ext",
  "gauss-quad",

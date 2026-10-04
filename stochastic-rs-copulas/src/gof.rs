@@ -19,12 +19,11 @@
 //! and §4 (parametric bootstrap); Rosenblatt, M. (1952), *Remarks on a
 //! multivariate transformation*, Ann. Math. Statist. 23, 470–472.
 
-use std::error::Error;
-
 use ndarray::Array2;
 use ndarray::Axis;
 use ndarray::stack;
 
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 
 /// Rosenblatt transform `(u, ∂_u C(u, v))` of the rows of `x`. The crate's
@@ -33,7 +32,7 @@ use crate::traits::BivariateExt;
 pub fn rosenblatt<C: BivariateExt + ?Sized>(
   copula: &C,
   x: &Array2<f64>,
-) -> Result<Array2<f64>, Box<dyn Error>> {
+) -> Result<Array2<f64>, CopulaError> {
   let u = x.column(0).to_owned();
   let v = x.column(1).to_owned();
   let swapped = stack![Axis(1), v, u];
@@ -94,8 +93,8 @@ pub fn gof_cramer_von_mises<C: BivariateExt + Clone>(
   x: &Array2<f64>,
   replications: usize,
   seed: u64,
-  refit: impl Fn(&mut C, &Array2<f64>) -> Result<(), Box<dyn Error>>,
-) -> Result<GofResult, Box<dyn Error>> {
+  refit: impl Fn(&mut C, &Array2<f64>) -> Result<(), CopulaError>,
+) -> Result<GofResult, CopulaError> {
   let statistic = cramer_von_mises_independence(&rosenblatt(copula, x)?);
   let n = x.nrows();
   let mut exceed = 0usize;

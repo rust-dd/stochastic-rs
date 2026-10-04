@@ -4,7 +4,6 @@
 //! C_\theta(u,v)=-\frac1\theta\log\!\left(1+\frac{(e^{-\theta u}-1)(e^{-\theta v}-1)}{e^{-\theta}-1}\right)
 //! $$
 //!
-use std::error::Error;
 
 use gauss_quad::GaussLegendre;
 use ndarray::Array1;
@@ -13,6 +12,7 @@ use roots::SimpleConvergency;
 use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -76,7 +76,7 @@ impl BivariateExt for Frank {
     self.theta = Some(theta);
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     let theta = self.theta.unwrap();
     let a = ((-theta * t).exp() - 1.0) / ((-theta).exp() - 1.0);
     let out = -(a.ln());
@@ -93,7 +93,7 @@ impl BivariateExt for Frank {
   /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd
   /// ed., Springer, Example 4.23 / Table 4.1 (Frank generator
   /// $\varphi_\theta(t) = -\ln\frac{e^{-\theta t}-1}{e^{-\theta}-1}$).
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0).to_owned();
@@ -111,7 +111,7 @@ impl BivariateExt for Frank {
     Ok(num / den)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0);
@@ -129,7 +129,7 @@ impl BivariateExt for Frank {
     Ok(out)
   }
 
-  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let theta = self.theta.unwrap();
@@ -149,7 +149,7 @@ impl BivariateExt for Frank {
   /// numerator (`g(u)·g(v)+g(u) = g(u)·e^{-\theta v}`) was already
   /// correct, which is why `partial_derivative` looked closer to right
   /// than `pdf` did even though both drew from the same wrong `aux`.
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn std::error::Error>> {
+  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0).to_owned();
@@ -205,7 +205,7 @@ impl BivariateExt for Frank {
 }
 
 impl Frank {
-  fn _g(&self, z: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn _g(&self, z: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok((-self.theta.unwrap() * z).exp() - 1.0)
   }
 

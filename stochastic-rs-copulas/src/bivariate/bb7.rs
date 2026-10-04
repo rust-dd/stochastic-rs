@@ -18,8 +18,6 @@
 //! Chapman & Hall, §5.2 (family BB7); Joe, H. (2014), *Dependence Modeling
 //! with Copulas*, CRC Press, §4.13.2.
 
-use std::error::Error;
-
 use ndarray::Array1;
 use ndarray::Array2;
 
@@ -29,6 +27,7 @@ use super::two_parameter::fit_two_parameters;
 use super::two_parameter::invert_h;
 use super::two_parameter::kendall_tau_numeric;
 use super::two_parameter::ln_one_minus_exp;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -63,7 +62,7 @@ impl Bb7 {
     self
   }
 
-  fn params(&self) -> Result<(f64, f64), Box<dyn Error>> {
+  fn params(&self) -> Result<(f64, f64), CopulaError> {
     self.check_fit()?;
     Ok((self.theta.expect("checked"), self.delta))
   }
@@ -113,11 +112,15 @@ impl Bb7 {
   /// without the marginal uniformity check that [`BivariateExt::fit`] runs
   /// first — for callers that already hold pseudo-observations, such as the
   /// vine fitter.
-  pub(crate) fn fit_parameters(&mut self, X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
+  pub(crate) fn fit_parameters(&mut self, X: &Array2<f64>) -> Result<(), CopulaError> {
     let u = X.column(0).to_owned();
     let v = X.column(1).to_owned();
     let (tau, ..) = kendalls::tau_b_with_comparator(&u.to_vec(), &v.to_vec(), |a, b| {
       a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Greater)
+    })
+    .map_err(|_| CopulaError::InsufficientData {
+      needed: 2,
+      got: u.len(),
     })?;
     self.tau = Some(tau.max(0.05));
     let start_theta = self.compute_theta().clamp(1.0, 20.0);
@@ -171,12 +174,12 @@ impl BivariateExt for Bb7 {
     self.theta = Some(theta);
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     Ok(t.mapv(|x| (1.0 - (1.0 - x).powf(theta)).powf(-delta) - 1.0))
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     Ok(
       X.rows()
@@ -186,7 +189,7 @@ impl BivariateExt for Bb7 {
     )
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     Ok(
       X.rows()
@@ -197,7 +200,7 @@ impl BivariateExt for Bb7 {
   }
 
   /// `∂_v C(u, v)`.
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     Ok(
       X.rows()
@@ -214,7 +217,7 @@ impl BivariateExt for Bb7 {
     &self,
     y: &Array1<f64>,
     conditioning: &Array1<f64>,
-  ) -> Result<Array1<f64>, Box<dyn Error>> {
+  ) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     Ok(
       y.iter()
@@ -243,7 +246,7 @@ impl BivariateExt for Bb7 {
 
   /// Maximum-likelihood fit of `(θ, δ)`, started from the Kendall inversion
   /// at the current `δ`.
-  fn fit(&mut self, X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn fit(&mut self, X: &Array2<f64>) -> Result<(), CopulaError> {
     self.check_marginal(&X.column(0).to_owned())?;
     self.check_marginal(&X.column(1).to_owned())?;
     self.fit_parameters(X)

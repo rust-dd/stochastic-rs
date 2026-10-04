@@ -34,8 +34,6 @@
 //! probability integral and certain percentage points of a multivariate
 //! analogue of Student's t-distribution", *Biometrika* 42(1/2), 258-260.
 
-use std::error::Error;
-
 use gauss_quad::GaussLegendre;
 use ndarray::Array1;
 use ndarray::Array2;
@@ -44,6 +42,7 @@ use stochastic_rs_distributions::special::ln_gamma;
 use stochastic_rs_distributions::special::ndtri;
 
 use crate::bivariate::CopulaType;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -101,9 +100,13 @@ impl TCopula {
   /// Override the degrees of freedom. Mirrors the feature-gated
   /// `TMultivariate::set_nu`; returns an error instead of silently
   /// accepting a value (e.g. negative or NaN) that produces NaN downstream.
-  pub fn set_nu(&mut self, nu: f64) -> Result<(), Box<dyn Error>> {
+  pub fn set_nu(&mut self, nu: f64) -> Result<(), CopulaError> {
     if nu <= 0.0 || nu.is_nan() {
-      return Err("Degrees of freedom must be positive".into());
+      return Err(CopulaError::InvalidParameter {
+        name: "nu",
+        value: nu,
+        constraint: "nu > 0".into(),
+      });
     }
     self.nu = nu;
     Ok(())
@@ -228,7 +231,7 @@ impl BivariateExt for TCopula {
     self.theta = Some(theta);
   }
 
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
     let nu = self.nu;
@@ -251,7 +254,7 @@ impl BivariateExt for TCopula {
     Ok(out)
   }
 
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
     let nu = self.nu;
@@ -296,7 +299,7 @@ impl BivariateExt for TCopula {
   /// quantile inversion's precision loss at extreme probabilities), giving
   /// agreement to `1e-16` relative and tighter as `|y|` grows further,
   /// across `\nu \in \{3,10,30,100\}` and both signs of `\rho`.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
     let nu = self.nu;

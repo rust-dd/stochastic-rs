@@ -22,14 +22,13 @@
 //! Reference: Joe, H. (1997), "Multivariate Models and Dependence
 //! Concepts", Chapman & Hall, §5.4.
 
-use std::error::Error;
-
 use ndarray::Array1;
 use ndarray::Array2;
 use roots::SimpleConvergency;
 use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -133,7 +132,7 @@ impl BivariateExt for Galambos {
   /// $c(u,v) = C(u,v)/(uv) \cdot [g(x,y) + (\theta+1)\,T^{2\theta+1}/(xy)^{\theta+1}]$
   /// where $x = -\ln u$, $y = -\ln v$, $T = (x^{-\theta} + y^{-\theta})^{-1/\theta}$,
   /// $g(x,y) = ((T/x)^{\theta+1} - 1)((T/y)^{\theta+1} - 1)$.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     let u_col = x.column(0);
@@ -161,7 +160,7 @@ impl BivariateExt for Galambos {
 
   /// CDF $C(u,v) = u v \cdot \exp\!\{(x^{-\theta} + y^{-\theta})^{-1/\theta}\}$
   /// with $x = -\ln u$, $y = -\ln v$.
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     let u_col = x.column(0);
@@ -203,7 +202,7 @@ impl BivariateExt for Galambos {
   /// [`crate::bivariate::husler_reiss::HuslerReiss::partial_derivative`].
   /// The `v\to1^-` limit, by contrast, *is* a clean family-wide `0` — see
   /// the comment on that branch below.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     let u_col = x.column(0);

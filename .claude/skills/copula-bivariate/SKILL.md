@@ -38,8 +38,8 @@ fn theta_bounds(&self) -> (f64, f64);
 fn invalid_thetas(&self) -> Vec<f64>;    // returns owned Vec, not &[f64]
 fn compute_theta(&self) -> f64;          // reads self.tau() — takes NO argument
 fn tail_dependence(&self) -> TailDependence<f64>;
-fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
-fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
+fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError>;
+fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError>;
 ```
 
 Two shape facts that catch every first attempt:
@@ -50,6 +50,8 @@ Two shape facts that catch every first attempt:
 - **`compute_theta` takes no `tau` argument.** It reads `self.tau()`,
   which `fit()` has already set. The tau → theta inversion is a method
   on a *populated* struct, not a free function of tau.
+
+- **Errors are `CopulaError`** (`crate::error`), never `Box<dyn Error>` or a `String`: a parameter outside its domain is `InvalidParameter { name, value, constraint }` in the crate's assert form, an unfitted copula is `NotFitted`, bad pseudo-observations are `MarginalOutOfRange` / `MarginalNotUniform`.
 
 Useful defaults you should usually **not** override:
 
@@ -91,13 +93,13 @@ carries `theta` / `tau` as `Option<f64>` (unset until `fit` or
 ```rust
 // stochastic-rs-copulas/src/bivariate/clayton.rs (reference)
 
-use std::error::Error;
 use std::f64;
 
 use ndarray::Array1;
 use ndarray::Array2;
 
 use super::CopulaType;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -267,8 +269,8 @@ is `Unseeded` and reseeds from entropy each run. See
 - **Do not** implement `sample` / `fit` / `log_pdf` / `ppf`. They are
   defaulted and the defaults are correct.
 - **Do not** implement `generator` for a non-Archimedean family. The
-  default already returns the anchored
-  `"<Type> is not Archimedean — generator not defined"` error.
+  default already returns `CopulaError::Unsupported`
+  (`"<Type> is not Archimedean: no generator"`).
 
 ## 7. Reference impls
 

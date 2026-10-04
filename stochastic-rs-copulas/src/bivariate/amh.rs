@@ -18,14 +18,13 @@
 //! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
 //! Springer, Example 4.23 / Table 4.1 (family (3)).
 
-use std::error::Error;
-
 use ndarray::Array1;
 use ndarray::Array2;
 use roots::SimpleConvergency;
 use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -109,7 +108,7 @@ impl BivariateExt for Amh {
   }
 
   /// Archimedean generator $\varphi(t) = \ln\frac{1 - \theta(1-t)}{t}$.
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     let mut out = Array1::<f64>::zeros(t.len());
@@ -126,7 +125,7 @@ impl BivariateExt for Amh {
 
   /// Density $c(u,v) = \dfrac{(1-\theta) D + 2\theta u v}{D^3}$ where
   /// $D = 1 - \theta(1-u)(1-v)$.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -147,7 +146,7 @@ impl BivariateExt for Amh {
   }
 
   /// CDF $C(u,v) = uv / [1 - \theta(1-u)(1-v)]$.
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -185,7 +184,7 @@ impl BivariateExt for Amh {
   /// / `Amh::sample` (via [`BivariateExt::percent_point_numerical`], which
   /// this family does not override) silently solved the wrong equation
   /// for `u` given `v`.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);

@@ -10,11 +10,13 @@
 mod macros;
 mod optim;
 
+pub mod error;
 pub mod traits;
 
 pub use stochastic_rs_core::simd_rng;
 pub use stochastic_rs_distributions as distributions;
 
+pub use crate::error::CopulaError;
 pub use crate::traits::BivariateExt;
 pub use crate::traits::MultivariateExt;
 pub use crate::traits::TailDependence;

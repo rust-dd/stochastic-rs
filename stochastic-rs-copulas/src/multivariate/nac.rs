@@ -61,8 +61,6 @@
 //! - McNeil, A.J. (2008), "Sampling nested Archimedean copulas",
 //!   *Journal of Statistical Computation and Simulation* 78(6), 567-581.
 
-use std::error::Error;
-
 use ndarray::Array1;
 use ndarray::Array2;
 use rand::Rng;
@@ -73,6 +71,7 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::gamma::SimdGamma;
 
 use super::CopulaType;
+use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
 
 /// Single-parameter Archimedean family supported by [`NestedArchimedean`].
@@ -183,31 +182,34 @@ impl NestedArchimedean {
   /// Construct a NAC from a family and root node. Validates the sufficient
   /// nesting condition, family-specific parameter bounds, and that every
   /// marginal index appears exactly once in the tree.
-  pub fn new(family: NacFamily, root: NacNode, dim: usize) -> Result<Self, Box<dyn Error>> {
+  pub fn new(family: NacFamily, root: NacNode, dim: usize) -> Result<Self, CopulaError> {
     Self::validate_node(family, &root, root.theta.min(f64::INFINITY), true)?;
     let mut index_order = Vec::with_capacity(dim);
     root.collect_leaves(&mut index_order);
     if index_order.len() != dim {
-      return Err(
-        format!(
-          "NAC tree exposes {} leaves but dim = {dim}",
-          index_order.len()
-        )
-        .into(),
-      );
+      return Err(CopulaError::DimensionMismatch {
+        expected: dim,
+        got: index_order.len(),
+      });
     }
     let mut seen = vec![false; dim];
     for &j in &index_order {
       if j >= dim {
-        return Err(format!("leaf index {j} ≥ dim {dim}").into());
+        return Err(CopulaError::InvalidStructure(format!(
+          "leaf index {j} >= dim {dim}"
+        )));
       }
       if seen[j] {
-        return Err(format!("leaf index {j} appears more than once").into());
+        return Err(CopulaError::InvalidStructure(format!(
+          "leaf index {j} appears more than once"
+        )));
       }
       seen[j] = true;
     }
     if seen.iter().any(|&b| !b) {
-      return Err("Not every marginal appears in the NAC tree".into());
+      return Err(CopulaError::InvalidStructure(
+        "not every marginal appears in the NAC tree".into(),
+      ));
     }
     Ok(Self {
       family,
@@ -226,25 +228,20 @@ impl NestedArchimedean {
     node: &NacNode,
     parent_theta: f64,
     is_root: bool,
-  ) -> Result<(), Box<dyn Error>> {
+  ) -> Result<(), CopulaError> {
     let theta_min = family.theta_min();
     if node.theta < theta_min {
-      return Err(
-        format!(
-          "{family:?} node θ={} below family minimum {theta_min}",
-          node.theta
-        )
-        .into(),
-      );
+      return Err(CopulaError::InvalidParameter {
+        name: "theta",
+        value: node.theta,
+        constraint: format!("theta >= {theta_min} for {family:?}"),
+      });
     }
     if !is_root && node.theta < parent_theta {
-      return Err(
-        format!(
-          "SNC violation: child θ={} < parent θ={} ({family:?})",
-          node.theta, parent_theta
-        )
-        .into(),
-      );
+      return Err(CopulaError::InvalidStructure(format!(
+        "SNC violation: child theta {} < parent theta {} ({family:?})",
+        node.theta, parent_theta
+      )));
     }
     for child in &node.children {
       Self::validate_node(family, child, node.theta, false)?;
@@ -421,47 +418,40 @@ impl MultivariateExt for NestedArchimedean {
     CopulaType::NestedArchimedean
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample(&self, n: usize) -> Result<Array2<f64>, CopulaError> {
     Ok(self.sample_with(n, &mut SimdRng::new()))
   }
 
   /// Reproducible counterpart of [`MultivariateExt::sample`]: the same
   /// `seed` always yields the same matrix.
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, CopulaError> {
     Ok(self.sample_with(n, &mut SimdRng::from_seed(seed)))
   }
 
-  fn fit(&mut self, _X: Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn fit(&mut self, _X: Array2<f64>) -> Result<(), CopulaError> {
     // The structural parameters (tree topology + family) are not estimated
     // from data; the user supplies them via `new()`. A full structure +
     // parameter fit (Okhrin-Okhrin-Schmid 2013 HAC structure selection) is
     // not yet implemented.
-    Err(
-      "NestedArchimedean::fit not implemented — supply the tree via NestedArchimedean::new \
-       and use crate::correlation::kendall_tau on the marginal pairs to seed θ values. \
-       Structure learning is not yet implemented."
-        .into(),
-    )
+    Err(CopulaError::Unsupported(
+      "NestedArchimedean::fit is not implemented: build the tree with NestedArchimedean::new and seed theta from kendall_tau".into(),
+    ))
   }
 
-  fn check_fit(&self, X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn check_fit(&self, X: &Array2<f64>) -> Result<(), CopulaError> {
     if X.ncols() != self.dim {
-      return Err(
-        format!(
-          "Dimension mismatch: X has {} columns, NAC has dim {}",
-          X.ncols(),
-          self.dim
-        )
-        .into(),
-      );
+      return Err(CopulaError::DimensionMismatch {
+        expected: self.dim,
+        got: X.ncols(),
+      });
     }
     if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
-      return Err("Input X must be in [0,1] for NAC".into());
+      return Err(CopulaError::MarginalOutOfRange);
     }
     Ok(())
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     // Closed-form NAC densities (Hofert-Pham 2012) require the full
     // d-th-order generator-derivative recursion which is family-specific
@@ -495,7 +485,7 @@ impl MultivariateExt for NestedArchimedean {
     Ok(out)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let mut out = Array1::<f64>::zeros(X.nrows());
     for (i, row) in X.rows().into_iter().enumerate() {
