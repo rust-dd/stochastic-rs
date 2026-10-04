@@ -240,12 +240,18 @@ impl StochVolNn {
         n_k * n_t,
       );
     }
-    let pred = self.predict_surface(params)?;
+    if !maturities.windows(2).all(|w| w[0] < w[1]) {
+      bail!("maturities must be strictly ascending");
+    }
     let mut order = (0..n_k).collect::<Vec<usize>>();
     order.sort_by(|&a, &b| strikes[a].total_cmp(&strikes[b]));
+    let strikes = order.iter().map(|&k| strikes[k]).collect::<Vec<f64>>();
+    if !strikes.windows(2).all(|w| w[0] < w[1]) {
+      bail!("strikes must be distinct and not NaN");
+    }
+    let pred = self.predict_surface(params)?;
     let ivs =
       Array2::<f64>::from_shape_fn((n_t, n_k), |(t, k)| f64::from(pred[t * n_k + order[k]]));
-    let strikes = order.iter().map(|&k| strikes[k]).collect();
     Ok(
       stochastic_rs_quant::vol_surface::ImpliedVolSurface::from_iv_grid(
         strikes, maturities, forwards, ivs,
@@ -386,6 +392,20 @@ mod tests {
         }
       }
     }
+    Ok(())
+  }
+
+  #[test]
+  fn an_unsorted_maturity_or_a_repeated_strike_is_an_error_not_a_panic() -> Result<()> {
+    let nn = trained()?;
+    let params = [0.3_f32, 0.6];
+    let strikes = vec![0.8, 0.9, 1.0, 1.1, 1.2];
+    let unsorted = nn.predict_implied_vol_surface(&params, strikes, vec![1.0, 0.5], vec![1.0; N_T]);
+    assert!(unsorted.is_err());
+    let repeated = vec![0.8, 0.9, 0.9, 1.1, 1.2];
+    let duplicate =
+      nn.predict_implied_vol_surface(&params, repeated, vec![0.5, 1.0], vec![1.0; N_T]);
+    assert!(duplicate.is_err());
     Ok(())
   }
 }

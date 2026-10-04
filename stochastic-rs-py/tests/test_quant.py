@@ -224,6 +224,13 @@ def test_survival_curve_is_accepted_wherever_a_flat_hazard_is():
         profile.cva("0.02", discount, 0.6)
 
 
+def test_empirical_cvar_rejects_an_empty_sample():
+    import numpy as np
+
+    with pytest.raises(ValueError, match="returns must satisfy"):
+        sr.empirical_cvar(np.array([], dtype=np.float64), 0.05)
+
+
 def test_heston_slv_calibrates_a_heston_surface_and_prices():
     import numpy as np
 

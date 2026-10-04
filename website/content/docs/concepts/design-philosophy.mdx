@@ -80,7 +80,9 @@ One rule for every crate, from the distributions up to the calibrators:
   root: legitimate states, returned as `f64::NAN` from methods whose docs say
   when. A function that semantically must compute a number never returns 0
   in its place; a closed form a law does not have is `None`
-  (`DistributionExt`), not a sentinel.
+  (`DistributionExt`), not a sentinel. A *query* argument outside the
+  domain — a non-positive strike, a maturity of zero — is this case too;
+  only a model parameter in a constructor panics.
 - **Data-dependent failure → `Result::Err`.** A calibration produced no
   result, a correlation matrix estimated from data is not positive-definite,
   a fit rejected its input, a vine could not be built from the supplied pairs:

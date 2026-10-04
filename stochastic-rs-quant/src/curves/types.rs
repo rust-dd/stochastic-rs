@@ -50,10 +50,10 @@ impl Compounding {
     }
   }
 
-  /// Convert a discount factor to a zero rate.
+  /// Convert a discount factor to a zero rate; NaN at a non-positive `tau`.
   pub fn zero_rate<T: RealExt>(&self, df: T, tau: T) -> T {
     if tau <= T::zero() {
-      return T::zero();
+      return T::nan();
     }
     match self {
       Self::Continuous => -df.ln() / tau,
