@@ -113,6 +113,12 @@ impl Bb7 {
   /// first — for callers that already hold pseudo-observations, such as the
   /// vine fitter.
   pub(crate) fn fit_parameters(&mut self, X: &Array2<f64>) -> Result<(), CopulaError> {
+    if X.nrows() < 2 {
+      return Err(CopulaError::InsufficientData {
+        needed: 2,
+        got: X.nrows(),
+      });
+    }
     let u = X.column(0).to_owned();
     let v = X.column(1).to_owned();
     let (tau, ..) = kendalls::tau_b_with_comparator(&u.to_vec(), &v.to_vec(), |a, b| {

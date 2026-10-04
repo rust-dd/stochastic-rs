@@ -147,6 +147,12 @@ pub trait BivariateExt {
   }
 
   fn fit(&mut self, X: &ndarray::Array2<f64>) -> Result<(), CopulaError> {
+    if X.nrows() < 2 {
+      return Err(CopulaError::InsufficientData {
+        needed: 2,
+        got: X.nrows(),
+      });
+    }
     let U = X.column(0).to_owned();
     let V = X.column(1).to_owned();
 
