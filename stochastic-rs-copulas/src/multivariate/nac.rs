@@ -234,7 +234,7 @@ impl NestedArchimedean {
       return Err(CopulaError::InvalidParameter {
         name: "theta",
         value: node.theta,
-        constraint: format!("theta >= {theta_min} for {family:?}"),
+        constraint: format!("theta >= {theta_min:?} for {family:?}"),
       });
     }
     if !is_root && node.theta < parent_theta {

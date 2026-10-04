@@ -39,7 +39,7 @@ impl fmt::Display for CopulaError {
         constraint,
       } => write!(
         f,
-        "{name} must satisfy `{constraint}`, got {name} = {value}"
+        "{name} must satisfy `{constraint}`, got {name} = {value:?}"
       ),
       CopulaError::NotFitted => {
         f.write_str("the copula has no parameters yet: fit it or set them first")

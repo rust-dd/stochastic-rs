@@ -6,6 +6,7 @@ use stochastic_rs_copulas::CopulaError;
 use stochastic_rs_copulas::bivariate::bb1::Bb1;
 use stochastic_rs_copulas::bivariate::bb7::Bb7;
 use stochastic_rs_copulas::bivariate::clayton::Clayton;
+use stochastic_rs_copulas::bivariate::gaussian::GaussianCopula;
 use stochastic_rs_copulas::multivariate::fit::PairFamily;
 use stochastic_rs_copulas::multivariate::fit::SelectionCriterion;
 use stochastic_rs_copulas::multivariate::fit::VineStructure;
@@ -34,7 +35,7 @@ fn an_invalid_parameter_names_itself_in_the_crate_form() {
     value: 0.0,
     constraint: "nu > 0".into(),
   };
-  assert_eq!(e.to_string(), "nu must satisfy `nu > 0`, got nu = 0");
+  assert_eq!(e.to_string(), "nu must satisfy `nu > 0`, got nu = 0.0");
 }
 
 #[test]
@@ -65,4 +66,28 @@ fn a_multivariate_fit_tells_too_few_dimensions_from_too_few_observations() {
     SelectionCriterion::Aic,
   );
   assert!(matches!(vine, Err(CopulaError::InvalidStructure(_))));
+}
+
+#[test]
+fn an_out_of_domain_theta_names_its_bounds_and_only_a_real_exclusion_set() {
+  let clayton = Clayton {
+    theta: Some(-1.0),
+    ..Clayton::new()
+  };
+  assert_eq!(
+    clayton.check_theta().unwrap_err().to_string(),
+    "theta must satisfy `0.0 <= theta <= inf`, got theta = -1.0"
+  );
+  let gaussian = GaussianCopula {
+    theta: Some(1.0),
+    ..GaussianCopula::new()
+  };
+  assert_eq!(
+    gaussian.check_theta().unwrap_err(),
+    CopulaError::InvalidParameter {
+      name: "theta",
+      value: 1.0,
+      constraint: "-1.0 <= theta <= 1.0, theta not in [-1.0, 1.0]".into(),
+    }
+  );
 }

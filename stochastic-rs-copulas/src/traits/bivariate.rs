@@ -53,10 +53,15 @@ pub trait BivariateExt {
     let invalid = self.invalid_thetas();
 
     if !(lower <= theta && theta <= upper) || invalid.contains(&theta) {
+      let constraint = if invalid.is_empty() {
+        format!("{lower:?} <= theta <= {upper:?}")
+      } else {
+        format!("{lower:?} <= theta <= {upper:?}, theta not in {invalid:?}")
+      };
       return Err(CopulaError::InvalidParameter {
         name: "theta",
         value: theta,
-        constraint: format!("{lower} <= theta <= {upper}, theta not in {invalid:?}"),
+        constraint,
       });
     }
 
@@ -277,7 +282,7 @@ pub trait BivariateExt {
       }
       results[i] = root.map_err(|e| {
         CopulaError::Numerical(format!(
-          "{:?} h-inverse did not converge at (y={y_i}, v={v_i}): {e:?}",
+          "{:?} h-inverse did not converge at (y={y_i:?}, v={v_i:?}): {e:?}",
           self.r#type()
         ))
       })?;
