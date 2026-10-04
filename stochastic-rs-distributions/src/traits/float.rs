@@ -48,6 +48,26 @@ pub trait RealExt:
   fn pi() -> Self;
   fn two_pi() -> Self;
   fn min_positive_val() -> Self;
+
+  /// The larger of the two, NaN when either is NaN — `Float::max` returns the other operand instead.
+  #[inline]
+  fn max_or_nan(self, other: Self) -> Self {
+    if self.is_nan() || other.is_nan() {
+      Self::nan()
+    } else {
+      self.max(other)
+    }
+  }
+
+  /// The smaller of the two, NaN when either is NaN.
+  #[inline]
+  fn min_or_nan(self, other: Self) -> Self {
+    if self.is_nan() || other.is_nan() {
+      Self::nan()
+    } else {
+      self.min(other)
+    }
+  }
 }
 
 mod sealed {
