@@ -1,10 +1,11 @@
-//! Distribution traits: [`float`] (numeric / SIMD), [`distribution`] (chf, sampling),
-//! [`callable`] (`Fn1D` / `Fn2D`) and [`grid`] (a tabulated `Fn2D`).
+//! Distribution traits: [`float`] (numeric / SIMD), [`distribution`] (chf, sampling), [`callable`]
+//! (`Fn1D` / `Fn2D`), [`grid`] (a tabulated `Fn2D`) and [`hypothesis`] (`HypothesisTest`).
 
 pub mod callable;
 pub mod distribution;
 pub mod float;
 pub mod grid;
+pub mod hypothesis;
 
 #[cfg(feature = "python")]
 pub use callable::CallableDist;
@@ -21,3 +22,4 @@ pub use float::FloatExt;
 pub use float::RealExt;
 pub use float::SimdFloatExt;
 pub use grid::Grid2D;
+pub use hypothesis::HypothesisTest;

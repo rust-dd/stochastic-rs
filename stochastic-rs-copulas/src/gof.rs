@@ -70,6 +70,17 @@ pub struct GofResult {
   pub replications: usize,
 }
 
+/// The bootstrap p-value is reported; no alpha is fixed, so there is no rejection decision.
+impl stochastic_rs_distributions::traits::HypothesisTest for GofResult {
+  fn statistic(&self) -> f64 {
+    self.statistic
+  }
+
+  fn null_rejected(&self) -> Option<bool> {
+    None
+  }
+}
+
 /// Parametric-bootstrap Cramér–von Mises test of `copula` (already fitted)
 /// on the pseudo-observations `x` (Genest, Rémillard & Beaudoin 2009, §4):
 /// `replications` samples of size `n` are drawn from the fitted copula with
@@ -196,5 +207,17 @@ mod tests {
     assert_eq!(u[(0, 0)], 0.75);
     assert_eq!(u[(1, 0)], 0.25);
     assert_eq!(u[(1, 1)], 0.75);
+  }
+
+  #[test]
+  fn a_gof_result_is_a_hypothesis_test_without_a_rejection_rule() {
+    use stochastic_rs_distributions::traits::HypothesisTest;
+    let result = GofResult {
+      statistic: 0.042,
+      p_value: 0.31,
+      replications: 200,
+    };
+    assert_eq!(result.statistic(), 0.042);
+    assert_eq!(result.null_rejected(), None);
   }
 }
