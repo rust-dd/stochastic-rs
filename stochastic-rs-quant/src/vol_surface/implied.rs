@@ -84,18 +84,21 @@ pub struct ImpliedVolSurface {
   pub log_moneyness: Array2<f64>,
 }
 
+/// Every grid lookup on the surface assumes both axes ascend strictly.
+fn assert_ascending_axes(strikes: &[f64], maturities: &[f64]) {
+  assert!(
+    strikes.windows(2).all(|w| w[0] < w[1]),
+    "strikes must satisfy `strikes.windows(2).all(|w| w[0] < w[1])`, got strikes = {strikes:?}"
+  );
+  assert!(
+    maturities.windows(2).all(|w| w[0] < w[1]),
+    "maturities must satisfy `maturities.windows(2).all(|w| w[0] < w[1])`, got maturities = {maturities:?}"
+  );
+}
+
 impl ImpliedVolSurface {
-  /// Build an implied volatility surface from a grid of option prices.
-  ///
-  /// A cell is left NaN in `ivs` and `total_variance` where the price does not
-  /// invert to a positive finite Black volatility.
-  ///
-  /// # Arguments
-  /// * `strikes` - Strike prices (ascending)
-  /// * `maturities` - Maturities in years (ascending)
-  /// * `forwards` - Forward prices for each maturity
-  /// * `prices` - **Undiscounted** option price grid (N_T, N_K)
-  /// * `is_call` - Whether prices are call (`true`) or put (`false`)
+  /// A surface from an **undiscounted** call (`is_call`) or put price grid of shape `(N_T, N_K)`, one forward per maturity; a cell is
+  /// NaN where the price does not invert to a positive finite Black vol; panics unless both axes ascend strictly and shapes agree.
   #[must_use]
   pub fn from_prices(
     strikes: Vec<f64>,
@@ -108,6 +111,7 @@ impl ImpliedVolSurface {
     let nk = strikes.len();
     assert_eq!(prices.dim(), (nt, nk), "prices shape must be (N_T, N_K)");
     assert_eq!(forwards.len(), nt, "forwards length must match maturities");
+    assert_ascending_axes(&strikes, &maturities);
 
     let mut ivs = Array2::<f64>::from_elem((nt, nk), f64::NAN);
     let mut total_variance = Array2::<f64>::from_elem((nt, nk), f64::NAN);
@@ -160,14 +164,7 @@ impl ImpliedVolSurface {
     let nk = strikes.len();
     assert_eq!(ivs.dim(), (nt, nk), "ivs shape must be (N_T, N_K)");
     assert_eq!(forwards.len(), nt, "forwards length must match maturities");
-    assert!(
-      strikes.windows(2).all(|w| w[0] < w[1]),
-      "strikes must satisfy `strikes.windows(2).all(|w| w[0] < w[1])`"
-    );
-    assert!(
-      maturities.windows(2).all(|w| w[0] < w[1]),
-      "maturities must satisfy `maturities.windows(2).all(|w| w[0] < w[1])`"
-    );
+    assert_ascending_axes(&strikes, &maturities);
 
     let mut total_variance = Array2::<f64>::from_elem((nt, nk), f64::NAN);
     let mut log_moneyness = Array2::<f64>::zeros((nt, nk));
@@ -194,16 +191,8 @@ impl ImpliedVolSurface {
     }
   }
 
-  /// Build a surface from an AI surrogate's flat output vector.
-  ///
-  /// Bridges a surrogate's `predict_surface` output, flat and row-major `(maturity, strike)`.
-  /// Columns follow its `STRIKES`, descending for Heston: use `predict_implied_vol_surface` there.
-  ///
-  /// # Arguments
-  /// * `strikes` — strike prices in ascending order, length `N_K`
-  /// * `maturities` — expiries in years, length `N_T`
-  /// * `forwards` — forward prices for each maturity, length `N_T`
-  /// * `flat_ivs` — flat row-major IV grid of length `N_T * N_K`
+  /// A surface from a surrogate's flat row-major `(maturity, strike)` output; panics unless the lengths agree (`N_T * N_K` vols, one
+  /// forward per maturity) and both axes ascend strictly — a Heston surrogate's `STRIKES` descend: `predict_implied_vol_surface` sorts.
   ///
   /// # Example
   ///

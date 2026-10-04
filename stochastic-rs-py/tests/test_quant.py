@@ -231,6 +231,12 @@ def test_empirical_cvar_rejects_an_empty_sample():
         sr.empirical_cvar(np.array([], dtype=np.float64), 0.05)
 
 
+def test_implied_vol_surface_rejects_an_unsorted_strike_grid():
+    model = sr.HestonFourier(v0=0.04, kappa=1.5, theta=0.04, sigma=0.3, rho=-0.6, r=0.01, q=0.0)
+    with pytest.raises(ValueError, match="strikes must satisfy"):
+        sr.ImpliedVolSurface.from_heston(model, 100.0, 0.01, 0.0, [110.0, 100.0], [1.0])
+
+
 def test_heston_slv_calibrates_a_heston_surface_and_prices():
     import numpy as np
 

@@ -203,21 +203,8 @@ impl StochVolNn {
     Ok((surface, jacobian))
   }
 
-  /// Build an [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface)
-  /// by running the network on `params` and
-  /// reshaping the flat prediction into the standard `(N_T, N_K)` layout.
-  ///
-  /// The network's `output_dim` must equal `maturities.len() × strikes.len()`,
-  /// and the prediction must already be in the IV (sigma) domain — the
-  /// surrogates trained on Romano-Touzi data satisfy both.
-  ///
-  /// `strikes` follow the network's column order; the surface comes back with ascending
-  /// strikes.
-  ///
-  /// `forwards` carries the per-maturity forward used to compute log-moneyness
-  /// and total variance inside the surface struct.
-  ///
-  /// Available with the `quant` cargo feature.
+  /// The IV prediction at `params` as an [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface), `strikes` in column
+  /// order sorted ascending (feature `quant`); `Err` unless `output_dim` is `N_T × N_K`, forwards match, maturities ascend, strikes distinct.
   #[cfg(feature = "quant")]
   pub fn predict_implied_vol_surface(
     &self,
