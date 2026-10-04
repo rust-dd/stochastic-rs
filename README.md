@@ -9,25 +9,20 @@
 
 # stochastic-rs
 
-**Quantitative finance in Rust**: stochastic process simulation, option
-pricing and calibration, volatility surfaces, fixed income and credit, risk,
-statistics, copulas and neural volatility surrogates. Generic over `f32` /
-`f64`, SIMD on the CPU, CUDA and Metal back-ends where they pay off, and
-Python bindings via PyO3 that ship the same surface as the Rust crates.
+**Quantitative finance in Rust**: stochastic process simulation, option pricing and calibration, volatility surfaces, fixed income and credit, risk, statistics, copulas and neural volatility surrogates. Simulation is generic over `f32` / `f64`, with SIMD on the CPU, CUDA and Metal back-ends, and Python bindings via PyO3.
 
 ## Documentation
 
-📖 **[stochastic.rust-dd.com](https://stochastic.rust-dd.com)** is the reference; this
-README only gets you installed and running.
+**[stochastic.rust-dd.com](https://stochastic.rust-dd.com)** is the reference; this README only gets you installed and running.
 
 - [Getting started](https://stochastic.rust-dd.com/docs/getting-started/quickstart) — Rust and Python installation, first program
 - [Concepts](https://stochastic.rust-dd.com/docs/concepts/traits) — the traits (`ProcessExt`, `DistributionExt`, `ModelPricer`), seeding, feature flags, [design philosophy](https://stochastic.rust-dd.com/docs/concepts/design-philosophy)
 - [Tutorials](https://stochastic.rust-dd.com/docs/tutorials) — end to end, in Rust and Python: [the Heston model](https://stochastic.rust-dd.com/docs/tutorials/heston) (simulate, price, calibrate), [the Hurst exponent](https://stochastic.rust-dd.com/docs/tutorials/hurst-exponent), [SVI and SSVI volatility surfaces](https://stochastic.rust-dd.com/docs/tutorials/svi-volatility-surface) and [GPU paths on a free Colab GPU](https://stochastic.rust-dd.com/docs/tutorials/gpu-paths-on-colab)
 - [Processes](https://stochastic.rust-dd.com/docs/processes) · [Distributions](https://stochastic.rust-dd.com/docs/distributions) · [Copulas](https://stochastic.rust-dd.com/docs/copulas) · [Statistics](https://stochastic.rust-dd.com/docs/stats) · [Quant](https://stochastic.rust-dd.com/docs/quant) · [AI](https://stochastic.rust-dd.com/docs/ai) — the catalogues with selection guides
-- [GPU support](https://stochastic.rust-dd.com/docs/concepts/gpu-support) — what runs on which device today, precision, an executed T4 run
+- [GPU support](https://stochastic.rust-dd.com/docs/concepts/gpu-support) — what runs on which device, precision, an executed T4 run
 - [Python](https://stochastic.rust-dd.com/docs/python) — the bindings, `device=`, NumPy interop
 - [Comparison with QuantLib and RustQuant](https://stochastic.rust-dd.com/docs/comparison) — where each library is the better choice
-- [Benchmarks](https://stochastic.rust-dd.com/docs/benchmarks) · [Migrating to v3](https://stochastic.rust-dd.com/docs/migration) · [Tutorials](https://stochastic.rust-dd.com/docs/tutorials)
+- [Benchmarks](https://stochastic.rust-dd.com/docs/benchmarks) · [Migrating to v3](https://stochastic.rust-dd.com/docs/migration)
 
 ## What is inside
 
@@ -42,51 +37,30 @@ One workspace, one umbrella crate (`stochastic-rs`) that re-exports the sub-crat
 | `stochastic-rs-stats` | Hurst and diffusion estimators, unit-root and cointegration tests, realised volatility, filters, extreme values, risk measures |
 | `stochastic-rs-quant` | closed-form, Fourier, PDE, lattice and Monte Carlo pricers, calibrators, vol surfaces, curves, credit, XVA, market microstructure |
 | `stochastic-rs-ai` | experimental neural volatility surrogates and surrogate calibration (`ai` feature) |
-| `stochastic-rs-py` | the Python module: every distribution, process, pricer, copula and estimator, NumPy in and out |
+| `stochastic-rs-py` | the Python module: distributions, processes, pricers, calibrators, copulas and estimators, NumPy in and out |
 
 ## Installation
 
-The Rust crates require Rust 1.89 or newer; on Apple Silicon the `ai` feature needs
-Rust 1.94 or newer.
-
-The workspace declares this minimum in `rust-version`. Cargo's edition-2024
-resolver uses it when choosing compatible dependency versions, so a fresh
-resolution can select an older release of a dependency. The MSRV CI job checks
-the workspace's libraries, tests, examples, and benchmarks with default features
-disabled. Optional feature combinations are checked separately on current Rust.
+The Rust crates require Rust 1.89 or newer; on Apple Silicon the `ai` feature needs Rust 1.94 or newer.
 
 ```toml
 [dependencies]
 stochastic-rs = "3.0.0-rc.4"
 ```
 
-Device back-ends and other optional parts are cargo features (`cuda`,
-`metal`, `accelerate`, `ai`, `unstable-dual-stream-rng`; `metal` and `accelerate` apply on macOS only);
-the [installation guide](https://stochastic.rust-dd.com/docs/getting-started/installation-rust)
-and the [feature flags](https://stochastic.rust-dd.com/docs/concepts/feature-flags)
-page list them with what each pulls in. Sub-crates can be depended on directly
-for lean builds.
+Device back-ends and other optional parts are cargo features (`cuda`, `metal`, `accelerate`, `ai`, `unstable-dual-stream-rng`; `metal` and `accelerate` apply on macOS only); the [installation guide](https://stochastic.rust-dd.com/docs/getting-started/installation-rust) and the [feature flags](https://stochastic.rust-dd.com/docs/concepts/feature-flags) page list what each pulls in. Sub-crates can be depended on directly for lean builds.
 
-The `ai` feature and the `stochastic-rs-ai` crate are experimental and outside the
-stability promise.
+The `ai` feature and the `stochastic-rs-ai` crate are experimental and outside the stability promise.
 
 ```bash
 pip install stochastic-rs
 ```
 
-The wheels are CPU-only and carry the whole surface on Linux, macOS and Windows
-(linear algebra is pure Rust). A source build with a device back-end:
-`maturin develop --release --features metal` (or `cuda`) in a checkout.
+The wheels (Linux, macOS, Windows) are CPU-only and carry everything except the `ai` surrogates. A source build with a device back-end: `maturin develop --release --features metal` (or `cuda`) in a checkout.
 
 ### Public dependencies
 
-The umbrella re-exports `ndarray`, `num_complex`, `num_traits`, `rand` and
-`chrono` (as `stochastic_rs::ndarray` and so on) because callers build and pass
-their types; use these paths or depend on the same versions. `wide` (the SIMD
-vectors of `SimdFloatExt` and `SimdRngExt`) and `anyhow` (calibration and SLV errors)
-also appear in public signatures. A semver-incompatible release of any of these
-seven crates (for a 0.x crate, a minor bump such as ndarray 0.17 → 0.18) is a
-major release of `stochastic-rs`.
+The umbrella re-exports `ndarray`, `num_complex`, `num_traits`, `rand` and `chrono` (as `stochastic_rs::ndarray` and so on) because callers build and pass their types; use these paths or depend on the same versions. `wide` (the SIMD vectors of `SimdFloatExt` and `SimdRngExt`) and `anyhow` (calibration and SLV errors) also appear in public signatures. A semver-incompatible release of any of these seven crates (for a 0.x crate, a minor bump such as ndarray 0.17 → 0.18) is a major release of `stochastic-rs`.
 
 ```rust
 use stochastic_rs::ndarray::Array1;
@@ -142,33 +116,19 @@ pricer = srs.HestonPricer(
 call, put = pricer.call_put()
 ```
 
-A process samples on a device by re-typing it: `Gbm::new(...).on::<Metal>()`
-(`Cuda`, `Accelerate`), with `handle.probe()` to check the device
-first; from Python, `device="metal"` on the device-capable classes. The
-[GPU support](https://stochastic.rust-dd.com/docs/concepts/gpu-support) page has
-the support matrix, and [`notebooks/`](https://github.com/rust-dd/stochastic-rs/tree/main/notebooks) a Colab notebook that runs the
-CUDA back-end on a free T4.
+A process samples on a device by re-typing it: `Gbm::new(...).on::<Metal>()` (`Cuda`, `Accelerate`), with `handle.probe()` to check the device first; from Python, `device="metal"` on the device-capable classes. The [GPU support](https://stochastic.rust-dd.com/docs/concepts/gpu-support) page has the support matrix, and [`notebooks/`](https://github.com/rust-dd/stochastic-rs/tree/main/notebooks) a Colab notebook that runs the CUDA back-end on a free T4.
 
 ## Benchmarks
 
-Criterion suites live under `benches/`; the
-[benchmarks page](https://stochastic.rust-dd.com/docs/benchmarks) carries the
-numbers: the SIMD Normal sampler against `rand_distr`, fractional Gaussian noise
-on CPU, Accelerate, Metal and cuFFT, and the per-release speedups.
+Criterion suites live under `benches/`; the [benchmarks page](https://stochastic.rust-dd.com/docs/benchmarks) carries the numbers: fractional Gaussian noise on CPU, Accelerate, Metal and cuFFT, the Euler engine on Metal and CUDA, and the SIMD Normal sampler against `rand_distr`.
 
 ## Citing
 
-The concept DOI [10.5281/zenodo.21553307](https://doi.org/10.5281/zenodo.21553307)
-always resolves to the latest release; [`CITATION.cff`](https://github.com/rust-dd/stochastic-rs/blob/main/CITATION.cff) carries the
-version DOI of the current one.
+The concept DOI [10.5281/zenodo.21553307](https://doi.org/10.5281/zenodo.21553307) always resolves to the latest release; [`CITATION.cff`](https://github.com/rust-dd/stochastic-rs/blob/main/CITATION.cff) carries the version DOI of the current one.
 
 ## Contributing
 
-Bug reports, suggestions and pull requests are welcome on GitHub. The
-[contributing page](https://stochastic.rust-dd.com/docs/contributing) has the
-development rules; per-feature recipes (`add-diffusion-process`,
-`adding-distribution`, `calibration-pattern`, …) live under
-[`.claude/skills/`](https://github.com/rust-dd/stochastic-rs/tree/main/.claude/skills).
+Bug reports, suggestions and pull requests are welcome on GitHub. The [contributing page](https://stochastic.rust-dd.com/docs/contributing) has the development rules; per-feature recipes (`add-diffusion-process`, `adding-distribution`, `calibration-pattern`, …) live under [`.claude/skills/`](https://github.com/rust-dd/stochastic-rs/tree/main/.claude/skills).
 
 ## License
 

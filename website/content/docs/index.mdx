@@ -7,26 +7,13 @@ status: stable
 since: 2.0.0
 ---
 
-stochastic-rs is an open-source quantitative-finance library for Rust and
-Python. Simulate **132 stochastic processes**, price and calibrate against
-them, and
-move any of it to a GPU by naming one. The model does not change, the numbers
-keep their law, and the crate tells you when a device cannot take a
-configuration instead of quietly running it on the host.
-
-| | | |
-|:--|:--|:--|
-| **132** processes | **17×** the CPU | **3 000+** tests |
-| one trait, one device story | on a batch of 200 000 paths | laws, devices, reproducibility |
+stochastic-rs is an open-source quantitative-finance library for Rust and Python. Simulate **132 stochastic processes**, price and calibrate against them, and move any of it to a GPU by naming one. The model and its law stay the same on the device; a configuration the kernels cannot carry samples on the host, and `device_fallback()` says why.
 
 ## One thread, end to end
 
-Four steps, each one real code that runs. Simulate a batch, fold it on a GPU,
-price the model analytically, and read a parameter back out of a path.
+Simulate a batch, move it to a GPU, price the model in closed form, and estimate a parameter from a path.
 
-**Sample a batch.** Every process is built the same way — parameters, grid,
-horizon, seed — and every one gives you `sample`, `sample_par` and a mapped
-form over them.
+**Sample a batch.** Every process is built the same way — parameters, grid, horizon, seed — and every one has `sample`, `sample_par` and a mapped form.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -53,10 +40,7 @@ paths = gbm.sample_par(1_000)        # a (1000, 1024) numpy array
 </Tab>
 </Tabs>
 
-**Move it to a GPU.** `.on::<Metal>()` — or `device="cuda"` from Python — is
-the only change. The mapped form reads each row where the kernel wrote it
-instead of copying the batch out first, which is what makes the device worth
-its bus.
+**Move it to a GPU.** `.on::<Metal>()` — or `device="cuda"` from Python — is the only change. `sample_map_view` reads each row where the kernel wrote it instead of copying the batch out first.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -79,14 +63,10 @@ terminal = gbm.sample_par(200_000)[:, -1]
 </Tabs>
 
 <Callout>
-The host and the device draw different random streams by construction — no
-path is shared — but the *law* is, and a suite of 161 tests compares the two
-on every process the engine serves. [What that means exactly →](/docs/concepts/gpu-support)
+The host and the device draw different random streams, so no path is shared, but the *law* is, and a test suite compares the two on every process the engine serves. [What that means exactly →](/docs/concepts/gpu-support)
 </Callout>
 
-**Price the same model in closed form.** The simulators and the pricers are
-separate: a pricer holds parameters and takes the query as arguments, so a
-whole strike-maturity grid is one vectorised sweep.
+**Price the same model in closed form.** A pricer holds model parameters and takes the query as arguments, so one instance prices a whole strike-maturity grid.
 
 ```rust
 use stochastic_rs::quant::pricing::heston::HestonPricer;
@@ -95,8 +75,7 @@ let model = HestonPricer::new(0.04, -0.7, 2.0, 0.04, 0.3, None);
 let call = model.price_call(100.0, 100.0, 0.05, 0.02, 0.75);   // 7.7311
 ```
 
-**Read a parameter back out.** The estimators take a path and return the
-number that generated it, with the diagnostics to judge it.
+**Read a parameter back out.** The estimators take a path and return the parameter that generated it, with diagnostics.
 
 ```rust
 use stochastic_rs::stats::hurst::rs::RescaledRange;
@@ -108,61 +87,16 @@ let h = RescaledRange::default().estimate(fbm.view())?;         // 0.61 for a tr
 
 ## What are you here for?
 
-**To simulate.** 132 processes behind one trait — diffusions, jumps,
-stochastic volatility, short rates, fractional and rough, point processes,
-subordinators, conditional-variance time series. Heston and its rough
-relatives, Bates, SABR, CGMY, Hull-White, LMM, fBm and everything built on
-it. → [Processes](/docs/processes) · [Tutorials](/docs/tutorials)
+**To simulate.** 132 processes behind one trait — diffusions, jumps, stochastic volatility, short rates, fractional and rough, point processes, subordinators, conditional-variance time series: Heston and its rough relatives, Bates, SABR, CGMY, Hull-White, LMM, fBm. → [Processes](/docs/processes) · [Tutorials](/docs/tutorials)
 
-**To price or calibrate.** Analytic, Fourier, ADI and Monte Carlo pricers
-with first- and second-order Greeks; fifteen calibrators behind one
-`Calibrator` trait; SVI and SSVI surfaces; curves, bonds, credit and risk.
-→ [Quant](/docs/quant)
+**To price or calibrate.** Analytic, Fourier, ADI and Monte Carlo pricers with first- and second-order Greeks; fifteen calibrators behind one `Calibrator` trait; SVI and SSVI surfaces; curves, bonds, credit and risk. → [Quant](/docs/quant)
 
-**To estimate.** Eight Hurst estimators, realised measures, jump tests,
-cointegration, changepoints, extreme value, GARCH fitting — each with the
-paper it came from. → [Stats](/docs/stats)
+**To estimate.** Eight Hurst estimators, realised measures, jump tests, cointegration, changepoints, extreme value, GARCH fitting — each with the paper it came from. → [Stats](/docs/stats)
 
-**To draw.** 35 SIMD distribution samplers, most carrying characteristic
-function, pdf, cdf and moments in closed form, and 23 copulas with fitting
-and goodness-of-fit. → [Distributions](/docs/distributions) ·
-[Copulas](/docs/copulas)
+**To draw.** 35 SIMD distribution samplers, most with closed-form characteristic function, pdf, cdf and moments, and 23 copulas with fitting and goodness-of-fit. → [Distributions](/docs/distributions) · [Copulas](/docs/copulas)
 
-**To do it from Python.** 308 entries, numpy in and numpy out, and the same
-`device=` argument. → [Python](/docs/python)
-
-## Why this one
-
-**Every process reaches the GPU through a declaration, not a kernel.** A
-family is written once in a small DSL — its state, its noise, its step — and
-the same text is rendered as CUDA C for NVRTC and as MSL for Metal. Adding a
-process means adding a declaration; it does not mean writing, or debugging,
-two kernels. 121 families carry 130 of the processes, and the two that need
-pipelines of their own — fractional Gaussian noise and the fractional
-Brownian sheet — have them.
-
-**The speed comes from the shape of the call.** Ask for the grid and you get
-the grid; ask for a borrowed view of itand nothing is copied. The numbers, the method, and what *did not* work are
-in [Benchmarks](/docs/benchmarks).
-
-**Correctness is measured against mathematics, not against yesterday.**
-Beyond the host-versus-device suite there is one that states each model's
-closed form — a stationary moment, a characteristic function, an
-autocovariance — so a sampler that is wrong on *both* sides still fails. It
-earns its keep: a ziggurat tail folded inward, a circulant embedding that
-lost its long memory in `f32`, an inverse-Gaussian draw that cancelled to
-zero on a fine grid.
+**To do it from Python.** 308 classes and functions, NumPy in and NumPy out, and the same `device=` argument. → [Python](/docs/python)
 
 ## Where to start
 
-New to it, read the [Quickstart](/docs/getting-started/quickstart) — the same
-three vignettes in Rust and Python, end to end. Reaching for a GPU, read
-[GPU support](/docs/concepts/gpu-support) first: what runs where, what
-`device_fallback()` reports, and what reproducibility does and does not
-promise across backends. Coming from 2.x, the breaking changes are collected
-in [Migration](/docs/migration).
-
-The sidebar is **Start here** to read once, **Reference** to search,
-**Bindings** for Python, **Guides** for the long-form walkthroughs and the
-benchmark dashboard, and **Project** for migration, contributing and the
-generated API reference.
+New to it: the [Quickstart](/docs/getting-started/quickstart) — three short examples in Rust and Python. Reaching for a GPU: [GPU support](/docs/concepts/gpu-support) — what runs where, what `device_fallback()` reports, and what reproducibility does and does not promise across backends. Coming from 2.x: [Migration](/docs/migration).

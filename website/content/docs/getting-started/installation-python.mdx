@@ -1,17 +1,13 @@
 ---
 title: Installation (Python)
 seo_title: Install stochastic-rs for Python (pip)
-description: Install the stochastic-rs Python bindings — pre-built wheels via pip, or build locally with maturin and Bun-equivalent uv-pip workflow.
+description: Install the stochastic-rs Python bindings — pre-built wheels via pip, or a local build with maturin.
 category: concept
 since: 2.0.0
 status: stable
 ---
 
-The `stochastic_rs` Python package wraps the Rust crates via PyO3. The
-surface covers **308 entries** — 286 PyO3 classes plus 22 free functions
-across distributions, stochastic processes, pricers, calibrators,
-copulas, and stats — identical on every platform (see
-[Python bindings](/docs/python)).
+The `stochastic_rs` Python package wraps the Rust crates via PyO3: 286 classes and 22 functions across distributions, stochastic processes, pricers, calibrators, copulas and stats (see [Python bindings](/docs/python)).
 
 ## From PyPI (pre-built wheels)
 
@@ -22,30 +18,26 @@ pip install stochastic-rs
 Wheels are published for:
 
 - **CPython** 3.11 / 3.12 / 3.13 / 3.14, and free-threaded 3.14t
-- **Linux** (manylinux x86_64, aarch64), **macOS** (universal2),
-  **Windows** (x86_64)
+- **Linux** (manylinux x86_64, aarch64), **macOS** (Apple Silicon, arm64), **Windows** (x86_64)
 
-If your platform / ABI combination is missing, `pip` will fall back to
-building from source — that needs a Rust toolchain.
+On any other platform `pip` builds from source, which needs a Rust toolchain.
 
 ## Build from source
 
 You need the Rust toolchain (`rustup`), Python 3.11 or newer, and `maturin` 1.9.4 or newer.
 
 ```bash
-git clone https://github.com/dancixx/stochastic-rs.git
+git clone https://github.com/rust-dd/stochastic-rs.git
 cd stochastic-rs
 
 python -m venv .venv
 source .venv/bin/activate
 
 pip install "maturin>=1.9.4"
-maturin develop --release --manifest-path stochastic-rs-py/Cargo.toml
+maturin develop --release
 ```
 
-The `manifest-path` flag is required because the Python crate lives in a
-sub-folder of the workspace. After this completes, `import stochastic_rs`
-will use the just-built shared library.
+Run it from the workspace root; `pyproject.toml` points maturin at the Python crate. Add `--features metal`, `cuda`, `accelerate` or `ai` for the parts the published wheels leave out.
 
 ## Verify
 
@@ -60,12 +52,8 @@ assert path.shape == (1000,)
 print("OK", path.mean(), path.std())
 ```
 
-If this prints two finite numbers, you are good. Continue with the
-[Quickstart](/docs/getting-started/quickstart).
+If this prints two finite numbers, continue with the [Quickstart](/docs/getting-started/quickstart).
 
 ## NumPy interop
 
-All `sample()` calls return `numpy.ndarray`. Bulk samplers
-(`sample_par(m, n)`) return `(m, n)`-shaped arrays. The dtype is
-`float64` by default; pass `dtype="f32"` for `float32` paths where the
-underlying sampler supports it (most distributions and processes do).
+Every `sample()` returns NumPy arrays. A one-dimensional process's `sample_par(m)` returns an `(m, n)` array; a distribution's `sample_par(m, n)` does too. The dtype is `float64` by default; pass `dtype="f32"` for `float32` where the class takes it (most distributions and processes do).

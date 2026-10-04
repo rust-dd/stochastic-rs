@@ -7,8 +7,7 @@ since: 2.0.0
 status: stable
 ---
 
-Three vignettes, each shown in Rust and Python. Pick whichever language
-you are working in — the API surface is intentionally close.
+Three short examples, each in Rust and Python.
 
 ## 1. Simulate an OU path
 
@@ -16,8 +15,7 @@ The Ornstein-Uhlenbeck process
 
 $$ dX_t = \theta(\mu - X_t)\,dt + \sigma\,dW_t,\quad X_0 = x_0 $$
 
-with $\theta = 2$, $\mu = 0$, $\sigma = 1$, $X_0 = 0$, on $t \in [0, 1]$
-with 1000 steps:
+with $\theta = 2$, $\mu = 0$, $\sigma = 1$, $X_0 = 0$, on $t \in [0, 1]$ with 1000 grid points:
 
 ### Rust
 
@@ -33,13 +31,11 @@ path = p.sample()
 print("len =", path.shape[0], "mean =", path.mean())
 ```
 
-For the API contract see the [Processes catalog](/docs/processes).
+The [Processes catalog](/docs/processes) lists the rest.
 
 ## 2. Price a Heston European call
 
-The Heston model is the workhorse stochastic-volatility model. The
-Fourier pricer uses Cui's analytic Jacobian for fast and stable
-characteristic-function evaluation.
+`HestonPricer` evaluates the semi-closed form of Heston (1993). The struct holds the model; the query `(s, k, r, q, tau)` goes to each call.
 
 ### Rust
 
@@ -60,13 +56,7 @@ print(f"call={call:.4f}, put={put:.4f}")
 
 ## 3. Estimate Hurst from a fractional-Brownian path
 
-The `hurst` module's `HurstEstimator` trait unifies six estimators. This
-vignette uses the rescaled-range estimator (Hurst 1951 + Anis-Lloyd 1976
-bias correction) directly on a sampled path — see the
-[statistics catalog page](/docs/stats#hurst-exponent-estimation) for why
-the Fukasawa/Whittle estimator (also in this module) is the wrong tool
-for that job: it estimates latent-volatility roughness from a
-realized-variance series, not the Hurst exponent of a raw path.
+The rescaled-range estimator (Hurst 1951, with the Anis-Lloyd 1976 bias correction) estimates the Hurst exponent of a sampled path. It is one of eight implementors of the `HurstEstimator` trait. Do not use `Whittle` for this: it estimates the roughness of latent volatility from a realized-variance series, not the Hurst exponent of a path (see [the statistics page](/docs/stats#hurst-exponent-estimation)).
 
 ### Rust
 
@@ -78,16 +68,14 @@ realized-variance series, not the Hurst exponent of a raw path.
 import stochastic_rs as srs
 import numpy as np
 
-# Mirrors the Rust vignette above: R/S on the cumulated path.
 fgn = srs.PyFgn(hurst=0.3, n=4096, t=1.0, seed=7)
 fbm = np.cumsum(fgn.sample())
-res = srs.RescaledRange().estimate(fbm)
+res = srs.RescaledRange().estimate(fbm)   # differences the path internally
 print(f"H = {res.hurst:.3f} (true 0.3)")
 ```
 
 ## Where next
 
-- [Concepts: traits & prelude](/docs/concepts/traits) — the trait surface
-  is the single most important thing to internalise.
+- [Traits overview](/docs/concepts/traits) — the traits every type implements.
 - [Quant catalog](/docs/quant) — pricing, calibration, vol surface, risk.
-- [Python bindings](/docs/python) — full parity table.
+- [Python bindings](/docs/python) — `device=`, NumPy interop and the rest of the Python surface.
