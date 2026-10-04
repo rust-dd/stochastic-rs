@@ -13,14 +13,17 @@ use stochastic_rs::distributions::cauchy::SimdCauchy;
 use stochastic_rs::distributions::chi_square::SimdChiSquared;
 use stochastic_rs::distributions::exp::SimdExp;
 use stochastic_rs::distributions::gamma::SimdGamma;
+use stochastic_rs::distributions::johnson_su::SimdJohnsonSu;
 use stochastic_rs::distributions::lognormal::SimdLogNormal;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::distributions::pareto::SimdPareto;
+use stochastic_rs::distributions::poisson::SimdPoisson;
 use stochastic_rs::distributions::studentt::SimdStudentT;
 use stochastic_rs::distributions::uniform::SimdUniform;
 use stochastic_rs::distributions::weibull::SimdWeibull;
 use stochastic_rs::simd_rng::SimdRng;
 use stochastic_rs::simd_rng::Unseeded;
+use stochastic_rs::traits::DistributionExt;
 
 mod discrete;
 mod heavy_tailed;
@@ -222,6 +225,46 @@ bench_dist!(
   rand_distr::Uniform::<f64>::new(0.0, 1.0).unwrap()
 );
 
+/// What the consumer loops call per point: a normal pdf/cdf/quantile, the two distfit densities, an
+/// incomplete-gamma cdf and a Poisson pmf — the surface a consumer loop pays for per point.
+fn bench_distribution_ext(c: &mut Criterion) {
+  let mut group = c.benchmark_group("DistributionExt");
+  group.measurement_time(Duration::from_secs(3));
+  group.warm_up_time(Duration::from_millis(500));
+  let xs = (0..4096)
+    .map(|i| -4.0 + 8.0 * i as f64 / 4095.0)
+    .collect::<Vec<_>>();
+  let ps = (1..=4096).map(|i| i as f64 / 4097.0).collect::<Vec<_>>();
+  let ks = (0..4096).map(|i| (i % 40) as f64).collect::<Vec<_>>();
+  let normal = SimdNormal::<f64>::new(0.0, 1.0);
+  let student = SimdStudentT::<f64>::new(5.0);
+  let johnson = SimdJohnsonSu::<f64>::new(0.5, 1.5, 0.0, 1.0);
+  let gamma = SimdGamma::<f64>::new(2.0, 1.5);
+  let poisson = SimdPoisson::<u32>::new(4.0);
+  group.bench_function("pdf/normal", |b| {
+    b.iter(|| black_box(xs.iter().map(|&x| normal.pdf(x)).sum::<f64>()))
+  });
+  group.bench_function("cdf/normal", |b| {
+    b.iter(|| black_box(xs.iter().map(|&x| normal.cdf(x)).sum::<f64>()))
+  });
+  group.bench_function("quantile/normal", |b| {
+    b.iter(|| black_box(ps.iter().map(|&p| normal.inv_cdf(p)).sum::<f64>()))
+  });
+  group.bench_function("pdf/student_t", |b| {
+    b.iter(|| black_box(xs.iter().map(|&x| student.pdf(x)).sum::<f64>()))
+  });
+  group.bench_function("pdf/johnson_su", |b| {
+    b.iter(|| black_box(xs.iter().map(|&x| johnson.pdf(x)).sum::<f64>()))
+  });
+  group.bench_function("cdf/gamma", |b| {
+    b.iter(|| black_box(xs.iter().map(|&x| gamma.cdf(x.abs())).sum::<f64>()))
+  });
+  group.bench_function("pdf/poisson", |b| {
+    b.iter(|| black_box(ks.iter().map(|&k| poisson.pdf(k)).sum::<f64>()))
+  });
+  group.finish();
+}
+
 criterion_group!(
   benches,
   bench_normal,
@@ -244,6 +287,7 @@ criterion_group!(
   heavy_tailed::bench_skew_t,
   discrete::bench_binomial,
   discrete::bench_hypergeometric,
+  bench_distribution_ext,
   plot::generate_shape_comparison_plot,
 );
 
