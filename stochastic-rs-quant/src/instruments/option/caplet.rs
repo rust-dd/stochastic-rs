@@ -23,17 +23,24 @@ use super::types::VolatilityQuoteKind;
 use super::volatility::VolatilityModel;
 use crate::traits::RealExt;
 
-/// Black-76 caplet undiscounted forward value $F\Phi(d_1)-K\Phi(d_2)$.
-///
-/// Returns zero if any input makes the formula undefined (non-positive
-/// forward/strike/time or non-positive vol).
+/// Payoff where the closed form is undefined; NaN for a NaN rate or time, or a NaN vol while the option is still live.
+fn intrinsic(moneyness: f64, t: f64, v: f64) -> f64 {
+  if t.is_nan() || (t > 0.0 && v.is_nan()) {
+    f64::NAN
+  } else {
+    moneyness.max_or_nan(0.0)
+  }
+}
+
+/// Black-76 caplet undiscounted forward value $F\Phi(d_1)-K\Phi(d_2)$; the intrinsic value where the formula is undefined (a
+/// non-positive forward, strike, time or vol), NaN for a NaN rate or time, or a NaN vol on a live option.
 pub fn black_forward_caplet<T: RealExt>(forward: T, strike: T, tau: T, sigma: T) -> T {
   let f = forward.to_f64().unwrap_or(0.0);
   let k = strike.to_f64().unwrap_or(0.0);
   let t = tau.to_f64().unwrap_or(0.0);
   let v = sigma.to_f64().unwrap_or(0.0);
   if f <= 0.0 || k <= 0.0 || t <= 0.0 || v <= 0.0 {
-    return T::from_f64_fast((f - k).max(0.0));
+    return T::from_f64_fast(intrinsic(f - k, t, v));
   }
   let sqrt_t = t.sqrt();
   let d1 = ((f / k).ln() + 0.5 * v * v * t) / (v * sqrt_t);
@@ -41,14 +48,14 @@ pub fn black_forward_caplet<T: RealExt>(forward: T, strike: T, tau: T, sigma: T)
   T::from_f64_fast(f * norm_cdf(d1) - k * norm_cdf(d2))
 }
 
-/// Black-76 floorlet undiscounted forward value $K\Phi(-d_2)-F\Phi(-d_1)$.
+/// Black-76 floorlet undiscounted forward value $K\Phi(-d_2)-F\Phi(-d_1)$, with [`black_forward_caplet`]'s fallback.
 pub fn black_forward_floorlet<T: RealExt>(forward: T, strike: T, tau: T, sigma: T) -> T {
   let f = forward.to_f64().unwrap_or(0.0);
   let k = strike.to_f64().unwrap_or(0.0);
   let t = tau.to_f64().unwrap_or(0.0);
   let v = sigma.to_f64().unwrap_or(0.0);
   if f <= 0.0 || k <= 0.0 || t <= 0.0 || v <= 0.0 {
-    return T::from_f64_fast((k - f).max(0.0));
+    return T::from_f64_fast(intrinsic(k - f, t, v));
   }
   let sqrt_t = t.sqrt();
   let d1 = ((f / k).ln() + 0.5 * v * v * t) / (v * sqrt_t);
@@ -56,14 +63,14 @@ pub fn black_forward_floorlet<T: RealExt>(forward: T, strike: T, tau: T, sigma: 
   T::from_f64_fast(k * norm_cdf(-d2) - f * norm_cdf(-d1))
 }
 
-/// Bachelier caplet undiscounted forward value.
+/// Bachelier caplet undiscounted forward value; intrinsic at a non-positive time or vol, with the Black helpers' NaN rule.
 pub fn bachelier_forward_caplet<T: RealExt>(forward: T, strike: T, tau: T, sigma: T) -> T {
   let f = forward.to_f64().unwrap_or(0.0);
   let k = strike.to_f64().unwrap_or(0.0);
   let t = tau.to_f64().unwrap_or(0.0);
   let v = sigma.to_f64().unwrap_or(0.0);
   if t <= 0.0 || v <= 0.0 {
-    return T::from_f64_fast((f - k).max(0.0));
+    return T::from_f64_fast(intrinsic(f - k, t, v));
   }
   let sqrt_vt = v * t.sqrt();
   let d = (f - k) / sqrt_vt;
@@ -71,14 +78,14 @@ pub fn bachelier_forward_caplet<T: RealExt>(forward: T, strike: T, tau: T, sigma
   T::from_f64_fast((f - k) * norm_cdf(d) + sqrt_vt * pdf)
 }
 
-/// Bachelier floorlet undiscounted forward value.
+/// Bachelier floorlet undiscounted forward value, with [`bachelier_forward_caplet`]'s fallback.
 pub fn bachelier_forward_floorlet<T: RealExt>(forward: T, strike: T, tau: T, sigma: T) -> T {
   let f = forward.to_f64().unwrap_or(0.0);
   let k = strike.to_f64().unwrap_or(0.0);
   let t = tau.to_f64().unwrap_or(0.0);
   let v = sigma.to_f64().unwrap_or(0.0);
   if t <= 0.0 || v <= 0.0 {
-    return T::from_f64_fast((k - f).max(0.0));
+    return T::from_f64_fast(intrinsic(k - f, t, v));
   }
   let sqrt_vt = v * t.sqrt();
   let d = (f - k) / sqrt_vt;
@@ -124,6 +131,39 @@ pub fn caplet_price<T: RealExt, V: VolatilityModel<T> + ?Sized>(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::instruments::option::volatility::SabrVolatility;
+
+  #[test]
+  fn a_nan_rate_or_a_live_nan_vol_is_nan_not_a_clamped_value() {
+    assert!(black_forward_caplet(f64::NAN, 0.02, -0.5, 0.2).is_nan());
+    assert!(black_forward_floorlet(f64::NAN, 0.04, -0.5, 0.2).is_nan());
+    assert!(bachelier_forward_caplet(f64::NAN, 0.02, 0.0, 0.01).is_nan());
+    assert!(bachelier_forward_floorlet(0.03, f64::NAN, 0.0, 0.01).is_nan());
+    assert!(black_forward_caplet(-0.01, 0.02, 1.0, f64::NAN).is_nan());
+    assert_eq!(
+      black_forward_caplet(0.03, 0.02, -0.5, f64::NAN),
+      0.03 - 0.02
+    );
+  }
+
+  #[test]
+  fn a_sabr_vol_outside_its_domain_prices_a_live_caplet_as_nan() {
+    let sabr = SabrVolatility::new(0.035_f64, 0.5, 0.4, -0.2);
+    let cap = |forward: f64, tau: f64| {
+      caplet_price(
+        forward,
+        0.02,
+        tau,
+        1e6,
+        1.0,
+        0.97,
+        &sabr,
+        InterestRateOptionKind::Cap,
+      )
+    };
+    assert!(cap(-0.002, 1.0).is_nan());
+    assert!((cap(0.03, -0.5) - 9700.0).abs() < 1e-6);
+  }
 
   #[test]
   fn black_put_call_parity() {
