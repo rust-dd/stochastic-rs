@@ -256,12 +256,8 @@ impl std::fmt::Display for ProgramError {
 
 impl std::error::Error for ProgramError {}
 
-/// An [`Expr`] compiled to postfix code: one `(opcode, constant)` pair per
-/// node, run on a stack. Codes `0`–`2` push the time, the state and a
-/// constant; `3`–`9` are the binary `+ − × ÷ ^ max min`; `10`–`15` the unary
-/// `− √ exp ln |·| tanh`. A program never exceeds [`Program::MAX_OPS`]
-/// operations or a stack of [`Program::MAX_DEPTH`], the bounds the kernels'
-/// fixed arrays hold, so a program that compiles runs anywhere.
+/// A compiled [`Expr`]: at most [`Program::MAX_OPS`] ops on a stack of [`Program::MAX_DEPTH`].
+/// Those are the kernels' fixed array sizes, so a program that compiles runs on every backend.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Program {
   ops: Vec<(u32, f64)>,
