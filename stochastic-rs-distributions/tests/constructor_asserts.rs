@@ -28,6 +28,7 @@ use stochastic_rs_distributions::non_central_chi_squared::SimdNonCentralChiSquar
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::normal_inverse_gauss::SimdNormalInverseGauss;
 use stochastic_rs_distributions::pareto::SimdPareto;
+use stochastic_rs_distributions::simd_rng::Deterministic;
 use stochastic_rs_distributions::skew_t::SimdSkewT;
 use stochastic_rs_distributions::studentt::SimdStudentT;
 use stochastic_rs_distributions::tempered_stable::SimdTemperedStable;
@@ -236,6 +237,36 @@ fn every_rejected_argument_is_named_with_its_value() {
     (
       panic_text(|| SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1e200, 0.0)),
       "delta must satisfy `0 < delta * delta < ∞`, got delta = 1e200",
+    ),
+    (
+      panic_text(|| SimdChiSquared::<f64>::new(5e-324)),
+      "k must satisfy `k / 2 > 0`, got k = 5e-324",
+    ),
+    (
+      panic_text(|| SimdStudentT::<f64>::new(5e-324)),
+      "nu must satisfy `nu / 2 > 0`, got nu = 5e-324",
+    ),
+    (
+      panic_text(|| SimdNonCentralChiSquared::<f64>::new(5e-324)),
+      "df must satisfy `df / 2 > 0`, got df = 5e-324",
+    ),
+    (
+      panic_text(|| {
+        stochastic_rs_distributions::non_central_chi_squared::sample(
+          -1.0_f64,
+          1.0,
+          &Deterministic::new(1),
+        )
+      }),
+      "df must satisfy `df > T::zero()`, got df = -1.0",
+    ),
+    (
+      panic_text(|| SimdWishart::<f64>::new(5e-324, array![[1.0]])),
+      "nu must satisfy `0 < (nu - j) / 2 < ∞`, got nu = 5e-324, j = 0",
+    ),
+    (
+      panic_text(|| SimdWishart::<f32>::new(1e39, array![[1.0]])),
+      "nu must satisfy `0 < (nu - j) / 2 < ∞`, got nu = 1e39, j = 0",
     ),
   ];
   let wrong = cases

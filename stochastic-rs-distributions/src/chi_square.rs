@@ -39,9 +39,14 @@ impl<T: SimdFloatExt> SimdChiSquared<T> {
       k > T::zero(),
       "k must satisfy `k > T::zero()`, got k = {k:?}"
     );
+    let shape = k * T::from(0.5).unwrap();
+    assert!(
+      shape > T::zero(),
+      "k must satisfy `k / 2 > 0`, got k = {k:?}"
+    );
     Self {
       df: k,
-      gamma: SimdGamma::new(k * T::from(0.5).unwrap(), T::from(2.0).unwrap()),
+      gamma: SimdGamma::new(shape, T::from(2.0).unwrap()),
     }
   }
 

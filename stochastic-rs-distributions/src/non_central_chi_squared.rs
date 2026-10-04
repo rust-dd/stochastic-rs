@@ -107,6 +107,10 @@ impl<T: SimdFloatExt> SimdNonCentralChiSquared<T> {
       df > T::zero(),
       "df must satisfy `df > T::zero()`, got df = {df:?}"
     );
+    assert!(
+      df / T::from_f64_fast(2.0) > T::zero(),
+      "df must satisfy `df / 2 > 0`, got df = {df:?}"
+    );
     let rem = df - T::one();
     Self {
       df,
@@ -173,13 +177,12 @@ impl<T: SimdFloatExt, R: SimdRngExt> Seeded<SimdNonCentralChiSquared<T>, R> {
   }
 }
 
-/// One-shot `χ²_df(ncp)` draw, the shift for `df ≥ 1` and the Poisson mixture below; panics unless `0 ≤ ncp < ∞`.
-/// It builds the laws on every call, so repeated draws belong on a [`SimdNonCentralChiSquared`] stream.
+/// One-shot `χ²_df(ncp)` draw, the shift for `df ≥ 1` and the Poisson mixture below; panics on the `df` that `new`
+/// rejects or unless `0 ≤ ncp < ∞`. It builds the laws per call, so repeated draws belong on a stream.
 pub fn sample<T: FloatExt, S: SeedExt>(df: T, ncp: T, seed: &S) -> T {
+  let law = SimdNonCentralChiSquared::<T>::new(df);
   if df >= T::one() {
-    return SimdNonCentralChiSquared::<T>::new(df)
-      .seeded(seed)
-      .sample_ncp(ncp);
+    return law.seeded(seed).sample_ncp(ncp);
   }
   check_ncp(ncp);
   poisson_mixture(df, ncp, seed)

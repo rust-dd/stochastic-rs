@@ -53,6 +53,10 @@ impl<T: SimdFloatExt> SimdStudentT<T> {
       nu > T::zero(),
       "nu must satisfy `nu > T::zero()`, got nu = {nu:?}"
     );
+    assert!(
+      nu * T::from(0.5).unwrap() > T::zero(),
+      "nu must satisfy `nu / 2 > 0`, got nu = {nu:?}"
+    );
     Self {
       nu,
       chisq: SimdChiSquared::new(nu),

@@ -141,7 +141,14 @@ impl<T: SimdFloatExt> SimdWishart<T> {
       panic!("scale must satisfy `pivot[i] > 0.0` (positive definite), got pivot[{i}] = {pivot:?}")
     });
     let diag = (0..p)
-      .map(|j| SimdChiSquared::<T>::new(T::from_f64_fast(nu - j as f64)))
+      .map(|j| {
+        let k = T::from_f64_fast(nu - j as f64);
+        assert!(
+          k.is_finite() && k * T::from_f64_fast(0.5) > T::zero(),
+          "nu must satisfy `0 < (nu - j) / 2 < ∞`, got nu = {nu:?}, j = {j}"
+        );
+        SimdChiSquared::<T>::new(k)
+      })
       .collect::<Vec<_>>();
     Self {
       nu,
