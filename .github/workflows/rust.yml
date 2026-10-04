@@ -100,6 +100,8 @@ jobs:
         run: cargo check -p stochastic-rs-stochastic --features metal,accelerate --all-targets --locked
       - name: Cargo check (python + metal + accelerate)
         run: cargo check -p stochastic-rs-py --features metal,accelerate --all-targets --locked
+      - name: Device handle environment contract (metal)
+        run: cargo test -p stochastic-rs-stochastic --features metal --test device_handle_env --locked
 
   # The Apple back-ends are inert off macOS: enabling them on Linux compiles the crates without them.
   check_apple_features_inert:
@@ -132,6 +134,8 @@ jobs:
         run: cargo clippy -p stochastic-rs-stochastic --features cuda --all-targets --locked -- -D warnings
       - name: Cargo check (python + cuda)
         run: cargo check -p stochastic-rs-py --features cuda --all-targets --locked
+      - name: Device handle environment contract (cuda)
+        run: cargo test -p stochastic-rs-stochastic --features cuda --test device_handle_env --locked
 
   # The docs site's Rust code blocks are `<RustExample path="tests/doctest_*.rs" />`
   # includes rather than hand-copied text, so there is nothing to diff for

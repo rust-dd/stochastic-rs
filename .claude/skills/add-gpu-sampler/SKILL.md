@@ -197,7 +197,7 @@ The work:
    `Default` (ordinal `0`, `DEFAULT_BATCH_BUDGET_BYTES`), plus `new` /
    `from_env` / `with_batch_budget`, plus `impl sealed::Sealed for
    <Handle> {}` under the handle's `cfg`, beside the other seal impls in
-   `device.rs`.
+   `device.rs`, and name the handle in the seal's `on_unimplemented` note.
 2. Implement `Backend::probe` for it.
 3. Write the sampler in a new `noise/fgn/<name>.rs`, gated on the
    feature: draw the launch seed **once** from `seed_src`, chunk with
