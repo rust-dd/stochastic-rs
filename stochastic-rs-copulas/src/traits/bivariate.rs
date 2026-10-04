@@ -178,6 +178,7 @@ pub trait BivariateExt {
     Ok(())
   }
 
+  /// Sampling and evaluation gate on this, so an override must validate the parameters it holds.
   fn check_fit(&self) -> Result<(), CopulaError> {
     if self.theta().is_none() {
       return Err(CopulaError::NotFitted);

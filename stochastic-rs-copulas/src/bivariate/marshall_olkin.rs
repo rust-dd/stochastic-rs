@@ -138,11 +138,20 @@ impl BivariateExt for MarshallOlkin {
     self.beta = None;
   }
 
-  /// [`MarshallOlkin::with_alpha_beta`] leaves `theta` unset, so either parameterisation counts as
-  /// fitted; an unfit copula answers `NotFitted` instead of panicking in `resolve_params`.
+  /// Validates the parameterisation `resolve_params` uses: `alpha` and `beta` in (0, 1] when both
+  /// are set, otherwise `theta` through `check_theta`.
   fn check_fit(&self) -> Result<(), CopulaError> {
-    if self.theta.is_none() && (self.alpha.is_none() || self.beta.is_none()) {
-      return Err(CopulaError::NotFitted);
+    let (Some(alpha), Some(beta)) = (self.alpha, self.beta) else {
+      return self.check_theta();
+    };
+    for (name, value) in [("alpha", alpha), ("beta", beta)] {
+      if !(value > 0.0 && value <= 1.0) {
+        return Err(CopulaError::InvalidParameter {
+          name,
+          value,
+          constraint: format!("0.0 < {name} <= 1.0"),
+        });
+      }
     }
     Ok(())
   }
@@ -420,5 +429,39 @@ mod tests {
     let c = MarshallOlkin::with_alpha_beta(0.5, 0.3);
     let t = array![0.5_f64, 0.8];
     assert!(c.generator(&t).is_err());
+  }
+
+  #[test]
+  fn an_out_of_domain_parameter_neither_samples_nor_evaluates() {
+    let x = array![[0.3_f64, 0.4]];
+    for theta in [1.5, -0.5] {
+      let c = MarshallOlkin {
+        theta: Some(theta),
+        ..MarshallOlkin::new()
+      };
+      assert!(
+        matches!(
+          c.sample_with_seed(16, 7),
+          Err(CopulaError::InvalidParameter { name: "theta", .. })
+        ),
+        "theta = {theta}"
+      );
+      assert!(
+        matches!(
+          c.pdf(&x),
+          Err(CopulaError::InvalidParameter { name: "theta", .. })
+        ),
+        "theta = {theta}"
+      );
+    }
+    let c = MarshallOlkin {
+      alpha: Some(1.5),
+      beta: Some(0.5),
+      ..MarshallOlkin::new()
+    };
+    assert!(matches!(
+      c.cdf(&x),
+      Err(CopulaError::InvalidParameter { name: "alpha", .. })
+    ));
   }
 }
