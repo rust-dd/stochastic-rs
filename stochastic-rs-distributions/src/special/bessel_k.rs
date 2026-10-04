@@ -83,13 +83,11 @@ fn temme_gammas(mu: f64) -> (f64, f64) {
   (gam1, scale * odd.cosh())
 }
 
-/// Exponentially scaled $e^{x} K_\nu(x)$ for real `nu` and `x > 0`.
-///
-/// # Panics
-///
-/// If `x` is not positive.
+/// Exponentially scaled $e^{x} K_\nu(x)$ for real `nu`; NaN unless `x > 0`.
 pub fn bessel_ke(nu: f64, x: f64) -> f64 {
-  assert!(x > 0.0, "bessel_ke needs x > 0, got {x}");
+  if x.is_nan() || x <= 0.0 {
+    return f64::NAN;
+  }
   ke_pair(nu.abs(), x).0
 }
 
@@ -113,7 +111,7 @@ pub(super) fn ke_pair(nu: f64, x: f64) -> (f64, f64) {
   (rkmu, rk1)
 }
 
-/// $K_\nu(x)$ for real `nu` and `x > 0`.
+/// $K_\nu(x)$ for real `nu`; NaN unless `x > 0`.
 pub fn bessel_k(nu: f64, x: f64) -> f64 {
   bessel_ke(nu, x) * (-x).exp()
 }
@@ -298,8 +296,9 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "bessel_ke needs x > 0")]
-  fn rejects_non_positive_argument() {
-    let _ = bessel_k(1.0, 0.0);
+  fn k_nu_is_nan_outside_its_domain() {
+    assert!(bessel_ke(0.5, 0.0).is_nan());
+    assert!(bessel_k(0.5, -2.0).is_nan());
+    assert!(bessel_k(0.5, f64::NAN).is_nan());
   }
 }
