@@ -180,6 +180,7 @@ pub use crate::traits::Expr;
 pub use crate::traits::FloatExt;
 pub use crate::traits::Fn1D;
 pub use crate::traits::Fn2D;
+pub use crate::traits::HypothesisTest;
 pub use crate::traits::Program;
 pub use crate::traits::ProgramError;
 pub use crate::traits::RealExt;
