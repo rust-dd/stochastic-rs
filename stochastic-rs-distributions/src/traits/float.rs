@@ -96,10 +96,12 @@ pub trait SimdFloatExt: RealExt + sealed::Sealed {
   fn simd_from_i32x8(v: wide::i32x8) -> Self::Simd;
   const PREFERS_F32_WN: bool = false;
 
-  /// Markov-lift factor reduction $\sum_l (w_l e_l)(H_l + J_l)$ for one path; `we` is `w_l e_l` pre-merged.
+  /// Markov-lift factor reduction $\sum_l (w_l e_l)(H_l + J_l)$ for one path; `we` is `w_l e_l`
+  /// pre-merged; panics unless the slices share one length.
   #[doc(hidden)]
   fn history_sum_fused(we: &[Self], h_state: &[Self], j_state: &[Self]) -> Self;
 
+  /// One path's factor-state update, `omx` holding $(1 - e_l)/x_l$; panics unless the slices share one length.
   #[doc(hidden)]
   fn update_state_fused(
     h_state: &mut [Self],
@@ -110,9 +112,11 @@ pub trait SimdFloatExt: RealExt + sealed::Sealed {
     g_dw: Self,
   );
 
+  /// Adds `we_l (h_row + j_row)` to every path's `history`; panics unless the slices share one length.
   #[doc(hidden)]
   fn batch_history_accumulate(we_l: Self, h_row: &[Self], j_row: &[Self], history: &mut [Self]);
 
+  /// Factor $l$'s state update across every path; panics unless the slices share one length.
   #[doc(hidden)]
   fn batch_update_state(
     e_l: Self,
