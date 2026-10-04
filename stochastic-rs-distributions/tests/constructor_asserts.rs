@@ -5,12 +5,14 @@ use std::panic::catch_unwind;
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::array;
 use stochastic_rs_distributions::FloatExt;
 use stochastic_rs_distributions::alpha_stable::SimdAlphaStable;
 use stochastic_rs_distributions::beta::SimdBeta;
 use stochastic_rs_distributions::binomial::SimdBinomial;
 use stochastic_rs_distributions::cauchy::SimdCauchy;
 use stochastic_rs_distributions::chi_square::SimdChiSquared;
+use stochastic_rs_distributions::dirichlet::SimdDirichlet;
 use stochastic_rs_distributions::exp::SimdExp;
 use stochastic_rs_distributions::gamma::SimdGamma;
 use stochastic_rs_distributions::ged::SimdGed;
@@ -37,6 +39,7 @@ use stochastic_rs_distributions::truncated::SimdTruncatedNormal;
 use stochastic_rs_distributions::uniform::SimdUniform;
 use stochastic_rs_distributions::variance_gamma::SimdVarianceGamma;
 use stochastic_rs_distributions::weibull::SimdWeibull;
+use stochastic_rs_distributions::wishart::SimdWishart;
 
 fn panic_text<R>(f: impl FnOnce() -> R + UnwindSafe) -> String {
   let payload = catch_unwind(f)
@@ -193,6 +196,22 @@ fn every_rejected_argument_is_named_with_its_value() {
     (
       grid(vec![0.25, 0.5], vec![1.0, 2.0], 2, 3),
       "values must satisfy `values.dim() == (ts.len(), xs.len())`, got values.dim() = (2, 3), ts.len() = 2, xs.len() = 2",
+    ),
+    (
+      panic_text(|| SimdWishart::<f64>::new(3.0, array![[1.0, f64::NAN], [f64::NAN, 1.0]])),
+      "scale must satisfy `scale[[i, j]].is_finite()`, got scale[[0, 1]] = NaN",
+    ),
+    (
+      panic_text(|| SimdWishart::<f64>::new(3.0, array![[f64::INFINITY, 0.0], [0.0, 1.0]])),
+      "scale must satisfy `scale[[i, j]].is_finite()`, got scale[[0, 0]] = inf",
+    ),
+    (
+      panic_text(|| SimdWishart::<f64>::new(3.0, array![[1.0, 2.0], [2.0, 1.0]])),
+      "scale must satisfy `pivot[i] > 0.0` (positive definite), got pivot[1] = -3.0",
+    ),
+    (
+      panic_text(|| SimdDirichlet::<f64>::new(vec![1.0, f64::INFINITY])),
+      "alpha must satisfy `alpha[k].is_finite()`, got alpha[1] = inf",
     ),
   ];
   let wrong = cases

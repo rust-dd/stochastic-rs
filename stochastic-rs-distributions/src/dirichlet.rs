@@ -56,6 +56,10 @@ impl<T: SimdFloatExt> SimdDirichlet<T> {
     );
     for (k, a) in alpha.iter().enumerate() {
       assert!(
+        a.is_finite(),
+        "alpha must satisfy `alpha[k].is_finite()`, got alpha[{k}] = {a:?}"
+      );
+      assert!(
         *a > T::zero(),
         "alpha must satisfy `alpha[k] > T::zero()`, got alpha[{k}] = {a:?}"
       );

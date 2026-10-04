@@ -117,6 +117,12 @@ impl<T: SimdFloatExt> SimdWishart<T> {
       nu.is_finite(),
       "nu must satisfy `nu.is_finite()`, got nu = {nu:?}"
     );
+    for ((i, j), v) in scale.indexed_iter() {
+      assert!(
+        v.is_finite(),
+        "scale must satisfy `scale[[i, j]].is_finite()`, got scale[[{i}, {j}]] = {v:?}"
+      );
+    }
     let p = scale.nrows();
     assert!(
       p >= 1,
@@ -131,7 +137,9 @@ impl<T: SimdFloatExt> SimdWishart<T> {
       nu > (p - 1) as f64,
       "nu must satisfy `nu > p - 1`, got nu = {nu:?}, p = {p}"
     );
-    let chol = cholesky_lower(&scale).expect("scale matrix must be positive definite");
+    let chol = cholesky_lower(&scale).unwrap_or_else(|(i, pivot)| {
+      panic!("scale must satisfy `pivot[i] > 0.0` (positive definite), got pivot[{i}] = {pivot:?}")
+    });
     let diag = (0..p)
       .map(|j| SimdChiSquared::<T>::new(T::from_f64_fast(nu - j as f64)))
       .collect::<Vec<_>>();
@@ -177,8 +185,8 @@ impl<T: SimdFloatExt> SimdWishart<T> {
     let nu = self.nu;
     let p = self.p as f64;
     let det_x_log = match cholesky_lower(x) {
-      Some(l) => 2.0 * (0..self.p).map(|i| l[[i, i]].ln()).sum::<f64>(),
-      None => return f64::NAN,
+      Ok(l) => 2.0 * (0..self.p).map(|i| l[[i, i]].ln()).sum::<f64>(),
+      Err(_) => return f64::NAN,
     };
     let det_v_log = 2.0 * (0..self.p).map(|i| self.chol[[i, i]].ln()).sum::<f64>();
     let v_inv = invert_spd(&self.scale).expect("scale matrix should be invertible");
@@ -236,10 +244,9 @@ impl<T: SimdFloatExt> Distribution<Array2<f64>> for SimdWishart<T> {
   }
 }
 
-/// Plain in-place Cholesky decomposition (no external linalg dependency
-/// needed for this 2.3.0 implementation; dim ≤ 10 in practice for
-/// portfolio / factor-model use cases).
-fn cholesky_lower(a: &Array2<f64>) -> Option<Array2<f64>> {
+/// Plain Cholesky factor `L` of `a = L·Lᵀ` (dim ≤ 10 in practice); `Err((i, d))` names the first pivot `d` that
+/// is not positive.
+fn cholesky_lower(a: &Array2<f64>) -> Result<Array2<f64>, (usize, f64)> {
   let n = a.nrows();
   let mut l = Array2::<f64>::zeros((n, n));
   for i in 0..n {
@@ -250,8 +257,8 @@ fn cholesky_lower(a: &Array2<f64>) -> Option<Array2<f64>> {
       }
       if i == j {
         let diag = a[[i, i]] - sum;
-        if diag <= 0.0 {
-          return None;
+        if diag.is_nan() || diag <= 0.0 {
+          return Err((i, diag));
         }
         l[[i, i]] = diag.sqrt();
       } else {
@@ -259,14 +266,14 @@ fn cholesky_lower(a: &Array2<f64>) -> Option<Array2<f64>> {
       }
     }
   }
-  Some(l)
+  Ok(l)
 }
 
 /// Invert a positive-definite matrix via L · Lᵀ Cholesky → forward / back
 /// substitution. Returns `None` if `a` is not SPD.
 fn invert_spd(a: &Array2<f64>) -> Option<Array2<f64>> {
   let n = a.nrows();
-  let l = cholesky_lower(a)?;
+  let l = cholesky_lower(a).ok()?;
   let mut inv = Array2::<f64>::zeros((n, n));
   for col in 0..n {
     let mut y = vec![0.0_f64; n];
@@ -319,7 +326,7 @@ mod tests {
         }
       }
       // SPD via Cholesky.
-      assert!(cholesky_lower(&x).is_some(), "non-SPD sample");
+      assert!(cholesky_lower(&x).is_ok(), "non-SPD sample");
     }
   }
 
@@ -368,7 +375,7 @@ mod tests {
     let mut w = SimdWishart::<f64>::new(6.0, v).seeded(&Unseeded);
     for _ in 0..100 {
       let x_inv = w.sample_inverse().expect("invertible");
-      assert!(cholesky_lower(&x_inv).is_some(), "non-SPD inverse");
+      assert!(cholesky_lower(&x_inv).is_ok(), "non-SPD inverse");
     }
   }
 
