@@ -232,7 +232,7 @@ pub fn norm_cdf(x: f64) -> f64 {
 ///
 /// Returns NaN for a negative `x` or a non-positive `a`.
 pub fn gamma_p(a: f64, x: f64) -> f64 {
-  if x < 0.0 || a <= 0.0 {
+  if x < 0.0 || a.is_nan() || a <= 0.0 {
     return f64::NAN;
   }
   if x == 0.0 {
@@ -539,6 +539,14 @@ mod tests {
     assert!(close(gamma_p(0.5, 1.0), erf(1.0), 1e-6));
     assert_eq!(gamma_p(2.5, f64::INFINITY), 1.0);
     assert_eq!(gamma_q(2.5, f64::INFINITY), 0.0);
+    assert_eq!(gamma_li(2.5, f64::INFINITY), gamma(2.5));
+    assert_eq!(gamma_ui(2.5, f64::INFINITY), 0.0);
+    for x in [0.0, 1.0, f64::INFINITY] {
+      assert!(gamma_p(f64::NAN, x).is_nan(), "gamma_p(NaN, {x})");
+      assert!(gamma_q(f64::NAN, x).is_nan(), "gamma_q(NaN, {x})");
+      assert!(gamma_li(f64::NAN, x).is_nan(), "gamma_li(NaN, {x})");
+      assert!(gamma_ui(f64::NAN, x).is_nan(), "gamma_ui(NaN, {x})");
+    }
   }
 
   #[test]
