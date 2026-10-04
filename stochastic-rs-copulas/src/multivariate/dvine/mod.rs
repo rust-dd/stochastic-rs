@@ -234,9 +234,6 @@ impl MultivariateExt for DVine {
   }
 
   fn fit(&mut self, _X: Array2<f64>) -> Result<(), CopulaError> {
-    // Sequential pair-copula MLE + structure/family selection is not yet
-    // implemented; D-vine *evaluation* (CDF/PDF/sample) works on a
-    // user-supplied tree built via `DVine::new`.
     Err(CopulaError::Unsupported(
       "DVine::fit is not implemented: use multivariate::fit::fit_vine with VineStructure::DVine"
         .into(),
