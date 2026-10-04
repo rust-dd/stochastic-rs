@@ -1201,9 +1201,8 @@ pub(crate) fn main() {
   let dir = "target/metal_vs_cpu";
   fs::create_dir_all(dir).expect("output directory");
 
-  // What the device is, before anything is asked of it. A handle is a value:
-  // `Metal::default()` reads the ordinal from the environment, and `probe`
-  // opens it.
+  // What the device is, before anything is asked of it: `probe` opens the default handle the
+  // `.on::<Metal>()` calls below sample on.
   match stochastic_rs::stochastic::device::Backend::probe(&Metal::default()) {
     Ok(info) => println!(
       "device: {} ({}), precisions {:?}\n",

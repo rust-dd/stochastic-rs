@@ -1,8 +1,5 @@
-//! The `device=` argument of the device-capable Python classes: parsed,
-//! checked against the build and the precision, and probed at construction,
-//! so a class that exists samples on a device that works. A name may carry
-//! an ordinal, `"cuda:1"`, `"metal:0"`; without one the handle's default
-//! (`STOCHASTIC_RS_DEVICE`, else `0`) applies.
+//! The `device=` argument of the device-capable Python classes, checked against the build and the
+//! precision and probed at construction, so a class that exists samples on a device that works.
 
 use std::sync::Arc;
 
@@ -54,14 +51,14 @@ impl SeedExt for SharedSeed {
   }
 }
 
-/// Where a Python-side process samples, with the device ordinal where the
-/// back-end enumerates devices.
+/// Where a Python-side process samples: for a GPU the ordinal (the name's, else `STOCHASTIC_RS_DEVICE`)
+/// and the batch budget in bytes (`STOCHASTIC_RS_DEVICE_BATCH_BYTES`), for `"cuda"` and `"cuda:1"` alike.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Device {
   Cpu,
   Accelerate,
-  Cuda(usize),
-  Metal(usize),
+  Cuda(usize, usize),
+  Metal(usize, usize),
 }
 
 impl Device {
@@ -96,12 +93,17 @@ impl Device {
       }
       None => (lower.clone(), None),
     };
-    let ordinal = |default: usize| ordinal.unwrap_or(default);
+    let value_error = |e: crate::device::DeviceError| PyValueError::new_err(e.to_string());
+    let ordinal_or_env = |explicit: Option<usize>| match explicit {
+      Some(o) => Ok(o),
+      None => crate::device::env_ordinal().map_err(value_error),
+    };
+    let budget = || crate::device::env_budget().map_err(value_error);
     let device = match kind.as_str() {
       "cpu" => Device::Cpu,
       "accelerate" => Device::Accelerate,
-      "cuda" => Device::Cuda(ordinal(crate::device::env_ordinal())),
-      "metal" => Device::Metal(ordinal(crate::device::env_ordinal())),
+      "cuda" => Device::Cuda(ordinal_or_env(ordinal)?, budget()?),
+      "metal" => Device::Metal(ordinal_or_env(ordinal)?, budget()?),
       other => {
         return Err(PyValueError::new_err(format!(
           "unknown device {other:?}; use cpu, accelerate, cuda or metal, optionally with :ordinal"
@@ -120,12 +122,12 @@ impl Device {
         "Accelerate back-end",
         "the accelerate feature on macOS",
       ),
-      Device::Cuda(_) => (
+      Device::Cuda(..) => (
         cfg!(feature = "cuda"),
         "native CUDA runtime",
         "the cuda feature",
       ),
-      Device::Metal(_) => (
+      Device::Metal(..) => (
         cfg!(all(feature = "metal", target_os = "macos")),
         "native Metal runtime",
         "the metal feature on macOS",
@@ -142,7 +144,7 @@ impl Device {
 
   /// The Metal kernels compute in `f32` only.
   pub fn single_precision(self) -> bool {
-    matches!(self, Device::Metal(_))
+    matches!(self, Device::Metal(..))
   }
 
   /// The name `device=` accepts for this variant.
@@ -150,8 +152,8 @@ impl Device {
     match self {
       Device::Cpu => "cpu",
       Device::Accelerate => "accelerate",
-      Device::Cuda(_) => "cuda",
-      Device::Metal(_) => "metal",
+      Device::Cuda(..) => "cuda",
+      Device::Metal(..) => "metal",
     }
   }
 
@@ -162,9 +164,9 @@ impl Device {
       #[cfg(all(feature = "accelerate", target_os = "macos"))]
       Device::Accelerate => crate::device::Accelerate.probe(),
       #[cfg(feature = "cuda")]
-      Device::Cuda(o) => crate::device::Cuda::new(o).probe(),
+      Device::Cuda(o, _) => crate::device::Cuda::new(o).probe(),
       #[cfg(all(feature = "metal", target_os = "macos"))]
-      Device::Metal(o) => crate::device::Metal::new(o).probe(),
+      Device::Metal(o, _) => crate::device::Metal::new(o).probe(),
       #[allow(unreachable_patterns)]
       _ => unreachable!("check_compiled rejects the devices this build lacks"),
     };

@@ -70,21 +70,23 @@ commit as the rename.
 their settings:
 
 ```rust
+#[non_exhaustive]
 pub struct Cuda { pub ordinal: usize, pub batch_budget: usize }
 ```
 
-`Default` reads `STOCHASTIC_RS_DEVICE` (else `0`) and
-`STOCHASTIC_RS_DEVICE_BATCH_BYTES` (else `DEFAULT_BATCH_BUDGET_BYTES`,
-1 GiB); `new(ordinal)` and `with_batch_budget(bytes)` build one
-explicitly. There is **no process-wide device state** — two processes on
-two GPUs are two handles — so never reintroduce a global selector or a
-global budget.
+`Default` is ordinal `0` with `DEFAULT_BATCH_BUDGET_BYTES` (1 GiB);
+`from_env() -> Result<Self, DeviceError>` reads `STOCHASTIC_RS_DEVICE`
+and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`; `new(ordinal)` and
+`with_batch_budget(bytes)` build one explicitly. There is **no
+process-wide device state** — two processes on two GPUs are two
+handles — so never reintroduce a global selector or a global budget.
 
-`Backend` (sealed to the four handles; `Copy + Send + Sync`) requires exactly one method,
+`Backend` (`Clone + Send + Sync`; sealed, so a handle is declared in
+`device.rs` and never downstream) requires exactly one method,
 `fn probe(&self) -> Result<DeviceInfo, DeviceError>`, which opens the
 device and reports `{ backend, name, precisions, ordinal }` or says why
-it cannot be used. `DeviceError` has three kinds: `Unavailable`,
-`Compile`, `Launch`.
+it cannot be used. `DeviceError` is `#[non_exhaustive]` with
+`Unavailable`, `Compile`, `Launch`, `OutOfMemory` and `Config`.
 
 ## 3. Reproducibility: read this before you write a test
 
@@ -192,8 +194,11 @@ pub(crate) fn sample_<name>_impl<S2: SeedExt>(
 The work:
 
 1. Declare the handle in `device.rs`, feature-gated, `#[derive(Clone,
-   Copy, Debug, PartialEq, Eq)]` with a hand-written `Default` reading
-   the two env vars, plus `new` / `with_batch_budget`.
+   Debug, PartialEq, Eq)]` and `#[non_exhaustive]`, with a hand-written
+   `Default` (ordinal `0`, `DEFAULT_BATCH_BUDGET_BYTES`), plus `new` /
+   `from_env` / `with_batch_budget`, plus `impl sealed::Sealed for
+   <Handle> {}` under the handle's `cfg`, beside the other seal impls in
+   `device.rs`.
 2. Implement `Backend::probe` for it.
 3. Write the sampler in a new `noise/fgn/<name>.rs`, gated on the
    feature: draw the launch seed **once** from `seed_src`, chunk with

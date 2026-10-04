@@ -110,9 +110,11 @@ run from the worker threads one at a time. `PyAdg.sample_par(m)` returns an
 `"cuda:1"`) and returns a dict with `backend`, `name`, `precisions` and
 `ordinal`; a device this build does not carry raises `ValueError` with a rebuild
 hint, one that is compiled in but cannot be opened raises `RuntimeError` with the
-runtime's own message. Without an ordinal the handle's default applies
-(`STOCHASTIC_RS_DEVICE`, else `0`). A device failure while sampling is a
-`RuntimeError` too.
+runtime's own message. Without an ordinal the device comes from
+`STOCHASTIC_RS_DEVICE` (else `0`), and the batch budget from
+`STOCHASTIC_RS_DEVICE_BATCH_BYTES` (else 1 GiB), for `"cuda:1"` too; a value
+that is not a non-negative resp. positive integer raises `ValueError`. A device
+failure while sampling is a `RuntimeError` too.
 
 ```python
 srs.probe_device("metal")             # {'backend': 'Metal', 'name': 'Apple M2 Max', 'precisions': ['f32'], 'ordinal': 0}

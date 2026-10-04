@@ -143,14 +143,16 @@ use stochastic_rs::stochastic::device::Cuda;
 let on_second_gpu = gbm.with_backend(Cuda::new(1).with_batch_budget(256 << 20));
 ```
 
-`Cuda { ordinal, batch_budget }` and `Metal { ordinal, batch_budget }` carry
-the device ordinal (CUDA ordinal, index into `Device::all()`) and the bytes of
-path data one launch may hold. Their
-`Default` reads `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`
-(`0` and 1 GiB when unset), so an unchanged program picks its device from the
-environment, and there is no process-wide state: two processes on two GPUs are
+`Cuda` and `Metal` carry the device ordinal (CUDA ordinal, index into
+`Device::all()`) and the bytes of path data one launch may hold, readable as
+fields and built with `Cuda::new(1)`, `.with_batch_budget(..)` or
+`Cuda::default()` (ordinal `0`, 1 GiB); the structs are `#[non_exhaustive]`, so
+a literal does not compile. `Cuda::from_env()` reads `STOCHASTIC_RS_DEVICE` and
+`STOCHASTIC_RS_DEVICE_BATCH_BYTES` and returns `Err(DeviceError::Config)` for a
+value it cannot use — so an unchanged program picks its device only where it
+asked to, and there is no process-wide state: two processes on two GPUs are
 two handles. `Cpu` and `Accelerate` carry nothing. `probe()` on a handle
-reports the device it opens.
+reports the device it opens; `process.backend()` returns the handle it holds.
 
 ## Probing a device and handling its failures
 
@@ -176,8 +178,8 @@ allocation, typically); every process also offers
 `try_sample()` / `try_sample_par(m) -> Result<_, DeviceError>` on `ProcessExt`
 (always `Ok` on the host devices, bit-identical to the plain calls) and
 the capability traits expose `try_euler_paths` / `try_generate_batch` on the
-handle for generic code. `DeviceError` has three kinds: `Unavailable`,
-`Compile`, `Launch`. On the CPU devices every probe is `Ok` and every `try_*` call is
+handle for generic code. `DeviceError` is `#[non_exhaustive]` with `Unavailable`,
+`Compile`, `Launch`, `OutOfMemory` and `Config`. On the CPU devices every probe is `Ok` and every `try_*` call is
 `Ok` with the same paths as its plain twin. From Python, a device failure is
 a `RuntimeError` with the same message.
 

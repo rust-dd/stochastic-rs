@@ -38,7 +38,8 @@ pub struct Cpu;
 
 /// cudarc + cuFFT + NVRTC Philox.
 #[cfg(feature = "cuda")]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Cuda {
   /// Which device to open: the CUDA device ordinal.
   pub ordinal: usize,
@@ -49,12 +50,11 @@ pub struct Cuda {
 
 #[cfg(feature = "cuda")]
 impl Default for Cuda {
-  /// Ordinal from `STOCHASTIC_RS_DEVICE` (else `0`), budget from
-  /// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` (else [`DEFAULT_BATCH_BUDGET_BYTES`]).
+  /// Ordinal `0` with [`DEFAULT_BATCH_BUDGET_BYTES`]; [`Cuda::from_env`] is the one that reads the environment.
   fn default() -> Self {
     Self {
-      ordinal: env_ordinal(),
-      batch_budget: env_budget(),
+      ordinal: 0,
+      batch_budget: DEFAULT_BATCH_BUDGET_BYTES,
     }
   }
 }
@@ -69,6 +69,15 @@ impl Cuda {
     }
   }
 
+  /// The device of `STOCHASTIC_RS_DEVICE` with the budget of `STOCHASTIC_RS_DEVICE_BATCH_BYTES`;
+  /// an unset variable takes the default, an unusable one is a [`DeviceError::Config`].
+  pub fn from_env() -> Result<Self, DeviceError> {
+    Ok(Self {
+      ordinal: env_ordinal()?,
+      batch_budget: env_budget()?,
+    })
+  }
+
   /// The same device with `bytes` of path data per launch.
   pub fn with_batch_budget(self, bytes: usize) -> Self {
     Self {
@@ -80,7 +89,8 @@ impl Cuda {
 
 /// Hand-written MSL via the `metal` crate. f32 only — Apple GPUs lack f64.
 #[cfg(all(feature = "metal", target_os = "macos"))]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Metal {
   /// Which device to open: the index into `Device::all()`, `0` being the system default.
   pub ordinal: usize,
@@ -91,12 +101,11 @@ pub struct Metal {
 
 #[cfg(all(feature = "metal", target_os = "macos"))]
 impl Default for Metal {
-  /// Ordinal from `STOCHASTIC_RS_DEVICE` (else `0`), budget from
-  /// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` (else [`DEFAULT_BATCH_BUDGET_BYTES`]).
+  /// Ordinal `0` with [`DEFAULT_BATCH_BUDGET_BYTES`]; [`Metal::from_env`] is the one that reads the environment.
   fn default() -> Self {
     Self {
-      ordinal: env_ordinal(),
-      batch_budget: env_budget(),
+      ordinal: 0,
+      batch_budget: DEFAULT_BATCH_BUDGET_BYTES,
     }
   }
 }
@@ -109,6 +118,15 @@ impl Metal {
       ordinal,
       ..Self::default()
     }
+  }
+
+  /// The device of `STOCHASTIC_RS_DEVICE` with the budget of `STOCHASTIC_RS_DEVICE_BATCH_BYTES`;
+  /// an unset variable takes the default, an unusable one is a [`DeviceError::Config`].
+  pub fn from_env() -> Result<Self, DeviceError> {
+    Ok(Self {
+      ordinal: env_ordinal()?,
+      batch_budget: env_budget()?,
+    })
   }
 
   /// The same device with `bytes` of path data per launch.
@@ -148,6 +166,8 @@ pub enum DeviceError {
   /// this engine is bit-identical however the batch is cut, so the retry
   /// returns the same numbers rather than an approximation of them.
   OutOfMemory(String),
+  /// An environment variable the handle reads holds a value it cannot use.
+  Config(String),
 }
 
 impl fmt::Display for DeviceError {
@@ -157,6 +177,7 @@ impl fmt::Display for DeviceError {
       DeviceError::Compile(msg) => write!(f, "kernel compilation failed: {msg}"),
       DeviceError::Launch(msg) => write!(f, "device operation failed: {msg}"),
       DeviceError::OutOfMemory(msg) => write!(f, "device out of memory: {msg}"),
+      DeviceError::Config(msg) => write!(f, "device configuration: {msg}"),
     }
   }
 }
@@ -211,23 +232,35 @@ impl DeviceInfo {
   }
 }
 
-// Read by the `Default` impls of the device handles, `cuda` and `metal`.
 #[cfg_attr(
-  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  not(any(
+    feature = "cuda",
+    all(feature = "metal", target_os = "macos"),
+    feature = "python"
+  )),
   allow(dead_code)
 )]
-/// `STOCHASTIC_RS_DEVICE` parsed as an ordinal; anything unparsable is `0`.
-pub(crate) fn device_from_env(value: Option<&str>) -> usize {
-  value.and_then(|s| s.trim().parse().ok()).unwrap_or(0)
+/// `STOCHASTIC_RS_DEVICE` as an ordinal: unset is `0`, anything but a non-negative integer is refused.
+pub(crate) fn device_from_env(value: Option<&str>) -> Result<usize, DeviceError> {
+  let Some(raw) = value else {
+    return Ok(0);
+  };
+  raw.trim().parse().map_err(|_| {
+    DeviceError::Config(format!(
+      "STOCHASTIC_RS_DEVICE must be a non-negative integer, got {raw:?}"
+    ))
+  })
 }
 
-// Read by the `Default` impls of the device handles, `cuda` and `metal`.
 #[cfg_attr(
-  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  not(any(
+    feature = "cuda",
+    all(feature = "metal", target_os = "macos"),
+    feature = "python"
+  )),
   allow(dead_code)
 )]
-/// The ordinal a device handle starts with: `STOCHASTIC_RS_DEVICE`, else `0`.
-pub(crate) fn env_ordinal() -> usize {
+pub(crate) fn env_ordinal() -> Result<usize, DeviceError> {
   device_from_env(std::env::var("STOCHASTIC_RS_DEVICE").ok().as_deref())
 }
 
@@ -235,25 +268,35 @@ pub(crate) fn env_ordinal() -> usize {
 pub const DEFAULT_BATCH_BUDGET_BYTES: usize = 1 << 30;
 
 #[cfg_attr(
-  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  not(any(
+    feature = "cuda",
+    all(feature = "metal", target_os = "macos"),
+    feature = "python"
+  )),
   allow(dead_code)
 )]
-/// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` parsed; anything that is not a positive
-/// number is the default.
-pub(crate) fn budget_from_env(value: Option<&str>) -> usize {
-  value
-    .and_then(|s| s.trim().parse::<usize>().ok())
-    .filter(|b| *b > 0)
-    .unwrap_or(DEFAULT_BATCH_BUDGET_BYTES)
+/// `STOCHASTIC_RS_DEVICE_BATCH_BYTES` as a budget: unset is the default, anything but a positive integer is refused.
+pub(crate) fn budget_from_env(value: Option<&str>) -> Result<usize, DeviceError> {
+  let Some(raw) = value else {
+    return Ok(DEFAULT_BATCH_BUDGET_BYTES);
+  };
+  match raw.trim().parse::<usize>() {
+    Ok(bytes) if bytes > 0 => Ok(bytes),
+    _ => Err(DeviceError::Config(format!(
+      "STOCHASTIC_RS_DEVICE_BATCH_BYTES must be a positive integer, got {raw:?}"
+    ))),
+  }
 }
 
 #[cfg_attr(
-  not(any(feature = "cuda", all(feature = "metal", target_os = "macos"))),
+  not(any(
+    feature = "cuda",
+    all(feature = "metal", target_os = "macos"),
+    feature = "python"
+  )),
   allow(dead_code)
 )]
-/// The batch budget a device handle starts with: `STOCHASTIC_RS_DEVICE_BATCH_BYTES`,
-/// else [`DEFAULT_BATCH_BUDGET_BYTES`].
-pub(crate) fn env_budget() -> usize {
+pub(crate) fn env_budget() -> Result<usize, DeviceError> {
   budget_from_env(
     std::env::var("STOCHASTIC_RS_DEVICE_BATCH_BYTES")
       .ok()
@@ -355,7 +398,7 @@ pub(crate) fn device_panic<T>(e: DeviceError) -> T {
 
 /// A compile-time device marker, sealed to the four handles of this module: `probe` is the one run-time
 /// question it answers, the sampling stays a compile-time choice (`.on::<B>()`, zero runtime branching).
-pub trait Backend: sealed::Sealed + Copy + Send + Sync {
+pub trait Backend: sealed::Sealed + Clone + Send + Sync {
   /// Opens the device behind this marker and describes it, or says why it
   /// cannot be used (no device, runtime missing, kernels failing to
   /// compile). The CPU devices are always `Ok`. A `sample*` call on a device
@@ -388,18 +431,21 @@ impl Backend for Cpu {
     Ok(DeviceInfo::host("Cpu", "host CPU (SIMD)"))
   }
 }
+
 #[cfg(feature = "cuda")]
 impl Backend for Cuda {
   fn probe(&self) -> Result<DeviceInfo, DeviceError> {
     crate::euler::cuda::probe(self.ordinal)
   }
 }
+
 #[cfg(all(feature = "metal", target_os = "macos"))]
 impl Backend for Metal {
   fn probe(&self) -> Result<DeviceInfo, DeviceError> {
     crate::euler::metal::probe(self.ordinal)
   }
 }
+
 #[cfg(all(feature = "accelerate", target_os = "macos"))]
 impl Backend for Accelerate {
   fn probe(&self) -> Result<DeviceInfo, DeviceError> {
@@ -944,19 +990,31 @@ mod tests {
   }
 
   #[test]
-  fn batch_budget_parses_the_environment_leniently() {
-    assert_eq!(budget_from_env(None), DEFAULT_BATCH_BUDGET_BYTES);
-    assert_eq!(budget_from_env(Some("0")), DEFAULT_BATCH_BUDGET_BYTES);
-    assert_eq!(budget_from_env(Some("x")), DEFAULT_BATCH_BUDGET_BYTES);
-    assert_eq!(budget_from_env(Some(" 4096 ")), 4096);
+  fn the_batch_budget_variable_is_a_positive_integer_or_an_error() {
+    assert_eq!(budget_from_env(None), Ok(DEFAULT_BATCH_BUDGET_BYTES));
+    assert_eq!(budget_from_env(Some(" 4096 ")), Ok(4096));
+    assert!(matches!(
+      budget_from_env(Some("0")),
+      Err(DeviceError::Config(_))
+    ));
+    assert!(matches!(
+      budget_from_env(Some("x")),
+      Err(DeviceError::Config(_))
+    ));
   }
 
   #[test]
-  fn device_ordinal_parses_the_environment_leniently() {
-    assert_eq!(device_from_env(None), 0);
-    assert_eq!(device_from_env(Some(" 2 ")), 2);
-    assert_eq!(device_from_env(Some("gpu1")), 0);
-    assert_eq!(device_from_env(Some("")), 0);
+  fn the_device_variable_is_an_ordinal_or_an_error() {
+    assert_eq!(device_from_env(None), Ok(0));
+    assert_eq!(device_from_env(Some(" 2 ")), Ok(2));
+    assert!(matches!(
+      device_from_env(Some("gpu1")),
+      Err(DeviceError::Config(_))
+    ));
+    assert!(matches!(
+      device_from_env(Some("")),
+      Err(DeviceError::Config(_))
+    ));
   }
 
   #[test]

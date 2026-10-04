@@ -314,7 +314,7 @@ behind an `f64` type.
 ## Large batches
 
 A device handle holds at most `batch_budget` bytes of path data per launch
-(1 GiB by default, `STOCHASTIC_RS_DEVICE_BATCH_BYTES`, or
+(1 GiB by default, `Cuda::from_env()?` for `STOCHASTIC_RS_DEVICE_BATCH_BYTES`, or
 `Cuda::default().with_batch_budget(n)`). A larger `sample_par(m)` runs as
 several launches whose union is bit-identical to one launch, because the kernels
 hash the global path index; `sample_map(m, f)` maps each chunk in parallel on
@@ -331,7 +331,7 @@ The handle names the device: `Cuda::new(1)` (CUDA ordinal),
 `Metal::new(1)` (index into `Device::all()`);
 `process.with_backend(handle)` puts a process on that handle, `.on::<B>()` on
 the backend's default handle, and `handle.probe()` reports the device opened.
-The defaults read `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
+`Cuda::from_env()` / `Metal::from_env()` read `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`; `Default` is ordinal `0` with the default budget.
 From Python the name carries the ordinal: `device="cuda:1"`,
 `probe_device("metal:0")`.
 

@@ -18,7 +18,7 @@ macro_rules! backend_switch {
   ) => {
     impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
       /// The same process on backend `B2`, using that backend's default handle
-      /// (the device ordinal and batch budget from the environment).
+      /// (ordinal `0`, the default batch budget).
       pub fn on<B2: $crate::device::FgnBackend<$t> + Default>(self) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
@@ -26,11 +26,8 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The same process on an explicit backend handle: a device picked by
-      /// ordinal, `with_backend(Cuda::new(1))`, or a handle with its own batch
-      /// budget, `with_backend(Metal::default().with_batch_budget(256 << 20))`.
-      /// [`on`](Self::on) is the same move with the backend's default handle,
-      /// which reads `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
+      /// The same process on an explicit handle: `Cuda::new(1)`, `Metal::default().with_batch_budget(256 << 20)`,
+      /// or `Cuda::from_env()?` for the device and budget of `STOCHASTIC_RS_DEVICE` / `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
       pub fn with_backend<B2: $crate::device::FgnBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
@@ -38,15 +35,10 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The handle this process samples on: the value `on` or
-      /// `with_backend` put there, with the device ordinal and batch budget
-      /// it carries. What [`probe`](Self::probe) opens, and the one way to
-      /// read back a choice the type alone does not record.
-      pub fn backend(&self) -> B
-      where
-        B: Copy,
-      {
-        self.fgn.backend
+      /// The handle `on` or `with_backend` put here, ordinal and batch budget included: what [`probe`](Self::probe)
+      /// opens, and the one way to read back a choice the type alone does not record.
+      pub fn backend(&self) -> &B {
+        &self.fgn.backend
       }
 
       /// What the device behind this process reports — its name, the scalars
@@ -66,7 +58,7 @@ macro_rules! backend_switch {
   ) => {
     impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
       /// The same process on backend `B2`, using that backend's default handle
-      /// (the device ordinal and batch budget from the environment).
+      /// (ordinal `0`, the default batch budget).
       pub fn on<B2: $crate::device::FgnBackend<$t> + $crate::euler::EulerBackend<$t> + Default>(self) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
@@ -74,11 +66,8 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The same process on an explicit backend handle: a device picked by
-      /// ordinal, `with_backend(Cuda::new(1))`, or a handle with its own batch
-      /// budget, `with_backend(Metal::default().with_batch_budget(256 << 20))`.
-      /// [`on`](Self::on) is the same move with the backend's default handle,
-      /// which reads `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
+      /// The same process on an explicit handle: `Cuda::new(1)`, `Metal::default().with_batch_budget(256 << 20)`,
+      /// or `Cuda::from_env()?` for the device and budget of `STOCHASTIC_RS_DEVICE` / `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
       pub fn with_backend<B2: $crate::device::FgnBackend<$t> + $crate::euler::EulerBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
@@ -86,15 +75,10 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The handle this process samples on: the value `on` or
-      /// `with_backend` put there, with the device ordinal and batch budget
-      /// it carries. What [`probe`](Self::probe) opens, and the one way to
-      /// read back a choice the type alone does not record.
-      pub fn backend(&self) -> B
-      where
-        B: Copy,
-      {
-        self.fgn.backend
+      /// The handle `on` or `with_backend` put here, ordinal and batch budget included: what [`probe`](Self::probe)
+      /// opens, and the one way to read back a choice the type alone does not record.
+      pub fn backend(&self) -> &B {
+        &self.fgn.backend
       }
 
       /// What the device behind this process reports — its name, the scalars
@@ -114,7 +98,7 @@ macro_rules! backend_switch {
   ) => {
     impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
       /// The same process on backend `B2`, using that backend's default handle
-      /// (the device ordinal and batch budget from the environment).
+      /// (ordinal `0`, the default batch budget).
       pub fn on<B2: $crate::device::FgnBackend<$t> + Default>(self) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
@@ -122,11 +106,8 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The same process on an explicit backend handle: a device picked by
-      /// ordinal, `with_backend(Cuda::new(1))`, or a handle with its own batch
-      /// budget, `with_backend(Metal::default().with_batch_budget(256 << 20))`.
-      /// [`on`](Self::on) is the same move with the backend's default handle,
-      /// which reads `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
+      /// The same process on an explicit handle: `Cuda::new(1)`, `Metal::default().with_batch_budget(256 << 20)`,
+      /// or `Cuda::from_env()?` for the device and budget of `STOCHASTIC_RS_DEVICE` / `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
       pub fn with_backend<B2: $crate::device::FgnBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
@@ -134,15 +115,10 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The handle this process samples on: the value `on` or
-      /// `with_backend` put there, with the device ordinal and batch budget
-      /// it carries. What [`probe`](Self::probe) opens, and the one way to
-      /// read back a choice the type alone does not record.
-      pub fn backend(&self) -> B
-      where
-        B: Copy,
-      {
-        self.backend
+      /// The handle `on` or `with_backend` put here, ordinal and batch budget included: what [`probe`](Self::probe)
+      /// opens, and the one way to read back a choice the type alone does not record.
+      pub fn backend(&self) -> &B {
+        &self.backend
       }
 
       /// What the device behind this process reports — its name, the scalars
@@ -162,7 +138,7 @@ macro_rules! backend_switch {
   ) => {
     impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
       /// The same process on backend `B2`, using that backend's default handle
-      /// (the device ordinal and batch budget from the environment).
+      /// (ordinal `0`, the default batch budget).
       pub fn on<B2: $crate::device::HostBackend + Default>(self) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
@@ -170,11 +146,8 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The same process on an explicit backend handle: a device picked by
-      /// ordinal, `with_backend(Cuda::new(1))`, or a handle with its own batch
-      /// budget, `with_backend(Metal::default().with_batch_budget(256 << 20))`.
-      /// [`on`](Self::on) is the same move with the backend's default handle,
-      /// which reads `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
+      /// The same process on an explicit handle: `Cuda::new(1)`, `Metal::default().with_batch_budget(256 << 20)`,
+      /// or `Cuda::from_env()?` for the device and budget of `STOCHASTIC_RS_DEVICE` / `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
       pub fn with_backend<B2: $crate::device::HostBackend>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
@@ -182,15 +155,10 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The handle this process samples on: the value `on` or
-      /// `with_backend` put there, with the device ordinal and batch budget
-      /// it carries. What [`probe`](Self::probe) opens, and the one way to
-      /// read back a choice the type alone does not record.
-      pub fn backend(&self) -> B
-      where
-        B: Copy,
-      {
-        self.backend
+      /// The handle `on` or `with_backend` put here, ordinal and batch budget included: what [`probe`](Self::probe)
+      /// opens, and the one way to read back a choice the type alone does not record.
+      pub fn backend(&self) -> &B {
+        &self.backend
       }
 
       /// What the device behind this process reports — its name, the scalars
@@ -210,7 +178,7 @@ macro_rules! backend_switch {
   ) => {
     impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
       /// The same process on backend `B2`, using that backend's default handle
-      /// (the device ordinal and batch budget from the environment).
+      /// (ordinal `0`, the default batch budget).
       pub fn on<B2: $crate::device::SheetBackend<$t> + Default>(self) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
@@ -218,11 +186,8 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The same process on an explicit backend handle: a device picked by
-      /// ordinal, `with_backend(Cuda::new(1))`, or a handle with its own batch
-      /// budget, `with_backend(Metal::default().with_batch_budget(256 << 20))`.
-      /// [`on`](Self::on) is the same move with the backend's default handle,
-      /// which reads `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
+      /// The same process on an explicit handle: `Cuda::new(1)`, `Metal::default().with_batch_budget(256 << 20)`,
+      /// or `Cuda::from_env()?` for the device and budget of `STOCHASTIC_RS_DEVICE` / `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
       pub fn with_backend<B2: $crate::device::SheetBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
@@ -230,15 +195,10 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The handle this process samples on: the value `on` or
-      /// `with_backend` put there, with the device ordinal and batch budget
-      /// it carries. What [`probe`](Self::probe) opens, and the one way to
-      /// read back a choice the type alone does not record.
-      pub fn backend(&self) -> B
-      where
-        B: Copy,
-      {
-        self.backend
+      /// The handle `on` or `with_backend` put here, ordinal and batch budget included: what [`probe`](Self::probe)
+      /// opens, and the one way to read back a choice the type alone does not record.
+      pub fn backend(&self) -> &B {
+        &self.backend
       }
 
       /// What the device behind this process reports — its name, the scalars
@@ -258,7 +218,7 @@ macro_rules! backend_switch {
   ) => {
     impl<$($gen)*, B> $ty<$t $(, $targ)*, B> $(where $($wc)*)? {
       /// The same process on backend `B2`, using that backend's default handle
-      /// (the device ordinal and batch budget from the environment).
+      /// (ordinal `0`, the default batch budget).
       pub fn on<B2: $crate::euler::EulerBackend<$t> + Default>(self) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
@@ -266,11 +226,8 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The same process on an explicit backend handle: a device picked by
-      /// ordinal, `with_backend(Cuda::new(1))`, or a handle with its own batch
-      /// budget, `with_backend(Metal::default().with_batch_budget(256 << 20))`.
-      /// [`on`](Self::on) is the same move with the backend's default handle,
-      /// which reads `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
+      /// The same process on an explicit handle: `Cuda::new(1)`, `Metal::default().with_batch_budget(256 << 20)`,
+      /// or `Cuda::from_env()?` for the device and budget of `STOCHASTIC_RS_DEVICE` / `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
       pub fn with_backend<B2: $crate::euler::EulerBackend<$t>>(self, device: B2) -> $ty<$t $(, $targ)*, B2> {
         $ty {
           $($field: self.$field,)*
@@ -278,15 +235,10 @@ macro_rules! backend_switch {
         }
       }
 
-      /// The handle this process samples on: the value `on` or
-      /// `with_backend` put there, with the device ordinal and batch budget
-      /// it carries. What [`probe`](Self::probe) opens, and the one way to
-      /// read back a choice the type alone does not record.
-      pub fn backend(&self) -> B
-      where
-        B: Copy,
-      {
-        self.backend
+      /// The handle `on` or `with_backend` put here, ordinal and batch budget included: what [`probe`](Self::probe)
+      /// opens, and the one way to read back a choice the type alone does not record.
+      pub fn backend(&self) -> &B {
+        &self.backend
       }
 
       /// What the device behind this process reports — its name, the scalars
