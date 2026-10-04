@@ -208,3 +208,25 @@ fn nac_clayton_root_without_a_frailty_is_rejected_by_name() {
     assert_eq!(nac.sample_with_seed(4, 7).unwrap_err(), want);
   }
 }
+
+/// A NaN or infinite `theta` anywhere in the tree is a named error from the constructor.
+#[test]
+fn nac_rejects_a_non_finite_theta_by_name() {
+  for theta in [f64::NAN, f64::INFINITY] {
+    for family in [NacFamily::Clayton, NacFamily::Gumbel] {
+      let err =
+        NestedArchimedean::new(family, NacNode::leaf_group(theta, vec![0, 1]), 2).unwrap_err();
+      assert_eq!(
+        err.to_string(),
+        format!("theta must satisfy `theta.is_finite()`, got theta = {theta:?}")
+      );
+    }
+    let mut root = NacNode::leaf_group(2.0, vec![0]);
+    root.children.push(NacNode::leaf_group(theta, vec![1, 2]));
+    let err = NestedArchimedean::new(NacFamily::Gumbel, root, 3).unwrap_err();
+    assert_eq!(
+      err.to_string(),
+      format!("theta must satisfy `theta.is_finite()`, got theta = {theta:?}")
+    );
+  }
+}

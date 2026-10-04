@@ -229,6 +229,13 @@ impl NestedArchimedean {
     parent_theta: f64,
     is_root: bool,
   ) -> Result<(), CopulaError> {
+    if !node.theta.is_finite() {
+      return Err(CopulaError::InvalidParameter {
+        name: "theta",
+        value: node.theta,
+        constraint: "theta.is_finite()".into(),
+      });
+    }
     let theta_min = family.theta_min();
     if node.theta < theta_min {
       return Err(CopulaError::InvalidParameter {
