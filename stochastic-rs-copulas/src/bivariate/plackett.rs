@@ -64,12 +64,17 @@ impl Plackett {
       let a = y * (1.0 - y);
       let c = 2.0 * a * (v * theta + (1.0 - v) / theta) + (1.0 - 2.0 * a);
       let d = (1.0 + 4.0 * a * v * (1.0 - v) * eta_squared_over_theta).sqrt();
-      if y < 0.5 {
-        let e = a * ((1.0 - v) + theta * v) * ((1.0 - v) / theta + v);
-        2.0 * e / (c + (1.0 - 2.0 * y) * d)
+      let e = a * ((1.0 - v) + theta * v) * ((1.0 - v) / theta + v);
+      // Both roots share one division: selecting their operands first keeps either half of `y` free of a branch.
+      let (numerator, denominator) = if y < 0.5 {
+        (2.0 * e, c + (1.0 - 2.0 * y) * d)
       } else {
-        (c + (2.0 * y - 1.0) * d) / (2.0 * (1.0 + a * eta_squared_over_theta))
-      }
+        (
+          c + (2.0 * y - 1.0) * d,
+          2.0 * (1.0 + a * eta_squared_over_theta),
+        )
+      };
+      numerator / denominator
     }
   }
 
