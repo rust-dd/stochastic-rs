@@ -1,6 +1,8 @@
 //! Copula hot paths: conditional-inversion sampling (closed form, Brent, the Marshall–Olkin atom), the
 //! elliptical and vine samplers and cdfs, the fits, the pairwise τ matrix and the bootstrap goodness-of-fit test.
 
+use std::time::Duration;
+
 use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
@@ -107,6 +109,7 @@ fn multivariate_cdf(c: &mut Criterion) {
 fn fit(c: &mut Criterion) {
   let mut group = c.benchmark_group("copulas/fit");
   group.sample_size(20);
+  group.measurement_time(Duration::from_secs(9));
   let clayton = Clayton {
     theta: Some(2.0),
     ..Clayton::new()
