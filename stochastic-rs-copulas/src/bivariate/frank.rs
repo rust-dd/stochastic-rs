@@ -38,32 +38,24 @@ impl Frank {
     }
   }
 
-  /// `h⁻¹(y | v)` before the domain rule: `−ln(1 + x)/θ`, `x = y·expm1(−θ)/(y + (1 − y)e^{−θv})`, with `1 + x` as a
-  /// ratio once `x ≤ −½`; `θ < 0` through `C_{−θ}(u, v) = u − C_θ(u, 1 − v)`, which swaps `v` and `1 − v`.
-  pub(crate) fn inverse(theta: f64) -> impl Fn(f64, f64) -> f64 {
-    let magnitude = theta.abs();
-    let (expm1_theta, exp_theta) = ((-magnitude).exp_m1(), (-magnitude).exp());
-    // The ratio's terms stay normal while `e^{−θ}` does; past `θ ≈ 708` its logarithm is taken term by term.
+  /// `h⁻¹(y | v)` at `θ > 0` given `v̄ = 1 − v`, before the domain rule: `−ln(1 + x)/θ`,
+  /// `x = y·expm1(−θ)/(y + (1 − y)e^{−θv})`, `1 + x` as a ratio once `x ≤ −½`, its logarithm term by term past `θ ≈ 708`.
+  pub(crate) fn inverse(theta: f64) -> impl Fn(f64, f64, f64) -> f64 {
+    let (expm1_theta, exp_theta) = ((-theta).exp_m1(), (-theta).exp());
     let ratio_is_normal = exp_theta >= f64::MIN_POSITIVE;
-    move |y, v| {
-      if theta == 0.0 || y == 0.0 || y == 1.0 {
-        return y;
-      }
-      let (v, v_bar) = if theta > 0.0 {
-        (v, 1.0 - v)
-      } else {
-        (1.0 - v, v)
-      };
-      let exp_theta_v = (-magnitude * v).exp();
+    move |y, v, v_bar| {
+      let exp_theta_v = (-theta * v).exp();
       let denominator = y + (1.0 - y) * exp_theta_v;
       let x = y * expm1_theta / denominator;
       if x > -0.5 {
-        -x.ln_1p() / magnitude
+        -x.ln_1p() / theta
       } else if ratio_is_normal {
-        -(((1.0 - y) * exp_theta_v + y * exp_theta) / denominator).ln() / magnitude
+        -(((1.0 - y) * exp_theta_v + y * exp_theta) / denominator).ln() / theta
+      } else if y == 0.0 || y == 1.0 {
+        y
       } else {
-        let numerator = (1.0 - y) + y * (-magnitude * v_bar).exp();
-        v - (numerator.ln() - denominator.ln()) / magnitude
+        let numerator = (1.0 - y) + y * (-theta * v_bar).exp();
+        v - (numerator.ln() - denominator.ln()) / theta
       }
     }
   }
@@ -180,10 +172,21 @@ impl BivariateExt for Frank {
     Ok(out)
   }
 
-  /// `Frank::inverse`'s closed form, the identity at `θ = 0`; NaN for `y` or `v` outside `[0, 1]`.
+  /// `Frank::inverse`, `θ < 0` through `C_{−θ}(u, v) = u − C_θ(u, 1 − v)`, which swaps `v` and `1 − v`; the identity at
+  /// `θ = 0`, NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    conditional_quantiles(y, V, Self::inverse(self.theta.unwrap()))
+    let theta = self.theta.unwrap();
+    if theta == 0.0 {
+      return conditional_quantiles(y, V, |y, _| y);
+    }
+    // One closure per sign keeps the reflection out of the per-pair work, 10 % of the sampling bench.
+    let inverse = Self::inverse(theta.abs());
+    if theta > 0.0 {
+      conditional_quantiles(y, V, |y, v| inverse(y, v, 1.0 - v))
+    } else {
+      conditional_quantiles(y, V, |y, v| inverse(y, 1.0 - v, v))
+    }
   }
 
   /// `Frank::h`'s factored form, `u` at `θ = 0`; NaN for `v` outside `[0, 1]`.

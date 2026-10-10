@@ -112,12 +112,23 @@ mod tests {
   /// `[0, 1]` on the grid, at each family's parameter extremes.
   #[test]
   fn the_raw_closed_forms_leave_the_unit_interval_by_rounding_only() {
-    let frank = [
+    let frank: [f64; 14] = [
       -1e300, -1000.0, -800.0, -30.0, -1e-10, 0.0, 1e-10, 4.0, 30.0, 709.0, 750.0, 800.0, 1000.0,
       1e300,
     ];
     for theta in frank {
-      assert_rounding_only(&format!("frank θ = {theta:e}"), Frank::inverse(theta));
+      // The reflection and the identity `Frank::percent_point` applies around its `θ > 0` inverse.
+      let inverse = Frank::inverse(theta.abs());
+      let reflected = |y, v: f64| {
+        if theta == 0.0 {
+          y
+        } else if theta > 0.0 {
+          inverse(y, v, 1.0 - v)
+        } else {
+          inverse(y, 1.0 - v, v)
+        }
+      };
+      assert_rounding_only(&format!("frank θ = {theta:e}"), reflected);
     }
     for theta in [1e-10, 0.5, 2.0, 10.0, 50.0, 100.0, 1000.0, 1e10] {
       let inverse =
