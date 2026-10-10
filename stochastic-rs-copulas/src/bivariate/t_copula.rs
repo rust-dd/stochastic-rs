@@ -100,14 +100,14 @@ impl TCopula {
     self.nu
   }
 
-  /// Override the degrees of freedom, as `TMultivariate::set_nu` does: a value outside `0 < nu < ∞` is an error,
-  /// not a NaN downstream.
+  /// Override the degrees of freedom: a value `SimdStudentT::new` would reject (`0 < nu < ∞` with `nu / 2 > 0`, which
+  /// `nu = 5e-324` fails) is an error here, not a panic in every later call.
   pub fn set_nu(&mut self, nu: f64) -> Result<(), CopulaError> {
-    if !nu.is_finite() || nu <= 0.0 {
+    if !(nu.is_finite() && nu > 0.0 && nu * 0.5 > 0.0) {
       return Err(CopulaError::InvalidParameter {
         name: "nu",
         value: nu,
-        constraint: "0 < nu < ∞".into(),
+        constraint: "0 < nu < ∞, nu / 2 > 0".into(),
       });
     }
     self.nu = nu;

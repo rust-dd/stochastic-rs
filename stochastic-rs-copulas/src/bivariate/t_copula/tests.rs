@@ -209,6 +209,29 @@ fn tcopula_nu_validated() {
   assert_eq!(c.nu(), 6.0);
 }
 
+/// The smallest subnormal passes `nu > 0` but halves to 0, which `SimdStudentT::new` asserts against: rejecting it here
+/// leaves no panic in `pdf`, `cdf`, `partial_derivative` or `percent_point`.
+#[test]
+fn tcopula_rejects_the_nu_its_student_t_law_would_panic_on() {
+  let mut c = TCopula::with_nu(4.0);
+  c.set_theta(0.5);
+  assert_eq!(
+    c.set_nu(5e-324),
+    Err(CopulaError::InvalidParameter {
+      name: "nu",
+      value: 5e-324,
+      constraint: "0 < nu < ∞, nu / 2 > 0".into(),
+    })
+  );
+  assert!(
+    c.set_nu(1e-323).is_ok(),
+    "the next subnormal halves to a positive value"
+  );
+  let uv = array![[0.3, 0.7]];
+  assert!(c.pdf(&uv).is_ok() && c.cdf(&uv).is_ok() && c.partial_derivative(&uv).is_ok());
+  assert!(c.percent_point(&array![0.3], &array![0.7]).is_ok());
+}
+
 /// `generator` has no override in this family, so this exercises
 /// `BivariateExt::generator`'s trait-default body directly.
 #[test]
