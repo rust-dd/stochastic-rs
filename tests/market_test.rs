@@ -13,8 +13,8 @@ use stochastic_rs::quant::calendar::DayCountConvention;
 use stochastic_rs::quant::calendar::Frequency;
 use stochastic_rs::quant::cashflows::IborIndex;
 use stochastic_rs::quant::cashflows::RateTenor;
+use stochastic_rs::quant::curves::BootstrapInstrument;
 use stochastic_rs::quant::curves::DiscountCurve;
-use stochastic_rs::quant::curves::Instrument;
 use stochastic_rs::quant::curves::InterpolationMethod;
 use stochastic_rs::quant::curves::bootstrap;
 use stochastic_rs::quant::market::Deposit;
@@ -115,7 +115,7 @@ fn deposit_npv_equals_bootstrapped_instrument_value() {
   let rate = 0.04;
   let alpha = day_count.year_fraction::<f64>(val_date, maturity);
 
-  let instruments = vec![Instrument::<f64>::Deposit {
+  let instruments = vec![BootstrapInstrument::<f64>::Deposit {
     maturity: alpha,
     rate,
   }];
