@@ -110,6 +110,100 @@ fn the_numerical_inverse_converges_at_extreme_levels() {
   }
 }
 
+/// Gumbel's and Joe's old h underflowed to `0·∞` near `u, v = 1` from `θ ≈ 30` on, so their samplers failed at these θ.
+#[test]
+fn gumbel_and_joe_sample_at_high_dependence() {
+  std::thread::scope(|scope| {
+    for theta in [50.0, 100.0, 200.0] {
+      let pair: [Family; 2] = [
+        ("gumbel", Box::new(Gumbel::new(Some(theta), None))),
+        ("joe", Box::new(with_theta(Joe::new(), theta))),
+      ];
+      for (name, copula) in pair {
+        scope.spawn(move || {
+          for seed in 0..20 {
+            let uv = copula
+              .sample_with_seed(5_000, seed)
+              .unwrap_or_else(|e| panic!("{name} θ = {theta} seed {seed}: {e}"));
+            assert!(
+              uv.iter().all(|x| (0.0..=1.0).contains(x)),
+              "{name} θ = {theta} seed {seed} left the unit square"
+            );
+          }
+        });
+      }
+    }
+  });
+}
+
+type Row = (f64, f64, f64, f64);
+
+/// `(θ, u, v, h(u | v))`: 60-digit values of sympy's `∂_v C`, where the old forms answered NaN (near 1) or a staircase.
+const GUMBEL_H: [Row; 6] = [
+  (2.0, 0.3, 0.7, 0.11559784394154603),
+  (100.0, 0.99948, 0.99978, 1.0207814815154873e-37),
+  (200.0, 0.977, 0.99, 2.7593906173946483e-73),
+  (100.0, 0.9999, 0.99999, 9.954651042431668e-100),
+  (2.0, 1e-16, 0.5, 3.7377593626062655e-18),
+  (2.0, 1e-17, 0.5, 3.519311518473224e-19),
+];
+
+const JOE_H: [Row; 6] = [
+  (2.0, 0.3, 0.7, 0.20900157182558335),
+  (100.0, 0.99948, 0.99978, 1.036368922966833e-37),
+  (200.0, 0.977, 0.99, 1.0379122374284449e-72),
+  (100.0, 0.9999, 0.99999, 9.999999995603517e-100),
+  (2.0, 1e-16, 0.5, 1e-16),
+  (2.0, 1e-17, 0.5, 1e-17),
+];
+
+/// `(θ, y, v, h⁻¹(y | v))`: 60-digit bisection roots of that `h`.
+const GUMBEL_INVERSE: [Row; 7] = [
+  (50.0, 0.5, 1.0 - 1e-6, 0.9999989994379549),
+  (100.0, 0.5, 1.0 - 1e-4, 0.9998999860468408),
+  (200.0, 0.5, 0.99, 0.9899996575223512),
+  (200.0, 1e-6, 0.999, 0.9989281476147631),
+  (2.0, 1e-15, 0.5, 2.2837289372229754e-14),
+  (2.0, 1e-12, 0.5, 1.802670471158364e-11),
+  (50.0, 1e-300, 1.0 - 1e-10, 0.9998674379982581),
+];
+
+const JOE_INVERSE: [Row; 6] = [
+  (50.0, 0.5, 1.0 - 1e-6, 0.999998999437954),
+  (100.0, 0.5, 1.0 - 1e-4, 0.9998999860447332),
+  (200.0, 0.5, 0.99, 0.989999652283301),
+  (200.0, 1e-6, 0.999, 0.9989281086857948),
+  (2.0, 1e-15, 0.5, 9.999999999999999e-16),
+  (2.0, 1e-12, 0.5, 9.9999999999975e-13),
+];
+
+/// `h` to 1e-12, as `θ ln_1p(−u)` alone carries `θ` rounding units at `θ = 200`; Brent's root to 1e-14.
+fn assert_h_and_inverse(
+  name: &str,
+  family: impl Fn(f64) -> Box<dyn BivariateExt>,
+  h_rows: &[Row],
+  inverse_rows: &[Row],
+) {
+  for &(theta, u, v, want) in h_rows {
+    let got = family(theta).partial_derivative(&array![[u, v]]).unwrap()[0];
+    assert!(
+      (got - want).abs() <= 1e-12 * want,
+      "{name} θ = {theta}: h({u} | {v}) = {got} vs {want}"
+    );
+  }
+  for &(theta, y, v, want) in inverse_rows {
+    assert_reference(name, family(theta).as_ref(), (y, v, want), 1e-14);
+  }
+}
+
+#[test]
+fn gumbel_and_joe_match_the_60_digit_references() {
+  let gumbel = |theta| Box::new(Gumbel::new(Some(theta), None)) as Box<dyn BivariateExt>;
+  assert_h_and_inverse("gumbel", gumbel, &GUMBEL_H, &GUMBEL_INVERSE);
+  let joe = |theta| Box::new(with_theta(Joe::new(), theta)) as Box<dyn BivariateExt>;
+  assert_h_and_inverse("joe", joe, &JOE_H, &JOE_INVERSE);
+}
+
 #[test]
 fn a_query_outside_the_unit_interval_is_nan() {
   for (name, copula) in families() {

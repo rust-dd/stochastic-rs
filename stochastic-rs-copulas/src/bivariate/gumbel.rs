@@ -131,8 +131,8 @@ impl BivariateExt for Gumbel {
     self.percent_point_numerical(y, V)
   }
 
-  /// `∂_v C = C(u, v)(x^θ + y^θ)^{1/θ − 1} y^{θ − 1}/v`, `x, y = −ln u, −ln v`; 1 at `u = 1` and at `v = 0`, whose
-  /// conditional law is a point mass at `u = 0`, and NaN for `v` outside `[0, 1]`.
+  /// `∂_v C = exp(w − R)(w/R)^{θ−1}`, `x, w = −ln u, −ln v`, `R = m(1 + r)^{1/θ}` with `m = max(x, w)`, `r = (min/m)^θ`,
+  /// so nothing underflows near `u, v = 1`; 1 at `u = 1` and at `v = 0` (a point mass at `u = 0`), NaN for `v ∉ [0, 1]`.
   fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
@@ -146,10 +146,14 @@ impl BivariateExt for Gumbel {
       if u >= 1.0 || v == 0.0 {
         return 1.0;
       }
-      let t1 = (-u.ln()).powf(theta);
-      let t2 = (-v.ln()).powf(theta);
-      let cuv = (-(t1 + t2).powf(1.0 / theta)).exp();
-      cuv * (t1 + t2).powf(-1.0 + 1.0 / theta) * (-v.ln()).powf(theta - 1.0) / v
+      if u == 0.0 {
+        return 0.0;
+      }
+      let (x, w) = (-u.ln(), -v.ln());
+      let m = x.max(w);
+      let log_1p_r = (x.min(w) / m).powf(theta).ln_1p();
+      let exponent = (w - m) - m * (log_1p_r / theta).exp_m1() - (1.0 - 1.0 / theta) * log_1p_r;
+      exponent.exp() * (w / m).powf(theta - 1.0)
     }))
   }
 

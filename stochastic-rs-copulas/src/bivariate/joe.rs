@@ -176,7 +176,8 @@ impl BivariateExt for Joe {
     Ok(out)
   }
 
-  /// $\partial_v C(u,v) = (1 - (1-u)^\theta)(1-v)^{\theta-1} S^{1/\theta - 1}$, NaN for `v` outside `[0, 1]`.
+  /// `∂_v C = (1 − a)(1 − a + a/b)^{1/θ − 1}`, `a, b = (1 − u)^θ, (1 − v)^θ`, with `1 − a` and `a/b` taken from `ln_1p(−u)`
+  /// and `ln_1p(−v)`, so nothing underflows near `u, v = 1` or cancels near `u = 0`; NaN for `v` outside `[0, 1]`.
   fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
@@ -187,10 +188,10 @@ impl BivariateExt for Joe {
       if u >= 1.0 {
         return 1.0;
       }
-      let a = (1.0 - u).powf(theta);
-      let b = (1.0 - v).powf(theta);
-      let s = a + b - a * b;
-      (1.0 - a) * (1.0 - v).powf(theta - 1.0) * s.powf(1.0 / theta - 1.0)
+      let log_1m_u = (-u).ln_1p();
+      let one_minus_a = -(theta * log_1m_u).exp_m1();
+      let a_over_b = (theta * (log_1m_u - (-v).ln_1p())).exp();
+      one_minus_a * (one_minus_a + a_over_b).powf(1.0 / theta - 1.0)
     }))
   }
 
