@@ -65,18 +65,8 @@
 //! root-finds it numerically. A one-time, cheap-in-absolute-terms cost
 //! per `.fit()` call, but not free.
 //!
-//! [`BivariateExt::percent_point`] — the per-sample inversion
-//! [`BivariateExt::sample`] relies on — is a separate cost. It is closed-form
-//! for [`amh::Amh`], [`clayton::Clayton`], [`fgm::Fgm`], [`frank::Frank`],
-//! [`gaussian::GaussianCopula`], [`independence::Independence`],
-//! [`marshall_olkin::MarshallOlkin`], [`plackett::Plackett`] and
-//! [`t_copula::TCopula`]; [`bb1::Bb1`] and [`bb7::Bb7`] bisect their
-//! h-function, and [`galambos::Galambos`], [`gumbel::Gumbel`] (away from
-//! `θ = 1`), [`husler_reiss::HuslerReiss`] and [`joe::Joe`] take the Brent
-//! root of [`BivariateExt::percent_point_numerical`], one root-find per
-//! sampled pair. For a Monte Carlo run sampling millions of pairs, that
-//! per-draw cost is a practical reason to prefer a closed-form family when
-//! one is otherwise an acceptable fit.
+//! [`BivariateExt::percent_point`], one call per sampled pair, is closed-form except in [`bb1::Bb1`] and [`bb7::Bb7`]
+//! (bisection) and [`galambos::Galambos`], [`gumbel::Gumbel`], [`husler_reiss::HuslerReiss`] and [`joe::Joe`] (Brent).
 //!
 //! ### The common data requirement, and one family that skips it
 //!

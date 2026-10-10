@@ -176,8 +176,8 @@ impl BivariateExt for Joe {
     Ok(out)
   }
 
-  /// `∂_v C = (1 − a)(1 − a + a/b)^{1/θ − 1}`, `a, b = (1 − u)^θ, (1 − v)^θ`, with `1 − a` and `a/b` taken from `ln_1p(−u)`
-  /// and `ln_1p(−v)`, so nothing underflows near `u, v = 1` or cancels near `u = 0`; NaN for `v` outside `[0, 1]`.
+  /// `∂_v C = (1 − a)(1 − a + a/b)^{1/θ − 1}`, `a, b = (1 − u)^θ, (1 − v)^θ`, `1 − a` and `a/b` from `ln_1p(−u)` and
+  /// `ln_1p(−v)`: no underflow near `u, v = 1`, no cancellation near `u = 0`; NaN for `v` outside `[0, 1]`.
   fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();

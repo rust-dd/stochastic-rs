@@ -86,7 +86,7 @@ pub(crate) fn zero(a: f64, b: f64, t: f64, mut f: impl FnMut(f64) -> f64) -> Opt
   }
 }
 
-/// Brent's bound `(k + 1)² − 2` (3.4), `k = ⌈log₂(|b − a|/δ_m)⌉` (3.2) with `δ_m` the least tolerance `2 macheps |x| + t`
+/// Brent's bound `(k + 1)² − 2` (3.4), `k = ⌈log₂(|b − a|/δ_m)⌉` (3.2), `δ_m` the least tolerance `2 macheps |x| + t`
 /// (3.3) on the interval; `zero` takes two evaluations when `k ≤ 0`.
 fn evaluation_bound(a: f64, b: f64, t: f64) -> usize {
   let nearest = if a.min(b) <= 0.0 && a.max(b) >= 0.0 {

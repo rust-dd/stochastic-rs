@@ -74,7 +74,10 @@ closed form; they are independent choices. Twelve families override
 `partial_derivative`. Map an override through
 `bivariate::conditional::conditional_quantiles` /
 `conditional_cdf`: they own the one length check, NaN for a `y` or `v`
-outside `[0, 1]` and the `[0, 1]` codomain. Closed forms are both faster and more accurate than the
+outside `[0, 1]` and the `[0, 1]` codomain, whose clamp absorbs rounding
+only: a non-finite inverse reads as NaN, so a closed form must stay finite
+on the whole closed square. Name it `Family::inverse(params)` and add it to
+the excursion sweep in `bivariate/conditional.rs`. Closed forms are both faster and more accurate than the
 Brent / finite-difference defaults, but a family with neither is
 perfectly valid — the defaults compose. Override `generator` if and
 only if the family is Archimedean.
