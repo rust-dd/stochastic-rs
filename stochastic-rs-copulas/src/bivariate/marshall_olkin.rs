@@ -27,9 +27,8 @@
 //! asymmetric two-parameter case is supplied through
 //! [`MarshallOlkin::with_alpha_beta`].
 //!
-//! Reference: Marshall, A.W., Olkin, I. (1967), "A multivariate exponential distribution", *JASA* 62(317), 30-44.
-//! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, §3.1.1, eq. 3.1.3; §2.9 (the conditional-distribution method with a quasi-inverse).
-//! Reference: Mai, J.-F., Scherer, M. (2012), "Simulating Copulas", Imperial College Press, §1.2.3 (the exponential-shock representation).
+//! Reference: Marshall, A.W., Olkin, I. (1967), "A multivariate exponential distribution", *JASA* 62(317), 30-44, DOI 10.1080/01621459.1967.10482885.
+//! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, §3.1.1, eq. 3.1.3; §2.9 (the conditional-distribution method with a quasi-inverse), DOI 10.1007/0-387-28678-0.
 
 use ndarray::Array1;
 use ndarray::Array2;
