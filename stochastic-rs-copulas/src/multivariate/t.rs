@@ -64,6 +64,7 @@ use super::CopulaType;
 use super::linalg::is_spd;
 use super::linalg::spd_cholesky_lower;
 use super::linalg::spd_inverse;
+use crate::bivariate::t_copula::check_nu;
 use crate::correlation::kendall_tau;
 use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
@@ -107,13 +108,7 @@ impl TMultivariate {
 
   /// Construct directly from a correlation matrix and degrees of freedom.
   pub fn new_with(corr: Array2<f64>, nu: f64) -> Result<Self, CopulaError> {
-    if !nu.is_finite() || nu <= 0.0 {
-      return Err(CopulaError::InvalidParameter {
-        name: "nu",
-        value: nu,
-        constraint: "0 < nu < ∞".into(),
-      });
-    }
+    check_nu(nu)?;
     let dim = corr.nrows();
     if dim != corr.ncols() {
       return Err(CopulaError::InvalidStructure(
@@ -139,15 +134,9 @@ impl TMultivariate {
   }
 
   /// Override $\nu$, e.g. from an external tail-coefficient calibration, skipping the fit's own search; an error
-  /// unless $0 < \nu < \infty$.
+  /// under the t-copulas' `check_nu` rule.
   pub fn set_nu(&mut self, nu: f64) -> Result<(), CopulaError> {
-    if !nu.is_finite() || nu <= 0.0 {
-      return Err(CopulaError::InvalidParameter {
-        name: "nu",
-        value: nu,
-        constraint: "0 < nu < ∞".into(),
-      });
-    }
+    check_nu(nu)?;
     self.nu = nu;
     Ok(())
   }

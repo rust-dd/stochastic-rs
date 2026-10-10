@@ -64,6 +64,23 @@ pub struct TCopula {
   nu: f64,
 }
 
+/// The degrees-of-freedom rule of both t-copulas: `0 < nu < ∞`, and `nu / 2 > 0`, which only `5e-324` fails and which
+/// `SimdStudentT::new` and `SimdChiSquared::new` assert, so a value they would panic on is an error up front.
+pub(crate) fn check_nu(nu: f64) -> Result<(), CopulaError> {
+  let constraint = if !nu.is_finite() || nu <= 0.0 {
+    "0 < nu < ∞"
+  } else if nu * 0.5 == 0.0 {
+    "nu / 2 > 0"
+  } else {
+    return Ok(());
+  };
+  Err(CopulaError::InvalidParameter {
+    name: "nu",
+    value: nu,
+    constraint: constraint.into(),
+  })
+}
+
 impl Default for TCopula {
   fn default() -> Self {
     Self {
@@ -100,16 +117,9 @@ impl TCopula {
     self.nu
   }
 
-  /// Override the degrees of freedom: a value `SimdStudentT::new` would reject (`0 < nu < ∞` with `nu / 2 > 0`, which
-  /// `nu = 5e-324` fails) is an error here, not a panic in every later call.
+  /// Override the degrees of freedom; an error under the rule of `check_nu`, as for `TMultivariate::set_nu`.
   pub fn set_nu(&mut self, nu: f64) -> Result<(), CopulaError> {
-    if !(nu.is_finite() && nu > 0.0 && nu * 0.5 > 0.0) {
-      return Err(CopulaError::InvalidParameter {
-        name: "nu",
-        value: nu,
-        constraint: "0 < nu < ∞, nu / 2 > 0".into(),
-      });
-    }
+    check_nu(nu)?;
     self.nu = nu;
     Ok(())
   }
