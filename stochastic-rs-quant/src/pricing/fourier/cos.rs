@@ -208,14 +208,7 @@ mod tests {
   use crate::pricing::heston::HestonPricer;
   use crate::traits::ModelPricer;
 
-  /// Reference: Fang & Oosterlee (2008) §5.1. Verifies COS against the
-  /// in-tree analytic BSM pricer to `3e-5` — not machine precision: that
-  /// gap is the reference [`BSMPricer`]'s own `erf` approximation
-  /// (Abramowitz & Stegun 7.1.26, ~1.5e-7 relative error, documented in
-  /// `stochastic-rs-distributions/src/special.rs`), propagated through
-  /// `S`/`K·disc` (~O(100)). COS's own truncation error at N=256, L=10 is
-  /// independently machine-level — see `cos_converges_in_n`, and the `//`
-  /// comment below for the cross-check that isolated the `erf` floor.
+  /// Fang & Oosterlee (2008) §5.1: COS at `N = 256, L = 10` reproduces the closed-form BSM call.
   #[test]
   fn cos_bsm_matches_analytic() {
     let model = BSMFourier {
@@ -225,15 +218,8 @@ mod tests {
     };
     let expected = BSMPricer::new(0.25, BSMCoc::Bsm1973).price_call(100.0, 110.0, 0.05, 0.0, 1.0);
     let price = CosEngine::default().price(&model, 100.0, 110.0, 0.05, 0.0, 1.0, OptionType::Call);
-    // `BSMPricer` goes through `norm_cdf`, whose `erf` (stochastic-rs-distributions
-    // special.rs) is documented at "relative error ~1.5e-7" (Abramowitz & Stegun
-    // 7.1.26). Scaled by S/K·disc (~O(100)) that is a ~1e-5 price-level floor,
-    // independent of N/L: COS itself is machine-accurate here (cross-checked in
-    // Python against a full-precision `erf` reference — diff 3e-14 already at
-    // N=64), so 1e-8 would be testing `norm_cdf`'s approximation, not the COS
-    // engine. `cos_converges_in_n` below is what pins the engine's own N-convergence.
     assert!(
-      (price - expected).abs() < 3e-5,
+      (price - expected).abs() < 1e-10,
       "COS BSM: got={price}, expected={expected}"
     );
   }
