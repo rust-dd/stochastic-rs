@@ -114,6 +114,22 @@ impl TCopula {
     Ok(())
   }
 
+  /// `u = t_ν(t_{ν+1}⁻¹(y)√((ν + x²)(1 − ρ²)/(ν + 1)) + ρx)`, `x = t_ν⁻¹(v)`, and the two-point law the `v → 0, 1`
+  /// limit of `∂_v C` leaves at the edges.
+  pub(crate) fn inverse(rho: f64, nu: f64) -> impl Fn(f64, f64) -> f64 {
+    let one_minus_rho2 = 1.0 - rho * rho;
+    let edge = rho * ((nu + 1.0) / one_minus_rho2).sqrt();
+    move |y, v| {
+      let x = Self::t_quantile(v, nu);
+      let q = Self::t_quantile(y, nu + 1.0);
+      if x.is_infinite() {
+        return if q <= -x.signum() * edge { 0.0 } else { 1.0 };
+      }
+      let scale = ((nu + x * x) * one_minus_rho2 / (nu + 1.0)).sqrt();
+      Self::t_cdf(q * scale + rho * x, nu)
+    }
+  }
+
   /// The `t_ν` density of `stochastic_rs_distributions`, whose `DistributionExt` answers `Some` for every argument.
   fn t_pdf(x: f64, nu: f64) -> f64 {
     SimdStudentT::new(nu)
@@ -279,23 +295,10 @@ impl BivariateExt for TCopula {
     }))
   }
 
-  /// `u = t_ν(t_{ν+1}⁻¹(y)√((ν + x²)(1 − ρ²)/(ν + 1)) + ρx)`, `x = t_ν⁻¹(v)`, and the two-point law the `v → 0, 1`
-  /// limit of `∂_v C` leaves at the edges; NaN for `y` or `v` outside `[0, 1]`.
+  /// `TCopula::inverse` (Aas et al. App. B.2); NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(&self, y: &Array1<f64>, v: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let rho = self.theta.unwrap();
-    let nu = self.nu;
-    let one_minus_rho2 = 1.0 - rho * rho;
-    let edge = rho * ((nu + 1.0) / one_minus_rho2).sqrt();
-    conditional_quantiles(y, v, |y, v| {
-      let x = Self::t_quantile(v, nu);
-      let q = Self::t_quantile(y, nu + 1.0);
-      if x.is_infinite() {
-        return if q <= -x.signum() * edge { 0.0 } else { 1.0 };
-      }
-      let scale = ((nu + x * x) * one_minus_rho2 / (nu + 1.0)).sqrt();
-      Self::t_cdf(q * scale + rho * x, nu)
-    })
+    conditional_quantiles(y, v, Self::inverse(self.theta.unwrap(), self.nu))
   }
 
   /// Closed-form Kendall's tau inversion $\rho = \sin(\pi\tau/2)$.

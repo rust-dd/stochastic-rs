@@ -91,6 +91,21 @@ impl MarshallOlkin {
     }
   }
 
+  /// Generalised inverse of `∂_v C(· | v)`: the atom `v^{β/α}` for `y` in the jump `[(1-β) w, w]`, `w = v^{β(1-α)/α}`,
+  /// closed form elsewhere; inside `[0, 1]` the `α = 1` and `β = 1` branches are never selected.
+  pub(crate) fn inverse(alpha: f64, beta: f64) -> impl Fn(f64, f64) -> f64 {
+    move |y, v| {
+      let w = v.powf(beta * (1.0 - alpha) / alpha);
+      if y < (1.0 - beta) * w {
+        y * v.powf(beta) / (1.0 - beta)
+      } else if y <= w {
+        v.powf(beta / alpha)
+      } else {
+        y.powf(1.0 / (1.0 - alpha))
+      }
+    }
+  }
+
   /// Resolve the effective `(alpha, beta)` pair from either the asymmetric
   /// fields or the symmetric `theta` fallback.
   fn resolve_params(&self) -> (f64, f64) {
@@ -238,21 +253,11 @@ impl BivariateExt for MarshallOlkin {
     }))
   }
 
-  /// Generalised inverse of `∂_v C(· | v)`: the atom `v^{β/α}` for `y` in the jump `[(1-β) w, w]`, `w = v^{β(1-α)/α}`,
-  /// closed form elsewhere, NaN for `y` or `v` outside `[0, 1]`; inside it the `α = 1` and `β = 1` branches are never selected.
+  /// `MarshallOlkin::inverse`, the generalised inverse of `∂_v C(· | v)`; NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(&self, y: &Array1<f64>, v: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
-    conditional_quantiles(y, v, |y, v| {
-      let w = v.powf(beta * (1.0 - alpha) / alpha);
-      if y < (1.0 - beta) * w {
-        y * v.powf(beta) / (1.0 - beta)
-      } else if y <= w {
-        v.powf(beta / alpha)
-      } else {
-        y.powf(1.0 / (1.0 - alpha))
-      }
-    })
+    conditional_quantiles(y, v, Self::inverse(alpha, beta))
   }
 
   /// Symmetric-slice Kendall's tau inversion: $\theta = 2\tau / (1 + \tau)$.

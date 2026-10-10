@@ -46,13 +46,13 @@ impl Clayton {
   }
 
   /// `a = y^{−θ/(1 + θ)} − 1` of `h⁻¹(y | v) = (1 + a/v^θ)^{−1/θ}`, as `expm1` so `y` near 1 keeps its digits.
-  fn level(theta: f64, y: f64) -> f64 {
+  pub(crate) fn level(theta: f64, y: f64) -> f64 {
     (-theta / (1.0 + theta) * y.ln()).exp_m1()
   }
 
   /// `exp(−ln_1p(a/v^θ)/θ)`; once `v^θ` leaves the normal range or `a/v^θ` overflows, `v a^{−1/θ}` (the dropped
   /// `(1 + v^θ/a)^{−1/θ}` is 1 to rounding), `ln a = z + ln(−expm1(−z))`, `z = −θ ln y/(1 + θ)`; 0 on `v = 0`.
-  fn finish(theta: f64, a: f64, y: f64, v: f64, v_theta: f64) -> f64 {
+  pub(crate) fn finish(theta: f64, a: f64, y: f64, v: f64, v_theta: f64) -> f64 {
     let ratio = a / v_theta;
     if v_theta >= f64::MIN_POSITIVE && ratio.is_finite() {
       return (-ratio.ln_1p() / theta).exp();

@@ -51,6 +51,23 @@ impl Fgm {
   pub fn new() -> Self {
     Self::default()
   }
+
+  /// The root in `[0, 1]` of `u(1 + a) − au² = y`, `a = θ(1 − 2v)`, as `2y/((1 + a) + √D)` with `D` summed from
+  /// non-negative terms for either sign of `a`; 0 at level 0, where `a = −1` would divide 0 by 0.
+  pub(crate) fn inverse(theta: f64) -> impl Fn(f64, f64) -> f64 {
+    move |y, v| {
+      if y == 0.0 {
+        return 0.0;
+      }
+      let a = theta * (1.0 - 2.0 * v);
+      let discriminant = if a > 0.0 {
+        (1.0 - a) * (1.0 - a) + 4.0 * a * (1.0 - y)
+      } else {
+        (1.0 + a) * (1.0 + a) - 4.0 * a * y
+      };
+      2.0 * y / ((1.0 + a) + discriminant.sqrt())
+    }
+  }
 }
 
 impl BivariateExt for Fgm {
@@ -121,20 +138,10 @@ impl BivariateExt for Fgm {
     }))
   }
 
-  /// The root in `[0, 1]` of `u(1 + a) − au² = y`, `a = θ(1 − 2v)`, as `2y/((1 + a) + √D)` with `D` summed from
-  /// non-negative terms for either sign of `a`; NaN for `y` or `v` outside `[0, 1]`.
+  /// `Fgm::inverse`'s root; NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(&self, y: &Array1<f64>, v: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let theta = self.theta.unwrap();
-    conditional_quantiles(y, v, |y, v| {
-      let a = theta * (1.0 - 2.0 * v);
-      let discriminant = if a > 0.0 {
-        (1.0 - a) * (1.0 - a) + 4.0 * a * (1.0 - y)
-      } else {
-        (1.0 + a) * (1.0 + a) - 4.0 * a * y
-      };
-      2.0 * y / ((1.0 + a) + discriminant.sqrt())
-    })
+    conditional_quantiles(y, v, Self::inverse(self.theta.unwrap()))
   }
 
   /// Closed-form Kendall's tau inversion: $\tau = 2\theta/9 \implies \theta = 9\tau/2$.
