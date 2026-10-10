@@ -251,7 +251,7 @@ impl BivariateExt for MarshallOlkin {
   }
 
   /// Generalised inverse of `∂_v C(· | v)`: the atom `v^{β/α}` for `y` in the jump `[(1-β) w, w]`, `w = v^{β(1-α)/α}`,
-  /// closed form elsewhere, NaN for `y` or `v` outside `[0, 1]`; the `α = 1` and `β = 1` branches never divide by zero.
+  /// closed form elsewhere, NaN for `y` or `v` outside `[0, 1]`; inside it the `α = 1` and `β = 1` branches are never selected.
   fn percent_point(&self, y: &Array1<f64>, v: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
@@ -267,7 +267,7 @@ impl BivariateExt for MarshallOlkin {
           } else {
             y.powf(1.0 / (1.0 - alpha))
           };
-          // Checked after the inverse: an early return here slows the sampling loop by about a third.
+          // Checked after the inverse: an early return here measured slower in the sampling bench.
           if (0.0..=1.0).contains(&y) && (0.0..=1.0).contains(&v) {
             u
           } else {
