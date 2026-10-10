@@ -62,8 +62,8 @@ impl Fgm {
       } else {
         (1.0 + a) * (1.0 + a) - 4.0 * a * y
       };
-      let u = 2.0 * y / ((1.0 + a) + discriminant.sqrt());
-      if y == 0.0 { 0.0 } else { u }
+      // `(1 + a) + √D` vanishes only at level 0 on `a = −1`; the floor answers 0 there without a branch.
+      2.0 * y / ((1.0 + a) + discriminant.sqrt()).max(f64::MIN_POSITIVE)
     }
   }
 }
