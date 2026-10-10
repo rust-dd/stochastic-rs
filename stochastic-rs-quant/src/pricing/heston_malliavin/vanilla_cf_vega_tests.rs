@@ -104,7 +104,7 @@ fn cf_helper_rejects_zero_vol_of_vol_instead_of_dividing_by_zero() {
 }
 
 /// A short-dated (`τ = 0.028`), low-variance (`v0 = 0.0109`) put vertical, the hardest inversion:
-/// bumped and analytic vegas agree to 6.2e-8 relative; scipy's `-3.4e-6` is the `phi` cut-off.
+/// bumped and analytic vegas agree to 6.2e-8 relative; scipy's `-3.4e-6` comes from `phi = 1e-5`.
 #[test]
 fn short_dated_low_variance_vertical_agrees_with_its_own_bumps() {
   let model = HestonModel {

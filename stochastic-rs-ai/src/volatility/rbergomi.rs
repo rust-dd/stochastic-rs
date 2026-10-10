@@ -66,8 +66,8 @@ impl RBergomiNn {
     self.inner.predict_surfaces(params)
   }
 
-  /// The prediction as an `ImpliedVolSurface` with ascending strikes; pass [`STRIKES`] times the
-  /// spot, [`grid::MATURITIES`] and the forwards.
+  /// [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface) of the prediction
+  /// with ascending strikes; pass [`STRIKES`] times the spot, [`grid::MATURITIES`] and forwards.
   #[cfg(feature = "quant")]
   pub fn predict_implied_vol_surface(
     &self,
