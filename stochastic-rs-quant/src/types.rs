@@ -1,11 +1,4 @@
-//! # Shared types
-//!
-//! Cross-cutting enums and result containers used across the quant crate:
-//! option taxonomy ([`OptionType`], [`OptionStyle`], [`Moneyness`]) and
-//! calibration loss metrics ([`LossMetric`], [`CalibrationLossScore`]).
-//!
-//! These types are also re-exported at the crate root for back-compat with
-//! v1 call-sites.
+//! Option taxonomy and calibration-loss types; the crate root re-exports each one.
 
 use std::collections::HashMap;
 use std::fmt::Display;

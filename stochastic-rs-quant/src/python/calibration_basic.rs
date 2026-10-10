@@ -68,11 +68,7 @@ impl PyBSMCalibrator {
       .inner
       .calibrate(None)
       .map_err(|e| PyValueError::new_err(format!("BSM calibration failed: {e}")))?;
-    Ok((
-      res.v,
-      res.converged,
-      res.loss.get(crate::types::LossMetric::Rmse),
-    ))
+    Ok((res.v, res.converged, res.loss.get(crate::LossMetric::Rmse)))
   }
 }
 
@@ -129,7 +125,7 @@ impl PyHestonCalibrator {
       p.sigma,
       p.rho,
       res.converged,
-      res.loss.get(crate::types::LossMetric::Rmse),
+      res.loss.get(crate::LossMetric::Rmse),
     ))
   }
 }
@@ -195,7 +191,7 @@ impl PySabrCalibrator {
       res.nu,
       res.rho,
       res.converged,
-      res.loss.get(crate::types::LossMetric::Rmse),
+      res.loss.get(crate::LossMetric::Rmse),
     ))
   }
 }

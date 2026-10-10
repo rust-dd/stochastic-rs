@@ -76,8 +76,8 @@
 //!   characteristic-function bound `FourierModelExt` lives in
 //!   [`pricing::fourier`]; `TimeExt` lives in [`traits::time`];
 //!   `CalendarExt` lives in [`calendar`].
-//! - [`types`] — shared enum types (`Moneyness`, `OptionStyle`, `OptionType`,
-//!   `LossMetric`).
+//! - [`OptionType`], [`OptionStyle`], [`Moneyness`], [`LossMetric`] and
+//!   [`CalibrationLossScore`] — the shared option and loss types, at the crate root.
 
 // Defaults to `warn`, which is how 59 broken doc links accumulated
 // unnoticed; deny so a regression fails the build instead of drifting.
@@ -168,8 +168,6 @@ pub mod portfolio;
 /// and back-test engine are tracked for the 2.x patch series.
 pub mod strategies;
 
-pub use portfolio::momentum;
-
 /// Portfolio-analytics utilities (PCA, Fama-MacBeth, shrinkage covariance,
 /// pairs trading) that live alongside the pricing pipeline but do not feed
 /// back into it. Standalone domain — keep when pulling in `stochastic-rs-quant`
@@ -203,7 +201,7 @@ pub mod order_book;
 /// — not currently consumed by the calibration or vol-surface pipelines.
 pub mod fourier_malliavin;
 
-pub mod types;
+mod types;
 
 pub use types::CalibrationLossScore;
 pub use types::LossMetric;

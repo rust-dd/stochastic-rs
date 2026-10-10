@@ -1,9 +1,9 @@
 // docs: quant#black-scholes-merton-closed-form-european-call
 //! Backs the BSM example on the quant catalog page.
 
+use stochastic_rs::quant::OptionType;
 use stochastic_rs::quant::pricing::bsm::BSMCoc;
 use stochastic_rs::quant::pricing::bsm::BSMPricer;
-use stochastic_rs::quant::types::OptionType;
 use stochastic_rs::traits::ModelPricer;
 
 #[test]

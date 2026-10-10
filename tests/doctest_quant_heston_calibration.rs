@@ -4,9 +4,9 @@
 //! call prices (spot/strike/price vectors) rather than an
 //! `ImpliedVolSurface` object.
 
+use stochastic_rs::quant::OptionType;
 use stochastic_rs::quant::calibration::heston::HestonCalibrator;
 use stochastic_rs::quant::calibration::heston::HestonParams;
-use stochastic_rs::quant::types::OptionType;
 use stochastic_rs::traits::CalibrationResult;
 use stochastic_rs::traits::Calibrator;
 
