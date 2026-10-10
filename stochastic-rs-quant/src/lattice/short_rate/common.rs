@@ -142,21 +142,8 @@ fn sanitize_probabilities<T: RealExt>(down: &mut T, middle: &mut T, up: &mut T) 
   }
 }
 
-/// Symmetric-branch corner-correction denominator
-/// $4 \cdot 3 = 12$, derived as follows. The symmetric Hull-White trinomial
-/// branch has $p_u = p_d = 1/6$, $p_m = 2/3$ and node spacing
-/// $d_u = \sigma\sqrt{3 dt}$, so $\mathrm{Var}(X) = \sigma^2 dt$. To match
-/// $\mathrm{Cov}(X, Y) = \rho \sigma_X \sigma_Y dt$ via a shift $\lambda$ on
-/// the four corner cells of the joint probability table, the four corner
-/// contributions $\pm d_u^X d_u^Y$ telescope to $4 d_u^X d_u^Y \lambda$:
-///
-/// $$
-/// 4 \cdot 3 \sigma_X \sigma_Y dt \cdot \lambda = \rho \sigma_X \sigma_Y dt
-/// \implies \lambda = \rho / 12.
-/// $$
-///
-/// The shift keeps both marginals, so the covariance is exact on any branch while no corner clamps
-/// at 0 (see [`correlated_joint_probabilities`]).
+/// λ = ρ/12: four corner shifts of λ add 4λ·d_X·d_Y to the covariance, and d = σ√(3 dt) makes that
+/// ρσ_Xσ_Y dt. Both marginals are kept, so it is exact on any branch while no corner clamps at 0.
 pub(crate) const SYMMETRIC_BRANCH_CORNER_DENOM: f64 = 12.0;
 
 /// G2++ joint probabilities: marginal product plus ρ/12 on the four corners; marginals hold and the
