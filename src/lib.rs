@@ -1,7 +1,4 @@
 #![doc = include_str!("../README.md")]
-#![allow(non_snake_case)]
-#![allow(clippy::type_complexity)]
-#![allow(clippy::too_many_arguments)]
 //#![warn(missing_docs)]
 
 // Types of these crates appear in the public API; the re-exports name the versions callers must match.
