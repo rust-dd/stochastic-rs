@@ -56,6 +56,28 @@ impl Amh {
     Self::default()
   }
 
+  /// The root in `[0, 1]` of `Au² + Bu + C = 0` (`y D² = u(1 − θ + θu)`, `p = θ(1 − v)`) chosen by `B`'s sign, with
+  /// `1 − p`, `−A` and `√(B² − 4AC) = hypot((1 − θ)√(1 − y), (1 − θ + 2θv)√y)` free of cancellation and underflow.
+  pub(crate) fn inverse(theta: f64) -> impl Fn(f64, f64) -> f64 {
+    move |y, v| {
+      let p = theta * (1.0 - v);
+      let one_minus_p = (1.0 - theta) + theta * v;
+      let minus_a = theta * ((1.0 - y) + y * ((1.0 - theta) + theta * v * (2.0 - v)));
+      let b = 2.0 * y * p * one_minus_p - (1.0 - theta);
+      let c = y * one_minus_p * one_minus_p;
+      let root =
+        ((1.0 - theta) * (1.0 - y).sqrt()).hypot((1.0 - theta + 2.0 * theta * v) * y.sqrt());
+      if b < 0.0 {
+        2.0 * c / (root - b)
+      } else if minus_a > 0.0 {
+        (b + root) / (2.0 * minus_a)
+      } else {
+        // `A = 0` with `B ≥ 0` only at `θ = 1`, `(y, v) = (1, 0)`, where `h(· | 0)` jumps from 0 to 1 at `u = 0`.
+        0.0
+      }
+    }
+  }
+
   /// Kendall's tau in closed form
   /// $$
   /// \tau(\theta) = 1 - \frac{2}{3\theta^2}\big[\theta + (1-\theta)^2 \ln(1-\theta)\big],
@@ -191,24 +213,10 @@ impl BivariateExt for Amh {
     }))
   }
 
-  /// The root in `[0, 1]` of `Au² + Bu + C = 0` (`y D² = u(1 − θ + θu)`, `p = θ(1 − v)`), taken without cancellation
-  /// for either sign of `B` from `B² − 4AC = (1 − θ)²(1 − y) + (1 − θ + 2θv)²y`; NaN for `y` or `v` outside `[0, 1]`.
+  /// `Amh::inverse`'s root; NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(&self, y: &Array1<f64>, v: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let theta = self.theta.unwrap();
-    conditional_quantiles(y, v, |y, v| {
-      let p = theta * (1.0 - v);
-      let a = y * p * p - theta;
-      let b = 2.0 * y * p * (1.0 - p) - (1.0 - theta);
-      let c = y * (1.0 - p) * (1.0 - p);
-      let root =
-        ((1.0 - theta).powi(2) * (1.0 - y) + (1.0 - theta + 2.0 * theta * v).powi(2) * y).sqrt();
-      if b <= 0.0 {
-        2.0 * c / (root - b)
-      } else {
-        (b + root) / (-2.0 * a)
-      }
-    })
+    conditional_quantiles(y, v, Self::inverse(self.theta.unwrap()))
   }
 
   fn compute_theta(&self) -> f64 {

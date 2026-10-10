@@ -77,6 +77,19 @@ impl GaussianCopula {
   pub fn new() -> Self {
     Self::default()
   }
+
+  /// `u = Φ(Φ⁻¹(y)√(1 − ρ²) + ρΦ⁻¹(v))` before the domain rule, the identity at `ρ = 0`.
+  pub(crate) fn inverse(rho: f64) -> impl Fn(f64, f64) -> f64 {
+    let sqrt_one_minus_rho2 = (1.0 - rho * rho).sqrt();
+    move |y, v| {
+      if rho == 0.0 {
+        return y;
+      }
+      let z = ndtri(y) * sqrt_one_minus_rho2 + rho * ndtri(v);
+      // `∞ − ∞` only at corners answered by 0: level 0, or level 1 where `v ∈ {0, 1}` puts `h(· | v)`'s mass at 0.
+      if z.is_nan() { 0.0 } else { norm_cdf(z) }
+    }
+  }
 }
 
 impl BivariateExt for GaussianCopula {
@@ -177,15 +190,10 @@ impl BivariateExt for GaussianCopula {
     }))
   }
 
-  /// $u = \Phi(\Phi^{-1}(y)\sqrt{1-\rho^2} + \rho\,\Phi^{-1}(v))$, the inverse of
-  /// [`GaussianCopula::partial_derivative`] in `u`; NaN for `y` or `v` outside `[0, 1]`.
+  /// `GaussianCopula::inverse` of [`GaussianCopula::partial_derivative`] in `u`; NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let rho = self.theta.unwrap();
-    let sqrt_one_minus_rho2 = (1.0 - rho * rho).sqrt();
-    conditional_quantiles(y, V, |p, v| {
-      norm_cdf(ndtri(p) * sqrt_one_minus_rho2 + rho * ndtri(v))
-    })
+    conditional_quantiles(y, V, Self::inverse(self.theta.unwrap()))
   }
 
   /// Closed-form Kendall's tau inversion $\rho = \sin(\pi\tau/2)$.

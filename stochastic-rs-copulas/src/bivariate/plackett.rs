@@ -55,6 +55,24 @@ impl Plackett {
     Self::default()
   }
 
+  /// The root in `[0, 1]` of `bu² − cu + e = 0` (`∂_v C = y` squared, `a = y(1 − y)`), as `(c + (2y − 1)d)/(2b)` from
+  /// `y = 1/2` up and the rationalised `2e/(c + (1 − 2y)d)` below, every coefficient divided by `θ` so none overflows.
+  pub(crate) fn inverse(theta: f64) -> impl Fn(f64, f64) -> f64 {
+    let eta = theta - 1.0;
+    let eta_squared_over_theta = eta * (eta / theta);
+    move |y, v| {
+      let a = y * (1.0 - y);
+      let c = 2.0 * a * (v * theta + (1.0 - v) / theta) + (1.0 - 2.0 * a);
+      let d = (1.0 + 4.0 * a * v * (1.0 - v) * eta_squared_over_theta).sqrt();
+      if y < 0.5 {
+        let e = a * ((1.0 - v) + theta * v) * ((1.0 - v) / theta + v);
+        2.0 * e / (c + (1.0 - 2.0 * y) * d)
+      } else {
+        (c + (2.0 * y - 1.0) * d) / (2.0 * (1.0 + a * eta_squared_over_theta))
+      }
+    }
+  }
+
   /// Spearman's rho as a function of theta (Plackett 1965):
   /// $\rho_S = (\theta+1)/(\theta-1) - 2\theta \ln \theta / (\theta-1)^2$ for $\theta \neq 1$.
   fn spearman_rho(theta: f64) -> f64 {
@@ -174,23 +192,10 @@ impl BivariateExt for Plackett {
     }))
   }
 
-  /// The root in `[0, 1]` of `bu² − cu + e = 0` (`∂_v C = y` squared, `a = y(1 − y)`), as `(c + (2y − 1)d)/(2b)` from
-  /// `y = 1/2` up and the rationalised `2e/(c + (1 − 2y)d)` below; NaN for `y` or `v` outside `[0, 1]`.
+  /// `Plackett::inverse`'s root; NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(&self, y: &Array1<f64>, v: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let theta = self.theta.unwrap();
-    let eta = theta - 1.0;
-    conditional_quantiles(y, v, |y, v| {
-      let a = y * (1.0 - y);
-      let c = 2.0 * a * (v * theta * theta + 1.0 - v) + theta * (1.0 - 2.0 * a);
-      let d = theta.sqrt() * (theta + 4.0 * a * v * (1.0 - v) * eta * eta).sqrt();
-      if y < 0.5 {
-        let e = a * (1.0 - v + theta * v).powi(2);
-        2.0 * e / (c + (1.0 - 2.0 * y) * d)
-      } else {
-        (c + (2.0 * y - 1.0) * d) / (2.0 * (theta + a * eta * eta))
-      }
-    })
+    conditional_quantiles(y, v, Self::inverse(self.theta.unwrap()))
   }
 
   /// Plackett's natural rank-correlation is Spearman's $\rho_S$, which has

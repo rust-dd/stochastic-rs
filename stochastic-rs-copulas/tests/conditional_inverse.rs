@@ -235,6 +235,11 @@ fn the_edges_of_the_square_answer_inside_it() {
     ));
   }
   copulas.push(("amh 0.99", Box::new(with_theta(Amh::new(), 0.99))));
+  copulas.push(("amh 1", Box::new(with_theta(Amh::new(), 1.0))));
+  copulas.push((
+    "gaussian 0",
+    Box::new(with_theta(GaussianCopula::new(), 0.0)),
+  ));
   copulas.push(("plackett 0.01", Box::new(with_theta(Plackett::new(), 0.01))));
   for (name, copula) in copulas {
     let u = copula.percent_point(&y, &v).unwrap();
@@ -246,6 +251,32 @@ fn the_edges_of_the_square_answer_inside_it() {
     );
     let h = copula.partial_derivative(&edges).unwrap();
     assert!(h.iter().all(|h| h.is_finite()), "{name}: {h}");
+  }
+}
+
+/// Where `v ∈ {0, 1}` makes the Gaussian's `h(· | v)` a point mass at `m = Φ(ρΦ⁻¹(v))`, level 0 answers 0 and every
+/// other level `m`; at `ρ = 0` the inverse is the identity on the whole square.
+#[test]
+fn the_gaussian_inverse_answers_its_degenerate_laws() {
+  let at = |rho: f64, y: f64, v: f64| {
+    with_theta(GaussianCopula::new(), rho)
+      .percent_point(&array![y], &array![v])
+      .unwrap()[0]
+  };
+  for y in [0.0, 0.3, 1.0] {
+    for v in [0.0, 1.0] {
+      assert_eq!(at(0.0, y, v), y, "ρ = 0, y = {y}, v = {v}");
+    }
+  }
+  for (rho, y, v, want) in [
+    (0.5, 1.0, 0.0, 0.0),
+    (0.5, 0.0, 1.0, 0.0),
+    (0.5, 1.0, 1.0, 1.0),
+    (-0.5, 0.0, 0.0, 0.0),
+    (-0.5, 1.0, 1.0, 0.0),
+    (-0.5, 1.0, 0.0, 1.0),
+  ] {
+    assert_eq!(at(rho, y, v), want, "ρ = {rho}, y = {y}, v = {v}");
   }
 }
 
@@ -351,6 +382,17 @@ const AMH: [(f64, f64, f64, f64); 12] = [
   (0.99, 0.999999, 0.3, 0.9999983443723467),
 ];
 
+/// The same at `θ = 1` exactly, where the old root divided `0` by `0` on the lines `y = 0`, `v = 0` and `v ≈ 1e-300`:
+/// 400-digit roots, equal there to the closed form `v√y/(1 − (1 − v)√y)`.
+const AMH_ONE: [Row; 6] = [
+  (1.0, 0.3, 0.7, 0.458793206838249),
+  (1.0, 1e-06, 0.99, 0.000990009900099001),
+  (1.0, 0.99, 1e-06, 0.00019845934977905303),
+  (1.0, 0.999999, 0.3, 0.9999983333348611),
+  (1.0, 0.3, 1e-300, 1.21103222500738e-300),
+  (1.0, 1.0 - f64::EPSILON / 2.0, 1e-15, 0.9474082759177828),
+];
+
 const PLACKETT: [(f64, f64, f64, f64); 12] = [
   (3.0, 0.3, 0.7, 0.41384445013187743),
   (3.0, 1e-06, 0.99, 2.9601274529415558e-06),
@@ -364,6 +406,15 @@ const PLACKETT: [(f64, f64, f64, f64); 12] = [
   (50.0, 1e-06, 0.99, 4.902240109864848e-05),
   (50.0, 0.99, 1e-06, 0.6644301813418158),
   (50.0, 0.999999, 0.3, 0.999975079298755),
+];
+
+/// The same past `θ ≈ 1.3e154`, where `(θ − 1)²` overflowed: 700-digit roots, the comonotone `u = v` to rounding.
+const PLACKETT_HUGE: [Row; 5] = [
+  (1e154, 0.3, 0.7, 0.7),
+  (1e200, 0.3, 0.7, 0.7),
+  (1e200, 1e-06, 0.99, 0.99),
+  (1e200, 0.99, 1e-06, 1e-06),
+  (1e300, 0.999999, 0.3, 0.3),
 ];
 
 /// `(θ, y, v, h⁻¹(y | v))`: 300-digit bisection roots of `∂_v C`, where `y^{−θ/(1+θ)} + v^θ − 1` cancelled (`y` near 1)
@@ -422,10 +473,10 @@ fn the_closed_forms_match_the_mpmath_references() {
   for (theta, y, v, want) in FGM {
     assert_reference("fgm", &with_theta(Fgm::new(), theta), (y, v, want), 1e-14);
   }
-  for (theta, y, v, want) in AMH {
+  for (theta, y, v, want) in AMH.into_iter().chain(AMH_ONE) {
     assert_reference("amh", &with_theta(Amh::new(), theta), (y, v, want), 1e-14);
   }
-  for (theta, y, v, want) in PLACKETT {
+  for (theta, y, v, want) in PLACKETT.into_iter().chain(PLACKETT_HUGE) {
     let plackett = with_theta(Plackett::new(), theta);
     assert_reference("plackett", &plackett, (y, v, want), 1e-14);
   }
@@ -470,7 +521,7 @@ fn the_closed_forms_round_trip_through_h_on_the_grid() {
   for theta in [0.5, -1.0, 1.0] {
     assert_round_trips("fgm", &with_theta(Fgm::new(), theta));
   }
-  for theta in [0.5, -1.0, 0.99] {
+  for theta in [0.5, -1.0, 0.99, 1.0] {
     assert_round_trips("amh", &with_theta(Amh::new(), theta));
   }
   for theta in [3.0, 0.2, 50.0] {
