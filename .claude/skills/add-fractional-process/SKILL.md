@@ -247,8 +247,7 @@ mod tests {
         assert_eq!(a.sample(), b.sample());
     }
 
-    /// 5. `sample_par(m)` bit-identical across rayon thread-pool sizes,
-    ///    and registration in
+    /// 5. `sample_par(m)` bit-identical across rayon pool sizes; registered in
     ///    `tests/reproducibility_all_processes.rs`.
     #[test]
     fn sample_par_is_thread_count_stable() { }

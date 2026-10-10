@@ -39,8 +39,7 @@ delta/gamma/vega from re-runs.
 ```rust
 // stochastic-rs-quant/src/traits/pricing.rs
 
-// `Default` is implemented by hand as `Greeks::nan()`, NOT derived —
-// a derived `Default` would be all-zeros, which is exactly the
+// `Default` is `Greeks::nan()` by hand: a derived all-zeros default is the
 // plausible-looking sentinel section 8 forbids.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Greeks {
@@ -55,9 +54,8 @@ pub struct Greeks {
     pub veta: f64,
 }
 
-// `GreeksExt` has no supertrait, and only `delta` is required — every
-// other accessor defaults to `None`, NOT to a finite difference, so a
-// consumer can tell "not exposed" from a real zero.
+// Only `delta` is required; the rest default to `None`, never a finite difference,
+// so "not exposed" stays distinguishable from a real zero.
 pub trait GreeksExt {
     fn delta(&self) -> Option<f64>;
     fn gamma(&self) -> Option<f64> { None }
@@ -93,11 +91,7 @@ impl BSMPricer {
     pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, ot: OptionType) -> f64 { ... }
     pub fn gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 { ... }
 
-    /// Aggregate. Provide this whenever you provide the accessors —
-    /// without it every caller hand-writes the nine-field `Greeks { .. }`
-    /// literal, and a mis-mapped field (volga vs veta) has nowhere to be
-    /// caught. Monte Carlo pricers should override it to share one set
-    /// of paths rather than calling each accessor separately.
+    /// All nine Greeks at one query; a Monte Carlo pricer computes them from one set of paths.
     pub fn greeks(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, ot: OptionType) -> Greeks { ... }
 }
 ```
@@ -183,9 +177,7 @@ pub fn all_greeks(&self) -> Greeks {
         gamma: sum_gamma / m,
         vega:  sum_vega / m,
         rho:   sum_rho / m,
-        // No Malliavin weight exists for these, so they stay NaN —
-        // spelled out field by field. There is no `Greeks::nan()`
-        // struct-update shorthand in use here.
+        // No Malliavin weight exists for these, so they stay NaN.
         theta: f64::NAN,
         vanna: f64::NAN, charm: f64::NAN, volga: f64::NAN, veta: f64::NAN,
     }
@@ -250,9 +242,7 @@ impl BSMPricer {
         s * norm_pdf(d1) * tau.sqrt()
     }
 
-    /// Provide this whenever you provide the accessors. Without it every
-    /// caller hand-writes the nine-field literal, and a mis-mapped field
-    /// (volga vs veta) has nowhere to be caught.
+    /// All nine Greeks at one query.
     pub fn greeks(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, ot: OptionType) -> Greeks {
         Greeks {
             delta: self.delta(s, k, r, q, tau, ot),
@@ -263,6 +253,10 @@ impl BSMPricer {
     }
 }
 ```
+
+Provide `greeks()` whenever you provide the accessors: without it every caller
+hand-writes the nine-field literal, and a mis-mapped field (volga vs veta) has
+nowhere to be caught.
 
 Note `..Greeks::nan()`, not `..Default::default()` — they are the same
 thing (`Default for Greeks` returns `nan()`), but spelling it `nan()` says

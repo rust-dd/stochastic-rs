@@ -34,9 +34,7 @@ fn bench_foo(c: &mut Criterion) {
     let mut group = c.benchmark_group("foo");
     for &n in &[1_000usize, 10_000, 100_000] {
         group.throughput(Throughput::Elements(n as u64));
-        // Build the process ONCE, outside b.iter — construction is not
-        // what you are measuring, and re-seeding per iteration hides the
-        // sampler's own per-call cost.
+        // Built once, outside `b.iter`: construction and re-seeding are not what is measured.
         let process = Gbm::<f64, _>::new(0.05, 0.2, n, None, None, Deterministic::new(42));
         group.bench_with_input(
             BenchmarkId::from_parameter(n),

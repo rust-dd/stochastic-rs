@@ -61,16 +61,16 @@ impl PyFoo {
         Ok(Self { inner: crate::pricing::foo::Foo { a, b, c } })
     }
 
-    // The Rust pricer holds model parameters only; the query is passed
-    // to the call. Keep the Python kwarg names stable even when the Rust
-    // field names differ — bind explicitly (`tau: t`) rather than relying
-    // on field-init shorthand.
     #[pyo3(signature = (s, k, r, q, tau))]
     fn price(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
         self.inner.price_call(s, k, r, q, tau)
     }
 }
 ```
+
+The model lives in `inner` and the query travels as arguments. Keep the Python kwarg names
+stable even when the Rust field names differ: bind explicitly (`tau: t`) rather than relying
+on field-init shorthand.
 
 A wrapper inside a crate's `pub mod python` needs nothing (the module is hidden); one
 defined in a process file of `stochastic-rs-stochastic` needs `#[doc(hidden)]` directly

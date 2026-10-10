@@ -197,9 +197,8 @@ impl<T: FloatExt, S: SeedExt> ProcessExt<T> for Foo<T, S> {
             mu: self.mu,
             sigma: self.sigma,
             dt,
-            // The Gaussian source carries dt.sqrt() as its std, so the
-            // recursion multiplies by sigma alone. Seeded from `&self.seed`
-            // — this is the `derive()` the reproducibility rule requires.
+            // Std dt.sqrt(), so the recursion multiplies by sigma alone; seeding from
+            // `&self.seed` is the derive() the reproducibility rule requires.
             normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
         }
     }
@@ -336,9 +335,8 @@ mod tests {
         assert_eq!(a.sample(), b.sample());
     }
 
-    /// 1b. `sample_par(m)` is bit-identical across rayon thread-pool
-    ///     sizes. New processes must also be added to
-    ///     `tests/reproducibility_all_processes.rs`, the crate-wide guard.
+    /// 1b. `sample_par(m)` is bit-identical across rayon pool sizes; register the
+    ///     process in `tests/reproducibility_all_processes.rs` as well.
     #[test]
     fn sample_par_is_reproducible() { }
 

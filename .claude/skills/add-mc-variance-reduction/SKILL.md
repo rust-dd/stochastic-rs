@@ -139,9 +139,7 @@ where T: FloatExt, F: Fn(&Array1<T>) -> T
 {
     let two = T::from_f64_fast(2.0);
     estimate_from_samples((0..n_paths).map(|_| {
-        // The workspace's own Gaussian draw. Per `dev-rules` §7a,
-        // `rand_distr::StandardNormal` and `StdRng` belong to `benches/`
-        // — never to library code.
+        // The workspace's own Gaussian draw: `rand_distr` and `StdRng` are for benches only.
         let z = T::normal_array(dim, T::zero(), T::one());
         let neg_z = z.mapv(|v| -v);
         (payoff(&z) + payoff(&neg_z)) / two

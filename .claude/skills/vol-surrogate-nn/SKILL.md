@@ -122,9 +122,7 @@ impl HestonNn {
     self.inner.save(dir)
   }
 
-  /// Note the arity: the wrapper supplies `MODEL_ID` itself, so callers
-  /// pass only `(dir, device)`. The engine's own `load` takes the
-  /// expected id first.
+  /// Loads a saved model; unlike the engine's `load`, this supplies `MODEL_ID` itself.
   pub fn load<P: AsRef<Path>>(dir: P, device: &Device) -> Result<Self> {
     Ok(Self { inner: StochVolNn::load(MODEL_ID, dir, device)? })
   }
