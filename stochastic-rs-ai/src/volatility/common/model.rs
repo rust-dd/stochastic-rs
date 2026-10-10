@@ -169,12 +169,8 @@ impl StochVolNn {
     Ok(arr.row(0).to_vec())
   }
 
-  /// Surface prediction together with its Jacobian `∂F̃_k/∂θ_j` (rows = grid
-  /// points, columns = parameters) by reverse-mode differentiation through
-  /// the network — one backward pass per grid point — with the affine
-  /// derivatives of the parameter scaling (`1 / half-range_j`) and of the
-  /// output de-standardisation (`std_k`) applied, so the Jacobian is in
-  /// parameter and implied-volatility units.
+  /// Surface and Jacobian `∂F̃_k/∂θ_j` (rows grid points, columns parameters), one backward pass
+  /// per grid point, in parameter and implied-volatility units.
   pub fn predict_surface_with_jacobian(&self, params: &[f32]) -> Result<(Vec<f32>, Array2<f32>)> {
     let scaler = self
       .output_scaler

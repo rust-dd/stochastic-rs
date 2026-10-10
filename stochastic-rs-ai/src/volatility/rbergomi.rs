@@ -1,16 +1,6 @@
-//! Neural-network surrogate for the rough Bergomi model (flat forward variance).
-//!
-//! The architecture and scaling conventions follow:
-//! - 3 hidden ELU layers (width 30), linear output (88 nodes).
-//! - Parameter scaling to `[-1, 1]` with fixed lower/upper bounds.
-//! - Output (IV surface) standardization with train-set mean/std.
-//!
-//! Source:
-//! - <https://github.com/amuguruza/NN-StochVol-Calibrations>
-//! - `RoughBergomi/Flat Forward Variance/NNRoughBergomi.ipynb`
-//!
-//! Input order `[xi0, nu, rho, H]`: forward variance, vol-of-vol, correlation and Hurst exponent,
-//! as titled in the notebook.
+//! Surrogate of the rough Bergomi surface with flat forward variance (`NNRoughBergomi.ipynb`);
+//! inputs `[xi0, nu, rho, H]`: forward variance, vol-of-vol, correlation, Hurst exponent.
+//! <https://github.com/amuguruza/NN-StochVol-Calibrations> (`RoughBergomi/Flat Forward Variance`)
 
 use std::path::Path;
 
@@ -66,10 +56,8 @@ impl RBergomiNn {
     self.inner.train(params, surfaces, config)
   }
 
-  /// Predict an implied-volatility surface for the given parameter vector.
-  ///
-  /// Returns a flat `Vec<f32>` of length [`OUTPUT_DIM`]: one block per [`grid::MATURITIES`] entry,
-  /// with columns in [`STRIKES`] order, ascending.
+  /// The flat surface, [`OUTPUT_DIM`] long: one block per [`grid::MATURITIES`] entry, with columns
+  /// in [`STRIKES`] order (ascending).
   pub fn predict_surface(&self, params: &[f32; INPUT_DIM]) -> Result<Vec<f32>> {
     self.inner.predict_surface(params)
   }
@@ -78,11 +66,8 @@ impl RBergomiNn {
     self.inner.predict_surfaces(params)
   }
 
-  /// Bridge to `stochastic-rs-quant`: predict and package as
-  /// [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface).
-  ///
-  /// Pass [`STRIKES`] times the spot, [`grid::MATURITIES`] and the forwards; the surface
-  /// comes back with ascending strikes. Available with the `quant` cargo feature.
+  /// The prediction as an [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface)
+  /// with ascending strikes; pass [`STRIKES`] times the spot, [`grid::MATURITIES`] and the forwards.
   #[cfg(feature = "quant")]
   pub fn predict_implied_vol_surface(
     &self,

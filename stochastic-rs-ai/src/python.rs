@@ -1,6 +1,5 @@
-//! Python surface of the surrogates and the surrogate calibration
-//! (`--features ai` builds only; the published wheels leave it out because
-//! candle is heavy).
+//! Python surface of the surrogates and their calibration, in `--features ai` builds only: the
+//! published wheels leave candle out.
 
 use numpy::IntoPyArray;
 use numpy::PyReadonlyArray1;
@@ -200,9 +199,8 @@ fn run_calibration<'py>(
   result_dict(py, &fit)
 }
 
-/// Levenberg–Marquardt calibration of a surrogate (`HestonNn`, `RBergomiNn`
-/// or `OneFactorNn`) to a market surface on its grid; returns a dict with the
-/// parameters in the surrogate's input order plus the fit diagnostics.
+/// Levenberg–Marquardt fit of `HestonNn`, `RBergomiNn` or `OneFactorNn` to a market surface on
+/// its grid; returns the parameters in the surrogate's input order and the diagnostics as a dict.
 #[pyfunction]
 #[pyo3(signature = (model, market, initial=None, weights=None, tolerance=1e-10, patience=200))]
 pub fn calibrate_surrogate<'py>(

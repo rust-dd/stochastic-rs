@@ -1,16 +1,6 @@
-//! Neural-network surrogate for the Heston volatility model.
-//!
-//! The architecture and scaling conventions follow:
-//! - 3 hidden ELU layers (width 30), linear output (88 nodes).
-//! - Parameter scaling to `[-1, 1]` with fixed lower/upper bounds.
-//! - Output (IV surface) standardization with train-set mean/std.
-//!
-//! Source:
-//! - <https://github.com/amuguruza/NN-StochVol-Calibrations>
-//! - `Heston/NNHeston.ipynb`
-//!
-//! Input order `[xi0, rho, sigma, theta, kappa]`: initial variance, correlation, vol-of-vol,
-//! long-run variance and mean-reversion speed, as titled in the notebook.
+//! Heston implied-volatility surrogate (`Heston/NNHeston.ipynb`). Inputs `[xi0, rho, sigma, theta,
+//! kappa]`: initial variance, correlation, vol-of-vol, long-run variance, mean-reversion speed.
+//! <https://github.com/amuguruza/NN-StochVol-Calibrations>
 
 use std::path::Path;
 
@@ -67,10 +57,8 @@ impl HestonNn {
     self.inner.train(params, surfaces, config)
   }
 
-  /// Predict an implied-volatility surface for the given parameter vector.
-  ///
-  /// Returns a flat `Vec<f32>` of length [`OUTPUT_DIM`], maturity-major, with columns in
-  /// [`STRIKES`] order, descending; `predict_implied_vol_surface` sorts them ascending.
+  /// The flat surface, [`OUTPUT_DIM`] long and maturity-major, with columns in [`STRIKES`] order
+  /// (descending); `predict_implied_vol_surface` sorts them ascending.
   pub fn predict_surface(&self, params: &[f32; INPUT_DIM]) -> Result<Vec<f32>> {
     self.inner.predict_surface(params)
   }
@@ -79,11 +67,8 @@ impl HestonNn {
     self.inner.predict_surfaces(params)
   }
 
-  /// Bridge to `stochastic-rs-quant`: predict and package as
-  /// [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface).
-  ///
-  /// Pass [`STRIKES`] times the spot, [`grid::MATURITIES`] and the forwards; the surface
-  /// comes back with ascending strikes. Available with the `quant` cargo feature.
+  /// The prediction as an [`ImpliedVolSurface`](stochastic_rs_quant::vol_surface::ImpliedVolSurface)
+  /// with ascending strikes; pass [`STRIKES`] times the spot, [`grid::MATURITIES`] and the forwards.
   #[cfg(feature = "quant")]
   pub fn predict_implied_vol_surface(
     &self,

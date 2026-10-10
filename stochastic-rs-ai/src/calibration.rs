@@ -1,25 +1,12 @@
-//! # Surrogate calibration
+//! Levenberg–Marquardt calibration of a trained surrogate $\tilde F$ on its exact Jacobian:
 //!
 //! $$
 //! \hat\theta = \arg\min_{\theta}\ \sum_{k}
 //!   w_k^2\bigl(\tilde F(\theta)_k - \sigma^{\text{mkt}}_k\bigr)^2
 //! $$
 //!
-//! Second step of the two-step deep-learning-volatility approach of Horvath,
-//! Muguruza & Tomas (2021): a trained network $\tilde F$ replaces the pricer
-//! on its fixed strike–maturity grid, and the calibration is a deterministic
-//! least-squares problem on the surrogate, solved with Levenberg–Marquardt on
-//! the network's exact Jacobian — reverse-mode differentiation through the
-//! layers (their §3.2; the reference notebooks pass the analytic network
-//! gradient to `least_squares(method="lm")`). The optimisation runs in the
-//! network's scaled coordinates $x_j = (\theta_j - c_j)/h_j$ (centre and
-//! half-range of the training box), and the result records whether
-//! $\hat\theta$ stayed inside the box: the surrogate is untrained outside it,
-//! so a boundary solution is a warning rather than an answer.
-//!
-//! Reference: Horvath, B., Muguruza, A. & Tomas, M. (2021), *Deep learning
-//! volatility: a deep neural network perspective on pricing and calibration in
-//! (rough) volatility models*, Quantitative Finance 21(1), 11–27.
+//! It runs in the training box's scaled coordinates and records whether $\hat\theta$ left the box.
+//! Horvath, Muguruza & Tomas (2021), "Deep learning volatility", Quant. Finance 21(1), 11–27.
 
 use std::cell::RefCell;
 
@@ -254,9 +241,8 @@ impl<M: SurrogateModel> Calibrator for SurrogateCalibrator<'_, M> {
   }
 }
 
-/// The least-squares problem in scaled coordinates; the network evaluation is
-/// cached per parameter vector because the optimiser asks for residuals and
-/// Jacobian separately.
+/// The least-squares problem in scaled coordinates; it caches the network evaluation per point
+/// because the optimiser asks for residuals and Jacobian separately.
 struct Problem<'m, M: SurrogateModel> {
   model: &'m M,
   market: &'m [f64],
@@ -340,11 +326,8 @@ pub fn heston_params_to_surrogate(p: &HestonParams) -> Vec<f64> {
   vec![p.v0, p.rho, p.sigma, p.theta, p.kappa]
 }
 
-/// The rough Bergomi surrogate's input order `[ξ₀, η, ρ, H]` (read off the
-/// training box the same way as the Heston order: `[0.01, 0.16]` is a
-/// forward variance, `[0.3, 4]` a vol-of-vol, `[−0.95, −0.1]` a correlation
-/// and `[0.025, 0.5]` a Hurst exponent) as quant's [`RBergomiParams`] with a
-/// flat forward-variance curve.
+/// Quant's [`RBergomiParams`] with a flat ξ₀ from the surrogate's input order `[ξ₀, η, ρ, H]`,
+/// which its training box shows: `[0.01, 0.16]`, `[0.3, 4]`, `[−0.95, −0.1]`, `[0.025, 0.5]`.
 pub fn rbergomi_params_from_surrogate(v: &[f64]) -> RBergomiParams {
   RBergomiParams {
     hurst: v[3],
@@ -354,9 +337,8 @@ pub fn rbergomi_params_from_surrogate(v: &[f64]) -> RBergomiParams {
   }
 }
 
-/// Quant's [`RBergomiParams`] in the rough Bergomi surrogate's input order;
-/// a non-constant forward-variance curve is represented by its value at
-/// `t = 0`, the only shape the flat-ξ₀ surrogate knows.
+/// Quant's [`RBergomiParams`] in the rough Bergomi surrogate's input order; a non-constant
+/// forward-variance curve enters by its value at `t = 0`, the flat-ξ₀ surrogate's only shape.
 pub fn rbergomi_params_to_surrogate(p: &RBergomiParams) -> Vec<f64> {
   let xi0 = match &p.xi0 {
     RBergomiXi0::Constant(v) => *v,
