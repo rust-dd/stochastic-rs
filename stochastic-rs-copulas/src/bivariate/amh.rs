@@ -56,26 +56,47 @@ impl Amh {
     Self::default()
   }
 
-  /// The root in `[0, 1]` of `Au² + Bu + C = 0` (`y D² = u(1 − θ + θu)`, `p = θ(1 − v)`) chosen by `B`'s sign, with
-  /// `1 − p`, `−A` and `√(B² − 4AC) = hypot((1 − θ)√(1 − y), (1 − θ + 2θv)√y)` free of cancellation and underflow.
+  /// The root in `[0, 1]` of `Au² + Bu + C = 0` (`y D² = u(1 − θ + θu)`, `p = θ(1 − v)`) chosen by `B`'s sign, for
+  /// `θ ≠ 1`; `√(B² − 4AC)` is `hypot((1 − θ)√(1 − y), (1 − θ + 2θv)√y)`, free of cancellation and underflow.
   pub(crate) fn inverse(theta: f64) -> impl Fn(f64, f64) -> f64 {
     move |y, v| {
-      let p = theta * (1.0 - v);
-      let one_minus_p = (1.0 - theta) + theta * v;
-      let minus_a = theta * ((1.0 - y) + y * ((1.0 - theta) + theta * v * (2.0 - v)));
-      let b = 2.0 * y * p * one_minus_p - (1.0 - theta);
-      let c = y * one_minus_p * one_minus_p;
-      let root =
-        ((1.0 - theta) * (1.0 - y).sqrt()).hypot((1.0 - theta + 2.0 * theta * v) * y.sqrt());
+      let (minus_a, b, c, z) = Self::quadratic(theta, y, v);
+      let x = (1.0 - theta) * (1.0 - y).sqrt();
+      // `hypot` without the call: libm rounds it this way when no square needs scaling, as `big ≥ 1e-24` for `θ < 1`.
+      let (big, small) = if x >= z { (x, z) } else { (z, x) };
+      let root = small.mul_add(small, big * big).sqrt();
+      let (numerator, denominator) = if b < 0.0 {
+        (2.0 * c, root - b)
+      } else {
+        (b + root, 2.0 * minus_a)
+      };
+      numerator / denominator
+    }
+  }
+
+  /// `Amh::inverse` at `θ = 1`, where `hypot`'s first operand is 0, so the root is `2v√y`.
+  pub(crate) fn inverse_at_one() -> impl Fn(f64, f64) -> f64 {
+    move |y, v| {
+      let (minus_a, b, c, root) = Self::quadratic(1.0, y, v);
       if b < 0.0 {
         2.0 * c / (root - b)
       } else if minus_a > 0.0 {
         (b + root) / (2.0 * minus_a)
       } else {
-        // `A = 0` with `B ≥ 0` only at `θ = 1`, `(y, v) = (1, 0)`, where `h(· | 0)` jumps from 0 to 1 at `u = 0`.
+        // `A = 0` with `B ≥ 0` only at `(y, v) = (1, 0)`, where `h(· | 0)` jumps from 0 to 1 at `u = 0`.
         0.0
       }
     }
+  }
+
+  /// `(−A, B, C)` from same-signed terms, `1 − p = (1 − θ) + θv`, and `hypot`'s second operand `(1 − θ + 2θv)√y`.
+  fn quadratic(theta: f64, y: f64, v: f64) -> (f64, f64, f64, f64) {
+    let p = theta * (1.0 - v);
+    let one_minus_p = (1.0 - theta) + theta * v;
+    let minus_a = theta * ((1.0 - y) + y * ((1.0 - theta) + theta * v * (2.0 - v)));
+    let b = 2.0 * y * p * one_minus_p - (1.0 - theta);
+    let c = y * one_minus_p * one_minus_p;
+    (minus_a, b, c, (1.0 - theta + 2.0 * theta * v) * y.sqrt())
   }
 
   /// Kendall's tau in closed form
@@ -213,10 +234,15 @@ impl BivariateExt for Amh {
     }))
   }
 
-  /// `Amh::inverse`'s root; NaN for `y` or `v` outside `[0, 1]`.
+  /// `Amh::inverse`'s root, `Amh::inverse_at_one`'s at `θ = 1`; NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(&self, y: &Array1<f64>, v: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    conditional_quantiles(y, v, Self::inverse(self.theta.unwrap()))
+    let theta = self.theta.unwrap();
+    if theta == 1.0 {
+      conditional_quantiles(y, v, Self::inverse_at_one())
+    } else {
+      conditional_quantiles(y, v, Self::inverse(theta))
+    }
   }
 
   fn compute_theta(&self) -> f64 {

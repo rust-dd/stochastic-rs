@@ -136,9 +136,10 @@ mod tests {
         |y, v: f64| Clayton::finish(theta, Clayton::level(theta, y), y, v, v.powf(theta));
       assert_rounding_only(&format!("clayton θ = {theta:e}"), inverse);
     }
-    for theta in [-1.0, -0.5, 0.0, 0.5, 0.99, 1.0 - 1e-9, 1.0] {
+    for theta in [-1.0, -0.5, 0.0, 0.5, 0.99, 1.0 - 1e-9] {
       assert_rounding_only(&format!("amh θ = {theta:e}"), Amh::inverse(theta));
     }
+    assert_rounding_only("amh θ = 1", Amh::inverse_at_one());
     for theta in [1e-12, 0.01, 0.2, 1.0, 3.0, 50.0, 1e10, 1e154, 1e200, 1e300] {
       assert_rounding_only(&format!("plackett θ = {theta:e}"), Plackett::inverse(theta));
     }
