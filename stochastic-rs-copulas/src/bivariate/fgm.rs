@@ -56,16 +56,14 @@ impl Fgm {
   /// non-negative terms for either sign of `a`; 0 at level 0, where `a = −1` would divide 0 by 0.
   pub(crate) fn inverse(theta: f64) -> impl Fn(f64, f64) -> f64 {
     move |y, v| {
-      if y == 0.0 {
-        return 0.0;
-      }
       let a = theta * (1.0 - 2.0 * v);
       let discriminant = if a > 0.0 {
         (1.0 - a) * (1.0 - a) + 4.0 * a * (1.0 - y)
       } else {
         (1.0 + a) * (1.0 + a) - 4.0 * a * y
       };
-      2.0 * y / ((1.0 + a) + discriminant.sqrt())
+      let u = 2.0 * y / ((1.0 + a) + discriminant.sqrt());
+      if y == 0.0 { 0.0 } else { u }
     }
   }
 }

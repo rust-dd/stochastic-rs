@@ -30,8 +30,9 @@ pub(crate) fn check_lengths(y: &Array1<f64>, v: &Array1<f64>) -> Result<(), Copu
 /// The quantile rule: `u` of `(y, v)` held in `[0, 1]` against rounding, NaN where `y` or `v` leaves `[0, 1]` or `u` is
 /// not finite; applied after the inverse, as an early return measured slower in the sampling bench.
 pub(crate) fn confine(y: f64, v: f64, u: f64) -> f64 {
-  let clamped = u.clamp(0.0, 1.0);
-  if in_unit(y) && in_unit(v) && u.is_finite() {
+  // `u·0` is ±0 for a finite `u` and NaN otherwise, so with `&` the whole rule is one select, no branch per pair.
+  let clamped = u.clamp(0.0, 1.0) + u * 0.0;
+  if in_unit(y) & in_unit(v) {
     clamped
   } else {
     f64::NAN
