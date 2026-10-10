@@ -42,7 +42,7 @@ const PINS: &[(&str, u64)] = &[
   ("amh", 0x0ab75174ccc6171f),
   ("bb1", 0x08f7414f5c289cb7),
   ("bb7", 0x628f49f39de1c0e2),
-  ("clayton", 0xde46259e4c14fee6),
+  ("clayton", 0x6d34355ca15d6eef),
   ("fgm", 0x680eb8c8e0f2c5c7),
   ("frank", 0xc294915e38a3554b),
   ("galambos", 0xebc6ae0e191d8228),

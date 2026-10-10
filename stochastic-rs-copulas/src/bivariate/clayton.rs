@@ -44,6 +44,28 @@ impl Clayton {
   pub fn new() -> Self {
     Self::default()
   }
+
+  /// `a = y^{−θ/(1 + θ)} − 1` of `h⁻¹(y | v) = (1 + a/v^θ)^{−1/θ}`, as `expm1` so `y` near 1 keeps its digits.
+  fn level(theta: f64, y: f64) -> f64 {
+    (-theta / (1.0 + theta) * y.ln()).exp_m1()
+  }
+
+  /// `exp(−ln_1p(a/v^θ)/θ)`; once `v^θ` leaves the normal range or `a/v^θ` overflows, `v a^{−1/θ}` (the dropped
+  /// `(1 + v^θ/a)^{−1/θ}` is 1 to rounding), `ln a = z + ln(−expm1(−z))`, `z = −θ ln y/(1 + θ)`; 0 on `v = 0`.
+  fn finish(theta: f64, a: f64, y: f64, v: f64, v_theta: f64) -> f64 {
+    let ratio = a / v_theta;
+    if v_theta >= f64::MIN_POSITIVE && ratio.is_finite() {
+      return (-ratio.ln_1p() / theta).exp();
+    }
+    if v == 0.0 {
+      return 0.0;
+    }
+    if y == 1.0 {
+      return 1.0;
+    }
+    let z = -theta / (1.0 + theta) * y.ln();
+    v * (-(z + (-(-z).exp_m1()).ln()) / theta).exp()
+  }
 }
 
 impl BivariateExt for Clayton {
@@ -148,8 +170,7 @@ impl BivariateExt for Clayton {
     Ok(cdfs)
   }
 
-  /// `u = ((y^{−θ/(1+θ)} + v^θ − 1)/v^θ)^{−1/θ}`, the inverse of `∂_v C`, the identity at `θ = 0`; NaN for `y` or `v`
-  /// outside `[0, 1]`.
+  /// `h⁻¹(y | v)` by `Clayton::level` and `Clayton::finish`, `y` at `θ = 0`; NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
@@ -160,14 +181,14 @@ impl BivariateExt for Clayton {
     }
 
     check_lengths(y, V)?;
-    // Whole-array passes keep each pass's `powf` calls independent, which a fused per-pair closure does not.
-    let b = V.powf(theta);
-    let mut u = (y.powf(theta / (-1.0 - theta)) + &b - 1.0) / b;
-    let power = -1.0 / theta;
+    // Whole-array passes keep each pass's transcendental calls independent, which a fused per-pair closure does not.
+    let v_theta = V.powf(theta);
+    let mut u = y.mapv(|y| Self::level(theta, y));
     Zip::from(&mut u)
       .and(y)
       .and(V)
-      .for_each(|u, &y, &v| *u = confine(y, v, u.powf(power)));
+      .and(&v_theta)
+      .for_each(|u, &y, &v, &v_theta| *u = confine(y, v, Self::finish(theta, *u, y, v, v_theta)));
     Ok(u)
   }
 

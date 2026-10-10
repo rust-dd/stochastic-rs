@@ -366,6 +366,20 @@ const PLACKETT: [(f64, f64, f64, f64); 12] = [
   (50.0, 0.999999, 0.3, 0.999975079298755),
 ];
 
+/// `(θ, y, v, h⁻¹(y | v))`: 300-digit bisection roots of `∂_v C`, where `y^{−θ/(1+θ)} + v^θ − 1` cancelled (`y` near 1)
+/// or `v^θ` underflows (`θ ≥ 100`, and `θ = 1000` at a subnormal `y`).
+const CLAYTON: [Row; 9] = [
+  (2.0, 0.3, 0.7, 0.5335212174600548),
+  (2.0, 1.0 - f64::EPSILON / 2.0, 1e-15, 1.1623596208622918e-07),
+  (10.0, 1.0 - f64::EPSILON / 2.0, 0.035, 0.9964130064010808),
+  (50.0, 0.999999, 0.49, 0.6462016682374876),
+  (100.0, 0.5, 1e-4, 0.00010001377405955217),
+  (100.0, 1e-6, 5e-4, 0.0004360778910720021),
+  (1000.0, 0.5, 0.5, 0.5000006926951186),
+  (1000.0, 5e-324, 0.5, 0.237676789374171),
+  (1e-10, 0.999999, 1e-12, 0.9999989999999973),
+];
+
 /// `(ρ, ν, y, v, h⁻¹(y | v))`: the inversion of `t_{ν+1}` in 50-digit mpmath, `h` re-evaluated at each to 1e-46.
 const T_COPULA: [(f64, f64, f64, f64, f64); 8] = [
   (0.5, 4.0, 0.3, 0.7, 0.43803740678313124),
@@ -392,7 +406,7 @@ fn assert_reference(
 }
 
 #[test]
-fn the_closed_forms_match_the_50_digit_references() {
+fn the_closed_forms_match_the_mpmath_references() {
   for (theta, y, v, want) in FRANK.into_iter().chain(FRANK_EXTREME) {
     assert_reference("frank", &Frank::new(Some(theta), None), (y, v, want), 1e-14);
   }
@@ -414,6 +428,14 @@ fn the_closed_forms_match_the_50_digit_references() {
   for (theta, y, v, want) in PLACKETT {
     let plackett = with_theta(Plackett::new(), theta);
     assert_reference("plackett", &plackett, (y, v, want), 1e-14);
+  }
+  for (theta, y, v, want) in CLAYTON {
+    assert_reference(
+      "clayton",
+      &with_theta(Clayton::new(), theta),
+      (y, v, want),
+      1e-14,
+    );
   }
   for (rho, nu, y, v, want) in T_COPULA {
     let t = with_theta(TCopula::with_nu(nu), rho);
