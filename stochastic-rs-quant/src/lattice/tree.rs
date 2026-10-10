@@ -96,11 +96,11 @@ impl<T: RealExt> BinomialTree<T> {
 pub struct TrinomialBranch<T: RealExt> {
   /// Index of the middle child on the next level.
   pub center_index: usize,
-  /// Down probability.
+  /// Probability of moving to the child below `center_index`.
   pub down_probability: T,
-  /// Middle probability.
+  /// Probability of moving to the child at `center_index`.
   pub middle_probability: T,
-  /// Up probability.
+  /// Probability of moving to the child above `center_index`.
   pub up_probability: T,
 }
 

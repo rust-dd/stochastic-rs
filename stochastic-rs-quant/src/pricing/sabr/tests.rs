@@ -33,18 +33,8 @@ fn sabr_price_is_nan_for_a_nonpositive_spot_or_strike() {
   }
 }
 
-/// The Hagan (2002) expansion is a small-τ asymptotic, and its bracket
-/// `1 + (a + b + c) τ` goes negative once the correction outgrows it. Every
-/// argument below is individually legal — `alpha > 0`, `beta = 1`,
-/// `nu > 0`, `|rho| < 1`, positive spot and strike — so `sigma` does not
-/// panic; it returns `-0.3925`, and `(0.2, 1.0, 3.0, -0.9)` sits inside
-/// `SabrCalibrator`'s own projection box (`|ρ| ≤ 0.9999`, ν unbounded
-/// above), which is what makes this a reachable calibration-output shape
-/// rather than a hypothetical.
-///
-/// Both legs must therefore be `NaN`. Before the fix they were `(0.0, 0.0)`
-/// — a zero call *and* a zero put, which no real option has, and which a
-/// caller's `is_finite()` check cannot tell from a genuine deep-OTM price.
+/// Legal parameters inside `SabrCalibrator`'s box push Hagan's bracket `1 + (a + b + c)τ` negative
+/// (`sigma = -0.3925`); both legs are then NaN, never `(0, 0)`.
 #[test]
 fn sabr_degenerate_hagan_vol_is_nan_on_both_legs() {
   let m = SabrPricer::new(0.2, 1.0, 3.0, -0.9);
@@ -452,23 +442,8 @@ fn alpha_from_atm_vol_rejects_rho_at_one() {
   let _ = alpha_from_atm_vol(0.2, 100.0, 1.0, 1.0, 1.0, 0.5);
 }
 
-/// `SabrPricer::new` validates its four parameters where they are supplied,
-/// instead of leaving two of them to `hagan_implied_vol` at pricing time
-/// and the other two to nobody.
-///
-/// The split before this was not deliberate: `alpha` and `rho` already
-/// panicked (from `hagan_implied_vol`, one layer down and one call later),
-/// while `beta` and `nu` — equally invalid, equally out of range — produced
-/// finite prices. At `beta = 5` the ATM call comes back **100.0**, exactly
-/// the spot, which is the no-arbitrage *ceiling* and reads as a legitimate
-/// deep-in-the-money value; at `beta = -1` it is `4.877` and at `nu = -0.4`
-/// it is `10.479`, both against a reference of `10.616`.
-///
-/// The messages deliberately do not reuse `hagan_implied_vol`'s wording:
-/// its `"alpha must be strictly positive"` and
-/// `"rho must lie strictly inside (-1, 1)"` must not be substrings of
-/// these, so a `should_panic` anchored on the accessor cannot be satisfied
-/// by the constructor and vice versa.
+/// `SabrPricer::new` validates all four parameters (an invalid `beta = 5` would price at the spot),
+/// with messages that are not substrings of `hagan_implied_vol`'s.
 mod construction_validation {
   use super::*;
 

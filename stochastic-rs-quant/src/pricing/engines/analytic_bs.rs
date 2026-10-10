@@ -65,17 +65,8 @@ impl AnalyticBSEngine {
     )
   }
 
-  /// Override the cost-of-carry convention.
-  ///
-  /// # Behaviour change in 3.0
-  ///
-  /// [`BSMCoc::GarmanKohlhagen1983`] used to **panic** here: the old
-  /// pricer resolved its carry from a separate `r_d` field that this
-  /// engine never set, so the lookup hit an `expect` on `None`. The
-  /// engine now passes its own rate and dividend-yield handles as the
-  /// domestic and foreign rates — the standard Garman-Kohlhagen
-  /// embedding — and returns a price instead. Code that relied on the
-  /// panic to detect an unsupported convention will now get a number.
+  /// Overrides the cost-of-carry convention; [`BSMCoc::GarmanKohlhagen1983`] takes the engine's rate
+  /// and dividend-yield handles as the domestic and foreign rates.
   pub fn with_coc(mut self, coc: BSMCoc) -> Self {
     self.coc = coc;
     self
@@ -112,19 +103,8 @@ impl AnalyticBSEngine {
     (model, query)
   }
 
-  /// The `(s, k, r, q, tau)` query point a [`DigitalOption`] asks for.
-  ///
-  /// The digital counterpart of [`model_and_query`](Self::model_and_query),
-  /// minus the model: which of the two digital pricers to build depends on
-  /// `opt.kind`, so [`calculate`](PricingEngine::calculate) picks that and
-  /// this supplies the query both arms share.
-  ///
-  /// τ resolves through the instrument's own
-  /// [`TimeExt`](crate::traits::TimeExt), exactly as in
-  /// [`model_and_query`](Self::model_and_query). The two arms of this engine
-  /// used to differ here — this one read `opt.tau` directly, so a
-  /// date-constructed [`DigitalOption`] priced at [`f64::NAN`] while an
-  /// otherwise identical [`EuropeanOption`] resolved its dates.
+  /// The `(s, k, r, q, tau)` query of a [`DigitalOption`], with τ resolved through its
+  /// [`TimeExt`](crate::traits::TimeExt) as in [`model_and_query`](Self::model_and_query).
   fn digital_query(&self, opt: &DigitalOption) -> (f64, f64, f64, f64, f64) {
     (
       Self::read_quote(&self.s),
@@ -154,29 +134,8 @@ impl PricingEngine<EuropeanOption> for AnalyticBSEngine {
 impl PricingEngine<DigitalOption> for AnalyticBSEngine {
   type Result = StandardResult;
 
-  /// Built the same way as the [`EuropeanOption`] arm above: one model from
-  /// the market handles and the instrument's own contract terms, one
-  /// `(s, k, r, q, tau)` query, one
-  /// [`price_option`](ModelPricer::price_option) call. The digital pricers
-  /// hold model state only, so the instance costs two `f64`s and carries
-  /// nothing from the query — where this arm used to build a fresh
-  /// eight-field pricer per call and read the price back off the struct.
-  ///
-  /// The digital pricers fix the cost of carry at $b = r - q$, so this arm
-  /// ignores [`coc`](Self::coc); only the European arm honours it.
-  ///
-  /// NPV only — the closed-form digital Greeks are not wired through this
-  /// engine, so [`PricingResult::greeks`](crate::traits::PricingResult) stays
-  /// at [`Greeks::nan`](crate::traits::Greeks::nan).
-  ///
-  /// The NPV is [`f64::NAN`] when the instrument's maturity does not resolve
-  /// — neither an explicit `tau` nor an `(eval, expiry)` pair — following the
-  /// same missing-data convention as
-  /// [`crate::traits::TimeExt::tau_or_from_dates`], **and** when any of the
-  /// `s`, `volatility`, `r` or `dividend_yield` handles is unlinked. The two
-  /// used to disagree: a missing maturity poisoned the result while a missing
-  /// spot read as `0.0` and priced the digital at a zero spot, so one
-  /// unpopulated input reported itself and the other did not.
+  /// NPV only, at `b = r − q` whatever [`coc`](Self::coc) says; NaN when the maturity does not
+  /// resolve or any market handle is unlinked.
   fn calculate(&self, opt: &DigitalOption) -> StandardResult {
     let (s, k, r, q, tau) = self.digital_query(opt);
     let sigma = Self::read_quote(&self.volatility);
@@ -288,12 +247,7 @@ mod tests {
     assert!((a - b).abs() < 1e-12, "dated={a}, tau=1.0 gives {b}");
   }
 
-  /// One engine, one instrument, two ways to leave an input unpopulated —
-  /// and they now report the same way. Before the fix an unlinked spot read
-  /// as `0.0` and this priced a put at `K·e^{-rτ} = 95.12`: a finite,
-  /// well-scaled NPV sourced from a spot the caller never supplied, which no
-  /// `is_finite()` check downstream could tell from a real one. The unset
-  /// maturity next to it already gave `NaN`.
+  /// An unlinked spot reports NaN, as an unset maturity does, instead of pricing at `s = 0`.
   #[test]
   fn an_unlinked_handle_reports_like_an_unset_maturity() {
     let put = EuropeanOption::new_tau(100.0, OptionType::Put, 1.0);

@@ -73,7 +73,7 @@ pub struct HestonCalibrator {
 }
 
 impl HestonCalibrator {
-  /// Create a calibrator for a single maturity slice (backwards compatible).
+  /// Create a calibrator for quotes that share one maturity `tau`.
   pub fn new(
     params: Option<HestonParams>,
     c_market: Array1<f64>,

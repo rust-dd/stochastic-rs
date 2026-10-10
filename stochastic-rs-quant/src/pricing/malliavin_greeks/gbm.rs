@@ -9,7 +9,7 @@ use crate::traits::ProcessExt;
 pub struct GbmMalliavinGreeks {
   /// Spot price.
   pub s: f64,
-  /// Volatility
+  /// Annualised Black–Scholes volatility.
   pub sigma: f64,
   /// Risk-free rate.
   pub r: f64,

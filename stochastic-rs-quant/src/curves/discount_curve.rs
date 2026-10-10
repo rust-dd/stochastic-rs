@@ -86,7 +86,7 @@ impl<T: RealExt> DiscountCurve<T> {
     &self.points
   }
 
-  /// The interpolation method.
+  /// How the curve interpolates between its pillars.
   pub fn method(&self) -> InterpolationMethod {
     self.method
   }

@@ -22,9 +22,9 @@ pub struct VanillaInterestRateSwap<T: RealExt> {
   pub notional: T,
   /// Fixed coupon rate.
   pub fixed_rate: T,
-  /// Fixed leg.
+  /// Leg paying `fixed_rate` on `notional`; `direction` says which side pays it.
   pub fixed_leg: Leg<T>,
-  /// Floating leg.
+  /// Leg paying the floating-index fixings, opposite the fixed leg.
   pub floating_leg: Leg<T>,
 }
 

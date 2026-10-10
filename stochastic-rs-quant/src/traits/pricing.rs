@@ -68,9 +68,7 @@ impl Greeks {
 ///
 /// The struct holds model parameters; the query travels as arguments. That
 /// separation is what enables vectorized pricing across strike/maturity
-/// grids for calibration and vol surface construction — the retired
-/// `PricerExt` bundled market data and strike into the pricer instead, so
-/// a second query point meant a second pricer.
+/// grids for calibration and vol surface construction.
 ///
 /// Exercise style is the **implementor's** choice, not the trait's: most
 /// members price European exercise, but the American approximations

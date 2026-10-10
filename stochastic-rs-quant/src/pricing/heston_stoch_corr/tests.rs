@@ -22,14 +22,8 @@ fn paper_model() -> HestonStochCorrPricer {
 /// The paper's own query point: ATM, zero rate, one month.
 const PAPER_QUERY: (f64, f64, f64, f64, f64) = (100.0, 100.0, 0.0, 0.0, 1.0 / 12.0);
 
-/// With the correlation process frozen (σ_ρ → 0, ρ pinned to a constant) the
-/// stochastic-correlation model collapses to standard Heston, so at ATM the
-/// two must price the same. The Carr-Madan inversion used a fixed `φ_max = 200`
-/// that truncated the short-dated tail: pre-fix at τ=0.02/ATM the two pricers
-/// disagreed by ~18%. Both are now integrated to convergence and the residual
-/// is the affine approximation alone — 0.18% at τ=0.02, falling to 0.018% at
-/// τ=0.002, so the 0.3% band here has ~1.7× headroom on its worst point
-/// rather than the 5× slack the old 1% carried.
+/// With the correlation frozen (σ_ρ → 0) the model collapses to Heston at ATM; the residual is the
+/// affine approximation alone, 0.18 % at τ = 0.02 against a 0.3 % band.
 #[test]
 fn carr_madan_reduces_to_heston_short_dated() {
   use crate::pricing::heston::HestonPricer;
@@ -47,14 +41,8 @@ fn carr_madan_reduces_to_heston_short_dated() {
   }
 }
 
-/// φ(0) = E[1] = 1 exactly, for every rate and dividend yield.
-///
-/// Checked at **non-zero** `r`, which is the whole point: this held only at
-/// `r = 0` while `char_func_complex` folded a `-rτ` discount into its
-/// exponential, and the paper's own query point is `r = 0`, so a version of
-/// this test pinned to `PAPER_QUERY` could not see it. At `u = 0` the three
-/// Riccati equations have identically-zero solutions, so the assertion is
-/// exact rather than approximate — hence 1e-14 and not the old 1e-2.
+/// φ(0) = 1 exactly at a non-zero rate: the three Riccati solutions vanish at `u = 0`, so the
+/// tolerance is 1e-14.
 #[test]
 fn char_func_at_zero_is_one() {
   let (s, _k, _r, _q, tau) = PAPER_QUERY;
@@ -98,15 +86,8 @@ fn char_func_reproduces_the_forward() {
   }
 }
 
-/// |φ(u)| ≤ 1 for real `u`, and — the sharper half — |φ(u)| does not depend
-/// on `r` at all. The rate enters only through `iu·(r−q)` in the `dA` ODE,
-/// which for real `u` is purely imaginary and so rotates φ's phase without
-/// touching its modulus. A discount factor folded into φ would instead scale
-/// the modulus by `e^{-rτ}`, breaking this by 4.2e-3 at `r = 0.05, τ = 1/12`.
-///
-/// The modulus bound is tightened from the old `1 + 0.02` to `1 + 1e-12`:
-/// the observed maximum over `u ∈ (0, 50]` is 0.99940, so the affine
-/// approximation is not straining the bound and 2% of slack bought nothing.
+/// |φ(u)| ≤ 1 for real `u` and does not depend on `r`, which only rotates φ's phase through
+/// `iu(r − q)`; a discount folded into φ would scale the modulus by `e^{−rτ}`.
 #[test]
 fn char_func_is_finite_and_bounded() {
   let (s, _k, _r, q, tau) = PAPER_QUERY;
@@ -138,44 +119,8 @@ fn carr_madan_price_is_positive() {
   assert!(call < s, "call price must be below spot, got {call}");
 }
 
-/// `(S·e^{−qτ} − K·e^{−rτ})⁺ ≤ C ≤ S·e^{−qτ}`: the model-free no-arbitrage
-/// band. This replaces the two former `put_call_parity` tests, which were
-/// structurally vacuous — [`HestonStochCorrPricer::call_put`] *derives* the
-/// put from the call by parity, so `C − P = S·e^{−qτ} − K·e^{−rτ}` held by
-/// construction no matter what the call was worth, and a 0.5 absolute band
-/// on an identity is not a measurement.
-///
-/// **The `K = 20` floor and the `τ = 1` ceiling are both gone.** They existed
-/// because the quadrature, not the model, could not hold the band there, and
-/// the old doc comment said so. Deep in the money the transform's `K^{−α}`
-/// prefactor multiplies the inversion by 316 at `K = 0.01`, so that is where
-/// a quadrature error shows first — which makes it the sharpest available
-/// test of the inversion rather than a reason to look away. What the two
-/// limits were hiding:
-///
-/// | query | before | truth |
-/// |---|---|---|
-/// | `τ=0.25, K=0.01` | 78.54 | 99.49 |
-/// | `τ=1, K=0.01` | 22.64 | 98.01 |
-/// | `τ=2, K=20` | 10.46 | 77.98 |
-/// | `τ=2, K=95` | 20.57 | 14.64 |
-///
-/// The last row is the one that matters most: at `τ = 2` the old inversion
-/// was wrong at **every** strike on this grid, not only deep ones, so the
-/// `K ≥ 0.2·S` region believed to be unaffected was not.
-///
-/// The band is `1e-6` relative, tightened from `1e-3`. The worst violation
-/// over the full grid — including the points this test leaves to
-/// [`call_respects_no_arbitrage_bounds_across_the_full_grid`] — is `9.2e-9`,
-/// so the assertion keeps ~110× headroom, and the upper bound is not
-/// violated anywhere at all.
-///
-/// The query list is explicit rather than a cross product because the cost
-/// is very uneven: a `τ = 2` inversion runs the Riccati system ~8× longer
-/// per quadrature node than `τ = 0.25`, and a deep-in-the-money strike
-/// oscillates at `|ln(K/S)| = 9.2` where an at-the-money one oscillates at
-/// `0.05`. These nine carry every failure mode above at about a fifth of the
-/// full grid's runtime.
+/// The no-arbitrage band `(S e^{−qτ} − K e^{−rτ})⁺ ≤ C ≤ S e^{−qτ}` to 1e-6 relative on nine queries
+/// down to `K = 0.01`, where the `K^{−α}` prefactor amplifies any inversion error 316-fold.
 #[test]
 fn call_respects_no_arbitrage_bounds() {
   let m = paper_model();
@@ -221,14 +166,8 @@ fn assert_in_band(m: &HestonStochCorrPricer, s: f64, k: f64, r: f64, q: f64, tau
   );
 }
 
-/// A call is non-increasing and convex in the strike. Neither property
-/// depends on the model, so this is a check on the inversion alone, and it
-/// catches a failure that stays *inside* the no-arbitrage band.
-///
-/// The ladder starts at `K = 0.01` because that is what makes it bite: the
-/// old inversion returned `78.54` there against `98.51` at `K = 1`, so the
-/// very first step rose. `price_multiple_strikes` walks `τ = 0.5` from
-/// `K = 80` and could not see it.
+/// Calls are non-increasing and convex in the strike on a ladder from `K = 0.01`, which catches an
+/// inversion error that stays inside the no-arbitrage band.
 #[test]
 fn carr_madan_is_monotone_and_convex_in_strike() {
   let m = paper_model();
@@ -251,11 +190,8 @@ fn carr_madan_is_monotone_and_convex_in_strike() {
   for i in 1..prices.len() - 1 {
     let slope_lo = (prices[i] - prices[i - 1]) / (strikes[i] - strikes[i - 1]);
     let slope_hi = (prices[i + 1] - prices[i]) / (strikes[i + 1] - strikes[i]);
-    // Deep in the money the call is `S·e^{−qτ} − K·e^{−rτ}` to eleven
-    // digits, so consecutive slopes are both `−e^{−rτ}` and convexity is
-    // exactly borderline; the band absorbs the inversion's own ~1e-7 there.
-    // It stays far inside what this is for — walked on the pre-fix prices,
-    // the first pair of slopes are `+20.18` then `−0.99`, a violation of 21.
+    // Deep in the money the call is `S e^{−qτ} − K e^{−rτ}` to eleven digits, so convexity is
+    // borderline; the band absorbs the inversion's own ~1e-7.
     assert!(
       slope_hi >= slope_lo - 1e-7 * slope_lo.abs().max(1.0),
       "call must be convex in strike at K={}: slopes {slope_lo} then {slope_hi}",
@@ -264,10 +200,7 @@ fn carr_madan_is_monotone_and_convex_in_strike() {
   }
 }
 
-/// Regression: `price_call` must thread `q` to the Carr-Madan inversion.
-/// Pre-fix (on the former `HscmModel`, whose fields and behaviour this type
-/// absorbed) `_q` was discarded, so `price_call(s, k, r, q = 0.05, tau)`
-/// produced the `q = 0` price.
+/// `price_call` passes `q` through to the Carr-Madan inversion.
 #[test]
 fn hscm_model_pricer_uses_dividend_yield() {
   let model = HestonStochCorrPricer::new(0.04, 2.0, 0.04, 0.3, -0.7, 5.0, -0.5, 0.2, 0.3);
@@ -288,21 +221,8 @@ fn reduces_to_heston_when_sigma_r_zero() {
   assert!(call > 5.0 && call < 30.0, "unexpected call price: {call}");
 }
 
-/// HSCM with the correlation process frozen against standard Heston at one
-/// ATM point. The residual is the paper's affine approximation — Lemma 3.1
-/// linearises √v around `m = √(θ_v − σ_v²/(8κ_v))`, so the two models do not
-/// coincide even at σ_ρ → 0 — and it grows with τ and |moneyness|.
-///
-/// The band was 15%, which is not a cross-implementation check so much as a
-/// promise that nothing is infinite. At this query the approximation gap is
-/// 2.47%, so 3% is asserted instead: ~20% headroom on a residual that is
-/// deterministic, not stochastic.
-///
-/// 2.47% is *larger* than the 0.95% this test saw before the double-discount
-/// fix, and that is the expected direction. The discount error ran at
-/// −1.49% here and the approximation gap at +2.47%; they partially cancelled
-/// to +0.98%. The old number was two errors agreeing to disagree, which is
-/// precisely how a 15% band lets a systematic 1.5% bias live indefinitely.
+/// Frozen-correlation HSCM against Heston at one ATM point: the 2.47 % gap is Lemma 3.1's affine
+/// approximation (√v linearised at `m = √(θ_v − σ_v²/(8κ_v))`), asserted within 3 %.
 #[test]
 fn compare_with_standard_heston() {
   use crate::pricing::heston::HestonPricer;
@@ -364,42 +284,8 @@ const TOL: f64 = 1e-12;
 
 const GOLDEN_QUERY: (f64, f64, f64, f64, f64) = (100.0, 105.0, 0.05, 0.02, 0.75);
 
-/// Prices at the paper's parameter set and `(s, k, r, q, tau) = (100, 105,
-/// 0.05, 0.02, 0.75)`.
-///
-/// These goldens have moved twice, both times deliberately.
-///
-/// The first move took a double discount out of `char_func_complex`:
-/// `exp(-r * tau)` was applied both inside the characteristic function and
-/// again by the Carr-Madan transform, so every price was low by exactly
-/// `1 - exp(-r * tau)` — 3.68% here, and identically zero at the source
-/// paper's `r = 0`, which is how it survived.
-///
-/// The second move is the quadrature. `integrate_to_convergence` discarded
-/// the tanh-sinh rule's own error estimate and grew its panels without
-/// bound, so a panel spanning `[150, 350]` was accepted with a reported
-/// error estimate of `6716`. At this query that panel added `0.311` to an
-/// integral of `4310.68`, and the transform's `K^{-alpha}` prefactor turned it
-/// into `2.9e-4` of the call — the `7.2e-5` relative error the three values
-/// below used to carry.
-///
-/// Adjudicated against a reference sharing no code with the crate: an
-/// adaptive Dormand-Prince 5(4) integration of the Riccati system in place
-/// of fixed-step Rk4, and adaptive Gauss-Kronrod in place of tanh-sinh,
-/// applied through *two* inversion formulas — the Carr-Madan transform and
-/// Gil-Pelaez, which share no contour. Both agree with each other to 9e-9
-/// and are stable to a 20% change in the truncation point.
-///
-/// | golden | before | after | reference |
-/// |---|---|---|---|
-/// | `q = 0` call | 4.82802365321209 | 4.82832421223066 | 4.8283242121 |
-/// | `q = 0.02` call | 4.082634367358097 | 4.082339820498465 | 4.0823398213 |
-/// | `K = 110` | 2.365177912984835 | 2.365470328642592 | 2.3654703293 |
-///
-/// The residual against the reference fell from 2.9e-4 to under 1e-8 on all
-/// three. The structural evidence is unchanged and lives in
-/// [`char_func_reproduces_the_forward`]: φ(−i) reproduces `S·e^{(r−q)τ}` to
-/// 1e-15.
+/// Goldens at the paper's parameters and `(100, 105, 0.05, 0.02, 0.75)`, within 1e-8 of a Dormand–Prince
+/// Riccati solve with Gauss–Kronrod through both Carr-Madan and Gil-Pelaez.
 #[test]
 fn hscm_model_pricer_goldens() {
   let m = paper_model();
@@ -427,27 +313,7 @@ fn hscm_model_pricer_goldens() {
   assert!((at_110 - 2.365470328642592).abs() < TOL, "K=110 {at_110}");
 }
 
-/// This model's carry factor really is `e^{-qτ}`, so the trait's vanilla
-/// put-call parity is mathematically right here. The override exists to
-/// keep the `max(0)` floor the pre-query `calculate_call_put` applied to
-/// both legs, which the default does not have.
-///
-/// **The floor no longer has a structural trigger, and that is the fix
-/// working.** This test used to *count* the grid points the floor rescued
-/// and require at least three, on the reasoning that `K = 0.01` supplied
-/// three on its own with unfloored parities of −20.95, −5.98 and −75.37 —
-/// "orders of magnitude above cross-arch noise, so their sign is stable in a
-/// way the marginal cases are not". Those three were the `K^{−α}`
-/// amplification of a quadrature error, not a property of the model, and
-/// they are gone: the deepest unfloored parity anywhere on this grid is now
-/// −9.0e-7 and most are 1e-10 or smaller. Counting them would now be exactly
-/// the flaky sign-of-round-off assertion the old comment warned against, so
-/// the count is replaced by a direct check on the floor itself.
-///
-/// There is no strike where the floor fires for a *model* reason: a European
-/// put is worth a strictly positive amount at every finite strike, so the
-/// exact unfloored parity is never negative. What is left to assert is the
-/// floor's actual contract — no leg is ever negative, and a put whose
+/// The put is the call's parity floored at zero: no leg is ever negative, and a put whose
 /// unfloored parity is non-negative passes through untouched.
 #[test]
 fn hscm_put_is_parity_and_is_floored_at_zero() {
@@ -488,16 +354,8 @@ fn hscm_put_is_parity_and_is_floored_at_zero() {
   assert!(super::pricer::floor_price(f64::NAN).is_nan());
 }
 
-/// A non-finite market input has to survive the Carr-Madan inversion. Every
-/// one of them poisons the characteristic function, and the quadrature used
-/// to swallow that `NaN` and return `0.0` — after which `call.max(0.0)`
-/// could not have recovered it anyway, since `f64::NAN.max(0.0)` is `0.0`.
-/// So both halves are needed: the poison check in the quadrature, and a
-/// floor here that tests for `NaN` before it clamps.
-///
-/// `tau` is not a hypothetical: [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt)
-/// documents `NaN` as its missing-data return, so an option whose expiry
-/// never resolved priced at exactly zero through this pricer.
+/// A non-finite market input, `tau` included (NaN is its missing-data value), prices to NaN: the
+/// quadrature keeps the NaN and the floor tests for it before clamping.
 #[test]
 fn hscm_preserves_nan_market_inputs() {
   let m = paper_model();

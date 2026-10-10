@@ -34,12 +34,8 @@ fn short_dated_matches_converged_reference() {
   }
 }
 
-/// Deep-OTM short-dated calls must be non-negative and ~0, not the negative
-/// (arbitrage-violating) or spuriously-positive values the fixed integration
-/// bound produced. Pre-fix: τ=0.1/K=150 → −0.0347, τ=0.01/K=110 → +0.062.
-/// This exercises `HestonPricer` directly (no `.max(0.0)` clamp), so it pins
-/// the integral itself, not a downstream floor — the root cause behind the
-/// negative model prices in calibration issue #14.
+/// Deep-OTM short-dated calls come out non-negative and near zero from `HestonPricer` itself, with
+/// no downstream `.max(0.0)` floor that could hide a truncated integral.
 #[test]
 fn deep_otm_short_dated_non_negative() {
   for (v0, k, sigma, tau) in [(0.04, 150.0, 0.50, 0.10), (0.04, 110.0, 0.30, 0.01)] {
@@ -134,11 +130,9 @@ fn atm_pricer() -> HestonPricer {
 /// is a *one-sided backward* difference (`price_at(τ)` and
 /// `price_at(τ - h_τ)` only, no `τ + h_τ` term) — an asymmetric (`O(bump)`,
 /// not this crate's `O(bump²)`) truncation error — even though both paths
-/// now agree on the calendar `-∂P/∂τ` sign convention
-/// [`GreeksExt::theta`](crate::traits::GreeksExt::theta)'s own doc mandates
-/// ([`HestonPricer::theta`] and
-/// [`AnalyticHestonEngine::finite_diff_greeks`] used to disagree in sign;
-/// the engine's raw output has since been flipped to match), so no single
+/// agree on the calendar `-∂P/∂τ` sign convention
+/// [`GreeksExt::theta`](crate::traits::GreeksExt::theta)'s own doc mandates,
+/// so no single
 /// engine `bump` makes `direct.theta() == engine_theta` to a tight
 /// tolerance while *also* reflecting the engine's real default:
 /// - `theta_tight` (`bump = 1e-7`) verifies `theta` converges to the
@@ -277,24 +271,8 @@ fn heston_greeks_nan_at_degenerate_inputs() {
   );
 }
 
-/// A *negative* `v0` is invalid input, not a degenerate-but-admissible
-/// state, so the four volatility-space Greeks panic on it rather than
-/// returning the `NaN` that `v0 == 0` earns. Pinned per accessor because each
-/// guards independently; the `expected` anchor is on the parameter name and
-/// value, so an unrelated panic (an index slip, an arithmetic overflow) fails
-/// the test instead of silently satisfying it.
-///
-/// `heston_greeks_nan_at_degenerate_inputs` pins the `v0 == 0` half and is
-/// deliberately unchanged by this split.
-///
-/// The helper builds the struct literally rather than through
-/// [`HestonPricer::new`], which now rejects a negative `v0` at construction:
-/// the fields are `pub`, so the literal is the back door the accessor guard
-/// still has to cover, and routing through it keeps these five tests
-/// exercising the accessor rather than the constructor. The two guards carry
-/// deliberately different messages — neither is a substring of the other —
-/// so the `expected` anchors below cannot be satisfied by the constructor
-/// firing instead. `construction_validation` covers the front door.
+/// Each volatility-space Greek panics on a negative `v0`; the struct is built as a literal to reach
+/// the accessor guard behind [`HestonPricer::new`], whose message differs.
 mod negative_v0_panics {
   use super::*;
 
@@ -354,16 +332,8 @@ mod negative_v0_panics {
   }
 }
 
-/// `HestonPricer::new` validates its model parameters, so one invalid value
-/// gets **one** response instead of two opposite ones chosen by which method
-/// the caller reaches for. Before this, `new(-0.01, …)` built happily and
-/// then `price_call` returned a finite number off a negative variance while
-/// `vega` panicked.
-///
-/// The boundary cases matter as much as the rejections: `v0 == 0` and
-/// `theta == 0` are admissible Heston states, `|rho| == 1` is a degenerate
-/// but real correlation, and the Feller condition `2κθ ≥ σ²` is a warning
-/// condition in this crate — none of them may be rejected here.
+/// `HestonPricer::new` rejects invalid parameters but admits `v0 == 0`, `theta == 0`, `|rho| == 1`
+/// and a violated Feller condition.
 mod construction_validation {
   use super::*;
 
@@ -381,9 +351,7 @@ mod construction_validation {
     let _ = HestonPricer::new(f64::NAN, -0.7, 1.5, 0.04, 0.3, Some(0.0));
   }
 
-  /// `theta` is a variance for the same reason `v0` is, so it earns the same
-  /// check — leaving it out would have replaced the old asymmetry with a new
-  /// one.
+  /// `theta` is a variance, so it is checked like `v0`.
   #[test]
   #[should_panic(expected = "theta must satisfy `theta >= 0.0`, got theta = -0.04")]
   fn new_rejects_negative_theta() {
@@ -465,13 +433,8 @@ fn heston_model_pricer_matches_pre_refactor_goldens() {
 
   let iv = m.implied_volatility(8.0, s, k, r, q, tau, ot);
   assert!((iv - 0.26891374755614555).abs() < TOL, "iv {iv}");
-  // Moved by the `integrate_to_convergence` rewrite, and adjudicated: an
-  // independent reference — the textbook Heston `P_j` integrand under
-  // adaptive Gauss-Kronrod instead of tanh-sinh panels, at this pricer's own
-  // `phi = 1e-5` lower limit — gives `44.210172705014323`. The old golden
-  // missed it by `-5.68e-12`, this one by `-5.33e-13`, so the value moved
-  // 10.6× closer. Nothing else in this test moved; the call, put, implied
-  // vol and all nine Greeks still hold at `1e-12`.
+  // Gauss–Kronrod on the textbook `P_j` integrand, at the same lower limit `phi = 1e-5`, gives
+  // `44.210172705014323`.
   let v0_vega = m.call_put_initial_variance_vega(s, k, r, q, tau).0;
   assert!(
     (v0_vega - 44.21017270501379).abs() < TOL,
@@ -489,34 +452,8 @@ fn heston_model_pricer_matches_pre_refactor_goldens() {
     45.78493484996492,
     2.6285888232280286,
   ];
-  // Eight of the nine Greeks are finite differences of the price, so each
-  // divides a cancellation by its own step and inherits the price's last
-  // bits amplified. The `integrate_to_convergence` rewrite moved the price
-  // by ~1e-14 — two orders below the `TOL` the price itself is still pinned
-  // at, three lines above — and five of them moved with it:
-  //
-  // | component | stencil | amplification | move |
-  // |---|---|---|---|
-  // | `gamma` | 2nd difference in `S` | `1/h² = 1e4` | 2.13e-10 |
-  // | `theta` | central in `τ` | `1/2h = 5e4` | 1.78e-9 |
-  // | `rho` | central in `r` | `1/2h = 5e4` | 7.11e-10 |
-  // | `vanna` | central in `S` of `v0_vega` | `1/2h = 50` | 3.69e-12 |
-  // | `charm` | cross `S × τ` | `1/(4·h_s·h_τ) = 2.5e6` | 1.78e-8 |
-  //
-  // **None of the five values is updated, because none can be shown to have
-  // improved.** Recomputing each stencil on independent adaptive
-  // Gauss-Kronrod prices puts the reference *between* the old and new
-  // values: closer to the old one for `gamma`, `theta` and `rho`, closer to
-  // the new one for `vanna` and `charm`, every gap a few ulp of the stencil.
-  // The reference is no more determinate — its own `gamma` shifts by
-  // 2.13e-10, the whole of the disputed move, when nothing changes but its
-  // quadrature tolerance. So `f64` does not fix these components to `TOL`,
-  // the shared pin was latently over-tight, and what is widened here is the
-  // band, not the values.
-  //
-  // `vega` is the exception and keeps `TOL`: it is not a finite difference
-  // but `2√v0` times the analytic `v0_vega` integral, so it *is* determinate,
-  // and its value is updated above against the reference that adjudicates it.
+  // Finite-difference stencils amplify the price's last bits past `TOL`, and an independent reference
+  // moves as much, so every Greek but the analytic `vega` gets the wider band.
   let got = m.greeks(s, k, r, q, tau, ot).as_array();
   for (i, name) in Greeks::COMPONENT_NAMES.iter().enumerate() {
     let tol = if *name == "vega" { TOL } else { 1e-7 };

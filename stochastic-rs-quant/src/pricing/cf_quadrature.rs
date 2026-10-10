@@ -9,11 +9,10 @@
 //! under-prices them by 15-35% and can even return arbitrage-violating negative
 //! call prices.
 //!
-//! [`integrate_to_convergence`] replaces the fixed bound: it accumulates
-//! tanh-sinh panels, refines each one until the rule's own error estimate is
-//! met, and stops once the integrand's envelope can no longer move the answer,
-//! so the effective upper limit adapts to the actual decay length for any
-//! `(τ, v, moneyness)`.
+//! [`integrate_to_convergence`] accumulates tanh-sinh panels, refines each one
+//! until the rule's own error estimate is met, and stops once the integrand's
+//! envelope can no longer move the answer, so the effective upper limit adapts
+//! to the actual decay length for any `(τ, v, moneyness)`.
 
 use std::cell::Cell;
 
@@ -26,11 +25,8 @@ const INITIAL_WIDTH: f64 = 8.0;
 /// Floor on the panel width, so a pathological integrand cannot drive the walk
 /// to a standstill.
 const MIN_WIDTH: f64 = 1.0 / 64.0;
-/// Ceiling on the panel width. The old walk grew panels geometrically without
-/// one, and a width-800 panel is where this integrator used to fail: the
-/// tanh-sinh rule's point budget is fixed, so a wide panel is not integrated
-/// more coarsely — it is not integrated at all, and the `(b−a)/2` rescaling
-/// then multiplies the noise by 400.
+/// Ceiling on the panel width: the tanh-sinh point budget is fixed, so a wider panel is not
+/// integrated at all and the `(b−a)/2` rescaling amplifies its noise.
 const MAX_WIDTH: f64 = 64.0;
 /// Backstop on the number of panels. The envelope test below terminates long
 /// before this in every in-tree caller.
@@ -63,44 +59,8 @@ where
   (left + right, 1 + dl.max(dr))
 }
 
-/// Integrate `f` over `[a, ∞)` to a relative tolerance `tol`.
-///
-/// Panels of bounded width are summed, each refined by [`refine`] until the
-/// rule's own error estimate is below `tol`, until the remaining tail cannot
-/// move the answer by `tol` relative.
-///
-/// # Why the tail test reads the envelope
-///
-/// The stopping rule tracks `env`, the largest `|f|` at any point the rule
-/// actually evaluated on the panel, and the rate at which `env` is decaying
-/// panel over panel. A tail decaying at rate `λ` contributes at most `env/λ`,
-/// which is the quantity compared against `tol`.
-///
-/// Testing the *signed* panel contribution instead — the previous rule — asks
-/// whether the last panel happened to cancel, not whether the integrand has
-/// gone away. Both are small for an oscillatory integrand, and only one of
-/// them means the walk is finished. Requiring two consecutive small panels did
-/// not close the gap, because the panels were growing geometrically: two
-/// cancelling panels in a row simply meant the next one was 800 wide.
-///
-/// # Returns
-///
-/// [`f64::NAN`] if the integrand is `NaN` anywhere the rule evaluates it. That
-/// check has to live here because the third-party
-/// `double_exponential::integrate` rewrites every non-finite sample to `0.0`
-/// before the rule sees it, which silently turns an undefined integrand into a
-/// well-scaled number: a wholly-`NaN` integrand integrated to exactly `0.0`,
-/// so `GilPelaezPricer` returned `2.438528774964297` and `LewisPricer` the
-/// spot for a characteristic function that had blown up. That is the
-/// plausible-looking sentinel the [failure
-/// convention](crate::traits::ModelPricer#how-pricing-fails) rules out, and
-/// this wrapper is the only place in the path the crate owns.
-///
-/// `±∞` keeps the third-party behaviour deliberately. An overflowing
-/// integrand is a different case from an undefined one, and the crate's own
-/// Lévy loss integrand reaches `∞` transiently on unprojected calibration
-/// iterates, where poisoning the loss would abort a run that currently
-/// recovers.
+/// `∫_a^∞ f` to relative `tol`; it stops when the decay of the evaluated envelope `max |f|` bounds
+/// the tail, and returns NaN if `f` is NaN anywhere (the third-party rule would zero it).
 pub(crate) fn integrate_to_convergence<F>(f: F, a: f64, tol: f64) -> f64
 where
   F: Fn(f64) -> f64,

@@ -194,10 +194,7 @@ mod tests {
     );
   }
 
-  /// Regression: the pricer must thread `q` to `simulate_rbergomi_terminal_samples`.
-  /// Pre-fix the `_q` argument was discarded, so the simulated forward was
-  /// `S_0·e^(r·T)` rather than `S_0·e^((r-q)·T)`. With seeded RNG this gave
-  /// identical prices for q=0 and q>0 — a silent dynamics bug.
+  /// The pricer passes `q` to the simulation, so the forward is `S_0 e^{(r−q)T}`.
   #[test]
   fn rbergomi_pricer_respects_dividend_yield() {
     let params = RBergomiParams {

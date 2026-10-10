@@ -92,7 +92,7 @@ const DEFAULT_LOG_SPOT_HALF_WIDTH: f64 = 3.401_197_381_662_155_4;
 pub struct FokkerPlanckMethod {
   /// Log-spot nodes; made odd so the spot is a node.
   pub log_spot_nodes: usize,
-  /// Variance nodes.
+  /// Nodes of the variance mesh, uniform on `[0, v0]` and stretched above it.
   pub variance_nodes: usize,
   /// Time steps per year; every snapshot maturity is a step boundary.
   pub steps_per_year: usize,

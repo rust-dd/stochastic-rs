@@ -39,12 +39,12 @@ impl<T: RealExt> MultiCurve<T> {
     }
   }
 
-  /// Add a forecast curve for a given tenor.
+  /// Registers `curve` for `tenor`; with duplicates, [`forecast`](Self::forecast) returns the first.
   pub fn add_forecast(&mut self, tenor: impl Into<String>, curve: DiscountCurve<T>) {
     self.forecasts.push((tenor.into(), curve));
   }
 
-  /// Get the forecast curve for a given tenor.
+  /// The first forecast curve registered for `tenor`, if any.
   pub fn forecast(&self, tenor: &str) -> Option<&DiscountCurve<T>> {
     self
       .forecasts

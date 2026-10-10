@@ -157,7 +157,7 @@ pub struct BSMCalibrator {
   pub q: Option<f64>,
   /// Time to maturity in years per quote, aligned with `c_market`.
   pub flat_t: Vec<f64>,
-  /// Option type
+  /// Whether `c_market` holds call or put prices.
   pub option_type: OptionType,
   /// Loss metrics to include in the calibration result.
   pub loss_metrics: &'static [LossMetric],

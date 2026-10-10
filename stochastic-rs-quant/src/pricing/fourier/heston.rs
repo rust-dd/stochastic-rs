@@ -39,24 +39,8 @@ impl FourierModelExt for HestonFourier {
     (c_val + d_val * self.v0 + i * xi * (self.r - self.q) * t).exp()
   }
 
-  /// Reference: Fang, F. & Oosterlee, C.W. (2008), "A Novel Pricing Method
-  /// for European Options Based on Fourier-Cosine Series Expansions", SIAM
-  /// J. Sci. Comput. 31(2), 826-848, Table 11 — cumulants of `ln(S_T/S_0)`
-  /// under Heston.
-  ///
-  /// `c1` is the paper's formula directly. `c2` is *not* transcribed from
-  /// the paper (an earlier version of this method used an incomplete
-  /// formula missing the `v0` terms, understating `c2` by 36-400× for
-  /// common parameters — see `stochastic-rs-quant`'s `CosEngine` doc);
-  /// instead it was derived from first principles by symbolically
-  /// differentiating this struct's own [`FourierModelExt::chf`] — using
-  /// `c2 = -Re[d^2/du^2 ln(chf(t,u))]|_{u=0}`, since `ln(chf)` is exactly
-  /// this model's cumulant generating function — then grouped by powers of
-  /// `e^{-\kappa t}` as `c2 = (n0 + n1 e^{-\kappa t} + n2 e^{-2\kappa t}) /
-  /// (8\kappa^3)`. Verified against central finite-differences of
-  /// `ln(chf)` itself to machine precision for multiple `(\kappa, \theta,
-  /// \sigma, \rho, v_0, t)` draws (including both signs of `\rho`) — see
-  /// `heston_c2_matches_fd_of_log_chf`.
+  /// Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826–848, Table 11 for `c1`; `c2` is
+  /// `−Re ∂²ᵤ ln chf(t, u)` at `u = 0` of this chf, grouped by powers of `e^{−κt}`.
   fn cumulants(&self, t: f64) -> Cumulants {
     let ekt = (-self.kappa * t).exp();
     let c1 = (self.r - self.q) * t + (1.0 - ekt) * (self.theta - self.v0) / (2.0 * self.kappa)
@@ -262,15 +246,7 @@ mod tests {
     ((fp2 - 4.0 * fp1 + 6.0 * f0 - 4.0 * fm1 + fm2) / h.powi(4)).re
   }
 
-  /// The formula this wave's Task 1 flagged as understated (missing `v0`
-  /// terms): `c2 = \sigma^2 t \theta/(2\kappa)` gave `0.0012` at `t=1` for
-  /// these parameters vs. the true `\approx 0.0428` — a 36× error (up to
-  /// 400× at other parameter combinations found during that
-  /// investigation). The replacement is checked against finite-differencing
-  /// `ln(chf)` itself, not against a formula transcribed from a paper from
-  /// memory (see `cumulants`'s doc for the derivation), at both this
-  /// wave's original `\tau=1` diagnostic point and a short-dated `\tau=0.1`
-  /// case.
+  /// `c2` against a central finite difference of `ln chf` at `τ = 1` and at `τ = 0.1`.
   #[test]
   fn heston_c2_matches_fd_of_log_chf() {
     let model = task1_params();
@@ -285,9 +261,7 @@ mod tests {
     }
   }
 
-  /// `c1`'s formula did not change in this fix — checked against the same
-  /// finite-difference criterion as `c2` because the review asked for it,
-  /// not because anything here was found wrong.
+  /// `c1` against the same finite-difference criterion as `c2`.
   #[test]
   fn heston_c1_matches_fd_of_log_chf() {
     let model = task1_params();

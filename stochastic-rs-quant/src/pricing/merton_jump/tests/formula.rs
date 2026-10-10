@@ -13,9 +13,8 @@
 //! which is Merton (1976) eq. (18) and the formula Haug prints in §6.9.1.
 //! In particular `σ_0 = d`, the diffusive volatility.
 //!
-//! Every test below fails loudly against the `√((d² + z²)·n/τ)` this crate
-//! used to compute. All but the last two are self-adjudicating — they need
-//! no reference value at all, only a property the model must have.
+//! All but the last two tests are self-adjudicating: they need no reference value, only a property
+//! the model must have.
 
 use super::*;
 

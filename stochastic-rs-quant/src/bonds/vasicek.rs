@@ -27,7 +27,7 @@ pub struct Vasicek {
   pub theta: f64,
   /// Long-run mean of the short rate (the level `r_t` reverts to).
   pub mu: f64,
-  /// Volatility.
+  /// Absolute (normal) volatility σ of the short rate.
   pub sigma: f64,
 }
 

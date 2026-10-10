@@ -469,7 +469,6 @@ fn is_tokyo_holiday(date: NaiveDate) -> bool {
     return true;
   }
 
-  // Vernal Equinox Day
   let ve = vernal_equinox_day(y);
   if is_observed_jp(date, m, d, 3, ve) {
     return true;
@@ -516,7 +515,6 @@ fn is_tokyo_holiday(date: NaiveDate) -> bool {
     return true;
   }
 
-  // Autumnal Equinox Day
   let ae = autumnal_equinox_day(y);
   if is_observed_jp(date, m, d, 9, ae) {
     return true;

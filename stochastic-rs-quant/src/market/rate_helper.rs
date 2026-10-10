@@ -57,7 +57,7 @@ pub struct DepositRateHelper<T: RealExt> {
   pub rate_quote: Handle<dyn Quote<T>>,
   /// Spot / value date of the deposit.
   pub start_date: NaiveDate,
-  /// Maturity date.
+  /// End of the deposit, where its bootstrapped pillar sits.
   pub maturity_date: NaiveDate,
   /// Day count convention used for the deposit accrual.
   pub day_count: DayCountConvention,
@@ -446,8 +446,7 @@ mod tests {
 
   #[test]
   fn swap_rate_helper_uniform_path_is_legacy_swap() {
-    // Helper constructed via `new()` (no calendar) must produce the legacy
-    // uniform-frequency `BootstrapInstrument::Swap` variant.
+    // Without a calendar, `new()` yields the uniform-frequency `BootstrapInstrument::Swap` variant.
     let val_date = NaiveDate::from_ymd_opt(2025, 1, 1).expect("2025-01-01 valid");
     let mat = months_later(val_date, 24);
     let q = Arc::new(SimpleQuote::<f64>::new(0.04));

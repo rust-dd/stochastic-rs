@@ -105,7 +105,7 @@ impl<T: RealExt> AmortizingFixedRateBond<T> {
     price_deterministic_leg_from_curve(&self.leg, valuation_date, discount_day_count, curves)
   }
 
-  /// Accrued interest at settlement.
+  /// Coupon accrued from the last coupon date to `settlement_date`.
   pub fn accrued_interest(&self, settlement_date: NaiveDate) -> T {
     accrued_interest_for_deterministic_leg(&self.leg, settlement_date)
   }

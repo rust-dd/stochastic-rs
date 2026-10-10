@@ -107,11 +107,8 @@ mod tests {
   const TOL_FOURIER: f64 = 0.15;
   const TOL_TIGHT: f64 = 0.05;
 
-  /// Gil-Pelaez and Lewis both integrated to a fixed `φ_max = 100`, which
-  /// truncates the slowly-decaying tail of the short-dated Heston integrand.
-  /// Pre-fix at τ=0.005/ATM the price was 0.488 vs a converged 0.577, and at
-  /// τ=0.01/K=105 it was 0.0100 vs 0.0030 (over 3× too large). Both must now
-  /// match the converged inversion and agree with each other.
+  /// Short-dated Heston (τ = 0.005 ATM, τ = 0.01 at K = 105), where a fixed `φ_max = 100` truncates
+  /// the tail: Gil-Pelaez and Lewis match the converged inversion and each other.
   #[test]
   fn fourier_pricers_match_converged_short_dated() {
     let model = HestonFourier {
@@ -163,12 +160,8 @@ mod tests {
     );
   }
 
-  /// Regression: out-of-grid strikes must NOT silently return `0.0`. The
-  /// rc.0 behavior was a hard `0.0` fallback whenever `ln(k)` fell outside
-  /// `[log_strikes.first(), log_strikes.last()]` — that produced silent-zero
-  /// residuals at the wings of any calibration that stretched past the FFT
-  /// grid. rc.1 returns `f64::NAN` instead, so calibration objectives are
-  /// poisoned (forcing the user to detect / fix) rather than silently fitting.
+  /// An out-of-grid strike prices to NaN, not `0.0`, so a calibration past the FFT grid cannot fit
+  /// a silent zero.
   #[test]
   fn carr_madan_out_of_grid_returns_nan_not_zero() {
     let model = BSMFourier {
@@ -397,14 +390,8 @@ mod tests {
     );
   }
 
-  /// Lord-Kahl §3.2 regression: a long-maturity / high-|ρ| / high-skew Heston
-  /// must produce a finite, positive, accurate ATM price under the
-  /// `cumulant_sized` constructor (the meaningful audit fix). The reference
-  /// is the Gil-Pelaez quadrature pricer (independent of the FFT grid). We
-  /// use a moderately tight tolerance — both Carr-Madan variants converge
-  /// to the same analytic price, the audit's concern was that the legacy
-  /// fixed-η grid silently truncates the wings on skewed / long-dated
-  /// distributions.
+  /// Lord–Kahl §3.2: `cumulant_sized` prices a long-maturity, high-|ρ| Heston ATM call finite, positive
+  /// and close to Gil-Pelaez, where a fixed-η grid truncates the skewed wings.
   #[test]
   fn carr_madan_cumulant_sized_finite_positive_long_maturity_skew() {
     let model = HestonFourier {

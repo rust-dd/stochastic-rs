@@ -47,15 +47,15 @@ pub struct BarrierPricer {
   pub r: f64,
   /// Dividend yield.
   pub q: f64,
-  /// Volatility.
+  /// Annualised Black–Scholes volatility.
   pub sigma: f64,
   /// Time to maturity in years.
   pub tau: f64,
   /// Rebate paid when barrier is hit.
   pub rebate: f64,
-  /// Barrier type.
+  /// Up or down, knock-in or knock-out.
   pub barrier_type: BarrierType,
-  /// Option type.
+  /// Call or put payoff.
   pub option_type: OptionType,
 }
 
@@ -197,11 +197,11 @@ pub struct DoubleBarrierPricer {
   pub r: f64,
   /// Dividend yield.
   pub q: f64,
-  /// Volatility.
+  /// Annualised Black–Scholes volatility.
   pub sigma: f64,
   /// Time to maturity in years.
   pub tau: f64,
-  /// Option type.
+  /// Call or put payoff.
   pub option_type: OptionType,
 }
 

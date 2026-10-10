@@ -110,10 +110,6 @@ impl LeastSquaresProblem for SsviLmProblem {
   /// Closed-form Jacobian of the SSVI total-variance residual w.r.t. the global
   /// parameters $(\rho, \eta, \gamma)$.
   ///
-  /// Replaces the rc.0/rc.1 1-sided forward-difference Jacobian (`h = 1e-7`,
-  /// O(h) error + 3 extra `total_variance` evaluations per data point) with
-  /// the analytic derivative — O(eps) error, no extra evals.
-  ///
   /// Let $\phi(\theta) = \eta \theta^{-\gamma}$ and
   /// $r = \sqrt{(\phi k + \rho)^2 + 1 - \rho^2}$. Then:
   ///

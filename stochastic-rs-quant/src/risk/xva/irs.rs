@@ -26,11 +26,11 @@ fn zero_drift(_t: f64) -> f64 {
 /// Payer swap exposure under a Hull–White short rate calibrated to `curve`.
 #[derive(Clone, Debug)]
 pub struct HullWhiteSwapExposure {
-  /// Mean reversion `a`.
+  /// Hull–White mean-reversion speed `a`.
   pub mean_reversion: f64,
   /// Short-rate volatility `σ`.
   pub sigma: f64,
-  /// Notional.
+  /// Notional of the payer swap.
   pub notional: f64,
   /// Fixed rate `K`.
   pub fixed_rate: f64,

@@ -51,7 +51,7 @@ pub struct HestonPricer {
   /// Long-run variance level (θ) — a variance, not a volatility, for the
   /// same reason as `v0`.
   pub theta: f64,
-  /// Volatility of volatility
+  /// Volatility of variance σ in `dv = κ(θ − v)dt + σ√v dW`.
   pub sigma: f64,
   /// Market price of volatility risk
   pub lambda: Option<f64>,

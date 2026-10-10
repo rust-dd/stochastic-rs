@@ -50,7 +50,8 @@ impl<T: RealExt> FMVol<T> {
     Ok(self.period * self.period * sum.re / big_n_plus_1)
   }
 
-  /// Integrated leverage.
+  /// Integrated leverage `⟨x, σ²⟩_T` with an `M`-frequency Fejér window (`None` picks the default
+  /// `M`); panics on an invalid window, unlike [`Self::try_integrated_leverage`].
   pub fn integrated_leverage(&self, m_freq: Option<usize>) -> T {
     self
       .try_integrated_leverage(m_freq)
@@ -134,7 +135,8 @@ impl<T: RealExt> FMVol<T> {
     Ok(self.period * coefficient.re)
   }
 
-  /// Integrated quarticity.
+  /// Integrated quarticity `∫ σ⁴ dt` from the `M`-frequency volatility coefficients; panics on an
+  /// invalid window, unlike [`Self::try_integrated_quarticity`].
   pub fn integrated_quarticity(&self, m_freq: Option<usize>) -> T {
     self
       .try_integrated_quarticity(m_freq)

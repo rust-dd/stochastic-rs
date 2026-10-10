@@ -10,7 +10,7 @@ use crate::traits::RealExt;
 pub struct ZeroCouponBond<T: RealExt> {
   /// Face amount paid at maturity.
   pub face_value: T,
-  /// Maturity date.
+  /// Date `face_value` is paid and the discount factor is read.
   pub maturity_date: NaiveDate,
 }
 

@@ -375,9 +375,7 @@ fn smile_slice_svi_fit() {
   }
 }
 
-/// A surface whose every implied vol failed to invert has no grid left to
-/// check, and both arbitrage checks pass vacuously over the empty grid. The
-/// `bool` this method used to return could not say so; `None` can.
+/// A surface whose every implied vol failed to invert has no grid to check, so the answer is `None`.
 #[test]
 fn all_nan_surface_reports_nothing_checkable() {
   // An undiscounted call worth 1e6 against a forward of 100 is outside the

@@ -71,16 +71,8 @@ pub fn single_period_kyle<T: RealExt>(prior_variance: T, noise_variance: T) -> K
   }
 }
 
-/// Multi-period Kyle equilibrium with `n_periods` rounds and i.i.d.
-/// per-period noise variance `noise_variance_per_round`.
-///
-/// Returns the per-round equilibrium $(\beta_n, \lambda_n, \Sigma_n,
-/// \mathbb E[\pi_n])$ in chronological order, found by the Cetin-Larsen 2023
-/// Theorem 2.1 backward recursion described in the module-level docs.
-///
-/// At `n_periods = 1` this matches [`single_period_kyle`] exactly (catches
-/// the previous broken `α_{n-1} = (1-√α_n)/2` shortcut which produced
-/// $\beta\lambda = 0.25$ instead of the correct Kyle product $0.5$).
+/// Per-round $(\beta_n, \lambda_n, \Sigma_n, \mathbb E[\pi_n])$, in order, of the `n_periods`-round Kyle
+/// equilibrium by Cetin–Larsen (2023), Thm 2.1; one round reproduces [`single_period_kyle`].
 pub fn multi_period_kyle<T: RealExt>(
   prior_variance: T,
   noise_variance_per_round: T,
@@ -219,10 +211,7 @@ mod tests {
     }
   }
 
-  /// Decisive analytic-benchmark test: the multi-period recursion at N=1 must
-  /// reproduce the single-period closed form exactly. The previous buggy
-  /// `(1 - √α_n)/2` recursion gave `λ = 1.0, β = 0.25` at N=1 instead of the
-  /// canonical `λ = 0.5, β = 1.0` (off by factor of 2 in λ and 4 in β).
+  /// One round of the multi-period recursion reproduces the single-period `λ = 0.5`, `β = 1.0`.
   #[test]
   fn multi_period_one_round_matches_single_period() {
     let prior = 0.04_f64;

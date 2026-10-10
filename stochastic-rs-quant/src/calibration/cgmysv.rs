@@ -28,7 +28,7 @@ use crate::pricing::cgmysv::CgmysvModel;
 use crate::pricing::cgmysv::CgmysvParams;
 use crate::pricing::fourier::LewisPricer;
 
-/// CGMYSV calibration result.
+/// Calibrated CGMYSV parameters with the fit's loss scores and optimizer status.
 #[derive(Clone, Debug)]
 pub struct CgmysvCalibrationResult {
   pub params: CgmysvParams,

@@ -393,7 +393,7 @@ impl ImpliedVolSurface {
 pub struct SmileSlice {
   /// Log-forward moneyness $k = \ln(K/F)$
   pub log_moneyness: Vec<f64>,
-  /// Implied volatilities
+  /// Black implied volatility at each `log_moneyness` point.
   pub implied_vols: Vec<f64>,
   /// Total implied variance $w = \sigma^2 T$
   pub total_variance: Vec<f64>,
@@ -424,17 +424,8 @@ impl SmileSlice {
     }
   }
 
-  /// Interpolate ATM total variance ($k = 0$) from the data.
-  ///
-  /// When the smile straddles $k = 0$, returns a linear interpolation between
-  /// the two adjacent grid points.
-  ///
-  /// When the smile is **one-sided** (all strikes ITM or all strikes OTM),
-  /// extrapolates linearly from the two innermost data points (closest to zero)
-  /// rather than returning a non-ATM endpoint as ATM. The previous behaviour
-  /// (returning `total_variance[0]` or `total_variance[n-1]`) silently biased
-  /// downstream global fits (e.g. SSVI's $\theta_t$ estimate) — see audit
-  /// §1.2.8.
+  /// ATM total variance (`k = 0`): interpolated between the adjacent points, or extrapolated from the
+  /// two innermost ones for a one-sided smile, since an endpoint would bias SSVI's $\theta_t$.
   fn atm_total_variance(&self) -> f64 {
     let n = self.log_moneyness.len();
     if n == 0 {

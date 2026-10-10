@@ -59,8 +59,7 @@
 //!   parity optimisers, momentum / cross-sectional ranking pipelines.
 //! - [`factors`] — PCA, Ledoit-Wolf shrinkage covariance, Fama-MacBeth,
 //!   cointegrated pairs trading.
-//! - [`strategies`] — strategy primitives (currently `DeltaHedge`); a richer
-//!   `Strategy` trait + back-test engine tracked for 2.x.
+//! - [`strategies`] — strategy primitives (`DeltaHedge`).
 //!
 //! ### Microstructure
 //! - [`microstructure`] — Almgren-Chriss optimal execution, Kyle's λ,
@@ -159,8 +158,7 @@ pub mod market;
 /// covariance estimators. Standalone domain alongside the pricing pipeline.
 pub mod portfolio;
 
-/// Strategy primitives (currently `DeltaHedge`); a richer `Strategy` trait
-/// and back-test engine are tracked for the 2.x patch series.
+/// Strategy primitives (`DeltaHedge`).
 pub mod strategies;
 
 /// Portfolio-analytics utilities (PCA, Fama-MacBeth, shrinkage covariance,

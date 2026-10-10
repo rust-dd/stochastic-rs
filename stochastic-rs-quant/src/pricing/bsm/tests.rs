@@ -6,13 +6,8 @@ use crate::traits::ModelPricer;
 const Q: (f64, f64, f64, f64, f64) = (100.0, 105.0, 0.05, 0.02, 0.75);
 /// Volatility every golden below is pinned at.
 const V: f64 = 0.25;
-/// Tolerance the pre-refactor goldens are held to. Absolute, matching
-/// `merton_price_m10_matches_pre_refactor_value`'s precedent: the values
-/// were captured on aarch64-darwin and CI runs x86_64-linux, and every one
-/// of them routes through `norm_cdf`, so bit-exactness would be a hostage
-/// to FMA contraction and libm differences rather than a real invariant.
-/// Three orders tighter than any refactor error this test is meant to
-/// catch.
+/// Absolute tolerance on goldens captured on aarch64-darwin: CI runs x86_64-linux, where FMA and libm
+/// differences inside `norm_cdf` rule out bit-exactness.
 const TOL: f64 = 1e-12;
 
 #[test]
@@ -25,15 +20,8 @@ fn bsm_price() {
   assert_eq!(put, model.price_put(s, k, r, q, tau));
 }
 
-/// Every `BSMCoc` variant priced through [`ModelPricer`] must reproduce the
-/// price the pre-query `BSMPricer` produced at the same market data.
-///
-/// Values captured from the pre-refactor `calculate_call_put()` before any
-/// change was made — the same technique
-/// `merton_price_m10_matches_pre_refactor_value` uses — not recomputed from
-/// the new code. `(r, q)` stands in for `(r_d, r_f)` under
-/// `GarmanKohlhagen1983`, which is what makes that variant's golden equal
-/// `Merton1973`'s; the pre-refactor pricer was fed `r_d = r`, `r_f = q`.
+/// Every `BSMCoc` variant reproduces its golden through [`ModelPricer`]; `(r, q)` stands in for
+/// `(r_d, r_f)` under `GarmanKohlhagen1983`, which is why its golden equals `Merton1973`'s.
 #[test]
 fn bsm_model_pricer_matches_pre_refactor_goldens() {
   let (s, k, r, q, tau) = Q;
@@ -298,9 +286,7 @@ fn bsm_iv_round_trip_with_dividend_yield() {
   );
 }
 
-/// Two day-count conventions over the same leap-year span give different
-/// `tau`, and therefore different prices — the divergence the pricer used
-/// to expose through its own `dcc` field, now the caller's to make.
+/// Two day-count conventions over one leap-year span give different `tau`, so different prices.
 #[test]
 fn bsm_dcc_pricing_diverges_from_default() {
   use chrono::NaiveDate;
@@ -375,9 +361,7 @@ fn bsm_greeks_aggregate_matches_accessors() {
       m.dvega_dtime(s, k, r, q, tau),
       "veta is dvega_dtime"
     );
-    // volga and veta are the two renamed members: assert they are not each
-    // other, so a swapped pair cannot pass the equalities above by accident
-    // if the two ever coincide numerically at some other query point.
+    // volga ≠ veta here, so a swapped pair cannot pass the equalities above by accident.
     assert_ne!(
       g.volga, g.veta,
       "volga and veta must not be interchangeable"

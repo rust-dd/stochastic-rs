@@ -27,8 +27,8 @@ pub struct BondAnalytics<T: RealExt> {
   pub yield_to_maturity: T,
   /// Macaulay duration in years.
   pub macaulay_duration: T,
-  /// Modified duration.
+  /// Price sensitivity `−(1/P) ∂P/∂y` under the supplied compounding.
   pub modified_duration: T,
-  /// Convexity.
+  /// `(1/P) ∂²P/∂y²` under the supplied compounding.
   pub convexity: T,
 }

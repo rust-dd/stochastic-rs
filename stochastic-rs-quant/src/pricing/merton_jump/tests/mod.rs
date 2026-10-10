@@ -11,19 +11,8 @@ mod option_type;
 mod poison;
 mod volatility;
 
-/// `m` (Poisson-series term count) is capped at 20 in these tests:
-/// the pre-refactor term loop computed `n!` as a `usize` product, which
-/// overflows past `n = 20` — a pre-existing limitation of the price series
-/// itself, unrelated to convergence (at `λτ ≤ 0.25` the series is
-/// converged to double precision well before `n = 20`).
-///
-/// `k = 105` is no longer *forced* to be off the money. It was, while the
-/// `n = 0` term priced at zero volatility: that made the term a
-/// deterministic payoff of `S` with a kink exactly at the forward, which
-/// `bumped_price`'s finite difference would have straddled at `K = S`.
-/// `σ_0 = d > 0` removes the kink, so every strike is now a smooth region;
-/// the value is kept so the goldens below stay comparable across that
-/// change.
+/// The goldens below are pinned at this spot with `K = 105` and `m ≤ 20`; at `λτ ≤ 0.25` the series
+/// has converged to double precision well before 20 terms.
 const S: f64 = 100.0;
 const K: f64 = 105.0;
 const R: f64 = 0.05;
@@ -155,12 +144,8 @@ fn merton_greeks_all_finite() {
   );
 }
 
-/// All 9 Greeks stay finite at `m = 50` — the crate's Python binding's
-/// documented default, and well past the pre-refactor `usize`-factorial
-/// overflow threshold (`m ≈ 21`; `(1..=21).product::<usize>()` panics in
-/// debug builds, silently wraps in release). Every Greek routes through
-/// [`Merton1976Pricer::series_price`], which has no such ceiling — this
-/// test is the direct regression check for that.
+/// All nine Greeks stay finite at `m = 50`, the Python binding's default and past the ≈ 21 terms an
+/// integer `n!` would survive.
 #[test]
 fn merton_greeks_finite_at_m50() {
   let m = merton(0.5, 0.3, 50);
@@ -168,11 +153,7 @@ fn merton_greeks_finite_at_m50() {
   for (name, v) in Greeks::COMPONENT_NAMES.iter().zip(g.as_array()) {
     assert!(v.is_finite(), "{name} is not finite at m=50: {v}");
   }
-  // `call_put` itself (not just the Greeks path) must also survive m=50
-  // now that it is routed through `poisson_weight` instead of an integer
-  // `n!` — regression check for the overflow this refactor fixed
-  // (`(1..=i).product::<usize>()` panics in debug / wraps in release past
-  // `i ≈ 21`).
+  // `call_put` must survive `m = 50` as well.
   let (call, put) = m.call_put(S, K, R, Q, TAU);
   assert!(call.is_finite(), "call not finite at m=50: {call}");
   assert!(put.is_finite(), "put not finite at m=50: {put}");
@@ -234,23 +215,8 @@ fn merton_greeks_theta_charm_veta_nan_near_expiry() {
   );
 }
 
-/// Under [`BSMCoc::GarmanKohlhagen1983`] a caller wanting to carry at
-/// `r_d - r_f` while discounting at a *separate* rate `r` passes the query
-/// `(r, r - r_d + r_f)`. That is an identity, not an approximation: GK's
-/// `b(r, q) = r - q`, so solving `r - q = r_d - r_f` for `q` gives exactly
-/// that, and it collapses to `r_f` in the ordinary case `r == r_d`.
-///
-/// Before this task the mapping lived inside the pricer as
-/// `Merton1976Pricer::query_rates`, reading `self.r`, `self.r_d` and
-/// `self.r_f`; those three fields are query data, so they moved out with
-/// the rest of the query and the caller now supplies the pair. The
-/// *property* is unchanged and is still pinned here — at `r != r_d`, the
-/// only configuration where carry and discount come apart — against a
-/// **hand-written** closed form rather than against anything routed through
-/// the pricer, so it cannot go stale with the mapping.
-///
-/// Task 5a shipped a silent regression on exactly this property (it
-/// discounted at `r_d` instead of `r`) and it was caught by this test.
+/// Under [`BSMCoc::GarmanKohlhagen1983`] the query `(r, r − r_d + r_f)` carries at `r_d − r_f` and
+/// discounts at `r`, checked at `r ≠ r_d` against a hand-written closed form.
 #[test]
 fn merton_gk_carries_at_rd_minus_rf_and_discounts_at_r() {
   use stochastic_rs_distributions::special::norm_cdf;
@@ -287,21 +253,8 @@ fn merton_gk_carries_at_rd_minus_rf_and_discounts_at_r() {
 /// Cross-arch tolerance: the goldens route through `norm_cdf`.
 const TOL: f64 = 1e-12;
 
-/// The reference price and Greeks at
-/// `(s, k, r, q, tau) = (100, 105, 0.05, 0, 0.5)` and
-/// `(v, lambda, gamma, m, coc) = (0.2, 0.5, 0.4, 10, Bsm1973)`.
-///
-/// Every value here moved when `σ_n` was corrected from
-/// `√((d² + z²)·n/τ)` to `√(d² + z²·n/τ)`; each is adjudicated against a
-/// reference sharing no code with the pricer. The call was `1.963018` and
-/// is now `4.276118`, the value Gil-Pelaez inversion of the Merton
-/// characteristic function gives, inside the `4.2717 ± 0.0061` of an
-/// 8M-path Monte Carlo — the old value sat **760 standard errors** below
-/// that interval.
-///
-/// The volatility Greeks use independent 60-digit mpmath derivatives of
-/// the ten-term Poisson price with an erfc-based normal CDF. Veta permits
-/// the truncation error of its centred maturity difference.
+/// Price and Greeks at `(100, 105, 0.05, 0, 0.5)`, `(v, λ, γ, m) = (0.2, 0.5, 0.4, 10)`: the call is the
+/// Gil-Pelaez value `4.276118`, the vol Greeks 60-digit mpmath derivatives.
 #[test]
 fn merton_pins_the_reference_price_and_greeks() {
   let m = merton(0.5, 0.4, 10);

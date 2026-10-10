@@ -112,11 +112,7 @@ pub(super) fn portfolio_vol_from_returns(
   pvar.sqrt() * periods_per_year.sqrt()
 }
 
-/// Matrix inversion via faer's LU with partial pivoting. Faster and
-/// more numerically stable than the previous hand-rolled Gauss-Jordan
-/// path on the typical 50-100×100 covariance matrices that
-/// Black-Litterman / mean-variance encounter. Returns `None` for
-/// singular / near-singular inputs (matches the previous semantics).
+/// Inverse by faer's partially pivoted LU; `None` for a singular or near-singular matrix.
 pub(super) fn mat_inverse(mat: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
   let n = mat.len();
   if n == 0 {

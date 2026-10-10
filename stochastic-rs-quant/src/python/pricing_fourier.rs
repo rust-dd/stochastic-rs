@@ -218,11 +218,8 @@ impl PyCarrMadanPricer {
     })
   }
 
-  /// Price a Heston call.
-  ///
-  /// **Out-of-grid strikes return `nan`** (changed from `0.0` in v2.0.0-rc.1).
-  /// Detect via `math.isnan()` and either widen the FFT grid (larger `n`) or
-  /// pre-check the strike with `strike_in_grid_heston(...)`.
+  /// Heston call price; `nan` for a strike outside the FFT grid (widen it with a larger `n`, or test
+  /// the strike with `strike_in_grid_heston`).
   fn price_heston_call(&self, model: &PyHestonFourier, s: f64, k: f64, r: f64, tau: f64) -> f64 {
     self.inner.price_call(&model.inner, s, k, r, tau)
   }

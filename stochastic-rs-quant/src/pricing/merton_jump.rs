@@ -119,14 +119,8 @@ impl Merton1976Pricer {
     }
   }
 
-  /// Poisson-weighted series $\sum_{n=0}^{m-1} w_n \cdot V_{BS}(\sigma_n)$,
-  /// routed through `poisson_weight`'s
-  /// running-product weight rather than an integer `n!` — the latter
-  /// overflows `usize` past `n \approx 21` (the crate's Python binding
-  /// documents a default of `m = 50`), silently producing garbage instead
-  /// of a price. Numerically identical to the pre-refactor factorial-based
-  /// loop for `m \le 20` (see
-  /// `merton_price_m10_matches_the_reference_value` for the regression pin).
+  /// Poisson-weighted series $\sum_{n=0}^{m-1} w_n \cdot V_{BS}(\sigma_n)$ with running-product weights,
+  /// so `m` may exceed the ≈ 21 terms an integer `n!` survives.
   pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
     let mut call = 0.0;
     let mut put = 0.0;
@@ -141,27 +135,8 @@ impl Merton1976Pricer {
     (call, put)
   }
 
-  /// Jump-size standard deviation implied by decomposing total volatility
-  /// `v` into a diffusive part and a jump part that together explain a
-  /// `gamma` fraction of the variance.
-  ///
-  /// `lambda == 0` is the no-jump state, and a jump that never happens has
-  /// no size: `z = 0`, so the whole variance is diffusive and the series
-  /// collapses to Black-Scholes at `v`. The closed form cannot say that on
-  /// its own — `v²γ/λ` is `∞` at `γ > 0` and `NaN` at `γ = 0`, and either
-  /// way [`diffusive_std`](Self::diffusive_std)'s `λ·z²` becomes `0·∞`, so
-  /// **every** price at `lambda == 0` used to be `NaN` while the Greeks
-  /// returned the Black-Scholes value. Only `λz²`, the jump *variance
-  /// rate*, ever enters the model, and that is `0` here whatever `z` would
-  /// have been.
-  ///
-  /// This is a value at a point, not a limit. Holding `gamma` fixed while
-  /// `λ → 0⁺` keeps a `γ` share of the variance in ever-rarer, ever-larger
-  /// jumps (`z² = γv²/λ → ∞`), so the price tends to Black-Scholes at
-  /// `v√(1-γ)` — the diffusive part alone — and not to the value here. The
-  /// two agree exactly when `gamma == 0`, where there is no jump variance
-  /// to lose. `the_lambda_zero_limit_is_discontinuous_in_gamma` pins both
-  /// halves.
+  /// Jump-size std `z` from giving a `gamma` share of the variance `v²` to jumps; `0` at `lambda == 0`,
+  /// the value at that point rather than the `λ → 0⁺` limit (Black-Scholes at `v√(1 − γ)`).
   fn jump_size_std(&self) -> f64 {
     if self.lambda == 0.0 {
       return 0.0;

@@ -66,7 +66,8 @@ pub fn gaussian_es<T: RealExt>(samples: ArrayView1<T>, confidence: T, orientatio
   mean + sigma * factor
 }
 
-/// Historical ES — Rockafellar-Uryasev (2002) coherent estimator.
+/// Historical ES with the Rockafellar–Uryasev tail-share correction, which keeps it coherent when
+/// the VaR quantile falls inside a cluster of tied losses:
 ///
 /// $$
 /// \mathrm{ES}_\alpha = \frac{1}{n(1-\alpha)}
@@ -74,17 +75,7 @@ pub fn gaussian_es<T: RealExt>(samples: ArrayView1<T>, confidence: T, orientatio
 ///        + (n(1-\alpha) - \#\{i: L_i > \mathrm{VaR}_\alpha\})\,\mathrm{VaR}_\alpha\Big].
 /// $$
 ///
-/// The term `(n(1-α) - #{strict tail})` is the **finite-sample
-/// tail-share correction** introduced by Rockafellar-Uryasev: when the
-/// (1-α) quantile lands inside a tied cluster of samples, this fractional
-/// weight on `VaR` accounts for the partial slice of the cluster that
-/// belongs to the tail. Without the correction (the previous "average of
-/// losses ≥ VaR" formula), ties bias the estimator and the result is no
-/// longer coherent (Artzner et al. 1999).
-///
-/// Reference: Rockafellar, R. T. & Uryasev, S. (2002), "Conditional
-/// Value-at-Risk for General Loss Distributions", *J. Banking & Finance*
-/// 26(7), 1443-1471, eq. (17).
+/// Rockafellar & Uryasev (2002), J. Banking & Finance 26(7), 1443–1471, eq. (17).
 pub fn historical_es<T: RealExt>(
   samples: ArrayView1<T>,
   confidence: T,
@@ -150,12 +141,8 @@ mod tests {
 
   use super::*;
 
-  /// RU correction: with n=10 samples and α=0.85 (target tail size 1.5),
-  /// the historical ES averages the worst 1.5 samples — i.e. the worst
-  /// observation fully + half of the second-worst. Without the
-  /// correction, the previous code used to return either the single
-  /// worst loss (when VaR strictly < worst) or the simple mean of the
-  /// two worst observations.
+  /// With `n = 10` and `α = 0.85` the tail holds 1.5 samples: the worst loss and half of the
+  /// second-worst.
   #[test]
   fn historical_es_ru_finite_sample_correction() {
     // Distinct sorted losses; PnlOrLoss::Loss means samples are losses

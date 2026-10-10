@@ -125,9 +125,7 @@ pub struct ScheduleBuilder {
   convention: BusinessDayConvention,
   rule: DateGenerationRule,
   end_of_month: bool,
-  /// Explicit stub convention. When `None`, defaults to `ShortFirst` for
-  /// backward generation and `ShortLast` for forward generation (the
-  /// implicit pre-rc.2 behaviour).
+  /// Stub convention; `None` means `ShortFirst` for backward and `ShortLast` for forward generation.
   stub: Option<StubConvention>,
   /// Snap every generated date to the nearest IMM date (3rd Wednesday of
   /// the same calendar quarter), per CME / LIFFE futures convention.
@@ -210,7 +208,7 @@ impl ScheduleBuilder {
     self
   }
 
-  /// Build the schedule.
+  /// Unadjusted and calendar-adjusted dates by `rule`, with IMM snapping and long-stub merging.
   pub fn build(self) -> Schedule {
     let period = self.frequency.months();
     let mut raw_dates = match self.rule {

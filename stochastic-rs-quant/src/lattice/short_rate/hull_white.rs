@@ -15,7 +15,7 @@ pub struct HullWhiteTreeModel<T: RealExt> {
   pub mean_reversion: T,
   /// Long-run level in the short-rate SDE.
   pub theta: T,
-  /// Volatility.
+  /// Absolute (normal) volatility σ of the short rate.
   pub sigma: T,
 }
 

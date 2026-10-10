@@ -147,35 +147,8 @@ pub struct StulzRainbowPricer {
 }
 
 impl StulzRainbowPricer {
-  /// Validating constructor.
-  ///
-  /// # Panics
-  /// - if `sigma1` or `sigma2` is negative or `NaN` — not a volatility
-  /// - if `rho` is outside `[-1, 1]` or `NaN` — not a correlation
-  ///
-  /// The volatilities are the ones that return a wrong *number*: at
-  /// `sigma2 = -0.30` a `CallOnMax` prices at **-11.38**, a negative call
-  /// — case 1 of the crate's [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails) — while the
-  /// `CallOnMin` leg of the same model comes back a plausible `14.20`
-  /// against the correct `6.57`.
-  ///
-  /// The correlation is guarded for a different reason, and it is worth
-  /// keeping: an out-of-range `rho` does *not* return a number here, it
-  /// trips an assertion inside the third-party `owens_t::biv_norm`, whose
-  /// message is the bare offending float (`13000000.000000002`) and names
-  /// neither the parameter, the pricer, nor the crate. The same `rho`
-  /// reaches [`MargrabePricer`](crate::pricing::spread::MargrabePricer)
-  /// through [`price`](Self::price)'s `PutOnMin`/`PutOnMax` legs, where it
-  /// *is* a silent wrong number, so leaving it unchecked here would leave
-  /// one payoff of four announcing a bad correlation and three not.
-  ///
-  /// Admissible and still accepted: perfect correlation either way, and a
-  /// zero-volatility leg.
-  ///
-  /// No longer `const fn`. What made that safe was measured rather than
-  /// assumed: **zero** `const` or `static` items of this type exist in the
-  /// workspace, against 25 `StulzRainbowPricer::new` call sites.
+  /// Panics unless `sigma1, sigma2 ≥ 0` and `rho ∈ [-1, 1]`: a negative vol prices negative calls, and a
+  /// bad `rho` would trip an anonymous assert in `owens_t::biv_norm` or skew the Margrabe legs.
   pub fn new(payoff: RainbowPayoff, sigma1: f64, sigma2: f64, rho: f64) -> Self {
     assert!(
       sigma1 >= 0.0,
@@ -294,7 +267,7 @@ impl StulzRainbowPricer {
 pub struct McRainbowPricer {
   /// Payoff type — a term of the contract, not a market quote.
   pub payoff: RainbowPayoff,
-  /// Volatilities.
+  /// Annualised Black–Scholes volatility of each asset.
   pub sigma: Array1<f64>,
   /// Correlation matrix.
   pub rho: Array2<f64>,

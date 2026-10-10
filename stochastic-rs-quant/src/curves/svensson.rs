@@ -60,7 +60,7 @@ impl<T: RealExt> Svensson<T> {
     (T::one() - (-x).exp()) / x - (-x).exp()
   }
 
-  /// Compute the zero rate at maturity `tau`.
+  /// Zero rate `y(τ)` of the formula in the module doc.
   pub fn zero_rate(&self, tau: T) -> T {
     self.beta0
       + self.beta1 * self.slope_loading(tau, self.lambda1)

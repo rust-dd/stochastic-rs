@@ -5,7 +5,7 @@ use std::fmt::Display;
 
 use crate::loss;
 
-/// Option type.
+/// Call or put.
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum OptionType {
   #[default]
@@ -13,7 +13,7 @@ pub enum OptionType {
   Put,
 }
 
-/// Option style.
+/// European or American exercise.
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum OptionStyle {
   American,
@@ -21,7 +21,7 @@ pub enum OptionStyle {
   European,
 }
 
-/// Moneyness.
+/// Moneyness bucket, from deep in the money to deep out of the money.
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Moneyness {
   #[default]
