@@ -186,8 +186,8 @@ does this for you.
 
 ## 8. Reference benches
 
-`benches/` holds 33 `.rs` files plus one `distributions/` **directory**,
-matched one-to-one by 34 `[[bench]]` entries. Check whether your target
+`benches/` holds 34 `.rs` files plus one `distributions/` **directory**,
+matched one-to-one by 35 `[[bench]]` entries. Check whether your target
 is a file or a directory before editing.
 
 - `benches/distributions/` — sweep over distribution × sample-count.

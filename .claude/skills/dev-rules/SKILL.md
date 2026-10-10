@@ -99,8 +99,8 @@ When adding a new dependency, always use the latest version available on crates.
 A comment or doc block (`//`, `///`, `//!`) is at most two lines, anywhere: library
 code, public API, tests, benches and examples. Write one only for what the code cannot
 say: a non-obvious constraint, a reason, a unit or a convention. A literature citation
-may take one line of its own. Doc-test code does not count. Longer explanations belong
-in the PR body.
+may take one more line of its own, in addition to those two. Doc-test code does not count.
+Longer explanations belong in the PR body.
 
 Never:
 
