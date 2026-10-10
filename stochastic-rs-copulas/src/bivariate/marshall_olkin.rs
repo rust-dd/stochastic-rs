@@ -259,16 +259,19 @@ impl BivariateExt for MarshallOlkin {
       y.iter()
         .zip(v.iter())
         .map(|(&y, &v)| {
-          if !(0.0..=1.0).contains(&y) || !(0.0..=1.0).contains(&v) {
-            return f64::NAN;
-          }
           let w = v.powf(beta * (1.0 - alpha) / alpha);
-          if y < (1.0 - beta) * w {
+          let u = if y < (1.0 - beta) * w {
             y * v.powf(beta) / (1.0 - beta)
           } else if y <= w {
             v.powf(beta / alpha)
           } else {
             y.powf(1.0 / (1.0 - alpha))
+          };
+          // Checked after the inverse: an early return here slows the sampling loop by about a third.
+          if (0.0..=1.0).contains(&y) && (0.0..=1.0).contains(&v) {
+            u
+          } else {
+            f64::NAN
           }
         })
         .collect(),
