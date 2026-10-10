@@ -94,25 +94,49 @@ Two traps worth naming:
 
 When adding a new dependency, always use the latest version available on crates.io. Check with `cargo search <crate>` before adding.
 
-## 9. Comment rules
-Always follow the Rust inline comment or Rust inline documentation pattern. Never use large ugly separators like
+## 9. Comments
+
+A comment or doc block (`//`, `///`, `//!`) is at most two lines, anywhere: library
+code, public API, tests, benches and examples. Write one only for what the code cannot
+say: a non-obvious constraint, a reason, a unit or a convention. A literature citation
+may take one line of its own. Doc-test code does not count. Longer explanations belong
+in the PR body.
+
+Never:
+
+- restate the code (`/// Volatility.` on `pub sigma`, `// loop over the paths`);
+- narrate history (`previously`, `now uses`, `renamed from`, `legacy`, `kept for
+  backward compatibility`, `since the refactor`): the code as it stands is the subject;
+- cite plan, task, wave, audit or ruling IDs (`Task 3`, `W6.7`, `A1-c`, `D1`), or
+  release numbers (§11);
+- use separator banners such as
+
 ```
 // --- ... ---
-
-or 
 
 ###############
 # ....        #
 ###############
-
-or 
 
 // ---------------------------------------------------------------------------
 // free-text
 // ---------------------------------------------------------------------------
 ```
 
-or similar. Keep the project clean and dont use ugly AI style comments.
+Rewrites of three typical offenders (a history-laden note on draw order, a field doc
+that restates the field, a long method essay):
+
+```rust
+// Drawn before the jump times so the diffusion stream matches the λ = 0 path.
+let z = normal.sample();
+
+/// Annualised Black volatility of the underlying.
+pub sigma: f64,
+
+/// Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826-848.
+/// COS price of a European payoff from the log-price characteristic function.
+pub fn price(/* … */) -> f64 { /* … */ }
+```
 
 ## 10. Turbofish over explicit binding-type annotation
 
