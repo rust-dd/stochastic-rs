@@ -10,6 +10,7 @@ use ndarray::Array2;
 use stochastic_rs::copulas::bivariate::clayton::Clayton;
 use stochastic_rs::copulas::bivariate::frank::Frank;
 use stochastic_rs::copulas::bivariate::gaussian::GaussianCopula;
+use stochastic_rs::copulas::bivariate::marshall_olkin::MarshallOlkin;
 use stochastic_rs::copulas::correlation::kendall_tau;
 use stochastic_rs::copulas::gof::gof_cramer_von_mises;
 use stochastic_rs::copulas::gof::pseudo_observations;
@@ -72,6 +73,10 @@ fn bivariate_sample(c: &mut Criterion) {
   };
   group.bench_function("gaussian_n10k", |b| {
     b.iter(|| gaussian.sample_with_seed(10_000, 42).unwrap())
+  });
+  let mo = MarshallOlkin::with_alpha_beta(0.3, 0.6);
+  group.bench_function("marshall_olkin_n10k", |b| {
+    b.iter(|| mo.sample_with_seed(10_000, 42).unwrap())
   });
   group.finish();
 }

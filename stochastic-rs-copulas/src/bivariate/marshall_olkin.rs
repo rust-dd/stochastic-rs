@@ -27,10 +27,9 @@
 //! asymmetric two-parameter case is supplied through
 //! [`MarshallOlkin::with_alpha_beta`].
 //!
-//! Reference: Marshall, A.W., Olkin, I. (1967), "A multivariate exponential
-//! distribution", *JASA* 62(317), 30-44.
-//! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
-//! Springer, Example 3.6.
+//! Reference: Marshall, A.W., Olkin, I. (1967), "A multivariate exponential distribution", *JASA* 62(317), 30-44.
+//! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, §3.1.1, eq. 3.1.3; §2.9 (the conditional-distribution method with a quasi-inverse).
+//! Reference: Mai, J.-F., Scherer, M. (2012), "Simulating Copulas", Imperial College Press, §1.2.3 (the exponential-shock representation).
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -220,8 +219,8 @@ impl BivariateExt for MarshallOlkin {
     Ok(out)
   }
 
-  /// $\partial_u C$. Continuous everywhere except across the singular
-  /// curve (where it jumps).
+  /// `∂_v C`: `u^{1-α}` where `u^α ≥ v^β`, `(1 - β) u v^{-β}` below; the jump `β v^{β(1-α)/α}` at `u = v^{β/α}`
+  /// is the singular component's conditional mass.
   fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
@@ -239,15 +238,35 @@ impl BivariateExt for MarshallOlkin {
         out[i] = 1.0;
         continue;
       }
-      let lhs = u.powf(alpha);
-      let rhs = v.powf(beta);
-      out[i] = if lhs >= rhs {
-        (1.0 - alpha) * u.powf(-alpha) * v
+      out[i] = if u >= v.powf(beta / alpha) {
+        u.powf(1.0 - alpha)
       } else {
-        v.powf(1.0 - beta)
+        (1.0 - beta) * u * v.powf(-beta)
       };
     }
     Ok(out)
+  }
+
+  /// Generalised inverse of `∂_v C(· | v)`: closed form on both continuous pieces and the atom `v^{β/α}` for `y`
+  /// inside the jump `[(1-β) w, w]`, `w = v^{β(1-α)/α}`; the `α = 1` and `β = 1` branches never divide by zero.
+  fn percent_point(&self, y: &Array1<f64>, v: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let (alpha, beta) = self.resolve_params();
+    Ok(
+      y.iter()
+        .zip(v.iter())
+        .map(|(&y, &v)| {
+          let w = v.powf(beta * (1.0 - alpha) / alpha);
+          if y < (1.0 - beta) * w {
+            y * v.powf(beta) / (1.0 - beta)
+          } else if y <= w {
+            v.powf(beta / alpha)
+          } else {
+            y.powf(1.0 / (1.0 - alpha))
+          }
+        })
+        .collect(),
+    )
   }
 
   /// Symmetric-slice Kendall's tau inversion: $\theta = 2\tau / (1 + \tau)$.
@@ -371,20 +390,140 @@ mod tests {
     );
   }
 
+  /// `∂_v C` from mpmath's derivative of `C` in `v`, 17 digits, in both sectors.
   #[test]
-  fn mo_partial_derivative_in_each_sector() {
-    let c = MarshallOlkin::with_alpha_beta(0.5, 0.5);
-    // At (u,v) = (0.9, 0.5): u^0.5 = 0.948, v^0.5 = 0.707, lhs > rhs ⇒
-    // sector R₁, ∂_u C = (1-α) u^{-α} v = 0.5 · 0.9^{-0.5} · 0.5
-    //                  = 0.5 · 1.0541 · 0.5 = 0.2635
-    let x = array![[0.9_f64, 0.5]];
-    let pd = c.partial_derivative(&x).unwrap();
-    let expected = 0.5_f64 * 0.9_f64.powf(-0.5) * 0.5;
-    assert!(
-      approx(pd[0], expected, 1e-12),
-      "pd={}, expected {expected}",
-      pd[0]
-    );
+  fn mo_partial_derivative_is_the_v_derivative_in_each_sector() {
+    let cases = [
+      (0.5, 0.5, 0.9, 0.5, 0.9486832980505138),
+      (0.5, 0.5, 0.3, 0.8, 0.16770509831248423),
+      (0.5, 0.5, 0.6, 0.4, 0.7745966692414834),
+      (0.3, 0.6, 0.9, 0.5, 0.928901697685371),
+      (0.3, 0.6, 0.3, 0.8, 0.1371915155781979),
+      (0.3, 0.6, 0.6, 0.4, 0.6993681904144294),
+      (0.8, 0.2, 0.9, 0.5, 0.9791483623609768),
+      (0.8, 0.2, 0.3, 0.8, 0.2509534926219056),
+      (0.8, 0.2, 0.6, 0.4, 0.576539728311087),
+    ];
+    for (alpha, beta, u, v, want) in cases {
+      let c = MarshallOlkin::with_alpha_beta(alpha, beta);
+      let h = c.partial_derivative(&array![[u, v]]).unwrap()[0];
+      assert!(
+        (h - want).abs() < 1e-15,
+        "α={alpha} β={beta} (u,v)=({u},{v}): {h} vs {want}"
+      );
+    }
+  }
+
+  /// The generalised inverse at `v = 0.37`: both continuous pieces and the atom, with the `α = 1`, `β = 1` and
+  /// `α = β = 1` branches.
+  #[test]
+  fn mo_percent_point_matches_the_reference_table() {
+    let v = 0.37_f64;
+    let cases = [
+      (0.5, 0.5, 0.25 * v.sqrt(), 0.185),
+      (0.5, 0.5, 0.3041381265, 0.37),
+      (0.5, 0.5, 0.45620719, 0.37),
+      (0.5, 0.5, 0.608276253, 0.37),
+      (0.5, 0.5, 0.5 + 0.5 * v.sqrt(), 0.6466381265149109),
+      (0.3, 0.6, 0.2 * v.powf(1.4), 0.06845),
+      (0.3, 0.6, 0.1740125, 0.1369),
+      (0.3, 0.6, 0.5 + 0.5 * v.powf(1.4), 0.5101518223511724),
+      (1.0, 0.4, 0.3, 0.33593147277382094),
+      (1.0, 0.4, 0.8, 0.6718629455476419),
+      (0.7, 1.0, 0.32652287, 0.2416269211589283),
+      (0.7, 1.0, 0.5 + 0.5 * v.powf(3.0 / 7.0), 0.5298865677782774),
+      (1.0, 1.0, 0.5, 0.37),
+    ];
+    for (alpha, beta, y, want) in cases {
+      let c = MarshallOlkin::with_alpha_beta(alpha, beta);
+      let u = c.percent_point(&array![y], &array![v]).unwrap()[0];
+      assert!(
+        (u - want).abs() < 1e-9,
+        "α={alpha} β={beta} y={y}: {u} vs {want}"
+      );
+    }
+  }
+
+  /// Off the atom the inverse round-trips through `h`; on the atom `h(u−) ≤ y ≤ h(u)`.
+  #[test]
+  fn mo_percent_point_inverts_the_h_function() {
+    for (alpha, beta) in [(0.5, 0.5), (0.3, 0.6), (0.8, 0.2), (1.0, 0.4), (0.7, 1.0)] {
+      let c = MarshallOlkin::with_alpha_beta(alpha, beta);
+      for v in [0.05_f64, 0.37, 0.9] {
+        let w = v.powf(beta * (1.0 - alpha) / alpha);
+        for y in [0.02, 0.2, 0.5, 0.8, 0.98] {
+          let u = c.percent_point(&array![y], &array![v]).unwrap()[0];
+          let h_at = c.partial_derivative(&array![[u, v]]).unwrap()[0];
+          if y < (1.0 - beta) * w || y > w {
+            assert!(
+              (h_at - y).abs() < 1e-12,
+              "α={alpha} β={beta} v={v} y={y}: h({u})={h_at}"
+            );
+          } else {
+            let h_left = c.partial_derivative(&array![[u - 1e-12, v]]).unwrap()[0];
+            assert!(
+              h_left <= y + 1e-9 && y <= h_at + 1e-9,
+              "atom: {h_left} ≤ {y} ≤ {h_at}"
+            );
+          }
+        }
+      }
+    }
+  }
+
+  /// τ, the singular mass and the cdf on a grid, against Nelsen's closed forms; no `Numerical` failure at any `n`.
+  #[test]
+  fn mo_sampler_reproduces_tau_the_singular_mass_and_the_cdf() {
+    for n in [1_usize, 5, 20, 200] {
+      assert!(
+        MarshallOlkin::with_alpha_beta(0.5, 0.5)
+          .sample_with_seed(n, 7)
+          .is_ok(),
+        "n = {n}"
+      );
+    }
+    let grid = [(0.2, 0.3), (0.5, 0.5), (0.7, 0.4), (0.3, 0.9), (0.85, 0.65)];
+    for (alpha, beta) in [(0.5, 0.5), (0.3, 0.6), (0.6, 0.4), (1.0, 0.4), (0.7, 1.0)] {
+      let c = MarshallOlkin::with_alpha_beta(alpha, beta);
+      let n = 40_000_usize;
+      let uv = c.sample_with_seed(n, 7).unwrap();
+      let (u, v) = (uv.column(0).to_vec(), uv.column(1).to_vec());
+      let (tau, ..) =
+        kendalls::tau_b_with_comparator(&u, &v, |a: &f64, b: &f64| a.partial_cmp(b).unwrap())
+          .unwrap();
+      let want = alpha * beta / (alpha + beta - alpha * beta);
+      assert!(
+        (tau - want).abs() < 0.02,
+        "α={alpha} β={beta}: τ {tau} vs {want}"
+      );
+      let atoms = u
+        .iter()
+        .zip(&v)
+        .filter(|(a, b)| (a.powf(alpha) - b.powf(beta)).abs() < 1e-9)
+        .count() as f64
+        / n as f64;
+      assert!(
+        (atoms - want).abs() < 0.02,
+        "α={alpha} β={beta}: atom share {atoms} vs {want}"
+      );
+      for (gu, gv) in grid {
+        let empirical = u
+          .iter()
+          .zip(&v)
+          .filter(|(a, b)| **a <= gu && **b <= gv)
+          .count() as f64
+          / n as f64;
+        let exact = (gu.powf(1.0 - alpha) * gv).min(gu * gv.powf(1.0 - beta));
+        assert!(
+          (empirical - exact).abs() < 0.02,
+          "α={alpha} β={beta} ({gu},{gv}): {empirical} vs {exact}"
+        );
+      }
+    }
+    let comonotone = MarshallOlkin::with_alpha_beta(1.0, 1.0)
+      .sample_with_seed(500, 7)
+      .unwrap();
+    assert!(comonotone.rows().into_iter().all(|r| r[0] == r[1]));
   }
 
   #[test]

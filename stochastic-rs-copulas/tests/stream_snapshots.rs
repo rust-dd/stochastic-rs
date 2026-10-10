@@ -15,6 +15,7 @@ use stochastic_rs_copulas::bivariate::gaussian::GaussianCopula;
 use stochastic_rs_copulas::bivariate::gumbel::Gumbel;
 use stochastic_rs_copulas::bivariate::husler_reiss::HuslerReiss;
 use stochastic_rs_copulas::bivariate::joe::Joe;
+use stochastic_rs_copulas::bivariate::marshall_olkin::MarshallOlkin;
 use stochastic_rs_copulas::bivariate::plackett::Plackett;
 use stochastic_rs_copulas::bivariate::t_copula::TCopula;
 use stochastic_rs_copulas::empirical::EmpiricalCopula2D;
@@ -50,6 +51,7 @@ const PINS: &[(&str, u64)] = &[
   ("husler_reiss", 0x8060fcf627b39fba),
   ("joe", 0x062c78648bd84254),
   ("plackett", 0x1412f43d3850c3f0),
+  ("marshall_olkin", 0xe6fbf6836be8f931),
   ("t_copula", 0xf7d437c24da6ea30),
   ("gaussian_multivariate", 0xa9e6f7560842916c),
   ("t_multivariate", 0x6bcffcbcf2ecf0d0),
@@ -179,6 +181,12 @@ fn samples() -> Vec<(&'static str, Array2<f64>)> {
   row!(
     "plackett",
     with_theta(Plackett::new(), 3.0)
+      .sample_with_seed(N, SEED)
+      .unwrap()
+  );
+  row!(
+    "marshall_olkin",
+    MarshallOlkin::with_alpha_beta(0.3, 0.6)
       .sample_with_seed(N, SEED)
       .unwrap()
   );

@@ -68,8 +68,9 @@
 //! [`BivariateExt::percent_point`] — the per-sample inversion
 //! [`BivariateExt::sample`] relies on — is a separate cost, and fewer
 //! families avoid it: only [`clayton::Clayton`],
-//! [`gaussian::GaussianCopula`] and [`independence::Independence`] have a
-//! real closed-form inverse. [`frank::Frank`] and [`gumbel::Gumbel`] each
+//! [`gaussian::GaussianCopula`], [`independence::Independence`] and
+//! [`marshall_olkin::MarshallOlkin`] have a real closed-form inverse.
+//! [`frank::Frank`] and [`gumbel::Gumbel`] each
 //! override `percent_point`, but the override is closed-form only at the
 //! degenerate boundary (`θ = 0` / `θ = 1`); every other `θ`, and every
 //! other family — including [`t_copula::TCopula`] despite its closed-form

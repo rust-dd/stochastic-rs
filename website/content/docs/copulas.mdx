@@ -42,7 +42,7 @@ The one-parameter families are fit by computing Kendall's tau and inverting it t
 | Only ever positive dependence, upper-tail | `Galambos`, `HuslerReiss`, `Gumbel`, `Joe` — `Gumbel` and `Joe` share the same upper-tail formula, so tail dependence alone won't distinguish them |
 | Symmetric tail dependence (both tails, equal) | `TCopula` — the only one |
 | Weak dependence in either direction (τ within roughly ±0.2-0.3) | `Amh`, `Fgm` — both structurally cannot represent stronger dependence |
-| Fast sampling at scale (millions of draws) | `Clayton`, `Gaussian` or `Independence` — the only three with a closed-form `percent_point`; the others invert numerically per draw |
+| Fast sampling at scale (millions of draws) | `Clayton`, `Gaussian`, `Independence` or `MarshallOlkin` — the only four with a closed-form `percent_point`; the others invert numerically per draw |
 | A non-exchangeable, shared-shock dependence structure | `MarshallOlkin`'s `with_alpha_beta` constructor — the one family here that is not symmetric in its two arguments in general |
 
 `fit` expects inputs already transformed to `[0, 1]` and runs a Kolmogorov-Smirnov uniformity check on each margin first; `Independence`'s `fit` reads no data.
