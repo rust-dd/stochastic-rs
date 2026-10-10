@@ -73,11 +73,6 @@ impl<T: FloatExt> MtGreeks<T> {
     Ok((d_up - d_dn) / (bump + bump))
   }
 
-  /// Backward-compatible alias retained for the integration tests.
-  pub fn cross_gamma_fd(&self, payoff: &MtPayoff<T>, asset_a: usize, asset_b: usize) -> T {
-    self.cross_gamma(payoff, asset_a, asset_b)
-  }
-
   /// Vega `dPrice/dSigma` via finite difference on the initial volatility.
   ///
   /// Uses a fixed-seed common-random-numbers bump internally to reduce Monte
