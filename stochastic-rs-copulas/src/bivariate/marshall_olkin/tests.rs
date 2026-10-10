@@ -106,7 +106,7 @@ fn mo_percent_point_matches_the_reference_table() {
   let v = 0.37_f64;
   let cases = [
     (0.5, 0.5, 0.25 * v.sqrt(), 0.185),
-    (0.5, 0.5, 0.3041381265, 0.37),
+    (0.5, 0.5, 0.5 * v.sqrt(), 0.37),
     (0.5, 0.5, 0.45620719, 0.37),
     (0.5, 0.5, 0.608276253, 0.37),
     (0.5, 0.5, 0.5 + 0.5 * v.sqrt(), 0.6466381265149109),
@@ -123,7 +123,7 @@ fn mo_percent_point_matches_the_reference_table() {
     let c = MarshallOlkin::with_alpha_beta(alpha, beta);
     let u = c.percent_point(&array![y], &array![v]).unwrap()[0];
     assert!(
-      (u - want).abs() < 1e-9,
+      (u - want).abs() < 1e-14,
       "α={alpha} β={beta} y={y}: {u} vs {want}"
     );
   }
@@ -207,7 +207,7 @@ fn mo_sampler_reproduces_tau_the_singular_mass_and_the_cdf() {
         .unwrap();
     let want = alpha * beta / (alpha + beta - alpha * beta);
     assert!(
-      (tau - want).abs() < 0.02,
+      (tau - want).abs() < 0.01,
       "α={alpha} β={beta}: τ {tau} vs {want}"
     );
     let atoms = u
@@ -217,7 +217,7 @@ fn mo_sampler_reproduces_tau_the_singular_mass_and_the_cdf() {
       .count() as f64
       / n as f64;
     assert!(
-      (atoms - want).abs() < 0.02,
+      (atoms - want).abs() < 0.01,
       "α={alpha} β={beta}: atom share {atoms} vs {want}"
     );
     for (gu, gv) in grid {
@@ -229,7 +229,7 @@ fn mo_sampler_reproduces_tau_the_singular_mass_and_the_cdf() {
         / n as f64;
       let exact = (gu.powf(1.0 - alpha) * gv).min(gu * gv.powf(1.0 - beta));
       assert!(
-        (empirical - exact).abs() < 0.02,
+        (empirical - exact).abs() < 0.01,
         "α={alpha} β={beta} ({gu},{gv}): {empirical} vs {exact}"
       );
     }
