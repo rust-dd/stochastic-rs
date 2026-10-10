@@ -199,8 +199,8 @@ is a file or a directory before editing.
 - `benches/option.rs` — end-to-end pricing with reduced sample count.
 - `benches/risk.rs` — VaR / ES estimators on synthetic samples.
 - `benches/dist_multicore.rs` — `sample_par` parallelism vs serial.
-- `benches/sampler_compare.rs` — the sampler-v3 refactor's own
-  measurement harness.
+- `benches/sampler_compare.rs` — `sample_map` against a parallel fold of
+  one-shot `sample()` calls; the process-ext page's table cites it.
 
 ## 9. Registering a new bench
 

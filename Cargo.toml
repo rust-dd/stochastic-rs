@@ -227,10 +227,6 @@ harness = false
 required-features = ["unstable-dual-stream-rng"]
 
 [[bench]]
-name = "ndarray_overhead"
-harness = false
-
-[[bench]]
 name = "sampler_compare"
 harness = false
 
