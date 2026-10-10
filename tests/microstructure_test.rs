@@ -35,10 +35,7 @@ fn ac_efficient_frontier_monotonic_in_lambda() {
 
 #[test]
 fn ac_buy_and_sell_are_mirror_images() {
-  // After the rc.2 fix to Almgren-Chriss `Buy` direction, all three series
-  // (`inventory`, `trades`, `rates`) flip sign so consumers see consistent
-  // buy-frame numbers. Previously only `rates` was flipped, leaving
-  // `inventory` and `trades` in the sell frame — see audit §1.4.7.
+  // A buy flips all three series (`inventory`, `trades`, `rates`) relative to the sell.
   let mut p = AlmgrenChrissParams::new(2_000.0_f64, 1.0, 25, 0.025, 5e-8, 5e-6, 1.0);
   let sell = optimal_execution(&p);
   p.direction = ExecutionDirection::Buy;
@@ -76,10 +73,8 @@ fn kyle_single_period_satisfies_constants() {
 
 #[test]
 fn kyle_multi_period_terminal_satisfies_static_kyle_product() {
-  // Canonical Kyle (1985) / Cetin-Larsen 2023 Thm 2.1: at the terminal round
-  // γ_N = α_N λ_N = 0 ⇒ β_N λ_N = (1 − 2γ_N) / (2(1 − γ_N)) = 1/2. (rc.0
-  // shipped a non-canonical recursion that gave 1/4 at the terminal — that
-  // bug was fixed in rc.1 by re-deriving against Cetin-Larsen 2023.)
+  // Kyle (1985), Cetin–Larsen (2023) Thm 2.1: γ_N = α_N λ_N = 0 at the terminal round, so
+  // β_N λ_N = (1 − 2γ_N) / (2(1 − γ_N)) = 1/2.
   let eqs = multi_period_kyle(1.0_f64, 1.0, 6);
   let last = eqs.last().unwrap();
   assert!((last.beta * last.lambda - 0.5).abs() < 1e-9);

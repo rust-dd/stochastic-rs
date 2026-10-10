@@ -1,27 +1,5 @@
-//! Golden stream tests for the sampler-v3 refactor.
-//!
-//! Captured on the pre-refactor tree: with [`Deterministic`] seeding these
-//! values must survive the `ProcessExt` → `PathSampler` migration, anchoring
-//! that the derived RNG streams are preserved. They are compared with a small
-//! tolerance rather than bit-for-bit: FFT / `powf`-heavy paths (FGN) round
-//! differently in their low bits across architectures (x86 vs ARM), so a
-//! pinned bit pattern is not portable. Exact reproduction of the refactor
-//! itself is covered bit-for-bit, machine-independently, by
-//! [`sampler_first_path_matches_sample`].
-//!
-//! `golden_merton_streams` below is the first golden covering a jump chain:
-//! before the zero-exception-reproducibility wave's Task 1, `Merton` hard-
-//! wired its inner `CompoundPoisson<T, D>` to `Unseeded`, so its jump chain
-//! was not bit-reproducible and could not be golden-pinned — only the
-//! standalone `CompoundPoisson` (see `golden_compound_poisson_streams`)
-//! could be. `Merton`'s own jump driver is now seeded from the same
-//! `Deterministic` the diffusion component uses, so it is pinnable too.
-//! `golden_bates_streams` is the second: Task 2 of the same wave applied the
-//! identical fix to `Bates1996`, whose jump term is *multiplicative*
-//! (`sample_grid_relative_increments`, not `Merton`'s additive
-//! `sample_grid_increments`) and whose output is a `[s, v]` pair rather than
-//! a single array — both pinned below, with a same-file counterfactual
-//! proving the pin is not diffusion-only.
+//! Golden [`Deterministic`] streams, compared within a small tolerance because FFT- and `powf`-heavy
+//! paths round differently across architectures; [`sampler_first_path_matches_sample`] is bit-exact.
 
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
@@ -154,11 +132,7 @@ fn golden_heston_streams() {
 
 #[test]
 fn golden_sabr_streams() {
-  // Pinned before the C1 correlation-fix rewrite lands (a reviewer verified
-  // the rewrite's first path matches this pre-rewrite value for `Sabr` and
-  // all 10 rewritten types), specifically so that rewrite cannot silently
-  // shift it. `Sabr` is "clone-snapshot": `sampler()` currently does
-  // `seed: self.seed.clone()`, so this exercises that shape directly.
+  // `Sabr` clones its seed into `sampler()`; this pins that shape.
   let sabr = Sabr::<f64, _>::new(
     0.3,
     0.5,
@@ -278,12 +252,8 @@ fn golden_compound_poisson_streams() {
   );
 }
 
-/// The first golden covering a jump chain — see this file's own header for
-/// why `Merton` could not be included before the zero-exception-
-/// reproducibility wave's Task 1. `lambda = 3.0` at `N = 8` (`dt = 1/7`)
-/// gives `lambda * dt ≈ 0.43` per step, high enough that this stream
-/// exercises at least one nonzero jump increment, not just an all-zero
-/// `sample_grid_increments` short-circuit.
+/// A seeded jump chain: `lambda = 3` at `N = 8` gives `λ·dt ≈ 0.43` per step, so at least one jump
+/// increment is nonzero.
 #[test]
 fn golden_merton_streams() {
   let merton = Merton::new(
@@ -312,17 +282,8 @@ fn golden_merton_streams() {
   );
 }
 
-/// The second golden covering a jump chain (see this file's own header) and
-/// the first covering `Bates1996`'s *multiplicative* jump term
-/// (`sample_grid_relative_increments`, not `Merton`'s additive
-/// `sample_grid_increments`) together with its `[s, v]` pair output.
-/// `lambda = 3.0` at `N = 8` (`dt = 1/7`) matches `golden_merton_streams`'s
-/// own reasoning: `lambda * dt ≈ 0.43` per step, high enough that this
-/// stream exercises at least one nonzero jump increment. `k = 0.0` keeps the
-/// drift's `-lambda*k` compensator term at zero regardless of `lambda`, so
-/// the divergence proof below (comparing against a `lambda = 0`
-/// counterfactual, same `k`) isolates the jump term specifically rather
-/// than a coincidental drift shift.
+/// `Bates1996`'s multiplicative jump term and `[s, v]` output; `k = 0` zeroes the `−λk` compensator,
+/// so the `lambda = 0` counterfactual below isolates the jump term.
 #[test]
 fn golden_bates_streams() {
   let bates = Bates1996::new(
