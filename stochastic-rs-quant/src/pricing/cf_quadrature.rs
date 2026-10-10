@@ -59,8 +59,8 @@ where
   (left + right, 1 + dl.max(dr))
 }
 
-/// `∫_a^∞ f` to relative `tol`; it stops when the decay of the evaluated envelope `max |f|` bounds
-/// the tail, and returns NaN if `f` is NaN anywhere (the third-party rule would zero it).
+/// `∫_a^∞ f` to relative `tol`, until the decay of the evaluated `max |f|` bounds the tail; a NaN
+/// sample makes it NaN, a `±∞` one counts as zero (Lévy losses overflow on unprojected iterates).
 pub(crate) fn integrate_to_convergence<F>(f: F, a: f64, tol: f64) -> f64
 where
   F: Fn(f64) -> f64,
@@ -154,5 +154,20 @@ mod tests {
   fn a_finite_integrand_is_unchanged_by_the_poison_check() {
     let v = integrate_to_convergence(|x: f64| (-x).exp(), 0.0, 1e-10);
     assert!((v - 1.0).abs() < 1e-9, "expected 1, got {v}");
+  }
+
+  /// An overflowing sample counts as zero instead of poisoning the integral, so a transient `∞` in
+  /// a calibration loss leaves the run alive; the jump at `x = 1` costs accuracy, hence `1e-3`.
+  #[test]
+  fn an_infinite_sample_counts_as_zero() {
+    let v = integrate_to_convergence(
+      |u: f64| if u < 1.0 { f64::INFINITY } else { (-u).exp() },
+      0.0,
+      1e-10,
+    );
+    assert!(
+      v.is_finite() && (v - (-1.0_f64).exp()).abs() < 1e-3,
+      "expected about e^-1, got {v}"
+    );
   }
 }
