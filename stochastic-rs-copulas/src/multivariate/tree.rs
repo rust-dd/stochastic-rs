@@ -18,6 +18,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView2;
 use ndarray::Axis;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -74,7 +75,7 @@ impl TreeMultivariate {
     }
     self.dim = dim;
 
-    let l_arr = spd_cholesky_lower(&corr).ok_or_else(|| {
+    let l_arr = spd_cholesky_lower(corr.view()).ok_or_else(|| {
       CopulaError::InvalidStructure("the correlation matrix is not positive definite".into())
     })?;
     let mut log_det = 0.0;
@@ -83,7 +84,7 @@ impl TreeMultivariate {
     }
     log_det *= 2.0;
 
-    let inv_arr = spd_inverse(&corr).ok_or_else(|| {
+    let inv_arr = spd_inverse(corr.view()).ok_or_else(|| {
       CopulaError::InvalidStructure("the correlation matrix could not be inverted".into())
     })?;
 
@@ -105,9 +106,9 @@ impl TreeMultivariate {
     Ok(())
   }
 
-  fn transform_to_normal(&self, u: &Array2<f64>) -> Array2<f64> {
+  fn transform_to_normal(&self, u: ArrayView2<f64>) -> Array2<f64> {
     let eps = 1e-12;
-    let mut z = u.clone();
+    let mut z = u.to_owned();
     for mut row in z.axis_iter_mut(Axis(0)) {
       for val in row.iter_mut() {
         let clamped = (*val).max(eps).min(1.0 - eps);
@@ -121,7 +122,7 @@ impl TreeMultivariate {
     (std::f64::consts::PI * 0.5 * t).sin()
   }
 
-  fn build_mst_rho(&self, rho: &Array2<f64>) -> (Vec<Vec<usize>>, Array2<f64>) {
+  fn build_mst_rho(&self, rho: ArrayView2<f64>) -> (Vec<Vec<usize>>, Array2<f64>) {
     let d = rho.nrows();
     let mut in_tree = vec![false; d];
     let mut best_w = vec![-1.0; d];
@@ -193,7 +194,7 @@ impl TreeMultivariate {
     Ok(u)
   }
 
-  fn corr_from_tree_edges(&self, adj: &[Vec<usize>], edge_r: &Array2<f64>) -> Array2<f64> {
+  fn corr_from_tree_edges(&self, adj: &[Vec<usize>], edge_r: ArrayView2<f64>) -> Array2<f64> {
     let d = edge_r.nrows();
     let mut corr = Array2::<f64>::zeros((d, d));
     for i in 0..d {
@@ -241,7 +242,7 @@ impl MultivariateExt for TreeMultivariate {
     self.sample_from_seed(n, &Deterministic::new(seed))
   }
 
-  fn fit(&mut self, X: Array2<f64>) -> Result<(), CopulaError> {
+  fn fit(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
     if X.ncols() < 2 {
       return Err(CopulaError::InvalidStructure(format!(
         "a tree copula needs dim >= 2, got {}",
@@ -255,7 +256,7 @@ impl MultivariateExt for TreeMultivariate {
       });
     }
     // Kendall's tau on uniforms, map to Gaussian rho
-    let tau = kendall_tau(&X);
+    let tau = kendall_tau(X);
     let d = tau.nrows();
     let mut rho = Array2::<f64>::zeros((d, d));
     for i in 0..d {
@@ -268,13 +269,13 @@ impl MultivariateExt for TreeMultivariate {
       }
     }
 
-    let (adj, edge_r) = self.build_mst_rho(&rho);
-    let corr = self.corr_from_tree_edges(&adj, &edge_r);
+    let (adj, edge_r) = self.build_mst_rho(rho.view());
+    let corr = self.corr_from_tree_edges(&adj, edge_r.view());
     // ensure SPD: slight jitter if needed
     let mut tries = 0;
     let mut corr_try = corr.clone();
     loop {
-      if is_spd(&corr_try) {
+      if is_spd(corr_try.view()) {
         break;
       }
       for k in 0..d {
@@ -288,7 +289,7 @@ impl MultivariateExt for TreeMultivariate {
     self.set_corr(corr_try)
   }
 
-  fn check_fit(&self, X: &Array2<f64>) -> Result<(), CopulaError> {
+  fn check_fit(&self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
     self.require_fitted()?;
     if X.ncols() != self.dim {
       return Err(CopulaError::DimensionMismatch {
@@ -302,7 +303,7 @@ impl MultivariateExt for TreeMultivariate {
     Ok(())
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let z = self.transform_to_normal(X);
     let inv = self.inv_corr.as_ref().unwrap();
@@ -319,7 +320,7 @@ impl MultivariateExt for TreeMultivariate {
     Ok(out)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     // Monte Carlo like Gaussian
     let z = self.transform_to_normal(X);

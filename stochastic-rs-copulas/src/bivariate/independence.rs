@@ -7,6 +7,8 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 use ndarray::Axis;
 use ndarray::stack;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -76,7 +78,7 @@ impl BivariateExt for Independence {
     self.theta = Some(theta);
   }
 
-  fn fit(&mut self, _X: &Array2<f64>) -> Result<(), CopulaError> {
+  fn fit(&mut self, _X: ArrayView2<f64>) -> Result<(), CopulaError> {
     self.tau = Some(0.0);
     self.theta = Some(0.0);
     Ok(())
@@ -89,11 +91,11 @@ impl BivariateExt for Independence {
     Ok(stack![Axis(1), u, v])
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok(t.ln())
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let in_range = X.map_axis(Axis(1), |row| {
       row.iter().all(|&val| (0.0..=1.0).contains(&val))
     });
@@ -103,7 +105,7 @@ impl BivariateExt for Independence {
     Ok(out)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let U = X.column(0);
     let V = X.column(1);
 
@@ -111,12 +113,16 @@ impl BivariateExt for Independence {
   }
 
   /// `∂_v (uv) = u`, NaN for `v` outside `[0, 1]`.
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn partial_derivative(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok(conditional_cdf(X, |u, _| u))
   }
 
   /// The identity, NaN for `y` or `v` outside `[0, 1]`.
-  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    V: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
     conditional_quantiles(y, V, |y, _| y)
   }
 

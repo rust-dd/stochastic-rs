@@ -3,6 +3,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView2;
 use ndarray::array;
 use stochastic_rs_copulas::bivariate::amh::Amh;
 use stochastic_rs_copulas::bivariate::bb1::Bb1;
@@ -76,7 +77,7 @@ fn fnv1a(values: impl Iterator<Item = u64>) -> u64 {
   hash
 }
 
-fn hash(sample: &Array2<f64>) -> u64 {
+fn hash(sample: ArrayView2<f64>) -> u64 {
   fnv1a(sample.iter().map(|x| x.to_bits()))
 }
 
@@ -102,7 +103,7 @@ fn pair_trees() -> Vec<Vec<PairCopula>> {
 fn empirical() -> EmpiricalCopula2D {
   let x = Array1::from_vec((0..50).map(|i| i as f64).collect());
   let y = Array1::from_vec((0..50).map(|i| (i as f64 * 1.7) % 37.0).collect());
-  EmpiricalCopula2D::new_from_two_series(&x, &y)
+  EmpiricalCopula2D::new_from_two_series(x.view(), y.view())
 }
 
 fn samples() -> Vec<(&'static str, Array2<f64>)> {
@@ -276,7 +277,7 @@ fn seeded_copula_streams_are_pinned() {
   let rows = samples();
   if std::env::var("STREAM_SNAPSHOT_REGEN").as_deref() == Ok("1") {
     for (name, sample) in &rows {
-      println!("  (\"{name}\", 0x{:016x}),", hash(sample));
+      println!("  (\"{name}\", 0x{:016x}),", hash(sample.view()));
     }
     return;
   }
@@ -289,7 +290,7 @@ fn seeded_copula_streams_are_pinned() {
   );
   for ((name, sample), (pinned, want)) in rows.iter().zip(PINS) {
     assert_eq!(name, pinned);
-    assert_eq!(hash(sample), *want, "{name} moved");
+    assert_eq!(hash(sample.view()), *want, "{name} moved");
   }
 }
 

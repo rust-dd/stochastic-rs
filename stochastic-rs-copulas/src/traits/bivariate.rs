@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 
 use ndarray::Array1;
+use ndarray::ArrayView1;
 use ndarray::Axis;
 use ndarray::stack;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -116,7 +117,7 @@ pub trait BivariateExt {
 
   /// Archimedean generator $\varphi$, $C(u,v) = \varphi^{-1}(\varphi(u) + \varphi(v))$; the default
   /// is `Unsupported`, named by the `r#type()` label, for a family with no such form.
-  fn generator(&self, _t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn generator(&self, _t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     Err(CopulaError::Unsupported(format!(
       "{:?} is not Archimedean: no generator",
       self.r#type()
@@ -149,12 +150,12 @@ pub trait BivariateExt {
     ud.fill_slice(v.as_slice_mut().unwrap());
     let mut c = Array1::<f64>::zeros(n);
     ud.fill_slice(c.as_slice_mut().unwrap());
-    let u = self.percent_point(&c, &v)?;
+    let u = self.percent_point(c.view(), v.view())?;
 
     Ok(stack![Axis(1), u, v])
   }
 
-  fn fit(&mut self, X: &ndarray::Array2<f64>) -> Result<(), CopulaError> {
+  fn fit(&mut self, X: ndarray::ArrayView2<f64>) -> Result<(), CopulaError> {
     if X.nrows() < 2 {
       return Err(CopulaError::InsufficientData {
         needed: 2,
@@ -164,8 +165,8 @@ pub trait BivariateExt {
     let U = X.column(0).to_owned();
     let V = X.column(1).to_owned();
 
-    self.check_marginal(&U)?;
-    self.check_marginal(&V)?;
+    self.check_marginal(U.view())?;
+    self.check_marginal(V.view())?;
 
     let (tau, ..) = kendalls::tau_b_with_comparator(&U.to_vec(), &V.to_vec(), |a, b| {
       a.partial_cmp(b).unwrap_or(Ordering::Greater)
@@ -192,7 +193,7 @@ pub trait BivariateExt {
   }
 
   #[doc(hidden)]
-  fn check_marginal(&self, u: &Array1<f64>) -> Result<(), CopulaError> {
+  fn check_marginal(&self, u: ArrayView1<f64>) -> Result<(), CopulaError> {
     if !u.iter().all(|x| (0.0..=1.0).contains(x)) {
       return Err(CopulaError::MarginalOutOfRange);
     }
@@ -210,18 +211,22 @@ pub trait BivariateExt {
     Ok(())
   }
 
-  fn pdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError>;
+  fn pdf(&self, X: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 
-  fn log_pdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn log_pdf(&self, X: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok(self.pdf(X)?.ln())
   }
 
-  fn cdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError>;
+  fn cdf(&self, X: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 
   /// Inverse conditional: returns `u` such that `P(U ≤ u | V = v) = p`.
   /// This is the canonical quantile-function name for this trait; see also
   /// [`ppf`](Self::ppf), a SciPy-compatible alias.
-  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    V: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
     self.percent_point_numerical(y, V)
   }
 
@@ -229,8 +234,8 @@ pub trait BivariateExt {
   /// `[0, 1]`, on `[EPSILON, 1]`, saturating at its ends; NaN for `y`, `v` outside `[0, 1]`, `Err` for a NaN or error.
   fn percent_point_numerical(
     &self,
-    y: &Array1<f64>,
-    V: &Array1<f64>,
+    y: ArrayView1<f64>,
+    V: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     check_lengths(y, V)?;
@@ -302,13 +307,13 @@ pub trait BivariateExt {
   }
 
   /// `ppf` is a SciPy-compatible alias for [`percent_point`](Self::percent_point).
-  fn ppf(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn ppf(&self, y: ArrayView1<f64>, V: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.percent_point(y, V)
   }
 
-  fn partial_derivative(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn partial_derivative(&self, X: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let n = X.nrows();
-    let mut X_prime = X.clone();
+    let mut X_prime = X.to_owned();
     let mut delta = Array1::zeros(n);
     for i in 0..n {
       delta[i] = if X[[i, 1]] > 0.5 { -0.0001 } else { 0.0001 };
@@ -316,7 +321,7 @@ pub trait BivariateExt {
     }
 
     let f = self.cdf(X)?;
-    let f_prime = self.cdf(&X_prime)?;
+    let f_prime = self.cdf(X_prime.view())?;
 
     let mut deriv = Array1::zeros(n);
     for i in 0..n {
@@ -330,7 +335,7 @@ pub trait BivariateExt {
   fn partial_derivative_scalar(&self, U: f64, V: f64) -> Result<f64, CopulaError> {
     self.check_fit()?;
     let X = stack![Axis(1), Array1::from(vec![U]), Array1::from(vec![V])];
-    let out = self.partial_derivative(&X);
+    let out = self.partial_derivative(X.view());
 
     Ok(*out?.get(0).unwrap())
   }

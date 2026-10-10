@@ -30,7 +30,7 @@
 //! Probab. Lett.* 7(4), 283-286.
 
 use ndarray::Array1;
-use ndarray::Array2;
+use ndarray::ArrayView2;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
 
@@ -145,7 +145,7 @@ impl BivariateExt for HuslerReiss {
   /// (\lambda/2)\varphi(\alpha)/y]$ with $x = -\ln u$, $y = -\ln v$,
   /// $\alpha = 1/\lambda + (\lambda/2)\ln(x/y)$, $\beta = 2/\lambda -
   /// \alpha$. Uses the Hüsler-Reiss identity for stability.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
     let u_col = x.column(0);
@@ -170,7 +170,7 @@ impl BivariateExt for HuslerReiss {
     Ok(out)
   }
 
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
     let u_col = x.column(0);
@@ -203,7 +203,7 @@ impl BivariateExt for HuslerReiss {
 
   /// $\partial_v C(u,v) = C(u,v) \cdot \Phi(\beta) / v$, the formula at `v` clamped `1e-12` inside `(0, 1)` at the
   /// edges (limits that depend on `u` and `λ`), NaN for `v` outside `[0, 1]`.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
     Ok(conditional_cdf(x, |u, v| {
@@ -258,7 +258,7 @@ mod tests {
     let mut c = HuslerReiss::new();
     c.set_theta(1.5);
     let x = array![[0.5_f64, 1.0], [1.0, 0.7]];
-    let cdf = c.cdf(&x).unwrap();
+    let cdf = c.cdf(x.view()).unwrap();
     assert!(approx(cdf[0], 0.5, 1e-12));
     assert!(approx(cdf[1], 0.7, 1e-12));
   }
@@ -268,7 +268,7 @@ mod tests {
     let mut c = HuslerReiss::new();
     c.set_theta(1e-3);
     let x = array![[0.3_f64, 0.7], [0.5, 0.5]];
-    let cdf = c.cdf(&x).unwrap();
+    let cdf = c.cdf(x.view()).unwrap();
     assert!(approx(cdf[0], 0.21, 1e-3), "got {}", cdf[0]);
     assert!(approx(cdf[1], 0.25, 1e-3), "got {}", cdf[1]);
   }
@@ -278,7 +278,7 @@ mod tests {
     let mut c = HuslerReiss::new();
     c.set_theta(15.0);
     let x = array![[0.3_f64, 0.7], [0.5, 0.5]];
-    let cdf = c.cdf(&x).unwrap();
+    let cdf = c.cdf(x.view()).unwrap();
     assert!((cdf[0] - 0.3).abs() < 0.05, "got {}", cdf[0]);
     assert!((cdf[1] - 0.5).abs() < 0.05, "got {}", cdf[1]);
   }
@@ -328,7 +328,7 @@ mod tests {
     let mut c = HuslerReiss::new();
     c.set_theta(1.5);
     let x = array![[0.25_f64, 0.75], [0.5, 0.5], [0.1, 0.9]];
-    let pdf = c.pdf(&x).unwrap();
+    let pdf = c.pdf(x.view()).unwrap();
     for &p in pdf.iter() {
       assert!(p > 0.0 && p.is_finite(), "pdf={p}");
     }
@@ -364,14 +364,18 @@ mod tests {
     let mut c = HuslerReiss::new();
     c.set_theta(1.5);
     let u = 0.4_f64;
-    let near_zero_a = c.partial_derivative(&array![[u, 1e-12]]).unwrap()[0];
-    let near_zero_b = c.partial_derivative(&array![[u, 1e-9]]).unwrap()[0];
+    let near_zero_a = c.partial_derivative(array![[u, 1e-12]].view()).unwrap()[0];
+    let near_zero_b = c.partial_derivative(array![[u, 1e-9]].view()).unwrap()[0];
     assert!(
       approx(near_zero_a, near_zero_b, 2e-2),
       "expected continuity near v=0: v=1e-12 -> {near_zero_a}, v=1e-9 -> {near_zero_b}"
     );
-    let near_one_a = c.partial_derivative(&array![[u, 1.0 - 1e-12]]).unwrap()[0];
-    let near_one_b = c.partial_derivative(&array![[u, 1.0 - 1e-9]]).unwrap()[0];
+    let near_one_a = c
+      .partial_derivative(array![[u, 1.0 - 1e-12]].view())
+      .unwrap()[0];
+    let near_one_b = c
+      .partial_derivative(array![[u, 1.0 - 1e-9]].view())
+      .unwrap()[0];
     assert!(
       approx(near_one_a, near_one_b, 2e-2),
       "expected continuity near v=1: v=1-1e-12 -> {near_one_a}, v=1-1e-9 -> {near_one_b}"
@@ -396,6 +400,6 @@ mod tests {
   fn hr_generator_returns_err_not_archimedean() {
     let c = HuslerReiss::new();
     let t = array![0.5_f64, 0.8];
-    assert!(c.generator(&t).is_err());
+    assert!(c.generator(t.view()).is_err());
   }
 }

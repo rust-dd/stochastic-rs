@@ -47,25 +47,29 @@ fn a_bivariate_fit_needs_two_observations() {
     short.to_string(),
     "too few observations: 1, at least 2 needed"
   );
-  assert_eq!(Clayton::new().fit(&one).unwrap_err(), short);
-  assert_eq!(Bb1::default().fit(&one).unwrap_err(), short);
-  assert_eq!(Bb7::default().fit(&one).unwrap_err(), short);
+  assert_eq!(Clayton::new().fit(one.view()).unwrap_err(), short);
+  assert_eq!(Bb1::default().fit(one.view()).unwrap_err(), short);
+  assert_eq!(Bb7::default().fit(one.view()).unwrap_err(), short);
 }
 
 #[test]
 fn a_multivariate_fit_tells_too_few_dimensions_from_too_few_observations() {
   let mut gaussian = GaussianMultivariate::new();
-  let one_column = gaussian.fit(Array2::from_elem((100, 1), 0.5)).unwrap_err();
+  let one_column = gaussian
+    .fit(Array2::from_elem((100, 1), 0.5).view())
+    .unwrap_err();
   assert!(
     matches!(one_column, CopulaError::InvalidStructure(_)),
     "{one_column:?}"
   );
   assert_eq!(
-    gaussian.fit(Array2::from_elem((1, 3), 0.5)).unwrap_err(),
+    gaussian
+      .fit(Array2::from_elem((1, 3), 0.5).view())
+      .unwrap_err(),
     CopulaError::InsufficientData { needed: 2, got: 1 }
   );
   let vine = fit_vine(
-    &Array2::from_elem((100, 1), 0.5),
+    Array2::from_elem((100, 1), 0.5).view(),
     VineStructure::DVine,
     &PairFamily::ALL,
     SelectionCriterion::Aic,

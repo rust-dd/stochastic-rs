@@ -35,8 +35,8 @@ fn t_copula_large_nu_approaches_gaussian() {
   let t_cop = TMultivariate::new_with(corr.clone(), 200.0).unwrap();
   let g_cop = super::super::gaussian::GaussianMultivariate::new_with_corr(corr).unwrap();
   let queries = array![[0.25, 0.75], [0.5, 0.5], [0.1, 0.9], [0.8, 0.3],];
-  let t_pdf = t_cop.pdf(&queries).unwrap();
-  let g_pdf = g_cop.pdf(&queries).unwrap();
+  let t_pdf = t_cop.pdf(queries.view()).unwrap();
+  let g_pdf = g_cop.pdf(queries.view()).unwrap();
   for i in 0..t_pdf.len() {
     assert!(
       (t_pdf[i] - g_pdf[i]).abs() / g_pdf[i].max(1e-10) < 0.02,
@@ -56,7 +56,7 @@ fn t_copula_pdf_at_center() {
   let nu = 6.0;
   let cop = TMultivariate::new_with(corr.clone(), nu).unwrap();
   let q = array![[0.5, 0.5]];
-  let pdf = cop.pdf(&q).unwrap()[0];
+  let pdf = cop.pdf(q.view()).unwrap()[0];
   // Analytic value: at z=0 the multivariate kernel = 1, marginal kernel = 1.
   //   c(0.5, 0.5) = f_{Σ,ν}(0,0) / [f_ν(0)]^2
   //   f_{Σ,ν}(0,0) = Γ((ν+2)/2) / [Γ(ν/2) · ν · π · √|Σ|]
@@ -88,7 +88,7 @@ fn t_copula_fit_recovers_correlation_from_sample() {
   let cop = TMultivariate::new_with(true_corr.clone(), 5.0).unwrap();
   let u = cop.sample(5_000).unwrap();
   let mut fitted = TMultivariate::new();
-  fitted.fit(u).unwrap();
+  fitted.fit(u.view()).unwrap();
   let recovered = fitted.correlation().unwrap();
   for i in 0..3 {
     for j in (i + 1)..3 {
@@ -117,8 +117,8 @@ fn t_copula_log_pdf_matches_ln_pdf() {
   let corr = array![[1.0, 0.4], [0.4, 1.0]];
   let cop = TMultivariate::new_with(corr, 6.0).unwrap();
   let q = array![[0.3, 0.7], [0.5, 0.5], [0.1, 0.9]];
-  let pdf = cop.pdf(&q).unwrap();
-  let lp = cop.log_pdf(&q).unwrap();
+  let pdf = cop.pdf(q.view()).unwrap();
+  let lp = cop.log_pdf(q.view()).unwrap();
   for i in 0..pdf.len() {
     assert!(
       (lp[i] - pdf[i].ln()).abs() < 1e-12,
@@ -143,8 +143,8 @@ fn t_copula_cdf_matches_bivariate_reference() {
   let mut bv = TCopula::with_nu(nu);
   bv.set_theta(rho);
   let q = array![[0.3, 0.6], [0.5, 0.5], [0.8, 0.2]];
-  let cdf_mv = mv.cdf(&q).unwrap();
-  let cdf_bv = bv.cdf(&q).unwrap();
+  let cdf_mv = mv.cdf(q.view()).unwrap();
+  let cdf_bv = bv.cdf(q.view()).unwrap();
   for i in 0..cdf_mv.len() {
     assert!(
       (cdf_mv[i] - cdf_bv[i]).abs() < 0.04,
@@ -163,7 +163,7 @@ fn t_copula_manual_nu_override() {
   cop.set_nu(12.0).unwrap();
   assert_eq!(cop.nu(), 12.0);
   let _ = cop.sample(100).unwrap();
-  let _ = cop.pdf(&array![[0.5, 0.5]]).unwrap();
+  let _ = cop.pdf(array![[0.5, 0.5]].view()).unwrap();
   let bad = cop.set_nu(0.0);
   assert!(bad.is_err(), "ν=0 must be rejected");
 }

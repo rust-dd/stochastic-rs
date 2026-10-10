@@ -20,7 +20,8 @@
 //! Reference: Johnson, M.E. (1987), "Multivariate Statistical Simulation", Wiley, the conditional inverse as a quadratic in `u`, DOI 10.1002/9781118150740.
 
 use ndarray::Array1;
-use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 
 use crate::bivariate::CopulaType;
 use crate::bivariate::conditional::conditional_cdf;
@@ -153,7 +154,7 @@ impl BivariateExt for Amh {
   }
 
   /// Archimedean generator $\varphi(t) = \ln\frac{1 - \theta(1-t)}{t}$.
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     let mut out = Array1::<f64>::zeros(t.len());
@@ -170,7 +171,7 @@ impl BivariateExt for Amh {
 
   /// Density $c(u,v) = \dfrac{(1-\theta) D + 2\theta u v}{D^3}$ where
   /// $D = 1 - \theta(1-u)(1-v)$.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -191,7 +192,7 @@ impl BivariateExt for Amh {
   }
 
   /// CDF $C(u,v) = uv / [1 - \theta(1-u)(1-v)]$.
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -219,7 +220,7 @@ impl BivariateExt for Amh {
 
   /// $\partial_v C(u,v) = u\big(1 - \theta(1-u)\big) / D^2$, $D = 1 - \theta(1-u)(1-v)$, the derivative in the
   /// conditioning second argument; NaN for `v` outside `[0, 1]`.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     Ok(conditional_cdf(x, |u, v| {
@@ -235,7 +236,11 @@ impl BivariateExt for Amh {
   }
 
   /// `Amh::inverse`'s root, `Amh::inverse_at_one`'s at `θ = 1`; NaN for `y` or `v` outside `[0, 1]`.
-  fn percent_point(&self, y: &Array1<f64>, v: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     if theta == 1.0 {
@@ -289,7 +294,7 @@ mod tests {
     let mut c = Amh::new();
     c.set_theta(0.0);
     let x = array![[0.3_f64, 0.7], [0.5, 0.5], [0.9, 0.1]];
-    let cdf = c.cdf(&x).unwrap();
+    let cdf = c.cdf(x.view()).unwrap();
     for i in 0..x.nrows() {
       let expected = x[[i, 0]] * x[[i, 1]];
       assert!(approx(cdf[i], expected, 1e-12));
@@ -307,7 +312,7 @@ mod tests {
     //     = 0.6875 / 0.669921875
     //     = 1.026239…
     let x = array![[0.5_f64, 0.5]];
-    let pdf = c.pdf(&x).unwrap();
+    let pdf = c.pdf(x.view()).unwrap();
     let expected = 0.6875_f64 / 0.875_f64.powi(3);
     assert!(
       approx(pdf[0], expected, 1e-12),
@@ -321,7 +326,7 @@ mod tests {
     let mut c = Amh::new();
     c.set_theta(0.7);
     let x = array![[0.4_f64, 1.0], [1.0, 0.2]];
-    let cdf = c.cdf(&x).unwrap();
+    let cdf = c.cdf(x.view()).unwrap();
     assert!(approx(cdf[0], 0.4, 1e-12));
     assert!(approx(cdf[1], 0.2, 1e-12));
   }
@@ -384,7 +389,7 @@ mod tests {
     let mut c = Amh::new();
     c.set_theta(0.0);
     let pd = c
-      .partial_derivative(&array![[0.3_f64, 0.6], [0.2, 0.9]])
+      .partial_derivative(array![[0.3_f64, 0.6], [0.2, 0.9]].view())
       .unwrap();
     assert!(approx(pd[0], 0.3, 1e-12), "got {}", pd[0]);
     assert!(approx(pd[1], 0.2, 1e-12), "got {}", pd[1]);

@@ -15,7 +15,8 @@
 //! Springer, Family BB1 / table 4.1.
 
 use ndarray::Array1;
-use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 
 use crate::bivariate::CopulaType;
 use crate::bivariate::conditional::conditional_cdf;
@@ -109,7 +110,7 @@ impl BivariateExt for Joe {
   }
 
   /// Archimedean generator $\varphi(t) = -\ln(1 - (1-t)^\theta)$.
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     let mut out = Array1::<f64>::zeros(t.len());
@@ -123,7 +124,7 @@ impl BivariateExt for Joe {
   /// Density. Let $a = (1-u)^\theta$, $b = (1-v)^\theta$,
   /// $S = a + b - a b$. Then
   /// $c(u,v) = (1-u)^{\theta-1}(1-v)^{\theta-1} S^{1/\theta - 2}(S + \theta - 1)$.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -148,7 +149,7 @@ impl BivariateExt for Joe {
   }
 
   /// CDF $C(u,v) = 1 - [(1-u)^\theta + (1-v)^\theta - (1-u)^\theta(1-v)^\theta]^{1/\theta}$.
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -178,7 +179,7 @@ impl BivariateExt for Joe {
 
   /// `∂_v C = (1 − a)(1 − a + a/b)^{1/θ − 1}`, `a, b = (1 − u)^θ, (1 − v)^θ`, `1 − a` and `a/b` from `ln_1p(−u)` and
   /// `ln_1p(−v)`: no underflow near `u, v = 1`, no cancellation near `u = 0`; NaN for `v` outside `[0, 1]`.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     Ok(conditional_cdf(x, |u, v| {
@@ -237,7 +238,7 @@ mod tests {
     let mut c = Joe::new();
     c.set_theta(1.0);
     let x = array![[0.3_f64, 0.7], [0.5, 0.5], [0.9, 0.1]];
-    let cdf = c.cdf(&x).unwrap();
+    let cdf = c.cdf(x.view()).unwrap();
     for i in 0..x.nrows() {
       let expected = x[[i, 0]] * x[[i, 1]];
       assert!(
@@ -254,7 +255,7 @@ mod tests {
     let mut c = Joe::new();
     c.set_theta(3.0);
     let x = array![[0.5_f64, 1.0], [1.0, 0.4]];
-    let cdf = c.cdf(&x).unwrap();
+    let cdf = c.cdf(x.view()).unwrap();
     assert!(approx(cdf[0], 0.5, 1e-12));
     assert!(approx(cdf[1], 0.4, 1e-12));
   }
@@ -264,7 +265,7 @@ mod tests {
     let mut c = Joe::new();
     c.set_theta(2.5);
     let x = array![[0.0_f64, 0.5], [0.5, 0.0]];
-    let cdf = c.cdf(&x).unwrap();
+    let cdf = c.cdf(x.view()).unwrap();
     assert!(approx(cdf[0], 0.0, 1e-12));
     assert!(approx(cdf[1], 0.0, 1e-12));
   }
@@ -296,7 +297,7 @@ mod tests {
     let mut c = Joe::new();
     c.set_theta(2.0);
     let x = array![[0.25_f64, 0.75], [0.5, 0.5], [0.1, 0.9]];
-    let pdf = c.pdf(&x).unwrap();
+    let pdf = c.pdf(x.view()).unwrap();
     for &p in pdf.iter() {
       assert!(p > 0.0 && p.is_finite(), "pdf={p}");
     }

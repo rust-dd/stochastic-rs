@@ -19,7 +19,8 @@
 //! Reference: Johnson, M.E. (1987), "Multivariate Statistical Simulation", Wiley, the Plackett generator (the conditional inverse), DOI 10.1002/9781118150740.
 
 use ndarray::Array1;
-use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 
 use crate::bivariate::CopulaType;
 use crate::bivariate::conditional::conditional_cdf;
@@ -131,7 +132,7 @@ impl BivariateExt for Plackett {
 
   /// Density (Nelsen 2006 eq.3.3.8):
   /// $c(u,v) = \frac{\theta [1 + (\theta-1)(u + v - 2 u v)]}{\{[1 + (\theta-1)(u + v)]^2 - 4 u v \theta (\theta - 1)\}^{3/2}}$.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -158,7 +159,7 @@ impl BivariateExt for Plackett {
   }
 
   /// CDF (closed form for $\theta \neq 1$).
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -182,7 +183,7 @@ impl BivariateExt for Plackett {
 
   /// $\partial_v C(u,v) = \frac{1}{2}\left[1 - \frac{1 + (\theta-1)(u+v) - 2 u \theta}{\sqrt{\{\cdots\}}}\right]$, NaN
   /// for `v` outside `[0, 1]`.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     let eta = theta - 1.0;
@@ -198,7 +199,11 @@ impl BivariateExt for Plackett {
   }
 
   /// `Plackett::inverse`'s root; NaN for `y` or `v` outside `[0, 1]`.
-  fn percent_point(&self, y: &Array1<f64>, v: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     conditional_quantiles(y, v, Self::inverse(self.theta.unwrap()))
   }
@@ -251,7 +256,7 @@ mod tests {
     let mut c = Plackett::new();
     c.set_theta(1.0);
     let x = array![[0.3_f64, 0.7], [0.5, 0.5]];
-    let cdf = c.cdf(&x).unwrap();
+    let cdf = c.cdf(x.view()).unwrap();
     assert!(approx(cdf[0], 0.21, 1e-9));
     assert!(approx(cdf[1], 0.25, 1e-9));
   }
@@ -263,8 +268,8 @@ mod tests {
     c_low.set_theta(0.2);
     let mut c_high = Plackett::new();
     c_high.set_theta(5.0);
-    let lo = c_low.cdf(&x).unwrap()[0];
-    let hi = c_high.cdf(&x).unwrap()[0];
+    let lo = c_low.cdf(x.view()).unwrap()[0];
+    let hi = c_high.cdf(x.view()).unwrap()[0];
     // At (0.5, 0.5): independence gives 0.25; θ < 1 → smaller, θ > 1 → larger.
     assert!(lo < 0.25, "θ=0.2 should give < 0.25, got {lo}");
     assert!(hi > 0.25, "θ=5.0 should give > 0.25, got {hi}");
@@ -275,7 +280,7 @@ mod tests {
     let mut c = Plackett::new();
     c.set_theta(3.0);
     let x = array![[0.5_f64, 1.0], [1.0, 0.4]];
-    let cdf = c.cdf(&x).unwrap();
+    let cdf = c.cdf(x.view()).unwrap();
     assert!(approx(cdf[0], 0.5, 1e-9));
     assert!(approx(cdf[1], 0.4, 1e-9));
   }
@@ -297,7 +302,7 @@ mod tests {
     let mut c = Plackett::new();
     c.set_theta(2.0);
     let x = array![[0.25_f64, 0.75], [0.5, 0.5], [0.1, 0.9]];
-    let pdf = c.pdf(&x).unwrap();
+    let pdf = c.pdf(x.view()).unwrap();
     for &p in pdf.iter() {
       assert!(p > 0.0 && p.is_finite(), "pdf={p}");
     }
@@ -307,7 +312,7 @@ mod tests {
   fn plackett_generator_returns_err_not_archimedean() {
     let c = Plackett::new();
     let t = array![0.5_f64, 0.8];
-    assert!(c.generator(&t).is_err());
+    assert!(c.generator(t.view()).is_err());
   }
 
   #[test]

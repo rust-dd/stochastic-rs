@@ -17,9 +17,10 @@
 //! approximation.
 
 use ndarray::Array2;
+use ndarray::ArrayView2;
 
 /// Kendall's tau matrix for a given data matrix
-pub fn kendall_tau(data: &Array2<f64>) -> Array2<f64> {
+pub fn kendall_tau(data: ArrayView2<f64>) -> Array2<f64> {
   let cols = data.ncols();
   let mut tau_matrix = Array2::<f64>::zeros((cols, cols));
 
@@ -71,7 +72,7 @@ pub fn corr_to_tau(rho: f64) -> f64 {
 
 /// Apply [`tau_to_corr`] elementwise to a Kendall-tau matrix to obtain a
 /// Gaussian-copula correlation matrix on the same indexing.
-pub fn tau_matrix_to_corr_matrix(tau: &Array2<f64>) -> Array2<f64> {
+pub fn tau_matrix_to_corr_matrix(tau: ArrayView2<f64>) -> Array2<f64> {
   tau.mapv(tau_to_corr)
 }
 

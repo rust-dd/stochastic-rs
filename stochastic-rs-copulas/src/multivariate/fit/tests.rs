@@ -18,7 +18,7 @@ fn two_dimensional_fit_recovers_clayton() {
   let truth = DVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).unwrap();
   let u = truth.sample_with_seed(3000, 7).unwrap();
   let fit = fit_vine(
-    &u,
+    u.view(),
     VineStructure::DVine,
     &PairFamily::ALL,
     SelectionCriterion::Aic,
@@ -53,7 +53,7 @@ fn dvine_fit_recovers_the_first_tree_families() {
   let truth = DVine::new(4, trees).unwrap();
   let u = truth.sample_with_seed(4000, 11).unwrap();
   let fit = fit_vine(
-    &u,
+    u.view(),
     VineStructure::DVine,
     &PairFamily::ALL,
     SelectionCriterion::Bic,
@@ -93,7 +93,7 @@ fn dvine_fit_recovers_the_first_tree_families() {
     "{:?}",
     fit.families
   );
-  let true_ll: f64 = truth.pdf(&u).unwrap().mapv(f64::ln).sum();
+  let true_ll: f64 = truth.pdf(u.view()).unwrap().mapv(f64::ln).sum();
   assert!(
     fit.log_likelihood > true_ll - 0.02 * true_ll.abs(),
     "fit {} truth {true_ll}",
@@ -101,7 +101,7 @@ fn dvine_fit_recovers_the_first_tree_families() {
   );
   let vine_ll: f64 = fit
     .vine
-    .pdf(&u.select(ndarray::Axis(1), &fit.order))
+    .pdf(u.select(ndarray::Axis(1), &fit.order).view())
     .unwrap()
     .mapv(f64::ln)
     .sum();
@@ -126,7 +126,13 @@ fn cvine_fit_on_gaussian_data_selects_gaussian_pairs() {
     PairFamily::Clayton,
     PairFamily::Frank,
   ];
-  let fit = fit_vine(&u, VineStructure::CVine, &families, SelectionCriterion::Aic).unwrap();
+  let fit = fit_vine(
+    u.view(),
+    VineStructure::CVine,
+    &families,
+    SelectionCriterion::Aic,
+  )
+  .unwrap();
   assert_eq!(fit.order[0], 0, "root {:?}", fit.order);
   assert!(
     fit.families[0].iter().all(|f| *f == PairFamily::Gaussian),
@@ -140,7 +146,7 @@ fn cvine_fit_on_gaussian_data_selects_gaussian_pairs() {
     assert!(*rho > 0.5);
   }
   let independence = CVine::independence(3).unwrap();
-  let ll_independence: f64 = independence.pdf(&u).unwrap().mapv(f64::ln).sum();
+  let ll_independence: f64 = independence.pdf(u.view()).unwrap().mapv(f64::ln).sum();
   assert!(
     fit.aic < -2.0 * ll_independence,
     "aic {} vs independence {}",
@@ -149,7 +155,7 @@ fn cvine_fit_on_gaussian_data_selects_gaussian_pairs() {
   );
   let vine_ll: f64 = fit
     .vine
-    .pdf(&u.select(ndarray::Axis(1), &fit.order))
+    .pdf(u.select(ndarray::Axis(1), &fit.order).view())
     .unwrap()
     .mapv(f64::ln)
     .sum();
@@ -168,7 +174,7 @@ fn dvine_order_is_a_maximal_path_on_tau() {
     [0.6, 0.05, 1.0, 0.3],
     [0.2, 0.7, 0.3, 1.0]
   ];
-  let order = dvine_order(&tau);
+  let order = dvine_order(tau.view());
   assert_eq!(order.len(), 4);
   let mut sorted = order.clone();
   sorted.sort();
@@ -185,7 +191,7 @@ fn fit_rejects_degenerate_inputs() {
   let one = Array2::<f64>::zeros((50, 1));
   assert!(
     fit_vine(
-      &one,
+      one.view(),
       VineStructure::DVine,
       &PairFamily::ALL,
       SelectionCriterion::Aic
@@ -195,7 +201,7 @@ fn fit_rejects_degenerate_inputs() {
   let short = Array2::<f64>::zeros((5, 3));
   assert!(
     fit_vine(
-      &short,
+      short.view(),
       VineStructure::CVine,
       &PairFamily::ALL,
       SelectionCriterion::Aic

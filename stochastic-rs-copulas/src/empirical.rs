@@ -4,8 +4,8 @@
 //! C_n(u,v)=\frac{1}{n}\sum_{i=1}^n \mathbf 1\{U_i\le u,\,V_i\le v\}
 //! $$
 //!
-use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::Seeded;
@@ -24,7 +24,7 @@ impl EmpiricalCopula2D {
   /// This performs a rank-based transform: for each sample `i`,
   /// `sx_i = rank_of_x_i / n` and `sy_i = rank_of_y_i / n`,
   /// then stores the resulting points in `[0, 1]^2`.
-  pub fn new_from_two_series(x: &Array1<f64>, y: &Array1<f64>) -> Self {
+  pub fn new_from_two_series(x: ArrayView1<f64>, y: ArrayView1<f64>) -> Self {
     assert_eq!(x.len(), y.len(), "x and y must have the same length!");
     let n = x.len();
 
@@ -98,12 +98,14 @@ impl EmpiricalCopula2D {
 
 #[cfg(test)]
 mod tests {
+  use ndarray::Array1;
+
   use super::*;
 
   fn fixture() -> EmpiricalCopula2D {
     let x = Array1::from_vec((0..50).map(|i| i as f64).collect());
     let y = Array1::from_vec((0..50).map(|i| (i as f64 * 1.7) % 37.0).collect());
-    EmpiricalCopula2D::new_from_two_series(&x, &y)
+    EmpiricalCopula2D::new_from_two_series(x.view(), y.view())
   }
 
   /// Bootstrap resample: length equals `n` (not the original support size),

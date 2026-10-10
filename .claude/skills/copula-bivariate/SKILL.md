@@ -38,15 +38,16 @@ fn theta_bounds(&self) -> (f64, f64);
 fn invalid_thetas(&self) -> Vec<f64>;    // returns owned Vec, not &[f64]
 fn compute_theta(&self) -> f64;          // reads self.tau() — takes NO argument
 fn tail_dependence(&self) -> TailDependence<f64>;
-fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError>;
-fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError>;
+fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
+fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 ```
 
 Two shape facts that catch every first attempt:
 
-- **`pdf` / `cdf` are vectorised.** They take an `(n, 2)` `Array2<f64>`
-  of `(u, v)` rows and return an `Array1<f64>` of length `n`. They are
-  **not** scalar `(u: f64, v: f64) -> f64` functions.
+- **`pdf` / `cdf` are vectorised.** They take an `(n, 2)` `ArrayView2<f64>`
+  of `(u, v)` rows (an owned array passes `.view()`) and return an
+  `Array1<f64>` of length `n`. They are **not** scalar
+  `(u: f64, v: f64) -> f64` functions.
 - **`compute_theta` takes no `tau` argument.** It reads `self.tau()`,
   which `fit()` has already set. The tau → theta inversion is a method
   on a *populated* struct, not a free function of tau.
@@ -101,7 +102,8 @@ carries `theta` / `tau` as `Option<f64>` (unset until `fit` or
 // stochastic-rs-copulas/src/bivariate/clayton.rs (reference)
 
 use ndarray::Array1;
-use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 
 use super::CopulaType;
 use crate::error::CopulaError;
@@ -199,7 +201,7 @@ let mut v = Array1::<f64>::zeros(n);
 ud.fill_slice(v.as_slice_mut().unwrap());
 let mut c = Array1::<f64>::zeros(n);
 ud.fill_slice(c.as_slice_mut().unwrap());
-let u = self.percent_point(&c, &v)?;
+let u = self.percent_point(c.view(), v.view())?;
 Ok(stack![Axis(1), u, v])
 ```
 

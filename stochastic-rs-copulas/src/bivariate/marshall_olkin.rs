@@ -31,7 +31,8 @@
 //! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, §3.1.1, eq. 3.1.3; §2.9 (the conditional-distribution method with a quasi-inverse), DOI 10.1007/0-387-28678-0.
 
 use ndarray::Array1;
-use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 
 use crate::bivariate::CopulaType;
 use crate::bivariate::conditional::conditional_cdf;
@@ -174,7 +175,7 @@ impl BivariateExt for MarshallOlkin {
   /// Absolutely continuous density. Returns `0` exactly on the singular
   /// curve $u^\alpha = v^\beta$ and `(1 - \alpha) u^{-\alpha}` /
   /// `(1 - \beta) v^{-\beta}` in the two open sectors.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
     let u_col = x.column(0);
@@ -203,7 +204,7 @@ impl BivariateExt for MarshallOlkin {
   }
 
   /// CDF $C_{\alpha,\beta}(u,v) = \min(u^{1-\alpha} v, u v^{1-\beta})$.
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
     let u_col = x.column(0);
@@ -237,7 +238,7 @@ impl BivariateExt for MarshallOlkin {
 
   /// `∂_v C`: `u^{1-α}` where `u^α ≥ v^β`, `(1 - β) u v^{-β}` below, NaN for `v` outside `[0, 1]`; the jump
   /// `β v^{β(1-α)/α}` at `u = v^{β/α}` is the singular component's conditional mass.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
     Ok(conditional_cdf(x, |u, v| {
@@ -254,7 +255,11 @@ impl BivariateExt for MarshallOlkin {
   }
 
   /// `MarshallOlkin::inverse`, the generalised inverse of `∂_v C(· | v)`; NaN for `y` or `v` outside `[0, 1]`.
-  fn percent_point(&self, y: &Array1<f64>, v: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
     conditional_quantiles(y, v, Self::inverse(alpha, beta))

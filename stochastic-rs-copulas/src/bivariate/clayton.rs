@@ -6,7 +6,8 @@
 //!
 
 use ndarray::Array1;
-use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 use ndarray::Zip;
 
 use super::CopulaType;
@@ -97,7 +98,7 @@ impl BivariateExt for Clayton {
     self.theta = Some(theta);
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let theta = self.theta.unwrap();
@@ -112,7 +113,7 @@ impl BivariateExt for Clayton {
   /// (`b.powf(c)` with `b = 1` and `c = -∞`, an IEEE `pow` special case
   /// that evaluates to `1.0` regardless) that happens to leave `a` — not
   /// `1.0` — as the answer, i.e. `(uv)^{-1}`.
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0);
@@ -134,7 +135,7 @@ impl BivariateExt for Clayton {
   /// `(u^{-θ}+v^{-θ}-1)^{-1/θ}` hits the same `1^{-∞}` removable
   /// singularity as `pdf` there and evaluates to the constant `1.0` for
   /// every `u,v > 0`, not `uv`.
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0);
@@ -171,7 +172,11 @@ impl BivariateExt for Clayton {
   }
 
   /// `h⁻¹(y | v)` by `Clayton::level` and `Clayton::finish`, `y` at `θ = 0`; NaN for `y` or `v` outside `[0, 1]`.
-  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    V: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let theta = self.theta.unwrap();
@@ -194,7 +199,7 @@ impl BivariateExt for Clayton {
 
   /// `∂_v C = v^{−θ−1}(u^{−θ} + v^{−θ} − 1)^{−(1+θ)/θ}`, `u` at `θ = 0`, and 1 at `v = 0`, whose conditional law is a
   /// point mass at `u = 0`; NaN for `v` outside `[0, 1]`.
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn partial_derivative(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let theta = self.theta.unwrap();
@@ -325,7 +330,7 @@ mod tests {
       theta: Some(0.0),
       ..Clayton::default()
     };
-    let pdf = c.pdf(&array![[0.2_f64, 0.9], [0.5, 0.5]]).unwrap();
+    let pdf = c.pdf(array![[0.2_f64, 0.9], [0.5, 0.5]].view()).unwrap();
     assert!(approx(pdf[0], 1.0, 1e-12), "got {}", pdf[0]);
     assert!(approx(pdf[1], 1.0, 1e-12), "got {}", pdf[1]);
   }
@@ -336,7 +341,7 @@ mod tests {
       theta: Some(0.0),
       ..Clayton::default()
     };
-    let cdf = c.cdf(&array![[0.3_f64, 0.7], [0.2, 0.9]]).unwrap();
+    let cdf = c.cdf(array![[0.3_f64, 0.7], [0.2, 0.9]].view()).unwrap();
     assert!(approx(cdf[0], 0.21, 1e-12), "got {}", cdf[0]);
     assert!(approx(cdf[1], 0.18, 1e-12), "got {}", cdf[1]);
   }
@@ -352,7 +357,7 @@ mod tests {
       ..Clayton::default()
     };
     let pd = c
-      .partial_derivative(&array![[0.3_f64, 0.6], [0.2, 0.9]])
+      .partial_derivative(array![[0.3_f64, 0.6], [0.2, 0.9]].view())
       .unwrap();
     assert!(approx(pd[0], 0.3, 1e-12), "got {}", pd[0]);
     assert!(approx(pd[1], 0.2, 1e-12), "got {}", pd[1]);
@@ -370,7 +375,7 @@ mod tests {
     let mut c = Clayton::new();
     c.set_theta(2.0);
     let h = c
-      .partial_derivative(&array![[0.3, 0.6], [0.6, 0.3]])
+      .partial_derivative(array![[0.3, 0.6], [0.6, 0.3]].view())
       .unwrap();
     assert!(
       (h[0] - 0.10005136755229085).abs() < 1e-14,

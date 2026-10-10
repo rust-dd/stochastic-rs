@@ -31,6 +31,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView2;
 use rand::Rng;
 use rand::RngExt;
 use stochastic_rs_core::simd_rng::SimdRng;
@@ -187,14 +188,14 @@ impl MultivariateExt for CVine {
     Ok(self.sample_with(n, &mut SimdRng::from_seed(seed)))
   }
 
-  fn fit(&mut self, _X: Array2<f64>) -> Result<(), CopulaError> {
+  fn fit(&mut self, _X: ArrayView2<f64>) -> Result<(), CopulaError> {
     Err(CopulaError::Unsupported(
       "CVine::fit is not implemented: use multivariate::fit::fit_vine with VineStructure::CVine"
         .into(),
     ))
   }
 
-  fn check_fit(&self, X: &Array2<f64>) -> Result<(), CopulaError> {
+  fn check_fit(&self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
     if X.ncols() != self.dim {
       return Err(CopulaError::DimensionMismatch {
         expected: self.dim,
@@ -207,7 +208,7 @@ impl MultivariateExt for CVine {
     Ok(())
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let mut out = Array1::<f64>::zeros(X.nrows());
     for (i, row) in X.rows().into_iter().enumerate() {
@@ -217,7 +218,7 @@ impl MultivariateExt for CVine {
     Ok(out)
   }
 
-  fn log_pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn log_pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let mut out = Array1::<f64>::zeros(X.nrows());
     for (i, row) in X.rows().into_iter().enumerate() {
@@ -227,7 +228,7 @@ impl MultivariateExt for CVine {
     Ok(out)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     // MC estimator on 4000 samples per query (same approach as D-vine and
     // multivariate t-copula): closed-form C-vine CDF requires nested
     // numerical integration in d ≥ 3 dims.
@@ -275,7 +276,7 @@ mod tests {
         "marginal {j} mean = {m}, expected ~0.5"
       );
     }
-    let lp = cv.log_pdf(&array![[0.2, 0.4, 0.7]]).unwrap();
+    let lp = cv.log_pdf(array![[0.2, 0.4, 0.7]].view()).unwrap();
     assert!(lp[0].abs() < 1e-12);
   }
 
@@ -286,7 +287,7 @@ mod tests {
     let cv = CVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).unwrap();
     let s = cv.sample(10_000).unwrap();
     use crate::correlation::kendall_tau;
-    let tau = kendall_tau(&s);
+    let tau = kendall_tau(s.view());
     // Clayton(θ=2): τ = θ/(θ+2) = 0.5
     assert!(
       (tau[[0, 1]] - 0.5).abs() < 0.04,
@@ -308,7 +309,7 @@ mod tests {
     let cv = CVine::new(3, vec![t1, t2]).unwrap();
     let s = cv.sample(10_000).unwrap();
     use crate::correlation::kendall_tau;
-    let tau = kendall_tau(&s);
+    let tau = kendall_tau(s.view());
     let expected_tau = (2.0 / std::f64::consts::PI) * 0.6_f64.asin();
     // (1, 2) and (1, 3) should both match the Gaussian τ identity.
     assert!(
@@ -348,7 +349,7 @@ mod tests {
   fn cvine_fit_rejects_with_descriptive_error() {
     let mut cv = CVine::independence(3).unwrap();
     let data = ndarray::Array2::<f64>::from_elem((10, 3), 0.5);
-    match cv.fit(data) {
+    match cv.fit(data.view()) {
       Err(CopulaError::Unsupported(hint)) => assert!(hint.contains("fit_vine"), "{hint}"),
       other => panic!("expected Unsupported, got {other:?}"),
     }

@@ -49,6 +49,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView2;
 use ndarray::Axis;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -145,7 +146,7 @@ impl TMultivariate {
     let dim = corr.nrows();
     self.dim = dim;
 
-    let l_arr = spd_cholesky_lower(&corr).ok_or_else(|| {
+    let l_arr = spd_cholesky_lower(corr.view()).ok_or_else(|| {
       CopulaError::InvalidStructure("the correlation matrix is not positive definite".into())
     })?;
     let mut log_det = 0.0;
@@ -153,7 +154,7 @@ impl TMultivariate {
       log_det += l_arr[[i, i]].ln();
     }
     log_det *= 2.0;
-    let inv_arr = spd_inverse(&corr).ok_or_else(|| {
+    let inv_arr = spd_inverse(corr.view()).ok_or_else(|| {
       CopulaError::InvalidStructure("the correlation matrix could not be inverted".into())
     })?;
 
@@ -258,9 +259,9 @@ impl TMultivariate {
   }
 
   /// Map U ∈ (0,1)^{n×d} → Z ∈ ℝ^{n×d} via the univariate $t_\nu^{-1}$.
-  fn transform_to_t(&self, u: &Array2<f64>) -> Array2<f64> {
+  fn transform_to_t(&self, u: ArrayView2<f64>) -> Array2<f64> {
     let eps = 1e-12;
-    let mut z = u.clone();
+    let mut z = u.to_owned();
     for mut row in z.axis_iter_mut(Axis(0)) {
       for val in row.iter_mut() {
         let clamped = val.clamp(eps, 1.0 - eps);
@@ -273,7 +274,7 @@ impl TMultivariate {
   /// Build $\Sigma$ from sample Kendall-τ via $\rho_{ij} = \sin(\pi\tau_{ij}/2)$.
   /// This is the rank-based identity that holds for **any** elliptical
   /// copula, hence is ν-agnostic and robust to the t-copula's heavy tails.
-  fn estimate_corr_from_kendall(x: &Array2<f64>) -> Array2<f64> {
+  fn estimate_corr_from_kendall(x: ArrayView2<f64>) -> Array2<f64> {
     let d = x.ncols();
     let tau = kendall_tau(x);
     let mut corr = Array2::<f64>::zeros((d, d));
@@ -299,7 +300,7 @@ impl TMultivariate {
   fn nearest_spd(mut corr: Array2<f64>) -> Array2<f64> {
     let d = corr.nrows();
     let mut jitter = 0usize;
-    while !is_spd(&corr) && jitter < 6 {
+    while !is_spd(corr.view()) && jitter < 6 {
       let eps = 10f64.powi(-6_i32 + jitter as i32);
       for k in 0..d {
         corr[[k, k]] = 1.0 + eps;
@@ -312,7 +313,7 @@ impl TMultivariate {
   /// Log-density of the multivariate Student-$t$ at the un-transformed
   /// argument `z` (i.e. **before** dividing by the marginal $f_\nu(z_j)$ to
   /// obtain the copula density). Used internally by [`log_pdf`].
-  fn mv_log_pdf(&self, z: &Array2<f64>) -> Array1<f64> {
+  fn mv_log_pdf(&self, z: ArrayView2<f64>) -> Array1<f64> {
     let inv = self.inv_corr.as_ref().unwrap();
     let log_det = self.log_det_corr.unwrap();
     let d = self.dim as f64;
@@ -332,7 +333,7 @@ impl TMultivariate {
 
   /// Log-likelihood of the data under the current correlation matrix and
   /// the candidate $\nu$. Used by the 1-D Brent search in [`fit`].
-  fn log_likelihood_for_nu(&self, x: &Array2<f64>, nu: f64) -> f64 {
+  fn log_likelihood_for_nu(&self, x: ArrayView2<f64>, nu: f64) -> f64 {
     // Build a temporary view of self with the candidate ν so we can re-use
     // the cached Σ⁻¹ / |Σ| (the Brent search only varies ν, never Σ).
     let saved = self.nu;
@@ -345,7 +346,7 @@ impl TMultivariate {
       log_det_corr: self.log_det_corr,
     };
     let z = tmp.transform_to_t(x);
-    let mv = tmp.mv_log_pdf(&z);
+    let mv = tmp.mv_log_pdf(z.view());
     let mut marginal_log = 0.0;
     for v in z.iter() {
       marginal_log += Self::t_log_pdf(*v, nu);
@@ -358,7 +359,7 @@ impl TMultivariate {
   /// $\Sigma$ fixed. Bracket $[\nu_{\min}, \nu_{\max}] = [2.1, 50]$ matches
   /// Demarta-McNeil (2005, §6) where the upper bound is taken as the
   /// effective "Gaussian limit" threshold.
-  fn optimise_nu(&self, x: &Array2<f64>) -> f64 {
+  fn optimise_nu(&self, x: ArrayView2<f64>) -> f64 {
     let f = |nu: f64| -self.log_likelihood_for_nu(x, nu);
     // Brent on [2.1, 50] with golden-section initialisation.
     let mut a = 2.1_f64;
@@ -403,7 +404,7 @@ impl MultivariateExt for TMultivariate {
     self.sample_from_seed(n, &Deterministic::new(seed))
   }
 
-  fn fit(&mut self, X: Array2<f64>) -> Result<(), CopulaError> {
+  fn fit(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
     if X.ncols() < 2 {
       return Err(CopulaError::InvalidStructure(format!(
         "a t-copula needs dim >= 2, got {}",
@@ -420,14 +421,14 @@ impl MultivariateExt for TMultivariate {
       return Err(CopulaError::MarginalOutOfRange);
     }
     self.dim = X.ncols();
-    let corr = Self::estimate_corr_from_kendall(&X);
+    let corr = Self::estimate_corr_from_kendall(X);
     self.set_corr(corr)?;
     // Profile MLE for ν conditional on Σ.
-    self.nu = self.optimise_nu(&X);
+    self.nu = self.optimise_nu(X);
     Ok(())
   }
 
-  fn check_fit(&self, X: &Array2<f64>) -> Result<(), CopulaError> {
+  fn check_fit(&self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
     self.require_fitted()?;
     if X.ncols() != self.dim {
       return Err(CopulaError::DimensionMismatch {
@@ -441,10 +442,10 @@ impl MultivariateExt for TMultivariate {
     Ok(())
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let z = self.transform_to_t(X);
-    let mv = self.mv_log_pdf(&z);
+    let mv = self.mv_log_pdf(z.view());
     let nu = self.nu;
     let mut out = Array1::<f64>::zeros(z.nrows());
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {
@@ -457,10 +458,10 @@ impl MultivariateExt for TMultivariate {
     Ok(out)
   }
 
-  fn log_pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn log_pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let z = self.transform_to_t(X);
-    let mv = self.mv_log_pdf(&z);
+    let mv = self.mv_log_pdf(z.view());
     let nu = self.nu;
     let mut out = Array1::<f64>::zeros(z.nrows());
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {
@@ -473,7 +474,7 @@ impl MultivariateExt for TMultivariate {
     Ok(out)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     // Closed forms for the multivariate Student-t CDF exist only in d ≤ 2
     // (Dunnett-Sobel 1D reduction); for d ≥ 3 we estimate via the χ²-mixer

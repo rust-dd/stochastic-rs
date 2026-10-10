@@ -6,7 +6,8 @@
 //!
 
 use ndarray::Array1;
-use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 
 use super::CopulaType;
 use crate::bivariate::conditional::conditional_cdf;
@@ -75,11 +76,11 @@ impl BivariateExt for Gumbel {
     self.theta = Some(theta);
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok((-t.ln()).powf(self.theta.unwrap()))
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0);
@@ -101,7 +102,7 @@ impl BivariateExt for Gumbel {
     Ok(out)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0);
@@ -121,7 +122,11 @@ impl BivariateExt for Gumbel {
   }
 
   /// The identity at `θ = 1`, else the Brent root of [`Gumbel::partial_derivative`]; NaN for `y` or `v` outside `[0, 1]`.
-  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    V: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     if self.theta.unwrap() == 1.0 {
@@ -133,7 +138,7 @@ impl BivariateExt for Gumbel {
 
   /// `∂_v C = exp(w − R)(w/R)^{θ−1}`, `x, w = −ln u, −ln v`, `R = m(1 + r)^{1/θ}`, `m = max(x, w)`, `r = (min/m)^θ`:
   /// no underflow near `u, v = 1`; 1 at `u = 1` and at `v = 0` (a point mass at `u = 0`), NaN for `v ∉ [0, 1]`.
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn partial_derivative(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let theta = self.theta.unwrap();
@@ -196,7 +201,7 @@ mod tests {
   fn gumbel_partial_derivative_at_independence_returns_u() {
     let g = Gumbel::new(Some(1.0), None);
     let pd = g
-      .partial_derivative(&array![[0.3_f64, 0.6], [0.2, 0.9]])
+      .partial_derivative(array![[0.3_f64, 0.6], [0.2, 0.9]].view())
       .unwrap();
     assert!((pd[0] - 0.3).abs() < 1e-12, "got {}", pd[0]);
     assert!((pd[1] - 0.2).abs() < 1e-12, "got {}", pd[1]);

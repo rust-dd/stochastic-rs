@@ -1,3 +1,4 @@
+use ndarray::Array2;
 use ndarray::array;
 
 use super::*;
@@ -10,7 +11,7 @@ fn approx(a: f64, b: f64, tol: f64) -> bool {
 fn mo_cdf_marginal_recovers_input() {
   let c = MarshallOlkin::with_alpha_beta(0.5, 0.3);
   let x = array![[0.4_f64, 1.0], [1.0, 0.7]];
-  let cdf = c.cdf(&x).unwrap();
+  let cdf = c.cdf(x.view()).unwrap();
   assert!(approx(cdf[0], 0.4, 1e-12));
   assert!(approx(cdf[1], 0.7, 1e-12));
 }
@@ -19,7 +20,7 @@ fn mo_cdf_marginal_recovers_input() {
 fn mo_alpha_eq_one_beta_eq_one_is_comonotone() {
   let c = MarshallOlkin::with_alpha_beta(1.0, 1.0);
   let x = array![[0.3_f64, 0.7], [0.6, 0.2], [0.5, 0.5]];
-  let cdf = c.cdf(&x).unwrap();
+  let cdf = c.cdf(x.view()).unwrap();
   for i in 0..x.nrows() {
     let expected = x[[i, 0]].min(x[[i, 1]]);
     assert!(approx(cdf[i], expected, 1e-12), "row {i}");
@@ -31,7 +32,7 @@ fn mo_alpha_zero_or_beta_zero_is_independence() {
   // α → 0 with β fixed: C(u,v) = u^{1-0} v = u v. Use α just above 0.
   let c = MarshallOlkin::with_alpha_beta(1e-12, 0.5);
   let x = array![[0.4_f64, 0.6]];
-  let cdf = c.cdf(&x).unwrap();
+  let cdf = c.cdf(x.view()).unwrap();
   assert!(approx(cdf[0], 0.24, 1e-6), "α→0: got {}", cdf[0]);
 }
 
@@ -65,7 +66,7 @@ fn mo_singular_curve_total_mass_matches_paper() {
       points[[row, 1]] = (j as f64 + 0.5) * h;
     }
   }
-  let pdf_vals = c.pdf(&points).unwrap();
+  let pdf_vals = c.pdf(points.view()).unwrap();
   let mass_abs: f64 = pdf_vals.iter().sum::<f64>() * h * h;
   let mass_singular_grid = 1.0 - mass_abs;
 
@@ -91,7 +92,7 @@ fn mo_partial_derivative_is_the_v_derivative_in_each_sector() {
   ];
   for (alpha, beta, u, v, want) in cases {
     let c = MarshallOlkin::with_alpha_beta(alpha, beta);
-    let h = c.partial_derivative(&array![[u, v]]).unwrap()[0];
+    let h = c.partial_derivative(array![[u, v]].view()).unwrap()[0];
     assert!(
       (h - want).abs() < 1e-15,
       "α={alpha} β={beta} (u,v)=({u},{v}): {h} vs {want}"
@@ -121,7 +122,7 @@ fn mo_percent_point_matches_the_reference_table() {
   ];
   for (alpha, beta, y, want) in cases {
     let c = MarshallOlkin::with_alpha_beta(alpha, beta);
-    let u = c.percent_point(&array![y], &array![v]).unwrap()[0];
+    let u = c.percent_point(array![y].view(), array![v].view()).unwrap()[0];
     assert!(
       (u - want).abs() < 1e-14,
       "α={alpha} β={beta} y={y}: {u} vs {want}"
@@ -137,15 +138,15 @@ fn mo_percent_point_inverts_the_h_function() {
     for v in [0.05_f64, 0.37, 0.9] {
       let w = v.powf(beta * (1.0 - alpha) / alpha);
       for y in [0.02, 0.2, 0.5, 0.8, 0.98] {
-        let u = c.percent_point(&array![y], &array![v]).unwrap()[0];
-        let h_at = c.partial_derivative(&array![[u, v]]).unwrap()[0];
+        let u = c.percent_point(array![y].view(), array![v].view()).unwrap()[0];
+        let h_at = c.partial_derivative(array![[u, v]].view()).unwrap()[0];
         if y < (1.0 - beta) * w || y > w {
           assert!(
             (h_at - y).abs() < 1e-12,
             "α={alpha} β={beta} v={v} y={y}: h({u})={h_at}"
           );
         } else {
-          let h_left = c.partial_derivative(&array![[u - 1e-12, v]]).unwrap()[0];
+          let h_left = c.partial_derivative(array![[u - 1e-12, v]].view()).unwrap()[0];
           assert!(
             h_left <= y + 1e-9 && y <= h_at + 1e-9,
             "atom: {h_left} ≤ {y} ≤ {h_at}"
@@ -163,20 +164,23 @@ fn mo_a_query_outside_the_unit_interval_is_nan() {
     let c = MarshallOlkin::with_alpha_beta(alpha, beta);
     for bad in [f64::NAN, 1.5, -0.1] {
       let u = c
-        .percent_point(&array![bad, 0.5], &array![0.5, bad])
+        .percent_point(array![bad, 0.5].view(), array![0.5, bad].view())
         .unwrap();
       assert!(
         u.iter().all(|x| x.is_nan()),
         "α={alpha} β={beta} {bad}: {u}"
       );
-      let h = c.partial_derivative(&array![[0.5, bad]]).unwrap()[0];
+      let h = c.partial_derivative(array![[0.5, bad]].view()).unwrap()[0];
       assert!(h.is_nan(), "α={alpha} β={beta} v={bad}: h={h}");
     }
     let u = c
-      .percent_point(&array![0.0, 1.0, 0.5, 0.5], &array![0.5, 0.5, 0.0, 1.0])
+      .percent_point(
+        array![0.0, 1.0, 0.5, 0.5].view(),
+        array![0.5, 0.5, 0.0, 1.0].view(),
+      )
       .unwrap();
     let h = c
-      .partial_derivative(&array![[0.5, 0.0], [0.5, 1.0]])
+      .partial_derivative(array![[0.5, 0.0], [0.5, 1.0]].view())
       .unwrap();
     assert!(
       u.iter().chain(&h).all(|x| x.is_finite()),
@@ -267,10 +271,16 @@ fn mo_tail_dependence_panics_on_invalid_theta() {
 fn marshall_olkin_unfit_errs_like_siblings() {
   let c = MarshallOlkin::new();
   let x = array![[0.4_f64, 0.6]];
-  assert!(c.pdf(&x).is_err(), "pdf must Err, not panic, when unfit");
-  assert!(c.cdf(&x).is_err(), "cdf must Err, not panic, when unfit");
   assert!(
-    c.partial_derivative(&x).is_err(),
+    c.pdf(x.view()).is_err(),
+    "pdf must Err, not panic, when unfit"
+  );
+  assert!(
+    c.cdf(x.view()).is_err(),
+    "cdf must Err, not panic, when unfit"
+  );
+  assert!(
+    c.partial_derivative(x.view()).is_err(),
     "partial_derivative must Err, not panic, when unfit"
   );
 }
@@ -281,7 +291,7 @@ fn marshall_olkin_unfit_errs_like_siblings() {
 fn marshall_olkin_generator_returns_err_not_archimedean() {
   let c = MarshallOlkin::with_alpha_beta(0.5, 0.3);
   let t = array![0.5_f64, 0.8];
-  assert!(c.generator(&t).is_err());
+  assert!(c.generator(t.view()).is_err());
 }
 
 #[test]
@@ -301,7 +311,7 @@ fn an_out_of_domain_parameter_neither_samples_nor_evaluates() {
     );
     assert!(
       matches!(
-        c.pdf(&x),
+        c.pdf(x.view()),
         Err(CopulaError::InvalidParameter { name: "theta", .. })
       ),
       "theta = {theta}"
@@ -313,7 +323,7 @@ fn an_out_of_domain_parameter_neither_samples_nor_evaluates() {
     ..MarshallOlkin::new()
   };
   assert!(matches!(
-    c.cdf(&x),
+    c.cdf(x.view()),
     Err(CopulaError::InvalidParameter { name: "alpha", .. })
   ));
 }

@@ -37,7 +37,8 @@
 
 use gauss_quad::GaussLegendre;
 use ndarray::Array1;
-use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 use stochastic_rs_distributions::DistributionExt;
 use stochastic_rs_distributions::special::ln_gamma;
 use stochastic_rs_distributions::studentt::SimdStudentT;
@@ -229,7 +230,7 @@ impl BivariateExt for TCopula {
     self.theta = Some(theta);
   }
 
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
     let nu = self.nu;
@@ -252,7 +253,7 @@ impl BivariateExt for TCopula {
     Ok(out)
   }
 
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
     let nu = self.nu;
@@ -283,7 +284,7 @@ impl BivariateExt for TCopula {
 
   /// `∂_v C = t_{ν+1}((x − ρy)√((ν + 1)/((ν + y²)(1 − ρ²))))`, `x, y = t_ν⁻¹(u), t_ν⁻¹(v)`, whose `v → 0, 1` limit
   /// `t_{ν+1}(±ρ√((ν + 1)/(1 − ρ²)))` holds for every `u`; NaN for `v` outside `[0, 1]`.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
     let nu = self.nu;
@@ -306,7 +307,11 @@ impl BivariateExt for TCopula {
   }
 
   /// `TCopula::inverse` (Aas et al. App. B.2); NaN for `y` or `v` outside `[0, 1]`.
-  fn percent_point(&self, y: &Array1<f64>, v: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     conditional_quantiles(y, v, Self::inverse(self.theta.unwrap(), self.nu))
   }

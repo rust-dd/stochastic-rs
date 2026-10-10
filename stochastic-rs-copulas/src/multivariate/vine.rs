@@ -25,6 +25,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView2;
 use ndarray::Axis;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -81,7 +82,7 @@ impl VineMultivariate {
     }
     self.dim = d;
 
-    let l_arr = spd_cholesky_lower(&corr).ok_or_else(|| {
+    let l_arr = spd_cholesky_lower(corr.view()).ok_or_else(|| {
       CopulaError::InvalidStructure("the correlation matrix is not positive definite".into())
     })?;
     let mut log_det = 0.0;
@@ -89,7 +90,7 @@ impl VineMultivariate {
       log_det += l_arr[[i, i]].ln();
     }
     let log_det = 2.0 * log_det;
-    let inv_arr = spd_inverse(&corr).ok_or_else(|| {
+    let inv_arr = spd_inverse(corr.view()).ok_or_else(|| {
       CopulaError::InvalidStructure("the correlation matrix could not be inverted".into())
     })?;
     self.chol_lower = Some(l_arr);
@@ -110,9 +111,9 @@ impl VineMultivariate {
     Ok(())
   }
 
-  fn transform_to_normal(&self, u: &Array2<f64>) -> Array2<f64> {
+  fn transform_to_normal(&self, u: ArrayView2<f64>) -> Array2<f64> {
     let eps = 1e-12;
-    let mut z = u.clone();
+    let mut z = u.to_owned();
     for mut row in z.axis_iter_mut(Axis(0)) {
       for val in row.iter_mut() {
         *val = ndtri(val.max(eps).min(1.0 - eps));
@@ -164,7 +165,7 @@ impl MultivariateExt for VineMultivariate {
     self.sample_from_seed(n, &Deterministic::new(seed))
   }
 
-  fn fit(&mut self, X: Array2<f64>) -> Result<(), CopulaError> {
+  fn fit(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
     if X.ncols() < 2 {
       return Err(CopulaError::InvalidStructure(format!(
         "a vine copula needs dim >= 2, got {}",
@@ -177,7 +178,7 @@ impl MultivariateExt for VineMultivariate {
         got: X.nrows(),
       });
     }
-    let tau = kendall_tau(&X);
+    let tau = kendall_tau(X);
     let d = tau.nrows();
     let mut rho = Array2::<f64>::zeros((d, d));
     for i in 0..d {
@@ -231,7 +232,7 @@ impl MultivariateExt for VineMultivariate {
     let mut corr_try = corr.clone();
     let mut tries = 0;
     loop {
-      if is_spd(&corr_try) {
+      if is_spd(corr_try.view()) {
         break;
       }
       for k in 0..d {
@@ -245,7 +246,7 @@ impl MultivariateExt for VineMultivariate {
     self.set_corr(corr_try)
   }
 
-  fn check_fit(&self, X: &Array2<f64>) -> Result<(), CopulaError> {
+  fn check_fit(&self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
     self.require_fitted()?;
     if X.ncols() != self.dim {
       return Err(CopulaError::DimensionMismatch {
@@ -259,7 +260,7 @@ impl MultivariateExt for VineMultivariate {
     Ok(())
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let z = self.transform_to_normal(X);
     let inv = self.inv_corr.as_ref().unwrap();
@@ -276,7 +277,7 @@ impl MultivariateExt for VineMultivariate {
     Ok(out)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let z = self.transform_to_normal(X);
     let l = self.chol_lower.as_ref().unwrap();

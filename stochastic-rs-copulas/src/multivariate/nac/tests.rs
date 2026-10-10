@@ -36,7 +36,7 @@ fn nac_clayton_two_level_cdf_pair_margins() {
   let nac = NestedArchimedean::new(NacFamily::Clayton, root, 3).unwrap();
   // Outer-inner pair margin: C(u_0, u_1, 1) = (u_0^{-θ_root} + u_1^{-θ_root} - 1)^{-1/θ_root}
   let q_outer_inner = ndarray::array![[0.3, 0.7, 1.0 - 1e-15]];
-  let c_oi = nac.cdf(&q_outer_inner).unwrap()[0];
+  let c_oi = nac.cdf(q_outer_inner.view()).unwrap()[0];
   let theta_root: f64 = 1.5;
   let expected_oi =
     (0.3f64.powf(-theta_root) + 0.7f64.powf(-theta_root) - 1.0).powf(-1.0 / theta_root);
@@ -48,7 +48,7 @@ fn nac_clayton_two_level_cdf_pair_margins() {
   );
   // Inner-inner pair margin: C(1, u_1, u_2) = (u_1^{-θ_inner} + u_2^{-θ_inner} - 1)^{-1/θ_inner}
   let q_inner_inner = ndarray::array![[1.0 - 1e-15, 0.3, 0.7]];
-  let c_ii = nac.cdf(&q_inner_inner).unwrap()[0];
+  let c_ii = nac.cdf(q_inner_inner.view()).unwrap()[0];
   let theta_inner: f64 = 4.0;
   let expected_ii =
     (0.3f64.powf(-theta_inner) + 0.7f64.powf(-theta_inner) - 1.0).powf(-1.0 / theta_inner);
@@ -95,7 +95,7 @@ fn nac_gumbel_two_level_inner_pair_more_dependent() {
   let nac = NestedArchimedean::new(NacFamily::Gumbel, root, 3).unwrap();
   let u = nac.sample(8_000).unwrap();
   use crate::correlation::kendall_tau;
-  let tau = kendall_tau(&u);
+  let tau = kendall_tau(u.view());
   // Gumbel: τ = 1 − 1/θ
   //   Inner θ=4 → τ ≈ 0.75
   //   Outer θ=2 → τ ≈ 0.50
@@ -165,7 +165,7 @@ fn nac_clayton_independence_cdf() {
   let root = NacNode::leaf_group(0.01, vec![0, 1, 2]);
   let nac = NestedArchimedean::new(NacFamily::Clayton, root, 3).unwrap();
   let q = ndarray::array![[0.5, 0.5, 0.5], [0.2, 0.3, 0.4]];
-  let c = nac.cdf(&q).unwrap();
+  let c = nac.cdf(q.view()).unwrap();
   let indep_1 = 0.5_f64.powi(3);
   let indep_2 = 0.2_f64 * 0.3 * 0.4;
   assert!(
@@ -186,7 +186,10 @@ fn nac_fit_rejects_with_descriptive_error() {
   let root = NacNode::leaf_group(2.0, vec![0, 1]);
   let mut nac = NestedArchimedean::new(NacFamily::Clayton, root, 2).unwrap();
   let data = ndarray::Array2::<f64>::from_elem((10, 2), 0.5);
-  assert!(matches!(nac.fit(data), Err(CopulaError::Unsupported(_))));
+  assert!(matches!(
+    nac.fit(data.view()),
+    Err(CopulaError::Unsupported(_))
+  ));
 }
 
 /// A root Clayton `θ` whose frailty shape `1/θ` is not finite is a named error from `sample`, not a panic.

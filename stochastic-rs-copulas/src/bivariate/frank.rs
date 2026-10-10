@@ -8,7 +8,8 @@
 
 use gauss_quad::GaussLegendre;
 use ndarray::Array1;
-use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 
 use crate::bivariate::CopulaType;
 use crate::bivariate::conditional::conditional_cdf;
@@ -119,9 +120,9 @@ impl BivariateExt for Frank {
     self.theta = Some(theta);
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     let theta = self.theta.unwrap();
-    let a = ((-theta * t).exp() - 1.0) / ((-theta).exp() - 1.0);
+    let a = ((-theta * &t).exp() - 1.0) / ((-theta).exp() - 1.0);
     let out = -(a.ln());
     Ok(out)
   }
@@ -136,7 +137,7 @@ impl BivariateExt for Frank {
   /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd
   /// ed., Springer, Example 4.23 / Table 4.1 (Frank generator
   /// $\varphi_\theta(t) = -\ln\frac{e^{-\theta t}-1}{e^{-\theta}-1}$).
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0).to_owned();
@@ -148,13 +149,14 @@ impl BivariateExt for Frank {
       return Ok(Array1::ones(U.len()));
     }
 
-    let num = (-theta * self._g(&Array1::ones(U.len()))?) * (1.0 + self._g(&(&U + &V))?);
-    let aux = self._g(&Array1::ones(U.len()))? + self._g(&U)? * self._g(&V)?;
+    let num =
+      (-theta * self._g(Array1::ones(U.len()).view())?) * (1.0 + self._g((&U + &V).view())?);
+    let aux = self._g(Array1::ones(U.len()).view())? + self._g(U.view())? * self._g(V.view())?;
     let den = aux.pow2();
     Ok(num / den)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0);
@@ -174,7 +176,11 @@ impl BivariateExt for Frank {
 
   /// `Frank::inverse`, `θ < 0` through `C_{−θ}(u, v) = u − C_θ(u, 1 − v)`, which swaps `v` and `1 − v`; the identity at
   /// `θ = 0`, NaN for `y` or `v` outside `[0, 1]`.
-  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    V: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     if theta == 0.0 {
@@ -190,7 +196,7 @@ impl BivariateExt for Frank {
   }
 
   /// `Frank::h`'s factored form, `u` at `θ = 0`; NaN for `v` outside `[0, 1]`.
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn partial_derivative(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     Ok(conditional_cdf(X, Self::h(self.theta.unwrap())))
   }
@@ -230,8 +236,8 @@ impl BivariateExt for Frank {
 }
 
 impl Frank {
-  fn _g(&self, z: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
-    Ok((-self.theta.unwrap() * z).exp() - 1.0)
+  fn _g(&self, z: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok((-self.theta.unwrap() * &z).exp() - 1.0)
   }
 
   /// Residual `τ(θ) − τ_target` for the Frank tau↔theta relation
@@ -299,7 +305,7 @@ mod tests {
   #[test]
   fn frank_pdf_at_independence_is_one() {
     let f = Frank::new(Some(0.0), None);
-    let pdf = f.pdf(&array![[0.2_f64, 0.9], [0.5, 0.5]]).unwrap();
+    let pdf = f.pdf(array![[0.2_f64, 0.9], [0.5, 0.5]].view()).unwrap();
     assert!(approx(pdf[0], 1.0, 1e-12), "got {}", pdf[0]);
     assert!(approx(pdf[1], 1.0, 1e-12), "got {}", pdf[1]);
   }
@@ -312,7 +318,7 @@ mod tests {
   #[test]
   fn frank_cdf_at_independence_is_uv() {
     let f = Frank::new(Some(0.0), None);
-    let cdf = f.cdf(&array![[0.3_f64, 0.7], [0.2, 0.9]]).unwrap();
+    let cdf = f.cdf(array![[0.3_f64, 0.7], [0.2, 0.9]].view()).unwrap();
     assert!(approx(cdf[0], 0.21, 1e-12), "got {}", cdf[0]);
     assert!(approx(cdf[1], 0.18, 1e-12), "got {}", cdf[1]);
   }
@@ -325,7 +331,7 @@ mod tests {
   fn frank_partial_derivative_at_independence_returns_u() {
     let f = Frank::new(Some(0.0), None);
     let pd = f
-      .partial_derivative(&array![[0.3_f64, 0.6], [0.2, 0.9]])
+      .partial_derivative(array![[0.3_f64, 0.6], [0.2, 0.9]].view())
       .unwrap();
     assert!(approx(pd[0], 0.3, 1e-12), "got {}", pd[0]);
     assert!(approx(pd[1], 0.2, 1e-12), "got {}", pd[1]);

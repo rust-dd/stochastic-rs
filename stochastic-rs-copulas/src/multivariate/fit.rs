@@ -23,6 +23,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView2;
 
 use super::cvine::CVine;
 use super::dvine::DVine;
@@ -154,14 +155,14 @@ fn estimate(family: PairFamily, u: &[f64], v: &[f64]) -> Option<PairCopula> {
       ];
       if family == PairFamily::Bb1 {
         let mut c = Bb1::default();
-        c.fit_parameters(&x).ok()?;
+        c.fit_parameters(x.view()).ok()?;
         Some(PairCopula::Bb1 {
           theta: c.theta?,
           delta: c.delta,
         })
       } else {
         let mut c = Bb7::default();
-        c.fit_parameters(&x).ok()?;
+        c.fit_parameters(x.view()).ok()?;
         Some(PairCopula::Bb7 {
           theta: c.theta?,
           delta: c.delta,
@@ -205,7 +206,7 @@ fn select_pair(
 /// Greedy maximal path on `|τ|` for the first D-vine tree: start from the
 /// strongest pair and extend the path at whichever end has the strongest
 /// remaining neighbour (Dißmann et al. 2013, §4.1 heuristic).
-fn dvine_order(tau: &Array2<f64>) -> Vec<usize> {
+fn dvine_order(tau: ArrayView2<f64>) -> Vec<usize> {
   let d = tau.nrows();
   if d == 1 {
     return vec![0];
@@ -249,7 +250,7 @@ fn dvine_order(tau: &Array2<f64>) -> Vec<usize> {
 /// Fits a vine of the requested structure to the pseudo-observations `u`
 /// (rows = observations, columns = variables in `[0, 1]`).
 pub fn fit_vine(
-  u: &Array2<f64>,
+  u: ArrayView2<f64>,
   structure: VineStructure,
   families: &[PairFamily],
   criterion: SelectionCriterion,
@@ -268,14 +269,14 @@ pub fn fit_vine(
   }
   let tau = kendall_tau(u);
   match structure {
-    VineStructure::DVine => fit_dvine(u, &tau, families, criterion),
-    VineStructure::CVine => fit_cvine(u, &tau, families, criterion),
+    VineStructure::DVine => fit_dvine(u, tau.view(), families, criterion),
+    VineStructure::CVine => fit_cvine(u, tau.view(), families, criterion),
   }
 }
 
 fn fit_dvine(
-  u: &Array2<f64>,
-  tau: &Array2<f64>,
+  u: ArrayView2<f64>,
+  tau: ArrayView2<f64>,
   families: &[PairFamily],
   criterion: SelectionCriterion,
 ) -> Result<VineFit, CopulaError> {
@@ -341,15 +342,15 @@ fn fit_dvine(
 }
 
 fn fit_cvine(
-  u: &Array2<f64>,
-  tau: &Array2<f64>,
+  u: ArrayView2<f64>,
+  tau: ArrayView2<f64>,
   families: &[PairFamily],
   criterion: SelectionCriterion,
 ) -> Result<VineFit, CopulaError> {
   let d = u.ncols();
   let n = u.nrows() as f64;
   // Root of the first tree: the variable with the largest total |τ|.
-  let strength = |i: usize, t: &Array2<f64>| {
+  let strength = |i: usize, t: ArrayView2<f64>| {
     (0..d)
       .filter(|&j| j != i)
       .map(|j| t[(i, j)].abs())
@@ -404,7 +405,7 @@ fn fit_cvine(
     for (c, (_, col)) in next_values.iter().enumerate() {
       pseudo.column_mut(c).assign(&Array1::from_vec(col.clone()));
     }
-    let tau_next = kendall_tau(&pseudo);
+    let tau_next = kendall_tau(pseudo.view());
     let best = (0..k)
       .max_by(|&a, &b| {
         let sa: f64 = (0..k)

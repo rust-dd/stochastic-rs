@@ -15,7 +15,7 @@
 //! transform's step function (e.g. for query points beyond the observed
 //! data range).
 //!
-use ndarray::Array1;
+use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
@@ -25,7 +25,7 @@ use stochastic_rs_distributions::special::norm_pdf;
 /// use stochastic_rs_copulas::univariate::gaussian::GaussianUnivariate;
 ///
 /// let mut g = GaussianUnivariate::new();
-/// g.fit(&array![1.0, 2.0, 3.0, 4.0, 5.0]);
+/// g.fit(array![1.0, 2.0, 3.0, 4.0, 5.0].view());
 /// // The sample mean (3.0) maps to the median of the fitted normal.
 /// assert!((g.cdf(3.0) - 0.5).abs() < 1e-9);
 /// ```
@@ -41,7 +41,7 @@ impl GaussianUnivariate {
   }
 
   /// Fit mean and std to data column, then cache the closed-form parameters.
-  pub fn fit(&mut self, column: &Array1<f64>) {
+  pub fn fit(&mut self, column: ArrayView1<f64>) {
     let n = column.len() as f64;
     if n < 2.0 {
       // fallback: standard normal
@@ -110,7 +110,7 @@ mod tests {
   #[test]
   fn gaussian_univariate_has_canonical_percent_point() {
     let mut g = GaussianUnivariate::new();
-    g.fit(&array![1.0, 2.0, 3.0, 4.0, 5.0]);
+    g.fit(array![1.0, 2.0, 3.0, 4.0, 5.0].view());
     for &p in &[0.1, 0.5, 0.9] {
       assert_eq!(g.percent_point(p), g.ppf(p));
     }
@@ -133,9 +133,9 @@ mod tests {
     normal.fill_slice(y.as_slice_mut().unwrap());
 
     let mut gx = GaussianUnivariate::new();
-    gx.fit(&x);
+    gx.fit(x.view());
     let mut gy = GaussianUnivariate::new();
-    gy.fit(&y);
+    gy.fit(y.view());
 
     let u = x.mapv(|v| gx.cdf(v));
     let v = y.mapv(|v| gy.cdf(v));
@@ -143,7 +143,7 @@ mod tests {
 
     let mut clayton = Clayton::new();
     clayton
-      .fit(&data)
+      .fit(data.view())
       .expect("Gaussian-margin transform must pass BivariateExt::fit's uniformity check");
     assert!(clayton.theta().is_some());
   }

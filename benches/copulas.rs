@@ -137,11 +137,13 @@ fn multivariate_cdf(c: &mut Criterion) {
   group.sample_size(20);
   let q = queries(3);
   let gaussian = GaussianMultivariate::new_with_corr(corr(3)).unwrap();
-  group.bench_function("gaussian_d3_16q", |b| b.iter(|| gaussian.cdf(&q).unwrap()));
+  group.bench_function("gaussian_d3_16q", |b| {
+    b.iter(|| gaussian.cdf(q.view()).unwrap())
+  });
   let t = TMultivariate::new_with(corr(3), 5.0).unwrap();
-  group.bench_function("t_d3_16q", |b| b.iter(|| t.cdf(&q).unwrap()));
+  group.bench_function("t_d3_16q", |b| b.iter(|| t.cdf(q.view()).unwrap()));
   let vine = dvine(3);
-  group.bench_function("dvine_d3_16q", |b| b.iter(|| vine.cdf(&q).unwrap()));
+  group.bench_function("dvine_d3_16q", |b| b.iter(|| vine.cdf(q.view()).unwrap()));
   group.finish();
 }
 
@@ -153,18 +155,18 @@ fn fit(c: &mut Criterion) {
     theta: Some(2.0),
     ..Clayton::new()
   };
-  let pairs = pseudo_observations(&clayton.sample_with_seed(2_000, 1).unwrap());
+  let pairs = pseudo_observations(clayton.sample_with_seed(2_000, 1).unwrap().view());
   group.bench_function("clayton_fit_n2k", |b| {
     b.iter(|| {
       let mut fitted = Clayton::new();
-      fitted.fit(&pairs).unwrap()
+      fitted.fit(pairs.view()).unwrap()
     })
   });
-  let data = pseudo_observations(&dvine(4).sample_with_seed(1_000, 1).unwrap());
+  let data = pseudo_observations(dvine(4).sample_with_seed(1_000, 1).unwrap().view());
   group.bench_function("vine_fit_d4_n1k", |b| {
     b.iter(|| {
       fit_vine(
-        &data,
+        data.view(),
         VineStructure::DVine,
         &PairFamily::ALL,
         SelectionCriterion::Aic,
@@ -172,7 +174,9 @@ fn fit(c: &mut Criterion) {
       .unwrap()
     })
   });
-  group.bench_function("kendall_tau_d4_n1k", |b| b.iter(|| kendall_tau(&data)));
+  group.bench_function("kendall_tau_d4_n1k", |b| {
+    b.iter(|| kendall_tau(data.view()))
+  });
   group.finish();
 }
 
@@ -183,11 +187,11 @@ fn gof(c: &mut Criterion) {
     theta: Some(2.0),
     ..Clayton::new()
   };
-  let pairs = pseudo_observations(&clayton.sample_with_seed(300, 1).unwrap());
+  let pairs = pseudo_observations(clayton.sample_with_seed(300, 1).unwrap().view());
   let mut fitted = Clayton::new();
-  fitted.fit(&pairs).unwrap();
+  fitted.fit(pairs.view()).unwrap();
   group.bench_function("clayton_cvm_n300_r10", |b| {
-    b.iter(|| gof_cramer_von_mises(&fitted, &pairs, 10, 100, |c, x| c.fit(x)).unwrap())
+    b.iter(|| gof_cramer_von_mises(&fitted, pairs.view(), 10, 100, |c, x| c.fit(x)).unwrap())
   });
   group.finish();
 }

@@ -23,7 +23,7 @@
 //! Concepts", Chapman & Hall, §5.4.
 
 use ndarray::Array1;
-use ndarray::Array2;
+use ndarray::ArrayView2;
 
 use crate::bivariate::CopulaType;
 use crate::bivariate::conditional::conditional_cdf;
@@ -132,7 +132,7 @@ impl BivariateExt for Galambos {
   /// $c(u,v) = C(u,v)/(uv) \cdot [g(x,y) + (\theta+1)\,T^{2\theta+1}/(xy)^{\theta+1}]$
   /// where $x = -\ln u$, $y = -\ln v$, $T = (x^{-\theta} + y^{-\theta})^{-1/\theta}$,
   /// $g(x,y) = ((T/x)^{\theta+1} - 1)((T/y)^{\theta+1} - 1)$.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     let u_col = x.column(0);
@@ -160,7 +160,7 @@ impl BivariateExt for Galambos {
 
   /// CDF $C(u,v) = u v \cdot \exp\!\{(x^{-\theta} + y^{-\theta})^{-1/\theta}\}$
   /// with $x = -\ln u$, $y = -\ln v$.
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     let u_col = x.column(0);
@@ -191,7 +191,7 @@ impl BivariateExt for Galambos {
 
   /// $\partial_v C(u,v) = (C/v) \cdot [1 - (T/y)^{\theta+1}]$, $x, y = -\ln u, -\ln v$, $T = (x^{-\theta} + y^{-\theta})^{-1/\theta}$:
   /// 0 at `v = 1`, the formula at `v` floored to `1e-12` near 0 (a `θ`- and `u`-dependent limit), NaN outside `[0, 1]`.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     Ok(conditional_cdf(x, |u, v| {
@@ -250,7 +250,7 @@ mod tests {
     let mut c = Galambos::new();
     c.set_theta(2.0);
     let x = array![[0.5_f64, 1.0], [1.0, 0.7]];
-    let cdf = c.cdf(&x).unwrap();
+    let cdf = c.cdf(x.view()).unwrap();
     assert!(approx(cdf[0], 0.5, 1e-12));
     assert!(approx(cdf[1], 0.7, 1e-12));
   }
@@ -260,7 +260,7 @@ mod tests {
     let mut c = Galambos::new();
     c.set_theta(1e-6);
     let x = array![[0.3_f64, 0.7], [0.5, 0.5]];
-    let cdf = c.cdf(&x).unwrap();
+    let cdf = c.cdf(x.view()).unwrap();
     assert!(approx(cdf[0], 0.21, 1e-3), "got {}", cdf[0]);
     assert!(approx(cdf[1], 0.25, 1e-3), "got {}", cdf[1]);
   }
@@ -270,7 +270,7 @@ mod tests {
     let mut c = Galambos::new();
     c.set_theta(50.0);
     let x = array![[0.3_f64, 0.7], [0.5, 0.5]];
-    let cdf = c.cdf(&x).unwrap();
+    let cdf = c.cdf(x.view()).unwrap();
     // Comonotone: C(u,v) = min(u,v).
     assert!((cdf[0] - 0.3).abs() < 0.05, "got {}", cdf[0]);
     assert!((cdf[1] - 0.5).abs() < 0.05, "got {}", cdf[1]);
@@ -321,7 +321,7 @@ mod tests {
     let mut c = Galambos::new();
     c.set_theta(1.5);
     let x = array![[0.25_f64, 0.75], [0.5, 0.5], [0.1, 0.9]];
-    let pdf = c.pdf(&x).unwrap();
+    let pdf = c.pdf(x.view()).unwrap();
     for &p in pdf.iter() {
       assert!(p > 0.0 && p.is_finite(), "pdf={p}");
     }
@@ -356,8 +356,8 @@ mod tests {
     let mut c = Galambos::new();
     c.set_theta(1.5);
     let u = 0.4_f64;
-    let a = c.partial_derivative(&array![[u, 1e-12]]).unwrap()[0];
-    let b = c.partial_derivative(&array![[u, 1e-9]]).unwrap()[0];
+    let a = c.partial_derivative(array![[u, 1e-12]].view()).unwrap()[0];
+    let b = c.partial_derivative(array![[u, 1e-9]].view()).unwrap()[0];
     assert!(
       approx(a, b, 1e-2),
       "expected continuity near v=0: v=1e-12 -> {a}, v=1e-9 -> {b}"
@@ -374,6 +374,6 @@ mod tests {
   fn galambos_generator_returns_err_not_archimedean() {
     let c = Galambos::new();
     let t = array![0.5_f64, 0.8];
-    assert!(c.generator(&t).is_err());
+    assert!(c.generator(t.view()).is_err());
   }
 }

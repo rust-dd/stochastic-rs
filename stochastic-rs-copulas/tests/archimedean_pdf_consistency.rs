@@ -39,7 +39,7 @@ const POINTS: [(f64, f64); 3] = [(0.3, 0.7), (0.5, 0.5), (0.4, 0.6)];
 /// truncation term.
 fn fd_mixed_partial(c: &impl BivariateExt, u: f64, v: f64, h: f64) -> f64 {
   let central = |step: f64| {
-    let eval = |du: f64, dv: f64| c.cdf(&array![[u + du, v + dv]]).unwrap()[0];
+    let eval = |du: f64, dv: f64| c.cdf(array![[u + du, v + dv]].view()).unwrap()[0];
     (eval(step, step) - eval(step, -step) - eval(-step, step) + eval(-step, -step))
       / (4.0 * step * step)
   };
@@ -49,7 +49,7 @@ fn fd_mixed_partial(c: &impl BivariateExt, u: f64, v: f64, h: f64) -> f64 {
 }
 
 fn assert_pdf_matches_fd(c: &impl BivariateExt, u: f64, v: f64, label: &str) {
-  let analytic = c.pdf(&array![[u, v]]).unwrap()[0];
+  let analytic = c.pdf(array![[u, v]].view()).unwrap()[0];
   let fd = fd_mixed_partial(c, u, v, STEP);
   let rel_err = (analytic - fd).abs() / fd.abs().max(1e-12);
   assert!(

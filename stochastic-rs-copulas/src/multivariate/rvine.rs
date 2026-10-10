@@ -35,6 +35,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView2;
 
 use super::CopulaType;
 use super::cvine::CVine;
@@ -112,35 +113,35 @@ impl MultivariateExt for RVine {
     }
   }
 
-  fn fit(&mut self, x: Array2<f64>) -> Result<(), CopulaError> {
+  fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     match self {
       RVine::D(d) => d.fit(x),
       RVine::C(c) => c.fit(x),
     }
   }
 
-  fn check_fit(&self, x: &Array2<f64>) -> Result<(), CopulaError> {
+  fn check_fit(&self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     match self {
       RVine::D(d) => d.check_fit(x),
       RVine::C(c) => c.check_fit(x),
     }
   }
 
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     match self {
       RVine::D(d) => d.pdf(x),
       RVine::C(c) => c.pdf(x),
     }
   }
 
-  fn log_pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     match self {
       RVine::D(d) => d.log_pdf(x),
       RVine::C(c) => c.log_pdf(x),
     }
   }
 
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     match self {
       RVine::D(d) => d.cdf(x),
       RVine::C(c) => c.cdf(x),
@@ -169,8 +170,8 @@ mod tests {
     let dv = DVine::new(3, tree).unwrap();
     let rv = RVine::from_dvine(dv.clone());
     let q = array![[0.3, 0.5, 0.7], [0.1, 0.5, 0.9]];
-    let lp_dv = dv.log_pdf(&q).unwrap();
-    let lp_rv = rv.log_pdf(&q).unwrap();
+    let lp_dv = dv.log_pdf(q.view()).unwrap();
+    let lp_rv = rv.log_pdf(q.view()).unwrap();
     for i in 0..lp_dv.len() {
       assert!(
         (lp_dv[i] - lp_rv[i]).abs() < 1e-12,
@@ -196,8 +197,8 @@ mod tests {
     let cv = CVine::new(3, tree).unwrap();
     let rv = RVine::from_cvine(cv.clone());
     let q = array![[0.2, 0.4, 0.6], [0.4, 0.6, 0.8]];
-    let lp_cv = cv.log_pdf(&q).unwrap();
-    let lp_rv = rv.log_pdf(&q).unwrap();
+    let lp_cv = cv.log_pdf(q.view()).unwrap();
+    let lp_rv = rv.log_pdf(q.view()).unwrap();
     for i in 0..lp_cv.len() {
       assert!(
         (lp_cv[i] - lp_rv[i]).abs() < 1e-12,

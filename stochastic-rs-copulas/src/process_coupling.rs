@@ -8,7 +8,7 @@
 //! The module deliberately does **not** depend on `stochastic-rs-stochastic`
 //! (to keep the dependency graph acyclic and the copula crate lean). The
 //! pattern is therefore expressed via free helpers operating on
-//! `Array1<f64>` marginals.
+//! `ArrayView1<f64>` marginals.
 //!
 //! ## Pattern
 //!
@@ -36,11 +36,11 @@
 //! let mut c = Clayton::new();
 //! c.set_tau(0.5);
 //! c._compute_theta();
-//! let coupled = couple_marginals(&s1, &s2, &mut c).unwrap();
+//! let coupled = couple_marginals(s1.view(), s2.view(), &mut c).unwrap();
 //! assert_eq!(coupled.shape(), &[32, 2]);
 //! ```
 
-use ndarray::Array1;
+use ndarray::ArrayView1;
 
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
@@ -50,8 +50,8 @@ use crate::traits::BivariateExt;
 /// Returns a `(n, 2)`-shaped sample with copula-induced dependence and
 /// preserved empirical marginal distributions.
 pub fn couple_marginals<C: BivariateExt>(
-  s1: &Array1<f64>,
-  s2: &Array1<f64>,
+  s1: ArrayView1<f64>,
+  s2: ArrayView1<f64>,
   copula: &mut C,
 ) -> Result<ndarray::Array2<f64>, CopulaError> {
   let n = s1.len();

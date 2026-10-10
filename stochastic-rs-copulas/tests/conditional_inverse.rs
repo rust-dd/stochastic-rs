@@ -104,7 +104,7 @@ fn the_numerical_inverse_converges_at_extreme_levels() {
   ];
   for (name, copula) in numerical {
     let u = copula
-      .percent_point(&y, &v)
+      .percent_point(y.view(), v.view())
       .unwrap_or_else(|e| panic!("{name}: {e}"));
     assert!(u.iter().all(|u| (0.0..=1.0).contains(u)), "{name}: {u}");
   }
@@ -185,7 +185,9 @@ fn assert_h_and_inverse(
   inverse_rows: &[Row],
 ) {
   for &(theta, u, v, want) in h_rows {
-    let got = family(theta).partial_derivative(&array![[u, v]]).unwrap()[0];
+    let got = family(theta)
+      .partial_derivative(array![[u, v]].view())
+      .unwrap()[0];
     assert!(
       (got - want).abs() <= 1e-12 * want,
       "{name} θ = {theta}: h({u} | {v}) = {got} vs {want}"
@@ -208,9 +210,13 @@ fn gumbel_and_joe_match_the_60_digit_references() {
 fn a_query_outside_the_unit_interval_is_nan() {
   for (name, copula) in families() {
     for bad in [f64::NAN, -0.1, 1.5, f64::NEG_INFINITY, f64::INFINITY] {
-      let u = copula.ppf(&array![bad, 0.4], &array![0.6, bad]).unwrap();
+      let u = copula
+        .ppf(array![bad, 0.4].view(), array![0.6, bad].view())
+        .unwrap();
       assert!(u.iter().all(|u| u.is_nan()), "{name} at {bad}: {u}");
-      let h = copula.partial_derivative(&array![[0.4, bad]]).unwrap();
+      let h = copula
+        .partial_derivative(array![[0.4, bad]].view())
+        .unwrap();
       assert!(h[0].is_nan(), "{name} at v = {bad}: h = {}", h[0]);
     }
   }
@@ -242,14 +248,14 @@ fn the_edges_of_the_square_answer_inside_it() {
   ));
   copulas.push(("plackett 0.01", Box::new(with_theta(Plackett::new(), 0.01))));
   for (name, copula) in copulas {
-    let u = copula.percent_point(&y, &v).unwrap();
+    let u = copula.percent_point(y.view(), v.view()).unwrap();
     assert!(u.iter().all(|u| (0.0..=1.0).contains(u)), "{name}: {u}");
-    let u = copula.percent_point(&near_one, &sweep).unwrap();
+    let u = copula.percent_point(near_one.view(), sweep.view()).unwrap();
     assert!(
       u.iter().all(|u| (0.0..=1.0).contains(u)),
       "{name} near y = 1: {u}"
     );
-    let h = copula.partial_derivative(&edges).unwrap();
+    let h = copula.partial_derivative(edges.view()).unwrap();
     assert!(h.iter().all(|h| h.is_finite()), "{name}: {h}");
   }
 }
@@ -260,7 +266,7 @@ fn the_edges_of_the_square_answer_inside_it() {
 fn the_gaussian_inverse_answers_its_degenerate_laws() {
   let at = |rho: f64, y: f64, v: f64| {
     with_theta(GaussianCopula::new(), rho)
-      .percent_point(&array![y], &array![v])
+      .percent_point(array![y].view(), array![v].view())
       .unwrap()[0]
   };
   for y in [0.0, 0.3, 1.0] {
@@ -293,7 +299,11 @@ fn unequal_lengths_are_a_dimension_mismatch() {
         expected: y.len(),
         got: v.len(),
       };
-      assert_eq!(copula.percent_point(y, v).unwrap_err(), want, "{name}");
+      assert_eq!(
+        copula.percent_point(y.view(), v.view()).unwrap_err(),
+        want,
+        "{name}"
+      );
     }
   }
 }
@@ -301,7 +311,7 @@ fn unequal_lengths_are_a_dimension_mismatch() {
 #[test]
 fn independence_partial_derivative_is_the_v_derivative() {
   let h = with_theta(Independence::new(), 0.0)
-    .partial_derivative(&array![[0.3, 0.8], [0.9, 0.2]])
+    .partial_derivative(array![[0.3, 0.8], [0.9, 0.2]].view())
     .unwrap();
   assert_eq!(h, array![0.3, 0.9]);
 }
@@ -449,7 +459,9 @@ fn assert_reference(
   (y, v, want): (f64, f64, f64),
   rel: f64,
 ) {
-  let got = copula.percent_point(&array![y], &array![v]).unwrap()[0];
+  let got = copula
+    .percent_point(array![y].view(), array![v].view())
+    .unwrap()[0];
   assert!(
     (got - want).abs() <= rel * want,
     "{name} y = {y}, v = {v}: {got} vs {want}"
@@ -463,7 +475,7 @@ fn the_closed_forms_match_the_mpmath_references() {
   }
   for (theta, u, v, want) in FRANK_H {
     let got = Frank::new(Some(theta), None)
-      .partial_derivative(&array![[u, v]])
+      .partial_derivative(array![[u, v]].view())
       .unwrap()[0];
     assert!(
       (got - want).abs() <= 1e-14 * want,
@@ -499,8 +511,10 @@ const GRID: [f64; 7] = [1e-6, 0.01, 0.3, 0.5, 0.7, 0.99, 1.0 - 1e-6];
 fn assert_round_trips(name: &str, copula: &dyn BivariateExt) {
   let y = Array1::from_iter(GRID.iter().flat_map(|&y| GRID.map(|_| y)));
   let v = Array1::from_iter(GRID.iter().flat_map(|_| GRID));
-  let u = copula.percent_point(&y, &v).unwrap();
-  let back = copula.partial_derivative(&stack![Axis(1), u, v]).unwrap();
+  let u = copula.percent_point(y.view(), v.view()).unwrap();
+  let back = copula
+    .partial_derivative(stack![Axis(1), u, v].view())
+    .unwrap();
   for i in 0..y.len() {
     assert!(
       (back[i] - y[i]).abs() <= 1e-10,

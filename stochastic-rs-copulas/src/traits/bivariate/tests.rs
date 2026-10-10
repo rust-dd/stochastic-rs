@@ -46,13 +46,13 @@ impl BivariateExt for DummyNonArchimedean {
     }
   }
 
-  fn pdf(&self, _x: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, _x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     Err(CopulaError::Unsupported(
       "not implemented for DummyNonArchimedean".into(),
     ))
   }
 
-  fn cdf(&self, _x: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, _x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     Err(CopulaError::Unsupported(
       "not implemented for DummyNonArchimedean".into(),
     ))
@@ -102,15 +102,15 @@ impl BivariateExt for ParameterisedWithoutTheta {
     Ok(())
   }
 
-  fn pdf(&self, x: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok(Array1::ones(x.nrows()))
   }
 
-  fn cdf(&self, x: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok(&x.column(0) * &x.column(1))
   }
 
-  fn partial_derivative(&self, x: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn partial_derivative(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok(x.column(0).to_owned())
   }
 }
@@ -120,7 +120,7 @@ impl BivariateExt for ParameterisedWithoutTheta {
 fn generator_default_returns_anchored_not_archimedean_err() {
   let dummy = DummyNonArchimedean { theta: None };
   assert_eq!(
-    dummy.generator(&array![0.5_f64, 0.8]).unwrap_err(),
+    dummy.generator(array![0.5_f64, 0.8].view()).unwrap_err(),
     CopulaError::Unsupported("Fgm is not Archimedean: no generator".into())
   );
 }
@@ -132,12 +132,16 @@ fn percent_point_numerical_propagates_inner_errors_instead_of_panicking() {
   let (y, v) = (array![0.5_f64], array![0.5_f64]);
   let unfitted = DummyNonArchimedean { theta: None };
   assert_eq!(
-    unfitted.percent_point_numerical(&y, &v).unwrap_err(),
+    unfitted
+      .percent_point_numerical(y.view(), v.view())
+      .unwrap_err(),
     CopulaError::NotFitted
   );
   let fitted = DummyNonArchimedean { theta: Some(0.5) };
   assert_eq!(
-    fitted.percent_point_numerical(&y, &v).unwrap_err(),
+    fitted
+      .percent_point_numerical(y.view(), v.view())
+      .unwrap_err(),
     CopulaError::Unsupported("not implemented for DummyNonArchimedean".into())
   );
 }
@@ -152,7 +156,7 @@ fn percent_point_numerical_saturates_at_the_bracket_floor() {
   amh.set_tau(0.25);
   amh._compute_theta();
   let out = amh
-    .percent_point_numerical(&array![1e-300_f64], &array![0.5_f64])
+    .percent_point_numerical(array![1e-300_f64].view(), array![0.5_f64].view())
     .expect("saturation is a value");
   assert_eq!(
     out[0],
@@ -168,7 +172,7 @@ fn percent_point_numerical_saturates_at_the_bracket_ceiling() {
   let mut galambos = Galambos::new();
   galambos.set_theta(1.5);
   let out = galambos
-    .percent_point_numerical(&array![0.3_f64], &array![1.0_f64])
+    .percent_point_numerical(array![0.3_f64].view(), array![1.0_f64].view())
     .expect("saturation is a value");
   assert_eq!(out[0], 1.0);
 }
@@ -181,7 +185,7 @@ fn percent_point_numerical_answers_the_floor_at_level_zero() {
   for v in [1.0 - 1e-10, 1.0 - 1e-12, 1.0 - f64::EPSILON / 2.0] {
     let h = galambos.partial_derivative_scalar(f64::EPSILON, v).unwrap();
     assert!(h < 0.0, "the premise: h(EPSILON | {v}) = {h}");
-    let u = galambos.percent_point_numerical(&array![0.0], &array![v]);
+    let u = galambos.percent_point_numerical(array![0.0].view(), array![v].view());
     assert_eq!(u, Ok(array![f64::EPSILON]), "v = {v}");
   }
 }
@@ -194,7 +198,7 @@ fn percent_point_numerical_solves_levels_below_the_product_underflow() {
   for y in [1e-300, 1e-310, 5e-324] {
     for v in [1.0 - 1e-10, 1.0 - f64::EPSILON / 2.0] {
       let u = galambos
-        .percent_point_numerical(&array![y], &array![v])
+        .percent_point_numerical(array![y].view(), array![v].view())
         .unwrap_or_else(|e| panic!("y = {y}, v = {v}: {e}"))[0];
       assert!((f64::EPSILON..=1.0).contains(&u), "y = {y}, v = {v}: {u}");
     }
@@ -209,7 +213,7 @@ fn percent_point_numerical_round_trips_through_the_h_function() {
   amh._compute_theta();
   for &(y, v) in &[(0.1_f64, 0.3_f64), (0.5, 0.5), (0.9, 0.7), (0.05, 0.95)] {
     let u = amh
-      .percent_point_numerical(&array![y], &array![v])
+      .percent_point_numerical(array![y].view(), array![v].view())
       .expect("solve")[0];
     let back = amh.partial_derivative_scalar(u, v).expect("h eval");
     assert!(
@@ -233,7 +237,7 @@ fn doc_hidden_methods_remain_callable_in_crate() {
   assert!(c.theta().is_some());
 
   let u = array![0.1_f64, 0.5, 0.9];
-  assert!(c.check_marginal(&u).is_ok());
+  assert!(c.check_marginal(u.view()).is_ok());
 
   let scalar = c.partial_derivative_scalar(0.3, 0.6).unwrap();
   assert!((0.0..=1.0).contains(&scalar));

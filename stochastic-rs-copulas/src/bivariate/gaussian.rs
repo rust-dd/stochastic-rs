@@ -33,7 +33,8 @@
 //! probabilities", *Ann. Math. Statist.* 27(4), 1075-1090.
 
 use ndarray::Array1;
-use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 use owens_t::biv_norm;
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
@@ -122,7 +123,7 @@ impl BivariateExt for GaussianCopula {
   /// 2\rho xy)/(2(1-\rho^2))\}$ with $x = \Phi^{-1}(u)$, $y = \Phi^{-1}(v)$
   /// — the ratio of the bivariate normal density to the product of its
   /// marginals.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
     let one_minus_rho2 = 1.0 - rho * rho;
@@ -147,7 +148,7 @@ impl BivariateExt for GaussianCopula {
   /// $C(u,v) = \Phi_2(x,y;\rho) = \Phi(x) + \Phi(y) - 1 + Q(x,y;\rho)$,
   /// with $Q$ the `owens_t::biv_norm` survival probability (see module
   /// header for the inclusion-exclusion derivation).
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
     let u_col = x.column(0);
@@ -177,7 +178,7 @@ impl BivariateExt for GaussianCopula {
 
   /// $\partial_v C(u,v) = \Phi\big((x - \rho y)/\sqrt{1-\rho^2}\big)$, $x, y = \Phi^{-1}(u), \Phi^{-1}(v)$, with `v`
   /// clamped `1e-12` inside `(0, 1)` for the edge limits, whose sign follows `ρ`; NaN for `v` outside `[0, 1]`.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
     let sqrt_one_minus_rho2 = (1.0 - rho * rho).sqrt();
@@ -188,7 +189,11 @@ impl BivariateExt for GaussianCopula {
   }
 
   /// `GaussianCopula::inverse` of [`GaussianCopula::partial_derivative`] in `u`; NaN for `y` or `v` outside `[0, 1]`.
-  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    V: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
     // The identity at `ρ = 0`, chosen once per call: a test per pair costs the sampler.
@@ -233,7 +238,7 @@ mod tests {
     let mut c = GaussianCopula::new();
     c.set_theta(0.4);
     let x = array![[0.5_f64, 1.0], [1.0, 0.7]];
-    let cdf = c.cdf(&x).unwrap();
+    let cdf = c.cdf(x.view()).unwrap();
     assert!(approx(cdf[0], 0.5, 1e-9));
     assert!(approx(cdf[1], 0.7, 1e-9));
   }
@@ -247,7 +252,7 @@ mod tests {
     let mut c = GaussianCopula::new();
     c.set_theta(0.5);
     let x = array![[0.5_f64, 0.5]];
-    let cdf = c.cdf(&x).unwrap()[0];
+    let cdf = c.cdf(x.view()).unwrap()[0];
     let expected = 0.25 + (0.5_f64).asin() / (2.0 * std::f64::consts::PI);
     assert!(
       approx(cdf, expected, 1e-12),
@@ -286,7 +291,7 @@ mod tests {
       let samples = source.sample_with_seed(n, seed).unwrap();
 
       let mut fitted = GaussianCopula::new();
-      fitted.fit(&samples).unwrap();
+      fitted.fit(samples.view()).unwrap();
       let rho_hat = fitted.theta().unwrap();
       best_err = best_err.min((rho_hat - rho_true).abs());
     }
@@ -306,9 +311,12 @@ mod tests {
     c.set_theta(0.35);
     let u = 0.3_f64;
     let v = 0.65_f64;
-    let p = c.partial_derivative(&array![[u, v]]).unwrap()[0];
+    let p = c.partial_derivative(array![[u, v]].view()).unwrap()[0];
     let u_back = c
-      .percent_point(&Array1::from_vec(vec![p]), &Array1::from_vec(vec![v]))
+      .percent_point(
+        Array1::from_vec(vec![p]).view(),
+        Array1::from_vec(vec![v]).view(),
+      )
       .unwrap()[0];
     assert!(approx(u_back, u, 1e-12), "got {u_back}, expected {u}");
   }
@@ -327,7 +335,7 @@ mod tests {
     let mut c = GaussianCopula::new();
     c.set_theta(0.3);
     let x = array![[0.25_f64, 0.75], [0.5, 0.5], [0.1, 0.9]];
-    let pdf = c.pdf(&x).unwrap();
+    let pdf = c.pdf(x.view()).unwrap();
     for &p in pdf.iter() {
       assert!(p > 0.0 && p.is_finite(), "pdf={p}");
     }
@@ -337,7 +345,7 @@ mod tests {
   fn gaussian_generator_returns_err_not_archimedean() {
     let c = GaussianCopula::new();
     let t = array![0.5_f64, 0.8];
-    assert!(c.generator(&t).is_err());
+    assert!(c.generator(t.view()).is_err());
   }
 
   /// `partial_derivative` must not jump to a hardcoded constant right at
@@ -352,14 +360,18 @@ mod tests {
     let mut c = GaussianCopula::new();
     c.set_theta(0.7);
     let u = 0.4_f64;
-    let near_zero_a = c.partial_derivative(&array![[u, 1e-12]]).unwrap()[0];
-    let near_zero_b = c.partial_derivative(&array![[u, 1e-9]]).unwrap()[0];
+    let near_zero_a = c.partial_derivative(array![[u, 1e-12]].view()).unwrap()[0];
+    let near_zero_b = c.partial_derivative(array![[u, 1e-9]].view()).unwrap()[0];
     assert!(
       approx(near_zero_a, near_zero_b, 1e-6),
       "expected continuity near v=0: v=1e-12 -> {near_zero_a}, v=1e-9 -> {near_zero_b}"
     );
-    let near_one_a = c.partial_derivative(&array![[u, 1.0 - 1e-12]]).unwrap()[0];
-    let near_one_b = c.partial_derivative(&array![[u, 1.0 - 1e-9]]).unwrap()[0];
+    let near_one_a = c
+      .partial_derivative(array![[u, 1.0 - 1e-12]].view())
+      .unwrap()[0];
+    let near_one_b = c
+      .partial_derivative(array![[u, 1.0 - 1e-9]].view())
+      .unwrap()[0];
     assert!(
       approx(near_one_a, near_one_b, 1e-6),
       "expected continuity near v=1: v=1-1e-12 -> {near_one_a}, v=1-1e-9 -> {near_one_b}"

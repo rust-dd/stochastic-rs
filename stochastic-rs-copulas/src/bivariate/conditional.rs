@@ -2,7 +2,8 @@
 //! interval, and the absolute tolerance of the numerical inverse.
 
 use ndarray::Array1;
-use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 use ndarray::Zip;
 
 use crate::error::CopulaError;
@@ -17,7 +18,7 @@ pub(crate) fn in_unit(x: f64) -> bool {
 }
 
 /// `DimensionMismatch` unless every quantile level in `y` has its conditioning value in `v`.
-pub(crate) fn check_lengths(y: &Array1<f64>, v: &Array1<f64>) -> Result<(), CopulaError> {
+pub(crate) fn check_lengths(y: ArrayView1<f64>, v: ArrayView1<f64>) -> Result<(), CopulaError> {
   if y.len() == v.len() {
     return Ok(());
   }
@@ -46,8 +47,8 @@ pub(crate) fn conditioned(v: f64, p: f64) -> f64 {
 
 /// A closed-form inverse mapped over `(y, v)` under [`confine`].
 pub(crate) fn conditional_quantiles(
-  y: &Array1<f64>,
-  v: &Array1<f64>,
+  y: ArrayView1<f64>,
+  v: ArrayView1<f64>,
   quantile: impl Fn(f64, f64) -> f64,
 ) -> Result<Array1<f64>, CopulaError> {
   check_lengths(y, v)?;
@@ -59,7 +60,7 @@ pub(crate) fn conditional_quantiles(
 }
 
 /// `∂_v C` mapped over the rows `(u, v)` of `x` under [`conditioned`].
-pub(crate) fn conditional_cdf(x: &Array2<f64>, h: impl Fn(f64, f64) -> f64) -> Array1<f64> {
+pub(crate) fn conditional_cdf(x: ArrayView2<f64>, h: impl Fn(f64, f64) -> f64) -> Array1<f64> {
   Zip::from(x.column(0))
     .and(x.column(1))
     .map_collect(|&u, &v| conditioned(v, h(u, v)))

@@ -19,7 +19,8 @@
 //! with Copulas*, CRC Press, §4.13.2.
 
 use ndarray::Array1;
-use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 
 use super::CopulaType;
 use super::conditional::conditional_cdf;
@@ -114,7 +115,7 @@ impl Bb7 {
   /// without the marginal uniformity check that [`BivariateExt::fit`] runs
   /// first — for callers that already hold pseudo-observations, such as the
   /// vine fitter.
-  pub(crate) fn fit_parameters(&mut self, X: &Array2<f64>) -> Result<(), CopulaError> {
+  pub(crate) fn fit_parameters(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
     if X.nrows() < 2 {
       return Err(CopulaError::InsufficientData {
         needed: 2,
@@ -182,12 +183,12 @@ impl BivariateExt for Bb7 {
     self.theta = Some(theta);
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     Ok(t.mapv(|x| (1.0 - (1.0 - x).powf(theta)).powf(-delta) - 1.0))
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     Ok(
       X.rows()
@@ -197,7 +198,7 @@ impl BivariateExt for Bb7 {
     )
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     Ok(
       X.rows()
@@ -208,7 +209,7 @@ impl BivariateExt for Bb7 {
   }
 
   /// `∂_v C(u, v)`, NaN for `v` outside `[0, 1]`.
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn partial_derivative(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     Ok(conditional_cdf(X, |u, v| {
       Self::h_scalar(clip(u), clip(v), theta, delta)
@@ -218,8 +219,8 @@ impl BivariateExt for Bb7 {
   /// The h-function inverted by bisection on `[1e-12, 1 − 1e-12]`, NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(
     &self,
-    y: &Array1<f64>,
-    conditioning: &Array1<f64>,
+    y: ArrayView1<f64>,
+    conditioning: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     conditional_quantiles(y, conditioning, |p, v| {
@@ -247,9 +248,9 @@ impl BivariateExt for Bb7 {
 
   /// Maximum-likelihood fit of `(θ, δ)`, started from the Kendall inversion
   /// at the current `δ`.
-  fn fit(&mut self, X: &Array2<f64>) -> Result<(), CopulaError> {
-    self.check_marginal(&X.column(0).to_owned())?;
-    self.check_marginal(&X.column(1).to_owned())?;
+  fn fit(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
+    self.check_marginal(X.column(0))?;
+    self.check_marginal(X.column(1))?;
     self.fit_parameters(X)
   }
 
@@ -274,10 +275,10 @@ mod tests {
   fn h_function_is_the_v_derivative_of_the_cdf() {
     let c = Bb7::new(Some(1.8), Some(0.9), None);
     for (u, v) in [(0.3, 0.6), (0.8, 0.2), (0.5, 0.5)] {
-      let h = c.partial_derivative(&array![[u, v]]).unwrap()[0];
+      let h = c.partial_derivative(array![[u, v]].view()).unwrap()[0];
       let eps = 1e-6;
-      let up = c.cdf(&array![[u, v + eps]]).unwrap()[0];
-      let dn = c.cdf(&array![[u, v - eps]]).unwrap()[0];
+      let up = c.cdf(array![[u, v + eps]].view()).unwrap()[0];
+      let dn = c.cdf(array![[u, v - eps]].view()).unwrap()[0];
       assert!(
         (h - (up - dn) / (2.0 * eps)).abs() < 1e-6,
         "h {h} vs fd {}",
@@ -290,11 +291,11 @@ mod tests {
   fn density_is_the_mixed_derivative_of_the_cdf() {
     let c = Bb7::new(Some(1.5), Some(1.2), None);
     let (u, v, eps) = (0.4, 0.7, 1e-4);
-    let f = |a: f64, b: f64| c.cdf(&array![[a, b]]).unwrap()[0];
+    let f = |a: f64, b: f64| c.cdf(array![[a, b]].view()).unwrap()[0];
     let mixed = (f(u + eps, v + eps) - f(u + eps, v - eps) - f(u - eps, v + eps)
       + f(u - eps, v - eps))
       / (4.0 * eps * eps);
-    let density = c.pdf(&array![[u, v]]).unwrap()[0];
+    let density = c.pdf(array![[u, v]].view()).unwrap()[0];
     assert!(
       (density - mixed).abs() < 1e-5,
       "density {density} vs fd {mixed}"
@@ -305,8 +306,8 @@ mod tests {
   fn cdf_has_uniform_margins_and_nests_the_limits() {
     let c = Bb7::new(Some(1.7), Some(0.8), None);
     for (u, v) in [(0.2, 0.7), (0.9, 0.4)] {
-      assert!((c.cdf(&array![[u, 1.0 - 1e-12]]).unwrap()[0] - u).abs() < 1e-8);
-      assert!((c.cdf(&array![[1.0 - 1e-12, v]]).unwrap()[0] - v).abs() < 1e-8);
+      assert!((c.cdf(array![[u, 1.0 - 1e-12]].view()).unwrap()[0] - u).abs() < 1e-8);
+      assert!((c.cdf(array![[1.0 - 1e-12, v]].view()).unwrap()[0] - v).abs() < 1e-8);
     }
     // θ = 1 is Clayton(δ).
     let mut clayton = crate::bivariate::clayton::Clayton::new();
@@ -314,7 +315,8 @@ mod tests {
     let joe_clayton = Bb7::new(Some(1.0), Some(0.8), None);
     let (u, v) = (0.35, 0.65);
     assert!(
-      (joe_clayton.cdf(&array![[u, v]]).unwrap()[0] - clayton.cdf(&array![[u, v]]).unwrap()[0])
+      (joe_clayton.cdf(array![[u, v]].view()).unwrap()[0]
+        - clayton.cdf(array![[u, v]].view()).unwrap()[0])
         .abs()
         < 1e-12
     );
@@ -340,7 +342,7 @@ mod tests {
     );
     let sample = truth.sample_with_seed(4000, 13).unwrap();
     let mut fitted = Bb7::default();
-    fitted.fit(&sample).unwrap();
+    fitted.fit(sample.view()).unwrap();
     assert!(
       (fitted.theta.unwrap() - 1.6).abs() < 0.25,
       "theta {}",

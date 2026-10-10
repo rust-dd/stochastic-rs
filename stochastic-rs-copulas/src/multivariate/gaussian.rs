@@ -7,6 +7,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView2;
 use ndarray::Axis;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -63,7 +64,7 @@ impl GaussianMultivariate {
     let dim = corr.nrows();
     self.dim = dim;
 
-    let l_arr = spd_cholesky_lower(&corr).ok_or_else(|| {
+    let l_arr = spd_cholesky_lower(corr.view()).ok_or_else(|| {
       CopulaError::InvalidStructure("the correlation matrix is not positive definite".into())
     })?;
     let mut log_det = 0.0;
@@ -72,7 +73,7 @@ impl GaussianMultivariate {
     }
     log_det *= 2.0;
 
-    let inv_arr = spd_inverse(&corr).ok_or_else(|| {
+    let inv_arr = spd_inverse(corr.view()).ok_or_else(|| {
       CopulaError::InvalidStructure("the correlation matrix could not be inverted".into())
     })?;
 
@@ -84,9 +85,9 @@ impl GaussianMultivariate {
   }
 
   /// Transform U in (0,1)^{n x d} to Z in R^{n x d} via standard normal inverse CDF.
-  fn transform_to_normal(&self, u: &Array2<f64>) -> Array2<f64> {
+  fn transform_to_normal(&self, u: ArrayView2<f64>) -> Array2<f64> {
     let eps = 1e-12;
-    let mut z = u.clone();
+    let mut z = u.to_owned();
     for mut row in z.axis_iter_mut(Axis(0)) {
       for val in row.iter_mut() {
         let clamped = val.clamp(eps, 1.0 - eps);
@@ -97,12 +98,12 @@ impl GaussianMultivariate {
   }
 
   /// Estimate correlation matrix from Z (n x d). Adds jitter if needed.
-  fn estimate_corr_from_normal(&self, z: &Array2<f64>) -> Array2<f64> {
+  fn estimate_corr_from_normal(&self, z: ArrayView2<f64>) -> Array2<f64> {
     let n = z.nrows() as f64;
     let d = z.ncols();
     // Center columns
     let means = z.mean_axis(Axis(0)).unwrap();
-    let mut zc = z.clone();
+    let mut zc = z.to_owned();
     let nrows = zc.nrows();
     for j in 0..d {
       let m = means[j];
@@ -142,7 +143,7 @@ impl GaussianMultivariate {
     }
     // Ensure positive definiteness by adding jitter if necessary
     let mut jitter = 0usize;
-    while !Self::is_spd(&corr) && jitter < 6 {
+    while !Self::is_spd(corr.view()) && jitter < 6 {
       let eps = 10f64.powi(-6_i32 + jitter as i32);
       for k in 0..d {
         corr[[k, k]] = 1.0 + eps;
@@ -152,7 +153,7 @@ impl GaussianMultivariate {
     corr
   }
 
-  fn is_spd(a: &Array2<f64>) -> bool {
+  fn is_spd(a: ArrayView2<f64>) -> bool {
     let dim = a.nrows();
     if dim != a.ncols() {
       return false;
@@ -208,7 +209,7 @@ impl MultivariateExt for GaussianMultivariate {
   }
 
   /// Fit the Gaussian copula from U in (0,1)^{n x d}.
-  fn fit(&mut self, X: Array2<f64>) -> Result<(), CopulaError> {
+  fn fit(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
     if X.ncols() < 2 {
       return Err(CopulaError::InvalidStructure(format!(
         "a Gaussian copula needs dim >= 2, got {}",
@@ -226,13 +227,13 @@ impl MultivariateExt for GaussianMultivariate {
       return Err(CopulaError::MarginalOutOfRange);
     }
     self.dim = X.ncols();
-    let z = self.transform_to_normal(&X);
-    let corr = self.estimate_corr_from_normal(&z);
+    let z = self.transform_to_normal(X);
+    let corr = self.estimate_corr_from_normal(z.view());
     self.set_corr(corr)?;
     Ok(())
   }
 
-  fn check_fit(&self, X: &Array2<f64>) -> Result<(), CopulaError> {
+  fn check_fit(&self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
     self.require_fitted()?;
     if X.ncols() != self.dim {
       return Err(CopulaError::DimensionMismatch {
@@ -246,7 +247,7 @@ impl MultivariateExt for GaussianMultivariate {
     Ok(())
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let z = self.transform_to_normal(X); // n x d
     let inv = self.inv_corr.as_ref().unwrap();
@@ -267,7 +268,7 @@ impl MultivariateExt for GaussianMultivariate {
     Ok(out)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let z = self.transform_to_normal(X); // n x d
     let l = self.chol_lower.as_ref().unwrap(); // d x d

@@ -63,6 +63,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView2;
 use rand::Rng;
 use rand::RngExt;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -451,7 +452,7 @@ impl MultivariateExt for NestedArchimedean {
     Ok(self.sample_with(n, &mut SimdRng::from_seed(seed)))
   }
 
-  fn fit(&mut self, _X: Array2<f64>) -> Result<(), CopulaError> {
+  fn fit(&mut self, _X: ArrayView2<f64>) -> Result<(), CopulaError> {
     // The structural parameters (tree topology + family) are not estimated
     // from data; the user supplies them via `new()`. A full structure +
     // parameter fit (Okhrin-Okhrin-Schmid 2013 HAC structure selection) is
@@ -463,7 +464,7 @@ impl MultivariateExt for NestedArchimedean {
     ))
   }
 
-  fn check_fit(&self, X: &Array2<f64>) -> Result<(), CopulaError> {
+  fn check_fit(&self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
     if X.ncols() != self.dim {
       return Err(CopulaError::DimensionMismatch {
         expected: self.dim,
@@ -476,7 +477,7 @@ impl MultivariateExt for NestedArchimedean {
     Ok(())
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     // Closed-form NAC densities (Hofert-Pham 2012) require the full
     // d-th-order generator-derivative recursion which is family-specific
@@ -510,7 +511,7 @@ impl MultivariateExt for NestedArchimedean {
     Ok(out)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let mut out = Array1::<f64>::zeros(X.nrows());
     for (i, row) in X.rows().into_iter().enumerate() {

@@ -13,7 +13,7 @@ fn t_cdf_marginal_recovers_input() {
   let mut c = TCopula::with_nu(4.0);
   c.set_theta(0.5);
   let x = array![[0.4_f64, 1.0], [1.0, 0.7]];
-  let cdf = c.cdf(&x).unwrap();
+  let cdf = c.cdf(x.view()).unwrap();
   assert!(approx(cdf[0], 0.4, 1e-6));
   assert!(approx(cdf[1], 0.7, 1e-6));
 }
@@ -29,7 +29,7 @@ fn t_cdf_zero_rho_at_origin_is_one_quarter() {
   let mut c = TCopula::with_nu(4.0);
   c.set_theta(0.0);
   let x = array![[0.5_f64, 0.5]];
-  let cdf = c.cdf(&x).unwrap();
+  let cdf = c.cdf(x.view()).unwrap();
   assert!(approx(cdf[0], 0.25, 1e-6), "got {}", cdf[0]);
 }
 
@@ -47,8 +47,8 @@ fn t_pdf_symmetric_in_uv() {
   c.set_theta(0.3);
   let x_ab = array![[0.3_f64, 0.7]];
   let x_ba = array![[0.7_f64, 0.3]];
-  let pdf_ab = c.pdf(&x_ab).unwrap();
-  let pdf_ba = c.pdf(&x_ba).unwrap();
+  let pdf_ab = c.pdf(x_ab.view()).unwrap();
+  let pdf_ba = c.pdf(x_ba.view()).unwrap();
   assert!(approx(pdf_ab[0], pdf_ba[0], 1e-9));
 }
 
@@ -60,7 +60,7 @@ fn t_pdf_large_nu_approaches_gaussian_copula() {
   let mut c = TCopula::with_nu(500.0);
   c.set_theta(0.5);
   let x = array![[0.3_f64, 0.7]];
-  let pdf_t = c.pdf(&x).unwrap();
+  let pdf_t = c.pdf(x.view()).unwrap();
 
   // Gaussian copula density at (0.3, 0.7), ρ=0.5:
   // c(u,v) = (1/√(1-ρ²)) · exp{(2ρ x y - ρ²(x²+y²))/(2(1-ρ²))}
@@ -90,8 +90,8 @@ fn t_cdf_symmetry_in_rho() {
   let mut c_zero = TCopula::with_nu(4.0);
   c_zero.set_theta(0.0);
   let pt = array![[0.5_f64, 0.5]];
-  let lhs = c_pos.cdf(&pt).unwrap()[0] + c_neg.cdf(&pt).unwrap()[0];
-  let rhs = 2.0 * c_zero.cdf(&pt).unwrap()[0];
+  let lhs = c_pos.cdf(pt.view()).unwrap()[0] + c_neg.cdf(pt.view()).unwrap()[0];
+  let rhs = 2.0 * c_zero.cdf(pt.view()).unwrap()[0];
   assert!(approx(lhs, rhs, 1e-6), "symmetry: lhs = {lhs}, rhs = {rhs}");
 }
 
@@ -102,9 +102,9 @@ fn t_partial_derivative_matches_finite_diff() {
   let u = 0.3_f64;
   let v = 0.6_f64;
   let h = 1e-4_f64;
-  let pd = c.partial_derivative(&array![[u, v]]).unwrap()[0];
-  let cdf_hi = c.cdf(&array![[u, v + h]]).unwrap()[0];
-  let cdf_lo = c.cdf(&array![[u, v - h]]).unwrap()[0];
+  let pd = c.partial_derivative(array![[u, v]].view()).unwrap()[0];
+  let cdf_hi = c.cdf(array![[u, v + h]].view()).unwrap()[0];
+  let cdf_lo = c.cdf(array![[u, v - h]].view()).unwrap()[0];
   let fd = (cdf_hi - cdf_lo) / (2.0 * h);
   assert!(
     approx(pd, fd, 1e-3),
@@ -162,17 +162,21 @@ fn t_copula_tail_dependence_symmetric_and_monotone() {
 fn t_copula_partial_derivative_no_jump_near_v_boundary() {
   let mut c = TCopula::with_nu(4.0);
   c.set_theta(0.6);
-  let near_zero_a = c.partial_derivative(&array![[0.4_f64, 1e-12]]).unwrap()[0];
-  let near_zero_b = c.partial_derivative(&array![[0.4_f64, 1e-9]]).unwrap()[0];
+  let near_zero_a = c
+    .partial_derivative(array![[0.4_f64, 1e-12]].view())
+    .unwrap()[0];
+  let near_zero_b = c
+    .partial_derivative(array![[0.4_f64, 1e-9]].view())
+    .unwrap()[0];
   assert!(
     approx(near_zero_a, near_zero_b, 1e-3),
     "expected continuity near v=0: v=1e-12 -> {near_zero_a}, v=1e-9 -> {near_zero_b}"
   );
   let near_one_a = c
-    .partial_derivative(&array![[0.4_f64, 1.0 - 1e-12]])
+    .partial_derivative(array![[0.4_f64, 1.0 - 1e-12]].view())
     .unwrap()[0];
   let near_one_b = c
-    .partial_derivative(&array![[0.4_f64, 1.0 - 1e-9]])
+    .partial_derivative(array![[0.4_f64, 1.0 - 1e-9]].view())
     .unwrap()[0];
   assert!(
     approx(near_one_a, near_one_b, 1e-3),
@@ -182,8 +186,8 @@ fn t_copula_partial_derivative_no_jump_near_v_boundary() {
   // u-independence at the exact boundary (the closed form derived in the
   // method's doc does not depend on u), unlike the pre-fix hardcoded
   // 0.0/1.0 which happened to be u-independent for the wrong reason.
-  let other_u = c.partial_derivative(&array![[0.8_f64, 0.0]]).unwrap()[0];
-  let base_u = c.partial_derivative(&array![[0.4_f64, 0.0]]).unwrap()[0];
+  let other_u = c.partial_derivative(array![[0.8_f64, 0.0]].view()).unwrap()[0];
+  let base_u = c.partial_derivative(array![[0.4_f64, 0.0]].view()).unwrap()[0];
   assert!(
     approx(other_u, base_u, 1e-12),
     "boundary limit should not depend on u: u=0.8 -> {other_u}, u=0.4 -> {base_u}"
@@ -234,8 +238,13 @@ fn both_t_copulas_reject_the_nu_their_laws_would_panic_on() {
     "the next subnormal halves to a positive value"
   );
   let uv = array![[0.3, 0.7]];
-  assert!(c.pdf(&uv).is_ok() && c.cdf(&uv).is_ok() && c.partial_derivative(&uv).is_ok());
-  assert!(c.percent_point(&array![0.3], &array![0.7]).is_ok());
+  assert!(
+    c.pdf(uv.view()).is_ok() && c.cdf(uv.view()).is_ok() && c.partial_derivative(uv.view()).is_ok()
+  );
+  assert!(
+    c.percent_point(array![0.3].view(), array![0.7].view())
+      .is_ok()
+  );
 }
 
 /// `generator` has no override in this family, so this exercises
@@ -244,7 +253,7 @@ fn both_t_copulas_reject_the_nu_their_laws_would_panic_on() {
 fn t_copula_generator_returns_err_not_archimedean() {
   let c = TCopula::with_nu(4.0);
   let t = array![0.5_f64, 0.8];
-  assert!(c.generator(&t).is_err());
+  assert!(c.generator(t.view()).is_err());
 }
 
 /// `rho = ±1` divides by `sqrt(1-rho^2)`: `pdf` returns `NaN` there
@@ -259,10 +268,13 @@ fn t_copula_rejects_rho_boundary_like_gaussian() {
     c.set_theta(rho);
     assert!(c.check_fit().is_err(), "rho={rho} should fail check_fit");
     let x = array![[0.3_f64, 0.7]];
-    assert!(c.pdf(&x).is_err(), "rho={rho} pdf should be Err, not NaN");
-    assert!(c.cdf(&x).is_err(), "rho={rho} cdf should be Err");
     assert!(
-      c.partial_derivative(&x).is_err(),
+      c.pdf(x.view()).is_err(),
+      "rho={rho} pdf should be Err, not NaN"
+    );
+    assert!(c.cdf(x.view()).is_err(), "rho={rho} cdf should be Err");
+    assert!(
+      c.partial_derivative(x.view()).is_err(),
       "rho={rho} partial_derivative should be Err"
     );
   }

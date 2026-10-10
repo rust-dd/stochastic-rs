@@ -2,7 +2,7 @@
 //! the numerical Kendall's τ, the maximum-likelihood fit on unconstrained
 //! coordinates, and the marginal clipping used by every evaluation.
 
-use ndarray::Array2;
+use ndarray::ArrayView2;
 
 use crate::optim::nelder_mead;
 
@@ -74,7 +74,7 @@ pub(crate) fn invert_h(h: impl Fn(f64) -> f64, p: f64) -> f64 {
 /// unconstrained, and the objective is the negative log-likelihood of
 /// `log_density`.
 pub(crate) fn fit_two_parameters(
-  x: &Array2<f64>,
+  x: ArrayView2<f64>,
   lower: (f64, f64),
   start: (f64, f64),
   log_density: impl Fn(f64, f64, f64, f64) -> f64,

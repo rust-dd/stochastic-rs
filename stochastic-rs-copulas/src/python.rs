@@ -72,8 +72,7 @@ macro_rules! py_bivariate {
       }
 
       fn fit<'py>(&mut self, x: PyReadonlyArray2<'py, f64>) -> PyResult<()> {
-        let arr = x.as_array().to_owned();
-        BivariateExt::fit(&mut self.inner, &arr).map_err(err_to_py)
+        BivariateExt::fit(&mut self.inner, x.as_array()).map_err(err_to_py)
       }
 
       fn pdf<'py>(
@@ -81,8 +80,7 @@ macro_rules! py_bivariate {
         py: Python<'py>,
         x: PyReadonlyArray2<'py, f64>,
       ) -> PyResult<pyo3::Bound<'py, numpy::PyArray1<f64>>> {
-        let arr = x.as_array().to_owned();
-        let out = BivariateExt::pdf(&self.inner, &arr).map_err(err_to_py)?;
+        let out = BivariateExt::pdf(&self.inner, x.as_array()).map_err(err_to_py)?;
         Ok(out.into_pyarray(py))
       }
 
@@ -91,8 +89,7 @@ macro_rules! py_bivariate {
         py: Python<'py>,
         x: PyReadonlyArray2<'py, f64>,
       ) -> PyResult<pyo3::Bound<'py, numpy::PyArray1<f64>>> {
-        let arr = x.as_array().to_owned();
-        let out = BivariateExt::cdf(&self.inner, &arr).map_err(err_to_py)?;
+        let out = BivariateExt::cdf(&self.inner, x.as_array()).map_err(err_to_py)?;
         Ok(out.into_pyarray(py))
       }
 
@@ -151,12 +148,8 @@ impl PyEmpiricalCopula2D {
     x: numpy::PyReadonlyArray1<'py, f64>,
     y: numpy::PyReadonlyArray1<'py, f64>,
   ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| {
-      let x_arr = x.as_array().to_owned();
-      let y_arr = y.as_array().to_owned();
-      Self {
-        inner: crate::empirical::EmpiricalCopula2D::new_from_two_series(&x_arr, &y_arr),
-      }
+    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
+      inner: crate::empirical::EmpiricalCopula2D::new_from_two_series(x.as_array(), y.as_array()),
     })
   }
 
@@ -181,8 +174,7 @@ pub fn kendall_tau_matrix<'py>(
   py: Python<'py>,
   data: numpy::PyReadonlyArray2<'py, f64>,
 ) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
-  let arr = data.as_array().to_owned();
-  let out = crate::correlation::kendall_tau(&arr);
+  let out = crate::correlation::kendall_tau(data.as_array());
   out.into_pyarray(py)
 }
 
@@ -193,8 +185,7 @@ pub fn tau_matrix_to_corr_matrix<'py>(
   py: Python<'py>,
   tau: numpy::PyReadonlyArray2<'py, f64>,
 ) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
-  let arr = tau.as_array().to_owned();
-  let out = crate::correlation::tau_matrix_to_corr_matrix(&arr);
+  let out = crate::correlation::tau_matrix_to_corr_matrix(tau.as_array());
   out.into_pyarray(py)
 }
 
@@ -262,8 +253,7 @@ macro_rules! py_two_parameter {
 
       /// Maximum-likelihood fit of both parameters.
       fn fit<'py>(&mut self, x: PyReadonlyArray2<'py, f64>) -> PyResult<()> {
-        let arr = x.as_array().to_owned();
-        BivariateExt::fit(&mut self.inner, &arr).map_err(err_to_py)
+        BivariateExt::fit(&mut self.inner, x.as_array()).map_err(err_to_py)
       }
 
       fn pdf<'py>(
@@ -271,8 +261,7 @@ macro_rules! py_two_parameter {
         py: Python<'py>,
         x: PyReadonlyArray2<'py, f64>,
       ) -> PyResult<pyo3::Bound<'py, numpy::PyArray1<f64>>> {
-        let arr = x.as_array().to_owned();
-        let out = BivariateExt::pdf(&self.inner, &arr).map_err(err_to_py)?;
+        let out = BivariateExt::pdf(&self.inner, x.as_array()).map_err(err_to_py)?;
         Ok(out.into_pyarray(py))
       }
 
@@ -281,8 +270,7 @@ macro_rules! py_two_parameter {
         py: Python<'py>,
         x: PyReadonlyArray2<'py, f64>,
       ) -> PyResult<pyo3::Bound<'py, numpy::PyArray1<f64>>> {
-        let arr = x.as_array().to_owned();
-        let out = BivariateExt::cdf(&self.inner, &arr).map_err(err_to_py)?;
+        let out = BivariateExt::cdf(&self.inner, x.as_array()).map_err(err_to_py)?;
         Ok(out.into_pyarray(py))
       }
 
@@ -396,7 +384,7 @@ pub fn fit_vine<'py>(
   };
   let data = u.as_array().to_owned();
   let fit = py
-    .detach(|| fit_vine(&data, structure, &families, criterion))
+    .detach(|| fit_vine(data.view(), structure, &families, criterion))
     .map_err(err_to_py)?;
   let trees: &[Vec<crate::multivariate::dvine::PairCopula>] = match &fit.vine {
     RVine::D(d) => d.pair_copulas(),
@@ -454,8 +442,8 @@ pub fn copula_gof<'py>(
   macro_rules! run {
     ($ctor:expr) => {{
       let mut copula = $ctor;
-      copula.fit(&data).map_err(err_to_py)?;
-      py.detach(|| gof_cramer_von_mises(&copula, &data, replications, seed, |c, x| c.fit(x)))
+      copula.fit(data.view()).map_err(err_to_py)?;
+      py.detach(|| gof_cramer_von_mises(&copula, data.view(), replications, seed, |c, x| c.fit(x)))
         .map_err(err_to_py)?
     }};
   }
@@ -482,5 +470,5 @@ pub fn pseudo_observations<'py>(
   py: Python<'py>,
   x: PyReadonlyArray2<'py, f64>,
 ) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
-  crate::gof::pseudo_observations(&x.as_array().to_owned()).into_pyarray(py)
+  crate::gof::pseudo_observations(x.as_array()).into_pyarray(py)
 }
