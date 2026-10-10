@@ -79,7 +79,6 @@ exclude = [ "**/*.tar.gz", "data/**", "trainsets/**", "notebooks/**", "src/ai/vo
 
 [dependencies]
 chrono = { workspace = true }
-cudarc = { workspace = true, optional = true }
 ndarray = { workspace = true }
 num-complex = { workspace = true }
 num-traits = { workspace = true }
@@ -96,7 +95,6 @@ stochastic-rs-stochastic = { workspace = true }
 anyhow = { workspace = true }
 criterion = { workspace = true }
 log = { workspace = true }
-ndarray-npy = { workspace = true }
 owens-t = { workspace = true }
 plotly = { workspace = true }
 rand = { workspace = true }
@@ -255,18 +253,6 @@ name = "copulas"
 harness = false
 
 [[example]]
-name = "cuda_fgn_analysis"
-required-features = ["cuda"]
-
-[[example]]
-name = "metal_vs_cpu_gallery"
-required-features = ["metal"]
-
-[[example]]
-name = "cuda_d2h_bw"
-required-features = ["cuda"]
-
-[[example]]
 name = "cuda_engine_profile"
 required-features = ["cuda"]
 
@@ -274,7 +260,7 @@ required-features = ["cuda"]
 # Experimental: `stochastic-rs-ai` is outside the stability promise.
 ai = ["dep:stochastic-rs-ai", "stochastic-rs-ai/quant"]
 ai-metal = ["ai", "stochastic-rs-ai/metal"]
-cuda = ["dep:cudarc", "cudarc/cufft", "stochastic-rs-stochastic/cuda"]
+cuda = ["stochastic-rs-stochastic/cuda"]
 default = []
 # Experimental dual-stream RNG engine (`SimdRngDual`): ~2–6 % faster bulk Normal fills on Apple
 # Silicon; its seeded stream differs from `SimdRng`.

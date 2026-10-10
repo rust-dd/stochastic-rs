@@ -80,7 +80,7 @@ The naive path — `clone_dtoh` straight into a fresh pageable `Vec` — ran at
    never reaches link bandwidth no matter the PCIe gen. Copying instead into a
    **page-locked (pinned) staging buffer** (cached in the sized context, pinned
    once per parameter set) lets the driver DMA directly at **~24 GB/s** (≈41 ms
-   for 1 GB) — see `examples/cuda_d2h_bw.rs`.
+   for 1 GB).
 2. **The staging→output copy was serial.** The result still has to land in an
    owned `Vec` for the `Array2`. A single-threaded copy of a *fresh* 1 GB buffer
    is dominated by first-touch page faults (~3.7 GB/s). A **rayon-parallel copy**
