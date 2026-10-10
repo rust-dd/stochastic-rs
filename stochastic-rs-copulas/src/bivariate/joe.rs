@@ -16,12 +16,11 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
-use roots::SimpleConvergency;
-use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::error::CopulaError;
+use crate::optim::zero;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -205,11 +204,7 @@ impl BivariateExt for Joe {
       return f64::INFINITY;
     }
     let residual = |theta: f64| Self::tau_residual(tau, theta);
-    let mut convergency = SimpleConvergency {
-      eps: 1e-8,
-      max_iter: 100,
-    };
-    find_root_brent(1.0 + 1e-6, 50.0, residual, &mut convergency).unwrap_or(1.0)
+    zero(1.0 + 1e-6, 50.0, 1e-8, residual).unwrap_or(1.0)
   }
 
   /// Upper-tail dependence $\lambda_U = 2 - 2^{1/\theta}$ (same functional

@@ -21,13 +21,12 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
-use roots::SimpleConvergency;
-use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
+use crate::optim::zero;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -225,11 +224,7 @@ impl BivariateExt for Amh {
       return 1.0 - 1e-9;
     }
     let residual = |theta: f64| Self::tau_residual(tau, theta);
-    let mut convergency = SimpleConvergency {
-      eps: 1e-10,
-      max_iter: 100,
-    };
-    find_root_brent(-1.0 + 1e-9, 1.0 - 1e-9, residual, &mut convergency).unwrap_or(0.0)
+    zero(-1.0 + 1e-9, 1.0 - 1e-9, 1e-10, residual).unwrap_or(0.0)
   }
 
   /// AMH has no tail dependence in either tail, for any $\theta \in

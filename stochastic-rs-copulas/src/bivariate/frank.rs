@@ -9,13 +9,12 @@
 use gauss_quad::GaussLegendre;
 use ndarray::Array1;
 use ndarray::Array2;
-use roots::SimpleConvergency;
-use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
+use crate::optim::zero;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -189,16 +188,12 @@ impl BivariateExt for Frank {
     }
 
     let residual = |theta: f64| Self::_tau_to_theta(tau, theta);
-    let mut convergency = SimpleConvergency {
-      eps: 1e-8,
-      max_iter: 100,
-    };
     let (lo, hi) = if tau > 0.0 {
       (1e-8_f64, 50.0_f64)
     } else {
       (-50.0_f64, -1e-8_f64)
     };
-    find_root_brent(lo, hi, residual, &mut convergency).unwrap_or(0.0)
+    zero(lo, hi, 1e-8, residual).unwrap_or(0.0)
   }
 
   /// Frank has no tail dependence in either tail, for any $\theta$.

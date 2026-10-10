@@ -6,7 +6,6 @@ use std::cmp::Ordering;
 use ndarray::Array1;
 use ndarray::Axis;
 use ndarray::stack;
-use roots::find_root_brent;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
@@ -16,9 +15,11 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::bivariate::CopulaType as BivariateCopulaType;
-use crate::bivariate::conditional::BrentTolerance;
+use crate::bivariate::conditional::ABSOLUTE_TOLERANCE;
 use crate::bivariate::conditional::check_lengths;
+use crate::bivariate::conditional::in_unit;
 use crate::error::CopulaError;
+use crate::optim::zero;
 
 /// Upper- and lower-tail dependence coefficients
 /// $$
@@ -224,8 +225,9 @@ pub trait BivariateExt {
     self.percent_point_numerical(y, V)
   }
 
-  /// `percent_point`'s default, callable from an override: Brent's root in `u` of `partial_derivative` on
-  /// `[f64::EPSILON, 1]`, saturating at either end; NaN for `y` or `v` outside `[0, 1]`, `Err` for an inner error or NaN.
+  /// `percent_point`'s default, callable from an override: Brent's `zero` in `u` of `partial_derivative`, held in
+  /// `[0, 1]`, on `[f64::EPSILON, 1]`, saturating at either end; NaN for `y` or `v` outside `[0, 1]`, `Err` for an inner
+  /// error or NaN.
   fn percent_point_numerical(
     &self,
     y: &Array1<f64>,
@@ -235,12 +237,17 @@ pub trait BivariateExt {
     check_lengths(y, V)?;
     let n = y.len();
     let mut results = Array1::zeros(n);
+    let lo = f64::EPSILON;
 
     for i in 0..n {
       let y_i = y[i];
       let v_i = V[i];
-      if !((0.0..=1.0).contains(&y_i) && (0.0..=1.0).contains(&v_i)) {
+      if !(in_unit(y_i) && in_unit(v_i)) {
         results[i] = f64::NAN;
+        continue;
+      }
+      if y_i == 0.0 {
+        results[i] = lo;
         continue;
       }
 
@@ -248,7 +255,7 @@ pub trait BivariateExt {
       // 0 so the solve stops there, and the parked error is re-raised after.
       let inner_err: RefCell<Option<CopulaError>> = RefCell::new(None);
       let gap = |u: f64| match self.partial_derivative_scalar(u, v_i) {
-        Ok(d) if !d.is_nan() => d - y_i,
+        Ok(d) if !d.is_nan() => d.clamp(0.0, 1.0) - y_i,
         outcome => {
           let mut slot = inner_err.borrow_mut();
           if slot.is_none() {
@@ -263,7 +270,6 @@ pub trait BivariateExt {
         }
       };
 
-      let lo = f64::EPSILON;
       let f_lo = gap(lo);
       if let Some(e) = inner_err.borrow_mut().take() {
         return Err(e);
@@ -281,15 +287,13 @@ pub trait BivariateExt {
         continue;
       }
 
-      // Relative to the level, which is positive here: the solver multiplies two gaps to compare signs, and absolute
-      // gaps under ~1e-162 would underflow that product.
-      let root = find_root_brent(lo, 1.0, |u| gap(u) / y_i, &mut BrentTolerance);
+      let root = zero(lo, 1.0, ABSOLUTE_TOLERANCE, &gap);
       if let Some(e) = inner_err.borrow_mut().take() {
         return Err(e);
       }
-      results[i] = root.map_err(|e| {
+      results[i] = root.ok_or_else(|| {
         CopulaError::Numerical(format!(
-          "{:?} h-inverse did not converge at (y={y_i:?}, v={v_i:?}): {e:?}",
+          "{:?} h-inverse did not converge at (y={y_i:?}, v={v_i:?})",
           self.r#type()
         ))
       })?;
@@ -508,6 +512,34 @@ mod tests {
       .percent_point_numerical(&array![0.3_f64], &array![1.0_f64])
       .expect("saturation is a value");
     assert_eq!(out[0], 1.0);
+  }
+
+  /// Level 0 answers the floor even where rounding takes `h(EPSILON | v)` below zero, as Galambos's does near `v = 1`.
+  #[test]
+  fn percent_point_numerical_answers_the_floor_at_level_zero() {
+    let mut galambos = Galambos::new();
+    galambos.set_theta(1.5);
+    for v in [1.0 - 1e-10, 1.0 - 1e-12, 1.0 - f64::EPSILON / 2.0] {
+      let h = galambos.partial_derivative_scalar(f64::EPSILON, v).unwrap();
+      assert!(h < 0.0, "the premise: h(EPSILON | {v}) = {h}");
+      let u = galambos.percent_point_numerical(&array![0.0], &array![v]);
+      assert_eq!(u, Ok(array![f64::EPSILON]), "v = {v}");
+    }
+  }
+
+  /// Levels far below `√f64::MIN_POSITIVE` reach Brent's `zero`, whose sign test never multiplies two gaps.
+  #[test]
+  fn percent_point_numerical_solves_levels_below_the_product_underflow() {
+    let mut galambos = Galambos::new();
+    galambos.set_theta(1.5);
+    for y in [1e-300, 1e-310, 5e-324] {
+      for v in [1.0 - 1e-10, 1.0 - f64::EPSILON / 2.0] {
+        let u = galambos
+          .percent_point_numerical(&array![y], &array![v])
+          .unwrap_or_else(|e| panic!("y = {y}, v = {v}: {e}"))[0];
+        assert!((f64::EPSILON..=1.0).contains(&u), "y = {y}, v = {v}: {u}");
+      }
+    }
   }
 
   /// `percent_point_numerical` reaches the Brent body whatever `percent_point` the family overrides.

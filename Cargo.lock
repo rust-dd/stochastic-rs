@@ -3335,7 +3335,6 @@ dependencies = [
  "owens-t",
  "pyo3",
  "rand 0.10.3",
- "roots",
  "stochastic-rs-core",
  "stochastic-rs-distributions",
 ]

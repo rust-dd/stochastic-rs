@@ -151,7 +151,8 @@ that diverged on positive correlations. The mandate:
 1. **Closed-form first.** Clayton: `θ = 2τ/(1-τ)`. Gumbel:
    `θ = 1/(1-τ)`. Cite the textbook formula in a doc comment.
 
-2. **Brent's method second**, when no closed form exists. `Frank`'s
+2. **Brent's method second**, when no closed form exists: the crate's
+   `crate::optim::zero`, Brent's own procedure (1973, §6). `Frank`'s
    shipped implementation is the pattern to copy:
 
    ```rust
@@ -163,13 +164,12 @@ that diverged on positive correlations. The mandate:
      if tau <= -1.0 { return f64::NEG_INFINITY; }
 
      let residual = |theta: f64| Self::_tau_to_theta(tau, theta);
-     let mut convergency = SimpleConvergency { eps: 1e-8, max_iter: 100 };
      let (lo, hi) = if tau > 0.0 {
        (1e-8_f64, 50.0_f64)
      } else {
        (-50.0_f64, -1e-8_f64)
      };
-     find_root_brent(lo, hi, residual, &mut convergency).unwrap_or(0.0)
+     zero(lo, hi, 1e-8, residual).unwrap_or(0.0)
    }
    ```
 

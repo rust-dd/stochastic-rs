@@ -31,14 +31,13 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
-use roots::SimpleConvergency;
-use roots::find_root_brent;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
 
 use crate::bivariate::CopulaType;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::error::CopulaError;
+use crate::optim::zero;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -228,11 +227,7 @@ impl BivariateExt for HuslerReiss {
       return 20.0;
     }
     let residual = |lambda: f64| Self::tau_from_lambda(lambda) - tau;
-    let mut convergency = SimpleConvergency {
-      eps: 1e-6,
-      max_iter: 100,
-    };
-    find_root_brent(1e-3, 20.0, residual, &mut convergency).unwrap_or(1.0)
+    zero(1e-3, 20.0, 1e-6, residual).unwrap_or(1.0)
   }
 
   /// Upper-tail dependence $\lambda_U = 2(1 - \Phi(1/\lambda))$;

@@ -24,12 +24,11 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
-use roots::SimpleConvergency;
-use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::error::CopulaError;
+use crate::optim::zero;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -218,11 +217,7 @@ impl BivariateExt for Galambos {
       return 50.0;
     }
     let residual = |theta: f64| Self::tau_from_theta(theta) - tau;
-    let mut convergency = SimpleConvergency {
-      eps: 1e-6,
-      max_iter: 100,
-    };
-    find_root_brent(1e-4, 50.0, residual, &mut convergency).unwrap_or(1.0)
+    zero(1e-4, 50.0, 1e-6, residual).unwrap_or(1.0)
   }
 
   /// Upper-tail dependence $\lambda_U = 2^{-1/\theta}$ (via the Pickands
