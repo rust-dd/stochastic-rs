@@ -3286,7 +3286,6 @@ dependencies = [
  "ndarray",
  "num-complex",
  "num-traits",
- "owens-t",
  "plotly",
  "rand 0.10.3",
  "rand_distr 0.6.0",

@@ -95,7 +95,6 @@ stochastic-rs-stochastic = { workspace = true }
 anyhow = { workspace = true }
 criterion = { workspace = true }
 log = { workspace = true }
-owens-t = { workspace = true }
 plotly = { workspace = true }
 rand = { workspace = true }
 rand_distr = { workspace = true }
