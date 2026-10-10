@@ -250,6 +250,10 @@ required-features = ["ai"]
 name = "jump_processes"
 harness = false
 
+[[bench]]
+name = "copulas"
+harness = false
+
 [[example]]
 name = "cuda_fgn_analysis"
 required-features = ["cuda"]
