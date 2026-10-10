@@ -7,9 +7,9 @@
 //! C_{\max}(S_1,S_2,K) = C_1 + C_2 - C_{\min}(S_1,S_2,K)
 //! $$
 //! $$
-//! C_{\min}(S_1,S_2,K) = S_1 e^{-q_1T}M(\gamma_1,d;\rho_1)
-//!   + S_2 e^{-q_2T}M(\gamma_2,d-\sigma\sqrt T;\rho_2)
-//!   - K e^{-rT}M(\gamma_1-\sigma_1\sqrt T,\gamma_2-\sigma_2\sqrt T;\rho)
+//! C_{\min}(S_1,S_2,K) = S_1 e^{-q_1T}M(\gamma_1,d;\rho_1) +
+//!   S_2 e^{-q_2T}M(\gamma_2,d-\sigma\sqrt T;\rho_2) -
+//!   K e^{-rT}M(\gamma_1-\sigma_1\sqrt T,\gamma_2-\sigma_2\sqrt T;\rho)
 //! $$
 //!
 //! Source:

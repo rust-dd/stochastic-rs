@@ -4,11 +4,11 @@
 //! The joint density $p(t, x, v)$ of the log-spot and the variance satisfies
 //!
 //! $$
-//! \partial_t p = \partial_{xx}\bigl(\tfrac12 L^2 v\, p\bigr)
-//!   + \partial_{xv}\bigl(\rho\,\xi L v\, p\bigr)
-//!   + \partial_{vv}\bigl(\tfrac12 \xi^2 v\, p\bigr)
-//!   - \partial_x\bigl((r - q - \tfrac12 L^2 v)\, p\bigr)
-//!   - \partial_v\bigl(\kappa(\theta - v)\, p\bigr),
+//! \partial_t p = \partial_{xx}\bigl(\tfrac12 L^2 v\, p\bigr) +
+//!   \partial_{xv}\bigl(\rho\,\xi L v\, p\bigr) +
+//!   \partial_{vv}\bigl(\tfrac12 \xi^2 v\, p\bigr) -
+//!   \partial_x\bigl((r - q - \tfrac12 L^2 v)\, p\bigr) -
+//!   \partial_v\bigl(\kappa(\theta - v)\, p\bigr),
 //! \qquad p(0, \cdot) = \delta_{(x_0, v_0)},
 //! $$
 //!

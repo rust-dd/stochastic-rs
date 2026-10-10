@@ -18,8 +18,8 @@ use crate::OptionType;
 /// put, both with strike $K$ and maturity $T$.
 ///
 /// $$
-/// W = Se^{-qT}N(d) - Ke^{-rT}N(d-\sigma\sqrt T)
-///   - Se^{-qT}N(-y) + Ke^{-rT}N(-y+\sigma\sqrt{t_1})
+/// W = Se^{-qT}N(d) - Ke^{-rT}N(d-\sigma\sqrt T) -
+///   Se^{-qT}N(-y) + Ke^{-rT}N(-y+\sigma\sqrt{t_1})
 /// $$
 #[derive(Debug, Clone)]
 pub struct SimpleChooserPricer {

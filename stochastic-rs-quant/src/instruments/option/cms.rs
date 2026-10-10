@@ -2,8 +2,8 @@
 //! adjustment.
 //!
 //! $$
-//! S_{\mathrm{adj}}=S_0+S_0^{2}\,\sigma_{B}^{2}\,T_{\mathrm{fix}}\,\lambda(S_0)
-//!   + S_0\,\sigma_{B}^{2}\,T_{\mathrm{fix}}\,\Delta\,\tfrac{S_0}{1+S_0\Delta},
+//! S_{\mathrm{adj}}=S_0+S_0^{2}\,\sigma_{B}^{2}\,T_{\mathrm{fix}}\,\lambda(S_0) +
+//!   S_0\,\sigma_{B}^{2}\,T_{\mathrm{fix}}\,\Delta\,\tfrac{S_0}{1+S_0\Delta},
 //!   \qquad
 //! \lambda(S_0)=\frac{S_0\,G'(S_0)}{G(S_0)},\;
 //! G(S)=\frac{1-(1+S\delta)^{-N}}{S}

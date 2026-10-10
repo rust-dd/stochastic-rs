@@ -61,9 +61,9 @@ impl CgmysvParams {
   /// Lévy symbol of the standard Cgmy distribution $\psi_{\mathrm{stdCGMY}}(u)$ (Eq. 3).
   ///
   /// $$
-  /// \psi(u) = \frac{\lambda_+^{\alpha-1}-\lambda_-^{\alpha-1}}{(\alpha-1)\,D}\,iu
-  /// + \frac{(\lambda_+-iu)^\alpha - \lambda_+^\alpha + (\lambda_-+iu)^\alpha - \lambda_-^\alpha}
-  ///        {\alpha(\alpha-1)\,D}
+  /// \psi(u) = \frac{\lambda_+^{\alpha-1}-\lambda_-^{\alpha-1}}{(\alpha-1)\,D}\,iu +
+  ///   \frac{(\lambda_+-iu)^\alpha - \lambda_+^\alpha + (\lambda_-+iu)^\alpha - \lambda_-^\alpha}
+  ///   {\alpha(\alpha-1)\,D}
   /// $$
   pub fn psi_std_cgmy(&self, u: Complex64) -> Complex64 {
     let a = self.alpha;

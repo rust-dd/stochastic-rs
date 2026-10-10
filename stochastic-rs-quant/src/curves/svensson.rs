@@ -1,14 +1,13 @@
-#![allow(clippy::doc_lazy_continuation)]
 //! Nelson-Siegel-Svensson parametric yield curve model.
 //!
 //! Reference: Svensson, "Estimating and Interpreting Forward Interest Rates: Sweden 1992-1994",
 //! IMF Working Paper 94/114 (1994). Also: BIS Papers No 25.
 //!
 //! $$
-//! y(\tau) = \beta_0
-//!   + \beta_1 \frac{1 - e^{-\tau/\lambda_1}}{\tau/\lambda_1}
-//!   + \beta_2 \left(\frac{1 - e^{-\tau/\lambda_1}}{\tau/\lambda_1} - e^{-\tau/\lambda_1}\right)
-//!   + \beta_3 \left(\frac{1 - e^{-\tau/\lambda_2}}{\tau/\lambda_2} - e^{-\tau/\lambda_2}\right)
+//! y(\tau) = \beta_0 +
+//!   \beta_1 \frac{1 - e^{-\tau/\lambda_1}}{\tau/\lambda_1} +
+//!   \beta_2 \left(\frac{1 - e^{-\tau/\lambda_1}}{\tau/\lambda_1} - e^{-\tau/\lambda_1}\right) +
+//!   \beta_3 \left(\frac{1 - e^{-\tau/\lambda_2}}{\tau/\lambda_2} - e^{-\tau/\lambda_2}\right)
 //! $$
 
 use ndarray::Array1;

@@ -9,10 +9,10 @@
 //!
 //! $$
 //! K_{\text{var}}=\frac{2}{T}\!\left[
-//!   (r-q)T - \!\!\left(\!\frac{F}{K_0}\!-\!1\!\right)\!
-//!   - \ln\frac{K_0}{S_0}
-//!   + e^{rT}\!\!\int_0^{K_0}\!\!\frac{P(K)}{K^2}\,dK
-//!   + e^{rT}\!\!\int_{K_0}^{\infty}\!\!\frac{C(K)}{K^2}\,dK
+//!   (r-q)T - \!\!\left(\!\frac{F}{K_0}\!-\!1\!\right)\! -
+//!   \ln\frac{K_0}{S_0} +
+//!   e^{rT}\!\!\int_0^{K_0}\!\!\frac{P(K)}{K^2}\,dK +
+//!   e^{rT}\!\!\int_{K_0}^{\infty}\!\!\frac{C(K)}{K^2}\,dK
 //! \right]
 //! $$
 //!
