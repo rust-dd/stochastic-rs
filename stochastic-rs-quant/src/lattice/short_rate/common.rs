@@ -155,14 +155,12 @@ fn sanitize_probabilities<T: RealExt>(down: &mut T, middle: &mut T, up: &mut T) 
 /// \implies \lambda = \rho / 12.
 /// $$
 ///
-/// This factor is **exact** for the symmetric branch and **approximate** for
-/// drift-shifted (asymmetric) branches — see the docstring on
-/// [`correlated_joint_probabilities`] for the bias characterisation.
+/// The shift keeps both marginals, so the covariance is exact on any branch while no corner clamps
+/// at 0 (see [`correlated_joint_probabilities`]).
 pub(crate) const SYMMETRIC_BRANCH_CORNER_DENOM: f64 = 12.0;
 
-/// G2++ joint probabilities by the ρ/12 corner correction: exact only at `p_u = p_d = 1/6`, else
-/// biased in proportion to local drift, ~1e-3 at `a ≤ 0.05, dt ≤ 0.25`: bps on multi-year products.
-/// Hull & White, "The General Hull–White Model and Supercalibration", Financ. Anal. J. 57(6), 2001.
+/// G2++ joint probabilities: marginal product plus ρ/12 on the four corners; marginals hold and the
+/// covariance is ρ/3 until a corner clamps at 0: |ρ| > 1/3 at `p_u = p_d = 1/6`, less off-centre.
 pub(crate) fn correlated_joint_probabilities<T: RealExt>(
   x_branch: TrinomialBranch<T>,
   y_branch: TrinomialBranch<T>,
