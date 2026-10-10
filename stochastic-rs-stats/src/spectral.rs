@@ -52,11 +52,11 @@ pub struct PeriodogramConfig {
   pub nfft: Option<usize>,
   /// Detrending strategy.
   pub detrend: DetrendMethod,
-  /// Window function.
+  /// Taper applied to the detrended series before the FFT.
   pub window: WindowFunction,
   /// Whether to return one-sided spectrum (for real signals).
   pub onesided: bool,
-  /// Spectrum scaling.
+  /// Power spectrum or power spectral density.
   pub scaling: SpectrumScaling,
 }
 

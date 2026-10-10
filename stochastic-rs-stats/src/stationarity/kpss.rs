@@ -29,7 +29,7 @@ pub enum KpssTrend {
   Trend,
 }
 
-/// KPSS critical values.
+/// Upper-tail critical values of the KPSS statistic at the 1 %, 2.5 %, 5 % and 10 % levels.
 #[derive(Debug, Clone, Copy)]
 pub struct KpssCriticalValues {
   pub one_percent: f64,

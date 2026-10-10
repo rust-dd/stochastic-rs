@@ -183,8 +183,7 @@ fn cev_process_ext_with_mle() {
   );
 }
 
-/// A daily step (`z ≈ 4025`), where the old 80-term series floored the density at `1e-30`;
-/// the reference is `mpmath.besseli` at 80 digits.
+/// A daily step (`z ≈ 4025`) against `mpmath.besseli` at 80 digits.
 #[test]
 fn cir_exact_density_matches_mpmath_at_a_daily_step() {
   let cir = Cir::new(
