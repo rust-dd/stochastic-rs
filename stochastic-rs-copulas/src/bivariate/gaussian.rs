@@ -78,13 +78,10 @@ impl GaussianCopula {
     Self::default()
   }
 
-  /// `u = Φ(Φ⁻¹(y)√(1 − ρ²) + ρΦ⁻¹(v))` before the domain rule, the identity at `ρ = 0`.
+  /// `u = Φ(Φ⁻¹(y)√(1 − ρ²) + ρΦ⁻¹(v))` before the domain rule, for `ρ ≠ 0`.
   pub(crate) fn inverse(rho: f64) -> impl Fn(f64, f64) -> f64 {
     let sqrt_one_minus_rho2 = (1.0 - rho * rho).sqrt();
     move |y, v| {
-      if rho == 0.0 {
-        return y;
-      }
       let z = ndtri(y) * sqrt_one_minus_rho2 + rho * ndtri(v);
       // `∞ − ∞` only at corners answered by 0: level 0, or level 1 where `v ∈ {0, 1}` puts `h(· | v)`'s mass at 0.
       if z.is_nan() { 0.0 } else { norm_cdf(z) }
@@ -193,7 +190,12 @@ impl BivariateExt for GaussianCopula {
   /// `GaussianCopula::inverse` of [`GaussianCopula::partial_derivative`] in `u`; NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    conditional_quantiles(y, V, Self::inverse(self.theta.unwrap()))
+    let rho = self.theta.unwrap();
+    // The identity at `ρ = 0`, chosen once per call: a test per pair costs the sampler.
+    if rho == 0.0 {
+      return conditional_quantiles(y, V, |y, _| y);
+    }
+    conditional_quantiles(y, V, Self::inverse(rho))
   }
 
   /// Closed-form Kendall's tau inversion $\rho = \sin(\pi\tau/2)$.

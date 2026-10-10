@@ -146,7 +146,7 @@ mod tests {
     for theta in [-1.0, -0.5, 0.0, 0.5, 1.0] {
       assert_rounding_only(&format!("fgm θ = {theta:e}"), Fgm::inverse(theta));
     }
-    for rho in [-1.0 + 1e-9, -0.5, 0.0, 0.5, 0.999999, 1.0 - f64::EPSILON] {
+    for rho in [-1.0 + 1e-9, -0.5, 0.5, 0.999999, 1.0 - f64::EPSILON] {
       assert_rounding_only(
         &format!("gaussian ρ = {rho:e}"),
         GaussianCopula::inverse(rho),
