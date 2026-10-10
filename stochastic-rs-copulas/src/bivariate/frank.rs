@@ -180,7 +180,7 @@ impl BivariateExt for Frank {
     if theta == 0.0 {
       return conditional_quantiles(y, V, |y, _| y);
     }
-    // One closure per sign keeps the reflection out of the per-pair work, 10 % of the sampling bench.
+    // One closure per sign keeps the reflection out of the per-pair work.
     let inverse = Self::inverse(theta.abs());
     if theta > 0.0 {
       conditional_quantiles(y, V, |y, v| inverse(y, v, 1.0 - v))
