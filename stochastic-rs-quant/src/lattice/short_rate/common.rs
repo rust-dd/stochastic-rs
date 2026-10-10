@@ -160,8 +160,9 @@ fn sanitize_probabilities<T: RealExt>(down: &mut T, middle: &mut T, up: &mut T) 
 /// [`correlated_joint_probabilities`] for the bias characterisation.
 pub(crate) const SYMMETRIC_BRANCH_CORNER_DENOM: f64 = 12.0;
 
-/// Joint probabilities of a 2D trinomial lattice with the $\lambda = \rho/12$ corner correction, exact
-/// only for symmetric branches (~1e-3 bias off the midline; Hull–White (2000) eqs. 16–18 are exact).
+/// G2++ joint probabilities by the ρ/12 corner correction: exact only at `p_u = p_d = 1/6`, else
+/// biased in proportion to local drift, ~1e-3 at `a ≤ 0.05, dt ≤ 0.25`: bps on multi-year products.
+/// Hull & White, "The General Hull–White Model and Supercalibration", Financ. Anal. J. 57(6), 2001.
 pub(crate) fn correlated_joint_probabilities<T: RealExt>(
   x_branch: TrinomialBranch<T>,
   y_branch: TrinomialBranch<T>,
