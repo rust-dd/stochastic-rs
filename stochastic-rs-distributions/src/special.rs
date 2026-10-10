@@ -1,11 +1,8 @@
-//! Special functions used by the closed-form `DistributionExt` impls.
-//!
-//! Algorithms are textbook
-//! (Numerical Recipes 3e; Abramowitz & Stegun; Acklam 1998 for `ndtri`;
-//! Lanczos for `ln_gamma`). Modified Bessel functions live in the
-//! [`bessel`] submodule, ported from the Cephes Math Library.
+//! Special functions behind the closed-form `DistributionExt` impls: Lanczos `gamma`/`ln_gamma`,
+//! Acklam's `ndtri`, `libm` `erf`/`erfc`; Bessel functions in [`bessel`], [`bessel_i`](mod@bessel_i), [`bessel_k`](mod@bessel_k).
 
 pub mod bessel;
+pub mod bessel_i;
 pub mod bessel_k;
 
 pub use bessel::bessel_i0;
@@ -13,6 +10,9 @@ pub use bessel::bessel_i1;
 pub use bessel::bessel_k0;
 pub use bessel::bessel_k1;
 pub use bessel::bessel_k1e;
+pub use bessel_i::bessel_i;
+pub use bessel_i::bessel_ie;
+pub use bessel_i::ln_bessel_ie;
 pub use bessel_k::bessel_k;
 pub use bessel_k::bessel_ke;
 
@@ -29,14 +29,16 @@ const LANCZOS_C: [f64; 9] = [
   1.505_632_735_149_311_6e-7,
 ];
 
-/// Logarithm of the gamma function, accurate to ~14 decimal digits.
-///
-/// Lanczos approximation, g = 7, n = 9 (Press et al., Numerical Recipes 3e).
+/// Logarithm of the gamma function to ~14 digits; +∞ at the poles, NaN where Γ(x) < 0.
+/// Lanczos (1964, DOI 10.1137/0701008) with Godfrey's g = 7, n = 9 coefficients.
 #[inline]
 pub fn ln_gamma(x: f64) -> f64 {
+  if is_pole(x) {
+    return f64::INFINITY;
+  }
   if x < 0.5 {
     // Reflection: ln Γ(x) = ln(π / sin(πx)) − ln Γ(1−x)
-    return (std::f64::consts::PI / (std::f64::consts::PI * x).sin()).ln() - ln_gamma(1.0 - x);
+    return (std::f64::consts::PI / sinpi(x)).ln() - ln_gamma(1.0 - x);
   }
   let z = x - 1.0;
   let mut a = LANCZOS_C[0];
@@ -47,34 +49,45 @@ pub fn ln_gamma(x: f64) -> f64 {
   0.5 * (2.0 * std::f64::consts::PI).ln() + (z + 0.5) * t.ln() - t + a.ln()
 }
 
-/// Gamma function. Euler reflection for x < 0.5; Lanczos otherwise.
-///
-/// Returns NaN at the poles, the non-positive integers.
+/// Gamma function: Lanczos for `x ≥ 0.5`, Euler's reflection below; NaN at the
+/// poles, the non-positive integers.
 pub fn gamma(x: f64) -> f64 {
-  if x <= 0.0 && x.fract() == 0.0 {
-    return f64::NAN; // poles at non-positive integers
+  if is_pole(x) {
+    return f64::NAN;
   }
   if x < 0.5 {
-    // Γ(x) = π / (sin(πx) · Γ(1−x))
-    std::f64::consts::PI / ((std::f64::consts::PI * x).sin() * gamma(1.0 - x))
+    std::f64::consts::PI / (sinpi(x) * gamma(1.0 - x))
   } else {
     ln_gamma(x).exp()
   }
 }
 
-/// Digamma function ψ(x) = Γ'(x)/Γ(x).
-///
-/// Recurrence (ψ(x) = ψ(x+1) − 1/x) lifts the argument above 6, then an
-/// asymptotic expansion in 1/x.
-///
-/// Returns NaN at the poles, the non-positive integers.
+/// The non-positive integers, where Γ, ln Γ and ψ have their poles.
+#[inline]
+fn is_pole(x: f64) -> bool {
+  x <= 0.0 && x.fract() == 0.0
+}
+
+/// `sin(πx)` with `x` reduced to `[-½, ½]` before scaling, so it keeps its
+/// relative accuracy next to the integers.
+pub(crate) fn sinpi(x: f64) -> f64 {
+  let n = x.round();
+  let s = (std::f64::consts::PI * (x - n)).sin();
+  if n % 2.0 == 0.0 { s } else { -s }
+}
+
+/// Digamma ψ(x) = Γ'(x)/Γ(x): the recurrence ψ(x) = ψ(x+1) − 1/x lifts x above 6, then an
+/// asymptotic series in 1/x; NaN at the poles.
 pub fn digamma(x: f64) -> f64 {
-  if x <= 0.0 && x.fract() == 0.0 {
+  if is_pole(x) {
     return f64::NAN;
   }
-  // For x ≤ 0 use the reflection formula ψ(1−x) = ψ(x) + π cot(πx)
+  // Reflection ψ(1−x) = ψ(x) + π cot(πx); since cot has period π, x − round(x) can stand in
+  // for x and keeps cot accurate next to the poles.
   if x < 0.5 {
-    return digamma(1.0 - x) - std::f64::consts::PI * (std::f64::consts::PI * x).tan().recip();
+    let reduced = x - x.round();
+    return digamma(1.0 - x)
+      - std::f64::consts::PI * (std::f64::consts::PI * reduced).tan().recip();
   }
   let mut y = x;
   let mut sum = 0.0;
@@ -219,11 +232,14 @@ pub fn norm_cdf(x: f64) -> f64 {
 ///
 /// Returns NaN for a negative `x` or a non-positive `a`.
 pub fn gamma_p(a: f64, x: f64) -> f64 {
-  if x < 0.0 || a <= 0.0 {
+  if x < 0.0 || a.is_nan() || a <= 0.0 {
     return f64::NAN;
   }
   if x == 0.0 {
     return 0.0;
+  }
+  if x == f64::INFINITY {
+    return 1.0;
   }
   if x < a + 1.0 {
     gser(a, x)
@@ -380,6 +396,51 @@ mod tests {
   }
 
   #[test]
+  fn ln_gamma_is_infinite_at_every_pole() {
+    for pole in [0.0, -0.0, -1.0, -2.0, -7.0] {
+      assert_eq!(ln_gamma(pole), f64::INFINITY, "ln_gamma({pole})");
+    }
+  }
+
+  /// mpmath at 60 digits; on (−1, 2), poles included, the error is a few ulp,
+  /// above it grows with `ln Γ(x)`, the exponent the Lanczos form exponentiates.
+  #[test]
+  fn gamma_matches_high_precision_references() {
+    for (x, want) in [
+      (0.5, 1.772_453_850_905_516),
+      (1.0, 1.0),
+      (1.4, 0.887_263_817_503_075_3),
+      (0.4, 2.218_159_543_757_688),
+      (-0.4, -3.722_980_622_032_042_5),
+      (-0.999, -1_000.424_196_681_275_8),
+      (-0.999_999, -1_000_000.422_756_991_2),
+      (1.0e-10, 9_999_999_999.422_785),
+      (1.2, 0.918_168_742_399_760_7),
+      (1.9, 0.961_765_831_907_387_4),
+      (-2.5, -0.945_308_720_482_941_9),
+    ] {
+      let got = gamma(x);
+      assert!(
+        ((got - want) / want).abs() < 4e-15,
+        "gamma({x}) = {got}, want {want}"
+      );
+    }
+    for (x, want) in [
+      (30.5, 4.822_696_933_490_909e31),
+      (170.5, 5.562_092_414_56e305),
+    ] {
+      let got = gamma(x);
+      assert!(
+        ((got - want) / want).abs() < 1e-15 * want.ln(),
+        "gamma({x}) = {got}, want {want}"
+      );
+    }
+    for pole in [0.0, -0.0, -1.0, -50.0] {
+      assert!(gamma(pole).is_nan(), "gamma({pole}) must be NaN");
+    }
+  }
+
+  #[test]
   fn digamma_known_values() {
     // ψ(1) = −γ_Euler ≈ −0.577215...
     assert!(close(digamma(1.0), -0.577_215_664_901_532_9, 1e-9));
@@ -389,6 +450,26 @@ mod tests {
       -2.0_f64.ln() * 2.0 - 0.577_215_664_901_532_9,
       1e-9
     ));
+  }
+
+  /// mpmath at 60 digits next to the poles, where the reflection's `π cot(πx)` dominates `ψ`.
+  #[test]
+  fn digamma_keeps_its_accuracy_next_to_the_poles() {
+    for (x, want) in [
+      (-0.999_999, -999_999.577_184_264_3),
+      (-0.999_999_999, -1_000_000_027.859_147_9),
+      (-10.000_001, 1_000_002.352_497_794_8),
+      (-29.999_999, -999_996.581_197_320_5),
+    ] {
+      let got = digamma(x);
+      assert!(
+        ((got - want) / want).abs() < 1e-15,
+        "digamma({x}) = {got}, want {want}"
+      );
+    }
+    for pole in [0.0, -1.0, -7.0] {
+      assert!(digamma(pole).is_nan(), "digamma({pole}) must be NaN");
+    }
   }
 
   #[test]
@@ -456,6 +537,16 @@ mod tests {
     assert!(close(gamma_p(1.0, 1.0), 1.0 - (-1.0_f64).exp(), 1e-12));
     // P(½, x) = erf(√x)
     assert!(close(gamma_p(0.5, 1.0), erf(1.0), 1e-6));
+    assert_eq!(gamma_p(2.5, f64::INFINITY), 1.0);
+    assert_eq!(gamma_q(2.5, f64::INFINITY), 0.0);
+    assert_eq!(gamma_li(2.5, f64::INFINITY), gamma(2.5));
+    assert_eq!(gamma_ui(2.5, f64::INFINITY), 0.0);
+    for x in [0.0, 1.0, f64::INFINITY] {
+      assert!(gamma_p(f64::NAN, x).is_nan(), "gamma_p(NaN, {x})");
+      assert!(gamma_q(f64::NAN, x).is_nan(), "gamma_q(NaN, {x})");
+      assert!(gamma_li(f64::NAN, x).is_nan(), "gamma_li(NaN, {x})");
+      assert!(gamma_ui(f64::NAN, x).is_nan(), "gamma_ui(NaN, {x})");
+    }
   }
 
   #[test]

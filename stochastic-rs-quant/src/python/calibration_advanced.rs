@@ -56,7 +56,7 @@ impl PySVJCalibrator {
       res.mu_j,
       res.sigma_j,
       res.converged,
-      res.loss.get(crate::types::LossMetric::Rmse),
+      res.loss.get(crate::LossMetric::Rmse),
     ))
   }
 }
@@ -115,7 +115,7 @@ impl PyDoubleHestonCalibrator {
       res.sigma2,
       res.rho2,
       res.converged,
-      res.loss.get(crate::types::LossMetric::Rmse),
+      res.loss.get(crate::LossMetric::Rmse),
     ))
   }
 }
@@ -163,7 +163,7 @@ impl PyLevyCalibrator {
     Ok((
       res.params,
       res.converged,
-      res.loss.get(crate::types::LossMetric::Rmse),
+      res.loss.get(crate::LossMetric::Rmse),
       res.iterations,
     ))
   }
@@ -219,7 +219,7 @@ impl PyHKDECalibrator {
       res.eta1,
       res.eta2,
       res.converged,
-      res.loss.get(crate::types::LossMetric::Rmse),
+      res.loss.get(crate::LossMetric::Rmse),
     ))
   }
 }
@@ -336,7 +336,7 @@ impl PyCgmysvCalibrator {
       p.rho,
       p.v0,
       res.converged,
-      res.loss.get(crate::types::LossMetric::Rmse),
+      res.loss.get(crate::LossMetric::Rmse),
       res.iterations,
     ))
   }

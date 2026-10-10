@@ -1,12 +1,14 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::*;
 
 fn random_walk(seed: u64, n: usize, sigma: f64) -> Array1<f64> {
-  let dist = SimdNormal::<f64>::new(0.0, sigma, &Deterministic::new(seed));
+  let mut dist = SimdNormal::<f64>::new(0.0, sigma).seeded(&Deterministic::new(seed));
   let mut steps = vec![0.0_f64; n];
   dist.fill_slice(&mut steps);
   let mut out = Array1::<f64>::zeros(n);

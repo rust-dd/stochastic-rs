@@ -173,3 +173,38 @@ fn default_thetas_follow_the_paper() {
       < 1e-15
   );
 }
+
+#[test]
+fn each_rejected_parameter_is_named_with_its_value() {
+  let cases: [(&str, fn()); 5] = [
+    ("v0 must satisfy `v0 >= 0.0`, got v0 = -0.01", || {
+      let _ = HestonAdiPricer::new(-0.01, 1.5, 0.04, 0.3, -0.7);
+    }),
+    ("kappa must satisfy `kappa > 0.0`, got kappa = 0.0", || {
+      let _ = HestonAdiPricer::new(0.04, 0.0, 0.04, 0.3, -0.7);
+    }),
+    (
+      "theta must satisfy `theta > 0.0`, got theta = -0.04",
+      || {
+        let _ = HestonAdiPricer::new(0.04, 1.5, -0.04, 0.3, -0.7);
+      },
+    ),
+    ("sigma must satisfy `sigma > 0.0`, got sigma = NaN", || {
+      let _ = HestonAdiPricer::new(0.04, 1.5, 0.04, f64::NAN, -0.7);
+    }),
+    (
+      "rho must satisfy `rho.abs() <= 1.0`, got rho = -1.5",
+      || {
+        let _ = HestonAdiPricer::new(0.04, 1.5, 0.04, 0.3, -1.5);
+      },
+    ),
+  ];
+  for (expected, build) in cases {
+    let payload = std::panic::catch_unwind(build).expect_err(expected);
+    let message = payload
+      .downcast_ref::<String>()
+      .map(String::as_str)
+      .unwrap_or_default();
+    assert_eq!(message, expected);
+  }
+}

@@ -15,41 +15,8 @@ use crate::traits::ModelPricer;
 use crate::traits::ProcessExt;
 use crate::traits::VanillaEuropeanCall;
 
-/// Laplace localisation kernel of bandwidth `l`, and its cdf.
-///
-/// `l == 0` is the degenerate — but reachable — bandwidth, and the `0.0` /
-/// step-function pair returned there is the $l \to 0$ **Dirac limit**, not a
-/// silent sentinel: the density concentrates to a point mass, so its value
-/// away from the atom is genuinely zero, and
-/// $\tfrac12(1 + \operatorname{sgn} x\,(1 - e^{-|x|/l}))$ tends to exactly
-/// the Heaviside step the caller compares it against. That is what keeps the
-/// two consistent — the localisation weight
-/// `pdf + (H - cdf)·t2` collapses to `0 + 0·t2`, not to a half-evaluated
-/// mixture.
-///
-/// At the atom $x = 0$ the limit is not the step: the symmetric Laplace cdf
-/// is $\tfrac12$ there for **every** $l > 0$, so the right-continuous
-/// $F(0) = 1$ this branch returns is a choice, not a limit. The choice is
-/// the one that makes the collapse exact — the caller's Heaviside is also
-/// $1$ at a tie, so `H - cdf` cancels rather than leaving half the term —
-/// and it reaches exactly one entry of the $M^2$ double loop, the diagonal
-/// $j = i$ where `diff` is identically zero.
-///
-/// The one caller that reaches `l == 0` is
-/// [`conditional_call_malliavin_localized`](GbmMalliavinPricer::conditional_call_malliavin_localized),
-/// whose `lf` scale is `0.0` exactly when every simulated payoff is zero —
-/// every path finished out of the money. The emptied localisation sum then
-/// multiplies an identically-zero payoff vector, so the conditional price it
-/// produces is `0.0` because the option really is worthless on that sample,
-/// not because the kernel vanished. The companion `l1` scale is strictly
-/// positive by construction and never lands here.
-///
-/// # Panics
-/// Panics on a negative bandwidth. That is not reachable from either scale
-/// above — `lf` is a square root or `0.0`, `l1` is positive or `1e-8` — so
-/// the assert states the invariant rather than handling a case: a negative
-/// bandwidth has no limit interpretation at all, and the old `l <= 0.0`
-/// guard would have folded it in with the well-defined `l == 0`.
+/// Laplace kernel of bandwidth `l`; `l = 0` is the Dirac limit (zero density, right-continuous step
+/// cdf), so the localisation weight collapses exactly. Panics on `l < 0`.
 fn laplace_pdf(x: f64, l: f64) -> f64 {
   assert!(
     l >= 0.0,
@@ -76,55 +43,8 @@ fn laplace_cdf(x: f64, l: f64) -> f64 {
   0.5 * (1.0 + x.signum() * (1.0 - (-(x.abs()) / l).exp()))
 }
 
-/// Vanilla call/put pricer using Gbm paths and a Malliavin-based conditional estimator.
-///
-/// The idea:
-/// - Simulate Gbm paths S_t on [0, T] using the existing Gbm module.
-/// - Reconstruct the Brownian paths W_t from S_t.
-/// - Use the Malliavin weight (coef) to estimate the conditional call price
-///   C(t, S_t^{(i)}) for each path i.
-/// - Then use the tower property to get the time-0 call price:
-///   C(0) = E[ e^{-r t} C(t, S_t) ]
-/// - Put price is recovered from put-call parity.
-///
-/// The struct holds **model and method state only** — the volatility, the
-/// Monte Carlo path/step counts, the intermediate time `t_eval` at
-/// which the conditional price is estimated, and the seed strategy the
-/// paths are drawn from. Spot, strike, rate, dividend
-/// yield and maturity are the pricing *query* and travel as arguments to
-/// [`ModelPricer::price_call`].
-///
-/// # Seeding
-/// `S` is the compile-time seed strategy of the underlying
-/// [`Gbm`], and it is the *last* constructor argument for the same reason
-/// it is the last argument of [`Gbm::new`]: this pricer is a thin Monte
-/// Carlo estimator over that process, so the two take a seed the same way.
-/// [`Unseeded`] is the default type parameter, so
-/// `GbmMalliavinPricer::new(v, n_paths, n_steps, t_eval, Unseeded)` keeps
-/// the pre-3.0 behaviour of a fresh stream per run, while
-/// [`Deterministic`](stochastic_rs_core::simd_rng::Deterministic) makes
-/// the estimator a *function* of its query.
-///
-/// The seed reaches the Gaussian stream through the constructor chain
-/// `Gbm::new(…, seed) → SimdNormal::new(…, &seed)` and never through an
-/// `Rng` argument, which the workspace's SIMD distributions accept and
-/// ignore.
-///
-/// `sample_paths` hands the process a **clone** of
-/// this seed rather than a derived child, so the pricer's own state does
-/// not advance across calls: two identical queries against a
-/// `Deterministic` instance return the same price. A pricer that advanced
-/// its seed could not be pinned by a test that prices twice.
-///
-/// # Panics
-/// Every pricing method asserts `0 < t_eval < tau`. `t_eval` is an
-/// *absolute* time, not a fraction of the maturity, so one instance can
-/// only price maturities strictly longer than its `t_eval` — a real
-/// constraint on the strike/maturity grids this model can cover, and the
-/// reason `t_eval` is a construction parameter rather than a query one.
-/// The struct is `Clone`, so a shorter maturity means a second instance.
-/// It is `Copy` only where the seed strategy is — `Unseeded` is a unit
-/// struct, `Deterministic` carries an `AtomicU64` and is `Clone` alone.
+/// Malliavin conditional-expectation pricer on [`Gbm`] paths, `C(0) = E[e^{−rt} C(t, S_t)]`; a
+/// `Deterministic` seed makes the price a function of the query. Panics unless `0 < t_eval < tau`.
 #[derive(Debug, Clone, Copy)]
 pub struct GbmMalliavinPricer<S: SeedExt = Unseeded> {
   /// Volatility σ

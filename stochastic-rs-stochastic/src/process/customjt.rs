@@ -15,7 +15,7 @@
 use std::any::Any;
 
 use ndarray::Array1;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -77,6 +77,7 @@ where
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyCustomJt {
   inner_f32: Option<CustomJt<f32, crate::traits::CallableDist<f32>>>,
@@ -132,6 +133,8 @@ impl PyCustomJt {
     })
   }
 
+  /// `m` paths as an `(m, n)` array. The GIL is released while they are generated; the Python
+  /// law runs on rayon workers, one call at a time.
   fn sample_par<'py>(
     &self,
     py: pyo3::Python<'py>,
@@ -144,16 +147,16 @@ impl PyCustomJt {
 
       use crate::traits::ProcessExt;
       if let Some(ref inner) = self.inner_f64 {
-        let paths = inner.sample_par(m);
-        let n = paths[0].len();
+        let paths = py.detach(|| inner.sample_par(m));
+        let n = paths.first().map_or(0, |p| p.len());
         let mut result = Array2::<f64>::zeros((m, n));
         for (i, path) in paths.iter().enumerate() {
           result.row_mut(i).assign(path);
         }
         result.into_pyarray(py).into_py_any(py).unwrap()
       } else if let Some(ref inner) = self.inner_f32 {
-        let paths = inner.sample_par(m);
-        let n = paths[0].len();
+        let paths = py.detach(|| inner.sample_par(m));
+        let n = paths.first().map_or(0, |p| p.len());
         let mut result = Array2::<f32>::zeros((m, n));
         for (i, path) in paths.iter().enumerate() {
           result.row_mut(i).assign(path);
@@ -255,6 +258,14 @@ where
 }
 
 backend_switch!([T, D, S: SeedExt] CustomJt<T, D, S> { n, t_max, distribution, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
+
+impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for CustomJt<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
+{
+}
 
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for CustomJt<T, D, S, B>
 where
@@ -384,6 +395,13 @@ where
     }
     Array1::from(x)
   }
+}
+
+impl<T, D> crate::traits::Sealed for CustomJtSampler<'_, T, D>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
 }
 
 impl<T, D> PathSampler<T> for CustomJtSampler<'_, T, D>

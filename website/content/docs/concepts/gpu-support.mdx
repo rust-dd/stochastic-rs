@@ -1,13 +1,10 @@
 ---
 title: GPU support
 seo_title: "GPU support: CUDA and Metal Monte Carlo"
-description: What runs on a GPU today, on which backend, at what precision — the fGN family, the Euler engine, and everything else on the host.
+description: What runs on a GPU, on which backend, at what precision — the fGN and sheet pipelines, the Euler engine, and the configurations that stay on the host.
 ---
 
-Every process carries its sampling backend as a type parameter and is
-re-typed with `.on::<B>()` (see [backends](/docs/concepts/backends)). This
-page is the inventory: which processes have a device kernel today, on which
-backends, and what the rest do.
+Every process carries its sampling backend as a type parameter and is re-typed with `.on::<B>()` (see [backends](/docs/concepts/backends)). This page is the inventory: which processes run on which device, at what precision, and which configurations stay on the host.
 
 ## The support matrix
 
@@ -19,338 +16,47 @@ backends, and what the rest do.
 | Euler engine, systems | 39 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel |
 | Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `FVasicek`, `Cfgns`, `Cfbms`, `Cfou`, `JumpFou`, `JumpFOUCustom` (11, counted above) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same MSL kernel | fGN pipeline feeds the same NVRTC kernel |
 
-Every process reaches a device: `Fgn` and `Fbs` through pipelines of their own, the other 130 through the engine. The 130 processes on the engine cover the diffusions, the stochastic-volatility
-models under both their Euler and quadratic-exponential schemes (`Heston`,
-`HestonLog`, `DoubleHeston`, `Heston2D`, `Sabr`, `Bergomi`,
-`HestonStochCorr`, `BatesSvj`, `Hkde`), the short-rate models including the
-curve-driven ones (`HullWhite`, `HullWhite2F`, `HoLee`, `BlackKarasinski`,
-`CirPlusPlus`, `Cir2F`, `DuffieKan`, `DuffieKanJumpExp`, `Vasicek`,
-`FVasicek`), the fractional processes, the jump models (`MjdLog`, `BatesSvj`,
-`Hkde`, `HawkesJD`, `DuffieKanJumpExp`, and the ones generic over a
-user-supplied size law — `Merton`, `Kou`, `LevyDiffusion`, `Bates1996`,
-`JumpFou`, `JumpFOUCustom` — whose `ScalarNormal` or `ScalarExp` law the
-engine recognises at runtime and draws in the kernel, Bates's as the product
-`∏(1 + y) − 1` its multiplicative jump needs; any other law keeps the process
-on the host through the same calls), the Lévy processes whose increment
-is one draw with no rejection (`Ig`, `Nig`, `IGSubordinator`,
-`PoissonSubordinator`, `AlphaStableSubordinator`, `GammaSubordinator`,
-`TemperedStableSubordinator`, `Vg`, `BilateralGamma`, `BilateralGammaMotion`,
-`Bns`), the discrete-time conditional-variance models at order (1,1)
-(`Arch`, `Garch`, `GjrGarch`, `Agarch`, `Egarch`), the first-order lag models
-(`ARp`, `MAq`), the noise generators (`Wn`, `Gn`, `Cgns`, `Cfgns`), the
-correlated fractional pair (`Cfbms`, `Cfou`), the bounded correlation
-processes (`TengSCP`, `VanEmmerich`, `TransformedOU`), the two models whose
-coefficients travel as curves rather than parameters (`MultifactorSabr`'s
-term structure, `Hjm`'s six time-dependent coefficients), the matrix-valued
-models whose rows are independent copies of one small family (`Bgm`'s forward
-rates, `Adg`'s affine factors, `WuZhangD`'s rate–variance pairs — one launch
-per row), the Cholesky-correlated baskets of up to four streams (`MultiGbm`,
-`Mcgns` — one launch, the factor folded into the family's ten lower-triangle
-slots; a wider basket stays on the host whatever the backend), the one- and
-two-factor `MultifactorHeston` (which rides the double-Heston family with a
-zeroed second factor when it has one; three or more stay on the host), the
-regime-switching diffusion with up to four regimes (the one-step transition
-matrix is exponentiated once on the host and travels as cumulative
-thresholds; five or more regimes stay on the host), the Riemann-Liouville
-family under the Markov lift of its rough kernel (`RlFBm`, `RlFOU`,
-`RlBlackScholes`, `RlHeston`, and `Volterra`'s lift branch — the lift's node
-states live in the kernel's own per-path arrays, see below; `Volterra`'s
-reference-convolution branch rides the history block instead, the kernel
-tabulated on the grid as its weights), the two lift-stepped
-Volterra models (`VolterraSquareRoot`, and `GaussianPolynomialVolatility` up
-to eight coefficients) and the event-indexed processes in their count mode
-(`Poisson`, `CompoundPoisson`, and `CustomJt` / `CompoundCustom` when their
-inter-arrival law is the scalar exponential), one arrival per step, and the
-models whose step reads their whole past through the history block — the
-rough-volatility models with a memory integral (`RoughHeston`, `FBatesSvj`,
-`RoughBergomi`), the linear fractional stable motion `Lfsm`, and the ARIMA and
-SARIMA recursions at any order, run as the moving-average filter of their
-innovations — each on the host's own scheme, for grids up to 512 points; and the
-tempered-stable processes built from their shot-noise series (`Cgmy`, `Cts`,
-`KoBoL`, `Rdts`), whose terms the series block draws per path and sums into the
-grid cells they fall in, the host's sort replaced by addressing, again up to 512
-points; and `Hawkes` in its count mode, one event per step by the exact
-two-uniform recursion of Dassios and Zhao, the host's thinning loop replaced by
-a closed form; `Ctrw` under exponential waits, whose arrivals per cell are the
-Poisson count the kernels draw, with normal, Rademacher or symmetric-stable
-jumps; and `Lmm` with up to four forwards in one launch, the spot measure's
-drift coupling and the reset freezes written out over the four slots; and
-`InverseAlphaStableSubordinator`, whose table block builds the direct stable
-subordinator per path on its own grid — doubling the extent until it reaches
-the horizon, as the host does — and reads the inverse clock off it by
-interpolation at every step; and `Svcgmy`, CGMY under a CIR variance, whose
-variance takes the exact square-root step — a non-central χ² as the square of a
-shifted normal plus the frame's gamma draw — and whose series terms are sized
-in the step of their own cell against the variance there, the one series
-clause written `live`; and the two-dimensional `Wishart` process by its exact
-Ahdida–Alfonsi step — the three maps of the law identity folded on the host,
-two coordinate steps each a shifted normal's square plus the frame's central
-χ² draw and a Gaussian move of the off-diagonal entry — at a degree of three or
-more, where the path stays inside the cone and the host's rank-adaptive branch
-is never taken; and `MultivariateHawkes` in count mode with two components and
-one decay per target, as the superposition of each target's exact excess clock
-(Dassios–Zhao) with the baselines' joint Poisson clock, the event being the
-earliest of the three — the two extra uniforms come from the noise
-components, half the sum of two squared normals being a unit exponential and
-one minus its negative exponential a uniform. The two-dimensional field `Fbs`
-is the one other device process off the engine: its sample is a transform, not a recursion, and it runs through a
-pipeline of its own behind `SheetBackend<T>`, described below.
+Every process reaches a device: `Fgn` and `Fbs` through pipelines of their own, the other 130 through the Euler engine. The engine covers the diffusions; the stochastic-volatility models under both their Euler and quadratic-exponential schemes; the short-rate models, including the curve-driven ones; the fractional processes; the jump models (a process generic over its jump-size law when that law is `SimdNormal` or `SimdExp`); the Lévy processes and subordinators; the order-(1,1) conditional-variance and first-order lag models; the noise generators; the Riemann–Liouville and Volterra models under the Markov lift of their kernel; the rough-volatility models with a memory integral, `Lfsm`, `Arima` and `Sarima` on the host's exact scheme for grids up to 512 points; the point processes in count mode; and the matrix and basket models within the limits below.
 
-What stays on the host, and why. The engine steps a bounded forward
-recursion over four scalar state slots, so what rules a process out is
-unbounded work per step, unbounded state, or an output that is not a fixed
-grid:
+## What stays on the host
 
-- **A history integral over every earlier step, on a grid longer than 512
-  points** (`Volterra`'s reference branch and any history family above that
-  length): the step sums
-  `(t_i - t_j)^(H - 1/2) z_j` over all `j < i`, which is work that grows with
-  the step index. The Markov lift is the answer where it applies — the whole
-  `Rl*` family and `Volterra`'s rough kernels ride it — and the history block
-  runs the direct convolution itself, exactly as the host does, for grids up
-  to 512 points; that is how `RoughHeston`, `FBatesSvj`, `RoughBergomi` and
-  `Lfsm` reach a device. Longer grids stay on the host, which the process's
-  `device_ready()` decides.
-- **A variance with less than one degree of freedom** (`Svcgmy` at
-  `4κη/ζ² < 1`): the exact square-root step then draws a Poisson mixture the
-  kernels do not carry, and the process stays on the host; at one degree or
-  more the step is the square of a shifted normal plus a central χ², which the
-  frame's gamma draw supplies, and the series block sizes the terms live.
-- **A runtime dimension that couples its rows, above the slots** (`Wishart`
-  above `d = 2`, `Lmm` / `MultiGbm` / `Mcgns` above four): the rows share a
-  drift or a correlated noise, so they cannot be stepped as independent
-  launches the way `Bgm`, `Adg` and `WuZhangD` are, and a launch carries four
-  slots and four shocks; within them they ride one launch, above they stay on
-  the host whatever the backend. `Wishart` also stays below a degree of three,
-  where its exact step may take the rank-adaptive branch — or, below two, the
-  Poisson mixture — that a family does not express.
-- **More time-varying coefficients than the eight the kernel binds**: none
-  today. `MultifactorSabr` needed three, `Adg` five and `Hjm` six, and all
-  three now declare them — the first turned a per-step bucket search into a
-  buffer read, the last seven time-only callables into six tabulated curves.
-- **A coefficient written as a Rust closure or a Python callable**
-  (`Cheyette`'s `sigma(t, x)`, `VolterraSde`'s drift and diffusion,
-  `HestonSlv`'s leverage): a
-  closure of time alone is tabulated as a curve the way `Cir2F`'s `phi(t)` is,
-  but one that reads the state has no representation a kernel can evaluate,
-  and neither has a coefficient tabulated as a `Grid2D` — a calibrated leverage
-  surface, say.
-  Written as an `Expr` instead — `Expr::lit(0.01) + Expr::x().abs() * 0.4` —
-  the same coefficient compiles to a short program the kernel interprets, and
-  the process runs on the device; see "Coefficients as expressions" below.
-- **Point processes on their own clock** (`Hawkes` and `MultivariateHawkes`
-  in their horizon modes, and `MultivariateHawkes` above two components or
-  with per-pair decays): the output length is the number of events, not the
-  grid. `Hawkes` in count mode is one event per step and reaches the engine
-  through the exact exponential-excitation recursion, and `MultivariateHawkes`
-  in count mode with at most two components and one decay per target by
-  superposing each target's exact excess clock with the baselines' joint
-  Poisson clock — per-pair decays make a sum of exponentials at different
-  rates whose first arrival has no closed form, and a third component would
-  need a fifth state slot, so both stay on the host; `Ctrw` is a grid process
-  and reaches it under exponential waits, while its gamma, inverse-Gaussian
-  and stable waits have no per-cell Poisson count and stay on the host.
-  `Poisson`, `CompoundPoisson`, `CustomJt` and `CompoundCustom` split here —
-  their count mode is a fixed-length running sum and reaches the engine,
-  their horizon mode does not.
-- **A per-step search over a table finer than 512 points**
-  (`InverseAlphaStableSubordinator` with more `u_steps` than that): the table
-  block keeps the direct subordinator in a per-path array of 512 values and
-  scans it; a finer table stays on the host.
-- **More regimes than the four the chain family carries**
-  (`RegimeSwitchingDiffusion` at five or more): the family holds four
-  volatilities and four rows of thresholds; larger chains stay on the host
-  whatever the backend.
-- **A lag order above one** (`ARp`, `MAq` or the GARCH family built above
-  order one): the recursion reads back as many past values as the order and a
-  step holds four slots. At order one they reach a device; above it the
-  process stays on the host, as its `device_ready()` reports. `Arima` and `Sarima` are
-  the exception: a linear recursion of white noise is a moving-average filter,
-  so the history block runs them at any order as the convolution of the
-  innovations with the recursion's own impulse response.
-- **A sheet whose embedding sides are not powers of two** (`Fbs` with
-  `m − 1` or `n − 1` not a power of two): the sheet pipeline's radix-2
-  transforms take embedding sides `2(m − 1)` and `2(n − 1)` that are powers
-  of two; any other grid stays on the host whatever the backend.
-- **More variance factors than a launch's four shocks carry**
-  (`MultifactorHeston` at `K >= 3`): each factor takes two shocks, so one
-  and two factors ride the double-Heston family and three or more stay on the
-  host whatever the backend.
+The engine steps a bounded forward recursion over four scalar state slots and four shocks. These configurations exceed it and sample on the host, bit-identically to the `Cpu` build, whatever the backend; `device_fallback()` names the reason:
+
+- **History models on a long grid.** `RoughHeston`, `FBatesSvj`, `RoughBergomi`, `Lfsm`, `Arima`, `Sarima` and `Volterra`'s reference-convolution branch read their whole past each step, which the kernels carry for grids up to 512 points.
+- **Coefficients of the state written as a Rust closure, a Python callable or a `Grid2D`** (`Cheyette`'s `sigma(t, x)`, `VolterraSde`'s drift and diffusion, `HestonSlv`'s leverage). Written as an `Expr`, the same coefficient runs on the device — see below. A coefficient of time alone, such as Hull–White's `theta(t)`, is tabulated on the grid and runs on the device, whether it is a Rust function or a Python callable.
+- **Too many coupled dimensions.** `Wishart` above `d = 2` or below degree 3; `Lmm`, `MultiGbm` and `Mcgns` above four components; `MultifactorHeston` with three or more factors; `RegimeSwitchingDiffusion` with five or more regimes; `MultivariateHawkes` above two components or with per-pair decays.
+- **Point processes on their own clock.** `Hawkes`, `MultivariateHawkes`, `Poisson`, `CompoundPoisson`, `CustomJt` and `CompoundCustom` in horizon mode, where the output length is the number of events; `CustomJt` / `CompoundCustom` with an inter-arrival law other than the exponential; `Ctrw` with gamma, inverse-Gaussian or stable waits.
+- **Jump-size laws other than `SimdNormal` / `SimdExp`** for the processes generic over one (`Merton`, `Kou`, `LevyDiffusion`, `Bates1996`, `JumpFou`, `JumpFOUCustom`).
+- **Lag order above one** for `ARp`, `MAq` and the GARCH family.
+- **`Svcgmy`** with `4κη/ζ² < 1`, where the exact variance step needs a Poisson mixture.
+- **`InverseAlphaStableSubordinator`** with more than 512 `u_steps`.
+- **`Fbs`** when `m − 1` or `n − 1` is not a power of two.
 
 ### Coefficients as expressions
 
-`Cheyette`, `VolterraSde` and `HestonSlv` take their coefficients as [`Fn2D`] callables of
-time and state. A Rust closure or a Python callable runs on the host only —
-nothing can evaluate it in a kernel — and the device build keeps such a
-process on the host, bit-identically to the `Cpu` build. Written as an
-[`Expr`] the same coefficient reaches the device:
+`Cheyette`, `VolterraSde` and `HestonSlv` take their coefficients as `Fn2D` callables of time and state. A Rust closure or a Python callable of the state runs on the host only (a closure of time alone is tabulated on the grid and reaches the device). Written as an `Expr`, the same coefficient reaches the device:
 
 ```rust
 use stochastic_rs::traits::Expr;
 
 // σ(t, x) = 0.01 + 0.4 |x|, a displaced local volatility
-let sigma = Expr::lit(0.01) + Expr::x().abs() * 0.4;
+let sigma = (Expr::lit(0.01) + Expr::x().abs() * 0.4).compile()?;
 let cheyette = Cheyette::<f32, _>::new(f0, 0.5, sigma, 252, Some(1.0), seed).on::<Cuda>();
 ```
 
-`Expr::t()` and `Expr::x()` are the time and the state, `Expr::lit` a
-constant; the arithmetic operators, `sqrt`, `exp`, `ln`, `abs`, `tanh`,
-`powf`, `max` and `min` build the tree — the vocabulary the engine's own
-function table has, so every node means one thing on the host and in every
-kernel. `From<Expr> for Fn2D` compiles the tree to a postfix [`Program`] of at
-most 62 operations on a stack of at most 8, checked at compile time on the
-host. The host evaluates that program wherever it would have called the
-closure; a launch uploads it — two programs at most, `[len₁, len₂, (opcode,
-constant)…]` in one small buffer — and before every step the kernel runs
-each program at the step's time and first state slot, handing the values to
-the family as `pv` and `pv2`. The `CheyetteLocalVol` family reads its
-volatility as `pv`, the `HestonSlv` family its leverage; the `VolterraProgram` family, which steps under the
-kernel's Markov lift, reads its drift and diffusion as `pv` and `pv2`. Each
-kernel — the C body CUDA and Metal render — carries the
-same sixteen-opcode interpreter, and the parity suite runs a probe program
-with every opcode in use through all of them against the host's `Program::eval`.
-
-## What a family is
-
-A process reaches a device by declaring which of the engine's **121 families**
-it steps, not by writing a kernel. A family is one entry in
-`stochastic-rs-stochastic/src/euler/families.rs` — its parameters, its state
-components, its noise components, one step expression per component and one
-report expression — and the same tokens generate the host step, the C body
-the CUDA and Metal kernels render. Adding a process
-is a declaration plus an `EulerCoefficients` (one component) or `EulerSystem`
-(more than one) impl; no kernel is edited.
-
-The engine's kernels carry four state slots, four independent noise
-components, twenty scalar parameters, two uniforms, a Poisson jump count,
-the sum of that step's jump sizes — under a normal, double-exponential,
-tempered-stable, Rademacher or symmetric-stable law, the first two also
-compounded as `∏(1 + y) − 1` for a multiplicative jump or taken one per step
-for an event-indexed path — and up to two Gamma draws. A family with a `lift` clause runs under the Markov lift of a
-rough Volterra kernel: the frame keeps up to 176 nodes' two state vectors per
-path, evaluates the family's drift, diffusion and shock before the step and
-hands it the lifted value as `lv`. A family with a `history` clause keeps, per
-path, the values it pushes each step — up to 512 grid points — and reads their
-convolution with a weight curve the launch tabulates, indexed by lag, as
-`cv`: the exact O(n²) scheme of a moving average over the whole past, which is
-a Volterra integral on the grid, an ARMA filter or a fractional stable motion
-depending on the weights. A family with a `series` clause has the frame draw,
-per path and before the steps, as many shot-noise terms as the launch names —
-a unit-rate arrival, an exponential, two uniforms and an arrival time each —
-size them with the family's own expression and sum them into the grid cells
-their times fall in, up to 512; the step reads its cell as `sj`. A family with a
-`table` clause has the frame build, per path, a monotone table of up to 512
-values from its increment expression, doubling the extent until the table
-reaches the horizon, and hands each step the interpolated inverse at its time
-as `iv`. A launch may carry up to two programs — coefficients written as
-`Expr` — which the frame evaluates before every step at the step's `ct` and
-first state slot and hands to the family as `pv` and `pv2`. A launch binds up to eight time-varying coefficients, which
-a family names `ct` and `ct1` through `ct7`; it pays one buffer read per
-declared curve per step, so a model with one still pays for one. The first
-two noise components may come from a fractional pipeline instead of the
-kernel's own hash stream: one embedding produces both when the rows share a
-Hurst exponent, which is what a correlated fractional pair needs. A
-process whose first grid point is itself a draw — a conditional-variance
-model's series, a noise generator — asks the launch to step before writing
-it. A model that wants correlated shocks draws the components independently
-and correlates them in its own step, which is what the host samplers do.
-
-Feature flags: `metal` (`Metal`), `cuda` (`Cuda`), `accelerate`
-(`Accelerate`). A marker only exists when its feature is
-compiled, so selecting a backend a process does not support — or one the
-build does not carry — is a compile error, never a silent fallback. The same
-holds for precision: the capability traits take the scalar
-(`FgnBackend<T>`, `SheetBackend<T>`, `EulerBackend<T>`) and a device implements them only for
-the precision its kernels compute in, so `Gbm<f64>` or `Fgn<f64>` on
-`Metal` does not compile. Nothing is computed in `f32`
-behind an `f64` type.
+`Expr::t()` and `Expr::x()` are the time and the state, `Expr::lit` a constant; the arithmetic operators, `sqrt`, `exp`, `ln`, `abs`, `tanh`, `powf`, `max` and `min` build the tree. `Expr::compile()` (or `Fn2D::try_from`) turns it into a postfix `Program` of at most 62 operations on a stack of at most 8, and returns a `ProgramError` for a tree no kernel could run; `HestonSlv::new(.., leverage.compile()?, ..)` is the shape. The host evaluates the same program, so host and device compute the same coefficient, not a tabulation of it.
 
 ## What the device path does
 
-- **fGN noise.** The circulant-embedding FFT that produces fractional
-  Gaussian noise runs on the device, one launch per `sample_par` batch.
-  `Fgn` returns it directly.
-- **Programs.** A coefficient written as an `Expr` travels to the kernel as
-  postfix code and is interpreted before every step — `Cheyette`'s local
-  volatility, `VolterraSde`'s drift and diffusion, `HestonSlv`'s leverage — so
-  the device runs the
-  very same coefficient the host does, not a tabulation of it.
-- **Sheets.** `Fbs` runs its two-dimensional circulant embedding as a
-  pipeline beside the fGN one. The embedding's eigenvalue roots are computed
-  once on the host, when the process is built; per batch the device draws the
-  complex Gaussian noise, scales it, transforms the rows, transposes,
-  transforms the columns and reads out the leading `m × n` block less its
-  corner plus Stein's linear correction `√(2c₂)(t₁Z₁ + t₂Z₂)`. The radix-2 transforms take embedding
-  sides that are powers of two, so a grid with `m − 1` and `n − 1` powers of
-  two runs on the device and any other stays on the host, bit-identically to
-  the `Cpu` build. A batch produced in chunks equals one launch sheet for
-  sheet, as with the fGN pipeline.
-- **Fractional diffusions.** `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`,
-  `FVasicek`, `Cfgns`, `Cfbms` and `Cfou` hand
-  those increments to the Euler engine, which runs the whole recursion in the
-  kernel. They declare no kernel of their own: `Fou` is the same
-  Ornstein–Uhlenbeck family a Gaussian `Ou` uses, `Fgbm` the same geometric
-  one, and a step that multiplies by an increment does not care whether the
-  increment was hashed or produced by an FFT. The two kernels meet in device
-  memory: the pipeline hands its own buffer to the Euler launch instead of
-  reading the increments back, so a batch crosses the bus once, for the paths.
-  Measured on an M-series Metal device against the host: fOU with 2000 paths
-  of 512 steps went from 101 ms to 5.8 ms, fBM with 4000 paths of 1024 steps
-  from 252 ms to 19.2 ms. Keeping the increments on the device is most of
-  that: through host memory the same runs took 25 ms and 93 ms.
-- **Euler engine.** The whole Euler–Maruyama recursion of a path runs in one
-  kernel thread; `sample_par(m)` is one launch for all `m` paths, `sample()`
-  launches a single path. A system writes one plane per component, so a
-  Heston draw comes back as the two arrays it always did. CIR uses full
-  truncation (Lord, Koekkoek & van Dijk 2010) in the kernel. The CUDA and
-  Metal kernels are one C body rendered per language, so `Metal` and `Cuda`
-  agree with each other seed for seed up to `f32` libm rounding;
-  `euler::family_parity` launches every declared family on the device present
-  and holds it to the host step.
-- **Host backends.** `Cpu` is the process's own sampler; `Accelerate` is a
-  CPU device that only differs for the fGN family (vDSP FFT). For every
-  other process both are the same code path.
+- **fGN noise.** The circulant-embedding FFT runs on the device, one launch per `sample_par` batch.
+- **Sheets.** `Fbs` runs its two-dimensional circulant embedding as a pipeline beside the fGN one; the embedding's eigenvalue roots are computed once on the host when the process is built.
+- **Fractional diffusions.** `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `FVasicek`, `Cfgns`, `Cfbms` and `Cfou` take their increments from the fGN pipeline in device memory and run the whole recursion in the Euler kernel, so a batch crosses the bus once. On an M-series Metal device against the host: fOU with 2000 paths of 512 steps took 5.8 ms against 101 ms, fBM with 4000 paths of 1024 steps 19.2 ms against 252 ms.
+- **Euler engine.** The whole Euler–Maruyama recursion of a path runs in one kernel thread; `sample_par(m)` is one launch for all `m` paths. A system writes one plane per component, so a Heston draw comes back as two arrays. CIR uses full truncation (Lord, Koekkoek & van Dijk 2010) in the kernel. The CUDA and Metal kernels are one C body rendered per language, so `Metal` and `Cuda` agree seed for seed up to `f32` libm rounding.
+- **Host backends.** `Cpu` is the process's own sampler; `Accelerate` differs from it only for the fGN family (vDSP FFT).
 
 ## Large batches
 
-A device handle holds at most `batch_budget` bytes of path data per launch
-(1 GiB by default, `STOCHASTIC_RS_DEVICE_BATCH_BYTES`, or
-`Cuda::default().with_batch_budget(n)`). A larger `sample_par(m)` runs as
-several launches whose union is bit-identical to one launch, because the kernels
-hash the global path index; `sample_map(m, f)` maps each chunk in parallel on
-the host before the next chunk is launched, so the batch never has to fit in
-memory at once. On native CUDA the chunks alternate between two streams: one
-copies back through pinned memory while the next computes. The fGN devices chunk
-the same way, one seed per batch and an element offset per chunk, and keep the
-FFT plans and buffers of the last four `(n, m)` shapes, so alternating two sizes
-does not re-plan on every call.
-
-## More than one GPU
-
-The handle names the device: `Cuda::new(1)` (CUDA ordinal),
-`Metal::new(1)` (index into `Device::all()`);
-`process.with_backend(handle)` puts a process on that handle, `.on::<B>()` on
-the backend's default handle, and `handle.probe()` reports the device opened.
-The defaults read `STOCHASTIC_RS_DEVICE` and `STOCHASTIC_RS_DEVICE_BATCH_BYTES`.
-From Python the name carries the ordinal: `device="cuda:1"`,
-`probe_device("metal:0")`.
-
-## When the device is missing
-
-`handle.probe()` on any backend handle returns `Ok(DeviceInfo)` with the device's name and
-precisions, or `Err(DeviceError)` saying why it cannot be used (`Unavailable`,
-`Compile`, `Launch`). Every process has `try_sample()` and `try_sample_par(m)`
-on `ProcessExt`, returning the same error instead of panicking (always `Ok` on
-the host devices, bit-identical to `sample*`); the plain `sample*` calls panic
-with the error's message and never fall back to the host. From Python a device
-failure is a `RuntimeError`.
-
-A *configuration* the kernels cannot carry is a different matter and follows
-one rule: the process samples on the host, bit-identically to the `Cpu`
-build, whatever backend it is on, and `device_ready()` — a `ProcessExt`
-method, `true` by default — says so beforehand. Nothing panics and nothing
-changes law; the "What stays on the host" list above is exactly the set of
-configurations that answer `false`.
+A device handle holds at most `batch_budget` bytes of path data per launch (1 GiB by default; `Cuda::from_env()?` reads `STOCHASTIC_RS_DEVICE_BATCH_BYTES`, or set `Cuda::default().with_batch_budget(n)`). A larger `sample_par(m)` runs as several launches whose union is bit-identical to one launch, because the kernels hash the global path index; `sample_map(m, f)` maps each chunk on the host before the next is launched, so the batch never has to fit in memory at once. The fGN devices chunk the same way.
 
 ## Precision and reproducibility
 
@@ -361,91 +67,33 @@ configurations that answer `false`.
 | `Metal` | `f32` (an `f64` process is a compile error) | yes | no |
 | `Cuda` | `f32` / `f64` (a failing `f64` launch is reported, never replaced by the `f32` kernel) | yes | no |
 
-The device seed is drawn from the process's own seed source, so the device
-follows the host's rule exactly: two processes built from the same
-`Deterministic` seed value give the same paths, consecutive calls on one
-process advance the stream into independent paths, and an `Unseeded` process
-draws fresh entropy every call. Host and device
-paths agree in distribution, not bit for bit, because the device draws its
-own stream.
+The device seed is drawn from the process's own seed source, so the device follows the host's rule: two processes built from the same `Deterministic` seed value give the same paths, consecutive calls on one process advance the stream, and an `Unseeded` process draws fresh entropy every call. Host and device paths agree in distribution, not bit for bit, because the device draws its own stream.
+
+Probing a device, handling its failures and choosing an ordinal are on [Sampling backends](/docs/concepts/backends).
 
 ## From Python
 
-Every class whose process reaches a device takes `device=`
-(`PyGbm(..., dtype="f32", device="metal")`), checked and probed at
-construction. A class also answers `device_ready()` and `device_fallback()`
-for the configuration it holds, so a `device=` that the kernels cannot honour
-is visible rather than merely slow. `PyGbm(0.05, 0.2, 253, x0=100.0, t=1.0, seed=7, device="metal", dtype="f32").sample_par(m)` runs the Euler
-engine with `device` one of `"cpu"`, `"accelerate"`, `"cuda"`, `"metal"` —
-every name is one concrete backend, there
-is no "pick whatever is compiled" name; one the build does not carry raises
-`ValueError` with a rebuild hint. The array is `float64` from
-the CPU and native CUDA paths and `float32` from Metal, whose kernels
-compute in single precision. The published wheels are
-CPU-only; the device backends come with a source build —
-`maturin develop --features metal` on a Mac,
-`--features cuda` on an NVIDIA machine.
+89 process classes take `device=` (`PyGbm(..., dtype="f32", device="metal")`); the ones without it, listed on [Python bindings](/docs/python#devices), sample on the host. The name is one of `"cpu"`, `"accelerate"`, `"cuda"`, `"metal"`, optionally with an ordinal (`"cuda:1"`); one the build does not carry raises `ValueError` with a rebuild hint, and the device is probed when the object is built. Arrays come back in the class's dtype, and the `f32`-only Metal backend needs `dtype="f32"`. A class also answers `device_ready()` and `device_fallback()` for the configuration it holds. The published wheels are CPU-only; the device backends need a source build — `maturin develop --features metal` on a Mac, `--features cuda` on an NVIDIA machine. See [Python bindings](/docs/python#devices).
 
 ## Trying the CUDA back-end without a CUDA machine
 
-[`notebooks/colab_cuda_check.ipynb`](https://colab.research.google.com/github/rust-dd/stochastic-rs/blob/main/notebooks/colab_cuda_check.ipynb)
-opens in Google Colab: on a T4 runtime it installs Rust, clones the repository,
-runs the native CUDA tests (the fGN pipeline and the Euler engine), builds the
-Python wheel with `device="cuda"` and plots what the GPU produced. The
-Rust tests build in 10–20 minutes on Colab's two cores, the wheel in another
-ten; the tests and the plots take seconds.
+[`notebooks/colab_cuda_check.ipynb`](https://colab.research.google.com/github/rust-dd/stochastic-rs/blob/main/notebooks/colab_cuda_check.ipynb) opens in Google Colab: on a T4 runtime it installs Rust, clones the repository, runs the native CUDA tests (the fGN pipeline and the Euler engine), builds the Python wheel with `device="cuda"` and plots what the GPU produced. The Rust tests build in 10–20 minutes on Colab's two cores, the wheel in another ten.
 
 ### A run on a T4
 
-[`notebooks/runs/colab_cuda_check_T4_2026-09-03.ipynb`](https://github.com/rust-dd/stochastic-rs/blob/main/notebooks/runs/colab_cuda_check_T4_2026-09-03.ipynb)
-is the executed copy of a run on 2026-09-03 (Tesla T4, driver 580.82 / CUDA
-13.0, toolkit 12.8; it predates the rename of the backend, so its cells,
-its output and its handle names still read `cuda-native` / `CudaNative`;
-GitHub's own viewer may not render Colab outputs,
-[nbviewer](https://nbviewer.org/github/rust-dd/stochastic-rs/blob/main/notebooks/runs/colab_cuda_check_T4_2026-09-03.ipynb)
-does). All 12 native-CUDA tests passed, including the two that assert a
-chunked batch equals one launch path for path, in `f32` and `f64`; the wheel
-built for CPython 3.13 and its device tests passed; `probe_device` reported
-`{'backend': 'CudaNative', 'name': 'Tesla T4', 'precisions': ['f32', 'f64']}`
-(the handle is `Cuda` and reports `"Cuda"` since the rename).
+[`notebooks/runs/colab_cuda_check_T4_2026-09-03.ipynb`](https://github.com/rust-dd/stochastic-rs/blob/main/notebooks/runs/colab_cuda_check_T4_2026-09-03.ipynb) is the executed copy of a run on 2026-09-03 (Tesla T4, driver 580.82 / CUDA 13.0, toolkit 12.8; GitHub's viewer may not render Colab outputs, [nbviewer](https://nbviewer.org/github/rust-dd/stochastic-rs/blob/main/notebooks/runs/colab_cuda_check_T4_2026-09-03.ipynb) does). The native CUDA tests passed, including a chunked batch equal to one launch path for path in `f32` and `f64`, and so did the wheel's device tests.
 
 <img src="/gpu/colab_cuda_check_t4.png" alt="fBM paths, the t^(2H) variance law on GPU and CPU, the GBM terminal law against the lognormal density, and wall time per call CPU vs CUDA on a T4" width={1289} height={889} />
 
-The variance of fractional Brownian motion sampled on the GPU sits on the
-`t^{2H}` lines for `H` = 0.3, 0.5, 0.8 exactly where the CPU samples sit, and
-the Euler engine's GBM terminal mean over 100k paths was 105.15 against the
-105.13 forward. Wall time per call, warm, against Colab's two CPU cores:
+The variance of fractional Brownian motion sampled on the GPU sits on the `t^{2H}` lines for `H` = 0.3, 0.5, 0.8 where the CPU samples sit, and the Euler engine's GBM terminal mean over 100k paths was 105.15 against the 105.13 forward. fGN wall time per call, warm, against Colab's two CPU cores:
 
 | Case | CPU | Cuda (T4) |
 |---|---|---|
 | fGN, `n` = 4096, `m` = 2000, `f64` | ≈ 0.55 s | ≈ 0.22 s (2.5×) |
 | fGN, `n` = 16384, `m` = 1000, `f64` | ≈ 0.65 s | ≈ 0.36 s (1.8×) |
-| GBM Euler, `n` = 253, `m` = 100k, `f64` | ≈ 0.29 s | ≈ 0.56 s |
 
-The Euler case is slower on the T4 in `f64` because that card executes
-double precision at 1/32 of its single-precision rate, and the 200 MB result
-is copied back and re-laid as rows on the host; `dtype="f32"` is the setting
-for the Euler engine on inference-class GPUs. The fGN pipeline is FFT-bound
-and wins already at these sizes; the gap widens with `m`.
+The fGN pipeline is FFT-bound and already wins at these sizes; the gap widens with `m`. For the Euler engine on a T4, `dtype="f32"` is the setting to use: the card runs double precision at 1/32 of its single-precision rate. Current Euler-engine numbers on the T4 are on [Benchmarks](/docs/benchmarks#euler-engine--cpu-against-cuda).
 
-## Adding a kernel
+## Stability
 
-A process joins the Euler engine inside this crate: one family entry in
-`euler/families.rs` — parameters, state, noise, step and report expressions,
-plus a `lift`, `history`, `series` or `table` clause where the recursion needs
-one — generates the host step, the C body the CUDA and Metal kernels render
-and the process declares that family through the
-engine's launch hooks and switches its `backend_switch!` line to `via euler`.
-The hooks, the family specification and the slot caps are the engine's own
-machinery: public so the crate's tests and probes reach them, hidden from
-the rendered documentation and outside the stability promise. What is public
-and stable is the capability a bound names, `EulerBackend<T>`, together with
-`.on::<B>()`, `with_backend(handle)`, `device_ready()`, `probe()` and the
-`try_*` calls. Widening a process's bound from `HostBackend` to `EulerBackend`
-is not a breaking change for its callers.
-
-A coefficient a process takes as a closure has no representation a kernel
-can evaluate; written as an `Expr` it compiles to a program the kernel
-interprets, which is how `Cheyette`, `VolterraSde` and `HestonSlv` run on a device. `Sde`,
-which drives its own loop over caller-supplied closures, is the one process
-whose `.on::<B>()` re-types without changing where it samples.
+What is public and stable is the capability a bound names (`EulerBackend<T>` and the others), `.on::<B>()`, `with_backend(handle)`, `device_ready()`, `device_fallback()`, `probe()` and the `try_*` calls. The engine's launch hooks, family specifications and slot limits are hidden from the rendered documentation and outside the stability promise.

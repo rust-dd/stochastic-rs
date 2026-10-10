@@ -10,12 +10,13 @@ use std::any::Any;
 use ndarray::Array1;
 use ndarray::Axis;
 use rand::Rng;
-use rand_distr::Distribution;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::exp::SimdExp;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
-use stochastic_rs_distributions::scalar::ScalarExp;
-use stochastic_rs_distributions::scalar::ScalarNormal;
 
 use super::poisson::Poisson;
 use crate::device::Cpu;
@@ -62,43 +63,32 @@ where
 {
 }
 
-/// The Euler engine's description of `distribution`, when it is one of the
-/// size laws the device kernels draw: the scalar normal ([`ScalarNormal`])
-/// and the scalar exponential ([`ScalarExp`]), the latter as the
-/// double-exponential law that only ever jumps up. The SIMD laws are not
-/// among them: they hold thread-local buffers and are not `Sync`, so a
-/// process cannot carry them as its `D`. The type is inspected at runtime
-/// through [`Any`] — which is why a process on the engine asks `'static` of
-/// its `D` — and that is what lets it stay generic over `D: Distribution<T>`
-/// on the host and still hand a recognised law to the device; a closure, a
-/// Python callable or any other law returns `None`, and the process samples
-/// on the host.
+/// The Euler engine's description of `distribution` when it is a law the kernels draw: `SimdNormal`,
+/// or `SimdExp` as the double-exponential law that only jumps up; any other law stays on the host.
 pub(crate) fn device_jump_sizes<T: FloatExt, D: Any>(
   distribution: &D,
 ) -> Option<crate::euler::JumpSizes<T>> {
   let any: &dyn Any = distribution;
-  if let Some(normal) = any.downcast_ref::<ScalarNormal<T>>() {
+  if let Some(normal) = any.downcast_ref::<SimdNormal<T>>() {
     return Some(crate::euler::JumpSizes::Normal {
       mean: normal.mean(),
       sd: normal.std_dev(),
     });
   }
   device_arrival_rate(distribution).map(|rate| crate::euler::JumpSizes::DoubleExponential {
-    // Every draw takes the up branch: the kernels compare a uniform in
-    // `[0, 1)` against `p_up`, and `2` — not `1`, which a uniform rounded up
-    // to `1.0` in single precision would fail — is "always".
+    // Every draw takes the up branch: the kernels compare a uniform in `[0, 1)` against `p_up`, and `2`
+    // (not `1`, which a uniform rounded up to `1.0` in f32 would fail) means "always".
     p_up: T::from_f64_fast(2.0),
     eta_up: rate,
     eta_down: rate,
   })
 }
 
-/// The rate of `distribution` when it is the scalar exponential law
-/// [`device_jump_sizes`] recognises: what makes a user-supplied inter-arrival
-/// law a Poisson arrival stream the kernels draw. `None` for any other type.
+/// The rate of `distribution` when it is the `SimdExp` law [`device_jump_sizes`] recognises: what makes an
+/// inter-arrival law a Poisson arrival stream the kernels draw.
 pub(crate) fn device_arrival_rate<T: FloatExt, D: Any>(distribution: &D) -> Option<T> {
   (distribution as &dyn Any)
-    .downcast_ref::<ScalarExp<T>>()
+    .downcast_ref::<SimdExp<T>>()
     .map(|exp| exp.lambda())
 }
 
@@ -141,10 +131,10 @@ where
     return increments;
   }
 
-  let poisson = SimdPoisson::<u32>::new(lambda_dt, seed);
+  let mut poisson = SimdPoisson::<u32>::new(lambda_dt).seeded(seed);
   let mut rng = seed.rng();
   for i in 1..n {
-    let jump_count = poisson.sample(&mut rng);
+    let jump_count = poisson.sample();
     let mut jump_sum = T::zero();
     for _ in 0..jump_count {
       jump_sum += distribution.sample(&mut rng);
@@ -229,11 +219,11 @@ where
     return increments;
   }
 
-  let poisson = SimdPoisson::<u32>::new(lambda_dt, seed);
+  let mut poisson = SimdPoisson::<u32>::new(lambda_dt).seeded(seed);
   seed.derive(); // skip one to differ from grid_increments
   let mut rng = seed.rng();
   for i in 1..n {
-    let jump_count = poisson.sample(&mut rng);
+    let jump_count = poisson.sample();
     increments[i] = relative_jump_from_count(distribution, jump_count, &mut rng);
   }
 
@@ -305,6 +295,14 @@ where
 }
 
 backend_switch!([T, D, S: SeedExt] CompoundPoisson<T, D, S> { distribution, poisson, seed } via euler where  T: FloatExt,  D: Distribution<T> + Send + Sync);
+
+impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for CompoundPoisson<T, D, S, B>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync + Any,
+{
+}
 
 impl<T, D, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for CompoundPoisson<T, D, S, B>
@@ -419,6 +417,13 @@ where
   }
 }
 
+impl<T, D, S: SeedExt> crate::traits::Sealed for CompoundPoissonSampler<'_, T, D, S>
+where
+  T: FloatExt,
+  D: Distribution<T> + Send + Sync,
+{
+}
+
 impl<T, D, S: SeedExt> PathSampler<T> for CompoundPoissonSampler<'_, T, D, S>
 where
   T: FloatExt,
@@ -437,7 +442,7 @@ where
 
 #[cfg(test)]
 mod tests {
-  use rand_distr::Distribution;
+  use rand::distr::Distribution;
 
   use super::*;
 
@@ -483,6 +488,7 @@ mod tests {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyCompoundPoisson {
   inner_f32: Option<CompoundPoisson<f32, crate::traits::CallableDist<f32>>>,

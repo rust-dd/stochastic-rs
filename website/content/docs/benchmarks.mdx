@@ -1,32 +1,26 @@
 ---
 title: Benchmarks
 seo_title: "Benchmarks: SIMD and GPU Monte Carlo in Rust"
-description: Criterion bench numbers — FGN CPU vs CUDA, distribution sampling speedups, and the all-backends matrix (CPU / Metal / Accelerate).
+description: Criterion bench numbers — fGN on CPU, Accelerate, Metal and CUDA, the Euler engine on Metal and CUDA, and distribution sampling against rand_distr.
 category: reference
 since: 2.0.0
 status: stable
 ---
 
-The library uses [`criterion`](https://github.com/bheisler/criterion.rs)
-for performance tracking, with named baselines per release for
-regression detection.
+Performance is tracked with [`criterion`](https://github.com/bheisler/criterion.rs); the suites live under `benches/`.
 
 ## Bench suites
-
-The workspace ships **33 bench files** under `benches/`. The
-default-feature suites cover stochastic processes, distribution
-sampling, pricers, risk, microstructure, and lattice methods. The
-remaining suites are feature-gated to backends or optional dependencies.
 
 ### Default-feature suites
 
 ```
-distributions       fgn_fbm        process_generation   gn_batching
-dist_multicore      option         risk                 instruments
-microstructure      credit         cashflows            calendar
-lattice             market         filtering            realized
-poisson_process     mle            econometrics         slv
-rl_rough            hurst          ndarray_overhead     sampler_compare
+calibration         distributions   fgn_fbm           rl_rough
+process_generation  gn_batching     dist_multicore    poisson_process
+mc_antithetic       mle             hurst             calendar
+cashflows           market          instruments       credit
+risk                realized        microstructure    factors
+econometrics        filtering       lattice           option
+slv                 sampler_compare special_functions jump_processes
 ```
 
 ### Feature-gated suites
@@ -37,14 +31,12 @@ rl_rough            hurst          ndarray_overhead     sampler_compare
 | `fgn_metal`           | `metal`                              |
 | `fgn_accelerate`      | `accelerate`                         |
 | `fgn_all_backends`    | `metal`, `accelerate`                |
-| `hotpath_profile`     | `hotpath`                            |
-| `dual_stream_compare` | `dual-stream-rng`                    |
+| `dual_stream_compare` | `unstable-dual-stream-rng`           |
+| `ai_surrogate`        | `ai`                                 |
 
-## FGN — CPU vs CUDA native
+## FGN — CPU vs CUDA
 
-`cuda` backend: cudarc + cuFFT + fused Philox RNG kernel
-(no `.cu` files, no `nvcc`). Environment: Intel i9-285K + NVIDIA RTX 4070
-SUPER, CUDA 12.x, Rust nightly, `--release` with LTO.
+`cuda` backend: cudarc + cuFFT + a fused Philox RNG kernel. Environment: Intel i9-285K + NVIDIA RTX 4070 SUPER, CUDA 12.x, Rust nightly, `--release` with LTO.
 
 ```bash
 cargo bench --features cuda --bench fgn_cuda
@@ -52,73 +44,40 @@ cargo bench --features cuda --bench fgn_cuda
 
 ### Single path (`f32`, H = 0.7)
 
-| n      | CPU `sample` | CUDA `sample_cuda(1)` | Speedup    |
-|-------:|-------------:|------------------------------:|-----------:|
-|  1,024 |       8.1 µs |                          46 µs|       0.18× |
-|  4,096 |        35 µs |                          84 µs|       0.42× |
-| 16,384 |       147 µs |                         110 µs| **1.3×**    |
-| 65,536 |       850 µs |                         227 µs| **3.7×**    |
+| n      | CPU `sample` | `.on::<Cuda>().sample()` | Speedup    |
+|-------:|-------------:|-------------------------:|-----------:|
+|  1,024 |       8.1 µs |                    46 µs |      0.18× |
+|  4,096 |        35 µs |                    84 µs |      0.42× |
+| 16,384 |       147 µs |                   110 µs |   **1.3×** |
+| 65,536 |       850 µs |                   227 µs |   **3.7×** |
 
-### Batch (`sample_par(m)` vs `sample_cuda(m)`, `f32`, H = 0.7)
+### Batch (`sample_par(m)`, `f32`, H = 0.7)
 
-| n, m         | CPU `sample_par` | CUDA `sample_cuda` | Speedup  |
-|--------------|------------------:|---------------------------:|---------:|
-|   4,096, 32  |          147 µs   |                     117 µs |  **1.3×** |
-|   4,096, 512 |         1.78 ms   |                    2.37 ms |   0.75×   |
-|  65,536, 128 |         12.6 ms   |                    10.5 ms |  **1.2×** |
-|  65,536, 1 k |          102 ms   |                      93 ms |  **1.1×** |
+| n, m         | CPU `sample_par` | Cuda `sample_par` | Speedup   |
+|--------------|-----------------:|------------------:|----------:|
+|   4,096, 32  |          147 µs  |            117 µs |  **1.3×** |
+|   4,096, 512 |         1.78 ms  |           2.37 ms |    0.75×  |
+|  65,536, 128 |         12.6 ms  |           10.5 ms |  **1.2×** |
+|  65,536, 1 k |          102 ms  |             93 ms |  **1.1×** |
 
-CUDA wins for large `n` (≥ 16 k) and stays competitive at `n = 65 k`
-batches. CPU rayon parallelism dominates for medium `n` due to zero
-transfer overhead.
+CUDA wins for large `n` (≥ 16 k) single paths and stays competitive on `n = 65 k` batches; for medium `n` the CPU's rayon parallelism wins on zero transfer overhead.
 
 ## All backends head-to-head
 
-`fgn_all_backends` (requires `metal` and `accelerate`) compares **CPU**,
-**Metal**, and **Accelerate** on the same FGN sampler. Shape of the bench
-groups it registers (the `…`
-elides the closure argument, so this is illustrative rather than
-compiled — see `benches/fgn_all_backends.rs` for the full, real body):
-
-```
-g.bench_with_input(BenchmarkId::new("cpu", n),         …);
-g.bench_with_input(BenchmarkId::new("metal", n),       …);
-g.bench_with_input(BenchmarkId::new("accelerate", n),  …);
-```
-
-Test grid: `n ∈ {1024, 4096, 16384, 65536}` for single paths and
-`(n, m) ∈ {(4 096, 32), (4 096, 128), (4 096, 512), …}` for batches.
-Use this bench to discover the cross-over point on your machine
-between scalar / SIMD CPU, CPU-FFT (Accelerate), and GPU.
+`fgn_all_backends` (requires `metal` and `accelerate`) compares the CPU, Metal and Accelerate on the same fGN sampler over `n ∈ {1024, 4096, 16384, 65536}` single paths and `(n, m) ∈ {(4 096, 32), (4 096, 128), (4 096, 512), …}` batches. Run it to find the cross-over points on your own machine. The Metal fGN pipeline's current numbers are in [The fGN pipeline on Metal](#the-fgn-pipeline-on-metal).
 
 ### Single path (`f32`, H = 0.7)
 
-Single-path latency is the only dimension where the two test machines share a
-grid, so the backends are directly comparable. The **i9-285K / RTX 4070 SUPER**
-figures are converted from the `Melem/s` values in [`CUDA_BENCHMARK.md`](https://github.com/dancixx/stochastic-rs/blob/main/CUDA_BENCHMARK.md)
-(`fgn_cuda_compare`).
+**Apple M4 Max** (10 P + 4 E cores, 36 GB unified; measured 2026-09-03):
 
-The portable CubeCL backend was removed in 3.0.0-rc.2: it duplicated the native
-CUDA and Metal kernels and was slower on the same hardware.
+| n      | CPU       | Accelerate |
+|-------:|----------:|-----------:|
+|  1,024 | **12 µs** |    12 µs   |
+|  4,096 |    53 µs  |  **48 µs** |
+| 16,384 |   219 µs  | **180 µs** |
+| 65,536 |   901 µs  | **750 µs** |
 
-<Callout type="warn">
-The Metal column below was measured before the pipeline was rewritten. A
-batch of fGN on Metal is now **3.1–5.0× faster** than these numbers imply
-— see *The fGN pipeline, rewritten* under the engine sections — and the
-single-path figures want a criterion re-run.
-</Callout>
-
-**Apple M4 Max** (10 P + 4 E cores, 36 GB unified; measured 2026-09-03 on the
-rc.1 code, after the per-size device caches landed):
-
-| n      | CPU       | Accelerate | Metal      |
-|-------:|----------:|-----------:|-----------:|
-|  1,024 | **12 µs** |    12 µs   |     126 µs |
-|  4,096 |    53 µs  |  **48 µs** |     136 µs |
-| 16,384 |   219 µs  |    180 µs  | **168 µs** |
-| 65,536 |   901 µs  |    750 µs  | **323 µs** |
-
-**Intel i9-285K + RTX 4070 SUPER** (`cudarc` + cuFFT):
+**Intel i9-285K + RTX 4070 SUPER** (`cudarc` + cuFFT; converted from the `Melem/s` values in [`CUDA_BENCHMARK.md`](https://github.com/rust-dd/stochastic-rs/blob/main/CUDA_BENCHMARK.md), `fgn_cuda_compare`):
 
 | n      | CPU (i9-285K) | cuFFT (`cuda`) |
 |-------:|--------------:|---------------:|
@@ -127,39 +86,25 @@ rc.1 code, after the per-size device caches landed):
 | 16,384 |        144 µs |     **110 µs** |
 | 65,536 |        847 µs |     **189 µs** |
 
-Both SIMD CPUs dominate short paths (the i9-285K is the fastest of all up to
-`n = 4 k`); **cuFFT overtakes at `n ≈ 16 k`** and reaches **4.4× over the CPU at
-`n = 65 k`** (189 µs vs ~840 µs). On the Apple side the vDSP (Accelerate) FFT
-edges the `ndrustfft` CPU for mid-size single paths (`n = 4 k`), and **Metal
-leads from `n = 16 k`** (168 µs against 180–219 µs) and by 2.3–2.8× at
-`n = 65 k`.
+The SIMD CPUs dominate short paths (the i9-285K is the fastest of all up to `n = 4 k`); **cuFFT overtakes at `n ≈ 16 k`** and reaches **4.4× over the CPU at `n = 65 k`**. On the Apple side the vDSP (Accelerate) FFT edges the `ndrustfft` CPU from `n = 4 k`.
 
 ### Batch throughput (`sample_par`, `f32`, H = 0.7) — Melem/s, higher is better
 
-**Apple M4 Max** (2026-09-03, rc.1 code) — the three back-ends are within a
-factor of two of each other everywhere; Metal leads the small and mid batches,
-the CPU the large ones, and the CPU / Accelerate pair holds 530–630 Melem/s
-throughout:
+**Apple M4 Max** (measured 2026-09-03):
 
-| n × m           |     CPU | Accelerate |   Metal |
-|-----------------|--------:|-----------:|--------:|
-| 4,096 × 32      |     414 |    **446** |     437 |
-| 4,096 × 128     |     585 |        628 | **700** |
-| 4,096 × 512     |     597 |        597 | **696** |
-| 16,384 × 128    |     596 |        577 | **690** |
-| 16,384 × 512    | **602** |        535 |     489 |
-| 1,024 × 1,024   |     532 |        572 | **693** |
-| 4,096 × 16,384  | **591** |        585 |     474 |
-| 16,384 × 16,384 | **568** |        526 |     421 |
-| 65,536 × 16,384 | **530** |        464 |     288 |
+| n × m           |     CPU | Accelerate |
+|-----------------|--------:|-----------:|
+| 4,096 × 32      |     414 |    **446** |
+| 4,096 × 128     |     585 |    **628** |
+| 4,096 × 512     |     597 |        597 |
+| 16,384 × 128    | **596** |        577 |
+| 16,384 × 512    | **602** |        535 |
+| 1,024 × 1,024   |     532 |    **572** |
+| 4,096 × 16,384  | **591** |        585 |
+| 16,384 × 16,384 | **568** |        526 |
+| 65,536 × 16,384 | **530** |        464 |
 
-The Metal FFT plans and buffers are cached for the last four shapes. The CPU
-code path is unchanged; its numbers sit 10–20 % under the earlier table, which
-is the run-to-run and thermal spread of a laptop, not a regression (the CPU fGN
-output is bit-identical to rc.0 by test).
-
-**Intel i9-285K + RTX 4070 SUPER** — small `n` stays cache-resident on the
-24-core i9; batched cuFFT wins once `n ≥ 4 k`:
+**Intel i9-285K + RTX 4070 SUPER** — small `n` stays cache-resident on the 24-core i9; batched cuFFT wins once `n ≥ 4 k`:
 
 | n × m           | CPU (i9-285K) |   cuFFT |
 |-----------------|--------------:|--------:|
@@ -169,22 +114,11 @@ output is bit-identical to rc.0 by test).
 | 16,384 × 16,384 |            59 | **183** |
 | 65,536 × 4,096  |       **504** |     236 |
 
-The two machines' batch grids overlap only at `4 k × 16 k` and `16 k × 16 k`
-(Mac: 591 and 568 Melem/s on the CPU; i9 + 4070: 581 and 183 on cuFFT), so
-they are shown separately. **Takeaway:** for FGN a discrete NVIDIA GPU wins from
-`n ≥ 16 k` single paths and `n ≥ 4 k × m ≥ 16 k` batches; on Apple Silicon the
-CPU-side FFTs (`ndrustfft` + rayon, vDSP/Accelerate) remain the safe default at
-530–630 Melem/s, Metal is the fastest single-path option from `n = 16 k` and
-leads the mid-size batches, and the CPU takes the largest ones back. A
-Colab T4 run of the native CUDA path is on the
-[GPU support](/docs/concepts/gpu-support) page.
+**Takeaway:** for fGN a discrete NVIDIA GPU wins from `n ≥ 16 k` single paths and `n ≥ 4 k × m ≥ 16 k` batches. On Apple Silicon the CPU-side FFTs (`ndrustfft` + rayon, vDSP/Accelerate) hold 530–630 Melem/s on batches, and Metal batches are faster still (next sections). A Colab T4 run of the CUDA path is on the [GPU support](/docs/concepts/gpu-support) page.
 
 ## Euler engine — CPU against Metal
 
-The recursion, not the FFT: one thread per path, the whole step loop in the
-kernel. Steps per second (paths × grid points ÷ wall time), GBM in `f32`, best
-of nine runs through `sample_map_view`, **Apple M4 Max** (14 CPU cores, 40 GPU
-cores), measured 2026-09-07.
+The recursion, not the FFT: one thread per path, the whole step loop in the kernel. Steps per second (paths × grid points ÷ wall time), GBM in `f32`, best of nine runs through `sample_map_view`, **Apple M4 Max** (14 CPU cores, 40 GPU cores), measured 2026-09-07.
 
 | paths | steps | CPU | Metal | Metal / CPU |
 |------:|------:|----:|------:|------------:|
@@ -194,164 +128,27 @@ cores), measured 2026-09-07.
 | 200 000 | 1 024 | 2.72 G | **45.79 G** | 16.8× |
 | 100 000 | 4 096 | 2.73 G | **47.67 G** | 17.5× |
 
-A thousand paths is still the CPU's: one launch has a fixed cost, and at a
-million steps there is nothing to amortise it over. From ten thousand paths
-the device leads, and the lead widens with the batch — the launch cost is
-fixed, so the larger the batch the less of it each path carries.
+A thousand paths is still the CPU's: one launch has a fixed cost, and at a million steps there is nothing to amortise it over. From ten thousand paths the device leads, and the lead widens with the batch. Storing every step in `f32` caps this kernel at about 68 G steps/s on this machine — the memory system's write ceiling; the kernel alone runs at 50–52 G.
 
-**Where that came from.** The same measurement on the same machine ran at
-**0.70 G steps/s** in early September, and four changes account for the rest:
+### The fGN pipeline on Metal
 
-1. **One kernel per launch shape** rather than one for all 120 families
-   (1.3–2.1×). The monolithic body compared the family on every step of every
-   thread and declared the scratch every optional block might need — two
-   176-slot lift histories and a 512-slot convolution window — whether the
-   launch reached them or not. A Tesla T4 priced that at 80 registers and
-   **3 552 bytes of local memory per thread** in `f32` (130 and 7 104 in
-   `f64`), which is 37 % occupancy and a throughput that *falls* as the batch
-   grows, because the scratch leaves L2.
-2. **Less work per step** (1.1–1.2×): the cell key mixes the path and the step
-   as two 32-bit words instead of one 64-bit product — an Apple GPU has no
-   64-bit integer unit and emulates every such multiply — the two spare
-   uniforms are drawn only for the families that read them, and the family's
-   noise and component counts are literals in the source rather than launch
-   arguments, so the loops unroll.
-3. **The output buffer is kept between launches** (2.2–3.6×, the largest of
-   the three). A fresh shared buffer has to be mapped page by page before the
-   kernel can write it; at a hundred thousand paths over a thousand steps that
-   is four hundred megabytes and about eighty milliseconds — more than the
-   kernel. The fGN pipeline had cached its buffers since 2.6; the engine had
-   not.
+fGN batches on the M4 Max's GPU:
 
-4. **The batch is lent, not copied** (2.3–4.2×, and it turned out to be the
-   largest of all). The launch used to end by copying the whole shared buffer
-   into a fresh `Vec` — on unified memory, a memcpy of the entire batch that
-   nothing needed. At two hundred thousand paths that copy was **19.2 ms of a
-   25.6 ms call, 75 %**, against 4.4 ms of GPU. `EulerKernel::euler_kernel_lend`
-   now hands the caller an `ArrayView2` of the buffer the kernel wrote and
-   takes it back afterwards; a backend behind a bus keeps the copy it has to
-   make anyway. GPU execution is now 84 % of the wall.
+| paths | points | time |
+|------:|-------:|-----:|
+| 1 000 | 4 096 | 2.24 ms |
+| 1 000 | 16 384 | 3.28 ms |
+| 10 000 | 4 096 | 4.63 ms |
 
-What did **not** pay, each measured rather than assumed:
+That is 8.85 G points/s at 10 000 × 4 096. The thousand-path shapes are noise-dominated: four million points is too little for the device work to set the wall time.
 
-- Box-Muller's `log`/`cos`/`sqrt` cost **6 %** (replacing the draw with a
-  constant: 4.10 → 3.84 ms at 200 k × 1 024), so a ziggurat in the kernel
-  would buy almost nothing.
-- The **write pattern is already at the memory system's ceiling**. A kernel
-  that only stores, no arithmetic, runs 200 k × 1 024 in **3.00 ms**
-  path-major, **3.03 ms** time-major (fully coalesced across a simdgroup) and
-  **3.08 ms** with `float4` stores. 819 MB in 3.00 ms is 273 GB/s of stores,
-  and a partial-line store costs a fill as well as a writeback, so that is
-  ~546 GB/s of traffic — the part's rated peak. **The ceiling for "every step
-  stored, `f32`" is therefore ≈ 68 G steps/s**, not the ~100 a naive
-  bandwidth division suggests, and the kernel now runs at 50–52 G of it.
-  A threadgroup staging tile has nothing to recover.
-- **Threadgroup width does not matter here.** Sweeping 32 / 64 / 128 / 256 /
-  512 / 1024 at 200 k × 1 024 gives 4.83 / 4.64 / 4.78 / 4.77 / 4.78 / 4.65 ms
-  — a 4 % spread that is run-to-run noise. The engine stays at 256.
+### `sample_map_view` against `sample_map`
 
-What is left: the stores are 3.00 ms of the kernel's 3.96, and the arithmetic
-(1.59 ms measured alone) hides almost entirely behind them, leaving about
-0.96 ms exposed. Batching four steps into one 16-byte `float4` store recovers
-0.75 of that — **1.19× on the wall** — but the frame it edits is the one CUDA
-renders from too, and it needs a `float4` spelling per language, a
-`steps % 4 == 0` precondition in the shape key (doubling the pipeline cache)
-and a tail for grids that are not a multiple of four. Measured and left on the
-table.
-
-### The fGN pipeline, rewritten
-
-The fractional sampler is not the Euler engine: an fGN point is thirteen
-butterflies over an array twice its length, where a diffusion step is one
-fused multiply-add in a register. But the same question applies — how much of
-the wall is the transform, and how much is the way it is written? Measured
-here at 10 000 paths × 4 096 points, stage by stage from GPU timestamps:
-
-| stage | ms | share |
-|---|---:|---:|
-| 13 butterfly passes, one dispatch each | **48.4** | 82 % |
-| draw, Box-Muller, eigenvalue scale, bit-reversed scatter | 5.3 | 9 % |
-| the read-out pass | 2.6 | 4 % |
-| encode and barriers, 15 dispatches | 0.8 | 1 % |
-| the host copying the batch out | 2.5 | 4 % |
-
-**Each pass was a full round trip to DRAM.** One stage moved 1.31 GB in
-3.72 ms — 340 GB/s — and a stage that only *copies* the same bytes cost
-3.78 ms, identical: the butterflies' `cos`, `sin` and index arithmetic were
-entirely hidden behind the traffic. A twiddle lookup table changed nothing.
-The pass count was the only lever, and a contiguous block of bit-reversed
-positions is closed under the first stages, so eleven of them now run inside
-threadgroup memory, the draw is fused into the same kernel, and the read-out
-is fused into the last stage. **Fifteen passes became three.**
-
-Two more followed, and together they take the transform count down as well
-as the pass count. **Radix-4** above the tile fuses two stages in registers,
-one pass instead of two. **Davies-Harte's pair**: the transform is complex
-and its real and imaginary halves are two independent fGN paths, so claiming
-the second halves the transforms a batch needs.
-
-| paths | points | before | tile | + radix-4 and pairs | |
-|------:|-------:|-------:|-----:|--------------------:|---:|
-| 1 000 | 4 096 | 5.92 ms | 2.38 ms | **2.24 ms** | 3.0× |
-| 1 000 | 16 384 | 26.43 ms | 8.11 ms | **3.28 ms** | 8.0× |
-| 10 000 | 4 096 | 59.00 ms | 11.74 ms | **4.63 ms** | **12.6×** |
-
-That is **0.70 → 8.85 G points/s**. The thousand-path shape is noise rather
-than a gain: four million points is too little for the device work to be the
-wall, and every variant spans 1.8–2.4 ms there.
-
-**These two change the values, where the first did not.** Pairing changes
-which transform a row comes from, and two stages held in registers let the
-compiler contract the multiply-add that spans them — one to two ULP. The law
-is preserved and the realisation is not, which also reaches the fractional
-processes, since the Euler engine draws its increments from this pipeline.
-
-Bit-identity had been doing the verification, so it was replaced rather than
-dropped. The acceptance test recomputes the same keyed draw on the host in
-`f64` and sums it directly against `exp(−2πijk/M)` — a direct sum, assuming
-nothing about the device's factorisation — and compares entry against entry
-at ten positions a row across `n = 64…16 384`, at full, three-row and
-one-row chunks. Ten deliberate mutations were tried against the suite and all
-ten were caught.
-
-One of those mutations is worth naming, because the obvious test misses it.
-Feeding both halves of the transform the same normal gives each half the
-right variance *and* the right autocovariance at every lag; only the
-cross-covariance is wrong, and it is a function of the index **sum**, so a
-lag-pooled cross-correlation averages it to `O(n^{2H−2})` — 0.013 at
-`n = 512`, inside any reasonable band. The same-index, column-by-column
-cross-correlation is what separates them: 1.0 at the first column under the
-mutation, zero under the real thing.
-
-### One traversal, not two
-
-The table above maps with `sample_map`, whose callback takes an owned path.
-A device batch arrives as one `m × n` block, so that means copying every row
-out of it after the copy that already crossed the bus — the whole batch
-walked twice. `sample_map_view` hands the callback an `ArrayView1` of the
-block instead, and most callbacks compile unchanged, since a view indexes,
-iterates and reduces like the array it borrows:
-
-| paths × steps | `sample_map` | `sample_map_view` | |
-|--------------:|-------------:|------------------:|---:|
-| 10 000 × 1 024 | 2.0 ms | **1.7 ms** | 1.20× |
-| 50 000 × 1 024 | 6.8 ms | **4.4 ms** | 1.56× |
-| 200 000 × 1 024 | 20.7 ms | **17.3 ms** | 1.20× |
-
-Once the batch is lent rather than copied the row copy is the *only* copy left
-in the call, and the same comparison widens to **1.4–2.1×**.
-
-On the host the two are within noise of each other, which is the point: a
-host path is already an owned array, so the view neither costs nor saves
-anything there. The gain is the device batch's second traversal, and it is
-larger where the batch is large enough to leave cache between the two walks.
+`sample_map` hands the callback an owned path, so a device batch — one `m × n` block — is copied row by row after it lands. `sample_map_view` hands the callback an `ArrayView1` of the block instead, so the batch is traversed once; most callbacks compile unchanged, since a view indexes, iterates and reduces like the array it borrows. On Metal that is 1.4–2.1× faster for GBM batches of 10 000–200 000 paths × 1 024 steps. On the host the two are within noise of each other: a host path is already an owned array.
 
 ## Euler engine — CPU against CUDA
 
-The same measurement, the same `examples/cuda_engine_profile`, on a **Tesla
-T4** in a Colab runtime, best of five, measured 2026-09-07. The host there is
-a small shared VM: its CPU column runs at about a tenth of the M4 Max's, so
-read the ratio, not the absolute.
+The same measurement (`examples/cuda_engine_profile`) on a **Tesla T4** in a Colab runtime, best of five, measured 2026-09-07. The host there is a small shared VM whose CPU column runs at about a tenth of the M4 Max's, so read the ratio, not the absolute.
 
 | paths | steps | dtype | CPU | CUDA | CUDA / CPU |
 |------:|------:|:------|-------:|-------:|-----------:|
@@ -362,55 +159,9 @@ read the ratio, not the absolute.
 | 50 000 | 1 024 | `f64` | 0.20 G | **0.65 G** | 3.25× |
 | 10 000 | 4 096 | `f64` | 0.21 G | **0.81 G** | 3.83× |
 
-**The per-shape kernel did what it was for.** The driver's own report of the
-`f32` GBM kernel at 256 threads a block went from 80 registers and **3 552
-bytes of local memory per thread to 31 registers and none at all**, and from
-three blocks a multiprocessor to four — which on Turing is the whole machine,
-its multiprocessor holding 1024 threads where most generations hold 2048.
-Throughput doubled with it, 0.15 → 0.31 G steps/s, which took the card from
-0.7× its host to 1.3–1.5×. The `double` kernel compiles to 40 registers and
-48 bytes of local memory, also a full multiprocessor.
+The bus binds here, not the kernel: 10 000 paths over 1 024 steps in `f32` is 41 MB, and 4.4 ms of it is 9.3 GB/s — PCIe 3.0 ×16 with page-locked memory, near its practical ceiling. Every step's four bytes have to cross, so this shape cannot pass about 3 G steps/s on this card, and 2.35–2.49 is 78–83 % of that. To go further, reduce on the device and return the reduction. `f64` sits at about a third of `f32`, where the T4's 1/32 double-precision rate shows. The M4 Max reaches 45.8 G steps/s on the same kernel mostly because its unified memory needs no copy at all.
 
-**And then the road home turned out to be the whole story.** At 0.31 G the
-kernel was already under two per cent of the wall — the tell was that the
-cost per cell stayed flat, 3.2–3.6 ns, whether the batch filled a quarter of
-the multiprocessors or all of them, which is not what a kernel-bound run
-looks like. Two changes went after the transfer instead:
-
-1. **A page-locked landing buffer, kept between launches** (~8 %). The launch
-   used to end in a `clone_dtoh`: a freshly allocated `Vec` in pageable
-   memory, which the driver stages through a bounce buffer of its own at
-   about 3.6 GB/s, plus a first-touch page fault for every page of the fresh
-   allocation.
-2. **The batch is lent, not copied** (**5–8×**). `EulerKernel::euler_kernel_lend`
-   hands the mapped fold an `ArrayView2` over that page-locked buffer, so the
-   values are read where they landed. The copy it removes is the *second* one,
-   on the host side, and on a two-vCPU VM it dwarfed the bus crossing it
-   followed: 32.7 → **4.4 ms** at 10 000 × 1 024, 129.9 → **16.5**, 169.1 →
-   **32.4**.
-
-**`f64` on a T4 is not slower than its host after all, and this is a
-correction.** Before the batch was lent, the `f64` rows ran at 0.59–0.86× the
-CPU and the natural reading was that a T4 runs double precision at 1/32 of its
-single-precision rate, so the hardware had spoken. It had not: `f64` moves
-twice the bytes, so it was paying twice the host-side copy, and the numbers
-said so — the `f64` rows took **2.1–2.3×** the `f32` rows, where a kernel-bound
-`f64` run on this card would have taken thirty. With the copy gone `f64` is
-**3.2–3.8×** its host. The 1/32 rate does now show up, in that `f64` sits at
-about a third of `f32` rather than a half, but it never was the binding
-constraint.
-
-**What binds it now is the bus, which is where it should be.** 10 000 paths
-over 1 024 steps in `f32` is 41 MB, and 4.4 ms of it is **9.3 GB/s** — PCIe
-3.0 ×16 with page-locked memory, near its practical ceiling. Every step's
-four bytes have to cross, so **this shape cannot go past about 3 G steps/s on
-this card** whatever the kernel does, and 2.35–2.49 is 78–83 % of that. The
-way past it is not a faster kernel but a smaller crossing: reduce on the
-device and return the reduction.
-
-**The fractional pipeline** sits at 2.8–3.9× and was not touched by any of
-this — fGN is FFT-shaped rather than recursion-shaped, so far more device work
-rides on each byte copied back:
+The fractional pipeline on the T4 is FFT-bound, so far more device work rides on each byte copied back:
 
 | paths | points | CPU | cuFFT | cuFFT / CPU |
 |------:|-------:|--------:|---------:|------------:|
@@ -418,24 +169,13 @@ rides on each byte copied back:
 | 1 000 | 16 384 | 354.5 ms | **121.0 ms** | 2.93× |
 | 10 000 | 4 096 | 837.1 ms | **300.4 ms** | 2.79× |
 
-**Against the M4 Max**, which reaches 45.8 G steps/s on the same kernel: the
-gap is now 19×, and most of it is the bus. Apple's memory is unified, so the
-batch is lent without ever being copied; the T4 must move 41 MB across PCIe
-before anything can read it. The two cards are within a factor of two of each
-other in raw `f32` throughput, and neither is kernel-bound at this shape.
-
 ## Normal sampling vs `rand_distr` (single-thread, `fill_slice`)
 
-Measured with `cargo bench --bench dist_multicore`. Single-thread `fill_slice`,
-median of 7 runs. Compares three implementations of the **same** workload
-(write `n` `N(0, 1)` samples into a pre-allocated `Vec<f64>`):
+Measured with `cargo bench --bench dist_multicore`, single-thread `fill_slice`, median of 7 runs. Three implementations of the same workload (write `n` `N(0, 1)` samples into a pre-allocated `Vec<f64>`):
 
-- **`SimdNormal::fill_slice`** — our SIMD Ziggurat with the `wide`-based RNG.
-- **`rand_distr + SimdRng`** — `rand_distr::Normal::sample` consuming our
-  `SimdRng`. Isolates the Normal algorithm — both paths share the same
-  uniform stream.
-- **`rand_distr + rand::rng()`** — out-of-box upstream: `rand_distr::Normal`
-  on `rand::rng()` (`ThreadRng`-backed `ChaCha`).
+- **`SimdNormal::fill_slice`** — the SIMD ziggurat with the `wide`-based RNG.
+- **`rand_distr + SimdRng`** — `rand_distr::Normal::sample` consuming `SimdRng`. Isolates the Normal algorithm: both share the same uniform stream.
+- **`rand_distr + rand::rng()`** — `rand_distr::Normal` on `rand::rng()` (`ThreadRng`-backed ChaCha).
 
 |      n  | `SimdNormal` (µs) | `rand_distr + SimdRng` (µs) | speedup | `rand_distr + rand::rng()` (µs) | speedup |
 |--------:|------------------:|-----------------------------:|--------:|---------------------------------:|--------:|
@@ -447,165 +187,56 @@ median of 7 runs. Compares three implementations of the **same** workload
 |   4 096 |             6.975 |                       13.176 |  1.89×  |                           32.382 |  4.64×  |
 |  65 536 |           113.458 |                      212.406 |  1.87×  |                          520.219 |  4.59×  |
 
-The **`rand_distr + SimdRng`** column shows the pure algorithmic win at the
-distribution level (our SIMD Ziggurat fast-path beats the scalar reference
-Ziggurat ~1.7–1.9×). The **`rand_distr + rand::rng()`** column shows the
-full pipeline win including the SIMD RNG itself (~4.2–4.7×).
+The `rand_distr + SimdRng` column is the algorithmic gain of the SIMD ziggurat over the scalar reference (~1.7–1.9×); the `rand_distr + rand::rng()` column adds the SIMD RNG (~4.2–4.7×).
 
-## v2.4 distribution sampler upgrades
+## Per-sample cost of the samplers
 
-Algorithm-level fixes measured on Apple Silicon (single thread,
-`--release`, ns per sample, 2026-06-11). The first three replace
-per-draw construction or O(n) loops with constant-cost algorithms, so
-the speedups grow with the parameters:
+Apple Silicon, single thread, `--release`, ns per sample, measured 2026-06-11:
 
-| Sampler | Before | After | Speedup |
-|---|---:|---:|---:|
-| Noncentral χ² in a per-step loop (`SimdNonCentralChiSquared`) | 359 ns | 8.2 ns | ~44× |
-| `SimdBinomial` n = 1000 (BTRS rejection, was O(n) per-trial) | 542 ns | 18.0 ns | ~30× |
-| `SimdHypergeometric` N = 500, n = 100 (CDF-table inversion) | O(n) | 2.6 ns | ~40× |
-| `SimdGev` (internal SIMD RNG, was thread-RNG per draw) | ~20 ns | 10.0 ns | 2× |
-| `SimdTruncatedExp` (cached CDF bounds + internal RNG) | ~15 ns | 5.0 ns | ~3× |
-| `SimdGed` (SIMD bulk fill + buffered sampling) | 20.2 ns | 16.3 ns | 1.2× |
-| `SimdWeibull` `sample_fast` (buffered, single-pass fill) | 10.7 ns | 8.4 ns | 1.3× |
-| `SimdStudentT` fill (64-element sub-fills above the SIMD threshold) | 8.9 ns | 7.0 ns | 1.3× |
-| `SimdBeta` fill | 12.9 ns | 10.6 ns | 1.2× |
+| Sampler | ns / sample |
+|---|---:|
+| Uniform fill | 0.35 |
+| `SimdExp` fill | 1.5 |
+| `SimdNormal` fill | 1.7–2.0 |
+| `SimdHypergeometric` N = 500, n = 100 (CDF-table inversion) | 2.6 |
+| `SimdTruncatedExp` | 5.0 |
+| `SimdGamma` (Marsaglia-Tsang squeeze; `rand_distr::Gamma` on a thread RNG: 14–17.7) | 5–6.3 |
+| `SimdStudentT` fill | 7.0 |
+| Noncentral χ² in a per-step loop (`SimdNonCentralChiSquared`) | 8.2 |
+| `SimdWeibull` buffered draw | 8.4 |
+| `SimdGev` | 10.0 |
+| `SimdBeta` fill | 10.6 |
+| `SimdGed` | 16.3 |
+| `SimdBinomial` n = 1000 (BTRS rejection; `rand_distr`'s BTPE: 29.5) | 18.0 |
 
-Context anchors from the same session: `SimdNormal` fill ≈ 1.7–2.0 ns,
-`SimdExpZig` fill ≈ 1.5 ns, uniform fill ≈ 0.35 ns per sample;
-`SimdGamma` (scalar Marsaglia-Tsang squeeze over the buffered SIMD
-sources) ≈ 5–6.3 ns vs 14–17.7 ns for `rand_distr::Gamma` on a thread
-RNG. The binomial BTRS path also beats `rand_distr`'s BTPE (29.5 ns at
-n = 1000). Two correctness fixes shipped alongside: `SimdPoisson` no
-longer hangs for λ ≳ 745 (log-space CDF build), and `SimdGev` now
-honours its `Deterministic` seed.
+## Dual-stream RNG
 
-An 8-lane SIMD-batched Marsaglia-Tsang gamma kernel was prototyped and
-measured **slower** than the scalar squeeze loop on 128-bit NEON
-(9.3 vs 6.3 ns — lane bookkeeping dominates), so the scalar loop stays;
-the experiment is recorded in the `gamma.rs` module docs.
+The `unstable-dual-stream-rng` feature's `SimdRngDual` against the single-stream `SimdRng` for `SimdNormal` fills on Apple Silicon, measured 2026-06-11 (`cargo bench --bench dual_stream_compare --features unstable-dual-stream-rng`):
 
-## v2.1 SIMD RNG / Ziggurat speedups
-
-Criterion deltas vs the `wide 1.3.0` baseline (single-sample `dist.sample(rng)`
-loop, `cargo bench --bench distributions -- --baseline before`):
-
-| Distribution     | f32 / large       | f64 / large       | f64 / small       |
-|------------------|------------------:|------------------:|------------------:|
-| `Uniform/simd`   | **−57%** (≈ 2.3×) | **−77%** (≈ 4.4×) | **−58%** (≈ 2.4×) |
-| `Normal/simd`    | **−51%** (≈ 2.0×) | **−75%** (≈ 4.0×) | **−63%** (≈ 2.7×) |
-| `Exp/simd N=64`  | −3% (n.s.)        | **−73%** (≈ 3.7×) | —                 |
-| `LogNormal/simd` | **−71%** (≈ 3.4×) | **−70%** (≈ 3.4×) | **−66%** (≈ 2.9×) |
-
-Drivers (sub-crate paths):
-
-- `stochastic-rs-core::simd_rng` uniform core — 8 scalar
-  shift+cast+mul loops replaced by SIMD shift + magic-number bit-cast +
-  subtract (52-bit / 23-bit precision; sub-ULP impact on Monte Carlo).
-  The
-  [`fill_uniform_f64`](https://docs.rs/stochastic-rs-core/latest/stochastic_rs_core/simd_rng/struct.SimdRng.html#method.fill_uniform_f64)
-  / `fill_uniform_f32` direct-write APIs store `vmovupd` directly into
-  the caller's slice with no `[f64; 8]` / `[f32; 8]` return-by-value
-  round-trip (the interim `next_f64_array` / `next_f32_array` accessors
-  were removed in 2.4). `next_f64` / `next_f32` refill their internal
-  buffers via the same inlined SIMD store.
-- `stochastic-rs-distributions::normal` / `exp` — `fill_ziggurat` main
-  loop runs 8 lanes per iteration so `copy_from_slice(&scaled_arr)`
-  inlines to `stp` stores instead of compiling to a `memcpy` call; the
-  final 0–7-element tail is fed through scalar `sample_one`.
-- `stochastic-rs-distributions::exp` — fused `1/λ` scaling into the
-  SIMD store inside `fill_exp_scaled`, removing the second-pass
-  `scale_in_place`.
-- `stochastic-rs-distributions::uniform` — `fill_slice_fast`
-  short-circuits to `rng.fill_uniform_f64(out)` for the `[0, 1)` case
-  (the dominant pattern) and falls back to a single SIMD affine pass
-  otherwise.
-- `stochastic-rs-distributions::lib` — `<f64 as SimdFloatExt>::simd_from_i32x8`
-  splits `i32x8` into two `i32x4` halves and calls `f64x4::from_i32x4`
-  per half, routing through `vcvtdq2pd` on AVX / `sshll + scvtf` on
-  NEON instead of `wide`'s 8-scalar fallback.
-- `simd_rng::fill_bytes` batches 32-byte writes per engine call and
-  the Xoshiro256++ / Xoshiro128++ seed paths use `u64::from_le_bytes`
-  for big-endian portability.
-
-### Opt-in: dual-stream RNG (`dual-stream-rng` feature)
-
-```toml
-[dependencies]
-stochastic-rs = { version = "3.0.0-rc.1", features = ["dual-stream-rng"] }
-```
-
-Unlocks `stochastic_rs_core::simd_rng_dual::SimdRngDual` (two parallel
-xoshiro engines) and the `stochastic_rs::distributions::SimdNormalDual` /
-`SimdExpZigDual` aliases. The Ziggurat main loop consumes two
-independent engine batches per iteration (`SimdRngExt::next_i32x8_pair`,
-gated on the `HAS_PAIR_ILP` const — single-stream codegen is
-unchanged). Measured against the single-stream `SimdNormal::fill_slice`
-on Apple Silicon, 2026-06-11
-(`cargo bench --bench dual_stream_compare --features dual-stream-rng`):
-
-|         n | single (`SimdNormal`) | dual (`SimdNormalDual`) |    Δ   |
-|----------:|----------------------:|------------------------:|-------:|
+|         n | single (`SimdRng`) | dual (`SimdRngDual`) |    Δ   |
+|----------:|-------------------:|---------------------:|-------:|
 |        64 |              120.6 ns |                117.5 ns |  −2.6% |
 |       256 |              494.2 ns |                467.9 ns |  −5.3% |
 |     4 096 |               7.87 µs |                 7.42 µs |  −5.7% |
 |    65 536 |              126.2 µs |                122.4 µs |  −3.0% |
 | 1 048 576 |               2.02 ms |                 1.97 ms |  −2.2% |
 
-The win is that a modern out-of-order core hides the 16 scalar
-`kn` / `wn` table-lookup latencies behind the second engine's `xoshiro`
-state update; it is modest on 128-bit NEON because the gather chain
-dominates the total cost. Exponential fills measure at parity. Uniform
-`f64` fills are not engine-bound (direct SIMD stores, no table
-lookups), so they show no speedup beyond noise (0 to −7% on L1-resident
-sizes). Trade-off: `SimdRngDual::from_seed` does **not** reproduce
-`SimdRng::from_seed`'s bit-exact sequence (statistical properties are
-identical and KS-validated, including the engine-B lanes of the pair
-path).
+Exponential fills measure at parity, and uniform `f64` fills show no speedup beyond noise. The trade-offs are on the [seeding page](/docs/concepts/seeding#unstable-dual-stream-rng-feature).
 
-## Establishing a baseline
+## Running the benchmarks
 
 ```bash
-# Save the current build as the "v2" baseline
-cargo bench --bench distributions      -- --save-baseline v2
-cargo bench --bench fgn_fbm            -- --save-baseline v2
-cargo bench --bench process_generation -- --save-baseline v2
-cargo bench --bench option             -- --save-baseline v2
-# … and so on for the rest of the suites
+# Save the current build as a baseline, then compare a later build against it
+cargo bench --bench distributions -- --save-baseline before
+cargo bench --bench distributions -- --baseline before
 ```
 
-## Comparing against a baseline
+`criterion` reports `Performance has improved` / `regressed` per benchmark with the effect size and a 95 % confidence interval.
 
-Before merging any PR with non-trivial perf impact:
-
-```bash
-cargo bench --bench <bench> -- --baseline v2
-```
-
-`criterion` prints `Performance has improved` / `regressed` per
-benchmark with effect size and 95% confidence intervals. Block the
-merge on any regression of more than 5% (the project's de-facto
-threshold).
-
-## Reproducing the numbers
-
-To reproduce the FGN-vs-CUDA table you need:
-
-- NVIDIA GPU with CUDA 12.x toolkit
-- Rust nightly (for inline-asm in some `cudarc` paths)
-- `RUSTFLAGS="-C target-cpu=native"` for the CPU side (otherwise the
-  CPU column above will look slower because `wide`'s `f32x8` falls
-  back to scalar — see [Native CPU optimization](/docs/getting-started/installation-rust#native-cpu-optimization))
+To reproduce the FGN-vs-CUDA tables you need an NVIDIA GPU with the CUDA toolkit, and `RUSTFLAGS="-C target-cpu=native"` for the CPU side — without it `wide` emits 128-bit SSE2 instead of AVX2 / AVX-512 on x86-64 and the CPU column comes out slower (see [Native CPU optimization](/docs/getting-started/installation-rust#native-cpu-optimization)):
 
 ```bash
 RUSTFLAGS="-C target-cpu=native" cargo bench \
   --features cuda \
   --bench fgn_cuda -- --save-baseline local
 ```
-
-## Adding a benchmark
-
-See the
-[`bench-writing`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/bench-writing/SKILL.md)
-SKILL — group naming, parameter sweep, `[[bench]]` required-features
-gating, and the "no-println / no-dead-helper" rules.

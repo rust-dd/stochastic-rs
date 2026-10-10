@@ -41,20 +41,38 @@ impl<T: FloatExt> Grid2D<T> {
   /// When an axis is empty or not strictly ascending, or when the shape of
   /// `values` is not `(ts.len(), xs.len())`.
   pub fn new(ts: Array1<T>, xs: Array1<T>, values: Array2<T>) -> Self {
-    assert!(!ts.is_empty(), "Grid2D: the time axis must hold a node");
-    assert!(!xs.is_empty(), "Grid2D: the state axis must hold a node");
     assert!(
-      ts.windows(2).into_iter().all(|w| w[0] < w[1]),
-      "Grid2D: the time axis must be strictly ascending"
+      !ts.is_empty(),
+      "ts must satisfy `!ts.is_empty()`, got ts.len() = 0"
     );
     assert!(
-      xs.windows(2).into_iter().all(|w| w[0] < w[1]),
-      "Grid2D: the state axis must be strictly ascending"
+      !xs.is_empty(),
+      "xs must satisfy `!xs.is_empty()`, got xs.len() = 0"
     );
-    assert_eq!(
+    for (j, w) in ts.windows(2).into_iter().enumerate() {
+      assert!(
+        w[0] < w[1],
+        "ts must satisfy `ts[j] < ts[j + 1]`, got ts[{j}] = {:?}, ts[{}] = {:?}",
+        w[0],
+        j + 1,
+        w[1]
+      );
+    }
+    for (i, w) in xs.windows(2).into_iter().enumerate() {
+      assert!(
+        w[0] < w[1],
+        "xs must satisfy `xs[i] < xs[i + 1]`, got xs[{i}] = {:?}, xs[{}] = {:?}",
+        w[0],
+        i + 1,
+        w[1]
+      );
+    }
+    assert!(
+      values.dim() == (ts.len(), xs.len()),
+      "values must satisfy `values.dim() == (ts.len(), xs.len())`, got values.dim() = {:?}, ts.len() = {}, xs.len() = {}",
       values.dim(),
-      (ts.len(), xs.len()),
-      "Grid2D: values must have shape (ts.len(), xs.len())"
+      ts.len(),
+      xs.len()
     );
     Self { ts, xs, values }
   }
@@ -222,7 +240,7 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "strictly ascending")]
+  #[should_panic(expected = "ts must satisfy `ts[j] < ts[j + 1]`, got ts[0] = 0.5, ts[1] = 0.25")]
   fn a_non_ascending_axis_is_rejected() {
     let _ = Grid2D::new(
       Array1::from_vec(vec![0.5, 0.25]),
@@ -232,7 +250,7 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "shape")]
+  #[should_panic(expected = "values must satisfy `values.dim() == (ts.len(), xs.len())`")]
   fn a_mismatched_value_shape_is_rejected() {
     let _ = Grid2D::new(
       Array1::from_vec(vec![0.25, 0.5]),

@@ -4,16 +4,19 @@
 //! C(u,v)=uv
 //! $$
 //!
-use std::error::Error;
 
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
 use ndarray::stack;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use super::CopulaType;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -73,24 +76,24 @@ impl BivariateExt for Independence {
     self.theta = Some(theta);
   }
 
-  fn fit(&mut self, _X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn fit(&mut self, _X: &Array2<f64>) -> Result<(), CopulaError> {
     self.tau = Some(0.0);
     self.theta = Some(0.0);
     Ok(())
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
-    let ud = SimdUniform::<f64>::new(0.0, 1.0, &Unseeded);
-    let u = Array1::from_vec((0..n).map(|_| ud.sample_fast()).collect());
-    let v = Array1::from_vec((0..n).map(|_| ud.sample_fast()).collect());
+  fn sample(&self, n: usize) -> Result<Array2<f64>, CopulaError> {
+    let mut ud = SimdUniform::<f64>::new(0.0, 1.0).seeded(&Unseeded);
+    let u = Array1::from_vec((0..n).map(|_| ud.sample()).collect());
+    let v = Array1::from_vec((0..n).map(|_| ud.sample()).collect());
     Ok(stack![Axis(1), u, v])
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok(t.ln())
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     let in_range = X.map_axis(Axis(1), |row| {
       row.iter().all(|&val| (0.0..=1.0).contains(&val))
     });
@@ -100,24 +103,21 @@ impl BivariateExt for Independence {
     Ok(out)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     let U = X.column(0);
     let V = X.column(1);
 
     Ok(&U * &V)
   }
 
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn std::error::Error>> {
-    let V = X.column(1);
-    Ok(V.to_owned())
+  /// `∂_v (uv) = u`, NaN for `v` outside `[0, 1]`.
+  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(conditional_cdf(X, |u, _| u))
   }
 
-  fn percent_point(
-    &self,
-    y: &Array1<f64>,
-    _V: &Array1<f64>,
-  ) -> Result<Array1<f64>, Box<dyn Error>> {
-    Ok(y.to_owned())
+  /// The identity, NaN for `y` or `v` outside `[0, 1]`.
+  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+    conditional_quantiles(y, V, |y, _| y)
   }
 
   fn compute_theta(&self) -> f64 {

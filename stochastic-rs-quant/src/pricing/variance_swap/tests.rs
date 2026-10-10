@@ -161,9 +161,7 @@ fn replication_does_not_floor_a_nan_price_to_zero() {
   );
 }
 
-/// "No observations" and "no movement" were the same number before —
-/// `realized_variance_constant_path_is_zero` above is the genuine `0.0`
-/// this one used to be indistinguishable from.
+/// One price is no observation at all, which must not read as the zero of a constant path.
 #[test]
 #[should_panic(expected = "realized variance needs at least 2 prices (got 1)")]
 fn realized_variance_rejects_a_single_price() {
@@ -176,10 +174,8 @@ fn realized_variance_rejects_an_empty_path() {
   let _ = VarianceSwapPricer::realized_variance(&[], BUSINESS_DAY_252_DT);
 }
 
-/// A negative variance is programmer error by the crate convention, and a
-/// zero one leaves the Jensen correction dividing by `k_var^{3/2}`.
-/// `vol_swap_zero_dispersion_recovers_sqrt_var` above is the real `0.2`
-/// this used to collide with at the bottom of its range.
+/// A negative variance strike is a programmer error, and a zero one leaves the Jensen term dividing
+/// by `k_var^{3/2}`.
 #[test]
 #[should_panic(expected = "variance strike k_var must be strictly positive (got -0.01)")]
 fn vol_swap_rejects_a_negative_variance_strike() {
@@ -192,14 +188,8 @@ fn vol_swap_rejects_a_zero_variance_strike() {
   let _ = VolatilitySwapPricer::fair_strike_from_var(0.0, 0.001);
 }
 
-/// A `NaN` vol-of-vol is the one undefined input the `k_var > 0` guard
-/// cannot see: `k_var` is built from `(v0, kappa, theta, tau)` and does not
-/// read `sigma` at all, so the assertion passes and the `NaN` arrives at
-/// the Jensen correction intact. `f64::NAN.max(0.0)` is `0.0`, so the floor
-/// used to hand back `sqrt(k_var)` — exactly `0.2` here, which is the
-/// number `vol_swap_zero_dispersion_recovers_sqrt_var` pins as the *real*
-/// answer for a genuinely dispersion-free swap. The two were
-/// indistinguishable.
+/// A NaN vol-of-vol, which the `k_var > 0` guard cannot see, prices NaN rather than the
+/// dispersion-free `sqrt(k_var)`.
 #[test]
 fn vol_swap_heston_preserves_a_nan_vol_of_vol() {
   let k = VolatilitySwapPricer::fair_strike_heston(0.04, 1.5, 0.04, f64::NAN, 1.0);
@@ -218,11 +208,8 @@ fn vol_swap_heston_is_unchanged_by_the_poison_check() {
   assert!((flat - naive).abs() < 1e-15, "{flat} vs {naive}");
 }
 
-/// Both branches of `VolatilitySwapPricer::fair_strike_heston` must reject
-/// the same inputs. The κ → 0 short-circuit used to floor a negative
-/// strike through `max(0.0)` and return `0.0` while the main path returned
-/// its own sentinel, so a caller sweeping κ would have seen the guard
-/// change shape underneath them.
+/// Both branches of `VolatilitySwapPricer::fair_strike_heston`, κ → 0 included, reject the same
+/// inputs.
 #[test]
 fn vol_swap_heston_rejects_a_negative_variance_on_both_branches() {
   for &kappa in &[1e-12, 1.5] {

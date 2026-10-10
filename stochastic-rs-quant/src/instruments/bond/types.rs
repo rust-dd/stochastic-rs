@@ -12,6 +12,9 @@ pub struct BondPrice<T: RealExt> {
 }
 
 /// Standard fixed-rate bond analytics.
+///
+/// `yield_to_maturity`, `macaulay_duration`, `modified_duration` and
+/// `convexity` are all `NaN` when no yield reproduces `dirty_price`.
 #[derive(Debug, Clone)]
 pub struct BondAnalytics<T: RealExt> {
   /// Dirty price including accrued interest.
@@ -24,8 +27,8 @@ pub struct BondAnalytics<T: RealExt> {
   pub yield_to_maturity: T,
   /// Macaulay duration in years.
   pub macaulay_duration: T,
-  /// Modified duration.
+  /// Price sensitivity `−(1/P) ∂P/∂y` under the supplied compounding.
   pub modified_duration: T,
-  /// Convexity.
+  /// `(1/P) ∂²P/∂y²` under the supplied compounding.
   pub convexity: T,
 }

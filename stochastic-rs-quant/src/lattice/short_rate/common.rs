@@ -142,43 +142,12 @@ fn sanitize_probabilities<T: RealExt>(down: &mut T, middle: &mut T, up: &mut T) 
   }
 }
 
-/// Symmetric-branch corner-correction denominator
-/// $4 \cdot 3 = 12$, derived as follows. The symmetric Hull-White trinomial
-/// branch has $p_u = p_d = 1/6$, $p_m = 2/3$ and node spacing
-/// $d_u = \sigma\sqrt{3 dt}$, so $\mathrm{Var}(X) = \sigma^2 dt$. To match
-/// $\mathrm{Cov}(X, Y) = \rho \sigma_X \sigma_Y dt$ via a shift $\lambda$ on
-/// the four corner cells of the joint probability table, the four corner
-/// contributions $\pm d_u^X d_u^Y$ telescope to $4 d_u^X d_u^Y \lambda$:
-///
-/// $$
-/// 4 \cdot 3 \sigma_X \sigma_Y dt \cdot \lambda = \rho \sigma_X \sigma_Y dt
-/// \implies \lambda = \rho / 12.
-/// $$
-///
-/// This factor is **exact** for the symmetric branch and **approximate** for
-/// drift-shifted (asymmetric) branches — see the docstring on
-/// [`correlated_joint_probabilities`] for the bias characterisation.
+/// λ = ρ/12: four corner shifts of λ add 4λ·d_X·d_Y to the covariance, and d = σ√(3 dt) makes that
+/// ρσ_Xσ_Y dt. Both marginals are kept, so it is exact on any branch while no corner clamps at 0.
 pub(crate) const SYMMETRIC_BRANCH_CORNER_DENOM: f64 = 12.0;
 
-/// Build correlated joint probabilities for a 2D trinomial lattice (G2++ /
-/// two-factor Hull-White) using the **symmetric-branch corner correction**:
-/// $\lambda = \rho / 12$ on the four corners (see
-/// [`SYMMETRIC_BRANCH_CORNER_DENOM`] for the derivation).
-///
-/// **Tier-0 / sketch-grade:** the $\lambda = \rho/12$ correction matches
-/// the requested factor covariance **exactly** only for the symmetric
-/// trinomial branch ($p_u = p_d = 1/6$, $p_m = 2/3$, i.e. zero local drift).
-/// For drift-shifted branches ($p_u \neq p_d$, the usual case off the lattice
-/// midline), the correction does not hit the requested covariance — bias is
-/// proportional to the local drift. For typical $a \leq 0.05$, $dt \leq 0.25$,
-/// the resulting joint-probability error is on the order of $10^{-3}$,
-/// translating to a few-bps bias on multi-year products.
-///
-/// For a per-cell exact match across asymmetric branches, replace the corner
-/// correction with the linear system in Hull-White (2000), "The General
-/// Hull-White Model and Super-calibration", equations 16–18. Tracked for
-/// v2.4+ — the current corner correction is the canonical QuantLib /
-/// Brigo-Mercurio textbook approach.
+/// G2++ joint probabilities: marginal product plus ρ/12 on the four corners; marginals hold and the
+/// covariance is ρ/3 until a corner clamps at 0: |ρ| > 1/3 at `p_u = p_d = 1/6`, less off-centre.
 pub(crate) fn correlated_joint_probabilities<T: RealExt>(
   x_branch: TrinomialBranch<T>,
   y_branch: TrinomialBranch<T>,

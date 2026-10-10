@@ -18,17 +18,18 @@
 //! Chapman & Hall, §5.2 (family BB1); Joe, H. (2014), *Dependence Modeling
 //! with Copulas*, CRC Press, §4.13.1.
 
-use std::error::Error;
-
 use ndarray::Array1;
 use ndarray::Array2;
 
 use super::CopulaType;
+use super::conditional::conditional_cdf;
+use super::conditional::conditional_quantiles;
 use super::two_parameter::clip;
 use super::two_parameter::fit_two_parameters;
 use super::two_parameter::invert_h;
 use super::two_parameter::kendall_tau_numeric;
 use super::two_parameter::ln_one_minus_exp;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -63,7 +64,7 @@ impl Bb1 {
     self
   }
 
-  fn params(&self) -> Result<(f64, f64), Box<dyn Error>> {
+  fn params(&self) -> Result<(f64, f64), CopulaError> {
     self.check_fit()?;
     Ok((self.theta.expect("checked"), self.delta))
   }
@@ -125,11 +126,21 @@ impl Bb1 {
   /// without the marginal uniformity check that [`BivariateExt::fit`] runs
   /// first — for callers that already hold pseudo-observations, such as the
   /// vine fitter.
-  pub(crate) fn fit_parameters(&mut self, X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
+  pub(crate) fn fit_parameters(&mut self, X: &Array2<f64>) -> Result<(), CopulaError> {
+    if X.nrows() < 2 {
+      return Err(CopulaError::InsufficientData {
+        needed: 2,
+        got: X.nrows(),
+      });
+    }
     let u = X.column(0).to_owned();
     let v = X.column(1).to_owned();
     let (tau, ..) = kendalls::tau_b_with_comparator(&u.to_vec(), &v.to_vec(), |a, b| {
       a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Greater)
+    })
+    .map_err(|_| CopulaError::InsufficientData {
+      needed: 2,
+      got: u.len(),
     })?;
     self.tau = Some(tau.max(0.05));
     let start_theta = self.compute_theta().clamp(0.05, 20.0);
@@ -183,12 +194,12 @@ impl BivariateExt for Bb1 {
     self.theta = Some(theta);
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     Ok(t.mapv(|x| (x.powf(-theta) - 1.0).powf(delta)))
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     Ok(
       X.rows()
@@ -198,7 +209,7 @@ impl BivariateExt for Bb1 {
     )
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     Ok(
       X.rows()
@@ -208,34 +219,27 @@ impl BivariateExt for Bb1 {
     )
   }
 
-  /// `∂_v C(u, v)`.
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  /// `∂_v C(u, v)`, NaN for `v` outside `[0, 1]`.
+  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    Ok(
-      X.rows()
-        .into_iter()
-        .map(|r| Self::h_scalar(clip(r[0]), clip(r[1]), theta, delta))
-        .collect(),
-    )
+    Ok(conditional_cdf(X, |u, v| {
+      Self::h_scalar(clip(u), clip(v), theta, delta)
+    }))
   }
 
-  /// `θ = 2 / (δ(1 − τ)) − 2` at the stored `δ`, floored just above zero.
-  /// Inverse h-function by bisection: the trait's default root finder does
-  /// not converge on the steep conditional CDF near `v → 1`.
+  /// The h-function inverted by bisection on `[1e-12, 1 − 1e-12]`, NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(
     &self,
     y: &Array1<f64>,
     conditioning: &Array1<f64>,
-  ) -> Result<Array1<f64>, Box<dyn Error>> {
+  ) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    Ok(
-      y.iter()
-        .zip(conditioning)
-        .map(|(&p, &v)| invert_h(|u| Self::h_scalar(u, clip(v), theta, delta), p))
-        .collect(),
-    )
+    conditional_quantiles(y, conditioning, |p, v| {
+      invert_h(|u| Self::h_scalar(u, clip(v), theta, delta), p)
+    })
   }
 
+  /// `θ = 2 / (δ(1 − τ)) − 2` at the stored `δ`, floored just above zero.
   fn compute_theta(&self) -> f64 {
     let tau = self.tau.expect("set tau first");
     if tau >= 1.0 {
@@ -246,7 +250,7 @@ impl BivariateExt for Bb1 {
 
   /// Maximum-likelihood fit of `(θ, δ)`, started from the Kendall inversion
   /// at the current `δ`.
-  fn fit(&mut self, X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn fit(&mut self, X: &Array2<f64>) -> Result<(), CopulaError> {
     self.check_marginal(&X.column(0).to_owned())?;
     self.check_marginal(&X.column(1).to_owned())?;
     self.fit_parameters(X)
@@ -266,7 +270,7 @@ impl BivariateExt for Bb1 {
 impl Bb1 {
   /// Numerical Kendall's τ from the h-function, for cross-checking the
   /// closed form (and therefore the conditional CDF).
-  pub fn kendall_tau_numeric(&self, panels: usize) -> Result<f64, Box<dyn Error>> {
+  pub fn kendall_tau_numeric(&self, panels: usize) -> Result<f64, CopulaError> {
     let (theta, delta) = self.params()?;
     Ok(kendall_tau_numeric(
       |u, v| Self::h_scalar(u, v, theta, delta),

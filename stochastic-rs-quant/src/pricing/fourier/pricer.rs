@@ -102,8 +102,8 @@ impl CarrMadanPricer {
   /// dominant accuracy gain for production Heston / Bates / Lévy
   /// calibration workloads.
   ///
-  /// Falls back to the default `(n=4096, η=0.25)` when cumulants are not
-  /// finite. `alpha` is left at the default damping coefficient (0.75).
+  /// Panics unless `s`, `l_factor` and the model's second cumulant are finite and positive; `alpha` stays the
+  /// default damping (0.75).
   ///
   /// # Example
   /// ```
@@ -117,20 +117,26 @@ impl CarrMadanPricer {
   /// assert!(price.is_finite() && price > 0.0);
   /// ```
   pub fn cumulant_sized(model: &impl FourierModelExt, t: f64, s: f64, l_factor: f64) -> Self {
+    assert!(
+      s.is_finite() && s > 0.0,
+      "s must satisfy `s.is_finite() && s > 0.0`, got s = {s:?}"
+    );
+    assert!(
+      l_factor.is_finite() && l_factor > 0.0,
+      "l_factor must satisfy `l_factor.is_finite() && l_factor > 0.0`, got l_factor = {l_factor:?}"
+    );
     let cumulants = model.cumulants(t);
-    if !cumulants.c2.is_finite() || cumulants.c2 <= 0.0 || !s.is_finite() || s <= 0.0 {
-      return Self::default();
-    }
-    let c4_term = if cumulants.c4.is_finite() && cumulants.c4 >= 0.0 {
-      cumulants.c4.sqrt()
-    } else {
-      0.0
-    };
-    let cumulant_buffer = l_factor * (cumulants.c2.abs() + c4_term).sqrt();
+    let c2 = cumulants.c2;
+    assert!(
+      c2.is_finite() && c2 > 0.0,
+      "cumulants.c2 must satisfy `c2.is_finite() && c2 > 0.0`, got c2 = {c2:?}"
+    );
+    let c4_term = cumulants
+      .c4
+      .filter(|c| c.is_finite() && *c >= 0.0)
+      .map_or(0.0, f64::sqrt);
+    let cumulant_buffer = l_factor * (c2.abs() + c4_term).sqrt();
     let required_half_width = s.ln().abs() + cumulant_buffer;
-    if !required_half_width.is_finite() || required_half_width <= 0.0 {
-      return Self::default();
-    }
     let n = 4096_usize;
     let eta = PI / required_half_width;
     Self {
@@ -204,17 +210,8 @@ impl CarrMadanPricer {
     (log_strikes, prices)
   }
 
-  /// Price a single call option by interpolating the FFT surface.
-  ///
-  /// **Out-of-grid strikes:** when `k` is so deep ITM/OTM that `ln(k)` falls
-  /// outside `[log_strikes.first(), log_strikes.last()]`, returns
-  /// `f64::NAN`. The previous v2.0.0-rc.0 behavior returned `0.0`, which
-  /// produced silent-zero residuals at the wings of any calibration that
-  /// stretched past the FFT grid (catastrophe options, very deep ITM/OTM FX
-  /// risk-reversals). NaN propagation forces calibration loops to detect
-  /// the issue rather than carry on with a falsely-perfect zero residual.
-  /// Use [`Self::strike_in_grid`] to test before pricing, or construct the
-  /// pricer with a larger `n` / smaller `eta` for wider coverage.
+  /// Call price interpolated on the FFT surface; NaN when `ln(k)` falls outside the grid (test with
+  /// [`Self::strike_in_grid`], or widen it with a larger `n` or a smaller `eta`).
   pub fn price_call(&self, model: &impl FourierModelExt, s: f64, k: f64, r: f64, t: f64) -> f64 {
     let (log_strikes, prices) = self.price_call_surface(model, s, r, t);
     let target = k.ln();
@@ -375,7 +372,7 @@ mod tests {
       Cumulants {
         c1: 0.0,
         c2: 0.04,
-        c4: 0.0,
+        c4: Some(0.0),
       }
     }
   }
@@ -408,13 +405,8 @@ mod tests {
     );
   }
 
-  /// The headline of the sentinel item: a `NaN` characteristic function used
-  /// to reach neither floor, because the swallow happened upstream.
-  /// `integrate_to_convergence` returned `0.0` for a wholly-`NaN` integrand,
-  /// so `p1 = p2 = 0.5` and Gil-Pelaez handed back `2.438528774964297` while
-  /// Lewis handed back `100.00000000000001` — the spot. Two well-scaled fake
-  /// prices, which is worse than a zero: nothing about either says the model
-  /// blew up.
+  /// A NaN characteristic function prices to NaN through Gil-Pelaez and Lewis, not to a
+  /// well-scaled fake such as the spot.
   #[test]
   fn quadrature_pricers_preserve_nan_from_chf_blowup() {
     let gp = GilPelaezPricer::price_call(&NanChfModel, 100.0, 100.0, 0.05, 0.0, 1.0);
@@ -482,5 +474,29 @@ mod tests {
         "{name} must still price finitely, got {p}"
       );
     }
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "l_factor must satisfy `l_factor.is_finite() && l_factor > 0.0`, got l_factor = 0.0"
+  )]
+  fn cumulant_sizing_rejects_a_non_positive_l_factor() {
+    let model = BSMFourier {
+      sigma: 0.2,
+      r: 0.05,
+      q: 0.0,
+    };
+    let _ = CarrMadanPricer::cumulant_sized(&model, 1.0, 100.0, 0.0);
+  }
+
+  #[test]
+  #[should_panic(expected = "cumulants.c2 must satisfy `c2.is_finite() && c2 > 0.0`, got c2 = 0.0")]
+  fn cumulant_sizing_rejects_a_vanishing_second_cumulant() {
+    let model = BSMFourier {
+      sigma: 0.2,
+      r: 0.05,
+      q: 0.0,
+    };
+    let _ = CarrMadanPricer::cumulant_sized(&model, 0.0, 100.0, 12.0);
   }
 }

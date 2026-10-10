@@ -64,11 +64,12 @@ fn t_copula_pdf_at_center() {
   let det: f64 = 1.0 - 0.3 * 0.3;
   let f_mv = (ln_gamma(0.5 * (nu + 2.0))
     - ln_gamma(0.5 * nu)
-    - (nu * f64::consts::PI).ln()
+    - (nu * std::f64::consts::PI).ln()
     - 0.5 * det.ln())
   .exp();
   let f_marg =
-    (ln_gamma(0.5 * (nu + 1.0)) - ln_gamma(0.5 * nu) - 0.5 * (nu * f64::consts::PI).ln()).exp();
+    (ln_gamma(0.5 * (nu + 1.0)) - ln_gamma(0.5 * nu) - 0.5 * (nu * std::f64::consts::PI).ln())
+      .exp();
   let expected = f_mv / (f_marg * f_marg);
   assert!(
     (pdf - expected).abs() / expected < 1e-10,
@@ -167,8 +168,8 @@ fn t_copula_manual_nu_override() {
   assert!(bad.is_err(), "ν=0 must be rejected");
 }
 
-/// `nu()`/`set_nu()` mirror `TCopula`'s naming and validation contract
-/// exactly, including the byte-identical error string on invalid input.
+/// `nu()`/`set_nu()` mirror `TCopula`'s naming and validation contract, the invalid-input error
+/// included.
 #[test]
 fn t_multivariate_exposes_nu() {
   let corr = array![[1.0, 0.3], [0.3, 1.0]];
@@ -177,6 +178,33 @@ fn t_multivariate_exposes_nu() {
   assert!(cop.set_nu(12.0).is_ok());
   assert_eq!(cop.nu(), 12.0);
   let err = cop.set_nu(0.0).unwrap_err();
-  assert_eq!(err.to_string(), "Degrees of freedom must be positive");
+  assert_eq!(
+    err,
+    CopulaError::InvalidParameter {
+      name: "nu",
+      value: 0.0,
+      constraint: "0 < nu < ∞".into(),
+    }
+  );
   assert_eq!(cop.nu(), 12.0, "a failed set_nu must not mutate the field");
+}
+
+/// An infinite `nu` is an error from both entry points of either t-copula, so no χ² law is built with `k = ∞`.
+#[test]
+fn an_infinite_nu_is_rejected_by_name() {
+  let want = CopulaError::InvalidParameter {
+    name: "nu",
+    value: f64::INFINITY,
+    constraint: "0 < nu < ∞".into(),
+  };
+  let corr = array![[1.0, 0.3], [0.3, 1.0]];
+  assert_eq!(
+    TMultivariate::new_with(corr.clone(), f64::INFINITY).unwrap_err(),
+    want
+  );
+  let mut cop = TMultivariate::new_with(corr, 4.0).unwrap();
+  assert_eq!(cop.set_nu(f64::INFINITY).unwrap_err(), want);
+  assert_eq!(cop.nu(), 4.0);
+  let mut bivariate = crate::bivariate::t_copula::TCopula::with_nu(4.0);
+  assert_eq!(bivariate.set_nu(f64::INFINITY).unwrap_err(), want);
 }

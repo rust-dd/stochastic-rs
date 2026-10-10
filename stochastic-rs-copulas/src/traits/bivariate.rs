@@ -2,17 +2,24 @@
 
 use std::cell::RefCell;
 use std::cmp::Ordering;
-use std::error::Error;
 
 use ndarray::Array1;
 use ndarray::Axis;
 use ndarray::stack;
-use roots::SimpleConvergency;
-use roots::find_root_brent;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::RealExt;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
+use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::bivariate::CopulaType as BivariateCopulaType;
+use crate::bivariate::conditional::ABSOLUTE_TOLERANCE;
+use crate::bivariate::conditional::check_lengths;
+use crate::bivariate::conditional::in_unit;
+use crate::error::CopulaError;
+use crate::optim::zero;
 
 /// Upper- and lower-tail dependence coefficients
 /// $$
@@ -43,18 +50,22 @@ pub trait BivariateExt {
 
   fn set_theta(&mut self, theta: f64);
 
-  fn check_theta(&self) -> Result<(), String> {
+  fn check_theta(&self) -> Result<(), CopulaError> {
     let (lower, upper) = self.theta_bounds();
-    let theta = self
-      .theta()
-      .ok_or_else(|| "theta is not set; call set_theta or fit first".to_string())?;
+    let theta = self.theta().ok_or(CopulaError::NotFitted)?;
     let invalid = self.invalid_thetas();
 
     if !(lower <= theta && theta <= upper) || invalid.contains(&theta) {
-      return Err(format!(
-        "Theta must be in the interval [{}, {}] and not in {:?}",
-        lower, upper, invalid
-      ));
+      let constraint = if invalid.is_empty() {
+        format!("{lower:?} <= theta <= {upper:?}")
+      } else {
+        format!("{lower:?} <= theta <= {upper:?}, theta not in {invalid:?}")
+      };
+      return Err(CopulaError::InvalidParameter {
+        name: "theta",
+        value: theta,
+        constraint,
+      });
     }
 
     Ok(())
@@ -103,39 +114,23 @@ pub trait BivariateExt {
     }
   }
 
-  /// Archimedean generator $\varphi_\theta(t)$, satisfying $C(u,v) =
-  /// \varphi^{-1}(\varphi(u) + \varphi(v))$. Overridden with a closed form
-  /// by the six Archimedean families (AMH, Clayton, Frank, Gumbel,
-  /// Independence, Joe); every other family has no Archimedean
-  /// representation, so the default here — derived from `r#type()`'s
-  /// `Debug` label — returns the anchored
-  /// `"<Type> is not Archimedean — generator not defined"` without each
-  /// family hand-writing an identical stub.
-  fn generator(&self, _t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    Err(
-      format!(
-        "{:?} is not Archimedean — generator not defined",
-        self.r#type()
-      )
-      .into(),
-    )
+  /// Archimedean generator $\varphi$, $C(u,v) = \varphi^{-1}(\varphi(u) + \varphi(v))$; the default
+  /// is `Unsupported`, named by the `r#type()` label, for a family with no such form.
+  fn generator(&self, _t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+    Err(CopulaError::Unsupported(format!(
+      "{:?} is not Archimedean: no generator",
+      self.r#type()
+    )))
   }
 
-  fn sample(&self, n: usize) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
-    self.sample_with_uniform(
-      stochastic_rs_distributions::uniform::SimdUniform::<f64>::new(0.0, 1.0, &Unseeded),
-      n,
-    )
+  fn sample(&self, n: usize) -> Result<ndarray::Array2<f64>, CopulaError> {
+    self.sample_with_uniform(SimdUniform::<f64>::new(0.0, 1.0).seeded(&Unseeded), n)
   }
 
   /// Deterministic sampler. Returns the same paths for a fixed `seed`.
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
+  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<ndarray::Array2<f64>, CopulaError> {
     self.sample_with_uniform(
-      stochastic_rs_distributions::uniform::SimdUniform::<f64>::new(
-        0.0,
-        1.0,
-        &Deterministic::new(seed),
-      ),
+      SimdUniform::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed)),
       n,
     )
   }
@@ -143,12 +138,12 @@ pub trait BivariateExt {
   #[doc(hidden)]
   fn sample_with_uniform(
     &self,
-    ud: stochastic_rs_distributions::uniform::SimdUniform<f64>,
+    mut ud: Seeded<SimdUniform<f64>>,
     n: usize,
-  ) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
-    // The sampler inverts the conditional distribution, which reads `theta`
-    // alone; setting `tau` is only one way of arriving at it.
-    self.check_theta()?;
+  ) -> Result<ndarray::Array2<f64>, CopulaError> {
+    // The family's `check_fit` is the gate: a copula parameterised outside `theta` passes it,
+    // a `tau` without a `theta` does not.
+    self.check_fit()?;
 
     let mut v = Array1::<f64>::zeros(n);
     ud.fill_slice(v.as_slice_mut().unwrap());
@@ -159,7 +154,13 @@ pub trait BivariateExt {
     Ok(stack![Axis(1), u, v])
   }
 
-  fn fit(&mut self, X: &ndarray::Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn fit(&mut self, X: &ndarray::Array2<f64>) -> Result<(), CopulaError> {
+    if X.nrows() < 2 {
+      return Err(CopulaError::InsufficientData {
+        needed: 2,
+        got: X.nrows(),
+      });
+    }
     let U = X.column(0).to_owned();
     let V = X.column(1).to_owned();
 
@@ -168,6 +169,10 @@ pub trait BivariateExt {
 
     let (tau, ..) = kendalls::tau_b_with_comparator(&U.to_vec(), &V.to_vec(), |a, b| {
       a.partial_cmp(b).unwrap_or(Ordering::Greater)
+    })
+    .map_err(|_| CopulaError::InsufficientData {
+      needed: 2,
+      got: U.len(),
     })?;
 
     self.set_tau(tau);
@@ -176,9 +181,10 @@ pub trait BivariateExt {
     Ok(())
   }
 
-  fn check_fit(&self) -> Result<(), Box<dyn Error>> {
+  /// Sampling and evaluation gate on this, so an override must validate the parameters it holds.
+  fn check_fit(&self) -> Result<(), CopulaError> {
     if self.theta().is_none() {
-      return Err("Fit the copula first".into());
+      return Err(CopulaError::NotFitted);
     }
 
     self.check_theta()?;
@@ -186,114 +192,109 @@ pub trait BivariateExt {
   }
 
   #[doc(hidden)]
-  fn check_marginal(&self, u: &Array1<f64>) -> Result<(), String> {
+  fn check_marginal(&self, u: &Array1<f64>) -> Result<(), CopulaError> {
     if !u.iter().all(|x| (0.0..=1.0).contains(x)) {
-      return Err("Marginal values must be in the interval [0, 1]".into());
+      return Err(CopulaError::MarginalOutOfRange);
     }
 
     let mut empirical_cdf = u.to_vec();
     empirical_cdf.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Greater));
     let empirical_cdf = Array1::from(empirical_cdf);
     let uniform = Array1::linspace(0.0, 1.0, u.len());
-    let ks = (empirical_cdf - uniform).fold(0.0_f64, |acc, &d| acc.max(d.abs()));
+    let ks = (empirical_cdf - uniform).fold(0.0_f64, |acc, &d| acc.max_or_nan(d.abs()));
 
     if ks > 1.627 / (u.len() as f64).sqrt() {
-      return Err("Marginal values do not follow a uniform distribution".into());
+      return Err(CopulaError::MarginalNotUniform);
     }
 
     Ok(())
   }
 
-  fn pdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
+  fn pdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError>;
 
-  fn log_pdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn log_pdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok(self.pdf(X)?.ln())
   }
 
-  fn cdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
+  fn cdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError>;
 
   /// Inverse conditional: returns `u` such that `P(U ≤ u | V = v) = p`.
   /// This is the canonical quantile-function name for this trait; see also
   /// [`ppf`](Self::ppf), a SciPy-compatible alias.
-  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.percent_point_numerical(y, V)
   }
 
-  /// Brent-root-finding numerical inversion of `partial_derivative_scalar`
-  /// (`#[doc(hidden)]`, so not itself a doc link target) that backs the
-  /// default [`percent_point`](Self::percent_point). Exposed
-  /// under its own name so a family that overrides `percent_point` (to
-  /// special-case a degenerate parameter, say) has a way to fall back to
-  /// this generic implementation — calling `Self::percent_point` from
-  /// inside an override of that same method would just recurse into the
-  /// override instead of reaching this body.
-  ///
-  /// A quantile whose root lies at or below the bracket floor `f64::EPSILON`
-  /// saturates to that floor — the answer is below resolution, which is a
-  /// value, not a failure. A failing `partial_derivative` or a solve that
-  /// does not converge is an `Err`: neither has a quantile to report, and a
-  /// fabricated one would be indistinguishable from a real deep-tail draw.
+  /// `percent_point`'s default, callable from an override: Brent's `zero` in `u` of `partial_derivative` held in
+  /// `[0, 1]`, on `[EPSILON, 1]`, saturating at its ends; NaN for `y`, `v` outside `[0, 1]`, `Err` for a NaN or error.
   fn percent_point_numerical(
     &self,
     y: &Array1<f64>,
     V: &Array1<f64>,
-  ) -> Result<Array1<f64>, Box<dyn Error>> {
+  ) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    check_lengths(y, V)?;
     let n = y.len();
     let mut results = Array1::zeros(n);
+    let lo = f64::EPSILON;
 
     for i in 0..n {
       let y_i = y[i];
       let v_i = V[i];
+      if !(in_unit(y_i) && in_unit(v_i)) {
+        results[i] = f64::NAN;
+        continue;
+      }
+      if y_i == 0.0 {
+        results[i] = lo;
+        continue;
+      }
 
-      // The root-finder's closure cannot return a `Result`, so the first
-      // inner failure is parked here and re-raised after the solve.
-      let inner_err: RefCell<Option<Box<dyn Error>>> = RefCell::new(None);
-      let h = |u: f64| match self.partial_derivative_scalar(u, v_i) {
-        Ok(d) => d - y_i,
-        Err(e) => {
+      // The solver's closure cannot return a `Result`: the first inner failure or NaN is parked, the closure answers
+      // 0 so the solve stops there, and the parked error is re-raised after.
+      let inner_err: RefCell<Option<CopulaError>> = RefCell::new(None);
+      let gap = |u: f64| match self.partial_derivative_scalar(u, v_i) {
+        Ok(d) if !d.is_nan() => d.clamp(0.0, 1.0) - y_i,
+        outcome => {
           let mut slot = inner_err.borrow_mut();
           if slot.is_none() {
-            *slot = Some(e);
+            *slot = Some(outcome.err().unwrap_or_else(|| {
+              CopulaError::Numerical(format!(
+                "{:?} partial_derivative is NaN at (u={u:?}, v={v_i:?})",
+                self.r#type()
+              ))
+            }));
           }
-          f64::NAN
+          0.0
         }
       };
 
-      let lo = f64::EPSILON;
-      let f_lo = h(lo);
+      let f_lo = gap(lo);
       if let Some(e) = inner_err.borrow_mut().take() {
-        return Err(
-          format!(
-            "{:?} h-inverse (percent_point_numerical) failed at (y={y_i}, v={v_i}): {e}",
-            self.r#type()
-          )
-          .into(),
-        );
+        return Err(e);
       }
       if f_lo >= 0.0 {
         results[i] = lo;
         continue;
       }
-
-      let mut convergency = SimpleConvergency {
-        eps: f64::EPSILON,
-        max_iter: 50,
-      };
-      let root = find_root_brent(lo, 1.0, h, &mut convergency);
+      let f_hi = gap(1.0);
       if let Some(e) = inner_err.borrow_mut().take() {
-        return Err(
-          format!(
-            "{:?} h-inverse (percent_point_numerical) failed at (y={y_i}, v={v_i}): {e}",
-            self.r#type()
-          )
-          .into(),
-        );
+        return Err(e);
       }
-      results[i] = root.map_err(|e| {
-        format!(
-          "{:?} h-inverse (percent_point_numerical) did not converge at (y={y_i}, v={v_i}): {e}",
+      if f_hi <= 0.0 {
+        results[i] = 1.0;
+        continue;
+      }
+
+      let root = zero(lo, 1.0, ABSOLUTE_TOLERANCE, &gap);
+      if let Some(e) = inner_err.borrow_mut().take() {
+        return Err(e);
+      }
+      results[i] = root.ok_or_else(|| {
+        CopulaError::Numerical(format!(
+          "{:?} h-inverse did not converge at (y={y_i:?}, v={v_i:?})",
           self.r#type()
-        )
+        ))
       })?;
     }
 
@@ -301,14 +302,11 @@ pub trait BivariateExt {
   }
 
   /// `ppf` is a SciPy-compatible alias for [`percent_point`](Self::percent_point).
-  fn ppf(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn ppf(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.percent_point(y, V)
   }
 
-  fn partial_derivative(
-    &self,
-    X: &ndarray::Array2<f64>,
-  ) -> Result<Array1<f64>, Box<dyn std::error::Error>> {
+  fn partial_derivative(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     let n = X.nrows();
     let mut X_prime = X.clone();
     let mut delta = Array1::zeros(n);
@@ -317,8 +315,8 @@ pub trait BivariateExt {
       X_prime[[i, 1]] = X[[i, 1]] + delta[i];
     }
 
-    let f = self.cdf(X).unwrap();
-    let f_prime = self.cdf(&X_prime).unwrap();
+    let f = self.cdf(X)?;
+    let f_prime = self.cdf(&X_prime)?;
 
     let mut deriv = Array1::zeros(n);
     for i in 0..n {
@@ -329,7 +327,7 @@ pub trait BivariateExt {
   }
 
   #[doc(hidden)]
-  fn partial_derivative_scalar(&self, U: f64, V: f64) -> Result<f64, Box<dyn Error>> {
+  fn partial_derivative_scalar(&self, U: f64, V: f64) -> Result<f64, CopulaError> {
     self.check_fit()?;
     let X = stack![Axis(1), Array1::from(vec![U]), Array1::from(vec![V])];
     let out = self.partial_derivative(&X);
@@ -345,11 +343,12 @@ mod tests {
   use super::*;
   use crate::bivariate::amh::Amh;
   use crate::bivariate::clayton::Clayton;
+  use crate::bivariate::galambos::Galambos;
 
-  /// Minimal non-Archimedean stand-in that does **not** override
-  /// `generator` at all — proves the trait-default body (not any family's
-  /// own hand-written stub) is what actually answers the call.
-  struct DummyNonArchimedean;
+  /// Overrides no provided method, so every default body answers for it; `pdf` and `cdf` fail.
+  struct DummyNonArchimedean {
+    theta: Option<f64>,
+  }
 
   impl BivariateExt for DummyNonArchimedean {
     fn r#type(&self) -> BivariateCopulaType {
@@ -363,7 +362,7 @@ mod tests {
     fn set_tau(&mut self, _tau: f64) {}
 
     fn theta(&self) -> Option<f64> {
-      None
+      self.theta
     }
 
     fn theta_bounds(&self) -> (f64, f64) {
@@ -387,49 +386,99 @@ mod tests {
       }
     }
 
-    fn pdf(&self, _x: &ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-      Err("not implemented for DummyNonArchimedean".into())
+    fn pdf(&self, _x: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+      Err(CopulaError::Unsupported(
+        "not implemented for DummyNonArchimedean".into(),
+      ))
     }
 
-    fn cdf(&self, _x: &ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-      Err("not implemented for DummyNonArchimedean".into())
+    fn cdf(&self, _x: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+      Err(CopulaError::Unsupported(
+        "not implemented for DummyNonArchimedean".into(),
+      ))
     }
   }
 
-  /// `generator()`'s default body — reached here by a type that has no
-  /// override whatsoever — returns the anchored "<Type> is not Archimedean
-  /// — generator not defined" message built from `r#type()`'s `Debug`
-  /// label, matching the pattern the 7 real non-Archimedean families used
-  /// to hand-write individually.
+  /// Parameterised outside `theta`, like `MarshallOlkin::with_alpha_beta`; the h-function is `u`.
+  struct ParameterisedWithoutTheta;
+
+  impl BivariateExt for ParameterisedWithoutTheta {
+    fn r#type(&self) -> BivariateCopulaType {
+      BivariateCopulaType::MarshallOlkin
+    }
+
+    fn tau(&self) -> Option<f64> {
+      None
+    }
+
+    fn set_tau(&mut self, _tau: f64) {}
+
+    fn theta(&self) -> Option<f64> {
+      None
+    }
+
+    fn theta_bounds(&self) -> (f64, f64) {
+      (0.0, 1.0)
+    }
+
+    fn invalid_thetas(&self) -> Vec<f64> {
+      vec![]
+    }
+
+    fn set_theta(&mut self, _theta: f64) {}
+
+    fn compute_theta(&self) -> f64 {
+      0.0
+    }
+
+    fn tail_dependence(&self) -> TailDependence<f64> {
+      TailDependence {
+        lower: 0.0,
+        upper: 0.0,
+      }
+    }
+
+    fn check_fit(&self) -> Result<(), CopulaError> {
+      Ok(())
+    }
+
+    fn pdf(&self, x: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+      Ok(Array1::ones(x.nrows()))
+    }
+
+    fn cdf(&self, x: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+      Ok(&x.column(0) * &x.column(1))
+    }
+
+    fn partial_derivative(&self, x: &ndarray::Array2<f64>) -> Result<Array1<f64>, CopulaError> {
+      Ok(x.column(0).to_owned())
+    }
+  }
+
+  /// A type with no `generator` override reaches the trait default, which names its `r#type()`.
   #[test]
   fn generator_default_returns_anchored_not_archimedean_err() {
-    let dummy = DummyNonArchimedean;
-    let t = array![0.5_f64, 0.8];
-    let msg = dummy.generator(&t).unwrap_err().to_string();
-    assert!(
-      msg.contains("is not Archimedean — generator not defined"),
-      "unexpected message: {msg}"
-    );
-    assert!(
-      msg.starts_with("Fgm"),
-      "expected the r#type() Debug label as prefix, got: {msg}"
+    let dummy = DummyNonArchimedean { theta: None };
+    assert_eq!(
+      dummy.generator(&array![0.5_f64, 0.8]).unwrap_err(),
+      CopulaError::Unsupported("Fgm is not Archimedean: no generator".into())
     );
   }
 
-  /// The unfitted dummy fails inside `partial_derivative_scalar` (its
-  /// `check_fit` refuses), and the failure must come back as an `Err`
-  /// naming the family and the query — not as a panic, and never as a
-  /// fabricated `EPSILON` quantile.
+  /// An unfitted copula is `NotFitted` before any solve, and a failing `partial_derivative` keeps
+  /// its own variant: neither becomes a panic or a fabricated `EPSILON` quantile.
   #[test]
   fn percent_point_numerical_propagates_inner_errors_instead_of_panicking() {
-    let dummy = DummyNonArchimedean;
-    let err = dummy
-      .percent_point_numerical(&array![0.5_f64], &array![0.5_f64])
-      .expect_err("a failing partial_derivative must surface as Err");
-    let msg = err.to_string();
-    assert!(
-      msg.contains("h-inverse") && msg.contains("Fit the copula first"),
-      "unexpected message: {msg}"
+    let (y, v) = (array![0.5_f64], array![0.5_f64]);
+    let unfitted = DummyNonArchimedean { theta: None };
+    assert_eq!(
+      unfitted.percent_point_numerical(&y, &v).unwrap_err(),
+      CopulaError::NotFitted
+    );
+    let fitted = DummyNonArchimedean { theta: Some(0.5) };
+    assert_eq!(
+      fitted.percent_point_numerical(&y, &v).unwrap_err(),
+      CopulaError::Unsupported("not implemented for DummyNonArchimedean".into())
     );
   }
 
@@ -453,9 +502,46 @@ mod tests {
     );
   }
 
-  /// Round trip on the numerical path: `u = h^{-1}(y | v)` must satisfy
-  /// `h(u | v) = y`. Amh has a closed-form `partial_derivative` but no
-  /// `percent_point` override, so this exercises exactly the Brent body.
+  /// A conditional law with a point mass at `u = 1` keeps `h` below `y` on the whole bracket: the ceiling answers.
+  #[test]
+  fn percent_point_numerical_saturates_at_the_bracket_ceiling() {
+    let mut galambos = Galambos::new();
+    galambos.set_theta(1.5);
+    let out = galambos
+      .percent_point_numerical(&array![0.3_f64], &array![1.0_f64])
+      .expect("saturation is a value");
+    assert_eq!(out[0], 1.0);
+  }
+
+  /// Level 0 answers the floor even where rounding takes `h(EPSILON | v)` below zero, as Galambos's does near `v = 1`.
+  #[test]
+  fn percent_point_numerical_answers_the_floor_at_level_zero() {
+    let mut galambos = Galambos::new();
+    galambos.set_theta(1.5);
+    for v in [1.0 - 1e-10, 1.0 - 1e-12, 1.0 - f64::EPSILON / 2.0] {
+      let h = galambos.partial_derivative_scalar(f64::EPSILON, v).unwrap();
+      assert!(h < 0.0, "the premise: h(EPSILON | {v}) = {h}");
+      let u = galambos.percent_point_numerical(&array![0.0], &array![v]);
+      assert_eq!(u, Ok(array![f64::EPSILON]), "v = {v}");
+    }
+  }
+
+  /// Levels far below `√f64::MIN_POSITIVE` reach Brent's `zero`, whose sign test never multiplies two gaps.
+  #[test]
+  fn percent_point_numerical_solves_levels_below_the_product_underflow() {
+    let mut galambos = Galambos::new();
+    galambos.set_theta(1.5);
+    for y in [1e-300, 1e-310, 5e-324] {
+      for v in [1.0 - 1e-10, 1.0 - f64::EPSILON / 2.0] {
+        let u = galambos
+          .percent_point_numerical(&array![y], &array![v])
+          .unwrap_or_else(|e| panic!("y = {y}, v = {v}: {e}"))[0];
+        assert!((f64::EPSILON..=1.0).contains(&u), "y = {y}, v = {v}: {u}");
+      }
+    }
+  }
+
+  /// `percent_point_numerical` reaches the Brent body whatever `percent_point` the family overrides.
   #[test]
   fn percent_point_numerical_round_trips_through_the_h_function() {
     let mut amh = Amh::new();
@@ -504,10 +590,18 @@ mod tests {
       .expect("theta alone is enough to sample");
     assert_eq!(uv.dim(), (1_000, 2));
 
-    let unset = Clayton::new()
-      .sample_with_seed(10, 7)
-      .unwrap_err()
-      .to_string();
-    assert!(unset.contains("theta is not set"), "{unset}");
+    assert_eq!(
+      Clayton::new().sample_with_seed(10, 7).unwrap_err(),
+      CopulaError::NotFitted
+    );
+  }
+
+  #[test]
+  fn sampling_gates_on_the_family_check_fit() {
+    let uv = ParameterisedWithoutTheta
+      .sample_with_seed(64, 7)
+      .expect("check_fit passes without a theta");
+    assert_eq!(uv.dim(), (64, 2));
+    assert!(uv.iter().all(|x| (0.0..=1.0).contains(x)));
   }
 }

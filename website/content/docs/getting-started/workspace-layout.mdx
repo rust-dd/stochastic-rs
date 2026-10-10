@@ -1,64 +1,49 @@
 ---
 title: Workspace layout
-description: How the stochastic-rs Cargo workspace is organised — sub-crates, dependency topology, and how the umbrella re-exports preserve v1.x import paths.
+description: How the stochastic-rs Cargo workspace is organised — the sub-crates, their dependency topology, and the umbrella crate that re-exports them.
 category: concept
 since: 2.0.0
 status: stable
 ---
 
-`stochastic-rs` is a Cargo workspace with **8 sub-crates** as siblings
-under the workspace root. The `stochastic-rs` umbrella crate keeps the
-v1.x public API by re-exporting everything via `pub use`.
+`stochastic-rs` is a Cargo workspace with **8 sub-crates** as siblings under the workspace root. The `stochastic-rs` umbrella crate re-exports six of them as modules — `stochastic_rs::distributions`, `stochastic`, `copulas`, `stats`, `quant`, and `ai` with the `ai` feature — and `stochastic-rs-core`'s RNG module as `stochastic_rs::simd_rng`. `stochastic-rs-py` builds the Python module and is not re-exported.
 
 ```
 stochastic-rs/                        (workspace root + umbrella crate)
 ├── stochastic-rs-core/               simd_rng (foundation)
-├── stochastic-rs-distributions/      FloatExt, SimdFloatExt, 18 of 29 distributions
-├── stochastic-rs-stochastic/         ProcessExt, 127 processes
-├── stochastic-rs-copulas/            BivariateExt, MultivariateExt, 21 copulas (13 + 8)
+├── stochastic-rs-distributions/      FloatExt, SimdFloatExt, 35 SIMD distributions
+├── stochastic-rs-stochastic/         ProcessExt, 132 processes
+├── stochastic-rs-copulas/            BivariateExt, MultivariateExt, 23 copulas (15 + 8)
 ├── stochastic-rs-stats/              MLE, Hurst, realised, stationarity, …
 ├── stochastic-rs-quant/              ModelPricer, calibration, vol surface
-├── stochastic-rs-ai/                 Neural surrogates (feature-gated)
-└── stochastic-rs-py/                 PyO3 cdylib (308 entries)
+├── stochastic-rs-ai/                 Experimental neural surrogates (feature-gated)
+└── stochastic-rs-py/                 PyO3 module (308 classes and functions)
 ```
 
 ## Dependency topology
 
 ```
-        stochastic-rs-core (simd_rng)
-                  │
-                  ▼
-   stochastic-rs-distributions (FloatExt, SimdFloatExt)
-        ┌─────────┬─────────┐
-        ▼         ▼         ▼
-   stochastic   copulas   stats
-        │                   │
-        └────────┬──────────┘
-                 ▼
-            stochastic-rs-quant
-                 │
-                 ▼
-                 ai
+stochastic-rs-core (simd_rng)
+          │
+          ▼
+stochastic-rs-distributions (FloatExt, SimdFloatExt)
+          ├──────────────────────────────┐
+          ▼                              ▼
+stochastic-rs-stochastic        stochastic-rs-copulas
+          │                              │
+          ▼                              │
+stochastic-rs-stats                      │
+          │                              │
+          ▼                              │
+stochastic-rs-quant ◄────────────────────┘
+          │
+          ▼  (optional)
+stochastic-rs-ai
 ```
 
-The PyO3 crate (`stochastic-rs-py`) sits on the side: it depends on the
-producer crates and re-exports `#[pyclass]`-wrapped types via the
-`py_distribution!` / `py_process_*!` macros plus hand-written
-`#[pyclass]` blocks for pricers and estimators.
+An arrow points to a crate that depends on the one above it. Every crate also depends directly on `stochastic-rs-core`; `stochastic-rs-stats` also on `-distributions`, and `stochastic-rs-quant` on `-distributions` and `-stochastic`. `stochastic-rs-ai` reaches `-quant` through its optional `quant` feature, which the umbrella's `ai` feature turns on. The umbrella and `stochastic-rs-py` depend on all of them, `-ai` optionally.
 
-## Why the workspace split
+## Why depend on a sub-crate
 
-1. **Compile time**. Pulling only `stochastic-rs-distributions` for a
-   distribution-sampling job avoids compiling the quant + AI surface.
-2. **Feature gating**. `ai`, `cuda`, `metal` live on
-   the crates that own the optional dependency, so a default
-   `cargo build` never tries to link CUDA on a laptop with no GPU.
-3. **Versioning**. Sub-crates can ship patch releases independently when
-   needed — the umbrella tracks the highest sub-crate version.
-
-## Path preservation across the workspace split
-
-If your code imports via `stochastic_rs::stochastic::diffusion::*` or
-`stochastic_rs::quant::pricing::*`, **no change is required** when
-upgrading across the workspace split. The umbrella `pub use`s every
-sub-crate's public surface under the historical paths.
+1. **Compile time.** Pulling only `stochastic-rs-distributions` for a distribution-sampling job avoids compiling the quant and AI surface.
+2. **Feature gating.** `ai`, `cuda` and `metal` live on the crates that own the optional dependency, so a default `cargo build` never tries to link CUDA on a machine without it.

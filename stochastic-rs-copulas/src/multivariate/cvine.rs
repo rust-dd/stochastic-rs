@@ -29,15 +29,15 @@
 //!
 //! References: Aas-Czado-Frigessi-Bakken (2009), §4 and Algorithm 3.
 
-use std::error::Error;
-
 use ndarray::Array1;
 use ndarray::Array2;
 use rand::Rng;
+use rand::RngExt;
 use stochastic_rs_core::simd_rng::SimdRng;
 
 use super::CopulaType;
 use super::dvine::PairCopula;
+use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
 
 /// Canonical vine (C-vine) pair-copula construction over `dim` marginals.
@@ -54,38 +54,34 @@ pub struct CVine {
 impl CVine {
   /// Build a C-vine from a precomputed tree of pair copulas. Identical
   /// shape contract to [`super::dvine::DVine::new`].
-  pub fn new(dim: usize, pair_copulas: Vec<Vec<PairCopula>>) -> Result<Self, Box<dyn Error>> {
+  pub fn new(dim: usize, pair_copulas: Vec<Vec<PairCopula>>) -> Result<Self, CopulaError> {
     if dim < 2 {
-      return Err(format!("C-vine requires dim ≥ 2, got {dim}").into());
+      return Err(CopulaError::InvalidStructure(format!(
+        "a C-vine needs dim >= 2, got {dim}"
+      )));
     }
     if pair_copulas.len() != dim - 1 {
-      return Err(
-        format!(
-          "Expected {} trees for dim={dim}, got {}",
-          dim - 1,
-          pair_copulas.len()
-        )
-        .into(),
-      );
+      return Err(CopulaError::InvalidStructure(format!(
+        "expected {} trees for dim {dim}, got {}",
+        dim - 1,
+        pair_copulas.len()
+      )));
     }
     for (m, tree) in pair_copulas.iter().enumerate() {
       let expected = dim - 1 - m;
       if tree.len() != expected {
-        return Err(
-          format!(
-            "Tree T_{} should have {expected} edges (got {})",
-            m + 1,
-            tree.len()
-          )
-          .into(),
-        );
+        return Err(CopulaError::InvalidStructure(format!(
+          "tree T_{} should have {expected} edges, got {}",
+          m + 1,
+          tree.len()
+        )));
       }
     }
     Ok(Self { dim, pair_copulas })
   }
 
   /// All-Independence C-vine of the given dimension.
-  pub fn independence(dim: usize) -> Result<Self, Box<dyn Error>> {
+  pub fn independence(dim: usize) -> Result<Self, CopulaError> {
     let pc: Vec<Vec<PairCopula>> = (0..dim - 1)
       .map(|m| vec![PairCopula::Independence; dim - 1 - m])
       .collect();
@@ -181,43 +177,37 @@ impl MultivariateExt for CVine {
     CopulaType::CVine
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample(&self, n: usize) -> Result<Array2<f64>, CopulaError> {
     Ok(self.sample_with(n, &mut SimdRng::new()))
   }
 
   /// Reproducible counterpart of [`MultivariateExt::sample`]: the same
   /// `seed` always yields the same matrix.
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, CopulaError> {
     Ok(self.sample_with(n, &mut SimdRng::from_seed(seed)))
   }
 
-  fn fit(&mut self, _X: Array2<f64>) -> Result<(), Box<dyn Error>> {
-    Err(
-      "CVine::fit not implemented — supply the tree explicitly via CVine::new \
-       and seed each PairCopula parameter from pairwise Kendall τ. Sequential MLE + \
-       AIC/BIC family selection (Dißmann 2013) is not yet implemented."
+  fn fit(&mut self, _X: Array2<f64>) -> Result<(), CopulaError> {
+    Err(CopulaError::Unsupported(
+      "CVine::fit is not implemented: use multivariate::fit::fit_vine with VineStructure::CVine"
         .into(),
-    )
+    ))
   }
 
-  fn check_fit(&self, X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn check_fit(&self, X: &Array2<f64>) -> Result<(), CopulaError> {
     if X.ncols() != self.dim {
-      return Err(
-        format!(
-          "Dimension mismatch: X has {} columns, C-vine has dim {}",
-          X.ncols(),
-          self.dim
-        )
-        .into(),
-      );
+      return Err(CopulaError::DimensionMismatch {
+        expected: self.dim,
+        got: X.ncols(),
+      });
     }
     if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
-      return Err("Input X must be in [0,1] for the C-vine".into());
+      return Err(CopulaError::MarginalOutOfRange);
     }
     Ok(())
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let mut out = Array1::<f64>::zeros(X.nrows());
     for (i, row) in X.rows().into_iter().enumerate() {
@@ -227,7 +217,7 @@ impl MultivariateExt for CVine {
     Ok(out)
   }
 
-  fn log_pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn log_pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let mut out = Array1::<f64>::zeros(X.nrows());
     for (i, row) in X.rows().into_iter().enumerate() {
@@ -237,7 +227,7 @@ impl MultivariateExt for CVine {
     Ok(out)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     // MC estimator on 4000 samples per query (same approach as D-vine and
     // multivariate t-copula): closed-form C-vine CDF requires nested
     // numerical integration in d ≥ 3 dims.
@@ -353,17 +343,14 @@ mod tests {
     assert!(CVine::new(1, vec![]).is_err());
   }
 
-  /// `fit` returns a descriptive not-implemented error.
+  /// `fit` is `Unsupported` and points at the vine fitter.
   #[test]
   fn cvine_fit_rejects_with_descriptive_error() {
     let mut cv = CVine::independence(3).unwrap();
     let data = ndarray::Array2::<f64>::from_elem((10, 3), 0.5);
-    let res = cv.fit(data);
-    assert!(res.is_err());
-    let msg = res.unwrap_err().to_string();
-    assert!(
-      msg.contains("not implemented") || msg.contains("MLE"),
-      "fit error should point at the unimplemented sequential MLE; got: {msg}"
-    );
+    match cv.fit(data) {
+      Err(CopulaError::Unsupported(hint)) => assert!(hint.contains("fit_vine"), "{hint}"),
+      other => panic!("expected Unsupported, got {other:?}"),
+    }
   }
 }

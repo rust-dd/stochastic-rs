@@ -1,4 +1,4 @@
-// docs: quant#heston-fourier-pricer-with-cui-analytic-jacobian
+// docs: quant#heston--semi-closed-form-pricer
 //! Backs the Heston pricer example on the quant catalog page. The model
 //! holds only its six Heston parameters; spot, strike, rate, dividend
 //! yield and maturity travel to the call, so one instance prices a whole

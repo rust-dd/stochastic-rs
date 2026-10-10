@@ -38,7 +38,7 @@
 use std::sync::OnceLock;
 
 use ndarray::Array2;
-use rand::RngCore;
+use rand::Rng;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRng;
 
@@ -202,7 +202,7 @@ impl SobolSeq {
   /// `Deterministic` seeds reproduce the same point set.
   pub fn scrambled<S: SeedExt>(n_dims: usize, seed: &S) -> Self {
     let mut direction = direction_numbers(n_dims);
-    let mut rng = SimdRng::from_seed(seed.seed_value());
+    let mut rng = SimdRng::from_seed(seed.next_seed());
     let mut shift = Vec::with_capacity(n_dims);
     for v in direction.iter_mut() {
       linear_scramble(v, &mut rng);
@@ -455,6 +455,7 @@ mod tests {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PySobolSeq {
   inner: SobolSeq,

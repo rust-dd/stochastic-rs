@@ -40,10 +40,9 @@
 //! assert_eq!(coupled.shape(), &[32, 2]);
 //! ```
 
-use std::error::Error;
-
 use ndarray::Array1;
 
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 
 /// Couple two independent marginal samples through a bivariate copula.
@@ -54,7 +53,7 @@ pub fn couple_marginals<C: BivariateExt>(
   s1: &Array1<f64>,
   s2: &Array1<f64>,
   copula: &mut C,
-) -> Result<ndarray::Array2<f64>, Box<dyn Error>> {
+) -> Result<ndarray::Array2<f64>, CopulaError> {
   let n = s1.len();
   assert_eq!(n, s2.len(), "marginals must have equal length");
   assert!(n >= 2, "need at least two observations");

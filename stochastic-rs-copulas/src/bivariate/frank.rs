@@ -4,16 +4,17 @@
 //! C_\theta(u,v)=-\frac1\theta\log\!\left(1+\frac{(e^{-\theta u}-1)(e^{-\theta v}-1)}{e^{-\theta}-1}\right)
 //! $$
 //!
-use core::f64;
-use std::error::Error;
+//! Reference: Domino, K. (2018), "Selected Methods for non-Gaussian Data Analysis", arXiv:1811.10486, Example 4.3.2, eq. (4.54) (the conditional inverse; its printed fraction bar wrongly spans the leading 1, which belongs outside the fraction).
 
 use gauss_quad::GaussLegendre;
 use ndarray::Array1;
 use ndarray::Array2;
-use roots::SimpleConvergency;
-use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
+use crate::error::CopulaError;
+use crate::optim::zero;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -34,6 +35,47 @@ impl Frank {
       tau,
       theta_bounds: (f64::NEG_INFINITY, f64::INFINITY),
       invalid_thetas: vec![],
+    }
+  }
+
+  /// `h⁻¹(y | v)` at `θ > 0` given `v̄ = 1 − v`, before the domain rule: `−ln(1 + x)/θ`,
+  /// `x = y·expm1(−θ)/(y + (1 − y)e^{−θv})`, `1 + x` as a ratio once `x ≤ −½`, its logarithm term by term past `θ ≈ 708`.
+  pub(crate) fn inverse(theta: f64) -> impl Fn(f64, f64, f64) -> f64 {
+    let (expm1_theta, exp_theta) = ((-theta).exp_m1(), (-theta).exp());
+    let ratio_is_normal = exp_theta >= f64::MIN_POSITIVE;
+    move |y, v, v_bar| {
+      let exp_theta_v = (-theta * v).exp();
+      let denominator = y + (1.0 - y) * exp_theta_v;
+      let x = y * expm1_theta / denominator;
+      if x > -0.5 {
+        -x.ln_1p() / theta
+      } else if ratio_is_normal {
+        -(((1.0 - y) * exp_theta_v + y * exp_theta) / denominator).ln() / theta
+      } else if y == 0.0 || y == 1.0 {
+        y
+      } else {
+        let numerator = (1.0 - y) + y * (-theta * v_bar).exp();
+        v - (numerator.ln() - denominator.ln()) / theta
+      }
+    }
+  }
+
+  /// `∂_v C = g(u)/(e^{θ(v − u)}g(v) + g(1 − v))`, `g(z) = expm1(−θz)`: same-signed terms, free of the `0/0` an
+  /// underflowing `e^{−θv}` leaves in the unfactored form; `θ < 0` through the same reflection.
+  fn h(theta: f64) -> impl Fn(f64, f64) -> f64 {
+    let magnitude = theta.abs();
+    move |u, v| {
+      if theta == 0.0 {
+        return u;
+      }
+      let (v, v_bar) = if theta > 0.0 {
+        (v, 1.0 - v)
+      } else {
+        (1.0 - v, v)
+      };
+      let denominator =
+        (magnitude * (v - u)).exp() * (-magnitude * v).exp_m1() + (-magnitude * v_bar).exp_m1();
+      (-magnitude * u).exp_m1() / denominator
     }
   }
 }
@@ -77,7 +119,7 @@ impl BivariateExt for Frank {
     self.theta = Some(theta);
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     let theta = self.theta.unwrap();
     let a = ((-theta * t).exp() - 1.0) / ((-theta).exp() - 1.0);
     let out = -(a.ln());
@@ -94,7 +136,7 @@ impl BivariateExt for Frank {
   /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd
   /// ed., Springer, Example 4.23 / Table 4.1 (Frank generator
   /// $\varphi_\theta(t) = -\ln\frac{e^{-\theta t}-1}{e^{-\theta}-1}$).
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0).to_owned();
@@ -112,7 +154,7 @@ impl BivariateExt for Frank {
     Ok(num / den)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0);
@@ -130,41 +172,27 @@ impl BivariateExt for Frank {
     Ok(out)
   }
 
-  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  /// `Frank::inverse`, `θ < 0` through `C_{−θ}(u, v) = u − C_θ(u, 1 − v)`, which swaps `v` and `1 − v`; the identity at
+  /// `θ = 0`, NaN for `y` or `v` outside `[0, 1]`.
+  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
     let theta = self.theta.unwrap();
-
     if theta == 0.0 {
-      return Ok(y.clone());
+      return conditional_quantiles(y, V, |y, _| y);
     }
-
-    self.percent_point_numerical(y, V)
+    // One closure per sign keeps the reflection out of the per-pair work, 10 % of the sampling bench.
+    let inverse = Self::inverse(theta.abs());
+    if theta > 0.0 {
+      conditional_quantiles(y, V, |y, v| inverse(y, v, 1.0 - v))
+    } else {
+      conditional_quantiles(y, V, |y, v| inverse(y, 1.0 - v, v))
+    }
   }
 
-  /// $\partial_v C(u,v) = g(u)\,e^{-\theta v} \big/ \big(g(1)+g(u)g(v)\big)$,
-  /// $g(z)=e^{-\theta z}-1$ — same "derivative w.r.t. the second
-  /// argument, at fixed conditioning value" convention as
-  /// [`crate::bivariate::clayton::Clayton::partial_derivative`]. The
-  /// previous denominator shared `pdf`'s `g(u)+g(v)+g(1)` bug; the
-  /// numerator (`g(u)·g(v)+g(u) = g(u)·e^{-\theta v}`) was already
-  /// correct, which is why `partial_derivative` looked closer to right
-  /// than `pdf` did even though both drew from the same wrong `aux`.
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn std::error::Error>> {
+  /// `Frank::h`'s factored form, `u` at `θ = 0`; NaN for `v` outside `[0, 1]`.
+  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
-    let U = X.column(0).to_owned();
-    let V = X.column(1).to_owned();
-
-    let theta = self.theta.unwrap();
-
-    if theta == 0.0 {
-      return Ok(U.clone());
-    }
-
-    let num = self._g(&U)? * self._g(&V)? + self._g(&U)?;
-    let den = self._g(&Array1::ones(U.len()))? + self._g(&U)? * self._g(&V)?;
-    Ok(num / den)
+    Ok(conditional_cdf(X, Self::h(self.theta.unwrap())))
   }
 
   fn compute_theta(&self) -> f64 {
@@ -181,16 +209,12 @@ impl BivariateExt for Frank {
     }
 
     let residual = |theta: f64| Self::_tau_to_theta(tau, theta);
-    let mut convergency = SimpleConvergency {
-      eps: 1e-8,
-      max_iter: 100,
-    };
     let (lo, hi) = if tau > 0.0 {
       (1e-8_f64, 50.0_f64)
     } else {
       (-50.0_f64, -1e-8_f64)
     };
-    find_root_brent(lo, hi, residual, &mut convergency).unwrap_or(0.0)
+    zero(lo, hi, 1e-8, residual).unwrap_or(0.0)
   }
 
   /// Frank has no tail dependence in either tail, for any $\theta$.
@@ -206,7 +230,7 @@ impl BivariateExt for Frank {
 }
 
 impl Frank {
-  fn _g(&self, z: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn _g(&self, z: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok((-self.theta.unwrap() * z).exp() - 1.0)
   }
 

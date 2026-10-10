@@ -109,7 +109,7 @@ mod tests {
     );
 
     let rebuilt = fgn_from_hurst_result(&result, 4096, Some(1.0), Deterministic::new(7));
-    assert_eq!(rebuilt.hurst, result.hurst);
+    assert_eq!(rebuilt.hurst(), result.hurst);
 
     let resampled = rebuilt.sample();
     let reestimated = estimator.estimate(resampled.view()).unwrap();
@@ -136,9 +136,9 @@ mod tests {
     let result = estimator.estimate(path.view()).unwrap();
 
     let fbm = fbm_from_hurst_result(&result, 512, Some(2.0), Deterministic::new(9));
-    assert_eq!(fbm.hurst, result.hurst);
-    assert_eq!(fbm.n, 512);
-    assert_eq!(fbm.t, Some(2.0));
+    assert_eq!(fbm.hurst(), result.hurst);
+    assert_eq!(fbm.n(), 512);
+    assert_eq!(fbm.t(), Some(2.0));
 
     let sample = fbm.sample();
     assert_eq!(sample.len(), 512);

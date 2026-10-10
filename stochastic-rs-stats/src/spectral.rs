@@ -52,11 +52,11 @@ pub struct PeriodogramConfig {
   pub nfft: Option<usize>,
   /// Detrending strategy.
   pub detrend: DetrendMethod,
-  /// Window function.
+  /// Taper applied to the detrended series before the FFT.
   pub window: WindowFunction,
   /// Whether to return one-sided spectrum (for real signals).
   pub onesided: bool,
-  /// Spectrum scaling.
+  /// Power spectrum or power spectral density.
   pub scaling: SpectrumScaling,
 }
 
@@ -364,6 +364,8 @@ pub fn dominant_frequency_fft(
 mod tests {
   use ndarray::ArrayView1;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::DetrendMethod;
@@ -468,7 +470,7 @@ mod tests {
     let fs = 100.0;
     let n = 2048;
 
-    let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(0x5ec7));
+    let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(0x5ec7));
     let mut x = vec![0.0; n];
     dist.fill_slice(&mut x);
 

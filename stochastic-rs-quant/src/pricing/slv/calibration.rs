@@ -57,6 +57,8 @@ use ndarray::Array1;
 use ndarray::Array2;
 use rayon::prelude::*;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::traits::Grid2D;
 
@@ -219,7 +221,7 @@ pub fn calibrate_leverage(
     leverage[[0, i]] = clamp_leverage(local_vol.eval(0.0, node) / sqrt_v0);
   }
 
-  let normals = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(method.seed));
+  let mut normals = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(method.seed));
   let mut x = vec![s0.ln(); n];
   let mut v = vec![v0; n];
   let mut z_v = vec![0.0; n];

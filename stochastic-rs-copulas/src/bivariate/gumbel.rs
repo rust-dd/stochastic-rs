@@ -4,12 +4,14 @@
 //! C_\theta(u,v)=\exp\!\left(-\left(({-\ln u})^\theta+({-\ln v})^\theta\right)^{1/\theta}\right),\ \theta\ge1
 //! $$
 //!
-use std::error::Error;
 
 use ndarray::Array1;
 use ndarray::Array2;
 
 use super::CopulaType;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -73,11 +75,11 @@ impl BivariateExt for Gumbel {
     self.theta = Some(theta);
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok((-t.ln()).powf(self.theta.unwrap()))
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0);
@@ -99,7 +101,7 @@ impl BivariateExt for Gumbel {
     Ok(out)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0);
@@ -118,46 +120,41 @@ impl BivariateExt for Gumbel {
     Ok(cdfs)
   }
 
-  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  /// The identity at `θ = 1`, else the Brent root of [`Gumbel::partial_derivative`]; NaN for `y` or `v` outside `[0, 1]`.
+  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     if self.theta.unwrap() == 1.0 {
-      return Ok(y.to_owned());
+      return conditional_quantiles(y, V, |y, _| y);
     }
 
     self.percent_point_numerical(y, V)
   }
 
-  /// $\partial_v C(u,v) = C(u,v)\big((-\ln u)^\theta+(-\ln
-  /// v)^\theta\big)^{1/\theta-1}(-\ln v)^{\theta-1}/v$. At `θ=1`
-  /// (independence, `C(u,v)=uv`), `∂_v C(u,v) = u` — not `v`. The
-  /// previous branch returned `V.to_owned()`, the same defect class as
-  /// [`crate::bivariate::frank::Frank::partial_derivative`]'s pre-fix
-  /// `θ = 0` branch. Note that [`Gumbel::percent_point`]'s own `θ = 1`
-  /// branch was already correct (it returns the fresh uniform directly,
-  /// bypassing this method entirely), so `Gumbel::sample` was never
-  /// affected by this bug — only a direct `partial_derivative` call at
-  /// `θ = 1` was wrong.
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn std::error::Error>> {
+  /// `∂_v C = exp(w − R)(w/R)^{θ−1}`, `x, w = −ln u, −ln v`, `R = m(1 + r)^{1/θ}`, `m = max(x, w)`, `r = (min/m)^θ`:
+  /// no underflow near `u, v = 1`; 1 at `u = 1` and at `v = 0` (a point mass at `u = 0`), NaN for `v ∉ [0, 1]`.
+  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
-    let U = X.column(0);
-    let V = X.column(1);
 
     let theta = self.theta.unwrap();
 
     if theta == 1.0 {
-      return Ok(U.to_owned());
+      return Ok(conditional_cdf(X, |u, _| u));
     }
 
-    let t1 = (-U.ln()).powf(theta);
-    let t2 = (-V.ln()).powf(theta);
-    let p1 = self.cdf(X)?;
-    let p2 = (t1 + t2).powf(-1.0 + 1.0 / theta);
-    let p3 = (-V.ln()).powf(theta - 1.0);
-    let out = p1 * p2 * p3 / V;
-
-    Ok(out)
+    Ok(conditional_cdf(X, |u, v| {
+      if u >= 1.0 || v == 0.0 {
+        return 1.0;
+      }
+      if u == 0.0 {
+        return 0.0;
+      }
+      let (x, w) = (-u.ln(), -v.ln());
+      let m = x.max(w);
+      let log_1p_r = (x.min(w) / m).powf(theta).ln_1p();
+      let exponent = (w - m) - m * (log_1p_r / theta).exp_m1() - (1.0 - 1.0 / theta) * log_1p_r;
+      exponent.exp() * (w / m).powf(theta - 1.0)
+    }))
   }
 
   fn compute_theta(&self) -> f64 {

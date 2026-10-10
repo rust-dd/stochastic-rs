@@ -21,8 +21,6 @@
 //! constructions of multiple dependence*, Insurance: Mathematics and
 //! Economics 44(2), 182–198.
 
-use std::error::Error;
-
 use ndarray::Array1;
 use ndarray::Array2;
 
@@ -34,6 +32,7 @@ use crate::bivariate::bb1::Bb1;
 use crate::bivariate::bb7::Bb7;
 use crate::bivariate::frank::Frank;
 use crate::correlation::kendall_tau;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 
 /// Candidate pair-copula families for the selection.
@@ -254,13 +253,18 @@ pub fn fit_vine(
   structure: VineStructure,
   families: &[PairFamily],
   criterion: SelectionCriterion,
-) -> Result<VineFit, Box<dyn Error>> {
+) -> Result<VineFit, CopulaError> {
   let d = u.ncols();
   if d < 2 {
-    return Err("a vine needs at least two variables".into());
+    return Err(CopulaError::InvalidStructure(format!(
+      "a vine needs dim >= 2, got {d}"
+    )));
   }
   if u.nrows() < 10 {
-    return Err("a vine fit needs at least ten observations".into());
+    return Err(CopulaError::InsufficientData {
+      needed: 10,
+      got: u.nrows(),
+    });
   }
   let tau = kendall_tau(u);
   match structure {
@@ -274,7 +278,7 @@ fn fit_dvine(
   tau: &Array2<f64>,
   families: &[PairFamily],
   criterion: SelectionCriterion,
-) -> Result<VineFit, Box<dyn Error>> {
+) -> Result<VineFit, CopulaError> {
   let d = u.ncols();
   let n = u.nrows() as f64;
   let order = dvine_order(tau);
@@ -341,7 +345,7 @@ fn fit_cvine(
   tau: &Array2<f64>,
   families: &[PairFamily],
   criterion: SelectionCriterion,
-) -> Result<VineFit, Box<dyn Error>> {
+) -> Result<VineFit, CopulaError> {
   let d = u.ncols();
   let n = u.nrows() as f64;
   // Root of the first tree: the variable with the largest total |τ|.

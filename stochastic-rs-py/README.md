@@ -21,7 +21,7 @@ Linux, macOS and Windows — the same code the
 pip install stochastic-rs
 ```
 
-Python 3.9 or newer. NumPy is the only dependency.
+Python 3.11 or newer. NumPy is the only dependency.
 
 ## Quickstart
 
@@ -74,7 +74,7 @@ The wheels run on the CPU. Device-capable classes take a `device=` argument
 (`"cuda"`, `"metal"`), which needs a source build with that back-end:
 
 ```bash
-pip install maturin
+pip install "maturin>=1.9.4"
 maturin develop --release --features metal   # or: --features cuda
 ```
 

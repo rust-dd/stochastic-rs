@@ -17,99 +17,103 @@
 //! Reference: Marsaglia, G., Tsang, W.W. (2000), "A simple method for
 //! generating gamma variables", *ACM TOMS* 26(3), 363-372,
 //! DOI: 10.1145/358407.358414.
-use std::cell::Cell;
-use std::cell::UnsafeCell;
-
 use rand::Rng;
-use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
+use rand::distr::Distribution;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
 use super::normal::SimdNormal;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::Buffered;
+use crate::seeded::StreamState;
+use crate::source::AnyRng;
+use crate::source::NormalUniformSource;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
-pub struct SimdGamma<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+/// Gamma law `Gamma(alpha, scale)`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdGamma<T> {
   alpha: T,
   scale: T,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  normal: SimdNormal<T, 64, R>,
-  simd_rng: UnsafeCell<R>,
-  pub(crate) stream_seed: Cell<u64>,
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
+/// A gamma stream: the normal sub-stream the squeeze pops, the uniform engine and the single-draw buffer.
+#[doc(hidden)]
+#[derive(Clone, Debug)]
+pub struct GammaState<T: SimdFloatExt, R: SimdRngExt> {
+  normal: StreamState<T, R, 64>,
+  rng: R,
+  buf: Buffered<T, 16>,
+}
+
+impl<T: SimdFloatExt> SimdGamma<T> {
   /// Creates a gamma distribution.
   ///
   /// - `alpha` — shape α > 0 (matches the module header's α).
   /// - `scale` — scale θ > 0 (matches the module header's θ; mean =
   ///   α·θ). This is the scale parametrization — pass `1.0 / rate` if
   ///   you have a rate-parametrized β instead.
-  ///
-  /// RNGs come from a [`SeedExt`](crate::simd_rng::SeedExt) source; each
-  /// sub-component (normal, main rng) gets an independent stream.
-  pub fn new<S: crate::simd_rng::SeedExt>(alpha: T, scale: T, seed: &S) -> Self {
+  pub fn new(alpha: T, scale: T) -> Self {
     assert!(
-      alpha > T::zero() && scale > T::zero(),
-      "alpha must satisfy `alpha > T::zero() && scale > T::zero()`, got alpha = {alpha:?}, scale = {scale:?}"
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
     );
-    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
-    let stream_seed = seed.seed_value();
-    Self {
-      alpha,
-      scale,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      normal,
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed: Cell::new(stream_seed),
-    }
+    assert!(
+      scale.is_finite(),
+      "scale must satisfy `scale.is_finite()`, got scale = {scale:?}"
+    );
+    assert!(
+      alpha > T::zero(),
+      "alpha must satisfy `alpha > T::zero()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      scale > T::zero(),
+      "scale must satisfy `scale > T::zero()`, got scale = {scale:?}"
+    );
+    Self { alpha, scale }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.alpha,
-      self.scale,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
+  /// The shape `α`.
+  pub fn alpha(&self) -> T {
+    self.alpha
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
+  /// The scale `θ`.
+  pub fn scale(&self) -> T {
+    self.scale
+  }
+
+  /// Marsaglia–Tsang's `(d, c)` for `α` (`α + 1` below one), and `1/α` when the `U^{1/α}` boost applies.
   #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
+  fn squeeze(&self) -> (T, T, Option<T>) {
+    let third = T::from(1.0 / 3.0).unwrap();
+    let nine = T::from(9.0).unwrap();
+    let boosted = self.alpha < T::one();
+    let alpha_eff = if boosted {
+      self.alpha + T::one()
+    } else {
+      self.alpha
+    };
+    let d = alpha_eff - third;
+    let c = T::one() / (nine * d).sqrt();
+    (d, c, boosted.then(|| T::one() / self.alpha))
   }
 
-  /// One scalar Marsaglia-Tsang draw of `d·v` (unscaled `Gamma(α_eff, 1)`),
-  /// used by short fills, tails and the rare SIMD lane rejections.
-  #[inline]
-  fn sample_mt_one(rng: &mut R, normal: &SimdNormal<T, 64, R>, d: T, c: T) -> T {
+  /// One unscaled Marsaglia–Tsang draw `d·v` of `Gamma(d + 1/3, 1)`.
+  #[inline(always)]
+  fn mt_one<S: NormalUniformSource<T>>(src: &mut S, d: T, c: T) -> T {
     let c1 = T::from(0.0331).unwrap();
     let half = T::from(0.5).unwrap();
     loop {
-      let z = normal.sample_fast();
+      let z = src.normal();
       let t = T::one() + c * z;
       let v = t * t * t;
       if v <= T::zero() {
         continue;
       }
-      let u = T::sample_uniform_simd(rng);
+      let u = src.uniform();
       let z2 = z * z;
       if u < T::one() - c1 * z2 * z2 {
         return d * v;
@@ -120,76 +124,65 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
     }
   }
 
-  /// Natural log of one draw, formed without the `u^{1/α}` boost factor.
-  ///
-  /// For `α < 1` Marsaglia-Tsang draws `Gamma(α+1)` and scales it by
-  /// `u^{1/α}`, and that power underflows to exactly zero long before the
-  /// draw itself is unrepresentable — 36 % of the draws at `α = 0.01` in
-  /// single precision, 90 % at `α = 0.001`, and still 48 % at `α = 0.001`
-  /// in double. A single zero is a legitimate rounding of a number like
-  /// `e^{-700}`, but two of them turn the ratio a Beta or a Dirichlet
-  /// forms into `0/0`. In logs the same draw is an ordinary negative
-  /// number, so those consumers can recover the ratio that the value
-  /// domain has lost.
-  pub(crate) fn sample_log_fast(&self) -> T {
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    let third = T::from(1.0 / 3.0).unwrap();
-    let nine = T::from(9.0).unwrap();
-    let boosted = self.alpha < T::one();
-    let alpha_eff = if boosted {
-      self.alpha + T::one()
-    } else {
-      self.alpha
-    };
-    let d = alpha_eff - third;
-    let c = T::one() / (nine * d).sqrt();
-    let g = Self::sample_mt_one(rng, &self.normal, d, c);
-    let log_core = self.scale.ln() + g.ln();
-    if boosted {
+  #[inline(always)]
+  fn draw<S: NormalUniformSource<T>>(&self, src: &mut S, d: T, c: T, inv_alpha: Option<T>) -> T {
+    let g = Self::mt_one(src, d, c);
+    match inv_alpha {
+      Some(inv_alpha) => self.scale * g * src.uniform().powf(inv_alpha),
+      None => self.scale * g,
+    }
+  }
+
+  /// Kept out of line because inlined into a pop loop's refill this rejection kernel slows the loop.
+  #[inline(never)]
+  fn fill_parts<R: SimdRngExt>(
+    &self,
+    normal: &mut StreamState<T, R, 64>,
+    rng: &mut R,
+    out: &mut [T],
+  ) {
+    let (d, c, inv_alpha) = self.squeeze();
+    let mut src = (normal, rng);
+    // One loop per branch, so the boost test is not paid per draw.
+    match inv_alpha {
+      Some(inv_alpha) => {
+        for x in out.iter_mut() {
+          *x = self.draw(&mut src, d, c, Some(inv_alpha));
+        }
+      }
+      None => {
+        for x in out.iter_mut() {
+          *x = self.draw(&mut src, d, c, None);
+        }
+      }
+    }
+  }
+
+  fn log_draw<S: NormalUniformSource<T>>(&self, src: &mut S) -> T {
+    let (d, c, inv_alpha) = self.squeeze();
+    let log_core = self.scale.ln() + Self::mt_one(src, d, c).ln();
+    if inv_alpha.is_some() {
       // `1 - u` lands the uniform in `(0, 1]`, so the log is finite where
       // the generator's own `[0, 1)` would have handed back a `-inf`.
-      let u = T::one() - T::sample_uniform_simd(rng);
+      let u = T::one() - src.uniform();
       log_core + u.ln() / self.alpha
     } else {
       log_core
     }
   }
 
-  /// Fills `out` using the internal SIMD RNG stream — the only stream this
-  /// sampler draws from (see the crate-level RNG policy).
-  pub fn fill_slice(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
-    let third = T::from(1.0 / 3.0).unwrap();
-    let nine = T::from(9.0).unwrap();
-    let boosted = self.alpha < T::one();
-    let alpha_eff = if boosted {
-      self.alpha + T::one()
-    } else {
-      self.alpha
-    };
-    let d = alpha_eff - third;
-    let c = T::one() / (nine * d).sqrt();
-
-    if boosted {
-      let inv_alpha = T::one() / self.alpha;
-      for x in out.iter_mut() {
-        let g = Self::sample_mt_one(rng, &self.normal, d, c);
-        let u = T::sample_uniform_simd(rng);
-        *x = self.scale * g * u.powf(inv_alpha);
-      }
-    } else {
-      for x in out.iter_mut() {
-        *x = self.scale * Self::sample_mt_one(rng, &self.normal, d, c);
-      }
-    }
+  /// `ln` of one draw without the `u^{1/α}` factor, which underflows to zero at small `α`: the Beta and Dirichlet `0/0` repair.
+  pub(crate) fn next_log<R: SimdRngExt>(&self, state: &mut GammaState<T, R>) -> T {
+    self.log_draw(&mut (&mut state.normal, &mut state.rng))
   }
 
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
+  pub(crate) fn draw_log_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.log_draw(&mut AnyRng(rng))
+  }
+
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    let (d, c, inv_alpha) = self.squeeze();
+    self.draw(&mut AnyRng(rng), d, c, inv_alpha)
   }
 }
 
@@ -197,47 +190,75 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGamma<T, R> {
 /// the umbrella crate's workspace-root `benches/distributions.rs` and
 /// `benches/dist_multicore.rs` (not this crate's own — `stochastic-rs-
 /// distributions` has no `benches/` directory of its own).
-impl<T: SimdFloatExt, R: SimdRngExt> Default for SimdGamma<T, R> {
+impl<T: SimdFloatExt> Default for SimdGamma<T> {
   fn default() -> Self {
-    Self::new(T::from(2.0).unwrap(), T::from(2.0).unwrap(), &Unseeded)
+    Self::new(T::from(2.0).unwrap(), T::from(2.0).unwrap())
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdGamma<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.alpha, self.scale, &Unseeded)
+impl<T: SimdFloatExt> Sealed for SimdGamma<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdGamma<T> {
+  type State<R: SimdRngExt> = GammaState<T, R>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (GammaState<T, R>, u64) {
+    let (normal, _) = SimdNormal::<T>::standard().init::<R, S>(seed);
+    let stream_seed = seed.next_seed();
+    (
+      GammaState {
+        normal,
+        rng: R::from_seed(stream_seed),
+        buf: Buffered::new(),
+      },
+      stream_seed,
+    )
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdGamma<T, R> {
-  fn pdf(&self, x: f64) -> f64 {
+impl<T: SimdFloatExt> SimdKernel for SimdGamma<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut GammaState<T, R>, out: &mut [T]) {
+    self.fill_parts(&mut state.normal, &mut state.rng, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut GammaState<T, R>) -> T {
+    let GammaState { normal, rng, buf } = state;
+    buf.pop(|b| self.fill_parts(normal, rng, b))
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGamma<T> {
+  fn pdf(&self, x: f64) -> Option<f64> {
     if x <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
     // f(x) = x^(α−1) e^(−x/θ) / (θ^α Γ(α))
     let log_pdf =
       (alpha - 1.0) * x.ln() - x / scale - alpha * scale.ln() - crate::special::ln_gamma(alpha);
-    log_pdf.exp()
+    Some(log_pdf.exp())
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     if x <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
-    crate::special::gamma_p(alpha, x / scale)
+    Some(crate::special::gamma_p(alpha, x / scale))
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn quantile(&self, p: f64) -> Option<f64> {
     // Newton-bisection hybrid on the CDF.
     if p <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     if p >= 1.0 {
-      return f64::INFINITY;
+      return Some(f64::INFINITY);
     }
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
@@ -260,87 +281,81 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdGamm
       let dx = f / pdf;
       let new_x = (x - dx).max(x * 1e-12);
       if (new_x - x).abs() < 1e-14 * x.max(1.0) {
-        return new_x;
+        return Some(new_x);
       }
       x = new_x;
     }
-    x
+    Some(x)
   }
 
-  fn mean(&self) -> f64 {
-    self.alpha.to_f64().unwrap() * self.scale.to_f64().unwrap()
+  fn mean(&self) -> Option<f64> {
+    Some(self.alpha.to_f64().unwrap() * self.scale.to_f64().unwrap())
   }
 
-  fn mode(&self) -> f64 {
+  fn mode(&self) -> Option<f64> {
     let alpha = self.alpha.to_f64().unwrap();
     if alpha < 1.0 {
-      0.0
+      Some(0.0)
     } else {
-      (alpha - 1.0) * self.scale.to_f64().unwrap()
+      Some((alpha - 1.0) * self.scale.to_f64().unwrap())
     }
   }
 
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
-    alpha * scale * scale
+    Some(alpha * scale * scale)
   }
 
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     let alpha = self.alpha.to_f64().unwrap();
-    2.0 / alpha.sqrt()
+    Some(2.0 / alpha.sqrt())
   }
 
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     // Excess kurtosis.
     let alpha = self.alpha.to_f64().unwrap();
-    6.0 / alpha
+    Some(6.0 / alpha)
   }
 
-  fn moment_generating_function(&self, t: f64) -> f64 {
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
     if t < 1.0 / scale {
-      (1.0 - scale * t).powf(-alpha)
+      Some((1.0 - scale * t).powf(-alpha))
     } else {
-      f64::INFINITY
+      Some(f64::INFINITY)
     }
   }
 
-  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+  fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
     // φ(t) = (1 − i θ t)^{−α}
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
     let denom = num_complex::Complex64::new(1.0, -scale * t);
-    denom.powf(-alpha)
+    Some(denom.powf(-alpha))
   }
 
-  fn entropy(&self) -> f64 {
+  fn entropy(&self) -> Option<f64> {
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
-    alpha
-      + scale.ln()
-      + crate::special::ln_gamma(alpha)
-      + (1.0 - alpha) * crate::special::digamma(alpha)
+    Some(
+      alpha
+        + scale.ln()
+        + crate::special::ln_gamma(alpha)
+        + (1.0 - alpha) * crate::special::digamma(alpha),
+    )
   }
 
-  fn median(&self) -> f64 {
-    self.inv_cdf(0.5)
+  fn median(&self) -> Option<f64> {
+    self.quantile(0.5)
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdGamma<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction. Use `Deterministic`
-  /// in the constructor for reproducibility.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
+impl<T: SimdFloatExt> Distribution<T> for SimdGamma<T> {
+  /// One scalar Marsaglia–Tsang draw on the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
   }
 }
 
@@ -357,7 +372,10 @@ mod tests {
   use stochastic_rs_stats::goodness_of_fit::kolmogorov_smirnov::kolmogorov_smirnov_test;
 
   use super::SimdGamma;
+  use crate::tests::scalar_ks_best_p;
   use crate::traits::DistributionExt as _;
+  use crate::traits::DistributionSampler;
+  use crate::traits::SimdDistribution;
 
   /// Both tests below check KS against the sampler's own `cdf`
   /// (Kolmogorov 1933 / Smirnov 1948 / Massey 1951 critical values,
@@ -374,13 +392,15 @@ mod tests {
     let best_p = [2718u64, 999, 42]
       .into_iter()
       .map(|seed| {
-        let dist = SimdGamma::<f64>::new(2.5, 1.5, &Deterministic::new(seed));
+        let dist = SimdGamma::<f64>::new(2.5, 1.5);
         let mut samples = vec![0.0_f64; N];
-        dist.fill_slice(&mut samples);
+        dist
+          .seeded(&Deterministic::new(seed))
+          .fill_slice(&mut samples);
         assert!(samples.iter().all(|x| x.is_finite() && *x > 0.0));
         kolmogorov_smirnov_test(
           ArrayView1::from(&samples),
-          |x| dist.cdf(x),
+          |x| dist.cdf(x).unwrap(),
           KolmogorovSmirnovConfig::default(),
         )
         .p_value
@@ -398,13 +418,15 @@ mod tests {
     let best_p = [2718u64, 999, 42]
       .into_iter()
       .map(|seed| {
-        let dist = SimdGamma::<f64>::new(0.5, 2.0, &Deterministic::new(seed));
+        let dist = SimdGamma::<f64>::new(0.5, 2.0);
         let mut samples = vec![0.0_f64; N];
-        dist.fill_slice(&mut samples);
+        dist
+          .seeded(&Deterministic::new(seed))
+          .fill_slice(&mut samples);
         assert!(samples.iter().all(|x| x.is_finite() && *x >= 0.0));
         kolmogorov_smirnov_test(
           ArrayView1::from(&samples),
-          |x| dist.cdf(x),
+          |x| dist.cdf(x).unwrap(),
           KolmogorovSmirnovConfig::default(),
         )
         .p_value
@@ -414,5 +436,15 @@ mod tests {
       best_p > 0.01,
       "every seed gave p <= 0.01 (best {best_p}); likely a bug, not bad luck"
     );
+  }
+
+  /// The honest `Distribution` draws from the caller's rng and agrees with the cdf, boosted shape included.
+  #[test]
+  fn scalar_sample_matches_cdf() {
+    for (alpha, scale) in [(2.5, 1.5), (0.5, 2.0)] {
+      let d = SimdGamma::<f64>::new(alpha, scale);
+      let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
+      assert!(best > 0.01, "Gamma({alpha}, {scale}): best p = {best}");
+    }
   }
 }

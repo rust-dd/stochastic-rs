@@ -61,17 +61,17 @@ macro_rules! py_on_device_f64 {
         let $p = $inner;
         $body
       }
-      #[cfg(feature = "accelerate")]
+      #[cfg(all(feature = "accelerate", target_os = "macos"))]
       $crate::python_device::Device::Accelerate => {
         let owned = $inner.clone().with_backend($crate::device::Accelerate);
         let $p = &owned;
         $body
       }
       #[cfg(feature = "cuda")]
-      $crate::python_device::Device::Cuda(ordinal) => {
+      $crate::python_device::Device::Cuda(ordinal, budget) => {
         let owned = $inner
           .clone()
-          .with_backend($crate::device::Cuda::new(ordinal));
+          .with_backend($crate::device::Cuda::new(ordinal).with_batch_budget(budget));
         let $p = &owned;
         $body
       }
@@ -92,25 +92,25 @@ macro_rules! py_on_device_f32 {
         let $p = $inner;
         $body
       }
-      #[cfg(feature = "accelerate")]
+      #[cfg(all(feature = "accelerate", target_os = "macos"))]
       $crate::python_device::Device::Accelerate => {
         let owned = $inner.clone().with_backend($crate::device::Accelerate);
         let $p = &owned;
         $body
       }
       #[cfg(feature = "cuda")]
-      $crate::python_device::Device::Cuda(ordinal) => {
+      $crate::python_device::Device::Cuda(ordinal, budget) => {
         let owned = $inner
           .clone()
-          .with_backend($crate::device::Cuda::new(ordinal));
+          .with_backend($crate::device::Cuda::new(ordinal).with_batch_budget(budget));
         let $p = &owned;
         $body
       }
-      #[cfg(feature = "metal")]
-      $crate::python_device::Device::Metal(ordinal) => {
+      #[cfg(all(feature = "metal", target_os = "macos"))]
+      $crate::python_device::Device::Metal(ordinal, budget) => {
         let owned = $inner
           .clone()
-          .with_backend($crate::device::Metal::new(ordinal));
+          .with_backend($crate::device::Metal::new(ordinal).with_batch_budget(budget));
         let $p = &owned;
         $body
       }

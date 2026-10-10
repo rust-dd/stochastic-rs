@@ -1,85 +1,43 @@
 ---
 title: DistributionExt
-description: Closed-form pdf, cdf, characteristic function and moments for 33 of the 37 distribution types — a missing closed form panics, never returns zero.
+description: Closed-form pdf, cdf, characteristic function and moments for 32 of the 36 distribution types — every method returns Option; a gap is None, never zero.
 category: concept
 since: 2.0.0
 status: stable
 ---
 
-Closed-form analytics for every distribution that has them.
-
-`DistributionExt` is `f64`-only (not generic over `T`), and every method
-defaults to a `type_name`-annotated `unimplemented!()` — a distribution
-overrides only the methods it has a closed form for:
+`DistributionExt` is `f64`-only (not generic over `T`), and every method returns `Option` and defaults to `None` — a distribution overrides only the methods it has a closed form for:
 
 ```rust
-// Signature sketch. Every method below is a *provided* method whose default
-// body is a `type_name`-annotated `unimplemented!()`; the bodies are elided
-// here. See `stochastic-rs-distributions/src/traits/distribution.rs`.
+// Every method is provided and defaults to None; a law overrides the ones it has a closed form for.
 pub trait DistributionExt {
-  fn characteristic_function(&self, t: f64) -> Complex64;
-  fn pdf(&self, x: f64) -> f64;
-  fn cdf(&self, x: f64) -> f64;
-  fn inv_cdf(&self, p: f64) -> f64;
-  fn mean(&self) -> f64;
-  fn median(&self) -> f64;
-  fn mode(&self) -> f64;
-  fn variance(&self) -> f64;
-  fn skewness(&self) -> f64;
-  fn kurtosis(&self) -> f64;
-  fn entropy(&self) -> f64;
-  fn moment_generating_function(&self, t: f64) -> f64;
+  fn characteristic_function(&self, t: f64) -> Option<Complex64>;
+  fn pdf(&self, x: f64) -> Option<f64>;
+  fn cdf(&self, x: f64) -> Option<f64>;
+  fn quantile(&self, p: f64) -> Option<f64>;
+  fn mean(&self) -> Option<f64>;
+  fn median(&self) -> Option<f64>;
+  fn mode(&self) -> Option<f64>;
+  fn variance(&self) -> Option<f64>;
+  fn skewness(&self) -> Option<f64>;
+  fn kurtosis(&self) -> Option<f64>;
+  fn entropy(&self) -> Option<f64>;
+  fn moment_generating_function(&self, t: f64) -> Option<f64>;
 }
 ```
 
 ## Coverage
 
-**33 of the 37** distribution types implement `DistributionExt`. The four
-that do not are `SimdDirichlet` and `SimdWishart` (vector- and
-matrix-valued draws, with their own inherent `pdf` / `log_pdf`),
-`SimdNonCentralChiSquared` (its noncentrality is supplied per draw; it backs
-the exact CIR transition density) and `ComplexDistribution` (a composition
-utility that pairs two distributions as the parts of a complex draw).
+**32 of the 36** distribution types implement `DistributionExt`. The four that do not are `SimdDirichlet` and `SimdWishart` (vector- and matrix-valued draws, with their own inherent `pdf` / `log_pdf`), `SimdNonCentralChiSquared` (its noncentrality is supplied per draw) and `ComplexDistribution` (pairs two distributions as the parts of a complex draw).
 
-Implementing the trait does not mean every method has a closed form.
-`SimdGed`, `SimdSkellam` and the four `truncated` wrappers override only
-`pdf` / `cdf`, and nine types — `SimdAlphaStable`, `SimdBeta`,
-`SimdHypergeometric`, `SimdInverseGauss`, `SimdNormalInverseGauss`,
-`SimdVarianceGamma`, `SimdGig`, `SimdGeneralizedHyperbolic` and
-`SimdTemperedStable` — carry a named no-closed-form `unimplemented!()` on
-specific methods. `cargo doc -p stochastic-rs-distributions` renders exactly
-which methods each type overrides.
+Implementing the trait does not mean every method has a closed form: eight laws (`SimdCauchy`, `SimdChiSquared`, `SimdExp`, `SimdGamma`, `SimdGeometric`, `SimdNormal`, `SimdPoisson`, `SimdUniform`) answer all twelve methods, and the other twenty-four answer `None` on specific methods (a GED characteristic function, a Skellam quantile).
 
-## Default behaviour: panic, never zero
+## A missing closed form is None, never zero
 
-Project rule: an unimplemented moment **panics** with a helpful
-message including the type name, never silently returns 0. This was a
-deliberate choice after a v1.x bug where a silent-zero kurtosis caused
-a downstream calibration to converge on garbage. Reproduced below (the
-crate's own equivalent helper is private):
+A quantity the law has no closed form for is `None`, never a silent `0.0` and never a panic, so generic code can test for it. `Some(NaN)` means the quantity provably does not exist (the Cauchy mean) or the argument is outside the method's domain.
 
-<RustExample path="tests/doctest_concepts_unimplemented_moment.rs" />
+<RustExample path="tests/doctest_concepts_missing_closed_form.rs" />
 
-If you hit such a panic, you have two options:
+If you hit such a `None`, use a different distribution, or open an issue / PR with the closed form and its citation.
 
-1. Use a different distribution if the moment is non-essential.
-2. Open an issue / PR — the `feedback_implementation.md` rule says
-   we follow papers exactly, so closed forms get added with a citation.
-
-## Why no `statrs::distribution::*`
-
-The library deliberately writes closed forms from scratch in
-`stochastic-rs-distributions`, never delegating to `statrs`. Reasons:
-
-1. **Generic precision**. `statrs` is `f64`-only. We need `f32`
-   support for GPU + memory-bound bulk sampling.
-2. **No-allocation guarantees**. `statrs` allocates in some cdfs; the
-   bulk samplers in this library cannot afford that.
-3. **Audit trail**. Every formula in this crate is anchored to a paper
-   citation, with a comparison test against the paper's numerical
-   tables. `statrs`'s implementations are competent but lack that
-   audit trail.
-
-See the per-distribution pages under
-[Distributions](/docs/distributions) for the formulas, tests, and
-references.
+The [Distributions](/docs/distributions) page lists the laws and their sampling methods.

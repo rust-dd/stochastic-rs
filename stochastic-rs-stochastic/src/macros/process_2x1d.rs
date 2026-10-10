@@ -5,6 +5,7 @@ macro_rules! py_process_2x1d {
     sig: ($($sig:tt)*),
     params: ($($param:ident : $pty:ty),* $(,)?)
   ) => {
+    #[doc(hidden)]
     #[pyo3::prelude::pyclass]
     pub struct $py_name {
       inner_f32: Option<$inner<f32>>,
@@ -91,6 +92,7 @@ macro_rules! py_process_2x1d {
     params: ($($param:ident : $pty:ty),* $(,)?),
     device
   ) => {
+    #[doc(hidden)]
     #[pyo3::prelude::pyclass]
     pub struct $py_name {
       inner_f32: Option<$inner<f32>>,

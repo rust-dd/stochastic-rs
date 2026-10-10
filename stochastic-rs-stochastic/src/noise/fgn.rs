@@ -4,12 +4,12 @@
 //! \operatorname{Cov}(\Delta B_i^H,\Delta B_j^H)=\tfrac12\left(|k+1|^{2H}-2|k|^{2H}+|k-1|^{2H}\right),\ k=i-j
 //! $$
 //!
-#[cfg(feature = "accelerate")]
+#[cfg(all(feature = "accelerate", target_os = "macos"))]
 mod accelerate;
 mod core;
 #[cfg(feature = "cuda")]
 pub(crate) mod cuda;
-#[cfg(feature = "metal")]
+#[cfg(all(feature = "metal", target_os = "macos"))]
 pub(crate) mod metal;
 #[cfg(feature = "python")]
 mod python;
@@ -18,8 +18,11 @@ pub use core::Fgn;
 
 use ndarray::Array1;
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub use python::PyFgn;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -47,6 +50,8 @@ impl<T: FloatExt, S: SeedExt, B> Fgn<T, S, B> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed for Fgn<T, S, B> {}
+
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -61,12 +66,12 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
   fn sampler(&self) -> FgnSampler<'_, T, S, B> {
     FgnSampler {
       fgn: self,
-      normal: SimdNormal::<T>::new(T::zero(), T::one(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(self.seed()),
     }
   }
 
   fn sample(&self) -> Self::Output {
-    self.backend.generate(self, &self.seed)
+    self.backend.generate(self, self.seed())
   }
 
   /// The `m` paths are generated in **one batched backend call**.
@@ -83,7 +88,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
   /// [`FgnBackend`](crate::device::FgnBackend)'s doc for the full per-backend
   /// table.
   fn sample_par(&self, m: usize) -> Vec<Self::Output> {
-    self.backend.generate_batch(self, m, &self.seed)
+    self.backend.generate_batch(self, m, self.seed())
   }
 
   /// Through the same batched call [`sample_par`](Self::sample_par) takes.
@@ -93,7 +98,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Array1<T>) -> R + Sync) -> Vec<R> {
     self
       .backend
-      .generate_map(self, m, &self.seed, |row| f(&row.to_owned()))
+      .generate_map(self, m, self.seed(), |row| f(&row.to_owned()))
   }
 
   fn sample_map_view<R: Send>(
@@ -101,18 +106,18 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
     m: usize,
     f: impl Fn(ndarray::ArrayView1<T>) -> R + Sync,
   ) -> Vec<R> {
-    self.backend.generate_map(self, m, &self.seed, f)
+    self.backend.generate_map(self, m, self.seed(), f)
   }
 
   fn try_sample(&self) -> Result<Self::Output, DeviceError> {
-    self.backend.try_generate(self, &self.seed)
+    self.backend.try_generate(self, self.seed())
   }
 
   /// [`sample_par`](Self::sample_par) as one batched backend call, the
   /// device's error instead of its panic. On the CPU devices this is always
   /// `Ok` and bit-identical to `sample_par`.
   fn try_sample_par(&self, m: usize) -> Result<Vec<Self::Output>, DeviceError> {
-    self.backend.try_generate_batch(self, m, &self.seed)
+    self.backend.try_generate_batch(self, m, self.seed())
   }
 }
 
@@ -122,8 +127,10 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> ProcessExt<T> for Fgn<T, S, B> {
 #[doc(hidden)]
 pub struct FgnSampler<'a, T: FloatExt, S: SeedExt, B> {
   fgn: &'a Fgn<T, S, B>,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed for FgnSampler<'_, T, S, B> {}
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FgnSampler<'_, T, S, B> {
   type Output = Array1<T>;
@@ -134,7 +141,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FgnSampler<'_
   }
 
   fn sample(&mut self) -> Array1<T> {
-    let out_len = self.fgn.out_len;
+    let out_len = self.fgn.n();
     array1_from_fill(out_len, |out| self.fgn.fill_cpu(&mut self.normal, out))
   }
 }

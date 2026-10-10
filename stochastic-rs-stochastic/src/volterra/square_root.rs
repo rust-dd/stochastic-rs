@@ -69,7 +69,6 @@ use stochastic_rs_core::simd_rng::Unseeded;
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::noise::gn::Gn;
-use crate::rough::markov_lift::RoughSimd;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -241,7 +240,7 @@ where
   }
 }
 
-impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: crate::euler::EulerBackend<T>>
+impl<T: FloatExt, K, S: SeedExt, B: crate::euler::EulerBackend<T>>
   crate::euler::EulerCoefficients<T> for VolterraSquareRoot<T, K, S, B>
 where
   K: VolterraKernel<T> + Send + Sync,
@@ -290,9 +289,16 @@ where
   }
 }
 
-backend_switch!([T: FloatExt + RoughSimd, K, S: SeedExt] VolterraSquareRoot<T, K, S> { kernel, kappa, theta, nu, n, v0, t, seed, lift } via euler where  K: VolterraKernel<T> + Send + Sync);
+backend_switch!([T: FloatExt, K, S: SeedExt] VolterraSquareRoot<T, K, S> { kernel, kappa, theta, nu, n, v0, t, seed, lift } via euler where  K: VolterraKernel<T> + Send + Sync);
 
-impl<T: FloatExt + RoughSimd, K, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+impl<T: FloatExt, K, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for VolterraSquareRoot<T, K, S, B>
+where
+  K: VolterraKernel<T> + Send + Sync,
+{
+}
+
+impl<T: FloatExt, K, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for VolterraSquareRoot<T, K, S, B>
 where
   K: VolterraKernel<T> + Send + Sync,
@@ -354,7 +360,7 @@ where
 
 /// Reusable [`VolterraSquareRoot`] sampling state.
 #[doc(hidden)]
-pub struct VolterraSquareRootSampler<T: FloatExt + RoughSimd, K, S: SeedExt>
+pub struct VolterraSquareRootSampler<T: FloatExt, K, S: SeedExt>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
@@ -367,7 +373,7 @@ where
   gn: Gn<T, S>,
 }
 
-impl<T: FloatExt + RoughSimd, K, S: SeedExt> VolterraSquareRootSampler<T, K, S>
+impl<T: FloatExt, K, S: SeedExt> VolterraSquareRootSampler<T, K, S>
 where
   K: VolterraKernel<T> + Send + Sync,
 {
@@ -409,7 +415,12 @@ fn truncate<T: FloatExt>(x: T) -> T {
   }
 }
 
-impl<T: FloatExt + RoughSimd, K, S: SeedExt> PathSampler<T> for VolterraSquareRootSampler<T, K, S>
+impl<T: FloatExt, K, S: SeedExt> crate::traits::Sealed for VolterraSquareRootSampler<T, K, S> where
+  K: VolterraKernel<T> + Send + Sync
+{
+}
+
+impl<T: FloatExt, K, S: SeedExt> PathSampler<T> for VolterraSquareRootSampler<T, K, S>
 where
   K: VolterraKernel<T> + Send + Sync,
 {

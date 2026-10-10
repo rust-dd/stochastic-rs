@@ -39,24 +39,8 @@ impl FourierModelExt for HestonFourier {
     (c_val + d_val * self.v0 + i * xi * (self.r - self.q) * t).exp()
   }
 
-  /// Reference: Fang, F. & Oosterlee, C.W. (2008), "A Novel Pricing Method
-  /// for European Options Based on Fourier-Cosine Series Expansions", SIAM
-  /// J. Sci. Comput. 31(2), 826-848, Table 11 — cumulants of `ln(S_T/S_0)`
-  /// under Heston.
-  ///
-  /// `c1` is the paper's formula directly. `c2` is *not* transcribed from
-  /// the paper (an earlier version of this method used an incomplete
-  /// formula missing the `v0` terms, understating `c2` by 36-400× for
-  /// common parameters — see `stochastic-rs-quant`'s `CosEngine` doc);
-  /// instead it was derived from first principles by symbolically
-  /// differentiating this struct's own [`FourierModelExt::chf`] — using
-  /// `c2 = -Re[d^2/du^2 ln(chf(t,u))]|_{u=0}`, since `ln(chf)` is exactly
-  /// this model's cumulant generating function — then grouped by powers of
-  /// `e^{-\kappa t}` as `c2 = (n0 + n1 e^{-\kappa t} + n2 e^{-2\kappa t}) /
-  /// (8\kappa^3)`. Verified against central finite-differences of
-  /// `ln(chf)` itself to machine precision for multiple `(\kappa, \theta,
-  /// \sigma, \rho, v_0, t)` draws (including both signs of `\rho`) — see
-  /// `heston_c2_matches_fd_of_log_chf`.
+  /// Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826–848, Table 11 for `c1`; `c2` is
+  /// `−Re ∂²ᵤ ln chf(t, u)` at `u = 0` of this chf, grouped by powers of `e^{−κt}`.
   fn cumulants(&self, t: f64) -> Cumulants {
     let ekt = (-self.kappa * t).exp();
     let c1 = (self.r - self.q) * t + (1.0 - ekt) * (self.theta - self.v0) / (2.0 * self.kappa)
@@ -84,7 +68,7 @@ impl FourierModelExt for HestonFourier {
     let n2 = sigma2 * (self.theta - 2.0 * self.v0);
     let c2 = (n0 + n1 * ekt + n2 * ekt * ekt) / (8.0 * kappa3);
 
-    Cumulants { c1, c2, c4: 0.0 }
+    Cumulants { c1, c2, c4: None }
   }
 }
 
@@ -202,7 +186,7 @@ impl FourierModelExt for DoubleHestonFourier {
 
     let c1 = (self.r - self.q) * t - 0.5 * (int_v1 + int_v2);
     let c2 = int_v1 + int_v2;
-    Cumulants { c1, c2, c4: 0.0 }
+    Cumulants { c1, c2, c4: None }
   }
 }
 
@@ -262,15 +246,7 @@ mod tests {
     ((fp2 - 4.0 * fp1 + 6.0 * f0 - 4.0 * fm1 + fm2) / h.powi(4)).re
   }
 
-  /// The formula this wave's Task 1 flagged as understated (missing `v0`
-  /// terms): `c2 = \sigma^2 t \theta/(2\kappa)` gave `0.0012` at `t=1` for
-  /// these parameters vs. the true `\approx 0.0428` — a 36× error (up to
-  /// 400× at other parameter combinations found during that
-  /// investigation). The replacement is checked against finite-differencing
-  /// `ln(chf)` itself, not against a formula transcribed from a paper from
-  /// memory (see `cumulants`'s doc for the derivation), at both this
-  /// wave's original `\tau=1` diagnostic point and a short-dated `\tau=0.1`
-  /// case.
+  /// `c2` against a central finite difference of `ln chf` at `τ = 1` and at `τ = 0.1`.
   #[test]
   fn heston_c2_matches_fd_of_log_chf() {
     let model = task1_params();
@@ -285,9 +261,7 @@ mod tests {
     }
   }
 
-  /// `c1`'s formula did not change in this fix — checked against the same
-  /// finite-difference criterion as `c2` because the review asked for it,
-  /// not because anything here was found wrong.
+  /// `c1` against the same finite-difference criterion as `c2`.
   #[test]
   fn heston_c1_matches_fd_of_log_chf() {
     let model = task1_params();
@@ -302,28 +276,12 @@ mod tests {
     }
   }
 
-  /// `c4` is left at the placeholder `0.0`. Finite-differencing shows the
-  /// true fourth cumulant is small but genuinely nonzero (order `1e-3` at
-  /// `t=1`, comparable to `c2 \approx 0.043`), so `0.0` is not an exact
-  /// match — but it is not "provably wrong" in the sense that matters for
-  /// [`super::CosEngine`]: the true Heston fourth-cumulant closed form
-  /// (Fang-Oosterlee Table 11) is a ~30-term expression with high
-  /// hand-transcription risk, and `cos_heston_matches_quadrature` in
-  /// `cos.rs` confirms `CosEngine::default()` (`L=10`) already prices
-  /// correctly against an independent reference once `c2` alone is fixed —
-  /// the `+sqrt(c4)` term in the truncation width is extra safety margin on
-  /// top of an already-adequate `L \cdot \sqrt{c2}`, not load-bearing for
-  /// correctness at this `L`. This test records the checked-but-not-fixed
-  /// decision rather than leaving it unexamined.
+  /// Heston's fourth cumulant has a closed form the crate does not compute; `None` says so
+  /// (finite differences give ~1e-3, not zero).
   #[test]
-  fn heston_c4_is_a_documented_zero_approximation() {
+  fn heston_c4_is_not_computed() {
     let model = task1_params();
-    let c4_fd = fd_c4(&model, 1.0);
-    let c4 = model.cumulants(1.0).c4;
-    assert_eq!(c4, 0.0, "cumulants().c4 is the documented placeholder");
-    assert!(
-      c4_fd > 1e-4,
-      "true c4 should be clearly nonzero (order 1e-3), got {c4_fd}"
-    );
+    assert!(model.cumulants(1.0).c4.is_none());
+    assert!(fd_c4(&model, 1.0) > 1e-4);
   }
 }

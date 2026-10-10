@@ -68,9 +68,28 @@ fn black_karasinski_recovers_synthetic_parameters() {
     result.mean_reversion
   );
   assert!((result.sigma - 0.25).abs() < 5e-3, "sigma {}", result.sigma);
-  let model = ToShortRateModel::to_short_rate_model(&result, 0.03, 0.03);
+  let model = result.to_short_rate_model();
   assert_eq!(model.sigma, result.sigma);
   assert_eq!(model.mean_reversion, result.mean_reversion);
+  assert_eq!(model.initial_rate, 0.03);
+}
+
+/// Distinct rates, so a bridge that swapped `initial_rate` and `long_run_rate` would fail.
+#[test]
+fn black_karasinski_bridge_keeps_the_two_rates_apart() {
+  let result = BlackKarasinskiCalibrationResult {
+    mean_reversion: 0.15,
+    sigma: 0.25,
+    rmse: 0.0,
+    converged: true,
+    model_prices: Vec::new(),
+    market_prices: Vec::new(),
+    initial_rate: 0.02,
+    long_run_rate: 0.05,
+  };
+  let model = result.to_short_rate_model();
+  assert_eq!(model.initial_rate, 0.02);
+  assert_eq!(model.theta_log, 0.05_f64.ln());
 }
 
 /// Five G2++ parameters from four quotes are not identifiable one by one,
@@ -102,7 +121,7 @@ fn g2pp_reprices_synthetic_quotes() {
     "relative rmse {}",
     result.rmse / scale
   );
-  let model = ToShortRateModel::to_short_rate_model(&result, 0.03, 0.0);
+  let model = result.to_short_rate_model();
   assert_eq!(model.phi, 0.03);
   assert_eq!(model.rho, result.params.rho);
   assert!(result.params.rho.abs() < 1.0);

@@ -47,15 +47,13 @@
 //! - McNeil, Frey, Embrechts (2015), *Quantitative Risk Management*,
 //!   Princeton UP, §7.5.
 
-use std::error::Error;
-use std::f64;
-
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::Axis;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::chi_square::SimdChiSquared;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::beta_i;
@@ -66,7 +64,9 @@ use super::CopulaType;
 use super::linalg::is_spd;
 use super::linalg::spd_cholesky_lower;
 use super::linalg::spd_inverse;
+use crate::bivariate::t_copula::check_nu;
 use crate::correlation::kendall_tau;
+use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
 
 /// Multivariate Student-$t$ copula with degrees of freedom $\nu$ and
@@ -107,13 +107,13 @@ impl TMultivariate {
   }
 
   /// Construct directly from a correlation matrix and degrees of freedom.
-  pub fn new_with(corr: Array2<f64>, nu: f64) -> Result<Self, Box<dyn Error>> {
-    if nu <= 0.0 || nu.is_nan() {
-      return Err("Degrees of freedom must be positive".into());
-    }
+  pub fn new_with(corr: Array2<f64>, nu: f64) -> Result<Self, CopulaError> {
+    check_nu(nu)?;
     let dim = corr.nrows();
     if dim != corr.ncols() {
-      return Err("Correlation matrix must be square".into());
+      return Err(CopulaError::InvalidStructure(
+        "the correlation matrix must be square".into(),
+      ));
     }
     let mut t = Self {
       nu,
@@ -133,31 +133,29 @@ impl TMultivariate {
     self.nu
   }
 
-  /// Override the degrees of freedom $\nu$. Useful when the user picks
-  /// $\nu$ from an external calibration (e.g. tail-coefficient match) and
-  /// wants the copula to skip its own optimisation. Returns an error if
-  /// $\nu \le 0$.
-  pub fn set_nu(&mut self, nu: f64) -> Result<(), Box<dyn Error>> {
-    if nu <= 0.0 || nu.is_nan() {
-      return Err("Degrees of freedom must be positive".into());
-    }
+  /// Override $\nu$, e.g. from an external tail-coefficient calibration, skipping the fit's own search; an error
+  /// under the t-copulas' `check_nu` rule.
+  pub fn set_nu(&mut self, nu: f64) -> Result<(), CopulaError> {
+    check_nu(nu)?;
     self.nu = nu;
     Ok(())
   }
 
-  fn set_corr(&mut self, corr: Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn set_corr(&mut self, corr: Array2<f64>) -> Result<(), CopulaError> {
     let dim = corr.nrows();
     self.dim = dim;
 
-    let l_arr = spd_cholesky_lower(&corr)
-      .ok_or_else(|| -> Box<dyn Error> { "Correlation matrix is not positive definite".into() })?;
+    let l_arr = spd_cholesky_lower(&corr).ok_or_else(|| {
+      CopulaError::InvalidStructure("the correlation matrix is not positive definite".into())
+    })?;
     let mut log_det = 0.0;
     for i in 0..dim {
       log_det += l_arr[[i, i]].ln();
     }
     log_det *= 2.0;
-    let inv_arr = spd_inverse(&corr)
-      .ok_or_else(|| -> Box<dyn Error> { "Failed to invert correlation matrix".into() })?;
+    let inv_arr = spd_inverse(&corr).ok_or_else(|| {
+      CopulaError::InvalidStructure("the correlation matrix could not be inverted".into())
+    })?;
 
     self.corr = Some(corr);
     self.inv_corr = Some(inv_arr);
@@ -166,13 +164,13 @@ impl TMultivariate {
     Ok(())
   }
 
-  fn require_fitted(&self) -> Result<(), Box<dyn Error>> {
+  fn require_fitted(&self) -> Result<(), CopulaError> {
     if self.corr.is_none()
       || self.inv_corr.is_none()
       || self.chol_lower.is_none()
       || self.log_det_corr.is_none()
     {
-      return Err("Fit the copula or provide a correlation matrix first".into());
+      return Err(CopulaError::NotFitted);
     }
     Ok(())
   }
@@ -183,23 +181,19 @@ impl TMultivariate {
   /// interior state per construction), matching the crate-wide idiom for
   /// composed distributions instead of reseeding each from the identical
   /// raw `u64`.
-  fn sample_from_seed<S: SeedExt>(
-    &self,
-    n: usize,
-    seed: &S,
-  ) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample_from_seed<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
     self.require_fitted()?;
     let d = self.dim;
     let l = self.chol_lower.as_ref().unwrap();
     // Z ~ N(0, Σ) by L · G with G ~ N(0, I).
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, seed);
-    let g = Array2::from_shape_fn((n, d), |_| normal.sample_fast());
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(seed);
+    let g = Array2::from_shape_fn((n, d), |_| normal.sample());
     let z = g.dot(&l.t());
     // W ~ χ²_ν / ν, independently per row.
-    let chi = SimdChiSquared::<f64>::new(self.nu, seed);
+    let mut chi = SimdChiSquared::<f64>::new(self.nu).seeded(seed);
     let mut u = Array2::<f64>::zeros((n, d));
     for r in 0..n {
-      let w_raw = chi.sample_fast();
+      let w_raw = chi.sample();
       let w = (w_raw / self.nu).max(1e-300);
       let scale = 1.0 / w.sqrt();
       for c in 0..d {
@@ -214,7 +208,7 @@ impl TMultivariate {
   /// normaliser kept as a separate term for log-pdf composition.
   fn t_log_pdf(x: f64, nu: f64) -> f64 {
     let log_norm =
-      ln_gamma(0.5 * (nu + 1.0)) - 0.5 * (nu * f64::consts::PI).ln() - ln_gamma(0.5 * nu);
+      ln_gamma(0.5 * (nu + 1.0)) - 0.5 * (nu * std::f64::consts::PI).ln() - ln_gamma(0.5 * nu);
     let log_kernel = -0.5 * (nu + 1.0) * (1.0 + x * x / nu).ln();
     log_norm + log_kernel
   }
@@ -288,7 +282,7 @@ impl TMultivariate {
     }
     for i in 0..d {
       for j in (i + 1)..d {
-        let rho = (0.5 * f64::consts::PI * tau[[i, j]])
+        let rho = (0.5 * std::f64::consts::PI * tau[[i, j]])
           .sin()
           .clamp(-0.999_999, 0.999_999);
         corr[[i, j]] = rho;
@@ -325,7 +319,7 @@ impl TMultivariate {
     let nu = self.nu;
     let log_norm = ln_gamma(0.5 * (nu + d))
       - ln_gamma(0.5 * nu)
-      - 0.5 * d * (nu * f64::consts::PI).ln()
+      - 0.5 * d * (nu * std::f64::consts::PI).ln()
       - 0.5 * log_det;
     let mut out = Array1::<f64>::zeros(z.nrows());
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {
@@ -401,20 +395,29 @@ impl MultivariateExt for TMultivariate {
     CopulaType::TMultivariate
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample(&self, n: usize) -> Result<Array2<f64>, CopulaError> {
     self.sample_from_seed(n, &Unseeded)
   }
 
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, CopulaError> {
     self.sample_from_seed(n, &Deterministic::new(seed))
   }
 
-  fn fit(&mut self, X: Array2<f64>) -> Result<(), Box<dyn Error>> {
-    if X.nrows() < 2 || X.ncols() < 2 {
-      return Err("Need at least 2 samples and 2 dimensions".into());
+  fn fit(&mut self, X: Array2<f64>) -> Result<(), CopulaError> {
+    if X.ncols() < 2 {
+      return Err(CopulaError::InvalidStructure(format!(
+        "a t-copula needs dim >= 2, got {}",
+        X.ncols()
+      )));
+    }
+    if X.nrows() < 2 {
+      return Err(CopulaError::InsufficientData {
+        needed: 2,
+        got: X.nrows(),
+      });
     }
     if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
-      return Err("Input data must be in [0,1] for the t-copula fit".into());
+      return Err(CopulaError::MarginalOutOfRange);
     }
     self.dim = X.ncols();
     let corr = Self::estimate_corr_from_kendall(&X);
@@ -424,18 +427,21 @@ impl MultivariateExt for TMultivariate {
     Ok(())
   }
 
-  fn check_fit(&self, X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn check_fit(&self, X: &Array2<f64>) -> Result<(), CopulaError> {
     self.require_fitted()?;
     if X.ncols() != self.dim {
-      return Err("Dimension mismatch".into());
+      return Err(CopulaError::DimensionMismatch {
+        expected: self.dim,
+        got: X.ncols(),
+      });
     }
     if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
-      return Err("Input X must be in [0,1] for the t-copula".into());
+      return Err(CopulaError::MarginalOutOfRange);
     }
     Ok(())
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let z = self.transform_to_t(X);
     let mv = self.mv_log_pdf(&z);
@@ -451,7 +457,7 @@ impl MultivariateExt for TMultivariate {
     Ok(out)
   }
 
-  fn log_pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn log_pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let z = self.transform_to_t(X);
     let mv = self.mv_log_pdf(&z);
@@ -467,7 +473,7 @@ impl MultivariateExt for TMultivariate {
     Ok(out)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     // Closed forms for the multivariate Student-t CDF exist only in d ≤ 2
     // (Dunnett-Sobel 1D reduction); for d ≥ 3 we estimate via the χ²-mixer
@@ -479,13 +485,13 @@ impl MultivariateExt for TMultivariate {
     let n = z.nrows();
     let m = 4000usize;
     let mut out = Array1::<f64>::zeros(n);
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
-    let chi = SimdChiSquared::<f64>::new(self.nu, &Unseeded);
-    let g = Array2::from_shape_fn((m, self.dim), |_| normal.sample_fast());
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Unseeded);
+    let mut chi = SimdChiSquared::<f64>::new(self.nu).seeded(&Unseeded);
+    let g = Array2::from_shape_fn((m, self.dim), |_| normal.sample());
     let y = g.dot(&l.t());
     let mut w_buf = vec![0.0f64; m];
     for v in w_buf.iter_mut() {
-      let w = (chi.sample_fast() / self.nu).max(1e-300);
+      let w = (chi.sample() / self.nu).max(1e-300);
       *v = 1.0 / w.sqrt();
     }
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {

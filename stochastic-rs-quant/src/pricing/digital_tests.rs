@@ -229,25 +229,8 @@ fn every_query_argument_drives_the_price() {
   }
 }
 
-/// All four digitals share `bsm_d1`, so all four share what a negative
-/// volatility does to it: `1/(σ√τ)` flips sign, `d₁` flips with it, and the
-/// price that comes back is finite, plausible and wrong. Measured against
-/// each pricer's own reference scenario:
-///
-/// | pricer | `σ < 0` | reference |
-/// |---|---|---|
-/// | cash-or-nothing | `2.2155` | `7.3444` |
-/// | asset-or-nothing | `24.7563` | `73.2636` |
-/// | gap | `-5.5735` | `10.4506` |
-/// | supershare | `-0.7482` | positive |
-///
-/// Two of the four are negative, which no option is, and two are merely
-/// wrong. Validating one and not the rest would have swapped the old
-/// asymmetry for a new one, so all four are checked.
-///
-/// `σ = 0` stays admissible everywhere — it is the deterministic limit, not
-/// an invalid input — and so does a negative `cash` payout, which is a
-/// short digital rather than an impossible contract.
+/// Every digital rejects `σ < 0`, which flips the shared `d₁` into finite, wrong (even negative)
+/// prices; `σ = 0` and a negative `cash` payout stay admissible.
 mod construction_validation {
   use super::*;
 

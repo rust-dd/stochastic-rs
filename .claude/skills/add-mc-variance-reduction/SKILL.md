@@ -35,7 +35,8 @@ QMC); Giles 2015 for MLMC.
 pub struct McEstimate<T: FloatExt> {
     /// Estimated mean.
     pub mean: T,
-    /// Standard error of the estimate.
+    /// Standard error of the estimate: the sample standard deviation (`n − 1`
+    /// denominator) over `√n`. `NaN` when fewer than two samples were used.
     pub std_err: T,
     /// Number of samples used.
     pub n_samples: usize,
@@ -56,6 +57,40 @@ There is **no `vr_factor` method**; compute the ratio yourself in the
 Estimators always return `McEstimate<T>`, never raw `f64`. This keeps
 the variance information attached to the point estimate; callers
 asking for a CI never have to chase down the standard error separately.
+
+### One accumulator for every estimator
+
+Every estimator hands its per-path values to the crate-private
+`mc::estimate_from_samples(samples)` and returns what it gives back. The
+helper accumulates in `f64` with Welford's update (Welford 1962,
+DOI 10.1080/00401706.1962.10490022) whatever `T` is, uses the `n − 1` sample
+variance, and reports `std_err = sqrt(s² / n)`. Fewer than two samples have
+no variance estimate: no samples give a `NaN` mean and `std_err`, one sample
+a `NaN` `std_err`. A `NaN` or infinite payoff keeps the `std_err` `NaN`.
+
+The helper is a thin wrapper over the public `mc::Welford` accumulator.
+State that receives its samples in batches (MLMC's per-level statistics)
+holds a `Welford` per stream and `extend`s it with each batch; `count()`,
+`mean()`, `sample_variance()` and `std_err()` read it back, and
+`McEstimate::from(&acc)` turns it into the result type. `Welford::merge`
+combines two accumulators (Chan, Golub and LeVeque 1983, eq. 1.5). There is
+one recurrence in the crate.
+
+Never write a `sum` / `sum_sq` loop of your own. `sum_sq / n − mean²`
+cancels on a near-constant payoff (a negative variance, a `NaN` `std_err`)
+and a running `f32` sum stops growing past 2^24. Serial and parallel twins
+share the accumulator, so they cannot drift onto different formulas.
+
+A parallel estimator goes through `mc::par_welford(n, sample)`, never through
+a `Vec` of all the samples and never through rayon's `reduce`. A `Vec` leaves
+a serial pass over every sample after the parallel region (Amdahl: about 3 ns
+a path, +60% on a cheap payoff); `reduce` shapes its merge tree by the pool,
+so the last bits change with the thread count. `par_welford` cuts the indices
+into the data-derived chunks of `ProcessExt::sample_par`, folds each chunk
+into its own `Welford` in parallel and merges the chunks sequentially in
+chunk order. The draws of `T::normal_array` are unseeded, so an estimator
+built on it is still not reproducible; give a new technique a seeded entry
+point if it needs to be.
 
 ### The estimator signature
 
@@ -98,28 +133,17 @@ pinned numbers.
 For an SDE driven by `Z ~ N(0, 1)`:
 
 ```rust
-// mc/antithetic.rs — the shipped body, abridged
+// mc/antithetic.rs — the shipped body
 pub fn estimate<T, F>(n_paths: usize, dim: usize, payoff: F) -> McEstimate<T>
 where T: FloatExt, F: Fn(&Array1<T>) -> T
 {
     let two = T::from_f64_fast(2.0);
-    let (mut sum, mut sum_sq) = (T::zero(), T::zero());
-
-    for _ in 0..n_paths {
-        // The workspace's own Gaussian draw. Per `dev-rules` §7a,
-        // `rand_distr::StandardNormal` and `StdRng` belong to `benches/`
-        // — never to library code.
+    estimate_from_samples((0..n_paths).map(|_| {
+        // The workspace's own Gaussian draw: `rand_distr` and `StdRng` are for benches only.
         let z = T::normal_array(dim, T::zero(), T::one());
         let neg_z = z.mapv(|v| -v);
-        let y = (payoff(&z) + payoff(&neg_z)) / two;
-        sum += y;
-        sum_sq += y * y;
-    }
-
-    let n = T::from_usize_(n_paths);
-    let mean = sum / n;
-    let variance = sum_sq / n - mean * mean;
-    McEstimate { mean, std_err: (variance / n).sqrt(), n_samples: n_paths }
+        (payoff(&z) + payoff(&neg_z)) / two
+    }))
 }
 ```
 
@@ -191,7 +215,11 @@ E[P_∞] ≈ E[P_0] + Σ_l E[P_l - P_{l-1}]
 
 with `P_l` evaluated on `2^l` time steps. The number of paths
 decreases geometrically with level. See `mc/mlmc.rs` for the workspace
-implementation and Giles (2015) for the algorithmic details.
+implementation. It follows Giles (2008), *Operations Research* 56(3),
+607-617 (DOI 10.1287/opre.1070.0496): the allocation is its eq. (12),
+`N_l = ⌈2ε⁻² √(V_l/C_l) Σ√(V_k C_k)⌉`, where `V_l` is the variance of one
+level sample, estimated per level as the `n − 1` sample variance (the paper
+leaves the denominator open); Giles (2015) has the algorithmic details.
 
 ## 6. Common Random Numbers (CRN)
 
@@ -239,6 +267,9 @@ say so in a comment rather than pretending it is deterministic.
 
 - **Do not** return a raw `f64` mean without a stderr. Always
   `McEstimate<T>`.
+- **Do not** compute the variance by hand (`sum_sq / n − mean²`, or a
+  per-estimator two-pass loop). Route the per-path values through
+  `estimate_from_samples` (see §1).
 - **Do not** apply antithetic to discontinuous payoffs (digital
   options, indicator functions). Variance can go up.
 - **Do not** silently reuse one sample for both the control-variate
@@ -260,7 +291,8 @@ say so in a comment rather than pretending it is deterministic.
 The `mc/` module is nine files under
 `stochastic-rs-stochastic/src/mc/`:
 
-- `mod.rs` — `McEstimate<T>` and the module re-exports. Start here.
+- `mod.rs` — `McEstimate<T>`, the shared `estimate_from_samples`
+  accumulator and the module re-exports. Start here.
 - `antithetic.rs` — `estimate` / `estimate_par`; the template for a new
   technique's signature.
 - `control_variates.rs` — single control variate; see §3 on its
@@ -269,9 +301,10 @@ The `mc/` module is nine files under
 - `stratified.rs` — the only module with **seeded** entry points
   (`stratified_normals_1d_seeded`, `stratified_normals_seeded`).
 - `sobol.rs`, `halton.rs` — in-tree low-discrepancy generators.
-- `mlmc.rs` — `Mlmc::new(epsilon, l_min, l_max, n0)` +
-  `estimate(level_sampler) -> MlmcResult<T>`; note it returns its own
-  result type, not `McEstimate`.
+- `mlmc.rs` — `Mlmc::new(epsilon, l_min, l_max, n0)` (`n0 ≥ 2`, a level
+  variance needs two samples) + `estimate(level_sampler) -> MlmcResult<T>`;
+  note it returns its own result type, not `McEstimate`. Its per-level
+  mean and variance come from `mc::Welford`.
 - `lsm.rs` — Longstaff-Schwartz, `Lsm::new(r, tau, n_basis)` +
   `price(paths, payoff)`. Ungated — the least-squares solve runs on the
   pure-Rust `faer`, so it is in every build —

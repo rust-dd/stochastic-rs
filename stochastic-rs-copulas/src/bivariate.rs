@@ -10,7 +10,7 @@
 //! way — [`BivariateExt::fit`] moment-matches Kendall's tau-b, then
 //! inverts tau to the family's own shape parameter via `compute_theta` —
 //! so *how* you fit is not a distinguishing axis. What actually
-//! distinguishes these 13 is (1) which Kendall's tau values a family can
+//! distinguishes these 15 is (1) which Kendall's tau values a family can
 //! even represent, (2) the shape of its tail dependence, and (3) whether
 //! fitting and sampling are closed-form or pay an iterative-solver cost.
 //!
@@ -65,19 +65,8 @@
 //! root-finds it numerically. A one-time, cheap-in-absolute-terms cost
 //! per `.fit()` call, but not free.
 //!
-//! [`BivariateExt::percent_point`] — the per-sample inversion
-//! [`BivariateExt::sample`] relies on — is a separate cost, and fewer
-//! families avoid it: only [`clayton::Clayton`],
-//! [`gaussian::GaussianCopula`] and [`independence::Independence`] have a
-//! real closed-form inverse. [`frank::Frank`] and [`gumbel::Gumbel`] each
-//! override `percent_point`, but the override is closed-form only at the
-//! degenerate boundary (`θ = 0` / `θ = 1`); every other `θ`, and every
-//! other family — including [`t_copula::TCopula`] despite its closed-form
-//! `partial_derivative` — falls through to the generic Brent-root
-//! [`BivariateExt::percent_point_numerical`], one root-find per sampled
-//! pair. For a Monte Carlo run sampling millions of pairs, that per-draw
-//! cost is a real, practical reason to prefer Clayton or Gaussian when
-//! either is otherwise an acceptable fit.
+//! [`BivariateExt::percent_point`], one call per sampled pair, is closed-form except in [`bb1::Bb1`] and [`bb7::Bb7`]
+//! (bisection) and [`galambos::Galambos`], [`gumbel::Gumbel`], [`husler_reiss::HuslerReiss`] and [`joe::Joe`] (Brent).
 //!
 //! ### The common data requirement, and one family that skips it
 //!
@@ -104,9 +93,8 @@
 //! [`BivariateExt::percent_point_numerical`] inverts whatever
 //! `partial_derivative` returns, as a function of `u` at fixed `v`,
 //! assuming it is $\partial_v C(u,v)$ — the conditional CDF of `U` given
-//! `V=v`. [`clayton::Clayton`], [`frank::Frank`], [`joe::Joe`] and
-//! [`gaussian::GaussianCopula`] (whose own doc states this explicitly) all
-//! follow it. A family whose override differentiates the other argument
+//! `V=v`. Every family here follows it, [`independence::Independence`]
+//! (`∂_v (uv) = u`) included. A family whose override differentiates the other argument
 //! does not fail loudly: [`amh::Amh`]'s `partial_derivative` computed
 //! $\partial_u C(u,v)$ instead — a value as plausible-looking in
 //! isolation as the correct one — and because `Amh` does not override
@@ -129,6 +117,7 @@ pub mod amh;
 pub mod bb1;
 pub mod bb7;
 pub mod clayton;
+pub(crate) mod conditional;
 pub mod fgm;
 pub mod frank;
 pub mod galambos;

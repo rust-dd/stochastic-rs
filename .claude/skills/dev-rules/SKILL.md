@@ -54,66 +54,89 @@ Do not rewrite algorithms that already exist in well-maintained crates (e.g., `f
 
 Randomness is the standing exception — see §7a.
 
-## 7a. `rand` and `rand_distr` belong to benchmarks only
+## 7a. `rand::rng()` and `rand_distr` belong to benchmarks only
 
 Library code, tests and examples draw randomness from the workspace's own
-RNG and distributions. `rand::rng()`, `rand::thread_rng()` and every
-concrete `rand_distr` distribution (`Normal`, `Exp`, `Gamma`, `Poisson`,
-`StandardNormal`, …) are reserved for `benches/` and the `src/tests/bench_*`
-plot harnesses, where `rand_distr` is the *baseline being measured* and
-must stay.
+RNG and distributions. `rand::rng()` and every concrete `rand_distr`
+distribution (`Normal`, `Exp`, `Gamma`, `Poisson`, `StandardNormal`, …) are
+reserved for `benches/` and the `src/tests/bench_*` plot harnesses, where
+`rand_distr` is a dev-dependency (of the umbrella and
+`stochastic-rs-distributions`, the only crates that declare it) and the
+*baseline being measured*. The `rand` crate itself stays a dependency for
+its traits (`Rng`, `RngExt`, `rand::distr::Distribution`,
+`rand::seq::SliceRandom`).
 
 | Need | Use |
 |------|-----|
 | A raw RNG | `SimdRng::new()`, or `SimdRng::from_seed(s)` when reproducible |
 | Bulk Gaussian / exponential / … draws | `SimdNormal`, `SimdExp`, `SimdGamma`, `SimdPoisson`, seeded via `Deterministic::new(s)` or `Unseeded` |
-| A distribution a *process* will drive (`D: Distribution<T> + Send + Sync`) | `ScalarNormal`, `ScalarExp` from `stochastic_rs_distributions::scalar` |
+| A distribution a *process* will drive (`D: Distribution<T> + Send + Sync`) | the stateless `SimdNormal`, `SimdExp`, ... themselves |
 
-The last row is not a style preference. `Simd*` distributions own an
-`UnsafeCell` sample buffer, so they are `!Sync` by construction and cannot
-satisfy the `Send + Sync` bound that `ProcessExt` propagates into the
-jump-size slot of `CompoundPoisson`, `Bates1996`, `LevyDiffusion` and
-`JumpFOUCustom`. The stateless `Scalar*` types sample from the caller's
-RNG and exist precisely for that slot.
+A process's jump-size slot takes any scalar continuous `Simd*` law except `SimdNonCentralChiSquared` (its noncentrality
+is a per-draw argument): it holds parameters only, so it is `Send + Sync`, and `Distribution::sample(&mut rng)` draws
+from the generator the process passes. A `Seeded` stream is not a law.
 
 Two traps worth naming:
 
-- **`fill_slice(out)` takes no RNG at all.** Every `Simd*` bulk fill is
-  `pub fn fill_slice(&self, out: &mut [T])` — one argument. The type
-  draws from its own internal stream, seeded at construction, so there
-  is nowhere to hand an external `StdRng`; the seed must go to the
-  constructor (`SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(42))`).
-  Older notes describing a two-argument `fill_slice(_rng, out)` that
-  ignored its first parameter, or a `fill_slice_fast` companion, are
-  stale: neither exists.
-- **The `rand_distr::Distribution` trait import stays.** Our own `Simd*`
-  types implement it, so `use rand_distr::Distribution;` is still how
-  `.sample()` resolves. Removing those impls would break downstream users;
-  only the concrete `rand_distr` *distributions* are out.
+- **The stream lives in `Seeded`.** A ported `Simd*` law holds parameters
+  only; `.seeded(&Deterministic::new(42))` binds it to a stream, and
+  `sample` / `fill_slice` / `sample_n` / `sample_matrix` then run on
+  `&mut self` (`SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(42))`).
+  `fill_slice(out)` takes no RNG: the seed goes to `.seeded`, never to a
+  draw; a bulk fill driven by an external rng is `fill_with(&mut rng, out)`.
+- **Name the trait through `rand::distr::Distribution`.** `rand_distr` is
+  not a dependency of any library crate (only a dev-dependency of the
+  umbrella and `stochastic-rs-distributions`), so library code cannot
+  import it; our own `Simd*` types implement the same trait, which is how
+  `.sample()` resolves. Removing those impls would break downstream users.
 
 ## 8. Latest dependency versions
 
 When adding a new dependency, always use the latest version available on crates.io. Check with `cargo search <crate>` before adding.
 
-## 9. Comment rules
-Always follow the Rust inline comment or Rust inline documentation pattern. Never use large ugly separators like
+## 9. Comments
+
+A comment or doc block (`//`, `///`, `//!`) is at most two lines, anywhere: library
+code, public API, tests, benches and examples. Write one only for what the code cannot
+say: a non-obvious constraint, a reason, a unit or a convention. A literature citation
+may take one more line of its own, in addition to those two. Doc-test code does not count.
+Longer explanations belong in the PR body.
+
+Never:
+
+- restate the code (`/// Volatility.` on `pub sigma`, `// loop over the paths`);
+- narrate history (`previously`, `now uses`, `renamed from`, `legacy`, `kept for
+  backward compatibility`, `since the refactor`): the code as it stands is the subject;
+- cite plan, task, wave, audit or ruling IDs (`Task 3`, `W6.7`, `A1-c`, `D1`), or
+  release numbers (§11);
+- use separator banners such as
+
 ```
 // --- ... ---
-
-or 
 
 ###############
 # ....        #
 ###############
-
-or 
 
 // ---------------------------------------------------------------------------
 // free-text
 // ---------------------------------------------------------------------------
 ```
 
-or similar. Keep the project clean and dont use ugly AI style comments.
+Rewrites of three typical offenders (a history-laden note on draw order, a field doc
+that restates the field, a long method essay):
+
+```rust
+// Drawn before the jump times so the diffusion stream matches the λ = 0 path.
+let z = normal.sample();
+
+/// Annualised Black volatility of the underlying.
+pub sigma: f64,
+
+/// Fang & Oosterlee (2008), SIAM J. Sci. Comput. 31(2), 826-848.
+/// COS price of a European payoff from the log-price characteristic function.
+pub fn price(/* … */) -> f64 { /* … */ }
+```
 
 ## 10. Turbofish over explicit binding-type annotation
 
@@ -171,3 +194,34 @@ impl Foo for Bar {
   }
 }
 ```
+
+## 13. Library diagnostics go through `log`
+
+Library code reports through the `log` facade (`log::warn!`, `log::trace!`), never `eprintln!`, and never installs a subscriber; binaries, benches and tests do.
+
+## 14. Error policy — one channel per cause, in every crate
+
+- **A parameter precondition broken in a constructor or setter → panic**, one `assert!` per
+  argument, the predicate spelled in the message and the value last:
+  ``assert!(sigma > T::zero(), "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}");``
+  Every float parameter is finite (`x.is_finite()`; a truncation bound may be infinite, so `!x.is_nan()`).
+  A method that can panic says so inside its ≤ 2-line doc (`…; panics if x ≤ 0`), never under a separate
+  `# Panics` heading. The literal-only Fourier model structs validate once they have constructors.
+  In copulas `new` panics, while `try_new` and `from_tau` return `Result<_, CopulaError>` for the
+  same preconditions.
+- **A data-dependent failure → `Result`**: a calibration that produces no result, an estimate on
+  too little or degenerate data, a device that cannot be opened. Non-convergence is `Ok` with
+  `converged() == false`, never `Err`. quant and ai return `anyhow::Error`, copulas `CopulaError`,
+  the devices `DeviceError`; `Calibrator::Error: Debug + Display + Send + Sync + 'static`. The risk
+  estimators (`empirical_cvar`, `historical_var`) still panic on an empty sample; whether short or
+  degenerate data there becomes a `Result` is one pending decision for all of them.
+- **A numerical evaluation outside its domain, or an inversion with no root → documented `NaN`**:
+  a yield at `tau <= 0`, an implied volatility with no root, a Bessel K at `x <= 0`, a pricing
+  *query* with a non-positive strike or spot. A `0.0` or any other plausible number is never a
+  sentinel, and a query argument never panics — only a model parameter does.
+- **A capability an implementor does not have → `Option::None`**: `DistributionExt`, `GreeksExt`,
+  `CalibrationResult::max_error`, `Cumulants.c4`. `None` is "no closed form / not computed";
+  `Some(f64::NAN)` is "computed, undefined at this point".
+- **A reduction never drops a NaN.** `f64::max`/`min` return the other operand when one is NaN;
+  use `RealExt::max_or_nan` / `min_or_nan` (`.fold(0.0, f64::max_or_nan)`) wherever the folded
+  values can be NaN, so a NaN input surfaces as a NaN output instead of a silently smaller maximum.

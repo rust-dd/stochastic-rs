@@ -34,7 +34,6 @@ pub mod rl_heston;
 
 pub use kernel::RlKernel;
 pub use markov_lift::MarkovLift;
-pub use markov_lift::RoughSimd;
 pub use rl_bs::RlBlackScholes;
 pub use rl_fbm::RlFBm;
 pub use rl_fou::RlFOU;

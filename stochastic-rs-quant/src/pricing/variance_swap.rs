@@ -9,10 +9,10 @@
 //!
 //! $$
 //! K_{\text{var}}=\frac{2}{T}\!\left[
-//!   (r-q)T - \!\!\left(\!\frac{F}{K_0}\!-\!1\!\right)\!
-//!   - \ln\frac{K_0}{S_0}
-//!   + e^{rT}\!\!\int_0^{K_0}\!\!\frac{P(K)}{K^2}\,dK
-//!   + e^{rT}\!\!\int_{K_0}^{\infty}\!\!\frac{C(K)}{K^2}\,dK
+//!   (r-q)T - \!\!\left(\!\frac{F}{K_0}\!-\!1\!\right)\! -
+//!   \ln\frac{K_0}{S_0} +
+//!   e^{rT}\!\!\int_0^{K_0}\!\!\frac{P(K)}{K^2}\,dK +
+//!   e^{rT}\!\!\int_{K_0}^{\infty}\!\!\frac{C(K)}{K^2}\,dK
 //! \right]
 //! $$
 //!
@@ -68,34 +68,8 @@ impl VarianceSwapPricer {
     sigma * sigma
   }
 
-  /// Static replication fair strike (Demeterfi–Derman–Kamal–Zou).
-  ///
-  /// Inputs are the OTM option strip — puts for $K < K_0$, calls for
-  /// $K \geq K_0$ — with $K_0$ identified as the strike closest to the
-  /// forward. Strikes must be sorted ascending. Trapezoidal weights are
-  /// used for the $\int P(K)/K^2 dK + \int C(K)/K^2 dK$ contribution.
-  ///
-  /// **Preconditions:** `strikes` must contain only finite (non-NaN) values.
-  /// NaN strikes will cause the closest-to-forward selection to panic via
-  /// `partial_cmp().unwrap()` since NaN is unordered. Filter NaN at the
-  /// caller side (real exchange data should never carry NaN strikes).
-  ///
-  /// # Panics
-  /// - if `strikes` and `otm_prices` differ in length
-  /// - if fewer than two strikes are supplied — the trapezoidal weights
-  ///   need a neighbour on at least one side, so a one-point "strip" is not
-  ///   a thin replication, it is not a replication
-  /// - if `self.tau` is not strictly positive
-  ///
-  /// All three used to return `0.0`, which is a plausible-looking variance
-  /// strike: `fair_strike_bsm(0.0)` is `0.0` too, and a caller cannot tell
-  /// the two apart. Case 1 of the crate's [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails).
-  ///
-  /// A non-`NaN` result is floored at zero. The floor tests for `NaN` first,
-  /// because `f64::max` discards a `NaN` operand in favour of the finite one
-  /// — so a single `NaN` in `otm_prices` used to come back as exactly `0.0`,
-  /// re-entering by the back door the sentinel the guards above remove.
+  /// Demeterfi–Derman–Kamal–Zou fair strike from an ascending OTM strip, `K_0` nearest the forward,
+  /// floored at 0 unless NaN; panics on bad lengths or `tau ≤ 0` (strike order/NaN: debug only).
   pub fn fair_strike_replication(&self, strikes: &[f64], otm_prices: &[f64]) -> f64 {
     assert_eq!(
       strikes.len(),
@@ -255,25 +229,8 @@ impl VarianceSwapPricer {
   }
 }
 
-/// Replicating portfolio weights for the log contract — useful for
-/// hedging a variance swap with an actual strip of vanilla options.
-///
-/// Weight at strike $K_i$ is $\frac{2}{T}\,\frac{\Delta K_i}{K_i^2}$
-/// (Demeterfi et al., eq. (28)). Returned in the same order as `strikes`.
-///
-/// # Panics
-/// - if fewer than two strikes are supplied — $\Delta K_i$ is a difference
-///   against a neighbour, so a one-point "strip" has no weight to compute
-/// - if `maturity` is not strictly positive, `NaN` included — the $2/T$
-///   prefactor has no value there
-///
-/// Both used to return `vec![0.0; n]`. An all-zero weight vector hedges
-/// nothing and prices a zero strike downstream, and nothing in it says the
-/// strip was rejected rather than computed — case 1 of the crate's [failure
-/// convention](crate::traits::ModelPricer#how-pricing-fails). The sibling
-/// [`VarianceSwapPricer::fair_strike_replication`], which this function
-/// exists to hedge, already panicked on exactly these two conditions, so the
-/// pair disagreed about whether the same strip was an error.
+/// Log-contract replication weights $\frac{2}{T}\frac{\Delta K_i}{K_i^2}$ (Demeterfi et al. eq. 28)
+/// in `strikes` order; panics on fewer than two strikes or a non-positive `maturity`.
 pub fn replication_weights(strikes: &[f64], maturity: f64) -> Vec<f64> {
   let n = strikes.len();
   assert!(
@@ -315,17 +272,8 @@ impl VolatilitySwapPricer {
     sigma
   }
 
-  /// Convexity-adjusted vol strike from variance strike + variance-of-variance.
-  ///
-  /// # Panics
-  /// Panics if `k_var` is not strictly positive. The crate's [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails) names a
-  /// negative variance as programmer error outright, and `k_var = 0` is no
-  /// better here: the Jensen correction divides by $K_{\text{var}}^{3/2}$,
-  /// so the expansion this method *is* has no value there.
-  ///
-  /// Returning `0.0` — the old behaviour — handed back a vol strike
-  /// indistinguishable from `fair_strike_bsm(0.0)`.
+  /// Convexity-adjusted vol strike from the variance strike and the variance of variance; panics
+  /// unless `k_var > 0`, since the Jensen term divides by $K_{\text{var}}^{3/2}$.
   pub fn fair_strike_from_var(k_var: f64, var_of_var: f64) -> f64 {
     assert!(
       k_var > 0.0,
@@ -334,32 +282,8 @@ impl VolatilitySwapPricer {
     k_var.sqrt() - var_of_var / (8.0 * k_var.powf(1.5))
   }
 
-  /// Heston-implied vol strike — uses continuous Heston variance fair
-  /// strike with second-order convexity adjustment from variance dispersion.
-  ///
-  /// $\text{Var}\!\left(\frac{1}{T}\int_0^T V_t dt\right) \approx
-  /// \frac{\sigma^2(V_0 - \theta)^2 (1-e^{-2\kappa T})}{2\kappa^3 T^2}$
-  /// to leading order; the closed form is messier — we use a tractable
-  /// approximation suitable for short maturities.
-  ///
-  /// # Panics
-  /// Panics if the underlying variance strike
-  /// $\theta + (V_0 - \theta)\,\frac{1 - e^{-\kappa T}}{\kappa T}$ is not
-  /// strictly positive, which for a convex combination means a negative
-  /// `v0` or `theta`. The check sits ahead of the κ → 0 branch rather than
-  /// inside [`fair_strike_from_var`](Self::fair_strike_from_var) so that
-  /// both branches reject the same inputs — the short-circuit used to floor
-  /// a negative strike to `0.0` through `max(0.0)` while the main path
-  /// returned a sentinel of its own.
-  ///
-  /// Returns [`f64::NAN`] for a `NaN` `sigma`, which is the one undefined
-  /// input the `k_var` assertion cannot reach: `k_var` is built from
-  /// `(v0, kappa, theta, tau)` and never reads `sigma`, so the check has to
-  /// happen where the dispersion is floored instead. A floor and a poison
-  /// check are different operations and `f64::max` runs them together into
-  /// one wrong answer — a dispersion below zero is round-off and still
-  /// floors, an undefined one has nothing to floor. Same split as
-  /// [`VarianceSwapPricer::fair_strike_replication`]'s.
+  /// Heston vol strike: the variance strike with a short-maturity convexity correction for its
+  /// dispersion; panics unless the variance strike is positive (κ → 0 too); NaN for a NaN `sigma`.
   pub fn fair_strike_heston(v0: f64, kappa: f64, theta: f64, sigma: f64, tau: f64) -> f64 {
     let pricer = VarianceSwapPricer {
       s: 1.0,

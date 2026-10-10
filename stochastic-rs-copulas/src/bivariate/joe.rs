@@ -14,15 +14,13 @@
 //! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
 //! Springer, Family BB1 / table 4.1.
 
-use std::error::Error;
-use std::f64;
-
 use ndarray::Array1;
 use ndarray::Array2;
-use roots::SimpleConvergency;
-use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::error::CopulaError;
+use crate::optim::zero;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -111,7 +109,7 @@ impl BivariateExt for Joe {
   }
 
   /// Archimedean generator $\varphi(t) = -\ln(1 - (1-t)^\theta)$.
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     let mut out = Array1::<f64>::zeros(t.len());
@@ -125,7 +123,7 @@ impl BivariateExt for Joe {
   /// Density. Let $a = (1-u)^\theta$, $b = (1-v)^\theta$,
   /// $S = a + b - a b$. Then
   /// $c(u,v) = (1-u)^{\theta-1}(1-v)^{\theta-1} S^{1/\theta - 2}(S + \theta - 1)$.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -150,7 +148,7 @@ impl BivariateExt for Joe {
   }
 
   /// CDF $C(u,v) = 1 - [(1-u)^\theta + (1-v)^\theta - (1-u)^\theta(1-v)^\theta]^{1/\theta}$.
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -178,30 +176,23 @@ impl BivariateExt for Joe {
     Ok(out)
   }
 
-  /// $\partial_v C(u,v) = (1 - (1-u)^\theta)(1-v)^{\theta-1} S^{1/\theta - 1}$.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  /// `∂_v C = (1 − a)(1 − a + a/b)^{1/θ − 1}`, `a, b = (1 − u)^θ, (1 − v)^θ`, `1 − a` and `a/b` from `ln_1p(−u)` and
+  /// `ln_1p(−v)`: no underflow near `u, v = 1`, no cancellation near `u = 0`; NaN for `v` outside `[0, 1]`.
+  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
     let theta = self.theta.unwrap();
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
+    Ok(conditional_cdf(x, |u, v| {
       if u <= 0.0 {
-        out[i] = 0.0;
-        continue;
+        return 0.0;
       }
       if u >= 1.0 {
-        out[i] = 1.0;
-        continue;
+        return 1.0;
       }
-      let a = (1.0 - u).powf(theta);
-      let b = (1.0 - v).powf(theta);
-      let s = a + b - a * b;
-      out[i] = (1.0 - a) * (1.0 - v).powf(theta - 1.0) * s.powf(1.0 / theta - 1.0);
-    }
-    Ok(out)
+      let log_1m_u = (-u).ln_1p();
+      let one_minus_a = -(theta * log_1m_u).exp_m1();
+      let a_over_b = (theta * (log_1m_u - (-v).ln_1p())).exp();
+      one_minus_a * (one_minus_a + a_over_b).powf(1.0 / theta - 1.0)
+    }))
   }
 
   fn compute_theta(&self) -> f64 {
@@ -214,11 +205,7 @@ impl BivariateExt for Joe {
       return f64::INFINITY;
     }
     let residual = |theta: f64| Self::tau_residual(tau, theta);
-    let mut convergency = SimpleConvergency {
-      eps: 1e-8,
-      max_iter: 100,
-    };
-    find_root_brent(1.0 + 1e-6, 50.0, residual, &mut convergency).unwrap_or(1.0)
+    zero(1.0 + 1e-6, 50.0, 1e-8, residual).unwrap_or(1.0)
   }
 
   /// Upper-tail dependence $\lambda_U = 2 - 2^{1/\theta}$ (same functional

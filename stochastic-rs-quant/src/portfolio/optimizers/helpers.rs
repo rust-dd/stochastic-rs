@@ -2,6 +2,8 @@
 
 use ndarray::Array2;
 
+use crate::traits::RealExt;
+
 pub(super) fn sample_mean(xs: &[f64]) -> f64 {
   if xs.is_empty() {
     0.0
@@ -39,7 +41,7 @@ pub(super) fn softmax(x: &[f64]) -> Vec<f64> {
     return Vec::new();
   }
 
-  let max_x = x.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+  let max_x = x.iter().cloned().fold(f64::NEG_INFINITY, f64::max_or_nan);
   let exps: Vec<f64> = x.iter().map(|&v| (v - max_x).exp()).collect();
   let sum: f64 = exps.iter().sum();
 
@@ -110,11 +112,7 @@ pub(super) fn portfolio_vol_from_returns(
   pvar.sqrt() * periods_per_year.sqrt()
 }
 
-/// Matrix inversion via faer's LU with partial pivoting. Faster and
-/// more numerically stable than the previous hand-rolled Gauss-Jordan
-/// path on the typical 50-100×100 covariance matrices that
-/// Black-Litterman / mean-variance encounter. Returns `None` for
-/// singular / near-singular inputs (matches the previous semantics).
+/// Inverse by faer's partially pivoted LU; `None` for a singular or near-singular matrix.
 pub(super) fn mat_inverse(mat: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
   let n = mat.len();
   if n == 0 {

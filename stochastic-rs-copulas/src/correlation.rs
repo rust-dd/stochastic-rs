@@ -64,9 +64,9 @@ pub fn tau_to_corr(tau: f64) -> f64 {
   (std::f64::consts::FRAC_PI_2 * tau).sin()
 }
 
-/// Inverse of [`tau_to_corr`]: $\tau = \frac{2}{\pi}\arcsin(\rho)$.
+/// Inverse of [`tau_to_corr`]: $\tau = \frac{2}{\pi}\arcsin(\rho)$; NaN outside `[-1, 1]`.
 pub fn corr_to_tau(rho: f64) -> f64 {
-  2.0 / std::f64::consts::PI * rho.clamp(-1.0, 1.0).asin()
+  2.0 / std::f64::consts::PI * rho.asin()
 }
 
 /// Apply [`tau_to_corr`] elementwise to a Kendall-tau matrix to obtain a
@@ -100,5 +100,11 @@ mod tests {
   fn tau_one_implies_corr_one() {
     assert!((tau_to_corr(1.0) - 1.0).abs() < 1e-15);
     assert!((tau_to_corr(-1.0) + 1.0).abs() < 1e-15);
+  }
+
+  #[test]
+  fn a_correlation_outside_the_unit_interval_has_no_tau() {
+    assert!(corr_to_tau(1.5).is_nan());
+    assert!((corr_to_tau(1.0) - 1.0).abs() < 1e-15);
   }
 }

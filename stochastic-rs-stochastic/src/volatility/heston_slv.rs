@@ -40,6 +40,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -147,7 +150,7 @@ impl<T: FloatExt> Default for HestonSlv<T, Unseeded> {
       T::from_f64_fast(-0.7),
       T::from_f64_fast(0.05),
       T::one(),
-      Expr::lit(1.0),
+      Expr::lit(1.0).compile().expect("one constant is one op"),
       252,
       Some(T::one()),
       Unseeded,
@@ -334,6 +337,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for HestonSlv<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for HestonSlv<T, S, B>
 {
@@ -361,8 +369,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       rho: self.rho,
       dt,
       leverage: &self.leverage,
-      n1: SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed),
-      n2: SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed),
+      n1: SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed),
+      n2: SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed),
     }
   }
 
@@ -437,8 +445,8 @@ pub struct HestonSlvSampler<'a, T: FloatExt> {
   rho: T,
   dt: T,
   leverage: &'a Fn2D<T>,
-  n1: SimdNormal<T>,
-  n2: SimdNormal<T>,
+  n1: Seeded<SimdNormal<T>>,
+  n2: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> HestonSlvSampler<'_, T> {
@@ -480,6 +488,8 @@ impl<T: FloatExt> HestonSlvSampler<'_, T> {
   }
 }
 
+impl<T: FloatExt> crate::traits::Sealed for HestonSlvSampler<'_, T> {}
+
 impl<T: FloatExt> PathSampler<T> for HestonSlvSampler<'_, T> {
   type Output = [Array1<T>; 2];
 
@@ -513,4 +523,5 @@ mod tests;
 mod python;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub use python::PyHestonSlv;

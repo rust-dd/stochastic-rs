@@ -14,14 +14,15 @@
 //! Coefficients for a General Bivariate Distribution", *Biometrika* 47, 307-323.
 //! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
 //! Springer, Example 3.12.
-
-use std::error::Error;
-use std::f64;
+//! Reference: Johnson, M.E. (1987), "Multivariate Statistical Simulation", Wiley, the Morgenstern generator (the conditional inverse), DOI 10.1002/9781118150740.
 
 use ndarray::Array1;
 use ndarray::Array2;
 
 use crate::bivariate::CopulaType;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -49,6 +50,23 @@ impl Default for Fgm {
 impl Fgm {
   pub fn new() -> Self {
     Self::default()
+  }
+
+  /// The root in `[0, 1]` of `u(1 + a) − au² = y`, `a = θ(1 − 2v)`, as `2y/((1 + a) + √D)` with `D` summed from
+  /// non-negative terms for either sign of `a`; 0 at level 0, where `a = −1` would divide 0 by 0.
+  pub(crate) fn inverse(theta: f64) -> impl Fn(f64, f64) -> f64 {
+    move |y, v| {
+      if y == 0.0 {
+        return 0.0;
+      }
+      let a = theta * (1.0 - 2.0 * v);
+      let discriminant = if a > 0.0 {
+        (1.0 - a) * (1.0 - a) + 4.0 * a * (1.0 - y)
+      } else {
+        (1.0 + a) * (1.0 + a) - 4.0 * a * y
+      };
+      2.0 * y / ((1.0 + a) + discriminant.sqrt())
+    }
   }
 }
 
@@ -82,7 +100,7 @@ impl BivariateExt for Fgm {
   }
 
   /// Density $c(u,v) = 1 + \theta(1 - 2u)(1 - 2v)$.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -97,7 +115,7 @@ impl BivariateExt for Fgm {
   }
 
   /// CDF $C(u,v) = uv + \theta u(1-u) v(1-v)$.
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -111,19 +129,19 @@ impl BivariateExt for Fgm {
     Ok(out)
   }
 
-  /// $\partial_v C(u,v) = u + \theta u (1-u)(1 - 2v)$.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  /// $\partial_v C(u,v) = u + \theta u (1-u)(1 - 2v)$, NaN for `v` outside `[0, 1]`.
+  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
     let theta = self.theta.unwrap();
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      out[i] = u + theta * u * (1.0 - u) * (1.0 - 2.0 * v);
-    }
-    Ok(out)
+    Ok(conditional_cdf(x, |u, v| {
+      u + theta * u * (1.0 - u) * (1.0 - 2.0 * v)
+    }))
+  }
+
+  /// `Fgm::inverse`'s root; NaN for `y` or `v` outside `[0, 1]`.
+  fn percent_point(&self, y: &Array1<f64>, v: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    conditional_quantiles(y, v, Self::inverse(self.theta.unwrap()))
   }
 
   /// Closed-form Kendall's tau inversion: $\tau = 2\theta/9 \implies \theta = 9\tau/2$.

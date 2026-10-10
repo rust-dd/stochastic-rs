@@ -13,6 +13,7 @@
 use ndarray::Array1;
 
 use super::McEstimate;
+use super::estimate_from_samples;
 use crate::traits::FloatExt;
 
 /// Importance sampling MC estimate with Gaussian mean-shift.
@@ -30,30 +31,15 @@ where
 
   let two = T::from_f64_fast(2.0);
   let shift_norm_sq: T = shift.iter().map(|&s| s * s).sum();
-  let mut sum = T::zero();
-  let mut sum_sq = T::zero();
 
-  for _ in 0..n_paths {
+  estimate_from_samples((0..n_paths).map(|_| {
     let z_std = T::normal_array(dim, T::zero(), T::one());
     let z = &z_std + shift;
     let dot: T = z.iter().zip(shift.iter()).map(|(&zi, &si)| zi * si).sum();
     let log_weight = -dot + shift_norm_sq / two;
     let weight = log_weight.exp();
-    let y = payoff(&z) * weight;
-    sum += y;
-    sum_sq += y * y;
-  }
-
-  let n = T::from_usize_(n_paths);
-  let mean = sum / n;
-  let variance = sum_sq / n - mean * mean;
-  let std_err = (variance / n).sqrt();
-
-  McEstimate {
-    mean,
-    std_err,
-    n_samples: n_paths,
-  }
+    payoff(&z) * weight
+  }))
 }
 
 #[cfg(test)]

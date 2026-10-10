@@ -103,8 +103,7 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
   ///
   /// The Feller condition and its sub-Feller mitigation apply to the
   /// underlying CIR factor `x_t` exactly as in [`Cir::new`]: a violation
-  /// not paired with `use_sym = Some(true)` unconditionally prints a
-  /// one-line diagnostic to stderr — including in release builds — and
+  /// not paired with `use_sym = Some(true)` emits a `log::warn!` and
   /// never panics.
   pub fn new(
     kappa: T,
@@ -118,8 +117,8 @@ impl<T: FloatExt, S: SeedExt> CirPlusPlus<T, S> {
     seed: S,
   ) -> Self {
     if T::from_usize_(2) * kappa * theta < sigma.powi(2) && use_sym != Some(true) {
-      eprintln!(
-        "warning: CirPlusPlus::new: Feller condition violated (2*kappa*theta < sigma^2) \
+      log::warn!(
+        "CirPlusPlus::new: Feller condition violated (2*kappa*theta < sigma^2) \
          without use_sym = Some(true); the underlying CIR factor floors at zero on every \
          boundary hit instead of reflecting — pass use_sym = Some(true) for the standard \
          sub-Feller mitigation"
@@ -285,6 +284,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] CirPlusPlus<T, S> { kappa, theta, sigma, phi, n, x0, t, use_sym, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for CirPlusPlus<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for CirPlusPlus<T, S, B>
 {
@@ -313,7 +317,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   /// replaying (see this file's own git history), and
   /// reordering it would trade this asymmetry for that regression.
   fn advance_chunk_seed(&self) {
-    self.seed.seed_value();
+    self.seed.next_seed();
   }
 
   fn sampler(&self) -> CirPlusPlusSampler<'_, T> {
@@ -398,6 +402,8 @@ impl<T: FloatExt> CirPlusPlusSampler<'_, T> {
   }
 }
 
+impl<T: FloatExt> crate::traits::Sealed for CirPlusPlusSampler<'_, T> {}
+
 impl<T: FloatExt> PathSampler<T> for CirPlusPlusSampler<'_, T> {
   type Output = Array1<T>;
 
@@ -418,6 +424,7 @@ impl<T: FloatExt> PathSampler<T> for CirPlusPlusSampler<'_, T> {
 mod python;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub use python::PyCirPlusPlus;
 
 #[cfg(test)]

@@ -2,10 +2,10 @@
 //! Backs the regularised calibration example on the quant catalog page.
 
 use ndarray::Array1;
+use stochastic_rs::quant::OptionType;
 use stochastic_rs::quant::calibration::Regularization;
 use stochastic_rs::quant::calibration::SabrCalibrator;
 use stochastic_rs::quant::pricing::sabr::SabrPricer;
-use stochastic_rs::quant::types::OptionType;
 use stochastic_rs::traits::Calibrator;
 
 #[test]

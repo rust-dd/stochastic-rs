@@ -19,12 +19,11 @@
 //! and §4 (parametric bootstrap); Rosenblatt, M. (1952), *Remarks on a
 //! multivariate transformation*, Ann. Math. Statist. 23, 470–472.
 
-use std::error::Error;
-
 use ndarray::Array2;
 use ndarray::Axis;
 use ndarray::stack;
 
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 
 /// Rosenblatt transform `(u, ∂_u C(u, v))` of the rows of `x`. The crate's
@@ -33,7 +32,7 @@ use crate::traits::BivariateExt;
 pub fn rosenblatt<C: BivariateExt + ?Sized>(
   copula: &C,
   x: &Array2<f64>,
-) -> Result<Array2<f64>, Box<dyn Error>> {
+) -> Result<Array2<f64>, CopulaError> {
   let u = x.column(0).to_owned();
   let v = x.column(1).to_owned();
   let swapped = stack![Axis(1), v, u];
@@ -70,6 +69,17 @@ pub struct GofResult {
   pub replications: usize,
 }
 
+/// No alpha is fixed, so there is no rejection decision; the bootstrap p-value stays in `p_value`.
+impl stochastic_rs_distributions::traits::HypothesisTest for GofResult {
+  fn statistic(&self) -> f64 {
+    self.statistic
+  }
+
+  fn null_rejected(&self) -> Option<bool> {
+    None
+  }
+}
+
 /// Parametric-bootstrap Cramér–von Mises test of `copula` (already fitted)
 /// on the pseudo-observations `x` (Genest, Rémillard & Beaudoin 2009, §4):
 /// `replications` samples of size `n` are drawn from the fitted copula with
@@ -83,8 +93,8 @@ pub fn gof_cramer_von_mises<C: BivariateExt + Clone>(
   x: &Array2<f64>,
   replications: usize,
   seed: u64,
-  refit: impl Fn(&mut C, &Array2<f64>) -> Result<(), Box<dyn Error>>,
-) -> Result<GofResult, Box<dyn Error>> {
+  refit: impl Fn(&mut C, &Array2<f64>) -> Result<(), CopulaError>,
+) -> Result<GofResult, CopulaError> {
   let statistic = cramer_von_mises_independence(&rosenblatt(copula, x)?);
   let n = x.nrows();
   let mut exceed = 0usize;
@@ -196,5 +206,17 @@ mod tests {
     assert_eq!(u[(0, 0)], 0.75);
     assert_eq!(u[(1, 0)], 0.25);
     assert_eq!(u[(1, 1)], 0.75);
+  }
+
+  #[test]
+  fn a_gof_result_is_a_hypothesis_test_without_a_rejection_rule() {
+    use stochastic_rs_distributions::traits::HypothesisTest;
+    let result = GofResult {
+      statistic: 0.042,
+      p_value: 0.31,
+      replications: 200,
+    };
+    assert_eq!(result.statistic(), 0.042);
+    assert_eq!(result.null_rejected(), None);
   }
 }

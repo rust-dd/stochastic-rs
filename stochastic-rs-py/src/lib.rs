@@ -7,8 +7,6 @@
 //! Build with maturin (see `pyproject.toml` at the workspace root) — the
 //! resulting wheel exposes the Python module `stochastic_rs`.
 
-#![allow(non_snake_case)]
-
 use pyo3::prelude::*;
 
 #[pymodule]

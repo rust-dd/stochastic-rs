@@ -26,9 +26,9 @@ use crate::calibration::least_squares::LeastSquaresProblem;
 ///
 /// where $C$ and $D$ are the Heston terms augmented by the jump compensator:
 /// $$
-/// C_{\mathrm{Bates}} = C_{\mathrm{Heston}} + T\,\lambda\bigl(e^{i\mu_J\xi-\frac12\sigma_J^2\xi^2}-1\bigr)
-///   - i\xi\,T\,\lambda\bigl(e^{\mu_J+\frac12\sigma_J^2}-1\bigr)
-///
+/// C_{\mathrm{Bates}} = C_{\mathrm{Heston}} +
+///   T\,\lambda\bigl(e^{i\mu_J\xi-\frac12\sigma_J^2\xi^2}-1\bigr) -
+///   i\xi\,T\,\lambda\bigl(e^{\mu_J+\frac12\sigma_J^2}-1\bigr)
 /// $$
 ///
 /// The Heston diffusion part uses the Albrecher-Mayer-Schoutens-Tistaert (2007)

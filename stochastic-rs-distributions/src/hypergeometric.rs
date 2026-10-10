@@ -8,34 +8,35 @@
 //! support via the log-space pmf recurrence — one uniform plus a binary
 //! search per draw instead of the naive `n_draws` Bernoulli trials.
 //!
-//! Reference: Kachitvichyanukul, V., Schmeiser, B.W. (1985), "Computer
-//! generation of hypergeometric random variates", *Journal of Statistical
-//! Computation and Simulation* 22, 127-145, DOI: 10.1080/00949658508810839
-//! (inverse-transform family).
-use std::cell::Cell;
-use std::cell::UnsafeCell;
+//! Reference: Kachitvichyanukul, V., Schmeiser, B.W. (1985), "Computer generation of hypergeometric random variates", *Journal of Statistical Computation and Simulation* 22, 127-145, DOI 10.1080/00949658508810839 (inverse-transform family).
+//! Reference: Johnson, N. L., Kemp, A. W. & Kotz, S. (2005), *Univariate Discrete Distributions*, 3rd ed., Wiley, §6.3, DOI 10.1002/0471715816 (moments).
+use std::marker::PhantomData;
 
 use num_traits::PrimInt;
 use rand::Rng;
-use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
+use rand::distr::Distribution;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::StreamState;
+use crate::source::uniform53;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
-pub struct SimdHypergeometric<T: PrimInt, R: SimdRngExt = SimdRng> {
+/// Hypergeometric law of `n_draws` draws without replacement from `n_total` items, `k_success` of them successes:
+/// parameters and the cumulative table; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SimdHypergeometric<T: PrimInt> {
   n_total: u32,
   k_success: u32,
   n_draws: u32,
   k_min: u32,
   cdf: Box<[f64]>,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<R>,
-  stream_seed: Cell<u64>,
+  out: PhantomData<T>,
 }
 
-impl<T: PrimInt, R: SimdRngExt> SimdHypergeometric<T, R> {
+impl<T: PrimInt> SimdHypergeometric<T> {
   /// Builds the cumulative table over the support `[k_min, k_max]`. The
   /// pmf recurrence runs in log space, so edge-of-support underflow (far
   /// tails of large populations) only zeroes the negligible tail terms
@@ -76,112 +77,102 @@ impl<T: PrimInt, R: SimdRngExt> SimdHypergeometric<T, R> {
   ///   replacement (the module header's own n) — an urn-draw-size
   ///   parameter of the distribution itself, unrelated to how many i.i.d.
   ///   variates a later `fill_slice`/`sample` call produces.
-  pub fn new<S: crate::simd_rng::SeedExt>(
-    n_total: u32,
-    k_success: u32,
-    n_draws: u32,
-    seed: &S,
-  ) -> Self {
-    assert!(k_success <= n_total, "k_success must be ≤ n_total");
-    assert!(n_draws <= n_total, "n_draws must be ≤ n_total");
+  pub fn new(n_total: u32, k_success: u32, n_draws: u32) -> Self {
+    assert!(
+      k_success <= n_total,
+      "k_success must satisfy `k_success <= n_total`, got k_success = {k_success}, n_total = {n_total}"
+    );
+    assert!(
+      n_draws <= n_total,
+      "n_draws must satisfy `n_draws <= n_total`, got n_draws = {n_draws}, n_total = {n_total}"
+    );
     let (k_min, cdf) = Self::build_cdf(n_total, k_success, n_draws);
-    let stream_seed = seed.seed_value();
     Self {
       n_total,
       k_success,
       n_draws,
       k_min,
       cdf,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed: Cell::new(stream_seed),
+      out: PhantomData,
     }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.n_total,
-      self.k_success,
-      self.n_draws,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
+  /// The population size `N`.
+  pub fn n_total(&self) -> u32 {
+    self.n_total
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
+  /// The number of successes `K` in the population.
+  pub fn k_success(&self) -> u32 {
+    self.k_success
+  }
+
+  /// The number of draws `n`.
+  pub fn n_draws(&self) -> u32 {
+    self.n_draws
+  }
+
+  /// The count whose cumulative probability first reaches `u`; an overflow of `T` saturates (and asserts in debug).
   #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
+  fn index_of(&self, u: f64) -> T {
+    let k = self.k_min as usize + self.cdf.partition_point(|&p| p < u);
+    let cast = num_traits::cast(k);
+    debug_assert!(
+      cast.is_some(),
+      "hypergeometric draw {k} overflowed the output integer type"
+    );
+    cast.unwrap_or(T::max_value())
   }
 
-  /// Fills `out` using the internal SIMD RNG stream — the only stream this
-  /// sampler draws from (see the crate-level RNG policy). A draw that
-  /// overflows `T` saturates to `T::max_value()` rather than silently
-  /// reporting a `0` count; `debug_assert!` surfaces the overflow in debug
-  /// builds so undersized output types are caught during testing.
-  pub fn fill_slice(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
+  /// Kept out of line because inlined into `sample_matrix`'s workers the table search slows their fills by about 5 %.
+  #[inline(never)]
+  fn fill_parts<G: Rng + ?Sized>(&self, rng: &mut G, out: &mut [T]) {
     for x in out.iter_mut() {
-      let u: f64 = rng.random();
-      let k = self.k_min as usize + self.cdf.partition_point(|&p| p < u);
-      let cast = num_traits::cast(k);
-      debug_assert!(
-        cast.is_some(),
-        "hypergeometric draw {k} overflowed the output integer type"
-      );
-      *x = cast.unwrap_or(T::max_value());
+      *x = self.index_of(uniform53(rng.next_u64()));
     }
   }
 
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.index_of(uniform53(rng.next_u64()))
   }
 }
 
-impl<T: PrimInt, R: SimdRngExt> Clone for SimdHypergeometric<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.n_total, self.k_success, self.n_draws, &Unseeded)
+impl<T: PrimInt + Send + Sync + 'static> Sealed for SimdHypergeometric<T> {}
+
+impl<T: PrimInt + Send + Sync + 'static> SimdDistribution for SimdHypergeometric<T> {
+  type State<R: SimdRngExt> = StreamState<T, R, 16>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (StreamState<T, R, 16>, u64) {
+    StreamState::init(seed)
   }
 }
 
-impl<T: PrimInt, R: SimdRngExt> Distribution<T> for SimdHypergeometric<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction. Use `Deterministic`
-  /// in the constructor for reproducibility.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
+impl<T: PrimInt + Send + Sync + 'static> SimdKernel for SimdHypergeometric<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+    self.fill_parts(&mut state.rng, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>) -> T {
+    let StreamState { rng, buf } = state;
+    buf.pop(|b| self.fill_parts(rng, b))
   }
 }
 
-impl<T: PrimInt, R: SimdRngExt> crate::traits::DistributionExt for SimdHypergeometric<T, R> {
-  fn pdf(&self, x: f64) -> f64 {
+impl<T: PrimInt + Send + Sync + 'static> Distribution<T> for SimdHypergeometric<T> {
+  /// The table inversion of one 53-bit uniform from the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: PrimInt> crate::traits::DistributionExt for SimdHypergeometric<T> {
+  fn pdf(&self, x: f64) -> Option<f64> {
     if x < 0.0 || x.fract() != 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let k = x as i64;
     let big_n = self.n_total as i64;
@@ -190,7 +181,7 @@ impl<T: PrimInt, R: SimdRngExt> crate::traits::DistributionExt for SimdHypergeom
     let k_min = (n - (big_n - big_k)).max(0);
     let k_max = n.min(big_k);
     if k < k_min || k > k_max {
-      return 0.0;
+      return Some(0.0);
     }
     // P = C(K, k) C(N−K, n−k) / C(N, n) — compute via log-Γ for stability.
     let lg = |z: i64| crate::special::ln_gamma((z + 1) as f64);
@@ -198,12 +189,12 @@ impl<T: PrimInt, R: SimdRngExt> crate::traits::DistributionExt for SimdHypergeom
       - lg(n - k)
       - lg(big_n - big_k - (n - k))
       - (lg(big_n) - lg(n) - lg(big_n - n));
-    log_pmf.exp()
+    Some(log_pmf.exp())
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     if x < 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let k = x.floor() as i64;
     let big_n = self.n_total as i64;
@@ -212,73 +203,106 @@ impl<T: PrimInt, R: SimdRngExt> crate::traits::DistributionExt for SimdHypergeom
     let k_min = (n - (big_n - big_k)).max(0);
     let k_max = n.min(big_k);
     if k >= k_max {
-      return 1.0;
+      return Some(1.0);
     }
     // No closed form — sum the pmf from k_min to ⌊x⌋.
     let mut acc = 0.0;
     for j in k_min..=k {
-      acc += self.pdf(j as f64);
+      acc += self.pdf(j as f64)?;
     }
-    acc.clamp(0.0, 1.0)
+    Some(acc.clamp(0.0, 1.0))
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn quantile(&self, p: f64) -> Option<f64> {
     let big_n = self.n_total as i64;
     let big_k = self.k_success as i64;
     let n = self.n_draws as i64;
     let k_min = (n - (big_n - big_k)).max(0);
     let k_max = n.min(big_k);
     if p <= 0.0 {
-      return k_min as f64;
+      return Some(k_min as f64);
     }
     if p >= 1.0 {
-      return k_max as f64;
+      return Some(k_max as f64);
     }
     let mut acc = 0.0;
     for j in k_min..=k_max {
-      acc += self.pdf(j as f64);
+      acc += self.pdf(j as f64)?;
       if acc >= p {
-        return j as f64;
+        return Some(j as f64);
       }
     }
-    k_max as f64
+    Some(k_max as f64)
   }
 
-  fn mean(&self) -> f64 {
-    self.n_draws as f64 * self.k_success as f64 / self.n_total as f64
+  fn mean(&self) -> Option<f64> {
+    if self.n_total == 0 {
+      return Some(0.0);
+    }
+    Some(self.n_draws as f64 * self.k_success as f64 / self.n_total as f64)
   }
 
-  fn median(&self) -> f64 {
-    self.mean().floor()
+  fn median(&self) -> Option<f64> {
+    Some(self.mean()?.floor())
   }
 
-  fn mode(&self) -> f64 {
+  fn mode(&self) -> Option<f64> {
     let n = self.n_draws as f64;
     let k = self.k_success as f64;
     let big_n = self.n_total as f64;
-    ((n + 1.0) * (k + 1.0) / (big_n + 2.0)).floor()
+    Some(((n + 1.0) * (k + 1.0) / (big_n + 2.0)).floor())
   }
 
-  fn variance(&self) -> f64 {
+  /// Zero at `N ≤ 1`, a point mass where `(N − 1)` reads `0/0`.
+  fn variance(&self) -> Option<f64> {
     let n = self.n_draws as f64;
     let k = self.k_success as f64;
     let big_n = self.n_total as f64;
-    n * k * (big_n - k) * (big_n - n) / (big_n * big_n * (big_n - 1.0))
+    if big_n <= 1.0 {
+      return Some(0.0);
+    }
+    Some(n * k * (big_n - k) * (big_n - n) / (big_n * big_n * (big_n - 1.0)))
   }
 
-  fn skewness(&self) -> f64 {
+  /// `NaN` for a point mass; at `N = 2` the only other law is Bernoulli(½), where `(N − 2)` reads `0/0`.
+  fn skewness(&self) -> Option<f64> {
+    if self.variance()? == 0.0 {
+      return Some(f64::NAN);
+    }
     let n = self.n_draws as f64;
     let k = self.k_success as f64;
     let big_n = self.n_total as f64;
-    ((big_n - 2.0 * k) * (big_n - 1.0).sqrt() * (big_n - 2.0 * n))
-      / ((n * k * (big_n - k) * (big_n - n)).sqrt() * (big_n - 2.0))
-  }
-
-  /// MGF involves the hypergeometric function; not implemented in closed form.
-  fn moment_generating_function(&self, _t: f64) -> f64 {
-    unimplemented!(
-      "DistributionExt::moment_generating_function for SimdHypergeometric requires the Gauss hypergeometric ₂F₁; not implemented"
+    if big_n == 2.0 {
+      return Some(0.0);
+    }
+    Some(
+      ((big_n - 2.0 * k) * (big_n - 1.0).sqrt() * (big_n - 2.0 * n))
+        / ((n * k * (big_n - k) * (big_n - n)).sqrt() * (big_n - 2.0)),
     )
+  }
+
+  /// `NaN` for a point mass; at `N ≤ 3` the law sits on two adjacent points, where the closed form's
+  /// `(N − 2)(N − 3)` reads `0/0` and the excess kurtosis is `1/Var − 6`.
+  fn kurtosis(&self) -> Option<f64> {
+    let var = self.variance()?;
+    if var == 0.0 {
+      return Some(f64::NAN);
+    }
+    let (n, k, big_n) = (
+      self.n_draws as f64,
+      self.k_success as f64,
+      self.n_total as f64,
+    );
+    if big_n <= 3.0 {
+      return Some(1.0 / var - 6.0);
+    }
+    let numerator = (big_n - 1.0)
+      * big_n
+      * big_n
+      * (big_n * (big_n + 1.0) - 6.0 * k * (big_n - k) - 6.0 * n * (big_n - n))
+      + 6.0 * n * k * (big_n - k) * (big_n - n) * (5.0 * big_n - 6.0);
+    let denominator = n * k * (big_n - k) * (big_n - n) * (big_n - 2.0) * (big_n - 3.0);
+    Some(numerator / denominator)
   }
 }
 
@@ -292,13 +316,19 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::SimdHypergeometric;
+  use crate::tests::scalar_chi_square_best_p;
   use crate::traits::DistributionExt;
+  use crate::traits::DistributionSampler;
+  use crate::traits::SimdDistribution;
 
   #[test]
   fn hypergeometric_inversion_matches_population_moments() {
-    let dist = SimdHypergeometric::<u32>::new(500, 200, 100, &Deterministic::new(21));
+    let dist = SimdHypergeometric::<u32>::new(500, 200, 100);
     let mut buf = vec![0u32; 100_000];
-    dist.fill_slice(&mut buf);
+    dist
+      .clone()
+      .seeded(&Deterministic::new(21))
+      .fill_slice(&mut buf);
     let n = buf.len() as f64;
     let mean = buf.iter().map(|&x| x as f64).sum::<f64>() / n;
     let var = buf
@@ -311,29 +341,32 @@ mod tests {
       / n;
     assert!(buf.iter().all(|&x| x <= 100));
     assert!(
-      (mean - dist.mean()).abs() < 0.1,
+      (mean - dist.mean().unwrap()).abs() < 0.1,
       "mean drift: {mean} vs {}",
-      dist.mean()
+      dist.mean().unwrap()
     );
     assert!(
-      (var / dist.variance() - 1.0).abs() < 0.05,
+      (var / dist.variance().unwrap() - 1.0).abs() < 0.05,
       "variance drift: {var} vs {}",
-      dist.variance()
+      dist.variance().unwrap()
     );
   }
 
   #[test]
   fn hypergeometric_pmf_matches_empirical() {
     const SAMPLES: usize = 200_000;
-    let dist = SimdHypergeometric::<u32>::new(60, 25, 20, &Deterministic::new(5));
+    let dist = SimdHypergeometric::<u32>::new(60, 25, 20);
     let mut buf = vec![0u32; SAMPLES];
-    dist.fill_slice(&mut buf);
+    dist
+      .clone()
+      .seeded(&Deterministic::new(5))
+      .fill_slice(&mut buf);
     let mut counts = [0usize; 21];
     for &x in &buf {
       counts[x as usize] += 1;
     }
     for (k, &got) in counts.iter().enumerate().take(14).skip(4) {
-      let pmf = dist.pdf(k as f64);
+      let pmf = dist.pdf(k as f64).unwrap();
       let expected = pmf * SAMPLES as f64;
       let se = (expected * (1.0 - pmf)).sqrt();
       assert!(
@@ -341,5 +374,13 @@ mod tests {
         "PMF mismatch at k={k}: got {got}, expected {expected}"
       );
     }
+  }
+
+  /// The honest `Distribution` draws from the caller's rng and agrees with the cdf.
+  #[test]
+  fn scalar_sample_matches_cdf() {
+    let d = SimdHypergeometric::<u32>::new(60, 25, 20);
+    let best = scalar_chi_square_best_p(&d, (0, 20), |k| d.cdf(k as f64).unwrap());
+    assert!(best > 0.01, "best p = {best}");
   }
 }

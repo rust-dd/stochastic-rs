@@ -33,14 +33,13 @@
 //!   financial returns", *Computational Statistics & Data Analysis* 59,
 //!   52-69.
 
-use std::error::Error;
-
 use ndarray::Array1;
 use ndarray::Array2;
 
 use super::CopulaType;
 use super::cvine::CVine;
 use super::dvine::DVine;
+use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
 
 /// Regular vine pair-copula construction wrapper over the two
@@ -71,7 +70,7 @@ impl RVine {
   /// All-Independence R-vine of the given dimension (D-vine backed; the
   /// independence copula is structure-invariant so the choice between
   /// D / C wrapping is purely conventional).
-  pub fn independence(dim: usize) -> Result<Self, Box<dyn Error>> {
+  pub fn independence(dim: usize) -> Result<Self, CopulaError> {
     DVine::independence(dim).map(RVine::D)
   }
 
@@ -99,49 +98,49 @@ impl MultivariateExt for RVine {
     CopulaType::RVine
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample(&self, n: usize) -> Result<Array2<f64>, CopulaError> {
     match self {
       RVine::D(d) => d.sample(n),
       RVine::C(c) => c.sample(n),
     }
   }
 
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, CopulaError> {
     match self {
       RVine::D(d) => d.sample_with_seed(n, seed),
       RVine::C(c) => c.sample_with_seed(n, seed),
     }
   }
 
-  fn fit(&mut self, x: Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn fit(&mut self, x: Array2<f64>) -> Result<(), CopulaError> {
     match self {
       RVine::D(d) => d.fit(x),
       RVine::C(c) => c.fit(x),
     }
   }
 
-  fn check_fit(&self, x: &Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn check_fit(&self, x: &Array2<f64>) -> Result<(), CopulaError> {
     match self {
       RVine::D(d) => d.check_fit(x),
       RVine::C(c) => c.check_fit(x),
     }
   }
 
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     match self {
       RVine::D(d) => d.pdf(x),
       RVine::C(c) => c.pdf(x),
     }
   }
 
-  fn log_pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn log_pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     match self {
       RVine::D(d) => d.log_pdf(x),
       RVine::C(c) => c.log_pdf(x),
     }
   }
 
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     match self {
       RVine::D(d) => d.cdf(x),
       RVine::C(c) => c.cdf(x),

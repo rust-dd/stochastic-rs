@@ -39,7 +39,7 @@ pub fn calibrate_ssvi<T: RealExt>(
     .iter()
     .map(|s| s.theta)
     .filter(|t| t.is_finite() && *t > 0.0)
-    .fold(0.0_f64, f64::max);
+    .fold(0.0_f64, f64::max_or_nan);
 
   let problem = SsviLmProblem {
     slices: slices_f64,
@@ -109,10 +109,6 @@ impl LeastSquaresProblem for SsviLmProblem {
 
   /// Closed-form Jacobian of the SSVI total-variance residual w.r.t. the global
   /// parameters $(\rho, \eta, \gamma)$.
-  ///
-  /// Replaces the rc.0/rc.1 1-sided forward-difference Jacobian (`h = 1e-7`,
-  /// O(h) error + 3 extra `total_variance` evaluations per data point) with
-  /// the analytic derivative — O(eps) error, no extra evals.
   ///
   /// Let $\phi(\theta) = \eta \theta^{-\gamma}$ and
   /// $r = \sqrt{(\phi k + \rho)^2 + 1 - \rho^2}$. Then:

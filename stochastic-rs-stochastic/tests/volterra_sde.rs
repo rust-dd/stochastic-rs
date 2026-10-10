@@ -1,17 +1,5 @@
-//! Tests for [`VolterraSde`]/[`VolterraLift`] against [`reference_path`],
-//! the permanent $O(n^2)$ cross-implementation oracle for the Markov lift
-//! (see `reference.rs`'s own module doc for why it is kept, not scaffolding).
-//!
-//! **A shared trap, avoided throughout this file.** [`RlKernel`] has both an
-//! *inherent* `evaluate` (the raw exponential-sum approximation of
-//! $t^{H-1/2}$, undivided by $\Gamma(H+1/2)$) and the *trait*
-//! [`VolterraKernel::evaluate`] (the exact, normalised closed form
-//! $t^{H-1/2}/\Gamma(H+1/2)$ — see Task 1's own report for the 33.6%
-//! discrepancy this distinction caused when conflated). Rust's method
-//! resolution prefers an inherent method over a trait method of the same
-//! name, so a bare `kernel.evaluate(tau)` on an `RlKernel` silently calls
-//! the *wrong* one. Every reference-path construction below spells this out
-//! as `VolterraKernel::evaluate(&kernel, tau)` to force the trait method.
+//! Tests for [`VolterraSde`]/[`VolterraLift`] against [`reference_path`], the permanent $O(n^2)$
+//! cross-implementation oracle for the Markov lift (`reference.rs` says why it is kept).
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_stochastic::noise::gn::Gn;
 use stochastic_rs_stochastic::rough::kernel::RlKernel;

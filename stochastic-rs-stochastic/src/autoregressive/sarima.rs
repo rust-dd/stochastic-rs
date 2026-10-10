@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -171,6 +174,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Sarima<T, S> { non_seasonal_ar_coefs, non_seasonal_ma_coefs, seasonal_ar_coefs, seasonal_ma_coefs, d, D, s, sigma, n, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Sarima<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Sarima<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -188,7 +196,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       d: self.d,
       big_d: self.D,
       s: self.s,
-      normal: SimdNormal::<T>::new(T::zero(), self.sigma, &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), self.sigma).seeded(&self.seed),
     }
   }
 
@@ -270,7 +278,7 @@ pub struct SarimaSampler<T: FloatExt> {
   d: usize,
   big_d: usize,
   s: usize,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> SarimaSampler<T> {
@@ -356,6 +364,8 @@ pub(crate) fn sarima_filter<T: FloatExt>(
   }
   integrated
 }
+
+impl<T: FloatExt> crate::traits::Sealed for SarimaSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for SarimaSampler<T> {
   type Output = Array1<T>;

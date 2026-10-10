@@ -147,21 +147,23 @@ impl FrftCarrMadanPricer {
   /// from the strike step), giving an $N\eta$ truncation range that fully
   /// captures the Heston / Bates / Lévy integrand tail.
   ///
-  /// Falls back to [`Default`] when the cumulants are not finite.
+  /// Panics unless `l_factor` and the model's second cumulant are finite and positive.
   pub fn cumulant_sized(model: &impl FourierModelExt, t: f64, l_factor: f64) -> Self {
+    assert!(
+      l_factor.is_finite() && l_factor > 0.0,
+      "l_factor must satisfy `l_factor.is_finite() && l_factor > 0.0`, got l_factor = {l_factor:?}"
+    );
     let cumulants = model.cumulants(t);
-    if !cumulants.c2.is_finite() || cumulants.c2 <= 0.0 {
-      return Self::default();
-    }
-    let c4_term = if cumulants.c4.is_finite() && cumulants.c4 >= 0.0 {
-      cumulants.c4.sqrt()
-    } else {
-      0.0
-    };
-    let half_width = l_factor * (cumulants.c2.abs() + c4_term).sqrt();
-    if !half_width.is_finite() || half_width <= 0.0 {
-      return Self::default();
-    }
+    let c2 = cumulants.c2;
+    assert!(
+      c2.is_finite() && c2 > 0.0,
+      "cumulants.c2 must satisfy `c2.is_finite() && c2 > 0.0`, got c2 = {c2:?}"
+    );
+    let c4_term = cumulants
+      .c4
+      .filter(|c| c.is_finite() && *c >= 0.0)
+      .map_or(0.0, f64::sqrt);
+    let half_width = l_factor * (c2.abs() + c4_term).sqrt();
     let n = 4096_usize;
     // Integration step: the FRFT decouples η from the strike step, so we
     // pick η to give a frequency truncation range Nη that comfortably
@@ -169,7 +171,7 @@ impl FrftCarrMadanPricer {
     // core e^{-½ c₂ v²} ≈ e^{-40}, i.e. v* = √(80/c₂)), then take a 2×
     // safety margin. Finer η than the classic reciprocity rule yields a
     // markedly tighter Simpson quadrature near the money.
-    let v_max = 2.0 * (80.0 / cumulants.c2.abs()).sqrt();
+    let v_max = 2.0 * (80.0 / c2.abs()).sqrt();
     let eta = (v_max / n as f64).clamp(0.005, 0.25);
     Self {
       n,
@@ -366,5 +368,29 @@ mod tests {
     let pricer = FrftCarrMadanPricer::cumulant_sized(&model, 1.0, 12.0);
     let deep = pricer.price_call(&model, 100.0, 1e12, 0.05, 1.0);
     assert!(deep.is_nan(), "out-of-grid strike must be NaN, got {deep}");
+  }
+
+  #[test]
+  #[should_panic(
+    expected = "l_factor must satisfy `l_factor.is_finite() && l_factor > 0.0`, got l_factor = NaN"
+  )]
+  fn cumulant_sizing_rejects_a_non_finite_l_factor() {
+    let model = BSMFourier {
+      sigma: 0.2,
+      r: 0.05,
+      q: 0.0,
+    };
+    let _ = FrftCarrMadanPricer::cumulant_sized(&model, 1.0, f64::NAN);
+  }
+
+  #[test]
+  #[should_panic(expected = "cumulants.c2 must satisfy `c2.is_finite() && c2 > 0.0`, got c2 = 0.0")]
+  fn cumulant_sizing_rejects_a_vanishing_second_cumulant() {
+    let model = BSMFourier {
+      sigma: 0.2,
+      r: 0.05,
+      q: 0.0,
+    };
+    let _ = FrftCarrMadanPricer::cumulant_sized(&model, 0.0, 12.0);
   }
 }

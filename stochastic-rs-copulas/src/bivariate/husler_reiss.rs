@@ -29,17 +29,15 @@
 //! vectors: between independence and complete dependence", *Statist.
 //! Probab. Lett.* 7(4), 283-286.
 
-use std::error::Error;
-use std::f64;
-
 use ndarray::Array1;
 use ndarray::Array2;
-use roots::SimpleConvergency;
-use roots::find_root_brent;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
 
 use crate::bivariate::CopulaType;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::error::CopulaError;
+use crate::optim::zero;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -147,7 +145,7 @@ impl BivariateExt for HuslerReiss {
   /// (\lambda/2)\varphi(\alpha)/y]$ with $x = -\ln u$, $y = -\ln v$,
   /// $\alpha = 1/\lambda + (\lambda/2)\ln(x/y)$, $\beta = 2/\lambda -
   /// \alpha$. Uses the Hüsler-Reiss identity for stability.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
     let u_col = x.column(0);
@@ -172,7 +170,7 @@ impl BivariateExt for HuslerReiss {
     Ok(out)
   }
 
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
     let u_col = x.column(0);
@@ -203,39 +201,21 @@ impl BivariateExt for HuslerReiss {
     Ok(out)
   }
 
-  /// $\partial_v C(u,v) = C(u,v) \cdot \Phi(\beta) / v$.
-  ///
-  /// At the `v \to 0^+/1^-` boundary, `y = -\ln v \to \pm\infty` drives
-  /// `\alpha,\beta` (and hence `C(u,v)\cdot\Phi(\beta)/v`) through both an
-  /// exponential prefactor and a `\Phi`-of-log-ratio term at once, and the
-  /// combined limit is not a family-wide constant: numerically it depends
-  /// on both `u` and `\lambda` at `v\to0^+` (e.g. `\lambda=0.2` limits near
-  /// `u`, `\lambda\ge1` limits near `1`), so `0.0` is wrong whenever
-  /// `\lambda` is not small. At `v\to1^-` the limit does converge to `0`
-  /// for every `\lambda` tested, but not to the hardcoded `1.0` this branch
-  /// returned. Since no family-wide closed form falls out cleanly (unlike
-  /// [`crate::bivariate::t_copula::TCopula::partial_derivative`]), evaluate
-  /// the real formula at `v` clamped just inside `(0,1)` for both
-  /// boundaries instead — continuous in `v`, so it tracks the true
-  /// one-sided limit.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  /// $\partial_v C(u,v) = C(u,v) \cdot \Phi(\beta) / v$, the formula at `v` clamped `1e-12` inside `(0, 1)` at the
+  /// edges (limits that depend on `u` and `λ`), NaN for `v` outside `[0, 1]`.
+  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
-    let u_col = x.column(0);
-    let v_col = x.column(1);
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i].clamp(BOUNDARY_EPS, 1.0 - BOUNDARY_EPS);
+    Ok(conditional_cdf(x, |u, v| {
+      let v = v.clamp(BOUNDARY_EPS, 1.0 - BOUNDARY_EPS);
       let xx = -u.ln();
       let yy = -v.ln();
       let half_log = 0.5 * (xx / yy).ln();
       let alpha = 1.0 / lambda + lambda * half_log;
       let beta = 1.0 / lambda - lambda * half_log;
       let cuv = (-xx * norm_cdf(alpha) - yy * norm_cdf(beta)).exp();
-      out[i] = cuv * norm_cdf(beta) / v;
-    }
-    Ok(out)
+      cuv * norm_cdf(beta) / v
+    }))
   }
 
   fn compute_theta(&self) -> f64 {
@@ -247,11 +227,7 @@ impl BivariateExt for HuslerReiss {
       return 20.0;
     }
     let residual = |lambda: f64| Self::tau_from_lambda(lambda) - tau;
-    let mut convergency = SimpleConvergency {
-      eps: 1e-6,
-      max_iter: 100,
-    };
-    find_root_brent(1e-3, 20.0, residual, &mut convergency).unwrap_or(1.0)
+    zero(1e-3, 20.0, 1e-6, residual).unwrap_or(1.0)
   }
 
   /// Upper-tail dependence $\lambda_U = 2(1 - \Phi(1/\lambda))$;

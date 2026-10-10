@@ -17,9 +17,10 @@ use numpy::PyReadonlyArray2;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 
-fn err_to_py(e: Box<dyn std::error::Error>) -> PyErr {
+fn err_to_py(e: CopulaError) -> PyErr {
   PyValueError::new_err(e.to_string())
 }
 
@@ -395,8 +396,8 @@ pub fn fit_vine<'py>(
   };
   let data = u.as_array().to_owned();
   let fit = py
-    .detach(|| fit_vine(&data, structure, &families, criterion).map_err(|e| e.to_string()))
-    .map_err(PyValueError::new_err)?;
+    .detach(|| fit_vine(&data, structure, &families, criterion))
+    .map_err(err_to_py)?;
   let trees: &[Vec<crate::multivariate::dvine::PairCopula>] = match &fit.vine {
     RVine::D(d) => d.pair_copulas(),
     RVine::C(c) => c.pair_copulas(),
@@ -454,11 +455,8 @@ pub fn copula_gof<'py>(
     ($ctor:expr) => {{
       let mut copula = $ctor;
       copula.fit(&data).map_err(err_to_py)?;
-      py.detach(|| {
-        gof_cramer_von_mises(&copula, &data, replications, seed, |c, x| c.fit(x))
-          .map_err(|e| e.to_string())
-      })
-      .map_err(PyValueError::new_err)?
+      py.detach(|| gof_cramer_von_mises(&copula, &data, replications, seed, |c, x| c.fit(x)))
+        .map_err(err_to_py)?
     }};
   }
   let result = match family.to_ascii_lowercase().as_str() {

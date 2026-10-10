@@ -4,31 +4,42 @@
 //! f(x)=\frac{x^{\alpha-1}(1-x)^{\beta-1}}{B(\alpha,\beta)},\ x\in(0,1)
 //! $$
 //!
-use std::cell::Cell;
-use std::cell::UnsafeCell;
+//! Sampling: `G1/(G1 + G2)` of two gammas, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §IX.4, DOI 10.1007/978-1-4613-8643-8.
 
 use rand::Rng;
-use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
+use rand::distr::Distribution;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
+use super::gamma::GammaState;
 use super::gamma::SimdGamma;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::Buffered;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 const SMALL_BETA_THRESHOLD: usize = 16;
 
-pub struct SimdBeta<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+/// Beta law `Beta(alpha, beta)`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdBeta<T> {
   alpha: T,
   beta: T,
-  gamma1: SimdGamma<T, R>,
-  gamma2: SimdGamma<T, R>,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  stream_seed: Cell<u64>,
+  gamma1: SimdGamma<T>,
+  gamma2: SimdGamma<T>,
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
+/// A beta stream: the two gamma sub-streams and the single-draw buffer.
+#[doc(hidden)]
+#[derive(Clone, Debug)]
+pub struct BetaState<T: SimdFloatExt, R: SimdRngExt> {
+  g1: GammaState<T, R>,
+  g2: GammaState<T, R>,
+  buf: Buffered<T, 16>,
+}
+
+impl<T: SimdFloatExt> SimdBeta<T> {
   /// Creates a beta distribution via the Gamma-ratio construction
   /// `X = G1/(G1+G2)`, `G1 ~ Gamma(alpha, 1)`, `G2 ~ Gamma(beta, 1)`.
   ///
@@ -38,60 +49,39 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
   ///   [`SimdNormalInverseGauss`](crate::normal_inverse_gauss::SimdNormalInverseGauss)
   ///   or the tail exponent it plays in [`SimdGed`](crate::ged::SimdGed)
   ///   — same word, unrelated role in each).
-  ///
-  /// RNGs come from a [`SeedExt`](crate::simd_rng::SeedExt) source; each
-  /// sub-component (gamma1, gamma2) gets an independent stream.
-  pub fn new<S: crate::simd_rng::SeedExt>(alpha: T, beta: T, seed: &S) -> Self {
+  pub fn new(alpha: T, beta: T) -> Self {
     assert!(
-      alpha > T::zero() && beta > T::zero(),
-      "alpha must satisfy `alpha > T::zero() && beta > T::zero()`, got alpha = {alpha:?}, beta = {beta:?}"
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
     );
-    let gamma1 = SimdGamma::<T, R>::new(alpha, T::one(), seed);
-    let gamma2 = SimdGamma::<T, R>::new(beta, T::one(), seed);
-    // No own engine to seed — reuse gamma1's already-captured stream_seed
-    // as this sampler's fork anchor rather than drawing a fresh value (that
-    // would shift gamma2's derivation relative to today's stream). This is
-    // its own independent `Cell`, so SimdBeta's fork cursor advances on its
-    // own from here on, never touching gamma1's.
-    let stream_seed = Cell::new(gamma1.stream_seed.get());
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
+    assert!(
+      alpha > T::zero(),
+      "alpha must satisfy `alpha > T::zero()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta > T::zero(),
+      "beta must satisfy `beta > T::zero()`, got beta = {beta:?}"
+    );
     Self {
       alpha,
       beta,
-      gamma1,
-      gamma2,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      stream_seed,
+      gamma1: SimdGamma::new(alpha, T::one()),
+      gamma2: SimdGamma::new(beta, T::one()),
     }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.alpha,
-      self.beta,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
+  /// The first shape `α`.
+  pub fn alpha(&self) -> T {
+    self.alpha
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
-  #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
+  /// The second shape `β`.
+  pub fn beta(&self) -> T {
+    self.beta
   }
 
   /// The ratio recovered from logs, for the draws where both Gamma
@@ -105,116 +95,146 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdBeta<T, R> {
   /// the 1 that rounding the true draw would have given.
   #[cold]
   #[inline(never)]
-  fn ratio_from_logs(&self) -> T {
-    let la = self.gamma1.sample_log_fast();
-    let lb = self.gamma2.sample_log_fast();
+  fn ratio_from_logs<R: SimdRngExt>(
+    &self,
+    g1: &mut GammaState<T, R>,
+    g2: &mut GammaState<T, R>,
+  ) -> T {
+    let la = self.gamma1.next_log(g1);
+    let lb = self.gamma2.next_log(g2);
     T::one() / (T::one() + (lb - la).exp())
   }
 
-  /// Fills `out` using the internal SIMD RNG stream — the only stream this
-  /// sampler draws from (see the crate-level RNG policy).
-  pub fn fill_slice(&self, out: &mut [T]) {
+  fn fill_parts<R: SimdRngExt>(
+    &self,
+    g1: &mut GammaState<T, R>,
+    g2: &mut GammaState<T, R>,
+    out: &mut [T],
+  ) {
     if out.len() < SMALL_BETA_THRESHOLD {
       for x in out.iter_mut() {
-        let a = self.gamma1.sample_fast();
-        let b = self.gamma2.sample_fast();
+        let a = self.gamma1.next(g1);
+        let b = self.gamma2.next(g2);
         *x = if a + b > T::zero() {
           a / (a + b)
         } else {
-          self.ratio_from_logs()
+          self.ratio_from_logs(g1, g2)
         };
       }
       return;
     }
-    let mut g1 = [T::zero(); 64];
-    let mut g2 = [T::zero(); 64];
+    let mut ga = [T::zero(); 64];
+    let mut gb = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.gamma1.fill_slice(&mut g1);
-      self.gamma2.fill_slice(&mut g2);
+      self.gamma1.fill(g1, &mut ga);
+      self.gamma2.fill(g2, &mut gb);
       for (sub, (a8, b8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
-        g1.as_chunks::<8>()
+        ga.as_chunks::<8>()
           .0
           .iter()
-          .zip(g2.as_chunks::<8>().0.iter()),
+          .zip(gb.as_chunks::<8>().0.iter()),
       ) {
         let a = T::simd_from_array(*a8);
         let b = T::simd_from_array(*b8);
         *sub = T::simd_to_array(a / (a + b));
         for (j, x) in sub.iter_mut().enumerate() {
           if a8[j] + b8[j] <= T::zero() {
-            *x = self.ratio_from_logs();
+            *x = self.ratio_from_logs(g1, g2);
           }
         }
       }
     }
     if !rem.is_empty() {
       let n = rem.len();
-      self.gamma1.fill_slice(&mut g1[..n]);
-      self.gamma2.fill_slice(&mut g2[..n]);
+      self.gamma1.fill(g1, &mut ga[..n]);
+      self.gamma2.fill(g2, &mut gb[..n]);
       for i in 0..n {
-        rem[i] = if g1[i] + g2[i] > T::zero() {
-          g1[i] / (g1[i] + g2[i])
+        rem[i] = if ga[i] + gb[i] > T::zero() {
+          ga[i] / (ga[i] + gb[i])
         } else {
-          self.ratio_from_logs()
+          self.ratio_from_logs(g1, g2)
         };
       }
     }
   }
 
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    let a = self.gamma1.draw_with(rng);
+    let b = self.gamma2.draw_with(rng);
+    if a + b > T::zero() {
+      return a / (a + b);
     }
+    let la = self.gamma1.draw_log_with(rng);
+    let lb = self.gamma2.draw_log_with(rng);
+    T::one() / (T::one() + (lb - la).exp())
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdBeta<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.alpha, self.beta, &Unseeded)
+impl<T: SimdFloatExt> Sealed for SimdBeta<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdBeta<T> {
+  type State<R: SimdRngExt> = BetaState<T, R>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (BetaState<T, R>, u64) {
+    let (g1, basis) = self.gamma1.init::<R, S>(seed);
+    let (g2, _) = self.gamma2.init::<R, S>(seed);
+    (
+      BetaState {
+        g1,
+        g2,
+        buf: Buffered::new(),
+      },
+      basis,
+    )
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdBeta<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction. Use `Deterministic`
-  /// in the constructor for reproducibility.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
+impl<T: SimdFloatExt> SimdKernel for SimdBeta<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut BetaState<T, R>, out: &mut [T]) {
+    self.fill_parts(&mut state.g1, &mut state.g2, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut BetaState<T, R>) -> T {
+    let BetaState { g1, g2, buf } = state;
+    buf.pop(|b| self.fill_parts(g1, g2, b))
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdBeta<T, R> {
-  fn pdf(&self, x: f64) -> f64 {
+impl<T: SimdFloatExt> Distribution<T> for SimdBeta<T> {
+  /// `G1/(G1 + G2)` of two scalar gamma draws on the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdBeta<T> {
+  fn pdf(&self, x: f64) -> Option<f64> {
     if !(0.0..=1.0).contains(&x) {
-      return 0.0;
+      return Some(0.0);
     }
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
     let log_pdf = (a - 1.0) * x.ln() + (b - 1.0) * (1.0 - x).ln() - crate::special::ln_beta(a, b);
-    log_pdf.exp()
+    Some(log_pdf.exp())
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
-    crate::special::beta_i(a, b, x.clamp(0.0, 1.0))
+    Some(crate::special::beta_i(a, b, x.clamp(0.0, 1.0)))
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn quantile(&self, p: f64) -> Option<f64> {
     if p <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     if p >= 1.0 {
-      return 1.0;
+      return Some(1.0);
     }
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
@@ -230,76 +250,69 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdBeta
       let dx = f / pdf;
       let new_x = (x - dx).clamp(1e-14, 1.0 - 1e-14);
       if (new_x - x).abs() < 1e-14 {
-        return new_x;
+        return Some(new_x);
       }
       x = new_x;
     }
-    x
+    Some(x)
   }
 
-  fn mean(&self) -> f64 {
+  fn mean(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
-    a / (a + b)
+    Some(a / (a + b))
   }
 
-  fn median(&self) -> f64 {
-    self.inv_cdf(0.5)
+  fn median(&self) -> Option<f64> {
+    self.quantile(0.5)
   }
 
-  fn mode(&self) -> f64 {
+  /// `NaN` where no mode is unique: the U-shaped law (α, β < 1) and the uniform one (α = β = 1).
+  fn mode(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
-    if a > 1.0 && b > 1.0 {
+    Some(if a > 1.0 && b > 1.0 {
       (a - 1.0) / (a + b - 2.0)
-    } else {
+    } else if (a < 1.0 && b < 1.0) || (a == 1.0 && b == 1.0) {
       f64::NAN
-    }
+    } else if a < b {
+      0.0
+    } else {
+      1.0
+    })
   }
 
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
     let s = a + b;
-    a * b / (s * s * (s + 1.0))
+    Some(a * b / (s * s * (s + 1.0)))
   }
 
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
     let s = a + b;
-    2.0 * (b - a) * (s + 1.0).sqrt() / ((s + 2.0) * (a * b).sqrt())
+    Some(2.0 * (b - a) * (s + 1.0).sqrt() / ((s + 2.0) * (a * b).sqrt()))
   }
 
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
     let s = a + b;
     let num = 6.0 * ((a - b).powi(2) * (s + 1.0) - a * b * (s + 2.0));
     let den = a * b * (s + 2.0) * (s + 3.0);
-    num / den
+    Some(num / den)
   }
 
-  fn entropy(&self) -> f64 {
+  fn entropy(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     let b = self.beta.to_f64().unwrap();
-    crate::special::ln_beta(a, b)
-      - (a - 1.0) * crate::special::digamma(a)
-      - (b - 1.0) * crate::special::digamma(b)
-      + (a + b - 2.0) * crate::special::digamma(a + b)
-  }
-
-  /// Beta CF involves the confluent hypergeometric ₁F₁; not implemented.
-  fn characteristic_function(&self, _t: f64) -> num_complex::Complex64 {
-    unimplemented!(
-      "DistributionExt::characteristic_function for SimdBeta requires the confluent hypergeometric ₁F₁; not implemented"
-    )
-  }
-
-  /// Closed form involves the confluent hypergeometric function 1F1.
-  fn moment_generating_function(&self, _t: f64) -> f64 {
-    unimplemented!(
-      "DistributionExt::moment_generating_function for SimdBeta requires the confluent hypergeometric ₁F₁; not implemented"
+    Some(
+      crate::special::ln_beta(a, b)
+        - (a - 1.0) * crate::special::digamma(a)
+        - (b - 1.0) * crate::special::digamma(b)
+        + (a + b - 2.0) * crate::special::digamma(a + b),
     )
   }
 }
@@ -309,6 +322,9 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
+  use crate::tests::scalar_ks_best_p;
+  use crate::traits::DistributionExt as _;
+  use crate::traits::DistributionSampler;
 
   /// Small shapes must not lose a draw to `0 / 0`.
   ///
@@ -320,7 +336,7 @@ mod tests {
   #[test]
   fn small_shapes_stay_finite() {
     for seed in [7u64, 11] {
-      let d = SimdBeta::<f32>::new(0.01, 0.01, &Deterministic::new(seed));
+      let mut d = SimdBeta::<f32>::new(0.01, 0.01).seeded(&Deterministic::new(seed));
       let mut wide = vec![0.0_f32; 1_000];
       d.fill_slice(&mut wide);
       let bad = wide.iter().filter(|x| !x.is_finite()).count();
@@ -340,7 +356,7 @@ mod tests {
   #[test]
   fn small_shape_moments_hold() {
     let (a, b) = (0.01_f64, 0.01_f64);
-    let d = SimdBeta::<f32>::new(a as f32, b as f32, &Deterministic::new(11));
+    let mut d = SimdBeta::<f32>::new(a as f32, b as f32).seeded(&Deterministic::new(11));
     let mut buf = vec![0.0_f32; 1 << 16];
     let (mut s, mut s2) = (0.0, 0.0);
     let reps = 8;
@@ -366,6 +382,45 @@ mod tests {
       (m2 - want_m2).abs() < band,
       "second moment = {m2}, expected {want_m2} ± {band}"
     );
+  }
+
+  /// The honest `Distribution` draws from the caller's rng and agrees with the cdf.
+  #[test]
+  fn scalar_sample_matches_cdf() {
+    let d = SimdBeta::<f64>::new(2.5, 4.0);
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
+    assert!(best > 0.01, "best p = {best}");
+  }
+
+  /// One shape ≤ 1, the other ≥ 1: the density is monotone and the mode is the end it rises toward.
+  #[test]
+  fn mode_answers_every_shape_regime() {
+    let law = |a: f64, b: f64| SimdBeta::<f64>::new(a, b);
+    assert_eq!(law(2.0, 5.0).mode(), Some(0.2));
+    for ((a, b), want) in [
+      ((0.5, 3.0), 0.0),
+      ((1.0, 3.0), 0.0),
+      ((0.5, 1.0), 0.0),
+      ((3.0, 0.5), 1.0),
+      ((3.0, 1.0), 1.0),
+      ((1.0, 0.5), 1.0),
+    ] {
+      let d = law(a, b);
+      assert_eq!(d.mode(), Some(want), "Beta({a}, {b})");
+      let pdf = [0.05, 0.5, 0.95].map(|x| d.pdf(x).unwrap());
+      let rises_to_one = pdf[0] < pdf[1] && pdf[1] < pdf[2];
+      let falls_from_zero = pdf[0] > pdf[1] && pdf[1] > pdf[2];
+      assert!(
+        if want == 1.0 {
+          rises_to_one
+        } else {
+          falls_from_zero
+        },
+        "Beta({a}, {b}) pdf {pdf:?}"
+      );
+    }
+    assert!(law(0.5, 0.5).mode().unwrap().is_nan());
+    assert!(law(1.0, 1.0).mode().unwrap().is_nan());
   }
 }
 

@@ -17,16 +17,16 @@
 //! *Journal of Multivariate Analysis* 8(3), 405-412.
 //! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
 //! Springer, Example 4.23 / Table 4.1 (family (3)).
-
-use std::error::Error;
-use std::f64;
+//! Reference: Johnson, M.E. (1987), "Multivariate Statistical Simulation", Wiley, the conditional inverse as a quadratic in `u`, DOI 10.1002/9781118150740.
 
 use ndarray::Array1;
 use ndarray::Array2;
-use roots::SimpleConvergency;
-use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
+use crate::error::CopulaError;
+use crate::optim::zero;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -54,6 +54,28 @@ impl Default for Amh {
 impl Amh {
   pub fn new() -> Self {
     Self::default()
+  }
+
+  /// The root in `[0, 1]` of `Au² + Bu + C = 0` (`y D² = u(1 − θ + θu)`, `p = θ(1 − v)`) chosen by `B`'s sign, with
+  /// `1 − p`, `−A` and `√(B² − 4AC) = hypot((1 − θ)√(1 − y), (1 − θ + 2θv)√y)` free of cancellation and underflow.
+  pub(crate) fn inverse(theta: f64) -> impl Fn(f64, f64) -> f64 {
+    move |y, v| {
+      let p = theta * (1.0 - v);
+      let one_minus_p = (1.0 - theta) + theta * v;
+      let minus_a = theta * ((1.0 - y) + y * ((1.0 - theta) + theta * v * (2.0 - v)));
+      let b = 2.0 * y * p * one_minus_p - (1.0 - theta);
+      let c = y * one_minus_p * one_minus_p;
+      let root =
+        ((1.0 - theta) * (1.0 - y).sqrt()).hypot((1.0 - theta + 2.0 * theta * v) * y.sqrt());
+      if b < 0.0 {
+        2.0 * c / (root - b)
+      } else if minus_a > 0.0 {
+        (b + root) / (2.0 * minus_a)
+      } else {
+        // `A = 0` with `B ≥ 0` only at `θ = 1`, `(y, v) = (1, 0)`, where `h(· | 0)` jumps from 0 to 1 at `u = 0`.
+        0.0
+      }
+    }
   }
 
   /// Kendall's tau in closed form
@@ -110,7 +132,7 @@ impl BivariateExt for Amh {
   }
 
   /// Archimedean generator $\varphi(t) = \ln\frac{1 - \theta(1-t)}{t}$.
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     let mut out = Array1::<f64>::zeros(t.len());
@@ -127,7 +149,7 @@ impl BivariateExt for Amh {
 
   /// Density $c(u,v) = \dfrac{(1-\theta) D + 2\theta u v}{D^3}$ where
   /// $D = 1 - \theta(1-u)(1-v)$.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -148,7 +170,7 @@ impl BivariateExt for Amh {
   }
 
   /// CDF $C(u,v) = uv / [1 - \theta(1-u)(1-v)]$.
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -174,39 +196,27 @@ impl BivariateExt for Amh {
     Ok(out)
   }
 
-  /// $\partial_v C(u,v) = u\big(1 - \theta(1-u)\big) / D^2$ — the crate-wide
-  /// "derivative w.r.t. the second argument, at fixed conditioning value"
-  /// convention used throughout this crate ([`crate::bivariate::clayton::Clayton`],
-  /// [`crate::bivariate::frank::Frank`], [`crate::bivariate::joe::Joe`],
-  /// [`crate::bivariate::gaussian::GaussianCopula`]), matching
-  /// [`BivariateExt::partial_derivative`]'s own finite-difference default
-  /// (which perturbs the second column). The previous formula computed
-  /// $\partial_u C(u,v) = v\big(1-\theta(1-v)\big)/D^2$ instead — a
-  /// correct derivative, but of the wrong argument, so `Amh::percent_point`
-  /// / `Amh::sample` (via [`BivariateExt::percent_point_numerical`], which
-  /// this family does not override) silently solved the wrong equation
-  /// for `u` given `v`.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  /// $\partial_v C(u,v) = u\big(1 - \theta(1-u)\big) / D^2$, $D = 1 - \theta(1-u)(1-v)$, the derivative in the
+  /// conditioning second argument; NaN for `v` outside `[0, 1]`.
+  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
     let theta = self.theta.unwrap();
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
+    Ok(conditional_cdf(x, |u, v| {
       if u <= 0.0 {
-        out[i] = 0.0;
-        continue;
+        return 0.0;
       }
       if u >= 1.0 {
-        out[i] = 1.0;
-        continue;
+        return 1.0;
       }
       let d = 1.0 - theta * (1.0 - u) * (1.0 - v);
-      out[i] = u * (1.0 - theta * (1.0 - u)) / (d * d);
-    }
-    Ok(out)
+      u * (1.0 - theta * (1.0 - u)) / (d * d)
+    }))
+  }
+
+  /// `Amh::inverse`'s root; NaN for `y` or `v` outside `[0, 1]`.
+  fn percent_point(&self, y: &Array1<f64>, v: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    conditional_quantiles(y, v, Self::inverse(self.theta.unwrap()))
   }
 
   fn compute_theta(&self) -> f64 {
@@ -222,11 +232,7 @@ impl BivariateExt for Amh {
       return 1.0 - 1e-9;
     }
     let residual = |theta: f64| Self::tau_residual(tau, theta);
-    let mut convergency = SimpleConvergency {
-      eps: 1e-10,
-      max_iter: 100,
-    };
-    find_root_brent(-1.0 + 1e-9, 1.0 - 1e-9, residual, &mut convergency).unwrap_or(0.0)
+    zero(-1.0 + 1e-9, 1.0 - 1e-9, 1e-10, residual).unwrap_or(0.0)
   }
 
   /// AMH has no tail dependence in either tail, for any $\theta \in

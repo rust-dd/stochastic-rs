@@ -4,91 +4,77 @@
 //! f(x)=\alpha x_m^\alpha x^{-(\alpha+1)},\ x\ge x_m
 //! $$
 //!
-use std::cell::Cell;
-use std::cell::UnsafeCell;
+//! Sampling: inversion, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
 
 use rand::Rng;
-use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
+use rand::distr::Distribution;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::StreamState;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 const SMALL_PARETO_THRESHOLD: usize = 16;
 
-pub struct SimdPareto<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+/// Pareto (Type I) law with scale `x_m` and tail index `alpha`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdPareto<T> {
   x_m: T,
   alpha: T,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<R>,
-  stream_seed: Cell<u64>,
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdPareto<T, R> {
+impl<T: SimdFloatExt> SimdPareto<T> {
   /// Creates a Pareto (Type I) distribution.
   ///
   /// - `x_m` — minimum/scale x_m > 0 (matches the module header's x_m);
   ///   also the mode.
   /// - `alpha` — tail index α > 0 (matches the module header's α);
   ///   controls which moments exist (mean requires α>1, variance α>2).
-  pub fn new<S: crate::simd_rng::SeedExt>(x_m: T, alpha: T, seed: &S) -> Self {
+  pub fn new(x_m: T, alpha: T) -> Self {
     assert!(
-      x_m > T::zero() && alpha > T::zero(),
-      "x_m must satisfy `x_m > T::zero() && alpha > T::zero()`, got x_m = {x_m:?}, alpha = {alpha:?}"
+      x_m.is_finite(),
+      "x_m must satisfy `x_m.is_finite()`, got x_m = {x_m:?}"
     );
-    let stream_seed = seed.seed_value();
-    Self {
-      x_m,
-      alpha,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed: Cell::new(stream_seed),
-    }
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      x_m > T::zero(),
+      "x_m must satisfy `x_m > T::zero()`, got x_m = {x_m:?}"
+    );
+    assert!(
+      alpha > T::zero(),
+      "alpha must satisfy `alpha > T::zero()`, got alpha = {alpha:?}"
+    );
+    Self { x_m, alpha }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.x_m,
-      self.alpha,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
+  /// The scale `x_m`.
+  pub fn x_m(&self) -> T {
+    self.x_m
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
+  /// The tail index `α`.
+  pub fn alpha(&self) -> T {
+    self.alpha
+  }
+
+  /// `x_m·(1 − u)^{−1/α}`, the inverse cdf at `u`; `1 − u` is held at the smallest positive value.
   #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
+  fn invert(&self, u: T, neg_inv_alpha: T) -> T {
+    let base = (T::one() - u).max(T::min_positive_val());
+    self.x_m * (base.ln() * neg_inv_alpha).exp()
   }
 
-  /// Fills `out` using the internal SIMD RNG stream — the only stream this
-  /// sampler draws from (see the crate-level RNG policy).
-  pub fn fill_slice(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
+  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [T]) {
     if out.len() < SMALL_PARETO_THRESHOLD {
       let neg_inv_alpha = -T::one() / self.alpha;
-      let eps = T::min_positive_val();
       for x in out.iter_mut() {
-        let u = T::sample_uniform_simd(rng);
-        let base = (T::one() - u).max(eps);
-        *x = self.x_m * (base.ln() * neg_inv_alpha).exp();
+        *x = self.invert(T::sample_uniform_simd(rng), neg_inv_alpha);
       }
       return;
     }
@@ -114,91 +100,102 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdPareto<T, R> {
     }
   }
 
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.invert(T::sample_uniform(rng), -T::one() / self.alpha)
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdPareto<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.x_m, self.alpha, &Unseeded)
+impl<T: SimdFloatExt> Sealed for SimdPareto<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdPareto<T> {
+  type State<R: SimdRngExt> = StreamState<T, R, 16>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (StreamState<T, R, 16>, u64) {
+    StreamState::init(seed)
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdPareto<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction. Use `Deterministic`
-  /// in the constructor for reproducibility.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
+impl<T: SimdFloatExt> SimdKernel for SimdPareto<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+    self.fill_parts(&mut state.rng, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>) -> T {
+    let StreamState { rng, buf } = state;
+    buf.pop(|b| self.fill_parts(rng, b))
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdPareto<T, R> {
-  fn pdf(&self, x: f64) -> f64 {
+impl<T: SimdFloatExt> Distribution<T> for SimdPareto<T> {
+  /// The inverse cdf at one `[0, 1)` uniform from the caller's rng (53 bits for `f64`, 24 for `f32`).
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdPareto<T> {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
     if x < xm {
-      0.0
+      Some(0.0)
     } else {
-      a * xm.powf(a) / x.powf(a + 1.0)
+      Some(a * xm.powf(a) / x.powf(a + 1.0))
     }
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
-    if x < xm { 0.0 } else { 1.0 - (xm / x).powf(a) }
+    if x < xm {
+      Some(0.0)
+    } else {
+      Some(1.0 - (xm / x).powf(a))
+    }
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn quantile(&self, p: f64) -> Option<f64> {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
-    xm / (1.0 - p).powf(1.0 / a)
+    Some(xm / (1.0 - p).powf(1.0 / a))
   }
 
   /// `+∞`, not `NaN`, at `alpha <= 1`: the mean integral `∫x·f(x)dx`
   /// diverges to a definite (infinite) value at these — commonly used —
   /// shape parameters (e.g. the classic "80/20" Pareto has `alpha ≈ 1.16`).
-  fn mean(&self) -> f64 {
+  fn mean(&self) -> Option<f64> {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
     if a > 1.0 {
-      xm * a / (a - 1.0)
+      Some(xm * a / (a - 1.0))
     } else {
-      f64::INFINITY
+      Some(f64::INFINITY)
     }
   }
 
-  fn median(&self) -> f64 {
+  fn median(&self) -> Option<f64> {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
-    xm * 2.0_f64.powf(1.0 / a)
+    Some(xm * 2.0_f64.powf(1.0 / a))
   }
 
-  fn mode(&self) -> f64 {
-    self.x_m.to_f64().unwrap()
+  fn mode(&self) -> Option<f64> {
+    Some(self.x_m.to_f64().unwrap())
   }
 
   /// `+∞`, not `NaN`, at `alpha <= 2`: same divergent-integral reason as
   /// `mean`, one moment order up.
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
     if a > 2.0 {
-      xm * xm * a / ((a - 1.0).powi(2) * (a - 2.0))
+      Some(xm * xm * a / ((a - 1.0).powi(2) * (a - 2.0)))
     } else {
-      f64::INFINITY
+      Some(f64::INFINITY)
     }
   }
 
@@ -206,43 +203,49 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdPare
   /// central moment does not merely diverge to a signed infinity here — it
   /// is not defined at all, so `NaN` is the honest answer rather than a
   /// sign choice.
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     if a > 3.0 {
-      2.0 * (1.0 + a) / (a - 3.0) * ((a - 2.0) / a).sqrt()
+      Some(2.0 * (1.0 + a) / (a - 3.0) * ((a - 2.0) / a).sqrt())
     } else {
-      f64::NAN
+      Some(f64::NAN)
     }
   }
 
   /// `NaN` at `alpha <= 4`, for the same reason as `skewness` one moment
   /// order up.
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     let a = self.alpha.to_f64().unwrap();
     if a > 4.0 {
-      6.0 * (a.powi(3) + a.powi(2) - 6.0 * a - 2.0) / (a * (a - 3.0) * (a - 4.0))
+      Some(6.0 * (a.powi(3) + a.powi(2) - 6.0 * a - 2.0) / (a * (a - 3.0) * (a - 4.0)))
     } else {
-      f64::NAN
+      Some(f64::NAN)
     }
   }
 
-  fn entropy(&self) -> f64 {
+  fn entropy(&self) -> Option<f64> {
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
-    (xm / a).ln() + 1.0 / a + 1.0
+    Some((xm / a).ln() + 1.0 / a + 1.0)
   }
 
-  /// `NaN` for every `t > 0`: the Pareto tail decays only polynomially
-  /// (`~x^{-alpha-1}`), too slowly for `e^{tx}` to be integrable at any
-  /// positive `t`, regardless of `alpha`.
-  fn moment_generating_function(&self, _t: f64) -> f64 {
-    f64::NAN
+  /// `NaN` for `t > 0`, where the polynomial tail diverges; `None` for `t < 0`, where the mgf is
+  /// `α(−x_m t)^α Γ(−α, −x_m t)` and `special` has no incomplete gamma of negative order.
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    if t < 0.0 {
+      None
+    } else if t == 0.0 {
+      Some(1.0)
+    } else {
+      Some(f64::NAN)
+    }
   }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::tests::scalar_ks_best_p;
   use crate::traits::DistributionExt;
 
   /// Backs the doc comments on `mean`/`variance`/`skewness`/`kurtosis`:
@@ -251,28 +254,45 @@ mod tests {
   /// thresholds — mean is the only finite moment it has.
   #[test]
   fn pareto_80_20_moments_match_documented_thresholds() {
-    let p = SimdPareto::<f64>::new(1.0, 1.16, &Unseeded);
+    let p = SimdPareto::<f64>::new(1.0, 1.16);
     assert!(
-      p.mean().is_finite(),
+      p.mean().unwrap().is_finite(),
       "alpha=1.16 > 1, mean should be finite"
     );
-    assert_eq!(p.variance(), f64::INFINITY, "alpha=1.16 <= 2");
-    assert!(p.skewness().is_nan(), "alpha=1.16 <= 3");
-    assert!(p.kurtosis().is_nan(), "alpha=1.16 <= 4");
+    assert_eq!(p.variance().unwrap(), f64::INFINITY, "alpha=1.16 <= 2");
+    assert!(p.skewness().unwrap().is_nan(), "alpha=1.16 <= 3");
+    assert!(p.kurtosis().unwrap().is_nan(), "alpha=1.16 <= 4");
     assert!(
-      p.moment_generating_function(0.5).is_nan(),
+      p.moment_generating_function(0.5).unwrap().is_nan(),
       "MGF at t > 0 must be NaN"
     );
+  }
+
+  /// No mgf for t > 0, 1 at t = 0, and for t < 0 one that exists but has no closed form here.
+  #[test]
+  fn mgf_answers_by_the_sign_of_t() {
+    let p = SimdPareto::<f64>::new(1.0, 3.0);
+    assert!(p.moment_generating_function(0.4).unwrap().is_nan());
+    assert_eq!(p.moment_generating_function(0.0), Some(1.0));
+    assert!(p.moment_generating_function(-0.4).is_none());
   }
 
   /// Above every threshold, all four moments must be finite real numbers.
   #[test]
   fn pareto_high_alpha_moments_are_all_finite() {
-    let p = SimdPareto::<f64>::new(1.0, 5.0, &Unseeded);
-    assert!(p.mean().is_finite());
-    assert!(p.variance().is_finite());
-    assert!(p.skewness().is_finite());
-    assert!(p.kurtosis().is_finite());
+    let p = SimdPareto::<f64>::new(1.0, 5.0);
+    assert!(p.mean().unwrap().is_finite());
+    assert!(p.variance().unwrap().is_finite());
+    assert!(p.skewness().unwrap().is_finite());
+    assert!(p.kurtosis().unwrap().is_finite());
+  }
+
+  /// The honest `Distribution` draws from the caller's rng and agrees with the cdf.
+  #[test]
+  fn scalar_sample_matches_cdf() {
+    let d = SimdPareto::<f64>::new(1.0, 1.16);
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
+    assert!(best > 0.01, "best p = {best}");
   }
 }
 

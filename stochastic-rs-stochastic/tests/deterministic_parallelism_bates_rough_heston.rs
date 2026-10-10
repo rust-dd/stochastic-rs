@@ -26,7 +26,7 @@
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::jump::bates::Bates1996;
 use stochastic_rs_stochastic::traits::ProcessExt;
 use stochastic_rs_stochastic::volatility::fheston::RoughHeston;
@@ -40,7 +40,7 @@ const N: usize = 128;
 /// the actual jump arrivals): makes `bates_price_path_is_seed_reproducible`
 /// a real exercise of the jump component, not an unlucky all-zero-draw
 /// coincidence.
-fn bates(seed: u64) -> Bates1996<f64, ScalarNormal<f64>, Deterministic> {
+fn bates(seed: u64) -> Bates1996<f64, SimdNormal<f64>, Deterministic> {
   Bates1996::new(
     Some(0.05),
     None,
@@ -52,7 +52,7 @@ fn bates(seed: u64) -> Bates1996<f64, ScalarNormal<f64>, Deterministic> {
     1.5,
     0.3,
     -0.6,
-    ScalarNormal::new(0.0, 0.05),
+    SimdNormal::new(0.0, 0.05),
     N,
     Some(100.0),
     Some(0.04),

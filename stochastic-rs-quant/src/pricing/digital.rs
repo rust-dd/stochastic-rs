@@ -53,7 +53,7 @@ pub struct CashOrNothingPricer {
   /// stays on the struct next to the volatility rather than travelling
   /// with the query.
   pub cash: f64,
-  /// Volatility.
+  /// Annualised Black–Scholes volatility.
   pub sigma: f64,
 }
 
@@ -94,18 +94,8 @@ impl CashOrNothingPricer {
     Self { cash, sigma }
   }
 
-  /// Every Greek this pricer exposes at one query point, in a [`Greeks`]
-  /// aggregate; the six it does not expose stay [`f64::NAN`].
-  ///
-  /// This is what the removed
-  /// [`GreeksExt`](crate::traits::GreeksExt) impl's `greeks()` provided.
-  /// The trait's accessors take no arguments, so only a type that already
-  /// carries a query can implement it, and this one no longer does —
-  /// `BSMPricer` and `HestonPricer` came off the trait the same way.
-  /// Callers that want the whole set go through here rather than
-  /// hand-assembling a nine-field struct literal, which is where a
-  /// mis-mapped member loses its only pin — see
-  /// `digital_greeks_aggregates_match_their_accessors`.
+  /// Every Greek this pricer exposes at one query point, in a [`Greeks`] aggregate; the six it
+  /// does not expose stay [`f64::NAN`].
   pub fn greeks(
     &self,
     s: f64,
@@ -190,7 +180,7 @@ impl ModelPricer for CashOrNothingPricer {
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct AssetOrNothingPricer {
-  /// Volatility.
+  /// Annualised Black–Scholes volatility.
   pub sigma: f64,
 }
 
@@ -306,7 +296,7 @@ pub struct GapPricer {
   /// $K_1$ is the query's `k`, since it is $K_1$ that sets the moneyness
   /// boundary and so enters $d_1$.
   pub k2: f64,
-  /// Volatility.
+  /// Annualised Black–Scholes volatility.
   pub sigma: f64,
 }
 
@@ -395,7 +385,7 @@ pub struct SuperSharePricer {
   /// and divided by, so it is the one of the pair that behaves like a
   /// strike.
   pub x_high: f64,
-  /// Volatility.
+  /// Annualised Black–Scholes volatility.
   pub sigma: f64,
 }
 
@@ -480,12 +470,8 @@ const fn call_put_sign(option_type: OptionType) -> f64 {
   }
 }
 
-/// $d_1=\frac{\ln(S/K)+(b+\sigma^2/2)T}{\sigma\sqrt T}$ — the standardized
-/// moneyness term, and the **only** copy of it in this module. Every price
-/// and every Greek above routes through here or through
-/// [`bsm_d1_d2`]; the four per-struct `d1_d2(&self)` methods that used to
-/// sit alongside it read the bundled query fields, so removing those fields
-/// left this the single source.
+/// $d_1=\frac{\ln(S/K)+(b+\sigma^2/2)T}{\sigma\sqrt T}$, the module's only copy: every price and
+/// Greek above goes through it or through [`bsm_d1_d2`].
 fn bsm_d1(s: f64, k: f64, b: f64, sigma: f64, t: f64) -> f64 {
   ((s / k).ln() + (b + 0.5 * sigma * sigma) * t) / (sigma * t.sqrt())
 }

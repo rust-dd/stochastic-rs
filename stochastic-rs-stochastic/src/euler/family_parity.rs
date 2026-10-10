@@ -14,6 +14,9 @@
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::traits::Expr;
 use stochastic_rs_distributions::traits::Program;
@@ -50,15 +53,19 @@ impl ProbePrograms {
   /// so the kernels' interpreters are checked opcode by opcode.
   fn pair() -> Self {
     Self {
-      first: Program::compile(&(Expr::x() * -0.5 + Expr::t() * 0.1 - Expr::lit(0.02))),
-      second: Some(Program::compile(
-        &((Expr::lit(0.3) + Expr::x().abs() * 0.2)
-          .min(Expr::lit(0.6))
-          .max(0.05)
-          * (-Expr::x() * Expr::x()).exp()
-          + Expr::x().powf(2.0).sqrt().tanh() / 4.0
-          + (Expr::lit(1.0) + Expr::t()).ln() * 0.1),
-      )),
+      first: Program::compile(&(Expr::x() * -0.5 + Expr::t() * 0.1 - Expr::lit(0.02)))
+        .expect("the probe program fits the kernel bounds"),
+      second: Some(
+        Program::compile(
+          &((Expr::lit(0.3) + Expr::x().abs() * 0.2)
+            .min(Expr::lit(0.6))
+            .max(0.05)
+            * (-Expr::x() * Expr::x()).exp()
+            + Expr::x().powf(2.0).sqrt().tanh() / 4.0
+            + (Expr::lit(1.0) + Expr::t()).ln() * 0.1),
+        )
+        .expect("the probe program fits the kernel bounds"),
+      ),
     }
   }
 
@@ -226,10 +233,12 @@ pub(crate) struct ProbeSampler {
   spec: EulerSpec<f32>,
   x0: f32,
   dt: f32,
-  normal: SimdNormal<f32>,
+  normal: Seeded<SimdNormal<f32>>,
   lift: Option<ProbeLift>,
   program: Option<ProbePrograms>,
 }
+
+impl crate::traits::Sealed for ProbeSampler {}
 
 impl PathSampler<f32> for ProbeSampler {
   type Output = Array1<f32>;
@@ -296,14 +305,14 @@ impl PathSampler<f32> for ProbeSampler {
     let mut series = vec![0.0f32; N];
     let mut terms: Vec<(f32, f32, f32, f32, usize)> = Vec::new();
     if family.has_series() {
-      let uniform = SimdUniform::<f32>::new(0.0, 1.0, &Deterministic::new(11));
+      let mut uniform = SimdUniform::<f32>::new(0.0, 1.0).seeded(&Deterministic::new(11));
       let mut gj = 0.0f32;
       for _ in 0..PROBE_TERMS {
-        gj -= (uniform.sample_fast() * 0.999998 + 1.0e-6).ln();
-        let ej = -(uniform.sample_fast() * 0.999998 + 1.0e-6).ln();
-        let uj = uniform.sample_fast();
-        let uv = uniform.sample_fast();
-        let ratio = uniform.sample_fast() * (N - 1) as f32;
+        gj -= (uniform.sample() * 0.999998 + 1.0e-6).ln();
+        let ej = -(uniform.sample() * 0.999998 + 1.0e-6).ln();
+        let uj = uniform.sample();
+        let uv = uniform.sample();
+        let ratio = uniform.sample() * (N - 1) as f32;
         let cell = (ratio.ceil() as usize).clamp(1, N - 1);
         if family.series_live() {
           terms.push((gj, ej, uj, uv, cell));
@@ -320,13 +329,13 @@ impl PathSampler<f32> for ProbeSampler {
     let mut table = Vec::<f32>::new();
     let mut spacing = 0.0f32;
     if family.has_table() {
-      let uniform = SimdUniform::<f32>::new(0.0, 1.0, &Deterministic::new(13));
+      let mut uniform = SimdUniform::<f32>::new(0.0, 1.0).seeded(&Deterministic::new(13));
       let mut umax = 1.0f32;
       for attempt in 0..10 {
         spacing = umax / (PROBE_TABLE - 1) as f32;
         table = vec![0.0f32; PROBE_TABLE as usize];
         for k in 1..PROBE_TABLE as usize {
-          let (uj, uv) = (uniform.sample_fast(), uniform.sample_fast());
+          let (uj, uv) = (uniform.sample(), uniform.sample());
           let inc = super::families::host_table(family, &params, self.dt, uj, uv, spacing)
             .expect("a family with a table clause sizes its increments");
           table[k] = table[k - 1] + inc;
@@ -464,6 +473,8 @@ impl PathSampler<f32> for ProbeSampler {
   }
 }
 
+impl crate::traits::Sealed for Probe {}
+
 impl ProcessExt<f32> for Probe {
   type Output = Array1<f32>;
   type Sampler<'s>
@@ -477,7 +488,7 @@ impl ProcessExt<f32> for Probe {
       spec: self.spec,
       x0: self.x0,
       dt,
-      normal: SimdNormal::<f32>::new(0.0, dt.sqrt(), &Deterministic::new(7)),
+      normal: SimdNormal::<f32>::new(0.0, dt.sqrt()).seeded(&Deterministic::new(7)),
       lift: self.lift.clone(),
       program: self.program.clone(),
     }
@@ -1199,10 +1210,12 @@ pub(crate) struct SystemProbeSampler<const D: usize> {
   spec: EulerSpec<f32>,
   x0: [f32; D],
   dt: f32,
-  normal: SimdNormal<f32>,
+  normal: Seeded<SimdNormal<f32>>,
   lift: Option<ProbeLift>,
   program: Option<ProbePrograms>,
 }
+
+impl<const D: usize> crate::traits::Sealed for SystemProbeSampler<D> {}
 
 impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
   type Output = [Array1<f32>; D];
@@ -1265,14 +1278,14 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
     let mut series = vec![0.0f32; N];
     let mut terms: Vec<(f32, f32, f32, f32, usize)> = Vec::new();
     if family.has_series() {
-      let uniform = SimdUniform::<f32>::new(0.0, 1.0, &Deterministic::new(11));
+      let mut uniform = SimdUniform::<f32>::new(0.0, 1.0).seeded(&Deterministic::new(11));
       let mut gj = 0.0f32;
       for _ in 0..PROBE_TERMS {
-        gj -= (uniform.sample_fast() * 0.999998 + 1.0e-6).ln();
-        let ej = -(uniform.sample_fast() * 0.999998 + 1.0e-6).ln();
-        let uj = uniform.sample_fast();
-        let uv = uniform.sample_fast();
-        let ratio = uniform.sample_fast() * (N - 1) as f32;
+        gj -= (uniform.sample() * 0.999998 + 1.0e-6).ln();
+        let ej = -(uniform.sample() * 0.999998 + 1.0e-6).ln();
+        let uj = uniform.sample();
+        let uv = uniform.sample();
+        let ratio = uniform.sample() * (N - 1) as f32;
         let cell = (ratio.ceil() as usize).clamp(1, N - 1);
         if family.series_live() {
           terms.push((gj, ej, uj, uv, cell));
@@ -1289,13 +1302,13 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
     let mut table = Vec::<f32>::new();
     let mut spacing = 0.0f32;
     if family.has_table() {
-      let uniform = SimdUniform::<f32>::new(0.0, 1.0, &Deterministic::new(13));
+      let mut uniform = SimdUniform::<f32>::new(0.0, 1.0).seeded(&Deterministic::new(13));
       let mut umax = 1.0f32;
       for attempt in 0..10 {
         spacing = umax / (PROBE_TABLE - 1) as f32;
         table = vec![0.0f32; PROBE_TABLE as usize];
         for k in 1..PROBE_TABLE as usize {
-          let (uj, uv) = (uniform.sample_fast(), uniform.sample_fast());
+          let (uj, uv) = (uniform.sample(), uniform.sample());
           let inc = super::families::host_table(family, &params, self.dt, uj, uv, spacing)
             .expect("a family with a table clause sizes its increments");
           table[k] = table[k - 1] + inc;
@@ -1437,6 +1450,8 @@ impl<const D: usize> PathSampler<f32> for SystemProbeSampler<D> {
   }
 }
 
+impl<const D: usize> crate::traits::Sealed for SystemProbe<D> {}
+
 impl<const D: usize> ProcessExt<f32> for SystemProbe<D> {
   type Output = [Array1<f32>; D];
   type Sampler<'s>
@@ -1450,7 +1465,7 @@ impl<const D: usize> ProcessExt<f32> for SystemProbe<D> {
       spec: self.spec,
       x0: self.x0,
       dt,
-      normal: SimdNormal::<f32>::new(0.0, dt.sqrt(), &Deterministic::new(7)),
+      normal: SimdNormal::<f32>::new(0.0, dt.sqrt()).seeded(&Deterministic::new(7)),
       lift: self.lift.clone(),
       program: self.program.clone(),
     }
@@ -2267,12 +2282,12 @@ fn every_family_has_a_probe() {
 /// The kernels the native back-ends run are generated, so what this checks is
 /// that each generated body compiles into a launchable kernel and produces a
 /// path that stays in the reals.
-#[cfg(any(feature = "metal", feature = "cuda"))]
+#[cfg(any(all(feature = "metal", target_os = "macos"), feature = "cuda"))]
 #[test]
 fn every_family_runs_on_the_device() {
   #[cfg(feature = "cuda")]
   type Device = crate::device::Cuda;
-  #[cfg(all(feature = "metal", not(feature = "cuda")))]
+  #[cfg(all(all(feature = "metal", target_os = "macos"), not(feature = "cuda")))]
   type Device = crate::device::Metal;
 
   for probe in every_family() {

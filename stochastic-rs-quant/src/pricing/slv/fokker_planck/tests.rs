@@ -30,7 +30,7 @@ fn method() -> FokkerPlanckMethod {
 }
 
 fn unit_leverage() -> Fn2D<f64> {
-  Expr::lit(1.0).into()
+  Expr::lit(1.0).compile().unwrap().into()
 }
 
 /// Under a unit leverage the model is Heston, whose calls have a closed
@@ -89,7 +89,7 @@ fn the_density_keeps_its_mass_and_its_first_moments() {
 fn a_smaller_leverage_lowers_the_option_value() {
   let p = params(1.0);
   let unit = heston_slv_density(&p, S0, R, Q, &unit_leverage(), &[0.5], &method()).unwrap();
-  let damped: Fn2D<f64> = Expr::lit(0.8).into();
+  let damped: Fn2D<f64> = Expr::lit(0.8).compile().unwrap().into();
   let low = heston_slv_density(&p, S0, R, Q, &damped, &[0.5], &method()).unwrap();
   let (c_unit, c_low) = (
     unit.call_price(0, 100.0, R, 0.5),

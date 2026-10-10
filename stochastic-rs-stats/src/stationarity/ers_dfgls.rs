@@ -174,6 +174,7 @@ pub fn ers_dfgls_test(y: ArrayView1<f64>, cfg: ErsConfig) -> ErsResult {
 #[cfg(test)]
 mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::ErsConfig;
@@ -183,8 +184,8 @@ mod tests {
 
   fn simulate_ar1(phi: f64, n: usize, seed: u64) -> Vec<f64> {
     let innovations = {
-      let dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(seed));
-      (0..n).map(|_| dist.sample_fast()).collect::<Vec<_>>()
+      let mut dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed));
+      (0..n).map(|_| dist.sample()).collect::<Vec<_>>()
     };
 
     let mut x = vec![0.0; n];

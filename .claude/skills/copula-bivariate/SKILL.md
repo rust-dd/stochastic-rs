@@ -8,9 +8,9 @@ description: How to add a bivariate copula to stochastic-rs-copulas. Invoke when
 Bivariate copulas live in `stochastic-rs-copulas/src/bivariate/<name>.rs`
 and implement `BivariateExt`, defined in
 `stochastic-rs-copulas/src/traits/bivariate.rs` and re-exported from
-`stochastic-rs-copulas/src/traits.rs`. There are **13** families today
-(`grep -c '^pub mod ' stochastic-rs-copulas/src/bivariate.rs`); the
-14th `impl BivariateExt for` is a test double in
+`stochastic-rs-copulas/src/traits.rs`. There are **15** families today
+(`grep -c '^pub mod ' stochastic-rs-copulas/src/bivariate.rs`); the two
+other `impl BivariateExt for` are test doubles in
 `traits/bivariate.rs`'s own test module.
 
 Read `stochastic-rs-copulas/src/bivariate.rs`'s module header before
@@ -38,8 +38,8 @@ fn theta_bounds(&self) -> (f64, f64);
 fn invalid_thetas(&self) -> Vec<f64>;    // returns owned Vec, not &[f64]
 fn compute_theta(&self) -> f64;          // reads self.tau() — takes NO argument
 fn tail_dependence(&self) -> TailDependence<f64>;
-fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
-fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
+fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError>;
+fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError>;
 ```
 
 Two shape facts that catch every first attempt:
@@ -50,6 +50,8 @@ Two shape facts that catch every first attempt:
 - **`compute_theta` takes no `tau` argument.** It reads `self.tau()`,
   which `fit()` has already set. The tau → theta inversion is a method
   on a *populated* struct, not a free function of tau.
+
+- **Errors are `CopulaError`** (`crate::error`), never `Box<dyn Error>` or a `String`: a parameter outside its domain is `InvalidParameter { name, value, constraint }` in the crate's assert form, an unfitted copula is `NotFitted`, bad pseudo-observations are `MarginalOutOfRange` / `MarginalNotUniform`.
 
 Useful defaults you should usually **not** override:
 
@@ -65,10 +67,17 @@ Useful defaults you should usually **not** override:
 | `check_theta` / `check_fit` / `check_marginal` | validation, used by the above |
 
 Override `percent_point` and `partial_derivative` only when you have a
-closed form; they are independent choices. Five families override
-`percent_point` (`clayton`, `frank`, `gumbel`, `gaussian`,
-`independence`); several more override only `partial_derivative` (`joe`
-among them). Closed forms are both faster and more accurate than the
+closed form; they are independent choices. Twelve families override
+`percent_point` (`amh`, `bb1`, `bb7`, `clayton`, `fgm`, `frank`,
+`gaussian`, `gumbel`, `independence`, `marshall_olkin`, `plackett`,
+`t_copula`); `galambos`, `husler_reiss` and `joe` override only
+`partial_derivative`. Map an override through
+`bivariate::conditional::conditional_quantiles` /
+`conditional_cdf`: they own the one length check, NaN for a `y` or `v`
+outside `[0, 1]` and the `[0, 1]` codomain, whose clamp absorbs rounding
+only: a non-finite inverse reads as NaN, so a closed form must stay finite
+on the whole closed square. Name it `Family::inverse(params)` and add it to
+the excursion sweep in `bivariate/conditional.rs`. Closed forms are both faster and more accurate than the
 Brent / finite-difference defaults, but a family with neither is
 perfectly valid — the defaults compose. Override `generator` if and
 only if the family is Archimedean.
@@ -91,13 +100,11 @@ carries `theta` / `tau` as `Option<f64>` (unset until `fit` or
 ```rust
 // stochastic-rs-copulas/src/bivariate/clayton.rs (reference)
 
-use std::error::Error;
-use std::f64;
-
 use ndarray::Array1;
 use ndarray::Array2;
 
 use super::CopulaType;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -147,7 +154,8 @@ that diverged on positive correlations. The mandate:
 1. **Closed-form first.** Clayton: `θ = 2τ/(1-τ)`. Gumbel:
    `θ = 1/(1-τ)`. Cite the textbook formula in a doc comment.
 
-2. **Brent's method second**, when no closed form exists. `Frank`'s
+2. **Brent's method second**, when no closed form exists: the crate's
+   `crate::optim::zero`, Brent's own procedure (1973, §6). `Frank`'s
    shipped implementation is the pattern to copy:
 
    ```rust
@@ -159,13 +167,12 @@ that diverged on positive correlations. The mandate:
      if tau <= -1.0 { return f64::NEG_INFINITY; }
 
      let residual = |theta: f64| Self::_tau_to_theta(tau, theta);
-     let mut convergency = SimpleConvergency { eps: 1e-8, max_iter: 100 };
      let (lo, hi) = if tau > 0.0 {
        (1e-8_f64, 50.0_f64)
      } else {
        (-50.0_f64, -1e-8_f64)
      };
-     find_root_brent(lo, hi, residual, &mut convergency).unwrap_or(0.0)
+     zero(lo, hi, 1e-8, residual).unwrap_or(0.0)
    }
    ```
 
@@ -196,9 +203,11 @@ let u = self.percent_point(&c, &v)?;
 Ok(stack![Axis(1), u, v])
 ```
 
-It errors if `tau` is unset or outside `(-1, 1)`, draws both uniforms
-from one `SimdUniform<f64>`, and returns an `(n, 2)` `Array2<f64>`
-wrapped in `Result`. `sample(&self, ..)` takes `&self`, not `&mut self`.
+It is gated by the family's `check_fit`, which reads `theta`, not `tau`:
+`NotFitted` while `theta` is unset, `InvalidParameter` when it is outside
+`theta_bounds` or in `invalid_thetas`. It draws both uniforms from one seeded
+`SimdUniform<f64>` stream and returns an `(n, 2)` `Array2<f64>` wrapped in
+`Result`. `sample(&self, ..)` takes `&self`, not `&mut self`.
 
 What you supply is `percent_point` — either a closed form, or nothing
 at all, in which case `percent_point_numerical` Brent-inverts your
@@ -267,8 +276,8 @@ is `Unseeded` and reseeds from entropy each run. See
 - **Do not** implement `sample` / `fit` / `log_pdf` / `ppf`. They are
   defaulted and the defaults are correct.
 - **Do not** implement `generator` for a non-Archimedean family. The
-  default already returns the anchored
-  `"<Type> is not Archimedean — generator not defined"` error.
+  default already returns `CopulaError::Unsupported`
+  (`"<Type> is not Archimedean: no generator"`).
 
 ## 7. Reference impls
 

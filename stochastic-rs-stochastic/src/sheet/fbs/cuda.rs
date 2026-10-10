@@ -21,6 +21,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use super::Fbs;
 use super::SheetLaunch;
 use crate::device::DeviceError;
+use crate::device::launch_len;
 use crate::noise::fgn::cuda::sampler::counter_offset;
 use crate::traits::FloatExt;
 
@@ -188,7 +189,7 @@ fn make_plan(
   batch: usize,
   ty: cufft::sys::cufftType,
 ) -> Result<cufft::sys::cufftHandle> {
-  let plan = cufft::result::plan_1d(len as i32, ty, batch as i32)
+  let plan = cufft::result::plan_1d(launch_len(len, "nx")?, ty, launch_len(batch, "batch")?)
     .map_err(|e| DeviceError::Launch(format!("cuFFT plan: {e}")))?;
   unsafe {
     if let Err(e) = cufft::result::set_stream(plan, stream.cu_stream() as _) {
@@ -246,6 +247,18 @@ macro_rules! sheet_precision {
       let cells = big_m * big_n;
       let total = sheets * cells;
       let out_len = sheets * m * n;
+      // The draw and the transpose index `data[2 * tid + 1]` for each `tid` below `total` in `int`,
+      // so the work buffers' whole length must fit it; the read-out stays inside that buffer.
+      launch_len::<i32>(2 * total, "data")?;
+      let cells_i = launch_len::<i32>(cells, "cells")?;
+      let total_i = launch_len::<i32>(total, "total")?;
+      let rows_i = launch_len::<i32>(big_m, "rows")?;
+      let cols_i = launch_len::<i32>(big_n, "cols")?;
+      let m_i = launch_len::<i32>(m, "m")?;
+      let n_i = launch_len::<i32>(n, "n")?;
+      let out_i = launch_len::<i32>(out_len, "total")?;
+      let grid = launch_len::<u32>(total, "sheet grid")?;
+      let grid_out = launch_len::<u32>(out_len, "sheet_extract grid")?;
 
       ensure_kernels(ordinal)?;
       // Clone the handles out of the global lock so another size can launch
@@ -316,13 +329,6 @@ macro_rules! sheet_precision {
         },
       )?;
 
-      let cells_i = cells as i32;
-      let total_i = total as i32;
-      let rows_i = big_m as i32;
-      let cols_i = big_n as i32;
-      let m_i = m as i32;
-      let n_i = n as i32;
-      let out_i = out_len as i32;
       let base = counter_offset(seed);
       let seq = base + (first * cells) as u64;
       let seq_corr = base + corr_cell;
@@ -337,7 +343,7 @@ macro_rules! sheet_precision {
           .arg(&total_i)
           .arg(&seed)
           .arg(&seq)
-          .launch(LaunchConfig::for_num_elems(total as u32))
+          .launch(LaunchConfig::for_num_elems(grid))
           .map_err(|e| DeviceError::Launch(format!("sheet_gen: {e}")))?;
       }
 
@@ -360,7 +366,7 @@ macro_rules! sheet_precision {
           .arg(&rows_i)
           .arg(&cols_i)
           .arg(&total_i)
-          .launch(LaunchConfig::for_num_elems(total as u32))
+          .launch(LaunchConfig::for_num_elems(grid))
           .map_err(|e| DeviceError::Launch(format!("sheet_transpose: {e}")))?;
       }
 
@@ -388,7 +394,7 @@ macro_rules! sheet_precision {
           .arg(&seed)
           .arg(&seq_corr)
           .arg(&out_i)
-          .launch(LaunchConfig::for_num_elems(out_len as u32))
+          .launch(LaunchConfig::for_num_elems(grid_out))
           .map_err(|e| DeviceError::Launch(format!("sheet_extract: {e}")))?;
       }
 
@@ -441,11 +447,17 @@ impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
   ) -> Result<Vec<Array2<T>>> {
     let (m, n) = (self.m, self.n);
     let cells = self.cells();
-    let seed = self.seed.seed_value();
-    let rows = crate::device::chunk_rows(
-      device.batch_budget,
-      4 * cells + m * n,
-      std::mem::size_of::<T>(),
+    let seed = self.seed.next_seed();
+    // A sheet is `cells` complex values of work buffer, which the kernels
+    // index as `data[2 * tid + 1]` in `int`.
+    let rows = crate::device::rows_within_index_limit(
+      crate::device::chunk_rows(
+        device.batch_budget,
+        4 * cells + m * n,
+        std::mem::size_of::<T>(),
+      ),
+      2 * cells,
+      i32::MAX as usize,
     );
     let key = self.launch_key();
     let mut out = Vec::with_capacity(sheets);

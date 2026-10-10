@@ -72,7 +72,7 @@ pub fn g_digital_put_2d<T: FloatExt>(y: [T; 2], k: [T; 2]) -> [[T; 2]; 2] {
     .into_iter()
     .chain(k)
     .map(<T as num_traits::Float>::abs)
-    .fold(T::zero(), |current, value| current.max(value));
+    .fold(T::zero(), |current, value| current.max_or_nan(value));
   let y1 = y[0] / scale;
   let y2 = y[1] / scale;
   let k1 = k[0] / scale;

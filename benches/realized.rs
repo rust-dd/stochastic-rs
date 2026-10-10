@@ -10,6 +10,8 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::Array1;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stats::realized::KernelType;
@@ -28,15 +30,15 @@ use stochastic_rs::stats::realized::realized_variance;
 use stochastic_rs::stats::realized::two_scale_rv;
 
 fn iid_returns(n: usize, std: f64, seed: u64) -> Array1<f64> {
-  let dist = SimdNormal::<f64>::new(0.0, std, &Deterministic::new(seed));
+  let mut dist = SimdNormal::<f64>::new(0.0, std).seeded(&Deterministic::new(seed));
   let mut out = Array1::<f64>::zeros(n);
   dist.fill_slice(out.as_slice_mut().unwrap());
   out
 }
 
 fn noisy_price_path(n: usize, sigma: f64, omega: f64, seed: u64) -> Array1<f64> {
-  let dx = SimdNormal::<f64>::new(0.0, sigma, &Deterministic::new(seed));
-  let dn = SimdNormal::<f64>::new(0.0, omega, &Deterministic::new(seed.wrapping_add(1)));
+  let mut dx = SimdNormal::<f64>::new(0.0, sigma).seeded(&Deterministic::new(seed));
+  let mut dn = SimdNormal::<f64>::new(0.0, omega).seeded(&Deterministic::new(seed.wrapping_add(1)));
   let mut steps = vec![0.0_f64; n];
   dx.fill_slice(&mut steps);
   let mut noise = vec![0.0_f64; n + 1];

@@ -4,13 +4,18 @@
 //! C_\theta(u,v)=\left(u^{-\theta}+v^{-\theta}-1\right)^{-1/\theta},\ \theta>0
 //! $$
 //!
-use std::error::Error;
-use std::f64;
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::Zip;
 
 use super::CopulaType;
+use crate::bivariate::conditional::check_lengths;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::conditioned;
+use crate::bivariate::conditional::confine;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -38,6 +43,28 @@ impl Default for Clayton {
 impl Clayton {
   pub fn new() -> Self {
     Self::default()
+  }
+
+  /// `a = y^{−θ/(1 + θ)} − 1` of `h⁻¹(y | v) = (1 + a/v^θ)^{−1/θ}`, as `expm1` so `y` near 1 keeps its digits.
+  pub(crate) fn level(theta: f64, y: f64) -> f64 {
+    (-theta / (1.0 + theta) * y.ln()).exp_m1()
+  }
+
+  /// `exp(−ln_1p(a/v^θ)/θ)`; once `v^θ` leaves the normal range or `a/v^θ` overflows, `v a^{−1/θ}` (the dropped
+  /// `(1 + v^θ/a)^{−1/θ}` is 1 to rounding), `ln a = z + ln(−expm1(−z))`, `z = −θ ln y/(1 + θ)`; 0 on `v = 0`.
+  pub(crate) fn finish(theta: f64, a: f64, y: f64, v: f64, v_theta: f64) -> f64 {
+    let ratio = a / v_theta;
+    if v_theta >= f64::MIN_POSITIVE && ratio.is_finite() {
+      return (-ratio.ln_1p() / theta).exp();
+    }
+    if v == 0.0 {
+      return 0.0;
+    }
+    if y == 1.0 {
+      return 1.0;
+    }
+    let z = -theta / (1.0 + theta) * y.ln();
+    v * (-(z + (-(-z).exp_m1()).ln()) / theta).exp()
   }
 }
 
@@ -70,7 +97,7 @@ impl BivariateExt for Clayton {
     self.theta = Some(theta);
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let theta = self.theta.unwrap();
@@ -85,7 +112,7 @@ impl BivariateExt for Clayton {
   /// (`b.powf(c)` with `b = 1` and `c = -∞`, an IEEE `pow` special case
   /// that evaluates to `1.0` regardless) that happens to leave `a` — not
   /// `1.0` — as the answer, i.e. `(uv)^{-1}`.
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0);
@@ -107,7 +134,7 @@ impl BivariateExt for Clayton {
   /// `(u^{-θ}+v^{-θ}-1)^{-1/θ}` hits the same `1^{-∞}` removable
   /// singularity as `pdf` there and evaluates to the constant `1.0` for
   /// every `u,v > 0`, not `uv`.
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0);
@@ -143,60 +170,53 @@ impl BivariateExt for Clayton {
     Ok(cdfs)
   }
 
-  /// Inverse conditional `u` solving `∂_v C(u,v) = p` (`p = y`): closed
-  /// form `u = (1+v^{-θ}(p^{-θ/(1+θ)}-1))^{-1/θ}` for `θ ≠ 0`. At `θ=0`
-  /// (independence, `C(u,v)=uv`), `∂_v C(u,v) = u`, so the inverse is the
-  /// identity on the fresh uniform `p` — not `v`. The previous branch
-  /// returned `V.clone()`, making every sampled pair exactly comonotonic
-  /// (`U=V`, Kendall's τ ≈ 1) instead of independent — the same defect
-  /// class as [`crate::bivariate::frank::Frank::percent_point`]'s
-  /// pre-fix `θ = 0` branch.
-  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  /// `h⁻¹(y | v)` by `Clayton::level` and `Clayton::finish`, `y` at `θ = 0`; NaN for `y` or `v` outside `[0, 1]`.
+  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let theta = self.theta.unwrap();
 
     if theta == 0.0 {
-      return Ok(y.clone());
+      return conditional_quantiles(y, V, |y, _| y);
     }
 
-    let a = y.powf(theta / (-1.0 - theta));
-    let b = V.powf(theta);
-
-    let b_all_zeros = b.iter().all(|&v| v == 0.0);
-
-    if b_all_zeros {
-      return Ok(Array1::ones(V.len()));
-    }
-
-    Ok(((a + &b - 1.0) / b).powf(-1.0 / theta))
+    check_lengths(y, V)?;
+    // Whole-array passes keep each pass's transcendental calls independent, which a fused per-pair closure does not.
+    let v_theta = V.powf(theta);
+    let mut u = y.mapv(|y| Self::level(theta, y));
+    Zip::from(&mut u)
+      .and(y)
+      .and(V)
+      .and(&v_theta)
+      .for_each(|u, &y, &v, &v_theta| *u = confine(y, v, Self::finish(theta, *u, y, v, v_theta)));
+    Ok(u)
   }
 
-  /// At `θ=0` (independence, `C(u,v)=uv`), `∂_v C(u,v) = u`. The general
-  /// formula hits the same `1^{-∞}` removable singularity as `pdf`/`cdf`
-  /// there (`B = v^0+u^0-1 = 1`, raised to `(-1-θ)/θ → -∞`), leaving `A =
-  /// v^{-1}` — not `u` — as the answer, so it needs its own branch.
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  /// `∂_v C = v^{−θ−1}(u^{−θ} + v^{−θ} − 1)^{−(1+θ)/θ}`, `u` at `θ = 0`, and 1 at `v = 0`, whose conditional law is a
+  /// point mass at `u = 0`; NaN for `v` outside `[0, 1]`.
+  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
-    let U = X.column(0);
-    let V = X.column(1);
 
     let theta = self.theta.unwrap();
 
     if theta == 0.0 {
-      return Ok(U.to_owned());
+      return Ok(conditional_cdf(X, |u, _| u));
     }
 
-    let A = V.powf(-theta - 1.0);
-
-    if A.iter().all(|a| a.is_infinite()) {
-      return Ok(Array1::zeros(V.len()));
-    }
-
-    let B = V.powf(-theta) + U.powf(-theta) - 1.0;
-    let h = B.powf((-1.0 - theta) / theta);
-    Ok(A * h)
+    // Two passes, as in `percent_point`: a fused per-pair closure would chain its `powf` calls.
+    let V = X.column(1);
+    let mut h = Zip::from(X.column(0))
+      .and(V)
+      .map_collect(|&u, &v| v.powf(-theta) + u.powf(-theta) - 1.0);
+    Zip::from(&mut h).and(V).for_each(|h, &v| {
+      let p = if v == 0.0 {
+        1.0
+      } else {
+        v.powf(-theta - 1.0) * h.powf((-1.0 - theta) / theta)
+      };
+      *h = conditioned(v, p);
+    });
+    Ok(h)
   }
 
   fn compute_theta(&self) -> f64 {

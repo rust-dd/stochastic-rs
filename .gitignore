@@ -2,7 +2,6 @@
 /target
 # Any sibling CARGO_TARGET_DIR a parallel build or a subagent points here.
 /target-*
-/Cargo.lock
 flamegraph.svg
 
 # Editor / IDE

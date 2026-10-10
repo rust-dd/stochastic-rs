@@ -343,7 +343,6 @@ pub mod paper_table1 {
 /// These values correspond to Hkde calibrated against market option data on
 /// 2024-02-20 and are reproduced here as a documentation / sanity aid.
 /// Reaching them exactly requires the underlying proprietary quotes.
-#[allow(dead_code)]
 pub mod paper_table2 {
   /// Hkde mean absolute percentage error per ticker, Table 2.
   pub const MAPE: [(&str, f64); 4] = [

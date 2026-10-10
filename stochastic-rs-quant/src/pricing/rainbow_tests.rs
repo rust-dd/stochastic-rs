@@ -8,11 +8,7 @@ use super::*;
 /// x86_64.
 const TOL: f64 = 1e-12;
 
-/// Values captured from the bundled-market-data `StulzRainbowPricer`
-/// **before** the model/query reshape. The reshape is an API change only,
-/// so these must not move. All four payoffs are pinned, because
-/// `PutOnMin` and `PutOnMax` route through `MargrabePricer`, which the
-/// same wave reshaped one commit earlier.
+/// Pinned prices for all four payoffs; `PutOnMin` and `PutOnMax` route through `MargrabePricer`.
 #[test]
 fn stulz_matches_pre_refactor_goldens() {
   let expected = [
@@ -321,19 +317,8 @@ mod construction_validation {
   }
 }
 
-/// A `NaN` leg used to be **dropped**, so an $n$-asset best-of priced as
-/// an $(n-1)$-asset best-of.
-///
-/// The identity with the two-asset answer is what makes it a silent
-/// defect rather than a visible one: `CallOnMax` on `[120, NaN, 90]` at
-/// `K = 100` returned `20.0`, bit-for-bit the value of the same contract
-/// written on `[120, 90]`. Nothing in the number marks the third asset
-/// as missing.
-///
-/// All four payoffs are pinned. Two of them (`CallOnMin`, `PutOnMax`)
-/// returned `0.0` instead, through the *second* copy of the same trap —
-/// the surviving `(min_p - k).max(0.0)` floor — so a fix to the fold
-/// alone would have left them laundering.
+/// A NaN leg poisons all four payoffs instead of dropping out: `[120, NaN, 90]` must not price as
+/// `[120, 90]`.
 #[test]
 fn a_nan_leg_poisons_the_rainbow_payoff_instead_of_dropping_out() {
   let legs = [120.0, f64::NAN, 90.0];
@@ -353,7 +338,7 @@ fn a_nan_leg_poisons_the_rainbow_payoff_instead_of_dropping_out() {
     );
   }
 
-  // The two-asset value the three-asset contract used to impersonate.
+  // The two-asset value a NaN third leg must not reproduce.
   assert_eq!(
     RainbowPayoff::CallOnMax.evaluate(&[120.0, 90.0], 100.0),
     20.0

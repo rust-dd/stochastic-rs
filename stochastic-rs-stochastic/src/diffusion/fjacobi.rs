@@ -17,27 +17,28 @@ use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
 
+/// Fractional Jacobi process `dX = (α − βX) dt + σ√(X(1 − X)) dB^H` on `n`
+/// points over `[0, t]`.
+///
+/// Fields are private: the fGN driver caches a spectrum derived from `hurst`, `n` and `t`, so
+/// parameters are read through getters and changed through the cache-rebuilding `with_*` setters.
+///
+/// ```compile_fail,E0616
+/// use stochastic_rs_core::simd_rng::Unseeded;
+/// use stochastic_rs_stochastic::diffusion::fjacobi::FJacobi;
+/// let mut p = FJacobi::<f64>::new(0.7, 1.0, 2.0, 0.2, 10, None, None, Unseeded);
+/// p.n = 1000;
+/// ```
 #[derive(Clone)]
 pub struct FJacobi<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
-  /// Hurst exponent controlling roughness and long-memory.
-  pub hurst: T,
-  /// Linear-drift intercept (κθ combined) in the reparametrized drift
-  /// `alpha - beta·X`, equivalent to `κ(θ-X)` with `alpha = κθ`. Must be
-  /// less than `beta` so the implied θ = alpha/beta stays in (0, 1), the
-  /// Jacobi boundary requirement.
-  pub alpha: T,
-  /// Linear-drift slope (mean-reversion speed κ) in `alpha - beta·X`.
-  pub beta: T,
-  /// Diffusion scale σ multiplying `√(X_t(1-X_t)) dB_t^H`.
-  pub sigma: T,
-  /// Number of points sampled along the fractional Jacobi path.
-  pub n: usize,
-  /// Initial value X₀ of the fractional Jacobi path (clamped into [0, 1]).
-  pub x0: Option<T>,
-  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
-  pub t: Option<T>,
-  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
-  pub seed: S,
+  hurst: T,
+  alpha: T,
+  beta: T,
+  sigma: T,
+  n: usize,
+  x0: Option<T>,
+  t: Option<T>,
+  seed: S,
   fgn: Fgn<T, Unseeded, B>,
 }
 
@@ -68,9 +69,124 @@ impl<T: FloatExt, S: SeedExt> FJacobi<T, S, Cpu> {
       x0,
       t,
       seed,
-      fgn: Fgn::new(hurst, n - 1, t, Unseeded),
+      fgn: Self::fgn_for(hurst, n, t),
     }
   }
+
+  /// Shared by `new()` and the `with_*` setters so they cannot drift.
+  fn fgn_for(hurst: T, n: usize, t: Option<T>) -> Fgn<T, Unseeded, Cpu> {
+    Fgn::new(hurst, n - 1, t, Unseeded)
+  }
+
+  /// Replace `hurst`; rebuilds the embedded `fgn`.
+  pub fn with_hurst(mut self, hurst: T) -> Self {
+    self.hurst = hurst;
+    self.fgn = Self::fgn_for(hurst, self.n, self.t);
+    self
+  }
+
+  /// Replace `alpha`. Panics unless `0 < alpha < beta`, matching `new()`'s
+  /// own assertions: to move both drift parameters up, raise `beta` first.
+  pub fn with_alpha(mut self, alpha: T) -> Self {
+    assert!(alpha > T::zero(), "alpha must be positive");
+    assert!(alpha < self.beta, "alpha must be less than beta");
+    self.alpha = alpha;
+    self
+  }
+
+  /// Replace `beta`. Panics unless `0 < alpha < beta`, matching `new()`'s
+  /// own assertions: to move both drift parameters down, lower `alpha` first.
+  pub fn with_beta(mut self, beta: T) -> Self {
+    assert!(beta > T::zero(), "beta must be positive");
+    assert!(self.alpha < beta, "alpha must be less than beta");
+    self.beta = beta;
+    self
+  }
+
+  /// Replace `sigma`. Panics if `sigma <= 0`, matching `new()`'s own
+  /// assertion.
+  pub fn with_sigma(mut self, sigma: T) -> Self {
+    assert!(sigma > T::zero(), "sigma must be positive");
+    self.sigma = sigma;
+    self
+  }
+
+  /// Replace the number of simulation steps `n`; rebuilds the embedded
+  /// `fgn`. Panics if `n < 2`, matching `new()`'s own assertion.
+  pub fn with_steps(mut self, n: usize) -> Self {
+    assert!(n >= 2, "n must be at least 2");
+    self.n = n;
+    self.fgn = Self::fgn_for(self.hurst, n, self.t);
+    self
+  }
+
+  /// Replace `x0`, all else unchanged.
+  pub fn with_x0(mut self, x0: Option<T>) -> Self {
+    self.x0 = x0;
+    self
+  }
+
+  /// Replace the simulation horizon `t`; rebuilds the embedded `fgn`.
+  pub fn with_horizon(mut self, t: Option<T>) -> Self {
+    self.t = t;
+    self.fgn = Self::fgn_for(self.hurst, self.n, t);
+    self
+  }
+
+  /// Replace the seed strategy's value, all else unchanged. `fgn`'s own
+  /// seed is a never-read dummy, so this does not touch it.
+  pub fn with_seed(mut self, seed: S) -> Self {
+    self.seed = seed;
+    self
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B> FJacobi<T, S, B> {
+  /// Hurst exponent controlling roughness and long-memory.
+  pub fn hurst(&self) -> T {
+    self.hurst
+  }
+
+  /// Drift intercept in `alpha - beta·X`, i.e. κθ in `κ(θ - X)`; it stays below `beta` so the
+  /// implied θ = alpha/beta lies in (0, 1), as the Jacobi boundary requires.
+  pub fn alpha(&self) -> T {
+    self.alpha
+  }
+
+  /// Linear-drift slope (mean-reversion speed κ) in `alpha - beta·X`.
+  pub fn beta(&self) -> T {
+    self.beta
+  }
+
+  /// Diffusion scale σ multiplying `√(X_t(1-X_t)) dB_t^H`.
+  pub fn sigma(&self) -> T {
+    self.sigma
+  }
+
+  /// Number of points sampled along the fractional Jacobi path.
+  pub fn n(&self) -> usize {
+    self.n
+  }
+
+  /// Initial value X₀ of the fractional Jacobi path (clamped into [0, 1]).
+  pub fn x0(&self) -> Option<T> {
+    self.x0
+  }
+
+  /// Simulation horizon [0, t] for the path (defaults to 1 when omitted).
+  pub fn t(&self) -> Option<T> {
+    self.t
+  }
+
+  /// Seed strategy (compile-time: [`Unseeded`] or the [`Deterministic` seed](stochastic_rs_core::simd_rng::Deterministic)).
+  pub fn seed(&self) -> &S {
+    &self.seed
+  }
+}
+
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
+  crate::traits::Sealed for FJacobi<T, S, B>
+{
 }
 
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>> ProcessExt<T>
@@ -170,6 +286,11 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> FJacobiSampler<'_, T, S, B> {
   }
 }
 
+impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> crate::traits::Sealed
+  for FJacobiSampler<'_, T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: FgnBackend<T>> PathSampler<T> for FJacobiSampler<'_, T, S, B> {
   type Output = Array1<T>;
 
@@ -234,14 +355,7 @@ impl<T: FloatExt, S: SeedExt, B: FgnBackend<T> + crate::euler::EulerBackend<T>>
   /// The pipeline that produces this process's increments: the device runs it
   /// and keeps the result in its own buffer.
   fn fgn_spec(&self) -> Option<crate::euler::FgnSpec<'_, T>> {
-    Some(crate::euler::FgnSpec {
-      sqrt_eigenvalues: self.fgn.sqrt_eigenvalues.as_slice().expect("contiguous"),
-      n: self.fgn.n,
-      offset: self.fgn.offset,
-      hurst: self.fgn.hurst.to_f64().unwrap_or(0.5),
-      t: self.fgn.t.unwrap_or(T::one()).to_f64().unwrap_or(1.0),
-      streams: 1,
-    })
+    Some(self.fgn.fgn_spec(1))
   }
 }
 

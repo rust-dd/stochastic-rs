@@ -4,100 +4,77 @@
 //! \mathbb{P}(X=k)=(1-p)^{k-1}p,\ k\ge 1
 //! $$
 //!
-use std::cell::Cell;
-use std::cell::UnsafeCell;
+//! Sampling: inversion `⌊ln U / ln(1 − p)⌋ + 1`, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §X.2, DOI 10.1007/978-1-4613-8643-8.
+
+use std::marker::PhantomData;
 
 use num_traits::PrimInt;
 use rand::Rng;
-use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
+use rand::distr::Distribution;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 use wide::f64x8;
 
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::StreamState;
+use crate::source::uniform53;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 const SMALL_GEOMETRIC_THRESHOLD: usize = 16;
 
-pub struct SimdGeometric<T: PrimInt, R: SimdRngExt = SimdRng> {
+/// Geometric law on `{1, 2, …}` with success probability `p`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdGeometric<T: PrimInt> {
   p: f64,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<R>,
-  stream_seed: Cell<u64>,
+  out: PhantomData<T>,
 }
 
-impl<T: PrimInt, R: SimdRngExt> SimdGeometric<T, R> {
+impl<T: PrimInt> SimdGeometric<T> {
   /// Creates a geometric distribution over the shifted support `k ≥ 1`
   /// (matches the module header's own convention — number of trials
   /// until, and including, the first success).
   ///
   /// - `p` — per-trial success probability p ∈ (0, 1].
-  pub fn new<S: crate::simd_rng::SeedExt>(p: f64, seed: &S) -> Self {
-    assert!(p > 0.0 && p <= 1.0, "p must be in (0, 1]");
-    let stream_seed = seed.seed_value();
+  pub fn new(p: f64) -> Self {
+    assert!(
+      p.is_finite(),
+      "p must satisfy `p.is_finite()`, got p = {p:?}"
+    );
+    assert!(
+      p > 0.0 && p <= 1.0,
+      "p must satisfy `p > 0.0 && p <= 1.0`, got p = {p:?}"
+    );
     Self {
       p,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed: Cell::new(stream_seed),
+      out: PhantomData,
     }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(self.p, &crate::simd_rng::Deterministic::new(child_seed))
+  /// The success probability `p`.
+  pub fn p(&self) -> f64 {
+    self.p
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
+  /// The trial count of the floored inversion `t = ⌊ln u / ln(1 − p)⌋`, shifted onto `{1, 2, …}`; an overflow of
+  /// `T` saturates (and asserts in debug).
   #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
+  fn count(t: f64) -> T {
+    let k = t.max(0.0) + 1.0;
+    let cast = num_traits::cast(k as u64);
+    debug_assert!(
+      cast.is_some(),
+      "geometric draw {k} overflowed the output integer type"
+    );
+    cast.unwrap_or(T::max_value())
   }
 
-  /// Fills `out` using the internal SIMD RNG stream — the only stream this
-  /// sampler draws from (see the crate-level RNG policy).
-  ///
-  /// `floor(ln(U) / ln(1-p))` is the textbook inversion for a geometric
-  /// variate on `{0, 1, 2, ...}` ("failures before the first success").
-  /// This type's `pdf`/`cdf`/`mean`/`inv_cdf` below all describe the
-  /// shifted `{1, 2, ...}` convention instead ("trials up to and including
-  /// the first success", matching `scipy.stats.geom`), so the draw is
-  /// shifted by `+ 1` onto that same support — the same shift
-  /// `SimdBinomial`'s own geometric waiting-time loop applies to its
-  /// inner gaps.
-  ///
-  /// A draw that overflows `T` saturates to `T::max_value()` rather than
-  /// silently reporting a `0` count; `debug_assert!` surfaces the overflow
-  /// in debug builds so undersized output types are caught during testing.
-  pub fn fill_slice(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
+  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [T]) {
     let ln1p = (1.0 - self.p).ln();
     if out.len() < SMALL_GEOMETRIC_THRESHOLD {
       let inv_ln1p = 1.0 / ln1p;
       for x in out.iter_mut() {
-        let u = rng.next_f64();
-        let k = (u.ln() * inv_ln1p).floor().max(0.0) + 1.0;
-        let cast = num_traits::cast(k as u64);
-        debug_assert!(
-          cast.is_some(),
-          "geometric draw {k} overflowed the output integer type"
-        );
-        *x = cast.unwrap_or(T::max_value());
+        *x = Self::count((rng.next_f64().ln() * inv_ln1p).floor());
       }
       return;
     }
@@ -106,117 +83,119 @@ impl<T: PrimInt, R: SimdRngExt> SimdGeometric<T, R> {
     for chunk in chunks {
       let mut u = [0.0_f64; 8];
       rng.fill_uniform_f64(&mut u);
-      let v = f64x8::from(u);
-      let tmp = (v.ln() * inv_ln1p).floor().to_array();
+      let tmp = (f64x8::from(u).ln() * inv_ln1p).floor().to_array();
       for (o, &t) in chunk.iter_mut().zip(tmp.iter()) {
-        let k = t.max(0.0) + 1.0;
-        let cast = num_traits::cast(k as u64);
-        debug_assert!(
-          cast.is_some(),
-          "geometric draw {k} overflowed the output integer type"
-        );
-        *o = cast.unwrap_or(T::max_value());
+        *o = Self::count(t);
       }
     }
     if !rem.is_empty() {
       let mut u = [0.0_f64; 8];
       rng.fill_uniform_f64(&mut u);
-      let v = f64x8::from(u);
-      let tmp = (v.ln() * inv_ln1p).floor().to_array();
-      for i in 0..rem.len() {
-        let k = tmp[i].max(0.0) + 1.0;
-        let cast = num_traits::cast(k as u64);
-        debug_assert!(
-          cast.is_some(),
-          "geometric draw {k} overflowed the output integer type"
-        );
-        rem[i] = cast.unwrap_or(T::max_value());
+      let tmp = (f64x8::from(u).ln() * inv_ln1p).floor().to_array();
+      for (o, &t) in rem.iter_mut().zip(tmp.iter()) {
+        *o = Self::count(t);
       }
     }
   }
 
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    let inv_ln1p = 1.0 / (1.0 - self.p).ln();
+    Self::count((uniform53(rng.next_u64()).ln() * inv_ln1p).floor())
   }
 }
 
-impl<T: PrimInt, R: SimdRngExt> Clone for SimdGeometric<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.p, &Unseeded)
+impl<T: PrimInt + Send + Sync + 'static> Sealed for SimdGeometric<T> {}
+
+impl<T: PrimInt + Send + Sync + 'static> SimdDistribution for SimdGeometric<T> {
+  type State<R: SimdRngExt> = StreamState<T, R, 16>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (StreamState<T, R, 16>, u64) {
+    StreamState::init(seed)
   }
 }
 
-impl<T: PrimInt, R: SimdRngExt> Distribution<T> for SimdGeometric<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction. Use `Deterministic`
-  /// in the constructor for reproducibility.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
+impl<T: PrimInt + Send + Sync + 'static> SimdKernel for SimdGeometric<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+    self.fill_parts(&mut state.rng, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>) -> T {
+    let StreamState { rng, buf } = state;
+    buf.pop(|b| self.fill_parts(rng, b))
   }
 }
 
-impl<T: PrimInt, R: SimdRngExt> crate::traits::DistributionExt for SimdGeometric<T, R> {
+impl<T: PrimInt + Send + Sync + 'static> Distribution<T> for SimdGeometric<T> {
+  /// The inversion of one 53-bit uniform from the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: PrimInt> crate::traits::DistributionExt for SimdGeometric<T> {
   // Convention here: support k ∈ {1, 2, ...} (the "shifted" geometric, P(X=k) = (1-p)^(k-1) p).
 
-  fn pdf(&self, x: f64) -> f64 {
+  fn pdf(&self, x: f64) -> Option<f64> {
+    if x.is_nan() {
+      return Some(f64::NAN);
+    }
     if x < 1.0 || x.fract() != 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
-    let k = x as u64;
-    (1.0 - self.p).powi(k as i32 - 1) * self.p
+    // At `p = 1` the general form below reads `0 · ln 0` for `x = 1`.
+    if x == 1.0 {
+      return Some(self.p);
+    }
+    Some(self.p * ((x - 1.0) * (-self.p).ln_1p()).exp())
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
+    if x.is_nan() {
+      return Some(f64::NAN);
+    }
     if x < 1.0 {
-      return 0.0;
+      return Some(0.0);
     }
-    let k = x.floor() as u64;
-    1.0 - (1.0 - self.p).powi(k as i32)
+    Some(-(x.floor() * (-self.p).ln_1p()).exp_m1())
   }
 
-  fn inv_cdf(&self, prob: f64) -> f64 {
+  fn quantile(&self, prob: f64) -> Option<f64> {
     // Smallest k such that 1-(1-p)^k ≥ prob ⟹ k = ⌈ln(1-prob)/ln(1-p)⌉
     if prob <= 0.0 {
-      return 1.0;
+      return Some(1.0);
     }
     if prob >= 1.0 {
-      return f64::INFINITY;
+      return Some(f64::INFINITY);
     }
-    ((1.0 - prob).ln() / (1.0 - self.p).ln()).ceil()
+    Some(((1.0 - prob).ln() / (1.0 - self.p).ln()).ceil())
   }
 
-  fn mean(&self) -> f64 {
-    1.0 / self.p
+  fn mean(&self) -> Option<f64> {
+    Some(1.0 / self.p)
   }
 
-  fn median(&self) -> f64 {
-    (-(2.0_f64.ln()) / (1.0 - self.p).ln()).ceil()
+  fn median(&self) -> Option<f64> {
+    Some((-(2.0_f64.ln()) / (1.0 - self.p).ln()).ceil())
   }
 
-  fn mode(&self) -> f64 {
-    1.0
+  fn mode(&self) -> Option<f64> {
+    Some(1.0)
   }
 
-  fn variance(&self) -> f64 {
-    (1.0 - self.p) / (self.p * self.p)
+  fn variance(&self) -> Option<f64> {
+    Some((1.0 - self.p) / (self.p * self.p))
   }
 
-  fn skewness(&self) -> f64 {
-    (2.0 - self.p) / (1.0 - self.p).sqrt()
+  fn skewness(&self) -> Option<f64> {
+    Some((2.0 - self.p) / (1.0 - self.p).sqrt())
   }
 
-  fn kurtosis(&self) -> f64 {
-    6.0 + self.p * self.p / (1.0 - self.p)
+  fn kurtosis(&self) -> Option<f64> {
+    Some(6.0 + self.p * self.p / (1.0 - self.p))
   }
 
   /// `p = 1.0` is a valid, documented parameter (see [`Self::new`]) — the
@@ -226,24 +205,29 @@ impl<T: PrimInt, R: SimdRngExt> crate::traits::DistributionExt for SimdGeometric
   /// `x * ln(x) -> 0` as `x -> 0+` (universal in entropy formulas, e.g.
   /// Shannon entropy) is applied explicitly instead so `p = 1.0` returns
   /// the mathematically correct `0.0` rather than `NaN`.
-  fn entropy(&self) -> f64 {
+  fn entropy(&self) -> Option<f64> {
     let q = 1.0 - self.p;
     let q_term = if q > 0.0 { q * q.ln() } else { 0.0 };
-    -(q_term + self.p * self.p.ln()) / self.p
+    Some(-(q_term + self.p * self.p.ln()) / self.p)
   }
 
-  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+  fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
+    if t == 0.0 {
+      return Some(num_complex::Complex64::new(1.0, 0.0));
+    }
     // φ(t) = p e^{it} / (1 - (1-p) e^{it})
     let eit = num_complex::Complex64::new(0.0, t).exp();
-    eit.scale(self.p) / (num_complex::Complex64::new(1.0, 0.0) - eit.scale(1.0 - self.p))
+    Some(eit.scale(self.p) / (num_complex::Complex64::new(1.0, 0.0) - eit.scale(1.0 - self.p)))
   }
 
-  fn moment_generating_function(&self, t: f64) -> f64 {
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
     let q = 1.0 - self.p;
-    if q * t.exp() < 1.0 {
-      self.p * t.exp() / (1.0 - q * t.exp())
+    if t == 0.0 {
+      Some(1.0)
+    } else if q * t.exp() < 1.0 {
+      Some(self.p * t.exp() / (1.0 - q * t.exp()))
     } else {
-      f64::INFINITY
+      Some(f64::INFINITY)
     }
   }
 }
@@ -258,16 +242,18 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
+  use crate::tests::scalar_chi_square_best_p;
   use crate::traits::DistributionExt;
+  use crate::traits::DistributionSampler;
 
   /// Backs `entropy`'s doc comment: `p = 1.0` is a valid, documented
   /// parameter (always succeeds first try), and its entropy must be the
   /// mathematically correct `0.0`, not `NaN` from a naive `0 * ln(0)`.
   #[test]
   fn entropy_at_p_one_is_zero_not_nan() {
-    let g = SimdGeometric::<u64>::new(1.0, &Unseeded);
+    let g = SimdGeometric::<u64>::new(1.0);
     assert_eq!(
-      g.entropy(),
+      g.entropy().unwrap(),
       0.0,
       "p=1.0 is degenerate, entropy must be exactly 0"
     );
@@ -277,8 +263,8 @@ mod tests {
   /// number (uncertainty is strictly positive whenever `p < 1`).
   #[test]
   fn entropy_at_interior_p_is_finite_and_positive() {
-    let g = SimdGeometric::<u64>::new(0.3, &Unseeded);
-    let h = g.entropy();
+    let g = SimdGeometric::<u64>::new(0.3);
+    let h = g.entropy().unwrap();
     assert!(h.is_finite() && h > 0.0, "entropy at p=0.3 was {h}");
   }
 
@@ -287,7 +273,7 @@ mod tests {
   /// without panicking (the entropy fix above already relies on this).
   #[test]
   fn new_accepts_p_one() {
-    let _ = SimdGeometric::<u64>::new(1.0, &Unseeded);
+    let _ = SimdGeometric::<u64>::new(1.0);
   }
 
   /// `p = 0.0` sits just outside the documented domain `(0, 1]` (a
@@ -295,17 +281,17 @@ mod tests {
   /// never finite) and must be rejected at construction, not silently
   /// turned into garbage output.
   #[test]
-  #[should_panic(expected = "p must be in (0, 1]")]
+  #[should_panic(expected = "p must satisfy `p > 0.0 && p <= 1.0`")]
   fn new_rejects_p_zero() {
-    let _ = SimdGeometric::<u64>::new(0.0, &Unseeded);
+    let _ = SimdGeometric::<u64>::new(0.0);
   }
 
   /// `p > 1.0` is not a probability at all and must be rejected the same
   /// way `p = 0.0` is.
   #[test]
-  #[should_panic(expected = "p must be in (0, 1]")]
+  #[should_panic(expected = "p must satisfy `p > 0.0 && p <= 1.0`")]
   fn new_rejects_p_above_one() {
-    let _ = SimdGeometric::<u64>::new(1.5, &Unseeded);
+    let _ = SimdGeometric::<u64>::new(1.5);
   }
 
   /// Ties `fill_slice`'s own empirical mean/variance to `mean()`/
@@ -322,16 +308,20 @@ mod tests {
   fn sampler_moments_match_analytics_across_p() {
     const N: usize = 200_000;
     for &p in &[0.05, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0] {
-      let dist = SimdGeometric::<u64>::new(p, &Deterministic::new(7));
+      let dist = SimdGeometric::<u64>::new(p);
       let mut buf = vec![0u64; N];
-      dist.fill_slice(&mut buf);
+      dist.seeded(&Deterministic::new(7)).fill_slice(&mut buf);
 
       if p >= 1.0 {
         let bad = buf.iter().filter(|&&x| x != 1).count();
         assert_eq!(bad, 0, "p=1.0: {bad}/{N} draws were not 1");
-        assert_eq!(dist.mean(), 1.0, "p=1.0: mean() must be exactly 1.0");
         assert_eq!(
-          dist.variance(),
+          dist.mean().unwrap(),
+          1.0,
+          "p=1.0: mean() must be exactly 1.0"
+        );
+        assert_eq!(
+          dist.variance().unwrap(),
           0.0,
           "p=1.0: variance() must be exactly 0.0"
         );
@@ -349,12 +339,12 @@ mod tests {
         .sum::<f64>()
         / n;
 
-      let expected_mean = dist.mean();
-      let expected_var = dist.variance();
+      let expected_mean = dist.mean().unwrap();
+      let expected_var = dist.variance().unwrap();
       // mu4 from the (shift-invariant) excess-kurtosis closed form gives
       // the plug-in variance estimator's own standard error:
       // Var(S^2) ~= (mu4 - sigma^4) / n.
-      let mu4 = (dist.kurtosis() + 3.0) * expected_var * expected_var;
+      let mu4 = (dist.kurtosis().unwrap() + 3.0) * expected_var * expected_var;
       let se_mean = (expected_var / n).sqrt();
       let se_var = ((mu4 - expected_var * expected_var) / n).sqrt();
 
@@ -377,9 +367,43 @@ mod tests {
   /// code paths are pinned to the same support floor.
   #[test]
   fn scalar_path_respects_shifted_support() {
-    let dist = SimdGeometric::<u64>::new(0.4, &Deterministic::new(5));
+    let mut dist = SimdGeometric::<u64>::new(0.4).seeded(&Deterministic::new(5));
     let mut buf = [0u64; 8];
     dist.fill_slice(&mut buf);
     assert!(buf.iter().all(|&x| x >= 1), "scalar-path draws: {buf:?}");
+  }
+
+  /// The honest `Distribution` draws from the caller's rng and agrees with the cdf.
+  #[test]
+  fn scalar_sample_matches_cdf() {
+    let d = SimdGeometric::<u64>::new(0.15);
+    let best = scalar_chi_square_best_p(&d, (1, 50), |k| d.cdf(k as f64).unwrap());
+    assert!(best > 0.01, "best p = {best}");
+  }
+
+  /// NaN answers NaN, and counts past `i32::MAX` or a small `p`, where `1 − (1 − p)^k` cancels, keep the closed
+  /// form; references from mpmath.
+  #[test]
+  fn cdf_and_pmf_follow_the_closed_form_at_any_count() {
+    let g = SimdGeometric::<u64>::new(0.3);
+    assert!(g.cdf(f64::NAN).unwrap().is_nan() && g.pdf(f64::NAN).unwrap().is_nan());
+    for x in [-1.0, 0.0] {
+      assert_eq!((g.cdf(x), g.pdf(x)), (Some(0.0), Some(0.0)), "x = {x}");
+    }
+    assert!((g.cdf(3.0).unwrap() - 0.657).abs() < 1e-15);
+    assert!((g.pdf(3.0).unwrap() - 0.147).abs() < 1e-15);
+    for x in [3e9, 1e10, f64::INFINITY] {
+      assert_eq!((g.cdf(x), g.pdf(x)), (Some(1.0), Some(0.0)), "x = {x}");
+    }
+    let rare = SimdGeometric::<u64>::new(1e-10);
+    let rel = |got: f64, want: f64| (got - want).abs() / want;
+    assert!(rel(rare.cdf(3.0).unwrap(), 2.999_999_999_7e-10) < 1e-14);
+    assert!(rel(rare.cdf(1e10).unwrap(), 0.632_120_558_846_951_6) < 1e-14);
+    assert!(rel(rare.pdf(1e10).unwrap(), 3.678_794_411_898_363e-11) < 1e-14);
+    let sure = SimdGeometric::<u64>::new(1.0);
+    assert_eq!(
+      (sure.pdf(1.0), sure.pdf(2.0), sure.cdf(1.0)),
+      (Some(1.0), Some(0.0), Some(1.0))
+    );
   }
 }

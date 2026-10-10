@@ -1,12 +1,5 @@
-//! End-to-end calibration demo: BSM and Heston.
-//!
-//! Walks through the full v2 calibration pipeline:
-//!   `Calibrator::calibrate` → `CalibrationResult` → `ToModel::to_model` →
-//!   `ModelPricer::price_call`. We synthesise a market from a known parameter
-//!   set, calibrate, then re-price to verify recovery.
-//!
-//! Run with:
-//!   cargo run --example calibration_demo
+//! BSM and Heston calibration end to end: `Calibrator::calibrate`, `ToModel::to_model` and
+//! `ModelPricer::price_call` recover known parameters (`cargo run --example calibration_demo`).
 
 use ndarray::Array1;
 use stochastic_rs::prelude::*;

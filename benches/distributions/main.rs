@@ -6,210 +6,81 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use rand_distr::Distribution;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::beta::SimdBeta;
 use stochastic_rs::distributions::cauchy::SimdCauchy;
 use stochastic_rs::distributions::chi_square::SimdChiSquared;
-use stochastic_rs::distributions::exp::SimdExpZig;
+use stochastic_rs::distributions::exp::SimdExp;
 use stochastic_rs::distributions::gamma::SimdGamma;
+use stochastic_rs::distributions::johnson_su::SimdJohnsonSu;
 use stochastic_rs::distributions::lognormal::SimdLogNormal;
+use stochastic_rs::distributions::non_central_chi_squared::SimdNonCentralChiSquared;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::distributions::pareto::SimdPareto;
 use stochastic_rs::distributions::poisson::SimdPoisson;
 use stochastic_rs::distributions::studentt::SimdStudentT;
 use stochastic_rs::distributions::uniform::SimdUniform;
 use stochastic_rs::distributions::weibull::SimdWeibull;
+use stochastic_rs::simd_rng::SimdRng;
 use stochastic_rs::simd_rng::Unseeded;
+use stochastic_rs::traits::DistributionExt;
 
+mod discrete;
+mod heavy_tailed;
 mod plot;
 
 const SMALL: usize = 1_000;
 const LARGE: usize = 100_000;
 const SIZES: &[(&str, usize)] = &[("small", SMALL), ("large", LARGE)];
 
-fn bench_normal(c: &mut Criterion) {
-  let mut group = c.benchmark_group("Normal");
-  group.measurement_time(Duration::from_secs(3));
-  group.warm_up_time(Duration::from_millis(500));
-
-  for &(label, n) in SIZES {
-    group.bench_with_input(BenchmarkId::new("simd/f32/N=32", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist: SimdNormal<f32, 32> = SimdNormal::new(0.0, 1.0, &Unseeded);
-      b.iter(|| {
-        let mut s = 0.0f32;
-        for _ in 0..n {
-          s += dist.sample(&mut rng);
-        }
-        black_box(s)
-      });
-    });
-    group.bench_with_input(BenchmarkId::new("simd/f32/N=64", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist: SimdNormal<f32, 64> = SimdNormal::new(0.0, 1.0, &Unseeded);
-      b.iter(|| {
-        let mut s = 0.0f32;
-        for _ in 0..n {
-          s += dist.sample(&mut rng);
-        }
-        black_box(s)
-      });
-    });
-    group.bench_with_input(BenchmarkId::new("simd/f64/N=32", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist: SimdNormal<f64, 32> = SimdNormal::new(0.0, 1.0, &Unseeded);
-      b.iter(|| {
-        let mut s = 0.0f64;
-        for _ in 0..n {
-          s += dist.sample(&mut rng);
-        }
-        black_box(s)
-      });
-    });
-    group.bench_with_input(BenchmarkId::new("simd/f64/N=64", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist: SimdNormal<f64, 64> = SimdNormal::new(0.0, 1.0, &Unseeded);
-      b.iter(|| {
-        let mut s = 0.0f64;
-        for _ in 0..n {
-          s += dist.sample(&mut rng);
-        }
-        black_box(s)
-      });
-    });
-    group.bench_with_input(BenchmarkId::new("rand_distr/f32", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist = rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap();
-      b.iter(|| {
-        let mut s = 0.0f32;
-        for _ in 0..n {
-          s += dist.sample(&mut rng);
-        }
-        black_box(s)
-      });
-    });
-    group.bench_with_input(BenchmarkId::new("rand_distr/f64", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist = rand_distr::Normal::<f64>::new(0.0, 1.0).unwrap();
-      b.iter(|| {
-        let mut s = 0.0f64;
-        for _ in 0..n {
-          s += dist.sample(&mut rng);
-        }
-        black_box(s)
-      });
-    });
-  }
-
-  group.finish();
-}
-
-fn bench_exp(c: &mut Criterion) {
-  let mut group = c.benchmark_group("Exp");
-  group.measurement_time(Duration::from_secs(3));
-  group.warm_up_time(Duration::from_millis(500));
-
-  for &(label, n) in SIZES {
-    group.bench_with_input(BenchmarkId::new("simd/f32/N=32", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist: SimdExpZig<f32, 32> = SimdExpZig::new(1.5, &Unseeded);
-      b.iter(|| {
-        let mut s = 0.0f32;
-        for _ in 0..n {
-          s += dist.sample(&mut rng);
-        }
-        black_box(s)
-      });
-    });
-    group.bench_with_input(BenchmarkId::new("simd/f32/N=64", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist: SimdExpZig<f32, 64> = SimdExpZig::new(1.5, &Unseeded);
-      b.iter(|| {
-        let mut s = 0.0f32;
-        for _ in 0..n {
-          s += dist.sample(&mut rng);
-        }
-        black_box(s)
-      });
-    });
-    group.bench_with_input(BenchmarkId::new("simd/f64/N=32", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist: SimdExpZig<f64, 32> = SimdExpZig::new(1.5, &Unseeded);
-      b.iter(|| {
-        let mut s = 0.0f64;
-        for _ in 0..n {
-          s += dist.sample(&mut rng);
-        }
-        black_box(s)
-      });
-    });
-    group.bench_with_input(BenchmarkId::new("simd/f64/N=64", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist: SimdExpZig<f64, 64> = SimdExpZig::new(1.5, &Unseeded);
-      b.iter(|| {
-        let mut s = 0.0f64;
-        for _ in 0..n {
-          s += dist.sample(&mut rng);
-        }
-        black_box(s)
-      });
-    });
-    group.bench_with_input(BenchmarkId::new("rand_distr/f32", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist = rand_distr::Exp::<f32>::new(1.5).unwrap();
-      b.iter(|| {
-        let mut s = 0.0f32;
-        for _ in 0..n {
-          s += dist.sample(&mut rng);
-        }
-        black_box(s)
-      });
-    });
-    group.bench_with_input(BenchmarkId::new("rand_distr/f64", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist = rand_distr::Exp::<f64>::new(1.5).unwrap();
-      b.iter(|| {
-        let mut s = 0.0f64;
-        for _ in 0..n {
-          s += dist.sample(&mut rng);
-        }
-        black_box(s)
-      });
-    });
-  }
-
-  group.finish();
-}
-
+/// One group per law: the buffered stream, the honest scalar draw and a bulk fill, against `rand_distr`'s
+/// same law on `rand::rng()` (control) and on the same `SimdRng` as the scalar row.
 macro_rules! bench_dist {
-  ($fn_name:ident, $group_name:expr,
-   $simd_f32:expr, $simd_f64:expr,
-   $rand_f32:expr, $rand_f64:expr) => {
+  ($fn_name:ident, $group_name:expr, $law_f32:expr, $law_f64:expr, $rand_f32:expr, $rand_f64:expr) => {
     fn $fn_name(c: &mut Criterion) {
       let mut group = c.benchmark_group($group_name);
       group.measurement_time(Duration::from_secs(3));
       group.warm_up_time(Duration::from_millis(500));
 
       for &(label, n) in SIZES {
-        group.bench_with_input(BenchmarkId::new("simd/f32", label), &n, |b, &n| {
-          let mut rng = rand::rng();
-          let dist = $simd_f32;
+        group.bench_with_input(BenchmarkId::new("seeded/f32", label), &n, |b, &n| {
+          let mut dist = $law_f32.seeded(&Unseeded);
           b.iter(|| {
             let mut s = 0.0f32;
             for _ in 0..n {
-              s += dist.sample(&mut rng);
+              s += dist.sample();
             }
             black_box(s)
           });
         });
-        group.bench_with_input(BenchmarkId::new("simd/f64", label), &n, |b, &n| {
-          let mut rng = rand::rng();
-          let dist = $simd_f64;
+        group.bench_with_input(BenchmarkId::new("seeded/f64", label), &n, |b, &n| {
+          let mut dist = $law_f64.seeded(&Unseeded);
+          b.iter(|| {
+            let mut s = 0.0f64;
+            for _ in 0..n {
+              s += dist.sample();
+            }
+            black_box(s)
+          });
+        });
+        group.bench_with_input(BenchmarkId::new("scalar/f64", label), &n, |b, &n| {
+          let mut rng = SimdRng::from_seed(7);
+          let dist = $law_f64;
           b.iter(|| {
             let mut s = 0.0f64;
             for _ in 0..n {
               s += dist.sample(&mut rng);
             }
             black_box(s)
+          });
+        });
+        group.bench_with_input(BenchmarkId::new("fill_slice/f64", label), &n, |b, &n| {
+          let mut dist = $law_f64.seeded(&Unseeded);
+          let mut out = vec![0.0f64; n];
+          b.iter(|| {
+            dist.fill_slice(&mut out);
+            black_box(&out);
           });
         });
         group.bench_with_input(BenchmarkId::new("rand_distr/f32", label), &n, |b, &n| {
@@ -234,6 +105,21 @@ macro_rules! bench_dist {
             black_box(s)
           });
         });
+        group.bench_with_input(
+          BenchmarkId::new("rand_distr_simdrng/f64", label),
+          &n,
+          |b, &n| {
+            let mut rng = SimdRng::from_seed(7);
+            let dist = $rand_f64;
+            b.iter(|| {
+              let mut s = 0.0f64;
+              for _ in 0..n {
+                s += dist.sample(&mut rng);
+              }
+              black_box(s)
+            });
+          },
+        );
       }
 
       group.finish();
@@ -242,10 +128,28 @@ macro_rules! bench_dist {
 }
 
 bench_dist!(
+  bench_normal,
+  "Normal",
+  SimdNormal::<f32>::new(0.0, 1.0),
+  SimdNormal::<f64>::new(0.0, 1.0),
+  rand_distr::Normal::<f32>::new(0.0, 1.0).unwrap(),
+  rand_distr::Normal::<f64>::new(0.0, 1.0).unwrap()
+);
+
+bench_dist!(
+  bench_exp,
+  "Exp",
+  SimdExp::<f32>::new(1.5),
+  SimdExp::<f64>::new(1.5),
+  rand_distr::Exp::<f32>::new(1.5).unwrap(),
+  rand_distr::Exp::<f64>::new(1.5).unwrap()
+);
+
+bench_dist!(
   bench_lognormal,
   "LogNormal",
-  SimdLogNormal::<f32>::new(0.2f32, 0.8, &Unseeded),
-  SimdLogNormal::<f64>::new(0.2f64, 0.8, &Unseeded),
+  SimdLogNormal::<f32>::new(0.2, 0.8),
+  SimdLogNormal::<f64>::new(0.2, 0.8),
   rand_distr::LogNormal::<f32>::new(0.2, 0.8).unwrap(),
   rand_distr::LogNormal::<f64>::new(0.2, 0.8).unwrap()
 );
@@ -253,8 +157,8 @@ bench_dist!(
 bench_dist!(
   bench_cauchy,
   "Cauchy",
-  SimdCauchy::<f32>::new(0.0f32, 1.0, &Unseeded),
-  SimdCauchy::<f64>::new(0.0f64, 1.0, &Unseeded),
+  SimdCauchy::<f32>::new(0.0, 1.0),
+  SimdCauchy::<f64>::new(0.0, 1.0),
   rand_distr::Cauchy::<f32>::new(0.0, 1.0).unwrap(),
   rand_distr::Cauchy::<f64>::new(0.0, 1.0).unwrap()
 );
@@ -262,8 +166,8 @@ bench_dist!(
 bench_dist!(
   bench_gamma,
   "Gamma",
-  SimdGamma::<f32>::new(2.0f32, 2.0, &Unseeded),
-  SimdGamma::<f64>::new(2.0f64, 2.0, &Unseeded),
+  SimdGamma::<f32>::new(2.0, 2.0),
+  SimdGamma::<f64>::new(2.0, 2.0),
   rand_distr::Gamma::<f32>::new(2.0, 2.0).unwrap(),
   rand_distr::Gamma::<f64>::new(2.0, 2.0).unwrap()
 );
@@ -271,8 +175,8 @@ bench_dist!(
 bench_dist!(
   bench_weibull,
   "Weibull",
-  SimdWeibull::<f32>::new(1.0f32, 1.5, &Unseeded),
-  SimdWeibull::<f64>::new(1.0f64, 1.5, &Unseeded),
+  SimdWeibull::<f32>::new(1.0, 1.5),
+  SimdWeibull::<f64>::new(1.0, 1.5),
   rand_distr::Weibull::<f32>::new(1.0, 1.5).unwrap(),
   rand_distr::Weibull::<f64>::new(1.0, 1.5).unwrap()
 );
@@ -280,8 +184,8 @@ bench_dist!(
 bench_dist!(
   bench_beta,
   "Beta",
-  SimdBeta::<f32>::new(2.0f32, 2.0, &Unseeded),
-  SimdBeta::<f64>::new(2.0f64, 2.0, &Unseeded),
+  SimdBeta::<f32>::new(2.0, 2.0),
+  SimdBeta::<f64>::new(2.0, 2.0),
   rand_distr::Beta::<f32>::new(2.0, 2.0).unwrap(),
   rand_distr::Beta::<f64>::new(2.0, 2.0).unwrap()
 );
@@ -289,8 +193,8 @@ bench_dist!(
 bench_dist!(
   bench_chi_squared,
   "ChiSquared",
-  SimdChiSquared::<f32>::new(5.0f32, &Unseeded),
-  SimdChiSquared::<f64>::new(5.0f64, &Unseeded),
+  SimdChiSquared::<f32>::new(5.0),
+  SimdChiSquared::<f64>::new(5.0),
   rand_distr::ChiSquared::<f32>::new(5.0).unwrap(),
   rand_distr::ChiSquared::<f64>::new(5.0).unwrap()
 );
@@ -298,8 +202,8 @@ bench_dist!(
 bench_dist!(
   bench_studentt,
   "StudentT",
-  SimdStudentT::<f32>::new(5.0f32, &Unseeded),
-  SimdStudentT::<f64>::new(5.0f64, &Unseeded),
+  SimdStudentT::<f32>::new(5.0),
+  SimdStudentT::<f64>::new(5.0),
   rand_distr::StudentT::<f32>::new(5.0).unwrap(),
   rand_distr::StudentT::<f64>::new(5.0).unwrap()
 );
@@ -307,8 +211,8 @@ bench_dist!(
 bench_dist!(
   bench_pareto,
   "Pareto",
-  SimdPareto::<f32>::new(1.0f32, 1.5, &Unseeded),
-  SimdPareto::<f64>::new(1.0f64, 1.5, &Unseeded),
+  SimdPareto::<f32>::new(1.0, 1.5),
+  SimdPareto::<f64>::new(1.0, 1.5),
   rand_distr::Pareto::<f32>::new(1.0, 1.5).unwrap(),
   rand_distr::Pareto::<f64>::new(1.0, 1.5).unwrap()
 );
@@ -316,42 +220,69 @@ bench_dist!(
 bench_dist!(
   bench_uniform,
   "Uniform",
-  SimdUniform::<f32>::new(0.0f32, 1.0, &Unseeded),
-  SimdUniform::<f64>::new(0.0f64, 1.0, &Unseeded),
+  SimdUniform::<f32>::new(0.0, 1.0),
+  SimdUniform::<f64>::new(0.0, 1.0),
   rand_distr::Uniform::<f32>::new(0.0, 1.0).unwrap(),
   rand_distr::Uniform::<f64>::new(0.0, 1.0).unwrap()
 );
 
-fn bench_poisson(c: &mut Criterion) {
-  let mut group = c.benchmark_group("Poisson");
+/// The per-point cost a likelihood or goodness-of-fit loop pays for a density, cdf or quantile.
+fn bench_distribution_ext(c: &mut Criterion) {
+  let mut group = c.benchmark_group("DistributionExt");
   group.measurement_time(Duration::from_secs(3));
   group.warm_up_time(Duration::from_millis(500));
+  let xs = (0..4096)
+    .map(|i| -4.0 + 8.0 * i as f64 / 4095.0)
+    .collect::<Vec<_>>();
+  let ps = (1..=4096).map(|i| i as f64 / 4097.0).collect::<Vec<_>>();
+  let ks = (0..4096).map(|i| (i % 40) as f64).collect::<Vec<_>>();
+  let normal = SimdNormal::<f64>::new(0.0, 1.0);
+  let student = SimdStudentT::<f64>::new(5.0);
+  let johnson = SimdJohnsonSu::<f64>::new(0.5, 1.5, 0.0, 1.0);
+  let gamma = SimdGamma::<f64>::new(2.0, 1.5);
+  let poisson = SimdPoisson::<u32>::new(4.0);
+  group.bench_function("pdf/normal", |b| {
+    b.iter(|| black_box(xs.iter().map(|&x| normal.pdf(x).unwrap()).sum::<f64>()))
+  });
+  group.bench_function("cdf/normal", |b| {
+    b.iter(|| black_box(xs.iter().map(|&x| normal.cdf(x).unwrap()).sum::<f64>()))
+  });
+  group.bench_function("quantile/normal", |b| {
+    b.iter(|| black_box(ps.iter().map(|&p| normal.quantile(p).unwrap()).sum::<f64>()))
+  });
+  group.bench_function("pdf/student_t", |b| {
+    b.iter(|| black_box(xs.iter().map(|&x| student.pdf(x).unwrap()).sum::<f64>()))
+  });
+  group.bench_function("pdf/johnson_su", |b| {
+    b.iter(|| black_box(xs.iter().map(|&x| johnson.pdf(x).unwrap()).sum::<f64>()))
+  });
+  group.bench_function("cdf/gamma", |b| {
+    b.iter(|| black_box(xs.iter().map(|&x| gamma.cdf(x.abs()).unwrap()).sum::<f64>()))
+  });
+  group.bench_function("pdf/poisson", |b| {
+    b.iter(|| black_box(ks.iter().map(|&k| poisson.pdf(k).unwrap()).sum::<f64>()))
+  });
+  group.finish();
+}
 
+/// The one per-draw construction path: `sample_ncp` below `df = 1` builds its Poisson and Gamma laws
+/// per draw, so a constructor assert is paid on every sample here.
+fn bench_ncx2_per_draw_construction(c: &mut Criterion) {
+  let mut group = c.benchmark_group("NonCentralChiSquared/sample_ncp");
+  group.measurement_time(Duration::from_secs(3));
+  group.warm_up_time(Duration::from_millis(500));
   for &(label, n) in SIZES {
-    group.bench_with_input(BenchmarkId::new("simd", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist = SimdPoisson::<u32>::new(4.0, &Unseeded);
+    group.bench_with_input(BenchmarkId::new("df=0.5", label), &n, |b, &n| {
+      let mut stream = SimdNonCentralChiSquared::<f64>::new(0.5).seeded(&Unseeded);
       b.iter(|| {
-        let mut s = 0u64;
+        let mut s = 0.0_f64;
         for _ in 0..n {
-          s += dist.sample(&mut rng) as u64;
-        }
-        black_box(s)
-      });
-    });
-    group.bench_with_input(BenchmarkId::new("rand_distr", label), &n, |b, &n| {
-      let mut rng = rand::rng();
-      let dist = rand_distr::Poisson::<f64>::new(4.0).unwrap();
-      b.iter(|| {
-        let mut s = 0u64;
-        for _ in 0..n {
-          s += dist.sample(&mut rng) as u64;
+          s += stream.sample_ncp(1.5);
         }
         black_box(s)
       });
     });
   }
-
   group.finish();
 }
 
@@ -366,9 +297,19 @@ criterion_group!(
   bench_beta,
   bench_chi_squared,
   bench_studentt,
-  bench_poisson,
+  discrete::bench_poisson,
   bench_pareto,
   bench_uniform,
+  heavy_tailed::bench_alpha_stable,
+  heavy_tailed::bench_nig,
+  heavy_tailed::bench_inverse_gauss,
+  heavy_tailed::bench_gig,
+  heavy_tailed::bench_tempered_stable,
+  heavy_tailed::bench_skew_t,
+  discrete::bench_binomial,
+  discrete::bench_hypergeometric,
+  bench_distribution_ext,
+  bench_ncx2_per_draw_construction,
   plot::generate_shape_comparison_plot,
 );
 

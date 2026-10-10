@@ -33,12 +33,14 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
 use crate::device::Cpu;
 use crate::rough::kernel::RlKernel;
-use crate::rough::markov_lift::RoughSimd;
 use crate::traits::FloatExt;
 use crate::traits::PathSampler;
 use crate::traits::ProcessExt;
@@ -68,19 +70,11 @@ pub enum VolterraKernelSpec {
 impl VolterraKernelSpec {
   /// Precomputes this kernel's parameter-derived terms once, ahead of the
   /// $O(n^2)$ convolution in [`ReferenceVolterraSampler::fill_path`].
-  ///
-  /// [`VolterraKernelSpec::FractionalBM`]'s $\Gamma(H+1/2)$ is a Weierstrass
-  /// infinite product (`scilib::math::basic::gamma`) iterated to a fixed
-  /// relative-error threshold — measured at ~2.7ms per call, which used to
-  /// be paid on every `(i, j)` pair of the kernel loop instead of once, the
-  /// way this crate's other `scilib::gamma` call sites do. `h` is fixed for
-  /// the sampler's lifetime, so the value prepared here is identical to the
-  /// one every per-pair call used to produce.
   fn prepare<T: FloatExt>(&self) -> PreparedVolterraKernel<T> {
     match self {
       VolterraKernelSpec::FractionalBM { h } => PreparedVolterraKernel::FractionalBM {
         exp: T::from_f64_fast(*h - 0.5),
-        gamma_val: T::from_f64_fast(scilib::math::basic::gamma(*h + 0.5)),
+        gamma_val: T::from_f64_fast(stochastic_rs_distributions::special::gamma(*h + 0.5)),
       },
       VolterraKernelSpec::PowerLaw { gamma } => PreparedVolterraKernel::PowerLaw {
         gamma: T::from_f64_fast(*gamma),
@@ -119,7 +113,7 @@ impl<T: FloatExt> PreparedVolterraKernel<T> {
 /// Which engine a constructed [`Volterra`] drives its sampling through,
 /// decided once from [`VolterraKernelSpec`] at construction time — see the
 /// module doc for which kernels take which branch.
-enum VolterraEngine<T: FloatExt + RoughSimd> {
+enum VolterraEngine<T: FloatExt> {
   /// $H \in (0, 1/2)$: an [`RlKernel`], driving
   /// [`VolterraSde`](crate::volterra::sve::VolterraSde) at $O(nN')$.
   Lift(RlKernel<T>),
@@ -129,7 +123,7 @@ enum VolterraEngine<T: FloatExt + RoughSimd> {
 }
 
 /// Generic Volterra process with configurable kernel.
-pub struct Volterra<T: FloatExt + RoughSimd, S: SeedExt = Unseeded, B = Cpu> {
+pub struct Volterra<T: FloatExt, S: SeedExt = Unseeded, B = Cpu> {
   /// Kernel specification.
   pub kernel: VolterraKernelSpec,
   /// Number of grid points.
@@ -147,7 +141,7 @@ pub struct Volterra<T: FloatExt + RoughSimd, S: SeedExt = Unseeded, B = Cpu> {
   pub backend: B,
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> Volterra<T, S> {
+impl<T: FloatExt, S: SeedExt> Volterra<T, S> {
   /// `kernel`'s own engine (an internal, private `VolterraEngine` — either
   /// the Markov lift or the direct convolution, see the module doc for
   /// which kernels take which branch) is prepared once here, reused by
@@ -179,9 +173,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> Volterra<T, S> {
   }
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt, B> Volterra<T, S, B> {}
-
-impl<T: FloatExt + RoughSimd> Volterra<T, Unseeded> {
+impl<T: FloatExt> Volterra<T, Unseeded> {
   /// Fractional Brownian motion with Hurst parameter $H$.
   pub fn fbm(h: f64, n: usize, t: Option<T>) -> Self {
     assert!(h > 0.0 && h < 1.0, "Hurst parameter must be in (0,1)");
@@ -197,7 +189,7 @@ fn lift_one<T: FloatExt>(_t: T, _x: T) -> T {
   T::one()
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt, B> Volterra<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B> Volterra<T, S, B> {
   /// The grid spacing, the horizon itself for a single point.
   fn dt(&self) -> T {
     let t = self.t.unwrap_or(T::one());
@@ -213,8 +205,8 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B> Volterra<T, S, B> {
 /// the lift branch — the same family `RlFBm` rides — and the reference
 /// convolution in the other, run by the history block against the kernel
 /// tabulated on the grid.
-impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
-  crate::euler::EulerCoefficients<T> for Volterra<T, S, B>
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerCoefficients<T>
+  for Volterra<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     match self.engine {
@@ -274,9 +266,14 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
   }
 }
 
-backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] Volterra<T, S> { kernel, n, t, seed, engine, lift } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] Volterra<T, S> { kernel, n, t, seed, engine, lift } via euler);
 
-impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Volterra<T, S, B>
+{
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for Volterra<T, S, B>
 {
   type Output = Array1<T>;
@@ -307,7 +304,7 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> Proc
           n: self.n,
           dt,
           sqrt_dt: dt.sqrt(),
-          normal: SimdNormal::<T, 64>::new(T::zero(), T::one(), &self.seed),
+          normal: SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed),
         })
       }
     }
@@ -389,12 +386,18 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> Proc
 /// branch.
 #[doc(hidden)]
 #[non_exhaustive]
-pub enum VolterraSampler<T: FloatExt + RoughSimd, S: SeedExt> {
+#[expect(
+  clippy::large_enum_variant,
+  reason = "a stream holds its 64-wide buffer inline; boxing it would allocate per sampler build"
+)]
+pub enum VolterraSampler<T: FloatExt, S: SeedExt> {
   Lift(VolterraSdeSampler<T, RlKernel<T>, S>),
   Reference(ReferenceVolterraSampler<T>),
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> PathSampler<T> for VolterraSampler<T, S> {
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for VolterraSampler<T, S> {}
+
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for VolterraSampler<T, S> {
   type Output = Array1<T>;
 
   fn sample_into(&mut self, out: &mut Array1<T>) {
@@ -427,7 +430,7 @@ pub struct ReferenceVolterraSampler<T: FloatExt> {
   n: usize,
   dt: T,
   sqrt_dt: T,
-  normal: SimdNormal<T, 64>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> ReferenceVolterraSampler<T> {
@@ -469,6 +472,8 @@ impl<T: FloatExt> ReferenceVolterraSampler<T> {
   }
 }
 
+impl<T: FloatExt> crate::traits::Sealed for ReferenceVolterraSampler<T> {}
+
 impl<T: FloatExt> PathSampler<T> for ReferenceVolterraSampler<T> {
   type Output = Array1<T>;
 
@@ -489,6 +494,7 @@ impl<T: FloatExt> PathSampler<T> for ReferenceVolterraSampler<T> {
 // macro because the constructor takes a [`VolterraKernelSpec`] sum type, not
 // the flat positional `(f64, f64, ...)` parameter list the macro assumes.
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyVolterra {
   inner: Option<Volterra<f64>>,

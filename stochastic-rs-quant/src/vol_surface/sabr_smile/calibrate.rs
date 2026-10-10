@@ -23,18 +23,16 @@ use crate::pricing::sabr::forward_fx;
 use crate::pricing::sabr::fx_delta_from_forward;
 use crate::pricing::sabr::hagan_implied_vol;
 
-/// Writes `plot` to `target/<name>` and returns nothing.
-///
-/// Deliberately **not** `Plot::show()`. `show()` shells out to `open` (macOS)
-/// or `xdg-open` (Linux) and `.expect()`s on the result, so it pops a browser
-/// window as a side effect of any caller — including tests — and panics
-/// outright where no opener exists. `sabr_smile::tests` calls the plotting
-/// entry points, so `show()` here opened a real browser tab on every
-/// `cargo test -p stochastic-rs-quant` run. Writing the file leaves the caller
-/// to open it deliberately, matching the convention the `examples/` plots use.
+#[cfg(feature = "viz")]
+pub(super) fn plot_path(name: &str) -> std::path::PathBuf {
+  std::env::temp_dir().join("stochastic-rs").join(name)
+}
+
+/// Writes `plot` to `plot_path(name)`; `Plot::show()` would open a browser on every test run
+/// and panic where no opener exists.
 #[cfg(feature = "viz")]
 fn write_plot(plot: &Plot, name: &str) {
-  let path = std::env::temp_dir().join("stochastic-rs").join(name);
+  let path = plot_path(name);
   if let Some(dir) = path.parent() {
     let _ = std::fs::create_dir_all(dir);
   }
@@ -160,10 +158,8 @@ impl SabrSmileCalibrator {
     write_plot(&plot, "sabr_smile.html");
   }
 
-  /// Returns the vector of calibration results in the same order as `cases`.
-  ///
-  /// With the `viz` feature enabled, also writes an HTML plot of all smiles
-  /// to `target/sabr_smile_many.html`.
+  /// Calibration results in the order of `cases`; with `viz`, also writes all smiles as an HTML
+  /// plot to `<temp dir>/stochastic-rs/sabr_smile_many.html`.
   pub fn calibrate_and_plot_many(
     s: f64,
     r_d: f64,
@@ -272,7 +268,8 @@ impl SabrSmileCalibrator {
   }
 }
 
-/// Solve for strike K such that the FX delta equals the desired value under Sabr (general β).
+/// Solve for strike K such that the FX delta equals the desired value under Sabr (general β); NaN where the delta is not
+/// computable (a negative or infinite `tau`, a non-positive spot), not a strike at the edge of the bracket.
 pub fn strike_for_delta(
   s: f64,
   r_d: f64,
@@ -305,6 +302,9 @@ pub fn strike_for_delta(
   let mut fc = fa(c);
   let mut fd = fa(d);
   for _ in 0..200 {
+    if fc.is_nan() || fd.is_nan() {
+      return f64::NAN;
+    }
     if fc < fd {
       b = d;
       d = c;

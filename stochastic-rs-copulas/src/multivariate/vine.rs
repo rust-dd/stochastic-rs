@@ -22,7 +22,6 @@
 //! c(u)=\prod_{m=1}^{d-1}\prod_{e\in E_m} c_{a_e,b_e\mid D_e}(u_{a_e\mid D_e},u_{b_e\mid D_e})
 //! $$
 //!
-use std::error::Error;
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -30,6 +29,8 @@ use ndarray::Axis;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
@@ -39,6 +40,7 @@ use super::linalg::is_spd;
 use super::linalg::spd_cholesky_lower;
 use super::linalg::spd_inverse;
 use crate::correlation::kendall_tau;
+use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
 
 /// Gaussian copula whose correlation matrix is **derived from a star
@@ -60,7 +62,7 @@ impl VineMultivariate {
     Self::default()
   }
 
-  pub fn new_with_corr(corr: Array2<f64>) -> Result<Self, Box<dyn Error>> {
+  pub fn new_with_corr(corr: Array2<f64>) -> Result<Self, CopulaError> {
     let mut s = Self::new();
     s.set_corr(corr)?;
     Ok(s)
@@ -70,22 +72,26 @@ impl VineMultivariate {
     self.corr.as_ref()
   }
 
-  fn set_corr(&mut self, corr: Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn set_corr(&mut self, corr: Array2<f64>) -> Result<(), CopulaError> {
     let d = corr.nrows();
     if d != corr.ncols() {
-      return Err("Correlation matrix must be square".into());
+      return Err(CopulaError::InvalidStructure(
+        "the correlation matrix must be square".into(),
+      ));
     }
     self.dim = d;
 
-    let l_arr =
-      spd_cholesky_lower(&corr).ok_or_else(|| -> Box<dyn Error> { "Correlation not PD".into() })?;
+    let l_arr = spd_cholesky_lower(&corr).ok_or_else(|| {
+      CopulaError::InvalidStructure("the correlation matrix is not positive definite".into())
+    })?;
     let mut log_det = 0.0;
     for i in 0..d {
       log_det += l_arr[[i, i]].ln();
     }
     let log_det = 2.0 * log_det;
-    let inv_arr =
-      spd_inverse(&corr).ok_or_else(|| -> Box<dyn Error> { "Failed to invert corr".into() })?;
+    let inv_arr = spd_inverse(&corr).ok_or_else(|| {
+      CopulaError::InvalidStructure("the correlation matrix could not be inverted".into())
+    })?;
     self.chol_lower = Some(l_arr);
     self.inv_corr = Some(inv_arr);
     self.corr = Some(corr);
@@ -93,13 +99,13 @@ impl VineMultivariate {
     Ok(())
   }
 
-  fn require_fitted(&self) -> Result<(), Box<dyn Error>> {
+  fn require_fitted(&self) -> Result<(), CopulaError> {
     if self.corr.is_none()
       || self.inv_corr.is_none()
       || self.chol_lower.is_none()
       || self.log_det_corr.is_none()
     {
-      return Err("Fit the copula first".into());
+      return Err(CopulaError::NotFitted);
     }
     Ok(())
   }
@@ -121,11 +127,7 @@ impl VineMultivariate {
 
   /// Shared sampling core for [`MultivariateExt::sample`] and
   /// [`MultivariateExt::sample_with_seed`].
-  fn sample_from_seed<S: SeedExt>(
-    &self,
-    n: usize,
-    seed: &S,
-  ) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample_from_seed<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
     self.require_fitted()?;
     let l = self.chol_lower.as_ref().unwrap();
     let d = self.dim;
@@ -134,7 +136,9 @@ impl VineMultivariate {
       let buf = g
         .as_slice_mut()
         .expect("VineMultivariate sample buffer must be contiguous");
-      SimdNormal::<f64>::new(0.0, 1.0, seed).fill_slice(buf);
+      SimdNormal::<f64>::new(0.0, 1.0)
+        .seeded(seed)
+        .fill_slice(buf);
     }
     let z = g.dot(&l.t());
     let mut u = z.clone();
@@ -152,17 +156,26 @@ impl MultivariateExt for VineMultivariate {
     CopulaType::Vine
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample(&self, n: usize) -> Result<Array2<f64>, CopulaError> {
     self.sample_from_seed(n, &Unseeded)
   }
 
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, CopulaError> {
     self.sample_from_seed(n, &Deterministic::new(seed))
   }
 
-  fn fit(&mut self, X: Array2<f64>) -> Result<(), Box<dyn Error>> {
-    if X.nrows() < 2 || X.ncols() < 2 {
-      return Err("Need at least 2 samples and 2 dimensions".into());
+  fn fit(&mut self, X: Array2<f64>) -> Result<(), CopulaError> {
+    if X.ncols() < 2 {
+      return Err(CopulaError::InvalidStructure(format!(
+        "a vine copula needs dim >= 2, got {}",
+        X.ncols()
+      )));
+    }
+    if X.nrows() < 2 {
+      return Err(CopulaError::InsufficientData {
+        needed: 2,
+        got: X.nrows(),
+      });
     }
     let tau = kendall_tau(&X);
     let d = tau.nrows();
@@ -232,18 +245,21 @@ impl MultivariateExt for VineMultivariate {
     self.set_corr(corr_try)
   }
 
-  fn check_fit(&self, X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn check_fit(&self, X: &Array2<f64>) -> Result<(), CopulaError> {
     self.require_fitted()?;
     if X.ncols() != self.dim {
-      return Err("Dimension mismatch".into());
+      return Err(CopulaError::DimensionMismatch {
+        expected: self.dim,
+        got: X.ncols(),
+      });
     }
     if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
-      return Err("Input must be in [0,1]".into());
+      return Err(CopulaError::MarginalOutOfRange);
     }
     Ok(())
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let z = self.transform_to_normal(X);
     let inv = self.inv_corr.as_ref().unwrap();
@@ -260,7 +276,7 @@ impl MultivariateExt for VineMultivariate {
     Ok(out)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let z = self.transform_to_normal(X);
     let l = self.chol_lower.as_ref().unwrap();
@@ -270,7 +286,9 @@ impl MultivariateExt for VineMultivariate {
       let buf = g
         .as_slice_mut()
         .expect("VineMultivariate cdf MC buffer must be contiguous");
-      SimdNormal::<f64>::new(0.0, 1.0, &Unseeded).fill_slice(buf);
+      SimdNormal::<f64>::new(0.0, 1.0)
+        .seeded(&Unseeded)
+        .fill_slice(buf);
     }
     let y = g.dot(&l.t());
     let mut out = Array1::<f64>::zeros(z.nrows());

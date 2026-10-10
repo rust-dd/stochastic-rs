@@ -1,6 +1,8 @@
 use ndarray::array;
+use stochastic_rs_distributions::special::ndtri;
 
 use super::*;
+use crate::multivariate::t::TMultivariate;
 
 fn approx(a: f64, b: f64, tol: f64) -> bool {
   (a - b).abs() <= tol
@@ -206,6 +208,34 @@ fn tcopula_nu_validated() {
   assert_eq!(c.nu(), 4.0, "a failed set_nu must not mutate the field");
   assert!(c.set_nu(6.0).is_ok());
   assert_eq!(c.nu(), 6.0);
+}
+
+/// The smallest subnormal passes `nu > 0` but halves to 0, which `SimdStudentT::new` and `SimdChiSquared::new` assert
+/// against: both t-copulas reject it up front, so `pdf`, `cdf`, `partial_derivative`, `percent_point` and `sample` cannot panic.
+#[test]
+fn both_t_copulas_reject_the_nu_their_laws_would_panic_on() {
+  let want = Err(CopulaError::InvalidParameter {
+    name: "nu",
+    value: 5e-324,
+    constraint: "nu / 2 > 0".into(),
+  });
+  let corr = array![[1.0, 0.3], [0.3, 1.0]];
+  assert_eq!(
+    TMultivariate::new_with(corr.clone(), 5e-324).map(|_| ()),
+    want
+  );
+  let mut multivariate = TMultivariate::new_with(corr, 4.0).unwrap();
+  assert_eq!(multivariate.set_nu(5e-324), want);
+  let mut c = TCopula::with_nu(4.0);
+  c.set_theta(0.5);
+  assert_eq!(c.set_nu(5e-324), want);
+  assert!(
+    c.set_nu(1e-323).is_ok(),
+    "the next subnormal halves to a positive value"
+  );
+  let uv = array![[0.3, 0.7]];
+  assert!(c.pdf(&uv).is_ok() && c.cdf(&uv).is_ok() && c.partial_derivative(&uv).is_ok());
+  assert!(c.percent_point(&array![0.3], &array![0.7]).is_ok());
 }
 
 /// `generator` has no override in this family, so this exercises

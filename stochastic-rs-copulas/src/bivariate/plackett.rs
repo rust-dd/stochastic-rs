@@ -16,16 +16,16 @@
 //! *Journal of the American Statistical Association* 60(310), 516-522.
 //! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
 //! Springer, Example 3.11.
-
-use std::error::Error;
-use std::f64;
+//! Reference: Johnson, M.E. (1987), "Multivariate Statistical Simulation", Wiley, the Plackett generator (the conditional inverse), DOI 10.1002/9781118150740.
 
 use ndarray::Array1;
 use ndarray::Array2;
-use roots::SimpleConvergency;
-use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
+use crate::error::CopulaError;
+use crate::optim::zero;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
@@ -53,6 +53,24 @@ impl Default for Plackett {
 impl Plackett {
   pub fn new() -> Self {
     Self::default()
+  }
+
+  /// The root in `[0, 1]` of `bu² − cu + e = 0` (`∂_v C = y` squared, `a = y(1 − y)`), as `(c + (2y − 1)d)/(2b)` from
+  /// `y = 1/2` up and the rationalised `2e/(c + (1 − 2y)d)` below, every coefficient divided by `θ` so none overflows.
+  pub(crate) fn inverse(theta: f64) -> impl Fn(f64, f64) -> f64 {
+    let eta = theta - 1.0;
+    let eta_squared_over_theta = eta * (eta / theta);
+    move |y, v| {
+      let a = y * (1.0 - y);
+      let c = 2.0 * a * (v * theta + (1.0 - v) / theta) + (1.0 - 2.0 * a);
+      let d = (1.0 + 4.0 * a * v * (1.0 - v) * eta_squared_over_theta).sqrt();
+      if y < 0.5 {
+        let e = a * ((1.0 - v) + theta * v) * ((1.0 - v) / theta + v);
+        2.0 * e / (c + (1.0 - 2.0 * y) * d)
+      } else {
+        (c + (2.0 * y - 1.0) * d) / (2.0 * (1.0 + a * eta_squared_over_theta))
+      }
+    }
   }
 
   /// Spearman's rho as a function of theta (Plackett 1965):
@@ -108,7 +126,7 @@ impl BivariateExt for Plackett {
 
   /// Density (Nelsen 2006 eq.3.3.8):
   /// $c(u,v) = \frac{\theta [1 + (\theta-1)(u + v - 2 u v)]}{\{[1 + (\theta-1)(u + v)]^2 - 4 u v \theta (\theta - 1)\}^{3/2}}$.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -135,7 +153,7 @@ impl BivariateExt for Plackett {
   }
 
   /// CDF (closed form for $\theta \neq 1$).
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -157,27 +175,27 @@ impl BivariateExt for Plackett {
     Ok(out)
   }
 
-  /// $\partial_v C(u,v) = \frac{1}{2}\left[1 - \frac{1 + (\theta-1)(u+v) - 2 u \theta}{\sqrt{\{\cdots\}}}\right]$.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  /// $\partial_v C(u,v) = \frac{1}{2}\left[1 - \frac{1 + (\theta-1)(u+v) - 2 u \theta}{\sqrt{\{\cdots\}}}\right]$, NaN
+  /// for `v` outside `[0, 1]`.
+  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
     let theta = self.theta.unwrap();
     let eta = theta - 1.0;
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
+    Ok(conditional_cdf(x, |u, v| {
       if (eta).abs() < 1e-12 {
-        out[i] = u;
-        continue;
+        return u;
       }
       let a = 1.0 + eta * (u + v);
       let d = a * a - 4.0 * u * v * theta * eta;
       let d_safe = d.max(1e-30).sqrt();
-      out[i] = 0.5 * (1.0 - (a - 2.0 * u * theta) / d_safe);
-    }
-    Ok(out)
+      0.5 * (1.0 - (a - 2.0 * u * theta) / d_safe)
+    }))
+  }
+
+  /// `Plackett::inverse`'s root; NaN for `y` or `v` outside `[0, 1]`.
+  fn percent_point(&self, y: &Array1<f64>, v: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    conditional_quantiles(y, v, Self::inverse(self.theta.unwrap()))
   }
 
   /// Plackett's natural rank-correlation is Spearman's $\rho_S$, which has
@@ -193,16 +211,12 @@ impl BivariateExt for Plackett {
     }
     let rho_target = 2.0 * tau / (3.0 - tau.abs());
     let residual = |theta: f64| Self::rho_residual(rho_target, theta);
-    let mut convergency = SimpleConvergency {
-      eps: 1e-8,
-      max_iter: 100,
-    };
     let (lo, hi) = if tau > 0.0 {
       (1.0 + 1e-6_f64, 1e6_f64)
     } else {
       (1e-6_f64, 1.0 - 1e-6_f64)
     };
-    find_root_brent(lo, hi, residual, &mut convergency).unwrap_or(1.0)
+    zero(lo, hi, 1e-8, residual).unwrap_or(1.0)
   }
 
   /// Plackett has no tail dependence in either tail, for any $\theta > 0$.

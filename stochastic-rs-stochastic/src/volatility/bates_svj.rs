@@ -20,9 +20,9 @@
 //!
 
 use ndarray::Array1;
-use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 
@@ -359,6 +359,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] BatesSvj<T, S> { mu, b, r, r_f, lambda, nu, omega, alpha, beta, sigma, rho, n, s0, v0, t, use_sym, seed, cgns } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for BatesSvj<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for BatesSvj<T, S, B>
 {
@@ -457,14 +462,12 @@ impl<T: FloatExt, S: SeedExt> BatesSvjSampler<T, S> {
     let drift = self.drift;
     let kappa_j = self.kappa_j;
 
-    let z_std = SimdNormal::<f64, 64>::new(0.0, 1.0, &self.seed);
-    let mut rng = self.seed.rng();
+    let mut z_std = SimdNormal::<f64>::new(0.0, 1.0).seeded(&self.seed);
+    // One seed is skipped: the pinned streams that follow take theirs after it.
+    self.seed.next_seed();
 
-    let pois = if self.lambda > T::zero() {
-      Some(SimdPoisson::<u32>::new(
-        (self.lambda * dt).to_f64().unwrap(),
-        &self.seed,
-      ))
+    let mut pois = if self.lambda > T::zero() {
+      Some(SimdPoisson::<u32>::new((self.lambda * dt).to_f64().unwrap()).seeded(&self.seed))
     } else {
       None
     };
@@ -477,11 +480,11 @@ impl<T: FloatExt, S: SeedExt> BatesSvjSampler<T, S> {
       let sqrt_v = v_prev.sqrt();
 
       let mut jump_sum_z = T::zero();
-      if let Some(pois) = &pois {
-        let k: u32 = pois.sample(&mut rng);
+      if let Some(pois) = &mut pois {
+        let k = pois.sample();
         if k > 0 {
           let kf = T::from_usize_(k as usize);
-          let z0: f64 = z_std.sample_fast();
+          let z0: f64 = z_std.sample();
           jump_sum_z = self.nu * kf + self.omega * kf.sqrt() * T::from_f64_fast(z0);
         }
       }
@@ -499,6 +502,8 @@ impl<T: FloatExt, S: SeedExt> BatesSvjSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for BatesSvjSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for BatesSvjSampler<T, S> {
   type Output = [Array1<T>; 2];
@@ -536,4 +541,5 @@ mod tests;
 mod python;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub use python::PyBatesSvj;

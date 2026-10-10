@@ -7,6 +7,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -174,6 +177,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] TransformedOU<T, S> { kappa, mu, sigma, rho0, transform, n, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for TransformedOU<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for TransformedOU<T, S, B>
 {
@@ -198,7 +206,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       rho0: self.rho0,
       transform: self.transform,
       dt,
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
@@ -248,7 +256,7 @@ pub struct TransformedOUSampler<T: FloatExt> {
   rho0: T,
   transform: Transformation,
   dt: T,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> TransformedOUSampler<T> {
@@ -270,6 +278,8 @@ impl<T: FloatExt> TransformedOUSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for TransformedOUSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for TransformedOUSampler<T> {
   type Output = Array1<T>;

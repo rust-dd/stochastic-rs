@@ -2,7 +2,6 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 
-use super::simd::RoughSimd;
 use crate::rough::kernel::RlKernel;
 use crate::traits::FloatExt;
 use crate::volterra::lift::VolterraLift;
@@ -33,9 +32,7 @@ impl<T: FloatExt> MarkovLift<T> {
   pub(crate) fn lift(&self) -> &VolterraLift<T, RlKernel<T>> {
     &self.inner
   }
-}
 
-impl<T: FloatExt + RoughSimd> MarkovLift<T> {
   /// Integrate a single path. `dw` carries Brownian increments on the same
   /// grid as the output (length $n{-}1$).
   pub fn simulate<F, G>(&self, x0: T, f: F, g: G, dw: &[T]) -> Array1<T>

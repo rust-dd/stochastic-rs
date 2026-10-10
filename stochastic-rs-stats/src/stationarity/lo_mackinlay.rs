@@ -222,26 +222,27 @@ pub fn lo_mackinlay_test(series: ArrayView1<f64>, cfg: LoMacKinlayConfig) -> LoM
 #[cfg(test)]
 mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::LoMacKinlayConfig;
   use super::lo_mackinlay_test;
 
   fn simulate_log_prices_random_walk(n: usize, sigma: f64, seed: u64) -> Vec<f64> {
-    let dist = SimdNormal::<f64>::new(0.0, sigma, &Deterministic::new(seed));
+    let mut dist = SimdNormal::<f64>::new(0.0, sigma).seeded(&Deterministic::new(seed));
     let mut x = vec![0.0_f64; n];
     for t in 1..n {
-      x[t] = x[t - 1] + dist.sample_fast();
+      x[t] = x[t - 1] + dist.sample();
     }
     x
   }
 
   fn simulate_log_prices_ar1_returns(phi: f64, n: usize, sigma: f64, seed: u64) -> Vec<f64> {
-    let dist = SimdNormal::<f64>::new(0.0, sigma, &Deterministic::new(seed));
+    let mut dist = SimdNormal::<f64>::new(0.0, sigma).seeded(&Deterministic::new(seed));
     let mut x = vec![0.0_f64; n];
     let mut r_prev = 0.0_f64;
     for t in 1..n {
-      let r = phi * r_prev + dist.sample_fast();
+      let r = phi * r_prev + dist.sample();
       x[t] = x[t - 1] + r;
       r_prev = r;
     }

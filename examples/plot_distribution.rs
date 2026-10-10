@@ -11,6 +11,7 @@ use plotly::common::Line;
 use plotly::common::Mode;
 use plotly::histogram::HistNorm;
 use plotly::layout::Axis;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::gamma::SimdGamma;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::traits::DistributionExt;
@@ -19,9 +20,9 @@ use stochastic_rs::traits::DistributionSampler;
 fn main() {
   let alpha = 2.0;
   let scale = 2.0;
-  let dist = SimdGamma::<f64>::new(alpha, scale, &Deterministic::new(7));
+  let dist = SimdGamma::<f64>::new(alpha, scale);
 
-  let samples = dist.sample_n(50_000);
+  let samples = dist.seeded(&Deterministic::new(7)).sample_n(50_000);
   let mut plot = Plot::new();
   plot.add_trace(
     Histogram::new(samples.to_vec())
@@ -30,11 +31,14 @@ fn main() {
   );
 
   let n_grid = 200;
-  let x_max = dist.mean() + 5.0 * dist.variance().sqrt();
+  let x_max = dist.mean().unwrap() + 5.0 * dist.variance().unwrap().sqrt();
   let xs = (0..=n_grid)
     .map(|i| x_max * i as f64 / n_grid as f64)
     .collect::<Vec<f64>>();
-  let ys = xs.iter().map(|&x| dist.pdf(x)).collect::<Vec<f64>>();
+  let ys = xs
+    .iter()
+    .map(|&x| dist.pdf(x).unwrap())
+    .collect::<Vec<f64>>();
   plot.add_trace(
     Scatter::new(xs, ys)
       .name("pdf")

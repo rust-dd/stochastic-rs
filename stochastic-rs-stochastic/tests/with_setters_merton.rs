@@ -26,19 +26,19 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::jump::merton::Merton;
 use stochastic_rs_stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs_stochastic::process::poisson::Poisson;
 use stochastic_rs_stochastic::traits::ProcessExt;
 
-fn merton_base_seeded<S: SeedExt>(seed: S) -> Merton<f64, ScalarNormal<f64>, S> {
+fn merton_base_seeded<S: SeedExt>(seed: S) -> Merton<f64, SimdNormal<f64>, S> {
   Merton::new(
     0.03,
     0.2,
     1.0,
     0.0,
-    ScalarNormal::new(0.0, 0.1),
+    SimdNormal::new(0.0, 0.1),
     64,
     Some(0.0),
     Some(1.0),
@@ -46,7 +46,7 @@ fn merton_base_seeded<S: SeedExt>(seed: S) -> Merton<f64, ScalarNormal<f64>, S> 
   )
 }
 
-fn merton_base() -> Merton<f64, ScalarNormal<f64>> {
+fn merton_base() -> Merton<f64, SimdNormal<f64>> {
   merton_base_seeded(Unseeded)
 }
 
@@ -61,7 +61,7 @@ struct MertonFields {
   t: Option<f64>,
 }
 
-fn fields<S: SeedExt>(x: &Merton<f64, ScalarNormal<f64>, S>) -> MertonFields {
+fn fields<S: SeedExt>(x: &Merton<f64, SimdNormal<f64>, S>) -> MertonFields {
   MertonFields {
     alpha: x.alpha,
     sigma: x.sigma,
@@ -105,7 +105,7 @@ plain_test!(merton_with_x0_round_trip, with_x0, x0, Some(1.0));
 #[test]
 fn merton_with_cpoisson_round_trip() {
   let wide = CompoundPoisson::new(
-    ScalarNormal::new(0.0, 5.0),
+    SimdNormal::new(0.0, 5.0),
     Poisson::new(4.0, Some(64), Some(1.0), Unseeded),
     Unseeded,
   );
@@ -145,7 +145,7 @@ fn merton_with_cpoisson_changes_sampled_intensity() {
       0.2,
       lambda,
       0.0,
-      ScalarNormal::new(0.0, 0.1),
+      SimdNormal::new(0.0, 0.1),
       64,
       Some(0.0),
       Some(1.0),
@@ -154,7 +154,7 @@ fn merton_with_cpoisson_changes_sampled_intensity() {
   };
 
   let swapped_driver = CompoundPoisson::new(
-    ScalarNormal::new(0.0, 0.1),
+    SimdNormal::new(0.0, 0.1),
     Poisson::new(swapped_lambda, Some(64), Some(1.0), Unseeded),
     Deterministic::new(seed),
   );
@@ -196,7 +196,7 @@ fn merton_with_lambda_syncs_cpoisson_and_changes_sampled_path() {
     0.2,
     new_lambda,
     0.0,
-    ScalarNormal::new(0.0, 0.1),
+    SimdNormal::new(0.0, 0.1),
     64,
     Some(0.0),
     Some(1.0),
@@ -228,7 +228,7 @@ fn merton_with_steps_matches_fresh_construction() {
     0.2,
     1.0,
     0.0,
-    ScalarNormal::new(0.0, 0.1),
+    SimdNormal::new(0.0, 0.1),
     128,
     Some(0.0),
     Some(1.0),
@@ -259,7 +259,7 @@ fn merton_with_horizon_matches_fresh_construction() {
     0.2,
     1.0,
     0.0,
-    ScalarNormal::new(0.0, 0.1),
+    SimdNormal::new(0.0, 0.1),
     64,
     Some(0.0),
     Some(2.0),
@@ -279,7 +279,7 @@ fn merton_with_seed_matches_fresh_construction() {
     0.2,
     1.0,
     0.0,
-    ScalarNormal::new(0.0, 0.1),
+    SimdNormal::new(0.0, 0.1),
     64,
     Some(0.0),
     Some(1.0),
@@ -301,8 +301,8 @@ fn merton_with_seed_matches_fresh_construction() {
 /// a future cache field is made private).
 #[test]
 fn merton_default_with_alpha_round_trip() {
-  let base = Merton::<f64, ScalarNormal<f64>>::default();
-  let got = Merton::<f64, ScalarNormal<f64>>::default().with_alpha(0.06);
+  let base = Merton::<f64, SimdNormal<f64>>::default();
+  let got = Merton::<f64, SimdNormal<f64>>::default().with_alpha(0.06);
   let expected = MertonFields {
     alpha: 0.06,
     ..fields(&base)

@@ -68,12 +68,8 @@ impl Default for OptimizerConfig {
   }
 }
 
-/// Dispatch to selected optimizer with common configuration inputs.
-///
-/// `config` controls annualization (`periods_per_year`, default 252) and the
-/// target-return penalty coefficient (`lambda`, default 10) for mean-variance
-/// / mean-CVaR objectives. Pass `&OptimizerConfig::default()` to keep the
-/// rc.0/rc.1 behaviour, or tune for non-daily frequency portfolios.
+/// Runs the selected optimizer; `config` sets annualization (`periods_per_year`, default 252) and
+/// the mean-variance / mean-CVaR target-return penalty `lambda` (default 10).
 pub fn optimize_with_method(
   method: OptimizerMethod,
   mu: &[f64],

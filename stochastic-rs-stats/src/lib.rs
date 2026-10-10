@@ -7,9 +7,7 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::needless_range_loop)]
 
-#[macro_use]
 mod linalg;
-mod macros;
 
 pub mod traits;
 
@@ -48,6 +46,7 @@ pub mod stationarity;
 pub mod tail_index;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub mod python;
 
 #[cfg(test)]

@@ -17,7 +17,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::OptionType;
 
-/// FX delta convention.
+/// Which delta an FX quote means: spot or forward, with or without the premium adjustment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum FxDeltaConvention {

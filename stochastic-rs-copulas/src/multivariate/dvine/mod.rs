@@ -53,14 +53,14 @@
 //! - Bedford, T., Cooke, R.M. (2002), "Vines — a new graphical model
 //!   for dependent random variables", *Annals of Statistics* 30, 1031-1068.
 
-use std::error::Error;
-
 use ndarray::Array1;
 use ndarray::Array2;
 use rand::Rng;
+use rand::RngExt;
 use stochastic_rs_core::simd_rng::SimdRng;
 
 use super::CopulaType;
+use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
 
 pub mod pair_copula;
@@ -83,31 +83,27 @@ impl DVine {
   ///
   /// `pair_copulas` is expected to have $d-1$ outer entries; the $m$-th
   /// entry has length $d-1-m$. Returns an error on any shape mismatch.
-  pub fn new(dim: usize, pair_copulas: Vec<Vec<PairCopula>>) -> Result<Self, Box<dyn Error>> {
+  pub fn new(dim: usize, pair_copulas: Vec<Vec<PairCopula>>) -> Result<Self, CopulaError> {
     if dim < 2 {
-      return Err(format!("D-vine requires dim ≥ 2, got {dim}").into());
+      return Err(CopulaError::InvalidStructure(format!(
+        "a D-vine needs dim >= 2, got {dim}"
+      )));
     }
     if pair_copulas.len() != dim - 1 {
-      return Err(
-        format!(
-          "Expected {} trees for dim={dim}, got {}",
-          dim - 1,
-          pair_copulas.len()
-        )
-        .into(),
-      );
+      return Err(CopulaError::InvalidStructure(format!(
+        "expected {} trees for dim {dim}, got {}",
+        dim - 1,
+        pair_copulas.len()
+      )));
     }
     for (m, tree) in pair_copulas.iter().enumerate() {
       let expected = dim - 1 - m;
       if tree.len() != expected {
-        return Err(
-          format!(
-            "Tree T_{} should have {expected} edges (got {})",
-            m + 1,
-            tree.len()
-          )
-          .into(),
-        );
+        return Err(CopulaError::InvalidStructure(format!(
+          "tree T_{} should have {expected} edges, got {}",
+          m + 1,
+          tree.len()
+        )));
       }
     }
     Ok(Self { dim, pair_copulas })
@@ -116,7 +112,7 @@ impl DVine {
   /// Build an **all-independence** D-vine of the given dimension. Useful
   /// as a baseline / pre-fit starting point and for unit tests where the
   /// copula should reduce to the product.
-  pub fn independence(dim: usize) -> Result<Self, Box<dyn Error>> {
+  pub fn independence(dim: usize) -> Result<Self, CopulaError> {
     let pair_copulas: Vec<Vec<PairCopula>> = (0..dim - 1)
       .map(|m| vec![PairCopula::Independence; dim - 1 - m])
       .collect();
@@ -227,46 +223,37 @@ impl MultivariateExt for DVine {
     CopulaType::DVine
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample(&self, n: usize) -> Result<Array2<f64>, CopulaError> {
     Ok(self.sample_with(n, &mut SimdRng::new()))
   }
 
   /// Reproducible counterpart of [`MultivariateExt::sample`]: the same
   /// `seed` always yields the same matrix.
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, Box<dyn Error>> {
+  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, CopulaError> {
     Ok(self.sample_with(n, &mut SimdRng::from_seed(seed)))
   }
 
-  fn fit(&mut self, _X: Array2<f64>) -> Result<(), Box<dyn Error>> {
-    // Sequential pair-copula MLE + structure/family selection is not yet
-    // implemented; D-vine *evaluation* (CDF/PDF/sample) works on a
-    // user-supplied tree built via `DVine::new`.
-    Err(
-      "DVine::fit not implemented — supply the tree explicitly via DVine::new \
-       and seed each PairCopula parameter from pairwise Kendall τ. Sequential MLE + \
-       AIC/BIC family selection (Dißmann 2013) is not yet implemented."
+  fn fit(&mut self, _X: Array2<f64>) -> Result<(), CopulaError> {
+    Err(CopulaError::Unsupported(
+      "DVine::fit is not implemented: use multivariate::fit::fit_vine with VineStructure::DVine"
         .into(),
-    )
+    ))
   }
 
-  fn check_fit(&self, X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn check_fit(&self, X: &Array2<f64>) -> Result<(), CopulaError> {
     if X.ncols() != self.dim {
-      return Err(
-        format!(
-          "Dimension mismatch: X has {} columns, D-vine has dim {}",
-          X.ncols(),
-          self.dim
-        )
-        .into(),
-      );
+      return Err(CopulaError::DimensionMismatch {
+        expected: self.dim,
+        got: X.ncols(),
+      });
     }
     if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
-      return Err("Input X must be in [0,1] for the D-vine".into());
+      return Err(CopulaError::MarginalOutOfRange);
     }
     Ok(())
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let mut out = Array1::<f64>::zeros(X.nrows());
     for (i, row) in X.rows().into_iter().enumerate() {
@@ -276,7 +263,7 @@ impl MultivariateExt for DVine {
     Ok(out)
   }
 
-  fn log_pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn log_pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let mut out = Array1::<f64>::zeros(X.nrows());
     for (i, row) in X.rows().into_iter().enumerate() {
@@ -286,7 +273,7 @@ impl MultivariateExt for DVine {
     Ok(out)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     // Closed-form D-vine CDFs require numerical integration of the joint
     // density over a $d$-cube vertex pattern (equivalent to the NAC
     // finite-difference path); for d ≥ 3 a MC estimator via the sampler
@@ -417,18 +404,14 @@ mod tests {
     assert!(DVine::new(1, bad3).is_err());
   }
 
-  /// `fit` must return a descriptive error pointing at the unimplemented
-  /// sequential MLE path.
+  /// `fit` is `Unsupported` and points at the vine fitter.
   #[test]
   fn dvine_fit_rejects_with_descriptive_error() {
     let mut dv = DVine::independence(3).unwrap();
     let data = ndarray::Array2::<f64>::from_elem((10, 3), 0.5);
-    let res = dv.fit(data);
-    assert!(res.is_err());
-    let msg = res.unwrap_err().to_string();
-    assert!(
-      msg.contains("not implemented") || msg.contains("MLE"),
-      "fit error should point at the unimplemented sequential MLE; got: {msg}"
-    );
+    match dv.fit(data) {
+      Err(CopulaError::Unsupported(hint)) => assert!(hint.contains("fit_vine"), "{hint}"),
+      other => panic!("expected Unsupported, got {other:?}"),
+    }
   }
 }

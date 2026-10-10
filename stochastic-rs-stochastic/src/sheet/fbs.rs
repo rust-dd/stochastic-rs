@@ -36,6 +36,8 @@ use ndrustfft::ndfft;
 use num_complex::Complex;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::device::Cpu;
@@ -47,7 +49,7 @@ use crate::traits::ProcessExt;
 
 #[cfg(feature = "cuda")]
 mod cuda;
-#[cfg(feature = "metal")]
+#[cfg(all(feature = "metal", target_os = "macos"))]
 mod metal;
 
 #[derive(Debug, Clone)]
@@ -165,6 +167,8 @@ impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> Fbs<T, S, B> {
 
 backend_switch!([T: FloatExt, S: SeedExt] Fbs<T, S> { hurst, m, n, r, seed, lam, c2 } via sheet);
 
+impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> crate::traits::Sealed for Fbs<T, S, B> {}
+
 impl<T: FloatExt, S: SeedExt, B: SheetBackend<T>> ProcessExt<T> for Fbs<T, S, B> {
   type Output = Array2<T>;
   type Sampler<'s>
@@ -270,9 +274,9 @@ impl<T: FloatExt, S: SeedExt> FbsSampler<T, S> {
     let fft_handler0 = FftHandler::<T>::new(big_m);
     let fft_handler1 = FftHandler::<T>::new(big_n);
 
-    let normal = SimdNormal::<T, 64>::new(T::zero(), T::one(), &self.seed);
+    let mut normal = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed);
     let z = Array2::from_shape_fn((big_m, big_n), |_| {
-      Complex::new(normal.sample_fast(), normal.sample_fast())
+      Complex::new(normal.sample(), normal.sample())
     });
 
     let prod = self.lam.mapv(|v| Complex::new(v, T::zero())) * z;
@@ -293,7 +297,7 @@ impl<T: FloatExt, S: SeedExt> FbsSampler<T, S> {
 
     // Stein's correction: the random linear function √(2c₂) (t₁ Z₁ + t₂ Z₂),
     // whose increments carry exactly the c₂‖s − t‖² the embedding took out.
-    let normal_scalar = SimdNormal::<T>::new(T::zero(), T::one(), &self.seed);
+    let mut normal_scalar = SimdNormal::<T>::new(T::zero(), T::one()).seeded(&self.seed);
     let mut z_buf = [T::zero(); 2];
     normal_scalar.fill_slice(&mut z_buf);
     let z1 = z_buf[0];
@@ -311,6 +315,8 @@ impl<T: FloatExt, S: SeedExt> FbsSampler<T, S> {
     field
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for FbsSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for FbsSampler<T, S> {
   type Output = Array2<T>;
@@ -361,7 +367,7 @@ impl<T: FloatExt, S: SeedExt> Fbs<T, S> {
 /// eigenvalue roots in the device's precision, the grid, the domain extent,
 /// the linear correction's coefficient `√(2 c₂)`, and a key that tells one
 /// embedding from another in a per-size cache.
-#[cfg(any(feature = "metal", feature = "cuda"))]
+#[cfg(any(all(feature = "metal", target_os = "macos"), feature = "cuda"))]
 pub(crate) struct SheetLaunch<'a, F> {
   pub(crate) lam: &'a [F],
   pub(crate) m: usize,
@@ -371,7 +377,7 @@ pub(crate) struct SheetLaunch<'a, F> {
   pub(crate) key: (u64, u64),
 }
 
-#[cfg(any(feature = "metal", feature = "cuda"))]
+#[cfg(any(all(feature = "metal", target_os = "macos"), feature = "cuda"))]
 impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
   /// The embedding's cells: `2(m − 1) · 2(n − 1)`.
   pub(crate) fn cells(&self) -> usize {

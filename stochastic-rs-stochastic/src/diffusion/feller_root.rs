@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -104,6 +107,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] FellerRoot<T, S> { theta1, theta2, theta3, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for FellerRoot<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for FellerRoot<T, S, B>
 {
@@ -123,7 +131,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       theta1: self.theta1,
       theta2: self.theta2,
       theta3: self.theta3,
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
@@ -168,7 +176,7 @@ pub struct FellerRootSampler<T: FloatExt> {
   theta1: T,
   theta2: T,
   theta3: T,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> FellerRootSampler<T> {
@@ -191,6 +199,8 @@ impl<T: FloatExt> FellerRootSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for FellerRootSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for FellerRootSampler<T> {
   type Output = Array1<T>;

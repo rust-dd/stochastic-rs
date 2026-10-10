@@ -121,6 +121,11 @@ impl<T: FloatExt, S: SeedExt, B> MultiGbm<T, S, B> {
 #[doc(hidden)]
 pub struct MultiGbmLaunch<'a, T: FloatExt, S: SeedExt, B>(&'a MultiGbm<T, S, B>);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for MultiGbmLaunch<'_, T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for MultiGbmLaunch<'_, T, S, B>
 {
@@ -143,6 +148,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 pub struct MultiGbmLaunchSampler<T: FloatExt, S: SeedExt> {
   inner: MultiGbmSampler<T, S>,
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for MultiGbmLaunchSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for MultiGbmLaunchSampler<T, S> {
   type Output = [Array1<T>; 4];
@@ -221,6 +228,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 }
 
 backend_switch!([T: FloatExt, S: SeedExt] MultiGbm<T, S> { mu, sigma, rho, n, x0, t, seed, driver } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for MultiGbm<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for MultiGbm<T, S, B>
@@ -341,6 +353,8 @@ fn slots_to_matrix<T: FloatExt>(slots: [Array1<T>; 4], k: usize) -> Array2<T> {
 pub struct MultiGbmSampler<T: FloatExt, S: SeedExt> {
   process: MultiGbm<T, S>,
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for MultiGbmSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for MultiGbmSampler<T, S> {
   type Output = Array2<T>;
@@ -491,6 +505,7 @@ mod tests {
 }
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 #[pyo3::prelude::pyclass]
 pub struct PyMultiGbm {
   inner: Option<MultiGbm<f64>>,

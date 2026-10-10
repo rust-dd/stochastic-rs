@@ -7,93 +7,75 @@ since: 2.0.0
 status: stable
 ---
 
-The Rust crates require Rust 1.89 or newer.
+The Rust crates require Rust 1.89 or newer; on Apple Silicon the `ai` feature needs Rust 1.94 or newer (see the [feature flags](/docs/concepts/feature-flags#common-gotchas)).
 
 ## Umbrella crate (everything)
 
 ```toml
 [dependencies]
-stochastic-rs = "3.0.0-rc.1"
+stochastic-rs = "3.0.0-rc.4"
 ```
 
 Then:
 
 <RustExample path="tests/doctest_install_imports.rs" />
 
-The umbrella re-exports everything via `pub use` from the sub-crates, so
-existing v1.x import paths keep working.
+The umbrella re-exports the sub-crates as modules (`stochastic_rs::stochastic`, `stochastic_rs::quant`, …; `ai` with its feature) and `stochastic-rs-core`'s RNG module as `stochastic_rs::simd_rng`.
 
 ## Per-sub-crate (lean)
 
-For minimal compile time and dependency surface, depend only on the
-sub-crates you need:
+For less compile time and fewer dependencies, depend only on the sub-crates you need:
 
 ```toml
 [dependencies]
-stochastic-rs-distributions = "3.0.0-rc.1"   # SIMD distribution sampling
+stochastic-rs-distributions = "3.0.0-rc.4"   # SIMD distribution sampling
 stochastic-rs-stochastic = "3.0.0-rc.4"   # 132 process types
-stochastic-rs-copulas = "3.0.0-rc.1"   # bivariate / multivariate copulas
-stochastic-rs-stats = "3.0.0-rc.1"   # estimators
-stochastic-rs-quant = "3.0.0-rc.1"   # pricing / calibration / vol surface
-stochastic-rs-ai = "3.0.0-rc.1"   # neural surrogates (candle)
+stochastic-rs-copulas = "3.0.0-rc.4"   # bivariate / multivariate copulas
+stochastic-rs-stats = "3.0.0-rc.4"   # estimators
+stochastic-rs-quant = "3.0.0-rc.4"   # pricing / calibration / vol surface
+stochastic-rs-ai = "3.0.0-rc.4"   # experimental neural surrogates (candle)
 ```
 
-Topology:
+What each sub-crate pulls in from the workspace:
 
 ```
-stochastic-rs-core (simd_rng)
- └→ stochastic-rs-distributions (FloatExt, SimdFloatExt, distributions)
-     ├→ stochastic-rs-stochastic (ProcessExt + 132 processes)
-     ├→ stochastic-rs-copulas
-     └→ stochastic-rs-stats
-         └→ stochastic-rs-quant (ModelPricer, calibration, vol surface)
-             └→ stochastic-rs-ai
+stochastic-rs-core            (simd_rng; no workspace dependency)
+stochastic-rs-distributions   core
+stochastic-rs-stochastic      core, distributions
+stochastic-rs-copulas         core, distributions
+stochastic-rs-stats           core, distributions, stochastic
+stochastic-rs-quant           core, distributions, stochastic, copulas, stats
+stochastic-rs-ai              core; quant with its `quant` feature
 ```
 
 ## Cargo features
 
-| Feature         | Owner crate                  | Pulls in                          | Use when                                              |
-|-----------------|------------------------------|-----------------------------------|-------------------------------------------------------|
-| `ai`            | umbrella                     | `stochastic-rs-ai`, `candle-core` | NN volatility surrogates                              |
-| `cuda`   | `stochastic`                 | `cudarc`, cuFFT, fused Philox     | Direct CUDA backend for FGN / fBM (NVIDIA, CUDA 12.x) |
-| `metal`         | `stochastic`                 | `metal` (Apple framework)         | Direct Metal backend for FGN / fBM on macOS           |
-| `accelerate`    | `stochastic`                 | Apple Accelerate (vDSP)           | macOS-native FFT acceleration (no toolchain install)  |
-| `mimalloc` / `jemalloc` | umbrella             | `mimalloc` / `tikv-jemallocator`  | Drop-in allocator for long-running MC workloads       |
-| `python`        | umbrella + `stochastic-rs-py` | `pyo3`, `numpy`                  | Building the Python wheel via maturin                 |
+The default build links no GPU, no BLAS and no Python. The optional features are `cuda`, `metal` and `accelerate` (device back-ends), `ai` and `ai-metal` (neural surrogates), `viz` (HTML plots) and `unstable-dual-stream-rng`; the [feature flags](/docs/concepts/feature-flags) page lists what each pulls in.
 
-Default build (`cargo build`) is feature-light and links no GPU, no BLAS,
-and no Python. Pick features explicitly for the workload at hand.
+## Public dependencies
+
+The umbrella re-exports `ndarray`, `num_complex`, `num_traits`, `rand` and `chrono` (as `stochastic_rs::ndarray` and so on) because callers build and pass their types; use these paths or depend on the same versions. `wide` (the SIMD vectors of `SimdFloatExt` and `SimdRngExt`) and `anyhow` (calibration and SLV errors) also appear in public signatures. A semver-incompatible release of any of these seven crates (for a 0.x crate, a minor bump such as ndarray 0.17 → 0.18) is a major release of `stochastic-rs`.
 
 ## SIMD support
 
-Numerical hot paths (FGN Davies-Harte, all `Simd*` distributions,
-`fill_slice` / `fill_slice_fast`) use the [`wide`](https://crates.io/crates/wide)
-crate for portable SIMD. Lane widths in this codebase are uniformly
-**8-lane** types:
+Numerical hot paths (FGN Davies-Harte, all `Simd*` distributions, `fill_slice` on a seeded stream, `fill_with` from any rng) use the [`wide`](https://crates.io/crates/wide) crate for portable SIMD, with **8-lane** types throughout:
 
-- `f32x8` — 8 × `f32` = 256 bits (AVX2 / NEON-pair)
-- `f64x8` — 8 × `f64` = 512 bits (AVX-512, or 2 × AVX2 / 2 × NEON fallback)
+- `f32x8` — 8 × `f32` = 256 bits
+- `f64x8` — 8 × `f64` = 512 bits
 - `i32x8` — for the integer Box-Muller / ziggurat tables
 
-`wide` selects the actual SIMD instructions at **build time** based on
-the active target features. The default x86-64 toolchain targets only
-SSE4.2, which means `f32x8` / `f64x8` compile to scalar loops. To
-unlock real SIMD, opt into a higher CPU baseline (next subsection).
+`wide` picks the instructions at **build time** from the enabled target features. Where the target has no register of the full width, it splits the vector into halves of the widest one it has:
 
-| Target arch              | Default ISA      | What `wide` emits without extra flags |
-|--------------------------|------------------|----------------------------------------|
-| `x86_64-…` (Linux, MSVC) | SSE4.2 (`v1`)    | Scalar fallback (no AVX)               |
-| `x86_64-…` with `+avx2`  | AVX2             | Full 256-bit SIMD on `f32x8`           |
-| `x86_64-…` with `+avx512f` | AVX-512        | Full 512-bit SIMD on `f64x8`           |
-| `aarch64-apple-darwin`   | NEON             | 128-bit NEON, two-pump for 256-bit ops |
+| Target                     | Default ISA | What `wide` emits without extra flags                  |
+|----------------------------|-------------|--------------------------------------------------------|
+| `x86_64-…` (Linux, MSVC)   | SSE2        | 128-bit SSE2: `f32x8` as two halves, `f64x8` as four   |
+| `x86_64-…` with `+avx2`    | AVX2        | Full 256-bit SIMD on `f32x8`                           |
+| `x86_64-…` with `+avx512f` | AVX-512     | Full 512-bit SIMD on `f64x8`                           |
+| `aarch64-apple-darwin`     | NEON        | 128-bit NEON, two halves for `f32x8`                   |
 
 ## Native CPU optimization
 
-Default builds target the plain `x86-64` / `aarch64` baseline so the
-resulting binary or wheel runs on any CPU of the same architecture.
-For SIMD-heavy paths (`SimdNormal::fill_slice_fast`, `Fgn` Davies-Harte,
-`sample_par`, …) the gap between `v1` and a tuned target is large
-enough to be worth raising the floor:
+Default builds target the plain `x86-64` / `aarch64` baseline so the binary or wheel runs on any CPU of the same architecture. For SIMD-heavy paths (`fill_slice` on a seeded `SimdNormal` stream, `Fgn` Davies-Harte, `sample_par`, …) a higher baseline pays off:
 
 ```bash
 # Local dev / benchmarks: every feature the build host supports.
@@ -110,37 +92,16 @@ RUSTFLAGS="-C target-cpu=x86-64-v3" cargo build --release
 ```
 
 <Callout type="warn">
-**Public distribution (PyPI wheels, openly shared Docker images): keep
-the default `x86-64` baseline.** `pip` wheel tags don't dispatch by CPU
-feature level, so a `v3` wheel will `SIGILL` on any pre-2013 hardware
-(AMD Bulldozer/Piledriver, Sandy/Ivy Bridge, Atom variants). Use
-`v2`/`v3`/`v4` only for deployments where you've verified every target
-host clears the level — typical examples are an internal Docker fleet,
-a homogeneous HPC cluster, or a CI runner pinned to a known SKU. Use
-`target-cpu=native` only for local dev and benchmarks.
-</Callout>
-
-<Callout type="info">
-**`RUSTFLAGS` busts the build cache.** Every distinct value triggers a
-full workspace rebuild, and the env var fully **replaces** (does not
-merge with) `[build] rustflags = […]` in any `.cargo/config.toml`. For
-persistent local optimisation, prefer a `[target.<triple>] rustflags`
-entry in `~/.cargo/config.toml` so it composes with project configs.
+**Public distribution (PyPI wheels, openly shared Docker images): keep the default `x86-64` baseline.** `pip` wheel tags don't dispatch by CPU feature level, so a `v3` wheel will `SIGILL` on pre-2013 hardware (AMD Bulldozer/Piledriver, Sandy/Ivy Bridge, Atom variants). Use `v2`/`v3`/`v4` only where every target host clears the level (an internal Docker fleet, a homogeneous HPC cluster, a CI runner pinned to a known SKU), and `target-cpu=native` only for local dev and benchmarks.
 </Callout>
 
 ## GPU support
 
-FGN and fBM ship four independent GPU / accelerator backends — pick the
-one that matches your hardware and toolchain. Every Rust block in this
-section needs hardware or an OS this site's CI runners (Linux, no GPU)
-do not have — an NVIDIA GPU + CUDA 12.x toolkit, a WebGPU-capable
-adapter, or macOS — so all of them are illustrative rather than
-compiled.
+Every process can sample on a GPU through `cuda` (NVIDIA) or `metal` (Apple GPUs); `accelerate` routes the fGN FFT through Apple's vDSP on the CPU. See [GPU support](/docs/concepts/gpu-support) for what runs where.
 
-### The `.on::<B>()` selector (recommended)
+### The `.on::<B>()` selector
 
-Select a backend at compile time with `.on::<B>()`, then call `sample()` /
-`sample_par()` as usual — the dispatch is monomorphised, with no runtime branch:
+Select a backend with `.on::<B>()`, then call `sample()` / `sample_par()` as usual:
 
 ```rust
 use stochastic_rs::simd_rng::Unseeded;
@@ -153,20 +114,11 @@ let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
   .sample();
 ```
 
-The markers only exist when their feature is compiled, so an unavailable backend
-is a compile error rather than a runtime fallback. See the
-[Backends](/docs/concepts/backends) concept page. `.on::<B>()` is the whole
-public surface — the per-backend samplers are crate-private (`sample_*_impl`,
-wired up in `stochastic_rs::stochastic::device`) and are reached only through
-it, as in the per-backend blocks below.
+The markers only exist when their feature is compiled, so an unavailable backend is a compile error. `with_backend(handle)` takes an explicit handle (a second GPU, a batch budget); see [Backends](/docs/concepts/backends).
 
-### `cuda` — direct CUDA (NVIDIA, recommended)
+### `cuda` — NVIDIA
 
-Direct binding via [`cudarc`](https://crates.io/crates/cudarc) + cuFFT
-+ a fused Philox RNG kernel. **No `.cu` files, no `nvcc` required** —
-the kernels ship as Rust strings and JIT through cudarc.
-
-Requires NVIDIA CUDA Toolkit 12.x and a compatible GPU.
+[`cudarc`](https://crates.io/crates/cudarc) + cuFFT + NVRTC. **No `.cu` files, no `nvcc` step**: the kernels ship as source strings and are compiled at run time by NVRTC. Requires the NVIDIA CUDA toolkit on the build machine and a compatible GPU.
 
 ```bash
 cargo build --features cuda
@@ -187,11 +139,9 @@ let batch = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
   .sample_par(1024); // 1024 paths in one launch
 ```
 
-### `metal` — direct Metal (macOS)
+### `metal` — Apple GPUs (macOS)
 
-Direct binding via the [`metal`](https://crates.io/crates/metal) crate.
-Targets Apple Silicon (M1/M2/M3/M4) and Intel Macs with discrete /
-integrated GPUs.
+The [`metal`](https://crates.io/crates/metal) crate, on Apple Silicon and Intel Macs. Apple GPUs have no `f64`, so the `Metal` backend is `f32` only.
 
 ```bash
 cargo build --features metal
@@ -208,9 +158,7 @@ let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
 
 ### `accelerate` — Apple Accelerate (macOS, no GPU)
 
-Routes the FFT through Apple's vDSP (part of the Accelerate framework
-shipped with macOS — no extra install). Lower latency than the GPU
-paths for medium-`n` workloads where launch overhead dominates.
+Routes the fGN FFT through Apple's vDSP (part of macOS, no extra install); a process that draws no fGN samples exactly as on `Cpu`. Lower latency than the GPU paths for medium-`n` workloads where launch overhead dominates.
 
 ```bash
 cargo build --features accelerate
@@ -225,31 +173,17 @@ let path = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
   .sample();
 ```
 
-### Choosing a backend
-
-| Backend      | Best for                                     | Latency floor | Throughput ceiling |
-|--------------|----------------------------------------------|---------------|---------------------|
-| CPU SIMD     | Small `n` (≤ 4 k), single path               | ≈ 8 µs        | rayon × cores       |
-| `accelerate` | Medium `n` (4 k–16 k), single path on macOS  | ≈ 30 µs       | one core            |
-| `metal`      | Large `n` + batches on macOS                 | ≈ 80 µs       | full GPU            |
-| `cuda`       | Large `n` (≥ 16 k) + batches                 | ≈ 80 µs       | full GPU            |
-
-Concrete numbers and the cross-over point are on the
-[Benchmarks](/docs/benchmarks) page.
+The cross-over points between the CPU and each backend are on the [Benchmarks](/docs/benchmarks) page.
 
 ## Linear algebra
 
-Cholesky, SVD, eigendecompositions and least squares run on the
-pure-Rust [`faer`](https://github.com/sarah-quinones/faer-rs) and are
-always compiled in — there is no BLAS/LAPACK system dependency to
-install on any platform.
+Cholesky, SVD, eigendecompositions and least squares run on the pure-Rust [`faer`](https://github.com/sarah-quinones/faer-rs) and are always compiled in; there is no BLAS/LAPACK system dependency on any platform.
 
 ## Verify the install
 
 <RustExample path="tests/doctest_install_verify.rs" />
 
-Paste the equivalent into your own `src/main.rs` to check the install by
-eye:
+The same check as a `src/main.rs` of your own crate:
 
 ```rust
 use stochastic_rs::prelude::*;
@@ -263,6 +197,4 @@ fn main() {
 }
 ```
 
-Run with `cargo run --release`. If this prints `OU path of length 1000`,
-you are good. Continue with the
-[Quickstart](/docs/getting-started/quickstart).
+`cargo run --release` prints `OU path of length 1000`. Continue with the [Quickstart](/docs/getting-started/quickstart).
