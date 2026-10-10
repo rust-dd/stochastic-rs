@@ -219,8 +219,8 @@ impl BivariateExt for MarshallOlkin {
     Ok(out)
   }
 
-  /// `∂_v C`: `u^{1-α}` where `u^α ≥ v^β`, `(1 - β) u v^{-β}` below; the jump `β v^{β(1-α)/α}` at `u = v^{β/α}`
-  /// is the singular component's conditional mass.
+  /// `∂_v C`: `u^{1-α}` where `u^α ≥ v^β`, `(1 - β) u v^{-β}` below, NaN for `v` outside `[0, 1]`; the jump
+  /// `β v^{β(1-α)/α}` at `u = v^{β/α}` is the singular component's conditional mass.
   fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
@@ -230,6 +230,10 @@ impl BivariateExt for MarshallOlkin {
     for i in 0..u_col.len() {
       let u = u_col[i];
       let v = v_col[i];
+      if !(0.0..=1.0).contains(&v) {
+        out[i] = f64::NAN;
+        continue;
+      }
       if u <= 0.0 {
         out[i] = 0.0;
         continue;
@@ -247,8 +251,8 @@ impl BivariateExt for MarshallOlkin {
     Ok(out)
   }
 
-  /// Generalised inverse of `∂_v C(· | v)`: closed form on both continuous pieces and the atom `v^{β/α}` for `y`
-  /// inside the jump `[(1-β) w, w]`, `w = v^{β(1-α)/α}`; the `α = 1` and `β = 1` branches never divide by zero.
+  /// Generalised inverse of `∂_v C(· | v)`: the atom `v^{β/α}` for `y` in the jump `[(1-β) w, w]`, `w = v^{β(1-α)/α}`,
+  /// closed form elsewhere, NaN for `y` or `v` outside `[0, 1]`; the `α = 1` and `β = 1` branches never divide by zero.
   fn percent_point(&self, y: &Array1<f64>, v: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
@@ -256,6 +260,9 @@ impl BivariateExt for MarshallOlkin {
       y.iter()
         .zip(v.iter())
         .map(|(&y, &v)| {
+          if !(0.0..=1.0).contains(&y) || !(0.0..=1.0).contains(&v) {
+            return f64::NAN;
+          }
           let w = v.powf(beta * (1.0 - alpha) / alpha);
           if y < (1.0 - beta) * w {
             y * v.powf(beta) / (1.0 - beta)

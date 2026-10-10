@@ -156,6 +156,35 @@ fn mo_percent_point_inverts_the_h_function() {
   }
 }
 
+/// A NaN or out-of-range `y` or `v` is NaN, which the raw formulas would map to a plausible number or ±∞.
+#[test]
+fn mo_a_query_outside_the_unit_interval_is_nan() {
+  for (alpha, beta) in [(0.5, 0.5), (0.3, 0.6), (1.0, 0.4), (0.7, 1.0)] {
+    let c = MarshallOlkin::with_alpha_beta(alpha, beta);
+    for bad in [f64::NAN, 1.5, -0.1] {
+      let u = c
+        .percent_point(&array![bad, 0.5], &array![0.5, bad])
+        .unwrap();
+      assert!(
+        u.iter().all(|x| x.is_nan()),
+        "α={alpha} β={beta} {bad}: {u}"
+      );
+      let h = c.partial_derivative(&array![[0.5, bad]]).unwrap()[0];
+      assert!(h.is_nan(), "α={alpha} β={beta} v={bad}: h={h}");
+    }
+    let u = c
+      .percent_point(&array![0.0, 1.0, 0.5, 0.5], &array![0.5, 0.5, 0.0, 1.0])
+      .unwrap();
+    let h = c
+      .partial_derivative(&array![[0.5, 0.0], [0.5, 1.0]])
+      .unwrap();
+    assert!(
+      u.iter().chain(&h).all(|x| x.is_finite()),
+      "α={alpha} β={beta}: edges {u} {h}"
+    );
+  }
+}
+
 /// τ, the singular mass and the cdf on a grid, against Nelsen's closed forms; no `Numerical` failure at any `n`.
 #[test]
 fn mo_sampler_reproduces_tau_the_singular_mass_and_the_cdf() {
