@@ -33,9 +33,10 @@ use stochastic_rs_copulas::traits::BivariateExt;
 use stochastic_rs_copulas::traits::MultivariateExt;
 
 const SEED: u64 = 7;
+
 const N: usize = 64;
 
-/// `(name, fnv1a of the bits of the `(N, d)` sample)`.
+/// `(name, fnv1a of the f64 bit patterns of the (N, d) sample)`.
 const PINS: &[(&str, u64)] = &[
   ("amh", 0x589e3274eaaa51e8),
   ("bb1", 0x08f7414f5c289cb7),
@@ -103,7 +104,7 @@ fn empirical() -> EmpiricalCopula2D {
 }
 
 fn samples() -> Vec<(&'static str, Array2<f64>)> {
-  let mut rows: Vec<(&'static str, Array2<f64>)> = Vec::new();
+  let mut rows = Vec::new();
   macro_rules! row {
     ($name:literal, $sample:expr) => {
       rows.push(($name, $sample));
@@ -260,10 +261,12 @@ fn samples() -> Vec<(&'static str, Array2<f64>)> {
   rows
 }
 
+// The bits depend on libm and FMA, so they are pinned for aarch64 macOS only and other targets skip this test.
 #[test]
+#[cfg_attr(not(all(target_arch = "aarch64", target_os = "macos")), ignore)]
 fn seeded_copula_streams_are_pinned() {
   let rows = samples();
-  if std::env::var_os("STREAM_SNAPSHOT_REGEN").is_some() {
+  if std::env::var("STREAM_SNAPSHOT_REGEN").as_deref() == Ok("1") {
     for (name, sample) in &rows {
       println!("  (\"{name}\", 0x{:016x}),", hash(sample));
     }
