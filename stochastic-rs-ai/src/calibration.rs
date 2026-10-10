@@ -1,4 +1,4 @@
-//! Levenberg–Marquardt fit of a surrogate $\tilde F$ on its exact Jacobian (Horvath et al., §3.2):
+//! Levenberg–Marquardt fit of a surrogate $\tilde F$ on its exact Jacobian (Horvath et al., §3.3):
 //!
 //! $$
 //! \hat\theta = \arg\min_{\theta}\ \sum_{k}
