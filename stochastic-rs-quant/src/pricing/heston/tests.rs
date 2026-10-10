@@ -452,8 +452,8 @@ fn heston_model_pricer_matches_pre_refactor_goldens() {
     45.78493484996492,
     2.6285888232280286,
   ];
-  // Finite-difference stencils amplify the price's last bits past `TOL`, and an independent reference
-  // moves as much, so every Greek but the analytic `vega` gets the wider band.
+  // Finite-difference stencils amplify the price's last bits past `TOL`, and an independent
+  // reference moves as much, so every Greek but the analytic `vega` gets the wider band.
   let got = m.greeks(s, k, r, q, tau, ot).as_array();
   for (i, name) in Greeks::COMPONENT_NAMES.iter().enumerate() {
     let tol = if *name == "vega" { TOL } else { 1e-7 };

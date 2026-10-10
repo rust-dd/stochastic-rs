@@ -125,7 +125,7 @@ pub struct ScheduleBuilder {
   convention: BusinessDayConvention,
   rule: DateGenerationRule,
   end_of_month: bool,
-  /// Stub convention; `None` means `ShortFirst` for backward and `ShortLast` for forward generation.
+  /// Stub convention; `None` is `ShortFirst` for backward and `ShortLast` for forward generation.
   stub: Option<StubConvention>,
   /// Snap every generated date to the nearest IMM date (3rd Wednesday of
   /// the same calendar quarter), per CME / LIFFE futures convention.

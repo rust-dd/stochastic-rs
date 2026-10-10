@@ -253,8 +253,8 @@ fn merton_gk_carries_at_rd_minus_rf_and_discounts_at_r() {
 /// Cross-arch tolerance: the goldens route through `norm_cdf`.
 const TOL: f64 = 1e-12;
 
-/// Price and Greeks at `(100, 105, 0.05, 0, 0.5)`, `(v, λ, γ, m) = (0.2, 0.5, 0.4, 10)`: the call is the
-/// Gil-Pelaez value `4.276118`, the vol Greeks 60-digit mpmath derivatives.
+/// Price and Greeks at `(100, 105, 0.05, 0, 0.5)`, `(v, λ, γ, m) = (0.2, 0.5, 0.4, 10)`: the call
+/// is the Gil-Pelaez value `4.276118`, the vol Greeks 60-digit mpmath derivatives.
 #[test]
 fn merton_pins_the_reference_price_and_greeks() {
   let m = merton(0.5, 0.4, 10);

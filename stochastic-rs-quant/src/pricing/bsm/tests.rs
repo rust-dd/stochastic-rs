@@ -6,8 +6,8 @@ use crate::traits::ModelPricer;
 const Q: (f64, f64, f64, f64, f64) = (100.0, 105.0, 0.05, 0.02, 0.75);
 /// Volatility every golden below is pinned at.
 const V: f64 = 0.25;
-/// Absolute tolerance on goldens captured on aarch64-darwin: CI runs x86_64-linux, where FMA and libm
-/// differences inside `norm_cdf` rule out bit-exactness.
+/// Absolute tolerance on goldens captured on aarch64-darwin: CI runs x86_64-linux, where FMA and
+/// libm differences inside `norm_cdf` rule out bit-exactness.
 const TOL: f64 = 1e-12;
 
 #[test]

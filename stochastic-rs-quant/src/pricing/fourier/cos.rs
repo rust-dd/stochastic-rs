@@ -40,8 +40,8 @@ use num_complex::Complex64;
 use super::FourierModelExt;
 use crate::OptionType;
 
-/// Fang–Oosterlee (2008) COS pricer for any [`FourierModelExt`]: `n` terms over a range `l` cumulant
-/// standard deviations wide (default 256 and 10, §5.1), so understated `cumulants()` misprice silently.
+/// Fang–Oosterlee (2008) COS pricer for any [`FourierModelExt`]: `n` terms (default 256) over `l`
+/// (default 10, §5.1) cumulant standard deviations, so understated `cumulants()` misprice silently.
 #[derive(Debug, Clone)]
 pub struct CosEngine {
   /// Number of cosine expansion terms.

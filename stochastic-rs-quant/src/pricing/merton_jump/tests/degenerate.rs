@@ -247,8 +247,8 @@ fn a_degenerate_term_away_from_the_forward_is_its_saturated_limit() {
   }
 }
 
-/// At the forward `delta → ±½e^{(b−r)τ}`, `rho → ±½Kτe^{−rτ}` and `gamma → +∞`, approached from `v > 0`
-/// with gaps closing linearly in σ; `theta`, a price difference, tends to `0`.
+/// At the forward `delta → ±½e^{(b−r)τ}`, `rho → ±½Kτe^{−rτ}` and `gamma → +∞`, approached from
+/// `v > 0` with gaps closing linearly in σ; `theta`, a price difference, tends to `0`.
 #[test]
 fn the_forward_point_greeks_of_a_degenerate_term_are_their_limits() {
   let m = frozen(BSMCoc::Black1976);

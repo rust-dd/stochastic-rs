@@ -49,8 +49,8 @@ pub struct KirkSpreadPricer {
 }
 
 impl KirkSpreadPricer {
-  /// Panics unless `v1, v2 ≥ 0` and `corr ∈ [-1, 1]`: at `corr < -1` the radicand stays positive and
-  /// the price comes back finite and an order of magnitude wrong.
+  /// Panics unless `v1, v2 ≥ 0` and `corr ∈ [-1, 1]`: at `corr < -1` the radicand stays positive
+  /// and the price comes back finite and an order of magnitude wrong.
   pub fn new(v1: f64, v2: f64, corr: f64) -> Self {
     assert!(
       v1 >= 0.0,
@@ -158,8 +158,8 @@ mod tests {
     assert_eq!(model.spread_put(100.0, 90.0, 5.0, 0.05, 0.5), put);
   }
 
-  /// A vanilla `(s, k, r, q, tau)` query read as a spread query prices finite and plausible, which is
-  /// why the methods carry the `spread_` prefix.
+  /// A vanilla `(s, k, r, q, tau)` query read as a spread query prices finite and plausible,
+  /// which is why the methods carry the `spread_` prefix.
   #[test]
   fn the_misread_vanilla_query_still_produces_a_plausible_number() {
     let model = KirkSpreadPricer::new(0.30, 0.25, 0.7);

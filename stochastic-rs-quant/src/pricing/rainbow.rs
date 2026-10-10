@@ -147,8 +147,8 @@ pub struct StulzRainbowPricer {
 }
 
 impl StulzRainbowPricer {
-  /// Panics unless `sigma1, sigma2 ≥ 0` and `rho ∈ [-1, 1]`: a negative vol prices negative calls, and a
-  /// bad `rho` would trip an anonymous assert in `owens_t::biv_norm` or skew the Margrabe legs.
+  /// Panics unless `sigma1, sigma2 ≥ 0` and `rho ∈ [-1, 1]`: a negative vol prices negative calls,
+  /// and a bad `rho` would trip an anonymous `owens_t::biv_norm` assert or skew the Margrabe legs.
   pub fn new(payoff: RainbowPayoff, sigma1: f64, sigma2: f64, rho: f64) -> Self {
     assert!(
       sigma1 >= 0.0,

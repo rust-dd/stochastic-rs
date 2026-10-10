@@ -71,8 +71,8 @@ pub fn single_period_kyle<T: RealExt>(prior_variance: T, noise_variance: T) -> K
   }
 }
 
-/// Per-round $(\beta_n, \lambda_n, \Sigma_n, \mathbb E[\pi_n])$, in order, of the `n_periods`-round Kyle
-/// equilibrium by Cetin–Larsen (2023), Thm 2.1; one round reproduces [`single_period_kyle`].
+/// The `n_periods`-round Kyle equilibrium $(\beta_n, \lambda_n, \Sigma_n, \mathbb E[\pi_n])$,
+/// round by round, from Cetin–Larsen (2023), Thm 2.1; one round reproduces [`single_period_kyle`].
 pub fn multi_period_kyle<T: RealExt>(
   prior_variance: T,
   noise_variance_per_round: T,

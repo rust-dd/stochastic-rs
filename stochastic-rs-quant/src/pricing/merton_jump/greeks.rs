@@ -142,8 +142,8 @@ impl Merton1976Pricer {
     })
   }
 
-  /// Gamma $\partial^2 V/\partial S^2$: a degenerate term contributes `+∞` at its forward, where `Γ`
-  /// diverges like `1/σ`, and `0` away from it.
+  /// Gamma $\partial^2 V/\partial S^2$: a degenerate term contributes `+∞` at its forward, where
+  /// `Γ` diverges like `1/σ`, and `0` away from it.
   pub fn gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.greek_series(tau, |bsm| {
       match Merton1976Pricer::term_regime(bsm, s, k, r, q, tau) {

@@ -424,8 +424,8 @@ impl SmileSlice {
     }
   }
 
-  /// ATM total variance (`k = 0`): interpolated between the adjacent points, or extrapolated from the
-  /// two innermost ones for a one-sided smile, since an endpoint would bias SSVI's $\theta_t$.
+  /// ATM total variance (`k = 0`): interpolated between the adjacent points, or extrapolated from
+  /// the two innermost ones for a one-sided smile, since an endpoint would bias SSVI's $\theta_t$.
   fn atm_total_variance(&self) -> f64 {
     let n = self.log_moneyness.len();
     if n == 0 {

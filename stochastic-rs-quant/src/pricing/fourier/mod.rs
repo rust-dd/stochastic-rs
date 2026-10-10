@@ -390,8 +390,8 @@ mod tests {
     );
   }
 
-  /// Lord–Kahl §3.2: `cumulant_sized` prices a long-maturity, high-|ρ| Heston ATM call finite, positive
-  /// and close to Gil-Pelaez, where a fixed-η grid truncates the skewed wings.
+  /// Lord–Kahl §3.2: `cumulant_sized` prices a long-maturity, high-|ρ| Heston ATM call finite,
+  /// positive and close to Gil-Pelaez, where a fixed-η grid truncates the skewed wings.
   #[test]
   fn carr_madan_cumulant_sized_finite_positive_long_maturity_skew() {
     let model = HestonFourier {

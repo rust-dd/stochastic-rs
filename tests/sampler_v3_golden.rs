@@ -1,5 +1,5 @@
-//! Golden [`Deterministic`] streams, compared within a small tolerance because FFT- and `powf`-heavy
-//! paths round differently across architectures; [`sampler_first_path_matches_sample`] is bit-exact.
+//! Golden [`Deterministic`] streams within a small tolerance, since FFT- and `powf`-heavy paths
+//! round differently across architectures; [`sampler_first_path_matches_sample`] is bit-exact.
 
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
@@ -282,8 +282,8 @@ fn golden_merton_streams() {
   );
 }
 
-/// `Bates1996`'s multiplicative jump term and `[s, v]` output; `k = 0` zeroes the `−λk` compensator,
-/// so the `lambda = 0` counterfactual below isolates the jump term.
+/// `Bates1996`'s multiplicative jump term and `[s, v]` output; `k = 0` zeroes the `−λk`
+/// compensator, so the `lambda = 0` counterfactual below isolates the jump term.
 #[test]
 fn golden_bates_streams() {
   let bates = Bates1996::new(

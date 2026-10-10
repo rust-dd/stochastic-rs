@@ -119,8 +119,8 @@ fn carr_madan_price_is_positive() {
   assert!(call < s, "call price must be below spot, got {call}");
 }
 
-/// The no-arbitrage band `(S e^{−qτ} − K e^{−rτ})⁺ ≤ C ≤ S e^{−qτ}` to 1e-6 relative on nine queries
-/// down to `K = 0.01`, where the `K^{−α}` prefactor amplifies any inversion error 316-fold.
+/// The no-arbitrage band `(S e^{−qτ} − K e^{−rτ})⁺ ≤ C ≤ S e^{−qτ}` to 1e-6 relative on nine
+/// queries down to `K = 0.01`, where the `K^{−α}` prefactor amplifies any inversion error 316-fold.
 #[test]
 fn call_respects_no_arbitrage_bounds() {
   let m = paper_model();
@@ -284,8 +284,8 @@ const TOL: f64 = 1e-12;
 
 const GOLDEN_QUERY: (f64, f64, f64, f64, f64) = (100.0, 105.0, 0.05, 0.02, 0.75);
 
-/// Goldens at the paper's parameters and `(100, 105, 0.05, 0.02, 0.75)`, within 1e-8 of a Dormand–Prince
-/// Riccati solve with Gauss–Kronrod through both Carr-Madan and Gil-Pelaez.
+/// Goldens at the paper's parameters and `(100, 105, 0.05, 0.02, 0.75)`, within 1e-8 of a
+/// Dormand–Prince Riccati solve with Gauss–Kronrod through both Carr-Madan and Gil-Pelaez.
 #[test]
 fn hscm_model_pricer_goldens() {
   let m = paper_model();

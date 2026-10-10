@@ -104,8 +104,8 @@ fn mc_spread_one_model_prices_a_strike_grid() {
   );
 }
 
-/// A NaN `tau` on the degenerate branch (`sigma1 == sigma2`, `rho == 1`) prices NaN, as on every other
-/// branch, not a confident `0.0`.
+/// A NaN `tau` on the degenerate branch (`sigma1 == sigma2`, `rho == 1`) prices NaN, as on every
+/// other branch, not a confident `0.0`.
 #[test]
 fn margrabe_does_not_launder_a_nan_query_on_the_degenerate_branch() {
   let degenerate = MargrabePricer::new(0.2, 0.2, 1.0);

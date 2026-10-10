@@ -119,8 +119,8 @@ impl Merton1976Pricer {
     }
   }
 
-  /// Poisson-weighted series $\sum_{n=0}^{m-1} w_n \cdot V_{BS}(\sigma_n)$ with running-product weights,
-  /// so `m` may exceed the ≈ 21 terms an integer `n!` survives.
+  /// Poisson-weighted series $\sum_{n=0}^{m-1} w_n \cdot V_{BS}(\sigma_n)$ with running-product
+  /// weights, so `m` may exceed the ≈ 21 terms an integer `n!` survives.
   pub fn call_put(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> (f64, f64) {
     let mut call = 0.0;
     let mut put = 0.0;
@@ -135,8 +135,8 @@ impl Merton1976Pricer {
     (call, put)
   }
 
-  /// Jump-size std `z` from giving a `gamma` share of the variance `v²` to jumps; `0` at `lambda == 0`,
-  /// the value at that point rather than the `λ → 0⁺` limit (Black-Scholes at `v√(1 − γ)`).
+  /// Jump-size std `z` from giving a `gamma` share of the variance `v²` to jumps; `0` at
+  /// `lambda == 0`, the value at that point, not the `λ → 0⁺` limit (Black-Scholes at `v√(1 − γ)`).
   fn jump_size_std(&self) -> f64 {
     if self.lambda == 0.0 {
       return 0.0;

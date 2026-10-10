@@ -65,8 +65,8 @@ impl AnalyticBSEngine {
     )
   }
 
-  /// Overrides the cost-of-carry convention; [`BSMCoc::GarmanKohlhagen1983`] takes the engine's rate
-  /// and dividend-yield handles as the domestic and foreign rates.
+  /// Overrides the cost-of-carry convention; [`BSMCoc::GarmanKohlhagen1983`] takes the engine's
+  /// rate and dividend-yield handles as the domestic and foreign rates.
   pub fn with_coc(mut self, coc: BSMCoc) -> Self {
     self.coc = coc;
     self

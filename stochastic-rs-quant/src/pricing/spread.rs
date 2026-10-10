@@ -81,8 +81,8 @@ pub struct MargrabePricer {
 }
 
 impl MargrabePricer {
-  /// Panics unless `sigma1, sigma2 ≥ 0` and `rho ∈ [-1, 1]`: at `rho = 5` the variance goes negative
-  /// and the degenerate branch would return the discounted intrinsic.
+  /// Panics unless `sigma1, sigma2 ≥ 0` and `rho ∈ [-1, 1]`: at `rho = 5` the variance goes
+  /// negative and the degenerate branch would return the discounted intrinsic.
   pub fn new(sigma1: f64, sigma2: f64, rho: f64) -> Self {
     assert!(
       sigma1 >= 0.0,
@@ -118,8 +118,8 @@ impl MargrabePricer {
     (d1, d1 - v * sqrt_t)
   }
 
-  /// Exchange-option price $\max(S_1 - S_2, 0)$ (swap the legs for the other side); the σ → 0 branch
-  /// floors through `floor_payoff`, so a NaN `tau` stays NaN there too.
+  /// Exchange-option price $\max(S_1 - S_2, 0)$ (swap the legs for the other side); the σ → 0
+  /// branch floors through `floor_payoff`, so a NaN `tau` stays NaN there too.
   pub fn price(&self, s1: f64, s2: f64, q1: f64, q2: f64, tau: f64) -> f64 {
     let v_sq = self.combined_variance();
     if v_sq < 1e-14 {
@@ -195,8 +195,8 @@ pub struct McSpreadPricer {
 }
 
 impl McSpreadPricer {
-  /// Panics unless `sigma1, sigma2 ≥ 0`, `rho ∈ [-1, 1]` (the factor `√(1 − ρ²)` would absorb it) and
-  /// `n_paths > 0`.
+  /// Panics unless `sigma1, sigma2 ≥ 0`, `rho ∈ [-1, 1]` (the factor `√(1 − ρ²)` would absorb it)
+  /// and `n_paths > 0`.
   pub fn new(sigma1: f64, sigma2: f64, rho: f64, n_paths: usize) -> Self {
     assert!(
       sigma1 >= 0.0,
