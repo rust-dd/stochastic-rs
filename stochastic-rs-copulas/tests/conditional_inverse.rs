@@ -228,6 +228,12 @@ fn the_edges_of_the_square_answer_inside_it() {
   let sweep = Array1::from_iter((0..198).map(|i| (i % 99 + 1) as f64 / 100.0));
   let edges = array![[0.0, 0.5], [1.0, 0.5], [0.3, 0.0], [0.3, 1.0]];
   let mut copulas = families();
+  for theta in [800.0, -800.0, 1000.0, -1000.0] {
+    copulas.push((
+      "frank at |θ| ≥ 800",
+      Box::new(Frank::new(Some(theta), None)),
+    ));
+  }
   copulas.push(("amh 0.99", Box::new(with_theta(Amh::new(), 0.99))));
   copulas.push(("plackett 0.01", Box::new(with_theta(Plackett::new(), 0.01))));
   for (name, copula) in copulas {
@@ -287,6 +293,32 @@ const FRANK: [(f64, f64, f64, f64); 16] = [
   (30.0, 1e-06, 0.99, 0.52948299425107),
   (30.0, 0.99, 1e-06, 0.15350666286610937),
   (30.0, 0.999999, 0.3, 0.7604917196701405),
+];
+
+/// The same at `|θ| = 800` and `1000`, where the old closed form overflowed: 1200-digit roots, as `e^{−1000} ≈ 1e-434`.
+const FRANK_EXTREME: [Row; 16] = [
+  (800.0, 0.3, 0.7, 0.698940877674516),
+  (800.0, 1e-06, 0.99, 0.9727306130521259),
+  (800.0, 0.99, 1e-06, 0.005757452736444078),
+  (800.0, 0.999999, 0.3, 0.31726938694741874),
+  (-800.0, 0.3, 0.7, 0.29894087767451605),
+  (-800.0, 1e-06, 0.99, 3.720658392370434e-06),
+  (-800.0, 0.99, 1e-06, 0.9999874270762221),
+  (-800.0, 0.999999, 0.3, 0.7172693869474188),
+  (1000.0, 0.3, 0.7, 0.6991527021396128),
+  (1000.0, 1e-06, 0.99, 0.9761844904419908),
+  (1000.0, 0.99, 1e-06, 0.004606160190936474),
+  (1000.0, 0.999999, 0.3, 0.313815509557935),
+  (-1000.0, 0.3, 0.7, 0.2991527021396128),
+  (-1000.0, 1e-06, 0.99, 2.178740907901743e-05),
+  (-1000.0, 0.99, 1e-06, 0.9999899396591949),
+  (-1000.0, 0.999999, 0.3, 0.713815509557935),
+];
+
+/// `(θ, u, v, h(u | v))` in 1200 digits, where the unfactored `h` divided `0` by `0`.
+const FRANK_H: [Row; 2] = [
+  (1000.0, 1.0, 0.9, 1.0),
+  (-1000.0, 0.05, 0.9, 1.928749847963966e-22),
 ];
 
 const FGM: [(f64, f64, f64, f64); 12] = [
@@ -361,8 +393,17 @@ fn assert_reference(
 
 #[test]
 fn the_closed_forms_match_the_50_digit_references() {
-  for (theta, y, v, want) in FRANK {
+  for (theta, y, v, want) in FRANK.into_iter().chain(FRANK_EXTREME) {
     assert_reference("frank", &Frank::new(Some(theta), None), (y, v, want), 1e-14);
+  }
+  for (theta, u, v, want) in FRANK_H {
+    let got = Frank::new(Some(theta), None)
+      .partial_derivative(&array![[u, v]])
+      .unwrap()[0];
+    assert!(
+      (got - want).abs() <= 1e-14 * want,
+      "frank θ = {theta}: h({u} | {v}) = {got} vs {want}"
+    );
   }
   for (theta, y, v, want) in FGM {
     assert_reference("fgm", &with_theta(Fgm::new(), theta), (y, v, want), 1e-14);
@@ -401,7 +442,7 @@ fn assert_round_trips(name: &str, copula: &dyn BivariateExt) {
 
 #[test]
 fn the_closed_forms_round_trip_through_h_on_the_grid() {
-  for theta in [4.0, -3.0, 1e-4, 30.0] {
+  for theta in [4.0, -3.0, 1e-4, 30.0, 800.0, -800.0, 1000.0, -1000.0] {
     assert_round_trips("frank", &Frank::new(Some(theta), None));
   }
   for theta in [0.5, -1.0, 1.0] {

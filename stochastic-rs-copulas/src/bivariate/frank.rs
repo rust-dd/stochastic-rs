@@ -4,7 +4,7 @@
 //! C_\theta(u,v)=-\frac1\theta\log\!\left(1+\frac{(e^{-\theta u}-1)(e^{-\theta v}-1)}{e^{-\theta}-1}\right)
 //! $$
 //!
-//! Reference: Domino, K. (2018), "Selected Methods for non-Gaussian Data Analysis", arXiv:1811.10486, Example 4.3.2, eq. (4.54) (the conditional inverse).
+//! Reference: Domino, K. (2018), "Selected Methods for non-Gaussian Data Analysis", arXiv:1811.10486, Example 4.3.2, eq. (4.54) (the conditional inverse; its printed fraction bar wrongly spans the leading 1, which belongs outside the fraction).
 
 use gauss_quad::GaussLegendre;
 use ndarray::Array1;
@@ -35,6 +35,55 @@ impl Frank {
       tau,
       theta_bounds: (f64::NEG_INFINITY, f64::INFINITY),
       invalid_thetas: vec![],
+    }
+  }
+
+  /// `h⁻¹(y | v)` before the domain rule: `−ln(1 + x)/θ`, `x = y·expm1(−θ)/(y + (1 − y)e^{−θv})`, with `1 + x` as a
+  /// ratio once `x ≤ −½`; `θ < 0` through `C_{−θ}(u, v) = u − C_θ(u, 1 − v)`, which swaps `v` and `1 − v`.
+  pub(crate) fn inverse(theta: f64) -> impl Fn(f64, f64) -> f64 {
+    let magnitude = theta.abs();
+    let (expm1_theta, exp_theta) = ((-magnitude).exp_m1(), (-magnitude).exp());
+    // The ratio's terms stay normal while `e^{−θ}` does; past `θ ≈ 708` its logarithm is taken term by term.
+    let ratio_is_normal = exp_theta >= f64::MIN_POSITIVE;
+    move |y, v| {
+      if theta == 0.0 || y == 0.0 || y == 1.0 {
+        return y;
+      }
+      let (v, v_bar) = if theta > 0.0 {
+        (v, 1.0 - v)
+      } else {
+        (1.0 - v, v)
+      };
+      let exp_theta_v = (-magnitude * v).exp();
+      let denominator = y + (1.0 - y) * exp_theta_v;
+      let x = y * expm1_theta / denominator;
+      if x > -0.5 {
+        -x.ln_1p() / magnitude
+      } else if ratio_is_normal {
+        -(((1.0 - y) * exp_theta_v + y * exp_theta) / denominator).ln() / magnitude
+      } else {
+        let numerator = (1.0 - y) + y * (-magnitude * v_bar).exp();
+        v - (numerator.ln() - denominator.ln()) / magnitude
+      }
+    }
+  }
+
+  /// `∂_v C = g(u)/(e^{θ(v − u)}g(v) + g(1 − v))`, `g(z) = expm1(−θz)`: same-signed terms, free of the `0/0` an
+  /// underflowing `e^{−θv}` leaves in the unfactored form; `θ < 0` through the same reflection.
+  fn h(theta: f64) -> impl Fn(f64, f64) -> f64 {
+    let magnitude = theta.abs();
+    move |u, v| {
+      if theta == 0.0 {
+        return u;
+      }
+      let (v, v_bar) = if theta > 0.0 {
+        (v, 1.0 - v)
+      } else {
+        (1.0 - v, v)
+      };
+      let denominator =
+        (magnitude * (v - u)).exp() * (-magnitude * v).exp_m1() + (-magnitude * v_bar).exp_m1();
+      (-magnitude * u).exp_m1() / denominator
     }
   }
 }
@@ -131,47 +180,16 @@ impl BivariateExt for Frank {
     Ok(out)
   }
 
-  /// `u = −ln_1p(x)/θ`, `x = y·expm1(−θ)/(y + (1 − y)e^{−θv})`, with `1 + x` taken as its cancellation-free ratio once
-  /// it drops below one half; the identity at `θ = 0`, NaN for `y` or `v` outside `[0, 1]`.
+  /// `Frank::inverse`'s closed form, the identity at `θ = 0`; NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
-    let theta = self.theta.unwrap();
-
-    if theta == 0.0 {
-      return conditional_quantiles(y, V, |y, _| y);
-    }
-
-    let (expm1_theta, exp_theta) = ((-theta).exp_m1(), (-theta).exp());
-    conditional_quantiles(y, V, |y, v| {
-      let exp_theta_v = (-theta * v).exp();
-      let denominator = y + (1.0 - y) * exp_theta_v;
-      let x = y * expm1_theta / denominator;
-      if x > -0.5 {
-        -x.ln_1p() / theta
-      } else {
-        -(((1.0 - y) * exp_theta_v + y * exp_theta) / denominator).ln() / theta
-      }
-    })
+    conditional_quantiles(y, V, Self::inverse(self.theta.unwrap()))
   }
 
-  /// `∂_v C = g(u)e^{−θv}/(g(1) + g(u)g(v))`, `g(z) = expm1(−θz)`, with the denominator summed as the same-signed
-  /// `e^{−θu}g(v) + e^{−θv}g(1 − v)`; NaN for `v` outside `[0, 1]`.
+  /// `Frank::h`'s factored form, `u` at `θ = 0`; NaN for `v` outside `[0, 1]`.
   fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
-    let theta = self.theta.unwrap();
-
-    if theta == 0.0 {
-      return Ok(conditional_cdf(X, |u, _| u));
-    }
-
-    Ok(conditional_cdf(X, |u, v| {
-      let exp_theta_v = (-theta * v).exp();
-      let denominator =
-        (-theta * u).exp() * (-theta * v).exp_m1() + exp_theta_v * (-theta * (1.0 - v)).exp_m1();
-      (-theta * u).exp_m1() * exp_theta_v / denominator
-    }))
+    Ok(conditional_cdf(X, Self::h(self.theta.unwrap())))
   }
 
   fn compute_theta(&self) -> f64 {
