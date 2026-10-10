@@ -7,11 +7,15 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::Array2;
+use stochastic_rs::copulas::bivariate::amh::Amh;
 use stochastic_rs::copulas::bivariate::clayton::Clayton;
+use stochastic_rs::copulas::bivariate::fgm::Fgm;
 use stochastic_rs::copulas::bivariate::frank::Frank;
 use stochastic_rs::copulas::bivariate::gaussian::GaussianCopula;
 use stochastic_rs::copulas::bivariate::gumbel::Gumbel;
 use stochastic_rs::copulas::bivariate::marshall_olkin::MarshallOlkin;
+use stochastic_rs::copulas::bivariate::plackett::Plackett;
+use stochastic_rs::copulas::bivariate::t_copula::TCopula;
 use stochastic_rs::copulas::correlation::kendall_tau;
 use stochastic_rs::copulas::gof::gof_cramer_von_mises;
 use stochastic_rs::copulas::gof::pseudo_observations;
@@ -81,6 +85,32 @@ fn bivariate_sample(c: &mut Criterion) {
   let mo = MarshallOlkin::with_alpha_beta(0.3, 0.6);
   group.bench_function("marshall_olkin_n10k", |b| {
     b.iter(|| mo.sample_with_seed(10_000, 42).unwrap())
+  });
+  let amh = Amh {
+    theta: Some(0.5),
+    ..Amh::new()
+  };
+  group.bench_function("amh_n10k", |b| {
+    b.iter(|| amh.sample_with_seed(10_000, 42).unwrap())
+  });
+  let fgm = Fgm {
+    theta: Some(0.5),
+    ..Fgm::new()
+  };
+  group.bench_function("fgm_n10k", |b| {
+    b.iter(|| fgm.sample_with_seed(10_000, 42).unwrap())
+  });
+  let plackett = Plackett {
+    theta: Some(3.0),
+    ..Plackett::new()
+  };
+  group.bench_function("plackett_n10k", |b| {
+    b.iter(|| plackett.sample_with_seed(10_000, 42).unwrap())
+  });
+  let mut t = TCopula::with_nu(4.0);
+  t.set_theta(0.5);
+  group.bench_function("t_copula_n256", |b| {
+    b.iter(|| t.sample_with_seed(256, 42).unwrap())
   });
   group.finish();
 }
