@@ -8,9 +8,9 @@ description: How to add a bivariate copula to stochastic-rs-copulas. Invoke when
 Bivariate copulas live in `stochastic-rs-copulas/src/bivariate/<name>.rs`
 and implement `BivariateExt`, defined in
 `stochastic-rs-copulas/src/traits/bivariate.rs` and re-exported from
-`stochastic-rs-copulas/src/traits.rs`. There are **13** families today
-(`grep -c '^pub mod ' stochastic-rs-copulas/src/bivariate.rs`); the
-14th `impl BivariateExt for` is a test double in
+`stochastic-rs-copulas/src/traits.rs`. There are **15** families today
+(`grep -c '^pub mod ' stochastic-rs-copulas/src/bivariate.rs`); the two
+other `impl BivariateExt for` are test doubles in
 `traits/bivariate.rs`'s own test module.
 
 Read `stochastic-rs-copulas/src/bivariate.rs`'s module header before
@@ -67,10 +67,14 @@ Useful defaults you should usually **not** override:
 | `check_theta` / `check_fit` / `check_marginal` | validation, used by the above |
 
 Override `percent_point` and `partial_derivative` only when you have a
-closed form; they are independent choices. Five families override
-`percent_point` (`clayton`, `frank`, `gumbel`, `gaussian`,
-`independence`); several more override only `partial_derivative` (`joe`
-among them). Closed forms are both faster and more accurate than the
+closed form; they are independent choices. Twelve families override
+`percent_point` (`amh`, `bb1`, `bb7`, `clayton`, `fgm`, `frank`,
+`gaussian`, `gumbel`, `independence`, `marshall_olkin`, `plackett`,
+`t_copula`); `galambos`, `husler_reiss` and `joe` override only
+`partial_derivative`. Map an override through
+`bivariate::conditional::conditional_quantiles` /
+`conditional_cdf`: they own the one length check, NaN for a `y` or `v`
+outside `[0, 1]` and the `[0, 1]` codomain. Closed forms are both faster and more accurate than the
 Brent / finite-difference defaults, but a family with neither is
 perfectly valid — the defaults compose. Override `generator` if and
 only if the family is Archimedean.

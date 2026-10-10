@@ -1,4 +1,5 @@
 use ndarray::array;
+use stochastic_rs_distributions::special::ndtri;
 
 use super::*;
 

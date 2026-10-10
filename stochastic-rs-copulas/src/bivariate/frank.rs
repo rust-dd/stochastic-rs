@@ -4,6 +4,7 @@
 //! C_\theta(u,v)=-\frac1\theta\log\!\left(1+\frac{(e^{-\theta u}-1)(e^{-\theta v}-1)}{e^{-\theta}-1}\right)
 //! $$
 //!
+//! Reference: Domino, K. (2018), "Selected Methods for non-Gaussian Data Analysis", arXiv:1811.10486, Example 4.3.2, eq. (4.54) (the conditional inverse).
 
 use gauss_quad::GaussLegendre;
 use ndarray::Array1;
@@ -12,6 +13,8 @@ use roots::SimpleConvergency;
 use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -129,41 +132,47 @@ impl BivariateExt for Frank {
     Ok(out)
   }
 
+  /// `u = −ln_1p(x)/θ`, `x = y·expm1(−θ)/(y + (1 − y)e^{−θv})`, with `1 + x` taken as its cancellation-free ratio once
+  /// it drops below one half; the identity at `θ = 0`, NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let theta = self.theta.unwrap();
 
     if theta == 0.0 {
-      return Ok(y.clone());
+      return conditional_quantiles(y, V, |y, _| y);
     }
 
-    self.percent_point_numerical(y, V)
+    let (expm1_theta, exp_theta) = ((-theta).exp_m1(), (-theta).exp());
+    conditional_quantiles(y, V, |y, v| {
+      let exp_theta_v = (-theta * v).exp();
+      let denominator = y + (1.0 - y) * exp_theta_v;
+      let x = y * expm1_theta / denominator;
+      if x > -0.5 {
+        -x.ln_1p() / theta
+      } else {
+        -(((1.0 - y) * exp_theta_v + y * exp_theta) / denominator).ln() / theta
+      }
+    })
   }
 
-  /// $\partial_v C(u,v) = g(u)\,e^{-\theta v} \big/ \big(g(1)+g(u)g(v)\big)$,
-  /// $g(z)=e^{-\theta z}-1$ — same "derivative w.r.t. the second
-  /// argument, at fixed conditioning value" convention as
-  /// [`crate::bivariate::clayton::Clayton::partial_derivative`]. The
-  /// previous denominator shared `pdf`'s `g(u)+g(v)+g(1)` bug; the
-  /// numerator (`g(u)·g(v)+g(u) = g(u)·e^{-\theta v}`) was already
-  /// correct, which is why `partial_derivative` looked closer to right
-  /// than `pdf` did even though both drew from the same wrong `aux`.
+  /// `∂_v C = g(u)e^{−θv}/(g(1) + g(u)g(v))`, `g(z) = expm1(−θz)`, with the denominator summed as the same-signed
+  /// `e^{−θu}g(v) + e^{−θv}g(1 − v)`; NaN for `v` outside `[0, 1]`.
   fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
-    let U = X.column(0).to_owned();
-    let V = X.column(1).to_owned();
 
     let theta = self.theta.unwrap();
 
     if theta == 0.0 {
-      return Ok(U.clone());
+      return Ok(conditional_cdf(X, |u, _| u));
     }
 
-    let num = self._g(&U)? * self._g(&V)? + self._g(&U)?;
-    let den = self._g(&Array1::ones(U.len()))? + self._g(&U)? * self._g(&V)?;
-    Ok(num / den)
+    Ok(conditional_cdf(X, |u, v| {
+      let exp_theta_v = (-theta * v).exp();
+      let denominator =
+        (-theta * u).exp() * (-theta * v).exp_m1() + exp_theta_v * (-theta * (1.0 - v)).exp_m1();
+      (-theta * u).exp_m1() * exp_theta_v / denominator
+    }))
   }
 
   fn compute_theta(&self) -> f64 {

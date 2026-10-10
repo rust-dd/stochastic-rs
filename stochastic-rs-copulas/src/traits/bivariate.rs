@@ -6,7 +6,6 @@ use std::cmp::Ordering;
 use ndarray::Array1;
 use ndarray::Axis;
 use ndarray::stack;
-use roots::SimpleConvergency;
 use roots::find_root_brent;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::Unseeded;
@@ -17,6 +16,8 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::bivariate::CopulaType as BivariateCopulaType;
+use crate::bivariate::conditional::BrentTolerance;
+use crate::bivariate::conditional::check_lengths;
 use crate::error::CopulaError;
 
 /// Upper- and lower-tail dependence coefficients
@@ -223,49 +224,47 @@ pub trait BivariateExt {
     self.percent_point_numerical(y, V)
   }
 
-  /// Brent-root-finding numerical inversion of `partial_derivative_scalar`
-  /// (`#[doc(hidden)]`, so not itself a doc link target) that backs the
-  /// default [`percent_point`](Self::percent_point). Exposed
-  /// under its own name so a family that overrides `percent_point` (to
-  /// special-case a degenerate parameter, say) has a way to fall back to
-  /// this generic implementation — calling `Self::percent_point` from
-  /// inside an override of that same method would just recurse into the
-  /// override instead of reaching this body.
-  ///
-  /// A quantile whose root lies at or below the bracket floor `f64::EPSILON`
-  /// saturates to that floor — the answer is below resolution, which is a
-  /// value, not a failure. A failing `partial_derivative` or a solve that
-  /// does not converge is an `Err`: neither has a quantile to report, and a
-  /// fabricated one would be indistinguishable from a real deep-tail draw.
+  /// `percent_point`'s default, callable from an override: Brent's root in `u` of `partial_derivative` on
+  /// `[f64::EPSILON, 1]`, saturating at either end; NaN for `y` or `v` outside `[0, 1]`, `Err` for an inner error or NaN.
   fn percent_point_numerical(
     &self,
     y: &Array1<f64>,
     V: &Array1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
+    check_lengths(y, V)?;
     let n = y.len();
     let mut results = Array1::zeros(n);
 
     for i in 0..n {
       let y_i = y[i];
       let v_i = V[i];
+      if !((0.0..=1.0).contains(&y_i) && (0.0..=1.0).contains(&v_i)) {
+        results[i] = f64::NAN;
+        continue;
+      }
 
-      // The root-finder's closure cannot return a `Result`, so the first
-      // inner failure is parked here and re-raised after the solve.
+      // The solver's closure cannot return a `Result`: the first inner failure or NaN is parked, the closure answers
+      // 0 so the solve stops there, and the parked error is re-raised after.
       let inner_err: RefCell<Option<CopulaError>> = RefCell::new(None);
-      let h = |u: f64| match self.partial_derivative_scalar(u, v_i) {
-        Ok(d) => d - y_i,
-        Err(e) => {
+      let gap = |u: f64| match self.partial_derivative_scalar(u, v_i) {
+        Ok(d) if !d.is_nan() => d - y_i,
+        outcome => {
           let mut slot = inner_err.borrow_mut();
           if slot.is_none() {
-            *slot = Some(e);
+            *slot = Some(outcome.err().unwrap_or_else(|| {
+              CopulaError::Numerical(format!(
+                "{:?} partial_derivative is NaN at (u={u:?}, v={v_i:?})",
+                self.r#type()
+              ))
+            }));
           }
-          f64::NAN
+          0.0
         }
       };
 
       let lo = f64::EPSILON;
-      let f_lo = h(lo);
+      let f_lo = gap(lo);
       if let Some(e) = inner_err.borrow_mut().take() {
         return Err(e);
       }
@@ -273,12 +272,18 @@ pub trait BivariateExt {
         results[i] = lo;
         continue;
       }
+      let f_hi = gap(1.0);
+      if let Some(e) = inner_err.borrow_mut().take() {
+        return Err(e);
+      }
+      if f_hi <= 0.0 {
+        results[i] = 1.0;
+        continue;
+      }
 
-      let mut convergency = SimpleConvergency {
-        eps: f64::EPSILON,
-        max_iter: 50,
-      };
-      let root = find_root_brent(lo, 1.0, h, &mut convergency);
+      // Relative to the level, which is positive here: the solver multiplies two gaps to compare signs, and absolute
+      // gaps under ~1e-162 would underflow that product.
+      let root = find_root_brent(lo, 1.0, |u| gap(u) / y_i, &mut BrentTolerance);
       if let Some(e) = inner_err.borrow_mut().take() {
         return Err(e);
       }
@@ -335,6 +340,7 @@ mod tests {
   use super::*;
   use crate::bivariate::amh::Amh;
   use crate::bivariate::clayton::Clayton;
+  use crate::bivariate::galambos::Galambos;
 
   /// Overrides no provided method, so every default body answers for it; `pdf` and `cdf` fail.
   struct DummyNonArchimedean {
@@ -493,9 +499,18 @@ mod tests {
     );
   }
 
-  /// Round trip on the numerical path: `u = h^{-1}(y | v)` must satisfy
-  /// `h(u | v) = y`. Amh has a closed-form `partial_derivative` but no
-  /// `percent_point` override, so this exercises exactly the Brent body.
+  /// A conditional law with a point mass at `u = 1` keeps `h` below `y` on the whole bracket: the ceiling answers.
+  #[test]
+  fn percent_point_numerical_saturates_at_the_bracket_ceiling() {
+    let mut galambos = Galambos::new();
+    galambos.set_theta(1.5);
+    let out = galambos
+      .percent_point_numerical(&array![0.3_f64], &array![1.0_f64])
+      .expect("saturation is a value");
+    assert_eq!(out[0], 1.0);
+  }
+
+  /// `percent_point_numerical` reaches the Brent body whatever `percent_point` the family overrides.
   #[test]
   fn percent_point_numerical_round_trips_through_the_h_function() {
     let mut amh = Amh::new();

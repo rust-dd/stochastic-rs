@@ -14,6 +14,8 @@ use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
 use super::CopulaType;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -108,13 +110,14 @@ impl BivariateExt for Independence {
     Ok(&U * &V)
   }
 
+  /// `∂_v (uv) = u`, NaN for `v` outside `[0, 1]`.
   fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
-    let V = X.column(1);
-    Ok(V.to_owned())
+    Ok(conditional_cdf(X, |u, _| u))
   }
 
-  fn percent_point(&self, y: &Array1<f64>, _V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
-    Ok(y.to_owned())
+  /// The identity, NaN for `y` or `v` outside `[0, 1]`.
+  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+    conditional_quantiles(y, V, |y, _| y)
   }
 
   fn compute_theta(&self) -> f64 {

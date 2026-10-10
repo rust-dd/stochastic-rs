@@ -33,15 +33,18 @@
 //! Reference: Dunnett, C.W., Sobel, M. (1955), "Approximations to the
 //! probability integral and certain percentage points of a multivariate
 //! analogue of Student's t-distribution", *Biometrika* 42(1/2), 258-260.
+//! Reference: Aas, K., Czado, C., Frigessi, A., Bakken, H. (2009), "Pair-copula constructions of multiple dependence", *Insurance: Mathematics and Economics* 44(2), 182-198, App. B.2 (the h-function inverse), DOI 10.1016/j.insmatheco.2007.02.001.
 
 use gauss_quad::GaussLegendre;
 use ndarray::Array1;
 use ndarray::Array2;
-use stochastic_rs_distributions::special::beta_i;
+use stochastic_rs_distributions::DistributionExt;
 use stochastic_rs_distributions::special::ln_gamma;
-use stochastic_rs_distributions::special::ndtri;
+use stochastic_rs_distributions::studentt::SimdStudentT;
 
 use crate::bivariate::CopulaType;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -111,54 +114,25 @@ impl TCopula {
     Ok(())
   }
 
-  /// Standard Student-t density $f_\nu(x)$.
+  /// The `t_ν` density of `stochastic_rs_distributions`, whose `DistributionExt` answers `Some` for every argument.
   fn t_pdf(x: f64, nu: f64) -> f64 {
-    let log_norm =
-      ln_gamma(0.5 * (nu + 1.0)) - 0.5 * (nu * std::f64::consts::PI).ln() - ln_gamma(0.5 * nu);
-    let log_kernel = -0.5 * (nu + 1.0) * (1.0 + x * x / nu).ln();
-    (log_norm + log_kernel).exp()
+    SimdStudentT::new(nu)
+      .pdf(x)
+      .expect("the Student-t law has a pdf")
   }
 
-  /// Standard Student-t CDF $F_\nu(x)$ via the regularised incomplete-beta
-  /// identity $F_\nu(x) = 1 - \tfrac{1}{2} I_{\nu/(\nu+x^2)}(\nu/2, 1/2)$
-  /// for $x \ge 0$.
-  /// Reference: Abramowitz, M., Stegun, I.A. (1964), "Handbook of
-  /// Mathematical Functions", formula 26.7.1.
+  /// The `t_ν` cdf of `stochastic_rs_distributions`, `1 − I_{ν/(ν+x²)}(ν/2, 1/2)/2` for `x ≥ 0`.
   fn t_cdf(x: f64, nu: f64) -> f64 {
-    if !x.is_finite() {
-      return if x > 0.0 { 1.0 } else { 0.0 };
-    }
-    let t = nu / (nu + x * x);
-    let half = 0.5 * beta_i(0.5 * nu, 0.5, t);
-    if x >= 0.0 { 1.0 - half } else { half }
+    SimdStudentT::new(nu)
+      .cdf(x)
+      .expect("the Student-t law has a cdf")
   }
 
-  /// Quantile $t_\nu^{-1}(p)$: a Cornish-Fisher normal seed refined by 40 Newton steps on `[0, 1]`,
-  /// identical to `stochastic_rs_distributions::studentt::SimdStudentT::quantile`.
+  /// The `t_ν` quantile of `stochastic_rs_distributions`: `∓∞` at `p ≤ 0` / `p ≥ 1`, Newton steps inside.
   fn t_quantile(p: f64, nu: f64) -> f64 {
-    if p <= 0.0 {
-      return f64::NEG_INFINITY;
-    }
-    if p >= 1.0 {
-      return f64::INFINITY;
-    }
-    let z = ndtri(p);
-    let mut x = z * (1.0 + (z * z + 1.0) / (4.0 * nu));
-    for _ in 0..40 {
-      let cdf = Self::t_cdf(x, nu);
-      let f = cdf - p;
-      let pdf = Self::t_pdf(x, nu);
-      if pdf <= 0.0 {
-        break;
-      }
-      let dx = f / pdf;
-      let new_x = x - dx;
-      if (new_x - x).abs() < 1e-14 * (1.0 + x.abs()) {
-        return new_x;
-      }
-      x = new_x;
-    }
-    x
+    SimdStudentT::new(nu)
+      .quantile(p)
+      .expect("the Student-t law has a quantile")
   }
 
   /// Bivariate Student-t CDF $T_{\rho,\nu}(h, k)$ via Dunnett-Sobel
@@ -281,22 +255,8 @@ impl BivariateExt for TCopula {
     Ok(out)
   }
 
-  /// $\partial_v C(u,v) = T_{\nu+1}\!\Big(\frac{x - \rho y}{\sqrt{1-\rho^2}}
-  /// \sqrt{\frac{\nu+1}{\nu+y^2}}\Big)$ where $x = t_\nu^{-1}(u),\,
-  /// y = t_\nu^{-1}(v)$.
-  ///
-  /// At the `v \to 0^+/1^-` boundary, `y \to \mp\infty`, and — unlike the
-  /// Gaussian copula — the scale factor `\sqrt{(\nu+1)/(\nu+y^2)}` shrinks
-  /// like `O(1/|y|)` at the same rate `y` diverges, so the `x`-term
-  /// vanishes while `-\rho y \cdot \sqrt{(\nu+1)/(\nu+y^2)} \to
-  /// \pm\rho\sqrt{\nu+1}` stays finite: the whole expression converges to
-  /// `\mp\rho\sqrt{\nu+1}/\sqrt{1-\rho^2}`, independent of `u`. Hardcoding
-  /// `0.0`/`1.0` (only correct in the sub-limit `\rho \to \pm1`) is wrong
-  /// for every finite `\rho`; this closed form was verified against the
-  /// raw formula by taking `y \to -\infty` directly (bypassing the
-  /// quantile inversion's precision loss at extreme probabilities), giving
-  /// agreement to `1e-16` relative and tighter as `|y|` grows further,
-  /// across `\nu \in \{3,10,30,100\}` and both signs of `\rho`.
+  /// `∂_v C = t_{ν+1}((x − ρy)√((ν + 1)/((ν + y²)(1 − ρ²))))`, `x, y = t_ν⁻¹(u), t_ν⁻¹(v)`, whose `v → 0, 1` limit
+  /// `t_{ν+1}(±ρ√((ν + 1)/(1 − ρ²)))` holds for every `u`; NaN for `v` outside `[0, 1]`.
   fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
@@ -305,26 +265,37 @@ impl BivariateExt for TCopula {
     let sqrt_one_minus_rho2 = one_minus_rho2.sqrt();
     let nu_plus_one = nu + 1.0;
     let boundary_arg = rho * nu_plus_one.sqrt() / sqrt_one_minus_rho2;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
+    Ok(conditional_cdf(x, |u, v| {
       if v <= 0.0 {
-        out[i] = Self::t_cdf(boundary_arg, nu_plus_one);
-        continue;
+        return Self::t_cdf(boundary_arg, nu_plus_one);
       }
       if v >= 1.0 {
-        out[i] = Self::t_cdf(-boundary_arg, nu_plus_one);
-        continue;
+        return Self::t_cdf(-boundary_arg, nu_plus_one);
       }
       let xx = Self::t_quantile(u, nu);
       let yy = Self::t_quantile(v, nu);
       let scale = (nu_plus_one / (nu + yy * yy)).sqrt() / sqrt_one_minus_rho2;
-      out[i] = Self::t_cdf((xx - rho * yy) * scale, nu_plus_one);
-    }
-    Ok(out)
+      Self::t_cdf((xx - rho * yy) * scale, nu_plus_one)
+    }))
+  }
+
+  /// `u = t_ν(t_{ν+1}⁻¹(y)√((ν + x²)(1 − ρ²)/(ν + 1)) + ρx)`, `x = t_ν⁻¹(v)`, and the two-point law the `v → 0, 1`
+  /// limit of `∂_v C` leaves at the edges; NaN for `y` or `v` outside `[0, 1]`.
+  fn percent_point(&self, y: &Array1<f64>, v: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let rho = self.theta.unwrap();
+    let nu = self.nu;
+    let one_minus_rho2 = 1.0 - rho * rho;
+    let edge = rho * ((nu + 1.0) / one_minus_rho2).sqrt();
+    conditional_quantiles(y, v, |y, v| {
+      let x = Self::t_quantile(v, nu);
+      let q = Self::t_quantile(y, nu + 1.0);
+      if x.is_infinite() {
+        return if q <= -x.signum() * edge { 0.0 } else { 1.0 };
+      }
+      let scale = ((nu + x * x) * one_minus_rho2 / (nu + 1.0)).sqrt();
+      Self::t_cdf(q * scale + rho * x, nu)
+    })
   }
 
   /// Closed-form Kendall's tau inversion $\rho = \sin(\pi\tau/2)$.

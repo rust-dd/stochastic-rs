@@ -7,8 +7,14 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::Zip;
 
 use super::CopulaType;
+use crate::bivariate::conditional::check_lengths;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::conditioned;
+use crate::bivariate::conditional::confine;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -142,60 +148,54 @@ impl BivariateExt for Clayton {
     Ok(cdfs)
   }
 
-  /// Inverse conditional `u` solving `∂_v C(u,v) = p` (`p = y`): closed
-  /// form `u = (1+v^{-θ}(p^{-θ/(1+θ)}-1))^{-1/θ}` for `θ ≠ 0`. At `θ=0`
-  /// (independence, `C(u,v)=uv`), `∂_v C(u,v) = u`, so the inverse is the
-  /// identity on the fresh uniform `p` — not `v`. The previous branch
-  /// returned `V.clone()`, making every sampled pair exactly comonotonic
-  /// (`U=V`, Kendall's τ ≈ 1) instead of independent — the same defect
-  /// class as [`crate::bivariate::frank::Frank::percent_point`]'s
-  /// pre-fix `θ = 0` branch.
+  /// `u = ((y^{−θ/(1+θ)} + v^θ − 1)/v^θ)^{−1/θ}`, the inverse of `∂_v C`, the identity at `θ = 0`; NaN for `y` or `v`
+  /// outside `[0, 1]`.
   fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let theta = self.theta.unwrap();
 
     if theta == 0.0 {
-      return Ok(y.clone());
+      return conditional_quantiles(y, V, |y, _| y);
     }
 
-    let a = y.powf(theta / (-1.0 - theta));
+    check_lengths(y, V)?;
+    // Whole-array passes keep each pass's `powf` calls independent, which a fused per-pair closure does not.
     let b = V.powf(theta);
-
-    let b_all_zeros = b.iter().all(|&v| v == 0.0);
-
-    if b_all_zeros {
-      return Ok(Array1::ones(V.len()));
-    }
-
-    Ok(((a + &b - 1.0) / b).powf(-1.0 / theta))
+    let mut u = (y.powf(theta / (-1.0 - theta)) + &b - 1.0) / b;
+    let power = -1.0 / theta;
+    Zip::from(&mut u)
+      .and(y)
+      .and(V)
+      .for_each(|u, &y, &v| *u = confine(y, v, u.powf(power)));
+    Ok(u)
   }
 
-  /// At `θ=0` (independence, `C(u,v)=uv`), `∂_v C(u,v) = u`. The general
-  /// formula hits the same `1^{-∞}` removable singularity as `pdf`/`cdf`
-  /// there (`B = v^0+u^0-1 = 1`, raised to `(-1-θ)/θ → -∞`), leaving `A =
-  /// v^{-1}` — not `u` — as the answer, so it needs its own branch.
+  /// `∂_v C = v^{−θ−1}(u^{−θ} + v^{−θ} − 1)^{−(1+θ)/θ}`, `u` at `θ = 0`, and 1 at `v = 0`, whose conditional law is a
+  /// point mass at `u = 0`; NaN for `v` outside `[0, 1]`.
   fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
-    let U = X.column(0);
-    let V = X.column(1);
 
     let theta = self.theta.unwrap();
 
     if theta == 0.0 {
-      return Ok(U.to_owned());
+      return Ok(conditional_cdf(X, |u, _| u));
     }
 
-    let A = V.powf(-theta - 1.0);
-
-    if A.iter().all(|a| a.is_infinite()) {
-      return Ok(Array1::zeros(V.len()));
-    }
-
-    let B = V.powf(-theta) + U.powf(-theta) - 1.0;
-    let h = B.powf((-1.0 - theta) / theta);
-    Ok(A * h)
+    // Two passes, as in `percent_point`: a fused per-pair closure would chain its `powf` calls.
+    let V = X.column(1);
+    let mut h = Zip::from(X.column(0))
+      .and(V)
+      .map_collect(|&u, &v| v.powf(-theta) + u.powf(-theta) - 1.0);
+    Zip::from(&mut h).and(V).for_each(|h, &v| {
+      let p = if v == 0.0 {
+        1.0
+      } else {
+        v.powf(-theta - 1.0) * h.powf((-1.0 - theta) / theta)
+      };
+      *h = conditioned(v, p);
+    });
+    Ok(h)
   }
 
   fn compute_theta(&self) -> f64 {

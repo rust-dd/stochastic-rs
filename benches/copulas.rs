@@ -10,6 +10,7 @@ use ndarray::Array2;
 use stochastic_rs::copulas::bivariate::clayton::Clayton;
 use stochastic_rs::copulas::bivariate::frank::Frank;
 use stochastic_rs::copulas::bivariate::gaussian::GaussianCopula;
+use stochastic_rs::copulas::bivariate::gumbel::Gumbel;
 use stochastic_rs::copulas::bivariate::marshall_olkin::MarshallOlkin;
 use stochastic_rs::copulas::correlation::kendall_tau;
 use stochastic_rs::copulas::gof::gof_cramer_von_mises;
@@ -62,9 +63,8 @@ fn bivariate_sample(c: &mut Criterion) {
   group.bench_function("clayton_n10k", |b| {
     b.iter(|| clayton.sample_with_seed(10_000, 42).unwrap())
   });
-  // At theta >= 2 the Brent h-inverse exceeds its 50-iteration cap on some of 2k draws, and the unwrap panics.
-  let frank = Frank::new(Some(1.0), None);
-  group.bench_function("frank_brent_n2k", |b| {
+  let frank = Frank::new(Some(4.0), None);
+  group.bench_function("frank_n2k", |b| {
     b.iter(|| frank.sample_with_seed(2_000, 42).unwrap())
   });
   let gaussian = GaussianCopula {
@@ -73,6 +73,10 @@ fn bivariate_sample(c: &mut Criterion) {
   };
   group.bench_function("gaussian_n10k", |b| {
     b.iter(|| gaussian.sample_with_seed(10_000, 42).unwrap())
+  });
+  let gumbel = Gumbel::new(Some(2.0), None);
+  group.bench_function("gumbel_brent_n2k", |b| {
+    b.iter(|| gumbel.sample_with_seed(2_000, 42).unwrap())
   });
   let mo = MarshallOlkin::with_alpha_beta(0.3, 0.6);
   group.bench_function("marshall_olkin_n10k", |b| {

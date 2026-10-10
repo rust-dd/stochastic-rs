@@ -34,6 +34,8 @@ use ndarray::Array1;
 use ndarray::Array2;
 
 use crate::bivariate::CopulaType;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -223,31 +225,17 @@ impl BivariateExt for MarshallOlkin {
   fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
-    let u_col = x.column(0);
-    let v_col = x.column(1);
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      if !(0.0..=1.0).contains(&v) {
-        out[i] = f64::NAN;
-        continue;
-      }
+    Ok(conditional_cdf(x, |u, v| {
       if u <= 0.0 {
-        out[i] = 0.0;
-        continue;
-      }
-      if u >= 1.0 {
-        out[i] = 1.0;
-        continue;
-      }
-      out[i] = if u >= v.powf(beta / alpha) {
+        0.0
+      } else if u >= 1.0 {
+        1.0
+      } else if u >= v.powf(beta / alpha) {
         u.powf(1.0 - alpha)
       } else {
         (1.0 - beta) * u * v.powf(-beta)
-      };
-    }
-    Ok(out)
+      }
+    }))
   }
 
   /// Generalised inverse of `∂_v C(· | v)`: the atom `v^{β/α}` for `y` in the jump `[(1-β) w, w]`, `w = v^{β(1-α)/α}`,
@@ -255,27 +243,16 @@ impl BivariateExt for MarshallOlkin {
   fn percent_point(&self, y: &Array1<f64>, v: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
-    Ok(
-      y.iter()
-        .zip(v.iter())
-        .map(|(&y, &v)| {
-          let w = v.powf(beta * (1.0 - alpha) / alpha);
-          let u = if y < (1.0 - beta) * w {
-            y * v.powf(beta) / (1.0 - beta)
-          } else if y <= w {
-            v.powf(beta / alpha)
-          } else {
-            y.powf(1.0 / (1.0 - alpha))
-          };
-          // Checked after the inverse: an early return here measured slower in the sampling bench.
-          if (0.0..=1.0).contains(&y) && (0.0..=1.0).contains(&v) {
-            u
-          } else {
-            f64::NAN
-          }
-        })
-        .collect(),
-    )
+    conditional_quantiles(y, v, |y, v| {
+      let w = v.powf(beta * (1.0 - alpha) / alpha);
+      if y < (1.0 - beta) * w {
+        y * v.powf(beta) / (1.0 - beta)
+      } else if y <= w {
+        v.powf(beta / alpha)
+      } else {
+        y.powf(1.0 / (1.0 - alpha))
+      }
+    })
   }
 
   /// Symmetric-slice Kendall's tau inversion: $\theta = 2\tau / (1 + \tau)$.

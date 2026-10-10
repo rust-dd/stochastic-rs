@@ -39,6 +39,8 @@ use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::bivariate::CopulaType;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -163,56 +165,27 @@ impl BivariateExt for GaussianCopula {
     Ok(out)
   }
 
-  /// $\partial_v C(u,v) = \Phi\big((x - \rho y)/\sqrt{1-\rho^2}\big)$, the
-  /// bivariate-normal conditional CDF $\Pr[X\le x \mid Y=y]$ with $x =
-  /// \Phi^{-1}(u)$, $y = \Phi^{-1}(v)$. Same "derivative w.r.t. the second
-  /// argument, at fixed conditioning value" convention as
-  /// [`crate::bivariate::clayton::Clayton::partial_derivative`].
-  ///
-  /// At the `v \to 0^+/1^-` boundary, `y = \Phi^{-1}(v) \to \mp\infty`, so
-  /// `(x-\rho y)/\sqrt{1-\rho^2} \to \pm\infty` when `\rho>0` but `\to
-  /// \mp\infty` when `\rho<0` — the boundary value's sign flips with the
-  /// sign of `\rho` — and at `\rho=0` the `\rho y` term vanishes
-  /// identically, leaving `\Phi(x)=u`, which depends on `u` rather than
-  /// being a constant. A single hardcoded `0.0`/`1.0` is therefore wrong
-  /// for at least one sign of `\rho` (and always wrong at `\rho=0`);
-  /// evaluating the same formula at `v` clamped just inside `(0,1)` instead
-  /// gives the mathematically correct directional limit (by continuity of
-  /// `\Phi`/`\Phi^{-1}` on the open interval) without a family of
-  /// hardcoded special cases.
+  /// $\partial_v C(u,v) = \Phi\big((x - \rho y)/\sqrt{1-\rho^2}\big)$, $x, y = \Phi^{-1}(u), \Phi^{-1}(v)$, with `v`
+  /// clamped `1e-12` inside `(0, 1)` for the edge limits, whose sign follows `ρ`; NaN for `v` outside `[0, 1]`.
   fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
     let sqrt_one_minus_rho2 = (1.0 - rho * rho).sqrt();
-    let u_col = x.column(0);
-    let v_col = x.column(1);
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i].clamp(BOUNDARY_EPS, 1.0 - BOUNDARY_EPS);
-      let xx = ndtri(u);
-      let yy = ndtri(v);
-      out[i] = norm_cdf((xx - rho * yy) / sqrt_one_minus_rho2);
-    }
-    Ok(out)
+    Ok(conditional_cdf(x, |u, v| {
+      let v = v.clamp(BOUNDARY_EPS, 1.0 - BOUNDARY_EPS);
+      norm_cdf((ndtri(u) - rho * ndtri(v)) / sqrt_one_minus_rho2)
+    }))
   }
 
-  /// Closed-form inverse of [`GaussianCopula::partial_derivative`] w.r.t.
-  /// $u$ at fixed $v$: solving $\Phi((\Phi^{-1}(u) - \rho y)/\sqrt{1-\rho^2})
-  /// = p$ for $u$ gives $u = \Phi(\Phi^{-1}(p)\sqrt{1-\rho^2} + \rho y)$,
-  /// with $y = \Phi^{-1}(v)$.
+  /// $u = \Phi(\Phi^{-1}(y)\sqrt{1-\rho^2} + \rho\,\Phi^{-1}(v))$, the inverse of
+  /// [`GaussianCopula::partial_derivative`] in `u`; NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
     let sqrt_one_minus_rho2 = (1.0 - rho * rho).sqrt();
-    let n = y.len();
-    let mut out = Array1::<f64>::zeros(n);
-    for i in 0..n {
-      let p = y[i];
-      let yy = ndtri(V[i]);
-      out[i] = norm_cdf(ndtri(p) * sqrt_one_minus_rho2 + rho * yy);
-    }
-    Ok(out)
+    conditional_quantiles(y, V, |p, v| {
+      norm_cdf(ndtri(p) * sqrt_one_minus_rho2 + rho * ndtri(v))
+    })
   }
 
   /// Closed-form Kendall's tau inversion $\rho = \sin(\pi\tau/2)$.

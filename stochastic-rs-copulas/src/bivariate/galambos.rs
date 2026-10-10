@@ -28,6 +28,7 @@ use roots::SimpleConvergency;
 use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
+use crate::bivariate::conditional::conditional_cdf;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -189,34 +190,14 @@ impl BivariateExt for Galambos {
     Ok(out)
   }
 
-  /// $\partial_v C(u,v) = (C/v) \cdot [1 - (T/y)^{\theta+1}]$ with
-  /// $x = -\ln u$, $y = -\ln v$, $T = (x^{-\theta} + y^{-\theta})^{-1/\theta}$.
-  /// Derivation: $\ln C = \ln u + \ln v + T$ and $\partial T/\partial y =
-  /// (T/y)^{\theta+1}$; chain through $\partial y/\partial v = -1/v$.
-  ///
-  /// The `v\to0^+` limit is `\theta`- and `u`-dependent (numerically:
-  /// `\theta=0.2` limits near `u`, `\theta\ge1` limits near `1`), so a
-  /// hardcoded `0.0` there was wrong for any `\theta` not small — clamp
-  /// just inside the domain and evaluate the real formula instead of
-  /// shortcutting, same rationale as
-  /// [`crate::bivariate::husler_reiss::HuslerReiss::partial_derivative`].
-  /// The `v\to1^-` limit, by contrast, *is* a clean family-wide `0` — see
-  /// the comment on that branch below.
+  /// $\partial_v C(u,v) = (C/v) \cdot [1 - (T/y)^{\theta+1}]$, $x, y = -\ln u, -\ln v$, $T = (x^{-\theta} + y^{-\theta})^{-1/\theta}$:
+  /// 0 at `v = 1`, the formula at `v` floored to `1e-12` near 0 (a `θ`- and `u`-dependent limit), NaN outside `[0, 1]`.
   fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    let u_col = x.column(0);
-    let v_col = x.column(1);
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
+    Ok(conditional_cdf(x, |u, v| {
       if v >= 1.0 {
-        // ∂C/∂v(u, 1) = 0 for Galambos (positive upper-tail dependence
-        // "spends" the marginal mass at the boundary); see module docs.
-        // Confirmed numerically across θ (unlike the v→0+ side above).
-        out[i] = 0.0;
-        continue;
+        return 0.0;
       }
       let v = v.max(BOUNDARY_EPS);
       let xx = -u.ln();
@@ -224,9 +205,8 @@ impl BivariateExt for Galambos {
       let big_t = (xx.powf(-theta) + yy.powf(-theta)).powf(-1.0 / theta);
       let cuv = u * v * big_t.exp();
       let ratio = (big_t / yy).powf(theta + 1.0);
-      out[i] = (cuv / v) * (1.0 - ratio);
-    }
-    Ok(out)
+      (cuv / v) * (1.0 - ratio)
+    }))
   }
 
   fn compute_theta(&self) -> f64 {

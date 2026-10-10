@@ -9,6 +9,8 @@ use ndarray::Array1;
 use ndarray::Array2;
 
 use super::CopulaType;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -118,46 +120,37 @@ impl BivariateExt for Gumbel {
     Ok(cdfs)
   }
 
+  /// The identity at `θ = 1`, else the Brent root of [`Gumbel::partial_derivative`]; NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     if self.theta.unwrap() == 1.0 {
-      return Ok(y.to_owned());
+      return conditional_quantiles(y, V, |y, _| y);
     }
 
     self.percent_point_numerical(y, V)
   }
 
-  /// $\partial_v C(u,v) = C(u,v)\big((-\ln u)^\theta+(-\ln
-  /// v)^\theta\big)^{1/\theta-1}(-\ln v)^{\theta-1}/v$. At `θ=1`
-  /// (independence, `C(u,v)=uv`), `∂_v C(u,v) = u` — not `v`. The
-  /// previous branch returned `V.to_owned()`, the same defect class as
-  /// [`crate::bivariate::frank::Frank::partial_derivative`]'s pre-fix
-  /// `θ = 0` branch. Note that [`Gumbel::percent_point`]'s own `θ = 1`
-  /// branch was already correct (it returns the fresh uniform directly,
-  /// bypassing this method entirely), so `Gumbel::sample` was never
-  /// affected by this bug — only a direct `partial_derivative` call at
-  /// `θ = 1` was wrong.
+  /// `∂_v C = C(u, v)(x^θ + y^θ)^{1/θ − 1} y^{θ − 1}/v`, `x, y = −ln u, −ln v`; 1 at `u = 1` and at `v = 0`, whose
+  /// conditional law is a point mass at `u = 0`, and NaN for `v` outside `[0, 1]`.
   fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
-    let U = X.column(0);
-    let V = X.column(1);
 
     let theta = self.theta.unwrap();
 
     if theta == 1.0 {
-      return Ok(U.to_owned());
+      return Ok(conditional_cdf(X, |u, _| u));
     }
 
-    let t1 = (-U.ln()).powf(theta);
-    let t2 = (-V.ln()).powf(theta);
-    let p1 = self.cdf(X)?;
-    let p2 = (t1 + t2).powf(-1.0 + 1.0 / theta);
-    let p3 = (-V.ln()).powf(theta - 1.0);
-    let out = p1 * p2 * p3 / V;
-
-    Ok(out)
+    Ok(conditional_cdf(X, |u, v| {
+      if u >= 1.0 || v == 0.0 {
+        return 1.0;
+      }
+      let t1 = (-u.ln()).powf(theta);
+      let t2 = (-v.ln()).powf(theta);
+      let cuv = (-(t1 + t2).powf(1.0 / theta)).exp();
+      cuv * (t1 + t2).powf(-1.0 + 1.0 / theta) * (-v.ln()).powf(theta - 1.0) / v
+    }))
   }
 
   fn compute_theta(&self) -> f64 {

@@ -17,6 +17,7 @@
 //! *Journal of Multivariate Analysis* 8(3), 405-412.
 //! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
 //! Springer, Example 4.23 / Table 4.1 (family (3)).
+//! Reference: Johnson, M.E. (1987), "Multivariate Statistical Simulation", Wiley, the conditional inverse as a quadratic in `u`, DOI 10.1002/9781118150740.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -24,6 +25,8 @@ use roots::SimpleConvergency;
 use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -172,39 +175,41 @@ impl BivariateExt for Amh {
     Ok(out)
   }
 
-  /// $\partial_v C(u,v) = u\big(1 - \theta(1-u)\big) / D^2$ — the crate-wide
-  /// "derivative w.r.t. the second argument, at fixed conditioning value"
-  /// convention used throughout this crate ([`crate::bivariate::clayton::Clayton`],
-  /// [`crate::bivariate::frank::Frank`], [`crate::bivariate::joe::Joe`],
-  /// [`crate::bivariate::gaussian::GaussianCopula`]), matching
-  /// [`BivariateExt::partial_derivative`]'s own finite-difference default
-  /// (which perturbs the second column). The previous formula computed
-  /// $\partial_u C(u,v) = v\big(1-\theta(1-v)\big)/D^2$ instead — a
-  /// correct derivative, but of the wrong argument, so `Amh::percent_point`
-  /// / `Amh::sample` (via [`BivariateExt::percent_point_numerical`], which
-  /// this family does not override) silently solved the wrong equation
-  /// for `u` given `v`.
+  /// $\partial_v C(u,v) = u\big(1 - \theta(1-u)\big) / D^2$, $D = 1 - \theta(1-u)(1-v)$, the derivative in the
+  /// conditioning second argument; NaN for `v` outside `[0, 1]`.
   fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
     let theta = self.theta.unwrap();
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
+    Ok(conditional_cdf(x, |u, v| {
       if u <= 0.0 {
-        out[i] = 0.0;
-        continue;
+        return 0.0;
       }
       if u >= 1.0 {
-        out[i] = 1.0;
-        continue;
+        return 1.0;
       }
       let d = 1.0 - theta * (1.0 - u) * (1.0 - v);
-      out[i] = u * (1.0 - theta * (1.0 - u)) / (d * d);
-    }
-    Ok(out)
+      u * (1.0 - theta * (1.0 - u)) / (d * d)
+    }))
+  }
+
+  /// The root in `[0, 1]` of `Au² + Bu + C = 0` (`y D² = u(1 − θ + θu)`, `p = θ(1 − v)`), taken without cancellation
+  /// for either sign of `B` from `B² − 4AC = (1 − θ)²(1 − y) + (1 − θ + 2θv)²y`; NaN for `y` or `v` outside `[0, 1]`.
+  fn percent_point(&self, y: &Array1<f64>, v: &Array1<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let theta = self.theta.unwrap();
+    conditional_quantiles(y, v, |y, v| {
+      let p = theta * (1.0 - v);
+      let a = y * p * p - theta;
+      let b = 2.0 * y * p * (1.0 - p) - (1.0 - theta);
+      let c = y * (1.0 - p) * (1.0 - p);
+      let root =
+        ((1.0 - theta).powi(2) * (1.0 - y) + (1.0 - theta + 2.0 * theta * v).powi(2) * y).sqrt();
+      if b <= 0.0 {
+        2.0 * c / (root - b)
+      } else {
+        (b + root) / (-2.0 * a)
+      }
+    })
   }
 
   fn compute_theta(&self) -> f64 {

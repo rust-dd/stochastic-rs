@@ -20,6 +20,7 @@ use roots::SimpleConvergency;
 use roots::find_root_brent;
 
 use crate::bivariate::CopulaType;
+use crate::bivariate::conditional::conditional_cdf;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -176,30 +177,22 @@ impl BivariateExt for Joe {
     Ok(out)
   }
 
-  /// $\partial_v C(u,v) = (1 - (1-u)^\theta)(1-v)^{\theta-1} S^{1/\theta - 1}$.
+  /// $\partial_v C(u,v) = (1 - (1-u)^\theta)(1-v)^{\theta-1} S^{1/\theta - 1}$, NaN for `v` outside `[0, 1]`.
   fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
     let theta = self.theta.unwrap();
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
+    Ok(conditional_cdf(x, |u, v| {
       if u <= 0.0 {
-        out[i] = 0.0;
-        continue;
+        return 0.0;
       }
       if u >= 1.0 {
-        out[i] = 1.0;
-        continue;
+        return 1.0;
       }
       let a = (1.0 - u).powf(theta);
       let b = (1.0 - v).powf(theta);
       let s = a + b - a * b;
-      out[i] = (1.0 - a) * (1.0 - v).powf(theta - 1.0) * s.powf(1.0 / theta - 1.0);
-    }
-    Ok(out)
+      (1.0 - a) * (1.0 - v).powf(theta - 1.0) * s.powf(1.0 / theta - 1.0)
+    }))
   }
 
   fn compute_theta(&self) -> f64 {

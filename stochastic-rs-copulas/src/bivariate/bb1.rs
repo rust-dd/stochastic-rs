@@ -22,6 +22,8 @@ use ndarray::Array1;
 use ndarray::Array2;
 
 use super::CopulaType;
+use super::conditional::conditional_cdf;
+use super::conditional::conditional_quantiles;
 use super::two_parameter::clip;
 use super::two_parameter::fit_two_parameters;
 use super::two_parameter::invert_h;
@@ -217,34 +219,27 @@ impl BivariateExt for Bb1 {
     )
   }
 
-  /// `∂_v C(u, v)`.
+  /// `∂_v C(u, v)`, NaN for `v` outside `[0, 1]`.
   fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    Ok(
-      X.rows()
-        .into_iter()
-        .map(|r| Self::h_scalar(clip(r[0]), clip(r[1]), theta, delta))
-        .collect(),
-    )
+    Ok(conditional_cdf(X, |u, v| {
+      Self::h_scalar(clip(u), clip(v), theta, delta)
+    }))
   }
 
-  /// `θ = 2 / (δ(1 − τ)) − 2` at the stored `δ`, floored just above zero.
-  /// Inverse h-function by bisection: the trait's default root finder does
-  /// not converge on the steep conditional CDF near `v → 1`.
+  /// The h-function inverted by bisection on `[1e-12, 1 − 1e-12]`, NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(
     &self,
     y: &Array1<f64>,
     conditioning: &Array1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    Ok(
-      y.iter()
-        .zip(conditioning)
-        .map(|(&p, &v)| invert_h(|u| Self::h_scalar(u, clip(v), theta, delta), p))
-        .collect(),
-    )
+    conditional_quantiles(y, conditioning, |p, v| {
+      invert_h(|u| Self::h_scalar(u, clip(v), theta, delta), p)
+    })
   }
 
+  /// `θ = 2 / (δ(1 − τ)) − 2` at the stored `δ`, floored just above zero.
   fn compute_theta(&self) -> f64 {
     let tau = self.tau.expect("set tau first");
     if tau >= 1.0 {
