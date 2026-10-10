@@ -1,11 +1,11 @@
-//! Levenberg–Marquardt calibration of a trained surrogate $\tilde F$ on its exact Jacobian:
+//! Levenberg–Marquardt fit of a surrogate $\tilde F$ on its exact Jacobian (Horvath et al., §3.2):
 //!
 //! $$
 //! \hat\theta = \arg\min_{\theta}\ \sum_{k}
 //!   w_k^2\bigl(\tilde F(\theta)_k - \sigma^{\text{mkt}}_k\bigr)^2
 //! $$
 //!
-//! It runs in the training box's scaled coordinates and records whether $\hat\theta$ left the box.
+//! Works in scaled box coordinates; a solution on the box edge is a warning rather than an answer.
 //! Horvath, Muguruza & Tomas (2021), "Deep learning volatility", Quant. Finance 21(1), 11–27.
 
 use std::cell::RefCell;

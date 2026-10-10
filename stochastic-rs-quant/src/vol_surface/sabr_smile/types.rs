@@ -43,7 +43,7 @@ pub struct SabrSmileCalibrator {
   /// Maximum strike for `[k_rr_c, k_rr_p, k_bf_c, k_bf_p]`. Defaults to
   /// `s * 2.0`.
   pub strike_hi: f64,
-  /// Largest final objective at which [`SabrSmileResult::success`] is `true`; default `1e-3`.
+  /// [`SabrSmileResult::success`] holds when the final objective is below this; default `1e-3`.
   pub success_tol: f64,
 }
 

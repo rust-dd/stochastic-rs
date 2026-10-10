@@ -68,8 +68,8 @@ impl VarianceSwapPricer {
     sigma * sigma
   }
 
-  /// Demeterfi–Derman–Kamal–Zou fair strike from an ascending OTM strip (trapezoid weights); panics on
-  /// mismatched lengths, fewer than two or NaN strikes, or `tau ≤ 0`, and keeps a NaN price.
+  /// Demeterfi–Derman–Kamal–Zou fair strike from an ascending OTM strip, `K_0` nearest the forward,
+  /// floored at 0 unless NaN; panics on bad lengths or `tau ≤ 0` (strike order/NaN: debug only).
   pub fn fair_strike_replication(&self, strikes: &[f64], otm_prices: &[f64]) -> f64 {
     assert_eq!(
       strikes.len(),
@@ -229,8 +229,8 @@ impl VarianceSwapPricer {
   }
 }
 
-/// Log-contract replication weights $\frac{2}{T}\frac{\Delta K_i}{K_i^2}$ (Demeterfi et al., eq. 28) in
-/// `strikes` order; panics on fewer than two strikes or a non-positive `maturity`.
+/// Log-contract replication weights $\frac{2}{T}\frac{\Delta K_i}{K_i^2}$ (Demeterfi et al. eq. 28)
+/// in `strikes` order; panics on fewer than two strikes or a non-positive `maturity`.
 pub fn replication_weights(strikes: &[f64], maturity: f64) -> Vec<f64> {
   let n = strikes.len();
   assert!(
@@ -283,7 +283,7 @@ impl VolatilitySwapPricer {
   }
 
   /// Heston vol strike: the variance strike with a short-maturity convexity correction for its
-  /// dispersion; panics unless the variance strike is positive (κ → 0 included), NaN for a NaN `sigma`.
+  /// dispersion; panics unless the variance strike is positive (κ → 0 too); NaN for a NaN `sigma`.
   pub fn fair_strike_heston(v0: f64, kappa: f64, theta: f64, sigma: f64, tau: f64) -> f64 {
     let pricer = VarianceSwapPricer {
       s: 1.0,

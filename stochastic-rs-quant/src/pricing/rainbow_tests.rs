@@ -8,11 +8,7 @@ use super::*;
 /// x86_64.
 const TOL: f64 = 1e-12;
 
-/// Values captured from the bundled-market-data `StulzRainbowPricer`
-/// **before** the model/query reshape. The reshape is an API change only,
-/// so these must not move. All four payoffs are pinned, because
-/// `PutOnMin` and `PutOnMax` route through `MargrabePricer`, which the
-/// same wave reshaped one commit earlier.
+/// Pinned prices for all four payoffs; `PutOnMin` and `PutOnMax` route through `MargrabePricer`.
 #[test]
 fn stulz_matches_pre_refactor_goldens() {
   let expected = [

@@ -9,8 +9,8 @@ use ndarray::ArrayView1;
 
 use crate::hurst::HurstError;
 
-/// Leverage ρ: the Pearson correlation of `r_t` with `|r_{t+1}| − |r_t|`; errors on fewer than 20
-/// usable closes or when either series has (near-)zero variance.
+/// Heston leverage ρ (`dW_S·dW_V = ρ dt`) proxied by the Pearson correlation of `r_t` with
+/// `|r_{t+1}| − |r_t|`; errors below 20 usable closes or on a (near-)zero-variance series.
 pub fn estimate_leverage_rho(closes: ArrayView1<f64>) -> Result<f64, HurstError> {
   let n = closes.len();
   if n < 20 {

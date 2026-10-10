@@ -76,6 +76,7 @@ pub fn gaussian_es<T: RealExt>(samples: ArrayView1<T>, confidence: T, orientatio
 /// $$
 ///
 /// Rockafellar & Uryasev (2002), J. Banking & Finance 26(7), 1443–1471, eq. (17).
+/// Artzner, Delbaen, Eber & Heath (1999), "Coherent Measures of Risk", Math. Finance 9(3), 203–228.
 pub fn historical_es<T: RealExt>(
   samples: ArrayView1<T>,
   confidence: T,
