@@ -73,7 +73,7 @@ where
       poisoned.set(true);
     }
     let magnitude = v.abs();
-    if magnitude > peak.get() {
+    if magnitude.is_finite() && magnitude > peak.get() {
       peak.set(magnitude);
     }
     v
@@ -156,8 +156,7 @@ mod tests {
     assert!((v - 1.0).abs() < 1e-9, "expected 1, got {v}");
   }
 
-  /// An overflowing sample counts as zero instead of poisoning the integral, so a transient `∞` in
-  /// a calibration loss leaves the run alive; the jump at `x = 1` costs accuracy, hence `1e-3`.
+  /// An `∞` sample counts as zero and does not end the walk; `∞` on `[0, 1)` leaves `∫_1^∞ e^{-x}`.
   #[test]
   fn an_infinite_sample_counts_as_zero() {
     let v = integrate_to_convergence(
@@ -165,9 +164,28 @@ mod tests {
       0.0,
       1e-10,
     );
+    let expected = (-1.0_f64).exp();
+    assert!((v - expected).abs() < 1e-9, "expected {expected}, got {v}");
+  }
+
+  /// The same over a slow tail, which an infinite envelope would cut short: `∫_1^∞ e^{-x/20} dx`.
+  #[test]
+  fn an_infinite_sample_does_not_truncate_a_slow_tail() {
+    let v = integrate_to_convergence(
+      |u: f64| {
+        if u < 1.0 {
+          f64::INFINITY
+        } else {
+          (-u / 20.0).exp()
+        }
+      },
+      0.0,
+      1e-10,
+    );
+    let expected = 20.0 * (-0.05_f64).exp();
     assert!(
-      v.is_finite() && (v - (-1.0_f64).exp()).abs() < 1e-3,
-      "expected about e^-1, got {v}"
+      (v - expected).abs() < 1e-9 * expected,
+      "expected {expected}, got {v}"
     );
   }
 }
