@@ -88,6 +88,7 @@ impl GaussianUnivariate {
 mod tests {
   use ndarray::Array1;
   use ndarray::Axis;
+  use ndarray::array;
   use ndarray::stack;
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::DistributionSampler;
@@ -97,6 +98,21 @@ mod tests {
   use super::*;
   use crate::bivariate::clayton::Clayton;
   use crate::traits::BivariateExt;
+
+  /// After `fit`, `percent_point` inverts `cdf` and the median of the fitted margin is its mean.
+  #[test]
+  fn percent_point_inverts_cdf_after_fit() {
+    let mut g = GaussianUnivariate::new();
+    g.fit(array![1.0, 2.0, 3.0, 4.0, 5.0].view());
+    for x in [-2.0, 0.5, 3.0, 4.2, 8.0] {
+      let back = g.percent_point(g.cdf(x));
+      assert!(
+        (back - x).abs() < 1e-9,
+        "x = {x}: percent_point(cdf(x)) = {back}"
+      );
+    }
+    assert!((g.percent_point(0.5) - 3.0).abs() < 1e-12);
+  }
 
   /// The module doc claims `GaussianUnivariate`'s `cdf` output is "the
   /// input every `BivariateExt` ... copula expects" — this proves that
