@@ -283,7 +283,7 @@ mod tests {
     let cv = CVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).unwrap();
     let s = cv.sample(10_000, &Deterministic::new(7)).unwrap();
     use crate::correlation::kendall_tau;
-    let tau = kendall_tau(s.view());
+    let tau = kendall_tau(s.view()).unwrap();
     // Clayton(θ=2): τ = θ/(θ+2) = 0.5
     assert!(
       (tau[[0, 1]] - 0.5).abs() < 0.04,
@@ -305,7 +305,7 @@ mod tests {
     let cv = CVine::new(3, vec![t1, t2]).unwrap();
     let s = cv.sample(10_000, &Deterministic::new(7)).unwrap();
     use crate::correlation::kendall_tau;
-    let tau = kendall_tau(s.view());
+    let tau = kendall_tau(s.view()).unwrap();
     let expected_tau = (2.0 / std::f64::consts::PI) * 0.6_f64.asin();
     // (1, 2) and (1, 3) should both match the Gaussian τ identity.
     assert!(

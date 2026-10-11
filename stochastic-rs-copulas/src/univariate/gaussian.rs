@@ -20,67 +20,82 @@ use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
 
+use crate::error::CopulaError;
+
+/// `N(mu, sigma²)` as a marginal transform onto `[0, 1]`.
+///
 /// ```
 /// use ndarray::array;
 /// use stochastic_rs_copulas::univariate::gaussian::GaussianUnivariate;
 ///
-/// let mut g = GaussianUnivariate::new();
-/// g.fit(array![1.0, 2.0, 3.0, 4.0, 5.0].view());
+/// let g = GaussianUnivariate::fit(array![1.0, 2.0, 3.0, 4.0, 5.0].view()).unwrap();
 /// // The sample mean (3.0) maps to the median of the fitted normal.
 /// assert!((g.cdf(3.0) - 0.5).abs() < 1e-9);
 /// ```
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GaussianUnivariate {
-  /// `Some((mean, std))` once `fit` has been called; `None` otherwise.
-  params: Option<(f64, f64)>,
+  mu: f64,
+  sigma: f64,
 }
 
 impl GaussianUnivariate {
-  pub fn new() -> Self {
-    Self::default()
+  /// Panics unless `sigma > 0` and both are finite.
+  pub fn new(mu: f64, sigma: f64) -> Self {
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      sigma > 0.0,
+      "sigma must satisfy `sigma > 0.0`, got sigma = {sigma:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
+    Self { mu, sigma }
   }
 
-  /// Fit mean and std to data column, then cache the closed-form parameters.
-  pub fn fit(&mut self, column: ArrayView1<f64>) {
-    let n = column.len() as f64;
-    if n < 2.0 {
-      // fallback: standard normal
-      self.params = Some((0.0, 1.0));
-      return;
+  /// Sample mean and (n − 1) standard deviation of `column`; `InsufficientData` below two values, `InvalidStructure`
+  /// for a constant or non-finite column.
+  pub fn fit(column: ArrayView1<f64>) -> Result<Self, CopulaError> {
+    let n = column.len();
+    if n < 2 {
+      return Err(CopulaError::InsufficientData { needed: 2, got: n });
     }
-    let mean = column.mean().unwrap_or(0.0);
-    let var = column.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0);
-    let std = var.sqrt().max(1e-12);
-    self.params = Some((mean, std));
+    let mu = column.sum() / n as f64;
+    let var = column.iter().map(|&x| (x - mu).powi(2)).sum::<f64>() / (n as f64 - 1.0);
+    if !(var > 0.0 && var.is_finite()) {
+      return Err(CopulaError::InvalidStructure(format!(
+        "a Gaussian margin needs a positive variance, got {var:?}"
+      )));
+    }
+    Ok(Self {
+      mu,
+      sigma: var.sqrt(),
+    })
   }
 
-  pub fn is_fitted(&self) -> bool {
-    self.params.is_some()
+  pub fn mu(&self) -> f64 {
+    self.mu
   }
 
-  /// Normal CDF using the cached `(mean, std)`.
+  pub fn sigma(&self) -> f64 {
+    self.sigma
+  }
+
   pub fn cdf(&self, x: f64) -> f64 {
-    match self.params {
-      Some((mu, sigma)) => norm_cdf((x - mu) / sigma),
-      None => 0.5,
-    }
+    norm_cdf((x - self.mu) / self.sigma)
   }
 
-  /// Normal pdf using the cached `(mean, std)`.
   pub fn pdf(&self, x: f64) -> f64 {
-    match self.params {
-      Some((mu, sigma)) => norm_pdf((x - mu) / sigma) / sigma,
-      None => 1.0,
-    }
+    norm_pdf((x - self.mu) / self.sigma) / self.sigma
   }
 
-  /// Normal quantile (inverse CDF) using the cached `(mean, std)`.
+  /// The quantile function, the inverse of `cdf`.
   #[doc(alias = "ppf")]
   pub fn percent_point(&self, p: f64) -> f64 {
-    match self.params {
-      Some((mu, sigma)) => mu + sigma * ndtri(p),
-      None => 0.0,
-    }
+    self.mu + self.sigma * ndtri(p)
   }
 }
 
@@ -102,8 +117,7 @@ mod tests {
   /// After `fit`, `percent_point` inverts `cdf` and the median of the fitted margin is its mean.
   #[test]
   fn percent_point_inverts_cdf_after_fit() {
-    let mut g = GaussianUnivariate::new();
-    g.fit(array![1.0, 2.0, 3.0, 4.0, 5.0].view());
+    let g = GaussianUnivariate::fit(array![1.0, 2.0, 3.0, 4.0, 5.0].view()).unwrap();
     for x in [-2.0, 0.5, 3.0, 4.2, 8.0] {
       let back = g.percent_point(g.cdf(x));
       assert!(
@@ -124,10 +138,8 @@ mod tests {
     let mut y = Array1::<f64>::zeros(600);
     normal.fill_slice(y.as_slice_mut().unwrap());
 
-    let mut gx = GaussianUnivariate::new();
-    gx.fit(x.view());
-    let mut gy = GaussianUnivariate::new();
-    gy.fit(y.view());
+    let gx = GaussianUnivariate::fit(x.view()).unwrap();
+    let gy = GaussianUnivariate::fit(y.view()).unwrap();
 
     let u = x.mapv(|v| gx.cdf(v));
     let v = y.mapv(|v| gy.cdf(v));
@@ -140,5 +152,58 @@ mod tests {
       .fit(data.view())
       .expect("the transformed margins are a two-column sample in [0, 1]");
     assert!(frank.theta().is_some());
+  }
+
+  #[test]
+  fn a_margin_needs_two_values_and_a_spread() {
+    assert_eq!(
+      GaussianUnivariate::fit(array![1.0].view()).unwrap_err(),
+      CopulaError::InsufficientData { needed: 2, got: 1 }
+    );
+    assert!(matches!(
+      GaussianUnivariate::fit(array![2.0, 2.0, 2.0].view()),
+      Err(CopulaError::InvalidStructure(_))
+    ));
+    let g = GaussianUnivariate::fit(array![1.0, 2.0, 3.0, 4.0, 5.0].view()).unwrap();
+    assert_eq!((g.mu(), g.sigma()), (3.0, 2.5_f64.sqrt()));
+    assert!((g.cdf(3.0) - 0.5).abs() < 1e-12 && (g.percent_point(0.5) - 3.0).abs() < 1e-12);
+  }
+
+  /// A NaN or infinite entry leaves no finite variance, so no margin.
+  #[test]
+  fn a_non_finite_column_has_no_margin() {
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+      let got = GaussianUnivariate::fit(array![1.0, 2.0, bad].view());
+      assert!(
+        matches!(got, Err(CopulaError::InvalidStructure(_))),
+        "{bad}: {got:?}"
+      );
+    }
+  }
+
+  #[test]
+  #[should_panic(expected = "sigma must satisfy `sigma > 0.0`, got sigma = 0.0")]
+  fn a_zero_sigma_is_a_precondition() {
+    let _ = GaussianUnivariate::new(0.0, 0.0);
+  }
+
+  #[test]
+  #[should_panic(expected = "sigma must satisfy `sigma.is_finite()`, got sigma = inf")]
+  fn an_infinite_sigma_is_a_precondition() {
+    let _ = GaussianUnivariate::new(0.0, f64::INFINITY);
+  }
+
+  #[test]
+  #[should_panic(expected = "mu must satisfy `mu.is_finite()`, got mu = NaN")]
+  fn a_nan_mu_is_a_precondition() {
+    let _ = GaussianUnivariate::new(f64::NAN, 1.0);
+  }
+
+  #[test]
+  fn a_margin_built_from_its_parameters_evaluates_them() {
+    let g = GaussianUnivariate::new(1.0, 2.0);
+    assert!((g.cdf(1.0) - 0.5).abs() < 1e-15);
+    assert!((g.pdf(1.0) - 1.0 / (2.0 * (2.0 * std::f64::consts::PI).sqrt())).abs() < 1e-15);
+    assert!((g.percent_point(0.975) - (1.0 + 2.0 * 1.959963984540054)).abs() < 1e-9);
   }
 }

@@ -23,6 +23,7 @@
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 
 use super::cvine::CVine;
@@ -36,7 +37,9 @@ use crate::bivariate::clayton::Clayton;
 use crate::bivariate::frank::Frank;
 use crate::bivariate::gaussian::GaussianCopula;
 use crate::bivariate::t_copula::TCopula;
+use crate::correlation::check_defined;
 use crate::correlation::kendall_tau;
+use crate::correlation::kendall_tau_b;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 
@@ -73,13 +76,9 @@ pub struct VineFit {
   pub bic: f64,
 }
 
-/// Kendall's τ of two pseudo-observation columns.
+/// Kendall's τ-b of two pseudo-observation columns.
 fn tau_of(u: &[f64], v: &[f64]) -> f64 {
-  kendalls::tau_b_with_comparator(u, v, |a: &f64, b: &f64| {
-    a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Greater)
-  })
-  .map(|(t, ..)| t)
-  .unwrap_or(0.0)
+  kendall_tau_b(ArrayView1::from(u), ArrayView1::from(v)).expect("fit_vine checked n >= 10")
 }
 
 fn log_likelihood(pair: &PairCopula, u: &[f64], v: &[f64]) -> f64 {
@@ -232,8 +231,8 @@ fn dvine_order(tau: ArrayView2<f64>) -> Vec<usize> {
   path
 }
 
-/// Fits a vine of the requested structure to the pseudo-observations `u` (rows = observations, columns in `[0, 1]`).
-/// `Unsupported` for a family outside `BivariateFamily::VINE_CANDIDATES` and for an edge no listed family represents.
+/// Fits a vine of `structure` to the pseudo-observations `u` (rows = observations, columns in `[0, 1]`); `Unsupported` for a
+/// family outside `VINE_CANDIDATES` or an edge no family represents, `InvalidStructure` for a constant or NaN column.
 pub fn fit_vine(
   u: ArrayView2<f64>,
   structure: VineStructure,
@@ -260,7 +259,8 @@ pub fn fit_vine(
       "the vine fitter cannot estimate {family:?}; the candidates are BivariateFamily::VINE_CANDIDATES"
     )));
   }
-  let tau = kendall_tau(u);
+  let tau = kendall_tau(u)?;
+  check_defined(tau.view())?;
   match structure {
     VineStructure::DVine => fit_dvine(u, tau.view(), families, criterion),
     VineStructure::CVine => fit_cvine(u, tau.view(), families, criterion),
@@ -398,7 +398,7 @@ fn fit_cvine(
     for (c, (_, col)) in next_values.iter().enumerate() {
       pseudo.column_mut(c).assign(&Array1::from_vec(col.clone()));
     }
-    let tau_next = kendall_tau(pseudo.view());
+    let tau_next = kendall_tau(pseudo.view())?;
     let best = (0..k)
       .max_by(|&a, &b| {
         let sa: f64 = (0..k)

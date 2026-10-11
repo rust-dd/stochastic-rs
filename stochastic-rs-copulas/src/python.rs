@@ -174,12 +174,12 @@ impl PyEmpiricalCopula2D {
     y: numpy::PyReadonlyArray1<'py, f64>,
   ) -> pyo3::PyResult<Self> {
     stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::empirical::EmpiricalCopula2D::new_from_two_series(x.as_array(), y.as_array()),
+      inner: crate::empirical::EmpiricalCopula2D::new(x.as_array(), y.as_array()),
     })
   }
 
   fn rank_data<'py>(&self, py: Python<'py>) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
-    self.inner.rank_data.clone().into_pyarray(py)
+    self.inner.rank_data().to_owned().into_pyarray(py)
   }
 
   #[pyo3(signature = (n, seed=None))]
@@ -199,14 +199,14 @@ impl PyEmpiricalCopula2D {
   }
 }
 
-/// Kendall's τ pairwise matrix from an `(n, k)` data matrix.
+/// Kendall's τ-b pairwise matrix from an `(n, k)` data matrix.
 #[pyfunction]
 pub fn kendall_tau_matrix<'py>(
   py: Python<'py>,
   data: numpy::PyReadonlyArray2<'py, f64>,
-) -> pyo3::Bound<'py, numpy::PyArray2<f64>> {
-  let out = crate::correlation::kendall_tau(data.as_array());
-  out.into_pyarray(py)
+) -> PyResult<pyo3::Bound<'py, numpy::PyArray2<f64>>> {
+  let out = crate::correlation::kendall_tau(data.as_array()).map_err(err_to_py)?;
+  Ok(out.into_pyarray(py))
 }
 
 /// Convert a Kendall τ matrix to a Gaussian copula correlation matrix

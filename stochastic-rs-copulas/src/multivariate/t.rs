@@ -65,6 +65,7 @@ use super::MultivariateFamily;
 use super::correlation_matrix::CorrelationMatrix;
 use super::correlation_matrix::shrink_to_spd;
 use crate::bivariate::t_copula::check_nu;
+use crate::correlation::check_defined;
 use crate::correlation::kendall_tau;
 use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
@@ -189,12 +190,12 @@ impl TMultivariate {
     z
   }
 
-  /// Build $\Sigma$ from sample Kendall-τ via $\rho_{ij} = \sin(\pi\tau_{ij}/2)$.
-  /// This is the rank-based identity that holds for **any** elliptical
-  /// copula, hence is ν-agnostic and robust to the t-copula's heavy tails.
-  fn estimate_corr_from_kendall(x: ArrayView2<f64>) -> Array2<f64> {
+  /// $\Sigma$ from the sample Kendall τ-b matrix through $\rho_{ij} = \sin(\pi\tau_{ij}/2)$, which holds for any elliptical
+  /// copula and so does not depend on $\nu$.
+  fn estimate_corr_from_kendall(x: ArrayView2<f64>) -> Result<Array2<f64>, CopulaError> {
     let d = x.ncols();
-    let tau = kendall_tau(x);
+    let tau = kendall_tau(x)?;
+    check_defined(tau.view())?;
     let mut corr = Array2::<f64>::zeros((d, d));
     for i in 0..d {
       corr[[i, i]] = 1.0;
@@ -208,7 +209,7 @@ impl TMultivariate {
         corr[[j, i]] = rho;
       }
     }
-    corr
+    Ok(corr)
   }
 
   /// Log-density of the multivariate Student-$t$ at the un-transformed
@@ -324,7 +325,7 @@ impl MultivariateExt for TMultivariate {
     if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
       return Err(CopulaError::MarginalOutOfRange);
     }
-    let corr = CorrelationMatrix::try_new(shrink_to_spd(Self::estimate_corr_from_kendall(X)))?;
+    let corr = CorrelationMatrix::try_new(shrink_to_spd(Self::estimate_corr_from_kendall(X)?))?;
     // Profile MLE for ν conditional on Σ.
     self.nu = Self::optimise_nu(&corr, X);
     self.corr = Some(corr);

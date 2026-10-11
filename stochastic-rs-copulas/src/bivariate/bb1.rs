@@ -30,6 +30,7 @@ use super::two_parameter::fit_two_parameters;
 use super::two_parameter::invert_h;
 use super::two_parameter::ln_one_minus_exp;
 use crate::bivariate::conditional::check_pairs;
+use crate::correlation::kendall_tau_b;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -143,21 +144,7 @@ impl Bb1 {
   /// Maximum-likelihood fit of `(θ, δ)` from a Kendall start without `fit`'s input check, for the vine fitter's
   /// pseudo-observations; a `τ̂` outside BB1's `(0, 1)` or an estimate `try_new` rejects is an error and stores nothing.
   pub(crate) fn fit_parameters(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
-    if X.nrows() < 2 {
-      return Err(CopulaError::InsufficientData {
-        needed: 2,
-        got: X.nrows(),
-      });
-    }
-    let u = X.column(0).to_owned();
-    let v = X.column(1).to_owned();
-    let (tau, ..) = kendalls::tau_b_with_comparator(&u.to_vec(), &v.to_vec(), |a, b| {
-      a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Greater)
-    })
-    .map_err(|_| CopulaError::InsufficientData {
-      needed: 2,
-      got: u.len(),
-    })?;
+    let tau = kendall_tau_b(X.column(0), X.column(1))?;
     if !(tau > 0.0 && tau < 1.0) {
       return Err(tau_out_of_range(tau, "0.0 < tau < 1.0".to_string()));
     }

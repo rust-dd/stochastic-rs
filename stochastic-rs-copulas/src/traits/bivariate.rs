@@ -19,6 +19,7 @@ use crate::bivariate::conditional::ABSOLUTE_TOLERANCE;
 use crate::bivariate::conditional::check_lengths;
 use crate::bivariate::conditional::check_pairs;
 use crate::bivariate::conditional::in_unit;
+use crate::correlation::kendall_tau_b;
 use crate::error::CopulaError;
 use crate::optim::zero;
 
@@ -126,15 +127,7 @@ pub trait BivariateExt {
   /// family cannot represent it (`InvalidParameter { name: "tau", .. }`) or the inverse fails `validate_theta`.
   fn fit(&mut self, X: ndarray::ArrayView2<f64>) -> Result<(), CopulaError> {
     check_pairs(X)?;
-    let u = X.column(0);
-    let v = X.column(1);
-    let (tau, ..) = kendalls::tau_b_with_comparator(&u.to_vec(), &v.to_vec(), |a, b| {
-      a.partial_cmp(b).unwrap_or(Ordering::Greater)
-    })
-    .map_err(|_| CopulaError::InsufficientData {
-      needed: 2,
-      got: u.len(),
-    })?;
+    let tau = kendall_tau_b(X.column(0), X.column(1))?;
     let theta = self.theta_from_tau(tau)?;
     self.validate_theta(theta)?;
     self.set_theta(theta);

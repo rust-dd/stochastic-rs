@@ -336,7 +336,7 @@ mod tests {
     let dv = DVine::new(2, tree).unwrap();
     let s = dv.sample(10_000, &Deterministic::new(7)).unwrap();
     use crate::correlation::kendall_tau;
-    let tau = kendall_tau(s.view());
+    let tau = kendall_tau(s.view()).unwrap();
     // Clayton(θ=2): τ = θ/(θ+2) = 2/4 = 0.5
     assert!(
       (tau[[0, 1]] - 0.5).abs() < 0.04,
@@ -359,7 +359,7 @@ mod tests {
     let dv = DVine::new(3, vec![t1, t2]).unwrap();
     let s = dv.sample(10_000, &Deterministic::new(7)).unwrap();
     use crate::correlation::kendall_tau;
-    let tau = kendall_tau(s.view());
+    let tau = kendall_tau(s.view()).unwrap();
     // Gaussian(ρ=0.6) → τ = (2/π) arcsin(0.6) ≈ 0.4097
     let expected_tau = (2.0 / std::f64::consts::PI) * 0.6_f64.asin();
     assert!(

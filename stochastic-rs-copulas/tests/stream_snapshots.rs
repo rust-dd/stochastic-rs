@@ -62,7 +62,7 @@ const PINS: &[(&str, u64)] = &[
   ("rvine_independence", 0xc269b264798404c9),
   ("nac_gumbel_nested", 0x85ff7aa5ffd667a9),
   ("nac_clayton_flat", 0x5be5566c431f17f4),
-  ("empirical", 0x3e1dc30dfbde113d),
+  ("empirical", 0xf1800d610f0b16aa),
 ];
 
 fn fnv1a(values: impl Iterator<Item = u64>) -> u64 {
@@ -102,7 +102,7 @@ fn pair_trees() -> Vec<Vec<PairCopula>> {
 fn empirical() -> EmpiricalCopula2D {
   let x = Array1::from_vec((0..50).map(|i| i as f64).collect());
   let y = Array1::from_vec((0..50).map(|i| (i as f64 * 1.7) % 37.0).collect());
-  EmpiricalCopula2D::new_from_two_series(x.view(), y.view())
+  EmpiricalCopula2D::new(x.view(), y.view())
 }
 
 fn samples() -> Vec<(&'static str, Array2<f64>)> {

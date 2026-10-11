@@ -206,7 +206,7 @@ fn fit(c: &mut Criterion) {
     })
   });
   group.bench_function("kendall_tau_d4_n1k", |b| {
-    b.iter(|| kendall_tau(data.view()))
+    b.iter(|| kendall_tau(data.view()).unwrap())
   });
   group.bench_function("gaussian_fit_d4_n1k", |b| {
     b.iter(|| {

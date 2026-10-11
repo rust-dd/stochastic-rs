@@ -251,7 +251,7 @@ fn t_copula_fit_shrinks_an_indefinite_estimate_and_keeps_the_unit_diagonal() {
     [3, 9, 7, 9],
   ];
   let u = Array2::from_shape_fn((12, 4), |(i, j)| ranks[i][j] as f64 / 13.0);
-  let raw = tau_matrix_to_corr_matrix(kendall_tau(u.view()).view());
+  let raw = tau_matrix_to_corr_matrix(kendall_tau(u.view()).unwrap().view());
   assert!(!is_spd(raw.view()));
   let mut cop = TMultivariate::default();
   cop.fit(u.view()).unwrap();
@@ -289,7 +289,7 @@ fn t_copula_fit_of_a_hopeless_estimate_is_the_minimal_shrink_not_the_identity() 
     [4, 7, 8, 3, 10, 9],
   ];
   let u = Array2::from_shape_fn((10, 6), |(i, j)| ranks[i][j] as f64 / 11.0);
-  let raw = tau_matrix_to_corr_matrix(kendall_tau(u.view()).view());
+  let raw = tau_matrix_to_corr_matrix(kendall_tau(u.view()).unwrap().view());
   assert!((smallest_eigenvalue(raw.view()) + 0.156).abs() < 1e-3);
   let mut cop = TMultivariate::default();
   cop.fit(u.view()).unwrap();
@@ -307,4 +307,33 @@ fn t_copula_fit_of_a_hopeless_estimate_is_the_minimal_shrink_not_the_identity() 
     assert!((fitted[[i, j]] - expected).abs() < 1e-15);
   }
   assert!(TMultivariate::try_new(fitted.clone(), cop.nu()).is_ok());
+}
+
+/// The fit inverts Kendall's τ-b, which counts ties per margin: `(1,1,2,3)` × `(1,2,2,3)` has τ-b `0.8` where τ-a is `2/3`.
+#[test]
+fn t_copula_fit_inverts_tau_b_on_tied_data() {
+  let u = array![[0.25, 0.25], [0.25, 0.5], [0.5, 0.5], [0.75, 0.75]];
+  let mut cop = TMultivariate::default();
+  cop.fit(u.view()).unwrap();
+  let rho = cop.correlation().unwrap()[[0, 1]];
+  assert!(
+    (rho - (0.5 * std::f64::consts::PI * 0.8).sin()).abs() < 1e-15,
+    "{rho}"
+  );
+}
+
+/// A constant column leaves its τ-b undefined, which the fit names instead of fitting a zero correlation to it.
+#[test]
+fn t_copula_fit_rejects_a_constant_column() {
+  let u = Array2::from_shape_fn(
+    (20, 3),
+    |(i, j)| {
+      if j == 1 { 0.5 } else { (i + 1) as f64 / 21.0 }
+    },
+  );
+  let got = TMultivariate::default().fit(u.view());
+  assert!(
+    matches!(&got, Err(CopulaError::InvalidStructure(why)) if why.contains("columns 0 and 1")),
+    "{got:?}"
+  );
 }

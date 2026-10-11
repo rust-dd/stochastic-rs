@@ -13,7 +13,7 @@ fn clayton_theta_from_tau_then_sample() {
   assert_eq!(uv.dim(), (10_000, 2));
   assert!(uv.iter().all(|&x| (0.0..=1.0).contains(&x)));
 
-  let corr = kendall_tau(uv.view()); // pairwise Kendall tau matrix, shape (2, 2)
+  let corr = kendall_tau(uv.view()).unwrap(); // pairwise Kendall tau-b matrix, shape (2, 2)
   let tau_hat = corr[[0, 1]];
   assert!((tau_hat - 0.5).abs() < 0.05, "tau_hat = {tau_hat}");
 }

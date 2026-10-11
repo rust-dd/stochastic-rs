@@ -63,7 +63,7 @@ fn two_dimensional_fit_over_all_families_keeps_the_clayton_dependence() {
     fit.families
   );
   let refit = fit.vine.sample(5000, &Deterministic::new(11)).unwrap();
-  let tau = kendall_tau(refit.view())[[0, 1]];
+  let tau = kendall_tau(refit.view()).unwrap()[[0, 1]];
   assert!((tau - 0.5).abs() < 0.05, "fitted tau {tau}");
 }
 
@@ -275,5 +275,28 @@ fn estimate_covers_exactly_the_vine_candidates() {
   for &family in BivariateFamily::ALL {
     let candidate = BivariateFamily::VINE_CANDIDATES.contains(&family);
     assert_eq!(estimate(family, &x, &y).is_some(), candidate, "{family:?}");
+  }
+}
+
+/// A constant column has no τ-b to rank by, so both structures name it instead of repeating a variable in the order.
+#[test]
+fn a_constant_column_is_rejected_by_both_structures() {
+  let u = Array2::from_shape_fn(
+    (40, 3),
+    |(i, j)| {
+      if j == 2 { 0.5 } else { (i + 1) as f64 / 41.0 }
+    },
+  );
+  for structure in [VineStructure::DVine, VineStructure::CVine] {
+    let got = fit_vine(
+      u.view(),
+      structure,
+      BivariateFamily::VINE_CANDIDATES,
+      SelectionCriterion::Aic,
+    );
+    assert!(
+      matches!(&got, Err(CopulaError::InvalidStructure(why)) if why.contains("columns 0 and 2")),
+      "{structure:?}: {got:?}"
+    );
   }
 }
