@@ -4,6 +4,7 @@ use stochastic_rs_core::simd_rng::Deterministic;
 use super::*;
 use crate::bivariate::t_copula::TCopula;
 use crate::correlation::tau_matrix_to_corr_matrix;
+use crate::multivariate::linalg::condition_number;
 use crate::multivariate::linalg::is_spd;
 use crate::multivariate::linalg::smallest_eigenvalue;
 
@@ -217,18 +218,22 @@ fn the_multivariate_set_nu_panics_on_an_infinite_nu() {
   TMultivariate::default().set_nu(f64::INFINITY);
 }
 
-/// The documented bisection tolerance of the shrink.
+/// The documented bisection tolerance and eigenvalue floor of the shrink.
 const TOLERANCE: f64 = 1e-6;
+const FLOOR: f64 = 1e-3;
 
-/// The `lambda` of `(1 - lambda) R + lambda I` that a fit applied, read off `R[[0, 1]]`, and its analytic minimum for a
-/// smallest eigenvalue `mu` of `R`.
+/// The `lambda` of `(1 - lambda) R + lambda I` that a fit applied, read off `R[[0, 1]]`, and its analytic minimum
+/// `(FLOOR - mu) / (1 - mu)` for a smallest eigenvalue `mu` of `R`.
 fn applied_and_minimal_lambda(raw: &Array2<f64>, fitted: &Array2<f64>) -> (f64, f64) {
   let mu = smallest_eigenvalue(raw.view());
-  (1.0 - fitted[[0, 1]] / raw[[0, 1]], -mu / (1.0 - mu))
+  (
+    1.0 - fitted[[0, 1]] / raw[[0, 1]],
+    (FLOOR - mu) / (1.0 - mu),
+  )
 }
 
 /// Four shares that sum to a constant give a Kendall estimate that is not positive definite (smallest eigenvalue
-/// -4.2e-3); the fit shrinks it by the smallest `lambda` and keeps the diagonal at 1.
+/// -4.2e-3); the fit shrinks it by the smallest `lambda` that leaves every eigenvalue at least 1e-3.
 #[test]
 fn t_copula_fit_shrinks_an_indefinite_estimate_and_keeps_the_unit_diagonal() {
   let ranks = [
@@ -256,6 +261,8 @@ fn t_copula_fit_shrinks_an_indefinite_estimate_and_keeps_the_unit_diagonal() {
     (want - 1e-12..=want + TOLERANCE + 1e-12).contains(&lambda),
     "{lambda} vs {want}"
   );
+  assert!(smallest_eigenvalue(fitted.view()) >= FLOOR - 1e-12);
+  assert!(condition_number(fitted.view()) <= 4.0 / FLOOR);
   for i in 0..4 {
     assert_eq!(fitted[[i, i]], 1.0);
     for j in 0..i {
@@ -266,7 +273,7 @@ fn t_copula_fit_shrinks_an_indefinite_estimate_and_keeps_the_unit_diagonal() {
 }
 
 /// Ten observations of six shares give a Kendall estimate with smallest eigenvalue -0.156: the fit shrinks it by
-/// `-mu / (1 - mu)` to the tolerance, so the result is positive definite and keeps its correlations.
+/// `(1e-3 - mu) / (1 - mu)` to the tolerance, so the result keeps its correlations and its eigenvalues stay above 1e-3.
 #[test]
 fn t_copula_fit_of_a_hopeless_estimate_is_the_minimal_shrink_not_the_identity() {
   let ranks = [
@@ -292,6 +299,8 @@ fn t_copula_fit_of_a_hopeless_estimate_is_the_minimal_shrink_not_the_identity() 
     (want - 1e-12..=want + TOLERANCE + 1e-12).contains(&lambda),
     "{lambda} vs {want}"
   );
+  assert!(smallest_eigenvalue(fitted.view()) >= FLOOR - 1e-12);
+  assert!(condition_number(fitted.view()) <= 6.0 / FLOOR);
   assert_ne!(fitted, &Array2::<f64>::eye(6));
   for ((i, j), r) in raw.indexed_iter() {
     let expected = if i == j { 1.0 } else { (1.0 - lambda) * r };

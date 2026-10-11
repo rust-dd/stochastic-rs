@@ -119,7 +119,7 @@ impl MultivariateExt for GaussianMultivariate {
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
     let corr = self.fitted()?;
     let d = corr.dim();
-    let l = corr.chol_lower(); // (d x d)
+    let l = corr.chol_lower();
     // Sample standard normals G ~ N(0, I) of shape (n x d)
     let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(seed);
     let g = Array2::from_shape_fn((n, d), |_| normal.sample());
@@ -135,7 +135,8 @@ impl MultivariateExt for GaussianMultivariate {
     Ok(u)
   }
 
-  /// Fit the Gaussian copula from U in (0,1)^{n x d}.
+  /// Fit the Gaussian copula from U in (0,1)^{n x d}; an indefinite or near-singular estimate is shrunk toward the
+  /// identity until every eigenvalue is at least `1e-3`.
   fn fit(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
     if X.ncols() < 2 {
       return Err(CopulaError::InvalidStructure(format!(
@@ -199,7 +200,7 @@ impl MultivariateExt for GaussianMultivariate {
     self.check_fit(X)?;
     let z = self.transform_to_normal(X); // n x d
     let corr = self.fitted()?;
-    let l = corr.chol_lower(); // d x d
+    let l = corr.chol_lower();
     let d = corr.dim();
     let n = z.nrows();
     let m_samples = 4000usize; // Monte Carlo samples per query point
@@ -233,6 +234,8 @@ mod tests {
 
   use super::*;
   use crate::bivariate::gaussian::GaussianCopula;
+  use crate::multivariate::linalg::condition_number;
+  use crate::multivariate::linalg::smallest_eigenvalue;
   use crate::traits::BivariateExt;
 
   /// At `d = 2` the density is the bivariate Gaussian copula's closed form.
@@ -251,6 +254,33 @@ mod tests {
         want[i]
       );
     }
+  }
+
+  /// As many rows as columns leave the sample correlation of rank `d - 1`, which the fit lifts to the eigenvalue floor.
+  #[test]
+  fn a_fit_with_as_many_rows_as_columns_has_its_rank_deficiency_floored() {
+    let u = GaussianMultivariate::new(Array2::<f64>::eye(6))
+      .sample(6, &Deterministic::new(4))
+      .unwrap();
+    let z = GaussianMultivariate::default().transform_to_normal(u.view());
+    let raw = GaussianMultivariate::estimate_corr_from_normal(z.view());
+    assert!(smallest_eigenvalue(raw.view()) < 1e-10);
+    let mut fitted = GaussianMultivariate::default();
+    fitted.fit(u.view()).unwrap();
+    let corr = fitted.correlation().unwrap();
+    assert!(smallest_eigenvalue(corr.view()) >= 1e-3 - 1e-12);
+    assert!(condition_number(corr.view()) <= 6.0 / 1e-3);
+  }
+
+  /// Perfectly dependent columns estimate `0.999999`, a positive definite matrix below the floor, and fit to `0.999`.
+  #[test]
+  fn a_fit_of_perfectly_dependent_columns_stops_at_the_floor() {
+    let column = Array1::from_shape_fn(50, |i| (i + 1) as f64 / 51.0);
+    let u = ndarray::stack![Axis(1), column, column];
+    let mut fitted = GaussianMultivariate::default();
+    fitted.fit(u.view()).unwrap();
+    let rho = fitted.correlation().unwrap()[[0, 1]];
+    assert!((0.999 - 1e-6..=0.999).contains(&rho), "{rho}");
   }
 
   #[test]

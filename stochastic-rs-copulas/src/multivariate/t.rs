@@ -36,6 +36,7 @@
 //! sample Kendall-τ via $\rho_{ij} = \sin(\tfrac{\pi}{2}\tau_{ij})$
 //! (rank-based, robust to ν), then (b) maximise the log-likelihood in
 //! $\nu$ by 1-D Brent search on $[2.1, 50]$ holding $\Sigma$ fixed.
+//! An indefinite or near-singular $\hat\Sigma$ is shrunk toward the identity until every eigenvalue is at least $10^{-3}$.
 //!
 //! References:
 //! - Demarta, S., McNeil, A.J. (2005), "The t copula and related copulas",
@@ -231,7 +232,7 @@ impl TMultivariate {
   }
 
   /// Log-likelihood of the data under `corr` and the candidate $\nu$; the 1-D
-  /// Brent search in [`fit`] varies $\nu$ and never $\Sigma$.
+  /// golden-section search in [`fit`] varies $\nu$ and never $\Sigma$.
   fn log_likelihood_for_nu(corr: &CorrelationMatrix, x: ArrayView2<f64>, nu: f64) -> f64 {
     let z = Self::transform_to_t(x, nu);
     let mv = Self::mv_log_pdf(corr, nu, z.view());

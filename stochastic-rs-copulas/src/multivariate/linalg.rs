@@ -1,19 +1,20 @@
-//! faer-backed dense-linalg glue for the multivariate copulas: SPD Cholesky,
-//! SPD inverse and the positive-definiteness probe, all on `ndarray` types.
+//! faer-backed dense-linalg glue for the multivariate copulas: the SPD factors and the
+//! positive-definiteness probe, all on `ndarray` types.
 
 use faer::Side;
 use faer::linalg::solvers::DenseSolveCore;
 use faer::linalg::solvers::Llt;
+use faer::linalg::solvers::LltError;
 use faer_ext::IntoFaer;
 use faer_ext::IntoNdarray;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 
-/// Lower Cholesky factor of an SPD matrix, or `None` when the matrix is not
-/// positive definite. The strict upper triangle of the result is zeroed
-/// explicitly, so callers can multiply by it directly.
-pub(crate) fn spd_cholesky_lower(a: ArrayView2<f64>) -> Option<Array2<f64>> {
-  let llt = Llt::new(a.into_faer(), Side::Lower).ok()?;
+/// Lower Cholesky factor (strict upper triangle zeroed) and inverse of a square SPD matrix from one factorization, or
+/// the index of its first non-positive pivot.
+pub(crate) fn spd_factors(a: ArrayView2<f64>) -> Result<(Array2<f64>, Array2<f64>), usize> {
+  let llt =
+    Llt::new(a.into_faer(), Side::Lower).map_err(|LltError::NonPositivePivot { index }| index)?;
   let mut l = llt.L().into_ndarray().to_owned();
   let n = l.nrows();
   for i in 0..n {
@@ -21,15 +22,8 @@ pub(crate) fn spd_cholesky_lower(a: ArrayView2<f64>) -> Option<Array2<f64>> {
       l[[i, j]] = 0.0;
     }
   }
-  Some(l)
-}
-
-/// Inverse of an SPD matrix through its Cholesky factorization, or `None`
-/// when the matrix is not positive definite.
-pub(crate) fn spd_inverse(a: ArrayView2<f64>) -> Option<Array2<f64>> {
-  let llt = Llt::new(a.into_faer(), Side::Lower).ok()?;
-  let inv = llt.inverse();
-  Some(inv.as_ref().into_ndarray().to_owned())
+  let inverse = llt.inverse().as_ref().into_ndarray().to_owned();
+  Ok((l, inverse))
 }
 
 /// Positive-definiteness probe: does the Cholesky factorization succeed?
@@ -37,12 +31,23 @@ pub(crate) fn is_spd(a: ArrayView2<f64>) -> bool {
   a.nrows() == a.ncols() && Llt::new(a.into_faer(), Side::Lower).is_ok()
 }
 
-/// Smallest eigenvalue of a symmetric matrix, for tests that pin an analytic value.
+/// Eigenvalues of a symmetric matrix in nondecreasing order, for tests that pin an analytic value.
 #[cfg(test)]
-pub(crate) fn smallest_eigenvalue(a: ArrayView2<f64>) -> f64 {
+fn eigenvalues(a: ArrayView2<f64>) -> Vec<f64> {
   a.into_faer()
     .self_adjoint_eigenvalues(Side::Lower)
-    .expect("a symmetric matrix has eigenvalues")[0]
+    .expect("a symmetric matrix has eigenvalues")
+}
+
+#[cfg(test)]
+pub(crate) fn smallest_eigenvalue(a: ArrayView2<f64>) -> f64 {
+  eigenvalues(a)[0]
+}
+
+#[cfg(test)]
+pub(crate) fn condition_number(a: ArrayView2<f64>) -> f64 {
+  let eigenvalues = eigenvalues(a);
+  eigenvalues[eigenvalues.len() - 1] / eigenvalues[0]
 }
 
 #[cfg(test)]
@@ -52,36 +57,29 @@ mod tests {
   use super::*;
 
   #[test]
-  fn cholesky_reconstructs_the_matrix() {
+  fn the_factors_reconstruct_and_invert_the_matrix() {
     let a = array![[4.0, 2.0], [2.0, 3.0]];
-    let l = spd_cholesky_lower(a.view()).expect("SPD");
+    let (l, inv) = spd_factors(a.view()).expect("SPD");
     let back = l.dot(&l.t());
+    let id = a.dot(&inv);
     for i in 0..2 {
       for j in 0..2 {
         assert!((back[[i, j]] - a[[i, j]]).abs() < 1e-12, "L L^T mismatch");
+        let want = if i == j { 1.0 } else { 0.0 };
+        assert!((id[[i, j]] - want).abs() < 1e-12, "A A^-1 != I");
       }
     }
     assert_eq!(l[[0, 1]], 0.0, "strict upper triangle must be zeroed");
   }
 
   #[test]
-  fn inverse_times_matrix_is_identity() {
-    let a = array![[4.0, 2.0], [2.0, 3.0]];
-    let inv = spd_inverse(a.view()).expect("SPD");
-    let id = a.dot(&inv);
-    for i in 0..2 {
-      for j in 0..2 {
-        let want = if i == j { 1.0 } else { 0.0 };
-        assert!((id[[i, j]] - want).abs() < 1e-12, "A A^-1 != I");
-      }
-    }
-  }
-
-  #[test]
-  fn an_indefinite_matrix_is_rejected() {
+  fn an_indefinite_matrix_is_rejected_at_its_first_non_positive_pivot() {
     let a = array![[1.0, 2.0], [2.0, 1.0]];
-    assert!(spd_cholesky_lower(a.view()).is_none());
-    assert!(spd_inverse(a.view()).is_none());
+    assert_eq!(spd_factors(a.view()).unwrap_err(), 1);
+    assert_eq!(
+      spd_factors(array![[-1.0, 0.0], [0.0, 1.0]].view()).unwrap_err(),
+      0
+    );
     assert!(!is_spd(a.view()));
   }
 }
