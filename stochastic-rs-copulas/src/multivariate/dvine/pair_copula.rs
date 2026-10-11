@@ -32,11 +32,8 @@ use stochastic_rs_distributions::special::ln_gamma;
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
-/// Bivariate pair-copula family used as the building block of every
-/// PCC-based multivariate copula in this crate (D-vine, C-vine, R-vine).
-///
-/// Every variant carries the family's parameters as fields so PCC trees
-/// can be stored as `Vec<Vec<PairCopula>>` without trait objects.
+/// Bivariate pair-copula family of the C-, D- and R-vines, held by value in their `Vec<Vec<PairCopula>>` trees.
+/// Pair families must be exchangeable: the vine recursions call `h` from either end of an edge.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub enum PairCopula {
@@ -421,5 +418,45 @@ mod tests {
     let x = ndarray::array![[0.2, 0.7]];
     let reference = bb1_struct.pdf(x.view()).unwrap()[0];
     assert!((bb1.density(0.2, 0.7) - reference).abs() < 1e-12);
+  }
+
+  /// The match has no wildcard arm, so a new family does not compile until it joins this exchangeability check.
+  #[test]
+  fn every_pair_family_is_exchangeable() {
+    let families = [
+      PairCopula::Independence,
+      PairCopula::Gaussian { rho: 0.6 },
+      PairCopula::Gaussian { rho: -0.4 },
+      PairCopula::Clayton { theta: 2.5 },
+      PairCopula::Frank { theta: 4.0 },
+      PairCopula::Frank { theta: -3.0 },
+      PairCopula::StudentT { rho: 0.5, nu: 4.0 },
+      PairCopula::Bb1 {
+        theta: 0.8,
+        delta: 1.6,
+      },
+      PairCopula::Bb7 {
+        theta: 1.7,
+        delta: 0.9,
+      },
+    ];
+    let grid = [0.05, 0.2, 0.45, 0.7, 0.95];
+    for pair in families {
+      match pair {
+        PairCopula::Independence
+        | PairCopula::Gaussian { .. }
+        | PairCopula::Clayton { .. }
+        | PairCopula::Frank { .. }
+        | PairCopula::StudentT { .. }
+        | PairCopula::Bb1 { .. }
+        | PairCopula::Bb7 { .. } => {}
+      }
+      for u in grid {
+        for v in grid {
+          let gap = (pair.log_density(u, v) - pair.log_density(v, u)).abs();
+          assert!(gap <= 1e-12, "{pair:?} at ({u}, {v}): gap {gap:e}");
+        }
+      }
+    }
   }
 }
