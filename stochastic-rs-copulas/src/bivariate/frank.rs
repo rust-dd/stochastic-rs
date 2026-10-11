@@ -7,7 +7,6 @@
 //! Reference: Domino, K. (2018), "Selected Methods for non-Gaussian Data Analysis", arXiv:1811.10486, Example 4.3.2, eq. (4.54) (the conditional inverse; its printed fraction bar wrongly spans the leading 1, which belongs outside the fraction).
 //! Reference: Hofert, M., Mächler, M. & McNeil, A. J. (2011), "Likelihood inference for Archimedean copulas", arXiv:1108.6032v1, Table 2 (Kendall's τ); Journal of Multivariate Analysis 110 (2012), 133–150.
 
-use gauss_quad::GaussLegendre;
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
@@ -20,6 +19,29 @@ use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
+
+/// `4B₂ₖ/((2k + 1)(2k)!)`, the coefficients of Frank's τ in odd powers of θ (convergent for `|θ| < 2π`); 18 of them
+/// reach `1e-20` at `|θ| = 2`.
+const TAU_SERIES: [f64; 18] = [
+  0.1111111111111111,
+  -0.0011111111111111111,
+  1.889644746787604e-05,
+  -3.6743092298647856e-07,
+  7.5915479955884e-09,
+  -1.6259046580576902e-10,
+  3.568676408182581e-12,
+  -7.97571834428843e-14,
+  1.8075920118479673e-15,
+  -4.142607044872499e-17,
+  9.580874484104748e-19,
+  -2.2327143497300036e-20,
+  5.236603021673285e-22,
+  -1.2349679209706961e-23,
+  2.926390261080881e-25,
+  -6.963382628936004e-27,
+  1.66305425784556e-28,
+  -3.984859395313849e-30,
+];
 
 #[derive(Debug, Clone)]
 pub struct Frank {
@@ -189,35 +211,28 @@ impl BivariateExt for Frank {
     Ok(conditional_cdf(X, Self::h(self.theta.unwrap())))
   }
 
-  /// `τ(θ) = 1 − 4/θ + 4D₁(θ)/θ`, `D₁(θ) = θ⁻¹∫₀^θ t/(eᵗ − 1) dt` (Hofert, Mächler & McNeil 2011, Table 2), by piecewise
-  /// Gauss–Legendre; below `|θ| = 0.1`, where `4/θ` cancels, its series `θ/9 − θ³/900 + θ⁵/52920 − θ⁷/2721600`.
+  /// `τ(θ) = 1 − 4/θ + 4D₁(θ)/θ`, `D₁(θ) = θ⁻¹∫₀^θ t/(eᵗ − 1) dt` (Hofert, Mächler & McNeil 2011, Table 2), odd in θ:
+  /// its Taylor series below `|θ| = 2`, above it `∫₀^θ = π²/6 − Σ_k e^{−kθ}(θ/k + 1/k²)`; constant cost at every θ.
   fn tau_from_theta(&self, theta: f64) -> f64 {
-    if theta.abs() < 0.1 {
-      let t2 = theta * theta;
-      return theta * (1.0 / 9.0 - t2 * (1.0 / 900.0 - t2 * (1.0 / 52920.0 - t2 / 2721600.0)));
-    }
-    let magnitude = theta.abs();
-    let integrand = |u: f64| {
-      if u.abs() < 1e-15 { 1.0 } else { u / u.exp_m1() }
-    };
-    // Chunks of width at most 1 with 8 nodes each: one rule over `[0, |θ|]` under-resolves the integrand's drop from 1.
-    let quad = GaussLegendre::new(std::num::NonZeroUsize::new(8).unwrap());
-    let chunk_w = 1.0_f64;
-    let n_chunks = (magnitude / chunk_w).ceil() as usize;
-    let mut integral_pos = 0.0_f64;
-    for k in 0..n_chunks {
-      let lo = (k as f64) * chunk_w;
-      let hi = ((k + 1) as f64 * chunk_w).min(magnitude);
-      integral_pos += quad.integrate(lo, hi, integrand);
-    }
-    // For θ < 0, ∫₀^θ t/(eᵗ−1) dt = −θ²/2 − ∫₀^|θ| u/(eᵘ−1) du.
-    // (Substitute u = −t and use u/(e⁻ᵘ−1) = −u − u/(eᵘ−1).)
-    let integral = if theta > 0.0 {
-      integral_pos
+    let x = theta.abs();
+    let tau = if x < 2.0 {
+      let x2 = x * x;
+      x * TAU_SERIES.iter().rev().fold(0.0, |acc, c| acc * x2 + c)
     } else {
-      -theta * theta / 2.0 - integral_pos
+      let q = (-x).exp();
+      let (mut q_k, mut tail) = (1.0, 0.0);
+      for k in 1..=20 {
+        q_k *= q;
+        if q_k == 0.0 {
+          break;
+        }
+        let k = f64::from(k);
+        tail += q_k * (x / k + 1.0 / (k * k));
+      }
+      let pi = std::f64::consts::PI;
+      1.0 - 4.0 / x + 4.0 * (pi * pi / 6.0 - tail) / (x * x)
     };
-    1.0 - 4.0 / theta + 4.0 * integral / (theta * theta)
+    tau.copysign(theta)
   }
 
   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
@@ -307,7 +322,8 @@ mod tests {
     assert!(approx(pd[1], 0.2, 1e-12), "got {}", pd[1]);
   }
 
-  /// `τ(θ)` against mpmath at 40 digits on both sides of the series switch at `|θ| = 0.1`, and far from it.
+  /// `τ(θ)` against mpmath at 50 digits on both sides of the switch at `|θ| = 2`, near 0 and far out; constant cost at
+  /// `θ = ±1e300` and `±∞`, where a quadrature over `[0, θ]` would not return.
   #[test]
   fn frank_tau_matches_mpmath() {
     let f = Frank::new(None);
@@ -315,12 +331,22 @@ mod tests {
       (1e-8, 1.111111111111111e-9),
       (0.05, 0.00555541667257152),
       (0.1, 0.01111000018892774),
+      (1.999, 0.21379542313291425),
+      (2.0, 0.21389456921962013),
+      (3.0, 0.3072469594307238),
       (-4.0, -0.38814802129793785),
       (20.0, 0.81644934023564),
+      (1e7, 0.9999996000000658),
     ] {
       let tau = f.tau_from_theta(theta);
-      assert!((tau - want).abs() < 1e-14, "θ={theta}: {tau} vs {want}");
+      assert!((tau - want).abs() <= 1e-15, "θ={theta}: {tau} vs {want}");
     }
+    assert_eq!(f.tau_from_theta(1e300), 1.0);
+    assert_eq!(f.tau_from_theta(-1e300), -1.0);
+    assert_eq!(f.tau_from_theta(f64::INFINITY), 1.0);
+    assert_eq!(f.tau_from_theta(f64::NEG_INFINITY), -1.0);
+    assert!(f.tau_from_theta(f64::NAN).is_nan());
+    assert_eq!(Frank::new(Some(1e300)).tau(), Some(1.0));
   }
 
   /// A `τ` near independence inverts: the bracket ends at `θ = 0`, where `τ` is exactly 0.
