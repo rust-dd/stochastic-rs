@@ -10,17 +10,23 @@
 //! `a = 1 − ū^θ`, `b = 1 − v̄^θ`, `s = a^{−δ} + b^{−δ} − 1` and `T = s^{−1/δ}`:
 //! `∂_v C = (1 − T)^{1/θ−1} s^{−1/δ−1} b^{−δ−1} v̄^{θ−1}` and
 //! `c = (1 − T)^{1/θ−2} s^{−1/δ−2} (ab)^{−δ−1} (ū v̄)^{θ−1} [θ(δ + 1) − (θδ + 1) T]`.
-//! Kendall's τ has no elementary closed form and is integrated numerically;
-//! the Kendall inversion of the trait solves `θ` at the stored `δ` by
-//! bisection, and `fit` is a maximum-likelihood fit of `(θ, δ)`.
+//!
+//! Kendall's τ is a Beta form from Nelsen's Cor. 5.1.4 on `φ`, inverted for `θ` at the stored `δ`; `fit` is a
+//! maximum-likelihood fit of `(θ, δ)`.
 //!
 //! References: Joe, H. (1997), *Multivariate Models and Dependence Concepts*,
 //! Chapman & Hall, §5.2 (family BB7); Joe, H. (2014), *Dependence Modeling
 //! with Copulas*, CRC Press, §4.13.2.
+//! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, Corollary 5.1.4 (Kendall's τ `1 + 4∫₀¹ φ/φ′` of an Archimedean copula).
 
+use std::num::NonZeroUsize;
+use std::sync::OnceLock;
+
+use gauss_quad::GaussLegendre;
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
+use stochastic_rs_distributions::special::digamma;
 
 use super::BivariateFamily;
 use super::conditional::conditional_cdf;
@@ -34,7 +40,19 @@ use crate::bivariate::conditional::check_pairs;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
+
+/// `ψ(x) − ψ(y)` through `ψ(z) = ψ(z + 1) − 1/z` up past 30, where the asymptotic series of `digamma` holds its digits.
+fn digamma_difference(mut x: f64, mut y: f64) -> f64 {
+  let mut acc = 0.0;
+  while x < 30.0 || y < 30.0 {
+    acc += 1.0 / y - 1.0 / x;
+    x += 1.0;
+    y += 1.0;
+  }
+  acc + digamma(x) - digamma(y)
+}
 
 #[derive(Debug, Clone)]
 pub struct Bb7 {
@@ -101,6 +119,19 @@ impl Bb7 {
     (1.0 / theta - 2.0) * ln_1mt - (1.0 / delta + 2.0) * ln_s - (delta + 1.0) * (ln_a + ln_b)
       + (theta - 1.0) * ((-u).ln_1p() + (-v).ln_1p())
       + (theta * (delta + 1.0) - (theta * delta + 1.0) * ln_t.exp()).ln()
+  }
+
+  /// `ln[Γ(1 + b)Γ(δ + 2)/Γ(δ + 2 + b)] = ∫₀^b ψ(1 + s) − ψ(δ + 2 + s) ds` by 12-point Gauss–Legendre, with its mean over
+  /// `[0, b]`, which stays exact at `b = 0`; the pole of `ψ(1 + s)` at `s = −1` keeps `b ≥ −1/2` accurate.
+  fn ln_gamma_ratio(b: f64, delta: f64) -> (f64, f64) {
+    static RULE: OnceLock<GaussLegendre> = OnceLock::new();
+    let rule = RULE.get_or_init(|| GaussLegendre::new(NonZeroUsize::new(12).expect("12 > 0")));
+    let g = |s: f64| digamma_difference(1.0 + s, delta + 2.0 + s);
+    if b == 0.0 {
+      return (0.0, g(0.0));
+    }
+    let ell = rule.integrate(0.0, b, g);
+    (ell, ell / b)
   }
 
   /// The Nelder–Mead start: bisection of the 100-panel τ at the stored `δ` on `[1, 60]`, 50 steps, `1` when `τ(1) ≥ tau`.
@@ -231,33 +262,37 @@ impl BivariateExt for Bb7 {
     })
   }
 
-  /// Numerical τ at the stored `δ` (200-panel two-point Gauss–Legendre on the h-function); BB7 has no closed form.
+  /// `τ = 1 + 4[R(b) − 1/(1 + b)]/(θ²δb)`, `b = 2/θ − 1`, `R(b) = Γ(1 + b)Γ(δ + 2)/Γ(δ + 2 + b)`: Cor. 5.1.4's Beta form
+  /// `1 − 2/(δ(2 − θ)) + 4B(δ + 2, b)/(θ²δ)` without its pole at `θ = 2`; 1 above `θ = 1e100`, where `τ` rounds to it.
   fn tau_from_theta(&self, theta: f64) -> f64 {
-    kendall_tau_numeric(|u, v| Self::h_scalar(u, v, theta, self.delta), 200)
+    if theta > 1e100 {
+      return 1.0;
+    }
+    let delta = self.delta;
+    let c = 2.0 / theta;
+    let b = c - 1.0;
+    let ratio = if b >= -0.5 {
+      let (ell, mean) = Self::ln_gamma_ratio(b, delta);
+      mean * if ell == 0.0 { 1.0 } else { ell.exp_m1() / ell }
+    } else {
+      // `Γ(z + 1) = zΓ(z)` moves `b` to `c = 1 + b`, away from the pole of `ψ(1 + s)` at `s = −1`.
+      let (ell, _) = Self::ln_gamma_ratio(c, delta);
+      (ell + ((delta + 1.0 + c) / c).ln()).exp_m1() / b
+    };
+    1.0 + 4.0 / (theta * theta * delta) * (theta / 2.0 + ratio)
   }
 
-  /// Bisection of `τ(θ)` on `[1, 60]`.
+  /// Brent on `ln θ` over `[1, 1e4]`, the closed form at every step.
   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
-    let (mut lo, mut hi) = (1.0_f64, 60.0_f64);
-    let (tau_lo, tau_hi) = (self.tau_from_theta(lo), self.tau_from_theta(hi));
-    if !(tau >= tau_lo && tau <= tau_hi) {
+    let (lo, hi) = (0.0_f64, 1e4_f64.ln());
+    let (tau_lo, tau_hi) = (self.tau_from_theta(lo.exp()), self.tau_from_theta(hi.exp()));
+    if !(tau >= tau_lo && tau < tau_hi) {
       return Err(tau_out_of_range(
         tau,
-        format!("{tau_lo:?} <= tau <= {tau_hi:?}"),
+        format!("{tau_lo:?} <= tau < {tau_hi:?}"),
       ));
     }
-    if tau == tau_lo {
-      return Ok(lo);
-    }
-    for _ in 0..50 {
-      let mid = 0.5 * (lo + hi);
-      if self.tau_from_theta(mid) < tau {
-        lo = mid;
-      } else {
-        hi = mid;
-      }
-    }
-    Ok(0.5 * (lo + hi))
+    invert_tau(|x| self.tau_from_theta(x.exp()) - tau, lo, hi).map(f64::exp)
   }
 
   /// Maximum-likelihood fit of `(θ, δ)` on a two-column sample in `[0, 1]`, started from the Kendall inversion at the
@@ -343,6 +378,35 @@ mod tests {
     assert!((td.lower - 0.5).abs() < 1e-15);
   }
 
+  /// Cor. 5.1.4's Beta form by mpmath at 60 digits across its pole at `θ = 2`, at `θ = 1` (Clayton), past the switch at
+  /// `θ = 4` and far out; within `1e-15/min(δ, 1)`, as `R(b) − 1/(1 + b)` cancels to `O(δ)`.
+  #[test]
+  fn kendall_tau_matches_the_beta_form() {
+    for (theta, delta, want) in [
+      (1.6, 1.1, 0.4577513242482392),
+      (1.7, 0.9, 0.4463258932897074),
+      (2.0, 1.3, 0.529201420029881),
+      (2.000000001, 1.3, 0.529201420137199),
+      (1.999999999, 1.3, 0.5292014199225632),
+      (1.0000001, 0.9, 0.310344851967264),
+      (1.25, 0.3, 0.2246470101786293),
+      (4.0, 5.0, 0.7567099567099567),
+      (4.0001, 0.05, 0.6171694905640738),
+      (60.0, 2.0, 0.9680063458487572),
+      (1e6, 1.0, 0.999998000004),
+    ] {
+      let tau = Bb7::new(None, Some(delta)).tau_from_theta(theta);
+      let tolerance = 1e-15 / delta.min(1.0);
+      assert!(
+        (tau - want).abs() < tolerance,
+        "(θ, δ) = ({theta}, {delta}): {tau} vs {want}"
+      );
+    }
+    assert!((Bb7::new(None, Some(2.0)).tau_from_theta(3.0) - 0.65).abs() < 1e-15);
+    assert!((Bb7::new(None, Some(0.8)).tau_from_theta(1.0) - 0.8 / 2.8).abs() < 1e-15);
+    assert_eq!(Bb7::new(None, Some(1.1)).tau_from_theta(f64::INFINITY), 1.0);
+  }
+
   #[test]
   fn kendall_inversion_and_maximum_likelihood_are_consistent() {
     let truth = Bb7::new(Some(1.6), Some(1.1));
@@ -352,7 +416,7 @@ mod tests {
       Some(1.1),
     );
     assert!(
-      (inverted.theta.unwrap() - 1.6).abs() < 0.02,
+      (inverted.theta.unwrap() - 1.6).abs() < 1e-9,
       "inverted theta {}",
       inverted.theta.unwrap()
     );
