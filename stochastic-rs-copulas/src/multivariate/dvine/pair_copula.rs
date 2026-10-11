@@ -196,20 +196,25 @@ impl PairCopula {
         -0.5 * one_minus_rho2.ln() - 0.5 * q / one_minus_rho2
       }
       PairCopula::Clayton { theta } => {
-        // c(u, v) = (1 + θ) (u v)^{-θ - 1} (u^{-θ} + v^{-θ} - 1)^{-1/θ - 2}
-        let s = u.powf(-theta) + v.powf(-theta) - 1.0;
-        (1.0 + theta).ln()
-          + (-theta - 1.0) * u.ln()
-          + (-theta - 1.0) * v.ln()
-          + (-1.0 / theta - 2.0) * s.ln()
+        // c = (1 + θ)(uv)^{−θ−1} s^{−1/θ−2} with ln s = M + ln(1 + e^{m−M}(1 − e^{−m})), {M ≥ m} = {−θ ln u, −θ ln v}: s in
+        // logarithms, so `u^{−θ}` never overflows.
+        let (a, b) = (-theta * u.ln(), -theta * v.ln());
+        let (big, small) = (a.max(b), a.min(b));
+        let ln_s = big + ((small - big).exp() * -(-small).exp_m1()).ln_1p();
+        theta.ln_1p() + (-theta - 1.0) * (u.ln() + v.ln()) + (-1.0 / theta - 2.0) * ln_s
       }
       PairCopula::Frank { theta } => {
-        // c(u, v) = θ(1 - e^{-θ}) e^{-θ(u+v)} / ((1 - e^{-θ}) - (1 - e^{-θu})(1 - e^{-θv}))²
-        let a = 1.0 - (-theta).exp();
-        let eu = (-theta * u).exp();
-        let ev = (-theta * v).exp();
-        let denom = a - (1.0 - eu) * (1.0 - ev);
-        (theta * a).ln() + (-theta * (u + v)) - 2.0 * denom.abs().ln()
+        // c_θ(u, v) = θ(1 − e^{−θ}) e^{−θ(u+v)} / D² with D = e^{−θu}(1 − e^{−θv}) + e^{−θv}(1 − e^{−θ(1−v)}), two positive terms
+        // for θ > 0; c_θ(u, v) = c_{−θ}(u, 1 − v) for θ < 0.
+        let (t, p, q) = if theta > 0.0 {
+          (theta, v, 1.0 - v)
+        } else {
+          (-theta, 1.0 - v, v)
+        };
+        let first = -t * u + (-(-t * p).exp_m1()).ln();
+        let second = -t * p + (-(-t * q).exp_m1()).ln();
+        let ln_d = first.max(second) + (-(first - second).abs()).exp().ln_1p();
+        t.ln() + (-(-t).exp_m1()).ln() - t * (u + p) - 2.0 * ln_d
       }
       PairCopula::Bb1 { theta, delta } => {
         crate::bivariate::bb1::Bb1::log_density_scalar(u, v, theta, delta)
@@ -426,6 +431,43 @@ mod tests {
     let x = ndarray::array![[0.2, 0.7]];
     let reference = bb1_struct.pdf(x.view()).unwrap()[0];
     assert!((bb1.density(0.2, 0.7) - reference).abs() < 1e-12);
+  }
+
+  /// 50-digit mpmath values of the expanded formulas where f64 loses them: Frank's denominator cancels near (1, 1) and
+  /// Clayton's `u^{−θ}` overflows near (0, 0); the θ < 0 Frank rows cross the rotation.
+  #[test]
+  fn log_density_holds_at_strong_dependence() {
+    let frank = [
+      (30.0, 0.95, 0.95, 2.2514907829411306),
+      (30.0, 0.999, 0.995, 3.229447778423594),
+      (35.0, 0.99, 0.99, 3.037845014469233),
+      (35.0, 0.995, 0.999, 3.3564222824584893),
+      (40.0, 0.95, 0.95, 2.442716933314608),
+      (40.0, 0.999, 0.9995, 3.6304328995062574),
+      (50.0, 0.99, 0.99, 3.2484298739257733),
+      (50.0, 0.9999, 0.9995, 3.8822693052484136),
+      (-40.0, 0.99, 0.01, 3.1190028997956873),
+      (-50.0, 0.0005, 0.9999, 3.882269305248411),
+    ];
+    let clayton = [
+      (50.0, 1e-7, 1e-7, 18.649763978951555),
+      (50.0, 1e-4, 1.2e-4, 3.843544653068734),
+      (100.0, 1e-4, 1e-4, 12.432235055891953),
+      (100.0, 1e-3, 1.01e-3, 9.885546533017381),
+      (200.0, 1e-3, 1e-3, 10.821300090018523),
+      (200.0, 0.01, 0.0101, 7.651583313741083),
+    ];
+    let pins = frank
+      .map(|(theta, u, v, want)| (PairCopula::Frank { theta }, u, v, want))
+      .into_iter()
+      .chain(clayton.map(|(theta, u, v, want)| (PairCopula::Clayton { theta }, u, v, want)));
+    for (pair, u, v, want) in pins {
+      let got = pair.log_density(u, v);
+      assert!(
+        (got - want).abs() <= 1e-13 * want.abs(),
+        "{pair:?} at ({u}, {v}): {got} vs {want}"
+      );
+    }
   }
 
   /// The match has no wildcard arm, so a new family does not compile until it joins this exchangeability check.
