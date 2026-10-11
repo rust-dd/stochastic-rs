@@ -56,3 +56,30 @@ fn families_are_one_enum_per_trait() {
     Err(CopulaError::Unsupported(_))
   ));
 }
+
+#[test]
+fn a_non_candidate_family_anywhere_in_the_list_is_unsupported() {
+  let u = Array2::<f64>::from_shape_fn((40, 2), |(i, j)| ((i + 1) as f64 + 0.3 * j as f64) / 41.0);
+  for structure in [VineStructure::DVine, VineStructure::CVine] {
+    for families in [
+      vec![BivariateFamily::Gumbel],
+      vec![
+        BivariateFamily::Independence,
+        BivariateFamily::Gaussian,
+        BivariateFamily::Gumbel,
+      ],
+      vec![
+        BivariateFamily::Independence,
+        BivariateFamily::Gumbel,
+        BivariateFamily::Gaussian,
+      ],
+      vec![BivariateFamily::Joe, BivariateFamily::Gaussian],
+    ] {
+      let fit = fit_vine(u.view(), structure, &families, SelectionCriterion::Aic);
+      assert!(
+        matches!(fit, Err(CopulaError::Unsupported(_))),
+        "{structure:?} {families:?}: {fit:?}"
+      );
+    }
+  }
+}
