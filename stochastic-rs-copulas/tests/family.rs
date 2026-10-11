@@ -83,3 +83,32 @@ fn a_non_candidate_family_anywhere_in_the_list_is_unsupported() {
     }
   }
 }
+
+#[test]
+fn every_family_states_its_free_parameters() {
+  let table = [
+    (BivariateFamily::Amh, 1),
+    (BivariateFamily::Bb1, 2),
+    (BivariateFamily::Bb7, 2),
+    (BivariateFamily::Clayton, 1),
+    (BivariateFamily::Fgm, 1),
+    (BivariateFamily::Frank, 1),
+    (BivariateFamily::Galambos, 1),
+    (BivariateFamily::Gaussian, 1),
+    (BivariateFamily::Gumbel, 1),
+    (BivariateFamily::HuslerReiss, 1),
+    (BivariateFamily::Independence, 0),
+    (BivariateFamily::Joe, 1),
+    (BivariateFamily::MarshallOlkin, 2),
+    (BivariateFamily::Plackett, 1),
+    (BivariateFamily::TCopula, 2),
+  ];
+  assert_eq!(table.len(), BivariateFamily::ALL.len());
+  for &family in BivariateFamily::ALL {
+    let (_, count) = table
+      .iter()
+      .find(|(f, _)| *f == family)
+      .unwrap_or_else(|| panic!("{family:?} has no row"));
+    assert_eq!(family.parameter_count(), *count, "{family:?}");
+  }
+}

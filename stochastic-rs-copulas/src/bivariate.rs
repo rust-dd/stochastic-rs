@@ -182,7 +182,8 @@ impl BivariateFamily {
     Self::Bb7,
   ];
 
-  /// Free parameters of the family.
+  /// Free parameters of the family; Marshall-Olkin counts its shock rates (α, β), although its default fit path
+  /// estimates one symmetric θ.
   pub fn parameter_count(self) -> usize {
     match self {
       Self::Independence => 0,
