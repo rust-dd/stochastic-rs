@@ -1,60 +1,10 @@
-//! # D-vine pair-copula construction
-//!
-//! $$
-//! c(u_1, \dots, u_d) \;=\; \prod_{m=1}^{d-1} \prod_{i=1}^{d-m}
-//!     c_{i,\,i+m \mid i+1,\dots,i+m-1}\!\bigl(
-//!         F(u_i \mid u_{i+1}, \dots, u_{i+m-1}),\;
-//!         F(u_{i+m} \mid u_{i+1}, \dots, u_{i+m-1})
-//!     \bigr)
-//! $$
-//!
-//! The D-vine is a special case of the regular vine (Bedford & Cooke 2002)
-//! whose tree structure is a path: in the first tree $T_1$ pairs are
-//! $(1,2), (2,3), \dots, (d-1, d)$; in tree $T_m$ pairs are
-//! $(i, i+m)$ conditioned on $(i+1, \dots, i+m-1)$.
-//!
-//! ## Sampling — Aas-Czado-Frigessi-Bakken (2009), Algorithm 4
-//!
-//! The recursive inverse-Rosenblatt construction. Sample $w_1, \dots, w_d$
-//! i.i.d. $U(0,1)$, then for each $k$:
-//!
-//! 1. Set $u_k := w_k$;
-//! 2. For $j = k-1, k-2, \dots, 1$ apply $h^{-1}$ along the conditioning
-//!    chain to map $u_k$ through the conditional CDFs back to its uniform.
-//! 3. Maintain the "$v$ pyramid" $v_{j, k}$ of conditional pseudo-observations
-//!    used by the inner step.
-//!
-//! Storage: $v$ has shape $(d, d)$ with $v_{j,k}$ holding $F(u_k \mid u_{k-j}, \dots, u_{k-1})$
-//! — written with subscripts rather than `v[j][k]` because rustdoc parses a
-//! bracketed token inside doc math as an intra-doc link, and the crate denies
-//! unresolved ones.
-//!
-//! ## Density evaluation
-//!
-//! Same pyramid recursion, but using `PairCopula::h` to descend into the
-//! conditional pseudo-observations and `PairCopula::log_density` at every
-//! visited edge.
-//!
-//! ## Fit
-//!
-//! Two-stage sequential MLE (Aas-Czado §5, Joe-Xu 1996): for each pair in
-//! each tree, fit the marginal copula by MLE on the current pseudo
-//! observations, then propagate via the h-function. Structure + family
-//! selection (sequential MLE with an AIC/BIC family-selection driver) is
-//! not yet implemented; the user supplies the tree explicitly via
-//! [`DVine::new`].
-//!
-//! References:
-//! - Aas, K., Czado, C., Frigessi, A., Bakken, H. (2009),
-//!   "Pair-copula constructions of multiple dependence",
-//!   *Insurance: Mathematics and Economics* 44(2), 182-198.
-//! - Joe, H. (1997), *Multivariate Models and Dependence Concepts*,
-//!   Chapman & Hall, §4.6 (recursive sampling).
-//! - Bedford, T., Cooke, R.M. (2002), "Vines — a new graphical model
-//!   for dependent random variables", *Annals of Statistics* 30, 1031-1068.
+//! D-vine: tree $T_j$ joins $i$ and $i+j$ given $i+1, \dots, i+j-1$; sampled by Aas et al. (2009) Algorithm 2 and evaluated by its
+//! Algorithm 4 (density (8)) with the printed 1-based indices, taking an edge's ends in either order: exact, as every pair is exchangeable.
+//! Reference: Aas, K., Czado, C., Frigessi, A. & Bakken, H. (2009), "Pair-copula constructions of multiple dependence", Insurance: Mathematics and Economics 44(2), 182–198, doi:10.1016/j.insmatheco.2007.02.001 (preprint: SFB 386 Discussion Paper 487).
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use rand::Rng;
 use rand::RngExt;
@@ -132,91 +82,95 @@ impl DVine {
   }
 
   fn sample_with<R: Rng + ?Sized>(&self, n: usize, rng: &mut R) -> Array2<f64> {
-    let mut out = Array2::<f64>::zeros((n, self.dim));
-    for r in 0..n {
-      let row = self.sample_one(rng);
-      for c in 0..self.dim {
-        out[[r, c]] = row[c].clamp(1e-12, 1.0 - 1e-12);
+    let d = self.dim;
+    let mut out = Array2::<f64>::zeros((n, d));
+    let mut w = vec![0.0_f64; d + 1];
+    let mut v = vec![vec![0.0_f64; 2 * d]; d + 1];
+    for mut x in out.rows_mut() {
+      for wi in &mut w[1..] {
+        *wi = rng.random::<f64>();
+      }
+      self.sample_one(&w, &mut v);
+      for i in 1..=d {
+        x[i - 1] = v[i][1].clamp(1e-12, 1.0 - 1e-12);
       }
     }
     out
   }
 
-  /// Sample a single D-vine observation via Aas-Czado 2009 Algorithm 4.
-  /// Each `w[j]` is one of d independent $U(0, 1)$ inputs.
-  fn sample_one<R: Rng + ?Sized>(&self, rng: &mut R) -> Array1<f64> {
-    let d = self.dim;
-    // Independent uniforms feeding the inverse-Rosenblatt recursion.
-    let w: Vec<f64> = (0..d).map(|_| rng.random::<f64>()).collect();
-    let mut u = Array1::<f64>::zeros(d);
-    // v[i][j] holds intermediate pseudo-observations as in Aas-Czado §3.
-    // Storage convention matches the paper's two-index scheme.
-    let mut v = vec![vec![0.0_f64; 2 * d]; d];
-
-    u[0] = w[0];
-    v[0][0] = w[0];
-
-    for i in 1..d {
-      v[i][0] = w[i];
-      // Descend along the D-vine chain, applying h_inverse with copulas
-      // from T_1, T_2, ..., T_i.
-      for k in (1..=i).rev() {
-        // Tree index in our 0-based storage: pair_copulas[k-1][i-k].
-        let cop = self.pair_copulas[k - 1][i - k];
-        v[i][0] = cop.h_inverse(v[i][0], v[i - 1][2 * k - 2]);
-      }
-      u[i] = v[i][0];
-      if i == d - 1 {
-        break;
-      }
-      // Update the inner v's for the next column: forward h-pass that
-      // turns u[i] into the conditional pseudo-observations needed at the
-      // next sampling step.
-      v[i][1] = self.pair_copulas[0][i - 1].h(v[i - 1][0], v[i][0]);
-      v[i][2] = self.pair_copulas[0][i - 1].h(v[i][0], v[i - 1][0]);
-      for k in 2..=i - 1 {
-        let cop_a = self.pair_copulas[k - 1][i - k];
-        v[i][2 * k - 1] = cop_a.h(v[i - 1][2 * k - 2 - 1], v[i][2 * k - 2]);
-        v[i][2 * k] = cop_a.h(v[i][2 * k - 2], v[i - 1][2 * k - 2 - 1]);
-      }
-      // Final entry for the top of the pyramid at column i.
-      if i >= 2 {
-        v[i][2 * i - 1] = self.pair_copulas[i - 1][0].h(v[i - 1][2 * i - 3], v[i][2 * i - 2]);
-      }
+  /// One draw by Aas et al. (2009) Algorithm 2 from the uniforms `w[1..=n]`, leaving $x_i = v_{i,1}$ in `v[i][1]`.
+  fn sample_one(&self, w: &[f64], v: &mut [Vec<f64>]) {
+    let n = self.dim;
+    let theta = |j: usize, i: usize| self.pair_copulas[j - 1][i - 1];
+    v[1][1] = w[1];
+    v[2][1] = theta(1, 1).h_inverse(w[2], v[1][1]);
+    if n == 2 {
+      return;
     }
-    u
+    v[2][2] = theta(1, 1).h(v[1][1], v[2][1]);
+    for i in 3..=n {
+      v[i][1] = w[i];
+      for k in (2..i).rev() {
+        v[i][1] = theta(k, i - k).h_inverse(v[i][1], v[i - 1][2 * k - 2]);
+      }
+      v[i][1] = theta(1, i - 1).h_inverse(v[i][1], v[i - 1][1]);
+      if i == n {
+        return;
+      }
+      v[i][2] = theta(1, i - 1).h(v[i - 1][1], v[i][1]);
+      v[i][3] = theta(1, i - 1).h(v[i][1], v[i - 1][1]);
+      for j in 2..=i - 2 {
+        v[i][2 * j] = theta(j, i - j).h(v[i - 1][2 * j - 2], v[i][2 * j - 1]);
+        v[i][2 * j + 1] = theta(j, i - j).h(v[i][2 * j - 1], v[i - 1][2 * j - 2]);
+      }
+      v[i][2 * i - 2] = theta(i - 1, 1).h(v[i - 1][2 * i - 4], v[i][2 * i - 3]);
+    }
   }
 
-  /// Log-density of a single observation. Mirrors the sampling pyramid
-  /// but applies `log_density` at every edge instead of the inverse step.
-  fn log_density_one(&self, u: &[f64]) -> f64 {
-    let d = self.dim;
-    // v[i][j] follows the same indexing scheme as in `sample_one`.
-    let mut v = vec![vec![0.0_f64; 2 * d]; d];
+  /// Log-density of one observation by Aas et al. (2009) Algorithm 4, `v[j][i]` holding $v_{j,i}$ (row 0 is the data).
+  fn log_density_one(&self, x: ArrayView1<f64>, v: &mut [Vec<f64>]) -> f64 {
+    let n = self.dim;
+    let theta = |j: usize, i: usize| self.pair_copulas[j - 1][i - 1];
     let mut log_c = 0.0_f64;
-    for (i, &ui) in u.iter().enumerate() {
-      v[i][0] = ui;
+    for i in 1..=n {
+      v[0][i] = x[i - 1];
     }
-    // Tree T_1: pairs (i, i+1).
-    for i in 0..d - 1 {
-      let cop = self.pair_copulas[0][i];
-      log_c += cop.log_density(v[i][0], v[i + 1][0]);
-      v[i][1] = cop.h(v[i][0], v[i + 1][0]);
-      v[i + 1][1] = cop.h(v[i + 1][0], v[i][0]);
+    for i in 1..n {
+      log_c += theta(1, i).log_density(v[0][i], v[0][i + 1]);
     }
-    // Trees T_2, T_3, ..., T_{d-1}.
-    for m in 1..d - 1 {
-      for i in 0..d - 1 - m {
-        let cop = self.pair_copulas[m][i];
-        log_c += cop.log_density(v[i][2 * m - 1], v[i + m + 1][2 * (m - 1)]);
-        // Propagate forward to T_{m+1} (only when we'll need it).
-        if m + 1 < d - 1 {
-          v[i][2 * m + 1] = cop.h(v[i][2 * m - 1], v[i + m + 1][2 * (m - 1)]);
-          v[i + m + 1][2 * m + 1] = cop.h(v[i + m + 1][2 * (m - 1)], v[i][2 * m - 1]);
-        }
+    if n == 2 {
+      return log_c;
+    }
+    v[1][1] = theta(1, 1).h(v[0][1], v[0][2]);
+    for k in 1..=n - 3 {
+      v[1][2 * k] = theta(1, k + 1).h(v[0][k + 2], v[0][k + 1]);
+      v[1][2 * k + 1] = theta(1, k + 1).h(v[0][k + 1], v[0][k + 2]);
+    }
+    v[1][2 * n - 4] = theta(1, n - 1).h(v[0][n], v[0][n - 1]);
+    for j in 2..n {
+      for i in 1..=n - j {
+        log_c += theta(j, i).log_density(v[j - 1][2 * i - 1], v[j - 1][2 * i]);
       }
+      if j == n - 1 {
+        break;
+      }
+      v[j][1] = theta(j, 1).h(v[j - 1][1], v[j - 1][2]);
+      for i in 1..=n - j - 2 {
+        v[j][2 * i] = theta(j, i + 1).h(v[j - 1][2 * i + 2], v[j - 1][2 * i + 1]);
+        v[j][2 * i + 1] = theta(j, i + 1).h(v[j - 1][2 * i + 1], v[j - 1][2 * i + 2]);
+      }
+      v[j][2 * n - 2 * j - 2] =
+        theta(j, n - j).h(v[j - 1][2 * n - 2 * j], v[j - 1][2 * n - 2 * j - 1]);
     }
     log_c
+  }
+
+  fn log_density_rows(&self, x: ArrayView2<f64>) -> Array1<f64> {
+    let mut v = vec![vec![0.0_f64; 2 * self.dim]; self.dim];
+    x.rows()
+      .into_iter()
+      .map(|row| self.log_density_one(row, &mut v))
+      .collect()
   }
 }
 
@@ -251,22 +205,12 @@ impl MultivariateExt for DVine {
 
   fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
-    let mut out = Array1::<f64>::zeros(X.nrows());
-    for (i, row) in X.rows().into_iter().enumerate() {
-      let u: Vec<f64> = row.iter().copied().collect();
-      out[i] = self.log_density_one(&u).exp();
-    }
-    Ok(out)
+    Ok(self.log_density_rows(X).mapv(f64::exp))
   }
 
   fn log_pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
-    let mut out = Array1::<f64>::zeros(X.nrows());
-    for (i, row) in X.rows().into_iter().enumerate() {
-      let u: Vec<f64> = row.iter().copied().collect();
-      out[i] = self.log_density_one(&u);
-    }
-    Ok(out)
+    Ok(self.log_density_rows(X))
   }
 
   fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
@@ -306,6 +250,10 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
+  use crate::bivariate::clayton::Clayton;
+  use crate::bivariate::frank::Frank;
+  use crate::bivariate::gaussian::GaussianCopula;
+  use crate::traits::BivariateExt;
 
   /// All-Independence D-vine in d=3 must produce uniform marginals and
   /// independence (sample-correlation ≈ 0).
@@ -409,6 +357,39 @@ mod tests {
     match dv.fit(data.view()) {
       Err(CopulaError::Unsupported(hint)) => assert!(hint.contains("fit_vine"), "{hint}"),
       other => panic!("expected Unsupported, got {other:?}"),
+    }
+  }
+
+  /// Aas et al. (2009) Eq. (10), c₁₂ · c₂₃ · c₁₃|₂, from the bivariate copulas' own densities and h-functions.
+  #[test]
+  fn dvine_density_is_the_three_pair_product() {
+    let tree = vec![
+      vec![
+        PairCopula::Gaussian { rho: 0.4 },
+        PairCopula::Clayton { theta: 2.0 },
+      ],
+      vec![PairCopula::Frank { theta: 3.0 }],
+    ];
+    let (c12, c23, c13_2) = (GaussianCopula::new(0.4), Clayton::new(2.0), Frank::new(3.0));
+    let points = array![
+      [0.3, 0.6, 0.8],
+      [0.1, 0.5, 0.9],
+      [0.7, 0.2, 0.4],
+      [0.95, 0.9, 0.05]
+    ];
+    let got = DVine::new(3, tree).unwrap().pdf(points.view()).unwrap();
+    let at = |a: f64, b: f64| array![[a, b]];
+    for (row, p) in points.rows().into_iter().enumerate() {
+      let h1_2 = c12.partial_derivative(at(p[0], p[1]).view()).unwrap()[0];
+      let h3_2 = c23.partial_derivative(at(p[2], p[1]).view()).unwrap()[0];
+      let want = c12.pdf(at(p[0], p[1]).view()).unwrap()[0]
+        * c23.pdf(at(p[1], p[2]).view()).unwrap()[0]
+        * c13_2.pdf(at(h1_2, h3_2).view()).unwrap()[0];
+      assert!(
+        (got[row] / want - 1.0).abs() < 1e-10,
+        "row {row}: {} vs {want}",
+        got[row]
+      );
     }
   }
 }

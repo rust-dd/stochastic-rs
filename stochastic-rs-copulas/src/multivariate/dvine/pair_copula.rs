@@ -119,7 +119,7 @@ impl PairCopula {
   }
 
   /// Inverse h-function: returns the $u$ that satisfies $h(u \mid v) = p$.
-  /// Used in PCC sampling (Aas-Czado 2009, Algorithm 4 backward step).
+  /// Used by the vine samplers (Aas et al. 2009, Algorithms 1 and 2).
   pub fn h_inverse(&self, p: f64, v: f64) -> f64 {
     let p = p.clamp(EPS, 1.0 - EPS);
     let v = v.clamp(EPS, 1.0 - EPS);
