@@ -3,8 +3,10 @@
 //! $$
 //! C_n(u,v)=\frac{1}{n}\sum_{i=1}^n \mathbf 1\{U_i\le u,\,V_i\le v\}
 //! $$
-//! on the pseudo-observations `U_i = rank_i/(n+1)` (Deheuvels 1979).
+//! on the pseudo-observations `U_i = rank_i/(n+1)`, a tie group taking the mean of its ranks: asymptotically the empirical
+//! copula of Deheuvels (1979).
 //!
+//! Reference: Genest, C., Rémillard, B. & Beaudoin, D. (2009), "Goodness-of-fit tests for copulas: A review and a power study", Insurance: Mathematics and Economics 44(2), 199–213, doi:10.1016/j.insmatheco.2007.10.005 (§2.2: `U_ij = R_ij/(n+1)`; §3.1, Eq. (1): `C_n`).
 //! Reference: Deheuvels, P. (1979), "La fonction de dépendance empirique et ses propriétés. Un test non paramétrique d'indépendance", Acad. Roy. Belg. Bull. Cl. Sci. (5) 65, 274–292.
 
 use ndarray::Array1;
