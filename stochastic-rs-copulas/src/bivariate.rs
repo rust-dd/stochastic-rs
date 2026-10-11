@@ -267,50 +267,37 @@ mod tests {
 
 #[cfg(test)]
 mod catalog_tests {
+  use std::collections::HashSet;
+
   use super::BivariateFamily;
 
   /// Guards `copulas.mdx`'s catalog table and `CLAUDE.md`'s count: the match has no wildcard arm on purpose, so a new
   /// variant is a compile error here until its arm, its docs row and the counts are added.
   #[test]
   fn bivariate_catalog_matches_docs_count() {
-    let count = [
-      BivariateFamily::Amh,
-      BivariateFamily::Bb1,
-      BivariateFamily::Bb7,
-      BivariateFamily::Clayton,
-      BivariateFamily::Fgm,
-      BivariateFamily::Frank,
-      BivariateFamily::Galambos,
-      BivariateFamily::Gaussian,
-      BivariateFamily::Gumbel,
-      BivariateFamily::HuslerReiss,
-      BivariateFamily::Independence,
-      BivariateFamily::Joe,
-      BivariateFamily::MarshallOlkin,
-      BivariateFamily::Plackett,
-      BivariateFamily::TCopula,
-    ]
-    .into_iter()
-    .map(|t| match t {
-      BivariateFamily::Amh
-      | BivariateFamily::Bb1
-      | BivariateFamily::Bb7
-      | BivariateFamily::Clayton
-      | BivariateFamily::Fgm
-      | BivariateFamily::Frank
-      | BivariateFamily::Galambos
-      | BivariateFamily::Gaussian
-      | BivariateFamily::Gumbel
-      | BivariateFamily::HuslerReiss
-      | BivariateFamily::Independence
-      | BivariateFamily::Joe
-      | BivariateFamily::MarshallOlkin
-      | BivariateFamily::Plackett
-      | BivariateFamily::TCopula => 1,
-    })
-    .sum::<usize>();
+    let count = BivariateFamily::ALL
+      .iter()
+      .map(|t| match t {
+        BivariateFamily::Amh
+        | BivariateFamily::Bb1
+        | BivariateFamily::Bb7
+        | BivariateFamily::Clayton
+        | BivariateFamily::Fgm
+        | BivariateFamily::Frank
+        | BivariateFamily::Galambos
+        | BivariateFamily::Gaussian
+        | BivariateFamily::Gumbel
+        | BivariateFamily::HuslerReiss
+        | BivariateFamily::Independence
+        | BivariateFamily::Joe
+        | BivariateFamily::MarshallOlkin
+        | BivariateFamily::Plackett
+        | BivariateFamily::TCopula => 1,
+      })
+      .sum::<usize>();
 
     assert_eq!(count, 15, "copulas.mdx's bivariate table says 15");
-    assert_eq!(BivariateFamily::ALL.len(), count);
+    let distinct = BivariateFamily::ALL.iter().collect::<HashSet<_>>().len();
+    assert_eq!(distinct, count, "ALL repeats a family");
   }
 }
