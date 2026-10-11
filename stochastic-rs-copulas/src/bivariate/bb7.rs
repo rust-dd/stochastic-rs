@@ -40,6 +40,7 @@ use crate::bivariate::conditional::check_pairs;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
 
@@ -292,7 +293,8 @@ impl BivariateExt for Bb7 {
         format!("{tau_lo:?} <= tau < {tau_hi:?}"),
       ));
     }
-    invert_tau(|x| self.tau_from_theta(x.exp()) - tau, lo, hi, 1e-12).map(f64::exp)
+    let theta = invert_tau(|x| self.tau_from_theta(x.exp()) - tau, lo, hi, 1e-12)?.exp();
+    admitted(self, tau, theta)
   }
 
   /// Maximum-likelihood fit of `(θ, δ)` on a two-column sample in `[0, 1]`, started from the Kendall inversion at the

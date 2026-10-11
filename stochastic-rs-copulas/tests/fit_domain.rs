@@ -163,20 +163,40 @@ fn theta_from_tau_round_trips_through_tau_from_theta() {
   }
 }
 
-/// One discordant pair in 30 000 leaves `τ̂ = 1 − 4.4e-9`, whose `ρ = sin(πτ̂/2)` rounds onto the excluded `ρ = 1`: `fit`
-/// validates the inverse before storing it.
+/// One discordant pair in 30 000 leaves `τ̂ = 1 − 4.4e-9`, whose `ρ = sin(πτ̂/2)` rounds onto the excluded `ρ = 1`:
+/// `theta_from_tau` answers the τ error, so neither `fit` nor a caller of the inverse can store that `ρ`.
 #[test]
 fn an_inverse_that_rounds_onto_an_excluded_theta_is_an_error() {
   let n = 30_000;
   let mut data = Array2::from_shape_fn((n, 2), |(i, _)| (i + 1) as f64 / (n + 1) as f64);
   data.swap([0, 1], [1, 1]);
   let mut gaussian = GaussianCopula::new();
-  let got = gaussian.fit(data.view());
-  assert!(
-    matches!(got, Err(CopulaError::InvalidParameter { name: "theta", value, .. }) if value == 1.0),
-    "{got:?}"
-  );
+  assert!(is_tau_error(gaussian.fit(data.view())));
   assert_eq!(gaussian.theta(), None);
+  for tau in [1.0 - 1e-9, -1.0 + 1e-9] {
+    let got = GaussianCopula::new().theta_from_tau(tau);
+    assert!(
+      matches!(got, Err(CopulaError::InvalidParameter { name: "tau", .. })),
+      "{got:?}"
+    );
+    let got = TCopula::new().theta_from_tau(tau);
+    assert!(
+      matches!(got, Err(CopulaError::InvalidParameter { name: "tau", .. })),
+      "{got:?}"
+    );
+  }
+  let bb1 = Bb1::new(None, Some(1.5));
+  let mut tau = 1.0_f64 - 1.0 / 1.5;
+  for _ in 0..8 {
+    tau = tau.next_up();
+    match bb1.theta_from_tau(tau) {
+      Ok(theta) => assert!(theta > 0.0, "τ = {tau}: θ = {theta}"),
+      Err(e) => assert!(
+        matches!(e, CopulaError::InvalidParameter { name: "tau", .. }),
+        "{e:?}"
+      ),
+    }
+  }
 }
 
 /// Ten pairs with 15 discordances have `τ̂ = 1/3`, AMH's upper end, reached at `θ = 1`.
@@ -258,4 +278,61 @@ fn a_raw_uniform_sample_fits_on_every_seed() {
     let mut fitted = Clayton::new();
     assert_eq!(fitted.fit(raw.view()), Ok(()), "seed {seed}");
   }
+}
+
+/// Every `Ok` of `theta_from_tau` passes `validate_theta`, on a grid and at each range end and its float neighbours.
+#[test]
+fn every_inverse_is_an_admitted_theta() {
+  let mut taus: Vec<f64> = (-100..=100).map(|i| f64::from(i) / 100.0).collect();
+  for edge in [
+    0.0,
+    1e-300,
+    1e-13,
+    1e-12,
+    2.0 / 9.0,
+    1.0 / 3.0,
+    (5.0 - 8.0 * 2.0_f64.ln()) / 3.0,
+    1.0 - 1.0 / 1.5,
+    1.0 - 6e-9,
+    1.0,
+  ] {
+    for e in [edge, -edge] {
+      taus.extend([
+        e.next_down().next_down(),
+        e.next_down(),
+        e,
+        e.next_up(),
+        e.next_up().next_up(),
+      ]);
+    }
+  }
+  macro_rules! admitted {
+    ($copula:expr) => {{
+      let c = $copula;
+      for &tau in &taus {
+        if let Ok(theta) = c.theta_from_tau(tau) {
+          assert!(
+            c.validate_theta(theta).is_ok(),
+            "{:?}: τ = {tau:?} → θ = {theta:?}",
+            c.family()
+          );
+        }
+      }
+    }};
+  }
+  admitted!(Clayton::new());
+  admitted!(Gumbel::new(None));
+  admitted!(Joe::new());
+  admitted!(Frank::new(None));
+  admitted!(Amh::new());
+  admitted!(Fgm::new());
+  admitted!(Plackett::new());
+  admitted!(GaussianCopula::new());
+  admitted!(TCopula::new());
+  admitted!(MarshallOlkin::new());
+  admitted!(Independence::new());
+  admitted!(Bb1::new(None, Some(1.5)));
+  admitted!(Bb7::new(None, Some(1.1)));
+  admitted!(Galambos::new());
+  admitted!(HuslerReiss::new());
 }

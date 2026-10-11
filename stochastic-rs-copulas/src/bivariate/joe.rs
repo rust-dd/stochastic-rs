@@ -26,6 +26,7 @@ use crate::bivariate::conditional::conditional_cdf;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
 
@@ -187,10 +188,12 @@ impl BivariateExt for Joe {
     if !(tau >= 0.0 && tau < cap) {
       return Err(tau_out_of_range(tau, format!("0.0 <= tau < {cap:?}")));
     }
-    if tau < 1e-12 {
-      return Ok(1.0);
-    }
-    invert_tau(|theta| self.tau_from_theta(theta) - tau, 1.0, 1e4, 1e-14)
+    let theta = if tau < 1e-12 {
+      1.0
+    } else {
+      invert_tau(|theta| self.tau_from_theta(theta) - tau, 1.0, 1e4, 1e-14)?
+    };
+    admitted(self, tau, theta)
   }
 
   /// Upper-tail dependence $\lambda_U = 2 - 2^{1/\theta}$ (same functional

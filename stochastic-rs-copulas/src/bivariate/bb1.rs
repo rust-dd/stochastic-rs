@@ -33,6 +33,7 @@ use crate::bivariate::conditional::check_pairs;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::tau_out_of_range;
 
 #[derive(Debug, Clone)]
@@ -236,7 +237,8 @@ impl BivariateExt for Bb1 {
     if !(tau > lo && tau < 1.0) {
       return Err(tau_out_of_range(tau, format!("{lo:?} < tau < 1.0")));
     }
-    Ok(2.0 / (self.delta * (1.0 - tau)) - 2.0)
+    // Within an ulp of the lower end the difference can round to `θ ≤ 0`, outside the family.
+    admitted(self, tau, 2.0 / (self.delta * (1.0 - tau)) - 2.0)
   }
 
   /// Maximum-likelihood fit of `(θ, δ)` on a two-column sample in `[0, 1]`, started from the Kendall inversion at the

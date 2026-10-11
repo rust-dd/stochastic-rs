@@ -19,6 +19,7 @@ use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
 
@@ -243,12 +244,14 @@ impl BivariateExt for Frank {
     if !(tau > -cap && tau < cap) {
       return Err(tau_out_of_range(tau, format!("{:?} < tau < {cap:?}", -cap)));
     }
-    if tau.abs() < 1e-12 {
-      return Ok(0.0);
-    }
-    // `τ(0) = 0` exactly, so the bracket changes sign for every `τ` that passed the guards.
-    let (lo, hi) = if tau > 0.0 { (0.0, 1e4) } else { (-1e4, 0.0) };
-    invert_tau(|theta| self.tau_from_theta(theta) - tau, lo, hi, 1e-14)
+    let theta = if tau.abs() < 1e-12 {
+      0.0
+    } else {
+      // `τ(0) = 0` exactly, so the bracket changes sign for every `τ` that passed the guards.
+      let (lo, hi) = if tau > 0.0 { (0.0, 1e4) } else { (-1e4, 0.0) };
+      invert_tau(|theta| self.tau_from_theta(theta) - tau, lo, hi, 1e-14)?
+    };
+    admitted(self, tau, theta)
   }
 
   /// Frank has no tail dependence in either tail, for any $\theta$.

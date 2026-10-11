@@ -42,6 +42,7 @@ use crate::bivariate::conditional::conditional_cdf;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
 
@@ -224,7 +225,8 @@ impl BivariateExt for HuslerReiss {
         format!("{tau_lo:?} < tau < {tau_hi:?}"),
       ));
     }
-    invert_tau(|x| self.tau_from_theta(x.exp()) - tau, lo, hi, 1e-8).map(f64::exp)
+    let theta = invert_tau(|x| self.tau_from_theta(x.exp()) - tau, lo, hi, 1e-8)?.exp();
+    admitted(self, tau, theta)
   }
 
   /// Upper-tail dependence $\lambda_U = 2(1 - \Phi(1/\lambda))$;

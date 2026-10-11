@@ -33,6 +33,7 @@ use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
 
@@ -207,16 +208,18 @@ impl BivariateExt for Plackett {
         format!("{tau_lo:?} < tau < {tau_hi:?}"),
       ));
     }
-    if tau.abs() < 1e-12 {
-      return Ok(1.0);
-    }
-    let (a, b) = if tau > 0.0 {
-      (0.0, hi.ln())
+    let theta = if tau.abs() < 1e-12 {
+      1.0
     } else {
-      (lo.ln(), 0.0)
+      let (a, b) = if tau > 0.0 {
+        (0.0, hi.ln())
+      } else {
+        (lo.ln(), 0.0)
+      };
+      // `ln θ` to `1e-8`: the rule holds `τ` to `5e-9` up to `θ = 100`.
+      invert_tau(|x| self.tau_from_theta(x.exp()) - tau, a, b, 1e-8)?.exp()
     };
-    // `ln θ` to `1e-8`: the rule holds `τ` to `5e-9` up to `θ = 100`.
-    invert_tau(|x| self.tau_from_theta(x.exp()) - tau, a, b, 1e-8).map(f64::exp)
+    admitted(self, tau, theta)
   }
 
   /// Plackett has no tail dependence in either tail, for any $\theta > 0$.

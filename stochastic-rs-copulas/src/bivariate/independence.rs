@@ -16,6 +16,7 @@ use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::admitted;
 
 #[derive(Debug, Clone)]
 pub struct Independence {
@@ -103,8 +104,8 @@ impl BivariateExt for Independence {
   }
 
   /// The family represents τ = 0 only; a fit does not reject other data.
-  fn theta_from_tau(&self, _tau: f64) -> Result<f64, CopulaError> {
-    Ok(0.0)
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+    admitted(self, tau, 0.0)
   }
 
   /// $C(u,v) = uv$ has no tail dependence in either tail by construction.

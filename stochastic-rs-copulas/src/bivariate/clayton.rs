@@ -19,6 +19,7 @@ use crate::bivariate::conditional::confine;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::tau_out_of_range;
 
 #[derive(Debug, Clone)]
@@ -223,7 +224,7 @@ impl BivariateExt for Clayton {
     if !(0.0..1.0).contains(&tau) {
       return Err(tau_out_of_range(tau, "0.0 <= tau < 1.0".into()));
     }
-    Ok(2.0 * tau / (1.0 - tau))
+    admitted(self, tau, 2.0 * tau / (1.0 - tau))
   }
 
   /// Lower-tail dependence $\lambda_L = 2^{-1/\theta}$; Clayton has no

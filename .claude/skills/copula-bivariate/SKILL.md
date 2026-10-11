@@ -48,8 +48,10 @@ Two shape facts that catch every first attempt:
   `Array1<f64>` of length `n`. They are **not** scalar
   `(u: f64, v: f64) -> f64` functions.
 - **`theta_from_tau` returns `Err(InvalidParameter { name: "tau", .. })`
-  for a τ the family cannot represent** — `fit` propagates it, so a fit
-  never stores an out-of-range θ.
+  for a τ the family cannot represent, and its `Ok` always passes
+  `validate_theta`** — every return goes through `admitted(self, tau, θ)`,
+  which turns a θ rounded onto an excluded value into that τ error, so
+  neither `fit` nor a caller storing the inverse can hold an invalid θ.
 
 - **Errors are `CopulaError`** (`crate::error`), never `Box<dyn Error>` or a `String`: a parameter outside its domain is `InvalidParameter { name, value, constraint }` in the crate's assert form, an unfitted copula is `NotFitted`, bad pseudo-observations are `MarginalOutOfRange` / `MarginalNotUniform`.
 
@@ -158,15 +160,18 @@ that diverged on positive correlations. The mandate:
 
    ```rust
    fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
-     let cap = self.tau_from_theta(1e4);
+     static CAP: OnceLock<f64> = OnceLock::new();
+     let cap = *CAP.get_or_init(|| self.tau_from_theta(1e4));
      if !(tau > -cap && tau < cap) {
        return Err(tau_out_of_range(tau, format!("{:?} < tau < {cap:?}", -cap)));
      }
-     if tau.abs() < 1e-12 {
-       return Ok(0.0);
-     }
-     let (lo, hi) = if tau > 0.0 { (0.0, 1e4) } else { (-1e4, 0.0) };
-     invert_tau(|theta| self.tau_from_theta(theta) - tau, lo, hi)
+     let theta = if tau.abs() < 1e-12 {
+       0.0
+     } else {
+       let (lo, hi) = if tau > 0.0 { (0.0, 1e4) } else { (-1e4, 0.0) };
+       invert_tau(|theta| self.tau_from_theta(theta) - tau, lo, hi, 1e-14)?
+     };
+     admitted(self, tau, theta)
    }
    ```
 
@@ -174,6 +179,11 @@ that diverged on positive correlations. The mandate:
    Newton is not. Frank brackets *on the sign of tau* from θ = 0, where
    `tau_from_theta` is exactly 0, and takes the range ends from the same
    `tau_from_theta`, so every τ that passes the range check brackets.
+   Compute range ends once (a constant or a `OnceLock`, never per call),
+   and pass `invert_tau` the absolute tolerance the family's τ rule
+   actually resolves: `1e-14` behind a closed form, `1e-8` behind a
+   quadrature. A bracket that grows over several decades is solved in
+   `ln θ`; state the solver's top as the reachable range.
 
 3. **Never** roll a custom Newton / secant.
 

@@ -15,6 +15,7 @@ use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::tau_out_of_range;
 
 #[derive(Debug, Clone)]
@@ -157,7 +158,7 @@ impl BivariateExt for Gumbel {
     if !(0.0..1.0).contains(&tau) {
       return Err(tau_out_of_range(tau, "0.0 <= tau < 1.0".into()));
     }
-    Ok(1.0 / (1.0 - tau))
+    admitted(self, tau, 1.0 / (1.0 - tau))
   }
 
   /// Upper-tail dependence $\lambda_U = 2 - 2^{1/\theta}$; Gumbel has no

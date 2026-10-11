@@ -75,7 +75,8 @@ pub trait BivariateExt {
   /// Kendall's τ of the family at `theta`: a closed form, or quadrature where there is none.
   fn tau_from_theta(&self, theta: f64) -> f64;
 
-  /// The `theta` whose Kendall's τ is `tau`; `InvalidParameter { name: "tau", .. }` outside the reachable range.
+  /// The `theta` whose Kendall's τ is `tau`, always one `validate_theta` admits; `InvalidParameter { name: "tau", .. }`
+  /// outside the reachable range.
   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError>;
 
   /// Kendall's τ implied by the current `theta`.
@@ -136,7 +137,7 @@ pub trait BivariateExt {
   }
 
   /// Kendall's τ-b of a two-column sample in `[0, 1]`, inverted through `theta_from_tau`; nothing is stored when the
-  /// family cannot represent it (`InvalidParameter { name: "tau", .. }`) or the inverse falls outside its bounds.
+  /// family cannot represent it (`InvalidParameter { name: "tau", .. }`).
   fn fit(&mut self, X: ndarray::ArrayView2<f64>) -> Result<(), CopulaError> {
     if X.nrows() < 2 {
       return Err(CopulaError::InsufficientData {
@@ -155,7 +156,6 @@ pub trait BivariateExt {
       got: u.len(),
     })?;
     let theta = self.theta_from_tau(tau)?;
-    self.validate_theta(theta)?;
     self.set_theta(theta);
     Ok(())
   }
@@ -325,6 +325,22 @@ pub(crate) fn invert_tau(
   zero(lo, hi, t, residual).ok_or_else(|| {
     CopulaError::Numerical(format!("theta from tau has no root on [{lo:?}, {hi:?}]"))
   })
+}
+
+/// `theta` when the family admits it; an inverse that rounds onto an excluded value is the `tau` error, which names it.
+pub(crate) fn admitted<C: BivariateExt + ?Sized>(
+  copula: &C,
+  tau: f64,
+  theta: f64,
+) -> Result<f64, CopulaError> {
+  match copula.validate_theta(theta) {
+    Ok(()) => Ok(theta),
+    Err(CopulaError::InvalidParameter { constraint, .. }) => Err(tau_out_of_range(
+      tau,
+      format!("an inverse theta (here {theta:?}) with {constraint}"),
+    )),
+    Err(e) => Err(e),
+  }
 }
 
 pub(crate) fn tau_out_of_range(tau: f64, constraint: String) -> CopulaError {

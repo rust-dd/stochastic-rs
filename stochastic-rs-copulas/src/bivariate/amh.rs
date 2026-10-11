@@ -30,6 +30,7 @@ use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
 
@@ -239,16 +240,16 @@ impl BivariateExt for Amh {
     if !(tau >= lo && tau <= hi) {
       return Err(tau_out_of_range(tau, format!("{lo:?} <= tau <= {hi:?}")));
     }
-    if tau == lo {
-      return Ok(-1.0);
-    }
-    if tau == hi {
-      return Ok(1.0);
-    }
-    if tau.abs() < 1e-12 {
-      return Ok(0.0);
-    }
-    invert_tau(|theta| self.tau_from_theta(theta) - tau, -1.0, 1.0, 1e-14)
+    let theta = if tau == lo {
+      -1.0
+    } else if tau == hi {
+      1.0
+    } else if tau.abs() < 1e-12 {
+      0.0
+    } else {
+      invert_tau(|theta| self.tau_from_theta(theta) - tau, -1.0, 1.0, 1e-14)?
+    };
+    admitted(self, tau, theta)
   }
 
   /// AMH has no tail dependence in either tail, for any $\theta \in

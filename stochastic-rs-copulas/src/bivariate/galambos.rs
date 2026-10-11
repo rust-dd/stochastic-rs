@@ -33,6 +33,7 @@ use crate::bivariate::conditional::conditional_cdf;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
 
@@ -212,7 +213,8 @@ impl BivariateExt for Galambos {
         format!("{tau_lo:?} < tau < {tau_hi:?}"),
       ));
     }
-    invert_tau(|x| self.tau_from_theta(x.exp()) - tau, lo, hi, 1e-8).map(f64::exp)
+    let theta = invert_tau(|x| self.tau_from_theta(x.exp()) - tau, lo, hi, 1e-8)?.exp();
+    admitted(self, tau, theta)
   }
 
   /// `λ_U = 2^{−1/θ} = 2(1 − A(1/2))` of [`Galambos::pickands`], `λ_L = 0` (Galambos 1975; Joe 1997, §5.4).

@@ -45,6 +45,7 @@ use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::tau_out_of_range;
 
 /// Clamp used to evaluate [`GaussianCopula::partial_derivative`] just
@@ -202,7 +203,8 @@ impl BivariateExt for GaussianCopula {
     if !(tau > -1.0 && tau < 1.0) {
       return Err(tau_out_of_range(tau, "-1.0 < tau < 1.0".into()));
     }
-    Ok((std::f64::consts::FRAC_PI_2 * tau).sin())
+    // `ρ` rounds onto the excluded `±1` once `|τ| > 1 − 6e-9`.
+    admitted(self, tau, (std::f64::consts::FRAC_PI_2 * tau).sin())
   }
 
   /// Asymptotic independence: $\lambda_L = \lambda_U = 0$ for every $\rho

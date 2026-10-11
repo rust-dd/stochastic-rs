@@ -26,6 +26,7 @@ use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::tau_out_of_range;
 
 #[derive(Debug, Clone)]
@@ -146,7 +147,7 @@ impl BivariateExt for Fgm {
     if !(-2.0 / 9.0..=2.0 / 9.0).contains(&tau) {
       return Err(tau_out_of_range(tau, "-2/9 <= tau <= 2/9".into()));
     }
-    Ok(4.5 * tau)
+    admitted(self, tau, 4.5 * tau)
   }
 
   /// FGM is a bounded perturbation of independence — no tail dependence

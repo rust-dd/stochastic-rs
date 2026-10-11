@@ -25,6 +25,7 @@ use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::tau_out_of_range;
 
 #[derive(Debug, Clone)]
@@ -250,7 +251,7 @@ impl BivariateExt for MarshallOlkin {
     if !(tau > 0.0 && tau <= 1.0) {
       return Err(tau_out_of_range(tau, "0.0 < tau <= 1.0".into()));
     }
-    Ok(2.0 * tau / (1.0 + tau))
+    admitted(self, tau, 2.0 * tau / (1.0 + tau))
   }
 
   /// `αβ/(α + β − αβ)` for the asymmetric copula, the symmetric slice's value otherwise.
