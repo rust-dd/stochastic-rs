@@ -32,7 +32,10 @@ use super::rvine::RVine;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::bb1::Bb1;
 use crate::bivariate::bb7::Bb7;
+use crate::bivariate::clayton::Clayton;
 use crate::bivariate::frank::Frank;
+use crate::bivariate::gaussian::GaussianCopula;
+use crate::bivariate::t_copula::TCopula;
 use crate::correlation::kendall_tau;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
@@ -87,26 +90,32 @@ fn log_likelihood(pair: &PairCopula, u: &[f64], v: &[f64]) -> f64 {
 /// dependence (e.g. Clayton at negative τ).
 fn estimate(family: BivariateFamily, u: &[f64], v: &[f64]) -> Option<PairCopula> {
   let tau = tau_of(u, v).clamp(-0.99, 0.99);
-  let rho = (std::f64::consts::FRAC_PI_2 * tau).sin();
   match family {
     BivariateFamily::Independence => Some(PairCopula::Independence),
-    BivariateFamily::Gaussian => Some(PairCopula::Gaussian { rho }),
+    BivariateFamily::Gaussian => Some(PairCopula::Gaussian {
+      rho: GaussianCopula::new().theta_from_tau(tau).ok()?,
+    }),
     BivariateFamily::TCopula => {
+      let rho = TCopula::new().theta_from_tau(tau).ok()?;
       let best = [3.0_f64, 4.0, 6.0, 8.0, 12.0, 20.0, 40.0]
         .into_iter()
         .map(|nu| (nu, log_likelihood(&PairCopula::StudentT { rho, nu }, u, v)))
         .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))?;
       Some(PairCopula::StudentT { rho, nu: best.0 })
     }
-    BivariateFamily::Clayton => (tau > 0.02).then(|| PairCopula::Clayton {
-      theta: 2.0 * tau / (1.0 - tau),
-    }),
+    BivariateFamily::Clayton => {
+      if tau <= 0.02 {
+        return None;
+      }
+      let theta = Clayton::new().theta_from_tau(tau).ok()?;
+      Some(PairCopula::Clayton { theta })
+    }
     BivariateFamily::Frank => {
       if tau.abs() < 1e-3 {
         return None;
       }
       let theta = Frank::new(None).theta_from_tau(tau).ok()?;
-      theta.is_finite().then_some(PairCopula::Frank { theta })
+      Some(PairCopula::Frank { theta })
     }
     BivariateFamily::Bb1 | BivariateFamily::Bb7 => {
       if tau < 0.05 {
