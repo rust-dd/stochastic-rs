@@ -208,6 +208,18 @@ fn fit(c: &mut Criterion) {
   group.bench_function("kendall_tau_d4_n1k", |b| {
     b.iter(|| kendall_tau(data.view()))
   });
+  group.bench_function("gaussian_fit_d4_n1k", |b| {
+    b.iter(|| {
+      let mut fitted = GaussianMultivariate::default();
+      fitted.fit(data.view()).unwrap()
+    })
+  });
+  group.bench_function("t_fit_d4_n1k", |b| {
+    b.iter(|| {
+      let mut fitted = TMultivariate::default();
+      fitted.fit(data.view()).unwrap()
+    })
+  });
   group.finish();
 }
 
