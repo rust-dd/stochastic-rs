@@ -50,7 +50,7 @@ fn two_dimensional_fit_over_all_families_keeps_the_clayton_dependence() {
   let fit = fit_vine(
     u.view(),
     VineStructure::DVine,
-    &BivariateFamily::VINE_CANDIDATES,
+    BivariateFamily::VINE_CANDIDATES,
     SelectionCriterion::Aic,
   )
   .unwrap();
@@ -88,7 +88,7 @@ fn dvine_fit_recovers_the_first_tree_families() {
   let fit = fit_vine(
     u.view(),
     VineStructure::DVine,
-    &BivariateFamily::VINE_CANDIDATES,
+    BivariateFamily::VINE_CANDIDATES,
     SelectionCriterion::Bic,
   )
   .unwrap();
@@ -228,7 +228,7 @@ fn fit_rejects_degenerate_inputs() {
     fit_vine(
       one.view(),
       VineStructure::DVine,
-      &BivariateFamily::VINE_CANDIDATES,
+      BivariateFamily::VINE_CANDIDATES,
       SelectionCriterion::Aic
     )
     .is_err()
@@ -238,7 +238,7 @@ fn fit_rejects_degenerate_inputs() {
     fit_vine(
       short.view(),
       VineStructure::CVine,
-      &BivariateFamily::VINE_CANDIDATES,
+      BivariateFamily::VINE_CANDIDATES,
       SelectionCriterion::Aic
     )
     .is_err()

@@ -44,7 +44,7 @@ fn bb1_fit_gof_and_vine_selection() {
   let fit = fit_vine(
     uv.view(),
     VineStructure::DVine,
-    &BivariateFamily::VINE_CANDIDATES,
+    BivariateFamily::VINE_CANDIDATES,
     SelectionCriterion::Aic,
   )
   .unwrap();

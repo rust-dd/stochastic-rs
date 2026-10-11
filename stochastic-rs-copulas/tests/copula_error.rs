@@ -72,7 +72,7 @@ fn a_multivariate_fit_tells_too_few_dimensions_from_too_few_observations() {
   let vine = fit_vine(
     Array2::from_elem((100, 1), 0.5).view(),
     VineStructure::DVine,
-    &BivariateFamily::VINE_CANDIDATES,
+    BivariateFamily::VINE_CANDIDATES,
     SelectionCriterion::Aic,
   );
   assert!(matches!(vine, Err(CopulaError::InvalidStructure(_))));

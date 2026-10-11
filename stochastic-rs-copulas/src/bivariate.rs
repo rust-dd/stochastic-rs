@@ -153,7 +153,7 @@ pub enum BivariateFamily {
 
 impl BivariateFamily {
   /// Every family, in the enum's order.
-  pub const ALL: [Self; 15] = [
+  pub const ALL: &[Self] = &[
     Self::Amh,
     Self::Bb1,
     Self::Bb7,
@@ -172,7 +172,7 @@ impl BivariateFamily {
   ];
 
   /// The families the vine fitter can estimate, in the order it tries them.
-  pub const VINE_CANDIDATES: [Self; 7] = [
+  pub const VINE_CANDIDATES: &[Self] = &[
     Self::Independence,
     Self::Gaussian,
     Self::TCopula,

@@ -180,7 +180,7 @@ fn fit(c: &mut Criterion) {
       fit_vine(
         data.view(),
         VineStructure::DVine,
-        &BivariateFamily::VINE_CANDIDATES,
+        BivariateFamily::VINE_CANDIDATES,
         SelectionCriterion::Aic,
       )
       .unwrap()
