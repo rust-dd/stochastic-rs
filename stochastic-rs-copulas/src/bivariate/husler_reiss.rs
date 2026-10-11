@@ -208,19 +208,20 @@ impl BivariateExt for HuslerReiss {
   }
 
   /// Brent on `ln λ` over `[1e-6, 100]`: the rule holds `τ` to `1.9e-7` up to `λ = 100` and loses it beyond (`2.2e-4` at
-  /// `λ = 200`), so `0 < τ < τ(100) ≈ 0.98876` is the reachable range; `λ` to a relative `1e-8`, past the rule's resolution.
+  /// `λ = 200`), so `0 <= τ < τ(100) ≈ 0.98876` is the reachable range, `τ = 0` at `λ = 0`; `λ` to a relative `1e-8`.
   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
-    static RANGE: OnceLock<(f64, f64)> = OnceLock::new();
+    static CAP: OnceLock<f64> = OnceLock::new();
     let (lo, hi) = (1e-6_f64.ln(), 100.0_f64.ln());
-    let (tau_lo, tau_hi) =
-      *RANGE.get_or_init(|| (self.tau_from_theta(lo.exp()), self.tau_from_theta(hi.exp())));
-    if !(tau > tau_lo && tau < tau_hi) {
-      return Err(tau_out_of_range(
-        tau,
-        format!("{tau_lo:?} < tau < {tau_hi:?}"),
-      ));
+    let cap = *CAP.get_or_init(|| self.tau_from_theta(hi.exp()));
+    if !(tau >= 0.0 && tau < cap) {
+      return Err(tau_out_of_range(tau, format!("0.0 <= tau < {cap:?}")));
     }
-    let theta = invert_tau(|x| self.tau_from_theta(x.exp()) - tau, lo, hi, 1e-8)?.exp();
+    // `τ(1e-6)` is 0 to the last bit, so the bracket changes sign for every positive `τ`.
+    let theta = if tau == 0.0 {
+      0.0
+    } else {
+      invert_tau(|x| self.tau_from_theta(x.exp()) - tau, lo, hi, 1e-8)?.exp()
+    };
     admitted(self, tau, theta)
   }
 
@@ -411,6 +412,28 @@ mod tests {
     // Six standard errors of τ under independence (Kendall & Gibbons 1990).
     let se = (2.0 * (2.0 * n as f64 + 5.0) / (9.0 * n as f64 * (n as f64 - 1.0))).sqrt();
     assert!(tau.abs() < 6.0 * se, "τ = {tau}");
+  }
+
+  /// `τ = 0` inverts to `λ = 0`, the independence copula `new(0.0)` builds, from `from_tau` and from a fit at `τ̂ = 0`.
+  #[test]
+  fn hr_tau_zero_inverts_to_independence() {
+    let c = HuslerReiss::from_tau(0.0).unwrap();
+    assert_eq!((c.theta(), c.tau()), (Some(0.0), Some(0.0)));
+    let ranks = [2.0, 4.0, 1.0, 3.0];
+    let tied = ndarray::Array2::from_shape_fn((4, 2), |(i, j)| {
+      if j == 0 {
+        (i + 1) as f64 / 5.0
+      } else {
+        ranks[i] / 5.0
+      }
+    });
+    let mut fitted = HuslerReiss::default();
+    fitted.fit(tied.view()).unwrap();
+    assert_eq!(fitted.theta(), Some(0.0));
+    assert!(matches!(
+      HuslerReiss::from_tau(-1e-12),
+      Err(CopulaError::InvalidParameter { name: "tau", .. })
+    ));
   }
 
   /// `generator` has no override in this family, so this exercises
