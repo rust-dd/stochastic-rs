@@ -244,8 +244,8 @@ fn theta_from_tau_round_trips_through_tau_from_theta() {
   }
 }
 
-/// One discordant pair in 30 000 leaves `τ̂ = 1 − 4.4e-9`, whose `ρ = sin(πτ̂/2)` rounds onto the excluded `ρ = 1`:
-/// `theta_from_tau` answers the τ error, so neither `fit` nor a caller of the inverse can store that `ρ`.
+/// One discordant pair in 30 000 leaves `τ̂ = 1 − 4.4e-9`, whose `ρ = sin(πτ̂/2)` rounds onto the excluded `ρ = 1`, and
+/// BB1(δ = 1.125) rounds onto `θ = 0` for the four floats above its lower τ: both are the τ error, never a stored θ.
 #[test]
 fn an_inverse_that_rounds_onto_an_excluded_theta_is_an_error() {
   let n = 30_000;
@@ -266,18 +266,18 @@ fn an_inverse_that_rounds_onto_an_excluded_theta_is_an_error() {
       "{got:?}"
     );
   }
-  let bb1 = Bb1::new(None, Some(1.5));
-  let mut tau = 1.0_f64 - 1.0 / 1.5;
-  for _ in 0..8 {
+  let bb1 = Bb1::new(None, Some(1.125));
+  let mut tau = 1.0_f64 - 1.0 / 1.125;
+  for _ in 0..4 {
     tau = tau.next_up();
-    match bb1.theta_from_tau(tau) {
-      Ok(theta) => assert!(theta > 0.0, "τ = {tau}: θ = {theta}"),
-      Err(e) => assert!(
-        matches!(e, CopulaError::InvalidParameter { name: "tau", .. }),
-        "{e:?}"
-      ),
-    }
+    assert_eq!(2.0 / (1.125 * (1.0 - tau)) - 2.0, 0.0);
+    let got = bb1.theta_from_tau(tau);
+    assert!(
+      matches!(got, Err(CopulaError::InvalidParameter { name: "tau", .. })),
+      "{got:?}"
+    );
   }
+  assert!(bb1.theta_from_tau(tau.next_up()).unwrap() > 0.0);
 }
 
 /// Ten pairs with 15 discordances have `τ̂ = 1/3`, AMH's upper end, reached at `θ = 1`.
@@ -398,7 +398,7 @@ fn every_inverse_is_an_admitted_theta() {
     2.0 / 9.0,
     1.0 / 3.0,
     (5.0 - 8.0 * 2.0_f64.ln()) / 3.0,
-    1.0 - 1.0 / 1.5,
+    1.0 - 1.0 / 1.125,
     1.0 - 6e-9,
     1.0,
   ] {
@@ -437,7 +437,7 @@ fn every_inverse_is_an_admitted_theta() {
   admitted!(TCopula::new());
   admitted!(MarshallOlkin::new());
   admitted!(Independence::new());
-  admitted!(Bb1::new(None, Some(1.5)));
+  admitted!(Bb1::new(None, Some(1.125)));
   admitted!(Bb7::new(None, Some(1.1)));
   admitted!(Galambos::new());
   admitted!(HuslerReiss::new());
