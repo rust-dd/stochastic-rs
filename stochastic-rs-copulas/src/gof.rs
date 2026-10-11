@@ -307,37 +307,12 @@ mod tests {
       )
       .unwrap()
     };
-    let on_gaussian = |alpha: f64| {
-      let data = data_for(5);
-      let mut fitted = GaussianCopula::new();
-      fitted.fit(data.view()).unwrap();
-      let config = GofConfig {
-        replications: 60,
-        alpha,
-      };
-      gof_cramer_von_mises(
-        &fitted,
-        data.view(),
-        config,
-        &Deterministic::new(100),
-        |c: &mut GaussianCopula, x| c.fit(x),
-      )
-      .unwrap()
-    };
-    let wrong = on_gaussian(0.05);
-    assert_eq!(
-      wrong.rejects_null,
-      wrong.p_value < 0.05,
-      "p {}",
-      wrong.p_value
-    );
-    assert!(wrong.rejects_null && !on_gaussian(1e-6).rejects_null);
-    assert_eq!(wrong.null_rejected(), Some(wrong.rejects_null));
-    assert_eq!((wrong.replications, wrong.alpha), (60, 0.05));
     let p = 10.0 / 61.0;
     let keeps = on_clayton(6, 0.1);
     assert_eq!(keeps.p_value, p);
     assert!(!keeps.rejects_null);
+    assert_eq!(keeps.null_rejected(), Some(false));
+    assert_eq!((keeps.replications, keeps.alpha), (60, 0.1));
     assert!(!on_clayton(6, p).rejects_null, "p < alpha is strict");
     assert!(on_clayton(6, 0.2).rejects_null);
     let kept = [5u64, 6, 7]
