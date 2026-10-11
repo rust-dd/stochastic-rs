@@ -44,15 +44,28 @@ use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
 
-/// `ψ(x) − ψ(y)` through `ψ(z) = ψ(z + 1) − 1/z` up past 30, where the asymptotic series of `digamma` holds its digits.
+/// `ψ(x) − ψ(y)` through `ψ(z) = ψ(z + 1) − 1/z` up past 30, where the asymptotic series of `digamma` holds its digits;
+/// Neumaier's compensated sum keeps the thirty-odd recurrence terms from piling up rounding.
 fn digamma_difference(mut x: f64, mut y: f64) -> f64 {
-  let mut acc = 0.0;
+  let (mut sum, mut compensation) = (0.0_f64, 0.0_f64);
+  let mut add = |v: f64| {
+    let t = sum + v;
+    compensation += if sum.abs() >= v.abs() {
+      (sum - t) + v
+    } else {
+      (v - t) + sum
+    };
+    sum = t;
+  };
   while x < 30.0 || y < 30.0 {
-    acc += 1.0 / y - 1.0 / x;
+    add(1.0 / y);
+    add(-1.0 / x);
     x += 1.0;
     y += 1.0;
   }
-  acc + digamma(x) - digamma(y)
+  add(digamma(x));
+  add(-digamma(y));
+  sum + compensation
 }
 
 #[derive(Debug, Clone)]
