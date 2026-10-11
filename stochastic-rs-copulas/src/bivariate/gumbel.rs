@@ -165,13 +165,13 @@ impl BivariateExt for Gumbel {
   /// lower-tail dependence ($\lambda_L = 0$).
   /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
   /// Springer, Table 5.1.
-  fn tail_dependence(&self) -> TailDependence<f64> {
-    self.assert_theta_valid_for_tail_dependence();
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+    self.check_theta()?;
     let theta = self.theta.unwrap();
-    TailDependence {
+    Ok(TailDependence {
       lower: 0.0,
       upper: 2.0 - 2.0_f64.powf(1.0 / theta),
-    }
+    })
   }
 }
 
@@ -235,7 +235,7 @@ mod tests {
   #[test]
   fn gumbel_tail_dependence_closed_form() {
     let g = Gumbel::new(Some(2.0));
-    let td = g.tail_dependence();
+    let td = g.tail_dependence().unwrap();
     assert!(
       (td.upper - (2.0 - std::f64::consts::SQRT_2)).abs() < 1e-12,
       "λ_U={}, expected {}",
@@ -245,11 +245,13 @@ mod tests {
     assert_eq!(td.lower, 0.0);
   }
 
-  /// θ = 0.5 lies below the bound 1, where `λ_U = 2 − 2^{1/θ}` would be negative: a panic, not a coefficient.
+  /// θ = 0.5 lies below the bound 1, where `λ_U = 2 − 2^{1/θ}` would be negative: an error, not a coefficient.
   #[test]
-  #[should_panic(expected = "tail_dependence requires a valid theta")]
-  fn gumbel_tail_dependence_panics_on_invalid_theta() {
+  fn gumbel_tail_dependence_rejects_an_invalid_theta() {
     let g = Gumbel::new(Some(0.5));
-    let _ = g.tail_dependence();
+    assert!(matches!(
+      g.tail_dependence(),
+      Err(CopulaError::InvalidParameter { name: "theta", .. })
+    ));
   }
 }

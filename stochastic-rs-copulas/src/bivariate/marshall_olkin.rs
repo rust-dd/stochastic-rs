@@ -262,31 +262,15 @@ impl BivariateExt for MarshallOlkin {
     }
   }
 
-  /// Upper-tail dependence $\lambda_U = \min(\alpha,\beta)$, carried
-  /// entirely by the singular component on $u^\alpha = v^\beta$; no
-  /// lower-tail dependence.
-  /// Reference: Marshall, A.W., Olkin, I. (1967); Nelsen (2006) Example
-  /// 5.22 (module header).
-  ///
-  /// Cannot use [`BivariateExt::assert_theta_valid_for_tail_dependence`]
-  /// directly: the legitimate [`MarshallOlkin::with_alpha_beta`]
-  /// construction path leaves `theta` as `None`, which the generic
-  /// `theta`-based guard would reject as unfit even though it's a valid
-  /// configuration. Validates the *resolved* `(alpha, beta)` against
-  /// their own domain instead — e.g. a raw `set_theta(5.0)` bypasses
-  /// `with_alpha_beta`'s constructor asserts and would otherwise report a
-  /// nonsensical `\lambda_U > 1`.
-  fn tail_dependence(&self) -> TailDependence<f64> {
+  /// $\lambda_U = \min(\alpha,\beta)$, carried entirely by the singular component on $u^\alpha = v^\beta$; no lower-tail dependence.
+  /// Reference: Marshall, A.W., Olkin, I. (1967); Nelsen (2006) Example 5.22 (module header).
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+    self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
-    if !(alpha > 0.0 && alpha <= 1.0) || !(beta > 0.0 && beta <= 1.0) {
-      panic!(
-        "tail_dependence requires a valid theta: alpha={alpha} and beta={beta} must each lie in (0, 1]"
-      );
-    }
-    TailDependence {
+    Ok(TailDependence {
       lower: 0.0,
       upper: alpha.min(beta),
-    }
+    })
   }
 }
 

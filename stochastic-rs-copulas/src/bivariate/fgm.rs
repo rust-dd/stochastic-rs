@@ -153,12 +153,12 @@ impl BivariateExt for Fgm {
   /// FGM is a bounded perturbation of independence — no tail dependence
   /// in either tail, for any $\theta \in [-1, 1]$.
   /// Reference: Nelsen, R.B. (2006), Table 5.1.
-  fn tail_dependence(&self) -> TailDependence<f64> {
-    self.assert_theta_valid_for_tail_dependence();
-    TailDependence {
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+    self.check_theta()?;
+    Ok(TailDependence {
       lower: 0.0,
       upper: 0.0,
-    }
+    })
   }
 }
 
@@ -223,7 +223,7 @@ mod tests {
   fn fgm_tail_dependence_is_zero() {
     let mut c = Fgm::new();
     c.set_theta(0.9);
-    let td = c.tail_dependence();
+    let td = c.tail_dependence().unwrap();
     assert_eq!(td.lower, 0.0);
     assert_eq!(td.upper, 0.0);
   }

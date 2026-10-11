@@ -232,13 +232,13 @@ impl BivariateExt for HuslerReiss {
   /// Upper-tail dependence $\lambda_U = 2(1 - \Phi(1/\lambda))$;
   /// Hüsler-Reiss has no lower-tail dependence.
   /// Reference: Hüsler, J., Reiss, R.-D. (1989) (module header).
-  fn tail_dependence(&self) -> TailDependence<f64> {
-    self.assert_theta_valid_for_tail_dependence();
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+    self.check_theta()?;
     let lambda = self.theta.unwrap();
-    TailDependence {
+    Ok(TailDependence {
       lower: 0.0,
       upper: 2.0 * (1.0 - norm_cdf(1.0 / lambda)),
-    }
+    })
   }
 }
 
@@ -336,7 +336,7 @@ mod tests {
   fn hr_tail_dependence_matches_formula() {
     let mut c = HuslerReiss::new();
     c.set_theta(1.5);
-    let td = c.tail_dependence();
+    let td = c.tail_dependence().unwrap();
     let expected = 2.0 * (1.0 - norm_cdf(1.0 / 1.5));
     assert!(approx(td.upper, expected, 1e-12), "got {}", td.upper);
     assert_eq!(td.lower, 0.0);

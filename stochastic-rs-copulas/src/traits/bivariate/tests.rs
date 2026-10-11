@@ -38,11 +38,11 @@ impl BivariateExt for DummyNonArchimedean {
     Ok(0.0)
   }
 
-  fn tail_dependence(&self) -> TailDependence<f64> {
-    TailDependence {
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+    Ok(TailDependence {
       lower: 0.0,
       upper: 0.0,
-    }
+    })
   }
 
   fn pdf(&self, _x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
@@ -88,11 +88,11 @@ impl BivariateExt for ParameterisedWithoutTheta {
     Ok(0.0)
   }
 
-  fn tail_dependence(&self) -> TailDependence<f64> {
-    TailDependence {
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+    Ok(TailDependence {
       lower: 0.0,
       upper: 0.0,
-    }
+    })
   }
 
   fn check_fit(&self) -> Result<(), CopulaError> {

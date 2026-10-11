@@ -218,13 +218,13 @@ impl BivariateExt for Galambos {
   }
 
   /// `λ_U = 2^{−1/θ} = 2(1 − A(1/2))` of [`Galambos::pickands`], `λ_L = 0` (Galambos 1975; Joe 1997, §5.4).
-  fn tail_dependence(&self) -> TailDependence<f64> {
-    self.assert_theta_valid_for_tail_dependence();
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+    self.check_theta()?;
     let theta = self.theta.unwrap();
-    TailDependence {
+    Ok(TailDependence {
       lower: 0.0,
       upper: 2.0_f64.powf(-1.0 / theta),
-    }
+    })
   }
 }
 
@@ -323,7 +323,7 @@ mod tests {
   fn galambos_tail_dependence_matches_pickands_formula() {
     let mut c = Galambos::new();
     c.set_theta(1.5);
-    let td = c.tail_dependence();
+    let td = c.tail_dependence().unwrap();
     let expected = 2.0 * (1.0 - Galambos::pickands(1.5, 0.5));
     assert!(approx(td.upper, expected, 1e-12), "got {}", td.upper);
     assert_eq!(td.lower, 0.0);

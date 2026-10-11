@@ -200,13 +200,13 @@ impl BivariateExt for Joe {
   /// form as Gumbel); Joe has no lower-tail dependence.
   /// Reference: Joe, H. (1997), "Multivariate Models and Dependence
   /// Concepts", Chapman & Hall, §5.1.
-  fn tail_dependence(&self) -> TailDependence<f64> {
-    self.assert_theta_valid_for_tail_dependence();
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+    self.check_theta()?;
     let theta = self.theta.unwrap();
-    TailDependence {
+    Ok(TailDependence {
       lower: 0.0,
       upper: 2.0 - 2.0_f64.powf(1.0 / theta),
-    }
+    })
   }
 }
 
@@ -320,7 +320,7 @@ mod tests {
   fn joe_tail_dependence_matches_gumbel_form() {
     let mut c = Joe::new();
     c.set_theta(2.0);
-    let td = c.tail_dependence();
+    let td = c.tail_dependence().unwrap();
     let expected = 2.0 - 2.0_f64.powf(0.5);
     assert!(approx(td.upper, expected, 1e-12), "got {}", td.upper);
     assert_eq!(td.lower, 0.0);

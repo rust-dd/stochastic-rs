@@ -16,7 +16,7 @@ use stochastic_rs::traits::BivariateExt;
 fn bb1_fit_gof_and_vine_selection() {
   // BB1 with lower tail 2^{-1/(θδ)} and upper tail 2 - 2^{1/δ}: asymmetric tails.
   let truth = Bb1::new(Some(0.8), Some(1.6));
-  let tails = truth.tail_dependence();
+  let tails = truth.tail_dependence().unwrap();
   assert!(tails.lower > 0.5 && tails.upper > 0.4 && tails.lower != tails.upper);
   // Every fit and test runs on pseudo-observations (normalised ranks), as with real data.
   let uv = pseudo_observations(truth.sample(2_000, &Deterministic::new(42)).unwrap().view()); // shape (2_000, 2)

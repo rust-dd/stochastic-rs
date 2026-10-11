@@ -56,3 +56,13 @@ def test_copula_gof_alpha_outside_the_unit_interval_raises_value_error():
 def test_copula_gof_zero_replications_raises_value_error():
     with pytest.raises(ValueError, match="replications must satisfy"):
         sr.copula_gof("clayton", _clayton_pseudo_observations(), replications=0)
+
+
+def test_copula_tail_dependence_before_parameters_raises_value_error():
+    with pytest.raises(ValueError, match="no parameters yet"):
+        sr.Bb1().tail_dependence()
+
+
+def test_copula_tail_dependence_out_of_range_raises_value_error():
+    with pytest.raises(ValueError, match="theta must satisfy"):
+        sr.Bb7(theta=0.5, delta=1.0).tail_dependence()

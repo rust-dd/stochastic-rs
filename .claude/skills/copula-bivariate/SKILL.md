@@ -36,7 +36,7 @@ fn theta_bounds(&self) -> (f64, f64);
 fn invalid_thetas(&self) -> Vec<f64>;    // returns owned Vec, not &[f64]
 fn tau_from_theta(&self, theta: f64) -> f64;                      // Kendall's τ of the family at θ
 fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError>;   // Err outside the reachable τ range
-fn tail_dependence(&self) -> TailDependence<f64>;
+fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError>;
 fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 ```
@@ -87,10 +87,8 @@ only if the family is Archimedean.
 
 `tail_dependence` is **required, not defaulted, on purpose**: a silent
 `(0.0, 0.0)` fallback would be a correctness bug for Clayton, Gumbel,
-Joe, Galambos, Hüsler-Reiss, Marshall-Olkin and Student-t. It must call
-`self.assert_theta_valid_for_tail_dependence()` first — it has no
-`Result` to propagate through, so it panics on an out-of-domain theta
-rather than returning a nonsensical coefficient.
+Joe, Galambos, Hüsler-Reiss, Marshall-Olkin and Student-t. It returns
+`Result` and starts with `self.check_theta()?` like `pdf` and `cdf`.
 
 ## 2. The struct skeleton
 
@@ -268,10 +266,8 @@ fn clayton_independence_sample_kendall_tau_near_zero() {
   vectorised over an `(n, 2)` array and returns `Result`.
 - **Do not** clamp a τ that the family cannot reach to the boundary;
   return the `tau` error.
-- **Do not** return `Vec::new()`-shaped nonsense from
-  `tail_dependence`, and do not skip
-  `assert_theta_valid_for_tail_dependence()`: a `theta` set directly can
-  still be out of bounds, and that assert is the guard.
+- **Do not** skip `check_theta()?` in `tail_dependence`: it is the same
+  gate `pdf` and `cdf` run.
 - **Do not** implement `sample` / `fit` / `log_pdf`. They are
   defaulted and the defaults are correct.
 - **Do not** implement `generator` for a non-Archimedean family. The

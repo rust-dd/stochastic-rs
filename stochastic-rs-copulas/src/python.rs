@@ -293,9 +293,9 @@ macro_rules! py_two_parameter {
       }
 
       /// `(lower, upper)` tail-dependence coefficients.
-      fn tail_dependence(&self) -> (f64, f64) {
-        let t = BivariateExt::tail_dependence(&self.inner);
-        (t.lower, t.upper)
+      fn tail_dependence(&self) -> PyResult<(f64, f64)> {
+        let t = BivariateExt::tail_dependence(&self.inner).map_err(err_to_py)?;
+        Ok((t.lower, t.upper))
       }
 
       #[pyo3(signature = (n, seed=None))]

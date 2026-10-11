@@ -118,7 +118,7 @@ fn t_partial_derivative_matches_finite_diff() {
 fn t_copula_tail_dependence_symmetric_and_monotone() {
   let mut c = TCopula::with_nu(3.0);
   c.set_theta(0.5);
-  let td = c.tail_dependence();
+  let td = c.tail_dependence().unwrap();
   assert!(approx(td.lower, td.upper, 1e-15), "symmetric: {td:?}");
 
   let arg = -((4.0_f64 * (1.0 - 0.5) / (1.0 + 0.5)).sqrt());
@@ -133,7 +133,7 @@ fn t_copula_tail_dependence_symmetric_and_monotone() {
   for &rho in &[-0.5_f64, -0.1, 0.3, 0.7, 0.9] {
     let mut cc = TCopula::with_nu(3.0);
     cc.set_theta(rho);
-    let lam = cc.tail_dependence().lower;
+    let lam = cc.tail_dependence().unwrap().lower;
     assert!(
       lam > prev,
       "λ should increase with ρ: ρ={rho}, λ={lam}, prev={prev}"
@@ -279,11 +279,13 @@ fn t_copula_rejects_rho_boundary_like_gaussian() {
   }
 }
 
-/// `ρ = 1` divides by `√(1 − ρ²)`: the crate-wide `"tail_dependence requires a valid theta"` panic, not a coefficient.
+/// `ρ = 1` divides by `√(1 − ρ²)`: an error, not a coefficient.
 #[test]
-#[should_panic(expected = "tail_dependence requires a valid theta")]
-fn t_copula_tail_dependence_panics_at_rho_boundary() {
+fn t_copula_tail_dependence_rejects_the_rho_boundary() {
   let mut c = TCopula::with_nu(4.0);
   c.set_theta(1.0);
-  let _ = c.tail_dependence();
+  assert!(matches!(
+    c.tail_dependence(),
+    Err(CopulaError::InvalidParameter { name: "theta", .. })
+  ));
 }

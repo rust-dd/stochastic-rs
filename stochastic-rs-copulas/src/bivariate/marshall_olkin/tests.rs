@@ -247,20 +247,21 @@ fn mo_sampler_reproduces_tau_the_singular_mass_and_the_cdf() {
 #[test]
 fn mo_tail_dependence_matches_min_alpha_beta() {
   let c = MarshallOlkin::with_alpha_beta(0.6, 0.4);
-  let td = c.tail_dependence();
+  let td = c.tail_dependence().unwrap();
   assert!(approx(td.upper, 0.4, 1e-12), "got {}", td.upper);
   assert_eq!(td.lower, 0.0);
 }
 
-/// A raw `set_theta(5.0)` bypasses `with_alpha_beta`'s constructor
-/// asserts, resolving to `(alpha, beta) = (5.0, 5.0)` — outside `(0, 1]`.
-/// Must panic, not silently report `λ_U = 5.0`.
+/// A raw `set_theta(5.0)` bypasses `with_alpha_beta`'s asserts and resolves to `(alpha, beta) = (5.0, 5.0)`, outside
+/// `(0, 1]`: an error, not `λ_U = 5.0`.
 #[test]
-#[should_panic(expected = "tail_dependence requires a valid theta")]
-fn mo_tail_dependence_panics_on_invalid_theta() {
+fn mo_tail_dependence_rejects_an_invalid_theta() {
   let mut c = MarshallOlkin::new();
   c.set_theta(5.0);
-  let _ = c.tail_dependence();
+  assert!(matches!(
+    c.tail_dependence(),
+    Err(CopulaError::InvalidParameter { name: "theta", .. })
+  ));
 }
 
 /// pdf/cdf/partial_derivative on an unfit `MarshallOlkin` (neither

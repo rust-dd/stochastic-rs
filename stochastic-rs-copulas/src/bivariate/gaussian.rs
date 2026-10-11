@@ -211,12 +211,12 @@ impl BivariateExt for GaussianCopula {
   /// \in (-1, 1)$ — the classical counterexample to "correlation implies
   /// tail dependence".
   /// Reference: Embrechts, Lindskog, McNeil (2003), §3.2 (module header).
-  fn tail_dependence(&self) -> TailDependence<f64> {
-    self.assert_theta_valid_for_tail_dependence();
-    TailDependence {
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+    self.check_theta()?;
+    Ok(TailDependence {
       lower: 0.0,
       upper: 0.0,
-    }
+    })
   }
 }
 
@@ -318,7 +318,7 @@ mod tests {
   fn gaussian_tail_dependence_is_zero() {
     let mut c = GaussianCopula::new();
     c.set_theta(0.9);
-    let td = c.tail_dependence();
+    let td = c.tail_dependence().unwrap();
     assert_eq!(td.lower, 0.0);
     assert_eq!(td.upper, 0.0);
   }

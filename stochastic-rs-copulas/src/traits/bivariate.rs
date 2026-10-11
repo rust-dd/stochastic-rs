@@ -22,14 +22,8 @@ use crate::bivariate::conditional::in_unit;
 use crate::error::CopulaError;
 use crate::optim::zero;
 
-/// Upper- and lower-tail dependence coefficients
-/// $$
-/// \lambda_L = \lim_{u\to0^+} \frac{C(u,u)}{u}, \qquad
-/// \lambda_U = \lim_{u\to1^-} \frac{1 - 2u + C(u,u)}{1 - u}.
-/// $$
-/// Generic in `T` so the value type travels with the struct; every
-/// [`BivariateExt`] impl in this crate is `f64`-based, so
-/// [`BivariateExt::tail_dependence`] always returns `TailDependence<f64>`.
+/// Upper- and lower-tail dependence $\lambda_L = \lim_{u\to0^+} C(u,u)/u$ and
+/// $\lambda_U = \lim_{u\to1^-} (1 - 2u + C(u,u))/(1 - u)$; every [`BivariateExt`] impl in this crate is `f64`-based.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TailDependence<T> {
   pub lower: T,
@@ -84,21 +78,8 @@ pub trait BivariateExt {
     self.theta().map(|theta| self.tau_from_theta(theta))
   }
 
-  /// Closed-form tail-dependence coefficients at the current `theta`, required because a `(0, 0)` default is wrong for
-  /// every tail-dependent family; panics unless the parameters are valid (`assert_theta_valid_for_tail_dependence`).
-  fn tail_dependence(&self) -> TailDependence<f64>;
-
-  /// Panics with a message beginning `"tail_dependence requires a valid
-  /// theta"` unless `theta` is set and satisfies
-  /// [`BivariateExt::theta_bounds`] / [`BivariateExt::invalid_thetas`].
-  /// Every [`BivariateExt::tail_dependence`] impl in this crate calls this
-  /// first (or an equivalent family-specific check, for families like
-  /// Marshall-Olkin that accept parameters outside the `theta` field).
-  fn assert_theta_valid_for_tail_dependence(&self) {
-    if let Err(e) = self.check_theta() {
-      panic!("tail_dependence requires a valid theta: {e}");
-    }
-  }
+  /// Upper and lower tail-dependence coefficients at the current parameters; `NotFitted` before they are set.
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError>;
 
   /// Archimedean generator $\varphi$, $C(u,v) = \varphi^{-1}(\varphi(u) + \varphi(v))$; the default
   /// is `Unsupported`, named by the `family()` label, for a family with no such form.

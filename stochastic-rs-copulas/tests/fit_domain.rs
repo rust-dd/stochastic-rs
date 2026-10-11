@@ -396,11 +396,11 @@ impl BivariateExt for Careless {
     Ok(2.0)
   }
 
-  fn tail_dependence(&self) -> TailDependence<f64> {
-    TailDependence {
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+    Ok(TailDependence {
       lower: 0.0,
       upper: 0.0,
-    }
+    })
   }
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
@@ -547,4 +547,27 @@ fn every_inverse_is_an_admitted_theta() {
   admitted!(Bb7::new(None, Some(1.1)));
   admitted!(Galambos::new());
   admitted!(HuslerReiss::new());
+}
+
+#[test]
+fn tail_dependence_shares_the_result_channel() {
+  assert_eq!(
+    Clayton::new().tail_dependence(),
+    Err(CopulaError::NotFitted)
+  );
+  let out_of_range = Gumbel::new(Some(0.5));
+  assert!(matches!(
+    out_of_range.tail_dependence(),
+    Err(CopulaError::InvalidParameter { name: "theta", .. })
+  ));
+  let clayton = Clayton {
+    theta: Some(2.0),
+    ..Clayton::new()
+  };
+  let tails = clayton.tail_dependence().unwrap();
+  assert!((tails.lower - 2.0_f64.powf(-0.5)).abs() < 1e-12 && tails.upper == 0.0);
+  assert_eq!(
+    MarshallOlkin::new().tail_dependence(),
+    Err(CopulaError::NotFitted)
+  );
 }

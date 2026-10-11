@@ -257,12 +257,12 @@ impl BivariateExt for Frank {
   /// Frank has no tail dependence in either tail, for any $\theta$.
   /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
   /// Springer, Table 5.1.
-  fn tail_dependence(&self) -> TailDependence<f64> {
-    self.assert_theta_valid_for_tail_dependence();
-    TailDependence {
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+    self.check_theta()?;
+    Ok(TailDependence {
       lower: 0.0,
       upper: 0.0,
-    }
+    })
   }
 }
 
@@ -286,7 +286,7 @@ mod tests {
   #[test]
   fn frank_tail_dependence_is_zero() {
     let f = Frank::new(Some(6.0));
-    let td = f.tail_dependence();
+    let td = f.tail_dependence().unwrap();
     assert_eq!(td.lower, 0.0);
     assert_eq!(td.upper, 0.0);
   }

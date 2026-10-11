@@ -319,13 +319,12 @@ impl BivariateExt for Bb7 {
   }
 
   /// `λ_U = 2 − 2^{1/θ}`, `λ_L = 2^{−1/δ}` (Joe 1997, §5.2).
-  fn tail_dependence(&self) -> TailDependence<f64> {
-    self.assert_theta_valid_for_tail_dependence();
-    let theta = self.theta.expect("checked");
-    TailDependence {
-      lower: 2.0_f64.powf(-1.0 / self.delta),
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+    let (theta, delta) = self.params()?;
+    Ok(TailDependence {
+      lower: 2.0_f64.powf(-1.0 / delta),
       upper: 2.0 - 2.0_f64.powf(1.0 / theta),
-    }
+    })
   }
 }
 
@@ -389,7 +388,7 @@ mod tests {
 
   #[test]
   fn tail_coefficients_follow_joe() {
-    let td = Bb7::new(Some(2.0), Some(1.0)).tail_dependence();
+    let td = Bb7::new(Some(2.0), Some(1.0)).tail_dependence().unwrap();
     assert!((td.upper - (2.0 - 2.0_f64.sqrt())).abs() < 1e-15);
     assert!((td.lower - 0.5).abs() < 1e-15);
   }
