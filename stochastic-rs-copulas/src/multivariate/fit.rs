@@ -1,25 +1,8 @@
-//! # Vine fitting
-//!
-//! Sequential structure and family selection for D-vines and C-vines
-//! after Dißmann, Brechmann, Czado & Kurowicka (2013): the first tree is
-//! chosen on the empirical Kendall's τ (a greedy maximal path for the
-//! D-vine order, the strongest-dependence root for the C-vine), each edge's
-//! pair copula is picked among the candidate families by AIC or BIC with
-//! its parameters estimated on the current pseudo-observations, and the
-//! h-functions of the fitted pairs produce the pseudo-observations of the
-//! next tree (Aas, Czado, Frigessi & Bakken 2009, Algorithms 3–4).
-//!
-//! Parameter estimation per family: Gaussian and Student-t correlation by
-//! Kendall inversion `ρ = sin(πτ/2)` (the degrees of freedom by profile
-//! likelihood on a grid), Clayton and Frank by Kendall inversion, BB1 and
-//! BB7 by maximum likelihood.
-//!
-//! References: Dißmann, J., Brechmann, E. C., Czado, C. & Kurowicka, D.
-//! (2013), *Selecting and estimating regular vine copulae and application
-//! to financial returns*, Computational Statistics & Data Analysis 59,
-//! 52–69; Aas, K., Czado, C., Frigessi, A. & Bakken, H. (2009), *Pair-copula
-//! constructions of multiple dependence*, Insurance: Mathematics and
-//! Economics 44(2), 182–198.
+//! Dißmann, Brechmann, Czado & Kurowicka (2013), Algorithm 3.1 with a path (D-vine) or a star (C-vine) for each tree of
+//! largest Σ|τ̂|, each edge's family by AIC or BIC over maximum-likelihood fits, its h-functions giving the next tree's data.
+//! Reference: Dißmann, J., Brechmann, E. C., Czado, C. & Kurowicka, D. (2013), "Selecting and estimating regular vine copulae and application to financial returns", Computational Statistics & Data Analysis 59, 52–69, doi:10.1016/j.csda.2012.08.010 (preprint arXiv:1202.2002).
+//! Reference: Aas, K., Czado, C., Frigessi, A. & Bakken, H. (2009), "Pair-copula constructions of multiple dependence", Insurance: Mathematics and Economics 44(2), 182–198, doi:10.1016/j.insmatheco.2007.02.001.
+//! Reference: Held, M. & Karp, R. M. (1962), "A Dynamic Programming Approach to Sequencing Problems", Journal of the Society for Industrial and Applied Mathematics 10(1), 196–210, doi:10.1137/0110015.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -41,6 +24,8 @@ use crate::correlation::check_defined;
 use crate::correlation::kendall_tau;
 use crate::correlation::kendall_tau_b;
 use crate::error::CopulaError;
+use crate::optim::SQRT_MACHEPS;
+use crate::optim::localmin;
 use crate::traits::BivariateExt;
 
 /// Information criterion used to pick the family of each edge.
@@ -109,36 +94,27 @@ fn log_likelihood(pair: &PairCopula, u: &[f64], v: &[f64]) -> f64 {
   u.iter().zip(v).map(|(&a, &b)| pair.log_density(a, b)).sum()
 }
 
-/// Estimates `family` on the pair `(u, v)`; `None` when it has no estimator or cannot represent the observed
-/// dependence (e.g. Clayton at negative τ).
+/// Estimates `family` on the pair `(u, v)` by maximum likelihood; `None` when it has no estimator or its Kendall start
+/// cannot represent the observed dependence (e.g. Clayton at negative τ).
 fn estimate(family: BivariateFamily, u: &[f64], v: &[f64]) -> Option<PairCopula> {
   let tau = tau_of(u, v).clamp(-0.99, 0.99);
   match family {
     BivariateFamily::Independence => Some(PairCopula::Independence),
-    BivariateFamily::Gaussian => Some(PairCopula::Gaussian {
-      rho: GaussianCopula::default().theta_from_tau(tau).ok()?,
-    }),
-    BivariateFamily::TCopula => {
-      let rho = TCopula::default().theta_from_tau(tau).ok()?;
-      let best = [3.0_f64, 4.0, 6.0, 8.0, 12.0, 20.0, 40.0]
-        .into_iter()
-        .map(|nu| (nu, log_likelihood(&PairCopula::StudentT { rho, nu }, u, v)))
-        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))?;
-      Some(PairCopula::StudentT { rho, nu: best.0 })
+    BivariateFamily::Gaussian => {
+      maximise::<GaussianCopula>(tau, u, v, |rho| PairCopula::Gaussian { rho })
     }
+    BivariateFamily::TCopula => student_t(u, v),
     BivariateFamily::Clayton => {
       if tau <= 0.02 {
         return None;
       }
-      let theta = Clayton::default().theta_from_tau(tau).ok()?;
-      Some(PairCopula::Clayton { theta })
+      maximise::<Clayton>(tau, u, v, |theta| PairCopula::Clayton { theta })
     }
     BivariateFamily::Frank => {
       if tau.abs() < 1e-3 {
         return None;
       }
-      let theta = Frank::default().theta_from_tau(tau).ok()?;
-      Some(PairCopula::Frank { theta })
+      maximise::<Frank>(tau, u, v, |theta| PairCopula::Frank { theta })
     }
     BivariateFamily::Bb1 | BivariateFamily::Bb7 => {
       if tau < 0.05 {
@@ -176,7 +152,85 @@ fn estimate(family: BivariateFamily, u: &[f64], v: &[f64]) -> Option<PairCopula>
   }
 }
 
-/// Best family on the pair by the criterion: the copula, its family, log-likelihood and parameter count.
+/// The τ the family reaches inside its θ bounds, cut to `|τ| ≤ 0.99` like every Kendall start.
+fn tau_range(copula: &impl BivariateExt) -> (f64, f64) {
+  let (lo, hi) = copula.theta_bounds();
+  let reach = |theta: f64| {
+    if theta.is_finite() {
+      copula.tau_from_theta(theta)
+    } else {
+      theta.signum()
+    }
+  };
+  (reach(lo).max(-0.99), reach(hi).min(0.99))
+}
+
+/// The minimised `−ll`, `+∞` where the likelihood is not finite, which `localmin` then steps away from.
+fn objective(ll: f64) -> f64 {
+  if ll.is_finite() { -ll } else { f64::INFINITY }
+}
+
+/// The likelihood maximised by `localmin` over the family's τ range at θ = `theta_from_tau(τ)`, kept where it beats the
+/// Kendall start `tau`; `None` when the start has no finite likelihood.
+fn maximise<C: BivariateExt + Default>(
+  tau: f64,
+  u: &[f64],
+  v: &[f64],
+  pair: impl Fn(f64) -> PairCopula,
+) -> Option<PairCopula> {
+  let copula = C::default();
+  let at = |t: f64| copula.theta_from_tau(t).ok().map(&pair);
+  let nll = |t: f64| at(t).map_or(f64::INFINITY, |p| objective(log_likelihood(&p, u, v)));
+  let start = nll(tau);
+  if !start.is_finite() {
+    return None;
+  }
+  let (lo, hi) = tau_range(&copula);
+  let (best, value) = localmin(lo, hi, SQRT_MACHEPS, SQRT_MACHEPS, &nll);
+  at(if value <= start { best } else { tau })
+}
+
+/// Student t by maximum likelihood, ν by `localmin` on `(2, 50)` profiled over ρ; `None` past ν̂ = 30, where Dißmann et
+/// al. (2013, §3.2) take the Gaussian instead.
+fn student_t(u: &[f64], v: &[f64]) -> Option<PairCopula> {
+  let copula = TCopula::default();
+  let (lo, hi) = tau_range(&copula);
+  let profile = |nu: f64| {
+    let x: Vec<f64> = u
+      .iter()
+      .map(|&a| PairCopula::student_t_score(a, nu))
+      .collect();
+    let y: Vec<f64> = v
+      .iter()
+      .map(|&b| PairCopula::student_t_score(b, nu))
+      .collect();
+    let nll = |t: f64| match copula.theta_from_tau(t) {
+      Ok(rho) => objective(
+        x.iter()
+          .zip(&y)
+          .map(|(&a, &b)| PairCopula::student_t_log_density(a, b, rho, nu))
+          .sum(),
+      ),
+      Err(_) => f64::INFINITY,
+    };
+    localmin(lo, hi, SQRT_MACHEPS, SQRT_MACHEPS, nll)
+  };
+  let (nu, _) = localmin(2.0, 50.0, 1e-3, 1e-3, |nu| profile(nu).1);
+  if nu > 30.0 {
+    return None;
+  }
+  let (tau, value) = profile(nu);
+  if !value.is_finite() {
+    return None;
+  }
+  Some(PairCopula::StudentT {
+    rho: copula.theta_from_tau(tau).ok()?,
+    nu,
+  })
+}
+
+/// Best family on the pair by the criterion: the copula, its family, log-likelihood and parameter count; independence
+/// competes by its score, without the optional Genest–Favre pre-test of Dißmann et al. (2013, §3.2).
 fn select_pair(
   u: &[f64],
   v: &[f64],
@@ -211,14 +265,59 @@ fn select_pair(
     })
 }
 
-/// Greedy maximal path on `|τ|` for the first D-vine tree: start from the
-/// strongest pair and extend the path at whichever end has the strongest
-/// remaining neighbour (Dißmann et al. 2013, §4.1 heuristic).
+/// The first D-vine tree, the Hamiltonian path of largest Σ|τ̂| (Dißmann et al. 2013, §3.1): exact by Held–Karp up to
+/// `d = 8`, the greedy extension from the strongest pair above.
 fn dvine_order(tau: ArrayView2<f64>) -> Vec<usize> {
-  let d = tau.nrows();
-  if d == 1 {
-    return vec![0];
+  if tau.nrows() <= 8 {
+    heaviest_path(tau)
+  } else {
+    greedy_path(tau)
   }
+}
+
+/// Held–Karp: `weight[mask][j]` is the heaviest path through the columns in `mask` ending at `j`; returned from its smaller end.
+fn heaviest_path(tau: ArrayView2<f64>) -> Vec<usize> {
+  let d = tau.nrows();
+  let full = (1_usize << d) - 1;
+  let mut weight = vec![f64::NEG_INFINITY; (full + 1) * d];
+  let mut previous = vec![usize::MAX; (full + 1) * d];
+  for j in 0..d {
+    weight[(1 << j) * d + j] = 0.0;
+  }
+  for mask in 1..=full {
+    for j in (0..d).filter(|&j| mask & (1 << j) != 0) {
+      let w = weight[mask * d + j];
+      for k in (0..d).filter(|&k| mask & (1 << k) == 0) {
+        let (next, through) = ((mask | (1 << k)) * d + k, w + tau[(j, k)].abs());
+        if through > weight[next] {
+          weight[next] = through;
+          previous[next] = j;
+        }
+      }
+    }
+  }
+  let mut end = (0..d)
+    .max_by(|&a, &b| weight[full * d + a].total_cmp(&weight[full * d + b]))
+    .expect("d >= 1");
+  let (mut path, mut mask) = (Vec::with_capacity(d), full);
+  loop {
+    path.push(end);
+    let before = previous[mask * d + end];
+    if before == usize::MAX {
+      break;
+    }
+    mask &= !(1 << end);
+    end = before;
+  }
+  if path[0] > path[d - 1] {
+    path.reverse();
+  }
+  path
+}
+
+/// Start from the strongest pair and extend the path at whichever end has the strongest remaining neighbour.
+fn greedy_path(tau: ArrayView2<f64>) -> Vec<usize> {
+  let d = tau.nrows();
   let mut best = (0, 1, 0.0_f64);
   for i in 0..d {
     for j in (i + 1)..d {
@@ -383,6 +482,25 @@ fn strongest(tau: ArrayView2<f64>) -> usize {
     .expect("non-empty")
 }
 
+/// The next C-vine root among `values`, the variables conditioned on the roots `given`: the one of largest Σ|τ̂|;
+/// `InvalidStructure` when one of them has no τ-b.
+fn next_root(values: &[(usize, Vec<f64>)], given: &[usize]) -> Result<usize, CopulaError> {
+  let mut pseudo = Array2::<f64>::zeros((values[0].1.len(), values.len()));
+  for (c, (_, col)) in values.iter().enumerate() {
+    pseudo
+      .column_mut(c)
+      .assign(&ArrayView1::from(col.as_slice()));
+  }
+  let tau = kendall_tau(pseudo.view())?;
+  check_defined(tau.view()).map_err(|_| {
+    let columns: Vec<usize> = values.iter().map(|(j, _)| *j).collect();
+    CopulaError::InvalidStructure(format!(
+      "Kendall's tau-b is undefined among columns {columns:?} given columns {given:?}: one of them is constant or NaN given those"
+    ))
+  })?;
+  Ok(strongest(tau.view()))
+}
+
 pub(crate) fn fit_cvine(
   u: ArrayView2<f64>,
   families: &[BivariateFamily],
@@ -424,20 +542,7 @@ pub(crate) fn fit_cvine(
       }
       break;
     }
-    // Next root: the strongest node among the conditioned pseudo-observations.
-    let k = next_values.len();
-    let mut pseudo = Array2::<f64>::zeros((u.nrows(), k));
-    for (c, (_, col)) in next_values.iter().enumerate() {
-      pseudo.column_mut(c).assign(&Array1::from_vec(col.clone()));
-    }
-    let tau_next = kendall_tau(pseudo.view())?;
-    check_defined(tau_next.view()).map_err(|_| {
-      let given: Vec<usize> = next_values.iter().map(|(j, _)| *j).collect();
-      CopulaError::InvalidStructure(format!(
-        "Kendall's tau-b is undefined among columns {given:?} given columns {order:?}: a conditioned column is constant or NaN"
-      ))
-    })?;
-    let (new_root, new_root_values) = next_values.remove(strongest(tau_next.view()));
+    let (new_root, new_root_values) = next_values.remove(next_root(&next_values, &order)?);
     order.push(new_root);
     root_values = new_root_values;
     values = next_values;

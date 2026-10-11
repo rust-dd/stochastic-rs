@@ -217,23 +217,31 @@ impl PairCopula {
       PairCopula::Bb7 { theta, delta } => {
         crate::bivariate::bb7::Bb7::log_density_scalar(u, v, theta, delta)
       }
-      PairCopula::StudentT { rho, nu } => {
-        // c(u, v) = (Γ((ν+2)/2) Γ(ν/2)) / (Γ((ν+1)/2)² √(1-ρ²))
-        //          · (1 + (x² - 2ρxy + y²)/(ν(1-ρ²)))^{-(ν+2)/2}
-        //          / ((1 + x²/ν)(1 + y²/ν))^{-(ν+1)/2}
-        let x = student_t_quantile(u, nu);
-        let y = student_t_quantile(v, nu);
-        let one_minus_rho2 = 1.0 - rho * rho;
-        let log_norm = ln_gamma(0.5 * (nu + 2.0)) + ln_gamma(0.5 * nu)
-          - 2.0 * ln_gamma(0.5 * (nu + 1.0))
-          - 0.5 * one_minus_rho2.ln();
-        let log_joint = -0.5
-          * (nu + 2.0)
-          * (1.0 + (x * x - 2.0 * rho * x * y + y * y) / (nu * one_minus_rho2)).ln();
-        let log_marg = 0.5 * (nu + 1.0) * ((1.0 + x * x / nu).ln() + (1.0 + y * y / nu).ln());
-        log_norm + log_joint + log_marg
-      }
+      PairCopula::StudentT { rho, nu } => Self::student_t_log_density(
+        student_t_quantile(u, nu),
+        student_t_quantile(v, nu),
+        rho,
+        nu,
+      ),
     }
+  }
+
+  /// `t_ν⁻¹(u)` of `u` clamped as every pair evaluation clamps it: the half of the Student t density that ρ leaves alone.
+  pub(crate) fn student_t_score(u: f64, nu: f64) -> f64 {
+    student_t_quantile(u.clamp(EPS, 1.0 - EPS), nu)
+  }
+
+  /// `log c` of the Student t pair at the scores `x = t_ν⁻¹(u)`, `y = t_ν⁻¹(v)`: `c = Γ((ν+2)/2) Γ(ν/2) / (Γ((ν+1)/2)² √(1−ρ²))`
+  /// `· (1 + (x² − 2ρxy + y²)/(ν(1−ρ²)))^{−(ν+2)/2} · ((1 + x²/ν)(1 + y²/ν))^{(ν+1)/2}`.
+  pub(crate) fn student_t_log_density(x: f64, y: f64, rho: f64, nu: f64) -> f64 {
+    let one_minus_rho2 = 1.0 - rho * rho;
+    let log_norm = ln_gamma(0.5 * (nu + 2.0)) + ln_gamma(0.5 * nu)
+      - 2.0 * ln_gamma(0.5 * (nu + 1.0))
+      - 0.5 * one_minus_rho2.ln();
+    let log_joint =
+      -0.5 * (nu + 2.0) * (1.0 + (x * x - 2.0 * rho * x * y + y * y) / (nu * one_minus_rho2)).ln();
+    let log_marg = 0.5 * (nu + 1.0) * ((1.0 + x * x / nu).ln() + (1.0 + y * y / nu).ln());
+    log_norm + log_joint + log_marg
   }
 
   /// Copula density $c(u, v)$ (exponentiated log density).

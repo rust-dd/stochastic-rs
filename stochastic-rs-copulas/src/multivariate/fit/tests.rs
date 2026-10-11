@@ -1,4 +1,5 @@
 use ndarray::Array2;
+use ndarray::ArrayView2;
 use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
@@ -12,7 +13,7 @@ fn first_tree(fit: &VineFit) -> &[PairCopula] {
   }
 }
 
-/// Two variables, candidates that do not nest Clayton: the selection picks it and recovers θ by Kendall inversion.
+/// Two variables, candidates that do not nest Clayton: the selection picks it and recovers θ by maximum likelihood.
 /// BB1 and BB7 contain Clayton at a boundary that AIC cannot reject reliably, so `VINE_CANDIDATES` has its own test.
 #[test]
 fn two_dimensional_fit_recovers_clayton() {
@@ -289,4 +290,181 @@ fn a_constant_column_is_rejected_by_both_structures() {
       "{structure:?}: {got:?}"
     );
   }
+}
+
+fn path_weight(tau: ArrayView2<f64>, order: &[usize]) -> f64 {
+  order.windows(2).map(|w| tau[(w[0], w[1])].abs()).sum()
+}
+
+/// Greedy extension from the strongest pair, |τ| 0.89 at {2, 3}, ends at 2.34; the heaviest path 0-2-3-1 weighs 2.47.
+#[test]
+fn the_first_dvine_tree_is_the_heaviest_path() {
+  let tau = ndarray::array![
+    [1.0, 0.53, 0.81, 0.61],
+    [0.53, 1.0, 0.84, 0.77],
+    [0.81, 0.84, 1.0, 0.89],
+    [0.61, 0.77, 0.89, 1.0]
+  ];
+  assert!((path_weight(tau.view(), &greedy_path(tau.view())) - 2.34).abs() < 1e-12);
+  let order = dvine_order(tau.view());
+  assert_eq!(order, vec![0, 2, 3, 1]);
+  assert!((path_weight(tau.view(), &order) - 2.47).abs() < 1e-12);
+}
+
+fn every_order(d: usize, prefix: &mut Vec<usize>, visit: &mut impl FnMut(&[usize])) {
+  if prefix.len() == d {
+    visit(prefix);
+    return;
+  }
+  for k in 0..d {
+    if !prefix.contains(&k) {
+      prefix.push(k);
+      every_order(d, prefix, visit);
+      prefix.pop();
+    }
+  }
+}
+
+/// Held–Karp against all 720 orders of six columns on twenty pseudo-random τ matrices.
+#[test]
+fn the_heaviest_path_is_the_best_of_every_order() {
+  let mut state = 0x2545_f491_4f6c_dd1d_u64;
+  let mut uniform = || {
+    state ^= state << 13;
+    state ^= state >> 7;
+    state ^= state << 17;
+    (state >> 11) as f64 / (1_u64 << 53) as f64
+  };
+  let d = 6;
+  for _ in 0..20 {
+    let mut tau = Array2::<f64>::eye(d);
+    for i in 0..d {
+      for j in (i + 1)..d {
+        let t = 2.0 * uniform() - 1.0;
+        tau[[i, j]] = t;
+        tau[[j, i]] = t;
+      }
+    }
+    let mut best = f64::NEG_INFINITY;
+    every_order(d, &mut Vec::with_capacity(d), &mut |order| {
+      best = best.max(path_weight(tau.view(), order));
+    });
+    let order = dvine_order(tau.view());
+    assert!(
+      (path_weight(tau.view(), &order) - best).abs() < 1e-12,
+      "{order:?} weighs {} of {best}",
+      path_weight(tau.view(), &order)
+    );
+  }
+}
+
+#[test]
+fn dvine_order_extends_greedily_beyond_eight_columns() {
+  let tau = Array2::from_shape_fn((9, 9), |(i, j)| {
+    if i == j {
+      1.0
+    } else {
+      1.0 / (1.0 + i.abs_diff(j) as f64) + 0.01 * ((i * j) % 5) as f64
+    }
+  });
+  assert_eq!(dvine_order(tau.view()), greedy_path(tau.view()));
+}
+
+/// The searches run over the τ each family reaches inside its θ bounds, cut to the Kendall start's `|τ| ≤ 0.99`.
+#[test]
+fn the_likelihood_searches_follow_the_family_bounds() {
+  assert_eq!(tau_range(&Clayton::default()), (0.0, 0.99));
+  assert_eq!(tau_range(&GaussianCopula::default()), (-0.99, 0.99));
+  assert_eq!(tau_range(&Frank::default()), (-0.99, 0.99));
+  assert_eq!(tau_range(&TCopula::default()), (-0.99, 0.99));
+}
+
+/// A conditioned column without τ-b stops the C-vine before it picks the next root.
+#[test]
+fn a_constant_conditioned_column_stops_the_cvine() {
+  let rising: Vec<f64> = (1..=20).map(|i| i as f64 / 21.0).collect();
+  let falling: Vec<f64> = rising.iter().rev().copied().collect();
+  let values = vec![(0, rising), (2, vec![0.5; 20]), (3, falling)];
+  let got = next_root(&values, &[1]);
+  assert!(
+    matches!(&got, Err(CopulaError::InvalidStructure(why)) if why.contains("columns [0, 2, 3] given columns [1]")),
+    "{got:?}"
+  );
+}
+
+/// Each one-parameter estimate maximises the pair likelihood, here on Clayton data, and is no worse than its Kendall start.
+#[test]
+fn one_parameter_pairs_maximise_the_likelihood() {
+  let truth = DVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).unwrap();
+  let sample = truth.sample(1000, &Deterministic::new(7)).unwrap();
+  let (u, v) = (sample.column(0).to_vec(), sample.column(1).to_vec());
+  let tau = tau_of(&u, &v);
+  let gaussian = |rho| PairCopula::Gaussian { rho };
+  let clayton = |theta| PairCopula::Clayton { theta };
+  let frank = |theta| PairCopula::Frank { theta };
+  let cases: [(BivariateFamily, &dyn Fn(f64) -> PairCopula, f64); 3] = [
+    (
+      BivariateFamily::Gaussian,
+      &gaussian,
+      GaussianCopula::default().theta_from_tau(tau).unwrap(),
+    ),
+    (
+      BivariateFamily::Clayton,
+      &clayton,
+      Clayton::default().theta_from_tau(tau).unwrap(),
+    ),
+    (
+      BivariateFamily::Frank,
+      &frank,
+      Frank::default().theta_from_tau(tau).unwrap(),
+    ),
+  ];
+  for (family, pair, start) in cases {
+    let theta = match estimate(family, &u, &v).unwrap() {
+      PairCopula::Gaussian { rho } => rho,
+      PairCopula::Clayton { theta } | PairCopula::Frank { theta } => theta,
+      other => panic!("{other:?}"),
+    };
+    let ll = |t: f64| log_likelihood(&pair(t), &u, &v);
+    assert!(
+      ll(theta) >= ll(start),
+      "{family:?}: {theta} below the start {start}"
+    );
+    for step in [-1e-4, 1e-4] {
+      assert!(
+        ll(theta) >= ll(theta * (1.0 + step)),
+        "{family:?}: {theta} is not a maximum ({} at {})",
+        ll(theta * (1.0 + step)),
+        theta * (1.0 + step)
+      );
+    }
+  }
+}
+
+/// The Student t maximises the likelihood in (ρ, ν) on t data, and gives way to the Gaussian past ν̂ = 30.
+#[test]
+fn student_t_pairs_maximise_the_likelihood_and_give_way_past_thirty() {
+  let sample = TCopula::new(0.6, 4.0)
+    .sample(1000, &Deterministic::new(3))
+    .unwrap();
+  let (u, v) = (sample.column(0).to_vec(), sample.column(1).to_vec());
+  let Some(PairCopula::StudentT { rho, nu }) = estimate(BivariateFamily::TCopula, &u, &v) else {
+    panic!("no Student t on t data")
+  };
+  let ll = |rho: f64, nu: f64| log_likelihood(&PairCopula::StudentT { rho, nu }, &u, &v);
+  for (drho, dnu) in [(1e-3, 0.0), (-1e-3, 0.0), (0.0, 0.05), (0.0, -0.05)] {
+    assert!(
+      ll(rho, nu) >= ll(rho + drho, nu + dnu),
+      "(ρ, ν) = ({rho}, {nu}) is not a maximum"
+    );
+  }
+  let gaussian = GaussianCopula::new(0.6)
+    .sample(3000, &Deterministic::new(3))
+    .unwrap();
+  let fitted = estimate(
+    BivariateFamily::TCopula,
+    &gaussian.column(0).to_vec(),
+    &gaussian.column(1).to_vec(),
+  );
+  assert_eq!(fitted, None, "{fitted:?}");
 }
