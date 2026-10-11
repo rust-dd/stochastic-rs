@@ -6,8 +6,7 @@
 //!
 use ndarray::Array2;
 use ndarray::ArrayView1;
-use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::uniform::SimdUniform;
@@ -62,26 +61,9 @@ impl EmpiricalCopula2D {
     EmpiricalCopula2D { rank_data }
   }
 
-  /// Bootstrap resample of `n` `(u, v)` rows drawn **with replacement**
-  /// from the rank-transformed empirical support, using the crate's
-  /// shared unseeded entropy stream (same default-randomness path as
-  /// e.g. [`Independence`](crate::bivariate::independence::Independence)'s
-  /// own `sample`).
-  ///
-  /// This does not draw from the continuous copula; it resamples the `n`
-  /// observed `(u, v)` pairs, which is the standard nonparametric
-  /// bootstrap for an empirical copula (Deheuvels, 1979).
-  pub fn sample(&self, n: usize) -> Array2<f64> {
-    self.sample_with_uniform(SimdUniform::<f64>::new(0.0, 1.0).seeded(&Unseeded), n)
-  }
-
-  /// Deterministic counterpart of [`EmpiricalCopula2D::sample`]: the same
-  /// `seed` reproduces the same `n` bootstrap draws.
-  pub fn sample_with_seed(&self, n: usize, seed: u64) -> Array2<f64> {
-    self.sample_with_uniform(
-      SimdUniform::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed)),
-      n,
-    )
+  /// Bootstrap of `n` observed pairs with replacement (Deheuvels 1979), drawn from `seed`.
+  pub fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Array2<f64> {
+    self.sample_with_uniform(SimdUniform::<f64>::new(0.0, 1.0).seeded(seed), n)
   }
 
   fn sample_with_uniform(&self, mut ud: Seeded<SimdUniform<f64>>, n: usize) -> Array2<f64> {
@@ -99,6 +81,8 @@ impl EmpiricalCopula2D {
 #[cfg(test)]
 mod tests {
   use ndarray::Array1;
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_core::simd_rng::Unseeded;
 
   use super::*;
 
@@ -115,8 +99,8 @@ mod tests {
   fn empirical_sample_honors_n_and_seed() {
     let ec = fixture();
     let n = 17usize;
-    let a = ec.sample_with_seed(n, 42);
-    let b = ec.sample_with_seed(n, 42);
+    let a = ec.sample(n, &Deterministic::new(42));
+    let b = ec.sample(n, &Deterministic::new(42));
     assert_eq!(a.nrows(), n);
     assert_eq!(b.nrows(), n);
     assert_eq!(a, b, "same seed must reproduce identical draws");
@@ -126,10 +110,9 @@ mod tests {
       }
     }
 
-    let c = ec.sample_with_seed(n, 7);
+    let c = ec.sample(n, &Deterministic::new(7));
     assert_ne!(a, c, "different seeds should (almost surely) differ");
 
-    let unseeded = ec.sample(n);
-    assert_eq!(unseeded.nrows(), n);
+    assert_eq!(ec.sample(n, &Unseeded).nrows(), n);
   }
 }

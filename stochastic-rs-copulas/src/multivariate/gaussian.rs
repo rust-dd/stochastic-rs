@@ -9,7 +9,6 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::Axis;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::SimdDistribution;
@@ -171,11 +170,14 @@ impl GaussianMultivariate {
     }
     Ok(())
   }
+}
 
-  /// Shared sampling core for [`MultivariateExt::sample`] and
-  /// [`MultivariateExt::sample_with_seed`]; monomorphised per seed
-  /// strategy so the unseeded path pays no extra cost.
-  fn sample_from_seed<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
+impl MultivariateExt for GaussianMultivariate {
+  fn r#type(&self) -> CopulaType {
+    CopulaType::Gaussian
+  }
+
+  fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
     self.require_fitted()?;
     let d = self.dim;
     let l = self.chol_lower.as_ref().unwrap(); // (d x d)
@@ -192,20 +194,6 @@ impl GaussianMultivariate {
       }
     }
     Ok(u)
-  }
-}
-
-impl MultivariateExt for GaussianMultivariate {
-  fn r#type(&self) -> CopulaType {
-    CopulaType::Gaussian
-  }
-
-  fn sample(&self, n: usize) -> Result<Array2<f64>, CopulaError> {
-    self.sample_from_seed(n, &Unseeded)
-  }
-
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, CopulaError> {
-    self.sample_from_seed(n, &Deterministic::new(seed))
   }
 
   /// Fit the Gaussian copula from U in (0,1)^{n x d}.

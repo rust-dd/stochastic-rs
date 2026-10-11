@@ -6,14 +6,9 @@
 //!
 
 use ndarray::Array1;
-use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::Axis;
-use ndarray::stack;
-use stochastic_rs_core::simd_rng::Unseeded;
-use stochastic_rs_distributions::SimdDistribution;
-use stochastic_rs_distributions::uniform::SimdUniform;
 
 use super::CopulaType;
 use crate::bivariate::conditional::conditional_cdf;
@@ -84,13 +79,6 @@ impl BivariateExt for Independence {
     Ok(())
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, CopulaError> {
-    let mut ud = SimdUniform::<f64>::new(0.0, 1.0).seeded(&Unseeded);
-    let u = Array1::from_vec((0..n).map(|_| ud.sample()).collect());
-    let v = Array1::from_vec((0..n).map(|_| ud.sample()).collect());
-    Ok(stack![Axis(1), u, v])
-  }
-
   fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok(t.ln())
   }
@@ -142,6 +130,8 @@ impl BivariateExt for Independence {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
 
   #[test]
@@ -157,5 +147,16 @@ mod tests {
   #[should_panic(expected = "tail_dependence requires a valid theta")]
   fn independence_tail_dependence_panics_when_theta_unset() {
     let _ = Independence::new().tail_dependence();
+  }
+
+  #[test]
+  fn independence_samples_through_the_conditional_sampler_once_theta_is_zero() {
+    let mut c = Independence::new();
+    assert_eq!(
+      c.sample(4, &Deterministic::new(7)).unwrap_err(),
+      CopulaError::NotFitted
+    );
+    c.set_theta(0.0);
+    assert_eq!(c.sample(4, &Deterministic::new(7)).unwrap().dim(), (4, 2));
   }
 }

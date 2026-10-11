@@ -268,6 +268,7 @@ impl BivariateExt for Bb7 {
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
 
@@ -340,7 +341,7 @@ mod tests {
       "inverted theta {}",
       inverted.theta.unwrap()
     );
-    let sample = truth.sample_with_seed(4000, 13).unwrap();
+    let sample = truth.sample(4000, &Deterministic::new(13)).unwrap();
     let mut fitted = Bb7::default();
     fitted.fit(sample.view()).unwrap();
     assert!(

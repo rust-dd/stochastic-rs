@@ -20,7 +20,6 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::Axis;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
@@ -169,31 +168,6 @@ impl TreeMultivariate {
     (adj, edge_r)
   }
 
-  /// Shared sampling core for [`MultivariateExt::sample`] and
-  /// [`MultivariateExt::sample_with_seed`].
-  fn sample_from_seed<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
-    self.require_fitted()?;
-    let l = self.chol_lower.as_ref().unwrap();
-    let d = self.dim;
-    let mut z = Array2::<f64>::zeros((n, d));
-    {
-      let buf = z
-        .as_slice_mut()
-        .expect("TreeMultivariate sample buffer must be contiguous");
-      SimdNormal::<f64>::new(0.0, 1.0)
-        .seeded(seed)
-        .fill_slice(buf);
-    }
-    let z = z.dot(&l.t());
-    let mut u = z.clone();
-    for mut row in u.axis_iter_mut(Axis(0)) {
-      for val in row.iter_mut() {
-        *val = norm_cdf(*val);
-      }
-    }
-    Ok(u)
-  }
-
   fn corr_from_tree_edges(&self, adj: &[Vec<usize>], edge_r: ArrayView2<f64>) -> Array2<f64> {
     let d = edge_r.nrows();
     let mut corr = Array2::<f64>::zeros((d, d));
@@ -234,12 +208,27 @@ impl MultivariateExt for TreeMultivariate {
     CopulaType::Tree
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, CopulaError> {
-    self.sample_from_seed(n, &Unseeded)
-  }
-
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, CopulaError> {
-    self.sample_from_seed(n, &Deterministic::new(seed))
+  fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
+    self.require_fitted()?;
+    let l = self.chol_lower.as_ref().unwrap();
+    let d = self.dim;
+    let mut z = Array2::<f64>::zeros((n, d));
+    {
+      let buf = z
+        .as_slice_mut()
+        .expect("TreeMultivariate sample buffer must be contiguous");
+      SimdNormal::<f64>::new(0.0, 1.0)
+        .seeded(seed)
+        .fill_slice(buf);
+    }
+    let z = z.dot(&l.t());
+    let mut u = z.clone();
+    for mut row in u.axis_iter_mut(Axis(0)) {
+      for val in row.iter_mut() {
+        *val = norm_cdf(*val);
+      }
+    }
+    Ok(u)
   }
 
   fn fit(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {

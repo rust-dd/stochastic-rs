@@ -1,25 +1,10 @@
-//! TDD tests for A1-c Task 1: `Default` on the two bivariate copula
-//! families that lacked it (`Frank`, `Gumbel` — the other 11 families
-//! already had `Default`). See each type's own `Default` impl doc.
-//!
-//! Neither `Frank` nor `Gumbel` holds RNG state (no `seed` field, unlike a
-//! `ProcessExt` process): `BivariateExt::sample_with_seed` takes its seed
-//! as an explicit `u64` argument instead, and `Default`'s `theta = None`
-//! intentionally mirrors the other 11 families' own "unfit placeholder"
-//! convention rather than a ready-to-sample model. `defaults_sample_finite`
-//! below therefore checks that struct-update syntax on top of `Default`
-//! (`Frank { theta: Some(_), ..Frank::default() }`) yields a working,
-//! finite-sampling copula — the literal "same model, one parameter
-//! changed" pattern this task exists to make ergonomic.
-//!
-//! `Clone` was already derived on both before this task (untouched here);
-//! `clone_is_a_plain_value_copy` pins that a clone taken before or after
-//! `sample_with_seed` behaves identically either way, since there is no
-//! internal seed state a clone could snapshot or fork.
+//! `Frank` and `Gumbel` implement `Default`, so struct-update syntax over it gives a finite-sampling copula with one parameter changed.
+//! Neither holds RNG state, so a clone replays the same draws as the original under the same explicit seed.
 
 use stochastic_rs_copulas::BivariateExt;
 use stochastic_rs_copulas::bivariate::frank::Frank;
 use stochastic_rs_copulas::bivariate::gumbel::Gumbel;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 /// `BivariateExt::sample_with_uniform` additionally gates on `tau` being
 /// set (range-checked, in `(-1, 1)`) even though neither family's own
@@ -35,7 +20,7 @@ fn defaults_sample_finite() {
     tau: Some(0.5),
     ..Frank::default()
   };
-  let out = frank.sample_with_seed(16, 42).unwrap();
+  let out = frank.sample(16, &Deterministic::new(42)).unwrap();
   assert_eq!(out.nrows(), 16);
   assert!(out.iter().all(|x| x.is_finite()));
 
@@ -44,7 +29,7 @@ fn defaults_sample_finite() {
     tau: Some(0.5),
     ..Gumbel::default()
   };
-  let out = gumbel.sample_with_seed(16, 42).unwrap();
+  let out = gumbel.sample(16, &Deterministic::new(42)).unwrap();
   assert_eq!(out.nrows(), 16);
   assert!(out.iter().all(|x| x.is_finite()));
 }
@@ -63,8 +48,8 @@ fn clone_is_a_plain_value_copy() {
   };
   let cloned = frank.clone();
   assert_eq!(
-    frank.sample_with_seed(16, 42).unwrap(),
-    cloned.sample_with_seed(16, 42).unwrap()
+    frank.sample(16, &Deterministic::new(42)).unwrap(),
+    cloned.sample(16, &Deterministic::new(42)).unwrap()
   );
 
   let gumbel = Gumbel {
@@ -74,7 +59,7 @@ fn clone_is_a_plain_value_copy() {
   };
   let cloned = gumbel.clone();
   assert_eq!(
-    gumbel.sample_with_seed(16, 42).unwrap(),
-    cloned.sample_with_seed(16, 42).unwrap()
+    gumbel.sample(16, &Deterministic::new(42)).unwrap(),
+    cloned.sample(16, &Deterministic::new(42)).unwrap()
   );
 }

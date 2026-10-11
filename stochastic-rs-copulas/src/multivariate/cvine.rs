@@ -34,7 +34,8 @@ use ndarray::Array2;
 use ndarray::ArrayView2;
 use rand::Rng;
 use rand::RngExt;
-use stochastic_rs_core::simd_rng::SimdRng;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::CopulaType;
 use super::dvine::PairCopula;
@@ -178,14 +179,8 @@ impl MultivariateExt for CVine {
     CopulaType::CVine
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, CopulaError> {
-    Ok(self.sample_with(n, &mut SimdRng::new()))
-  }
-
-  /// Reproducible counterpart of [`MultivariateExt::sample`]: the same
-  /// `seed` always yields the same matrix.
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, CopulaError> {
-    Ok(self.sample_with(n, &mut SimdRng::from_seed(seed)))
+  fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
+    Ok(self.sample_with(n, &mut seed.rng()))
   }
 
   fn fit(&mut self, _X: ArrayView2<f64>) -> Result<(), CopulaError> {
@@ -234,7 +229,7 @@ impl MultivariateExt for CVine {
     // numerical integration in d ≥ 3 dims.
     self.check_fit(X)?;
     let m = 4_000usize;
-    let sample = self.sample(m)?;
+    let sample = self.sample(m, &Unseeded)?;
     let mut out = Array1::<f64>::zeros(X.nrows());
     for (i, row) in X.rows().into_iter().enumerate() {
       let u: Vec<f64> = row.iter().copied().collect();
@@ -260,6 +255,7 @@ impl MultivariateExt for CVine {
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
 
@@ -267,7 +263,7 @@ mod tests {
   #[test]
   fn cvine_independence_three_dim_uniform_marginals() {
     let cv = CVine::independence(3).unwrap();
-    let s = cv.sample(10_000).unwrap();
+    let s = cv.sample(10_000, &Deterministic::new(7)).unwrap();
     for j in 0..3 {
       let col = s.column(j);
       let m: f64 = col.iter().sum::<f64>() / col.len() as f64;
@@ -285,7 +281,7 @@ mod tests {
   #[test]
   fn cvine_two_dim_clayton_matches_bivariate() {
     let cv = CVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).unwrap();
-    let s = cv.sample(10_000).unwrap();
+    let s = cv.sample(10_000, &Deterministic::new(7)).unwrap();
     use crate::correlation::kendall_tau;
     let tau = kendall_tau(s.view());
     // Clayton(θ=2): τ = θ/(θ+2) = 0.5
@@ -307,7 +303,7 @@ mod tests {
     ];
     let t2 = vec![PairCopula::Independence]; // (2, 3 | 1)
     let cv = CVine::new(3, vec![t1, t2]).unwrap();
-    let s = cv.sample(10_000).unwrap();
+    let s = cv.sample(10_000, &Deterministic::new(7)).unwrap();
     use crate::correlation::kendall_tau;
     let tau = kendall_tau(s.view());
     let expected_tau = (2.0 / std::f64::consts::PI) * 0.6_f64.asin();

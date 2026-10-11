@@ -283,6 +283,7 @@ impl Bb1 {
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
 
@@ -338,7 +339,7 @@ mod tests {
   #[test]
   fn maximum_likelihood_recovers_the_parameters() {
     let truth = Bb1::new(Some(0.9), Some(1.7), None);
-    let sample = truth.sample_with_seed(4000, 11).unwrap();
+    let sample = truth.sample(4000, &Deterministic::new(11)).unwrap();
     let mut fitted = Bb1::default();
     fitted.fit(sample.view()).unwrap();
     assert!(

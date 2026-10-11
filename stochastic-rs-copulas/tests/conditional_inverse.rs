@@ -2,6 +2,7 @@
 //! the unit square, rejects unequal lengths, and its closed forms match 50-digit references and round-trip `h`.
 
 use ndarray::Array1;
+use ndarray::Array2;
 use ndarray::Axis;
 use ndarray::array;
 use ndarray::stack;
@@ -22,8 +23,20 @@ use stochastic_rs_copulas::bivariate::marshall_olkin::MarshallOlkin;
 use stochastic_rs_copulas::bivariate::plackett::Plackett;
 use stochastic_rs_copulas::bivariate::t_copula::TCopula;
 use stochastic_rs_copulas::traits::BivariateExt;
+use stochastic_rs_core::simd_rng::Deterministic;
 
-type Family = (&'static str, Box<dyn BivariateExt + Send>);
+/// `sample` is generic over the seed source and so out of a trait object's reach; a boxed family draws through this adapter.
+trait Draw: BivariateExt + Send {
+  fn draw(&self, n: usize, seed: &Deterministic) -> Result<Array2<f64>, CopulaError>;
+}
+
+impl<C: BivariateExt + Send> Draw for C {
+  fn draw(&self, n: usize, seed: &Deterministic) -> Result<Array2<f64>, CopulaError> {
+    self.sample(n, seed)
+  }
+}
+
+type Family = (&'static str, Box<dyn Draw>);
 
 fn with_theta<C: BivariateExt>(mut copula: C, theta: f64) -> C {
   copula.set_theta(theta);
@@ -67,7 +80,7 @@ fn every_family_samples_two_thousand_draws_for_fifty_seeds() {
       scope.spawn(move || {
         for seed in 0..50 {
           let uv = copula
-            .sample_with_seed(2_000, seed)
+            .draw(2_000, &Deterministic::new(seed))
             .unwrap_or_else(|e| panic!("{name} seed {seed}: {e}"));
           assert!(
             uv.iter().all(|x| (0.0..=1.0).contains(x)),
@@ -123,7 +136,7 @@ fn gumbel_and_joe_sample_at_high_dependence() {
         scope.spawn(move || {
           for seed in 0..20 {
             let uv = copula
-              .sample_with_seed(5_000, seed)
+              .draw(5_000, &Deterministic::new(seed))
               .unwrap_or_else(|e| panic!("{name} θ = {theta} seed {seed}: {e}"));
             assert!(
               uv.iter().all(|x| (0.0..=1.0).contains(x)),

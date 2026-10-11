@@ -27,7 +27,6 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::Axis;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::DistributionSampler;
@@ -125,10 +124,14 @@ impl VineMultivariate {
   fn tau_to_rho_gaussian(t: f64) -> f64 {
     (std::f64::consts::PI * 0.5 * t).sin()
   }
+}
 
-  /// Shared sampling core for [`MultivariateExt::sample`] and
-  /// [`MultivariateExt::sample_with_seed`].
-  fn sample_from_seed<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
+impl MultivariateExt for VineMultivariate {
+  fn r#type(&self) -> CopulaType {
+    CopulaType::Vine
+  }
+
+  fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
     self.require_fitted()?;
     let l = self.chol_lower.as_ref().unwrap();
     let d = self.dim;
@@ -149,20 +152,6 @@ impl VineMultivariate {
       }
     }
     Ok(u)
-  }
-}
-
-impl MultivariateExt for VineMultivariate {
-  fn r#type(&self) -> CopulaType {
-    CopulaType::Vine
-  }
-
-  fn sample(&self, n: usize) -> Result<Array2<f64>, CopulaError> {
-    self.sample_from_seed(n, &Unseeded)
-  }
-
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, CopulaError> {
-    self.sample_from_seed(n, &Deterministic::new(seed))
   }
 
   fn fit(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {

@@ -23,6 +23,7 @@ use stochastic_rs::copulas::bivariate::clayton::Clayton;
 use stochastic_rs::quant::risk::PnlOrLoss;
 use stochastic_rs::quant::risk::VarMethod;
 use stochastic_rs::quant::risk::value_at_risk;
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::traits::BivariateExt;
 
 /// Inverse standard-normal CDF via Beasley-Springer-Moro — good enough for
@@ -88,7 +89,7 @@ fn main() {
 
   // 2) Sample (u, v) ∈ [0,1]² with a fixed seed.
   let uv = clayton
-    .sample_with_seed(n_samples, 42)
+    .sample(n_samples, &Deterministic::new(42))
     .expect("Clayton sample");
 
   // 3) Push through marginal inverse CDFs and convert to per-asset PnL.

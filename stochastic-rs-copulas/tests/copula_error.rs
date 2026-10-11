@@ -15,16 +15,17 @@ use stochastic_rs_copulas::multivariate::fit::fit_vine;
 use stochastic_rs_copulas::multivariate::gaussian::GaussianMultivariate;
 use stochastic_rs_copulas::traits::BivariateExt;
 use stochastic_rs_copulas::traits::MultivariateExt;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 fn assert_send_sync<T: Send + Sync + std::error::Error + 'static>() {}
 
 #[test]
 fn the_error_crosses_threads_and_converts_into_anyhow() {
   assert_send_sync::<CopulaError>();
-  let unset = Clayton::new().sample_with_seed(8, 7);
+  let unset = Clayton::new().sample(8, &Deterministic::new(7));
   assert_eq!(unset.unwrap_err(), CopulaError::NotFitted);
   let into_anyhow: anyhow::Result<Array2<f64>> = Clayton::new()
-    .sample_with_seed(8, 7)
+    .sample(8, &Deterministic::new(7))
     .map_err(anyhow::Error::from);
   assert!(into_anyhow.is_err());
 }

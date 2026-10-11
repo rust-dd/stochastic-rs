@@ -1,3 +1,5 @@
+use stochastic_rs_core::simd_rng::Deterministic;
+
 use super::*;
 
 /// A flat (single-level) Clayton NAC with all leaves under one root must
@@ -6,7 +8,7 @@ use super::*;
 fn nac_clayton_flat_is_exchangeable_clayton() {
   let root = NacNode::leaf_group(2.0, vec![0, 1, 2]);
   let nac = NestedArchimedean::new(NacFamily::Clayton, root, 3).unwrap();
-  let u = nac.sample(8_000).unwrap();
+  let u = nac.sample(8_000, &Deterministic::new(7)).unwrap();
   assert_eq!(u.ncols(), 3);
   for j in 0..3 {
     let col = u.column(j);
@@ -18,13 +20,8 @@ fn nac_clayton_flat_is_exchangeable_clayton() {
   }
 }
 
-/// 2-level Clayton NAC tree: root θ=1.5 with leaf 0 direct + a sub-tree
-/// with θ=4.0 over leaves {1,2}. The CDF path is fully supported (nested
-/// Clayton sampling is not — see `sample_node` Clayton-nested branch);
-/// we therefore verify the structural property analytically: for two
-/// outer-inner leaves the pair-margin is exchangeable Clayton on the
-/// **root** generator, while for two inner-inner leaves it's
-/// exchangeable Clayton on the **inner** generator.
+/// A two-level Clayton NAC is checked through its cdf, as nested Clayton sampling is `Unsupported`: a pair across levels
+/// is exchangeable Clayton on the root generator, a pair inside the sub-tree on the inner one.
 #[test]
 fn nac_clayton_two_level_cdf_pair_margins() {
   let inner = NacNode::leaf_group(4.0, vec![1, 2]);
@@ -66,12 +63,9 @@ fn nac_clayton_two_level_cdf_pair_margins() {
   );
 }
 
-/// Nested-Clayton sampling intentionally panics; calling `sample` on a
-/// tree with at least one nested node must surface the not-implemented
-/// message rather than silently returning biased data.
+/// A tree with a nested Clayton node is `Unsupported` for `sample`, not biased data.
 #[test]
-#[should_panic(expected = "Nested-Clayton sampling")]
-fn nac_clayton_nested_sampling_panics() {
+fn nac_clayton_nested_sampling_is_unsupported() {
   let inner = NacNode::leaf_group(4.0, vec![1]);
   let root = NacNode {
     theta: 1.5,
@@ -79,7 +73,10 @@ fn nac_clayton_nested_sampling_panics() {
     children: vec![inner],
   };
   let nac = NestedArchimedean::new(NacFamily::Clayton, root, 2).unwrap();
-  let _ = nac.sample(10);
+  assert!(matches!(
+    nac.sample(10, &Deterministic::new(7)),
+    Err(CopulaError::Unsupported(_))
+  ));
 }
 
 /// 2-level Gumbel NAC: same structural test as Clayton but on the
@@ -93,7 +90,7 @@ fn nac_gumbel_two_level_inner_pair_more_dependent() {
     children: vec![inner],
   };
   let nac = NestedArchimedean::new(NacFamily::Gumbel, root, 3).unwrap();
-  let u = nac.sample(8_000).unwrap();
+  let u = nac.sample(8_000, &Deterministic::new(7)).unwrap();
   use crate::correlation::kendall_tau;
   let tau = kendall_tau(u.view());
   // Gumbel: τ = 1 − 1/θ
@@ -207,8 +204,7 @@ fn nac_clayton_root_without_a_frailty_is_rejected_by_name() {
       value: theta,
       constraint: "0 < 1 / theta < ∞".into(),
     };
-    assert_eq!(nac.sample(4).unwrap_err(), want);
-    assert_eq!(nac.sample_with_seed(4, 7).unwrap_err(), want);
+    assert_eq!(nac.sample(4, &Deterministic::new(7)).unwrap_err(), want);
   }
 }
 

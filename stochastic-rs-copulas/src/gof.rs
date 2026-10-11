@@ -23,6 +23,7 @@ use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::Axis;
 use ndarray::stack;
+use stochastic_rs_core::simd_rng::SeedExt;
 
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
@@ -81,30 +82,20 @@ impl stochastic_rs_distributions::traits::HypothesisTest for GofResult {
   }
 }
 
-/// Parametric-bootstrap Cramér–von Mises test of `copula` (already fitted)
-/// on the pseudo-observations `x` (Genest, Rémillard & Beaudoin 2009, §4):
-/// `replications` samples of size `n` are drawn from the fitted copula with
-/// the seeds `seed, seed + 1, …`, each is rank-transformed to
-/// pseudo-observations (their Step 2(a) — the statistic is a rank
-/// statistic, so the bootstrap must see ranks as the data did), refitted
-/// with `refit` and transformed, and the p-value is the share of bootstrap
-/// statistics at or above the data's.
-pub fn gof_cramer_von_mises<C: BivariateExt + Clone>(
+/// Parametric-bootstrap Cramér–von Mises test of a fitted `copula` on pseudo-observations `x` (Genest, Rémillard & Beaudoin 2009, §4).
+/// Each replication draws its own stream from `seed`, ranks it like the data (the statistic is rank-based, their Step 2(a)) and refits.
+pub fn gof_cramer_von_mises<C: BivariateExt + Clone, S: SeedExt>(
   copula: &C,
   x: ArrayView2<f64>,
   replications: usize,
-  seed: u64,
+  seed: &S,
   refit: impl Fn(&mut C, ArrayView2<f64>) -> Result<(), CopulaError>,
 ) -> Result<GofResult, CopulaError> {
   let statistic = cramer_von_mises_independence(rosenblatt(copula, x)?.view());
   let n = x.nrows();
   let mut exceed = 0usize;
-  for b in 0..replications {
-    let sample = pseudo_observations(
-      copula
-        .sample_with_seed(n, seed.wrapping_add(b as u64))?
-        .view(),
-    );
+  for _ in 0..replications {
+    let sample = pseudo_observations(copula.sample(n, seed)?.view());
     let mut refitted = copula.clone();
     refit(&mut refitted, sample.view())?;
     let s_b = cramer_von_mises_independence(rosenblatt(&refitted, sample.view())?.view());
@@ -139,6 +130,8 @@ pub fn pseudo_observations(data: ArrayView2<f64>) -> Array2<f64> {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use super::*;
   use crate::bivariate::clayton::Clayton;
   use crate::bivariate::gaussian::GaussianCopula;
@@ -148,7 +141,7 @@ mod tests {
     let mut copula = Clayton::new();
     copula.set_tau(0.5); // θ = 2τ/(1 − τ) = 2
     copula.set_theta(copula.compute_theta());
-    let sample = copula.sample_with_seed(3000, 3).unwrap();
+    let sample = copula.sample(3000, &Deterministic::new(3)).unwrap();
     let r = rosenblatt(&copula, sample.view()).unwrap();
     let (mean_a, mean_b) = (r.column(0).mean().unwrap(), r.column(1).mean().unwrap());
     assert!(
@@ -172,7 +165,7 @@ mod tests {
       let mut truth = Clayton::new();
       truth.set_tau(0.6); // θ = 3
       truth.set_theta(truth.compute_theta());
-      pseudo_observations(truth.sample_with_seed(600, seed).unwrap().view())
+      pseudo_observations(truth.sample(600, &Deterministic::new(seed)).unwrap().view())
     };
     let refit = |c: &mut Clayton, x: ArrayView2<f64>| c.fit(x);
     let best_right = [5u64, 6, 7]
@@ -181,7 +174,7 @@ mod tests {
         let data = data_for(seed);
         let mut fitted = Clayton::new();
         fitted.fit(data.view()).unwrap();
-        gof_cramer_von_mises(&fitted, data.view(), 60, 100, refit)
+        gof_cramer_von_mises(&fitted, data.view(), 60, &Deterministic::new(100), refit)
           .unwrap()
           .p_value
       })
@@ -193,14 +186,15 @@ mod tests {
     let data = data_for(5);
     let mut fitted = Clayton::new();
     fitted.fit(data.view()).unwrap();
-    let right = gof_cramer_von_mises(&fitted, data.view(), 1, 100, refit).unwrap();
+    let right =
+      gof_cramer_von_mises(&fitted, data.view(), 1, &Deterministic::new(100), refit).unwrap();
     let mut gaussian = GaussianCopula::new();
     gaussian.fit(data.view()).unwrap();
     let wrong = gof_cramer_von_mises(
       &gaussian,
       data.view(),
       60,
-      100,
+      &Deterministic::new(100),
       |c: &mut GaussianCopula, x| c.fit(x),
     )
     .unwrap();

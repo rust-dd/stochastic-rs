@@ -7,6 +7,7 @@ use stochastic_rs_copulas::gof::pseudo_observations;
 use stochastic_rs_copulas::multivariate::gaussian::GaussianMultivariate;
 use stochastic_rs_copulas::traits::BivariateExt;
 use stochastic_rs_copulas::traits::MultivariateExt;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 #[test]
 fn strided_views_read_like_their_dense_copy() {
@@ -17,7 +18,7 @@ fn strided_views_read_like_their_dense_copy() {
   let mut wide = Array2::<f64>::zeros((400, 4));
   wide
     .slice_mut(s![.., 1..3])
-    .assign(&truth.sample_with_seed(400, 3).unwrap());
+    .assign(&truth.sample(400, &Deterministic::new(3)).unwrap());
   let pair = wide.slice(s![.., 1..3]);
   assert!(!pair.is_standard_layout());
   let dense = pair.to_owned();

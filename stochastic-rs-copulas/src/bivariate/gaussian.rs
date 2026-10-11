@@ -226,6 +226,7 @@ impl BivariateExt for GaussianCopula {
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
 
@@ -288,7 +289,7 @@ mod tests {
       // (it does not derive it from `theta`); use the value consistent
       // with `rho_true` via the forward Kendall relation.
       source.set_tau((2.0 / std::f64::consts::PI) * rho_true.asin());
-      let samples = source.sample_with_seed(n, seed).unwrap();
+      let samples = source.sample(n, &Deterministic::new(seed)).unwrap();
 
       let mut fitted = GaussianCopula::new();
       fitted.fit(samples.view()).unwrap();

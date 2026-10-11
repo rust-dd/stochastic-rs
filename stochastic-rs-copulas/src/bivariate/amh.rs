@@ -282,6 +282,7 @@ impl BivariateExt for Amh {
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
 
@@ -435,7 +436,7 @@ mod tests {
     let best_max_abs_err = [2718_u64, 999, 42]
       .into_iter()
       .map(|seed| {
-        let samples = c.sample_with_seed(n, seed).unwrap();
+        let samples = c.sample(n, &Deterministic::new(seed)).unwrap();
         let u = samples.column(0);
         let v = samples.column(1);
         points

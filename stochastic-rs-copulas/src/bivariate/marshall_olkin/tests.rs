@@ -1,5 +1,6 @@
 use ndarray::Array2;
 use ndarray::array;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
 
@@ -195,7 +196,7 @@ fn mo_sampler_reproduces_tau_the_singular_mass_and_the_cdf() {
   for n in [1_usize, 5, 20, 200] {
     assert!(
       MarshallOlkin::with_alpha_beta(0.5, 0.5)
-        .sample_with_seed(n, 7)
+        .sample(n, &Deterministic::new(7))
         .is_ok(),
       "n = {n}"
     );
@@ -204,7 +205,7 @@ fn mo_sampler_reproduces_tau_the_singular_mass_and_the_cdf() {
   for (alpha, beta) in [(0.5, 0.5), (0.3, 0.6), (0.6, 0.4), (1.0, 0.4), (0.7, 1.0)] {
     let c = MarshallOlkin::with_alpha_beta(alpha, beta);
     let n = 40_000_usize;
-    let uv = c.sample_with_seed(n, 7).unwrap();
+    let uv = c.sample(n, &Deterministic::new(7)).unwrap();
     let (u, v) = (uv.column(0).to_vec(), uv.column(1).to_vec());
     let (tau, ..) =
       kendalls::tau_b_with_comparator(&u, &v, |a: &f64, b: &f64| a.partial_cmp(b).unwrap())
@@ -239,7 +240,7 @@ fn mo_sampler_reproduces_tau_the_singular_mass_and_the_cdf() {
     }
   }
   let comonotone = MarshallOlkin::with_alpha_beta(1.0, 1.0)
-    .sample_with_seed(500, 7)
+    .sample(500, &Deterministic::new(7))
     .unwrap();
   assert!(comonotone.rows().into_iter().all(|r| r[0] == r[1]));
 }
@@ -304,7 +305,7 @@ fn an_out_of_domain_parameter_neither_samples_nor_evaluates() {
     };
     assert!(
       matches!(
-        c.sample_with_seed(16, 7),
+        c.sample(16, &Deterministic::new(7)),
         Err(CopulaError::InvalidParameter { name: "theta", .. })
       ),
       "theta = {theta}"

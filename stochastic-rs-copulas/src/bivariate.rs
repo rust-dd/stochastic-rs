@@ -153,59 +153,46 @@ pub enum CopulaType {
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_core::simd_rng::Deterministic;
+
   use crate::bivariate::clayton::Clayton;
   use crate::bivariate::frank::Frank;
   use crate::bivariate::gumbel::Gumbel;
   use crate::traits::BivariateExt;
 
-  /// `BivariateExt::sample_with_seed` is a trait-default method — no
-  /// bivariate family overrides it — so pin its determinism contract
-  /// directly here, mirroring
-  /// `multivariate::tests::every_multivariate_sampler_is_seedable_and_deterministic`.
-  /// Same seed on the same object must replay bit-for-bit, and two
-  /// independently-constructed, identically-seeded objects must agree.
-  ///
-  /// Frank and Gumbel are deliberately exercised at a non-boundary theta
-  /// (not the `theta == 0.0` / `theta == 1.0` independence special case
-  /// each family shortcuts around): both `percent_point` overrides used to
-  /// call `BivariateExt::percent_point(self, ..)` via UFCS on their own
-  /// non-boundary path, which — since each type overrides `percent_point`
-  /// — resolved back to that same override instead of the trait's default
-  /// body, recursing until the stack overflowed. Sampling at a real
-  /// (non-degenerate) theta is what actually exercises that path; a test
-  /// that only ever sampled at the independence boundary would never have
-  /// caught either bug.
+  /// The trait-default `sample` replays bit-for-bit for one `Deterministic` seed, on one object and on two built alike.
+  /// Frank and Gumbel sit off the independence boundary their `percent_point` shortcuts around, so the general path runs.
   #[test]
   fn every_bivariate_sampler_is_seedable_and_deterministic() {
     let mut clayton = Clayton::new();
     clayton.set_tau(0.5);
     clayton._compute_theta();
     assert_eq!(
-      clayton.sample_with_seed(64, 42).unwrap(),
-      clayton.sample_with_seed(64, 42).unwrap(),
+      clayton.sample(64, &Deterministic::new(42)).unwrap(),
+      clayton.sample(64, &Deterministic::new(42)).unwrap(),
       "Clayton replay"
     );
     let mut clayton_2 = Clayton::new();
     clayton_2.set_tau(0.5);
     clayton_2._compute_theta();
     assert_eq!(
-      clayton.sample_with_seed(64, 42).unwrap(),
-      clayton_2.sample_with_seed(64, 42).unwrap(),
+      clayton.sample(64, &Deterministic::new(42)).unwrap(),
+      clayton_2.sample(64, &Deterministic::new(42)).unwrap(),
       "Clayton cross-object"
     );
 
     let mut frank = Frank::new(None, Some(0.5));
     frank._compute_theta();
     assert_eq!(
-      frank.sample_with_seed(64, 42).unwrap(),
-      frank.sample_with_seed(64, 42).unwrap(),
+      frank.sample(64, &Deterministic::new(42)).unwrap(),
+      frank.sample(64, &Deterministic::new(42)).unwrap(),
       "Frank replay"
     );
     let mut frank_2 = Frank::new(None, Some(0.5));
     frank_2._compute_theta();
     assert_eq!(
-      frank.sample_with_seed(64, 42).unwrap(),
-      frank_2.sample_with_seed(64, 42).unwrap(),
+      frank.sample(64, &Deterministic::new(42)).unwrap(),
+      frank_2.sample(64, &Deterministic::new(42)).unwrap(),
       "Frank cross-object"
     );
 
@@ -214,15 +201,15 @@ mod tests {
     let mut gumbel = Gumbel::new(None, Some(0.5));
     gumbel._compute_theta();
     assert_eq!(
-      gumbel.sample_with_seed(64, 42).unwrap(),
-      gumbel.sample_with_seed(64, 42).unwrap(),
+      gumbel.sample(64, &Deterministic::new(42)).unwrap(),
+      gumbel.sample(64, &Deterministic::new(42)).unwrap(),
       "Gumbel replay"
     );
     let mut gumbel_2 = Gumbel::new(None, Some(0.5));
     gumbel_2._compute_theta();
     assert_eq!(
-      gumbel.sample_with_seed(64, 42).unwrap(),
-      gumbel_2.sample_with_seed(64, 42).unwrap(),
+      gumbel.sample(64, &Deterministic::new(42)).unwrap(),
+      gumbel_2.sample(64, &Deterministic::new(42)).unwrap(),
       "Gumbel cross-object"
     );
   }

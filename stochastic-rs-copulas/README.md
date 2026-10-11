@@ -21,21 +21,22 @@ dimensions, vine and nested constructions in higher dimensions.
 - **Empirical** — pseudo-observations and the empirical copula.
 - **Process coupling** — drive two stochastic processes through a copula.
 
-Every multivariate sampler has a `sample_with_seed(n, seed)` counterpart
-when the draw needs to be reproducible, matching the bivariate one below.
+Every sampler takes its seed: `sample(n, &Deterministic::new(42))` replays, `sample(n, &Unseeded)` draws fresh entropy.
 
 ## Usage
 
 ```rust
 use stochastic_rs_copulas::bivariate::clayton::Clayton;
+use stochastic_rs_copulas::simd_rng::Deterministic;
+use stochastic_rs_copulas::simd_rng::Unseeded;
 use stochastic_rs_copulas::traits::BivariateExt;
 
 let c = Clayton {
     theta: Some(2.0),
     ..Clayton::new()
 };
-let u = c.sample(10_000).expect("theta is set");               // Array2<f64>, shape (10000, 2)
-let v = c.sample_with_seed(10_000, 42).expect("theta is set"); // reproducible
+let u = c.sample(10_000, &Unseeded).expect("theta is set");                // Array2<f64>, shape (10000, 2)
+let v = c.sample(10_000, &Deterministic::new(42)).expect("theta is set"); // reproducible
 
 // Or set Kendall's tau and invert it for theta.
 let mut from_tau = Clayton::new();
@@ -48,10 +49,11 @@ Multivariate constructions take a tree of `PairCopula` variants:
 ```rust
 use stochastic_rs_copulas::multivariate::cvine::CVine;
 use stochastic_rs_copulas::multivariate::dvine::PairCopula;
+use stochastic_rs_copulas::simd_rng::Deterministic;
 use stochastic_rs_copulas::traits::MultivariateExt;
 
 let cv = CVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).expect("a valid vine");
-let draws = cv.sample_with_seed(10_000, 42).expect("a valid vine");
+let draws = cv.sample(10_000, &Deterministic::new(42)).expect("a valid vine");
 ```
 
 ## Part of stochastic-rs

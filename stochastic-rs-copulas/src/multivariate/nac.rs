@@ -67,7 +67,7 @@ use ndarray::ArrayView2;
 use rand::Rng;
 use rand::RngExt;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_core::simd_rng::SimdRng;
+use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::gamma::SimdGamma;
 
@@ -334,13 +334,8 @@ impl NestedArchimedean {
   ) {
     let v = match (self.family, parent_state) {
       (NacFamily::Clayton, None) => {
-        // Root Clayton frailty: V ~ Gamma(shape = 1/θ, scale = 1) →
-        // LST = (1 + s)^{-1/θ} = ψ_Clayton(s) (LST-normalised). Seeded
-        // from a sub-seed drawn off the caller's `rng` stream — a bare
-        // `Unseeded` source here would silently break `sample_with_seed`
-        // reproducibility for every Clayton-family NAC, since this branch
-        // fires on every row (the root frailty has no parent to inherit
-        // determinism from).
+        // V ~ Gamma(1/θ, 1) has LST (1 + s)^{-1/θ}; its sub-seed comes off `rng`, since an `Unseeded` source
+        // here would break the replay of every Clayton tree (the root frailty is drawn on every row).
         let sub_seed = rng.random::<u64>();
         let mut g =
           SimdGamma::<f64>::new(1.0 / node.theta, 1.0).seeded(&Deterministic::new(sub_seed));
@@ -371,22 +366,7 @@ impl NestedArchimedean {
         }
       }
       (NacFamily::Clayton, Some(_)) => {
-        // Nested Clayton: the conditional frailty V_c | V_p has LST
-        // exp(-V_p · ((1+s)^α - 1)) with α = θ_p/θ_c — an exponentially
-        // tilted positive stable distribution. Exact sampling requires
-        // Devroye's double-rejection (Hofert 2011, Algorithm 4), which is
-        // not yet implemented. We surface this limitation up to `sample`
-        // so the caller does not silently get a biased copula; the CDF /
-        // PDF / structure-validation paths are unaffected and work for
-        // arbitrarily nested Clayton trees.
-        panic!(
-          "Nested-Clayton sampling is not implemented — \
-           use NacFamily::Gumbel for nesting (correct Hofert (2011) \
-           Algorithm 2), or call cdf / pdf on a nested-Clayton tree \
-           (those paths are fully supported). Exact nested-Clayton \
-           sampling via tilted-stable Devroye double-rejection is \
-           not yet implemented."
-        );
+        unreachable!("sample rejects a nested Clayton tree before drawing")
       }
     };
 
@@ -440,16 +420,14 @@ impl MultivariateExt for NestedArchimedean {
     CopulaType::NestedArchimedean
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, CopulaError> {
+  fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
     self.check_root_frailty()?;
-    Ok(self.sample_with(n, &mut SimdRng::new()))
-  }
-
-  /// Reproducible counterpart of [`MultivariateExt::sample`]: the same
-  /// `seed` always yields the same matrix.
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, CopulaError> {
-    self.check_root_frailty()?;
-    Ok(self.sample_with(n, &mut SimdRng::from_seed(seed)))
+    if self.family == NacFamily::Clayton && !self.root.children.is_empty() {
+      return Err(CopulaError::Unsupported(
+        "nested Clayton sampling needs the tilted-stable frailty (Hofert 2011, Algorithm 4): sample a Gumbel tree, or evaluate cdf and pdf".into(),
+      ));
+    }
+    Ok(self.sample_with(n, &mut seed.rng()))
   }
 
   fn fit(&mut self, _X: ArrayView2<f64>) -> Result<(), CopulaError> {

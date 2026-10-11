@@ -15,6 +15,7 @@ use stochastic_rs_copulas::bivariate::galambos::Galambos;
 use stochastic_rs_copulas::bivariate::gaussian::GaussianCopula;
 use stochastic_rs_copulas::bivariate::gumbel::Gumbel;
 use stochastic_rs_copulas::bivariate::husler_reiss::HuslerReiss;
+use stochastic_rs_copulas::bivariate::independence::Independence;
 use stochastic_rs_copulas::bivariate::joe::Joe;
 use stochastic_rs_copulas::bivariate::marshall_olkin::MarshallOlkin;
 use stochastic_rs_copulas::bivariate::plackett::Plackett;
@@ -33,6 +34,7 @@ use stochastic_rs_copulas::multivariate::tree::TreeMultivariate;
 use stochastic_rs_copulas::multivariate::vine::VineMultivariate;
 use stochastic_rs_copulas::traits::BivariateExt;
 use stochastic_rs_copulas::traits::MultivariateExt;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 const SEED: u64 = 7;
 
@@ -50,6 +52,7 @@ const PINS: &[(&str, u64)] = &[
   ("gaussian", 0xa328de38b1bfb31d),
   ("gumbel", 0x39a0471e4b5e60ab),
   ("husler_reiss", 0xb831b64cfb1ffe71),
+  ("independence", 0xf87c848c3bc70b34),
   ("joe", 0xb971b58497bc760e),
   ("plackett", 0x48f721e10828ab28),
   ("marshall_olkin", 0xe6fbf6836be8f931),
@@ -58,11 +61,11 @@ const PINS: &[(&str, u64)] = &[
   ("t_multivariate", 0x6bcffcbcf2ecf0d0),
   ("vine_multivariate", 0xa9e6f7560842916c),
   ("tree_multivariate", 0xa9e6f7560842916c),
-  ("cvine", 0xad38b89d85dc8c41),
-  ("dvine", 0xfc183eb80e04637d),
-  ("rvine_independence", 0x7fc1a032d2ef1540),
-  ("nac_gumbel_nested", 0x2a6a150ab6e65bf6),
-  ("nac_clayton_flat", 0xc0bf2c344f128602),
+  ("cvine", 0x487fb08113cd29fb),
+  ("dvine", 0x89bf5cced5bc2b85),
+  ("rvine_independence", 0xc269b264798404c9),
+  ("nac_gumbel_nested", 0x85ff7aa5ffd667a9),
+  ("nac_clayton_flat", 0x5be5566c431f17f4),
   ("empirical", 0x3e1dc30dfbde113d),
 ];
 
@@ -116,134 +119,140 @@ fn samples() -> Vec<(&'static str, Array2<f64>)> {
   row!(
     "amh",
     with_theta(Amh::new(), 0.5)
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "bb1",
     Bb1::new(Some(0.8), Some(1.6), None)
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "bb7",
     Bb7::new(Some(1.7), Some(0.9), None)
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "clayton",
     with_theta(Clayton::new(), 2.0)
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "fgm",
     with_theta(Fgm::new(), 0.5)
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "frank",
     Frank::new(Some(4.0), None)
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "galambos",
     with_theta(Galambos::new(), 1.5)
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "gaussian",
     with_theta(GaussianCopula::new(), 0.5)
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "gumbel",
     Gumbel::new(Some(2.0), None)
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "husler_reiss",
     with_theta(HuslerReiss::new(), 1.5)
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "independence",
+    with_theta(Independence::new(), 0.0)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "joe",
     with_theta(Joe::new(), 2.0)
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "plackett",
     with_theta(Plackett::new(), 3.0)
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "marshall_olkin",
     MarshallOlkin::with_alpha_beta(0.3, 0.6)
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "t_copula",
     with_theta(TCopula::with_nu(4.0), 0.5)
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "gaussian_multivariate",
     GaussianMultivariate::new_with_corr(corr3())
       .unwrap()
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "t_multivariate",
     TMultivariate::new_with(corr3(), 5.0)
       .unwrap()
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "vine_multivariate",
     VineMultivariate::new_with_corr(corr3())
       .unwrap()
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "tree_multivariate",
     TreeMultivariate::new_with_corr(corr3())
       .unwrap()
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "cvine",
     CVine::new(3, pair_trees())
       .unwrap()
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "dvine",
     DVine::new(3, pair_trees())
       .unwrap()
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "rvine_independence",
     RVine::independence(3)
       .unwrap()
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   let nested = NacNode {
@@ -255,7 +264,7 @@ fn samples() -> Vec<(&'static str, Array2<f64>)> {
     "nac_gumbel_nested",
     NestedArchimedean::new(NacFamily::Gumbel, nested, 3)
       .unwrap()
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   let flat = NacNode::leaf_group(2.0, vec![0, 1, 2]);
@@ -263,10 +272,13 @@ fn samples() -> Vec<(&'static str, Array2<f64>)> {
     "nac_clayton_flat",
     NestedArchimedean::new(NacFamily::Clayton, flat, 3)
       .unwrap()
-      .sample_with_seed(N, SEED)
+      .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
-  row!("empirical", empirical().sample_with_seed(N, SEED));
+  row!(
+    "empirical",
+    empirical().sample(N, &Deterministic::new(SEED))
+  );
   rows
 }
 

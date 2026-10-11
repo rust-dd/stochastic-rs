@@ -58,8 +58,7 @@ Useful defaults you should usually **not** override:
 
 | Method | Default behaviour |
 |---|---|
-| `sample(n)` | `SimdUniform` + `Unseeded`, via `sample_with_uniform` |
-| `sample_with_seed(n, seed)` | same, with `Deterministic::new(seed)` |
+| `sample(n, &seed)` | `SimdUniform::new(0, 1).seeded(seed)`, via `sample_with_uniform` |
 | `fit(X)` | Kendall's tau-b via `kendalls`, then `_compute_theta()` |
 | `percent_point(y, V)` | Brent inversion of `partial_derivative_scalar` |
 | `partial_derivative(X)` | central-difference on `cdf` |
@@ -95,8 +94,7 @@ rather than returning a nonsensical coefficient.
 Every family stores its bounds and its `CopulaType` as **fields**, and
 carries `theta` / `tau` as `Option<f64>` (unset until `fit` or
 `set_theta`). There is **no `seed` field** — seeding enters through
-`sample_with_seed(n, seed)`, which builds a `Deterministic`-seeded
-`SimdUniform` for that one call.
+`sample(n, &seed)` with a `Deterministic` (replay) or `Unseeded` (entropy) source.
 
 ```rust
 // stochastic-rs-copulas/src/bivariate/clayton.rs (reference)
@@ -252,19 +250,18 @@ fn clayton_independence_sample_kendall_tau_near_zero() {
   let mut cop = Clayton::new();
   cop.set_tau(target_tau);
   cop._compute_theta();
-  let samples = cop.sample_with_seed(50_000, 42).unwrap();
+  let samples = cop.sample(50_000, &Deterministic::new(42)).unwrap();
   // empirical Kendall's tau on `samples` within tolerance of target_tau
 }
 ```
 
-**Pin the seed** via `sample_with_seed` — never plain `sample()`, which
-is `Unseeded` and reseeds from entropy each run. See
+**Pin the seed**: `sample(n, &Deterministic::new(42))` — never `&Unseeded` in a test. See
 `integration-test-writing` for the full pinned-seed mandate.
 
 ## 6. Anti-patterns
 
 - **Do not** give the struct a `seed` field. Seeding is per-call, via
-  `sample_with_seed`.
+  `sample(n, &seed)`.
 - **Do not** write scalar `pdf(u, v)` / `cdf(u, v)`. The trait is
   vectorised over an `(n, 2)` array and returns `Result`.
 - **Do not** give `compute_theta` a `tau` parameter. It reads

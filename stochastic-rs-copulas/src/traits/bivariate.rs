@@ -7,8 +7,7 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::Axis;
 use ndarray::stack;
-use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::DistributionSampler;
 use stochastic_rs_distributions::RealExt;
 use stochastic_rs_distributions::Seeded;
@@ -124,16 +123,13 @@ pub trait BivariateExt {
     )))
   }
 
-  fn sample(&self, n: usize) -> Result<ndarray::Array2<f64>, CopulaError> {
-    self.sample_with_uniform(SimdUniform::<f64>::new(0.0, 1.0).seeded(&Unseeded), n)
-  }
-
-  /// Deterministic sampler. Returns the same paths for a fixed `seed`.
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<ndarray::Array2<f64>, CopulaError> {
-    self.sample_with_uniform(
-      SimdUniform::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(seed)),
-      n,
-    )
+  /// `n` pairs from the conditional-inversion sampler, drawn from `seed`; a `Deterministic` seed replays them.
+  /// Generic over the seed source, so not callable on a `dyn BivariateExt`.
+  fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<ndarray::Array2<f64>, CopulaError>
+  where
+    Self: Sized,
+  {
+    self.sample_with_uniform(SimdUniform::<f64>::new(0.0, 1.0).seeded(seed), n)
   }
 
   #[doc(hidden)]

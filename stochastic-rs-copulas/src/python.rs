@@ -11,11 +11,12 @@
 #![cfg(feature = "python")]
 #![allow(clippy::too_many_arguments)]
 
-use ndarray::Array2;
 use numpy::IntoPyArray;
 use numpy::PyReadonlyArray2;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
@@ -95,19 +96,18 @@ macro_rules! py_bivariate {
 
       #[pyo3(signature = (n, seed=None))]
       fn sample<'py>(
-        &mut self,
+        &self,
         py: Python<'py>,
         n: usize,
         seed: Option<u64>,
       ) -> PyResult<pyo3::Bound<'py, numpy::PyArray2<f64>>> {
         stochastic_rs_distributions::python::runtime_error_on_panic(
           || -> PyResult<pyo3::Bound<'py, numpy::PyArray2<f64>>> {
-            let arr: Array2<f64> = match seed {
-              Some(s) => {
-                BivariateExt::sample_with_seed(&mut self.inner, n, s).map_err(err_to_py)?
-              }
-              None => BivariateExt::sample(&mut self.inner, n).map_err(err_to_py)?,
-            };
+            let arr = match seed {
+              Some(s) => BivariateExt::sample(&self.inner, n, &Deterministic::new(s)),
+              None => BivariateExt::sample(&self.inner, n, &Unseeded),
+            }
+            .map_err(err_to_py)?;
             Ok(arr.into_pyarray(py))
           },
         )?
@@ -157,13 +157,19 @@ impl PyEmpiricalCopula2D {
     self.inner.rank_data.clone().into_pyarray(py)
   }
 
+  #[pyo3(signature = (n, seed=None))]
   fn sample<'py>(
     &self,
     py: Python<'py>,
     n: usize,
+    seed: Option<u64>,
   ) -> pyo3::PyResult<pyo3::Bound<'py, numpy::PyArray2<f64>>> {
     stochastic_rs_distributions::python::runtime_error_on_panic(|| {
-      self.inner.sample(n).into_pyarray(py)
+      match seed {
+        Some(s) => self.inner.sample(n, &Deterministic::new(s)),
+        None => self.inner.sample(n, &Unseeded),
+      }
+      .into_pyarray(py)
     })
   }
 }
@@ -282,19 +288,18 @@ macro_rules! py_two_parameter {
 
       #[pyo3(signature = (n, seed=None))]
       fn sample<'py>(
-        &mut self,
+        &self,
         py: Python<'py>,
         n: usize,
         seed: Option<u64>,
       ) -> PyResult<pyo3::Bound<'py, numpy::PyArray2<f64>>> {
         stochastic_rs_distributions::python::runtime_error_on_panic(
           || -> PyResult<pyo3::Bound<'py, numpy::PyArray2<f64>>> {
-            let arr: Array2<f64> = match seed {
-              Some(s) => {
-                BivariateExt::sample_with_seed(&mut self.inner, n, s).map_err(err_to_py)?
-              }
-              None => BivariateExt::sample(&mut self.inner, n).map_err(err_to_py)?,
-            };
+            let arr = match seed {
+              Some(s) => BivariateExt::sample(&self.inner, n, &Deterministic::new(s)),
+              None => BivariateExt::sample(&self.inner, n, &Unseeded),
+            }
+            .map_err(err_to_py)?;
             Ok(arr.into_pyarray(py))
           },
         )?
@@ -443,8 +448,16 @@ pub fn copula_gof<'py>(
     ($ctor:expr) => {{
       let mut copula = $ctor;
       copula.fit(data.view()).map_err(err_to_py)?;
-      py.detach(|| gof_cramer_von_mises(&copula, data.view(), replications, seed, |c, x| c.fit(x)))
-        .map_err(err_to_py)?
+      py.detach(|| {
+        gof_cramer_von_mises(
+          &copula,
+          data.view(),
+          replications,
+          &Deterministic::new(seed),
+          |c, x| c.fit(x),
+        )
+      })
+      .map_err(err_to_py)?
     }};
   }
   let result = match family.to_ascii_lowercase().as_str() {

@@ -1,4 +1,5 @@
 use ndarray::array;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
 
@@ -8,7 +9,7 @@ use super::*;
 fn t_copula_samples_have_uniform_marginals() {
   let corr = array![[1.0, 0.4, 0.2], [0.4, 1.0, 0.3], [0.2, 0.3, 1.0]];
   let cop = TMultivariate::new_with(corr, 5.0).expect("valid corr");
-  let u = cop.sample(20_000).expect("sample");
+  let u = cop.sample(20_000, &Deterministic::new(7)).expect("sample");
   assert_eq!(u.ncols(), 3);
   assert_eq!(u.nrows(), 20_000);
   for j in 0..3 {
@@ -86,7 +87,7 @@ fn t_copula_pdf_at_center() {
 fn t_copula_fit_recovers_correlation_from_sample() {
   let true_corr = array![[1.0, 0.6, 0.2], [0.6, 1.0, 0.3], [0.2, 0.3, 1.0]];
   let cop = TMultivariate::new_with(true_corr.clone(), 5.0).unwrap();
-  let u = cop.sample(5_000).unwrap();
+  let u = cop.sample(5_000, &Deterministic::new(7)).unwrap();
   let mut fitted = TMultivariate::new();
   fitted.fit(u.view()).unwrap();
   let recovered = fitted.correlation().unwrap();
@@ -162,7 +163,7 @@ fn t_copula_manual_nu_override() {
   let mut cop = TMultivariate::new_with(corr, 4.0).unwrap();
   cop.set_nu(12.0).unwrap();
   assert_eq!(cop.nu(), 12.0);
-  let _ = cop.sample(100).unwrap();
+  let _ = cop.sample(100, &Deterministic::new(7)).unwrap();
   let _ = cop.pdf(array![[0.5, 0.5]].view()).unwrap();
   let bad = cop.set_nu(0.0);
   assert!(bad.is_err(), "ν=0 must be rejected");

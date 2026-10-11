@@ -51,7 +51,6 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::Axis;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::SimdDistribution;
@@ -174,35 +173,6 @@ impl TMultivariate {
       return Err(CopulaError::NotFitted);
     }
     Ok(())
-  }
-
-  /// Shared sampling core for [`MultivariateExt::sample`] and
-  /// [`MultivariateExt::sample_with_seed`]. Both the normal and the
-  /// $\chi^2$ draw come from the **same** seed source (advancing its
-  /// interior state per construction), matching the crate-wide idiom for
-  /// composed distributions instead of reseeding each from the identical
-  /// raw `u64`.
-  fn sample_from_seed<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
-    self.require_fitted()?;
-    let d = self.dim;
-    let l = self.chol_lower.as_ref().unwrap();
-    // Z ~ N(0, Σ) by L · G with G ~ N(0, I).
-    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(seed);
-    let g = Array2::from_shape_fn((n, d), |_| normal.sample());
-    let z = g.dot(&l.t());
-    // W ~ χ²_ν / ν, independently per row.
-    let mut chi = SimdChiSquared::<f64>::new(self.nu).seeded(seed);
-    let mut u = Array2::<f64>::zeros((n, d));
-    for r in 0..n {
-      let w_raw = chi.sample();
-      let w = (w_raw / self.nu).max(1e-300);
-      let scale = 1.0 / w.sqrt();
-      for c in 0..d {
-        let xc = z[[r, c]] * scale;
-        u[[r, c]] = Self::t_cdf(xc, self.nu).clamp(1e-12, 1.0 - 1e-12);
-      }
-    }
-    Ok(u)
   }
 
   /// Standard Student-$t$ density $f_\nu(x)$ with the natural-log
@@ -396,12 +366,28 @@ impl MultivariateExt for TMultivariate {
     CopulaType::TMultivariate
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, CopulaError> {
-    self.sample_from_seed(n, &Unseeded)
-  }
-
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, CopulaError> {
-    self.sample_from_seed(n, &Deterministic::new(seed))
+  /// The normal and the $\chi^2$ stream both come from `seed`, which advances between them.
+  fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
+    self.require_fitted()?;
+    let d = self.dim;
+    let l = self.chol_lower.as_ref().unwrap();
+    // Z ~ N(0, Σ) by L · G with G ~ N(0, I).
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(seed);
+    let g = Array2::from_shape_fn((n, d), |_| normal.sample());
+    let z = g.dot(&l.t());
+    // W ~ χ²_ν / ν, independently per row.
+    let mut chi = SimdChiSquared::<f64>::new(self.nu).seeded(seed);
+    let mut u = Array2::<f64>::zeros((n, d));
+    for r in 0..n {
+      let w_raw = chi.sample();
+      let w = (w_raw / self.nu).max(1e-300);
+      let scale = 1.0 / w.sqrt();
+      for c in 0..d {
+        let xc = z[[r, c]] * scale;
+        u[[r, c]] = Self::t_cdf(xc, self.nu).clamp(1e-12, 1.0 - 1e-12);
+      }
+    }
+    Ok(u)
   }
 
   fn fit(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {

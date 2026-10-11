@@ -36,6 +36,7 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
+use stochastic_rs_core::simd_rng::SeedExt;
 
 use super::CopulaType;
 use super::cvine::CVine;
@@ -99,17 +100,10 @@ impl MultivariateExt for RVine {
     CopulaType::RVine
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, CopulaError> {
+  fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
     match self {
-      RVine::D(d) => d.sample(n),
-      RVine::C(c) => c.sample(n),
-    }
-  }
-
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, CopulaError> {
-    match self {
-      RVine::D(d) => d.sample_with_seed(n, seed),
-      RVine::C(c) => c.sample_with_seed(n, seed),
+      RVine::D(d) => d.sample(n, seed),
+      RVine::C(c) => c.sample(n, seed),
     }
   }
 
@@ -152,6 +146,7 @@ impl MultivariateExt for RVine {
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
   use crate::multivariate::dvine::PairCopula;
@@ -215,7 +210,7 @@ mod tests {
   #[test]
   fn rvine_independence_sampling_uniform_marginals() {
     let rv = RVine::independence(3).unwrap();
-    let s = rv.sample(10_000).unwrap();
+    let s = rv.sample(10_000, &Deterministic::new(7)).unwrap();
     for j in 0..3 {
       let col = s.column(j);
       let m: f64 = col.iter().sum::<f64>() / col.len() as f64;

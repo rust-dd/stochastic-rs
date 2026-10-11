@@ -27,6 +27,7 @@ use stochastic_rs::copulas::multivariate::fit::VineStructure;
 use stochastic_rs::copulas::multivariate::fit::fit_vine;
 use stochastic_rs::copulas::multivariate::gaussian::GaussianMultivariate;
 use stochastic_rs::copulas::multivariate::t::TMultivariate;
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::traits::BivariateExt;
 use stochastic_rs::traits::MultivariateExt;
 
@@ -65,52 +66,52 @@ fn bivariate_sample(c: &mut Criterion) {
     ..Clayton::new()
   };
   group.bench_function("clayton_n10k", |b| {
-    b.iter(|| clayton.sample_with_seed(10_000, 42).unwrap())
+    b.iter(|| clayton.sample(10_000, &Deterministic::new(42)).unwrap())
   });
   let frank = Frank::new(Some(4.0), None);
   group.bench_function("frank_n2k", |b| {
-    b.iter(|| frank.sample_with_seed(2_000, 42).unwrap())
+    b.iter(|| frank.sample(2_000, &Deterministic::new(42)).unwrap())
   });
   let gaussian = GaussianCopula {
     theta: Some(0.5),
     ..GaussianCopula::new()
   };
   group.bench_function("gaussian_n10k", |b| {
-    b.iter(|| gaussian.sample_with_seed(10_000, 42).unwrap())
+    b.iter(|| gaussian.sample(10_000, &Deterministic::new(42)).unwrap())
   });
   let gumbel = Gumbel::new(Some(2.0), None);
   group.bench_function("gumbel_brent_n2k", |b| {
-    b.iter(|| gumbel.sample_with_seed(2_000, 42).unwrap())
+    b.iter(|| gumbel.sample(2_000, &Deterministic::new(42)).unwrap())
   });
   let mo = MarshallOlkin::with_alpha_beta(0.3, 0.6);
   group.bench_function("marshall_olkin_n10k", |b| {
-    b.iter(|| mo.sample_with_seed(10_000, 42).unwrap())
+    b.iter(|| mo.sample(10_000, &Deterministic::new(42)).unwrap())
   });
   let amh = Amh {
     theta: Some(0.5),
     ..Amh::new()
   };
   group.bench_function("amh_n10k", |b| {
-    b.iter(|| amh.sample_with_seed(10_000, 42).unwrap())
+    b.iter(|| amh.sample(10_000, &Deterministic::new(42)).unwrap())
   });
   let fgm = Fgm {
     theta: Some(0.5),
     ..Fgm::new()
   };
   group.bench_function("fgm_n10k", |b| {
-    b.iter(|| fgm.sample_with_seed(10_000, 42).unwrap())
+    b.iter(|| fgm.sample(10_000, &Deterministic::new(42)).unwrap())
   });
   let plackett = Plackett {
     theta: Some(3.0),
     ..Plackett::new()
   };
   group.bench_function("plackett_n10k", |b| {
-    b.iter(|| plackett.sample_with_seed(10_000, 42).unwrap())
+    b.iter(|| plackett.sample(10_000, &Deterministic::new(42)).unwrap())
   });
   let mut t = TCopula::with_nu(4.0);
   t.set_theta(0.5);
   group.bench_function("t_copula_n256", |b| {
-    b.iter(|| t.sample_with_seed(256, 42).unwrap())
+    b.iter(|| t.sample(256, &Deterministic::new(42)).unwrap())
   });
   group.finish();
 }
@@ -119,15 +120,15 @@ fn multivariate_sample(c: &mut Criterion) {
   let mut group = c.benchmark_group("copulas/multivariate_sample");
   let gaussian = GaussianMultivariate::new_with_corr(corr(5)).unwrap();
   group.bench_function("gaussian_d5_n10k", |b| {
-    b.iter(|| gaussian.sample_with_seed(10_000, 42).unwrap())
+    b.iter(|| gaussian.sample(10_000, &Deterministic::new(42)).unwrap())
   });
   let t = TMultivariate::new_with(corr(5), 5.0).unwrap();
   group.bench_function("t_d5_n10k", |b| {
-    b.iter(|| t.sample_with_seed(10_000, 42).unwrap())
+    b.iter(|| t.sample(10_000, &Deterministic::new(42)).unwrap())
   });
   let vine = dvine(4);
   group.bench_function("dvine_d4_n10k", |b| {
-    b.iter(|| vine.sample_with_seed(10_000, 42).unwrap())
+    b.iter(|| vine.sample(10_000, &Deterministic::new(42)).unwrap())
   });
   group.finish();
 }
@@ -155,14 +156,24 @@ fn fit(c: &mut Criterion) {
     theta: Some(2.0),
     ..Clayton::new()
   };
-  let pairs = pseudo_observations(clayton.sample_with_seed(2_000, 1).unwrap().view());
+  let pairs = pseudo_observations(
+    clayton
+      .sample(2_000, &Deterministic::new(1))
+      .unwrap()
+      .view(),
+  );
   group.bench_function("clayton_fit_n2k", |b| {
     b.iter(|| {
       let mut fitted = Clayton::new();
       fitted.fit(pairs.view()).unwrap()
     })
   });
-  let data = pseudo_observations(dvine(4).sample_with_seed(1_000, 1).unwrap().view());
+  let data = pseudo_observations(
+    dvine(4)
+      .sample(1_000, &Deterministic::new(1))
+      .unwrap()
+      .view(),
+  );
   group.bench_function("vine_fit_d4_n1k", |b| {
     b.iter(|| {
       fit_vine(
@@ -187,11 +198,20 @@ fn gof(c: &mut Criterion) {
     theta: Some(2.0),
     ..Clayton::new()
   };
-  let pairs = pseudo_observations(clayton.sample_with_seed(300, 1).unwrap().view());
+  let pairs = pseudo_observations(clayton.sample(300, &Deterministic::new(1)).unwrap().view());
   let mut fitted = Clayton::new();
   fitted.fit(pairs.view()).unwrap();
   group.bench_function("clayton_cvm_n300_r10", |b| {
-    b.iter(|| gof_cramer_von_mises(&fitted, pairs.view(), 10, 100, |c, x| c.fit(x)).unwrap())
+    b.iter(|| {
+      gof_cramer_von_mises(
+        &fitted,
+        pairs.view(),
+        10,
+        &Deterministic::new(100),
+        |c, x| c.fit(x),
+      )
+      .unwrap()
+    })
   });
   group.finish();
 }

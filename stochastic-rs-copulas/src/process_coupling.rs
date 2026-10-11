@@ -25,7 +25,7 @@
 //! use ndarray::Array1;
 //! use stochastic_rs_copulas::bivariate::clayton::Clayton;
 //! use stochastic_rs_copulas::process_coupling::couple_marginals;
-//! use stochastic_rs_copulas::traits::BivariateExt;
+//! use stochastic_rs_copulas::simd_rng::Deterministic;
 //!
 //! // Marginals from any source work identically (e.g. two `Array1<f64>`
 //! // paths from `ProcessExt::sample()`); a deterministic sequence keeps
@@ -33,32 +33,37 @@
 //! // above.
 //! let s1 = Array1::linspace(0.0, 1.0, 32);
 //! let s2 = Array1::linspace(1.0, 0.0, 32);
-//! let mut c = Clayton::new();
-//! c.set_tau(0.5);
-//! c._compute_theta();
-//! let coupled = couple_marginals(s1.view(), s2.view(), &mut c).unwrap();
+//! let c = Clayton {
+//!   theta: Some(2.0),
+//!   ..Clayton::new()
+//! };
+//! let coupled = couple_marginals(s1.view(), s2.view(), &c, &Deterministic::new(1)).unwrap();
 //! assert_eq!(coupled.shape(), &[32, 2]);
 //! ```
 
 use ndarray::ArrayView1;
+use stochastic_rs_core::simd_rng::SeedExt;
 
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 
-/// Couple two independent marginal samples through a bivariate copula.
-///
-/// Returns a `(n, 2)`-shaped sample with copula-induced dependence and
-/// preserved empirical marginal distributions.
-pub fn couple_marginals<C: BivariateExt>(
+/// Couples two marginal samples through a bivariate copula drawn from `seed`: an `(n, 2)` sample that keeps both empirical marginals.
+/// Panics unless both series have the same length of at least 2.
+pub fn couple_marginals<C: BivariateExt, S: SeedExt>(
   s1: ArrayView1<f64>,
   s2: ArrayView1<f64>,
-  copula: &mut C,
+  copula: &C,
+  seed: &S,
 ) -> Result<ndarray::Array2<f64>, CopulaError> {
   let n = s1.len();
-  assert_eq!(n, s2.len(), "marginals must have equal length");
-  assert!(n >= 2, "need at least two observations");
+  assert!(
+    s2.len() == n,
+    "s2 must satisfy `s2.len() == s1.len()`, got s2.len() = {}",
+    s2.len()
+  );
+  assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n}");
 
-  let cop_sample = copula.sample(n)?;
+  let cop_sample = copula.sample(n, seed)?;
   let mut out = ndarray::Array2::<f64>::zeros((n, 2));
 
   let mut sorted1 = s1.to_vec();

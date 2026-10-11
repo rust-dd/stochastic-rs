@@ -1,4 +1,5 @@
 use ndarray::Array2;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
 use crate::multivariate::gaussian::GaussianMultivariate;
@@ -16,7 +17,7 @@ fn first_tree(fit: &VineFit) -> &[PairCopula] {
 #[test]
 fn two_dimensional_fit_recovers_clayton() {
   let truth = DVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).unwrap();
-  let u = truth.sample_with_seed(3000, 7).unwrap();
+  let u = truth.sample(3000, &Deterministic::new(5)).unwrap();
   let fit = fit_vine(
     u.view(),
     VineStructure::DVine,
@@ -51,7 +52,7 @@ fn dvine_fit_recovers_the_first_tree_families() {
     vec![PairCopula::Independence],
   ];
   let truth = DVine::new(4, trees).unwrap();
-  let u = truth.sample_with_seed(4000, 11).unwrap();
+  let u = truth.sample(4000, &Deterministic::new(11)).unwrap();
   let fit = fit_vine(
     u.view(),
     VineStructure::DVine,
@@ -119,7 +120,7 @@ fn dvine_fit_recovers_the_first_tree_families() {
 fn cvine_fit_on_gaussian_data_selects_gaussian_pairs() {
   let corr = ndarray::array![[1.0, 0.8, 0.6], [0.8, 1.0, 0.5], [0.6, 0.5, 1.0]];
   let truth = GaussianMultivariate::new_with_corr(corr).unwrap();
-  let u = truth.sample_with_seed(3000, 5).unwrap();
+  let u = truth.sample(3000, &Deterministic::new(5)).unwrap();
   let families = [
     PairFamily::Independence,
     PairFamily::Gaussian,

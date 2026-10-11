@@ -58,7 +58,8 @@ use ndarray::Array2;
 use ndarray::ArrayView2;
 use rand::Rng;
 use rand::RngExt;
-use stochastic_rs_core::simd_rng::SimdRng;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::CopulaType;
 use crate::error::CopulaError;
@@ -224,14 +225,8 @@ impl MultivariateExt for DVine {
     CopulaType::DVine
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, CopulaError> {
-    Ok(self.sample_with(n, &mut SimdRng::new()))
-  }
-
-  /// Reproducible counterpart of [`MultivariateExt::sample`]: the same
-  /// `seed` always yields the same matrix.
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, CopulaError> {
-    Ok(self.sample_with(n, &mut SimdRng::from_seed(seed)))
+  fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
+    Ok(self.sample_with(n, &mut seed.rng()))
   }
 
   fn fit(&mut self, _X: ArrayView2<f64>) -> Result<(), CopulaError> {
@@ -282,7 +277,7 @@ impl MultivariateExt for DVine {
     // ≈ 1.6% accuracy.
     self.check_fit(X)?;
     let m = 4_000usize;
-    let sample = self.sample(m)?;
+    let sample = self.sample(m, &Unseeded)?;
     let mut out = Array1::<f64>::zeros(X.nrows());
     for (i, row) in X.rows().into_iter().enumerate() {
       let u: Vec<f64> = row.iter().copied().collect();
@@ -308,6 +303,7 @@ impl MultivariateExt for DVine {
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
 
@@ -316,7 +312,7 @@ mod tests {
   #[test]
   fn dvine_independence_three_dim_uniform_marginals() {
     let dv = DVine::independence(3).unwrap();
-    let s = dv.sample(10_000).unwrap();
+    let s = dv.sample(10_000, &Deterministic::new(7)).unwrap();
     assert_eq!(s.ncols(), 3);
     for j in 0..3 {
       let col = s.column(j);
@@ -338,7 +334,7 @@ mod tests {
   fn dvine_two_dim_clayton_matches_bivariate() {
     let tree = vec![vec![PairCopula::Clayton { theta: 2.0 }]];
     let dv = DVine::new(2, tree).unwrap();
-    let s = dv.sample(10_000).unwrap();
+    let s = dv.sample(10_000, &Deterministic::new(7)).unwrap();
     use crate::correlation::kendall_tau;
     let tau = kendall_tau(s.view());
     // Clayton(θ=2): τ = θ/(θ+2) = 2/4 = 0.5
@@ -361,7 +357,7 @@ mod tests {
     ];
     let t2 = vec![PairCopula::Independence];
     let dv = DVine::new(3, vec![t1, t2]).unwrap();
-    let s = dv.sample(10_000).unwrap();
+    let s = dv.sample(10_000, &Deterministic::new(7)).unwrap();
     use crate::correlation::kendall_tau;
     let tau = kendall_tau(s.view());
     // Gaussian(ρ=0.6) → τ = (2/π) arcsin(0.6) ≈ 0.4097

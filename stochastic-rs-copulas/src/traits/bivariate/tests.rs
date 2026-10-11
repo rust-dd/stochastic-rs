@@ -1,4 +1,5 @@
 use ndarray::array;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
 use crate::bivariate::amh::Amh;
@@ -250,12 +251,14 @@ fn sampling_needs_theta_not_tau() {
     ..Clayton::new()
   };
   let uv = c
-    .sample_with_seed(1_000, 7)
+    .sample(1_000, &Deterministic::new(7))
     .expect("theta alone is enough to sample");
   assert_eq!(uv.dim(), (1_000, 2));
 
   assert_eq!(
-    Clayton::new().sample_with_seed(10, 7).unwrap_err(),
+    Clayton::new()
+      .sample(10, &Deterministic::new(7))
+      .unwrap_err(),
     CopulaError::NotFitted
   );
 }
@@ -263,7 +266,7 @@ fn sampling_needs_theta_not_tau() {
 #[test]
 fn sampling_gates_on_the_family_check_fit() {
   let uv = ParameterisedWithoutTheta
-    .sample_with_seed(64, 7)
+    .sample(64, &Deterministic::new(7))
     .expect("check_fit passes without a theta");
   assert_eq!(uv.dim(), (64, 2));
   assert!(uv.iter().all(|x| (0.0..=1.0).contains(x)));
