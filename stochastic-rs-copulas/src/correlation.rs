@@ -71,15 +71,27 @@ pub fn kendall_tau(data: ArrayView2<f64>) -> Result<Array2<f64>, CopulaError> {
   Ok(tau)
 }
 
-/// `InvalidStructure` naming the first column pair whose τ-b in `tau` is NaN (a constant or NaN column): the fits that
-/// invert τ need every column to vary.
+/// `InvalidStructure` naming the columns of the τ-b matrix `tau` whose entries with every other column are NaN (a constant
+/// or NaN column): the fits that invert τ need every column to vary.
 pub(crate) fn check_defined(tau: ArrayView2<f64>) -> Result<(), CopulaError> {
-  match tau.indexed_iter().find(|(_, t)| t.is_nan()) {
-    Some(((i, j), _)) => Err(CopulaError::InvalidStructure(format!(
-      "Kendall's tau-b of columns {i} and {j} is undefined: a column is constant or holds a NaN"
-    ))),
-    None => Ok(()),
+  let d = tau.nrows();
+  let Some(((i, j), _)) = tau.indexed_iter().find(|(_, t)| t.is_nan()) else {
+    return Ok(());
+  };
+  let mut culprits: Vec<usize> = (0..d)
+    .filter(|&c| (0..d).filter(|&r| r != c).all(|r| tau[[r, c]].is_nan()))
+    .collect();
+  if culprits.is_empty() {
+    culprits = vec![i, j];
   }
+  Err(CopulaError::InvalidStructure(match culprits.as_slice() {
+    [column] => {
+      format!("Kendall's tau-b is undefined for column {column}: it is constant or holds a NaN")
+    }
+    columns => format!(
+      "Kendall's tau-b is undefined for columns {columns:?}: at least one of them is constant or holds a NaN"
+    ),
+  }))
 }
 
 /// Convert a Kendall tau to a Gaussian-copula linear correlation:
@@ -240,6 +252,39 @@ mod tests {
     assert_eq!(
       kendall_tau(ndarray::Array2::<f64>::zeros((0, 3)).view()),
       Err(CopulaError::InsufficientData { needed: 2, got: 0 })
+    );
+  }
+
+  /// The guard names the column whose τ-b with every other column is NaN, not the first NaN pair row by row; where
+  /// several columns qualify (two columns, or two constant ones) it lists them.
+  #[test]
+  fn an_undefined_tau_names_the_column_that_has_none() {
+    let ramp = ndarray::Array1::from_shape_fn(20, |i| i as f64);
+    let flat = ndarray::Array1::from_elem(20, 1.0);
+    let why = |columns: ndarray::Array2<f64>| match check_defined(
+      kendall_tau(columns.view()).unwrap().view(),
+    ) {
+      Err(CopulaError::InvalidStructure(why)) => why,
+      other => panic!("expected InvalidStructure, got {other:?}"),
+    };
+    let reversed = ramp.mapv(|v| 19.0 - v);
+    let one = ndarray::stack![ndarray::Axis(1), ramp, reversed, flat, ramp];
+    assert_eq!(
+      why(one),
+      "Kendall's tau-b is undefined for column 2: it is constant or holds a NaN"
+    );
+    let two = ndarray::stack![ndarray::Axis(1), ramp, flat, flat, reversed];
+    assert!(why(two).contains("undefined for columns [1, 2]: at least one of them"));
+    let pair = ndarray::stack![ndarray::Axis(1), ramp, flat];
+    assert!(why(pair).contains("undefined for columns [0, 1]: at least one of them"));
+    let fine = ndarray::stack![ndarray::Axis(1), ramp, reversed];
+    assert_eq!(
+      check_defined(kendall_tau(fine.view()).unwrap().view()),
+      Ok(())
+    );
+    let stray = ndarray::array![[1.0, f64::NAN, 0.5], [f64::NAN, 1.0, 0.5], [0.5, 0.5, 1.0]];
+    assert!(
+      matches!(check_defined(stray.view()), Err(CopulaError::InvalidStructure(why)) if why.contains("columns [0, 1]"))
     );
   }
 

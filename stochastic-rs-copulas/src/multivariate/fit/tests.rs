@@ -295,7 +295,7 @@ fn a_constant_column_is_rejected_by_both_structures() {
       SelectionCriterion::Aic,
     );
     assert!(
-      matches!(&got, Err(CopulaError::InvalidStructure(why)) if why.contains("columns 0 and 2")),
+      matches!(&got, Err(CopulaError::InvalidStructure(why)) if why.contains("undefined for column 2:")),
       "{structure:?}: {got:?}"
     );
   }

@@ -333,7 +333,7 @@ fn t_copula_fit_rejects_a_constant_column() {
   );
   let got = TMultivariate::default().fit(u.view());
   assert!(
-    matches!(&got, Err(CopulaError::InvalidStructure(why)) if why.contains("columns 0 and 1")),
+    matches!(&got, Err(CopulaError::InvalidStructure(why)) if why.contains("undefined for column 1:")),
     "{got:?}"
   );
 }
