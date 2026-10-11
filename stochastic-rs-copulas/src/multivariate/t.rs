@@ -61,71 +61,50 @@ use stochastic_rs_distributions::special::ln_gamma;
 use stochastic_rs_distributions::special::ndtri;
 
 use super::MultivariateFamily;
-use super::linalg::is_spd;
-use super::linalg::spd_cholesky_lower;
-use super::linalg::spd_inverse;
+use super::correlation_matrix::CorrelationMatrix;
+use super::correlation_matrix::shrink_to_spd;
 use crate::bivariate::t_copula::check_nu;
 use crate::correlation::kendall_tau;
 use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
 
-/// Multivariate Student-$t$ copula with degrees of freedom $\nu$ and
-/// correlation matrix $\Sigma$. The $\nu \to \infty$ limit collapses to the
-/// Gaussian copula; for finite $\nu$ the copula exhibits symmetric
-/// upper/lower tail dependence on every off-diagonal pair.
+/// Multivariate Student-$t$ copula with correlation $\Sigma$ and degrees of freedom $\nu$; as $\nu \to \infty$ it
+/// collapses to the Gaussian copula, and for finite $\nu$ every pair has symmetric tail dependence.
 #[derive(Debug, Clone)]
 pub struct TMultivariate {
-  dim: usize,
-  /// Degrees of freedom $\nu > 2$. Default 4.
+  /// Degrees of freedom, `0 < nu < inf`; 4 by default.
   nu: f64,
-  /// Correlation matrix (dim × dim).
-  corr: Option<Array2<f64>>,
-  /// Inverse correlation matrix (cached for log-pdf).
-  inv_corr: Option<Array2<f64>>,
-  /// Lower-triangular Cholesky factor of `corr` (cached for sampling).
-  chol_lower: Option<Array2<f64>>,
-  /// Log-determinant of `corr` (cached for log-pdf).
-  log_det_corr: Option<f64>,
+  corr: Option<CorrelationMatrix>,
 }
 
 impl Default for TMultivariate {
   fn default() -> Self {
     Self {
-      dim: 0,
       nu: 4.0,
       corr: None,
-      inv_corr: None,
-      chol_lower: None,
-      log_det_corr: None,
     }
   }
 }
 
 impl TMultivariate {
-  pub fn new() -> Self {
-    Self::default()
+  /// The t copula of correlation `corr` and `nu` degrees of freedom; panics unless `corr` is a correlation matrix and
+  /// `0 < nu < ∞` with `nu / 2 > 0`.
+  pub fn new(corr: Array2<f64>, nu: f64) -> Self {
+    Self::try_new(corr, nu).unwrap_or_else(|e| panic!("{e}"))
   }
 
-  /// Construct directly from a correlation matrix and degrees of freedom.
-  pub fn new_with(corr: Array2<f64>, nu: f64) -> Result<Self, CopulaError> {
+  /// `new` with the error returned instead of a panic; `nu` is checked first.
+  pub fn try_new(corr: Array2<f64>, nu: f64) -> Result<Self, CopulaError> {
     check_nu(nu)?;
-    let dim = corr.nrows();
-    if dim != corr.ncols() {
-      return Err(CopulaError::InvalidStructure(
-        "the correlation matrix must be square".into(),
-      ));
-    }
-    let mut t = Self {
+    Ok(Self {
       nu,
-      ..Self::default()
-    };
-    t.set_corr(corr)?;
-    Ok(t)
+      corr: Some(CorrelationMatrix::try_new(corr)?),
+    })
   }
 
   /// Returns a reference to the internal correlation matrix, if fitted.
   pub fn correlation(&self) -> Option<&Array2<f64>> {
-    self.corr.as_ref()
+    self.corr.as_ref().map(CorrelationMatrix::corr)
   }
 
   /// Current degrees of freedom $\nu$.
@@ -133,46 +112,14 @@ impl TMultivariate {
     self.nu
   }
 
-  /// Override $\nu$, e.g. from an external tail-coefficient calibration, skipping the fit's own search; an error
-  /// under the t-copulas' `check_nu` rule.
-  pub fn set_nu(&mut self, nu: f64) -> Result<(), CopulaError> {
-    check_nu(nu)?;
+  /// Overrides $\nu$, skipping the fit's own search; panics unless `0 < nu < ∞` and `nu / 2 > 0`.
+  pub fn set_nu(&mut self, nu: f64) {
+    check_nu(nu).unwrap_or_else(|e| panic!("{e}"));
     self.nu = nu;
-    Ok(())
   }
 
-  fn set_corr(&mut self, corr: Array2<f64>) -> Result<(), CopulaError> {
-    let dim = corr.nrows();
-    self.dim = dim;
-
-    let l_arr = spd_cholesky_lower(corr.view()).ok_or_else(|| {
-      CopulaError::InvalidStructure("the correlation matrix is not positive definite".into())
-    })?;
-    let mut log_det = 0.0;
-    for i in 0..dim {
-      log_det += l_arr[[i, i]].ln();
-    }
-    log_det *= 2.0;
-    let inv_arr = spd_inverse(corr.view()).ok_or_else(|| {
-      CopulaError::InvalidStructure("the correlation matrix could not be inverted".into())
-    })?;
-
-    self.corr = Some(corr);
-    self.inv_corr = Some(inv_arr);
-    self.chol_lower = Some(l_arr);
-    self.log_det_corr = Some(log_det);
-    Ok(())
-  }
-
-  fn require_fitted(&self) -> Result<(), CopulaError> {
-    if self.corr.is_none()
-      || self.inv_corr.is_none()
-      || self.chol_lower.is_none()
-      || self.log_det_corr.is_none()
-    {
-      return Err(CopulaError::NotFitted);
-    }
-    Ok(())
+  fn fitted(&self) -> Result<&CorrelationMatrix, CopulaError> {
+    self.corr.as_ref().ok_or(CopulaError::NotFitted)
   }
 
   /// Standard Student-$t$ density $f_\nu(x)$ with the natural-log
@@ -229,13 +176,13 @@ impl TMultivariate {
   }
 
   /// Map U ∈ (0,1)^{n×d} → Z ∈ ℝ^{n×d} via the univariate $t_\nu^{-1}$.
-  fn transform_to_t(&self, u: ArrayView2<f64>) -> Array2<f64> {
+  fn transform_to_t(u: ArrayView2<f64>, nu: f64) -> Array2<f64> {
     let eps = 1e-12;
     let mut z = u.to_owned();
     for mut row in z.axis_iter_mut(Axis(0)) {
       for val in row.iter_mut() {
         let clamped = val.clamp(eps, 1.0 - eps);
-        *val = Self::t_quantile(clamped, self.nu);
+        *val = Self::t_quantile(clamped, nu);
       }
     }
     z
@@ -260,34 +207,16 @@ impl TMultivariate {
         corr[[j, i]] = rho;
       }
     }
-    Self::nearest_spd(corr)
-  }
-
-  /// Project an indefinite candidate onto the SPD cone by a small diagonal
-  /// jitter. We don't need full Higham — Kendall-derived matrices are
-  /// already close to SPD; only edge cases (highly correlated d ≥ 10)
-  /// occasionally need the bump.
-  fn nearest_spd(mut corr: Array2<f64>) -> Array2<f64> {
-    let d = corr.nrows();
-    let mut jitter = 0usize;
-    while !is_spd(corr.view()) && jitter < 6 {
-      let eps = 10f64.powi(-6_i32 + jitter as i32);
-      for k in 0..d {
-        corr[[k, k]] = 1.0 + eps;
-      }
-      jitter += 1;
-    }
     corr
   }
 
   /// Log-density of the multivariate Student-$t$ at the un-transformed
   /// argument `z` (i.e. **before** dividing by the marginal $f_\nu(z_j)$ to
   /// obtain the copula density). Used internally by [`log_pdf`].
-  fn mv_log_pdf(&self, z: ArrayView2<f64>) -> Array1<f64> {
-    let inv = self.inv_corr.as_ref().unwrap();
-    let log_det = self.log_det_corr.unwrap();
-    let d = self.dim as f64;
-    let nu = self.nu;
+  fn mv_log_pdf(corr: &CorrelationMatrix, nu: f64, z: ArrayView2<f64>) -> Array1<f64> {
+    let inv = corr.inverse();
+    let log_det = corr.log_det();
+    let d = corr.dim() as f64;
     let log_norm = ln_gamma(0.5 * (nu + d))
       - ln_gamma(0.5 * nu)
       - 0.5 * d * (nu * std::f64::consts::PI).ln()
@@ -301,27 +230,15 @@ impl TMultivariate {
     out
   }
 
-  /// Log-likelihood of the data under the current correlation matrix and
-  /// the candidate $\nu$. Used by the 1-D Brent search in [`fit`].
-  fn log_likelihood_for_nu(&self, x: ArrayView2<f64>, nu: f64) -> f64 {
-    // Build a temporary view of self with the candidate ν so we can re-use
-    // the cached Σ⁻¹ / |Σ| (the Brent search only varies ν, never Σ).
-    let saved = self.nu;
-    let tmp = TMultivariate {
-      dim: self.dim,
-      nu,
-      corr: self.corr.clone(),
-      inv_corr: self.inv_corr.clone(),
-      chol_lower: self.chol_lower.clone(),
-      log_det_corr: self.log_det_corr,
-    };
-    let z = tmp.transform_to_t(x);
-    let mv = tmp.mv_log_pdf(z.view());
+  /// Log-likelihood of the data under `corr` and the candidate $\nu$; the 1-D
+  /// Brent search in [`fit`] varies $\nu$ and never $\Sigma$.
+  fn log_likelihood_for_nu(corr: &CorrelationMatrix, x: ArrayView2<f64>, nu: f64) -> f64 {
+    let z = Self::transform_to_t(x, nu);
+    let mv = Self::mv_log_pdf(corr, nu, z.view());
     let mut marginal_log = 0.0;
     for v in z.iter() {
       marginal_log += Self::t_log_pdf(*v, nu);
     }
-    let _ = saved;
     mv.iter().sum::<f64>() - marginal_log
   }
 
@@ -329,8 +246,8 @@ impl TMultivariate {
   /// $\Sigma$ fixed. Bracket $[\nu_{\min}, \nu_{\max}] = [2.1, 50]$ matches
   /// Demarta-McNeil (2005, §6) where the upper bound is taken as the
   /// effective "Gaussian limit" threshold.
-  fn optimise_nu(&self, x: ArrayView2<f64>) -> f64 {
-    let f = |nu: f64| -self.log_likelihood_for_nu(x, nu);
+  fn optimise_nu(corr: &CorrelationMatrix, x: ArrayView2<f64>) -> f64 {
+    let f = |nu: f64| -Self::log_likelihood_for_nu(corr, x, nu);
     // Brent on [2.1, 50] with golden-section initialisation.
     let mut a = 2.1_f64;
     let mut b = 50.0_f64;
@@ -368,9 +285,9 @@ impl MultivariateExt for TMultivariate {
 
   /// The normal and the $\chi^2$ stream both come from `seed`, which advances between them.
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
-    self.require_fitted()?;
-    let d = self.dim;
-    let l = self.chol_lower.as_ref().unwrap();
+    let corr = self.fitted()?;
+    let d = corr.dim();
+    let l = corr.chol_lower();
     // Z ~ N(0, Σ) by L · G with G ~ N(0, I).
     let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(seed);
     let g = Array2::from_shape_fn((n, d), |_| normal.sample());
@@ -406,19 +323,18 @@ impl MultivariateExt for TMultivariate {
     if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
       return Err(CopulaError::MarginalOutOfRange);
     }
-    self.dim = X.ncols();
-    let corr = Self::estimate_corr_from_kendall(X);
-    self.set_corr(corr)?;
+    let corr = CorrelationMatrix::try_new(shrink_to_spd(Self::estimate_corr_from_kendall(X)))?;
     // Profile MLE for ν conditional on Σ.
-    self.nu = self.optimise_nu(X);
+    self.nu = Self::optimise_nu(&corr, X);
+    self.corr = Some(corr);
     Ok(())
   }
 
   fn check_fit(&self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
-    self.require_fitted()?;
-    if X.ncols() != self.dim {
+    let dim = self.fitted()?.dim();
+    if X.ncols() != dim {
       return Err(CopulaError::DimensionMismatch {
-        expected: self.dim,
+        expected: dim,
         got: X.ncols(),
       });
     }
@@ -430,9 +346,9 @@ impl MultivariateExt for TMultivariate {
 
   fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
-    let z = self.transform_to_t(X);
-    let mv = self.mv_log_pdf(z.view());
     let nu = self.nu;
+    let z = Self::transform_to_t(X, nu);
+    let mv = Self::mv_log_pdf(self.fitted()?, nu, z.view());
     let mut out = Array1::<f64>::zeros(z.nrows());
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {
       let mut marginal_log = 0.0;
@@ -446,9 +362,9 @@ impl MultivariateExt for TMultivariate {
 
   fn log_pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
-    let z = self.transform_to_t(X);
-    let mv = self.mv_log_pdf(z.view());
     let nu = self.nu;
+    let z = Self::transform_to_t(X, nu);
+    let mv = Self::mv_log_pdf(self.fitted()?, nu, z.view());
     let mut out = Array1::<f64>::zeros(z.nrows());
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {
       let mut marginal_log = 0.0;
@@ -467,14 +383,16 @@ impl MultivariateExt for TMultivariate {
     // representation: 1/m Σ_r 1{ Z_r/√W_r ≤ z } with Z_r ~ N(0,Σ),
     // W_r ~ χ²_ν / ν. 4000 MC samples per query match the Gaussian copula
     // CDF estimator's tolerance.
-    let z = self.transform_to_t(X);
-    let l = self.chol_lower.as_ref().unwrap();
+    let z = Self::transform_to_t(X, self.nu);
+    let corr = self.fitted()?;
+    let l = corr.chol_lower();
+    let d = corr.dim();
     let n = z.nrows();
     let m = 4000usize;
     let mut out = Array1::<f64>::zeros(n);
     let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Unseeded);
     let mut chi = SimdChiSquared::<f64>::new(self.nu).seeded(&Unseeded);
-    let g = Array2::from_shape_fn((m, self.dim), |_| normal.sample());
+    let g = Array2::from_shape_fn((m, d), |_| normal.sample());
     let y = g.dot(&l.t());
     let mut w_buf = vec![0.0f64; m];
     for v in w_buf.iter_mut() {
@@ -484,7 +402,7 @@ impl MultivariateExt for TMultivariate {
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {
       let mut count = 0usize;
       'outer: for r in 0..m {
-        for c in 0..self.dim {
+        for c in 0..d {
           if y[[r, c]] * w_buf[r] > row[c] {
             continue 'outer;
           }

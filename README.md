@@ -33,7 +33,7 @@ One workspace, one umbrella crate (`stochastic-rs`) that re-exports the sub-crat
 | `stochastic-rs-core` | the SIMD RNG and seed sources (`Deterministic`, `Unseeded`) |
 | `stochastic-rs-distributions` | SIMD samplers with closed-form pdf / cdf / characteristic function / moments, special functions |
 | `stochastic-rs-stochastic` | 132 processes behind one `ProcessExt` trait: diffusion, jump, stochastic and rough volatility, short rate, HJM / LMM, fractional noise, Volterra |
-| `stochastic-rs-copulas` | 15 bivariate and 8 multivariate copulas, vine fitting, goodness of fit |
+| `stochastic-rs-copulas` | 15 bivariate and 6 multivariate copulas, vine fitting, goodness of fit |
 | `stochastic-rs-stats` | Hurst and diffusion estimators, unit-root and cointegration tests, realised volatility, filters, extreme values, risk measures |
 | `stochastic-rs-quant` | closed-form, Fourier, PDE, lattice and Monte Carlo pricers, calibrators, vol surfaces, curves, credit, XVA, market microstructure |
 | `stochastic-rs-ai` | experimental neural volatility surrogates and surrogate calibration (`ai` feature) |

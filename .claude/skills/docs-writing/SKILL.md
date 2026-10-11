@@ -460,7 +460,7 @@ numerical examples (e.g. Fukasawa intraday Table 1).>
 ## References
 ```
 
-### 3.6 Copula section (one `copulas.mdx`; 13 bivariate + 8 multivariate)
+### 3.6 Copula section (one `copulas.mdx`; 15 bivariate + 6 multivariate)
 
 ```mdx
 ---

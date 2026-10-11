@@ -55,7 +55,7 @@ fn a_bivariate_fit_needs_two_observations() {
 
 #[test]
 fn a_multivariate_fit_tells_too_few_dimensions_from_too_few_observations() {
-  let mut gaussian = GaussianMultivariate::new();
+  let mut gaussian = GaussianMultivariate::default();
   let one_column = gaussian
     .fit(Array2::from_elem((100, 1), 0.5).view())
     .unwrap_err();

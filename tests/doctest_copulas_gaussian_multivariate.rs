@@ -11,7 +11,7 @@ use stochastic_rs::traits::MultivariateExt;
 #[test]
 fn gaussian_multivariate_sample() {
   let corr = array![[1.0, 0.7, 0.3], [0.7, 1.0, 0.5], [0.3, 0.5, 1.0]];
-  let cop = GaussianMultivariate::new_with_corr(corr).unwrap();
+  let cop = GaussianMultivariate::new(corr);
   let samples = cop.sample(10_000, &Deterministic::new(7)).unwrap(); // Array2<f64>, shape (10_000, 3)
   assert_eq!(samples.dim(), (10_000, 3));
 }

@@ -1,6 +1,7 @@
 //! `new` panics outside the family's domain, `try_new` and `from_tau` return the error, and the parameters are
 //! private: a constructed copula always samples.
 
+use ndarray::array;
 use stochastic_rs_copulas::CopulaError;
 use stochastic_rs_copulas::bivariate::amh::Amh;
 use stochastic_rs_copulas::bivariate::bb1::Bb1;
@@ -17,10 +18,13 @@ use stochastic_rs_copulas::bivariate::joe::Joe;
 use stochastic_rs_copulas::bivariate::marshall_olkin::MarshallOlkin;
 use stochastic_rs_copulas::bivariate::plackett::Plackett;
 use stochastic_rs_copulas::bivariate::t_copula::TCopula;
+use stochastic_rs_copulas::multivariate::gaussian::GaussianMultivariate;
+use stochastic_rs_copulas::multivariate::t::TMultivariate;
 use stochastic_rs_copulas::simd_rng::Deterministic;
 use stochastic_rs_copulas::traits::BivariateExt;
+use stochastic_rs_copulas::traits::MultivariateExt;
 
-fn is_parameter_error(result: Result<impl BivariateExt, CopulaError>, name: &str) -> bool {
+fn is_parameter_error<T>(result: Result<T, CopulaError>, name: &str) -> bool {
   matches!(result, Err(CopulaError::InvalidParameter { name: n, .. }) if n == name)
 }
 
@@ -154,4 +158,68 @@ fn every_constructed_copula_samples_and_every_default_is_unfitted() {
     MarshallOlkin::default().sample(4, &seed),
     Err(CopulaError::NotFitted)
   );
+}
+
+#[test]
+fn elliptical_constructors_validate_the_correlation_and_nu() {
+  let corr = array![[1.0, 0.5], [0.5, 1.0]];
+  assert!(matches!(
+    GaussianMultivariate::try_new(array![[1.0, 0.5], [0.4, 1.0]]),
+    Err(CopulaError::InvalidStructure(_))
+  ));
+  assert!(matches!(
+    TMultivariate::try_new(array![[1.0]], 5.0),
+    Err(CopulaError::InvalidStructure(_))
+  ));
+  for bad in [f64::INFINITY, f64::NAN, 0.0, -1.0, 5e-324] {
+    assert!(
+      is_parameter_error(TMultivariate::try_new(corr.clone(), bad), "nu"),
+      "{bad}"
+    );
+  }
+  assert!(
+    GaussianMultivariate::new(corr.clone())
+      .sample(8, &Deterministic::new(1))
+      .is_ok()
+  );
+  assert!(
+    TMultivariate::new(corr.clone(), 5.0)
+      .sample(8, &Deterministic::new(1))
+      .is_ok()
+  );
+  assert_eq!(
+    GaussianMultivariate::try_new(corr.clone())
+      .unwrap()
+      .correlation(),
+    Some(&corr)
+  );
+  assert_eq!(GaussianMultivariate::default().correlation(), None);
+  assert_eq!(
+    GaussianMultivariate::default().sample(8, &Deterministic::new(1)),
+    Err(CopulaError::NotFitted)
+  );
+  assert_eq!(
+    TMultivariate::default().sample(8, &Deterministic::new(1)),
+    Err(CopulaError::NotFitted)
+  );
+}
+
+#[test]
+#[should_panic(
+  expected = "invalid structure: corr must satisfy `|corr[[i, i]] - 1.0| <= 1e-12` (unit diagonal), got corr[[0, 0]] = 1.1"
+)]
+fn an_elliptical_new_panics_on_a_bad_matrix() {
+  let _ = GaussianMultivariate::new(array![[1.1, 0.5], [0.5, 1.0]]);
+}
+
+#[test]
+#[should_panic(expected = "nu must satisfy `0.0 < nu < inf`, got nu = -5.0")]
+fn the_multivariate_t_new_panics_outside_the_domain() {
+  let _ = TMultivariate::new(array![[1.0, 0.5], [0.5, 1.0]], -5.0);
+}
+
+#[test]
+#[should_panic(expected = "nu must satisfy `0.0 < nu < inf`, got nu = -5.0")]
+fn the_multivariate_set_nu_panics_outside_the_domain() {
+  TMultivariate::default().set_nu(-5.0);
 }

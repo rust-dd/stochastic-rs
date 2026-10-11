@@ -210,12 +210,7 @@ fn both_t_copulas_reject_the_nu_their_laws_would_panic_on() {
     constraint: "nu / 2 > 0".into(),
   });
   let corr = array![[1.0, 0.3], [0.3, 1.0]];
-  assert_eq!(
-    TMultivariate::new_with(corr.clone(), 5e-324).map(|_| ()),
-    want
-  );
-  let mut multivariate = TMultivariate::new_with(corr, 4.0).unwrap();
-  assert_eq!(multivariate.set_nu(5e-324), want);
+  assert_eq!(TMultivariate::try_new(corr, 5e-324).map(|_| ()), want);
   assert_eq!(TCopula::try_new(0.5, 5e-324).map(|_| ()), want);
   // The next subnormal halves to a positive value.
   let c = TCopula::new(0.5, 1e-323);
@@ -234,6 +229,12 @@ fn both_t_copulas_reject_the_nu_their_laws_would_panic_on() {
 #[should_panic(expected = "nu must satisfy `nu / 2 > 0`, got nu = 5e-324")]
 fn set_nu_panics_on_the_nu_the_laws_would_panic_on() {
   TCopula::default().set_nu(5e-324);
+}
+
+#[test]
+#[should_panic(expected = "nu must satisfy `nu / 2 > 0`, got nu = 5e-324")]
+fn the_multivariate_set_nu_panics_on_the_nu_the_laws_would_panic_on() {
+  TMultivariate::default().set_nu(5e-324);
 }
 
 /// `generator` has no override in this family, so this exercises

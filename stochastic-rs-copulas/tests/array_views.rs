@@ -42,9 +42,9 @@ fn strided_views_read_like_their_dense_copy() {
   let observations = pseudo_observations(wide.view());
   let strided = observations.slice(s![.., 1..3]);
   assert!(!strided.is_standard_layout());
-  let mut gaussian = GaussianMultivariate::new();
+  let mut gaussian = GaussianMultivariate::default();
   gaussian.fit(strided).unwrap();
-  let mut gaussian_dense = GaussianMultivariate::new();
+  let mut gaussian_dense = GaussianMultivariate::default();
   gaussian_dense.fit(strided.to_owned().view()).unwrap();
   assert_eq!(
     gaussian.correlation().unwrap(),

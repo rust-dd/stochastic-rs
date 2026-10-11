@@ -2,13 +2,16 @@ use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
+use crate::bivariate::t_copula::TCopula;
+use crate::correlation::tau_matrix_to_corr_matrix;
+use crate::multivariate::linalg::is_spd;
 
 /// Construct a 3-dim t-copula with mild dependence and verify the
 /// sampler produces uniforms on every coordinate.
 #[test]
 fn t_copula_samples_have_uniform_marginals() {
   let corr = array![[1.0, 0.4, 0.2], [0.4, 1.0, 0.3], [0.2, 0.3, 1.0]];
-  let cop = TMultivariate::new_with(corr, 5.0).expect("valid corr");
+  let cop = TMultivariate::new(corr, 5.0);
   let u = cop.sample(20_000, &Deterministic::new(7)).expect("sample");
   assert_eq!(u.ncols(), 3);
   assert_eq!(u.nrows(), 20_000);
@@ -33,8 +36,8 @@ fn t_copula_samples_have_uniform_marginals() {
 #[test]
 fn t_copula_large_nu_approaches_gaussian() {
   let corr = array![[1.0, 0.5], [0.5, 1.0]];
-  let t_cop = TMultivariate::new_with(corr.clone(), 200.0).unwrap();
-  let g_cop = super::super::gaussian::GaussianMultivariate::new_with_corr(corr).unwrap();
+  let t_cop = TMultivariate::new(corr.clone(), 200.0);
+  let g_cop = super::super::gaussian::GaussianMultivariate::new(corr);
   let queries = array![[0.25, 0.75], [0.5, 0.5], [0.1, 0.9], [0.8, 0.3],];
   let t_pdf = t_cop.pdf(queries.view()).unwrap();
   let g_pdf = g_cop.pdf(queries.view()).unwrap();
@@ -55,7 +58,7 @@ fn t_copula_large_nu_approaches_gaussian() {
 fn t_copula_pdf_at_center() {
   let corr = array![[1.0, 0.3], [0.3, 1.0]];
   let nu = 6.0;
-  let cop = TMultivariate::new_with(corr.clone(), nu).unwrap();
+  let cop = TMultivariate::new(corr.clone(), nu);
   let q = array![[0.5, 0.5]];
   let pdf = cop.pdf(q.view()).unwrap()[0];
   // Analytic value: at z=0 the multivariate kernel = 1, marginal kernel = 1.
@@ -86,9 +89,9 @@ fn t_copula_pdf_at_center() {
 #[test]
 fn t_copula_fit_recovers_correlation_from_sample() {
   let true_corr = array![[1.0, 0.6, 0.2], [0.6, 1.0, 0.3], [0.2, 0.3, 1.0]];
-  let cop = TMultivariate::new_with(true_corr.clone(), 5.0).unwrap();
+  let cop = TMultivariate::new(true_corr.clone(), 5.0);
   let u = cop.sample(5_000, &Deterministic::new(7)).unwrap();
-  let mut fitted = TMultivariate::new();
+  let mut fitted = TMultivariate::default();
   fitted.fit(u.view()).unwrap();
   let recovered = fitted.correlation().unwrap();
   for i in 0..3 {
@@ -116,7 +119,7 @@ fn t_copula_fit_recovers_correlation_from_sample() {
 #[test]
 fn t_copula_log_pdf_matches_ln_pdf() {
   let corr = array![[1.0, 0.4], [0.4, 1.0]];
-  let cop = TMultivariate::new_with(corr, 6.0).unwrap();
+  let cop = TMultivariate::new(corr, 6.0);
   let q = array![[0.3, 0.7], [0.5, 0.5], [0.1, 0.9]];
   let pdf = cop.pdf(q.view()).unwrap();
   let lp = cop.log_pdf(q.view()).unwrap();
@@ -135,12 +138,11 @@ fn t_copula_log_pdf_matches_ln_pdf() {
 /// MC noise on 4000 samples ≈ 1/√4000 ≈ 0.016; allow 0.04 tolerance.
 #[test]
 fn t_copula_cdf_matches_bivariate_reference() {
-  use crate::bivariate::t_copula::TCopula;
   use crate::traits::BivariateExt;
   let rho = 0.4;
   let nu = 6.0;
   let corr = array![[1.0, rho], [rho, 1.0]];
-  let mv = TMultivariate::new_with(corr, nu).unwrap();
+  let mv = TMultivariate::new(corr, nu);
   let bv = TCopula::new(rho, nu);
   let q = array![[0.3, 0.6], [0.5, 0.5], [0.8, 0.2]];
   let cdf_mv = mv.cdf(q.view()).unwrap();
@@ -159,34 +161,30 @@ fn t_copula_cdf_matches_bivariate_reference() {
 #[test]
 fn t_copula_manual_nu_override() {
   let corr = array![[1.0, 0.3], [0.3, 1.0]];
-  let mut cop = TMultivariate::new_with(corr, 4.0).unwrap();
-  cop.set_nu(12.0).unwrap();
+  let mut cop = TMultivariate::new(corr.clone(), 4.0);
+  cop.set_nu(12.0);
   assert_eq!(cop.nu(), 12.0);
   let _ = cop.sample(100, &Deterministic::new(7)).unwrap();
   let _ = cop.pdf(array![[0.5, 0.5]].view()).unwrap();
-  let bad = cop.set_nu(0.0);
+  let bad = TMultivariate::try_new(corr, 0.0);
   assert!(bad.is_err(), "ν=0 must be rejected");
 }
 
-/// `nu()`/`set_nu()` mirror `TCopula`'s naming and validation contract, the invalid-input error
-/// included.
+/// `try_new` rejects a `nu` with `TCopula::try_new`'s error, and `set_nu` stores a valid one.
 #[test]
 fn t_multivariate_exposes_nu() {
   let corr = array![[1.0, 0.3], [0.3, 1.0]];
-  let mut cop = TMultivariate::new_with(corr, 4.0).unwrap();
+  let mut cop = TMultivariate::new(corr.clone(), 4.0);
   assert_eq!(cop.nu(), 4.0);
-  assert!(cop.set_nu(12.0).is_ok());
+  cop.set_nu(12.0);
   assert_eq!(cop.nu(), 12.0);
-  let err = cop.set_nu(0.0).unwrap_err();
-  assert_eq!(
-    err,
-    CopulaError::InvalidParameter {
-      name: "nu",
-      value: 0.0,
-      constraint: "0.0 < nu < inf".into(),
-    }
-  );
-  assert_eq!(cop.nu(), 12.0, "a failed set_nu must not mutate the field");
+  let want = CopulaError::InvalidParameter {
+    name: "nu",
+    value: 0.0,
+    constraint: "0.0 < nu < inf".into(),
+  };
+  assert_eq!(TMultivariate::try_new(corr, 0.0).unwrap_err(), want);
+  assert_eq!(TCopula::try_new(0.3, 0.0).unwrap_err(), want);
 }
 
 /// An infinite `nu` is an error from the fallible entry points of either t-copula, so no χ² law is built with `k = ∞`.
@@ -199,21 +197,54 @@ fn an_infinite_nu_is_rejected_by_name() {
   };
   let corr = array![[1.0, 0.3], [0.3, 1.0]];
   assert_eq!(
-    TMultivariate::new_with(corr.clone(), f64::INFINITY).unwrap_err(),
+    TMultivariate::try_new(corr, f64::INFINITY).unwrap_err(),
     want
   );
-  let mut cop = TMultivariate::new_with(corr, 4.0).unwrap();
-  assert_eq!(cop.set_nu(f64::INFINITY).unwrap_err(), want);
-  assert_eq!(cop.nu(), 4.0);
-  assert_eq!(
-    crate::bivariate::t_copula::TCopula::try_new(0.5, f64::INFINITY).unwrap_err(),
-    want
-  );
+  assert_eq!(TCopula::try_new(0.5, f64::INFINITY).unwrap_err(), want);
 }
 
-/// The bivariate setter panics with the same rule.
+/// Both setters panic with the same rule.
 #[test]
 #[should_panic(expected = "nu must satisfy `0.0 < nu < inf`, got nu = inf")]
 fn the_bivariate_set_nu_panics_on_an_infinite_nu() {
-  crate::bivariate::t_copula::TCopula::default().set_nu(f64::INFINITY);
+  TCopula::default().set_nu(f64::INFINITY);
+}
+
+#[test]
+#[should_panic(expected = "nu must satisfy `0.0 < nu < inf`, got nu = inf")]
+fn the_multivariate_set_nu_panics_on_an_infinite_nu() {
+  TMultivariate::default().set_nu(f64::INFINITY);
+}
+
+/// Four shares that sum to a constant give a Kendall estimate that is not positive definite (smallest eigenvalue
+/// -4.2e-3); the fit shrinks the off-diagonals by 1e-2 and keeps the diagonal at 1.
+#[test]
+fn t_copula_fit_shrinks_an_indefinite_estimate_and_keeps_the_unit_diagonal() {
+  let ranks = [
+    [9, 6, 10, 1],
+    [7, 2, 11, 8],
+    [8, 10, 6, 3],
+    [1, 11, 5, 10],
+    [6, 8, 4, 11],
+    [10, 4, 8, 6],
+    [12, 1, 2, 2],
+    [4, 5, 9, 12],
+    [5, 12, 1, 7],
+    [11, 3, 3, 4],
+    [2, 7, 12, 5],
+    [3, 9, 7, 9],
+  ];
+  let u = Array2::from_shape_fn((12, 4), |(i, j)| ranks[i][j] as f64 / 13.0);
+  let raw = tau_matrix_to_corr_matrix(kendall_tau(u.view()).view());
+  assert!(!is_spd(raw.view()));
+  let mut cop = TMultivariate::default();
+  cop.fit(u.view()).unwrap();
+  let fitted = cop.correlation().unwrap();
+  for i in 0..4 {
+    assert_eq!(fitted[[i, i]], 1.0);
+    for j in 0..i {
+      assert!((fitted[[i, j]] - 0.99 * raw[[i, j]]).abs() < 1e-15);
+    }
+  }
+  assert!(TMultivariate::try_new(fitted.clone(), cop.nu()).is_ok());
 }

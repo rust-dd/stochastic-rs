@@ -30,8 +30,6 @@ use stochastic_rs_copulas::multivariate::nac::NacNode;
 use stochastic_rs_copulas::multivariate::nac::NestedArchimedean;
 use stochastic_rs_copulas::multivariate::rvine::RVine;
 use stochastic_rs_copulas::multivariate::t::TMultivariate;
-use stochastic_rs_copulas::multivariate::tree::TreeMultivariate;
-use stochastic_rs_copulas::multivariate::vine::VineMultivariate;
 use stochastic_rs_copulas::traits::BivariateExt;
 use stochastic_rs_copulas::traits::MultivariateExt;
 use stochastic_rs_core::simd_rng::Deterministic;
@@ -59,8 +57,6 @@ const PINS: &[(&str, u64)] = &[
   ("t_copula", 0xd926217dd48fd3e7),
   ("gaussian_multivariate", 0xa9e6f7560842916c),
   ("t_multivariate", 0x6bcffcbcf2ecf0d0),
-  ("vine_multivariate", 0xa9e6f7560842916c),
-  ("tree_multivariate", 0xa9e6f7560842916c),
   ("cvine", 0x487fb08113cd29fb),
   ("dvine", 0x89bf5cced5bc2b85),
   ("rvine_independence", 0xc269b264798404c9),
@@ -208,29 +204,13 @@ fn samples() -> Vec<(&'static str, Array2<f64>)> {
   );
   row!(
     "gaussian_multivariate",
-    GaussianMultivariate::new_with_corr(corr3())
-      .unwrap()
+    GaussianMultivariate::new(corr3())
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "t_multivariate",
-    TMultivariate::new_with(corr3(), 5.0)
-      .unwrap()
-      .sample(N, &Deterministic::new(SEED))
-      .unwrap()
-  );
-  row!(
-    "vine_multivariate",
-    VineMultivariate::new_with_corr(corr3())
-      .unwrap()
-      .sample(N, &Deterministic::new(SEED))
-      .unwrap()
-  );
-  row!(
-    "tree_multivariate",
-    TreeMultivariate::new_with_corr(corr3())
-      .unwrap()
+    TMultivariate::new(corr3(), 5.0)
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );

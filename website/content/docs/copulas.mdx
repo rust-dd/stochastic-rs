@@ -1,7 +1,7 @@
 ---
 title: Copulas
 seo_title: Copulas in Rust and Python
-description: All 15 bivariate and 8 multivariate copulas with the BivariateExt / MultivariateExt traits — Archimedean, extreme-value, elliptical, and vine families.
+description: All 15 bivariate and 6 multivariate copulas with the BivariateExt / MultivariateExt traits — Archimedean, extreme-value, elliptical, and vine families.
 category: copula
 since: 2.0.0
 status: stable
@@ -49,18 +49,16 @@ The one-parameter families are fit by computing Kendall's tau and inverting it t
 
 ## Multivariate (`MultivariateExt`)
 
-**8** copulas, one per variant of `multivariate::MultivariateFamily`. Two of them are **not** pair-copula-construction vines despite the name:
+**6** copulas, one per variant of `multivariate::MultivariateFamily`:
 
 | Copula              | Family              | Notes                                                  |
 |----------------------|---------------------|---------------------------------------------------------|
-| GaussianMultivariate | Elliptical          | Cholesky-based                                          |
+| GaussianMultivariate | Elliptical          | `try_new(corr)` validates the correlation matrix        |
 | TMultivariate        | Elliptical          | Multivariate Student-t                                  |
 | NestedArchimedean    | Archimedean, nested | Outer + per-cluster inner generators (NAC)              |
 | CVine                | Vine, PCC           | Canonical vine — genuine pair-copula construction        |
 | DVine                | Vine, PCC           | D-vine — genuine pair-copula construction                |
 | RVine                | Vine, PCC           | Regular vine — graph-theoretic generalisation of C-/D-vine |
-| TreeMultivariate     | **Not a real vine** | MST-derived implied correlation collapsed to a Gaussian copula |
-| VineMultivariate     | **Not a real vine** | Star-C-vine-derived implied correlation collapsed to a Gaussian copula |
 
 The multivariate copulas need no feature flag; the linear algebra is the pure-Rust `faer`.
 

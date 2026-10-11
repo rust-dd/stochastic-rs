@@ -151,7 +151,7 @@ fn dvine_fit_recovers_the_first_tree_families() {
 #[test]
 fn cvine_fit_on_gaussian_data_selects_gaussian_pairs() {
   let corr = ndarray::array![[1.0, 0.8, 0.6], [0.8, 1.0, 0.5], [0.6, 0.5, 1.0]];
-  let truth = GaussianMultivariate::new_with_corr(corr).unwrap();
+  let truth = GaussianMultivariate::new(corr);
   let u = truth.sample(3000, &Deterministic::new(5)).unwrap();
   let families = [
     BivariateFamily::Independence,

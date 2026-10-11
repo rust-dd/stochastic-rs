@@ -104,11 +104,11 @@ fn bivariate_sample(c: &mut Criterion) {
 
 fn multivariate_sample(c: &mut Criterion) {
   let mut group = c.benchmark_group("copulas/multivariate_sample");
-  let gaussian = GaussianMultivariate::new_with_corr(corr(5)).unwrap();
+  let gaussian = GaussianMultivariate::new(corr(5));
   group.bench_function("gaussian_d5_n10k", |b| {
     b.iter(|| gaussian.sample(10_000, &Deterministic::new(42)).unwrap())
   });
-  let t = TMultivariate::new_with(corr(5), 5.0).unwrap();
+  let t = TMultivariate::new(corr(5), 5.0);
   group.bench_function("t_d5_n10k", |b| {
     b.iter(|| t.sample(10_000, &Deterministic::new(42)).unwrap())
   });
@@ -123,11 +123,11 @@ fn multivariate_cdf(c: &mut Criterion) {
   let mut group = c.benchmark_group("copulas/multivariate_cdf");
   group.sample_size(20);
   let q = queries(3);
-  let gaussian = GaussianMultivariate::new_with_corr(corr(3)).unwrap();
+  let gaussian = GaussianMultivariate::new(corr(3));
   group.bench_function("gaussian_d3_16q", |b| {
     b.iter(|| gaussian.cdf(q.view()).unwrap())
   });
-  let t = TMultivariate::new_with(corr(3), 5.0).unwrap();
+  let t = TMultivariate::new(corr(3), 5.0);
   group.bench_function("t_d3_16q", |b| b.iter(|| t.cdf(q.view()).unwrap()));
   let vine = dvine(3);
   group.bench_function("dvine_d3_16q", |b| b.iter(|| vine.cdf(q.view()).unwrap()));

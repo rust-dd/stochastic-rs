@@ -17,70 +17,37 @@ use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use super::MultivariateFamily;
-use super::linalg::is_spd;
-use super::linalg::spd_cholesky_lower;
-use super::linalg::spd_inverse;
+use super::correlation_matrix::CorrelationMatrix;
+use super::correlation_matrix::shrink_to_spd;
 use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
 
+/// The Gaussian copula; `default()` is the unfitted copula that `fit` starts from.
 #[derive(Debug, Clone, Default)]
 pub struct GaussianMultivariate {
-  dim: usize,
-  /// Correlation matrix (dim x dim)
-  corr: Option<Array2<f64>>,
-  /// Inverse correlation matrix
-  inv_corr: Option<Array2<f64>>,
-  /// Lower-triangular Cholesky factor of corr
-  chol_lower: Option<Array2<f64>>,
-  /// Log determinant of corr
-  log_det_corr: Option<f64>,
+  corr: Option<CorrelationMatrix>,
 }
 
 impl GaussianMultivariate {
-  pub fn new() -> Self {
-    Self::default()
+  /// The copula of `N(0, corr)`; panics unless `corr` is a correlation matrix.
+  pub fn new(corr: Array2<f64>) -> Self {
+    Self::try_new(corr).unwrap_or_else(|e| panic!("{e}"))
   }
 
-  /// Create directly from a correlation matrix.
-  pub fn new_with_corr(corr: Array2<f64>) -> Result<Self, CopulaError> {
-    let dim = corr.nrows();
-    if dim != corr.ncols() {
-      return Err(CopulaError::InvalidStructure(
-        "the correlation matrix must be square".into(),
-      ));
-    }
-    let mut g = Self::new();
-    g.set_corr(corr)?;
-    Ok(g)
+  /// `new` with the structure error returned instead of a panic.
+  pub fn try_new(corr: Array2<f64>) -> Result<Self, CopulaError> {
+    Ok(Self {
+      corr: Some(CorrelationMatrix::try_new(corr)?),
+    })
   }
 
   /// Returns a reference to the internal correlation matrix, if fitted.
   pub fn correlation(&self) -> Option<&Array2<f64>> {
-    self.corr.as_ref()
+    self.corr.as_ref().map(CorrelationMatrix::corr)
   }
 
-  fn set_corr(&mut self, corr: Array2<f64>) -> Result<(), CopulaError> {
-    let dim = corr.nrows();
-    self.dim = dim;
-
-    let l_arr = spd_cholesky_lower(corr.view()).ok_or_else(|| {
-      CopulaError::InvalidStructure("the correlation matrix is not positive definite".into())
-    })?;
-    let mut log_det = 0.0;
-    for i in 0..dim {
-      log_det += l_arr[[i, i]].ln();
-    }
-    log_det *= 2.0;
-
-    let inv_arr = spd_inverse(corr.view()).ok_or_else(|| {
-      CopulaError::InvalidStructure("the correlation matrix could not be inverted".into())
-    })?;
-
-    self.corr = Some(corr);
-    self.inv_corr = Some(inv_arr);
-    self.chol_lower = Some(l_arr);
-    self.log_det_corr = Some(log_det);
-    Ok(())
+  fn fitted(&self) -> Result<&CorrelationMatrix, CopulaError> {
+    self.corr.as_ref().ok_or(CopulaError::NotFitted)
   }
 
   /// Transform U in (0,1)^{n x d} to Z in R^{n x d} via standard normal inverse CDF.
@@ -96,8 +63,8 @@ impl GaussianMultivariate {
     z
   }
 
-  /// Estimate correlation matrix from Z (n x d). Adds jitter if needed.
-  fn estimate_corr_from_normal(&self, z: ArrayView2<f64>) -> Array2<f64> {
+  /// Sample correlation of the columns of Z (n x d), off-diagonals clamped to ±0.999999.
+  fn estimate_corr_from_normal(z: ArrayView2<f64>) -> Array2<f64> {
     let n = z.nrows() as f64;
     let d = z.ncols();
     // Center columns
@@ -140,35 +107,7 @@ impl GaussianMultivariate {
         corr[[j, i]] = r;
       }
     }
-    // Ensure positive definiteness by adding jitter if necessary
-    let mut jitter = 0usize;
-    while !Self::is_spd(corr.view()) && jitter < 6 {
-      let eps = 10f64.powi(-6_i32 + jitter as i32);
-      for k in 0..d {
-        corr[[k, k]] = 1.0 + eps;
-      }
-      jitter += 1;
-    }
     corr
-  }
-
-  fn is_spd(a: ArrayView2<f64>) -> bool {
-    let dim = a.nrows();
-    if dim != a.ncols() {
-      return false;
-    }
-    is_spd(a)
-  }
-
-  fn require_fitted(&self) -> Result<(), CopulaError> {
-    if self.corr.is_none()
-      || self.inv_corr.is_none()
-      || self.chol_lower.is_none()
-      || self.log_det_corr.is_none()
-    {
-      return Err(CopulaError::NotFitted);
-    }
-    Ok(())
   }
 }
 
@@ -178,9 +117,9 @@ impl MultivariateExt for GaussianMultivariate {
   }
 
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
-    self.require_fitted()?;
-    let d = self.dim;
-    let l = self.chol_lower.as_ref().unwrap(); // (d x d)
+    let corr = self.fitted()?;
+    let d = corr.dim();
+    let l = corr.chol_lower(); // (d x d)
     // Sample standard normals G ~ N(0, I) of shape (n x d)
     let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(seed);
     let g = Array2::from_shape_fn((n, d), |_| normal.sample());
@@ -214,18 +153,17 @@ impl MultivariateExt for GaussianMultivariate {
     if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
       return Err(CopulaError::MarginalOutOfRange);
     }
-    self.dim = X.ncols();
     let z = self.transform_to_normal(X);
-    let corr = self.estimate_corr_from_normal(z.view());
-    self.set_corr(corr)?;
+    let corr = shrink_to_spd(Self::estimate_corr_from_normal(z.view()));
+    self.corr = Some(CorrelationMatrix::try_new(corr)?);
     Ok(())
   }
 
   fn check_fit(&self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
-    self.require_fitted()?;
-    if X.ncols() != self.dim {
+    let dim = self.fitted()?.dim();
+    if X.ncols() != dim {
       return Err(CopulaError::DimensionMismatch {
-        expected: self.dim,
+        expected: dim,
         got: X.ncols(),
       });
     }
@@ -238,8 +176,9 @@ impl MultivariateExt for GaussianMultivariate {
   fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let z = self.transform_to_normal(X); // n x d
-    let inv = self.inv_corr.as_ref().unwrap();
-    let log_det = self.log_det_corr.unwrap();
+    let corr = self.fitted()?;
+    let inv = corr.inverse();
+    let log_det = corr.log_det();
 
     // Compute for each row: -1/2 z^T (inv - I) z - 1/2 log det
     let mut out = Array1::<f64>::zeros(z.nrows());
@@ -259,20 +198,22 @@ impl MultivariateExt for GaussianMultivariate {
   fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let z = self.transform_to_normal(X); // n x d
-    let l = self.chol_lower.as_ref().unwrap(); // d x d
+    let corr = self.fitted()?;
+    let l = corr.chol_lower(); // d x d
+    let d = corr.dim();
     let n = z.nrows();
     let m_samples = 4000usize; // Monte Carlo samples per query point
     let mut out = Array1::<f64>::zeros(n);
 
     // Pre-sample standard normals for efficiency: (m x d)
     let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Unseeded);
-    let g = Array2::from_shape_fn((m_samples, self.dim), |_| normal.sample());
+    let g = Array2::from_shape_fn((m_samples, d), |_| normal.sample());
     let y = g.dot(&l.t()); // (m x d) ~ MVN(0, corr)
 
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {
       let mut count = 0usize;
       'outer: for r in 0..m_samples {
-        for c in 0..self.dim {
+        for c in 0..d {
           if y[[r, c]] > row[c] {
             continue 'outer;
           }
@@ -282,5 +223,54 @@ impl MultivariateExt for GaussianMultivariate {
       out[i] = count as f64 / m_samples as f64;
     }
     Ok(out)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
+
+  use super::*;
+  use crate::bivariate::gaussian::GaussianCopula;
+  use crate::traits::BivariateExt;
+
+  /// At `d = 2` the density is the bivariate Gaussian copula's closed form.
+  #[test]
+  fn the_two_dimensional_density_is_the_bivariate_gaussian_copulas() {
+    let rho = 0.6;
+    let multivariate = GaussianMultivariate::new(array![[1.0, rho], [rho, 1.0]]);
+    let q = array![[0.3, 0.7], [0.5, 0.5], [0.1, 0.9], [0.8, 0.25]];
+    let got = multivariate.pdf(q.view()).unwrap();
+    let want = GaussianCopula::new(rho).pdf(q.view()).unwrap();
+    for i in 0..q.nrows() {
+      assert!(
+        (got[i] - want[i]).abs() < 1e-12 * want[i],
+        "{i}: {} vs {}",
+        got[i],
+        want[i]
+      );
+    }
+  }
+
+  #[test]
+  fn a_fit_recovers_the_correlation_it_was_drawn_from_with_a_unit_diagonal() {
+    let truth = array![[1.0, 0.6, 0.2], [0.6, 1.0, 0.3], [0.2, 0.3, 1.0]];
+    let u = GaussianMultivariate::new(truth.clone())
+      .sample(20_000, &Deterministic::new(11))
+      .unwrap();
+    let mut fitted = GaussianMultivariate::default();
+    fitted.fit(u.view()).unwrap();
+    let corr = fitted.correlation().unwrap();
+    for i in 0..3 {
+      assert_eq!(corr[[i, i]], 1.0);
+      for j in 0..i {
+        assert!(
+          (corr[[i, j]] - truth[[i, j]]).abs() < 0.02,
+          "[{i}, {j}]: {}",
+          corr[[i, j]]
+        );
+      }
+    }
   }
 }
