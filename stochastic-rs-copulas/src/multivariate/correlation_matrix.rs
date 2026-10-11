@@ -1,5 +1,5 @@
 //! A validated correlation matrix and the factors the elliptical copulas evaluate through.
-//! Reference: Higham, N.J., Strabić, N., Šego, V. (2016), "Restoring definiteness via shrinking, with an application to correlation matrices with a fixed block", SIAM Review 58(2), 245-263, eq. (2.1), §2 and §3.1, DOI 10.1137/140996112.
+//! Reference: Higham, N.J., Strabić, N., Šego, V. (2016), "Restoring definiteness via shrinking, with an application to correlation matrices with a fixed block", SIAM Review 58(2), 245-263, eq. (2.1), §2 and Algorithm 3.1, DOI 10.1137/140996112.
 
 use ndarray::Array2;
 
@@ -8,7 +8,7 @@ use super::linalg::spd_cholesky_lower;
 use super::linalg::spd_inverse;
 use crate::error::CopulaError;
 
-const SHRINKAGE: [f64; 7] = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0];
+const SHRINK_TOLERANCE: f64 = 1e-6;
 
 /// Square with `dim >= 2`, unit diagonal, symmetric and finite to `1e-12`, positive definite; it carries its lower
 /// Cholesky factor, inverse and log-determinant.
@@ -91,21 +91,28 @@ impl CorrelationMatrix {
   }
 }
 
-/// Shrinks an estimated correlation toward the identity, `(1 − λ) R + λ I`, by the least `λ` of `1e-6, 1e-5, …, 1` whose
-/// Cholesky test passes (a decade grid where the paper bisects); the unit diagonal survives.
+/// The smallest shrink toward the identity, `(1 − λ) R + λ I`, that makes `R` positive definite: `λ` is bisected to
+/// `1e-6` with a Cholesky test (Algorithm 3.1); the unit diagonal survives.
 pub(crate) fn shrink_to_spd(corr: Array2<f64>) -> Array2<f64> {
   if is_spd(corr.view()) {
     return corr;
   }
   let identity = Array2::<f64>::eye(corr.nrows());
-  for lambda in SHRINKAGE {
+  let shrink = |lambda: f64| {
     let mut shrunk = &corr * (1.0 - lambda) + &identity * lambda;
     shrunk.diag_mut().fill(1.0);
-    if is_spd(shrunk.view()) {
-      return shrunk;
+    shrunk
+  };
+  let (mut left, mut right) = (0.0, 1.0);
+  while right - left > SHRINK_TOLERANCE {
+    let middle = 0.5 * (left + right);
+    if is_spd(shrink(middle).view()) {
+      right = middle;
+    } else {
+      left = middle;
     }
   }
-  corr
+  shrink(right)
 }
 
 #[cfg(test)]
@@ -113,6 +120,10 @@ mod tests {
   use ndarray::array;
 
   use super::*;
+  use crate::multivariate::linalg::smallest_eigenvalue;
+
+  /// The documented bisection tolerance, pinned here independently of the constant the code uses.
+  const TOLERANCE: f64 = 1e-6;
 
   #[test]
   fn a_correlation_matrix_is_square_symmetric_unit_diagonal_and_positive_definite() {
@@ -183,30 +194,53 @@ mod tests {
     assert!(shrunk.diag().iter().all(|d| (d - 1.0).abs() < 1e-15));
   }
 
-  #[test]
-  fn a_matrix_beyond_the_grid_shrinks_to_the_identity_with_positive_zeros() {
-    let indefinite = array![[1.0, 0.9, -0.9], [0.9, 1.0, 0.9], [-0.9, 0.9, 1.0]];
-    let shrunk = shrink_to_spd(indefinite);
-    assert_eq!(shrunk, Array2::<f64>::eye(3));
-    assert!(shrunk.iter().all(|v| v.is_sign_positive()));
+  /// The shrink read off the first off-diagonal of `raw`; the analytic minimum for a smallest eigenvalue `mu` is
+  /// `-mu / (1 - mu)`, and the bisection overshoots it by at most the tolerance.
+  fn assert_minimal(raw: &Array2<f64>, shrunk: &Array2<f64>, mu: f64) {
+    let lambda = 1.0 - shrunk[[0, 1]] / raw[[0, 1]];
+    let want = -mu / (1.0 - mu);
+    assert!(
+      (want - 1e-12..=want + TOLERANCE + 1e-12).contains(&lambda),
+      "{lambda} vs {want}"
+    );
   }
 
   #[test]
-  fn shrinking_takes_the_least_lambda_of_the_schedule_that_works() {
-    let a = -0.5005;
+  fn shrinking_takes_the_smallest_lambda_to_the_bisection_tolerance() {
+    let a = -0.5025;
     let equi = array![[1.0, a, a], [a, 1.0, a], [a, a, 1.0]];
+    let mu = smallest_eigenvalue(equi.view());
+    assert!((mu - (1.0 + 2.0 * a)).abs() < 1e-12);
     let shrunk = shrink_to_spd(equi.clone());
+    assert_minimal(&equi, &shrunk, mu);
+    let lambda = 1.0 - shrunk[[0, 1]] / a;
     for i in 0..3 {
       assert_eq!(shrunk[[i, i]], 1.0);
       for j in 0..i {
-        assert!(
-          (shrunk[[i, j]] - a * (1.0 - 1e-3)).abs() < 1e-15,
-          "{shrunk:?}"
-        );
+        assert!((shrunk[[i, j]] - (1.0 - lambda) * a).abs() < 1e-15);
         assert_eq!(shrunk[[i, j]], shrunk[[j, i]]);
       }
     }
+    assert!(is_spd(shrunk.view()));
     let spd = array![[1.0, 0.3], [0.3, 1.0]];
     assert_eq!(shrink_to_spd(spd.clone()), spd);
+  }
+
+  #[test]
+  fn a_non_finite_estimate_is_left_for_the_validator_to_reject() {
+    let nan = array![[1.0, f64::NAN], [f64::NAN, 1.0]];
+    assert!(CorrelationMatrix::try_new(shrink_to_spd(nan)).is_err());
+  }
+
+  #[test]
+  fn a_strongly_indefinite_matrix_keeps_its_correlations_instead_of_the_identity() {
+    let all_negative = Array2::from_shape_fn((10, 10), |(i, j)| if i == j { 1.0 } else { -1.0 });
+    let mu = smallest_eigenvalue(all_negative.view());
+    assert!((mu + 8.0).abs() < 1e-10);
+    let shrunk = shrink_to_spd(all_negative.clone());
+    assert_minimal(&all_negative, &shrunk, mu);
+    assert_ne!(shrunk, Array2::<f64>::eye(10));
+    assert!(shrunk[[0, 1]] < 0.0);
+    assert!(is_spd(shrunk.view()));
   }
 }

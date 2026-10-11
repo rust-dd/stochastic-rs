@@ -37,6 +37,14 @@ pub(crate) fn is_spd(a: ArrayView2<f64>) -> bool {
   a.nrows() == a.ncols() && Llt::new(a.into_faer(), Side::Lower).is_ok()
 }
 
+/// Smallest eigenvalue of a symmetric matrix, for tests that pin an analytic value.
+#[cfg(test)]
+pub(crate) fn smallest_eigenvalue(a: ArrayView2<f64>) -> f64 {
+  a.into_faer()
+    .self_adjoint_eigenvalues(Side::Lower)
+    .expect("a symmetric matrix has eigenvalues")[0]
+}
+
 #[cfg(test)]
 mod tests {
   use ndarray::array;

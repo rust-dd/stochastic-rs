@@ -5,6 +5,7 @@ use super::*;
 use crate::bivariate::t_copula::TCopula;
 use crate::correlation::tau_matrix_to_corr_matrix;
 use crate::multivariate::linalg::is_spd;
+use crate::multivariate::linalg::smallest_eigenvalue;
 
 /// Construct a 3-dim t-copula with mild dependence and verify the
 /// sampler produces uniforms on every coordinate.
@@ -216,8 +217,18 @@ fn the_multivariate_set_nu_panics_on_an_infinite_nu() {
   TMultivariate::default().set_nu(f64::INFINITY);
 }
 
+/// The documented bisection tolerance of the shrink.
+const TOLERANCE: f64 = 1e-6;
+
+/// The `lambda` of `(1 - lambda) R + lambda I` that a fit applied, read off `R[[0, 1]]`, and its analytic minimum for a
+/// smallest eigenvalue `mu` of `R`.
+fn applied_and_minimal_lambda(raw: &Array2<f64>, fitted: &Array2<f64>) -> (f64, f64) {
+  let mu = smallest_eigenvalue(raw.view());
+  (1.0 - fitted[[0, 1]] / raw[[0, 1]], -mu / (1.0 - mu))
+}
+
 /// Four shares that sum to a constant give a Kendall estimate that is not positive definite (smallest eigenvalue
-/// -4.2e-3); the fit shrinks the off-diagonals by 1e-2 and keeps the diagonal at 1.
+/// -4.2e-3); the fit shrinks it by the smallest `lambda` and keeps the diagonal at 1.
 #[test]
 fn t_copula_fit_shrinks_an_indefinite_estimate_and_keeps_the_unit_diagonal() {
   let ranks = [
@@ -240,11 +251,51 @@ fn t_copula_fit_shrinks_an_indefinite_estimate_and_keeps_the_unit_diagonal() {
   let mut cop = TMultivariate::default();
   cop.fit(u.view()).unwrap();
   let fitted = cop.correlation().unwrap();
+  let (lambda, want) = applied_and_minimal_lambda(&raw, fitted);
+  assert!(
+    (want - 1e-12..=want + TOLERANCE + 1e-12).contains(&lambda),
+    "{lambda} vs {want}"
+  );
   for i in 0..4 {
     assert_eq!(fitted[[i, i]], 1.0);
     for j in 0..i {
-      assert!((fitted[[i, j]] - 0.99 * raw[[i, j]]).abs() < 1e-15);
+      assert!((fitted[[i, j]] - (1.0 - lambda) * raw[[i, j]]).abs() < 1e-15);
     }
+  }
+  assert!(TMultivariate::try_new(fitted.clone(), cop.nu()).is_ok());
+}
+
+/// Ten observations of six shares give a Kendall estimate with smallest eigenvalue -0.156: the fit shrinks it by
+/// `-mu / (1 - mu)` to the tolerance, so the result is positive definite and keeps its correlations.
+#[test]
+fn t_copula_fit_of_a_hopeless_estimate_is_the_minimal_shrink_not_the_identity() {
+  let ranks = [
+    [3, 10, 10, 2, 4, 2],
+    [8, 8, 3, 9, 1, 3],
+    [7, 6, 7, 7, 2, 7],
+    [9, 5, 2, 5, 8, 1],
+    [6, 4, 4, 6, 3, 10],
+    [5, 9, 5, 4, 6, 8],
+    [2, 2, 9, 8, 5, 6],
+    [1, 3, 1, 10, 9, 4],
+    [10, 1, 6, 1, 7, 5],
+    [4, 7, 8, 3, 10, 9],
+  ];
+  let u = Array2::from_shape_fn((10, 6), |(i, j)| ranks[i][j] as f64 / 11.0);
+  let raw = tau_matrix_to_corr_matrix(kendall_tau(u.view()).view());
+  assert!((smallest_eigenvalue(raw.view()) + 0.156).abs() < 1e-3);
+  let mut cop = TMultivariate::default();
+  cop.fit(u.view()).unwrap();
+  let fitted = cop.correlation().unwrap();
+  let (lambda, want) = applied_and_minimal_lambda(&raw, fitted);
+  assert!(
+    (want - 1e-12..=want + TOLERANCE + 1e-12).contains(&lambda),
+    "{lambda} vs {want}"
+  );
+  assert_ne!(fitted, &Array2::<f64>::eye(6));
+  for ((i, j), r) in raw.indexed_iter() {
+    let expected = if i == j { 1.0 } else { (1.0 - lambda) * r };
+    assert!((fitted[[i, j]] - expected).abs() < 1e-15);
   }
   assert!(TMultivariate::try_new(fitted.clone(), cop.nu()).is_ok());
 }
