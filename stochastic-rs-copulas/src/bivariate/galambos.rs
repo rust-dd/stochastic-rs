@@ -23,6 +23,8 @@
 //! Concepts", Chapman & Hall, §5.4.
 //! Reference: Gudendorf, G. & Segers, J. (2010), "Extreme-value copulas", in Copula Theory and Its Applications, Lecture Notes in Statistics, Springer, arXiv:0911.1015, §4 (Kendall's τ from the Pickands function).
 
+use std::sync::OnceLock;
+
 use ndarray::Array1;
 use ndarray::ArrayView2;
 
@@ -197,16 +199,20 @@ impl BivariateExt for Galambos {
     (h_grid / 3.0) * acc
   }
 
+  /// Brent on `ln θ` over `[1e-8, 65]`: the rule holds `τ` to `2.5e-7` up to `θ = 65` and loses it beyond (`5.7e-5` at
+  /// `θ = 100`), so `0 < τ < τ(65) ≈ 0.98478` is the reachable range; `θ` to a relative `1e-8`, past the rule's resolution.
   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
-    let (lo, hi) = (1e-8, 50.0);
-    let (tau_lo, tau_hi) = (self.tau_from_theta(lo), self.tau_from_theta(hi));
+    static RANGE: OnceLock<(f64, f64)> = OnceLock::new();
+    let (lo, hi) = (1e-8_f64.ln(), 65.0_f64.ln());
+    let (tau_lo, tau_hi) =
+      *RANGE.get_or_init(|| (self.tau_from_theta(lo.exp()), self.tau_from_theta(hi.exp())));
     if !(tau > tau_lo && tau < tau_hi) {
       return Err(tau_out_of_range(
         tau,
         format!("{tau_lo:?} < tau < {tau_hi:?}"),
       ));
     }
-    invert_tau(|theta| self.tau_from_theta(theta) - tau, lo, hi)
+    invert_tau(|x| self.tau_from_theta(x.exp()) - tau, lo, hi, 1e-8).map(f64::exp)
   }
 
   /// `λ_U = 2^{−1/θ} = 2(1 − A(1/2))` of [`Galambos::pickands`], `λ_L = 0` (Galambos 1975; Joe 1997, §5.4).

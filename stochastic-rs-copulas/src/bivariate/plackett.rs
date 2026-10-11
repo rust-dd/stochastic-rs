@@ -20,6 +20,8 @@
 //! Springer, Example 3.11; Theorem 5.1.3 (Kendall's τ from the partial derivatives).
 //! Reference: Johnson, M.E. (1987), "Multivariate Statistical Simulation", Wiley, the Plackett generator (the conditional inverse), DOI 10.1002/9781118150740.
 
+use std::sync::OnceLock;
+
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
@@ -195,8 +197,10 @@ impl BivariateExt for Plackett {
   /// Brent on `ln θ`, so the bracket `[1e-6, 1e6]` keeps a relative resolution; the rule runs `9e-4` low at its ends,
   /// so a `|τ|` above `0.99666` is rejected although the family reaches `0.99753` there.
   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+    static RANGE: OnceLock<(f64, f64)> = OnceLock::new();
     let (lo, hi) = (1e-6_f64, 1e6_f64);
-    let (tau_lo, tau_hi) = (self.tau_from_theta(lo), self.tau_from_theta(hi));
+    let (tau_lo, tau_hi) =
+      *RANGE.get_or_init(|| (self.tau_from_theta(lo), self.tau_from_theta(hi)));
     if !(tau > tau_lo && tau < tau_hi) {
       return Err(tau_out_of_range(
         tau,
@@ -211,7 +215,8 @@ impl BivariateExt for Plackett {
     } else {
       (lo.ln(), 0.0)
     };
-    invert_tau(|x| self.tau_from_theta(x.exp()) - tau, a, b).map(f64::exp)
+    // `ln θ` to `1e-8`: the rule holds `τ` to `5e-9` up to `θ = 100`.
+    invert_tau(|x| self.tau_from_theta(x.exp()) - tau, a, b, 1e-8).map(f64::exp)
   }
 
   /// Plackett has no tail dependence in either tail, for any $\theta > 0$.

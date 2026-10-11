@@ -314,13 +314,15 @@ pub trait BivariateExt {
   }
 }
 
-/// Brent's `zero` on `residual(θ) = τ(θ) − τ` over `[lo, hi]`; `Numerical` without a sign change or past its bound.
+/// Brent's `zero` on `residual(θ) = τ(θ) − τ` over `[lo, hi]` to the absolute `t` the family's τ rule resolves;
+/// `Numerical` without a sign change or past its bound.
 pub(crate) fn invert_tau(
   residual: impl FnMut(f64) -> f64,
   lo: f64,
   hi: f64,
+  t: f64,
 ) -> Result<f64, CopulaError> {
-  zero(lo, hi, 1e-10, residual).ok_or_else(|| {
+  zero(lo, hi, t, residual).ok_or_else(|| {
     CopulaError::Numerical(format!("theta from tau has no root on [{lo:?}, {hi:?}]"))
   })
 }

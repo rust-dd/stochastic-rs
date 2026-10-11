@@ -15,6 +15,8 @@
 //! Springer, Family BB1 / table 4.1.
 //! Reference: Hofert, M., Mächler, M. & McNeil, A. J. (2011), "Likelihood inference for Archimedean copulas", arXiv:1108.6032v1, Table 2 (Kendall's τ); Journal of Multivariate Analysis 110 (2012), 133–150.
 
+use std::sync::OnceLock;
+
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
@@ -180,14 +182,15 @@ impl BivariateExt for Joe {
   }
 
   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
-    let cap = self.tau_from_theta(1e4);
+    static CAP: OnceLock<f64> = OnceLock::new();
+    let cap = *CAP.get_or_init(|| self.tau_from_theta(1e4));
     if !(tau >= 0.0 && tau < cap) {
       return Err(tau_out_of_range(tau, format!("0.0 <= tau < {cap:?}")));
     }
     if tau < 1e-12 {
       return Ok(1.0);
     }
-    invert_tau(|theta| self.tau_from_theta(theta) - tau, 1.0, 1e4)
+    invert_tau(|theta| self.tau_from_theta(theta) - tau, 1.0, 1e4, 1e-14)
   }
 
   /// Upper-tail dependence $\lambda_U = 2 - 2^{1/\theta}$ (same functional

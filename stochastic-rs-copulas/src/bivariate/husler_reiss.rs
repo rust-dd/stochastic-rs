@@ -30,6 +30,8 @@
 //! Probab. Lett.* 7(4), 283-286.
 //! Reference: Gudendorf, G. & Segers, J. (2010), "Extreme-value copulas", in Copula Theory and Its Applications, Lecture Notes in Statistics, Springer, arXiv:0911.1015, §4 (Kendall's τ from the Pickands function).
 
+use std::sync::OnceLock;
+
 use ndarray::Array1;
 use ndarray::ArrayView2;
 use stochastic_rs_distributions::special::norm_cdf;
@@ -209,16 +211,20 @@ impl BivariateExt for HuslerReiss {
     (h_grid / 3.0) * acc
   }
 
+  /// Brent on `ln λ` over `[1e-6, 100]`: the rule holds `τ` to `1.9e-7` up to `λ = 100` and loses it beyond (`2.2e-4` at
+  /// `λ = 200`), so `0 < τ < τ(100) ≈ 0.98876` is the reachable range; `λ` to a relative `1e-8`, past the rule's resolution.
   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
-    let (lo, hi) = (1e-6, 50.0);
-    let (tau_lo, tau_hi) = (self.tau_from_theta(lo), self.tau_from_theta(hi));
+    static RANGE: OnceLock<(f64, f64)> = OnceLock::new();
+    let (lo, hi) = (1e-6_f64.ln(), 100.0_f64.ln());
+    let (tau_lo, tau_hi) =
+      *RANGE.get_or_init(|| (self.tau_from_theta(lo.exp()), self.tau_from_theta(hi.exp())));
     if !(tau > tau_lo && tau < tau_hi) {
       return Err(tau_out_of_range(
         tau,
         format!("{tau_lo:?} < tau < {tau_hi:?}"),
       ));
     }
-    invert_tau(|lambda| self.tau_from_theta(lambda) - tau, lo, hi)
+    invert_tau(|x| self.tau_from_theta(x.exp()) - tau, lo, hi, 1e-8).map(f64::exp)
   }
 
   /// Upper-tail dependence $\lambda_U = 2(1 - \Phi(1/\lambda))$;

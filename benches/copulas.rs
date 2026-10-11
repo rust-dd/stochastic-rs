@@ -12,6 +12,7 @@ use stochastic_rs::copulas::bivariate::amh::Amh;
 use stochastic_rs::copulas::bivariate::clayton::Clayton;
 use stochastic_rs::copulas::bivariate::fgm::Fgm;
 use stochastic_rs::copulas::bivariate::frank::Frank;
+use stochastic_rs::copulas::bivariate::galambos::Galambos;
 use stochastic_rs::copulas::bivariate::gaussian::GaussianCopula;
 use stochastic_rs::copulas::bivariate::gumbel::Gumbel;
 use stochastic_rs::copulas::bivariate::marshall_olkin::MarshallOlkin;
@@ -183,6 +184,36 @@ fn fit(c: &mut Criterion) {
     b.iter(|| {
       let mut fitted = Plackett::new();
       fitted.fit(plackett_pairs.view()).unwrap()
+    })
+  });
+  let frank_pairs = pseudo_observations(
+    Frank {
+      theta: Some(4.0),
+      ..Frank::default()
+    }
+    .sample(2_000, &Deterministic::new(1))
+    .unwrap()
+    .view(),
+  );
+  group.bench_function("frank_fit_n2k", |b| {
+    b.iter(|| {
+      let mut fitted = Frank::default();
+      fitted.fit(frank_pairs.view()).unwrap()
+    })
+  });
+  let galambos_pairs = pseudo_observations(
+    Galambos {
+      theta: Some(1.5),
+      ..Galambos::new()
+    }
+    .sample(2_000, &Deterministic::new(1))
+    .unwrap()
+    .view(),
+  );
+  group.bench_function("galambos_fit_n2k", |b| {
+    b.iter(|| {
+      let mut fitted = Galambos::new();
+      fitted.fit(galambos_pairs.view()).unwrap()
     })
   });
   let data = pseudo_observations(

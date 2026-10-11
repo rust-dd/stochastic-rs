@@ -245,7 +245,7 @@ impl BivariateExt for Amh {
     if tau.abs() < 1e-12 {
       return Ok(0.0);
     }
-    invert_tau(|theta| self.tau_from_theta(theta) - tau, -1.0, 1.0)
+    invert_tau(|theta| self.tau_from_theta(theta) - tau, -1.0, 1.0, 1e-14)
   }
 
   /// AMH has no tail dependence in either tail, for any $\theta \in

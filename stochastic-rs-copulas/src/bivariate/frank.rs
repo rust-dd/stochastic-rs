@@ -7,6 +7,8 @@
 //! Reference: Domino, K. (2018), "Selected Methods for non-Gaussian Data Analysis", arXiv:1811.10486, Example 4.3.2, eq. (4.54) (the conditional inverse; its printed fraction bar wrongly spans the leading 1, which belongs outside the fraction).
 //! Reference: Hofert, M., Mächler, M. & McNeil, A. J. (2011), "Likelihood inference for Archimedean copulas", arXiv:1108.6032v1, Table 2 (Kendall's τ); Journal of Multivariate Analysis 110 (2012), 133–150.
 
+use std::sync::OnceLock;
+
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
@@ -236,7 +238,8 @@ impl BivariateExt for Frank {
   }
 
   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
-    let cap = self.tau_from_theta(1e4);
+    static CAP: OnceLock<f64> = OnceLock::new();
+    let cap = *CAP.get_or_init(|| self.tau_from_theta(1e4));
     if !(tau > -cap && tau < cap) {
       return Err(tau_out_of_range(tau, format!("{:?} < tau < {cap:?}", -cap)));
     }
@@ -245,7 +248,7 @@ impl BivariateExt for Frank {
     }
     // `τ(0) = 0` exactly, so the bracket changes sign for every `τ` that passed the guards.
     let (lo, hi) = if tau > 0.0 { (0.0, 1e4) } else { (-1e4, 0.0) };
-    invert_tau(|theta| self.tau_from_theta(theta) - tau, lo, hi)
+    invert_tau(|theta| self.tau_from_theta(theta) - tau, lo, hi, 1e-14)
   }
 
   /// Frank has no tail dependence in either tail, for any $\theta$.

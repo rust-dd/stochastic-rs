@@ -292,7 +292,7 @@ impl BivariateExt for Bb7 {
         format!("{tau_lo:?} <= tau < {tau_hi:?}"),
       ));
     }
-    invert_tau(|x| self.tau_from_theta(x.exp()) - tau, lo, hi).map(f64::exp)
+    invert_tau(|x| self.tau_from_theta(x.exp()) - tau, lo, hi, 1e-12).map(f64::exp)
   }
 
   /// Maximum-likelihood fit of `(θ, δ)` on a two-column sample in `[0, 1]`, started from the Kendall inversion at the
