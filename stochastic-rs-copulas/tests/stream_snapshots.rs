@@ -59,6 +59,7 @@ const PINS: &[(&str, u64)] = &[
   ("t_multivariate", 0x6bcffcbcf2ecf0d0),
   ("cvine", 0x487fb08113cd29fb),
   ("dvine", 0x89bf5cced5bc2b85),
+  ("dvine_mixed_d5", 0x634350ca61d71a4f),
   ("rvine_independence", 0xc269b264798404c9),
   ("nac_gumbel_nested", 0x85ff7aa5ffd667a9),
   ("nac_clayton_flat", 0x5be5566c431f17f4),
@@ -96,6 +97,29 @@ fn pair_trees() -> Vec<Vec<PairCopula>> {
       PairCopula::Clayton { theta: 2.0 },
     ],
     vec![PairCopula::Independence],
+  ]
+}
+
+/// A different dependent pair on every edge, in dimension 5: the first at which the `i > 3` loop of Aas et al. (2009)
+/// Algorithm 2 runs, so every conditioning value the D-vine sampler builds above its first tree reaches the pin.
+fn mixed_trees() -> Vec<Vec<PairCopula>> {
+  vec![
+    vec![
+      PairCopula::Gaussian { rho: 0.5 },
+      PairCopula::Clayton { theta: 2.0 },
+      PairCopula::Frank { theta: -3.0 },
+      PairCopula::Gaussian { rho: -0.2 },
+    ],
+    vec![
+      PairCopula::Clayton { theta: 3.0 },
+      PairCopula::Gaussian { rho: 0.6 },
+      PairCopula::Frank { theta: 5.0 },
+    ],
+    vec![
+      PairCopula::Frank { theta: 4.0 },
+      PairCopula::Clayton { theta: 1.0 },
+    ],
+    vec![PairCopula::Gaussian { rho: -0.4 }],
   ]
 }
 
@@ -224,6 +248,13 @@ fn samples() -> Vec<(&'static str, Array2<f64>)> {
   row!(
     "dvine",
     DVine::new(3, pair_trees())
+      .unwrap()
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  row!(
+    "dvine_mixed_d5",
+    DVine::new(5, mixed_trees())
       .unwrap()
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
