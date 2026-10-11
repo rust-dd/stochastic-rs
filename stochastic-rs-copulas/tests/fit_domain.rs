@@ -179,6 +179,23 @@ fn an_inverse_that_rounds_onto_an_excluded_theta_is_an_error() {
   assert_eq!(gaussian.theta(), None);
 }
 
+/// Ten pairs with 15 discordances have `τ̂ = 1/3`, AMH's upper end, reached at `θ = 1`.
+#[test]
+fn amh_fits_its_upper_tau() {
+  let ranks = [6.0, 5.0, 4.0, 3.0, 2.0, 1.0, 7.0, 8.0, 9.0, 10.0];
+  let data = Array2::from_shape_fn((10, 2), |(i, j)| {
+    if j == 0 {
+      (i + 1) as f64 / 11.0
+    } else {
+      ranks[i] / 11.0
+    }
+  });
+  let mut amh = Amh::new();
+  amh.fit(data.view()).unwrap();
+  assert_eq!(amh.theta(), Some(1.0));
+  assert_eq!(amh.tau(), Some(1.0 / 3.0));
+}
+
 /// One column, or three, is a `DimensionMismatch` before any column is read, whichever `fit` the family runs.
 #[test]
 fn fit_takes_exactly_two_columns() {

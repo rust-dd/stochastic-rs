@@ -233,14 +233,17 @@ impl BivariateExt for Amh {
     1.0 - 2.0 * (theta + one_minus * one_minus * one_minus.ln()) / (3.0 * theta * theta)
   }
 
-  /// Brent on `[−1, 1]`, whose ends give the range `[(5 − 8 ln 2)/3, 1/3)` from the same `τ`, so every `τ` in it brackets.
+  /// Brent on `[−1, 1]`, whose ends give the range `[(5 − 8 ln 2)/3, 1/3]` from the same `τ`, so every `τ` in it brackets.
   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
     let (lo, hi) = (self.tau_from_theta(-1.0), self.tau_from_theta(1.0));
-    if !(tau >= lo && tau < hi) {
-      return Err(tau_out_of_range(tau, format!("{lo:?} <= tau < {hi:?}")));
+    if !(tau >= lo && tau <= hi) {
+      return Err(tau_out_of_range(tau, format!("{lo:?} <= tau <= {hi:?}")));
     }
     if tau == lo {
       return Ok(-1.0);
+    }
+    if tau == hi {
+      return Ok(1.0);
     }
     if tau.abs() < 1e-12 {
       return Ok(0.0);
