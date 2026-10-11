@@ -370,13 +370,13 @@ fn dvine_order_extends_greedily_beyond_eight_columns() {
   assert_eq!(dvine_order(tau.view()), greedy_path(tau.view()));
 }
 
-/// The searches run over the τ each family reaches inside its θ bounds, cut to the Kendall start's `|τ| ≤ 0.99`.
+/// The searches run over the whole τ each family reaches inside its θ bounds.
 #[test]
 fn the_likelihood_searches_follow_the_family_bounds() {
-  assert_eq!(tau_range(&Clayton::default()), (0.0, 0.99));
-  assert_eq!(tau_range(&GaussianCopula::default()), (-0.99, 0.99));
-  assert_eq!(tau_range(&Frank::default()), (-0.99, 0.99));
-  assert_eq!(tau_range(&TCopula::default()), (-0.99, 0.99));
+  assert_eq!(tau_range(&Clayton::default()), (0.0, 1.0));
+  assert_eq!(tau_range(&GaussianCopula::default()), (-1.0, 1.0));
+  assert_eq!(tau_range(&Frank::default()), (-1.0, 1.0));
+  assert_eq!(tau_range(&TCopula::default()), (-1.0, 1.0));
 }
 
 /// A conditioned column without τ-b stops the C-vine before it picks the next root.
@@ -387,7 +387,7 @@ fn a_constant_conditioned_column_stops_the_cvine() {
   let values = vec![(0, rising), (2, vec![0.5; 20]), (3, falling)];
   let got = next_root(&values, &[1]);
   assert!(
-    matches!(&got, Err(CopulaError::InvalidStructure(why)) if why.contains("columns [0, 2, 3] given columns [1]")),
+    matches!(&got, Err(CopulaError::InvalidStructure(why)) if why.contains("undefined for column 2 given columns [1]:")),
     "{got:?}"
   );
 }
@@ -467,4 +467,71 @@ fn student_t_pairs_maximise_the_likelihood_and_give_way_past_thirty() {
     &gaussian.column(1).to_vec(),
   );
   assert_eq!(fitted, None, "{fitted:?}");
+}
+
+/// Every vine fit checks columns, then rows, then range, then candidates, then τ: each row breaks the next check too.
+#[test]
+fn the_vine_fits_check_columns_rows_range_candidates_then_tau() {
+  let column = |n: usize, value: f64| Array2::from_elem((n, 1), value);
+  let grid = |n: usize| {
+    Array2::from_shape_fn((n, 3), |(i, j)| {
+      ((i * 7 + j * 3) % n + 1) as f64 / (n + 1) as f64
+    })
+  };
+  let with = |mut u: Array2<f64>, value: f64| {
+    u[[1, 1]] = value;
+    u
+  };
+  let constant = |mut u: Array2<f64>| {
+    u.column_mut(2).fill(0.5);
+    u
+  };
+  let gumbel = &[BivariateFamily::Gumbel][..];
+  let cases: [(Array2<f64>, &[BivariateFamily], &str); 6] = [
+    (
+      column(5, 0.5),
+      BivariateFamily::VINE_CANDIDATES,
+      "InvalidStructure",
+    ),
+    (
+      with(grid(5), 1.5),
+      BivariateFamily::VINE_CANDIDATES,
+      "InsufficientData",
+    ),
+    (with(grid(40), 1.5), gumbel, "MarginalOutOfRange"),
+    (
+      with(grid(40), f64::NAN),
+      BivariateFamily::VINE_CANDIDATES,
+      "MarginalOutOfRange",
+    ),
+    (constant(grid(40)), gumbel, "Unsupported"),
+    (
+      constant(grid(40)),
+      BivariateFamily::VINE_CANDIDATES,
+      "InvalidStructure",
+    ),
+  ];
+  let name = |e: CopulaError| match e {
+    CopulaError::InvalidStructure(_) => "InvalidStructure",
+    CopulaError::InsufficientData { .. } => "InsufficientData",
+    CopulaError::MarginalOutOfRange => "MarginalOutOfRange",
+    CopulaError::Unsupported(_) => "Unsupported",
+    other => panic!("{other:?}"),
+  };
+  for (u, families, want) in cases {
+    for structure in [VineStructure::DVine, VineStructure::CVine] {
+      let got = fit_vine(u.view(), structure, families, SelectionCriterion::Aic).unwrap_err();
+      assert_eq!(name(got), want, "{structure:?} {families:?}");
+    }
+    if families == BivariateFamily::VINE_CANDIDATES {
+      let fits = [
+        DVine::independence(3).unwrap().fit(u.view()),
+        CVine::independence(3).unwrap().fit(u.view()),
+        RVine::independence(3).unwrap().fit(u.view()),
+      ];
+      for got in fits {
+        assert_eq!(name(got.unwrap_err()), want);
+      }
+    }
+  }
 }

@@ -74,24 +74,38 @@ pub fn kendall_tau(data: ArrayView2<f64>) -> Result<Array2<f64>, CopulaError> {
 /// `InvalidStructure` naming the columns of the τ-b matrix `tau` whose entries with every other column are NaN (a constant
 /// or NaN column): the fits that invert τ need every column to vary.
 pub(crate) fn check_defined(tau: ArrayView2<f64>) -> Result<(), CopulaError> {
+  match undefined_columns(tau) {
+    Some(columns) => Err(undefined_tau_b(&columns, "")),
+    None => Ok(()),
+  }
+}
+
+/// The columns `check_defined` names: those NaN against every other column, else the first NaN pair; `None` when all are defined.
+pub(crate) fn undefined_columns(tau: ArrayView2<f64>) -> Option<Vec<usize>> {
   let d = tau.nrows();
-  let Some(((i, j), _)) = tau.indexed_iter().find(|(_, t)| t.is_nan()) else {
-    return Ok(());
-  };
-  let mut culprits: Vec<usize> = (0..d)
+  let ((i, j), _) = tau.indexed_iter().find(|(_, t)| t.is_nan())?;
+  let culprits: Vec<usize> = (0..d)
     .filter(|&c| (0..d).filter(|&r| r != c).all(|r| tau[[r, c]].is_nan()))
     .collect();
-  if culprits.is_empty() {
-    culprits = vec![i, j];
-  }
-  Err(CopulaError::InvalidStructure(match culprits.as_slice() {
+  Some(if culprits.is_empty() {
+    vec![i, j]
+  } else {
+    culprits
+  })
+}
+
+/// The `InvalidStructure` of `check_defined` for the data columns `columns`, `given` qualifying them.
+pub(crate) fn undefined_tau_b(columns: &[usize], given: &str) -> CopulaError {
+  CopulaError::InvalidStructure(match columns {
     [column] => {
-      format!("Kendall's tau-b is undefined for column {column}: it is constant or holds a NaN")
+      format!(
+        "Kendall's tau-b is undefined for column {column}{given}: it is constant or holds a NaN"
+      )
     }
     columns => format!(
-      "Kendall's tau-b is undefined for columns {columns:?}: at least one of them is constant or holds a NaN"
+      "Kendall's tau-b is undefined for columns {columns:?}{given}: at least one of them is constant or holds a NaN"
     ),
-  }))
+  })
 }
 
 /// Convert a Kendall tau to a Gaussian-copula linear correlation:

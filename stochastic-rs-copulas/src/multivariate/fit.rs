@@ -23,6 +23,8 @@ use crate::bivariate::t_copula::TCopula;
 use crate::correlation::check_defined;
 use crate::correlation::kendall_tau;
 use crate::correlation::kendall_tau_b;
+use crate::correlation::undefined_columns;
+use crate::correlation::undefined_tau_b;
 use crate::error::CopulaError;
 use crate::optim::SQRT_MACHEPS;
 use crate::optim::localmin;
@@ -87,15 +89,15 @@ pub struct VineFit {
 
 /// Kendall's τ-b of two pseudo-observation columns.
 fn tau_of(u: &[f64], v: &[f64]) -> f64 {
-  kendall_tau_b(ArrayView1::from(u), ArrayView1::from(v)).expect("fit_vine checked n >= 10")
+  kendall_tau_b(ArrayView1::from(u), ArrayView1::from(v)).expect("check_vine_data checked n >= 10")
 }
 
 fn log_likelihood(pair: &PairCopula, u: &[f64], v: &[f64]) -> f64 {
   u.iter().zip(v).map(|(&a, &b)| pair.log_density(a, b)).sum()
 }
 
-/// Estimates `family` on the pair `(u, v)` by maximum likelihood; `None` when it has no estimator or its Kendall start
-/// cannot represent the observed dependence (e.g. Clayton at negative τ).
+/// Estimates `family` on the pair `(u, v)` by maximum likelihood; `None` when its Kendall start cannot represent the
+/// dependence (e.g. Clayton at negative τ) or has no finite likelihood, and for a Student t whose ν̂ exceeds 30.
 fn estimate(family: BivariateFamily, u: &[f64], v: &[f64]) -> Option<PairCopula> {
   let tau = tau_of(u, v).clamp(-0.99, 0.99);
   match family {
@@ -152,7 +154,8 @@ fn estimate(family: BivariateFamily, u: &[f64], v: &[f64]) -> Option<PairCopula>
   }
 }
 
-/// The τ the family reaches inside its θ bounds, cut to `|τ| ≤ 0.99` like every Kendall start.
+/// The τ the family reaches inside its θ bounds: `localmin` never evaluates the ends, and a τ past what `theta_from_tau`
+/// resolves scores `+∞`.
 fn tau_range(copula: &impl BivariateExt) -> (f64, f64) {
   let (lo, hi) = copula.theta_bounds();
   let reach = |theta: f64| {
@@ -162,7 +165,7 @@ fn tau_range(copula: &impl BivariateExt) -> (f64, f64) {
       theta.signum()
     }
   };
-  (reach(lo).max(-0.99), reach(hi).min(0.99))
+  (reach(lo), reach(hi))
 }
 
 /// The minimised `−ll`, `+∞` where the likelihood is not finite, which `localmin` then steps away from.
@@ -215,14 +218,19 @@ fn student_t(u: &[f64], v: &[f64]) -> Option<PairCopula> {
     };
     localmin(lo, hi, SQRT_MACHEPS, SQRT_MACHEPS, nll)
   };
-  let (nu, _) = localmin(2.0, 50.0, 1e-3, 1e-3, |nu| profile(nu).1);
-  if nu > 30.0 {
+  // `localmin` returns the latest of its least values, which `inner` keeps the same way.
+  let mut inner = (f64::NAN, f64::INFINITY);
+  let (nu, value) = localmin(2.0, 50.0, 1e-3, 1e-3, |nu| {
+    let (tau, value) = profile(nu);
+    if value <= inner.1 {
+      inner = (tau, value);
+    }
+    value
+  });
+  if nu > 30.0 || !value.is_finite() {
     return None;
   }
-  let (tau, value) = profile(nu);
-  if !value.is_finite() {
-    return None;
-  }
+  let tau = inner.0;
   Some(PairCopula::StudentT {
     rho: copula.theta_from_tau(tau).ok()?,
     nu,
@@ -492,12 +500,13 @@ fn next_root(values: &[(usize, Vec<f64>)], given: &[usize]) -> Result<usize, Cop
       .assign(&ArrayView1::from(col.as_slice()));
   }
   let tau = kendall_tau(pseudo.view())?;
-  check_defined(tau.view()).map_err(|_| {
-    let columns: Vec<usize> = values.iter().map(|(j, _)| *j).collect();
-    CopulaError::InvalidStructure(format!(
-      "Kendall's tau-b is undefined among columns {columns:?} given columns {given:?}: one of them is constant or NaN given those"
-    ))
-  })?;
+  if let Some(culprits) = undefined_columns(tau.view()) {
+    let columns: Vec<usize> = culprits.iter().map(|&c| values[c].0).collect();
+    return Err(undefined_tau_b(
+      &columns,
+      &format!(" given columns {given:?}"),
+    ));
+  }
   Ok(strongest(tau.view()))
 }
 
