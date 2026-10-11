@@ -2,6 +2,7 @@
 //! Backs the BB1 / vine-fitting example on the copulas catalog page.
 
 use stochastic_rs::copulas::bivariate::bb1::Bb1;
+use stochastic_rs::copulas::gof::GofConfig;
 use stochastic_rs::copulas::gof::gof_cramer_von_mises;
 use stochastic_rs::copulas::gof::pseudo_observations;
 use stochastic_rs::copulas::multivariate::fit::PairFamily;
@@ -26,8 +27,17 @@ fn bb1_fit_gof_and_vine_selection() {
   assert!((fitted.theta.unwrap() - 0.8).abs() < 0.25 && (fitted.delta - 1.6).abs() < 0.25);
 
   // Parametric-bootstrap Cramér–von Mises test does not reject the true family.
-  let seed = Deterministic::new(7);
-  let gof = gof_cramer_von_mises(&fitted, uv.view(), 20, &seed, |c, x| c.fit(x)).unwrap();
+  let gof = gof_cramer_von_mises(
+    &fitted,
+    uv.view(),
+    GofConfig {
+      replications: 20,
+      alpha: 0.05,
+    },
+    &Deterministic::new(7),
+    |c, x| c.fit(x),
+  )
+  .unwrap();
   assert!(gof.p_value > 0.05, "p = {}", gof.p_value);
 
   // A two-column D-vine fit selects a family on the single edge by AIC.

@@ -429,19 +429,19 @@ pub fn fit_vine<'py>(
   Ok(out)
 }
 
-/// Parametric-bootstrap Cramér–von Mises goodness-of-fit test of a
-/// bivariate family on pseudo-observations `u`; returns
-/// `(statistic, p_value)`. `family` is one of `clayton`, `gumbel`, `frank`,
-/// `gaussian`, `bb1`, `bb7`; the copula is fitted to `u` first.
+/// Parametric-bootstrap Cramér–von Mises test of the `family` (`clayton`, `gumbel`, `frank`, `gaussian`, `bb1`, `bb7`) fitted
+/// to the pseudo-observations `u`; returns `(statistic, p_value)`, and `alpha` fixes the rejection the Rust result carries.
 #[pyfunction]
-#[pyo3(signature = (family, u, replications=200, seed=42))]
+#[pyo3(signature = (family, u, replications=200, seed=42, alpha=0.05))]
 pub fn copula_gof<'py>(
   py: Python<'py>,
   family: &str,
   u: PyReadonlyArray2<'py, f64>,
   replications: usize,
   seed: u64,
+  alpha: f64,
 ) -> PyResult<(f64, f64)> {
+  use crate::gof::GofConfig;
   use crate::gof::gof_cramer_von_mises;
   let data = u.as_array().to_owned();
   macro_rules! run {
@@ -452,7 +452,10 @@ pub fn copula_gof<'py>(
         gof_cramer_von_mises(
           &copula,
           data.view(),
-          replications,
+          GofConfig {
+            replications,
+            alpha,
+          },
           &Deterministic::new(seed),
           |c, x| c.fit(x),
         )

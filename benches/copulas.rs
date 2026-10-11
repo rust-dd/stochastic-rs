@@ -17,6 +17,7 @@ use stochastic_rs::copulas::bivariate::marshall_olkin::MarshallOlkin;
 use stochastic_rs::copulas::bivariate::plackett::Plackett;
 use stochastic_rs::copulas::bivariate::t_copula::TCopula;
 use stochastic_rs::copulas::correlation::kendall_tau;
+use stochastic_rs::copulas::gof::GofConfig;
 use stochastic_rs::copulas::gof::gof_cramer_von_mises;
 use stochastic_rs::copulas::gof::pseudo_observations;
 use stochastic_rs::copulas::multivariate::dvine::DVine;
@@ -206,7 +207,10 @@ fn gof(c: &mut Criterion) {
       gof_cramer_von_mises(
         &fitted,
         pairs.view(),
-        10,
+        GofConfig {
+          replications: 10,
+          alpha: 0.05,
+        },
         &Deterministic::new(100),
         |c, x| c.fit(x),
       )

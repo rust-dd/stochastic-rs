@@ -19,7 +19,9 @@ fn a_stats_and_a_copula_result_answer_through_one_trait() {
     statistic: 0.042,
     p_value: 0.31,
     replications: 200,
+    alpha: 0.05,
+    rejects_null: false,
   };
   assert_eq!(answers(&jb), (7.5, Some(true)));
-  assert_eq!(answers(&gof), (0.042, None));
+  assert_eq!(answers(&gof), (0.042, Some(false)));
 }
