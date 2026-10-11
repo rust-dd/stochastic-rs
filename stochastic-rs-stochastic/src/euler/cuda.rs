@@ -135,8 +135,8 @@ fn paths_config(paths: u32) -> LaunchConfig {
   }
 }
 
-/// The `float` / `double` kernel: the launch header around the body the
-/// Metal back-end renders too ([`super::kernel`]).
+/// The `float` / `double` kernel: the launch header around the C frame body
+/// in [`super::kernel`].
 const CUDA_HEADER: &str = r#"extern "C" __global__ void euler_paths_REAL(
     REAL* __restrict__ out,
     const REAL* __restrict__ params,

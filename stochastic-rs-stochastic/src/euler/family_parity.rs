@@ -25,6 +25,9 @@ use stochastic_rs_distributions::uniform::SimdUniform;
 use super::*;
 use crate::traits::PathSampler;
 
+#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+mod migration;
+
 /// Points per probe path. Long enough for a wrong step to diverge visibly,
 /// short enough that launching every family stays quick.
 const N: usize = 64;

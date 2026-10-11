@@ -12,12 +12,14 @@ bash scripts/build-metal-kernels.sh
 bash scripts/build-metal-kernels.sh --check
 ```
 
-Commit kernel source, the manifest, library and source checksums together.
+Commit kernel source, generated bindings, manifest, library and source checksums together.
 The checksums include workspace dependencies and the lockfile; regenerate after updates.
-Generation uses explicit fast math to match the existing Metal pipeline.
+Generation selects fast math and records the numerical mode in the artifact.
 The runtime validates the library digest, ABI and device requirements when loading.
 Run the stochastic crate's Metal tests on hardware after regeneration.
 
-The fGN pipeline is implemented here. Sheet and Euler kernels still use the
-native Metal backend until their migration. The Metal backend targets Apple Silicon
-with macOS 15 or newer.
+The fGN, sheet and Euler pipelines use these Rust kernels. Euler family formulas
+are shared with the host and CUDA generator. After adding a family, regenerate
+its entry names with `python3 scripts/generate-euler-kernels.py`; a family gets
+one entry per jump/gamma shape that changes the draws it reads.
+The Metal backend targets Apple Silicon with macOS 15 or newer.

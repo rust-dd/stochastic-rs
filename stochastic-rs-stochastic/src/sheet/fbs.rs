@@ -386,6 +386,7 @@ pub(crate) struct SheetLaunch<'a, F> {
 ))]
 impl<T: FloatExt, S: SeedExt, B> Fbs<T, S, B> {
   /// The embedding's cells: `2(m − 1) · 2(n − 1)`.
+  #[cfg(feature = "cuda")]
   pub(crate) fn cells(&self) -> usize {
     4 * (self.m - 1) * (self.n - 1)
   }

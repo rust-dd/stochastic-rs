@@ -18,7 +18,7 @@
 //!   Euler–Maruyama recursion in the kernel and Box–Muller normals from a
 //!   counter hash of `(path, step, seed)`: `Cuda` (feature `cuda`: cudarc +
 //!   NVRTC, `f32` or `f64` after `T`) and `Metal` (feature `metal`:
-//!   hand-written MSL, `f32`).
+//!   Rust device kernels compiled by metal-oxide, `f32`).
 //!   `sample_par` is one launch for all `m` paths; `sample` launches one path.
 //!
 //! The device seed is drawn from the process's own seed source, so the same
@@ -2187,13 +2187,16 @@ pub(crate) fn launch_scalars(
   increments: u32,
 ) -> Result<(u32, u32, u32), DeviceError> {
   use crate::device::launch_len;
-  launch_len::<u32>(first + m, "first_path + paths")?;
-  launch_len::<u32>(m * increments as usize, "paths * increments")?;
-  Ok((
-    launch_len(n, "steps")?,
-    launch_len(m, "paths")?,
-    launch_len(first, "first_path")?,
-  ))
+  let steps = launch_len::<u32>(n, "steps")?;
+  let paths = launch_len::<u32>(m, "paths")?;
+  let first_path = launch_len::<u32>(first, "first_path")?;
+  first_path.checked_add(paths).ok_or_else(|| {
+    DeviceError::Launch("first_path + paths exceeds the kernel index range".into())
+  })?;
+  paths.checked_mul(increments).ok_or_else(|| {
+    DeviceError::Launch("paths * increments exceeds the kernel index range".into())
+  })?;
+  Ok((steps, paths, first_path))
 }
 
 /// How a backend handle produces Euler paths for the processes it serves:
@@ -3039,21 +3042,8 @@ try_sample_matrix!(Cir);
 #[cfg(feature = "cuda")]
 #[doc(hidden)]
 pub mod cuda;
-// The generated C artifacts have no consumer until `cuda` or `metal` renders
-// a kernel from them; the declarations, the family codes and the host step
-// stay compiled either way, so a family is checked without a GPU.
-#[cfg_attr(
-  not(any(
-    feature = "cuda",
-    all(feature = "metal", target_os = "macos", target_arch = "aarch64")
-  )),
-  allow(dead_code)
-)]
 pub(crate) mod families;
-#[cfg(any(
-  feature = "cuda",
-  all(feature = "metal", target_os = "macos", target_arch = "aarch64")
-))]
+#[cfg(any(feature = "cuda", test))]
 pub(crate) mod kernel;
 #[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
 #[doc(hidden)]

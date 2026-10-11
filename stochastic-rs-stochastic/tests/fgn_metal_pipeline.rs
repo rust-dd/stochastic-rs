@@ -1,26 +1,6 @@
-//! What the Metal fGN pipeline is held to now that it is no longer held to
-//! the bytes of the pipeline it replaced.
-//!
-//! Three things can break silently and none of them shows up in a per-path
-//! marginal. **The cut**: the low butterfly stages run inside a threadgroup
-//! tile and the ones above it run two to a dispatch, and where the boundary
-//! falls depends on the transform length and on how wide a threadgroup the
-//! compiled kernel admits — a wrong index in either path still yields
-//! plausible Gaussian numbers and destroys only the autocovariance. **The
-//! pair**: one transform serves two rows, its real and imaginary halves,
-//! which are two independent fGn paths only because the input noise is
-//! proper complex; get a factor wrong and the two rows are correlated with
-//! the right marginal law, which every per-path check passes. **The
-//! chunking**: rows pair up, so a batch cut at an odd row has to compute the
-//! transform in front of it and drop the half it does not own.
-//!
-//! Everything here is checked in `f32`, which is what the pipeline computes
-//! in, and against the closed form rather than against a previous
-//! implementation.
-//!
-//! Reference: Davies & Harte (1987), "Tests for Hurst effect",
-//! DOI: 10.1093/biomet/74.1.95; Dietrich & Newsam (1997), SIAM J. Sci.
-//! Comput. 18(4), DOI: 10.1137/S1064827592240555.
+//! Independent fGN laws and direct-transform references supplement the recorded bit fixtures.
+//! Davies & Harte (1987), DOI: 10.1093/biomet/74.1.95;
+//! Dietrich & Newsam (1997), DOI: 10.1137/S1064827592240555.
 
 #![cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
 
@@ -221,23 +201,8 @@ fn reference_entry(
   (xr * scale, xi * scale)
 }
 
-/// The whole pipeline against the definition it implements.
-///
-/// This is the test that replaces bit-identity, and the reason it has to
-/// exist is worth stating: a statistic cannot tell a correct realisation from
-/// a plausible wrong one. Measured on this pipeline, a transform value
-/// exported from the wrong position of the same transform, and a twiddle
-/// whose phase advances at the wrong rate, both leave the variance, the
-/// autocorrelation at every lag and the self-similar scaling of block sums
-/// inside their sampling error — the circulant transform is stationary in its
-/// own index, so a great many wrong answers still have the right law. What
-/// separates them is recomputing the definition and comparing entry against
-/// entry.
-///
-/// The positions are chosen where an index error surfaces: the two ends of
-/// the row, and the quarter boundaries, which is where the radix-4 read-out's
-/// four exported positions meet. The device works in `f32` through the whole
-/// transform, so the agreement asked for is relative to the batch's scale.
+/// Direct sums detect transform-index errors that can preserve covariance.
+/// Endpoints and quarter boundaries exercise the readout's index mapping.
 #[test]
 fn the_device_rows_are_the_transform_they_claim_to_be() {
   for (n, m) in [

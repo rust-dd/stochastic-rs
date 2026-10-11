@@ -9,13 +9,17 @@ struct Chunk {
 }
 
 pub(crate) fn index_rows(rows: usize, streams: usize, n: usize) -> usize {
-  crate::device::rows_within_index_limit(rows, streams * 2 * n, u32::MAX as usize)
+  crate::device::rows_within_index_limit(
+    rows,
+    streams.saturating_mul(2).saturating_mul(n),
+    u32::MAX as usize,
+  )
 }
 
 fn chunks(fgn_n: usize, out_size: usize, m: usize, device: &crate::device::Metal) -> Vec<Chunk> {
   let budget = device
     .batch_budget
-    .min(crate::euler::metal::working_set(device.ordinal));
+    .min(crate::device::metal::working_set(device.ordinal));
   let rows = index_rows(
     crate::device::chunk_rows(budget, 2 * fgn_n + out_size, 4),
     1,
@@ -60,14 +64,14 @@ impl<S: SeedExt, B> Fgn<f32, S, B> {
     f: impl Fn(ndarray::ArrayView1<f32>) -> R + Sync,
   ) -> Result<Vec<R>> {
     use rayon::prelude::*;
-    let out_size = (self.padded_n - self.offset).max(1);
+    let out_size = self.padded_n - self.offset;
     let mut out = Vec::with_capacity(m);
-    self.over_metal_chunks(m, seed_src, device, |_, rows| {
-      out.par_extend(
-        rows
-          .par_chunks(out_size)
-          .map(|row| f(ndarray::ArrayView1::from(row))),
-      );
+    self.over_metal_chunks(m, seed_src, device, |chunk, rows| {
+      out.par_extend((0..chunk.len).into_par_iter().map(|row| {
+        f(ndarray::ArrayView1::from(
+          &rows[row * out_size..(row + 1) * out_size],
+        ))
+      }));
       Ok(())
     })?;
     Ok(out)

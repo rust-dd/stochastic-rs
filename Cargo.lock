@@ -510,16 +510,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "core-foundation"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2a6cd9ae233e7f62ba4e9353e81a88df7fc8a5987b8d445b4d90c879bd156f6"
-dependencies = [
- "core-foundation-sys",
- "libc",
-]
-
-[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -532,18 +522,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "45390e6114f68f718cc7a830514a96f903cccd70d02a8f6d9f643ac4ba45afaf"
 dependencies = [
  "bitflags 1.3.2",
- "core-foundation 0.9.4",
- "libc",
-]
-
-[[package]]
-name = "core-graphics-types"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d44a101f213f6c4cdc1853d4b78aef6db6bdfa3468798cc1d9912f4735013eb"
-dependencies = [
- "bitflags 2.13.1",
- "core-foundation 0.10.1",
+ "core-foundation",
  "libc",
 ]
 
@@ -1921,22 +1900,7 @@ checksum = "7ecfd3296f8c56b7c1f6fbac3c71cefa9d78ce009850c45000015f206dc7fa21"
 dependencies = [
  "bitflags 2.13.1",
  "block",
- "core-graphics-types 0.1.3",
- "foreign-types",
- "log",
- "objc",
- "paste",
-]
-
-[[package]]
-name = "metal"
-version = "0.33.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7047791b5bc903b8cd963014b355f71dc9864a9a0b727057676c1dcae5cbc15"
-dependencies = [
- "bitflags 2.13.1",
- "block",
- "core-graphics-types 0.2.0",
+ "core-graphics-types",
  "foreign-types",
  "log",
  "objc",
@@ -1946,7 +1910,7 @@ dependencies = [
 [[package]]
 name = "metal-oxide"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=1297fe24b9ab0fdbbda4e9d9daade18ea04e9f92#1297fe24b9ab0fdbbda4e9d9daade18ea04e9f92"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=e49cbc6c598e47f759afd75e233946820fa567df#e49cbc6c598e47f759afd75e233946820fa567df"
 dependencies = [
  "block2",
  "dispatch2",
@@ -1960,7 +1924,7 @@ dependencies = [
 [[package]]
 name = "metal-oxide-artifact"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=1297fe24b9ab0fdbbda4e9d9daade18ea04e9f92#1297fe24b9ab0fdbbda4e9d9daade18ea04e9f92"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=e49cbc6c598e47f759afd75e233946820fa567df#e49cbc6c598e47f759afd75e233946820fa567df"
 dependencies = [
  "serde",
  "serde_json",
@@ -1970,7 +1934,7 @@ dependencies = [
 [[package]]
 name = "metal-oxide-device"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=1297fe24b9ab0fdbbda4e9d9daade18ea04e9f92#1297fe24b9ab0fdbbda4e9d9daade18ea04e9f92"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=e49cbc6c598e47f759afd75e233946820fa567df#e49cbc6c598e47f759afd75e233946820fa567df"
 dependencies = [
  "metal-oxide-macros",
 ]
@@ -1978,7 +1942,7 @@ dependencies = [
 [[package]]
 name = "metal-oxide-macros"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=1297fe24b9ab0fdbbda4e9d9daade18ea04e9f92#1297fe24b9ab0fdbbda4e9d9daade18ea04e9f92"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=e49cbc6c598e47f759afd75e233946820fa567df#e49cbc6c598e47f759afd75e233946820fa567df"
 
 [[package]]
 name = "minimal-lexical"
@@ -3543,15 +3507,12 @@ dependencies = [
  "faer-ext",
  "gauss-quad",
  "log",
- "metal 0.33.0",
  "metal-oxide",
  "ndarray",
  "ndrustfft",
  "num-complex",
  "num-traits",
  "numpy",
- "objc2",
- "objc2-metal",
  "parking_lot",
  "pyo3",
  "rand 0.10.3",
@@ -3918,7 +3879,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7adf545a99a086d362efc739e7cf4317c18cbeda22706000fd434d70ea3d95"
 dependencies = [
  "half",
- "metal 0.29.0",
+ "metal",
  "objc",
  "serde",
  "thiserror 1.0.69",

@@ -17,8 +17,8 @@ kernels = "../stochastic-rs-metal-kernels/Cargo.toml"
 
 [features]
 default = []
-cuda = ["dep:cudarc", "cudarc/cufft"]
-metal = ["dep:metal", "dep:metal-oxide", "dep:objc2", "dep:objc2-metal"]
+cuda = ["dep:cudarc", "cudarc/cufft", "dep:parking_lot"]
+metal = ["dep:metal-oxide"]
 accelerate = []
 python = ["dep:pyo3", "dep:numpy", "stochastic-rs-core/python", "stochastic-rs-distributions/python"]
 
@@ -33,7 +33,7 @@ ndrustfft = { workspace = true }
 num-complex = { workspace = true }
 num-traits = { workspace = true }
 numpy = { workspace = true, optional = true }
-parking_lot = { workspace = true }
+parking_lot = { workspace = true, optional = true }
 pyo3 = { workspace = true, optional = true }
 rand = { workspace = true }
 rayon = { workspace = true }
@@ -41,7 +41,4 @@ stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
 
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
-metal = { workspace = true, optional = true }
 metal-oxide = { workspace = true, optional = true }
-objc2 = { workspace = true, optional = true }
-objc2-metal = { workspace = true, optional = true }

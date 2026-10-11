@@ -32,6 +32,9 @@ use crate::traits::process::chunk_count;
 #[cfg(all(feature = "accelerate", target_os = "macos"))]
 use crate::traits::process::chunk_lens;
 
+#[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
+pub(crate) mod metal;
+
 /// CPU backend — the default `B` for every process.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Cpu;
@@ -88,6 +91,9 @@ impl Cuda {
 }
 
 /// Metal compute on Apple Silicon with macOS 15 or newer, supporting f32 simulation.
+///
+/// Each thread that samples on the device keeps its own command queue, kernel library
+/// and reusable buffers until the thread exits.
 #[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -156,7 +162,7 @@ pub struct Accelerate;
 pub enum DeviceError {
   /// No usable device behind the marker, or its runtime failed to initialise.
   Unavailable(String),
-  /// The kernel source did not compile for this device.
+  /// The kernel library did not compile or load for this device.
   Compile(String),
   /// A kernel launch, allocation or copy failed at run time.
   Launch(String),
@@ -469,7 +475,7 @@ impl Backend for Cuda {
 #[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
 impl Backend for Metal {
   fn probe(&self) -> Result<DeviceInfo, DeviceError> {
-    crate::euler::metal::probe(self.ordinal)
+    metal::probe(self.ordinal)
   }
 }
 

@@ -1,7 +1,8 @@
-//! Seeded native-Metal values and concurrent ownership at the sampling boundary.
+//! Recorded seeded Metal bits and concurrent ownership at the sampling boundary.
 
 #![cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier};
 
 use stochastic_rs_core::simd_rng::{Deterministic, SeedExt};
@@ -26,6 +27,26 @@ fn zero_step_samples_preserve_the_requested_row_count() {
       assert!(rows.iter().all(|row| row.is_empty()));
       expected_seed.next_seed();
       assert_eq!(process.seed().current(), expected_seed.current());
+
+      let calls = AtomicUsize::new(0);
+      let lengths = process.sample_map(count, |row| {
+        calls.fetch_add(1, Ordering::Relaxed);
+        row.len()
+      });
+      assert_eq!(lengths, vec![0; count]);
+      assert_eq!(calls.load(Ordering::Relaxed), count);
+      expected_seed.next_seed();
+      assert_eq!(process.seed().current(), expected_seed.current());
+
+      let calls = AtomicUsize::new(0);
+      let lengths = process.sample_map_view(count, |row| {
+        calls.fetch_add(1, Ordering::Relaxed);
+        row.len()
+      });
+      assert_eq!(lengths, vec![0; count]);
+      assert_eq!(calls.load(Ordering::Relaxed), count);
+      expected_seed.next_seed();
+      assert_eq!(process.seed().current(), expected_seed.current());
     }
   }
   let unavailable =
@@ -40,13 +61,12 @@ fn zero_step_samples_preserve_the_requested_row_count() {
 }
 
 #[test]
-fn seeded_rows_match_the_native_pipeline() {
+fn seeded_rows_match_the_recording() {
   let mut pins = include_str!("fixtures/metal_fgn.txt").lines();
   for n in [1, 2, 8, 100, 1024, 2048, 3000, 4096, 16384, 65536] {
     for h in [0.3_f32, 0.5, 0.7] {
       let process = Fgn::new(h, n, Some(2.5), Deterministic::new(37)).on::<Metal>();
       let rows = process.sample_par(3);
-      let rms = (2.5 / n as f32).powf(h);
       for (r, row) in rows.iter().enumerate() {
         for j in [0, n / 2, n - 1] {
           let fields = pins.next().unwrap().split_whitespace().collect::<Vec<_>>();
@@ -54,11 +74,11 @@ fn seeded_rows_match_the_native_pipeline() {
           assert_eq!(fields[1].parse::<f32>().unwrap(), h);
           assert_eq!(fields[2].parse::<usize>().unwrap(), r);
           assert_eq!(fields[3].parse::<usize>().unwrap(), j);
-          let want = f32::from_bits(fields[4].parse().unwrap());
-          let got = row[j];
-          assert!(
-            (got - want).abs() < 3e-6 * rms,
-            "n={n}, h={h}, row={r}, j={j}: {got} != {want}"
+          let want = fields[4].parse::<u32>().unwrap();
+          let got = row[j].to_bits();
+          assert_eq!(
+            got, want,
+            "n={n}, h={h}, row={r}, j={j}: {got:08x} != {want:08x}"
           );
         }
       }

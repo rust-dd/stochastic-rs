@@ -1,33 +1,80 @@
-use metal::Device;
+use std::cell::RefCell;
+use std::rc::Rc;
 
-use super::{context, *};
+use metal_oxide::Buffer;
 
-static OUT_POOL: Mutex<Vec<Buffer>> = Mutex::new(Vec::new());
+use super::{Launch, Result, context};
+use crate::device::metal::{Context as DeviceContext, device_error};
 
-fn take_out_buffer(dev: &Device, bytes: u64) -> Result<Buffer> {
-  let mut pool = OUT_POOL.lock();
-  match pool
-    .iter()
-    .position(|b| b.length() >= bytes && b.device().registry_id() == dev.registry_id())
-  {
-    Some(i) => Ok(pool.remove(i)),
-    None => shared_buffer(dev, bytes),
+struct Output {
+  context: Rc<DeviceContext>,
+  buffer: Buffer<f32>,
+}
+
+thread_local! {
+  static OUT_POOL: RefCell<Vec<Output>> = const { RefCell::new(Vec::new()) };
+}
+
+pub(crate) struct OutputRental(Option<Output>);
+
+impl OutputRental {
+  fn new(context: Rc<DeviceContext>, len: usize) -> Result<Self> {
+    let cached = OUT_POOL.with_borrow_mut(|pool| {
+      pool
+        .iter()
+        .position(|out| out.buffer.len() >= len && Rc::ptr_eq(&out.context, &context))
+        .map(|index| pool.remove(index))
+    });
+    let output = match cached {
+      Some(output) => output,
+      None => Output {
+        buffer: context
+          .device
+          .buffer_zeroed::<f32>(len)
+          .map_err(device_error)?,
+        context,
+      },
+    };
+    Ok(Self(Some(output)))
+  }
+
+  pub(crate) fn as_buffer(&self) -> &Buffer<f32> {
+    &self.0.as_ref().unwrap().buffer
+  }
+
+  fn as_mut_buffer(&mut self) -> &mut Buffer<f32> {
+    &mut self.0.as_mut().unwrap().buffer
   }
 }
 
-fn return_out_buffer(buf: Buffer) {
-  let mut pool = OUT_POOL.lock();
-  let at = pool
-    .iter()
-    .position(|b| b.length() < buf.length())
-    .unwrap_or(pool.len());
-  pool.insert(at, buf);
-  pool.truncate(crate::device::CACHE_SLOTS);
+impl Drop for OutputRental {
+  fn drop(&mut self) {
+    let Some(output) = self.0.take() else {
+      return;
+    };
+    // A rental may outlive the pool during thread-local destruction.
+    let _ = OUT_POOL.try_with(|pool| {
+      let Ok(mut pool) = pool.try_borrow_mut() else {
+        return;
+      };
+      let index = pool
+        .iter()
+        .position(|cached| cached.buffer.len() < output.buffer.len())
+        .unwrap_or(pool.len());
+      pool.insert(index, output);
+      pool.truncate(crate::device::CACHE_SLOTS);
+    });
+  }
 }
 
-std::thread_local! {
-  // Every caller finishes consuming the buffer before requesting another on this thread.
-  static LENT: std::cell::RefCell<Option<Buffer>> = const { std::cell::RefCell::new(None) };
+fn sample(launch: Launch<'_>) -> Result<(OutputRental, usize)> {
+  let len = launch.out_len()?;
+  let common = context::with(launch.ordinal, |ctx| Ok(Rc::clone(&ctx.common)))?;
+  let mut output = OutputRental::new(common, len)?;
+  let out_size = context::with(launch.ordinal, |ctx| {
+    ctx.run(launch, output.as_mut_buffer())
+  })?;
+  Ok((output, out_size))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -41,8 +88,8 @@ pub(crate) fn sample_f32_buffer(
   seed: u32,
   first_cell: u64,
   ordinal: usize,
-) -> Result<(Buffer, usize)> {
-  let launch = Launch {
+) -> Result<(OutputRental, usize)> {
+  sample(Launch {
     sqrt_eigs,
     n,
     m,
@@ -52,29 +99,13 @@ pub(crate) fn sample_f32_buffer(
     seed,
     first_cell,
     ordinal,
-  };
-  let dev = context::with(ordinal, |ctx| Ok(ctx.native.clone()))?;
-  if let Some(done) = LENT.with_borrow_mut(Option::take) {
-    return_out_buffer(done);
-  }
-  let out = take_out_buffer(&dev, (launch.out_len() * 4) as u64)?;
-  let out_size = context::with(ordinal, |ctx| ctx.run(launch, &out))?;
-  LENT.with_borrow_mut(|slot| *slot = Some(out.clone()));
-  Ok((out, out_size))
+  })
 }
 
 pub(super) fn with_f32_rows<R>(
   launch: Launch<'_>,
   consume: impl FnOnce(&[f32]) -> Result<R>,
 ) -> Result<R> {
-  let dev = context::with(launch.ordinal, |ctx| Ok(ctx.native.clone()))?;
-  let len = launch.out_len();
-  let out = take_out_buffer(&dev, (len * 4) as u64)?;
-  let result = context::with(launch.ordinal, |ctx| ctx.run(launch, &out)).and_then(|_| {
-    // SAFETY: shared storage the launch has finished writing into, of at
-    // least `len` floats by construction, and held by nobody else.
-    consume(unsafe { std::slice::from_raw_parts(out.contents() as *const f32, len) })
-  });
-  return_out_buffer(out);
-  result
+  let (output, size) = sample(launch)?;
+  consume(&output.as_buffer().as_slice()[..launch.m * size])
 }
