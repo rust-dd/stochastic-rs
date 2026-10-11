@@ -63,6 +63,12 @@ impl GaussianUnivariate {
     if n < 2 {
       return Err(CopulaError::InsufficientData { needed: 2, got: n });
     }
+    if column.iter().all(|&x| x == column[0]) {
+      return Err(CopulaError::InvalidStructure(format!(
+        "a Gaussian margin needs a positive variance, got {n} equal values {:?}",
+        column[0]
+      )));
+    }
     let mu = column.sum() / n as f64;
     let var = column.iter().map(|&x| (x - mu).powi(2)).sum::<f64>() / (n as f64 - 1.0);
     if !(var > 0.0 && var.is_finite()) {
@@ -160,10 +166,20 @@ mod tests {
       GaussianUnivariate::fit(array![1.0].view()).unwrap_err(),
       CopulaError::InsufficientData { needed: 2, got: 1 }
     );
-    assert!(matches!(
-      GaussianUnivariate::fit(array![2.0, 2.0, 2.0].view()),
-      Err(CopulaError::InvalidStructure(_))
-    ));
+    for (value, n) in [
+      (2.0, 3),
+      (0.1, 3),
+      (0.7, 7),
+      (0.1, 50),
+      (1.0 / 3.0, 10),
+      (123456.789, 10),
+    ] {
+      let got = GaussianUnivariate::fit(Array1::from_elem(n, value).view());
+      assert!(
+        matches!(got, Err(CopulaError::InvalidStructure(_))),
+        "{n} x {value}: {got:?}"
+      );
+    }
     let g = GaussianUnivariate::fit(array![1.0, 2.0, 3.0, 4.0, 5.0].view()).unwrap();
     assert_eq!((g.mu(), g.sigma()), (3.0, 2.5_f64.sqrt()));
     assert!((g.cdf(3.0) - 0.5).abs() < 1e-12 && (g.percent_point(0.5) - 3.0).abs() < 1e-12);
