@@ -139,9 +139,11 @@ let batch = Fgn::<f32, _>::new(0.7, 65_536, None, Unseeded)
   .sample_par(1024); // 1024 paths in one launch
 ```
 
-### `metal` — Apple GPUs (macOS)
+### `metal` — Apple Silicon (macOS 15+)
 
-The [`metal`](https://crates.io/crates/metal) crate, on Apple Silicon and Intel Macs. Apple GPUs have no `f64`, so the `Metal` backend is `f32` only.
+Requires Apple Silicon with macOS 15 or newer. The `Metal` backend is `f32` only.
+The fGN kernels use [metal-oxide](https://github.com/rust-dd/metal-oxide) and ship
+precompiled, so normal builds need neither nightly Rust nor the Metal compiler.
 
 ```bash
 cargo build --features metal

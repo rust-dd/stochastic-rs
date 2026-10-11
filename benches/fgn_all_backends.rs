@@ -1,4 +1,9 @@
-#[cfg(all(feature = "metal", feature = "accelerate", target_os = "macos"))]
+#[cfg(all(
+  feature = "metal",
+  feature = "accelerate",
+  target_os = "macos",
+  target_arch = "aarch64"
+))]
 mod gated {
   use std::hint::black_box;
   use std::time::Duration;
@@ -126,8 +131,18 @@ mod gated {
   criterion_group!(benches, bench_single, bench_batch, bench_batch_large);
 }
 
-#[cfg(all(feature = "metal", feature = "accelerate", target_os = "macos"))]
+#[cfg(all(
+  feature = "metal",
+  feature = "accelerate",
+  target_os = "macos",
+  target_arch = "aarch64"
+))]
 criterion::criterion_main!(gated::benches);
 
-#[cfg(not(all(feature = "metal", feature = "accelerate", target_os = "macos")))]
+#[cfg(not(all(
+  feature = "metal",
+  feature = "accelerate",
+  target_os = "macos",
+  target_arch = "aarch64"
+)))]
 fn main() {}

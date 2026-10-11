@@ -185,7 +185,10 @@ fn device_seed_follows_the_seed_source() {
 /// deterministic in its seed; the device kernels share one integer hash for
 /// their uniforms, so two device back-ends agree seed for seed up to the
 /// `f32` libm rounding of Box–Muller.
-#[cfg(any(all(feature = "metal", target_os = "macos"), feature = "cuda"))]
+#[cfg(any(
+  all(feature = "metal", target_os = "macos", target_arch = "aarch64"),
+  feature = "cuda"
+))]
 mod devices {
   use ndarray::Array2;
 
@@ -280,7 +283,7 @@ mod devices {
     assert!(paths.iter().all(|&x| x >= 0.0), "{label}");
   }
 
-  #[cfg(all(feature = "metal", target_os = "macos"))]
+  #[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
   #[test]
   fn metal_native_chunks_are_bit_identical_to_one_launch() {
     use crate::device::Metal;
@@ -307,7 +310,7 @@ mod devices {
   /// launch has to advance itself, and a two-stream launch has to advance it
   /// by `streams` rows a path. Both are places a batch can silently repeat or
   /// overlap its own noise, which no statistic of a single batch reveals.
-  #[cfg(all(feature = "metal", target_os = "macos"))]
+  #[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
   #[test]
   fn metal_fractional_chunks_are_bit_identical_to_one_launch() {
     use stochastic_rs_core::simd_rng::Deterministic;
@@ -431,7 +434,7 @@ mod devices {
 
   /// Metal indexes in `uint`, so no launch passes that range: a plane of values, or the `2n`-point
   /// fGN rows that bind a correlated pair before its planes do. Rows that already fit are kept.
-  #[cfg(all(feature = "metal", target_os = "macos"))]
+  #[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
   #[test]
   fn metal_index_rows_stop_at_the_uint_range() {
     use crate::device::Metal;
@@ -477,7 +480,7 @@ mod devices {
 
   /// A refused Metal allocation (a nil buffer) is the out-of-memory error the batch loops halve on,
   /// reported without dropping the nil handle; a real buffer passes.
-  #[cfg(all(feature = "metal", target_os = "macos"))]
+  #[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
   #[test]
   fn metal_refused_allocation_is_out_of_memory() {
     use ::metal::MTLResourceOptions;
@@ -494,7 +497,7 @@ mod devices {
     assert!(granted.length() >= 64);
   }
 
-  #[cfg(all(feature = "metal", target_os = "macos"))]
+  #[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
   #[test]
   fn metal_native_matrix_matches_the_rows_and_chunks() {
     use crate::device::Metal;
@@ -513,7 +516,7 @@ mod devices {
     assert_eq!(chunked, matrix);
   }
 
-  #[cfg(all(feature = "metal", target_os = "macos"))]
+  #[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
   #[test]
   fn metal_native_probe_and_try_sample_par() {
     let info = crate::device::Metal::default()
@@ -529,7 +532,7 @@ mod devices {
     assert_eq!(paths.len(), 5);
   }
 
-  #[cfg(all(feature = "metal", target_os = "macos"))]
+  #[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
   #[test]
   fn metal_native_backend_matches_the_moments() {
     gbm_moments_hold::<f32, crate::device::Metal>("Metal");

@@ -1,0 +1,637 @@
+{
+  "abi": {
+    "version": 4,
+    "math_mode": "fast",
+    "required_features": [
+      "dynamic_threadgroup_memory"
+    ],
+    "kernels": [
+      {
+        "name": "fft_radix4",
+        "parameters": [
+          {
+            "name": "real",
+            "binding": 0,
+            "ty": {
+              "kind": "buffer",
+              "element": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "f32"
+                }
+              },
+              "stride": 4,
+              "access": "read_write"
+            }
+          },
+          {
+            "name": "imag",
+            "binding": 1,
+            "ty": {
+              "kind": "buffer",
+              "element": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "f32"
+                }
+              },
+              "stride": 4,
+              "access": "read_write"
+            }
+          },
+          {
+            "name": "n",
+            "binding": 2,
+            "ty": {
+              "kind": "value",
+              "layout": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "u32"
+                }
+              }
+            }
+          },
+          {
+            "name": "stage",
+            "binding": 3,
+            "ty": {
+              "kind": "value",
+              "layout": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "u32"
+                }
+              }
+            }
+          },
+          {
+            "name": "quads",
+            "binding": 4,
+            "ty": {
+              "kind": "value",
+              "layout": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "u32"
+                }
+              }
+            }
+          }
+        ],
+        "required_block": null
+      },
+      {
+        "name": "fft_radix4_extract",
+        "parameters": [
+          {
+            "name": "real",
+            "binding": 0,
+            "ty": {
+              "kind": "buffer",
+              "element": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "f32"
+                }
+              },
+              "stride": 4,
+              "access": "read"
+            }
+          },
+          {
+            "name": "imag",
+            "binding": 1,
+            "ty": {
+              "kind": "buffer",
+              "element": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "f32"
+                }
+              },
+              "stride": 4,
+              "access": "read"
+            }
+          },
+          {
+            "name": "n",
+            "binding": 2,
+            "ty": {
+              "kind": "value",
+              "layout": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "u32"
+                }
+              }
+            }
+          },
+          {
+            "name": "output",
+            "binding": 3,
+            "ty": {
+              "kind": "buffer",
+              "element": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "f32"
+                }
+              },
+              "stride": 4,
+              "access": "write"
+            }
+          },
+          {
+            "name": "size",
+            "binding": 4,
+            "ty": {
+              "kind": "value",
+              "layout": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "u32"
+                }
+              }
+            }
+          },
+          {
+            "name": "scale",
+            "binding": 5,
+            "ty": {
+              "kind": "value",
+              "layout": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "f32"
+                }
+              }
+            }
+          },
+          {
+            "name": "rows",
+            "binding": 6,
+            "ty": {
+              "kind": "value",
+              "layout": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "u32"
+                }
+              }
+            }
+          },
+          {
+            "name": "parity",
+            "binding": 7,
+            "ty": {
+              "kind": "value",
+              "layout": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "u32"
+                }
+              }
+            }
+          },
+          {
+            "name": "quads",
+            "binding": 8,
+            "ty": {
+              "kind": "value",
+              "layout": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "u32"
+                }
+              }
+            }
+          }
+        ],
+        "required_block": null
+      },
+      {
+        "name": "fft_butterfly_extract",
+        "parameters": [
+          {
+            "name": "real",
+            "binding": 0,
+            "ty": {
+              "kind": "buffer",
+              "element": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "f32"
+                }
+              },
+              "stride": 4,
+              "access": "read"
+            }
+          },
+          {
+            "name": "imag",
+            "binding": 1,
+            "ty": {
+              "kind": "buffer",
+              "element": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "f32"
+                }
+              },
+              "stride": 4,
+              "access": "read"
+            }
+          },
+          {
+            "name": "n",
+            "binding": 2,
+            "ty": {
+              "kind": "value",
+              "layout": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "u32"
+                }
+              }
+            }
+          },
+          {
+            "name": "output",
+            "binding": 3,
+            "ty": {
+              "kind": "buffer",
+              "element": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "f32"
+                }
+              },
+              "stride": 4,
+              "access": "write"
+            }
+          },
+          {
+            "name": "size",
+            "binding": 4,
+            "ty": {
+              "kind": "value",
+              "layout": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "u32"
+                }
+              }
+            }
+          },
+          {
+            "name": "scale",
+            "binding": 5,
+            "ty": {
+              "kind": "value",
+              "layout": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "f32"
+                }
+              }
+            }
+          },
+          {
+            "name": "rows",
+            "binding": 6,
+            "ty": {
+              "kind": "value",
+              "layout": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "u32"
+                }
+              }
+            }
+          },
+          {
+            "name": "parity",
+            "binding": 7,
+            "ty": {
+              "kind": "value",
+              "layout": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "u32"
+                }
+              }
+            }
+          },
+          {
+            "name": "butterflies",
+            "binding": 8,
+            "ty": {
+              "kind": "value",
+              "layout": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "u32"
+                }
+              }
+            }
+          }
+        ],
+        "required_block": null
+      },
+      {
+        "name": "gen_tile_fft",
+        "parameters": [
+          {
+            "name": "real",
+            "binding": 0,
+            "ty": {
+              "kind": "buffer",
+              "element": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "f32"
+                }
+              },
+              "stride": 4,
+              "access": "write"
+            }
+          },
+          {
+            "name": "imag",
+            "binding": 1,
+            "ty": {
+              "kind": "buffer",
+              "element": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "f32"
+                }
+              },
+              "stride": 4,
+              "access": "write"
+            }
+          },
+          {
+            "name": "eigs",
+            "binding": 2,
+            "ty": {
+              "kind": "buffer",
+              "element": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "f32"
+                }
+              },
+              "stride": 4,
+              "access": "read"
+            }
+          },
+          {
+            "name": "reverse",
+            "binding": 3,
+            "ty": {
+              "kind": "buffer",
+              "element": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "u32"
+                }
+              },
+              "stride": 4,
+              "access": "read"
+            }
+          },
+          {
+            "name": "n",
+            "binding": 4,
+            "ty": {
+              "kind": "value",
+              "layout": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "u32"
+                }
+              }
+            }
+          },
+          {
+            "name": "seed",
+            "binding": 5,
+            "ty": {
+              "kind": "value",
+              "layout": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "u32"
+                }
+              }
+            }
+          },
+          {
+            "name": "base_cell",
+            "binding": 6,
+            "ty": {
+              "kind": "value",
+              "layout": {
+                "size": 8,
+                "alignment": 8,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "u64"
+                }
+              }
+            }
+          },
+          {
+            "name": "stages",
+            "binding": 7,
+            "ty": {
+              "kind": "value",
+              "layout": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "u32"
+                }
+              }
+            }
+          },
+          {
+            "name": "shared_real",
+            "binding": 0,
+            "ty": {
+              "kind": "threadgroup",
+              "element": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "f32"
+                }
+              },
+              "stride": 4
+            }
+          },
+          {
+            "name": "shared_imag",
+            "binding": 1,
+            "ty": {
+              "kind": "threadgroup",
+              "element": {
+                "size": 4,
+                "alignment": 4,
+                "kind": {
+                  "kind": "scalar",
+                  "scalar": "f32"
+                }
+              },
+              "stride": 4
+            }
+          }
+        ],
+        "required_block": null
+      }
+    ]
+  },
+  "target": "metal64-unknown-none",
+  "msl_version": "3.1",
+  "files": {
+    "msl": "770d001f5f62dbdb7cdbfc53dbee1f8ab46b60fb61c6db281db2c8a2f8e5ce06",
+    "oxide_ir": "0cc22d1f46c0e776bd9e7382be5fd93d7213c1df918ca5085c6878d0ba5d8e6e",
+    "ir": "35bb82c02b7db77e607ed4b580eeca0c99f29f1b3c99cdb36e64c090f6e68de1",
+    "metallib": "43ad0b0f5e1c121b1145d85794dbe94cb9153547b57cca3bbc9edeb6b3b68428",
+    "bindings": "3e42737a172b3d351a3075f13c43f278b204b50515be43e9a765641a8411f468"
+  },
+  "build": {
+    "fingerprint": "4fa924fa1d4bc710666ab9519a313e458fbe101ae21ca156b13f5e615e307175",
+    "compiler": "0f0aa33d5629ec49ef5224c440a0b5565e0249b4370ef45761f1644cbc1cd60e",
+    "rustc": "rustc 1.101.0-nightly (db8f076d2 2026-10-03)\nbinary: rustc\ncommit-hash: db8f076d2619ce2585b0380dda06e8da25a40da4\ncommit-date: 2026-10-03\nhost: aarch64-apple-darwin\nrelease: 1.101.0-nightly\nLLVM version: 23.1.1",
+    "metal": "Apple metal version 32023.883 (metalfe-32023.883)\nTarget: air64-apple-darwin25.2.0\nThread model: posix\nInstalledDir: /Users/danixx/Library/Developer/DVTDownloads/MetalToolchain/mounts/5f4a441a6d0a11f2e9b28c67384263afe92320f7/Metal.xctoolchain/usr/metal/32023/bin",
+    "sdk": "26.5",
+    "rustc_args": [
+      "-Zunstable-options",
+      "--crate-name",
+      "stochastic_rs_metal_kernels",
+      "--edition=2024",
+      "stochastic-rs-metal-kernels/src/lib.rs",
+      "--error-format=json",
+      "--json=diagnostic-rendered-ansi,artifacts,future-incompat,unused-externs-silent",
+      "--crate-type",
+      "lib",
+      "--emit=dep-info,metadata",
+      "-C",
+      "opt-level=3",
+      "-C",
+      "linker-plugin-lto",
+      "-C",
+      "codegen-units=1",
+      "--warn=unexpected_cfgs",
+      "--check-cfg",
+      "cfg(target_env, values(\"metal\"))",
+      "--check-cfg",
+      "cfg(docsrs,test)",
+      "--check-cfg",
+      "cfg(feature, values())",
+      "-C",
+      "metadata=182e9c3ee9df8852",
+      "-C",
+      "extra-filename=-9cda11d7aa057757",
+      "--out-dir",
+      "/Users/danixx/Desktop/stochastic-rs/target/metal/rust/6148893735100eb6eb54a6db838ea203feeac5e641c12c74447d7a8930cde5aa/metal64-unknown-none/release/build/stochastic-rs-metal-kernels/9cda11d7aa057757/out",
+      "--target",
+      "/Users/danixx/Desktop/stochastic-rs/target/metal/metal64-unknown-none.json",
+      "-Zunstable-options",
+      "-C",
+      "strip=debuginfo",
+      "-L",
+      "dependency=/Users/danixx/Desktop/stochastic-rs/target/metal/rust/6148893735100eb6eb54a6db838ea203feeac5e641c12c74447d7a8930cde5aa/metal64-unknown-none/release/build/compiler_builtins/fbae3f8d3d58248b/out",
+      "-L",
+      "dependency=/Users/danixx/Desktop/stochastic-rs/target/metal/rust/6148893735100eb6eb54a6db838ea203feeac5e641c12c74447d7a8930cde5aa/metal64-unknown-none/release/build/core/79c0c3d75a35eed3/out",
+      "-L",
+      "dependency=/Users/danixx/Desktop/stochastic-rs/target/metal/rust/6148893735100eb6eb54a6db838ea203feeac5e641c12c74447d7a8930cde5aa/release/build/metal-oxide-macros/71a586f6b674d1c2/out",
+      "-L",
+      "dependency=/Users/danixx/Desktop/stochastic-rs/target/metal/rust/6148893735100eb6eb54a6db838ea203feeac5e641c12c74447d7a8930cde5aa/release/build/stochastic-rs-metal-kernels/9cda11d7aa057757/out",
+      "--extern",
+      "noprelude,nounused:compiler_builtins=/Users/danixx/Desktop/stochastic-rs/target/metal/rust/6148893735100eb6eb54a6db838ea203feeac5e641c12c74447d7a8930cde5aa/metal64-unknown-none/release/build/compiler_builtins/fbae3f8d3d58248b/out/libcompiler_builtins-fbae3f8d3d58248b.rmeta",
+      "--extern",
+      "noprelude,nounused:compiler_builtins=/Users/danixx/Desktop/stochastic-rs/target/metal/rust/6148893735100eb6eb54a6db838ea203feeac5e641c12c74447d7a8930cde5aa/metal64-unknown-none/release/build/compiler_builtins/fbae3f8d3d58248b/out/libcompiler_builtins-fbae3f8d3d58248b.rmeta",
+      "--extern",
+      "noprelude,nounused:core=/Users/danixx/Desktop/stochastic-rs/target/metal/rust/6148893735100eb6eb54a6db838ea203feeac5e641c12c74447d7a8930cde5aa/metal64-unknown-none/release/build/core/79c0c3d75a35eed3/out/libcore-79c0c3d75a35eed3.rmeta",
+      "--extern",
+      "noprelude,nounused:core=/Users/danixx/Desktop/stochastic-rs/target/metal/rust/6148893735100eb6eb54a6db838ea203feeac5e641c12c74447d7a8930cde5aa/metal64-unknown-none/release/build/core/79c0c3d75a35eed3/out/libcore-79c0c3d75a35eed3.rmeta",
+      "--extern",
+      "metal_oxide_device=/Users/danixx/Desktop/stochastic-rs/target/metal/rust/6148893735100eb6eb54a6db838ea203feeac5e641c12c74447d7a8930cde5aa/metal64-unknown-none/release/build/metal-oxide-device/0fb6382ca9cf76e2/out/libmetal_oxide_device-0fb6382ca9cf76e2.rmeta",
+      "-Z",
+      "unstable-options",
+      "--force-warn=unused_crate_dependencies"
+    ],
+    "metal_flags": [
+      "-std=metal3.1",
+      "-mmacosx-version-min=15.0",
+      "-fmetal-math-mode=relaxed",
+      "-fmetal-math-fp32-functions=fast",
+      "-ffp-contract=fast",
+      "-O2"
+    ]
+  }
+}

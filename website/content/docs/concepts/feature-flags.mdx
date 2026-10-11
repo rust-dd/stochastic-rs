@@ -14,7 +14,7 @@ Cargo features in this workspace are **opt-in**. The default build links no GPU,
 |-------------------|-----------------------------|--------------------------------------|-------------------------------------------|
 | `ai`              | umbrella                    | `stochastic-rs-ai`, `candle-core`    | Experimental: NN volatility surrogates, outside the stability promise |
 | `cuda`            | `-stochastic`               | `cudarc` + cuFFT + NVRTC             | NVIDIA GPU: the fGN / fBM pipeline (cuFFT) and the Euler engine kernels every other process runs on (`Cuda` backend, `f32` or `f64`) |
-| `metal`           | `-stochastic`               | `metal`                              | Apple GPU: the fGN / fBM pipeline and the Euler engine in MSL (`Metal` backend, `f32`); macOS only, inert on other targets |
+| `metal`           | `-stochastic`               | `metal`, `metal-oxide`                | Apple GPU: the fGN / fBM pipeline and the Euler engine (`Metal` backend, `f32`); Apple Silicon with macOS 15 or newer, inert on other targets |
 | `accelerate`      | `-stochastic`               | Apple vDSP (system framework)        | macOS CPU FFT for fGN / fBM (`Accelerate` backend, a host device for every process); macOS only, inert on other targets |
 | `ai-metal`        | umbrella                    | `candle-core/metal`                  | Experimental: candle's Metal back-end for surrogate training (`ai::device::best_available`); for CUDA, enable `candle-core/cuda` in your own manifest |
 | `ai`, `metal`, `cuda`, `accelerate` | `-py` | the sub-crate features above | Source builds of the Python module (`maturin develop --features …`): the surrogates and `calibrate_surrogate`, and the device back-ends behind the process classes' `device=`; none of them is in the published wheels |
@@ -48,7 +48,7 @@ stochastic-rs-stochastic = { version = "3.0.0-rc.4", features = ["cuda"] }
 ## Common gotchas
 
 - **Linear algebra needs no feature.** Cholesky, SVD, eigen and least squares run on the pure-Rust `faer` and are always compiled in.
-- **`metal` and `accelerate` are inert off macOS.** The features and their dependencies apply to `target_os = "macos"` only, so enabling them on Linux or Windows compiles without the Apple back-ends instead of failing to link a framework.
+- **`metal` requires Apple Silicon; `accelerate` requires macOS.** Metal is gated on both `target_os = "macos"` and `target_arch = "aarch64"`. Accelerate is gated on `target_os = "macos"`. Enabling either feature on other targets compiles without that backend.
 - **Diagnostics go through `log`.** A constructor given a parameter regime it accepts but handles with a boundary rule (a sub-Feller CIR, say) emits a `log::warn!`; install any `log` subscriber to see it.
 - **`cuda` requires the CUDA toolkit on the build machine.** A CI image without it cannot build with `cuda`.
 - **`ai` is heavy and experimental.** It pulls in `candle-core`, a substantial ML stack, and `stochastic-rs-ai` is outside the stability promise. On Apple Silicon (or any aarch64 target with the `fp16` target feature) it needs Rust 1.94, because candle 0.11 uses the NEON fp16 intrinsics.

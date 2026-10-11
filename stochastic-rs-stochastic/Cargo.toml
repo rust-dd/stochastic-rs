@@ -12,10 +12,13 @@ repository = "https://github.com/rust-dd/stochastic-rs"
 keywords = ["stochastic", "simulation", "sde", "fbm", "monte-carlo"]
 categories = ["mathematics", "simulation", "science"]
 
+[package.metadata.metal]
+kernels = "../stochastic-rs-metal-kernels/Cargo.toml"
+
 [features]
 default = []
 cuda = ["dep:cudarc", "cudarc/cufft"]
-metal = ["dep:metal"]
+metal = ["dep:metal", "dep:metal-oxide", "dep:objc2", "dep:objc2-metal"]
 accelerate = []
 python = ["dep:pyo3", "dep:numpy", "stochastic-rs-core/python", "stochastic-rs-distributions/python"]
 
@@ -37,5 +40,8 @@ rayon = { workspace = true }
 stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
 
-[target.'cfg(target_os = "macos")'.dependencies]
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 metal = { workspace = true, optional = true }
+metal-oxide = { workspace = true, optional = true }
+objc2 = { workspace = true, optional = true }
+objc2-metal = { workspace = true, optional = true }

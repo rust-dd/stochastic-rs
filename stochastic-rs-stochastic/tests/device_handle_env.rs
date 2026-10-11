@@ -1,7 +1,10 @@
 //! A device handle reads `STOCHASTIC_RS_DEVICE` / `STOCHASTIC_RS_DEVICE_BATCH_BYTES` in `from_env` alone. One
 //! test in a binary of its own, so no other thread touches the environment while `set_var` runs.
 
-#![cfg(any(feature = "cuda", all(feature = "metal", target_os = "macos")))]
+#![cfg(any(
+  feature = "cuda",
+  all(feature = "metal", target_os = "macos", target_arch = "aarch64")
+))]
 
 use std::ffi::OsStr;
 
@@ -90,6 +93,6 @@ macro_rules! env_contract {
 fn a_handle_reads_the_environment_only_in_from_env() {
   #[cfg(feature = "cuda")]
   env_contract!(Cuda, f64);
-  #[cfg(all(feature = "metal", target_os = "macos"))]
+  #[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
   env_contract!(Metal, f32);
 }

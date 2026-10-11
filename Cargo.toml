@@ -4,6 +4,7 @@ members = [
     "stochastic-rs-copulas",
     "stochastic-rs-core",
     "stochastic-rs-distributions",
+    "stochastic-rs-metal-kernels",
     "stochastic-rs-py",
     "stochastic-rs-quant",
     "stochastic-rs-stats",
@@ -32,12 +33,16 @@ libm = "0.2.16"
 linreg = "0.2.0"
 log = "0.4.34"
 metal = "0.33.0"
+metal-oxide = { git = "https://github.com/rust-dd/metal-oxide", rev = "1297fe24b9ab0fdbbda4e9d9daade18ea04e9f92" }
+metal-oxide-device = { git = "https://github.com/rust-dd/metal-oxide", rev = "1297fe24b9ab0fdbbda4e9d9daade18ea04e9f92" }
 ndarray = { version = "0.17.2", features = ["rayon", "matrixmultiply-threading"] }
 ndarray-npy = "0.10.0"
 ndrustfft = "0.6.2"
 num-complex = "0.4.6"
 num-traits = "0.2.19"
 numpy = "0.29"
+objc2 = "0.6.4"
+objc2-metal = "0.3.2"
 ordered-float = "5.0.0"
 owens-t = "0.1.5"
 parking_lot = "0.12.5"

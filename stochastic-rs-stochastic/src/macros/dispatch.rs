@@ -106,7 +106,7 @@ macro_rules! py_on_device_f32 {
         let $p = &owned;
         $body
       }
-      #[cfg(all(feature = "metal", target_os = "macos"))]
+      #[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
       $crate::python_device::Device::Metal(ordinal, budget) => {
         let owned = $inner
           .clone()

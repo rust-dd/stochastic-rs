@@ -44,7 +44,7 @@ Bound on `Backend` to say "device-parameterised"; bound on a capability when the
 |---------------|----------------------------------|----------------------------------------|---------------------|
 | `Cpu`         | — (always available, default)    | `ndrustfft` + CPU SIMD, rayon batches  | any CPU             |
 | `Cuda`        | `cuda`                           | `cudarc` + cuFFT, NVRTC kernels        | NVIDIA GPU          |
-| `Metal`       | `metal`                          | MSL kernels via the `metal` crate      | Apple GPU (`f32`)   |
+| `Metal`       | `metal`                          | Metal compute kernels                 | Apple Silicon, macOS 15+ (`f32`) |
 | `Accelerate`  | `accelerate`                     | Apple vDSP FFT (CPU), rayon batches    | macOS               |
 
 `Backend`, `Cpu`, `HostBackend`, `FgnBackend`, `SheetBackend` and `EulerBackend` are re-exported at `stochastic_rs::traits`; the device markers live under `stochastic_rs::stochastic::device` and **only exist when their feature is compiled**, so selecting an unavailable backend is a compile error.

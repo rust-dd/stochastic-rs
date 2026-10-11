@@ -74,6 +74,8 @@ jobs:
           components: clippy, rustfmt
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
+      - name: Embedded Metal kernel sources
+        run: bash scripts/build-metal-kernels.sh --check
       - name: cargo clippy (workspace)
         run: cargo clippy --workspace --no-default-features --all-targets --locked -- -D warnings
       # All six library crates deny `rustdoc::broken_intra_doc_links` at their
@@ -91,7 +93,7 @@ jobs:
   # this is the one arm of the CI that runs on a mac. Check-only: the point
   # is that the gated code keeps compiling, not to run the GPU.
   check_macos_backends:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v3

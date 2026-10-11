@@ -128,9 +128,13 @@ impl Device {
         "the cuda feature",
       ),
       Device::Metal(..) => (
-        cfg!(all(feature = "metal", target_os = "macos")),
+        cfg!(all(
+          feature = "metal",
+          target_os = "macos",
+          target_arch = "aarch64"
+        )),
         "native Metal runtime",
-        "the metal feature on macOS",
+        "the metal feature on Apple Silicon macOS",
       ),
     };
     if compiled {
@@ -165,7 +169,7 @@ impl Device {
       Device::Accelerate => crate::device::Accelerate.probe(),
       #[cfg(feature = "cuda")]
       Device::Cuda(o, _) => crate::device::Cuda::new(o).probe(),
-      #[cfg(all(feature = "metal", target_os = "macos"))]
+      #[cfg(all(feature = "metal", target_os = "macos", target_arch = "aarch64"))]
       Device::Metal(o, _) => crate::device::Metal::new(o).probe(),
       #[allow(unreachable_patterns)]
       _ => unreachable!("check_compiled rejects the devices this build lacks"),
