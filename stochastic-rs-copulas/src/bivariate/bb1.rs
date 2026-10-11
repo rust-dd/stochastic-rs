@@ -140,9 +140,7 @@ impl Bb1 {
       return Err(tau_out_of_range(tau, "0.0 < tau < 1.0".to_string()));
     }
     // A starting point for Nelder–Mead, not an estimate.
-    let start_theta = (2.0 / (self.delta * (1.0 - tau.max(0.05))) - 2.0)
-      .max(1e-6)
-      .clamp(0.05, 20.0);
+    let start_theta = (2.0 / (self.delta * (1.0 - tau.max(0.05))) - 2.0).clamp(0.05, 20.0);
     let (theta, delta) = fit_two_parameters(
       X,
       (0.0, 1.0),
