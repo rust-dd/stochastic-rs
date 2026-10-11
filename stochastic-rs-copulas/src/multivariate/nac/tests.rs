@@ -7,7 +7,7 @@ use super::*;
 #[test]
 fn nac_clayton_flat_is_exchangeable_clayton() {
   let root = NacNode::leaf_group(2.0, vec![0, 1, 2]);
-  let nac = NestedArchimedean::new(NacFamily::Clayton, root, 3).unwrap();
+  let nac = NestedArchimedean::new(BivariateFamily::Clayton, root, 3).unwrap();
   let u = nac.sample(8_000, &Deterministic::new(7)).unwrap();
   assert_eq!(u.ncols(), 3);
   for j in 0..3 {
@@ -30,7 +30,7 @@ fn nac_clayton_two_level_cdf_pair_margins() {
     leaves: vec![0],
     children: vec![inner],
   };
-  let nac = NestedArchimedean::new(NacFamily::Clayton, root, 3).unwrap();
+  let nac = NestedArchimedean::new(BivariateFamily::Clayton, root, 3).unwrap();
   // Outer-inner pair margin: C(u_0, u_1, 1) = (u_0^{-θ_root} + u_1^{-θ_root} - 1)^{-1/θ_root}
   let q_outer_inner = ndarray::array![[0.3, 0.7, 1.0 - 1e-15]];
   let c_oi = nac.cdf(q_outer_inner.view()).unwrap()[0];
@@ -72,7 +72,7 @@ fn nac_clayton_nested_sampling_is_unsupported() {
     leaves: vec![0],
     children: vec![inner],
   };
-  let nac = NestedArchimedean::new(NacFamily::Clayton, root, 2).unwrap();
+  let nac = NestedArchimedean::new(BivariateFamily::Clayton, root, 2).unwrap();
   assert!(matches!(
     nac.sample(10, &Deterministic::new(7)),
     Err(CopulaError::Unsupported(_))
@@ -89,7 +89,7 @@ fn nac_gumbel_two_level_inner_pair_more_dependent() {
     leaves: vec![0],
     children: vec![inner],
   };
-  let nac = NestedArchimedean::new(NacFamily::Gumbel, root, 3).unwrap();
+  let nac = NestedArchimedean::new(BivariateFamily::Gumbel, root, 3).unwrap();
   let u = nac.sample(8_000, &Deterministic::new(7)).unwrap();
   use crate::correlation::kendall_tau;
   let tau = kendall_tau(u.view());
@@ -118,7 +118,7 @@ fn nac_snc_violation_rejected() {
     leaves: vec![0],
     children: vec![bad_inner],
   };
-  let err = NestedArchimedean::new(NacFamily::Clayton, bad_root, 2).unwrap_err();
+  let err = NestedArchimedean::new(BivariateFamily::Clayton, bad_root, 2).unwrap_err();
   let CopulaError::InvalidStructure(why) = &err else {
     panic!("expected InvalidStructure, got {err:?}");
   };
@@ -129,11 +129,11 @@ fn nac_snc_violation_rejected() {
 #[test]
 fn nac_below_family_min_rejected() {
   let root = NacNode::leaf_group(0.5, vec![0, 1]); // Gumbel requires θ ≥ 1
-  let res = NestedArchimedean::new(NacFamily::Gumbel, root, 2);
+  let res = NestedArchimedean::new(BivariateFamily::Gumbel, root, 2);
   assert!(res.is_err());
   // And Clayton at θ < 0 should also fail.
   let bad_clayton = NacNode::leaf_group(-0.1, vec![0, 1]);
-  assert!(NestedArchimedean::new(NacFamily::Clayton, bad_clayton, 2).is_err());
+  assert!(NestedArchimedean::new(BivariateFamily::Clayton, bad_clayton, 2).is_err());
 }
 
 /// Missing / duplicate leaf indices must be rejected.
@@ -141,16 +141,16 @@ fn nac_below_family_min_rejected() {
 fn nac_leaf_index_validation() {
   // Duplicate
   let dup_root = NacNode::leaf_group(2.0, vec![0, 0, 1]);
-  assert!(NestedArchimedean::new(NacFamily::Clayton, dup_root, 3).is_err());
+  assert!(NestedArchimedean::new(BivariateFamily::Clayton, dup_root, 3).is_err());
   // Missing (covers 0,2 only, dim=3)
   let miss = NacNode::leaf_group(2.0, vec![0, 2]);
   assert!(matches!(
-    NestedArchimedean::new(NacFamily::Clayton, miss, 3),
+    NestedArchimedean::new(BivariateFamily::Clayton, miss, 3),
     Err(CopulaError::InvalidStructure(_))
   ));
   // Out of range
   let oor = NacNode::leaf_group(2.0, vec![0, 1, 5]);
-  assert!(NestedArchimedean::new(NacFamily::Clayton, oor, 3).is_err());
+  assert!(NestedArchimedean::new(BivariateFamily::Clayton, oor, 3).is_err());
 }
 
 /// CDF must equal $(\Pi u_j)$ for a θ=0 Clayton (independence boundary).
@@ -160,7 +160,7 @@ fn nac_clayton_independence_cdf() {
   // probe a small θ > 0 and check the CDF stays close to the
   // independence product within the Clayton bias.
   let root = NacNode::leaf_group(0.01, vec![0, 1, 2]);
-  let nac = NestedArchimedean::new(NacFamily::Clayton, root, 3).unwrap();
+  let nac = NestedArchimedean::new(BivariateFamily::Clayton, root, 3).unwrap();
   let q = ndarray::array![[0.5, 0.5, 0.5], [0.2, 0.3, 0.4]];
   let c = nac.cdf(q.view()).unwrap();
   let indep_1 = 0.5_f64.powi(3);
@@ -181,7 +181,7 @@ fn nac_clayton_independence_cdf() {
 #[test]
 fn nac_fit_rejects_with_descriptive_error() {
   let root = NacNode::leaf_group(2.0, vec![0, 1]);
-  let mut nac = NestedArchimedean::new(NacFamily::Clayton, root, 2).unwrap();
+  let mut nac = NestedArchimedean::new(BivariateFamily::Clayton, root, 2).unwrap();
   let data = ndarray::Array2::<f64>::from_elem((10, 2), 0.5);
   assert!(matches!(
     nac.fit(data.view()),
@@ -194,7 +194,7 @@ fn nac_fit_rejects_with_descriptive_error() {
 fn nac_clayton_root_without_a_frailty_is_rejected_by_name() {
   for theta in [0.0, 1e-320] {
     let nac = NestedArchimedean::new(
-      NacFamily::Clayton,
+      BivariateFamily::Clayton,
       NacNode::leaf_group(theta, vec![0, 1]),
       2,
     )
@@ -212,7 +212,7 @@ fn nac_clayton_root_without_a_frailty_is_rejected_by_name() {
 #[test]
 fn nac_rejects_a_non_finite_theta_by_name() {
   for theta in [f64::NAN, f64::INFINITY] {
-    for family in [NacFamily::Clayton, NacFamily::Gumbel] {
+    for family in [BivariateFamily::Clayton, BivariateFamily::Gumbel] {
       let err =
         NestedArchimedean::new(family, NacNode::leaf_group(theta, vec![0, 1]), 2).unwrap_err();
       assert_eq!(
@@ -222,7 +222,7 @@ fn nac_rejects_a_non_finite_theta_by_name() {
     }
     let mut root = NacNode::leaf_group(2.0, vec![0]);
     root.children.push(NacNode::leaf_group(theta, vec![1, 2]));
-    let err = NestedArchimedean::new(NacFamily::Gumbel, root, 3).unwrap_err();
+    let err = NestedArchimedean::new(BivariateFamily::Gumbel, root, 3).unwrap_err();
     assert_eq!(
       err.to_string(),
       format!("theta must satisfy `theta.is_finite()`, got theta = {theta:?}")

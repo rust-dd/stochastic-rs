@@ -25,11 +25,11 @@ consolidated under `BivariateExt`.)
 ## 1. What you must implement, and what you get free
 
 `BivariateExt` is a wide trait with only **eleven** required methods.
-Everything else — sampling, fitting, inversion, `log_pdf`, `ppf` — is
+Everything else — sampling, fitting, inversion, `log_pdf` — is
 defaulted on top of them. Required:
 
 ```rust
-fn r#type(&self) -> CopulaType;          // the family's enum discriminant
+fn family(&self) -> BivariateFamily;     // the family's enum discriminant
 fn tau(&self) -> Option<f64>;            // Kendall's tau, None until fit/set
 fn set_tau(&mut self, tau: f64);
 fn theta(&self) -> Option<f64>;          // shape parameter, None until fit/set
@@ -63,7 +63,7 @@ Useful defaults you should usually **not** override:
 | `percent_point(y, V)` | Brent inversion of `partial_derivative_scalar` |
 | `partial_derivative(X)` | central-difference on `cdf` |
 | `generator(t)` | anchored "not Archimedean" error |
-| `log_pdf` / `ppf` | `pdf(X)?.ln()` / alias for `percent_point` |
+| `log_pdf` | `pdf(X)?.ln()` |
 | `check_theta` / `check_fit` / `check_marginal` | validation, used by the above |
 
 Override `percent_point` and `partial_derivative` only when you have a
@@ -91,7 +91,7 @@ rather than returning a nonsensical coefficient.
 
 ## 2. The struct skeleton
 
-Every family stores its bounds and its `CopulaType` as **fields**, and
+Every family stores its bounds and its `BivariateFamily` as **fields**, and
 carries `theta` / `tau` as `Option<f64>` (unset until `fit` or
 `set_theta`). There is **no `seed` field** — seeding enters through
 `sample(n, &seed)` with a `Deterministic` (replay) or `Unseeded` (entropy) source.
@@ -103,14 +103,14 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 
-use super::CopulaType;
+use super::BivariateFamily;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct Clayton {
-  pub r#type: CopulaType,
+  pub r#type: BivariateFamily,
   pub theta: Option<f64>,
   pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
@@ -120,7 +120,7 @@ pub struct Clayton {
 impl Default for Clayton {
   fn default() -> Self {
     Self {
-      r#type: CopulaType::Clayton,
+      r#type: BivariateFamily::Clayton,
       theta: None,
       tau: None,
       theta_bounds: (0.0, f64::INFINITY),
@@ -137,8 +137,8 @@ impl Clayton {
 ```
 
 Then the accessors are one-liners over those fields, and add your
-family's discriminant to `CopulaType` plus a `pub mod` line in
-`stochastic-rs-copulas/src/bivariate.rs`.
+family's variant to `BivariateFamily` (its `ALL` and `parameter_count`
+too) plus a `pub mod` line in `stochastic-rs-copulas/src/bivariate.rs`.
 
 Note Clayton's real bounds: `(0.0, f64::INFINITY)` with
 `invalid_thetas: vec![]`. The `θ ∈ (-1, ∞)` domain with a degenerate
@@ -272,7 +272,7 @@ fn clayton_independence_sample_kendall_tau_near_zero() {
   `assert_theta_valid_for_tail_dependence()`. `_compute_theta` discards
   its own `check_theta()` result, so `fit()` on out-of-domain data
   silently leaves `theta` out of bounds; that assert is the only guard.
-- **Do not** implement `sample` / `fit` / `log_pdf` / `ppf`. They are
+- **Do not** implement `sample` / `fit` / `log_pdf`. They are
   defaulted and the defaults are correct.
 - **Do not** implement `generator` for a non-Archimedean family. The
   default already returns `CopulaError::Unsupported`

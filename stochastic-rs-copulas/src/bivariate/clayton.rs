@@ -10,7 +10,7 @@ use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::Zip;
 
-use super::CopulaType;
+use super::BivariateFamily;
 use crate::bivariate::conditional::check_lengths;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
@@ -22,7 +22,7 @@ use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct Clayton {
-  pub r#type: CopulaType,
+  pub r#type: BivariateFamily,
   pub theta: Option<f64>,
   pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
@@ -32,7 +32,7 @@ pub struct Clayton {
 impl Default for Clayton {
   fn default() -> Self {
     Self {
-      r#type: CopulaType::Clayton,
+      r#type: BivariateFamily::Clayton,
       theta: None,
       tau: None,
       theta_bounds: (0.0, f64::INFINITY),
@@ -70,7 +70,7 @@ impl Clayton {
 }
 
 impl BivariateExt for Clayton {
-  fn r#type(&self) -> CopulaType {
+  fn family(&self) -> BivariateFamily {
     self.r#type
   }
 

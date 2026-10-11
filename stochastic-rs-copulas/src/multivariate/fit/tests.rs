@@ -13,17 +13,17 @@ fn first_tree(fit: &VineFit) -> &[PairCopula] {
 }
 
 /// Two variables, candidates that do not nest Clayton: the selection picks it and recovers θ by Kendall inversion.
-/// BB1 and BB7 contain Clayton at a boundary that AIC cannot reject reliably, so `ALL` has its own test.
+/// BB1 and BB7 contain Clayton at a boundary that AIC cannot reject reliably, so `VINE_CANDIDATES` has its own test.
 #[test]
 fn two_dimensional_fit_recovers_clayton() {
   let truth = DVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).unwrap();
   let u = truth.sample(3000, &Deterministic::new(7)).unwrap();
   let families = [
-    PairFamily::Independence,
-    PairFamily::Gaussian,
-    PairFamily::StudentT,
-    PairFamily::Clayton,
-    PairFamily::Frank,
+    BivariateFamily::Independence,
+    BivariateFamily::Gaussian,
+    BivariateFamily::TCopula,
+    BivariateFamily::Clayton,
+    BivariateFamily::Frank,
   ];
   let fit = fit_vine(
     u.view(),
@@ -32,7 +32,7 @@ fn two_dimensional_fit_recovers_clayton() {
     SelectionCriterion::Aic,
   )
   .unwrap();
-  assert_eq!(fit.families[0][0], PairFamily::Clayton);
+  assert_eq!(fit.families[0][0], BivariateFamily::Clayton);
   let PairCopula::Clayton { theta } = first_tree(&fit)[0] else {
     panic!("clayton")
   };
@@ -42,7 +42,7 @@ fn two_dimensional_fit_recovers_clayton() {
   assert!(fit.bic > fit.aic);
 }
 
-/// Over `ALL` the pick is Clayton, BB1 or BB7 (the families that contain it) and the fitted vine keeps the truth's τ = 0.5.
+/// Over `VINE_CANDIDATES` the pick is Clayton, BB1 or BB7 (the families that contain it) and the fitted vine keeps the truth's τ = 0.5.
 #[test]
 fn two_dimensional_fit_over_all_families_keeps_the_clayton_dependence() {
   let truth = DVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).unwrap();
@@ -50,14 +50,14 @@ fn two_dimensional_fit_over_all_families_keeps_the_clayton_dependence() {
   let fit = fit_vine(
     u.view(),
     VineStructure::DVine,
-    &PairFamily::ALL,
+    &BivariateFamily::VINE_CANDIDATES,
     SelectionCriterion::Aic,
   )
   .unwrap();
   assert!(
     matches!(
       fit.families[0][0],
-      PairFamily::Clayton | PairFamily::Bb1 | PairFamily::Bb7
+      BivariateFamily::Clayton | BivariateFamily::Bb1 | BivariateFamily::Bb7
     ),
     "{:?}",
     fit.families
@@ -88,7 +88,7 @@ fn dvine_fit_recovers_the_first_tree_families() {
   let fit = fit_vine(
     u.view(),
     VineStructure::DVine,
-    &PairFamily::ALL,
+    &BivariateFamily::VINE_CANDIDATES,
     SelectionCriterion::Bic,
   )
   .unwrap();
@@ -104,13 +104,13 @@ fn dvine_fit_recovers_the_first_tree_families() {
     neighbours(0, 1) && neighbours(1, 2) && neighbours(2, 3),
     "order {order:?}"
   );
-  let mut chosen: Vec<(PairFamily, PairFamily)> = Vec::new();
+  let mut chosen: Vec<(BivariateFamily, BivariateFamily)> = Vec::new();
   for i in 0..3 {
     let edge = (order[i].min(order[i + 1]), order[i].max(order[i + 1]));
     let expected = match edge {
-      (0, 1) => PairFamily::Gaussian,
-      (1, 2) => PairFamily::Clayton,
-      (2, 3) => PairFamily::Frank,
+      (0, 1) => BivariateFamily::Gaussian,
+      (1, 2) => BivariateFamily::Clayton,
+      (2, 3) => BivariateFamily::Frank,
       other => panic!("unexpected edge {other:?}"),
     };
     chosen.push((expected, fit.families[0][i]));
@@ -122,7 +122,7 @@ fn dvine_fit_recovers_the_first_tree_families() {
     fit.families[1]
       .iter()
       .chain(&fit.families[2])
-      .all(|f| *f == PairFamily::Independence),
+      .all(|f| *f == BivariateFamily::Independence),
     "{:?}",
     fit.families
   );
@@ -154,10 +154,10 @@ fn cvine_fit_on_gaussian_data_selects_gaussian_pairs() {
   let truth = GaussianMultivariate::new_with_corr(corr).unwrap();
   let u = truth.sample(3000, &Deterministic::new(5)).unwrap();
   let families = [
-    PairFamily::Independence,
-    PairFamily::Gaussian,
-    PairFamily::Clayton,
-    PairFamily::Frank,
+    BivariateFamily::Independence,
+    BivariateFamily::Gaussian,
+    BivariateFamily::Clayton,
+    BivariateFamily::Frank,
   ];
   let fit = fit_vine(
     u.view(),
@@ -168,7 +168,9 @@ fn cvine_fit_on_gaussian_data_selects_gaussian_pairs() {
   .unwrap();
   assert_eq!(fit.order[0], 0, "root {:?}", fit.order);
   assert!(
-    fit.families[0].iter().all(|f| *f == PairFamily::Gaussian),
+    fit.families[0]
+      .iter()
+      .all(|f| *f == BivariateFamily::Gaussian),
     "{:?}",
     fit.families
   );
@@ -226,7 +228,7 @@ fn fit_rejects_degenerate_inputs() {
     fit_vine(
       one.view(),
       VineStructure::DVine,
-      &PairFamily::ALL,
+      &BivariateFamily::VINE_CANDIDATES,
       SelectionCriterion::Aic
     )
     .is_err()
@@ -236,9 +238,30 @@ fn fit_rejects_degenerate_inputs() {
     fit_vine(
       short.view(),
       VineStructure::CVine,
-      &PairFamily::ALL,
+      &BivariateFamily::VINE_CANDIDATES,
       SelectionCriterion::Aic
     )
     .is_err()
   );
+}
+
+/// A candidate list that cannot represent an edge (Clayton on negative dependence, or no candidate at all) is `Unsupported`.
+#[test]
+fn an_edge_no_candidate_represents_is_unsupported() {
+  let u = Array2::from_shape_fn((40, 2), |(i, j)| {
+    if j == 0 {
+      (i + 1) as f64 / 41.0
+    } else {
+      (40 - i) as f64 / 41.0
+    }
+  });
+  for structure in [VineStructure::DVine, VineStructure::CVine] {
+    for families in [&[BivariateFamily::Clayton][..], &[]] {
+      let err = fit_vine(u.view(), structure, families, SelectionCriterion::Aic).unwrap_err();
+      assert!(
+        matches!(err, CopulaError::Unsupported(_)),
+        "{structure:?} {families:?}: {err:?}"
+      );
+    }
+  }
 }

@@ -11,7 +11,7 @@ The `stochastic-rs-copulas` crate ships bivariate and multivariate copulas, corr
 
 ## Bivariate (`BivariateExt`)
 
-**15** copulas, one per variant of `bivariate::CopulaType`. "Archimedean" below means the type implements the trait's `generator()`:
+**15** copulas, one per variant of `bivariate::BivariateFamily`. "Archimedean" below means the type implements the trait's `generator()`:
 
 | Copula        | Family              | Tail dependence                                    |
 |---------------|---------------------|-----------------------------------------------------|
@@ -49,7 +49,7 @@ The one-parameter families are fit by computing Kendall's tau and inverting it t
 
 ## Multivariate (`MultivariateExt`)
 
-**8** copulas, one per variant of `multivariate::CopulaType`. Two of them are **not** pair-copula-construction vines despite the name:
+**8** copulas, one per variant of `multivariate::MultivariateFamily`. Two of them are **not** pair-copula-construction vines despite the name:
 
 | Copula              | Family              | Notes                                                  |
 |----------------------|---------------------|---------------------------------------------------------|

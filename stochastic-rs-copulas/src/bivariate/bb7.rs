@@ -22,7 +22,7 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 
-use super::CopulaType;
+use super::BivariateFamily;
 use super::conditional::conditional_cdf;
 use super::conditional::conditional_quantiles;
 use super::two_parameter::clip;
@@ -36,7 +36,7 @@ use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct Bb7 {
-  pub r#type: CopulaType,
+  pub r#type: BivariateFamily,
   /// `θ ≥ 1`.
   pub theta: Option<f64>,
   /// `δ > 0`.
@@ -49,7 +49,7 @@ pub struct Bb7 {
 impl Bb7 {
   pub fn new(theta: Option<f64>, delta: Option<f64>, tau: Option<f64>) -> Self {
     Self {
-      r#type: CopulaType::Bb7,
+      r#type: BivariateFamily::Bb7,
       theta,
       delta: delta.unwrap_or(1.0),
       tau,
@@ -153,7 +153,7 @@ impl Default for Bb7 {
 }
 
 impl BivariateExt for Bb7 {
-  fn r#type(&self) -> CopulaType {
+  fn family(&self) -> BivariateFamily {
     self.r#type
   }
 

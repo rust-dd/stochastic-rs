@@ -34,7 +34,7 @@ use ndarray::ArrayView2;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
 
-use crate::bivariate::CopulaType;
+use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::error::CopulaError;
 use crate::optim::zero;
@@ -48,7 +48,7 @@ const BOUNDARY_EPS: f64 = 1e-12;
 
 #[derive(Debug, Clone)]
 pub struct HuslerReiss {
-  pub r#type: CopulaType,
+  pub r#type: BivariateFamily,
   /// Hüsler-Reiss parameter $\lambda > 0$ (stored in the `theta` field for
   /// trait compatibility with single-parameter Archimedean copulas).
   pub theta: Option<f64>,
@@ -60,7 +60,7 @@ pub struct HuslerReiss {
 impl Default for HuslerReiss {
   fn default() -> Self {
     Self {
-      r#type: CopulaType::HuslerReiss,
+      r#type: BivariateFamily::HuslerReiss,
       theta: None,
       tau: None,
       theta_bounds: (0.0, f64::INFINITY),
@@ -113,7 +113,7 @@ impl HuslerReiss {
 }
 
 impl BivariateExt for HuslerReiss {
-  fn r#type(&self) -> CopulaType {
+  fn family(&self) -> BivariateFamily {
     self.r#type
   }
 

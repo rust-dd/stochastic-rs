@@ -14,7 +14,7 @@ use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
-use crate::bivariate::CopulaType as BivariateCopulaType;
+use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::ABSOLUTE_TOLERANCE;
 use crate::bivariate::conditional::check_lengths;
 use crate::bivariate::conditional::in_unit;
@@ -36,7 +36,7 @@ pub struct TailDependence<T> {
 }
 
 pub trait BivariateExt {
-  fn r#type(&self) -> BivariateCopulaType;
+  fn family(&self) -> BivariateFamily;
 
   fn tau(&self) -> Option<f64>;
 
@@ -115,11 +115,11 @@ pub trait BivariateExt {
   }
 
   /// Archimedean generator $\varphi$, $C(u,v) = \varphi^{-1}(\varphi(u) + \varphi(v))$; the default
-  /// is `Unsupported`, named by the `r#type()` label, for a family with no such form.
+  /// is `Unsupported`, named by the `family()` label, for a family with no such form.
   fn generator(&self, _t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     Err(CopulaError::Unsupported(format!(
       "{:?} is not Archimedean: no generator",
-      self.r#type()
+      self.family()
     )))
   }
 
@@ -215,9 +215,8 @@ pub trait BivariateExt {
 
   fn cdf(&self, X: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 
-  /// Inverse conditional: returns `u` such that `P(U ≤ u | V = v) = p`.
-  /// This is the canonical quantile-function name for this trait; see also
-  /// [`ppf`](Self::ppf), a SciPy-compatible alias.
+  /// Inverse conditional: the `u` with `P(U ≤ u | V = v) = y`.
+  #[doc(alias = "ppf")]
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
@@ -262,7 +261,7 @@ pub trait BivariateExt {
             *slot = Some(outcome.err().unwrap_or_else(|| {
               CopulaError::Numerical(format!(
                 "{:?} partial_derivative is NaN at (u={u:?}, v={v_i:?})",
-                self.r#type()
+                self.family()
               ))
             }));
           }
@@ -294,17 +293,12 @@ pub trait BivariateExt {
       results[i] = root.ok_or_else(|| {
         CopulaError::Numerical(format!(
           "{:?} h-inverse did not converge at (y={y_i:?}, v={v_i:?})",
-          self.r#type()
+          self.family()
         ))
       })?;
     }
 
     Ok(results)
-  }
-
-  /// `ppf` is a SciPy-compatible alias for [`percent_point`](Self::percent_point).
-  fn ppf(&self, y: ArrayView1<f64>, V: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
-    self.percent_point(y, V)
   }
 
   fn partial_derivative(&self, X: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {

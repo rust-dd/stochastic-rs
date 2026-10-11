@@ -74,19 +74,13 @@ impl GaussianUnivariate {
     }
   }
 
-  /// Normal quantile (inverse CDF) using the cached `(mean, std)`. This is
-  /// the canonical quantile-function name; see also [`ppf`](Self::ppf), a
-  /// SciPy-compatible alias.
+  /// Normal quantile (inverse CDF) using the cached `(mean, std)`.
+  #[doc(alias = "ppf")]
   pub fn percent_point(&self, p: f64) -> f64 {
     match self.params {
       Some((mu, sigma)) => mu + sigma * ndtri(p),
       None => 0.0,
     }
-  }
-
-  /// `ppf` is a SciPy-compatible alias for [`percent_point`](Self::percent_point).
-  pub fn ppf(&self, p: f64) -> f64 {
-    self.percent_point(p)
   }
 }
 
@@ -94,7 +88,6 @@ impl GaussianUnivariate {
 mod tests {
   use ndarray::Array1;
   use ndarray::Axis;
-  use ndarray::array;
   use ndarray::stack;
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::DistributionSampler;
@@ -104,17 +97,6 @@ mod tests {
   use super::*;
   use crate::bivariate::clayton::Clayton;
   use crate::traits::BivariateExt;
-
-  /// `ppf` is a SciPy-compatible alias for the canonical `percent_point`;
-  /// the two must agree exactly since `ppf` delegates to it.
-  #[test]
-  fn gaussian_univariate_has_canonical_percent_point() {
-    let mut g = GaussianUnivariate::new();
-    g.fit(array![1.0, 2.0, 3.0, 4.0, 5.0].view());
-    for &p in &[0.1, 0.5, 0.9] {
-      assert_eq!(g.percent_point(p), g.ppf(p));
-    }
-  }
 
   /// The module doc claims `GaussianUnivariate`'s `cdf` output is "the
   /// input every `BivariateExt` ... copula expects" — this proves that

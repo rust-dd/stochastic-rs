@@ -224,7 +224,7 @@ fn a_query_outside_the_unit_interval_is_nan() {
   for (name, copula) in families() {
     for bad in [f64::NAN, -0.1, 1.5, f64::NEG_INFINITY, f64::INFINITY] {
       let u = copula
-        .ppf(array![bad, 0.4].view(), array![0.6, bad].view())
+        .percent_point(array![bad, 0.4].view(), array![0.6, bad].view())
         .unwrap();
       assert!(u.iter().all(|u| u.is_nan()), "{name} at {bad}: {u}");
       let h = copula

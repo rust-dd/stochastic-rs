@@ -12,8 +12,8 @@ struct DummyNonArchimedean {
 }
 
 impl BivariateExt for DummyNonArchimedean {
-  fn r#type(&self) -> BivariateCopulaType {
-    BivariateCopulaType::Fgm
+  fn family(&self) -> BivariateFamily {
+    BivariateFamily::Fgm
   }
 
   fn tau(&self) -> Option<f64> {
@@ -64,8 +64,8 @@ impl BivariateExt for DummyNonArchimedean {
 struct ParameterisedWithoutTheta;
 
 impl BivariateExt for ParameterisedWithoutTheta {
-  fn r#type(&self) -> BivariateCopulaType {
-    BivariateCopulaType::MarshallOlkin
+  fn family(&self) -> BivariateFamily {
+    BivariateFamily::MarshallOlkin
   }
 
   fn tau(&self) -> Option<f64> {
@@ -116,7 +116,7 @@ impl BivariateExt for ParameterisedWithoutTheta {
   }
 }
 
-/// A type with no `generator` override reaches the trait default, which names its `r#type()`.
+/// A type with no `generator` override reaches the trait default, which names its `family()`.
 #[test]
 fn generator_default_returns_anchored_not_archimedean_err() {
   let dummy = DummyNonArchimedean { theta: None };

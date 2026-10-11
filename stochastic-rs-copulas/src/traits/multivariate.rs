@@ -4,10 +4,10 @@ use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 
 use crate::error::CopulaError;
-use crate::multivariate::CopulaType as MultivariateCopulaType;
+use crate::multivariate::MultivariateFamily;
 
 pub trait MultivariateExt {
-  fn r#type(&self) -> MultivariateCopulaType;
+  fn family(&self) -> MultivariateFamily;
 
   /// `n` rows drawn from `seed`; a fresh `Deterministic` replays them, a shared one advances.
   /// Generic over the seed source, so not callable on a `dyn MultivariateExt`.

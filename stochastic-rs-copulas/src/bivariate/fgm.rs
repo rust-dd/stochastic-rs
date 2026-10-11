@@ -20,7 +20,7 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 
-use crate::bivariate::CopulaType;
+use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
@@ -29,7 +29,7 @@ use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct Fgm {
-  pub r#type: CopulaType,
+  pub r#type: BivariateFamily,
   pub theta: Option<f64>,
   pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
@@ -39,7 +39,7 @@ pub struct Fgm {
 impl Default for Fgm {
   fn default() -> Self {
     Self {
-      r#type: CopulaType::Fgm,
+      r#type: BivariateFamily::Fgm,
       theta: None,
       tau: None,
       theta_bounds: (-1.0, 1.0),
@@ -70,7 +70,7 @@ impl Fgm {
 }
 
 impl BivariateExt for Fgm {
-  fn r#type(&self) -> CopulaType {
+  fn family(&self) -> BivariateFamily {
     self.r#type
   }
 

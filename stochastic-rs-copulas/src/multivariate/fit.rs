@@ -29,47 +29,13 @@ use super::cvine::CVine;
 use super::dvine::DVine;
 use super::dvine::PairCopula;
 use super::rvine::RVine;
+use crate::bivariate::BivariateFamily;
 use crate::bivariate::bb1::Bb1;
 use crate::bivariate::bb7::Bb7;
 use crate::bivariate::frank::Frank;
 use crate::correlation::kendall_tau;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
-
-/// Candidate pair-copula families for the selection.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum PairFamily {
-  Independence,
-  Gaussian,
-  StudentT,
-  Clayton,
-  Frank,
-  Bb1,
-  Bb7,
-}
-
-impl PairFamily {
-  /// The families the crate can estimate, in the order they are tried.
-  pub const ALL: [PairFamily; 7] = [
-    PairFamily::Independence,
-    PairFamily::Gaussian,
-    PairFamily::StudentT,
-    PairFamily::Clayton,
-    PairFamily::Frank,
-    PairFamily::Bb1,
-    PairFamily::Bb7,
-  ];
-
-  /// Number of free parameters.
-  pub fn parameter_count(self) -> usize {
-    match self {
-      PairFamily::Independence => 0,
-      PairFamily::Gaussian | PairFamily::Clayton | PairFamily::Frank => 1,
-      PairFamily::StudentT | PairFamily::Bb1 | PairFamily::Bb7 => 2,
-    }
-  }
-}
 
 /// Information criterion used to pick the family of each edge.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -97,7 +63,7 @@ pub struct VineFit {
   /// Column indices of the data in the order the vine's variables refer to.
   pub order: Vec<usize>,
   /// Families chosen per tree and edge.
-  pub families: Vec<Vec<PairFamily>>,
+  pub families: Vec<Vec<BivariateFamily>>,
   pub log_likelihood: f64,
   pub parameter_count: usize,
   pub aic: f64,
@@ -119,23 +85,23 @@ fn log_likelihood(pair: &PairCopula, u: &[f64], v: &[f64]) -> f64 {
 
 /// Estimates `family` on the pair `(u, v)`; `None` when the family cannot
 /// represent the observed dependence (e.g. Clayton at negative τ).
-fn estimate(family: PairFamily, u: &[f64], v: &[f64]) -> Option<PairCopula> {
+fn estimate(family: BivariateFamily, u: &[f64], v: &[f64]) -> Option<PairCopula> {
   let tau = tau_of(u, v).clamp(-0.99, 0.99);
   let rho = (std::f64::consts::FRAC_PI_2 * tau).sin();
   match family {
-    PairFamily::Independence => Some(PairCopula::Independence),
-    PairFamily::Gaussian => Some(PairCopula::Gaussian { rho }),
-    PairFamily::StudentT => {
+    BivariateFamily::Independence => Some(PairCopula::Independence),
+    BivariateFamily::Gaussian => Some(PairCopula::Gaussian { rho }),
+    BivariateFamily::TCopula => {
       let best = [3.0_f64, 4.0, 6.0, 8.0, 12.0, 20.0, 40.0]
         .into_iter()
         .map(|nu| (nu, log_likelihood(&PairCopula::StudentT { rho, nu }, u, v)))
         .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))?;
       Some(PairCopula::StudentT { rho, nu: best.0 })
     }
-    PairFamily::Clayton => (tau > 0.02).then(|| PairCopula::Clayton {
+    BivariateFamily::Clayton => (tau > 0.02).then(|| PairCopula::Clayton {
       theta: 2.0 * tau / (1.0 - tau),
     }),
-    PairFamily::Frank => {
+    BivariateFamily::Frank => {
       if tau.abs() < 1e-3 {
         return None;
       }
@@ -144,7 +110,7 @@ fn estimate(family: PairFamily, u: &[f64], v: &[f64]) -> Option<PairCopula> {
       frank.set_theta(theta);
       theta.is_finite().then_some(PairCopula::Frank { theta })
     }
-    PairFamily::Bb1 | PairFamily::Bb7 => {
+    BivariateFamily::Bb1 | BivariateFamily::Bb7 => {
       if tau < 0.05 {
         return None;
       }
@@ -153,7 +119,7 @@ fn estimate(family: PairFamily, u: &[f64], v: &[f64]) -> Option<PairCopula> {
         Array1::from_vec(u.to_vec()),
         Array1::from_vec(v.to_vec())
       ];
-      if family == PairFamily::Bb1 {
+      if family == BivariateFamily::Bb1 {
         let mut c = Bb1::default();
         c.fit_parameters(x.view()).ok()?;
         Some(PairCopula::Bb1 {
@@ -169,19 +135,19 @@ fn estimate(family: PairFamily, u: &[f64], v: &[f64]) -> Option<PairCopula> {
         })
       }
     }
+    _ => None,
   }
 }
 
-/// Best family on the pair by the criterion; returns the copula, family,
-/// log-likelihood and parameter count.
+/// Best family on the pair by the criterion: the copula, its family, log-likelihood and parameter count.
 fn select_pair(
   u: &[f64],
   v: &[f64],
-  families: &[PairFamily],
+  families: &[BivariateFamily],
   criterion: SelectionCriterion,
-) -> (PairCopula, PairFamily, f64, usize) {
+) -> Result<(PairCopula, BivariateFamily, f64, usize), CopulaError> {
   let n = u.len() as f64;
-  let mut best: Option<(PairCopula, PairFamily, f64, usize, f64)> = None;
+  let mut best: Option<(PairCopula, BivariateFamily, f64, usize, f64)> = None;
   for &family in families {
     let Some(pair) = estimate(family, u, v) else {
       continue;
@@ -199,8 +165,13 @@ fn select_pair(
       best = Some((pair, family, ll, k, score));
     }
   }
-  let (pair, family, ll, k, _) = best.expect("Independence always estimates");
-  (pair, family, ll, k)
+  best
+    .map(|(pair, family, ll, k, _)| (pair, family, ll, k))
+    .ok_or_else(|| {
+      CopulaError::Unsupported(format!(
+        "no candidate family represents the edge: {families:?}"
+      ))
+    })
 }
 
 /// Greedy maximal path on `|τ|` for the first D-vine tree: start from the
@@ -247,12 +218,12 @@ fn dvine_order(tau: ArrayView2<f64>) -> Vec<usize> {
   path
 }
 
-/// Fits a vine of the requested structure to the pseudo-observations `u`
-/// (rows = observations, columns = variables in `[0, 1]`).
+/// Fits a vine of the requested structure to the pseudo-observations `u` (rows = observations, columns in `[0, 1]`);
+/// `families` must lie in `BivariateFamily::VINE_CANDIDATES`, else `Unsupported`.
 pub fn fit_vine(
   u: ArrayView2<f64>,
   structure: VineStructure,
-  families: &[PairFamily],
+  families: &[BivariateFamily],
   criterion: SelectionCriterion,
 ) -> Result<VineFit, CopulaError> {
   let d = u.ncols();
@@ -267,6 +238,14 @@ pub fn fit_vine(
       got: u.nrows(),
     });
   }
+  if let Some(family) = families
+    .iter()
+    .find(|f| !BivariateFamily::VINE_CANDIDATES.contains(f))
+  {
+    return Err(CopulaError::Unsupported(format!(
+      "the vine fitter cannot estimate {family:?}; the candidates are BivariateFamily::VINE_CANDIDATES"
+    )));
+  }
   let tau = kendall_tau(u);
   match structure {
     VineStructure::DVine => fit_dvine(u, tau.view(), families, criterion),
@@ -277,7 +256,7 @@ pub fn fit_vine(
 fn fit_dvine(
   u: ArrayView2<f64>,
   tau: ArrayView2<f64>,
-  families: &[PairFamily],
+  families: &[BivariateFamily],
   criterion: SelectionCriterion,
 ) -> Result<VineFit, CopulaError> {
   let d = u.ncols();
@@ -289,14 +268,14 @@ fn fit_dvine(
     .map(|i| u.column(order[i + 1]).to_vec())
     .collect();
   let mut trees: Vec<Vec<PairCopula>> = Vec::with_capacity(d - 1);
-  let mut chosen: Vec<Vec<PairFamily>> = Vec::with_capacity(d - 1);
+  let mut chosen: Vec<Vec<BivariateFamily>> = Vec::with_capacity(d - 1);
   let (mut ll_total, mut k_total) = (0.0, 0usize);
   for m in 0..d - 1 {
     let edges = d - 1 - m;
     let mut tree = Vec::with_capacity(edges);
     let mut tree_families = Vec::with_capacity(edges);
     for i in 0..edges {
-      let (pair, family, ll, k) = select_pair(&left[i], &right[i], families, criterion);
+      let (pair, family, ll, k) = select_pair(&left[i], &right[i], families, criterion)?;
       ll_total += ll;
       k_total += k;
       tree.push(pair);
@@ -344,7 +323,7 @@ fn fit_dvine(
 fn fit_cvine(
   u: ArrayView2<f64>,
   tau: ArrayView2<f64>,
-  families: &[PairFamily],
+  families: &[BivariateFamily],
   criterion: SelectionCriterion,
 ) -> Result<VineFit, CopulaError> {
   let d = u.ncols();
@@ -374,13 +353,13 @@ fn fit_cvine(
     .map(|&j| (j, u.column(j).to_vec()))
     .collect();
   // Per tree: (variable, fitted pair, family) of every edge to the root.
-  let mut tree_entries: Vec<Vec<(usize, PairCopula, PairFamily)>> = Vec::with_capacity(d - 1);
+  let mut tree_entries: Vec<Vec<(usize, PairCopula, BivariateFamily)>> = Vec::with_capacity(d - 1);
   let (mut ll_total, mut k_total) = (0.0, 0usize);
   for _m in 0..d - 1 {
     let mut entries = Vec::with_capacity(values.len());
     let mut next_values: Vec<(usize, Vec<f64>)> = Vec::with_capacity(values.len());
     for (j, column) in &values {
-      let (pair, family, ll, k) = select_pair(&root_values, column, families, criterion);
+      let (pair, family, ll, k) = select_pair(&root_values, column, families, criterion)?;
       ll_total += ll;
       k_total += k;
       // Pseudo-observation of variable j given the root: h(x_j | root).
@@ -432,7 +411,7 @@ fn fit_cvine(
     position[j] = k;
   }
   let mut trees: Vec<Vec<PairCopula>> = Vec::with_capacity(d - 1);
-  let mut chosen: Vec<Vec<PairFamily>> = Vec::with_capacity(d - 1);
+  let mut chosen: Vec<Vec<BivariateFamily>> = Vec::with_capacity(d - 1);
   for mut entries in tree_entries {
     entries.sort_by_key(|(j, ..)| position[*j]);
     trees.push(entries.iter().map(|(_, pair, _)| *pair).collect());

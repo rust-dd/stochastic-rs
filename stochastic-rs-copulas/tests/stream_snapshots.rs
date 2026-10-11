@@ -5,6 +5,7 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::array;
+use stochastic_rs_copulas::bivariate::BivariateFamily;
 use stochastic_rs_copulas::bivariate::amh::Amh;
 use stochastic_rs_copulas::bivariate::bb1::Bb1;
 use stochastic_rs_copulas::bivariate::bb7::Bb7;
@@ -25,7 +26,6 @@ use stochastic_rs_copulas::multivariate::cvine::CVine;
 use stochastic_rs_copulas::multivariate::dvine::DVine;
 use stochastic_rs_copulas::multivariate::dvine::PairCopula;
 use stochastic_rs_copulas::multivariate::gaussian::GaussianMultivariate;
-use stochastic_rs_copulas::multivariate::nac::NacFamily;
 use stochastic_rs_copulas::multivariate::nac::NacNode;
 use stochastic_rs_copulas::multivariate::nac::NestedArchimedean;
 use stochastic_rs_copulas::multivariate::rvine::RVine;
@@ -262,7 +262,7 @@ fn samples() -> Vec<(&'static str, Array2<f64>)> {
   };
   row!(
     "nac_gumbel_nested",
-    NestedArchimedean::new(NacFamily::Gumbel, nested, 3)
+    NestedArchimedean::new(BivariateFamily::Gumbel, nested, 3)
       .unwrap()
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
@@ -270,7 +270,7 @@ fn samples() -> Vec<(&'static str, Array2<f64>)> {
   let flat = NacNode::leaf_group(2.0, vec![0, 1, 2]);
   row!(
     "nac_clayton_flat",
-    NestedArchimedean::new(NacFamily::Clayton, flat, 3)
+    NestedArchimedean::new(BivariateFamily::Clayton, flat, 3)
       .unwrap()
       .sample(N, &Deterministic::new(SEED))
       .unwrap()

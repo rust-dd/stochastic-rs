@@ -39,7 +39,7 @@ use owens_t::biv_norm;
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
-use crate::bivariate::CopulaType;
+use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
@@ -53,7 +53,7 @@ const BOUNDARY_EPS: f64 = 1e-12;
 
 #[derive(Debug, Clone)]
 pub struct GaussianCopula {
-  pub r#type: CopulaType,
+  pub r#type: BivariateFamily,
   /// Correlation $\rho \in (-1, 1)$, stored under the trait's `theta`
   /// field for single-parameter compatibility with the other families.
   pub theta: Option<f64>,
@@ -65,7 +65,7 @@ pub struct GaussianCopula {
 impl Default for GaussianCopula {
   fn default() -> Self {
     Self {
-      r#type: CopulaType::Gaussian,
+      r#type: BivariateFamily::Gaussian,
       theta: None,
       tau: None,
       theta_bounds: (-1.0, 1.0),
@@ -91,7 +91,7 @@ impl GaussianCopula {
 }
 
 impl BivariateExt for GaussianCopula {
-  fn r#type(&self) -> CopulaType {
+  fn family(&self) -> BivariateFamily {
     self.r#type
   }
 

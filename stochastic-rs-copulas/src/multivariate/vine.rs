@@ -35,7 +35,7 @@ use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
-use super::CopulaType;
+use super::MultivariateFamily;
 use super::linalg::is_spd;
 use super::linalg::spd_cholesky_lower;
 use super::linalg::spd_inverse;
@@ -127,8 +127,8 @@ impl VineMultivariate {
 }
 
 impl MultivariateExt for VineMultivariate {
-  fn r#type(&self) -> CopulaType {
-    CopulaType::Vine
+  fn family(&self) -> MultivariateFamily {
+    MultivariateFamily::Vine
   }
 
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {

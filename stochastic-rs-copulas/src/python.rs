@@ -311,16 +311,16 @@ macro_rules! py_two_parameter {
 py_two_parameter!(PyBb1, crate::bivariate::bb1::Bb1, "Bb1");
 py_two_parameter!(PyBb7, crate::bivariate::bb7::Bb7, "Bb7");
 
-fn parse_family(name: &str) -> PyResult<crate::multivariate::fit::PairFamily> {
-  use crate::multivariate::fit::PairFamily;
+fn parse_family(name: &str) -> PyResult<crate::bivariate::BivariateFamily> {
+  use crate::bivariate::BivariateFamily;
   Ok(match name.to_ascii_lowercase().as_str() {
-    "independence" => PairFamily::Independence,
-    "gaussian" => PairFamily::Gaussian,
-    "student_t" | "studentt" | "t" => PairFamily::StudentT,
-    "clayton" => PairFamily::Clayton,
-    "frank" => PairFamily::Frank,
-    "bb1" => PairFamily::Bb1,
-    "bb7" => PairFamily::Bb7,
+    "independence" => BivariateFamily::Independence,
+    "gaussian" => BivariateFamily::Gaussian,
+    "student_t" | "studentt" | "t" => BivariateFamily::TCopula,
+    "clayton" => BivariateFamily::Clayton,
+    "frank" => BivariateFamily::Frank,
+    "bb1" => BivariateFamily::Bb1,
+    "bb7" => BivariateFamily::Bb7,
     other => {
       return Err(PyValueError::new_err(format!(
         "unknown pair-copula family {other:?}"
@@ -357,7 +357,7 @@ pub fn fit_vine<'py>(
 ) -> PyResult<pyo3::Bound<'py, pyo3::types::PyDict>> {
   use pyo3::types::PyDict;
 
-  use crate::multivariate::fit::PairFamily;
+  use crate::bivariate::BivariateFamily;
   use crate::multivariate::fit::SelectionCriterion;
   use crate::multivariate::fit::VineStructure;
   use crate::multivariate::fit::fit_vine;
@@ -380,12 +380,12 @@ pub fn fit_vine<'py>(
       )));
     }
   };
-  let families: Vec<PairFamily> = match families {
+  let families: Vec<BivariateFamily> = match families {
     Some(names) => names
       .iter()
       .map(|n| parse_family(n))
       .collect::<PyResult<_>>()?,
-    None => PairFamily::ALL.to_vec(),
+    None => BivariateFamily::VINE_CANDIDATES.to_vec(),
   };
   let data = u.as_array().to_owned();
   let fit = py

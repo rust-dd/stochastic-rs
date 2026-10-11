@@ -1,11 +1,11 @@
 // docs: copulas#bb1-bb7-two-parameter-tail-asymmetry
 //! Backs the BB1 / vine-fitting example on the copulas catalog page.
 
+use stochastic_rs::copulas::bivariate::BivariateFamily;
 use stochastic_rs::copulas::bivariate::bb1::Bb1;
 use stochastic_rs::copulas::gof::GofConfig;
 use stochastic_rs::copulas::gof::gof_cramer_von_mises;
 use stochastic_rs::copulas::gof::pseudo_observations;
-use stochastic_rs::copulas::multivariate::fit::PairFamily;
 use stochastic_rs::copulas::multivariate::fit::SelectionCriterion;
 use stochastic_rs::copulas::multivariate::fit::VineStructure;
 use stochastic_rs::copulas::multivariate::fit::fit_vine;
@@ -44,7 +44,7 @@ fn bb1_fit_gof_and_vine_selection() {
   let fit = fit_vine(
     uv.view(),
     VineStructure::DVine,
-    &PairFamily::ALL,
+    &BivariateFamily::VINE_CANDIDATES,
     SelectionCriterion::Aic,
   )
   .unwrap();

@@ -60,7 +60,7 @@ use stochastic_rs_distributions::special::beta_i;
 use stochastic_rs_distributions::special::ln_gamma;
 use stochastic_rs_distributions::special::ndtri;
 
-use super::CopulaType;
+use super::MultivariateFamily;
 use super::linalg::is_spd;
 use super::linalg::spd_cholesky_lower;
 use super::linalg::spd_inverse;
@@ -362,8 +362,8 @@ impl TMultivariate {
 }
 
 impl MultivariateExt for TMultivariate {
-  fn r#type(&self) -> CopulaType {
-    CopulaType::TMultivariate
+  fn family(&self) -> MultivariateFamily {
+    MultivariateFamily::TMultivariate
   }
 
   /// The normal and the $\chi^2$ stream both come from `seed`, which advances between them.

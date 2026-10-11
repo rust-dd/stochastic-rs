@@ -131,9 +131,9 @@ pub mod plackett;
 pub mod t_copula;
 pub(crate) mod two_parameter;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-pub enum CopulaType {
+pub enum BivariateFamily {
   Amh,
   Bb1,
   Bb7,
@@ -149,6 +149,56 @@ pub enum CopulaType {
   MarshallOlkin,
   Plackett,
   TCopula,
+}
+
+impl BivariateFamily {
+  /// Every family, in the enum's order.
+  pub const ALL: [Self; 15] = [
+    Self::Amh,
+    Self::Bb1,
+    Self::Bb7,
+    Self::Clayton,
+    Self::Fgm,
+    Self::Frank,
+    Self::Galambos,
+    Self::Gaussian,
+    Self::Gumbel,
+    Self::HuslerReiss,
+    Self::Independence,
+    Self::Joe,
+    Self::MarshallOlkin,
+    Self::Plackett,
+    Self::TCopula,
+  ];
+
+  /// The families the vine fitter can estimate, in the order it tries them.
+  pub const VINE_CANDIDATES: [Self; 7] = [
+    Self::Independence,
+    Self::Gaussian,
+    Self::TCopula,
+    Self::Clayton,
+    Self::Frank,
+    Self::Bb1,
+    Self::Bb7,
+  ];
+
+  /// Free parameters of the family.
+  pub fn parameter_count(self) -> usize {
+    match self {
+      Self::Independence => 0,
+      Self::Amh
+      | Self::Clayton
+      | Self::Fgm
+      | Self::Frank
+      | Self::Galambos
+      | Self::Gaussian
+      | Self::Gumbel
+      | Self::HuslerReiss
+      | Self::Joe
+      | Self::Plackett => 1,
+      Self::Bb1 | Self::Bb7 | Self::MarshallOlkin | Self::TCopula => 2,
+    }
+  }
 }
 
 #[cfg(test)]
@@ -217,53 +267,50 @@ mod tests {
 
 #[cfg(test)]
 mod catalog_tests {
-  use super::CopulaType;
+  use super::BivariateFamily;
 
-  /// Guards `website/content/docs/copulas.mdx`'s catalog table (and `CLAUDE.md`'s
-  /// bivariate count) against a copula added to the tree without its row on the
-  /// docs page. The match has **no wildcard arm** on purpose: `CopulaType` is
-  /// `#[non_exhaustive]` for downstream crates, but inside this crate an
-  /// exhaustive match still is a compile error the moment a variant is added —
-  /// which is the point. When it fires: add the arm, add the row, bump the counts.
+  /// Guards `copulas.mdx`'s catalog table and `CLAUDE.md`'s count: the match has no wildcard arm on purpose, so a new
+  /// variant is a compile error here until its arm, its docs row and the counts are added.
   #[test]
   fn bivariate_catalog_matches_docs_count() {
     let count = [
-      CopulaType::Amh,
-      CopulaType::Bb1,
-      CopulaType::Bb7,
-      CopulaType::Clayton,
-      CopulaType::Fgm,
-      CopulaType::Frank,
-      CopulaType::Galambos,
-      CopulaType::Gaussian,
-      CopulaType::Gumbel,
-      CopulaType::HuslerReiss,
-      CopulaType::Independence,
-      CopulaType::Joe,
-      CopulaType::MarshallOlkin,
-      CopulaType::Plackett,
-      CopulaType::TCopula,
+      BivariateFamily::Amh,
+      BivariateFamily::Bb1,
+      BivariateFamily::Bb7,
+      BivariateFamily::Clayton,
+      BivariateFamily::Fgm,
+      BivariateFamily::Frank,
+      BivariateFamily::Galambos,
+      BivariateFamily::Gaussian,
+      BivariateFamily::Gumbel,
+      BivariateFamily::HuslerReiss,
+      BivariateFamily::Independence,
+      BivariateFamily::Joe,
+      BivariateFamily::MarshallOlkin,
+      BivariateFamily::Plackett,
+      BivariateFamily::TCopula,
     ]
     .into_iter()
     .map(|t| match t {
-      CopulaType::Amh
-      | CopulaType::Bb1
-      | CopulaType::Bb7
-      | CopulaType::Clayton
-      | CopulaType::Fgm
-      | CopulaType::Frank
-      | CopulaType::Galambos
-      | CopulaType::Gaussian
-      | CopulaType::Gumbel
-      | CopulaType::HuslerReiss
-      | CopulaType::Independence
-      | CopulaType::Joe
-      | CopulaType::MarshallOlkin
-      | CopulaType::Plackett
-      | CopulaType::TCopula => 1,
+      BivariateFamily::Amh
+      | BivariateFamily::Bb1
+      | BivariateFamily::Bb7
+      | BivariateFamily::Clayton
+      | BivariateFamily::Fgm
+      | BivariateFamily::Frank
+      | BivariateFamily::Galambos
+      | BivariateFamily::Gaussian
+      | BivariateFamily::Gumbel
+      | BivariateFamily::HuslerReiss
+      | BivariateFamily::Independence
+      | BivariateFamily::Joe
+      | BivariateFamily::MarshallOlkin
+      | BivariateFamily::Plackett
+      | BivariateFamily::TCopula => 1,
     })
     .sum::<usize>();
 
     assert_eq!(count, 15, "copulas.mdx's bivariate table says 15");
+    assert_eq!(BivariateFamily::ALL.len(), count);
   }
 }

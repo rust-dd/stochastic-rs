@@ -4,11 +4,11 @@
 use ndarray::Array2;
 use ndarray::array;
 use stochastic_rs_copulas::CopulaError;
+use stochastic_rs_copulas::bivariate::BivariateFamily;
 use stochastic_rs_copulas::bivariate::bb1::Bb1;
 use stochastic_rs_copulas::bivariate::bb7::Bb7;
 use stochastic_rs_copulas::bivariate::clayton::Clayton;
 use stochastic_rs_copulas::bivariate::gaussian::GaussianCopula;
-use stochastic_rs_copulas::multivariate::fit::PairFamily;
 use stochastic_rs_copulas::multivariate::fit::SelectionCriterion;
 use stochastic_rs_copulas::multivariate::fit::VineStructure;
 use stochastic_rs_copulas::multivariate::fit::fit_vine;
@@ -72,7 +72,7 @@ fn a_multivariate_fit_tells_too_few_dimensions_from_too_few_observations() {
   let vine = fit_vine(
     Array2::from_elem((100, 1), 0.5).view(),
     VineStructure::DVine,
-    &PairFamily::ALL,
+    &BivariateFamily::VINE_CANDIDATES,
     SelectionCriterion::Aic,
   );
   assert!(matches!(vine, Err(CopulaError::InvalidStructure(_))));

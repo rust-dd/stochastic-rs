@@ -38,9 +38,10 @@ use ndarray::Array2;
 use ndarray::ArrayView2;
 use stochastic_rs_core::simd_rng::SeedExt;
 
-use super::CopulaType;
+use super::MultivariateFamily;
 use super::cvine::CVine;
 use super::dvine::DVine;
+use super::fit::VineStructure;
 use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
 
@@ -84,20 +85,18 @@ impl RVine {
     }
   }
 
-  /// Tree shape descriptor — useful for downstream consumers needing to
-  /// branch on the underlying structure (e.g. routing to a structure-aware
-  /// likelihood pipeline).
-  pub fn kind(&self) -> &'static str {
+  /// Which of the two tree shapes the vine has.
+  pub fn structure(&self) -> VineStructure {
     match self {
-      RVine::D(_) => "DVine",
-      RVine::C(_) => "CVine",
+      RVine::D(_) => VineStructure::DVine,
+      RVine::C(_) => VineStructure::CVine,
     }
   }
 }
 
 impl MultivariateExt for RVine {
-  fn r#type(&self) -> CopulaType {
-    CopulaType::RVine
+  fn family(&self) -> MultivariateFamily {
+    MultivariateFamily::RVine
   }
 
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
@@ -175,7 +174,7 @@ mod tests {
         lp_rv[i]
       );
     }
-    assert_eq!(rv.kind(), "DVine");
+    assert_eq!(rv.structure(), VineStructure::DVine);
     assert_eq!(rv.dim(), 3);
   }
 
@@ -202,7 +201,7 @@ mod tests {
         lp_rv[i]
       );
     }
-    assert_eq!(rv.kind(), "CVine");
+    assert_eq!(rv.structure(), VineStructure::CVine);
   }
 
   /// Sampling delegates to the wrapped vine and preserves uniform
@@ -219,6 +218,6 @@ mod tests {
         "marginal {j} mean = {m}, expected ~0.5"
       );
     }
-    assert_eq!(rv.kind(), "DVine"); // independence() defaults to DVine backing
+    assert_eq!(rv.structure(), VineStructure::DVine);
   }
 }

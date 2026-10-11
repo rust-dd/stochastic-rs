@@ -25,7 +25,7 @@
 use ndarray::Array1;
 use ndarray::ArrayView2;
 
-use crate::bivariate::CopulaType;
+use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::error::CopulaError;
 use crate::optim::zero;
@@ -39,7 +39,7 @@ const BOUNDARY_EPS: f64 = 1e-12;
 
 #[derive(Debug, Clone)]
 pub struct Galambos {
-  pub r#type: CopulaType,
+  pub r#type: BivariateFamily,
   pub theta: Option<f64>,
   pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
@@ -49,7 +49,7 @@ pub struct Galambos {
 impl Default for Galambos {
   fn default() -> Self {
     Self {
-      r#type: CopulaType::Galambos,
+      r#type: BivariateFamily::Galambos,
       theta: None,
       tau: None,
       theta_bounds: (0.0, f64::INFINITY),
@@ -100,7 +100,7 @@ impl Galambos {
 }
 
 impl BivariateExt for Galambos {
-  fn r#type(&self) -> CopulaType {
+  fn family(&self) -> BivariateFamily {
     self.r#type
   }
 

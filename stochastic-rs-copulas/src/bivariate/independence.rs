@@ -10,7 +10,7 @@ use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::Axis;
 
-use super::CopulaType;
+use super::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
@@ -19,7 +19,7 @@ use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct Independence {
-  pub r#type: CopulaType,
+  pub r#type: BivariateFamily,
   pub theta: Option<f64>,
   pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
@@ -29,7 +29,7 @@ pub struct Independence {
 impl Default for Independence {
   fn default() -> Self {
     Self {
-      r#type: CopulaType::Independence,
+      r#type: BivariateFamily::Independence,
       theta: None,
       tau: None,
       theta_bounds: (0.0, 0.0),
@@ -45,7 +45,7 @@ impl Independence {
 }
 
 impl BivariateExt for Independence {
-  fn r#type(&self) -> CopulaType {
+  fn family(&self) -> BivariateFamily {
     self.r#type
   }
 

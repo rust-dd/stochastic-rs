@@ -7,6 +7,7 @@ use criterion::Criterion;
 use criterion::criterion_group;
 use criterion::criterion_main;
 use ndarray::Array2;
+use stochastic_rs::copulas::bivariate::BivariateFamily;
 use stochastic_rs::copulas::bivariate::amh::Amh;
 use stochastic_rs::copulas::bivariate::clayton::Clayton;
 use stochastic_rs::copulas::bivariate::fgm::Fgm;
@@ -22,7 +23,6 @@ use stochastic_rs::copulas::gof::gof_cramer_von_mises;
 use stochastic_rs::copulas::gof::pseudo_observations;
 use stochastic_rs::copulas::multivariate::dvine::DVine;
 use stochastic_rs::copulas::multivariate::dvine::PairCopula;
-use stochastic_rs::copulas::multivariate::fit::PairFamily;
 use stochastic_rs::copulas::multivariate::fit::SelectionCriterion;
 use stochastic_rs::copulas::multivariate::fit::VineStructure;
 use stochastic_rs::copulas::multivariate::fit::fit_vine;
@@ -180,7 +180,7 @@ fn fit(c: &mut Criterion) {
       fit_vine(
         data.view(),
         VineStructure::DVine,
-        &PairFamily::ALL,
+        &BivariateFamily::VINE_CANDIDATES,
         SelectionCriterion::Aic,
       )
       .unwrap()

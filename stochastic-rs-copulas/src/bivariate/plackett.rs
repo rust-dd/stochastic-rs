@@ -22,7 +22,7 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 
-use crate::bivariate::CopulaType;
+use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
@@ -32,7 +32,7 @@ use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct Plackett {
-  pub r#type: CopulaType,
+  pub r#type: BivariateFamily,
   pub theta: Option<f64>,
   pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
@@ -42,7 +42,7 @@ pub struct Plackett {
 impl Default for Plackett {
   fn default() -> Self {
     Self {
-      r#type: CopulaType::Plackett,
+      r#type: BivariateFamily::Plackett,
       theta: None,
       tau: None,
       theta_bounds: (1e-12, f64::INFINITY),
@@ -102,7 +102,7 @@ impl Plackett {
 }
 
 impl BivariateExt for Plackett {
-  fn r#type(&self) -> CopulaType {
+  fn family(&self) -> BivariateFamily {
     self.r#type
   }
 

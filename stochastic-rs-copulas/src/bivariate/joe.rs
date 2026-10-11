@@ -18,7 +18,7 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 
-use crate::bivariate::CopulaType;
+use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::error::CopulaError;
 use crate::optim::zero;
@@ -27,7 +27,7 @@ use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct Joe {
-  pub r#type: CopulaType,
+  pub r#type: BivariateFamily,
   pub theta: Option<f64>,
   pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
@@ -37,7 +37,7 @@ pub struct Joe {
 impl Default for Joe {
   fn default() -> Self {
     Self {
-      r#type: CopulaType::Joe,
+      r#type: BivariateFamily::Joe,
       theta: None,
       tau: None,
       theta_bounds: (1.0, f64::INFINITY),
@@ -81,7 +81,7 @@ impl Joe {
 }
 
 impl BivariateExt for Joe {
-  fn r#type(&self) -> CopulaType {
+  fn family(&self) -> BivariateFamily {
     self.r#type
   }
 

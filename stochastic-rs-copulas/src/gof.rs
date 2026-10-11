@@ -189,7 +189,7 @@ mod tests {
   use stochastic_rs_distributions::traits::HypothesisTest;
 
   use super::*;
-  use crate::bivariate::CopulaType;
+  use crate::bivariate::BivariateFamily;
   use crate::bivariate::clayton::Clayton;
   use crate::bivariate::gaussian::GaussianCopula;
   use crate::traits::TailDependence;
@@ -362,8 +362,8 @@ mod tests {
   }
 
   impl BivariateExt for Poisonable {
-    fn r#type(&self) -> CopulaType {
-      CopulaType::Independence
+    fn family(&self) -> BivariateFamily {
+      BivariateFamily::Independence
     }
 
     fn tau(&self) -> Option<f64> {

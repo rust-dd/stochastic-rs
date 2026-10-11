@@ -37,7 +37,7 @@ use rand::RngExt;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
 
-use super::CopulaType;
+use super::MultivariateFamily;
 use super::dvine::PairCopula;
 use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
@@ -175,8 +175,8 @@ impl CVine {
 }
 
 impl MultivariateExt for CVine {
-  fn r#type(&self) -> CopulaType {
-    CopulaType::CVine
+  fn family(&self) -> MultivariateFamily {
+    MultivariateFamily::CVine
   }
 
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {

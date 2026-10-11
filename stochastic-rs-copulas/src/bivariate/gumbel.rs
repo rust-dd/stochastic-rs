@@ -9,7 +9,7 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 
-use super::CopulaType;
+use super::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
@@ -18,7 +18,7 @@ use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct Gumbel {
-  pub r#type: CopulaType,
+  pub r#type: BivariateFamily,
   pub theta: Option<f64>,
   pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
@@ -28,7 +28,7 @@ pub struct Gumbel {
 impl Gumbel {
   pub fn new(theta: Option<f64>, tau: Option<f64>) -> Self {
     Self {
-      r#type: CopulaType::Gumbel,
+      r#type: BivariateFamily::Gumbel,
       theta,
       tau,
       theta_bounds: (1.0, f64::INFINITY),
@@ -48,7 +48,7 @@ impl Default for Gumbel {
 }
 
 impl BivariateExt for Gumbel {
-  fn r#type(&self) -> CopulaType {
+  fn family(&self) -> BivariateFamily {
     self.r#type
   }
 

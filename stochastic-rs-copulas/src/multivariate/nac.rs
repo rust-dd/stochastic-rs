@@ -72,62 +72,57 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::gamma::SimdGamma;
 
-use super::CopulaType;
+use super::MultivariateFamily;
+use crate::bivariate::BivariateFamily;
 use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
 
-/// Single-parameter Archimedean family supported by [`NestedArchimedean`].
-/// All nodes of a NAC must share the same family; mixed-family NAC is not
-/// yet supported.
+/// The two generators a nested Archimedean copula admits; the public API names them by `BivariateFamily`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum NacFamily {
-  /// Clayton: $\varphi_\theta(t) = (t^{-\theta} - 1)/\theta$,
-  /// $\theta \ge 0$. Lower-tail dependence.
+enum Generator {
   Clayton,
-  /// Gumbel: $\varphi_\theta(t) = (-\ln t)^\theta$,
-  /// $\theta \ge 1$. Upper-tail dependence.
   Gumbel,
 }
 
-impl NacFamily {
-  /// Minimum admissible $\theta$ (boundary of independence).
-  pub fn theta_min(self) -> f64 {
-    match self {
-      NacFamily::Clayton => 0.0,
-      NacFamily::Gumbel => 1.0,
+impl Generator {
+  fn from_family(family: BivariateFamily) -> Result<Self, CopulaError> {
+    match family {
+      BivariateFamily::Clayton => Ok(Self::Clayton),
+      BivariateFamily::Gumbel => Ok(Self::Gumbel),
+      other => Err(CopulaError::Unsupported(format!(
+        "a nested Archimedean copula needs a Clayton or Gumbel generator, got {other:?}"
+      ))),
     }
   }
 
-  /// Inverse generator $\psi_\theta = \varphi_\theta^{-1}$ in the
-  /// **LST-normalised form** (so $\psi$ is the Laplace transform of the
-  /// frailty `V` sampled by [`NestedArchimedean::sample`]):
-  /// - Clayton: $\psi(s) = (1 + s)^{-1/\theta}$ — LST of
-  ///   $V \sim \mathrm{Gamma}(1/\theta, 1)$.
-  /// - Gumbel:  $\psi(s) = \exp(-s^{1/\theta})$ — LST of
-  ///   $V \sim S_+(1/\theta)$.
-  ///
-  /// The CDF $C = \psi(\sum \varphi(u_j))$ is invariant under the convention
-  /// rescaling $\varphi \to \varphi/c$, $\psi \to \psi(c\cdot)$, so the
-  /// resulting copula matches the bivariate `BivariateExt` Clayton
-  /// implementation (which uses the equivalent $(1 + \theta s)^{-1/\theta}$
-  /// scaled form).
-  pub fn inverse_generator(self, theta: f64, s: f64) -> f64 {
+  fn family(self) -> BivariateFamily {
     match self {
-      NacFamily::Clayton => (1.0 + s).powf(-1.0 / theta),
-      NacFamily::Gumbel => (-(s.powf(1.0 / theta))).exp(),
+      Self::Clayton => BivariateFamily::Clayton,
+      Self::Gumbel => BivariateFamily::Gumbel,
     }
   }
 
-  /// Generator $\varphi_\theta(t) = \psi^{-1}(t)$, the inverse of the
-  /// LST form above.
-  /// - Clayton: $\varphi(t) = t^{-\theta} - 1$.
-  /// - Gumbel:  $\varphi(t) = (-\ln t)^\theta$.
-  pub fn generator(self, theta: f64, t: f64) -> f64 {
+  fn theta_min(self) -> f64 {
+    match self {
+      Self::Clayton => 0.0,
+      Self::Gumbel => 1.0,
+    }
+  }
+
+  /// LST-normalised inverse generator: Clayton $(1 + s)^{-1/\theta}$, Gumbel $\exp(-s^{1/\theta})$.
+  fn inverse_generator(self, theta: f64, s: f64) -> f64 {
+    match self {
+      Self::Clayton => (1.0 + s).powf(-1.0 / theta),
+      Self::Gumbel => (-(s.powf(1.0 / theta))).exp(),
+    }
+  }
+
+  /// Generator $\varphi_\theta = \psi_\theta^{-1}$: Clayton $t^{-\theta} - 1$, Gumbel $(-\ln t)^\theta$.
+  fn generator(self, theta: f64, t: f64) -> f64 {
     let t = t.clamp(1e-15, 1.0 - 1e-15);
     match self {
-      NacFamily::Clayton => t.powf(-theta) - 1.0,
-      NacFamily::Gumbel => (-t.ln()).powf(theta),
+      Self::Clayton => t.powf(-theta) - 1.0,
+      Self::Gumbel => (-t.ln()).powf(theta),
     }
   }
 }
@@ -142,8 +137,7 @@ impl NacFamily {
 /// prefer the builder API.
 #[derive(Debug, Clone)]
 pub struct NacNode {
-  /// Family parameter $\theta$ for this node's generator. Must satisfy
-  /// [`NacFamily::theta_min`].
+  /// Generator parameter $\theta$ of this node: $\theta \ge 0$ for Clayton, $\theta \ge 1$ for Gumbel.
   pub theta: f64,
   /// Marginal indices whose copula is governed directly by this node's
   /// generator (i.e. no further nesting below them).
@@ -174,18 +168,18 @@ impl NacNode {
 /// Nested Archimedean copula with a single family across all nodes.
 #[derive(Debug, Clone)]
 pub struct NestedArchimedean {
-  family: NacFamily,
+  generator: Generator,
   root: NacNode,
   dim: usize,
   index_order: Vec<usize>,
 }
 
 impl NestedArchimedean {
-  /// Construct a NAC from a family and root node. Validates the sufficient
-  /// nesting condition, family-specific parameter bounds, and that every
-  /// marginal index appears exactly once in the tree.
-  pub fn new(family: NacFamily, root: NacNode, dim: usize) -> Result<Self, CopulaError> {
-    Self::validate_node(family, &root, root.theta.min(f64::INFINITY), true)?;
+  /// Builds a NAC from a Clayton or Gumbel `family` (`Unsupported` otherwise) and a root node; checks the sufficient
+  /// nesting condition, the generator's parameter bounds and that every marginal index appears exactly once.
+  pub fn new(family: BivariateFamily, root: NacNode, dim: usize) -> Result<Self, CopulaError> {
+    let generator = Generator::from_family(family)?;
+    Self::validate_node(generator, &root, root.theta.min(f64::INFINITY), true)?;
     let mut index_order = Vec::with_capacity(dim);
     root.collect_leaves(&mut index_order);
     if index_order.len() != dim {
@@ -214,7 +208,7 @@ impl NestedArchimedean {
       ));
     }
     Ok(Self {
-      family,
+      generator,
       root,
       dim,
       index_order,
@@ -226,7 +220,7 @@ impl NestedArchimedean {
   /// vacuously satisfied). `is_root` flips behavior for the family-specific
   /// minimum check.
   fn validate_node(
-    family: NacFamily,
+    generator: Generator,
     node: &NacNode,
     parent_theta: f64,
     is_root: bool,
@@ -238,29 +232,31 @@ impl NestedArchimedean {
         constraint: "theta.is_finite()".into(),
       });
     }
-    let theta_min = family.theta_min();
+    let theta_min = generator.theta_min();
     if node.theta < theta_min {
       return Err(CopulaError::InvalidParameter {
         name: "theta",
         value: node.theta,
-        constraint: format!("theta >= {theta_min:?} for {family:?}"),
+        constraint: format!("theta >= {theta_min:?} for {:?}", generator.family()),
       });
     }
     if !is_root && node.theta < parent_theta {
       return Err(CopulaError::InvalidStructure(format!(
-        "sufficient nesting condition violated: child theta {:?} < parent theta {:?} ({family:?})",
-        node.theta, parent_theta
+        "sufficient nesting condition violated: child theta {:?} < parent theta {:?} ({:?})",
+        node.theta,
+        parent_theta,
+        generator.family()
       )));
     }
     for child in &node.children {
-      Self::validate_node(family, child, node.theta, false)?;
+      Self::validate_node(generator, child, node.theta, false)?;
     }
     Ok(())
   }
 
-  /// Family exposed for downstream inspection.
-  pub fn family(&self) -> NacFamily {
-    self.family
+  /// The Archimedean family every node shares; the trait's `family()` is always `NestedArchimedean`.
+  pub fn generator_family(&self) -> BivariateFamily {
+    self.generator.family()
   }
 
   /// Root node (immutable view).
@@ -333,8 +329,8 @@ impl NestedArchimedean {
     parent_state: Option<(f64, f64)>,
     out: &mut Array1<f64>,
   ) {
-    let v = match (self.family, parent_state) {
-      (NacFamily::Clayton, None) => {
+    let v = match (self.generator, parent_state) {
+      (Generator::Clayton, None) => {
         // V ~ Gamma(1/θ, 1) has LST (1 + s)^{-1/θ}; its sub-seed comes off `rng`, since an `Unseeded` source
         // here would break the replay of every Clayton tree (the root frailty is drawn on every row).
         let sub_seed = rng.random::<u64>();
@@ -342,7 +338,7 @@ impl NestedArchimedean {
           SimdGamma::<f64>::new(1.0 / node.theta, 1.0).seeded(&Deterministic::new(sub_seed));
         g.sample()
       }
-      (NacFamily::Gumbel, None) => {
+      (Generator::Gumbel, None) => {
         // Root Gumbel frailty: V ~ S_+(1/θ). The θ = 1 case is the
         // independence boundary (Gumbel = product copula); the positive
         // stable distribution degenerates to the constant 1 there.
@@ -352,7 +348,7 @@ impl NestedArchimedean {
           Self::positive_stable(rng, 1.0 / node.theta)
         }
       }
-      (NacFamily::Gumbel, Some((parent_theta, parent_v))) => {
+      (Generator::Gumbel, Some((parent_theta, parent_v))) => {
         // V_c | V_p has LST exp(-V_p s^α), α = θ_p / θ_c, so V_c = V_p^{1/α} · S_+(α) (Hofert & Mächler 2011, Table 3);
         // α = 1 is the no-nesting case, V_c = V_p.
         let alpha = parent_theta / node.theta;
@@ -363,7 +359,7 @@ impl NestedArchimedean {
           parent_v.powf(1.0 / alpha) * s
         }
       }
-      (NacFamily::Clayton, Some(_)) => {
+      (Generator::Clayton, Some(_)) => {
         unreachable!("sample rejects a nested Clayton tree before drawing")
       }
     };
@@ -373,7 +369,7 @@ impl NestedArchimedean {
       let e_uniform: f64 = rng.random::<f64>().clamp(1e-15, 1.0 - 1e-15);
       let e = -e_uniform.ln();
       let arg = e / v.max(1e-300);
-      let u = self.family.inverse_generator(node.theta, arg);
+      let u = self.generator.inverse_generator(node.theta, arg);
       out[j] = u.clamp(1e-12, 1.0 - 1e-12);
     }
 
@@ -387,7 +383,7 @@ impl NestedArchimedean {
   /// frailty to draw.
   fn check_root_frailty(&self) -> Result<(), CopulaError> {
     let shape = 1.0 / self.root.theta;
-    if self.family == NacFamily::Clayton && !(shape > 0.0 && shape.is_finite()) {
+    if self.generator == Generator::Clayton && !(shape > 0.0 && shape.is_finite()) {
       return Err(CopulaError::InvalidParameter {
         name: "theta",
         value: self.root.theta,
@@ -403,24 +399,24 @@ impl NestedArchimedean {
   fn cdf_node(&self, node: &NacNode, u: &[f64]) -> f64 {
     let mut s = 0.0;
     for &j in &node.leaves {
-      s += self.family.generator(node.theta, u[j]);
+      s += self.generator.generator(node.theta, u[j]);
     }
     for child in &node.children {
       let c_inner = self.cdf_node(child, u);
-      s += self.family.generator(node.theta, c_inner);
+      s += self.generator.generator(node.theta, c_inner);
     }
-    self.family.inverse_generator(node.theta, s)
+    self.generator.inverse_generator(node.theta, s)
   }
 }
 
 impl MultivariateExt for NestedArchimedean {
-  fn r#type(&self) -> CopulaType {
-    CopulaType::NestedArchimedean
+  fn family(&self) -> MultivariateFamily {
+    MultivariateFamily::NestedArchimedean
   }
 
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
     self.check_root_frailty()?;
-    if self.family == NacFamily::Clayton && !self.root.children.is_empty() {
+    if self.generator == Generator::Clayton && !self.root.children.is_empty() {
       return Err(CopulaError::Unsupported(
         "nested Clayton sampling needs the exponentially tilted stable V01 of Hofert & Mächler (2011, §3.2, eq. (5)): sample a Gumbel tree, or evaluate cdf and pdf".into(),
       ));

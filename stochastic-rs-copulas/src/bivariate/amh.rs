@@ -23,7 +23,7 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 
-use crate::bivariate::CopulaType;
+use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
@@ -33,7 +33,7 @@ use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct Amh {
-  pub r#type: CopulaType,
+  pub r#type: BivariateFamily,
   pub theta: Option<f64>,
   pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
@@ -43,7 +43,7 @@ pub struct Amh {
 impl Default for Amh {
   fn default() -> Self {
     Self {
-      r#type: CopulaType::Amh,
+      r#type: BivariateFamily::Amh,
       theta: None,
       tau: None,
       theta_bounds: (-1.0, 1.0),
@@ -125,7 +125,7 @@ impl Amh {
 }
 
 impl BivariateExt for Amh {
-  fn r#type(&self) -> CopulaType {
+  fn family(&self) -> BivariateFamily {
     self.r#type
   }
 

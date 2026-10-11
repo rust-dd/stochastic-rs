@@ -43,7 +43,7 @@ use stochastic_rs_distributions::DistributionExt;
 use stochastic_rs_distributions::special::ln_gamma;
 use stochastic_rs_distributions::studentt::SimdStudentT;
 
-use crate::bivariate::CopulaType;
+use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
@@ -52,7 +52,7 @@ use crate::traits::TailDependence;
 
 #[derive(Debug, Clone)]
 pub struct TCopula {
-  pub r#type: CopulaType,
+  pub r#type: BivariateFamily,
   /// Correlation $\rho \in (-1, 1)$, stored under the trait's `theta`
   /// field for single-parameter compatibility. Set degrees of freedom
   /// `nu` via [`TCopula::with_nu`].
@@ -85,7 +85,7 @@ pub(crate) fn check_nu(nu: f64) -> Result<(), CopulaError> {
 impl Default for TCopula {
   fn default() -> Self {
     Self {
-      r#type: CopulaType::TCopula,
+      r#type: BivariateFamily::TCopula,
       theta: None,
       tau: None,
       theta_bounds: (-1.0, 1.0),
@@ -202,7 +202,7 @@ impl TCopula {
 }
 
 impl BivariateExt for TCopula {
-  fn r#type(&self) -> CopulaType {
+  fn family(&self) -> BivariateFamily {
     self.r#type
   }
 
