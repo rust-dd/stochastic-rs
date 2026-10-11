@@ -448,18 +448,20 @@ pub fn copula_gof<'py>(
     ($ctor:expr) => {{
       let mut copula = $ctor;
       copula.fit(data.view()).map_err(err_to_py)?;
-      py.detach(|| {
-        gof_cramer_von_mises(
-          &copula,
-          data.view(),
-          GofConfig {
-            replications,
-            alpha,
-          },
-          &Deterministic::new(seed),
-          |c, x| c.fit(x),
-        )
-      })
+      stochastic_rs_distributions::python::value_error_on_panic(|| {
+        py.detach(|| {
+          gof_cramer_von_mises(
+            &copula,
+            data.view(),
+            GofConfig {
+              replications,
+              alpha,
+            },
+            &Deterministic::new(seed),
+            |c, x| c.fit(x),
+          )
+        })
+      })?
       .map_err(err_to_py)?
     }};
   }

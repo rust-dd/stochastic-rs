@@ -40,3 +40,19 @@ def test_hand_written_process_constructor_raises_value_error():
 def test_hand_written_pricer_constructor_raises_value_error():
     with pytest.raises(ValueError, match="is_power_of_two"):
         sr.CarrMadanPricer(n=12)
+
+
+def _clayton_pseudo_observations():
+    c = sr.Clayton(tau=0.5)
+    c.compute_theta()
+    return sr.pseudo_observations(c.sample(200, seed=1))
+
+
+def test_copula_gof_alpha_outside_the_unit_interval_raises_value_error():
+    with pytest.raises(ValueError, match="alpha must satisfy"):
+        sr.copula_gof("clayton", _clayton_pseudo_observations(), replications=5, alpha=1.0)
+
+
+def test_copula_gof_zero_replications_raises_value_error():
+    with pytest.raises(ValueError, match="replications must satisfy"):
+        sr.copula_gof("clayton", _clayton_pseudo_observations(), replications=0)
