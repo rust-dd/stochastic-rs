@@ -285,10 +285,6 @@ mod tests {
     for &seed in &[2718_u64, 999, 42] {
       let mut source = GaussianCopula::new();
       source.set_theta(rho_true);
-      // `sample_with_uniform`'s trait-level gate requires `tau` to be set
-      // (it does not derive it from `theta`); use the value consistent
-      // with `rho_true` via the forward Kendall relation.
-      source.set_tau((2.0 / std::f64::consts::PI) * rho_true.asin());
       let samples = source.sample(n, &Deterministic::new(seed)).unwrap();
 
       let mut fitted = GaussianCopula::new();

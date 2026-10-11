@@ -123,7 +123,7 @@ pub trait BivariateExt {
     )))
   }
 
-  /// `n` pairs from the conditional-inversion sampler, drawn from `seed`; a `Deterministic` seed replays them.
+  /// `n` pairs from the conditional-inversion sampler, drawn from `seed`; a fresh `Deterministic` replays them, a shared one advances.
   /// Generic over the seed source, so not callable on a `dyn BivariateExt`.
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<ndarray::Array2<f64>, CopulaError>
   where

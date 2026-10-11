@@ -6,13 +6,7 @@ use stochastic_rs_copulas::bivariate::frank::Frank;
 use stochastic_rs_copulas::bivariate::gumbel::Gumbel;
 use stochastic_rs_core::simd_rng::Deterministic;
 
-/// `BivariateExt::sample_with_uniform` additionally gates on `tau` being
-/// set (range-checked, in `(-1, 1)`) even though neither family's own
-/// `percent_point`/`partial_derivative` consumes `tau`'s value — only
-/// `theta` drives the actual math — so `tau` below is illustrative (Gumbel's
-/// θ=2 ⇒ τ=1-1/θ=0.5 exactly, per `Gumbel::compute_theta`'s own inverse
-/// relation; Frank has no closed form, so 0.5 is a plausible round number,
-/// not a fitted value) rather than required to numerically match `theta`.
+/// Sampling gates on `theta` (`check_fit`), not `tau`: the `tau` set below is illustrative and only `theta` drives the draws.
 #[test]
 fn defaults_sample_finite() {
   let frank = Frank {
@@ -34,11 +28,8 @@ fn defaults_sample_finite() {
   assert!(out.iter().all(|x| x.is_finite()));
 }
 
-/// `Frank`/`Gumbel` have no seed field to snapshot or fork, so a clone taken
-/// at any point samples identically to the original under the same
-/// explicit seed — a regression pin distinguishing this from
-/// `ProcessExt`'s stateful `Clone` contract, not a new guarantee this task
-/// adds.
+/// `Frank` and `Gumbel` hold no seed state, so a clone draws exactly what the original draws under the same `Deterministic`
+/// seed, unlike a `ProcessExt` clone.
 #[test]
 fn clone_is_a_plain_value_copy() {
   let frank = Frank {

@@ -27,10 +27,8 @@
 //! use stochastic_rs_copulas::process_coupling::couple_marginals;
 //! use stochastic_rs_copulas::simd_rng::Deterministic;
 //!
-//! // Marginals from any source work identically (e.g. two `Array1<f64>`
-//! // paths from `ProcessExt::sample()`); a deterministic sequence keeps
-//! // this example self-contained per the no-stochastic-dependency note
-//! // above.
+//! // Marginals from any source work the same (e.g. two `ProcessExt::sample()` paths); fixed sequences keep the example
+//! // free of a stochastic dependency.
 //! let s1 = Array1::linspace(0.0, 1.0, 32);
 //! let s2 = Array1::linspace(1.0, 0.0, 32);
 //! let c = Clayton {
@@ -61,7 +59,10 @@ pub fn couple_marginals<C: BivariateExt, S: SeedExt>(
     "s2 must satisfy `s2.len() == s1.len()`, got s2.len() = {}",
     s2.len()
   );
-  assert!(n >= 2, "n must satisfy `n >= 2`, got n = {n}");
+  assert!(
+    n >= 2,
+    "s1 must satisfy `s1.len() >= 2`, got s1.len() = {n}"
+  );
 
   let cop_sample = copula.sample(n, seed)?;
   let mut out = ndarray::Array2::<f64>::zeros((n, 2));
