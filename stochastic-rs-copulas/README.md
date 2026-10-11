@@ -51,6 +51,8 @@ let cv = CVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).expect("a
 let draws = cv.sample(10_000, &Deterministic::new(42)).expect("a valid vine");
 ```
 
+`fit` on a vine learns its structure and pair families from pseudo-observations (Dißmann et al. 2013); `multivariate::fit::fit_vine` exposes the candidate families and the criterion.
+
 ## Part of stochastic-rs
 
 This crate is one of the sub-crates of

@@ -92,6 +92,14 @@ impl RVine {
       RVine::C(_) => VineStructure::CVine,
     }
   }
+
+  /// Data column of each vine variable.
+  pub fn order(&self) -> &[usize] {
+    match self {
+      RVine::D(d) => d.order(),
+      RVine::C(c) => c.order(),
+    }
+  }
 }
 
 impl MultivariateExt for RVine {
@@ -202,6 +210,27 @@ mod tests {
       );
     }
     assert_eq!(rv.structure(), VineStructure::CVine);
+  }
+
+  #[test]
+  fn rvine_fit_keeps_its_structure() {
+    let u = DVine::new(
+      3,
+      vec![
+        vec![PairCopula::Gaussian { rho: 0.5 }; 2],
+        vec![PairCopula::Independence],
+      ],
+    )
+    .unwrap()
+    .sample(2000, &Deterministic::new(3))
+    .unwrap();
+    let mut d = RVine::independence(3).unwrap();
+    d.fit(u.view()).unwrap();
+    assert_eq!(d.structure(), VineStructure::DVine);
+    let mut c = RVine::from_cvine(CVine::independence(3).unwrap());
+    c.fit(u.view()).unwrap();
+    assert_eq!(c.structure(), VineStructure::CVine);
+    assert_eq!(c.order().len(), 3);
   }
 
   /// Sampling delegates to the wrapped vine and preserves uniform

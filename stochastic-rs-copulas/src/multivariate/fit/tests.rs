@@ -92,7 +92,7 @@ fn dvine_fit_recovers_the_first_tree_families() {
     SelectionCriterion::Bic,
   )
   .unwrap();
-  let order = &fit.order;
+  let order = fit.vine.order();
   let neighbours = |a: usize, b: usize| {
     let (pa, pb) = (
       order.iter().position(|&x| x == a).unwrap(),
@@ -132,12 +132,7 @@ fn dvine_fit_recovers_the_first_tree_families() {
     "fit {} truth {true_ll}",
     fit.log_likelihood
   );
-  let vine_ll: f64 = fit
-    .vine
-    .pdf(u.select(ndarray::Axis(1), &fit.order).view())
-    .unwrap()
-    .mapv(f64::ln)
-    .sum();
+  let vine_ll: f64 = fit.vine.pdf(u.view()).unwrap().mapv(f64::ln).sum();
   assert!(
     (vine_ll - fit.log_likelihood).abs() < 1e-6 * vine_ll.abs().max(1.0),
     "{vine_ll} vs {}",
@@ -166,7 +161,7 @@ fn cvine_fit_on_gaussian_data_selects_gaussian_pairs() {
     SelectionCriterion::Aic,
   )
   .unwrap();
-  assert_eq!(fit.order[0], 0, "root {:?}", fit.order);
+  assert_eq!(fit.vine.order()[0], 0, "root {:?}", fit.vine.order());
   assert!(
     fit.families[0]
       .iter()
@@ -188,12 +183,7 @@ fn cvine_fit_on_gaussian_data_selects_gaussian_pairs() {
     fit.aic,
     -2.0 * ll_independence
   );
-  let vine_ll: f64 = fit
-    .vine
-    .pdf(u.select(ndarray::Axis(1), &fit.order).view())
-    .unwrap()
-    .mapv(f64::ln)
-    .sum();
+  let vine_ll: f64 = fit.vine.pdf(u.view()).unwrap().mapv(f64::ln).sum();
   assert!(
     (vine_ll - fit.log_likelihood).abs() < 1e-6 * vine_ll.abs().max(1.0),
     "{vine_ll} vs {}",

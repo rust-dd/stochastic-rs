@@ -451,7 +451,7 @@ pub fn fit_vine<'py>(
       VineStructure::CVine => "cvine",
     },
   )?;
-  out.set_item("order", fit.order.clone())?;
+  out.set_item("order", fit.vine.order().to_vec())?;
   out.set_item(
     "families",
     described

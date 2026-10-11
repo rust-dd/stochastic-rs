@@ -61,13 +61,37 @@ pub enum VineStructure {
   CVine,
 }
 
-/// A fitted vine with the variable order the trees are built on.
+/// The selection's score sheet.
+#[derive(Clone, Debug)]
+pub(crate) struct FitSummary {
+  pub(crate) families: Vec<Vec<BivariateFamily>>,
+  pub(crate) log_likelihood: f64,
+  pub(crate) parameter_count: usize,
+  pub(crate) aic: f64,
+  pub(crate) bic: f64,
+}
+
+impl FitSummary {
+  fn new(
+    families: Vec<Vec<BivariateFamily>>,
+    log_likelihood: f64,
+    parameter_count: usize,
+    n: f64,
+  ) -> Self {
+    Self {
+      families,
+      log_likelihood,
+      parameter_count,
+      aic: -2.0 * log_likelihood + 2.0 * parameter_count as f64,
+      bic: -2.0 * log_likelihood + parameter_count as f64 * n.ln(),
+    }
+  }
+}
+
+/// A fitted vine with its score sheet; the variable order lives on the vine (`vine.order()`).
 #[derive(Clone, Debug)]
 pub struct VineFit {
-  /// The fitted vine on the variables in `order`.
   pub vine: RVine,
-  /// Column indices of the data in the order the vine's variables refer to.
-  pub order: Vec<usize>,
   /// Families chosen per tree and edge.
   pub families: Vec<Vec<BivariateFamily>>,
   pub log_likelihood: f64,
@@ -231,14 +255,11 @@ fn dvine_order(tau: ArrayView2<f64>) -> Vec<usize> {
   path
 }
 
-/// Fits a vine of `structure` to the pseudo-observations `u` (rows = observations, columns in `[0, 1]`); `Unsupported` for a
-/// family outside `VINE_CANDIDATES` or an edge no family represents, `InvalidStructure` for a constant or NaN column.
-pub fn fit_vine(
+/// Columns, rows, range and candidates every structure shares, then the τ-b matrix, defined for every column.
+fn check_vine_data(
   u: ArrayView2<f64>,
-  structure: VineStructure,
   families: &[BivariateFamily],
-  criterion: SelectionCriterion,
-) -> Result<VineFit, CopulaError> {
+) -> Result<Array2<f64>, CopulaError> {
   let d = u.ncols();
   if d < 2 {
     return Err(CopulaError::InvalidStructure(format!(
@@ -251,6 +272,9 @@ pub fn fit_vine(
       got: u.nrows(),
     });
   }
+  if u.iter().any(|v| !(0.0..=1.0).contains(v)) {
+    return Err(CopulaError::MarginalOutOfRange);
+  }
   if let Some(family) = families
     .iter()
     .find(|f| !BivariateFamily::VINE_CANDIDATES.contains(f))
@@ -261,21 +285,40 @@ pub fn fit_vine(
   }
   let tau = kendall_tau(u)?;
   check_defined(tau.view())?;
-  match structure {
-    VineStructure::DVine => fit_dvine(u, tau.view(), families, criterion),
-    VineStructure::CVine => fit_cvine(u, tau.view(), families, criterion),
-  }
+  Ok(tau)
 }
 
-fn fit_dvine(
+/// Fits a vine of `structure` to the pseudo-observations `u` (rows = observations); `MarginalOutOfRange` outside `[0, 1]`,
+/// `Unsupported` for a family outside `VINE_CANDIDATES` or an edge no family represents, `InvalidStructure` for a constant or NaN column.
+pub fn fit_vine(
   u: ArrayView2<f64>,
-  tau: ArrayView2<f64>,
+  structure: VineStructure,
   families: &[BivariateFamily],
   criterion: SelectionCriterion,
 ) -> Result<VineFit, CopulaError> {
+  let (vine, summary) = match structure {
+    VineStructure::DVine => fit_dvine(u, families, criterion).map(|(v, s)| (RVine::D(v), s))?,
+    VineStructure::CVine => fit_cvine(u, families, criterion).map(|(v, s)| (RVine::C(v), s))?,
+  };
+  Ok(VineFit {
+    vine,
+    families: summary.families,
+    log_likelihood: summary.log_likelihood,
+    parameter_count: summary.parameter_count,
+    aic: summary.aic,
+    bic: summary.bic,
+  })
+}
+
+pub(crate) fn fit_dvine(
+  u: ArrayView2<f64>,
+  families: &[BivariateFamily],
+  criterion: SelectionCriterion,
+) -> Result<(DVine, FitSummary), CopulaError> {
+  let tau = check_vine_data(u, families)?;
   let d = u.ncols();
   let n = u.nrows() as f64;
-  let order = dvine_order(tau);
+  let order = dvine_order(tau.view());
   // Edge inputs for the current tree: left[i] = F(x_i | cond), right[i] = F(x_{i+m+1} | cond).
   let mut left: Vec<Vec<f64>> = (0..d - 1).map(|i| u.column(order[i]).to_vec()).collect();
   let mut right: Vec<Vec<f64>> = (0..d - 1)
@@ -322,49 +365,38 @@ fn fit_dvine(
     trees.push(tree);
     chosen.push(tree_families);
   }
-  let vine = RVine::from_dvine(DVine::new(d, trees)?);
-  Ok(VineFit {
-    vine,
-    order,
-    families: chosen,
-    log_likelihood: ll_total,
-    parameter_count: k_total,
-    aic: -2.0 * ll_total + 2.0 * k_total as f64,
-    bic: -2.0 * ll_total + k_total as f64 * n.ln(),
-  })
+  let vine = DVine::new(d, trees)?.with_order(order);
+  Ok((vine, FitSummary::new(chosen, ll_total, k_total, n)))
 }
 
-fn fit_cvine(
-  u: ArrayView2<f64>,
-  tau: ArrayView2<f64>,
-  families: &[BivariateFamily],
-  criterion: SelectionCriterion,
-) -> Result<VineFit, CopulaError> {
-  let d = u.ncols();
-  let n = u.nrows() as f64;
-  // Root of the first tree: the variable with the largest total |τ|.
-  let strength = |i: usize, t: ArrayView2<f64>| {
-    (0..d)
+/// The variable with the largest total |τ| to the others.
+fn strongest(tau: ArrayView2<f64>) -> usize {
+  let k = tau.nrows();
+  let strength = |i: usize| {
+    (0..k)
       .filter(|&j| j != i)
-      .map(|j| t[(i, j)].abs())
+      .map(|j| tau[(i, j)].abs())
       .sum::<f64>()
   };
-  let mut remaining: Vec<usize> = (0..d).collect();
-  let root = remaining
-    .iter()
-    .copied()
-    .max_by(|&a, &b| {
-      strength(a, tau)
-        .partial_cmp(&strength(b, tau))
-        .unwrap_or(std::cmp::Ordering::Equal)
-    })
-    .expect("non-empty");
-  remaining.retain(|&j| j != root);
+  (0..k)
+    .max_by(|&a, &b| strength(a).total_cmp(&strength(b)))
+    .expect("non-empty")
+}
+
+pub(crate) fn fit_cvine(
+  u: ArrayView2<f64>,
+  families: &[BivariateFamily],
+  criterion: SelectionCriterion,
+) -> Result<(CVine, FitSummary), CopulaError> {
+  let tau = check_vine_data(u, families)?;
+  let d = u.ncols();
+  let n = u.nrows() as f64;
+  let root = strongest(tau.view());
   let mut order = vec![root];
   let mut root_values = u.column(root).to_vec();
-  let mut values: Vec<(usize, Vec<f64>)> = remaining
-    .iter()
-    .map(|&j| (j, u.column(j).to_vec()))
+  let mut values: Vec<(usize, Vec<f64>)> = (0..d)
+    .filter(|&j| j != root)
+    .map(|j| (j, u.column(j).to_vec()))
     .collect();
   // Per tree: (variable, fitted pair, family) of every edge to the root.
   let mut tree_entries: Vec<Vec<(usize, PairCopula, BivariateFamily)>> = Vec::with_capacity(d - 1);
@@ -399,20 +431,13 @@ fn fit_cvine(
       pseudo.column_mut(c).assign(&Array1::from_vec(col.clone()));
     }
     let tau_next = kendall_tau(pseudo.view())?;
-    let best = (0..k)
-      .max_by(|&a, &b| {
-        let sa: f64 = (0..k)
-          .filter(|&x| x != a)
-          .map(|x| tau_next[(a, x)].abs())
-          .sum();
-        let sb: f64 = (0..k)
-          .filter(|&x| x != b)
-          .map(|x| tau_next[(b, x)].abs())
-          .sum();
-        sa.partial_cmp(&sb).unwrap_or(std::cmp::Ordering::Equal)
-      })
-      .expect("non-empty");
-    let (new_root, new_root_values) = next_values.remove(best);
+    check_defined(tau_next.view()).map_err(|_| {
+      let given: Vec<usize> = next_values.iter().map(|(j, _)| *j).collect();
+      CopulaError::InvalidStructure(format!(
+        "Kendall's tau-b is undefined among columns {given:?} given columns {order:?}: a conditioned column is constant or NaN"
+      ))
+    })?;
+    let (new_root, new_root_values) = next_values.remove(strongest(tau_next.view()));
     order.push(new_root);
     root_values = new_root_values;
     values = next_values;
@@ -431,16 +456,8 @@ fn fit_cvine(
     trees.push(entries.iter().map(|(_, pair, _)| *pair).collect());
     chosen.push(entries.iter().map(|(.., family)| *family).collect());
   }
-  let vine = RVine::from_cvine(CVine::new(d, trees)?);
-  Ok(VineFit {
-    vine,
-    order,
-    families: chosen,
-    log_likelihood: ll_total,
-    parameter_count: k_total,
-    aic: -2.0 * ll_total + 2.0 * k_total as f64,
-    bic: -2.0 * ll_total + k_total as f64 * n.ln(),
-  })
+  let vine = CVine::new(d, trees)?.with_order(order);
+  Ok((vine, FitSummary::new(chosen, ll_total, k_total, n)))
 }
 
 #[cfg(test)]
