@@ -23,15 +23,14 @@ use ndarray::ArrayView2;
 use crate::error::CopulaError;
 
 /// Kendall's τ-b of two columns (Knight's O(n log n) count, ties counted per margin): NaN where it is undefined (a
-/// constant column or a NaN entry), `InsufficientData` below two rows; panics on a length mismatch.
+/// constant column or a NaN entry); `DimensionMismatch` on unequal lengths, `InsufficientData` below two rows.
 pub fn kendall_tau_b(u: ArrayView1<f64>, v: ArrayView1<f64>) -> Result<f64, CopulaError> {
-  assert_eq!(
-    u.len(),
-    v.len(),
-    "u and v must satisfy `u.len() == v.len()`, got u.len() = {}, v.len() = {}",
-    u.len(),
-    v.len()
-  );
+  if u.len() != v.len() {
+    return Err(CopulaError::DimensionMismatch {
+      expected: u.len(),
+      got: v.len(),
+    });
+  }
   if u.len() < 2 {
     return Err(CopulaError::InsufficientData {
       needed: 2,
@@ -245,13 +244,17 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(
-    expected = "u and v must satisfy `u.len() == v.len()`, got u.len() = 2, v.len() = 1"
-  )]
-  fn mismatched_columns_are_a_precondition() {
-    let _ = kendall_tau_b(
+  fn columns_of_different_lengths_are_a_dimension_mismatch() {
+    let got = kendall_tau_b(
       ndarray::array![1.0, 2.0].view(),
       ndarray::array![1.0].view(),
+    );
+    assert_eq!(
+      got,
+      Err(CopulaError::DimensionMismatch {
+        expected: 2,
+        got: 1
+      })
     );
   }
 }

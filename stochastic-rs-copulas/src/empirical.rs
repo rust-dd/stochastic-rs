@@ -20,6 +20,7 @@ use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
+use crate::error::CopulaError;
 use crate::gof::pseudo_observations;
 
 /// Empirical copula of two series, on their pseudo-observations.
@@ -56,31 +57,33 @@ impl EmpiricalCopula2D {
     self.pseudo.view()
   }
 
-  /// `C_n(u, v) = n^{-1} Σ 1{U_i ≤ u, V_i ≤ v}` at every row of `x`, NaN for a NaN coordinate; panics unless `x` has
-  /// two columns.
-  pub fn cdf(&self, x: ArrayView2<f64>) -> Array1<f64> {
-    assert_eq!(
-      x.ncols(),
-      2,
-      "x must satisfy `x.ncols() == 2`, got x.ncols() = {}",
-      x.ncols()
-    );
+  /// `C_n(u, v) = n^{-1} Σ 1{U_i ≤ u, V_i ≤ v}` at every row of `x`, NaN for a NaN coordinate; `DimensionMismatch` unless
+  /// `x` has two columns.
+  pub fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    if x.ncols() != 2 {
+      return Err(CopulaError::DimensionMismatch {
+        expected: 2,
+        got: x.ncols(),
+      });
+    }
     let n = self.pseudo.nrows() as f64;
-    x.rows()
-      .into_iter()
-      .map(|q| {
-        if q[0].is_nan() || q[1].is_nan() {
-          return f64::NAN;
-        }
-        let below = self
-          .pseudo
-          .rows()
-          .into_iter()
-          .filter(|p| p[0] <= q[0] && p[1] <= q[1])
-          .count();
-        below as f64 / n
-      })
-      .collect()
+    Ok(
+      x.rows()
+        .into_iter()
+        .map(|q| {
+          if q[0].is_nan() || q[1].is_nan() {
+            return f64::NAN;
+          }
+          let below = self
+            .pseudo
+            .rows()
+            .into_iter()
+            .filter(|p| p[0] <= q[0] && p[1] <= q[1])
+            .count();
+          below as f64 / n
+        })
+        .collect(),
+    )
   }
 
   /// Bootstrap of `n` observed pairs with replacement, drawn from `seed`.
@@ -119,7 +122,9 @@ mod tests {
       ec.rank_data(),
       pseudo_observations(stack![Axis(1), x, y].view()).view()
     );
-    let c = ec.cdf(array![[0.5, 0.5], [1.0, 1.0], [0.1, 0.9]].view());
+    let c = ec
+      .cdf(array![[0.5, 0.5], [1.0, 1.0], [0.1, 0.9]].view())
+      .unwrap();
     assert_eq!(c.to_vec(), vec![0.25, 1.0, 0.0]);
     let a = ec.sample(17, &Deterministic::new(42));
     assert_eq!(a.dim(), (17, 2));
@@ -136,16 +141,18 @@ mod tests {
       array![3.0, 1.0, 2.0, 4.0].view(),
       array![10.0, 30.0, 20.0, 40.0].view(),
     );
-    let c = ec.cdf(
-      array![
-        [0.4, 0.4],
-        [-1.0, 5.0],
-        [9.0, 9.0],
-        [f64::NAN, 0.5],
-        [0.5, f64::NAN]
-      ]
-      .view(),
-    );
+    let c = ec
+      .cdf(
+        array![
+          [0.4, 0.4],
+          [-1.0, 5.0],
+          [9.0, 9.0],
+          [f64::NAN, 0.5],
+          [0.5, f64::NAN]
+        ]
+        .view(),
+      )
+      .unwrap();
     assert_eq!(c.to_vec()[..3], [0.25, 0.0, 1.0]);
     assert!(c[3].is_nan() && c[4].is_nan());
   }
@@ -158,7 +165,10 @@ mod tests {
     let b = EmpiricalCopula2D::new(x.view(), array![2.0, 1.0, 2.0, 3.0].view());
     let q = array![[0.25, 0.25], [0.3, 0.2], [0.3, 0.5], [0.6, 0.5], [1.0, 1.0]];
     assert_eq!(a.cdf(q.view()), b.cdf(q.view()));
-    assert_eq!(a.cdf(q.view()).to_vec(), vec![0.0, 0.25, 0.5, 0.75, 1.0]);
+    assert_eq!(
+      a.cdf(q.view()).unwrap().to_vec(),
+      vec![0.0, 0.25, 0.5, 0.75, 1.0]
+    );
   }
 
   #[test]
@@ -188,9 +198,19 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "x must satisfy `x.ncols() == 2`, got x.ncols() = 1")]
   fn the_cdf_takes_pairs() {
     let ec = EmpiricalCopula2D::new(array![1.0, 2.0].view(), array![2.0, 1.0].view());
-    let _ = ec.cdf(array![[0.5], [0.7]].view());
+    let want = Err(CopulaError::DimensionMismatch {
+      expected: 2,
+      got: 1,
+    });
+    assert_eq!(ec.cdf(array![[0.5], [0.7]].view()), want);
+    assert_eq!(
+      ec.cdf(array![[0.5, 0.5, 0.5]].view()),
+      Err(CopulaError::DimensionMismatch {
+        expected: 2,
+        got: 3
+      })
+    );
   }
 }
