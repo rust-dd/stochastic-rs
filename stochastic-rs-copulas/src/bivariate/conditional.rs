@@ -17,12 +17,19 @@ pub(crate) fn in_unit(x: f64) -> bool {
   (0.0..=1.0).contains(&x)
 }
 
-/// `x` is n × 2 with every entry in `[0, 1]` (NaN fails); no uniformity test, so a valid sample never fails by chance.
+/// `x` is n × 2, `n ≥ 2`, with every entry in `[0, 1]` (NaN fails), checked in that order; no uniformity test, so a valid
+/// sample never fails by chance.
 pub(crate) fn check_pairs(x: ArrayView2<f64>) -> Result<(), CopulaError> {
   if x.ncols() != 2 {
     return Err(CopulaError::DimensionMismatch {
       expected: 2,
       got: x.ncols(),
+    });
+  }
+  if x.nrows() < 2 {
+    return Err(CopulaError::InsufficientData {
+      needed: 2,
+      got: x.nrows(),
     });
   }
   if !x.iter().all(|&u| in_unit(u)) {

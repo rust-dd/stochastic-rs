@@ -139,12 +139,6 @@ pub trait BivariateExt {
   /// Kendall's τ-b of a two-column sample in `[0, 1]`, inverted through `theta_from_tau`; nothing is stored when the
   /// family cannot represent it (`InvalidParameter { name: "tau", .. }`).
   fn fit(&mut self, X: ndarray::ArrayView2<f64>) -> Result<(), CopulaError> {
-    if X.nrows() < 2 {
-      return Err(CopulaError::InsufficientData {
-        needed: 2,
-        got: X.nrows(),
-      });
-    }
     check_pairs(X)?;
     let u = X.column(0);
     let v = X.column(1);

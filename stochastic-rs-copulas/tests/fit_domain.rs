@@ -237,6 +237,31 @@ fn fit_takes_exactly_two_columns() {
   mismatch!(Bb7::new(None, None));
 }
 
+/// Columns, then rows, then range, whichever `fit` the family runs: a 1 × 3 input is a `DimensionMismatch`, a 1 × 2 input
+/// of NaN is `InsufficientData`.
+#[test]
+fn fit_checks_columns_then_rows_then_range() {
+  let wide = Array2::from_elem((1, 3), f64::NAN);
+  let short = Array2::from_elem((1, 2), f64::NAN);
+  macro_rules! order {
+    ($copula:expr) => {{
+      let mut c = $copula;
+      let want = Err(CopulaError::DimensionMismatch {
+        expected: 2,
+        got: 3,
+      });
+      assert_eq!(c.fit(wide.view()), want, "{:?}", c.family());
+      let want = Err(CopulaError::InsufficientData { needed: 2, got: 1 });
+      assert_eq!(c.fit(short.view()), want, "{:?}", c.family());
+      assert_eq!(c.theta(), None, "{:?} kept a theta", c.family());
+    }};
+  }
+  order!(Clayton::new());
+  order!(Independence::new());
+  order!(Bb1::new(None, None));
+  order!(Bb7::new(None, None));
+}
+
 /// A value that is not a finite number in `[0, 1]` is `MarginalOutOfRange`, in either column.
 #[test]
 fn fit_rejects_a_value_outside_the_unit_interval() {

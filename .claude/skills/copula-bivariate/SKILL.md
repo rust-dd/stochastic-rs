@@ -60,7 +60,7 @@ Useful defaults you should usually **not** override:
 | Method | Default behaviour |
 |---|---|
 | `sample(n, &seed)` | `SimdUniform::new(0, 1).seeded(seed)`, via `sample_with_uniform` |
-| `fit(X)` | two columns in `[0, 1]` (`DimensionMismatch` / `MarginalOutOfRange`, no uniformity test), Kendall's tau-b via `kendalls`, then `theta_from_tau` |
+| `fit(X)` | two columns, two rows, entries in `[0, 1]` (`DimensionMismatch`, `InsufficientData`, `MarginalOutOfRange` in that order, no uniformity test), Kendall's tau-b via `kendalls`, then `theta_from_tau` |
 | `tau()` | `tau_from_theta` at the current `theta` |
 | `percent_point(y, V)` | Brent inversion of `partial_derivative_scalar` |
 | `partial_derivative(X)` | central-difference on `cdf` |
