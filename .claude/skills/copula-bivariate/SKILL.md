@@ -88,7 +88,8 @@ only if the family is Archimedean.
 `tail_dependence` is **required, not defaulted, on purpose**: a silent
 `(0.0, 0.0)` fallback would be a correctness bug for Clayton, Gumbel,
 Joe, Galambos, Hüsler-Reiss, Marshall-Olkin and Student-t. It returns
-`Result` and starts with `self.check_theta()?` like `pdf` and `cdf`.
+`Result` and opens with the gate `pdf` and `cdf` run, `self.check_fit()?`
+(`check_theta()?` is the same check only where `check_fit` is not overridden).
 
 ## 2. The struct skeleton
 
@@ -266,8 +267,8 @@ fn clayton_independence_sample_kendall_tau_near_zero() {
   vectorised over an `(n, 2)` array and returns `Result`.
 - **Do not** clamp a τ that the family cannot reach to the boundary;
   return the `tau` error.
-- **Do not** skip `check_theta()?` in `tail_dependence`: it is the same
-  gate `pdf` and `cdf` run.
+- **Do not** skip the parameter gate in `tail_dependence`: open with
+  `check_fit()?`, the check `pdf` and `cdf` run.
 - **Do not** implement `sample` / `fit` / `log_pdf`. They are
   defaulted and the defaults are correct.
 - **Do not** implement `generator` for a non-Archimedean family. The

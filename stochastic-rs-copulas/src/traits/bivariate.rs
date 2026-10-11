@@ -78,7 +78,8 @@ pub trait BivariateExt {
     self.theta().map(|theta| self.tau_from_theta(theta))
   }
 
-  /// Upper and lower tail-dependence coefficients at the current parameters; `NotFitted` before they are set.
+  /// Upper and lower tail-dependence coefficients at the current parameters; `NotFitted` before they are set,
+  /// `InvalidParameter` outside the family's range.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError>;
 
   /// Archimedean generator $\varphi$, $C(u,v) = \varphi^{-1}(\varphi(u) + \varphi(v))$; the default
@@ -136,7 +137,7 @@ pub trait BivariateExt {
     Ok(())
   }
 
-  /// Sampling and evaluation gate on this, so an override must validate the parameters it holds.
+  /// Sampling, evaluation and `tail_dependence` gate on this, so an override must validate the parameters it holds.
   fn check_fit(&self) -> Result<(), CopulaError> {
     if self.theta().is_none() {
       return Err(CopulaError::NotFitted);
