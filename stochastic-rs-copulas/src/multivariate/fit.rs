@@ -83,8 +83,8 @@ fn log_likelihood(pair: &PairCopula, u: &[f64], v: &[f64]) -> f64 {
   u.iter().zip(v).map(|(&a, &b)| pair.log_density(a, b)).sum()
 }
 
-/// Estimates `family` on the pair `(u, v)`; `None` when the family cannot
-/// represent the observed dependence (e.g. Clayton at negative τ).
+/// Estimates `family` on the pair `(u, v)`; `None` when it has no estimator or cannot represent the observed
+/// dependence (e.g. Clayton at negative τ).
 fn estimate(family: BivariateFamily, u: &[f64], v: &[f64]) -> Option<PairCopula> {
   let tau = tau_of(u, v).clamp(-0.99, 0.99);
   let rho = (std::f64::consts::FRAC_PI_2 * tau).sin();
@@ -135,7 +135,14 @@ fn estimate(family: BivariateFamily, u: &[f64], v: &[f64]) -> Option<PairCopula>
         })
       }
     }
-    _ => None,
+    BivariateFamily::Amh
+    | BivariateFamily::Fgm
+    | BivariateFamily::Galambos
+    | BivariateFamily::Gumbel
+    | BivariateFamily::HuslerReiss
+    | BivariateFamily::Joe
+    | BivariateFamily::MarshallOlkin
+    | BivariateFamily::Plackett => None,
   }
 }
 
@@ -218,8 +225,8 @@ fn dvine_order(tau: ArrayView2<f64>) -> Vec<usize> {
   path
 }
 
-/// Fits a vine of the requested structure to the pseudo-observations `u` (rows = observations, columns in `[0, 1]`);
-/// `families` must lie in `BivariateFamily::VINE_CANDIDATES`, else `Unsupported`.
+/// Fits a vine of the requested structure to the pseudo-observations `u` (rows = observations, columns in `[0, 1]`).
+/// `Unsupported` for a family outside `BivariateFamily::VINE_CANDIDATES` and for an edge no listed family represents.
 pub fn fit_vine(
   u: ArrayView2<f64>,
   structure: VineStructure,

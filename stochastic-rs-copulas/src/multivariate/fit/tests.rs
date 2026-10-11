@@ -265,3 +265,15 @@ fn an_edge_no_candidate_represents_is_unsupported() {
     }
   }
 }
+
+/// `estimate` returns `Some` on positively dependent data for exactly the `VINE_CANDIDATES` and `None` for the rest.
+#[test]
+fn estimate_covers_exactly_the_vine_candidates() {
+  let truth = DVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).unwrap();
+  let u = truth.sample(1000, &Deterministic::new(7)).unwrap();
+  let (x, y) = (u.column(0).to_vec(), u.column(1).to_vec());
+  for &family in BivariateFamily::ALL {
+    let candidate = BivariateFamily::VINE_CANDIDATES.contains(&family);
+    assert_eq!(estimate(family, &x, &y).is_some(), candidate, "{family:?}");
+  }
+}
