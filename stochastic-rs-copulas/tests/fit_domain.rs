@@ -39,6 +39,23 @@ fn strongly_dependent() -> Array2<f64> {
   pseudo_observations(truth.sample(600, &Deterministic::new(11)).unwrap().view())
 }
 
+/// Pseudo-observations with Kendall's τ = +1: `v_i = u_i`.
+fn comonotone(n: usize) -> Array2<f64> {
+  Array2::from_shape_fn((n, 2), |(i, _)| (i + 1) as f64 / (n + 1) as f64)
+}
+
+/// Kendall's τ-b of a tie-free sample by counting its pairs.
+fn kendall(x: &Array2<f64>) -> f64 {
+  let n = x.nrows();
+  let mut score = 0.0;
+  for i in 0..n {
+    for j in i + 1..n {
+      score += ((x[[i, 0]] - x[[j, 0]]) * (x[[i, 1]] - x[[j, 1]])).signum();
+    }
+  }
+  score / (n * (n - 1) / 2) as f64
+}
+
 fn is_tau_error(result: Result<(), CopulaError>) -> bool {
   matches!(
     result,
@@ -46,16 +63,17 @@ fn is_tau_error(result: Result<(), CopulaError>) -> bool {
   )
 }
 
+macro_rules! rejects {
+  ($copula:expr, $data:expr) => {{
+    let mut c = $copula;
+    assert!(is_tau_error(c.fit($data.view())), "{:?}", c.family());
+    assert_eq!(c.theta(), None, "{:?} kept a theta", c.family());
+  }};
+}
+
 #[test]
 fn a_fit_outside_the_family_domain_is_an_error_and_stores_nothing() {
   let neg = countermonotone(200);
-  macro_rules! rejects {
-    ($copula:expr, $data:expr) => {{
-      let mut c = $copula;
-      assert!(is_tau_error(c.fit($data.view())), "{:?}", c.family());
-      assert_eq!(c.theta(), None, "{:?} kept a theta", c.family());
-    }};
-  }
   rejects!(Clayton::new(), neg);
   rejects!(Gumbel::new(None), neg);
   rejects!(Joe::new(), neg);
@@ -73,15 +91,52 @@ fn a_fit_outside_the_family_domain_is_an_error_and_stores_nothing() {
   rejects!(Amh::new(), strong);
 }
 
+/// Four pairs with three concordances and three discordances: `τ̂ = 0`, which Marshall–Olkin reaches only at its
+/// excluded `θ = 0`.
+#[test]
+fn marshall_olkin_rejects_a_zero_tau() {
+  let ranks = [2.0, 4.0, 1.0, 3.0];
+  let data = Array2::from_shape_fn((4, 2), |(i, j)| {
+    if j == 0 {
+      (i + 1) as f64 / 5.0
+    } else {
+      ranks[i] / 5.0
+    }
+  });
+  assert_eq!(kendall(&data), 0.0);
+  rejects!(MarshallOlkin::new(), data);
+}
+
+/// `τ̂ = +1` fits Marshall–Olkin at `θ = 1`, the upper Fréchet bound, and Independence, which ignores τ; BB1 and BB7
+/// reject `τ̂ ≥ 1` with the rest.
+#[test]
+fn a_comonotone_sample_fits_only_the_families_that_reach_tau_one() {
+  let co = comonotone(200);
+  rejects!(Clayton::new(), co);
+  rejects!(Gumbel::new(None), co);
+  rejects!(Joe::new(), co);
+  rejects!(Frank::new(None), co);
+  rejects!(Amh::new(), co);
+  rejects!(Fgm::new(), co);
+  rejects!(Plackett::new(), co);
+  rejects!(GaussianCopula::new(), co);
+  rejects!(TCopula::new(), co);
+  rejects!(Galambos::new(), co);
+  rejects!(HuslerReiss::new(), co);
+  rejects!(Bb1::new(None, None), co);
+  rejects!(Bb7::new(None, None), co);
+  let mut mo = MarshallOlkin::new();
+  mo.fit(co.view()).unwrap();
+  assert_eq!(mo.theta(), Some(1.0));
+  let mut independence = Independence::new();
+  independence.fit(co.view()).unwrap();
+  assert_eq!(independence.tau(), Some(0.0));
+}
+
+/// A Clayton(0.3) sample, `τ̂ ≈ 0.13`, lies in every family's range: an inversion fit stores the `θ` whose τ is `τ̂` to
+/// its τ rule's accuracy, and BB1's and BB7's likelihood fits land near it.
 #[test]
 fn a_representable_tau_fits_every_family() {
-  let strong = strongly_dependent();
-  let mut clayton = Clayton::new();
-  clayton.fit(strong.view()).unwrap();
-  assert!((clayton.tau().unwrap() - 0.6).abs() < 0.08);
-  let mut independence = Independence::new();
-  independence.fit(strong.view()).unwrap();
-  assert_eq!(independence.tau(), Some(0.0));
   let mild = pseudo_observations(
     Clayton {
       theta: Some(0.3),
@@ -91,14 +146,40 @@ fn a_representable_tau_fits_every_family() {
     .unwrap()
     .view(),
   );
-  for (name, result) in [
-    ("fgm", Fgm::new().fit(mild.view())),
-    ("amh", Amh::new().fit(mild.view())),
-    ("frank", Frank::new(None).fit(mild.view())),
-    ("plackett", Plackett::new().fit(mild.view())),
-  ] {
-    assert!(result.is_ok(), "{name}: {result:?}");
+  let tau = kendall(&mild);
+  macro_rules! inverts {
+    ($copula:expr, $tolerance:expr) => {{
+      let mut c = $copula;
+      c.fit(mild.view()).unwrap();
+      let got = c.tau().unwrap();
+      assert!(
+        (got - tau).abs() < $tolerance,
+        "{:?}: τ {got} vs τ̂ {tau}",
+        c.family()
+      );
+    }};
   }
+  inverts!(Clayton::new(), 1e-15);
+  inverts!(Gumbel::new(None), 1e-15);
+  inverts!(Joe::new(), 1e-14);
+  inverts!(Frank::new(None), 1e-14);
+  inverts!(Amh::new(), 1e-14);
+  inverts!(Fgm::new(), 1e-15);
+  inverts!(GaussianCopula::new(), 1e-15);
+  inverts!(TCopula::new(), 1e-15);
+  inverts!(MarshallOlkin::new(), 1e-15);
+  inverts!(Plackett::new(), 1e-8);
+  inverts!(Galambos::new(), 1e-8);
+  inverts!(HuslerReiss::new(), 1e-8);
+  inverts!(Bb1::new(None, None), 0.05);
+  inverts!(Bb7::new(None, None), 0.05);
+  let mut independence = Independence::new();
+  independence.fit(mild.view()).unwrap();
+  assert_eq!(independence.tau(), Some(0.0));
+  let strong = strongly_dependent();
+  let mut clayton = Clayton::new();
+  clayton.fit(strong.view()).unwrap();
+  assert!((clayton.tau().unwrap() - 0.6).abs() < 0.08);
 }
 
 type Inverse = Box<dyn Fn(f64) -> Result<f64, CopulaError>>;
