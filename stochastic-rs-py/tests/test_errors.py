@@ -85,3 +85,18 @@ def test_copula_parameters_outside_the_domain_raise_value_error():
     assert bb1.delta() == 1.5
     with pytest.raises(ValueError, match="delta must satisfy"):
         sr.Bb7(theta=1.7, delta=0.0)
+
+
+def test_copula_setter_rejections_print_no_rust_panic(capfd):
+    clayton = sr.Clayton(theta=2.0)
+    with pytest.raises(ValueError, match=r"theta must satisfy `0\.0 <= theta < inf`, got theta = -1\.0"):
+        clayton.set_theta(-1.0)
+    bb1 = sr.Bb1(theta=0.8, delta=1.6)
+    with pytest.raises(ValueError, match="theta must satisfy"):
+        bb1.set_theta(0.0)
+    with pytest.raises(ValueError, match=r"delta must satisfy `1\.0 <= delta < inf`, got delta = 0\.5"):
+        bb1.set_delta(0.5)
+    with pytest.raises(ValueError, match=r"delta must satisfy `0\.0 < delta < inf`, got delta = 0\.0"):
+        sr.Bb7(delta=0.0)
+    assert (clayton.theta(), bb1.theta(), bb1.delta()) == (2.0, 0.8, 1.6)
+    assert "panicked" not in capfd.readouterr().err

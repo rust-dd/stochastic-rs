@@ -58,9 +58,9 @@ macro_rules! py_bivariate {
       }
 
       fn set_theta(&mut self, theta: f64) -> PyResult<()> {
-        stochastic_rs_distributions::python::value_error_on_panic(|| {
-          BivariateExt::set_theta(&mut self.inner, theta)
-        })
+        BivariateExt::validate_theta(&self.inner, theta).map_err(err_to_py)?;
+        BivariateExt::set_theta(&mut self.inner, theta);
+        Ok(())
       }
 
       fn set_tau(&mut self, tau: f64) {
@@ -248,8 +248,9 @@ macro_rules! py_two_parameter {
           (Some(t), _) => <$inner_path>::try_new(t, delta).map_err(err_to_py)?,
           (None, Some(k)) => <$inner_path>::from_tau(k, delta).map_err(err_to_py)?,
           (None, None) => {
+            <$inner_path>::check_delta(delta).map_err(err_to_py)?;
             let mut inner = <$inner_path>::default();
-            stochastic_rs_distributions::python::value_error_on_panic(|| inner.set_delta(delta))?;
+            inner.set_delta(delta);
             inner
           }
         };
@@ -272,13 +273,15 @@ macro_rules! py_two_parameter {
       }
 
       fn set_theta(&mut self, theta: f64) -> PyResult<()> {
-        stochastic_rs_distributions::python::value_error_on_panic(|| {
-          BivariateExt::set_theta(&mut self.inner, theta)
-        })
+        BivariateExt::validate_theta(&self.inner, theta).map_err(err_to_py)?;
+        BivariateExt::set_theta(&mut self.inner, theta);
+        Ok(())
       }
 
       fn set_delta(&mut self, delta: f64) -> PyResult<()> {
-        stochastic_rs_distributions::python::value_error_on_panic(|| self.inner.set_delta(delta))
+        <$inner_path>::check_delta(delta).map_err(err_to_py)?;
+        self.inner.set_delta(delta);
+        Ok(())
       }
 
       fn set_tau(&mut self, tau: f64) {

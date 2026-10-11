@@ -108,7 +108,7 @@ impl Bb7 {
     self.delta = delta;
   }
 
-  fn check_delta(delta: f64) -> Result<(), CopulaError> {
+  pub(crate) fn check_delta(delta: f64) -> Result<(), CopulaError> {
     if delta.is_finite() && delta > 0.0 {
       return Ok(());
     }
