@@ -49,6 +49,20 @@ pub fn cramer_von_mises_independence(r: ArrayView2<f64>) -> f64 {
   statistic
 }
 
+/// `x` is n × 2 with every entry in `[0, 1]` (NaN fails); no uniformity test, so a valid sample never fails by chance.
+fn check_input(x: ArrayView2<f64>) -> Result<(), CopulaError> {
+  if x.ncols() != 2 {
+    return Err(CopulaError::DimensionMismatch {
+      expected: 2,
+      got: x.ncols(),
+    });
+  }
+  if !x.iter().all(|u| (0.0..=1.0).contains(u)) {
+    return Err(CopulaError::MarginalOutOfRange);
+  }
+  Ok(())
+}
+
 fn finite(statistic: f64, what: &str) -> Result<f64, CopulaError> {
   if statistic.is_finite() {
     return Ok(statistic);
@@ -120,14 +134,7 @@ pub fn gof_cramer_von_mises<C: BivariateExt + Clone, S: SeedExt>(
     "alpha must satisfy `0.0 < alpha < 1.0`, got alpha = {:?}",
     config.alpha
   );
-  if x.ncols() != 2 {
-    return Err(CopulaError::DimensionMismatch {
-      expected: 2,
-      got: x.ncols(),
-    });
-  }
-  copula.check_marginal(x.column(0))?;
-  copula.check_marginal(x.column(1))?;
+  check_input(x)?;
   let statistic = finite(
     cramer_von_mises_independence(rosenblatt(copula, x)?.view()),
     "data",
@@ -438,6 +445,19 @@ mod tests {
     };
     let boot_err = gof_cramer_von_mises(&fine, data.view(), config, &seed, poison).unwrap_err();
     assert!(matches!(boot_err, CopulaError::Numerical(_)), "{boot_err}");
+  }
+
+  /// Raw uniform samples fail a KS gate on their margins by chance, about one in fifty of these seeds; the input check must not.
+  #[test]
+  fn a_raw_uniform_sample_passes_the_input_check_on_every_seed() {
+    let copula = Clayton {
+      theta: Some(3.0),
+      ..Clayton::new()
+    };
+    for seed in 0..200 {
+      let raw = copula.sample(600, &Deterministic::new(seed)).unwrap();
+      assert_eq!(check_input(raw.view()), Ok(()), "seed {seed}");
+    }
   }
 
   #[test]
