@@ -432,7 +432,8 @@ mod tests {
     assert!(matches!(boot_err, CopulaError::Numerical(_)), "{boot_err}");
   }
 
-  /// Raw uniform samples fail a KS gate on their margins by chance, about one in fifty of these seeds; the input check must not.
+  /// Raw uniform samples fail a KS gate on their margins by chance (17 of 1000 seeds at n = 600, four of these 200); the
+  /// input check must not.
   #[test]
   fn a_raw_uniform_sample_passes_the_input_check_on_every_seed() {
     let copula = Clayton {

@@ -95,8 +95,9 @@ rather than returning a nonsensical coefficient.
 ## 2. The struct skeleton
 
 Every family stores its bounds and its `BivariateFamily` as **fields**, and
-carries `theta` as `Option<f64>` (unset until `fit` or `set_theta`). There is **no `seed` field** — seeding enters through
-`sample(n, &seed)` with a `Deterministic` (replay) or `Unseeded` (entropy) source.
+carries `theta` as `Option<f64>` (unset until `fit` or `set_theta`).
+There is **no `seed` field** — seeding enters through `sample(n, &seed)`
+with a `Deterministic` (replay) or `Unseeded` (entropy) source.
 
 ```rust
 // stochastic-rs-copulas/src/bivariate/clayton.rs (reference)
