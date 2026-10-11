@@ -141,8 +141,7 @@ fn t_copula_cdf_matches_bivariate_reference() {
   let nu = 6.0;
   let corr = array![[1.0, rho], [rho, 1.0]];
   let mv = TMultivariate::new_with(corr, nu).unwrap();
-  let mut bv = TCopula::with_nu(nu);
-  bv.set_theta(rho);
+  let bv = TCopula::new(rho, nu);
   let q = array![[0.3, 0.6], [0.5, 0.5], [0.8, 0.2]];
   let cdf_mv = mv.cdf(q.view()).unwrap();
   let cdf_bv = bv.cdf(q.view()).unwrap();
@@ -184,19 +183,19 @@ fn t_multivariate_exposes_nu() {
     CopulaError::InvalidParameter {
       name: "nu",
       value: 0.0,
-      constraint: "0 < nu < ∞".into(),
+      constraint: "0.0 < nu < inf".into(),
     }
   );
   assert_eq!(cop.nu(), 12.0, "a failed set_nu must not mutate the field");
 }
 
-/// An infinite `nu` is an error from both entry points of either t-copula, so no χ² law is built with `k = ∞`.
+/// An infinite `nu` is an error from the fallible entry points of either t-copula, so no χ² law is built with `k = ∞`.
 #[test]
 fn an_infinite_nu_is_rejected_by_name() {
   let want = CopulaError::InvalidParameter {
     name: "nu",
     value: f64::INFINITY,
-    constraint: "0 < nu < ∞".into(),
+    constraint: "0.0 < nu < inf".into(),
   };
   let corr = array![[1.0, 0.3], [0.3, 1.0]];
   assert_eq!(
@@ -206,6 +205,15 @@ fn an_infinite_nu_is_rejected_by_name() {
   let mut cop = TMultivariate::new_with(corr, 4.0).unwrap();
   assert_eq!(cop.set_nu(f64::INFINITY).unwrap_err(), want);
   assert_eq!(cop.nu(), 4.0);
-  let mut bivariate = crate::bivariate::t_copula::TCopula::with_nu(4.0);
-  assert_eq!(bivariate.set_nu(f64::INFINITY).unwrap_err(), want);
+  assert_eq!(
+    crate::bivariate::t_copula::TCopula::try_new(0.5, f64::INFINITY).unwrap_err(),
+    want
+  );
+}
+
+/// The bivariate setter panics with the same rule.
+#[test]
+#[should_panic(expected = "nu must satisfy `0.0 < nu < inf`, got nu = inf")]
+fn the_bivariate_set_nu_panics_on_an_infinite_nu() {
+  crate::bivariate::t_copula::TCopula::default().set_nu(f64::INFINITY);
 }

@@ -18,50 +18,47 @@ use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
 
-#[derive(Debug, Clone)]
-pub struct Independence {
-  pub r#type: BivariateFamily,
-  pub theta: Option<f64>,
-  pub theta_bounds: (f64, f64),
-  pub invalid_thetas: Vec<f64>,
-}
-
-impl Default for Independence {
-  fn default() -> Self {
-    Self {
-      r#type: BivariateFamily::Independence,
-      theta: None,
-      theta_bounds: (0.0, 0.0),
-      invalid_thetas: vec![],
-    }
-  }
-}
+/// No parameter, so always fitted: its `theta` is the 0 of the families it is the limit of.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Independence;
 
 impl Independence {
   pub fn new() -> Self {
-    Self::default()
+    Self
   }
 }
 
 impl BivariateExt for Independence {
   fn family(&self) -> BivariateFamily {
-    self.r#type
+    BivariateFamily::Independence
   }
 
   fn theta(&self) -> Option<f64> {
-    self.theta
+    Some(0.0)
+  }
+
+  /// Panics unless `theta == 0`, the one value the family has.
+  fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
   }
 
   fn theta_bounds(&self) -> (f64, f64) {
-    self.theta_bounds
+    (0.0, 0.0)
   }
 
   fn invalid_thetas(&self) -> Vec<f64> {
-    self.invalid_thetas.clone()
+    vec![]
   }
 
-  fn set_theta(&mut self, theta: f64) {
-    self.theta = Some(theta);
+  fn validate_theta(&self, theta: f64) -> Result<(), CopulaError> {
+    if theta == 0.0 {
+      return Ok(());
+    }
+    Err(CopulaError::InvalidParameter {
+      name: "theta",
+      value: theta,
+      constraint: "theta == 0.0".into(),
+    })
   }
 
   fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
@@ -110,7 +107,6 @@ impl BivariateExt for Independence {
 
   /// $C(u,v) = uv$ has no tail dependence in either tail by construction.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
-    self.check_theta()?;
     Ok(TailDependence {
       lower: 0.0,
       upper: 0.0,
@@ -124,31 +120,26 @@ mod tests {
 
   use super::*;
 
+  /// No parameter to set, so a new copula is fitted already: `theta` is 0, the tails are 0 and it samples.
   #[test]
-  fn independence_tail_dependence_is_zero() {
-    let mut c = Independence::new();
-    c.set_theta(0.0);
-    let td = c.tail_dependence().unwrap();
-    assert_eq!(td.lower, 0.0);
-    assert_eq!(td.upper, 0.0);
-  }
-
-  #[test]
-  fn independence_tail_dependence_is_not_fitted_without_a_theta() {
+  fn independence_is_fitted_from_the_start() {
+    let c = Independence::new();
+    assert_eq!(c.theta(), Some(0.0));
     assert_eq!(
-      Independence::new().tail_dependence(),
-      Err(CopulaError::NotFitted)
+      c.tail_dependence(),
+      Ok(TailDependence {
+        lower: 0.0,
+        upper: 0.0,
+      })
     );
-  }
-
-  #[test]
-  fn independence_samples_through_the_conditional_sampler_once_theta_is_zero() {
-    let mut c = Independence::new();
-    assert_eq!(
-      c.sample(4, &Deterministic::new(7)).unwrap_err(),
-      CopulaError::NotFitted
-    );
-    c.set_theta(0.0);
     assert_eq!(c.sample(4, &Deterministic::new(7)).unwrap().dim(), (4, 2));
+  }
+
+  #[test]
+  #[should_panic(expected = "theta must satisfy `theta == 0.0`, got theta = 0.5")]
+  fn independence_set_theta_admits_only_zero() {
+    let mut c = Independence::new();
+    c.set_theta(0.0);
+    c.set_theta(0.5);
   }
 }

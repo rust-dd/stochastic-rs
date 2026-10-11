@@ -18,53 +18,54 @@ use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::tau_out_of_range;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Gumbel {
-  pub r#type: BivariateFamily,
-  pub theta: Option<f64>,
-  pub theta_bounds: (f64, f64),
-  pub invalid_thetas: Vec<f64>,
+  theta: Option<f64>,
 }
 
 impl Gumbel {
-  pub fn new(theta: Option<f64>) -> Self {
-    Self {
-      r#type: BivariateFamily::Gumbel,
-      theta,
-      theta_bounds: (1.0, f64::INFINITY),
-      invalid_thetas: vec![0.0],
-    }
+  /// A Gumbel copula; panics unless `1 <= theta < ∞`.
+  pub fn new(theta: f64) -> Self {
+    Self::try_new(theta).unwrap_or_else(|e| panic!("{e}"))
   }
-}
 
-impl Default for Gumbel {
-  fn default() -> Self {
-    Self::new(None)
+  /// `new` with the domain error returned instead of a panic.
+  pub fn try_new(theta: f64) -> Result<Self, CopulaError> {
+    let copula = Self { theta: Some(theta) };
+    copula.check_theta()?;
+    Ok(copula)
+  }
+
+  /// The copula whose Kendall's τ is `tau`.
+  pub fn from_tau(tau: f64) -> Result<Self, CopulaError> {
+    Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 }
 
 impl BivariateExt for Gumbel {
   fn family(&self) -> BivariateFamily {
-    self.r#type
+    BivariateFamily::Gumbel
   }
 
   fn theta(&self) -> Option<f64> {
     self.theta
   }
 
-  fn theta_bounds(&self) -> (f64, f64) {
-    self.theta_bounds
-  }
-
-  fn invalid_thetas(&self) -> Vec<f64> {
-    self.invalid_thetas.clone()
-  }
-
   fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
     self.theta = Some(theta);
   }
 
+  fn theta_bounds(&self) -> (f64, f64) {
+    (1.0, f64::INFINITY)
+  }
+
+  fn invalid_thetas(&self) -> Vec<f64> {
+    vec![0.0]
+  }
+
   fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
     Ok((-t.ln()).powf(self.theta.unwrap()))
   }
 
@@ -189,7 +190,7 @@ mod tests {
   /// the next test's doc for why a Kendall's-τ sampling check does not.
   #[test]
   fn gumbel_partial_derivative_at_independence_returns_u() {
-    let g = Gumbel::new(Some(1.0));
+    let g = Gumbel::new(1.0);
     let pd = g
       .partial_derivative(array![[0.3_f64, 0.6], [0.2, 0.9]].view())
       .unwrap();
@@ -212,7 +213,7 @@ mod tests {
     let n = 4000usize;
     let se = (2.0 * (2.0 * n as f64 + 5.0) / (9.0 * n as f64 * (n as f64 - 1.0))).sqrt();
     let tol = 6.0 * se;
-    let g = Gumbel::new(Some(1.0));
+    let g = Gumbel::new(1.0);
     let best_abs_tau = [2718_u64, 999, 42]
       .into_iter()
       .map(|seed| {
@@ -234,7 +235,7 @@ mod tests {
   /// Gumbel θ=2: λ_U = 2 − √2 = 0.585786437626905.
   #[test]
   fn gumbel_tail_dependence_closed_form() {
-    let g = Gumbel::new(Some(2.0));
+    let g = Gumbel::new(2.0);
     let td = g.tail_dependence().unwrap();
     assert!(
       (td.upper - (2.0 - std::f64::consts::SQRT_2)).abs() < 1e-12,
@@ -245,12 +246,11 @@ mod tests {
     assert_eq!(td.lower, 0.0);
   }
 
-  /// θ = 0.5 lies below the bound 1, where `λ_U = 2 − 2^{1/θ}` would be negative: an error, not a coefficient.
+  /// θ = 0.5 lies below the bound 1, where `λ_U = 2 − 2^{1/θ}` would be negative: no copula holds it.
   #[test]
-  fn gumbel_tail_dependence_rejects_an_invalid_theta() {
-    let g = Gumbel::new(Some(0.5));
+  fn gumbel_rejects_an_invalid_theta() {
     assert!(matches!(
-      g.tail_dependence(),
+      Gumbel::try_new(0.5),
       Err(CopulaError::InvalidParameter { name: "theta", .. })
     ));
   }

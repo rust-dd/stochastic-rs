@@ -31,16 +31,12 @@ use stochastic_rs_copulas::simd_rng::Deterministic;
 use stochastic_rs_copulas::simd_rng::Unseeded;
 use stochastic_rs_copulas::traits::BivariateExt;
 
-let c = Clayton {
-    theta: Some(2.0),
-    ..Clayton::new()
-};
+let c = Clayton::new(2.0);
 let u = c.sample(10_000, &Unseeded).expect("theta is set");                // Array2<f64>, shape (10000, 2)
 let v = c.sample(10_000, &Deterministic::new(42)).expect("theta is set"); // reproducible
 
 // Or set Kendall's tau and invert it for theta.
-let mut from_tau = Clayton::new();
-from_tau.set_theta(from_tau.theta_from_tau(0.5).unwrap());
+let from_tau = Clayton::from_tau(0.5).unwrap();
 ```
 
 Multivariate constructions take a tree of `PairCopula` variants:

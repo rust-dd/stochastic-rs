@@ -10,7 +10,7 @@ fn approx(a: f64, b: f64, tol: f64) -> bool {
 
 #[test]
 fn mo_cdf_marginal_recovers_input() {
-  let c = MarshallOlkin::with_alpha_beta(0.5, 0.3);
+  let c = MarshallOlkin::new(0.5, 0.3);
   let x = array![[0.4_f64, 1.0], [1.0, 0.7]];
   let cdf = c.cdf(x.view()).unwrap();
   assert!(approx(cdf[0], 0.4, 1e-12));
@@ -19,7 +19,7 @@ fn mo_cdf_marginal_recovers_input() {
 
 #[test]
 fn mo_alpha_eq_one_beta_eq_one_is_comonotone() {
-  let c = MarshallOlkin::with_alpha_beta(1.0, 1.0);
+  let c = MarshallOlkin::new(1.0, 1.0);
   let x = array![[0.3_f64, 0.7], [0.6, 0.2], [0.5, 0.5]];
   let cdf = c.cdf(x.view()).unwrap();
   for i in 0..x.nrows() {
@@ -31,7 +31,7 @@ fn mo_alpha_eq_one_beta_eq_one_is_comonotone() {
 #[test]
 fn mo_alpha_zero_or_beta_zero_is_independence() {
   // α → 0 with β fixed: C(u,v) = u^{1-0} v = u v. Use α just above 0.
-  let c = MarshallOlkin::with_alpha_beta(1e-12, 0.5);
+  let c = MarshallOlkin::new(1e-12, 0.5);
   let x = array![[0.4_f64, 0.6]];
   let cdf = c.cdf(x.view()).unwrap();
   assert!(approx(cdf[0], 0.24, 1e-6), "α→0: got {}", cdf[0]);
@@ -40,7 +40,7 @@ fn mo_alpha_zero_or_beta_zero_is_independence() {
 #[test]
 fn mo_theta_from_tau_via_symmetric_inversion() {
   // Symmetric MO: τ = θ/(2-θ). Pick θ = 0.5 ⇒ τ = 1/3; invert to recover.
-  let c = MarshallOlkin::new();
+  let c = MarshallOlkin::default();
   let theta = c.theta_from_tau(1.0 / 3.0).unwrap();
   assert!(approx(theta, 0.5, 1e-12), "expected θ=0.5, got {theta}");
 }
@@ -55,7 +55,7 @@ fn mo_singular_curve_total_mass_matches_paper() {
   let mass_singular_paper = alpha * beta / (alpha + beta - alpha * beta);
 
   // Integrate the absolutely continuous density on a 200×200 grid.
-  let c = MarshallOlkin::with_alpha_beta(alpha, beta);
+  let c = MarshallOlkin::new(alpha, beta);
   let n = 200usize;
   let h = 1.0 / n as f64;
   let mut points = Array2::<f64>::zeros((n * n, 2));
@@ -91,7 +91,7 @@ fn mo_partial_derivative_is_the_v_derivative_in_each_sector() {
     (0.8, 0.2, 0.6, 0.4, 0.576539728311087),
   ];
   for (alpha, beta, u, v, want) in cases {
-    let c = MarshallOlkin::with_alpha_beta(alpha, beta);
+    let c = MarshallOlkin::new(alpha, beta);
     let h = c.partial_derivative(array![[u, v]].view()).unwrap()[0];
     assert!(
       (h - want).abs() < 1e-15,
@@ -121,7 +121,7 @@ fn mo_percent_point_matches_the_reference_table() {
     (1.0, 1.0, 0.5, 0.37),
   ];
   for (alpha, beta, y, want) in cases {
-    let c = MarshallOlkin::with_alpha_beta(alpha, beta);
+    let c = MarshallOlkin::new(alpha, beta);
     let u = c.percent_point(array![y].view(), array![v].view()).unwrap()[0];
     assert!(
       (u - want).abs() < 1e-14,
@@ -134,7 +134,7 @@ fn mo_percent_point_matches_the_reference_table() {
 #[test]
 fn mo_percent_point_inverts_the_h_function() {
   for (alpha, beta) in [(0.5, 0.5), (0.3, 0.6), (0.8, 0.2), (1.0, 0.4), (0.7, 1.0)] {
-    let c = MarshallOlkin::with_alpha_beta(alpha, beta);
+    let c = MarshallOlkin::new(alpha, beta);
     for v in [0.05_f64, 0.37, 0.9] {
       let w = v.powf(beta * (1.0 - alpha) / alpha);
       for y in [0.02, 0.2, 0.5, 0.8, 0.98] {
@@ -161,7 +161,7 @@ fn mo_percent_point_inverts_the_h_function() {
 #[test]
 fn mo_a_query_outside_the_unit_interval_is_nan() {
   for (alpha, beta) in [(0.5, 0.5), (0.3, 0.6), (1.0, 0.4), (0.7, 1.0)] {
-    let c = MarshallOlkin::with_alpha_beta(alpha, beta);
+    let c = MarshallOlkin::new(alpha, beta);
     for bad in [f64::NAN, 1.5, -0.1] {
       let u = c
         .percent_point(array![bad, 0.5].view(), array![0.5, bad].view())
@@ -194,7 +194,7 @@ fn mo_a_query_outside_the_unit_interval_is_nan() {
 fn mo_sampler_reproduces_tau_the_singular_mass_and_the_cdf() {
   for n in [1_usize, 5, 20, 200] {
     assert!(
-      MarshallOlkin::with_alpha_beta(0.5, 0.5)
+      MarshallOlkin::new(0.5, 0.5)
         .sample(n, &Deterministic::new(7))
         .is_ok(),
       "n = {n}"
@@ -202,7 +202,7 @@ fn mo_sampler_reproduces_tau_the_singular_mass_and_the_cdf() {
   }
   let grid = [(0.2, 0.3), (0.5, 0.5), (0.7, 0.4), (0.3, 0.9), (0.85, 0.65)];
   for (alpha, beta) in [(0.5, 0.5), (0.3, 0.6), (0.6, 0.4), (1.0, 0.4), (0.7, 1.0)] {
-    let c = MarshallOlkin::with_alpha_beta(alpha, beta);
+    let c = MarshallOlkin::new(alpha, beta);
     let n = 40_000_usize;
     let uv = c.sample(n, &Deterministic::new(7)).unwrap();
     let (u, v) = (uv.column(0).to_vec(), uv.column(1).to_vec());
@@ -238,7 +238,7 @@ fn mo_sampler_reproduces_tau_the_singular_mass_and_the_cdf() {
       );
     }
   }
-  let comonotone = MarshallOlkin::with_alpha_beta(1.0, 1.0)
+  let comonotone = MarshallOlkin::new(1.0, 1.0)
     .sample(500, &Deterministic::new(7))
     .unwrap();
   assert!(comonotone.rows().into_iter().all(|r| r[0] == r[1]));
@@ -246,22 +246,19 @@ fn mo_sampler_reproduces_tau_the_singular_mass_and_the_cdf() {
 
 #[test]
 fn mo_tail_dependence_matches_min_alpha_beta() {
-  let c = MarshallOlkin::with_alpha_beta(0.6, 0.4);
+  let c = MarshallOlkin::new(0.6, 0.4);
   let td = c.tail_dependence().unwrap();
   assert!(approx(td.upper, 0.4, 1e-12), "got {}", td.upper);
   assert_eq!(td.lower, 0.0);
 }
 
-/// A raw `set_theta(5.0)` bypasses `with_alpha_beta`'s asserts and resolves to `(alpha, beta) = (5.0, 5.0)`, outside
-/// `(0, 1]`: an error, not `λ_U = 5.0`.
+/// `set_theta(5.0)` would resolve to `(alpha, beta) = (5.0, 5.0)`, outside `(0, 1]`: a panic, never `λ_U = 5.0`.
 #[test]
-fn mo_tail_dependence_rejects_an_invalid_theta() {
-  let mut c = MarshallOlkin::new();
-  c.set_theta(5.0);
-  assert!(matches!(
-    c.tail_dependence(),
-    Err(CopulaError::InvalidParameter { name: "theta", .. })
-  ));
+#[should_panic(
+  expected = "theta must satisfy `0.0 <= theta <= 1.0, theta not in [0.0]`, got theta = 5.0"
+)]
+fn mo_set_theta_rejects_an_invalid_theta() {
+  MarshallOlkin::default().set_theta(5.0);
 }
 
 /// pdf/cdf/partial_derivative on an unfit `MarshallOlkin` (neither
@@ -270,7 +267,7 @@ fn mo_tail_dependence_rejects_an_invalid_theta() {
 /// `resolve_params().expect(..)`.
 #[test]
 fn marshall_olkin_unfit_errs_like_siblings() {
-  let c = MarshallOlkin::new();
+  let c = MarshallOlkin::default();
   let x = array![[0.4_f64, 0.6]];
   assert!(
     c.pdf(x.view()).is_err(),
@@ -290,41 +287,29 @@ fn marshall_olkin_unfit_errs_like_siblings() {
 /// `BivariateExt::generator`'s trait-default body directly.
 #[test]
 fn marshall_olkin_generator_returns_err_not_archimedean() {
-  let c = MarshallOlkin::with_alpha_beta(0.5, 0.3);
+  let c = MarshallOlkin::new(0.5, 0.3);
   let t = array![0.5_f64, 0.8];
   assert!(c.generator(t.view()).is_err());
 }
 
+/// An out-of-domain pair does not construct, so no copula holding one can sample or evaluate.
 #[test]
-fn an_out_of_domain_parameter_neither_samples_nor_evaluates() {
-  let x = array![[0.3_f64, 0.4]];
+fn an_out_of_domain_parameter_does_not_construct() {
   for theta in [1.5, -0.5] {
-    let c = MarshallOlkin {
-      theta: Some(theta),
-      ..MarshallOlkin::new()
-    };
     assert!(
       matches!(
-        c.sample(16, &Deterministic::new(7)),
-        Err(CopulaError::InvalidParameter { name: "theta", .. })
-      ),
-      "theta = {theta}"
-    );
-    assert!(
-      matches!(
-        c.pdf(x.view()),
-        Err(CopulaError::InvalidParameter { name: "theta", .. })
+        MarshallOlkin::try_new(theta, theta),
+        Err(CopulaError::InvalidParameter { name: "alpha", .. })
       ),
       "theta = {theta}"
     );
   }
-  let c = MarshallOlkin {
-    alpha: Some(1.5),
-    beta: Some(0.5),
-    ..MarshallOlkin::new()
-  };
   assert!(matches!(
-    c.cdf(x.view()),
+    MarshallOlkin::try_new(1.5, 0.5),
     Err(CopulaError::InvalidParameter { name: "alpha", .. })
+  ));
+  assert!(matches!(
+    MarshallOlkin::try_new(0.5, 1.5),
+    Err(CopulaError::InvalidParameter { name: "beta", .. })
   ));
 }

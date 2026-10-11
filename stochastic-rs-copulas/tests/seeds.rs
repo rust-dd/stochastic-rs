@@ -9,10 +9,7 @@ use stochastic_rs_copulas::traits::MultivariateExt;
 
 #[test]
 fn a_deterministic_seed_replays_and_unseeded_does_not() {
-  let clayton = Clayton {
-    theta: Some(2.0),
-    ..Clayton::new()
-  };
+  let clayton = Clayton::new(2.0);
   assert_eq!(
     clayton.sample(32, &Deterministic::new(42)).unwrap(),
     clayton.sample(32, &Deterministic::new(42)).unwrap()

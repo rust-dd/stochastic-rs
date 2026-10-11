@@ -63,55 +63,39 @@ fn dvine(d: usize) -> DVine {
 
 fn bivariate_sample(c: &mut Criterion) {
   let mut group = c.benchmark_group("copulas/bivariate_sample");
-  let clayton = Clayton {
-    theta: Some(2.0),
-    ..Clayton::new()
-  };
+  let clayton = Clayton::new(2.0);
   group.bench_function("clayton_n10k", |b| {
     b.iter(|| clayton.sample(10_000, &Deterministic::new(42)).unwrap())
   });
-  let frank = Frank::new(Some(4.0));
+  let frank = Frank::new(4.0);
   group.bench_function("frank_n2k", |b| {
     b.iter(|| frank.sample(2_000, &Deterministic::new(42)).unwrap())
   });
-  let gaussian = GaussianCopula {
-    theta: Some(0.5),
-    ..GaussianCopula::new()
-  };
+  let gaussian = GaussianCopula::new(0.5);
   group.bench_function("gaussian_n10k", |b| {
     b.iter(|| gaussian.sample(10_000, &Deterministic::new(42)).unwrap())
   });
-  let gumbel = Gumbel::new(Some(2.0));
+  let gumbel = Gumbel::new(2.0);
   group.bench_function("gumbel_brent_n2k", |b| {
     b.iter(|| gumbel.sample(2_000, &Deterministic::new(42)).unwrap())
   });
-  let mo = MarshallOlkin::with_alpha_beta(0.3, 0.6);
+  let mo = MarshallOlkin::new(0.3, 0.6);
   group.bench_function("marshall_olkin_n10k", |b| {
     b.iter(|| mo.sample(10_000, &Deterministic::new(42)).unwrap())
   });
-  let amh = Amh {
-    theta: Some(0.5),
-    ..Amh::new()
-  };
+  let amh = Amh::new(0.5);
   group.bench_function("amh_n10k", |b| {
     b.iter(|| amh.sample(10_000, &Deterministic::new(42)).unwrap())
   });
-  let fgm = Fgm {
-    theta: Some(0.5),
-    ..Fgm::new()
-  };
+  let fgm = Fgm::new(0.5);
   group.bench_function("fgm_n10k", |b| {
     b.iter(|| fgm.sample(10_000, &Deterministic::new(42)).unwrap())
   });
-  let plackett = Plackett {
-    theta: Some(3.0),
-    ..Plackett::new()
-  };
+  let plackett = Plackett::new(3.0);
   group.bench_function("plackett_n10k", |b| {
     b.iter(|| plackett.sample(10_000, &Deterministic::new(42)).unwrap())
   });
-  let mut t = TCopula::with_nu(4.0);
-  t.set_theta(0.5);
+  let t = TCopula::new(0.5, 4.0);
   group.bench_function("t_copula_n256", |b| {
     b.iter(|| t.sample(256, &Deterministic::new(42)).unwrap())
   });
@@ -154,10 +138,7 @@ fn fit(c: &mut Criterion) {
   let mut group = c.benchmark_group("copulas/fit");
   group.sample_size(20);
   group.measurement_time(Duration::from_secs(9));
-  let clayton = Clayton {
-    theta: Some(2.0),
-    ..Clayton::new()
-  };
+  let clayton = Clayton::new(2.0);
   let pairs = pseudo_observations(
     clayton
       .sample(2_000, &Deterministic::new(1))
@@ -166,14 +147,11 @@ fn fit(c: &mut Criterion) {
   );
   group.bench_function("clayton_fit_n2k", |b| {
     b.iter(|| {
-      let mut fitted = Clayton::new();
+      let mut fitted = Clayton::default();
       fitted.fit(pairs.view()).unwrap()
     })
   });
-  let plackett = Plackett {
-    theta: Some(3.0),
-    ..Plackett::new()
-  };
+  let plackett = Plackett::new(3.0);
   let plackett_pairs = pseudo_observations(
     plackett
       .sample(2_000, &Deterministic::new(1))
@@ -182,18 +160,15 @@ fn fit(c: &mut Criterion) {
   );
   group.bench_function("plackett_fit_n2k", |b| {
     b.iter(|| {
-      let mut fitted = Plackett::new();
+      let mut fitted = Plackett::default();
       fitted.fit(plackett_pairs.view()).unwrap()
     })
   });
   let frank_pairs = pseudo_observations(
-    Frank {
-      theta: Some(4.0),
-      ..Frank::default()
-    }
-    .sample(2_000, &Deterministic::new(1))
-    .unwrap()
-    .view(),
+    Frank::new(4.0)
+      .sample(2_000, &Deterministic::new(1))
+      .unwrap()
+      .view(),
   );
   group.bench_function("frank_fit_n2k", |b| {
     b.iter(|| {
@@ -202,17 +177,14 @@ fn fit(c: &mut Criterion) {
     })
   });
   let galambos_pairs = pseudo_observations(
-    Galambos {
-      theta: Some(1.5),
-      ..Galambos::new()
-    }
-    .sample(2_000, &Deterministic::new(1))
-    .unwrap()
-    .view(),
+    Galambos::new(1.5)
+      .sample(2_000, &Deterministic::new(1))
+      .unwrap()
+      .view(),
   );
   group.bench_function("galambos_fit_n2k", |b| {
     b.iter(|| {
-      let mut fitted = Galambos::new();
+      let mut fitted = Galambos::default();
       fitted.fit(galambos_pairs.view()).unwrap()
     })
   });
@@ -242,12 +214,9 @@ fn fit(c: &mut Criterion) {
 fn gof(c: &mut Criterion) {
   let mut group = c.benchmark_group("copulas/gof");
   group.sample_size(10);
-  let clayton = Clayton {
-    theta: Some(2.0),
-    ..Clayton::new()
-  };
+  let clayton = Clayton::new(2.0);
   let pairs = pseudo_observations(clayton.sample(300, &Deterministic::new(1)).unwrap().view());
-  let mut fitted = Clayton::new();
+  let mut fitted = Clayton::default();
   fitted.fit(pairs.view()).unwrap();
   group.bench_function("clayton_cvm_n300_r10", |b| {
     b.iter(|| {

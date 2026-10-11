@@ -36,10 +36,7 @@ fn countermonotone(n: usize) -> Array2<f64> {
 
 /// Pseudo-observations of a Clayton(θ = 3) sample: τ ≈ 0.6, beyond FGM's `2/9` and AMH's `1/3`.
 fn strongly_dependent() -> Array2<f64> {
-  let truth = Clayton {
-    theta: Some(3.0),
-    ..Clayton::new()
-  };
+  let truth = Clayton::new(3.0);
   pseudo_observations(truth.sample(600, &Deterministic::new(11)).unwrap().view())
 }
 
@@ -60,6 +57,18 @@ fn kendall(x: &Array2<f64>) -> f64 {
   score / (n * (n - 1) / 2) as f64
 }
 
+fn bb1_at(delta: f64) -> Bb1 {
+  let mut c = Bb1::default();
+  c.set_delta(delta);
+  c
+}
+
+fn bb7_at(delta: f64) -> Bb7 {
+  let mut c = Bb7::default();
+  c.set_delta(delta);
+  c
+}
+
 fn is_tau_error(result: Result<(), CopulaError>) -> bool {
   matches!(
     result,
@@ -78,21 +87,21 @@ macro_rules! rejects {
 #[test]
 fn a_fit_outside_the_family_domain_is_an_error_and_stores_nothing() {
   let neg = countermonotone(200);
-  rejects!(Clayton::new(), neg);
-  rejects!(Gumbel::new(None), neg);
-  rejects!(Joe::new(), neg);
-  rejects!(Galambos::new(), neg);
-  rejects!(HuslerReiss::new(), neg);
-  rejects!(MarshallOlkin::new(), neg);
-  rejects!(Bb1::new(None, None), neg);
-  rejects!(Bb7::new(None, None), neg);
-  rejects!(Frank::new(None), neg);
-  rejects!(GaussianCopula::new(), neg);
-  rejects!(TCopula::new(), neg);
-  rejects!(Plackett::new(), neg);
+  rejects!(Clayton::default(), neg);
+  rejects!(Gumbel::default(), neg);
+  rejects!(Joe::default(), neg);
+  rejects!(Galambos::default(), neg);
+  rejects!(HuslerReiss::default(), neg);
+  rejects!(MarshallOlkin::default(), neg);
+  rejects!(Bb1::default(), neg);
+  rejects!(Bb7::default(), neg);
+  rejects!(Frank::default(), neg);
+  rejects!(GaussianCopula::default(), neg);
+  rejects!(TCopula::default(), neg);
+  rejects!(Plackett::default(), neg);
   let strong = strongly_dependent();
-  rejects!(Fgm::new(), strong);
-  rejects!(Amh::new(), strong);
+  rejects!(Fgm::default(), strong);
+  rejects!(Amh::default(), strong);
 }
 
 /// Four pairs with three concordances and three discordances: `τ̂ = 0`, which Marshall–Olkin reaches only at its
@@ -108,7 +117,7 @@ fn marshall_olkin_rejects_a_zero_tau() {
     }
   });
   assert_eq!(kendall(&data), 0.0);
-  rejects!(MarshallOlkin::new(), data);
+  rejects!(MarshallOlkin::default(), data);
 }
 
 /// `τ̂ = +1` fits Marshall–Olkin at `θ = 1`, the upper Fréchet bound, and Independence, which ignores τ; BB1 and BB7
@@ -116,20 +125,20 @@ fn marshall_olkin_rejects_a_zero_tau() {
 #[test]
 fn a_comonotone_sample_fits_only_the_families_that_reach_tau_one() {
   let co = comonotone(200);
-  rejects!(Clayton::new(), co);
-  rejects!(Gumbel::new(None), co);
-  rejects!(Joe::new(), co);
-  rejects!(Frank::new(None), co);
-  rejects!(Amh::new(), co);
-  rejects!(Fgm::new(), co);
-  rejects!(Plackett::new(), co);
-  rejects!(GaussianCopula::new(), co);
-  rejects!(TCopula::new(), co);
-  rejects!(Galambos::new(), co);
-  rejects!(HuslerReiss::new(), co);
-  rejects!(Bb1::new(None, None), co);
-  rejects!(Bb7::new(None, None), co);
-  let mut mo = MarshallOlkin::new();
+  rejects!(Clayton::default(), co);
+  rejects!(Gumbel::default(), co);
+  rejects!(Joe::default(), co);
+  rejects!(Frank::default(), co);
+  rejects!(Amh::default(), co);
+  rejects!(Fgm::default(), co);
+  rejects!(Plackett::default(), co);
+  rejects!(GaussianCopula::default(), co);
+  rejects!(TCopula::default(), co);
+  rejects!(Galambos::default(), co);
+  rejects!(HuslerReiss::default(), co);
+  rejects!(Bb1::default(), co);
+  rejects!(Bb7::default(), co);
+  let mut mo = MarshallOlkin::default();
   mo.fit(co.view()).unwrap();
   assert_eq!(mo.theta(), Some(1.0));
   let mut independence = Independence::new();
@@ -142,13 +151,10 @@ fn a_comonotone_sample_fits_only_the_families_that_reach_tau_one() {
 #[test]
 fn a_representable_tau_fits_every_family() {
   let mild = pseudo_observations(
-    Clayton {
-      theta: Some(0.3),
-      ..Clayton::new()
-    }
-    .sample(600, &Deterministic::new(12))
-    .unwrap()
-    .view(),
+    Clayton::new(0.3)
+      .sample(600, &Deterministic::new(12))
+      .unwrap()
+      .view(),
   );
   let tau = kendall(&mild);
   macro_rules! inverts {
@@ -163,25 +169,25 @@ fn a_representable_tau_fits_every_family() {
       );
     }};
   }
-  inverts!(Clayton::new(), 1e-15);
-  inverts!(Gumbel::new(None), 1e-15);
-  inverts!(Joe::new(), 1e-14);
-  inverts!(Frank::new(None), 1e-14);
-  inverts!(Amh::new(), 1e-14);
-  inverts!(Fgm::new(), 1e-15);
-  inverts!(GaussianCopula::new(), 1e-15);
-  inverts!(TCopula::new(), 1e-15);
-  inverts!(MarshallOlkin::new(), 1e-15);
-  inverts!(Plackett::new(), 1e-8);
-  inverts!(Galambos::new(), 1e-8);
-  inverts!(HuslerReiss::new(), 1e-8);
-  inverts!(Bb1::new(None, None), 0.05);
-  inverts!(Bb7::new(None, None), 0.05);
+  inverts!(Clayton::default(), 1e-15);
+  inverts!(Gumbel::default(), 1e-15);
+  inverts!(Joe::default(), 1e-14);
+  inverts!(Frank::default(), 1e-14);
+  inverts!(Amh::default(), 1e-14);
+  inverts!(Fgm::default(), 1e-15);
+  inverts!(GaussianCopula::default(), 1e-15);
+  inverts!(TCopula::default(), 1e-15);
+  inverts!(MarshallOlkin::default(), 1e-15);
+  inverts!(Plackett::default(), 1e-8);
+  inverts!(Galambos::default(), 1e-8);
+  inverts!(HuslerReiss::default(), 1e-8);
+  inverts!(Bb1::default(), 0.05);
+  inverts!(Bb7::default(), 0.05);
   let mut independence = Independence::new();
   independence.fit(mild.view()).unwrap();
   assert_eq!(independence.tau(), Some(0.0));
   let strong = strongly_dependent();
-  let mut clayton = Clayton::new();
+  let mut clayton = Clayton::default();
   clayton.fit(strong.view()).unwrap();
   assert!((clayton.tau().unwrap() - 0.6).abs() < 0.08);
 }
@@ -195,44 +201,44 @@ fn theta_from_tau_round_trips_through_tau_from_theta() {
   let cases: Vec<(&str, Inverse, Forward, Vec<f64>)> = vec![
     (
       "clayton",
-      Box::new(|t| Clayton::new().theta_from_tau(t)),
-      Box::new(|th| Clayton::new().tau_from_theta(th)),
+      Box::new(|t| Clayton::default().theta_from_tau(t)),
+      Box::new(|th| Clayton::default().tau_from_theta(th)),
       vec![0.1, 0.5, 0.9],
     ),
     (
       "frank",
-      Box::new(|t| Frank::new(None).theta_from_tau(t)),
-      Box::new(|th| Frank::new(None).tau_from_theta(th)),
+      Box::new(|t| Frank::default().theta_from_tau(t)),
+      Box::new(|th| Frank::default().tau_from_theta(th)),
       vec![-0.6, -0.1, 0.3, 0.7],
     ),
     (
       "joe",
-      Box::new(|t| Joe::new().theta_from_tau(t)),
-      Box::new(|th| Joe::new().tau_from_theta(th)),
+      Box::new(|t| Joe::default().theta_from_tau(t)),
+      Box::new(|th| Joe::default().tau_from_theta(th)),
       vec![0.2, 0.5, 0.8],
     ),
     (
       "plackett",
-      Box::new(|t| Plackett::new().theta_from_tau(t)),
-      Box::new(|th| Plackett::new().tau_from_theta(th)),
+      Box::new(|t| Plackett::default().theta_from_tau(t)),
+      Box::new(|th| Plackett::default().tau_from_theta(th)),
       vec![-0.3, 0.15, 0.5],
     ),
     (
       "galambos",
-      Box::new(|t| Galambos::new().theta_from_tau(t)),
-      Box::new(|th| Galambos::new().tau_from_theta(th)),
+      Box::new(|t| Galambos::default().theta_from_tau(t)),
+      Box::new(|th| Galambos::default().tau_from_theta(th)),
       vec![0.2, 0.5],
     ),
     (
       "husler_reiss",
-      Box::new(|t| HuslerReiss::new().theta_from_tau(t)),
-      Box::new(|th| HuslerReiss::new().tau_from_theta(th)),
+      Box::new(|t| HuslerReiss::default().theta_from_tau(t)),
+      Box::new(|th| HuslerReiss::default().tau_from_theta(th)),
       vec![0.2, 0.5],
     ),
     (
       "amh",
-      Box::new(|t| Amh::new().theta_from_tau(t)),
-      Box::new(|th| Amh::new().tau_from_theta(th)),
+      Box::new(|t| Amh::default().theta_from_tau(t)),
+      Box::new(|th| Amh::default().tau_from_theta(th)),
       vec![-0.1, 0.1, 0.3],
     ),
   ];
@@ -255,22 +261,22 @@ fn an_inverse_that_rounds_onto_an_excluded_theta_is_an_error() {
   let n = 30_000;
   let mut data = Array2::from_shape_fn((n, 2), |(i, _)| (i + 1) as f64 / (n + 1) as f64);
   data.swap([0, 1], [1, 1]);
-  let mut gaussian = GaussianCopula::new();
+  let mut gaussian = GaussianCopula::default();
   assert!(is_tau_error(gaussian.fit(data.view())));
   assert_eq!(gaussian.theta(), None);
   for tau in [1.0 - 1e-9, -1.0 + 1e-9] {
-    let got = GaussianCopula::new().theta_from_tau(tau);
+    let got = GaussianCopula::default().theta_from_tau(tau);
     assert!(
       matches!(got, Err(CopulaError::InvalidParameter { name: "tau", .. })),
       "{got:?}"
     );
-    let got = TCopula::new().theta_from_tau(tau);
+    let got = TCopula::default().theta_from_tau(tau);
     assert!(
       matches!(got, Err(CopulaError::InvalidParameter { name: "tau", .. })),
       "{got:?}"
     );
   }
-  let bb1 = Bb1::new(None, Some(1.125));
+  let bb1 = bb1_at(1.125);
   let mut tau = 1.0_f64 - 1.0 / 1.125;
   for _ in 0..4 {
     tau = tau.next_up();
@@ -295,7 +301,7 @@ fn amh_fits_its_upper_tau() {
       ranks[i] / 11.0
     }
   });
-  let mut amh = Amh::new();
+  let mut amh = Amh::default();
   amh.fit(data.view()).unwrap();
   assert_eq!(amh.theta(), Some(1.0));
   assert_eq!(amh.tau(), Some(1.0 / 3.0));
@@ -310,56 +316,17 @@ fn fit_takes_exactly_two_columns() {
     ($copula:expr) => {{
       for (data, got) in [(&one, 1), (&three, 3)] {
         let mut c = $copula;
+        let before = c.theta();
         let want = Err(CopulaError::DimensionMismatch { expected: 2, got });
         assert_eq!(c.fit(data.view()), want, "{:?}", c.family());
-        assert_eq!(c.theta(), None, "{:?} kept a theta", c.family());
+        assert_eq!(c.theta(), before, "{:?} stored a theta", c.family());
       }
     }};
   }
-  mismatch!(Clayton::new());
+  mismatch!(Clayton::default());
   mismatch!(Independence::new());
-  mismatch!(Bb1::new(None, None));
-  mismatch!(Bb7::new(None, None));
-}
-
-/// Bounds that exclude the likelihood's θ make BB1's and BB7's `fit` an error that stores neither θ nor δ.
-#[test]
-fn a_likelihood_theta_outside_custom_bounds_is_an_error_and_stores_nothing() {
-  let mild = pseudo_observations(
-    Clayton {
-      theta: Some(0.3),
-      ..Clayton::new()
-    }
-    .sample(600, &Deterministic::new(12))
-    .unwrap()
-    .view(),
-  );
-  let mut bb1 = Bb1 {
-    theta_bounds: (5.0, f64::INFINITY),
-    ..Bb1::new(None, Some(1.5))
-  };
-  let got = bb1.fit(mild.view());
-  assert!(
-    matches!(
-      got,
-      Err(CopulaError::InvalidParameter { name: "theta", .. })
-    ),
-    "{got:?}"
-  );
-  assert_eq!((bb1.theta(), bb1.delta), (None, 1.5));
-  let mut bb7 = Bb7 {
-    theta_bounds: (5.0, f64::INFINITY),
-    ..Bb7::new(None, Some(1.1))
-  };
-  let got = bb7.fit(mild.view());
-  assert!(
-    matches!(
-      got,
-      Err(CopulaError::InvalidParameter { name: "theta", .. })
-    ),
-    "{got:?}"
-  );
-  assert_eq!((bb7.theta(), bb7.delta), (None, 1.1));
+  mismatch!(Bb1::default());
+  mismatch!(Bb7::default());
 }
 
 /// An outside implementor whose `theta_from_tau` ignores its own bounds `[0, 1]`.
@@ -433,6 +400,7 @@ fn fit_checks_columns_then_rows_then_range() {
   macro_rules! order {
     ($copula:expr) => {{
       let mut c = $copula;
+      let before = c.theta();
       let want = Err(CopulaError::DimensionMismatch {
         expected: 2,
         got: 3,
@@ -440,13 +408,13 @@ fn fit_checks_columns_then_rows_then_range() {
       assert_eq!(c.fit(wide.view()), want, "{:?}", c.family());
       let want = Err(CopulaError::InsufficientData { needed: 2, got: 1 });
       assert_eq!(c.fit(short.view()), want, "{:?}", c.family());
-      assert_eq!(c.theta(), None, "{:?} kept a theta", c.family());
+      assert_eq!(c.theta(), before, "{:?} stored a theta", c.family());
     }};
   }
-  order!(Clayton::new());
+  order!(Clayton::default());
   order!(Independence::new());
-  order!(Bb1::new(None, None));
-  order!(Bb7::new(None, None));
+  order!(Bb1::default());
+  order!(Bb7::default());
 }
 
 /// A value that is not a finite number in `[0, 1]` is `MarginalOutOfRange`, in either column.
@@ -459,6 +427,7 @@ fn fit_rejects_a_value_outside_the_unit_interval() {
       macro_rules! out_of_range {
         ($copula:expr) => {{
           let mut c = $copula;
+          let before = c.theta();
           let got = c.fit(data.view());
           assert_eq!(
             got,
@@ -466,13 +435,13 @@ fn fit_rejects_a_value_outside_the_unit_interval() {
             "{:?} at {bad}",
             c.family()
           );
-          assert_eq!(c.theta(), None, "{:?} kept a theta", c.family());
+          assert_eq!(c.theta(), before, "{:?} stored a theta", c.family());
         }};
       }
-      out_of_range!(Clayton::new());
+      out_of_range!(Clayton::default());
       out_of_range!(Independence::new());
-      out_of_range!(Bb1::new(None, None));
-      out_of_range!(Bb7::new(None, None));
+      out_of_range!(Bb1::default());
+      out_of_range!(Bb7::default());
     }
   }
 }
@@ -481,13 +450,10 @@ fn fit_rejects_a_value_outside_the_unit_interval() {
 /// `fit` tests the domain only, so every seed fits.
 #[test]
 fn a_raw_uniform_sample_fits_on_every_seed() {
-  let truth = Clayton {
-    theta: Some(3.0),
-    ..Clayton::new()
-  };
+  let truth = Clayton::new(3.0);
   for seed in 0..200 {
     let raw = truth.sample(600, &Deterministic::new(seed)).unwrap();
-    let mut fitted = Clayton::new();
+    let mut fitted = Clayton::default();
     assert_eq!(fitted.fit(raw.view()), Ok(()), "seed {seed}");
   }
 }
@@ -532,42 +498,38 @@ fn every_inverse_is_an_admitted_theta() {
       }
     }};
   }
-  admitted!(Clayton::new());
-  admitted!(Gumbel::new(None));
-  admitted!(Joe::new());
-  admitted!(Frank::new(None));
-  admitted!(Amh::new());
-  admitted!(Fgm::new());
-  admitted!(Plackett::new());
-  admitted!(GaussianCopula::new());
-  admitted!(TCopula::new());
-  admitted!(MarshallOlkin::new());
+  admitted!(Clayton::default());
+  admitted!(Gumbel::default());
+  admitted!(Joe::default());
+  admitted!(Frank::default());
+  admitted!(Amh::default());
+  admitted!(Fgm::default());
+  admitted!(Plackett::default());
+  admitted!(GaussianCopula::default());
+  admitted!(TCopula::default());
+  admitted!(MarshallOlkin::default());
   admitted!(Independence::new());
-  admitted!(Bb1::new(None, Some(1.125)));
-  admitted!(Bb7::new(None, Some(1.1)));
-  admitted!(Galambos::new());
-  admitted!(HuslerReiss::new());
+  admitted!(bb1_at(1.125));
+  admitted!(bb7_at(1.1));
+  admitted!(Galambos::default());
+  admitted!(HuslerReiss::default());
 }
 
 #[test]
 fn tail_dependence_shares_the_result_channel() {
   assert_eq!(
-    Clayton::new().tail_dependence(),
+    Clayton::default().tail_dependence(),
     Err(CopulaError::NotFitted)
   );
-  let out_of_range = Gumbel::new(Some(0.5));
   assert!(matches!(
-    out_of_range.tail_dependence(),
+    Gumbel::try_new(0.5),
     Err(CopulaError::InvalidParameter { name: "theta", .. })
   ));
-  let clayton = Clayton {
-    theta: Some(2.0),
-    ..Clayton::new()
-  };
+  let clayton = Clayton::new(2.0);
   let tails = clayton.tail_dependence().unwrap();
   assert!((tails.lower - 2.0_f64.powf(-0.5)).abs() < 1e-12 && tails.upper == 0.0);
   assert_eq!(
-    MarshallOlkin::new().tail_dependence(),
+    MarshallOlkin::default().tail_dependence(),
     Err(CopulaError::NotFitted)
   );
 }

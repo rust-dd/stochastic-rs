@@ -417,7 +417,7 @@ mod tests {
         assert!(pair.density(u, v).is_finite() && pair.density(u, v) > 0.0);
       }
     }
-    let bb1_struct = Bb1::new(Some(0.8), Some(1.6));
+    let bb1_struct = Bb1::new(0.8, 1.6);
     let x = ndarray::array![[0.2, 0.7]];
     let reference = bb1_struct.pdf(x.view()).unwrap()[0];
     assert!((bb1.density(0.2, 0.7) - reference).abs() < 1e-12);

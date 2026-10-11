@@ -15,7 +15,7 @@ The `stochastic-rs-copulas` crate ships bivariate and multivariate copulas, corr
 
 | Copula        | Family              | Tail dependence                                    |
 |---------------|---------------------|-----------------------------------------------------|
-| Amh           | Archimedean         | None                                                |
+| Amh           | Archimedean         | None, except $\lambda_L = 1/2$ at $\theta = 1$ (Clayton(1)) |
 | Bb1           | Archimedean (two-parameter) | Both, asymmetric ($\lambda_L = 2^{-1/(\theta\delta)}$, $\lambda_U = 2 - 2^{1/\delta}$) |
 | Bb7           | Archimedean (two-parameter) | Both, asymmetric ($\lambda_U = 2 - 2^{1/\theta}$, $\lambda_L = 2^{-1/\delta}$) |
 | Clayton       | Archimedean         | Lower only ($\lambda_L = 2^{-1/\theta}$)             |
@@ -43,7 +43,7 @@ The one-parameter families are fit by computing Kendall's tau and inverting it t
 | Symmetric tail dependence (both tails, equal) | `TCopula` — the only one |
 | Weak dependence in either direction (τ within roughly ±0.2-0.3) | `Amh`, `Fgm` — both structurally cannot represent stronger dependence |
 | Fast sampling at scale (millions of draws) | `Amh`, `Clayton`, `Fgm`, `Frank`, `Gaussian`, `Independence`, `MarshallOlkin`, `Plackett` or `TCopula` — the nine with a closed-form `percent_point`; `Gumbel`, `Joe`, `Galambos`, `HuslerReiss`, `Bb1` and `Bb7` invert numerically per draw |
-| A non-exchangeable, shared-shock dependence structure | `MarshallOlkin`'s `with_alpha_beta` constructor — the one family here that is not symmetric in its two arguments in general |
+| A non-exchangeable, shared-shock dependence structure | `MarshallOlkin::new(alpha, beta)` — the one family here that is not symmetric in its two arguments in general |
 
 `fit` expects two columns already transformed to `[0, 1]` and checks only that shape and range, not uniformity, so transform raw data through its margins first. A Kendall's τ the family cannot represent is an error (`InvalidParameter { name: "tau", .. }`), never a clamped parameter; `tau_from_theta` and `theta_from_tau` convert between τ and the family's parameter.
 

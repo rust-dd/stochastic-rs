@@ -28,7 +28,10 @@ impl BivariateExt for DummyNonArchimedean {
     vec![]
   }
 
-  fn set_theta(&mut self, _theta: f64) {}
+  fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
+    self.theta = Some(theta);
+  }
 
   fn tau_from_theta(&self, _theta: f64) -> f64 {
     0.0
@@ -58,7 +61,7 @@ impl BivariateExt for DummyNonArchimedean {
   }
 }
 
-/// Parameterised outside `theta`, like `MarshallOlkin::with_alpha_beta`; the h-function is `u`.
+/// Parameterised outside `theta`, like an asymmetric `MarshallOlkin`; the h-function is `u`.
 struct ParameterisedWithoutTheta;
 
 impl BivariateExt for ParameterisedWithoutTheta {
@@ -78,7 +81,9 @@ impl BivariateExt for ParameterisedWithoutTheta {
     vec![]
   }
 
-  fn set_theta(&mut self, _theta: f64) {}
+  fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
+  }
 
   fn tau_from_theta(&self, _theta: f64) -> f64 {
     0.0
@@ -149,8 +154,7 @@ fn percent_point_numerical_propagates_inner_errors_instead_of_panicking() {
 /// answer.
 #[test]
 fn percent_point_numerical_saturates_at_the_bracket_floor() {
-  let mut amh = Amh::new();
-  amh.set_theta(amh.theta_from_tau(0.25).unwrap());
+  let amh = Amh::from_tau(0.25).unwrap();
   let out = amh
     .percent_point_numerical(array![1e-300_f64].view(), array![0.5_f64].view())
     .expect("saturation is a value");
@@ -165,7 +169,7 @@ fn percent_point_numerical_saturates_at_the_bracket_floor() {
 /// A conditional law with a point mass at `u = 1` keeps `h` below `y` on the whole bracket: the ceiling answers.
 #[test]
 fn percent_point_numerical_saturates_at_the_bracket_ceiling() {
-  let mut galambos = Galambos::new();
+  let mut galambos = Galambos::default();
   galambos.set_theta(1.5);
   let out = galambos
     .percent_point_numerical(array![0.3_f64].view(), array![1.0_f64].view())
@@ -176,7 +180,7 @@ fn percent_point_numerical_saturates_at_the_bracket_ceiling() {
 /// Level 0 answers the floor even where rounding takes `h(EPSILON | v)` below zero, as Galambos's does near `v = 1`.
 #[test]
 fn percent_point_numerical_answers_the_floor_at_level_zero() {
-  let mut galambos = Galambos::new();
+  let mut galambos = Galambos::default();
   galambos.set_theta(1.5);
   for v in [1.0 - 1e-10, 1.0 - 1e-12, 1.0 - f64::EPSILON / 2.0] {
     let h = galambos.partial_derivative_scalar(f64::EPSILON, v).unwrap();
@@ -189,7 +193,7 @@ fn percent_point_numerical_answers_the_floor_at_level_zero() {
 /// Levels far below `√f64::MIN_POSITIVE` reach Brent's `zero`, whose sign test never multiplies two gaps.
 #[test]
 fn percent_point_numerical_solves_levels_below_the_product_underflow() {
-  let mut galambos = Galambos::new();
+  let mut galambos = Galambos::default();
   galambos.set_theta(1.5);
   for y in [1e-300, 1e-310, 5e-324] {
     for v in [1.0 - 1e-10, 1.0 - f64::EPSILON / 2.0] {
@@ -204,8 +208,7 @@ fn percent_point_numerical_solves_levels_below_the_product_underflow() {
 /// `percent_point_numerical` reaches the Brent body whatever `percent_point` the family overrides.
 #[test]
 fn percent_point_numerical_round_trips_through_the_h_function() {
-  let mut amh = Amh::new();
-  amh.set_theta(amh.theta_from_tau(0.25).unwrap());
+  let amh = Amh::from_tau(0.25).unwrap();
   for &(y, v) in &[(0.1_f64, 0.3_f64), (0.5, 0.5), (0.9, 0.7), (0.05, 0.95)] {
     let u = amh
       .percent_point_numerical(array![y].view(), array![v].view())
@@ -222,8 +225,7 @@ fn percent_point_numerical_round_trips_through_the_h_function() {
 /// public `check_marginal`, becomes less visible.
 #[test]
 fn doc_hidden_methods_remain_callable_in_crate() {
-  let mut c = Clayton::new();
-  c.set_theta(c.theta_from_tau(0.5).unwrap());
+  let c = Clayton::from_tau(0.5).unwrap();
   assert!(c.theta().is_some());
 
   let u = array![0.1_f64, 0.5, 0.9];
@@ -235,17 +237,14 @@ fn doc_hidden_methods_remain_callable_in_crate() {
 
 #[test]
 fn sampling_needs_theta_not_tau() {
-  let c = Clayton {
-    theta: Some(2.0),
-    ..Clayton::new()
-  };
+  let c = Clayton::new(2.0);
   let uv = c
     .sample(1_000, &Deterministic::new(7))
     .expect("theta alone is enough to sample");
   assert_eq!(uv.dim(), (1_000, 2));
 
   assert_eq!(
-    Clayton::new()
+    Clayton::default()
       .sample(10, &Deterministic::new(7))
       .unwrap_err(),
     CopulaError::NotFitted

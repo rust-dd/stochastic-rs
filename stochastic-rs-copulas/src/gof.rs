@@ -182,15 +182,13 @@ mod tests {
   use crate::traits::TailDependence;
 
   fn data_for(seed: u64) -> Array2<f64> {
-    let mut truth = Clayton::new();
-    truth.set_theta(truth.theta_from_tau(0.6).unwrap()); // θ = 2τ/(1 − τ) = 3
+    let truth = Clayton::from_tau(0.6).unwrap(); // θ = 2τ/(1 − τ) = 3
     pseudo_observations(truth.sample(600, &Deterministic::new(seed)).unwrap().view())
   }
 
   #[test]
   fn rosenblatt_of_the_true_copula_is_uniform_and_independent() {
-    let mut copula = Clayton::new();
-    copula.set_theta(copula.theta_from_tau(0.5).unwrap()); // θ = 2τ/(1 − τ) = 2
+    let copula = Clayton::from_tau(0.5).unwrap(); // θ = 2τ/(1 − τ) = 2
     let sample = copula.sample(3000, &Deterministic::new(3)).unwrap();
     let r = rosenblatt(&copula, sample.view()).unwrap();
     let (mean_a, mean_b) = (r.column(0).mean().unwrap(), r.column(1).mean().unwrap());
@@ -216,7 +214,7 @@ mod tests {
       .into_iter()
       .map(|seed| {
         let data = data_for(seed);
-        let mut fitted = Clayton::new();
+        let mut fitted = Clayton::default();
         fitted.fit(data.view()).unwrap();
         gof_cramer_von_mises(
           &fitted,
@@ -237,7 +235,7 @@ mod tests {
       "true family rejected on every seed (best p {best_right})"
     );
     let data = data_for(5);
-    let mut fitted = Clayton::new();
+    let mut fitted = Clayton::default();
     fitted.fit(data.view()).unwrap();
     let right = gof_cramer_von_mises(
       &fitted,
@@ -250,7 +248,7 @@ mod tests {
       refit,
     )
     .unwrap();
-    let mut gaussian = GaussianCopula::new();
+    let mut gaussian = GaussianCopula::default();
     gaussian.fit(data.view()).unwrap();
     let wrong = gof_cramer_von_mises(
       &gaussian,
@@ -270,10 +268,7 @@ mod tests {
   /// The transform is `(v, ∂_v C(u, v))`, the trait's h-function.
   #[test]
   fn rosenblatt_conditions_on_the_second_coordinate() {
-    let copula = Clayton {
-      theta: Some(2.0),
-      ..Clayton::new()
-    };
+    let copula = Clayton::new(2.0);
     let x = ndarray::array![[0.3, 0.7], [0.5, 0.2], [0.9, 0.4]];
     let r = rosenblatt(&copula, x.view()).unwrap();
     assert_eq!(r.column(0), x.column(1));
@@ -284,7 +279,7 @@ mod tests {
   fn the_decision_is_the_p_value_against_alpha() {
     let on_clayton = |seed: u64, alpha: f64| {
       let data = data_for(seed);
-      let mut fitted = Clayton::new();
+      let mut fitted = Clayton::default();
       fitted.fit(data.view()).unwrap();
       let config = GofConfig {
         replications: 60,
@@ -316,7 +311,7 @@ mod tests {
   #[test]
   fn the_p_value_counts_the_data_as_one_more_draw() {
     let data = data_for(5);
-    let mut gaussian = GaussianCopula::new();
+    let mut gaussian = GaussianCopula::default();
     gaussian.fit(data.view()).unwrap();
     let run = |replications: usize, alpha: f64| {
       let config = GofConfig {
@@ -436,10 +431,7 @@ mod tests {
   /// input check must not.
   #[test]
   fn a_raw_uniform_sample_passes_the_input_check_on_every_seed() {
-    let copula = Clayton {
-      theta: Some(3.0),
-      ..Clayton::new()
-    };
+    let copula = Clayton::new(3.0);
     for seed in 0..200 {
       let raw = copula.sample(600, &Deterministic::new(seed)).unwrap();
       assert_eq!(check_pairs(raw.view()), Ok(()), "seed {seed}");
@@ -448,10 +440,7 @@ mod tests {
 
   #[test]
   fn the_input_must_be_a_two_column_sample_in_the_unit_square() {
-    let copula = Clayton {
-      theta: Some(2.0),
-      ..Clayton::new()
-    };
+    let copula = Clayton::new(2.0);
     let config = GofConfig {
       replications: 2,
       alpha: 0.05,
@@ -476,10 +465,7 @@ mod tests {
   #[test]
   #[should_panic(expected = "replications must satisfy `replications > 0`")]
   fn zero_replications_is_a_precondition() {
-    let copula = Clayton {
-      theta: Some(2.0),
-      ..Clayton::new()
-    };
+    let copula = Clayton::new(2.0);
     let data = data_for(5);
     let config = GofConfig {
       replications: 0,
@@ -497,10 +483,7 @@ mod tests {
   #[test]
   #[should_panic(expected = "alpha must satisfy `0.0 < alpha < 1.0`")]
   fn alpha_outside_the_unit_interval_is_a_precondition() {
-    let copula = Clayton {
-      theta: Some(2.0),
-      ..Clayton::new()
-    };
+    let copula = Clayton::new(2.0);
     let data = data_for(5);
     let config = GofConfig {
       replications: 10,

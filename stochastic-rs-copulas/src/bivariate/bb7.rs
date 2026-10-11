@@ -70,31 +70,53 @@ fn digamma_difference(mut x: f64, mut y: f64) -> f64 {
 
 #[derive(Debug, Clone)]
 pub struct Bb7 {
-  pub r#type: BivariateFamily,
-  /// `θ ≥ 1`.
-  pub theta: Option<f64>,
-  /// `δ > 0`.
-  pub delta: f64,
-  pub theta_bounds: (f64, f64),
-  pub invalid_thetas: Vec<f64>,
+  theta: Option<f64>,
+  delta: f64,
 }
 
 impl Bb7 {
-  pub fn new(theta: Option<f64>, delta: Option<f64>) -> Self {
-    Self {
-      r#type: BivariateFamily::Bb7,
-      theta,
-      delta: delta.unwrap_or(1.0),
-      theta_bounds: (1.0, f64::INFINITY),
-      invalid_thetas: Vec::new(),
-    }
+  /// A BB7 copula; panics unless `1 <= theta < ∞` and `0 < delta < ∞`.
+  pub fn new(theta: f64, delta: f64) -> Self {
+    Self::try_new(theta, delta).unwrap_or_else(|e| panic!("{e}"))
   }
 
-  /// Sets `δ > 0`.
-  pub fn with_delta(mut self, delta: f64) -> Self {
-    assert!(delta > 0.0, "BB7 needs δ > 0");
+  /// `new` with the domain error returned instead of a panic.
+  pub fn try_new(theta: f64, delta: f64) -> Result<Self, CopulaError> {
+    Self::check_delta(delta)?;
+    let copula = Self {
+      theta: Some(theta),
+      delta,
+    };
+    copula.check_theta()?;
+    Ok(copula)
+  }
+
+  /// The BB7 copula whose Kendall's τ is `tau` at `delta`.
+  pub fn from_tau(tau: f64, delta: f64) -> Result<Self, CopulaError> {
+    Self::check_delta(delta)?;
+    let unfitted = Self { theta: None, delta };
+    Self::try_new(unfitted.theta_from_tau(tau)?, delta)
+  }
+
+  pub fn delta(&self) -> f64 {
+    self.delta
+  }
+
+  /// Panics unless `0 < delta < ∞`.
+  pub fn set_delta(&mut self, delta: f64) {
+    Self::check_delta(delta).unwrap_or_else(|e| panic!("{e}"));
     self.delta = delta;
-    self
+  }
+
+  fn check_delta(delta: f64) -> Result<(), CopulaError> {
+    if delta.is_finite() && delta > 0.0 {
+      return Ok(());
+    }
+    Err(CopulaError::InvalidParameter {
+      name: "delta",
+      value: delta,
+      constraint: "0.0 < delta < inf".into(),
+    })
   }
 
   fn params(&self) -> Result<(f64, f64), CopulaError> {
@@ -170,7 +192,7 @@ impl Bb7 {
 
 impl Bb7 {
   /// Maximum-likelihood fit of `(θ, δ)` from a Kendall start without `fit`'s input check, for the vine fitter's
-  /// pseudo-observations; a `τ̂` outside BB7's `(0, 1)` or a fitted θ outside `theta_bounds` is an error and stores nothing.
+  /// pseudo-observations; a `τ̂` outside BB7's `(0, 1)` or an estimate `try_new` rejects is an error and stores nothing.
   pub(crate) fn fit_parameters(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
     if X.nrows() < 2 {
       return Err(CopulaError::InsufficientData {
@@ -198,38 +220,40 @@ impl Bb7 {
       (start_theta, self.delta),
       Self::log_density_scalar,
     );
-    self.validate_theta(theta)?;
-    self.theta = Some(theta);
-    self.delta = delta;
+    *self = Self::try_new(theta, delta)?;
     Ok(())
   }
 }
 
 impl Default for Bb7 {
   fn default() -> Self {
-    Self::new(None, None)
+    Self {
+      theta: None,
+      delta: 1.0,
+    }
   }
 }
 
 impl BivariateExt for Bb7 {
   fn family(&self) -> BivariateFamily {
-    self.r#type
+    BivariateFamily::Bb7
   }
 
   fn theta(&self) -> Option<f64> {
     self.theta
   }
 
+  fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
+    self.theta = Some(theta);
+  }
+
   fn theta_bounds(&self) -> (f64, f64) {
-    self.theta_bounds
+    (1.0, f64::INFINITY)
   }
 
   fn invalid_thetas(&self) -> Vec<f64> {
-    self.invalid_thetas.clone()
-  }
-
-  fn set_theta(&mut self, theta: f64) {
-    self.theta = Some(theta);
+    vec![]
   }
 
   fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
@@ -335,9 +359,15 @@ mod tests {
 
   use super::*;
 
+  fn unfitted(delta: f64) -> Bb7 {
+    let mut c = Bb7::default();
+    c.set_delta(delta);
+    c
+  }
+
   #[test]
   fn h_function_is_the_v_derivative_of_the_cdf() {
-    let c = Bb7::new(Some(1.8), Some(0.9));
+    let c = Bb7::new(1.8, 0.9);
     for (u, v) in [(0.3, 0.6), (0.8, 0.2), (0.5, 0.5)] {
       let h = c.partial_derivative(array![[u, v]].view()).unwrap()[0];
       let eps = 1e-6;
@@ -353,7 +383,7 @@ mod tests {
 
   #[test]
   fn density_is_the_mixed_derivative_of_the_cdf() {
-    let c = Bb7::new(Some(1.5), Some(1.2));
+    let c = Bb7::new(1.5, 1.2);
     let (u, v, eps) = (0.4, 0.7, 1e-4);
     let f = |a: f64, b: f64| c.cdf(array![[a, b]].view()).unwrap()[0];
     let mixed = (f(u + eps, v + eps) - f(u + eps, v - eps) - f(u - eps, v + eps)
@@ -368,15 +398,15 @@ mod tests {
 
   #[test]
   fn cdf_has_uniform_margins_and_nests_the_limits() {
-    let c = Bb7::new(Some(1.7), Some(0.8));
+    let c = Bb7::new(1.7, 0.8);
     for (u, v) in [(0.2, 0.7), (0.9, 0.4)] {
       assert!((c.cdf(array![[u, 1.0 - 1e-12]].view()).unwrap()[0] - u).abs() < 1e-8);
       assert!((c.cdf(array![[1.0 - 1e-12, v]].view()).unwrap()[0] - v).abs() < 1e-8);
     }
     // θ = 1 is Clayton(δ).
-    let mut clayton = crate::bivariate::clayton::Clayton::new();
+    let mut clayton = crate::bivariate::clayton::Clayton::default();
     clayton.set_theta(0.8);
-    let joe_clayton = Bb7::new(Some(1.0), Some(0.8));
+    let joe_clayton = Bb7::new(1.0, 0.8);
     let (u, v) = (0.35, 0.65);
     assert!(
       (joe_clayton.cdf(array![[u, v]].view()).unwrap()[0]
@@ -388,7 +418,7 @@ mod tests {
 
   #[test]
   fn tail_coefficients_follow_joe() {
-    let td = Bb7::new(Some(2.0), Some(1.0)).tail_dependence().unwrap();
+    let td = Bb7::new(2.0, 1.0).tail_dependence().unwrap();
     assert!((td.upper - (2.0 - 2.0_f64.sqrt())).abs() < 1e-15);
     assert!((td.lower - 0.5).abs() < 1e-15);
   }
@@ -410,39 +440,40 @@ mod tests {
       (60.0, 2.0, 0.9680063458487572),
       (1e6, 1.0, 0.999998000004),
     ] {
-      let tau = Bb7::new(None, Some(delta)).tau_from_theta(theta);
+      let tau = unfitted(delta).tau_from_theta(theta);
       let tolerance = 1e-15 / delta.min(1.0);
       assert!(
         (tau - want).abs() < tolerance,
         "(θ, δ) = ({theta}, {delta}): {tau} vs {want}"
       );
     }
-    assert!((Bb7::new(None, Some(2.0)).tau_from_theta(3.0) - 0.65).abs() < 1e-15);
-    assert!((Bb7::new(None, Some(0.8)).tau_from_theta(1.0) - 0.8 / 2.8).abs() < 1e-15);
-    assert_eq!(Bb7::new(None, Some(1.1)).tau_from_theta(f64::INFINITY), 1.0);
+    assert!((unfitted(2.0).tau_from_theta(3.0) - 0.65).abs() < 1e-15);
+    assert!((unfitted(0.8).tau_from_theta(1.0) - 0.8 / 2.8).abs() < 1e-15);
+    assert_eq!(unfitted(1.1).tau_from_theta(f64::INFINITY), 1.0);
   }
 
   #[test]
   fn kendall_inversion_and_maximum_likelihood_are_consistent() {
-    let truth = Bb7::new(Some(1.6), Some(1.1));
+    let truth = Bb7::new(1.6, 1.1);
     let tau = truth.tau_from_theta(1.6);
-    let inverted = Bb7::new(
-      Some(Bb7::new(None, Some(1.1)).theta_from_tau(tau).unwrap()),
-      Some(1.1),
-    );
+    let inverted = Bb7::from_tau(tau, 1.1).unwrap();
     assert!(
-      (inverted.theta.unwrap() - 1.6).abs() < 1e-9,
+      (inverted.theta().unwrap() - 1.6).abs() < 1e-9,
       "inverted theta {}",
-      inverted.theta.unwrap()
+      inverted.theta().unwrap()
     );
     let sample = truth.sample(4000, &Deterministic::new(13)).unwrap();
     let mut fitted = Bb7::default();
     fitted.fit(sample.view()).unwrap();
     assert!(
-      (fitted.theta.unwrap() - 1.6).abs() < 0.25,
+      (fitted.theta().unwrap() - 1.6).abs() < 0.25,
       "theta {}",
-      fitted.theta.unwrap()
+      fitted.theta().unwrap()
     );
-    assert!((fitted.delta - 1.1).abs() < 0.3, "delta {}", fitted.delta);
+    assert!(
+      (fitted.delta() - 1.1).abs() < 0.3,
+      "delta {}",
+      fitted.delta()
+    );
   }
 }

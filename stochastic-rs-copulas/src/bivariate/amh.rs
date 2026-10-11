@@ -2,15 +2,11 @@
 //!
 //! $$
 //! C_\theta(u,v) = \frac{uv}{1 - \theta (1-u)(1-v)},
-//! \qquad \theta \in [-1, 1).
+//! \qquad \theta \in [-1, 1].
 //! $$
 //!
-//! Archimedean family with generator
-//! $\varphi(t) = \ln\!\left(\frac{1 - \theta(1-t)}{t}\right)$. AMH has **no**
-//! tail dependence in either tail. Kendall's tau is constrained to the
-//! interval $\tau \in [(5 - 8\ln 2)/3,\; 1/3] \approx [-0.1817,\; 0.3333]$ —
-//! AMH is therefore appropriate when the empirical $\tau$ falls inside this
-//! window. Reduces to the independence copula at $\theta = 0$.
+//! Archimedean, `φ(t) = ln((1 − θ(1 − t))/t)`, which vanishes at `θ = 1`, where AMH is Clayton(1) (`φ = (1 − t)/t`,
+//! `λ_L = 1/2`; no tail dependence below it); independence at `θ = 0`; Kendall's τ in `[(5 − 8 ln 2)/3, 1/3]`.
 //!
 //! Reference: Ali, M.M., Mikhail, N.N., Haq, M.S. (1978), "A class of
 //! bivariate distributions including the bivariate logistic",
@@ -34,28 +30,27 @@ use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Amh {
-  pub r#type: BivariateFamily,
-  pub theta: Option<f64>,
-  pub theta_bounds: (f64, f64),
-  pub invalid_thetas: Vec<f64>,
-}
-
-impl Default for Amh {
-  fn default() -> Self {
-    Self {
-      r#type: BivariateFamily::Amh,
-      theta: None,
-      theta_bounds: (-1.0, 1.0),
-      invalid_thetas: vec![],
-    }
-  }
+  theta: Option<f64>,
 }
 
 impl Amh {
-  pub fn new() -> Self {
-    Self::default()
+  /// An AMH copula; panics unless `-1 <= theta <= 1`.
+  pub fn new(theta: f64) -> Self {
+    Self::try_new(theta).unwrap_or_else(|e| panic!("{e}"))
+  }
+
+  /// `new` with the domain error returned instead of a panic.
+  pub fn try_new(theta: f64) -> Result<Self, CopulaError> {
+    let copula = Self { theta: Some(theta) };
+    copula.check_theta()?;
+    Ok(copula)
+  }
+
+  /// The copula whose Kendall's τ is `tau`.
+  pub fn from_tau(tau: f64) -> Result<Self, CopulaError> {
+    Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
   /// The root in `[0, 1]` of `Au² + Bu + C = 0` (`y D² = u(1 − θ + θu)`, `p = θ(1 − v)`) chosen by `B`'s sign, for
@@ -104,29 +99,34 @@ impl Amh {
 
 impl BivariateExt for Amh {
   fn family(&self) -> BivariateFamily {
-    self.r#type
+    BivariateFamily::Amh
   }
 
   fn theta(&self) -> Option<f64> {
     self.theta
   }
 
-  fn theta_bounds(&self) -> (f64, f64) {
-    self.theta_bounds
-  }
-
-  fn invalid_thetas(&self) -> Vec<f64> {
-    self.invalid_thetas.clone()
-  }
-
   fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
     self.theta = Some(theta);
   }
 
-  /// Archimedean generator $\varphi(t) = \ln\frac{1 - \theta(1-t)}{t}$.
+  fn theta_bounds(&self) -> (f64, f64) {
+    (-1.0, 1.0)
+  }
+
+  fn invalid_thetas(&self) -> Vec<f64> {
+    vec![]
+  }
+
+  /// Archimedean generator $\varphi(t) = \ln\frac{1 - \theta(1-t)}{t}$; at `θ = 1`, where it vanishes, its limit
+  /// `φ/(1 − θ) → (1 − t)/t`, Clayton(1)'s.
   fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
+    if theta == 1.0 {
+      return Ok(t.mapv(|t| (1.0 - t) / t));
+    }
     let mut out = Array1::<f64>::zeros(t.len());
     for i in 0..t.len() {
       let ti = t[i];
@@ -252,16 +252,11 @@ impl BivariateExt for Amh {
     admitted(self, tau, theta)
   }
 
-  /// AMH has no tail dependence in either tail, for any $\theta \in
-  /// [-1, 1)$.
-  /// Reference: Nelsen, R.B. (2006), Example 4.23 / Table 4.1 (module
-  /// header).
+  /// `λ_L = lim_{u→0} u/(1 − θ(1 − u)²)`: 0 for `θ < 1`, `1/2` at `θ = 1`, where AMH is Clayton(1); `λ_U = 0`.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
-    Ok(TailDependence {
-      lower: 0.0,
-      upper: 0.0,
-    })
+    let lower = if self.theta.unwrap() == 1.0 { 0.5 } else { 0.0 };
+    Ok(TailDependence { lower, upper: 0.0 })
   }
 }
 
@@ -278,7 +273,7 @@ mod tests {
 
   #[test]
   fn amh_independence_theta_zero_reproduces_product_cdf() {
-    let mut c = Amh::new();
+    let mut c = Amh::default();
     c.set_theta(0.0);
     let x = array![[0.3_f64, 0.7], [0.5, 0.5], [0.9, 0.1]];
     let cdf = c.cdf(x.view()).unwrap();
@@ -290,7 +285,7 @@ mod tests {
 
   #[test]
   fn amh_pdf_at_interior_matches_closed_form_fixture() {
-    let mut c = Amh::new();
+    let mut c = Amh::default();
     c.set_theta(0.5);
     // Hand-computed at (u, v) = (0.5, 0.5):
     //   D = 1 - 0.5·0.5·0.5 = 0.875
@@ -310,7 +305,7 @@ mod tests {
 
   #[test]
   fn amh_marginal_recovers_input() {
-    let mut c = Amh::new();
+    let mut c = Amh::default();
     c.set_theta(0.7);
     let x = array![[0.4_f64, 1.0], [1.0, 0.2]];
     let cdf = c.cdf(x.view()).unwrap();
@@ -321,7 +316,7 @@ mod tests {
   /// `τ(−1) = (5 − 8 ln 2)/3` and `τ(1) = 1/3` close the family's range.
   #[test]
   fn amh_tau_from_theta_reaches_the_paper_bounds() {
-    let c = Amh::new();
+    let c = Amh::default();
     let tau_lo = (5.0 - 8.0 * std::f64::consts::LN_2) / 3.0;
     let at_minus_one = c.tau_from_theta(-1.0);
     assert!(
@@ -335,7 +330,7 @@ mod tests {
   /// Below `|θ| = 1e-4` the series `2θ/9 + θ²/18 + θ³/45 + θ⁴/90` answers; mpmath's closed form at 50 digits.
   #[test]
   fn amh_series_matches_mpmath_below_the_switch() {
-    let c = Amh::new();
+    let c = Amh::default();
     for (theta, want) in [
       (9e-5, 2.000045001620073e-5),
       (-9e-5, -1.9999550016199272e-5),
@@ -348,7 +343,7 @@ mod tests {
   #[test]
   fn amh_theta_from_tau_inverts_tau_within_bracket() {
     let target_theta = 0.6_f64;
-    let c = Amh::new();
+    let c = Amh::default();
     let tau = c.tau_from_theta(target_theta);
     let recovered = c.theta_from_tau(tau).unwrap();
     assert!(
@@ -360,7 +355,7 @@ mod tests {
   /// Every `τ` of the range inverts, its ends included, where a bracket short of `±1` would leave no sign change.
   #[test]
   fn amh_inverts_the_ends_of_its_range() {
-    let c = Amh::new();
+    let c = Amh::default();
     let (lo, hi) = (c.tau_from_theta(-1.0), 1.0 / 3.0);
     for tau in [lo, lo + 1e-12, -1e-9, 1e-9, hi - 1e-12] {
       let theta = c.theta_from_tau(tau).unwrap();
@@ -374,14 +369,38 @@ mod tests {
 
   #[test]
   fn amh_tau_zero_recovers_independence() {
-    let c = Amh::new();
+    let c = Amh::default();
     let theta = c.theta_from_tau(0.0).unwrap();
     assert!(approx(theta, 0.0, 1e-6), "τ=0 should give θ=0, got {theta}");
   }
 
+  /// AMH(1) is Clayton(1): `C(u, u)/u = 1/(2 − u) → 1/2`, a lower tail no `θ < 1` has, and `(1 − t)/t` generates it.
+  #[test]
+  fn amh_at_theta_one_is_clayton_one() {
+    let amh = Amh::new(1.0);
+    let clayton = crate::bivariate::clayton::Clayton::new(1.0);
+    let half = TailDependence {
+      lower: 0.5,
+      upper: 0.0,
+    };
+    assert_eq!(amh.tail_dependence(), Ok(half));
+    assert_eq!(clayton.tail_dependence(), Ok(half));
+    assert_eq!(Amh::new(1.0 - 1e-9).tail_dependence().unwrap().lower, 0.0);
+    let u = 1e-6;
+    let diagonal = amh.cdf(array![[u, u]].view()).unwrap()[0] / u;
+    assert!((diagonal - 0.5).abs() < 1e-6, "C(u, u)/u = {diagonal}");
+    let points = array![[0.2, 0.7], [0.5, 0.5], [0.9, 0.05]];
+    let phi = amh.generator(points.column(0)).unwrap() + amh.generator(points.column(1)).unwrap();
+    let generated = phi.mapv(|s| 1.0 / (1.0 + s));
+    let closed = amh.cdf(points.view()).unwrap();
+    for (g, c) in generated.iter().zip(&closed) {
+      assert!((g - c).abs() < 1e-15, "φ⁻¹(φ(u) + φ(v)) = {g} vs C = {c}");
+    }
+  }
+
   #[test]
   fn amh_tail_dependence_is_zero() {
-    let mut c = Amh::new();
+    let mut c = Amh::default();
     c.set_theta(0.5);
     let td = c.tail_dependence().unwrap();
     assert_eq!(td.lower, 0.0);
@@ -398,7 +417,7 @@ mod tests {
   /// sampling check below, is needed.
   #[test]
   fn amh_partial_derivative_at_independence_returns_u() {
-    let mut c = Amh::new();
+    let mut c = Amh::default();
     c.set_theta(0.0);
     let pd = c
       .partial_derivative(array![[0.3_f64, 0.6], [0.2, 0.9]].view())
@@ -432,7 +451,7 @@ mod tests {
     let se = (0.25_f64 / n as f64).sqrt();
     let tol = 6.0 * se;
     let theta = 0.6_f64;
-    let mut c = Amh::new();
+    let mut c = Amh::default();
     c.set_theta(theta);
     let cdf_true = |a: f64, b: f64| a * b / (1.0 - theta * (1.0 - a) * (1.0 - b));
     let points = [

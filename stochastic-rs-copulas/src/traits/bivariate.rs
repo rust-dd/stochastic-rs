@@ -36,21 +36,25 @@ pub trait BivariateExt {
 
   fn theta(&self) -> Option<f64>;
 
+  /// Stores `theta`; panics unless `validate_theta` admits it.
   fn set_theta(&mut self, theta: f64);
 
   fn theta_bounds(&self) -> (f64, f64);
 
   fn invalid_thetas(&self) -> Vec<f64>;
 
-  /// Bounds and exclusions of the family for a candidate `theta`: the one check every entry point runs.
+  /// A finite `theta` inside the family's bounds and off its exclusions: the one check every entry point runs.
   fn validate_theta(&self, theta: f64) -> Result<(), CopulaError> {
     let (lower, upper) = self.theta_bounds();
     let invalid = self.invalid_thetas();
-    if !(lower <= theta && theta <= upper) || invalid.contains(&theta) {
+    if !(theta.is_finite() && lower <= theta && theta <= upper) || invalid.contains(&theta) {
+      let below = if lower.is_finite() { "<=" } else { "<" };
+      let above = if upper.is_finite() { "<=" } else { "<" };
+      let bounds = format!("{lower:?} {below} theta {above} {upper:?}");
       let constraint = if invalid.is_empty() {
-        format!("{lower:?} <= theta <= {upper:?}")
+        bounds
       } else {
-        format!("{lower:?} <= theta <= {upper:?}, theta not in {invalid:?}")
+        format!("{bounds}, theta not in {invalid:?}")
       };
       return Err(CopulaError::InvalidParameter {
         name: "theta",

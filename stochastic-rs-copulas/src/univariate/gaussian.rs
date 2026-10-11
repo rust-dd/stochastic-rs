@@ -131,7 +131,7 @@ mod tests {
 
     let u = x.mapv(|v| gx.cdf(v));
     let v = y.mapv(|v| gy.cdf(v));
-    let mut frank = Frank::new(None);
+    let mut frank = Frank::default();
     assert_eq!(frank.check_marginal(u.view()), Ok(()));
     assert_eq!(frank.check_marginal(v.view()), Ok(()));
     let data = stack![Axis(1), u, v];

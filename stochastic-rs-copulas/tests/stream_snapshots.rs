@@ -118,61 +118,61 @@ fn samples() -> Vec<(&'static str, Array2<f64>)> {
   }
   row!(
     "amh",
-    with_theta(Amh::new(), 0.5)
+    with_theta(Amh::default(), 0.5)
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "bb1",
-    Bb1::new(Some(0.8), Some(1.6))
+    Bb1::new(0.8, 1.6)
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "bb7",
-    Bb7::new(Some(1.7), Some(0.9))
+    Bb7::new(1.7, 0.9)
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "clayton",
-    with_theta(Clayton::new(), 2.0)
+    with_theta(Clayton::default(), 2.0)
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "fgm",
-    with_theta(Fgm::new(), 0.5)
+    with_theta(Fgm::default(), 0.5)
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "frank",
-    Frank::new(Some(4.0))
+    Frank::new(4.0)
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "galambos",
-    with_theta(Galambos::new(), 1.5)
+    with_theta(Galambos::default(), 1.5)
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "gaussian",
-    with_theta(GaussianCopula::new(), 0.5)
+    with_theta(GaussianCopula::default(), 0.5)
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "gumbel",
-    Gumbel::new(Some(2.0))
+    Gumbel::new(2.0)
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "husler_reiss",
-    with_theta(HuslerReiss::new(), 1.5)
+    with_theta(HuslerReiss::default(), 1.5)
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
@@ -184,25 +184,25 @@ fn samples() -> Vec<(&'static str, Array2<f64>)> {
   );
   row!(
     "joe",
-    with_theta(Joe::new(), 2.0)
+    with_theta(Joe::default(), 2.0)
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "plackett",
-    with_theta(Plackett::new(), 3.0)
+    with_theta(Plackett::default(), 3.0)
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "marshall_olkin",
-    MarshallOlkin::with_alpha_beta(0.3, 0.6)
+    MarshallOlkin::new(0.3, 0.6)
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "t_copula",
-    with_theta(TCopula::with_nu(4.0), 0.5)
+    TCopula::new(0.5, 4.0)
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );

@@ -10,7 +10,7 @@
 //! $$
 //!
 //! Non-exchangeable; the curve `u^α = v^β` carries a singular mass `αβ/(α + β − αβ)`, which is also Kendall's τ.
-//! `theta` is the slice `α = β = θ`; [`MarshallOlkin::with_alpha_beta`] builds the asymmetric copula; `λ_U = min(α, β)`.
+//! `theta` is the slice `α = β = θ`; [`MarshallOlkin::new`] takes the two shock rates; `λ_U = min(α, β)`.
 //!
 //! Reference: Marshall, A.W., Olkin, I. (1967), "A multivariate exponential distribution", *JASA* 62(317), 30-44, DOI 10.1080/01621459.1967.10482885.
 //! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, §3.1.1, eq. 3.1.3; §2.9 (the conditional-distribution method with a quasi-inverse), DOI 10.1007/0-387-28678-0.
@@ -28,53 +28,40 @@ use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::tau_out_of_range;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MarshallOlkin {
-  pub r#type: BivariateFamily,
-  pub theta: Option<f64>,
-  pub theta_bounds: (f64, f64),
-  pub invalid_thetas: Vec<f64>,
-  /// Asymmetric Marshall-Olkin parameter $\alpha \in (0, 1]$. When
-  /// `Some`, takes precedence over the symmetric `theta` field.
-  pub alpha: Option<f64>,
-  /// Asymmetric Marshall-Olkin parameter $\beta \in (0, 1]$.
-  pub beta: Option<f64>,
-}
-
-impl Default for MarshallOlkin {
-  fn default() -> Self {
-    Self {
-      r#type: BivariateFamily::MarshallOlkin,
-      theta: None,
-      theta_bounds: (0.0, 1.0),
-      invalid_thetas: vec![0.0],
-      alpha: None,
-      beta: None,
-    }
-  }
+  alpha: Option<f64>,
+  beta: Option<f64>,
 }
 
 impl MarshallOlkin {
-  pub fn new() -> Self {
-    Self::default()
+  /// `C_{α,β}`; panics unless `0 < alpha <= 1` and `0 < beta <= 1`.
+  pub fn new(alpha: f64, beta: f64) -> Self {
+    Self::try_new(alpha, beta).unwrap_or_else(|e| panic!("{e}"))
   }
 
-  /// Construct the asymmetric two-parameter variant $C_{\alpha,\beta}$.
-  /// Both parameters must lie in $(0, 1]$.
-  pub fn with_alpha_beta(alpha: f64, beta: f64) -> Self {
-    assert!(
-      alpha > 0.0 && alpha <= 1.0,
-      "alpha must lie in (0, 1], got {alpha}"
-    );
-    assert!(
-      beta > 0.0 && beta <= 1.0,
-      "beta must lie in (0, 1], got {beta}"
-    );
-    Self {
+  /// `new` with the domain error returned instead of a panic.
+  pub fn try_new(alpha: f64, beta: f64) -> Result<Self, CopulaError> {
+    let copula = Self {
       alpha: Some(alpha),
       beta: Some(beta),
-      ..Self::default()
-    }
+    };
+    copula.check_fit()?;
+    Ok(copula)
+  }
+
+  /// The symmetric slice `α = β = 2τ/(1 + τ)`, whose Kendall's τ is `tau`.
+  pub fn from_tau(tau: f64) -> Result<Self, CopulaError> {
+    let theta = Self::default().theta_from_tau(tau)?;
+    Self::try_new(theta, theta)
+  }
+
+  pub fn alpha(&self) -> Option<f64> {
+    self.alpha
+  }
+
+  pub fn beta(&self) -> Option<f64> {
+    self.beta
   }
 
   /// Generalised inverse of `∂_v C(· | v)`: the atom `v^{β/α}` for `y` in the jump `[(1-β) w, w]`, `w = v^{β(1-α)/α}`,
@@ -92,50 +79,44 @@ impl MarshallOlkin {
     }
   }
 
-  /// Resolve the effective `(alpha, beta)` pair from either the asymmetric
-  /// fields or the symmetric `theta` fallback.
+  /// The pair behind a passed `check_fit`.
   fn resolve_params(&self) -> (f64, f64) {
-    match (self.alpha, self.beta) {
-      (Some(a), Some(b)) => (a, b),
-      _ => {
-        let theta = self
-          .theta
-          .expect("Marshall-Olkin: neither (alpha, beta) nor theta is set");
-        (theta, theta)
-      }
-    }
+    (self.alpha.expect("checked"), self.beta.expect("checked"))
   }
 }
 
 impl BivariateExt for MarshallOlkin {
   fn family(&self) -> BivariateFamily {
-    self.r#type
+    BivariateFamily::MarshallOlkin
   }
 
+  /// `α`, on the symmetric slice `α = β` only.
   fn theta(&self) -> Option<f64> {
-    self.theta
+    match (self.alpha, self.beta) {
+      (Some(alpha), Some(beta)) if alpha == beta => Some(alpha),
+      _ => None,
+    }
+  }
+
+  /// Sets the symmetric slice `α = β = theta`; panics unless `validate_theta` admits it.
+  fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
+    self.alpha = Some(theta);
+    self.beta = Some(theta);
   }
 
   fn theta_bounds(&self) -> (f64, f64) {
-    self.theta_bounds
+    (0.0, 1.0)
   }
 
   fn invalid_thetas(&self) -> Vec<f64> {
-    self.invalid_thetas.clone()
+    vec![0.0]
   }
 
-  fn set_theta(&mut self, theta: f64) {
-    self.theta = Some(theta);
-    // Reset the asymmetric slot so the symmetric value wins on resolve.
-    self.alpha = None;
-    self.beta = None;
-  }
-
-  /// Validates the parameterisation `resolve_params` uses: `alpha` and `beta` in (0, 1] when both
-  /// are set, otherwise `theta` through `check_theta`.
+  /// `NotFitted` before the pair is set, otherwise both shock rates in `(0, 1]`.
   fn check_fit(&self) -> Result<(), CopulaError> {
     let (Some(alpha), Some(beta)) = (self.alpha, self.beta) else {
-      return self.check_theta();
+      return Err(CopulaError::NotFitted);
     };
     for (name, value) in [("alpha", alpha), ("beta", beta)] {
       if !(value > 0.0 && value <= 1.0) {
@@ -254,11 +235,12 @@ impl BivariateExt for MarshallOlkin {
     admitted(self, tau, 2.0 * tau / (1.0 + tau))
   }
 
-  /// `αβ/(α + β − αβ)` for the asymmetric copula, the symmetric slice's value otherwise.
+  /// `αβ/(α + β − αβ)`, the symmetric slice's `θ/(2 − θ)` at `α = β`.
   fn tau(&self) -> Option<f64> {
     match (self.alpha, self.beta) {
+      (Some(a), Some(b)) if a == b => Some(self.tau_from_theta(a)),
       (Some(a), Some(b)) => Some(a * b / (a + b - a * b)),
-      _ => self.theta.map(|t| self.tau_from_theta(t)),
+      _ => None,
     }
   }
 

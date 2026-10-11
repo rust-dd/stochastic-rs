@@ -42,28 +42,27 @@ use crate::traits::bivariate::tau_out_of_range;
 /// constant there — see that method's doc for why a constant is wrong.
 const BOUNDARY_EPS: f64 = 1e-12;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Galambos {
-  pub r#type: BivariateFamily,
-  pub theta: Option<f64>,
-  pub theta_bounds: (f64, f64),
-  pub invalid_thetas: Vec<f64>,
-}
-
-impl Default for Galambos {
-  fn default() -> Self {
-    Self {
-      r#type: BivariateFamily::Galambos,
-      theta: None,
-      theta_bounds: (0.0, f64::INFINITY),
-      invalid_thetas: vec![],
-    }
-  }
+  theta: Option<f64>,
 }
 
 impl Galambos {
-  pub fn new() -> Self {
-    Self::default()
+  /// A Galambos copula; panics unless `0 <= theta < ∞`.
+  pub fn new(theta: f64) -> Self {
+    Self::try_new(theta).unwrap_or_else(|e| panic!("{e}"))
+  }
+
+  /// `new` with the domain error returned instead of a panic.
+  pub fn try_new(theta: f64) -> Result<Self, CopulaError> {
+    let copula = Self { theta: Some(theta) };
+    copula.check_theta()?;
+    Ok(copula)
+  }
+
+  /// The copula whose Kendall's τ is `tau`.
+  pub fn from_tau(tau: f64) -> Result<Self, CopulaError> {
+    Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
   /// Pickands dependence function
@@ -79,23 +78,24 @@ impl Galambos {
 
 impl BivariateExt for Galambos {
   fn family(&self) -> BivariateFamily {
-    self.r#type
+    BivariateFamily::Galambos
   }
 
   fn theta(&self) -> Option<f64> {
     self.theta
   }
 
+  fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
+    self.theta = Some(theta);
+  }
+
   fn theta_bounds(&self) -> (f64, f64) {
-    self.theta_bounds
+    (0.0, f64::INFINITY)
   }
 
   fn invalid_thetas(&self) -> Vec<f64> {
-    self.invalid_thetas.clone()
-  }
-
-  fn set_theta(&mut self, theta: f64) {
-    self.theta = Some(theta);
+    vec![]
   }
 
   /// Density via the closed-form chain-rule derivation
@@ -240,7 +240,7 @@ mod tests {
 
   #[test]
   fn galambos_marginal_recovers_input() {
-    let mut c = Galambos::new();
+    let mut c = Galambos::default();
     c.set_theta(2.0);
     let x = array![[0.5_f64, 1.0], [1.0, 0.7]];
     let cdf = c.cdf(x.view()).unwrap();
@@ -250,7 +250,7 @@ mod tests {
 
   #[test]
   fn galambos_zero_theta_limit_is_independence() {
-    let mut c = Galambos::new();
+    let mut c = Galambos::default();
     c.set_theta(1e-6);
     let x = array![[0.3_f64, 0.7], [0.5, 0.5]];
     let cdf = c.cdf(x.view()).unwrap();
@@ -260,7 +260,7 @@ mod tests {
 
   #[test]
   fn galambos_large_theta_approaches_comonotone() {
-    let mut c = Galambos::new();
+    let mut c = Galambos::default();
     c.set_theta(50.0);
     let x = array![[0.3_f64, 0.7], [0.5, 0.5]];
     let cdf = c.cdf(x.view()).unwrap();
@@ -299,7 +299,7 @@ mod tests {
   #[test]
   fn galambos_theta_from_tau_inverts_tau() {
     let target_theta = 1.5_f64;
-    let c = Galambos::new();
+    let c = Galambos::default();
     let tau = c.tau_from_theta(target_theta);
     let recovered = c.theta_from_tau(tau).unwrap();
     assert!(
@@ -310,7 +310,7 @@ mod tests {
 
   #[test]
   fn galambos_pdf_positive_interior() {
-    let mut c = Galambos::new();
+    let mut c = Galambos::default();
     c.set_theta(1.5);
     let x = array![[0.25_f64, 0.75], [0.5, 0.5], [0.1, 0.9]];
     let pdf = c.pdf(x.view()).unwrap();
@@ -321,7 +321,7 @@ mod tests {
 
   #[test]
   fn galambos_tail_dependence_matches_pickands_formula() {
-    let mut c = Galambos::new();
+    let mut c = Galambos::default();
     c.set_theta(1.5);
     let td = c.tail_dependence().unwrap();
     let expected = 2.0 * (1.0 - Galambos::pickands(1.5, 0.5));
@@ -345,7 +345,7 @@ mod tests {
   /// is `\approx 0.6` here, since the true limit sits near `1`, not `0`).
   #[test]
   fn galambos_partial_derivative_no_jump_near_v_zero() {
-    let mut c = Galambos::new();
+    let mut c = Galambos::default();
     c.set_theta(1.5);
     let u = 0.4_f64;
     let a = c.partial_derivative(array![[u, 1e-12]].view()).unwrap()[0];
@@ -364,7 +364,7 @@ mod tests {
   /// `BivariateExt::generator`'s trait-default body directly.
   #[test]
   fn galambos_generator_returns_err_not_archimedean() {
-    let c = Galambos::new();
+    let c = Galambos::default();
     let t = array![0.5_f64, 0.8];
     assert!(c.generator(t.view()).is_err());
   }

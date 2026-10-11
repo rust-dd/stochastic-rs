@@ -30,50 +30,50 @@ use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Joe {
-  pub r#type: BivariateFamily,
-  pub theta: Option<f64>,
-  pub theta_bounds: (f64, f64),
-  pub invalid_thetas: Vec<f64>,
-}
-
-impl Default for Joe {
-  fn default() -> Self {
-    Self {
-      r#type: BivariateFamily::Joe,
-      theta: None,
-      theta_bounds: (1.0, f64::INFINITY),
-      invalid_thetas: vec![],
-    }
-  }
+  theta: Option<f64>,
 }
 
 impl Joe {
-  pub fn new() -> Self {
-    Self::default()
+  /// A Joe copula; panics unless `1 <= theta < ∞`.
+  pub fn new(theta: f64) -> Self {
+    Self::try_new(theta).unwrap_or_else(|e| panic!("{e}"))
+  }
+
+  /// `new` with the domain error returned instead of a panic.
+  pub fn try_new(theta: f64) -> Result<Self, CopulaError> {
+    let copula = Self { theta: Some(theta) };
+    copula.check_theta()?;
+    Ok(copula)
+  }
+
+  /// The copula whose Kendall's τ is `tau`.
+  pub fn from_tau(tau: f64) -> Result<Self, CopulaError> {
+    Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 }
 
 impl BivariateExt for Joe {
   fn family(&self) -> BivariateFamily {
-    self.r#type
+    BivariateFamily::Joe
   }
 
   fn theta(&self) -> Option<f64> {
     self.theta
   }
 
+  fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
+    self.theta = Some(theta);
+  }
+
   fn theta_bounds(&self) -> (f64, f64) {
-    self.theta_bounds
+    (1.0, f64::INFINITY)
   }
 
   fn invalid_thetas(&self) -> Vec<f64> {
-    self.invalid_thetas.clone()
-  }
-
-  fn set_theta(&mut self, theta: f64) {
-    self.theta = Some(theta);
+    vec![]
   }
 
   /// Archimedean generator $\varphi(t) = -\ln(1 - (1-t)^\theta)$.
@@ -222,7 +222,7 @@ mod tests {
 
   #[test]
   fn joe_independence_theta_one_reproduces_product_cdf() {
-    let mut c = Joe::new();
+    let mut c = Joe::default();
     c.set_theta(1.0);
     let x = array![[0.3_f64, 0.7], [0.5, 0.5], [0.9, 0.1]];
     let cdf = c.cdf(x.view()).unwrap();
@@ -239,7 +239,7 @@ mod tests {
 
   #[test]
   fn joe_cdf_marginal_recovers_input() {
-    let mut c = Joe::new();
+    let mut c = Joe::default();
     c.set_theta(3.0);
     let x = array![[0.5_f64, 1.0], [1.0, 0.4]];
     let cdf = c.cdf(x.view()).unwrap();
@@ -249,7 +249,7 @@ mod tests {
 
   #[test]
   fn joe_cdf_at_corner_is_zero() {
-    let mut c = Joe::new();
+    let mut c = Joe::default();
     c.set_theta(2.5);
     let x = array![[0.0_f64, 0.5], [0.5, 0.0]];
     let cdf = c.cdf(x.view()).unwrap();
@@ -259,13 +259,13 @@ mod tests {
 
   #[test]
   fn joe_theta_from_tau_zero_tau_gives_independence() {
-    let c = Joe::new();
+    let c = Joe::default();
     assert!(approx(c.theta_from_tau(0.0).unwrap(), 1.0, 1e-9));
   }
 
   #[test]
   fn joe_theta_from_tau_inverts_tau_via_series() {
-    let c = Joe::new();
+    let c = Joe::default();
     let tau = c.tau_from_theta(2.0);
     let recovered = c.theta_from_tau(tau).unwrap();
     assert!(
@@ -277,7 +277,7 @@ mod tests {
   /// The series of Hofert, Mächler & McNeil (2011), Table 2, summed by mpmath at 50 digits; `τ(2) = 2 − π²/6`.
   #[test]
   fn joe_tau_matches_the_cited_series() {
-    let c = Joe::new();
+    let c = Joe::default();
     for (theta, want) in [
       (1.5, 0.21927246047709384),
       (2.0, 2.0 - std::f64::consts::PI * std::f64::consts::PI / 6.0),
@@ -294,7 +294,7 @@ mod tests {
   /// `1e-10` in `θ` bounds the error in `τ`.
   #[test]
   fn joe_inverts_a_tau_near_independence() {
-    let c = Joe::new();
+    let c = Joe::default();
     for tau in [1e-11, 1e-8, 1e-5] {
       let theta = c.theta_from_tau(tau).unwrap();
       assert!(theta >= 1.0, "τ = {tau}: θ = {theta}");
@@ -307,7 +307,7 @@ mod tests {
 
   #[test]
   fn joe_pdf_positive_on_unit_square_interior() {
-    let mut c = Joe::new();
+    let mut c = Joe::default();
     c.set_theta(2.0);
     let x = array![[0.25_f64, 0.75], [0.5, 0.5], [0.1, 0.9]];
     let pdf = c.pdf(x.view()).unwrap();
@@ -318,7 +318,7 @@ mod tests {
 
   #[test]
   fn joe_tail_dependence_matches_gumbel_form() {
-    let mut c = Joe::new();
+    let mut c = Joe::default();
     c.set_theta(2.0);
     let td = c.tail_dependence().unwrap();
     let expected = 2.0 - 2.0_f64.powf(0.5);

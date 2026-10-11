@@ -2,33 +2,17 @@
 //!
 //! ```text
 //! C_λ(u,v) = exp{ ln u · Φ(1/λ + (λ/2)·ln(ln u / ln v))
-//!                + ln v · Φ(1/λ + (λ/2)·ln(ln v / ln u)) },   λ ∈ (0, ∞).
+//!                + ln v · Φ(1/λ + (λ/2)·ln(ln v / ln u)) },   λ ∈ [0, ∞),
+//! A(t) = (1-t)·Φ(1/λ + (λ/2)·ln((1-t)/t)) + t·Φ(1/λ + (λ/2)·ln(t/(1-t))),   t ∈ [0, 1].
 //! ```
 //!
-//! Gaussian-limit max-stable family with Pickands dependence function
-//!
-//! ```text
-//! A(t) = (1-t)·Φ(1/λ + (λ/2)·ln((1-t)/t)) + t·Φ(1/λ + (λ/2)·ln(t/(1-t))),
-//!        t ∈ [0, 1].
-//! ```
-//!
-//! $\lambda \to 0$ recovers the independence copula
-//! ($\Phi(\pm\infty) = \{0, 1\}$ collapse $A$ to $1$);
-//! $\lambda \to \infty$ recovers the comonotone copula.
-//!
-//! Tail dependence: $\lambda_U = 2(1 - \Phi(1/\lambda))$ (upper),
-//! $\lambda_L = 0$ (lower).
-//!
-//! The implementation exploits the Hüsler-Reiss identity
-//! $x\,\varphi(\alpha) = y\,\varphi(\beta)$ for the symmetric arguments
-//! $\alpha = 1/\lambda + (\lambda/2)\ln(x/y)$,
-//! $\beta = 2/\lambda - \alpha$, which collapses the otherwise messy
-//! derivatives of $\ln C$ to $\partial_y \ln C = -\Phi(\beta)$.
+//! `λ = 0` is independence (`A ≡ 1`), `λ → ∞` comonotonicity; `λ_U = 2(1 − Φ(1/λ))`, `λ_L = 0`. The identity
+//! `x φ(α) = y φ(β)`, `α = 1/λ + (λ/2) ln(x/y)`, `β = 2/λ − α`, collapses `∂_y ln C` to `−Φ(β)`.
 //!
 //! Reference: Hüsler, J., Reiss, R.-D. (1989), "Maxima of normal random
 //! vectors: between independence and complete dependence", *Statist.
 //! Probab. Lett.* 7(4), 283-286.
-//! Reference: Gudendorf, G. & Segers, J. (2010), "Extreme-value copulas", in Copula Theory and Its Applications, Lecture Notes in Statistics, Springer, arXiv:0911.1015, §4 (Kendall's τ from the Pickands function).
+//! Reference: Gudendorf, G. & Segers, J. (2010), "Extreme-value copulas", in Copula Theory and Its Applications, Lecture Notes in Statistics, Springer, arXiv:0911.1015, §3.3 (the parameter space, `[0, ∞]` in the reciprocal of this `λ`, independence at its `∞`), §4 (Kendall's τ from the Pickands function).
 
 use std::sync::OnceLock;
 
@@ -51,30 +35,29 @@ use crate::traits::bivariate::tau_out_of_range;
 /// there — see that method's doc for why a constant is wrong.
 const BOUNDARY_EPS: f64 = 1e-12;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct HuslerReiss {
-  pub r#type: BivariateFamily,
-  /// Hüsler-Reiss parameter $\lambda > 0$ (stored in the `theta` field for
-  /// trait compatibility with single-parameter Archimedean copulas).
-  pub theta: Option<f64>,
-  pub theta_bounds: (f64, f64),
-  pub invalid_thetas: Vec<f64>,
-}
-
-impl Default for HuslerReiss {
-  fn default() -> Self {
-    Self {
-      r#type: BivariateFamily::HuslerReiss,
-      theta: None,
-      theta_bounds: (0.0, f64::INFINITY),
-      invalid_thetas: vec![],
-    }
-  }
+  theta: Option<f64>,
 }
 
 impl HuslerReiss {
-  pub fn new() -> Self {
-    Self::default()
+  /// A Hüsler–Reiss copula with `lambda`, stored as `theta`; panics unless `0 <= lambda < ∞`.
+  pub fn new(lambda: f64) -> Self {
+    Self::try_new(lambda).unwrap_or_else(|e| panic!("{e}"))
+  }
+
+  /// `new` with the domain error returned instead of a panic.
+  pub fn try_new(lambda: f64) -> Result<Self, CopulaError> {
+    let copula = Self {
+      theta: Some(lambda),
+    };
+    copula.check_theta()?;
+    Ok(copula)
+  }
+
+  /// The copula whose Kendall's τ is `tau`.
+  pub fn from_tau(tau: f64) -> Result<Self, CopulaError> {
+    Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
   /// Pickands dependence function.
@@ -94,23 +77,24 @@ impl HuslerReiss {
 
 impl BivariateExt for HuslerReiss {
   fn family(&self) -> BivariateFamily {
-    self.r#type
+    BivariateFamily::HuslerReiss
   }
 
   fn theta(&self) -> Option<f64> {
     self.theta
   }
 
+  fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
+    self.theta = Some(theta);
+  }
+
   fn theta_bounds(&self) -> (f64, f64) {
-    self.theta_bounds
+    (0.0, f64::INFINITY)
   }
 
   fn invalid_thetas(&self) -> Vec<f64> {
-    self.invalid_thetas.clone()
-  }
-
-  fn set_theta(&mut self, theta: f64) {
-    self.theta = Some(theta);
+    vec![]
   }
 
   /// Density $c(u,v) = C(u,v) / (uv) \cdot [\Phi(\alpha)\Phi(\beta) +
@@ -128,6 +112,10 @@ impl BivariateExt for HuslerReiss {
       let v = v_col[i];
       if u <= 0.0 || u >= 1.0 || v <= 0.0 || v >= 1.0 {
         out[i] = 0.0;
+        continue;
+      }
+      if lambda == 0.0 {
+        out[i] = 1.0;
         continue;
       }
       let xx = -u.ln();
@@ -163,6 +151,10 @@ impl BivariateExt for HuslerReiss {
         out[i] = u;
         continue;
       }
+      if lambda == 0.0 {
+        out[i] = u * v;
+        continue;
+      }
       let xx = -u.ln();
       let yy = -v.ln();
       let half_log = 0.5 * (xx / yy).ln();
@@ -174,10 +166,13 @@ impl BivariateExt for HuslerReiss {
   }
 
   /// $\partial_v C(u,v) = C(u,v) \cdot \Phi(\beta) / v$, the formula at `v` clamped `1e-12` inside `(0, 1)` at the
-  /// edges (limits that depend on `u` and `λ`), NaN for `v` outside `[0, 1]`.
+  /// edges (limits that depend on `u` and `λ`), `u` at `λ = 0`, where `0·∞` makes it NaN at `u ∈ {0, 1}`; NaN for `v ∉ [0, 1]`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
+    if lambda == 0.0 {
+      return Ok(conditional_cdf(x, |u, _| u));
+    }
     Ok(conditional_cdf(x, |u, v| {
       let v = v.clamp(BOUNDARY_EPS, 1.0 - BOUNDARY_EPS);
       let xx = -u.ln();
@@ -245,6 +240,7 @@ impl BivariateExt for HuslerReiss {
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
 
@@ -254,7 +250,7 @@ mod tests {
 
   #[test]
   fn hr_marginal_recovers_input() {
-    let mut c = HuslerReiss::new();
+    let mut c = HuslerReiss::default();
     c.set_theta(1.5);
     let x = array![[0.5_f64, 1.0], [1.0, 0.7]];
     let cdf = c.cdf(x.view()).unwrap();
@@ -264,7 +260,7 @@ mod tests {
 
   #[test]
   fn hr_small_lambda_limit_is_independence() {
-    let mut c = HuslerReiss::new();
+    let mut c = HuslerReiss::default();
     c.set_theta(1e-3);
     let x = array![[0.3_f64, 0.7], [0.5, 0.5]];
     let cdf = c.cdf(x.view()).unwrap();
@@ -274,7 +270,7 @@ mod tests {
 
   #[test]
   fn hr_large_lambda_approaches_comonotone() {
-    let mut c = HuslerReiss::new();
+    let mut c = HuslerReiss::default();
     c.set_theta(15.0);
     let x = array![[0.3_f64, 0.7], [0.5, 0.5]];
     let cdf = c.cdf(x.view()).unwrap();
@@ -312,7 +308,7 @@ mod tests {
   #[test]
   fn hr_theta_from_tau_inverts_tau() {
     let target_lambda = 1.5_f64;
-    let c = HuslerReiss::new();
+    let c = HuslerReiss::default();
     let tau = c.tau_from_theta(target_lambda);
     let recovered = c.theta_from_tau(tau).unwrap();
     assert!(
@@ -323,7 +319,7 @@ mod tests {
 
   #[test]
   fn hr_pdf_positive_interior() {
-    let mut c = HuslerReiss::new();
+    let mut c = HuslerReiss::default();
     c.set_theta(1.5);
     let x = array![[0.25_f64, 0.75], [0.5, 0.5], [0.1, 0.9]];
     let pdf = c.pdf(x.view()).unwrap();
@@ -334,7 +330,7 @@ mod tests {
 
   #[test]
   fn hr_tail_dependence_matches_formula() {
-    let mut c = HuslerReiss::new();
+    let mut c = HuslerReiss::default();
     c.set_theta(1.5);
     let td = c.tail_dependence().unwrap();
     let expected = 2.0 * (1.0 - norm_cdf(1.0 / 1.5));
@@ -359,7 +355,7 @@ mod tests {
   /// a jump is `\approx 1.0` here, since the true limit sits near `1`).
   #[test]
   fn hr_partial_derivative_no_jump_near_v_boundary() {
-    let mut c = HuslerReiss::new();
+    let mut c = HuslerReiss::default();
     c.set_theta(1.5);
     let u = 0.4_f64;
     let near_zero_a = c.partial_derivative(array![[u, 1e-12]].view()).unwrap()[0];
@@ -392,11 +388,36 @@ mod tests {
     );
   }
 
+  /// `λ = 0` is independence: `C = uv`, `c = 1` and `∂_v C = u` on the closed square, where the general formula's `0·∞`
+  /// is NaN at `u ∈ {0, 1}` and the numerical inverse, so sampling, failed.
+  #[test]
+  fn hr_lambda_zero_is_independence() {
+    let c = HuslerReiss::new(0.0);
+    let x = array![[0.3_f64, 0.7], [0.2, 0.9]];
+    assert_eq!(c.cdf(x.view()).unwrap(), array![0.3 * 0.7, 0.2 * 0.9]);
+    assert_eq!(c.pdf(x.view()).unwrap(), array![1.0, 1.0]);
+    let edges = array![[0.0, 0.5], [1.0, 0.5], [0.3, 0.5], [0.3, 0.0], [0.3, 1.0]];
+    let h = c.partial_derivative(edges.view()).unwrap();
+    assert_eq!(h, array![0.0, 1.0, 0.3, 0.3, 0.3]);
+    assert_eq!(c.tail_dependence().unwrap().upper, 0.0);
+    let n = 4000_usize;
+    let uv = c.sample(n, &Deterministic::new(42)).unwrap();
+    let (tau, ..) = kendalls::tau_b_with_comparator(
+      &uv.column(0).to_vec(),
+      &uv.column(1).to_vec(),
+      |a: &f64, b: &f64| a.partial_cmp(b).unwrap(),
+    )
+    .unwrap();
+    // Six standard errors of τ under independence (Kendall & Gibbons 1990).
+    let se = (2.0 * (2.0 * n as f64 + 5.0) / (9.0 * n as f64 * (n as f64 - 1.0))).sqrt();
+    assert!(tau.abs() < 6.0 * se, "τ = {tau}");
+  }
+
   /// `generator` has no override in this family, so this exercises
   /// `BivariateExt::generator`'s trait-default body directly.
   #[test]
   fn hr_generator_returns_err_not_archimedean() {
-    let c = HuslerReiss::new();
+    let c = HuslerReiss::default();
     let t = array![0.5_f64, 0.8];
     assert!(c.generator(t.view()).is_err());
   }

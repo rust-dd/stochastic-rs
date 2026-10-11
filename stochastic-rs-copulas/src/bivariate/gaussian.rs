@@ -53,30 +53,27 @@ use crate::traits::bivariate::tau_out_of_range;
 /// constant there — see that method's doc for why a constant is wrong.
 const BOUNDARY_EPS: f64 = 1e-12;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct GaussianCopula {
-  pub r#type: BivariateFamily,
-  /// Correlation $\rho \in (-1, 1)$, stored under the trait's `theta`
-  /// field for single-parameter compatibility with the other families.
-  pub theta: Option<f64>,
-  pub theta_bounds: (f64, f64),
-  pub invalid_thetas: Vec<f64>,
-}
-
-impl Default for GaussianCopula {
-  fn default() -> Self {
-    Self {
-      r#type: BivariateFamily::Gaussian,
-      theta: None,
-      theta_bounds: (-1.0, 1.0),
-      invalid_thetas: vec![-1.0, 1.0],
-    }
-  }
+  theta: Option<f64>,
 }
 
 impl GaussianCopula {
-  pub fn new() -> Self {
-    Self::default()
+  /// A Gaussian copula with correlation `rho`, stored as `theta`; panics unless `-1 < rho < 1`.
+  pub fn new(rho: f64) -> Self {
+    Self::try_new(rho).unwrap_or_else(|e| panic!("{e}"))
+  }
+
+  /// `new` with the domain error returned instead of a panic.
+  pub fn try_new(rho: f64) -> Result<Self, CopulaError> {
+    let copula = Self { theta: Some(rho) };
+    copula.check_theta()?;
+    Ok(copula)
+  }
+
+  /// The copula whose Kendall's τ is `tau`.
+  pub fn from_tau(tau: f64) -> Result<Self, CopulaError> {
+    Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
   /// `u = Φ(Φ⁻¹(y)√(1 − ρ²) + ρΦ⁻¹(v))` before the domain rule, for `ρ ≠ 0`.
@@ -92,23 +89,24 @@ impl GaussianCopula {
 
 impl BivariateExt for GaussianCopula {
   fn family(&self) -> BivariateFamily {
-    self.r#type
+    BivariateFamily::Gaussian
   }
 
   fn theta(&self) -> Option<f64> {
     self.theta
   }
 
+  fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
+    self.theta = Some(theta);
+  }
+
   fn theta_bounds(&self) -> (f64, f64) {
-    self.theta_bounds
+    (-1.0, 1.0)
   }
 
   fn invalid_thetas(&self) -> Vec<f64> {
-    self.invalid_thetas.clone()
-  }
-
-  fn set_theta(&mut self, theta: f64) {
-    self.theta = Some(theta);
+    vec![-1.0, 1.0]
   }
 
   /// Density $c(u,v) = (1-\rho^2)^{-1/2}\exp\{-(\rho^2(x^2+y^2) -
@@ -233,7 +231,7 @@ mod tests {
 
   #[test]
   fn gaussian_marginal_recovers_input() {
-    let mut c = GaussianCopula::new();
+    let mut c = GaussianCopula::default();
     c.set_theta(0.4);
     let x = array![[0.5_f64, 1.0], [1.0, 0.7]];
     let cdf = c.cdf(x.view()).unwrap();
@@ -247,7 +245,7 @@ mod tests {
   /// `0.0` in `Φ(x) + Φ(y) - 1`, so the result is the formula's own.
   #[test]
   fn gaussian_cdf_matches_closed_form_at_origin() {
-    let mut c = GaussianCopula::new();
+    let mut c = GaussianCopula::default();
     c.set_theta(0.5);
     let x = array![[0.5_f64, 0.5]];
     let cdf = c.cdf(x.view()).unwrap()[0];
@@ -264,7 +262,7 @@ mod tests {
   fn gaussian_tau_roundtrip() {
     let rho = 0.6_f64;
     let tau = (2.0 / std::f64::consts::PI) * rho.asin();
-    let c = GaussianCopula::new();
+    let c = GaussianCopula::default();
     let recovered = c.theta_from_tau(tau).unwrap();
     assert!(
       approx(recovered, rho, 1e-12),
@@ -279,11 +277,11 @@ mod tests {
     let tol = 0.02_f64;
     let mut best_err = f64::INFINITY;
     for &seed in &[2718_u64, 999, 42] {
-      let mut source = GaussianCopula::new();
+      let mut source = GaussianCopula::default();
       source.set_theta(rho_true);
       let samples = source.sample(n, &Deterministic::new(seed)).unwrap();
 
-      let mut fitted = GaussianCopula::new();
+      let mut fitted = GaussianCopula::default();
       fitted.fit(samples.view()).unwrap();
       let rho_hat = fitted.theta().unwrap();
       best_err = best_err.min((rho_hat - rho_true).abs());
@@ -300,7 +298,7 @@ mod tests {
   /// `partial_derivative`, once in `percent_point`).
   #[test]
   fn gaussian_h_inverse_roundtrip() {
-    let mut c = GaussianCopula::new();
+    let mut c = GaussianCopula::default();
     c.set_theta(0.35);
     let u = 0.3_f64;
     let v = 0.65_f64;
@@ -316,7 +314,7 @@ mod tests {
 
   #[test]
   fn gaussian_tail_dependence_is_zero() {
-    let mut c = GaussianCopula::new();
+    let mut c = GaussianCopula::default();
     c.set_theta(0.9);
     let td = c.tail_dependence().unwrap();
     assert_eq!(td.lower, 0.0);
@@ -325,7 +323,7 @@ mod tests {
 
   #[test]
   fn gaussian_pdf_positive_on_unit_square_interior() {
-    let mut c = GaussianCopula::new();
+    let mut c = GaussianCopula::default();
     c.set_theta(0.3);
     let x = array![[0.25_f64, 0.75], [0.5, 0.5], [0.1, 0.9]];
     let pdf = c.pdf(x.view()).unwrap();
@@ -336,7 +334,7 @@ mod tests {
 
   #[test]
   fn gaussian_generator_returns_err_not_archimedean() {
-    let c = GaussianCopula::new();
+    let c = GaussianCopula::default();
     let t = array![0.5_f64, 0.8];
     assert!(c.generator(t.view()).is_err());
   }
@@ -350,7 +348,7 @@ mod tests {
   /// direction is the opposite — see the method's doc).
   #[test]
   fn gaussian_partial_derivative_no_jump_near_v_boundary() {
-    let mut c = GaussianCopula::new();
+    let mut c = GaussianCopula::default();
     c.set_theta(0.7);
     let u = 0.4_f64;
     let near_zero_a = c.partial_derivative(array![[u, 1e-12]].view()).unwrap()[0];

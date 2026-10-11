@@ -8,8 +8,7 @@ use stochastic_rs::traits::BivariateExt;
 
 #[test]
 fn clayton_theta_from_tau_then_sample() {
-  let mut cop = Clayton::new();
-  cop.set_theta(cop.theta_from_tau(0.5).unwrap()); // θ = 2τ/(1 − τ) = 2
+  let cop = Clayton::from_tau(0.5).unwrap(); // θ = 2τ/(1 − τ) = 2
   let uv = cop.sample(10_000, &Deterministic::new(42)).unwrap(); // Array2<f64>, shape (10_000, 2)
   assert_eq!(uv.dim(), (10_000, 2));
   assert!(uv.iter().all(|&x| (0.0..=1.0).contains(&x)));

@@ -11,10 +11,7 @@ use stochastic_rs_core::simd_rng::Deterministic;
 
 #[test]
 fn strided_views_read_like_their_dense_copy() {
-  let truth = Clayton {
-    theta: Some(2.0),
-    ..Clayton::new()
-  };
+  let truth = Clayton::new(2.0);
   let mut wide = Array2::<f64>::zeros((400, 4));
   wide
     .slice_mut(s![.., 1..3])
@@ -23,9 +20,9 @@ fn strided_views_read_like_their_dense_copy() {
   assert!(!pair.is_standard_layout());
   let dense = pair.to_owned();
 
-  let mut fitted = Clayton::new();
+  let mut fitted = Clayton::default();
   fitted.fit(pair).unwrap();
-  let mut fitted_dense = Clayton::new();
+  let mut fitted_dense = Clayton::default();
   fitted_dense.fit(dense.view()).unwrap();
   assert!((fitted.theta().unwrap() - 2.0).abs() < 0.6);
   assert_eq!(

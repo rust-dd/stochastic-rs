@@ -54,15 +54,7 @@ use crate::traits::bivariate::tau_out_of_range;
 
 #[derive(Debug, Clone)]
 pub struct TCopula {
-  pub r#type: BivariateFamily,
-  /// Correlation $\rho \in (-1, 1)$, stored under the trait's `theta`
-  /// field for single-parameter compatibility. Set degrees of freedom
-  /// `nu` via [`TCopula::with_nu`].
-  pub theta: Option<f64>,
-  pub theta_bounds: (f64, f64),
-  pub invalid_thetas: Vec<f64>,
-  /// Degrees of freedom $\nu > 0$. Default 4. Private and validated — read
-  /// via [`TCopula::nu`], write via [`TCopula::set_nu`].
+  theta: Option<f64>,
   nu: f64,
 }
 
@@ -70,7 +62,7 @@ pub struct TCopula {
 /// `SimdStudentT::new` and `SimdChiSquared::new` assert, so a value they would panic on is an error up front.
 pub(crate) fn check_nu(nu: f64) -> Result<(), CopulaError> {
   let constraint = if !nu.is_finite() || nu <= 0.0 {
-    "0 < nu < ∞"
+    "0.0 < nu < inf"
   } else if nu * 0.5 == 0.0 {
     "nu / 2 > 0"
   } else {
@@ -86,43 +78,42 @@ pub(crate) fn check_nu(nu: f64) -> Result<(), CopulaError> {
 impl Default for TCopula {
   fn default() -> Self {
     Self {
-      r#type: BivariateFamily::TCopula,
       theta: None,
-      theta_bounds: (-1.0, 1.0),
-      // Mirrors `GaussianCopula`'s own `invalid_thetas`: `rho = ±1` divides
-      // by `sqrt(1 - rho^2)` in `pdf` (and, less directly, in
-      // `partial_derivative`/`percent_point`), so it is rejected the same
-      // way here rather than silently producing `NaN`.
-      invalid_thetas: vec![-1.0, 1.0],
       nu: 4.0,
     }
   }
 }
 
 impl TCopula {
-  pub fn new() -> Self {
-    Self::default()
+  /// A t copula with correlation `rho` and `nu` degrees of freedom; panics unless `-1 < rho < 1` and `0 < nu < ∞`.
+  pub fn new(rho: f64, nu: f64) -> Self {
+    Self::try_new(rho, nu).unwrap_or_else(|e| panic!("{e}"))
   }
 
-  /// Construct with explicit degrees of freedom.
-  pub fn with_nu(nu: f64) -> Self {
-    let mut c = Self::default();
-    if let Err(e) = c.set_nu(nu) {
-      panic!("{e}");
-    }
-    c
+  /// `new` with the domain error returned instead of a panic.
+  pub fn try_new(rho: f64, nu: f64) -> Result<Self, CopulaError> {
+    check_nu(nu)?;
+    let copula = Self {
+      theta: Some(rho),
+      nu,
+    };
+    copula.check_theta()?;
+    Ok(copula)
   }
 
-  /// Current degrees of freedom $\nu$.
+  /// The t copula whose Kendall's τ is `tau`, at `nu` degrees of freedom.
+  pub fn from_tau(tau: f64, nu: f64) -> Result<Self, CopulaError> {
+    Self::try_new(Self::default().theta_from_tau(tau)?, nu)
+  }
+
   pub fn nu(&self) -> f64 {
     self.nu
   }
 
-  /// Override the degrees of freedom; an error under the rule of `check_nu`, as for `TMultivariate::set_nu`.
-  pub fn set_nu(&mut self, nu: f64) -> Result<(), CopulaError> {
-    check_nu(nu)?;
+  /// Panics under the rule of `check_nu`: unless `0 < nu < ∞` and `nu / 2 > 0`.
+  pub fn set_nu(&mut self, nu: f64) {
+    check_nu(nu).unwrap_or_else(|e| panic!("{e}"));
     self.nu = nu;
-    Ok(())
   }
 
   /// `u = t_ν(t_{ν+1}⁻¹(y)√((ν + x²)(1 − ρ²)/(ν + 1)) + ρx)`, `x = t_ν⁻¹(v)`, and the two-point law the `v → 0, 1`
@@ -203,23 +194,25 @@ impl TCopula {
 
 impl BivariateExt for TCopula {
   fn family(&self) -> BivariateFamily {
-    self.r#type
+    BivariateFamily::TCopula
   }
 
   fn theta(&self) -> Option<f64> {
     self.theta
   }
 
-  fn theta_bounds(&self) -> (f64, f64) {
-    self.theta_bounds
-  }
-
-  fn invalid_thetas(&self) -> Vec<f64> {
-    self.invalid_thetas.clone()
-  }
-
   fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
     self.theta = Some(theta);
+  }
+
+  fn theta_bounds(&self) -> (f64, f64) {
+    (-1.0, 1.0)
+  }
+
+  /// `ρ = ±1` divides by `√(1 − ρ²)`.
+  fn invalid_thetas(&self) -> Vec<f64> {
+    vec![-1.0, 1.0]
   }
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {

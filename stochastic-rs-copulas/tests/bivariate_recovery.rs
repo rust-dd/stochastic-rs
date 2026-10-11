@@ -28,7 +28,7 @@ fn is_tau_error(result: Result<f64, CopulaError>) -> bool {
 fn clayton_theta_from_tau_closed_form() {
   // Clayton: θ = 2τ / (1 - τ).
   for &tau in &[0.1_f64, 0.25, 0.5, 0.75, 0.9] {
-    let c = Clayton::new();
+    let c = Clayton::default();
     let theta = c.theta_from_tau(tau).unwrap();
     let expected = 2.0 * tau / (1.0 - tau);
     approx_eq(theta, expected, 1e-12);
@@ -37,14 +37,14 @@ fn clayton_theta_from_tau_closed_form() {
 
 #[test]
 fn clayton_tau_one_is_an_error() {
-  assert!(is_tau_error(Clayton::new().theta_from_tau(1.0)));
+  assert!(is_tau_error(Clayton::default().theta_from_tau(1.0)));
 }
 
 #[test]
 fn gumbel_theta_from_tau_closed_form() {
   // Gumbel: θ = 1 / (1 - τ), τ ∈ [0, 1).
   for &tau in &[0.0_f64, 0.1, 0.25, 0.5, 0.75, 0.9] {
-    let theta = Gumbel::new(None).theta_from_tau(tau).unwrap();
+    let theta = Gumbel::default().theta_from_tau(tau).unwrap();
     let expected = 1.0 / (1.0 - tau);
     approx_eq(theta, expected, 1e-12);
   }
@@ -52,25 +52,25 @@ fn gumbel_theta_from_tau_closed_form() {
 
 #[test]
 fn gumbel_tau_one_is_an_error() {
-  assert!(is_tau_error(Gumbel::new(None).theta_from_tau(1.0)));
+  assert!(is_tau_error(Gumbel::default().theta_from_tau(1.0)));
 }
 
 #[test]
 fn frank_theta_zero_for_independence() {
-  let theta = Frank::new(None).theta_from_tau(0.0).unwrap();
+  let theta = Frank::default().theta_from_tau(0.0).unwrap();
   approx_eq(theta, 0.0, 1e-9);
 }
 
 #[test]
 fn frank_theta_sign_matches_tau() {
   // Frank theta has the same sign as tau, opposite sign for negative tau.
-  let theta_pos = Frank::new(None).theta_from_tau(0.5).unwrap();
+  let theta_pos = Frank::default().theta_from_tau(0.5).unwrap();
   assert!(
     theta_pos > 0.0,
     "expected positive θ for τ > 0, got {theta_pos}"
   );
 
-  let theta_neg = Frank::new(None).theta_from_tau(-0.5).unwrap();
+  let theta_neg = Frank::default().theta_from_tau(-0.5).unwrap();
   assert!(
     theta_neg < 0.0,
     "expected negative θ for τ < 0, got {theta_neg}"
@@ -81,7 +81,7 @@ fn frank_theta_sign_matches_tau() {
 fn frank_tau_at_the_bounds_is_an_error() {
   for tau in [1.0, -1.0] {
     assert!(
-      is_tau_error(Frank::new(None).theta_from_tau(tau)),
+      is_tau_error(Frank::default().theta_from_tau(tau)),
       "τ = {tau}"
     );
   }
@@ -95,7 +95,7 @@ fn independence_theta_is_zero() {
 /// Frank's τ → θ by Brent and back through the Debye integral: the signs agree and the residual is at Brent's tolerance.
 #[test]
 fn frank_tau_theta_roundtrip() {
-  let frank = Frank::new(None);
+  let frank = Frank::default();
   for &tau in &[-0.6_f64, -0.3, 0.1, 0.3, 0.5, 0.7] {
     let theta = frank.theta_from_tau(tau).unwrap();
     assert!(theta.is_finite(), "θ blew up for τ={tau}");
@@ -110,7 +110,7 @@ fn frank_tau_theta_roundtrip() {
 #[test]
 fn clayton_tau_theta_roundtrip() {
   for &tau in &[0.05_f64, 0.25, 0.5, 0.75, 0.95] {
-    let c = Clayton::new();
+    let c = Clayton::default();
     let theta = c.theta_from_tau(tau).unwrap();
     let tau_back = theta / (theta + 2.0);
     approx_eq(tau_back, tau, 1e-12);
@@ -120,7 +120,7 @@ fn clayton_tau_theta_roundtrip() {
 #[test]
 fn gumbel_tau_theta_roundtrip() {
   for &tau in &[0.05_f64, 0.25, 0.5, 0.75, 0.95] {
-    let theta = Gumbel::new(None).theta_from_tau(tau).unwrap();
+    let theta = Gumbel::default().theta_from_tau(tau).unwrap();
     let tau_back = (theta - 1.0) / theta;
     approx_eq(tau_back, tau, 1e-12);
   }
@@ -130,7 +130,7 @@ fn gumbel_tau_theta_roundtrip() {
 #[test]
 fn gaussian_theta_from_tau_closed_form() {
   for &tau in &[-0.6_f64, -0.3, 0.0, 0.25, 0.5, 0.75, 0.9] {
-    let c = GaussianCopula::new();
+    let c = GaussianCopula::default();
     let theta = c.theta_from_tau(tau).unwrap();
     let expected = (0.5 * std::f64::consts::PI * tau).sin();
     approx_eq(theta, expected, 1e-12);

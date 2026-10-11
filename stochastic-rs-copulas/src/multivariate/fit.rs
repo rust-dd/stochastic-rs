@@ -93,10 +93,10 @@ fn estimate(family: BivariateFamily, u: &[f64], v: &[f64]) -> Option<PairCopula>
   match family {
     BivariateFamily::Independence => Some(PairCopula::Independence),
     BivariateFamily::Gaussian => Some(PairCopula::Gaussian {
-      rho: GaussianCopula::new().theta_from_tau(tau).ok()?,
+      rho: GaussianCopula::default().theta_from_tau(tau).ok()?,
     }),
     BivariateFamily::TCopula => {
-      let rho = TCopula::new().theta_from_tau(tau).ok()?;
+      let rho = TCopula::default().theta_from_tau(tau).ok()?;
       let best = [3.0_f64, 4.0, 6.0, 8.0, 12.0, 20.0, 40.0]
         .into_iter()
         .map(|nu| (nu, log_likelihood(&PairCopula::StudentT { rho, nu }, u, v)))
@@ -107,14 +107,14 @@ fn estimate(family: BivariateFamily, u: &[f64], v: &[f64]) -> Option<PairCopula>
       if tau <= 0.02 {
         return None;
       }
-      let theta = Clayton::new().theta_from_tau(tau).ok()?;
+      let theta = Clayton::default().theta_from_tau(tau).ok()?;
       Some(PairCopula::Clayton { theta })
     }
     BivariateFamily::Frank => {
       if tau.abs() < 1e-3 {
         return None;
       }
-      let theta = Frank::new(None).theta_from_tau(tau).ok()?;
+      let theta = Frank::default().theta_from_tau(tau).ok()?;
       Some(PairCopula::Frank { theta })
     }
     BivariateFamily::Bb1 | BivariateFamily::Bb7 => {
@@ -130,15 +130,15 @@ fn estimate(family: BivariateFamily, u: &[f64], v: &[f64]) -> Option<PairCopula>
         let mut c = Bb1::default();
         c.fit_parameters(x.view()).ok()?;
         Some(PairCopula::Bb1 {
-          theta: c.theta?,
-          delta: c.delta,
+          theta: c.theta()?,
+          delta: c.delta(),
         })
       } else {
         let mut c = Bb7::default();
         c.fit_parameters(x.view()).ok()?;
         Some(PairCopula::Bb7 {
-          theta: c.theta?,
-          delta: c.delta,
+          theta: c.theta()?,
+          delta: c.delta(),
         })
       }
     }

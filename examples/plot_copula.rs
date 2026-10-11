@@ -16,8 +16,7 @@ use stochastic_rs::traits::BivariateExt;
 fn main() {
   let tau = 0.6; // Kendall's tau -> strong lower-tail dependence
 
-  let mut clayton = Clayton::new();
-  clayton.set_theta(clayton.theta_from_tau(tau).unwrap());
+  let clayton = Clayton::from_tau(tau).unwrap();
 
   let uv = clayton
     .sample(2_000, &Deterministic::new(42))

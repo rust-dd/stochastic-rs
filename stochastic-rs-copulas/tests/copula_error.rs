@@ -22,9 +22,9 @@ fn assert_send_sync<T: Send + Sync + std::error::Error + 'static>() {}
 #[test]
 fn the_error_crosses_threads_and_converts_into_anyhow() {
   assert_send_sync::<CopulaError>();
-  let unset = Clayton::new().sample(8, &Deterministic::new(7));
+  let unset = Clayton::default().sample(8, &Deterministic::new(7));
   assert_eq!(unset.unwrap_err(), CopulaError::NotFitted);
-  let into_anyhow: anyhow::Result<Array2<f64>> = Clayton::new()
+  let into_anyhow: anyhow::Result<Array2<f64>> = Clayton::default()
     .sample(8, &Deterministic::new(7))
     .map_err(anyhow::Error::from);
   assert!(into_anyhow.is_err());
@@ -48,7 +48,7 @@ fn a_bivariate_fit_needs_two_observations() {
     short.to_string(),
     "too few observations: 1, at least 2 needed"
   );
-  assert_eq!(Clayton::new().fit(one.view()).unwrap_err(), short);
+  assert_eq!(Clayton::default().fit(one.view()).unwrap_err(), short);
   assert_eq!(Bb1::default().fit(one.view()).unwrap_err(), short);
   assert_eq!(Bb7::default().fit(one.view()).unwrap_err(), short);
 }
@@ -80,20 +80,12 @@ fn a_multivariate_fit_tells_too_few_dimensions_from_too_few_observations() {
 
 #[test]
 fn an_out_of_domain_theta_names_its_bounds_and_only_a_real_exclusion_set() {
-  let clayton = Clayton {
-    theta: Some(-1.0),
-    ..Clayton::new()
-  };
   assert_eq!(
-    clayton.check_theta().unwrap_err().to_string(),
-    "theta must satisfy `0.0 <= theta <= inf`, got theta = -1.0"
+    Clayton::try_new(-1.0).unwrap_err().to_string(),
+    "theta must satisfy `0.0 <= theta < inf`, got theta = -1.0"
   );
-  let gaussian = GaussianCopula {
-    theta: Some(1.0),
-    ..GaussianCopula::new()
-  };
   assert_eq!(
-    gaussian.check_theta().unwrap_err(),
+    GaussianCopula::try_new(1.0).unwrap_err(),
     CopulaError::InvalidParameter {
       name: "theta",
       value: 1.0,

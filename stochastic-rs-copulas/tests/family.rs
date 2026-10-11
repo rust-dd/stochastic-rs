@@ -17,8 +17,8 @@ use stochastic_rs_copulas::traits::MultivariateExt;
 
 #[test]
 fn families_are_one_enum_per_trait() {
-  assert_eq!(Clayton::new().family(), BivariateFamily::Clayton);
-  assert_eq!(TCopula::new().family(), BivariateFamily::TCopula);
+  assert_eq!(Clayton::default().family(), BivariateFamily::Clayton);
+  assert_eq!(TCopula::default().family(), BivariateFamily::TCopula);
   assert_eq!(BivariateFamily::ALL.len(), 15);
   assert!(
     BivariateFamily::VINE_CANDIDATES

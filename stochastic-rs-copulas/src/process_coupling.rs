@@ -31,10 +31,7 @@
 //! // free of a stochastic dependency.
 //! let s1 = Array1::linspace(0.0, 1.0, 32);
 //! let s2 = Array1::linspace(1.0, 0.0, 32);
-//! let c = Clayton {
-//!   theta: Some(2.0),
-//!   ..Clayton::new()
-//! };
+//! let c = Clayton::new(2.0);
 //! let coupled = couple_marginals(s1.view(), s2.view(), &c, &Deterministic::new(1)).unwrap();
 //! assert_eq!(coupled.shape(), &[32, 2]);
 //! ```

@@ -22,28 +22,27 @@ use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::tau_out_of_range;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Clayton {
-  pub r#type: BivariateFamily,
-  pub theta: Option<f64>,
-  pub theta_bounds: (f64, f64),
-  pub invalid_thetas: Vec<f64>,
-}
-
-impl Default for Clayton {
-  fn default() -> Self {
-    Self {
-      r#type: BivariateFamily::Clayton,
-      theta: None,
-      theta_bounds: (0.0, f64::INFINITY),
-      invalid_thetas: vec![],
-    }
-  }
+  theta: Option<f64>,
 }
 
 impl Clayton {
-  pub fn new() -> Self {
-    Self::default()
+  /// A Clayton copula; panics unless `0 <= theta < ∞`.
+  pub fn new(theta: f64) -> Self {
+    Self::try_new(theta).unwrap_or_else(|e| panic!("{e}"))
+  }
+
+  /// `new` with the domain error returned instead of a panic.
+  pub fn try_new(theta: f64) -> Result<Self, CopulaError> {
+    let copula = Self { theta: Some(theta) };
+    copula.check_theta()?;
+    Ok(copula)
+  }
+
+  /// The copula whose Kendall's τ is `tau`.
+  pub fn from_tau(tau: f64) -> Result<Self, CopulaError> {
+    Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
   /// `a = y^{−θ/(1 + θ)} − 1` of `h⁻¹(y | v) = (1 + a/v^θ)^{−1/θ}`, as `expm1` so `y` near 1 keeps its digits.
@@ -71,23 +70,24 @@ impl Clayton {
 
 impl BivariateExt for Clayton {
   fn family(&self) -> BivariateFamily {
-    self.r#type
+    BivariateFamily::Clayton
   }
 
   fn theta(&self) -> Option<f64> {
     self.theta
   }
 
+  fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
+    self.theta = Some(theta);
+  }
+
   fn theta_bounds(&self) -> (f64, f64) {
-    self.theta_bounds
+    (0.0, f64::INFINITY)
   }
 
   fn invalid_thetas(&self) -> Vec<f64> {
-    self.invalid_thetas.clone()
-  }
-
-  fn set_theta(&mut self, theta: f64) {
-    self.theta = Some(theta);
+    vec![]
   }
 
   fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
@@ -255,7 +255,7 @@ mod tests {
   /// Clayton θ=2: λ_L = 2^{−1/2} = 0.707106781186…, λ_U = 0.
   #[test]
   fn clayton_tail_dependence_closed_form() {
-    let mut c = Clayton::new();
+    let mut c = Clayton::default();
     c.set_theta(2.0);
     let td = c.tail_dependence().unwrap();
     assert!(
@@ -288,10 +288,7 @@ mod tests {
     let n = 4000usize;
     let se = (2.0 * (2.0 * n as f64 + 5.0) / (9.0 * n as f64 * (n as f64 - 1.0))).sqrt();
     let tol = 6.0 * se;
-    let c = Clayton {
-      theta: Some(0.0),
-      ..Clayton::default()
-    };
+    let c = Clayton::new(0.0);
     let best_abs_tau = [2718_u64, 999, 42]
       .into_iter()
       .map(|seed| {
@@ -319,10 +316,7 @@ mod tests {
   /// crate's convention for independence-limit checks.
   #[test]
   fn clayton_pdf_at_independence_is_one() {
-    let c = Clayton {
-      theta: Some(0.0),
-      ..Clayton::default()
-    };
+    let c = Clayton::new(0.0);
     let pdf = c.pdf(array![[0.2_f64, 0.9], [0.5, 0.5]].view()).unwrap();
     assert!(approx(pdf[0], 1.0, 1e-12), "got {}", pdf[0]);
     assert!(approx(pdf[1], 1.0, 1e-12), "got {}", pdf[1]);
@@ -330,10 +324,7 @@ mod tests {
 
   #[test]
   fn clayton_cdf_at_independence_is_uv() {
-    let c = Clayton {
-      theta: Some(0.0),
-      ..Clayton::default()
-    };
+    let c = Clayton::new(0.0);
     let cdf = c.cdf(array![[0.3_f64, 0.7], [0.2, 0.9]].view()).unwrap();
     assert!(approx(cdf[0], 0.21, 1e-12), "got {}", cdf[0]);
     assert!(approx(cdf[1], 0.18, 1e-12), "got {}", cdf[1]);
@@ -345,10 +336,7 @@ mod tests {
   /// pre-fix `1^{-∞}` singularity's `v^{-1}` result.
   #[test]
   fn clayton_partial_derivative_at_independence_returns_u() {
-    let c = Clayton {
-      theta: Some(0.0),
-      ..Clayton::default()
-    };
+    let c = Clayton::new(0.0);
     let pd = c
       .partial_derivative(array![[0.3_f64, 0.6], [0.2, 0.9]].view())
       .unwrap();
@@ -365,7 +353,7 @@ mod tests {
   /// `is_all_infinite` used to select for every finite input.
   #[test]
   fn partial_derivative_matches_the_closed_form_h_function() {
-    let mut c = Clayton::new();
+    let mut c = Clayton::default();
     c.set_theta(2.0);
     let h = c
       .partial_derivative(array![[0.3, 0.6], [0.6, 0.3]].view())

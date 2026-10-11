@@ -66,3 +66,22 @@ def test_copula_tail_dependence_before_parameters_raises_value_error():
 def test_copula_tail_dependence_out_of_range_raises_value_error():
     with pytest.raises(ValueError, match="theta must satisfy"):
         sr.Bb7(theta=0.5, delta=1.0).tail_dependence()
+
+
+def test_copula_parameters_outside_the_domain_raise_value_error():
+    with pytest.raises(ValueError, match=r"theta must satisfy `0\.0 <= theta < inf`, got theta = -1\.0"):
+        sr.Clayton(theta=-1.0)
+    with pytest.raises(ValueError, match="tau must satisfy"):
+        sr.Clayton(tau=-0.2)
+    clayton = sr.Clayton(theta=2.0)
+    with pytest.raises(ValueError, match="theta must satisfy"):
+        clayton.set_theta(float("nan"))
+    assert clayton.theta() == 2.0
+    with pytest.raises(ValueError, match=r"theta must satisfy `theta == 0\.0`"):
+        sr.Independence(theta=0.5)
+    bb1 = sr.Bb1()
+    with pytest.raises(ValueError, match=r"delta must satisfy `1\.0 <= delta < inf`, got delta = 0\.5"):
+        bb1.set_delta(0.5)
+    assert bb1.delta() == 1.5
+    with pytest.raises(ValueError, match="delta must satisfy"):
+        sr.Bb7(theta=1.7, delta=0.0)

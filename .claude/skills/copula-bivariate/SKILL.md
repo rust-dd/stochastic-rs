@@ -9,9 +9,10 @@ Bivariate copulas live in `stochastic-rs-copulas/src/bivariate/<name>.rs`
 and implement `BivariateExt`, defined in
 `stochastic-rs-copulas/src/traits/bivariate.rs` and re-exported from
 `stochastic-rs-copulas/src/traits.rs`. There are **15** families today
-(`grep -c '^pub mod ' stochastic-rs-copulas/src/bivariate.rs`); the two
-other `impl BivariateExt for` are test doubles in
-`traits/bivariate.rs`'s own test module.
+(`grep -c '^pub mod ' stochastic-rs-copulas/src/bivariate.rs`); the four
+other `impl BivariateExt for` are test doubles: two in
+`traits/bivariate/tests.rs`, `Poisonable` in `gof.rs`'s tests and
+`Careless` in `tests/fit_domain.rs`.
 
 Read `stochastic-rs-copulas/src/bivariate.rs`'s module header before
 adding a family. It is current and it is the selection guide: which
@@ -31,7 +32,7 @@ defaulted on top of them. Required:
 ```rust
 fn family(&self) -> BivariateFamily;     // the family's enum discriminant
 fn theta(&self) -> Option<f64>;          // shape parameter, None until fit/set
-fn set_theta(&mut self, theta: f64);
+fn set_theta(&mut self, theta: f64);     // panics unless validate_theta admits theta
 fn theta_bounds(&self) -> (f64, f64);
 fn invalid_thetas(&self) -> Vec<f64>;    // returns owned Vec, not &[f64]
 fn tau_from_theta(&self, theta: f64) -> f64;                      // Kendall's τ of the family at θ
@@ -93,55 +94,74 @@ Joe, Galambos, Hüsler-Reiss, Marshall-Olkin and Student-t. It returns
 
 ## 2. The struct skeleton
 
-Every family stores its bounds and its `BivariateFamily` as **fields**, and
-carries `theta` as `Option<f64>` (unset until `fit` or `set_theta`).
+Every family keeps its parameters private and its bounds as constants in `theta_bounds` / `invalid_thetas`; `new`
+panics, `try_new` and `from_tau` return `CopulaError`, `Default` is the unfitted state `fit` starts from.
 There is **no `seed` field** — seeding enters through `sample(n, &seed)`
 with a `Deterministic` (replay) or `Unseeded` (entropy) source.
 
 ```rust
 // stochastic-rs-copulas/src/bivariate/clayton.rs (reference)
 
-use ndarray::Array1;
-use ndarray::ArrayView1;
-use ndarray::ArrayView2;
-
 use super::BivariateFamily;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
-use crate::traits::TailDependence;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Clayton {
-  pub r#type: BivariateFamily,
-  pub theta: Option<f64>,
-  pub theta_bounds: (f64, f64),
-  pub invalid_thetas: Vec<f64>,
-}
-
-impl Default for Clayton {
-  fn default() -> Self {
-    Self {
-      r#type: BivariateFamily::Clayton,
-      theta: None,
-      theta_bounds: (0.0, f64::INFINITY),
-      invalid_thetas: vec![],
-    }
-  }
+  theta: Option<f64>,
 }
 
 impl Clayton {
-  pub fn new() -> Self {
-    Self::default()
+  /// A Clayton copula; panics unless `0 <= theta < ∞`.
+  pub fn new(theta: f64) -> Self {
+    Self::try_new(theta).unwrap_or_else(|e| panic!("{e}"))
   }
+
+  /// `new` with the domain error returned instead of a panic.
+  pub fn try_new(theta: f64) -> Result<Self, CopulaError> {
+    let copula = Self { theta: Some(theta) };
+    copula.check_theta()?;
+    Ok(copula)
+  }
+
+  /// The copula whose Kendall's τ is `tau`.
+  pub fn from_tau(tau: f64) -> Result<Self, CopulaError> {
+    Self::try_new(Self::default().theta_from_tau(tau)?)
+  }
+}
+
+impl BivariateExt for Clayton {
+  fn family(&self) -> BivariateFamily {
+    BivariateFamily::Clayton
+  }
+
+  fn theta(&self) -> Option<f64> {
+    self.theta
+  }
+
+  fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
+    self.theta = Some(theta);
+  }
+
+  fn theta_bounds(&self) -> (f64, f64) {
+    (0.0, f64::INFINITY)
+  }
+
+  fn invalid_thetas(&self) -> Vec<f64> {
+    vec![]
+  }
+
+  // tau_from_theta, theta_from_tau, tail_dependence, pdf, cdf, …
 }
 ```
 
-Then the accessors are one-liners over those fields, and add your
-family's variant to `BivariateFamily` (its `ALL` and `parameter_count`
-too) plus a `pub mod` line in `stochastic-rs-copulas/src/bivariate.rs`.
+`validate_theta` admits a finite `theta` only, so an infinite bound renders as `< inf` in the panic and the error
+(``theta must satisfy `0.0 <= theta < inf`, got theta = -1.0``). Add your family's variant to `BivariateFamily` (its
+`ALL` and `parameter_count` too) plus a `pub mod` line in `stochastic-rs-copulas/src/bivariate.rs`.
 
 Note Clayton's real bounds: `(0.0, f64::INFINITY)` with
-`invalid_thetas: vec![]`. The `θ ∈ (-1, ∞)` domain with a degenerate
+`invalid_thetas()` returning `vec![]`. The `θ ∈ (-1, ∞)` domain with a degenerate
 point at 0 is the textbook Clayton, but this crate ships the
 positive-dependence branch only, and encodes that by the bound rather
 than by an invalid-theta entry.
@@ -249,8 +269,7 @@ produces samples with a different τ than requested:
 ```rust
 #[test]
 fn clayton_independence_sample_kendall_tau_near_zero() {
-  let mut cop = Clayton::new();
-  cop.set_theta(cop.theta_from_tau(target_tau).unwrap());
+  let cop = Clayton::from_tau(target_tau).unwrap();
   let samples = cop.sample(50_000, &Deterministic::new(42)).unwrap();
   // empirical Kendall's tau on `samples` within tolerance of target_tau
 }
@@ -263,6 +282,8 @@ fn clayton_independence_sample_kendall_tau_near_zero() {
 
 - **Do not** give the struct a `seed` field. Seeding is per-call, via
   `sample(n, &seed)`.
+- **Do not** expose a parameter field; `theta()` and the family's getters are the read path, `new` / `set_*` the
+  validated write path.
 - **Do not** write scalar `pdf(u, v)` / `cdf(u, v)`. The trait is
   vectorised over an `(n, 2)` array and returns `Result`.
 - **Do not** clamp a τ that the family cannot reach to the boundary;
@@ -287,9 +308,9 @@ fn clayton_independence_sample_kendall_tau_near_zero() {
 - `Fgm` (`bivariate/fgm.rs`) — Farlie-Gumbel-Morgenstern, narrow
   τ ∈ [-0.22, 0.22].
 - `MarshallOlkin` (`bivariate/marshall_olkin.rs`) — the awkward case:
-  a `with_alpha_beta` constructor that takes the two shock rates
-  directly (`theta_from_tau` covers only the symmetric slice), and the
-  only non-exchangeable family here.
+  `new(alpha, beta)` takes the two shock rates directly (`from_tau` and
+  `theta_from_tau` cover only the symmetric slice, the one where `theta()`
+  is `Some`), and the only non-exchangeable family here.
   Read it before assuming every family fits the `theta` mould.
 
 ## Related SKILLs

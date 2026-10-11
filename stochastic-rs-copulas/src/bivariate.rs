@@ -16,7 +16,7 @@
 //! | Full `(-1, 1)` | [`frank::Frank`], [`gaussian::GaussianCopula`], [`t_copula::TCopula`], [`plackett::Plackett`] |
 //! | Positive only, `[0, 1)` | [`clayton::Clayton`], [`galambos::Galambos`], [`husler_reiss::HuslerReiss`], [`gumbel::Gumbel`], [`joe::Joe`] |
 //! | Narrow, both signs | [`amh::Amh`] (`[-0.18, 0.33]`, asymmetric around 0), [`fgm::Fgm`] (`[-0.22, 0.22]`) |
-//! | Degenerate (no free parameter in practice) | [`independence::Independence`] (`{0}` only); [`marshall_olkin::MarshallOlkin`] on its symmetric `theta` path (`(0, 1]`) — its `with_alpha_beta` constructor takes the two shock rates directly and is the only family in this crate that is not exchangeable in general |
+//! | Degenerate (no free parameter in practice) | [`independence::Independence`] (`{0}` only); [`marshall_olkin::MarshallOlkin`] on its symmetric `theta` path (`(0, 1]`) — its `new(alpha, beta)` constructor takes the two shock rates directly and is the only family in this crate that is not exchangeable in general |
 //!
 //! A τ-b the family cannot reach fails `.fit()` itself with `InvalidParameter { name: "tau", .. }` and stores nothing:
 //! [`clayton::Clayton`] on negatively dependent data is an error, never a clamped or out-of-bounds `θ`.
@@ -24,7 +24,7 @@
 //! ### Tail shape, and one heuristic to distrust
 //!
 //! Equal (here, zero) upper- and lower-tail dependence does **not** imply
-//! radial symmetry. [`amh::Amh`] has zero tail dependence in both tails
+//! radial symmetry. [`amh::Amh`] has zero tail dependence in both tails below `θ = 1`
 //! yet is measurably not radially symmetric
 //! (`C(u,v) ≠ u+v-1+C(1-u,1-v)`, confirmed numerically) — the in-tree
 //! counterexample to that heuristic. Radially symmetric here:
@@ -190,30 +190,26 @@ mod tests {
   /// Frank and Gumbel sit off the independence boundary their `percent_point` shortcuts around, so the general path runs.
   #[test]
   fn every_bivariate_sampler_is_seedable_and_deterministic() {
-    let mut clayton = Clayton::new();
-    clayton.set_theta(clayton.theta_from_tau(0.5).unwrap());
+    let clayton = Clayton::from_tau(0.5).unwrap();
     assert_eq!(
       clayton.sample(64, &Deterministic::new(42)).unwrap(),
       clayton.sample(64, &Deterministic::new(42)).unwrap(),
       "Clayton replay"
     );
-    let mut clayton_2 = Clayton::new();
-    clayton_2.set_theta(clayton_2.theta_from_tau(0.5).unwrap());
+    let clayton_2 = Clayton::from_tau(0.5).unwrap();
     assert_eq!(
       clayton.sample(64, &Deterministic::new(42)).unwrap(),
       clayton_2.sample(64, &Deterministic::new(42)).unwrap(),
       "Clayton cross-object"
     );
 
-    let mut frank = Frank::new(None);
-    frank.set_theta(frank.theta_from_tau(0.5).unwrap());
+    let frank = Frank::from_tau(0.5).unwrap();
     assert_eq!(
       frank.sample(64, &Deterministic::new(42)).unwrap(),
       frank.sample(64, &Deterministic::new(42)).unwrap(),
       "Frank replay"
     );
-    let mut frank_2 = Frank::new(None);
-    frank_2.set_theta(frank_2.theta_from_tau(0.5).unwrap());
+    let frank_2 = Frank::from_tau(0.5).unwrap();
     assert_eq!(
       frank.sample(64, &Deterministic::new(42)).unwrap(),
       frank_2.sample(64, &Deterministic::new(42)).unwrap(),
@@ -222,15 +218,13 @@ mod tests {
 
     // theta = 1 / (1 - 0.5) = 2.0 — well past the theta == 1.0 independence
     // boundary that `Gumbel::percent_point` shortcuts around.
-    let mut gumbel = Gumbel::new(None);
-    gumbel.set_theta(gumbel.theta_from_tau(0.5).unwrap());
+    let gumbel = Gumbel::from_tau(0.5).unwrap();
     assert_eq!(
       gumbel.sample(64, &Deterministic::new(42)).unwrap(),
       gumbel.sample(64, &Deterministic::new(42)).unwrap(),
       "Gumbel replay"
     );
-    let mut gumbel_2 = Gumbel::new(None);
-    gumbel_2.set_theta(gumbel_2.theta_from_tau(0.5).unwrap());
+    let gumbel_2 = Gumbel::from_tau(0.5).unwrap();
     assert_eq!(
       gumbel.sample(64, &Deterministic::new(42)).unwrap(),
       gumbel_2.sample(64, &Deterministic::new(42)).unwrap(),

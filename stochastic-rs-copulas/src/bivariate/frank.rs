@@ -46,22 +46,27 @@ const TAU_SERIES: [f64; 18] = [
   -3.984859395313849e-30,
 ];
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Frank {
-  pub r#type: BivariateFamily,
-  pub theta: Option<f64>,
-  pub theta_bounds: (f64, f64),
-  pub invalid_thetas: Vec<f64>,
+  theta: Option<f64>,
 }
 
 impl Frank {
-  pub fn new(theta: Option<f64>) -> Self {
-    Self {
-      r#type: BivariateFamily::Frank,
-      theta,
-      theta_bounds: (f64::NEG_INFINITY, f64::INFINITY),
-      invalid_thetas: vec![],
-    }
+  /// A Frank copula; panics unless `theta` is finite.
+  pub fn new(theta: f64) -> Self {
+    Self::try_new(theta).unwrap_or_else(|e| panic!("{e}"))
+  }
+
+  /// `new` with the domain error returned instead of a panic.
+  pub fn try_new(theta: f64) -> Result<Self, CopulaError> {
+    let copula = Self { theta: Some(theta) };
+    copula.check_theta()?;
+    Ok(copula)
+  }
+
+  /// The copula whose Kendall's τ is `tau`.
+  pub fn from_tau(tau: f64) -> Result<Self, CopulaError> {
+    Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
   /// `h⁻¹(y | v)` at `θ > 0` given `v̄ = 1 − v`, before the domain rule: `−ln(1 + x)/θ`,
@@ -106,34 +111,30 @@ impl Frank {
   }
 }
 
-impl Default for Frank {
-  fn default() -> Self {
-    Self::new(None)
-  }
-}
-
 impl BivariateExt for Frank {
   fn family(&self) -> BivariateFamily {
-    self.r#type
+    BivariateFamily::Frank
   }
 
   fn theta(&self) -> Option<f64> {
     self.theta
   }
 
-  fn theta_bounds(&self) -> (f64, f64) {
-    self.theta_bounds
-  }
-
-  fn invalid_thetas(&self) -> Vec<f64> {
-    self.invalid_thetas.clone()
-  }
-
   fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
     self.theta = Some(theta);
   }
 
+  fn theta_bounds(&self) -> (f64, f64) {
+    (f64::NEG_INFINITY, f64::INFINITY)
+  }
+
+  fn invalid_thetas(&self) -> Vec<f64> {
+    vec![]
+  }
+
   fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
     let theta = self.theta.unwrap();
     let a = ((-theta * &t).exp() - 1.0) / ((-theta).exp() - 1.0);
     let out = -(a.ln());
@@ -285,7 +286,7 @@ mod tests {
 
   #[test]
   fn frank_tail_dependence_is_zero() {
-    let f = Frank::new(Some(6.0));
+    let f = Frank::new(6.0);
     let td = f.tail_dependence().unwrap();
     assert_eq!(td.lower, 0.0);
     assert_eq!(td.upper, 0.0);
@@ -295,7 +296,7 @@ mod tests {
   /// it) and must actually behave like one: `pdf(u,v) = 1` everywhere.
   #[test]
   fn frank_pdf_at_independence_is_one() {
-    let f = Frank::new(Some(0.0));
+    let f = Frank::new(0.0);
     let pdf = f.pdf(array![[0.2_f64, 0.9], [0.5, 0.5]].view()).unwrap();
     assert!(approx(pdf[0], 1.0, 1e-12), "got {}", pdf[0]);
     assert!(approx(pdf[1], 1.0, 1e-12), "got {}", pdf[1]);
@@ -308,7 +309,7 @@ mod tests {
   /// is `C(u,v) = uv`.
   #[test]
   fn frank_cdf_at_independence_is_uv() {
-    let f = Frank::new(Some(0.0));
+    let f = Frank::new(0.0);
     let cdf = f.cdf(array![[0.3_f64, 0.7], [0.2, 0.9]].view()).unwrap();
     assert!(approx(cdf[0], 0.21, 1e-12), "got {}", cdf[0]);
     assert!(approx(cdf[1], 0.18, 1e-12), "got {}", cdf[1]);
@@ -320,7 +321,7 @@ mod tests {
   /// At independence, $C(u,v)=uv \Rightarrow \partial_v C = u$ — not `v`.
   #[test]
   fn frank_partial_derivative_at_independence_returns_u() {
-    let f = Frank::new(Some(0.0));
+    let f = Frank::new(0.0);
     let pd = f
       .partial_derivative(array![[0.3_f64, 0.6], [0.2, 0.9]].view())
       .unwrap();
@@ -332,7 +333,7 @@ mod tests {
   /// `θ = ±1e300` and `±∞`, where a quadrature over `[0, θ]` would not return.
   #[test]
   fn frank_tau_matches_mpmath() {
-    let f = Frank::new(None);
+    let f = Frank::default();
     for (theta, want) in [
       (1e-8, 1.111111111111111e-9),
       (0.05, 0.00555541667257152),
@@ -352,13 +353,13 @@ mod tests {
     assert_eq!(f.tau_from_theta(f64::INFINITY), 1.0);
     assert_eq!(f.tau_from_theta(f64::NEG_INFINITY), -1.0);
     assert!(f.tau_from_theta(f64::NAN).is_nan());
-    assert_eq!(Frank::new(Some(1e300)).tau(), Some(1.0));
+    assert_eq!(Frank::new(1e300).tau(), Some(1.0));
   }
 
   /// A `τ` near independence inverts: the bracket ends at `θ = 0`, where `τ` is exactly 0.
   #[test]
   fn frank_inverts_a_tau_near_independence() {
-    let f = Frank::new(None);
+    let f = Frank::default();
     for tau in [1e-11, -1e-9, 1e-6, -0.003] {
       let theta = f.theta_from_tau(tau).unwrap();
       assert!(
@@ -390,7 +391,7 @@ mod tests {
     let n = 4000usize;
     let se = (2.0 * (2.0 * n as f64 + 5.0) / (9.0 * n as f64 * (n as f64 - 1.0))).sqrt();
     let tol = 6.0 * se;
-    let f = Frank::new(Some(0.0));
+    let f = Frank::new(0.0);
     let best_abs_tau = [2718_u64, 999, 42]
       .into_iter()
       .map(|seed| {

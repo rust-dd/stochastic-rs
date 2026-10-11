@@ -26,7 +26,7 @@ fn err_to_py(e: CopulaError) -> PyErr {
 }
 
 macro_rules! py_bivariate {
-  ($py_name:ident, $inner_path:path, $name_str:literal, $ctor:expr) => {
+  ($py_name:ident, $inner_path:path, $name_str:literal, $try_new:expr, $from_tau:expr) => {
     #[pyclass(name = $name_str, unsendable)]
     pub struct $py_name {
       inner: $inner_path,
@@ -38,15 +38,14 @@ macro_rules! py_bivariate {
       #[new]
       #[pyo3(signature = (theta=None, tau=None))]
       fn new(theta: Option<f64>, tau: Option<f64>) -> PyResult<Self> {
-        stochastic_rs_distributions::python::value_error_on_panic(|| {
-          let mut inner = ($ctor)();
-          if let Some(t) = theta {
-            BivariateExt::set_theta(&mut inner, t);
-          }
-          Self {
-            inner,
-            pending_tau: tau,
-          }
+        let inner = match (theta, tau) {
+          (Some(t), _) => ($try_new)(t).map_err(err_to_py)?,
+          (None, Some(k)) => ($from_tau)(k).map_err(err_to_py)?,
+          (None, None) => <$inner_path>::default(),
+        };
+        Ok(Self {
+          inner,
+          pending_tau: tau,
         })
       }
 
@@ -58,8 +57,10 @@ macro_rules! py_bivariate {
         self.pending_tau.or_else(|| BivariateExt::tau(&self.inner))
       }
 
-      fn set_theta(&mut self, theta: f64) {
-        BivariateExt::set_theta(&mut self.inner, theta);
+      fn set_theta(&mut self, theta: f64) -> PyResult<()> {
+        stochastic_rs_distributions::python::value_error_on_panic(|| {
+          BivariateExt::set_theta(&mut self.inner, theta)
+        })
       }
 
       fn set_tau(&mut self, tau: f64) {
@@ -128,19 +129,35 @@ py_bivariate!(
   PyClayton,
   crate::bivariate::clayton::Clayton,
   "Clayton",
-  crate::bivariate::clayton::Clayton::new
+  crate::bivariate::clayton::Clayton::try_new,
+  crate::bivariate::clayton::Clayton::from_tau
 );
-py_bivariate!(PyGumbel, crate::bivariate::gumbel::Gumbel, "Gumbel", || {
-  crate::bivariate::gumbel::Gumbel::new(None)
-});
-py_bivariate!(PyFrank, crate::bivariate::frank::Frank, "Frank", || {
-  crate::bivariate::frank::Frank::new(None)
-});
+py_bivariate!(
+  PyGumbel,
+  crate::bivariate::gumbel::Gumbel,
+  "Gumbel",
+  crate::bivariate::gumbel::Gumbel::try_new,
+  crate::bivariate::gumbel::Gumbel::from_tau
+);
+py_bivariate!(
+  PyFrank,
+  crate::bivariate::frank::Frank,
+  "Frank",
+  crate::bivariate::frank::Frank::try_new,
+  crate::bivariate::frank::Frank::from_tau
+);
 py_bivariate!(
   PyIndependence,
   crate::bivariate::independence::Independence,
   "Independence",
-  crate::bivariate::independence::Independence::new
+  |t: f64| {
+    let c = crate::bivariate::independence::Independence::new();
+    c.validate_theta(t).map(|()| c)
+  },
+  |k: f64| {
+    let c = crate::bivariate::independence::Independence::new();
+    c.theta_from_tau(k).map(|_| c)
+  }
 );
 
 #[pyclass(name = "EmpiricalCopula2D", unsendable)]
@@ -226,8 +243,18 @@ macro_rules! py_two_parameter {
       #[new]
       #[pyo3(signature = (theta=None, delta=None, tau=None))]
       fn new(theta: Option<f64>, delta: Option<f64>, tau: Option<f64>) -> PyResult<Self> {
-        stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-          inner: <$inner_path>::new(theta, delta),
+        let delta = delta.unwrap_or_else(|| <$inner_path>::default().delta());
+        let inner = match (theta, tau) {
+          (Some(t), _) => <$inner_path>::try_new(t, delta).map_err(err_to_py)?,
+          (None, Some(k)) => <$inner_path>::from_tau(k, delta).map_err(err_to_py)?,
+          (None, None) => {
+            let mut inner = <$inner_path>::default();
+            stochastic_rs_distributions::python::value_error_on_panic(|| inner.set_delta(delta))?;
+            inner
+          }
+        };
+        Ok(Self {
+          inner,
           pending_tau: tau,
         })
       }
@@ -237,19 +264,21 @@ macro_rules! py_two_parameter {
       }
 
       fn delta(&self) -> f64 {
-        self.inner.delta
+        self.inner.delta()
       }
 
       fn tau(&self) -> Option<f64> {
         self.pending_tau.or_else(|| BivariateExt::tau(&self.inner))
       }
 
-      fn set_theta(&mut self, theta: f64) {
-        BivariateExt::set_theta(&mut self.inner, theta);
+      fn set_theta(&mut self, theta: f64) -> PyResult<()> {
+        stochastic_rs_distributions::python::value_error_on_panic(|| {
+          BivariateExt::set_theta(&mut self.inner, theta)
+        })
       }
 
-      fn set_delta(&mut self, delta: f64) {
-        self.inner.delta = delta;
+      fn set_delta(&mut self, delta: f64) -> PyResult<()> {
+        stochastic_rs_distributions::python::value_error_on_panic(|| self.inner.set_delta(delta))
       }
 
       fn set_tau(&mut self, tau: f64) {
@@ -478,10 +507,10 @@ pub fn copula_gof<'py>(
     }};
   }
   let result = match family.to_ascii_lowercase().as_str() {
-    "clayton" => run!(crate::bivariate::clayton::Clayton::new()),
-    "gumbel" => run!(crate::bivariate::gumbel::Gumbel::new(None)),
-    "frank" => run!(crate::bivariate::frank::Frank::new(None)),
-    "gaussian" => run!(crate::bivariate::gaussian::GaussianCopula::new()),
+    "clayton" => run!(crate::bivariate::clayton::Clayton::default()),
+    "gumbel" => run!(crate::bivariate::gumbel::Gumbel::default()),
+    "frank" => run!(crate::bivariate::frank::Frank::default()),
+    "gaussian" => run!(crate::bivariate::gaussian::GaussianCopula::default()),
     "bb1" => run!(crate::bivariate::bb1::Bb1::default()),
     "bb7" => run!(crate::bivariate::bb7::Bb7::default()),
     other => {

@@ -1,7 +1,9 @@
-//! Every family answers `tail_dependence` through the `Result` channel: `NotFitted` before a parameter is set and
-//! `InvalidParameter` for a stored one outside its range (a NaN is outside every range), never a coefficient.
+//! Every family answers `tail_dependence` through the `Result` channel, `NotFitted` before its parameters are set
+//! (Independence has none), and no family stores one outside its range, a NaN included.
 
 use std::collections::HashSet;
+use std::panic::AssertUnwindSafe;
+use std::panic::catch_unwind;
 
 use stochastic_rs_copulas::CopulaError;
 use stochastic_rs_copulas::bivariate::BivariateFamily;
@@ -21,48 +23,63 @@ use stochastic_rs_copulas::bivariate::marshall_olkin::MarshallOlkin;
 use stochastic_rs_copulas::bivariate::plackett::Plackett;
 use stochastic_rs_copulas::bivariate::t_copula::TCopula;
 use stochastic_rs_copulas::traits::BivariateExt;
+use stochastic_rs_copulas::traits::TailDependence;
 
 fn boxed(copula: impl BivariateExt + 'static) -> Box<dyn BivariateExt> {
   Box::new(copula)
 }
 
+fn unfitted() -> Vec<Box<dyn BivariateExt>> {
+  vec![
+    boxed(Amh::default()),
+    boxed(Bb1::default()),
+    boxed(Bb7::default()),
+    boxed(Clayton::default()),
+    boxed(Fgm::default()),
+    boxed(Frank::default()),
+    boxed(Galambos::default()),
+    boxed(GaussianCopula::default()),
+    boxed(Gumbel::default()),
+    boxed(HuslerReiss::default()),
+    boxed(Independence::new()),
+    boxed(Joe::default()),
+    boxed(MarshallOlkin::default()),
+    boxed(Plackett::default()),
+    boxed(TCopula::default()),
+  ]
+}
+
 #[test]
 fn every_family_gates_tail_dependence_on_its_parameters() {
-  let mut families = vec![
-    boxed(Amh::new()),
-    boxed(Bb1::new(None, None)),
-    boxed(Bb7::new(None, None)),
-    boxed(Clayton::new()),
-    boxed(Fgm::new()),
-    boxed(Frank::new(None)),
-    boxed(Galambos::new()),
-    boxed(GaussianCopula::new()),
-    boxed(Gumbel::new(None)),
-    boxed(HuslerReiss::new()),
-    boxed(Independence::new()),
-    boxed(Joe::new()),
-    boxed(MarshallOlkin::new()),
-    boxed(Plackett::new()),
-    boxed(TCopula::new()),
-  ];
+  let families = unfitted();
   let covered = families.iter().map(|c| c.family()).collect::<HashSet<_>>();
   assert!(BivariateFamily::ALL.iter().all(|f| covered.contains(f)));
-  for c in &mut families {
-    assert_eq!(
-      c.tail_dependence(),
-      Err(CopulaError::NotFitted),
-      "{:?}",
-      c.family()
-    );
-    c.set_theta(f64::NAN);
-    let got = c.tail_dependence();
+  for c in &families {
+    let want = if c.family() == BivariateFamily::Independence {
+      Ok(TailDependence {
+        lower: 0.0,
+        upper: 0.0,
+      })
+    } else {
+      Err(CopulaError::NotFitted)
+    };
+    assert_eq!(c.tail_dependence(), want, "{:?}", c.family());
+  }
+}
+
+/// Every setter panics on a NaN `theta` with the parameter's message and keeps its state, so no gate ever sees one.
+#[test]
+fn no_family_stores_a_nan_theta() {
+  for mut c in unfitted() {
+    let (family, before) = (c.family(), c.theta());
+    let refused = catch_unwind(AssertUnwindSafe(|| c.set_theta(f64::NAN))).unwrap_err();
+    let message = refused
+      .downcast_ref::<String>()
+      .unwrap_or_else(|| panic!("{family:?}: not a formatted panic"));
     assert!(
-      matches!(
-        got,
-        Err(CopulaError::InvalidParameter { name: "theta", .. })
-      ),
-      "{:?}: {got:?}",
-      c.family()
+      message.starts_with("theta must satisfy `") && message.ends_with("`, got theta = NaN"),
+      "{family:?}: {message}"
     );
+    assert_eq!(c.theta(), before, "{family:?} stored a theta");
   }
 }

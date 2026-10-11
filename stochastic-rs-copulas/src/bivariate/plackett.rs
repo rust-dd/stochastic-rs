@@ -37,28 +37,27 @@ use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Plackett {
-  pub r#type: BivariateFamily,
-  pub theta: Option<f64>,
-  pub theta_bounds: (f64, f64),
-  pub invalid_thetas: Vec<f64>,
-}
-
-impl Default for Plackett {
-  fn default() -> Self {
-    Self {
-      r#type: BivariateFamily::Plackett,
-      theta: None,
-      theta_bounds: (1e-12, f64::INFINITY),
-      invalid_thetas: vec![],
-    }
-  }
+  theta: Option<f64>,
 }
 
 impl Plackett {
-  pub fn new() -> Self {
-    Self::default()
+  /// A Plackett copula; panics unless `1e-12 <= theta < ∞`.
+  pub fn new(theta: f64) -> Self {
+    Self::try_new(theta).unwrap_or_else(|e| panic!("{e}"))
+  }
+
+  /// `new` with the domain error returned instead of a panic.
+  pub fn try_new(theta: f64) -> Result<Self, CopulaError> {
+    let copula = Self { theta: Some(theta) };
+    copula.check_theta()?;
+    Ok(copula)
+  }
+
+  /// The copula whose Kendall's τ is `tau`.
+  pub fn from_tau(tau: f64) -> Result<Self, CopulaError> {
+    Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
   /// The root in `[0, 1]` of `bu² − cu + e = 0` (`∂_v C = y` squared, `a = y(1 − y)`), as `(c + (2y − 1)d)/(2b)` from
@@ -99,23 +98,24 @@ impl Plackett {
 
 impl BivariateExt for Plackett {
   fn family(&self) -> BivariateFamily {
-    self.r#type
+    BivariateFamily::Plackett
   }
 
   fn theta(&self) -> Option<f64> {
     self.theta
   }
 
+  fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
+    self.theta = Some(theta);
+  }
+
   fn theta_bounds(&self) -> (f64, f64) {
-    self.theta_bounds
+    (1e-12, f64::INFINITY)
   }
 
   fn invalid_thetas(&self) -> Vec<f64> {
-    self.invalid_thetas.clone()
-  }
-
-  fn set_theta(&mut self, theta: f64) {
-    self.theta = Some(theta);
+    vec![]
   }
 
   /// Density (Nelsen 2006 eq.3.3.8):
@@ -246,7 +246,7 @@ mod tests {
 
   #[test]
   fn plackett_independence_theta_one_reproduces_product_cdf() {
-    let mut c = Plackett::new();
+    let mut c = Plackett::default();
     c.set_theta(1.0);
     let x = array![[0.3_f64, 0.7], [0.5, 0.5]];
     let cdf = c.cdf(x.view()).unwrap();
@@ -257,9 +257,9 @@ mod tests {
   #[test]
   fn plackett_cdf_monotone_in_theta() {
     let x = array![[0.5_f64, 0.5]];
-    let mut c_low = Plackett::new();
+    let mut c_low = Plackett::default();
     c_low.set_theta(0.2);
-    let mut c_high = Plackett::new();
+    let mut c_high = Plackett::default();
     c_high.set_theta(5.0);
     let lo = c_low.cdf(x.view()).unwrap()[0];
     let hi = c_high.cdf(x.view()).unwrap()[0];
@@ -270,7 +270,7 @@ mod tests {
 
   #[test]
   fn plackett_cdf_marginal_recovers_input() {
-    let mut c = Plackett::new();
+    let mut c = Plackett::default();
     c.set_theta(3.0);
     let x = array![[0.5_f64, 1.0], [1.0, 0.4]];
     let cdf = c.cdf(x.view()).unwrap();
@@ -280,13 +280,13 @@ mod tests {
 
   #[test]
   fn plackett_theta_from_tau_zero_tau_gives_independence() {
-    let c = Plackett::new();
+    let c = Plackett::default();
     assert!(approx(c.theta_from_tau(0.0).unwrap(), 1.0, 1e-12));
   }
 
   #[test]
   fn plackett_pdf_positive_on_unit_square_interior() {
-    let mut c = Plackett::new();
+    let mut c = Plackett::default();
     c.set_theta(2.0);
     let x = array![[0.25_f64, 0.75], [0.5, 0.5], [0.1, 0.9]];
     let pdf = c.pdf(x.view()).unwrap();
@@ -297,14 +297,14 @@ mod tests {
 
   #[test]
   fn plackett_generator_returns_err_not_archimedean() {
-    let c = Plackett::new();
+    let c = Plackett::default();
     let t = array![0.5_f64, 0.8];
     assert!(c.generator(t.view()).is_err());
   }
 
   #[test]
   fn plackett_tail_dependence_is_zero() {
-    let mut c = Plackett::new();
+    let mut c = Plackett::default();
     c.set_theta(5.0);
     let td = c.tail_dependence().unwrap();
     assert_eq!(td.lower, 0.0);
@@ -314,7 +314,7 @@ mod tests {
   /// Exact values from mpmath (`1 − 4∬ ∂_u C ∂_v C`); the 200-panel rule is good to `5e-9`.
   #[test]
   fn plackett_tau_matches_mpmath() {
-    let c = Plackett::new();
+    let c = Plackett::default();
     for (theta, want) in [
       (0.5, -0.1530484986351886),
       (2.0, 0.1530484986351886),

@@ -46,30 +46,30 @@ fn with_theta<C: BivariateExt>(mut copula: C, theta: f64) -> C {
 /// The fifteen families at the stream fixture's parameters; Independence, which the fixture lacks, at `θ = 0`.
 fn families() -> Vec<Family> {
   vec![
-    ("amh", Box::new(with_theta(Amh::new(), 0.5))),
-    ("bb1", Box::new(Bb1::new(Some(0.8), Some(1.6)))),
-    ("bb7", Box::new(Bb7::new(Some(1.7), Some(0.9)))),
-    ("clayton", Box::new(with_theta(Clayton::new(), 2.0))),
-    ("fgm", Box::new(with_theta(Fgm::new(), 0.5))),
-    ("frank", Box::new(Frank::new(Some(4.0)))),
-    ("galambos", Box::new(with_theta(Galambos::new(), 1.5))),
-    ("gaussian", Box::new(with_theta(GaussianCopula::new(), 0.5))),
-    ("gumbel", Box::new(Gumbel::new(Some(2.0)))),
+    ("amh", Box::new(with_theta(Amh::default(), 0.5))),
+    ("bb1", Box::new(Bb1::new(0.8, 1.6))),
+    ("bb7", Box::new(Bb7::new(1.7, 0.9))),
+    ("clayton", Box::new(with_theta(Clayton::default(), 2.0))),
+    ("fgm", Box::new(with_theta(Fgm::default(), 0.5))),
+    ("frank", Box::new(Frank::new(4.0))),
+    ("galambos", Box::new(with_theta(Galambos::default(), 1.5))),
+    (
+      "gaussian",
+      Box::new(with_theta(GaussianCopula::default(), 0.5)),
+    ),
+    ("gumbel", Box::new(Gumbel::new(2.0))),
     (
       "husler_reiss",
-      Box::new(with_theta(HuslerReiss::new(), 1.5)),
+      Box::new(with_theta(HuslerReiss::default(), 1.5)),
     ),
     (
       "independence",
       Box::new(with_theta(Independence::new(), 0.0)),
     ),
-    ("joe", Box::new(with_theta(Joe::new(), 2.0))),
-    (
-      "marshall_olkin",
-      Box::new(MarshallOlkin::with_alpha_beta(0.3, 0.6)),
-    ),
-    ("plackett", Box::new(with_theta(Plackett::new(), 3.0))),
-    ("t_copula", Box::new(with_theta(TCopula::with_nu(4.0), 0.5))),
+    ("joe", Box::new(with_theta(Joe::default(), 2.0))),
+    ("marshall_olkin", Box::new(MarshallOlkin::new(0.3, 0.6))),
+    ("plackett", Box::new(with_theta(Plackett::default(), 3.0))),
+    ("t_copula", Box::new(TCopula::new(0.5, 4.0))),
   ]
 }
 
@@ -107,13 +107,13 @@ fn the_numerical_inverse_converges_at_extreme_levels() {
   let y = Array1::from_iter(extremes.iter().flat_map(|&y| extremes.map(|_| y)));
   let v = Array1::from_iter(extremes.iter().flat_map(|_| extremes));
   let numerical: [Family; 4] = [
-    ("galambos", Box::new(with_theta(Galambos::new(), 1.5))),
-    ("gumbel", Box::new(Gumbel::new(Some(2.0)))),
+    ("galambos", Box::new(with_theta(Galambos::default(), 1.5))),
+    ("gumbel", Box::new(Gumbel::new(2.0))),
     (
       "husler_reiss",
-      Box::new(with_theta(HuslerReiss::new(), 1.5)),
+      Box::new(with_theta(HuslerReiss::default(), 1.5)),
     ),
-    ("joe", Box::new(with_theta(Joe::new(), 2.0))),
+    ("joe", Box::new(with_theta(Joe::default(), 2.0))),
   ];
   for (name, copula) in numerical {
     let u = copula
@@ -129,8 +129,8 @@ fn gumbel_and_joe_sample_at_high_dependence() {
   std::thread::scope(|scope| {
     for theta in [50.0, 100.0, 200.0] {
       let pair: [Family; 2] = [
-        ("gumbel", Box::new(Gumbel::new(Some(theta)))),
-        ("joe", Box::new(with_theta(Joe::new(), theta))),
+        ("gumbel", Box::new(Gumbel::new(theta))),
+        ("joe", Box::new(with_theta(Joe::default(), theta))),
       ];
       for (name, copula) in pair {
         scope.spawn(move || {
@@ -213,9 +213,9 @@ fn assert_h_and_inverse(
 
 #[test]
 fn gumbel_and_joe_match_the_60_digit_references() {
-  let gumbel = |theta| Box::new(Gumbel::new(Some(theta))) as Box<dyn BivariateExt>;
+  let gumbel = |theta| Box::new(Gumbel::new(theta)) as Box<dyn BivariateExt>;
   assert_h_and_inverse("gumbel", gumbel, &GUMBEL_H, &GUMBEL_INVERSE);
-  let joe = |theta| Box::new(with_theta(Joe::new(), theta)) as Box<dyn BivariateExt>;
+  let joe = |theta| Box::new(with_theta(Joe::default(), theta)) as Box<dyn BivariateExt>;
   assert_h_and_inverse("joe", joe, &JOE_H, &JOE_INVERSE);
 }
 
@@ -248,15 +248,18 @@ fn the_edges_of_the_square_answer_inside_it() {
   let edges = array![[0.0, 0.5], [1.0, 0.5], [0.3, 0.0], [0.3, 1.0]];
   let mut copulas = families();
   for theta in [800.0, -800.0, 1000.0, -1000.0] {
-    copulas.push(("frank at |θ| ≥ 800", Box::new(Frank::new(Some(theta)))));
+    copulas.push(("frank at |θ| ≥ 800", Box::new(Frank::new(theta))));
   }
-  copulas.push(("amh 0.99", Box::new(with_theta(Amh::new(), 0.99))));
-  copulas.push(("amh 1", Box::new(with_theta(Amh::new(), 1.0))));
+  copulas.push(("amh 0.99", Box::new(with_theta(Amh::default(), 0.99))));
+  copulas.push(("amh 1", Box::new(with_theta(Amh::default(), 1.0))));
   copulas.push((
     "gaussian 0",
-    Box::new(with_theta(GaussianCopula::new(), 0.0)),
+    Box::new(with_theta(GaussianCopula::default(), 0.0)),
   ));
-  copulas.push(("plackett 0.01", Box::new(with_theta(Plackett::new(), 0.01))));
+  copulas.push((
+    "plackett 0.01",
+    Box::new(with_theta(Plackett::default(), 0.01)),
+  ));
   for (name, copula) in copulas {
     let u = copula.percent_point(y.view(), v.view()).unwrap();
     assert!(u.iter().all(|u| (0.0..=1.0).contains(u)), "{name}: {u}");
@@ -275,7 +278,7 @@ fn the_edges_of_the_square_answer_inside_it() {
 #[test]
 fn the_gaussian_inverse_answers_its_degenerate_laws() {
   let at = |rho: f64, y: f64, v: f64| {
-    with_theta(GaussianCopula::new(), rho)
+    with_theta(GaussianCopula::default(), rho)
       .percent_point(array![y].view(), array![v].view())
       .unwrap()[0]
   };
@@ -481,10 +484,10 @@ fn assert_reference(
 #[test]
 fn the_closed_forms_match_the_mpmath_references() {
   for (theta, y, v, want) in FRANK.into_iter().chain(FRANK_EXTREME) {
-    assert_reference("frank", &Frank::new(Some(theta)), (y, v, want), 1e-14);
+    assert_reference("frank", &Frank::new(theta), (y, v, want), 1e-14);
   }
   for (theta, u, v, want) in FRANK_H {
-    let got = Frank::new(Some(theta))
+    let got = Frank::new(theta)
       .partial_derivative(array![[u, v]].view())
       .unwrap()[0];
     assert!(
@@ -493,25 +496,35 @@ fn the_closed_forms_match_the_mpmath_references() {
     );
   }
   for (theta, y, v, want) in FGM {
-    assert_reference("fgm", &with_theta(Fgm::new(), theta), (y, v, want), 1e-14);
+    assert_reference(
+      "fgm",
+      &with_theta(Fgm::default(), theta),
+      (y, v, want),
+      1e-14,
+    );
   }
   for (theta, y, v, want) in AMH.into_iter().chain(AMH_ONE) {
-    assert_reference("amh", &with_theta(Amh::new(), theta), (y, v, want), 1e-14);
+    assert_reference(
+      "amh",
+      &with_theta(Amh::default(), theta),
+      (y, v, want),
+      1e-14,
+    );
   }
   for (theta, y, v, want) in PLACKETT.into_iter().chain(PLACKETT_HUGE) {
-    let plackett = with_theta(Plackett::new(), theta);
+    let plackett = with_theta(Plackett::default(), theta);
     assert_reference("plackett", &plackett, (y, v, want), 1e-14);
   }
   for (theta, y, v, want) in CLAYTON {
     assert_reference(
       "clayton",
-      &with_theta(Clayton::new(), theta),
+      &with_theta(Clayton::default(), theta),
       (y, v, want),
       1e-14,
     );
   }
   for (rho, nu, y, v, want) in T_COPULA {
-    let t = with_theta(TCopula::with_nu(nu), rho);
+    let t = TCopula::new(rho, nu);
     assert_reference("t_copula", &t, (y, v, want), 1e-12);
   }
 }
@@ -540,18 +553,18 @@ fn assert_round_trips(name: &str, copula: &dyn BivariateExt) {
 #[test]
 fn the_closed_forms_round_trip_through_h_on_the_grid() {
   for theta in [4.0, -3.0, 1e-4, 30.0, 800.0, -800.0, 1000.0, -1000.0] {
-    assert_round_trips("frank", &Frank::new(Some(theta)));
+    assert_round_trips("frank", &Frank::new(theta));
   }
   for theta in [0.5, -1.0, 1.0] {
-    assert_round_trips("fgm", &with_theta(Fgm::new(), theta));
+    assert_round_trips("fgm", &with_theta(Fgm::default(), theta));
   }
   for theta in [0.5, -1.0, 0.99, 1.0] {
-    assert_round_trips("amh", &with_theta(Amh::new(), theta));
+    assert_round_trips("amh", &with_theta(Amh::default(), theta));
   }
   for theta in [3.0, 0.2, 50.0] {
-    assert_round_trips("plackett", &with_theta(Plackett::new(), theta));
+    assert_round_trips("plackett", &with_theta(Plackett::default(), theta));
   }
   for (rho, nu) in [(0.5, 4.0), (-0.8, 2.5)] {
-    assert_round_trips("t_copula", &with_theta(TCopula::with_nu(nu), rho));
+    assert_round_trips("t_copula", &TCopula::new(rho, nu));
   }
 }
