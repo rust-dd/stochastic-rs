@@ -137,7 +137,7 @@ pub trait BivariateExt {
   }
 
   /// Kendall's τ-b of a two-column sample in `[0, 1]`, inverted through `theta_from_tau`; nothing is stored when the
-  /// family cannot represent it (`InvalidParameter { name: "tau", .. }`).
+  /// family cannot represent it (`InvalidParameter { name: "tau", .. }`) or the inverse fails `validate_theta`.
   fn fit(&mut self, X: ndarray::ArrayView2<f64>) -> Result<(), CopulaError> {
     check_pairs(X)?;
     let u = X.column(0);
@@ -150,6 +150,7 @@ pub trait BivariateExt {
       got: u.len(),
     })?;
     let theta = self.theta_from_tau(tau)?;
+    self.validate_theta(theta)?;
     self.set_theta(theta);
     Ok(())
   }

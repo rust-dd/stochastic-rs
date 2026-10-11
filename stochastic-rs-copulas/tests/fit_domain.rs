@@ -1,8 +1,11 @@
 //! A fit whose Kendall's τ the family cannot represent is `InvalidParameter { name: "tau", .. }`, never a stored
 //! out-of-range `theta`; a representable τ fits.
 
+use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView2;
 use stochastic_rs_copulas::CopulaError;
+use stochastic_rs_copulas::bivariate::BivariateFamily;
 use stochastic_rs_copulas::bivariate::amh::Amh;
 use stochastic_rs_copulas::bivariate::bb1::Bb1;
 use stochastic_rs_copulas::bivariate::bb7::Bb7;
@@ -21,6 +24,7 @@ use stochastic_rs_copulas::bivariate::t_copula::TCopula;
 use stochastic_rs_copulas::gof::pseudo_observations;
 use stochastic_rs_copulas::simd_rng::Deterministic;
 use stochastic_rs_copulas::traits::BivariateExt;
+use stochastic_rs_copulas::traits::TailDependence;
 
 /// Pseudo-observations with Kendall's τ = −1: `v_i = 1 − u_i` on the rank grid.
 fn countermonotone(n: usize) -> Array2<f64> {
@@ -356,6 +360,68 @@ fn a_likelihood_theta_outside_custom_bounds_is_an_error_and_stores_nothing() {
     "{got:?}"
   );
   assert_eq!((bb7.theta(), bb7.delta), (None, 1.1));
+}
+
+/// An outside implementor whose `theta_from_tau` ignores its own bounds `[0, 1]`.
+struct Careless {
+  theta: Option<f64>,
+}
+
+impl BivariateExt for Careless {
+  fn family(&self) -> BivariateFamily {
+    BivariateFamily::Clayton
+  }
+
+  fn theta(&self) -> Option<f64> {
+    self.theta
+  }
+
+  fn set_theta(&mut self, theta: f64) {
+    self.theta = Some(theta);
+  }
+
+  fn theta_bounds(&self) -> (f64, f64) {
+    (0.0, 1.0)
+  }
+
+  fn invalid_thetas(&self) -> Vec<f64> {
+    Vec::new()
+  }
+
+  fn tau_from_theta(&self, theta: f64) -> f64 {
+    theta
+  }
+
+  fn theta_from_tau(&self, _tau: f64) -> Result<f64, CopulaError> {
+    Ok(2.0)
+  }
+
+  fn tail_dependence(&self) -> TailDependence<f64> {
+    TailDependence {
+      lower: 0.0,
+      upper: 0.0,
+    }
+  }
+
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(Array1::ones(x.nrows()))
+  }
+
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(&x.column(0) * &x.column(1))
+  }
+}
+
+/// The default `fit` validates the θ an outside implementor's `theta_from_tau` answers before storing it.
+#[test]
+fn the_default_fit_validates_an_implementors_inverse() {
+  let mut careless = Careless { theta: None };
+  let got = careless.fit(countermonotone(20).view());
+  assert!(
+    matches!(got, Err(CopulaError::InvalidParameter { name: "theta", value, .. }) if value == 2.0),
+    "{got:?}"
+  );
+  assert_eq!(careless.theta(), None);
 }
 
 /// Columns, then rows, then range, whichever `fit` the family runs: a 1 × 3 input is a `DimensionMismatch`, a 1 × 2 input
