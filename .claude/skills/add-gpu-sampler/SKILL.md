@@ -32,7 +32,7 @@ a new back-end:
 
 - **A budget that the device agrees with.** A handle's `batch_budget` is a
   guess (one gigabyte by default); clamp it with what the device reports —
-  `euler::metal::working_set` halves `recommended_max_working_set_size()` and
+  `device::metal::working_set` halves `recommended_max_working_set_size()` and
   the CUDA side has the driver's own figure. A guess too large is an
   allocation failure on hardware that would have served a smaller launch.
 - **An out-of-memory failure the caller can act on.** Map the driver's OOM
@@ -50,7 +50,7 @@ a new back-end:
 | `Cpu` | *(none — always available)* | Default `B` for every process | `f32` / `f64` |
 | `Accelerate` | `accelerate` (macOS only) | Apple vDSP / AMX — a **CPU** path, not a GPU | `f32` / `f64` |
 | `Cuda` | `cuda` | `cudarc` + cuFFT + NVRTC, fused Philox kernel | `f32` / `f64` |
-| `Metal` | `metal` (macOS only) | Hand-written MSL via the `metal` crate | `f32` |
+| `Metal` | `metal` (Apple Silicon, macOS 15+) | Rust kernels compiled by metal-oxide into an embedded library | `f32` |
 
 The backends take the bare names (`cuda`, `metal`); the `gpu*` aliases and
 the `cuda-native` spelling were **removed before 3.0**. There is no
@@ -234,10 +234,11 @@ A process joins the Euler engine by implementing `EulerCoefficients`
 to `via euler`. A new drift/diffusion family is one `EulerSpec` variant
 plus one `family` branch in the kernels.
 
-There is **one** kernel text: `euler/kernel.rs` holds the C body that the
-native CUDA and the Metal back-ends both render (the `Language` struct fills
-in `REAL`, `SQRT`, `LOG`, `COS` and the buffer index type). Changing the
-recursion means editing that body once and re-running the device tests.
+CUDA renders the C body in `euler/kernel.rs` (the `Language` struct fills in
+`REAL`, `SQRT`, `LOG`, `COS` and the buffer index type). Metal runs the Rust
+frame in `stochastic-rs-metal-kernels/src/euler/frame.rs`, instantiated per
+family from the same declarations. Changing the recursion means editing both
+frames, regenerating the Metal artifact and re-running the device tests.
 
 ## 7. Kernel conventions
 

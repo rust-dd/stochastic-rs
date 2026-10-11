@@ -194,7 +194,7 @@ it is a summary, and the sub-crate columns are the part that drifts.
 | Feature | Crates that publish it | Notes |
 |---|---|---|
 | `cuda` | `-stochastic`, umbrella | Native CUDA via **cudarc** + cuFFT + NVRTC. The `gpu*` aliases were removed before 3.0. |
-| `metal` | `-stochastic`, umbrella | Apple Silicon GPU via the `metal` crate; f32 only. The dependency is `[target.'cfg(target_os = "macos")'.dependencies]`; the feature is inert elsewhere. |
+| `metal` | `-stochastic`, umbrella | Apple Silicon GPU via precompiled metal-oxide kernels; f32 only. The dependency is `[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]`; the feature is inert elsewhere. |
 | `accelerate` | `-stochastic`, umbrella | Apple vDSP / AMX — a **CPU** path despite sitting beside the GPU flags. Gated on `target_os = "macos"`; inert elsewhere. |
 | `unstable-dual-stream-rng` | `-core`, `-distributions`, umbrella | Experimental `SimdRngDual`; changes deterministic output. |
 | `python` | `-core`, `-distributions`, `-stochastic`, `-copulas`, `-stats`, `-quant`, `-ai` | Internal PyO3 wrapper code that `stochastic-rs-py` switches on; modules and classes are `#[doc(hidden)]`, outside the stability promise. The umbrella has no `python` feature. |

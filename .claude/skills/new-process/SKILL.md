@@ -95,11 +95,12 @@ with a one-line grep — a wrapped `backend_switch!` call is invisible to it.
 Never hand-write a kernel: the CUDA and Metal bodies are generated (`grep -c "family =="
 src/euler/{cuda,metal}.rs` → `0` for both).
 
-**2a. Declare the family** in the table `src/euler/families.rs`, appended in code
-order with the next free integer code. Read that file's module doc — it is the DSL
-specification. The generator `euler_families!` lives in `src/euler/families/codegen.rs`
-(pulled in with `#[macro_use]`, not a `use`, because the generated child modules
-recurse into it); the vocabulary pair is in `src/euler/families/vocabulary.rs`.
+**2a. Declare the family** in the fitting chunk of `src/euler/families/definitions/`,
+with the next free integer code. Read the module doc of `src/euler/families.rs` — it
+is the DSL specification. The host and CUDA generator `euler_families!` lives in
+`src/euler/families/codegen.rs`; the Metal kernel crate expands the same declarations
+in `stochastic-rs-metal-kernels/src/euler/families/codegen.rs`. The vocabulary pair is
+in `src/euler/families/vocabulary.rs`, mirrored by the kernel crate's `vocabulary.rs`.
 
 ```rust
   /// `dX = θ(μ − X) dt + σ dW`.
@@ -122,8 +123,8 @@ with `bind name = expr;` lines. A step reads `x` (its own state names), `dt`, it
 names, its parameters, plus `ct`/`ct1`..`ct7`, `nj`, `js`, `gm`, `gm2`, `u`, `u2`, `lv`,
 `cv`, `sj`, `iv`.
 Vocabulary: `sqrt exp ln pow abs negate tanh atan sin recip positive max min lit less
-leq geq pick` — a **new** intrinsic goes into both implementations in
-`vocabulary.rs` (host `ops`, `C_PRELUDE`).
+leq geq pick` — a **new** intrinsic goes into host `ops` and `C_PRELUDE` in
+`vocabulary.rs` and into `stochastic-rs-metal-kernels/src/euler/vocabulary.rs`.
 
 Traps, each learned from a real failure:
 
@@ -141,7 +142,7 @@ Traps, each learned from a real failure:
   `RoughHestonMemory` has four states, two reports.
 
 **2b. The `EulerSpec` variant.** `src/euler.rs` carries one
-`pub enum EulerSpec<T: FloatExt>` variant per family (110 today, one-to-one) plus an
+`pub enum EulerSpec<T: FloatExt>` variant per family (121 today, one-to-one) plus an
 `encode()` arm — `(Family::Foo.code(), pad([theta, mu, sigma]))`, `pad` widening to
 `PARAM_SLOTS = 20`. Capacities: 4 state slots, 4 noise components, 20 parameters,
 `CURVE_SLOTS = 8` (`ct`, `ct1`..`ct7`), 2 uniforms `u`/`u2`, Poisson count `nj`, jump
@@ -183,9 +184,10 @@ host fallback chunk-correct:
   }
 ```
 
-**2d. Nothing to dispatch by hand.** The C body the CUDA and Metal kernels
-render is generated from the table, family by family; there is no second
-kernel to keep in step.
+**2d. Regenerate the Metal kernels.** CUDA renders its C body from the declarations.
+Metal embeds precompiled Rust kernels: run `python3 scripts/generate-euler-kernels.py`,
+then `bash scripts/build-metal-kernels.sh` on Apple Silicon with the pinned `cargo-metal`
+toolchain, and commit the regenerated artifact. CI's `--check` rejects stale entries.
 
 **2e. `src/euler/family_parity.rs`.** `family_name`'s `match` has no wildcard, so
 a new `EulerSpec` variant fails to compile until it is named. Then add a probe to
@@ -198,11 +200,12 @@ jump law no other family reaches.
 
 **2f. A new *per-step value* is a frame change**, not a family addition: the
 matchers and expansions in `codegen.rs`, its four signature blocks, the
-`step_inputs(...)` invocation in `families.rs`, and the frame in
-`src/euler/kernel.rs`. Script it, and re-read the traps first.
+`step_inputs(...)` invocation in `families/definitions/mod.rs`, the C frame in
+`src/euler/kernel/`, and the Metal frame and `Inputs` in
+`stochastic-rs-metal-kernels/src/euler/`. Script it, and re-read the traps first.
 
 Verify §2: `cargo test -p stochastic-rs-stochastic --lib -- euler::families` renders
-every family into the C body, families counted by `grep -cE "^  [0-9]+ => " src/euler/families.rs`.
+every family into the C body, families counted by `cat src/euler/families/definitions/*.rs | grep -cE "^  [0-9]+ => "`.
 A probe needs no series or table work of its own: `Probe::series_terms` and
 `Probe::table_spec` answer from `Family::has_series()` / `has_table()`.
 

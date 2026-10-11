@@ -10,11 +10,11 @@ Every process carries its sampling backend as a type parameter and is re-typed w
 
 | Family | Processes | Capability bound | `Cpu` | `Accelerate` | `Metal` | `Cuda` |
 |---|---|---|---|---|---|---|
-| fGN noise | `Fgn` (1) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | MSL FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` |
-| Sheet | `Fbs` (1) | `SheetBackend<T>` | SIMD + `ndrustfft` | same as `Cpu` | MSL sheet pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` |
-| Euler engine, one component | 91 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel in MSL, `f32` only | NVRTC kernel, `f32` / `f64` |
+| fGN noise | `Fgn` (1) | `FgnBackend<T>` | SIMD + `ndrustfft` | vDSP FFT | metal-oxide FFT pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` |
+| Sheet | `Fbs` (1) | `SheetBackend<T>` | SIMD + `ndrustfft` | same as `Cpu` | metal-oxide sheet pipeline, `f32` only | cuFFT + Philox, `f32` / `f64` |
+| Euler engine, one component | 91 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | Euler–Maruyama kernel compiled by metal-oxide, `f32` only | NVRTC kernel, `f32` / `f64` |
 | Euler engine, systems | 39 processes | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | the same kernel, up to four components | the same kernel |
-| Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `FVasicek`, `Cfgns`, `Cfbms`, `Cfou`, `JumpFou`, `JumpFOUCustom` (11, counted above) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same MSL kernel | fGN pipeline feeds the same NVRTC kernel |
+| Euler engine, fractional | `Fbm`, `Fou`, `Fcir`, `Fgbm`, `FJacobi`, `FVasicek`, `Cfgns`, `Cfbms`, `Cfou`, `JumpFou`, `JumpFOUCustom` (11, counted above) | `EulerBackend<T>` | the process's own SIMD sampler | same as `Cpu` | fGN pipeline feeds the same Metal kernel | fGN pipeline feeds the same NVRTC kernel |
 
 Every process reaches a device: `Fgn` and `Fbs` through pipelines of their own, the other 130 through the Euler engine. The engine covers the diffusions; the stochastic-volatility models under both their Euler and quadratic-exponential schemes; the short-rate models, including the curve-driven ones; the fractional processes; the jump models (a process generic over its jump-size law when that law is `SimdNormal` or `SimdExp`); the Lévy processes and subordinators; the order-(1,1) conditional-variance and first-order lag models; the noise generators; the Riemann–Liouville and Volterra models under the Markov lift of their kernel; the rough-volatility models with a memory integral, `Lfsm`, `Arima` and `Sarima` on the host's exact scheme for grids up to 512 points; the point processes in count mode; and the matrix and basket models within the limits below.
 

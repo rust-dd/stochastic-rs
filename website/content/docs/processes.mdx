@@ -287,7 +287,7 @@ The sampling backend is a **type parameter of every process** (`Name<T, S, B = C
 | Backend | Feature | Device | Precision |
 |---|---|---|---|
 | `Cuda` | `cuda` | NVIDIA, cudarc + NVRTC | `f32` or `f64`, after `T` |
-| `Metal` | `metal` | Apple GPUs, MSL | `f32` |
+| `Metal` | `metal` | Apple Silicon GPUs, metal-oxide kernels | `f32` |
 
 The device seed is drawn from the process's own seed source (the same `Deterministic` seed value gives the same paths, consecutive calls advance the stream, `Unseeded` draws fresh entropy). The device kernels share one integer hash for their uniforms, so the device back-ends agree with each other seed for seed up to libm rounding; the host path is the process's own stream, so CPU and device paths agree in distribution rather than bit for bit. Every process answers `device_ready()` for the configuration it holds — a `false` samples on the host, bit-identically to the `Cpu` build. [GPU support](/docs/concepts/gpu-support) tabulates what runs where.
 
