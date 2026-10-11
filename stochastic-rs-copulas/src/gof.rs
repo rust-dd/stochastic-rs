@@ -75,7 +75,7 @@ fn finite(statistic: f64, what: &str) -> Result<f64, CopulaError> {
 /// Settings of the parametric-bootstrap test.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GofConfig {
-  /// Bootstrap replications behind the p-value.
+  /// Bootstrap replications behind the p-value, which cannot fall below `1/(replications + 1)`: a rejection at `alpha` needs `replications ≥ ⌊1/alpha⌋`.
   pub replications: usize,
   /// Significance level of the rejection decision.
   pub alpha: f64,
@@ -333,9 +333,9 @@ mod tests {
     let data = data_for(5);
     let mut gaussian = GaussianCopula::new();
     gaussian.fit(data.view()).unwrap();
-    let run = |alpha: f64| {
+    let run = |replications: usize, alpha: f64| {
       let config = GofConfig {
-        replications: 10,
+        replications,
         alpha,
       };
       gof_cramer_von_mises(
@@ -347,10 +347,12 @@ mod tests {
       )
       .unwrap()
     };
-    let wrong = run(0.05);
+    let wrong = run(10, 0.05);
     assert_eq!(wrong.p_value, 1.0 / 11.0, "no draw reaches the statistic");
     assert!(!wrong.rejects_null, "ten draws cannot reject at 5 %");
-    assert!(run(0.1).rejects_null);
+    assert!(run(10, 0.1).rejects_null);
+    assert!(!run(19, 0.05).rejects_null, "p = 1/20 is not below 0.05");
+    assert!(run(20, 0.05).rejects_null, "20 = ⌊1/0.05⌋ draws can");
   }
 
   /// Independence whose h-function turns NaN once `poisoned`.
