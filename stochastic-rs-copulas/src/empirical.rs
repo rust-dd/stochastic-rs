@@ -148,6 +148,17 @@ mod tests {
     assert!(c[3].is_nan() && c[4].is_nan());
   }
 
+  /// The empirical copula is a function of the data set: the same tied pairs in two row orders give the same cdf.
+  #[test]
+  fn the_cdf_does_not_depend_on_the_row_order_of_tied_data() {
+    let x = array![1.0, 1.0, 2.0, 3.0];
+    let a = EmpiricalCopula2D::new(x.view(), array![1.0, 2.0, 2.0, 3.0].view());
+    let b = EmpiricalCopula2D::new(x.view(), array![2.0, 1.0, 2.0, 3.0].view());
+    let q = array![[0.25, 0.25], [0.3, 0.2], [0.3, 0.5], [0.6, 0.5], [1.0, 1.0]];
+    assert_eq!(a.cdf(q.view()), b.cdf(q.view()));
+    assert_eq!(a.cdf(q.view()).to_vec(), vec![0.0, 0.25, 0.5, 0.75, 1.0]);
+  }
+
   #[test]
   #[should_panic(
     expected = "x and y must satisfy `x.len() == y.len()`, got x.len() = 2, y.len() = 1"

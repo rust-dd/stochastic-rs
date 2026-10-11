@@ -119,3 +119,17 @@ def test_kendall_tau_b_matrix_and_empirical_copula_ranks():
     assert {tuple(row) for row in ec.sample(50, seed=3)} <= {tuple(row) for row in ranks}
     with pytest.raises(ValueError):
         sr.EmpiricalCopula2D(np.array([1.0, 2.0]), np.array([1.0]))
+
+
+def test_pseudo_observations_share_mean_ranks_and_propagate_nan():
+    # Tied values take the mean of their ranks (R's `rank`, scipy's `rankdata`), so a row order cannot change the result.
+    a = np.array([[1.0, 1.0], [1.0, 2.0], [2.0, 2.0], [3.0, 3.0]])
+    ua, ub = sr.pseudo_observations(a), sr.pseudo_observations(a[[1, 0, 2, 3]])
+    assert np.array_equal(ua, np.array([[0.3, 0.2], [0.3, 0.5], [0.6, 0.5], [0.8, 0.8]]))
+    assert np.array_equal(ub, ua[[1, 0, 2, 3]])
+    assert abs(sr.kendall_tau_matrix(ua)[0, 1] - 0.8) < 1e-15 and abs(sr.kendall_tau_matrix(ub)[0, 1] - 0.8) < 1e-15
+    # A column holding a NaN is all NaN, at any size, and the other columns keep their ranks.
+    holed = np.column_stack([np.arange(100.0), np.arange(100.0)[::-1]])
+    holed[50, 0] = np.nan
+    out = sr.pseudo_observations(holed)
+    assert np.isnan(out[:, 0]).all() and np.array_equal(out[:, 1], np.arange(100, 0, -1) / 101)

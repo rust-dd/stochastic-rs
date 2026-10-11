@@ -150,19 +150,29 @@ pub fn gof_cramer_von_mises<C: BivariateExt + Clone, S: SeedExt>(
   })
 }
 
-/// Pseudo-observations (normalised ranks `rank / (n + 1)`) of raw data.
+/// Pseudo-observations `rank / (n + 1)` of raw data, a tie group taking the mean of its ranks; a column holding a NaN is
+/// all NaN.
 pub fn pseudo_observations(data: ArrayView2<f64>) -> Array2<f64> {
   let n = data.nrows();
   let mut out = Array2::<f64>::zeros(data.raw_dim());
   for (j, column) in data.columns().into_iter().enumerate() {
+    if column.iter().any(|x| x.is_nan()) {
+      out.column_mut(j).fill(f64::NAN);
+      continue;
+    }
     let mut order: Vec<usize> = (0..n).collect();
-    order.sort_by(|&a, &b| {
-      column[a]
-        .partial_cmp(&column[b])
-        .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    for (rank, &i) in order.iter().enumerate() {
-      out[(i, j)] = (rank + 1) as f64 / (n + 1) as f64;
+    order.sort_by(|&a, &b| column[a].total_cmp(&column[b]));
+    let mut start = 0;
+    while start < n {
+      let mut end = start + 1;
+      while end < n && column[order[end]] == column[order[start]] {
+        end += 1;
+      }
+      let mean_rank = (start + end + 1) as f64 / 2.0;
+      for &i in &order[start..end] {
+        out[(i, j)] = mean_rank / (n + 1) as f64;
+      }
+      start = end;
     }
   }
   out
@@ -179,6 +189,7 @@ mod tests {
   use crate::bivariate::BivariateFamily;
   use crate::bivariate::clayton::Clayton;
   use crate::bivariate::gaussian::GaussianCopula;
+  use crate::correlation::kendall_tau_b;
   use crate::traits::TailDependence;
 
   fn data_for(seed: u64) -> Array2<f64> {
@@ -505,6 +516,61 @@ mod tests {
     assert_eq!(u[(0, 0)], 0.75);
     assert_eq!(u[(1, 0)], 0.25);
     assert_eq!(u[(1, 1)], 0.75);
+  }
+
+  /// A tie group takes the mean of its ranks, so the pseudo-observations do not depend on the row order and keep the data's
+  /// τ-b: `(1,1,2,3)` × `(1,2,2,3)` in two orders is `0.8` either way (ordinal ranks give `1.0` and `2/3`).
+  #[test]
+  fn tied_values_share_their_mean_rank_in_every_row_order() {
+    let a = ndarray::array![[1.0, 1.0], [1.0, 2.0], [2.0, 2.0], [3.0, 3.0]];
+    let b = ndarray::array![[1.0, 2.0], [1.0, 1.0], [2.0, 2.0], [3.0, 3.0]];
+    let (ua, ub) = (pseudo_observations(a.view()), pseudo_observations(b.view()));
+    assert_eq!(
+      ua,
+      ndarray::array![[0.3, 0.2], [0.3, 0.5], [0.6, 0.5], [0.8, 0.8]]
+    );
+    assert_eq!(
+      ub,
+      ndarray::array![[0.3, 0.5], [0.3, 0.2], [0.6, 0.5], [0.8, 0.8]]
+    );
+    for (raw, pseudo) in [(&a, &ua), (&b, &ub)] {
+      let tau = |m: &Array2<f64>| kendall_tau_b(m.column(0), m.column(1)).unwrap();
+      assert!((tau(raw) - 0.8).abs() < 1e-15 && (tau(pseudo) - 0.8).abs() < 1e-15);
+    }
+  }
+
+  #[test]
+  fn infinities_order_and_signed_zeros_tie_as_numbers() {
+    let data = ndarray::array![
+      [f64::INFINITY, -0.0],
+      [1.0, 0.0],
+      [f64::INFINITY, 1.0],
+      [f64::NEG_INFINITY, 2.0]
+    ];
+    let u = pseudo_observations(data.view());
+    assert_eq!(u.column(0).to_vec(), vec![0.7, 0.4, 0.7, 0.2]);
+    assert_eq!(u.column(1).to_vec(), vec![0.3, 0.3, 0.6, 0.8]);
+  }
+
+  /// A column holding a NaN comes out all NaN, as scipy's `rankdata(nan_policy="propagate")`, where an unordered pair
+  /// panics in the std sort from about 40 rows; the other columns keep their ranks.
+  #[test]
+  fn a_column_with_a_nan_is_all_nan_at_any_size() {
+    let n = 100;
+    let mut data = Array2::from_shape_fn((n, 2), |(i, j)| {
+      if j == 0 {
+        ((i * 37) % n) as f64
+      } else {
+        i as f64
+      }
+    });
+    data[(50, 0)] = f64::NAN;
+    let u = pseudo_observations(data.view());
+    assert!(u.column(0).iter().all(|v| v.is_nan()));
+    assert_eq!(
+      u.column(1),
+      Array1::from_shape_fn(n, |i| (i + 1) as f64 / 101.0)
+    );
   }
 
   #[test]

@@ -525,8 +525,8 @@ pub fn copula_gof<'py>(
   Ok((result.statistic, result.p_value))
 }
 
-/// Pseudo-observations `rank / (n + 1)` of every column of raw data — the
-/// input every copula `fit`, `fit_vine` and `copula_gof` expects.
+/// Pseudo-observations `rank / (n + 1)` of every column of raw data, ties sharing their mean rank — the input every
+/// copula `fit`, `fit_vine` and `copula_gof` expects.
 #[pyfunction]
 pub fn pseudo_observations<'py>(
   py: Python<'py>,
