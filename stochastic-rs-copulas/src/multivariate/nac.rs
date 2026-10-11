@@ -16,7 +16,7 @@
 //! - **Clayton:** $\theta \ge 0$ globally and $\theta_{\text{child}} \ge \theta_{\text{parent}}$.
 //! - **Gumbel:** $\theta \ge 1$ globally and $\theta_{\text{child}} \ge \theta_{\text{parent}}$.
 //!
-//! ## Sampling (Hofert 2008, Algorithm 2)
+//! ## Sampling (Hofert & Mächler 2011, Algorithm 3.1)
 //!
 //! The standard Marshall-Olkin (1988) frailty representation: each
 //! generator $\varphi_\theta$ admits an LST representation
@@ -29,7 +29,7 @@
 //! per sub-tree, the conditional inner frailty is
 //!
 //! $$
-//! V_i \mid V_0 \;=\; V_0^{\theta_0/\theta_i}\cdot S_i,\qquad
+//! V_i \mid V_0 \;=\; V_0^{\theta_i/\theta_0}\cdot S_i,\qquad
 //! S_i \sim S_+(\theta_0 / \theta_i),
 //! $$
 //!
@@ -52,6 +52,7 @@
 //!   *Computational Statistics & Data Analysis* 52(12), 5163-5174.
 //! - Hofert, M. (2011), "Efficiently sampling nested Archimedean copulas",
 //!   *Computational Statistics & Data Analysis* 55(1), 57-70.
+//! - Hofert, M., Mächler, M. (2011), "Nested Archimedean Copulas Meet R: The nacopula Package", *Journal of Statistical Software* 39(9), 1-20, doi:10.18637/jss.v039.i09.
 //! - Hofert, M., Mächler, M., McNeil, A.J. (2011), "Likelihood inference
 //!   for Archimedean copulas in high dimensions under known margins",
 //!   *Journal of Multivariate Analysis* 110, 133-150.
@@ -352,11 +353,8 @@ impl NestedArchimedean {
         }
       }
       (NacFamily::Gumbel, Some((parent_theta, parent_v))) => {
-        // Nested Gumbel (McNeil 2008, derivation §4 with Hofert 2011
-        // Algorithm 2 form). The conditional LST of V_c given V_p is
-        // exp(-V_p · s^α), α = θ_p / θ_c, which is the LST of
-        //   V_c = V_p^{1/α} · S_+(α).
-        // SNC ⟹ α ∈ (0, 1]; α = 1 is the no-nesting case (V_c = V_p).
+        // V_c | V_p has LST exp(-V_p s^α), α = θ_p / θ_c, so V_c = V_p^{1/α} · S_+(α) (Hofert & Mächler 2011, Table 3);
+        // α = 1 is the no-nesting case, V_c = V_p.
         let alpha = parent_theta / node.theta;
         if (alpha - 1.0).abs() < 1e-12 {
           parent_v
@@ -424,7 +422,7 @@ impl MultivariateExt for NestedArchimedean {
     self.check_root_frailty()?;
     if self.family == NacFamily::Clayton && !self.root.children.is_empty() {
       return Err(CopulaError::Unsupported(
-        "nested Clayton sampling needs the tilted-stable frailty (Hofert 2011, Algorithm 4): sample a Gumbel tree, or evaluate cdf and pdf".into(),
+        "nested Clayton sampling needs the exponentially tilted stable V01 of Hofert & Mächler (2011, §3.2, eq. (5)): sample a Gumbel tree, or evaluate cdf and pdf".into(),
       ));
     }
     Ok(self.sample_with(n, &mut seed.rng()))
