@@ -6,7 +6,6 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
-use ndarray::Axis;
 use rand::Rng;
 use rand::RngExt;
 use stochastic_rs_core::simd_rng::SeedExt;
@@ -16,6 +15,7 @@ use super::MultivariateFamily;
 use super::dvine::PairCopula;
 use super::fit::SelectionCriterion;
 use super::fit::fit_cvine;
+use super::vine_order::VineOrder;
 use crate::bivariate::BivariateFamily;
 use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
@@ -28,8 +28,7 @@ use crate::traits::MultivariateExt;
 #[derive(Debug, Clone)]
 pub struct CVine {
   dim: usize,
-  /// Data column of each vine variable; `pdf`, `cdf` and `sample` translate through it.
-  order: Vec<usize>,
+  order: VineOrder,
   pair_copulas: Vec<Vec<PairCopula>>,
 }
 
@@ -61,40 +60,20 @@ impl CVine {
     }
     Ok(Self {
       dim,
-      order: (0..dim).collect(),
+      order: VineOrder::identity(dim),
       pair_copulas,
     })
   }
 
   /// Which data column each vine variable reads; panics unless `order` is a permutation of `0..dim`.
   pub fn with_order(mut self, order: Vec<usize>) -> Self {
-    let mut seen = vec![false; self.dim];
-    let permutation = order.len() == self.dim
-      && order
-        .iter()
-        .all(|&j| j < self.dim && !std::mem::replace(&mut seen[j], true));
-    assert!(
-      permutation,
-      "order must satisfy `order is a permutation of 0..dim`, got order = {order:?}"
-    );
-    self.order = order;
+    self.order = VineOrder::new(order, self.dim);
     self
   }
 
+  /// Data column of each vine variable.
   pub fn order(&self) -> &[usize] {
-    &self.order
-  }
-
-  fn to_vine_order(&self, x: ArrayView2<f64>) -> Array2<f64> {
-    x.select(Axis(1), &self.order)
-  }
-
-  fn to_data_order(&self, sample: Array2<f64>) -> Array2<f64> {
-    let mut out = Array2::<f64>::zeros(sample.raw_dim());
-    for (k, &j) in self.order.iter().enumerate() {
-      out.column_mut(j).assign(&sample.column(k));
-    }
-    out
+    self.order.as_slice()
   }
 
   /// All-Independence C-vine of the given dimension.
@@ -188,7 +167,7 @@ impl MultivariateExt for CVine {
   }
 
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
-    Ok(self.to_data_order(self.sample_with(n, &mut seed.rng())))
+    Ok(self.order.to_data(self.sample_with(n, &mut seed.rng())))
   }
 
   /// Dißmann et al. (2013) over `BivariateFamily::VINE_CANDIDATES` by AIC; `fit_vine` exposes the candidates and the criterion.
@@ -213,13 +192,13 @@ impl MultivariateExt for CVine {
 
   fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
-    let x = self.to_vine_order(X);
+    let x = self.order.to_vine(X);
     Ok(self.log_density_rows(x.view()).mapv(f64::exp))
   }
 
   fn log_pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
-    let x = self.to_vine_order(X);
+    let x = self.order.to_vine(X);
     Ok(self.log_density_rows(x.view()))
   }
 
@@ -228,7 +207,7 @@ impl MultivariateExt for CVine {
     // multivariate t-copula): closed-form C-vine CDF requires nested
     // numerical integration in d ≥ 3 dims.
     self.check_fit(X)?;
-    let x = self.to_vine_order(X);
+    let x = self.order.to_vine(X);
     let m = 4_000usize;
     let sample = self.sample_with(m, &mut Unseeded.rng());
     let mut out = Array1::<f64>::zeros(x.nrows());

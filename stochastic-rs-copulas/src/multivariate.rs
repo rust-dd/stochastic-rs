@@ -15,6 +15,7 @@ pub(crate) mod linalg;
 pub mod nac;
 pub mod rvine;
 pub mod t;
+mod vine_order;
 
 /// One variant per multivariate copula of the crate; `MultivariateExt::family` returns it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
