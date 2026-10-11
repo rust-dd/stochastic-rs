@@ -30,6 +30,7 @@ macro_rules! py_bivariate {
     #[pyclass(name = $name_str, unsendable)]
     pub struct $py_name {
       inner: $inner_path,
+      pending_tau: Option<f64>,
     }
 
     #[pymethods]
@@ -42,10 +43,10 @@ macro_rules! py_bivariate {
           if let Some(t) = theta {
             BivariateExt::set_theta(&mut inner, t);
           }
-          if let Some(t) = tau {
-            BivariateExt::set_tau(&mut inner, t);
+          Self {
+            inner,
+            pending_tau: tau,
           }
-          Self { inner }
         })
       }
 
@@ -54,7 +55,7 @@ macro_rules! py_bivariate {
       }
 
       fn tau(&self) -> Option<f64> {
-        BivariateExt::tau(&self.inner)
+        self.pending_tau.or_else(|| BivariateExt::tau(&self.inner))
       }
 
       fn set_theta(&mut self, theta: f64) {
@@ -62,18 +63,25 @@ macro_rules! py_bivariate {
       }
 
       fn set_tau(&mut self, tau: f64) {
-        BivariateExt::set_tau(&mut self.inner, tau);
+        self.pending_tau = Some(tau);
       }
 
-      /// Solve for theta from the currently-set tau (Kendall inversion).
-      fn compute_theta(&mut self) -> f64 {
-        let t = BivariateExt::compute_theta(&self.inner);
-        BivariateExt::set_theta(&mut self.inner, t);
-        t
+      /// Solve for theta from the tau set last (Kendall inversion).
+      fn compute_theta(&mut self) -> PyResult<f64> {
+        let tau = self
+          .pending_tau
+          .or_else(|| BivariateExt::tau(&self.inner))
+          .ok_or_else(|| PyValueError::new_err("set tau first"))?;
+        let theta = BivariateExt::theta_from_tau(&self.inner, tau).map_err(err_to_py)?;
+        BivariateExt::set_theta(&mut self.inner, theta);
+        Ok(theta)
       }
 
+      /// A successful fit replaces the tau set last with the fitted model's.
       fn fit<'py>(&mut self, x: PyReadonlyArray2<'py, f64>) -> PyResult<()> {
-        BivariateExt::fit(&mut self.inner, x.as_array()).map_err(err_to_py)
+        BivariateExt::fit(&mut self.inner, x.as_array()).map_err(err_to_py)?;
+        self.pending_tau = None;
+        Ok(())
       }
 
       fn pdf<'py>(
@@ -123,10 +131,10 @@ py_bivariate!(
   crate::bivariate::clayton::Clayton::new
 );
 py_bivariate!(PyGumbel, crate::bivariate::gumbel::Gumbel, "Gumbel", || {
-  crate::bivariate::gumbel::Gumbel::new(None, None)
+  crate::bivariate::gumbel::Gumbel::new(None)
 });
 py_bivariate!(PyFrank, crate::bivariate::frank::Frank, "Frank", || {
-  crate::bivariate::frank::Frank::new(None, None)
+  crate::bivariate::frank::Frank::new(None)
 });
 py_bivariate!(
   PyIndependence,
@@ -210,6 +218,7 @@ macro_rules! py_two_parameter {
     #[pyclass(name = $name_str, unsendable)]
     pub struct $py_name {
       inner: $inner_path,
+      pending_tau: Option<f64>,
     }
 
     #[pymethods]
@@ -217,12 +226,9 @@ macro_rules! py_two_parameter {
       #[new]
       #[pyo3(signature = (theta=None, delta=None, tau=None))]
       fn new(theta: Option<f64>, delta: Option<f64>, tau: Option<f64>) -> PyResult<Self> {
-        stochastic_rs_distributions::python::value_error_on_panic(|| {
-          let mut inner = <$inner_path>::new(theta, delta, tau);
-          if let Some(t) = tau {
-            BivariateExt::set_tau(&mut inner, t);
-          }
-          Self { inner }
+        stochastic_rs_distributions::python::value_error_on_panic(|| Self {
+          inner: <$inner_path>::new(theta, delta),
+          pending_tau: tau,
         })
       }
 
@@ -235,7 +241,7 @@ macro_rules! py_two_parameter {
       }
 
       fn tau(&self) -> Option<f64> {
-        BivariateExt::tau(&self.inner)
+        self.pending_tau.or_else(|| BivariateExt::tau(&self.inner))
       }
 
       fn set_theta(&mut self, theta: f64) {
@@ -247,19 +253,25 @@ macro_rules! py_two_parameter {
       }
 
       fn set_tau(&mut self, tau: f64) {
-        BivariateExt::set_tau(&mut self.inner, tau);
+        self.pending_tau = Some(tau);
       }
 
-      /// Solve for theta from the currently-set tau at the current delta.
-      fn compute_theta(&mut self) -> f64 {
-        let t = BivariateExt::compute_theta(&self.inner);
-        BivariateExt::set_theta(&mut self.inner, t);
-        t
+      /// Solve for theta from the tau set last, at the current delta.
+      fn compute_theta(&mut self) -> PyResult<f64> {
+        let tau = self
+          .pending_tau
+          .or_else(|| BivariateExt::tau(&self.inner))
+          .ok_or_else(|| PyValueError::new_err("set tau first"))?;
+        let theta = BivariateExt::theta_from_tau(&self.inner, tau).map_err(err_to_py)?;
+        BivariateExt::set_theta(&mut self.inner, theta);
+        Ok(theta)
       }
 
-      /// Maximum-likelihood fit of both parameters.
+      /// Maximum-likelihood fit of both parameters; a successful fit replaces the tau set last with the fitted model's.
       fn fit<'py>(&mut self, x: PyReadonlyArray2<'py, f64>) -> PyResult<()> {
-        BivariateExt::fit(&mut self.inner, x.as_array()).map_err(err_to_py)
+        BivariateExt::fit(&mut self.inner, x.as_array()).map_err(err_to_py)?;
+        self.pending_tau = None;
+        Ok(())
       }
 
       fn pdf<'py>(
@@ -467,8 +479,8 @@ pub fn copula_gof<'py>(
   }
   let result = match family.to_ascii_lowercase().as_str() {
     "clayton" => run!(crate::bivariate::clayton::Clayton::new()),
-    "gumbel" => run!(crate::bivariate::gumbel::Gumbel::new(None, None)),
-    "frank" => run!(crate::bivariate::frank::Frank::new(None, None)),
+    "gumbel" => run!(crate::bivariate::gumbel::Gumbel::new(None)),
+    "frank" => run!(crate::bivariate::frank::Frank::new(None)),
     "gaussian" => run!(crate::bivariate::gaussian::GaussianCopula::new()),
     "bb1" => run!(crate::bivariate::bb1::Bb1::default()),
     "bb7" => run!(crate::bivariate::bb7::Bb7::default()),

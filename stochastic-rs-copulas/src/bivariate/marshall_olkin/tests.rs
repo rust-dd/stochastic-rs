@@ -38,11 +38,10 @@ fn mo_alpha_zero_or_beta_zero_is_independence() {
 }
 
 #[test]
-fn mo_compute_theta_via_symmetric_inversion() {
+fn mo_theta_from_tau_via_symmetric_inversion() {
   // Symmetric MO: τ = θ/(2-θ). Pick θ = 0.5 ⇒ τ = 1/3; invert to recover.
-  let mut c = MarshallOlkin::new();
-  c.set_tau(1.0 / 3.0);
-  let theta = c.compute_theta();
+  let c = MarshallOlkin::new();
+  let theta = c.theta_from_tau(1.0 / 3.0).unwrap();
   assert!(approx(theta, 0.5, 1e-12), "expected θ=0.5, got {theta}");
 }
 

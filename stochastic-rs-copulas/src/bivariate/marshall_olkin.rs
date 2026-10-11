@@ -9,23 +9,8 @@
 //! \qquad \alpha, \beta \in (0, 1].
 //! $$
 //!
-//! Equivalently $C(u,v) = \min\!\big(u^{1-\alpha} v,\, u v^{1-\beta}\big)$.
-//! Non-exchangeable in general; **has a singular component** on the curve
-//! $u^\alpha = v^\beta$ carrying mass $\alpha\beta / (\alpha + \beta -
-//! \alpha\beta)$. The remaining $1 - \alpha\beta/(\alpha+\beta-\alpha\beta)$
-//! of probability mass is absolutely continuous on the two open sectors.
-//!
-//! Tail dependence: $\lambda_U = \min(\alpha, \beta)$ (upper),
-//! $\lambda_L = 0$ (lower).
-//!
-//! Kendall's tau:
-//! $\tau = \alpha\beta / (\alpha + \beta - \alpha\beta)$.
-//!
-//! [`BivariateExt::set_theta`] / [`BivariateExt::compute_theta`] operate on
-//! the *symmetric* slice $\alpha = \beta = \theta$, in which case
-//! $\tau = \theta / (2 - \theta) \iff \theta = 2\tau/(1 + \tau)$. The
-//! asymmetric two-parameter case is supplied through
-//! [`MarshallOlkin::with_alpha_beta`].
+//! Non-exchangeable; the curve `u^α = v^β` carries a singular mass `αβ/(α + β − αβ)`, which is also Kendall's τ.
+//! `theta` is the slice `α = β = θ`; [`MarshallOlkin::with_alpha_beta`] builds the asymmetric copula; `λ_U = min(α, β)`.
 //!
 //! Reference: Marshall, A.W., Olkin, I. (1967), "A multivariate exponential distribution", *JASA* 62(317), 30-44, DOI 10.1080/01621459.1967.10482885.
 //! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, §3.1.1, eq. 3.1.3; §2.9 (the conditional-distribution method with a quasi-inverse), DOI 10.1007/0-387-28678-0.
@@ -40,12 +25,12 @@ use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::tau_out_of_range;
 
 #[derive(Debug, Clone)]
 pub struct MarshallOlkin {
   pub r#type: BivariateFamily,
   pub theta: Option<f64>,
-  pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
   pub invalid_thetas: Vec<f64>,
   /// Asymmetric Marshall-Olkin parameter $\alpha \in (0, 1]$. When
@@ -60,9 +45,8 @@ impl Default for MarshallOlkin {
     Self {
       r#type: BivariateFamily::MarshallOlkin,
       theta: None,
-      tau: None,
       theta_bounds: (0.0, 1.0),
-      invalid_thetas: vec![],
+      invalid_thetas: vec![0.0],
       alpha: None,
       beta: None,
     }
@@ -125,14 +109,6 @@ impl MarshallOlkin {
 impl BivariateExt for MarshallOlkin {
   fn family(&self) -> BivariateFamily {
     self.r#type
-  }
-
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn set_tau(&mut self, tau: f64) {
-    self.tau = Some(tau);
   }
 
   fn theta(&self) -> Option<f64> {
@@ -265,18 +241,24 @@ impl BivariateExt for MarshallOlkin {
     conditional_quantiles(y, v, Self::inverse(alpha, beta))
   }
 
-  /// Symmetric-slice Kendall's tau inversion: $\theta = 2\tau / (1 + \tau)$.
-  /// For the asymmetric case, $\tau$ alone underdetermines $(\alpha, \beta)$ —
-  /// supply both directly via [`MarshallOlkin::with_alpha_beta`].
-  fn compute_theta(&self) -> f64 {
-    let tau = self.tau.unwrap();
-    if tau <= 0.0 {
-      return 0.0_f64.max(f64::EPSILON);
+  /// The symmetric slice `α = β = θ`: `τ = θ/(2 − θ)`.
+  fn tau_from_theta(&self, theta: f64) -> f64 {
+    theta / (2.0 - theta)
+  }
+
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+    if !(tau > 0.0 && tau <= 1.0) {
+      return Err(tau_out_of_range(tau, "0.0 < tau <= 1.0".into()));
     }
-    if tau >= 1.0 - 1e-12 {
-      return 1.0;
+    Ok(2.0 * tau / (1.0 + tau))
+  }
+
+  /// `αβ/(α + β − αβ)` for the asymmetric copula, the symmetric slice's value otherwise.
+  fn tau(&self) -> Option<f64> {
+    match (self.alpha, self.beta) {
+      (Some(a), Some(b)) => Some(a * b / (a + b - a * b)),
+      _ => self.theta.map(|t| self.tau_from_theta(t)),
     }
-    (2.0 * tau / (1.0 + tau)).clamp(0.0, 1.0)
   }
 
   /// Upper-tail dependence $\lambda_U = \min(\alpha,\beta)$, carried

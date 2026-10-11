@@ -21,6 +21,7 @@
 //! multivariate distributions", *JASA* 70(351), 674-680.
 //! Reference: Joe, H. (1997), "Multivariate Models and Dependence
 //! Concepts", Chapman & Hall, §5.4.
+//! Reference: Gudendorf, G. & Segers, J. (2010), "Extreme-value copulas", in Copula Theory and Its Applications, Lecture Notes in Statistics, Springer, arXiv:0911.1015, §4 (Kendall's τ from the Pickands function).
 
 use ndarray::Array1;
 use ndarray::ArrayView2;
@@ -28,9 +29,10 @@ use ndarray::ArrayView2;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::error::CopulaError;
-use crate::optim::zero;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::invert_tau;
+use crate::traits::bivariate::tau_out_of_range;
 
 /// Clamp used to evaluate [`Galambos::partial_derivative`] just inside
 /// `(0, 1)` at the `v \to 0^+` boundary instead of returning a hardcoded
@@ -41,7 +43,6 @@ const BOUNDARY_EPS: f64 = 1e-12;
 pub struct Galambos {
   pub r#type: BivariateFamily,
   pub theta: Option<f64>,
-  pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
   pub invalid_thetas: Vec<f64>,
 }
@@ -51,7 +52,6 @@ impl Default for Galambos {
     Self {
       r#type: BivariateFamily::Galambos,
       theta: None,
-      tau: None,
       theta_bounds: (0.0, f64::INFINITY),
       invalid_thetas: vec![],
     }
@@ -72,44 +72,11 @@ impl Galambos {
     let s = t.powf(-theta) + (1.0 - t).powf(-theta);
     1.0 - s.powf(-1.0 / theta)
   }
-
-  /// Kendall's tau via the Genest-Rivest (1993) extreme-value identity
-  /// $\tau(C) = \int_0^1 t(1-t)\, A''(t)/A(t)\, dt$, computed by Simpson's
-  /// rule with $N = 512$ panels. Central-difference $A''$ on a grid of
-  /// step $h = 10^{-4}$ achieves $\sim 10^{-6}$ accuracy in $\theta$ for
-  /// the inverse problem.
-  pub fn tau_from_theta(theta: f64) -> f64 {
-    if theta <= 1e-9 {
-      return 0.0;
-    }
-    let n: usize = 512;
-    let h_grid = 1.0 / n as f64;
-    let h_fd = 1e-4_f64;
-    let mut acc = 0.0_f64;
-    for k in 1..n {
-      let t = (k as f64) * h_grid;
-      let a = Self::pickands(theta, t);
-      let a_pp = (Self::pickands(theta, (t + h_fd).min(1.0 - 1e-12)) - 2.0 * a
-        + Self::pickands(theta, (t - h_fd).max(1e-12)))
-        / (h_fd * h_fd);
-      let w = if k % 2 == 0 { 2.0 } else { 4.0 };
-      acc += w * t * (1.0 - t) * a_pp / a.max(1e-15);
-    }
-    (h_grid / 3.0) * acc
-  }
 }
 
 impl BivariateExt for Galambos {
   fn family(&self) -> BivariateFamily {
     self.r#type
-  }
-
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn set_tau(&mut self, tau: f64) {
-    self.tau = Some(tau);
   }
 
   fn theta(&self) -> Option<f64> {
@@ -208,23 +175,41 @@ impl BivariateExt for Galambos {
     }))
   }
 
-  fn compute_theta(&self) -> f64 {
-    let tau = self.tau.unwrap();
-    if tau <= 1e-6 {
-      return 1e-6;
+  /// The extreme-value identity `τ = ∫₀¹ t(1 − t) A''(t)/A(t) dt` (Gudendorf & Segers 2010, §4) by 512-panel Simpson
+  /// with a central-difference `A''` of step `1e-4`; 0 for `θ ≤ 1e-9`.
+  fn tau_from_theta(&self, theta: f64) -> f64 {
+    if theta <= 1e-9 {
+      return 0.0;
     }
-    if tau >= 1.0 - 1e-6 {
-      return 50.0;
+    let n: usize = 512;
+    let h_grid = 1.0 / n as f64;
+    let h_fd = 1e-4_f64;
+    let mut acc = 0.0_f64;
+    for k in 1..n {
+      let t = (k as f64) * h_grid;
+      let a = Self::pickands(theta, t);
+      let a_pp = (Self::pickands(theta, (t + h_fd).min(1.0 - 1e-12)) - 2.0 * a
+        + Self::pickands(theta, (t - h_fd).max(1e-12)))
+        / (h_fd * h_fd);
+      let w = if k % 2 == 0 { 2.0 } else { 4.0 };
+      acc += w * t * (1.0 - t) * a_pp / a.max(1e-15);
     }
-    let residual = |theta: f64| Self::tau_from_theta(theta) - tau;
-    zero(1e-4, 50.0, 1e-6, residual).unwrap_or(1.0)
+    (h_grid / 3.0) * acc
   }
 
-  /// Upper-tail dependence $\lambda_U = 2^{-1/\theta}$ (via the Pickands
-  /// relation $\lambda_U = 2(1 - A(1/2))$, see
-  /// [`Galambos::pickands`]/[`Galambos::tau_from_theta`]); Galambos has no
-  /// lower-tail dependence.
-  /// Reference: Galambos, J. (1975); Joe, H. (1997), §5.4.
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+    let (lo, hi) = (1e-8, 50.0);
+    let (tau_lo, tau_hi) = (self.tau_from_theta(lo), self.tau_from_theta(hi));
+    if !(tau > tau_lo && tau < tau_hi) {
+      return Err(tau_out_of_range(
+        tau,
+        format!("{tau_lo:?} < tau < {tau_hi:?}"),
+      ));
+    }
+    invert_tau(|theta| self.tau_from_theta(theta) - tau, lo, hi)
+  }
+
+  /// `λ_U = 2^{−1/θ} = 2(1 − A(1/2))` of [`Galambos::pickands`], `λ_L = 0` (Galambos 1975; Joe 1997, §5.4).
   fn tail_dependence(&self) -> TailDependence<f64> {
     self.assert_theta_valid_for_tail_dependence();
     let theta = self.theta.unwrap();
@@ -304,14 +289,13 @@ mod tests {
   }
 
   #[test]
-  fn galambos_compute_theta_inverts_tau() {
+  fn galambos_theta_from_tau_inverts_tau() {
     let target_theta = 1.5_f64;
-    let tau = Galambos::tau_from_theta(target_theta);
-    let mut c = Galambos::new();
-    c.set_tau(tau);
-    let recovered = c.compute_theta();
+    let c = Galambos::new();
+    let tau = c.tau_from_theta(target_theta);
+    let recovered = c.theta_from_tau(tau).unwrap();
     assert!(
-      approx(recovered, target_theta, 0.05),
+      approx(recovered, target_theta, 1e-8),
       "expected {target_theta}, got {recovered}"
     );
   }

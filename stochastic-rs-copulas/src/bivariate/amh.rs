@@ -18,6 +18,7 @@
 //! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
 //! Springer, Example 4.23 / Table 4.1 (family (3)).
 //! Reference: Johnson, M.E. (1987), "Multivariate Statistical Simulation", Wiley, the conditional inverse as a quadratic in `u`, DOI 10.1002/9781118150740.
+//! Reference: Hofert, M., Mächler, M. & McNeil, A. J. (2011), "Likelihood inference for Archimedean copulas", arXiv:1108.6032v1, Table 2 (Kendall's τ); Journal of Multivariate Analysis 110 (2012), 133–150.
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -27,15 +28,15 @@ use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
-use crate::optim::zero;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::invert_tau;
+use crate::traits::bivariate::tau_out_of_range;
 
 #[derive(Debug, Clone)]
 pub struct Amh {
   pub r#type: BivariateFamily,
   pub theta: Option<f64>,
-  pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
   pub invalid_thetas: Vec<f64>,
 }
@@ -45,7 +46,6 @@ impl Default for Amh {
     Self {
       r#type: BivariateFamily::Amh,
       theta: None,
-      tau: None,
       theta_bounds: (-1.0, 1.0),
       invalid_thetas: vec![],
     }
@@ -99,42 +99,11 @@ impl Amh {
     let c = y * one_minus_p * one_minus_p;
     (minus_a, b, c, (1.0 - theta + 2.0 * theta * v) * y.sqrt())
   }
-
-  /// Kendall's tau in closed form
-  /// $$
-  /// \tau(\theta) = 1 - \frac{2}{3\theta^2}\big[\theta + (1-\theta)^2 \ln(1-\theta)\big],
-  /// $$
-  /// continuous on $\theta \in [-1, 1)$ with $\lim_{\theta\to 0}\tau = 0$
-  /// (a removable singularity handled by a fourth-order Taylor expansion).
-  ///
-  /// Returns the residual $\tau(\theta) - \tau_{\text{target}}$.
-  fn tau_residual(tau_target: f64, theta: f64) -> f64 {
-    let tau_theta = if theta.abs() < 1e-4 {
-      // Series around θ = 0: τ = 2θ/9 + θ²/18 + 2θ³/75 + 5θ⁴/294 + O(θ⁵).
-      let t2 = theta * theta;
-      let t3 = t2 * theta;
-      let t4 = t2 * t2;
-      2.0 / 9.0 * theta + t2 / 18.0 + 2.0 / 75.0 * t3 + 5.0 / 294.0 * t4
-    } else {
-      let one_minus_theta = 1.0 - theta;
-      let bracket = theta + one_minus_theta * one_minus_theta * one_minus_theta.ln();
-      1.0 - 2.0 * bracket / (3.0 * theta * theta)
-    };
-    tau_theta - tau_target
-  }
 }
 
 impl BivariateExt for Amh {
   fn family(&self) -> BivariateFamily {
     self.r#type
-  }
-
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn set_tau(&mut self, tau: f64) {
-    self.tau = Some(tau);
   }
 
   fn theta(&self) -> Option<f64> {
@@ -250,20 +219,33 @@ impl BivariateExt for Amh {
     }
   }
 
-  fn compute_theta(&self) -> f64 {
-    let tau = self.tau.unwrap();
-    // AMH τ is monotonically increasing on (-1, 1) with the bracket
-    // [(5 - 8 ln 2)/3, 1/3]; saturate outside and run Brent inside.
-    let tau_lo = (5.0 - 8.0 * 2.0_f64.ln()) / 3.0;
-    let tau_hi = 1.0 / 3.0;
-    if tau <= tau_lo {
-      return -1.0;
+  /// `τ = 1 − 2[θ + (1−θ)² ln(1−θ)]/(3θ²)` (Hofert, Mächler & McNeil 2011, Table 2), with its limit `1/3` at `θ = 1`
+  /// and its series below `|θ| < 1e-4`.
+  fn tau_from_theta(&self, theta: f64) -> f64 {
+    if theta.abs() < 1e-4 {
+      let t2 = theta * theta;
+      return 2.0 / 9.0 * theta + t2 / 18.0 + t2 * theta / 45.0 + t2 * t2 / 90.0;
     }
-    if tau >= tau_hi {
-      return 1.0 - 1e-9;
+    if theta == 1.0 {
+      return 1.0 / 3.0;
     }
-    let residual = |theta: f64| Self::tau_residual(tau, theta);
-    zero(-1.0 + 1e-9, 1.0 - 1e-9, 1e-10, residual).unwrap_or(0.0)
+    let one_minus = 1.0 - theta;
+    1.0 - 2.0 * (theta + one_minus * one_minus * one_minus.ln()) / (3.0 * theta * theta)
+  }
+
+  /// Brent on `[−1, 1]`, whose ends give the range `[(5 − 8 ln 2)/3, 1/3)` from the same `τ`, so every `τ` in it brackets.
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+    let (lo, hi) = (self.tau_from_theta(-1.0), self.tau_from_theta(1.0));
+    if !(tau >= lo && tau < hi) {
+      return Err(tau_out_of_range(tau, format!("{lo:?} <= tau < {hi:?}")));
+    }
+    if tau == lo {
+      return Ok(-1.0);
+    }
+    if tau.abs() < 1e-12 {
+      return Ok(0.0);
+    }
+    invert_tau(|theta| self.tau_from_theta(theta) - tau, -1.0, 1.0)
   }
 
   /// AMH has no tail dependence in either tail, for any $\theta \in
@@ -332,39 +314,64 @@ mod tests {
     assert!(approx(cdf[1], 0.2, 1e-12));
   }
 
+  /// `τ(−1) = (5 − 8 ln 2)/3` and `τ(1) = 1/3` close the family's range.
   #[test]
-  fn amh_tau_residual_matches_paper_bounds() {
-    // τ → -0.1817 as θ → -1; τ → 1/3 as θ → 1⁻.
-    let res_lo = Amh::tau_residual(0.0, -0.999_999);
-    let res_hi = Amh::tau_residual(0.0, 0.999_999);
-    // tau_residual(0, θ) = τ(θ); compare to paper bounds.
-    let tau_lo = (5.0 - 8.0 * 2.0_f64.ln()) / 3.0;
+  fn amh_tau_from_theta_reaches_the_paper_bounds() {
+    let c = Amh::new();
+    let tau_lo = (5.0 - 8.0 * std::f64::consts::LN_2) / 3.0;
+    let at_minus_one = c.tau_from_theta(-1.0);
     assert!(
-      approx(res_lo, tau_lo, 1e-3),
-      "τ(-1) ≈ {tau_lo}, got {res_lo}"
+      approx(at_minus_one, tau_lo, 1e-15),
+      "τ(-1) = {at_minus_one}"
     );
-    assert!(approx(res_hi, 1.0 / 3.0, 1e-3), "τ(1) ≈ 1/3, got {res_hi}");
+    assert_eq!(c.tau_from_theta(1.0), 1.0 / 3.0);
+    assert!(approx(c.tau_from_theta(0.999_999), 1.0 / 3.0, 1e-3));
+  }
+
+  /// Below `|θ| = 1e-4` the series `2θ/9 + θ²/18 + θ³/45 + θ⁴/90` answers; mpmath's closed form at 50 digits.
+  #[test]
+  fn amh_series_matches_mpmath_below_the_switch() {
+    let c = Amh::new();
+    for (theta, want) in [
+      (9e-5, 2.000045001620073e-5),
+      (-9e-5, -1.9999550016199272e-5),
+    ] {
+      let tau = c.tau_from_theta(theta);
+      assert!((tau - want).abs() <= 1e-20, "θ={theta}: {tau} vs {want}");
+    }
   }
 
   #[test]
-  fn amh_compute_theta_inverts_tau_within_bracket() {
-    // Pick a θ inside the bracket, compute τ, then invert and recover.
+  fn amh_theta_from_tau_inverts_tau_within_bracket() {
     let target_theta = 0.6_f64;
-    let tau = Amh::tau_residual(0.0, target_theta);
-    let mut c = Amh::new();
-    c.set_tau(tau);
-    let recovered = c.compute_theta();
+    let c = Amh::new();
+    let tau = c.tau_from_theta(target_theta);
+    let recovered = c.theta_from_tau(tau).unwrap();
     assert!(
       approx(recovered, target_theta, 1e-6),
       "expected {target_theta}, got {recovered}"
     );
   }
 
+  /// Every `τ` of the range inverts, its ends included, where a bracket short of `±1` would leave no sign change.
+  #[test]
+  fn amh_inverts_the_ends_of_its_range() {
+    let c = Amh::new();
+    let (lo, hi) = (c.tau_from_theta(-1.0), 1.0 / 3.0);
+    for tau in [lo, lo + 1e-12, -1e-9, 1e-9, hi - 1e-12] {
+      let theta = c.theta_from_tau(tau).unwrap();
+      assert!((-1.0..=1.0).contains(&theta), "τ = {tau}: θ = {theta}");
+      assert!(
+        (c.tau_from_theta(theta) - tau).abs() < 1e-10,
+        "τ = {tau}: θ = {theta}"
+      );
+    }
+  }
+
   #[test]
   fn amh_tau_zero_recovers_independence() {
-    let mut c = Amh::new();
-    c.set_tau(0.0);
-    let theta = c.compute_theta();
+    let c = Amh::new();
+    let theta = c.theta_from_tau(0.0).unwrap();
     assert!(approx(theta, 0.0, 1e-6), "τ=0 should give θ=0, got {theta}");
   }
 
@@ -422,7 +429,6 @@ mod tests {
     let tol = 6.0 * se;
     let theta = 0.6_f64;
     let mut c = Amh::new();
-    c.set_tau(0.2);
     c.set_theta(theta);
     let cdf_true = |a: f64, b: f64| a * b / (1.0 - theta * (1.0 - a) * (1.0 - b));
     let points = [

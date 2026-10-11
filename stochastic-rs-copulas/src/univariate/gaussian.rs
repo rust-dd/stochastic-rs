@@ -96,7 +96,7 @@ mod tests {
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
-  use crate::bivariate::clayton::Clayton;
+  use crate::bivariate::frank::Frank;
   use crate::traits::BivariateExt;
 
   /// After `fit`, `percent_point` inverts `cdf` and the median of the fitted margin is its mean.
@@ -114,14 +114,8 @@ mod tests {
     assert!((g.percent_point(0.5) - 3.0).abs() < 1e-12);
   }
 
-  /// The module doc claims `GaussianUnivariate`'s `cdf` output is "the
-  /// input every `BivariateExt` ... copula expects" — this proves that
-  /// claim rather than merely stating it. Two independently-drawn Gaussian
-  /// columns, each transformed through `fit` + `cdf`, must clear
-  /// `BivariateExt::fit`'s own `check_marginal` KS-uniformity gate (this
-  /// crate's only other production consumer of a marginal transform,
-  /// `EmpiricalCopula2D`, is exercised the same way via its Python
-  /// binding — this is `GaussianUnivariate`'s equivalent real call site).
+  /// Two Gaussian columns through `fit` + `cdf` pass `check_marginal`'s uniformity diagnostic and fit a copula that
+  /// reaches both signs of τ, as the independent draws need.
   #[test]
   fn gaussian_univariate_output_feeds_a_real_bivariate_copula() {
     let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(11));
@@ -137,12 +131,14 @@ mod tests {
 
     let u = x.mapv(|v| gx.cdf(v));
     let v = y.mapv(|v| gy.cdf(v));
+    let mut frank = Frank::new(None);
+    assert_eq!(frank.check_marginal(u.view()), Ok(()));
+    assert_eq!(frank.check_marginal(v.view()), Ok(()));
     let data = stack![Axis(1), u, v];
 
-    let mut clayton = Clayton::new();
-    clayton
+    frank
       .fit(data.view())
-      .expect("Gaussian-margin transform must pass BivariateExt::fit's uniformity check");
-    assert!(clayton.theta().is_some());
+      .expect("the transformed margins are a two-column sample in [0, 1]");
+    assert!(frank.theta().is_some());
   }
 }

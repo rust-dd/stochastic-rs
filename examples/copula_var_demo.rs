@@ -82,8 +82,7 @@ fn main() {
 
   // 1) Clayton copula with the requested τ → θ.
   let mut clayton = Clayton::new();
-  clayton.set_tau(tau);
-  clayton.set_theta(clayton.compute_theta());
+  clayton.set_theta(clayton.theta_from_tau(tau).unwrap());
   let theta = clayton.theta().expect("theta computed from tau");
   println!("Clayton(τ = {tau}) → θ = {theta:.4}");
 

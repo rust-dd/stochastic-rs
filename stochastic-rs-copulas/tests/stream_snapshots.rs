@@ -124,13 +124,13 @@ fn samples() -> Vec<(&'static str, Array2<f64>)> {
   );
   row!(
     "bb1",
-    Bb1::new(Some(0.8), Some(1.6), None)
+    Bb1::new(Some(0.8), Some(1.6))
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
   row!(
     "bb7",
-    Bb7::new(Some(1.7), Some(0.9), None)
+    Bb7::new(Some(1.7), Some(0.9))
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
@@ -148,7 +148,7 @@ fn samples() -> Vec<(&'static str, Array2<f64>)> {
   );
   row!(
     "frank",
-    Frank::new(Some(4.0), None)
+    Frank::new(Some(4.0))
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );
@@ -166,7 +166,7 @@ fn samples() -> Vec<(&'static str, Array2<f64>)> {
   );
   row!(
     "gumbel",
-    Gumbel::new(Some(2.0), None)
+    Gumbel::new(Some(2.0))
       .sample(N, &Deterministic::new(SEED))
       .unwrap()
   );

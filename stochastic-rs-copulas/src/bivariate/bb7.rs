@@ -30,9 +30,11 @@ use super::two_parameter::fit_two_parameters;
 use super::two_parameter::invert_h;
 use super::two_parameter::kendall_tau_numeric;
 use super::two_parameter::ln_one_minus_exp;
+use crate::bivariate::conditional::check_pairs;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::tau_out_of_range;
 
 #[derive(Debug, Clone)]
 pub struct Bb7 {
@@ -41,18 +43,16 @@ pub struct Bb7 {
   pub theta: Option<f64>,
   /// `δ > 0`.
   pub delta: f64,
-  pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
   pub invalid_thetas: Vec<f64>,
 }
 
 impl Bb7 {
-  pub fn new(theta: Option<f64>, delta: Option<f64>, tau: Option<f64>) -> Self {
+  pub fn new(theta: Option<f64>, delta: Option<f64>) -> Self {
     Self {
       r#type: BivariateFamily::Bb7,
       theta,
       delta: delta.unwrap_or(1.0),
-      tau,
       theta_bounds: (1.0, f64::INFINITY),
       invalid_thetas: Vec::new(),
     }
@@ -103,18 +103,29 @@ impl Bb7 {
       + (theta * (delta + 1.0) - (theta * delta + 1.0) * ln_t.exp()).ln()
   }
 
-  /// Numerical Kendall's τ at `(θ, δ)` from the h-function (composite
-  /// two-point Gauss–Legendre); BB7 has no closed form.
-  pub fn kendall_tau(theta: f64, delta: f64, panels: usize) -> f64 {
-    kendall_tau_numeric(|u, v| Self::h_scalar(u, v, theta, delta), panels)
+  /// The Nelder–Mead start: bisection of the 100-panel τ at the stored `δ` on `[1, 60]`, 50 steps, `1` when `τ(1) ≥ tau`.
+  fn mle_start(&self, tau: f64) -> f64 {
+    let kendall_tau =
+      |theta: f64| kendall_tau_numeric(|u, v| Self::h_scalar(u, v, theta, self.delta), 100);
+    let (mut lo, mut hi) = (1.0_f64, 60.0_f64);
+    if kendall_tau(lo) >= tau {
+      return lo;
+    }
+    for _ in 0..50 {
+      let mid = 0.5 * (lo + hi);
+      if kendall_tau(mid) < tau {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    0.5 * (lo + hi)
   }
 }
 
 impl Bb7 {
-  /// Maximum-likelihood fit of `(θ, δ)` started from the Kendall inversion,
-  /// without the marginal uniformity check that [`BivariateExt::fit`] runs
-  /// first — for callers that already hold pseudo-observations, such as the
-  /// vine fitter.
+  /// Maximum-likelihood fit of `(θ, δ)` from a Kendall start without `fit`'s input check, for the vine fitter's
+  /// pseudo-observations; BB7 reaches only `τ ∈ (0, 1)`, so another `τ̂` is an error and stores nothing.
   pub(crate) fn fit_parameters(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
     if X.nrows() < 2 {
       return Err(CopulaError::InsufficientData {
@@ -131,8 +142,11 @@ impl Bb7 {
       needed: 2,
       got: u.len(),
     })?;
-    self.tau = Some(tau.max(0.05));
-    let start_theta = self.compute_theta().clamp(1.0, 20.0);
+    if !(tau > 0.0 && tau < 1.0) {
+      return Err(tau_out_of_range(tau, "0.0 < tau < 1.0".to_string()));
+    }
+    // A starting point for Nelder–Mead, not an estimate.
+    let start_theta = self.mle_start(tau.max(0.05)).clamp(1.0, 20.0);
     let (theta, delta) = fit_two_parameters(
       X,
       (1.0, 0.0),
@@ -141,30 +155,19 @@ impl Bb7 {
     );
     self.theta = Some(theta);
     self.delta = delta;
-    self.tau = Some(Self::kendall_tau(theta, delta, 200));
     Ok(())
   }
 }
 
 impl Default for Bb7 {
   fn default() -> Self {
-    Self::new(None, None, None)
+    Self::new(None, None)
   }
 }
 
 impl BivariateExt for Bb7 {
   fn family(&self) -> BivariateFamily {
     self.r#type
-  }
-
-  fn tau(&self) -> Option<f64> {
-    self
-      .tau
-      .or_else(|| self.theta.map(|t| Self::kendall_tau(t, self.delta, 200)))
-  }
-
-  fn set_tau(&mut self, tau: f64) {
-    self.tau = Some(tau);
   }
 
   fn theta(&self) -> Option<f64> {
@@ -228,29 +231,39 @@ impl BivariateExt for Bb7 {
     })
   }
 
-  /// `θ ∈ [1, 60]` solving the numerical τ at the stored `δ` by bisection.
-  fn compute_theta(&self) -> f64 {
-    let tau = self.tau.expect("set tau first");
+  /// Numerical τ at the stored `δ` (200-panel two-point Gauss–Legendre on the h-function); BB7 has no closed form.
+  fn tau_from_theta(&self, theta: f64) -> f64 {
+    kendall_tau_numeric(|u, v| Self::h_scalar(u, v, theta, self.delta), 200)
+  }
+
+  /// Bisection of `τ(θ)` on `[1, 60]`.
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
     let (mut lo, mut hi) = (1.0_f64, 60.0_f64);
-    if Self::kendall_tau(lo, self.delta, 100) >= tau {
-      return lo;
+    let (tau_lo, tau_hi) = (self.tau_from_theta(lo), self.tau_from_theta(hi));
+    if !(tau >= tau_lo && tau <= tau_hi) {
+      return Err(tau_out_of_range(
+        tau,
+        format!("{tau_lo:?} <= tau <= {tau_hi:?}"),
+      ));
+    }
+    if tau == tau_lo {
+      return Ok(lo);
     }
     for _ in 0..50 {
       let mid = 0.5 * (lo + hi);
-      if Self::kendall_tau(mid, self.delta, 100) < tau {
+      if self.tau_from_theta(mid) < tau {
         lo = mid;
       } else {
         hi = mid;
       }
     }
-    0.5 * (lo + hi)
+    Ok(0.5 * (lo + hi))
   }
 
-  /// Maximum-likelihood fit of `(θ, δ)`, started from the Kendall inversion
-  /// at the current `δ`.
+  /// Maximum-likelihood fit of `(θ, δ)` on a two-column sample in `[0, 1]`, started from the Kendall inversion at the
+  /// current `δ`.
   fn fit(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
-    self.check_marginal(X.column(0))?;
-    self.check_marginal(X.column(1))?;
+    check_pairs(X)?;
     self.fit_parameters(X)
   }
 
@@ -274,7 +287,7 @@ mod tests {
 
   #[test]
   fn h_function_is_the_v_derivative_of_the_cdf() {
-    let c = Bb7::new(Some(1.8), Some(0.9), None);
+    let c = Bb7::new(Some(1.8), Some(0.9));
     for (u, v) in [(0.3, 0.6), (0.8, 0.2), (0.5, 0.5)] {
       let h = c.partial_derivative(array![[u, v]].view()).unwrap()[0];
       let eps = 1e-6;
@@ -290,7 +303,7 @@ mod tests {
 
   #[test]
   fn density_is_the_mixed_derivative_of_the_cdf() {
-    let c = Bb7::new(Some(1.5), Some(1.2), None);
+    let c = Bb7::new(Some(1.5), Some(1.2));
     let (u, v, eps) = (0.4, 0.7, 1e-4);
     let f = |a: f64, b: f64| c.cdf(array![[a, b]].view()).unwrap()[0];
     let mixed = (f(u + eps, v + eps) - f(u + eps, v - eps) - f(u - eps, v + eps)
@@ -305,7 +318,7 @@ mod tests {
 
   #[test]
   fn cdf_has_uniform_margins_and_nests_the_limits() {
-    let c = Bb7::new(Some(1.7), Some(0.8), None);
+    let c = Bb7::new(Some(1.7), Some(0.8));
     for (u, v) in [(0.2, 0.7), (0.9, 0.4)] {
       assert!((c.cdf(array![[u, 1.0 - 1e-12]].view()).unwrap()[0] - u).abs() < 1e-8);
       assert!((c.cdf(array![[1.0 - 1e-12, v]].view()).unwrap()[0] - v).abs() < 1e-8);
@@ -313,7 +326,7 @@ mod tests {
     // θ = 1 is Clayton(δ).
     let mut clayton = crate::bivariate::clayton::Clayton::new();
     clayton.set_theta(0.8);
-    let joe_clayton = Bb7::new(Some(1.0), Some(0.8), None);
+    let joe_clayton = Bb7::new(Some(1.0), Some(0.8));
     let (u, v) = (0.35, 0.65);
     assert!(
       (joe_clayton.cdf(array![[u, v]].view()).unwrap()[0]
@@ -325,17 +338,19 @@ mod tests {
 
   #[test]
   fn tail_coefficients_follow_joe() {
-    let td = Bb7::new(Some(2.0), Some(1.0), None).tail_dependence();
+    let td = Bb7::new(Some(2.0), Some(1.0)).tail_dependence();
     assert!((td.upper - (2.0 - 2.0_f64.sqrt())).abs() < 1e-15);
     assert!((td.lower - 0.5).abs() < 1e-15);
   }
 
   #[test]
   fn kendall_inversion_and_maximum_likelihood_are_consistent() {
-    let truth = Bb7::new(Some(1.6), Some(1.1), None);
-    let tau = Bb7::kendall_tau(1.6, 1.1, 200);
-    let mut inverted = Bb7::new(None, Some(1.1), Some(tau));
-    inverted.theta = Some(inverted.compute_theta());
+    let truth = Bb7::new(Some(1.6), Some(1.1));
+    let tau = truth.tau_from_theta(1.6);
+    let inverted = Bb7::new(
+      Some(Bb7::new(None, Some(1.1)).theta_from_tau(tau).unwrap()),
+      Some(1.1),
+    );
     assert!(
       (inverted.theta.unwrap() - 1.6).abs() < 0.02,
       "inverted theta {}",

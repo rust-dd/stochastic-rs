@@ -45,6 +45,7 @@ use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::tau_out_of_range;
 
 /// Clamp used to evaluate [`GaussianCopula::partial_derivative`] just
 /// inside `(0, 1)` at the `v` boundary instead of returning a hardcoded
@@ -57,7 +58,6 @@ pub struct GaussianCopula {
   /// Correlation $\rho \in (-1, 1)$, stored under the trait's `theta`
   /// field for single-parameter compatibility with the other families.
   pub theta: Option<f64>,
-  pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
   pub invalid_thetas: Vec<f64>,
 }
@@ -67,7 +67,6 @@ impl Default for GaussianCopula {
     Self {
       r#type: BivariateFamily::Gaussian,
       theta: None,
-      tau: None,
       theta_bounds: (-1.0, 1.0),
       invalid_thetas: vec![-1.0, 1.0],
     }
@@ -93,14 +92,6 @@ impl GaussianCopula {
 impl BivariateExt for GaussianCopula {
   fn family(&self) -> BivariateFamily {
     self.r#type
-  }
-
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn set_tau(&mut self, tau: f64) {
-    self.tau = Some(tau);
   }
 
   fn theta(&self) -> Option<f64> {
@@ -203,11 +194,15 @@ impl BivariateExt for GaussianCopula {
     conditional_quantiles(y, V, Self::inverse(rho))
   }
 
-  /// Closed-form Kendall's tau inversion $\rho = \sin(\pi\tau/2)$.
-  /// Reference: Kruskal, W.H. (1958), *JASA* 53(284), 814-861.
-  fn compute_theta(&self) -> f64 {
-    let tau = self.tau.unwrap();
-    (0.5 * std::f64::consts::PI * tau).sin().clamp(-1.0, 1.0)
+  fn tau_from_theta(&self, theta: f64) -> f64 {
+    2.0 / std::f64::consts::PI * theta.asin()
+  }
+
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+    if !(tau > -1.0 && tau < 1.0) {
+      return Err(tau_out_of_range(tau, "-1.0 < tau < 1.0".into()));
+    }
+    Ok((std::f64::consts::FRAC_PI_2 * tau).sin())
   }
 
   /// Asymptotic independence: $\lambda_L = \lambda_U = 0$ for every $\rho
@@ -262,14 +257,13 @@ mod tests {
     assert!(approx(cdf, 1.0 / 3.0, 1e-12), "got {cdf}, expected 1/3");
   }
 
-  /// ρ=0.6 → τ → compute_theta → ρ.
+  /// ρ = 0.6 → τ → `theta_from_tau` → ρ.
   #[test]
   fn gaussian_tau_roundtrip() {
     let rho = 0.6_f64;
     let tau = (2.0 / std::f64::consts::PI) * rho.asin();
-    let mut c = GaussianCopula::new();
-    c.set_tau(tau);
-    let recovered = c.compute_theta();
+    let c = GaussianCopula::new();
+    let recovered = c.theta_from_tau(tau).unwrap();
     assert!(
       approx(recovered, rho, 1e-12),
       "got {recovered}, expected {rho}"

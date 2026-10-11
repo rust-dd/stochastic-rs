@@ -34,11 +34,10 @@ fn t_cdf_zero_rho_at_origin_is_one_quarter() {
 }
 
 #[test]
-fn t_compute_theta_matches_sin_formula() {
-  let mut c = TCopula::with_nu(4.0);
-  c.set_tau(0.25);
+fn t_theta_from_tau_matches_sin_formula() {
+  let c = TCopula::with_nu(4.0);
   let expected = (0.5_f64 * std::f64::consts::PI * 0.25).sin();
-  assert!(approx(c.compute_theta(), expected, 1e-12));
+  assert!(approx(c.theta_from_tau(0.25).unwrap(), expected, 1e-12));
 }
 
 #[test]
@@ -280,11 +279,7 @@ fn t_copula_rejects_rho_boundary_like_gaussian() {
   }
 }
 
-/// Mirrors the crate-wide `"tail_dependence requires a valid theta"`
-/// anchor (see e.g. `gumbel::tests::gumbel_tail_dependence_panics_on_invalid_theta`):
-/// reachable in practice, not just via a raw `set_theta` — `compute_theta`
-/// clamps to exactly `±1.0` (same formula as `GaussianCopula`'s own), so a
-/// `fit()` on perfectly rank-correlated data lands here too.
+/// `ρ = 1` divides by `√(1 − ρ²)`: the crate-wide `"tail_dependence requires a valid theta"` panic, not a coefficient.
 #[test]
 #[should_panic(expected = "tail_dependence requires a valid theta")]
 fn t_copula_tail_dependence_panics_at_rho_boundary() {

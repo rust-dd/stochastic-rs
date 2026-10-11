@@ -21,7 +21,6 @@ use crate::traits::TailDependence;
 pub struct Independence {
   pub r#type: BivariateFamily,
   pub theta: Option<f64>,
-  pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
   pub invalid_thetas: Vec<f64>,
 }
@@ -31,7 +30,6 @@ impl Default for Independence {
     Self {
       r#type: BivariateFamily::Independence,
       theta: None,
-      tau: None,
       theta_bounds: (0.0, 0.0),
       invalid_thetas: vec![],
     }
@@ -49,14 +47,6 @@ impl BivariateExt for Independence {
     self.r#type
   }
 
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn set_tau(&mut self, tau: f64) {
-    self.tau = Some(tau);
-  }
-
   fn theta(&self) -> Option<f64> {
     self.theta
   }
@@ -71,12 +61,6 @@ impl BivariateExt for Independence {
 
   fn set_theta(&mut self, theta: f64) {
     self.theta = Some(theta);
-  }
-
-  fn fit(&mut self, _X: ArrayView2<f64>) -> Result<(), CopulaError> {
-    self.tau = Some(0.0);
-    self.theta = Some(0.0);
-    Ok(())
   }
 
   fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
@@ -114,8 +98,13 @@ impl BivariateExt for Independence {
     conditional_quantiles(y, V, |y, _| y)
   }
 
-  fn compute_theta(&self) -> f64 {
+  fn tau_from_theta(&self, _theta: f64) -> f64 {
     0.0
+  }
+
+  /// The family represents τ = 0 only; a fit does not reject other data.
+  fn theta_from_tau(&self, _tau: f64) -> Result<f64, CopulaError> {
+    Ok(0.0)
   }
 
   /// $C(u,v) = uv$ has no tail dependence in either tail by construction.

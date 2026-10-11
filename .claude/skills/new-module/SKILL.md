@@ -132,7 +132,7 @@ Before writing code, determine which existing traits the new types should implem
 
 | Type | Required trait | Effect |
 |---|---|---|
-| Bivariate copula | `BivariateExt` | 11 required methods; `sample()` / `fit()` / inversion are defaulted. Tau is `tau()` / `set_tau()` accessors, not a `kendall_tau()` method. See `copula-bivariate` |
+| Bivariate copula | `BivariateExt` | 10 required methods, `tau_from_theta` / `theta_from_tau` among them; `sample()` / `fit()` / `tau()` / inversion are defaulted. See `copula-bivariate` |
 | Multivariate copula | `MultivariateExt` | `sample()`, `fit()`, `pdf()`, `cdf()` |
 
 ### Blanket-impl chains (do NOT duplicate by hand)

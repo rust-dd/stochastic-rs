@@ -49,6 +49,7 @@ use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::tau_out_of_range;
 
 #[derive(Debug, Clone)]
 pub struct TCopula {
@@ -57,7 +58,6 @@ pub struct TCopula {
   /// field for single-parameter compatibility. Set degrees of freedom
   /// `nu` via [`TCopula::with_nu`].
   pub theta: Option<f64>,
-  pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
   pub invalid_thetas: Vec<f64>,
   /// Degrees of freedom $\nu > 0$. Default 4. Private and validated — read
@@ -87,7 +87,6 @@ impl Default for TCopula {
     Self {
       r#type: BivariateFamily::TCopula,
       theta: None,
-      tau: None,
       theta_bounds: (-1.0, 1.0),
       // Mirrors `GaussianCopula`'s own `invalid_thetas`: `rho = ±1` divides
       // by `sqrt(1 - rho^2)` in `pdf` (and, less directly, in
@@ -206,14 +205,6 @@ impl BivariateExt for TCopula {
     self.r#type
   }
 
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn set_tau(&mut self, tau: f64) {
-    self.tau = Some(tau);
-  }
-
   fn theta(&self) -> Option<f64> {
     self.theta
   }
@@ -316,10 +307,15 @@ impl BivariateExt for TCopula {
     conditional_quantiles(y, v, Self::inverse(self.theta.unwrap(), self.nu))
   }
 
-  /// Closed-form Kendall's tau inversion $\rho = \sin(\pi\tau/2)$.
-  fn compute_theta(&self) -> f64 {
-    let tau = self.tau.unwrap();
-    (0.5 * std::f64::consts::PI * tau).sin().clamp(-1.0, 1.0)
+  fn tau_from_theta(&self, theta: f64) -> f64 {
+    2.0 / std::f64::consts::PI * theta.asin()
+  }
+
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+    if !(tau > -1.0 && tau < 1.0) {
+      return Err(tau_out_of_range(tau, "-1.0 < tau < 1.0".into()));
+    }
+    Ok((std::f64::consts::FRAC_PI_2 * tau).sin())
   }
 
   /// Symmetric tail dependence $\lambda_L = \lambda_U = 2\,t_{\nu+1}\!\big(

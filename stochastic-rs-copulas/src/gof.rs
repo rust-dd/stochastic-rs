@@ -18,6 +18,7 @@ use ndarray::Axis;
 use ndarray::stack;
 use stochastic_rs_core::simd_rng::SeedExt;
 
+use crate::bivariate::conditional::check_pairs;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 
@@ -47,20 +48,6 @@ pub fn cramer_von_mises_independence(r: ArrayView2<f64>) -> f64 {
     statistic += (empirical - a * b).powi(2);
   }
   statistic
-}
-
-/// `x` is n × 2 with every entry in `[0, 1]` (NaN fails); no uniformity test, so a valid sample never fails by chance.
-fn check_input(x: ArrayView2<f64>) -> Result<(), CopulaError> {
-  if x.ncols() != 2 {
-    return Err(CopulaError::DimensionMismatch {
-      expected: 2,
-      got: x.ncols(),
-    });
-  }
-  if !x.iter().all(|u| (0.0..=1.0).contains(u)) {
-    return Err(CopulaError::MarginalOutOfRange);
-  }
-  Ok(())
 }
 
 fn finite(statistic: f64, what: &str) -> Result<f64, CopulaError> {
@@ -134,7 +121,7 @@ pub fn gof_cramer_von_mises<C: BivariateExt + Clone, S: SeedExt>(
     "alpha must satisfy `0.0 < alpha < 1.0`, got alpha = {:?}",
     config.alpha
   );
-  check_input(x)?;
+  check_pairs(x)?;
   let statistic = finite(
     cramer_von_mises_independence(rosenblatt(copula, x)?.view()),
     "data",
@@ -196,16 +183,14 @@ mod tests {
 
   fn data_for(seed: u64) -> Array2<f64> {
     let mut truth = Clayton::new();
-    truth.set_tau(0.6); // θ = 3
-    truth.set_theta(truth.compute_theta());
+    truth.set_theta(truth.theta_from_tau(0.6).unwrap()); // θ = 2τ/(1 − τ) = 3
     pseudo_observations(truth.sample(600, &Deterministic::new(seed)).unwrap().view())
   }
 
   #[test]
   fn rosenblatt_of_the_true_copula_is_uniform_and_independent() {
     let mut copula = Clayton::new();
-    copula.set_tau(0.5); // θ = 2τ/(1 − τ) = 2
-    copula.set_theta(copula.compute_theta());
+    copula.set_theta(copula.theta_from_tau(0.5).unwrap()); // θ = 2τ/(1 − τ) = 2
     let sample = copula.sample(3000, &Deterministic::new(3)).unwrap();
     let r = rosenblatt(&copula, sample.view()).unwrap();
     let (mean_a, mean_b) = (r.column(0).mean().unwrap(), r.column(1).mean().unwrap());
@@ -366,12 +351,6 @@ mod tests {
       BivariateFamily::Independence
     }
 
-    fn tau(&self) -> Option<f64> {
-      None
-    }
-
-    fn set_tau(&mut self, _tau: f64) {}
-
     fn theta(&self) -> Option<f64> {
       None
     }
@@ -386,8 +365,12 @@ mod tests {
 
     fn set_theta(&mut self, _theta: f64) {}
 
-    fn compute_theta(&self) -> f64 {
+    fn tau_from_theta(&self, _theta: f64) -> f64 {
       0.0
+    }
+
+    fn theta_from_tau(&self, _tau: f64) -> Result<f64, CopulaError> {
+      Ok(0.0)
     }
 
     fn tail_dependence(&self) -> TailDependence<f64> {
@@ -458,7 +441,7 @@ mod tests {
     };
     for seed in 0..200 {
       let raw = copula.sample(600, &Deterministic::new(seed)).unwrap();
-      assert_eq!(check_input(raw.view()), Ok(()), "seed {seed}");
+      assert_eq!(check_pairs(raw.view()), Ok(()), "seed {seed}");
     }
   }
 

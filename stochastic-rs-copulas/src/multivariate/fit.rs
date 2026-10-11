@@ -105,9 +105,7 @@ fn estimate(family: BivariateFamily, u: &[f64], v: &[f64]) -> Option<PairCopula>
       if tau.abs() < 1e-3 {
         return None;
       }
-      let mut frank = Frank::new(None, Some(tau));
-      let theta = frank.compute_theta();
-      frank.set_theta(theta);
+      let theta = Frank::new(None).theta_from_tau(tau).ok()?;
       theta.is_finite().then_some(PairCopula::Frank { theta })
     }
     BivariateFamily::Bb1 | BivariateFamily::Bb7 => {

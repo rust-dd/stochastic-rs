@@ -45,7 +45,7 @@ The one-parameter families are fit by computing Kendall's tau and inverting it t
 | Fast sampling at scale (millions of draws) | `Clayton`, `Gaussian`, `Independence` or `MarshallOlkin` — the only four with a closed-form `percent_point`; the others invert numerically per draw |
 | A non-exchangeable, shared-shock dependence structure | `MarshallOlkin`'s `with_alpha_beta` constructor — the one family here that is not symmetric in its two arguments in general |
 
-`fit` expects inputs already transformed to `[0, 1]` and runs a Kolmogorov-Smirnov uniformity check on each margin first; `Independence`'s `fit` reads no data.
+`fit` expects two columns already transformed to `[0, 1]` and checks only that shape and range, not uniformity, so transform raw data through its margins first. A Kendall's τ the family cannot represent is an error (`InvalidParameter { name: "tau", .. }`), never a clamped parameter; `tau_from_theta` and `theta_from_tau` convert between τ and the family's parameter.
 
 ## Multivariate (`MultivariateExt`)
 
@@ -88,9 +88,9 @@ print("Kendall's tau ≈", tau)                 # ≈ 0.5
 
 ### BB1 / BB7 — two-parameter tail asymmetry
 
-The one-parameter Archimedean families tie the two tails together: Clayton has only lower-tail, Gumbel only upper-tail dependence. BB1 (Clayton–Gumbel) and BB7 (Joe–Clayton) carry two parameters $(\theta, \delta)$ and set the two tails separately — BB1 has $\lambda_L = 2^{-1/(\theta\delta)}$, $\lambda_U = 2 - 2^{1/\delta}$; BB7 has $\lambda_U = 2 - 2^{1/\theta}$, $\lambda_L = 2^{-1/\delta}$. `fit` is a two-parameter maximum-likelihood estimate (Nelder–Mead on the log-density); `set_tau` + `compute_theta` inverts Kendall's τ at the current δ (closed form for BB1, $\tau = 1 - 2/(\delta(\theta+2))$; numerical for BB7).
+The one-parameter Archimedean families tie the two tails together: Clayton has only lower-tail, Gumbel only upper-tail dependence. BB1 (Clayton–Gumbel) and BB7 (Joe–Clayton) carry two parameters $(\theta, \delta)$ and set the two tails separately — BB1 has $\lambda_L = 2^{-1/(\theta\delta)}$, $\lambda_U = 2 - 2^{1/\delta}$; BB7 has $\lambda_U = 2 - 2^{1/\theta}$, $\lambda_L = 2^{-1/\delta}$. `fit` is a two-parameter maximum-likelihood estimate (Nelder–Mead on the log-density); `theta_from_tau` inverts Kendall's τ at the current δ (closed form for BB1, $\tau = 1 - 2/(\delta(\theta+2))$; numerical for BB7).
 
-`gof::gof_cramer_von_mises` is the Rosenblatt-transform Cramér–von Mises test of Genest, Rémillard & Beaudoin (2009) with a parametric bootstrap p-value and a rejection at `alpha` (`GofConfig`) — the valid procedure when the copula parameters were estimated on the same sample. `multivariate::fit::fit_vine` selects a D-vine or C-vine structure on Kendall's τ (Dißmann et al. 2013) and the family of every edge by AIC or BIC among Independence, Gaussian, Student-t, Clayton, Frank, BB1 and BB7, with the h-functions of the fitted pairs producing the pseudo-observations of the next tree. Feed every fit and test normalised ranks (`gof::pseudo_observations`, `srs.pseudo_observations` in Python): the statistics are rank statistics, and a family's `fit` rejects margins that fail its uniformity check.
+`gof::gof_cramer_von_mises` is the Rosenblatt-transform Cramér–von Mises test of Genest, Rémillard & Beaudoin (2009) with a parametric bootstrap p-value and a rejection at `alpha` (`GofConfig`) — the valid procedure when the copula parameters were estimated on the same sample. `multivariate::fit::fit_vine` selects a D-vine or C-vine structure on Kendall's τ (Dißmann et al. 2013) and the family of every edge by AIC or BIC among Independence, Gaussian, Student-t, Clayton, Frank, BB1 and BB7, with the h-functions of the fitted pairs producing the pseudo-observations of the next tree. Feed every fit and test normalised ranks (`gof::pseudo_observations`, `srs.pseudo_observations` in Python): the statistics are rank statistics, and `fit` checks only that the margins lie in `[0, 1]`.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">

@@ -5,6 +5,7 @@
 //! $$
 //!
 //! Reference: Domino, K. (2018), "Selected Methods for non-Gaussian Data Analysis", arXiv:1811.10486, Example 4.3.2, eq. (4.54) (the conditional inverse; its printed fraction bar wrongly spans the leading 1, which belongs outside the fraction).
+//! Reference: Hofert, M., Mächler, M. & McNeil, A. J. (2011), "Likelihood inference for Archimedean copulas", arXiv:1108.6032v1, Table 2 (Kendall's τ); Journal of Multivariate Analysis 110 (2012), 133–150.
 
 use gauss_quad::GaussLegendre;
 use ndarray::Array1;
@@ -15,25 +16,24 @@ use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
-use crate::optim::zero;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::invert_tau;
+use crate::traits::bivariate::tau_out_of_range;
 
 #[derive(Debug, Clone)]
 pub struct Frank {
   pub r#type: BivariateFamily,
   pub theta: Option<f64>,
-  pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
   pub invalid_thetas: Vec<f64>,
 }
 
 impl Frank {
-  pub fn new(theta: Option<f64>, tau: Option<f64>) -> Self {
+  pub fn new(theta: Option<f64>) -> Self {
     Self {
       r#type: BivariateFamily::Frank,
       theta,
-      tau,
       theta_bounds: (f64::NEG_INFINITY, f64::INFINITY),
       invalid_thetas: vec![],
     }
@@ -81,27 +81,15 @@ impl Frank {
   }
 }
 
-/// Unfit placeholder (`theta = tau = None`) — matches the zero-arg
-/// `new()`-equivalent shape of this crate's other 11 bivariate families
-/// (e.g. `Clayton::default()`); delegates to [`Frank::new`] so it can never
-/// drift from what that constructor already produces.
 impl Default for Frank {
   fn default() -> Self {
-    Self::new(None, None)
+    Self::new(None)
   }
 }
 
 impl BivariateExt for Frank {
   fn family(&self) -> BivariateFamily {
     self.r#type
-  }
-
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn set_tau(&mut self, tau: f64) {
-    self.tau = Some(tau);
   }
 
   fn theta(&self) -> Option<f64> {
@@ -201,26 +189,48 @@ impl BivariateExt for Frank {
     Ok(conditional_cdf(X, Self::h(self.theta.unwrap())))
   }
 
-  fn compute_theta(&self) -> f64 {
-    let tau = self.tau.unwrap();
-
-    if tau.abs() < 1e-12 {
-      return 0.0;
+  /// `τ(θ) = 1 − 4/θ + 4D₁(θ)/θ`, `D₁(θ) = θ⁻¹∫₀^θ t/(eᵗ − 1) dt` (Hofert, Mächler & McNeil 2011, Table 2), by piecewise
+  /// Gauss–Legendre; below `|θ| = 0.1`, where `4/θ` cancels, its series `θ/9 − θ³/900 + θ⁵/52920 − θ⁷/2721600`.
+  fn tau_from_theta(&self, theta: f64) -> f64 {
+    if theta.abs() < 0.1 {
+      let t2 = theta * theta;
+      return theta * (1.0 / 9.0 - t2 * (1.0 / 900.0 - t2 * (1.0 / 52920.0 - t2 / 2721600.0)));
     }
-    if tau >= 1.0 {
-      return f64::INFINITY;
-    }
-    if tau <= -1.0 {
-      return f64::NEG_INFINITY;
-    }
-
-    let residual = |theta: f64| Self::_tau_to_theta(tau, theta);
-    let (lo, hi) = if tau > 0.0 {
-      (1e-8_f64, 50.0_f64)
-    } else {
-      (-50.0_f64, -1e-8_f64)
+    let magnitude = theta.abs();
+    let integrand = |u: f64| {
+      if u.abs() < 1e-15 { 1.0 } else { u / u.exp_m1() }
     };
-    zero(lo, hi, 1e-8, residual).unwrap_or(0.0)
+    // Chunks of width at most 1 with 8 nodes each: one rule over `[0, |θ|]` under-resolves the integrand's drop from 1.
+    let quad = GaussLegendre::new(std::num::NonZeroUsize::new(8).unwrap());
+    let chunk_w = 1.0_f64;
+    let n_chunks = (magnitude / chunk_w).ceil() as usize;
+    let mut integral_pos = 0.0_f64;
+    for k in 0..n_chunks {
+      let lo = (k as f64) * chunk_w;
+      let hi = ((k + 1) as f64 * chunk_w).min(magnitude);
+      integral_pos += quad.integrate(lo, hi, integrand);
+    }
+    // For θ < 0, ∫₀^θ t/(eᵗ−1) dt = −θ²/2 − ∫₀^|θ| u/(eᵘ−1) du.
+    // (Substitute u = −t and use u/(e⁻ᵘ−1) = −u − u/(eᵘ−1).)
+    let integral = if theta > 0.0 {
+      integral_pos
+    } else {
+      -theta * theta / 2.0 - integral_pos
+    };
+    1.0 - 4.0 / theta + 4.0 * integral / (theta * theta)
+  }
+
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+    let cap = self.tau_from_theta(1e4);
+    if !(tau > -cap && tau < cap) {
+      return Err(tau_out_of_range(tau, format!("{:?} < tau < {cap:?}", -cap)));
+    }
+    if tau.abs() < 1e-12 {
+      return Ok(0.0);
+    }
+    // `τ(0) = 0` exactly, so the bracket changes sign for every `τ` that passed the guards.
+    let (lo, hi) = if tau > 0.0 { (0.0, 1e4) } else { (-1e4, 0.0) };
+    invert_tau(|theta| self.tau_from_theta(theta) - tau, lo, hi)
   }
 
   /// Frank has no tail dependence in either tail, for any $\theta$.
@@ -239,47 +249,6 @@ impl Frank {
   fn _g(&self, z: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok((-self.theta.unwrap() * &z).exp() - 1.0)
   }
-
-  /// Residual `τ(θ) − τ_target` for the Frank tau↔theta relation
-  /// `τ(θ) = 1 − 4/θ + (4/θ²) · ∫₀^θ t/(eᵗ − 1) dt` (Genest-MacKay 1986).
-  /// For θ < 0 the integral is taken in the negative direction
-  /// (i.e. `−∫_θ^0`) so the formula is well-defined on `(−∞, ∞)\{0}`.
-  fn _tau_to_theta(tau: f64, alpha: f64) -> f64 {
-    if alpha.abs() < 1e-15 {
-      // Independence limit: τ(0) = 0.
-      return -tau;
-    }
-    let abs_a = alpha.abs();
-    let integrand = |u: f64| {
-      if u.abs() < 1e-15 {
-        1.0
-      } else {
-        u / (u.exp() - 1.0)
-      }
-    };
-    // The integrand t/(eᵗ−1) drops from 1 at t=0 to e^{-t} for large t.
-    // Naive Gauss-Legendre over [0, |alpha|] under-resolves the spike near 0
-    // for large |alpha|; split into chunks of width ≤ 1 with 8 nodes each
-    // (effectively a piecewise high-order rule) for stable integration.
-    let quad = GaussLegendre::new(std::num::NonZeroUsize::new(8).unwrap());
-    let chunk_w = 1.0_f64;
-    let n_chunks = (abs_a / chunk_w).ceil() as usize;
-    let mut integral_pos = 0.0_f64;
-    for k in 0..n_chunks {
-      let lo = (k as f64) * chunk_w;
-      let hi = ((k + 1) as f64 * chunk_w).min(abs_a);
-      integral_pos += quad.integrate(lo, hi, integrand);
-    }
-    // For α < 0, ∫₀^α t/(eᵗ−1) dt = −α²/2 − ∫₀^|α| u/(eᵘ−1) du.
-    // (Substitute u = −t and use u/(e⁻ᵘ−1) = −u − u/(eᵘ−1).)
-    let integral = if alpha > 0.0 {
-      integral_pos
-    } else {
-      -alpha * alpha / 2.0 - integral_pos
-    };
-    let tau_theta = 1.0 - 4.0 / alpha + 4.0 * integral / (alpha * alpha);
-    tau_theta - tau
-  }
 }
 
 #[cfg(test)]
@@ -295,7 +264,7 @@ mod tests {
 
   #[test]
   fn frank_tail_dependence_is_zero() {
-    let f = Frank::new(Some(6.0), None);
+    let f = Frank::new(Some(6.0));
     let td = f.tail_dependence();
     assert_eq!(td.lower, 0.0);
     assert_eq!(td.upper, 0.0);
@@ -305,7 +274,7 @@ mod tests {
   /// it) and must actually behave like one: `pdf(u,v) = 1` everywhere.
   #[test]
   fn frank_pdf_at_independence_is_one() {
-    let f = Frank::new(Some(0.0), None);
+    let f = Frank::new(Some(0.0));
     let pdf = f.pdf(array![[0.2_f64, 0.9], [0.5, 0.5]].view()).unwrap();
     assert!(approx(pdf[0], 1.0, 1e-12), "got {}", pdf[0]);
     assert!(approx(pdf[1], 1.0, 1e-12), "got {}", pdf[1]);
@@ -318,7 +287,7 @@ mod tests {
   /// is `C(u,v) = uv`.
   #[test]
   fn frank_cdf_at_independence_is_uv() {
-    let f = Frank::new(Some(0.0), None);
+    let f = Frank::new(Some(0.0));
     let cdf = f.cdf(array![[0.3_f64, 0.7], [0.2, 0.9]].view()).unwrap();
     assert!(approx(cdf[0], 0.21, 1e-12), "got {}", cdf[0]);
     assert!(approx(cdf[1], 0.18, 1e-12), "got {}", cdf[1]);
@@ -330,12 +299,41 @@ mod tests {
   /// At independence, $C(u,v)=uv \Rightarrow \partial_v C = u$ — not `v`.
   #[test]
   fn frank_partial_derivative_at_independence_returns_u() {
-    let f = Frank::new(Some(0.0), None);
+    let f = Frank::new(Some(0.0));
     let pd = f
       .partial_derivative(array![[0.3_f64, 0.6], [0.2, 0.9]].view())
       .unwrap();
     assert!(approx(pd[0], 0.3, 1e-12), "got {}", pd[0]);
     assert!(approx(pd[1], 0.2, 1e-12), "got {}", pd[1]);
+  }
+
+  /// `τ(θ)` against mpmath at 40 digits on both sides of the series switch at `|θ| = 0.1`, and far from it.
+  #[test]
+  fn frank_tau_matches_mpmath() {
+    let f = Frank::new(None);
+    for (theta, want) in [
+      (1e-8, 1.111111111111111e-9),
+      (0.05, 0.00555541667257152),
+      (0.1, 0.01111000018892774),
+      (-4.0, -0.38814802129793785),
+      (20.0, 0.81644934023564),
+    ] {
+      let tau = f.tau_from_theta(theta);
+      assert!((tau - want).abs() < 1e-14, "θ={theta}: {tau} vs {want}");
+    }
+  }
+
+  /// A `τ` near independence inverts: the bracket ends at `θ = 0`, where `τ` is exactly 0.
+  #[test]
+  fn frank_inverts_a_tau_near_independence() {
+    let f = Frank::new(None);
+    for tau in [1e-11, -1e-9, 1e-6, -0.003] {
+      let theta = f.theta_from_tau(tau).unwrap();
+      assert!(
+        (f.tau_from_theta(theta) - tau).abs() < 1e-10,
+        "τ = {tau}: θ = {theta}"
+      );
+    }
   }
 
   /// The test that decides the θ=0 boundary question: at Frank's
@@ -360,7 +358,7 @@ mod tests {
     let n = 4000usize;
     let se = (2.0 * (2.0 * n as f64 + 5.0) / (9.0 * n as f64 * (n as f64 - 1.0))).sqrt();
     let tol = 6.0 * se;
-    let f = Frank::new(Some(0.0), Some(0.0));
+    let f = Frank::new(Some(0.0));
     let best_abs_tau = [2718_u64, 999, 42]
       .into_iter()
       .map(|seed| {

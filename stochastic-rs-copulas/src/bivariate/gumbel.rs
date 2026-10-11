@@ -15,49 +15,36 @@ use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::tau_out_of_range;
 
 #[derive(Debug, Clone)]
 pub struct Gumbel {
   pub r#type: BivariateFamily,
   pub theta: Option<f64>,
-  pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
   pub invalid_thetas: Vec<f64>,
 }
 
 impl Gumbel {
-  pub fn new(theta: Option<f64>, tau: Option<f64>) -> Self {
+  pub fn new(theta: Option<f64>) -> Self {
     Self {
       r#type: BivariateFamily::Gumbel,
       theta,
-      tau,
       theta_bounds: (1.0, f64::INFINITY),
       invalid_thetas: vec![0.0],
     }
   }
 }
 
-/// Unfit placeholder (`theta = tau = None`) — matches the zero-arg
-/// `new()`-equivalent shape of this crate's other 11 bivariate families
-/// (e.g. `Clayton::default()`); delegates to [`Gumbel::new`] so it can never
-/// drift from what that constructor already produces.
 impl Default for Gumbel {
   fn default() -> Self {
-    Self::new(None, None)
+    Self::new(None)
   }
 }
 
 impl BivariateExt for Gumbel {
   fn family(&self) -> BivariateFamily {
     self.r#type
-  }
-
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn set_tau(&mut self, tau: f64) {
-    self.tau = Some(tau);
   }
 
   fn theta(&self) -> Option<f64> {
@@ -162,14 +149,15 @@ impl BivariateExt for Gumbel {
     }))
   }
 
-  fn compute_theta(&self) -> f64 {
-    let tau = self.tau.unwrap();
+  fn tau_from_theta(&self, theta: f64) -> f64 {
+    1.0 - 1.0 / theta
+  }
 
-    if tau >= 1.0 {
-      return f64::INFINITY;
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+    if !(0.0..1.0).contains(&tau) {
+      return Err(tau_out_of_range(tau, "0.0 <= tau < 1.0".into()));
     }
-
-    1.0 / (1.0 - tau)
+    Ok(1.0 / (1.0 - tau))
   }
 
   /// Upper-tail dependence $\lambda_U = 2 - 2^{1/\theta}$; Gumbel has no
@@ -200,7 +188,7 @@ mod tests {
   /// the next test's doc for why a Kendall's-τ sampling check does not.
   #[test]
   fn gumbel_partial_derivative_at_independence_returns_u() {
-    let g = Gumbel::new(Some(1.0), None);
+    let g = Gumbel::new(Some(1.0));
     let pd = g
       .partial_derivative(array![[0.3_f64, 0.6], [0.2, 0.9]].view())
       .unwrap();
@@ -223,7 +211,7 @@ mod tests {
     let n = 4000usize;
     let se = (2.0 * (2.0 * n as f64 + 5.0) / (9.0 * n as f64 * (n as f64 - 1.0))).sqrt();
     let tol = 6.0 * se;
-    let g = Gumbel::new(Some(1.0), Some(0.0));
+    let g = Gumbel::new(Some(1.0));
     let best_abs_tau = [2718_u64, 999, 42]
       .into_iter()
       .map(|seed| {
@@ -245,7 +233,7 @@ mod tests {
   /// Gumbel θ=2: λ_U = 2 − √2 = 0.585786437626905.
   #[test]
   fn gumbel_tail_dependence_closed_form() {
-    let g = Gumbel::new(Some(2.0), None);
+    let g = Gumbel::new(Some(2.0));
     let td = g.tail_dependence();
     assert!(
       (td.upper - (2.0 - std::f64::consts::SQRT_2)).abs() < 1e-12,
@@ -256,14 +244,11 @@ mod tests {
     assert_eq!(td.lower, 0.0);
   }
 
-  /// θ=0.5 < `theta_bounds().0 = 1.0` — e.g. reachable via `fit()` on data
-  /// with slightly negative empirical τ, since `_compute_theta` discards
-  /// its own `check_theta()` result. Must panic, not silently return a
-  /// nonsensical (negative) `λ_U`.
+  /// θ = 0.5 lies below the bound 1, where `λ_U = 2 − 2^{1/θ}` would be negative: a panic, not a coefficient.
   #[test]
   #[should_panic(expected = "tail_dependence requires a valid theta")]
   fn gumbel_tail_dependence_panics_on_invalid_theta() {
-    let g = Gumbel::new(Some(0.5), None);
+    let g = Gumbel::new(Some(0.5));
     let _ = g.tail_dependence();
   }
 }

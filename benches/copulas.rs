@@ -69,7 +69,7 @@ fn bivariate_sample(c: &mut Criterion) {
   group.bench_function("clayton_n10k", |b| {
     b.iter(|| clayton.sample(10_000, &Deterministic::new(42)).unwrap())
   });
-  let frank = Frank::new(Some(4.0), None);
+  let frank = Frank::new(Some(4.0));
   group.bench_function("frank_n2k", |b| {
     b.iter(|| frank.sample(2_000, &Deterministic::new(42)).unwrap())
   });
@@ -80,7 +80,7 @@ fn bivariate_sample(c: &mut Criterion) {
   group.bench_function("gaussian_n10k", |b| {
     b.iter(|| gaussian.sample(10_000, &Deterministic::new(42)).unwrap())
   });
-  let gumbel = Gumbel::new(Some(2.0), None);
+  let gumbel = Gumbel::new(Some(2.0));
   group.bench_function("gumbel_brent_n2k", |b| {
     b.iter(|| gumbel.sample(2_000, &Deterministic::new(42)).unwrap())
   });
@@ -167,6 +167,22 @@ fn fit(c: &mut Criterion) {
     b.iter(|| {
       let mut fitted = Clayton::new();
       fitted.fit(pairs.view()).unwrap()
+    })
+  });
+  let plackett = Plackett {
+    theta: Some(3.0),
+    ..Plackett::new()
+  };
+  let plackett_pairs = pseudo_observations(
+    plackett
+      .sample(2_000, &Deterministic::new(1))
+      .unwrap()
+      .view(),
+  );
+  group.bench_function("plackett_fit_n2k", |b| {
+    b.iter(|| {
+      let mut fitted = Plackett::new();
+      fitted.fit(plackett_pairs.view()).unwrap()
     })
   });
   let data = pseudo_observations(

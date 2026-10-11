@@ -21,7 +21,7 @@ pub enum CopulaError {
   InsufficientData { needed: usize, got: usize },
   /// A pseudo-observation outside `[0, 1]`.
   MarginalOutOfRange,
-  /// The pseudo-observations fail the uniformity check a copula fit assumes.
+  /// A column fails the uniformity test of [`BivariateExt::check_marginal`](crate::traits::BivariateExt::check_marginal), which no fit runs.
   MarginalNotUniform,
   /// Not well-formed: a correlation matrix, a vine or NAC tree, or fewer than two dimensions.
   InvalidStructure(String),

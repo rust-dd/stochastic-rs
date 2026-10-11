@@ -81,7 +81,7 @@ fn clayton_pdf_matches_finite_difference_cdf() {
 #[test]
 fn frank_pdf_matches_finite_difference_cdf() {
   for &theta in &[0.5_f64, 2.0, 5.0, -3.0] {
-    let f = Frank::new(Some(theta), None);
+    let f = Frank::new(Some(theta));
     for &(u, v) in &POINTS {
       assert_pdf_matches_fd(&f, u, v, &format!("Frank θ={theta} (u,v)=({u},{v})"));
     }
@@ -93,7 +93,7 @@ fn frank_pdf_matches_finite_difference_cdf() {
 #[test]
 fn gumbel_pdf_matches_finite_difference_cdf() {
   for &theta in &[1.3_f64, 2.0, 4.0, 8.0] {
-    let g = Gumbel::new(Some(theta), None);
+    let g = Gumbel::new(Some(theta));
     for &(u, v) in &POINTS {
       assert_pdf_matches_fd(&g, u, v, &format!("Gumbel θ={theta} (u,v)=({u},{v})"));
     }

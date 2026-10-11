@@ -12,29 +12,32 @@
 //! lower Fréchet bound, $\theta \to \infty$ the upper Fréchet bound. No tail
 //! dependence in either direction.
 //!
+//! Kendall's τ has no closed form: `τ = 1 − 4∬ ∂_u C ∂_v C du dv` (Nelsen 2006, Thm 5.1.3) is integrated numerically.
+//!
 //! Reference: Plackett, R.L. (1965), "A Class of Bivariate Distributions",
 //! *Journal of the American Statistical Association* 60(310), 516-522.
 //! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
-//! Springer, Example 3.11.
+//! Springer, Example 3.11; Theorem 5.1.3 (Kendall's τ from the partial derivatives).
 //! Reference: Johnson, M.E. (1987), "Multivariate Statistical Simulation", Wiley, the Plackett generator (the conditional inverse), DOI 10.1002/9781118150740.
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 
+use super::two_parameter::kendall_tau_numeric;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
-use crate::optim::zero;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::invert_tau;
+use crate::traits::bivariate::tau_out_of_range;
 
 #[derive(Debug, Clone)]
 pub struct Plackett {
   pub r#type: BivariateFamily,
   pub theta: Option<f64>,
-  pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
   pub invalid_thetas: Vec<f64>,
 }
@@ -44,7 +47,6 @@ impl Default for Plackett {
     Self {
       r#type: BivariateFamily::Plackett,
       theta: None,
-      tau: None,
       theta_bounds: (1e-12, f64::INFINITY),
       invalid_thetas: vec![],
     }
@@ -79,39 +81,22 @@ impl Plackett {
     }
   }
 
-  /// Spearman's rho as a function of theta (Plackett 1965):
-  /// $\rho_S = (\theta+1)/(\theta-1) - 2\theta \ln \theta / (\theta-1)^2$ for $\theta \neq 1$.
-  fn spearman_rho(theta: f64) -> f64 {
-    if (theta - 1.0).abs() < 1e-9 {
-      return 0.0;
+  /// `partial_derivative`'s `∂_v C(u, v)` at one point, shared with the Kendall's τ quadrature; `u` at `θ = 1`.
+  fn h(u: f64, v: f64, theta: f64) -> f64 {
+    let eta = theta - 1.0;
+    if (eta).abs() < 1e-12 {
+      return u;
     }
-    let d = theta - 1.0;
-    (theta + 1.0) / d - 2.0 * theta * theta.ln() / (d * d)
-  }
-
-  /// Kendall's tau for the Plackett copula has no elementary closed form;
-  /// numerical surveys (Nelsen 2006 §5.3) give the relation
-  /// $\tau \approx (3 \rho_S) / (2 + |\rho_S|)$ as a smooth interpolant
-  /// (Genest & Carabarín-Aguirre 2014 quote $\rho_S/\tau \approx 3/2$ for
-  /// the Plackett family in the moderate-dependence regime), which inverts
-  /// to $|\rho_S| \approx 2|\tau|/(3 - |\tau|)$ at the few-percent level.
-  /// Returns the residual $\rho_S(\theta) - \rho_S^{\text{target}}$.
-  fn rho_residual(rho_target: f64, theta: f64) -> f64 {
-    Self::spearman_rho(theta) - rho_target
+    let a = 1.0 + eta * (u + v);
+    let d = a * a - 4.0 * u * v * theta * eta;
+    let d_safe = d.max(1e-30).sqrt();
+    0.5 * (1.0 - (a - 2.0 * u * theta) / d_safe)
   }
 }
 
 impl BivariateExt for Plackett {
   fn family(&self) -> BivariateFamily {
     self.r#type
-  }
-
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn set_tau(&mut self, tau: f64) {
-    self.tau = Some(tau);
   }
 
   fn theta(&self) -> Option<f64> {
@@ -186,16 +171,7 @@ impl BivariateExt for Plackett {
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    let eta = theta - 1.0;
-    Ok(conditional_cdf(x, |u, v| {
-      if (eta).abs() < 1e-12 {
-        return u;
-      }
-      let a = 1.0 + eta * (u + v);
-      let d = a * a - 4.0 * u * v * theta * eta;
-      let d_safe = d.max(1e-30).sqrt();
-      0.5 * (1.0 - (a - 2.0 * u * theta) / d_safe)
-    }))
+    Ok(conditional_cdf(x, |u, v| Self::h(u, v, theta)))
   }
 
   /// `Plackett::inverse`'s root; NaN for `y` or `v` outside `[0, 1]`.
@@ -208,25 +184,34 @@ impl BivariateExt for Plackett {
     conditional_quantiles(y, v, Self::inverse(self.theta.unwrap()))
   }
 
-  /// Plackett's natural rank-correlation is Spearman's $\rho_S$, which has
-  /// the closed form $\rho_S(\theta) = (\theta+1)/(\theta-1) - 2\theta\ln\theta/(\theta-1)^2$.
-  /// We invert this on the Plackett $\tau \leftrightarrow \rho_S$ family
-  /// using the Genest-Carabarín-Aguirre approximation
-  /// $\rho_S \approx 2\tau/(3-|\tau|)$ (sign-preserving), then solve for
-  /// $\theta$ by Brent root-finding on $\rho_S(\theta) - \rho_S^{\text{target}}$.
-  fn compute_theta(&self) -> f64 {
-    let tau = self.tau.unwrap();
-    if tau.abs() < 1e-12 {
-      return 1.0;
+  /// `τ = 1 − 4∬ ∂_u C ∂_v C` (Nelsen 2006, Thm 5.1.3) by the 200-panel two-point Gauss–Legendre rule: `5e-9` for `θ ≤ 100`.
+  fn tau_from_theta(&self, theta: f64) -> f64 {
+    if (theta - 1.0).abs() < 1e-12 {
+      return 0.0;
     }
-    let rho_target = 2.0 * tau / (3.0 - tau.abs());
-    let residual = |theta: f64| Self::rho_residual(rho_target, theta);
-    let (lo, hi) = if tau > 0.0 {
-      (1.0 + 1e-6_f64, 1e6_f64)
+    kendall_tau_numeric(|u, v| Self::h(u, v, theta), 200)
+  }
+
+  /// Brent on `ln θ`, so the bracket `[1e-6, 1e6]` keeps a relative resolution; the rule runs `9e-4` low at its ends,
+  /// so a `|τ|` above `0.99666` is rejected although the family reaches `0.99753` there.
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+    let (lo, hi) = (1e-6_f64, 1e6_f64);
+    let (tau_lo, tau_hi) = (self.tau_from_theta(lo), self.tau_from_theta(hi));
+    if !(tau > tau_lo && tau < tau_hi) {
+      return Err(tau_out_of_range(
+        tau,
+        format!("{tau_lo:?} < tau < {tau_hi:?}"),
+      ));
+    }
+    if tau.abs() < 1e-12 {
+      return Ok(1.0);
+    }
+    let (a, b) = if tau > 0.0 {
+      (0.0, hi.ln())
     } else {
-      (1e-6_f64, 1.0 - 1e-6_f64)
+      (lo.ln(), 0.0)
     };
-    zero(lo, hi, 1e-8, residual).unwrap_or(1.0)
+    invert_tau(|x| self.tau_from_theta(x.exp()) - tau, a, b).map(f64::exp)
   }
 
   /// Plackett has no tail dependence in either tail, for any $\theta > 0$.
@@ -286,15 +271,9 @@ mod tests {
   }
 
   #[test]
-  fn plackett_spearman_rho_zero_at_theta_one() {
-    assert!(approx(Plackett::spearman_rho(1.0), 0.0, 1e-12));
-  }
-
-  #[test]
-  fn plackett_compute_theta_zero_tau_gives_independence() {
-    let mut c = Plackett::new();
-    c.set_tau(0.0);
-    assert!(approx(c.compute_theta(), 1.0, 1e-12));
+  fn plackett_theta_from_tau_zero_tau_gives_independence() {
+    let c = Plackett::new();
+    assert!(approx(c.theta_from_tau(0.0).unwrap(), 1.0, 1e-12));
   }
 
   #[test]
@@ -322,5 +301,22 @@ mod tests {
     let td = c.tail_dependence();
     assert_eq!(td.lower, 0.0);
     assert_eq!(td.upper, 0.0);
+  }
+
+  /// Exact values from mpmath (`1 − 4∬ ∂_u C ∂_v C`); the 200-panel rule is good to `5e-9`.
+  #[test]
+  fn plackett_tau_matches_mpmath() {
+    let c = Plackett::new();
+    for (theta, want) in [
+      (0.5, -0.1530484986351886),
+      (2.0, 0.1530484986351886),
+      (5.0, 0.3454998686389342),
+      (20.0, 0.5916589746444259),
+      (100.0, 0.7871967240291546),
+    ] {
+      let tau = c.tau_from_theta(theta);
+      assert!((tau - want).abs() < 1e-7, "θ={theta}: {tau} vs {want}");
+    }
+    assert_eq!(c.tau_from_theta(1.0), 0.0);
   }
 }

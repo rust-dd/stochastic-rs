@@ -26,12 +26,12 @@ use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::tau_out_of_range;
 
 #[derive(Debug, Clone)]
 pub struct Fgm {
   pub r#type: BivariateFamily,
   pub theta: Option<f64>,
-  pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
   pub invalid_thetas: Vec<f64>,
 }
@@ -41,7 +41,6 @@ impl Default for Fgm {
     Self {
       r#type: BivariateFamily::Fgm,
       theta: None,
-      tau: None,
       theta_bounds: (-1.0, 1.0),
       invalid_thetas: vec![],
     }
@@ -72,14 +71,6 @@ impl Fgm {
 impl BivariateExt for Fgm {
   fn family(&self) -> BivariateFamily {
     self.r#type
-  }
-
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn set_tau(&mut self, tau: f64) {
-    self.tau = Some(tau);
   }
 
   fn theta(&self) -> Option<f64> {
@@ -147,11 +138,15 @@ impl BivariateExt for Fgm {
     conditional_quantiles(y, v, Self::inverse(self.theta.unwrap()))
   }
 
-  /// Closed-form Kendall's tau inversion: $\tau = 2\theta/9 \implies \theta = 9\tau/2$.
-  /// Saturates at $\pm 1$ when the requested $|\tau| > 2/9$ (the FGM limit).
-  fn compute_theta(&self) -> f64 {
-    let tau = self.tau.unwrap();
-    (9.0 * tau / 2.0).clamp(-1.0, 1.0)
+  fn tau_from_theta(&self, theta: f64) -> f64 {
+    2.0 * theta / 9.0
+  }
+
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+    if !(-2.0 / 9.0..=2.0 / 9.0).contains(&tau) {
+      return Err(tau_out_of_range(tau, "-2/9 <= tau <= 2/9".into()));
+    }
+    Ok(4.5 * tau)
   }
 
   /// FGM is a bounded perturbation of independence — no tail dependence
@@ -196,22 +191,24 @@ mod tests {
   }
 
   #[test]
-  fn fgm_compute_theta_inverts_tau_exactly() {
-    let mut c = Fgm::new();
-    c.set_tau(0.1);
-    assert!(approx(c.compute_theta(), 0.45, 1e-12));
-    c.set_tau(-0.15);
-    assert!(approx(c.compute_theta(), -0.675, 1e-12));
+  fn fgm_theta_from_tau_inverts_tau_exactly() {
+    let c = Fgm::new();
+    assert!(approx(c.theta_from_tau(0.1).unwrap(), 0.45, 1e-12));
+    assert!(approx(c.theta_from_tau(-0.15).unwrap(), -0.675, 1e-12));
   }
 
   #[test]
-  fn fgm_compute_theta_saturates_at_extreme_tau() {
-    let mut c = Fgm::new();
-    c.set_tau(0.5);
-    // 9*0.5/2 = 2.25 → clamped to 1.0 (FGM max correlation).
-    assert!(approx(c.compute_theta(), 1.0, 1e-12));
-    c.set_tau(-0.5);
-    assert!(approx(c.compute_theta(), -1.0, 1e-12));
+  fn fgm_tau_beyond_two_ninths_is_an_error() {
+    let c = Fgm::new();
+    for tau in [0.5, -0.5, f64::NAN] {
+      assert!(
+        matches!(
+          c.theta_from_tau(tau),
+          Err(CopulaError::InvalidParameter { name: "tau", .. })
+        ),
+        "τ = {tau}"
+      );
+    }
   }
 
   #[test]

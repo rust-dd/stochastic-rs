@@ -47,14 +47,14 @@ fn with_theta<C: BivariateExt>(mut copula: C, theta: f64) -> C {
 fn families() -> Vec<Family> {
   vec![
     ("amh", Box::new(with_theta(Amh::new(), 0.5))),
-    ("bb1", Box::new(Bb1::new(Some(0.8), Some(1.6), None))),
-    ("bb7", Box::new(Bb7::new(Some(1.7), Some(0.9), None))),
+    ("bb1", Box::new(Bb1::new(Some(0.8), Some(1.6)))),
+    ("bb7", Box::new(Bb7::new(Some(1.7), Some(0.9)))),
     ("clayton", Box::new(with_theta(Clayton::new(), 2.0))),
     ("fgm", Box::new(with_theta(Fgm::new(), 0.5))),
-    ("frank", Box::new(Frank::new(Some(4.0), None))),
+    ("frank", Box::new(Frank::new(Some(4.0)))),
     ("galambos", Box::new(with_theta(Galambos::new(), 1.5))),
     ("gaussian", Box::new(with_theta(GaussianCopula::new(), 0.5))),
-    ("gumbel", Box::new(Gumbel::new(Some(2.0), None))),
+    ("gumbel", Box::new(Gumbel::new(Some(2.0)))),
     (
       "husler_reiss",
       Box::new(with_theta(HuslerReiss::new(), 1.5)),
@@ -108,7 +108,7 @@ fn the_numerical_inverse_converges_at_extreme_levels() {
   let v = Array1::from_iter(extremes.iter().flat_map(|_| extremes));
   let numerical: [Family; 4] = [
     ("galambos", Box::new(with_theta(Galambos::new(), 1.5))),
-    ("gumbel", Box::new(Gumbel::new(Some(2.0), None))),
+    ("gumbel", Box::new(Gumbel::new(Some(2.0)))),
     (
       "husler_reiss",
       Box::new(with_theta(HuslerReiss::new(), 1.5)),
@@ -129,7 +129,7 @@ fn gumbel_and_joe_sample_at_high_dependence() {
   std::thread::scope(|scope| {
     for theta in [50.0, 100.0, 200.0] {
       let pair: [Family; 2] = [
-        ("gumbel", Box::new(Gumbel::new(Some(theta), None))),
+        ("gumbel", Box::new(Gumbel::new(Some(theta)))),
         ("joe", Box::new(with_theta(Joe::new(), theta))),
       ];
       for (name, copula) in pair {
@@ -213,7 +213,7 @@ fn assert_h_and_inverse(
 
 #[test]
 fn gumbel_and_joe_match_the_60_digit_references() {
-  let gumbel = |theta| Box::new(Gumbel::new(Some(theta), None)) as Box<dyn BivariateExt>;
+  let gumbel = |theta| Box::new(Gumbel::new(Some(theta))) as Box<dyn BivariateExt>;
   assert_h_and_inverse("gumbel", gumbel, &GUMBEL_H, &GUMBEL_INVERSE);
   let joe = |theta| Box::new(with_theta(Joe::new(), theta)) as Box<dyn BivariateExt>;
   assert_h_and_inverse("joe", joe, &JOE_H, &JOE_INVERSE);
@@ -248,10 +248,7 @@ fn the_edges_of_the_square_answer_inside_it() {
   let edges = array![[0.0, 0.5], [1.0, 0.5], [0.3, 0.0], [0.3, 1.0]];
   let mut copulas = families();
   for theta in [800.0, -800.0, 1000.0, -1000.0] {
-    copulas.push((
-      "frank at |θ| ≥ 800",
-      Box::new(Frank::new(Some(theta), None)),
-    ));
+    copulas.push(("frank at |θ| ≥ 800", Box::new(Frank::new(Some(theta)))));
   }
   copulas.push(("amh 0.99", Box::new(with_theta(Amh::new(), 0.99))));
   copulas.push(("amh 1", Box::new(with_theta(Amh::new(), 1.0))));
@@ -484,10 +481,10 @@ fn assert_reference(
 #[test]
 fn the_closed_forms_match_the_mpmath_references() {
   for (theta, y, v, want) in FRANK.into_iter().chain(FRANK_EXTREME) {
-    assert_reference("frank", &Frank::new(Some(theta), None), (y, v, want), 1e-14);
+    assert_reference("frank", &Frank::new(Some(theta)), (y, v, want), 1e-14);
   }
   for (theta, u, v, want) in FRANK_H {
-    let got = Frank::new(Some(theta), None)
+    let got = Frank::new(Some(theta))
       .partial_derivative(array![[u, v]].view())
       .unwrap()[0];
     assert!(
@@ -543,7 +540,7 @@ fn assert_round_trips(name: &str, copula: &dyn BivariateExt) {
 #[test]
 fn the_closed_forms_round_trip_through_h_on_the_grid() {
   for theta in [4.0, -3.0, 1e-4, 30.0, 800.0, -800.0, 1000.0, -1000.0] {
-    assert_round_trips("frank", &Frank::new(Some(theta), None));
+    assert_round_trips("frank", &Frank::new(Some(theta)));
   }
   for theta in [0.5, -1.0, 1.0] {
     assert_round_trips("fgm", &with_theta(Fgm::new(), theta));

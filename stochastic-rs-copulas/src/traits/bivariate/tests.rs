@@ -16,12 +16,6 @@ impl BivariateExt for DummyNonArchimedean {
     BivariateFamily::Fgm
   }
 
-  fn tau(&self) -> Option<f64> {
-    None
-  }
-
-  fn set_tau(&mut self, _tau: f64) {}
-
   fn theta(&self) -> Option<f64> {
     self.theta
   }
@@ -36,8 +30,12 @@ impl BivariateExt for DummyNonArchimedean {
 
   fn set_theta(&mut self, _theta: f64) {}
 
-  fn compute_theta(&self) -> f64 {
+  fn tau_from_theta(&self, _theta: f64) -> f64 {
     0.0
+  }
+
+  fn theta_from_tau(&self, _tau: f64) -> Result<f64, CopulaError> {
+    Ok(0.0)
   }
 
   fn tail_dependence(&self) -> TailDependence<f64> {
@@ -68,12 +66,6 @@ impl BivariateExt for ParameterisedWithoutTheta {
     BivariateFamily::MarshallOlkin
   }
 
-  fn tau(&self) -> Option<f64> {
-    None
-  }
-
-  fn set_tau(&mut self, _tau: f64) {}
-
   fn theta(&self) -> Option<f64> {
     None
   }
@@ -88,8 +80,12 @@ impl BivariateExt for ParameterisedWithoutTheta {
 
   fn set_theta(&mut self, _theta: f64) {}
 
-  fn compute_theta(&self) -> f64 {
+  fn tau_from_theta(&self, _theta: f64) -> f64 {
     0.0
+  }
+
+  fn theta_from_tau(&self, _tau: f64) -> Result<f64, CopulaError> {
+    Ok(0.0)
   }
 
   fn tail_dependence(&self) -> TailDependence<f64> {
@@ -154,8 +150,7 @@ fn percent_point_numerical_propagates_inner_errors_instead_of_panicking() {
 #[test]
 fn percent_point_numerical_saturates_at_the_bracket_floor() {
   let mut amh = Amh::new();
-  amh.set_tau(0.25);
-  amh._compute_theta();
+  amh.set_theta(amh.theta_from_tau(0.25).unwrap());
   let out = amh
     .percent_point_numerical(array![1e-300_f64].view(), array![0.5_f64].view())
     .expect("saturation is a value");
@@ -210,8 +205,7 @@ fn percent_point_numerical_solves_levels_below_the_product_underflow() {
 #[test]
 fn percent_point_numerical_round_trips_through_the_h_function() {
   let mut amh = Amh::new();
-  amh.set_tau(0.25);
-  amh._compute_theta();
+  amh.set_theta(amh.theta_from_tau(0.25).unwrap());
   for &(y, v) in &[(0.1_f64, 0.3_f64), (0.5, 0.5), (0.9, 0.7), (0.05, 0.95)] {
     let u = amh
       .percent_point_numerical(array![y].view(), array![v].view())
@@ -224,17 +218,12 @@ fn percent_point_numerical_round_trips_through_the_h_function() {
   }
 }
 
-/// `#[doc(hidden)]` hides `_compute_theta` / `check_marginal` /
-/// `partial_derivative_scalar` from rendered docs but must not restrict
-/// who can call them — they stay reachable in-crate exactly like
-/// `sample_with_uniform` already was. Compile-guard test: this would
-/// stop compiling if any of the three ever became `pub(crate)` (or
-/// otherwise less visible) by mistake.
+/// `#[doc(hidden)]` hides `partial_derivative_scalar` from the docs, not from callers: this stops compiling if it, or the
+/// public `check_marginal`, becomes less visible.
 #[test]
 fn doc_hidden_methods_remain_callable_in_crate() {
   let mut c = Clayton::new();
-  c.set_tau(0.5);
-  c._compute_theta();
+  c.set_theta(c.theta_from_tau(0.5).unwrap());
   assert!(c.theta().is_some());
 
   let u = array![0.1_f64, 0.5, 0.9];

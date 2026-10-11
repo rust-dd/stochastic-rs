@@ -40,8 +40,7 @@ let v = c.sample(10_000, &Deterministic::new(42)).expect("theta is set"); // rep
 
 // Or set Kendall's tau and invert it for theta.
 let mut from_tau = Clayton::new();
-from_tau.set_tau(0.5);
-from_tau.set_theta(from_tau.compute_theta());
+from_tau.set_theta(from_tau.theta_from_tau(0.5).unwrap());
 ```
 
 Multivariate constructions take a tree of `PairCopula` variants:

@@ -28,6 +28,7 @@
 //! Reference: Hüsler, J., Reiss, R.-D. (1989), "Maxima of normal random
 //! vectors: between independence and complete dependence", *Statist.
 //! Probab. Lett.* 7(4), 283-286.
+//! Reference: Gudendorf, G. & Segers, J. (2010), "Extreme-value copulas", in Copula Theory and Its Applications, Lecture Notes in Statistics, Springer, arXiv:0911.1015, §4 (Kendall's τ from the Pickands function).
 
 use ndarray::Array1;
 use ndarray::ArrayView2;
@@ -37,9 +38,10 @@ use stochastic_rs_distributions::special::norm_pdf;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::error::CopulaError;
-use crate::optim::zero;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::invert_tau;
+use crate::traits::bivariate::tau_out_of_range;
 
 /// Clamp used to evaluate [`HuslerReiss::partial_derivative`] just inside
 /// `(0, 1)` at the `v` boundary instead of returning a hardcoded constant
@@ -52,7 +54,6 @@ pub struct HuslerReiss {
   /// Hüsler-Reiss parameter $\lambda > 0$ (stored in the `theta` field for
   /// trait compatibility with single-parameter Archimedean copulas).
   pub theta: Option<f64>,
-  pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
   pub invalid_thetas: Vec<f64>,
 }
@@ -62,7 +63,6 @@ impl Default for HuslerReiss {
     Self {
       r#type: BivariateFamily::HuslerReiss,
       theta: None,
-      tau: None,
       theta_bounds: (0.0, f64::INFINITY),
       invalid_thetas: vec![],
     }
@@ -87,42 +87,11 @@ impl HuslerReiss {
     let beta = 1.0 / lambda - 0.5 * lambda * log_ratio;
     (1.0 - t) * norm_cdf(alpha) + t * norm_cdf(beta)
   }
-
-  /// Kendall's tau via the Genest-Rivest extreme-value identity, Simpson
-  /// integration with $N = 512$ panels and central-difference $A''$ on a
-  /// step of $h = 10^{-4}$.
-  pub fn tau_from_lambda(lambda: f64) -> f64 {
-    if lambda <= 1e-9 {
-      return 0.0;
-    }
-    let n: usize = 512;
-    let h_grid = 1.0 / n as f64;
-    let h_fd = 1e-4_f64;
-    let mut acc = 0.0_f64;
-    for k in 1..n {
-      let t = (k as f64) * h_grid;
-      let a = Self::pickands(lambda, t);
-      let a_pp = (Self::pickands(lambda, (t + h_fd).min(1.0 - 1e-12)) - 2.0 * a
-        + Self::pickands(lambda, (t - h_fd).max(1e-12)))
-        / (h_fd * h_fd);
-      let w = if k % 2 == 0 { 2.0 } else { 4.0 };
-      acc += w * t * (1.0 - t) * a_pp / a.max(1e-15);
-    }
-    (h_grid / 3.0) * acc
-  }
 }
 
 impl BivariateExt for HuslerReiss {
   fn family(&self) -> BivariateFamily {
     self.r#type
-  }
-
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn set_tau(&mut self, tau: f64) {
-    self.tau = Some(tau);
   }
 
   fn theta(&self) -> Option<f64> {
@@ -218,16 +187,38 @@ impl BivariateExt for HuslerReiss {
     }))
   }
 
-  fn compute_theta(&self) -> f64 {
-    let tau = self.tau.unwrap();
-    if tau <= 1e-6 {
-      return 1e-6;
+  /// The extreme-value identity `τ = ∫₀¹ t(1 − t) A''(t)/A(t) dt` (Gudendorf & Segers 2010, §4) by 512-panel Simpson
+  /// with a central-difference `A''` of step `1e-4`; 0 for `λ ≤ 1e-9`.
+  fn tau_from_theta(&self, lambda: f64) -> f64 {
+    if lambda <= 1e-9 {
+      return 0.0;
     }
-    if tau >= 1.0 - 1e-6 {
-      return 20.0;
+    let n: usize = 512;
+    let h_grid = 1.0 / n as f64;
+    let h_fd = 1e-4_f64;
+    let mut acc = 0.0_f64;
+    for k in 1..n {
+      let t = (k as f64) * h_grid;
+      let a = Self::pickands(lambda, t);
+      let a_pp = (Self::pickands(lambda, (t + h_fd).min(1.0 - 1e-12)) - 2.0 * a
+        + Self::pickands(lambda, (t - h_fd).max(1e-12)))
+        / (h_fd * h_fd);
+      let w = if k % 2 == 0 { 2.0 } else { 4.0 };
+      acc += w * t * (1.0 - t) * a_pp / a.max(1e-15);
     }
-    let residual = |lambda: f64| Self::tau_from_lambda(lambda) - tau;
-    zero(1e-3, 20.0, 1e-6, residual).unwrap_or(1.0)
+    (h_grid / 3.0) * acc
+  }
+
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+    let (lo, hi) = (1e-6, 50.0);
+    let (tau_lo, tau_hi) = (self.tau_from_theta(lo), self.tau_from_theta(hi));
+    if !(tau > tau_lo && tau < tau_hi) {
+      return Err(tau_out_of_range(
+        tau,
+        format!("{tau_lo:?} < tau < {tau_hi:?}"),
+      ));
+    }
+    invert_tau(|lambda| self.tau_from_theta(lambda) - tau, lo, hi)
   }
 
   /// Upper-tail dependence $\lambda_U = 2(1 - \Phi(1/\lambda))$;
@@ -311,14 +302,13 @@ mod tests {
   }
 
   #[test]
-  fn hr_compute_theta_inverts_tau() {
+  fn hr_theta_from_tau_inverts_tau() {
     let target_lambda = 1.5_f64;
-    let tau = HuslerReiss::tau_from_lambda(target_lambda);
-    let mut c = HuslerReiss::new();
-    c.set_tau(tau);
-    let recovered = c.compute_theta();
+    let c = HuslerReiss::new();
+    let tau = c.tau_from_theta(target_lambda);
+    let recovered = c.theta_from_tau(tau).unwrap();
     assert!(
-      approx(recovered, target_lambda, 0.05),
+      approx(recovered, target_lambda, 1e-8),
       "expected {target_lambda}, got {recovered}"
     );
   }

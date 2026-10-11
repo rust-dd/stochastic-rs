@@ -1,5 +1,5 @@
-//! The rules every family's conditional inverse and h-function share: one length check, NaN outside the unit
-//! interval, and the absolute tolerance of the numerical inverse.
+//! The rules every family's fit, conditional inverse and h-function share: one sample check, one length check, NaN
+//! outside the unit interval, and the absolute tolerance of the numerical inverse.
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -15,6 +15,20 @@ pub(crate) const ABSOLUTE_TOLERANCE: f64 = f64::MIN_POSITIVE;
 /// The one domain test for a level `y` or a conditioning value `v`.
 pub(crate) fn in_unit(x: f64) -> bool {
   (0.0..=1.0).contains(&x)
+}
+
+/// `x` is n × 2 with every entry in `[0, 1]` (NaN fails); no uniformity test, so a valid sample never fails by chance.
+pub(crate) fn check_pairs(x: ArrayView2<f64>) -> Result<(), CopulaError> {
+  if x.ncols() != 2 {
+    return Err(CopulaError::DimensionMismatch {
+      expected: 2,
+      got: x.ncols(),
+    });
+  }
+  if !x.iter().all(|&u| in_unit(u)) {
+    return Err(CopulaError::MarginalOutOfRange);
+  }
+  Ok(())
 }
 
 /// `DimensionMismatch` unless every quantile level in `y` has its conditioning value in `v`.

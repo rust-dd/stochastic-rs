@@ -17,6 +17,7 @@ use stochastic_rs_distributions::uniform::SimdUniform;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::ABSOLUTE_TOLERANCE;
 use crate::bivariate::conditional::check_lengths;
+use crate::bivariate::conditional::check_pairs;
 use crate::bivariate::conditional::in_unit;
 use crate::error::CopulaError;
 use crate::optim::zero;
@@ -39,23 +40,18 @@ pub trait BivariateExt {
   /// Which family this copula is; the label its error messages carry.
   fn family(&self) -> BivariateFamily;
 
-  fn tau(&self) -> Option<f64>;
-
-  fn set_tau(&mut self, tau: f64);
-
   fn theta(&self) -> Option<f64>;
+
+  fn set_theta(&mut self, theta: f64);
 
   fn theta_bounds(&self) -> (f64, f64);
 
   fn invalid_thetas(&self) -> Vec<f64>;
 
-  fn set_theta(&mut self, theta: f64);
-
-  fn check_theta(&self) -> Result<(), CopulaError> {
+  /// Bounds and exclusions of the family for a candidate `theta`: the one check every entry point runs.
+  fn validate_theta(&self, theta: f64) -> Result<(), CopulaError> {
     let (lower, upper) = self.theta_bounds();
-    let theta = self.theta().ok_or(CopulaError::NotFitted)?;
     let invalid = self.invalid_thetas();
-
     if !(lower <= theta && theta <= upper) || invalid.contains(&theta) {
       let constraint = if invalid.is_empty() {
         format!("{lower:?} <= theta <= {upper:?}")
@@ -68,39 +64,27 @@ pub trait BivariateExt {
         constraint,
       });
     }
-
     Ok(())
   }
 
-  fn compute_theta(&self) -> f64;
-
-  #[doc(hidden)]
-  fn _compute_theta(&mut self) {
-    self.set_theta(self.compute_theta());
-    let _ = self.check_theta();
+  fn check_theta(&self) -> Result<(), CopulaError> {
+    let theta = self.theta().ok_or(CopulaError::NotFitted)?;
+    self.validate_theta(theta)
   }
 
-  /// Closed-form upper/lower tail-dependence coefficients for the current
-  /// `theta`. Required — not defaulted — because a silent `(0.0, 0.0)`
-  /// fallback would be a correctness bug for every family with nonzero
-  /// tail dependence (Clayton, Gumbel, Joe, Galambos, Hüsler-Reiss,
-  /// Marshall-Olkin, Student-t). See each family's module doc for the
-  /// formula and its source.
-  ///
-  /// # Panics
-  ///
-  /// Implementations panic with a message beginning `"tail_dependence
-  /// requires a valid theta"` if the copula's shape parameter is unset or
-  /// outside its valid domain — see
-  /// [`BivariateExt::assert_theta_valid_for_tail_dependence`]. Every
-  /// other formula-producing method (`pdf`/`cdf`/`partial_derivative`/
-  /// `percent_point`) is gated by `check_fit()?`; `tail_dependence` has
-  /// no `Result` to propagate through, so it panics instead. This matters
-  /// because `_compute_theta` discards its own `check_theta()` result —
-  /// `fit()` on data whose empirical tau falls outside a family's
-  /// domain (e.g. negative tau for Gumbel) silently leaves `theta` out of
-  /// bounds, and without this guard `tail_dependence` would silently
-  /// return a nonsensical (even negative) coefficient.
+  /// Kendall's τ of the family at `theta`: a closed form, or quadrature where there is none.
+  fn tau_from_theta(&self, theta: f64) -> f64;
+
+  /// The `theta` whose Kendall's τ is `tau`; `InvalidParameter { name: "tau", .. }` outside the reachable range.
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError>;
+
+  /// Kendall's τ implied by the current `theta`.
+  fn tau(&self) -> Option<f64> {
+    self.theta().map(|theta| self.tau_from_theta(theta))
+  }
+
+  /// Closed-form tail-dependence coefficients at the current `theta`, required because a `(0, 0)` default is wrong for
+  /// every tail-dependent family; panics unless the parameters are valid (`assert_theta_valid_for_tail_dependence`).
   fn tail_dependence(&self) -> TailDependence<f64>;
 
   /// Panics with a message beginning `"tail_dependence requires a valid
@@ -139,8 +123,7 @@ pub trait BivariateExt {
     mut ud: Seeded<SimdUniform<f64>>,
     n: usize,
   ) -> Result<ndarray::Array2<f64>, CopulaError> {
-    // The family's `check_fit` is the gate: a copula parameterised outside `theta` passes it,
-    // a `tau` without a `theta` does not.
+    // The family's `check_fit` is the gate, so a copula parameterised outside `theta` passes it.
     self.check_fit()?;
 
     let mut v = Array1::<f64>::zeros(n);
@@ -152,6 +135,8 @@ pub trait BivariateExt {
     Ok(stack![Axis(1), u, v])
   }
 
+  /// Kendall's τ-b of a two-column sample in `[0, 1]`, inverted through `theta_from_tau`; nothing is stored when the
+  /// family cannot represent it (`InvalidParameter { name: "tau", .. }`) or the inverse falls outside its bounds.
   fn fit(&mut self, X: ndarray::ArrayView2<f64>) -> Result<(), CopulaError> {
     if X.nrows() < 2 {
       return Err(CopulaError::InsufficientData {
@@ -159,23 +144,19 @@ pub trait BivariateExt {
         got: X.nrows(),
       });
     }
-    let U = X.column(0).to_owned();
-    let V = X.column(1).to_owned();
-
-    self.check_marginal(U.view())?;
-    self.check_marginal(V.view())?;
-
-    let (tau, ..) = kendalls::tau_b_with_comparator(&U.to_vec(), &V.to_vec(), |a, b| {
+    check_pairs(X)?;
+    let u = X.column(0);
+    let v = X.column(1);
+    let (tau, ..) = kendalls::tau_b_with_comparator(&u.to_vec(), &v.to_vec(), |a, b| {
       a.partial_cmp(b).unwrap_or(Ordering::Greater)
     })
     .map_err(|_| CopulaError::InsufficientData {
       needed: 2,
-      got: U.len(),
+      got: u.len(),
     })?;
-
-    self.set_tau(tau);
-    self._compute_theta();
-
+    let theta = self.theta_from_tau(tau)?;
+    self.validate_theta(theta)?;
+    self.set_theta(theta);
     Ok(())
   }
 
@@ -189,7 +170,8 @@ pub trait BivariateExt {
     Ok(())
   }
 
-  #[doc(hidden)]
+  /// Kolmogorov–Smirnov uniformity test of one margin at the bound `1.627/√n` (nominally 1 %), so a valid sample fails it
+  /// by chance: a diagnostic, which `fit` does not run.
   fn check_marginal(&self, u: ArrayView1<f64>) -> Result<(), CopulaError> {
     if !u.iter().all(|x| (0.0..=1.0).contains(x)) {
       return Err(CopulaError::MarginalOutOfRange);
@@ -329,6 +311,25 @@ pub trait BivariateExt {
     let out = self.partial_derivative(X.view());
 
     Ok(*out?.get(0).unwrap())
+  }
+}
+
+/// Brent's `zero` on `residual(θ) = τ(θ) − τ` over `[lo, hi]`; `Numerical` without a sign change or past its bound.
+pub(crate) fn invert_tau(
+  residual: impl FnMut(f64) -> f64,
+  lo: f64,
+  hi: f64,
+) -> Result<f64, CopulaError> {
+  zero(lo, hi, 1e-10, residual).ok_or_else(|| {
+    CopulaError::Numerical(format!("theta from tau has no root on [{lo:?}, {hi:?}]"))
+  })
+}
+
+pub(crate) fn tau_out_of_range(tau: f64, constraint: String) -> CopulaError {
+  CopulaError::InvalidParameter {
+    name: "tau",
+    value: tau,
+    constraint,
   }
 }
 

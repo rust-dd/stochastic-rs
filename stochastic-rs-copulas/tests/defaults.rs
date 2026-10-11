@@ -6,12 +6,10 @@ use stochastic_rs_copulas::bivariate::frank::Frank;
 use stochastic_rs_copulas::bivariate::gumbel::Gumbel;
 use stochastic_rs_core::simd_rng::Deterministic;
 
-/// Sampling gates on `theta` (`check_fit`), not `tau`: the `tau` set below is illustrative and only `theta` drives the draws.
 #[test]
 fn defaults_sample_finite() {
   let frank = Frank {
     theta: Some(6.0),
-    tau: Some(0.5),
     ..Frank::default()
   };
   let out = frank.sample(16, &Deterministic::new(42)).unwrap();
@@ -20,7 +18,6 @@ fn defaults_sample_finite() {
 
   let gumbel = Gumbel {
     theta: Some(2.0),
-    tau: Some(0.5),
     ..Gumbel::default()
   };
   let out = gumbel.sample(16, &Deterministic::new(42)).unwrap();
@@ -34,7 +31,6 @@ fn defaults_sample_finite() {
 fn clone_is_a_plain_value_copy() {
   let frank = Frank {
     theta: Some(6.0),
-    tau: Some(0.5),
     ..Frank::default()
   };
   let cloned = frank.clone();
@@ -45,7 +41,6 @@ fn clone_is_a_plain_value_copy() {
 
   let gumbel = Gumbel {
     theta: Some(2.0),
-    tau: Some(0.5),
     ..Gumbel::default()
   };
   let cloned = gumbel.clone();

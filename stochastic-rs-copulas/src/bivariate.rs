@@ -6,30 +6,20 @@
 //!
 //! ## Choosing a copula
 //!
-//! Every family except [`independence::Independence`] is fit the same
-//! way — [`BivariateExt::fit`] moment-matches Kendall's tau-b, then
-//! inverts tau to the family's own shape parameter via `compute_theta` —
-//! so *how* you fit is not a distinguishing axis. What actually
-//! distinguishes these 15 is (1) which Kendall's tau values a family can
-//! even represent, (2) the shape of its tail dependence, and (3) whether
-//! fitting and sampling are closed-form or pay an iterative-solver cost.
+//! Every one-parameter family fits alike, [`BivariateExt::fit`] inverting Kendall's τ-b through
+//! [`BivariateExt::theta_from_tau`] ([`bb1::Bb1`] and [`bb7::Bb7`] maximise the likelihood); they differ in reach, tails, cost.
 //!
 //! ### What Kendall's tau each family can represent
 //!
 //! | Reachable τ | Families |
 //! |---|---|
-//! | Full `(-1, 1)` | [`frank::Frank`], [`gaussian::GaussianCopula`], [`t_copula::TCopula`], [`plackett::Plackett`] (via an admittedly approximate τ ↔ Spearman's-ρ proxy — a few percent off, per that family's own module doc) |
+//! | Full `(-1, 1)` | [`frank::Frank`], [`gaussian::GaussianCopula`], [`t_copula::TCopula`], [`plackett::Plackett`] |
 //! | Positive only, `[0, 1)` | [`clayton::Clayton`], [`galambos::Galambos`], [`husler_reiss::HuslerReiss`], [`gumbel::Gumbel`], [`joe::Joe`] |
 //! | Narrow, both signs | [`amh::Amh`] (`[-0.18, 0.33]`, asymmetric around 0), [`fgm::Fgm`] (`[-0.22, 0.22]`) |
-//! | Degenerate (no free parameter in practice) | [`independence::Independence`] (`{0}` only); [`marshall_olkin::MarshallOlkin`] on its symmetric `theta` path (`[0, 1]`) — its separate `with_alpha_beta` constructor instead fits two independent shock-rate parameters directly from data, not from tau at all, and is the only family in this crate that is not exchangeable in general |
+//! | Degenerate (no free parameter in practice) | [`independence::Independence`] (`{0}` only); [`marshall_olkin::MarshallOlkin`] on its symmetric `theta` path (`(0, 1]`) — its `with_alpha_beta` constructor takes the two shock rates directly and is the only family in this crate that is not exchangeable in general |
 //!
-//! Fitting a positive-only-τ family to negatively-dependent data is a real
-//! failure mode, not a hypothetical: [`clayton::Clayton`]'s `compute_theta`
-//! (`θ = 2τ/(1-τ)`) does not clamp, so negative τ silently produces a
-//! negative, out-of-bounds `θ` that only surfaces as an error the first
-//! time something calls [`BivariateExt::check_fit`] — not at `.fit()`
-//! itself. Check your data's empirical τ sign before picking a family,
-//! not after `.fit()` appears to succeed.
+//! A τ-b the family cannot reach fails `.fit()` itself with `InvalidParameter { name: "tau", .. }` and stores nothing:
+//! [`clayton::Clayton`] on negatively dependent data is an error, never a clamped or out-of-bounds `θ`.
 //!
 //! ### Tail shape, and one heuristic to distrust
 //!
@@ -56,32 +46,16 @@
 //!
 //! ### Closed-form vs. iterative: fitting and sampling cost
 //!
-//! `compute_theta` (the tau → theta step inside `.fit()`) is closed-form
-//! for [`clayton::Clayton`], [`fgm::Fgm`], [`gaussian::GaussianCopula`],
-//! [`t_copula::TCopula`], [`marshall_olkin::MarshallOlkin`] and
-//! [`gumbel::Gumbel`]; every other non-degenerate family
-//! ([`amh::Amh`], [`frank::Frank`], [`galambos::Galambos`],
-//! [`husler_reiss::HuslerReiss`], [`joe::Joe`], [`plackett::Plackett`])
-//! root-finds it numerically. A one-time, cheap-in-absolute-terms cost
-//! per `.fit()` call, but not free.
+//! `theta_from_tau` is closed-form for Clayton, FGM, Gaussian, t, Marshall–Olkin and Gumbel; AMH, Frank, Galambos,
+//! Hüsler–Reiss, Joe and Plackett root-find it, Plackett integrating its τ numerically at every step.
 //!
 //! [`BivariateExt::percent_point`], one call per sampled pair, is closed-form except in [`bb1::Bb1`] and [`bb7::Bb7`]
 //! (bisection) and [`galambos::Galambos`], [`gumbel::Gumbel`], [`husler_reiss::HuslerReiss`] and [`joe::Joe`] (Brent).
 //!
-//! ### The common data requirement, and one family that skips it
+//! ### The common data requirement
 //!
-//! `fit` requires both input columns already probability-integral-
-//! transformed to `[0, 1]` — it runs a Kolmogorov-Smirnov uniformity
-//! check (bound `1.627/√n`) on each column before touching Kendall's tau.
-//! Feeding raw prices or returns fails this check; transform through an
-//! empirical or fitted marginal CDF first (see
-//! [`crate::univariate::gaussian::GaussianUnivariate`] or
-//! [`crate::empirical`] for two ready-made transforms).
-//! [`independence::Independence`]'s own `fit` is the one exception: it
-//! hardcodes `tau = theta = 0.0` without reading the data at all, so it
-//! never runs that check — relying on `.fit()` as an implicit
-//! data-quality gate, even when independence is exactly what you expect,
-//! does not work for this one family.
+//! `fit` checks only that its input is two columns in `[0, 1]`, not that they are uniform: transform raw data through a
+//! marginal cdf first ([`crate::empirical`], [`crate::univariate::gaussian::GaussianUnivariate`]).
 //!
 //! ### The `∂_v` convention every `partial_derivative` must follow
 //!
@@ -217,31 +191,29 @@ mod tests {
   #[test]
   fn every_bivariate_sampler_is_seedable_and_deterministic() {
     let mut clayton = Clayton::new();
-    clayton.set_tau(0.5);
-    clayton._compute_theta();
+    clayton.set_theta(clayton.theta_from_tau(0.5).unwrap());
     assert_eq!(
       clayton.sample(64, &Deterministic::new(42)).unwrap(),
       clayton.sample(64, &Deterministic::new(42)).unwrap(),
       "Clayton replay"
     );
     let mut clayton_2 = Clayton::new();
-    clayton_2.set_tau(0.5);
-    clayton_2._compute_theta();
+    clayton_2.set_theta(clayton_2.theta_from_tau(0.5).unwrap());
     assert_eq!(
       clayton.sample(64, &Deterministic::new(42)).unwrap(),
       clayton_2.sample(64, &Deterministic::new(42)).unwrap(),
       "Clayton cross-object"
     );
 
-    let mut frank = Frank::new(None, Some(0.5));
-    frank._compute_theta();
+    let mut frank = Frank::new(None);
+    frank.set_theta(frank.theta_from_tau(0.5).unwrap());
     assert_eq!(
       frank.sample(64, &Deterministic::new(42)).unwrap(),
       frank.sample(64, &Deterministic::new(42)).unwrap(),
       "Frank replay"
     );
-    let mut frank_2 = Frank::new(None, Some(0.5));
-    frank_2._compute_theta();
+    let mut frank_2 = Frank::new(None);
+    frank_2.set_theta(frank_2.theta_from_tau(0.5).unwrap());
     assert_eq!(
       frank.sample(64, &Deterministic::new(42)).unwrap(),
       frank_2.sample(64, &Deterministic::new(42)).unwrap(),
@@ -250,15 +222,15 @@ mod tests {
 
     // theta = 1 / (1 - 0.5) = 2.0 — well past the theta == 1.0 independence
     // boundary that `Gumbel::percent_point` shortcuts around.
-    let mut gumbel = Gumbel::new(None, Some(0.5));
-    gumbel._compute_theta();
+    let mut gumbel = Gumbel::new(None);
+    gumbel.set_theta(gumbel.theta_from_tau(0.5).unwrap());
     assert_eq!(
       gumbel.sample(64, &Deterministic::new(42)).unwrap(),
       gumbel.sample(64, &Deterministic::new(42)).unwrap(),
       "Gumbel replay"
     );
-    let mut gumbel_2 = Gumbel::new(None, Some(0.5));
-    gumbel_2._compute_theta();
+    let mut gumbel_2 = Gumbel::new(None);
+    gumbel_2.set_theta(gumbel_2.theta_from_tau(0.5).unwrap());
     assert_eq!(
       gumbel.sample(64, &Deterministic::new(42)).unwrap(),
       gumbel_2.sample(64, &Deterministic::new(42)).unwrap(),

@@ -19,12 +19,12 @@ use crate::bivariate::conditional::confine;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::tau_out_of_range;
 
 #[derive(Debug, Clone)]
 pub struct Clayton {
   pub r#type: BivariateFamily,
   pub theta: Option<f64>,
-  pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
   pub invalid_thetas: Vec<f64>,
 }
@@ -34,7 +34,6 @@ impl Default for Clayton {
     Self {
       r#type: BivariateFamily::Clayton,
       theta: None,
-      tau: None,
       theta_bounds: (0.0, f64::INFINITY),
       invalid_thetas: vec![],
     }
@@ -72,14 +71,6 @@ impl Clayton {
 impl BivariateExt for Clayton {
   fn family(&self) -> BivariateFamily {
     self.r#type
-  }
-
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn set_tau(&mut self, tau: f64) {
-    self.tau = Some(tau);
   }
 
   fn theta(&self) -> Option<f64> {
@@ -224,14 +215,15 @@ impl BivariateExt for Clayton {
     Ok(h)
   }
 
-  fn compute_theta(&self) -> f64 {
-    if self.tau.is_some() && self.tau.unwrap() == 1.0 {
-      return f64::INFINITY;
+  fn tau_from_theta(&self, theta: f64) -> f64 {
+    theta / (theta + 2.0)
+  }
+
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+    if !(0.0..1.0).contains(&tau) {
+      return Err(tau_out_of_range(tau, "0.0 <= tau < 1.0".into()));
     }
-
-    let tau = self.tau.unwrap();
-
-    2.0 * tau / (1.0 - tau)
+    Ok(2.0 * tau / (1.0 - tau))
   }
 
   /// Lower-tail dependence $\lambda_L = 2^{-1/\theta}$; Clayton has no
@@ -297,7 +289,6 @@ mod tests {
     let tol = 6.0 * se;
     let c = Clayton {
       theta: Some(0.0),
-      tau: Some(0.0),
       ..Clayton::default()
     };
     let best_abs_tau = [2718_u64, 999, 42]

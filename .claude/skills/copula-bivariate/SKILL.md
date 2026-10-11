@@ -24,19 +24,18 @@ consolidated under `BivariateExt`.)
 
 ## 1. What you must implement, and what you get free
 
-`BivariateExt` is a wide trait with only **eleven** required methods.
+`BivariateExt` is a wide trait with only **ten** required methods.
 Everything else — sampling, fitting, inversion, `log_pdf` — is
 defaulted on top of them. Required:
 
 ```rust
 fn family(&self) -> BivariateFamily;     // the family's enum discriminant
-fn tau(&self) -> Option<f64>;            // Kendall's tau, None until fit/set
-fn set_tau(&mut self, tau: f64);
 fn theta(&self) -> Option<f64>;          // shape parameter, None until fit/set
 fn set_theta(&mut self, theta: f64);
 fn theta_bounds(&self) -> (f64, f64);
 fn invalid_thetas(&self) -> Vec<f64>;    // returns owned Vec, not &[f64]
-fn compute_theta(&self) -> f64;          // reads self.tau() — takes NO argument
+fn tau_from_theta(&self, theta: f64) -> f64;                      // Kendall's τ of the family at θ
+fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError>;   // Err outside the reachable τ range
 fn tail_dependence(&self) -> TailDependence<f64>;
 fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
@@ -48,9 +47,9 @@ Two shape facts that catch every first attempt:
   of `(u, v)` rows (an owned array passes `.view()`) and return an
   `Array1<f64>` of length `n`. They are **not** scalar
   `(u: f64, v: f64) -> f64` functions.
-- **`compute_theta` takes no `tau` argument.** It reads `self.tau()`,
-  which `fit()` has already set. The tau → theta inversion is a method
-  on a *populated* struct, not a free function of tau.
+- **`theta_from_tau` returns `Err(InvalidParameter { name: "tau", .. })`
+  for a τ the family cannot represent** — `fit` propagates it, so a fit
+  never stores an out-of-range θ.
 
 - **Errors are `CopulaError`** (`crate::error`), never `Box<dyn Error>` or a `String`: a parameter outside its domain is `InvalidParameter { name, value, constraint }` in the crate's assert form, an unfitted copula is `NotFitted`, bad pseudo-observations are `MarginalOutOfRange` / `MarginalNotUniform`.
 
@@ -59,12 +58,14 @@ Useful defaults you should usually **not** override:
 | Method | Default behaviour |
 |---|---|
 | `sample(n, &seed)` | `SimdUniform::new(0, 1).seeded(seed)`, via `sample_with_uniform` |
-| `fit(X)` | Kendall's tau-b via `kendalls`, then `_compute_theta()` |
+| `fit(X)` | two columns in `[0, 1]` (`DimensionMismatch` / `MarginalOutOfRange`, no uniformity test), Kendall's tau-b via `kendalls`, then `theta_from_tau` |
+| `tau()` | `tau_from_theta` at the current `theta` |
 | `percent_point(y, V)` | Brent inversion of `partial_derivative_scalar` |
 | `partial_derivative(X)` | central-difference on `cdf` |
 | `generator(t)` | anchored "not Archimedean" error |
 | `log_pdf` | `pdf(X)?.ln()` |
-| `check_theta` / `check_fit` / `check_marginal` | validation, used by the above |
+| `validate_theta` / `check_theta` / `check_fit` | validation, used by the above |
+| `check_marginal(u)` | the Kolmogorov–Smirnov uniformity diagnostic (bound `1.627/√n`); `fit` does not run it |
 
 Override `percent_point` and `partial_derivative` only when you have a
 closed form; they are independent choices. Twelve families override
@@ -92,8 +93,7 @@ rather than returning a nonsensical coefficient.
 ## 2. The struct skeleton
 
 Every family stores its bounds and its `BivariateFamily` as **fields**, and
-carries `theta` / `tau` as `Option<f64>` (unset until `fit` or
-`set_theta`). There is **no `seed` field** — seeding enters through
+carries `theta` as `Option<f64>` (unset until `fit` or `set_theta`). There is **no `seed` field** — seeding enters through
 `sample(n, &seed)` with a `Deterministic` (replay) or `Unseeded` (entropy) source.
 
 ```rust
@@ -112,7 +112,6 @@ use crate::traits::TailDependence;
 pub struct Clayton {
   pub r#type: BivariateFamily,
   pub theta: Option<f64>,
-  pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
   pub invalid_thetas: Vec<f64>,
 }
@@ -122,7 +121,6 @@ impl Default for Clayton {
     Self {
       r#type: BivariateFamily::Clayton,
       theta: None,
-      tau: None,
       theta_bounds: (0.0, f64::INFINITY),
       invalid_thetas: vec![],
     }
@@ -146,7 +144,7 @@ point at 0 is the textbook Clayton, but this crate ships the
 positive-dependence branch only, and encodes that by the bound rather
 than by an invalid-theta entry.
 
-## 3. The `compute_theta` pattern — closed-form > Brent > custom
+## 3. The `theta_from_tau` pattern — closed-form > Brent > custom
 
 The §6.12 audit trap was a custom Newton iteration on Frank's τ → θ map
 that diverged on positive correlations. The mandate:
@@ -159,34 +157,28 @@ that diverged on positive correlations. The mandate:
    shipped implementation is the pattern to copy:
 
    ```rust
-   fn compute_theta(&self) -> f64 {
-     let tau = self.tau.unwrap();
-
-     if tau.abs() < 1e-12 { return 0.0; }
-     if tau >= 1.0 { return f64::INFINITY; }
-     if tau <= -1.0 { return f64::NEG_INFINITY; }
-
-     let residual = |theta: f64| Self::_tau_to_theta(tau, theta);
-     let (lo, hi) = if tau > 0.0 {
-       (1e-8_f64, 50.0_f64)
-     } else {
-       (-50.0_f64, -1e-8_f64)
-     };
-     zero(lo, hi, 1e-8, residual).unwrap_or(0.0)
+   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+     let cap = self.tau_from_theta(1e4);
+     if !(tau > -cap && tau < cap) {
+       return Err(tau_out_of_range(tau, format!("{:?} < tau < {cap:?}", -cap)));
+     }
+     if tau.abs() < 1e-12 {
+       return Ok(0.0);
+     }
+     let (lo, hi) = if tau > 0.0 { (0.0, 1e4) } else { (-1e4, 0.0) };
+     invert_tau(|theta| self.tau_from_theta(theta) - tau, lo, hi)
    }
    ```
 
    Brent is bracketing → guaranteed convergence on a sign change.
-   Newton is not. Note that Frank brackets *on the sign of tau*: a
-   single `(-50, 50)` bracket straddles the θ = 0 root and finds it
-   for every input.
+   Newton is not. Frank brackets *on the sign of tau* from θ = 0, where
+   `tau_from_theta` is exactly 0, and takes the range ends from the same
+   `tau_from_theta`, so every τ that passes the range check brackets.
 
 3. **Never** roll a custom Newton / secant.
 
-Handle the degenerate ends explicitly, as Frank and Clayton both do
-(`τ ≥ 1 → ∞`). `compute_theta` returns a bare `f64` — it has no error
-channel, so an unhandled edge shows up later as a `check_fit` failure
-far from its cause.
+Return `Err(tau_out_of_range(..))` at the ends of the reachable range;
+never saturate.
 
 ## 4. Sampling — you get it for free, and it is conditional inversion
 
@@ -241,15 +233,14 @@ fn clayton_partial_derivative_at_independence_returns_u() { }
 ```
 
 Plus the parametric-τ recovery test, which is what catches the §6.12
-class — a wrong `compute_theta` looks fine on the data side but
+class — a wrong `theta_from_tau` looks fine on the data side but
 produces samples with a different τ than requested:
 
 ```rust
 #[test]
 fn clayton_independence_sample_kendall_tau_near_zero() {
   let mut cop = Clayton::new();
-  cop.set_tau(target_tau);
-  cop._compute_theta();
+  cop.set_theta(cop.theta_from_tau(target_tau).unwrap());
   let samples = cop.sample(50_000, &Deterministic::new(42)).unwrap();
   // empirical Kendall's tau on `samples` within tolerance of target_tau
 }
@@ -264,14 +255,12 @@ fn clayton_independence_sample_kendall_tau_near_zero() {
   `sample(n, &seed)`.
 - **Do not** write scalar `pdf(u, v)` / `cdf(u, v)`. The trait is
   vectorised over an `(n, 2)` array and returns `Result`.
-- **Do not** give `compute_theta` a `tau` parameter. It reads
-  `self.tau()`.
-- **Do not** roll a custom Newton in `compute_theta`. Use Brent.
+- **Do not** clamp a τ that the family cannot reach to the boundary;
+  return the `tau` error.
 - **Do not** return `Vec::new()`-shaped nonsense from
   `tail_dependence`, and do not skip
-  `assert_theta_valid_for_tail_dependence()`. `_compute_theta` discards
-  its own `check_theta()` result, so `fit()` on out-of-domain data
-  silently leaves `theta` out of bounds; that assert is the only guard.
+  `assert_theta_valid_for_tail_dependence()`: a `theta` set directly can
+  still be out of bounds, and that assert is the guard.
 - **Do not** implement `sample` / `fit` / `log_pdf`. They are
   defaulted and the defaults are correct.
 - **Do not** implement `generator` for a non-Archimedean family. The
@@ -280,18 +269,19 @@ fn clayton_independence_sample_kendall_tau_near_zero() {
 
 ## 7. Reference impls
 
-- `Clayton` (`bivariate/clayton.rs`) — closed-form `compute_theta`,
+- `Clayton` (`bivariate/clayton.rs`) — closed-form `theta_from_tau`,
   closed-form `percent_point` / `partial_derivative`, Archimedean
   `generator`. The template.
-- `Frank` (`bivariate/frank.rs`) — Brent-based `compute_theta` with
-  sign-of-tau bracketing.
+- `Frank` (`bivariate/frank.rs`) — Brent-based `theta_from_tau` with
+  sign-of-tau bracketing from θ = 0.
 - `Gumbel` (`bivariate/gumbel.rs`) — closed-form via Archimedean
   generator; shares Joe's upper-tail formula.
 - `Fgm` (`bivariate/fgm.rs`) — Farlie-Gumbel-Morgenstern, narrow
   τ ∈ [-0.22, 0.22].
 - `MarshallOlkin` (`bivariate/marshall_olkin.rs`) — the awkward case:
-  a `with_alpha_beta` constructor that fits two shock rates directly
-  rather than inverting tau, and the only non-exchangeable family here.
+  a `with_alpha_beta` constructor that takes the two shock rates
+  directly (`theta_from_tau` covers only the symmetric slice), and the
+  only non-exchangeable family here.
   Read it before assuming every family fits the `theta` mould.
 
 ## Related SKILLs

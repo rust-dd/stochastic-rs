@@ -13,6 +13,7 @@
 //! Chapman & Hall, §5.1.
 //! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
 //! Springer, Family BB1 / table 4.1.
+//! Reference: Hofert, M., Mächler, M. & McNeil, A. J. (2011), "Likelihood inference for Archimedean copulas", arXiv:1108.6032v1, Table 2 (Kendall's τ); Journal of Multivariate Analysis 110 (2012), 133–150.
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -21,15 +22,15 @@ use ndarray::ArrayView2;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::error::CopulaError;
-use crate::optim::zero;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::invert_tau;
+use crate::traits::bivariate::tau_out_of_range;
 
 #[derive(Debug, Clone)]
 pub struct Joe {
   pub r#type: BivariateFamily,
   pub theta: Option<f64>,
-  pub tau: Option<f64>,
   pub theta_bounds: (f64, f64),
   pub invalid_thetas: Vec<f64>,
 }
@@ -39,7 +40,6 @@ impl Default for Joe {
     Self {
       r#type: BivariateFamily::Joe,
       theta: None,
-      tau: None,
       theta_bounds: (1.0, f64::INFINITY),
       invalid_thetas: vec![],
     }
@@ -50,47 +50,11 @@ impl Joe {
   pub fn new() -> Self {
     Self::default()
   }
-
-  /// Kendall's tau as a function of theta (Joe 1997 eq.5.18). No closed form
-  /// in elementary functions; evaluated via the convergent series
-  /// $\tau(\theta) = 1 - \frac{4}{\theta^2}\sum_{k\ge 1}\frac{1}{k(2/\theta + k)(\theta(k-1) + 2)}$.
-  ///
-  /// Returns the residual $\tau(\theta) - \tau_{\text{target}}$ so this can
-  /// be passed to a root finder for the inverse problem.
-  fn tau_residual(tau_target: f64, theta: f64) -> f64 {
-    if theta <= 1.0 + 1e-12 {
-      return -tau_target;
-    }
-    // Joe's tau in closed form via digamma (Hofert et al. 2018):
-    // τ = 1 − 4 [ψ(2) − ψ(2/θ + 1)] / [θ(2 − θ)]   for θ ≠ 2;
-    // τ = 1 − [trigamma special case] at θ = 2.
-    // Series form below avoids special-function dependency: take the first
-    // 256 terms; the partial-sum tail is bounded by 1/[θ·256·(2/θ + 256)],
-    // which is well below 1e-10 for θ ≤ 50 (our search bracket).
-    let mut s = 0.0_f64;
-    for k in 1..=256_i32 {
-      let kf = k as f64;
-      let d1 = kf;
-      let d2 = 2.0 / theta + kf;
-      let d3 = theta * (kf - 1.0) + 2.0;
-      s += 1.0 / (d1 * d2 * d3);
-    }
-    let tau_theta = 1.0 - 4.0 * s / (theta * theta);
-    tau_theta - tau_target
-  }
 }
 
 impl BivariateExt for Joe {
   fn family(&self) -> BivariateFamily {
     self.r#type
-  }
-
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn set_tau(&mut self, tau: f64) {
-    self.tau = Some(tau);
   }
 
   fn theta(&self) -> Option<f64> {
@@ -196,17 +160,34 @@ impl BivariateExt for Joe {
     }))
   }
 
-  fn compute_theta(&self) -> f64 {
-    let tau = self.tau.unwrap();
-    if tau <= 0.0 {
-      // Joe only supports positive dependence; map to independence.
-      return 1.0;
+  /// `τ = 1 − 4Σ_{k≥1} 1/(k(θk + 2)(θ(k − 1) + 2))` (Hofert, Mächler & McNeil 2011, Table 2): 256 terms plus the
+  /// Euler–Maclaurin tail, its integral in closed form less `f(K)/2 + f'(K)/12`; 0 for `θ ≤ 1`.
+  fn tau_from_theta(&self, theta: f64) -> f64 {
+    if theta <= 1.0 {
+      return 0.0;
     }
-    if tau >= 1.0 - 1e-12 {
-      return f64::INFINITY;
+    // `θ²` times the k-th term, `a = 2/θ`.
+    let a = 2.0 / theta;
+    let term = |k: f64| 1.0 / (k * (k + a) * (k + a - 1.0));
+    let head = (1..=256).map(|k| term(f64::from(k))).sum::<f64>();
+    let k = 256.0;
+    let z = (a - 1.0) / k;
+    let ln_1p_ratio = if z == 0.0 { 1.0 } else { z.ln_1p() / z };
+    let integral = ln_1p_ratio / (a * k) - (1.0 / (k + a - 1.0)).ln_1p() / a;
+    let slope = -term(k) * (1.0 / k + 1.0 / (k + a) + 1.0 / (k + a - 1.0));
+    let sum = head + integral - term(k) / 2.0 - slope / 12.0;
+    1.0 - 4.0 * sum / (theta * theta)
+  }
+
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+    let cap = self.tau_from_theta(1e4);
+    if !(tau >= 0.0 && tau < cap) {
+      return Err(tau_out_of_range(tau, format!("0.0 <= tau < {cap:?}")));
     }
-    let residual = |theta: f64| Self::tau_residual(tau, theta);
-    zero(1.0 + 1e-6, 50.0, 1e-8, residual).unwrap_or(1.0)
+    if tau < 1e-12 {
+      return Ok(1.0);
+    }
+    invert_tau(|theta| self.tau_from_theta(theta) - tau, 1.0, 1e4)
   }
 
   /// Upper-tail dependence $\lambda_U = 2 - 2^{1/\theta}$ (same functional
@@ -271,25 +252,51 @@ mod tests {
   }
 
   #[test]
-  fn joe_compute_theta_zero_tau_gives_independence() {
-    let mut c = Joe::new();
-    c.set_tau(0.0);
-    assert!(approx(c.compute_theta(), 1.0, 1e-9));
+  fn joe_theta_from_tau_zero_tau_gives_independence() {
+    let c = Joe::new();
+    assert!(approx(c.theta_from_tau(0.0).unwrap(), 1.0, 1e-9));
   }
 
   #[test]
-  fn joe_compute_theta_inverts_tau_via_series() {
-    // Pick θ = 2.0 (concrete Joe parameter), compute τ via series, then
-    // invert and verify we recover the same θ.
-    let mut c = Joe::new();
-    c.set_theta(2.0);
-    let tau = Joe::tau_residual(0.0, 2.0); // tau(2.0) - 0 = tau(2.0)
-    c.set_tau(tau);
-    let recovered = c.compute_theta();
+  fn joe_theta_from_tau_inverts_tau_via_series() {
+    let c = Joe::new();
+    let tau = c.tau_from_theta(2.0);
+    let recovered = c.theta_from_tau(tau).unwrap();
     assert!(
-      approx(recovered, 2.0, 1e-6),
+      approx(recovered, 2.0, 1e-9),
       "expected 2.0, got {recovered}"
     );
+  }
+
+  /// The series of Hofert, Mächler & McNeil (2011), Table 2, summed by mpmath at 50 digits; `τ(2) = 2 − π²/6`.
+  #[test]
+  fn joe_tau_matches_the_cited_series() {
+    let c = Joe::new();
+    for (theta, want) in [
+      (1.5, 0.21927246047709384),
+      (2.0, 2.0 - std::f64::consts::PI * std::f64::consts::PI / 6.0),
+      (3.0, 0.5179624982298888),
+      (10.0, 0.8220439420773361),
+    ] {
+      let tau = c.tau_from_theta(theta);
+      assert!((tau - want).abs() < 1e-14, "θ={theta}: {tau} vs {want}");
+    }
+    assert_eq!(c.tau_from_theta(1.0), 0.0);
+  }
+
+  /// `τ(1) = 0` exactly, so the bracket from `θ = 1` changes sign for every positive `τ`, the tiniest included; Brent's
+  /// `1e-10` in `θ` bounds the error in `τ`.
+  #[test]
+  fn joe_inverts_a_tau_near_independence() {
+    let c = Joe::new();
+    for tau in [1e-11, 1e-8, 1e-5] {
+      let theta = c.theta_from_tau(tau).unwrap();
+      assert!(theta >= 1.0, "τ = {tau}: θ = {theta}");
+      assert!(
+        (c.tau_from_theta(theta) - tau).abs() < 1e-10,
+        "τ = {tau}: θ = {theta}"
+      );
+    }
   }
 
   #[test]
