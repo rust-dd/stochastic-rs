@@ -54,6 +54,15 @@ pub fn cramer_von_mises_independence(r: ArrayView2<f64>) -> f64 {
   statistic
 }
 
+fn finite(statistic: f64, what: &str) -> Result<f64, CopulaError> {
+  if statistic.is_finite() {
+    return Ok(statistic);
+  }
+  Err(CopulaError::Numerical(format!(
+    "the {what} statistic is {statistic:?}: the h-function is not finite on this sample"
+  )))
+}
+
 /// Settings of the parametric-bootstrap test.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GofConfig {
@@ -97,8 +106,8 @@ impl stochastic_rs_distributions::traits::HypothesisTest for GofResult {
   }
 }
 
-/// Parametric-bootstrap Cramér–von Mises test of the fitted `copula` on the pseudo-observations `x`, one stream of `seed` per
-/// replication (Genest, Rémillard & Beaudoin 2009, §4 and Appendix D); panics unless `0 < alpha < 1` and `replications > 0`.
+/// Parametric-bootstrap Cramér–von Mises test of the fitted `copula` on the pseudo-observations `x`, one `seed` stream per replication
+/// (Genest, Rémillard & Beaudoin 2009, §4, Appendix D); errs on a bad `x` or a non-finite statistic; panics unless `0 < alpha < 1`, `replications > 0`.
 pub fn gof_cramer_von_mises<C: BivariateExt + Clone, S: SeedExt>(
   copula: &C,
   x: ArrayView2<f64>,
@@ -116,14 +125,29 @@ pub fn gof_cramer_von_mises<C: BivariateExt + Clone, S: SeedExt>(
     "alpha must satisfy `0.0 < alpha < 1.0`, got alpha = {:?}",
     config.alpha
   );
-  let statistic = cramer_von_mises_independence(rosenblatt(copula, x)?.view());
+  if x.ncols() != 2 {
+    return Err(CopulaError::DimensionMismatch {
+      expected: 2,
+      got: x.ncols(),
+    });
+  }
+  copula.check_marginal(x.column(0))?;
+  copula.check_marginal(x.column(1))?;
+  let statistic = finite(
+    cramer_von_mises_independence(rosenblatt(copula, x)?.view()),
+    "data",
+  )?;
   let n = x.nrows();
   let mut exceed = 0usize;
   for _ in 0..config.replications {
     let sample = pseudo_observations(copula.sample(n, seed)?.view());
     let mut refitted = copula.clone();
     refit(&mut refitted, sample.view())?;
-    if cramer_von_mises_independence(rosenblatt(&refitted, sample.view())?.view()) >= statistic {
+    let drawn = finite(
+      cramer_von_mises_independence(rosenblatt(&refitted, sample.view())?.view()),
+      "bootstrap",
+    )?;
+    if drawn >= statistic {
       exceed += 1;
     }
   }
@@ -157,12 +181,16 @@ pub fn pseudo_observations(data: ArrayView2<f64>) -> Array2<f64> {
 
 #[cfg(test)]
 mod tests {
+  use ndarray::Array1;
+  use ndarray::ArrayView1;
   use stochastic_rs_core::simd_rng::Deterministic;
   use stochastic_rs_distributions::traits::HypothesisTest;
 
   use super::*;
+  use crate::bivariate::CopulaType;
   use crate::bivariate::clayton::Clayton;
   use crate::bivariate::gaussian::GaussianCopula;
+  use crate::traits::TailDependence;
 
   fn data_for(seed: u64) -> Array2<f64> {
     let mut truth = Clayton::new();
@@ -346,6 +374,127 @@ mod tests {
     assert_eq!(wrong.p_value, 1.0 / 11.0, "no draw reaches the statistic");
     assert!(!wrong.rejects_null, "ten draws cannot reject at 5 %");
     assert!(run(0.1).rejects_null);
+  }
+
+  /// Independence whose h-function turns NaN once `poisoned`.
+  #[derive(Clone)]
+  struct Poisonable {
+    poisoned: bool,
+  }
+
+  impl BivariateExt for Poisonable {
+    fn r#type(&self) -> CopulaType {
+      CopulaType::Independence
+    }
+
+    fn tau(&self) -> Option<f64> {
+      None
+    }
+
+    fn set_tau(&mut self, _tau: f64) {}
+
+    fn theta(&self) -> Option<f64> {
+      None
+    }
+
+    fn theta_bounds(&self) -> (f64, f64) {
+      (0.0, 0.0)
+    }
+
+    fn invalid_thetas(&self) -> Vec<f64> {
+      vec![]
+    }
+
+    fn set_theta(&mut self, _theta: f64) {}
+
+    fn compute_theta(&self) -> f64 {
+      0.0
+    }
+
+    fn tail_dependence(&self) -> TailDependence<f64> {
+      TailDependence {
+        lower: 0.0,
+        upper: 0.0,
+      }
+    }
+
+    fn check_fit(&self) -> Result<(), CopulaError> {
+      Ok(())
+    }
+
+    fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+      Ok(Array1::ones(x.nrows()))
+    }
+
+    fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+      Ok(&x.column(0) * &x.column(1))
+    }
+
+    fn percent_point(
+      &self,
+      y: ArrayView1<f64>,
+      _v: ArrayView1<f64>,
+    ) -> Result<Array1<f64>, CopulaError> {
+      Ok(y.to_owned())
+    }
+
+    fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+      Ok(if self.poisoned {
+        Array1::from_elem(x.nrows(), f64::NAN)
+      } else {
+        x.column(0).to_owned()
+      })
+    }
+  }
+
+  #[test]
+  fn a_non_finite_statistic_is_an_error_not_a_rejection() {
+    let data = data_for(5);
+    let config = GofConfig {
+      replications: 3,
+      alpha: 0.05,
+    };
+    let seed = Deterministic::new(1);
+    let fine = Poisonable { poisoned: false };
+    let clean = gof_cramer_von_mises(&fine, data.view(), config, &seed, |_, _| Ok(())).unwrap();
+    assert!(clean.statistic.is_finite());
+    let nan = Poisonable { poisoned: true };
+    let data_err =
+      gof_cramer_von_mises(&nan, data.view(), config, &seed, |_, _| Ok(())).unwrap_err();
+    assert!(matches!(data_err, CopulaError::Numerical(_)), "{data_err}");
+    let poison = |c: &mut Poisonable, _: ArrayView2<f64>| {
+      c.poisoned = true;
+      Ok(())
+    };
+    let boot_err = gof_cramer_von_mises(&fine, data.view(), config, &seed, poison).unwrap_err();
+    assert!(matches!(boot_err, CopulaError::Numerical(_)), "{boot_err}");
+  }
+
+  #[test]
+  fn the_input_must_be_a_two_column_sample_in_the_unit_square() {
+    let copula = Clayton {
+      theta: Some(2.0),
+      ..Clayton::new()
+    };
+    let config = GofConfig {
+      replications: 2,
+      alpha: 0.05,
+    };
+    let err = |x: ArrayView2<f64>| {
+      let refit = |c: &mut Clayton, x: ArrayView2<f64>| c.fit(x);
+      gof_cramer_von_mises(&copula, x, config, &Deterministic::new(1), refit).unwrap_err()
+    };
+    let data = data_for(5);
+    let one = data.column(0).insert_axis(Axis(1));
+    let mismatch = |got| CopulaError::DimensionMismatch { expected: 2, got };
+    assert_eq!(err(one), mismatch(1));
+    let three = stack![Axis(1), data.column(0), data.column(1), data.column(0)];
+    assert_eq!(err(three.view()), mismatch(3));
+    for outside in [1.5, -0.1, f64::NAN] {
+      let mut bad = data.clone();
+      bad[(3, 1)] = outside;
+      assert_eq!(err(bad.view()), CopulaError::MarginalOutOfRange);
+    }
   }
 
   #[test]
