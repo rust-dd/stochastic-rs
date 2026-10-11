@@ -1,19 +1,14 @@
 //! # Goodness of fit
 //!
 //! $$
-//! S_n = \sum_{i=1}^n \bigl(C_n(\mathbf R_i) - R_{i1}R_{i2}\bigr)^2,\qquad
-//! \mathbf R_i = \bigl(U_{i2},\ \partial_v C(U_{i1}, U_{i2})\bigr)
+//! S_n = \sum_{i=1}^n \bigl(D_n(\mathbf E_i) - E_{i1}E_{i2}\bigr)^2,\qquad
+//! \mathbf E_i = \bigl(U_{i2},\ \partial_v C(U_{i1}, U_{i2})\bigr)
 //! $$
 //!
-//! Cramér–von Mises test of a fitted bivariate copula on the Rosenblatt
-//! transform of the pseudo-observations: under the null the transformed
-//! sample is uniform on the square with independent coordinates, so the
-//! empirical copula of the transformed sample is compared with the product
-//! copula. The p-value comes from a parametric bootstrap (sample from the
-//! fitted copula, refit, recompute the statistic), which is the valid
-//! procedure when the copula parameters are estimated.
+//! Cramér–von Mises distance between the empirical distribution function `D_n` of the Rosenblatt transform `E_i` of the
+//! pseudo-observations and the independence copula; the p-value is a parametric bootstrap, valid when the parameters are estimated.
 //!
-//! Reference: Genest, C., Rémillard, B. & Beaudoin, D. (2009), "Goodness-of-fit tests for copulas: A review and a power study", Insurance: Mathematics and Economics 44(2), 199–213, doi:10.1016/j.insmatheco.2007.10.005 (§3.3 Rosenblatt transform; §4 and Appendix D `S_n^{(C)}` and its parametric bootstrap).
+//! Reference: Genest, C., Rémillard, B. & Beaudoin, D. (2009), "Goodness-of-fit tests for copulas: A review and a power study", Insurance: Mathematics and Economics 44(2), 199–213, doi:10.1016/j.insmatheco.2007.10.005 (§3.3 eq. (5) with the coordinates in the order (U₂, U₁), which §7 I(c) allows; §4 eq. (9) and Appendix D: `S_n^{(C)}` and its parametric bootstrap).
 //! Reference: Rosenblatt, M. (1952), "Remarks on a multivariate transformation", Annals of Mathematical Statistics 23(3), 470–472, doi:10.1214/aoms/1177729394.
 //! Reference: Phipson, B. & Smyth, G. K. (2010), "Permutation P-values should never be zero: calculating exact P-values when permutations are randomly drawn", Statistical Applications in Genetics and Molecular Biology 9(1), Article 39, doi:10.2202/1544-6115.1585, arXiv:1603.05766 (the exact Monte Carlo p-value `(b + 1)/(m + 1)`).
 
@@ -36,8 +31,8 @@ pub fn rosenblatt<C: BivariateExt + ?Sized>(
   Ok(stack![Axis(1), x.column(1), conditional.view()])
 }
 
-/// Cramér–von Mises distance between the empirical copula of `r` and the
-/// product copula, `Σ_i (C_n(R_i) − R_{i1} R_{i2})²`.
+/// Cramér–von Mises distance between the empirical distribution function `D_n` of the rows `E_i` of `r` and the
+/// product copula, `Σ_i (D_n(E_i) − E_{i1} E_{i2})²`.
 pub fn cramer_von_mises_independence(r: ArrayView2<f64>) -> f64 {
   let n = r.nrows();
   let mut statistic = 0.0;
