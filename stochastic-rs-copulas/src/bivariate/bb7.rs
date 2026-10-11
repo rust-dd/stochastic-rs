@@ -170,7 +170,7 @@ impl Bb7 {
 
 impl Bb7 {
   /// Maximum-likelihood fit of `(θ, δ)` from a Kendall start without `fit`'s input check, for the vine fitter's
-  /// pseudo-observations; BB7 reaches only `τ ∈ (0, 1)`, so another `τ̂` is an error and stores nothing.
+  /// pseudo-observations; a `τ̂` outside BB7's `(0, 1)` or a fitted θ outside `theta_bounds` is an error and stores nothing.
   pub(crate) fn fit_parameters(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
     if X.nrows() < 2 {
       return Err(CopulaError::InsufficientData {
@@ -198,6 +198,7 @@ impl Bb7 {
       (start_theta, self.delta),
       Self::log_density_scalar,
     );
+    self.validate_theta(theta)?;
     self.theta = Some(theta);
     self.delta = delta;
     Ok(())

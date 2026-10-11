@@ -318,6 +318,46 @@ fn fit_takes_exactly_two_columns() {
   mismatch!(Bb7::new(None, None));
 }
 
+/// Bounds that exclude the likelihood's θ make BB1's and BB7's `fit` an error that stores neither θ nor δ.
+#[test]
+fn a_likelihood_theta_outside_custom_bounds_is_an_error_and_stores_nothing() {
+  let mild = pseudo_observations(
+    Clayton {
+      theta: Some(0.3),
+      ..Clayton::new()
+    }
+    .sample(600, &Deterministic::new(12))
+    .unwrap()
+    .view(),
+  );
+  let mut bb1 = Bb1 {
+    theta_bounds: (5.0, f64::INFINITY),
+    ..Bb1::new(None, Some(1.5))
+  };
+  let got = bb1.fit(mild.view());
+  assert!(
+    matches!(
+      got,
+      Err(CopulaError::InvalidParameter { name: "theta", .. })
+    ),
+    "{got:?}"
+  );
+  assert_eq!((bb1.theta(), bb1.delta), (None, 1.5));
+  let mut bb7 = Bb7 {
+    theta_bounds: (5.0, f64::INFINITY),
+    ..Bb7::new(None, Some(1.1))
+  };
+  let got = bb7.fit(mild.view());
+  assert!(
+    matches!(
+      got,
+      Err(CopulaError::InvalidParameter { name: "theta", .. })
+    ),
+    "{got:?}"
+  );
+  assert_eq!((bb7.theta(), bb7.delta), (None, 1.1));
+}
+
 /// Columns, then rows, then range, whichever `fit` the family runs: a 1 × 3 input is a `DimensionMismatch`, a 1 × 2 input
 /// of NaN is `InsufficientData`.
 #[test]
