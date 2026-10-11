@@ -175,11 +175,14 @@ fn dvine_pairs_given_their_neighbour_follow_the_second_tree() {
   let t1 = &vine.pair_copulas()[0];
   let rows = draws(&vine, 7);
   for i in 0..2 {
-    let a: Vec<f64> = rows.iter().map(|r| t1[i].h(r[i], r[i + 1])).collect();
-    let b: Vec<f64> = rows
+    let a = rows
+      .iter()
+      .map(|r| t1[i].h(r[i], r[i + 1]))
+      .collect::<Vec<_>>();
+    let b = rows
       .iter()
       .map(|r| t1[i + 1].h(r[i + 2], r[i + 1]))
-      .collect();
+      .collect::<Vec<_>>();
     let pair = format!("(U{i}, U{} | U{})", i + 2, i + 1);
     assert_tau(&pair, &a, &b, TAU_CLAYTON, ZETA1_CLAYTON);
   }
@@ -199,9 +202,12 @@ fn cvine_pairs_given_the_root_follow_the_second_tree() {
   let vine = root_cvine();
   let t1 = &vine.pair_copulas()[0];
   let rows = draws(&vine, 7);
-  let a: Vec<f64> = rows.iter().map(|r| t1[0].h(r[1], r[0])).collect();
+  let a = rows.iter().map(|r| t1[0].h(r[1], r[0])).collect::<Vec<_>>();
   for k in 2..4 {
-    let b: Vec<f64> = rows.iter().map(|r| t1[k - 1].h(r[k], r[0])).collect();
+    let b = rows
+      .iter()
+      .map(|r| t1[k - 1].h(r[k], r[0]))
+      .collect::<Vec<_>>();
     let pair = format!("(U1, U{k} | U0)");
     assert_tau(&pair, &a, &b, TAU_CLAYTON, ZETA1_CLAYTON);
   }
@@ -210,20 +216,20 @@ fn cvine_pairs_given_the_root_follow_the_second_tree() {
 #[test]
 fn the_rosenblatt_transform_of_dvine_draws_is_independent_uniform() {
   let vine = DVine::new(5, mixed_trees()).unwrap();
-  let z: Vec<Vec<f64>> = draws(&vine, 11)
+  let z = draws(&vine, 11)
     .iter()
     .map(|x| dvine_recursion(&vine, x).1)
-    .collect();
+    .collect::<Vec<_>>();
   assert_independent_uniform("D-vine", &z);
 }
 
 #[test]
 fn the_rosenblatt_transform_of_cvine_draws_is_independent_uniform() {
   let vine = CVine::new(5, mixed_trees()).unwrap();
-  let z: Vec<Vec<f64>> = draws(&vine, 11)
+  let z = draws(&vine, 11)
     .iter()
     .map(|x| cvine_recursion(&vine, x).1)
-    .collect();
+    .collect::<Vec<_>>();
   assert_independent_uniform("C-vine", &z);
 }
 
