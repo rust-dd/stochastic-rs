@@ -15,6 +15,7 @@
 //!
 //! Reference: Genest, C., Rémillard, B. & Beaudoin, D. (2009), "Goodness-of-fit tests for copulas: A review and a power study", Insurance: Mathematics and Economics 44(2), 199–213, doi:10.1016/j.insmatheco.2007.10.005 (§3.3 Rosenblatt transform; §4 and Appendix D `S_n^{(C)}` and its parametric bootstrap).
 //! Reference: Rosenblatt, M. (1952), "Remarks on a multivariate transformation", Annals of Mathematical Statistics 23(3), 470–472, doi:10.1214/aoms/1177729394.
+//! Reference: Phipson, B. & Smyth, G. K. (2010), "Permutation P-values should never be zero: calculating exact P-values when permutations are randomly drawn", Statistical Applications in Genetics and Molecular Biology 9(1), Article 39, doi:10.2202/1544-6115.1585, arXiv:1603.05766 (the exact Monte Carlo p-value `(b + 1)/(m + 1)`).
 
 use ndarray::Array2;
 use ndarray::ArrayView2;
@@ -76,7 +77,7 @@ impl Default for GofConfig {
 pub struct GofResult {
   /// Statistic on the data.
   pub statistic: f64,
-  /// Bootstrap p-value: share of bootstrap statistics at or above the data's.
+  /// Bootstrap p-value `(1 + #{S* ≥ S})/(N + 1)` (Phipson & Smyth 2010); Appendix D's strict `>` differs only on exact ties.
   pub p_value: f64,
   /// Number of bootstrap replications.
   pub replications: usize,
@@ -126,7 +127,7 @@ pub fn gof_cramer_von_mises<C: BivariateExt + Clone, S: SeedExt>(
       exceed += 1;
     }
   }
-  let p_value = exceed as f64 / config.replications as f64;
+  let p_value = (exceed + 1) as f64 / (config.replications + 1) as f64;
   Ok(GofResult {
     statistic,
     p_value,
@@ -266,50 +267,15 @@ mod tests {
 
   #[test]
   fn the_decision_is_the_p_value_against_alpha() {
-    let data = data_for(5);
-    let mut gaussian = GaussianCopula::new();
-    gaussian.fit(data.view()).unwrap();
-    let config = GofConfig {
-      replications: 60,
-      alpha: 0.05,
-    };
-    let wrong = gof_cramer_von_mises(
-      &gaussian,
-      data.view(),
-      config,
-      &Deterministic::new(100),
-      |c: &mut GaussianCopula, x| c.fit(x),
-    )
-    .unwrap();
-    assert_eq!(
-      wrong.rejects_null,
-      wrong.p_value < 0.05,
-      "p {}",
-      wrong.p_value
-    );
-    assert_eq!(wrong.null_rejected(), Some(wrong.rejects_null));
-    assert_eq!((wrong.replications, wrong.alpha), (60, 0.05));
-    let loose = gof_cramer_von_mises(
-      &gaussian,
-      data.view(),
-      GofConfig {
-        replications: 60,
-        alpha: 1e-6,
-      },
-      &Deterministic::new(100),
-      |c: &mut GaussianCopula, x| c.fit(x),
-    )
-    .unwrap();
-    assert_eq!(loose.rejects_null, loose.p_value < 1e-6);
-    let kept = [5u64, 6, 7].into_iter().any(|seed| {
+    let on_clayton = |seed: u64, alpha: f64| {
       let data = data_for(seed);
       let mut fitted = Clayton::new();
       fitted.fit(data.view()).unwrap();
       let config = GofConfig {
         replications: 60,
-        alpha: 0.05,
+        alpha,
       };
-      !gof_cramer_von_mises(
+      gof_cramer_von_mises(
         &fitted,
         data.view(),
         config,
@@ -317,9 +283,69 @@ mod tests {
         |c: &mut Clayton, x| c.fit(x),
       )
       .unwrap()
-      .rejects_null
-    });
+    };
+    let on_gaussian = |alpha: f64| {
+      let data = data_for(5);
+      let mut fitted = GaussianCopula::new();
+      fitted.fit(data.view()).unwrap();
+      let config = GofConfig {
+        replications: 60,
+        alpha,
+      };
+      gof_cramer_von_mises(
+        &fitted,
+        data.view(),
+        config,
+        &Deterministic::new(100),
+        |c: &mut GaussianCopula, x| c.fit(x),
+      )
+      .unwrap()
+    };
+    let wrong = on_gaussian(0.05);
+    assert_eq!(
+      wrong.rejects_null,
+      wrong.p_value < 0.05,
+      "p {}",
+      wrong.p_value
+    );
+    assert!(wrong.rejects_null && !on_gaussian(1e-6).rejects_null);
+    assert_eq!(wrong.null_rejected(), Some(wrong.rejects_null));
+    assert_eq!((wrong.replications, wrong.alpha), (60, 0.05));
+    let p = 10.0 / 61.0;
+    let keeps = on_clayton(6, 0.1);
+    assert_eq!(keeps.p_value, p);
+    assert!(!keeps.rejects_null);
+    assert!(!on_clayton(6, p).rejects_null, "p < alpha is strict");
+    assert!(on_clayton(6, 0.2).rejects_null);
+    let kept = [5u64, 6, 7]
+      .into_iter()
+      .any(|seed| !on_clayton(seed, 0.05).rejects_null);
     assert!(kept, "the true family was rejected on every seed");
+  }
+
+  #[test]
+  fn the_p_value_counts_the_data_as_one_more_draw() {
+    let data = data_for(5);
+    let mut gaussian = GaussianCopula::new();
+    gaussian.fit(data.view()).unwrap();
+    let run = |alpha: f64| {
+      let config = GofConfig {
+        replications: 10,
+        alpha,
+      };
+      gof_cramer_von_mises(
+        &gaussian,
+        data.view(),
+        config,
+        &Deterministic::new(100),
+        |c: &mut GaussianCopula, x| c.fit(x),
+      )
+      .unwrap()
+    };
+    let wrong = run(0.05);
+    assert_eq!(wrong.p_value, 1.0 / 11.0, "no draw reaches the statistic");
+    assert!(!wrong.rejects_null, "ten draws cannot reject at 5 %");
+    assert!(run(0.1).rejects_null);
   }
 
   #[test]
