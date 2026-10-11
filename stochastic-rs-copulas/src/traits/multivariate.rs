@@ -7,6 +7,7 @@ use crate::error::CopulaError;
 use crate::multivariate::MultivariateFamily;
 
 pub trait MultivariateExt {
+  /// Which family this copula is.
   fn family(&self) -> MultivariateFamily;
 
   /// `n` rows drawn from `seed`; a fresh `Deterministic` replays them, a shared one advances.

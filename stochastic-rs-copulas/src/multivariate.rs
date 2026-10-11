@@ -17,6 +17,7 @@ pub mod t;
 pub mod tree;
 pub mod vine;
 
+/// One variant per multivariate copula of the crate; `MultivariateExt::family` returns it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum MultivariateFamily {

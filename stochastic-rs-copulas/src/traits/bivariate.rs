@@ -36,6 +36,7 @@ pub struct TailDependence<T> {
 }
 
 pub trait BivariateExt {
+  /// Which family this copula is; the label its error messages carry.
   fn family(&self) -> BivariateFamily;
 
   fn tau(&self) -> Option<f64>;

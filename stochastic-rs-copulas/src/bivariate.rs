@@ -131,6 +131,7 @@ pub mod plackett;
 pub mod t_copula;
 pub(crate) mod two_parameter;
 
+/// One variant per bivariate copula of the crate; `BivariateExt::family` returns it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum BivariateFamily {
