@@ -12,16 +12,23 @@ fn first_tree(fit: &VineFit) -> &[PairCopula] {
   }
 }
 
-/// Two variables: the fit is the bivariate family selection and recovers
-/// the Clayton parameter by Kendall inversion.
+/// Two variables, candidates that do not nest Clayton: the selection picks it and recovers θ by Kendall inversion.
+/// BB1 and BB7 contain Clayton at a boundary that AIC cannot reject reliably, so `ALL` has its own test.
 #[test]
 fn two_dimensional_fit_recovers_clayton() {
   let truth = DVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).unwrap();
-  let u = truth.sample(3000, &Deterministic::new(5)).unwrap();
+  let u = truth.sample(3000, &Deterministic::new(7)).unwrap();
+  let families = [
+    PairFamily::Independence,
+    PairFamily::Gaussian,
+    PairFamily::StudentT,
+    PairFamily::Clayton,
+    PairFamily::Frank,
+  ];
   let fit = fit_vine(
     u.view(),
     VineStructure::DVine,
-    &PairFamily::ALL,
+    &families,
     SelectionCriterion::Aic,
   )
   .unwrap();
@@ -33,6 +40,31 @@ fn two_dimensional_fit_recovers_clayton() {
   assert_eq!(fit.parameter_count, 1);
   assert!((fit.aic - (-2.0 * fit.log_likelihood + 2.0)).abs() < 1e-12);
   assert!(fit.bic > fit.aic);
+}
+
+/// Over `ALL` the pick is Clayton, BB1 or BB7 (the families that contain it) and the fitted vine keeps the truth's τ = 0.5.
+#[test]
+fn two_dimensional_fit_over_all_families_keeps_the_clayton_dependence() {
+  let truth = DVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).unwrap();
+  let u = truth.sample(3000, &Deterministic::new(7)).unwrap();
+  let fit = fit_vine(
+    u.view(),
+    VineStructure::DVine,
+    &PairFamily::ALL,
+    SelectionCriterion::Aic,
+  )
+  .unwrap();
+  assert!(
+    matches!(
+      fit.families[0][0],
+      PairFamily::Clayton | PairFamily::Bb1 | PairFamily::Bb7
+    ),
+    "{:?}",
+    fit.families
+  );
+  let refit = fit.vine.sample(5000, &Deterministic::new(11)).unwrap();
+  let tau = kendall_tau(refit.view())[[0, 1]];
+  assert!((tau - 0.5).abs() < 0.05, "fitted tau {tau}");
 }
 
 /// A four-dimensional D-vine with a Gaussian, a Clayton and a Frank edge in
