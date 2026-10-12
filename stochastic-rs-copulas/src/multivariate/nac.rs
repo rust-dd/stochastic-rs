@@ -37,13 +37,15 @@
 //! recovered via $U_j = \psi_{\theta_*}(E_j / V_*)$, where $\psi$ is the
 //! inverse generator and $E_j \sim \mathrm{Exp}(1)$.
 //!
-//! ## Density (Hofert-Pham 2012)
+//! ## Density
 //!
-//! The density is the $d$-th-order partial derivative of $C$ with respect
-//! to the marginals. For partially nested Clayton / Gumbel copulas the
-//! closed forms involve the generator-derivative families
-//! $\{\varphi^{(k)}\}$ which we evaluate via the recurrences from Hofert,
-//! Mächler & McNeil (2011).
+//! `pdf` is the mixed central difference of `cdf` with step $10^{-4}$ over the $2^d$ cube vertices, not the closed forms
+//! of Hofert & Pham (2013), which rest on the generator derivatives of Hofert, Mächler & McNeil (2012).
+//!
+//! ## Fit
+//!
+//! `fit` joins bottom-up, as Okhrin, Okhrin & Schmid (2013) do, the two clusters of largest mean cross Kendall τ̂, and sets
+//! θ = τ⁻¹ of that mean, trimmed to the children's θ (Górecki, Hofert & Holeňa 2016, Algorithm 3).
 //!
 //! References:
 //! - Joe, H. (1997), *Multivariate Models and Dependence Concepts*,
@@ -53,7 +55,7 @@
 //! - Hofert, M. (2011), "Efficiently sampling nested Archimedean copulas",
 //!   *Computational Statistics & Data Analysis* 55(1), 57-70.
 //! - Hofert, M., Mächler, M. (2011), "Nested Archimedean Copulas Meet R: The nacopula Package", *Journal of Statistical Software* 39(9), 1-20, doi:10.18637/jss.v039.i09.
-//! - Hofert, M., Mächler, M., McNeil, A.J. (2011), "Likelihood inference
+//! - Hofert, M., Mächler, M., McNeil, A.J. (2012), "Likelihood inference
 //!   for Archimedean copulas in high dimensions under known margins",
 //!   *Journal of Multivariate Analysis* 110, 133-150.
 //! - Hofert, M., Pham, D. (2013), "Densities of nested Archimedean
@@ -61,6 +63,10 @@
 //!   (arXiv:1204.2410)
 //! - McNeil, A.J. (2008), "Sampling nested Archimedean copulas",
 //!   *Journal of Statistical Computation and Simulation* 78(6), 567-581.
+//! - Górecki, J., Hofert, M., Holeňa, M. (2016), "An approach to structure determination and estimation of hierarchical Archimedean copulas and its application to Bayesian classification", *Journal of Intelligent Information Systems* 46(1), 21-59, doi:10.1007/s10844-014-0350-3.
+//! - Górecki, J., Hofert, M., Holeňa, M. (2017), "On structure, family and parameter estimation of hierarchical Archimedean copulas", *Journal of Statistical Computation and Simulation* 87(17), 3261-3324, doi:10.1080/00949655.2017.1365148.
+//! - Okhrin, O., Okhrin, Y., Schmid, W. (2013), "On the structure and estimation of hierarchical Archimedean copulas", *Journal of Econometrics* 173(2), 189-204, doi:10.1016/j.jeconom.2012.12.001.
+//! - Okhrin, O., Ristig, A. (2014), "Hierarchical Archimedean Copulae: The HAC Package", *Journal of Statistical Software* 58(4), 1-20, doi:10.18637/jss.v058.i04.
 
 use ndarray::Array1;
 use ndarray::Array2;
@@ -76,6 +82,8 @@ use super::MultivariateFamily;
 use crate::bivariate::BivariateFamily;
 use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
+
+mod fit;
 
 /// The two generators a nested Archimedean copula admits; the public API names them by `BivariateFamily`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -169,12 +177,22 @@ impl NacNode {
 #[derive(Debug, Clone)]
 pub struct NestedArchimedean {
   generator: Generator,
-  root: NacNode,
+  root: Option<NacNode>,
   dim: usize,
   index_order: Vec<usize>,
 }
 
 impl NestedArchimedean {
+  /// An empty copula for `fit`; `Unsupported` unless `family` is Clayton or Gumbel.
+  pub fn unfitted(family: BivariateFamily) -> Result<Self, CopulaError> {
+    Ok(Self {
+      generator: Generator::from_family(family)?,
+      root: None,
+      dim: 0,
+      index_order: vec![],
+    })
+  }
+
   /// Builds a NAC from a Clayton or Gumbel `family` (`Unsupported` otherwise) and a root node; checks the sufficient
   /// nesting condition, the generator's parameter bounds and that every marginal index appears exactly once.
   pub fn new(family: BivariateFamily, root: NacNode, dim: usize) -> Result<Self, CopulaError> {
@@ -209,7 +227,7 @@ impl NestedArchimedean {
     }
     Ok(Self {
       generator,
-      root,
+      root: Some(root),
       dim,
       index_order,
     })
@@ -259,9 +277,13 @@ impl NestedArchimedean {
     self.generator.family()
   }
 
-  /// Root node (immutable view).
-  pub fn root(&self) -> &NacNode {
-    &self.root
+  /// The tree; `None` for an `unfitted` copula until `fit` estimates one.
+  pub fn root(&self) -> Option<&NacNode> {
+    self.root.as_ref()
+  }
+
+  fn fitted_root(&self) -> Result<&NacNode, CopulaError> {
+    self.root.as_ref().ok_or(CopulaError::NotFitted)
   }
 
   /// Total dimension.
@@ -302,14 +324,14 @@ impl NestedArchimedean {
     numerator / denominator
   }
 
-  fn sample_with<R: Rng + ?Sized>(&self, n: usize, rng: &mut R) -> Array2<f64> {
+  fn sample_with<R: Rng + ?Sized>(&self, root: &NacNode, n: usize, rng: &mut R) -> Array2<f64> {
     let d = self.dim;
     let mut out = Array2::<f64>::zeros((n, d));
     for r in 0..n {
       let mut row = Array1::<f64>::zeros(d);
       // Root call: `parent_state = None` signals that V_0 must be sampled
       // independently from the root family's frailty distribution.
-      self.sample_node(rng, &self.root, None, &mut row);
+      self.sample_node(rng, root, None, &mut row);
       for j in 0..d {
         out[[r, j]] = row[j];
       }
@@ -381,12 +403,12 @@ impl NestedArchimedean {
 
   /// The root Clayton frailty is `Gamma(1/θ, 1)`, so `θ = 0` (or a `θ` so small that `1/θ` overflows) has no
   /// frailty to draw.
-  fn check_root_frailty(&self) -> Result<(), CopulaError> {
-    let shape = 1.0 / self.root.theta;
+  fn check_root_frailty(&self, root: &NacNode) -> Result<(), CopulaError> {
+    let shape = 1.0 / root.theta;
     if self.generator == Generator::Clayton && !(shape > 0.0 && shape.is_finite()) {
       return Err(CopulaError::InvalidParameter {
         name: "theta",
-        value: self.root.theta,
+        value: root.theta,
         constraint: "0 < 1 / theta < ∞".into(),
       });
     }
@@ -415,28 +437,26 @@ impl MultivariateExt for NestedArchimedean {
   }
 
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
-    self.check_root_frailty()?;
-    if self.generator == Generator::Clayton && !self.root.children.is_empty() {
+    let root = self.fitted_root()?;
+    self.check_root_frailty(root)?;
+    if self.generator == Generator::Clayton && !root.children.is_empty() {
       return Err(CopulaError::Unsupported(
         "nested Clayton sampling needs the exponentially tilted stable V01 of Hofert & Mächler (2011, §3.2, eq. (5)): sample a Gumbel tree, or evaluate cdf and pdf".into(),
       ));
     }
-    Ok(self.sample_with(n, &mut seed.rng()))
+    Ok(self.sample_with(root, n, &mut seed.rng()))
   }
 
-  fn fit(&mut self, _X: ArrayView2<f64>) -> Result<(), CopulaError> {
-    // The structural parameters (tree topology + family) are not estimated
-    // from data; the user supplies them via `new()`. A full structure +
-    // parameter fit (Okhrin-Okhrin-Schmid 2013 HAC structure selection) is
-    // not yet implemented.
-    Err(CopulaError::Unsupported(
-      "NestedArchimedean::fit is not implemented: build the tree with NestedArchimedean::new \
-       and seed theta from kendall_tau"
-        .into(),
-    ))
+  /// Estimates the binary tree from Kendall's τ-b of `X` (Górecki, Hofert & Holeňa 2016, Algorithm 3); a mean τ̂ outside the
+  /// generator's range (`0 < τ < 1` Clayton, `0 ≤ τ < 1` Gumbel) is `InvalidParameter { name: "tau", .. }` and stores nothing.
+  fn fit(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
+    let root = fit::estimate(self.generator, X)?;
+    *self = Self::new(self.generator.family(), root, X.ncols())?;
+    Ok(())
   }
 
   fn check_fit(&self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
+    self.fitted_root()?;
     if X.ncols() != self.dim {
       return Err(CopulaError::DimensionMismatch {
         expected: self.dim,
@@ -451,6 +471,7 @@ impl MultivariateExt for NestedArchimedean {
 
   fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
+    let root = self.fitted_root()?;
     // Closed-form NAC densities (Hofert-Pham 2012) require the full
     // d-th-order generator-derivative recursion which is family-specific
     // and scales as O(d²) per query; instead we estimate the density via
@@ -476,7 +497,7 @@ impl MultivariateExt for NestedArchimedean {
             sign = -sign;
           }
         }
-        acc += sign * self.cdf_node(&self.root, &u_pert);
+        acc += sign * self.cdf_node(root, &u_pert);
       }
       out[i] = (acc / denom).max(0.0);
     }
@@ -485,10 +506,11 @@ impl MultivariateExt for NestedArchimedean {
 
   fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
+    let root = self.fitted_root()?;
     let mut out = Array1::<f64>::zeros(X.nrows());
     for (i, row) in X.rows().into_iter().enumerate() {
       let u: Vec<f64> = row.iter().copied().collect();
-      out[i] = self.cdf_node(&self.root, &u);
+      out[i] = self.cdf_node(root, &u);
     }
     Ok(out)
   }

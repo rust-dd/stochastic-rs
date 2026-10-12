@@ -17,7 +17,8 @@ dimensions, vine and nested constructions in higher dimensions.
   a sampler.
 - **Multivariate (`MultivariateExt`)** — Gaussian, Student-t, C-vine,
   D-vine, R-vine and nested Archimedean copulas, in the default build
-  (linear algebra via the pure-Rust `faer`).
+  (linear algebra via the pure-Rust `faer`); the nested Archimedean copula
+  learns its tree with `fit`.
 - **Empirical** — pseudo-observations and the empirical copula.
 - **Process coupling** — drive two stochastic processes through a copula.
 

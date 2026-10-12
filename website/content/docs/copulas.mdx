@@ -55,7 +55,7 @@ The one-parameter families are fit by computing Kendall's tau and inverting it t
 |----------------------|---------------------|---------------------------------------------------------|
 | GaussianMultivariate | Elliptical          | `try_new(corr)` validates the correlation matrix        |
 | TMultivariate        | Elliptical          | Multivariate Student-t                                  |
-| NestedArchimedean    | Archimedean, nested | Outer + per-cluster inner generators (NAC)              |
+| NestedArchimedean    | Archimedean, nested | Outer + per-cluster inner generators; `fit` learns the binary tree from Kendall's τ (Górecki–Hofert–Holeňa) |
 | CVine                | Vine, PCC           | Canonical vine — genuine pair-copula construction        |
 | DVine                | Vine, PCC           | D-vine — genuine pair-copula construction                |
 | RVine                | Vine, PCC           | Regular vine — graph-theoretic generalisation of C-/D-vine |

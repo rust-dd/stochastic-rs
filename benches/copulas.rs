@@ -28,6 +28,8 @@ use stochastic_rs::copulas::multivariate::fit::SelectionCriterion;
 use stochastic_rs::copulas::multivariate::fit::VineStructure;
 use stochastic_rs::copulas::multivariate::fit::fit_vine;
 use stochastic_rs::copulas::multivariate::gaussian::GaussianMultivariate;
+use stochastic_rs::copulas::multivariate::nac::NacNode;
+use stochastic_rs::copulas::multivariate::nac::NestedArchimedean;
 use stochastic_rs::copulas::multivariate::t::TMultivariate;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::traits::BivariateExt;
@@ -218,6 +220,27 @@ fn fit(c: &mut Criterion) {
     b.iter(|| {
       let mut fitted = TMultivariate::default();
       fitted.fit(data.view()).unwrap()
+    })
+  });
+  let nac_root = NacNode {
+    theta: 1.5,
+    leaves: vec![],
+    children: vec![
+      NacNode::leaf_group(3.0, vec![0, 1]),
+      NacNode::leaf_group(2.5, vec![2, 3]),
+    ],
+  };
+  let nac_data = pseudo_observations(
+    NestedArchimedean::new(BivariateFamily::Gumbel, nac_root, 4)
+      .unwrap()
+      .sample(2_000, &Deterministic::new(1))
+      .unwrap()
+      .view(),
+  );
+  group.bench_function("nac_fit_d4_n2k", |b| {
+    b.iter(|| {
+      let mut fitted = NestedArchimedean::unfitted(BivariateFamily::Gumbel).unwrap();
+      fitted.fit(nac_data.view()).unwrap()
     })
   });
   group.finish();
