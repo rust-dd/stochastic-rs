@@ -393,7 +393,7 @@ pub fn load_bytes<'a>(device: &'a metal_oxide::Device, manifest: &str, metallib:
 }
 
 fn metal_oxide_kernels(device: &metal_oxide::Device, module: metal_oxide::Module) -> metal_oxide::Result<Kernels<'_>> {
-    module.verify_abi("336353149e5f6814f180ad6ab955c1f3bd71487137a2ae03f4a7325781736024")?;
+    module.verify_abi("4b28a4d540b85804a132931ec2b6e3704433460ba41b2cf81e7eebaa3f73a3c4")?;
     Ok(Kernels {
         device,
         module,
@@ -3706,10 +3706,30 @@ impl Kernels<'_> {
     /// # Safety
     /// The caller must satisfy the kernel's bounds, race, and synchronization contracts.
     #[allow(clippy::too_many_arguments)]
+    pub unsafe fn r#fft_columns_1(&self, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#s0: u32, r#threads: u32) -> metal_oxide::Result<()> {
+        // SAFETY: kernel-specific preconditions are delegated to this function's caller.
+        unsafe {
+            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_156, "fft_columns_1")?, config, &[metal_oxide::Argument::read_write(r#real), metal_oxide::Argument::read_write(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::value(r#threads)?])
+        }
+    }
+
+    /// # Safety
+    /// The caller must satisfy the kernel's bounds, race, and synchronization contracts.
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn r#enqueue_fft_columns_1(&self, batch: &mut metal_oxide::Batch<'_>, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#s0: u32, r#threads: u32) -> metal_oxide::Result<()> {
+        // SAFETY: kernel-specific preconditions are delegated to this function's caller.
+        unsafe {
+            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_156, "fft_columns_1")?, config, &[metal_oxide::Argument::read_write(r#real), metal_oxide::Argument::read_write(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::value(r#threads)?])
+        }
+    }
+
+    /// # Safety
+    /// The caller must satisfy the kernel's bounds, race, and synchronization contracts.
+    #[allow(clippy::too_many_arguments)]
     pub unsafe fn r#fft_columns_2(&self, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#s0: u32, r#threads: u32) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_156, "fft_columns_2")?, config, &[metal_oxide::Argument::read_write(r#real), metal_oxide::Argument::read_write(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::value(r#threads)?])
+            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_157, "fft_columns_2")?, config, &[metal_oxide::Argument::read_write(r#real), metal_oxide::Argument::read_write(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::value(r#threads)?])
         }
     }
 
@@ -3719,7 +3739,7 @@ impl Kernels<'_> {
     pub unsafe fn r#enqueue_fft_columns_2(&self, batch: &mut metal_oxide::Batch<'_>, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#s0: u32, r#threads: u32) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_156, "fft_columns_2")?, config, &[metal_oxide::Argument::read_write(r#real), metal_oxide::Argument::read_write(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::value(r#threads)?])
+            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_157, "fft_columns_2")?, config, &[metal_oxide::Argument::read_write(r#real), metal_oxide::Argument::read_write(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::value(r#threads)?])
         }
     }
 
@@ -3729,7 +3749,7 @@ impl Kernels<'_> {
     pub unsafe fn r#fft_columns_3(&self, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#s0: u32, r#threads: u32) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_157, "fft_columns_3")?, config, &[metal_oxide::Argument::read_write(r#real), metal_oxide::Argument::read_write(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::value(r#threads)?])
+            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_158, "fft_columns_3")?, config, &[metal_oxide::Argument::read_write(r#real), metal_oxide::Argument::read_write(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::value(r#threads)?])
         }
     }
 
@@ -3739,7 +3759,7 @@ impl Kernels<'_> {
     pub unsafe fn r#enqueue_fft_columns_3(&self, batch: &mut metal_oxide::Batch<'_>, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#s0: u32, r#threads: u32) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_157, "fft_columns_3")?, config, &[metal_oxide::Argument::read_write(r#real), metal_oxide::Argument::read_write(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::value(r#threads)?])
+            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_158, "fft_columns_3")?, config, &[metal_oxide::Argument::read_write(r#real), metal_oxide::Argument::read_write(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::value(r#threads)?])
         }
     }
 
@@ -3749,7 +3769,7 @@ impl Kernels<'_> {
     pub unsafe fn r#fft_columns_extract_1(&self, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &metal_oxide::Buffer<f32>, r#imag: &metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#s0: u32, r#output: &mut metal_oxide::Buffer<f32>, r#size: u32, r#scale: f32, r#rows: u32, r#parity: u32, r#threads: u32) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_158, "fft_columns_extract_1")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::read(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#size)?, metal_oxide::Argument::value(r#scale)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#parity)?, metal_oxide::Argument::value(r#threads)?])
+            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_159, "fft_columns_extract_1")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::read(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#size)?, metal_oxide::Argument::value(r#scale)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#parity)?, metal_oxide::Argument::value(r#threads)?])
         }
     }
 
@@ -3759,7 +3779,7 @@ impl Kernels<'_> {
     pub unsafe fn r#enqueue_fft_columns_extract_1(&self, batch: &mut metal_oxide::Batch<'_>, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &metal_oxide::Buffer<f32>, r#imag: &metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#s0: u32, r#output: &mut metal_oxide::Buffer<f32>, r#size: u32, r#scale: f32, r#rows: u32, r#parity: u32, r#threads: u32) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_158, "fft_columns_extract_1")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::read(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#size)?, metal_oxide::Argument::value(r#scale)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#parity)?, metal_oxide::Argument::value(r#threads)?])
+            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_159, "fft_columns_extract_1")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::read(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#size)?, metal_oxide::Argument::value(r#scale)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#parity)?, metal_oxide::Argument::value(r#threads)?])
         }
     }
 
@@ -3769,7 +3789,7 @@ impl Kernels<'_> {
     pub unsafe fn r#fft_columns_extract_2(&self, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &metal_oxide::Buffer<f32>, r#imag: &metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#s0: u32, r#output: &mut metal_oxide::Buffer<f32>, r#size: u32, r#scale: f32, r#rows: u32, r#parity: u32, r#threads: u32) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_159, "fft_columns_extract_2")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::read(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#size)?, metal_oxide::Argument::value(r#scale)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#parity)?, metal_oxide::Argument::value(r#threads)?])
+            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_160, "fft_columns_extract_2")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::read(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#size)?, metal_oxide::Argument::value(r#scale)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#parity)?, metal_oxide::Argument::value(r#threads)?])
         }
     }
 
@@ -3779,7 +3799,7 @@ impl Kernels<'_> {
     pub unsafe fn r#enqueue_fft_columns_extract_2(&self, batch: &mut metal_oxide::Batch<'_>, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &metal_oxide::Buffer<f32>, r#imag: &metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#s0: u32, r#output: &mut metal_oxide::Buffer<f32>, r#size: u32, r#scale: f32, r#rows: u32, r#parity: u32, r#threads: u32) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_159, "fft_columns_extract_2")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::read(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#size)?, metal_oxide::Argument::value(r#scale)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#parity)?, metal_oxide::Argument::value(r#threads)?])
+            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_160, "fft_columns_extract_2")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::read(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#size)?, metal_oxide::Argument::value(r#scale)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#parity)?, metal_oxide::Argument::value(r#threads)?])
         }
     }
 
@@ -3789,7 +3809,7 @@ impl Kernels<'_> {
     pub unsafe fn r#fft_columns_extract_3(&self, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &metal_oxide::Buffer<f32>, r#imag: &metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#s0: u32, r#output: &mut metal_oxide::Buffer<f32>, r#size: u32, r#scale: f32, r#rows: u32, r#parity: u32, r#threads: u32) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_160, "fft_columns_extract_3")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::read(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#size)?, metal_oxide::Argument::value(r#scale)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#parity)?, metal_oxide::Argument::value(r#threads)?])
+            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_161, "fft_columns_extract_3")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::read(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#size)?, metal_oxide::Argument::value(r#scale)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#parity)?, metal_oxide::Argument::value(r#threads)?])
         }
     }
 
@@ -3799,47 +3819,47 @@ impl Kernels<'_> {
     pub unsafe fn r#enqueue_fft_columns_extract_3(&self, batch: &mut metal_oxide::Batch<'_>, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &metal_oxide::Buffer<f32>, r#imag: &metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#s0: u32, r#output: &mut metal_oxide::Buffer<f32>, r#size: u32, r#scale: f32, r#rows: u32, r#parity: u32, r#threads: u32) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_160, "fft_columns_extract_3")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::read(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#size)?, metal_oxide::Argument::value(r#scale)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#parity)?, metal_oxide::Argument::value(r#threads)?])
+            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_161, "fft_columns_extract_3")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::read(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#s0)?, metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#size)?, metal_oxide::Argument::value(r#scale)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#parity)?, metal_oxide::Argument::value(r#threads)?])
         }
     }
 
     /// # Safety
     /// The caller must satisfy the kernel's bounds, race, and synchronization contracts.
     #[allow(clippy::too_many_arguments)]
-    pub unsafe fn r#sheet_generate(&self, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#lam: &metal_oxide::Buffer<f32>, r#reverse: &metal_oxide::Buffer<u32>, r#cells: u32, r#cols: u32, r#seed: u32, r#first_cell: u64, r#total: u32) -> metal_oxide::Result<()> {
+    pub unsafe fn r#sheet_rows(&self, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#lam: &metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_cols: u32, r#log_cells: u32, r#tile_log: u32, r#seed: u32, r#first_cell: u64, r#shared_real: usize, r#shared_imag: usize) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_161, "sheet_generate")?, config, &[metal_oxide::Argument::write(r#real), metal_oxide::Argument::write(r#imag), metal_oxide::Argument::read(r#lam), metal_oxide::Argument::read(r#reverse), metal_oxide::Argument::value(r#cells)?, metal_oxide::Argument::value(r#cols)?, metal_oxide::Argument::value(r#seed)?, metal_oxide::Argument::value(r#first_cell)?, metal_oxide::Argument::value(r#total)?])
+            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_162, "sheet_rows")?, config, &[metal_oxide::Argument::write(r#real), metal_oxide::Argument::write(r#imag), metal_oxide::Argument::read(r#lam), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_cols)?, metal_oxide::Argument::value(r#log_cells)?, metal_oxide::Argument::value(r#tile_log)?, metal_oxide::Argument::value(r#seed)?, metal_oxide::Argument::value(r#first_cell)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_real)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_imag)?])
         }
     }
 
     /// # Safety
     /// The caller must satisfy the kernel's bounds, race, and synchronization contracts.
     #[allow(clippy::too_many_arguments)]
-    pub unsafe fn r#enqueue_sheet_generate(&self, batch: &mut metal_oxide::Batch<'_>, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#lam: &metal_oxide::Buffer<f32>, r#reverse: &metal_oxide::Buffer<u32>, r#cells: u32, r#cols: u32, r#seed: u32, r#first_cell: u64, r#total: u32) -> metal_oxide::Result<()> {
+    pub unsafe fn r#enqueue_sheet_rows(&self, batch: &mut metal_oxide::Batch<'_>, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#lam: &metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_cols: u32, r#log_cells: u32, r#tile_log: u32, r#seed: u32, r#first_cell: u64, r#shared_real: usize, r#shared_imag: usize) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_161, "sheet_generate")?, config, &[metal_oxide::Argument::write(r#real), metal_oxide::Argument::write(r#imag), metal_oxide::Argument::read(r#lam), metal_oxide::Argument::read(r#reverse), metal_oxide::Argument::value(r#cells)?, metal_oxide::Argument::value(r#cols)?, metal_oxide::Argument::value(r#seed)?, metal_oxide::Argument::value(r#first_cell)?, metal_oxide::Argument::value(r#total)?])
+            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_162, "sheet_rows")?, config, &[metal_oxide::Argument::write(r#real), metal_oxide::Argument::write(r#imag), metal_oxide::Argument::read(r#lam), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_cols)?, metal_oxide::Argument::value(r#log_cells)?, metal_oxide::Argument::value(r#tile_log)?, metal_oxide::Argument::value(r#seed)?, metal_oxide::Argument::value(r#first_cell)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_real)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_imag)?])
         }
     }
 
     /// # Safety
     /// The caller must satisfy the kernel's bounds, race, and synchronization contracts.
     #[allow(clippy::too_many_arguments)]
-    pub unsafe fn r#sheet_transpose(&self, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &metal_oxide::Buffer<f32>, r#imag: &metal_oxide::Buffer<f32>, r#real_t: &mut metal_oxide::Buffer<f32>, r#imag_t: &mut metal_oxide::Buffer<f32>, r#reverse: &metal_oxide::Buffer<u32>, r#cells: u32, r#rows: u32, r#cols: u32, r#total: u32) -> metal_oxide::Result<()> {
+    pub unsafe fn r#sheet_transpose(&self, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &metal_oxide::Buffer<f32>, r#imag: &metal_oxide::Buffer<f32>, r#real_t: &mut metal_oxide::Buffer<f32>, r#imag_t: &mut metal_oxide::Buffer<f32>, r#log_rows: u32, r#log_cols: u32, r#total: u32) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_162, "sheet_transpose")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::read(r#imag), metal_oxide::Argument::write(r#real_t), metal_oxide::Argument::write(r#imag_t), metal_oxide::Argument::read(r#reverse), metal_oxide::Argument::value(r#cells)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#cols)?, metal_oxide::Argument::value(r#total)?])
+            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_163, "sheet_transpose")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::read(r#imag), metal_oxide::Argument::write(r#real_t), metal_oxide::Argument::write(r#imag_t), metal_oxide::Argument::value(r#log_rows)?, metal_oxide::Argument::value(r#log_cols)?, metal_oxide::Argument::value(r#total)?])
         }
     }
 
     /// # Safety
     /// The caller must satisfy the kernel's bounds, race, and synchronization contracts.
     #[allow(clippy::too_many_arguments)]
-    pub unsafe fn r#enqueue_sheet_transpose(&self, batch: &mut metal_oxide::Batch<'_>, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &metal_oxide::Buffer<f32>, r#imag: &metal_oxide::Buffer<f32>, r#real_t: &mut metal_oxide::Buffer<f32>, r#imag_t: &mut metal_oxide::Buffer<f32>, r#reverse: &metal_oxide::Buffer<u32>, r#cells: u32, r#rows: u32, r#cols: u32, r#total: u32) -> metal_oxide::Result<()> {
+    pub unsafe fn r#enqueue_sheet_transpose(&self, batch: &mut metal_oxide::Batch<'_>, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &metal_oxide::Buffer<f32>, r#imag: &metal_oxide::Buffer<f32>, r#real_t: &mut metal_oxide::Buffer<f32>, r#imag_t: &mut metal_oxide::Buffer<f32>, r#log_rows: u32, r#log_cols: u32, r#total: u32) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_162, "sheet_transpose")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::read(r#imag), metal_oxide::Argument::write(r#real_t), metal_oxide::Argument::write(r#imag_t), metal_oxide::Argument::read(r#reverse), metal_oxide::Argument::value(r#cells)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#cols)?, metal_oxide::Argument::value(r#total)?])
+            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_163, "sheet_transpose")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::read(r#imag), metal_oxide::Argument::write(r#real_t), metal_oxide::Argument::write(r#imag_t), metal_oxide::Argument::value(r#log_rows)?, metal_oxide::Argument::value(r#log_cols)?, metal_oxide::Argument::value(r#total)?])
         }
     }
 
@@ -3849,7 +3869,7 @@ impl Kernels<'_> {
     pub unsafe fn r#sheet_extract(&self, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &metal_oxide::Buffer<f32>, r#output: &mut metal_oxide::Buffer<f32>, r#cells: u32, r#rows: u32, r#m: u32, r#n: u32, r#r: f32, r#correction: f32, r#seed: u32, r#correction_cell: u64, r#total: u32) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_163, "sheet_extract")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#cells)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#m)?, metal_oxide::Argument::value(r#n)?, metal_oxide::Argument::value(r#r)?, metal_oxide::Argument::value(r#correction)?, metal_oxide::Argument::value(r#seed)?, metal_oxide::Argument::value(r#correction_cell)?, metal_oxide::Argument::value(r#total)?])
+            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_164, "sheet_extract")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#cells)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#m)?, metal_oxide::Argument::value(r#n)?, metal_oxide::Argument::value(r#r)?, metal_oxide::Argument::value(r#correction)?, metal_oxide::Argument::value(r#seed)?, metal_oxide::Argument::value(r#correction_cell)?, metal_oxide::Argument::value(r#total)?])
         }
     }
 
@@ -3859,87 +3879,67 @@ impl Kernels<'_> {
     pub unsafe fn r#enqueue_sheet_extract(&self, batch: &mut metal_oxide::Batch<'_>, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &metal_oxide::Buffer<f32>, r#output: &mut metal_oxide::Buffer<f32>, r#cells: u32, r#rows: u32, r#m: u32, r#n: u32, r#r: f32, r#correction: f32, r#seed: u32, r#correction_cell: u64, r#total: u32) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_163, "sheet_extract")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#cells)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#m)?, metal_oxide::Argument::value(r#n)?, metal_oxide::Argument::value(r#r)?, metal_oxide::Argument::value(r#correction)?, metal_oxide::Argument::value(r#seed)?, metal_oxide::Argument::value(r#correction_cell)?, metal_oxide::Argument::value(r#total)?])
+            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_164, "sheet_extract")?, config, &[metal_oxide::Argument::read(r#real), metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#cells)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#m)?, metal_oxide::Argument::value(r#n)?, metal_oxide::Argument::value(r#r)?, metal_oxide::Argument::value(r#correction)?, metal_oxide::Argument::value(r#seed)?, metal_oxide::Argument::value(r#correction_cell)?, metal_oxide::Argument::value(r#total)?])
         }
     }
 
     /// # Safety
     /// The caller must satisfy the kernel's bounds, race, and synchronization contracts.
     #[allow(clippy::too_many_arguments)]
-    pub unsafe fn r#sheet_fft_butterfly(&self, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#n: u32, r#half_stride: u32, r#butterflies: u32) -> metal_oxide::Result<()> {
+    pub unsafe fn r#gen_tile_fft(&self, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#eigs: &metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#tile_log: u32, r#seed: u32, r#base_cell: u64, r#shared_real: usize, r#shared_imag: usize) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_164, "sheet_fft_butterfly")?, config, &[metal_oxide::Argument::read_write(r#real), metal_oxide::Argument::read_write(r#imag), metal_oxide::Argument::value(r#n)?, metal_oxide::Argument::value(r#half_stride)?, metal_oxide::Argument::value(r#butterflies)?])
+            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_165, "gen_tile_fft")?, config, &[metal_oxide::Argument::write(r#real), metal_oxide::Argument::write(r#imag), metal_oxide::Argument::read(r#eigs), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#tile_log)?, metal_oxide::Argument::value(r#seed)?, metal_oxide::Argument::value(r#base_cell)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_real)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_imag)?])
         }
     }
 
     /// # Safety
     /// The caller must satisfy the kernel's bounds, race, and synchronization contracts.
     #[allow(clippy::too_many_arguments)]
-    pub unsafe fn r#enqueue_sheet_fft_butterfly(&self, batch: &mut metal_oxide::Batch<'_>, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#n: u32, r#half_stride: u32, r#butterflies: u32) -> metal_oxide::Result<()> {
+    pub unsafe fn r#enqueue_gen_tile_fft(&self, batch: &mut metal_oxide::Batch<'_>, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#eigs: &metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#tile_log: u32, r#seed: u32, r#base_cell: u64, r#shared_real: usize, r#shared_imag: usize) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_164, "sheet_fft_butterfly")?, config, &[metal_oxide::Argument::read_write(r#real), metal_oxide::Argument::read_write(r#imag), metal_oxide::Argument::value(r#n)?, metal_oxide::Argument::value(r#half_stride)?, metal_oxide::Argument::value(r#butterflies)?])
+            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_165, "gen_tile_fft")?, config, &[metal_oxide::Argument::write(r#real), metal_oxide::Argument::write(r#imag), metal_oxide::Argument::read(r#eigs), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#tile_log)?, metal_oxide::Argument::value(r#seed)?, metal_oxide::Argument::value(r#base_cell)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_real)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_imag)?])
         }
     }
 
     /// # Safety
     /// The caller must satisfy the kernel's bounds, race, and synchronization contracts.
     #[allow(clippy::too_many_arguments)]
-    pub unsafe fn r#sheet_fft_tile(&self, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#stages: u32, r#shared_real: usize, r#shared_imag: usize) -> metal_oxide::Result<()> {
+    pub unsafe fn r#gen_fft_extract(&self, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#eigs: &metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#seed: u32, r#base_cell: u64, r#output: &mut metal_oxide::Buffer<f32>, r#size: u32, r#scale: f32, r#rows: u32, r#parity: u32, r#shared_real: usize, r#shared_imag: usize) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_165, "sheet_fft_tile")?, config, &[metal_oxide::Argument::read_write(r#real), metal_oxide::Argument::read_write(r#imag), metal_oxide::Argument::value(r#stages)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_real)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_imag)?])
+            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_166, "gen_fft_extract")?, config, &[metal_oxide::Argument::read(r#eigs), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#seed)?, metal_oxide::Argument::value(r#base_cell)?, metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#size)?, metal_oxide::Argument::value(r#scale)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#parity)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_real)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_imag)?])
         }
     }
 
     /// # Safety
     /// The caller must satisfy the kernel's bounds, race, and synchronization contracts.
     #[allow(clippy::too_many_arguments)]
-    pub unsafe fn r#enqueue_sheet_fft_tile(&self, batch: &mut metal_oxide::Batch<'_>, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#stages: u32, r#shared_real: usize, r#shared_imag: usize) -> metal_oxide::Result<()> {
+    pub unsafe fn r#enqueue_gen_fft_extract(&self, batch: &mut metal_oxide::Batch<'_>, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#eigs: &metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#seed: u32, r#base_cell: u64, r#output: &mut metal_oxide::Buffer<f32>, r#size: u32, r#scale: f32, r#rows: u32, r#parity: u32, r#shared_real: usize, r#shared_imag: usize) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_165, "sheet_fft_tile")?, config, &[metal_oxide::Argument::read_write(r#real), metal_oxide::Argument::read_write(r#imag), metal_oxide::Argument::value(r#stages)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_real)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_imag)?])
+            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_166, "gen_fft_extract")?, config, &[metal_oxide::Argument::read(r#eigs), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#seed)?, metal_oxide::Argument::value(r#base_cell)?, metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#size)?, metal_oxide::Argument::value(r#scale)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#parity)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_real)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_imag)?])
         }
     }
 
     /// # Safety
     /// The caller must satisfy the kernel's bounds, race, and synchronization contracts.
     #[allow(clippy::too_many_arguments)]
-    pub unsafe fn r#gen_tile_fft(&self, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#eigs: &metal_oxide::Buffer<f32>, r#reverse: &metal_oxide::Buffer<u32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#tile_log: u32, r#seed: u32, r#base_cell: u64, r#shared_real: usize, r#shared_imag: usize) -> metal_oxide::Result<()> {
+    pub unsafe fn r#fft_tile(&self, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#tile_log: u32, r#shared_real: usize, r#shared_imag: usize) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_166, "gen_tile_fft")?, config, &[metal_oxide::Argument::write(r#real), metal_oxide::Argument::write(r#imag), metal_oxide::Argument::read(r#eigs), metal_oxide::Argument::read(r#reverse), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#tile_log)?, metal_oxide::Argument::value(r#seed)?, metal_oxide::Argument::value(r#base_cell)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_real)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_imag)?])
+            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_167, "fft_tile")?, config, &[metal_oxide::Argument::read_write(r#real), metal_oxide::Argument::read_write(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#tile_log)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_real)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_imag)?])
         }
     }
 
     /// # Safety
     /// The caller must satisfy the kernel's bounds, race, and synchronization contracts.
     #[allow(clippy::too_many_arguments)]
-    pub unsafe fn r#enqueue_gen_tile_fft(&self, batch: &mut metal_oxide::Batch<'_>, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#eigs: &metal_oxide::Buffer<f32>, r#reverse: &metal_oxide::Buffer<u32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#tile_log: u32, r#seed: u32, r#base_cell: u64, r#shared_real: usize, r#shared_imag: usize) -> metal_oxide::Result<()> {
+    pub unsafe fn r#enqueue_fft_tile(&self, batch: &mut metal_oxide::Batch<'_>, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#real: &mut metal_oxide::Buffer<f32>, r#imag: &mut metal_oxide::Buffer<f32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#tile_log: u32, r#shared_real: usize, r#shared_imag: usize) -> metal_oxide::Result<()> {
         // SAFETY: kernel-specific preconditions are delegated to this function's caller.
         unsafe {
-            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_166, "gen_tile_fft")?, config, &[metal_oxide::Argument::write(r#real), metal_oxide::Argument::write(r#imag), metal_oxide::Argument::read(r#eigs), metal_oxide::Argument::read(r#reverse), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#tile_log)?, metal_oxide::Argument::value(r#seed)?, metal_oxide::Argument::value(r#base_cell)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_real)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_imag)?])
-        }
-    }
-
-    /// # Safety
-    /// The caller must satisfy the kernel's bounds, race, and synchronization contracts.
-    #[allow(clippy::too_many_arguments)]
-    pub unsafe fn r#gen_fft_extract(&self, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#eigs: &metal_oxide::Buffer<f32>, r#reverse: &metal_oxide::Buffer<u32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#seed: u32, r#base_cell: u64, r#output: &mut metal_oxide::Buffer<f32>, r#size: u32, r#scale: f32, r#rows: u32, r#parity: u32, r#shared_real: usize, r#shared_imag: usize) -> metal_oxide::Result<()> {
-        // SAFETY: kernel-specific preconditions are delegated to this function's caller.
-        unsafe {
-            self.device.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_167, "gen_fft_extract")?, config, &[metal_oxide::Argument::read(r#eigs), metal_oxide::Argument::read(r#reverse), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#seed)?, metal_oxide::Argument::value(r#base_cell)?, metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#size)?, metal_oxide::Argument::value(r#scale)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#parity)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_real)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_imag)?])
-        }
-    }
-
-    /// # Safety
-    /// The caller must satisfy the kernel's bounds, race, and synchronization contracts.
-    #[allow(clippy::too_many_arguments)]
-    pub unsafe fn r#enqueue_gen_fft_extract(&self, batch: &mut metal_oxide::Batch<'_>, config: impl std::convert::Into<metal_oxide::DynamicLaunchConfig>, r#eigs: &metal_oxide::Buffer<f32>, r#reverse: &metal_oxide::Buffer<u32>, r#twiddles: &metal_oxide::Buffer<f32>, r#log_n: u32, r#seed: u32, r#base_cell: u64, r#output: &mut metal_oxide::Buffer<f32>, r#size: u32, r#scale: f32, r#rows: u32, r#parity: u32, r#shared_real: usize, r#shared_imag: usize) -> metal_oxide::Result<()> {
-        // SAFETY: kernel-specific preconditions are delegated to this function's caller.
-        unsafe {
-            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_167, "gen_fft_extract")?, config, &[metal_oxide::Argument::read(r#eigs), metal_oxide::Argument::read(r#reverse), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#seed)?, metal_oxide::Argument::value(r#base_cell)?, metal_oxide::Argument::write(r#output), metal_oxide::Argument::value(r#size)?, metal_oxide::Argument::value(r#scale)?, metal_oxide::Argument::value(r#rows)?, metal_oxide::Argument::value(r#parity)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_real)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_imag)?])
+            batch.launch(self::metal_oxide_pipeline(self.device, &self.module, &self.pipeline_167, "fft_tile")?, config, &[metal_oxide::Argument::read_write(r#real), metal_oxide::Argument::read_write(r#imag), metal_oxide::Argument::read(r#twiddles), metal_oxide::Argument::value(r#log_n)?, metal_oxide::Argument::value(r#tile_log)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_real)?, metal_oxide::Argument::threadgroup::<f32>(r#shared_imag)?])
         }
     }
 

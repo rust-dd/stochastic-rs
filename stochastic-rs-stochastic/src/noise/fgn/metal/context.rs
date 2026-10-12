@@ -20,7 +20,6 @@ pub(super) struct Context {
 
 struct SizedMetal {
   eigs: Buffer<f32>,
-  reverse: Buffer<u32>,
   tile_twiddles: Buffer<f32>,
   scratch: Option<Scratch>,
   n: usize,
@@ -125,8 +124,7 @@ impl Context {
           && s.t_bits == t.to_bits()
       },
       || -> Result<_> {
-        let reverse = build_bit_reverse_table(traj_size);
-        let eigs = reverse
+        let eigs = build_bit_reverse_table(traj_size)
           .iter()
           .map(|&natural| sqrt_eigs[natural as usize])
           .collect::<Vec<_>>();
@@ -143,7 +141,6 @@ impl Context {
         };
         Ok(SizedMetal {
           eigs: device.buffer_from_slice(&eigs).map_err(device_error)?,
-          reverse: device.buffer_from_slice(&reverse).map_err(device_error)?,
           tile_twiddles: device
             .buffer_from_slice(&twiddle_table(1 << tile_log))
             .map_err(device_error)?,
@@ -162,7 +159,6 @@ impl Context {
     let shared = (tile + tile / 32) as usize;
     let SizedMetal {
       eigs,
-      reverse,
       tile_twiddles,
       scratch,
       ..
@@ -182,7 +178,6 @@ impl Context {
             DynamicLaunchConfig::new(Dim3::x(total / tile), Dim3::x(tile / 2)),
             &[
               Argument::read(eigs),
-              Argument::read(reverse),
               Argument::read(tile_twiddles),
               Argument::value(log_n)?,
               Argument::value(seed)?,
@@ -204,7 +199,6 @@ impl Context {
             Argument::write(real),
             Argument::write(imag),
             Argument::read(eigs),
-            Argument::read(reverse),
             Argument::read(tile_twiddles),
             Argument::value(log_n)?,
             Argument::value(tile_log as u32)?,

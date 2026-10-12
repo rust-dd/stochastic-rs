@@ -1910,7 +1910,7 @@ dependencies = [
 [[package]]
 name = "metal-oxide"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=b9fe0b14c934e32ab76ff105212875d7be04db24#b9fe0b14c934e32ab76ff105212875d7be04db24"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=c3a3b404474936a9adb690b49af3a5157cc7cd1c#c3a3b404474936a9adb690b49af3a5157cc7cd1c"
 dependencies = [
  "block2",
  "dispatch2",
@@ -1924,7 +1924,7 @@ dependencies = [
 [[package]]
 name = "metal-oxide-artifact"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=b9fe0b14c934e32ab76ff105212875d7be04db24#b9fe0b14c934e32ab76ff105212875d7be04db24"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=c3a3b404474936a9adb690b49af3a5157cc7cd1c#c3a3b404474936a9adb690b49af3a5157cc7cd1c"
 dependencies = [
  "serde",
  "serde_json",
@@ -1934,7 +1934,7 @@ dependencies = [
 [[package]]
 name = "metal-oxide-device"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=b9fe0b14c934e32ab76ff105212875d7be04db24#b9fe0b14c934e32ab76ff105212875d7be04db24"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=c3a3b404474936a9adb690b49af3a5157cc7cd1c#c3a3b404474936a9adb690b49af3a5157cc7cd1c"
 dependencies = [
  "metal-oxide-macros",
 ]
@@ -1942,7 +1942,7 @@ dependencies = [
 [[package]]
 name = "metal-oxide-macros"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=b9fe0b14c934e32ab76ff105212875d7be04db24#b9fe0b14c934e32ab76ff105212875d7be04db24"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=c3a3b404474936a9adb690b49af3a5157cc7cd1c#c3a3b404474936a9adb690b49af3a5157cc7cd1c"
 
 [[package]]
 name = "minimal-lexical"

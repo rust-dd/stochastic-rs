@@ -259,6 +259,7 @@ macro_rules! extract {
   };
 }
 
+pass!(fft_columns_1, 2, 1);
 pass!(fft_columns_2, 4, 2);
 pass!(fft_columns_3, 8, 3);
 extract!(fft_columns_extract_1, 2, 1);

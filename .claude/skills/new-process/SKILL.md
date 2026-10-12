@@ -551,7 +551,7 @@ shrinks as the engine grows (empty today) — check the nine documented ways rou
    than a recursion gets a capability trait beside `FgnBackend`
    (`SheetBackend<T>` in `device.rs`), a `via sheet` switch arm, and one
    pipeline file per backend under its module (`sheet/fbs/{metal,cuda}.rs`)
-   reusing the fGN pipeline's butterflies, hash and bit-reverse table. The host
+   reusing the fGN pipeline's FFT stages, hash and bit reversal. The host
    devices route through the process's own sampler, so a fallback is
    bit-identical to the `Cpu` build, and `device_ready()` names what the
    kernels take (radix-2: embedding sides that are powers of two). This is

@@ -4,16 +4,19 @@ use std::rc::Rc;
 use metal_oxide::{Argument, Batch, Buffer, Dim3, DynamicLaunchConfig, Pipeline};
 
 use super::{Result, SheetLaunch, launch_len};
+use crate::device::DeviceError;
 use crate::device::metal::{self, device_error};
-use crate::noise::fgn::metal::build_bit_reverse_table;
+use crate::noise::fgn::metal::{plan, twiddle_table};
 
 pub(super) struct Context {
   common: Rc<metal::Context>,
-  generate: Pipeline,
-  butterfly: Pipeline,
+  rows: Pipeline,
   tile: Pipeline,
+  /// In-place passes of one, two and three stages.
+  columns: Vec<Pipeline>,
   transpose: Pipeline,
   extract: Pipeline,
+  max_threads: usize,
   sized: Vec<SizedSheet>,
 }
 
@@ -24,8 +27,8 @@ struct SizedSheet {
   imag_t: Buffer<f32>,
   output: Buffer<f32>,
   lam: Buffer<f32>,
-  rev_cols: Buffer<u32>,
-  rev_rows: Buffer<u32>,
+  row_twiddles: Buffer<f32>,
+  column_twiddles: Buffer<f32>,
   m: usize,
   n: usize,
   sheets: usize,
@@ -51,13 +54,26 @@ pub(super) fn with<R>(
 impl Context {
   fn new(ordinal: usize) -> Result<Self> {
     let common = metal::context(ordinal)?;
-    let pipeline = |name| Pipeline::new(&common.device, &common.module, name).map_err(device_error);
+    let pipeline =
+      |name: &str| Pipeline::new(&common.device, &common.module, name).map_err(device_error);
+    let rows = pipeline("sheet_rows")?;
+    let tile = pipeline("fft_tile")?;
+    if rows.thread_execution_width() != 32 || tile.thread_execution_width() != 32 {
+      return Err(DeviceError::Unavailable(
+        "sheet tiles need 32-lane SIMD groups".into(),
+      ));
+    }
     Ok(Self {
-      generate: pipeline("sheet_generate")?,
-      butterfly: pipeline("sheet_fft_butterfly")?,
-      tile: pipeline("sheet_fft_tile")?,
+      columns: (1..=3)
+        .map(|stages| pipeline(&format!("fft_columns_{stages}")))
+        .collect::<Result<Vec<_>>>()?,
       transpose: pipeline("sheet_transpose")?,
       extract: pipeline("sheet_extract")?,
+      max_threads: rows
+        .max_threads_per_block()
+        .min(tile.max_threads_per_block()),
+      rows,
+      tile,
       common,
       sized: Vec::new(),
     })
@@ -79,9 +95,11 @@ impl Context {
     let out_len = launch_len::<u32>(sheets * m * n, "out_len")?;
     let cells_u32 = launch_len::<u32>(cells, "cells")?;
     let rows = launch_len::<u32>(big_m, "rows")?;
-    let cols = launch_len::<u32>(big_n, "cols")?;
     let m_u32 = launch_len::<u32>(m, "m")?;
     let n_u32 = launch_len::<u32>(n, "n")?;
+    let (log_rows, log_cols) = (big_m.trailing_zeros(), big_n.trailing_zeros());
+    let row_plan = plan(log_cols as usize, self.max_threads);
+    let column_plan = plan(log_rows as usize, self.max_threads);
     // Public parameters can change without rebuilding the stored embedding.
     let buffers = crate::device::lru_slot(
       &mut self.sized,
@@ -111,15 +129,15 @@ impl Context {
             .device
             .buffer_from_slice(sheet.lam)
             .map_err(device_error)?,
-          rev_cols: self
+          row_twiddles: self
             .common
             .device
-            .buffer_from_slice(&build_bit_reverse_table(big_n))
+            .buffer_from_slice(&twiddle_table(big_n))
             .map_err(device_error)?,
-          rev_rows: self
+          column_twiddles: self
             .common
             .device
-            .buffer_from_slice(&build_bit_reverse_table(big_m))
+            .buffer_from_slice(&twiddle_table(big_m))
             .map_err(device_error)?,
           m,
           n,
@@ -135,31 +153,48 @@ impl Context {
       imag_t,
       output,
       lam,
-      rev_cols,
-      rev_rows,
+      row_twiddles,
+      column_twiddles,
       ..
     } = buffers;
     let first_cell = (first * cells) as u64;
-    // SAFETY: each launch owns disjoint buffers and bounds all rounded dispatches.
-    // Complete rows and columns use valid radix-2 stages; Batch orders their dependencies.
+    let row_tile = row_plan.0 as u32;
+    let column_tile = column_plan.0 as u32;
+    // SAFETY: tiles and column groups partition complete rows, then complete columns; every
+    // tile thread reaches each barrier and shuffle. Batch orders the dependent launches.
     unsafe {
       self.common.device.submit(|batch| {
         batch.launch(
-          &self.generate,
-          DynamicLaunchConfig::for_elements(total, 256)?,
+          &self.rows,
+          tile_config(total, row_tile),
           &[
             Argument::write(real),
             Argument::write(imag),
             Argument::read(lam),
-            Argument::read(rev_cols),
-            Argument::value(cells_u32)?,
-            Argument::value(cols)?,
+            Argument::read(row_twiddles),
+            Argument::value(log_cols)?,
+            Argument::value(log_rows + log_cols)?,
+            Argument::value(row_tile)?,
             Argument::value(seed)?,
             Argument::value(first_cell)?,
-            Argument::value(total)?,
+            Argument::threadgroup::<f32>(scratch(row_tile))?,
+            Argument::threadgroup::<f32>(scratch(row_tile))?,
           ],
         )?;
-        encode_fft(batch, &self.tile, &self.butterfly, real, imag, cols, total)?;
+        let row_pass = Transforms {
+          log_n: log_cols,
+          twiddles: row_twiddles,
+          total,
+        };
+        encode_passes(
+          batch,
+          &self.columns,
+          real,
+          imag,
+          row_pass,
+          row_tile,
+          &row_plan.1,
+        )?;
         batch.launch(
           &self.transpose,
           DynamicLaunchConfig::for_elements(total, 256)?,
@@ -168,21 +203,37 @@ impl Context {
             Argument::read(imag),
             Argument::write(real_t),
             Argument::write(imag_t),
-            Argument::read(rev_rows),
-            Argument::value(cells_u32)?,
-            Argument::value(rows)?,
-            Argument::value(cols)?,
+            Argument::value(log_rows)?,
+            Argument::value(log_cols)?,
             Argument::value(total)?,
           ],
         )?;
-        encode_fft(
-          batch,
+        batch.launch(
           &self.tile,
-          &self.butterfly,
+          tile_config(total, column_tile),
+          &[
+            Argument::read_write(real_t),
+            Argument::read_write(imag_t),
+            Argument::read(column_twiddles),
+            Argument::value(log_rows)?,
+            Argument::value(column_tile)?,
+            Argument::threadgroup::<f32>(scratch(column_tile))?,
+            Argument::threadgroup::<f32>(scratch(column_tile))?,
+          ],
+        )?;
+        let column_pass = Transforms {
+          log_n: log_rows,
+          twiddles: column_twiddles,
+          total,
+        };
+        encode_passes(
+          batch,
+          &self.columns,
           real_t,
           imag_t,
-          rows,
-          total,
+          column_pass,
+          column_tile,
+          &column_plan.1,
         )?;
         batch.launch(
           &self.extract,
@@ -209,53 +260,54 @@ impl Context {
   }
 }
 
-/// # Safety
-/// `n` is a power of two; `real` and `imag` each hold `total / n` complete
-/// length-`n` transforms.
-unsafe fn encode_fft(
+/// One block per tile of 2^tile_log values, two values per thread.
+fn tile_config(total: u32, tile_log: u32) -> DynamicLaunchConfig {
+  DynamicLaunchConfig::new(Dim3::x(total >> tile_log), Dim3::x(1 << (tile_log - 1)))
+}
+
+/// Padded threadgroup words for one tile of 2^tile_log values.
+fn scratch(tile_log: u32) -> usize {
+  let tile = 1_usize << tile_log;
+  tile + tile / 32
+}
+
+/// Complete length-2^log_n transforms covering `total` values.
+struct Transforms<'a> {
+  log_n: u32,
+  twiddles: &'a Buffer<f32>,
+  total: u32,
+}
+
+/// Runs the stages after the tile in place. Safety: `real`/`imag` hold `transforms` done below
+/// `tile_log`, `passes` sum to the rest and the twiddles hold 2^(log_n - 1) entries.
+unsafe fn encode_passes(
   batch: &mut Batch<'_>,
-  tile_pipeline: &Pipeline,
-  butterfly: &Pipeline,
+  columns: &[Pipeline],
   real: &mut Buffer<f32>,
   imag: &mut Buffer<f32>,
-  n: u32,
-  total: u32,
+  transforms: Transforms<'_>,
+  tile_log: u32,
+  passes: &[usize],
 ) -> metal_oxide::Result<()> {
-  let mut stages = n.trailing_zeros().min(11);
-  while (1_usize << (stages - 1)) > tile_pipeline.max_threads_per_block() {
-    stages -= 1;
-  }
-  let tile = 1_u32 << stages;
-  // SAFETY: a tile divides each complete transform and all its lanes reach every barrier.
-  unsafe {
-    batch.launch(
-      tile_pipeline,
-      DynamicLaunchConfig::new(Dim3::x(total / tile), Dim3::x(tile / 2)),
-      &[
-        Argument::read_write(real),
-        Argument::read_write(imag),
-        Argument::value(stages)?,
-        Argument::threadgroup::<f32>(tile as usize)?,
-        Argument::threadgroup::<f32>(tile as usize)?,
-      ],
-    )?;
-  }
-  let count = total / 2;
-  for stage in stages..n.trailing_zeros() {
-    // SAFETY: a power-of-two transform partitions into disjoint butterflies at each stage.
+  let mut s0 = tile_log;
+  for &stages in passes {
+    let threads = transforms.total >> stages;
+    // SAFETY: each thread owns 2^stages positions of one complete transform.
     unsafe {
       batch.launch(
-        butterfly,
-        DynamicLaunchConfig::for_elements(count, 256)?,
+        &columns[stages - 1],
+        DynamicLaunchConfig::for_elements(threads, 256)?,
         &[
           Argument::read_write(real),
           Argument::read_write(imag),
-          Argument::value(n)?,
-          Argument::value(1_u32 << stage)?,
-          Argument::value(count)?,
+          Argument::read(transforms.twiddles),
+          Argument::value(transforms.log_n)?,
+          Argument::value(s0)?,
+          Argument::value(threads)?,
         ],
       )?;
     }
+    s0 += stages as u32;
   }
   Ok(())
 }

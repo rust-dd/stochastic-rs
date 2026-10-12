@@ -51,9 +51,9 @@ impl Launch<'_> {
 /// Largest tile, so two padded scratch arrays stay well inside threadgroup memory.
 const MAX_TILE_LOG: usize = 11;
 
-/// Tile stages, then column passes of two or three stages (only the read-out may take one).
+/// Tile stages, then column passes of two or three stages; only the last pass may take one.
 /// Depends on the length alone, so rows are computed alike however a batch is cut.
-fn plan(log_n: usize, max_threads: usize) -> (usize, Vec<usize>) {
+pub(crate) fn plan(log_n: usize, max_threads: usize) -> (usize, Vec<usize>) {
   let mut tile_log = log_n.min(MAX_TILE_LOG);
   while tile_log > 1 && 1 << (tile_log - 1) > max_threads {
     tile_log -= 1;
@@ -67,7 +67,7 @@ fn plan(log_n: usize, max_threads: usize) -> (usize, Vec<usize>) {
 }
 
 /// Interleaved cos/sin of -2πk/len for k < len / 2, evaluated in f64.
-fn twiddle_table(len: usize) -> Vec<f32> {
+pub(crate) fn twiddle_table(len: usize) -> Vec<f32> {
   (0..(len / 2).max(1))
     .flat_map(|k| {
       let angle = -2.0 * std::f64::consts::PI * k as f64 / len as f64;
@@ -76,7 +76,7 @@ fn twiddle_table(len: usize) -> Vec<f32> {
     .collect()
 }
 
-pub(crate) fn build_bit_reverse_table(n: usize) -> Vec<u32> {
+fn build_bit_reverse_table(n: usize) -> Vec<u32> {
   let log_n = n.trailing_zeros() as usize;
   let bits = usize::BITS as usize;
   (0..n)
