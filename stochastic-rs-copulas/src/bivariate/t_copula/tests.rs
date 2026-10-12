@@ -302,3 +302,13 @@ fn bivariate_t_cdf_matches_50_digit_references_at_adversarial_limits() {
     );
   }
 }
+
+/// At `ν ≤ 0.05` the limits' squares overflow past `1.34e154·√ν`; the Plackett integral must survive it (50-digit
+/// values, eq. (21) and Cornish's χ mixture agreeing to `2e-29`).
+#[test]
+fn the_plackett_integral_survives_limits_whose_squares_overflow() {
+  for (nu, want) in [(0.01, 0.9822283110927638), (0.05, 0.999999985792761)] {
+    let got = bivariate_t_cdf(1e150, 1e200, 0.0, nu);
+    assert!((got - want).abs() <= 1e-12, "nu={nu}: {got} vs {want}");
+  }
+}

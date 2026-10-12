@@ -15,8 +15,8 @@
 //! In the limit $\nu \to \infty$ the t-copula collapses to the Gaussian
 //! copula.
 //!
-//! The bivariate CDF is Dunnett & Sobel's (1954) finite sum of incomplete beta values for an integer $\nu \le 1000$,
-//! otherwise Genz's (2004) generalized Plackett integral, eq. (21), by tanh-sinh; both within $10^{-13}$ of 50-digit values.
+//! The bivariate CDF is Dunnett & Sobel's (1954) finite sum for an integer $\nu \le 1000$, else Genz's (2004) eq. (21), its integral by
+//! tanh-sinh to $3 \cdot 10^{-16}$; the value inherits the Student-t quantile's and cdf's error near $u = \tfrac12$ and at large or small $\nu$.
 //!
 //! Reference: Embrechts, P., Lindskog, F., McNeil, A.J. (2003),
 //! "Modelling Dependence with Copulas and Applications to Risk
@@ -351,7 +351,7 @@ fn dunnett_sobel(h: f64, k: f64, rho: f64, n: u32) -> f64 {
       gh *= (2.0 * j - 1.0) / (2.0 * j) * c2a;
       gk *= (2.0 * j - 1.0) / (2.0 * j) * c2b;
     }
-    return total;
+    return floor_at_zero(total);
   }
   let (alpha, beta) = (h.atan2(rn), k.atan2(rn));
   let one_minus_z = 2.0 * (0.5 * (alpha - beta)).sin().powi(2) + (1.0 - rho) * ca * cb;
@@ -370,7 +370,12 @@ fn dunnett_sobel(h: f64, k: f64, rho: f64, n: u32) -> f64 {
     gh *= 2.0 * j / (2.0 * j + 1.0) * c2a;
     gk *= 2.0 * j / (2.0 * j + 1.0) * c2b;
   }
-  total
+  floor_at_zero(total)
+}
+
+/// The sums cancel to about `−2e-16` where the probability is 0; a NaN passes through.
+fn floor_at_zero(t: f64) -> f64 {
+  if t < 0.0 { 0.0 } else { t }
 }
 
 /// `(√x, √(1 − x), sign d)` of `x = d²/(d² + e²)`, the incomplete beta argument of one Dunnett–Sobel sum.
@@ -380,7 +385,7 @@ fn beta_argument(d: f64, e: f64) -> (f64, f64, f64) {
 }
 
 /// Genz (2004) eq. (21) at `θ = s(π/2 − φ)`, `s = sign ρ`: `T_ν(b, s) − s/(2π) ∫₀^{acos|ρ|} (1 + c q)^{−ν/2} dφ`, with
-/// `q = (a − sb)²/sin²φ + sab/cos²(φ/2)` in `(a, b) = (h, k)/m`, `c = m²/ν`, `m = max(|h|, |k|, √ν)`.
+/// `q = (a − sb)²/sin²φ + sab/cos²(φ/2)` in `(a, b) = (h, k)/m`, `c = m²/ν`, `m = max(|h|, |k|, √ν)`; `c` may overflow.
 fn generalized_plackett(h: f64, k: f64, rho: f64, nu: f64) -> f64 {
   let s = if rho < 0.0 { -1.0 } else { 1.0 };
   let base = if s > 0.0 {
@@ -390,6 +395,7 @@ fn generalized_plackett(h: f64, k: f64, rho: f64, nu: f64) -> f64 {
   };
   let m = h.abs().max(k.abs()).max(nu.sqrt());
   let (a, b, c) = (h / m, k / m, m * m / nu);
+  let (ln_c, inv_c) = (2.0 * m.ln() - nu.ln(), nu / (m * m));
   let (diff2, cross) = ((a - s * b).powi(2), s * a * b);
   let top = rho.abs().acos();
   let integral: f64 = tanh_sinh()
@@ -397,7 +403,14 @@ fn generalized_plackett(h: f64, k: f64, rho: f64, nu: f64) -> f64 {
     .map(|&(x, w)| {
       let (sh, ch) = (0.5 * top * x).sin_cos();
       let q = diff2 / (2.0 * sh * ch).powi(2) + cross / (ch * ch);
-      w * (-0.5 * nu * (c * q).ln_1p()).exp()
+      let cq = c * q;
+      // `ln(1 + cq) = ln c + ln(q + 1/c)` where `cq` overflows, `ln_1p` everywhere else for its accuracy at large `ν`.
+      let log = if cq.is_finite() {
+        cq.ln_1p()
+      } else {
+        ln_c + (q + inv_c).ln()
+      };
+      w * (-0.5 * nu * log).exp()
     })
     .sum();
   base - s * top * integral / TAU
