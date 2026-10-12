@@ -88,20 +88,24 @@ fn t_cdf_symmetry_in_rho() {
   assert!(approx(lhs, rhs, 1e-6), "symmetry: lhs = {lhs}, rhs = {rhs}");
 }
 
+/// The cdf's central difference in `v` is the closed-form h-function to the difference's own `O(step²)`; a smooth bias
+/// in the cdf, such as a quadrature's, shows up here.
 #[test]
 fn t_partial_derivative_matches_finite_diff() {
-  let c = TCopula::new(0.4, 4.0);
-  let u = 0.3_f64;
-  let v = 0.6_f64;
-  let h = 1e-4_f64;
-  let pd = c.partial_derivative(array![[u, v]].view()).unwrap()[0];
-  let cdf_hi = c.cdf(array![[u, v + h]].view()).unwrap()[0];
-  let cdf_lo = c.cdf(array![[u, v - h]].view()).unwrap()[0];
-  let fd = (cdf_hi - cdf_lo) / (2.0 * h);
-  assert!(
-    approx(pd, fd, 1e-3),
-    "analytic ∂C/∂v = {pd}, finite-diff = {fd}"
-  );
+  for nu in [4.0, 2.5] {
+    let c = TCopula::new(0.4, nu);
+    for (u, v) in [(0.3_f64, 0.6_f64), (0.8, 0.2), (0.05, 0.5)] {
+      let h = 1e-4_f64;
+      let pd = c.partial_derivative(array![[u, v]].view()).unwrap()[0];
+      let cdf_hi = c.cdf(array![[u, v + h]].view()).unwrap()[0];
+      let cdf_lo = c.cdf(array![[u, v - h]].view()).unwrap()[0];
+      let fd = (cdf_hi - cdf_lo) / (2.0 * h);
+      assert!(
+        approx(pd, fd, 1e-8),
+        "nu={nu} ({u}, {v}): analytic ∂C/∂v = {pd}, finite-diff = {fd}"
+      );
+    }
+  }
 }
 
 /// ρ=0.5, ν=3: λ = 2·t₄(−√(4·(1−0.5)/(1+0.5))), checked against the
@@ -266,4 +270,35 @@ fn t_copula_rejects_rho_boundary_like_gaussian() {
 )]
 fn t_copula_set_theta_rejects_the_rho_boundary() {
   TCopula::default().set_theta(1.0);
+}
+
+/// `T_ν(h, k; ρ)` where both closed forms are stressed: `h ≈ sk` (the Plackett endpoint layer), `|ρ| = 0.999`, limits in
+/// the thousands, `ν` from 0.5 to 2000, each against 50-digit mpmath.
+#[test]
+fn bivariate_t_cdf_matches_50_digit_references_at_adversarial_limits() {
+  let pins = [
+    (0.0, 0.0, 0.5, 3.0, 0.3333333333333333),
+    (1.2, 1.200000001, 0.999, 4.0, 0.847976125194194),
+    (-0.7, 0.699999999, -0.999, 7.0, 0.005617091714658087),
+    (-1000.0, 20000.0, 0.95, 1.0, 0.0003179304091253056),
+    (20000.0, 30000.0, -0.95, 2.0, 0.999999998195796),
+    (-3.3, -3.3, 0.95, 30.0, 0.0007800741951314377),
+    (0.4, -2.1, -0.3, 1.0, 0.056098284742091366),
+    (1.5, 0.2, 0.0, 6.0, 0.5242044271255051),
+    (1.2, 1.200000001, 0.999, 4.5, 0.8514504591513983),
+    (-0.7, 0.699999999, -0.999, 7.3, 0.005615279926690884),
+    (0.25, 0.2501, 0.3, 0.5, 0.37064232168904004),
+    (-40.0, -40.0, 0.95, 0.5, 0.04399970492571418),
+    (-1000.0, 20000.0, 0.95, 2.5, 2.274742450525479e-08),
+    (0.4, -2.1, -0.3, 1000.5, 0.006517093323552365),
+    (-0.58, -0.59, 0.5, 1000.5, 0.14130367185349735),
+    (1.0, 1.0, 0.7, 2000.0, 0.7665979783590774),
+  ];
+  for (h, k, rho, nu, want) in pins {
+    let got = bivariate_t_cdf(h, k, rho, nu);
+    assert!(
+      (got - want).abs() <= 1e-12,
+      "T_{nu}({h}, {k}; {rho}) = {got}, want {want}"
+    );
+  }
 }

@@ -87,6 +87,22 @@ impl GaussianCopula {
   }
 }
 
+/// `C_ρ(u, v)` on the closed square, the bivariate cdf of both Gaussian copulas: 0 on a zero coordinate, the other
+/// coordinate at a unit one.
+pub(crate) fn gaussian_copula_cdf(u: f64, v: f64, rho: f64) -> f64 {
+  if u <= 0.0 || v <= 0.0 {
+    return 0.0;
+  }
+  if u >= 1.0 {
+    return v;
+  }
+  if v >= 1.0 {
+    return u;
+  }
+  let (x, y) = (ndtri(u), ndtri(v));
+  norm_cdf(x) + norm_cdf(y) - 1.0 + biv_norm(x, y, rho)
+}
+
 impl BivariateExt for GaussianCopula {
   fn family(&self) -> BivariateFamily {
     BivariateFamily::Gaussian
@@ -141,29 +157,12 @@ impl BivariateExt for GaussianCopula {
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
-    let u_col = x.column(0);
-    let v_col = x.column(1);
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      if u <= 0.0 || v <= 0.0 {
-        out[i] = 0.0;
-        continue;
-      }
-      if u >= 1.0 {
-        out[i] = v;
-        continue;
-      }
-      if v >= 1.0 {
-        out[i] = u;
-        continue;
-      }
-      let xx = ndtri(u);
-      let yy = ndtri(v);
-      out[i] = norm_cdf(xx) + norm_cdf(yy) - 1.0 + biv_norm(xx, yy, rho);
-    }
-    Ok(out)
+    Ok(
+      x.rows()
+        .into_iter()
+        .map(|r| gaussian_copula_cdf(r[0], r[1], rho))
+        .collect(),
+    )
   }
 
   /// $\partial_v C(u,v) = \Phi\big((x - \rho y)/\sqrt{1-\rho^2}\big)$, $x, y = \Phi^{-1}(u), \Phi^{-1}(v)$, with `v`

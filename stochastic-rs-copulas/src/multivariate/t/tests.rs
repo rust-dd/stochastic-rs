@@ -135,27 +135,17 @@ fn t_copula_log_pdf_matches_ln_pdf() {
   }
 }
 
-/// CDF in $\mathbb{R}^2$ should approximately match the bivariate
-/// Dunnett-Sobel reference implemented in [`crate::bivariate::t_copula`].
-/// MC noise on 4000 samples ≈ 1/√4000 ≈ 0.016; allow 0.04 tolerance.
+/// At `d = 2` the multivariate cdf is the bivariate copula's closed form, bit for bit, for an integer and a fractional `ν`.
 #[test]
 fn t_copula_cdf_matches_bivariate_reference() {
   use crate::traits::BivariateExt;
   let rho = 0.4;
-  let nu = 6.0;
-  let corr = array![[1.0, rho], [rho, 1.0]];
-  let mv = TMultivariate::new(corr, nu);
-  let bv = TCopula::new(rho, nu);
-  let q = array![[0.3, 0.6], [0.5, 0.5], [0.8, 0.2]];
-  let cdf_mv = mv.cdf(q.view()).unwrap();
-  let cdf_bv = bv.cdf(q.view()).unwrap();
-  for i in 0..cdf_mv.len() {
-    assert!(
-      (cdf_mv[i] - cdf_bv[i]).abs() < 0.04,
-      "MV-CDF[{i}]={} vs BV-CDF[{i}]={}",
-      cdf_mv[i],
-      cdf_bv[i]
-    );
+  for nu in [6.0, 6.5] {
+    let corr = array![[1.0, rho], [rho, 1.0]];
+    let q = array![[0.3, 0.6], [0.5, 0.5], [0.8, 0.2]];
+    let cdf_mv = TMultivariate::new(corr, nu).cdf(q.view()).unwrap();
+    let cdf_bv = TCopula::new(rho, nu).cdf(q.view()).unwrap();
+    assert_eq!(cdf_mv, cdf_bv, "nu={nu}");
   }
 }
 

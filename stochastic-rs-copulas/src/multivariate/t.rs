@@ -53,7 +53,6 @@ use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::Axis;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::chi_square::SimdChiSquared;
 use stochastic_rs_distributions::normal::SimdNormal;
@@ -64,7 +63,12 @@ use stochastic_rs_distributions::special::ndtri;
 use super::MultivariateFamily;
 use super::correlation_matrix::CorrelationMatrix;
 use super::correlation_matrix::shrink_to_spd;
+use super::genz::chi_scale;
+use super::genz::mvt_upper;
+use super::genz::open_coordinates;
+use super::qmc::sobol_points;
 use crate::bivariate::t_copula::check_nu;
+use crate::bivariate::t_copula::t_copula_cdf;
 use crate::correlation::check_defined;
 use crate::correlation::kendall_tau;
 use crate::error::CopulaError;
@@ -378,42 +382,33 @@ impl MultivariateExt for TMultivariate {
     Ok(out)
   }
 
+  /// `T_{R,ν}(t_ν⁻¹(u))` on the closed cube: a zero coordinate gives 0 and a unit one drops out; two left are the
+  /// bivariate t copula's closed form, more are Genz–Bretz over the Sobol points, the first coordinate driving the χ scale.
   fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
-    // Closed forms for the multivariate Student-t CDF exist only in d ≤ 2
-    // (Dunnett-Sobel 1D reduction); for d ≥ 3 we estimate via the χ²-mixer
-    // representation: 1/m Σ_r 1{ Z_r/√W_r ≤ z } with Z_r ~ N(0,Σ),
-    // W_r ~ χ²_ν / ν. 4000 MC samples per query match the Gaussian copula
-    // CDF estimator's tolerance.
-    let z = Self::transform_to_t(X, self.nu);
     let corr = self.fitted()?;
-    let l = corr.chol_lower();
     let d = corr.dim();
-    let n = z.nrows();
-    let m = 4000usize;
-    let mut out = Array1::<f64>::zeros(n);
-    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Unseeded);
-    let mut chi = SimdChiSquared::<f64>::new(self.nu).seeded(&Unseeded);
-    let g = Array2::from_shape_fn((m, d), |_| normal.sample());
-    let y = g.dot(&l.t());
-    let mut w_buf = vec![0.0f64; m];
-    for v in w_buf.iter_mut() {
-      let w = (chi.sample() / self.nu).max(1e-300);
-      *v = 1.0 / w.sqrt();
-    }
-    for (i, row) in z.axis_iter(Axis(0)).enumerate() {
-      let mut count = 0usize;
-      'outer: for r in 0..m {
-        for c in 0..d {
-          if y[[r, c]] * w_buf[r] > row[c] {
-            continue 'outer;
+    let rule = (d > 2).then(|| {
+      let points = sobol_points(d);
+      let scale = chi_scale(points.view(), self.nu);
+      (points, scale)
+    });
+    Ok(
+      X.rows()
+        .into_iter()
+        .map(|u| match open_coordinates(u).as_deref() {
+          None => 0.0,
+          Some([]) => 1.0,
+          Some(&[i]) => u[i],
+          Some(&[i, j]) => t_copula_cdf(u[i], u[j], corr.corr()[[i, j]], self.nu),
+          Some(_) => {
+            let b: Vec<f64> = u.iter().map(|&x| Self::t_quantile(x, self.nu)).collect();
+            let (points, scale) = rule.as_ref().expect("three open coordinates need d > 2");
+            mvt_upper(corr.chol_lower(), &b, points.view(), scale.view())
           }
-        }
-        count += 1;
-      }
-      out[i] = count as f64 / m as f64;
-    }
-    Ok(out)
+        })
+        .collect(),
+    )
   }
 }
 

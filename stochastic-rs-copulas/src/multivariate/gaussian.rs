@@ -10,7 +10,6 @@ use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::Axis;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::Unseeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::ndtri;
@@ -19,6 +18,10 @@ use stochastic_rs_distributions::special::norm_cdf;
 use super::MultivariateFamily;
 use super::correlation_matrix::CorrelationMatrix;
 use super::correlation_matrix::shrink_to_spd;
+use super::genz::mvn_upper;
+use super::genz::open_coordinates;
+use super::qmc::sobol_points;
+use crate::bivariate::gaussian::gaussian_copula_cdf;
 use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
 
@@ -196,34 +199,28 @@ impl MultivariateExt for GaussianMultivariate {
     Ok(out)
   }
 
+  /// `Φ_R(Φ⁻¹(u))` on the closed cube: a zero coordinate gives 0 and a unit one drops out; two left are Owen's T closed
+  /// form, more are Genz's separation-of-variables integral over the Sobol points.
   fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
-    let z = self.transform_to_normal(X); // n x d
     let corr = self.fitted()?;
-    let l = corr.chol_lower();
-    let d = corr.dim();
-    let n = z.nrows();
-    let m_samples = 4000usize; // Monte Carlo samples per query point
-    let mut out = Array1::<f64>::zeros(n);
-
-    // Pre-sample standard normals for efficiency: (m x d)
-    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Unseeded);
-    let g = Array2::from_shape_fn((m_samples, d), |_| normal.sample());
-    let y = g.dot(&l.t()); // (m x d) ~ MVN(0, corr)
-
-    for (i, row) in z.axis_iter(Axis(0)).enumerate() {
-      let mut count = 0usize;
-      'outer: for r in 0..m_samples {
-        for c in 0..d {
-          if y[[r, c]] > row[c] {
-            continue 'outer;
+    let points = (corr.dim() > 2).then(|| sobol_points(corr.dim() - 1));
+    Ok(
+      X.rows()
+        .into_iter()
+        .map(|u| match open_coordinates(u).as_deref() {
+          None => 0.0,
+          Some([]) => 1.0,
+          Some(&[i]) => u[i],
+          Some(&[i, j]) => gaussian_copula_cdf(u[i], u[j], corr.corr()[[i, j]]),
+          Some(_) => {
+            let b: Vec<f64> = u.iter().map(|&x| ndtri(x)).collect();
+            let points = points.as_ref().expect("three open coordinates need d > 2");
+            mvn_upper(corr.chol_lower(), &b, points.view())
           }
-        }
-        count += 1;
-      }
-      out[i] = count as f64 / m_samples as f64;
-    }
-    Ok(out)
+        })
+        .collect(),
+    )
   }
 }
 
