@@ -100,8 +100,73 @@ fn near_singular() -> Array2<f64> {
   ]
 }
 
+/// Smallest eigenvalue `1.00004e-3`; sweeping its third coordinate crosses an order switch that steps back `4.6e-4`.
+fn near_singular_six() -> Array2<f64> {
+  array![
+    [
+      1.0,
+      0.8303107511128212,
+      0.8342917329563071,
+      0.5687202438299149,
+      0.2465263354219746,
+      0.8359215785022871
+    ],
+    [
+      0.8303107511128212,
+      1.0,
+      0.7986542449090619,
+      0.700091779667285,
+      0.5907087958276408,
+      0.7340604783370868
+    ],
+    [
+      0.8342917329563071,
+      0.7986542449090619,
+      1.0,
+      0.2939882394695861,
+      0.6009888832668322,
+      0.8387937148332812
+    ],
+    [
+      0.5687202438299149,
+      0.700091779667285,
+      0.2939882394695861,
+      1.0,
+      0.20214646792765614,
+      0.4945448814630901
+    ],
+    [
+      0.2465263354219746,
+      0.5907087958276408,
+      0.6009888832668322,
+      0.20214646792765614,
+      1.0,
+      0.5834898590157885
+    ],
+    [
+      0.8359215785022871,
+      0.7340604783370868,
+      0.8387937148332812,
+      0.4945448814630901,
+      0.5834898590157885,
+      1.0
+    ]
+  ]
+}
+
 fn pair(rho: f64) -> Array2<f64> {
   array![[1.0, rho], [rho, 1.0]]
+}
+
+/// `n` points of `u` with coordinate `j` from `from` to `to` and the rest at `base`.
+fn sweep(base: &[f64], j: usize, from: f64, to: f64, n: usize) -> Array2<f64> {
+  Array2::from_shape_fn((n, base.len()), |(k, i)| {
+    if i == j {
+      from + (to - from) * k as f64 / (n - 1) as f64
+    } else {
+      base[i]
+    }
+  })
 }
 
 /// The rule's largest absolute error against scipy's Genz–Bretz over 240 random correlations, `d` from 3 to 10 with the
@@ -202,38 +267,47 @@ fn bivariate_t_cdf_matches_50_digit_references() {
   }
 }
 
-/// The estimate can step back by the QMC error where the variable order switches, so monotonicity and the Fréchet
-/// bound hold to the documented envelope.
+/// A step back is the difference of two errors where a query's order switches, so monotonicity holds to about twice the
+/// envelope, swept along every coordinate; the Fréchet bound holds to the envelope itself.
 #[test]
 fn cdfs_are_monotone_and_bounded() {
-  let diagonal = Array2::from_shape_fn((9, 3), |(i, _)| 0.1 + 0.1 * i as f64);
   let levels = [0.05, 0.2, 0.35, 0.5, 0.65, 0.8, 0.95];
   let grid = Array2::from_shape_fn((343, 3), |(i, j)| levels[(i / 7usize.pow(j as u32)) % 7]);
-  for r in [r3(), near_singular()] {
+  let switch = [
+    0.49844094557537166,
+    0.45595156790720204,
+    0.0,
+    0.8703508794857825,
+    0.3642072203540029,
+    0.3165082622140987,
+  ];
+  let mut cases = vec![(r3(), grid.clone()), (near_singular(), grid)];
+  for j in 0..3 {
+    cases.push((near_singular(), sweep(&[0.3, 0.6, 0.85], j, 0.01, 0.99, 99)));
+  }
+  cases.push((near_singular_six(), sweep(&switch, 2, 0.55, 0.65, 101)));
+  for (k, (r, u)) in cases.into_iter().enumerate() {
     let g = GaussianMultivariate::try_new(r.clone()).unwrap();
     let t = TMultivariate::try_new(r, 4.0).unwrap();
-    for c in [
-      g.cdf(diagonal.view()).unwrap(),
-      t.cdf(diagonal.view()).unwrap(),
-    ] {
-      assert!(
-        c.windows(2)
-          .into_iter()
-          .all(|w| w[0] <= w[1] + QMC_ENVELOPE),
-        "{c:?}"
-      );
-    }
-    for c in [g.cdf(grid.view()).unwrap(), t.cdf(grid.view()).unwrap()] {
-      for (v, u) in c.iter().zip(grid.rows()) {
-        let bound = u.iter().copied().fold(1.0, f64::min);
-        assert!((0.0..=bound + QMC_ENVELOPE).contains(v), "{v} at {u}");
+    for c in [g.cdf(u.view()).unwrap(), t.cdf(u.view()).unwrap()] {
+      if k >= 2 {
+        assert!(
+          c.windows(2)
+            .into_iter()
+            .all(|w| w[0] - w[1] <= 2.0 * QMC_ENVELOPE),
+          "case {k}: {c:?}"
+        );
+      }
+      for (v, row) in c.iter().zip(u.rows()) {
+        let bound = row.iter().copied().fold(1.0, f64::min);
+        assert!((0.0..=bound + QMC_ENVELOPE).contains(v), "{v} at {row}");
       }
     }
   }
 }
 
-/// A pair independent of the rest leaves exact zeros in `L`: a factor that underflows must give 0, not `0 · ∞`, and
-/// at `u₃ = ½` both copulas are `C₁₂(u₁, u₂) / 2` exactly.
+/// Uncorrelated coordinates leave exact zeros in `L`: an underflowing factor gives 0, not `0 · ∞`, so the value is finite
+/// (the product, for the Gaussian), and at `u₃ = ½` both copulas are `C₁₂(u₁, u₂) / 2` exactly.
 #[test]
 fn a_block_correlation_matrix_gives_the_product_not_nan() {
   for (rho, nu, u1, u2) in [
@@ -334,7 +408,8 @@ fn a_zero_coordinate_gives_zero_and_a_unit_coordinate_drops_out() {
   }
 }
 
-/// A unit coordinate sorts last and drops out, so at any position the value is the trivariate copula's, bit for bit.
+/// A unit coordinate sorts last and drops out: the trivariate copula's value bit for bit at any position, whenever every
+/// conditional variance clears MVSORT's `1e-10·i` (below it the row falls back to the unordered estimator).
 #[test]
 fn a_unit_coordinate_drops_out_bit_for_bit_at_any_position() {
   let r = r5();
