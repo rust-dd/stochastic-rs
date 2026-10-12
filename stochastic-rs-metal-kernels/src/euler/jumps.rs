@@ -68,8 +68,7 @@ pub(crate) fn draw(key: u32, seed: u32, law: u32, a: f32, b: f32, c: f32, count:
 fn compound<const LAW: u32>(key: u32, seed: u32, a: f32, b: f32, c: f32, count: f32) -> f32 {
   let mut sum = 0.0;
   let mut product = 1.0;
-  let mut term = 0u32;
-  while term < 64 {
+  for term in 0u32..64 {
     if term as f32 >= count {
       break;
     }
@@ -93,7 +92,6 @@ fn compound<const LAW: u32>(key: u32, seed: u32, a: f32, b: f32, c: f32, count: 
     if LAW == 8 {
       sum += if values.0 < 0.5 { a } else { -a };
     }
-    term += 1;
   }
   if LAW == 4 || LAW == 5 {
     product - 1.0

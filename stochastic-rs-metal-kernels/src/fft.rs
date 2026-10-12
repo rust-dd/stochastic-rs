@@ -114,12 +114,10 @@ unsafe fn stages<const R: usize, const LOG: u32>(
   column: Column,
 ) -> [Complex; R] {
   let low = column.base & (column.stride - 1);
-  let mut j = 0;
-  while j < LOG {
+  for j in 0..LOG {
     let half = 1_usize << j;
     let shift = log_n - (s0 + j) - 1;
-    let mut k = 0;
-    while k < R {
+    for k in 0..R {
       if k & half == 0 {
         let pos = low + (k & (half - 1)) as u32 * column.stride;
         // SAFETY: pos < 2^(s0 + j), so the entry is below 2^(log_n - 1).
@@ -127,9 +125,7 @@ unsafe fn stages<const R: usize, const LOG: u32>(
         values[k + half] = values[k].sub(t);
         values[k] = values[k].add(t);
       }
-      k += 1;
     }
-    j += 1;
   }
   values
 }
@@ -149,22 +145,18 @@ unsafe fn pass<const R: usize, const LOG: u32>(
     // SAFETY: each thread owns R positions of one complete transform.
     unsafe {
       let mut values: [Complex; R] = uninit_array();
-      let mut k = 0;
-      while k < R {
+      for k in 0..R {
         let i = column.offset + column.position(k);
         values[k] = Complex {
           re: real.load_unchecked(i),
           im: imag.load_unchecked(i),
         };
-        k += 1;
       }
       let values = stages::<R, LOG>(values, twiddles, log_n, s0, column);
-      let mut k = 0;
-      while k < R {
+      for k in 0..R {
         let i = column.offset + column.position(k);
         real.store_unchecked(i, values[k].re);
         imag.store_unchecked(i, values[k].im);
-        k += 1;
       }
     }
   }
@@ -188,20 +180,16 @@ unsafe fn extract<const R: usize, const LOG: u32>(
     // SAFETY: each thread owns R positions of one complete transform and their output cells.
     unsafe {
       let mut values: [Complex; R] = uninit_array();
-      let mut k = 0;
-      while k < R {
+      for k in 0..R {
         let i = column.offset + column.position(k);
         values[k] = Complex {
           re: real.load_unchecked(i),
           im: imag.load_unchecked(i),
         };
-        k += 1;
       }
       let values = stages::<R, LOG>(values, twiddles, log_n, s0, column);
-      let mut k = 0;
-      while k < R {
+      for k in 0..R {
         put(output, config, column.batch, column.position(k), values[k]);
-        k += 1;
       }
     }
   }

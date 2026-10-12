@@ -34,8 +34,7 @@ pub unsafe fn sheet_rows(
   // cells and reaches the tile's barriers and shuffles.
   unsafe {
     let mut values: [Complex; 2] = uninit_array();
-    let mut k = 0;
-    while k < 2 {
+    for k in 0..2 {
       let cell = row + ((within + position(i, k, 0)).reverse_bits() >> (32 - log_cols));
       let pair = crate::random::normal_pair(first_cell.wrapping_add(cell as u64), seed);
       let eig = lam.load_unchecked(cell & ((1 << log_cells) - 1));
@@ -43,7 +42,6 @@ pub unsafe fn sheet_rows(
         re: pair.0 * eig,
         im: pair.1 * eig,
       };
-      k += 1;
     }
     stages(
       values,
@@ -54,12 +52,10 @@ pub unsafe fn sheet_rows(
       shared_imag,
     );
     let half = 1 << (tile_log - 1);
-    let mut k = 0;
-    while k < 2 {
+    for k in 0..2 {
       let p = i + k * half;
       real.store_unchecked(tile_base + p, shared_real.load_unchecked(slot(p)));
       imag.store_unchecked(tile_base + p, shared_imag.load_unchecked(slot(p)));
-      k += 1;
     }
   }
 }

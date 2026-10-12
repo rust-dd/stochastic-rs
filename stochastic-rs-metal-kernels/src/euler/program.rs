@@ -22,8 +22,7 @@ pub(super) unsafe fn evaluate(
   state: f32,
 ) -> [f32; 2] {
   let mut values = [0.0; 2];
-  let mut program = 0;
-  while program < program_count && program < 2 {
+  for program in 0..program_count.min(2) {
     // SAFETY: the validated encoding contains both lengths.
     let length = unsafe { buffer.load_unchecked(program).to_int_unchecked::<u32>() };
     if length > 62 {
@@ -43,8 +42,7 @@ pub(super) unsafe fn evaluate(
     let mut stack: [f32; 8] = unsafe { metal_oxide_device::uninit_array() };
     stack[0] = 0.0;
     let mut depth = 0_usize;
-    let mut instruction = 0;
-    while instruction < length && instruction < 62 {
+    for instruction in 0..length.min(62) {
       // SAFETY: base and instruction select a pair in the validated program.
       let (code, value) = unsafe {
         (
@@ -74,14 +72,12 @@ pub(super) unsafe fn evaluate(
         let top = stack[depth - 1];
         stack[depth - 1] = unary(code, top);
       }
-      instruction += 1;
     }
     if program == 0 {
       values[0] = stack[0];
     } else {
       values[1] = stack[0];
     }
-    program += 1;
   }
   values
 }

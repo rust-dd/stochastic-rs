@@ -48,8 +48,7 @@ pub(crate) fn poisson(key: u32, seed: u32, lambda: f32, dt: f32) -> f32 {
   let threshold = math::exp(-lambda * dt);
   let mut product = 1.0;
   let mut count = 0u32;
-  let mut attempt = 0u32;
-  while attempt < 64 {
+  for attempt in 0u32..64 {
     product *= uniform(
       key,
       2_166_136_261u32.wrapping_add(attempt.wrapping_mul(16_777_619)),
@@ -60,7 +59,6 @@ pub(crate) fn poisson(key: u32, seed: u32, lambda: f32, dt: f32) -> f32 {
       break;
     }
     count += 1;
-    attempt += 1;
   }
   count as f32
 }
@@ -85,8 +83,7 @@ pub(crate) fn gamma(key: u32, seed: u32, which: u32, shape: f32, scale: f32) -> 
   let d = boosted_shape - 1.0 / 3.0;
   let c = 1.0 / math::sqrt(9.0 * d);
   let mut value = d;
-  let mut attempt = 0u32;
-  while attempt < 24 {
+  for attempt in 0u32..24 {
     let offset = which
       .wrapping_mul(7_919)
       .wrapping_add(attempt.wrapping_mul(104_729));
@@ -117,7 +114,6 @@ pub(crate) fn gamma(key: u32, seed: u32, which: u32, shape: f32, scale: f32) -> 
         break;
       }
     }
-    attempt += 1;
   }
   scale * boost * value
 }

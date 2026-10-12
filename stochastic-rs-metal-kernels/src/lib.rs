@@ -1,4 +1,8 @@
 #![no_std]
+#![allow(
+  clippy::needless_range_loop,
+  reason = "metal-oxide kernels iterate integer ranges, not slices"
+)]
 
 mod euler;
 mod fft;

@@ -141,11 +141,9 @@ pub(crate) unsafe fn run<
   let mut drift_history: [f32; LIFT] = unsafe { uninit_array() };
   let mut shock_history: [f32; LIFT] = unsafe { uninit_array() };
   if F::HAS_LIFT && args.has_lift != 0 {
-    let mut node = 0u32;
-    while node < lift_nodes {
+    for node in 0u32..lift_nodes {
       drift_history[node as usize] = 0.0;
       shock_history[node as usize] = 0.0;
-      node += 1;
     }
   }
   // SAFETY: series, table and history clauses write each cell before reading it.
@@ -161,10 +159,8 @@ pub(crate) unsafe fn run<
         } else {
           BLOCK as u32
         };
-        let mut cell = 0u32;
-        while cell < cells {
+        for cell in 0u32..cells {
           block[cell as usize] = 0.0;
-          cell += 1;
         }
       }
       let mut arrival = 0.0;
@@ -189,16 +185,13 @@ pub(crate) unsafe fn run<
     if F::HAS_TABLE && args.table_n >= 2 && args.table_n <= BLOCK as u32 {
       let horizon = args.dt * (args.steps - 1) as f32;
       let mut maximum = memory::table_extent(args, horizon);
-      let mut attempt = 0u32;
-      while attempt < 10 {
+      for attempt in 0u32..10 {
         input.spacing = maximum / (args.table_n - 1) as f32;
         block[0] = 0.0;
-        let mut node = 1u32;
-        while node < args.table_n {
+        for node in 1u32..args.table_n {
           let mut draw = input;
           draw.series_uniform = memory::table_uniforms(global, attempt, node, args.seed);
           block[node as usize] = block[(node - 1) as usize] + F::table(params, args.x0, draw)[0];
-          node += 1;
         }
         if block[(args.table_n - 1) as usize] >= horizon {
           break;
@@ -206,7 +199,6 @@ pub(crate) unsafe fn run<
         if attempt < 9 {
           maximum *= 2.0;
         }
-        attempt += 1;
       }
     }
     let reported = F::report(params, state, input);
@@ -221,8 +213,7 @@ pub(crate) unsafe fn run<
         reported,
       );
     }
-    let mut step = if args.step_first == 0 { 1 } else { 0 };
-    while step < args.steps {
+    for step in (if args.step_first == 0 { 1 } else { 0 })..args.steps {
       let key = draws::cell(global, step);
       // Fractional increments replace the first `increments` hashed draws.
       if F::NOISES > 0 && !FRACTIONAL {
@@ -333,11 +324,9 @@ pub(crate) unsafe fn run<
       if F::HAS_LIFT && args.has_lift != 0 {
         lift = F::lift(params, state, input);
         let mut history = 0.0;
-        let mut node = 0u32;
-        while node < lift_nodes {
+        for node in 0u32..lift_nodes {
           history += lift_weight.load_unchecked(node)
             * (drift_history[node as usize] + shock_history[node as usize]);
-          node += 1;
         }
         input.lift =
           args.lift_x0 + args.lift_db * lift[0] + history + args.lift_fb * lift[1] * lift[2];
@@ -363,14 +352,12 @@ pub(crate) unsafe fn run<
       }
       state = F::step(params, state, input);
       if F::HAS_LIFT && args.has_lift != 0 {
-        let mut node = 0u32;
-        while node < lift_nodes {
+        for node in 0u32..lift_nodes {
           drift_history[node as usize] = lift_decay.load_unchecked(node)
             * drift_history[node as usize]
             + lift_drift_scale.load_unchecked(node) * lift[0];
           shock_history[node as usize] =
             lift_decay.load_unchecked(node) * (shock_history[node as usize] + lift[1] * lift[2]);
-          node += 1;
         }
       }
       let reported = F::report(params, state, input);
@@ -383,7 +370,6 @@ pub(crate) unsafe fn run<
         F::COMPONENTS,
         reported,
       );
-      step += 1;
     }
   }
 }

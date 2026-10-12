@@ -56,12 +56,10 @@ unsafe fn lane_stages(
 ) -> [Complex; 2] {
   let i = thread_idx().x;
   let lane_bit = if high == 0 { 1 } else { 6 };
-  let mut s = from;
-  while s < to {
+  for s in from..to {
     let mask = 1 << (s - lane_bit);
     let upper = i & mask != 0;
-    let mut k = 0;
-    while k < 2 {
+    for k in 0..2 {
       let pos = position(i, k, high) & ((1 << s) - 1);
       // SAFETY: pos < 2^s indexes the table at stride 2^(table_log - s - 1).
       unsafe {
@@ -69,9 +67,7 @@ unsafe fn lane_stages(
         let other = shuffle(values[k as usize], mask);
         values[k as usize] = butterfly(values[k as usize], other, w, upper);
       }
-      k += 1;
     }
-    s += 1;
   }
   values
 }
@@ -95,33 +91,27 @@ pub(crate) unsafe fn stages(
     values[1] = a.sub(b);
     let first = if tile_log < 6 { tile_log } else { 6 };
     values = lane_stages(values, twiddles, table_log, 1, first, 0);
-    let mut k = 0;
-    while k < 2 {
+    for k in 0..2 {
       let p = position(i, k, 0);
       shared_real.store_unchecked(slot(p), values[k as usize].re);
       shared_imag.store_unchecked(slot(p), values[k as usize].im);
-      k += 1;
     }
     if tile_log > 6 {
       let u = tile_log - 6;
       barrier();
-      let mut k = 0;
-      while k < 2 {
+      for k in 0..2 {
         let p = position(i, k, u);
         values[k as usize] = Complex {
           re: shared_real.load_unchecked(slot(p)),
           im: shared_imag.load_unchecked(slot(p)),
         };
-        k += 1;
       }
       values = lane_stages(values, twiddles, table_log, 6, tile_log, u);
       barrier();
-      let mut k = 0;
-      while k < 2 {
+      for k in 0..2 {
         let p = position(i, k, u);
         shared_real.store_unchecked(slot(p), values[k as usize].re);
         shared_imag.store_unchecked(slot(p), values[k as usize].im);
-        k += 1;
       }
     }
     barrier();
@@ -150,8 +140,7 @@ unsafe fn transform(
   // SAFETY: positions stay inside the transform; every thread reaches the tile's barriers.
   unsafe {
     let mut values: [Complex; 2] = uninit_array();
-    let mut k = 0;
-    while k < 2 {
+    for k in 0..2 {
       let p = within + position(i, k, 0);
       let natural = p.reverse_bits() >> (32 - log_n);
       let pair = crate::random::normal_pair(cell_base.wrapping_add(natural as u64), seed);
@@ -160,7 +149,6 @@ unsafe fn transform(
         re: pair.0 * eig,
         im: pair.1 * eig,
       };
-      k += 1;
     }
     stages(
       values,
@@ -205,12 +193,10 @@ pub unsafe fn gen_tile_fft(
     );
     let i = thread_idx().x;
     let half = 1 << (tile_log - 1);
-    let mut k = 0;
-    while k < 2 {
+    for k in 0..2 {
       let p = i + k * half;
       real.store_unchecked(tile_base + p, shared_real.load_unchecked(slot(p)));
       imag.store_unchecked(tile_base + p, shared_imag.load_unchecked(slot(p)));
-      k += 1;
     }
   }
 }
@@ -254,15 +240,13 @@ pub unsafe fn gen_fft_extract(
     );
     let i = thread_idx().x;
     let half = 1 << (log_n - 1);
-    let mut k = 0;
-    while k < 2 {
+    for k in 0..2 {
       let p = i + k * half;
       let value = Complex {
         re: shared_real.load_unchecked(slot(p)),
         im: shared_imag.load_unchecked(slot(p)),
       };
       put(output, config, batch, p, value);
-      k += 1;
     }
   }
 }
@@ -285,23 +269,19 @@ pub unsafe fn fft_tile(
   // SAFETY: each block owns one tile; every thread loads and stores two distinct positions.
   unsafe {
     let mut values: [Complex; 2] = uninit_array();
-    let mut k = 0;
-    while k < 2 {
+    for k in 0..2 {
       let p = tile_base + position(i, k, 0);
       values[k as usize] = Complex {
         re: real.load_unchecked(p),
         im: imag.load_unchecked(p),
       };
-      k += 1;
     }
     stages(values, twiddles, log_n, tile_log, shared_real, shared_imag);
     let half = 1 << (tile_log - 1);
-    let mut k = 0;
-    while k < 2 {
+    for k in 0..2 {
       let p = i + k * half;
       real.store_unchecked(tile_base + p, shared_real.load_unchecked(slot(p)));
       imag.store_unchecked(tile_base + p, shared_imag.load_unchecked(slot(p)));
-      k += 1;
     }
   }
 }
