@@ -21,8 +21,8 @@
 //! $s=T$. [`BrownianBridge::x0`] / [`BrownianBridge::xt`] hold $x_0$ / $x_T$;
 //! [`BrownianBridge::sigma`] is $\sigma$.
 //!
-//! Downstream use: the first step of the Brownian-bridge path construction, which gives the leading
-//! coordinates of a `stochastic_rs_distributions::qmc` sequence to a path's coarsest features.
+//! Downstream use: [`crate::mc::brownian_bridge_qmc::BrownianBridgeQmc`] runs the Brownian-bridge construction
+//! over a `stochastic_rs_distributions::qmc` sequence; this module supplies only the endpoint-pinned process itself.
 //!
 //! Reference: Glasserman (2003), *Monte Carlo Methods in Financial Engineering*, §3.1, DOI: 10.1007/978-0-387-21617-1
 

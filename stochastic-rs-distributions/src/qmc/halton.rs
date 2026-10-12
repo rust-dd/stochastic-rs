@@ -96,6 +96,26 @@ mod tests {
   }
 
   #[test]
+  fn accepts_the_whole_primes_table() {
+    let pts = HaltonSeq::new(40).sample::<f64>(1);
+    assert_eq!(pts.dim(), (1, 40));
+    assert_eq!(pts[[0, 39]], 1.0 / 173.0);
+  }
+
+  /// Golden bits of the last column: the prime table and the radical inverse are part of the replayable stream.
+  #[test]
+  fn the_base_173_column_is_pinned_bit_for_bit() {
+    let pts = HaltonSeq::new(40).sample::<f64>(3);
+    let got = (0..3)
+      .map(|i| format!("{:016x}", pts[[i, 39]].to_bits()))
+      .collect::<Vec<_>>();
+    assert_eq!(
+      got,
+      ["3f77ad2208e0ecc3", "3f87ad2208e0ecc3", "3f91c1d986a8b192"]
+    );
+  }
+
+  #[test]
   #[should_panic(expected = "n_dims must satisfy `0 < n_dims <= 40`, got n_dims = 41")]
   fn rejects_dimensions_beyond_the_primes_table() {
     let _ = HaltonSeq::new(41);

@@ -446,6 +446,19 @@ mod tests {
     }
   }
 
+  /// Golden bits: a seeded design must replay across releases; table, order or scramble drift fails here.
+  #[test]
+  fn a_scrambled_column_is_pinned_bit_for_bit() {
+    let pts = SobolSeq::scrambled(8, &Deterministic::new(7)).sample::<f64>(3);
+    let got = (0..3)
+      .map(|i| format!("{:016x}", pts[[i, 7]].to_bits()))
+      .collect::<Vec<_>>();
+    assert_eq!(
+      got,
+      ["3fa6b0adb6000000", "3fdae79592800000", "3fecb1894e600000"]
+    );
+  }
+
   #[test]
   #[should_panic(expected = "n_dims must satisfy `0 < n_dims <= 21201`, got n_dims = 21202")]
   fn rejects_dimensions_beyond_the_table() {
