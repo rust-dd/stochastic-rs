@@ -100,7 +100,7 @@ fn near_singular() -> Array2<f64> {
   ]
 }
 
-/// Smallest eigenvalue `1.00004e-3`; sweeping its third coordinate crosses an order switch that steps back `4.6e-4`.
+/// Smallest eigenvalue `1.00004e-3`; sweeping its third coordinate crosses an order switch that steps back `4.7e-4`.
 fn near_singular_six() -> Array2<f64> {
   array![
     [
@@ -171,7 +171,7 @@ fn sweep(base: &[f64], j: usize, from: f64, to: f64, n: usize) -> Array2<f64> {
 
 /// The rule's largest absolute error against scipy's Genz–Bretz over 240 random correlations, `d` from 3 to 10 with the
 /// smallest eigenvalue down to `1e-3`.
-const QMC_ENVELOPE: f64 = 3.4e-4;
+const QMC_ENVELOPE: f64 = 2.9e-4;
 
 const U3: [[f64; 3]; 4] = [
   [0.3, 0.5, 0.7],

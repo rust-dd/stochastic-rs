@@ -22,8 +22,8 @@ type Pins3 = &'static [([f64; 3], f64)];
 
 type Pins4 = &'static [([f64; 4], f64)];
 
-/// The largest error over the grids the bands come from, the four-dimensional D-vine's at `(0.95, 0.95, 0.95, 0.25)`.
-const ENVELOPE: f64 = 3.1e-4;
+/// The largest error over the grids the bands come from, the four-dimensional D-vine's at `(0.75, 0.95, 0.95, 0.05)`.
+const ENVELOPE: f64 = 2.0e-4;
 
 fn moderate() -> Vec<Vec<PairCopula>> {
   vec![
@@ -199,41 +199,57 @@ fn sweep(base: &[f64], j: usize, from: f64, to: f64, n: usize) -> Array2<f64> {
   })
 }
 
-/// At `d = 2` the rule is one-dimensional, its bias `(g(0) − g(1))/(2N)` reaching `1/(2N) = 1.22e-4` for a `g` that
-/// falls from 1 to 0; the band is ten times that bound.
+/// At `d = 2` the rule is the one-dimensional midpoint rule; each band is about ten times the family's largest error on a
+/// 55 × 55 grid that reaches `1e-6` from either end, and holds the margins `C(1, v) = v` and `C(u, 1) = u` too.
 #[test]
 fn two_dimensional_vines_match_the_bivariate_closed_forms() {
   let levels = [0.02, 0.25, 0.5, 0.75, 0.98];
   let u = Array2::from_shape_fn((25, 2), |(r, c)| levels[if c == 0 { r / 5 } else { r % 5 }]);
-  let band = 10.0 / 8192.0;
+  let margins = Array2::from_shape_fn((10, 2), |(r, c)| {
+    if (c == 0) == (r < 5) {
+      1.0
+    } else {
+      levels[r % 5]
+    }
+  });
   let cases = [
     (
       PairCopula::Clayton { theta: 2.0 },
       Clayton::new(2.0).cdf(u.view()).unwrap(),
+      1e-5,
     ),
     (
       PairCopula::Gaussian { rho: 0.6 },
       GaussianCopula::new(0.6).cdf(u.view()).unwrap(),
+      6e-5,
     ),
     (
       PairCopula::Frank { theta: 4.0 },
       Frank::new(4.0).cdf(u.view()).unwrap(),
+      2.5e-8,
     ),
     (
       PairCopula::StudentT { rho: 0.5, nu: 4.0 },
       TCopula::new(0.5, 4.0).cdf(u.view()).unwrap(),
+      1e-4,
     ),
   ];
-  for (pair, exact) in cases {
-    let qmc = DVine::new(2, vec![vec![pair]])
-      .unwrap()
-      .cdf(u.view())
-      .unwrap();
+  for (pair, exact, band) in cases {
+    let dvine = DVine::new(2, vec![vec![pair]]).unwrap();
+    let qmc = dvine.cdf(u.view()).unwrap();
     for (row, (got, want)) in u.rows().into_iter().zip(qmc.iter().zip(&exact)) {
       assert!(
         (got - want).abs() < band,
         "{pair:?} at {row}: {got} vs {want}"
       );
+    }
+    for (row, got) in margins
+      .rows()
+      .into_iter()
+      .zip(&dvine.cdf(margins.view()).unwrap())
+    {
+      let want = row[0].min(row[1]);
+      assert!((got - want).abs() < band, "{pair:?} margin at {row}: {got}");
     }
     let cvine = CVine::new(2, vec![vec![pair]]).unwrap();
     assert_eq!(qmc, cvine.cdf(u.view()).unwrap(), "{pair:?}");
@@ -246,14 +262,14 @@ fn two_dimensional_vines_match_the_bivariate_closed_forms() {
   );
 }
 
-/// Each band is about ten times the largest error over a 729-point grid, `{0.02, 0.1, …, 0.98}³`, against Joe's
-/// integral in double precision: `2.07e-4`, `1.31e-4` and `2.83e-4`.
+/// Each band is about ten times the largest error over the pins and the grid of levels `{0.02, 0.05, 0.1, 0.25, 0.4, 0.5,
+/// 0.6, 0.75, 0.9, 0.95, 0.98}` against Joe's integral in double precision: `5.75e-5`, `5.17e-5` and `1.87e-4`.
 #[test]
 fn three_dimensional_vines_match_joes_integral() {
   for (label, trees, dvine, cvine, band) in [
-    ("moderate", moderate(), MODERATE_D, MODERATE_C, 2.1e-3),
-    ("mixed", mixed(), MIXED_D, MIXED_C, 1.3e-3),
-    ("strong", strong(), STRONG_D, STRONG_C, 2.8e-3),
+    ("moderate", moderate(), MODERATE_D, MODERATE_C, 5.8e-4),
+    ("mixed", mixed(), MIXED_D, MIXED_C, 5.2e-4),
+    ("strong", strong(), STRONG_D, STRONG_C, 1.9e-3),
   ] {
     let d = DVine::new(3, trees.clone()).unwrap();
     let c = CVine::new(3, trees).unwrap();
@@ -262,10 +278,10 @@ fn three_dimensional_vines_match_joes_integral() {
   }
 }
 
-/// The band is about ten times the largest error over the 625-point grid `{0.05, 0.25, 0.5, 0.75, 0.95}⁴`, `3.08e-4`.
+/// The band is about ten times the largest error over the 625-point grid `{0.05, 0.25, 0.5, 0.75, 0.95}⁴`, `1.98e-4`.
 #[test]
 fn four_dimensional_vines_match_joes_double_integral() {
-  let band = 3.1e-3;
+  let band = 2.0e-3;
   let d = DVine::new(4, four('D')).unwrap();
   let c = CVine::new(4, four('C')).unwrap();
   assert_pins("D-vine", d.cdf(rows(FOUR_D).view()).unwrap(), FOUR_D, band);
@@ -297,8 +313,8 @@ fn independence_vines_give_the_product_exactly() {
   }
 }
 
-/// A zero coordinate gives 0 and the unit corner 1; a unit last coordinate leaves the vine of the first two bit for bit,
-/// and a unit coordinate elsewhere their copula within the envelope; outside `[0, 1]` is `MarginalOutOfRange`.
+/// A zero coordinate gives 0 and the unit corner 1; a 1 at the vine's last variable in vine order leaves the vine of
+/// the first two bit for bit, a 1 elsewhere their copula within the envelope; outside `[0, 1]` is `MarginalOutOfRange`.
 #[test]
 fn zero_and_unit_coordinates() {
   let trees = moderate();
