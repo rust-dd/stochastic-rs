@@ -3,6 +3,7 @@
     "version": 4,
     "math_mode": "fast",
     "required_features": [
+      "simd_groups",
       "dynamic_threadgroup_memory"
     ],
     "types": [
@@ -349,15 +350,17 @@
           }
         },
         {
-          "name": "n",
+          "name": "twiddles",
           "binding": 2,
           "ty": {
-            "kind": "value",
-            "layout": 1
+            "kind": "buffer",
+            "element": 0,
+            "stride": 4,
+            "access": "read"
           }
         },
         {
-          "name": "stage",
+          "name": "log_n",
           "binding": 3,
           "ty": {
             "kind": "value",
@@ -365,8 +368,16 @@
           }
         },
         {
-          "name": "quads",
+          "name": "s0",
           "binding": 4,
+          "ty": {
+            "kind": "value",
+            "layout": 1
+          }
+        },
+        {
+          "name": "threads",
+          "binding": 5,
           "ty": {
             "kind": "value",
             "layout": 1
@@ -395,8 +406,26 @@
           }
         },
         {
-          "name": "n",
+          "name": "twiddles",
           "binding": 2,
+          "ty": {
+            "kind": "buffer",
+            "element": 0,
+            "stride": 4,
+            "access": "read"
+          }
+        },
+        {
+          "name": "log_n",
+          "binding": 3,
+          "ty": {
+            "kind": "value",
+            "layout": 1
+          }
+        },
+        {
+          "name": "s0",
+          "binding": 4,
           "ty": {
             "kind": "value",
             "layout": 1
@@ -404,7 +433,7 @@
         },
         {
           "name": "output",
-          "binding": 3,
+          "binding": 5,
           "ty": {
             "kind": "buffer",
             "element": 0,
@@ -414,22 +443,6 @@
         },
         {
           "name": "size",
-          "binding": 4,
-          "ty": {
-            "kind": "value",
-            "layout": 1
-          }
-        },
-        {
-          "name": "scale",
-          "binding": 5,
-          "ty": {
-            "kind": "value",
-            "layout": 0
-          }
-        },
-        {
-          "name": "rows",
           "binding": 6,
           "ty": {
             "kind": "value",
@@ -437,72 +450,8 @@
           }
         },
         {
-          "name": "parity",
-          "binding": 7,
-          "ty": {
-            "kind": "value",
-            "layout": 1
-          }
-        },
-        {
-          "name": "quads",
-          "binding": 8,
-          "ty": {
-            "kind": "value",
-            "layout": 1
-          }
-        }
-      ],
-      [
-        {
-          "name": "real",
-          "binding": 0,
-          "ty": {
-            "kind": "buffer",
-            "element": 0,
-            "stride": 4,
-            "access": "read"
-          }
-        },
-        {
-          "name": "imag",
-          "binding": 1,
-          "ty": {
-            "kind": "buffer",
-            "element": 0,
-            "stride": 4,
-            "access": "read"
-          }
-        },
-        {
-          "name": "n",
-          "binding": 2,
-          "ty": {
-            "kind": "value",
-            "layout": 1
-          }
-        },
-        {
-          "name": "output",
-          "binding": 3,
-          "ty": {
-            "kind": "buffer",
-            "element": 0,
-            "stride": 4,
-            "access": "write"
-          }
-        },
-        {
-          "name": "size",
-          "binding": 4,
-          "ty": {
-            "kind": "value",
-            "layout": 1
-          }
-        },
-        {
           "name": "scale",
-          "binding": 5,
+          "binding": 7,
           "ty": {
             "kind": "value",
             "layout": 0
@@ -510,7 +459,7 @@
         },
         {
           "name": "rows",
-          "binding": 6,
+          "binding": 8,
           "ty": {
             "kind": "value",
             "layout": 1
@@ -518,15 +467,15 @@
         },
         {
           "name": "parity",
-          "binding": 7,
+          "binding": 9,
           "ty": {
             "kind": "value",
             "layout": 1
           }
         },
         {
-          "name": "butterflies",
-          "binding": 8,
+          "name": "threads",
+          "binding": 10,
           "ty": {
             "kind": "value",
             "layout": 1
@@ -929,15 +878,17 @@
           }
         },
         {
-          "name": "n",
+          "name": "twiddles",
           "binding": 4,
           "ty": {
-            "kind": "value",
-            "layout": 1
+            "kind": "buffer",
+            "element": 0,
+            "stride": 4,
+            "access": "read"
           }
         },
         {
-          "name": "seed",
+          "name": "log_n",
           "binding": 5,
           "ty": {
             "kind": "value",
@@ -945,16 +896,140 @@
           }
         },
         {
-          "name": "base_cell",
+          "name": "tile_log",
           "binding": 6,
+          "ty": {
+            "kind": "value",
+            "layout": 1
+          }
+        },
+        {
+          "name": "seed",
+          "binding": 7,
+          "ty": {
+            "kind": "value",
+            "layout": 1
+          }
+        },
+        {
+          "name": "base_cell",
+          "binding": 8,
           "ty": {
             "kind": "value",
             "layout": 4
           }
         },
         {
-          "name": "stages",
+          "name": "shared_real",
+          "binding": 0,
+          "ty": {
+            "kind": "threadgroup",
+            "element": 0,
+            "stride": 4
+          }
+        },
+        {
+          "name": "shared_imag",
+          "binding": 1,
+          "ty": {
+            "kind": "threadgroup",
+            "element": 0,
+            "stride": 4
+          }
+        }
+      ],
+      [
+        {
+          "name": "eigs",
+          "binding": 0,
+          "ty": {
+            "kind": "buffer",
+            "element": 0,
+            "stride": 4,
+            "access": "read"
+          }
+        },
+        {
+          "name": "reverse",
+          "binding": 1,
+          "ty": {
+            "kind": "buffer",
+            "element": 1,
+            "stride": 4,
+            "access": "read"
+          }
+        },
+        {
+          "name": "twiddles",
+          "binding": 2,
+          "ty": {
+            "kind": "buffer",
+            "element": 0,
+            "stride": 4,
+            "access": "read"
+          }
+        },
+        {
+          "name": "log_n",
+          "binding": 3,
+          "ty": {
+            "kind": "value",
+            "layout": 1
+          }
+        },
+        {
+          "name": "seed",
+          "binding": 4,
+          "ty": {
+            "kind": "value",
+            "layout": 1
+          }
+        },
+        {
+          "name": "base_cell",
+          "binding": 5,
+          "ty": {
+            "kind": "value",
+            "layout": 4
+          }
+        },
+        {
+          "name": "output",
+          "binding": 6,
+          "ty": {
+            "kind": "buffer",
+            "element": 0,
+            "stride": 4,
+            "access": "write"
+          }
+        },
+        {
+          "name": "size",
           "binding": 7,
+          "ty": {
+            "kind": "value",
+            "layout": 1
+          }
+        },
+        {
+          "name": "scale",
+          "binding": 8,
+          "ty": {
+            "kind": "value",
+            "layout": 0
+          }
+        },
+        {
+          "name": "rows",
+          "binding": 9,
+          "ty": {
+            "kind": "value",
+            "layout": 1
+          }
+        },
+        {
+          "name": "parity",
+          "binding": 10,
           "ty": {
             "kind": "value",
             "layout": 1
@@ -1762,47 +1837,62 @@
         "required_block": null
       },
       {
-        "name": "fft_radix4",
+        "name": "fft_columns_2",
         "signature": 1,
         "required_block": null
       },
       {
-        "name": "fft_radix4_extract",
+        "name": "fft_columns_3",
+        "signature": 1,
+        "required_block": null
+      },
+      {
+        "name": "fft_columns_extract_1",
         "signature": 2,
         "required_block": null
       },
       {
-        "name": "fft_butterfly_extract",
-        "signature": 3,
+        "name": "fft_columns_extract_2",
+        "signature": 2,
+        "required_block": null
+      },
+      {
+        "name": "fft_columns_extract_3",
+        "signature": 2,
         "required_block": null
       },
       {
         "name": "sheet_generate",
-        "signature": 4,
+        "signature": 3,
         "required_block": null
       },
       {
         "name": "sheet_transpose",
-        "signature": 5,
+        "signature": 4,
         "required_block": null
       },
       {
         "name": "sheet_extract",
-        "signature": 6,
+        "signature": 5,
         "required_block": null
       },
       {
         "name": "sheet_fft_butterfly",
-        "signature": 7,
+        "signature": 6,
         "required_block": null
       },
       {
         "name": "sheet_fft_tile",
-        "signature": 8,
+        "signature": 7,
         "required_block": null
       },
       {
         "name": "gen_tile_fft",
+        "signature": 8,
+        "required_block": null
+      },
+      {
+        "name": "gen_fft_extract",
         "signature": 9,
         "required_block": null
       }
@@ -1811,15 +1901,15 @@
   "target": "metal64-unknown-none",
   "msl_version": "3.1",
   "files": {
-    "msl": "bb0893de048f2248c7d959b4fdd439f3339688c55d4142bb76b570188a4790ca",
-    "oxide_ir": "37dfb6b0414337b79c6174151ac514ca4c6ae64b21dba7e1f9198c0d43a91246",
-    "ir": "b0cff4baaf98e29fa8a56518db4cea857d5f96c791dadbab9ebb802e4ecfa85e",
-    "metallib": "011a86c52dc5a3ac1ef7c930f3b9b2cb4e93243f1048577a54a640f8728ff7c9",
-    "bindings": "60c59630b3bff9b02c7736f3448a287b8ac01c5b5ba851e448bb5c31f67fcce5"
+    "msl": "d6c619495ab96e2b3b69d965dd411fda35a4d747f4b777b15e77111e7b5efd0d",
+    "oxide_ir": "982050c8db0b8815683232410b630fb9af7a594a8230bcfcb445e8c856afa80d",
+    "ir": "b536763c07cae0af3700c950783f96cb760a4f01f7640c76018cc43b094902f7",
+    "metallib": "08ed5e3431e090a93d04e8a3c568cd848908ed31d5d71ccbac2eed75a108dcae",
+    "bindings": "052e11f4fa574204d08a5def44f61e79b35c27f27930492dd16dbd277d2105c9"
   },
   "build": {
-    "fingerprint": "faf908614cccdf7b7f2ab4aac5223558680bea8c5de08f587c3db09e5f3cd91e",
-    "compiler": "215f02f275c8d46c5d0e144e4293afb420ad23599a79105cb60ecbbd40c68961",
+    "fingerprint": "a9e9f293bb58d9b2d43f252bd5837a77047e9d5bfa7cadf606979291392430ae",
+    "compiler": "8a84e6f9e6e2b50801afc9bb7718ca4fdedb86bb11dd6154e1ed65ad1ca3ac3f",
     "rustc": "rustc 1.101.0-nightly (db8f076d2 2026-10-03)\nbinary: rustc\ncommit-hash: db8f076d2619ce2585b0380dda06e8da25a40da4\ncommit-date: 2026-10-03\nhost: aarch64-apple-darwin\nrelease: 1.101.0-nightly\nLLVM version: 23.1.1",
     "metal": "Apple metal version 32023.883 (metalfe-32023.883)\nTarget: air64-apple-darwin25.2.0\nThread model: posix\nInstalledDir: /Users/danixx/Library/Developer/DVTDownloads/MetalToolchain/mounts/5f4a441a6d0a11f2e9b28c67384263afe92320f7/Metal.xctoolchain/usr/metal/32023/bin",
     "sdk": "26.5",
@@ -1848,34 +1938,34 @@
       "--check-cfg",
       "cfg(feature, values())",
       "-C",
-      "metadata=9a3ee2e6c6fc7fa6",
+      "metadata=ffa73d951fbc48f0",
       "-C",
-      "extra-filename=-4fc21a529f6e8ba8",
+      "extra-filename=-4623b81cfc0285f0",
       "--out-dir",
-      "/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/df9487973cce0c63b584eaced68bbb1218d8ed280c07ebe7cd154d963fccf5e0/metal64-unknown-none/release/build/stochastic-rs-metal-kernels/4fc21a529f6e8ba8/out",
+      "/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/c1f0b2dbe869e61d0902b741eeab7d596dfa48f93bcd4a1988e3163b49437226/metal64-unknown-none/release/build/stochastic-rs-metal-kernels/4623b81cfc0285f0/out",
       "--target",
       "/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/metal64-unknown-none.json",
       "-Zunstable-options",
       "-C",
       "strip=debuginfo",
       "-L",
-      "dependency=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/df9487973cce0c63b584eaced68bbb1218d8ed280c07ebe7cd154d963fccf5e0/metal64-unknown-none/release/build/compiler_builtins/fbae3f8d3d58248b/out",
+      "dependency=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/c1f0b2dbe869e61d0902b741eeab7d596dfa48f93bcd4a1988e3163b49437226/metal64-unknown-none/release/build/compiler_builtins/fbae3f8d3d58248b/out",
       "-L",
-      "dependency=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/df9487973cce0c63b584eaced68bbb1218d8ed280c07ebe7cd154d963fccf5e0/metal64-unknown-none/release/build/core/79c0c3d75a35eed3/out",
+      "dependency=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/c1f0b2dbe869e61d0902b741eeab7d596dfa48f93bcd4a1988e3163b49437226/metal64-unknown-none/release/build/core/79c0c3d75a35eed3/out",
       "-L",
-      "dependency=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/df9487973cce0c63b584eaced68bbb1218d8ed280c07ebe7cd154d963fccf5e0/release/build/metal-oxide-macros/d8d93836dbd477f6/out",
+      "dependency=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/c1f0b2dbe869e61d0902b741eeab7d596dfa48f93bcd4a1988e3163b49437226/release/build/metal-oxide-macros/70a3be36b92250bd/out",
       "-L",
-      "dependency=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/df9487973cce0c63b584eaced68bbb1218d8ed280c07ebe7cd154d963fccf5e0/release/build/stochastic-rs-metal-kernels/4fc21a529f6e8ba8/out",
+      "dependency=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/c1f0b2dbe869e61d0902b741eeab7d596dfa48f93bcd4a1988e3163b49437226/release/build/stochastic-rs-metal-kernels/4623b81cfc0285f0/out",
       "--extern",
-      "noprelude,nounused:compiler_builtins=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/df9487973cce0c63b584eaced68bbb1218d8ed280c07ebe7cd154d963fccf5e0/metal64-unknown-none/release/build/compiler_builtins/fbae3f8d3d58248b/out/libcompiler_builtins-fbae3f8d3d58248b.rmeta",
+      "noprelude,nounused:compiler_builtins=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/c1f0b2dbe869e61d0902b741eeab7d596dfa48f93bcd4a1988e3163b49437226/metal64-unknown-none/release/build/compiler_builtins/fbae3f8d3d58248b/out/libcompiler_builtins-fbae3f8d3d58248b.rmeta",
       "--extern",
-      "noprelude,nounused:compiler_builtins=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/df9487973cce0c63b584eaced68bbb1218d8ed280c07ebe7cd154d963fccf5e0/metal64-unknown-none/release/build/compiler_builtins/fbae3f8d3d58248b/out/libcompiler_builtins-fbae3f8d3d58248b.rmeta",
+      "noprelude,nounused:compiler_builtins=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/c1f0b2dbe869e61d0902b741eeab7d596dfa48f93bcd4a1988e3163b49437226/metal64-unknown-none/release/build/compiler_builtins/fbae3f8d3d58248b/out/libcompiler_builtins-fbae3f8d3d58248b.rmeta",
       "--extern",
-      "noprelude,nounused:core=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/df9487973cce0c63b584eaced68bbb1218d8ed280c07ebe7cd154d963fccf5e0/metal64-unknown-none/release/build/core/79c0c3d75a35eed3/out/libcore-79c0c3d75a35eed3.rmeta",
+      "noprelude,nounused:core=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/c1f0b2dbe869e61d0902b741eeab7d596dfa48f93bcd4a1988e3163b49437226/metal64-unknown-none/release/build/core/79c0c3d75a35eed3/out/libcore-79c0c3d75a35eed3.rmeta",
       "--extern",
-      "noprelude,nounused:core=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/df9487973cce0c63b584eaced68bbb1218d8ed280c07ebe7cd154d963fccf5e0/metal64-unknown-none/release/build/core/79c0c3d75a35eed3/out/libcore-79c0c3d75a35eed3.rmeta",
+      "noprelude,nounused:core=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/c1f0b2dbe869e61d0902b741eeab7d596dfa48f93bcd4a1988e3163b49437226/metal64-unknown-none/release/build/core/79c0c3d75a35eed3/out/libcore-79c0c3d75a35eed3.rmeta",
       "--extern",
-      "metal_oxide_device=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/df9487973cce0c63b584eaced68bbb1218d8ed280c07ebe7cd154d963fccf5e0/metal64-unknown-none/release/build/metal-oxide-device/517ae5b8752361ea/out/libmetal_oxide_device-517ae5b8752361ea.rmeta",
+      "metal_oxide_device=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/c1f0b2dbe869e61d0902b741eeab7d596dfa48f93bcd4a1988e3163b49437226/metal64-unknown-none/release/build/metal-oxide-device/6a15563305ba155b/out/libmetal_oxide_device-6a15563305ba155b.rmeta",
       "-Z",
       "unstable-options",
       "--force-warn=unused_crate_dependencies"

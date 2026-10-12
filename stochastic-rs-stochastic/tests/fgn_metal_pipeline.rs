@@ -12,12 +12,10 @@ use stochastic_rs_stochastic::traits::ProcessExt;
 
 const HURST: f64 = 0.7;
 
-/// The grid sizes that put the cut in a different place: `n = 1` is a
-/// two-point transform with no stage inside the tile at all, `n ≤ 1024` fits
-/// the tile whole, `n ≥ 2048` leaves a radix-4 pair above it, and the
-/// non-powers exercise the padding offset with each.
-const GRIDS: [usize; 12] = [
-  1, 2, 8, 100, 512, 1024, 2048, 3000, 4096, 8192, 12_000, 16_384,
+/// Sizes that move the cut: whole tiles up to 1024, read-out passes of one to three stages up to
+/// 8192, a column pass from 16 384, and non-powers that exercise the padding with each.
+const GRIDS: [usize; 13] = [
+  1, 2, 8, 100, 512, 1024, 2048, 3000, 4096, 8192, 12_000, 16_384, 32_768,
 ];
 
 /// The autocorrelation of fGn at lag `k`:
@@ -173,7 +171,7 @@ fn u01x4(cell: u64, seed: u32) -> [f64; 4] {
 /// definition: the circulant embedding's eigenvalues times a proper complex
 /// normal, summed directly against `exp(-2πijk/M)`. A direct sum rather than
 /// a transform of its own, so nothing about the device's factorisation — its
-/// tile, its radix-4 pairs, its bit-reversal — is assumed by the thing
+/// tile, its column passes, its bit-reversal — is assumed by the thing
 /// checking it. One entry at a time, because that is what makes it affordable
 /// at the grid sizes where the pipeline has stages between the tile and the
 /// read-out.
@@ -211,7 +209,9 @@ fn the_device_rows_are_the_transform_they_claim_to_be() {
     (300, 4),
     (512, 3),
     (4096, 3),
+    (8192, 2),
     (16_384, 2),
+    (32_768, 2),
   ] {
     let out_size = n;
     let probes = [

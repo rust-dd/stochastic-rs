@@ -48,16 +48,32 @@ impl Launch<'_> {
   }
 }
 
-fn tile_plan(log_n: usize, max_threads: usize) -> (usize, usize) {
-  let mut tile_log = log_n.min(11);
-  while tile_log > 1 && (1usize << (tile_log - 1)) > max_threads {
+/// Largest tile, so two padded scratch arrays stay well inside threadgroup memory.
+const MAX_TILE_LOG: usize = 11;
+
+/// Tile stages, then column passes of two or three stages (only the read-out may take one).
+/// Depends on the length alone, so rows are computed alike however a batch is cut.
+fn plan(log_n: usize, max_threads: usize) -> (usize, Vec<usize>) {
+  let mut tile_log = log_n.min(MAX_TILE_LOG);
+  while tile_log > 1 && 1 << (tile_log - 1) > max_threads {
     tile_log -= 1;
   }
-  let mut stages = tile_log.min(log_n - 1);
-  if (log_n - stages) % 2 == 1 && stages >= 1 {
-    stages -= 1;
-  }
-  (tile_log, stages)
+  let remaining = log_n - tile_log;
+  let passes = remaining.div_ceil(3);
+  let columns = (0..passes)
+    .map(|pass| remaining / passes + usize::from(pass < remaining % passes))
+    .collect();
+  (tile_log, columns)
+}
+
+/// Interleaved cos/sin of -2πk/len for k < len / 2, evaluated in f64.
+fn twiddle_table(len: usize) -> Vec<f32> {
+  (0..(len / 2).max(1))
+    .flat_map(|k| {
+      let angle = -2.0 * std::f64::consts::PI * k as f64 / len as f64;
+      [angle.cos() as f32, angle.sin() as f32]
+    })
+    .collect()
 }
 
 pub(crate) fn build_bit_reverse_table(n: usize) -> Vec<u32> {
@@ -71,6 +87,39 @@ pub(crate) fn build_bit_reverse_table(n: usize) -> Vec<u32> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn plans_depend_on_length_and_split_columns_evenly() {
+    assert_eq!(plan(1, 1024), (1, vec![]));
+    assert_eq!(plan(11, 1024), (11, vec![]));
+    assert_eq!(plan(12, 1024), (11, vec![1]));
+    assert_eq!(plan(14, 1024), (11, vec![3]));
+    assert_eq!(plan(15, 1024), (11, vec![2, 2]));
+    assert_eq!(plan(17, 1024), (11, vec![3, 3]));
+    assert_eq!(plan(18, 1024), (11, vec![3, 2, 2]));
+    assert_eq!(plan(13, 256), (9, vec![2, 2]));
+    assert_eq!(plan(4, 2), (2, vec![2]));
+    for log_n in 1..=31 {
+      for max_threads in [1, 32, 256, 1024] {
+        let (tile_log, columns) = plan(log_n, max_threads);
+        assert_eq!(tile_log + columns.iter().sum::<usize>(), log_n);
+        assert!(columns.iter().all(|&stages| stages <= 3));
+        assert!(columns.iter().rev().skip(1).all(|&stages| stages >= 2));
+      }
+    }
+  }
+
+  #[test]
+  fn twiddles_hold_half_a_turn_at_full_precision() {
+    let table = twiddle_table(8);
+    assert_eq!(table.len(), 8);
+    assert_eq!((table[0], table[1]), (1.0, 0.0));
+    assert_eq!(
+      (table[4], table[5]),
+      ((-std::f64::consts::FRAC_PI_2).cos() as f32, -1.0)
+    );
+    assert_eq!(twiddle_table(1), vec![1.0, 0.0]);
+  }
 
   #[test]
   fn launch_dimensions_reject_invalid_spectra_and_wrapped_lengths() {

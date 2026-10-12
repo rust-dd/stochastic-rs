@@ -3,29 +3,39 @@ use std::rc::Rc;
 
 use metal_oxide::{Argument, Buffer, Dim3, DynamicLaunchConfig, Pipeline};
 
-use super::{Launch, Result, build_bit_reverse_table, launch_len, tile_plan};
+use super::{Launch, Result, build_bit_reverse_table, launch_len, plan, twiddle_table};
+use crate::device::DeviceError;
 use crate::device::metal::{self, Context as DeviceContext, device_error};
 
 pub(super) struct Context {
   pub(super) common: Rc<DeviceContext>,
   tile: Pipeline,
-  radix4: Pipeline,
-  extract: Pipeline,
   single: Pipeline,
+  /// Passes of two and three stages; a single-stage pass only ever reads out.
+  columns: Vec<Pipeline>,
+  extract: Vec<Pipeline>,
+  max_threads: usize,
   sized: Vec<SizedMetal>,
 }
 
 struct SizedMetal {
-  real: Buffer<f32>,
-  imag: Buffer<f32>,
   eigs: Buffer<f32>,
   reverse: Buffer<u32>,
+  tile_twiddles: Buffer<f32>,
+  scratch: Option<Scratch>,
   n: usize,
   m: usize,
   offset: usize,
   parity: u32,
   hurst_bits: u64,
   t_bits: u64,
+}
+
+/// Intermediate transforms and full-length twiddles for the column passes.
+struct Scratch {
+  real: Buffer<f32>,
+  imag: Buffer<f32>,
+  twiddles: Buffer<f32>,
 }
 
 thread_local! {
@@ -47,12 +57,29 @@ pub(super) fn with<R>(
 impl Context {
   fn new(ordinal: usize) -> Result<Self> {
     let common = metal::context(ordinal)?;
-    let pipeline = |name| Pipeline::new(&common.device, &common.module, name).map_err(device_error);
+    let pipeline =
+      |name: &str| Pipeline::new(&common.device, &common.module, name).map_err(device_error);
+    let tile = pipeline("gen_tile_fft")?;
+    let single = pipeline("gen_fft_extract")?;
+    if tile.thread_execution_width() != 32 || single.thread_execution_width() != 32 {
+      return Err(DeviceError::Unavailable(
+        "fGN tiles need 32-lane SIMD groups".into(),
+      ));
+    }
+    let columns = (2..=3)
+      .map(|stages| pipeline(&format!("fft_columns_{stages}")))
+      .collect::<Result<Vec<_>>>()?;
+    let extract = (1..=3)
+      .map(|stages| pipeline(&format!("fft_columns_extract_{stages}")))
+      .collect::<Result<Vec<_>>>()?;
     Ok(Self {
-      tile: pipeline("gen_tile_fft")?,
-      radix4: pipeline("fft_radix4")?,
-      extract: pipeline("fft_radix4_extract")?,
-      single: pipeline("fft_butterfly_extract")?,
+      max_threads: tile
+        .max_threads_per_block()
+        .min(single.max_threads_per_block()),
+      tile,
+      single,
+      columns,
+      extract,
       common,
       sized: Vec::new(),
     })
@@ -84,6 +111,9 @@ impl Context {
     launch_len::<i32>(m, "rows")?;
     let size = launch_len::<u32>(out_size, "out_size")?;
     let rows = launch_len::<u32>(m, "rows")?;
+    let log_n = traj_size.trailing_zeros() as usize;
+    let (tile_log, columns) = plan(log_n, self.max_threads);
+    let device = &self.common.device;
     let buffers = crate::device::lru_slot(
       &mut self.sized,
       |s| {
@@ -95,27 +125,29 @@ impl Context {
           && s.t_bits == t.to_bits()
       },
       || -> Result<_> {
+        let reverse = build_bit_reverse_table(traj_size);
+        let eigs = reverse
+          .iter()
+          .map(|&natural| sqrt_eigs[natural as usize])
+          .collect::<Vec<_>>();
+        let scratch = if columns.is_empty() {
+          None
+        } else {
+          Some(Scratch {
+            real: device.buffer_zeroed(total as usize).map_err(device_error)?,
+            imag: device.buffer_zeroed(total as usize).map_err(device_error)?,
+            twiddles: device
+              .buffer_from_slice(&twiddle_table(traj_size))
+              .map_err(device_error)?,
+          })
+        };
         Ok(SizedMetal {
-          real: self
-            .common
-            .device
-            .buffer_zeroed::<f32>(total as usize)
+          eigs: device.buffer_from_slice(&eigs).map_err(device_error)?,
+          reverse: device.buffer_from_slice(&reverse).map_err(device_error)?,
+          tile_twiddles: device
+            .buffer_from_slice(&twiddle_table(1 << tile_log))
             .map_err(device_error)?,
-          imag: self
-            .common
-            .device
-            .buffer_zeroed::<f32>(total as usize)
-            .map_err(device_error)?,
-          eigs: self
-            .common
-            .device
-            .buffer_from_slice(sqrt_eigs)
-            .map_err(device_error)?,
-          reverse: self
-            .common
-            .device
-            .buffer_from_slice(&build_bit_reverse_table(traj_size))
-            .map_err(device_error)?,
+          scratch,
           n,
           m,
           offset,
@@ -125,21 +157,46 @@ impl Context {
         })
       },
     )?;
-    let n = launch_len::<u32>(traj_size, "traj_size")?;
-    let log_n = n.trailing_zeros() as usize;
-    let (tile_log, stages) = tile_plan(log_n, self.tile.max_threads_per_block());
+    let log_n = log_n as u32;
     let tile = 1_u32 << tile_log;
+    let shared = (tile + tile / 32) as usize;
     let SizedMetal {
-      real,
-      imag,
       eigs,
       reverse,
+      tile_twiddles,
+      scratch,
       ..
     } = buffers;
-    // SAFETY: complete transforms partition into disjoint tiles/butterflies; every tile lane
-    // reaches each barrier. The planner bounds all buffers and the readout guards partial rows.
+    // SAFETY: tiles and column groups partition complete transforms; every tile thread reaches
+    // each barrier and shuffle. The planner bounds every buffer and the readout guards partial rows.
     unsafe {
-      self.common.device.submit(|batch| {
+      device.submit(|batch| {
+        let Some(Scratch {
+          real,
+          imag,
+          twiddles,
+        }) = scratch
+        else {
+          return batch.launch(
+            &self.single,
+            DynamicLaunchConfig::new(Dim3::x(total / tile), Dim3::x(tile / 2)),
+            &[
+              Argument::read(eigs),
+              Argument::read(reverse),
+              Argument::read(tile_twiddles),
+              Argument::value(log_n)?,
+              Argument::value(seed)?,
+              Argument::value(base_cell)?,
+              Argument::write(output),
+              Argument::value(size)?,
+              Argument::value(scale)?,
+              Argument::value(rows)?,
+              Argument::value(parity)?,
+              Argument::threadgroup::<f32>(shared)?,
+              Argument::threadgroup::<f32>(shared)?,
+            ],
+          );
+        };
         batch.launch(
           &self.tile,
           DynamicLaunchConfig::new(Dim3::x(total / tile), Dim3::x(tile / 2)),
@@ -148,48 +205,54 @@ impl Context {
             Argument::write(imag),
             Argument::read(eigs),
             Argument::read(reverse),
-            Argument::value(n)?,
+            Argument::read(tile_twiddles),
+            Argument::value(log_n)?,
+            Argument::value(tile_log as u32)?,
             Argument::value(seed)?,
             Argument::value(base_cell)?,
-            Argument::value(stages as u32)?,
-            Argument::threadgroup::<f32>(tile as usize)?,
-            Argument::threadgroup::<f32>(tile as usize)?,
+            Argument::threadgroup::<f32>(shared)?,
+            Argument::threadgroup::<f32>(shared)?,
           ],
         )?;
-        for stage in (stages..log_n.saturating_sub(2)).step_by(2) {
-          let count = total / 4;
-          batch.launch(
-            &self.radix4,
-            DynamicLaunchConfig::for_elements(count, 256)?,
-            &[
-              Argument::read_write(real),
-              Argument::read_write(imag),
-              Argument::value(n)?,
-              Argument::value(stage as u32)?,
-              Argument::value(count)?,
-            ],
-          )?;
+        let mut s0 = tile_log as u32;
+        for (index, &stages) in columns.iter().enumerate() {
+          let threads = total >> stages;
+          let config = DynamicLaunchConfig::for_elements(threads, 256)?;
+          if index + 1 < columns.len() {
+            batch.launch(
+              &self.columns[stages - 2],
+              config,
+              &[
+                Argument::read_write(real),
+                Argument::read_write(imag),
+                Argument::read(twiddles),
+                Argument::value(log_n)?,
+                Argument::value(s0)?,
+                Argument::value(threads)?,
+              ],
+            )?;
+          } else {
+            batch.launch(
+              &self.extract[stages - 1],
+              config,
+              &[
+                Argument::read(real),
+                Argument::read(imag),
+                Argument::read(twiddles),
+                Argument::value(log_n)?,
+                Argument::value(s0)?,
+                Argument::write(output),
+                Argument::value(size)?,
+                Argument::value(scale)?,
+                Argument::value(rows)?,
+                Argument::value(parity)?,
+                Argument::value(threads)?,
+              ],
+            )?;
+          }
+          s0 += stages as u32;
         }
-        let (pipeline, count) = if log_n - stages == 1 {
-          (&self.single, total / 2)
-        } else {
-          (&self.extract, total / 4)
-        };
-        batch.launch(
-          pipeline,
-          DynamicLaunchConfig::for_elements(count, 256)?,
-          &[
-            Argument::read(real),
-            Argument::read(imag),
-            Argument::value(n)?,
-            Argument::write(output),
-            Argument::value(size)?,
-            Argument::value(scale)?,
-            Argument::value(rows)?,
-            Argument::value(parity)?,
-            Argument::value(count)?,
-          ],
-        )
+        Ok(())
       })
     }
     .and_then(|submission| submission.wait())
