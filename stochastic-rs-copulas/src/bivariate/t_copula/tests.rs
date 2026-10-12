@@ -313,8 +313,8 @@ fn the_plackett_integral_survives_limits_whose_squares_overflow() {
   }
 }
 
-/// The Plackett branch floors its rounding at 0 like the sums: `C(1e-12, 1e-12)` at `ν = 1e5`, `ρ = 0` came out
-/// `−7.7e-23` against the 40-digit `4.84e-25`.
+/// Rounding leaves the Plackett branch just below 0 where the probability is about 0 (`C(1e-12, 1e-12)` at `ν = 1e5`,
+/// `ρ = 0` is `4.84e-25` at 40 digits); the floor keeps it a probability.
 #[test]
 fn the_plackett_branch_never_returns_a_negative_probability() {
   let got = TCopula::new(0.0, 1e5)
