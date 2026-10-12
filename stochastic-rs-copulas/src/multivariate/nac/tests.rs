@@ -125,15 +125,29 @@ fn nac_snc_violation_rejected() {
   assert!(why.contains("sufficient nesting condition"), "{why}");
 }
 
-/// Below-family-minimum θ must be rejected per family.
+/// A θ outside the generator's domain is a named error: Gumbel needs `θ ≥ 1`, Clayton `0 < 1/θ < ∞`.
 #[test]
 fn nac_below_family_min_rejected() {
-  let root = NacNode::leaf_group(0.5, vec![0, 1]); // Gumbel requires θ ≥ 1
-  let res = NestedArchimedean::new(BivariateFamily::Gumbel, root, 2);
-  assert!(res.is_err());
-  // And Clayton at θ < 0 should also fail.
-  let bad_clayton = NacNode::leaf_group(-0.1, vec![0, 1]);
-  assert!(NestedArchimedean::new(BivariateFamily::Clayton, bad_clayton, 2).is_err());
+  let gumbel = NestedArchimedean::new(
+    BivariateFamily::Gumbel,
+    NacNode::leaf_group(0.5, vec![0, 1]),
+    2,
+  );
+  assert_eq!(
+    gumbel.unwrap_err().to_string(),
+    "theta must satisfy `theta >= 1.0 for Gumbel`, got theta = 0.5"
+  );
+  for theta in [-0.1, 0.0] {
+    let clayton = NestedArchimedean::new(
+      BivariateFamily::Clayton,
+      NacNode::leaf_group(theta, vec![0, 1]),
+      2,
+    );
+    assert_eq!(
+      clayton.unwrap_err().to_string(),
+      format!("theta must satisfy `0 < 1 / theta < ∞`, got theta = {theta:?}")
+    );
+  }
 }
 
 /// Missing / duplicate leaf indices must be rejected.
@@ -153,12 +167,9 @@ fn nac_leaf_index_validation() {
   assert!(NestedArchimedean::new(BivariateFamily::Clayton, oor, 3).is_err());
 }
 
-/// CDF must equal $(\Pi u_j)$ for a θ=0 Clayton (independence boundary).
+/// Next to independence (a small Clayton θ; θ = 0 itself has no frailty) the cdf is close to the product of the margins.
 #[test]
 fn nac_clayton_independence_cdf() {
-  // θ ≥ 0 — at θ = 0 the inverse generator (1 + 0·s)^∞ degenerates; we
-  // probe a small θ > 0 and check the CDF stays close to the
-  // independence product within the Clayton bias.
   let root = NacNode::leaf_group(0.01, vec![0, 1, 2]);
   let nac = NestedArchimedean::new(BivariateFamily::Clayton, root, 3).unwrap();
   let q = ndarray::array![[0.5, 0.5, 0.5], [0.2, 0.3, 0.4]];
@@ -362,22 +373,25 @@ fn nac_fit_checks_columns_rows_range_then_tau() {
   );
 }
 
-/// A root Clayton `θ` whose frailty shape `1/θ` is not finite is a named error from `sample`, not a panic.
+/// A Clayton `θ` whose frailty shape `1/θ` is not finite is a named error from `new`, at the root and below it.
 #[test]
-fn nac_clayton_root_without_a_frailty_is_rejected_by_name() {
+fn nac_clayton_theta_without_a_frailty_is_rejected_by_name() {
   for theta in [0.0, 1e-320] {
-    let nac = NestedArchimedean::new(
-      BivariateFamily::Clayton,
-      NacNode::leaf_group(theta, vec![0, 1]),
-      2,
-    )
-    .unwrap();
     let want = CopulaError::InvalidParameter {
       name: "theta",
       value: theta,
       constraint: "0 < 1 / theta < ∞".into(),
     };
-    assert_eq!(nac.sample(4, &Deterministic::new(7)).unwrap_err(), want);
+    let flat = NestedArchimedean::new(
+      BivariateFamily::Clayton,
+      NacNode::leaf_group(theta, vec![0, 1]),
+      2,
+    );
+    assert_eq!(flat.unwrap_err(), want);
+    let mut nested = NacNode::leaf_group(2.0, vec![0]);
+    nested.children.push(NacNode::leaf_group(theta, vec![1, 2]));
+    let nested = NestedArchimedean::new(BivariateFamily::Clayton, nested, 3);
+    assert_eq!(nested.unwrap_err(), want);
   }
 }
 

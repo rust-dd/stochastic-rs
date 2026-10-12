@@ -13,7 +13,7 @@
 //! $\theta_i$. The **sufficient nesting condition** (Joe 1997, McNeil 2008)
 //! requires $\theta_i \ge \theta_0$ per family:
 //!
-//! - **Clayton:** $\theta \ge 0$ globally and $\theta_{\text{child}} \ge \theta_{\text{parent}}$.
+//! - **Clayton:** $0 < 1/\theta < \infty$ globally (the frailty $\Gamma(1/\theta, 1)$ exists) and $\theta_{\text{child}} \ge \theta_{\text{parent}}$.
 //! - **Gumbel:** $\theta \ge 1$ globally and $\theta_{\text{child}} \ge \theta_{\text{parent}}$.
 //!
 //! ## Sampling (Hofert & Mächler 2011, Algorithm 3.1)
@@ -110,11 +110,24 @@ impl Generator {
     }
   }
 
-  fn theta_min(self) -> f64 {
-    match self {
-      Self::Clayton => 0.0,
-      Self::Gumbel => 1.0,
+  /// `θ`'s domain: Gumbel `θ ≥ 1`; a Clayton `θ` needs its `Γ(1/θ, 1)` frailty, `0 < 1/θ < ∞` (Hofert & Mächler 2011,
+  /// Table 1), which also rules out a `θ` whose reciprocal overflows.
+  fn check_domain(self, theta: f64) -> Result<(), CopulaError> {
+    let (inside, constraint) = match self {
+      Self::Clayton => {
+        let shape = 1.0 / theta;
+        (shape > 0.0 && shape.is_finite(), "0 < 1 / theta < ∞")
+      }
+      Self::Gumbel => (theta >= 1.0, "theta >= 1.0 for Gumbel"),
+    };
+    if inside {
+      return Ok(());
     }
+    Err(CopulaError::InvalidParameter {
+      name: "theta",
+      value: theta,
+      constraint: constraint.into(),
+    })
   }
 
   /// LST-normalised inverse generator: Clayton $(1 + s)^{-1/\theta}$, Gumbel $\exp(-s^{1/\theta})$.
@@ -145,7 +158,7 @@ impl Generator {
 /// prefer the builder API.
 #[derive(Debug, Clone)]
 pub struct NacNode {
-  /// Generator parameter $\theta$ of this node: $\theta \ge 0$ for Clayton, $\theta \ge 1$ for Gumbel.
+  /// Generator parameter $\theta$ of this node: $0 < 1/\theta < \infty$ for Clayton, $\theta \ge 1$ for Gumbel.
   pub theta: f64,
   /// Marginal indices whose copula is governed directly by this node's
   /// generator (i.e. no further nesting below them).
@@ -233,10 +246,8 @@ impl NestedArchimedean {
     })
   }
 
-  /// Recursive SNC validator. `parent_theta` is the closest ancestor's
-  /// theta; for the root pass its own theta (so the parent constraint is
-  /// vacuously satisfied). `is_root` flips behavior for the family-specific
-  /// minimum check.
+  /// Checks `node` and its subtree: every `θ` finite and in the generator's domain, and below the root at least
+  /// `parent_theta` (the sufficient nesting condition).
   fn validate_node(
     generator: Generator,
     node: &NacNode,
@@ -250,14 +261,7 @@ impl NestedArchimedean {
         constraint: "theta.is_finite()".into(),
       });
     }
-    let theta_min = generator.theta_min();
-    if node.theta < theta_min {
-      return Err(CopulaError::InvalidParameter {
-        name: "theta",
-        value: node.theta,
-        constraint: format!("theta >= {theta_min:?} for {:?}", generator.family()),
-      });
-    }
+    generator.check_domain(node.theta)?;
     if !is_root && node.theta < parent_theta {
       return Err(CopulaError::InvalidStructure(format!(
         "sufficient nesting condition violated: child theta {:?} < parent theta {:?} ({:?})",
@@ -401,20 +405,6 @@ impl NestedArchimedean {
     }
   }
 
-  /// The root Clayton frailty is `Gamma(1/θ, 1)`, so `θ = 0` (or a `θ` so small that `1/θ` overflows) has no
-  /// frailty to draw.
-  fn check_root_frailty(&self, root: &NacNode) -> Result<(), CopulaError> {
-    let shape = 1.0 / root.theta;
-    if self.generator == Generator::Clayton && !(shape > 0.0 && shape.is_finite()) {
-      return Err(CopulaError::InvalidParameter {
-        name: "theta",
-        value: root.theta,
-        constraint: "0 < 1 / theta < ∞".into(),
-      });
-    }
-    Ok(())
-  }
-
   /// Recursive CDF evaluator: returns $C(u_{\text{tree}})$ for the sub-tree
   /// rooted at `node`. Used both directly (whole-tree CDF) and indirectly
   /// (via finite differences) for density estimation.
@@ -438,7 +428,6 @@ impl MultivariateExt for NestedArchimedean {
 
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
     let root = self.fitted_root()?;
-    self.check_root_frailty(root)?;
     if self.generator == Generator::Clayton && !root.children.is_empty() {
       return Err(CopulaError::Unsupported(
         "nested Clayton sampling needs the exponentially tilted stable V01 of Hofert & Mächler (2011, §3.2, eq. (5)): sample a Gumbel tree, or evaluate cdf and pdf".into(),
