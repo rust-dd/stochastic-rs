@@ -184,13 +184,13 @@ terminal price itself: `Y = S_T - K e^{-rT}`, whose mean is known.
 ## 4. Quasi-MC — Halton / Sobol
 
 Replace the pseudo-random draw with a deterministic low-discrepancy
-sequence. Both generators are **in-tree** — there is no `sobol_rs`
-dependency:
+sequence. Both generators are **in-tree**, in `stochastic_rs_distributions::qmc` — there is no
+`sobol_rs` dependency:
 
 ```rust
-use crate::mc::sobol::Sobol;      // or crate::mc::halton::Halton
+use stochastic_rs_distributions::qmc::SobolSeq;   // or stochastic_rs_distributions::qmc::HaltonSeq
 
-let sobol = Sobol::new(dim);              // dim-dimensional sequence
+let sobol = SobolSeq::new(dim);           // dim-dimensional sequence
 let u = sobol.sample::<f64>(n_points);    // Array2<f64>, shape (n_points, dim)
 // map each u through the inverse normal CDF, then evaluate the payoff
 ```
@@ -288,7 +288,7 @@ say so in a comment rather than pretending it is deterministic.
 
 ## 9. Reference impls
 
-The `mc/` module is nine files under
+The `mc/` module is eight files under
 `stochastic-rs-stochastic/src/mc/`:
 
 - `mod.rs` — `McEstimate<T>`, the shared `estimate_from_samples`
@@ -300,7 +300,8 @@ The `mc/` module is nine files under
 - `importance_sampling.rs` — mean-shift tilt, takes `shift: &Array1<T>`.
 - `stratified.rs` — the only module with **seeded** entry points
   (`stratified_normals_1d_seeded`, `stratified_normals_seeded`).
-- `sobol.rs`, `halton.rs` — in-tree low-discrepancy generators.
+- `brownian_bridge_qmc.rs` — Brownian paths from a Sobol sequence; the generators `SobolSeq` and
+  `HaltonSeq` are in `stochastic_rs_distributions::qmc`, not here.
 - `mlmc.rs` — `Mlmc::new(epsilon, l_min, l_max, n0)` (`n0 ≥ 2`, a level
   variance needs two samples) + `estimate(level_sampler) -> MlmcResult<T>`;
   note it returns its own result type, not `McEstimate`. Its per-level

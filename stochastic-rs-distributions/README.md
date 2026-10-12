@@ -23,6 +23,8 @@ analytics and SIMD-accelerated bulk generation.
   closed form, `None` where it has none — never a silent zero.
 - **`FloatExt` / `SimdFloatExt`** — the numeric trait bounds the whole
   workspace is generic over.
+- **Low-discrepancy sequences** — Sobol (Joe–Kuo 21201-dimensional table,
+  Owen-type scrambling) and Halton, in `qmc`.
 
 ## Usage
 

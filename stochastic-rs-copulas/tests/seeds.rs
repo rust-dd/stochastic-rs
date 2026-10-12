@@ -30,3 +30,11 @@ fn a_deterministic_seed_replays_and_unseeded_does_not() {
     "a shared seed advances between draws"
   );
 }
+
+#[test]
+fn the_copulas_crate_reaches_the_sobol_sequence_without_the_process_crate() {
+  use stochastic_rs_distributions::qmc::SobolSeq;
+  let points = SobolSeq::new(3).sample::<f64>(4);
+  assert_eq!(points.dim(), (4, 3));
+  assert_eq!(points[[0, 0]], 0.5);
+}

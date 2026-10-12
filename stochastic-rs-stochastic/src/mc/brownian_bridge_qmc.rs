@@ -26,9 +26,9 @@
 
 use ndarray::Array2;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::qmc::SobolSeq;
 use stochastic_rs_distributions::special::ndtri;
 
-use super::sobol::SobolSeq;
 use crate::traits::FloatExt;
 
 /// Bisection order of the bridge: the index list `(target, left, right)`

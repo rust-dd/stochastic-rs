@@ -21,17 +21,10 @@
 //! $s=T$. [`BrownianBridge::x0`] / [`BrownianBridge::xt`] hold $x_0$ / $x_T$;
 //! [`BrownianBridge::sigma`] is $\sigma$.
 //!
-//! Downstream use: pinning a path's endpoint before filling in its interior
-//! is the first step of the Brownian-bridge *path-construction* technique
-//! for quasi-Monte-Carlo simulation — it hands a low-discrepancy sequence's
-//! best-equidistributed leading coordinates to a path's coarsest,
-//! highest-variance features instead of its finest ones (Glasserman (2003),
-//! *Monte Carlo Methods in Financial Engineering*, §3.1, DOI:
-//! 10.1007/978-0-387-21617-1). [`crate::mc::sobol`] and [`crate::mc::halton`]
-//! provide the low-discrepancy sequences this construction is paired with;
-//! this module supplies the endpoint-pinned process itself, not the
-//! recursive dimension-allocation logic that pairs it with those sequences
-//! (a later, phase-E integration concern).
+//! Downstream use: the first step of the Brownian-bridge path construction, which gives the leading
+//! coordinates of a `stochastic_rs_distributions::qmc` sequence to a path's coarsest features.
+//!
+//! Reference: Glasserman (2003), *Monte Carlo Methods in Financial Engineering*, §3.1, DOI: 10.1007/978-0-387-21617-1
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

@@ -139,7 +139,7 @@ fn first_dimension() -> [u32; BITS] {
 fn direction_numbers(n_dims: usize) -> Vec<[u32; BITS]> {
   assert!(
     n_dims > 0 && n_dims <= MAX_DIMENSIONS,
-    "Sobol supports 1..={MAX_DIMENSIONS} dimensions, got {n_dims}"
+    "n_dims must satisfy `0 < n_dims <= {MAX_DIMENSIONS}`, got n_dims = {n_dims}"
   );
   let mut direction = Vec::with_capacity(n_dims);
   direction.push(first_dimension());
@@ -186,8 +186,8 @@ pub struct SobolSeq {
 }
 
 impl SobolSeq {
-  /// Create an unscrambled Sobol sequence generator for `n_dims`
-  /// dimensions (up to [`MAX_DIMENSIONS`]).
+  /// Unscrambled Sobol generator for `n_dims` dimensions;
+  /// panics unless `0 < n_dims <= MAX_DIMENSIONS`.
   pub fn new(n_dims: usize) -> Self {
     let direction = direction_numbers(n_dims);
     Self {
@@ -197,9 +197,8 @@ impl SobolSeq {
     }
   }
 
-  /// Create an Owen-type scrambled Sobol sequence (random linear scramble
-  /// plus digital shift) for `n_dims` dimensions, randomised from `seed`;
-  /// `Deterministic` seeds reproduce the same point set.
+  /// Owen-type scrambled Sobol generator (random linear scramble plus digital shift), reproducible
+  /// for a `Deterministic` seed; panics unless `0 < n_dims <= MAX_DIMENSIONS`.
   pub fn scrambled<S: SeedExt>(n_dims: usize, seed: &S) -> Self {
     let mut direction = direction_numbers(n_dims);
     let mut rng = SimdRng::from_seed(seed.next_seed());
@@ -448,9 +447,15 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "Sobol supports 1..=21201 dimensions")]
+  #[should_panic(expected = "n_dims must satisfy `0 < n_dims <= 21201`, got n_dims = 21202")]
   fn rejects_dimensions_beyond_the_table() {
     let _ = SobolSeq::new(MAX_DIMENSIONS + 1);
+  }
+
+  #[test]
+  #[should_panic(expected = "n_dims must satisfy `0 < n_dims <= 21201`, got n_dims = 0")]
+  fn rejects_zero_dimensions() {
+    let _ = SobolSeq::new(0);
   }
 }
 
@@ -469,7 +474,7 @@ impl PySobolSeq {
   #[new]
   #[pyo3(signature = (n_dims, seed=None))]
   fn new(n_dims: usize, seed: Option<u64>) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| {
+    crate::python::value_error_on_panic(|| {
       let inner = match seed {
         Some(s) => {
           SobolSeq::scrambled(n_dims, &stochastic_rs_core::simd_rng::Deterministic::new(s))
@@ -486,7 +491,7 @@ impl PySobolSeq {
     py: pyo3::Python<'py>,
     n_points: usize,
   ) -> pyo3::PyResult<pyo3::Bound<'py, numpy::PyArray2<f64>>> {
-    stochastic_rs_distributions::python::runtime_error_on_panic(|| {
+    crate::python::runtime_error_on_panic(|| {
       use numpy::IntoPyArray;
       self.inner.sample::<f64>(n_points).into_pyarray(py)
     })

@@ -12,13 +12,13 @@ use ndarray::Array2;
 use stochastic_rs::distributions::DistributionSampler;
 use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
+use stochastic_rs::distributions::qmc::HaltonSeq;
+use stochastic_rs::distributions::qmc::SobolSeq;
 use stochastic_rs::distributions::special::norm_cdf;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stochastic::mc;
-use stochastic_rs::stochastic::mc::halton::HaltonSeq;
 use stochastic_rs::stochastic::mc::lsm::Lsm;
 use stochastic_rs::stochastic::mc::mlmc::Mlmc;
-use stochastic_rs::stochastic::mc::sobol::SobolSeq;
 use stochastic_rs::traits::FloatExt;
 
 /// Black-Scholes call price (analytical reference).

@@ -37,11 +37,11 @@ pub struct HaltonSeq {
 }
 
 impl HaltonSeq {
-  /// Create a Halton sequence generator for `n_dims` dimensions (max 40).
+  /// Halton generator for `n_dims` dimensions; panics unless `0 < n_dims <= 40`.
   pub fn new(n_dims: usize) -> Self {
     assert!(
       n_dims > 0 && n_dims <= PRIMES.len(),
-      "Halton supports 1..={} dimensions, got {n_dims}",
+      "n_dims must satisfy `0 < n_dims <= {}`, got n_dims = {n_dims}",
       PRIMES.len()
     );
     Self { n_dims }
@@ -93,5 +93,17 @@ mod tests {
         assert!(pts[[i, j]] > 0.0 && pts[[i, j]] < 1.0);
       }
     }
+  }
+
+  #[test]
+  #[should_panic(expected = "n_dims must satisfy `0 < n_dims <= 40`, got n_dims = 41")]
+  fn rejects_dimensions_beyond_the_primes_table() {
+    let _ = HaltonSeq::new(41);
+  }
+
+  #[test]
+  #[should_panic(expected = "n_dims must satisfy `0 < n_dims <= 40`, got n_dims = 0")]
+  fn rejects_zero_dimensions() {
+    let _ = HaltonSeq::new(0);
   }
 }

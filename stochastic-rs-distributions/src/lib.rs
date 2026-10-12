@@ -149,6 +149,7 @@ pub mod float_impls;
 #[cfg(feature = "python")]
 #[doc(hidden)]
 pub mod python;
+pub mod qmc;
 pub mod seeded;
 mod simd_float_impls;
 mod source;

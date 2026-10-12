@@ -5,10 +5,8 @@
 //! \operatorname{Var}[\hat{\mu}_N] = \frac{\sigma^2}{N}
 //! $$
 //!
-//! Variance reduction, quasi-Monte Carlo sequences (Sobol on the full
-//! Joe-Kuo table with Owen-type scrambling, Halton) and their Brownian-bridge
-//! path construction, multi-level MC, and American option pricing via
-//! Longstaff-Schwartz.
+//! Variance reduction, Brownian-bridge QMC paths over the `stochastic_rs_distributions::qmc`
+//! sequences, multi-level MC, and American option pricing via Longstaff-Schwartz.
 //!
 //! Reference: Glasserman (2003), *Monte Carlo Methods in Financial Engineering*,
 //! DOI: 10.1007/978-0-387-21617-1
@@ -16,12 +14,10 @@
 pub mod antithetic;
 pub mod brownian_bridge_qmc;
 pub mod control_variates;
-pub mod halton;
 pub mod importance_sampling;
 
 pub mod lsm;
 pub mod mlmc;
-pub mod sobol;
 pub mod stratified;
 
 use ndarray::parallel::prelude::*;

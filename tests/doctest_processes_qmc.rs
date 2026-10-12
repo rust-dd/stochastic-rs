@@ -2,9 +2,9 @@
 //! Backs the quasi-Monte Carlo example on the processes page.
 
 use ndarray::Array2;
+use stochastic_rs::distributions::qmc::SobolSeq;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stochastic::mc::brownian_bridge_qmc::BrownianBridgeQmc;
-use stochastic_rs::stochastic::mc::sobol::SobolSeq;
 
 #[test]
 fn qmc_brownian_paths_price_a_martingale() {
