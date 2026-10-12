@@ -48,6 +48,8 @@
 //! - McNeil, Frey, Embrechts (2015), *Quantitative Risk Management*,
 //!   Princeton UP, §7.5.
 
+use std::sync::OnceLock;
+
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
@@ -66,6 +68,7 @@ use super::correlation_matrix::shrink_to_spd;
 use super::genz::chi_scale;
 use super::genz::mvt_upper;
 use super::genz::open_coordinates;
+use super::genz::prioritize;
 use super::qmc::sobol_points;
 use crate::bivariate::t_copula::check_nu;
 use crate::bivariate::t_copula::t_copula_cdf;
@@ -81,6 +84,8 @@ pub struct TMultivariate {
   /// Degrees of freedom, `0 < nu < inf`; 4 by default.
   nu: f64,
   corr: Option<CorrelationMatrix>,
+  /// The cdf's χ scales, a function of `nu` alone, built by the first query that integrates.
+  chi: OnceLock<Array1<f64>>,
 }
 
 impl Default for TMultivariate {
@@ -88,6 +93,7 @@ impl Default for TMultivariate {
     Self {
       nu: 4.0,
       corr: None,
+      chi: OnceLock::new(),
     }
   }
 }
@@ -105,6 +111,7 @@ impl TMultivariate {
     Ok(Self {
       nu,
       corr: Some(CorrelationMatrix::try_new(corr)?),
+      chi: OnceLock::new(),
     })
   }
 
@@ -122,6 +129,7 @@ impl TMultivariate {
   pub fn set_nu(&mut self, nu: f64) {
     check_nu(nu).unwrap_or_else(|e| panic!("{e}"));
     self.nu = nu;
+    self.chi = OnceLock::new();
   }
 
   fn fitted(&self) -> Result<&CorrelationMatrix, CopulaError> {
@@ -332,6 +340,7 @@ impl MultivariateExt for TMultivariate {
     let corr = CorrelationMatrix::try_new(shrink_to_spd(Self::estimate_corr_from_kendall(X)?))?;
     // Profile MLE for ν conditional on Σ.
     self.nu = Self::optimise_nu(&corr, X);
+    self.chi = OnceLock::new();
     self.corr = Some(corr);
     Ok(())
   }
@@ -383,16 +392,11 @@ impl MultivariateExt for TMultivariate {
   }
 
   /// `T_{R,ν}(t_ν⁻¹(u))` on the closed cube: a zero coordinate gives 0 and a unit one drops out; two left are the
-  /// bivariate t copula's closed form, more are Genz–Bretz over the Sobol points, the first coordinate driving the χ scale.
+  /// bivariate closed form, more are Genz–Bretz over the Sobol points in that query's prioritized order.
   fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let corr = self.fitted()?;
-    let d = corr.dim();
-    let rule = (d > 2).then(|| {
-      let points = sobol_points(d);
-      let scale = chi_scale(points.view(), self.nu);
-      (points, scale)
-    });
+    let mut points = None;
     Ok(
       X.rows()
         .into_iter()
@@ -401,10 +405,20 @@ impl MultivariateExt for TMultivariate {
           Some([]) => 1.0,
           Some(&[i]) => u[i],
           Some(&[i, j]) => t_copula_cdf(u[i], u[j], corr.corr()[[i, j]], self.nu),
-          Some(_) => {
-            let b: Vec<f64> = u.iter().map(|&x| Self::t_quantile(x, self.nu)).collect();
-            let (points, scale) = rule.as_ref().expect("three open coordinates need d > 2");
-            mvt_upper(corr.chol_lower(), &b, points.view(), scale.view())
+          Some(open) => {
+            let points = points.get_or_insert_with(|| sobol_points(corr.dim()));
+            let scale = self.chi.get_or_init(|| chi_scale(self.nu));
+            let b: Vec<f64> = open
+              .iter()
+              .map(|&i| Self::t_quantile(u[i], self.nu))
+              .collect();
+            match prioritize(corr.corr(), open, &b) {
+              Some((l, b)) => mvt_upper(&l, &b, points.view(), scale.view()),
+              None => {
+                let b: Vec<f64> = u.iter().map(|&x| Self::t_quantile(x, self.nu)).collect();
+                mvt_upper(corr.chol_lower(), &b, points.view(), scale.view())
+              }
+            }
           }
         })
         .collect(),

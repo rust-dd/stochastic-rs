@@ -20,6 +20,7 @@ use super::correlation_matrix::CorrelationMatrix;
 use super::correlation_matrix::shrink_to_spd;
 use super::genz::mvn_upper;
 use super::genz::open_coordinates;
+use super::genz::prioritize;
 use super::qmc::sobol_points;
 use crate::bivariate::gaussian::gaussian_copula_cdf;
 use crate::error::CopulaError;
@@ -200,11 +201,11 @@ impl MultivariateExt for GaussianMultivariate {
   }
 
   /// `Φ_R(Φ⁻¹(u))` on the closed cube: a zero coordinate gives 0 and a unit one drops out; two left are Owen's T closed
-  /// form, more are Genz's separation-of-variables integral over the Sobol points.
+  /// form, more are Genz's separation-of-variables integral over the Sobol points in that query's prioritized order.
   fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let corr = self.fitted()?;
-    let points = (corr.dim() > 2).then(|| sobol_points(corr.dim() - 1));
+    let mut points = None;
     Ok(
       X.rows()
         .into_iter()
@@ -213,10 +214,16 @@ impl MultivariateExt for GaussianMultivariate {
           Some([]) => 1.0,
           Some(&[i]) => u[i],
           Some(&[i, j]) => gaussian_copula_cdf(u[i], u[j], corr.corr()[[i, j]]),
-          Some(_) => {
-            let b: Vec<f64> = u.iter().map(|&x| ndtri(x)).collect();
-            let points = points.as_ref().expect("three open coordinates need d > 2");
-            mvn_upper(corr.chol_lower(), &b, points.view())
+          Some(open) => {
+            let points = points.get_or_insert_with(|| sobol_points(corr.dim() - 1));
+            let b: Vec<f64> = open.iter().map(|&i| ndtri(u[i])).collect();
+            match prioritize(corr.corr(), open, &b) {
+              Some((l, b)) => mvn_upper(&l, &b, points.view()),
+              None => {
+                let b: Vec<f64> = u.iter().map(|&x| ndtri(x)).collect();
+                mvn_upper(corr.chol_lower(), &b, points.view())
+              }
+            }
           }
         })
         .collect(),

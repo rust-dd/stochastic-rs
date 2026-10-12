@@ -91,9 +91,22 @@ fn r5() -> Array2<f64> {
   ]
 }
 
+/// Smallest eigenvalue `1.07e-3`, the floor a fit shrinks its estimate to.
+fn near_singular() -> Array2<f64> {
+  array![
+    [1.0, 0.8692186302101551, 0.9226908554168762],
+    [0.8692186302101551, 1.0, 0.9914916282469303],
+    [0.9226908554168762, 0.9914916282469303, 1.0]
+  ]
+}
+
 fn pair(rho: f64) -> Array2<f64> {
   array![[1.0, rho], [rho, 1.0]]
 }
+
+/// The rule's largest absolute error against scipy's Genz–Bretz over 240 random correlations, `d` from 3 to 10 with the
+/// smallest eigenvalue down to `1e-3`.
+const QMC_ENVELOPE: f64 = 3.4e-4;
 
 const U3: [[f64; 3]; 4] = [
   [0.3, 0.5, 0.7],
@@ -189,18 +202,77 @@ fn bivariate_t_cdf_matches_50_digit_references() {
   }
 }
 
+/// The estimate can step back by the QMC error where the variable order switches, so monotonicity and the Fréchet
+/// bound hold to the documented envelope.
 #[test]
 fn cdfs_are_monotone_and_bounded() {
-  let g = GaussianMultivariate::try_new(r3()).unwrap();
-  let t = TMultivariate::try_new(r3(), 4.0).unwrap();
-  let grid = Array2::from_shape_fn((9, 3), |(i, _)| 0.1 + 0.1 * i as f64);
-  for c in [g.cdf(grid.view()).unwrap(), t.cdf(grid.view()).unwrap()] {
-    assert!(
-      c.windows(2).into_iter().all(|w| w[0] <= w[1] + 1e-12),
-      "{c:?}"
-    );
-    assert!(c.iter().all(|v| (0.0..=1.0).contains(v)));
+  let diagonal = Array2::from_shape_fn((9, 3), |(i, _)| 0.1 + 0.1 * i as f64);
+  let levels = [0.05, 0.2, 0.35, 0.5, 0.65, 0.8, 0.95];
+  let grid = Array2::from_shape_fn((343, 3), |(i, j)| levels[(i / 7usize.pow(j as u32)) % 7]);
+  for r in [r3(), near_singular()] {
+    let g = GaussianMultivariate::try_new(r.clone()).unwrap();
+    let t = TMultivariate::try_new(r, 4.0).unwrap();
+    for c in [
+      g.cdf(diagonal.view()).unwrap(),
+      t.cdf(diagonal.view()).unwrap(),
+    ] {
+      assert!(
+        c.windows(2)
+          .into_iter()
+          .all(|w| w[0] <= w[1] + QMC_ENVELOPE),
+        "{c:?}"
+      );
+    }
+    for c in [g.cdf(grid.view()).unwrap(), t.cdf(grid.view()).unwrap()] {
+      for (v, u) in c.iter().zip(grid.rows()) {
+        let bound = u.iter().copied().fold(1.0, f64::min);
+        assert!((0.0..=bound + QMC_ENVELOPE).contains(v), "{v} at {u}");
+      }
+    }
   }
+}
+
+/// A pair independent of the rest leaves exact zeros in `L`: a factor that underflows must give 0, not `0 · ∞`, and
+/// at `u₃ = ½` both copulas are `C₁₂(u₁, u₂) / 2` exactly.
+#[test]
+fn a_block_correlation_matrix_gives_the_product_not_nan() {
+  for (rho, nu, u1, u2) in [
+    (0.999, None, 0.9, 0.2),
+    (0.999, None, 0.95, 0.05),
+    (0.999, None, 0.999, 0.005),
+    (0.999, Some(4.0), 0.9, 0.2),
+    (0.999, Some(4.0), 0.9, 0.3),
+    (0.99, Some(4.0), 0.999, 0.005),
+  ] {
+    let r = array![[1.0, rho, 0.0], [rho, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let q = array![[u1, u2, 0.5]];
+    let pair = array![[u1, u2]];
+    let (got, want) = match nu {
+      None => (
+        GaussianMultivariate::try_new(r)
+          .unwrap()
+          .cdf(q.view())
+          .unwrap()[0],
+        GaussianCopula::new(rho).cdf(pair.view()).unwrap()[0] / 2.0,
+      ),
+      Some(nu) => (
+        TMultivariate::try_new(r, nu)
+          .unwrap()
+          .cdf(q.view())
+          .unwrap()[0],
+        TCopula::new(rho, nu).cdf(pair.view()).unwrap()[0] / 2.0,
+      ),
+    };
+    assert!(
+      (got - want).abs() < 1e-4,
+      "rho={rho} nu={nu:?} ({u1}, {u2}): {got} vs {want}"
+    );
+  }
+  let tiny = GaussianMultivariate::try_new(Array2::eye(3))
+    .unwrap()
+    .cdf(array![[1e-320, 0.5, 0.5]].view())
+    .unwrap()[0];
+  assert!((0.0..=1e-300).contains(&tiny), "{tiny}");
 }
 
 /// A coordinate at 0 gives 0 and one at 1 drops out: what is left is the lower-dimensional copula's own value.
@@ -262,31 +334,43 @@ fn a_zero_coordinate_gives_zero_and_a_unit_coordinate_drops_out() {
   }
 }
 
-/// Three coordinates left by a unit one stay on the Sobol rule of the full dimension, `Φ(+∞) = 1` in the integrand.
+/// A unit coordinate sorts last and drops out, so at any position the value is the trivariate copula's, bit for bit.
 #[test]
-fn a_unit_coordinate_among_four_leaves_the_trivariate_copula() {
+fn a_unit_coordinate_drops_out_bit_for_bit_at_any_position() {
   let r = r5();
-  let keep = [0, 2, 3];
-  let sub = Array2::from_shape_fn((3, 3), |(i, j)| r[[keep[i], keep[j]]]);
   let r4 = Array2::from_shape_fn((4, 4), |(i, j)| r[[i, j]]);
-  let four = array![[0.3, 1.0, 0.6, 0.4]];
-  let three = array![[0.3, 0.6, 0.4]];
-  let g4 = GaussianMultivariate::try_new(r4.clone())
-    .unwrap()
-    .cdf(four.view())
-    .unwrap()[0];
-  let g3 = GaussianMultivariate::try_new(sub.clone())
-    .unwrap()
-    .cdf(three.view())
-    .unwrap()[0];
-  assert!((g4 - g3).abs() < 5e-4, "{g4} vs {g3}");
-  let t4 = TMultivariate::try_new(r4, 5.0)
-    .unwrap()
-    .cdf(four.view())
-    .unwrap()[0];
-  let t3 = TMultivariate::try_new(sub, 5.0)
-    .unwrap()
-    .cdf(three.view())
-    .unwrap()[0];
-  assert!((t4 - t3).abs() < 5e-4, "{t4} vs {t3}");
+  let open = [0.3, 0.6, 0.4];
+  for unit in [0, 1, 3] {
+    let keep: Vec<usize> = (0..4).filter(|&i| i != unit).collect();
+    let sub = Array2::from_shape_fn((3, 3), |(i, j)| r4[[keep[i], keep[j]]]);
+    let mut four = vec![0.0; 4];
+    four[unit] = 1.0;
+    for (k, &i) in keep.iter().enumerate() {
+      four[i] = open[k];
+    }
+    let four = Array2::from_shape_vec((1, 4), four).unwrap();
+    let three = Array2::from_shape_vec((1, 3), open.to_vec()).unwrap();
+    assert_eq!(
+      GaussianMultivariate::try_new(r4.clone())
+        .unwrap()
+        .cdf(four.view())
+        .unwrap(),
+      GaussianMultivariate::try_new(sub.clone())
+        .unwrap()
+        .cdf(three.view())
+        .unwrap(),
+      "unit coordinate {unit}"
+    );
+    assert_eq!(
+      TMultivariate::try_new(r4.clone(), 5.0)
+        .unwrap()
+        .cdf(four.view())
+        .unwrap(),
+      TMultivariate::try_new(sub, 5.0)
+        .unwrap()
+        .cdf(three.view())
+        .unwrap(),
+      "unit coordinate {unit}"
+    );
+  }
 }
