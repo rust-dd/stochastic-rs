@@ -39,8 +39,8 @@
 //!
 //! ## Density
 //!
-//! `pdf` is the mixed central difference of `cdf` with step $10^{-4}$ over the $2^d$ cube vertices, not the closed forms
-//! of Hofert & Pham (2013), which rest on the generator derivatives of Hofert, Mächler & McNeil (2012).
+//! Closed form on every tree `new` accepts: Hofert & Pham's (2013) recursion at any depth (their Remark 6.2) over the
+//! generator derivatives of Hofert, Mächler & McNeil (2012), summed in logs of positive terms; NaN on a 0 or 1 coordinate.
 //!
 //! ## Fit
 //!
@@ -55,12 +55,8 @@
 //! - Hofert, M. (2011), "Efficiently sampling nested Archimedean copulas",
 //!   *Computational Statistics & Data Analysis* 55(1), 57-70.
 //! - Hofert, M., Mächler, M. (2011), "Nested Archimedean Copulas Meet R: The nacopula Package", *Journal of Statistical Software* 39(9), 1-20, doi:10.18637/jss.v039.i09.
-//! - Hofert, M., Mächler, M., McNeil, A.J. (2012), "Likelihood inference
-//!   for Archimedean copulas in high dimensions under known margins",
-//!   *Journal of Multivariate Analysis* 110, 133-150.
-//! - Hofert, M., Pham, D. (2013), "Densities of nested Archimedean
-//!   copulas", *Journal of Multivariate Analysis* 118, 37-52.
-//!   (arXiv:1204.2410)
+//! - Hofert, M., Mächler, M., McNeil, A.J. (2012), "Likelihood inference for Archimedean copulas in high dimensions under known margins", *Journal of Multivariate Analysis* 110, 133-150, doi:10.1016/j.jmva.2012.02.019.
+//! - Hofert, M., Pham, D. (2013), "Densities of nested Archimedean copulas", *Journal of Multivariate Analysis* 118, 37-52, doi:10.1016/j.jmva.2013.03.006 (arXiv:1204.2410).
 //! - McNeil, A.J. (2008), "Sampling nested Archimedean copulas",
 //!   *Journal of Statistical Computation and Simulation* 78(6), 567-581.
 //! - Górecki, J., Hofert, M., Holeňa, M. (2016), "An approach to structure determination and estimation of hierarchical Archimedean copulas and its application to Bayesian classification", *Journal of Intelligent Information Systems* 46(1), 21-59, doi:10.1007/s10844-014-0350-3.
@@ -83,6 +79,7 @@ use crate::bivariate::BivariateFamily;
 use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
 
+mod density;
 mod fit;
 
 /// The two generators a nested Archimedean copula admits; the public API names them by `BivariateFamily`.
@@ -405,9 +402,6 @@ impl NestedArchimedean {
     }
   }
 
-  /// Recursive CDF evaluator: returns $C(u_{\text{tree}})$ for the sub-tree
-  /// rooted at `node`. Used both directly (whole-tree CDF) and indirectly
-  /// (via finite differences) for density estimation.
   fn cdf_node(&self, node: &NacNode, u: &[f64]) -> f64 {
     let mut s = 0.0;
     for &j in &node.leaves {
@@ -459,32 +453,12 @@ impl MultivariateExt for NestedArchimedean {
   }
 
   fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(self.log_pdf(X)?.mapv_into(f64::exp))
+  }
+
+  fn log_pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
-    let root = self.fitted_root()?;
-    let d = self.dim;
-    let h = 1e-4_f64;
-    let denom = (2.0 * h).powi(d as i32);
-    let mut out = Array1::<f64>::zeros(X.nrows());
-    let mut u_pert = vec![0.0_f64; d];
-    for (i, row) in X.rows().into_iter().enumerate() {
-      let u_orig: Vec<f64> = row.iter().copied().collect();
-      let mut acc = 0.0;
-      // Enumerate 2^d vertices: for each subset S of {0..d}, sign = (-1)^{d-|S|}.
-      for mask in 0..(1u32 << d) {
-        let mut sign = 1.0;
-        for j in 0..d {
-          if (mask >> j) & 1 == 1 {
-            u_pert[j] = (u_orig[j] + h).min(1.0 - 1e-12);
-          } else {
-            u_pert[j] = (u_orig[j] - h).max(1e-12);
-            sign = -sign;
-          }
-        }
-        acc += sign * self.cdf_node(root, &u_pert);
-      }
-      out[i] = (acc / denom).max(0.0);
-    }
-    Ok(out)
+    Ok(density::Density::new(self.generator, self.fitted_root()?).log_pdf(X))
   }
 
   fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {

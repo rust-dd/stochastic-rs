@@ -1,5 +1,5 @@
-//! Copula hot paths: conditional-inversion sampling (closed form, Brent, the Marshall–Olkin atom), the
-//! elliptical and vine samplers and cdfs, the fits, the pairwise τ matrix and the bootstrap goodness-of-fit test.
+//! Copula hot paths: conditional-inversion sampling (closed form, Brent, the Marshall–Olkin atom), the elliptical and
+//! vine samplers and cdfs, the nested Archimedean density, the fits, the τ matrix and the bootstrap goodness-of-fit test.
 
 use std::time::Duration;
 
@@ -61,6 +61,18 @@ fn dvine(d: usize) -> DVine {
     })
     .collect();
   DVine::new(d, trees).unwrap()
+}
+
+fn nac_d4() -> NestedArchimedean {
+  let root = NacNode {
+    theta: 1.5,
+    leaves: vec![],
+    children: vec![
+      NacNode::leaf_group(3.0, vec![0, 1]),
+      NacNode::leaf_group(2.5, vec![2, 3]),
+    ],
+  };
+  NestedArchimedean::new(BivariateFamily::Gumbel, root, 4).unwrap()
 }
 
 fn bivariate_sample(c: &mut Criterion) {
@@ -133,6 +145,17 @@ fn multivariate_cdf(c: &mut Criterion) {
   group.bench_function("t_d3_16q", |b| b.iter(|| t.cdf(q.view()).unwrap()));
   let vine = dvine(3);
   group.bench_function("dvine_d3_16q", |b| b.iter(|| vine.cdf(q.view()).unwrap()));
+  group.finish();
+}
+
+fn multivariate_pdf(c: &mut Criterion) {
+  let mut group = c.benchmark_group("copulas/multivariate_pdf");
+  group.sample_size(20);
+  let nac = nac_d4();
+  let data = pseudo_observations(nac.sample(1_000, &Deterministic::new(1)).unwrap().view());
+  group.bench_function("nac_pdf_d4_n1k", |b| {
+    b.iter(|| nac.pdf(data.view()).unwrap())
+  });
   group.finish();
 }
 
@@ -222,17 +245,8 @@ fn fit(c: &mut Criterion) {
       fitted.fit(data.view()).unwrap()
     })
   });
-  let nac_root = NacNode {
-    theta: 1.5,
-    leaves: vec![],
-    children: vec![
-      NacNode::leaf_group(3.0, vec![0, 1]),
-      NacNode::leaf_group(2.5, vec![2, 3]),
-    ],
-  };
   let nac_data = pseudo_observations(
-    NestedArchimedean::new(BivariateFamily::Gumbel, nac_root, 4)
-      .unwrap()
+    nac_d4()
       .sample(2_000, &Deterministic::new(1))
       .unwrap()
       .view(),
@@ -276,6 +290,7 @@ criterion_group!(
   bivariate_sample,
   multivariate_sample,
   multivariate_cdf,
+  multivariate_pdf,
   fit,
   gof
 );
