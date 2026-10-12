@@ -284,6 +284,9 @@ fn nac_fit_rejects_negative_dependence_and_an_unfitted_copula_reports_it() {
     Err(CopulaError::NotFitted)
   );
   assert_eq!(c.cdf(neg.view()), Err(CopulaError::NotFitted));
+  assert_eq!(c.pdf(neg.view()), Err(CopulaError::NotFitted));
+  assert_eq!(c.log_pdf(neg.view()), Err(CopulaError::NotFitted));
+  assert_eq!(c.check_fit(neg.view()), Err(CopulaError::NotFitted));
   assert!(matches!(
     NestedArchimedean::unfitted(BivariateFamily::Joe),
     Err(CopulaError::Unsupported(_))
@@ -329,9 +332,21 @@ fn nac_kendall_inversion_covers_each_nested_range() {
 fn nac_fit_trims_a_parent_whose_mean_rounds_above_its_children() {
   let tau = ndarray::Array2::from_shape_fn((5, 5), |(i, j)| if i == j { 1.0 } else { 0.2509 });
   let six = [0.2509_f64; 6].iter().sum::<f64>() / 6.0;
-  assert!(1.0 / (1.0 - six) > 1.0 / (1.0 - 0.2509));
   for generator in [Generator::Clayton, Generator::Gumbel] {
+    assert!(generator.theta_from_tau(six).unwrap() > generator.theta_from_tau(0.2509).unwrap());
     let root = fit::agglomerate(generator, tau.view()).unwrap();
+    let split = root
+      .children
+      .iter()
+      .map(|c| {
+        let mut leaves = vec![];
+        c.collect_leaves(&mut leaves);
+        leaves.sort();
+        leaves
+      })
+      .collect::<Vec<_>>();
+    assert!(root.leaves.is_empty(), "{root:?}");
+    assert_eq!(split, vec![vec![2, 3], vec![0, 1, 4]], "{root:?}");
     assert!(
       root.children.iter().all(|c| c.theta == root.theta),
       "{root:?}"
