@@ -461,12 +461,6 @@ impl MultivariateExt for NestedArchimedean {
   fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
     let root = self.fitted_root()?;
-    // Closed-form NAC densities (Hofert-Pham 2012) require the full
-    // d-th-order generator-derivative recursion which is family-specific
-    // and scales as O(d²) per query; instead we estimate the density via
-    // finite differences on the CDF along the d-cube vertex pattern. This
-    // is exact in the limit h → 0 and stable for h = 1e-4 on
-    // well-conditioned NAC trees (θ_max / θ_min < 20).
     let d = self.dim;
     let h = 1e-4_f64;
     let denom = (2.0 * h).powi(d as i32);
