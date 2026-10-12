@@ -1910,7 +1910,7 @@ dependencies = [
 [[package]]
 name = "metal-oxide"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=c3a3b404474936a9adb690b49af3a5157cc7cd1c#c3a3b404474936a9adb690b49af3a5157cc7cd1c"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=9bd3f83aea8e81af241c82a79785afe0aa8bf3dd#9bd3f83aea8e81af241c82a79785afe0aa8bf3dd"
 dependencies = [
  "block2",
  "dispatch2",
@@ -1924,7 +1924,7 @@ dependencies = [
 [[package]]
 name = "metal-oxide-artifact"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=c3a3b404474936a9adb690b49af3a5157cc7cd1c#c3a3b404474936a9adb690b49af3a5157cc7cd1c"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=9bd3f83aea8e81af241c82a79785afe0aa8bf3dd#9bd3f83aea8e81af241c82a79785afe0aa8bf3dd"
 dependencies = [
  "serde",
  "serde_json",
@@ -1932,9 +1932,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "metal-oxide-build"
+version = "0.1.0-alpha.1"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=9bd3f83aea8e81af241c82a79785afe0aa8bf3dd#9bd3f83aea8e81af241c82a79785afe0aa8bf3dd"
+dependencies = [
+ "metal-oxide-artifact",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "metal-oxide-device"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=c3a3b404474936a9adb690b49af3a5157cc7cd1c#c3a3b404474936a9adb690b49af3a5157cc7cd1c"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=9bd3f83aea8e81af241c82a79785afe0aa8bf3dd#9bd3f83aea8e81af241c82a79785afe0aa8bf3dd"
 dependencies = [
  "metal-oxide-macros",
 ]
@@ -1942,7 +1952,7 @@ dependencies = [
 [[package]]
 name = "metal-oxide-macros"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=c3a3b404474936a9adb690b49af3a5157cc7cd1c#c3a3b404474936a9adb690b49af3a5157cc7cd1c"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=9bd3f83aea8e81af241c82a79785afe0aa8bf3dd#9bd3f83aea8e81af241c82a79785afe0aa8bf3dd"
 
 [[package]]
 name = "minimal-lexical"
@@ -3508,6 +3518,7 @@ dependencies = [
  "gauss-quad",
  "log",
  "metal-oxide",
+ "metal-oxide-build",
  "ndarray",
  "ndrustfft",
  "num-complex",

@@ -18,7 +18,7 @@ kernels = "../stochastic-rs-metal-kernels/Cargo.toml"
 [features]
 default = []
 cuda = ["dep:cudarc", "cudarc/cufft", "dep:parking_lot"]
-metal = ["dep:metal-oxide"]
+metal = ["dep:metal-oxide", "dep:metal-oxide-build"]
 accelerate = []
 python = ["dep:pyo3", "dep:numpy", "stochastic-rs-core/python", "stochastic-rs-distributions/python"]
 
@@ -39,6 +39,9 @@ rand = { workspace = true }
 rayon = { workspace = true }
 stochastic-rs-core = { workspace = true }
 stochastic-rs-distributions = { workspace = true }
+
+[build-dependencies]
+metal-oxide-build = { workspace = true, optional = true }
 
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 metal-oxide = { workspace = true, optional = true }

@@ -75,7 +75,9 @@ jobs:
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
       - name: Embedded Metal kernel sources
-        run: bash scripts/build-metal-kernels.sh --check
+        run: cargo check -p stochastic-rs-stochastic --features metal --locked
+        env:
+          METAL_OXIDE_ARTIFACTS: locked
       - name: cargo clippy (workspace)
         run: cargo clippy --workspace --no-default-features --all-targets --locked -- -D warnings
       # All six library crates deny `rustdoc::broken_intra_doc_links` at their

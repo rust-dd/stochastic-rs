@@ -1,0 +1,42 @@
+{
+  "format": 1,
+  "artifact": "5b69e23089ceb635b6b08ef2ffa1684e3d946953df308a1995e1f210e218565c",
+  "math_mode": "fast",
+  "lock": "../Cargo.lock",
+  "packages": [
+    "metal-oxide-device 0.1.0-alpha.1 git+https://github.com/rust-dd/metal-oxide?rev=9bd3f83aea8e81af241c82a79785afe0aa8bf3dd#9bd3f83aea8e81af241c82a79785afe0aa8bf3dd",
+    "metal-oxide-macros 0.1.0-alpha.1 git+https://github.com/rust-dd/metal-oxide?rev=9bd3f83aea8e81af241c82a79785afe0aa8bf3dd#9bd3f83aea8e81af241c82a79785afe0aa8bf3dd"
+  ],
+  "files": {
+    "../stochastic-rs-stochastic/src/euler/families/definitions/diffusions.rs": "231259ce95e8dbb222456ae3a7f78e9f5950ec78a7dd47a0bbc79527bb60a1b8",
+    "../stochastic-rs-stochastic/src/euler/families/definitions/jump_schemes.rs": "fbe1db657f2062471138c8fd7549a06065bd38162542224125f5e0c130fb7a85",
+    "../stochastic-rs-stochastic/src/euler/families/definitions/lifts.rs": "60ef71f047096cd8f06102a6539e2a399e16033c14e33b2c0572fd1b11995268",
+    "../stochastic-rs-stochastic/src/euler/families/definitions/memory.rs": "90baa5f05ea601ab482d66fa11f00898be6e631bfb001af6f93af3afc196fe87",
+    "../stochastic-rs-stochastic/src/euler/families/definitions/mod.rs": "1f20373d862c783253ee9b8e9c0e7e86c84ad5d4755efbe32fef6d058cb9c37b",
+    "../stochastic-rs-stochastic/src/euler/families/definitions/multifactor.rs": "f818fd96104231833ebeffabe8c348c5e483785e16dad25bf489b762e88bc162",
+    "../stochastic-rs-stochastic/src/euler/families/definitions/systems.rs": "77cd464d123ada9af6f52898c8e2ba6bc3c6d6278b4dbde93dc24c0f4aa9a121",
+    "../stochastic-rs-stochastic/src/euler/families/definitions/transformations.rs": "43d81c7aa0c683c40ee8bc7ac08635423fe2e58dffeae0f81839bd7b1c37cc04",
+    "Cargo.toml": "0567c5d8ccc2c985fd3131a07eecc4f83829674b95551bce135d61d1917ef06e",
+    "src/euler/args.rs": "50e0d44df3818e975a38fedab91e8f227ad4eaadbf7f97534bc7d8be8d24ae9e",
+    "src/euler/draws.rs": "bed26a3c0880a25b8b2d1820e29f7a0517dfb469b67a56a33e8a792c2d7d302f",
+    "src/euler/entries/families_0_31.rs": "0ec5f4d4164fa8bea1775159e24d3279e5c4b615bbfb10ed71870d9f3e84f557",
+    "src/euler/entries/families_32_63.rs": "db8ab8378c12e11bac2597c21501114dbc09f7b2b4c33f6b9963df60272b9df0",
+    "src/euler/entries/families_64_95.rs": "34581e6c2287b181e678ac79f5d72ac63f36bb7d876bb39b50180765dd8202de",
+    "src/euler/entries/families_96_120.rs": "12ecacdf64214f736bba5f979b9f212393e33e2d4a8d73642fceb65f7530f330",
+    "src/euler/entries/mod.rs": "7a15fe0ab98ce566e3947bfd6840a6283b312914e131d0358d71b0abc3d03b4a",
+    "src/euler/entrypoint.rs": "b0440f232e2a3a459666a82e47d3a22a176a58ff98d082f282c210807bf00993",
+    "src/euler/families.rs": "99aa9258fb6b7dc86e20fd7613d1964b683c58c56b9b32cd87d56cd264a26ec8",
+    "src/euler/families/codegen.rs": "b807845df5a0925e4a0a3223840833c73822f800745263bef55bcfbc848472f5",
+    "src/euler/frame.rs": "36006893b833a648585daecb7fcef5dce1d496e4e9bc58c91713043f154bb732",
+    "src/euler/jumps.rs": "fed1da3442b4929ccb348db20a48aafa293db97b7a3e5187358d45786fea4e5e",
+    "src/euler/memory.rs": "b58259e98c01e4ed247011a027be2b4379500abdaca0b5afd717e46c48e67deb",
+    "src/euler/mod.rs": "0cd4d089aed8e64ecb64b1a38ccbdcf5c201f629499c9b16d8d719e635d2d7ff",
+    "src/euler/program.rs": "4bdac8688593e4cdcedfea14989af4527d43c95b51f7efcb67de7461abf58cf5",
+    "src/euler/vocabulary.rs": "a38c3aa184cad0aedf31f78a1d10d0469379e0ee9dcd04cd5948f3f80cc300e9",
+    "src/fft.rs": "987e75cb60a200a98416d1f0a797826ecbf3b55f092533d0c56326e1f14f9084",
+    "src/lib.rs": "c43e6f2ca03cfb1fbe743cc2a6b638815b869e2593927b67fd24f1d77970b952",
+    "src/random.rs": "bea494af0702b39b3a69e06fbaa677348cf5fce25addb2b8be53e5e4c824b2f4",
+    "src/sheet.rs": "b072fa280fe87c3007482052a64f5c0d2be381e9384b98b3129e875a1c2c36c5",
+    "src/tile.rs": "ace06ff8388090fca2a73dcf32ed7eecb1fa8d11be0c699314f1c22fb5303548"
+  }
+}
