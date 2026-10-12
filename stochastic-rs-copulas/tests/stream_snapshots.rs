@@ -63,6 +63,7 @@ const PINS: &[(&str, u64)] = &[
   ("rvine_independence", 0xc269b264798404c9),
   ("nac_gumbel_nested", 0x85ff7aa5ffd667a9),
   ("nac_clayton_flat", 0x5be5566c431f17f4),
+  ("nac_clayton_nested", 0xe66e76f3f627c5a8),
   ("empirical", 0xf1800d610f0b16aa),
 ];
 
@@ -282,6 +283,22 @@ fn samples() -> Vec<(&'static str, Array2<f64>)> {
   row!(
     "nac_clayton_flat",
     NestedArchimedean::new(BivariateFamily::Clayton, flat, 3)
+      .unwrap()
+      .sample(N, &Deterministic::new(SEED))
+      .unwrap()
+  );
+  let clayton_nested = NacNode {
+    theta: 0.5,
+    leaves: vec![3],
+    children: vec![NacNode {
+      theta: 1.5,
+      leaves: vec![2],
+      children: vec![NacNode::leaf_group(4.0, vec![0, 1])],
+    }],
+  };
+  row!(
+    "nac_clayton_nested",
+    NestedArchimedean::new(BivariateFamily::Clayton, clayton_nested, 4)
       .unwrap()
       .sample(N, &Deterministic::new(SEED))
       .unwrap()

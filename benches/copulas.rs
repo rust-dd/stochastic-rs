@@ -1,5 +1,5 @@
-//! Copula hot paths: conditional-inversion sampling (closed form, Brent, the Marshall–Olkin atom), the elliptical and
-//! vine samplers and cdfs, the nested Archimedean density, the fits, the τ matrix and the bootstrap goodness-of-fit test.
+//! Copula hot paths: conditional-inversion sampling (closed form, Brent, the Marshall–Olkin atom), the elliptical and vine
+//! samplers and cdfs, the nested Clayton sampler, the nested Archimedean density, the fits, the τ matrix and the GoF bootstrap.
 
 use std::time::Duration;
 
@@ -75,6 +75,19 @@ fn nac_d4() -> NestedArchimedean {
   NestedArchimedean::new(BivariateFamily::Gumbel, root, 4).unwrap()
 }
 
+/// `nac_d4`'s Kendall τ (1/3; 2/3 and 0.6) on Clayton generators.
+fn nac_clayton_d4() -> NestedArchimedean {
+  let root = NacNode {
+    theta: 1.0,
+    leaves: vec![],
+    children: vec![
+      NacNode::leaf_group(4.0, vec![0, 1]),
+      NacNode::leaf_group(3.0, vec![2, 3]),
+    ],
+  };
+  NestedArchimedean::new(BivariateFamily::Clayton, root, 4).unwrap()
+}
+
 fn bivariate_sample(c: &mut Criterion) {
   let mut group = c.benchmark_group("copulas/bivariate_sample");
   let clayton = Clayton::new(2.0);
@@ -129,6 +142,10 @@ fn multivariate_sample(c: &mut Criterion) {
   let vine = dvine(4);
   group.bench_function("dvine_d4_n10k", |b| {
     b.iter(|| vine.sample(10_000, &Deterministic::new(42)).unwrap())
+  });
+  let nac = nac_clayton_d4();
+  group.bench_function("nac_clayton_nested_d4_n10k", |b| {
+    b.iter(|| nac.sample(10_000, &Deterministic::new(42)).unwrap())
   });
   group.finish();
 }

@@ -16,26 +16,10 @@
 //! - **Clayton:** $0 < 1/\theta < \infty$ globally (the frailty $\Gamma(1/\theta, 1)$ exists) and $\theta_{\text{child}} \ge \theta_{\text{parent}}$.
 //! - **Gumbel:** $\theta \ge 1$ globally and $\theta_{\text{child}} \ge \theta_{\text{parent}}$.
 //!
-//! ## Sampling (Hofert & Mächler 2011, Algorithm 3.1)
+//! ## Sampling
 //!
-//! The standard Marshall-Olkin (1988) frailty representation: each
-//! generator $\varphi_\theta$ admits an LST representation
-//! $\varphi_\theta(t) = \mathbb{E}\!\left[e^{-t V_\theta}\right]$ with
-//!
-//! - **Clayton:** $V_\theta \sim \mathrm{Gamma}(1/\theta, 1)$.
-//! - **Gumbel:** $V_\theta \sim S_+(1/\theta)$ (positive $\alpha$-stable).
-//!
-//! For a partially nested copula with root $V_0$ and one inner generator
-//! per sub-tree, the conditional inner frailty is
-//!
-//! $$
-//! V_i \mid V_0 \;=\; V_0^{\theta_i/\theta_0}\cdot S_i,\qquad
-//! S_i \sim S_+(\theta_0 / \theta_i),
-//! $$
-//!
-//! which collapses to a single sub-tree frailty draw. Leaves are then
-//! recovered via $U_j = \psi_{\theta_*}(E_j / V_*)$, where $\psi$ is the
-//! inverse generator and $E_j \sim \mathrm{Exp}(1)$.
+//! Hofert & Mächler (2011), Algorithm 3.1: root frailty `Γ(1/θ, 1)` (Clayton) or `S_+(1/θ)` (Gumbel); a child's frailty given
+//! its parent's `V₀` has LST `exp(−V₀((1 + t)^α − 1))` or `exp(−V₀ t^α)`, `α = θ₀/θ₁` (their Table 3); a leaf is `ψ(E/V)`.
 //!
 //! ## Density
 //!
@@ -52,8 +36,7 @@
 //!   Chapman & Hall, ch. 4.
 //! - Hofert, M. (2008), "Sampling Archimedean copulas",
 //!   *Computational Statistics & Data Analysis* 52(12), 5163-5174.
-//! - Hofert, M. (2011), "Efficiently sampling nested Archimedean copulas",
-//!   *Computational Statistics & Data Analysis* 55(1), 57-70.
+//! - Hofert, M. (2011), "Efficiently sampling nested Archimedean copulas", *Computational Statistics & Data Analysis* 55(1), 57-70, doi:10.1016/j.csda.2010.04.025.
 //! - Hofert, M., Mächler, M. (2011), "Nested Archimedean Copulas Meet R: The nacopula Package", *Journal of Statistical Software* 39(9), 1-20, doi:10.18637/jss.v039.i09.
 //! - Hofert, M., Mächler, M., McNeil, A.J. (2012), "Likelihood inference for Archimedean copulas in high dimensions under known margins", *Journal of Multivariate Analysis* 110, 133-150, doi:10.1016/j.jmva.2012.02.019.
 //! - Hofert, M., Pham, D. (2013), "Densities of nested Archimedean copulas", *Journal of Multivariate Analysis* 118, 37-52, doi:10.1016/j.jmva.2013.03.006 (arXiv:1204.2410).
@@ -326,6 +309,33 @@ impl NestedArchimedean {
     numerator / denominator
   }
 
+  /// LST `exp(−v₀((1 + t)^α − 1))` by Hofert's (2011) fast rejection: a sum of `m` positive stables of LST `exp(−(v₀/m) t^α)`,
+  /// each kept with probability `e^{−S}`, `m` minimising the expected `m e^{v₀/m} ≤ e max(1, ⌈v₀⌉)` proposals.
+  fn tilted_stable<R: Rng + ?Sized>(rng: &mut R, alpha: f64, v0: f64) -> f64 {
+    let m = if v0 <= 1.0 {
+      1.0
+    } else {
+      let (lo, hi) = (v0.floor(), v0.ceil());
+      if lo * (v0 / lo).exp() <= hi * (v0 / hi).exp() {
+        lo
+      } else {
+        hi
+      }
+    };
+    let scale = (v0 / m).powf(1.0 / alpha);
+    (0..m as u64)
+      .map(|_| {
+        loop {
+          let s = scale * Self::positive_stable(rng, alpha);
+          // Strict on the [0, 1) uniform, so an infinite proposal is never kept.
+          if rng.random::<f64>() < (-s).exp() {
+            break s;
+          }
+        }
+      })
+      .sum()
+  }
+
   fn sample_with<R: Rng + ?Sized>(&self, root: &NacNode, n: usize, rng: &mut R) -> Array2<f64> {
     let d = self.dim;
     let mut out = Array2::<f64>::zeros((n, d));
@@ -383,8 +393,15 @@ impl NestedArchimedean {
           parent_v.powf(1.0 / alpha) * s
         }
       }
-      (Generator::Clayton, Some(_)) => {
-        unreachable!("sample rejects a nested Clayton tree before drawing")
+      (Generator::Clayton, Some((parent_theta, parent_v))) => {
+        // V_c | V_p is the tilted stable of LST exp(-V_p((1 + s)^α - 1)), α = θ_p / θ_c (Hofert & Mächler 2011, Table 3
+        // and eq. (5)); α = 1 is the no-nesting case, V_c = V_p.
+        let alpha = parent_theta / node.theta;
+        if (alpha - 1.0).abs() < 1e-12 {
+          parent_v
+        } else {
+          Self::tilted_stable(rng, alpha, parent_v)
+        }
       }
     };
 
@@ -422,13 +439,7 @@ impl MultivariateExt for NestedArchimedean {
   }
 
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
-    let root = self.fitted_root()?;
-    if self.generator == Generator::Clayton && !root.children.is_empty() {
-      return Err(CopulaError::Unsupported(
-        "nested Clayton sampling needs the exponentially tilted stable V01 of Hofert & Mächler (2011, §3.2, eq. (5)): sample a Gumbel tree, or evaluate cdf and pdf".into(),
-      ));
-    }
-    Ok(self.sample_with(root, n, &mut seed.rng()))
+    Ok(self.sample_with(self.fitted_root()?, n, &mut seed.rng()))
   }
 
   /// Estimates the binary tree from Kendall's τ-b of `X` (Górecki, Hofert & Holeňa 2016, Algorithm 3); a mean τ̂ outside the
