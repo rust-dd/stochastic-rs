@@ -22,6 +22,7 @@ use stochastic_rs::copulas::correlation::kendall_tau;
 use stochastic_rs::copulas::gof::GofConfig;
 use stochastic_rs::copulas::gof::gof_cramer_von_mises;
 use stochastic_rs::copulas::gof::pseudo_observations;
+use stochastic_rs::copulas::multivariate::cvine::CVine;
 use stochastic_rs::copulas::multivariate::dvine::DVine;
 use stochastic_rs::copulas::multivariate::dvine::PairCopula;
 use stochastic_rs::copulas::multivariate::fit::SelectionCriterion;
@@ -61,6 +62,24 @@ fn dvine(d: usize) -> DVine {
     })
     .collect();
   DVine::new(d, trees).unwrap()
+}
+
+/// BB1 (Clayton–Gumbel) on the first tree: no Gumbel pair exists, and BB1's `h_inverse` is the bisection one.
+fn cvine_bb1(d: usize) -> CVine {
+  let trees = (0..d - 1)
+    .map(|m| {
+      let pair = if m == 0 {
+        PairCopula::Bb1 {
+          theta: 0.8,
+          delta: 1.6,
+        }
+      } else {
+        PairCopula::Independence
+      };
+      vec![pair; d - 1 - m]
+    })
+    .collect();
+  CVine::new(d, trees).unwrap()
 }
 
 fn nac_d4() -> NestedArchimedean {
@@ -162,6 +181,8 @@ fn multivariate_cdf(c: &mut Criterion) {
   group.bench_function("t_d3_16q", |b| b.iter(|| t.cdf(q.view()).unwrap()));
   let vine = dvine(3);
   group.bench_function("dvine_d3_16q", |b| b.iter(|| vine.cdf(q.view()).unwrap()));
+  let (cvine, q4) = (cvine_bb1(4), queries(4));
+  group.bench_function("cvine_d4_16q", |b| b.iter(|| cvine.cdf(q4.view()).unwrap()));
   group.finish();
 }
 

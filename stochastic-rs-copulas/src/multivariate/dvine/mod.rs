@@ -9,11 +9,12 @@ use ndarray::ArrayView2;
 use rand::Rng;
 use rand::RngExt;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::MultivariateFamily;
 use super::fit::SelectionCriterion;
 use super::fit::fit_dvine;
+use super::rosenblatt;
+use super::rosenblatt::Rosenblatt;
 use super::vine_order::VineOrder;
 use crate::bivariate::BivariateFamily;
 use crate::error::CopulaError;
@@ -105,46 +106,17 @@ impl DVine {
     let d = self.dim;
     let mut out = Array2::<f64>::zeros((n, d));
     let mut w = vec![0.0_f64; d + 1];
-    let mut v = vec![vec![0.0_f64; 2 * d]; d + 1];
+    let mut v = self.workspace();
     for mut x in out.rows_mut() {
       for wi in &mut w[1..] {
         *wi = rng.random::<f64>();
       }
-      self.sample_one(&w, &mut v);
+      self.walk(&mut v, |i, _| Some(w[i]));
       for i in 1..=d {
         x[i - 1] = v[i][1].clamp(1e-12, 1.0 - 1e-12);
       }
     }
     out
-  }
-
-  /// One draw by Aas et al. (2009) Algorithm 2 from the uniforms `w[1..=n]`, leaving $x_i = v_{i,1}$ in `v[i][1]`.
-  fn sample_one(&self, w: &[f64], v: &mut [Vec<f64>]) {
-    let n = self.dim;
-    let theta = |j: usize, i: usize| self.pair_copulas[j - 1][i - 1];
-    v[1][1] = w[1];
-    v[2][1] = theta(1, 1).h_inverse(w[2], v[1][1]);
-    if n == 2 {
-      return;
-    }
-    v[2][2] = theta(1, 1).h(v[1][1], v[2][1]);
-    for i in 3..=n {
-      v[i][1] = w[i];
-      for k in (2..i).rev() {
-        v[i][1] = theta(k, i - k).h_inverse(v[i][1], v[i - 1][2 * k - 2]);
-      }
-      v[i][1] = theta(1, i - 1).h_inverse(v[i][1], v[i - 1][1]);
-      if i == n {
-        return;
-      }
-      v[i][2] = theta(1, i - 1).h(v[i - 1][1], v[i][1]);
-      v[i][3] = theta(1, i - 1).h(v[i][1], v[i - 1][1]);
-      for j in 2..=i - 2 {
-        v[i][2 * j] = theta(j, i - j).h(v[i - 1][2 * j - 2], v[i][2 * j - 1]);
-        v[i][2 * j + 1] = theta(j, i - j).h(v[i][2 * j - 1], v[i - 1][2 * j - 2]);
-      }
-      v[i][2 * i - 2] = theta(i - 1, 1).h(v[i - 1][2 * i - 4], v[i][2 * i - 3]);
-    }
   }
 
   /// Log-density of one observation by Aas et al. (2009) Algorithm 4, `v[j][i]` holding $v_{j,i}$ (row 0 is the data).
@@ -235,35 +207,67 @@ impl MultivariateExt for DVine {
     Ok(self.log_density_rows(x.view()))
   }
 
+  /// Genz's separation of variables through the Rosenblatt map `sample` walks, averaged over 4096 Sobol points; a zero
+  /// coordinate gives 0 and a unit one contributes `F(1 | ·) = 1` exactly.
   fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    // Closed-form D-vine CDFs require numerical integration of the joint
-    // density over a $d$-cube vertex pattern (equivalent to the NAC
-    // finite-difference path); for d ≥ 3 a MC estimator via the sampler
-    // is more reliable. We emit MC counts on 4000 samples per query —
-    // ≈ 1.6% accuracy.
     self.check_fit(X)?;
-    let x = self.order.to_vine(X);
-    let m = 4_000usize;
-    let sample = self.sample_with(m, &mut Unseeded.rng());
-    let mut out = Array1::<f64>::zeros(x.nrows());
-    for (i, row) in x.rows().into_iter().enumerate() {
-      let u: Vec<f64> = row.iter().copied().collect();
-      let mut count = 0usize;
-      for r in 0..m {
-        let mut all_le = true;
-        for c in 0..self.dim {
-          if sample[[r, c]] > u[c] {
-            all_le = false;
-            break;
-          }
-        }
-        if all_le {
-          count += 1;
-        }
-      }
-      out[i] = count as f64 / m as f64;
+    Ok(rosenblatt::cdf(self, self.order.to_vine(X).view()))
+  }
+}
+
+impl Rosenblatt for DVine {
+  fn workspace(&self) -> Vec<Vec<f64>> {
+    vec![vec![0.0; 2 * self.dim]; self.dim + 1]
+  }
+
+  /// Aas et al. (2009) Algorithm 2 with `target(i, v)` in place of `w_i`, leaving $x_i = v_{i,1}$ in `v[i][1]`.
+  fn walk(&self, v: &mut [Vec<f64>], mut target: impl FnMut(usize, &[Vec<f64>]) -> Option<f64>) {
+    let n = self.dim;
+    let theta = |j: usize, i: usize| self.pair_copulas[j - 1][i - 1];
+    let Some(p) = target(1, v) else {
+      return;
+    };
+    v[1][1] = p;
+    let Some(p) = target(2, v) else {
+      return;
+    };
+    v[2][1] = theta(1, 1).h_inverse(p, v[1][1]);
+    if n == 2 {
+      return;
     }
-    Ok(out)
+    v[2][2] = theta(1, 1).h(v[1][1], v[2][1]);
+    for i in 3..=n {
+      let Some(p) = target(i, v) else {
+        return;
+      };
+      v[i][1] = p;
+      for k in (2..i).rev() {
+        v[i][1] = theta(k, i - k).h_inverse(v[i][1], v[i - 1][2 * k - 2]);
+      }
+      v[i][1] = theta(1, i - 1).h_inverse(v[i][1], v[i - 1][1]);
+      if i == n {
+        return;
+      }
+      v[i][2] = theta(1, i - 1).h(v[i - 1][1], v[i][1]);
+      v[i][3] = theta(1, i - 1).h(v[i][1], v[i - 1][1]);
+      for j in 2..=i - 2 {
+        v[i][2 * j] = theta(j, i - j).h(v[i - 1][2 * j - 2], v[i][2 * j - 1]);
+        v[i][2 * j + 1] = theta(j, i - j).h(v[i][2 * j - 1], v[i - 1][2 * j - 2]);
+      }
+      v[i][2 * i - 2] = theta(i - 1, 1).h(v[i - 1][2 * i - 4], v[i][2 * i - 3]);
+    }
+  }
+
+  /// Algorithm 2's inversion loop run forward, `h` in place of `h⁻¹`: tree 1 given $v_{i-1,1}$, tree `k` given
+  /// $v_{i-1,2k-2}$.
+  fn conditional_cdf(&self, i: usize, u: f64, v: &[Vec<f64>]) -> f64 {
+    if i == 1 {
+      return u;
+    }
+    let tree_1 = self.pair_copulas[0][i - 2].h(u, v[i - 1][1]);
+    (2..i).fold(tree_1, |t, k| {
+      self.pair_copulas[k - 1][i - k - 1].h(t, v[i - 1][2 * k - 2])
+    })
   }
 }
 
@@ -467,6 +471,44 @@ mod tests {
         "row {row}: {} vs {want}",
         got[row]
       );
+    }
+  }
+
+  /// At a draw the walk places, the forward chain gives back every uniform: Algorithm 2's inversion run backwards.
+  #[test]
+  fn the_conditional_cdf_inverts_the_walk() {
+    let trees = vec![
+      vec![
+        PairCopula::Gaussian { rho: 0.5 },
+        PairCopula::Clayton { theta: 2.0 },
+        PairCopula::Frank { theta: -3.0 },
+        PairCopula::StudentT { rho: -0.2, nu: 4.0 },
+      ],
+      vec![
+        PairCopula::Clayton { theta: 3.0 },
+        PairCopula::Gaussian { rho: 0.6 },
+        PairCopula::Frank { theta: 5.0 },
+      ],
+      vec![
+        PairCopula::Frank { theta: 4.0 },
+        PairCopula::Bb1 {
+          theta: 0.8,
+          delta: 1.6,
+        },
+      ],
+      vec![PairCopula::Gaussian { rho: -0.4 }],
+    ];
+    let vine = DVine::new(5, trees).unwrap();
+    let mut v = vine.workspace();
+    for w in [
+      [0.0, 0.3, 0.7, 0.2, 0.9, 0.55],
+      [0.0, 0.05, 0.5, 0.95, 0.4, 0.15],
+    ] {
+      vine.walk(&mut v, |i, _| Some(w[i]));
+      for i in 1..=5 {
+        let back = vine.conditional_cdf(i, v[i][1], &v);
+        assert!((back - w[i]).abs() < 1e-13, "x_{i}: {back} vs {}", w[i]);
+      }
     }
   }
 }

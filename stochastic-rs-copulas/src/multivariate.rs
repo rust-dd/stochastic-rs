@@ -15,6 +15,7 @@ pub(crate) mod genz;
 pub(crate) mod linalg;
 pub mod nac;
 pub(crate) mod qmc;
+mod rosenblatt;
 pub mod rvine;
 pub mod t;
 mod vine_order;
