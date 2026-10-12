@@ -312,3 +312,16 @@ fn the_plackett_integral_survives_limits_whose_squares_overflow() {
     assert!((got - want).abs() <= 1e-12, "nu={nu}: {got} vs {want}");
   }
 }
+
+/// The Plackett branch floors its rounding at 0 like the sums: `C(1e-12, 1e-12)` at `ν = 1e5`, `ρ = 0` came out
+/// `−7.7e-23` against the 40-digit `4.84e-25`.
+#[test]
+fn the_plackett_branch_never_returns_a_negative_probability() {
+  let got = TCopula::new(0.0, 1e5)
+    .cdf(array![[1e-12, 1e-12]].view())
+    .unwrap()[0];
+  assert!(
+    got >= 0.0 && (got - 4.839454974585712e-25).abs() <= 1e-12,
+    "{got}"
+  );
+}

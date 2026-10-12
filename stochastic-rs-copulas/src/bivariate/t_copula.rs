@@ -16,7 +16,7 @@
 //! copula.
 //!
 //! The bivariate CDF is Dunnett & Sobel's (1954) finite sum for an integer $\nu \le 1000$, else Genz's (2004) eq. (21), its integral by
-//! tanh-sinh to $3 \cdot 10^{-16}$; the value inherits the Student-t quantile's and cdf's error near $u = \tfrac12$ and at large or small $\nu$.
+//! tanh-sinh to $4 \cdot 10^{-16}$; the value inherits the Student-t quantile's and cdf's error near $u = \tfrac12$ and at large or small $\nu$.
 //!
 //! Reference: Embrechts, P., Lindskog, F., McNeil, A.J. (2003),
 //! "Modelling Dependence with Copulas and Applications to Risk
@@ -373,7 +373,7 @@ fn dunnett_sobel(h: f64, k: f64, rho: f64, n: u32) -> f64 {
   floor_at_zero(total)
 }
 
-/// The sums cancel to about `−2e-16` where the probability is 0; a NaN passes through.
+/// Both forms cancel just below 0 where the probability is 0 (`−2e-16` for the sums); a NaN passes through.
 fn floor_at_zero(t: f64) -> f64 {
   if t < 0.0 { 0.0 } else { t }
 }
@@ -413,7 +413,7 @@ fn generalized_plackett(h: f64, k: f64, rho: f64, nu: f64) -> f64 {
       w * (-0.5 * nu * log).exp()
     })
     .sum();
-  base - s * top * integral / TAU
+  floor_at_zero(base - s * top * integral / TAU)
 }
 
 /// Tanh-sinh nodes `(x, w)` on `(0, 1)`, step `1/64` over `|t| ≤ 3.5`; at step `1/32` the endpoint layer at `h ≈ sk`
