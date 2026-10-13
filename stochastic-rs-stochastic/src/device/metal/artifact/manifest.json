@@ -1011,857 +1011,1194 @@
       {
         "name": "euler_0_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_1_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_2_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_3_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_4_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_5_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_6_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_7_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_8_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_9_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_10_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_11_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_12_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_13_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_14_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_15_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_16_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_17_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_18_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_19_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_20_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_21_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_22_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_23_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_24_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_25_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_26_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_27_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_28_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_29_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_30_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_31_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_32_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_33_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_34_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_35_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_36_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_37_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_38_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_39_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_40_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_41_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_42_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_43_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_44_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_45_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_46_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_47_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_48_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_49_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_50_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_51_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_52_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_53_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_54_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_55_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_56_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_57_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_58_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_58_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_59_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_59_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_60_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_60_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_61_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_62_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_62_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_63_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_64_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_65_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_66_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_66_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_67_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_67_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_68_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_68_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_69_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_70_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_71_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_72_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_73_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_74_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_75_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_76_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_77_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_77_0_1",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_77_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_77_1_1",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_78_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_78_0_1",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_78_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_78_1_1",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_79_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_79_0_1",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_79_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_79_1_1",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_80_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_80_0_1",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_80_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_80_1_1",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_81_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_81_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_82_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_82_0_1",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_82_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_82_1_1",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_83_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_84_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_85_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_86_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_87_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_88_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_89_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_90_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_91_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_92_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_93_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_94_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_95_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_96_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_97_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_98_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_98_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_99_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_99_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_100_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_100_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_101_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_101_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_102_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_102_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_103_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_104_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_105_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_106_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_106_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_107_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_108_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_109_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_110_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_111_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_112_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_113_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_114_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_115_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_115_0_1",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_115_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_115_1_1",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_116_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_116_0_1",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_116_1_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_116_1_1",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_117_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_118_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_119_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "euler_120_0_0",
         "signature": 0,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "fft_columns_1",
         "signature": 1,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 6,
+        "fallible": false
       },
       {
         "name": "fft_columns_2",
         "signature": 1,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 6,
+        "fallible": false
       },
       {
         "name": "fft_columns_3",
         "signature": 1,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 6,
+        "fallible": false
       },
       {
         "name": "fft_columns_extract_1",
         "signature": 2,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 11,
+        "fallible": false
       },
       {
         "name": "fft_columns_extract_2",
         "signature": 2,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 11,
+        "fallible": false
       },
       {
         "name": "fft_columns_extract_3",
         "signature": 2,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 11,
+        "fallible": false
       },
       {
         "name": "sheet_rows",
         "signature": 3,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 9,
+        "fallible": false
       },
       {
         "name": "sheet_transpose",
         "signature": 4,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 7,
+        "fallible": false
       },
       {
         "name": "sheet_extract",
         "signature": 5,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 11,
+        "fallible": false
       },
       {
         "name": "gen_tile_fft",
         "signature": 6,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 8,
+        "fallible": false
       },
       {
         "name": "gen_fft_extract",
         "signature": 7,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 10,
+        "fallible": false
       },
       {
         "name": "fft_tile",
         "signature": 8,
-        "required_block": null
+        "required_block": null,
+        "gate_binding": 5,
+        "fallible": false
       }
     ]
   },
+  "checks": [],
   "target": "metal64-unknown-none",
-  "msl_version": "3.1",
+  "msl_version": "3.2",
   "files": {
-    "msl": "b502b69919191ed7e4200be4713915819dc55bf5375f43299c66a78aa13b651f",
-    "oxide_ir": "669b821f2c09ef9e61eeb4a107037af1582c5d42156e3252384fc6547c9154c8",
-    "ir": "b2a7fd5101e919522704905a75f84a93ccca016ed9a22864ec17010694b39734",
-    "metallib": "4171a201092168b0d3da0a4dc87ebbb17ae68b1a7f389ea41f6521f6bd33959c",
-    "bindings": "257d9a024d4a28d8f15b9d2a31ef72b5cefb8c3e20f9d0ad9e4d179b2d1f99eb"
+    "msl": "ac0924f24026b5cdb28f97c15e4f0db82f13a704b60db23c3805b00505ce6b93",
+    "oxide_ir": "36d40049b06b29230d522c2e04cf994f1d72766df74983385df155c2418a99bb",
+    "ir": "f914a3a5c4f910c81f5c5ff7eb02908ae0ecf18f42e55ad9ce813d65e77e140a",
+    "metallib": "8b3cc9af991dbadaacd12cf9ed2f45c22c254e30e0a2b19983d4892058537073",
+    "bindings": "c8d1f3966381317fe8d67ea0de98ce2db6aa431eb3c60b6747dd1781d41b6fb4"
   },
   "build": {
-    "fingerprint": "5714ca6cb6a6f7947e51c2f5bb093d2f83c353ecff3c773a39077b020f21a423",
-    "compiler": "6e7c9437d7a651030c14220b7df5986dcc2c1e831358795edc1eaba1f9a9fa45",
+    "fingerprint": "ed0bff4f3deea558d00af0d68b70cf31263ee2fd555028f3f9efdbc24f7317e5",
+    "compiler": "ef72dc14ab99c2ba8c0019830488eaec342411e33ecab69b7151e19d4268fbb9",
     "rustc": "rustc 1.101.0-nightly (db8f076d2 2026-10-03)\nbinary: rustc\ncommit-hash: db8f076d2619ce2585b0380dda06e8da25a40da4\ncommit-date: 2026-10-03\nhost: aarch64-apple-darwin\nrelease: 1.101.0-nightly\nLLVM version: 23.1.1",
     "metal": "Apple metal version 32023.883 (metalfe-32023.883)\nTarget: air64-apple-darwin25.2.0\nThread model: posix\nInstalledDir: /Users/danixx/Library/Developer/DVTDownloads/MetalToolchain/mounts/5f4a441a6d0a11f2e9b28c67384263afe92320f7/Metal.xctoolchain/usr/metal/32023/bin",
     "sdk": "26.5",
@@ -1890,40 +2227,40 @@
       "--check-cfg",
       "cfg(feature, values())",
       "-C",
-      "metadata=427701cc3b16d425",
+      "metadata=0736b5f07920fe11",
       "-C",
-      "extra-filename=-ab4e400773753edc",
+      "extra-filename=-a1af9f2081417e5d",
       "--out-dir",
-      "/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/a0bd41a219e2e1fa22b594f2ddc594d61244f28ba79edb56ffd5890fb4defa6f/metal64-unknown-none/release/build/stochastic-rs-metal-kernels/ab4e400773753edc/out",
+      "/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/7458cc4bec6289ffcaa405ee7cf956fdb5f6e922bba4ea340054792663a47aae/metal64-unknown-none/release/build/stochastic-rs-metal-kernels/a1af9f2081417e5d/out",
       "--target",
       "/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/metal64-unknown-none.json",
       "-Zunstable-options",
       "-C",
       "strip=debuginfo",
       "-L",
-      "dependency=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/a0bd41a219e2e1fa22b594f2ddc594d61244f28ba79edb56ffd5890fb4defa6f/metal64-unknown-none/release/build/compiler_builtins/fbae3f8d3d58248b/out",
+      "dependency=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/7458cc4bec6289ffcaa405ee7cf956fdb5f6e922bba4ea340054792663a47aae/metal64-unknown-none/release/build/compiler_builtins/fbae3f8d3d58248b/out",
       "-L",
-      "dependency=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/a0bd41a219e2e1fa22b594f2ddc594d61244f28ba79edb56ffd5890fb4defa6f/metal64-unknown-none/release/build/core/79c0c3d75a35eed3/out",
+      "dependency=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/7458cc4bec6289ffcaa405ee7cf956fdb5f6e922bba4ea340054792663a47aae/metal64-unknown-none/release/build/core/79c0c3d75a35eed3/out",
       "-L",
-      "dependency=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/a0bd41a219e2e1fa22b594f2ddc594d61244f28ba79edb56ffd5890fb4defa6f/release/build/metal-oxide-macros/3ab323472d1d7e38/out",
+      "dependency=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/7458cc4bec6289ffcaa405ee7cf956fdb5f6e922bba4ea340054792663a47aae/release/build/metal-oxide-macros/62da3ab88da5742d/out",
       "-L",
-      "dependency=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/a0bd41a219e2e1fa22b594f2ddc594d61244f28ba79edb56ffd5890fb4defa6f/release/build/stochastic-rs-metal-kernels/ab4e400773753edc/out",
+      "dependency=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/7458cc4bec6289ffcaa405ee7cf956fdb5f6e922bba4ea340054792663a47aae/release/build/stochastic-rs-metal-kernels/a1af9f2081417e5d/out",
       "--extern",
-      "noprelude,nounused:compiler_builtins=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/a0bd41a219e2e1fa22b594f2ddc594d61244f28ba79edb56ffd5890fb4defa6f/metal64-unknown-none/release/build/compiler_builtins/fbae3f8d3d58248b/out/libcompiler_builtins-fbae3f8d3d58248b.rmeta",
+      "noprelude,nounused:compiler_builtins=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/7458cc4bec6289ffcaa405ee7cf956fdb5f6e922bba4ea340054792663a47aae/metal64-unknown-none/release/build/compiler_builtins/fbae3f8d3d58248b/out/libcompiler_builtins-fbae3f8d3d58248b.rmeta",
       "--extern",
-      "noprelude,nounused:compiler_builtins=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/a0bd41a219e2e1fa22b594f2ddc594d61244f28ba79edb56ffd5890fb4defa6f/metal64-unknown-none/release/build/compiler_builtins/fbae3f8d3d58248b/out/libcompiler_builtins-fbae3f8d3d58248b.rmeta",
+      "noprelude,nounused:compiler_builtins=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/7458cc4bec6289ffcaa405ee7cf956fdb5f6e922bba4ea340054792663a47aae/metal64-unknown-none/release/build/compiler_builtins/fbae3f8d3d58248b/out/libcompiler_builtins-fbae3f8d3d58248b.rmeta",
       "--extern",
-      "noprelude,nounused:core=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/a0bd41a219e2e1fa22b594f2ddc594d61244f28ba79edb56ffd5890fb4defa6f/metal64-unknown-none/release/build/core/79c0c3d75a35eed3/out/libcore-79c0c3d75a35eed3.rmeta",
+      "noprelude,nounused:core=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/7458cc4bec6289ffcaa405ee7cf956fdb5f6e922bba4ea340054792663a47aae/metal64-unknown-none/release/build/core/79c0c3d75a35eed3/out/libcore-79c0c3d75a35eed3.rmeta",
       "--extern",
-      "noprelude,nounused:core=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/a0bd41a219e2e1fa22b594f2ddc594d61244f28ba79edb56ffd5890fb4defa6f/metal64-unknown-none/release/build/core/79c0c3d75a35eed3/out/libcore-79c0c3d75a35eed3.rmeta",
+      "noprelude,nounused:core=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/7458cc4bec6289ffcaa405ee7cf956fdb5f6e922bba4ea340054792663a47aae/metal64-unknown-none/release/build/core/79c0c3d75a35eed3/out/libcore-79c0c3d75a35eed3.rmeta",
       "--extern",
-      "metal_oxide_device=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/a0bd41a219e2e1fa22b594f2ddc594d61244f28ba79edb56ffd5890fb4defa6f/metal64-unknown-none/release/build/metal-oxide-device/9299e7d5468df437/out/libmetal_oxide_device-9299e7d5468df437.rmeta",
+      "metal_oxide_device=/Users/danixx/Desktop/stochastic-rs/.claude/worktrees/metal-oxide-migration/target/metal/rust/7458cc4bec6289ffcaa405ee7cf956fdb5f6e922bba4ea340054792663a47aae/metal64-unknown-none/release/build/metal-oxide-device/916bf15c87116fc4/out/libmetal_oxide_device-916bf15c87116fc4.rmeta",
       "-Z",
       "unstable-options",
       "--force-warn=unused_crate_dependencies"
     ],
     "metal_flags": [
-      "-std=metal3.1",
+      "-std=metal3.2",
       "-mmacosx-version-min=15.0",
       "-fmetal-math-mode=relaxed",
       "-fmetal-math-fp32-functions=fast",
