@@ -17,6 +17,7 @@ use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_distributions::special::ndtri;
 
 use super::McEstimate;
+use super::estimate_from_samples;
 use crate::traits::FloatExt;
 
 /// Generate `n` stratified standard normal samples in one dimension.
@@ -89,26 +90,8 @@ where
   F: Fn(&Array1<T>) -> T,
 {
   let samples = stratified_normals::<T>(n_paths, dim);
-  let mut sum = T::zero();
-  let mut sum_sq = T::zero();
 
-  for i in 0..n_paths {
-    let z = samples.row(i).to_owned();
-    let y = payoff(&z);
-    sum += y;
-    sum_sq += y * y;
-  }
-
-  let n = T::from_usize_(n_paths);
-  let mean = sum / n;
-  let variance = sum_sq / n - mean * mean;
-  let std_err = (variance / n).sqrt();
-
-  McEstimate {
-    mean,
-    std_err,
-    n_samples: n_paths,
-  }
+  estimate_from_samples((0..n_paths).map(|i| payoff(&samples.row(i).to_owned())))
 }
 
 #[cfg(test)]

@@ -104,17 +104,8 @@ fn mc_spread_one_model_prices_a_strike_grid() {
   );
 }
 
-/// A `NaN` maturity on the degenerate-volatility branch used to price a
-/// confident **`0.0`**.
-///
-/// The branch is reached by an admissible model — `sigma1 == sigma2` at
-/// `rho == 1`, whose combined variance is exactly zero — and `tau`
-/// arrives as `NaN` legitimately, from
-/// [`TimeExt::tau_or_from_dates`](crate::traits::TimeExt) on an expiry
-/// that never resolved. The second half is what made it a defect rather
-/// than a quirk: the *same* `NaN` `tau` against a non-degenerate model
-/// returns `NaN`, so one exchange option in a book reported no value
-/// while its neighbour reported no answer.
+/// A NaN `tau` on the degenerate branch (`sigma1 == sigma2`, `rho == 1`) prices NaN, as on every
+/// other branch, not a confident `0.0`.
 #[test]
 fn margrabe_does_not_launder_a_nan_query_on_the_degenerate_branch() {
   let degenerate = MargrabePricer::new(0.2, 0.2, 1.0);

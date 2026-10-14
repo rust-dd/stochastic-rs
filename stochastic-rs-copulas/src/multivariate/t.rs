@@ -36,6 +36,7 @@
 //! sample Kendall-τ via $\rho_{ij} = \sin(\tfrac{\pi}{2}\tau_{ij})$
 //! (rank-based, robust to ν), then (b) maximise the log-likelihood in
 //! $\nu$ by 1-D Brent search on $[2.1, 50]$ holding $\Sigma$ fixed.
+//! An indefinite or near-singular $\hat\Sigma$ is shrunk toward the identity until every eigenvalue is at least $10^{-3}$.
 //!
 //! References:
 //! - Demarta, S., McNeil, A.J. (2005), "The t copula and related copulas",
@@ -47,85 +48,76 @@
 //! - McNeil, Frey, Embrechts (2015), *Quantitative Risk Management*,
 //!   Princeton UP, §7.5.
 
-use std::error::Error;
-use std::f64;
+use std::sync::OnceLock;
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView2;
 use ndarray::Axis;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::chi_square::SimdChiSquared;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::beta_i;
 use stochastic_rs_distributions::special::ln_gamma;
 use stochastic_rs_distributions::special::ndtri;
 
-use super::CopulaType;
-use super::linalg::is_spd;
-use super::linalg::spd_cholesky_lower;
-use super::linalg::spd_inverse;
+use super::MultivariateFamily;
+use super::correlation_matrix::CorrelationMatrix;
+use super::correlation_matrix::shrink_to_spd;
+use super::genz::chi_scale;
+use super::genz::mvt_upper;
+use super::genz::open_coordinates;
+use super::genz::prioritize;
+use super::qmc::sobol_points;
+use crate::bivariate::t_copula::check_nu;
+use crate::bivariate::t_copula::t_copula_cdf;
+use crate::correlation::check_defined;
 use crate::correlation::kendall_tau;
+use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
 
-/// Multivariate Student-$t$ copula with degrees of freedom $\nu$ and
-/// correlation matrix $\Sigma$. The $\nu \to \infty$ limit collapses to the
-/// Gaussian copula; for finite $\nu$ the copula exhibits symmetric
-/// upper/lower tail dependence on every off-diagonal pair.
+/// Multivariate Student-$t$ copula with correlation $\Sigma$ and degrees of freedom $\nu$; as $\nu \to \infty$ it
+/// collapses to the Gaussian copula, and for finite $\nu$ every pair has symmetric tail dependence.
 #[derive(Debug, Clone)]
 pub struct TMultivariate {
-  dim: usize,
-  /// Degrees of freedom $\nu > 2$. Default 4.
+  /// Degrees of freedom, `0 < nu < inf`; 4 by default.
   nu: f64,
-  /// Correlation matrix (dim × dim).
-  corr: Option<Array2<f64>>,
-  /// Inverse correlation matrix (cached for log-pdf).
-  inv_corr: Option<Array2<f64>>,
-  /// Lower-triangular Cholesky factor of `corr` (cached for sampling).
-  chol_lower: Option<Array2<f64>>,
-  /// Log-determinant of `corr` (cached for log-pdf).
-  log_det_corr: Option<f64>,
+  corr: Option<CorrelationMatrix>,
+  /// The cdf's χ scales, a function of `nu` alone, built by the first query that integrates.
+  chi: OnceLock<Array1<f64>>,
 }
 
 impl Default for TMultivariate {
   fn default() -> Self {
     Self {
-      dim: 0,
       nu: 4.0,
       corr: None,
-      inv_corr: None,
-      chol_lower: None,
-      log_det_corr: None,
+      chi: OnceLock::new(),
     }
   }
 }
 
 impl TMultivariate {
-  pub fn new() -> Self {
-    Self::default()
+  /// The t copula of correlation `corr` and `nu` degrees of freedom; panics unless `corr` is a correlation matrix and
+  /// `0 < nu < ∞` with `nu / 2 > 0`.
+  pub fn new(corr: Array2<f64>, nu: f64) -> Self {
+    Self::try_new(corr, nu).unwrap_or_else(|e| panic!("{e}"))
   }
 
-  /// Construct directly from a correlation matrix and degrees of freedom.
-  pub fn new_with(corr: Array2<f64>, nu: f64) -> Result<Self, Box<dyn Error>> {
-    if nu <= 0.0 || nu.is_nan() {
-      return Err("Degrees of freedom must be positive".into());
-    }
-    let dim = corr.nrows();
-    if dim != corr.ncols() {
-      return Err("Correlation matrix must be square".into());
-    }
-    let mut t = Self {
+  /// `new` with the error returned instead of a panic; `nu` is checked first.
+  pub fn try_new(corr: Array2<f64>, nu: f64) -> Result<Self, CopulaError> {
+    check_nu(nu)?;
+    Ok(Self {
       nu,
-      ..Self::default()
-    };
-    t.set_corr(corr)?;
-    Ok(t)
+      corr: Some(CorrelationMatrix::try_new(corr)?),
+      chi: OnceLock::new(),
+    })
   }
 
   /// Returns a reference to the internal correlation matrix, if fitted.
   pub fn correlation(&self) -> Option<&Array2<f64>> {
-    self.corr.as_ref()
+    self.corr.as_ref().map(CorrelationMatrix::corr)
   }
 
   /// Current degrees of freedom $\nu$.
@@ -133,88 +125,22 @@ impl TMultivariate {
     self.nu
   }
 
-  /// Override the degrees of freedom $\nu$. Useful when the user picks
-  /// $\nu$ from an external calibration (e.g. tail-coefficient match) and
-  /// wants the copula to skip its own optimisation. Returns an error if
-  /// $\nu \le 0$.
-  pub fn set_nu(&mut self, nu: f64) -> Result<(), Box<dyn Error>> {
-    if nu <= 0.0 || nu.is_nan() {
-      return Err("Degrees of freedom must be positive".into());
-    }
+  /// Overrides $\nu$, skipping the fit's own search; panics unless `0 < nu < ∞` and `nu / 2 > 0`.
+  pub fn set_nu(&mut self, nu: f64) {
+    check_nu(nu).unwrap_or_else(|e| panic!("{e}"));
     self.nu = nu;
-    Ok(())
+    self.chi = OnceLock::new();
   }
 
-  fn set_corr(&mut self, corr: Array2<f64>) -> Result<(), Box<dyn Error>> {
-    let dim = corr.nrows();
-    self.dim = dim;
-
-    let l_arr = spd_cholesky_lower(&corr)
-      .ok_or_else(|| -> Box<dyn Error> { "Correlation matrix is not positive definite".into() })?;
-    let mut log_det = 0.0;
-    for i in 0..dim {
-      log_det += l_arr[[i, i]].ln();
-    }
-    log_det *= 2.0;
-    let inv_arr = spd_inverse(&corr)
-      .ok_or_else(|| -> Box<dyn Error> { "Failed to invert correlation matrix".into() })?;
-
-    self.corr = Some(corr);
-    self.inv_corr = Some(inv_arr);
-    self.chol_lower = Some(l_arr);
-    self.log_det_corr = Some(log_det);
-    Ok(())
-  }
-
-  fn require_fitted(&self) -> Result<(), Box<dyn Error>> {
-    if self.corr.is_none()
-      || self.inv_corr.is_none()
-      || self.chol_lower.is_none()
-      || self.log_det_corr.is_none()
-    {
-      return Err("Fit the copula or provide a correlation matrix first".into());
-    }
-    Ok(())
-  }
-
-  /// Shared sampling core for [`MultivariateExt::sample`] and
-  /// [`MultivariateExt::sample_with_seed`]. Both the normal and the
-  /// $\chi^2$ draw come from the **same** seed source (advancing its
-  /// interior state per construction), matching the crate-wide idiom for
-  /// composed distributions instead of reseeding each from the identical
-  /// raw `u64`.
-  fn sample_from_seed<S: SeedExt>(
-    &self,
-    n: usize,
-    seed: &S,
-  ) -> Result<Array2<f64>, Box<dyn Error>> {
-    self.require_fitted()?;
-    let d = self.dim;
-    let l = self.chol_lower.as_ref().unwrap();
-    // Z ~ N(0, Σ) by L · G with G ~ N(0, I).
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, seed);
-    let g = Array2::from_shape_fn((n, d), |_| normal.sample_fast());
-    let z = g.dot(&l.t());
-    // W ~ χ²_ν / ν, independently per row.
-    let chi = SimdChiSquared::<f64>::new(self.nu, seed);
-    let mut u = Array2::<f64>::zeros((n, d));
-    for r in 0..n {
-      let w_raw = chi.sample_fast();
-      let w = (w_raw / self.nu).max(1e-300);
-      let scale = 1.0 / w.sqrt();
-      for c in 0..d {
-        let xc = z[[r, c]] * scale;
-        u[[r, c]] = Self::t_cdf(xc, self.nu).clamp(1e-12, 1.0 - 1e-12);
-      }
-    }
-    Ok(u)
+  fn fitted(&self) -> Result<&CorrelationMatrix, CopulaError> {
+    self.corr.as_ref().ok_or(CopulaError::NotFitted)
   }
 
   /// Standard Student-$t$ density $f_\nu(x)$ with the natural-log
   /// normaliser kept as a separate term for log-pdf composition.
   fn t_log_pdf(x: f64, nu: f64) -> f64 {
     let log_norm =
-      ln_gamma(0.5 * (nu + 1.0)) - 0.5 * (nu * f64::consts::PI).ln() - ln_gamma(0.5 * nu);
+      ln_gamma(0.5 * (nu + 1.0)) - 0.5 * (nu * std::f64::consts::PI).ln() - ln_gamma(0.5 * nu);
     let log_kernel = -0.5 * (nu + 1.0) * (1.0 + x * x / nu).ln();
     log_norm + log_kernel
   }
@@ -264,68 +190,50 @@ impl TMultivariate {
   }
 
   /// Map U ∈ (0,1)^{n×d} → Z ∈ ℝ^{n×d} via the univariate $t_\nu^{-1}$.
-  fn transform_to_t(&self, u: &Array2<f64>) -> Array2<f64> {
+  fn transform_to_t(u: ArrayView2<f64>, nu: f64) -> Array2<f64> {
     let eps = 1e-12;
-    let mut z = u.clone();
+    let mut z = u.to_owned();
     for mut row in z.axis_iter_mut(Axis(0)) {
       for val in row.iter_mut() {
         let clamped = val.clamp(eps, 1.0 - eps);
-        *val = Self::t_quantile(clamped, self.nu);
+        *val = Self::t_quantile(clamped, nu);
       }
     }
     z
   }
 
-  /// Build $\Sigma$ from sample Kendall-τ via $\rho_{ij} = \sin(\pi\tau_{ij}/2)$.
-  /// This is the rank-based identity that holds for **any** elliptical
-  /// copula, hence is ν-agnostic and robust to the t-copula's heavy tails.
-  fn estimate_corr_from_kendall(x: &Array2<f64>) -> Array2<f64> {
+  /// $\Sigma$ from the sample Kendall τ-b matrix through $\rho_{ij} = \sin(\pi\tau_{ij}/2)$, which holds for any elliptical
+  /// copula and so does not depend on $\nu$.
+  fn estimate_corr_from_kendall(x: ArrayView2<f64>) -> Result<Array2<f64>, CopulaError> {
     let d = x.ncols();
-    let tau = kendall_tau(x);
+    let tau = kendall_tau(x)?;
+    check_defined(tau.view())?;
     let mut corr = Array2::<f64>::zeros((d, d));
     for i in 0..d {
       corr[[i, i]] = 1.0;
     }
     for i in 0..d {
       for j in (i + 1)..d {
-        let rho = (0.5 * f64::consts::PI * tau[[i, j]])
+        let rho = (0.5 * std::f64::consts::PI * tau[[i, j]])
           .sin()
           .clamp(-0.999_999, 0.999_999);
         corr[[i, j]] = rho;
         corr[[j, i]] = rho;
       }
     }
-    Self::nearest_spd(corr)
-  }
-
-  /// Project an indefinite candidate onto the SPD cone by a small diagonal
-  /// jitter. We don't need full Higham — Kendall-derived matrices are
-  /// already close to SPD; only edge cases (highly correlated d ≥ 10)
-  /// occasionally need the bump.
-  fn nearest_spd(mut corr: Array2<f64>) -> Array2<f64> {
-    let d = corr.nrows();
-    let mut jitter = 0usize;
-    while !is_spd(&corr) && jitter < 6 {
-      let eps = 10f64.powi(-6_i32 + jitter as i32);
-      for k in 0..d {
-        corr[[k, k]] = 1.0 + eps;
-      }
-      jitter += 1;
-    }
-    corr
+    Ok(corr)
   }
 
   /// Log-density of the multivariate Student-$t$ at the un-transformed
   /// argument `z` (i.e. **before** dividing by the marginal $f_\nu(z_j)$ to
   /// obtain the copula density). Used internally by [`log_pdf`].
-  fn mv_log_pdf(&self, z: &Array2<f64>) -> Array1<f64> {
-    let inv = self.inv_corr.as_ref().unwrap();
-    let log_det = self.log_det_corr.unwrap();
-    let d = self.dim as f64;
-    let nu = self.nu;
+  fn mv_log_pdf(corr: &CorrelationMatrix, nu: f64, z: ArrayView2<f64>) -> Array1<f64> {
+    let inv = corr.inverse();
+    let log_det = corr.log_det();
+    let d = corr.dim() as f64;
     let log_norm = ln_gamma(0.5 * (nu + d))
       - ln_gamma(0.5 * nu)
-      - 0.5 * d * (nu * f64::consts::PI).ln()
+      - 0.5 * d * (nu * std::f64::consts::PI).ln()
       - 0.5 * log_det;
     let mut out = Array1::<f64>::zeros(z.nrows());
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {
@@ -336,27 +244,15 @@ impl TMultivariate {
     out
   }
 
-  /// Log-likelihood of the data under the current correlation matrix and
-  /// the candidate $\nu$. Used by the 1-D Brent search in [`fit`].
-  fn log_likelihood_for_nu(&self, x: &Array2<f64>, nu: f64) -> f64 {
-    // Build a temporary view of self with the candidate ν so we can re-use
-    // the cached Σ⁻¹ / |Σ| (the Brent search only varies ν, never Σ).
-    let saved = self.nu;
-    let tmp = TMultivariate {
-      dim: self.dim,
-      nu,
-      corr: self.corr.clone(),
-      inv_corr: self.inv_corr.clone(),
-      chol_lower: self.chol_lower.clone(),
-      log_det_corr: self.log_det_corr,
-    };
-    let z = tmp.transform_to_t(x);
-    let mv = tmp.mv_log_pdf(&z);
+  /// Log-likelihood of the data under `corr` and the candidate $\nu$; the 1-D
+  /// golden-section search in [`fit`] varies $\nu$ and never $\Sigma$.
+  fn log_likelihood_for_nu(corr: &CorrelationMatrix, x: ArrayView2<f64>, nu: f64) -> f64 {
+    let z = Self::transform_to_t(x, nu);
+    let mv = Self::mv_log_pdf(corr, nu, z.view());
     let mut marginal_log = 0.0;
     for v in z.iter() {
       marginal_log += Self::t_log_pdf(*v, nu);
     }
-    let _ = saved;
     mv.iter().sum::<f64>() - marginal_log
   }
 
@@ -364,8 +260,8 @@ impl TMultivariate {
   /// $\Sigma$ fixed. Bracket $[\nu_{\min}, \nu_{\max}] = [2.1, 50]$ matches
   /// Demarta-McNeil (2005, §6) where the upper bound is taken as the
   /// effective "Gaussian limit" threshold.
-  fn optimise_nu(&self, x: &Array2<f64>) -> f64 {
-    let f = |nu: f64| -self.log_likelihood_for_nu(x, nu);
+  fn optimise_nu(corr: &CorrelationMatrix, x: ArrayView2<f64>) -> f64 {
+    let f = |nu: f64| -Self::log_likelihood_for_nu(corr, x, nu);
     // Brent on [2.1, 50] with golden-section initialisation.
     let mut a = 2.1_f64;
     let mut b = 50.0_f64;
@@ -397,49 +293,77 @@ impl TMultivariate {
 }
 
 impl MultivariateExt for TMultivariate {
-  fn r#type(&self) -> CopulaType {
-    CopulaType::TMultivariate
+  fn family(&self) -> MultivariateFamily {
+    MultivariateFamily::TMultivariate
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
-    self.sample_from_seed(n, &Unseeded)
+  /// The normal and the $\chi^2$ stream both come from `seed`, which advances between them.
+  fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
+    let corr = self.fitted()?;
+    let d = corr.dim();
+    let l = corr.chol_lower();
+    // Z ~ N(0, Σ) by L · G with G ~ N(0, I).
+    let mut normal = SimdNormal::<f64>::new(0.0, 1.0).seeded(seed);
+    let g = Array2::from_shape_fn((n, d), |_| normal.sample());
+    let z = g.dot(&l.t());
+    // W ~ χ²_ν / ν, independently per row.
+    let mut chi = SimdChiSquared::<f64>::new(self.nu).seeded(seed);
+    let mut u = Array2::<f64>::zeros((n, d));
+    for r in 0..n {
+      let w_raw = chi.sample();
+      let w = (w_raw / self.nu).max(1e-300);
+      let scale = 1.0 / w.sqrt();
+      for c in 0..d {
+        let xc = z[[r, c]] * scale;
+        u[[r, c]] = Self::t_cdf(xc, self.nu).clamp(1e-12, 1.0 - 1e-12);
+      }
+    }
+    Ok(u)
   }
 
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, Box<dyn Error>> {
-    self.sample_from_seed(n, &Deterministic::new(seed))
-  }
-
-  fn fit(&mut self, X: Array2<f64>) -> Result<(), Box<dyn Error>> {
-    if X.nrows() < 2 || X.ncols() < 2 {
-      return Err("Need at least 2 samples and 2 dimensions".into());
+  fn fit(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
+    if X.ncols() < 2 {
+      return Err(CopulaError::InvalidStructure(format!(
+        "a t-copula needs dim >= 2, got {}",
+        X.ncols()
+      )));
+    }
+    if X.nrows() < 2 {
+      return Err(CopulaError::InsufficientData {
+        needed: 2,
+        got: X.nrows(),
+      });
     }
     if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
-      return Err("Input data must be in [0,1] for the t-copula fit".into());
+      return Err(CopulaError::MarginalOutOfRange);
     }
-    self.dim = X.ncols();
-    let corr = Self::estimate_corr_from_kendall(&X);
-    self.set_corr(corr)?;
+    let corr = CorrelationMatrix::try_new(shrink_to_spd(Self::estimate_corr_from_kendall(X)?))?;
     // Profile MLE for ν conditional on Σ.
-    self.nu = self.optimise_nu(&X);
+    self.nu = Self::optimise_nu(&corr, X);
+    self.chi = OnceLock::new();
+    self.corr = Some(corr);
     Ok(())
   }
 
-  fn check_fit(&self, X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
-    self.require_fitted()?;
-    if X.ncols() != self.dim {
-      return Err("Dimension mismatch".into());
+  fn check_fit(&self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
+    let dim = self.fitted()?.dim();
+    if X.ncols() != dim {
+      return Err(CopulaError::DimensionMismatch {
+        expected: dim,
+        got: X.ncols(),
+      });
     }
     if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
-      return Err("Input X must be in [0,1] for the t-copula".into());
+      return Err(CopulaError::MarginalOutOfRange);
     }
     Ok(())
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
-    let z = self.transform_to_t(X);
-    let mv = self.mv_log_pdf(&z);
     let nu = self.nu;
+    let z = Self::transform_to_t(X, nu);
+    let mv = Self::mv_log_pdf(self.fitted()?, nu, z.view());
     let mut out = Array1::<f64>::zeros(z.nrows());
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {
       let mut marginal_log = 0.0;
@@ -451,11 +375,11 @@ impl MultivariateExt for TMultivariate {
     Ok(out)
   }
 
-  fn log_pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn log_pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
-    let z = self.transform_to_t(X);
-    let mv = self.mv_log_pdf(&z);
     let nu = self.nu;
+    let z = Self::transform_to_t(X, nu);
+    let mv = Self::mv_log_pdf(self.fitted()?, nu, z.view());
     let mut out = Array1::<f64>::zeros(z.nrows());
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {
       let mut marginal_log = 0.0;
@@ -467,40 +391,38 @@ impl MultivariateExt for TMultivariate {
     Ok(out)
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  /// `T_{R,ν}(t_ν⁻¹(u))` on the closed cube: a zero coordinate gives 0 and a unit one drops out; two left are the
+  /// bivariate closed form, more are Genz–Bretz over the Sobol points in that query's prioritized order.
+  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
-    // Closed forms for the multivariate Student-t CDF exist only in d ≤ 2
-    // (Dunnett-Sobel 1D reduction); for d ≥ 3 we estimate via the χ²-mixer
-    // representation: 1/m Σ_r 1{ Z_r/√W_r ≤ z } with Z_r ~ N(0,Σ),
-    // W_r ~ χ²_ν / ν. 4000 MC samples per query match the Gaussian copula
-    // CDF estimator's tolerance.
-    let z = self.transform_to_t(X);
-    let l = self.chol_lower.as_ref().unwrap();
-    let n = z.nrows();
-    let m = 4000usize;
-    let mut out = Array1::<f64>::zeros(n);
-    let normal = SimdNormal::<f64>::new(0.0, 1.0, &Unseeded);
-    let chi = SimdChiSquared::<f64>::new(self.nu, &Unseeded);
-    let g = Array2::from_shape_fn((m, self.dim), |_| normal.sample_fast());
-    let y = g.dot(&l.t());
-    let mut w_buf = vec![0.0f64; m];
-    for v in w_buf.iter_mut() {
-      let w = (chi.sample_fast() / self.nu).max(1e-300);
-      *v = 1.0 / w.sqrt();
-    }
-    for (i, row) in z.axis_iter(Axis(0)).enumerate() {
-      let mut count = 0usize;
-      'outer: for r in 0..m {
-        for c in 0..self.dim {
-          if y[[r, c]] * w_buf[r] > row[c] {
-            continue 'outer;
+    let corr = self.fitted()?;
+    let mut points = None;
+    Ok(
+      X.rows()
+        .into_iter()
+        .map(|u| match open_coordinates(u).as_deref() {
+          None => 0.0,
+          Some([]) => 1.0,
+          Some(&[i]) => u[i],
+          Some(&[i, j]) => t_copula_cdf(u[i], u[j], corr.corr()[[i, j]], self.nu),
+          Some(open) => {
+            let points = points.get_or_insert_with(|| sobol_points(corr.dim()));
+            let scale = self.chi.get_or_init(|| chi_scale(self.nu));
+            let b: Vec<f64> = open
+              .iter()
+              .map(|&i| Self::t_quantile(u[i], self.nu))
+              .collect();
+            match prioritize(corr.corr(), open, &b) {
+              Some((l, b)) => mvt_upper(&l, &b, points.view(), scale.view()),
+              None => {
+                let b: Vec<f64> = u.iter().map(|&x| Self::t_quantile(x, self.nu)).collect();
+                mvt_upper(corr.chol_lower(), &b, points.view(), scale.view())
+              }
+            }
           }
-        }
-        count += 1;
-      }
-      out[i] = count as f64 / m as f64;
-    }
-    Ok(out)
+        })
+        .collect(),
+    )
   }
 }
 

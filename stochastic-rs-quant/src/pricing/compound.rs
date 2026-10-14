@@ -20,13 +20,13 @@ use crate::OptionType;
 /// the inner option has strike $K_2$, maturity $T_2 > T_1$.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CompoundType {
-  /// Call on call.
+  /// An outer call on an inner call.
   CallOnCall,
-  /// Call on put.
+  /// An outer call on an inner put.
   CallOnPut,
-  /// Put on call.
+  /// An outer put on an inner call.
   PutOnCall,
-  /// Put on put.
+  /// An outer put on an inner put.
   PutOnPut,
 }
 
@@ -65,9 +65,9 @@ pub struct CompoundPricer {
   pub r: f64,
   /// Dividend yield.
   pub q: f64,
-  /// Volatility.
+  /// Annualised Black–Scholes volatility.
   pub sigma: f64,
-  /// Compound type.
+  /// Which of the outer and inner options are calls or puts.
   pub compound_type: CompoundType,
 }
 

@@ -22,6 +22,7 @@
 //! u_{k+1}=F(u_k),\quad x_k = \mathrm{transform}(u_k)
 //! $$
 
+use std::fmt::Debug;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -33,13 +34,27 @@ mod fill;
 mod simd_rng;
 #[cfg(test)]
 mod tests;
-mod xoshiro;
+pub(crate) mod xoshiro;
 
 pub use simd_rng::SimdRng;
 pub use xoshiro::Xoshiro128PP8;
 pub use xoshiro::Xoshiro256PP4;
 use xoshiro::splitmix64_mix;
 use xoshiro::splitmix64_next;
+
+pub(crate) mod engine_seal {
+  pub trait Sealed {}
+}
+
+/// Not part of the public API: `stochastic-rs-stochastic` implements it for its Python seed source.
+#[doc(hidden)]
+pub mod seed_seal {
+  #[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot implement the sealed trait `SeedExt`",
+    note = "use `Unseeded` or `Deterministic`"
+  )]
+  pub trait Sealed {}
+}
 
 /// Golden-ratio increment for the global seed counter.
 const SEED_GAMMA: u64 = 0x9e37_79b9_7f4a_7c15;
@@ -115,7 +130,7 @@ pub fn derive_seed(state: &mut u64) -> u64 {
 }
 
 /// Derives a parallel worker's stream seed from a sampler's stored
-/// [`SeedExt::seed_value`] and a worker index.
+/// [`SeedExt::next_seed`] and a worker index.
 ///
 /// Pure function of its two inputs: the same `(parent_seed, stream_idx)`
 /// pair always yields the same child seed, independent of what other
@@ -140,24 +155,9 @@ pub fn derive_fork_seed(parent_seed: u64, stream_idx: u64) -> u64 {
   splitmix64_mix(parent_seed ^ stream_idx)
 }
 
-/// Compile-time seed strategy for zero-overhead determinism control.
-///
-/// Two built-in implementations:
-/// - [`Unseeded`] — fresh random RNG each time (default, zero cost)
-/// - [`Deterministic`] — reproducible streams from a fixed seed
-///
-/// Each call to [`rng()`](SeedExt::rng) produces an independent [`SimdRng`]
-/// **and advances** the seed's internal state, so successive calls produce
-/// different streams. [`derive()`](SeedExt::derive) likewise advances state
-/// and returns a child seed for propagation to sub-components.
-///
-/// State is stored with interior mutability (atomic for [`Deterministic`])
-/// so methods take `&self` and remain callable from `&self` Process contexts
-/// — e.g. `ProcessExt::sample(&self)` can advance the seed without an
-/// outer `&mut`.
-///
-/// All branching is resolved at compile time via monomorphisation.
-pub trait SeedExt: Clone + Send + Sync + 'static {
+/// Sealed seed source: [`Unseeded`] draws fresh entropy, [`Deterministic`] replays a fixed stream.
+/// State advances through `&self`, so `ProcessExt::sample(&self)` can draw without an outer `&mut`.
+pub trait SeedExt: seed_seal::Sealed + Clone + Send + Sync + 'static {
   /// Create an independent [`SimdRng`] and advance internal state.
   fn rng(&self) -> SimdRng;
 
@@ -165,9 +165,8 @@ pub trait SeedExt: Clone + Send + Sync + 'static {
   #[doc(hidden)]
   fn derive(&self) -> Self;
 
-  /// Create any [`SimdRngExt`] impl from this seed source, advancing the
-  /// internal state. Used by generic distributions that are parametric over
-  /// the underlying RNG type (e.g. `SimdNormal<T, N, R>`).
+  /// Create any [`SimdRngExt`] engine from this seed source, advancing the internal state;
+  /// the engine-generic streams use it (e.g. `Seeded<D, R>` in `stochastic-rs-distributions`).
   fn rng_ext<R: SimdRngExt>(&self) -> R;
 
   /// Reset the internal seed state in place where meaningful.
@@ -177,26 +176,12 @@ pub trait SeedExt: Clone + Send + Sync + 'static {
   /// `state`, so a subsequent `rng()` / `rng_ext()` / `derive()` produces
   /// the stream rooted at the new `seed`. Lets a single
   /// `ProcessExt`-style instance replay or sweep different seeds without
-  /// rebuilding the process — `fbm.seed.reseed(seed); fbm.sample();`.
+  /// rebuilding the process — `fbm.seed().reseed(seed); fbm.sample();`.
   fn reseed(&self, _seed: u64) {}
 
-  /// Returns a fresh `u64` seed value, advancing internal state exactly as
-  /// [`rng`](Self::rng) / [`rng_ext`](Self::rng_ext) do (both are defined in
-  /// terms of this method, so calling it costs no extra state advance over
-  /// what constructing an RNG already did).
-  ///
-  /// Samplers with their own internal stream store the returned value (as
-  /// `stream_seed`, in an interior-mutable cell) as the initial *fork
-  /// basis* for a parallel fan-out (e.g.
-  /// `stochastic-rs-distributions`' `DistributionSampler::fork`). Each
-  /// worker's fork reads and advances that cell via
-  /// [`derive_seed`] to get its own fresh basis, then derives its stream
-  /// with [`derive_fork_seed(basis, stream_idx)`](derive_fork_seed) — one
-  /// read-and-advance per worker, not one per fan-out call — so repeated
-  /// fan-outs from the same sampler never replay, while two
-  /// identically-seeded samplers issuing the same sequence of forks still
-  /// agree call-for-call.
-  fn seed_value(&self) -> u64;
+  /// Draws the next `u64` seed, advancing the source exactly as [`rng`](Self::rng) and
+  /// [`rng_ext`](Self::rng_ext) do; two reads give two values.
+  fn next_seed(&self) -> u64;
 }
 
 /// No seed — each RNG is independently random. Zero overhead.
@@ -253,10 +238,12 @@ impl Clone for Deterministic {
   }
 }
 
+impl seed_seal::Sealed for Unseeded {}
+
 impl SeedExt for Unseeded {
   #[inline(always)]
   fn rng(&self) -> SimdRng {
-    SimdRng::from_seed(self.seed_value())
+    SimdRng::from_seed(self.next_seed())
   }
 
   #[inline(always)]
@@ -266,11 +253,11 @@ impl SeedExt for Unseeded {
 
   #[inline(always)]
   fn rng_ext<R: SimdRngExt>(&self) -> R {
-    R::from_seed(self.seed_value())
+    R::from_seed(self.next_seed())
   }
 
   #[inline(always)]
-  fn seed_value(&self) -> u64 {
+  fn next_seed(&self) -> u64 {
     // `next_global_seed()` is exactly what `SimdRng::new()` /
     // `SimdRngDual::new()` feed to `from_seed` internally, so routing `rng`
     // / `rng_ext` through this method is behavior-identical to their old
@@ -279,20 +266,22 @@ impl SeedExt for Unseeded {
   }
 }
 
+impl seed_seal::Sealed for Deterministic {}
+
 impl SeedExt for Deterministic {
   #[inline(always)]
   fn rng(&self) -> SimdRng {
-    SimdRng::from_seed(self.seed_value())
+    SimdRng::from_seed(self.next_seed())
   }
 
   #[inline(always)]
   fn derive(&self) -> Self {
-    Deterministic::new(self.seed_value())
+    Deterministic::new(self.next_seed())
   }
 
   #[inline(always)]
   fn rng_ext<R: SimdRngExt>(&self) -> R {
-    R::from_seed(self.seed_value())
+    R::from_seed(self.next_seed())
   }
 
   #[inline(always)]
@@ -301,22 +290,16 @@ impl SeedExt for Deterministic {
   }
 
   #[inline(always)]
-  fn seed_value(&self) -> u64 {
+  fn next_seed(&self) -> u64 {
     self.next_u64()
   }
 }
 
-/// Common interface for the SIMD RNG backends used by generic distributions.
-///
-/// `SimdNormal<T, N, R>` and friends are monomorphised against this trait so
-/// the same struct definition serves both the single-stream [`SimdRng`] and
-/// the experimental dual-stream `SimdRngDual` (gated behind the
-/// `dual-stream-rng` feature). Implementations override
-/// [`HAS_PAIR_ILP`](Self::HAS_PAIR_ILP) and [`next_i32x8_pair`](Self::next_i32x8_pair)
-/// when they can usefully expose two independent batches per call —
-/// consumers branch on the const to pick a 16-lane unrolled body, otherwise
-/// they stay on the cheaper 8-lane body.
-pub trait SimdRngExt: rand::RngCore + Sized + Send + 'static {
+/// SIMD RNG engine the distributions are generic over, sealed to [`SimdRng`] and the
+/// experimental `SimdRngDual`.
+pub trait SimdRngExt:
+  engine_seal::Sealed + rand::Rng + Clone + Debug + Sized + Send + Sync + 'static
+{
   /// `true` when [`next_i32x8_pair`](Self::next_i32x8_pair) returns two
   /// independent batches whose state updates can run in parallel. The
   /// single-stream impl leaves this at the default `false`; the dual-stream
@@ -359,6 +342,8 @@ pub trait SimdRngExt: rand::RngCore + Sized + Send + 'static {
   /// Bulk-fill `out` with `U(0, 1)` `f32` values.
   fn fill_uniform_f32(&mut self, out: &mut [f32]);
 }
+
+impl engine_seal::Sealed for SimdRng {}
 
 impl SimdRngExt for SimdRng {
   #[inline(always)]

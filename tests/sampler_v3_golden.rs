@@ -1,29 +1,7 @@
-//! Golden stream tests for the sampler-v3 refactor.
-//!
-//! Captured on the pre-refactor tree: with [`Deterministic`] seeding these
-//! values must survive the `ProcessExt` → `PathSampler` migration, anchoring
-//! that the derived RNG streams are preserved. They are compared with a small
-//! tolerance rather than bit-for-bit: FFT / `powf`-heavy paths (FGN) round
-//! differently in their low bits across architectures (x86 vs ARM), so a
-//! pinned bit pattern is not portable. Exact reproduction of the refactor
-//! itself is covered bit-for-bit, machine-independently, by
-//! [`sampler_first_path_matches_sample`].
-//!
-//! `golden_merton_streams` below is the first golden covering a jump chain:
-//! before the zero-exception-reproducibility wave's Task 1, `Merton` hard-
-//! wired its inner `CompoundPoisson<T, D>` to `Unseeded`, so its jump chain
-//! was not bit-reproducible and could not be golden-pinned — only the
-//! standalone `CompoundPoisson` (see `golden_compound_poisson_streams`)
-//! could be. `Merton`'s own jump driver is now seeded from the same
-//! `Deterministic` the diffusion component uses, so it is pinnable too.
-//! `golden_bates_streams` is the second: Task 2 of the same wave applied the
-//! identical fix to `Bates1996`, whose jump term is *multiplicative*
-//! (`sample_grid_relative_increments`, not `Merton`'s additive
-//! `sample_grid_increments`) and whose output is a `[s, v]` pair rather than
-//! a single array — both pinned below, with a same-file counterfactual
-//! proving the pin is not diffusion-only.
+//! Golden [`Deterministic`] streams within a small tolerance, since FFT- and `powf`-heavy paths
+//! round differently across architectures; [`sampler_first_path_matches_sample`] is bit-exact.
 
-use stochastic_rs::distributions::scalar::ScalarNormal;
+use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::simd_rng::Unseeded;
 use stochastic_rs::stochastic::diffusion::fou::Fou;
@@ -34,10 +12,10 @@ use stochastic_rs::stochastic::jump::merton::Merton;
 use stochastic_rs::stochastic::noise::fgn::Fgn;
 use stochastic_rs::stochastic::process::cpoisson::CompoundPoisson;
 use stochastic_rs::stochastic::process::poisson::Poisson;
+use stochastic_rs::stochastic::traits::PathSampler;
 use stochastic_rs::stochastic::volatility::HestonPow;
 use stochastic_rs::stochastic::volatility::heston::Heston;
 use stochastic_rs::stochastic::volatility::sabr::Sabr;
-use stochastic_rs::traits::PathSampler;
 use stochastic_rs::traits::ProcessExt;
 
 const N: usize = 8;
@@ -154,11 +132,7 @@ fn golden_heston_streams() {
 
 #[test]
 fn golden_sabr_streams() {
-  // Pinned before the C1 correlation-fix rewrite lands (a reviewer verified
-  // the rewrite's first path matches this pre-rewrite value for `Sabr` and
-  // all 10 rewritten types), specifically so that rewrite cannot silently
-  // shift it. `Sabr` is "clone-snapshot": `sampler()` currently does
-  // `seed: self.seed.clone()`, so this exercises that shape directly.
+  // `Sabr` clones its seed into `sampler()`; this pins that shape.
   let sabr = Sabr::<f64, _>::new(
     0.3,
     0.5,
@@ -228,33 +202,11 @@ fn golden_fou_stream() {
   );
 }
 
-/// `cum`/`jumps` (but not `times`) were re-pinned by the deterministic-
-/// parallelism wave's cross-chunk-correlation fix: `CompoundPoisson`'s
-/// `sampler()` now derives (not clones) its basis, and `Poisson::sample_impl`
-/// consumes two internal ticks (`SimdExp::new` + `.rng()`) per call rather
-/// than one. For a single-tick-per-call consumer, moving the derive from
-/// per-path code to `sampler()` leaves the fed-in value unchanged (see
-/// `golden_heston_streams`/`golden_sabr_streams`/`golden_fou_stream`); for a
-/// two-tick consumer followed by more code that keeps reading the seed
-/// (`cum`/`jumps` are drawn after `times`, from the same seed), the extra
-/// tick that used to be absorbed inside a disposable cloned-then-derived
-/// temporary is now visible on the shared counter, shifting everything
-/// downstream. `times` is unaffected because nothing before it reads the
-/// seed. This is expected and was traded for `sample_par`/`sample_map`
-/// actually being cross-chunk-independent.
-///
-/// `cum`/`jumps` moved a second time when the jump-size distribution here
-/// changed from `rand_distr::Normal` to the workspace's own `ScalarNormal`,
-/// which is what the other two jump-chain goldens in this file (`Merton`,
-/// `Bates1996`) already use. Both are N(0, 0.1) — what moved the stream is
-/// the draw: `rand_distr`'s ziggurat consumes the seeded stream differently
-/// from `ScalarNormal`'s `ndtri` inverse CDF, one uniform per sample. `times`
-/// is again unaffected: the arrival grid is drawn before any jump size and
-/// never reads the jump distribution.
+/// `times` is drawn before any jump size, so only `cum` and `jumps` depend on the jump law.
 #[test]
 fn golden_compound_poisson_streams() {
   let cpoisson = CompoundPoisson::<f64, _, _>::new(
-    ScalarNormal::new(0.0, 0.1),
+    SimdNormal::new(0.0, 0.1),
     Poisson::<f64, _>::new(0.5, Some(N), Some(1.0), Unseeded),
     Deterministic::new(44),
   );
@@ -276,36 +228,32 @@ fn golden_compound_poisson_streams() {
     &cum,
     &[
       0,
-      13819361769254466326,
-      13821853430779983300,
-      13821932939754451688,
-      13820332725089879588,
-      13816981657832692969,
-      13820328902620182530,
-      13823475481968905204,
+      13812791499937149032,
+      13814187895551410922,
+      13819410286579470392,
+      13819152796857556790,
+      13818680145937493030,
+      13820538240203485332,
+      13819387656904302462,
     ],
   );
   assert_close(
     &jumps,
     &[
       0,
-      13819361769254466326,
-      13813632129328836835,
-      13795110633374435572,
-      4588104413111680688,
-      4591304556237549407,
-      13814668948152931099,
-      13817614862062886886,
+      13812791499937149032,
+      13804614840720247302,
+      13815625478352788871,
+      4574889693254918210,
+      4578716036502073600,
+      13810965234954539448,
+      4584763154232525911,
     ],
   );
 }
 
-/// The first golden covering a jump chain — see this file's own header for
-/// why `Merton` could not be included before the zero-exception-
-/// reproducibility wave's Task 1. `lambda = 3.0` at `N = 8` (`dt = 1/7`)
-/// gives `lambda * dt ≈ 0.43` per step, high enough that this stream
-/// exercises at least one nonzero jump increment, not just an all-zero
-/// `sample_grid_increments` short-circuit.
+/// A seeded jump chain: `lambda = 3` at `N = 8` gives `λ·dt ≈ 0.43` per step, so at least one jump
+/// increment is nonzero.
 #[test]
 fn golden_merton_streams() {
   let merton = Merton::new(
@@ -313,7 +261,7 @@ fn golden_merton_streams() {
     0.2,
     3.0,
     0.0,
-    ScalarNormal::new(0.0, 0.1),
+    SimdNormal::new(0.0, 0.1),
     N,
     Some(0.0),
     Some(1.0),
@@ -327,24 +275,15 @@ fn golden_merton_streams() {
       4581639020107344888,
       13815295515786926506,
       13809401478369850988,
-      13804506849033497710,
-      4590859968188903663,
-      13785162989269995008,
+      13810114127273964914,
+      4588709442089026211,
+      4590285092336006289,
     ],
   );
 }
 
-/// The second golden covering a jump chain (see this file's own header) and
-/// the first covering `Bates1996`'s *multiplicative* jump term
-/// (`sample_grid_relative_increments`, not `Merton`'s additive
-/// `sample_grid_increments`) together with its `[s, v]` pair output.
-/// `lambda = 3.0` at `N = 8` (`dt = 1/7`) matches `golden_merton_streams`'s
-/// own reasoning: `lambda * dt ≈ 0.43` per step, high enough that this
-/// stream exercises at least one nonzero jump increment. `k = 0.0` keeps the
-/// drift's `-lambda*k` compensator term at zero regardless of `lambda`, so
-/// the divergence proof below (comparing against a `lambda = 0`
-/// counterfactual, same `k`) isolates the jump term specifically rather
-/// than a coincidental drift shift.
+/// `Bates1996`'s multiplicative jump term and `[s, v]` output; `k = 0` zeroes the `−λk`
+/// compensator, so the `lambda = 0` counterfactual below isolates the jump term.
 #[test]
 fn golden_bates_streams() {
   let bates = Bates1996::new(
@@ -358,7 +297,7 @@ fn golden_bates_streams() {
     1.5,
     0.3,
     -0.6,
-    ScalarNormal::new(0.0, 0.1),
+    SimdNormal::new(0.0, 0.1),
     N,
     Some(100.0),
     Some(0.04),
@@ -375,9 +314,9 @@ fn golden_bates_streams() {
       4636980197197895274,
       4637119380743617754,
       4636347933066129122,
-      4636396627911248212,
-      4636650751471554252,
-      4636854863732819059,
+      4635782833017867154,
+      4636013662846210374,
+      4636151370096129905,
     ],
   );
   assert_close(
@@ -408,7 +347,7 @@ fn golden_bates_streams() {
     1.5,
     0.3,
     -0.6,
-    ScalarNormal::new(0.0, 0.1),
+    SimdNormal::new(0.0, 0.1),
     N,
     Some(100.0),
     Some(0.04),

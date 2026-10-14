@@ -4,28 +4,36 @@
 //! f(x)=\frac{1}{x\sigma\sqrt{2\pi}}\exp\!\left(-\frac{(\ln x-\mu)^2}{2\sigma^2}\right),\ x>0
 //! $$
 //!
-use std::cell::Cell;
-use std::cell::UnsafeCell;
 
 use rand::Rng;
-use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
+use rand::distr::Distribution;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
 use super::normal::SimdNormal;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::Buffered;
+use crate::seeded::StreamState;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
-pub struct SimdLogNormal<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+/// Log-normal law: `ln X ~ N(mu, sigma)`; parameters only, a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdLogNormal<T> {
   mu: T,
   sigma: T,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  normal: SimdNormal<T, 64, R>,
-  stream_seed: Cell<u64>,
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
+/// A stream that transforms its own standard normal sub-stream, plus its single-draw buffer.
+#[doc(hidden)]
+#[derive(Clone, Debug)]
+pub struct NormalDerivedState<T: SimdFloatExt, R: SimdRngExt> {
+  pub(crate) normal: StreamState<T, R, 64>,
+  pub(crate) buf: Buffered<T, 16>,
+}
+
+impl<T: SimdFloatExt> SimdLogNormal<T> {
   /// Creates a log-normal distribution.
   ///
   /// - `mu` — mean of **ln(X)**, not of X itself (matches the module
@@ -33,71 +41,39 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
   ///   formula derived from it).
   /// - `sigma` — standard deviation of **ln(X)**, not of X itself
   ///   (matches the module header's σ), must be > 0.
-  ///
-  /// RNGs come from a [`SeedExt`](crate::simd_rng::SeedExt) source.
-  ///
-  /// All sampling routes through the inner `normal`'s own stream (see
-  /// [`Self::fill_slice`]), so this type has no separate engine of its
-  /// own — `stream_seed` reuses `normal`'s already-captured value purely so
-  /// [`Self::fork`] has a stable anchor to derive parallel worker streams
-  /// from (see `SimdBeta::new` for the same reuse pattern). Its own
-  /// independent `Cell`, so this fork cursor advances on its own from here.
-  pub fn new<S: crate::simd_rng::SeedExt>(mu: T, sigma: T, seed: &S) -> Self {
+  pub fn new(mu: T, sigma: T) -> Self {
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      sigma.is_finite(),
+      "sigma must satisfy `sigma.is_finite()`, got sigma = {sigma:?}"
+    );
     assert!(
       sigma > T::zero(),
       "sigma must satisfy `sigma > T::zero()`, got sigma = {sigma:?}"
     );
-    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
-    let stream_seed = Cell::new(normal.stream_seed.get());
-    Self {
-      mu,
-      sigma,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      normal,
-      stream_seed,
-    }
+    Self { mu, sigma }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.mu,
-      self.sigma,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
+  /// The mean `μ` of `ln X`.
+  pub fn mu(&self) -> T {
+    self.mu
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
-  #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
+  /// The standard deviation `σ` of `ln X`.
+  pub fn sigma(&self) -> T {
+    self.sigma
   }
 
-  /// Fills `out` using the internal SIMD RNG stream — the only stream this
-  /// sampler draws from (see the crate-level RNG policy).
-  #[inline]
-  pub fn fill_slice(&self, out: &mut [T]) {
+  fn fill_parts<R: SimdRngExt>(&self, normal: &mut StreamState<T, R, 64>, out: &mut [T]) {
     let mm = T::splat(self.mu);
     let ss = T::splat(self.sigma);
     let mut tmp = [T::zero(); 16];
     let (chunks, rem) = out.as_chunks_mut::<16>();
     for chunk in chunks {
-      self.normal.fill_16(&mut tmp);
+      SimdNormal::<T>::fill_standard(&mut normal.rng, &mut tmp[..16]);
       for half in 0..2 {
         let base = half * 8;
         let mut a = [T::zero(); 8];
@@ -108,7 +84,7 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
       }
     }
     if !rem.is_empty() {
-      self.normal.fill_slice(&mut tmp[..rem.len()]);
+      SimdNormal::<T>::fill_standard(&mut normal.rng, &mut tmp[..rem.len()]);
       let mut done = 0;
       while done + 8 <= rem.len() {
         let mut a = [T::zero(); 8];
@@ -129,112 +105,124 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdLogNormal<T, R> {
     }
   }
 
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    (self.mu + self.sigma * SimdNormal::<T>::standard().draw_with(rng)).exp()
   }
 }
 
 /// LogNormal(μ=0, σ=1) — the standard log-normal, matching [`SimdNormal`]'s
-/// own N(0,1) default and this file's inner `normal` sub-sampler, which is
-/// always constructed as N(0,1) regardless of the caller's own μ,σ (see
-/// [`SimdLogNormal::new`]).
-impl<T: SimdFloatExt, R: SimdRngExt> Default for SimdLogNormal<T, R> {
+/// own N(0,1) default.
+impl<T: SimdFloatExt> Default for SimdLogNormal<T> {
   fn default() -> Self {
-    Self::new(T::zero(), T::one(), &Unseeded)
+    Self::new(T::zero(), T::one())
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdLogNormal<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.mu, self.sigma, &Unseeded)
+impl<T: SimdFloatExt> Sealed for SimdLogNormal<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdLogNormal<T> {
+  type State<R: SimdRngExt> = NormalDerivedState<T, R>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (NormalDerivedState<T, R>, u64) {
+    let (normal, basis) = SimdNormal::<T>::standard().init::<R, S>(seed);
+    (
+      NormalDerivedState {
+        normal,
+        buf: Buffered::new(),
+      },
+      basis,
+    )
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdLogNormal<T, R> {
-  fn pdf(&self, x: f64) -> f64 {
+impl<T: SimdFloatExt> SimdKernel for SimdLogNormal<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut NormalDerivedState<T, R>, out: &mut [T]) {
+    self.fill_parts(&mut state.normal, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut NormalDerivedState<T, R>) -> T {
+    let NormalDerivedState { normal, buf } = state;
+    buf.pop(|b| self.fill_parts(normal, b))
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdLogNormal<T> {
+  fn pdf(&self, x: f64) -> Option<f64> {
     if x <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
     let z = (x.ln() - mu) / sigma;
-    crate::special::norm_pdf(z) / (sigma * x)
+    Some(crate::special::norm_pdf(z) / (sigma * x))
   }
 
-  fn cdf(&self, x: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
     if x <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
-    crate::special::norm_cdf((x.ln() - mu) / sigma)
+    Some(crate::special::norm_cdf((x.ln() - mu) / sigma))
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn quantile(&self, p: f64) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
-    (mu + sigma * crate::special::ndtri(p)).exp()
+    Some((mu + sigma * crate::special::ndtri(p)).exp())
   }
 
-  fn mean(&self) -> f64 {
+  fn mean(&self) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
-    (mu + 0.5 * sigma * sigma).exp()
+    Some((mu + 0.5 * sigma * sigma).exp())
   }
 
-  fn median(&self) -> f64 {
-    self.mu.to_f64().unwrap().exp()
+  fn median(&self) -> Option<f64> {
+    Some(self.mu.to_f64().unwrap().exp())
   }
 
-  fn mode(&self) -> f64 {
+  fn mode(&self) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
-    (mu - sigma * sigma).exp()
+    Some((mu - sigma * sigma).exp())
   }
 
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
     let s2 = sigma * sigma;
-    (s2.exp() - 1.0) * (2.0 * mu + s2).exp()
+    Some((s2.exp() - 1.0) * (2.0 * mu + s2).exp())
   }
 
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     let sigma = self.sigma.to_f64().unwrap();
     let s2 = sigma * sigma;
-    (s2.exp() + 2.0) * (s2.exp() - 1.0).sqrt()
+    Some((s2.exp() + 2.0) * (s2.exp() - 1.0).sqrt())
   }
 
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     // Excess kurtosis.
     let sigma = self.sigma.to_f64().unwrap();
     let s2 = sigma * sigma;
-    (4.0 * s2).exp() + 2.0 * (3.0 * s2).exp() + 3.0 * (2.0 * s2).exp() - 6.0
+    Some((4.0 * s2).exp() + 2.0 * (3.0 * s2).exp() + 3.0 * (2.0 * s2).exp() - 6.0)
   }
 
-  fn entropy(&self) -> f64 {
+  fn entropy(&self) -> Option<f64> {
     let mu = self.mu.to_f64().unwrap();
     let sigma = self.sigma.to_f64().unwrap();
-    0.5 + 0.5 * (2.0 * std::f64::consts::PI * sigma * sigma).ln() + mu
+    Some(0.5 + 0.5 * (2.0 * std::f64::consts::PI * sigma * sigma).ln() + mu)
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdLogNormal<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction. Use `Deterministic`
-  /// in the constructor for reproducibility.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
+impl<T: SimdFloatExt> Distribution<T> for SimdLogNormal<T> {
+  /// `exp(mu + sigma·Z)` with one scalar standard normal `Z` from the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
   }
 }
 
@@ -242,3 +230,18 @@ py_distribution!(PyLogNormal, SimdLogNormal,
   sig: (mu, sigma, seed=None, dtype=None),
   params: (mu: f64, sigma: f64)
 );
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::tests::scalar_ks_best_p;
+  use crate::traits::DistributionExt as _;
+
+  /// The honest `Distribution` draws from the caller's rng and agrees with the cdf.
+  #[test]
+  fn scalar_sample_matches_cdf() {
+    let d = SimdLogNormal::<f64>::new(0.2, 0.6);
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
+    assert!(best > 0.01, "best p = {best}");
+  }
+}

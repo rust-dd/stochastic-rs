@@ -11,9 +11,7 @@
 //!
 //! The second half is not belt and braces. A hand-curated list can be wrong
 //! about a name it contains; it cannot be wrong about a name it has never
-//! heard of. During this file's own review a real `ReviewProbeOrphanPricer`
-//! was added to `pricing/asian.rs`, the registry was left untouched, and every
-//! assertion here passed — unaware the struct existed.
+//! heard of.
 //!
 //! ## What counts as a pricer
 //!
@@ -27,9 +25,7 @@
 //!
 //! Name shape alone is blind to [`LevyModel`], [`CrrModel`], [`Cir`],
 //! [`HullWhite`] and [`Vasicek`]: all five implement a pricing trait under a
-//! model's name. An earlier revision of this header derived its inventory from
-//! `pub struct *(Pricer|Engine)` and so counted none of them, while its opening
-//! line claimed to cover every pricer/engine struct in the crate. Trait
+//! model's name. Trait
 //! membership alone is blind to everything in `NO_TRAIT_BY_DESIGN` — which is
 //! exactly where an orphan hides, an orphan being a struct that implements
 //! nothing.
@@ -41,8 +37,8 @@
 //!
 //! ## Counts
 //!
-//! This prose states none. Every figure the file used to carry is the length of
-//! a list the audit now checks, so it is re-derived rather than remembered:
+//! This prose states none. Every figure is the length of a list the audit
+//! checks, so it is re-derived rather than remembered:
 //!
 //! ```text
 //! cd stochastic-rs-quant/tests
@@ -56,9 +52,7 @@
 //! Five commands, not one with the name substituted: `assert_pricing_engine!`
 //! takes `(pricer, instrument)` pairs and `NO_TRAIT_BY_DESIGN` holds
 //! `(struct, reason)` pairs, so both open with a paren and `grep -c '^  [A-Z]'`
-//! reports 0 for them. An earlier revision of this header offered one command
-//! with the macro name substituted; the command it printed returns 0 for
-//! `assert_pricing_engine!`.
+//! reports 0 for them.
 //!
 //! ## What this does not catch
 //!
@@ -76,9 +70,7 @@
 //! deliberately: those are `#[cfg(feature = "python")]` wrappers holding their
 //! subject in an `inner` field, with no trait of their own.
 //!
-//! Per the A2 design (`docs/superpowers/specs/2026-08-23-a2-quant-consistency-design.md`,
-//! decision D1), `PricerExt` is retired and this file no longer has a list for
-//! it. Each surviving trait gets its own compile-checked list, so a claim about
+//! Each pricing trait gets its own compile-checked list, so a claim about
 //! *which* trait a struct carries can drift no more than the claim that it
 //! carries one at all.
 
@@ -207,32 +199,8 @@ macro_rules! assert_not_vanilla_european_call {
   };
 }
 
-// Structs on the decoupled `price_call(s, k, r, q, tau)` surface used by
-// calibration and vol-surface construction: the 4 digital options (Task 3), the
-// 2 original members, `BSMPricer` (Task 5a), Task 5b's 9 arrivals, and
-// `LevyModel` and `CrrModel` — real implementors that the retired
-// `pub struct *(Pricer|Engine)` derivation could not see.
-//
-// Every 5b arrival overrides `price_put` rather than taking the trait's vanilla
-// put-call-parity default, for one of three reasons:
-//
-//  - cost of carry: `BSMPricer`, `AsianPricer`, `Merton1976Pricer` carry at
-//    `exp((b - r) * tau)`, which equals the default's `exp(-q * tau)` only when
-//    `b = r - q` — false for `BSMCoc::Bsm1973` at `q != 0` and for `Black1976` /
-//    `Asay1982`, and true only on a measure-zero line for the Asian pricer's
-//    averaged-underlying carry; `QuantoPricer` carries at the quanto drift
-//    `b = r_f - q - rho sigma_S sigma_E` and scales the whole price by the
-//    fixed exchange rate, so the default parity is wrong on both counts;
-//  - American exercise: `BjerksundStensland2002Pricer`, `SnellEnvelopePricer`
-//    and `FiniteDifferencePricer` price a put that carries an early-exercise
-//    premium the call does not, so European parity is not an approximation but
-//    the wrong model;
-//  - exactness: `SabrPricer`, `HestonPricer`, `HestonStochCorrPricer` and
-//    `GbmMalliavinPricer` all have carry `b = r - q`, where the default is
-//    mathematically right — but it recomposes the put from the call and so can
-//    land an ulp away from the closed form, drop a `max(0)` floor
-//    (`HestonStochCorrPricer`, `GbmMalliavinPricer`), or run a second
-//    independent Monte Carlo (`GbmMalliavinPricer`).
+// The `price_call(s, k, r, q, tau)` implementors; most override `price_put` because their carry is
+// not `r − q`, their put carries an early-exercise premium, or parity would lose a closed form.
 assert_model_pricer!(
   AsianPricer,
   AssetOrNothingPricer,
@@ -297,10 +265,8 @@ assert_vanilla_european_call!(
   SabrPricer,
 );
 
-// The complement: `ModelPricer`s whose payoff a Black inversion cannot
-// describe, listed so the omission is a decision rather than an oversight. Each
-// one used to get `vol_surface` from the `ModelPricer` blanket and returned a
-// finite, plausible, meaningless surface for it.
+// The complement: `ModelPricer`s whose payoff a Black inversion cannot describe, so they carry no
+// `VanillaEuropeanCall` and get no `vol_surface`.
 //
 //  - the four digitals (`AssetOrNothingPricer`, `CashOrNothingPricer`,
 //    `GapPricer`, `SuperSharePricer`): the payoff is not `(S_T - K)^+`, so no
@@ -354,8 +320,7 @@ assert_pricing_engine!(
   (AnalyticHestonEngine, EuropeanOption),
 );
 
-// The short-rate bond family (Task 2). `Cir`, `HullWhite`, `Vasicek` are named
-// for their model, not `*Pricer`/`*Engine`, so only the trait signal sees them.
+// The short-rate bond family, named for their model, so only the trait signal sees them.
 assert_short_rate_pricer!(Cir, HullWhite, Vasicek);
 
 /// Blanket impls of a tracked trait, as `(trait, selecting bound)`. Pinned
@@ -371,49 +336,8 @@ const PATH_DEPENDENT: &str = "path-dependent: contract parameters live in the st
 const FOURIER_ENGINE: &str = "Fourier engine: takes the model per call rather than being one";
 const NON_OPTION: &str = "not a single-underlying option pricer";
 
-// Families that deliberately carry no `ModelPricer` implementation, with the
-// reason. Listing them is what makes the omission deliberate rather than an
-// oversight — see the A2 design's D1. Some carry `PricingEngine` instead (see
-// the list above); this list is specifically about `ModelPricer`'s
-// `price_call(s, k, r, q, tau)` shape not fitting.
-//
-//  - `MULTI_ASSET`: `MargrabePricer` is an exchange option with no strike;
-//    `KirkSpreadPricer` has one but strikes it against a *spread* of two
-//    forwards; the basket pricers strike one against a weighted average of N
-//    assets; the rainbow pricers price the best/worst of N. A shared signature
-//    would need an `Option<f64>` strike and a variable-length underlying list,
-//    which is why this family follows D3's model/query split by convention
-//    rather than through a trait. All eight follow it: each holds its
-//    volatilities and correlation and takes the spots, strike, rate, yields and
-//    maturity per call — `KirkSpreadPricer::spread_call_put(f1, f2, x, r, tau)`,
-//    `MargrabePricer::price(s1, s2, q1, q2, tau)`,
-//    `GeometricBasketPricer::price_call(s, k, r, q, tau)`. What else stays on a
-//    struct is contract, not market data: the basket weights and average type,
-//    and the rainbow payoff. The three Monte Carlo members additionally hold
-//    `n_paths`, which is neither — a convergence control, kept beside the model
-//    as `GbmMalliavinPricer` keeps its own path and step counts.
-//  - `PATH_DEPENDENT`: each bundles its own contract parameters (barrier level,
-//    lookback window, cliquet reset schedule, autocall trigger/coupon schedule,
-//    Bermudan exercise dates, chooser decision date, ...) into the struct and
-//    prices off that, not off a single `(s, k, r, q, tau)` query point.
-//  - `FOURIER_ENGINE`: `CarrMadanPricer`, `GilPelaezPricer`, `LewisPricer`,
-//    `FrftCarrMadanPricer` and `CosEngine` take `model: &impl FourierModelExt`
-//    per call; `CosPricer` builds a `RegimeSwitchingModel` internally from raw
-//    inputs and prices through it. The blanket
-//    `impl<T: FourierModelExt> ModelPricer for T` already gives the models
-//    themselves (`HestonFourier`, `CgmysvModel`, `RegimeSwitchingModel`, ...)
-//    their `ModelPricer`. `CgmysvPricer` is the outlier in this group: it takes
-//    no model parameter and touches no characteristic function at all — it
-//    duplicates `CgmysvParams` as struct fields and is a self-contained Monte
-//    Carlo pricer returning `McResult` (price ± standard error), so
-//    `ModelPricer`'s plain-`f64` return does not fit it either. It is listed
-//    here as `CgmysvModel`'s Monte Carlo counterpart, not because it shares the
-//    other six's call shape.
-//  - `NON_OPTION`: `CashflowPricer::leg_npv`/`cashflow_npv` discount a
-//    bond/loan cashflow schedule against a curve stack;
-//    `PortfolioEngine::optimize`/`score_momentum`/`build_momentum` allocate
-//    weights across N assets. Neither has a single option struck at `K` on `S`
-//    to put through `price_call(s, k, r, q, tau)`.
+// Pricers whose call shape cannot be `price_call(s, k, r, q, tau)`: multi-asset and path-dependent
+// contracts, Fourier engines that take the model per call, and non-option pricers.
 const NO_TRAIT_BY_DESIGN: &[(&str, &str)] = &[
   ("ArithmeticBasketLevyPricer", MULTI_ASSET),
   ("AutocallablePricer", PATH_DEPENDENT),

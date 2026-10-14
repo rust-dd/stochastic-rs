@@ -13,119 +13,118 @@
 //! $\theta_i$. The **sufficient nesting condition** (Joe 1997, McNeil 2008)
 //! requires $\theta_i \ge \theta_0$ per family:
 //!
-//! - **Clayton:** $\theta \ge 0$ globally and $\theta_{\text{child}} \ge \theta_{\text{parent}}$.
+//! - **Clayton:** $0 < 1/\theta < \infty$ globally (the frailty $\Gamma(1/\theta, 1)$ exists) and $\theta_{\text{child}} \ge \theta_{\text{parent}}$.
 //! - **Gumbel:** $\theta \ge 1$ globally and $\theta_{\text{child}} \ge \theta_{\text{parent}}$.
 //!
-//! ## Sampling (Hofert 2008, Algorithm 2)
+//! ## Sampling
 //!
-//! The standard Marshall-Olkin (1988) frailty representation: each
-//! generator $\varphi_\theta$ admits an LST representation
-//! $\varphi_\theta(t) = \mathbb{E}\!\left[e^{-t V_\theta}\right]$ with
+//! Hofert & Mächler (2011), Algorithm 3.1: root frailty `Γ(1/θ, 1)` (Clayton) or `S_+(1/θ)` (Gumbel); a child's frailty given
+//! its parent's `V₀` has LST `exp(−V₀((1 + t)^α − 1))` or `exp(−V₀ t^α)`, `α = θ₀/θ₁` (their Table 3); a leaf is `ψ(E/V)`.
 //!
-//! - **Clayton:** $V_\theta \sim \mathrm{Gamma}(1/\theta, 1)$.
-//! - **Gumbel:** $V_\theta \sim S_+(1/\theta)$ (positive $\alpha$-stable).
+//! ## Density
 //!
-//! For a partially nested copula with root $V_0$ and one inner generator
-//! per sub-tree, the conditional inner frailty is
+//! Closed form on every tree `new` accepts: Hofert & Pham's (2013) recursion at any depth (their Remark 6.2) over the
+//! generator derivatives of Hofert, Mächler & McNeil (2012), summed in logs of positive terms; NaN on a 0 or 1 coordinate.
 //!
-//! $$
-//! V_i \mid V_0 \;=\; V_0^{\theta_0/\theta_i}\cdot S_i,\qquad
-//! S_i \sim S_+(\theta_0 / \theta_i),
-//! $$
+//! ## Fit
 //!
-//! which collapses to a single sub-tree frailty draw. Leaves are then
-//! recovered via $U_j = \psi_{\theta_*}(E_j / V_*)$, where $\psi$ is the
-//! inverse generator and $E_j \sim \mathrm{Exp}(1)$.
-//!
-//! ## Density (Hofert-Pham 2012)
-//!
-//! The density is the $d$-th-order partial derivative of $C$ with respect
-//! to the marginals. For partially nested Clayton / Gumbel copulas the
-//! closed forms involve the generator-derivative families
-//! $\{\varphi^{(k)}\}$ which we evaluate via the recurrences from Hofert,
-//! Mächler & McNeil (2011).
+//! `fit` joins bottom-up, as Okhrin, Okhrin & Schmid (2013) do, the two clusters of largest mean cross Kendall τ̂, and sets
+//! θ = τ⁻¹ of that mean, trimmed to the children's θ (Górecki, Hofert & Holeňa 2016, Algorithm 3).
 //!
 //! References:
 //! - Joe, H. (1997), *Multivariate Models and Dependence Concepts*,
 //!   Chapman & Hall, ch. 4.
 //! - Hofert, M. (2008), "Sampling Archimedean copulas",
 //!   *Computational Statistics & Data Analysis* 52(12), 5163-5174.
-//! - Hofert, M. (2011), "Efficiently sampling nested Archimedean copulas",
-//!   *Computational Statistics & Data Analysis* 55(1), 57-70.
-//! - Hofert, M., Mächler, M., McNeil, A.J. (2011), "Likelihood inference
-//!   for Archimedean copulas in high dimensions under known margins",
-//!   *Journal of Multivariate Analysis* 110, 133-150.
-//! - Hofert, M., Pham, D. (2013), "Densities of nested Archimedean
-//!   copulas", *Journal of Multivariate Analysis* 118, 37-52.
-//!   (arXiv:1204.2410)
+//! - Hofert, M. (2011), "Efficiently sampling nested Archimedean copulas", *Computational Statistics & Data Analysis* 55(1), 57-70, doi:10.1016/j.csda.2010.04.025.
+//! - Hofert, M., Mächler, M. (2011), "Nested Archimedean Copulas Meet R: The nacopula Package", *Journal of Statistical Software* 39(9), 1-20, doi:10.18637/jss.v039.i09.
+//! - Hofert, M., Mächler, M., McNeil, A.J. (2012), "Likelihood inference for Archimedean copulas in high dimensions under known margins", *Journal of Multivariate Analysis* 110, 133-150, doi:10.1016/j.jmva.2012.02.019.
+//! - Hofert, M., Pham, D. (2013), "Densities of nested Archimedean copulas", *Journal of Multivariate Analysis* 118, 37-52, doi:10.1016/j.jmva.2013.03.006 (arXiv:1204.2410).
+//! - Gnedin, A., Pitman, J. (2006), "Exchangeable Gibbs partitions and Stirling triangles", *Journal of Mathematical Sciences* 138(3), 5674-5685, doi:10.1007/s10958-006-0335-z (arXiv:math/0412494).
 //! - McNeil, A.J. (2008), "Sampling nested Archimedean copulas",
 //!   *Journal of Statistical Computation and Simulation* 78(6), 567-581.
-
-use std::error::Error;
-use std::f64;
+//! - Górecki, J., Hofert, M., Holeňa, M. (2016), "An approach to structure determination and estimation of hierarchical Archimedean copulas and its application to Bayesian classification", *Journal of Intelligent Information Systems* 46(1), 21-59, doi:10.1007/s10844-014-0350-3.
+//! - Górecki, J., Hofert, M., Holeňa, M. (2017), "On structure, family and parameter estimation of hierarchical Archimedean copulas", *Journal of Statistical Computation and Simulation* 87(17), 3261-3324, doi:10.1080/00949655.2017.1365148.
+//! - Okhrin, O., Okhrin, Y., Schmid, W. (2013), "On the structure and estimation of hierarchical Archimedean copulas", *Journal of Econometrics* 173(2), 189-204, doi:10.1016/j.jeconom.2012.12.001.
+//! - Okhrin, O., Ristig, A. (2014), "Hierarchical Archimedean Copulae: The HAC Package", *Journal of Statistical Software* 58(4), 1-20, doi:10.18637/jss.v058.i04.
 
 use ndarray::Array1;
 use ndarray::Array2;
+use ndarray::ArrayView2;
 use rand::Rng;
+use rand::RngExt;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_core::simd_rng::SimdRng;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::gamma::SimdGamma;
 
-use super::CopulaType;
+use super::MultivariateFamily;
+use crate::bivariate::BivariateFamily;
+use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
 
-/// Single-parameter Archimedean family supported by [`NestedArchimedean`].
-/// All nodes of a NAC must share the same family; mixed-family NAC is not
-/// yet supported.
+mod density;
+mod fit;
+
+/// The two generators a nested Archimedean copula admits; the public API names them by `BivariateFamily`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum NacFamily {
-  /// Clayton: $\varphi_\theta(t) = (t^{-\theta} - 1)/\theta$,
-  /// $\theta \ge 0$. Lower-tail dependence.
+enum Generator {
   Clayton,
-  /// Gumbel: $\varphi_\theta(t) = (-\ln t)^\theta$,
-  /// $\theta \ge 1$. Upper-tail dependence.
   Gumbel,
 }
 
-impl NacFamily {
-  /// Minimum admissible $\theta$ (boundary of independence).
-  pub fn theta_min(self) -> f64 {
-    match self {
-      NacFamily::Clayton => 0.0,
-      NacFamily::Gumbel => 1.0,
+impl Generator {
+  fn from_family(family: BivariateFamily) -> Result<Self, CopulaError> {
+    match family {
+      BivariateFamily::Clayton => Ok(Self::Clayton),
+      BivariateFamily::Gumbel => Ok(Self::Gumbel),
+      other => Err(CopulaError::Unsupported(format!(
+        "a nested Archimedean copula needs a Clayton or Gumbel generator, got {other:?}"
+      ))),
     }
   }
 
-  /// Inverse generator $\psi_\theta = \varphi_\theta^{-1}$ in the
-  /// **LST-normalised form** (so $\psi$ is the Laplace transform of the
-  /// frailty `V` sampled by [`NestedArchimedean::sample`]):
-  /// - Clayton: $\psi(s) = (1 + s)^{-1/\theta}$ — LST of
-  ///   $V \sim \mathrm{Gamma}(1/\theta, 1)$.
-  /// - Gumbel:  $\psi(s) = \exp(-s^{1/\theta})$ — LST of
-  ///   $V \sim S_+(1/\theta)$.
-  ///
-  /// The CDF $C = \psi(\sum \varphi(u_j))$ is invariant under the convention
-  /// rescaling $\varphi \to \varphi/c$, $\psi \to \psi(c\cdot)$, so the
-  /// resulting copula matches the bivariate `BivariateExt` Clayton
-  /// implementation (which uses the equivalent $(1 + \theta s)^{-1/\theta}$
-  /// scaled form).
-  pub fn inverse_generator(self, theta: f64, s: f64) -> f64 {
+  fn family(self) -> BivariateFamily {
     match self {
-      NacFamily::Clayton => (1.0 + s).powf(-1.0 / theta),
-      NacFamily::Gumbel => (-(s.powf(1.0 / theta))).exp(),
+      Self::Clayton => BivariateFamily::Clayton,
+      Self::Gumbel => BivariateFamily::Gumbel,
     }
   }
 
-  /// Generator $\varphi_\theta(t) = \psi^{-1}(t)$, the inverse of the
-  /// LST form above.
-  /// - Clayton: $\varphi(t) = t^{-\theta} - 1$.
-  /// - Gumbel:  $\varphi(t) = (-\ln t)^\theta$.
-  pub fn generator(self, theta: f64, t: f64) -> f64 {
+  /// `θ`'s domain: Gumbel `θ ≥ 1`; a Clayton `θ` needs its `Γ(1/θ, 1)` frailty, `0 < 1/θ < ∞` (Hofert & Mächler 2011,
+  /// Table 1), which also rules out a `θ` whose reciprocal overflows.
+  fn check_domain(self, theta: f64) -> Result<(), CopulaError> {
+    let (inside, constraint) = match self {
+      Self::Clayton => {
+        let shape = 1.0 / theta;
+        (shape > 0.0 && shape.is_finite(), "0 < 1 / theta < ∞")
+      }
+      Self::Gumbel => (theta >= 1.0, "theta >= 1.0 for Gumbel"),
+    };
+    if inside {
+      return Ok(());
+    }
+    Err(CopulaError::InvalidParameter {
+      name: "theta",
+      value: theta,
+      constraint: constraint.into(),
+    })
+  }
+
+  /// LST-normalised inverse generator: Clayton $(1 + s)^{-1/\theta}$, Gumbel $\exp(-s^{1/\theta})$.
+  fn inverse_generator(self, theta: f64, s: f64) -> f64 {
+    match self {
+      Self::Clayton => (1.0 + s).powf(-1.0 / theta),
+      Self::Gumbel => (-(s.powf(1.0 / theta))).exp(),
+    }
+  }
+
+  /// Generator $\varphi_\theta = \psi_\theta^{-1}$: Clayton $t^{-\theta} - 1$, Gumbel $(-\ln t)^\theta$.
+  fn generator(self, theta: f64, t: f64) -> f64 {
     let t = t.clamp(1e-15, 1.0 - 1e-15);
     match self {
-      NacFamily::Clayton => t.powf(-theta) - 1.0,
-      NacFamily::Gumbel => (-t.ln()).powf(theta),
+      Self::Clayton => t.powf(-theta) - 1.0,
+      Self::Gumbel => (-t.ln()).powf(theta),
     }
   }
 }
@@ -140,8 +139,7 @@ impl NacFamily {
 /// prefer the builder API.
 #[derive(Debug, Clone)]
 pub struct NacNode {
-  /// Family parameter $\theta$ for this node's generator. Must satisfy
-  /// [`NacFamily::theta_min`].
+  /// Generator parameter $\theta$ of this node: $0 < 1/\theta < \infty$ for Clayton, $\theta \ge 1$ for Gumbel.
   pub theta: f64,
   /// Marginal indices whose copula is governed directly by this node's
   /// generator (i.e. no further nesting below them).
@@ -172,93 +170,105 @@ impl NacNode {
 /// Nested Archimedean copula with a single family across all nodes.
 #[derive(Debug, Clone)]
 pub struct NestedArchimedean {
-  family: NacFamily,
-  root: NacNode,
+  generator: Generator,
+  root: Option<NacNode>,
   dim: usize,
   index_order: Vec<usize>,
 }
 
 impl NestedArchimedean {
-  /// Construct a NAC from a family and root node. Validates the sufficient
-  /// nesting condition, family-specific parameter bounds, and that every
-  /// marginal index appears exactly once in the tree.
-  pub fn new(family: NacFamily, root: NacNode, dim: usize) -> Result<Self, Box<dyn Error>> {
-    Self::validate_node(family, &root, root.theta.min(f64::INFINITY), true)?;
+  /// An empty copula for `fit`; `Unsupported` unless `family` is Clayton or Gumbel.
+  pub fn unfitted(family: BivariateFamily) -> Result<Self, CopulaError> {
+    Ok(Self {
+      generator: Generator::from_family(family)?,
+      root: None,
+      dim: 0,
+      index_order: vec![],
+    })
+  }
+
+  /// Builds a NAC from a Clayton or Gumbel `family` (`Unsupported` otherwise) and a root node; checks the sufficient
+  /// nesting condition, the generator's parameter bounds and that every marginal index appears exactly once.
+  pub fn new(family: BivariateFamily, root: NacNode, dim: usize) -> Result<Self, CopulaError> {
+    let generator = Generator::from_family(family)?;
+    Self::validate_node(generator, &root, root.theta.min(f64::INFINITY), true)?;
     let mut index_order = Vec::with_capacity(dim);
     root.collect_leaves(&mut index_order);
     if index_order.len() != dim {
-      return Err(
-        format!(
-          "NAC tree exposes {} leaves but dim = {dim}",
-          index_order.len()
-        )
-        .into(),
-      );
+      return Err(CopulaError::InvalidStructure(format!(
+        "the NAC tree has {} leaves but dim = {dim}",
+        index_order.len()
+      )));
     }
     let mut seen = vec![false; dim];
     for &j in &index_order {
       if j >= dim {
-        return Err(format!("leaf index {j} ≥ dim {dim}").into());
+        return Err(CopulaError::InvalidStructure(format!(
+          "leaf index {j} >= dim {dim}"
+        )));
       }
       if seen[j] {
-        return Err(format!("leaf index {j} appears more than once").into());
+        return Err(CopulaError::InvalidStructure(format!(
+          "leaf index {j} appears more than once"
+        )));
       }
       seen[j] = true;
     }
     if seen.iter().any(|&b| !b) {
-      return Err("Not every marginal appears in the NAC tree".into());
+      return Err(CopulaError::InvalidStructure(
+        "not every marginal appears in the NAC tree".into(),
+      ));
     }
     Ok(Self {
-      family,
-      root,
+      generator,
+      root: Some(root),
       dim,
       index_order,
     })
   }
 
-  /// Recursive SNC validator. `parent_theta` is the closest ancestor's
-  /// theta; for the root pass its own theta (so the parent constraint is
-  /// vacuously satisfied). `is_root` flips behavior for the family-specific
-  /// minimum check.
+  /// Checks `node` and its subtree: every `θ` finite and in the generator's domain, and below the root at least
+  /// `parent_theta` (the sufficient nesting condition).
   fn validate_node(
-    family: NacFamily,
+    generator: Generator,
     node: &NacNode,
     parent_theta: f64,
     is_root: bool,
-  ) -> Result<(), Box<dyn Error>> {
-    let theta_min = family.theta_min();
-    if node.theta < theta_min {
-      return Err(
-        format!(
-          "{family:?} node θ={} below family minimum {theta_min}",
-          node.theta
-        )
-        .into(),
-      );
+  ) -> Result<(), CopulaError> {
+    if !node.theta.is_finite() {
+      return Err(CopulaError::InvalidParameter {
+        name: "theta",
+        value: node.theta,
+        constraint: "theta.is_finite()".into(),
+      });
     }
+    generator.check_domain(node.theta)?;
     if !is_root && node.theta < parent_theta {
-      return Err(
-        format!(
-          "SNC violation: child θ={} < parent θ={} ({family:?})",
-          node.theta, parent_theta
-        )
-        .into(),
-      );
+      return Err(CopulaError::InvalidStructure(format!(
+        "sufficient nesting condition violated: child theta {:?} < parent theta {:?} ({:?})",
+        node.theta,
+        parent_theta,
+        generator.family()
+      )));
     }
     for child in &node.children {
-      Self::validate_node(family, child, node.theta, false)?;
+      Self::validate_node(generator, child, node.theta, false)?;
     }
     Ok(())
   }
 
-  /// Family exposed for downstream inspection.
-  pub fn family(&self) -> NacFamily {
-    self.family
+  /// The Archimedean family every node shares; the trait's `family()` is always `NestedArchimedean`.
+  pub fn generator_family(&self) -> BivariateFamily {
+    self.generator.family()
   }
 
-  /// Root node (immutable view).
-  pub fn root(&self) -> &NacNode {
-    &self.root
+  /// The tree; `None` for an `unfitted` copula until `fit` estimates one.
+  pub fn root(&self) -> Option<&NacNode> {
+    self.root.as_ref()
+  }
+
+  fn fitted_root(&self) -> Result<&NacNode, CopulaError> {
+    self.root.as_ref().ok_or(CopulaError::NotFitted)
   }
 
   /// Total dimension.
@@ -287,7 +297,7 @@ impl NestedArchimedean {
   fn positive_stable<R: Rng + ?Sized>(rng: &mut R, alpha: f64) -> f64 {
     debug_assert!(alpha > 0.0 && alpha < 1.0);
     let u: f64 = rng.random::<f64>().clamp(1e-15, 1.0 - 1e-15);
-    let theta = f64::consts::PI * u;
+    let theta = std::f64::consts::PI * u;
     let w_uniform: f64 = rng.random::<f64>().clamp(1e-15, 1.0 - 1e-15);
     let w = -w_uniform.ln();
     let s_a = (alpha * theta).sin();
@@ -299,14 +309,41 @@ impl NestedArchimedean {
     numerator / denominator
   }
 
-  fn sample_with<R: Rng + ?Sized>(&self, n: usize, rng: &mut R) -> Array2<f64> {
+  /// LST `exp(−v₀((1 + t)^α − 1))` by Hofert's (2011) fast rejection: a sum of `m` positive stables of LST `exp(−(v₀/m) t^α)`,
+  /// each kept with probability `e^{−S}`, `m` minimising the expected `m e^{v₀/m} ≤ e max(1, ⌈v₀⌉)` proposals.
+  fn tilted_stable<R: Rng + ?Sized>(rng: &mut R, alpha: f64, v0: f64) -> f64 {
+    let m = if v0 <= 1.0 {
+      1.0
+    } else {
+      let (lo, hi) = (v0.floor(), v0.ceil());
+      if lo * (v0 / lo).exp() <= hi * (v0 / hi).exp() {
+        lo
+      } else {
+        hi
+      }
+    };
+    let scale = (v0 / m).powf(1.0 / alpha);
+    (0..m as u64)
+      .map(|_| {
+        loop {
+          let s = scale * Self::positive_stable(rng, alpha);
+          // Strict on the [0, 1) uniform, so an infinite proposal is never kept.
+          if rng.random::<f64>() < (-s).exp() {
+            break s;
+          }
+        }
+      })
+      .sum()
+  }
+
+  fn sample_with<R: Rng + ?Sized>(&self, root: &NacNode, n: usize, rng: &mut R) -> Array2<f64> {
     let d = self.dim;
     let mut out = Array2::<f64>::zeros((n, d));
     for r in 0..n {
       let mut row = Array1::<f64>::zeros(d);
       // Root call: `parent_state = None` signals that V_0 must be sampled
       // independently from the root family's frailty distribution.
-      self.sample_node(rng, &self.root, None, &mut row);
+      self.sample_node(rng, root, None, &mut row);
       for j in 0..d {
         out[[r, j]] = row[j];
       }
@@ -326,20 +363,16 @@ impl NestedArchimedean {
     parent_state: Option<(f64, f64)>,
     out: &mut Array1<f64>,
   ) {
-    let v = match (self.family, parent_state) {
-      (NacFamily::Clayton, None) => {
-        // Root Clayton frailty: V ~ Gamma(shape = 1/θ, scale = 1) →
-        // LST = (1 + s)^{-1/θ} = ψ_Clayton(s) (LST-normalised). Seeded
-        // from a sub-seed drawn off the caller's `rng` stream — a bare
-        // `Unseeded` source here would silently break `sample_with_seed`
-        // reproducibility for every Clayton-family NAC, since this branch
-        // fires on every row (the root frailty has no parent to inherit
-        // determinism from).
+    let v = match (self.generator, parent_state) {
+      (Generator::Clayton, None) => {
+        // V ~ Gamma(1/θ, 1) has LST (1 + s)^{-1/θ}; its sub-seed comes off `rng`, since an `Unseeded` source
+        // here would break the replay of every Clayton tree (the root frailty is drawn on every row).
         let sub_seed = rng.random::<u64>();
-        let g = SimdGamma::<f64>::new(1.0 / node.theta, 1.0, &Deterministic::new(sub_seed));
-        g.sample_fast()
+        let mut g =
+          SimdGamma::<f64>::new(1.0 / node.theta, 1.0).seeded(&Deterministic::new(sub_seed));
+        g.sample()
       }
-      (NacFamily::Gumbel, None) => {
+      (Generator::Gumbel, None) => {
         // Root Gumbel frailty: V ~ S_+(1/θ). The θ = 1 case is the
         // independence boundary (Gumbel = product copula); the positive
         // stable distribution degenerates to the constant 1 there.
@@ -349,12 +382,9 @@ impl NestedArchimedean {
           Self::positive_stable(rng, 1.0 / node.theta)
         }
       }
-      (NacFamily::Gumbel, Some((parent_theta, parent_v))) => {
-        // Nested Gumbel (McNeil 2008, derivation §4 with Hofert 2011
-        // Algorithm 2 form). The conditional LST of V_c given V_p is
-        // exp(-V_p · s^α), α = θ_p / θ_c, which is the LST of
-        //   V_c = V_p^{1/α} · S_+(α).
-        // SNC ⟹ α ∈ (0, 1]; α = 1 is the no-nesting case (V_c = V_p).
+      (Generator::Gumbel, Some((parent_theta, parent_v))) => {
+        // V_c | V_p has LST exp(-V_p s^α), α = θ_p / θ_c, so V_c = V_p^{1/α} · S_+(α) (Hofert & Mächler 2011, Table 3);
+        // α = 1 is the no-nesting case, V_c = V_p.
         let alpha = parent_theta / node.theta;
         if (alpha - 1.0).abs() < 1e-12 {
           parent_v
@@ -363,23 +393,15 @@ impl NestedArchimedean {
           parent_v.powf(1.0 / alpha) * s
         }
       }
-      (NacFamily::Clayton, Some(_)) => {
-        // Nested Clayton: the conditional frailty V_c | V_p has LST
-        // exp(-V_p · ((1+s)^α - 1)) with α = θ_p/θ_c — an exponentially
-        // tilted positive stable distribution. Exact sampling requires
-        // Devroye's double-rejection (Hofert 2011, Algorithm 4), which is
-        // not yet implemented. We surface this limitation up to `sample`
-        // so the caller does not silently get a biased copula; the CDF /
-        // PDF / structure-validation paths are unaffected and work for
-        // arbitrarily nested Clayton trees.
-        panic!(
-          "Nested-Clayton sampling is not implemented — \
-           use NacFamily::Gumbel for nesting (correct Hofert (2011) \
-           Algorithm 2), or call cdf / pdf on a nested-Clayton tree \
-           (those paths are fully supported). Exact nested-Clayton \
-           sampling via tilted-stable Devroye double-rejection is \
-           not yet implemented."
-        );
+      (Generator::Clayton, Some((parent_theta, parent_v))) => {
+        // V_c | V_p is the tilted stable of LST exp(-V_p((1 + s)^α - 1)), α = θ_p / θ_c (Hofert & Mächler 2011, Table 3
+        // and eq. (5)); α = 1 is the no-nesting case, V_c = V_p.
+        let alpha = parent_theta / node.theta;
+        if (alpha - 1.0).abs() < 1e-12 {
+          parent_v
+        } else {
+          Self::tilted_stable(rng, alpha, parent_v)
+        }
       }
     };
 
@@ -388,7 +410,7 @@ impl NestedArchimedean {
       let e_uniform: f64 = rng.random::<f64>().clamp(1e-15, 1.0 - 1e-15);
       let e = -e_uniform.ln();
       let arg = e / v.max(1e-300);
-      let u = self.family.inverse_generator(node.theta, arg);
+      let u = self.generator.inverse_generator(node.theta, arg);
       out[j] = u.clamp(1e-12, 1.0 - 1e-12);
     }
 
@@ -398,107 +420,66 @@ impl NestedArchimedean {
     }
   }
 
-  /// Recursive CDF evaluator: returns $C(u_{\text{tree}})$ for the sub-tree
-  /// rooted at `node`. Used both directly (whole-tree CDF) and indirectly
-  /// (via finite differences) for density estimation.
   fn cdf_node(&self, node: &NacNode, u: &[f64]) -> f64 {
     let mut s = 0.0;
     for &j in &node.leaves {
-      s += self.family.generator(node.theta, u[j]);
+      s += self.generator.generator(node.theta, u[j]);
     }
     for child in &node.children {
       let c_inner = self.cdf_node(child, u);
-      s += self.family.generator(node.theta, c_inner);
+      s += self.generator.generator(node.theta, c_inner);
     }
-    self.family.inverse_generator(node.theta, s)
+    self.generator.inverse_generator(node.theta, s)
   }
 }
 
 impl MultivariateExt for NestedArchimedean {
-  fn r#type(&self) -> CopulaType {
-    CopulaType::NestedArchimedean
+  fn family(&self) -> MultivariateFamily {
+    MultivariateFamily::NestedArchimedean
   }
 
-  fn sample(&self, n: usize) -> Result<Array2<f64>, Box<dyn Error>> {
-    Ok(self.sample_with(n, &mut SimdRng::new()))
+  fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
+    Ok(self.sample_with(self.fitted_root()?, n, &mut seed.rng()))
   }
 
-  /// Reproducible counterpart of [`MultivariateExt::sample`]: the same
-  /// `seed` always yields the same matrix.
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<Array2<f64>, Box<dyn Error>> {
-    Ok(self.sample_with(n, &mut SimdRng::from_seed(seed)))
+  /// Estimates the binary tree from Kendall's τ-b of `X` (Górecki, Hofert & Holeňa 2016, Algorithm 3); a mean τ̂ outside the
+  /// generator's range (`0 < τ < 1` Clayton, `0 ≤ τ < 1` Gumbel) is `InvalidParameter { name: "tau", .. }` and stores nothing.
+  fn fit(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
+    let root = fit::estimate(self.generator, X)?;
+    *self = Self::new(self.generator.family(), root, X.ncols())?;
+    Ok(())
   }
 
-  fn fit(&mut self, _X: Array2<f64>) -> Result<(), Box<dyn Error>> {
-    // The structural parameters (tree topology + family) are not estimated
-    // from data; the user supplies them via `new()`. A full structure +
-    // parameter fit (Okhrin-Okhrin-Schmid 2013 HAC structure selection) is
-    // not yet implemented.
-    Err(
-      "NestedArchimedean::fit not implemented — supply the tree via NestedArchimedean::new \
-       and use crate::correlation::kendall_tau on the marginal pairs to seed θ values. \
-       Structure learning is not yet implemented."
-        .into(),
-    )
-  }
-
-  fn check_fit(&self, X: &Array2<f64>) -> Result<(), Box<dyn Error>> {
+  fn check_fit(&self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
+    self.fitted_root()?;
     if X.ncols() != self.dim {
-      return Err(
-        format!(
-          "Dimension mismatch: X has {} columns, NAC has dim {}",
-          X.ncols(),
-          self.dim
-        )
-        .into(),
-      );
+      return Err(CopulaError::DimensionMismatch {
+        expected: self.dim,
+        got: X.ncols(),
+      });
     }
     if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
-      return Err("Input X must be in [0,1] for NAC".into());
+      return Err(CopulaError::MarginalOutOfRange);
     }
     Ok(())
   }
 
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
-    self.check_fit(X)?;
-    // Closed-form NAC densities (Hofert-Pham 2012) require the full
-    // d-th-order generator-derivative recursion which is family-specific
-    // and scales as O(d²) per query; instead we estimate the density via
-    // finite differences on the CDF along the d-cube vertex pattern. This
-    // is exact in the limit h → 0 and stable for h = 1e-4 on
-    // well-conditioned NAC trees (θ_max / θ_min < 20).
-    let d = self.dim;
-    let h = 1e-4_f64;
-    let denom = (2.0 * h).powi(d as i32);
-    let mut out = Array1::<f64>::zeros(X.nrows());
-    let mut u_pert = vec![0.0_f64; d];
-    for (i, row) in X.rows().into_iter().enumerate() {
-      let u_orig: Vec<f64> = row.iter().copied().collect();
-      let mut acc = 0.0;
-      // Enumerate 2^d vertices: for each subset S of {0..d}, sign = (-1)^{d-|S|}.
-      for mask in 0..(1u32 << d) {
-        let mut sign = 1.0;
-        for j in 0..d {
-          if (mask >> j) & 1 == 1 {
-            u_pert[j] = (u_orig[j] + h).min(1.0 - 1e-12);
-          } else {
-            u_pert[j] = (u_orig[j] - h).max(1e-12);
-            sign = -sign;
-          }
-        }
-        acc += sign * self.cdf_node(&self.root, &u_pert);
-      }
-      out[i] = (acc / denom).max(0.0);
-    }
-    Ok(out)
+  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(self.log_pdf(X)?.mapv_into(f64::exp))
   }
 
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn log_pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(X)?;
+    Ok(density::Density::new(self.generator, self.fitted_root()?).log_pdf(X))
+  }
+
+  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit(X)?;
+    let root = self.fitted_root()?;
     let mut out = Array1::<f64>::zeros(X.nrows());
     for (i, row) in X.rows().into_iter().enumerate() {
       let u: Vec<f64> = row.iter().copied().collect();
-      out[i] = self.cdf_node(&self.root, &u);
+      out[i] = self.cdf_node(root, &u);
     }
     Ok(out)
   }

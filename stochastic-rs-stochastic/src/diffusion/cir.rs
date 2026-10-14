@@ -12,6 +12,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -68,11 +71,8 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
   /// which is the documented way to handle sub-Feller paths (matching the
   /// same-shaped variance factor in
   /// [`Heston`](crate::volatility::heston::Heston), which imposes no
-  /// Feller precondition at all). A violation not paired with
-  /// `use_sym = Some(true)` unconditionally prints a one-line diagnostic
-  /// to stderr — including in release builds, where real Monte Carlo /
-  /// calibration runs happen and silently biased boundary handling is
-  /// exactly what a caller needs to know about; it never panics.
+  /// Feller precondition at all). A violation not paired with `use_sym = Some(true)` emits a
+  /// `log::warn!`: silently biased boundary handling is what a caller needs to know; never panics.
   pub fn new(
     theta: T,
     mu: T,
@@ -84,8 +84,8 @@ impl<T: FloatExt, S: SeedExt> Cir<T, S> {
     seed: S,
   ) -> Self {
     if T::from_usize_(2) * theta * mu < sigma.powi(2) && use_sym != Some(true) {
-      eprintln!(
-        "warning: Cir::new: Feller condition violated (2*theta*mu < sigma^2) \
+      log::warn!(
+        "Cir::new: Feller condition violated (2*theta*mu < sigma^2) \
          without use_sym = Some(true); the path floors at zero on every \
          boundary hit instead of reflecting — pass use_sym = Some(true) for \
          the standard sub-Feller mitigation"
@@ -175,6 +175,8 @@ impl<T: FloatExt> Default for Cir<T, Unseeded> {
 
 backend_switch!([T: FloatExt, S: SeedExt] Cir<T, S> { theta, mu, sigma, n, x0, t, use_sym, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> crate::traits::Sealed for Cir<T, S, B> {}
+
 impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Cir<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -193,7 +195,7 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Cir<T, S, B>
       mu: self.mu,
       diff_scale: self.sigma,
       use_sym: self.use_sym.unwrap_or(false),
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
@@ -236,7 +238,7 @@ pub struct CirSampler<T: FloatExt> {
   mu: T,
   diff_scale: T,
   use_sym: bool,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> CirSampler<T> {
@@ -262,6 +264,8 @@ impl<T: FloatExt> CirSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for CirSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for CirSampler<T> {
   type Output = Array1<T>;

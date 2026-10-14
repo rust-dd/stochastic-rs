@@ -25,7 +25,6 @@ use stochastic_rs_core::simd_rng::Unseeded;
 
 use super::kernel::RlKernel;
 use super::markov_lift::MarkovLift;
-use super::markov_lift::RoughSimd;
 use crate::device::Cpu;
 use crate::noise::cgns::Cgns;
 use crate::traits::FloatExt;
@@ -122,7 +121,7 @@ impl<T: FloatExt, S: SeedExt> RlHeston<T, S> {
   }
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt, B> RlHeston<T, S, B> {
+impl<T: FloatExt, S: SeedExt, B> RlHeston<T, S, B> {
   /// Generate $m$ independent rough Heston paths.
   /// Returns `[spot_paths, variance_paths]` where each is an $(m, n)$ array.
   pub fn sample_batch(&self, m: usize) -> [Array2<T>; 2] {
@@ -169,8 +168,8 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B> RlHeston<T, S, B> {
 /// constants and boundary terms — started at `v0`, floored as the host floors
 /// it — and the family steps the spot by Euler beside it, the two shocks
 /// correlated in the step exactly as the host's correlated pair is.
-impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
-  crate::euler::EulerSystem<T, 2> for RlHeston<T, S, B>
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::EulerSystem<T, 2>
+  for RlHeston<T, S, B>
 {
   fn euler_spec(&self) -> crate::euler::EulerSpec<T> {
     crate::euler::EulerSpec::RiemannLiouvilleHeston {
@@ -226,9 +225,14 @@ impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>>
   }
 }
 
-backend_switch!([T: FloatExt + RoughSimd, S: SeedExt] RlHeston<T, S> { hurst, s0, v0, kappa, theta, nu, rho, mu, n, t, degree, seed, cgns, markov } via euler);
+backend_switch!([T: FloatExt, S: SeedExt] RlHeston<T, S> { hurst, s0, v0, kappa, theta, nu, rho, mu, n, t, degree, seed, cgns, markov } via euler);
 
-impl<T: FloatExt + RoughSimd, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for RlHeston<T, S, B>
+{
+}
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for RlHeston<T, S, B>
 {
   type Output = [Array1<T>; 2];
@@ -302,7 +306,7 @@ pub struct RlHestonSampler<'a, T: FloatExt, S: SeedExt> {
   seed: S,
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> RlHestonSampler<'_, T, S> {
+impl<T: FloatExt, S: SeedExt> RlHestonSampler<'_, T, S> {
   fn fill_paths(&mut self, s: &mut [T], v_out: &mut [T]) {
     if self.n == 0 {
       return;
@@ -332,7 +336,9 @@ impl<T: FloatExt + RoughSimd, S: SeedExt> RlHestonSampler<'_, T, S> {
   }
 }
 
-impl<T: FloatExt + RoughSimd, S: SeedExt> PathSampler<T> for RlHestonSampler<'_, T, S> {
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for RlHestonSampler<'_, T, S> {}
+
+impl<T: FloatExt, S: SeedExt> PathSampler<T> for RlHestonSampler<'_, T, S> {
   type Output = [Array1<T>; 2];
 
   fn sample_into(&mut self, out: &mut [Array1<T>; 2]) {

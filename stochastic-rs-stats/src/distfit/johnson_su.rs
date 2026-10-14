@@ -3,7 +3,6 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_distributions::johnson_su::SimdJohnsonSu;
 use stochastic_rs_distributions::traits::DistributionExt;
 
@@ -46,8 +45,10 @@ fn log_density(x: &[f64], gamma: f64, delta: f64, xi: f64, lambda: f64) -> f64 {
   if !(delta > 0.0 && lambda > 0.0 && delta.is_finite() && lambda.is_finite()) {
     return 1e300;
   }
-  let d = SimdJohnsonSu::<f64>::new(gamma, delta, xi, lambda, &Deterministic::new(0));
-  negative_log_likelihood(x, |v| d.pdf(v).ln())
+  let d = SimdJohnsonSu::<f64>::new(gamma, delta, xi, lambda);
+  negative_log_likelihood(x, |v| {
+    d.pdf(v).expect("SimdJohnsonSu has a closed-form pdf").ln()
+  })
 }
 
 /// Johnson SU maximum-likelihood fit of `data`.

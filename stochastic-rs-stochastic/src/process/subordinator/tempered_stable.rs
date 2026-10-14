@@ -1,6 +1,8 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::poisson::SimdPoisson;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
@@ -127,6 +129,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] TemperedStableSubordinator<T, S> { alpha, c, mu, epsilon, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for TemperedStableSubordinator<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for TemperedStableSubordinator<T, S, B>
 {
@@ -156,8 +163,8 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
       mu,
       eps,
       small_jump_drift,
-      poisson: SimdPoisson::<u32>::new(lambda0 * dt, &self.seed),
-      uniform: SimdUniform::<f64>::new(0.0, 1.0, &self.seed),
+      poisson: SimdPoisson::<u32>::new(lambda0 * dt).seeded(&self.seed),
+      uniform: SimdUniform::<f64>::new(0.0, 1.0).seeded(&self.seed),
     }
   }
 
@@ -204,8 +211,8 @@ pub struct TemperedStableSubordinatorSampler<T: FloatExt> {
   mu: f64,
   eps: f64,
   small_jump_drift: f64,
-  poisson: SimdPoisson<u32>,
-  uniform: SimdUniform<f64>,
+  poisson: Seeded<SimdPoisson<u32>>,
+  uniform: Seeded<SimdUniform<f64>>,
 }
 
 impl<T: FloatExt> TemperedStableSubordinatorSampler<T> {
@@ -219,12 +226,12 @@ impl<T: FloatExt> TemperedStableSubordinatorSampler<T> {
     }
     let mut level = self.x0.to_f64().unwrap();
     for x in out[1..].iter_mut() {
-      let n_candidates = self.poisson.sample_fast() as usize;
+      let n_candidates = self.poisson.sample() as usize;
       let mut jump_sum = 0.0f64;
       for _ in 0..n_candidates {
-        let u = clamp_open01(self.uniform.sample_fast());
+        let u = clamp_open01(self.uniform.sample());
         let xj = self.eps * u.powf(-1.0 / self.alpha);
-        let accept = self.uniform.sample_fast() <= (-self.mu * xj).exp();
+        let accept = self.uniform.sample() <= (-self.mu * xj).exp();
         if accept {
           jump_sum += xj;
         }
@@ -234,6 +241,8 @@ impl<T: FloatExt> TemperedStableSubordinatorSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for TemperedStableSubordinatorSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for TemperedStableSubordinatorSampler<T> {
   type Output = Array1<T>;

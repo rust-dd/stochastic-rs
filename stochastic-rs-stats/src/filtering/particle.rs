@@ -14,7 +14,7 @@ use std::fmt::Display;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
-use rand::RngCore;
+use rand::distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::SimdRng;
@@ -111,14 +111,21 @@ where
     }
   }
 
+  /// The largest log-weight, NaN if any is; the NaN flag is its own reduction so the max still vectorizes.
+  fn max_log_weight(&self) -> f64 {
+    let (max, nan) = self
+      .log_weights
+      .iter()
+      .fold((f64::NEG_INFINITY, false), |(max, nan), &lw| {
+        (max.max(lw), nan | lw.is_nan())
+      });
+    if nan { f64::NAN } else { max }
+  }
+
   /// Mean state across particles, weighted by the current normalised weights.
   pub fn mean_state(&self) -> Array1<f64> {
     let (n, d) = self.particles.dim();
-    let max_lw = self
-      .log_weights
-      .iter()
-      .cloned()
-      .fold(f64::NEG_INFINITY, f64::max);
+    let max_lw = self.max_log_weight();
     let weights: Vec<f64> = self
       .log_weights
       .iter()
@@ -137,11 +144,7 @@ where
 
   /// Effective sample size $1 / \sum w_i^2$ in the natural scale.
   pub fn effective_sample_size(&self) -> f64 {
-    let max_lw = self
-      .log_weights
-      .iter()
-      .cloned()
-      .fold(f64::NEG_INFINITY, f64::max);
+    let max_lw = self.max_log_weight();
     let weights: Vec<f64> = self
       .log_weights
       .iter()
@@ -186,11 +189,7 @@ where
   /// Normalise the log-weights in place; returns the log-sum-exp
   /// normalising constant (the step's incremental log-likelihood).
   fn normalise_log_weights(&mut self) -> f64 {
-    let max_lw = self
-      .log_weights
-      .iter()
-      .cloned()
-      .fold(f64::NEG_INFINITY, f64::max);
+    let max_lw = self.max_log_weight();
     let log_total: f64 = self
       .log_weights
       .iter()
@@ -206,11 +205,7 @@ where
 
   fn resample(&mut self) {
     let (n, d) = self.particles.dim();
-    let max_lw = self
-      .log_weights
-      .iter()
-      .cloned()
-      .fold(f64::NEG_INFINITY, f64::max);
+    let max_lw = self.max_log_weight();
     let weights: Vec<f64> = self
       .log_weights
       .iter()
@@ -260,18 +255,27 @@ where
   }
 }
 
-/// Convenience: a Gaussian random-walk transition with diagonal step variance,
-/// useful as the `transition` argument when the latent state follows a
-/// driftless random walk.
+/// A driftless Gaussian random-walk `transition`: component `j` steps by an `N(0, scales[j]^2)` draw
+/// from the filter's rng; panics if a scale is not positive.
 pub fn gaussian_random_walk_transition(
   scales: Array1<f64>,
 ) -> impl Fn(ArrayView1<f64>, &mut SimdRng) -> Array1<f64> {
+  let laws = scales
+    .iter()
+    .enumerate()
+    .map(|(j, &scale)| {
+      assert!(
+        scale > 0.0,
+        "scales[{j}] must satisfy `scales[{j}] > 0`, got scales[{j}] = {scale}"
+      );
+      SimdNormal::<f64>::new(0.0, scale)
+    })
+    .collect::<Vec<_>>();
   move |prev, rng| {
     let d = prev.len();
     let mut out = Array1::<f64>::zeros(d);
     for j in 0..d {
-      let dist = SimdNormal::<f64>::new(0.0, scales[j], &Deterministic::new(rng.next_u64()));
-      out[j] = prev[j] + dist.sample_fast();
+      out[j] = prev[j] + laws[j].sample(rng);
     }
     out
   }
@@ -279,14 +283,16 @@ pub fn gaussian_random_walk_transition(
 
 #[cfg(test)]
 mod tests {
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
 
   #[test]
   fn particle_filter_tracks_random_walk() {
-    let truth_dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(1));
-    let obs_noise = SimdNormal::<f64>::new(0.0, 0.2, &Deterministic::new(2));
+    let mut truth_dist = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(1));
+    let mut obs_noise = SimdNormal::<f64>::new(0.0, 0.2).seeded(&Deterministic::new(2));
     let n = 200;
     let mut x_true = vec![0.0_f64; n];
     let mut steps = vec![0.0_f64; n];
@@ -298,19 +304,12 @@ mod tests {
     }
     let observations: Vec<f64> = (0..n).map(|i| x_true[i] + obs_buf[i]).collect();
     let scale = 1.0;
-    let init = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(3));
-    let init_fn = move |rng: &mut SimdRng| {
-      let _ = rng;
-      let mut a = [0.0_f64];
-      init.fill_slice(&mut a);
-      Array1::from(vec![a[0]])
-    };
-    let transition_dist = SimdNormal::<f64>::new(0.0, scale, &Deterministic::new(5));
+    let init_fn =
+      move |rng: &mut SimdRng| Array1::from(vec![SimdNormal::<f64>::new(0.0, 1.0).sample(rng)]);
     let transition = move |prev: ArrayView1<f64>, rng: &mut SimdRng| {
-      let _ = rng;
-      let mut a = [0.0_f64];
-      transition_dist.fill_slice(&mut a);
-      Array1::from(vec![prev[0] + a[0]])
+      Array1::from(vec![
+        prev[0] + SimdNormal::<f64>::new(0.0, scale).sample(rng),
+      ])
     };
     let log_obs = move |x: ArrayView1<f64>, y: ArrayView1<f64>| {
       let z = (y[0] - x[0]) / 0.2;
@@ -331,11 +330,8 @@ mod tests {
   #[test]
   fn ess_falls_after_step_with_skewed_likelihood() {
     let init = move |_rng: &mut SimdRng| Array1::from(vec![0.0_f64]);
-    let transition_dist = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(11));
-    let transition = move |prev: ArrayView1<f64>, _rng: &mut SimdRng| {
-      let mut a = [0.0_f64];
-      transition_dist.fill_slice(&mut a);
-      Array1::from(vec![prev[0] + a[0]])
+    let transition = move |prev: ArrayView1<f64>, rng: &mut SimdRng| {
+      Array1::from(vec![prev[0] + SimdNormal::<f64>::new(0.0, 1.0).sample(rng)])
     };
     let log_obs = |x: ArrayView1<f64>, y: ArrayView1<f64>| {
       let z = (y[0] - x[0]) / 0.05;
@@ -347,5 +343,17 @@ mod tests {
     let n = pf.particles.nrows() as f64;
     pf.step(y.view());
     assert!(pf.effective_sample_size() < n);
+  }
+
+  #[test]
+  fn a_nan_log_weight_makes_the_log_weight_shift_nan() {
+    let init = |_rng: &mut SimdRng| Array1::from(vec![0.0_f64]);
+    let transition = |prev: ArrayView1<f64>, _rng: &mut SimdRng| prev.to_owned();
+    let log_obs = |_x: ArrayView1<f64>, _y: ArrayView1<f64>| 0.0;
+    let mut pf = ParticleFilter::new(4, init, transition, log_obs, 3);
+    pf.log_weights = Array1::from(vec![-1.0, -0.5, -2.0, -3.0]);
+    assert_eq!(pf.max_log_weight(), -0.5);
+    pf.log_weights[2] = f64::NAN;
+    assert!(pf.max_log_weight().is_nan());
   }
 }

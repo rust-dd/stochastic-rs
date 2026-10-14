@@ -16,9 +16,10 @@ accessors plus a `greeks(s, k, r, q, tau, option_type)` aggregate —
 are the in-tree examples); implementing `ModelPricer` does not oblige
 you to add them. Section 1 shows both surfaces.
 
-Note that `GreeksExt`'s accessors default to `f64::NAN`, **not** to a
-finite difference — a pricer that does not override `vega` reports NaN so
-a consumer can distinguish "not exposed" from a real zero.
+`GreeksExt`'s accessors return `Option<f64>` and default to `None`, **not**
+to a finite difference — a pricer that does not override `vega` reports
+`None` (NaN in the `greeks()` aggregate) so a consumer can distinguish "not
+exposed" from a real zero.
 
 A third, unrelated `greeks()` exists and is easy to confuse with these
 two: `PricingResult::greeks(&self) -> Option<Greeks>`
@@ -38,8 +39,7 @@ delta/gamma/vega from re-runs.
 ```rust
 // stochastic-rs-quant/src/traits/pricing.rs
 
-// `Default` is implemented by hand as `Greeks::nan()`, NOT derived —
-// a derived `Default` would be all-zeros, which is exactly the
+// `Default` is `Greeks::nan()` by hand: a derived all-zeros default is the
 // plausible-looking sentinel section 8 forbids.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Greeks {
@@ -54,23 +54,21 @@ pub struct Greeks {
     pub veta: f64,
 }
 
-// `GreeksExt` has no supertrait, and only `delta` is required — every
-// other accessor defaults to `f64::NAN`, NOT to a finite difference. A
-// pricer that does not override `vega` reports NaN, so a consumer can
-// tell "not exposed" from a real zero.
+// Only `delta` is required; the rest default to `None`, never a finite difference,
+// so "not exposed" stays distinguishable from a real zero.
 pub trait GreeksExt {
-    fn delta(&self) -> f64;
-    fn gamma(&self) -> f64 { f64::NAN }
-    fn vega(&self)  -> f64 { f64::NAN }
-    fn theta(&self) -> f64 { f64::NAN }
-    fn rho(&self)   -> f64 { f64::NAN }
-    fn vanna(&self) -> f64 { f64::NAN }
-    fn charm(&self) -> f64 { f64::NAN }
-    fn volga(&self) -> f64 { f64::NAN }
-    fn veta(&self)  -> f64 { f64::NAN }
+    fn delta(&self) -> Option<f64>;
+    fn gamma(&self) -> Option<f64> { None }
+    fn vega(&self)  -> Option<f64> { None }
+    fn theta(&self) -> Option<f64> { None }
+    fn rho(&self)   -> Option<f64> { None }
+    fn vanna(&self) -> Option<f64> { None }
+    fn charm(&self) -> Option<f64> { None }
+    fn volga(&self) -> Option<f64> { None }
+    fn veta(&self)  -> Option<f64> { None }
 
-    // Aggregate. The default calls every accessor; the two MC estimators
-    // override it so one simulation backs the whole set (section 4).
+    // Aggregate. The default calls every accessor (NaN where one is None); the
+    // two MC estimators override it so one simulation backs the whole set (section 4).
     fn greeks(&self) -> Greeks { /* default: calls every accessor */ }
 }
 ```
@@ -93,11 +91,7 @@ impl BSMPricer {
     pub fn delta(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, ot: OptionType) -> f64 { ... }
     pub fn gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 { ... }
 
-    /// Aggregate. Provide this whenever you provide the accessors —
-    /// without it every caller hand-writes the nine-field `Greeks { .. }`
-    /// literal, and a mis-mapped field (volga vs veta) has nowhere to be
-    /// caught. Monte Carlo pricers should override it to share one set
-    /// of paths rather than calling each accessor separately.
+    /// All nine Greeks at one query; a Monte Carlo pricer computes them from one set of paths.
     pub fn greeks(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, ot: OptionType) -> Greeks { ... }
 }
 ```
@@ -119,18 +113,19 @@ impl BSMPricer {
 The Greeks struct is a flat `f64` bundle by design. Per-pricer overrides
 typically fill only the Greeks that have analytic closed forms (e.g.
 BSM does delta/gamma/vega/theta/rho analytically) and leave the
-second-order cross-Greeks at the trait default (numerical).
+second-order cross-Greeks out (`None` from a `GreeksExt` accessor, NaN in
+the aggregate).
 
-## 3. NaN defaults — when you don't compute a Greek
+## 3. `None` and NaN — when you don't compute a Greek
 
 If a pricer cannot compute a particular Greek (e.g. a fixed-strike
-basket pricer that has no σ parameter to bump), set the field to
-`f64::NAN` rather than 0.0. Convention:
+basket pricer that has no σ parameter to bump), a `GreeksExt` accessor
+keeps its `None` default and a `Greeks` field is `f64::NAN` — never 0.0.
+Convention:
 
 ```rust
-fn vega(&self) -> f64 {
-    f64::NAN  // basket has no σ; consumers detect via .is_nan()
-}
+// no `vega` override: `GreeksExt::vega` answers `None`; the aggregate keeps vega NaN
+Greeks { delta, gamma, ..Greeks::nan() }  // basket has no σ; consumers detect via .is_nan()
 ```
 
 **Do not return 0.0 for "not applicable" cases.** Zero is a valid
@@ -182,9 +177,7 @@ pub fn all_greeks(&self) -> Greeks {
         gamma: sum_gamma / m,
         vega:  sum_vega / m,
         rho:   sum_rho / m,
-        // No Malliavin weight exists for these, so they stay NaN —
-        // spelled out field by field. There is no `Greeks::nan()`
-        // struct-update shorthand in use here.
+        // No Malliavin weight exists for these, so they stay NaN.
         theta: f64::NAN,
         vanna: f64::NAN, charm: f64::NAN, volga: f64::NAN, veta: f64::NAN,
     }
@@ -249,9 +242,7 @@ impl BSMPricer {
         s * norm_pdf(d1) * tau.sqrt()
     }
 
-    /// Provide this whenever you provide the accessors. Without it every
-    /// caller hand-writes the nine-field literal, and a mis-mapped field
-    /// (volga vs veta) has nowhere to be caught.
+    /// All nine Greeks at one query.
     pub fn greeks(&self, s: f64, k: f64, r: f64, q: f64, tau: f64, ot: OptionType) -> Greeks {
         Greeks {
             delta: self.delta(s, k, r, q, tau, ot),
@@ -262,6 +253,10 @@ impl BSMPricer {
     }
 }
 ```
+
+Provide `greeks()` whenever you provide the accessors: without it every caller
+hand-writes the nine-field literal, and a mis-mapped field (volga vs veta) has
+nowhere to be caught.
 
 Note `..Greeks::nan()`, not `..Default::default()` — they are the same
 thing (`Default for Greeks` returns `nan()`), but spelling it `nan()` says
@@ -275,7 +270,7 @@ Reference: `BSMPricer` in `pricing/bsm/greeks.rs`.
 
 **There is no default finite-difference machinery in this crate**, and
 no `with_bump_sizes(...)` builder. `GreeksExt`'s accessors default to
-`f64::NAN`, and the five inherent aggregators are closed-form. A Greek
+`None`, and the five inherent aggregators are closed-form. A Greek
 is either derived analytically, estimated by a Malliavin weight, or
 absent.
 
@@ -311,7 +306,8 @@ Malliavin-Greeks estimator (`pricing/malliavin_greeks/tests.rs`).
 
 ## 8. Anti-patterns
 
-- **Do not** return `0.0` for "not applicable" Greeks. Use `f64::NAN`.
+- **Do not** return `0.0` for "not applicable" Greeks: a `GreeksExt`
+  accessor answers `None`, a `Greeks` field holds `f64::NAN`.
 - **Do not** override an individual Greek but leave `greeks()` at the
   default in an MC pricer. The user-facing Greeks then have asymmetric
   precision across components (the override Greek is single-pass, the

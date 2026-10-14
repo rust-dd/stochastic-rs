@@ -54,7 +54,7 @@
 //! `Fgbm`, `Fcir`, `Cfou`, `Cfgns`, `Fgn`, `Fbm` — instantiated here on the
 //! default `Cpu` backend only, since GPU backends deliberately ignore the
 //! seed and are not part of this guarantee), and eight take a jump-size
-//! distribution `D`, passed as `ScalarNormal`/`ScalarExp` per the crate's
+//! distribution `D`, passed as `SimdNormal`/`SimdExp` per the crate's
 //! convention (`Bates1996`, `JumpFou`, `Kou`, `LevyDiffusion`, `Merton`,
 //! `CompoundPoisson`, `JumpFOUCustom`, `CustomJt`). `JumpFou` and
 //! `JumpFOUCustom` fall in both buckets, so the union is `10 + 8 - 2 = 16`
@@ -62,7 +62,7 @@
 //! one-closure-per-type treatment as everything else, just with a longer
 //! argument list. `process::ccustom::CompoundCustom` takes *two* such
 //! distributions plus a nested `CustomJt` (`D1`/`D2`, not one `D` reused
-//! twice the way `JumpFOUCustom` reuses `ScalarExp`) — a ninth,
+//! twice the way `JumpFOUCustom` reuses `SimdExp`) — a ninth,
 //! structurally distinct distribution-shaped case beyond the eight usually
 //! named, sitting outside this count entirely; it is covered in
 //! `process.rs` alongside the rest. `n` is kept small throughout (this

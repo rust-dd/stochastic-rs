@@ -9,11 +9,10 @@
 //! under-prices them by 15-35% and can even return arbitrage-violating negative
 //! call prices.
 //!
-//! [`integrate_to_convergence`] replaces the fixed bound: it accumulates
-//! tanh-sinh panels, refines each one until the rule's own error estimate is
-//! met, and stops once the integrand's envelope can no longer move the answer,
-//! so the effective upper limit adapts to the actual decay length for any
-//! `(τ, v, moneyness)`.
+//! [`integrate_to_convergence`] accumulates tanh-sinh panels, refines each one
+//! until the rule's own error estimate is met, and stops once the integrand's
+//! envelope can no longer move the answer, so the effective upper limit adapts
+//! to the actual decay length for any `(τ, v, moneyness)`.
 
 use std::cell::Cell;
 
@@ -26,11 +25,8 @@ const INITIAL_WIDTH: f64 = 8.0;
 /// Floor on the panel width, so a pathological integrand cannot drive the walk
 /// to a standstill.
 const MIN_WIDTH: f64 = 1.0 / 64.0;
-/// Ceiling on the panel width. The old walk grew panels geometrically without
-/// one, and a width-800 panel is where this integrator used to fail: the
-/// tanh-sinh rule's point budget is fixed, so a wide panel is not integrated
-/// more coarsely — it is not integrated at all, and the `(b−a)/2` rescaling
-/// then multiplies the noise by 400.
+/// Ceiling on the panel width: the tanh-sinh point budget is fixed, so a wider panel is not
+/// integrated at all and the `(b−a)/2` rescaling amplifies its noise.
 const MAX_WIDTH: f64 = 64.0;
 /// Backstop on the number of panels. The envelope test below terminates long
 /// before this in every in-tree caller.
@@ -63,44 +59,8 @@ where
   (left + right, 1 + dl.max(dr))
 }
 
-/// Integrate `f` over `[a, ∞)` to a relative tolerance `tol`.
-///
-/// Panels of bounded width are summed, each refined by [`refine`] until the
-/// rule's own error estimate is below `tol`, until the remaining tail cannot
-/// move the answer by `tol` relative.
-///
-/// # Why the tail test reads the envelope
-///
-/// The stopping rule tracks `env`, the largest `|f|` at any point the rule
-/// actually evaluated on the panel, and the rate at which `env` is decaying
-/// panel over panel. A tail decaying at rate `λ` contributes at most `env/λ`,
-/// which is the quantity compared against `tol`.
-///
-/// Testing the *signed* panel contribution instead — the previous rule — asks
-/// whether the last panel happened to cancel, not whether the integrand has
-/// gone away. Both are small for an oscillatory integrand, and only one of
-/// them means the walk is finished. Requiring two consecutive small panels did
-/// not close the gap, because the panels were growing geometrically: two
-/// cancelling panels in a row simply meant the next one was 800 wide.
-///
-/// # Returns
-///
-/// [`f64::NAN`] if the integrand is `NaN` anywhere the rule evaluates it. That
-/// check has to live here because the third-party
-/// `double_exponential::integrate` rewrites every non-finite sample to `0.0`
-/// before the rule sees it, which silently turns an undefined integrand into a
-/// well-scaled number: a wholly-`NaN` integrand integrated to exactly `0.0`,
-/// so `GilPelaezPricer` returned `2.438528774964297` and `LewisPricer` the
-/// spot for a characteristic function that had blown up. That is the
-/// plausible-looking sentinel the [failure
-/// convention](crate::traits::ModelPricer#how-pricing-fails) rules out, and
-/// this wrapper is the only place in the path the crate owns.
-///
-/// `±∞` keeps the third-party behaviour deliberately. An overflowing
-/// integrand is a different case from an undefined one, and the crate's own
-/// Lévy loss integrand reaches `∞` transiently on unprojected calibration
-/// iterates, where poisoning the loss would abort a run that currently
-/// recovers.
+/// `∫_a^∞ f` to relative `tol`, until the decay of the evaluated `max |f|` bounds the tail; a NaN
+/// sample makes it NaN, a `±∞` one counts as zero (Lévy losses overflow on unprojected iterates).
 pub(crate) fn integrate_to_convergence<F>(f: F, a: f64, tol: f64) -> f64
 where
   F: Fn(f64) -> f64,
@@ -113,7 +73,7 @@ where
       poisoned.set(true);
     }
     let magnitude = v.abs();
-    if magnitude > peak.get() {
+    if magnitude.is_finite() && magnitude > peak.get() {
       peak.set(magnitude);
     }
     v
@@ -194,5 +154,38 @@ mod tests {
   fn a_finite_integrand_is_unchanged_by_the_poison_check() {
     let v = integrate_to_convergence(|x: f64| (-x).exp(), 0.0, 1e-10);
     assert!((v - 1.0).abs() < 1e-9, "expected 1, got {v}");
+  }
+
+  /// An `∞` sample counts as zero and does not end the walk; `∞` on `[0, 1)` leaves `∫_1^∞ e^{-x}`.
+  #[test]
+  fn an_infinite_sample_counts_as_zero() {
+    let v = integrate_to_convergence(
+      |u: f64| if u < 1.0 { f64::INFINITY } else { (-u).exp() },
+      0.0,
+      1e-10,
+    );
+    let expected = (-1.0_f64).exp();
+    assert!((v - expected).abs() < 1e-9, "expected {expected}, got {v}");
+  }
+
+  /// The same over a slow tail, which an infinite envelope would cut short: `∫_1^∞ e^{-x/20} dx`.
+  #[test]
+  fn an_infinite_sample_does_not_truncate_a_slow_tail() {
+    let v = integrate_to_convergence(
+      |u: f64| {
+        if u < 1.0 {
+          f64::INFINITY
+        } else {
+          (-u / 20.0).exp()
+        }
+      },
+      0.0,
+      1e-10,
+    );
+    let expected = 20.0 * (-0.05_f64).exp();
+    assert!(
+      (v - expected).abs() < 1e-9 * expected,
+      "expected {expected}, got {v}"
+    );
   }
 }

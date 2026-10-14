@@ -54,7 +54,7 @@ pub struct FiniteDifferencePricer {
   pub t_n: usize,
   /// Price steps
   pub s_n: usize,
-  /// Option style
+  /// European or American exercise.
   pub option_style: OptionStyle,
   /// Pricing method
   pub method: FiniteDifferenceMethod,
@@ -154,14 +154,8 @@ impl VanillaEuropeanCall for FiniteDifferencePricer {
   }
 }
 
-/// One PDE solve: the model plus the query it is being evaluated at.
-///
-/// Private and short-lived — it exists so the three time-stepping schemes
-/// and their grid/payoff/boundary helpers can read `self.k` and `self.r`
-/// the way they did before the query moved out of the pricer, instead of
-/// threading six extra arguments through each of them. It is not an API
-/// shape: nothing outside this module can name it, and it is constructed
-/// fresh per call.
+/// One PDE solve, the model with its query, so the schemes and their helpers read `self.k` and
+/// `self.r` instead of threading six arguments through each.
 struct FdSolve<'a> {
   model: &'a FiniteDifferencePricer,
   s: f64,
@@ -320,9 +314,7 @@ impl FdSolve<'_> {
     self.interpolate(&s_values, &option_values, self.s)
   }
 
-  /// Risk-neutral drift of the underlying, `r - q`. Before the query moved
-  /// out of the pricer there was no dividend-yield input at all and this
-  /// term was plain `r`; `q = 0` reproduces that exactly.
+  /// Risk-neutral drift of the underlying, `r - q`.
   fn drift(&self) -> f64 {
     self.r - self.q
   }

@@ -1,27 +1,21 @@
 ---
 title: Copulas
 seo_title: Copulas in Rust and Python
-description: All 15 bivariate and 8 multivariate copulas with the BivariateExt / MultivariateExt traits — Archimedean, extreme-value, elliptical, and vine families.
+description: All 15 bivariate and 6 multivariate copulas with the BivariateExt / MultivariateExt traits — Archimedean, extreme-value, elliptical, and vine families.
 category: copula
 since: 2.0.0
 status: stable
 ---
 
-The `stochastic-rs-copulas` crate ships bivariate and multivariate
-copulas plus correlation utilities and an empirical copula.
+The `stochastic-rs-copulas` crate ships bivariate and multivariate copulas, correlation utilities and an empirical copula. Fallible operations return `Result<_, CopulaError>`.
 
-## Bivariate (`BivariateExt<T>`)
+## Bivariate (`BivariateExt`)
 
-**15** copulas — every variant of the crate's own `bivariate::CopulaType`
-enum (`grep -n "pub enum CopulaType" -A 15 stochastic-rs-copulas/src/bivariate.rs`).
-"Archimedean" below means the type overrides `generator()`, the trait's
-Archimedean-generator hook — the default implementation returns an error,
-so a concrete override is the tree-derived signal, not a label taken from
-each module's own prose:
+**15** copulas, one per variant of `bivariate::BivariateFamily`. "Archimedean" below means the type implements the trait's `generator()`:
 
 | Copula        | Family              | Tail dependence                                    |
 |---------------|---------------------|-----------------------------------------------------|
-| Amh           | Archimedean         | None                                                |
+| Amh           | Archimedean         | None, except $\lambda_L = 1/2$ at $\theta = 1$ (Clayton(1)) |
 | Bb1           | Archimedean (two-parameter) | Both, asymmetric ($\lambda_L = 2^{-1/(\theta\delta)}$, $\lambda_U = 2 - 2^{1/\delta}$) |
 | Bb7           | Archimedean (two-parameter) | Both, asymmetric ($\lambda_U = 2 - 2^{1/\theta}$, $\lambda_L = 2^{-1/\delta}$) |
 | Clayton       | Archimedean         | Lower only ($\lambda_L = 2^{-1/\theta}$)             |
@@ -37,60 +31,44 @@ each module's own prose:
 | Plackett      | Constant odds ratio | None                                                 |
 | TCopula       | Elliptical          | Both, symmetric ($\lambda_L = \lambda_U$)            |
 
-The bivariate samplers are consolidated under `BivariateExt`; the v1.x
-`NCopula2DExt` was removed in v2.0.
-
 ## Choosing a copula
 
-Every family except `Independence` is fit the same way — moment-matching
-Kendall's tau, then inverting to the family's own shape parameter — so
-*how* you fit isn't the distinguishing axis. The crate's own doc comment
-(`stochastic-rs-copulas/src/bivariate.rs`) has the full comparison,
-including which common heuristics turn out to be wrong on the types in
-this crate. Short version:
+The one-parameter families are fit by computing Kendall's tau and inverting it to the family's own parameter; BB1 and BB7 by two-parameter maximum likelihood. The rustdoc of `stochastic_rs::copulas::bivariate` has the full comparison. Short version:
 
 | Need | Reach for |
 |---|---|
 | Both positive and negative dependence | `Frank`, `Gaussian`, `TCopula`, `Plackett` — the only four spanning the full `(-1, 1)` range of τ |
-| Only ever positive dependence, lower-tail | `Clayton` — the only family here with lower-tail dependence at all |
-| Only ever positive dependence, upper-tail | `Galambos`, `HuslerReiss`, `Gumbel`, `Joe` — note `Gumbel` and `Joe` share the exact same upper-tail formula, so tail dependence alone won't distinguish them |
+| Only ever positive dependence, lower-tail | `Clayton` — the only one-parameter family here with lower-tail dependence (BB1 and BB7 carry both tails) |
+| Only ever positive dependence, upper-tail | `Galambos`, `HuslerReiss`, `Gumbel`, `Joe` — `Gumbel` and `Joe` share the same upper-tail formula, so tail dependence alone won't distinguish them |
 | Symmetric tail dependence (both tails, equal) | `TCopula` — the only one |
-| Weak dependence in either direction (τ within roughly ±0.2-0.3) | `Amh`, `Fgm` — both structurally cannot represent stronger dependence, in either direction |
-| Fast sampling at scale (millions of draws) | `Clayton`, `Gaussian` or `Independence` — the only three with a real closed-form `percent_point`; everything else pays a per-draw root-find |
-| A non-exchangeable, shared-shock dependence structure | `MarshallOlkin`'s `with_alpha_beta` constructor — the one family here that isn't symmetric in its two arguments in general |
+| Weak dependence in either direction (τ within roughly ±0.2-0.3) | `Amh`, `Fgm` — both structurally cannot represent stronger dependence |
+| Fast sampling at scale (millions of draws) | `Amh`, `Clayton`, `Fgm`, `Frank`, `Gaussian`, `Independence`, `MarshallOlkin`, `Plackett` or `TCopula` — the nine with a closed-form `percent_point`; `Gumbel`, `Joe`, `Galambos`, `HuslerReiss`, `Bb1` and `Bb7` invert numerically per draw |
+| A non-exchangeable, shared-shock dependence structure | `MarshallOlkin::new(alpha, beta)` — the one family here that is not symmetric in its two arguments in general |
 
-All 13 require inputs already probability-integral-transformed to
-`[0, 1]` — `fit` runs a Kolmogorov-Smirnov uniformity check before
-touching Kendall's tau. `Independence` is the one exception: its `fit`
-never reads the data at all.
+`fit` expects two columns already transformed to `[0, 1]` and checks only that shape and range, not uniformity, so transform raw data through its margins first. A Kendall's τ the family cannot represent is an error (`InvalidParameter { name: "tau", .. }`), never a clamped parameter; `tau_from_theta` and `theta_from_tau` convert between τ and the family's parameter.
 
-## Multivariate (`MultivariateExt<T>`)
+## Multivariate (`MultivariateExt`)
 
-**8** copulas — every variant of `multivariate::CopulaType`
-(`grep -n "pub enum CopulaType" -A 10 stochastic-rs-copulas/src/multivariate.rs`).
-Two of these are **not** real pair-copula-construction vines despite the
-name — each says so in its own module doc:
+**6** copulas, one per variant of `multivariate::MultivariateFamily`:
 
 | Copula              | Family              | Notes                                                  |
 |----------------------|---------------------|---------------------------------------------------------|
-| GaussianMultivariate | Elliptical          | Cholesky-based                                          |
+| GaussianMultivariate | Elliptical          | `try_new(corr)` validates the correlation matrix        |
 | TMultivariate        | Elliptical          | Multivariate Student-t                                  |
-| NestedArchimedean    | Archimedean, nested | Outer + per-cluster inner generators (NAC)              |
+| NestedArchimedean    | Archimedean, nested | Outer + per-cluster inner generators; `fit` learns the binary tree from Kendall's τ (Górecki–Hofert–Holeňa) |
 | CVine                | Vine, PCC           | Canonical vine — genuine pair-copula construction        |
 | DVine                | Vine, PCC           | D-vine — genuine pair-copula construction                |
 | RVine                | Vine, PCC           | Regular vine — graph-theoretic generalisation of C-/D-vine |
-| TreeMultivariate     | **Not a real vine** | MST-derived implied correlation collapsed to a Gaussian copula — module doc: "Gaussian-collapsed implied-correlation copula, NOT a real R-vine" |
-| VineMultivariate     | **Not a real vine** | Star-C-vine-derived implied correlation collapsed to a Gaussian copula — same disclaimer, same doc |
 
-> Multivariate copulas ship in the default build — the linear algebra is
-> the pure-Rust `faer`, no feature flag and no system BLAS.
+Every multivariate `cdf` is deterministic: Genz's separation of variables over a Sobol set for the Gaussian, t and vine copulas (exact closed forms for the bivariate Gaussian and t), and a closed form for the nested Archimedean copula.
+
+The multivariate copulas need no feature flag; the linear algebra is the pure-Rust `faer`.
 
 ## Examples
 
 ### Clayton — lower-tail dependence
 
-$\theta > 0$ produces lower-tail dependence, useful for modelling joint
-crashes in equity returns.
+$\theta > 0$ produces lower-tail dependence, useful for modelling joint crashes in equity returns.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -102,9 +80,7 @@ import stochastic_rs as srs
 
 cop = srs.Clayton(theta=2.0)
 uv = cop.sample(10_000, seed=42)              # shape (10_000, 2)
-# kendall_tau_matrix takes an (n, k) matrix and returns the k×k pairwise-tau
-# matrix; uv is already (n, 2), so [0, 1] is the one off-diagonal entry.
-tau = srs.kendall_tau_matrix(uv)[0, 1]
+tau = srs.kendall_tau_matrix(uv)[0, 1]        # the off-diagonal of the 2×2 tau matrix
 print("Kendall's tau ≈", tau)                 # ≈ 0.5
 ```
 </Tab>
@@ -112,26 +88,9 @@ print("Kendall's tau ≈", tau)                 # ≈ 0.5
 
 ### BB1 / BB7 — two-parameter tail asymmetry
 
-The one-parameter Archimedean families tie the two tails together: Clayton
-has only lower-tail, Gumbel only upper-tail dependence. BB1 (Clayton–Gumbel)
-and BB7 (Joe–Clayton) carry two parameters $(\theta, \delta)$ and set the two
-tails separately — BB1 has $\lambda_L = 2^{-1/(\theta\delta)}$,
-$\lambda_U = 2 - 2^{1/\delta}$; BB7 has $\lambda_U = 2 - 2^{1/\theta}$,
-$\lambda_L = 2^{-1/\delta}$. `fit` is a two-parameter maximum-likelihood
-estimate (Nelder–Mead on the log-density); `set_tau` + `compute_theta`
-inverts Kendall's τ at the current δ (closed form for BB1,
-$\tau = 1 - 2/(\delta(\theta+2))$; numerical for BB7).
+The one-parameter Archimedean families tie the two tails together: Clayton has only lower-tail, Gumbel only upper-tail dependence. BB1 (Clayton–Gumbel) and BB7 (Joe–Clayton) carry two parameters $(\theta, \delta)$ and set the two tails separately — BB1 has $\lambda_L = 2^{-1/(\theta\delta)}$, $\lambda_U = 2 - 2^{1/\delta}$; BB7 has $\lambda_U = 2 - 2^{1/\theta}$, $\lambda_L = 2^{-1/\delta}$. `fit` is a two-parameter maximum-likelihood estimate (Nelder–Mead on the log-density); `theta_from_tau` inverts Kendall's τ at the current δ (closed form for BB1, $\tau = 1 - 2/(\delta(\theta+2))$; numerical for BB7).
 
-`gof::gof_cramer_von_mises` is the Rosenblatt-transform Cramér–von Mises test
-of Genest, Rémillard & Beaudoin (2009) with a parametric bootstrap p-value —
-the valid procedure when the copula parameters were estimated on the same
-sample. `multivariate::fit::fit_vine` selects a D-vine or C-vine structure on
-Kendall's τ (Dißmann et al. 2013) and the family of every edge by AIC or BIC
-among Independence, Gaussian, Student-t, Clayton, Frank, BB1 and BB7, with
-the h-functions of the fitted pairs producing the pseudo-observations of the
-next tree. Feed every fit and test normalised ranks (`gof::pseudo_observations`,
-`srs.pseudo_observations` in Python): the statistics are rank statistics, and a
-family's `fit` rejects margins that fail its uniformity check.
+`gof::gof_cramer_von_mises` is the Rosenblatt-transform Cramér–von Mises test of Genest, Rémillard & Beaudoin (2009) with a parametric bootstrap p-value and a rejection at `alpha` (`GofConfig`) — the valid procedure when the copula parameters were estimated on the same sample. `multivariate::fit::fit_vine` selects a D-vine or C-vine structure on Kendall's τ (Dißmann et al. 2013) and the family of every edge by AIC or BIC among Independence, Gaussian, Student-t, Clayton, Frank, BB1 and BB7, each fitted by maximum likelihood, with the h-functions of the fitted pairs producing the pseudo-observations of the next tree — `DVine::fit`, `CVine::fit` and `RVine::fit` run the same selection with every candidate family and AIC, and the fitted vine evaluates and samples in the data's column order (`order()` says which column each vine variable reads). Feed every fit and test normalised ranks (`gof::pseudo_observations`, `srs.pseudo_observations` in Python): the statistics are rank statistics, and `fit` checks only that the margins lie in `[0, 1]`.
 
 <Tabs items={['Rust', 'Python']}>
 <Tab value="Rust">
@@ -165,14 +124,6 @@ print(fit["order"], fit["families"], fit["aic"])
 <Tab value="Rust">
 <RustExample path="tests/doctest_copulas_gaussian_multivariate.rs" />
 
-> The multivariate Gaussian copula is **not** wrapped for Python — use
-> the Rust API directly.
+> The multivariate Gaussian copula has no Python class; use the Rust API.
 </Tab>
 </Tabs>
-
-## Adding a copula
-
-See the
-[`copula-bivariate`](https://github.com/dancixx/stochastic-rs/blob/main/.claude/skills/copula-bivariate/SKILL.md)
-SKILL — file-by-file recipe for Clayton / Frank / Gumbel / Joe /
-Plackett / FGM / extreme-value families.

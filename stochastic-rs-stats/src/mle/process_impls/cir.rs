@@ -1,6 +1,7 @@
 use ndarray::Array1;
 use ndarray::array;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::special::ln_bessel_ie;
 use stochastic_rs_stochastic::diffusion::cev::Cev;
 use stochastic_rs_stochastic::diffusion::cir::Cir;
 use stochastic_rs_stochastic::diffusion::ckls::Ckls;
@@ -8,29 +9,6 @@ use stochastic_rs_stochastic::diffusion::modified_cir::ModifiedCIR;
 use stochastic_rs_stochastic::diffusion::radial_ou::RadialOU;
 
 use crate::mle::DiffusionModel;
-
-fn log_bessel_i(nu: f64, z: f64) -> f64 {
-  use stochastic_rs_distributions::special::ln_gamma;
-
-  if z.abs() < 1e-30 {
-    return f64::NEG_INFINITY;
-  }
-
-  let half_z = 0.5 * z;
-  let log_half_z = half_z.ln();
-  let max_terms = 80;
-  let mut log_terms = Vec::with_capacity(max_terms);
-  for k in 0..max_terms {
-    let kf = k as f64;
-    let log_term = 2.0 * kf * log_half_z - ln_gamma(kf + 1.0) - ln_gamma(nu + kf + 1.0);
-    log_terms.push(log_term);
-  }
-
-  let max_log = log_terms.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-  let sum: f64 = log_terms.iter().map(|&lt| (lt - max_log).exp()).sum();
-
-  nu * log_half_z + max_log + sum.ln()
-}
 
 impl<S: SeedExt> DiffusionModel for Cir<f64, S> {
   fn num_params(&self) -> usize {
@@ -79,9 +57,9 @@ impl<S: SeedExt> DiffusionModel for Cir<f64, S> {
       return Some(1e-30);
     }
 
-    let sqrt_uv = (u * v).sqrt();
-    let log_bessel = log_bessel_i(q, 2.0 * sqrt_uv);
-    let log_density = c.ln() - u - v + 0.5 * q * (v / u).ln() + log_bessel;
+    let gap = u.sqrt() - v.sqrt();
+    let log_density =
+      c.ln() - gap * gap + 0.5 * q * (v / u).ln() + ln_bessel_ie(q, 2.0 * (u * v).sqrt());
     let density = log_density.exp();
     Some(if density.is_finite() && density > 0.0 {
       density

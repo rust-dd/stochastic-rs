@@ -1,14 +1,5 @@
-//! The function vocabulary a family step may use, in its three
-//! implementations: the host functions in [`ops`], the C `#define`s in
-//! [`C_PRELUDE`] the kernel renderer completes with each language's
-//! intrinsics. A new name is added to both, and the parity run over every
-//! family is what holds them to one meaning.
+//! Function vocabulary for host evaluation and CUDA source generation.
 
-/// Host implementations of the function vocabulary a family step may use, so
-/// `sqrt(v)` means on the host what the `#define` in [`C_PRELUDE`] makes it
-/// mean in a kernel. The whole vocabulary is defined whether or not a family
-/// declared so far happens to use it, which is what lets a new family reach
-/// for one without touching this module.
 #[allow(dead_code)]
 pub(crate) mod ops {
   use crate::traits::FloatExt;
@@ -131,10 +122,8 @@ pub(crate) mod ops {
 }
 
 /// The C definitions of the function vocabulary, in terms of the precision
-/// placeholders the kernel renderer fills in. Several expand to an intrinsic
-/// of the same name — MSL renders `#define sqrt(v) sqrt(v)` — which is not a
-/// loop: the preprocessor does not re-expand a macro inside its own
-/// expansion, so the definition resolves to the intrinsic exactly once.
+/// placeholders the CUDA kernel renderer fills in.
+#[cfg(any(feature = "cuda", test))]
 pub(crate) const C_PRELUDE: &str = r#"#define sqrt(v) STOCH_SQRT(v)
 #define exp(v) STOCH_EXP(v)
 #define ln(v) STOCH_LOG(v)

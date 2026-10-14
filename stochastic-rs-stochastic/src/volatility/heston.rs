@@ -340,6 +340,11 @@ macro_rules! heston_sampler_impl {
   };
 }
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Heston<T, S, Euler, B>
+{
+}
+
 /// The Euler scheme is the one the engine reproduces, so this half of the
 /// process routes through the backend.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
@@ -447,6 +452,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
   }
 }
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Heston<T, S, AndersenQe, B>
+{
+}
+
 /// The quadratic-exponential scheme reaches a device through its own family,
 /// so this half routes through the backend as the Euler half does.
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
@@ -490,6 +500,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
 pub struct HestonSampler<'a, T: FloatExt, S: SeedExt, Sch: HestonScheme, B> {
   model: &'a Heston<T, S, Sch, B>,
   seed: S,
+}
+
+impl<T: FloatExt, S: SeedExt, Sch: HestonScheme, B: Send + Sync> crate::traits::Sealed
+  for HestonSampler<'_, T, S, Sch, B>
+{
 }
 
 impl<T: FloatExt, S: SeedExt, Sch: HestonScheme, B: Send + Sync> PathSampler<T>
@@ -557,4 +572,5 @@ mod tests;
 mod python;
 
 #[cfg(feature = "python")]
+#[doc(hidden)]
 pub use python::PyHeston;

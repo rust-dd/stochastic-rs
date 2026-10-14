@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 
 use crate::buffer::array1_from_fill;
@@ -159,6 +162,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] Cev<T, S> { mu, sigma, gamma, n, x0, t, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Cev<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Cev<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -176,7 +184,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> fo
       mu: self.mu,
       diff_scale: self.sigma,
       gamma: self.gamma,
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
@@ -221,7 +229,7 @@ pub struct CevSampler<T: FloatExt> {
   mu: T,
   diff_scale: T,
   gamma: T,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> CevSampler<T> {
@@ -260,6 +268,8 @@ impl<T: FloatExt> CevSampler<T> {
   }
 }
 
+impl<T: FloatExt> crate::traits::Sealed for CevSampler<T> {}
+
 impl<T: FloatExt> PathSampler<T> for CevSampler<T> {
   type Output = Array1<T>;
 
@@ -290,7 +300,7 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> Cev<T, S, B> {
     let mut gn = Array1::<T>::zeros(self.n.saturating_sub(1));
     if let Some(gn_slice) = gn.as_slice_mut() {
       let sqrt_dt = dt.sqrt();
-      let normal = SimdNormal::<T>::new(T::zero(), sqrt_dt, &self.seed);
+      let mut normal = SimdNormal::<T>::new(T::zero(), sqrt_dt).seeded(&self.seed);
       normal.fill_slice(gn_slice);
     }
     let cev = self.sample();

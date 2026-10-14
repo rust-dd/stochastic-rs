@@ -331,6 +331,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 
 backend_switch!([T: FloatExt, S: SeedExt] DoubleHeston<T, S> { s0, v1_0, v2_0, kappa1, theta1, sigma1, rho1, kappa2, theta2, sigma2, rho2, mu, n, t, use_sym, seed, cgns1, cgns2 } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for DoubleHeston<T, S, B>
+{
+}
+
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T>
   for DoubleHeston<T, S, B>
 {
@@ -459,6 +464,8 @@ impl<T: FloatExt, S: SeedExt> DoubleHestonSampler<T, S> {
     }
   }
 }
+
+impl<T: FloatExt, S: SeedExt> crate::traits::Sealed for DoubleHestonSampler<T, S> {}
 
 impl<T: FloatExt, S: SeedExt> PathSampler<T> for DoubleHestonSampler<T, S> {
   type Output = [Array1<T>; 3];

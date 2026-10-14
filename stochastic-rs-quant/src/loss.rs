@@ -29,13 +29,8 @@ pub fn rmse(market: &[f64], model: &[f64]) -> f64 {
   mse(market, model).sqrt()
 }
 
-/// Mean Percentage Error (in %): MPE = (100/N) Σ[(market_i - model_i) / market_i]
-///
-/// Returns `f64::NAN` when any `market_i` is approximately zero — this
-/// previously returned `0.0` for that term, which silently masked
-/// zero-strike inputs (typical of malformed option chains). Filter or
-/// clip near-zero markets at the caller side if you want a finite
-/// result on degenerate inputs.
+/// Mean percentage error `(100/N) Σ (market_i − model_i) / market_i`, NaN when any `market_i` is
+/// near zero.
 pub fn mpe(market: &[f64], model: &[f64]) -> f64 {
   let sum: f64 = market
     .iter()

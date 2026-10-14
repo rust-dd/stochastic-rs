@@ -14,75 +14,84 @@
 //! Coefficients for a General Bivariate Distribution", *Biometrika* 47, 307-323.
 //! Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
 //! Springer, Example 3.12.
-
-use std::error::Error;
-use std::f64;
+//! Reference: Johnson, M.E. (1987), "Multivariate Statistical Simulation", Wiley, the Morgenstern generator (the conditional inverse), DOI 10.1002/9781118150740.
 
 use ndarray::Array1;
-use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 
-use crate::bivariate::CopulaType;
+use crate::bivariate::BivariateFamily;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::admitted;
+use crate::traits::bivariate::tau_out_of_range;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Fgm {
-  pub r#type: CopulaType,
-  pub theta: Option<f64>,
-  pub tau: Option<f64>,
-  pub theta_bounds: (f64, f64),
-  pub invalid_thetas: Vec<f64>,
+  theta: Option<f64>,
 }
 
-impl Default for Fgm {
-  fn default() -> Self {
-    Self {
-      r#type: CopulaType::Fgm,
-      theta: None,
-      tau: None,
-      theta_bounds: (-1.0, 1.0),
-      invalid_thetas: vec![],
+impl Fgm {
+  /// An FGM copula; panics unless `-1 <= theta <= 1`.
+  pub fn new(theta: f64) -> Self {
+    Self::try_new(theta).unwrap_or_else(|e| panic!("{e}"))
+  }
+
+  /// `new` with the domain error returned instead of a panic.
+  pub fn try_new(theta: f64) -> Result<Self, CopulaError> {
+    let copula = Self { theta: Some(theta) };
+    copula.check_theta()?;
+    Ok(copula)
+  }
+
+  /// The copula whose Kendall's τ is `tau`.
+  pub fn from_tau(tau: f64) -> Result<Self, CopulaError> {
+    Self::try_new(Self::default().theta_from_tau(tau)?)
+  }
+
+  /// The root in `[0, 1]` of `u(1 + a) − au² = y`, `a = θ(1 − 2v)`, as `2y/((1 + a) + √D)` with `D` summed from
+  /// non-negative terms for either sign of `a`; 0 at level 0, where `a = −1` would divide 0 by 0.
+  pub(crate) fn inverse(theta: f64) -> impl Fn(f64, f64) -> f64 {
+    move |y, v| {
+      let a = theta * (1.0 - 2.0 * v);
+      let discriminant = if a > 0.0 {
+        (1.0 - a) * (1.0 - a) + 4.0 * a * (1.0 - y)
+      } else {
+        (1.0 + a) * (1.0 + a) - 4.0 * a * y
+      };
+      // `(1 + a) + √D` vanishes only at level 0 on `a = −1`; the floor answers 0 there without a branch.
+      2.0 * y / ((1.0 + a) + discriminant.sqrt()).max(f64::MIN_POSITIVE)
     }
   }
 }
 
-impl Fgm {
-  pub fn new() -> Self {
-    Self::default()
-  }
-}
-
 impl BivariateExt for Fgm {
-  fn r#type(&self) -> CopulaType {
-    self.r#type
-  }
-
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn set_tau(&mut self, tau: f64) {
-    self.tau = Some(tau);
+  fn family(&self) -> BivariateFamily {
+    BivariateFamily::Fgm
   }
 
   fn theta(&self) -> Option<f64> {
     self.theta
   }
 
-  fn theta_bounds(&self) -> (f64, f64) {
-    self.theta_bounds
-  }
-
-  fn invalid_thetas(&self) -> Vec<f64> {
-    self.invalid_thetas.clone()
-  }
-
   fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
     self.theta = Some(theta);
   }
 
+  fn theta_bounds(&self) -> (f64, f64) {
+    (-1.0, 1.0)
+  }
+
+  fn invalid_thetas(&self) -> Vec<f64> {
+    vec![]
+  }
+
   /// Density $c(u,v) = 1 + \theta(1 - 2u)(1 - 2v)$.
-  fn pdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -97,7 +106,7 @@ impl BivariateExt for Fgm {
   }
 
   /// CDF $C(u,v) = uv + \theta u(1-u) v(1-v)$.
-  fn cdf(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let u_col = x.column(0);
     let v_col = x.column(1);
@@ -111,37 +120,45 @@ impl BivariateExt for Fgm {
     Ok(out)
   }
 
-  /// $\partial_v C(u,v) = u + \theta u (1-u)(1 - 2v)$.
-  fn partial_derivative(&self, x: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  /// $\partial_v C(u,v) = u + \theta u (1-u)(1 - 2v)$, NaN for `v` outside `[0, 1]`.
+  fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
     let theta = self.theta.unwrap();
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      out[i] = u + theta * u * (1.0 - u) * (1.0 - 2.0 * v);
-    }
-    Ok(out)
+    Ok(conditional_cdf(x, |u, v| {
+      u + theta * u * (1.0 - u) * (1.0 - 2.0 * v)
+    }))
   }
 
-  /// Closed-form Kendall's tau inversion: $\tau = 2\theta/9 \implies \theta = 9\tau/2$.
-  /// Saturates at $\pm 1$ when the requested $|\tau| > 2/9$ (the FGM limit).
-  fn compute_theta(&self) -> f64 {
-    let tau = self.tau.unwrap();
-    (9.0 * tau / 2.0).clamp(-1.0, 1.0)
+  /// `Fgm::inverse`'s root; NaN for `y` or `v` outside `[0, 1]`.
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    conditional_quantiles(y, v, Self::inverse(self.theta.unwrap()))
+  }
+
+  fn tau_from_theta(&self, theta: f64) -> f64 {
+    2.0 * theta / 9.0
+  }
+
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+    if !(-2.0 / 9.0..=2.0 / 9.0).contains(&tau) {
+      return Err(tau_out_of_range(tau, "-2/9 <= tau <= 2/9".into()));
+    }
+    admitted(self, tau, 4.5 * tau)
   }
 
   /// FGM is a bounded perturbation of independence — no tail dependence
   /// in either tail, for any $\theta \in [-1, 1]$.
   /// Reference: Nelsen, R.B. (2006), Table 5.1.
-  fn tail_dependence(&self) -> TailDependence<f64> {
-    self.assert_theta_valid_for_tail_dependence();
-    TailDependence {
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+    self.check_theta()?;
+    Ok(TailDependence {
       lower: 0.0,
       upper: 0.0,
-    }
+    })
   }
 }
 
@@ -157,54 +174,56 @@ mod tests {
 
   #[test]
   fn fgm_independence_theta_zero_reproduces_product_cdf() {
-    let mut c = Fgm::new();
+    let mut c = Fgm::default();
     c.set_theta(0.0);
     let x = array![[0.3_f64, 0.7], [0.5, 0.5]];
-    let cdf = c.cdf(&x).unwrap();
+    let cdf = c.cdf(x.view()).unwrap();
     assert!(approx(cdf[0], 0.21, 1e-12));
     assert!(approx(cdf[1], 0.25, 1e-12));
   }
 
   #[test]
   fn fgm_pdf_at_center_equals_one_for_zero_theta() {
-    let mut c = Fgm::new();
+    let mut c = Fgm::default();
     c.set_theta(0.0);
     let x = array![[0.5_f64, 0.5]];
-    let pdf = c.pdf(&x).unwrap();
+    let pdf = c.pdf(x.view()).unwrap();
     assert!(approx(pdf[0], 1.0, 1e-12));
   }
 
   #[test]
-  fn fgm_compute_theta_inverts_tau_exactly() {
-    let mut c = Fgm::new();
-    c.set_tau(0.1);
-    assert!(approx(c.compute_theta(), 0.45, 1e-12));
-    c.set_tau(-0.15);
-    assert!(approx(c.compute_theta(), -0.675, 1e-12));
+  fn fgm_theta_from_tau_inverts_tau_exactly() {
+    let c = Fgm::default();
+    assert!(approx(c.theta_from_tau(0.1).unwrap(), 0.45, 1e-12));
+    assert!(approx(c.theta_from_tau(-0.15).unwrap(), -0.675, 1e-12));
   }
 
   #[test]
-  fn fgm_compute_theta_saturates_at_extreme_tau() {
-    let mut c = Fgm::new();
-    c.set_tau(0.5);
-    // 9*0.5/2 = 2.25 → clamped to 1.0 (FGM max correlation).
-    assert!(approx(c.compute_theta(), 1.0, 1e-12));
-    c.set_tau(-0.5);
-    assert!(approx(c.compute_theta(), -1.0, 1e-12));
+  fn fgm_tau_beyond_two_ninths_is_an_error() {
+    let c = Fgm::default();
+    for tau in [0.5, -0.5, f64::NAN] {
+      assert!(
+        matches!(
+          c.theta_from_tau(tau),
+          Err(CopulaError::InvalidParameter { name: "tau", .. })
+        ),
+        "τ = {tau}"
+      );
+    }
   }
 
   #[test]
   fn fgm_generator_returns_err_not_archimedean() {
-    let c = Fgm::new();
+    let c = Fgm::default();
     let t = array![0.5_f64, 0.8];
-    assert!(c.generator(&t).is_err());
+    assert!(c.generator(t.view()).is_err());
   }
 
   #[test]
   fn fgm_tail_dependence_is_zero() {
-    let mut c = Fgm::new();
+    let mut c = Fgm::default();
     c.set_theta(0.9);
-    let td = c.tail_dependence();
+    let td = c.tail_dependence().unwrap();
     assert_eq!(td.lower, 0.0);
     assert_eq!(td.upper, 0.0);
   }

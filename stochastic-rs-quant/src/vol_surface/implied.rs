@@ -84,18 +84,21 @@ pub struct ImpliedVolSurface {
   pub log_moneyness: Array2<f64>,
 }
 
+/// Every grid lookup on the surface assumes both axes ascend strictly.
+fn assert_ascending_axes(strikes: &[f64], maturities: &[f64]) {
+  assert!(
+    strikes.windows(2).all(|w| w[0] < w[1]),
+    "strikes must satisfy `strikes.windows(2).all(|w| w[0] < w[1])`, got strikes = {strikes:?}"
+  );
+  assert!(
+    maturities.windows(2).all(|w| w[0] < w[1]),
+    "maturities must satisfy `maturities.windows(2).all(|w| w[0] < w[1])`, got maturities = {maturities:?}"
+  );
+}
+
 impl ImpliedVolSurface {
-  /// Build an implied volatility surface from a grid of option prices.
-  ///
-  /// A cell is left NaN in `ivs` and `total_variance` where the price does not
-  /// invert to a positive finite Black volatility.
-  ///
-  /// # Arguments
-  /// * `strikes` - Strike prices (ascending)
-  /// * `maturities` - Maturities in years (ascending)
-  /// * `forwards` - Forward prices for each maturity
-  /// * `prices` - **Undiscounted** option price grid (N_T, N_K)
-  /// * `is_call` - Whether prices are call (`true`) or put (`false`)
+  /// A surface from an **undiscounted** call (`is_call`) or put price grid of shape `(N_T, N_K)`, one forward per maturity; a cell is
+  /// NaN where the price does not invert to a positive finite Black vol; panics unless both axes ascend strictly and shapes agree.
   #[must_use]
   pub fn from_prices(
     strikes: Vec<f64>,
@@ -108,6 +111,7 @@ impl ImpliedVolSurface {
     let nk = strikes.len();
     assert_eq!(prices.dim(), (nt, nk), "prices shape must be (N_T, N_K)");
     assert_eq!(forwards.len(), nt, "forwards length must match maturities");
+    assert_ascending_axes(&strikes, &maturities);
 
     let mut ivs = Array2::<f64>::from_elem((nt, nk), f64::NAN);
     let mut total_variance = Array2::<f64>::from_elem((nt, nk), f64::NAN);
@@ -147,21 +151,8 @@ impl ImpliedVolSurface {
     }
   }
 
-  /// Build a surface directly from a pre-computed implied-vol grid.
-  ///
-  /// Useful when the IVs come from an upstream source that already inverted
-  /// (or never needed to invert) Black-Scholes — for example AI surrogates
-  /// such as `stochastic_rs_ai::volatility::HestonNn::predict_surface`,
-  /// which output IVs directly in the standard `(N_T, N_K)` layout.
-  ///
-  /// A `total_variance` cell is NaN wherever the supplied implied volatility
-  /// is not finite and positive.
-  ///
-  /// # Arguments
-  /// * `strikes` — strike prices in ascending order, length `N_K`
-  /// * `maturities` — expiries in years, length `N_T`
-  /// * `forwards` — forward prices for each maturity, length `N_T`
-  /// * `ivs` — implied volatility grid of shape `(N_T, N_K)`
+  /// A surface from an implied-vol grid `ivs` of shape `(N_T, N_K)` over `strikes` and `maturities`, one forward per maturity; a
+  /// `total_variance` cell is NaN where the vol is not finite and positive; panics unless both axes ascend strictly and shapes agree.
   #[must_use]
   pub fn from_iv_grid(
     strikes: Vec<f64>,
@@ -173,6 +164,7 @@ impl ImpliedVolSurface {
     let nk = strikes.len();
     assert_eq!(ivs.dim(), (nt, nk), "ivs shape must be (N_T, N_K)");
     assert_eq!(forwards.len(), nt, "forwards length must match maturities");
+    assert_ascending_axes(&strikes, &maturities);
 
     let mut total_variance = Array2::<f64>::from_elem((nt, nk), f64::NAN);
     let mut log_moneyness = Array2::<f64>::zeros((nt, nk));
@@ -199,19 +191,8 @@ impl ImpliedVolSurface {
     }
   }
 
-  /// Build a surface from an AI surrogate's flat output vector.
-  ///
-  /// Bridges `stochastic_rs_ai::volatility::StochVolNn::predict_surface`
-  /// (and the specialized `HestonNn` / `RBergomiNn` / `OneFactorNn` wrappers)
-  /// to the vol-surface pipeline. The neural network returns a flat
-  /// `Vec<f32>` of length `N_T * N_K` in row-major `(maturity, strike)`
-  /// order; this constructor reshapes and lifts to `f64`.
-  ///
-  /// # Arguments
-  /// * `strikes` — strike prices in ascending order, length `N_K`
-  /// * `maturities` — expiries in years, length `N_T`
-  /// * `forwards` — forward prices for each maturity, length `N_T`
-  /// * `flat_ivs` — flat row-major IV grid of length `N_T * N_K`
+  /// A surface from a surrogate's flat row-major `(maturity, strike)` output; panics unless the lengths agree (`N_T * N_K` vols, one
+  /// forward per maturity) and both axes ascend strictly — a Heston surrogate's `STRIKES` descend: `predict_implied_vol_surface` sorts.
   ///
   /// # Example
   ///
@@ -221,7 +202,7 @@ impl ImpliedVolSurface {
   /// let strikes = vec![90.0, 100.0, 110.0];
   /// let maturities = vec![0.5, 1.0];
   /// let forwards = vec![101.0, 102.0];
-  /// // In practice this comes from `StochVolNn::predict_surface(&params)?`;
+  /// // In practice a surrogate's `predict_surface(&params)?` with ascending `STRIKES`;
   /// // a literal grid keeps this example free of a trained surrogate.
   /// let flat: Vec<f32> = vec![0.22, 0.20, 0.21, 0.24, 0.22, 0.23];
   /// let surf = ImpliedVolSurface::from_flat_iv_grid(
@@ -359,10 +340,6 @@ impl ImpliedVolSurface {
   /// the `(OptionQuote, forwards)` inputs via
   /// [`OptionChain::to_surface_inputs`](crate::market::provider::OptionChain::to_surface_inputs)
   /// with carry $(r, q)$, then runs [`Self::try_from_quotes`].
-  ///
-  /// Works against any [`MarketDataProvider`](crate::market::provider::MarketDataProvider) —
-  /// the in-memory `MockProvider` for offline tests / examples, or the live
-  /// Yahoo connector behind the `yahoo` feature.
   pub fn from_provider<P: crate::market::provider::MarketDataProvider>(
     provider: &P,
     symbol: &str,
@@ -416,7 +393,7 @@ impl ImpliedVolSurface {
 pub struct SmileSlice {
   /// Log-forward moneyness $k = \ln(K/F)$
   pub log_moneyness: Vec<f64>,
-  /// Implied volatilities
+  /// Black implied volatility at each `log_moneyness` point.
   pub implied_vols: Vec<f64>,
   /// Total implied variance $w = \sigma^2 T$
   pub total_variance: Vec<f64>,
@@ -447,17 +424,8 @@ impl SmileSlice {
     }
   }
 
-  /// Interpolate ATM total variance ($k = 0$) from the data.
-  ///
-  /// When the smile straddles $k = 0$, returns a linear interpolation between
-  /// the two adjacent grid points.
-  ///
-  /// When the smile is **one-sided** (all strikes ITM or all strikes OTM),
-  /// extrapolates linearly from the two innermost data points (closest to zero)
-  /// rather than returning a non-ATM endpoint as ATM. The previous behaviour
-  /// (returning `total_variance[0]` or `total_variance[n-1]`) silently biased
-  /// downstream global fits (e.g. SSVI's $\theta_t$ estimate) — see audit
-  /// §1.2.8.
+  /// ATM total variance (`k = 0`): interpolated between the adjacent points, or extrapolated from
+  /// the two innermost ones for a one-sided smile, since an endpoint would bias SSVI's $\theta_t$.
   fn atm_total_variance(&self) -> f64 {
     let n = self.log_moneyness.len();
     if n == 0 {

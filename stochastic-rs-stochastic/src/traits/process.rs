@@ -93,7 +93,7 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// `process.on::<Cuda>()`); the backend marker propagates to the
 /// process's noise source with no runtime branch. Only the fractional family
 /// (built on [`Fgn`](crate::noise::fgn::Fgn)) exposes GPU backends today, and a
-/// GPU marker only exists when its feature is compiled.
+/// GPU marker only exists when its feature is compiled (the Apple ones on macOS only).
 ///
 /// ## Sampling architecture
 ///
@@ -170,7 +170,7 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 ///
 /// [`advance_chunk_seed`](Self::advance_chunk_seed) exists for one
 /// remaining legitimate case: a `sampler()` that clones because the clone
-/// feeds a *persistent* engine (e.g. a buffered `SimdNormal`) built once per
+/// feeds a *persistent* engine (e.g. a `Seeded` normal stream) built once per
 /// chunk and reused across every path in that chunk via the engine's own
 /// internal advancement, never re-consulting the `Deterministic`-level seed
 /// per path — see [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus).
@@ -281,13 +281,8 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// and `.sample()` still draws fresh randomness on every call regardless of
 /// how many times the process was cloned beforehand.
 ///
-/// This is a deliberate choice, and it intentionally diverges from
-/// `stochastic-rs-distributions`, where `Clone` on a distribution (e.g.
-/// [`SimdNormal`](stochastic_rs_distributions::normal::SimdNormal))
-/// re-seeds independently by design ("cloning a stochastic source means
-/// 'give me an independent stream'"). The two crates answer different
-/// questions: a distribution is typically cloned to obtain an unrelated
-/// sampler, while a process is typically cloned to answer "same model, one
+/// This is a deliberate choice, the one a seeded stream ([`Seeded`](stochastic_rs_distributions::Seeded))
+/// makes as well: a process is typically cloned to answer "same model, one
 /// parameter changed" — `let bumped = base.clone(); bumped.kappa += h;` —
 /// which only isolates `h`'s effect if `bumped` and `base` share the same
 /// underlying noise. That is the common-random-numbers technique behind
@@ -312,7 +307,7 @@ pub(crate) fn chunk_lens(m: usize, chunks: usize) -> impl Iterator<Item = usize>
 /// caller invokes once, from outside, before ever calling `sample()` — the
 /// two are unrelated, and this section's guarantee holds no matter how any
 /// individual type's `sampler()` is implemented.
-pub trait ProcessExt<T: FloatExt>: Send + Sync {
+pub trait ProcessExt<T: FloatExt>: Send + Sync + crate::traits::Sealed {
   type Output: Send;
 
   /// Reusable sampling state. Implementation detail of the `sample*` methods,
@@ -344,7 +339,7 @@ pub trait ProcessExt<T: FloatExt>: Send + Sync {
   /// a persistent engine reused across a whole chunk rather than being
   /// re-derived per path — see
   /// [`CirPlusPlus`](crate::interest::cir_pp::CirPlusPlus)'s override,
-  /// `fn advance_chunk_seed(&self) { self.seed.seed_value(); }` — so each
+  /// `fn advance_chunk_seed(&self) { self.seed.next_seed(); }` — so each
   /// chunk's clone snapshots a distinct state instead of every chunk
   /// replaying the same one, and repeated top-level `sample()` calls
   /// advance instead of replaying the first path forever.

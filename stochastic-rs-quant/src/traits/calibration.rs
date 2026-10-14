@@ -22,23 +22,13 @@ pub trait ToModel {
   fn to_model(&self, r: f64, q: f64) -> Self::Model;
 }
 
-/// Bridge from a short-rate calibration result to a concrete tree / lattice model.
-///
-/// Parallel to [`ToModel`], but for the rates pipeline. Short-rate models
-/// (Hull-White, Black-Karasinski, G2++) consume an initial yield curve and a
-/// drift offset (`theta`), not spot/strike, so they cannot implement
-/// [`ModelPricer`] directly. Instead, calibrators (e.g. swaption / cap /
-/// floor calibrators) implement this trait to produce a lattice model that
-/// the [`crate::lattice`] instruments and bond / swaption pricers consume.
+/// Bridge from a short-rate calibration result to the lattice model it determines. The result carries
+/// every input the model needs (the calibrated parameters and the curve-side rates it was given).
 pub trait ToShortRateModel {
   /// Concrete short-rate model produced by this calibration result.
   type Model;
-  /// Build the model from the calibration result.
-  ///
-  /// `initial_rate` is the time-0 short rate observed from the curve;
-  /// `theta` is the drift function offset (often derived from the curve and
-  /// passed in by the caller).
-  fn to_short_rate_model(&self, initial_rate: f64, theta: f64) -> Self::Model;
+
+  fn to_short_rate_model(&self) -> Self::Model;
 }
 
 /// Common interface for calibrators across the quant library.
@@ -65,8 +55,8 @@ pub trait Calibrator {
   /// Calibration output. Must implement [`CalibrationResult`] and produce
   /// the same [`Params`](Self::Params).
   type Output: CalibrationResult<Params = Self::Params>;
-  /// Error returned when calibration cannot produce a result.
-  type Error;
+  /// Error returned when calibration cannot produce a result; `anyhow::Error` satisfies the bound.
+  type Error: std::fmt::Debug + std::fmt::Display + Send + Sync + 'static;
 
   /// Run calibration. Pass `None` to let the calibrator infer an initial guess.
   ///
@@ -125,11 +115,34 @@ pub trait CalibrationResult {
     None
   }
 
-  /// Worst-case absolute pricing error on the calibration grid. Returns
-  /// [`f64::NAN`] by default — calibrators that record the residual
-  /// vector should override this. Many calibration pipelines care more
-  /// about the worst residual than the RMSE.
-  fn max_error(&self) -> f64 {
-    f64::NAN
+  /// Worst absolute pricing error on the calibration grid; `None` unless the calibrator records it.
+  fn max_error(&self) -> Option<f64> {
+    None
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::CalibrationResult;
+
+  struct Bare;
+
+  impl CalibrationResult for Bare {
+    type Params = ();
+
+    fn rmse(&self) -> f64 {
+      0.1
+    }
+
+    fn converged(&self) -> bool {
+      true
+    }
+
+    fn params(&self) -> Self::Params {}
+  }
+
+  #[test]
+  fn a_result_without_residuals_has_no_max_error() {
+    assert_eq!(Bare.max_error(), None);
   }
 }

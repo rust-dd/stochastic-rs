@@ -27,7 +27,7 @@ use crate::traits::RealExt;
 /// Zero-coupon inflation-indexed swap.
 #[derive(Debug, Clone)]
 pub struct ZeroCouponInflationSwap<T: RealExt> {
-  /// Notional.
+  /// Notional of the single exchange at maturity.
   pub notional: T,
   /// Fixed (par) rate.
   pub fixed_rate: T,
@@ -60,9 +60,9 @@ impl<T: RealExt> ZeroCouponInflationSwap<T> {
 /// Year-on-year inflation-indexed swap (YYIIS) with annual settlements.
 #[derive(Debug, Clone)]
 pub struct YearOnYearInflationSwap<T: RealExt> {
-  /// Notional.
+  /// Notional of each annual exchange.
   pub notional: T,
-  /// Fixed rate.
+  /// Fixed rate paid against each year's inflation rate.
   pub fixed_rate: T,
   /// Year-fractions (in years, from the trade date to each payment).
   pub payment_times: Array1<T>,

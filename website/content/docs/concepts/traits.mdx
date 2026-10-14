@@ -6,9 +6,7 @@ since: 2.0.0
 status: stable
 ---
 
-The library's organising principle is a small set of traits. Each trait
-captures one abstraction, with concrete types implementing the trait
-generically over the float type via [`FloatExt`](#floatext).
+The library is organised around a small set of traits, each capturing one abstraction.
 
 ## The trait map
 
@@ -19,12 +17,12 @@ generically over the float type via [`FloatExt`](#floatext).
 | `SimdFloatExt`            | `stochastic-rs-distributions`  | 8-lane SIMD surface over `RealExt`                     |
 | `ProcessExt<T>`           | `stochastic-rs-stochastic`     | Stochastic process simulation (`sample`, `sample_map`, `sample_par`) |
 | `DistributionExt`         | `stochastic-rs-distributions`  | Closed-form pdf / cdf / cf / moments (`f64`-only)      |
-| `BivariateExt<T>`         | `stochastic-rs-copulas`        | Bivariate copulas                                      |
-| `MultivariateExt<T>`      | `stochastic-rs-copulas`        | Multivariate copulas (Gaussian, t, vines, NAC)         |
+| `BivariateExt`            | `stochastic-rs-copulas`        | Bivariate copulas                                      |
+| `MultivariateExt`         | `stochastic-rs-copulas`        | Multivariate copulas (Gaussian, t, vines, NAC)         |
 | `ModelPricer`             | `stochastic-rs-quant`          | Concrete-typed strike/tau-grid pricer (no `&dyn`)      |
 | `ShortRatePricer`         | `stochastic-rs-quant`          | Short-rate bond pricing (`Vasicek`, `Cir`, `HullWhite`)|
-| `ToModel`, `ToShortRateModel` | `stochastic-rs-quant`      | Calibrator → Concrete pricer bridge                    |
-| `FourierModelExt<T>`      | `stochastic-rs-quant`          | Characteristic function models                         |
+| `ToModel`, `ToShortRateModel` | `stochastic-rs-quant`      | Calibrator → concrete pricer bridge                    |
+| `FourierModelExt`         | `stochastic-rs-quant`          | Characteristic function models                         |
 | `Calibrator`              | `stochastic-rs-quant`          | Result-based calibration (`type Params`, `type Error`) |
 | `Instrument`, `PricingEngine` | `stochastic-rs-quant`      | Cross-engine comparison harness (not in the prelude)   |
 | `GreeksExt`               | `stochastic-rs-quant`          | No-argument Greeks for the MC Malliavin estimators     |
@@ -33,11 +31,7 @@ generically over the float type via [`FloatExt`](#floatext).
 
 ## `RealExt`, `SimdFloatExt`, `FloatExt`
 
-The numeric bound is a three-layer hierarchy. `RealExt` is the scalar
-floor — arithmetic, conversions and constants, with every supertrait pulled
-in for a concrete reason (`Float` for transcendentals, `FloatConst` for
-`PI`/`TAU`, `ScalarOperand` so `ndarray` ops work elementwise,
-`AddAssign`/`SubAssign` for in-place accumulation, …):
+The numeric bound is a three-layer hierarchy. `RealExt` is the scalar floor — arithmetic, conversions and constants (`Float` for transcendentals, `FloatConst` for `PI`/`TAU`, `ScalarOperand` so `ndarray` ops work elementwise, `AddAssign`/`SubAssign` for in-place accumulation, …):
 
 ```rust
 pub trait RealExt:
@@ -59,7 +53,7 @@ pub trait RealExt:
   // from_usize_, from_f64_fast, pi, two_pi, min_positive_val
 }
 
-pub trait SimdFloatExt: RealExt {
+pub trait SimdFloatExt: RealExt + Sealed {
   type Simd; // f32x8 / f64x8
   // splat, simd_ln/exp/sqrt/…, fill_uniform, sample_uniform
 }
@@ -69,81 +63,58 @@ pub trait FloatExt: RealExt + SimdFloatExt {
 }
 ```
 
-`f32` and `f64` implement all three. The split is what the layers *demand*:
-`RealExt` asks for nothing beyond scalar math, so a custom scalar — an AAD
-dual number, a higher-precision float — can implement it and flow through
-everything bounded on it. `FloatExt` additionally demands the 8-lane SIMD
-surface and RNG-backed fills, so `f32`/`f64` are its only possible
-implementors — the right bound for code that simulates, and a closed door
-by construction. Analytic pricing code is bounded on `RealExt`; path
-generation and Monte Carlo on `FloatExt`.
+`f32` and `f64` implement all three. `RealExt` asks for scalar math only, so a custom scalar — an AAD dual number, a higher-precision float — can implement it and flow through everything bounded on it. `SimdFloatExt` adds the 8-lane SIMD surface and the uniform fills and is sealed to `f32`/`f64`; `FloatExt` adds the batched normal fill and the fGN scratch on top. Analytic pricing code is bounded on `RealExt`; path generation and Monte Carlo on `FloatExt`.
 
 ## `ProcessExt<T>`
 
-Every stochastic process implements `ProcessExt<T>`:
+Every stochastic process implements `ProcessExt<T>`, sealed to the crate's own processes:
 
 ```rust
-pub trait ProcessExt<T: FloatExt>: Send + Sync {
+pub trait ProcessExt<T: FloatExt>: Send + Sync + Sealed {
   type Output: Send; // Array1<T>, [Array1<T>; N], Array2<T>, …
   fn sample(&self) -> Self::Output;
   fn sample_map<R: Send>(&self, m: usize, f: impl Fn(&Self::Output) -> R + Sync) -> Vec<R>;
   fn sample_par(&self, m: usize) -> Vec<Self::Output>;
+  // also: sample_map_view, try_sample, try_sample_par, device_ready, device_fallback
 }
 ```
 
-`sample()` produces a single path; `sample_map(m, f)` folds `f` over `m`
-independent paths in parallel (reusing one buffer per worker — the fast
-Monte-Carlo path); `sample_par(m)` keeps every path. See
-[ProcessExt](/docs/concepts/process-ext) for the full contract and when to
-use which.
+`sample()` produces a single path; `sample_map(m, f)` maps `f` over `m` independent paths in parallel, reusing one buffer per worker (the fast Monte Carlo path); `sample_par(m)` keeps every path. See [ProcessExt](/docs/concepts/process-ext) for the full contract and when to use which.
 
 ## `DistributionExt`
 
-Closed-form moments / pdf / cdf / characteristic function — implemented by
-**33 of the 37** distribution types in the library; a type can still leave a
-specific method as a named no-closed-form `unimplemented!()` (see
-[coverage](/docs/concepts/distribution-ext#coverage)).
-The trait is `f64`-only (not generic over `T`), and every method defaults
-to a `type_name`-annotated `unimplemented!()`:
+Closed-form moments, pdf, cdf and characteristic function, implemented by **32 of the 36** distribution types; a method without a closed form for the law returns `None` (see [coverage](/docs/concepts/distribution-ext#coverage)). The trait is `f64`-only (not generic over `T`):
 
 ```rust
-// Signature sketch. Every method below is a *provided* method whose default
-// body is a `type_name`-annotated `unimplemented!()`; the bodies are elided
-// here.
+// Every method is provided and defaults to None; a law overrides the ones it has a closed form for.
 pub trait DistributionExt {
-  fn characteristic_function(&self, t: f64) -> num_complex::Complex64;
-  fn pdf(&self, x: f64) -> f64;
-  fn cdf(&self, x: f64) -> f64;
-  fn inv_cdf(&self, p: f64) -> f64;
-  fn mean(&self) -> f64;
-  fn median(&self) -> f64;
-  fn mode(&self) -> f64;
-  fn variance(&self) -> f64;
-  fn skewness(&self) -> f64;
-  fn kurtosis(&self) -> f64;
-  fn entropy(&self) -> f64;
-  fn moment_generating_function(&self, t: f64) -> f64;
+  fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64>;
+  fn pdf(&self, x: f64) -> Option<f64>;
+  fn cdf(&self, x: f64) -> Option<f64>;
+  fn quantile(&self, p: f64) -> Option<f64>;
+  fn mean(&self) -> Option<f64>;
+  fn median(&self) -> Option<f64>;
+  fn mode(&self) -> Option<f64>;
+  fn variance(&self) -> Option<f64>;
+  fn skewness(&self) -> Option<f64>;
+  fn kurtosis(&self) -> Option<f64>;
+  fn entropy(&self) -> Option<f64>;
+  fn moment_generating_function(&self, t: f64) -> Option<f64>;
 }
 ```
 
-> **Default behaviour**: unimplemented moments **panic** with a helpful
-> message — never silently return zero. This is a hard project rule. See
-> [DistributionExt](/docs/concepts/distribution-ext) for a compiled,
-> runnable proof.
+A missing closed form is `None`, never a silent zero and never a panic.
 
 ## `Calibrator` and `CalibrationResult`
 
-Calibration is Result-based with associated types for the initial guess,
-the parameter struct, the output, and the error — market data (prices,
-strikes, spots, …) is passed to the calibrator's own constructor, not to
-`calibrate` itself:
+Calibration is `Result`-based, with associated types for the initial guess, the parameter struct, the output and the error. Market data (prices, strikes, spots, …) goes to the calibrator's own constructor, not to `calibrate`:
 
 ```rust
 pub trait Calibrator {
   type InitialGuess;
   type Params: Clone;
   type Output: CalibrationResult<Params = Self::Params>;
-  type Error;
+  type Error: std::fmt::Debug + std::fmt::Display + Send + Sync + 'static;
   fn calibrate(&self, initial: Option<Self::InitialGuess>) -> Result<Self::Output, Self::Error>;
 }
 
@@ -161,37 +132,19 @@ pub trait CalibrationResult {
   fn message(&self) -> Option<&str> {
     None
   }
-  fn max_error(&self) -> f64 {
-    f64::NAN
+  fn max_error(&self) -> Option<f64> {
+    None
   }
 }
 ```
 
-`calibrate(None)` lets the calibrator infer its own initial guess.
-`CalibrationResult` carries the calibrated `Params` (via `.params()`),
-the RMSE, and a convergence flag. `iterations()`, `message()` and
-`max_error()` are optional — they default to `None` / `None` / `f64::NAN`,
-and only the calibrators that record them override. See
-the [Quant catalog](/docs/quant) for the calibrators that ship today.
+`calibrate(None)` lets the calibrator pick its own initial guess. `CalibrationResult` carries the calibrated `Params` (via `.params()`), the RMSE and a convergence flag; `loss_score()`, `iterations()`, `message()` and `max_error()` are `None` unless the calibrator records them. The [Quant catalog](/docs/quant) lists the calibrators.
 
 ## `GreeksExt` and the `Greeks` aggregator
 
-`Greeks` is the aggregate: a plain `f64` struct with nine named fields,
-not generic over `T`. It is what a pricer's inherent
-`greeks(s, k, r, q, tau, option_type)` returns — `BSMPricer`,
-`HestonPricer`, `Merton1976Pricer`, `CashOrNothingPricer` and
-`AssetOrNothingPricer` all share that one signature, because they hold model
-state only and price a grid from a single instance.
+`Greeks` is a plain `f64` struct with nine named fields, not generic over `T`. It is what a pricer's inherent `greeks(s, k, r, q, tau, option_type)` returns; `BSMPricer`, `HestonPricer`, `Merton1976Pricer`, `CashOrNothingPricer` and `AssetOrNothingPricer` share that one signature.
 
-`GreeksExt` is a **separate**, narrower trait: one required accessor
-(`delta`), NaN-defaulted accessors for the rest, and an aggregating
-`greeks()` — all taking `&self` and nothing else. Only the Monte Carlo
-Malliavin estimators (`GbmMalliavinGreeks`, `HestonMalliavinGreeks`)
-implement it, and for them the bundled query is the point: their `greeks()`
-override runs one simulation so the nine numbers come from the same paths.
-The analytic pricers above cannot implement it and deliberately do not, so
-`GreeksExt` is not the crate's Greeks interface and is not in the prelude —
-reach it via `stochastic_rs::traits::GreeksExt`.
+`GreeksExt` is a separate, narrower trait: nine accessors that return `Option<f64>` (`delta` required, the other eight `None` unless the estimator exposes them) and an aggregating `greeks()` that writes NaN for a `None`, all taking `&self` and nothing else. Only the Monte Carlo Malliavin estimators (`GbmMalliavinGreeks`, `HestonMalliavinGreeks`) implement it; their `greeks()` runs one simulation, so the nine numbers come from the same paths. It is not in the prelude — import `stochastic_rs::traits::GreeksExt`.
 
 <RustExample path="tests/doctest_concepts_greeks_shape.rs" />
 

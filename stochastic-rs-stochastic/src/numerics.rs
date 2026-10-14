@@ -5,9 +5,8 @@
 //! spaces, low-discrepancy sequences, Multi-Level Monte Carlo,
 //! Longstaff-Schwartz, and Riemann-Liouville kernel / Markov-lift primitives.
 //!
-//! These items remain accessible at their original module paths
-//! ([`crate::ito`], [`crate::isonormal`], [`crate::mc`], [`crate::rough`]);
-//! this module groups them as a discoverable numerical-utility kit.
+//! These items stay at their defining paths ([`crate::ito`], [`crate::isonormal`], [`crate::mc`],
+//! [`crate::rough`], and `stochastic_rs_distributions::qmc` for the sequences); this module groups them.
 //!
 //! # Example
 //!
@@ -37,12 +36,12 @@ pub use crate::ito::Function2D;
 pub use crate::ito::ItoCalculator;
 pub use crate::ito::ItoResult;
 pub use crate::mc::McEstimate;
+pub use crate::mc::Welford;
 pub use crate::mc::brownian_bridge_qmc::BrownianBridgeQmc;
-pub use crate::mc::halton::HaltonSeq;
 pub use crate::mc::lsm::Lsm;
 pub use crate::mc::mlmc::Mlmc;
 pub use crate::mc::mlmc::MlmcResult;
-pub use crate::mc::sobol::SobolSeq;
 pub use crate::rough::kernel::RlKernel;
 pub use crate::rough::markov_lift::MarkovLift;
-pub use crate::rough::markov_lift::RoughSimd;
+pub use stochastic_rs_distributions::qmc::HaltonSeq;
+pub use stochastic_rs_distributions::qmc::SobolSeq;

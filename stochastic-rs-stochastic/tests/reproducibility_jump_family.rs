@@ -18,7 +18,7 @@
 use ndarray::Array1;
 use rayon::ThreadPoolBuilder;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::jump::kou::Kou;
 use stochastic_rs_stochastic::jump::levy_diffusion::LevyDiffusion;
 use stochastic_rs_stochastic::jump::merton::Merton;
@@ -28,13 +28,13 @@ const SEED: u64 = 42;
 const N: usize = 128;
 const LAMBDA: f64 = 50.0;
 
-fn merton_with_jumps(seed: u64) -> Merton<f64, ScalarNormal<f64>, Deterministic> {
+fn merton_with_jumps(seed: u64) -> Merton<f64, SimdNormal<f64>, Deterministic> {
   Merton::new(
     0.03,
     0.2,
     LAMBDA,
     0.0,
-    ScalarNormal::new(0.0, 0.1),
+    SimdNormal::new(0.0, 0.1),
     N,
     Some(0.0),
     Some(1.0),
@@ -42,13 +42,13 @@ fn merton_with_jumps(seed: u64) -> Merton<f64, ScalarNormal<f64>, Deterministic>
   )
 }
 
-fn kou_with_jumps(seed: u64) -> Kou<f64, ScalarNormal<f64>, Deterministic> {
+fn kou_with_jumps(seed: u64) -> Kou<f64, SimdNormal<f64>, Deterministic> {
   Kou::new(
     0.03,
     0.2,
     LAMBDA,
     0.0,
-    ScalarNormal::new(0.0, 0.12),
+    SimdNormal::new(0.0, 0.12),
     N,
     Some(0.0),
     Some(1.0),
@@ -56,12 +56,12 @@ fn kou_with_jumps(seed: u64) -> Kou<f64, ScalarNormal<f64>, Deterministic> {
   )
 }
 
-fn levy_diffusion_with_jumps(seed: u64) -> LevyDiffusion<f64, ScalarNormal<f64>, Deterministic> {
+fn levy_diffusion_with_jumps(seed: u64) -> LevyDiffusion<f64, SimdNormal<f64>, Deterministic> {
   LevyDiffusion::new(
     0.01,
     0.2,
     LAMBDA,
-    ScalarNormal::new(0.0, 0.08),
+    SimdNormal::new(0.0, 0.08),
     N,
     Some(0.0),
     Some(1.0),

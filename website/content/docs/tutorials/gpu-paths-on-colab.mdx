@@ -7,26 +7,16 @@ status: stable
 features: [cuda]
 ---
 
-The PyPI wheels run on the CPU. This tutorial builds the Python module with
-the CUDA back-end on a free Google Colab GPU, samples the same process on the
-host and on the device, and checks that the two agree in law — the check the
-crate's own device-law suite makes. It follows
-[`notebooks/colab_cpu_vs_cuda_paths.ipynb`](https://github.com/rust-dd/stochastic-rs/blob/main/notebooks/colab_cpu_vs_cuda_paths.ipynb),
-which runs the same steps for seventy-odd processes across ten families.
+The PyPI wheels run on the CPU. This tutorial builds the Python module with the CUDA back-end on a free Google Colab GPU, samples the same process on the host and on the device, and checks that the two agree in law. It follows [`notebooks/colab_cpu_vs_cuda_paths.ipynb`](https://github.com/rust-dd/stochastic-rs/blob/main/notebooks/colab_cpu_vs_cuda_paths.ipynb), which runs the same steps for seventy-odd processes across ten families.
 
 ## What you'll build
 
-For each process: paths sampled on the CPU and on CUDA, their terminal laws
-side by side, the difference of their means and spreads in standard errors,
-and the wall time of a small and a large batch on each side.
+For each process: paths sampled on the CPU and on CUDA, their terminal laws side by side, the difference of their means and spreads in standard errors, and the wall time of a small and a large batch on each side.
 
 ## Prerequisites
 
-- A Google account and a Colab runtime with a GPU (Runtime → Change runtime
-  type → T4 GPU). The notebook opens directly in
-  [Colab](https://colab.research.google.com/github/rust-dd/stochastic-rs/blob/main/notebooks/colab_cpu_vs_cuda_paths.ipynb).
-- About half an hour: the release build of the Python module takes 20–30
-  minutes on Colab.
+- A Google account and a Colab runtime with a GPU (Runtime → Change runtime type → T4 GPU). The notebook opens directly in [Colab](https://colab.research.google.com/github/rust-dd/stochastic-rs/blob/main/notebooks/colab_cpu_vs_cuda_paths.ipynb).
+- About half an hour: the release build of the Python module takes 20–30 minutes on Colab.
 
 ## Setup
 
@@ -37,10 +27,7 @@ and the wall time of a small and a large batch on each side.
 !nvcc --version | tail -2
 ```
 
-The driver's CUDA version (top right of `nvidia-smi`) must be at least the
-toolkit's (`nvcc`). The kernels are compiled at run time by NVRTC into PTX for
-the toolkit's version, and an older driver cannot load it
-(`CUDA_ERROR_UNSUPPORTED_PTX_VERSION`).
+The driver's CUDA version (top right of `nvidia-smi`) must be at least the toolkit's (`nvcc`). The kernels are compiled at run time by NVRTC into PTX for the toolkit's version, and an older driver cannot load it (`CUDA_ERROR_UNSUPPORTED_PTX_VERSION`).
 
 ### 2. Install Rust and fetch the source
 
@@ -64,15 +51,11 @@ import stochastic_rs as sr
 print(sr.probe_device("cuda"))
 ```
 
-`maturin` needs the explicit interpreter because Colab has no virtual
-environment. `probe_device` opens the device and describes it as a dict with
-its `backend`, `name`, `precisions` and `ordinal`; on a build without the
-back-end it raises instead of pretending.
+`maturin` needs the explicit interpreter because Colab has no virtual environment. `probe_device` opens the device and describes it as a dict with its `backend`, `name`, `precisions` and `ordinal`, and raises on a build without the back-end.
 
 ## Step 1 — sample on both sides
 
-Every device-capable class takes a `device=` argument. Build the process
-twice, once for each side, with the same parameters and seed:
+Every device-capable class takes a `device=` argument. Build the process twice, once for each side, with the same parameters and seed:
 
 ```python
 import numpy as np
@@ -85,17 +68,11 @@ gpu = sr.PyGbm(0.05, 0.2, 512, x0=100.0, t=1.0, device="cuda", **KW).sample_par(
 print(host.shape, gpu.shape)  # (4000, 512) (4000, 512)
 ```
 
-`f32` is the precision to compare in on a consumer NVIDIA card, which runs
-double precision at a fraction of its single-precision rate, and it is the
-only precision Metal has.
+`f32` is the precision to compare in on a consumer NVIDIA card, which runs double precision at a fraction of its single-precision rate, and it is the only precision Metal has.
 
 ## Step 2 — compare the law, not the path
 
-The host draws from the crate's SIMD ziggurat and the kernel hashes its own
-normals from `(path, step, seed)`, so the two sides never produce the same
-path — comparing them point by point is meaningless. What must agree is the
-law. Take the terminal column of each and compare means and spreads in units
-of their standard error:
+The host draws from the crate's SIMD ziggurat and the kernel hashes its own normals from `(path, step, seed)`, so the two sides never produce the same path — comparing them point by point is meaningless. What must agree is the law. Take the terminal column of each and compare means and spreads in units of their standard error:
 
 ```python
 def z(a, b, se):
@@ -107,26 +84,18 @@ mean_z = z(h.mean(), d.mean(), np.sqrt(h.var(ddof=1) / n + d.var(ddof=1) / n))
 print(f"mean  cpu {h.mean():.4f}  cuda {d.mean():.4f}  z {mean_z:+.1f}")
 ```
 
-The band is what the sample size allows rather than a tolerance anyone
-chose: `|z|` under 5 is agreement, a `z` of 30 is a real disagreement worth an
-issue, and a `z` of 4 on a heavy-tailed process (an α-stable subordinator, the
-3/2 model) is the sample size talking. The notebook adds the same test for
-the spread and plots the two terminal histograms on top of each other.
+The band is what the sample size allows rather than a tolerance anyone chose: `|z|` under 5 is agreement, a `z` of 30 is a real disagreement worth an issue, and a `z` of 4 on a heavy-tailed process (an α-stable subordinator, the 3/2 model) is the sample size talking. The notebook adds the same test for the spread and plots the two terminal histograms on top of each other.
 
 ## Step 3 — know when a configuration stays on the host
 
-Some configurations exceed what the kernels carry. A process says so before
-it runs: `device_ready()` is `True` when it will sample on its device, and
-`device_fallback()` returns the reason when it will not.
+Some configurations exceed what the kernels carry. A process says so before it runs: `device_ready()` is `True` when it will sample on its device, and `device_fallback()` returns the reason when it will not.
 
 ```python
 p = sr.PyGbm(0.05, 0.2, 512, x0=100.0, t=1.0, device="cuda", **KW)
 print(p.device_ready(), p.device_fallback())
 ```
 
-A process that falls back samples on the host, bit-identically to a
-`device="cpu"` build — the one fallback rule, never a panic — so its `z` is a
-comparison of the host with itself.
+A process that falls back samples on the host, bit-identically to a `device="cpu"` build — the one fallback rule, never a panic — so its `z` is a comparison of the host with itself.
 
 ## Step 4 — time it
 
@@ -145,26 +114,14 @@ for m in (256, 20_000):
     print(f"{m:>6} paths  cpu {cpu_ms:8.1f} ms  cuda {gpu_ms:8.1f} ms  {cpu_ms / gpu_ms:5.1f}x")
 ```
 
-One launch has a fixed cost, so the small batch usually favours the CPU; the
-device pays off from a few thousand paths and a long grid. A batch too large
-for the device's memory is split into launches whose union is bit-identical
-to one.
+One launch has a fixed cost, so the small batch usually favours the CPU; the device pays off from a few thousand paths and a long grid. A batch too large for the device's memory is split into launches whose union is bit-identical to one.
 
 ## Result
 
-Per process, two sets of paths that differ, two terminal laws that sit on top
-of each other, and a timing row that shows where the GPU starts to win. The
-notebook runs the whole gallery — Brownian motion, bounded and unbounded
-diffusions, short rates, stochastic volatility, jumps, point processes,
-fractional processes, subordinators and GARCH-type series — with one figure
-per family and a table of the widest disagreements. Executed copies live
-under [`notebooks/runs/`](https://github.com/rust-dd/stochastic-rs/tree/main/notebooks/runs).
+Per process, two sets of paths that differ, two terminal laws that sit on top of each other, and a timing row that shows where the GPU starts to win. The notebook runs the whole gallery — Brownian motion, bounded and unbounded diffusions, short rates, stochastic volatility, jumps, point processes, fractional processes, subordinators and GARCH-type series — with one figure per family and a table of the widest disagreements. Executed copies live under [`notebooks/runs/`](https://github.com/rust-dd/stochastic-rs/tree/main/notebooks/runs).
 
 ## Where to go next
 
-- [GPU support](/docs/concepts/gpu-support) — what runs on which device, at
-  which precision, and the measured numbers.
-- [Sampling backends](/docs/concepts/backends) — the same switch from Rust:
-  `.on::<Cuda>()` and `with_backend(Cuda::new(1))`.
-- [Heston: simulate, price and calibrate](/docs/tutorials/heston) — the
-  same `device=` argument on `PyHeston`, next to its pricers and calibrator.
+- [GPU support](/docs/concepts/gpu-support) — what runs on which device, at which precision, and the measured numbers.
+- [Sampling backends](/docs/concepts/backends) — the same switch from Rust: `.on::<Cuda>()` and `with_backend(Cuda::new(1))`.
+- [Heston: simulate, price and calibrate](/docs/tutorials/heston) — the same `device=` argument on `PyHeston`, next to its pricers and calibrator.

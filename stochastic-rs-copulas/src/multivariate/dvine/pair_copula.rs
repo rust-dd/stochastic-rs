@@ -27,18 +27,13 @@
 //! constructions of multiple dependence", *Insurance: Mathematics and
 //! Economics* 44(2), 182-198, Table 1 and Appendix.
 
-use std::f64;
-
 use stochastic_rs_distributions::special::beta_i;
 use stochastic_rs_distributions::special::ln_gamma;
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
-/// Bivariate pair-copula family used as the building block of every
-/// PCC-based multivariate copula in this crate (D-vine, C-vine, R-vine).
-///
-/// Every variant carries the family's parameters as fields so PCC trees
-/// can be stored as `Vec<Vec<PairCopula>>` without trait objects.
+/// Bivariate pair-copula family of the C-, D- and R-vines, held by value in their `Vec<Vec<PairCopula>>` trees.
+/// Pair families must be exchangeable: the vine recursions call `h` from either end of an edge.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub enum PairCopula {
@@ -121,7 +116,7 @@ impl PairCopula {
   }
 
   /// Inverse h-function: returns the $u$ that satisfies $h(u \mid v) = p$.
-  /// Used in PCC sampling (Aas-Czado 2009, Algorithm 4 backward step).
+  /// Used by the vine samplers (Aas et al. 2009, Algorithms 1 and 2).
   pub fn h_inverse(&self, p: f64, v: f64) -> f64 {
     let p = p.clamp(EPS, 1.0 - EPS);
     let v = v.clamp(EPS, 1.0 - EPS);
@@ -201,20 +196,25 @@ impl PairCopula {
         -0.5 * one_minus_rho2.ln() - 0.5 * q / one_minus_rho2
       }
       PairCopula::Clayton { theta } => {
-        // c(u, v) = (1 + θ) (u v)^{-θ - 1} (u^{-θ} + v^{-θ} - 1)^{-1/θ - 2}
-        let s = u.powf(-theta) + v.powf(-theta) - 1.0;
-        (1.0 + theta).ln()
-          + (-theta - 1.0) * u.ln()
-          + (-theta - 1.0) * v.ln()
-          + (-1.0 / theta - 2.0) * s.ln()
+        // c = (1 + θ)(uv)^{−θ−1} s^{−1/θ−2} with ln s = M + ln(1 + e^{m−M}(1 − e^{−m})), {M ≥ m} = {−θ ln u, −θ ln v}: s in
+        // logarithms, so `u^{−θ}` never overflows.
+        let (a, b) = (-theta * u.ln(), -theta * v.ln());
+        let (big, small) = (a.max(b), a.min(b));
+        let ln_s = big + ((small - big).exp() * -(-small).exp_m1()).ln_1p();
+        theta.ln_1p() + (-theta - 1.0) * (u.ln() + v.ln()) + (-1.0 / theta - 2.0) * ln_s
       }
       PairCopula::Frank { theta } => {
-        // c(u, v) = θ(1 - e^{-θ}) e^{-θ(u+v)} / ((1 - e^{-θ}) - (1 - e^{-θu})(1 - e^{-θv}))²
-        let a = 1.0 - (-theta).exp();
-        let eu = (-theta * u).exp();
-        let ev = (-theta * v).exp();
-        let denom = a - (1.0 - eu) * (1.0 - ev);
-        (theta * a).ln() + (-theta * (u + v)) - 2.0 * denom.abs().ln()
+        // c_θ(u, v) = θ(1 − e^{−θ}) e^{−θ(u+v)} / D² with D = e^{−θu}(1 − e^{−θv}) + e^{−θv}(1 − e^{−θ(1−v)}), two positive terms
+        // for θ > 0; c_θ(u, v) = c_{−θ}(u, 1 − v) for θ < 0.
+        let (t, p, q) = if theta > 0.0 {
+          (theta, v, 1.0 - v)
+        } else {
+          (-theta, 1.0 - v, v)
+        };
+        let first = -t * u + (-(-t * p).exp_m1()).ln();
+        let second = -t * p + (-(-t * q).exp_m1()).ln();
+        let ln_d = first.max(second) + (-(first - second).abs()).exp().ln_1p();
+        t.ln() + (-(-t).exp_m1()).ln() - t * (u + p) - 2.0 * ln_d
       }
       PairCopula::Bb1 { theta, delta } => {
         crate::bivariate::bb1::Bb1::log_density_scalar(u, v, theta, delta)
@@ -222,23 +222,31 @@ impl PairCopula {
       PairCopula::Bb7 { theta, delta } => {
         crate::bivariate::bb7::Bb7::log_density_scalar(u, v, theta, delta)
       }
-      PairCopula::StudentT { rho, nu } => {
-        // c(u, v) = (Γ((ν+2)/2) Γ(ν/2)) / (Γ((ν+1)/2)² √(1-ρ²))
-        //          · (1 + (x² - 2ρxy + y²)/(ν(1-ρ²)))^{-(ν+2)/2}
-        //          / ((1 + x²/ν)(1 + y²/ν))^{-(ν+1)/2}
-        let x = student_t_quantile(u, nu);
-        let y = student_t_quantile(v, nu);
-        let one_minus_rho2 = 1.0 - rho * rho;
-        let log_norm = ln_gamma(0.5 * (nu + 2.0)) + ln_gamma(0.5 * nu)
-          - 2.0 * ln_gamma(0.5 * (nu + 1.0))
-          - 0.5 * one_minus_rho2.ln();
-        let log_joint = -0.5
-          * (nu + 2.0)
-          * (1.0 + (x * x - 2.0 * rho * x * y + y * y) / (nu * one_minus_rho2)).ln();
-        let log_marg = 0.5 * (nu + 1.0) * ((1.0 + x * x / nu).ln() + (1.0 + y * y / nu).ln());
-        log_norm + log_joint + log_marg
-      }
+      PairCopula::StudentT { rho, nu } => Self::student_t_log_density(
+        student_t_quantile(u, nu),
+        student_t_quantile(v, nu),
+        rho,
+        nu,
+      ),
     }
+  }
+
+  /// `t_ν⁻¹(u)` of `u` clamped as every pair evaluation clamps it: the half of the Student t density that ρ leaves alone.
+  pub(crate) fn student_t_score(u: f64, nu: f64) -> f64 {
+    student_t_quantile(u.clamp(EPS, 1.0 - EPS), nu)
+  }
+
+  /// `log c` of the Student t pair at the scores `x = t_ν⁻¹(u)`, `y = t_ν⁻¹(v)`: `c = Γ((ν+2)/2) Γ(ν/2) / (Γ((ν+1)/2)² √(1−ρ²))`
+  /// `· (1 + (x² − 2ρxy + y²)/(ν(1−ρ²)))^{−(ν+2)/2} · ((1 + x²/ν)(1 + y²/ν))^{(ν+1)/2}`.
+  pub(crate) fn student_t_log_density(x: f64, y: f64, rho: f64, nu: f64) -> f64 {
+    let one_minus_rho2 = 1.0 - rho * rho;
+    let log_norm = ln_gamma(0.5 * (nu + 2.0)) + ln_gamma(0.5 * nu)
+      - 2.0 * ln_gamma(0.5 * (nu + 1.0))
+      - 0.5 * one_minus_rho2.ln();
+    let log_joint =
+      -0.5 * (nu + 2.0) * (1.0 + (x * x - 2.0 * rho * x * y + y * y) / (nu * one_minus_rho2)).ln();
+    let log_marg = 0.5 * (nu + 1.0) * ((1.0 + x * x / nu).ln() + (1.0 + y * y / nu).ln());
+    log_norm + log_joint + log_marg
   }
 
   /// Copula density $c(u, v)$ (exponentiated log density).
@@ -264,7 +272,7 @@ fn student_t_cdf(x: f64, nu: f64) -> f64 {
 /// Newton-refined quantile and `log_density` evaluation.
 fn student_t_log_pdf(x: f64, nu: f64) -> f64 {
   let log_norm =
-    ln_gamma(0.5 * (nu + 1.0)) - 0.5 * (nu * f64::consts::PI).ln() - ln_gamma(0.5 * nu);
+    ln_gamma(0.5 * (nu + 1.0)) - 0.5 * (nu * std::f64::consts::PI).ln() - ln_gamma(0.5 * nu);
   let log_kernel = -0.5 * (nu + 1.0) * (1.0 + x * x / nu).ln();
   log_norm + log_kernel
 }
@@ -419,9 +427,86 @@ mod tests {
         assert!(pair.density(u, v).is_finite() && pair.density(u, v) > 0.0);
       }
     }
-    let bb1_struct = Bb1::new(Some(0.8), Some(1.6), None);
+    let bb1_struct = Bb1::new(0.8, 1.6);
     let x = ndarray::array![[0.2, 0.7]];
-    let reference = bb1_struct.pdf(&x).unwrap()[0];
+    let reference = bb1_struct.pdf(x.view()).unwrap()[0];
     assert!((bb1.density(0.2, 0.7) - reference).abs() < 1e-12);
+  }
+
+  /// 50-digit mpmath values of the expanded formulas where f64 loses them: Frank's denominator cancels near (1, 1) and
+  /// Clayton's `u^{−θ}` overflows near (0, 0); the θ < 0 Frank rows cross the rotation.
+  #[test]
+  fn log_density_holds_at_strong_dependence() {
+    let frank = [
+      (30.0, 0.95, 0.95, 2.2514907829411306),
+      (30.0, 0.999, 0.995, 3.229447778423594),
+      (35.0, 0.99, 0.99, 3.037845014469233),
+      (35.0, 0.995, 0.999, 3.3564222824584893),
+      (40.0, 0.95, 0.95, 2.442716933314608),
+      (40.0, 0.999, 0.9995, 3.6304328995062574),
+      (50.0, 0.99, 0.99, 3.2484298739257733),
+      (50.0, 0.9999, 0.9995, 3.8822693052484136),
+      (-40.0, 0.99, 0.01, 3.1190028997956873),
+      (-50.0, 0.0005, 0.9999, 3.882269305248411),
+    ];
+    let clayton = [
+      (50.0, 1e-7, 1e-7, 18.649763978951555),
+      (50.0, 1e-4, 1.2e-4, 3.843544653068734),
+      (100.0, 1e-4, 1e-4, 12.432235055891953),
+      (100.0, 1e-3, 1.01e-3, 9.885546533017381),
+      (200.0, 1e-3, 1e-3, 10.821300090018523),
+      (200.0, 0.01, 0.0101, 7.651583313741083),
+    ];
+    let pins = frank
+      .map(|(theta, u, v, want)| (PairCopula::Frank { theta }, u, v, want))
+      .into_iter()
+      .chain(clayton.map(|(theta, u, v, want)| (PairCopula::Clayton { theta }, u, v, want)));
+    for (pair, u, v, want) in pins {
+      let got = pair.log_density(u, v);
+      assert!(
+        (got - want).abs() <= 1e-13 * want.abs(),
+        "{pair:?} at ({u}, {v}): {got} vs {want}"
+      );
+    }
+  }
+
+  /// The match has no wildcard arm, so a new family does not compile until it joins this exchangeability check.
+  #[test]
+  fn every_pair_family_is_exchangeable() {
+    let families = [
+      PairCopula::Independence,
+      PairCopula::Gaussian { rho: 0.6 },
+      PairCopula::Gaussian { rho: -0.4 },
+      PairCopula::Clayton { theta: 2.5 },
+      PairCopula::Frank { theta: 4.0 },
+      PairCopula::Frank { theta: -3.0 },
+      PairCopula::StudentT { rho: 0.5, nu: 4.0 },
+      PairCopula::Bb1 {
+        theta: 0.8,
+        delta: 1.6,
+      },
+      PairCopula::Bb7 {
+        theta: 1.7,
+        delta: 0.9,
+      },
+    ];
+    let grid = [0.05, 0.2, 0.45, 0.7, 0.95];
+    for pair in families {
+      match pair {
+        PairCopula::Independence
+        | PairCopula::Gaussian { .. }
+        | PairCopula::Clayton { .. }
+        | PairCopula::Frank { .. }
+        | PairCopula::StudentT { .. }
+        | PairCopula::Bb1 { .. }
+        | PairCopula::Bb7 { .. } => {}
+      }
+      for u in grid {
+        for v in grid {
+          let gap = (pair.log_density(u, v) - pair.log_density(v, u)).abs();
+          assert!(gap <= 1e-12, "{pair:?} at ({u}, {v}): gap {gap:e}");
+        }
+      }
+    }
   }
 }

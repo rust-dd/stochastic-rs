@@ -33,108 +33,131 @@
 //!   Financial Derivatives, and Risk Measures*, PhD thesis, University of
 //!   Freiburg, ch. 1.
 
-use std::cell::Cell;
-use std::cell::UnsafeCell;
-
 use rand::Rng;
-use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
+use rand::distr::Distribution;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
 use super::generalized_inverse_gauss::SimdGig;
 use super::normal::SimdNormal;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::Buffered;
+use crate::seeded::StreamState;
 use crate::special::bessel_k::bessel_ke;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 const SMALL_GH_THRESHOLD: usize = 16;
 
-/// Generalized hyperbolic distribution GH$(\lambda, \alpha, \beta, \delta, \mu)$.
-pub struct SimdGeneralizedHyperbolic<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+/// Generalized hyperbolic distribution GH$(\lambda, \alpha, \beta, \delta, \mu)$; a [`Seeded`](crate::Seeded)
+/// stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdGeneralizedHyperbolic<T> {
   lambda: T,
   alpha: T,
   beta: T,
   delta: T,
   mu: T,
-  gig: SimdGig<T, R>,
-  normal: SimdNormal<T, 64, R>,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  stream_seed: Cell<u64>,
+  gig: SimdGig<T>,
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdGeneralizedHyperbolic<T, R> {
+/// A GH stream: the GIG-clock and normal sub-streams and the single-draw buffer.
+#[doc(hidden)]
+#[derive(Clone, Debug)]
+pub struct GhState<T: SimdFloatExt, R: SimdRngExt> {
+  gig: StreamState<T, R, 16>,
+  normal: StreamState<T, R, 64>,
+  buf: Buffered<T, 16>,
+}
+
+impl<T: SimdFloatExt> SimdGeneralizedHyperbolic<T> {
   /// Construct a GH$(\lambda, \alpha, \beta, \delta, \mu)$ over an internal
   /// GIG$(\lambda, \delta^2, \alpha^2 - \beta^2)$ clock.
-  pub fn new<S: crate::simd_rng::SeedExt>(
-    lambda: T,
-    alpha: T,
-    beta: T,
-    delta: T,
-    mu: T,
-    seed: &S,
-  ) -> Self {
-    assert!(delta > T::zero(), "GH: delta must be positive");
+  pub fn new(lambda: T, alpha: T, beta: T, delta: T, mu: T) -> Self {
     assert!(
-      alpha > T::zero() && alpha > beta.abs(),
-      "GH: alpha must exceed |beta|"
+      lambda.is_finite(),
+      "lambda must satisfy `lambda.is_finite()`, got lambda = {lambda:?}"
     );
-    let gig = SimdGig::<T, R>::new(lambda, delta * delta, alpha * alpha - beta * beta, seed);
-    let normal = SimdNormal::<T, 64, R>::new(T::zero(), T::one(), seed);
-    let stream_seed = seed.seed_value();
+    assert!(
+      alpha.is_finite(),
+      "alpha must satisfy `alpha.is_finite()`, got alpha = {alpha:?}"
+    );
+    assert!(
+      beta.is_finite(),
+      "beta must satisfy `beta.is_finite()`, got beta = {beta:?}"
+    );
+    assert!(
+      delta.is_finite(),
+      "delta must satisfy `delta.is_finite()`, got delta = {delta:?}"
+    );
+    assert!(
+      mu.is_finite(),
+      "mu must satisfy `mu.is_finite()`, got mu = {mu:?}"
+    );
+    assert!(
+      alpha > beta.abs(),
+      "alpha must satisfy `alpha > beta.abs()`, got alpha = {alpha:?}, beta = {beta:?}"
+    );
+    assert!(
+      delta > T::zero(),
+      "delta must satisfy `delta > T::zero()`, got delta = {delta:?}"
+    );
+    let chi = delta * delta;
+    let psi = alpha * alpha - beta * beta;
+    assert!(
+      chi > T::zero() && chi.is_finite(),
+      "delta must satisfy `0 < delta * delta < ∞`, got delta = {delta:?}"
+    );
+    assert!(
+      psi > T::zero() && psi.is_finite(),
+      "alpha must satisfy `0 < alpha * alpha - beta * beta < ∞`, got alpha = {alpha:?}, beta = {beta:?}"
+    );
     Self {
       lambda,
       alpha,
       beta,
       delta,
       mu,
-      gig,
-      normal,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      stream_seed: Cell::new(stream_seed),
+      gig: SimdGig::new(lambda, chi, psi),
     }
   }
 
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.lambda,
-      self.alpha,
-      self.beta,
-      self.delta,
-      self.mu,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
+  /// The index `λ` of the GIG clock.
+  pub fn lambda(&self) -> T {
+    self.lambda
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
-  #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
+  /// The tail heaviness `α`.
+  pub fn alpha(&self) -> T {
+    self.alpha
   }
 
-  /// Fills `out` from the GIG-clock normal mixture; the clock draws are
-  /// scalar rejection samples, the mixing step runs 8-wide.
-  pub fn fill_slice(&self, out: &mut [T]) {
+  /// The asymmetry `β`.
+  pub fn beta(&self) -> T {
+    self.beta
+  }
+
+  /// The scale `δ`.
+  pub fn delta(&self) -> T {
+    self.delta
+  }
+
+  /// The location `μ`.
+  pub fn mu(&self) -> T {
+    self.mu
+  }
+
+  fn fill_parts<R: SimdRngExt>(
+    &self,
+    gig: &mut StreamState<T, R, 16>,
+    normal: &mut StreamState<T, R, 64>,
+    out: &mut [T],
+  ) {
     if out.len() < SMALL_GH_THRESHOLD {
       for x in out.iter_mut() {
-        let w = self.gig.sample_fast();
-        let z = self.normal.sample_fast();
+        let w = self.gig.next(gig);
+        let z = SimdNormal::<T>::standard().next(normal);
         *x = self.mu + self.beta * w + w.sqrt() * z;
       }
       return;
@@ -145,8 +168,8 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGeneralizedHyperbolic<T, R> {
     let mut zbuf = [T::zero(); 64];
     let (chunks, rem) = out.as_chunks_mut::<64>();
     for chunk in chunks {
-      self.gig.fill_slice(&mut wbuf);
-      self.normal.fill_standard_fast(&mut zbuf);
+      self.gig.fill(gig, &mut wbuf);
+      SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf);
       for (sub, (w8, z8)) in chunk.as_chunks_mut::<8>().0.iter_mut().zip(
         wbuf
           .as_chunks::<8>()
@@ -161,20 +184,18 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGeneralizedHyperbolic<T, R> {
     }
     if !rem.is_empty() {
       let n = rem.len();
-      self.gig.fill_slice(&mut wbuf[..n]);
-      self.normal.fill_standard_fast(&mut zbuf[..n]);
+      self.gig.fill(gig, &mut wbuf[..n]);
+      SimdNormal::<T>::fill_standard(&mut normal.rng, &mut zbuf[..n]);
       for i in 0..n {
         rem[i] = self.mu + self.beta * wbuf[i] + wbuf[i].sqrt() * zbuf[i];
       }
     }
   }
 
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    let w = self.gig.draw_with(rng);
+    let z = SimdNormal::<T>::standard().draw_with(rng);
+    self.mu + self.beta * w + w.sqrt() * z
   }
 
   fn params(&self) -> (f64, f64, f64, f64, f64) {
@@ -203,37 +224,54 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdGeneralizedHyperbolic<T, R> {
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdGeneralizedHyperbolic<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(
-      self.lambda,
-      self.alpha,
-      self.beta,
-      self.delta,
-      self.mu,
-      &Unseeded,
+impl<T: SimdFloatExt> Sealed for SimdGeneralizedHyperbolic<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdGeneralizedHyperbolic<T> {
+  type State<R: SimdRngExt> = GhState<T, R>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (GhState<T, R>, u64) {
+    let (gig, _) = self.gig.init::<R, S>(seed);
+    let (normal, _) = SimdNormal::<T>::standard().init::<R, S>(seed);
+    let basis = seed.next_seed();
+    (
+      GhState {
+        gig,
+        normal,
+        buf: Buffered::new(),
+      },
+      basis,
     )
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdGeneralizedHyperbolic<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD streams seeded at construction.
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let idx = unsafe { &mut *self.index.get() };
-    if *idx >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*idx] };
-    *idx += 1;
-    val
+impl<T: SimdFloatExt> SimdKernel for SimdGeneralizedHyperbolic<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut GhState<T, R>, out: &mut [T]) {
+    self.fill_parts(&mut state.gig, &mut state.normal, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut GhState<T, R>) -> T {
+    let GhState { gig, normal, buf } = state;
+    buf.pop(|b| self.fill_parts(gig, normal, b))
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt
-  for SimdGeneralizedHyperbolic<T, R>
-{
-  fn pdf(&self, x: f64) -> f64 {
+impl<T: SimdFloatExt> Distribution<T> for SimdGeneralizedHyperbolic<T> {
+  /// `μ + βW + √W·Z` from one scalar GIG and one scalar normal draw on the caller's rng.
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
+  }
+}
+
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbolic<T> {
+  fn pdf(&self, x: f64) -> Option<f64> {
+    // The density vanishes at ±∞, where the log-space kernel would read ∞ − ∞.
+    if x.is_infinite() {
+      return Some(0.0);
+    }
     let (lambda, alpha, beta, delta, mu) = self.params();
     let gamma = (alpha * alpha - beta * beta).sqrt();
     let d = x - mu;
@@ -245,58 +283,55 @@ impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt
       - lambda * delta.ln()
       - (bessel_ke(lambda, delta * gamma).ln() - delta * gamma);
     let y = alpha * root;
-    (log_norm + order * root.ln() + bessel_ke(order, y).ln() - y + beta * d).exp()
+    Some((log_norm + order * root.ln() + bessel_ke(order, y).ln() - y + beta * d).exp())
   }
 
-  fn cdf(&self, _x: f64) -> f64 {
-    unimplemented!("DistributionExt::cdf for SimdGeneralizedHyperbolic has no closed form")
-  }
-
-  fn inv_cdf(&self, _p: f64) -> f64 {
-    unimplemented!("DistributionExt::inv_cdf for SimdGeneralizedHyperbolic has no closed form")
-  }
-
-  fn mean(&self) -> f64 {
+  fn mean(&self) -> Option<f64> {
     let (_, _, beta, _, mu) = self.params();
-    mu + beta * self.gig.raw_moment(1)
+    Some(mu + beta * self.gig.raw_moment(1))
   }
 
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
     let (ew, var, _, _) = self.clock_moments();
-    ew + beta * beta * var
+    Some(ew + beta * beta * var)
   }
 
-  fn skewness(&self) -> f64 {
+  fn skewness(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
     let (ew, var, mu3, _) = self.clock_moments();
     let m2 = ew + beta * beta * var;
-    (beta.powi(3) * mu3 + 3.0 * beta * var) / m2.powf(1.5)
+    Some((beta.powi(3) * mu3 + 3.0 * beta * var) / m2.powf(1.5))
   }
 
   /// Excess kurtosis.
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     let (_, _, beta, _, _) = self.params();
     let (ew, var, mu3, mu4) = self.clock_moments();
     let m2 = ew + beta * beta * var;
     let ew2 = self.gig.raw_moment(2);
-    (beta.powi(4) * mu4 + 6.0 * beta * beta * (mu3 + ew * var) + 3.0 * ew2) / (m2 * m2) - 3.0
+    Some((beta.powi(4) * mu4 + 6.0 * beta * beta * (mu3 + ew * var) + 3.0 * ew2) / (m2 * m2) - 3.0)
   }
 
   /// $e^{\mu t}\bigl(\tfrac{\alpha^2-\beta^2}{\alpha^2-(\beta+t)^2}\bigr)^{\lambda/2}
   /// K_\lambda\bigl(\delta\sqrt{\alpha^2-(\beta+t)^2}\bigr)/K_\lambda\bigl(\delta\sqrt{\alpha^2-\beta^2}\bigr)$
   /// for $|\beta + t| < \alpha$, `NaN` beyond.
-  fn moment_generating_function(&self, t: f64) -> f64 {
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    if t == 0.0 {
+      return Some(1.0);
+    }
     let (lambda, alpha, beta, delta, mu) = self.params();
     let shifted = alpha * alpha - (beta + t).powi(2);
     if shifted <= 0.0 {
-      return f64::NAN;
+      return Some(f64::NAN);
     }
     let gamma = (alpha * alpha - beta * beta).sqrt();
     let gt = shifted.sqrt();
-    (mu * t).exp() * (gamma * gamma / shifted).powf(0.5 * lambda) * bessel_ke(lambda, delta * gt)
-      / bessel_ke(lambda, delta * gamma)
-      * (delta * (gamma - gt)).exp()
+    Some(
+      (mu * t).exp() * (gamma * gamma / shifted).powf(0.5 * lambda) * bessel_ke(lambda, delta * gt)
+        / bessel_ke(lambda, delta * gamma)
+        * (delta * (gamma - gt)).exp(),
+    )
   }
 }
 
@@ -306,7 +341,10 @@ mod tests {
 
   use super::*;
   use crate::normal_inverse_gauss::SimdNormalInverseGauss;
+  use crate::tests::assert_moments_within;
+  use crate::tests::scalar_draws;
   use crate::traits::DistributionExt;
+  use crate::traits::DistributionSampler;
 
   fn close(a: f64, b: f64, rel: f64) -> bool {
     (a - b).abs() <= rel * b.abs().max(1e-300)
@@ -359,25 +397,29 @@ mod tests {
       ),
     ];
     for ((lambda, alpha, beta, delta, mu), pdf, mean, var) in cases {
-      let d = SimdGeneralizedHyperbolic::<f64>::new(lambda, alpha, beta, delta, mu, &Unseeded);
+      let d = SimdGeneralizedHyperbolic::<f64>::new(lambda, alpha, beta, delta, mu);
       for (x, want) in [-2.0, -0.5, 0.0, 0.3, 1.0, 3.0].into_iter().zip(pdf) {
         assert!(
-          close(d.pdf(x), want, 1e-9),
+          close(d.pdf(x).unwrap(), want, 1e-9),
           "λ={lambda}: pdf({x}) = {} vs {want}",
-          d.pdf(x)
+          d.pdf(x).unwrap()
         );
       }
       assert!(
-        (d.mean() - mean).abs() < 1e-10,
+        (d.mean().unwrap() - mean).abs() < 1e-10,
         "λ={lambda}: mean {}",
-        d.mean()
+        d.mean().unwrap()
       );
       assert!(
-        close(d.variance(), var, 1e-10),
+        close(d.variance().unwrap(), var, 1e-10),
         "λ={lambda}: variance {}",
-        d.variance()
+        d.variance().unwrap()
       );
-      assert!(close(d.moment_generating_function(0.0), 1.0, 1e-12));
+      assert!(close(
+        d.moment_generating_function(0.0).unwrap(),
+        1.0,
+        1e-12
+      ));
     }
   }
 
@@ -385,69 +427,108 @@ mod tests {
   /// with the crate's own NIG, which uses `K₁` directly.
   #[test]
   fn half_negative_lambda_is_the_nig() {
-    let gh = SimdGeneralizedHyperbolic::<f64>::new(-0.5, 2.0, 0.5, 1.0, 0.3, &Unseeded);
-    let nig = SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.3, &Unseeded);
+    let gh = SimdGeneralizedHyperbolic::<f64>::new(-0.5, 2.0, 0.5, 1.0, 0.3);
+    let nig = SimdNormalInverseGauss::<f64>::new(2.0, 0.5, 1.0, 0.3);
     for x in [-3.0, -1.0, 0.0, 0.3, 1.0, 2.5, 6.0] {
       assert!(
-        close(gh.pdf(x), nig.pdf(x), 1e-11),
+        close(gh.pdf(x).unwrap(), nig.pdf(x).unwrap(), 1e-11),
         "pdf({x}): {} vs {}",
-        gh.pdf(x),
-        nig.pdf(x)
+        gh.pdf(x).unwrap(),
+        nig.pdf(x).unwrap()
       );
     }
-    assert!(close(gh.mean(), nig.mean(), 1e-11));
-    assert!(close(gh.variance(), nig.variance(), 1e-10));
-    assert!(close(gh.skewness(), nig.skewness(), 1e-9));
-    assert!(close(gh.kurtosis(), nig.kurtosis(), 1e-8));
+    assert!(close(gh.mean().unwrap(), nig.mean().unwrap(), 1e-11));
+    assert!(close(
+      gh.variance().unwrap(),
+      nig.variance().unwrap(),
+      1e-10
+    ));
+    assert!(close(gh.skewness().unwrap(), nig.skewness().unwrap(), 1e-9));
+    assert!(close(gh.kurtosis().unwrap(), nig.kurtosis().unwrap(), 1e-8));
   }
 
   #[test]
   fn pdf_integrates_to_one() {
-    let d = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2, &Unseeded);
+    let d = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2);
     let (lo, hi, n) = (-30.0_f64, 30.0_f64, 600_000usize);
     let h = (hi - lo) / n as f64;
-    let s: f64 = (0..n).map(|k| d.pdf(lo + (k as f64 + 0.5) * h) * h).sum();
+    let s: f64 = (0..n)
+      .map(|k| d.pdf(lo + (k as f64 + 0.5) * h).unwrap() * h)
+      .sum();
     assert!((s - 1.0).abs() < 1e-6, "integral = {s}");
   }
 
   #[test]
   fn sample_moments_match_closed_forms() {
-    let d = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2, &Deterministic::new(3));
+    let d = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2);
     let n = 400_000;
     let mut xs = vec![0.0; n];
-    d.fill_slice(&mut xs);
+    d.seeded(&Deterministic::new(3)).fill_slice(&mut xs);
     let mean = xs.iter().sum::<f64>() / n as f64;
     let var = xs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64;
     let m3 = xs.iter().map(|x| (x - mean).powi(3)).sum::<f64>() / n as f64;
     assert!(
-      (mean - d.mean()).abs() < 0.01,
+      (mean - d.mean().unwrap()).abs() < 0.01,
       "mean {mean} vs {}",
-      d.mean()
+      d.mean().unwrap()
     );
     assert!(
-      (var - d.variance()).abs() / d.variance() < 0.02,
+      (var - d.variance().unwrap()).abs() / d.variance().unwrap() < 0.02,
       "var {var}"
     );
     assert!(
-      (m3 / var.powf(1.5) - d.skewness()).abs() < 0.05,
+      (m3 / var.powf(1.5) - d.skewness().unwrap()).abs() < 0.05,
       "skew {}",
       m3 / var.powf(1.5)
     );
   }
 
   #[test]
+  fn scalar_sample_moments_match_closed_forms() {
+    let d = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2);
+    let xs = scalar_draws(&d, 23, 200_000);
+    assert_moments_within(
+      &xs,
+      d.mean().unwrap(),
+      d.variance().unwrap(),
+      None,
+      6.0,
+      "GH",
+    );
+  }
+
+  #[test]
   fn deterministic_seed_reproduces_stream() {
-    let a = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2, &Deterministic::new(7));
-    let b = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2, &Deterministic::new(7));
+    let mut a = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2)
+      .seeded(&Deterministic::new(7));
+    let mut b = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2)
+      .seeded(&Deterministic::new(7));
     for _ in 0..256 {
-      assert_eq!(a.sample_fast(), b.sample_fast());
+      assert_eq!(a.sample(), b.sample());
     }
   }
 
   #[test]
-  #[should_panic(expected = "alpha must exceed |beta|")]
+  #[should_panic(expected = "alpha must satisfy `alpha > beta.abs()`")]
   fn rejects_beta_outside_alpha() {
-    let _ = SimdGeneralizedHyperbolic::<f64>::new(1.0, 1.0, 1.0, 1.0, 0.0, &Unseeded);
+    let _ = SimdGeneralizedHyperbolic::<f64>::new(1.0, 1.0, 1.0, 1.0, 0.0);
+  }
+
+  /// The density is 0 at ±∞ for every order, `λ = ½` (where `order · ln(root)` reads `0 · ∞`) included.
+  #[test]
+  fn pdf_vanishes_at_infinity() {
+    for lambda in [0.5, 1.0, -1.5] {
+      let d = SimdGeneralizedHyperbolic::<f64>::new(lambda, 2.0, 0.5, 1.5, -0.2);
+      assert_eq!(d.pdf(f64::INFINITY), Some(0.0));
+      assert_eq!(d.pdf(f64::NEG_INFINITY), Some(0.0));
+    }
+  }
+
+  /// An index of `1e300` returns from the density instead of climbing `1e300` Bessel recurrence steps.
+  #[test]
+  fn a_huge_index_returns() {
+    let d = SimdGeneralizedHyperbolic::<f64>::new(1e300, 2.0, 0.5, 1.0, 0.0);
+    assert!(d.pdf(0.0).is_some());
   }
 }
 

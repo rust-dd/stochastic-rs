@@ -175,6 +175,8 @@ pub fn try_pairs_signals(
 mod tests {
   use ndarray::array;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
@@ -191,7 +193,7 @@ mod tests {
   fn long_spread_triggered_by_negative_extreme() {
     let mut y_buf = vec![0.0_f64; 200];
     let mut x_buf = vec![0.0_f64; 200];
-    let dist = SimdNormal::<f64>::new(0.0, 0.01, &Deterministic::new(1));
+    let mut dist = SimdNormal::<f64>::new(0.0, 0.01).seeded(&Deterministic::new(1));
     let mut shocks = vec![0.0_f64; 200];
     dist.fill_slice(&mut shocks);
     for i in 0..200 {
@@ -207,7 +209,7 @@ mod tests {
 
   #[test]
   fn beta_recovered_from_linear_relationship() {
-    let dist = SimdNormal::<f64>::new(0.0, 0.005, &Deterministic::new(7));
+    let mut dist = SimdNormal::<f64>::new(0.0, 0.005).seeded(&Deterministic::new(7));
     let mut shocks = vec![0.0_f64; 500];
     dist.fill_slice(&mut shocks);
     let mut x_buf = vec![0.0_f64; 500];

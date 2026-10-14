@@ -1,29 +1,30 @@
 //! `MultivariateExt` — feature-gated multivariate copula trait.
 
-use std::error::Error;
-
 use ndarray::Array1;
+use stochastic_rs_core::simd_rng::SeedExt;
 
-use crate::multivariate::CopulaType as MultivariateCopulaType;
+use crate::error::CopulaError;
+use crate::multivariate::MultivariateFamily;
 
 pub trait MultivariateExt {
-  fn r#type(&self) -> MultivariateCopulaType;
+  /// Which family this copula is.
+  fn family(&self) -> MultivariateFamily;
 
-  fn sample(&self, n: usize) -> Result<ndarray::Array2<f64>, Box<dyn Error>>;
+  /// `n` rows drawn from `seed`; a fresh `Deterministic` replays them, a shared one advances.
+  /// Generic over the seed source, so not callable on a `dyn MultivariateExt`.
+  fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<ndarray::Array2<f64>, CopulaError>
+  where
+    Self: Sized;
 
-  /// Deterministic sampler. Returns the same matrix for a fixed `seed`,
-  /// mirroring [`crate::traits::BivariateExt::sample_with_seed`].
-  fn sample_with_seed(&self, n: usize, seed: u64) -> Result<ndarray::Array2<f64>, Box<dyn Error>>;
+  fn fit(&mut self, X: ndarray::ArrayView2<f64>) -> Result<(), CopulaError>;
 
-  fn fit(&mut self, X: ndarray::Array2<f64>) -> Result<(), Box<dyn Error>>;
+  fn check_fit(&self, X: ndarray::ArrayView2<f64>) -> Result<(), CopulaError>;
 
-  fn check_fit(&self, X: &ndarray::Array2<f64>) -> Result<(), Box<dyn Error>>;
+  fn pdf(&self, X: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 
-  fn pdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
-
-  fn log_pdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn log_pdf(&self, X: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok(self.pdf(X)?.ln())
   }
 
-  fn cdf(&self, X: &ndarray::Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>>;
+  fn cdf(&self, X: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 }

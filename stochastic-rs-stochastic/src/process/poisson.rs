@@ -6,11 +6,12 @@
 //!
 
 use ndarray::Array1;
-use rand_distr::Distribution;
 use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_core::simd_rng::SimdRng;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::exp::SimdExp;
 
 use crate::buffer::array1_from_fill;
@@ -111,8 +112,9 @@ impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
 
   /// Build the reusable sampling state from any seed source.
   pub(crate) fn sampler_impl<S2: SeedExt>(&self, seed: &S2) -> PoissonSampler<T> {
-    let distr = SimdExp::<T>::new(self.lambda, seed);
-    let rng = seed.rng();
+    let distr = SimdExp::<T>::new(self.lambda).seeded(seed);
+    // A draw no engine reads; skipping it would move every stream seeded after this one.
+    seed.next_seed();
     let mode = if let Some(n) = self.n {
       PoissonMode::Count { n }
     } else if let Some(t_max) = self.t_max {
@@ -123,7 +125,7 @@ impl<T: FloatExt, S: SeedExt, B> Poisson<T, S, B> {
     } else {
       unreachable!("validate_n_or_tmax ensures at least one of n, t_max is set")
     };
-    PoissonSampler { distr, rng, mode }
+    PoissonSampler { distr, mode }
   }
 }
 
@@ -175,6 +177,11 @@ impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::euler::Eu
 }
 
 backend_switch!([T: FloatExt, S: SeedExt] Poisson<T, S> { lambda, n, t_max, seed } via euler);
+
+impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> crate::traits::Sealed
+  for Poisson<T, S, B>
+{
+}
 
 impl<T: FloatExt, S: SeedExt, B: crate::euler::EulerBackend<T>> ProcessExt<T> for Poisson<T, S, B> {
   type Output = Array1<T>;
@@ -257,8 +264,7 @@ enum PoissonMode<T: FloatExt> {
 /// source and the precomputed sampling regime.
 #[doc(hidden)]
 pub struct PoissonSampler<T: FloatExt> {
-  distr: SimdExp<T>,
-  rng: SimdRng,
+  distr: Seeded<SimdExp<T>>,
   mode: PoissonMode<T>,
 }
 
@@ -302,7 +308,7 @@ impl<T: FloatExt> PoissonSampler<T> {
 
     let mut t = T::zero();
     while t < t_max {
-      t += self.distr.sample(&mut self.rng);
+      t += self.distr.sample();
       if t < t_max {
         poisson.push(t);
       }
@@ -310,6 +316,8 @@ impl<T: FloatExt> PoissonSampler<T> {
     Array1::from(poisson)
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for PoissonSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for PoissonSampler<T> {
   type Output = Array1<T>;

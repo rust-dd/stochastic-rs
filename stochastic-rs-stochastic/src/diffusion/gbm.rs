@@ -8,6 +8,9 @@
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_core::simd_rng::Unseeded;
+use stochastic_rs_distributions::DistributionSampler;
+use stochastic_rs_distributions::Seeded;
+use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
@@ -147,6 +150,8 @@ impl<T: FloatExt> Default for Gbm<T, Unseeded> {
 
 backend_switch!([T: FloatExt, S: SeedExt] Gbm<T, S> { mu, sigma, n, x0, t, ln_mu, ln_sigma, seed } via euler);
 
+impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> crate::traits::Sealed for Gbm<T, S, B> {}
+
 impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Gbm<T, S, B> {
   type Output = Array1<T>;
   type Sampler<'s>
@@ -165,7 +170,7 @@ impl<T: FloatExt, S: SeedExt, B: EulerBackend<T>> ProcessExt<T> for Gbm<T, S, B>
       x0: self.x0.unwrap_or(T::one()),
       drift_scale: self.mu * dt,
       diff_scale: self.sigma,
-      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt(), &self.seed),
+      normal: SimdNormal::<T>::new(T::zero(), dt.sqrt()).seeded(&self.seed),
     }
   }
 
@@ -206,7 +211,7 @@ pub struct GbmSampler<T: FloatExt> {
   x0: T,
   drift_scale: T,
   diff_scale: T,
-  normal: SimdNormal<T>,
+  normal: Seeded<SimdNormal<T>>,
 }
 
 impl<T: FloatExt> GbmSampler<T> {
@@ -230,6 +235,8 @@ impl<T: FloatExt> GbmSampler<T> {
     }
   }
 }
+
+impl<T: FloatExt> crate::traits::Sealed for GbmSampler<T> {}
 
 impl<T: FloatExt> PathSampler<T> for GbmSampler<T> {
   type Output = Array1<T>;
@@ -277,76 +284,64 @@ impl<T: FloatExt, S: SeedExt> Gbm<T, S> {
 // Terminal distribution of the Gbm: S_T ∼ LogNormal(ln_mu, ln_sigma) where
 // ln_mu = ln(S_0) + (μ − ½σ²)·T,   ln_sigma = σ·√T.
 impl<T: FloatExt, S: SeedExt> DistributionExt for Gbm<T, S> {
-  fn pdf(&self, x: f64) -> f64 {
-    let Some((ln_mu, ln_sigma)) = self.terminal_lognormal_params() else {
-      return 0.0;
-    };
+  fn pdf(&self, x: f64) -> Option<f64> {
+    let (ln_mu, ln_sigma) = self.terminal_lognormal_params()?;
     if x <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
     let z = (x.ln() - ln_mu) / ln_sigma;
-    norm_pdf(z) / (ln_sigma * x)
+    Some(norm_pdf(z) / (ln_sigma * x))
   }
 
-  fn cdf(&self, x: f64) -> f64 {
-    let Some((ln_mu, ln_sigma)) = self.terminal_lognormal_params() else {
-      return 0.0;
-    };
+  fn cdf(&self, x: f64) -> Option<f64> {
+    let (ln_mu, ln_sigma) = self.terminal_lognormal_params()?;
     if x <= 0.0 {
-      return 0.0;
+      return Some(0.0);
     }
-    norm_cdf((x.ln() - ln_mu) / ln_sigma)
+    Some(norm_cdf((x.ln() - ln_mu) / ln_sigma))
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
-    let Some((ln_mu, ln_sigma)) = self.terminal_lognormal_params() else {
-      return 0.0;
-    };
-    (ln_mu + ln_sigma * ndtri(p)).exp()
+  fn quantile(&self, p: f64) -> Option<f64> {
+    let (ln_mu, ln_sigma) = self.terminal_lognormal_params()?;
+    Some((ln_mu + ln_sigma * ndtri(p)).exp())
   }
 
-  fn mean(&self) -> f64 {
-    let Some((ln_mu, ln_sigma)) = self.terminal_lognormal_params() else {
-      return 0.0;
-    };
-    (ln_mu + 0.5 * ln_sigma * ln_sigma).exp()
+  fn mean(&self) -> Option<f64> {
+    let (ln_mu, ln_sigma) = self.terminal_lognormal_params()?;
+    Some((ln_mu + 0.5 * ln_sigma * ln_sigma).exp())
   }
 
-  fn mode(&self) -> f64 {
-    let Some((ln_mu, ln_sigma)) = self.terminal_lognormal_params() else {
-      return 0.0;
-    };
-    (ln_mu - ln_sigma * ln_sigma).exp()
+  fn mode(&self) -> Option<f64> {
+    let (ln_mu, ln_sigma) = self.terminal_lognormal_params()?;
+    Some((ln_mu - ln_sigma * ln_sigma).exp())
   }
 
-  fn median(&self) -> f64 {
-    let Some((ln_mu, _)) = self.terminal_lognormal_params() else {
-      return 0.0;
-    };
-    ln_mu.exp()
+  fn median(&self) -> Option<f64> {
+    let (ln_mu, _) = self.terminal_lognormal_params()?;
+    Some(ln_mu.exp())
   }
 
-  fn variance(&self) -> f64 {
-    let Some((ln_mu, ln_sigma)) = self.terminal_lognormal_params() else {
-      return 0.0;
-    };
+  fn variance(&self) -> Option<f64> {
+    let (ln_mu, ln_sigma) = self.terminal_lognormal_params()?;
     let s2 = ln_sigma * ln_sigma;
-    (s2.exp() - 1.0) * (2.0 * ln_mu + s2).exp()
+    Some((s2.exp() - 1.0) * (2.0 * ln_mu + s2).exp())
   }
 
-  fn skewness(&self) -> f64 {
-    let Some((_, ln_sigma)) = self.terminal_lognormal_params() else {
-      return 0.0;
-    };
+  fn skewness(&self) -> Option<f64> {
+    let (_, ln_sigma) = self.terminal_lognormal_params()?;
     let s2 = ln_sigma * ln_sigma;
-    (s2.exp() + 2.0) * (s2.exp() - 1.0).sqrt()
+    Some((s2.exp() + 2.0) * (s2.exp() - 1.0).sqrt())
   }
 
-  fn entropy(&self) -> f64 {
-    let Some((ln_mu, ln_sigma)) = self.terminal_lognormal_params() else {
-      return 0.0;
-    };
-    0.5 + 0.5 * (2.0 * std::f64::consts::PI * ln_sigma * ln_sigma).ln() + ln_mu
+  fn kurtosis(&self) -> Option<f64> {
+    let (_, ln_sigma) = self.terminal_lognormal_params()?;
+    let s2 = ln_sigma * ln_sigma;
+    Some((4.0 * s2).exp() + 2.0 * (3.0 * s2).exp() + 3.0 * (2.0 * s2).exp() - 6.0)
+  }
+
+  fn entropy(&self) -> Option<f64> {
+    let (ln_mu, ln_sigma) = self.terminal_lognormal_params()?;
+    Some(0.5 + 0.5 * (2.0 * std::f64::consts::PI * ln_sigma * ln_sigma).ln() + ln_mu)
   }
 }
 
@@ -354,30 +349,49 @@ impl<T: FloatExt, S: SeedExt> DistributionExt for Gbm<T, S> {
 mod tests {
   use super::*;
 
+  /// The lognormal terminal law: ten closed forms, and `None` for its cf and mgf, which have none.
   #[test]
-  fn invalid_terminal_distribution_returns_zero_fallbacks() {
-    let gbm = Gbm::new(0.05_f64, 0.0, 10, Some(100.0), Some(1.0), Unseeded);
+  fn the_terminal_law_answers_exactly_its_closed_forms() {
+    let gbm = Gbm::new(0.05_f64, 0.2, 10, Some(100.0), Some(1.0), Unseeded);
+    assert!(gbm.characteristic_function(0.4).is_none());
+    assert!(gbm.moment_generating_function(0.4).is_none());
+    assert!(gbm.moment_generating_function(0.0).is_none());
+    assert!(gbm.pdf(100.0).is_some() && gbm.cdf(100.0).is_some() && gbm.quantile(0.3).is_some());
+    assert!(gbm.mean().is_some() && gbm.median().is_some() && gbm.mode().is_some());
+    assert!(gbm.variance().is_some() && gbm.skewness().is_some() && gbm.entropy().is_some());
+    // scipy.stats.lognorm(0.2).stats(moments="k"): the terminal law's sigma * sqrt(t) is 0.2.
+    assert!((gbm.kurtosis().unwrap() - 0.678_365_777_175_437_2).abs() < 1e-12);
+  }
 
-    assert_eq!(gbm.pdf(100.0), 0.0);
-    assert_eq!(gbm.cdf(100.0), 0.0);
-    assert_eq!(gbm.inv_cdf(0.5), 0.0);
-    assert_eq!(gbm.mean(), 0.0);
-    assert_eq!(gbm.mode(), 0.0);
-    assert_eq!(gbm.median(), 0.0);
-    assert_eq!(gbm.variance(), 0.0);
-    assert_eq!(gbm.skewness(), 0.0);
-    assert_eq!(gbm.entropy(), 0.0);
+  #[test]
+  fn a_degenerate_terminal_law_has_no_closed_forms() {
+    let no_volatility = Gbm::new(0.05_f64, 0.0, 10, Some(100.0), Some(1.0), Unseeded);
+    let no_horizon = Gbm::new(0.05_f64, 0.2, 10, Some(100.0), Some(0.0), Unseeded);
+    for gbm in [no_volatility, no_horizon] {
+      assert!(gbm.pdf(100.0).is_none());
+      assert!(gbm.cdf(100.0).is_none());
+      assert!(gbm.quantile(0.5).is_none());
+      assert!(gbm.mean().is_none());
+      assert!(gbm.mode().is_none());
+      assert!(gbm.median().is_none());
+      assert!(gbm.variance().is_none());
+      assert!(gbm.skewness().is_none());
+      assert!(gbm.kurtosis().is_none());
+      assert!(gbm.entropy().is_none());
+      assert!(gbm.moment_generating_function(0.0).is_none());
+      assert!(gbm.characteristic_function(0.0).is_none());
+    }
   }
 
   #[test]
   fn valid_terminal_distribution_is_positive_and_finite() {
     let gbm = Gbm::new(0.05_f64, 0.2, 10, Some(100.0), Some(1.0), Unseeded);
 
-    assert!(gbm.pdf(100.0).is_finite());
-    assert!(gbm.pdf(100.0) > 0.0);
-    assert!(gbm.cdf(100.0) > 0.0);
-    assert!(gbm.cdf(100.0) < 1.0);
-    assert!(gbm.mean() > 0.0);
+    assert!(gbm.pdf(100.0).unwrap().is_finite());
+    assert!(gbm.pdf(100.0).unwrap() > 0.0);
+    assert!(gbm.cdf(100.0).unwrap() > 0.0);
+    assert!(gbm.cdf(100.0).unwrap() < 1.0);
+    assert!(gbm.mean().unwrap() > 0.0);
   }
 }
 

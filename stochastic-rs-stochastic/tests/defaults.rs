@@ -6,7 +6,7 @@
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::Deterministic;
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::normal::SimdNormal;
 use stochastic_rs_stochastic::diffusion::bessel::Bessel;
 use stochastic_rs_stochastic::diffusion::bessel::SquaredBessel;
 use stochastic_rs_stochastic::diffusion::cev::Cev;
@@ -62,7 +62,7 @@ fn defaults_sample_finite() {
   assert!(ok(&SquaredBessel::<f64>::default().sample()));
   assert!(ok(&Bessel::<f64>::default().sample()));
   assert!(ok(&DisplacedDiffusion::<f64>::default().sample()));
-  assert!(ok(&Merton::<f64, ScalarNormal<f64>>::default().sample()));
+  assert!(ok(&Merton::<f64, SimdNormal<f64>>::default().sample()));
   // `Kou` has no `Default` — see `Kou`'s own struct doc: a Gaussian jump
   // distribution would silently ship Merton-with-Gaussian-jumps under the
   // Kou name, since only `D` distinguishes the two samplers in this crate.
@@ -351,7 +351,7 @@ fn clone_preserves_deterministic_path() {
     0.2,
     1.0,
     0.0,
-    ScalarNormal::new(0.0, 0.1),
+    SimdNormal::new(0.0, 0.1),
     N,
     Some(0.0),
     Some(1.0),
@@ -365,7 +365,7 @@ fn clone_preserves_deterministic_path() {
     0.2,
     1.0,
     0.0,
-    ScalarNormal::new(0.0, 0.12),
+    SimdNormal::new(0.0, 0.12),
     N,
     Some(0.0),
     Some(1.0),

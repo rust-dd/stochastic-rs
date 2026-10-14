@@ -1,18 +1,5 @@
-//! A `NaN` that is not a degenerate term now reaches the caller.
-//!
-//! `greek_series` used to end its sum with
-//! `if contribution.is_nan() && term.v == 0.0 { 0.0 }`, and before that with
-//! the bare `contribution.is_nan()` — the crate's named laundering shape,
-//! which caught far more than the one case it was justified for. Both are
-//! gone: each accessor now states its own `σ → 0⁺` limit against
-//! `TermRegime`, and a `NaN` with no limit to claim propagates.
-//!
-//! Every configuration below has a **`NaN` price** and used to have finite
-//! Greeks, so price and Greeks disagreed about whether the query was
-//! answerable — the same disagreement `an_inadmissible_gamma_still_announces_itself`
-//! and item 24's `lambda = 0` split already pinned on the price side. The
-//! `λ ≤ 0` branch of `greek_series` never laundered any of them, so the
-//! disagreement was also internal to this file.
+//! A `NaN` that is not a degenerate term reaches the caller: every configuration below has a `NaN`
+//! price, and its Greeks must be `NaN` too.
 
 use super::*;
 

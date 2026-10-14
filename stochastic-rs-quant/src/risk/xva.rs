@@ -27,6 +27,7 @@ use ndarray::Array2;
 
 use crate::credit::survival_curve::SurvivalCurve;
 use crate::curves::DiscountCurve;
+use crate::traits::RealExt;
 
 /// Exposure profile on a date grid.
 #[derive(Clone, Debug, PartialEq)]
@@ -116,7 +117,7 @@ impl ExposureProfile {
 
   /// Peak expected positive exposure.
   pub fn peak_epe(&self) -> f64 {
-    self.epe.iter().copied().fold(0.0, f64::max)
+    self.epe.iter().copied().fold(0.0, f64::max_or_nan)
   }
 
   /// Time-averaged expected positive exposure (the "expected exposure"

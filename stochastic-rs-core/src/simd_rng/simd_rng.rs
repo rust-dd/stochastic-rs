@@ -1,8 +1,10 @@
 //! Single-stream [`SimdRng`] struct, construction, scalar / batch sampling,
-//! and the [`rand::RngCore`] implementation. Bulk fill helpers live in
+//! and the [`rand::TryRng`] implementation. Bulk fill helpers live in
 //! [`super::fill`].
 
-use rand::RngCore;
+use core::convert::Infallible;
+
+use rand::TryRng;
 use wide::f32x8;
 use wide::f64x4;
 use wide::i32x8;
@@ -10,8 +12,10 @@ use wide::u32x8;
 use wide::u64x4;
 
 use super::next_global_seed;
-use super::xoshiro::F32_MAGIC;
-use super::xoshiro::F64_MAGIC;
+use super::xoshiro::F32_MAGIC_X8;
+use super::xoshiro::F32_ONE_X8;
+use super::xoshiro::F64_MAGIC_X4;
+use super::xoshiro::F64_ONE_X4;
 use super::xoshiro::Xoshiro128PP8;
 use super::xoshiro::Xoshiro256PP4;
 use super::xoshiro::splitmix64_next;
@@ -25,6 +29,7 @@ use super::xoshiro::splitmix64_next;
 ///
 /// - [`SimdRng::new()`] — globally-unique automatic seed
 /// - [`SimdRng::from_seed(seed)`](SimdRng::from_seed) — deterministic, reproducible stream
+#[derive(Clone, Debug)]
 pub struct SimdRng {
   pub(super) f64_engine: Xoshiro256PP4,
   pub(super) f32_engine: Xoshiro128PP8,
@@ -91,16 +96,14 @@ impl SimdRng {
   #[inline(always)]
   pub fn next_f64(&mut self) -> f64 {
     if self.f64_scalar_idx >= 8 {
-      let magic = u64x4::splat(F64_MAGIC);
-      let one = f64x4::splat(1.0);
       let buf_ptr = self.f64_scalar_buf.as_mut_ptr();
       unsafe {
-        let bits0 = (self.f64_engine.next() >> 12u32) | magic;
+        let bits0 = (self.f64_engine.next() >> 12u32) | F64_MAGIC_X4;
         let f0: f64x4 = core::mem::transmute::<u64x4, f64x4>(bits0);
-        core::ptr::write_unaligned(buf_ptr as *mut f64x4, f0 - one);
-        let bits1 = (self.f64_engine.next() >> 12u32) | magic;
+        core::ptr::write_unaligned(buf_ptr as *mut f64x4, f0 - F64_ONE_X4);
+        let bits1 = (self.f64_engine.next() >> 12u32) | F64_MAGIC_X4;
         let f1: f64x4 = core::mem::transmute::<u64x4, f64x4>(bits1);
-        core::ptr::write_unaligned(buf_ptr.add(4) as *mut f64x4, f1 - one);
+        core::ptr::write_unaligned(buf_ptr.add(4) as *mut f64x4, f1 - F64_ONE_X4);
       }
       self.f64_scalar_idx = 0;
     }
@@ -118,9 +121,9 @@ impl SimdRng {
     if self.f32_scalar_idx >= 8 {
       let buf_ptr = self.f32_scalar_buf.as_mut_ptr();
       unsafe {
-        let bits = (self.f32_engine.next() >> 9u32) | u32x8::splat(F32_MAGIC);
+        let bits = (self.f32_engine.next() >> 9u32) | F32_MAGIC_X8;
         let f: f32x8 = core::mem::transmute::<u32x8, f32x8>(bits);
-        core::ptr::write_unaligned(buf_ptr as *mut f32x8, f - f32x8::splat(1.0));
+        core::ptr::write_unaligned(buf_ptr as *mut f32x8, f - F32_ONE_X8);
       }
       self.f32_scalar_idx = 0;
     }
@@ -151,57 +154,48 @@ impl Default for SimdRng {
   }
 }
 
-impl RngCore for SimdRng {
+impl TryRng for SimdRng {
+  type Error = Infallible;
+
   #[inline(always)]
-  fn next_u32(&mut self) -> u32 {
-    self.next_u64() as u32
+  fn try_next_u32(&mut self) -> Result<u32, Infallible> {
+    self.try_next_u64().map(|x| x as u32)
   }
 
   #[inline(always)]
-  fn next_u64(&mut self) -> u64 {
+  fn try_next_u64(&mut self) -> Result<u64, Infallible> {
     let idx = self.u64_idx;
     if idx >= 4 {
       self.u64_buf = self.f64_engine.next().to_array();
       self.u64_idx = 1;
-      return self.u64_buf[0];
+      return Ok(self.u64_buf[0]);
     }
     self.u64_idx = idx + 1;
-    self.u64_buf[idx]
+    Ok(self.u64_buf[idx])
   }
 
-  fn fill_bytes(&mut self, dest: &mut [u8]) {
-    let mut written = 0;
-    let total = dest.len();
-    while self.u64_idx < 4 && total - written >= 8 {
-      let v = self.u64_buf[self.u64_idx];
-      self.u64_idx += 1;
-      dest[written..written + 8].copy_from_slice(&v.to_le_bytes());
-      written += 8;
-    }
-    while total - written >= 32 {
-      let block = self.f64_engine.next().to_array();
-      dest[written..written + 8].copy_from_slice(&block[0].to_le_bytes());
-      dest[written + 8..written + 16].copy_from_slice(&block[1].to_le_bytes());
-      dest[written + 16..written + 24].copy_from_slice(&block[2].to_le_bytes());
-      dest[written + 24..written + 32].copy_from_slice(&block[3].to_le_bytes());
-      written += 32;
-    }
-    if written == total {
-      return;
-    }
-    self.u64_buf = self.f64_engine.next().to_array();
-    self.u64_idx = 0;
-    while total - written >= 8 {
-      let v = self.u64_buf[self.u64_idx];
-      self.u64_idx += 1;
-      dest[written..written + 8].copy_from_slice(&v.to_le_bytes());
-      written += 8;
-    }
-    if written < total {
-      let bytes = self.u64_buf[self.u64_idx].to_le_bytes();
-      let take = total - written;
-      dest[written..written + take].copy_from_slice(&bytes[..take]);
+  /// The little-endian bytes of the words `next_u64` would return; a tail discards its word's unused bytes.
+  fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), Infallible> {
+    let (words, tail) = dest.as_chunks_mut::<8>();
+    let (buffered, words) = words.split_at_mut(words.len().min(4 - self.u64_idx));
+    for word in buffered {
+      *word = self.u64_buf[self.u64_idx].to_le_bytes();
       self.u64_idx += 1;
     }
+    // Past the buffered words, four words at a time are a fresh block, as four `next_u64` calls would draw.
+    let (blocks, words) = words.as_chunks_mut::<4>();
+    for block in blocks {
+      for (word, w) in block.iter_mut().zip(self.f64_engine.next().to_array()) {
+        *word = w.to_le_bytes();
+      }
+    }
+    for word in words {
+      *word = self.try_next_u64()?.to_le_bytes();
+    }
+    if !tail.is_empty() {
+      let n = tail.len();
+      tail.copy_from_slice(&self.try_next_u64()?.to_le_bytes()[..n]);
+    }
+    Ok(())
   }
 }

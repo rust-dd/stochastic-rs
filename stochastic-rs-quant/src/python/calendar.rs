@@ -15,7 +15,6 @@ use crate::calendar::day_count::days_between;
 use crate::calendar::holiday::Calendar;
 use crate::calendar::holiday::HolidayCalendar;
 use crate::calendar::holiday::JointMode;
-use crate::calendar::schedule::DateGenerationRule;
 use crate::calendar::schedule::Frequency;
 use crate::calendar::schedule::Schedule;
 use crate::calendar::schedule::ScheduleBuilder;
@@ -44,7 +43,7 @@ fn parse_day_count(name: &str) -> PyResult<DayCountConvention> {
 }
 
 #[pyclass(module = "stochastic_rs", name = "DayCount", from_py_object)]
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct PyDayCount {
   inner: DayCountConvention,
 }
@@ -92,7 +91,7 @@ fn parse_bdc(name: &str) -> PyResult<BusinessDayConvention> {
   name = "BusinessDayConvention",
   from_py_object
 )]
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct PyBusinessDayConvention {
   inner: BusinessDayConvention,
 }
@@ -416,9 +415,3 @@ pub fn py_easter_sunday(year: i32) -> NaiveDate {
 pub fn py_imm_date(year: i32, quarter_month: u32) -> NaiveDate {
   crate::calendar::date_math::imm_date(year, quarter_month)
 }
-
-// Marker so the `DateGenerationRule` import lights up for downstream
-// consumers when we later add forward/backward enum exposure on the
-// builder; for now the builder methods cover the same surface.
-#[allow(dead_code)]
-type _DateGenerationRuleAlias = DateGenerationRule;

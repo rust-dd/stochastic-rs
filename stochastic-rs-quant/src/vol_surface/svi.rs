@@ -103,18 +103,19 @@ impl<T: RealExt> SviRawParams<T> {
     self.b >= zero && self.rho.abs() < one && self.sigma > zero && self.min_variance() >= zero
   }
 
-  /// Project parameters to satisfy admissibility constraints (parameter
-  /// bounds + min-variance non-negativity). Does **not** enforce
-  /// butterfly arbitrage-freeness — use [`Self::is_butterfly_arb_free`]
-  /// (or [`Self::project_with_butterfly_check`]) when butterfly
-  /// arbitrage matters for downstream calibration.
+  /// Project onto the admissible box (`b ≥ 0`, `|ρ| ≤ 0.9999`, `σ ≥ 1e-8`, non-negative minimum variance), not butterfly-free (see
+  /// [`Self::project_with_butterfly_check`]); a NaN parameter stays NaN instead of landing on a bound.
   pub fn project(&mut self) {
     let zero = T::zero();
     let bound = T::from_f64_fast(0.9999);
     let eps = T::from_f64_fast(1e-8);
-    self.b = if self.b > zero { self.b } else { zero };
-    self.rho = self.rho.max(-bound).min(bound);
-    self.sigma = self.sigma.max(eps);
+    self.b = if self.b > zero || self.b.is_nan() {
+      self.b
+    } else {
+      zero
+    };
+    self.rho = self.rho.max_or_nan(-bound).min_or_nan(bound);
+    self.sigma = self.sigma.max_or_nan(eps);
     let v_min = self.min_variance();
     if v_min < zero {
       self.a -= v_min;
@@ -340,15 +341,15 @@ fn svi_initial_guess(ks: &[f64], ws: &[f64]) -> SviRawParams<f64> {
     0.0
   };
 
-  let k_range = ks.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
-    - ks.iter().cloned().fold(f64::INFINITY, f64::min);
+  let k_range = ks.iter().cloned().fold(f64::NEG_INFINITY, f64::max_or_nan)
+    - ks.iter().cloned().fold(f64::INFINITY, f64::min_or_nan);
 
   SviRawParams {
     a: w_mean * 0.5,
-    b: slope.abs().max(0.01),
+    b: slope.abs().max_or_nan(0.01),
     rho: slope.signum() * 0.3,
     m: k_mean,
-    sigma: (k_range * 0.3).max(0.01),
+    sigma: (k_range * 0.3).max_or_nan(0.01),
   }
 }
 
@@ -400,6 +401,37 @@ impl LeastSquaresProblem for SviLmProblem {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn a_nan_quote_is_not_clamped_out_of_the_initial_guess() {
+    assert!(
+      svi_initial_guess(&[f64::NAN, 0.0, 0.1], &[0.05, 0.04, 0.05])
+        .sigma
+        .is_nan()
+    );
+    assert!(
+      svi_initial_guess(&[-0.1, 0.0, 0.1], &[0.05, f64::NAN, 0.05])
+        .b
+        .is_nan()
+    );
+    let finite = svi_initial_guess(&[-0.1, 0.0, 0.1], &[0.05, 0.04, 0.05]);
+    assert!((finite.sigma - 0.06).abs() < 1e-15 && finite.b == 0.01);
+  }
+
+  #[test]
+  fn a_nan_quote_reaches_the_calibrated_parameters() {
+    let ks = [-0.1, 0.0, 0.1];
+    let nan_w = calibrate_svi(&ks, &[0.05, f64::NAN, 0.05], None);
+    assert!(nan_w.b.is_nan() && nan_w.rho.is_nan());
+    let nan_k = calibrate_svi(&[-0.1, f64::NAN, 0.1], &[0.05, 0.04, 0.05], None);
+    assert!(nan_k.sigma.is_nan());
+    let mut projected = SviRawParams::<f64>::new(0.04, -0.1, 1.5, 0.0, 0.0);
+    projected.project();
+    assert_eq!(
+      (projected.b, projected.rho, projected.sigma),
+      (0.0, 0.9999, 1e-8)
+    );
+  }
 
   #[test]
   fn svi_evaluation() {

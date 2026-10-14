@@ -1,16 +1,23 @@
 //! # Multi-Level Monte Carlo (MLMC)
 //!
-//!
 //! $\mathbb{E}\[P_L\] = \mathbb{E}\[P_0\]
 //!   + \sum_{\ell=1}^{L}\mathbb{E}[P_\ell - P_{\ell-1}]$
 //!
-//! Adaptive MLMC with optimal sample allocation following Giles (2008).
+//! Levels grow while $|\hat Y_L| > \epsilon/\sqrt{2}$; $V_\ell$ is the per-level `n − 1` variance.
+//! Giles (2008) eq. (12) allocation at cost $C_\ell \propto h_\ell^{-1}$ ($M = 2$):
 //!
-//! Reference: Giles (2015), "Multilevel Monte Carlo methods",
-//! arXiv: 1304.5472, DOI: 10.1017/S096249291500001X
+//! $$
+//! N_\ell = \Bigl\lceil 2\epsilon^{-2}\sqrt{V_\ell / C_\ell}\,
+//!   \sum_{k=0}^{L}\sqrt{V_k C_k}\Bigr\rceil
+//! $$
+//!
+//! Giles (2008), "Multilevel Monte Carlo Path Simulation", DOI: 10.1287/opre.1070.0496.
+//! Giles (2015), "Multilevel Monte Carlo methods", DOI: 10.1017/S096249291500001X.
+//! Welford (1962), "Note on a Method for Calculating Corrected Sums of Squares and Products", DOI: 10.1080/00401706.1962.10490022.
 
 use ndarray::Array1;
 
+use super::Welford;
 use crate::traits::FloatExt;
 
 /// MLMC configuration.
@@ -22,7 +29,7 @@ pub struct Mlmc<T: FloatExt> {
   pub l_min: usize,
   /// Maximum number of levels.
   pub l_max: usize,
-  /// Initial samples per level.
+  /// Initial samples per level, at least 2.
   pub n0: usize,
 }
 
@@ -35,15 +42,24 @@ pub struct MlmcResult<T: FloatExt> {
   pub n_levels: usize,
   /// Samples generated at each level.
   pub samples_per_level: Vec<usize>,
-  /// Estimated variance at each level.
+  /// Estimated variance $V_\ell$ of one sample at each level: the sample
+  /// variance (`n − 1` denominator) of the samples drawn there.
   pub variance_per_level: Vec<T>,
 }
 
 impl<T: FloatExt> Mlmc<T> {
+  /// Configure an MLMC run.
+  ///
+  /// # Panics
+  ///
+  /// If `epsilon <= 0`, `l_max < l_min` or `n0 < 2`.
   pub fn new(epsilon: T, l_min: usize, l_max: usize, n0: usize) -> Self {
     assert!(epsilon > T::zero(), "epsilon must be positive");
     assert!(l_max >= l_min, "l_max must be >= l_min");
-    assert!(n0 > 0, "n0 must be positive");
+    assert!(
+      n0 >= 2,
+      "n0 must be at least 2: a level variance needs two samples"
+    );
     Self {
       epsilon,
       l_min,
@@ -63,29 +79,19 @@ impl<T: FloatExt> Mlmc<T> {
     F: Fn(usize, usize) -> Array1<T>,
   {
     let two = T::from_f64_fast(2.0);
+    let draw_initial = |level: usize| {
+      let mut acc = Welford::default();
+      acc.extend(level_sampler(level, self.n0));
+      acc
+    };
 
     let mut l = self.l_min;
-    let mut sums: Vec<T> = vec![T::zero(); l + 1];
-    let mut sum_sqs: Vec<T> = vec![T::zero(); l + 1];
-    let mut n_l: Vec<usize> = vec![0; l + 1];
-
     // Initial samples at each level
-    for level in 0..=l {
-      let y = level_sampler(level, self.n0);
-      sums[level] = y.iter().copied().sum();
-      sum_sqs[level] = y.iter().map(|&v| v * v).sum();
-      n_l[level] = self.n0;
-    }
+    let mut levels = (0..=l).map(&draw_initial).collect::<Vec<_>>();
 
     for _ in 0..20 {
       // Variance estimates V_l
-      let var_l: Vec<T> = (0..=l)
-        .map(|i| {
-          let n = T::from_usize_(n_l[i]);
-          let m = sums[i] / n;
-          (sum_sqs[i] / n - m * m).max(T::zero())
-        })
-        .collect();
+      let var_l = level_variances::<T>(&levels);
 
       // Cost model: C_l = 2^l (Euler-Maruyama steps per sample)
       let cost_l: Vec<T> = (0..=l).map(|i| two.powi(i as i32)).collect();
@@ -108,29 +114,19 @@ impl<T: FloatExt> Mlmc<T> {
 
       // Generate additional samples where needed
       let mut converged = true;
-      for level in 0..=l {
-        if optimal[level] > n_l[level] {
-          let extra = optimal[level] - n_l[level];
-          let y = level_sampler(level, extra);
-          sums[level] += y.iter().copied().sum::<T>();
-          sum_sqs[level] += y.iter().map(|&v| v * v).sum::<T>();
-          n_l[level] = optimal[level];
+      for (level, acc) in levels.iter_mut().enumerate() {
+        if optimal[level] > acc.count() {
+          acc.extend(level_sampler(level, optimal[level] - acc.count()));
           converged = false;
         }
       }
 
       if converged {
         // Bias check: remaining bias ≈ |E[Y_L]| should be < ε/√2
-        let mean_last = (sums[l] / T::from_usize_(n_l[l])).abs();
+        let mean_last = T::from_f64_fast(levels[l].mean().abs());
         if mean_last > self.epsilon / two.sqrt() && l < self.l_max {
           l += 1;
-          sums.push(T::zero());
-          sum_sqs.push(T::zero());
-          n_l.push(0);
-          let y = level_sampler(l, self.n0);
-          sums[l] = y.iter().copied().sum();
-          sum_sqs[l] = y.iter().map(|&v| v * v).sum();
-          n_l[l] = self.n0;
+          levels.push(draw_initial(l));
         } else {
           break;
         }
@@ -138,31 +134,98 @@ impl<T: FloatExt> Mlmc<T> {
     }
 
     // Final estimate: sum of level means
-    let mean: T = sums
-      .iter()
-      .zip(&n_l)
-      .map(|(&s, &n)| s / T::from_usize_(n))
-      .sum();
-    let variance_per_level: Vec<T> = (0..=l)
-      .map(|i| {
-        let n = T::from_usize_(n_l[i]);
-        let m = sums[i] / n;
-        (sum_sqs[i] / n - m * m).max(T::zero())
-      })
-      .collect();
+    let mean = T::from_f64_fast(levels.iter().map(Welford::mean).sum::<f64>());
 
     MlmcResult {
       mean,
       n_levels: l + 1,
-      samples_per_level: n_l,
-      variance_per_level,
+      samples_per_level: levels.iter().map(Welford::count).collect(),
+      variance_per_level: level_variances(&levels),
     }
   }
 }
 
+fn level_variances<T: FloatExt>(levels: &[Welford]) -> Vec<T> {
+  levels
+    .iter()
+    .map(|acc| T::from_f64_fast(acc.sample_variance()))
+    .collect()
+}
+
 #[cfg(test)]
 mod tests {
+  use std::cell::RefCell;
+
   use super::*;
+
+  /// Level `l` alternates `base_l ± δ_l` with `δ_l² = ¼·2⁻ˡ` (only level 0 on `base0`), so its
+  /// sample variance after `n` draws has the closed form [`alternating_variance`].
+  fn alternating_levels(base0: f64) -> impl Fn(usize, usize) -> Array1<f64> {
+    let drawn = RefCell::new(vec![0usize; 16]);
+    move |level, n| {
+      let mut drawn = drawn.borrow_mut();
+      let delta = (0.25 * 0.5f64.powi(level as i32)).sqrt();
+      let base = if level == 0 { base0 } else { 0.0 };
+      let start = drawn[level];
+      drawn[level] += n;
+      Array1::from_iter((start..start + n).map(|k| base + if k % 2 == 0 { delta } else { -delta }))
+    }
+  }
+
+  fn alternating_variance(level: usize, n: usize) -> f64 {
+    let delta_sq = 0.25 * 0.5f64.powi(level as i32);
+    let n = n as f64;
+    if n % 2.0 == 0.0 {
+      delta_sq * n / (n - 1.0)
+    } else {
+      delta_sq * (n + 1.0) / n
+    }
+  }
+
+  /// A constant level has no variance. The offset has no exact binary form,
+  /// so `sum_sq / n − mean²` leaves a spurious `0.25` behind.
+  #[test]
+  fn a_constant_level_has_exactly_zero_variance() {
+    let mlmc = Mlmc::new(1.0, 2, 4, 100);
+    let result = mlmc.estimate(|_, n| Array1::<f64>::from_elem(n, 12_345_678.9));
+    assert!(
+      result.variance_per_level.iter().all(|&v| v == 0.0),
+      "variances {:?}",
+      result.variance_per_level
+    );
+    assert!(result.samples_per_level.iter().all(|&n| n == 100));
+  }
+
+  /// Level 0 sits on an offset of 1e8 with spread 0.5: the cancelled variance reads `0.0` and
+  /// allocates one sample, while the true one asks for more than the initial 500.
+  #[test]
+  fn an_offset_level_keeps_its_variance_and_its_samples() {
+    let result = Mlmc::new(0.05, 2, 4, 500).estimate(alternating_levels(1.0e8));
+    for (level, (&n, &v)) in result
+      .samples_per_level
+      .iter()
+      .zip(&result.variance_per_level)
+      .enumerate()
+    {
+      let exact = alternating_variance(level, n);
+      assert!(
+        ((v - exact) / exact).abs() < 1e-9,
+        "level {level}: variance {v}, exact {exact}"
+      );
+    }
+    assert!(
+      result.samples_per_level[0] > 500,
+      "level 0 was never topped up: {:?}",
+      result.samples_per_level
+    );
+  }
+
+  /// A level variance needs two samples.
+  #[test]
+  #[should_panic(expected = "n0 must be at least 2")]
+  fn rejects_a_single_initial_sample() {
+    Mlmc::new(1.0, 1, 2, 1);
+  }
 
   /// MLMC for a Gbm European call with Euler discretization.
   ///

@@ -4,73 +4,93 @@
 //! C_\theta(u,v)=\left(u^{-\theta}+v^{-\theta}-1\right)^{-1/\theta},\ \theta>0
 //! $$
 //!
-use std::error::Error;
-use std::f64;
 
 use ndarray::Array1;
-use ndarray::Array2;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
+use ndarray::Zip;
 
-use super::CopulaType;
+use super::BivariateFamily;
+use crate::bivariate::conditional::check_lengths;
+use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::conditioned;
+use crate::bivariate::conditional::confine;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
+use crate::traits::bivariate::admitted;
+use crate::traits::bivariate::tau_out_of_range;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Clayton {
-  pub r#type: CopulaType,
-  pub theta: Option<f64>,
-  pub tau: Option<f64>,
-  pub theta_bounds: (f64, f64),
-  pub invalid_thetas: Vec<f64>,
-}
-
-impl Default for Clayton {
-  fn default() -> Self {
-    Self {
-      r#type: CopulaType::Clayton,
-      theta: None,
-      tau: None,
-      theta_bounds: (0.0, f64::INFINITY),
-      invalid_thetas: vec![],
-    }
-  }
+  theta: Option<f64>,
 }
 
 impl Clayton {
-  pub fn new() -> Self {
-    Self::default()
+  /// A Clayton copula; panics unless `0 <= theta < ∞`.
+  pub fn new(theta: f64) -> Self {
+    Self::try_new(theta).unwrap_or_else(|e| panic!("{e}"))
+  }
+
+  /// `new` with the domain error returned instead of a panic.
+  pub fn try_new(theta: f64) -> Result<Self, CopulaError> {
+    let copula = Self { theta: Some(theta) };
+    copula.check_theta()?;
+    Ok(copula)
+  }
+
+  /// The copula whose Kendall's τ is `tau`.
+  pub fn from_tau(tau: f64) -> Result<Self, CopulaError> {
+    Self::try_new(Self::default().theta_from_tau(tau)?)
+  }
+
+  /// `a = y^{−θ/(1 + θ)} − 1` of `h⁻¹(y | v) = (1 + a/v^θ)^{−1/θ}`, as `expm1` so `y` near 1 keeps its digits.
+  pub(crate) fn level(theta: f64, y: f64) -> f64 {
+    (-theta / (1.0 + theta) * y.ln()).exp_m1()
+  }
+
+  /// `exp(−ln_1p(a/v^θ)/θ)`; once `v^θ` leaves the normal range or `a/v^θ` overflows, `v a^{−1/θ}` (the dropped
+  /// `(1 + v^θ/a)^{−1/θ}` is 1 to rounding), `ln a = z + ln(−expm1(−z))`, `z = −θ ln y/(1 + θ)`; 0 on `v = 0`.
+  pub(crate) fn finish(theta: f64, a: f64, y: f64, v: f64, v_theta: f64) -> f64 {
+    let ratio = a / v_theta;
+    if v_theta >= f64::MIN_POSITIVE && ratio.is_finite() {
+      return (-ratio.ln_1p() / theta).exp();
+    }
+    if v == 0.0 {
+      return 0.0;
+    }
+    if y == 1.0 {
+      return 1.0;
+    }
+    let z = -theta / (1.0 + theta) * y.ln();
+    v * (-(z + (-(-z).exp_m1()).ln()) / theta).exp()
   }
 }
 
 impl BivariateExt for Clayton {
-  fn r#type(&self) -> CopulaType {
-    self.r#type
-  }
-
-  fn tau(&self) -> Option<f64> {
-    self.tau
-  }
-
-  fn set_tau(&mut self, tau: f64) {
-    self.tau = Some(tau);
+  fn family(&self) -> BivariateFamily {
+    BivariateFamily::Clayton
   }
 
   fn theta(&self) -> Option<f64> {
     self.theta
   }
 
-  fn theta_bounds(&self) -> (f64, f64) {
-    self.theta_bounds
-  }
-
-  fn invalid_thetas(&self) -> Vec<f64> {
-    self.invalid_thetas.clone()
-  }
-
   fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
     self.theta = Some(theta);
   }
 
-  fn generator(&self, t: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn theta_bounds(&self) -> (f64, f64) {
+    (0.0, f64::INFINITY)
+  }
+
+  fn invalid_thetas(&self) -> Vec<f64> {
+    vec![]
+  }
+
+  fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let theta = self.theta.unwrap();
@@ -85,7 +105,7 @@ impl BivariateExt for Clayton {
   /// (`b.powf(c)` with `b = 1` and `c = -∞`, an IEEE `pow` special case
   /// that evaluates to `1.0` regardless) that happens to leave `a` — not
   /// `1.0` — as the answer, i.e. `(uv)^{-1}`.
-  fn pdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0);
@@ -107,7 +127,7 @@ impl BivariateExt for Clayton {
   /// `(u^{-θ}+v^{-θ}-1)^{-1/θ}` hits the same `1^{-∞}` removable
   /// singularity as `pdf` there and evaluates to the constant `1.0` for
   /// every `u,v > 0`, not `uv`.
-  fn cdf(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let U = X.column(0);
@@ -143,89 +163,88 @@ impl BivariateExt for Clayton {
     Ok(cdfs)
   }
 
-  /// Inverse conditional `u` solving `∂_v C(u,v) = p` (`p = y`): closed
-  /// form `u = (1+v^{-θ}(p^{-θ/(1+θ)}-1))^{-1/θ}` for `θ ≠ 0`. At `θ=0`
-  /// (independence, `C(u,v)=uv`), `∂_v C(u,v) = u`, so the inverse is the
-  /// identity on the fresh uniform `p` — not `v`. The previous branch
-  /// returned `V.clone()`, making every sampled pair exactly comonotonic
-  /// (`U=V`, Kendall's τ ≈ 1) instead of independent — the same defect
-  /// class as [`crate::bivariate::frank::Frank::percent_point`]'s
-  /// pre-fix `θ = 0` branch.
-  fn percent_point(&self, y: &Array1<f64>, V: &Array1<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  /// `h⁻¹(y | v)` by `Clayton::level` and `Clayton::finish`, `y` at `θ = 0`; NaN for `y` or `v` outside `[0, 1]`.
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    V: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let theta = self.theta.unwrap();
 
     if theta == 0.0 {
-      return Ok(y.clone());
+      return conditional_quantiles(y, V, |y, _| y);
     }
 
-    let a = y.powf(theta / (-1.0 - theta));
-    let b = V.powf(theta);
-
-    let b_all_zeros = b.iter().all(|&v| v == 0.0);
-
-    if b_all_zeros {
-      return Ok(Array1::ones(V.len()));
-    }
-
-    Ok(((a + &b - 1.0) / b).powf(-1.0 / theta))
+    check_lengths(y, V)?;
+    // Whole-array passes keep each pass's transcendental calls independent, which a fused per-pair closure does not.
+    let v_theta = V.powf(theta);
+    let mut u = y.mapv(|y| Self::level(theta, y));
+    Zip::from(&mut u)
+      .and(y)
+      .and(V)
+      .and(&v_theta)
+      .for_each(|u, &y, &v, &v_theta| *u = confine(y, v, Self::finish(theta, *u, y, v, v_theta)));
+    Ok(u)
   }
 
-  /// At `θ=0` (independence, `C(u,v)=uv`), `∂_v C(u,v) = u`. The general
-  /// formula hits the same `1^{-∞}` removable singularity as `pdf`/`cdf`
-  /// there (`B = v^0+u^0-1 = 1`, raised to `(-1-θ)/θ → -∞`), leaving `A =
-  /// v^{-1}` — not `u` — as the answer, so it needs its own branch.
-  fn partial_derivative(&self, X: &Array2<f64>) -> Result<Array1<f64>, Box<dyn Error>> {
+  /// `∂_v C = v^{−θ−1}(u^{−θ} + v^{−θ} − 1)^{−(1+θ)/θ}`, `u` at `θ = 0`, and 1 at `v = 0`, whose conditional law is a
+  /// point mass at `u = 0`; NaN for `v` outside `[0, 1]`.
+  fn partial_derivative(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
-    let U = X.column(0);
+    let theta = self.theta.unwrap();
+
+    if theta == 0.0 {
+      return Ok(conditional_cdf(X, |u, _| u));
+    }
+
+    // Two passes, as in `percent_point`: a fused per-pair closure would chain its `powf` calls.
     let V = X.column(1);
-
-    let theta = self.theta.unwrap();
-
-    if theta == 0.0 {
-      return Ok(U.to_owned());
-    }
-
-    let A = V.powf(-theta - 1.0);
-
-    if A.iter().all(|a| a.is_infinite()) {
-      return Ok(Array1::zeros(V.len()));
-    }
-
-    let B = V.powf(-theta) + U.powf(-theta) - 1.0;
-    let h = B.powf((-1.0 - theta) / theta);
-    Ok(A * h)
+    let mut h = Zip::from(X.column(0))
+      .and(V)
+      .map_collect(|&u, &v| v.powf(-theta) + u.powf(-theta) - 1.0);
+    Zip::from(&mut h).and(V).for_each(|h, &v| {
+      let p = if v == 0.0 {
+        1.0
+      } else {
+        v.powf(-theta - 1.0) * h.powf((-1.0 - theta) / theta)
+      };
+      *h = conditioned(v, p);
+    });
+    Ok(h)
   }
 
-  fn compute_theta(&self) -> f64 {
-    if self.tau.is_some() && self.tau.unwrap() == 1.0 {
-      return f64::INFINITY;
+  fn tau_from_theta(&self, theta: f64) -> f64 {
+    theta / (theta + 2.0)
+  }
+
+  fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
+    if !(0.0..1.0).contains(&tau) {
+      return Err(tau_out_of_range(tau, "0.0 <= tau < 1.0".into()));
     }
-
-    let tau = self.tau.unwrap();
-
-    2.0 * tau / (1.0 - tau)
+    admitted(self, tau, 2.0 * tau / (1.0 - tau))
   }
 
   /// Lower-tail dependence $\lambda_L = 2^{-1/\theta}$; Clayton has no
   /// upper-tail dependence ($\lambda_U = 0$).
   /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
   /// Springer, Example 5.21 / Table 5.1.
-  fn tail_dependence(&self) -> TailDependence<f64> {
-    self.assert_theta_valid_for_tail_dependence();
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+    self.check_theta()?;
     let theta = self.theta.unwrap();
-    TailDependence {
+    Ok(TailDependence {
       lower: 2.0_f64.powf(-1.0 / theta),
       upper: 0.0,
-    }
+    })
   }
 }
 
 #[cfg(test)]
 mod tests {
   use ndarray::array;
+  use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
 
@@ -236,9 +255,9 @@ mod tests {
   /// Clayton θ=2: λ_L = 2^{−1/2} = 0.707106781186…, λ_U = 0.
   #[test]
   fn clayton_tail_dependence_closed_form() {
-    let mut c = Clayton::new();
+    let mut c = Clayton::default();
     c.set_theta(2.0);
-    let td = c.tail_dependence();
+    let td = c.tail_dependence().unwrap();
     assert!(
       (td.lower - 2.0_f64.powf(-0.5)).abs() < 1e-12,
       "λ_L={}, expected {}",
@@ -253,7 +272,7 @@ mod tests {
   #[test]
   fn bivariate_sample_takes_shared_ref() {
     let c = Clayton::default();
-    let _ = c.sample(8);
+    let _ = c.sample(8, &Deterministic::new(7));
   }
 
   /// The `θ=0` regression test, mirroring
@@ -269,15 +288,11 @@ mod tests {
     let n = 4000usize;
     let se = (2.0 * (2.0 * n as f64 + 5.0) / (9.0 * n as f64 * (n as f64 - 1.0))).sqrt();
     let tol = 6.0 * se;
-    let c = Clayton {
-      theta: Some(0.0),
-      tau: Some(0.0),
-      ..Clayton::default()
-    };
+    let c = Clayton::new(0.0);
     let best_abs_tau = [2718_u64, 999, 42]
       .into_iter()
       .map(|seed| {
-        let samples = c.sample_with_seed(n, seed).unwrap();
+        let samples = c.sample(n, &Deterministic::new(seed)).unwrap();
         let u = samples.column(0).to_vec();
         let v = samples.column(1).to_vec();
         let (tau, ..) =
@@ -301,22 +316,16 @@ mod tests {
   /// crate's convention for independence-limit checks.
   #[test]
   fn clayton_pdf_at_independence_is_one() {
-    let c = Clayton {
-      theta: Some(0.0),
-      ..Clayton::default()
-    };
-    let pdf = c.pdf(&array![[0.2_f64, 0.9], [0.5, 0.5]]).unwrap();
+    let c = Clayton::new(0.0);
+    let pdf = c.pdf(array![[0.2_f64, 0.9], [0.5, 0.5]].view()).unwrap();
     assert!(approx(pdf[0], 1.0, 1e-12), "got {}", pdf[0]);
     assert!(approx(pdf[1], 1.0, 1e-12), "got {}", pdf[1]);
   }
 
   #[test]
   fn clayton_cdf_at_independence_is_uv() {
-    let c = Clayton {
-      theta: Some(0.0),
-      ..Clayton::default()
-    };
-    let cdf = c.cdf(&array![[0.3_f64, 0.7], [0.2, 0.9]]).unwrap();
+    let c = Clayton::new(0.0);
+    let cdf = c.cdf(array![[0.3_f64, 0.7], [0.2, 0.9]].view()).unwrap();
     assert!(approx(cdf[0], 0.21, 1e-12), "got {}", cdf[0]);
     assert!(approx(cdf[1], 0.18, 1e-12), "got {}", cdf[1]);
   }
@@ -327,12 +336,9 @@ mod tests {
   /// pre-fix `1^{-∞}` singularity's `v^{-1}` result.
   #[test]
   fn clayton_partial_derivative_at_independence_returns_u() {
-    let c = Clayton {
-      theta: Some(0.0),
-      ..Clayton::default()
-    };
+    let c = Clayton::new(0.0);
     let pd = c
-      .partial_derivative(&array![[0.3_f64, 0.6], [0.2, 0.9]])
+      .partial_derivative(array![[0.3_f64, 0.6], [0.2, 0.9]].view())
       .unwrap();
     assert!(approx(pd[0], 0.3, 1e-12), "got {}", pd[0]);
     assert!(approx(pd[1], 0.2, 1e-12), "got {}", pd[1]);
@@ -347,10 +353,10 @@ mod tests {
   /// `is_all_infinite` used to select for every finite input.
   #[test]
   fn partial_derivative_matches_the_closed_form_h_function() {
-    let mut c = Clayton::new();
+    let mut c = Clayton::default();
     c.set_theta(2.0);
     let h = c
-      .partial_derivative(&array![[0.3, 0.6], [0.6, 0.3]])
+      .partial_derivative(array![[0.3, 0.6], [0.6, 0.3]].view())
       .unwrap();
     assert!(
       (h[0] - 0.10005136755229085).abs() < 1e-14,

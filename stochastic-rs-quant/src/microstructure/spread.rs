@@ -140,6 +140,8 @@ pub fn corwin_schultz_spread<T: RealExt>(high: ArrayView1<T>, low: ArrayView1<T>
 mod tests {
   use ndarray::array;
   use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::DistributionSampler;
+  use stochastic_rs_distributions::SimdDistribution;
   use stochastic_rs_distributions::normal::SimdNormal;
 
   use super::*;
@@ -164,7 +166,7 @@ mod tests {
     let mid = 100.0_f64;
     let s = 0.10;
     let n = 10_000;
-    let buy_sell = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(11));
+    let mut buy_sell = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(11));
     let mut signs = vec![0.0_f64; n];
     buy_sell.fill_slice(&mut signs);
     let p = Array1::from_iter(signs.iter().map(|&z| {

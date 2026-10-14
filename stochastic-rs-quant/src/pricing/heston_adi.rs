@@ -74,14 +74,26 @@ pub struct HestonAdiPricer {
 }
 
 impl HestonAdiPricer {
-  /// Pricer with the paper's default numerics: `m1 = 100`, `m2 = 50`,
-  /// 50 time steps, MCS at `θ = ⅓` with damping.
+  /// Pricer with the paper's default numerics: `m1 = 100`, `m2 = 50`, 50 time steps, MCS at `θ = ⅓` with damping;
+  /// panics unless `v0 >= 0`, `kappa`, `theta` and `sigma` are positive and `|rho| <= 1`.
   pub fn new(v0: f64, kappa: f64, theta: f64, sigma: f64, rho: f64) -> Self {
+    assert!(v0 >= 0.0, "v0 must satisfy `v0 >= 0.0`, got v0 = {v0:?}");
     assert!(
-      v0 >= 0.0 && kappa > 0.0 && theta > 0.0 && sigma > 0.0,
-      "Heston parameters must be positive"
+      kappa > 0.0,
+      "kappa must satisfy `kappa > 0.0`, got kappa = {kappa:?}"
     );
-    assert!(rho.abs() <= 1.0, "rho must lie in [-1, 1]");
+    assert!(
+      theta > 0.0,
+      "theta must satisfy `theta > 0.0`, got theta = {theta:?}"
+    );
+    assert!(
+      sigma > 0.0,
+      "sigma must satisfy `sigma > 0.0`, got sigma = {sigma:?}"
+    );
+    assert!(
+      rho.abs() <= 1.0,
+      "rho must satisfy `rho.abs() <= 1.0`, got rho = {rho:?}"
+    );
     Self {
       v0,
       kappa,

@@ -39,9 +39,8 @@ When a future improvement is genuinely worth recording near the code:
 - A doc paragraph that describes **what is NOT supported and why**, without naming the release number:
 
 ```rust
-//! Pure-jump leverage (ρ ≠ 0 between W and Z) is not yet implemented;
-//! the BNS-2001b shifted-Brownian construction needs careful
-//! pre-allocation of two correlated noise streams.
+//! Pure-jump leverage (ρ ≠ 0 between W and Z) is not implemented: the BNS-2001b
+//! shifted-Brownian construction needs two correlated, pre-allocated noise streams.
 ```
 
 This stays accurate forever — when the feature lands, the paragraph gets deleted, not retroactively re-numbered.

@@ -1,4 +1,4 @@
-use stochastic_rs_distributions::scalar::ScalarNormal;
+use stochastic_rs_distributions::normal::SimdNormal;
 
 use super::*;
 
@@ -7,7 +7,7 @@ fn make_bates(
   b: Option<f64>,
   r: Option<f64>,
   r_f: Option<f64>,
-) -> Bates1996<f64, ScalarNormal<f64>> {
+) -> Bates1996<f64, SimdNormal<f64>> {
   Bates1996::new(
     mu,
     b,
@@ -19,7 +19,7 @@ fn make_bates(
     0.0,
     0.0,
     0.0,
-    ScalarNormal::new(0.0, 1.0),
+    SimdNormal::new(0.0, 1.0),
     8,
     Some(1.0),
     Some(0.0),

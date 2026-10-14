@@ -39,7 +39,7 @@ const POINTS: [(f64, f64); 3] = [(0.3, 0.7), (0.5, 0.5), (0.4, 0.6)];
 /// truncation term.
 fn fd_mixed_partial(c: &impl BivariateExt, u: f64, v: f64, h: f64) -> f64 {
   let central = |step: f64| {
-    let eval = |du: f64, dv: f64| c.cdf(&array![[u + du, v + dv]]).unwrap()[0];
+    let eval = |du: f64, dv: f64| c.cdf(array![[u + du, v + dv]].view()).unwrap()[0];
     (eval(step, step) - eval(step, -step) - eval(-step, step) + eval(-step, -step))
       / (4.0 * step * step)
   };
@@ -49,7 +49,7 @@ fn fd_mixed_partial(c: &impl BivariateExt, u: f64, v: f64, h: f64) -> f64 {
 }
 
 fn assert_pdf_matches_fd(c: &impl BivariateExt, u: f64, v: f64, label: &str) {
-  let analytic = c.pdf(&array![[u, v]]).unwrap()[0];
+  let analytic = c.pdf(array![[u, v]].view()).unwrap()[0];
   let fd = fd_mixed_partial(c, u, v, STEP);
   let rel_err = (analytic - fd).abs() / fd.abs().max(1e-12);
   assert!(
@@ -66,7 +66,7 @@ fn assert_pdf_matches_fd(c: &impl BivariateExt, u: f64, v: f64, label: &str) {
 #[test]
 fn clayton_pdf_matches_finite_difference_cdf() {
   for &theta in &[0.0_f64, 0.3, 1.0, 2.5, 5.0] {
-    let mut c = Clayton::new();
+    let mut c = Clayton::default();
     c.set_theta(theta);
     for &(u, v) in &POINTS {
       assert_pdf_matches_fd(&c, u, v, &format!("Clayton θ={theta} (u,v)=({u},{v})"));
@@ -81,7 +81,7 @@ fn clayton_pdf_matches_finite_difference_cdf() {
 #[test]
 fn frank_pdf_matches_finite_difference_cdf() {
   for &theta in &[0.5_f64, 2.0, 5.0, -3.0] {
-    let f = Frank::new(Some(theta), None);
+    let f = Frank::new(theta);
     for &(u, v) in &POINTS {
       assert_pdf_matches_fd(&f, u, v, &format!("Frank θ={theta} (u,v)=({u},{v})"));
     }
@@ -93,7 +93,7 @@ fn frank_pdf_matches_finite_difference_cdf() {
 #[test]
 fn gumbel_pdf_matches_finite_difference_cdf() {
   for &theta in &[1.3_f64, 2.0, 4.0, 8.0] {
-    let g = Gumbel::new(Some(theta), None);
+    let g = Gumbel::new(theta);
     for &(u, v) in &POINTS {
       assert_pdf_matches_fd(&g, u, v, &format!("Gumbel θ={theta} (u,v)=({u},{v})"));
     }
@@ -104,7 +104,7 @@ fn gumbel_pdf_matches_finite_difference_cdf() {
 /// this check doesn't just rubber-stamp everything it touches.
 #[test]
 fn joe_pdf_matches_finite_difference_cdf() {
-  let mut j = Joe::new();
+  let mut j = Joe::default();
   for &theta in &[1.3_f64, 2.0, 4.0, 8.0] {
     j.set_theta(theta);
     for &(u, v) in &POINTS {
@@ -123,7 +123,7 @@ fn joe_pdf_matches_finite_difference_cdf() {
 /// `amh_sample_matches_closed_form_cdf_at_off_diagonal_points`.
 #[test]
 fn amh_pdf_matches_finite_difference_cdf() {
-  let mut a = Amh::new();
+  let mut a = Amh::default();
   for &theta in &[-0.9_f64, -0.3, 0.0, 0.5, 0.9] {
     a.set_theta(theta);
     for &(u, v) in &POINTS {

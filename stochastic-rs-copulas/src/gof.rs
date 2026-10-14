@@ -1,49 +1,40 @@
 //! # Goodness of fit
 //!
 //! $$
-//! S_n = \sum_{i=1}^n \bigl(C_n(\mathbf R_i) - R_{i1}R_{i2}\bigr)^2,\qquad
-//! \mathbf R_i = \bigl(U_{i1},\ \partial_u C(U_{i1}, U_{i2})\bigr)
+//! S_n = \sum_{i=1}^n \bigl(D_n(\mathbf E_i) - E_{i1}E_{i2}\bigr)^2,\qquad
+//! \mathbf E_i = \bigl(U_{i2},\ \partial_v C(U_{i1}, U_{i2})\bigr)
 //! $$
 //!
-//! Cramér–von Mises test of a fitted bivariate copula on the Rosenblatt
-//! transform of the pseudo-observations: under the null the transformed
-//! sample is uniform on the square with independent coordinates, so the
-//! empirical copula of the transformed sample is compared with the product
-//! copula. The p-value comes from a parametric bootstrap (sample from the
-//! fitted copula, refit, recompute the statistic), which is the valid
-//! procedure when the copula parameters are estimated.
+//! Cramér–von Mises distance between the empirical distribution function `D_n` of the Rosenblatt transform `E_i` of the
+//! pseudo-observations and the independence copula; the p-value is a parametric bootstrap, valid when the parameters are estimated.
 //!
-//! References: Genest, C., Rémillard, B. & Beaudoin, D. (2009),
-//! *Goodness-of-fit tests for copulas: a review and a power study*,
-//! Insurance: Mathematics and Economics 44(2), 199–213, §3.3 (`S_n^{(C)}`)
-//! and §4 (parametric bootstrap); Rosenblatt, M. (1952), *Remarks on a
-//! multivariate transformation*, Ann. Math. Statist. 23, 470–472.
-
-use std::error::Error;
+//! Reference: Genest, C., Rémillard, B. & Beaudoin, D. (2009), "Goodness-of-fit tests for copulas: A review and a power study", Insurance: Mathematics and Economics 44(2), 199–213, doi:10.1016/j.insmatheco.2007.10.005 (§3.3 eq. (5) with the coordinates in the order (U₂, U₁), which §7 I(c) allows; §4 eq. (9) and Appendix D: `S_n^{(C)}` and its parametric bootstrap).
+//! Reference: Rosenblatt, M. (1952), "Remarks on a multivariate transformation", Annals of Mathematical Statistics 23(3), 470–472, doi:10.1214/aoms/1177729394.
+//! Reference: Phipson, B. & Smyth, G. K. (2010), "Permutation P-values should never be zero: calculating exact P-values when permutations are randomly drawn", Statistical Applications in Genetics and Molecular Biology 9(1), Article 39, doi:10.2202/1544-6115.1585, arXiv:1603.05766 (the exact Monte Carlo p-value `(b + 1)/(m + 1)`).
 
 use ndarray::Array2;
+use ndarray::ArrayView2;
 use ndarray::Axis;
 use ndarray::stack;
+use stochastic_rs_core::simd_rng::SeedExt;
 
+use crate::bivariate::conditional::check_pairs;
+use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 
-/// Rosenblatt transform `(u, ∂_u C(u, v))` of the rows of `x`. The crate's
-/// bivariate families are exchangeable, so `∂_u C(u, v) = ∂_v C(v, u)` is
-/// read off the trait's `∂_v` h-function with the arguments swapped.
+/// Rosenblatt transform `(v, ∂_v C(u, v))` of the rows of `x` (Rosenblatt 1952).
+/// Uniform only for a continuous conditional, which `MarshallOlkin`'s singular part is not.
 pub fn rosenblatt<C: BivariateExt + ?Sized>(
   copula: &C,
-  x: &Array2<f64>,
-) -> Result<Array2<f64>, Box<dyn Error>> {
-  let u = x.column(0).to_owned();
-  let v = x.column(1).to_owned();
-  let swapped = stack![Axis(1), v, u];
-  let conditional = copula.partial_derivative(&swapped)?;
-  Ok(stack![Axis(1), u, conditional])
+  x: ArrayView2<f64>,
+) -> Result<Array2<f64>, CopulaError> {
+  let conditional = copula.partial_derivative(x)?;
+  Ok(stack![Axis(1), x.column(1), conditional.view()])
 }
 
-/// Cramér–von Mises distance between the empirical copula of `r` and the
-/// product copula, `Σ_i (C_n(R_i) − R_{i1} R_{i2})²`.
-pub fn cramer_von_mises_independence(r: &Array2<f64>) -> f64 {
+/// Cramér–von Mises distance between the empirical distribution function `D_n` of the rows `E_i` of `r` and the
+/// product copula, `Σ_i (D_n(E_i) − E_{i1} E_{i2})²`.
+pub fn cramer_von_mises_independence(r: ArrayView2<f64>) -> f64 {
   let n = r.nrows();
   let mut statistic = 0.0;
   for i in 0..n {
@@ -59,64 +50,129 @@ pub fn cramer_von_mises_independence(r: &Array2<f64>) -> f64 {
   statistic
 }
 
+fn finite(statistic: f64, what: &str) -> Result<f64, CopulaError> {
+  if statistic.is_finite() {
+    return Ok(statistic);
+  }
+  Err(CopulaError::Numerical(format!(
+    "the {what} statistic is {statistic:?}: the h-function is not finite on this sample"
+  )))
+}
+
+/// Settings of the parametric-bootstrap test.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GofConfig {
+  /// Bootstrap replications behind the p-value, which cannot fall below `1/(replications + 1)`: a rejection at `alpha` needs `replications ≥ ⌊1/alpha⌋`.
+  pub replications: usize,
+  /// Significance level of the rejection decision.
+  pub alpha: f64,
+}
+
+impl Default for GofConfig {
+  fn default() -> Self {
+    Self {
+      replications: 200,
+      alpha: 0.05,
+    }
+  }
+}
+
 /// Result of the bootstrap goodness-of-fit test.
 #[derive(Clone, Debug, PartialEq)]
 pub struct GofResult {
   /// Statistic on the data.
   pub statistic: f64,
-  /// Bootstrap p-value: share of bootstrap statistics at or above the data's.
+  /// Bootstrap p-value `(1 + #{S* ≥ S})/(N + 1)` (Phipson & Smyth 2010); Appendix D's strict `>` differs only on exact ties.
   pub p_value: f64,
   /// Number of bootstrap replications.
   pub replications: usize,
+  /// Significance level the decision was taken at.
+  pub alpha: f64,
+  /// `p_value < alpha`.
+  pub rejects_null: bool,
 }
 
-/// Parametric-bootstrap Cramér–von Mises test of `copula` (already fitted)
-/// on the pseudo-observations `x` (Genest, Rémillard & Beaudoin 2009, §4):
-/// `replications` samples of size `n` are drawn from the fitted copula with
-/// the seeds `seed, seed + 1, …`, each is rank-transformed to
-/// pseudo-observations (their Step 2(a) — the statistic is a rank
-/// statistic, so the bootstrap must see ranks as the data did), refitted
-/// with `refit` and transformed, and the p-value is the share of bootstrap
-/// statistics at or above the data's.
-pub fn gof_cramer_von_mises<C: BivariateExt + Clone>(
+impl stochastic_rs_distributions::traits::HypothesisTest for GofResult {
+  fn statistic(&self) -> f64 {
+    self.statistic
+  }
+
+  fn null_rejected(&self) -> Option<bool> {
+    Some(self.rejects_null)
+  }
+}
+
+/// Parametric-bootstrap Cramér–von Mises test of the fitted `copula` on the pseudo-observations `x`, one `seed` stream per replication
+/// (Genest, Rémillard & Beaudoin 2009, §4, Appendix D); errs on a bad `x` or a non-finite statistic; panics unless `0 < alpha < 1`, `replications > 0`.
+pub fn gof_cramer_von_mises<C: BivariateExt + Clone, S: SeedExt>(
   copula: &C,
-  x: &Array2<f64>,
-  replications: usize,
-  seed: u64,
-  refit: impl Fn(&mut C, &Array2<f64>) -> Result<(), Box<dyn Error>>,
-) -> Result<GofResult, Box<dyn Error>> {
-  let statistic = cramer_von_mises_independence(&rosenblatt(copula, x)?);
+  x: ArrayView2<f64>,
+  config: GofConfig,
+  seed: &S,
+  refit: impl Fn(&mut C, ArrayView2<f64>) -> Result<(), CopulaError>,
+) -> Result<GofResult, CopulaError> {
+  assert!(
+    config.replications > 0,
+    "replications must satisfy `replications > 0`, got replications = {:?}",
+    config.replications
+  );
+  assert!(
+    config.alpha > 0.0 && config.alpha < 1.0,
+    "alpha must satisfy `0.0 < alpha < 1.0`, got alpha = {:?}",
+    config.alpha
+  );
+  check_pairs(x)?;
+  let statistic = finite(
+    cramer_von_mises_independence(rosenblatt(copula, x)?.view()),
+    "data",
+  )?;
   let n = x.nrows();
   let mut exceed = 0usize;
-  for b in 0..replications {
-    let sample = pseudo_observations(&copula.sample_with_seed(n, seed.wrapping_add(b as u64))?);
+  for _ in 0..config.replications {
+    let sample = pseudo_observations(copula.sample(n, seed)?.view());
     let mut refitted = copula.clone();
-    refit(&mut refitted, &sample)?;
-    let s_b = cramer_von_mises_independence(&rosenblatt(&refitted, &sample)?);
-    if s_b >= statistic {
+    refit(&mut refitted, sample.view())?;
+    let drawn = finite(
+      cramer_von_mises_independence(rosenblatt(&refitted, sample.view())?.view()),
+      "bootstrap",
+    )?;
+    if drawn >= statistic {
       exceed += 1;
     }
   }
+  let p_value = (exceed + 1) as f64 / (config.replications + 1) as f64;
   Ok(GofResult {
     statistic,
-    p_value: exceed as f64 / replications as f64,
-    replications,
+    p_value,
+    replications: config.replications,
+    alpha: config.alpha,
+    rejects_null: p_value < config.alpha,
   })
 }
 
-/// Pseudo-observations (normalised ranks `rank / (n + 1)`) of raw data.
-pub fn pseudo_observations(data: &Array2<f64>) -> Array2<f64> {
+/// Pseudo-observations `rank / (n + 1)` of raw data, a tie group taking the mean of its ranks; a column holding a NaN is
+/// all NaN.
+pub fn pseudo_observations(data: ArrayView2<f64>) -> Array2<f64> {
   let n = data.nrows();
   let mut out = Array2::<f64>::zeros(data.raw_dim());
   for (j, column) in data.columns().into_iter().enumerate() {
+    if column.iter().any(|x| x.is_nan()) {
+      out.column_mut(j).fill(f64::NAN);
+      continue;
+    }
     let mut order: Vec<usize> = (0..n).collect();
-    order.sort_by(|&a, &b| {
-      column[a]
-        .partial_cmp(&column[b])
-        .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    for (rank, &i) in order.iter().enumerate() {
-      out[(i, j)] = (rank + 1) as f64 / (n + 1) as f64;
+    order.sort_by(|&a, &b| column[a].total_cmp(&column[b]));
+    let mut start = 0;
+    while start < n {
+      let mut end = start + 1;
+      while end < n && column[order[end]] == column[order[start]] {
+        end += 1;
+      }
+      let mean_rank = (start + end + 1) as f64 / 2.0;
+      for &i in &order[start..end] {
+        out[(i, j)] = mean_rank / (n + 1) as f64;
+      }
+      start = end;
     }
   }
   out
@@ -124,17 +180,28 @@ pub fn pseudo_observations(data: &Array2<f64>) -> Array2<f64> {
 
 #[cfg(test)]
 mod tests {
+  use ndarray::Array1;
+  use ndarray::ArrayView1;
+  use stochastic_rs_core::simd_rng::Deterministic;
+  use stochastic_rs_distributions::traits::HypothesisTest;
+
   use super::*;
+  use crate::bivariate::BivariateFamily;
   use crate::bivariate::clayton::Clayton;
   use crate::bivariate::gaussian::GaussianCopula;
+  use crate::correlation::kendall_tau_b;
+  use crate::traits::TailDependence;
+
+  fn data_for(seed: u64) -> Array2<f64> {
+    let truth = Clayton::from_tau(0.6).unwrap(); // θ = 2τ/(1 − τ) = 3
+    pseudo_observations(truth.sample(600, &Deterministic::new(seed)).unwrap().view())
+  }
 
   #[test]
   fn rosenblatt_of_the_true_copula_is_uniform_and_independent() {
-    let mut copula = Clayton::new();
-    copula.set_tau(0.5); // θ = 2τ/(1 − τ) = 2
-    copula.set_theta(copula.compute_theta());
-    let sample = copula.sample_with_seed(3000, 3).unwrap();
-    let r = rosenblatt(&copula, &sample).unwrap();
+    let copula = Clayton::from_tau(0.5).unwrap(); // θ = 2τ/(1 − τ) = 2
+    let sample = copula.sample(3000, &Deterministic::new(3)).unwrap();
+    let r = rosenblatt(&copula, sample.view()).unwrap();
     let (mean_a, mean_b) = (r.column(0).mean().unwrap(), r.column(1).mean().unwrap());
     assert!(
       (mean_a - 0.5).abs() < 0.03 && (mean_b - 0.5).abs() < 0.03,
@@ -145,7 +212,7 @@ mod tests {
       kendalls::tau_b_with_comparator(&u, &v, |a: &f64, b: &f64| a.partial_cmp(b).unwrap())
         .unwrap();
     assert!(tau.abs() < 0.05, "tau {tau}");
-    assert!(cramer_von_mises_independence(&r) < 0.2);
+    assert!(cramer_von_mises_independence(r.view()) < 0.2);
   }
 
   /// A Gaussian copula fitted to Clayton data is rejected; the true family
@@ -153,22 +220,25 @@ mod tests {
   /// pinned data seeds are tried and the best is asserted on.
   #[test]
   fn bootstrap_test_rejects_the_wrong_family() {
-    let data_for = |seed: u64| {
-      let mut truth = Clayton::new();
-      truth.set_tau(0.6); // θ = 3
-      truth.set_theta(truth.compute_theta());
-      pseudo_observations(&truth.sample_with_seed(600, seed).unwrap())
-    };
-    let refit = |c: &mut Clayton, x: &Array2<f64>| c.fit(x);
+    let refit = |c: &mut Clayton, x: ArrayView2<f64>| c.fit(x);
     let best_right = [5u64, 6, 7]
       .into_iter()
       .map(|seed| {
         let data = data_for(seed);
-        let mut fitted = Clayton::new();
-        fitted.fit(&data).unwrap();
-        gof_cramer_von_mises(&fitted, &data, 60, 100, refit)
-          .unwrap()
-          .p_value
+        let mut fitted = Clayton::default();
+        fitted.fit(data.view()).unwrap();
+        gof_cramer_von_mises(
+          &fitted,
+          data.view(),
+          GofConfig {
+            replications: 60,
+            alpha: 0.05,
+          },
+          &Deterministic::new(100),
+          refit,
+        )
+        .unwrap()
+        .p_value
       })
       .fold(0.0_f64, f64::max);
     assert!(
@@ -176,25 +246,343 @@ mod tests {
       "true family rejected on every seed (best p {best_right})"
     );
     let data = data_for(5);
-    let mut fitted = Clayton::new();
-    fitted.fit(&data).unwrap();
-    let right = gof_cramer_von_mises(&fitted, &data, 1, 100, refit).unwrap();
-    let mut gaussian = GaussianCopula::new();
-    gaussian.fit(&data).unwrap();
-    let wrong = gof_cramer_von_mises(&gaussian, &data, 60, 100, |c: &mut GaussianCopula, x| {
-      c.fit(x)
-    })
+    let mut fitted = Clayton::default();
+    fitted.fit(data.view()).unwrap();
+    let right = gof_cramer_von_mises(
+      &fitted,
+      data.view(),
+      GofConfig {
+        replications: 1,
+        alpha: 0.05,
+      },
+      &Deterministic::new(100),
+      refit,
+    )
+    .unwrap();
+    let mut gaussian = GaussianCopula::default();
+    gaussian.fit(data.view()).unwrap();
+    let wrong = gof_cramer_von_mises(
+      &gaussian,
+      data.view(),
+      GofConfig {
+        replications: 60,
+        alpha: 0.05,
+      },
+      &Deterministic::new(100),
+      |c: &mut GaussianCopula, x| c.fit(x),
+    )
     .unwrap();
     assert!(wrong.p_value < 0.05, "wrong family p {}", wrong.p_value);
     assert!(wrong.statistic > right.statistic);
   }
 
+  /// The transform is `(v, ∂_v C(u, v))`, the trait's h-function.
+  #[test]
+  fn rosenblatt_conditions_on_the_second_coordinate() {
+    let copula = Clayton::new(2.0);
+    let x = ndarray::array![[0.3, 0.7], [0.5, 0.2], [0.9, 0.4]];
+    let r = rosenblatt(&copula, x.view()).unwrap();
+    assert_eq!(r.column(0), x.column(1));
+    assert_eq!(r.column(1), copula.partial_derivative(x.view()).unwrap());
+  }
+
+  #[test]
+  fn the_decision_is_the_p_value_against_alpha() {
+    let on_clayton = |seed: u64, alpha: f64| {
+      let data = data_for(seed);
+      let mut fitted = Clayton::default();
+      fitted.fit(data.view()).unwrap();
+      let config = GofConfig {
+        replications: 60,
+        alpha,
+      };
+      gof_cramer_von_mises(
+        &fitted,
+        data.view(),
+        config,
+        &Deterministic::new(100),
+        |c: &mut Clayton, x| c.fit(x),
+      )
+      .unwrap()
+    };
+    let p = 10.0 / 61.0;
+    let keeps = on_clayton(6, 0.1);
+    assert_eq!(keeps.p_value, p);
+    assert!(!keeps.rejects_null);
+    assert_eq!(keeps.null_rejected(), Some(false));
+    assert_eq!((keeps.replications, keeps.alpha), (60, 0.1));
+    assert!(!on_clayton(6, p).rejects_null, "p < alpha is strict");
+    assert!(on_clayton(6, 0.2).rejects_null);
+    let kept = [5u64, 6, 7]
+      .into_iter()
+      .any(|seed| !on_clayton(seed, 0.05).rejects_null);
+    assert!(kept, "the true family was rejected on every seed");
+  }
+
+  #[test]
+  fn the_p_value_counts_the_data_as_one_more_draw() {
+    let data = data_for(5);
+    let mut gaussian = GaussianCopula::default();
+    gaussian.fit(data.view()).unwrap();
+    let run = |replications: usize, alpha: f64| {
+      let config = GofConfig {
+        replications,
+        alpha,
+      };
+      gof_cramer_von_mises(
+        &gaussian,
+        data.view(),
+        config,
+        &Deterministic::new(100),
+        |c: &mut GaussianCopula, x| c.fit(x),
+      )
+      .unwrap()
+    };
+    let wrong = run(10, 0.05);
+    assert_eq!(wrong.p_value, 1.0 / 11.0, "no draw reaches the statistic");
+    assert!(!wrong.rejects_null, "ten draws cannot reject at 5 %");
+    assert!(run(10, 0.1).rejects_null);
+    assert!(!run(19, 0.05).rejects_null, "p = 1/20 is not below 0.05");
+    assert!(run(20, 0.05).rejects_null, "20 = ⌊1/0.05⌋ draws can");
+  }
+
+  /// Independence whose h-function turns NaN once `poisoned`.
+  #[derive(Clone)]
+  struct Poisonable {
+    poisoned: bool,
+  }
+
+  impl BivariateExt for Poisonable {
+    fn family(&self) -> BivariateFamily {
+      BivariateFamily::Independence
+    }
+
+    fn theta(&self) -> Option<f64> {
+      None
+    }
+
+    fn theta_bounds(&self) -> (f64, f64) {
+      (0.0, 0.0)
+    }
+
+    fn invalid_thetas(&self) -> Vec<f64> {
+      vec![]
+    }
+
+    fn set_theta(&mut self, _theta: f64) {}
+
+    fn tau_from_theta(&self, _theta: f64) -> f64 {
+      0.0
+    }
+
+    fn theta_from_tau(&self, _tau: f64) -> Result<f64, CopulaError> {
+      Ok(0.0)
+    }
+
+    fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+      Ok(TailDependence {
+        lower: 0.0,
+        upper: 0.0,
+      })
+    }
+
+    fn check_fit(&self) -> Result<(), CopulaError> {
+      Ok(())
+    }
+
+    fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+      Ok(Array1::ones(x.nrows()))
+    }
+
+    fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+      Ok(&x.column(0) * &x.column(1))
+    }
+
+    fn percent_point(
+      &self,
+      y: ArrayView1<f64>,
+      _v: ArrayView1<f64>,
+    ) -> Result<Array1<f64>, CopulaError> {
+      Ok(y.to_owned())
+    }
+
+    fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+      Ok(if self.poisoned {
+        Array1::from_elem(x.nrows(), f64::NAN)
+      } else {
+        x.column(0).to_owned()
+      })
+    }
+  }
+
+  #[test]
+  fn a_non_finite_statistic_is_an_error_not_a_rejection() {
+    let data = data_for(5);
+    let config = GofConfig {
+      replications: 3,
+      alpha: 0.05,
+    };
+    let seed = Deterministic::new(1);
+    let fine = Poisonable { poisoned: false };
+    let clean = gof_cramer_von_mises(&fine, data.view(), config, &seed, |_, _| Ok(())).unwrap();
+    assert!(clean.statistic.is_finite());
+    let nan = Poisonable { poisoned: true };
+    let data_err =
+      gof_cramer_von_mises(&nan, data.view(), config, &seed, |_, _| Ok(())).unwrap_err();
+    assert!(matches!(data_err, CopulaError::Numerical(_)), "{data_err}");
+    let poison = |c: &mut Poisonable, _: ArrayView2<f64>| {
+      c.poisoned = true;
+      Ok(())
+    };
+    let boot_err = gof_cramer_von_mises(&fine, data.view(), config, &seed, poison).unwrap_err();
+    assert!(matches!(boot_err, CopulaError::Numerical(_)), "{boot_err}");
+  }
+
+  /// Raw uniform samples fail a KS gate on their margins by chance (17 of 1000 seeds at n = 600, four of these 200); the
+  /// input check must not.
+  #[test]
+  fn a_raw_uniform_sample_passes_the_input_check_on_every_seed() {
+    let copula = Clayton::new(3.0);
+    for seed in 0..200 {
+      let raw = copula.sample(600, &Deterministic::new(seed)).unwrap();
+      assert_eq!(check_pairs(raw.view()), Ok(()), "seed {seed}");
+    }
+  }
+
+  #[test]
+  fn the_input_must_be_a_two_column_sample_in_the_unit_square() {
+    let copula = Clayton::new(2.0);
+    let config = GofConfig {
+      replications: 2,
+      alpha: 0.05,
+    };
+    let err = |x: ArrayView2<f64>| {
+      let refit = |c: &mut Clayton, x: ArrayView2<f64>| c.fit(x);
+      gof_cramer_von_mises(&copula, x, config, &Deterministic::new(1), refit).unwrap_err()
+    };
+    let data = data_for(5);
+    let one = data.column(0).insert_axis(Axis(1));
+    let mismatch = |got| CopulaError::DimensionMismatch { expected: 2, got };
+    assert_eq!(err(one), mismatch(1));
+    let three = stack![Axis(1), data.column(0), data.column(1), data.column(0)];
+    assert_eq!(err(three.view()), mismatch(3));
+    for outside in [1.5, -0.1, f64::NAN] {
+      let mut bad = data.clone();
+      bad[(3, 1)] = outside;
+      assert_eq!(err(bad.view()), CopulaError::MarginalOutOfRange);
+    }
+  }
+
+  #[test]
+  #[should_panic(expected = "replications must satisfy `replications > 0`")]
+  fn zero_replications_is_a_precondition() {
+    let copula = Clayton::new(2.0);
+    let data = data_for(5);
+    let config = GofConfig {
+      replications: 0,
+      alpha: 0.05,
+    };
+    let _ = gof_cramer_von_mises(
+      &copula,
+      data.view(),
+      config,
+      &Deterministic::new(1),
+      |c: &mut Clayton, x| c.fit(x),
+    );
+  }
+
+  #[test]
+  #[should_panic(expected = "alpha must satisfy `0.0 < alpha < 1.0`")]
+  fn alpha_outside_the_unit_interval_is_a_precondition() {
+    let copula = Clayton::new(2.0);
+    let data = data_for(5);
+    let config = GofConfig {
+      replications: 10,
+      alpha: 1.0,
+    };
+    let _ = gof_cramer_von_mises(
+      &copula,
+      data.view(),
+      config,
+      &Deterministic::new(1),
+      |c: &mut Clayton, x| c.fit(x),
+    );
+  }
+
   #[test]
   fn pseudo_observations_are_normalised_ranks() {
     let data = ndarray::array![[3.0, 10.0], [1.0, 30.0], [2.0, 20.0]];
-    let u = pseudo_observations(&data);
+    let u = pseudo_observations(data.view());
     assert_eq!(u[(0, 0)], 0.75);
     assert_eq!(u[(1, 0)], 0.25);
     assert_eq!(u[(1, 1)], 0.75);
+  }
+
+  /// A tie group takes the mean of its ranks, so the pseudo-observations do not depend on the row order and keep the data's
+  /// τ-b: `(1,1,2,3)` × `(1,2,2,3)` in two orders is `0.8` either way (ordinal ranks give `1.0` and `2/3`).
+  #[test]
+  fn tied_values_share_their_mean_rank_in_every_row_order() {
+    let a = ndarray::array![[1.0, 1.0], [1.0, 2.0], [2.0, 2.0], [3.0, 3.0]];
+    let b = ndarray::array![[1.0, 2.0], [1.0, 1.0], [2.0, 2.0], [3.0, 3.0]];
+    let (ua, ub) = (pseudo_observations(a.view()), pseudo_observations(b.view()));
+    assert_eq!(
+      ua,
+      ndarray::array![[0.3, 0.2], [0.3, 0.5], [0.6, 0.5], [0.8, 0.8]]
+    );
+    assert_eq!(
+      ub,
+      ndarray::array![[0.3, 0.5], [0.3, 0.2], [0.6, 0.5], [0.8, 0.8]]
+    );
+    for (raw, pseudo) in [(&a, &ua), (&b, &ub)] {
+      let tau = |m: &Array2<f64>| kendall_tau_b(m.column(0), m.column(1)).unwrap();
+      assert!((tau(raw) - 0.8).abs() < 1e-15 && (tau(pseudo) - 0.8).abs() < 1e-15);
+    }
+  }
+
+  #[test]
+  fn infinities_order_and_signed_zeros_tie_as_numbers() {
+    let data = ndarray::array![
+      [f64::INFINITY, -0.0],
+      [1.0, 0.0],
+      [f64::INFINITY, 1.0],
+      [f64::NEG_INFINITY, 2.0]
+    ];
+    let u = pseudo_observations(data.view());
+    assert_eq!(u.column(0).to_vec(), vec![0.7, 0.4, 0.7, 0.2]);
+    assert_eq!(u.column(1).to_vec(), vec![0.3, 0.3, 0.6, 0.8]);
+  }
+
+  /// A column holding a NaN comes out all NaN, as scipy's `rankdata(nan_policy="propagate")`, where an unordered pair
+  /// panics in the std sort from about 40 rows; the other columns keep their ranks.
+  #[test]
+  fn a_column_with_a_nan_is_all_nan_at_any_size() {
+    let n = 100;
+    let mut data = Array2::from_shape_fn((n, 2), |(i, j)| {
+      if j == 0 {
+        ((i * 37) % n) as f64
+      } else {
+        i as f64
+      }
+    });
+    data[(50, 0)] = f64::NAN;
+    let u = pseudo_observations(data.view());
+    assert!(u.column(0).iter().all(|v| v.is_nan()));
+    assert_eq!(
+      u.column(1),
+      Array1::from_shape_fn(n, |i| (i + 1) as f64 / 101.0)
+    );
+  }
+
+  #[test]
+  fn a_gof_result_is_a_hypothesis_test() {
+    let result = GofResult {
+      statistic: 0.042,
+      p_value: 0.31,
+      replications: 200,
+      alpha: 0.05,
+      rejects_null: false,
+    };
+    assert_eq!(result.statistic(), 0.042);
+    assert_eq!(result.null_rejected(), Some(false));
   }
 }

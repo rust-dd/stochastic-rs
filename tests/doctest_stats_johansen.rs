@@ -2,6 +2,8 @@
 //! Backs the Johansen / VECM example on the stats page.
 
 use ndarray::Array2;
+use stochastic_rs::distributions::DistributionSampler;
+use stochastic_rs::distributions::SimdDistribution;
 use stochastic_rs::distributions::normal::SimdNormal;
 use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::stats::econometrics::johansen_test;
@@ -11,8 +13,8 @@ use stochastic_rs::stats::econometrics::vecm_fit;
 fn johansen_rank_then_vecm() {
   // Two prices sharing one random walk: y2 ≈ 0.7·y1, so the pair has
   // exactly one cointegrating relation.
-  let steps = SimdNormal::<f64>::new(0.0, 1.0, &Deterministic::new(7));
-  let noise = SimdNormal::<f64>::new(0.0, 0.1, &Deterministic::new(11));
+  let mut steps = SimdNormal::<f64>::new(0.0, 1.0).seeded(&Deterministic::new(7));
+  let mut noise = SimdNormal::<f64>::new(0.0, 0.1).seeded(&Deterministic::new(11));
   let mut dw = vec![0.0_f64; 500];
   let mut eps = vec![0.0_f64; 500];
   steps.fill_slice(&mut dw);

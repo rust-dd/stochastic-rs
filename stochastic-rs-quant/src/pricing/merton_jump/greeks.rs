@@ -11,7 +11,7 @@
 //! `v == 0` and, for `n = 0` alone, at the pure-jump corner `gamma == 1` —
 //! has no closed form to evaluate, only a `σ → 0⁺` limit, and the limit
 //! differs per Greek and per side of the forward. Each accessor states its
-//! own against [`TermRegime`]; `greek_series` no longer floors anything.
+//! own against [`TermRegime`].
 //! `delta → ½e^{(b−r)τ}` and `rho → ½Kτe^{−rτ}` at the forward and keep
 //! their saturated closed forms away from it, `gamma → +∞` at the forward
 //! and `0` away from it. Volatility Greeks use their right limits at zero
@@ -142,35 +142,8 @@ impl Merton1976Pricer {
     })
   }
 
-  /// Gamma — $\partial^2 V/\partial S^2$.
-  ///
-  /// **Returns $+\infty$ at a degenerate term's
-  /// forward (`TermRegime::AtTheForward`)**, which is the value of the limit
-  /// and not a failure to compute one. $\Gamma =
-  /// e^{(b-r)\tau}\varphi(d_1)/(S\sigma\sqrt\tau)$ has a finite, strictly
-  /// positive numerator there ($\varphi(0) = 1/\sqrt{2\pi}$) over a
-  /// vanishing $\sigma$, so it diverges like $1/\sigma$ — measured at
-  /// $(S, K, r, \tau) = (100, 100, 0.05, 0.5)$ under
-  /// [`BSMCoc::Black1976`](crate::pricing::bsm::BSMCoc::Black1976),
-  /// $\sigma\Gamma$ is `0.0063285` to sixteen figures across
-  /// $\sigma = 10^{-3} \ldots 10^{-8}$. The frozen underlying's payoff is a
-  /// step at the forward and its second derivative is a Dirac delta; an
-  /// unbounded gamma is what that *is*.
-  ///
-  /// So the arm below is the closed form with $d_1$ at its limit of `0`,
-  /// left to divide by the term's own `+0.0`. IEEE gives $+\infty$ for the
-  /// positive numerator and keeps propagating a non-finite `r`, which a
-  /// literal [`f64::INFINITY`] would not. Case 2 of the crate's [failure
-  /// convention](crate::traits::ModelPricer#how-pricing-fails) is for a
-  /// quantity that is *undefined* here; this one is defined and unbounded,
-  /// so `NaN` would understate it and `0.0` — what the old floor returned —
-  /// inverts it. `MertonCreditPricer::credit_spread` and
-  /// `g_digital_put_2d`'s logarithmic corner are the crate's precedent for
-  /// letting a real divergence through as one.
-  ///
-  /// Away from the forward the same term contributes `0`, and both are
-  /// pinned: `the_degenerate_term_floor_is_exact_away_from_the_forward` and
-  /// `the_forward_point_greeks_of_a_degenerate_term_are_their_limits`.
+  /// Gamma $\partial^2 V/\partial S^2$: a degenerate term contributes `+∞` at its forward, where
+  /// `Γ` diverges like `1/σ`, and `0` away from it.
   pub fn gamma(&self, s: f64, k: f64, r: f64, q: f64, tau: f64) -> f64 {
     self.greek_series(tau, |bsm| {
       match Merton1976Pricer::term_regime(bsm, s, k, r, q, tau) {

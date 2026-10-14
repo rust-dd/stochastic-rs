@@ -11,7 +11,7 @@
 //!   `log(x/2)` term against `I₀` / `I₁`; for `x > 2` an asymptotic
 //!   Chebyshev series scaled by `e^{-x} / √x`.
 //!
-//! `K₀` and `K₁` are defined only for `x > 0` and panic otherwise.
+//! `K₀` and `K₁` are defined only for `x > 0` and are NaN otherwise.
 
 // The mantissas below are transcribed verbatim from the Cephes C source;
 // the digits are the spec, so they are left ungrouped (unreadable_literal)
@@ -281,17 +281,12 @@ pub fn bessel_i1(x: f64) -> f64 {
   if x < 0.0 { -out } else { out }
 }
 
-/// Modified Bessel function of the second kind, order 0, `K₀(x)`.
-///
-/// Cephes Math Library, S. Moshier, `k0.c`. Chebyshev series on `(0, 2]`
-/// combined with a `-log(x/2) · I₀(x)` term; asymptotic Chebyshev series
-/// scaled by `e^{-x} / √x` beyond that.
-///
-/// # Panics
-/// Panics if `x` is not strictly positive (`K₀` has a logarithmic
-/// singularity at `0` and is undefined for negative `x`).
+/// Modified Bessel function of the second kind, order 0, `K₀(x)` (Cephes `k0.c`).
+/// NaN unless `x > 0` (`K₀` has a logarithmic singularity at `0` and is undefined for negative `x`).
 pub fn bessel_k0(x: f64) -> f64 {
-  assert!(x > 0.0, "bessel_k0: x must be positive");
+  if x.is_nan() || x <= 0.0 {
+    return f64::NAN;
+  }
   if x <= 2.0 {
     let y = x * x - 2.0;
     chbevl(y, &K0_A) - (0.5 * x).ln() * bessel_i0(x)
@@ -300,15 +295,12 @@ pub fn bessel_k0(x: f64) -> f64 {
   }
 }
 
-/// Modified Bessel function of the second kind, order 1, `K₁(x)`.
-///
-/// Cephes Math Library, S. Moshier, `k1.c`. Same two-interval scheme as
-/// [`bessel_k0`].
-///
-/// # Panics
-/// Panics if `x` is not strictly positive.
+/// Modified Bessel function of the second kind, order 1, `K₁(x)` (Cephes `k1.c`).
+/// NaN unless `x > 0`.
 pub fn bessel_k1(x: f64) -> f64 {
-  assert!(x > 0.0, "bessel_k1: x must be positive");
+  if x.is_nan() || x <= 0.0 {
+    return f64::NAN;
+  }
   if x <= 2.0 {
     let y = x * x - 2.0;
     (0.5 * x).ln() * bessel_i1(x) + chbevl(y, &K1_A) / x
@@ -317,23 +309,12 @@ pub fn bessel_k1(x: f64) -> f64 {
   }
 }
 
-/// Exponentially scaled modified Bessel function of the second kind,
-/// order 1: `K₁ᵉ(x) = e^x K₁(x)`.
-///
-/// Cephes Math Library, S. Moshier, `k1.c` (second entry point, `k1e`).
-/// Same coefficient tables and two-interval scheme as [`bessel_k1`]: the
-/// near branch multiplies the unscaled small-`x` expression by `e^x`
-/// directly, and the far branch drops the `e^{-x}` factor (it cancels
-/// against the `e^x` scale requested here). This lets a caller combine
-/// `K₁ᵉ` with its own compensating `e^{-x}`-like factor before either
-/// side is evaluated, avoiding the `∞ · 0 = NaN` trap that
-/// `exp(large) * bessel_k1(large)` hits (the exponential overflows while
-/// the far branch of `bessel_k1` underflows).
-///
-/// # Panics
-/// Panics if `x` is not strictly positive.
+/// Exponentially scaled `K₁ᵉ(x) = e^x K₁(x)` (Cephes `k1e`), finite where `exp(x) * bessel_k1(x)` is `∞ · 0`.
+/// NaN unless `x > 0`.
 pub fn bessel_k1e(x: f64) -> f64 {
-  assert!(x > 0.0, "bessel_k1e: x must be positive");
+  if x.is_nan() || x <= 0.0 {
+    return f64::NAN;
+  }
   if x <= 2.0 {
     let y = x * x - 2.0;
     ((0.5 * x).ln() * bessel_i1(x) + chbevl(y, &K1_A) / x) * x.exp()
@@ -366,15 +347,11 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "x must be positive")]
-  fn bessel_k0_rejects_nonpositive() {
-    bessel_k0(-1.0);
-  }
-
-  #[test]
-  #[should_panic(expected = "x must be positive")]
-  fn bessel_k1_rejects_nonpositive() {
-    bessel_k1(-1.0);
+  fn the_k_family_is_nan_outside_its_domain() {
+    assert!(bessel_k0(0.0).is_nan());
+    assert!(bessel_k1(-1.0).is_nan());
+    assert!(bessel_k1e(0.0).is_nan());
+    assert!(bessel_k0(f64::NAN).is_nan());
   }
 
   /// Reference: scipy.special — `from scipy.special import k1e`
@@ -391,12 +368,6 @@ mod tests {
   #[test]
   fn bessel_k1e_matches_scipy_reference() {
     assert!(rel_close(bessel_k1e(1.0), 1.636153486263258, 1e-13));
-  }
-
-  #[test]
-  #[should_panic(expected = "x must be positive")]
-  fn bessel_k1e_rejects_nonpositive() {
-    bessel_k1e(-1.0);
   }
 
   /// Wronskian identity for modified Bessel functions (Abramowitz &

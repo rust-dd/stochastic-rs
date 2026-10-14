@@ -10,16 +10,17 @@ use plotly::Scatter;
 use plotly::common::Mode;
 use plotly::layout::Axis;
 use stochastic_rs::copulas::bivariate::clayton::Clayton;
+use stochastic_rs::simd_rng::Deterministic;
 use stochastic_rs::traits::BivariateExt;
 
 fn main() {
   let tau = 0.6; // Kendall's tau -> strong lower-tail dependence
 
-  let mut clayton = Clayton::new();
-  clayton.set_tau(tau);
-  clayton.set_theta(clayton.compute_theta());
+  let clayton = Clayton::from_tau(tau).unwrap();
 
-  let uv = clayton.sample_with_seed(2_000, 42).expect("Clayton sample");
+  let uv = clayton
+    .sample(2_000, &Deterministic::new(42))
+    .expect("Clayton sample");
   let u = uv.column(0).to_vec();
   let v = uv.column(1).to_vec();
 

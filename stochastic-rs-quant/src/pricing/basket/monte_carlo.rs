@@ -51,7 +51,7 @@ pub struct McBasketPricer {
   pub weights: Array1<f64>,
   /// Average type — likewise a term of the contract.
   pub avg_type: BasketAverageType,
-  /// Volatilities.
+  /// Annualised Black–Scholes volatility of each asset.
   pub sigma: Array1<f64>,
   /// Correlation matrix.
   pub rho: Array2<f64>,

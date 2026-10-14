@@ -4,87 +4,67 @@
 //! f(x)=\frac{1}{b-a}\mathbf{1}_{a\le x\le b}
 //! $$
 //!
-use std::cell::Cell;
-use std::cell::UnsafeCell;
+//! Sampling: inversion, Devroye, L. (1986), *Non-Uniform Random Variate Generation*, Springer, §II.2, DOI 10.1007/978-1-4613-8643-8.
 
 use rand::Rng;
-use rand_distr::Distribution;
-use stochastic_rs_core::simd_rng::Unseeded;
+use rand::distr::Distribution;
+use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_core::simd_rng::SimdRngExt;
 
-use super::SimdFloatExt;
-use crate::simd_rng::SimdRng;
-use crate::simd_rng::SimdRngExt;
+use crate::seeded::StreamState;
+use crate::traits::SimdFloatExt;
+use crate::traits::distribution::Sealed;
+use crate::traits::distribution::SimdDistribution;
+use crate::traits::distribution::SimdKernel;
 
 const SMALL_UNIFORM_THRESHOLD: usize = 16;
 
-pub struct SimdUniform<T: SimdFloatExt, R: SimdRngExt = SimdRng> {
+/// Uniform law on `[low, high)`: parameters only; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SimdUniform<T> {
   low: T,
+  high: T,
   scale: T,
-  buffer: UnsafeCell<[T; 16]>,
-  index: UnsafeCell<usize>,
-  simd_rng: UnsafeCell<R>,
-  stream_seed: Cell<u64>,
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> SimdUniform<T, R> {
-  /// Creates a uniform distribution on `[low, high)`.
-  ///
-  /// - `low` — lower bound a (matches the module header's a).
-  /// - `high` — upper bound b (matches the module header's b); stored
-  ///   internally as the interval width `high - low`, not as `high`
-  ///   itself, but that is purely an internal detail — this constructor's
-  ///   own `high` parameter is the literal upper bound.
-  pub fn new<S: crate::simd_rng::SeedExt>(low: T, high: T, seed: &S) -> Self {
-    assert!(high > low, "SimdUniform: high must be greater than low");
-    assert!(low.is_finite() && high.is_finite(), "bounds must be finite");
-    let stream_seed = seed.seed_value();
+impl<T: SimdFloatExt> SimdUniform<T> {
+  /// # Panics
+  /// `high <= low` or a bound that is not finite.
+  pub fn new(low: T, high: T) -> Self {
+    assert!(
+      low.is_finite(),
+      "low must satisfy `low.is_finite()`, got low = {low:?}"
+    );
+    assert!(
+      high.is_finite(),
+      "high must satisfy `high.is_finite()`, got high = {high:?}"
+    );
+    assert!(
+      low < high,
+      "low must satisfy `low < high`, got low = {low:?}, high = {high:?}"
+    );
     Self {
       low,
+      high,
       scale: high - low,
-      buffer: UnsafeCell::new([T::zero(); 16]),
-      index: UnsafeCell::new(16),
-      simd_rng: UnsafeCell::new(R::from_seed(stream_seed)),
-      stream_seed: Cell::new(stream_seed),
     }
-  }
-
-  /// Builds an independent worker stream for the `stream_idx`-th chunk of a
-  /// parallel `sample_matrix` fan-out; see
-  /// [`DistributionSampler::fork`](crate::traits::DistributionSampler::fork).
-  #[doc(hidden)]
-  pub fn fork(&self, stream_idx: u64) -> Self {
-    let mut basis = self.stream_seed.get();
-    let call_basis = crate::simd_rng::derive_seed(&mut basis);
-    self.stream_seed.set(basis);
-    let child_seed = crate::simd_rng::derive_fork_seed(call_basis, stream_idx);
-    Self::new(
-      self.low,
-      self.low + self.scale,
-      &crate::simd_rng::Deterministic::new(child_seed),
-    )
   }
 
   pub fn unit() -> Self {
-    Self::new(T::zero(), T::one(), &Unseeded)
+    Self::new(T::zero(), T::one())
   }
 
-  /// Returns a single sample using the internal SIMD RNG.
-  #[inline]
-  pub fn sample_fast(&self) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let buf = unsafe { &mut *self.buffer.get() };
-    let z = buf[*index];
-    *index += 1;
-    z
+  /// The lower bound `a`.
+  pub fn low(&self) -> T {
+    self.low
   }
 
-  /// Fills `out` using the internal SIMD RNG stream — the only stream this
-  /// sampler draws from (see the crate-level RNG policy).
-  pub fn fill_slice(&self, out: &mut [T]) {
-    let rng = unsafe { &mut *self.simd_rng.get() };
+  /// The upper bound `b`.
+  pub fn high(&self) -> T {
+    self.high
+  }
+
+  fn fill_parts<R: SimdRngExt>(&self, rng: &mut R, out: &mut [T]) {
     if out.len() < SMALL_UNIFORM_THRESHOLD {
       for x in out.iter_mut() {
         *x = self.low + self.scale * T::sample_uniform_simd(rng);
@@ -133,121 +113,130 @@ impl<T: SimdFloatExt, R: SimdRngExt> SimdUniform<T, R> {
     }
   }
 
-  #[inline]
-  fn refill_buffer(&self) {
-    let buf = unsafe { &mut *self.buffer.get() };
-    self.fill_slice(buf);
-    unsafe {
-      *self.index.get() = 0;
-    }
+  pub(crate) fn draw_with<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.low + self.scale * T::sample_uniform(rng)
   }
 }
 
 /// U(0, 1) — matches this file's own [`SimdUniform::unit`] constructor for
 /// the standard uniform distribution.
-impl<T: SimdFloatExt, R: SimdRngExt> Default for SimdUniform<T, R> {
+impl<T: SimdFloatExt> Default for SimdUniform<T> {
   fn default() -> Self {
     Self::unit()
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Clone for SimdUniform<T, R> {
-  fn clone(&self) -> Self {
-    Self::new(self.low, self.low + self.scale, &Unseeded)
+impl<T: SimdFloatExt> Sealed for SimdUniform<T> {}
+
+impl<T: SimdFloatExt> SimdDistribution for SimdUniform<T> {
+  type State<R: SimdRngExt> = StreamState<T, R, 16>;
+
+  fn init<R: SimdRngExt, S: SeedExt>(&self, seed: &S) -> (StreamState<T, R, 16>, u64) {
+    StreamState::init(seed)
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> Distribution<T> for SimdUniform<T, R> {
-  /// The `rng` argument is intentionally unused — this type draws from its
-  /// own internal SIMD stream seeded at construction. Use `Deterministic`
-  /// in the constructor for reproducibility.
-  #[inline(always)]
-  fn sample<Rr: Rng + ?Sized>(&self, _rng: &mut Rr) -> T {
-    let index = unsafe { &mut *self.index.get() };
-    if *index >= 16 {
-      self.refill_buffer();
-    }
-    let val = unsafe { (*self.buffer.get())[*index] };
-    *index += 1;
-    val
+impl<T: SimdFloatExt> SimdKernel for SimdUniform<T> {
+  type Item = T;
+
+  #[inline]
+  fn fill<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>, out: &mut [T]) {
+    self.fill_parts(&mut state.rng, out);
+  }
+
+  #[inline]
+  fn next<R: SimdRngExt>(&self, state: &mut StreamState<T, R, 16>) -> T {
+    let StreamState { rng, buf } = state;
+    buf.pop(|b| self.fill_parts(rng, b))
   }
 }
 
-impl<T: SimdFloatExt, R: SimdRngExt> crate::traits::DistributionExt for SimdUniform<T, R> {
-  fn pdf(&self, x: f64) -> f64 {
-    let a = self.low.to_f64().unwrap();
-    let b = a + self.scale.to_f64().unwrap();
-    if x >= a && x <= b { 1.0 / (b - a) } else { 0.0 }
+impl<T: SimdFloatExt> Distribution<T> for SimdUniform<T> {
+  /// `low + scale·u` with one `[0, 1)` uniform `u` from the caller's rng (53 bits for `f64`, 24 for `f32`).
+  fn sample<G: Rng + ?Sized>(&self, rng: &mut G) -> T {
+    self.draw_with(rng)
   }
+}
 
-  fn cdf(&self, x: f64) -> f64 {
+impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdUniform<T> {
+  fn pdf(&self, x: f64) -> Option<f64> {
     let a = self.low.to_f64().unwrap();
-    let b = a + self.scale.to_f64().unwrap();
-    if x < a {
-      0.0
-    } else if x >= b {
-      1.0
+    let b = self.high.to_f64().unwrap();
+    if x >= a && x <= b {
+      Some(1.0 / (b - a))
     } else {
-      (x - a) / (b - a)
+      Some(0.0)
     }
   }
 
-  fn inv_cdf(&self, p: f64) -> f64 {
+  fn cdf(&self, x: f64) -> Option<f64> {
+    let a = self.low.to_f64().unwrap();
+    let b = self.high.to_f64().unwrap();
+    if x < a {
+      Some(0.0)
+    } else if x >= b {
+      Some(1.0)
+    } else {
+      Some((x - a) / (b - a))
+    }
+  }
+
+  fn quantile(&self, p: f64) -> Option<f64> {
     let a = self.low.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
-    a + p * scale
+    Some(a + p * scale)
   }
 
-  fn mean(&self) -> f64 {
-    self.low.to_f64().unwrap() + 0.5 * self.scale.to_f64().unwrap()
+  fn mean(&self) -> Option<f64> {
+    Some(self.low.to_f64().unwrap() + 0.5 * self.scale.to_f64().unwrap())
   }
 
-  fn median(&self) -> f64 {
+  fn median(&self) -> Option<f64> {
     self.mean()
   }
 
-  fn mode(&self) -> f64 {
+  fn mode(&self) -> Option<f64> {
     // Any point in [a, b] is a mode; report the midpoint.
     self.mean()
   }
 
-  fn variance(&self) -> f64 {
+  fn variance(&self) -> Option<f64> {
     let scale = self.scale.to_f64().unwrap();
-    scale * scale / 12.0
+    Some(scale * scale / 12.0)
   }
 
-  fn skewness(&self) -> f64 {
-    0.0
+  fn skewness(&self) -> Option<f64> {
+    Some(0.0)
   }
 
-  fn kurtosis(&self) -> f64 {
+  fn kurtosis(&self) -> Option<f64> {
     // Excess kurtosis.
-    -6.0 / 5.0
+    Some(-6.0 / 5.0)
   }
 
-  fn entropy(&self) -> f64 {
-    self.scale.to_f64().unwrap().ln()
+  fn entropy(&self) -> Option<f64> {
+    Some(self.scale.to_f64().unwrap().ln())
   }
 
-  fn characteristic_function(&self, t: f64) -> num_complex::Complex64 {
+  fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
     // φ(t) = (e^{itb} - e^{ita}) / (it(b-a))
     let a = self.low.to_f64().unwrap();
-    let b = a + self.scale.to_f64().unwrap();
+    let b = self.high.to_f64().unwrap();
     if t == 0.0 {
-      return num_complex::Complex64::new(1.0, 0.0);
+      return Some(num_complex::Complex64::new(1.0, 0.0));
     }
     let eitb = num_complex::Complex64::new(0.0, t * b).exp();
     let eita = num_complex::Complex64::new(0.0, t * a).exp();
-    (eitb - eita) / num_complex::Complex64::new(0.0, t * (b - a))
+    Some((eitb - eita) / num_complex::Complex64::new(0.0, t * (b - a)))
   }
 
-  fn moment_generating_function(&self, t: f64) -> f64 {
+  fn moment_generating_function(&self, t: f64) -> Option<f64> {
     let a = self.low.to_f64().unwrap();
-    let b = a + self.scale.to_f64().unwrap();
+    let b = self.high.to_f64().unwrap();
     if t == 0.0 {
-      return 1.0;
+      return Some(1.0);
     }
-    ((b * t).exp() - (a * t).exp()) / (t * (b - a))
+    Some(((b * t).exp() - (a * t).exp()) / (t * (b - a)))
   }
 }
 
@@ -255,3 +244,41 @@ py_distribution!(PyUniform, SimdUniform,
   sig: (low, high, seed=None, dtype=None),
   params: (low: f64, high: f64)
 );
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::tests::scalar_ks_best_p;
+  use crate::traits::DistributionExt as _;
+
+  /// The honest `Distribution` draws from the caller's rng and agrees with the cdf.
+  #[test]
+  fn scalar_sample_matches_cdf() {
+    let d = SimdUniform::<f64>::new(-2.0, 3.0);
+    let best = scalar_ks_best_p(&d, |x| d.cdf(x).unwrap());
+    assert!(best > 0.01, "best p = {best}");
+  }
+
+  /// At the rng's largest output the honest `f32` draw stays below `high`, where a 53-bit uniform rounds up to one.
+  #[test]
+  fn honest_f32_draw_stays_below_high() {
+    struct Top;
+    impl rand::TryRng for Top {
+      type Error = std::convert::Infallible;
+
+      fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+        Ok(u32::MAX)
+      }
+
+      fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+        Ok(u64::MAX)
+      }
+
+      fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Self::Error> {
+        dst.fill(u8::MAX);
+        Ok(())
+      }
+    }
+    assert!(SimdUniform::<f32>::unit().sample(&mut Top) < 1.0);
+  }
+}
