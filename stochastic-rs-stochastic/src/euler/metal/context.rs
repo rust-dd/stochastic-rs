@@ -216,7 +216,7 @@ mod tests {
 
   #[test]
   fn launch_shapes_name_exactly_the_embedded_euler_kernels() {
-    let manifest = include_str!("../../device/metal/artifact/manifest.json");
+    let manifest = include_str!("../../../metal/src/device/metal.rs/bindings-fast/manifest.json");
     let embedded = manifest
       .split("\"name\": \"")
       .skip(1)

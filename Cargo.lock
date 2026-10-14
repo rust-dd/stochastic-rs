@@ -287,7 +287,7 @@ checksum = "fc0e56a716f1e132ff6bf4bdac1c944a3fcdc1cae65f70a4a2a1ac3b401d2d1f"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -1072,7 +1072,7 @@ checksum = "ea5190182e6915eb873ddbc16e23b711b6eb1f9c00a0d0a3a91b5f6228475225"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -1910,12 +1910,14 @@ dependencies = [
 [[package]]
 name = "metal-oxide"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=e8e23b277cfdb3cf0ac41948736cc49d53dd0ba3#e8e23b277cfdb3cf0ac41948736cc49d53dd0ba3"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=4b53fc97f8915413b6e75d580dc5fb8840007a63#4b53fc97f8915413b6e75d580dc5fb8840007a63"
 dependencies = [
  "block2",
  "dispatch2",
  "half",
  "metal-oxide-artifact",
+ "metal-oxide-device",
+ "metal-oxide-kernels",
  "objc2",
  "objc2-foundation",
  "objc2-metal",
@@ -1924,7 +1926,7 @@ dependencies = [
 [[package]]
 name = "metal-oxide-artifact"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=e8e23b277cfdb3cf0ac41948736cc49d53dd0ba3#e8e23b277cfdb3cf0ac41948736cc49d53dd0ba3"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=4b53fc97f8915413b6e75d580dc5fb8840007a63#4b53fc97f8915413b6e75d580dc5fb8840007a63"
 dependencies = [
  "serde",
  "serde_json",
@@ -1934,7 +1936,7 @@ dependencies = [
 [[package]]
 name = "metal-oxide-build"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=e8e23b277cfdb3cf0ac41948736cc49d53dd0ba3#e8e23b277cfdb3cf0ac41948736cc49d53dd0ba3"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=4b53fc97f8915413b6e75d580dc5fb8840007a63#4b53fc97f8915413b6e75d580dc5fb8840007a63"
 dependencies = [
  "metal-oxide-artifact",
  "serde",
@@ -1944,15 +1946,27 @@ dependencies = [
 [[package]]
 name = "metal-oxide-device"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=e8e23b277cfdb3cf0ac41948736cc49d53dd0ba3#e8e23b277cfdb3cf0ac41948736cc49d53dd0ba3"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=4b53fc97f8915413b6e75d580dc5fb8840007a63#4b53fc97f8915413b6e75d580dc5fb8840007a63"
 dependencies = [
  "metal-oxide-macros",
 ]
 
 [[package]]
+name = "metal-oxide-kernels"
+version = "0.1.0-alpha.1"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=4b53fc97f8915413b6e75d580dc5fb8840007a63#4b53fc97f8915413b6e75d580dc5fb8840007a63"
+dependencies = [
+ "metal-oxide-artifact",
+ "metal-oxide-build",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
+]
+
+[[package]]
 name = "metal-oxide-macros"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=e8e23b277cfdb3cf0ac41948736cc49d53dd0ba3#e8e23b277cfdb3cf0ac41948736cc49d53dd0ba3"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=4b53fc97f8915413b6e75d580dc5fb8840007a63#4b53fc97f8915413b6e75d580dc5fb8840007a63"
 
 [[package]]
 name = "minimal-lexical"
@@ -2293,9 +2307,9 @@ dependencies = [
 
 [[package]]
 name = "objc2"
-version = "0.6.4"
+version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a12a8ed07aefc768292f076dc3ac8c48f3781c8f2d5851dd3d98950e8c5a89f"
+checksum = "08849bbd4767dfae9457696856ae1c84fe4e0281bbe4a7abff2d0e06fb7981f8"
 dependencies = [
  "objc2-encode",
 ]
@@ -2947,7 +2961,7 @@ checksum = "2c9283685feec7d69af75fb0e858d5e7378f33fe4fc699383b2916ab9273e03c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -3160,7 +3174,7 @@ checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -3184,7 +3198,7 @@ checksum = "8d3b1629de253c70a0508c3899572da79ca359fdab27c7920ff00406df418906"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -3485,7 +3499,7 @@ dependencies = [
  "stochastic-rs-distributions",
  "stochastic-rs-stats",
  "stochastic-rs-stochastic",
- "syn 3.0.3",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -3518,7 +3532,6 @@ dependencies = [
  "gauss-quad",
  "log",
  "metal-oxide",
- "metal-oxide-build",
  "ndarray",
  "ndrustfft",
  "num-complex",
@@ -3568,9 +3581,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "3.0.3"
+version = "3.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53e9bae58849f64dfa4f5d5ae372c8341f7305f82a3868709269343628b659a3"
+checksum = "d78c8dee4c7bf0e14673097256fed6142ce9d3b85a408189d07482442145823b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3658,7 +3671,7 @@ checksum = "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.9",
 ]
 
 [[package]]

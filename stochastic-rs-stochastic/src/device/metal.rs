@@ -5,9 +5,9 @@ use metal_oxide::{Device, Module};
 
 use super::{DeviceError, DeviceInfo};
 
-pub(crate) mod bindings {
-  include!("metal/artifact/bindings.rs");
-}
+/// The kernel crate's launch functions and records, with its library built with fast math.
+#[metal_oxide::kernels(path = "../stochastic-rs-metal-kernels", math = "fast")]
+pub(crate) mod bindings {}
 
 type Result<T> = std::result::Result<T, DeviceError>;
 
@@ -26,12 +26,7 @@ pub(crate) fn context(ordinal: usize) -> Result<Rc<Context>> {
       return Ok(Rc::clone(context));
     }
     let device = create_device(ordinal)?;
-    let module = Module::from_bytes(
-      &device,
-      include_str!("metal/artifact/manifest.json"),
-      include_bytes!("metal/artifact/kernels.metallib"),
-    )
-    .map_err(device_error)?;
+    let module = bindings::module(&device).map_err(device_error)?;
     let context = Rc::new(Context { device, module });
     contexts.push((ordinal, Rc::clone(&context)));
     Ok(context)

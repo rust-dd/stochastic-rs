@@ -1,5 +1,5 @@
-//! With the `metal` feature, keeps the Euler kernel entries and the embedded Metal artifact
-//! in step with the kernel sources. Packages without the kernel crate use the artifact as is.
+//! With the `metal` feature, keeps the Euler kernel entries in step with the family
+//! definitions; the kernel macros build the Metal library from them.
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
   println!("cargo:rerun-if-changed=build.rs");
@@ -9,12 +9,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
       std::path::Path::new("src/euler/families/definitions"),
       std::path::Path::new("../stochastic-rs-metal-kernels/src/euler/entries"),
     )?;
-    metal_oxide_build::Artifact::new(
-      "../stochastic-rs-metal-kernels/Cargo.toml",
-      "src/device/metal/artifact",
-    )
-    .math_mode(metal_oxide_build::MathMode::Fast)
-    .update()?;
   }
   Ok(())
 }
