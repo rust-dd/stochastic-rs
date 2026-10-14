@@ -32,9 +32,9 @@ kendalls = "1.0.0"
 libm = "0.2.16"
 linreg = "0.2.0"
 log = "0.4.34"
-metal-oxide = { git = "https://github.com/rust-dd/metal-oxide", rev = "577f9ffc8d5496c1c8943ac182cd53c2f2176713" }
-metal-oxide-build = { git = "https://github.com/rust-dd/metal-oxide", rev = "577f9ffc8d5496c1c8943ac182cd53c2f2176713" }
-metal-oxide-device = { git = "https://github.com/rust-dd/metal-oxide", rev = "577f9ffc8d5496c1c8943ac182cd53c2f2176713" }
+metal-oxide = { git = "https://github.com/rust-dd/metal-oxide", rev = "e8e23b277cfdb3cf0ac41948736cc49d53dd0ba3" }
+metal-oxide-build = { git = "https://github.com/rust-dd/metal-oxide", rev = "e8e23b277cfdb3cf0ac41948736cc49d53dd0ba3" }
+metal-oxide-device = { git = "https://github.com/rust-dd/metal-oxide", rev = "e8e23b277cfdb3cf0ac41948736cc49d53dd0ba3" }
 ndarray = { version = "0.17.2", features = ["rayon", "matrixmultiply-threading"] }
 ndarray-npy = "0.10.0"
 ndrustfft = "0.6.2"

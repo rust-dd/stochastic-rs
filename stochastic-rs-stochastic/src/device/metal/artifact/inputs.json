@@ -1,11 +1,11 @@
 {
   "format": 1,
-  "artifact": "bbe6db60263a0ee54d07806b903afdc1c1770ff7dfb42aa59dffb4ec63f12987",
+  "artifact": "e84ea9a0bb3d8dee2782b50659a59792dd1b9fa7aec36e92827b05cd4edd61fb",
   "math_mode": "fast",
   "lock": "../Cargo.lock",
   "packages": [
-    "metal-oxide-device 0.1.0-alpha.1 git+https://github.com/rust-dd/metal-oxide?rev=577f9ffc8d5496c1c8943ac182cd53c2f2176713#577f9ffc8d5496c1c8943ac182cd53c2f2176713",
-    "metal-oxide-macros 0.1.0-alpha.1 git+https://github.com/rust-dd/metal-oxide?rev=577f9ffc8d5496c1c8943ac182cd53c2f2176713#577f9ffc8d5496c1c8943ac182cd53c2f2176713"
+    "metal-oxide-device 0.1.0-alpha.1 git+https://github.com/rust-dd/metal-oxide?rev=e8e23b277cfdb3cf0ac41948736cc49d53dd0ba3#e8e23b277cfdb3cf0ac41948736cc49d53dd0ba3",
+    "metal-oxide-macros 0.1.0-alpha.1 git+https://github.com/rust-dd/metal-oxide?rev=e8e23b277cfdb3cf0ac41948736cc49d53dd0ba3#e8e23b277cfdb3cf0ac41948736cc49d53dd0ba3"
   ],
   "files": {
     "../stochastic-rs-stochastic/src/euler/families/definitions/diffusions.rs": "231259ce95e8dbb222456ae3a7f78e9f5950ec78a7dd47a0bbc79527bb60a1b8",
