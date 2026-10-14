@@ -107,5 +107,5 @@ pub(super) fn with_f32_rows<R>(
   consume: impl FnOnce(&[f32]) -> Result<R>,
 ) -> Result<R> {
   let (output, size) = sample(launch)?;
-  consume(&output.as_buffer().as_slice()[..launch.m * size])
+  consume(&output.as_buffer().read().wait()[..launch.m * size])
 }

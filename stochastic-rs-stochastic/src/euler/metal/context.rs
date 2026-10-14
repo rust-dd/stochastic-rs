@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use metal_oxide::{Argument, Buffer, DynamicLaunchConfig, Pipeline};
+use metal_oxide::{Argument, Buffer, DynamicLaunchConfig, Launch, Operation, Pipeline};
 
 use super::{Increments, Result};
 use crate::device::metal::{bindings::EulerArgs, device_error};
@@ -75,7 +75,7 @@ impl Context {
         .map_err(device_error)?,
       );
     }
-    self.params.as_mut_slice().copy_from_slice(&params);
+    self.params.write().wait().copy_from_slice(&params);
     update(&self.shared, &mut self.curves, curves)?;
     for (buffer, values) in self.lift.iter_mut().zip(lift) {
       update(&self.shared, buffer, values)?;
@@ -106,21 +106,33 @@ impl Context {
     // guarded thread owns one complete path in every output plane. All buffers
     // belong to the same ordered context and no CPU view survives the launch.
     unsafe {
-      self.shared.device.launch(
-        pipeline,
+      Launch::new(
+        Ok(pipeline),
         config,
-        &[
-          Argument::write(&mut output),
-          Argument::read(&self.params),
-          Argument::value(args).map_err(device_error)?,
-          Argument::read(increments),
-          Argument::read(&self.curves),
-          Argument::read(&self.lift[0]),
-          Argument::read(&self.lift[1]),
-          Argument::read(&self.lift[2]),
-          Argument::read(&self.program),
-        ],
+        (
+          &mut output,
+          &self.params,
+          args,
+          increments,
+          &self.curves,
+          &self.lift,
+          &self.program,
+        ),
+        |(output, params, args, increments, curves, lift, program)| {
+          Ok([
+            Argument::write(output),
+            Argument::read(params),
+            Argument::value(*args)?,
+            Argument::read(increments),
+            Argument::read(curves),
+            Argument::read(&lift[0]),
+            Argument::read(&lift[1]),
+            Argument::read(&lift[2]),
+            Argument::read(program),
+          ])
+        },
       )
+      .wait()
     }
     .map_err(device_error)?;
     Ok(output)
@@ -146,7 +158,7 @@ fn update(context: &metal::Context, buffer: &mut Buffer<f32>, values: &[f32]) ->
       .buffer_from_slice(values)
       .map_err(device_error)?;
   } else {
-    buffer.as_mut_slice()[..values.len()].copy_from_slice(values);
+    buffer.write().wait()[..values.len()].copy_from_slice(values);
   }
   Ok(())
 }
@@ -181,7 +193,7 @@ pub(super) fn run<O>(
       .1
       .launch(params, args, increments, curves, lift, program, total)
   })?;
-  let result = finish(&output.as_slice()[..total]);
+  let result = finish(&output.read().wait()[..total]);
   CONTEXT.with_borrow_mut(|slot| {
     if let Some((index, context)) = slot
       && *index == ordinal

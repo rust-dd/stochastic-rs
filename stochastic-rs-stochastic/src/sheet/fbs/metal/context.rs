@@ -1,7 +1,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use metal_oxide::{Argument, Batch, Buffer, Dim3, DynamicLaunchConfig, Pipeline};
+use metal_oxide::{
+  Argument, Batch, Buffer, Dim3, DynamicLaunchConfig, Launch, Operation, Pipeline, sequence,
+};
 
 use super::{Result, SheetLaunch, launch_len};
 use crate::device::DeviceError;
@@ -108,7 +110,7 @@ impl Context {
           && s.n == n
           && s.sheets == sheets
           && s.key == sheet.key
-          && s.lam.as_slice() == sheet.lam
+          && s.lam.read().wait() == sheet.lam
       },
       || -> Result<_> {
         let floats = |len| {
@@ -163,24 +165,34 @@ impl Context {
     // SAFETY: tiles and column groups partition complete rows, then complete columns; every
     // tile thread reaches each barrier and shuffle. Batch orders the dependent launches.
     unsafe {
-      self.common.device.submit(|batch| {
-        batch.launch(
-          &self.rows,
+      sequence(|batch| {
+        batch.push(Launch::new(
+          Ok(&self.rows),
           tile_config(total, row_tile),
-          &[
-            Argument::write(real),
-            Argument::write(imag),
-            Argument::read(lam),
-            Argument::read(row_twiddles),
-            Argument::value(log_cols)?,
-            Argument::value(log_rows + log_cols)?,
-            Argument::value(row_tile)?,
-            Argument::value(seed)?,
-            Argument::value(first_cell)?,
-            Argument::threadgroup::<f32>(scratch(row_tile))?,
-            Argument::threadgroup::<f32>(scratch(row_tile))?,
-          ],
-        )?;
+          (
+            &mut *real,
+            &mut *imag,
+            &*lam,
+            &*row_twiddles,
+            (log_cols, log_rows + log_cols, row_tile, seed, first_cell),
+            scratch(row_tile),
+          ),
+          |(real, imag, lam, twiddles, (log_cols, log_n, tile, seed, first_cell), scratch)| {
+            Ok([
+              Argument::write(real),
+              Argument::write(imag),
+              Argument::read(lam),
+              Argument::read(twiddles),
+              Argument::value(*log_cols)?,
+              Argument::value(*log_n)?,
+              Argument::value(*tile)?,
+              Argument::value(*seed)?,
+              Argument::value(*first_cell)?,
+              Argument::threadgroup::<f32>(*scratch)?,
+              Argument::threadgroup::<f32>(*scratch)?,
+            ])
+          },
+        ))?;
         let row_pass = Transforms {
           log_n: log_cols,
           twiddles: row_twiddles,
@@ -195,32 +207,50 @@ impl Context {
           row_tile,
           &row_plan.1,
         )?;
-        batch.launch(
-          &self.transpose,
+        batch.push(Launch::new(
+          Ok(&self.transpose),
           DynamicLaunchConfig::for_elements(total, 256)?,
-          &[
-            Argument::read(real),
-            Argument::read(imag),
-            Argument::write(real_t),
-            Argument::write(imag_t),
-            Argument::value(log_rows)?,
-            Argument::value(log_cols)?,
-            Argument::value(total)?,
-          ],
-        )?;
-        batch.launch(
-          &self.tile,
+          (
+            &*real,
+            &*imag,
+            &mut *real_t,
+            &mut *imag_t,
+            (log_rows, log_cols, total),
+          ),
+          |(real, imag, real_t, imag_t, (log_rows, log_cols, total))| {
+            Ok([
+              Argument::read(real),
+              Argument::read(imag),
+              Argument::write(real_t),
+              Argument::write(imag_t),
+              Argument::value(*log_rows)?,
+              Argument::value(*log_cols)?,
+              Argument::value(*total)?,
+            ])
+          },
+        ))?;
+        batch.push(Launch::new(
+          Ok(&self.tile),
           tile_config(total, column_tile),
-          &[
-            Argument::read_write(real_t),
-            Argument::read_write(imag_t),
-            Argument::read(column_twiddles),
-            Argument::value(log_rows)?,
-            Argument::value(column_tile)?,
-            Argument::threadgroup::<f32>(scratch(column_tile))?,
-            Argument::threadgroup::<f32>(scratch(column_tile))?,
-          ],
-        )?;
+          (
+            &mut *real_t,
+            &mut *imag_t,
+            &*column_twiddles,
+            (log_rows, column_tile),
+            scratch(column_tile),
+          ),
+          |(real_t, imag_t, twiddles, (log_rows, tile), scratch)| {
+            Ok([
+              Argument::read_write(real_t),
+              Argument::read_write(imag_t),
+              Argument::read(twiddles),
+              Argument::value(*log_rows)?,
+              Argument::value(*tile)?,
+              Argument::threadgroup::<f32>(*scratch)?,
+              Argument::threadgroup::<f32>(*scratch)?,
+            ])
+          },
+        ))?;
         let column_pass = Transforms {
           log_n: log_rows,
           twiddles: column_twiddles,
@@ -235,28 +265,38 @@ impl Context {
           column_tile,
           &column_plan.1,
         )?;
-        batch.launch(
-          &self.extract,
-          DynamicLaunchConfig::for_elements(out_len, 256)?,
-          &[
-            Argument::read(real_t),
-            Argument::write(output),
-            Argument::value(cells_u32)?,
-            Argument::value(rows)?,
-            Argument::value(m_u32)?,
-            Argument::value(n_u32)?,
-            Argument::value(sheet.r)?,
-            Argument::value(sheet.corr)?,
-            Argument::value(seed)?,
-            Argument::value(correction_cell)?,
-            Argument::value(out_len)?,
-          ],
-        )
+        batch
+          .push(Launch::new(
+            Ok(&self.extract),
+            DynamicLaunchConfig::for_elements(out_len, 256)?,
+            (
+              &*real_t,
+              &mut *output,
+              (cells_u32, rows, m_u32, n_u32),
+              (sheet.r, sheet.corr, seed, correction_cell, out_len),
+            ),
+            |(real_t, output, (cells, rows, m, n), (r, corr, seed, correction_cell, out_len))| {
+              Ok([
+                Argument::read(real_t),
+                Argument::write(output),
+                Argument::value(*cells)?,
+                Argument::value(*rows)?,
+                Argument::value(*m)?,
+                Argument::value(*n)?,
+                Argument::value(*r)?,
+                Argument::value(*corr)?,
+                Argument::value(*seed)?,
+                Argument::value(*correction_cell)?,
+                Argument::value(*out_len)?,
+              ])
+            },
+          ))
+          .map(drop)
       })
+      .wait()
     }
-    .and_then(|submission| submission.wait())
     .map_err(device_error)?;
-    Ok(output.as_slice())
+    Ok(output.read().wait())
   }
 }
 
@@ -281,7 +321,7 @@ struct Transforms<'a> {
 /// Runs the stages after the tile in place. Safety: `real`/`imag` hold `transforms` done below
 /// `tile_log`, `passes` sum to the rest and the twiddles hold 2^(log_n - 1) entries.
 unsafe fn encode_passes(
-  batch: &mut Batch<'_>,
+  batch: &mut Batch,
   columns: &[Pipeline],
   real: &mut Buffer<f32>,
   imag: &mut Buffer<f32>,
@@ -294,18 +334,26 @@ unsafe fn encode_passes(
     let threads = transforms.total >> stages;
     // SAFETY: each thread owns 2^stages positions of one complete transform.
     unsafe {
-      batch.launch(
-        &columns[stages - 1],
+      batch.push(Launch::new(
+        Ok(&columns[stages - 1]),
         DynamicLaunchConfig::for_elements(threads, 256)?,
-        &[
-          Argument::read_write(real),
-          Argument::read_write(imag),
-          Argument::read(transforms.twiddles),
-          Argument::value(transforms.log_n)?,
-          Argument::value(s0)?,
-          Argument::value(threads)?,
-        ],
-      )?;
+        (
+          &mut *real,
+          &mut *imag,
+          transforms.twiddles,
+          (transforms.log_n, s0, threads),
+        ),
+        |(real, imag, twiddles, (log_n, s0, threads))| {
+          Ok([
+            Argument::read_write(real),
+            Argument::read_write(imag),
+            Argument::read(twiddles),
+            Argument::value(*log_n)?,
+            Argument::value(*s0)?,
+            Argument::value(*threads)?,
+          ])
+        },
+      ))?;
     }
     s0 += stages as u32;
   }

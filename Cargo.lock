@@ -1910,7 +1910,7 @@ dependencies = [
 [[package]]
 name = "metal-oxide"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=dec78eadaebbd8ab5b31a41243a34ace99d67e62#dec78eadaebbd8ab5b31a41243a34ace99d67e62"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=577f9ffc8d5496c1c8943ac182cd53c2f2176713#577f9ffc8d5496c1c8943ac182cd53c2f2176713"
 dependencies = [
  "block2",
  "dispatch2",
@@ -1924,7 +1924,7 @@ dependencies = [
 [[package]]
 name = "metal-oxide-artifact"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=dec78eadaebbd8ab5b31a41243a34ace99d67e62#dec78eadaebbd8ab5b31a41243a34ace99d67e62"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=577f9ffc8d5496c1c8943ac182cd53c2f2176713#577f9ffc8d5496c1c8943ac182cd53c2f2176713"
 dependencies = [
  "serde",
  "serde_json",
@@ -1934,7 +1934,7 @@ dependencies = [
 [[package]]
 name = "metal-oxide-build"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=dec78eadaebbd8ab5b31a41243a34ace99d67e62#dec78eadaebbd8ab5b31a41243a34ace99d67e62"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=577f9ffc8d5496c1c8943ac182cd53c2f2176713#577f9ffc8d5496c1c8943ac182cd53c2f2176713"
 dependencies = [
  "metal-oxide-artifact",
  "serde",
@@ -1944,7 +1944,7 @@ dependencies = [
 [[package]]
 name = "metal-oxide-device"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=dec78eadaebbd8ab5b31a41243a34ace99d67e62#dec78eadaebbd8ab5b31a41243a34ace99d67e62"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=577f9ffc8d5496c1c8943ac182cd53c2f2176713#577f9ffc8d5496c1c8943ac182cd53c2f2176713"
 dependencies = [
  "metal-oxide-macros",
 ]
@@ -1952,7 +1952,7 @@ dependencies = [
 [[package]]
 name = "metal-oxide-macros"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=dec78eadaebbd8ab5b31a41243a34ace99d67e62#dec78eadaebbd8ab5b31a41243a34ace99d67e62"
+source = "git+https://github.com/rust-dd/metal-oxide?rev=577f9ffc8d5496c1c8943ac182cd53c2f2176713#577f9ffc8d5496c1c8943ac182cd53c2f2176713"
 
 [[package]]
 name = "minimal-lexical"

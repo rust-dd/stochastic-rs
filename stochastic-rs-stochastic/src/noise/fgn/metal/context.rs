@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use metal_oxide::{Argument, Buffer, Dim3, DynamicLaunchConfig, Pipeline};
+use metal_oxide::{Argument, Buffer, Dim3, DynamicLaunchConfig, Operation, Pipeline, sequence};
 
 use super::{Launch, Result, build_bit_reverse_table, launch_len, plan, twiddle_table};
 use crate::device::DeviceError;
@@ -166,90 +166,139 @@ impl Context {
     // SAFETY: tiles and column groups partition complete transforms; every tile thread reaches
     // each barrier and shuffle. The planner bounds every buffer and the readout guards partial rows.
     unsafe {
-      device.submit(|batch| {
+      sequence(|batch| {
         let Some(Scratch {
           real,
           imag,
           twiddles,
         }) = scratch
         else {
-          return batch.launch(
-            &self.single,
-            DynamicLaunchConfig::new(Dim3::x(total / tile), Dim3::x(tile / 2)),
-            &[
+          return batch
+            .push(metal_oxide::Launch::new(
+              Ok(&self.single),
+              DynamicLaunchConfig::new(Dim3::x(total / tile), Dim3::x(tile / 2)),
+              (
+                &*eigs,
+                &*tile_twiddles,
+                (log_n, seed, base_cell),
+                &mut *output,
+                (size, scale, rows, parity),
+                shared,
+              ),
+              |(
+                eigs,
+                tile_twiddles,
+                (log_n, seed, base_cell),
+                output,
+                (size, scale, rows, parity),
+                shared,
+              )| {
+                Ok([
+                  Argument::read(eigs),
+                  Argument::read(tile_twiddles),
+                  Argument::value(*log_n)?,
+                  Argument::value(*seed)?,
+                  Argument::value(*base_cell)?,
+                  Argument::write(output),
+                  Argument::value(*size)?,
+                  Argument::value(*scale)?,
+                  Argument::value(*rows)?,
+                  Argument::value(*parity)?,
+                  Argument::threadgroup::<f32>(*shared)?,
+                  Argument::threadgroup::<f32>(*shared)?,
+                ])
+              },
+            ))
+            .map(drop);
+        };
+        batch.push(metal_oxide::Launch::new(
+          Ok(&self.tile),
+          DynamicLaunchConfig::new(Dim3::x(total / tile), Dim3::x(tile / 2)),
+          (
+            &mut *real,
+            &mut *imag,
+            &*eigs,
+            &*tile_twiddles,
+            (log_n, tile_log as u32, seed, base_cell),
+            shared,
+          ),
+          |(real, imag, eigs, tile_twiddles, (log_n, tile_log, seed, base_cell), shared)| {
+            Ok([
+              Argument::write(real),
+              Argument::write(imag),
               Argument::read(eigs),
               Argument::read(tile_twiddles),
-              Argument::value(log_n)?,
-              Argument::value(seed)?,
-              Argument::value(base_cell)?,
-              Argument::write(output),
-              Argument::value(size)?,
-              Argument::value(scale)?,
-              Argument::value(rows)?,
-              Argument::value(parity)?,
-              Argument::threadgroup::<f32>(shared)?,
-              Argument::threadgroup::<f32>(shared)?,
-            ],
-          );
-        };
-        batch.launch(
-          &self.tile,
-          DynamicLaunchConfig::new(Dim3::x(total / tile), Dim3::x(tile / 2)),
-          &[
-            Argument::write(real),
-            Argument::write(imag),
-            Argument::read(eigs),
-            Argument::read(tile_twiddles),
-            Argument::value(log_n)?,
-            Argument::value(tile_log as u32)?,
-            Argument::value(seed)?,
-            Argument::value(base_cell)?,
-            Argument::threadgroup::<f32>(shared)?,
-            Argument::threadgroup::<f32>(shared)?,
-          ],
-        )?;
+              Argument::value(*log_n)?,
+              Argument::value(*tile_log)?,
+              Argument::value(*seed)?,
+              Argument::value(*base_cell)?,
+              Argument::threadgroup::<f32>(*shared)?,
+              Argument::threadgroup::<f32>(*shared)?,
+            ])
+          },
+        ))?;
         let mut s0 = tile_log as u32;
         for (index, &stages) in columns.iter().enumerate() {
           let threads = total >> stages;
           let config = DynamicLaunchConfig::for_elements(threads, 256)?;
           if index + 1 < columns.len() {
-            batch.launch(
-              &self.columns[stages - 2],
+            batch.push(metal_oxide::Launch::new(
+              Ok(&self.columns[stages - 2]),
               config,
-              &[
-                Argument::read_write(real),
-                Argument::read_write(imag),
-                Argument::read(twiddles),
-                Argument::value(log_n)?,
-                Argument::value(s0)?,
-                Argument::value(threads)?,
-              ],
-            )?;
+              (&mut *real, &mut *imag, &*twiddles, [log_n, s0, threads]),
+              |(real, imag, twiddles, [log_n, s0, threads])| {
+                Ok([
+                  Argument::read_write(real),
+                  Argument::read_write(imag),
+                  Argument::read(twiddles),
+                  Argument::value(*log_n)?,
+                  Argument::value(*s0)?,
+                  Argument::value(*threads)?,
+                ])
+              },
+            ))?;
           } else {
-            batch.launch(
-              &self.extract[stages - 1],
+            batch.push(metal_oxide::Launch::new(
+              Ok(&self.extract[stages - 1]),
               config,
-              &[
-                Argument::read(real),
-                Argument::read(imag),
-                Argument::read(twiddles),
-                Argument::value(log_n)?,
-                Argument::value(s0)?,
-                Argument::write(output),
-                Argument::value(size)?,
-                Argument::value(scale)?,
-                Argument::value(rows)?,
-                Argument::value(parity)?,
-                Argument::value(threads)?,
-              ],
-            )?;
+              (
+                &*real,
+                &*imag,
+                &*twiddles,
+                [log_n, s0],
+                &mut *output,
+                (size, scale, rows, parity, threads),
+              ),
+              |(
+                real,
+                imag,
+                twiddles,
+                [log_n, s0],
+                output,
+                (size, scale, rows, parity, threads),
+              )| {
+                Ok([
+                  Argument::read(real),
+                  Argument::read(imag),
+                  Argument::read(twiddles),
+                  Argument::value(*log_n)?,
+                  Argument::value(*s0)?,
+                  Argument::write(output),
+                  Argument::value(*size)?,
+                  Argument::value(*scale)?,
+                  Argument::value(*rows)?,
+                  Argument::value(*parity)?,
+                  Argument::value(*threads)?,
+                ])
+              },
+            ))?;
           }
           s0 += stages as u32;
         }
         Ok(())
       })
+      .wait()
     }
-    .and_then(|submission| submission.wait())
     .map(|_| out_size)
     .map_err(device_error)
   }
