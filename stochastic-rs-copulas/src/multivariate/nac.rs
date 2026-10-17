@@ -20,6 +20,7 @@
 //!
 //! Hofert & Mächler (2011), Algorithm 3.1: root frailty `Γ(1/θ, 1)` (Clayton) or `S_+(1/θ)` (Gumbel); a child's frailty given
 //! its parent's `V₀` has LST `exp(−V₀((1 + t)^α − 1))` or `exp(−V₀ t^α)`, `α = θ₀/θ₁` (their Table 3); a leaf is `ψ(E/V)`.
+//! Hofert's rejection costs O(V₀) per Clayton child, so a near-independent parent (small θ₀, large `V₀`) samples slowly.
 //!
 //! ## Density
 //!
