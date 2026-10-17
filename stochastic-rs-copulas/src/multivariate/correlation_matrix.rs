@@ -92,9 +92,9 @@ impl CorrelationMatrix {
 /// bisected to `1e-6` with a Cholesky test of `S(λ) − 1e-3 I` (Algorithm 3.1, §5.3); the unit diagonal survives.
 pub(crate) fn shrink_to_spd(corr: Array2<f64>) -> Array2<f64> {
   let clears_floor = |matrix: &Array2<f64>| {
-    let mut lifted = matrix.clone();
-    lifted.diag_mut().mapv_inplace(|d| d - EIGENVALUE_FLOOR);
-    is_spd(lifted.view())
+    let mut lowered = matrix.clone();
+    lowered.diag_mut().mapv_inplace(|d| d - EIGENVALUE_FLOOR);
+    is_spd(lowered.view())
   };
   if clears_floor(&corr) {
     return corr;
