@@ -74,6 +74,11 @@ pub(crate) fn expm1_over(t: f64) -> f64 {
   if t == 0.0 { 1.0 } else { t.exp_m1() / t }
 }
 
+/// `ln_1p(t)/t`, 1 at `t = 0`.
+pub(crate) fn ln_1p_over(t: f64) -> f64 {
+  if t == 0.0 { 1.0 } else { t.ln_1p() / t }
+}
+
 /// `ln(expm1(z))` for `z ≥ 0`, from `ln z` where `z` is subnormal.
 pub(crate) fn ln_expm1(z: f64, ln_z: f64) -> f64 {
   if z < f64::MIN_POSITIVE {

@@ -97,16 +97,12 @@ impl BivariateExt for Joe {
     vec![]
   }
 
-  /// Archimedean generator $\varphi(t) = -\ln(1 - (1-t)^\theta)$.
+  /// Archimedean generator $\varphi(t) = -\ln(1 - (1-t)^\theta)$ from `ln_1p(−t)`, so `1 − t` and `(1 − t)^θ` keep their
+  /// digits at both ends of `t` and of `θ`.
   fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    let mut out = Array1::<f64>::zeros(t.len());
-    for i in 0..t.len() {
-      let a = (1.0 - t[i]).powf(theta);
-      out[i] = -((1.0 - a).ln());
-    }
-    Ok(out)
+    Ok(t.mapv(|t| -ln_one_minus_pow(theta, (-t).ln_1p())))
   }
 
   /// Density. Let $a = (1-u)^\theta$, $b = (1-v)^\theta$,

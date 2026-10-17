@@ -15,6 +15,7 @@ use crate::bivariate::conditional::check_lengths;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::confine;
+use crate::bivariate::conditional::expm1_over;
 use crate::bivariate::conditional::ln_ratio;
 use crate::bivariate::conditional::softplus;
 use crate::error::CopulaError;
@@ -137,11 +138,22 @@ impl BivariateExt for Clayton {
     vec![]
   }
 
+  /// Nelsen's `φ(t) = (t^{−θ} − 1)/θ` as `−ln t · expm1(x)/x`, `x = −θ ln t`, which keeps its digits as `θ → 0` and is the
+  /// limit `−ln t` at `θ = 0`; `expm1(x)/θ` past `x = 1`.
   fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
     let theta = self.theta.unwrap();
-    Ok((1.0 / theta) * (t.powf(-theta) - 1.0))
+    Ok(t.mapv(|t| {
+      let minus_ln_t = -t.ln();
+      let x = theta * minus_ln_t;
+      if theta == 0.0 {
+        minus_ln_t
+      } else if x <= 1.0 {
+        minus_ln_t * expm1_over(x)
+      } else {
+        x.exp_m1() / theta
+      }
+    }))
   }
 
   /// Density $c(u,v) = (\theta+1)(uv)^{-\theta-1}\big(u^{-\theta}+v^{-\theta}-1\big)^{-(1+2\theta)/\theta}$

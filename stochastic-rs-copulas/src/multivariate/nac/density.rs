@@ -55,10 +55,12 @@ pub(super) struct Density {
 
 struct Scratch {
   ln_t: Vec<f64>,
+  minus_ln_c: Vec<f64>,
   polys: Vec<Vec<f64>>,
   b: Vec<f64>,
   tmp: Vec<f64>,
   t_terms: Vec<f64>,
+  parts: Vec<f64>,
 }
 
 impl Density {
@@ -80,10 +82,12 @@ impl Density {
   pub(super) fn log_pdf(&self, x: ArrayView2<f64>) -> Array1<f64> {
     let mut scratch = Scratch {
       ln_t: vec![0.0; self.nodes.len()],
+      minus_ln_c: vec![0.0; self.nodes.len()],
       polys: vec![vec![]; self.nodes.len()],
       b: vec![],
       tmp: vec![],
       t_terms: vec![],
+      parts: vec![],
     };
     x.rows()
       .into_iter()
@@ -120,7 +124,7 @@ impl Density {
       }
     }
     let ln_t = self.gather(last, u, s, &mut ln_jacobian);
-    ln_jacobian + self.root_sum(&s.b, ln_t)
+    ln_jacobian + self.root_sum(&s.b, ln_t, s.minus_ln_c[last])
   }
 
   /// Sets `s.b` to the product of the node's part polynomials (a leaf is `v`) and returns `ln t` at the node.
@@ -144,19 +148,23 @@ impl Density {
     }
     let ln_t = lse(s.t_terms.iter().copied());
     s.ln_t[i] = ln_t;
+    s.parts.clear();
+    s.parts.extend(node.leaves.iter().map(|&j| -u[j].ln()));
+    s.parts
+      .extend(node.children.iter().map(|&c| s.minus_ln_c[c]));
+    s.minus_ln_c[i] = self.generator.minus_ln_cdf(node.theta, &s.parts);
     ln_t
   }
 
   /// `ln Σ_n B̃_n (−1)^n ψ^{(n)}(t)`: Clayton `(1/θ)_n (1 + t)^{−n−1/θ}`, Gumbel `ψ(t) t^{−n} Σ_k |s_nk(1/θ)| t^{k/θ}`
-  /// (Hofert, Mächler & McNeil 2012, Thm 3.2 (2) and (4)).
-  fn root_sum(&self, b: &[f64], ln_t: f64) -> f64 {
+  /// (Hofert, Mächler & McNeil 2012, Thm 3.2 (2) and (4)); Clayton's `(n + 1/θ) ln(1 + t)` as `(nθ + 1)(−ln C)`.
+  fn root_sum(&self, b: &[f64], ln_t: f64, minus_ln_c: f64) -> f64 {
     let theta = self.nodes[self.nodes.len() - 1].theta;
     let table = &self.root_table;
     let finite = b.iter().position(|&x| x > f64::NEG_INFINITY).unwrap_or(0);
     match self.generator {
       Generator::Clayton => {
-        let ln_1p_t = ln_1p_exp(ln_t);
-        lse((finite..b.len()).map(|n| b[n] + table[n] - (n as f64 + 1.0 / theta) * ln_1p_t))
+        lse((finite..b.len()).map(|n| b[n] + table[n] - (n as f64 * theta + 1.0) * minus_ln_c))
       }
       Generator::Gumbel => {
         let ln_x = ln_t / theta;

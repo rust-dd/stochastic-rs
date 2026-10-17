@@ -1,5 +1,7 @@
 use super::*;
 use crate::correlation::kendall_tau;
+use crate::multivariate::nac::sample::Frailty;
+use crate::multivariate::nac::sample::tilted_stable;
 
 /// `(θ, ζ₁)` of Clayton, ζ₁ = Var(1 − 2U − 2V + 4C(U, V)) by quadrature, for Hoeffding's (1948, Eq. (9.15)) variance
 /// of Kendall's τ̂, Var τ̂ = 2[2(n − 2)ζ₁ + 1 − τ²]/(n(n − 1)).
@@ -50,8 +52,16 @@ fn nac_clayton_tilted_stable_has_its_laplace_transform() {
     (0.025, 2.0, 5),
   ] {
     let mut rng = Deterministic::new(seed).rng();
+    let parent = Frailty {
+      ln_v: f64::ln(v0),
+      w: f64::ln(v0),
+    };
     let draws = (0..n)
-      .map(|_| NestedArchimedean::tilted_stable(&mut rng, alpha, v0))
+      .map(|_| {
+        tilted_stable(&mut rng, alpha, parent, 1.0, 1.0 / alpha)
+          .ln_v
+          .exp()
+      })
       .collect::<Vec<_>>();
     let lst = |t: f64| (-v0 * ((1.0 + t).powf(alpha) - 1.0)).exp();
     for t in [0.5, 1.0, 2.0] {

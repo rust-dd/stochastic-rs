@@ -18,8 +18,8 @@
 //!
 //! ## Sampling
 //!
-//! Hofert & Mächler (2011), Algorithm 3.1: root frailty `Γ(1/θ, 1)` (Clayton) or `S_+(1/θ)` (Gumbel), a child's from its
-//! parent's `V₀` by their Table 3, a leaf `ψ(E/V)`; a Clayton child costs O(V₀), slow under a near-independent parent.
+//! Hofert & Mächler (2011), Algorithm 3.1 in logarithms, so every admitted `θ` samples: root frailty `Γ(1/θ, 1)` or
+//! `S_+(1/θ)`, a child's from its parent's `V₀` by their Table 3, a leaf `ψ(E/V)`; a Clayton child costs O(V₀).
 //!
 //! ## Density
 //!
@@ -36,6 +36,8 @@
 //!   Chapman & Hall, ch. 4.
 //! - Hofert, M. (2008), "Sampling Archimedean copulas",
 //!   *Computational Statistics & Data Analysis* 52(12), 5163-5174.
+//! - Devroye, L. (2009), "Random variate generation for exponentially and polynomially tilted stable distributions", *ACM Transactions on Modeling and Computer Simulation* 19(4), Art. 18, doi:10.1145/1596519.1596523.
+//! - Marsaglia, G., Tsang, W.W. (2000), "A simple method for generating gamma variables", *ACM Transactions on Mathematical Software* 26(3), 363-372, doi:10.1145/358407.358414.
 //! - Hofert, M. (2011), "Efficiently sampling nested Archimedean copulas", *Computational Statistics & Data Analysis* 55(1), 57-70, doi:10.1016/j.csda.2010.04.025.
 //! - Hofert, M., Mächler, M. (2011), "Nested Archimedean Copulas Meet R: The nacopula Package", *Journal of Statistical Software* 39(9), 1-20, doi:10.18637/jss.v039.i09.
 //! - Hofert, M., Mächler, M., McNeil, A.J. (2012), "Likelihood inference for Archimedean copulas in high dimensions under known margins", *Journal of Multivariate Analysis* 110, 133-150, doi:10.1016/j.jmva.2012.02.019.
@@ -51,20 +53,18 @@
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
-use rand::Rng;
-use rand::RngExt;
-use stochastic_rs_core::simd_rng::Deterministic;
 use stochastic_rs_core::simd_rng::SeedExt;
-use stochastic_rs_distributions::SimdDistribution;
-use stochastic_rs_distributions::gamma::SimdGamma;
 
 use super::MultivariateFamily;
 use crate::bivariate::BivariateFamily;
+use crate::bivariate::conditional::expm1_over;
+use crate::bivariate::conditional::ln_1p_over;
 use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
 
 mod density;
 mod fit;
+mod sample;
 
 /// The two generators a nested Archimedean copula admits; the public API names them by `BivariateFamily`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,20 +111,35 @@ impl Generator {
     })
   }
 
-  /// LST-normalised inverse generator: Clayton $(1 + s)^{-1/\theta}$, Gumbel $\exp(-s^{1/\theta})$.
-  fn inverse_generator(self, theta: f64, s: f64) -> f64 {
-    match self {
-      Self::Clayton => (1.0 + s).powf(-1.0 / theta),
-      Self::Gumbel => (-(s.powf(1.0 / theta))).exp(),
+  /// `−ln C` of a node from its parts' `y = −ln C_k`, a leaf's `−ln u`: Clayton `ln(1 + Σ expm1(θy))/θ`, Gumbel
+  /// `(Σ y^θ)^{1/θ}`, each formed about the largest part, so it neither overflows nor drops the digits of a small `θ`.
+  fn minus_ln_cdf(self, theta: f64, parts: &[f64]) -> f64 {
+    let top = parts.iter().copied().fold(0.0, f64::max);
+    if top == 0.0 || top.is_infinite() {
+      return top;
     }
-  }
-
-  /// Generator $\varphi_\theta = \psi_\theta^{-1}$: Clayton $t^{-\theta} - 1$, Gumbel $(-\ln t)^\theta$.
-  fn generator(self, theta: f64, t: f64) -> f64 {
-    let t = t.clamp(1e-15, 1.0 - 1e-15);
     match self {
-      Self::Clayton => t.powf(-theta) - 1.0,
-      Self::Gumbel => (-t.ln()).powf(theta),
+      Self::Clayton if theta * top <= 36.0 => {
+        let t_over_theta = parts
+          .iter()
+          .map(|&y| y * expm1_over(theta * y))
+          .sum::<f64>();
+        t_over_theta * ln_1p_over(theta * t_over_theta)
+      }
+      Self::Clayton => {
+        let s = parts
+          .iter()
+          .map(|&y| (theta * (y - top)).exp() * -(-theta * y).exp_m1())
+          .sum::<f64>();
+        top + (s.ln() + ((-theta * top).exp() / s).ln_1p()) / theta
+      }
+      Self::Gumbel => {
+        let s = parts
+          .iter()
+          .map(|&y| (theta * (y / top).ln()).exp())
+          .sum::<f64>();
+        top * (s.ln() / theta).exp()
+      }
     }
   }
 }
@@ -283,153 +298,13 @@ impl NestedArchimedean {
     &self.index_order
   }
 
-  /// Sample a single positive $\alpha$-stable variate via the **Kanter
-  /// (1975) representation** (also Devroye 1986, §IX.4.3) on $\Theta \in
-  /// (0, \pi)$ — every term in the product is non-negative for $0 < \alpha
-  /// < 1$, so the output is strictly positive (in contrast to the
-  /// symmetric Chambers-Mallows formula on $(-\pi/2, \pi/2)$).
-  ///
-  /// $$
-  /// X = \frac{\sin(\alpha\Theta)\cdot \sin((1-\alpha)\Theta)^{(1-\alpha)/\alpha}}
-  ///          {\sin(\Theta)^{1/\alpha}\cdot W^{(1-\alpha)/\alpha}},
-  /// \quad \Theta \sim U(0,\pi),\ W \sim \mathrm{Exp}(1).
-  /// $$
-  fn positive_stable<R: Rng + ?Sized>(rng: &mut R, alpha: f64) -> f64 {
-    debug_assert!(alpha > 0.0 && alpha < 1.0);
-    let u: f64 = rng.random::<f64>().clamp(1e-15, 1.0 - 1e-15);
-    let theta = std::f64::consts::PI * u;
-    let w_uniform: f64 = rng.random::<f64>().clamp(1e-15, 1.0 - 1e-15);
-    let w = -w_uniform.ln();
-    let s_a = (alpha * theta).sin();
-    let s_oa = ((1.0 - alpha) * theta).sin();
-    let s_t = theta.sin();
-    let exponent = (1.0 - alpha) / alpha;
-    let numerator = s_a * s_oa.powf(exponent);
-    let denominator = s_t.powf(1.0 / alpha) * w.powf(exponent);
-    numerator / denominator
-  }
-
-  /// LST `exp(−v₀((1 + t)^α − 1))` by Hofert's (2011) fast rejection: a sum of `m` positive stables of LST `exp(−(v₀/m) t^α)`,
-  /// each kept with probability `e^{−S}`, `m` minimising the expected `m e^{v₀/m} ≤ e max(1, ⌈v₀⌉)` proposals.
-  fn tilted_stable<R: Rng + ?Sized>(rng: &mut R, alpha: f64, v0: f64) -> f64 {
-    let m = if v0 <= 1.0 {
-      1.0
-    } else {
-      let (lo, hi) = (v0.floor(), v0.ceil());
-      if lo * (v0 / lo).exp() <= hi * (v0 / hi).exp() {
-        lo
-      } else {
-        hi
-      }
-    };
-    let scale = (v0 / m).powf(1.0 / alpha);
-    (0..m as u64)
-      .map(|_| {
-        loop {
-          let s = scale * Self::positive_stable(rng, alpha);
-          // Strict on the [0, 1) uniform, so an infinite proposal is never kept.
-          if rng.random::<f64>() < (-s).exp() {
-            break s;
-          }
-        }
-      })
-      .sum()
-  }
-
-  fn sample_with<R: Rng + ?Sized>(&self, root: &NacNode, n: usize, rng: &mut R) -> Array2<f64> {
-    let d = self.dim;
-    let mut out = Array2::<f64>::zeros((n, d));
-    for r in 0..n {
-      let mut row = Array1::<f64>::zeros(d);
-      // Root call: `parent_state = None` signals that V_0 must be sampled
-      // independently from the root family's frailty distribution.
-      self.sample_node(rng, root, None, &mut row);
-      for j in 0..d {
-        out[[r, j]] = row[j];
-      }
-    }
-    out
-  }
-
-  /// Recursive sample helper. `parent_state` carries (parent_theta,
-  /// parent_frailty) when the node is a non-root descendant; `None`
-  /// signals the root call, in which case the frailty is sampled
-  /// independently. Writes leaves directly into `out` at the indices
-  /// stored in the node.
-  fn sample_node<R: Rng + ?Sized>(
-    &self,
-    rng: &mut R,
-    node: &NacNode,
-    parent_state: Option<(f64, f64)>,
-    out: &mut Array1<f64>,
-  ) {
-    let v = match (self.generator, parent_state) {
-      (Generator::Clayton, None) => {
-        // V ~ Gamma(1/θ, 1) has LST (1 + s)^{-1/θ}; its sub-seed comes off `rng`, since an `Unseeded` source
-        // here would break the replay of every Clayton tree (the root frailty is drawn on every row).
-        let sub_seed = rng.random::<u64>();
-        let mut g =
-          SimdGamma::<f64>::new(1.0 / node.theta, 1.0).seeded(&Deterministic::new(sub_seed));
-        g.sample()
-      }
-      (Generator::Gumbel, None) => {
-        // Root Gumbel frailty: V ~ S_+(1/θ). The θ = 1 case is the
-        // independence boundary (Gumbel = product copula); the positive
-        // stable distribution degenerates to the constant 1 there.
-        if (node.theta - 1.0).abs() < 1e-12 {
-          1.0
-        } else {
-          Self::positive_stable(rng, 1.0 / node.theta)
-        }
-      }
-      (Generator::Gumbel, Some((parent_theta, parent_v))) => {
-        // V_c | V_p has LST exp(-V_p s^α), α = θ_p / θ_c, so V_c = V_p^{1/α} · S_+(α) (Hofert & Mächler 2011, Table 3);
-        // α = 1 is the no-nesting case, V_c = V_p.
-        let alpha = parent_theta / node.theta;
-        if (alpha - 1.0).abs() < 1e-12 {
-          parent_v
-        } else {
-          let s = Self::positive_stable(rng, alpha);
-          parent_v.powf(1.0 / alpha) * s
-        }
-      }
-      (Generator::Clayton, Some((parent_theta, parent_v))) => {
-        // V_c | V_p is the tilted stable of LST exp(-V_p((1 + s)^α - 1)), α = θ_p / θ_c (Hofert & Mächler 2011, Table 3
-        // and eq. (5)); α = 1 is the no-nesting case, V_c = V_p.
-        let alpha = parent_theta / node.theta;
-        if (alpha - 1.0).abs() < 1e-12 {
-          parent_v
-        } else {
-          Self::tilted_stable(rng, alpha, parent_v)
-        }
-      }
-    };
-
-    // Generate direct leaves under this node's generator.
-    for &j in &node.leaves {
-      let e_uniform: f64 = rng.random::<f64>().clamp(1e-15, 1.0 - 1e-15);
-      let e = -e_uniform.ln();
-      let arg = e / v.max(1e-300);
-      let u = self.generator.inverse_generator(node.theta, arg);
-      out[j] = u.clamp(1e-12, 1.0 - 1e-12);
-    }
-
-    // Recurse into nested sub-trees.
-    for child in &node.children {
-      self.sample_node(rng, child, Some((node.theta, v)), out);
-    }
-  }
-
+  /// `−ln C` of the node's subtree at `u`.
   fn cdf_node(&self, node: &NacNode, u: &[f64]) -> f64 {
-    let mut s = 0.0;
-    for &j in &node.leaves {
-      s += self.generator.generator(node.theta, u[j]);
-    }
+    let mut parts = node.leaves.iter().map(|&j| -u[j].ln()).collect::<Vec<_>>();
     for child in &node.children {
-      let c_inner = self.cdf_node(child, u);
-      s += self.generator.generator(node.theta, c_inner);
+      parts.push(self.cdf_node(child, u));
     }
-    self.generator.inverse_generator(node.theta, s)
+    self.generator.minus_ln_cdf(node.theta, &parts)
   }
 }
 
@@ -479,7 +354,7 @@ impl MultivariateExt for NestedArchimedean {
     let mut out = Array1::<f64>::zeros(x.nrows());
     for (i, row) in x.rows().into_iter().enumerate() {
       let u: Vec<f64> = row.iter().copied().collect();
-      out[i] = self.cdf_node(root, &u);
+      out[i] = (-self.cdf_node(root, &u)).exp();
     }
     Ok(out)
   }

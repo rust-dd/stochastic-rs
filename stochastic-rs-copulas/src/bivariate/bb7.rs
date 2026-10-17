@@ -386,9 +386,11 @@ impl BivariateExt for Bb7 {
     vec![]
   }
 
+  /// `φ(t) = (1 − (1 − t)^θ)^{−δ} − 1` as `expm1(−δ ln(1 − (1 − t)^θ))` from `ln_1p(−t)`, exact where `δ` is small or
+  /// `(1 − t)^θ` underflows.
   fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    Ok(t.mapv(|x| (1.0 - (1.0 - x).powf(theta)).powf(-delta) - 1.0))
+    Ok(t.mapv(|t| (-delta * ln_one_minus_pow(theta, (-t).ln_1p())).exp_m1()))
   }
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {

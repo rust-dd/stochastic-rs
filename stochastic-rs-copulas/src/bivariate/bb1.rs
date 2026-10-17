@@ -271,9 +271,13 @@ impl BivariateExt for Bb1 {
     vec![0.0]
   }
 
+  /// `φ(t) = (t^{−θ} − 1)^δ` as `exp(δ ln expm1(−θ ln t))`, which keeps the digits `t^{−θ} − 1` loses as `θ → 0`.
   fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    Ok(t.mapv(|x| (x.powf(-theta) - 1.0).powf(delta)))
+    Ok(t.mapv(|t| {
+      let minus_ln_t = -t.ln();
+      (delta * ln_expm1(theta * minus_ln_t, theta.ln() + minus_ln_t.ln())).exp()
+    }))
   }
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {

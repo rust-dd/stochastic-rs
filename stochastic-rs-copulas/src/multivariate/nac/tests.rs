@@ -388,4 +388,6 @@ fn nac_rejects_a_non_finite_theta_by_name() {
   }
 }
 
+mod extremes;
+
 mod sampling;

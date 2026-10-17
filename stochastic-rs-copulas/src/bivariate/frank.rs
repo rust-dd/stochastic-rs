@@ -16,6 +16,8 @@ use ndarray::ArrayView2;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::ln_one_minus_exp;
+use crate::bivariate::conditional::ln_one_minus_pow;
 use crate::bivariate::conditional::sum_minus_one;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
@@ -47,8 +49,8 @@ const TAU_SERIES: [f64; 18] = [
   -3.984859395313849e-30,
 ];
 
-/// Below this `|θ|`, `h(u | v) = u(1 + (θ/2)(1 − u)(1 − 2v) + O(θ²))` and its inverse are the identity to rounding, where
-/// the closed forms' products `θu` underflow.
+/// Below this `|θ|`, `h(u | v) = u(1 + (θ/2)(1 − u)(1 − 2v) + O(θ²))`, its inverse and the generator `−ln t − (θ/2)(1 − t)`
+/// are their `θ = 0` forms to rounding, where the closed forms' products `θu` underflow.
 const INDEPENDENT_BELOW: f64 = f64::EPSILON;
 
 #[derive(Debug, Clone, Default)]
@@ -127,6 +129,16 @@ impl Frank {
       (-magnitude * u).exp_m1() / denominator
     }
   }
+
+  /// `ln(N/D) = ln((1 − e^{−ct})/(1 − e^{−c}))`, `c > 0`: `ln N − ln D` below `t = 1/2`, where `ct` may be subnormal, and
+  /// `ln_1p((N − D)/D)` above it, `N − D = e^{−ct} expm1(−c(1 − t))` free of cancellation as `1 − t` is exact there.
+  fn ln_survival_ratio(c: f64, t: f64) -> f64 {
+    if t < 0.5 {
+      ln_one_minus_pow(c, -t) - ln_one_minus_exp(-c)
+    } else {
+      ((-c * t).exp() * (-c * (1.0 - t)).exp_m1() / -(-c).exp_m1()).ln_1p()
+    }
+  }
 }
 
 impl BivariateExt for Frank {
@@ -151,12 +163,21 @@ impl BivariateExt for Frank {
     vec![]
   }
 
+  /// Nelsen's `φ(t) = −ln((e^{−θt} − 1)/(e^{−θ} − 1))` as `−P` for `θ > 0` and `c(1 − t) − P` for `θ < 0`, `c = |θ|`,
+  /// `P = ln((1 − e^{−ct})/(1 − e^{−c}))`, so no exponential overflows; its limit `−ln t` below `INDEPENDENT_BELOW`.
   fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    let a = ((-theta * &t).exp() - 1.0) / ((-theta).exp() - 1.0);
-    let out = -(a.ln());
-    Ok(out)
+    let c = theta.abs();
+    Ok(t.mapv(|t| {
+      if c < INDEPENDENT_BELOW {
+        -t.ln()
+      } else if theta > 0.0 {
+        -Self::ln_survival_ratio(c, t)
+      } else {
+        c * (1.0 - t) - Self::ln_survival_ratio(c, t)
+      }
+    }))
   }
 
   /// Density $c(u,v) = -\theta\,g(1)\,e^{-\theta(u+v)} \big/ \big(g(1)+g(u)g(v)\big)^2$,

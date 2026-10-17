@@ -240,19 +240,20 @@ impl BivariateExt for Galambos {
   }
 
   /// Brent on `ln θ` over `[1e-8, 65]`: the rule holds `τ` to `2.5e-7` up to `θ = 65` and loses it beyond (`5.7e-5` at
-  /// `θ = 100`), so `0 < τ < τ(65) ≈ 0.98478` is the reachable range; `θ` to a relative `1e-8`, past the rule's resolution.
+  /// `θ = 100`), so `0 <= τ < τ(65) ≈ 0.98478` is the reachable range, `τ = 0` at `θ = 0`; `θ` to a relative `1e-8`.
   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
-    static RANGE: OnceLock<(f64, f64)> = OnceLock::new();
+    static CAP: OnceLock<f64> = OnceLock::new();
     let (lo, hi) = (1e-8_f64.ln(), 65.0_f64.ln());
-    let (tau_lo, tau_hi) =
-      *RANGE.get_or_init(|| (self.tau_from_theta(lo.exp()), self.tau_from_theta(hi.exp())));
-    if !(tau > tau_lo && tau < tau_hi) {
-      return Err(tau_out_of_range(
-        tau,
-        format!("{tau_lo:?} < tau < {tau_hi:?}"),
-      ));
+    let cap = *CAP.get_or_init(|| self.tau_from_theta(hi.exp()));
+    if !(tau >= 0.0 && tau < cap) {
+      return Err(tau_out_of_range(tau, format!("0.0 <= tau < {cap:?}")));
     }
-    let theta = invert_tau(|x| self.tau_from_theta(x.exp()) - tau, lo, hi, 1e-8)?.exp();
+    // `τ(1e-8)` is 0 to the last bit, so the bracket changes sign for every positive `τ`.
+    let theta = if tau == 0.0 {
+      0.0
+    } else {
+      invert_tau(|x| self.tau_from_theta(x.exp()) - tau, lo, hi, 1e-8)?.exp()
+    };
     admitted(self, tau, theta)
   }
 
@@ -345,6 +346,28 @@ mod tests {
       approx(recovered, target_theta, 1e-8),
       "expected {target_theta}, got {recovered}"
     );
+  }
+
+  /// `τ = 0` inverts to `θ = 0`, the independence copula `new(0.0)` builds, from `from_tau` and from a fit at `τ̂ = 0`.
+  #[test]
+  fn galambos_tau_zero_inverts_to_independence() {
+    let c = Galambos::from_tau(0.0).unwrap();
+    assert_eq!((c.theta(), c.tau()), (Some(0.0), Some(0.0)));
+    let ranks = [2.0, 4.0, 1.0, 3.0];
+    let tied = ndarray::Array2::from_shape_fn((4, 2), |(i, j)| {
+      if j == 0 {
+        (i + 1) as f64 / 5.0
+      } else {
+        ranks[i] / 5.0
+      }
+    });
+    let mut fitted = Galambos::default();
+    fitted.fit(tied.view()).unwrap();
+    assert_eq!(fitted.theta(), Some(0.0));
+    assert!(matches!(
+      Galambos::from_tau(-1e-12),
+      Err(CopulaError::InvalidParameter { name: "tau", .. })
+    ));
   }
 
   #[test]

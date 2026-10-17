@@ -61,8 +61,9 @@ impl BivariateExt for Independence {
     })
   }
 
+  /// `φ(t) = −ln t`, so `φ^{-1}(φ(u) + φ(v)) = uv`.
   fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
-    Ok(t.ln())
+    Ok(t.mapv(|t| -t.ln()))
   }
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
