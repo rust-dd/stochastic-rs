@@ -59,8 +59,8 @@ impl Amh {
     move |y, v| Self::root::<false>(theta, y, v)
   }
 
-  /// `Amh::inverse` for `θ > 1/2`, `y` multiplied last into `2C/(√… − B)`: `C = y(1 − p)²` trails the root by `(1 − θ)/2`, so
-  /// near `θ = 1` it reaches the subnormals while the root is normal; at `θ ≤ 1/2` that costs at most two bits.
+  /// `Amh::inverse` for `θ > 1/2`, `y` multiplied last into `2C/(√… − B)`: `C = y(1 − p)²` trails the root by
+  /// `(1 − θ)`, so near `θ = 1` it reaches the subnormals while the root is normal; at `θ ≤ 1/2` it costs at most one bit.
   pub(crate) fn inverse_near_one(theta: f64) -> impl Fn(f64, f64) -> f64 {
     move |y, v| Self::root::<true>(theta, y, v)
   }

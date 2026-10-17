@@ -1,5 +1,7 @@
-//! The rules every family's fit, conditional inverse and h-function share: one sample check, one length check, NaN
-//! outside the unit interval, and the absolute tolerance of the numerical inverse.
+//! What every family's fit, conditional inverse and h-function share: the input checks and the NaN rule, the stable
+//! logarithmic helpers the h-functions are built from, Mills' ratio, Knuth's two-sum and the `ln h` quantile solver.
+//! Reference: NIST Digital Library of Mathematical Functions, eq. 7.9.3 (the continued fraction of `w(z)`), <https://dlmf.nist.gov/7.9.3>.
+//! Reference: Shewchuk, J.R. (1997), "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates", *Discrete & Computational Geometry* 18(3), 305-363, Theorem 7 (Knuth's two-sum).
 
 use std::cell::Cell;
 
@@ -113,7 +115,8 @@ pub(crate) fn mills(z: f64) -> f64 {
   1.0 / f
 }
 
-/// `ln Φ(z)`: `ln_1p(−Φ(−z))` above 0, and `−z²/2 − ln √(2π) + ln R(−z)` below −30, where `Φ(z)` nears the subnormals.
+/// `ln Φ(z)`: `ln_1p(−Φ(−z))` above 0, `ln Φ(z)` to −30 and `−z²/2 − ln √(2π) + ln R(−z)` below, the switch a point of
+/// `[−37.5, −3]`, where `Φ` is still normal and the continued fraction converged, so both forms hold to 3 ulps.
 pub(crate) fn ln_norm_cdf(z: f64) -> f64 {
   if z > 0.0 {
     (-norm_cdf(-z)).ln_1p()

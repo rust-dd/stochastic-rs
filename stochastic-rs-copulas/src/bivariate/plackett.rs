@@ -25,6 +25,7 @@ use std::sync::OnceLock;
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
+use stochastic_rs_distributions::RealExt;
 
 use super::two_parameter::kendall_tau_numeric;
 use crate::bivariate::BivariateFamily;
@@ -104,7 +105,7 @@ impl Plackett {
         return if b >= 0.0 {
           2.0 * mass * (1.0 - u) / (root * (root + b))
         } else {
-          (0.5 - 0.5 * b / root).min(1.0)
+          (0.5 - 0.5 * b / root).min_or_nan(1.0)
         };
       }
       let scale = w.abs().max(shift.abs()).max(spread.sqrt());
@@ -121,20 +122,20 @@ impl Plackett {
         };
         ratio * (1.0 - u) * 2.0 / (root * (root + b))
       } else {
-        (0.5 - 0.5 * b / root).min(1.0)
+        (0.5 - 0.5 * b / root).min_or_nan(1.0)
       }
     }
   }
 }
 
 impl Plackett {
-  /// `∂_v C = (1 − (a − 2uθ)/√d)/2`, `a = 1 + (θ − 1)(u + v)`, `d = a² − 4uvθ(θ − 1)`, with no branch per point: the τ
-  /// quadrature's form at its interior nodes for `1e-6 ≤ θ ≤ 1e6`, where its error is absolute rounding, all the sum sees.
+  /// `∂_v C = (1 − (a − 2uθ)/√d)/2`, `a = 1 + (θ − 1)(u + v)`, `d = a² − 4uvθ(θ − 1)`, branch-free: the τ kernel for
+  /// `1e-6 ≤ θ ≤ 1e6`, whose nodes keep `d ≥ 4θu(1 − u) > 4e-9`; its error is absolute rounding, all the sum sees.
   fn h_interior(theta: f64, u: f64, v: f64) -> f64 {
     let eta = theta - 1.0;
     let a = 1.0 + eta * (u + v);
     let d = a * a - 4.0 * u * v * theta * eta;
-    0.5 * (1.0 - (a - 2.0 * u * theta) / d.max(1e-30).sqrt())
+    0.5 * (1.0 - (a - 2.0 * u * theta) / d.sqrt())
   }
 }
 
