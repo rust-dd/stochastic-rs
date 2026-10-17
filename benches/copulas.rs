@@ -9,6 +9,8 @@ use criterion::criterion_main;
 use ndarray::Array2;
 use stochastic_rs::copulas::bivariate::BivariateFamily;
 use stochastic_rs::copulas::bivariate::amh::Amh;
+use stochastic_rs::copulas::bivariate::bb1::Bb1;
+use stochastic_rs::copulas::bivariate::bb7::Bb7;
 use stochastic_rs::copulas::bivariate::clayton::Clayton;
 use stochastic_rs::copulas::bivariate::fgm::Fgm;
 use stochastic_rs::copulas::bivariate::frank::Frank;
@@ -64,7 +66,7 @@ fn dvine(d: usize) -> DVine {
   DVine::new(d, trees).unwrap()
 }
 
-/// BB1 (Clayton–Gumbel) on the first tree: no Gumbel pair exists, and BB1's `h_inverse` is the bisection one.
+/// BB1 (Clayton–Gumbel) on the first tree: no Gumbel pair exists, and BB1's `h_inverse` is a Brent solve.
 fn cvine_bb1(d: usize) -> CVine {
   let trees = (0..d - 1)
     .map(|m| {
@@ -124,6 +126,14 @@ fn bivariate_sample(c: &mut Criterion) {
   let gumbel = Gumbel::new(2.0);
   group.bench_function("gumbel_brent_n2k", |b| {
     b.iter(|| gumbel.sample(2_000, &Deterministic::new(42)).unwrap())
+  });
+  let bb1 = Bb1::new(0.8, 1.6);
+  group.bench_function("bb1_brent_n2k", |b| {
+    b.iter(|| bb1.sample(2_000, &Deterministic::new(42)).unwrap())
+  });
+  let bb7 = Bb7::new(1.7, 0.9);
+  group.bench_function("bb7_brent_n2k", |b| {
+    b.iter(|| bb7.sample(2_000, &Deterministic::new(42)).unwrap())
   });
   let mo = MarshallOlkin::new(0.3, 0.6);
   group.bench_function("marshall_olkin_n10k", |b| {

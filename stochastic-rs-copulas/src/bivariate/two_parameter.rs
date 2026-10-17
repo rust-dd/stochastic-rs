@@ -40,25 +40,6 @@ pub(crate) fn kendall_tau_numeric(h: impl Fn(f64, f64) -> f64, panels: usize) ->
   1.0 - 4.0 * acc * (0.5 * width).powi(2)
 }
 
-/// Solves `h(u) = p` for `u` in the open unit interval by bisection. `h` is
-/// a conditional CDF, increasing in `u`, so the bracket always holds the
-/// root; 100 halvings reach the resolution of `f64` in `(0, 1)`.
-pub(crate) fn invert_h(h: impl Fn(f64) -> f64, p: f64) -> f64 {
-  let (mut lo, mut hi) = (1e-12, 1.0 - 1e-12);
-  for _ in 0..100 {
-    let mid = 0.5 * (lo + hi);
-    if h(mid) < p {
-      lo = mid;
-    } else {
-      hi = mid;
-    }
-    if hi - lo <= 1e-15 {
-      break;
-    }
-  }
-  0.5 * (lo + hi)
-}
-
 /// Maximum-likelihood `(θ, δ)` on the pseudo-observation columns `u`, `v`: Nelder–Mead over `lower + exp(c)`, so the
 /// search is unconstrained, on the negative log-likelihood of `log_density`.
 pub(crate) fn fit_two_parameters(

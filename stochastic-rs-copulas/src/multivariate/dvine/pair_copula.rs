@@ -114,9 +114,10 @@ impl PairCopula {
       }
       PairCopula::Clayton { theta } => Clayton::inverse_at(theta, p, v),
       PairCopula::Frank { theta } => Frank::inverse_at(theta, p, v),
-      // Brent on the clamped bracket: with `t = 2.5e-16` it stops on a bracket narrower than the bisection's `1e-15`.
+      // Brent on the clamped bracket, `t = 2.5e-16` (narrower than the bisection's `1e-15`); a root outside the bracket
+      // saturates at its end, as the bisection did.
       PairCopula::Bb1 { .. } | PairCopula::Bb7 { .. } => {
-        zero(EPS, 1.0 - EPS, 2.5e-16, |u| self.h(u, v) - p).unwrap_or(f64::NAN)
+        zero(EPS, 1.0 - EPS, 2.5e-16, |u| self.h(u, v) - p).unwrap_or_else(|| self.saturated(p, v))
       }
       PairCopula::StudentT { rho, nu } => TCopula::inverse(rho, nu)(p, v),
     };
@@ -179,6 +180,21 @@ impl PairCopula {
   /// Copula density $c(u, v)$ (exponentiated log density).
   pub fn density(&self, u: f64, v: f64) -> f64 {
     self.log_density(u, v).exp()
+  }
+
+  /// The end of `[EPS, 1 − EPS]` a root outside it saturates at: `EPS` where `h(EPS | v) ≥ p`, `1 − EPS` where
+  /// `h(1 − EPS | v) ≤ p`; NaN for a NaN `h`.
+  fn saturated(&self, p: f64, v: f64) -> f64 {
+    let (low, high) = (self.h(EPS, v), self.h(1.0 - EPS, v));
+    if low.is_nan() || high.is_nan() {
+      f64::NAN
+    } else if low >= p {
+      EPS
+    } else if high <= p {
+      1.0 - EPS
+    } else {
+      f64::NAN
+    }
   }
 }
 

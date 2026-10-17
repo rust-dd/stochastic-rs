@@ -26,21 +26,21 @@ use gauss_quad::GaussLegendre;
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
+use stochastic_rs_distributions::RealExt;
 use stochastic_rs_distributions::special::digamma;
 
 use super::BivariateFamily;
 use super::conditional::conditional_cdf;
-use super::conditional::conditional_quantiles;
 use super::conditional::expm1_over;
-use super::conditional::ln_expm1;
+use super::conditional::ln_1p_over;
 use super::conditional::ln_one_minus_exp;
 use super::conditional::ln_one_minus_pow;
 use super::conditional::ln_one_minus_pow_ratio;
 use super::conditional::ln_ratio_complement;
+use super::conditional::numerical_quantiles;
 use super::conditional::softplus;
 use super::two_parameter::clip;
 use super::two_parameter::fit_two_parameters;
-use super::two_parameter::invert_h;
 use super::two_parameter::kendall_tau_numeric;
 use crate::bivariate::conditional::check_pairs;
 use crate::correlation::kendall_tau_b;
@@ -81,6 +81,16 @@ fn ln_one_minus_exp_from(z: f64, ln_z: f64) -> f64 {
     ln_z
   } else {
     ln_one_minus_exp(-z)
+  }
+}
+
+/// `ln φ(z) = ln((1 − e^{−z})/z)` for `z ≥ 0` given `ln z`: its series `−z/2 + z²/24` below `1e-5`, where the
+/// difference of the two logarithms would cancel, and 0 where `z` underflows.
+fn ln_phi(z: f64, ln_z: f64) -> f64 {
+  if z < 1e-5 {
+    z * (z / 24.0 - 0.5)
+  } else {
+    ln_one_minus_exp(-z) - ln_z
   }
 }
 
@@ -163,17 +173,8 @@ impl Bb7 {
     -(ln_1mt / theta).exp_m1()
   }
 
-  /// `∂_v C`, held below 1 against rounding: the expanded form while `s − 1`, `−ln T` are normal and its exponent terms
-  /// stay below `EXPANDED_LIMIT`, `h_log` past it; the limit laws at `v = 0` (`δ₀`), `v = 1` (`u^{δ+1}` at `θ = 1`, else `δ₁`).
-  /// `h_scalar`'s expanded form with no edge or range check: the Kendall quadrature's kernel at interior nodes for
-  /// `1 ≤ θ ≤ 60`, `δ ≤ 100`.
-  fn h_interior(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
-    let (_, ln_b, ln_s, _, ln_1mt) = Self::logs(u, v, theta, delta);
-    ((1.0 / theta - 1.0) * ln_1mt - (1.0 / delta + 1.0) * ln_s - (delta + 1.0) * ln_b
-      + (theta - 1.0) * (-v).ln_1p())
-    .exp()
-  }
-
+  /// `∂_v C`, held below 1 against rounding: `ln_h_interior` exponentiated, and the limit laws at `v = 0` (`δ₀`) and
+  /// `v = 1` (`u^{δ+1}` at `θ = 1`, else `δ₁`).
   pub(crate) fn h_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
     if u >= 1.0 || v <= 0.0 {
       return 1.0;
@@ -188,6 +189,15 @@ impl Bb7 {
         0.0
       };
     }
+    Self::ln_h_interior(u, v, theta, delta)
+      .exp()
+      .min_or_nan(1.0)
+  }
+
+  /// The four terms of the expanded `ln ∂_v C`, and the `ln s`, `ln T` its range check reads: the one plain kernel,
+  /// summed by `ln_h_interior` and by the Kendall quadrature of `mle_start`.
+  #[inline(always)]
+  fn expanded(u: f64, v: f64, theta: f64, delta: f64) -> ([f64; 4], f64, f64) {
     let (_, ln_b, ln_s, ln_t, ln_1mt) = Self::logs(u, v, theta, delta);
     let terms = [
       (1.0 / theta - 1.0) * ln_1mt,
@@ -195,58 +205,80 @@ impl Bb7 {
       -(delta + 1.0) * ln_b,
       (theta - 1.0) * (-v).ln_1p(),
     ];
-    let normal = ln_s >= f64::MIN_POSITIVE && -ln_t >= f64::MIN_POSITIVE;
-    if normal && terms.iter().all(|t| t.abs() <= EXPANDED_LIMIT) {
-      return (terms[0] + terms[1] + terms[2] + terms[3]).exp().min(1.0);
-    }
-    Self::h_log(u, v, theta, delta)
+    (terms, ln_s, ln_t)
   }
 
-  /// `h = (v̄/C̄)^{θ−1}(T/b)^{δ+1} = exp(−((θ − 1)/θ)R − ((δ + 1)/δ) ln(1 + Q))`, `R = ln((1 − T)/β)`, `Q = F(α)/(1 + F(β))`,
-  /// `F(x) = expm1(δw)`, `w = −ln(1 − x)`, `α, β = ū^θ, v̄^θ`: logarithms throughout, `ln(F(α)/F(β))` as one ratio.
-  fn h_log(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
+  /// `ln ∂_v C` on the open square: the expanded terms' sum while `s − 1`, `−ln T` are normal and the terms stay below
+  /// `EXPANDED_LIMIT`, `ln_h_log` past it.
+  fn ln_h_interior(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
+    let (terms, ln_s, ln_t) = Self::expanded(u, v, theta, delta);
+    let normal = ln_s >= f64::MIN_POSITIVE && -ln_t >= f64::MIN_POSITIVE;
+    if normal && terms.iter().all(|t| t.abs() <= EXPANDED_LIMIT) {
+      return terms[0] + terms[1] + terms[2] + terms[3];
+    }
+    Self::ln_h_log(u, v, theta, delta)
+  }
+
+  /// `ln ∂_v C` with `h_scalar`'s limit laws at the edges and `ln_h_log` inside, whose `1 − h` keeps its digits near 1:
+  /// what `percent_point` inverts.
+  fn ln_h(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
+    if u >= 1.0 || v <= 0.0 {
+      0.0
+    } else if u <= 0.0 {
+      f64::NEG_INFINITY
+    } else if v >= 1.0 {
+      if theta == 1.0 {
+        (delta + 1.0) * u.ln()
+      } else {
+        f64::NEG_INFINITY
+      }
+    } else {
+      Self::ln_h_log(u, v, theta, delta)
+    }
+  }
+
+  /// `ln h = −((θ − 1)/θ)R − ((δ + 1)/δ) ln(1 + Q)`, `Q = F(α)/(1 + F(β))`, `F(x) = expm1(δw)`, `w = −ln(1 − x)`,
+  /// `α, β = ū^θ, v̄^θ`, and `R = ln((1 − T)/β) = softplus(ln((b/β)(1 − (1 + Q)^{−1/δ})))` from `T = b(1 + Q)^{−1/δ}`.
+  fn ln_h_log(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
     let ln_delta = delta.ln();
     let (ln_u_bar, ln_v_bar) = ((-u).ln_1p(), (-v).ln_1p());
     let (ln_alpha, ln_beta) = (theta * ln_u_bar, theta * ln_v_bar);
     let (w_alpha, ln_w_alpha) = Self::w_of(theta, ln_u_bar, ln_alpha);
-    let (w_beta, ln_w_beta) = Self::w_of(theta, ln_v_bar, ln_beta);
+    let w_beta = -ln_one_minus_pow(theta, ln_v_bar);
     let (z_alpha, z_beta) = (delta * w_alpha, delta * w_beta);
-    let (ln_z_alpha, ln_z_beta) = (ln_delta + ln_w_alpha, ln_delta + ln_w_beta);
+    let ln_z_alpha = ln_delta + ln_w_alpha;
     let w_gap = ln_one_minus_pow_ratio(theta, ln_v_bar, ln_u_bar);
-    let ln_f_ratio = if z_alpha.min(z_beta) >= 1.0 || z_alpha.max(z_beta) > 700.0 {
-      delta * w_gap + ln_one_minus_exp_from(z_alpha, ln_z_alpha)
-        - ln_one_minus_exp_from(z_beta, ln_z_beta)
-    } else {
-      let ln_w_ratio = if ln_alpha < -36.7 && ln_beta < -36.7 {
-        theta * ln_ratio_complement(u, v) + 0.5 * (ln_alpha.exp() - ln_beta.exp())
-      } else if w_beta >= f64::MIN_POSITIVE && (0.5..=2.0).contains(&(w_alpha / w_beta)) {
-        (w_gap / w_beta).ln_1p()
-      } else {
-        ln_w_alpha - ln_w_beta
-      };
-      ln_w_ratio + (expm1_over(z_alpha) / expm1_over(z_beta)).ln()
-    };
-    // `ln(F(α) + F(β))` from the larger term, so one that underflows to `ln F = −∞` drops out.
-    let ln_y = if ln_f_ratio >= 0.0 {
-      ln_expm1(z_alpha, ln_z_alpha) + softplus(-ln_f_ratio)
-    } else {
-      ln_expm1(z_beta, ln_z_beta) + softplus(ln_f_ratio)
-    };
-    let r = if ln_y > 0.0 {
-      ln_one_minus_exp(-softplus(ln_y) / delta) - ln_beta
-    } else {
-      Self::r_small(theta, ln_v_bar, ln_delta, delta, ln_y) + softplus(ln_f_ratio)
-    };
     // `ln Q = δ(w_α − w_β) + ln(1 − e^{−δw_α})`; with `Q < 1` and a small `δw_α`, the `1/δ` multiplies `Q`, not its log.
     let ln_q = delta * w_gap + ln_one_minus_exp_from(z_alpha, ln_z_alpha);
     let second = if ln_q < 0.0 && z_alpha < 1.0 {
       let q = ln_q.exp();
-      let ln_1p_over = if q == 0.0 { 1.0 } else { q.ln_1p() / q };
-      (delta + 1.0) * w_alpha * expm1_over(z_alpha) * (-z_beta).exp() * ln_1p_over
+      (delta + 1.0) * w_alpha * expm1_over(z_alpha) * (-z_beta).exp() * ln_1p_over(q)
     } else {
       (delta + 1.0) / delta * softplus(ln_q)
     };
-    (-(theta - 1.0) / theta * r - second).exp().min(1.0)
+    if second == f64::INFINITY {
+      return f64::NEG_INFINITY;
+    }
+    // `ln(w_α/β)`, from `θ ln(ū/v̄)` where both powers are below `2⁻⁵³`, so the step at `u = v` survives underflow.
+    let lambda = if ln_alpha < -36.7 && ln_beta < -36.7 {
+      theta * ln_ratio_complement(u, v) + 0.5 * ln_alpha.exp()
+    } else {
+      ln_w_alpha - ln_beta
+    };
+    let (ln_l_over_q, ln_l) = if ln_q < 0.0 {
+      let over = ln_1p_over(ln_q.exp()).ln();
+      (over, ln_q + over)
+    } else {
+      let ln_l = softplus(ln_q).ln();
+      (ln_l - ln_q, ln_l)
+    };
+    let ln_z = ln_l - ln_delta;
+    // `ln(w_α/β) + δ(w_α − w_β) + ln φ(δw_α) + ln(L/Q) + ln φ(L/δ) − w_β`, `L = ln(1 + Q)`: past the first, each term
+    // is `≤ 0` where `α < β`, so a small `R`, which `1 − h` and so the upper quantiles hang on, keeps its digits.
+    let x =
+      lambda + delta * w_gap + ln_phi(z_alpha, ln_z_alpha) + ln_l_over_q + ln_phi(ln_z.exp(), ln_z)
+        - w_beta;
+    -(theta - 1.0) / theta * softplus(x) - second
   }
 
   /// `(w, ln w)` for `w = −ln(1 − x)`, `x = e^{ln x}`: `ln w = ln x + x/2` to rounding below `x = 2⁻⁵³`, where `w` may
@@ -259,43 +291,6 @@ impl Bb7 {
       w.ln()
     };
     (w, ln_w)
-  }
-
-  /// `R − softplus(ln(F(α)/F(β)))` for `Y = F(α) + F(β) ≤ 1`: `ln(F(β)/(δβ)) + ln(k/Y) + ln((1 − e^{−k/δ})δ/k)`,
-  /// `k = ln(1 + Y)`, each a correction near 0, so `R` never forms the two close magnitudes `ln(1 − T)` and `ln β`.
-  fn r_small(theta: f64, ln_v_bar: f64, ln_delta: f64, delta: f64, ln_y: f64) -> f64 {
-    let ln_beta = theta * ln_v_bar;
-    let c_beta = Self::f_correction(ln_beta, ln_one_minus_pow(theta, ln_v_bar), ln_delta);
-    let y = ln_y.exp();
-    let k = y.ln_1p();
-    let ln_k_over_y = if y == 0.0 { 0.0 } else { (k / y).ln() };
-    let (z, ln_z) = (k / delta, k.ln() - ln_delta);
-    let ln_phi = if z == 0.0 {
-      0.0
-    } else {
-      ln_one_minus_exp_from(z, ln_z) - ln_z
-    };
-    c_beta + ln_k_over_y + ln_phi
-  }
-
-  /// `ln(F(x)/(δx)) = ln(w/x) + ln(expm1(δw)/(δw))`, `w = −ln(1 − x)` from `ln(1 − x)`, which keeps `1 − x` where `x`
-  /// rounds to 1; `ln(w/x) = x/2` to rounding below `x = 2⁻⁵³`.
-  fn f_correction(ln_x: f64, ln_one_minus_x: f64, ln_delta: f64) -> f64 {
-    let ln_w_over_x = if ln_x < -36.7 {
-      0.5 * ln_x.exp()
-    } else {
-      (-ln_one_minus_x).ln() - ln_x
-    };
-    let ln_dw = ln_delta + ln_x + ln_w_over_x;
-    let dw = ln_dw.exp();
-    let ln_expm1_over = if dw == 0.0 {
-      0.0
-    } else if dw < 1.0 {
-      (dw.exp_m1() / dw).ln()
-    } else {
-      dw + ln_one_minus_exp(-dw) - ln_dw
-    };
-    ln_w_over_x + ln_expm1_over
   }
 
   pub(crate) fn log_density_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
@@ -321,10 +316,17 @@ impl Bb7 {
   /// The Nelder–Mead start: bisection of the 100-panel τ at the stored `δ` on `[1, 60]`, 50 steps, `1` when `τ(1) ≥ tau`.
   fn mle_start(&self, tau: f64) -> f64 {
     let delta = self.delta;
-    // Up to `δ = 100` the quadrature's nodes keep every exponential below `e^617`, and the small kernel inlines.
+    // For `1 ≤ θ ≤ 60` and `1e-147 ≤ δ ≤ 100` every node keeps `ln s` normal and each exponential below `e^617`, so the
+    // plain kernel needs no check there; `h_scalar` carries `δ` outside.
     let kendall_tau = |theta: f64| {
-      if delta <= 100.0 {
-        kendall_tau_numeric(|u, v| Self::h_interior(u, v, theta, delta), 100)
+      if (1e-147..=100.0).contains(&delta) {
+        kendall_tau_numeric(
+          |u, v| {
+            let (t, ..) = Self::expanded(u, v, theta, delta);
+            (t[0] + t[1] + t[2] + t[3]).exp()
+          },
+          100,
+        )
       } else {
         kendall_tau_numeric(|u, v| Self::h_scalar(u, v, theta, delta), 100)
       }
@@ -437,15 +439,15 @@ impl BivariateExt for Bb7 {
     }))
   }
 
-  /// The h-function inverted by bisection on `[1e-12, 1 − 1e-12]`, NaN for `y` or `v` outside `[0, 1]`.
+  /// `numerical_quantiles` of `Bb7::ln_h`; NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
     conditioning: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    conditional_quantiles(y, conditioning, |p, v| {
-      invert_h(|u| Self::h_scalar(u, clip(v), theta, delta), p)
+    numerical_quantiles(y, conditioning, self.family(), |u, v| {
+      Self::ln_h(u, v, theta, delta)
     })
   }
 

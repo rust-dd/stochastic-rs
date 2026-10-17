@@ -41,8 +41,8 @@ const N: usize = 64;
 /// `(name, fnv1a of the f64 bit patterns of the (N, d) sample)`.
 const PINS: &[(&str, u64)] = &[
   ("amh", 0x1a7d7e663cabb487),
-  ("bb1", 0x08f7414f5c289cb7),
-  ("bb7", 0x628f49f39de1c0e2),
+  ("bb1", 0x41bb2447c3d055b9),
+  ("bb7", 0x95d3a343a54d24c1),
   ("clayton", 0x6d34355ca15d6eef),
   ("fgm", 0x680eb8c8e0f2c5c7),
   ("frank", 0xc294915e38a3554b),

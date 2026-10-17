@@ -21,20 +21,20 @@
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
+use stochastic_rs_distributions::RealExt;
 
 use super::BivariateFamily;
 use super::conditional::conditional_cdf;
-use super::conditional::conditional_quantiles;
 use super::conditional::expm1_over;
 use super::conditional::ln_expm1;
 use super::conditional::ln_one_minus_exp;
 use super::conditional::ln_one_minus_pow;
 use super::conditional::ln_one_minus_pow_ratio;
 use super::conditional::ln_ratio;
+use super::conditional::numerical_quantiles;
 use super::conditional::softplus;
 use super::two_parameter::clip;
 use super::two_parameter::fit_two_parameters;
-use super::two_parameter::invert_h;
 use crate::bivariate::conditional::check_pairs;
 use crate::correlation::kendall_tau_b;
 use crate::error::CopulaError;
@@ -128,8 +128,8 @@ impl Bb1 {
     (-ln_1pw / theta).exp()
   }
 
-  /// `∂_v C`, held below 1 against rounding: the expanded form while `ln x`, `ln y` and its exponent terms stay below
-  /// `EXPANDED_LIMIT`, `h_log` past it; the limit laws at `v = 0` (`δ₀`) and `v = 1` (`u^{θ+1}` at `δ = 1`, else `δ₁`).
+  /// `∂_v C`, held below 1 against rounding: `ln_h_interior` exponentiated, and the limit laws at `v = 0` (`δ₀`) and
+  /// `v = 1` (`u^{θ+1}` at `δ = 1`, else `δ₁`).
   pub(crate) fn h_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
     if u >= 1.0 || v <= 0.0 {
       return 1.0;
@@ -144,6 +144,14 @@ impl Bb1 {
         0.0
       };
     }
+    Self::ln_h_interior(u, v, theta, delta)
+      .exp()
+      .min_or_nan(1.0)
+  }
+
+  /// `ln ∂_v C` on the open square: the expanded form while `ln x`, `ln y` and its exponent terms stay below
+  /// `EXPANDED_LIMIT`, `ln_h_log` past it.
+  fn ln_h_interior(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
     let (ln_x, ln_y, ln_s, _, ln_1pw) = Self::logs(u, v, theta, delta);
     let terms = [
       (-1.0 / theta - 1.0) * ln_1pw,
@@ -151,16 +159,34 @@ impl Bb1 {
       (delta - 1.0) * ln_y,
       -(theta + 1.0) * v.ln(),
     ];
-    let moderate = ln_x.abs().max(ln_y.abs()) <= EXPANDED_LIMIT;
+    let moderate = ln_x.abs().max_or_nan(ln_y.abs()) <= EXPANDED_LIMIT;
     if moderate && terms.iter().all(|t| t.abs() <= EXPANDED_LIMIT) {
-      return (terms[0] + terms[1] + terms[2] + terms[3]).exp().min(1.0);
+      return terms[0] + terms[1] + terms[2] + terms[3];
     }
-    Self::h_log(u, v, theta, delta)
+    Self::ln_h_log(u, v, theta, delta)
   }
 
-  /// `h = exp(−((δ − 1)/δ)S − (1 + 1/θ) ln(1 + (1 − v^θ) expm1(S/δ)))`, `S = ln(1 + (x/y)^δ)`, with
+  /// `ln ∂_v C` with `h_scalar`'s limit laws at the edges and `ln_h_log` inside, whose `1 − h` keeps its digits near 1:
+  /// what `percent_point` inverts.
+  fn ln_h(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
+    if u >= 1.0 || v <= 0.0 {
+      0.0
+    } else if u <= 0.0 {
+      f64::NEG_INFINITY
+    } else if v >= 1.0 {
+      if delta == 1.0 {
+        (theta + 1.0) * u.ln()
+      } else {
+        f64::NEG_INFINITY
+      }
+    } else {
+      Self::ln_h_log(u, v, theta, delta)
+    }
+  }
+
+  /// `ln h = −((δ − 1)/δ)S − (1 + 1/θ) ln(1 + (1 − v^θ) expm1(S/δ))`, `S = ln(1 + (x/y)^δ)`, with
   /// `ln(x/y) = θ ln(v/u) + ln((1 − u^θ)/(1 − v^θ))`, every factor a logarithm, so nothing overflows, cancels or underflows.
-  fn h_log(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
+  fn ln_h_log(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
     let (ln_u, ln_v) = (u.ln(), v.ln());
     let ln_x_over_y = theta * ln_ratio(v, u) + ln_one_minus_pow_ratio(theta, ln_u, ln_v);
     let s = softplus(delta * ln_x_over_y);
@@ -180,7 +206,7 @@ impl Bb1 {
     } else {
       (1.0 + 1.0 / theta) * softplus(ln_p)
     };
-    (-clayton - tail).exp().min(1.0)
+    -clayton - tail
   }
 
   pub(crate) fn log_density_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
@@ -308,15 +334,15 @@ impl BivariateExt for Bb1 {
     }))
   }
 
-  /// The h-function inverted by bisection on `[1e-12, 1 − 1e-12]`, NaN for `y` or `v` outside `[0, 1]`.
+  /// `numerical_quantiles` of `Bb1::ln_h`; NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
     conditioning: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    conditional_quantiles(y, conditioning, |p, v| {
-      invert_h(|u| Self::h_scalar(u, clip(v), theta, delta), p)
+    numerical_quantiles(y, conditioning, self.family(), |u, v| {
+      Self::ln_h(u, v, theta, delta)
     })
   }
 
