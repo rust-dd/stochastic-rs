@@ -22,9 +22,9 @@ use stochastic_rs_copulas::bivariate::marshall_olkin::MarshallOlkin;
 use stochastic_rs_copulas::bivariate::plackett::Plackett;
 use stochastic_rs_copulas::bivariate::t_copula::TCopula;
 use stochastic_rs_copulas::gof::pseudo_observations;
-use stochastic_rs_copulas::simd_rng::Deterministic;
 use stochastic_rs_copulas::traits::BivariateExt;
 use stochastic_rs_copulas::traits::TailDependence;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 /// Pseudo-observations with Kendall's τ = −1: `v_i = 1 − u_i` on the rank grid.
 fn countermonotone(n: usize) -> Array2<f64> {

@@ -2,10 +2,10 @@
 
 use stochastic_rs_copulas::bivariate::clayton::Clayton;
 use stochastic_rs_copulas::multivariate::dvine::DVine;
-use stochastic_rs_copulas::simd_rng::Deterministic;
-use stochastic_rs_copulas::simd_rng::Unseeded;
 use stochastic_rs_copulas::traits::BivariateExt;
 use stochastic_rs_copulas::traits::MultivariateExt;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 #[test]
 fn a_deterministic_seed_replays_and_unseeded_does_not() {

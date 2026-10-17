@@ -28,9 +28,9 @@ Every sampler takes its seed: `sample(n, &Deterministic::new(42))` replays, `sam
 
 ```rust
 use stochastic_rs_copulas::bivariate::clayton::Clayton;
-use stochastic_rs_copulas::simd_rng::Deterministic;
-use stochastic_rs_copulas::simd_rng::Unseeded;
 use stochastic_rs_copulas::traits::BivariateExt;
+use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_core::simd_rng::Unseeded;
 
 let c = Clayton::new(2.0);
 let u = c.sample(10_000, &Unseeded).expect("theta is set");                // Array2<f64>, shape (10000, 2)
@@ -45,8 +45,8 @@ Multivariate constructions take a tree of `PairCopula` variants:
 ```rust
 use stochastic_rs_copulas::multivariate::cvine::CVine;
 use stochastic_rs_copulas::multivariate::dvine::PairCopula;
-use stochastic_rs_copulas::simd_rng::Deterministic;
 use stochastic_rs_copulas::traits::MultivariateExt;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 let cv = CVine::new(2, vec![vec![PairCopula::Clayton { theta: 2.0 }]]).expect("a valid vine");
 let draws = cv.sample(10_000, &Deterministic::new(42)).expect("a valid vine");

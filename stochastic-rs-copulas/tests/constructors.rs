@@ -20,9 +20,9 @@ use stochastic_rs_copulas::bivariate::plackett::Plackett;
 use stochastic_rs_copulas::bivariate::t_copula::TCopula;
 use stochastic_rs_copulas::multivariate::gaussian::GaussianMultivariate;
 use stochastic_rs_copulas::multivariate::t::TMultivariate;
-use stochastic_rs_copulas::simd_rng::Deterministic;
 use stochastic_rs_copulas::traits::BivariateExt;
 use stochastic_rs_copulas::traits::MultivariateExt;
+use stochastic_rs_core::simd_rng::Deterministic;
 
 fn is_parameter_error<T>(result: Result<T, CopulaError>, name: &str) -> bool {
   matches!(result, Err(CopulaError::InvalidParameter { name: n, .. }) if n == name)

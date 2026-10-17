@@ -25,7 +25,7 @@
 //! use ndarray::Array1;
 //! use stochastic_rs_copulas::bivariate::clayton::Clayton;
 //! use stochastic_rs_copulas::process_coupling::couple_marginals;
-//! use stochastic_rs_copulas::simd_rng::Deterministic;
+//! use stochastic_rs_core::simd_rng::Deterministic;
 //!
 //! // Marginals from any source work the same (e.g. two `ProcessExt::sample()` paths); fixed sequences keep the example
 //! // free of a stochastic dependency.
