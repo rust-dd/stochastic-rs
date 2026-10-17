@@ -32,7 +32,7 @@
 //! in contrast to the Gaussian copula.
 //!
 //! **Calibration.** [`fit`](TMultivariate::fit) takes $\rho_{ij} = \sin(\pi\tau_{ij}/2)$ from Kendall's τ-b, shrunk until every
-//! eigenvalue is at least $10^{-3}$, then the $\nu$ maximising the likelihood by Brent's `localmin` on $[2.1, 50]$ to $10^{-6}$.
+//! eigenvalue is at least $10^{-3}$, then the $\nu$ maximising the likelihood by Brent's `localmin` on $[2.1, 50]$ to a relative $10^{-6}$.
 //!
 //! References:
 //! - Demarta, S., McNeil, A.J. (2005), "The t copula and related copulas",
