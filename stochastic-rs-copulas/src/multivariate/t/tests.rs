@@ -116,21 +116,20 @@ fn t_copula_fit_recovers_correlation_from_sample() {
   );
 }
 
-/// ν̂ maximises the fit's own likelihood: scipy's bounded Brent minimiser (`xatol = 1e-10`) on the same objective lands
-/// on these values for these two samples.
+/// 6e-6 sits above the objective's rounding floor in ν (≈ 3e-6) and below the old search's misses (≥ 1.2e-5).
+/// SciPy values: `w3c16b_nu_reference.py` driving `w3c16b_nu_evaluator.rs`, output `w3c16b_nu_reference.out`.
 #[test]
 fn t_copula_fit_nu_matches_an_independent_bounded_minimiser() {
   let corr3 = array![[1.0, 0.5, 0.3], [0.5, 1.0, 0.4], [0.3, 0.4, 1.0]];
-  let corr4 = Array2::from_shape_fn((4, 4), |(i, j)| {
-    if i == j {
-      1.0
-    } else {
-      0.6_f64.powi((i as i32 - j as i32).abs())
-    }
-  });
+  let corr4 = array![
+    [1.0, 0.6, 0.36, 0.216],
+    [0.6, 1.0, 0.6, 0.36],
+    [0.36, 0.6, 1.0, 0.6],
+    [0.216, 0.36, 0.6, 1.0]
+  ];
   for (corr, nu, n, seed, want) in [
     (corr3, 4.0, 600, 11, 4.313824466630214),
-    (corr4, 7.0, 1000, 5, 6.43192039131383),
+    (corr4, 7.0, 1000, 5, 6.431919454684188),
   ] {
     let data = TMultivariate::new(corr, nu)
       .sample(n, &Deterministic::new(seed))
@@ -138,7 +137,7 @@ fn t_copula_fit_nu_matches_an_independent_bounded_minimiser() {
     let mut fitted = TMultivariate::default();
     fitted.fit(data.view()).unwrap();
     assert!(
-      (fitted.nu() - want).abs() < 1e-6,
+      (fitted.nu() - want).abs() < 6e-6,
       "ν̂ = {}, scipy {want}",
       fitted.nu()
     );

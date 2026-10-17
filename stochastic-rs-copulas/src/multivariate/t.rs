@@ -32,7 +32,7 @@
 //! in contrast to the Gaussian copula.
 //!
 //! **Calibration.** [`fit`](TMultivariate::fit) takes $\rho_{ij} = \sin(\pi\tau_{ij}/2)$ from Kendall's τ-b, shrunk until every
-//! eigenvalue is at least $10^{-3}$, then the $\nu$ maximising the likelihood by Brent's `localmin` on $(2.1, 50)$.
+//! eigenvalue is at least $10^{-3}$, then the $\nu$ maximising the likelihood by Brent's `localmin` on $[2.1, 50]$ to $10^{-6}$.
 //!
 //! References:
 //! - Demarta, S., McNeil, A.J. (2005), "The t copula and related copulas",
@@ -69,7 +69,6 @@ use crate::bivariate::t_copula::t_copula_cdf;
 use crate::correlation::check_defined;
 use crate::correlation::kendall_tau;
 use crate::error::CopulaError;
-use crate::optim::SQRT_MACHEPS;
 use crate::optim::localmin;
 use crate::student_t;
 use crate::student_t::check_nu;
@@ -200,14 +199,14 @@ impl TMultivariate {
     mv.iter().sum::<f64>() - marginal_log
   }
 
-  /// Brent's `localmin` to `√macheps` relative on `(2.1, 50)`, never evaluating the ends; a likelihood that is not
-  /// finite scores `+∞`, which the search steps away from.
+  /// Brent's `localmin` on [2.1, 50] to 1e-6 (`eps = t = 1e-6`), the resolution the likelihood's rounding leaves in ν; a
+  /// likelihood that is not finite scores `+∞`, which the search steps away from.
   fn optimise_nu(corr: &CorrelationMatrix, x: ArrayView2<f64>) -> f64 {
     let nll = |nu: f64| {
       let ll = Self::log_likelihood_for_nu(corr, x, nu);
       if ll.is_finite() { -ll } else { f64::INFINITY }
     };
-    localmin(2.1, 50.0, SQRT_MACHEPS, SQRT_MACHEPS, nll).0
+    localmin(2.1, 50.0, 1e-6, 1e-6, nll).0
   }
 }
 
