@@ -199,7 +199,7 @@ pub(crate) fn clamp(u: f64) -> f64 {
 }
 
 /// `InvalidParameter` for a Student-t pair whose `nu` the Student-t law refuses, which its evaluation would panic on.
-pub(crate) fn check_pairs(trees: &[Vec<PairCopula>]) -> Result<(), CopulaError> {
+pub(crate) fn check_student_t_nu(trees: &[Vec<PairCopula>]) -> Result<(), CopulaError> {
   for pair in trees.iter().flatten() {
     if let PairCopula::StudentT { nu, .. } = *pair {
       student_t::check_nu(nu)?;
@@ -212,7 +212,6 @@ pub(crate) fn check_pairs(trees: &[Vec<PairCopula>]) -> Result<(), CopulaError> 
 mod tests {
   use super::*;
   use crate::bivariate::bb1::Bb1;
-  use crate::bivariate::t_copula::TCopula;
   use crate::traits::BivariateExt;
 
   /// Independence h-function must be the identity; inverse same.
@@ -412,7 +411,7 @@ mod tests {
   }
 
   #[test]
-  #[should_panic(expected = "nu must satisfy `nu > T::zero()`, got nu = -1.0")]
+  #[should_panic(expected = "nu must satisfy")]
   fn a_student_t_pair_outside_the_nu_rule_panics_with_the_laws_message() {
     PairCopula::StudentT { rho: 0.5, nu: -1.0 }.h(0.3, 0.6);
   }

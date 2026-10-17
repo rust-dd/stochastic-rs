@@ -62,7 +62,7 @@ impl DVine {
         )));
       }
     }
-    pair_copula::check_pairs(&pair_copulas)?;
+    pair_copula::check_student_t_nu(&pair_copulas)?;
     Ok(Self {
       dim,
       order: VineOrder::identity(dim),

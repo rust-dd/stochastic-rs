@@ -546,10 +546,10 @@ pub(crate) fn fit_cvine(
   for _m in 0..d - 1 {
     let mut entries = Vec::with_capacity(values.len());
     let mut next_values: Vec<(usize, Vec<f64>)> = Vec::with_capacity(values.len());
+    let (current, given) = order.split_last().expect("the root is in the order");
     for (j, column) in &values {
-      let (root, given) = order.split_last().expect("the root is in the order");
       let (pair, family, ll, k) = select_pair(&root_values, column, families, criterion)
-        .ok_or_else(|| unrepresented(*root, *j, given, families))?;
+        .ok_or_else(|| unrepresented(*current, *j, given, families))?;
       ll_total += ll;
       k_total += k;
       // Pseudo-observation of variable j given the root: h(x_j | root).

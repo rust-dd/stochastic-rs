@@ -12,7 +12,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 
 use super::MultivariateFamily;
 use super::dvine::PairCopula;
-use super::dvine::pair_copula::check_pairs;
+use super::dvine::pair_copula::check_student_t_nu;
 use super::fit::SelectionCriterion;
 use super::fit::fit_cvine;
 use super::rosenblatt;
@@ -60,7 +60,7 @@ impl CVine {
         )));
       }
     }
-    check_pairs(&pair_copulas)?;
+    check_student_t_nu(&pair_copulas)?;
     Ok(Self {
       dim,
       order: VineOrder::identity(dim),
