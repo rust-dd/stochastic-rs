@@ -24,10 +24,20 @@ pub(super) struct Frailty {
 pub(super) fn stable_power<R: Rng + ?Sized>(rng: &mut R, alpha: f64) -> f64 {
   let theta = std::f64::consts::PI * rng.random::<f64>().clamp(1e-15, 1.0 - 1e-15);
   let ln_w = (-rng.random::<f64>().clamp(1e-15, 1.0 - 1e-15).ln()).ln();
+  kanter(alpha, theta, ln_w)
+}
+
+/// `stable_power` at the angle `Θ ∈ (0, π)` and `ln W`.
+pub(super) fn kanter(alpha: f64, theta: f64, ln_w: f64) -> f64 {
   let beta = 1.0 - alpha;
-  alpha * (alpha * theta).sin().ln() + beta * (beta * theta).sin().ln()
-    - theta.sin().ln()
-    - beta * ln_w
+  // Below `α = 2⁻¹⁰²²`, where `αΘ` can underflow to 0, `ln sin(αΘ) = ln α + ln Θ + ln(sin(αΘ)/(αΘ))` with the last term
+  // rounding to 0; from there on `αΘ ≥ 6.9e-323` and the plain logarithm is finite.
+  let ln_sin_alpha_theta = if alpha < f64::MIN_POSITIVE {
+    alpha.ln() + theta.ln()
+  } else {
+    (alpha * theta).sin().ln()
+  };
+  alpha * ln_sin_alpha_theta + beta * (beta * theta).sin().ln() - theta.sin().ln() - beta * ln_w
 }
 
 /// The child frailty: Laplace transform `exp(−V₀((1 + t)^α − 1))` by Hofert's (2011) fast rejection, a sum of `m` positive

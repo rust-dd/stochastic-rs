@@ -294,6 +294,18 @@ fn archimedean_generators_match_the_mpmath_table() {
       }
     }
   }
+  // Clayton at `θ = 1e10` past `x = −θ ln t = ln(f64::MAX)`, at `x ≈ 710` and `731.8`: finite though `expm1(x)` is not.
+  let t = Array1::from(vec![0.9999999290000026, 0.9999999268194176]);
+  let got = Clayton::new(1e10).generator(t.view()).unwrap();
+  for ((t, &got), want) in t
+    .iter()
+    .zip(&got)
+    .zip([2.2339938138387886e298, 6.595423602751007e307])
+  {
+    if !matches(got, want) {
+      failures.push(format!("clayton [1e10] φ({t:e}) = {got:e}, want {want:e}"));
+    }
+  }
   assert!(
     failures.is_empty(),
     "{} cells:\n{}",
@@ -429,6 +441,8 @@ fn nested_archimedean_samples_hold_at_every_theta() {
     cases.push(("gumbel", true, pair.to_vec()));
   }
   for (family, nested, thetas) in cases {
+    // A Clayton child under the root `θ = 1e-4` costs about `e·10⁴` proposals a row.
+    let n = if nested && thetas[0] < 1e-3 { 200 } else { n };
     let u = nac(family, nested, &thetas)
       .sample(n, &Deterministic::new(1))
       .unwrap();
@@ -462,7 +476,7 @@ fn nested_archimedean_samples_hold_at_every_theta() {
 }
 
 /// τ̂ of every pair against its youngest common ancestor's `θ/(θ + 2)` (Clayton) or `1 − 1/θ` (Gumbel) within 4 SE of
-/// Hoeffding's (1948) variance, ζ₁ from the sample on that pair copula's `cdf`.
+/// Hoeffding's (1948) variance, ζ₁ from the sample on the exact pair law: the NAC's `cdf`, third coordinate at 1.
 #[test]
 fn strong_nesting_keeps_kendall_tau() {
   let n = 20_000;
@@ -475,10 +489,9 @@ fn strong_nesting_keeps_kendall_tau() {
     ("gumbel", true, vec![1.0, 500.0]),
   ];
   for (family, nested, thetas) in cases {
+    let copula = nac(family, nested, &thetas);
     for seed in [3, 5] {
-      let u = nac(family, nested, &thetas)
-        .sample(n, &Deterministic::new(seed))
-        .unwrap();
+      let u = copula.sample(n, &Deterministic::new(seed)).unwrap();
       let tau_hat = kendall_tau(u.view()).unwrap();
       for (i, j) in [(0, 1), (0, 2), (1, 2)] {
         let theta = if nested && i > 0 {
@@ -486,14 +499,15 @@ fn strong_nesting_keeps_kendall_tau() {
         } else {
           thetas[0]
         };
-        let (pair, tau): (Box<dyn BivariateExt>, f64) = match family {
-          "clayton" => (Box::new(Clayton::new(theta)), theta / (theta + 2.0)),
-          _ => (Box::new(Gumbel::new(theta)), 1.0 - 1.0 / theta),
+        let tau = match family {
+          "clayton" => theta / (theta + 2.0),
+          _ => 1.0 - 1.0 / theta,
         };
-        let x = stack![Axis(1), u.column(i), u.column(j)];
-        let c = pair.cdf(x.view()).unwrap();
+        let mut x = u.clone();
+        x.column_mut(3 - i - j).fill(1.0);
+        let c = copula.cdf(x.view()).unwrap();
         let g =
-          Array1::from_iter((0..n).map(|k| 1.0 - 2.0 * x[[k, 0]] - 2.0 * x[[k, 1]] + 4.0 * c[k]));
+          Array1::from_iter((0..n).map(|k| 1.0 - 2.0 * u[[k, i]] - 2.0 * u[[k, j]] + 4.0 * c[k]));
         let zeta1 = g.var(1.0);
         let m = n as f64;
         let se = (2.0 * (2.0 * (m - 2.0) * zeta1 + 1.0 - tau * tau) / (m * (m - 1.0))).sqrt();

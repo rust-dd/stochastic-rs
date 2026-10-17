@@ -18,8 +18,8 @@
 //!
 //! ## Sampling
 //!
-//! Hofert & Mächler (2011), Algorithm 3.1 in logarithms, so every admitted `θ` samples: root frailty `Γ(1/θ, 1)` or
-//! `S_+(1/θ)`, a child's from its parent's `V₀` by their Table 3, a leaf `ψ(E/V)`; a Clayton child costs O(V₀).
+//! Hofert & Mächler (2011), Algorithm 3.1 in logarithms, frailties by their Table 3, a leaf `ψ(E/V)`: a Clayton child
+//! costs O(V₀) ≈ O(1/θ_root) proposals. Draws lie in `[0, 1]`; a coordinate can round to 0 or 1, where `pdf` is NaN.
 //!
 //! ## Density
 //!

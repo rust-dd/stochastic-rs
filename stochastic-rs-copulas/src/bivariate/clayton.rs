@@ -138,8 +138,8 @@ impl BivariateExt for Clayton {
     vec![]
   }
 
-  /// Nelsen's `φ(t) = (t^{−θ} − 1)/θ` as `−ln t · expm1(x)/x`, `x = −θ ln t`, which keeps its digits as `θ → 0` and is the
-  /// limit `−ln t` at `θ = 0`; `expm1(x)/θ` past `x = 1`.
+  /// Nelsen's `φ(t) = (t^{−θ} − 1)/θ` as `−ln t · expm1(x)/x`, `x = −θ ln t`, exact as `θ → 0` and `−ln t` at `θ = 0`;
+  /// `expm1(x)/θ` past `x = 1`, and `e^{x − ln θ}` past `ln(f64::MAX)`, where `expm1(x)` overflows before the quotient.
   fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
@@ -150,8 +150,10 @@ impl BivariateExt for Clayton {
         minus_ln_t
       } else if x <= 1.0 {
         minus_ln_t * expm1_over(x)
-      } else {
+      } else if x <= f64::MAX.ln() {
         x.exp_m1() / theta
+      } else {
+        (x - theta.ln()).exp()
       }
     }))
   }

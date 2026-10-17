@@ -40,7 +40,7 @@ fn nac_clayton_flat_is_exchangeable_clayton() {
 }
 
 /// The tilted stable's empirical LST is `exp(−v₀((1 + t)^α − 1))` within 4 SE, `Var e^{−tX} = L(2t) − L(t)²`, for one
-/// summand (`v₀ ≤ 1`, and `1 < v₀ < 2 ln 2`) and for several, down to `α = 1/40`.
+/// summand (`v₀ ≤ 1`, and `1 < v₀ < 2 ln 2`) and for several, down to `α = 1/500`.
 #[test]
 fn nac_clayton_tilted_stable_has_its_laplace_transform() {
   let n = 20_000;
@@ -50,6 +50,7 @@ fn nac_clayton_tilted_stable_has_its_laplace_transform() {
     (0.1, 3.7, 3),
     (0.9, 9.3, 4),
     (0.025, 2.0, 5),
+    (0.002, 2.0, 6),
   ] {
     let mut rng = Deterministic::new(seed).rng();
     let parent = Frailty {

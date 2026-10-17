@@ -1,5 +1,15 @@
 use super::*;
+use crate::multivariate::nac::sample::kanter;
 use crate::multivariate::nac::sample::stable_power;
+
+/// Kanter's draw at a subnormal `α` and the least angle, where `αΘ` underflows to 0: `Z` against mpmath at 120 digits.
+#[test]
+fn kanter_holds_where_alpha_theta_underflows() {
+  let (alpha, theta) = (5.56e-310, std::f64::consts::PI * 1e-15);
+  assert_eq!(alpha * theta, 0.0);
+  let z = kanter(alpha, theta, (-f64::ln(0.5)).ln());
+  assert_eq!(z, 0.36651292058166435);
+}
 
 /// `stable_power` is `α ln S` of the positive stable: at `t = e^{c/α}`, `c ∈ {−1, 0, 1}`, the empirical Laplace transform
 /// is `exp(−e^c)` within 4 SE, `Var e^{−tS} = L(2t) − L(t)²`, down to `α = 1e-300`, and every draw is finite.
