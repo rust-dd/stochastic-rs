@@ -42,10 +42,14 @@ use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
 use crate::student_t;
+use crate::student_t::Law;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::tau_out_of_range;
+
+/// Below this a quantile's square, `ν` added, stays finite: past it the h-function and its inverse take logarithms.
+const LARGE: f64 = 1e150;
 
 #[derive(Debug, Clone)]
 pub struct TCopula {
@@ -94,39 +98,84 @@ impl TCopula {
     self.nu = nu;
   }
 
-  /// `u = t_ν(t_{ν+1}⁻¹(y)√((ν + x²)(1 − ρ²)/(ν + 1)) + ρx)`, `x = t_ν⁻¹(v)`, and the two-point law the `v → 0, 1`
-  /// limit of `∂_v C` leaves at the edges.
+  /// `u = t_ν(t_{ν+1}⁻¹(y)√((ν + x²)(1 − ρ²)/(ν + 1)) + ρx)`, `x = t_ν⁻¹(v)`, in logarithms where a quantile passes
+  /// `LARGE`, and the two-point law the `v → 0, 1` limit of `∂_v C` leaves at the edges.
   pub(crate) fn inverse(rho: f64, nu: f64) -> impl Fn(f64, f64) -> f64 {
-    let one_minus_rho2 = 1.0 - rho * rho;
+    let (law, wide) = (Law::new(nu), Law::new(nu + 1.0));
+    let one_minus_rho2 = (1.0 - rho) * (1.0 + rho);
     let edge = rho * ((nu + 1.0) / one_minus_rho2).sqrt();
+    let ln_spread = 0.5 * (one_minus_rho2 / (nu + 1.0)).ln();
     move |y, v| {
-      let x = student_t::quantile(v, nu);
-      let q = student_t::quantile(y, nu + 1.0);
-      if x.is_infinite() {
-        return if q <= -x.signum() * edge { 0.0 } else { 1.0 };
+      let (x, q) = (law.quantile(v), wide.quantile(y));
+      if v <= 0.0 || v >= 1.0 {
+        return if y < 1.0 && q.value <= -x.value.signum() * edge {
+          0.0
+        } else {
+          1.0
+        };
       }
-      let scale = ((nu + x * x) * one_minus_rho2 / (nu + 1.0)).sqrt();
-      student_t::cdf(q * scale + rho * x, nu)
+      if x.value.abs() < LARGE && q.value.is_finite() {
+        let scale = ((nu + x.value * x.value) * one_minus_rho2 / (nu + 1.0)).sqrt();
+        return law.cdf_at(q.value * scale + rho * x.value);
+      }
+      if x.value.abs() < LARGE {
+        let ln_scale = 0.5 * (nu + x.value * x.value).ln() + ln_spread;
+        return law.cdf(q.value.signum(), q.ln_abs + ln_scale);
+      }
+      // `B = xw`, `w = ρ + sgn(x) q √((1 + ν/x²)(1 − ρ²)/(ν + 1))`, whose `ν/x²` is below every rounding unit here.
+      let (sign_w, ln_w) = if q.value.is_finite() {
+        let w = rho + x.value.signum() * q.value * ln_spread.exp();
+        (w.signum(), w.abs().ln())
+      } else {
+        (x.value.signum() * q.value.signum(), q.ln_abs + ln_spread)
+      };
+      law.cdf_scaled(x, x.value.signum() * sign_w, ln_w)
     }
   }
 
-  /// `∂_v C = t_{ν+1}((x − ρy)√((ν + 1)/((ν + y²)(1 − ρ²))))`, `x, y = t_ν⁻¹(u), t_ν⁻¹(v)`, and its `v → 0, 1` limit
-  /// `t_{ν+1}(±ρ√((ν + 1)/(1 − ρ²)))` at the edges.
+  /// `∂_v C = t_{ν+1}((x − ρy)√((ν + 1)/((ν + y²)(1 − ρ²))))`, `x, y = t_ν⁻¹(u), t_ν⁻¹(v)`, in logarithms where a quantile
+  /// passes `LARGE`, and its `v → 0, 1` limit `t_{ν+1}(±ρ√((ν + 1)/(1 − ρ²)))` at the edges.
   pub(crate) fn h(rho: f64, nu: f64) -> impl Fn(f64, f64) -> f64 {
-    let sqrt_one_minus_rho2 = (1.0 - rho * rho).sqrt();
+    let (law, wide) = (Law::new(nu), Law::new(nu + 1.0));
+    let sqrt_one_minus_rho2 = ((1.0 - rho) * (1.0 + rho)).sqrt();
     let nu_plus_one = nu + 1.0;
     let boundary_arg = rho * nu_plus_one.sqrt() / sqrt_one_minus_rho2;
+    let (at_zero, at_one) = (wide.cdf_at(boundary_arg), wide.cdf_at(-boundary_arg));
+    let reach = nu_plus_one.sqrt() / sqrt_one_minus_rho2;
     move |u, v| {
-      if v <= 0.0 {
-        return student_t::cdf(boundary_arg, nu_plus_one);
+      if u >= 1.0 {
+        return 1.0;
       }
-      if v >= 1.0 {
-        return student_t::cdf(-boundary_arg, nu_plus_one);
+      if v <= 0.0 || v >= 1.0 {
+        return if v <= 0.0 { at_zero } else { at_one };
       }
-      let x = student_t::quantile(u, nu);
-      let y = student_t::quantile(v, nu);
-      let scale = (nu_plus_one / (nu + y * y)).sqrt() / sqrt_one_minus_rho2;
-      student_t::cdf((x - rho * y) * scale, nu_plus_one)
+      if u <= 0.0 {
+        return 0.0;
+      }
+      let (x, y) = (law.quantile(u), law.quantile(v));
+      if x.value.is_finite() && y.value.abs() < LARGE {
+        let gap = x.value - rho * y.value;
+        // At the median a tiny `ν` overflows the scale: the argument is 0 there.
+        if gap == 0.0 {
+          return wide.cdf_at(0.0);
+        }
+        let scale = (nu_plus_one / (nu + y.value * y.value)).sqrt() / sqrt_one_minus_rho2;
+        return wide.cdf_at(gap * scale);
+      }
+      // `x/√(ν + y²)` and `y/√(ν + y²)` from the logarithms; past `f64::MAX` the first carries the argument alone.
+      let (ln_x_over_root, y_over_root) = if y.value.abs() < LARGE {
+        let root = (nu + y.value * y.value).sqrt();
+        (x.ln_abs - root.ln(), y.value / root)
+      } else {
+        let lift = 0.5 * (nu * (-2.0 * y.ln_abs).exp()).ln_1p();
+        (law.ln_ratio(x, y) - lift, y.value.signum() * (-lift).exp())
+      };
+      let ratio = x.value.signum() * ln_x_over_root.exp();
+      if ratio.is_finite() {
+        wide.cdf_at((ratio - rho * y_over_root) * reach)
+      } else {
+        wide.cdf(x.value.signum(), ln_x_over_root + reach.ln())
+      }
     }
   }
 

@@ -14,13 +14,18 @@ use super::BivariateFamily;
 use crate::bivariate::conditional::check_lengths;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
-use crate::bivariate::conditional::conditioned;
 use crate::bivariate::conditional::confine;
+use crate::bivariate::conditional::ln_ratio;
+use crate::bivariate::conditional::softplus;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::tau_out_of_range;
+
+/// Below this `θ`, `h(u | v) = u(1 − θ ln u (1 + ln v) + O(θ²))` is `u` to rounding at every `u, v ≥ 5e-324`
+/// (`θ · 744.5 · 743.5 < 2⁻⁵³`), where `θ ln u` can fall into the subnormals.
+const INDEPENDENT_BELOW: f64 = 2e-22;
 
 #[derive(Debug, Clone, Default)]
 pub struct Clayton {
@@ -43,6 +48,48 @@ impl Clayton {
   /// The copula whose Kendall's τ is `tau`.
   pub fn from_tau(tau: f64) -> Result<Self, CopulaError> {
     Self::try_new(Self::default().theta_from_tau(tau)?)
+  }
+
+  /// `∂_v C = (1 + z)^{−(1 + 1/θ)}`, `z = (v/u)^θ(1 − u^θ)`, in logarithms so neither power overflows; 1 at `v = 0`, whose
+  /// conditional law is a point mass at `u = 0`.
+  pub(crate) fn h(theta: f64) -> impl Fn(f64, f64) -> f64 {
+    let exponent = 1.0 + 1.0 / theta;
+    move |u, v| {
+      if u >= 1.0 || v <= 0.0 {
+        return 1.0;
+      }
+      if u <= 0.0 {
+        return 0.0;
+      }
+      let ln_v_over_u = theta * ln_ratio(v, u);
+      let one_minus = -(theta * u.ln()).exp_m1();
+      let ln_z = ln_v_over_u + one_minus.ln();
+      // `z` itself below 1, where `exp(ln z)` would turn the rounding of `ln z` into a relative error times `1/θ`.
+      let ln_1p_z = if ln_z < 0.0 {
+        (ln_v_over_u.exp() * one_minus).ln_1p()
+      } else {
+        softplus(ln_z)
+      };
+      (-exponent * ln_1p_z).exp()
+    }
+  }
+
+  /// `Clayton::h` at one point for any `θ > 0`, `u` below `INDEPENDENT_BELOW` (the vine pairs' inputs are never 0).
+  pub(crate) fn h_at(theta: f64, u: f64, v: f64) -> f64 {
+    if theta < INDEPENDENT_BELOW {
+      u
+    } else {
+      Self::h(theta)(u, v)
+    }
+  }
+
+  /// `h⁻¹(y | v)` at one point for any `θ > 0`: `Clayton::finish` of `Clayton::level`, `y` below `INDEPENDENT_BELOW`.
+  pub(crate) fn inverse_at(theta: f64, y: f64, v: f64) -> f64 {
+    if theta < INDEPENDENT_BELOW {
+      y
+    } else {
+      Self::finish(theta, Self::level(theta, y), y, v, v.powf(theta))
+    }
   }
 
   /// `a = y^{−θ/(1 + θ)} − 1` of `h⁻¹(y | v) = (1 + a/v^θ)^{−1/θ}`, as `expm1` so `y` near 1 keeps its digits.
@@ -163,7 +210,8 @@ impl BivariateExt for Clayton {
     Ok(cdfs)
   }
 
-  /// `h⁻¹(y | v)` by `Clayton::level` and `Clayton::finish`, `y` at `θ = 0`; NaN for `y` or `v` outside `[0, 1]`.
+  /// `h⁻¹(y | v)` by `Clayton::level` and `Clayton::finish`, `y` at `θ = 0` and below `INDEPENDENT_BELOW` but at `v = 0`;
+  /// NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
@@ -175,6 +223,9 @@ impl BivariateExt for Clayton {
 
     if theta == 0.0 {
       return conditional_quantiles(y, v_col, |y, _| y);
+    }
+    if theta < INDEPENDENT_BELOW {
+      return conditional_quantiles(y, v_col, |y, v| if v <= 0.0 { 0.0 } else { y });
     }
 
     check_lengths(y, v_col)?;
@@ -189,31 +240,18 @@ impl BivariateExt for Clayton {
     Ok(u)
   }
 
-  /// `∂_v C = v^{−θ−1}(u^{−θ} + v^{−θ} − 1)^{−(1+θ)/θ}`, `u` at `θ = 0`, and 1 at `v = 0`, whose conditional law is a
-  /// point mass at `u = 0`; NaN for `v` outside `[0, 1]`.
+  /// `Clayton::h`, `u` at `θ = 0` and below `INDEPENDENT_BELOW` but for the point mass at `v = 0`; NaN for `v` outside
+  /// `[0, 1]`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
     let theta = self.theta.unwrap();
-
     if theta == 0.0 {
       return Ok(conditional_cdf(x, |u, _| u));
     }
-
-    // Two passes, as in `percent_point`: a fused per-pair closure would chain its `powf` calls.
-    let v_col = x.column(1);
-    let mut h = Zip::from(x.column(0))
-      .and(v_col)
-      .map_collect(|&u, &v| v.powf(-theta) + u.powf(-theta) - 1.0);
-    Zip::from(&mut h).and(v_col).for_each(|h, &v| {
-      let p = if v == 0.0 {
-        1.0
-      } else {
-        v.powf(-theta - 1.0) * h.powf((-1.0 - theta) / theta)
-      };
-      *h = conditioned(v, p);
-    });
-    Ok(h)
+    if theta < INDEPENDENT_BELOW {
+      return Ok(conditional_cdf(x, |u, v| if v <= 0.0 { 1.0 } else { u }));
+    }
+    Ok(conditional_cdf(x, Self::h(theta)))
   }
 
   fn tau_from_theta(&self, theta: f64) -> f64 {

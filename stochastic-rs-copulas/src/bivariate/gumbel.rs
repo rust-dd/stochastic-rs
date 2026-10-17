@@ -12,6 +12,9 @@ use ndarray::ArrayView2;
 use super::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::ln_log_ratio;
+use crate::bivariate::conditional::ln_ratio;
+use crate::bivariate::conditional::numerical_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -39,6 +42,29 @@ impl Gumbel {
   /// The copula whose Kendall's τ is `tau`.
   pub fn from_tau(tau: f64) -> Result<Self, CopulaError> {
     Self::try_new(Self::default().theta_from_tau(tau)?)
+  }
+
+  /// `ln ∂_v C = (w − m) − m expm1(L/θ) − (1 − 1/θ)L + (θ − 1) ln(w/m)`, `x, w = −ln u, −ln v`, `m = max(x, w)`,
+  /// `L = ln(1 + (min/m)^θ)`, the ratio's logarithm by `ln_log_ratio`; the limit laws `δ₀`, `δ₁` at `v = 0, 1`.
+  pub(crate) fn ln_h(theta: f64) -> impl Fn(f64, f64) -> f64 {
+    move |u, v| {
+      if u >= 1.0 || v <= 0.0 {
+        return 0.0;
+      }
+      if u <= 0.0 || v >= 1.0 {
+        return f64::NEG_INFINITY;
+      }
+      let (x, w) = (-u.ln(), -v.ln());
+      let q = ln_log_ratio(u, v, x, w);
+      let (m, w_minus_m, ln_w_over_m) = if q > 0.0 {
+        (x, ln_ratio(u, v), -q)
+      } else {
+        (w, 0.0, 0.0)
+      };
+      let log_1p_r = (-theta * q.abs()).exp().ln_1p();
+      w_minus_m - m * (log_1p_r / theta).exp_m1() - (1.0 - 1.0 / theta) * log_1p_r
+        + (theta - 1.0) * ln_w_over_m
+    }
   }
 }
 
@@ -110,45 +136,29 @@ impl BivariateExt for Gumbel {
     Ok(cdfs)
   }
 
-  /// The identity at `θ = 1`, else the Brent root of [`Gumbel::partial_derivative`]; NaN for `y` or `v` outside `[0, 1]`.
+  /// `numerical_quantiles` of `Gumbel::ln_h`, the identity at `θ = 1`; NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
-    if self.theta.unwrap() == 1.0 {
+    let theta = self.theta.unwrap();
+    if theta == 1.0 {
       return conditional_quantiles(y, v, |y, _| y);
     }
-
-    self.percent_point_numerical(y, v)
+    numerical_quantiles(y, v, self.family(), Self::ln_h(theta))
   }
 
-  /// `∂_v C = exp(w − R)(w/R)^{θ−1}`, `x, w = −ln u, −ln v`, `R = m(1 + r)^{1/θ}`, `m = max(x, w)`, `r = (min/m)^θ`:
-  /// no underflow near `u, v = 1`; 1 at `u = 1` and at `v = 0` (a point mass at `u = 0`), NaN for `v ∉ [0, 1]`.
+  /// `exp` of `Gumbel::ln_h`, `u` at `θ = 1`; NaN for `v` outside `[0, 1]`.
   fn partial_derivative(&self, uv: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
     let theta = self.theta.unwrap();
-
     if theta == 1.0 {
       return Ok(conditional_cdf(uv, |u, _| u));
     }
-
-    Ok(conditional_cdf(uv, |u, v| {
-      if u >= 1.0 || v == 0.0 {
-        return 1.0;
-      }
-      if u == 0.0 {
-        return 0.0;
-      }
-      let (x, w) = (-u.ln(), -v.ln());
-      let m = x.max(w);
-      let log_1p_r = (x.min(w) / m).powf(theta).ln_1p();
-      let exponent = (w - m) - m * (log_1p_r / theta).exp_m1() - (1.0 - 1.0 / theta) * log_1p_r;
-      exponent.exp() * (w / m).powf(theta - 1.0)
-    }))
+    let ln_h = Self::ln_h(theta);
+    Ok(conditional_cdf(uv, |u, v| ln_h(u, v).exp()))
   }
 
   fn tau_from_theta(&self, theta: f64) -> f64 {

@@ -31,11 +31,17 @@ use stochastic_rs_distributions::special::digamma;
 use super::BivariateFamily;
 use super::conditional::conditional_cdf;
 use super::conditional::conditional_quantiles;
+use super::conditional::expm1_over;
+use super::conditional::ln_expm1;
+use super::conditional::ln_one_minus_exp;
+use super::conditional::ln_one_minus_pow;
+use super::conditional::ln_one_minus_pow_ratio;
+use super::conditional::ln_ratio_complement;
+use super::conditional::softplus;
 use super::two_parameter::clip;
 use super::two_parameter::fit_two_parameters;
 use super::two_parameter::invert_h;
 use super::two_parameter::kendall_tau_numeric;
-use super::two_parameter::ln_one_minus_exp;
 use crate::bivariate::conditional::check_pairs;
 use crate::correlation::kendall_tau_b;
 use crate::error::CopulaError;
@@ -68,6 +74,19 @@ fn digamma_difference(mut x: f64, mut y: f64) -> f64 {
   add(-digamma(y));
   sum + compensation
 }
+
+/// `ln(1 − e^{−z})` for `z ≥ 0`, from `ln z` where `z` is subnormal.
+fn ln_one_minus_exp_from(z: f64, ln_z: f64) -> f64 {
+  if z < f64::MIN_POSITIVE {
+    ln_z
+  } else {
+    ln_one_minus_exp(-z)
+  }
+}
+
+/// The expanded h's terms are differences of logarithms that grow with `θ`, `δ` and `|ln v̄|`; below `2⁷` their rounding
+/// stays under `2⁻⁴²` relative.
+const EXPANDED_LIMIT: f64 = 128.0;
 
 #[derive(Debug, Clone)]
 pub struct Bb7 {
@@ -144,11 +163,130 @@ impl Bb7 {
     -(ln_1mt / theta).exp_m1()
   }
 
+  /// `∂_v C`, held below 1 against rounding: the expanded form while `s − 1`, `−ln T` are normal and its exponent terms
+  /// stay below `EXPANDED_LIMIT`, `h_log` past it; the limit laws at `v = 0` (`δ₀`), `v = 1` (`u^{δ+1}` at `θ = 1`, else `δ₁`).
   pub(crate) fn h_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
-    let (_, ln_b, ln_s, _, ln_1mt) = Self::logs(u, v, theta, delta);
-    ((1.0 / theta - 1.0) * ln_1mt - (1.0 / delta + 1.0) * ln_s - (delta + 1.0) * ln_b
-      + (theta - 1.0) * (-v).ln_1p())
-    .exp()
+    if u >= 1.0 || v <= 0.0 {
+      return 1.0;
+    }
+    if u <= 0.0 {
+      return 0.0;
+    }
+    if v >= 1.0 {
+      return if theta == 1.0 {
+        u.powf(delta + 1.0)
+      } else {
+        0.0
+      };
+    }
+    let (_, ln_b, ln_s, ln_t, ln_1mt) = Self::logs(u, v, theta, delta);
+    let terms = [
+      (1.0 / theta - 1.0) * ln_1mt,
+      -(1.0 / delta + 1.0) * ln_s,
+      -(delta + 1.0) * ln_b,
+      (theta - 1.0) * (-v).ln_1p(),
+    ];
+    let normal = ln_s >= f64::MIN_POSITIVE && -ln_t >= f64::MIN_POSITIVE;
+    if normal && terms.iter().all(|t| t.abs() <= EXPANDED_LIMIT) {
+      return (terms[0] + terms[1] + terms[2] + terms[3]).exp().min(1.0);
+    }
+    Self::h_log(u, v, theta, delta)
+  }
+
+  /// `h = (v̄/C̄)^{θ−1}(T/b)^{δ+1} = exp(−((θ − 1)/θ)R − ((δ + 1)/δ) ln(1 + Q))`, `R = ln((1 − T)/β)`, `Q = F(α)/(1 + F(β))`,
+  /// `F(x) = expm1(δw)`, `w = −ln(1 − x)`, `α, β = ū^θ, v̄^θ`: logarithms throughout, `ln(F(α)/F(β))` as one ratio.
+  fn h_log(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
+    let ln_delta = delta.ln();
+    let (ln_u_bar, ln_v_bar) = ((-u).ln_1p(), (-v).ln_1p());
+    let (ln_alpha, ln_beta) = (theta * ln_u_bar, theta * ln_v_bar);
+    let (w_alpha, ln_w_alpha) = Self::w_of(theta, ln_u_bar, ln_alpha);
+    let (w_beta, ln_w_beta) = Self::w_of(theta, ln_v_bar, ln_beta);
+    let (z_alpha, z_beta) = (delta * w_alpha, delta * w_beta);
+    let (ln_z_alpha, ln_z_beta) = (ln_delta + ln_w_alpha, ln_delta + ln_w_beta);
+    let w_gap = ln_one_minus_pow_ratio(theta, ln_v_bar, ln_u_bar);
+    let ln_f_ratio = if z_alpha.min(z_beta) >= 1.0 || z_alpha.max(z_beta) > 700.0 {
+      delta * w_gap + ln_one_minus_exp_from(z_alpha, ln_z_alpha)
+        - ln_one_minus_exp_from(z_beta, ln_z_beta)
+    } else {
+      let ln_w_ratio = if ln_alpha < -36.7 && ln_beta < -36.7 {
+        theta * ln_ratio_complement(u, v) + 0.5 * (ln_alpha.exp() - ln_beta.exp())
+      } else if w_beta >= f64::MIN_POSITIVE && (0.5..=2.0).contains(&(w_alpha / w_beta)) {
+        (w_gap / w_beta).ln_1p()
+      } else {
+        ln_w_alpha - ln_w_beta
+      };
+      ln_w_ratio + (expm1_over(z_alpha) / expm1_over(z_beta)).ln()
+    };
+    // `ln(F(α) + F(β))` from the larger term, so one that underflows to `ln F = −∞` drops out.
+    let ln_y = if ln_f_ratio >= 0.0 {
+      ln_expm1(z_alpha, ln_z_alpha) + softplus(-ln_f_ratio)
+    } else {
+      ln_expm1(z_beta, ln_z_beta) + softplus(ln_f_ratio)
+    };
+    let r = if ln_y > 0.0 {
+      ln_one_minus_exp(-softplus(ln_y) / delta) - ln_beta
+    } else {
+      Self::r_small(theta, ln_v_bar, ln_delta, delta, ln_y) + softplus(ln_f_ratio)
+    };
+    // `ln Q = δ(w_α − w_β) + ln(1 − e^{−δw_α})`; with `Q < 1` and a small `δw_α`, the `1/δ` multiplies `Q`, not its log.
+    let ln_q = delta * w_gap + ln_one_minus_exp_from(z_alpha, ln_z_alpha);
+    let second = if ln_q < 0.0 && z_alpha < 1.0 {
+      let q = ln_q.exp();
+      let ln_1p_over = if q == 0.0 { 1.0 } else { q.ln_1p() / q };
+      (delta + 1.0) * w_alpha * expm1_over(z_alpha) * (-z_beta).exp() * ln_1p_over
+    } else {
+      (delta + 1.0) / delta * softplus(ln_q)
+    };
+    (-(theta - 1.0) / theta * r - second).exp().min(1.0)
+  }
+
+  /// `(w, ln w)` for `w = −ln(1 − x)`, `x = e^{ln x}`: `ln w = ln x + x/2` to rounding below `x = 2⁻⁵³`, where `w` may
+  /// underflow with `x` while its logarithm stays exact.
+  fn w_of(theta: f64, ln_x_bar: f64, ln_x: f64) -> (f64, f64) {
+    let w = -ln_one_minus_pow(theta, ln_x_bar);
+    let ln_w = if ln_x < -36.7 {
+      ln_x + 0.5 * ln_x.exp()
+    } else {
+      w.ln()
+    };
+    (w, ln_w)
+  }
+
+  /// `R − softplus(ln(F(α)/F(β)))` for `Y = F(α) + F(β) ≤ 1`: `ln(F(β)/(δβ)) + ln(k/Y) + ln((1 − e^{−k/δ})δ/k)`,
+  /// `k = ln(1 + Y)`, each a correction near 0, so `R` never forms the two close magnitudes `ln(1 − T)` and `ln β`.
+  fn r_small(theta: f64, ln_v_bar: f64, ln_delta: f64, delta: f64, ln_y: f64) -> f64 {
+    let ln_beta = theta * ln_v_bar;
+    let c_beta = Self::f_correction(ln_beta, ln_one_minus_pow(theta, ln_v_bar), ln_delta);
+    let y = ln_y.exp();
+    let k = y.ln_1p();
+    let ln_k_over_y = if y == 0.0 { 0.0 } else { (k / y).ln() };
+    let (z, ln_z) = (k / delta, k.ln() - ln_delta);
+    let ln_phi = if z == 0.0 {
+      0.0
+    } else {
+      ln_one_minus_exp_from(z, ln_z) - ln_z
+    };
+    c_beta + ln_k_over_y + ln_phi
+  }
+
+  /// `ln(F(x)/(δx)) = ln(w/x) + ln(expm1(δw)/(δw))`, `w = −ln(1 − x)` from `ln(1 − x)`, which keeps `1 − x` where `x`
+  /// rounds to 1; `ln(w/x) = x/2` to rounding below `x = 2⁻⁵³`.
+  fn f_correction(ln_x: f64, ln_one_minus_x: f64, ln_delta: f64) -> f64 {
+    let ln_w_over_x = if ln_x < -36.7 {
+      0.5 * ln_x.exp()
+    } else {
+      (-ln_one_minus_x).ln() - ln_x
+    };
+    let ln_dw = ln_delta + ln_x + ln_w_over_x;
+    let dw = ln_dw.exp();
+    let ln_expm1_over = if dw == 0.0 {
+      0.0
+    } else if dw < 1.0 {
+      (dw.exp_m1() / dw).ln()
+    } else {
+      dw + ln_one_minus_exp(-dw) - ln_dw
+    };
+    ln_w_over_x + ln_expm1_over
   }
 
   pub(crate) fn log_density_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
@@ -277,7 +415,7 @@ impl BivariateExt for Bb7 {
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     Ok(conditional_cdf(x, |u, v| {
-      Self::h_scalar(clip(u), clip(v), theta, delta)
+      Self::h_scalar(u, v, theta, delta)
     }))
   }
 
@@ -345,127 +483,4 @@ impl BivariateExt for Bb7 {
 }
 
 #[cfg(test)]
-mod tests {
-  use ndarray::array;
-  use stochastic_rs_core::simd_rng::Deterministic;
-
-  use super::*;
-
-  fn unfitted(delta: f64) -> Bb7 {
-    let mut c = Bb7::default();
-    c.set_delta(delta);
-    c
-  }
-
-  #[test]
-  fn h_function_is_the_v_derivative_of_the_cdf() {
-    let c = Bb7::new(1.8, 0.9);
-    for (u, v) in [(0.3, 0.6), (0.8, 0.2), (0.5, 0.5)] {
-      let h = c.partial_derivative(array![[u, v]].view()).unwrap()[0];
-      let eps = 1e-6;
-      let up = c.cdf(array![[u, v + eps]].view()).unwrap()[0];
-      let dn = c.cdf(array![[u, v - eps]].view()).unwrap()[0];
-      assert!(
-        (h - (up - dn) / (2.0 * eps)).abs() < 1e-6,
-        "h {h} vs fd {}",
-        (up - dn) / (2.0 * eps)
-      );
-    }
-  }
-
-  #[test]
-  fn density_is_the_mixed_derivative_of_the_cdf() {
-    let c = Bb7::new(1.5, 1.2);
-    let (u, v, eps) = (0.4, 0.7, 1e-4);
-    let f = |a: f64, b: f64| c.cdf(array![[a, b]].view()).unwrap()[0];
-    let mixed = (f(u + eps, v + eps) - f(u + eps, v - eps) - f(u - eps, v + eps)
-      + f(u - eps, v - eps))
-      / (4.0 * eps * eps);
-    let density = c.pdf(array![[u, v]].view()).unwrap()[0];
-    assert!(
-      (density - mixed).abs() < 1e-5,
-      "density {density} vs fd {mixed}"
-    );
-  }
-
-  #[test]
-  fn cdf_has_uniform_margins_and_nests_the_limits() {
-    let c = Bb7::new(1.7, 0.8);
-    for (u, v) in [(0.2, 0.7), (0.9, 0.4)] {
-      assert!((c.cdf(array![[u, 1.0 - 1e-12]].view()).unwrap()[0] - u).abs() < 1e-8);
-      assert!((c.cdf(array![[1.0 - 1e-12, v]].view()).unwrap()[0] - v).abs() < 1e-8);
-    }
-    // θ = 1 is Clayton(δ).
-    let mut clayton = crate::bivariate::clayton::Clayton::default();
-    clayton.set_theta(0.8);
-    let joe_clayton = Bb7::new(1.0, 0.8);
-    let (u, v) = (0.35, 0.65);
-    assert!(
-      (joe_clayton.cdf(array![[u, v]].view()).unwrap()[0]
-        - clayton.cdf(array![[u, v]].view()).unwrap()[0])
-        .abs()
-        < 1e-12
-    );
-  }
-
-  #[test]
-  fn tail_coefficients_follow_joe() {
-    let td = Bb7::new(2.0, 1.0).tail_dependence().unwrap();
-    assert!((td.upper - (2.0 - 2.0_f64.sqrt())).abs() < 1e-15);
-    assert!((td.lower - 0.5).abs() < 1e-15);
-  }
-
-  /// Cor. 5.1.4's Beta form by mpmath at 60 digits across its pole at `θ = 2`, at `θ = 1` (Clayton), past the switch at
-  /// `θ = 4` and far out; within `1e-15/min(δ, 1)`, as `R(b) − 1/(1 + b)` cancels to `O(δ)`.
-  #[test]
-  fn kendall_tau_matches_the_beta_form() {
-    for (theta, delta, want) in [
-      (1.6, 1.1, 0.4577513242482392),
-      (1.7, 0.9, 0.4463258932897074),
-      (2.0, 1.3, 0.529201420029881),
-      (2.000000001, 1.3, 0.529201420137199),
-      (1.999999999, 1.3, 0.5292014199225632),
-      (1.0000001, 0.9, 0.310344851967264),
-      (1.25, 0.3, 0.2246470101786293),
-      (4.0, 5.0, 0.7567099567099567),
-      (4.0001, 0.05, 0.6171694905640738),
-      (60.0, 2.0, 0.9680063458487572),
-      (1e6, 1.0, 0.999998000004),
-    ] {
-      let tau = unfitted(delta).tau_from_theta(theta);
-      let tolerance = 1e-15 / delta.min(1.0);
-      assert!(
-        (tau - want).abs() < tolerance,
-        "(θ, δ) = ({theta}, {delta}): {tau} vs {want}"
-      );
-    }
-    assert!((unfitted(2.0).tau_from_theta(3.0) - 0.65).abs() < 1e-15);
-    assert!((unfitted(0.8).tau_from_theta(1.0) - 0.8 / 2.8).abs() < 1e-15);
-    assert_eq!(unfitted(1.1).tau_from_theta(f64::INFINITY), 1.0);
-  }
-
-  #[test]
-  fn kendall_inversion_and_maximum_likelihood_are_consistent() {
-    let truth = Bb7::new(1.6, 1.1);
-    let tau = truth.tau_from_theta(1.6);
-    let inverted = Bb7::from_tau(tau, 1.1).unwrap();
-    assert!(
-      (inverted.theta().unwrap() - 1.6).abs() < 1e-9,
-      "inverted theta {}",
-      inverted.theta().unwrap()
-    );
-    let sample = truth.sample(4000, &Deterministic::new(13)).unwrap();
-    let mut fitted = Bb7::default();
-    fitted.fit(sample.view()).unwrap();
-    assert!(
-      (fitted.theta().unwrap() - 1.6).abs() < 0.25,
-      "theta {}",
-      fitted.theta().unwrap()
-    );
-    assert!(
-      (fitted.delta() - 1.1).abs() < 0.3,
-      "delta {}",
-      fitted.delta()
-    );
-  }
-}
+mod tests;

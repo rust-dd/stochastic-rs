@@ -56,27 +56,39 @@ impl Amh {
   /// The root in `[0, 1]` of `Au² + Bu + C = 0` (`y D² = u(1 − θ + θu)`, `p = θ(1 − v)`) chosen by `B`'s sign, for
   /// `θ ≠ 1`; `√(B² − 4AC)` is `hypot((1 − θ)√(1 − y), (1 − θ + 2θv)√y)`, free of cancellation and underflow.
   pub(crate) fn inverse(theta: f64) -> impl Fn(f64, f64) -> f64 {
-    move |y, v| {
-      let (minus_a, b, c, z) = Self::quadratic(theta, y, v);
-      let x = (1.0 - theta) * (1.0 - y).sqrt();
-      // `hypot` without the call: libm rounds it this way when no square needs scaling, as `big ≥ 1e-24` for `θ < 1`.
-      let (big, small) = if x >= z { (x, z) } else { (z, x) };
-      let root = small.mul_add(small, big * big).sqrt();
-      let (numerator, denominator) = if b < 0.0 {
-        (2.0 * c, root - b)
-      } else {
-        (b + root, 2.0 * minus_a)
-      };
-      numerator / denominator
+    move |y, v| Self::root::<false>(theta, y, v)
+  }
+
+  /// `Amh::inverse` for `θ > 1/2`, `y` multiplied last into `2C/(√… − B)`: `C = y(1 − p)²` trails the root by `(1 − θ)/2`, so
+  /// near `θ = 1` it reaches the subnormals while the root is normal; at `θ ≤ 1/2` that costs at most two bits.
+  pub(crate) fn inverse_near_one(theta: f64) -> impl Fn(f64, f64) -> f64 {
+    move |y, v| Self::root::<true>(theta, y, v)
+  }
+
+  #[inline(always)]
+  fn root<const LATE_Y: bool>(theta: f64, y: f64, v: f64) -> f64 {
+    let (minus_a, b, one_minus_p, z) = Self::quadratic(theta, y, v);
+    let x = (1.0 - theta) * (1.0 - y).sqrt();
+    // `hypot` without the call: libm rounds it this way when no square needs scaling, as `big ≥ 1e-24` for `θ < 1`.
+    let (big, small) = if x >= z { (x, z) } else { (z, x) };
+    let root = small.mul_add(small, big * big).sqrt();
+    if LATE_Y && b < 0.0 {
+      return y * (2.0 * one_minus_p * one_minus_p / (root - b));
     }
+    let (numerator, denominator) = if b < 0.0 {
+      (2.0 * (y * one_minus_p * one_minus_p), root - b)
+    } else {
+      (b + root, 2.0 * minus_a)
+    };
+    numerator / denominator
   }
 
   /// `Amh::inverse` at `θ = 1`, where `hypot`'s first operand is 0, so the root is `2v√y`.
   pub(crate) fn inverse_at_one() -> impl Fn(f64, f64) -> f64 {
     move |y, v| {
-      let (minus_a, b, c, root) = Self::quadratic(1.0, y, v);
+      let (minus_a, b, one_minus_p, root) = Self::quadratic(1.0, y, v);
       if b < 0.0 {
-        2.0 * c / (root - b)
+        2.0 * (y * one_minus_p * one_minus_p) / (root - b)
       } else if minus_a > 0.0 {
         (b + root) / (2.0 * minus_a)
       } else {
@@ -86,14 +98,19 @@ impl Amh {
     }
   }
 
-  /// `(−A, B, C)` from same-signed terms, `1 − p = (1 − θ) + θv`, and `hypot`'s second operand `(1 − θ + 2θv)√y`.
+  /// `(−A, B, 1 − p)` from same-signed terms, `1 − p = (1 − θ) + θv` and `C = y(1 − p)²`, and `hypot`'s second operand
+  /// `(1 − θ + 2θv)√y`.
   fn quadratic(theta: f64, y: f64, v: f64) -> (f64, f64, f64, f64) {
     let p = theta * (1.0 - v);
     let one_minus_p = (1.0 - theta) + theta * v;
     let minus_a = theta * ((1.0 - y) + y * ((1.0 - theta) + theta * v * (2.0 - v)));
     let b = 2.0 * y * p * one_minus_p - (1.0 - theta);
-    let c = y * one_minus_p * one_minus_p;
-    (minus_a, b, c, (1.0 - theta + 2.0 * theta * v) * y.sqrt())
+    (
+      minus_a,
+      b,
+      one_minus_p,
+      (1.0 - theta + 2.0 * theta * v) * y.sqrt(),
+    )
   }
 }
 
@@ -188,24 +205,29 @@ impl BivariateExt for Amh {
     Ok(out)
   }
 
-  /// $\partial_v C(u,v) = u\big(1 - \theta(1-u)\big) / D^2$, $D = 1 - \theta(1-u)(1-v)$, the derivative in the
-  /// conditioning second argument; NaN for `v` outside `[0, 1]`.
+  /// `∂_v C = (u/D)((1 − θ + θu)/D)`, `D = 1 − θ + θ(u + v − uv)`: same-signed terms for `θ ≥ 0` and ratios formed before
+  /// the product, which underflows only with the result; NaN for `v` outside `[0, 1]`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     Ok(conditional_cdf(x, |u, v| {
-      if u <= 0.0 {
-        return 0.0;
-      }
       if u >= 1.0 {
         return 1.0;
       }
-      let d = 1.0 - theta * (1.0 - u) * (1.0 - v);
-      u * (1.0 - theta * (1.0 - u)) / (d * d)
+      let d = (1.0 - theta) + theta * (u + v - u * v);
+      // `D = 0` only at `θ = 1`, `u = v = 0`: the atom at `u = 0` of the point mass `h(· | 0)` is there.
+      if d == 0.0 {
+        return 1.0;
+      }
+      if u <= 0.0 {
+        return 0.0;
+      }
+      (u / d) * (((1.0 - theta) + theta * u) / d)
     }))
   }
 
-  /// `Amh::inverse`'s root, `Amh::inverse_at_one`'s at `θ = 1`; NaN for `y` or `v` outside `[0, 1]`.
+  /// `Amh::inverse`'s root, `Amh::inverse_near_one`'s above `θ = 1/2`, `Amh::inverse_at_one`'s at `θ = 1`; NaN for `y` or
+  /// `v` outside `[0, 1]`.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
@@ -215,6 +237,8 @@ impl BivariateExt for Amh {
     let theta = self.theta.unwrap();
     if theta == 1.0 {
       conditional_quantiles(y, v, Self::inverse_at_one())
+    } else if theta > 0.5 {
+      conditional_quantiles(y, v, Self::inverse_near_one(theta))
     } else {
       conditional_quantiles(y, v, Self::inverse(theta))
     }

@@ -183,7 +183,7 @@ pub trait BivariateExt {
   }
 
   /// `percent_point`'s default, callable from an override: Brent's `zero` in `u` of `partial_derivative` held in
-  /// `[0, 1]`, on `[EPSILON, 1]`, saturating at its ends; NaN for `y`, `v` outside `[0, 1]`, `Err` for a NaN or error.
+  /// `[0, 1]`, on `[0, 1]`, saturating at its ends; NaN for `y`, `v` outside `[0, 1]`, `Err` for a NaN or error.
   fn percent_point_numerical(
     &self,
     y: ArrayView1<f64>,
@@ -193,7 +193,7 @@ pub trait BivariateExt {
     check_lengths(y, v)?;
     let n = y.len();
     let mut results = Array1::zeros(n);
-    let lo = f64::EPSILON;
+    let lo = 0.0;
 
     for i in 0..n {
       let y_i = y[i];

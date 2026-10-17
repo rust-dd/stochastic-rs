@@ -16,6 +16,7 @@ use ndarray::ArrayView2;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::sum_minus_one;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -45,6 +46,10 @@ const TAU_SERIES: [f64; 18] = [
   1.66305425784556e-28,
   -3.984859395313849e-30,
 ];
+
+/// Below this `|θ|`, `h(u | v) = u(1 + (θ/2)(1 − u)(1 − 2v) + O(θ²))` and its inverse are the identity to rounding, where
+/// the closed forms' products `θu` underflow.
+const INDEPENDENT_BELOW: f64 = f64::EPSILON;
 
 #[derive(Debug, Clone, Default)]
 pub struct Frank {
@@ -94,7 +99,7 @@ impl Frank {
   /// `h⁻¹(y | v)` for any `θ`: the identity at `θ = 0`, else `Frank::inverse(|θ|)` with `v` and `1 − v` swapped below 0;
   /// `percent_point` keeps its once-per-call dispatch, which holds the sign test out of its per-pair loop.
   pub(crate) fn inverse_at(theta: f64, y: f64, v: f64) -> f64 {
-    if theta == 0.0 {
+    if theta.abs() < INDEPENDENT_BELOW {
       y
     } else if theta > 0.0 {
       Self::inverse(theta)(y, v, 1.0 - v)
@@ -108,16 +113,17 @@ impl Frank {
   pub(crate) fn h(theta: f64) -> impl Fn(f64, f64) -> f64 {
     let magnitude = theta.abs();
     move |u, v| {
-      if theta == 0.0 {
+      if theta.abs() < INDEPENDENT_BELOW {
         return u;
       }
-      let (v, v_bar) = if theta > 0.0 {
-        (v, 1.0 - v)
+      // The reflection's `(1 − v) − u` is the exact `1 − u − v`: `1 − v` rounds, and `|θ|` amplifies that rounding.
+      let (gap, v, v_bar) = if theta > 0.0 {
+        (v - u, v, 1.0 - v)
       } else {
-        (1.0 - v, v)
+        (-sum_minus_one(u, v), 1.0 - v, v)
       };
       let denominator =
-        (magnitude * (v - u)).exp() * (-magnitude * v).exp_m1() + (-magnitude * v_bar).exp_m1();
+        (magnitude * gap).exp() * (-magnitude * v).exp_m1() + (-magnitude * v_bar).exp_m1();
       (-magnitude * u).exp_m1() / denominator
     }
   }
@@ -200,8 +206,8 @@ impl BivariateExt for Frank {
     Ok(out)
   }
 
-  /// `Frank::inverse`, `θ < 0` through `C_{−θ}(u, v) = u − C_θ(u, 1 − v)`, which swaps `v` and `1 − v`; the identity at
-  /// `θ = 0`, NaN for `y` or `v` outside `[0, 1]`.
+  /// `Frank::inverse`, `θ < 0` through `C_{−θ}(u, v) = u − C_θ(u, 1 − v)`, which swaps `v` and `1 − v`; the identity
+  /// below `INDEPENDENT_BELOW`, NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
@@ -209,7 +215,7 @@ impl BivariateExt for Frank {
   ) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    if theta == 0.0 {
+    if theta.abs() < INDEPENDENT_BELOW {
       return conditional_quantiles(y, v_col, |y, _| y);
     }
     // One closure per sign keeps the reflection out of the per-pair work.
@@ -221,7 +227,7 @@ impl BivariateExt for Frank {
     }
   }
 
-  /// `Frank::h`'s factored form, `u` at `θ = 0`; NaN for `v` outside `[0, 1]`.
+  /// `Frank::h`'s factored form, `u` below `INDEPENDENT_BELOW`; NaN for `v` outside `[0, 1]`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     Ok(conditional_cdf(x, Self::h(self.theta.unwrap())))

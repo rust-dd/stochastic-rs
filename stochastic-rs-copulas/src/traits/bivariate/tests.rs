@@ -148,45 +148,46 @@ fn percent_point_numerical_propagates_inner_errors_instead_of_panicking() {
   );
 }
 
-/// A target below the bracket floor is a saturation, not a failure: the
-/// h-function of any copula at `u = EPSILON` is at least `y = 1e-300`, so
-/// the quantile is below resolution and the floor itself is the honest
-/// answer.
+/// The bracket starts at 0, so a level far below `h(EPSILON | v)` finds its own root rather than the old floor `EPSILON`.
 #[test]
-fn percent_point_numerical_saturates_at_the_bracket_floor() {
+fn percent_point_numerical_solves_below_epsilon() {
   let amh = Amh::from_tau(0.25).unwrap();
   let out = amh
     .percent_point_numerical(array![1e-300_f64].view(), array![0.5_f64].view())
-    .expect("saturation is a value");
-  assert_eq!(
+    .expect("a root");
+  let closed = amh
+    .percent_point(array![1e-300_f64].view(), array![0.5_f64].view())
+    .unwrap();
+  assert!(
+    (out[0] - closed[0]).abs() <= 1e-12 * closed[0],
+    "{} vs the closed form {}",
     out[0],
-    f64::EPSILON,
-    "expected the bracket floor, got {}",
-    out[0]
+    closed[0]
   );
 }
 
-/// A conditional law with a point mass at `u = 1` keeps `h` below `y` on the whole bracket: the ceiling answers.
+/// A conditional law with a point mass at `u = 1`, Galambos's at `v = 1`, answers the top of the bracket within Brent's
+/// `6 macheps |x| + 2t`.
 #[test]
-fn percent_point_numerical_saturates_at_the_bracket_ceiling() {
+fn percent_point_numerical_answers_a_point_mass_at_one() {
   let mut galambos = Galambos::default();
   galambos.set_theta(1.5);
   let out = galambos
     .percent_point_numerical(array![0.3_f64].view(), array![1.0_f64].view())
-    .expect("saturation is a value");
-  assert_eq!(out[0], 1.0);
+    .expect("a root");
+  assert!(1.0 - out[0] <= 3.0 * f64::EPSILON, "{}", out[0]);
 }
 
-/// Level 0 answers the floor even where rounding takes `h(EPSILON | v)` below zero, as Galambos's does near `v = 1`.
+/// Level 0 answers 0, and near `v = 1` Galambos's `h(EPSILON | v)` no longer rounds below 0.
 #[test]
-fn percent_point_numerical_answers_the_floor_at_level_zero() {
+fn percent_point_numerical_answers_zero_at_level_zero() {
   let mut galambos = Galambos::default();
   galambos.set_theta(1.5);
   for v in [1.0 - 1e-10, 1.0 - 1e-12, 1.0 - f64::EPSILON / 2.0] {
     let h = galambos.partial_derivative_scalar(f64::EPSILON, v).unwrap();
-    assert!(h < 0.0, "the premise: h(EPSILON | {v}) = {h}");
+    assert!(h >= 0.0, "h(EPSILON | {v}) = {h}");
     let u = galambos.percent_point_numerical(array![0.0].view(), array![v].view());
-    assert_eq!(u, Ok(array![f64::EPSILON]), "v = {v}");
+    assert_eq!(u, Ok(array![0.0]), "v = {v}");
   }
 }
 
@@ -200,7 +201,7 @@ fn percent_point_numerical_solves_levels_below_the_product_underflow() {
       let u = galambos
         .percent_point_numerical(array![y].view(), array![v].view())
         .unwrap_or_else(|e| panic!("y = {y}, v = {v}: {e}"))[0];
-      assert!((f64::EPSILON..=1.0).contains(&u), "y = {y}, v = {v}: {u}");
+      assert!((0.0..=1.0).contains(&u), "y = {y}, v = {v}: {u}");
     }
   }
 }

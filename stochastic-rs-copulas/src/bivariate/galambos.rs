@@ -26,21 +26,22 @@
 use std::sync::OnceLock;
 
 use ndarray::Array1;
+use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::ln_log_ratio;
+use crate::bivariate::conditional::ln_one_minus_exp;
+use crate::bivariate::conditional::ln_ratio;
+use crate::bivariate::conditional::numerical_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
-
-/// Clamp used to evaluate [`Galambos::partial_derivative`] just inside
-/// `(0, 1)` at the `v \to 0^+` boundary instead of returning a hardcoded
-/// constant there — see that method's doc for why a constant is wrong.
-const BOUNDARY_EPS: f64 = 1e-12;
 
 #[derive(Debug, Clone, Default)]
 pub struct Galambos {
@@ -63,6 +64,38 @@ impl Galambos {
   /// The copula whose Kendall's τ is `tau`.
   pub fn from_tau(tau: f64) -> Result<Self, CopulaError> {
     Self::try_new(Self::default().theta_from_tau(tau)?)
+  }
+
+  /// `ln ∂_v C = −x + T + ln(1 − (T/y)^{θ+1})`, `x, y = −ln u, −ln v`, `T = m(1 + (m/M)^θ)^{−1/θ}`, `m ≤ M` the two: through
+  /// `expm1`/`ln_1p` of `(m/M)^θ`, whose logarithm `ln_log_ratio` keeps near `m = M`; the limit laws `δ₀`, `δ₁` at `v = 0, 1`.
+  pub(crate) fn ln_h(theta: f64) -> impl Fn(f64, f64) -> f64 {
+    let exponent = 1.0 + 1.0 / theta;
+    move |u, v| {
+      if u >= 1.0 || v <= 0.0 {
+        return 0.0;
+      }
+      if u <= 0.0 || v >= 1.0 {
+        return f64::NEG_INFINITY;
+      }
+      let (x, y) = (-u.ln(), -v.ln());
+      // The branch follows the sign of the exact `ln(x/y)`: `x` and `y` can round to one value while `(x/y)^θ` is not 1.
+      let q = ln_log_ratio(u, v, x, y);
+      if q <= 0.0 {
+        let s = (theta * q).exp();
+        let l = s.ln_1p();
+        x * (-l / theta).exp_m1() + (-s * q.exp() * (-exponent * l).exp()).ln_1p()
+      } else {
+        let s = (-theta * q).exp();
+        let l = s.ln_1p();
+        // `1 − (1 + s)^{−c}` is `cs` to rounding where `s` leaves the normal range, and `ln s = −θq` keeps its digits.
+        let ln_tail = if s >= f64::MIN_POSITIVE {
+          ln_one_minus_exp(-exponent * l)
+        } else {
+          exponent.ln() - theta * q
+        };
+        ln_ratio(u, v) + y * (-l / theta).exp_m1() + ln_tail
+      }
+    }
   }
 
   /// Pickands dependence function
@@ -159,23 +192,29 @@ impl BivariateExt for Galambos {
     Ok(out)
   }
 
-  /// $\partial_v C(u,v) = (C/v) \cdot [1 - (T/y)^{\theta+1}]$, $x, y = -\ln u, -\ln v$, $T = (x^{-\theta} + y^{-\theta})^{-1/\theta}$:
-  /// 0 at `v = 1`, the formula at `v` floored to `1e-12` near 0 (a `θ`- and `u`-dependent limit), NaN outside `[0, 1]`.
+  /// `exp` of `Galambos::ln_h`, `u` at `θ = 0`; NaN for `v` outside `[0, 1]`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(conditional_cdf(x, |u, v| {
-      if v >= 1.0 {
-        return 0.0;
-      }
-      let v = v.max(BOUNDARY_EPS);
-      let xx = -u.ln();
-      let yy = -v.ln();
-      let big_t = (xx.powf(-theta) + yy.powf(-theta)).powf(-1.0 / theta);
-      let cuv = u * v * big_t.exp();
-      let ratio = (big_t / yy).powf(theta + 1.0);
-      (cuv / v) * (1.0 - ratio)
-    }))
+    if theta == 0.0 {
+      return Ok(conditional_cdf(x, |u, _| u));
+    }
+    let ln_h = Self::ln_h(theta);
+    Ok(conditional_cdf(x, |u, v| ln_h(u, v).exp()))
+  }
+
+  /// `numerical_quantiles` of `Galambos::ln_h`, `y` at `θ = 0`; NaN for `y` or `v` outside `[0, 1]`.
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let theta = self.theta.unwrap();
+    if theta == 0.0 {
+      return conditional_quantiles(y, v, |y, _| y);
+    }
+    numerical_quantiles(y, v, self.family(), Self::ln_h(theta))
   }
 
   /// The extreme-value identity `τ = ∫₀¹ t(1 − t) A''(t)/A(t) dt` (Gudendorf & Segers 2010, §4) by 512-panel Simpson

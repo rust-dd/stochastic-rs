@@ -25,10 +25,16 @@ use ndarray::ArrayView2;
 use super::BivariateFamily;
 use super::conditional::conditional_cdf;
 use super::conditional::conditional_quantiles;
+use super::conditional::expm1_over;
+use super::conditional::ln_expm1;
+use super::conditional::ln_one_minus_exp;
+use super::conditional::ln_one_minus_pow;
+use super::conditional::ln_one_minus_pow_ratio;
+use super::conditional::ln_ratio;
+use super::conditional::softplus;
 use super::two_parameter::clip;
 use super::two_parameter::fit_two_parameters;
 use super::two_parameter::invert_h;
-use super::two_parameter::ln_one_minus_exp;
 use crate::bivariate::conditional::check_pairs;
 use crate::correlation::kendall_tau_b;
 use crate::error::CopulaError;
@@ -36,6 +42,10 @@ use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::tau_out_of_range;
+
+/// The expanded h exponentiates logarithms that grow with `θ`, `δ` and `|ln u|`; below `2⁷` in magnitude their rounding
+/// stays under `2⁻⁴²` relative.
+const EXPANDED_LIMIT: f64 = 128.0;
 
 #[derive(Debug, Clone)]
 pub struct Bb1 {
@@ -118,11 +128,59 @@ impl Bb1 {
     (-ln_1pw / theta).exp()
   }
 
+  /// `∂_v C`, held below 1 against rounding: the expanded form while `ln x`, `ln y` and its exponent terms stay below
+  /// `EXPANDED_LIMIT`, `h_log` past it; the limit laws at `v = 0` (`δ₀`) and `v = 1` (`u^{θ+1}` at `δ = 1`, else `δ₁`).
   pub(crate) fn h_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
-    let (_, ln_y, ln_s, _, ln_1pw) = Self::logs(u, v, theta, delta);
-    ((-1.0 / theta - 1.0) * ln_1pw + (1.0 / delta - 1.0) * ln_s + (delta - 1.0) * ln_y
-      - (theta + 1.0) * v.ln())
-    .exp()
+    if u >= 1.0 || v <= 0.0 {
+      return 1.0;
+    }
+    if u <= 0.0 {
+      return 0.0;
+    }
+    if v >= 1.0 {
+      return if delta == 1.0 {
+        u.powf(theta + 1.0)
+      } else {
+        0.0
+      };
+    }
+    let (ln_x, ln_y, ln_s, _, ln_1pw) = Self::logs(u, v, theta, delta);
+    let terms = [
+      (-1.0 / theta - 1.0) * ln_1pw,
+      (1.0 / delta - 1.0) * ln_s,
+      (delta - 1.0) * ln_y,
+      -(theta + 1.0) * v.ln(),
+    ];
+    let moderate = ln_x.abs().max(ln_y.abs()) <= EXPANDED_LIMIT;
+    if moderate && terms.iter().all(|t| t.abs() <= EXPANDED_LIMIT) {
+      return (terms[0] + terms[1] + terms[2] + terms[3]).exp().min(1.0);
+    }
+    Self::h_log(u, v, theta, delta)
+  }
+
+  /// `h = exp(−((δ − 1)/δ)S − (1 + 1/θ) ln(1 + (1 − v^θ) expm1(S/δ)))`, `S = ln(1 + (x/y)^δ)`, with
+  /// `ln(x/y) = θ ln(v/u) + ln((1 − u^θ)/(1 − v^θ))`, every factor a logarithm, so nothing overflows, cancels or underflows.
+  fn h_log(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
+    let (ln_u, ln_v) = (u.ln(), v.ln());
+    let ln_x_over_y = theta * ln_ratio(v, u) + ln_one_minus_pow_ratio(theta, ln_u, ln_v);
+    let s = softplus(delta * ln_x_over_y);
+    let clayton = if delta == 1.0 {
+      0.0
+    } else {
+      (delta - 1.0) / delta * s
+    };
+    let z = s / delta;
+    let ln_p = ln_one_minus_pow(theta, ln_v) + ln_expm1(z, s.ln() - delta.ln());
+    // `P < 1` as `(1 + θ)((1 − v^θ)/θ) expm1(S/δ) ln(1 + P)/P`: through `ln P` the `1/θ` would scale its rounding.
+    let tail = if ln_p < 0.0 {
+      let p = ln_p.exp();
+      let ln_1p_over = if p == 0.0 { 1.0 } else { p.ln_1p() / p };
+      let e = Self::expm1_s_over_delta(ln_u, ln_v, theta, delta, ln_x_over_y, z);
+      (1.0 + theta) * (-ln_v * expm1_over(theta * ln_v)) * e * ln_1p_over
+    } else {
+      (1.0 + 1.0 / theta) * softplus(ln_p)
+    };
+    (-clayton - tail).exp().min(1.0)
   }
 
   pub(crate) fn log_density_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
@@ -141,6 +199,22 @@ impl Bb1 {
 }
 
 impl Bb1 {
+  /// `expm1(S/δ) = (1 + r^δ)^{1/δ} − 1`, `r = x/y`: past `S/δ = 1`, `r e^{ln(1 + r^{−δ})/δ} − 1` with `r` formed directly,
+  /// as exponentiating `ln r` would cost `|ln r|` rounding units.
+  fn expm1_s_over_delta(ln_u: f64, ln_v: f64, theta: f64, delta: f64, ln_r: f64, z: f64) -> f64 {
+    let (t_u, t_v) = (-theta * ln_u, -theta * ln_v);
+    let r = if t_u <= 1.0 && t_v <= 1.0 {
+      (ln_u / ln_v) * (expm1_over(t_u) / expm1_over(t_v))
+    } else {
+      t_u.exp_m1() / t_v.exp_m1()
+    };
+    if z > 1.0 && r.is_finite() && r > 0.0 {
+      r * (softplus(-delta * ln_r) / delta).exp() - 1.0
+    } else {
+      z.exp_m1()
+    }
+  }
+
   /// Maximum-likelihood fit of `(θ, δ)` from a Kendall start without `fit`'s input check, for the vine fitter's
   /// pseudo-observations; a `τ̂` outside BB1's `(0, 1)` or an estimate `try_new` rejects is an error and stores nothing.
   pub(crate) fn fit_parameters(
@@ -226,7 +300,7 @@ impl BivariateExt for Bb1 {
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     Ok(conditional_cdf(x, |u, v| {
-      Self::h_scalar(clip(u), clip(v), theta, delta)
+      Self::h_scalar(u, v, theta, delta)
     }))
   }
 

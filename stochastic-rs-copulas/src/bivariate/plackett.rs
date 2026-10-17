@@ -30,6 +30,7 @@ use super::two_parameter::kendall_tau_numeric;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::sum_minus_one;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -83,16 +84,36 @@ impl Plackett {
     }
   }
 
-  /// `partial_derivative`'s `∂_v C(u, v)` at one point, shared with the Kendall's τ quadrature; `u` at `θ = 1`.
-  fn h(u: f64, v: f64, theta: f64) -> f64 {
-    let eta = theta - 1.0;
-    if (eta).abs() < 1e-12 {
-      return u;
+  /// `∂_v C = (1 − b/√d)/2`, `b = w + θ(v − u)`, `d = w² + 2θ(u(1 − u) + v(1 − v)) + θ²(u − v)²` with the exact `w = 1 − u − v`,
+  /// each term over the largest so none over- or underflows; `2θu(1 − u)/(√d(√d + b))` for `b ≥ 0`, as `d − b² = 4θu(1 − u)`.
+  pub(crate) fn h(theta: f64) -> impl Fn(f64, f64) -> f64 {
+    move |u, v| {
+      if u <= 0.0 {
+        return 0.0;
+      }
+      if u >= 1.0 {
+        return 1.0;
+      }
+      let w = -sum_minus_one(u, v);
+      let shift = theta * (v - u);
+      let spread = theta * (u * (1.0 - u) + v * (1.0 - v));
+      let scale = w.abs().max(shift.abs()).max(spread.sqrt());
+      let (w, shift) = (w / scale, shift / scale);
+      let root = (w * w + 2.0 * (spread / scale / scale) + shift * shift).sqrt();
+      let b = w + shift;
+      if b >= 0.0 {
+        // `θu` itself is subnormal where both are small, and `u/scale` underflows where `θ` is large.
+        let mass = theta * u;
+        let ratio = if mass >= f64::MIN_POSITIVE {
+          mass / scale / scale
+        } else {
+          (theta / scale) * (u / scale)
+        };
+        ratio * (1.0 - u) * 2.0 / (root * (root + b))
+      } else {
+        (0.5 - 0.5 * b / root).min(1.0)
+      }
     }
-    let a = 1.0 + eta * (u + v);
-    let d = a * a - 4.0 * u * v * theta * eta;
-    let d_safe = d.max(1e-30).sqrt();
-    0.5 * (1.0 - (a - 2.0 * u * theta) / d_safe)
   }
 }
 
@@ -173,8 +194,7 @@ impl BivariateExt for Plackett {
   /// for `v` outside `[0, 1]`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let theta = self.theta.unwrap();
-    Ok(conditional_cdf(x, |u, v| Self::h(u, v, theta)))
+    Ok(conditional_cdf(x, Self::h(self.theta.unwrap())))
   }
 
   /// `Plackett::inverse`'s root; NaN for `y` or `v` outside `[0, 1]`.
@@ -192,7 +212,7 @@ impl BivariateExt for Plackett {
     if (theta - 1.0).abs() < 1e-12 {
       return 0.0;
     }
-    kendall_tau_numeric(|u, v| Self::h(u, v, theta), 200)
+    kendall_tau_numeric(Self::h(theta), 200)
   }
 
   /// Brent on `ln θ`, so the bracket `[1e-6, 1e6]` keeps a relative resolution; the rule runs `9e-4` low at its ends,

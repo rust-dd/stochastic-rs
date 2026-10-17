@@ -6,16 +6,6 @@ use ndarray::ArrayView1;
 
 use crate::optim::nelder_mead;
 
-/// `ln(1 − e^z)` for `z ≤ 0` without cancellation: `ln1p(−e^z)` when `e^z`
-/// is small, `ln(−expm1(z))` when it is close to one.
-pub(crate) fn ln_one_minus_exp(z: f64) -> f64 {
-  if z < -std::f64::consts::LN_2 {
-    (-z.exp()).ln_1p()
-  } else {
-    (-z.exp_m1()).ln()
-  }
-}
-
 /// Clips a pseudo-observation into the open unit interval so the powers
 /// and logarithms of the copula formulas stay finite.
 pub(crate) fn clip(u: f64) -> f64 {

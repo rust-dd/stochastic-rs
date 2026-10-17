@@ -17,23 +17,24 @@
 use std::sync::OnceLock;
 
 use ndarray::Array1;
+use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
 
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::ln_log_ratio;
+use crate::bivariate::conditional::ln_norm_cdf;
+use crate::bivariate::conditional::mills;
+use crate::bivariate::conditional::numerical_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
-
-/// Clamp used to evaluate [`HuslerReiss::partial_derivative`] just inside
-/// `(0, 1)` at the `v` boundary instead of returning a hardcoded constant
-/// there — see that method's doc for why a constant is wrong.
-const BOUNDARY_EPS: f64 = 1e-12;
 
 #[derive(Debug, Clone, Default)]
 pub struct HuslerReiss {
@@ -58,6 +59,30 @@ impl HuslerReiss {
   /// The copula whose Kendall's τ is `tau`.
   pub fn from_tau(tau: f64) -> Result<Self, CopulaError> {
     Self::try_new(Self::default().theta_from_tau(tau)?)
+  }
+
+  /// `ln ∂_v C = −xΦ(α) + yΦ(−β) + ln Φ(β)`, `x, y = −ln u, −ln v`, `α, β = 1/λ ± (λ/2) ln(x/y)`, `ln(x/y)` by `ln_log_ratio`,
+  /// and every normal tail through Mills' ratio, so `1 − h` keeps its digits; the limit laws `δ₀`, `δ₁` at `v = 0, 1`.
+  pub(crate) fn ln_h(lambda: f64) -> impl Fn(f64, f64) -> f64 {
+    let inv = 1.0 / lambda;
+    move |u, v| {
+      if u >= 1.0 || v <= 0.0 {
+        return 0.0;
+      }
+      if u <= 0.0 || v >= 1.0 {
+        return f64::NEG_INFINITY;
+      }
+      let (x, y) = (-u.ln(), -v.ln());
+      let half = 0.5 * lambda * ln_log_ratio(u, v, x, y);
+      let (alpha, beta) = (inv + half, inv - half);
+      // For `α < 0 < β` both terms are tails that nearly cancel; `xφ(α) = yφ(β)` turns them into one Mills difference.
+      let tails = if alpha < 0.0 {
+        y * norm_pdf(beta) * (mills(beta) - mills(-alpha))
+      } else {
+        y * norm_cdf(-beta) - x * norm_cdf(alpha)
+      };
+      tails + ln_norm_cdf(beta)
+    }
   }
 
   /// Pickands dependence function.
@@ -165,24 +190,29 @@ impl BivariateExt for HuslerReiss {
     Ok(out)
   }
 
-  /// $\partial_v C(u,v) = C(u,v) \cdot \Phi(\beta) / v$, the formula at `v` clamped `1e-12` inside `(0, 1)` at the
-  /// edges (limits that depend on `u` and `λ`), `u` at `λ = 0`, where `0·∞` makes it NaN at `u ∈ {0, 1}`; NaN for `v ∉ [0, 1]`.
+  /// `exp` of `HuslerReiss::ln_h`, `u` at `λ = 0`; NaN for `v` outside `[0, 1]`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
     if lambda == 0.0 {
       return Ok(conditional_cdf(x, |u, _| u));
     }
-    Ok(conditional_cdf(x, |u, v| {
-      let v = v.clamp(BOUNDARY_EPS, 1.0 - BOUNDARY_EPS);
-      let xx = -u.ln();
-      let yy = -v.ln();
-      let half_log = 0.5 * (xx / yy).ln();
-      let alpha = 1.0 / lambda + lambda * half_log;
-      let beta = 1.0 / lambda - lambda * half_log;
-      let cuv = (-xx * norm_cdf(alpha) - yy * norm_cdf(beta)).exp();
-      cuv * norm_cdf(beta) / v
-    }))
+    let ln_h = Self::ln_h(lambda);
+    Ok(conditional_cdf(x, |u, v| ln_h(u, v).exp()))
+  }
+
+  /// `numerical_quantiles` of `HuslerReiss::ln_h`, `y` at `λ = 0`; NaN for `y` or `v` outside `[0, 1]`.
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let lambda = self.theta.unwrap();
+    if lambda == 0.0 {
+      return conditional_quantiles(y, v, |y, _| y);
+    }
+    numerical_quantiles(y, v, self.family(), Self::ln_h(lambda))
   }
 
   /// The extreme-value identity `τ = ∫₀¹ t(1 − t) A''(t)/A(t) dt` (Gudendorf & Segers 2010, §4) by 512-panel Simpson

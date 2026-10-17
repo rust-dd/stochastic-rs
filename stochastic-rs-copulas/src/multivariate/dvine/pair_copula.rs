@@ -30,9 +30,11 @@
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
+use crate::bivariate::clayton::Clayton;
 use crate::bivariate::frank::Frank;
 use crate::bivariate::t_copula::TCopula;
 use crate::error::CopulaError;
+use crate::optim::zero;
 use crate::student_t;
 
 /// Bivariate pair-copula family of the C-, D- and R-vines, held by value in their `Vec<Vec<PairCopula>>` trees.
@@ -88,12 +90,7 @@ impl PairCopula {
         let arg = (x - rho * y) / (1.0 - rho * rho).sqrt();
         norm_cdf(arg)
       }
-      PairCopula::Clayton { theta } => {
-        // Aas-Czado (2009) Table 1, Clayton row.
-        // h(u|v) = v^{-θ-1} (u^{-θ} + v^{-θ} - 1)^{-(θ+1)/θ}
-        let s = u.powf(-theta) + v.powf(-theta) - 1.0;
-        v.powf(-theta - 1.0) * s.powf(-(theta + 1.0) / theta)
-      }
+      PairCopula::Clayton { theta } => Clayton::h_at(theta, u, v),
       PairCopula::Frank { theta } => Frank::h(theta)(u, v),
       PairCopula::Bb1 { theta, delta } => crate::bivariate::bb1::Bb1::h_scalar(u, v, theta, delta),
       PairCopula::Bb7 { theta, delta } => crate::bivariate::bb7::Bb7::h_scalar(u, v, theta, delta),
@@ -115,18 +112,11 @@ impl PairCopula {
         let arg = z * (1.0 - rho * rho).sqrt() + rho * y;
         norm_cdf(arg)
       }
-      PairCopula::Clayton { theta } => {
-        // Inverse derived from h(u|v) = v^{-θ-1}(u^{-θ} + v^{-θ} - 1)^{-(θ+1)/θ}:
-        //   p · v^{θ+1} = (u^{-θ} + v^{-θ} - 1)^{-(θ+1)/θ}
-        //   u^{-θ} + v^{-θ} - 1 = (p · v^{θ+1})^{-θ/(θ+1)}
-        //   u = ((p · v^{θ+1})^{-θ/(θ+1)} - v^{-θ} + 1)^{-1/θ}
-        let base = p * v.powf(theta + 1.0);
-        let inner = base.powf(-theta / (theta + 1.0)) - v.powf(-theta) + 1.0;
-        inner.max(1.0 + EPS).powf(-1.0 / theta)
-      }
+      PairCopula::Clayton { theta } => Clayton::inverse_at(theta, p, v),
       PairCopula::Frank { theta } => Frank::inverse_at(theta, p, v),
+      // Brent on the clamped bracket, to the half-width `1e-15` at which a bisection there would stop.
       PairCopula::Bb1 { .. } | PairCopula::Bb7 { .. } => {
-        crate::bivariate::two_parameter::invert_h(|u| self.h(u, v), p)
+        zero(EPS, 1.0 - EPS, 2.5e-16, |u| self.h(u, v) - p).unwrap_or(f64::NAN)
       }
       PairCopula::StudentT { rho, nu } => TCopula::inverse(rho, nu)(p, v),
     };
@@ -157,6 +147,7 @@ impl PairCopula {
         let ln_s = big + ((small - big).exp() * -(-small).exp_m1()).ln_1p();
         theta.ln_1p() + (-theta - 1.0) * (u.ln() + v.ln()) + (-1.0 / theta - 2.0) * ln_s
       }
+      PairCopula::Frank { theta: 0.0 } => 0.0,
       PairCopula::Frank { theta } => {
         // c_θ(u, v) = θ(1 − e^{−θ}) e^{−θ(u+v)} / D² with D = e^{−θu}(1 − e^{−θv}) + e^{−θv}(1 − e^{−θ(1−v)}), two positive terms
         // for θ > 0; c_θ(u, v) = c_{−θ}(u, 1 − v) for θ < 0.

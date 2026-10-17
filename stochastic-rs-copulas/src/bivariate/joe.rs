@@ -23,6 +23,11 @@ use ndarray::ArrayView2;
 
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
+use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::ln_add_exp;
+use crate::bivariate::conditional::ln_one_minus_pow;
+use crate::bivariate::conditional::ln_ratio_complement;
+use crate::bivariate::conditional::numerical_quantiles;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -51,6 +56,22 @@ impl Joe {
   /// The copula whose Kendall's τ is `tau`.
   pub fn from_tau(tau: f64) -> Result<Self, CopulaError> {
     Self::try_new(Self::default().theta_from_tau(tau)?)
+  }
+
+  /// `ln ∂_v C = ln(1 − a) + (1/θ − 1) ln(1 − a + a/b)`, `a, b = (1 − u)^θ, (1 − v)^θ`, in logarithms of `ln_1p(−u)` and
+  /// `ln_1p(−v)`, `ln(1 − a)` without forming the product `θ ln_1p(−u)` where it is subnormal; `δ₁` at `v = 1`.
+  pub(crate) fn ln_h(theta: f64) -> impl Fn(f64, f64) -> f64 {
+    move |u, v| {
+      if u >= 1.0 {
+        return 0.0;
+      }
+      if u <= 0.0 || v >= 1.0 {
+        return f64::NEG_INFINITY;
+      }
+      let ln_one_minus_a = ln_one_minus_pow(theta, (-u).ln_1p());
+      let ln_a_over_b = theta * ln_ratio_complement(u, v);
+      ln_one_minus_a + (1.0 / theta - 1.0) * ln_add_exp(ln_one_minus_a, ln_a_over_b)
+    }
   }
 }
 
@@ -144,23 +165,29 @@ impl BivariateExt for Joe {
     Ok(out)
   }
 
-  /// `∂_v C = (1 − a)(1 − a + a/b)^{1/θ − 1}`, `a, b = (1 − u)^θ, (1 − v)^θ`, `1 − a` and `a/b` from `ln_1p(−u)` and
-  /// `ln_1p(−v)`: no underflow near `u, v = 1`, no cancellation near `u = 0`; NaN for `v` outside `[0, 1]`.
+  /// `exp` of `Joe::ln_h`, `u` at `θ = 1`; NaN for `v` outside `[0, 1]`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(conditional_cdf(x, |u, v| {
-      if u <= 0.0 {
-        return 0.0;
-      }
-      if u >= 1.0 {
-        return 1.0;
-      }
-      let log_1m_u = (-u).ln_1p();
-      let one_minus_a = -(theta * log_1m_u).exp_m1();
-      let a_over_b = (theta * (log_1m_u - (-v).ln_1p())).exp();
-      one_minus_a * (one_minus_a + a_over_b).powf(1.0 / theta - 1.0)
-    }))
+    if theta == 1.0 {
+      return Ok(conditional_cdf(x, |u, _| u));
+    }
+    let ln_h = Self::ln_h(theta);
+    Ok(conditional_cdf(x, |u, v| ln_h(u, v).exp()))
+  }
+
+  /// `numerical_quantiles` of `Joe::ln_h`, `y` at `θ = 1`; NaN for `y` or `v` outside `[0, 1]`.
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let theta = self.theta.unwrap();
+    if theta == 1.0 {
+      return conditional_quantiles(y, v, |y, _| y);
+    }
+    numerical_quantiles(y, v, self.family(), Self::ln_h(theta))
   }
 
   /// `τ = 1 − 4Σ_{k≥1} 1/(k(θk + 2)(θ(k − 1) + 2))` (Hofert, Mächler & McNeil 2011, Table 2): 256 terms plus the
