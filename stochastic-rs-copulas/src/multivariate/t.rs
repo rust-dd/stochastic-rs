@@ -31,12 +31,8 @@
 //! every off-diagonal pair $\rho_{ij}$ — strictly positive for finite $\nu$,
 //! in contrast to the Gaussian copula.
 //!
-//! **Calibration.** [`fit`](TMultivariate::fit) implements the two-stage
-//! pseudo-MLE of Demarta-McNeil 2005, §6: (a) recover $\Sigma$ from the
-//! sample Kendall-τ via $\rho_{ij} = \sin(\tfrac{\pi}{2}\tau_{ij})$
-//! (rank-based, robust to ν), then (b) maximise the log-likelihood in
-//! $\nu$ by 1-D Brent search on $[2.1, 50]$ holding $\Sigma$ fixed.
-//! An indefinite or near-singular $\hat\Sigma$ is shrunk toward the identity until every eigenvalue is at least $10^{-3}$.
+//! **Calibration.** [`fit`](TMultivariate::fit) takes $\rho_{ij} = \sin(\pi\tau_{ij}/2)$ from Kendall's τ-b, shrunk until every
+//! eigenvalue is at least $10^{-3}$, then the $\nu$ maximising the likelihood by Brent's `localmin` on $(2.1, 50)$.
 //!
 //! References:
 //! - Demarta, S., McNeil, A.J. (2005), "The t copula and related copulas",
@@ -47,6 +43,7 @@
 //!   ch. 8.
 //! - McNeil, Frey, Embrechts (2015), *Quantitative Risk Management*,
 //!   Princeton UP, §7.5.
+//! - Brent, R.P. (1973), *Algorithms for Minimization without Derivatives*, Prentice-Hall, ch. 5 (`localmin`).
 
 use std::sync::OnceLock;
 
@@ -72,6 +69,8 @@ use crate::bivariate::t_copula::t_copula_cdf;
 use crate::correlation::check_defined;
 use crate::correlation::kendall_tau;
 use crate::error::CopulaError;
+use crate::optim::SQRT_MACHEPS;
+use crate::optim::localmin;
 use crate::student_t;
 use crate::student_t::check_nu;
 use crate::traits::MultivariateExt;
@@ -190,8 +189,7 @@ impl TMultivariate {
     out
   }
 
-  /// Log-likelihood of the data under `corr` and the candidate $\nu$; the 1-D
-  /// golden-section search in [`fit`] varies $\nu$ and never $\Sigma$.
+  /// Log-likelihood of the data under `corr` at `nu`, the objective `optimise_nu` maximises with Σ held fixed.
   fn log_likelihood_for_nu(corr: &CorrelationMatrix, x: ArrayView2<f64>, nu: f64) -> f64 {
     let z = Self::transform_to_t(x, nu);
     let mv = Self::mv_log_pdf(corr, nu, z.view());
@@ -202,39 +200,14 @@ impl TMultivariate {
     mv.iter().sum::<f64>() - marginal_log
   }
 
-  /// Brent minimisation on the negative log-likelihood w.r.t. $\nu$, holding
-  /// $\Sigma$ fixed. Bracket $[\nu_{\min}, \nu_{\max}] = [2.1, 50]$ matches
-  /// Demarta-McNeil (2005, §6) where the upper bound is taken as the
-  /// effective "Gaussian limit" threshold.
+  /// Brent's `localmin` to `√macheps` relative on `(2.1, 50)`, never evaluating the ends; a likelihood that is not
+  /// finite scores `+∞`, which the search steps away from.
   fn optimise_nu(corr: &CorrelationMatrix, x: ArrayView2<f64>) -> f64 {
-    let f = |nu: f64| -Self::log_likelihood_for_nu(corr, x, nu);
-    // Brent on [2.1, 50] with golden-section initialisation.
-    let mut a = 2.1_f64;
-    let mut b = 50.0_f64;
-    let golden = (5f64.sqrt() - 1.0) / 2.0;
-    let mut x1 = b - golden * (b - a);
-    let mut x2 = a + golden * (b - a);
-    let mut f1 = f(x1);
-    let mut f2 = f(x2);
-    for _ in 0..60 {
-      if (b - a).abs() < 1e-4 {
-        break;
-      }
-      if f1 < f2 {
-        b = x2;
-        x2 = x1;
-        f2 = f1;
-        x1 = b - golden * (b - a);
-        f1 = f(x1);
-      } else {
-        a = x1;
-        x1 = x2;
-        f1 = f2;
-        x2 = a + golden * (b - a);
-        f2 = f(x2);
-      }
-    }
-    0.5 * (a + b)
+    let nll = |nu: f64| {
+      let ll = Self::log_likelihood_for_nu(corr, x, nu);
+      if ll.is_finite() { -ll } else { f64::INFINITY }
+    };
+    localmin(2.1, 50.0, SQRT_MACHEPS, SQRT_MACHEPS, nll).0
   }
 }
 
