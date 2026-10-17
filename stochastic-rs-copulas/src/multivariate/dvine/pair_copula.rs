@@ -17,8 +17,8 @@
 //! - **Independence:** trivial identities.
 //! - **Gaussian** $\rho \in (-1, 1)$.
 //! - **Clayton** $\theta > 0$.
-//! - **Frank** $\theta \neq 0$.
-//! - **Student-$t$** $\rho \in (-1, 1),\ \nu > 0$.
+//! - **Frank** any real $\theta$, the identity at $\theta = 0$.
+//! - **Student-$t$** $\rho \in (-1, 1)$, finite $\nu$ with $\nu / 2 > 0$.
 //!
 //! The Gumbel / Joe pair families have no closed-form $h^{-1}$ (only an
 //! iterative bisection) and are not yet included.
@@ -226,10 +226,8 @@ mod tests {
     }
   }
 
-  /// Round-trip h ∘ h_inverse = identity (to numerical tolerance) across
-  /// all closed-form families. Tolerances reflect the underlying numerical
-  /// chain: Gaussian / StudentT compose ndtri + norm_cdf or `t_cdf` +
-  /// quantile (≈ 1e-7), Clayton / Frank are pure algebraic (≈ 1e-10).
+  /// `h ∘ h⁻¹` is the identity in every closed-form family: to 1e-10 for Clayton and Frank, to 1e-6 where the chain
+  /// passes `ndtri` and `norm_cdf` (Gaussian) or the Student-t quantile and cdf.
   #[test]
   fn h_inverse_round_trips_all_families() {
     let cases: Vec<(PairCopula, f64)> = vec![
