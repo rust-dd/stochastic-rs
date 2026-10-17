@@ -114,8 +114,7 @@ impl PairCopula {
       }
       PairCopula::Clayton { theta } => Clayton::inverse_at(theta, p, v),
       PairCopula::Frank { theta } => Frank::inverse_at(theta, p, v),
-      // Brent on the clamped bracket, `t = 2.5e-16` (narrower than the bisection's `1e-15`); a root outside the bracket
-      // saturates at its end, as the bisection did.
+      // Brent on the clamped bracket to `t = 2.5e-16`; a root outside the bracket saturates at its nearer end.
       PairCopula::Bb1 { .. } | PairCopula::Bb7 { .. } => {
         zero(EPS, 1.0 - EPS, 2.5e-16, |u| self.h(u, v) - p).unwrap_or_else(|| self.saturated(p, v))
       }
