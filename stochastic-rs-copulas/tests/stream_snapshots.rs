@@ -59,7 +59,7 @@ const PINS: &[(&str, u64)] = &[
   ("t_multivariate", 0x6bcffcbcf2ecf0d0),
   ("cvine", 0x487fb08113cd29fb),
   ("dvine", 0x89bf5cced5bc2b85),
-  ("dvine_mixed_d5", 0x634350ca61d71a4f),
+  ("dvine_mixed_d5", 0x0cf1b8bcce64b056),
   ("rvine_independence", 0xc269b264798404c9),
   ("nac_gumbel_nested", 0x85ff7aa5ffd667a9),
   ("nac_clayton_flat", 0x5be5566c431f17f4),

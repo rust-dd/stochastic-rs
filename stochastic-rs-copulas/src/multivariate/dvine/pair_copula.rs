@@ -30,6 +30,8 @@
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
+use crate::bivariate::frank::Frank;
+use crate::bivariate::t_copula::TCopula;
 use crate::error::CopulaError;
 use crate::student_t;
 
@@ -52,9 +54,9 @@ pub enum PairCopula {
     theta: f64,
   },
   /// Frank: $C(u, v) = -\tfrac{1}{\theta}\ln\!\bigl(1 + \frac{(e^{-\theta u}-1)(e^{-\theta v}-1)}{e^{-\theta}-1}\bigr)$,
-  /// $\theta \neq 0$. Symmetric tail-independent.
+  /// any real $\theta$. Symmetric tail-independent.
   Frank {
-    /// Generator parameter $\theta \neq 0$.
+    /// Generator parameter $\theta$; $\theta = 0$ is the independence copula.
     theta: f64,
   },
   /// Student-$t$: $C(u, v) = t_{\rho,\nu}(t_\nu^{-1}(u), t_\nu^{-1}(v))$.
@@ -92,27 +94,10 @@ impl PairCopula {
         let s = u.powf(-theta) + v.powf(-theta) - 1.0;
         v.powf(-theta - 1.0) * s.powf(-(theta + 1.0) / theta)
       }
-      PairCopula::Frank { theta } => {
-        // Aas-Czado (2009) Table 1, Frank row.
-        // h(u|v) = e^{-θv} (e^{-θu} - 1) / ((e^{-θ} - 1) + (e^{-θu} - 1)(e^{-θv} - 1))
-        let eu = (-theta * u).exp();
-        let ev = (-theta * v).exp();
-        let e1 = (-theta).exp();
-        let num = ev * (eu - 1.0);
-        let den = (e1 - 1.0) + (eu - 1.0) * (ev - 1.0);
-        num / den
-      }
+      PairCopula::Frank { theta } => Frank::h(theta)(u, v),
       PairCopula::Bb1 { theta, delta } => crate::bivariate::bb1::Bb1::h_scalar(u, v, theta, delta),
       PairCopula::Bb7 { theta, delta } => crate::bivariate::bb7::Bb7::h_scalar(u, v, theta, delta),
-      PairCopula::StudentT { rho, nu } => {
-        // Aas-Czado (2009) Appendix A.2.
-        // x = t_ν^{-1}(u), y = t_ν^{-1}(v)
-        // h(u|v) = t_{ν+1}((x - ρ y) · √((ν+1) / ((ν + y²)(1 - ρ²))))
-        let x = student_t::quantile(u, nu);
-        let y = student_t::quantile(v, nu);
-        let scale = ((nu + 1.0) / ((nu + y * y) * (1.0 - rho * rho))).sqrt();
-        student_t::cdf((x - rho * y) * scale, nu + 1.0)
-      }
+      PairCopula::StudentT { rho, nu } => TCopula::h(rho, nu)(u, v),
     };
     clamp(h)
   }
@@ -139,44 +124,11 @@ impl PairCopula {
         let inner = base.powf(-theta / (theta + 1.0)) - v.powf(-theta) + 1.0;
         inner.max(1.0 + EPS).powf(-1.0 / theta)
       }
-      PairCopula::Frank { theta } => {
-        // Solve p = h(u|v) algebraically. Let A = e^{-θ} - 1, E = e^{-θv}.
-        //   p = E(e^{-θu} - 1) / (A + (e^{-θu} - 1) E - E e^{-θv?}... ): direct from the h formula gives
-        //   e^{-θu} = 1 + A·p / (1 - p·(E - 1))
-        //   u = -ln(1 + A·p / (1 - p·(E - 1))) / θ
-        //
-        // Where E = (e^{-θv} - 1). Re-derive:
-        //   Let X = e^{-θu} - 1, Y = e^{-θv} - 1, A = e^{-θ} - 1
-        //   h(u|v) = (Y + 1)·X / (A + X·Y)
-        //   p · (A + X·Y) = (Y + 1) · X
-        //   p·A + p·X·Y = X·Y + X
-        //   p·A = X·(Y + 1 - p·Y) = X·(1 + Y·(1 - p))
-        //   X = p·A / (1 + Y·(1 - p))
-        //   ⟹ u = -ln(X + 1) / θ
-        let y = (-theta * v).exp() - 1.0;
-        let a = (-theta).exp() - 1.0;
-        let x_val = p * a / (1.0 + y * (1.0 - p));
-        let arg = x_val + 1.0;
-        if arg <= 0.0 {
-          return EPS;
-        }
-        -arg.ln() / theta
-      }
+      PairCopula::Frank { theta } => Frank::inverse_at(theta, p, v),
       PairCopula::Bb1 { .. } | PairCopula::Bb7 { .. } => {
         crate::bivariate::two_parameter::invert_h(|u| self.h(u, v), p)
       }
-      PairCopula::StudentT { rho, nu } => {
-        // Inverse of h(u|v):
-        //   z = t_{ν+1}^{-1}(p),  y = t_ν^{-1}(v)
-        //   x = z / √((ν+1) / ((ν + y²)(1 - ρ²)))  +  ρ y
-        //     = z · √((ν + y²)(1 - ρ²)/(ν+1))  +  ρ y
-        //   u = t_ν(x)
-        let z = student_t::quantile(p, nu + 1.0);
-        let y = student_t::quantile(v, nu);
-        let scale = ((nu + y * y) * (1.0 - rho * rho) / (nu + 1.0)).sqrt();
-        let x = z * scale + rho * y;
-        student_t::cdf(x, nu)
-      }
+      PairCopula::StudentT { rho, nu } => TCopula::inverse(rho, nu)(p, v),
     };
     clamp(u)
   }
@@ -260,6 +212,7 @@ pub(crate) fn check_pairs(trees: &[Vec<PairCopula>]) -> Result<(), CopulaError> 
 mod tests {
   use super::*;
   use crate::bivariate::bb1::Bb1;
+  use crate::bivariate::t_copula::TCopula;
   use crate::traits::BivariateExt;
 
   /// Independence h-function must be the identity; inverse same.
@@ -417,6 +370,44 @@ mod tests {
         (got - want).abs() <= 1e-13 * want.abs(),
         "{pair:?} at ({u}, {v}): {got} vs {want}"
       );
+    }
+  }
+
+  /// The Frank and Student-t pairs are the bivariate families' closed forms: Frank at `θ = 30` and through the `θ < 0`
+  /// reflection against 60-digit values, where an unfactored form lost up to four digits; the t pair bit for bit.
+  #[test]
+  fn frank_and_t_pairs_are_the_bivariate_closed_forms() {
+    let frank = PairCopula::Frank { theta: 30.0 };
+    for (u, v, want) in [
+      (0.999, 0.999, 0.9712939262423305),
+      (0.529, 0.99, 9.856146466724287e-7),
+    ] {
+      let got = frank.h(u, v);
+      assert!(
+        (got - want).abs() <= 1e-14 * want,
+        "h({u} | {v}) = {got}, want {want}"
+      );
+    }
+    for (y, v, want) in [
+      (0.99, 0.999, 0.9996548388390495),
+      (1e-6, 0.99, 0.52948299425107),
+    ] {
+      let got = frank.h_inverse(y, v);
+      assert!(
+        (got - want).abs() <= 1e-14 * want,
+        "h⁻¹({y} | {v}) = {got}, want {want}"
+      );
+    }
+    let reflected = PairCopula::Frank { theta: -3.0 }.h_inverse(1e-6, 0.99);
+    assert!(
+      (reflected - 3.2638389105694917e-7).abs() <= 1e-14 * 3.2638389105694917e-7,
+      "θ = −3: {reflected}"
+    );
+    let (rho, nu) = (-0.5, 8.0);
+    let t = PairCopula::StudentT { rho, nu };
+    for (u, v) in [(0.1, 0.5), (0.25, 0.9), (0.75, 0.1)] {
+      assert_eq!(t.h(u, v), TCopula::h(rho, nu)(u, v));
+      assert_eq!(t.h_inverse(u, v), TCopula::inverse(rho, nu)(u, v));
     }
   }
 

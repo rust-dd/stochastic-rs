@@ -91,9 +91,21 @@ impl Frank {
     }
   }
 
+  /// `h⁻¹(y | v)` for any `θ`: the identity at `θ = 0`, else `Frank::inverse(|θ|)` with `v` and `1 − v` swapped below 0;
+  /// `percent_point` keeps its once-per-call dispatch, which holds the sign test out of its per-pair loop.
+  pub(crate) fn inverse_at(theta: f64, y: f64, v: f64) -> f64 {
+    if theta == 0.0 {
+      y
+    } else if theta > 0.0 {
+      Self::inverse(theta)(y, v, 1.0 - v)
+    } else {
+      Self::inverse(-theta)(y, 1.0 - v, v)
+    }
+  }
+
   /// `∂_v C = g(u)/(e^{θ(v − u)}g(v) + g(1 − v))`, `g(z) = expm1(−θz)`: same-signed terms, free of the `0/0` an
   /// underflowing `e^{−θv}` leaves in the unfactored form; `θ < 0` through the same reflection.
-  fn h(theta: f64) -> impl Fn(f64, f64) -> f64 {
+  pub(crate) fn h(theta: f64) -> impl Fn(f64, f64) -> f64 {
     let magnitude = theta.abs();
     move |u, v| {
       if theta == 0.0 {

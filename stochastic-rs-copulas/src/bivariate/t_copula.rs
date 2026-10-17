@@ -110,6 +110,26 @@ impl TCopula {
     }
   }
 
+  /// `∂_v C = t_{ν+1}((x − ρy)√((ν + 1)/((ν + y²)(1 − ρ²))))`, `x, y = t_ν⁻¹(u), t_ν⁻¹(v)`, and its `v → 0, 1` limit
+  /// `t_{ν+1}(±ρ√((ν + 1)/(1 − ρ²)))` at the edges.
+  pub(crate) fn h(rho: f64, nu: f64) -> impl Fn(f64, f64) -> f64 {
+    let sqrt_one_minus_rho2 = (1.0 - rho * rho).sqrt();
+    let nu_plus_one = nu + 1.0;
+    let boundary_arg = rho * nu_plus_one.sqrt() / sqrt_one_minus_rho2;
+    move |u, v| {
+      if v <= 0.0 {
+        return student_t::cdf(boundary_arg, nu_plus_one);
+      }
+      if v >= 1.0 {
+        return student_t::cdf(-boundary_arg, nu_plus_one);
+      }
+      let x = student_t::quantile(u, nu);
+      let y = student_t::quantile(v, nu);
+      let scale = (nu_plus_one / (nu + y * y)).sqrt() / sqrt_one_minus_rho2;
+      student_t::cdf((x - rho * y) * scale, nu_plus_one)
+    }
+  }
+
   /// Bivariate Student-t density $f_{\rho,\nu}(x, y)$.
   fn bivariate_t_pdf(x: f64, y: f64, rho: f64, nu: f64) -> f64 {
     let one_minus_rho2 = 1.0 - rho * rho;
@@ -180,28 +200,10 @@ impl BivariateExt for TCopula {
     )
   }
 
-  /// `∂_v C = t_{ν+1}((x − ρy)√((ν + 1)/((ν + y²)(1 − ρ²))))`, `x, y = t_ν⁻¹(u), t_ν⁻¹(v)`, whose `v → 0, 1` limit
-  /// `t_{ν+1}(±ρ√((ν + 1)/(1 − ρ²)))` holds for every `u`; NaN for `v` outside `[0, 1]`.
+  /// `TCopula::h`; NaN for `v` outside `[0, 1]`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let rho = self.theta.unwrap();
-    let nu = self.nu;
-    let one_minus_rho2 = 1.0 - rho * rho;
-    let sqrt_one_minus_rho2 = one_minus_rho2.sqrt();
-    let nu_plus_one = nu + 1.0;
-    let boundary_arg = rho * nu_plus_one.sqrt() / sqrt_one_minus_rho2;
-    Ok(conditional_cdf(x, |u, v| {
-      if v <= 0.0 {
-        return student_t::cdf(boundary_arg, nu_plus_one);
-      }
-      if v >= 1.0 {
-        return student_t::cdf(-boundary_arg, nu_plus_one);
-      }
-      let xx = student_t::quantile(u, nu);
-      let yy = student_t::quantile(v, nu);
-      let scale = (nu_plus_one / (nu + yy * yy)).sqrt() / sqrt_one_minus_rho2;
-      student_t::cdf((xx - rho * yy) * scale, nu_plus_one)
-    }))
+    Ok(conditional_cdf(x, Self::h(self.theta.unwrap(), self.nu)))
   }
 
   /// `TCopula::inverse` (Aas et al. App. B.2); NaN for `y` or `v` outside `[0, 1]`.
