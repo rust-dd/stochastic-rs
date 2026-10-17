@@ -4,7 +4,6 @@
 //! Reference: Aas, K., Czado, C., Frigessi, A. & Bakken, H. (2009), "Pair-copula constructions of multiple dependence", Insurance: Mathematics and Economics 44(2), 182–198, doi:10.1016/j.insmatheco.2007.02.001.
 //! Reference: Held, M. & Karp, R. M. (1962), "A Dynamic Programming Approach to Sequencing Problems", Journal of the Society for Industrial and Applied Mathematics 10(1), 196–210, doi:10.1137/0110015.
 
-use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
@@ -124,21 +123,17 @@ fn estimate(family: BivariateFamily, u: &[f64], v: &[f64]) -> Option<PairCopula>
       if tau < 0.05 {
         return None;
       }
-      let x = ndarray::stack![
-        ndarray::Axis(1),
-        Array1::from_vec(u.to_vec()),
-        Array1::from_vec(v.to_vec())
-      ];
+      let (u, v) = (ArrayView1::from(u), ArrayView1::from(v));
       if family == BivariateFamily::Bb1 {
         let mut c = Bb1::default();
-        c.fit_parameters(x.view()).ok()?;
+        c.fit_parameters(u, v).ok()?;
         Some(PairCopula::Bb1 {
           theta: c.theta()?,
           delta: c.delta(),
         })
       } else {
         let mut c = Bb7::default();
-        c.fit_parameters(x.view()).ok()?;
+        c.fit_parameters(u, v).ok()?;
         Some(PairCopula::Bb7 {
           theta: c.theta()?,
           delta: c.delta(),

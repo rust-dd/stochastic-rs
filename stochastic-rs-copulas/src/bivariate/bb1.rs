@@ -143,15 +143,20 @@ impl Bb1 {
 impl Bb1 {
   /// Maximum-likelihood fit of `(θ, δ)` from a Kendall start without `fit`'s input check, for the vine fitter's
   /// pseudo-observations; a `τ̂` outside BB1's `(0, 1)` or an estimate `try_new` rejects is an error and stores nothing.
-  pub(crate) fn fit_parameters(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
-    let tau = kendall_tau_b(x.column(0), x.column(1))?;
+  pub(crate) fn fit_parameters(
+    &mut self,
+    u: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<(), CopulaError> {
+    let tau = kendall_tau_b(u, v)?;
     if !(tau > 0.0 && tau < 1.0) {
       return Err(tau_out_of_range(tau, "0.0 < tau < 1.0".to_string()));
     }
     // A starting point for Nelder–Mead, not an estimate.
     let start_theta = (2.0 / (self.delta * (1.0 - tau.max(0.05))) - 2.0).clamp(0.05, 20.0);
     let (theta, delta) = fit_two_parameters(
-      x,
+      u,
+      v,
       (0.0, 1.0),
       (start_theta, self.delta),
       Self::log_density_scalar,
@@ -255,7 +260,7 @@ impl BivariateExt for Bb1 {
   /// current `δ`.
   fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     check_pairs(x)?;
-    self.fit_parameters(x)
+    self.fit_parameters(x.column(0), x.column(1))
   }
 
   /// `λ_L = 2^{−1/(θδ)}`, `λ_U = 2 − 2^{1/δ}` (Joe 1997, §5.2).

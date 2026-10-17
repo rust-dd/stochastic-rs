@@ -2,7 +2,7 @@
 //! the numerical Kendall's τ, the maximum-likelihood fit on unconstrained
 //! coordinates, and the marginal clipping used by every evaluation.
 
-use ndarray::ArrayView2;
+use ndarray::ArrayView1;
 
 use crate::optim::nelder_mead;
 
@@ -69,12 +69,11 @@ pub(crate) fn invert_h(h: impl Fn(f64) -> f64, p: f64) -> f64 {
   0.5 * (lo + hi)
 }
 
-/// Maximum-likelihood fit of `(θ, δ)` on the pseudo-observations `x`:
-/// the parameters live at `lower + exp(coordinate)` so the search is
-/// unconstrained, and the objective is the negative log-likelihood of
-/// `log_density`.
+/// Maximum-likelihood `(θ, δ)` on the pseudo-observation columns `u`, `v`: Nelder–Mead over `lower + exp(c)`, so the
+/// search is unconstrained, on the negative log-likelihood of `log_density`.
 pub(crate) fn fit_two_parameters(
-  x: ArrayView2<f64>,
+  u: ArrayView1<f64>,
+  v: ArrayView1<f64>,
   lower: (f64, f64),
   start: (f64, f64),
   log_density: impl Fn(f64, f64, f64, f64) -> f64,
@@ -85,10 +84,10 @@ pub(crate) fn fit_two_parameters(
     if !(theta.is_finite() && delta.is_finite()) {
       return f64::INFINITY;
     }
-    let nll: f64 = x
-      .rows()
-      .into_iter()
-      .map(|row| -log_density(clip(row[0]), clip(row[1]), theta, delta))
+    let nll: f64 = u
+      .iter()
+      .zip(&v)
+      .map(|(&a, &b)| -log_density(clip(a), clip(b), theta, delta))
       .sum();
     if nll.is_finite() { nll } else { f64::INFINITY }
   };

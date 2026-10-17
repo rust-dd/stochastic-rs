@@ -14,6 +14,7 @@
 //! Reference: Knight, W. R. (1966), "A Computer Method for Calculating Kendall's Tau with Ungrouped Data", Journal of the American Statistical Association 61(314), 436–439, doi:10.1080/01621459.1966.10480879.
 //! Reference: Kendall, M. G. (1945), "The treatment of ties in ranking problems", Biometrika 33(3), 239–251, doi:10.1093/biomet/33.3.239.
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 
 use ndarray::Array2;
@@ -40,7 +41,7 @@ pub fn kendall_tau_b(u: ArrayView1<f64>, v: ArrayView1<f64>) -> Result<f64, Copu
   if u.iter().any(|x| x.is_nan()) || v.iter().any(|x| x.is_nan()) {
     return Ok(f64::NAN);
   }
-  let (tau, ..) = kendalls::tau_b_with_comparator(&u.to_vec(), &v.to_vec(), |a, b| {
+  let (tau, ..) = kendalls::tau_b_with_comparator(&as_slice(u), &as_slice(v), |a, b| {
     a.partial_cmp(b).unwrap_or(Ordering::Greater)
   })
   .map_err(|_| CopulaError::InsufficientData {
@@ -48,6 +49,13 @@ pub fn kendall_tau_b(u: ArrayView1<f64>, v: ArrayView1<f64>) -> Result<f64, Copu
     got: u.len(),
   })?;
   Ok(tau)
+}
+
+/// The column as `kendalls` takes it, copied only when its elements are not contiguous.
+fn as_slice(column: ArrayView1<'_, f64>) -> Cow<'_, [f64]> {
+  column
+    .to_slice()
+    .map_or_else(|| Cow::Owned(column.to_vec()), Cow::Borrowed)
 }
 
 /// Pairwise Kendall τ-b matrix of the columns of `data` ([`kendall_tau_b`] per pair, ones on the diagonal);
