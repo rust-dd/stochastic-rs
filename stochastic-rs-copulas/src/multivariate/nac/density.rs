@@ -148,11 +148,14 @@ impl Density {
     }
     let ln_t = lse(s.t_terms.iter().copied());
     s.ln_t[i] = ln_t;
-    s.parts.clear();
-    s.parts.extend(node.leaves.iter().map(|&j| -u[j].ln()));
-    s.parts
-      .extend(node.children.iter().map(|&c| s.minus_ln_c[c]));
-    s.minus_ln_c[i] = self.generator.minus_ln_cdf(node.theta, &s.parts);
+    // Only Clayton's root term reads `−ln C`.
+    if self.generator == Generator::Clayton {
+      s.parts.clear();
+      s.parts.extend(node.leaves.iter().map(|&j| -u[j].ln()));
+      s.parts
+        .extend(node.children.iter().map(|&c| s.minus_ln_c[c]));
+      s.minus_ln_c[i] = self.generator.minus_ln_cdf(node.theta, &s.parts);
+    }
     ln_t
   }
 

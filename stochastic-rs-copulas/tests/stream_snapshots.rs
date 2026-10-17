@@ -62,8 +62,8 @@ const PINS: &[(&str, u64)] = &[
   ("dvine_mixed_d5", 0xfd7b6c2b9134b111),
   ("rvine_independence", 0xc269b264798404c9),
   ("nac_gumbel_nested", 0x6e8fd491c0867c57),
-  ("nac_clayton_flat", 0x268deb18dc50dcec),
-  ("nac_clayton_nested", 0xbfeb73a16de62e85),
+  ("nac_clayton_flat", 0x9afadada5485e18d),
+  ("nac_clayton_nested", 0xdd293b44c7f64e5e),
   ("empirical", 0xf1800d610f0b16aa),
 ];
 

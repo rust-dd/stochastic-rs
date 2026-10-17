@@ -150,20 +150,27 @@ impl Generator {
     }
   }
 
-  /// A leaf `ψ(E/V)`, `E ~ Exp(1)`, from the logarithms: Clayton `exp(−ln(1 + E/V)/θ)`, `exp(w − ln E/θ)` where `E/V`
-  /// overflows; Gumbel `exp(−e^{ln E/θ − w})`.
-  pub(super) fn leaf<R: Rng + ?Sized>(self, rng: &mut R, theta: f64, v: Frailty) -> f64 {
-    let ln_e = (-rng.random::<f64>().clamp(1e-15, 1.0 - 1e-15).ln()).ln();
-    let minus_ln_u = match self {
-      Self::Clayton => {
-        let x = ln_e - v.ln_v;
+  /// A leaf `ψ(E/V)`, `E ~ Exp(1)`: Clayton `exp(−ln(1 + E/V)/θ)`, from `v = V` where the node found it at least `1e-300`
+  /// and from the logarithms past that, `exp(w − ln E/θ)` where `E/V` overflows; Gumbel `exp(−e^{ln E/θ − w})`.
+  pub(super) fn leaf<R: Rng + ?Sized>(
+    self,
+    rng: &mut R,
+    theta: f64,
+    v: Frailty,
+    direct: Option<f64>,
+  ) -> f64 {
+    let e = -rng.random::<f64>().clamp(1e-15, 1.0 - 1e-15).ln();
+    let minus_ln_u = match (self, direct) {
+      (Self::Clayton, Some(v)) => (e / v).ln_1p() / theta,
+      (Self::Clayton, None) => {
+        let x = e.ln() - v.ln_v;
         if x == f64::INFINITY {
-          ln_e / theta - v.w
+          e.ln() / theta - v.w
         } else {
           softplus(x) / theta
         }
       }
-      Self::Gumbel => (ln_e / theta - v.w).exp(),
+      (Self::Gumbel, _) => (e.ln() / theta - v.w).exp(),
     };
     (-minus_ln_u).exp()
   }
@@ -202,8 +209,13 @@ impl NestedArchimedean {
           .child_frailty(rng, frailty, theta_parent, node.theta)
       }
     };
+    // `E/V` cannot overflow from `V = 1e-300` on, where a Clayton leaf needs no logarithms: picked once for the node.
+    let direct = match self.generator {
+      Generator::Clayton => Some(v.ln_v.exp()).filter(|v| (1e-300..f64::INFINITY).contains(v)),
+      Generator::Gumbel => None,
+    };
     for &j in &node.leaves {
-      out[j] = self.generator.leaf(rng, node.theta, v);
+      out[j] = self.generator.leaf(rng, node.theta, v, direct);
     }
     for child in &node.children {
       self.sample_node(rng, child, Some((node.theta, v)), out);
