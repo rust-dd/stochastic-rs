@@ -92,7 +92,9 @@ pub(super) fn agglomerate(
         }
       }
     }
-    let estimate = generator.theta_from_tau(best_tau)?;
+    let estimate = generator
+      .theta_from_tau(best_tau)
+      .map_err(|e| between(e, &clusters[best.0].1, &clusters[best.1].1))?;
     let (item_b, members_b) = clusters.remove(best.1);
     let (item_a, mut members) = clusters.remove(best.0);
     // Average linkage keeps a parent's mean at or below its children's (Górecki et al. 2017, Corollary 6.2), so the trim
@@ -107,6 +109,29 @@ pub(super) fn agglomerate(
     }
     members.extend(members_b);
     clusters.push((Item::Node(node), members));
+  }
+}
+
+/// The τ error of a join, its constraint naming the two clusters' columns, the cluster of the smaller column first.
+fn between(error: CopulaError, a: &[usize], b: &[usize]) -> CopulaError {
+  let CopulaError::InvalidParameter {
+    name,
+    value,
+    constraint,
+  } = error
+  else {
+    return error;
+  };
+  let (mut a, mut b) = (a.to_vec(), b.to_vec());
+  a.sort_unstable();
+  b.sort_unstable();
+  if b[0] < a[0] {
+    std::mem::swap(&mut a, &mut b);
+  }
+  CopulaError::InvalidParameter {
+    name,
+    value,
+    constraint: format!("{constraint} between columns {a:?} and {b:?}"),
   }
 }
 

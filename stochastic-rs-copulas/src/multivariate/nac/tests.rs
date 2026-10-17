@@ -230,6 +230,25 @@ fn nac_fit_rejects_negative_dependence_and_an_unfitted_copula_reports_it() {
   ));
 }
 
+/// A join no generator represents names its two clusters: columns 0 and 1 move together, column 2 against both.
+#[test]
+fn nac_fit_names_the_clusters_whose_join_fails() {
+  let x = ndarray::Array2::from_shape_fn((100, 3), |(i, j)| match j {
+    0 => (i + 1) as f64 / 101.0,
+    1 => ((i + 3) % 100 + 1) as f64 / 101.0,
+    _ => 1.0 - (i + 1) as f64 / 101.0,
+  });
+  let tau = crate::correlation::kendall_tau(x.view()).unwrap();
+  let mean = (tau[[0, 2]] + tau[[1, 2]]) / 2.0;
+  let mut c = NestedArchimedean::unfitted(BivariateFamily::Clayton).unwrap();
+  assert_eq!(
+    c.fit(x.view()).unwrap_err().to_string(),
+    format!(
+      "tau must satisfy `0.0 < tau < 1.0 between columns [0, 1] and [2]`, got tau = {mean:?}"
+    )
+  );
+}
+
 /// Average linkage on a hand-made τ̂ matrix: after `(0,1)` at 0.8 it joins `(2,3)` at 0.5, not `{0,1}` with 2 (a mean of
 /// 0.4, where single linkage would see 0.7), and the root inverts the mean 0.35 of its four cross pairs.
 #[test]

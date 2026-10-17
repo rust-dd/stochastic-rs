@@ -537,3 +537,33 @@ fn the_vine_fits_check_columns_rows_range_candidates_then_tau() {
     }
   }
 }
+
+/// An edge no family represents is named by its data columns and conditioning set: here the second tree's edge, whose
+/// conditional dependence is negative, where Clayton cannot follow, in both structures.
+#[test]
+fn an_edge_no_family_represents_names_its_columns() {
+  let truth = DVine::new(
+    3,
+    vec![
+      vec![
+        PairCopula::Clayton { theta: 4.0 },
+        PairCopula::Clayton { theta: 4.0 },
+      ],
+      vec![PairCopula::Frank { theta: -8.0 }],
+    ],
+  )
+  .unwrap();
+  let u = truth.sample(500, &Deterministic::new(3)).unwrap();
+  let want =
+    "no candidate family represents the edge between columns 0 and 2 given columns [1]: [Clayton]";
+  for structure in [VineStructure::DVine, VineStructure::CVine] {
+    let err = fit_vine(
+      u.view(),
+      structure,
+      &[BivariateFamily::Clayton],
+      SelectionCriterion::Aic,
+    )
+    .unwrap_err();
+    assert_eq!(err.to_string(), want, "{structure:?}");
+  }
+}

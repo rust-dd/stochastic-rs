@@ -234,14 +234,14 @@ fn student_t(u: &[f64], v: &[f64]) -> Option<PairCopula> {
   })
 }
 
-/// Best family on the pair by the criterion: the copula, its family, log-likelihood and parameter count; independence
-/// competes by its score, without the optional Genest–Favre pre-test of Dißmann et al. (2013, §3.2).
+/// The criterion's best family on the pair (copula, family, log-likelihood, parameter count), `None` if no family fits;
+/// independence competes by its score, without the optional Genest–Favre pre-test of Dißmann et al. (2013, §3.2).
 fn select_pair(
   u: &[f64],
   v: &[f64],
   families: &[BivariateFamily],
   criterion: SelectionCriterion,
-) -> Result<(PairCopula, BivariateFamily, f64, usize), CopulaError> {
+) -> Option<(PairCopula, BivariateFamily, f64, usize)> {
   let n = u.len() as f64;
   let mut best: Option<(PairCopula, BivariateFamily, f64, usize, f64)> = None;
   for &family in families {
@@ -261,13 +261,23 @@ fn select_pair(
       best = Some((pair, family, ll, k, score));
     }
   }
-  best
-    .map(|(pair, family, ll, k, _)| (pair, family, ll, k))
-    .ok_or_else(|| {
-      CopulaError::Unsupported(format!(
-        "no candidate family represents the edge: {families:?}"
-      ))
-    })
+  best.map(|(pair, family, ll, k, _)| (pair, family, ll, k))
+}
+
+/// `Unsupported` naming the data columns of the edge `a`–`b` given `given` that no family in `families` represents.
+fn unrepresented(a: usize, b: usize, given: &[usize], families: &[BivariateFamily]) -> CopulaError {
+  let mut given = given.to_vec();
+  given.sort_unstable();
+  let given = if given.is_empty() {
+    String::new()
+  } else {
+    format!(" given columns {given:?}")
+  };
+  CopulaError::Unsupported(format!(
+    "no candidate family represents the edge between columns {} and {}{given}: {families:?}",
+    a.min(b),
+    a.max(b)
+  ))
 }
 
 /// The first D-vine tree, the Hamiltonian path of largest Σ|τ̂| (Dißmann et al. 2013, §3.1): exact by Held–Karp up to
@@ -436,7 +446,15 @@ pub(crate) fn fit_dvine(
     let mut tree = Vec::with_capacity(edges);
     let mut tree_families = Vec::with_capacity(edges);
     for i in 0..edges {
-      let (pair, family, ll, k) = select_pair(&left[i], &right[i], families, criterion)?;
+      let (pair, family, ll, k) = select_pair(&left[i], &right[i], families, criterion)
+        .ok_or_else(|| {
+          unrepresented(
+            order[i],
+            order[i + m + 1],
+            &order[i + 1..i + m + 1],
+            families,
+          )
+        })?;
       ll_total += ll;
       k_total += k;
       tree.push(pair);
@@ -529,7 +547,9 @@ pub(crate) fn fit_cvine(
     let mut entries = Vec::with_capacity(values.len());
     let mut next_values: Vec<(usize, Vec<f64>)> = Vec::with_capacity(values.len());
     for (j, column) in &values {
-      let (pair, family, ll, k) = select_pair(&root_values, column, families, criterion)?;
+      let (root, given) = order.split_last().expect("the root is in the order");
+      let (pair, family, ll, k) = select_pair(&root_values, column, families, criterion)
+        .ok_or_else(|| unrepresented(*root, *j, given, families))?;
       ll_total += ll;
       k_total += k;
       // Pseudo-observation of variable j given the root: h(x_j | root).
