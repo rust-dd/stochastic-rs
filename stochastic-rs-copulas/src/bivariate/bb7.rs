@@ -165,6 +165,15 @@ impl Bb7 {
 
   /// `∂_v C`, held below 1 against rounding: the expanded form while `s − 1`, `−ln T` are normal and its exponent terms
   /// stay below `EXPANDED_LIMIT`, `h_log` past it; the limit laws at `v = 0` (`δ₀`), `v = 1` (`u^{δ+1}` at `θ = 1`, else `δ₁`).
+  /// `h_scalar`'s expanded form with no edge or range check: the Kendall quadrature's kernel at interior nodes for
+  /// `1 ≤ θ ≤ 60`, `δ ≤ 100`.
+  fn h_interior(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
+    let (_, ln_b, ln_s, _, ln_1mt) = Self::logs(u, v, theta, delta);
+    ((1.0 / theta - 1.0) * ln_1mt - (1.0 / delta + 1.0) * ln_s - (delta + 1.0) * ln_b
+      + (theta - 1.0) * (-v).ln_1p())
+    .exp()
+  }
+
   pub(crate) fn h_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
     if u >= 1.0 || v <= 0.0 {
       return 1.0;
@@ -311,8 +320,15 @@ impl Bb7 {
 
   /// The Nelder–Mead start: bisection of the 100-panel τ at the stored `δ` on `[1, 60]`, 50 steps, `1` when `τ(1) ≥ tau`.
   fn mle_start(&self, tau: f64) -> f64 {
-    let kendall_tau =
-      |theta: f64| kendall_tau_numeric(|u, v| Self::h_scalar(u, v, theta, self.delta), 100);
+    let delta = self.delta;
+    // Up to `δ = 100` the quadrature's nodes keep every exponential below `e^617`, and the small kernel inlines.
+    let kendall_tau = |theta: f64| {
+      if delta <= 100.0 {
+        kendall_tau_numeric(|u, v| Self::h_interior(u, v, theta, delta), 100)
+      } else {
+        kendall_tau_numeric(|u, v| Self::h_scalar(u, v, theta, delta), 100)
+      }
+    };
     let (mut lo, mut hi) = (1.0_f64, 60.0_f64);
     if kendall_tau(lo) >= tau {
       return lo;

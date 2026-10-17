@@ -120,14 +120,14 @@ impl TCopula {
       }
       if x.value.abs() < LARGE {
         let ln_scale = 0.5 * (nu + x.value * x.value).ln() + ln_spread;
-        return law.cdf(q.value.signum(), q.ln_abs + ln_scale);
+        return law.cdf(q.value.signum(), q.ln_abs() + ln_scale);
       }
       // `B = xw`, `w = ρ + sgn(x) q √((1 + ν/x²)(1 − ρ²)/(ν + 1))`, whose `ν/x²` is below every rounding unit here.
       let (sign_w, ln_w) = if q.value.is_finite() {
         let w = rho + x.value.signum() * q.value * ln_spread.exp();
         (w.signum(), w.abs().ln())
       } else {
-        (x.value.signum() * q.value.signum(), q.ln_abs + ln_spread)
+        (x.value.signum() * q.value.signum(), q.ln_abs() + ln_spread)
       };
       law.cdf_scaled(x, x.value.signum() * sign_w, ln_w)
     }
@@ -140,14 +140,17 @@ impl TCopula {
     let sqrt_one_minus_rho2 = ((1.0 - rho) * (1.0 + rho)).sqrt();
     let nu_plus_one = nu + 1.0;
     let boundary_arg = rho * nu_plus_one.sqrt() / sqrt_one_minus_rho2;
-    let (at_zero, at_one) = (wide.cdf_at(boundary_arg), wide.cdf_at(-boundary_arg));
     let reach = nu_plus_one.sqrt() / sqrt_one_minus_rho2;
     move |u, v| {
       if u >= 1.0 {
         return 1.0;
       }
       if v <= 0.0 || v >= 1.0 {
-        return if v <= 0.0 { at_zero } else { at_one };
+        return wide.cdf_at(if v <= 0.0 {
+          boundary_arg
+        } else {
+          -boundary_arg
+        });
       }
       if u <= 0.0 {
         return 0.0;
@@ -165,9 +168,9 @@ impl TCopula {
       // `x/√(ν + y²)` and `y/√(ν + y²)` from the logarithms; past `f64::MAX` the first carries the argument alone.
       let (ln_x_over_root, y_over_root) = if y.value.abs() < LARGE {
         let root = (nu + y.value * y.value).sqrt();
-        (x.ln_abs - root.ln(), y.value / root)
+        (x.ln_abs() - root.ln(), y.value / root)
       } else {
-        let lift = 0.5 * (nu * (-2.0 * y.ln_abs).exp()).ln_1p();
+        let lift = 0.5 * (nu * (-2.0 * y.ln_abs()).exp()).ln_1p();
         (law.ln_ratio(x, y) - lift, y.value.signum() * (-lift).exp())
       };
       let ratio = x.value.signum() * ln_x_over_root.exp();

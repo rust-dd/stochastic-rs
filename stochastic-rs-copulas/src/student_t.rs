@@ -31,11 +31,11 @@ pub(crate) struct Law {
   ln_tail_start: f64,
 }
 
-/// A quantile `t` with `ln|t|`, `+∞` where it overflows, and in the tail `ln P(T ≤ −|t|)`, which stays finite there.
+/// A quantile `t`, `+∞` where it overflows, and in the tail `ln|t|` and `ln P(T ≤ −|t|)`, which stay finite there.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Score {
   pub(crate) value: f64,
-  pub(crate) ln_abs: f64,
+  tail_ln_abs: f64,
   ln_tail: f64,
 }
 
@@ -43,8 +43,17 @@ impl Score {
   fn of(value: f64) -> Self {
     Self {
       value,
-      ln_abs: value.abs().ln(),
+      tail_ln_abs: f64::NAN,
       ln_tail: f64::NAN,
+    }
+  }
+
+  /// `ln|t|`: the tail's own, else formed from the value on demand, as only the overflow paths read it.
+  pub(crate) fn ln_abs(&self) -> f64 {
+    if self.ln_tail.is_nan() {
+      self.value.abs().ln()
+    } else {
+      self.tail_ln_abs
     }
   }
 }
@@ -94,7 +103,7 @@ impl Law {
       let ln_abs = (self.ln_scale - ln_tail) / self.nu;
       return Score {
         value: sign * ln_abs.exp(),
-        ln_abs,
+        tail_ln_abs: ln_abs,
         ln_tail,
       };
     }
@@ -110,7 +119,7 @@ impl Law {
   /// quantiles past `f64::MAX` stays exact.
   pub(crate) fn ln_ratio(&self, a: Score, b: Score) -> f64 {
     if a.ln_tail.is_nan() || b.ln_tail.is_nan() {
-      a.ln_abs - b.ln_abs
+      a.ln_abs() - b.ln_abs()
     } else {
       (b.ln_tail - a.ln_tail) / self.nu
     }
@@ -142,12 +151,12 @@ impl Law {
       return self.cdf_at(0.0);
     }
     if t.ln_tail.is_nan() || self.nu >= NORMAL_ABOVE {
-      return self.cdf(sign, t.ln_abs + ln_factor);
+      return self.cdf(sign, t.ln_abs() + ln_factor);
     }
-    if t.ln_abs + ln_factor >= self.ln_tail_start {
+    if t.ln_abs() + ln_factor >= self.ln_tail_start {
       return self.tail(sign, t.ln_tail - self.nu * ln_factor);
     }
-    self.cdf_at(sign * (t.ln_abs + ln_factor).exp())
+    self.cdf_at(sign * (t.ln_abs() + ln_factor).exp())
   }
 
   fn tail(&self, sign: f64, ln_tail: f64) -> f64 {
