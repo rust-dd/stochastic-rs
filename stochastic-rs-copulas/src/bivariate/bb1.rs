@@ -143,15 +143,15 @@ impl Bb1 {
 impl Bb1 {
   /// Maximum-likelihood fit of `(θ, δ)` from a Kendall start without `fit`'s input check, for the vine fitter's
   /// pseudo-observations; a `τ̂` outside BB1's `(0, 1)` or an estimate `try_new` rejects is an error and stores nothing.
-  pub(crate) fn fit_parameters(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
-    let tau = kendall_tau_b(X.column(0), X.column(1))?;
+  pub(crate) fn fit_parameters(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
+    let tau = kendall_tau_b(x.column(0), x.column(1))?;
     if !(tau > 0.0 && tau < 1.0) {
       return Err(tau_out_of_range(tau, "0.0 < tau < 1.0".to_string()));
     }
     // A starting point for Nelder–Mead, not an estimate.
     let start_theta = (2.0 / (self.delta * (1.0 - tau.max(0.05))) - 2.0).clamp(0.05, 20.0);
     let (theta, delta) = fit_two_parameters(
-      X,
+      x,
       (0.0, 1.0),
       (start_theta, self.delta),
       Self::log_density_scalar,
@@ -197,20 +197,20 @@ impl BivariateExt for Bb1 {
     Ok(t.mapv(|x| (x.powf(-theta) - 1.0).powf(delta)))
   }
 
-  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     Ok(
-      X.rows()
+      x.rows()
         .into_iter()
         .map(|r| Self::log_density_scalar(clip(r[0]), clip(r[1]), theta, delta).exp())
         .collect(),
     )
   }
 
-  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     Ok(
-      X.rows()
+      x.rows()
         .into_iter()
         .map(|r| Self::cdf_scalar(clip(r[0]), clip(r[1]), theta, delta))
         .collect(),
@@ -218,9 +218,9 @@ impl BivariateExt for Bb1 {
   }
 
   /// `∂_v C(u, v)`, NaN for `v` outside `[0, 1]`.
-  fn partial_derivative(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    Ok(conditional_cdf(X, |u, v| {
+    Ok(conditional_cdf(x, |u, v| {
       Self::h_scalar(clip(u), clip(v), theta, delta)
     }))
   }
@@ -253,9 +253,9 @@ impl BivariateExt for Bb1 {
 
   /// Maximum-likelihood fit of `(θ, δ)` on a two-column sample in `[0, 1]`, started from the Kendall inversion at the
   /// current `δ`.
-  fn fit(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
-    check_pairs(X)?;
-    self.fit_parameters(X)
+  fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
+    check_pairs(x)?;
+    self.fit_parameters(x)
   }
 
   /// `λ_L = 2^{−1/(θδ)}`, `λ_U = 2 − 2^{1/δ}` (Joe 1997, §5.2).

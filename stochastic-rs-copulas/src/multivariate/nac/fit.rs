@@ -54,8 +54,8 @@ impl Item {
 }
 
 /// The checks run in the order every multivariate fit uses: columns, rows, range, then a defined τ-b for every column.
-pub(super) fn estimate(generator: Generator, X: ArrayView2<f64>) -> Result<NacNode, CopulaError> {
-  let (n, d) = (X.nrows(), X.ncols());
+pub(super) fn estimate(generator: Generator, x: ArrayView2<f64>) -> Result<NacNode, CopulaError> {
+  let (n, d) = (x.nrows(), x.ncols());
   if d < 2 {
     return Err(CopulaError::InvalidStructure(format!(
       "a nested Archimedean copula needs dim >= 2, got {d}"
@@ -64,10 +64,10 @@ pub(super) fn estimate(generator: Generator, X: ArrayView2<f64>) -> Result<NacNo
   if n < 2 {
     return Err(CopulaError::InsufficientData { needed: 2, got: n });
   }
-  if X.iter().any(|v| !(0.0..=1.0).contains(v)) {
+  if x.iter().any(|v| !(0.0..=1.0).contains(v)) {
     return Err(CopulaError::MarginalOutOfRange);
   }
-  let tau = kendall_tau(X)?;
+  let tau = kendall_tau(x)?;
   check_defined(tau.view())?;
   agglomerate(generator, tau.view())
 }

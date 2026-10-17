@@ -65,8 +65,8 @@ impl BivariateExt for Independence {
     Ok(t.ln())
   }
 
-  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    let in_range = X.map_axis(Axis(1), |row| {
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    let in_range = x.map_axis(Axis(1), |row| {
       row.iter().all(|&val| (0.0..=1.0).contains(&val))
     });
 
@@ -75,25 +75,25 @@ impl BivariateExt for Independence {
     Ok(out)
   }
 
-  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    let U = X.column(0);
-    let V = X.column(1);
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    let u = x.column(0);
+    let v = x.column(1);
 
-    Ok(&U * &V)
+    Ok(&u * &v)
   }
 
   /// `∂_v (uv) = u`, NaN for `v` outside `[0, 1]`.
-  fn partial_derivative(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    Ok(conditional_cdf(X, |u, _| u))
+  fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(conditional_cdf(x, |u, _| u))
   }
 
   /// The identity, NaN for `y` or `v` outside `[0, 1]`.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
-    V: ArrayView1<f64>,
+    v: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
-    conditional_quantiles(y, V, |y, _| y)
+    conditional_quantiles(y, v, |y, _| y)
   }
 
   fn tau_from_theta(&self, _theta: f64) -> f64 {

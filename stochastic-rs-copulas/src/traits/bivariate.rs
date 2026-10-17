@@ -125,9 +125,9 @@ pub trait BivariateExt {
 
   /// Kendall's τ-b of a two-column sample in `[0, 1]`, inverted through `theta_from_tau`; nothing is stored when the
   /// family cannot represent it (`InvalidParameter { name: "tau", .. }`) or the inverse fails `validate_theta`.
-  fn fit(&mut self, X: ndarray::ArrayView2<f64>) -> Result<(), CopulaError> {
-    check_pairs(X)?;
-    let tau = kendall_tau_b(X.column(0), X.column(1))?;
+  fn fit(&mut self, x: ndarray::ArrayView2<f64>) -> Result<(), CopulaError> {
+    check_pairs(x)?;
+    let tau = kendall_tau_b(x.column(0), x.column(1))?;
     let theta = self.theta_from_tau(tau)?;
     self.validate_theta(theta)?;
     self.set_theta(theta);
@@ -164,22 +164,22 @@ pub trait BivariateExt {
     Ok(())
   }
 
-  fn pdf(&self, X: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
+  fn pdf(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 
-  fn log_pdf(&self, X: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    Ok(self.pdf(X)?.ln())
+  fn log_pdf(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(self.pdf(x)?.ln())
   }
 
-  fn cdf(&self, X: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
+  fn cdf(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 
   /// Inverse conditional: the `u` with `P(U ≤ u | V = v) = y`.
   #[doc(alias = "ppf")]
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
-    V: ArrayView1<f64>,
+    v: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
-    self.percent_point_numerical(y, V)
+    self.percent_point_numerical(y, v)
   }
 
   /// `percent_point`'s default, callable from an override: Brent's `zero` in `u` of `partial_derivative` held in
@@ -187,17 +187,17 @@ pub trait BivariateExt {
   fn percent_point_numerical(
     &self,
     y: ArrayView1<f64>,
-    V: ArrayView1<f64>,
+    v: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    check_lengths(y, V)?;
+    check_lengths(y, v)?;
     let n = y.len();
     let mut results = Array1::zeros(n);
     let lo = f64::EPSILON;
 
     for i in 0..n {
       let y_i = y[i];
-      let v_i = V[i];
+      let v_i = v[i];
       if !(in_unit(y_i) && in_unit(v_i)) {
         results[i] = f64::NAN;
         continue;
@@ -258,17 +258,17 @@ pub trait BivariateExt {
     Ok(results)
   }
 
-  fn partial_derivative(&self, X: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    let n = X.nrows();
-    let mut X_prime = X.to_owned();
+  fn partial_derivative(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    let n = x.nrows();
+    let mut x_prime = x.to_owned();
     let mut delta = Array1::zeros(n);
     for i in 0..n {
-      delta[i] = if X[[i, 1]] > 0.5 { -0.0001 } else { 0.0001 };
-      X_prime[[i, 1]] = X[[i, 1]] + delta[i];
+      delta[i] = if x[[i, 1]] > 0.5 { -0.0001 } else { 0.0001 };
+      x_prime[[i, 1]] = x[[i, 1]] + delta[i];
     }
 
-    let f = self.cdf(X)?;
-    let f_prime = self.cdf(X_prime.view())?;
+    let f = self.cdf(x)?;
+    let f_prime = self.cdf(x_prime.view())?;
 
     let mut deriv = Array1::zeros(n);
     for i in 0..n {
@@ -279,10 +279,10 @@ pub trait BivariateExt {
   }
 
   #[doc(hidden)]
-  fn partial_derivative_scalar(&self, U: f64, V: f64) -> Result<f64, CopulaError> {
+  fn partial_derivative_scalar(&self, u: f64, v: f64) -> Result<f64, CopulaError> {
     self.check_fit()?;
-    let X = stack![Axis(1), Array1::from(vec![U]), Array1::from(vec![V])];
-    let out = self.partial_derivative(X.view());
+    let x = stack![Axis(1), Array1::from(vec![u]), Array1::from(vec![v])];
+    let out = self.partial_derivative(x.view());
 
     Ok(*out?.get(0).unwrap())
   }

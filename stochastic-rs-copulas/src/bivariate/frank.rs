@@ -163,38 +163,38 @@ impl BivariateExt for Frank {
   /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd
   /// ed., Springer, Example 4.23 / Table 4.1 (Frank generator
   /// $\varphi_\theta(t) = -\ln\frac{e^{-\theta t}-1}{e^{-\theta}-1}$).
-  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
-    let U = X.column(0).to_owned();
-    let V = X.column(1).to_owned();
+    let u = x.column(0).to_owned();
+    let v = x.column(1).to_owned();
 
     let theta = self.theta.unwrap();
 
     if theta == 0.0 {
-      return Ok(Array1::ones(U.len()));
+      return Ok(Array1::ones(u.len()));
     }
 
     let num =
-      (-theta * self._g(Array1::ones(U.len()).view())?) * (1.0 + self._g((&U + &V).view())?);
-    let aux = self._g(Array1::ones(U.len()).view())? + self._g(U.view())? * self._g(V.view())?;
+      (-theta * self._g(Array1::ones(u.len()).view())?) * (1.0 + self._g((&u + &v).view())?);
+    let aux = self._g(Array1::ones(u.len()).view())? + self._g(u.view())? * self._g(v.view())?;
     let den = aux.pow2();
     Ok(num / den)
   }
 
-  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
-    let U = X.column(0);
-    let V = X.column(1);
+    let u = x.column(0);
+    let v = x.column(1);
 
     let theta = self.theta.unwrap();
 
     if theta == 0.0 {
-      return Ok(&U * &V);
+      return Ok(&u * &v);
     }
 
-    let num = ((-theta * &U).exp() - 1.0) * ((-theta * &V).exp() - 1.0);
+    let num = ((-theta * &u).exp() - 1.0) * ((-theta * &v).exp() - 1.0);
     let den = (-theta).exp() - 1.0;
     let out = -1.0 / theta * (1.0 + num / den).ln();
     Ok(out)
@@ -205,26 +205,26 @@ impl BivariateExt for Frank {
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
-    V: ArrayView1<f64>,
+    v_col: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     if theta == 0.0 {
-      return conditional_quantiles(y, V, |y, _| y);
+      return conditional_quantiles(y, v_col, |y, _| y);
     }
     // One closure per sign keeps the reflection out of the per-pair work.
     let inverse = Self::inverse(theta.abs());
     if theta > 0.0 {
-      conditional_quantiles(y, V, |y, v| inverse(y, v, 1.0 - v))
+      conditional_quantiles(y, v_col, |y, v| inverse(y, v, 1.0 - v))
     } else {
-      conditional_quantiles(y, V, |y, v| inverse(y, 1.0 - v, v))
+      conditional_quantiles(y, v_col, |y, v| inverse(y, 1.0 - v, v))
     }
   }
 
   /// `Frank::h`'s factored form, `u` at `θ = 0`; NaN for `v` outside `[0, 1]`.
-  fn partial_derivative(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    Ok(conditional_cdf(X, Self::h(self.theta.unwrap())))
+    Ok(conditional_cdf(x, Self::h(self.theta.unwrap())))
   }
 
   /// `τ(θ) = 1 − 4/θ + 4D₁(θ)/θ`, `D₁(θ) = θ⁻¹∫₀^θ t/(eᵗ − 1) dt` (Hofert, Mächler & McNeil 2011, Table 2), odd in θ:

@@ -442,42 +442,42 @@ impl MultivariateExt for NestedArchimedean {
     Ok(self.sample_with(self.fitted_root()?, n, &mut seed.rng()))
   }
 
-  /// Estimates the binary tree from Kendall's τ-b of `X` (Górecki, Hofert & Holeňa 2016, Algorithm 3); a mean τ̂ outside the
+  /// Estimates the binary tree from Kendall's τ-b of `x` (Górecki, Hofert & Holeňa 2016, Algorithm 3); a mean τ̂ outside the
   /// generator's range (`0 < τ < 1` Clayton, `0 ≤ τ < 1` Gumbel) is `InvalidParameter { name: "tau", .. }` and stores nothing.
-  fn fit(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
-    let root = fit::estimate(self.generator, X)?;
-    *self = Self::new(self.generator.family(), root, X.ncols())?;
+  fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
+    let root = fit::estimate(self.generator, x)?;
+    *self = Self::new(self.generator.family(), root, x.ncols())?;
     Ok(())
   }
 
-  fn check_fit(&self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
+  fn check_fit(&self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     self.fitted_root()?;
-    if X.ncols() != self.dim {
+    if x.ncols() != self.dim {
       return Err(CopulaError::DimensionMismatch {
         expected: self.dim,
-        got: X.ncols(),
+        got: x.ncols(),
       });
     }
-    if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
+    if x.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
       return Err(CopulaError::MarginalOutOfRange);
     }
     Ok(())
   }
 
-  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    Ok(self.log_pdf(X)?.mapv_into(f64::exp))
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(self.log_pdf(x)?.mapv_into(f64::exp))
   }
 
-  fn log_pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit(X)?;
-    Ok(density::Density::new(self.generator, self.fitted_root()?).log_pdf(X))
+  fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit(x)?;
+    Ok(density::Density::new(self.generator, self.fitted_root()?).log_pdf(x))
   }
 
-  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit(X)?;
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit(x)?;
     let root = self.fitted_root()?;
-    let mut out = Array1::<f64>::zeros(X.nrows());
-    for (i, row) in X.rows().into_iter().enumerate() {
+    let mut out = Array1::<f64>::zeros(x.nrows());
+    for (i, row) in x.rows().into_iter().enumerate() {
       let u: Vec<f64> = row.iter().copied().collect();
       out[i] = self.cdf_node(root, &u);
     }

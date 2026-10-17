@@ -141,46 +141,46 @@ impl MultivariateExt for GaussianMultivariate {
 
   /// Fit the Gaussian copula from U in (0,1)^{n x d}; an indefinite or near-singular estimate is shrunk toward the
   /// identity until every eigenvalue is at least `1e-3`.
-  fn fit(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
-    if X.ncols() < 2 {
+  fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
+    if x.ncols() < 2 {
       return Err(CopulaError::InvalidStructure(format!(
         "a Gaussian copula needs dim >= 2, got {}",
-        X.ncols()
+        x.ncols()
       )));
     }
-    if X.nrows() < 2 {
+    if x.nrows() < 2 {
       return Err(CopulaError::InsufficientData {
         needed: 2,
-        got: X.nrows(),
+        got: x.nrows(),
       });
     }
     // Basic range check
-    if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
+    if x.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
       return Err(CopulaError::MarginalOutOfRange);
     }
-    let z = self.transform_to_normal(X);
+    let z = self.transform_to_normal(x);
     let corr = shrink_to_spd(Self::estimate_corr_from_normal(z.view()));
     self.corr = Some(CorrelationMatrix::try_new(corr)?);
     Ok(())
   }
 
-  fn check_fit(&self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
+  fn check_fit(&self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     let dim = self.fitted()?.dim();
-    if X.ncols() != dim {
+    if x.ncols() != dim {
       return Err(CopulaError::DimensionMismatch {
         expected: dim,
-        got: X.ncols(),
+        got: x.ncols(),
       });
     }
-    if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
+    if x.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
       return Err(CopulaError::MarginalOutOfRange);
     }
     Ok(())
   }
 
-  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit(X)?;
-    let z = self.transform_to_normal(X); // n x d
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit(x)?;
+    let z = self.transform_to_normal(x); // n x d
     let corr = self.fitted()?;
     let inv = corr.inverse();
     let log_det = corr.log_det();
@@ -202,12 +202,12 @@ impl MultivariateExt for GaussianMultivariate {
 
   /// `Φ_R(Φ⁻¹(u))` on the closed cube: a zero coordinate gives 0 and a unit one drops out; two left are Owen's T closed
   /// form, more are Genz's separation-of-variables integral over the Sobol points in that query's prioritized order.
-  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit(X)?;
+  fn cdf(&self, uv: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit(uv)?;
     let corr = self.fitted()?;
     let mut points = None;
     Ok(
-      X.rows()
+      uv.rows()
         .into_iter()
         .map(|u| match open_coordinates(u).as_deref() {
           None => 0.0,

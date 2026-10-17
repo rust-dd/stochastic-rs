@@ -267,48 +267,48 @@ impl MultivariateExt for TMultivariate {
     Ok(u)
   }
 
-  fn fit(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
-    if X.ncols() < 2 {
+  fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
+    if x.ncols() < 2 {
       return Err(CopulaError::InvalidStructure(format!(
         "a t-copula needs dim >= 2, got {}",
-        X.ncols()
+        x.ncols()
       )));
     }
-    if X.nrows() < 2 {
+    if x.nrows() < 2 {
       return Err(CopulaError::InsufficientData {
         needed: 2,
-        got: X.nrows(),
+        got: x.nrows(),
       });
     }
-    if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
+    if x.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
       return Err(CopulaError::MarginalOutOfRange);
     }
-    let corr = CorrelationMatrix::try_new(shrink_to_spd(Self::estimate_corr_from_kendall(X)?))?;
+    let corr = CorrelationMatrix::try_new(shrink_to_spd(Self::estimate_corr_from_kendall(x)?))?;
     // Profile MLE for ν conditional on Σ.
-    self.nu = Self::optimise_nu(&corr, X);
+    self.nu = Self::optimise_nu(&corr, x);
     self.chi = OnceLock::new();
     self.corr = Some(corr);
     Ok(())
   }
 
-  fn check_fit(&self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
+  fn check_fit(&self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     let dim = self.fitted()?.dim();
-    if X.ncols() != dim {
+    if x.ncols() != dim {
       return Err(CopulaError::DimensionMismatch {
         expected: dim,
-        got: X.ncols(),
+        got: x.ncols(),
       });
     }
-    if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
+    if x.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
       return Err(CopulaError::MarginalOutOfRange);
     }
     Ok(())
   }
 
-  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit(X)?;
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit(x)?;
     let nu = self.nu;
-    let z = Self::transform_to_t(X, nu);
+    let z = Self::transform_to_t(x, nu);
     let mv = Self::mv_log_pdf(self.fitted()?, nu, z.view());
     let mut out = Array1::<f64>::zeros(z.nrows());
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {
@@ -321,10 +321,10 @@ impl MultivariateExt for TMultivariate {
     Ok(out)
   }
 
-  fn log_pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit(X)?;
+  fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit(x)?;
     let nu = self.nu;
-    let z = Self::transform_to_t(X, nu);
+    let z = Self::transform_to_t(x, nu);
     let mv = Self::mv_log_pdf(self.fitted()?, nu, z.view());
     let mut out = Array1::<f64>::zeros(z.nrows());
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {
@@ -339,12 +339,12 @@ impl MultivariateExt for TMultivariate {
 
   /// `T_{R,ν}(t_ν⁻¹(u))` on the closed cube: a zero coordinate gives 0 and a unit one drops out; two left are the
   /// bivariate closed form, more are Genz–Bretz over the Sobol points in that query's prioritized order.
-  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit(X)?;
+  fn cdf(&self, uv: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit(uv)?;
     let corr = self.fitted()?;
     let mut points = None;
     Ok(
-      X.rows()
+      uv.rows()
         .into_iter()
         .map(|u| match open_coordinates(u).as_deref() {
           None => 0.0,

@@ -38,8 +38,8 @@ fn invalid_thetas(&self) -> Vec<f64>;    // returns owned Vec, not &[f64]
 fn tau_from_theta(&self, theta: f64) -> f64;                      // Kendall's τ of the family at θ
 fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError>;   // Err outside the reachable τ range
 fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError>;
-fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
-fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
+fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
+fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 ```
 
 Two shape facts that catch every first attempt:
@@ -61,12 +61,12 @@ Useful defaults you should usually **not** override:
 | Method | Default behaviour |
 |---|---|
 | `sample(n, &seed)` | `SimdUniform::new(0, 1).seeded(seed)`, via `sample_with_uniform` |
-| `fit(X)` | two columns, two rows, entries in `[0, 1]` (`DimensionMismatch`, `InsufficientData`, `MarginalOutOfRange` in that order, no uniformity test), Kendall's tau-b via `correlation::kendall_tau_b`, then `theta_from_tau` |
+| `fit(x)` | two columns, two rows, entries in `[0, 1]` (`DimensionMismatch`, `InsufficientData`, `MarginalOutOfRange` in that order, no uniformity test), Kendall's tau-b via `correlation::kendall_tau_b`, then `theta_from_tau` |
 | `tau()` | `tau_from_theta` at the current `theta` |
-| `percent_point(y, V)` | Brent inversion of `partial_derivative_scalar` |
-| `partial_derivative(X)` | central-difference on `cdf` |
+| `percent_point(y, v)` | Brent inversion of `partial_derivative_scalar` |
+| `partial_derivative(x)` | central-difference on `cdf` |
 | `generator(t)` | anchored "not Archimedean" error |
-| `log_pdf` | `pdf(X)?.ln()` |
+| `log_pdf` | `pdf(x)?.ln()` |
 | `validate_theta` / `check_theta` / `check_fit` | validation, used by the above |
 | `check_marginal(u)` | the Kolmogorov–Smirnov uniformity diagnostic (bound `1.627/√n`); `fit` does not run it |
 
@@ -235,7 +235,7 @@ What you supply is `percent_point` — either a closed form, or nothing
 at all, in which case `percent_point_numerical` Brent-inverts your
 `partial_derivative` for you. If you override `percent_point` but want
 the generic path for a degenerate branch, call
-`self.percent_point_numerical(y, V)` — calling `Self::percent_point`
+`self.percent_point_numerical(y, v)` — calling `Self::percent_point`
 from inside the override just recurses.
 
 Per `dev-rules` §7a, `StdRng` / `rand_distr::Uniform` are **not**

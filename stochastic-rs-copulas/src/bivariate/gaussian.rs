@@ -181,15 +181,15 @@ impl BivariateExt for GaussianCopula {
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
-    V: ArrayView1<f64>,
+    v: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
     // The identity at `ρ = 0`, chosen once per call: a test per pair costs the sampler.
     if rho == 0.0 {
-      return conditional_quantiles(y, V, |y, _| y);
+      return conditional_quantiles(y, v, |y, _| y);
     }
-    conditional_quantiles(y, V, Self::inverse(rho))
+    conditional_quantiles(y, v, Self::inverse(rho))
   }
 
   fn tau_from_theta(&self, theta: f64) -> f64 {

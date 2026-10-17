@@ -1,7 +1,6 @@
 #![doc = include_str!("../README.md")]
 // A broken intra-doc link fails the build instead of warning.
 #![deny(rustdoc::broken_intra_doc_links)]
-#![allow(non_snake_case)]
 
 mod optim;
 mod student_t;

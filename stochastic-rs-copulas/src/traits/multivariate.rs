@@ -16,15 +16,15 @@ pub trait MultivariateExt {
   where
     Self: Sized;
 
-  fn fit(&mut self, X: ndarray::ArrayView2<f64>) -> Result<(), CopulaError>;
+  fn fit(&mut self, x: ndarray::ArrayView2<f64>) -> Result<(), CopulaError>;
 
-  fn check_fit(&self, X: ndarray::ArrayView2<f64>) -> Result<(), CopulaError>;
+  fn check_fit(&self, x: ndarray::ArrayView2<f64>) -> Result<(), CopulaError>;
 
-  fn pdf(&self, X: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
+  fn pdf(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 
-  fn log_pdf(&self, X: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    Ok(self.pdf(X)?.ln())
+  fn log_pdf(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(self.pdf(x)?.ln())
   }
 
-  fn cdf(&self, X: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
+  fn cdf(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 }

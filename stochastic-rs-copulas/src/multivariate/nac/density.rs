@@ -77,7 +77,7 @@ impl Density {
     }
   }
 
-  pub(super) fn log_pdf(&self, X: ArrayView2<f64>) -> Array1<f64> {
+  pub(super) fn log_pdf(&self, x: ArrayView2<f64>) -> Array1<f64> {
     let mut scratch = Scratch {
       ln_t: vec![0.0; self.nodes.len()],
       polys: vec![vec![]; self.nodes.len()],
@@ -85,7 +85,7 @@ impl Density {
       tmp: vec![],
       t_terms: vec![],
     };
-    X.rows()
+    x.rows()
       .into_iter()
       .map(|u| self.row(u, &mut scratch))
       .collect()

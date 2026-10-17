@@ -105,20 +105,20 @@ impl BivariateExt for Clayton {
   /// (`b.powf(c)` with `b = 1` and `c = -∞`, an IEEE `pow` special case
   /// that evaluates to `1.0` regardless) that happens to leave `a` — not
   /// `1.0` — as the answer, i.e. `(uv)^{-1}`.
-  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
-    let U = X.column(0);
-    let V = X.column(1);
+    let u = x.column(0);
+    let v = x.column(1);
 
     let theta = self.theta.unwrap();
 
     if theta == 0.0 {
-      return Ok(Array1::ones(U.len()));
+      return Ok(Array1::ones(u.len()));
     }
 
-    let a = (theta + 1.0) * (&U * &V).powf(-theta - 1.0);
-    let b = U.powf(-theta) + V.powf(-theta) - 1.0;
+    let a = (theta + 1.0) * (&u * &v).powf(-theta - 1.0);
+    let b = u.powf(-theta) + v.powf(-theta) - 1.0;
     let c = -(2.0 * theta + 1.0) / theta;
     Ok(a * b.powf(c))
   }
@@ -127,31 +127,31 @@ impl BivariateExt for Clayton {
   /// `(u^{-θ}+v^{-θ}-1)^{-1/θ}` hits the same `1^{-∞}` removable
   /// singularity as `pdf` there and evaluates to the constant `1.0` for
   /// every `u,v > 0`, not `uv`.
-  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
-    let U = X.column(0);
-    let V = X.column(1);
+    let u_col = x.column(0);
+    let v_col = x.column(1);
 
-    let V_all_zeros = V.iter().all(|&v| v == 0.0);
-    let U_all_zeros = U.iter().all(|&u| u == 0.0);
+    let v_all_zeros = v_col.iter().all(|&v| v == 0.0);
+    let u_all_zeros = u_col.iter().all(|&u| u == 0.0);
 
-    if V_all_zeros || U_all_zeros {
-      let shape = V.shape();
+    if v_all_zeros || u_all_zeros {
+      let shape = v_col.shape();
       return Ok(Array1::zeros(shape[0]));
     }
 
     let theta = self.theta.unwrap();
 
     if theta == 0.0 {
-      return Ok(&U * &V);
+      return Ok(&u_col * &v_col);
     }
 
-    let mut cdfs = Array1::<f64>::zeros(U.len());
+    let mut cdfs = Array1::<f64>::zeros(u_col.len());
 
-    for i in 0..U.len() {
-      let u = U[i];
-      let v = V[i];
+    for i in 0..u_col.len() {
+      let u = u_col[i];
+      let v = v_col[i];
 
       if u > 0.0 && v > 0.0 {
         cdfs[i] = (u.powf(-theta) + v.powf(-theta) - 1.0).powf(-1.0 / theta);
@@ -167,23 +167,23 @@ impl BivariateExt for Clayton {
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
-    V: ArrayView1<f64>,
+    v_col: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let theta = self.theta.unwrap();
 
     if theta == 0.0 {
-      return conditional_quantiles(y, V, |y, _| y);
+      return conditional_quantiles(y, v_col, |y, _| y);
     }
 
-    check_lengths(y, V)?;
+    check_lengths(y, v_col)?;
     // Whole-array passes keep each pass's transcendental calls independent, which a fused per-pair closure does not.
-    let v_theta = V.powf(theta);
+    let v_theta = v_col.powf(theta);
     let mut u = y.mapv(|y| Self::level(theta, y));
     Zip::from(&mut u)
       .and(y)
-      .and(V)
+      .and(v_col)
       .and(&v_theta)
       .for_each(|u, &y, &v, &v_theta| *u = confine(y, v, Self::finish(theta, *u, y, v, v_theta)));
     Ok(u)
@@ -191,21 +191,21 @@ impl BivariateExt for Clayton {
 
   /// `∂_v C = v^{−θ−1}(u^{−θ} + v^{−θ} − 1)^{−(1+θ)/θ}`, `u` at `θ = 0`, and 1 at `v = 0`, whose conditional law is a
   /// point mass at `u = 0`; NaN for `v` outside `[0, 1]`.
-  fn partial_derivative(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let theta = self.theta.unwrap();
 
     if theta == 0.0 {
-      return Ok(conditional_cdf(X, |u, _| u));
+      return Ok(conditional_cdf(x, |u, _| u));
     }
 
     // Two passes, as in `percent_point`: a fused per-pair closure would chain its `powf` calls.
-    let V = X.column(1);
-    let mut h = Zip::from(X.column(0))
-      .and(V)
+    let v_col = x.column(1);
+    let mut h = Zip::from(x.column(0))
+      .and(v_col)
       .map_collect(|&u, &v| v.powf(-theta) + u.powf(-theta) - 1.0);
-    Zip::from(&mut h).and(V).for_each(|h, &v| {
+    Zip::from(&mut h).and(v_col).for_each(|h, &v| {
       let p = if v == 0.0 {
         1.0
       } else {

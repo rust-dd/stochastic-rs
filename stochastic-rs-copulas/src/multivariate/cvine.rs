@@ -155,42 +155,42 @@ impl MultivariateExt for CVine {
   }
 
   /// Dißmann et al. (2013) over `BivariateFamily::VINE_CANDIDATES` by AIC; `fit_vine` exposes the candidates and the criterion.
-  fn fit(&mut self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
-    let (vine, _) = fit_cvine(X, BivariateFamily::VINE_CANDIDATES, SelectionCriterion::Aic)?;
+  fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
+    let (vine, _) = fit_cvine(x, BivariateFamily::VINE_CANDIDATES, SelectionCriterion::Aic)?;
     *self = vine;
     Ok(())
   }
 
-  fn check_fit(&self, X: ArrayView2<f64>) -> Result<(), CopulaError> {
-    if X.ncols() != self.dim {
+  fn check_fit(&self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
+    if x.ncols() != self.dim {
       return Err(CopulaError::DimensionMismatch {
         expected: self.dim,
-        got: X.ncols(),
+        got: x.ncols(),
       });
     }
-    if X.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
+    if x.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
       return Err(CopulaError::MarginalOutOfRange);
     }
     Ok(())
   }
 
-  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit(X)?;
-    let x = self.order.to_vine(X);
+  fn pdf(&self, uv: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit(uv)?;
+    let x = self.order.to_vine(uv);
     Ok(self.log_density_rows(x.view()).mapv(f64::exp))
   }
 
-  fn log_pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit(X)?;
-    let x = self.order.to_vine(X);
+  fn log_pdf(&self, uv: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit(uv)?;
+    let x = self.order.to_vine(uv);
     Ok(self.log_density_rows(x.view()))
   }
 
   /// Genz's separation of variables through the Rosenblatt map `sample` walks, averaged over 4096 Sobol points; a zero
   /// coordinate gives 0 and a unit one contributes `F(1 | ·) = 1` exactly.
-  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit(X)?;
-    Ok(rosenblatt::cdf(self, self.order.to_vine(X).view()))
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit(x)?;
+    Ok(rosenblatt::cdf(self, self.order.to_vine(x).view()))
   }
 }
 

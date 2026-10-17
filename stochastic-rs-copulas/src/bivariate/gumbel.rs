@@ -69,41 +69,41 @@ impl BivariateExt for Gumbel {
     Ok((-t.ln()).powf(self.theta.unwrap()))
   }
 
-  fn pdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
-    let U = X.column(0);
-    let V = X.column(1);
+    let u = x.column(0);
+    let v = x.column(1);
 
     let theta = self.theta.unwrap();
 
     if theta == 1.0 {
-      return Ok(Array1::ones(U.len()));
+      return Ok(Array1::ones(u.len()));
     }
 
-    let a = (&U * &V).powf(-1.0);
-    let tmp = (-U.ln()).powf(theta) + (-V.ln()).powf(theta);
+    let a = (&u * &v).powf(-1.0);
+    let tmp = (-u.ln()).powf(theta) + (-v.ln()).powf(theta);
     let b = tmp.powf(-2.0 + 2.0 / theta);
-    let c = (U.ln() * V.ln()).powf(theta - 1.0);
+    let c = (u.ln() * v.ln()).powf(theta - 1.0);
     let d = 1.0 + (theta - 1.0) * tmp.powf(-1.0 / theta);
-    let out = self.cdf(X)? * a * b * c * d;
+    let out = self.cdf(x)? * a * b * c * d;
 
     Ok(out)
   }
 
-  fn cdf(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
-    let U = X.column(0);
-    let V = X.column(1);
+    let u = x.column(0);
+    let v = x.column(1);
 
     let theta = self.theta.unwrap();
 
     if theta == 1.0 {
-      return Ok(&U * &V);
+      return Ok(&u * &v);
     }
 
-    let h = (-U.ln()).powf(theta) + (-V.ln()).powf(theta);
+    let h = (-u.ln()).powf(theta) + (-v.ln()).powf(theta);
     let h = -h.powf(1.0 / theta);
     let cdfs = h.exp();
 
@@ -114,29 +114,29 @@ impl BivariateExt for Gumbel {
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
-    V: ArrayView1<f64>,
+    v: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     if self.theta.unwrap() == 1.0 {
-      return conditional_quantiles(y, V, |y, _| y);
+      return conditional_quantiles(y, v, |y, _| y);
     }
 
-    self.percent_point_numerical(y, V)
+    self.percent_point_numerical(y, v)
   }
 
   /// `∂_v C = exp(w − R)(w/R)^{θ−1}`, `x, w = −ln u, −ln v`, `R = m(1 + r)^{1/θ}`, `m = max(x, w)`, `r = (min/m)^θ`:
   /// no underflow near `u, v = 1`; 1 at `u = 1` and at `v = 0` (a point mass at `u = 0`), NaN for `v ∉ [0, 1]`.
-  fn partial_derivative(&self, X: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+  fn partial_derivative(&self, uv: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
 
     let theta = self.theta.unwrap();
 
     if theta == 1.0 {
-      return Ok(conditional_cdf(X, |u, _| u));
+      return Ok(conditional_cdf(uv, |u, _| u));
     }
 
-    Ok(conditional_cdf(X, |u, v| {
+    Ok(conditional_cdf(uv, |u, v| {
       if u >= 1.0 || v == 0.0 {
         return 1.0;
       }
