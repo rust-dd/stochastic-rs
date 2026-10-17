@@ -118,7 +118,7 @@ fn t_copula_tail_dependence_symmetric_and_monotone() {
   assert!(approx(td.lower, td.upper, 1e-15), "symmetric: {td:?}");
 
   let arg = -((4.0_f64 * (1.0 - 0.5) / (1.0 + 0.5)).sqrt());
-  let expected = 2.0 * TCopula::t_cdf(arg, 4.0);
+  let expected = 2.0 * crate::student_t::cdf(arg, 4.0);
   assert!(
     approx(td.lower, expected, 1e-12),
     "λ={}, expected {expected}",

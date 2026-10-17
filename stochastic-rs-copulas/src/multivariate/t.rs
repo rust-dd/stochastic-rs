@@ -58,9 +58,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::chi_square::SimdChiSquared;
 use stochastic_rs_distributions::normal::SimdNormal;
-use stochastic_rs_distributions::special::beta_i;
 use stochastic_rs_distributions::special::ln_gamma;
-use stochastic_rs_distributions::special::ndtri;
 
 use super::MultivariateFamily;
 use super::correlation_matrix::CorrelationMatrix;
@@ -70,11 +68,12 @@ use super::genz::mvt_upper;
 use super::genz::open_coordinates;
 use super::genz::prioritize;
 use super::qmc::sobol_points;
-use crate::bivariate::t_copula::check_nu;
 use crate::bivariate::t_copula::t_copula_cdf;
 use crate::correlation::check_defined;
 use crate::correlation::kendall_tau;
 use crate::error::CopulaError;
+use crate::student_t;
+use crate::student_t::check_nu;
 use crate::traits::MultivariateExt;
 
 /// Multivariate Student-$t$ copula with correlation $\Sigma$ and degrees of freedom $\nu$; as $\nu \to \infty$ it
@@ -136,59 +135,6 @@ impl TMultivariate {
     self.corr.as_ref().ok_or(CopulaError::NotFitted)
   }
 
-  /// Standard Student-$t$ density $f_\nu(x)$ with the natural-log
-  /// normaliser kept as a separate term for log-pdf composition.
-  fn t_log_pdf(x: f64, nu: f64) -> f64 {
-    let log_norm =
-      ln_gamma(0.5 * (nu + 1.0)) - 0.5 * (nu * std::f64::consts::PI).ln() - ln_gamma(0.5 * nu);
-    let log_kernel = -0.5 * (nu + 1.0) * (1.0 + x * x / nu).ln();
-    log_norm + log_kernel
-  }
-
-  /// Standard Student-$t$ CDF $F_\nu(x)$ via the regularised
-  /// incomplete-beta identity.
-  fn t_cdf(x: f64, nu: f64) -> f64 {
-    if !x.is_finite() {
-      return if x > 0.0 { 1.0 } else { 0.0 };
-    }
-    let t = nu / (nu + x * x);
-    let half = 0.5 * beta_i(0.5 * nu, 0.5, t);
-    if x >= 0.0 { 1.0 - half } else { half }
-  }
-
-  /// Quantile $t_\nu^{-1}(p)$: Cornish-Fisher-style normal seed refined by
-  /// 40 Newton steps. Same routine as
-  /// [`crate::bivariate::t_copula::TCopula::t_quantile`].
-  fn t_quantile(p: f64, nu: f64) -> f64 {
-    if p <= 0.0 {
-      return f64::NEG_INFINITY;
-    }
-    if p >= 1.0 {
-      return f64::INFINITY;
-    }
-    let z = ndtri(p);
-    let mut x = z * (1.0 + (z * z + 1.0) / (4.0 * nu));
-    for _ in 0..40 {
-      let cdf = Self::t_cdf(x, nu);
-      let f = cdf - p;
-      let pdf_log = Self::t_log_pdf(x, nu);
-      if !pdf_log.is_finite() {
-        break;
-      }
-      let pdf = pdf_log.exp();
-      if pdf <= 0.0 {
-        break;
-      }
-      let dx = f / pdf;
-      let new_x = x - dx;
-      if (new_x - x).abs() < 1e-14 * (1.0 + x.abs()) {
-        return new_x;
-      }
-      x = new_x;
-    }
-    x
-  }
-
   /// Map U ∈ (0,1)^{n×d} → Z ∈ ℝ^{n×d} via the univariate $t_\nu^{-1}$.
   fn transform_to_t(u: ArrayView2<f64>, nu: f64) -> Array2<f64> {
     let eps = 1e-12;
@@ -196,7 +142,7 @@ impl TMultivariate {
     for mut row in z.axis_iter_mut(Axis(0)) {
       for val in row.iter_mut() {
         let clamped = val.clamp(eps, 1.0 - eps);
-        *val = Self::t_quantile(clamped, nu);
+        *val = student_t::quantile(clamped, nu);
       }
     }
     z
@@ -251,7 +197,7 @@ impl TMultivariate {
     let mv = Self::mv_log_pdf(corr, nu, z.view());
     let mut marginal_log = 0.0;
     for v in z.iter() {
-      marginal_log += Self::t_log_pdf(*v, nu);
+      marginal_log += student_t::ln_pdf(*v, nu);
     }
     mv.iter().sum::<f64>() - marginal_log
   }
@@ -315,7 +261,7 @@ impl MultivariateExt for TMultivariate {
       let scale = 1.0 / w.sqrt();
       for c in 0..d {
         let xc = z[[r, c]] * scale;
-        u[[r, c]] = Self::t_cdf(xc, self.nu).clamp(1e-12, 1.0 - 1e-12);
+        u[[r, c]] = student_t::cdf(xc, self.nu).clamp(1e-12, 1.0 - 1e-12);
       }
     }
     Ok(u)
@@ -368,7 +314,7 @@ impl MultivariateExt for TMultivariate {
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {
       let mut marginal_log = 0.0;
       for v in row.iter() {
-        marginal_log += Self::t_log_pdf(*v, nu);
+        marginal_log += student_t::ln_pdf(*v, nu);
       }
       out[i] = (mv[i] - marginal_log).exp();
     }
@@ -384,7 +330,7 @@ impl MultivariateExt for TMultivariate {
     for (i, row) in z.axis_iter(Axis(0)).enumerate() {
       let mut marginal_log = 0.0;
       for v in row.iter() {
-        marginal_log += Self::t_log_pdf(*v, nu);
+        marginal_log += student_t::ln_pdf(*v, nu);
       }
       out[i] = mv[i] - marginal_log;
     }
@@ -410,12 +356,12 @@ impl MultivariateExt for TMultivariate {
             let scale = self.chi.get_or_init(|| chi_scale(self.nu));
             let b: Vec<f64> = open
               .iter()
-              .map(|&i| Self::t_quantile(u[i], self.nu))
+              .map(|&i| student_t::quantile(u[i], self.nu))
               .collect();
             match prioritize(corr.corr(), open, &b) {
               Some((l, b)) => mvt_upper(&l, &b, points.view(), scale.view()),
               None => {
-                let b: Vec<f64> = u.iter().map(|&x| Self::t_quantile(x, self.nu)).collect();
+                let b: Vec<f64> = u.iter().map(|&x| student_t::quantile(x, self.nu)).collect();
                 mvt_upper(corr.chol_lower(), &b, points.view(), scale.view())
               }
             }

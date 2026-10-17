@@ -4,6 +4,7 @@
 #![allow(non_snake_case)]
 
 mod optim;
+mod student_t;
 
 pub mod error;
 pub mod traits;

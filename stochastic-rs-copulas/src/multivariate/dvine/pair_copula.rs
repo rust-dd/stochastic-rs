@@ -27,10 +27,11 @@
 //! constructions of multiple dependence", *Insurance: Mathematics and
 //! Economics* 44(2), 182-198, Table 1 and Appendix.
 
-use stochastic_rs_distributions::special::beta_i;
-use stochastic_rs_distributions::special::ln_gamma;
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
+
+use crate::error::CopulaError;
+use crate::student_t;
 
 /// Bivariate pair-copula family of the C-, D- and R-vines, held by value in their `Vec<Vec<PairCopula>>` trees.
 /// Pair families must be exchangeable: the vine recursions call `h` from either end of an edge.
@@ -61,7 +62,8 @@ pub enum PairCopula {
   StudentT {
     /// Correlation $\rho \in (-1, 1)$.
     rho: f64,
-    /// Degrees of freedom $\nu > 0$.
+    /// Degrees of freedom, finite with $\nu / 2 > 0$, which the vine constructors check; `h`, `h_inverse` and
+    /// `log_density` panic otherwise.
     nu: f64,
   },
   /// BB1 (Clayton–Gumbel) copula — see [`crate::bivariate::bb1::Bb1`].
@@ -74,8 +76,8 @@ impl PairCopula {
   /// Family-specific h-function $h(u \mid v) = \partial C / \partial v$.
   /// Returns the conditional CDF $F_{U \mid V = v}(u)$.
   pub fn h(&self, u: f64, v: f64) -> f64 {
-    let u = u.clamp(EPS, 1.0 - EPS);
-    let v = v.clamp(EPS, 1.0 - EPS);
+    let u = clamp(u);
+    let v = clamp(v);
     let h = match *self {
       PairCopula::Independence => u,
       PairCopula::Gaussian { rho } => {
@@ -106,20 +108,20 @@ impl PairCopula {
         // Aas-Czado (2009) Appendix A.2.
         // x = t_ν^{-1}(u), y = t_ν^{-1}(v)
         // h(u|v) = t_{ν+1}((x - ρ y) · √((ν+1) / ((ν + y²)(1 - ρ²))))
-        let x = student_t_quantile(u, nu);
-        let y = student_t_quantile(v, nu);
+        let x = student_t::quantile(u, nu);
+        let y = student_t::quantile(v, nu);
         let scale = ((nu + 1.0) / ((nu + y * y) * (1.0 - rho * rho))).sqrt();
-        student_t_cdf((x - rho * y) * scale, nu + 1.0)
+        student_t::cdf((x - rho * y) * scale, nu + 1.0)
       }
     };
-    h.clamp(EPS, 1.0 - EPS)
+    clamp(h)
   }
 
   /// Inverse h-function: returns the $u$ that satisfies $h(u \mid v) = p$.
   /// Used by the vine samplers (Aas et al. 2009, Algorithms 1 and 2).
   pub fn h_inverse(&self, p: f64, v: f64) -> f64 {
-    let p = p.clamp(EPS, 1.0 - EPS);
-    let v = v.clamp(EPS, 1.0 - EPS);
+    let p = clamp(p);
+    let v = clamp(v);
     let u = match *self {
       PairCopula::Independence => p,
       PairCopula::Gaussian { rho } => {
@@ -169,22 +171,22 @@ impl PairCopula {
         //   x = z / √((ν+1) / ((ν + y²)(1 - ρ²)))  +  ρ y
         //     = z · √((ν + y²)(1 - ρ²)/(ν+1))  +  ρ y
         //   u = t_ν(x)
-        let z = student_t_quantile(p, nu + 1.0);
-        let y = student_t_quantile(v, nu);
+        let z = student_t::quantile(p, nu + 1.0);
+        let y = student_t::quantile(v, nu);
         let scale = ((nu + y * y) * (1.0 - rho * rho) / (nu + 1.0)).sqrt();
         let x = z * scale + rho * y;
-        student_t_cdf(x, nu)
+        student_t::cdf(x, nu)
       }
     };
-    u.clamp(EPS, 1.0 - EPS)
+    clamp(u)
   }
 
   /// Log copula density $\log c(u, v) = \log \frac{\partial^2 C(u, v)}{\partial u\, \partial v}$.
   /// Used for sequential MLE fitting and direct density evaluation on the
   /// PCC tree.
   pub fn log_density(&self, u: f64, v: f64) -> f64 {
-    let u = u.clamp(EPS, 1.0 - EPS);
-    let v = v.clamp(EPS, 1.0 - EPS);
+    let u = clamp(u);
+    let v = clamp(v);
     match *self {
       PairCopula::Independence => 0.0,
       PairCopula::Gaussian { rho } => {
@@ -222,31 +224,13 @@ impl PairCopula {
       PairCopula::Bb7 { theta, delta } => {
         crate::bivariate::bb7::Bb7::log_density_scalar(u, v, theta, delta)
       }
-      PairCopula::StudentT { rho, nu } => Self::student_t_log_density(
-        student_t_quantile(u, nu),
-        student_t_quantile(v, nu),
+      PairCopula::StudentT { rho, nu } => student_t::ln_copula_density(
+        student_t::quantile(u, nu),
+        student_t::quantile(v, nu),
         rho,
         nu,
       ),
     }
-  }
-
-  /// `t_ν⁻¹(u)` of `u` clamped as every pair evaluation clamps it: the half of the Student t density that ρ leaves alone.
-  pub(crate) fn student_t_score(u: f64, nu: f64) -> f64 {
-    student_t_quantile(u.clamp(EPS, 1.0 - EPS), nu)
-  }
-
-  /// `log c` of the Student t pair at the scores `x = t_ν⁻¹(u)`, `y = t_ν⁻¹(v)`: `c = Γ((ν+2)/2) Γ(ν/2) / (Γ((ν+1)/2)² √(1−ρ²))`
-  /// `· (1 + (x² − 2ρxy + y²)/(ν(1−ρ²)))^{−(ν+2)/2} · ((1 + x²/ν)(1 + y²/ν))^{(ν+1)/2}`.
-  pub(crate) fn student_t_log_density(x: f64, y: f64, rho: f64, nu: f64) -> f64 {
-    let one_minus_rho2 = 1.0 - rho * rho;
-    let log_norm = ln_gamma(0.5 * (nu + 2.0)) + ln_gamma(0.5 * nu)
-      - 2.0 * ln_gamma(0.5 * (nu + 1.0))
-      - 0.5 * one_minus_rho2.ln();
-    let log_joint =
-      -0.5 * (nu + 2.0) * (1.0 + (x * x - 2.0 * rho * x * y + y * y) / (nu * one_minus_rho2)).ln();
-    let log_marg = 0.5 * (nu + 1.0) * ((1.0 + x * x / nu).ln() + (1.0 + y * y / nu).ln());
-    log_norm + log_joint + log_marg
   }
 
   /// Copula density $c(u, v)$ (exponentiated log density).
@@ -257,53 +241,19 @@ impl PairCopula {
 
 const EPS: f64 = 1e-12;
 
-/// Standard Student-$t$ CDF $F_\nu(x)$ via the regularised incomplete-beta
-/// identity. Mirrors `crate::bivariate::t_copula::TCopula::t_cdf`.
-fn student_t_cdf(x: f64, nu: f64) -> f64 {
-  if !x.is_finite() {
-    return if x > 0.0 { 1.0 } else { 0.0 };
-  }
-  let t = nu / (nu + x * x);
-  let half = 0.5 * beta_i(0.5 * nu, 0.5, t);
-  if x >= 0.0 { 1.0 - half } else { half }
+/// The bounds every pair evaluation holds its inputs and outputs in.
+pub(crate) fn clamp(u: f64) -> f64 {
+  u.clamp(EPS, 1.0 - EPS)
 }
 
-/// Standard Student-$t$ density log-PDF at `x`. Useful for the
-/// Newton-refined quantile and `log_density` evaluation.
-fn student_t_log_pdf(x: f64, nu: f64) -> f64 {
-  let log_norm =
-    ln_gamma(0.5 * (nu + 1.0)) - 0.5 * (nu * std::f64::consts::PI).ln() - ln_gamma(0.5 * nu);
-  let log_kernel = -0.5 * (nu + 1.0) * (1.0 + x * x / nu).ln();
-  log_norm + log_kernel
-}
-
-/// Standard Student-$t$ quantile $t_\nu^{-1}(p)$: Cornish-Fisher normal
-/// seed refined by 40 Newton steps on `[0, 1]`. Identical routine to the
-/// bivariate t-copula and multivariate t-copula modules.
-fn student_t_quantile(p: f64, nu: f64) -> f64 {
-  if p <= 0.0 {
-    return f64::NEG_INFINITY;
-  }
-  if p >= 1.0 {
-    return f64::INFINITY;
-  }
-  let z = ndtri(p);
-  let mut x = z * (1.0 + (z * z + 1.0) / (4.0 * nu));
-  for _ in 0..40 {
-    let cdf = student_t_cdf(x, nu);
-    let f = cdf - p;
-    let pdf = student_t_log_pdf(x, nu).exp();
-    if pdf <= 0.0 {
-      break;
+/// `InvalidParameter` for a Student-t pair whose `nu` the Student-t law refuses, which its evaluation would panic on.
+pub(crate) fn check_pairs(trees: &[Vec<PairCopula>]) -> Result<(), CopulaError> {
+  for pair in trees.iter().flatten() {
+    if let PairCopula::StudentT { nu, .. } = *pair {
+      student_t::check_nu(nu)?;
     }
-    let dx = f / pdf;
-    let new_x = x - dx;
-    if (new_x - x).abs() < 1e-14 * (1.0 + x.abs()) {
-      return new_x;
-    }
-    x = new_x;
   }
-  x
+  Ok(())
 }
 
 #[cfg(test)]
@@ -468,6 +418,12 @@ mod tests {
         "{pair:?} at ({u}, {v}): {got} vs {want}"
       );
     }
+  }
+
+  #[test]
+  #[should_panic(expected = "nu must satisfy `nu > T::zero()`, got nu = -1.0")]
+  fn a_student_t_pair_outside_the_nu_rule_panics_with_the_laws_message() {
+    PairCopula::StudentT { rho: 0.5, nu: -1.0 }.h(0.3, 0.6);
   }
 
   /// The match has no wildcard arm, so a new family does not compile until it joins this exchangeability check.

@@ -35,14 +35,13 @@ use std::sync::OnceLock;
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
-use stochastic_rs_distributions::DistributionExt;
 use stochastic_rs_distributions::special::ln_gamma;
-use stochastic_rs_distributions::studentt::SimdStudentT;
 
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::error::CopulaError;
+use crate::student_t;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
@@ -52,23 +51,6 @@ use crate::traits::bivariate::tau_out_of_range;
 pub struct TCopula {
   theta: Option<f64>,
   nu: f64,
-}
-
-/// The degrees-of-freedom rule of both t-copulas: `0 < nu < ∞`, and `nu / 2 > 0`, which only `5e-324` fails and which
-/// `SimdStudentT::new` and `SimdChiSquared::new` assert, so a value they would panic on is an error up front.
-pub(crate) fn check_nu(nu: f64) -> Result<(), CopulaError> {
-  let constraint = if !nu.is_finite() || nu <= 0.0 {
-    "0.0 < nu < inf"
-  } else if nu * 0.5 == 0.0 {
-    "nu / 2 > 0"
-  } else {
-    return Ok(());
-  };
-  Err(CopulaError::InvalidParameter {
-    name: "nu",
-    value: nu,
-    constraint: constraint.into(),
-  })
 }
 
 impl Default for TCopula {
@@ -88,7 +70,7 @@ impl TCopula {
 
   /// `new` with the domain error returned instead of a panic.
   pub fn try_new(rho: f64, nu: f64) -> Result<Self, CopulaError> {
-    check_nu(nu)?;
+    student_t::check_nu(nu)?;
     let copula = Self {
       theta: Some(rho),
       nu,
@@ -108,7 +90,7 @@ impl TCopula {
 
   /// Panics under the rule of `check_nu`: unless `0 < nu < ∞` and `nu / 2 > 0`.
   pub fn set_nu(&mut self, nu: f64) {
-    check_nu(nu).unwrap_or_else(|e| panic!("{e}"));
+    student_t::check_nu(nu).unwrap_or_else(|e| panic!("{e}"));
     self.nu = nu;
   }
 
@@ -118,35 +100,14 @@ impl TCopula {
     let one_minus_rho2 = 1.0 - rho * rho;
     let edge = rho * ((nu + 1.0) / one_minus_rho2).sqrt();
     move |y, v| {
-      let x = Self::t_quantile(v, nu);
-      let q = Self::t_quantile(y, nu + 1.0);
+      let x = student_t::quantile(v, nu);
+      let q = student_t::quantile(y, nu + 1.0);
       if x.is_infinite() {
         return if q <= -x.signum() * edge { 0.0 } else { 1.0 };
       }
       let scale = ((nu + x * x) * one_minus_rho2 / (nu + 1.0)).sqrt();
-      Self::t_cdf(q * scale + rho * x, nu)
+      student_t::cdf(q * scale + rho * x, nu)
     }
-  }
-
-  /// The `t_ν` density of `stochastic_rs_distributions`, whose `DistributionExt` answers `Some` for every argument.
-  fn t_pdf(x: f64, nu: f64) -> f64 {
-    SimdStudentT::new(nu)
-      .pdf(x)
-      .expect("the Student-t law has a pdf")
-  }
-
-  /// The `t_ν` cdf of `stochastic_rs_distributions`, `1 − I_{ν/(ν+x²)}(ν/2, 1/2)/2` for `x ≥ 0`.
-  fn t_cdf(x: f64, nu: f64) -> f64 {
-    SimdStudentT::new(nu)
-      .cdf(x)
-      .expect("the Student-t law has a cdf")
-  }
-
-  /// The `t_ν` quantile of `stochastic_rs_distributions`: `∓∞` at `p ≤ 0` / `p ≥ 1`, Newton steps inside.
-  fn t_quantile(p: f64, nu: f64) -> f64 {
-    SimdStudentT::new(nu)
-      .quantile(p)
-      .expect("the Student-t law has a quantile")
   }
 
   /// Bivariate Student-t density $f_{\rho,\nu}(x, y)$.
@@ -199,10 +160,10 @@ impl BivariateExt for TCopula {
         out[i] = 0.0;
         continue;
       }
-      let xx = Self::t_quantile(u, nu);
-      let yy = Self::t_quantile(v, nu);
+      let xx = student_t::quantile(u, nu);
+      let yy = student_t::quantile(v, nu);
       let num = Self::bivariate_t_pdf(xx, yy, rho, nu);
-      let den = Self::t_pdf(xx, nu) * Self::t_pdf(yy, nu);
+      let den = student_t::ln_pdf(xx, nu).exp() * student_t::ln_pdf(yy, nu).exp();
       out[i] = num / den;
     }
     Ok(out)
@@ -231,15 +192,15 @@ impl BivariateExt for TCopula {
     let boundary_arg = rho * nu_plus_one.sqrt() / sqrt_one_minus_rho2;
     Ok(conditional_cdf(x, |u, v| {
       if v <= 0.0 {
-        return Self::t_cdf(boundary_arg, nu_plus_one);
+        return student_t::cdf(boundary_arg, nu_plus_one);
       }
       if v >= 1.0 {
-        return Self::t_cdf(-boundary_arg, nu_plus_one);
+        return student_t::cdf(-boundary_arg, nu_plus_one);
       }
-      let xx = Self::t_quantile(u, nu);
-      let yy = Self::t_quantile(v, nu);
+      let xx = student_t::quantile(u, nu);
+      let yy = student_t::quantile(v, nu);
       let scale = (nu_plus_one / (nu + yy * yy)).sqrt() / sqrt_one_minus_rho2;
-      Self::t_cdf((xx - rho * yy) * scale, nu_plus_one)
+      student_t::cdf((xx - rho * yy) * scale, nu_plus_one)
     }))
   }
 
@@ -276,7 +237,7 @@ impl BivariateExt for TCopula {
     let rho = self.theta.unwrap();
     let nu = self.nu;
     let arg = -(((nu + 1.0) * (1.0 - rho) / (1.0 + rho)).sqrt());
-    let lambda = 2.0 * Self::t_cdf(arg, nu + 1.0);
+    let lambda = 2.0 * student_t::cdf(arg, nu + 1.0);
     Ok(TailDependence {
       lower: lambda,
       upper: lambda,
@@ -300,8 +261,8 @@ pub(crate) fn t_copula_cdf(u: f64, v: f64, rho: f64, nu: f64) -> f64 {
     return u;
   }
   bivariate_t_cdf(
-    TCopula::t_quantile(u, nu),
-    TCopula::t_quantile(v, nu),
+    student_t::quantile(u, nu),
+    student_t::quantile(v, nu),
     rho,
     nu,
   )
@@ -314,10 +275,10 @@ fn bivariate_t_cdf(h: f64, k: f64, rho: f64, nu: f64) -> f64 {
     return 0.0;
   }
   if h == f64::INFINITY {
-    return TCopula::t_cdf(k, nu);
+    return student_t::cdf(k, nu);
   }
   if k == f64::INFINITY {
-    return TCopula::t_cdf(h, nu);
+    return student_t::cdf(h, nu);
   }
   if nu.fract() == 0.0 && nu <= DUNNETT_SOBEL_MAX_NU {
     dunnett_sobel(h, k, rho, nu as u32)
@@ -389,9 +350,9 @@ fn beta_argument(d: f64, e: f64) -> (f64, f64, f64) {
 fn generalized_plackett(h: f64, k: f64, rho: f64, nu: f64) -> f64 {
   let s = if rho < 0.0 { -1.0 } else { 1.0 };
   let base = if s > 0.0 {
-    TCopula::t_cdf(h.min(k), nu)
+    student_t::cdf(h.min(k), nu)
   } else {
-    (TCopula::t_cdf(h, nu) - TCopula::t_cdf(-k, nu)).max(0.0)
+    (student_t::cdf(h, nu) - student_t::cdf(-k, nu)).max(0.0)
   };
   let m = h.abs().max(k.abs()).max(nu.sqrt());
   let (a, b, c) = (h / m, k / m, m * m / nu);

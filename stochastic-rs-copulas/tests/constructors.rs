@@ -18,6 +18,9 @@ use stochastic_rs_copulas::bivariate::joe::Joe;
 use stochastic_rs_copulas::bivariate::marshall_olkin::MarshallOlkin;
 use stochastic_rs_copulas::bivariate::plackett::Plackett;
 use stochastic_rs_copulas::bivariate::t_copula::TCopula;
+use stochastic_rs_copulas::multivariate::cvine::CVine;
+use stochastic_rs_copulas::multivariate::dvine::DVine;
+use stochastic_rs_copulas::multivariate::dvine::PairCopula;
 use stochastic_rs_copulas::multivariate::gaussian::GaussianMultivariate;
 use stochastic_rs_copulas::multivariate::t::TMultivariate;
 use stochastic_rs_copulas::traits::BivariateExt;
@@ -222,4 +225,30 @@ fn the_multivariate_t_new_panics_outside_the_domain() {
 #[should_panic(expected = "nu must satisfy `0.0 < nu < inf`, got nu = -5.0")]
 fn the_multivariate_set_nu_panics_outside_the_domain() {
   TMultivariate::default().set_nu(-5.0);
+}
+
+/// The vines refuse a Student-t pair under the t copulas' `nu` rule, the `nu` its law would panic on when evaluated.
+#[test]
+fn the_vines_refuse_a_student_t_pair_whose_nu_the_law_refuses() {
+  for nu in [-1.0, 0.0, f64::NAN, f64::INFINITY, 5e-324] {
+    let trees = vec![vec![PairCopula::StudentT { rho: 0.5, nu }]];
+    assert!(
+      is_parameter_error(DVine::new(2, trees.clone()), "nu"),
+      "nu = {nu:e}"
+    );
+    assert!(
+      is_parameter_error(CVine::new(2, trees), "nu"),
+      "nu = {nu:e}"
+    );
+  }
+  assert!(
+    DVine::new(
+      2,
+      vec![vec![PairCopula::StudentT {
+        rho: 0.5,
+        nu: 1e-300
+      }]]
+    )
+    .is_ok()
+  );
 }

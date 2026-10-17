@@ -37,10 +37,8 @@ pub struct DVine {
 }
 
 impl DVine {
-  /// Construct a D-vine from a precomputed tree of pair copulas.
-  ///
-  /// `pair_copulas` is expected to have $d-1$ outer entries; the $m$-th
-  /// entry has length $d-1-m$. Returns an error on any shape mismatch.
+  /// A D-vine on `dim` margins from its `dim − 1` trees, tree `m` holding `dim − 1 − m` pairs: `InvalidStructure` for any
+  /// other shape, `InvalidParameter` for a Student-t pair whose `nu` the Student-t law refuses.
   pub fn new(dim: usize, pair_copulas: Vec<Vec<PairCopula>>) -> Result<Self, CopulaError> {
     if dim < 2 {
       return Err(CopulaError::InvalidStructure(format!(
@@ -64,6 +62,7 @@ impl DVine {
         )));
       }
     }
+    pair_copula::check_pairs(&pair_copulas)?;
     Ok(Self {
       dim,
       order: VineOrder::identity(dim),

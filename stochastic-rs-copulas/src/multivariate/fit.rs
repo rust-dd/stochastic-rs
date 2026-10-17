@@ -12,6 +12,7 @@ use ndarray::ArrayView2;
 use super::cvine::CVine;
 use super::dvine::DVine;
 use super::dvine::PairCopula;
+use super::dvine::pair_copula;
 use super::rvine::RVine;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::bb1::Bb1;
@@ -28,6 +29,7 @@ use crate::correlation::undefined_tau_b;
 use crate::error::CopulaError;
 use crate::optim::SQRT_MACHEPS;
 use crate::optim::localmin;
+use crate::student_t;
 use crate::traits::BivariateExt;
 
 /// Information criterion used to pick the family of each edge.
@@ -201,17 +203,17 @@ fn student_t(u: &[f64], v: &[f64]) -> Option<PairCopula> {
   let profile = |nu: f64| {
     let x: Vec<f64> = u
       .iter()
-      .map(|&a| PairCopula::student_t_score(a, nu))
+      .map(|&a| student_t::quantile(pair_copula::clamp(a), nu))
       .collect();
     let y: Vec<f64> = v
       .iter()
-      .map(|&b| PairCopula::student_t_score(b, nu))
+      .map(|&b| student_t::quantile(pair_copula::clamp(b), nu))
       .collect();
     let nll = |t: f64| match copula.theta_from_tau(t) {
       Ok(rho) => objective(
         x.iter()
           .zip(&y)
-          .map(|(&a, &b)| PairCopula::student_t_log_density(a, b, rho, nu))
+          .map(|(&a, &b)| student_t::ln_copula_density(a, b, rho, nu))
           .sum(),
       ),
       Err(_) => f64::INFINITY,
