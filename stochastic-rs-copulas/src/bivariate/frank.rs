@@ -116,7 +116,7 @@ impl Frank {
       if theta.abs() < INDEPENDENT_BELOW {
         return u;
       }
-      // The reflection's `(1 − v) − u` is the exact `1 − u − v`: `1 − v` rounds, and `|θ|` amplifies that rounding.
+      // The reflection's `(1 − v) − u` is `1 − u − v` in one rounding: `1 − v` rounds, and `|θ|` amplifies it.
       let (gap, v, v_bar) = if theta > 0.0 {
         (v - u, v, 1.0 - v)
       } else {

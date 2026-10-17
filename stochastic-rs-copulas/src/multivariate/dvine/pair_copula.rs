@@ -114,7 +114,7 @@ impl PairCopula {
       }
       PairCopula::Clayton { theta } => Clayton::inverse_at(theta, p, v),
       PairCopula::Frank { theta } => Frank::inverse_at(theta, p, v),
-      // Brent on the clamped bracket, to the half-width `1e-15` at which a bisection there would stop.
+      // Brent on the clamped bracket: with `t = 2.5e-16` it stops on a bracket narrower than the bisection's `1e-15`.
       PairCopula::Bb1 { .. } | PairCopula::Bb7 { .. } => {
         zero(EPS, 1.0 - EPS, 2.5e-16, |u| self.h(u, v) - p).unwrap_or(f64::NAN)
       }

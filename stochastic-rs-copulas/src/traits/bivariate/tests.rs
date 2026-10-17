@@ -148,7 +148,7 @@ fn percent_point_numerical_propagates_inner_errors_instead_of_panicking() {
   );
 }
 
-/// The bracket starts at 0, so a level far below `h(EPSILON | v)` finds its own root rather than the old floor `EPSILON`.
+/// The bracket starts at 0, so a level far below `h(EPSILON | v)` finds its own root, below `EPSILON`.
 #[test]
 fn percent_point_numerical_solves_below_epsilon() {
   let amh = Amh::from_tau(0.25).unwrap();
@@ -178,7 +178,7 @@ fn percent_point_numerical_answers_a_point_mass_at_one() {
   assert!(1.0 - out[0] <= 3.0 * f64::EPSILON, "{}", out[0]);
 }
 
-/// Level 0 answers 0, and near `v = 1` Galambos's `h(EPSILON | v)` no longer rounds below 0.
+/// Level 0 answers 0, and near `v = 1` Galambos's `h(EPSILON | v)` stays at or above 0.
 #[test]
 fn percent_point_numerical_answers_zero_at_level_zero() {
   let mut galambos = Galambos::default();

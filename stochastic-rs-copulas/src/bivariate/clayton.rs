@@ -23,7 +23,7 @@ use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::tau_out_of_range;
 
-/// Below this `θ`, `h(u | v) = u(1 − θ ln u (1 + ln v) + O(θ²))` is `u` to rounding at every `u, v ≥ 5e-324`
+/// Below this `θ`, `h(u | v) = u(1 + θ ln u (1 + ln v) + O(θ²))` is `u` to rounding at every `u, v ≥ 5e-324`
 /// (`θ · 744.5 · 743.5 < 2⁻⁵³`), where `θ ln u` can fall into the subnormals.
 const INDEPENDENT_BELOW: f64 = 2e-22;
 

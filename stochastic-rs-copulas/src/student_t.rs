@@ -15,8 +15,8 @@ use crate::bivariate::conditional::ln_norm_cdf;
 use crate::bivariate::conditional::mills;
 use crate::error::CopulaError;
 
-/// Above this `ν` the law is normal to rounding: the first term `(x³ + x)/(4ν)` of the expansion is below `2⁻⁵⁴` of `Φ`
-/// wherever `Φ(x) ≥ 2⁻¹⁰⁷⁴`, `|x| ≤ 38.5`, as `38.5⁴/4 · 2⁵⁴ < 10²²`.
+/// Above this `ν` the law is normal to rounding: the expansion's first term `(x³ + x)/(4ν)` moves the quantile, and `Φ`
+/// by under `2⁻⁵⁴` of itself wherever `Φ(x) ≥ 2⁻¹⁰⁷⁴`, `|x| ≤ 38.5`, as `(38.5⁴ + 38.5²)/4 · 2⁵⁴ < 10²²`.
 const NORMAL_ABOVE: f64 = 1e22;
 
 /// The law of the t copulas' h-function and its inverse: `SimdStudentT` in the body, the leading tail term

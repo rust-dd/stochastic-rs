@@ -125,7 +125,7 @@ pub(crate) fn ln_add_exp(a: f64, b: f64) -> f64 {
 }
 
 /// `ln((1 − u)/(1 − v))` to a relative rounding error: the complements are exact from `1/2` up, and near a ratio of 1
-/// below it the numerator is the exact `v − u`.
+/// below it the numerator is `v − u` in one rounding, not the difference of two rounded complements.
 pub(crate) fn ln_ratio_complement(u: f64, v: f64) -> f64 {
   if u >= 0.5 && v >= 0.5 {
     return ln_ratio(1.0 - u, 1.0 - v);
@@ -138,8 +138,8 @@ pub(crate) fn ln_ratio_complement(u: f64, v: f64) -> f64 {
   }
 }
 
-/// `u + v − 1` to one rounding: `s − 1` is exact for `s = u + v ∈ [1/2, 2]`, and `e` is the rounding error of `s` (Knuth's
-/// two-sum), so a sum near 1 keeps the digits of both terms.
+/// `u + v − 1`, in one rounding for `s = u + v ∈ [1/2, 2]`: `s − 1` is exact there, `e` is the rounding error of `s`
+/// (Knuth's two-sum), so a sum near 1 keeps the digits of both terms.
 pub(crate) fn sum_minus_one(u: f64, v: f64) -> f64 {
   let s = u + v;
   let z = s - u;
