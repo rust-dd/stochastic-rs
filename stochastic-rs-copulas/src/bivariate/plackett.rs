@@ -97,6 +97,16 @@ impl Plackett {
       let w = -sum_minus_one(u, v);
       let shift = theta * (v - u);
       let spread = theta * (u * (1.0 - u) + v * (1.0 - v));
+      // Unscaled wherever `d` and `θu` are normal with room to spare, the scaled form only in the corners.
+      let (d, mass) = (w * w + 2.0 * spread + shift * shift, theta * u);
+      if d < 1e300 && d > 1e-300 && mass > 1e-300 {
+        let (root, b) = (d.sqrt(), w + shift);
+        return if b >= 0.0 {
+          2.0 * mass * (1.0 - u) / (root * (root + b))
+        } else {
+          (0.5 - 0.5 * b / root).min(1.0)
+        };
+      }
       let scale = w.abs().max(shift.abs()).max(spread.sqrt());
       let (w, shift) = (w / scale, shift / scale);
       let root = (w * w + 2.0 * (spread / scale / scale) + shift * shift).sqrt();
@@ -114,6 +124,17 @@ impl Plackett {
         (0.5 - 0.5 * b / root).min(1.0)
       }
     }
+  }
+}
+
+impl Plackett {
+  /// `∂_v C = (1 − (a − 2uθ)/√d)/2`, `a = 1 + (θ − 1)(u + v)`, `d = a² − 4uvθ(θ − 1)`, with no branch per point: the τ
+  /// quadrature's form at its interior nodes for `1e-6 ≤ θ ≤ 1e6`, where its error is absolute rounding, all the sum sees.
+  fn h_interior(theta: f64, u: f64, v: f64) -> f64 {
+    let eta = theta - 1.0;
+    let a = 1.0 + eta * (u + v);
+    let d = a * a - 4.0 * u * v * theta * eta;
+    0.5 * (1.0 - (a - 2.0 * u * theta) / d.max(1e-30).sqrt())
   }
 }
 
@@ -212,7 +233,12 @@ impl BivariateExt for Plackett {
     if (theta - 1.0).abs() < 1e-12 {
       return 0.0;
     }
-    kendall_tau_numeric(Self::h(theta), 200)
+    // Inside the inversion's range the quadrature runs the branch-free form; `h` carries the ends outside it.
+    if (1e-6..=1e6).contains(&theta) {
+      kendall_tau_numeric(|u, v| Self::h_interior(theta, u, v), 200)
+    } else {
+      kendall_tau_numeric(Self::h(theta), 200)
+    }
   }
 
   /// Brent on `ln θ`, so the bracket `[1e-6, 1e6]` keeps a relative resolution; the rule runs `9e-4` low at its ends,
