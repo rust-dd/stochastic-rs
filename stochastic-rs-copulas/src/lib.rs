@@ -1,13 +1,8 @@
 #![doc = include_str!("../README.md")]
-// Defaults to `warn`, which is how 4 broken doc links accumulated
-// unnoticed; deny so a regression fails the build instead of drifting.
+// A broken intra-doc link fails the build instead of warning.
 #![deny(rustdoc::broken_intra_doc_links)]
 #![allow(non_snake_case)]
-#![allow(clippy::type_complexity)]
-#![allow(clippy::too_many_arguments)]
 
-#[macro_use]
-mod macros;
 mod optim;
 
 pub mod error;

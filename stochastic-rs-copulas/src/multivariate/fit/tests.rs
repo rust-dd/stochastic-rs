@@ -392,6 +392,8 @@ fn a_constant_conditioned_column_stops_the_cvine() {
   );
 }
 
+type ToPair = fn(f64) -> PairCopula;
+
 /// Each one-parameter estimate maximises the pair likelihood, here on Clayton data, and is no worse than its Kendall start.
 #[test]
 fn one_parameter_pairs_maximise_the_likelihood() {
@@ -402,20 +404,20 @@ fn one_parameter_pairs_maximise_the_likelihood() {
   let gaussian = |rho| PairCopula::Gaussian { rho };
   let clayton = |theta| PairCopula::Clayton { theta };
   let frank = |theta| PairCopula::Frank { theta };
-  let cases: [(BivariateFamily, &dyn Fn(f64) -> PairCopula, f64); 3] = [
+  let cases: [(BivariateFamily, ToPair, f64); 3] = [
     (
       BivariateFamily::Gaussian,
-      &gaussian,
+      gaussian,
       GaussianCopula::default().theta_from_tau(tau).unwrap(),
     ),
     (
       BivariateFamily::Clayton,
-      &clayton,
+      clayton,
       Clayton::default().theta_from_tau(tau).unwrap(),
     ),
     (
       BivariateFamily::Frank,
-      &frank,
+      frank,
       Frank::default().theta_from_tau(tau).unwrap(),
     ),
   ];
