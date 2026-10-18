@@ -403,8 +403,8 @@ fn check_vine_data(
   Ok(tau)
 }
 
-/// Fits a vine of `structure` to the pseudo-observations `u` (rows = observations); `MarginalOutOfRange` outside `[0, 1]`, `MarginalOnBoundary` at
-/// 0 or 1, `Unsupported` for a family outside `VINE_CANDIDATES` or an edge no family represents, `InvalidStructure` for a constant or NaN column.
+/// Fits a vine of `structure` to the pseudo-observations `u` (rows = observations); `MarginalOutOfRange` outside `[0, 1]` or for a NaN,
+/// `MarginalOnBoundary` at 0 or 1, `Unsupported` for a family outside `VINE_CANDIDATES` or an edge none represents, `InvalidStructure` for a constant column.
 pub fn fit_vine(
   u: ArrayView2<f64>,
   structure: VineStructure,
