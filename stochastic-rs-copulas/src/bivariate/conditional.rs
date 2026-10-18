@@ -212,6 +212,13 @@ pub(crate) fn check_unit<'a>(values: impl IntoIterator<Item = &'a f64>) -> Resul
 
 /// `MarginalOnBoundary` at the first 0 or 1 in `x`: a fit or test runs on pseudo-observations, which never reach either end.
 pub(crate) fn check_open(x: ArrayView2<f64>) -> Result<(), CopulaError> {
+  // `|` without short-circuit folds to one vector reduction; the cell is looked up only once a 0 or 1 is seen.
+  if !x
+    .iter()
+    .fold(false, |seen, &u| seen | (u == 0.0) | (u == 1.0))
+  {
+    return Ok(());
+  }
   match x.indexed_iter().find(|&(_, &u)| u == 0.0 || u == 1.0) {
     None => Ok(()),
     Some(((row, column), &value)) => Err(CopulaError::MarginalOnBoundary { row, column, value }),
