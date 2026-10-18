@@ -1,6 +1,5 @@
-//! Shared plumbing of the two-parameter Archimedean families BB1 and BB7:
-//! the numerical Kendall's τ and the maximum-likelihood fit on unconstrained
-//! coordinates.
+//! Shared plumbing of the two-parameter Archimedean families BB1 and BB7: the numerical Kendall's τ and the
+//! maximum-likelihood fit on unconstrained coordinates.
 
 use ndarray::ArrayView1;
 

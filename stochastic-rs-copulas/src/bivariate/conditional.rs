@@ -353,7 +353,7 @@ pub(crate) fn copula_cdf(
 
 /// `density` over the rows of `x`, each coordinate in `[0, 1]`, on the open square, and NaN on its boundary, where the
 /// copula has no density.
-pub(crate) fn copula_density(
+pub(crate) fn on_open_square(
   x: ArrayView2<f64>,
   density: impl Fn(f64, f64) -> f64,
 ) -> Result<Array1<f64>, CopulaError> {
@@ -371,12 +371,12 @@ pub(crate) fn copula_density(
   )
 }
 
-/// `exp` of `ln_density` under [`copula_density`].
+/// `exp` of `ln_density` under [`on_open_square`].
 pub(crate) fn copula_pdf(
   x: ArrayView2<f64>,
   ln_density: impl Fn(f64, f64) -> f64,
 ) -> Result<Array1<f64>, CopulaError> {
-  copula_density(x, |u, v| ln_density(u, v).exp())
+  on_open_square(x, |u, v| ln_density(u, v).exp())
 }
 
 #[cfg(test)]

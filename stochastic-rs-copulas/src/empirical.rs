@@ -20,6 +20,7 @@ use stochastic_rs_distributions::Seeded;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::uniform::SimdUniform;
 
+use crate::bivariate::conditional::check_unit;
 use crate::error::CopulaError;
 use crate::gof::pseudo_observations;
 
@@ -57,8 +58,8 @@ impl EmpiricalCopula2D {
     self.pseudo.view()
   }
 
-  /// `C_n(u, v) = n^{-1} Σ 1{U_i ≤ u, V_i ≤ v}` at every row of `x`, NaN for a NaN coordinate; `DimensionMismatch` unless
-  /// `x` has two columns.
+  /// `C_n(u, v) = n^{-1} Σ 1{U_i ≤ u, V_i ≤ v}` at every row of `x`: `DimensionMismatch` unless `x` has two columns, then
+  /// `MarginalOutOfRange` for a value outside `[0, 1]` or NaN, as every copula's batch methods.
   pub fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     if x.ncols() != 2 {
       return Err(CopulaError::DimensionMismatch {
@@ -66,14 +67,12 @@ impl EmpiricalCopula2D {
         got: x.ncols(),
       });
     }
+    check_unit(x)?;
     let n = self.pseudo.nrows() as f64;
     Ok(
       x.rows()
         .into_iter()
         .map(|q| {
-          if q[0].is_nan() || q[1].is_nan() {
-            return f64::NAN;
-          }
           let below = self
             .pseudo
             .rows()
@@ -134,27 +133,24 @@ mod tests {
     assert_eq!(ec.sample(5, &Unseeded).nrows(), 5);
   }
 
-  /// The cdf is a step function of the pseudo-observations, defined off the unit square too; a NaN coordinate has no value.
+  /// The cdf is a step function of the pseudo-observations on the closed square; a value off it or NaN is refused.
   #[test]
-  fn the_cdf_is_defined_off_the_grid_and_nan_for_nan() {
+  fn the_cdf_is_defined_on_the_square_and_refuses_off_it() {
     let ec = EmpiricalCopula2D::new(
       array![3.0, 1.0, 2.0, 4.0].view(),
       array![10.0, 30.0, 20.0, 40.0].view(),
     );
     let c = ec
-      .cdf(
-        array![
-          [0.4, 0.4],
-          [-1.0, 5.0],
-          [9.0, 9.0],
-          [f64::NAN, 0.5],
-          [0.5, f64::NAN]
-        ]
-        .view(),
-      )
+      .cdf(array![[0.4, 0.4], [0.0, 1.0], [1.0, 1.0]].view())
       .unwrap();
-    assert_eq!(c.to_vec()[..3], [0.25, 0.0, 1.0]);
-    assert!(c[3].is_nan() && c[4].is_nan());
+    assert_eq!(c.to_vec(), [0.25, 0.0, 1.0]);
+    for row in [[-1.0, 0.5], [0.5, 9.0], [f64::NAN, 0.5], [0.5, f64::NAN]] {
+      assert_eq!(
+        ec.cdf(array![row].view()),
+        Err(CopulaError::MarginalOutOfRange),
+        "{row:?}"
+      );
+    }
   }
 
   /// The empirical copula is a function of the data set: the same tied pairs in two row orders give the same cdf.

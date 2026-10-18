@@ -82,3 +82,15 @@ fn galambos_tau_stays_non_negative_and_relative_toward_independence() {
   }
   assert_eq!(c.tau_from_theta(9e-4), 0.0);
 }
+
+/// Where τ is tiny its relative accuracy is the rounding of `ln τ`: Galambos at θ = 1e-3, `ln τ = −693.39` to 2 ulps, is
+/// `2.7e-13` off mpmath's `7.328123094736333e-302`, the largest relative error while τ is normal.
+#[test]
+fn a_tiny_tau_holds_its_logarithm_floor() {
+  let got = Galambos::default().tau_from_theta(1e-3);
+  let want = 7.328123094736333e-302;
+  assert!(
+    (got / want - 1.0).abs() <= 3e-13,
+    "τ(1e-3) = {got:e}, want {want:e}"
+  );
+}

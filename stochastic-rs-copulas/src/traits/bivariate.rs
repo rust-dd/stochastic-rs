@@ -31,7 +31,8 @@ pub struct TailDependence<T> {
   pub upper: T,
 }
 
-/// Batch methods answer `MarginalOutOfRange` for a value outside `[0, 1]` or NaN; `pdf`/`log_pdf` are NaN on the boundary.
+/// `cdf`, `pdf`, `log_pdf`, `partial_derivative` and `percent_point` answer `MarginalOutOfRange` for a value outside
+/// `[0, 1]` or NaN; `pdf` and `log_pdf` are NaN on the boundary.
 pub trait BivariateExt {
   /// Which family this copula is; the label its error messages carry.
   fn family(&self) -> BivariateFamily;

@@ -21,6 +21,7 @@ use stochastic_rs_copulas::bivariate::joe::Joe;
 use stochastic_rs_copulas::bivariate::marshall_olkin::MarshallOlkin;
 use stochastic_rs_copulas::bivariate::plackett::Plackett;
 use stochastic_rs_copulas::bivariate::t_copula::TCopula;
+use stochastic_rs_copulas::empirical::EmpiricalCopula2D;
 use stochastic_rs_copulas::gof::GofConfig;
 use stochastic_rs_copulas::gof::gof_cramer_von_mises;
 use stochastic_rs_copulas::gof::pseudo_observations;
@@ -92,6 +93,7 @@ fn bivariate(copula: &dyn BivariateExt) {
         copula.cdf(x.view()),
         copula.partial_derivative(x.view()),
         copula.percent_point(x.column(0), x.column(1)),
+        copula.percent_point_numerical(x.column(0), x.column(1)),
       ];
       for answer in answers {
         assert_eq!(answer, Err(CopulaError::MarginalOutOfRange), "{row:?}");
@@ -284,4 +286,48 @@ fn the_goodness_of_fit_test_rejects_a_zero_or_one() {
     },
     2,
   );
+}
+
+/// The empirical copula's cdf keeps the convention: its edges and corners on the closed square, `MarginalOutOfRange` at a
+/// bad value in either coordinate.
+#[test]
+fn the_empirical_copula_follows_the_boundary_convention() {
+  let copula = EmpiricalCopula2D::new(
+    array![3.0, 1.0, 2.0, 4.0].view(),
+    array![10.0, 30.0, 20.0, 40.0].view(),
+  );
+  assert_eq!(
+    copula.cdf(array![[0.0, 0.5], [1.0, 1.0]].view()).unwrap(),
+    array![0.0, 1.0]
+  );
+  for bad in BAD {
+    for row in [[bad, 0.5], [0.5, bad]] {
+      assert_eq!(
+        copula.cdf(array![[0.3, 0.6], row].view()),
+        Err(CopulaError::MarginalOutOfRange),
+        "{row:?}"
+      );
+    }
+  }
+}
+
+/// Marshall–Olkin's degenerate pairs, one shock rate at 1: `h` at `v ∈ {0, 1}` and its inverse at `y, v ∈ {0, 1}` finite.
+#[test]
+fn marshall_olkin_degenerate_pairs_stay_finite_on_the_edges() {
+  for (alpha, beta) in [(1.0, 0.4), (0.7, 1.0)] {
+    let copula = MarshallOlkin::new(alpha, beta);
+    let h = copula
+      .partial_derivative(array![[0.3, 0.0], [0.3, 1.0], [0.0, 0.0], [1.0, 1.0]].view())
+      .unwrap();
+    let u = copula
+      .percent_point(
+        array![0.0, 1.0, 0.0, 1.0, 0.4, 0.4].view(),
+        array![0.0, 0.0, 1.0, 1.0, 0.0, 1.0].view(),
+      )
+      .unwrap();
+    assert!(
+      h.iter().chain(&u).all(|x| x.is_finite()),
+      "({alpha}, {beta}): {h} {u}"
+    );
+  }
 }

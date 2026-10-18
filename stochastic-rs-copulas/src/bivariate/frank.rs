@@ -17,12 +17,12 @@ use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
-use crate::bivariate::conditional::copula_density;
 use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::expm1_over;
 use crate::bivariate::conditional::ln_1p_over;
 use crate::bivariate::conditional::ln_one_minus_exp;
 use crate::bivariate::conditional::ln_one_minus_pow;
+use crate::bivariate::conditional::on_open_square;
 use crate::bivariate::conditional::softplus;
 use crate::bivariate::conditional::sum_minus_one;
 use crate::error::CopulaError;
@@ -253,7 +253,7 @@ impl BivariateExt for Frank {
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    copula_density(x, |u, v| Self::ln_density(theta, u, v))
+    on_open_square(x, |u, v| Self::ln_density(theta, u, v))
   }
 
   /// `C = −ln(1 + g(u)g(v)/g(1))/θ`, `g(z) = expm1(−θz)`, by `Frank::cdf_positive` for `θ > 0` and `Frank::cdf_negative`

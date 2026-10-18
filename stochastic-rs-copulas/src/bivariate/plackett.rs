@@ -30,8 +30,8 @@ use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
-use crate::bivariate::conditional::copula_density;
 use crate::bivariate::conditional::copula_pdf;
+use crate::bivariate::conditional::on_open_square;
 use crate::bivariate::conditional::sum_minus_one;
 use crate::bivariate::integral::rule;
 use crate::error::CopulaError;
@@ -197,6 +197,10 @@ impl Plackett {
   }
 }
 
+/// Below this `|ln θ|` Kendall's τ is its odd series `(2/9)s − (2/675)s³ + s⁵/66150` in `s = ln θ` (sympy, from Nelsen's
+/// `1 − 4∬ C_u C_v` term by term in `θ − 1`), whose next term `s⁷/661500` stays under `1e-13` of `τ`.
+const TAU_SERIES_BELOW: f64 = 0.0495;
+
 /// `(F, G)`, `F(x) = atan(√x)/√x` and `G(x) = (1 − F(x))/x`, by `G`'s series `Σ (−x)ᵏ/(2k + 3)` below `x = 1/8`, where
 /// `1 − F` would cancel.
 fn arctan_ratios(x: f64) -> (f64, f64) {
@@ -243,7 +247,7 @@ impl BivariateExt for Plackett {
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    copula_density(x, |u, v| Self::ln_density(theta, u, v))
+    on_open_square(x, |u, v| Self::ln_density(theta, u, v))
   }
 
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
@@ -271,8 +275,13 @@ impl BivariateExt for Plackett {
     ))
   }
 
-  /// `1 − Plackett::tau_complement(θ)`, through `τ(1/θ) = −τ(θ)` below `θ = 1`.
+  /// `1 − Plackett::tau_complement(θ)`, through `τ(1/θ) = −τ(θ)` below `θ = 1`, and the series of `TAU_SERIES_BELOW` near 1.
   fn tau_from_theta(&self, theta: f64) -> f64 {
+    let s = theta.ln();
+    if s.abs() <= TAU_SERIES_BELOW {
+      let s2 = s * s;
+      return s * (2.0 / 9.0 + s2 * (-2.0 / 675.0 + s2 / 66150.0));
+    }
     if theta >= 1.0 {
       1.0 - Self::tau_complement(theta)
     } else {
@@ -319,6 +328,31 @@ mod tests {
   use ndarray::array;
 
   use super::*;
+
+  /// `ln(1 − |τ|)`, which the inversion matches, against the third column of the τ table: within `1e-12` of itself (or
+  /// `f64::MIN_POSITIVE` below it), from `ln_1p(−|τ|)` while `|τ| < 1/2` and from the complement past it.
+  #[test]
+  fn the_complement_matches_the_tau_table() {
+    let rows = include_str!("../../tests/fixtures/kendall_tau.txt")
+      .lines()
+      .filter(|l| l.starts_with("plackett "));
+    for line in rows {
+      let (head, values) = line.split_once(" ; ").unwrap();
+      let theta: f64 = head[9..].parse().unwrap();
+      let want: f64 = values.split(' ').nth(2).unwrap().parse().unwrap();
+      let tau = Plackett::default().tau_from_theta(theta);
+      let got = if tau.abs() < 0.5 {
+        (-tau.abs()).ln_1p()
+      } else {
+        Plackett::tau_complement(theta.max(1.0 / theta)).ln()
+      };
+      let tolerance = (1e-12 * want.abs()).max(f64::MIN_POSITIVE);
+      assert!(
+        (got - want).abs() <= tolerance,
+        "θ = {theta:e}: {got:e}, want {want:e}"
+      );
+    }
+  }
 
   fn approx(a: f64, b: f64, tol: f64) -> bool {
     (a - b).abs() <= tol

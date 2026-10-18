@@ -32,8 +32,8 @@ use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
-use crate::bivariate::conditional::copula_density;
 use crate::bivariate::conditional::copula_pdf;
+use crate::bivariate::conditional::on_open_square;
 use crate::bivariate::gaussian::GaussianCopula;
 use crate::bivariate::t_copula::cdf::BivariateT;
 use crate::error::CopulaError;
@@ -229,7 +229,7 @@ impl BivariateExt for TCopula {
 
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    copula_density(x, self.ln_density())
+    on_open_square(x, self.ln_density())
   }
 
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {

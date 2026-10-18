@@ -25,12 +25,12 @@ use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
-use crate::bivariate::conditional::copula_density;
 use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::ln_one_minus_pow;
 use crate::bivariate::conditional::ln_ratio_complement;
 use crate::bivariate::conditional::numerical_quantiles;
+use crate::bivariate::conditional::on_open_square;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -149,7 +149,7 @@ impl BivariateExt for Joe {
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    copula_density(x, |u, v| Self::ln_density(theta, u, v))
+    on_open_square(x, |u, v| Self::ln_density(theta, u, v))
   }
 
   /// `C = 1 − S^{1/θ} = −expm1(ln S/θ)`, `ln S` from `Joe::ln_s`.

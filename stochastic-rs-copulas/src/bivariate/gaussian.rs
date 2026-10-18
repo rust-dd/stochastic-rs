@@ -33,9 +33,9 @@ use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
-use crate::bivariate::conditional::copula_density;
 use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::normal_quantile;
+use crate::bivariate::conditional::on_open_square;
 use crate::bivariate::conditional::sum_minus_one;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
@@ -170,7 +170,7 @@ impl BivariateExt for GaussianCopula {
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
-    copula_density(x, |u, v| Self::ln_density(rho, u, v))
+    on_open_square(x, |u, v| Self::ln_density(rho, u, v))
   }
 
   /// `gaussian_copula_cdf` on the open square.

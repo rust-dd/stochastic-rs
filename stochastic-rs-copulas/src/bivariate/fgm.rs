@@ -24,7 +24,7 @@ use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
-use crate::bivariate::conditional::copula_density;
+use crate::bivariate::conditional::on_open_square;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -96,7 +96,7 @@ impl BivariateExt for Fgm {
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    copula_density(x, |u, v| 1.0 + theta * (1.0 - 2.0 * u) * (1.0 - 2.0 * v))
+    on_open_square(x, |u, v| 1.0 + theta * (1.0 - 2.0 * u) * (1.0 - 2.0 * v))
   }
 
   /// CDF $C(u,v) = uv + \theta u(1-u) v(1-v)$.

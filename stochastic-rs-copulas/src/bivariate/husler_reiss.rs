@@ -27,7 +27,6 @@ use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
-use crate::bivariate::conditional::copula_density;
 use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::ln_log_ratio;
@@ -35,6 +34,7 @@ use crate::bivariate::conditional::ln_norm_cdf;
 use crate::bivariate::conditional::ln_one_minus_exp;
 use crate::bivariate::conditional::mills;
 use crate::bivariate::conditional::numerical_quantiles;
+use crate::bivariate::conditional::on_open_square;
 use crate::bivariate::conditional::softplus;
 use crate::bivariate::integral::ln_integral_from_peak;
 use crate::error::CopulaError;
@@ -201,7 +201,7 @@ impl BivariateExt for HuslerReiss {
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
-    copula_density(x, |u, v| Self::ln_density(lambda, u, v))
+    on_open_square(x, |u, v| Self::ln_density(lambda, u, v))
   }
 
   /// `C = e^{−xΦ(α) − yΦ(β)}` from `HuslerReiss::scores`; `uv` at `λ = 0`.
@@ -296,6 +296,35 @@ mod tests {
   use stochastic_rs_core::simd_rng::Deterministic;
 
   use super::*;
+
+  /// `(ln τ, ln(1 − τ))`, the logarithm each inversion matches, against the τ table's second and third columns: each
+  /// within `1e-12` of itself, or `f64::MIN_POSITIVE` where it is subnormal.
+  #[test]
+  fn the_tau_logarithms_match_the_tau_table() {
+    let rows = include_str!("../../tests/fixtures/kendall_tau.txt")
+      .lines()
+      .filter(|l| l.starts_with("husler_reiss "));
+    for line in rows {
+      let (head, values) = line.split_once(" ; ").unwrap();
+      let theta: f64 = head[13..].parse().unwrap();
+      let want: Vec<f64> = values
+        .split(' ')
+        .skip(1)
+        .map(|x| x.parse().unwrap())
+        .collect();
+      if want[0] == f64::NEG_INFINITY {
+        continue;
+      }
+      let (ln_tau, ln_complement) = HuslerReiss::ln_tau_parts(theta);
+      for (got, want) in [(ln_tau, want[0]), (ln_complement, want[1])] {
+        let tolerance = (1e-12 * want.abs()).max(f64::MIN_POSITIVE);
+        assert!(
+          (got - want).abs() <= tolerance,
+          "θ = {theta:e}: {got:e}, want {want:e}"
+        );
+      }
+    }
+  }
 
   fn approx(a: f64, b: f64, tol: f64) -> bool {
     (a - b).abs() <= tol

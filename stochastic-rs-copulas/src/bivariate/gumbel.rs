@@ -13,12 +13,12 @@ use super::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
-use crate::bivariate::conditional::copula_density;
 use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::ln_log_ratio;
 use crate::bivariate::conditional::ln_ratio;
 use crate::bivariate::conditional::log_score_parts;
 use crate::bivariate::conditional::numerical_quantiles;
+use crate::bivariate::conditional::on_open_square;
 use crate::bivariate::conditional::softplus;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
@@ -122,7 +122,7 @@ impl BivariateExt for Gumbel {
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    copula_density(x, |u, v| Self::ln_density(theta, u, v))
+    on_open_square(x, |u, v| Self::ln_density(theta, u, v))
   }
 
   /// `C = min(u, v) e^{−M expm1(ℓ/θ)}`, the pieces of `Gumbel::ln_density`, as `e^{−M} = min(u, v)`; `uv` at `θ = 1`.

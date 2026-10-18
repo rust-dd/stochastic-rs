@@ -32,7 +32,6 @@ use stochastic_rs_distributions::special::digamma;
 use super::BivariateFamily;
 use super::conditional::conditional_cdf;
 use super::conditional::copula_cdf;
-use super::conditional::copula_density;
 use super::conditional::copula_pdf;
 use super::conditional::expm1_over;
 use super::conditional::ln_1p_over;
@@ -41,6 +40,7 @@ use super::conditional::ln_one_minus_pow;
 use super::conditional::ln_one_minus_pow_ratio;
 use super::conditional::ln_ratio_complement;
 use super::conditional::numerical_quantiles;
+use super::conditional::on_open_square;
 use super::conditional::softplus;
 use super::two_parameter::fit_two_parameters;
 use super::two_parameter::kendall_tau_numeric;
@@ -420,7 +420,7 @@ impl BivariateExt for Bb7 {
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
     let density = Bb7Density::new(theta, delta);
-    copula_density(x, |u, v| density.ln_c(u, v))
+    on_open_square(x, |u, v| density.ln_c(u, v))
   }
 
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {

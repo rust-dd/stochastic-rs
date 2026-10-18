@@ -23,7 +23,7 @@ use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
-use crate::bivariate::conditional::copula_density;
+use crate::bivariate::conditional::on_open_square;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -138,7 +138,7 @@ impl BivariateExt for MarshallOlkin {
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
-    copula_density(x, |u, v| {
+    on_open_square(x, |u, v| {
       let lhs = u.powf(alpha);
       let rhs = v.powf(beta);
       if (lhs - rhs).abs() < 1e-15 {

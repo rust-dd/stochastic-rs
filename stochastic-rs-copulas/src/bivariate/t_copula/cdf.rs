@@ -9,7 +9,6 @@ use std::f64::consts::PI;
 
 use stochastic_rs_distributions::special::ln_gamma;
 
-use crate::bivariate::conditional::in_unit;
 use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::sum_minus_one;
 use crate::bivariate::gaussian::gaussian_copula_cdf;
@@ -118,9 +117,6 @@ impl BivariateT {
 
   /// `C(u, v)` on the closed square, exact on its edges and inside the Fréchet bounds.
   pub(crate) fn copula_cdf(&self, u: f64, v: f64) -> f64 {
-    if !(in_unit(u) && in_unit(v)) {
-      return f64::NAN;
-    }
     if u == 0.0 || v == 0.0 {
       return 0.0;
     }
