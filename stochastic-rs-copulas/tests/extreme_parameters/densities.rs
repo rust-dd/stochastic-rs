@@ -24,8 +24,14 @@ const T_LAW_MISSES: [(f64, f64, &str, Misses); 5] = [
   (0.99, 30.0, "log_pdf", Misses::Only(&DENSITY_MISSES)),
 ];
 
-/// The t rows at large `ν`, which the table holds for their time and the misses below.
-const WALL_CLOCK: [(f64, f64); 3] = [(0.5, 1e8), (-0.8, 1e15), (-0.999999, 9.99e21)];
+/// The t rows at large `ν` `(ρ, ν, bound in ms)`, which the table holds for their time and the misses below; a bound is
+/// four times a debug evaluation at least, CI's build, the 1e13 row's in the band where the integrations reach their cap.
+const WALL_CLOCK: [(f64, f64, u64); 4] = [
+  (0.5, 1e8, 500),
+  (-0.8, 1e13, 2000),
+  (-0.8, 1e15, 500),
+  (-0.999999, 9.99e21, 500),
+];
 
 /// Where `SimdStudentT`, off the t law by `7e-8` at `ν = 1e8` and not the t law's from `ν ≈ 4.4e12`, puts a large-`ν` cell
 /// past `1e-12` or at NaN: 387 cells, each of which must keep missing, so a fix of that law fails this test.
@@ -157,28 +163,30 @@ fn cdf_and_log_density_match_the_mpmath_table() {
 }
 
 /// The wall-clock rows: at large `ν` every evaluation is bounded in time, whatever noise the law it reads carries, with
-/// the cells that took a minute or did not return.
+/// the cells that took a minute or did not return and two of the band that reach the cap where `C` is the Fréchet floor.
 #[test]
 fn the_t_cdf_is_time_bounded_at_large_nu() {
-  let mut cells: Vec<(f64, f64, f64, f64)> = vec![
-    (-0.8, 1e8, 0.5, 0.5),
-    (0.99, 1e8, 1e-15, 1e-15),
-    (-0.999999, 9.999999999999998e21, 1e-300, 0.5),
+  let mut cells: Vec<(f64, f64, f64, f64, u64)> = vec![
+    (-0.8, 1e8, 0.5, 0.5, 500),
+    (0.99, 1e8, 1e-15, 1e-15, 500),
+    (-0.999999, 9.999999999999998e21, 1e-300, 0.5, 500),
+    (-0.999999, 1e13, 0.5, 0.7, 2000),
+    (-0.999999, 1e13, 0.7, 0.5, 2000),
   ];
-  for (rho, nu) in WALL_CLOCK {
+  for (rho, nu, bound) in WALL_CLOCK {
     cells.extend(
       GRID
         .iter()
-        .flat_map(|&a| GRID.iter().map(move |&b| (rho, nu, a, b))),
+        .flat_map(|&a| GRID.iter().map(move |&b| (rho, nu, a, b, bound))),
     );
   }
   let mut slow = Vec::new();
-  for (rho, nu, a, b) in cells {
+  for (rho, nu, a, b, bound) in cells {
     let copula = TCopula::new(rho, nu);
     let start = Instant::now();
     let _ = copula.cdf(array![[a, b]].view()).unwrap();
     let elapsed = start.elapsed();
-    if elapsed > Duration::from_millis(500) {
+    if elapsed > Duration::from_millis(bound) {
       slow.push(format!(
         "({rho}, {nu:e}) cdf({a:e}, {b:e}) took {elapsed:?}"
       ));
