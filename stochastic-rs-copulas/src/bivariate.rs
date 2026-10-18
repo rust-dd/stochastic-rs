@@ -47,7 +47,7 @@
 //! ### Closed-form vs. iterative: fitting and sampling cost
 //!
 //! `theta_from_tau` is closed-form for Clayton, FGM, Gaussian, t, Marshall–Olkin and Gumbel; AMH, Frank, Galambos,
-//! Hüsler–Reiss, Joe and Plackett root-find it, Plackett integrating its τ numerically at every step.
+//! Hüsler–Reiss, Joe and Plackett root-find it, Plackett, Galambos and Hüsler–Reiss integrating their τ at every step.
 //!
 //! [`BivariateExt::percent_point`], one call per sampled pair, is closed-form except in [`bb1::Bb1`] and [`bb7::Bb7`]
 //! (bisection) and [`galambos::Galambos`], [`gumbel::Gumbel`], [`husler_reiss::HuslerReiss`] and [`joe::Joe`] (Brent).

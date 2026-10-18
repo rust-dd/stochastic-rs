@@ -1,5 +1,5 @@
-//! The quadrature of the elliptical copulas' cdfs: `ln ∫ e^f` by Gauss–Kronrod panels marched out of an anchor, sized by
-//! the variation of `f` and Kronrod's error estimate, so the integral keeps its relative digits wherever it lies.
+//! The quadrature of the elliptical cdfs and the extreme-value τ: `ln ∫ e^f` by Gauss–Kronrod panels marched out of an
+//! anchor, sized by the variation of `f` and Kronrod's error estimate, so the integral keeps its relative digits.
 
 use std::num::NonZeroUsize;
 use std::sync::OnceLock;
@@ -100,6 +100,23 @@ pub(crate) fn ln_integral_concave(
     .ln_f
   };
   ln_add_exp(side(hi - x0), side(lo - x0))
+}
+
+/// `ln ∫_0^∞ e^{f(x)} dx` for an `f` largest at 0 that then falls at least linearly: `march` until `f` is `TAIL_FALL`
+/// below `f(0)`, so an integral far below `f64::MIN_POSITIVE` keeps its logarithm.
+pub(crate) fn ln_integral_from_peak(f: impl Fn(f64) -> f64, first_step: f64) -> f64 {
+  let top = f(0.0);
+  if !top.is_finite() {
+    return top;
+  }
+  let eval = |x: f64| {
+    let v = f(x);
+    (v, v)
+  };
+  march(eval, f64::INFINITY, first_step, &[], |_, (_, fx), _| {
+    fx <= top - TAIL_FALL
+  })
+  .ln_f
 }
 
 /// QUADPACK's 15-point Kronrod nodes on `[0, 1)` (with their mirrors) and weights, and the weights of the 7-point Gauss

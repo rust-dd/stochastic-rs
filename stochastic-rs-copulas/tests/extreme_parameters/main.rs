@@ -1,9 +1,10 @@
-//! h-functions, quantiles, cdfs, densities, Archimedean generators and nested Archimedean copulas at the ends of every
-//! admitted parameter range: finite and in range, and within `1e-12` of mpmath values wherever those are normal numbers.
+//! h-functions, quantiles, cdfs, densities, Kendall's τ, Archimedean generators and nested Archimedean copulas at the
+//! ends of every admitted parameter range: finite and in range, and within `1e-12` of mpmath values wherever those are normal.
 
 mod archimedean;
 mod conditional;
 mod densities;
+mod kendall_tau;
 
 use ndarray::Array1;
 use ndarray::Axis;

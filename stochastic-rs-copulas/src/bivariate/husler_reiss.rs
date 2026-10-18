@@ -14,7 +14,8 @@
 //! Probab. Lett.* 7(4), 283-286.
 //! Reference: Gudendorf, G. & Segers, J. (2010), "Extreme-value copulas", in Copula Theory and Its Applications, Lecture Notes in Statistics, Springer, arXiv:0911.1015, §3.3 (the parameter space, `[0, ∞]` in the reciprocal of this `λ`, independence at its `∞`), §4 (Kendall's τ from the Pickands function).
 
-use std::sync::OnceLock;
+use std::f64::consts::LN_2;
+use std::f64::consts::TAU;
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -31,14 +32,20 @@ use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::ln_log_ratio;
 use crate::bivariate::conditional::ln_norm_cdf;
+use crate::bivariate::conditional::ln_one_minus_exp;
 use crate::bivariate::conditional::mills;
 use crate::bivariate::conditional::numerical_quantiles;
+use crate::bivariate::conditional::softplus;
+use crate::bivariate::integral::ln_integral_from_peak;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
+
+/// The ends of the τ inversion's bracket in `λ`: below `1e-2`, `τ < e^{−4900}`, and past `1e17`, `1 − τ < 2⁻⁵⁴`.
+const LAMBDA_BRACKET: (f64, f64) = (1e-2, 1e17);
 
 #[derive(Debug, Clone, Default)]
 pub struct HuslerReiss {
@@ -142,6 +149,42 @@ impl HuslerReiss {
     let beta = 1.0 / lambda - 0.5 * lambda * log_ratio;
     (1.0 - t) * norm_cdf(alpha) + t * norm_cdf(beta)
   }
+
+  /// `(ln τ, ln(1 − τ))`: as `A' = Φ(β) − Φ(α)`, `τ = λ∫ (1 − t)φ(α)/A` and, by parts, `1 − τ = 2∫ t(1 − t)Φ(α)Φ(β)/A²`
+  /// over the logit `ℓ` of `t ∈ [1/2, 1]`, `α, β = 1/λ ∓ λℓ/2`; the smaller is integrated, the other follows.
+  fn ln_tau_parts(lambda: f64) -> (f64, f64) {
+    // `(ln(1 − t), ln t, α, β, ln A)` at `ℓ`.
+    let at = |l: f64| {
+      let (alpha, beta) = (
+        1.0 / lambda - 0.5 * lambda * l,
+        1.0 / lambda + 0.5 * lambda * l,
+      );
+      let (ln_one_minus_t, ln_t) = (-softplus(l), -softplus(-l));
+      let a = ln_one_minus_t.exp() * norm_cdf(alpha) + ln_t.exp() * norm_cdf(beta);
+      (ln_one_minus_t, ln_t, alpha, beta, a.ln())
+    };
+    if lambda <= 2.0 {
+      let ln_tau = ln_integral_from_peak(
+        |l: f64| {
+          let (ln_one_minus_t, _, alpha, _, ln_a) = at(l);
+          lambda.ln() + ln_one_minus_t - 0.5 * (alpha * alpha + TAU.ln()) - ln_a
+        },
+        0.5,
+      );
+      (ln_tau, ln_one_minus_exp(ln_tau))
+    } else {
+      // In `w = λℓ`, the scale of `Φ(α)`'s fall.
+      let ln_complement = LN_2 - lambda.ln()
+        + ln_integral_from_peak(
+          |w: f64| {
+            let (ln_one_minus_t, ln_t, alpha, beta, ln_a) = at(w / lambda);
+            ln_one_minus_t + ln_t + ln_norm_cdf(alpha) + ln_norm_cdf(beta) - 2.0 * ln_a
+          },
+          0.5,
+        );
+      (ln_one_minus_exp(ln_complement), ln_complement)
+    }
+  }
 }
 
 impl BivariateExt for HuslerReiss {
@@ -224,42 +267,38 @@ impl BivariateExt for HuslerReiss {
     numerical_quantiles(y, v, self.family(), Self::ln_h(lambda))
   }
 
-  /// The extreme-value identity `τ = ∫₀¹ t(1 − t) A''(t)/A(t) dt` (Gudendorf & Segers 2010, §4) by 512-panel Simpson
-  /// with a central-difference `A''` of step `1e-4`; 0 for `λ ≤ 1e-9`.
+  /// Gudendorf & Segers' (2010, §4) `τ = ∫₀¹ t(1 − t)/A dA'` through `HuslerReiss::ln_tau_parts`; 0 below `λ = 1e-2`.
   fn tau_from_theta(&self, lambda: f64) -> f64 {
-    if lambda <= 1e-9 {
+    if lambda < LAMBDA_BRACKET.0 {
       return 0.0;
     }
-    let n: usize = 512;
-    let h_grid = 1.0 / n as f64;
-    let h_fd = 1e-4_f64;
-    let mut acc = 0.0_f64;
-    for k in 1..n {
-      let t = (k as f64) * h_grid;
-      let a = Self::pickands(lambda, t);
-      let a_pp = (Self::pickands(lambda, (t + h_fd).min(1.0 - 1e-12)) - 2.0 * a
-        + Self::pickands(lambda, (t - h_fd).max(1e-12)))
-        / (h_fd * h_fd);
-      let w = if k % 2 == 0 { 2.0 } else { 4.0 };
-      acc += w * t * (1.0 - t) * a_pp / a.max(1e-15);
+    let (ln_tau, ln_complement) = Self::ln_tau_parts(lambda);
+    if ln_tau < ln_complement {
+      ln_tau.exp()
+    } else {
+      -ln_complement.exp_m1()
     }
-    (h_grid / 3.0) * acc
   }
 
-  /// Brent on `ln λ` over `[1e-6, 100]`: the rule holds `τ` to `1.9e-7` up to `λ = 100` and loses it beyond (`2.2e-4` at
-  /// `λ = 200`), so `0 <= τ < τ(100) ≈ 0.98876` is the reachable range, `τ = 0` at `λ = 0`; `λ` to a relative `1e-8`.
+  /// Brent on `ln λ` over `LAMBDA_BRACKET`, matching `ln τ` up to `τ = 1/2` and `ln(1 − τ)` past it, so every `τ` in
+  /// `[0, 1)`, subnormal or a few ulps under 1, inverts to its relative digits.
   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
-    static CAP: OnceLock<f64> = OnceLock::new();
-    let (lo, hi) = (1e-6_f64.ln(), 100.0_f64.ln());
-    let cap = *CAP.get_or_init(|| self.tau_from_theta(hi.exp()));
-    if !(tau >= 0.0 && tau < cap) {
-      return Err(tau_out_of_range(tau, format!("0.0 <= tau < {cap:?}")));
+    if !(0.0..1.0).contains(&tau) {
+      return Err(tau_out_of_range(tau, "0.0 <= tau < 1.0".to_string()));
     }
-    // `τ(1e-6)` is 0 to the last bit, so the bracket changes sign for every positive `τ`.
     let theta = if tau == 0.0 {
       0.0
     } else {
-      invert_tau(|x| self.tau_from_theta(x.exp()) - tau, lo, hi, 1e-8)?.exp()
+      let residual = |x: f64| {
+        let (ln_tau, ln_complement) = Self::ln_tau_parts(x.exp());
+        if tau <= 0.5 {
+          ln_tau - tau.ln()
+        } else {
+          (-tau).ln_1p() - ln_complement
+        }
+      };
+      let (lo, hi) = LAMBDA_BRACKET;
+      invert_tau(residual, lo.ln(), hi.ln(), 1e-13)?.exp()
     };
     admitted(self, tau, theta)
   }
@@ -352,7 +391,7 @@ mod tests {
     let tau = c.tau_from_theta(target_lambda);
     let recovered = c.theta_from_tau(tau).unwrap();
     assert!(
-      approx(recovered, target_lambda, 1e-8),
+      approx(recovered, target_lambda, 1e-12),
       "expected {target_lambda}, got {recovered}"
     );
   }

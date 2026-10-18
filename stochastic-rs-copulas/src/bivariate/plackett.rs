@@ -12,7 +12,8 @@
 //! lower Fréchet bound, $\theta \to \infty$ the upper Fréchet bound. No tail
 //! dependence in either direction.
 //!
-//! Kendall's τ has no closed form: `τ = 1 − 4∬ ∂_u C ∂_v C du dv` (Nelsen 2006, Thm 5.1.3) is integrated numerically.
+//! Kendall's τ has no closed form: `τ = 1 − 4∬ ∂_u C ∂_v C du dv` (Nelsen 2006, Thm 5.1.3) is one integral once the
+//! inner one is taken in closed form, `τ(1/θ) = −τ(θ)`.
 //!
 //! Reference: Plackett, R.L. (1965), "A Class of Bivariate Distributions",
 //! *Journal of the American Statistical Association* 60(310), 516-522.
@@ -20,14 +21,11 @@
 //! Springer, Example 3.11; Theorem 5.1.3 (Kendall's τ from the partial derivatives).
 //! Reference: Johnson, M.E. (1987), "Multivariate Statistical Simulation", Wiley, the Plackett generator (the conditional inverse), DOI 10.1002/9781118150740.
 
-use std::sync::OnceLock;
-
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use stochastic_rs_distributions::RealExt;
 
-use super::two_parameter::kendall_tau_numeric;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
@@ -35,6 +33,7 @@ use crate::bivariate::conditional::copula_cdf;
 use crate::bivariate::conditional::copula_log_pdf;
 use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::sum_minus_one;
+use crate::bivariate::integral::rule;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -181,13 +180,49 @@ impl Plackett {
     num / d.powf(1.5)
   }
 
-  /// `∂_v C = (1 − (a − 2uθ)/√d)/2`, `a = 1 + (θ − 1)(u + v)`, `d = a² − 4uvθ(θ − 1)`, branch-free: the τ kernel for
-  /// `1e-6 ≤ θ ≤ 1e6`, whose nodes keep `d ≥ 4θu(1 − u) > 4e-9`; its error is absolute rounding, all the sum sees.
-  fn h_interior(theta: f64, u: f64, v: f64) -> f64 {
+  /// `1 − τ` at `θ ≥ 1`: `4∬ ∂_u C ∂_v C` in `s = u + v − 1`, `d = u − v`, closed in `d`, is `∫ (2L/a)(αF − θL²G) dL`,
+  /// `L = 1 − s`; Gauss–Legendre in `√L`, panels halved to the corner layer `√L ≈ θ^{−1/2}`, nil past `2⁻²²`.
+  fn tau_complement(theta: f64) -> f64 {
+    if theta == 1.0 {
+      return 1.0;
+    }
     let eta = theta - 1.0;
-    let a = 1.0 + eta * (u + v);
-    let d = a * a - 4.0 * u * v * theta * eta;
-    0.5 * (1.0 - (a - 2.0 * u * theta) / d.sqrt())
+    let integrand = |t: f64| {
+      let l = t * t;
+      let w = l * (2.0 - l);
+      let a = 1.0 + eta * w;
+      let alpha = 2.0 + (theta - 2.0) * w;
+      let (f, g) = arctan_ratios(l * l * theta * (eta / a));
+      4.0 * t * l / a * (alpha * f - theta * l * l * g)
+    };
+    let floor = (0.25 / theta.sqrt()).max(2.0_f64.powi(-22));
+    let (mut hi, mut sum) = (1.0, 0.0);
+    while hi > 0.0 {
+      let lo = if 0.5 * hi < floor { 0.0 } else { 0.5 * hi };
+      let (mid, half) = (0.5 * (hi + lo), 0.5 * (hi - lo));
+      sum += half
+        * rule()
+          .iter()
+          .map(|&(x, weight)| weight * integrand(mid + half * x))
+          .sum::<f64>();
+      hi = lo;
+    }
+    sum
+  }
+}
+
+/// `(F, G)`, `F(x) = atan(√x)/√x` and `G(x) = (1 − F(x))/x`, by `G`'s series `Σ (−x)ᵏ/(2k + 3)` below `x = 1/8`, where
+/// `1 − F` would cancel.
+fn arctan_ratios(x: f64) -> (f64, f64) {
+  if x < 0.125 {
+    let g = (0..18)
+      .rev()
+      .fold(0.0, |g, k| 1.0 / f64::from(2 * k + 3) - x * g);
+    (1.0 - x * g, g)
+  } else {
+    let r = x.sqrt();
+    let f = r.atan() / r;
+    (f, (1.0 - f) / x)
   }
 }
 
@@ -256,44 +291,35 @@ impl BivariateExt for Plackett {
     conditional_quantiles(y, v, Self::inverse(self.theta.unwrap()))
   }
 
-  /// `τ = 1 − 4∬ ∂_u C ∂_v C` (Nelsen 2006, Thm 5.1.3) by the 200-panel two-point Gauss–Legendre rule: `5e-9` for `θ ≤ 100`.
+  /// `1 − Plackett::tau_complement(θ)`, through `τ(1/θ) = −τ(θ)` below `θ = 1`.
   fn tau_from_theta(&self, theta: f64) -> f64 {
-    if (theta - 1.0).abs() < 1e-12 {
-      return 0.0;
-    }
-    // Inside the inversion's range the quadrature runs the branch-free form; `h` carries the ends outside it.
-    if (1e-6..=1e6).contains(&theta) {
-      kendall_tau_numeric(|u, v| Self::h_interior(theta, u, v), 200)
+    if theta >= 1.0 {
+      1.0 - Self::tau_complement(theta)
     } else {
-      kendall_tau_numeric(Self::h(theta), 200)
+      Self::tau_complement(1.0 / theta) - 1.0
     }
   }
 
-  /// Brent on `ln θ`, so the bracket `[1e-6, 1e6]` keeps a relative resolution; the rule runs `9e-4` low at its ends,
-  /// so a `|τ|` above `0.99666` is rejected although the family reaches `0.99753` there.
+  /// Brent on `ln θ ≥ 0` for `|τ|`, matching `ln(1 − |τ|)` so a `τ` near ±1 keeps its digits, `1/θ` for `τ < 0`; the
+  /// bracket ends at `θ = 1e34`, where `1 − τ` is under `2⁻⁵⁴`, and at the bound `1e-12`.
   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
-    static RANGE: OnceLock<(f64, f64)> = OnceLock::new();
-    let (lo, hi) = (1e-6_f64, 1e6_f64);
-    let (tau_lo, tau_hi) =
-      *RANGE.get_or_init(|| (self.tau_from_theta(lo), self.tau_from_theta(hi)));
-    if !(tau > tau_lo && tau < tau_hi) {
-      return Err(tau_out_of_range(
-        tau,
-        format!("{tau_lo:?} < tau < {tau_hi:?}"),
-      ));
+    if tau == 0.0 {
+      return admitted(self, tau, 1.0);
     }
-    let theta = if tau.abs() < 1e-12 {
-      1.0
-    } else {
-      let (a, b) = if tau > 0.0 {
-        (0.0, hi.ln())
-      } else {
-        (lo.ln(), 0.0)
-      };
-      // `ln θ` to `1e-8`: the rule holds `τ` to `5e-9` up to `θ = 100`.
-      invert_tau(|x| self.tau_from_theta(x.exp()) - tau, a, b, 1e-8)?.exp()
-    };
-    admitted(self, tau, theta)
+    let top: f64 = if tau > 0.0 { 1e34 } else { 1e12 };
+    let target = (-tau.abs()).ln_1p();
+    // NaN for `|τ| > 1` or a NaN `τ`, and `−∞` at `|τ| = 1`.
+    if target.is_nan() || target <= Self::tau_complement(top).ln() {
+      let lowest = Self::tau_complement(1e12) - 1.0;
+      return Err(tau_out_of_range(tau, format!("{lowest:?} < tau < 1.0")));
+    }
+    let x = invert_tau(
+      |x| Self::tau_complement(x.exp()).ln() - target,
+      0.0,
+      top.ln(),
+      1e-13,
+    )?;
+    admitted(self, tau, if tau > 0.0 { x.exp() } else { (-x).exp() })
   }
 
   /// Plackett has no tail dependence in either tail, for any $\theta > 0$.
@@ -385,7 +411,7 @@ mod tests {
     assert_eq!(td.upper, 0.0);
   }
 
-  /// Exact values from mpmath (`1 − 4∬ ∂_u C ∂_v C`); the 200-panel rule is good to `5e-9`.
+  /// Exact values from mpmath (`1 − 4∬ ∂_u C ∂_v C`).
   #[test]
   fn plackett_tau_matches_mpmath() {
     let c = Plackett::default();
@@ -397,7 +423,7 @@ mod tests {
       (100.0, 0.7871967240291546),
     ] {
       let tau = c.tau_from_theta(theta);
-      assert!((tau - want).abs() < 1e-7, "θ={theta}: {tau} vs {want}");
+      assert!((tau - want).abs() < 1e-15, "θ={theta}: {tau} vs {want}");
     }
     assert_eq!(c.tau_from_theta(1.0), 0.0);
   }

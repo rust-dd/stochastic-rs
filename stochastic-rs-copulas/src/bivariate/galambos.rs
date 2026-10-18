@@ -23,7 +23,7 @@
 //! Concepts", Chapman & Hall, §5.4.
 //! Reference: Gudendorf, G. & Segers, J. (2010), "Extreme-value copulas", in Copula Theory and Its Applications, Lecture Notes in Statistics, Springer, arXiv:0911.1015, §4 (Kendall's τ from the Pickands function).
 
-use std::sync::OnceLock;
+use std::f64::consts::LN_2;
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
@@ -40,12 +40,17 @@ use crate::bivariate::conditional::ln_log_ratio;
 use crate::bivariate::conditional::ln_one_minus_exp;
 use crate::bivariate::conditional::ln_ratio;
 use crate::bivariate::conditional::numerical_quantiles;
+use crate::bivariate::conditional::softplus;
+use crate::bivariate::integral::ln_integral_from_peak;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
+
+/// The ends of the τ inversion's bracket in `θ`: below `1e-4`, `τ < e^{−6900}`, and past `1e17`, `1 − τ < 2⁻⁵⁴`.
+const THETA_BRACKET: (f64, f64) = (1e-4, 1e17);
 
 #[derive(Debug, Clone, Default)]
 pub struct Galambos {
@@ -161,6 +166,42 @@ impl Galambos {
     let s = t.powf(-theta) + (1.0 - t).powf(-theta);
     1.0 - s.powf(-1.0 / theta)
   }
+
+  /// `(ln τ, ln(1 − τ))` from `τ = ∫ t(1 − t)A''/A dt` and, by parts, `1 − τ = ∫ (A − tA')(A + (1 − t)A')/A² dt`, over
+  /// the logit `ℓ` of `t ∈ [1/2, 1]` in terms of `ρ = e^{−θℓ}`; the smaller is integrated, the other follows.
+  fn ln_tau_parts(theta: f64) -> (f64, f64) {
+    // `ln A`, `A = 1 − (1 − t)(1 + ρ)^{−1/θ}`, from `ln(1 − t) = −softplus(ℓ)` and `sp = ln(1 + ρ)`.
+    let ln_a = |ln_one_minus_t: f64, sp: f64| ln_one_minus_exp(ln_one_minus_t - sp / theta);
+    if theta <= 1.0 {
+      // `τ = 2∫ (1 + θ)ρ(1 + ρ)^{−1/θ−2}(1 − t)/A dℓ`
+      let ln_tau = LN_2
+        + ln_integral_from_peak(
+          |l: f64| {
+            let w = theta * l;
+            let sp = softplus(-w);
+            let ln_one_minus_t = -softplus(l);
+            theta.ln_1p() - w - (1.0 / theta + 2.0) * sp + ln_one_minus_t - ln_a(ln_one_minus_t, sp)
+          },
+          0.5,
+        );
+      (ln_tau, ln_one_minus_exp(ln_tau))
+    } else {
+      // `1 − τ = (2/θ)∫ t(1 − t)(1 − (1 + ρ)^{−k})(1 − (1 + 1/ρ)^{−k})/A² dw`, `w = θℓ`, `k = 1 + 1/θ`
+      let k = 1.0 + 1.0 / theta;
+      let ln_complement = LN_2 - theta.ln()
+        + ln_integral_from_peak(
+          |w: f64| {
+            let l = w / theta;
+            let sp = softplus(-w);
+            let ln_one_minus_t = -softplus(l);
+            let tangents = (-(-k * sp).exp_m1()).ln() + (-(-k * (w + sp)).exp_m1()).ln();
+            -softplus(-l) + ln_one_minus_t + tangents - 2.0 * ln_a(ln_one_minus_t, sp)
+          },
+          0.5,
+        );
+      (ln_one_minus_exp(ln_complement), ln_complement)
+    }
+  }
 }
 
 impl BivariateExt for Galambos {
@@ -240,42 +281,38 @@ impl BivariateExt for Galambos {
     numerical_quantiles(y, v, self.family(), Self::ln_h(theta))
   }
 
-  /// The extreme-value identity `τ = ∫₀¹ t(1 − t) A''(t)/A(t) dt` (Gudendorf & Segers 2010, §4) by 512-panel Simpson
-  /// with a central-difference `A''` of step `1e-4`; 0 for `θ ≤ 1e-9`.
+  /// Gudendorf & Segers' (2010, §4) `τ = ∫₀¹ t(1 − t)/A dA'` through `Galambos::ln_tau_parts`; 0 below `θ = 1e-4`.
   fn tau_from_theta(&self, theta: f64) -> f64 {
-    if theta <= 1e-9 {
+    if theta < THETA_BRACKET.0 {
       return 0.0;
     }
-    let n: usize = 512;
-    let h_grid = 1.0 / n as f64;
-    let h_fd = 1e-4_f64;
-    let mut acc = 0.0_f64;
-    for k in 1..n {
-      let t = (k as f64) * h_grid;
-      let a = Self::pickands(theta, t);
-      let a_pp = (Self::pickands(theta, (t + h_fd).min(1.0 - 1e-12)) - 2.0 * a
-        + Self::pickands(theta, (t - h_fd).max(1e-12)))
-        / (h_fd * h_fd);
-      let w = if k % 2 == 0 { 2.0 } else { 4.0 };
-      acc += w * t * (1.0 - t) * a_pp / a.max(1e-15);
+    let (ln_tau, ln_complement) = Self::ln_tau_parts(theta);
+    if ln_tau < ln_complement {
+      ln_tau.exp()
+    } else {
+      -ln_complement.exp_m1()
     }
-    (h_grid / 3.0) * acc
   }
 
-  /// Brent on `ln θ` over `[1e-8, 65]`: the rule holds `τ` to `2.5e-7` up to `θ = 65` and loses it beyond (`5.7e-5` at
-  /// `θ = 100`), so `0 <= τ < τ(65) ≈ 0.98478` is the reachable range, `τ = 0` at `θ = 0`; `θ` to a relative `1e-8`.
+  /// Brent on `ln θ` over `THETA_BRACKET`, matching `ln τ` up to `τ = 1/2` and `ln(1 − τ)` past it, so every `τ` in
+  /// `[0, 1)`, subnormal or a few ulps under 1, inverts to its relative digits.
   fn theta_from_tau(&self, tau: f64) -> Result<f64, CopulaError> {
-    static CAP: OnceLock<f64> = OnceLock::new();
-    let (lo, hi) = (1e-8_f64.ln(), 65.0_f64.ln());
-    let cap = *CAP.get_or_init(|| self.tau_from_theta(hi.exp()));
-    if !(tau >= 0.0 && tau < cap) {
-      return Err(tau_out_of_range(tau, format!("0.0 <= tau < {cap:?}")));
+    if !(0.0..1.0).contains(&tau) {
+      return Err(tau_out_of_range(tau, "0.0 <= tau < 1.0".to_string()));
     }
-    // `τ(1e-8)` is 0 to the last bit, so the bracket changes sign for every positive `τ`.
     let theta = if tau == 0.0 {
       0.0
     } else {
-      invert_tau(|x| self.tau_from_theta(x.exp()) - tau, lo, hi, 1e-8)?.exp()
+      let residual = |x: f64| {
+        let (ln_tau, ln_complement) = Self::ln_tau_parts(x.exp());
+        if tau <= 0.5 {
+          ln_tau - tau.ln()
+        } else {
+          (-tau).ln_1p() - ln_complement
+        }
+      };
+      let (lo, hi) = THETA_BRACKET;
+      invert_tau(residual, lo.ln(), hi.ln(), 1e-13)?.exp()
     };
     admitted(self, tau, theta)
   }
@@ -366,7 +403,7 @@ mod tests {
     let tau = c.tau_from_theta(target_theta);
     let recovered = c.theta_from_tau(tau).unwrap();
     assert!(
-      approx(recovered, target_theta, 1e-8),
+      approx(recovered, target_theta, 1e-12),
       "expected {target_theta}, got {recovered}"
     );
   }
