@@ -32,9 +32,9 @@ use stochastic_rs_distributions::special::norm_cdf;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
-use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_cdf;
+use crate::bivariate::conditional::copula_density;
 use crate::bivariate::conditional::copula_pdf;
-use crate::bivariate::conditional::in_unit;
 use crate::bivariate::conditional::normal_quantile;
 use crate::bivariate::conditional::sum_minus_one;
 use crate::error::CopulaError;
@@ -86,21 +86,9 @@ impl GaussianCopula {
   }
 }
 
-/// `C_ρ(u, v) = Φ₂(Φ⁻¹(u), Φ⁻¹(v); ρ)` on the closed square, the bivariate cdf of both Gaussian copulas: 0 on a zero
-/// coordinate, the other on a unit one, the Fréchet bounds holding the integral's rounding; NaN off the square.
+/// `C_ρ(u, v) = Φ₂(Φ⁻¹(u), Φ⁻¹(v); ρ)` on the open square, the bivariate cdf of both Gaussian copulas, the Fréchet bounds
+/// holding the integral's rounding.
 pub(crate) fn gaussian_copula_cdf(u: f64, v: f64, rho: f64) -> f64 {
-  if !(in_unit(u) && in_unit(v)) {
-    return f64::NAN;
-  }
-  if u == 0.0 || v == 0.0 {
-    return 0.0;
-  }
-  if u == 1.0 {
-    return v;
-  }
-  if v == 1.0 {
-    return u;
-  }
   if rho == 0.0 {
     return u * v;
   }
@@ -137,17 +125,6 @@ impl GaussianCopula {
     -r * d * d / (2.0 * one_minus_rho2) + r * (x * x + y * y) / (2.0 * (1.0 + r))
       - 0.5 * one_minus_rho2.ln()
   }
-
-  fn edge_pdf(rho: f64, u: f64, v: f64) -> f64 {
-    if u <= 0.0 || u >= 1.0 || v <= 0.0 || v >= 1.0 {
-      return 0.0;
-    }
-    let one_minus_rho2 = 1.0 - rho * rho;
-    let xx = ndtri(u);
-    let yy = ndtri(v);
-    let quad = rho * rho * (xx * xx + yy * yy) - 2.0 * rho * xx * yy;
-    (-quad / (2.0 * one_minus_rho2)).exp() / one_minus_rho2.sqrt()
-  }
 }
 
 impl BivariateExt for GaussianCopula {
@@ -175,48 +152,35 @@ impl BivariateExt for GaussianCopula {
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
-    Ok(copula_pdf(
-      x,
-      |u, v| Self::ln_density(rho, u, v),
-      |u, v| Self::edge_pdf(rho, u, v),
-    ))
+    copula_pdf(x, |u, v| Self::ln_density(rho, u, v))
   }
 
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
-    Ok(copula_log_pdf(
-      x,
-      |u, v| Self::ln_density(rho, u, v),
-      |u, v| Self::edge_pdf(rho, u, v),
-    ))
+    copula_density(x, |u, v| Self::ln_density(rho, u, v))
   }
 
-  /// `gaussian_copula_cdf` of each row.
+  /// `gaussian_copula_cdf` on the open square.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
-    Ok(
-      x.rows()
-        .into_iter()
-        .map(|r| gaussian_copula_cdf(r[0], r[1], rho))
-        .collect(),
-    )
+    copula_cdf(x, |u, v| gaussian_copula_cdf(u, v, rho))
   }
 
   /// $\partial_v C(u,v) = \Phi\big((x - \rho y)/\sqrt{1-\rho^2}\big)$, $x, y = \Phi^{-1}(u), \Phi^{-1}(v)$, with `v`
-  /// clamped `1e-12` inside `(0, 1)` for the edge limits, whose sign follows `ρ`; NaN for `v` outside `[0, 1]`.
+  /// clamped `1e-12` inside `(0, 1)` for the edge limits, whose sign follows `ρ`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
     let sqrt_one_minus_rho2 = (1.0 - rho * rho).sqrt();
-    Ok(conditional_cdf(x, |u, v| {
+    conditional_cdf(x, |u, v| {
       let v = v.clamp(BOUNDARY_EPS, 1.0 - BOUNDARY_EPS);
       norm_cdf((ndtri(u) - rho * ndtri(v)) / sqrt_one_minus_rho2)
-    }))
+    })
   }
 
-  /// `GaussianCopula::inverse` of [`GaussianCopula::partial_derivative`] in `u`; NaN for `y` or `v` outside `[0, 1]`.
+  /// `GaussianCopula::inverse` of [`GaussianCopula::partial_derivative`] in `u`.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,

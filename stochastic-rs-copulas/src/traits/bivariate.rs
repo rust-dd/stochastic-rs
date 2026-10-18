@@ -18,7 +18,7 @@ use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::ABSOLUTE_TOLERANCE;
 use crate::bivariate::conditional::check_lengths;
 use crate::bivariate::conditional::check_pairs;
-use crate::bivariate::conditional::in_unit;
+use crate::bivariate::conditional::check_unit;
 use crate::correlation::kendall_tau_b;
 use crate::error::CopulaError;
 use crate::optim::zero;
@@ -31,6 +31,7 @@ pub struct TailDependence<T> {
   pub upper: T,
 }
 
+/// Batch methods answer `MarginalOutOfRange` for a value outside `[0, 1]` or NaN; `pdf`/`log_pdf` are NaN on the boundary.
 pub trait BivariateExt {
   /// Which family this copula is; the label its error messages carry.
   fn family(&self) -> BivariateFamily;
@@ -147,9 +148,7 @@ pub trait BivariateExt {
   /// Kolmogorov–Smirnov uniformity test of one margin at the bound `1.627/√n` (nominally 1 %), so a valid sample fails it
   /// by chance: a diagnostic, which `fit` does not run.
   fn check_marginal(&self, u: ArrayView1<f64>) -> Result<(), CopulaError> {
-    if !u.iter().all(|x| (0.0..=1.0).contains(x)) {
-      return Err(CopulaError::MarginalOutOfRange);
-    }
+    check_unit(u)?;
 
     let mut empirical_cdf = u.to_vec();
     empirical_cdf.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Greater));
@@ -183,7 +182,7 @@ pub trait BivariateExt {
   }
 
   /// `percent_point`'s default, callable from an override: Brent's `zero` in `u` of `partial_derivative` held in
-  /// `[0, 1]`, on `[0, 1]`, saturating at its ends; NaN for `y`, `v` outside `[0, 1]`, `Err` for a NaN or error.
+  /// `[0, 1]`, on `[0, 1]`, saturating at its ends; `Err` for a NaN `partial_derivative` or its error.
   fn percent_point_numerical(
     &self,
     y: ArrayView1<f64>,
@@ -191,6 +190,7 @@ pub trait BivariateExt {
   ) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     check_lengths(y, v)?;
+    check_unit(y.iter().chain(v))?;
     let n = y.len();
     let mut results = Array1::zeros(n);
     let lo = 0.0;
@@ -198,10 +198,6 @@ pub trait BivariateExt {
     for i in 0..n {
       let y_i = y[i];
       let v_i = v[i];
-      if !(in_unit(y_i) && in_unit(v_i)) {
-        results[i] = f64::NAN;
-        continue;
-      }
       if y_i == 0.0 {
         results[i] = lo;
         continue;

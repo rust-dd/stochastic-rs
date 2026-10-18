@@ -8,11 +8,12 @@
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
-use ndarray::Axis;
 
 use super::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::copula_cdf;
+use crate::bivariate::conditional::copula_density;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -67,28 +68,19 @@ impl BivariateExt for Independence {
   }
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    let in_range = x.map_axis(Axis(1), |row| {
-      row.iter().all(|&val| (0.0..=1.0).contains(&val))
-    });
-
-    let out = in_range.map(|&val| if val { 1.0 } else { 0.0 });
-
-    Ok(out)
+    copula_density(x, |_, _| 1.0)
   }
 
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    let u = x.column(0);
-    let v = x.column(1);
-
-    Ok(&u * &v)
+    copula_cdf(x, |u, v| u * v)
   }
 
-  /// `∂_v (uv) = u`, NaN for `v` outside `[0, 1]`.
+  /// `∂_v (uv) = u`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    Ok(conditional_cdf(x, |u, _| u))
+    conditional_cdf(x, |u, _| u)
   }
 
-  /// The identity, NaN for `y` or `v` outside `[0, 1]`.
+  /// The identity.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,

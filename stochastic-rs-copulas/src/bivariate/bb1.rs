@@ -26,7 +26,7 @@ use stochastic_rs_distributions::RealExt;
 use super::BivariateFamily;
 use super::conditional::conditional_cdf;
 use super::conditional::copula_cdf;
-use super::conditional::copula_log_pdf;
+use super::conditional::copula_density;
 use super::conditional::copula_pdf;
 use super::conditional::expm1_over;
 use super::conditional::ln_1p_over;
@@ -38,8 +38,8 @@ use super::conditional::ln_one_minus_pow_ratio;
 use super::conditional::ln_ratio;
 use super::conditional::numerical_quantiles;
 use super::conditional::softplus;
-use super::two_parameter::clip;
 use super::two_parameter::fit_two_parameters;
+use crate::bivariate::conditional::check_open;
 use crate::bivariate::conditional::check_pairs;
 use crate::correlation::kendall_tau_b;
 use crate::error::CopulaError;
@@ -276,19 +276,6 @@ impl Bb1 {
       + theta.ln()
       + (delta + 1.0 / theta + (delta - 1.0) * tail).ln()
   }
-
-  fn edge_log_density(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
-    let (ln_x, ln_y, ln_s, ln_1pw) = Self::expanded_logs(u, v, theta, delta);
-    let ln_w = ln_s / delta;
-    let bracket = if ln_w > 0.0 {
-      ln_w + (theta * delta + 1.0 + theta * (delta - 1.0) * (-ln_w).exp()).ln()
-    } else {
-      (theta * (delta - 1.0) + (theta * delta + 1.0) * ln_w.exp()).ln()
-    };
-    (-1.0 / theta - 2.0) * ln_1pw + (1.0 / delta - 2.0) * ln_s + (delta - 1.0) * (ln_x + ln_y)
-      - (theta + 1.0) * (u.ln() + v.ln())
-      + bracket
-  }
 }
 
 impl Bb1 {
@@ -375,36 +362,26 @@ impl BivariateExt for Bb1 {
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    Ok(copula_pdf(
-      x,
-      |u, v| Self::log_density_scalar(u, v, theta, delta),
-      |u, v| Self::edge_log_density(clip(u), clip(v), theta, delta).exp(),
-    ))
+    copula_pdf(x, |u, v| Self::log_density_scalar(u, v, theta, delta))
   }
 
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    Ok(copula_log_pdf(
-      x,
-      |u, v| Self::log_density_scalar(u, v, theta, delta),
-      |u, v| Self::edge_log_density(clip(u), clip(v), theta, delta).exp(),
-    ))
+    copula_density(x, |u, v| Self::log_density_scalar(u, v, theta, delta))
   }
 
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    Ok(copula_cdf(x, |u, v| Self::cdf_scalar(u, v, theta, delta)))
+    copula_cdf(x, |u, v| Self::cdf_scalar(u, v, theta, delta))
   }
 
-  /// `∂_v C(u, v)`, NaN for `v` outside `[0, 1]`.
+  /// `∂_v C(u, v)`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    Ok(conditional_cdf(x, |u, v| {
-      Self::h_scalar(u, v, theta, delta)
-    }))
+    conditional_cdf(x, |u, v| Self::h_scalar(u, v, theta, delta))
   }
 
-  /// `numerical_quantiles` of `Bb1::ln_h`; NaN for `y` or `v` outside `[0, 1]`.
+  /// `numerical_quantiles` of `Bb1::ln_h`.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
@@ -430,10 +407,11 @@ impl BivariateExt for Bb1 {
     admitted(self, tau, 2.0 / (self.delta * (1.0 - tau)) - 2.0)
   }
 
-  /// Maximum-likelihood fit of `(θ, δ)` on a two-column sample in `[0, 1]`, started from the Kendall inversion at the
-  /// current `δ`.
+  /// Maximum-likelihood fit of `(θ, δ)` on pseudo-observations inside `(0, 1)`, a 0 or 1 an `InvalidStructure`, started
+  /// from the Kendall inversion at the current `δ`.
   fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     check_pairs(x)?;
+    check_open(x, "the BB1 likelihood fit")?;
     self.fit_parameters(x.column(0), x.column(1))
   }
 

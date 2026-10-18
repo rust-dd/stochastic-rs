@@ -54,8 +54,8 @@
 //!
 //! ### The common data requirement
 //!
-//! `fit` checks only that its input is two columns in `[0, 1]`, not that they are uniform: transform raw data through a
-//! marginal cdf first ([`crate::empirical`], [`crate::univariate::gaussian::GaussianUnivariate`]).
+//! `fit` checks only that its input is two columns in `[0, 1]` (inside `(0, 1)` for the BB1 and BB7 likelihoods), not that
+//! they are uniform: transform raw data through a marginal cdf first ([`crate::empirical`], [`crate::univariate::gaussian::GaussianUnivariate`]).
 //!
 //! ### The `∂_v` convention every `partial_derivative` must follow
 //!

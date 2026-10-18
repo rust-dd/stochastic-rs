@@ -27,7 +27,7 @@ use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
-use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_density;
 use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::ln_log_ratio;
@@ -119,23 +119,6 @@ impl HuslerReiss {
       )
   }
 
-  fn edge_pdf(lambda: f64, u: f64, v: f64) -> f64 {
-    if u <= 0.0 || u >= 1.0 || v <= 0.0 || v >= 1.0 {
-      return 0.0;
-    }
-    if lambda == 0.0 {
-      return 1.0;
-    }
-    let xx = -u.ln();
-    let yy = -v.ln();
-    let half_log = 0.5 * (xx / yy).ln();
-    let alpha = 1.0 / lambda + lambda * half_log;
-    let beta = 1.0 / lambda - lambda * half_log;
-    let cuv = (-xx * norm_cdf(alpha) - yy * norm_cdf(beta)).exp();
-    let extra = 0.5 * lambda * norm_pdf(alpha) / yy;
-    cuv / (u * v) * (norm_cdf(alpha) * norm_cdf(beta) + extra)
-  }
-
   /// Pickands dependence function.
   pub fn pickands(lambda: f64, t: f64) -> f64 {
     if t <= 0.0 {
@@ -212,21 +195,13 @@ impl BivariateExt for HuslerReiss {
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
-    Ok(copula_pdf(
-      x,
-      |u, v| Self::ln_density(lambda, u, v),
-      |u, v| Self::edge_pdf(lambda, u, v),
-    ))
+    copula_pdf(x, |u, v| Self::ln_density(lambda, u, v))
   }
 
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
-    Ok(copula_log_pdf(
-      x,
-      |u, v| Self::ln_density(lambda, u, v),
-      |u, v| Self::edge_pdf(lambda, u, v),
-    ))
+    copula_density(x, |u, v| Self::ln_density(lambda, u, v))
   }
 
   /// `C = e^{−xΦ(α) − yΦ(β)}` from `HuslerReiss::scores`; `uv` at `λ = 0`.
@@ -234,26 +209,26 @@ impl BivariateExt for HuslerReiss {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
     if lambda == 0.0 {
-      return Ok(copula_cdf(x, |u, v| u * v));
+      return copula_cdf(x, |u, v| u * v);
     }
-    Ok(copula_cdf(x, |u, v| {
+    copula_cdf(x, |u, v| {
       let (x, y, alpha, beta) = Self::scores(lambda, u, v);
       (-x * norm_cdf(alpha) - y * norm_cdf(beta)).exp()
-    }))
+    })
   }
 
-  /// `exp` of `HuslerReiss::ln_h`, `u` at `λ = 0`; NaN for `v` outside `[0, 1]`.
+  /// `exp` of `HuslerReiss::ln_h`, `u` at `λ = 0`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
     if lambda == 0.0 {
-      return Ok(conditional_cdf(x, |u, _| u));
+      return conditional_cdf(x, |u, _| u);
     }
     let ln_h = Self::ln_h(lambda);
-    Ok(conditional_cdf(x, |u, v| ln_h(u, v).exp()))
+    conditional_cdf(x, |u, v| ln_h(u, v).exp())
   }
 
-  /// `numerical_quantiles` of `HuslerReiss::ln_h`, `y` at `λ = 0`; NaN for `y` or `v` outside `[0, 1]`.
+  /// `numerical_quantiles` of `HuslerReiss::ln_h`, `y` at `λ = 0`.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,

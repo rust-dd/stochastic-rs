@@ -24,6 +24,7 @@ use super::genz::prioritize;
 use super::qmc::sobol_points;
 use crate::bivariate::gaussian::gaussian_copula_cdf;
 use crate::error::CopulaError;
+use crate::multivariate::on_open_cube;
 use crate::traits::MultivariateExt;
 
 /// The Gaussian copula; `default()` is the unfitted copula that `fit` starts from.
@@ -197,11 +198,11 @@ impl MultivariateExt for GaussianMultivariate {
       let log_c = -0.5 * (log_det + quad);
       out[i] = log_c.exp();
     }
-    Ok(out)
+    Ok(on_open_cube(x, out))
   }
 
-  /// `Φ_R(Φ⁻¹(u))` on the closed cube: a zero coordinate gives 0 and a unit one drops out; two left are Owen's T closed
-  /// form, more are Genz's separation-of-variables integral over the Sobol points in that query's prioritized order.
+  /// `Φ_R(Φ⁻¹(u))` on the closed cube: a zero coordinate gives 0 and a unit one drops out; two left are the bivariate
+  /// copula's cdf, more are Genz's separation-of-variables integral over the Sobol points in that query's prioritized order.
   fn cdf(&self, uv: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(uv)?;
     let corr = self.fitted()?;

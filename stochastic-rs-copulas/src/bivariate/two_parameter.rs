@@ -1,16 +1,10 @@
 //! Shared plumbing of the two-parameter Archimedean families BB1 and BB7:
-//! the numerical Kendall's τ, the maximum-likelihood fit on unconstrained
-//! coordinates, and the marginal clipping used by every evaluation.
+//! the numerical Kendall's τ and the maximum-likelihood fit on unconstrained
+//! coordinates.
 
 use ndarray::ArrayView1;
 
 use crate::optim::nelder_mead;
-
-/// Clips a pseudo-observation into the open unit interval so the powers
-/// and logarithms of the copula formulas stay finite.
-pub(crate) fn clip(u: f64) -> f64 {
-  u.clamp(1e-12, 1.0 - 1e-12)
-}
 
 /// Kendall's τ from the h-function alone,
 /// `τ = 1 − 4 ∫∫ ∂_u C(u, v) ∂_v C(u, v) du dv` (Nelsen 2006, §5.1.1: the
@@ -40,8 +34,8 @@ pub(crate) fn kendall_tau_numeric(h: impl Fn(f64, f64) -> f64, panels: usize) ->
   1.0 - 4.0 * acc * (0.5 * width).powi(2)
 }
 
-/// Maximum-likelihood `(θ, δ)` on the pseudo-observation columns `u`, `v`: Nelder–Mead over `lower + exp(c)`, so the
-/// search is unconstrained, on the negative log-likelihood of `log_density`.
+/// Maximum-likelihood `(θ, δ)` on the pseudo-observation columns `u`, `v` inside `(0, 1)`: Nelder–Mead over
+/// `lower + exp(c)`, so the search is unconstrained, on the negative log-likelihood of `log_density`.
 pub(crate) fn fit_two_parameters(
   u: ArrayView1<f64>,
   v: ArrayView1<f64>,
@@ -58,7 +52,7 @@ pub(crate) fn fit_two_parameters(
     let nll: f64 = u
       .iter()
       .zip(&v)
-      .map(|(&a, &b)| -log_density(clip(a), clip(b), theta, delta))
+      .map(|(&a, &b)| -log_density(a, b, theta, delta))
       .sum();
     if nll.is_finite() { nll } else { f64::INFINITY }
   };

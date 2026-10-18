@@ -25,7 +25,7 @@ use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
-use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_density;
 use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::ln_one_minus_pow;
@@ -108,19 +108,6 @@ impl Joe {
     let s = (theta * top + ell).exp();
     (theta - 1.0) * gap - top + (1.0 / theta - 2.0) * ell + (theta - 1.0 + s).ln()
   }
-
-  fn edge_pdf(theta: f64, u: f64, v: f64) -> f64 {
-    if u <= 0.0 || u >= 1.0 || v <= 0.0 || v >= 1.0 {
-      return 0.0;
-    }
-    let a = (1.0 - u).powf(theta);
-    let b = (1.0 - v).powf(theta);
-    let s = a + b - a * b;
-    (1.0 - u).powf(theta - 1.0)
-      * (1.0 - v).powf(theta - 1.0)
-      * s.powf(1.0 / theta - 2.0)
-      * (s + theta - 1.0)
-  }
 }
 
 impl BivariateExt for Joe {
@@ -156,21 +143,13 @@ impl BivariateExt for Joe {
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(copula_pdf(
-      x,
-      |u, v| Self::ln_density(theta, u, v),
-      |u, v| Self::edge_pdf(theta, u, v),
-    ))
+    copula_pdf(x, |u, v| Self::ln_density(theta, u, v))
   }
 
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(copula_log_pdf(
-      x,
-      |u, v| Self::ln_density(theta, u, v),
-      |u, v| Self::edge_pdf(theta, u, v),
-    ))
+    copula_density(x, |u, v| Self::ln_density(theta, u, v))
   }
 
   /// `C = 1 − S^{1/θ} = −expm1(ln S/θ)`, `ln S` from `Joe::ln_s`.
@@ -178,25 +157,23 @@ impl BivariateExt for Joe {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     if theta == 1.0 {
-      return Ok(copula_cdf(x, |u, v| u * v));
+      return copula_cdf(x, |u, v| u * v);
     }
-    Ok(copula_cdf(x, |u, v| {
-      -(Self::ln_s(theta, u, v) / theta).exp_m1()
-    }))
+    copula_cdf(x, |u, v| -(Self::ln_s(theta, u, v) / theta).exp_m1())
   }
 
-  /// `exp` of `Joe::ln_h`, `u` at `θ = 1`; NaN for `v` outside `[0, 1]`.
+  /// `exp` of `Joe::ln_h`, `u` at `θ = 1`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     if theta == 1.0 {
-      return Ok(conditional_cdf(x, |u, _| u));
+      return conditional_cdf(x, |u, _| u);
     }
     let ln_h = Self::ln_h(theta);
-    Ok(conditional_cdf(x, |u, v| ln_h(u, v).exp()))
+    conditional_cdf(x, |u, v| ln_h(u, v).exp())
   }
 
-  /// `numerical_quantiles` of `Joe::ln_h`, `y` at `θ = 1`; NaN for `y` or `v` outside `[0, 1]`.
+  /// `numerical_quantiles` of `Joe::ln_h`, `y` at `θ = 1`.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,

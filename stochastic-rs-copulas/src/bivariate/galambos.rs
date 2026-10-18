@@ -33,7 +33,7 @@ use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
-use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_density;
 use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::ln_log_ratio;
@@ -142,21 +142,6 @@ impl Galambos {
     small * (-ell / theta).exp() + ln_s + ln_add_exp((a1_over_s * a2).ln(), ln_tail)
   }
 
-  fn edge_pdf(theta: f64, u: f64, v: f64) -> f64 {
-    if u <= 0.0 || u >= 1.0 || v <= 0.0 || v >= 1.0 {
-      return 0.0;
-    }
-    let xx = -u.ln();
-    let yy = -v.ln();
-    let big_t = (xx.powf(-theta) + yy.powf(-theta)).powf(-1.0 / theta);
-    let cuv = u * v * big_t.exp();
-    let r_x = (big_t / xx).powf(theta + 1.0);
-    let r_y = (big_t / yy).powf(theta + 1.0);
-    let extra =
-      (theta + 1.0) * big_t.powf(2.0 * theta + 1.0) / (xx.powf(theta + 1.0) * yy.powf(theta + 1.0));
-    cuv / (u * v) * ((r_x - 1.0) * (r_y - 1.0) + extra)
-  }
-
   /// Pickands dependence function
   /// $A(t) = 1 - (t^{-\theta} + (1-t)^{-\theta})^{-1/\theta}$.
   pub fn pickands(theta: f64, t: f64) -> f64 {
@@ -229,45 +214,37 @@ impl BivariateExt for Galambos {
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(copula_pdf(
-      x,
-      |u, v| Self::ln_density(theta, u, v),
-      |u, v| Self::edge_pdf(theta, u, v),
-    ))
+    copula_pdf(x, |u, v| Self::ln_density(theta, u, v))
   }
 
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(copula_log_pdf(
-      x,
-      |u, v| Self::ln_density(theta, u, v),
-      |u, v| Self::edge_pdf(theta, u, v),
-    ))
+    copula_density(x, |u, v| Self::ln_density(theta, u, v))
   }
 
   /// `C = uv e^T = min(u, v) e^{m expm1(−ℓ/θ)}` from `Galambos::parts`, as `e^{−M} = min(u, v)`.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(copula_cdf(x, |u, v| {
+    copula_cdf(x, |u, v| {
       let (small, _, _, ell) = Self::parts(theta, u, v);
       u.min(v) * (small * (-ell / theta).exp_m1()).exp()
-    }))
+    })
   }
 
-  /// `exp` of `Galambos::ln_h`, `u` at `θ = 0`; NaN for `v` outside `[0, 1]`.
+  /// `exp` of `Galambos::ln_h`, `u` at `θ = 0`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     if theta == 0.0 {
-      return Ok(conditional_cdf(x, |u, _| u));
+      return conditional_cdf(x, |u, _| u);
     }
     let ln_h = Self::ln_h(theta);
-    Ok(conditional_cdf(x, |u, v| ln_h(u, v).exp()))
+    conditional_cdf(x, |u, v| ln_h(u, v).exp())
   }
 
-  /// `numerical_quantiles` of `Galambos::ln_h`, `y` at `θ = 0`; NaN for `y` or `v` outside `[0, 1]`.
+  /// `numerical_quantiles` of `Galambos::ln_h`, `y` at `θ = 0`.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,

@@ -23,6 +23,8 @@ use ndarray::ArrayView2;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::copula_cdf;
+use crate::bivariate::conditional::copula_density;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -93,43 +95,25 @@ impl BivariateExt for Fgm {
   /// Density $c(u,v) = 1 + \theta(1 - 2u)(1 - 2v)$.
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
     let theta = self.theta.unwrap();
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      out[i] = 1.0 + theta * (1.0 - 2.0 * u) * (1.0 - 2.0 * v);
-    }
-    Ok(out)
+    copula_density(x, |u, v| 1.0 + theta * (1.0 - 2.0 * u) * (1.0 - 2.0 * v))
   }
 
   /// CDF $C(u,v) = uv + \theta u(1-u) v(1-v)$.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
     let theta = self.theta.unwrap();
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      out[i] = u * v + theta * u * (1.0 - u) * v * (1.0 - v);
-    }
-    Ok(out)
+    copula_cdf(x, |u, v| u * v + theta * u * (1.0 - u) * v * (1.0 - v))
   }
 
-  /// $\partial_v C(u,v) = u + \theta u (1-u)(1 - 2v)$, NaN for `v` outside `[0, 1]`.
+  /// $\partial_v C(u,v) = u + \theta u (1-u)(1 - 2v)$.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(conditional_cdf(x, |u, v| {
-      u + theta * u * (1.0 - u) * (1.0 - 2.0 * v)
-    }))
+    conditional_cdf(x, |u, v| u + theta * u * (1.0 - u) * (1.0 - 2.0 * v))
   }
 
-  /// `Fgm::inverse`'s root; NaN for `y` or `v` outside `[0, 1]`.
+  /// `Fgm::inverse`'s root.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,

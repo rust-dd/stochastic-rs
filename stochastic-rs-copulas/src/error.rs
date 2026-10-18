@@ -23,8 +23,8 @@ pub enum CopulaError {
   MarginalOutOfRange,
   /// A column fails the uniformity test of [`BivariateExt::check_marginal`](crate::traits::BivariateExt::check_marginal), which no fit runs.
   MarginalNotUniform,
-  /// Not well-formed: a correlation matrix, a vine or NAC tree, fewer than two dimensions, or data with no variation to
-  /// estimate from (a constant or non-finite margin, an undefined Kendall's τ).
+  /// Not well-formed: a correlation matrix, a vine or NAC tree, fewer than two dimensions, data with no variation to estimate
+  /// from (a constant or non-finite margin, an undefined Kendall's τ), or a 0 or 1 where a fit evaluates the density.
   InvalidStructure(String),
   /// The family has no such operation (an Archimedean generator, an unimplemented fit).
   Unsupported(String),

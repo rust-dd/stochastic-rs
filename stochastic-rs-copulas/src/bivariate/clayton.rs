@@ -12,11 +12,12 @@ use ndarray::Zip;
 
 use super::BivariateFamily;
 use crate::bivariate::conditional::check_lengths;
+use crate::bivariate::conditional::check_unit;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::confine;
 use crate::bivariate::conditional::copula_cdf;
-use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_density;
 use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::expm1_over;
 use crate::bivariate::conditional::ln_one_minus_exp;
@@ -109,15 +110,6 @@ impl Clayton {
     }
   }
 
-  fn edge_pdf(theta: f64, u: f64, v: f64) -> f64 {
-    if theta == 0.0 {
-      return 1.0;
-    }
-    let a = (theta + 1.0) * (u * v).powf(-theta - 1.0);
-    let b = u.powf(-theta) + v.powf(-theta) - 1.0;
-    a * b.powf(-(2.0 * theta + 1.0) / theta)
-  }
-
   /// `Clayton::h` at one point for any `θ > 0`, `u` below `INDEPENDENT_BELOW` (the vine pairs' inputs are never 0).
   pub(crate) fn h_at(theta: f64, u: f64, v: f64) -> f64 {
     if theta < INDEPENDENT_BELOW {
@@ -204,28 +196,20 @@ impl BivariateExt for Clayton {
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(copula_pdf(
-      x,
-      |u, v| Self::ln_density(theta, u, v),
-      |u, v| Self::edge_pdf(theta, u, v),
-    ))
+    copula_pdf(x, |u, v| Self::ln_density(theta, u, v))
   }
 
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(copula_log_pdf(
-      x,
-      |u, v| Self::ln_density(theta, u, v),
-      |u, v| Self::edge_pdf(theta, u, v),
-    ))
+    copula_density(x, |u, v| Self::ln_density(theta, u, v))
   }
 
   /// `C = uv e^δ` for `θ ≤ 1` and `min(u, v) e^{−ℓ/θ}` above, the pieces of `Clayton::ln_density`; `uv` at `θ = 0`.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(if theta == 0.0 {
+    if theta == 0.0 {
       copula_cdf(x, |u, v| u * v)
     } else if theta <= 1.0 {
       copula_cdf(x, |u, v| {
@@ -236,11 +220,10 @@ impl BivariateExt for Clayton {
         let (_, _, ell) = Self::spread(theta, u, v);
         u.min(v) * (-ell / theta).exp()
       })
-    })
+    }
   }
 
-  /// `h⁻¹(y | v)` by `Clayton::level` and `Clayton::finish`, `y` at `θ = 0` and below `INDEPENDENT_BELOW` but at `v = 0`;
-  /// NaN for `y` or `v` outside `[0, 1]`.
+  /// `h⁻¹(y | v)` by `Clayton::level` and `Clayton::finish`, `y` at `θ = 0` and below `INDEPENDENT_BELOW` but at `v = 0`.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
@@ -258,6 +241,7 @@ impl BivariateExt for Clayton {
     }
 
     check_lengths(y, v_col)?;
+    check_unit(y.iter().chain(v_col))?;
     // Whole-array passes keep each pass's transcendental calls independent, which a fused per-pair closure does not.
     let v_theta = v_col.powf(theta);
     let mut u = y.mapv(|y| Self::level(theta, y));
@@ -265,22 +249,21 @@ impl BivariateExt for Clayton {
       .and(y)
       .and(v_col)
       .and(&v_theta)
-      .for_each(|u, &y, &v, &v_theta| *u = confine(y, v, Self::finish(theta, *u, y, v, v_theta)));
+      .for_each(|u, &y, &v, &v_theta| *u = confine(Self::finish(theta, *u, y, v, v_theta)));
     Ok(u)
   }
 
-  /// `Clayton::h`, `u` at `θ = 0` and below `INDEPENDENT_BELOW` but for the point mass at `v = 0`; NaN for `v` outside
-  /// `[0, 1]`.
+  /// `Clayton::h`, `u` at `θ = 0` and below `INDEPENDENT_BELOW` but for the point mass at `v = 0`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     if theta == 0.0 {
-      return Ok(conditional_cdf(x, |u, _| u));
+      return conditional_cdf(x, |u, _| u);
     }
     if theta < INDEPENDENT_BELOW {
-      return Ok(conditional_cdf(x, |u, v| if v <= 0.0 { 1.0 } else { u }));
+      return conditional_cdf(x, |u, v| if v <= 0.0 { 1.0 } else { u });
     }
-    Ok(conditional_cdf(x, Self::h(theta)))
+    conditional_cdf(x, Self::h(theta))
   }
 
   fn tau_from_theta(&self, theta: f64) -> f64 {

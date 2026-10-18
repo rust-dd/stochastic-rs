@@ -30,7 +30,7 @@ use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
-use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_density;
 use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::sum_minus_one;
 use crate::bivariate::integral::rule;
@@ -166,20 +166,6 @@ impl Plackett {
     theta.ln() + (p + theta * q).ln() - 3.0 * sigma.ln() - 1.5 * d.ln()
   }
 
-  fn edge_pdf(theta: f64, u: f64, v: f64) -> f64 {
-    let eta = theta - 1.0;
-    if (eta).abs() < 1e-12 {
-      return 1.0;
-    }
-    let a = 1.0 + eta * (u + v);
-    let d = a * a - 4.0 * u * v * theta * eta;
-    if d <= 0.0 {
-      return 0.0;
-    }
-    let num = theta * (1.0 + eta * (u + v - 2.0 * u * v));
-    num / d.powf(1.5)
-  }
-
   /// `1 − τ` at `θ ≥ 1`: `4∬ ∂_u C ∂_v C` in `s = u + v − 1`, `d = u − v`, closed in `d`, is `∫ (2L/a)(αF − θL²G) dL`,
   /// `L = 1 − s`; Gauss–Legendre in `√L`, panels halved to the corner layer `√L ≈ θ^{−1/2}`, nil past `2⁻²²`.
   fn tau_complement(theta: f64) -> f64 {
@@ -251,37 +237,28 @@ impl BivariateExt for Plackett {
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(copula_pdf(
-      x,
-      |u, v| Self::ln_density(theta, u, v),
-      |u, v| Self::edge_pdf(theta, u, v),
-    ))
+    copula_pdf(x, |u, v| Self::ln_density(theta, u, v))
   }
 
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(copula_log_pdf(
-      x,
-      |u, v| Self::ln_density(theta, u, v),
-      |u, v| Self::edge_pdf(theta, u, v),
-    ))
+    copula_density(x, |u, v| Self::ln_density(theta, u, v))
   }
 
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(copula_cdf(x, |u, v| Self::cdf_interior(theta, u, v)))
+    copula_cdf(x, |u, v| Self::cdf_interior(theta, u, v))
   }
 
-  /// $\partial_v C(u,v) = \frac{1}{2}\left[1 - \frac{1 + (\theta-1)(u+v) - 2 u \theta}{\sqrt{\{\cdots\}}}\right]$, NaN
-  /// for `v` outside `[0, 1]`.
+  /// $\partial_v C(u,v) = \frac{1}{2}\left[1 - \frac{1 + (\theta-1)(u+v) - 2 u \theta}{\sqrt{\{\cdots\}}}\right]$.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    Ok(conditional_cdf(x, Self::h(self.theta.unwrap())))
+    conditional_cdf(x, Self::h(self.theta.unwrap()))
   }
 
-  /// `Plackett::inverse`'s root; NaN for `y` or `v` outside `[0, 1]`.
+  /// `Plackett::inverse`'s root.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,

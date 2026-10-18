@@ -17,7 +17,7 @@ use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
-use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_density;
 use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::expm1_over;
 use crate::bivariate::conditional::ln_1p_over;
@@ -194,16 +194,6 @@ impl Frank {
     softplus(ln_x) / c
   }
 
-  fn edge_pdf(theta: f64, u: f64, v: f64) -> f64 {
-    if theta == 0.0 {
-      return 1.0;
-    }
-    let g = |z: f64| (-theta * z).exp() - 1.0;
-    let num = (-theta * g(1.0)) * (1.0 + g(u + v));
-    let aux = g(1.0) + g(u) * g(v);
-    num / (aux * aux)
-  }
-
   /// `ln(N/D) = ln((1 − e^{−ct})/(1 − e^{−c}))`, `c > 0`: `ln N − ln D` below `t = 1/2`, where `ct` may be subnormal, and
   /// `ln_1p((N − D)/D)` above it, `N − D = e^{−ct} expm1(−c(1 − t))` free of cancellation as `1 − t` is exact there.
   fn ln_survival_ratio(c: f64, t: f64) -> f64 {
@@ -257,21 +247,13 @@ impl BivariateExt for Frank {
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(copula_pdf(
-      x,
-      |u, v| Self::ln_density(theta, u, v),
-      |u, v| Self::edge_pdf(theta, u, v),
-    ))
+    copula_pdf(x, |u, v| Self::ln_density(theta, u, v))
   }
 
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(copula_log_pdf(
-      x,
-      |u, v| Self::ln_density(theta, u, v),
-      |u, v| Self::edge_pdf(theta, u, v),
-    ))
+    copula_density(x, |u, v| Self::ln_density(theta, u, v))
   }
 
   /// `C = −ln(1 + g(u)g(v)/g(1))/θ`, `g(z) = expm1(−θz)`, by `Frank::cdf_positive` for `θ > 0` and `Frank::cdf_negative`
@@ -279,7 +261,7 @@ impl BivariateExt for Frank {
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(if theta.abs() < INDEPENDENT_BELOW {
+    if theta.abs() < INDEPENDENT_BELOW {
       copula_cdf(x, |u, v| u * v)
     } else if theta > 0.0 {
       copula_cdf(x, |u, v| Self::cdf_positive(theta, u, v))
@@ -287,11 +269,11 @@ impl BivariateExt for Frank {
       copula_cdf(x, |u, v| Self::cdf_negative(-theta, u, v))
     } else {
       copula_cdf(x, |u, v| Self::cdf_negative_log(-theta, u, v))
-    })
+    }
   }
 
   /// `Frank::inverse`, `θ < 0` through `C_{−θ}(u, v) = u − C_θ(u, 1 − v)`, which swaps `v` and `1 − v`; the identity
-  /// below `INDEPENDENT_BELOW`, NaN for `y` or `v` outside `[0, 1]`.
+  /// below `INDEPENDENT_BELOW`.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
@@ -311,10 +293,10 @@ impl BivariateExt for Frank {
     }
   }
 
-  /// `Frank::h`'s factored form, `u` below `INDEPENDENT_BELOW`; NaN for `v` outside `[0, 1]`.
+  /// `Frank::h`'s factored form, `u` below `INDEPENDENT_BELOW`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    Ok(conditional_cdf(x, Self::h(self.theta.unwrap())))
+    conditional_cdf(x, Self::h(self.theta.unwrap()))
   }
 
   /// `τ(θ) = 1 − 4/θ + 4D₁(θ)/θ`, `D₁(θ) = θ⁻¹∫₀^θ t/(eᵗ − 1) dt` (Hofert, Mächler & McNeil 2011, Table 2), odd in θ:

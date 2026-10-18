@@ -65,10 +65,12 @@ use super::genz::mvt_upper;
 use super::genz::open_coordinates;
 use super::genz::prioritize;
 use super::qmc::sobol_points;
+use crate::bivariate::conditional::check_open;
 use crate::bivariate::t_copula::t_copula_cdf;
 use crate::correlation::check_defined;
 use crate::correlation::kendall_tau;
 use crate::error::CopulaError;
+use crate::multivariate::on_open_cube;
 use crate::optim::localmin;
 use crate::student_t;
 use crate::student_t::check_nu;
@@ -239,6 +241,8 @@ impl MultivariateExt for TMultivariate {
     Ok(u)
   }
 
+  /// Σ from Kendall's τ and ν by the profile likelihood, on pseudo-observations inside `(0, 1)`: a 0 or 1, where the
+  /// density is not defined, is an `InvalidStructure`.
   fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     if x.ncols() < 2 {
       return Err(CopulaError::InvalidStructure(format!(
@@ -255,6 +259,7 @@ impl MultivariateExt for TMultivariate {
     if x.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
       return Err(CopulaError::MarginalOutOfRange);
     }
+    check_open(x, "the t copula's fit, which searches ν by the likelihood,")?;
     let corr = CorrelationMatrix::try_new(shrink_to_spd(Self::estimate_corr_from_kendall(x)?))?;
     // Profile MLE for ν conditional on Σ.
     self.nu = Self::optimise_nu(&corr, x);
@@ -290,7 +295,7 @@ impl MultivariateExt for TMultivariate {
       }
       out[i] = (mv[i] - marginal_log).exp();
     }
-    Ok(out)
+    Ok(on_open_cube(x, out))
   }
 
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
@@ -306,7 +311,7 @@ impl MultivariateExt for TMultivariate {
       }
       out[i] = mv[i] - marginal_log;
     }
-    Ok(out)
+    Ok(on_open_cube(x, out))
   }
 
   /// `T_{R,ν}(t_ν⁻¹(u))` on the closed cube: a zero coordinate gives 0 and a unit one drops out; two left are the

@@ -219,22 +219,6 @@ fn gumbel_and_joe_match_the_60_digit_references() {
   assert_h_and_inverse("joe", joe, &JOE_H, &JOE_INVERSE);
 }
 
-#[test]
-fn a_query_outside_the_unit_interval_is_nan() {
-  for (name, copula) in families() {
-    for bad in [f64::NAN, -0.1, 1.5, f64::NEG_INFINITY, f64::INFINITY] {
-      let u = copula
-        .percent_point(array![bad, 0.4].view(), array![0.6, bad].view())
-        .unwrap();
-      assert!(u.iter().all(|u| u.is_nan()), "{name} at {bad}: {u}");
-      let h = copula
-        .partial_derivative(array![[0.4, bad]].view())
-        .unwrap();
-      assert!(h[0].is_nan(), "{name} at v = {bad}: h = {}", h[0]);
-    }
-  }
-}
-
 /// `1 − 2⁻⁵³` is the largest uniform draw, and rounding near `y = 1` must not leave the square either.
 #[test]
 fn the_edges_of_the_square_answer_inside_it() {

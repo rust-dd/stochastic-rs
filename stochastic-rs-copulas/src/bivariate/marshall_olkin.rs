@@ -22,6 +22,8 @@ use ndarray::ArrayView2;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::copula_cdf;
+use crate::bivariate::conditional::copula_density;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -136,70 +138,40 @@ impl BivariateExt for MarshallOlkin {
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
-    let u_col = x.column(0);
-    let v_col = x.column(1);
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      if u <= 0.0 || u >= 1.0 || v <= 0.0 || v >= 1.0 {
-        out[i] = 0.0;
-        continue;
-      }
+    copula_density(x, |u, v| {
       let lhs = u.powf(alpha);
       let rhs = v.powf(beta);
       if (lhs - rhs).abs() < 1e-15 {
         // Singular curve: absolutely continuous density is 0; the singular
         // component carries the curve mass and is not returned here.
-        out[i] = 0.0;
+        0.0
       } else if lhs > rhs {
-        out[i] = (1.0 - alpha) * u.powf(-alpha);
+        (1.0 - alpha) * u.powf(-alpha)
       } else {
-        out[i] = (1.0 - beta) * v.powf(-beta);
+        (1.0 - beta) * v.powf(-beta)
       }
-    }
-    Ok(out)
+    })
   }
 
   /// CDF $C_{\alpha,\beta}(u,v) = \min(u^{1-\alpha} v, u v^{1-\beta})$.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
-    let u_col = x.column(0);
-    let v_col = x.column(1);
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      if u <= 0.0 || v <= 0.0 {
-        out[i] = 0.0;
-        continue;
-      }
-      if u >= 1.0 {
-        out[i] = v;
-        continue;
-      }
-      if v >= 1.0 {
-        out[i] = u;
-        continue;
-      }
-      let lhs = u.powf(alpha);
-      let rhs = v.powf(beta);
-      out[i] = if lhs >= rhs {
+    copula_cdf(x, |u, v| {
+      if u.powf(alpha) >= v.powf(beta) {
         u.powf(1.0 - alpha) * v
       } else {
         u * v.powf(1.0 - beta)
-      };
-    }
-    Ok(out)
+      }
+    })
   }
 
-  /// `∂_v C`: `u^{1-α}` where `u^α ≥ v^β`, `(1 - β) u v^{-β}` below, NaN for `v` outside `[0, 1]`; the jump
+  /// `∂_v C`: `u^{1-α}` where `u^α ≥ v^β`, `(1 - β) u v^{-β}` below; the jump
   /// `β v^{β(1-α)/α}` at `u = v^{β/α}` is the singular component's conditional mass.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
-    Ok(conditional_cdf(x, |u, v| {
+    conditional_cdf(x, |u, v| {
       if u <= 0.0 {
         0.0
       } else if u >= 1.0 {
@@ -209,10 +181,10 @@ impl BivariateExt for MarshallOlkin {
       } else {
         (1.0 - beta) * u * v.powf(-beta)
       }
-    }))
+    })
   }
 
-  /// `MarshallOlkin::inverse`, the generalised inverse of `∂_v C(· | v)`; NaN for `y` or `v` outside `[0, 1]`.
+  /// `MarshallOlkin::inverse`, the generalised inverse of `∂_v C(· | v)`.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,

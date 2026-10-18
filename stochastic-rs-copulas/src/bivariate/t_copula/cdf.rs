@@ -94,7 +94,7 @@ impl BivariateT {
     }
   }
 
-  /// `C(u, v)` on the closed square, exact on its edges and inside the Fréchet bounds; NaN off it.
+  /// `C(u, v)` on the closed square, exact on its edges and inside the Fréchet bounds.
   pub(crate) fn copula_cdf(&self, u: f64, v: f64) -> f64 {
     if !(in_unit(u) && in_unit(v)) {
       return f64::NAN;

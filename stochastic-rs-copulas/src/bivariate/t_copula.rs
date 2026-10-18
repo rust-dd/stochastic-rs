@@ -31,7 +31,8 @@ use ndarray::ArrayView2;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
-use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_cdf;
+use crate::bivariate::conditional::copula_density;
 use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::gaussian::GaussianCopula;
 use crate::bivariate::t_copula::cdf::BivariateT;
@@ -193,15 +194,6 @@ impl TCopula {
   }
 }
 
-/// The density off the open square: 0, NaN for a NaN coordinate.
-fn edge_pdf(u: f64, v: f64) -> f64 {
-  if u.is_nan() || v.is_nan() {
-    f64::NAN
-  } else {
-    0.0
-  }
-}
-
 impl BivariateExt for TCopula {
   fn family(&self) -> BivariateFamily {
     BivariateFamily::TCopula
@@ -227,32 +219,27 @@ impl BivariateExt for TCopula {
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    Ok(copula_pdf(x, self.ln_density(), edge_pdf))
+    copula_pdf(x, self.ln_density())
   }
 
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    Ok(copula_log_pdf(x, self.ln_density(), edge_pdf))
+    copula_density(x, self.ln_density())
   }
 
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let bivariate = BivariateT::new(self.theta.unwrap(), self.nu);
-    Ok(
-      x.rows()
-        .into_iter()
-        .map(|r| bivariate.copula_cdf(r[0], r[1]))
-        .collect(),
-    )
+    copula_cdf(x, |u, v| bivariate.copula_cdf(u, v))
   }
 
-  /// `TCopula::h`; NaN for `v` outside `[0, 1]`.
+  /// `TCopula::h`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    Ok(conditional_cdf(x, Self::h(self.theta.unwrap(), self.nu)))
+    conditional_cdf(x, Self::h(self.theta.unwrap(), self.nu))
   }
 
-  /// `TCopula::inverse` (Aas et al. App. B.2); NaN for `y` or `v` outside `[0, 1]`.
+  /// `TCopula::inverse` (Aas et al. App. B.2).
   fn percent_point(
     &self,
     y: ArrayView1<f64>,

@@ -187,6 +187,27 @@ pub(crate) fn ln_one_minus_exp(z: f64) -> f64 {
   }
 }
 
+/// `MarginalOutOfRange` unless every value lies in `[0, 1]`, a NaN failing: the input rule of every batch entry point.
+pub(crate) fn check_unit<'a>(values: impl IntoIterator<Item = &'a f64>) -> Result<(), CopulaError> {
+  // `&` without short-circuit folds to one vector reduction.
+  if values.into_iter().fold(true, |ok, &x| ok & in_unit(x)) {
+    Ok(())
+  } else {
+    Err(CopulaError::MarginalOutOfRange)
+  }
+}
+
+/// `InvalidStructure` naming the rule at a 0 or 1 in `x`: `what` evaluates the density, which lives on the open cube, so
+/// its data are pseudo-observations inside `(0, 1)`.
+pub(crate) fn check_open(x: ArrayView2<f64>, what: &str) -> Result<(), CopulaError> {
+  match x.indexed_iter().find(|&(_, &u)| u == 0.0 || u == 1.0) {
+    None => Ok(()),
+    Some(((row, column), u)) => Err(CopulaError::InvalidStructure(format!(
+      "{what} evaluates the copula density, which lives on the open cube: pass pseudo-observations inside (0, 1), got {u:?} at row {row}, column {column}"
+    ))),
+  }
+}
+
 /// `x` is n × 2, `n ≥ 2`, with every entry in `[0, 1]` (NaN fails), checked in that order; no uniformity test, so a valid
 /// sample never fails by chance.
 pub(crate) fn check_pairs(x: ArrayView2<f64>) -> Result<(), CopulaError> {
@@ -202,10 +223,7 @@ pub(crate) fn check_pairs(x: ArrayView2<f64>) -> Result<(), CopulaError> {
       got: x.nrows(),
     });
   }
-  if !x.iter().all(|&u| in_unit(u)) {
-    return Err(CopulaError::MarginalOutOfRange);
-  }
-  Ok(())
+  check_unit(x)
 }
 
 /// `DimensionMismatch` unless every quantile level in `y` has its conditioning value in `v`.
@@ -219,34 +237,24 @@ pub(crate) fn check_lengths(y: ArrayView1<f64>, v: ArrayView1<f64>) -> Result<()
   })
 }
 
-/// The quantile rule: `u` of `(y, v)` held in `[0, 1]` against rounding, NaN where `y` or `v` leaves `[0, 1]` or `u` is
-/// not finite; applied after the inverse, as an early return measured slower in the sampling bench.
-pub(crate) fn confine(y: f64, v: f64, u: f64) -> f64 {
-  // `u·0` is ±0 for a finite `u` and NaN otherwise, so with `&` the whole rule is one select, no branch per pair.
-  let clamped = u.clamp(0.0, 1.0) + u * 0.0;
-  if in_unit(y) & in_unit(v) {
-    clamped
-  } else {
-    f64::NAN
-  }
+/// The quantile rule: `u` held in `[0, 1]` against rounding, NaN where it is not finite.
+pub(crate) fn confine(u: f64) -> f64 {
+  // `u·0` is ±0 for a finite `u` and NaN otherwise, so the rule is one select, no branch per pair.
+  u.clamp(0.0, 1.0) + u * 0.0
 }
 
-/// The h-function rule: `p` where the conditioning `v` lies in `[0, 1]`, NaN elsewhere.
-pub(crate) fn conditioned(v: f64, p: f64) -> f64 {
-  if in_unit(v) { p } else { f64::NAN }
-}
-
-/// A closed-form inverse mapped over `(y, v)` under [`confine`].
+/// A closed-form inverse mapped over `(y, v)`, each in `[0, 1]`, under [`confine`].
 pub(crate) fn conditional_quantiles(
   y: ArrayView1<f64>,
   v: ArrayView1<f64>,
   quantile: impl Fn(f64, f64) -> f64,
 ) -> Result<Array1<f64>, CopulaError> {
   check_lengths(y, v)?;
+  check_unit(y.iter().chain(v))?;
   Ok(
     Zip::from(y)
       .and(v)
-      .map_collect(|&y, &v| confine(y, v, quantile(y, v))),
+      .map_collect(|&y, &v| confine(quantile(y, v))),
   )
 }
 
@@ -259,6 +267,7 @@ pub(crate) fn numerical_quantiles(
   ln_h: impl Fn(f64, f64) -> f64,
 ) -> Result<Array1<f64>, CopulaError> {
   check_lengths(y, v)?;
+  check_unit(y.iter().chain(v))?;
   let mut out = Array1::zeros(y.len());
   for (u, (&y, &v)) in out.iter_mut().zip(y.iter().zip(v)) {
     *u = numerical_quantile(y, v, &ln_h).ok_or_else(|| {
@@ -272,9 +281,6 @@ pub(crate) fn numerical_quantiles(
 
 /// One quantile of `numerical_quantiles`; `None` for a NaN `ln h` or a solve past Brent's bound.
 fn numerical_quantile(y: f64, v: f64, ln_h: &impl Fn(f64, f64) -> f64) -> Option<f64> {
-  if !(in_unit(y) && in_unit(v)) {
-    return Some(f64::NAN);
-  }
   let nan = Cell::new(false);
   let ln_h = |u: f64| {
     let l = ln_h(u, v);
@@ -304,69 +310,69 @@ fn numerical_quantile(y: f64, v: f64, ln_h: &impl Fn(f64, f64) -> f64) -> Option
   root.filter(|_| !nan.get())
 }
 
-/// `∂_v C` mapped over the rows `(u, v)` of `x` under [`conditioned`].
-pub(crate) fn conditional_cdf(x: ArrayView2<f64>, h: impl Fn(f64, f64) -> f64) -> Array1<f64> {
-  Zip::from(x.column(0))
-    .and(x.column(1))
-    .map_collect(|&u, &v| conditioned(v, h(u, v)))
+/// `∂_v C` mapped over the rows `(u, v)` of `x`, each coordinate in `[0, 1]`.
+pub(crate) fn conditional_cdf(
+  x: ArrayView2<f64>,
+  h: impl Fn(f64, f64) -> f64,
+) -> Result<Array1<f64>, CopulaError> {
+  check_unit(x)?;
+  Ok(
+    Zip::from(x.column(0))
+      .and(x.column(1))
+      .map_collect(|&u, &v| h(u, v)),
+  )
 }
 
-/// `C(u, v)` over the rows of `x` from `interior` on the open square: 0 on a zero coordinate, the other coordinate on a
-/// unit one, exactly; NaN off the closed square.
-pub(crate) fn copula_cdf(x: ArrayView2<f64>, interior: impl Fn(f64, f64) -> f64) -> Array1<f64> {
-  Zip::from(x.column(0))
-    .and(x.column(1))
-    .map_collect(|&u, &v| {
-      if !(in_unit(u) && in_unit(v)) {
-        f64::NAN
-      } else if u == 0.0 || v == 0.0 {
-        0.0
-      } else if u == 1.0 {
-        v
-      } else if v == 1.0 {
-        u
-      } else {
-        interior(u, v)
-      }
-    })
+/// `C(u, v)` over the rows of `x`, each coordinate in `[0, 1]`: `interior` on the open square, 0 on a zero coordinate
+/// and the other coordinate on a unit one, exactly.
+pub(crate) fn copula_cdf(
+  x: ArrayView2<f64>,
+  interior: impl Fn(f64, f64) -> f64,
+) -> Result<Array1<f64>, CopulaError> {
+  check_unit(x)?;
+  Ok(
+    Zip::from(x.column(0))
+      .and(x.column(1))
+      .map_collect(|&u, &v| {
+        if u == 0.0 || v == 0.0 {
+          0.0
+        } else if u == 1.0 {
+          v
+        } else if v == 1.0 {
+          u
+        } else {
+          interior(u, v)
+        }
+      }),
+  )
 }
 
-fn open_square(u: f64, v: f64) -> bool {
-  0.0 < u && u < 1.0 && 0.0 < v && v < 1.0
+/// `density` over the rows of `x`, each coordinate in `[0, 1]`, on the open square, and NaN on its boundary, where the
+/// copula has no density.
+pub(crate) fn copula_density(
+  x: ArrayView2<f64>,
+  density: impl Fn(f64, f64) -> f64,
+) -> Result<Array1<f64>, CopulaError> {
+  check_unit(x)?;
+  Ok(
+    Zip::from(x.column(0))
+      .and(x.column(1))
+      .map_collect(|&u, &v| {
+        if 0.0 < u && u < 1.0 && 0.0 < v && v < 1.0 {
+          density(u, v)
+        } else {
+          f64::NAN
+        }
+      }),
+  )
 }
 
-/// `exp` of `ln_density` on the open square, `edge` elsewhere.
+/// `exp` of `ln_density` under [`copula_density`].
 pub(crate) fn copula_pdf(
   x: ArrayView2<f64>,
   ln_density: impl Fn(f64, f64) -> f64,
-  edge: impl Fn(f64, f64) -> f64,
-) -> Array1<f64> {
-  Zip::from(x.column(0))
-    .and(x.column(1))
-    .map_collect(|&u, &v| {
-      if open_square(u, v) {
-        ln_density(u, v).exp()
-      } else {
-        edge(u, v)
-      }
-    })
-}
-
-/// `ln_density` on the open square, `ln` of `edge` elsewhere.
-pub(crate) fn copula_log_pdf(
-  x: ArrayView2<f64>,
-  ln_density: impl Fn(f64, f64) -> f64,
-  edge: impl Fn(f64, f64) -> f64,
-) -> Array1<f64> {
-  Zip::from(x.column(0))
-    .and(x.column(1))
-    .map_collect(|&u, &v| {
-      if open_square(u, v) {
-        ln_density(u, v)
-      } else {
-        edge(u, v).ln()
-      }
-    })
+) -> Result<Array1<f64>, CopulaError> {
+  copula_density(x, |u, v| ln_density(u, v).exp())
 }
 
 #[cfg(test)]

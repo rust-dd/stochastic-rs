@@ -18,6 +18,7 @@ use ndarray::Axis;
 use ndarray::stack;
 use stochastic_rs_core::simd_rng::SeedExt;
 
+use crate::bivariate::conditional::check_open;
 use crate::bivariate::conditional::check_pairs;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
@@ -102,7 +103,7 @@ impl stochastic_rs_distributions::traits::HypothesisTest for GofResult {
   }
 }
 
-/// Parametric-bootstrap Cramér–von Mises test of the fitted `copula` on the pseudo-observations `x`, one `seed` stream per replication
+/// Parametric-bootstrap Cramér–von Mises test of the fitted `copula` on pseudo-observations `x` inside `(0, 1)`, one `seed` stream per replication
 /// (Genest, Rémillard & Beaudoin 2009, §4, Appendix D); errs on a bad `x` or a non-finite statistic; panics unless `0 < alpha < 1`, `replications > 0`.
 pub fn gof_cramer_von_mises<C: BivariateExt + Clone, S: SeedExt>(
   copula: &C,
@@ -122,6 +123,10 @@ pub fn gof_cramer_von_mises<C: BivariateExt + Clone, S: SeedExt>(
     config.alpha
   );
   check_pairs(x)?;
+  check_open(
+    x,
+    "the goodness-of-fit test, whose bootstrap refits on pseudo-observations,",
+  )?;
   let statistic = finite(
     cramer_von_mises_independence(rosenblatt(copula, x)?.view()),
     "data",

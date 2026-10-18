@@ -20,6 +20,7 @@ use super::rosenblatt::Rosenblatt;
 use super::vine_order::VineOrder;
 use crate::bivariate::BivariateFamily;
 use crate::error::CopulaError;
+use crate::multivariate::on_open_cube;
 use crate::traits::MultivariateExt;
 
 /// Canonical vine (C-vine) pair-copula construction over `dim` marginals.
@@ -175,15 +176,13 @@ impl MultivariateExt for CVine {
   }
 
   fn pdf(&self, uv: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit(uv)?;
-    let x = self.order.to_vine(uv);
-    Ok(self.log_density_rows(x.view()).mapv(f64::exp))
+    Ok(self.log_pdf(uv)?.mapv_into(f64::exp))
   }
 
   fn log_pdf(&self, uv: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(uv)?;
     let x = self.order.to_vine(uv);
-    Ok(self.log_density_rows(x.view()))
+    Ok(on_open_cube(uv, self.log_density_rows(x.view())))
   }
 
   /// Genz's separation of variables through the Rosenblatt map `sample` walks, averaged over 4096 Sobol points; a zero

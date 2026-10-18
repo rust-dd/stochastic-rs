@@ -24,7 +24,7 @@ use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
-use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_density;
 use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::ln_add_exp;
 use crate::error::CopulaError;
@@ -127,15 +127,6 @@ impl Amh {
     ln_numerator - 3.0 * ln_d
   }
 
-  fn edge_pdf(theta: f64, u: f64, v: f64) -> f64 {
-    if u <= 0.0 || u >= 1.0 || v <= 0.0 || v >= 1.0 {
-      return 0.0;
-    }
-    let d = 1.0 - theta * (1.0 - u) * (1.0 - v);
-    let num = (1.0 - theta) * d + 2.0 * theta * u * v;
-    num / (d * d * d)
-  }
-
   /// `(−A, B, 1 − p)` from same-signed terms, `1 − p = (1 − θ) + θv` and `C = y(1 − p)²`, and `hypot`'s second operand
   /// `(1 − θ + 2θv)√y`.
   fn quadratic(theta: f64, y: f64, v: f64) -> (f64, f64, f64, f64) {
@@ -197,38 +188,28 @@ impl BivariateExt for Amh {
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(copula_pdf(
-      x,
-      |u, v| Self::ln_density(theta, u, v),
-      |u, v| Self::edge_pdf(theta, u, v),
-    ))
+    copula_pdf(x, |u, v| Self::ln_density(theta, u, v))
   }
 
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(copula_log_pdf(
-      x,
-      |u, v| Self::ln_density(theta, u, v),
-      |u, v| Self::edge_pdf(theta, u, v),
-    ))
+    copula_density(x, |u, v| Self::ln_density(theta, u, v))
   }
 
   /// `C = uv/D`, `D` as in `Amh::ln_density`, as `(u/D)v`, so the product underflows only with the result.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(copula_cdf(x, |u, v| {
-      (u / Self::denominator(theta, u, v)) * v
-    }))
+    copula_cdf(x, |u, v| (u / Self::denominator(theta, u, v)) * v)
   }
 
   /// `∂_v C = (u/D)((1 − θ + θu)/D)`, `D = 1 − θ + θ(u + v − uv)`: same-signed terms for `θ ≥ 0` and ratios formed before
-  /// the product, which underflows only with the result; NaN for `v` outside `[0, 1]`.
+  /// the product, which underflows only with the result.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(conditional_cdf(x, |u, v| {
+    conditional_cdf(x, |u, v| {
       if u >= 1.0 {
         return 1.0;
       }
@@ -241,11 +222,10 @@ impl BivariateExt for Amh {
         return 0.0;
       }
       (u / d) * (((1.0 - theta) + theta * u) / d)
-    }))
+    })
   }
 
-  /// `Amh::inverse`'s root, `Amh::inverse_near_one`'s above `θ = 1/2`, `Amh::inverse_at_one`'s at `θ = 1`; NaN for `y` or
-  /// `v` outside `[0, 1]`.
+  /// `Amh::inverse`'s root, `Amh::inverse_near_one`'s above `θ = 1/2`, `Amh::inverse_at_one`'s at `θ = 1`.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,

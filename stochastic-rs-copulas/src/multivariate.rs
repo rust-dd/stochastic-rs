@@ -20,6 +20,19 @@ pub mod rvine;
 pub mod t;
 mod vine_order;
 
+/// `values` with NaN on every row of `x` that has a coordinate at 0 or 1, where a copula has no density.
+pub(crate) fn on_open_cube(
+  x: ndarray::ArrayView2<f64>,
+  mut values: ndarray::Array1<f64>,
+) -> ndarray::Array1<f64> {
+  for (value, row) in values.iter_mut().zip(x.rows()) {
+    if row.iter().any(|&u| u == 0.0 || u == 1.0) {
+      *value = f64::NAN;
+    }
+  }
+  values
+}
+
 /// One variant per multivariate copula of the crate; `MultivariateExt::family` returns it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]

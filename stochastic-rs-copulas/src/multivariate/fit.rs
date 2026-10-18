@@ -17,6 +17,7 @@ use crate::bivariate::BivariateFamily;
 use crate::bivariate::bb1::Bb1;
 use crate::bivariate::bb7::Bb7;
 use crate::bivariate::clayton::Clayton;
+use crate::bivariate::conditional::check_open;
 use crate::bivariate::frank::Frank;
 use crate::bivariate::gaussian::GaussianCopula;
 use crate::bivariate::t_copula::TCopula;
@@ -389,6 +390,10 @@ fn check_vine_data(
   if u.iter().any(|v| !(0.0..=1.0).contains(v)) {
     return Err(CopulaError::MarginalOutOfRange);
   }
+  check_open(
+    u,
+    "the vine fit, which selects each pair by its likelihood,",
+  )?;
   if let Some(family) = families
     .iter()
     .find(|f| !BivariateFamily::VINE_CANDIDATES.contains(f))
@@ -402,8 +407,8 @@ fn check_vine_data(
   Ok(tau)
 }
 
-/// Fits a vine of `structure` to the pseudo-observations `u` (rows = observations); `MarginalOutOfRange` outside `[0, 1]`,
-/// `Unsupported` for a family outside `VINE_CANDIDATES` or an edge no family represents, `InvalidStructure` for a constant or NaN column.
+/// Fits a vine of `structure` to the pseudo-observations `u` (rows = observations); `MarginalOutOfRange` outside `[0, 1]`, `Unsupported` for a
+/// family outside `VINE_CANDIDATES` or an edge no family represents, `InvalidStructure` for a constant or NaN column or a 0 or 1.
 pub fn fit_vine(
   u: ArrayView2<f64>,
   structure: VineStructure,

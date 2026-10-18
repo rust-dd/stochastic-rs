@@ -13,7 +13,7 @@ use super::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
-use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_density;
 use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::ln_log_ratio;
 use crate::bivariate::conditional::ln_ratio;
@@ -96,19 +96,6 @@ impl Gumbel {
       - 2.0 * (1.0 - 1.0 / theta) * ell
       + softplus((theta - 1.0).ln() - ln_w)
   }
-
-  fn edge_pdf(theta: f64, u: f64, v: f64) -> f64 {
-    if theta == 1.0 {
-      return 1.0;
-    }
-    let tmp = (-u.ln()).powf(theta) + (-v.ln()).powf(theta);
-    let cdf = (-tmp.powf(1.0 / theta)).exp();
-    let a = (u * v).powf(-1.0);
-    let b = tmp.powf(-2.0 + 2.0 / theta);
-    let c = (u.ln() * v.ln()).powf(theta - 1.0);
-    let d = 1.0 + (theta - 1.0) * tmp.powf(-1.0 / theta);
-    cdf * a * b * c * d
-  }
 }
 
 impl BivariateExt for Gumbel {
@@ -141,21 +128,13 @@ impl BivariateExt for Gumbel {
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(copula_pdf(
-      x,
-      |u, v| Self::ln_density(theta, u, v),
-      |u, v| Self::edge_pdf(theta, u, v),
-    ))
+    copula_pdf(x, |u, v| Self::ln_density(theta, u, v))
   }
 
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    Ok(copula_log_pdf(
-      x,
-      |u, v| Self::ln_density(theta, u, v),
-      |u, v| Self::edge_pdf(theta, u, v),
-    ))
+    copula_density(x, |u, v| Self::ln_density(theta, u, v))
   }
 
   /// `C = min(u, v) e^{−M expm1(ℓ/θ)}`, the pieces of `Gumbel::ln_density`, as `e^{−M} = min(u, v)`; `uv` at `θ = 1`.
@@ -163,15 +142,15 @@ impl BivariateExt for Gumbel {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     if theta == 1.0 {
-      return Ok(copula_cdf(x, |u, v| u * v));
+      return copula_cdf(x, |u, v| u * v);
     }
-    Ok(copula_cdf(x, |u, v| {
+    copula_cdf(x, |u, v| {
       let (_, big, _, ell) = Self::parts(theta, u, v);
       u.min(v) * (-big * (ell / theta).exp_m1()).exp()
-    }))
+    })
   }
 
-  /// `numerical_quantiles` of `Gumbel::ln_h`, the identity at `θ = 1`; NaN for `y` or `v` outside `[0, 1]`.
+  /// `numerical_quantiles` of `Gumbel::ln_h`, the identity at `θ = 1`.
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
@@ -185,15 +164,15 @@ impl BivariateExt for Gumbel {
     numerical_quantiles(y, v, self.family(), Self::ln_h(theta))
   }
 
-  /// `exp` of `Gumbel::ln_h`, `u` at `θ = 1`; NaN for `v` outside `[0, 1]`.
+  /// `exp` of `Gumbel::ln_h`, `u` at `θ = 1`.
   fn partial_derivative(&self, uv: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     if theta == 1.0 {
-      return Ok(conditional_cdf(uv, |u, _| u));
+      return conditional_cdf(uv, |u, _| u);
     }
     let ln_h = Self::ln_h(theta);
-    Ok(conditional_cdf(uv, |u, v| ln_h(u, v).exp()))
+    conditional_cdf(uv, |u, v| ln_h(u, v).exp())
   }
 
   fn tau_from_theta(&self, theta: f64) -> f64 {
