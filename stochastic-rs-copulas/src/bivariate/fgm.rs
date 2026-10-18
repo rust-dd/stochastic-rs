@@ -69,6 +69,19 @@ impl Fgm {
       2.0 * y / ((1.0 + a) + discriminant.sqrt()).max(f64::MIN_POSITIVE)
     }
   }
+
+  /// `Fgm::inverse`'s root.
+  fn unchecked_inverse(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    Ok(conditional_quantiles(
+      y,
+      v,
+      Self::inverse(self.theta.unwrap()),
+    ))
+  }
 }
 
 impl BivariateExt for Fgm {
@@ -122,17 +135,12 @@ impl BivariateExt for Fgm {
     checked_percent_point(self, y, v)
   }
 
-  /// `Fgm::inverse`'s root.
   fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
-  ) -> Result<Array1<f64>, CopulaError> {
-    Ok(conditional_quantiles(
-      y,
-      v,
-      Self::inverse(self.theta.unwrap()),
-    ))
+  ) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_inverse(y, v))
   }
 
   fn tau_from_theta(&self, theta: f64) -> f64 {

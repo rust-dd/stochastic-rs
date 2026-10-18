@@ -268,6 +268,18 @@ impl Bb1 {
   pub(crate) fn log_density_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
     Bb1Density::new(theta, delta).ln_c(u, v)
   }
+
+  /// `numerical_quantiles` of `Bb1::ln_h`.
+  fn unchecked_inverse(
+    &self,
+    y: ArrayView1<f64>,
+    conditioning: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    let (theta, delta) = self.params()?;
+    numerical_quantiles(y, conditioning, self.family(), |u, v| {
+      Self::ln_h(u, v, theta, delta)
+    })
+  }
 }
 
 /// BB1's log-density at one `(θ, δ)`, with what no point changes formed once.
@@ -432,16 +444,12 @@ impl BivariateExt for Bb1 {
     checked_percent_point(self, y, v)
   }
 
-  /// `numerical_quantiles` of `Bb1::ln_h`.
   fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     conditioning: ArrayView1<f64>,
-  ) -> Result<Array1<f64>, CopulaError> {
-    let (theta, delta) = self.params()?;
-    numerical_quantiles(y, conditioning, self.family(), |u, v| {
-      Self::ln_h(u, v, theta, delta)
-    })
+  ) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_inverse(y, conditioning))
   }
 
   /// `τ = 1 − 2/(δ(θ + 2))` at the stored `δ` (Joe 1997, §5.2).

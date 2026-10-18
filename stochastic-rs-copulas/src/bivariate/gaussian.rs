@@ -86,6 +86,20 @@ impl GaussianCopula {
       if z.is_nan() { 0.0 } else { norm_cdf(z) }
     }
   }
+
+  /// `GaussianCopula::inverse` of [`GaussianCopula::partial_derivative`] in `u`.
+  fn unchecked_inverse(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    let rho = self.theta.unwrap();
+    // The identity at `ρ = 0`, chosen once per call: a test per pair costs the sampler.
+    if rho == 0.0 {
+      return Ok(conditional_quantiles(y, v, |y, _| y));
+    }
+    Ok(conditional_quantiles(y, v, Self::inverse(rho)))
+  }
 }
 
 /// `C_ρ(u, v) = Φ₂(Φ⁻¹(u), Φ⁻¹(v); ρ)` on the open square, the bivariate cdf of both Gaussian copulas, the Fréchet bounds
@@ -207,18 +221,12 @@ impl BivariateExt for GaussianCopula {
     checked_percent_point(self, y, v)
   }
 
-  /// `GaussianCopula::inverse` of [`GaussianCopula::partial_derivative`] in `u`.
   fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
-  ) -> Result<Array1<f64>, CopulaError> {
-    let rho = self.theta.unwrap();
-    // The identity at `ρ = 0`, chosen once per call: a test per pair costs the sampler.
-    if rho == 0.0 {
-      return Ok(conditional_quantiles(y, v, |y, _| y));
-    }
-    Ok(conditional_quantiles(y, v, Self::inverse(rho)))
+  ) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_inverse(y, v))
   }
 
   fn tau_from_theta(&self, theta: f64) -> f64 {

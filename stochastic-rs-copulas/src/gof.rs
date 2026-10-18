@@ -412,8 +412,8 @@ mod tests {
       &self,
       y: ArrayView1<f64>,
       _v: ArrayView1<f64>,
-    ) -> Result<Array1<f64>, CopulaError> {
-      Ok(y.to_owned())
+    ) -> Option<Result<Array1<f64>, CopulaError>> {
+      Some(Ok(y.to_owned()))
     }
 
     fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {

@@ -109,6 +109,19 @@ impl Joe {
     let s = (theta * top + ell).exp();
     (theta - 1.0) * gap - top + (1.0 / theta - 2.0) * ell + (theta - 1.0 + s).ln()
   }
+
+  /// `numerical_quantiles` of `Joe::ln_h`, `y` at `θ = 1`.
+  fn unchecked_inverse(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    let theta = self.theta.unwrap();
+    if theta == 1.0 {
+      return Ok(conditional_quantiles(y, v, |y, _| y));
+    }
+    numerical_quantiles(y, v, self.family(), Self::ln_h(theta))
+  }
 }
 
 impl BivariateExt for Joe {
@@ -182,17 +195,12 @@ impl BivariateExt for Joe {
     checked_percent_point(self, y, v)
   }
 
-  /// `numerical_quantiles` of `Joe::ln_h`, `y` at `θ = 1`.
   fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
-  ) -> Result<Array1<f64>, CopulaError> {
-    let theta = self.theta.unwrap();
-    if theta == 1.0 {
-      return Ok(conditional_quantiles(y, v, |y, _| y));
-    }
-    numerical_quantiles(y, v, self.family(), Self::ln_h(theta))
+  ) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_inverse(y, v))
   }
 
   /// `τ = 1 − 4Σ_{k≥1} 1/(k(θk + 2)(θ(k − 1) + 2))` (Hofert, Mächler & McNeil 2011, Table 2): 256 terms plus the

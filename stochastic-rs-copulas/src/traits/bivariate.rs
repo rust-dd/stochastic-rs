@@ -121,8 +121,11 @@ pub trait BivariateExt {
     ud.fill_slice(v.as_slice_mut().unwrap());
     let mut c = Array1::<f64>::zeros(n);
     ud.fill_slice(c.as_slice_mut().unwrap());
-    // The uniforms are its own, in `[0, 1]` and of equal length: nothing for `percent_point` to check again.
-    let u = self.percent_point_unchecked(c.view(), v.view())?;
+    // The uniforms are its own, in `[0, 1]` and of equal length: nothing for a family's own inverse to check again.
+    let u = match self.percent_point_unchecked(c.view(), v.view()) {
+      Some(u) => u?,
+      None => self.percent_point(c.view(), v.view())?,
+    };
 
     Ok(stack![Axis(1), u, v])
   }
@@ -186,15 +189,15 @@ pub trait BivariateExt {
     self.percent_point_numerical(y, v)
   }
 
-  /// `percent_point` on inputs already checked, as the sampler's own uniforms: `percent_point` itself by default, so a
-  /// sampler keeps an override of it; a family that overrides both skips the second check.
+  /// A family's own inverse on inputs already checked, as the sampler's uniforms are; `None` by default, so the sampler
+  /// takes `percent_point` and an override of `percent_point` that calls this cannot recurse.
   #[doc(hidden)]
   fn percent_point_unchecked(
     &self,
-    y: ArrayView1<f64>,
-    v: ArrayView1<f64>,
-  ) -> Result<Array1<f64>, CopulaError> {
-    self.percent_point(y, v)
+    _y: ArrayView1<f64>,
+    _v: ArrayView1<f64>,
+  ) -> Option<Result<Array1<f64>, CopulaError>> {
+    None
   }
 
   /// `percent_point`'s default, callable from an override: Brent's `zero` in `u` of `partial_derivative` held in
@@ -253,8 +256,8 @@ pub(crate) fn invert_tau(
   })
 }
 
-/// `percent_point` of a family with its own inverse: its parameters and inputs checked once, then
-/// `percent_point_unchecked`.
+/// `percent_point` of a family with its own inverse: its parameters and inputs checked once, then that inverse, or the
+/// numerical one where it gives none.
 pub(crate) fn checked_percent_point<C: BivariateExt + ?Sized>(
   copula: &C,
   y: ArrayView1<f64>,
@@ -263,7 +266,9 @@ pub(crate) fn checked_percent_point<C: BivariateExt + ?Sized>(
   copula.check_fit()?;
   check_lengths(y, v)?;
   check_unit(y.iter().chain(v))?;
-  copula.percent_point_unchecked(y, v)
+  copula
+    .percent_point_unchecked(y, v)
+    .unwrap_or_else(|| numerical_inverse(copula, y, v))
 }
 
 /// Brent's `zero` in `u` of `partial_derivative` held in `[0, 1]`, on `[0, 1]`, for checked `(y, v)`: the body of

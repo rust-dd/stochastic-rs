@@ -198,6 +198,19 @@ impl TCopula {
       student_t::ln_density(&fx, &fy, law.abs_t_gap(&fx, &fy), rho, nu)
     }
   }
+
+  /// `TCopula::inverse` (Aas et al. App. B.2).
+  fn unchecked_inverse(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    Ok(conditional_quantiles(
+      y,
+      v,
+      Self::inverse(self.theta.unwrap(), self.nu),
+    ))
+  }
 }
 
 impl BivariateExt for TCopula {
@@ -253,17 +266,12 @@ impl BivariateExt for TCopula {
     checked_percent_point(self, y, v)
   }
 
-  /// `TCopula::inverse` (Aas et al. App. B.2).
   fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
-  ) -> Result<Array1<f64>, CopulaError> {
-    Ok(conditional_quantiles(
-      y,
-      v,
-      Self::inverse(self.theta.unwrap(), self.nu),
-    ))
+  ) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_inverse(y, v))
   }
 
   fn tau_from_theta(&self, theta: f64) -> f64 {

@@ -85,6 +85,19 @@ impl Gumbel {
       - 2.0 * (1.0 - 1.0 / theta) * ell
       + softplus((theta - 1.0).ln() - ln_w)
   }
+
+  /// `numerical_quantiles` of `Gumbel::ln_h`, the identity at `θ = 1`.
+  fn unchecked_inverse(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    let theta = self.theta.unwrap();
+    if theta == 1.0 {
+      return Ok(conditional_quantiles(y, v, |y, _| y));
+    }
+    numerical_quantiles(y, v, self.family(), Self::ln_h(theta))
+  }
 }
 
 impl BivariateExt for Gumbel {
@@ -147,17 +160,12 @@ impl BivariateExt for Gumbel {
     checked_percent_point(self, y, v)
   }
 
-  /// `numerical_quantiles` of `Gumbel::ln_h`, the identity at `θ = 1`.
   fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
-  ) -> Result<Array1<f64>, CopulaError> {
-    let theta = self.theta.unwrap();
-    if theta == 1.0 {
-      return Ok(conditional_quantiles(y, v, |y, _| y));
-    }
-    numerical_quantiles(y, v, self.family(), Self::ln_h(theta))
+  ) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_inverse(y, v))
   }
 
   /// `exp` of `Gumbel::ln_h`, `u` at `θ = 1`.

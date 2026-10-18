@@ -28,6 +28,15 @@ impl Independence {
   pub fn new() -> Self {
     Self
   }
+
+  /// The identity.
+  fn unchecked_inverse(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    Ok(conditional_quantiles(y, v, |y, _| y))
+  }
 }
 
 impl BivariateExt for Independence {
@@ -89,13 +98,12 @@ impl BivariateExt for Independence {
     checked_percent_point(self, y, v)
   }
 
-  /// The identity.
   fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
-  ) -> Result<Array1<f64>, CopulaError> {
-    Ok(conditional_quantiles(y, v, |y, _| y))
+  ) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_inverse(y, v))
   }
 
   fn tau_from_theta(&self, _theta: f64) -> f64 {

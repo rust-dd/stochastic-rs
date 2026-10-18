@@ -204,6 +204,30 @@ impl Frank {
       ((-c * t).exp() * (-c * (1.0 - t)).exp_m1() / -(-c).exp_m1()).ln_1p()
     }
   }
+
+  /// `Frank::inverse`, `θ < 0` through `C_{−θ}(u, v) = u − C_θ(u, 1 − v)`, which swaps `v` and `1 − v`; the identity
+  /// below `INDEPENDENT_BELOW`.
+  fn unchecked_inverse(
+    &self,
+    y: ArrayView1<f64>,
+    v_col: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    let theta = self.theta.unwrap();
+    if theta.abs() < INDEPENDENT_BELOW {
+      return Ok(conditional_quantiles(y, v_col, |y, _| y));
+    }
+    // One closure per sign keeps the reflection out of the per-pair work.
+    let inverse = Self::inverse(theta.abs());
+    if theta > 0.0 {
+      Ok(conditional_quantiles(y, v_col, |y, v| {
+        inverse(y, v, 1.0 - v)
+      }))
+    } else {
+      Ok(conditional_quantiles(y, v_col, |y, v| {
+        inverse(y, 1.0 - v, v)
+      }))
+    }
+  }
 }
 
 impl BivariateExt for Frank {
@@ -281,28 +305,12 @@ impl BivariateExt for Frank {
     checked_percent_point(self, y, v)
   }
 
-  /// `Frank::inverse`, `θ < 0` through `C_{−θ}(u, v) = u − C_θ(u, 1 − v)`, which swaps `v` and `1 − v`; the identity
-  /// below `INDEPENDENT_BELOW`.
   fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v_col: ArrayView1<f64>,
-  ) -> Result<Array1<f64>, CopulaError> {
-    let theta = self.theta.unwrap();
-    if theta.abs() < INDEPENDENT_BELOW {
-      return Ok(conditional_quantiles(y, v_col, |y, _| y));
-    }
-    // One closure per sign keeps the reflection out of the per-pair work.
-    let inverse = Self::inverse(theta.abs());
-    if theta > 0.0 {
-      Ok(conditional_quantiles(y, v_col, |y, v| {
-        inverse(y, v, 1.0 - v)
-      }))
-    } else {
-      Ok(conditional_quantiles(y, v_col, |y, v| {
-        inverse(y, 1.0 - v, v)
-      }))
-    }
+  ) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_inverse(y, v_col))
   }
 
   /// `Frank::h`'s factored form, `u` below `INDEPENDENT_BELOW`.

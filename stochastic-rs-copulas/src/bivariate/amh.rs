@@ -142,6 +142,22 @@ impl Amh {
       (1.0 - theta + 2.0 * theta * v) * y.sqrt(),
     )
   }
+
+  /// `Amh::inverse`'s root, `Amh::inverse_near_one`'s above `θ = 1/2`, `Amh::inverse_at_one`'s at `θ = 1`.
+  fn unchecked_inverse(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    let theta = self.theta.unwrap();
+    if theta == 1.0 {
+      Ok(conditional_quantiles(y, v, Self::inverse_at_one()))
+    } else if theta > 0.5 {
+      Ok(conditional_quantiles(y, v, Self::inverse_near_one(theta)))
+    } else {
+      Ok(conditional_quantiles(y, v, Self::inverse(theta)))
+    }
+  }
 }
 
 impl BivariateExt for Amh {
@@ -234,20 +250,12 @@ impl BivariateExt for Amh {
     checked_percent_point(self, y, v)
   }
 
-  /// `Amh::inverse`'s root, `Amh::inverse_near_one`'s above `θ = 1/2`, `Amh::inverse_at_one`'s at `θ = 1`.
   fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
-  ) -> Result<Array1<f64>, CopulaError> {
-    let theta = self.theta.unwrap();
-    if theta == 1.0 {
-      Ok(conditional_quantiles(y, v, Self::inverse_at_one()))
-    } else if theta > 0.5 {
-      Ok(conditional_quantiles(y, v, Self::inverse_near_one(theta)))
-    } else {
-      Ok(conditional_quantiles(y, v, Self::inverse(theta)))
-    }
+  ) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_inverse(y, v))
   }
 
   /// `τ = 1 − 2[θ + (1−θ)² ln(1−θ)]/(3θ²)` (Hofert, Mächler & McNeil 2011, Table 2), with its limit `1/3` at `θ = 1`

@@ -169,6 +169,19 @@ impl HuslerReiss {
       (ln_one_minus_exp(ln_complement), ln_complement)
     }
   }
+
+  /// `numerical_quantiles` of `HuslerReiss::ln_h`, `y` at `λ = 0`.
+  fn unchecked_inverse(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    let lambda = self.theta.unwrap();
+    if lambda == 0.0 {
+      return Ok(conditional_quantiles(y, v, |y, _| y));
+    }
+    numerical_quantiles(y, v, self.family(), Self::ln_h(lambda))
+  }
 }
 
 impl BivariateExt for HuslerReiss {
@@ -237,17 +250,12 @@ impl BivariateExt for HuslerReiss {
     checked_percent_point(self, y, v)
   }
 
-  /// `numerical_quantiles` of `HuslerReiss::ln_h`, `y` at `λ = 0`.
   fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
-  ) -> Result<Array1<f64>, CopulaError> {
-    let lambda = self.theta.unwrap();
-    if lambda == 0.0 {
-      return Ok(conditional_quantiles(y, v, |y, _| y));
-    }
-    numerical_quantiles(y, v, self.family(), Self::ln_h(lambda))
+  ) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_inverse(y, v))
   }
 
   /// Gudendorf & Segers' (2010, §4) `τ = ∫₀¹ t(1 − t)/A dA'` through `HuslerReiss::ln_tau_parts`; 0 below `λ = 1e-2`.

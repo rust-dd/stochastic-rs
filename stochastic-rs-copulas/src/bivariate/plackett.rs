@@ -129,6 +129,19 @@ impl Plackett {
       }
     }
   }
+
+  /// `Plackett::inverse`'s root.
+  fn unchecked_inverse(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    Ok(conditional_quantiles(
+      y,
+      v,
+      Self::inverse(self.theta.unwrap()),
+    ))
+  }
 }
 
 impl Plackett {
@@ -271,17 +284,12 @@ impl BivariateExt for Plackett {
     checked_percent_point(self, y, v)
   }
 
-  /// `Plackett::inverse`'s root.
   fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
-  ) -> Result<Array1<f64>, CopulaError> {
-    Ok(conditional_quantiles(
-      y,
-      v,
-      Self::inverse(self.theta.unwrap()),
-    ))
+  ) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_inverse(y, v))
   }
 
   /// `1 − Plackett::tau_complement(θ)`, through `τ(1/θ) = −τ(θ)` below `θ = 1`, and the series of `TAU_SERIES_BELOW` near 1.

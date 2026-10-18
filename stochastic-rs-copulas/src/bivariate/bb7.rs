@@ -343,6 +343,18 @@ impl Bb7 {
     }
     0.5 * (lo + hi)
   }
+
+  /// `numerical_quantiles` of `Bb7::ln_h`.
+  fn unchecked_inverse(
+    &self,
+    y: ArrayView1<f64>,
+    conditioning: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    let (theta, delta) = self.params()?;
+    numerical_quantiles(y, conditioning, self.family(), |u, v| {
+      Self::ln_h(u, v, theta, delta)
+    })
+  }
 }
 
 impl Bb7 {
@@ -444,16 +456,12 @@ impl BivariateExt for Bb7 {
     checked_percent_point(self, y, v)
   }
 
-  /// `numerical_quantiles` of `Bb7::ln_h`.
   fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     conditioning: ArrayView1<f64>,
-  ) -> Result<Array1<f64>, CopulaError> {
-    let (theta, delta) = self.params()?;
-    numerical_quantiles(y, conditioning, self.family(), |u, v| {
-      Self::ln_h(u, v, theta, delta)
-    })
+  ) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_inverse(y, conditioning))
   }
 
   /// `τ = 1 + 4[R(b) − 1/(1 + b)]/(θ²δb)`, `b = 2/θ − 1`, `R(b) = Γ(1 + b)Γ(δ + 2)/Γ(δ + 2 + b)`: Cor. 5.1.4's Beta form

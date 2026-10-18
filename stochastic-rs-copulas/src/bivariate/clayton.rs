@@ -148,6 +148,34 @@ impl Clayton {
     let z = -theta / (1.0 + theta) * y.ln();
     v * (-(z + (-(-z).exp_m1()).ln()) / theta).exp()
   }
+
+  /// `h⁻¹(y | v)` by `Clayton::level` and `Clayton::finish`, `y` at `θ = 0` and below `INDEPENDENT_BELOW` but at `v = 0`.
+  fn unchecked_inverse(
+    &self,
+    y: ArrayView1<f64>,
+    v_col: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    let theta = self.theta.unwrap();
+
+    if theta == 0.0 {
+      return Ok(conditional_quantiles(y, v_col, |y, _| y));
+    }
+    if theta < INDEPENDENT_BELOW {
+      return Ok(conditional_quantiles(y, v_col, |y, v| {
+        if v <= 0.0 { 0.0 } else { y }
+      }));
+    }
+
+    // Whole-array passes keep each pass's transcendental calls independent, which a fused per-pair closure does not.
+    let v_theta = v_col.powf(theta);
+    let mut u = y.mapv(|y| Self::level(theta, y));
+    Zip::from(&mut u)
+      .and(y)
+      .and(v_col)
+      .and(&v_theta)
+      .for_each(|u, &y, &v, &v_theta| *u = confine(Self::finish(theta, *u, y, v, v_theta)));
+    Ok(u)
+  }
 }
 
 impl BivariateExt for Clayton {
@@ -230,32 +258,12 @@ impl BivariateExt for Clayton {
     checked_percent_point(self, y, v)
   }
 
-  /// `h⁻¹(y | v)` by `Clayton::level` and `Clayton::finish`, `y` at `θ = 0` and below `INDEPENDENT_BELOW` but at `v = 0`.
   fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v_col: ArrayView1<f64>,
-  ) -> Result<Array1<f64>, CopulaError> {
-    let theta = self.theta.unwrap();
-
-    if theta == 0.0 {
-      return Ok(conditional_quantiles(y, v_col, |y, _| y));
-    }
-    if theta < INDEPENDENT_BELOW {
-      return Ok(conditional_quantiles(y, v_col, |y, v| {
-        if v <= 0.0 { 0.0 } else { y }
-      }));
-    }
-
-    // Whole-array passes keep each pass's transcendental calls independent, which a fused per-pair closure does not.
-    let v_theta = v_col.powf(theta);
-    let mut u = y.mapv(|y| Self::level(theta, y));
-    Zip::from(&mut u)
-      .and(y)
-      .and(v_col)
-      .and(&v_theta)
-      .for_each(|u, &y, &v, &v_theta| *u = confine(Self::finish(theta, *u, y, v, v_theta)));
-    Ok(u)
+  ) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_inverse(y, v_col))
   }
 
   /// `Clayton::h`, `u` at `θ = 0` and below `INDEPENDENT_BELOW` but for the point mass at `v = 0`.

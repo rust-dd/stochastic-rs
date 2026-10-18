@@ -86,6 +86,16 @@ impl MarshallOlkin {
   fn resolve_params(&self) -> (f64, f64) {
     (self.alpha.expect("checked"), self.beta.expect("checked"))
   }
+
+  /// `MarshallOlkin::inverse`, the generalised inverse of `∂_v C(· | v)`.
+  fn unchecked_inverse(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    let (alpha, beta) = self.resolve_params();
+    Ok(conditional_quantiles(y, v, Self::inverse(alpha, beta)))
+  }
 }
 
 impl BivariateExt for MarshallOlkin {
@@ -193,14 +203,12 @@ impl BivariateExt for MarshallOlkin {
     checked_percent_point(self, y, v)
   }
 
-  /// `MarshallOlkin::inverse`, the generalised inverse of `∂_v C(· | v)`.
   fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
-  ) -> Result<Array1<f64>, CopulaError> {
-    let (alpha, beta) = self.resolve_params();
-    Ok(conditional_quantiles(y, v, Self::inverse(alpha, beta)))
+  ) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_inverse(y, v))
   }
 
   /// The symmetric slice `α = β = θ`: `τ = θ/(2 − θ)`.

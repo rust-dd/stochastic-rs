@@ -176,6 +176,19 @@ impl Galambos {
       (ln_one_minus_exp(ln_complement), ln_complement)
     }
   }
+
+  /// `numerical_quantiles` of `Galambos::ln_h`, `y` at `θ = 0`.
+  fn unchecked_inverse(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    let theta = self.theta.unwrap();
+    if theta == 0.0 {
+      return Ok(conditional_quantiles(y, v, |y, _| y));
+    }
+    numerical_quantiles(y, v, self.family(), Self::ln_h(theta))
+  }
 }
 
 impl BivariateExt for Galambos {
@@ -241,17 +254,12 @@ impl BivariateExt for Galambos {
     checked_percent_point(self, y, v)
   }
 
-  /// `numerical_quantiles` of `Galambos::ln_h`, `y` at `θ = 0`.
   fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
-  ) -> Result<Array1<f64>, CopulaError> {
-    let theta = self.theta.unwrap();
-    if theta == 0.0 {
-      return Ok(conditional_quantiles(y, v, |y, _| y));
-    }
-    numerical_quantiles(y, v, self.family(), Self::ln_h(theta))
+  ) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_inverse(y, v))
   }
 
   /// Gudendorf & Segers' (2010, §4) `τ = ∫₀¹ t(1 − t)/A dA'` through `Galambos::ln_tau_parts`; 0 below `θ = 1e-4`.
