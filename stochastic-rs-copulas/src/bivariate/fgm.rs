@@ -4,11 +4,8 @@
 //! C_\theta(u,v) = uv + \theta\, u(1-u)\, v(1-v), \qquad \theta \in [-1, 1].
 //! $$
 //!
-//! Symmetric perturbation of the independence copula with no tail dependence
-//! (zero in either tail). Dependence is mild — Kendall's tau is bounded by
-//! $|\tau| \le 2/9 \approx 0.222$ — so FGM is appropriate for weakly
-//! dependent margins (residual cross-section correlation, etc.) and as a
-//! building block for finite-mixture copulas.
+//! Symmetric perturbation of independence with no tail dependence; Kendall's tau is bounded by
+//! $|\tau| \le 2/9 \approx 0.222$, so it suits weakly dependent margins only.
 //!
 //! Reference: Farlie, D.J.G. (1960), "The Performance of Some Correlation
 //! Coefficients for a General Bivariate Distribution", *Biometrika* 47, 307-323.

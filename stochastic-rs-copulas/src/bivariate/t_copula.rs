@@ -3,20 +3,8 @@
 //! $$
 //! C_{\rho,\nu}(u,v) = T_{\rho,\nu}\!\big(t_\nu^{-1}(u),\, t_\nu^{-1}(v)\big),
 //! $$
-//! where $T_{\rho,\nu}$ is the bivariate Student-t CDF with correlation
-//! $\rho \in (-1, 1)$ and degrees of freedom $\nu > 0$, and $t_\nu^{-1}$
-//! the univariate Student-t quantile.
-//!
-//! - **Kendall's tau:** $\tau = \tfrac{2}{\pi}\arcsin\rho$ (same as Gaussian).
-//! - **Tail dependence:** $\lambda_U = \lambda_L = 2\, t_{\nu+1}\!\big(
-//!   -\sqrt{(\nu+1)(1-\rho)/(1+\rho)}\big)$ — symmetric and strictly
-//!   positive for finite $\nu$, in contrast to Gaussian.
-//!
-//! In the limit $\nu \to \infty$ the t-copula collapses to the Gaussian
-//! copula.
-//!
-//! The bivariate CDF integrates the law of $Y$ given $X$ (`cdf.rs`), the Gaussian copula's past $\nu = 10^{22}$ and the
-//! limit $pM + (1 - p)W$ below $\nu = 10^{-30}$; it inherits the Student-t quantile's error near $u = 1$.
+//! $T_{\rho,\nu}$ is the bivariate Student-t cdf of correlation $\rho$, $t_\nu^{-1}$ the quantile;
+//! $\nu \to \infty$ gives the Gaussian copula, and `cdf.rs` evaluates $T_{\rho,\nu}$.
 //!
 //! Reference: Embrechts, P., Lindskog, F., McNeil, A.J. (2003),
 //! "Modelling Dependence with Copulas and Applications to Risk
@@ -66,7 +54,8 @@ impl Default for TCopula {
 }
 
 impl TCopula {
-  /// A t copula with correlation `rho` and `nu` degrees of freedom; panics unless `-1 < rho < 1` and `0 < nu < ∞`.
+  /// A t copula with correlation `rho` and `nu` degrees of freedom; panics unless `-1 < rho < 1`
+  /// and `nu` passes `check_nu` (`0 < nu < ∞`, `nu / 2 > 0`).
   pub fn new(rho: f64, nu: f64) -> Self {
     Self::try_new(rho, nu).unwrap_or_else(|e| panic!("{e}"))
   }
@@ -286,11 +275,10 @@ impl BivariateExt for TCopula {
     admitted(self, tau, (std::f64::consts::FRAC_PI_2 * tau).sin())
   }
 
-  /// Symmetric tail dependence $\lambda_L = \lambda_U = 2\,t_{\nu+1}\!\big(
-  /// -\sqrt{(\nu+1)(1-\rho)/(1+\rho)}\big)$, strictly positive for every
-  /// finite $\nu$ and $\rho \in (-1,1)$ — in contrast to the Gaussian
-  /// copula's asymptotic independence
-  /// ([`crate::bivariate::gaussian::GaussianCopula`]).
+  /// $$
+  /// \lambda_L = \lambda_U = 2\,t_{\nu+1}\!\big(-\sqrt{(\nu+1)(1-\rho)/(1+\rho)}\big)
+  /// $$
+  /// Symmetric and positive for finite $\nu$; the Gaussian copula's are zero.
   /// Reference: Embrechts, Lindskog, McNeil (2003), §3.2 (module header).
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;

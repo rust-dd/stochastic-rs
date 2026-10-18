@@ -5,9 +5,8 @@
 //! \qquad \theta \in [1, \infty).
 //! $$
 //!
-//! Archimedean upper-tail-dependent family with generator
-//! $\varphi(t) = -\ln(1 - (1-t)^\theta)$. Reduces to the independence copula
-//! at $\theta = 1$.
+//! Archimedean upper-tail-dependent family with generator $\varphi(t) = -\ln(1 - (1-t)^\theta)$;
+//! independence at $\theta = 1$.
 //!
 //! Reference: Joe, H. (1997), "Multivariate Models and Dependence Concepts",
 //! Chapman & Hall, §5.1.
@@ -236,10 +235,8 @@ impl BivariateExt for Joe {
     admitted(self, tau, theta)
   }
 
-  /// Upper-tail dependence $\lambda_U = 2 - 2^{1/\theta}$ (same functional
-  /// form as Gumbel); Joe has no lower-tail dependence.
-  /// Reference: Joe, H. (1997), "Multivariate Models and Dependence
-  /// Concepts", Chapman & Hall, §5.1.
+  /// $\lambda_U = 2 - 2^{1/\theta}$, Gumbel's form; Joe has no lower-tail dependence.
+  /// Reference: Joe, H. (1997), "Multivariate Models and Dependence Concepts", Chapman & Hall, §5.1.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
     let theta = self.theta.unwrap();

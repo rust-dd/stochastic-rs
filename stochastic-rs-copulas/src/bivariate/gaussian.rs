@@ -3,21 +3,10 @@
 //! $$
 //! C_\rho(u,v) = \Phi_2\big(\Phi^{-1}(u), \Phi^{-1}(v); \rho\big), \qquad \rho \in (-1, 1),
 //! $$
-//! where $\Phi_2(\cdot,\cdot;\rho)$ is the standard bivariate normal CDF with
-//! correlation $\rho$ and $\Phi^{-1}$ the standard normal quantile.
+//! $\Phi_2$ is the bivariate normal cdf of correlation $\rho$ and $\Phi^{-1}$ the normal quantile;
+//! $\tau = \tfrac{2}{\pi}\arcsin\rho$ inverts in closed form, and $\lambda_L = \lambda_U = 0$.
 //!
-//! - **Kendall's tau:** $\tau = \tfrac{2}{\pi}\arcsin\rho$, inverted in
-//!   closed form as $\rho = \sin(\pi\tau/2)$.
-//!   Reference: Kruskal, W.H. (1958), "Ordinal Measures of Association",
-//!   *JASA* 53(284), 814-861.
-//! - **Tail dependence:** $\lambda_L = \lambda_U = 0$ for every $\rho \in
-//!   (-1, 1)$ — the Gaussian copula is asymptotically independent in both
-//!   tails regardless of $\rho$, in contrast to the Student-t copula
-//!   ([`crate::bivariate::t_copula::TCopula`]), which has strictly positive
-//!   tail dependence for every finite degrees-of-freedom parameter.
-//!
-//! The joint cdf is the conditional integral of `cdf.rs`, to a relative `1e-12` at every admitted $\rho$ and in both tails.
-//!
+//! Reference: Kruskal, W.H. (1958), "Ordinal Measures of Association", *JASA* 53(284), 814-861.
 //! Reference: Embrechts, P., Lindskog, F., McNeil, A.J. (2003),
 //! "Modelling Dependence with Copulas and Applications to Risk
 //! Management", in *Handbook of Heavy Tailed Distributions in Finance*,
@@ -49,9 +38,7 @@ use cdf::quantile_gap;
 
 mod cdf;
 
-/// Clamp used to evaluate [`GaussianCopula::partial_derivative`] just
-/// inside `(0, 1)` at the `v` boundary instead of returning a hardcoded
-/// constant there — see that method's doc for why a constant is wrong.
+/// How far inside `(0, 1)` [`GaussianCopula::partial_derivative`] evaluates the `v` edge limits.
 const BOUNDARY_EPS: f64 = 1e-12;
 
 #[derive(Debug, Clone, Default)]
@@ -241,9 +228,7 @@ impl BivariateExt for GaussianCopula {
     admitted(self, tau, (std::f64::consts::FRAC_PI_2 * tau).sin())
   }
 
-  /// Asymptotic independence: $\lambda_L = \lambda_U = 0$ for every $\rho
-  /// \in (-1, 1)$ — the classical counterexample to "correlation implies
-  /// tail dependence".
+  /// Asymptotic independence: $\lambda_L = \lambda_U = 0$ for every $\rho$, unlike the t copula.
   /// Reference: Embrechts, Lindskog, McNeil (2003), §3.2 (module header).
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
@@ -388,10 +373,8 @@ mod tests {
     assert!(approx(cdf[1], 0.7, 1e-9));
   }
 
-  /// Φ₂(0,0;ρ) = 1/4 + asin(ρ)/(2π); ρ=0.5 → 1/3 exactly.
-  ///
-  /// At this exactly symmetric point the two `norm_cdf` calls cancel to
-  /// `0.0` in `Φ(x) + Φ(y) - 1`, so the result is the formula's own.
+  /// Φ₂(0,0;ρ) = 1/4 + asin(ρ)/(2π), so ρ=0.5 gives 1/3 exactly: the two `norm_cdf` calls cancel to
+  /// `0.0` in `Φ(x) + Φ(y) - 1`.
   #[test]
   fn gaussian_cdf_matches_closed_form_at_origin() {
     let mut c = GaussianCopula::default();
@@ -441,10 +424,7 @@ mod tests {
     );
   }
 
-  /// percent_point(partial_derivative(u,v), v) == u.
-  ///
-  /// The round trip crosses `norm_cdf` twice (once in
-  /// `partial_derivative`, once in `percent_point`).
+  /// `percent_point(partial_derivative(u,v), v) == u`, the round trip crossing `norm_cdf` twice.
   #[test]
   fn gaussian_h_inverse_roundtrip() {
     let mut c = GaussianCopula::default();
@@ -488,13 +468,8 @@ mod tests {
     assert!(c.generator(t.view()).is_err());
   }
 
-  /// `partial_derivative` must not jump to a hardcoded constant right at
-  /// the `v` boundary: its value at `v=1e-12` should be continuous with
-  /// its value at `v=1e-9`, tracking the true directional limit rather
-  /// than snapping to a wrong-signed `0.0`/`1.0` (the F8 regression this
-  /// guards). Checked at `\rho>0`, where the pre-fix code returned the
-  /// limits backwards (`0.0` near `v=0`, `1.0` near `v=1`, when the true
-  /// direction is the opposite — see the method's doc).
+  /// At `ρ>0`, `partial_derivative` at `v=1e-12` is continuous with `v=1e-9`, tracking the
+  /// directional limit (high near `v=0`, low near `v=1`) rather than snapping to `0.0` or `1.0`.
   #[test]
   fn gaussian_partial_derivative_no_jump_near_v_boundary() {
     let mut c = GaussianCopula::default();
@@ -517,9 +492,7 @@ mod tests {
       "expected continuity near v=1: v=1-1e-12 -> {near_one_a}, v=1-1e-9 -> {near_one_b}"
     );
 
-    // Directional regression check: for rho > 0, the true limit is *high*
-    // near v=0 and *low* near v=1 — the opposite of the pre-fix hardcoded
-    // 0.0/1.0.
+    // Directional check: for rho > 0 the limit is high near v=0 and low near v=1.
     assert!(
       near_zero_a > 0.99,
       "rho>0 should push the v->0+ limit toward 1, got {near_zero_a}"

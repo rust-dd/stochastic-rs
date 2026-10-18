@@ -4,86 +4,9 @@
 //! F_{X_1,\dots,X_d}(x)=C\left(F_1(x_1),\dots,F_d(x_d)\right)
 //! $$
 //!
-//! ## Choosing a copula
-//!
-//! Every one-parameter family fits alike, [`BivariateExt::fit`] inverting Kendall's τ-b through
-//! [`BivariateExt::theta_from_tau`] ([`bb1::Bb1`] and [`bb7::Bb7`] maximise the likelihood); they differ in reach, tails, cost.
-//!
-//! ### What Kendall's tau each family can represent
-//!
-//! | Reachable τ | Families |
-//! |---|---|
-//! | Full `(-1, 1)` | [`frank::Frank`], [`gaussian::GaussianCopula`], [`t_copula::TCopula`], [`plackett::Plackett`] |
-//! | Positive only, `[0, 1)` | [`clayton::Clayton`], [`galambos::Galambos`], [`husler_reiss::HuslerReiss`], [`gumbel::Gumbel`], [`joe::Joe`] |
-//! | Narrow, both signs | [`amh::Amh`] (`[-0.18, 0.33]`, asymmetric around 0), [`fgm::Fgm`] (`[-0.22, 0.22]`) |
-//! | Degenerate (no free parameter in practice) | [`independence::Independence`] (`{0}` only); [`marshall_olkin::MarshallOlkin`] on its symmetric `theta` path (`(0, 1]`) — its `new(alpha, beta)` constructor takes the two shock rates directly and is the only family in this crate that is not exchangeable in general |
-//!
-//! A τ-b the family cannot reach fails `.fit()` itself with `InvalidParameter { name: "tau", .. }` and stores nothing:
-//! [`clayton::Clayton`] on negatively dependent data is an error, never a clamped or out-of-bounds `θ`.
-//!
-//! ### Tail shape, and one heuristic to distrust
-//!
-//! Equal (here, zero) upper- and lower-tail dependence does **not** imply
-//! radial symmetry. [`amh::Amh`] has zero tail dependence in both tails below `θ = 1`
-//! yet is measurably not radially symmetric
-//! (`C(u,v) ≠ u+v-1+C(1-u,1-v)`, confirmed numerically) — the in-tree
-//! counterexample to that heuristic. Radially symmetric here:
-//! [`fgm::Fgm`], [`frank::Frank`], [`gaussian::GaussianCopula`],
-//! [`plackett::Plackett`], [`t_copula::TCopula`],
-//! [`independence::Independence`]. Everything else — including
-//! [`amh::Amh`] — is not.
-//!
-//! [`gumbel::Gumbel`] and [`joe::Joe`] have the identical upper-tail
-//! formula ($\lambda_U = 2 - 2^{1/\theta}$, both requiring `θ ≥ 1`),
-//! confirmed byte-for-byte the same expression in both source files. If
-//! tail dependence is your only selection criterion, these two are
-//! indistinguishable; they differ in Archimedean generator
-//! ($(-\ln t)^\theta$ for Gumbel vs. $-\ln(1-(1-t)^\theta)$ for Joe) and
-//! therefore in dependence shape away from the tail, but neither family's
-//! own doc explains when that interior difference should drive a choice.
-//! Treat "Gumbel or Joe" as a genuine tie unless an external reference or
-//! a goodness-of-fit comparison points at one.
-//!
-//! ### Closed-form vs. iterative: fitting and sampling cost
-//!
-//! `theta_from_tau` is closed-form for Clayton, FGM, Gaussian, t, Marshall–Olkin and Gumbel; AMH, Frank, Galambos,
-//! Hüsler–Reiss, Joe and Plackett root-find it, Plackett, Galambos and Hüsler–Reiss integrating their τ at every step.
-//!
-//! [`BivariateExt::percent_point`], one call per sampled pair, is closed-form except in [`bb1::Bb1`] and [`bb7::Bb7`]
-//! (bisection) and [`galambos::Galambos`], [`gumbel::Gumbel`], [`husler_reiss::HuslerReiss`] and [`joe::Joe`] (Brent).
-//!
-//! ### The common data requirement
-//!
-//! `fit` checks only that its input is two columns in `[0, 1]` (inside `(0, 1)` for the BB1 and BB7 likelihoods), not that
-//! they are uniform: transform raw data through a marginal cdf first ([`crate::empirical`], [`crate::univariate::gaussian::GaussianUnivariate`]).
-//!
-//! ### The `∂_v` convention every `partial_derivative` must follow
-//!
-//! `partial_derivative` means $\partial_v C(u,v)$ throughout this crate —
-//! the derivative w.r.t. the *second* argument, at a fixed conditioning
-//! value — never $\partial_u$. This is not a style preference:
-//! [`BivariateExt::partial_derivative`]'s own finite-difference default
-//! perturbs the second column, and
-//! [`BivariateExt::percent_point_numerical`] inverts whatever
-//! `partial_derivative` returns, as a function of `u` at fixed `v`,
-//! assuming it is $\partial_v C(u,v)$ — the conditional CDF of `U` given
-//! `V=v`. Every family here follows it, [`independence::Independence`]
-//! (`∂_v (uv) = u`) included. A family whose override differentiates the other argument
-//! does not fail loudly: [`amh::Amh`]'s `partial_derivative` computed
-//! $\partial_u C(u,v)$ instead — a value as plausible-looking in
-//! isolation as the correct one — and because `Amh` does not override
-//! `percent_point`, `Amh::percent_point`/`Amh::sample` silently solved the
-//! wrong equation for `u` given `v` until this was fixed.
-//!
-//! Every family also now special-cases its own independence limit
-//! directly in `pdf`, `cdf` and `partial_derivative`, not just
-//! `percent_point` (which already had its own branch, for the families
-//! that override it): naive substitution at that boundary hits a
-//! removable singularity in at least one of the three for every family
-//! that has an independence limit ([`clayton::Clayton`] at `θ = 0`,
-//! [`frank::Frank`] at `θ = 0`, [`gumbel::Gumbel`] at `θ = 1`) except
-//! [`amh::Amh`], whose denominator $D = 1-\theta(1-u)(1-v)$ never
-//! vanishes at its own `θ = 0` and so needed no dedicated branch there.
+//! Fifteen families behind [`BivariateExt`]; in every one `partial_derivative` is
+//! $\partial_v C$, the conditional cdf of `U` given `V = v`, and `percent_point` inverts it in `u`.
+//! Choosing a family: <https://stochastic.rust-dd.com/docs/copulas#choosing-a-copula>
 
 pub use crate::traits::BivariateExt;
 

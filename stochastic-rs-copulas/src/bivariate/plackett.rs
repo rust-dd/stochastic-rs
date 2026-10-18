@@ -1,19 +1,13 @@
 //! # Plackett (1965) copula
 //!
-//! Defined by a **constant local odds ratio** $\theta > 0$:
+//! Constant local odds ratio $\theta > 0$; its quadratic gives the closed form for $\theta \neq 1$:
 //! $$
-//! \frac{C(u,v)\,[1 - u - v + C(u,v)]}{[u - C(u,v)][v - C(u,v)]} = \theta.
+//! \frac{C(u,v)\,[1 - u - v + C(u,v)]}{[u - C(u,v)][v - C(u,v)]} = \theta,
 //! $$
-//! Solving the resulting quadratic gives the closed form (for $\theta \neq 1$)
 //! $$
 //! C(u,v) = \frac{1 + (\theta-1)(u+v) - \sqrt{[1 + (\theta-1)(u+v)]^2 - 4 u v \theta (\theta-1)}}{2(\theta-1)}.
 //! $$
-//! $\theta = 1$ is the independence copula; $\theta \to 0^+$ approaches the
-//! lower Fréchet bound, $\theta \to \infty$ the upper Fréchet bound. No tail
-//! dependence in either direction.
-//!
-//! Kendall's τ has no closed form: `τ = 1 − 4∬ ∂_u C ∂_v C du dv` (Nelsen 2006, Thm 5.1.3) is one integral once the
-//! inner one is taken in closed form, `τ(1/θ) = −τ(θ)`.
+//! $\theta = 1$ is independence, $\theta \to 0^+, \infty$ the Fréchet bounds; no tail dependence.
 //!
 //! Reference: Plackett, R.L. (1965), "A Class of Bivariate Distributions",
 //! *Journal of the American Statistical Association* 60(310), 516-522.

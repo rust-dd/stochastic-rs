@@ -4,15 +4,21 @@
 //! C_{\theta,\delta}(u,v)=1-\Bigl(1-\bigl[(1-\bar u^\theta)^{-\delta}+(1-\bar v^\theta)^{-\delta}-1\bigr]^{-1/\delta}\Bigr)^{1/\theta},\qquad \bar u=1-u,\ \theta\ge1,\ \delta>0
 //! $$
 //!
-//! The Joe–Clayton copula: Archimedean with generator
-//! `φ(t) = (1 − (1 − t)^θ)^{−δ} − 1`, upper tail from the Joe part and lower
-//! tail from the Clayton part, `λ_U = 2 − 2^{1/θ}`, `λ_L = 2^{−1/δ}`. With
-//! `a = 1 − ū^θ`, `b = 1 − v̄^θ`, `s = a^{−δ} + b^{−δ} − 1` and `T = s^{−1/δ}`:
-//! `∂_v C = (1 − T)^{1/θ−1} s^{−1/δ−1} b^{−δ−1} v̄^{θ−1}` and
-//! `c = (1 − T)^{1/θ−2} s^{−1/δ−2} (ab)^{−δ−1} (ū v̄)^{θ−1} [θ(δ + 1) − (θδ + 1) T]`.
+//! Joe–Clayton copula: Archimedean, generator $(1-(1-t)^\theta)^{-\delta}-1$, Joe's upper tail and
+//! Clayton's lower; with $a, b, s, T$ below
 //!
-//! Kendall's τ is a Beta form from Nelsen's Cor. 5.1.4 on `φ`, inverted for `θ` at the stored `δ`; `fit` is a
-//! maximum-likelihood fit of `(θ, δ)`.
+//! $$
+//! a=1-\bar u^\theta,\ b=1-\bar v^\theta,\ s=a^{-\delta}+b^{-\delta}-1,\ T=s^{-1/\delta},
+//! $$
+//!
+//! $$
+//! \partial_v C=(1-T)^{1/\theta-1}s^{-1/\delta-1}b^{-\delta-1}\bar v^{\theta-1},
+//! $$
+//!
+//! $$
+//! c=(1-T)^{1/\theta-2}s^{-1/\delta-2}(ab)^{-\delta-1}(\bar u\bar v)^{\theta-1}
+//! \bigl[\theta(\delta+1)-(\theta\delta+1)T\bigr].
+//! $$
 //!
 //! References: Joe, H. (1997), *Multivariate Models and Dependence Concepts*,
 //! Chapman & Hall, §5.2 (family BB7); Joe, H. (2014), *Dependence Modeling
@@ -159,11 +165,8 @@ impl Bb7 {
     Ok((self.theta.expect("checked"), self.delta))
   }
 
-  /// `(ln a, ln b, ln s, ln T, ln(1 − T))` for `a = 1 − ū^θ`, `b = 1 − v̄^θ`,
-  /// `s = a^{−δ} + b^{−δ} − 1` and `T = s^{−1/δ}`, with `ū = 1 − u` and
-  /// `v̄ = 1 − v`, in the `ln1p`/`expm1` forms that keep the digits when
-  /// `ū^θ` is far below the rounding unit (large θ, or u close to one),
-  /// where `1 − ū^θ` would round to one and `s` to exactly one.
+  /// `(ln a, ln b, ln s, ln T, ln(1 − T))` of the module's `a, b, s, T`, in `ln1p`/`expm1` forms
+  /// that keep their digits where `ū^θ` is below the rounding unit, so `1 − ū^θ` rounds to one.
   fn logs(u: f64, v: f64, theta: f64, delta: f64) -> (f64, f64, f64, f64, f64) {
     let ln_a = ln_one_minus_exp(theta * (-u).ln_1p());
     let ln_b = ln_one_minus_exp(theta * (-v).ln_1p());

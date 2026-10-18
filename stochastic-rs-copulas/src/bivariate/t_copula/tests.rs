@@ -20,12 +20,8 @@ fn t_cdf_marginal_recovers_input() {
 
 #[test]
 fn t_cdf_zero_rho_at_origin_is_one_quarter() {
-  // For bivariate Student-t with ρ = 0, the components are uncorrelated
-  // but **not independent** (they share a common χ²_ν mixing scale).
-  // Yet at the marginal medians (0, 0), the sign-decoupling representation
-  //   (X, Y) = (Z₁, Z₂) / √(W/ν), Z ⊥ W,
-  // gives sign(X) = sign(Z₁), sign(Y) = sign(Z₂), with Z₁ ⊥ Z₂. Hence
-  //   P(X ≤ 0, Y ≤ 0) = P(Z₁ ≤ 0) · P(Z₂ ≤ 0) = 1/4 exactly.
+  // At ρ = 0, (X, Y) = (Z₁, Z₂)/√(W/ν), Z ⊥ W, is uncorrelated but not independent; its signs are
+  // those of independent Z₁, Z₂, so P(X ≤ 0, Y ≤ 0) = 1/4 exactly.
   let c = TCopula::new(0.0, 4.0);
   let x = array![[0.5_f64, 0.5]];
   let cdf = c.cdf(x.view()).unwrap();
@@ -51,16 +47,13 @@ fn t_pdf_symmetric_in_uv() {
 
 #[test]
 fn t_pdf_large_nu_approaches_gaussian_copula() {
-  // At ν → ∞ the t-copula collapses to the Gaussian copula.
-  // Spot-check density vs Gaussian-copula density at a fixed (u, v, ρ)
-  // — use ν = 500.
+  // At ν = 500, a proxy for ν → ∞, the density matches the Gaussian copula's at a fixed (u, v, ρ).
   let c = TCopula::new(0.5, 500.0);
   let x = array![[0.3_f64, 0.7]];
   let pdf_t = c.pdf(x.view()).unwrap();
 
-  // Gaussian copula density at (0.3, 0.7), ρ=0.5:
+  // Gaussian copula density at (0.3, 0.7), ρ=0.5, x = Φ⁻¹(u), y = Φ⁻¹(v):
   // c(u,v) = (1/√(1-ρ²)) · exp{(2ρ x y - ρ²(x²+y²))/(2(1-ρ²))}
-  // with x = Φ⁻¹(u), y = Φ⁻¹(v).
   let rho = 0.5_f64;
   let xx = ndtri(0.3);
   let yy = ndtri(0.7);
@@ -108,9 +101,8 @@ fn t_partial_derivative_matches_finite_diff() {
   }
 }
 
-/// ρ=0.5, ν=3: λ = 2·t₄(−√(4·(1−0.5)/(1+0.5))), checked against the
-/// in-tree `t_cdf` (regularised incomplete beta, A&S 26.7.1), plus
-/// monotonicity of λ in ρ.
+/// ρ=0.5, ν=3: λ = 2·t₄(−√(4·(1−0.5)/(1+0.5))) against the in-tree `t_cdf` (regularised incomplete
+/// beta, A&S 26.7.1), and λ is monotone in ρ.
 #[test]
 fn t_copula_tail_dependence_symmetric_and_monotone() {
   let c = TCopula::new(0.5, 3.0);
@@ -137,21 +129,8 @@ fn t_copula_tail_dependence_symmetric_and_monotone() {
   }
 }
 
-/// `partial_derivative` must not jump to a hardcoded constant right at
-/// the `v` boundary: its value at `v=1e-12` should be continuous with
-/// its value at `v=1e-9` (the F8 regression this guards), and — since
-/// the true boundary limit is `u`-independent for this family (see the
-/// method's doc) — should also agree across different `u` at the same
-/// extreme `v`.
-///
-/// Tolerance `1e-3`, not `1e-6`: the raw formula's own convergence to its
-/// `v\to0^+` asymptote is only `O(1/y)` in `y=t_\nu^{-1}(v)`, and `y`
-/// itself grows only polynomially as `v\to0` (`t`-distribution tail), so
-/// even a `1000\times` shrink in `v` (`1e-9\to1e-12`) leaves a real,
-/// measured `\approx 2.7e-4` gap at `\rho=0.6,\nu=4` — verified directly
-/// against this formula in Python, not assumed. `1e-3` still rejects a
-/// jump to a hardcoded constant by a wide margin (such a jump is
-/// `O(0.1)`-`O(1)`, three-plus orders of magnitude larger).
+/// At `ρ=0.6, ν=4`, `partial_derivative` at `v=1e-12` is continuous with `v=1e-9` and, the boundary
+/// limit being `u`-independent, across `u`; tolerance `1e-3`, since the `O(1/y)` gap is ≈ 2.7e-4.
 #[test]
 fn t_copula_partial_derivative_no_jump_near_v_boundary() {
   let c = TCopula::new(0.6, 4.0);
@@ -176,9 +155,7 @@ fn t_copula_partial_derivative_no_jump_near_v_boundary() {
     "expected continuity near v=1: v=1-1e-12 -> {near_one_a}, v=1-1e-9 -> {near_one_b}"
   );
 
-  // u-independence at the exact boundary (the closed form derived in the
-  // method's doc does not depend on u), unlike the pre-fix hardcoded
-  // 0.0/1.0 which happened to be u-independent for the wrong reason.
+  // At the exact boundary the closed form does not depend on u (see the method's doc).
   let other_u = c.partial_derivative(array![[0.8_f64, 0.0]].view()).unwrap()[0];
   let base_u = c.partial_derivative(array![[0.4_f64, 0.0]].view()).unwrap()[0];
   assert!(
@@ -186,9 +163,8 @@ fn t_copula_partial_derivative_no_jump_near_v_boundary() {
     "boundary limit should not depend on u: u=0.8 -> {other_u}, u=0.4 -> {base_u}"
   );
 
-  // Directional regression check against the exact closed form
-  // `T_{nu+1}(rho*sqrt(nu+1)/sqrt(1-rho^2))`, rho=0.6, nu=4: neither 0
-  // nor 1 (the pre-fix hardcoded values), and rho>0 pushes it above 0.5.
+  // Directional check vs `T_{nu+1}(rho*sqrt(nu+1)/sqrt(1-rho^2))` at rho=0.6, nu=4: in (0, 1) and
+  // above 0.5 for rho>0.
   assert!(
     base_u > 0.5 && base_u < 1.0,
     "rho>0 boundary limit should sit strictly between 0.5 and 1, got {base_u}"

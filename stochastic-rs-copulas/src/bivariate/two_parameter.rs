@@ -5,15 +5,8 @@ use ndarray::ArrayView1;
 
 use crate::optim::nelder_mead;
 
-/// Kendall's τ from the h-function alone,
-/// `τ = 1 − 4 ∫∫ ∂_u C(u, v) ∂_v C(u, v) du dv` (Nelsen 2006, §5.1.1: the
-/// integration-by-parts form of Theorem 5.1.3), by a composite two-point
-/// Gauss–Legendre product rule on `panels × panels` cells. Both factors are
-/// conditional CDFs in `[0, 1]`, so the integrand stays bounded for the
-/// tail-dependent families whose density diverges at the corners, and no
-/// node lies on the boundary, where the powers inside the h-functions lose
-/// all their digits. `h` is `∂C/∂v`; `∂C/∂u` is read off it with the
-/// arguments swapped, exact for the exchangeable BB families.
+/// Kendall's τ `1 − 4∫∫ ∂_u C ∂_v C` (Nelsen 2006, §5.1.1) from `h` alone, `∂_u C` being `h` with
+/// swapped arguments (exact for exchangeable BB families); bounded, with no node on the boundary.
 pub(crate) fn kendall_tau_numeric(h: impl Fn(f64, f64) -> f64, panels: usize) -> f64 {
   let width = 1.0 / panels as f64;
   let offset = 0.5 * width / 3.0_f64.sqrt();

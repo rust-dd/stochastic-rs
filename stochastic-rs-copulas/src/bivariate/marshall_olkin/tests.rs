@@ -47,9 +47,7 @@ fn mo_theta_from_tau_via_symmetric_inversion() {
 
 #[test]
 fn mo_singular_curve_total_mass_matches_paper() {
-  // Singular component carries mass αβ/(α+β-αβ). Verify against
-  // Monte-Carlo on a fine grid: count fraction of unit-square sectors
-  // dominated by the absolutely continuous density vs total.
+  // The singular component's mass αβ/(α+β-αβ) is what the continuous density leaves out of 1.
   let alpha = 0.6_f64;
   let beta = 0.4_f64;
   let mass_singular_paper = alpha * beta / (alpha + beta - alpha * beta);
@@ -229,10 +227,8 @@ fn mo_set_theta_rejects_an_invalid_theta() {
   MarshallOlkin::default().set_theta(5.0);
 }
 
-/// pdf/cdf/partial_derivative on an unfit `MarshallOlkin` (neither
-/// `theta` nor `(alpha, beta)` set) must return `Err`, matching every
-/// sibling copula's `check_fit`-gated contract — not panic via
-/// `resolve_params().expect(..)`.
+/// `pdf`, `cdf`, `partial_derivative` on an unfit `MarshallOlkin` (no `theta`, no `(alpha, beta)`)
+/// return `Err` like every sibling's `check_fit` gate, and do not panic.
 #[test]
 fn marshall_olkin_unfit_errs_like_siblings() {
   let c = MarshallOlkin::default();

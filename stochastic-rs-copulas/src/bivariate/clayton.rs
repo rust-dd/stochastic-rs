@@ -290,10 +290,9 @@ impl BivariateExt for Clayton {
     admitted(self, tau, 2.0 * tau / (1.0 - tau))
   }
 
-  /// Lower-tail dependence $\lambda_L = 2^{-1/\theta}$; Clayton has no
-  /// upper-tail dependence ($\lambda_U = 0$).
-  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
-  /// Springer, Example 5.21 / Table 5.1.
+  /// Lower-tail dependence $\lambda_L = 2^{-1/\theta}$; Clayton has no upper-tail dependence
+  /// ($\lambda_U = 0$).
+  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, Example 5.21 / Table 5.1.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
     let theta = self.theta.unwrap();
@@ -338,14 +337,8 @@ mod tests {
     let _ = c.sample(8, &Deterministic::new(7));
   }
 
-  /// The `θ=0` regression test, mirroring
-  /// `frank::tests::frank_independence_sample_kendall_tau_near_zero`
-  /// exactly (same tolerance derivation — `6` standard errors of τ under
-  /// the null of independence, Kendall & Gibbons (1990) — same 3-seed
-  /// best-of). Before the `percent_point` fix, `θ=0` returned
-  /// `V.clone()`, making `U=V` exactly for every sampled pair
-  /// (comonotonic, τ≈1) instead of the independence `θ=0` is supposed to
-  /// mean.
+  /// At `θ=0` draws are independent: the best of three seeds has |τ| under 6 standard errors of 0
+  /// (Kendall & Gibbons 1990), as in Frank's `θ=0` sampling test.
   #[test]
   fn clayton_independence_sample_kendall_tau_near_zero() {
     let n = 4000usize;
@@ -370,13 +363,8 @@ mod tests {
     );
   }
 
-  /// `θ=0` is Clayton's own independence limit. `pdf`/`cdf`/
-  /// `partial_derivative` had no branch for it at all — mirroring the
-  /// gap `frank::tests::frank_cdf_at_independence_is_uv` documents for
-  /// Frank's pre-fix `cdf` — so naive substitution hit a removable
-  /// `1^{-∞}` singularity instead of resolving to the independence
-  /// copula. Asserted exactly (not via a loose tolerance), matching this
-  /// crate's convention for independence-limit checks.
+  /// `θ=0` is the independence limit: `pdf`, `cdf` and `partial_derivative` resolve there exactly,
+  /// not through the removable `1^{-∞}` singularity.
   #[test]
   fn clayton_pdf_at_independence_is_one() {
     let c = Clayton::new(0.0);
@@ -393,10 +381,7 @@ mod tests {
     assert!(approx(cdf[1], 0.18, 1e-12), "got {}", cdf[1]);
   }
 
-  /// `partial_derivative` computes $\partial_v C(u,v)$ (this family's own
-  /// convention, stated in [`Clayton::percent_point`]'s doc). At
-  /// independence, $C(u,v)=uv \Rightarrow \partial_v C = u$ — not the
-  /// pre-fix `1^{-∞}` singularity's `v^{-1}` result.
+  /// At independence $C(u,v)=uv$ gives $\partial_v C = u$, where the general formula is singular.
   #[test]
   fn clayton_partial_derivative_at_independence_returns_u() {
     let c = Clayton::new(0.0);
@@ -407,13 +392,8 @@ mod tests {
     assert!(approx(pd[1], 0.2, 1e-12), "got {}", pd[1]);
   }
 
-  /// `h(u | v) = v^{-θ-1} (u^{-θ} + v^{-θ} - 1)^{-(1+θ)/θ}` (Aas, Czado,
-  /// Frigessi & Bakken 2009, Table 1 — the Clayton row) at θ = 2, evaluated
-  /// with the same formula in Python:
-  ///   th=2.0; u=0.3; v=0.6; v**(-th-1)*(u**(-th)+v**(-th)-1)**(-(1+th)/th)
-  /// gives 0.10005136755229085, and 0.8004109404183268 with u and v swapped.
-  /// Guards the degenerate all-infinite branch, which ndarray's inverted
-  /// `is_all_infinite` used to select for every finite input.
+  /// `h(u | v) = v^{-θ-1} (u^{-θ} + v^{-θ} - 1)^{-(1+θ)/θ}` (Aas et al. 2009, App. B.3) at θ = 2,
+  /// by Python: `h(0.3 | 0.6) = 0.10005136755229085`, `h(0.6 | 0.3) = 0.8004109404183268`.
   #[test]
   fn partial_derivative_matches_the_closed_form_h_function() {
     let mut c = Clayton::default();

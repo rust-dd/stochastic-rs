@@ -33,19 +33,47 @@ The `stochastic-rs-copulas` crate ships bivariate and multivariate copulas, corr
 
 ## Choosing a copula
 
-The one-parameter families are fit by computing Kendall's tau and inverting it to the family's own parameter; BB1 and BB7 by two-parameter maximum likelihood. The rustdoc of `stochastic_rs::copulas::bivariate` has the full comparison. Short version:
+The one-parameter families are fit by computing Kendall's tau and inverting it to the family's own parameter; BB1 and BB7 by two-parameter maximum likelihood. Short version:
 
 | Need | Reach for |
 |---|---|
 | Both positive and negative dependence | `Frank`, `Gaussian`, `TCopula`, `Plackett` — the only four spanning the full `(-1, 1)` range of τ |
-| Only ever positive dependence, lower-tail | `Clayton` — the only one-parameter family here with lower-tail dependence (BB1 and BB7 carry both tails) |
+| Only ever positive dependence, lower-tail | `Clayton` — the only one-parameter family here with lower-tail dependence across its range (`Amh` has it only at $\theta = 1$, where it is Clayton(1); BB1 and BB7 carry both tails) |
 | Only ever positive dependence, upper-tail | `Galambos`, `HuslerReiss`, `Gumbel`, `Joe` — `Gumbel` and `Joe` share the same upper-tail formula, so tail dependence alone won't distinguish them |
 | Symmetric tail dependence (both tails, equal) | `TCopula` — the only one |
 | Weak dependence in either direction (τ within roughly ±0.2-0.3) | `Amh`, `Fgm` — both structurally cannot represent stronger dependence |
 | Fast sampling at scale (millions of draws) | `Amh`, `Clayton`, `Fgm`, `Frank`, `Gaussian`, `Independence`, `MarshallOlkin`, `Plackett` or `TCopula` — the nine with a closed-form `percent_point`; `Gumbel`, `Joe`, `Galambos`, `HuslerReiss`, `Bb1` and `Bb7` invert numerically per draw |
 | A non-exchangeable, shared-shock dependence structure | `MarshallOlkin::new(alpha, beta)` — the one family here that is not symmetric in its two arguments in general |
 
-`fit` expects two columns already transformed to `[0, 1]` and checks only that shape and range, not uniformity, so transform raw data through its margins first. A Kendall's τ the family cannot represent is an error (`InvalidParameter { name: "tau", .. }`), never a clamped parameter; `tau_from_theta` and `theta_from_tau` convert between τ and the family's parameter.
+### Which Kendall's τ a family reaches
+
+`tau_from_theta` and `theta_from_tau` convert between τ and the family's parameter, and `fit` inverts the sample τ-b through the second:
+
+| Reachable τ | Families |
+|---|---|
+| Full `(-1, 1)` | `Frank`, `Gaussian`, `TCopula`, `Plackett` |
+| `[0, 1)` | `Clayton`, `Galambos`, `HuslerReiss`, `Gumbel`, `Joe` |
+| Narrow, both signs | `Amh` ($[(5 - 8\ln 2)/3,\ 1/3] \approx [-0.1817,\ 0.3333]$), `Fgm` ($[-2/9,\ 2/9]$) |
+| `{0}` | `Independence`, whose `theta_from_tau` answers $\theta = 0$ for any τ |
+| `(0, 1]` on the symmetric slice | `MarshallOlkin`: `from_tau` sets $\alpha = \beta = \theta$ and reaches $\tau = \theta/(2 - \theta)$; `new(alpha, beta)` sets the two shock rates apart and is the one family here that is not exchangeable in general |
+
+A τ̂ the family cannot reach fails `fit` with `InvalidParameter { name: "tau", .. }` and stores nothing: `Clayton` on negatively dependent data is an error, never a clamped parameter. Where θ has no finite end the inversion stops at a numerical cap (θ = 10⁴ for `Frank` and `Joe`), a hair short of the table's τ = 1.
+
+### Tail shape
+
+Zero tails in both directions do not imply radial symmetry: `Amh` (below $\theta = 1$) is not radially symmetric, while `Fgm`, `Frank`, `Gaussian`, `Plackett`, `TCopula` and `Independence` are. `Gumbel` and `Joe` share $\lambda_U = 2 - 2^{1/\theta}$, both with $\theta \ge 1$, so tail dependence alone does not choose between them; they differ in the generator, $(-\ln t)^\theta$ against $-\ln(1-(1-t)^\theta)$, and so in the dependence away from the tails.
+
+### Sampling cost
+
+`sample` inverts `partial_derivative` once per pair: in closed form for `Amh`, `Clayton`, `Fgm`, `Frank`, `Gaussian`, `Independence`, `MarshallOlkin`, `Plackett` and `TCopula`, and by Brent's root for `Bb1`, `Bb7`, `Galambos`, `HuslerReiss`, `Gumbel` and `Joe`, the last four taking the identity at their independence value. A fit pays for its τ inversion the same way: `theta_from_tau` is closed-form for `Clayton`, `Fgm`, `Gaussian`, `TCopula`, `MarshallOlkin` and `Gumbel`, and a root-find for `Amh`, `Frank`, `Galambos`, `HuslerReiss`, `Joe` and `Plackett`, the last three integrating their τ at every step.
+
+### What fit expects
+
+Both columns are pseudo-observations strictly inside $(0, 1)$: normalised ranks (`gof::pseudo_observations`) or a fitted marginal cdf (`GaussianUnivariate`). A value outside $[0, 1]$ or a NaN is `MarginalOutOfRange`; a 0 or a 1 is `MarginalOnBoundary`, naming its row, column and value, since ranks $k/(n + 1)$ never reach either end and the densities are NaN there. The uniformity of the columns is not tested: `check_marginal` is a separate diagnostic that no fit runs. `pdf`, `cdf`, `partial_derivative` and `percent_point` share the range rule, and the densities are NaN at exactly 0 or 1.
+
+### The conditioning convention
+
+`partial_derivative` is $\partial_v C(u, v)$, the conditional cdf of `U` given `V = v`, in every family. `percent_point` inverts it in `u` at fixed `v`, and the trait's finite-difference default perturbs the second column, so a family that differentiated the other argument would sample the wrong law without an error.
 
 ## Multivariate (`MultivariateExt`)
 

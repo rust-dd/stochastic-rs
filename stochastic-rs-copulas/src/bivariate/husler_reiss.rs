@@ -231,7 +231,8 @@ impl BivariateExt for HuslerReiss {
     })
   }
 
-  /// `exp` of `HuslerReiss::ln_h`, `u` at `λ = 0`.
+  /// `exp` of `HuslerReiss::ln_h`, `u` at `λ = 0`, where the general formula's `0·∞` is NaN at
+  /// `u ∈ {0, 1}`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
@@ -437,21 +438,8 @@ mod tests {
     assert_eq!(td.lower, 0.0);
   }
 
-  /// `partial_derivative` must not jump to a hardcoded constant right at
-  /// the `v` boundary: its value at `v=1e-12` should be continuous with
-  /// its value at `v=1e-9` (the F8 regression this guards). Checked at
-  /// `\lambda=1.5`, where the pre-fix code hardcoded `0.0` near `v=0` even
-  /// though the true limit there is close to `1` for this `\lambda`, and
-  /// hardcoded `1.0` near `v=1` even though the true limit there is `0`
-  /// (see the method's doc).
-  ///
-  /// Tolerance `2e-2`, not `1e-6`: unlike the Gaussian/t-copula families,
-  /// this family's `v\to0^+` convergence is not fast enough for a `1e-6`
-  /// bound to hold across a `1000\times` shrink in `v` — measured directly
-  /// against this formula at `\lambda=1.5,u=0.4`, the real gap between
-  /// `v=1e-12` and `v=1e-9` is `\approx 7.0e-3`. `2e-2` still rejects a
-  /// jump to a hardcoded constant by more than an order of magnitude (such
-  /// a jump is `\approx 1.0` here, since the true limit sits near `1`).
+  /// At `λ=1.5`, with limits near 1 at `v→0⁺` and 0 at `v→1⁻`, `partial_derivative` at `v=1e-12` is
+  /// continuous with `v=1e-9`; tolerance `2e-2`, as the slow convergence in `v` leaves ≈ 7.0e-3.
   #[test]
   fn hr_partial_derivative_no_jump_near_v_boundary() {
     let mut c = HuslerReiss::default();
@@ -474,9 +462,7 @@ mod tests {
       "expected continuity near v=1: v=1-1e-12 -> {near_one_a}, v=1-1e-9 -> {near_one_b}"
     );
 
-    // Directional regression check: at lambda=1.5 the true v->0+ limit is
-    // near 1 (not the pre-fix hardcoded 0.0), and the true v->1- limit is
-    // near 0 (not the pre-fix hardcoded 1.0).
+    // Directional check: at lambda=1.5 the true v->0+ limit is near 1 and the v->1- limit near 0.
     assert!(
       near_zero_a > 0.9,
       "lambda=1.5 v->0+ limit should be close to 1, got {near_zero_a}"
@@ -487,8 +473,8 @@ mod tests {
     );
   }
 
-  /// `λ = 0` is independence: `C = uv`, `c = 1` and `∂_v C = u` on the closed square, where the general formula's `0·∞`
-  /// is NaN at `u ∈ {0, 1}` and the numerical inverse, so sampling, failed.
+  /// `λ = 0` is independence: `C = uv`, `c = 1` and `∂_v C = u` on the closed square, where the
+  /// general formula's `0·∞` is NaN at `u ∈ {0, 1}`.
   #[test]
   fn hr_lambda_zero_is_independence() {
     let c = HuslerReiss::new(0.0);

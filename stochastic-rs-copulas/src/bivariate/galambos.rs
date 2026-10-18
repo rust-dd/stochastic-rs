@@ -11,11 +11,7 @@
 //! A(t) = 1 - \big(t^{-\theta} + (1-t)^{-\theta}\big)^{-1/\theta},
 //! \qquad t \in [0, 1].
 //! $$
-//! $\theta \to 0$ recovers the independence copula ($A \equiv 1$); $\theta
-//! \to \infty$ recovers the comonotone copula ($A(t) = \max(t, 1-t)$).
-//!
-//! Tail dependence: $\lambda_U = 2^{-1/\theta}$ (upper),
-//! $\lambda_L = 0$ (lower).
+//! $\theta \to 0$ is independence ($A \equiv 1$), $\theta \to \infty$ the comonotone copula.
 //!
 //! Reference: Galambos, J. (1975), "Order statistics of samples from
 //! multivariate distributions", *JASA* 70(351), 674-680.
@@ -461,20 +457,8 @@ mod tests {
     assert_eq!(td.lower, 0.0);
   }
 
-  /// `partial_derivative` must not jump to a hardcoded constant right at
-  /// the `v\to0^+` boundary: its value at `v=1e-12` should be continuous
-  /// with its value at `v=1e-9` (the F8 regression this guards). Checked
-  /// at `\theta=1.5`, where the pre-fix code hardcoded `0.0` even though
-  /// the true limit there is close to `1` for this `\theta` (see the
-  /// method's doc).
-  ///
-  /// Tolerance `1e-2`, not `1e-6`: measured directly against this formula
-  /// at `\theta=1.5,u=0.4`, the real gap between `v=1e-12` and `v=1e-9` is
-  /// `\approx 2.2e-3` (this family's boundary convergence in `v`, like
-  /// Hüsler-Reiss's, is not fast enough for `1e-6` to hold across a
-  /// `1000\times` shrink in `v`). `1e-2` still rejects a jump to a
-  /// hardcoded constant by more than two orders of magnitude (such a jump
-  /// is `\approx 0.6` here, since the true limit sits near `1`, not `0`).
+  /// At `θ=1.5`, where the `v→0⁺` limit is near 1, `partial_derivative` at `v=1e-12` is continuous
+  /// with `v=1e-9`; tolerance `1e-2`, as the slow convergence in `v` leaves a gap of ≈ 2.2e-3.
   #[test]
   fn galambos_partial_derivative_no_jump_near_v_zero() {
     let mut c = Galambos::default();

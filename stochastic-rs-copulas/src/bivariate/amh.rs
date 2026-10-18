@@ -74,7 +74,8 @@ impl Amh {
   fn root<const LATE_Y: bool>(theta: f64, y: f64, v: f64) -> f64 {
     let (minus_a, b, one_minus_p, z) = Self::quadratic(theta, y, v);
     let x = (1.0 - theta) * (1.0 - y).sqrt();
-    // `hypot` without the call: libm rounds it this way when no square needs scaling, as `big ≥ 1e-24` for `θ < 1`.
+    // `hypot` inlined as `√(small² + big²)` in one fma, within 2 ulp: no square needs scaling as
+    // `big ≥ 1e-24` for `θ < 1`.
     let (big, small) = if x >= z { (x, z) } else { (z, x) };
     let root = small.mul_add(small, big * big).sqrt();
     if LATE_Y && b < 0.0 {
@@ -325,12 +326,8 @@ mod tests {
   fn amh_pdf_at_interior_matches_closed_form_fixture() {
     let mut c = Amh::default();
     c.set_theta(0.5);
-    // Hand-computed at (u, v) = (0.5, 0.5):
-    //   D = 1 - 0.5·0.5·0.5 = 0.875
-    //   c = ((1-0.5)·0.875 + 2·0.5·0.5·0.5) / 0.875³
-    //     = (0.4375 + 0.25) / 0.669921875
-    //     = 0.6875 / 0.669921875
-    //     = 1.026239…
+    // Hand-computed at (0.5, 0.5), D = 1 − 0.5·0.5·0.5 = 0.875:
+    // c = ((1 − 0.5)·0.875 + 2·0.5·0.5·0.5) / 0.875³ = 0.6875 / 0.669921875 = 1.026239…
     let x = array![[0.5_f64, 0.5]];
     let pdf = c.pdf(x.view()).unwrap();
     let expected = 0.6875_f64 / 0.875_f64.powi(3);
@@ -445,14 +442,8 @@ mod tests {
     assert_eq!(td.upper, 0.0);
   }
 
-  /// `partial_derivative` computes $\partial_v C(u,v)$ (the same "second
-  /// argument, fixed conditioning value" convention as
-  /// [`crate::bivariate::frank::Frank::partial_derivative`]). At
-  /// independence ($\theta=0$, $C(u,v)=uv$), $\partial_v C = u$ — not $v$.
-  /// The previous formula computed $\partial_u C(u,v)$, which equals $v$
-  /// at this same point — an equally plausible-looking value in
-  /// isolation, which is exactly why this direct pin, not just the
-  /// sampling check below, is needed.
+  /// At independence ($\theta=0$, $C(u,v)=uv$) `partial_derivative` is $\partial_v C = u$, not
+  /// $\partial_u C = v$: the convention of [`crate::bivariate::frank::Frank::partial_derivative`].
   #[test]
   fn amh_partial_derivative_at_independence_returns_u() {
     let mut c = Amh::default();
@@ -464,25 +455,8 @@ mod tests {
     assert!(approx(pd[1], 0.2, 1e-12), "got {}", pd[1]);
   }
 
-  /// Kendall's τ is built from the products `(u_i-u_j)(v_i-v_j)`, which is
-  /// exactly symmetric under swapping every pair's two coordinates, so τ
-  /// takes the identical value whether a sampler draws `(U,V)` or its
-  /// transpose `(V,U)`. It cannot, even in principle, catch a sampler that
-  /// differentiates the wrong argument. What does catch it: the empirical
-  /// joint CDF at specific, labeled, off-diagonal points — `P(U<=a,
-  /// V<=b)` for `a != b`, compared against the closed-form `C(a,b)` —
-  /// because that statistic is keyed to which physical column is `U` and
-  /// which is `V`, not just their pairing.
-  ///
-  /// Before the `partial_derivative` fix, root-finding on the wrong
-  /// partial routinely failed to bracket a solution (its achievable range
-  /// over `u`, for fixed `v`, does not cover the sampled quantile `p`),
-  /// and `percent_point_numerical`'s `unwrap_or(f64::EPSILON)` fallback
-  /// clamped roughly three quarters of `U` draws to ~0 at `θ=0.6` —
-  /// pushing every `emp(a,b)` here far from the true `C(a,b)`, with
-  /// errors up to 0.47 (`n=20000`). This test's tolerance is nowhere near
-  /// that: 6 standard errors of a Bernoulli proportion at `n=20000`,
-  /// worst-case `p=0.5`.
+  /// Kendall's τ is blind to a sampler that differentiates the wrong argument (it is symmetric in
+  /// `(U, V)`); the empirical cdf at off-diagonal points against `C(a, b)` is not.
   #[test]
   fn amh_sample_matches_closed_form_cdf_at_off_diagonal_points() {
     let n = 20_000usize;

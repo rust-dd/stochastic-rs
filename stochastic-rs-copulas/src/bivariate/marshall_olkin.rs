@@ -143,9 +143,8 @@ impl BivariateExt for MarshallOlkin {
     Ok(())
   }
 
-  /// Absolutely continuous density. Returns `0` exactly on the singular
-  /// curve $u^\alpha = v^\beta$ and `(1 - \alpha) u^{-\alpha}` /
-  /// `(1 - \beta) v^{-\beta}` in the two open sectors.
+  /// Absolutely continuous density: `0` exactly on the singular curve $u^\alpha = v^\beta$, and
+  /// `(1 - \alpha) u^{-\alpha}` / `(1 - \beta) v^{-\beta}` in the two open sectors.
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();

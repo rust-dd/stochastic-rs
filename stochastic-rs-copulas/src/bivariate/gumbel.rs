@@ -190,10 +190,9 @@ impl BivariateExt for Gumbel {
     admitted(self, tau, 1.0 / (1.0 - tau))
   }
 
-  /// Upper-tail dependence $\lambda_U = 2 - 2^{1/\theta}$; Gumbel has no
-  /// lower-tail dependence ($\lambda_L = 0$).
-  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed.,
-  /// Springer, Table 5.1.
+  /// Upper-tail dependence $\lambda_U = 2 - 2^{1/\theta}$; Gumbel has no lower-tail dependence
+  /// ($\lambda_L = 0$).
+  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd ed., Springer, Table 5.1.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
     self.check_theta()?;
     let theta = self.theta.unwrap();
@@ -211,11 +210,7 @@ mod tests {
 
   use super::*;
 
-  /// Direct regression pin for the `θ=1` `partial_derivative` bug: at
-  /// independence (`C(u,v)=uv ⟹ ∂_v C = u`), mirrors
-  /// `frank::tests::frank_partial_derivative_at_independence_returns_u`.
-  /// This is the test that actually exercises the bug fixed above — see
-  /// the next test's doc for why a Kendall's-τ sampling check does not.
+  /// At independence (`θ=1`, `C(u,v)=uv`) `partial_derivative` is `∂_v C = u`.
   #[test]
   fn gumbel_partial_derivative_at_independence_returns_u() {
     let g = Gumbel::new(1.0);
@@ -226,16 +221,8 @@ mod tests {
     assert!((pd[1] - 0.2).abs() < 1e-12, "got {}", pd[1]);
   }
 
-  /// Kendall's-τ sampling check at `θ=1`, same construction as
-  /// `clayton::tests::clayton_independence_sample_kendall_tau_near_zero`
-  /// and `frank::tests::frank_independence_sample_kendall_tau_near_zero`.
-  /// Unlike those two, this one would pass even without the
-  /// `partial_derivative` fix above: `Gumbel::percent_point` already had
-  /// its own correct `θ=1` branch, so `Gumbel::sample` never routed
-  /// through the buggy `partial_derivative` at this boundary. Kept
-  /// anyway as a direct regression guard on `sample`/`percent_point`
-  /// itself, matching this crate's standing convention of pinning
-  /// independence-limit sampling behavior for every family that has one.
+  /// At `θ=1` draws are independent, as in Clayton's and Frank's `θ=0` tests; `percent_point`
+  /// has its own `θ=1` branch, so this guards `sample` itself.
   #[test]
   fn gumbel_independence_sample_kendall_tau_near_zero() {
     let n = 4000usize;

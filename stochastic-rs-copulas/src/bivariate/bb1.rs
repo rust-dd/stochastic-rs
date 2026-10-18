@@ -4,15 +4,21 @@
 //! C_{\theta,\delta}(u,v)=\Bigl(1+\bigl[(u^{-\theta}-1)^\delta+(v^{-\theta}-1)^\delta\bigr]^{1/\delta}\Bigr)^{-1/\theta},\qquad \theta>0,\ \delta\ge1
 //! $$
 //!
-//! Joe's BB1 family: the Archimedean copula with generator
-//! `φ(t) = (t^{−θ} − 1)^δ`, which nests Clayton (`δ = 1`) and Gumbel
-//! (`θ → 0`) and carries both tail coefficients, `λ_L = 2^{−1/(θδ)}` and
-//! `λ_U = 2 − 2^{1/δ}`. Kendall's τ is `1 − 2 / (δ(θ + 2))`. With `x = u^{−θ} − 1`,
-//! `y = v^{−θ} − 1`, `s = x^δ + y^δ` and `w = s^{1/δ}` the h-function and the
-//! density are `∂_v C = (1 + w)^{−1/θ−1} s^{1/δ−1} y^{δ−1} v^{−θ−1}` and
-//! `c = (1 + w)^{−1/θ−2} s^{1/δ−2} (xy)^{δ−1} (uv)^{−θ−1} [θ(δ − 1) + (θδ + 1) w]`.
-//! `fit` is a maximum-likelihood fit of the pair `(θ, δ)`; the one-parameter
-//! Kendall inversion of the trait keeps `δ` fixed and solves `θ` from τ.
+//! Joe's Archimedean family, generator $(t^{-\theta}-1)^\delta$. It nests Clayton ($\delta=1$) and
+//! Gumbel ($\theta\to0$); with $x, y, s, w$ below
+//!
+//! $$
+//! x=u^{-\theta}-1,\ y=v^{-\theta}-1,\ s=x^\delta+y^\delta,\ w=s^{1/\delta},
+//! $$
+//!
+//! $$
+//! \partial_v C=(1+w)^{-1/\theta-1}s^{1/\delta-1}y^{\delta-1}v^{-\theta-1},
+//! $$
+//!
+//! $$
+//! c=(1+w)^{-1/\theta-2}s^{1/\delta-2}(xy)^{\delta-1}(uv)^{-\theta-1}
+//! \bigl[\theta(\delta-1)+(\theta\delta+1)w\bigr].
+//! $$
 //!
 //! References: Joe, H. (1997), *Multivariate Models and Dependence Concepts*,
 //! Chapman & Hall, §5.2 (family BB1); Joe, H. (2014), *Dependence Modeling
