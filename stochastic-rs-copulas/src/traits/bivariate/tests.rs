@@ -117,6 +117,66 @@ impl BivariateExt for ParameterisedWithoutTheta {
   }
 }
 
+/// Overrides `percent_point` alone, as an implementor outside the crate may: half the level, so its draws show it.
+struct HalvesTheLevel;
+
+impl BivariateExt for HalvesTheLevel {
+  fn family(&self) -> BivariateFamily {
+    BivariateFamily::MarshallOlkin
+  }
+
+  fn theta(&self) -> Option<f64> {
+    None
+  }
+
+  fn theta_bounds(&self) -> (f64, f64) {
+    (0.0, 1.0)
+  }
+
+  fn invalid_thetas(&self) -> Vec<f64> {
+    vec![]
+  }
+
+  fn set_theta(&mut self, theta: f64) {
+    self.validate_theta(theta).unwrap_or_else(|e| panic!("{e}"));
+  }
+
+  fn tau_from_theta(&self, _theta: f64) -> f64 {
+    0.0
+  }
+
+  fn theta_from_tau(&self, _tau: f64) -> Result<f64, CopulaError> {
+    Ok(0.0)
+  }
+
+  fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError> {
+    Ok(TailDependence {
+      lower: 0.0,
+      upper: 0.0,
+    })
+  }
+
+  fn check_fit(&self) -> Result<(), CopulaError> {
+    Ok(())
+  }
+
+  fn pdf(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(Array1::ones(x.nrows()))
+  }
+
+  fn cdf(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(&x.column(0) * &x.column(1))
+  }
+
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    _v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    Ok(y.mapv(|y| 0.5 * y))
+  }
+}
+
 /// A type with no `generator` override reaches the trait default, which names its `family()`.
 #[test]
 fn generator_default_returns_anchored_not_archimedean_err() {
@@ -259,4 +319,18 @@ fn sampling_gates_on_the_family_check_fit() {
     .expect("check_fit passes without a theta");
   assert_eq!(uv.dim(), (64, 2));
   assert!(uv.iter().all(|x| (0.0..=1.0).contains(x)));
+}
+
+/// The default `percent_point_unchecked` calls `percent_point`, so a sampler draws through an override of it alone, and the
+/// default `percent_point` solves numerically without calling back.
+#[test]
+fn a_sampler_draws_through_an_override_of_percent_point_alone() {
+  let own = HalvesTheLevel.sample(64, &Deterministic::new(7)).unwrap();
+  let solved = ParameterisedWithoutTheta
+    .sample(64, &Deterministic::new(7))
+    .unwrap();
+  assert_eq!(own.column(1), solved.column(1));
+  for (a, b) in own.column(0).iter().zip(solved.column(0)) {
+    assert!((a - 0.5 * b).abs() <= 1e-15, "{a} vs {b}");
+  }
 }

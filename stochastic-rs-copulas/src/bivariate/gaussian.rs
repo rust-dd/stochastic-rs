@@ -41,6 +41,7 @@ use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
+use crate::traits::bivariate::checked_percent_point;
 use crate::traits::bivariate::tau_out_of_range;
 pub(crate) use cdf::CLOSED_FORM_BUDGET;
 use cdf::bivariate_normal_cdf;
@@ -196,6 +197,14 @@ impl BivariateExt for GaussianCopula {
       let v = v.clamp(BOUNDARY_EPS, 1.0 - BOUNDARY_EPS);
       norm_cdf((ndtri(u) - rho * ndtri(v)) / sqrt_one_minus_rho2)
     })
+  }
+
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    checked_percent_point(self, y, v)
   }
 
   /// `GaussianCopula::inverse` of [`GaussianCopula::partial_derivative`] in `u`.

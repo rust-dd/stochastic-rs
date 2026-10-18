@@ -29,6 +29,7 @@ use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
+use crate::traits::bivariate::checked_percent_point;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
 
@@ -270,6 +271,14 @@ impl BivariateExt for Frank {
     } else {
       copula_cdf(x, |u, v| Self::cdf_negative_log(-theta, u, v))
     }
+  }
+
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    checked_percent_point(self, y, v)
   }
 
   /// `Frank::inverse`, `θ < 0` through `C_{−θ}(u, v) = u − C_θ(u, 1 − v)`, which swaps `v` and `1 − v`; the identity

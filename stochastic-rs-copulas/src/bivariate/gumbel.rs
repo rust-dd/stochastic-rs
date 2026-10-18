@@ -24,6 +24,7 @@ use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
+use crate::traits::bivariate::checked_percent_point;
 use crate::traits::bivariate::tau_out_of_range;
 
 #[derive(Debug, Clone, Default)]
@@ -136,6 +137,14 @@ impl BivariateExt for Gumbel {
       let (_, big, _, ell) = log_score_parts(theta, u, v);
       u.min(v) * (-big * (ell / theta).exp_m1()).exp()
     })
+  }
+
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    checked_percent_point(self, y, v)
   }
 
   /// `numerical_quantiles` of `Gumbel::ln_h`, the identity at `θ = 1`.

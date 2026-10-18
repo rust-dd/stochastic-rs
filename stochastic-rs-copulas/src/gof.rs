@@ -400,6 +400,14 @@ mod tests {
       Ok(&x.column(0) * &x.column(1))
     }
 
+    fn percent_point(
+      &self,
+      y: ArrayView1<f64>,
+      v: ArrayView1<f64>,
+    ) -> Result<Array1<f64>, CopulaError> {
+      crate::traits::bivariate::checked_percent_point(self, y, v)
+    }
+
     fn percent_point_unchecked(
       &self,
       y: ArrayView1<f64>,

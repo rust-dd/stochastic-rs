@@ -26,6 +26,7 @@ use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
+use crate::traits::bivariate::checked_percent_point;
 use crate::traits::bivariate::tau_out_of_range;
 
 /// Below this `θ`, `h(u | v) = u(1 + θ ln u (1 + ln v) + O(θ²))` is `u` to rounding at every `u, v ≥ 5e-324`
@@ -219,6 +220,14 @@ impl BivariateExt for Clayton {
         u.min(v) * (-ell / theta).exp()
       })
     }
+  }
+
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    checked_percent_point(self, y, v)
   }
 
   /// `h⁻¹(y | v)` by `Clayton::level` and `Clayton::finish`, `y` at `θ = 0` and below `INDEPENDENT_BELOW` but at `v = 0`.

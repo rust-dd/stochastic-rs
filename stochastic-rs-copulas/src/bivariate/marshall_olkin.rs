@@ -28,6 +28,7 @@ use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
+use crate::traits::bivariate::checked_percent_point;
 use crate::traits::bivariate::tau_out_of_range;
 
 #[derive(Debug, Clone, Default)]
@@ -182,6 +183,14 @@ impl BivariateExt for MarshallOlkin {
         (1.0 - beta) * u * v.powf(-beta)
       }
     })
+  }
+
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    checked_percent_point(self, y, v)
   }
 
   /// `MarshallOlkin::inverse`, the generalised inverse of `∂_v C(· | v)`.

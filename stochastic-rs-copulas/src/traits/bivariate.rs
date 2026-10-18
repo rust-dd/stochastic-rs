@@ -175,28 +175,26 @@ pub trait BivariateExt {
 
   fn cdf(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 
-  /// Inverse conditional: the `u` with `P(U ≤ u | V = v) = y`, its parameters and inputs checked once.
+  /// Inverse conditional: the `u` with `P(U ≤ u | V = v) = y`, its parameters and inputs checked once;
+  /// `percent_point_numerical` by default, which a family with its own inverse overrides.
   #[doc(alias = "ppf")]
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit()?;
-    check_lengths(y, v)?;
-    check_unit(y.iter().chain(v))?;
-    self.percent_point_unchecked(y, v)
+    self.percent_point_numerical(y, v)
   }
 
-  /// `percent_point` once its parameters and inputs have passed, as the sampler's own uniforms do: what a family's own
-  /// inverse overrides; `percent_point_numerical`'s solve by default.
+  /// `percent_point` on inputs already checked, as the sampler's own uniforms: `percent_point` itself by default, so a
+  /// sampler keeps an override of it; a family that overrides both skips the second check.
   #[doc(hidden)]
   fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
-    numerical_inverse(self, y, v)
+    self.percent_point(y, v)
   }
 
   /// `percent_point`'s default, callable from an override: Brent's `zero` in `u` of `partial_derivative` held in
@@ -255,8 +253,21 @@ pub(crate) fn invert_tau(
   })
 }
 
+/// `percent_point` of a family with its own inverse: its parameters and inputs checked once, then
+/// `percent_point_unchecked`.
+pub(crate) fn checked_percent_point<C: BivariateExt + ?Sized>(
+  copula: &C,
+  y: ArrayView1<f64>,
+  v: ArrayView1<f64>,
+) -> Result<Array1<f64>, CopulaError> {
+  copula.check_fit()?;
+  check_lengths(y, v)?;
+  check_unit(y.iter().chain(v))?;
+  copula.percent_point_unchecked(y, v)
+}
+
 /// Brent's `zero` in `u` of `partial_derivative` held in `[0, 1]`, on `[0, 1]`, for checked `(y, v)`: the body of
-/// `percent_point_numerical` and of `percent_point_unchecked`'s default.
+/// `percent_point_numerical`.
 fn numerical_inverse<C: BivariateExt + ?Sized>(
   copula: &C,
   y: ArrayView1<f64>,

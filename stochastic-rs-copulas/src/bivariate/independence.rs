@@ -18,6 +18,7 @@ use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
+use crate::traits::bivariate::checked_percent_point;
 
 /// No parameter, so always fitted: its `theta` is the 0 of the families it is the limit of.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -78,6 +79,14 @@ impl BivariateExt for Independence {
   /// `∂_v (uv) = u`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     conditional_cdf(x, |u, _| u)
+  }
+
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    checked_percent_point(self, y, v)
   }
 
   /// The identity.

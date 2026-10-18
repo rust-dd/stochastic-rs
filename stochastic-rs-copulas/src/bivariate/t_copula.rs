@@ -44,6 +44,7 @@ use crate::student_t::TDensity;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
+use crate::traits::bivariate::checked_percent_point;
 use crate::traits::bivariate::tau_out_of_range;
 
 /// Below this a quantile's square, `ν` added, stays finite: past it the h-function and its inverse take logarithms.
@@ -242,6 +243,14 @@ impl BivariateExt for TCopula {
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     conditional_cdf(x, Self::h(self.theta.unwrap(), self.nu))
+  }
+
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    checked_percent_point(self, y, v)
   }
 
   /// `TCopula::inverse` (Aas et al. App. B.2).

@@ -31,6 +31,7 @@ use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
+use crate::traits::bivariate::checked_percent_point;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
 
@@ -223,6 +224,14 @@ impl BivariateExt for Amh {
       }
       (u / d) * (((1.0 - theta) + theta * u) / d)
     })
+  }
+
+  fn percent_point(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    checked_percent_point(self, y, v)
   }
 
   /// `Amh::inverse`'s root, `Amh::inverse_near_one`'s above `θ = 1/2`, `Amh::inverse_at_one`'s at `θ = 1`.
