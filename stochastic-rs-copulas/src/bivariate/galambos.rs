@@ -211,7 +211,7 @@ impl BivariateExt for Galambos {
     on_open_square(x, |u, v| Self::ln_density(theta, u, v))
   }
 
-  /// `C = uv e^T = min(u, v) e^{m expm1(−ℓ/θ)}` from `Galambos::parts`, as `e^{−M} = min(u, v)`.
+  /// `C = uv e^T = min(u, v) e^{m expm1(−ℓ/θ)}` from `conditional::log_score_parts`, as `e^{−M} = min(u, v)`.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
