@@ -174,11 +174,12 @@ impl Density {
       s.terms
         .push((shift + lift, theta * s.y[s.anchor[c]] + lift));
       s.shifted.clear();
+      // `l = 0` is unshifted, where a shift overflowed to `−∞` would make `0·∞` a NaN.
       s.shifted.extend(
         s.polys[c]
           .iter()
           .enumerate()
-          .map(|(l, &p)| p + l as f64 * shift),
+          .map(|(l, &p)| if l == 0 { p } else { p + l as f64 * shift }),
       );
       cauchy(&s.b, &s.shifted, &mut s.tmp);
       std::mem::swap(&mut s.b, &mut s.tmp);
