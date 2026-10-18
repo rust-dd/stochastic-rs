@@ -229,15 +229,14 @@ impl BivariateExt for HuslerReiss {
   }
 
   /// `numerical_quantiles` of `HuslerReiss::ln_h`, `y` at `λ = 0`.
-  fn percent_point(
+  fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit()?;
     let lambda = self.theta.unwrap();
     if lambda == 0.0 {
-      return conditional_quantiles(y, v, |y, _| y);
+      return Ok(conditional_quantiles(y, v, |y, _| y));
     }
     numerical_quantiles(y, v, self.family(), Self::ln_h(lambda))
   }

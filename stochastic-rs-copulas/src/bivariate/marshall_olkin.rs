@@ -185,14 +185,13 @@ impl BivariateExt for MarshallOlkin {
   }
 
   /// `MarshallOlkin::inverse`, the generalised inverse of `∂_v C(· | v)`.
-  fn percent_point(
+  fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
-    conditional_quantiles(y, v, Self::inverse(alpha, beta))
+    Ok(conditional_quantiles(y, v, Self::inverse(alpha, beta)))
   }
 
   /// The symmetric slice `α = β = θ`: `τ = θ/(2 − θ)`.

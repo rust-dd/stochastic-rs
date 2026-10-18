@@ -240,19 +240,15 @@ pub(crate) fn confine(u: f64) -> f64 {
   u.clamp(0.0, 1.0) + u * 0.0
 }
 
-/// A closed-form inverse mapped over `(y, v)`, each in `[0, 1]`, under [`confine`].
+/// A closed-form inverse mapped over checked `(y, v)`, each in `[0, 1]`, under [`confine`].
 pub(crate) fn conditional_quantiles(
   y: ArrayView1<f64>,
   v: ArrayView1<f64>,
   quantile: impl Fn(f64, f64) -> f64,
-) -> Result<Array1<f64>, CopulaError> {
-  check_lengths(y, v)?;
-  check_unit(y.iter().chain(v))?;
-  Ok(
-    Zip::from(y)
-      .and(v)
-      .map_collect(|&y, &v| confine(quantile(y, v))),
-  )
+) -> Array1<f64> {
+  Zip::from(y)
+    .and(v)
+    .map_collect(|&y, &v| confine(quantile(y, v)))
 }
 
 /// The quantiles of a family given by `ln h(u | v)`: Brent's `zero` in `u ∈ [0, 1]` of `h − y` up to `y = 1/2` and of
@@ -263,8 +259,6 @@ pub(crate) fn numerical_quantiles(
   family: BivariateFamily,
   ln_h: impl Fn(f64, f64) -> f64,
 ) -> Result<Array1<f64>, CopulaError> {
-  check_lengths(y, v)?;
-  check_unit(y.iter().chain(v))?;
   let mut out = Array1::zeros(y.len());
   for (u, (&y, &v)) in out.iter_mut().zip(y.iter().zip(v)) {
     *u = numerical_quantile(y, v, &ln_h).ok_or_else(|| {

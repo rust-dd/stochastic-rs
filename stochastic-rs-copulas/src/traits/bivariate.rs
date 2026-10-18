@@ -119,7 +119,8 @@ pub trait BivariateExt {
     ud.fill_slice(v.as_slice_mut().unwrap());
     let mut c = Array1::<f64>::zeros(n);
     ud.fill_slice(c.as_slice_mut().unwrap());
-    let u = self.percent_point(c.view(), v.view())?;
+    // The uniforms are its own, in `[0, 1]` and of equal length: nothing for `percent_point` to check again.
+    let u = self.percent_point_unchecked(c.view(), v.view())?;
 
     Ok(stack![Axis(1), u, v])
   }
@@ -171,14 +172,28 @@ pub trait BivariateExt {
 
   fn cdf(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 
-  /// Inverse conditional: the `u` with `P(U ≤ u | V = v) = y`.
+  /// Inverse conditional: the `u` with `P(U ≤ u | V = v) = y`, its parameters and inputs checked once.
   #[doc(alias = "ppf")]
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
-    self.percent_point_numerical(y, v)
+    self.check_fit()?;
+    check_lengths(y, v)?;
+    check_unit(y.iter().chain(v))?;
+    self.percent_point_unchecked(y, v)
+  }
+
+  /// `percent_point` once its parameters and inputs have passed, as the sampler's own uniforms do: what a family's own
+  /// inverse overrides; `percent_point_numerical`'s solve by default.
+  #[doc(hidden)]
+  fn percent_point_unchecked(
+    &self,
+    y: ArrayView1<f64>,
+    v: ArrayView1<f64>,
+  ) -> Result<Array1<f64>, CopulaError> {
+    numerical_inverse(self, y, v)
   }
 
   /// `percent_point`'s default, callable from an override: Brent's `zero` in `u` of `partial_derivative` held in
@@ -191,67 +206,7 @@ pub trait BivariateExt {
     self.check_fit()?;
     check_lengths(y, v)?;
     check_unit(y.iter().chain(v))?;
-    let n = y.len();
-    let mut results = Array1::zeros(n);
-    let lo = 0.0;
-
-    for i in 0..n {
-      let y_i = y[i];
-      let v_i = v[i];
-      if y_i == 0.0 {
-        results[i] = lo;
-        continue;
-      }
-
-      // The solver's closure cannot return a `Result`: the first inner failure or NaN is parked, the closure answers
-      // 0 so the solve stops there, and the parked error is re-raised after.
-      let inner_err: RefCell<Option<CopulaError>> = RefCell::new(None);
-      let gap = |u: f64| match self.partial_derivative_scalar(u, v_i) {
-        Ok(d) if !d.is_nan() => d.clamp(0.0, 1.0) - y_i,
-        outcome => {
-          let mut slot = inner_err.borrow_mut();
-          if slot.is_none() {
-            *slot = Some(outcome.err().unwrap_or_else(|| {
-              CopulaError::Numerical(format!(
-                "{:?} partial_derivative is NaN at (u={u:?}, v={v_i:?})",
-                self.family()
-              ))
-            }));
-          }
-          0.0
-        }
-      };
-
-      let f_lo = gap(lo);
-      if let Some(e) = inner_err.borrow_mut().take() {
-        return Err(e);
-      }
-      if f_lo >= 0.0 {
-        results[i] = lo;
-        continue;
-      }
-      let f_hi = gap(1.0);
-      if let Some(e) = inner_err.borrow_mut().take() {
-        return Err(e);
-      }
-      if f_hi <= 0.0 {
-        results[i] = 1.0;
-        continue;
-      }
-
-      let root = zero(lo, 1.0, ABSOLUTE_TOLERANCE, &gap);
-      if let Some(e) = inner_err.borrow_mut().take() {
-        return Err(e);
-      }
-      results[i] = root.ok_or_else(|| {
-        CopulaError::Numerical(format!(
-          "{:?} h-inverse did not converge at (y={y_i:?}, v={v_i:?})",
-          self.family()
-        ))
-      })?;
-    }
-
-    Ok(results)
+    numerical_inverse(self, y, v)
   }
 
   fn partial_derivative(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
@@ -295,6 +250,76 @@ pub(crate) fn invert_tau(
   zero(lo, hi, t, residual).ok_or_else(|| {
     CopulaError::Numerical(format!("theta from tau has no root on [{lo:?}, {hi:?}]"))
   })
+}
+
+/// Brent's `zero` in `u` of `partial_derivative` held in `[0, 1]`, on `[0, 1]`, for checked `(y, v)`: the body of
+/// `percent_point_numerical` and of `percent_point_unchecked`'s default.
+fn numerical_inverse<C: BivariateExt + ?Sized>(
+  copula: &C,
+  y: ArrayView1<f64>,
+  v: ArrayView1<f64>,
+) -> Result<Array1<f64>, CopulaError> {
+  let n = y.len();
+  let mut results = Array1::zeros(n);
+  let lo = 0.0;
+
+  for i in 0..n {
+    let y_i = y[i];
+    let v_i = v[i];
+    if y_i == 0.0 {
+      results[i] = lo;
+      continue;
+    }
+
+    // The solver's closure cannot return a `Result`: the first inner failure or NaN is parked, the closure answers
+    // 0 so the solve stops there, and the parked error is re-raised after.
+    let inner_err: RefCell<Option<CopulaError>> = RefCell::new(None);
+    let gap = |u: f64| match copula.partial_derivative_scalar(u, v_i) {
+      Ok(d) if !d.is_nan() => d.clamp(0.0, 1.0) - y_i,
+      outcome => {
+        let mut slot = inner_err.borrow_mut();
+        if slot.is_none() {
+          *slot = Some(outcome.err().unwrap_or_else(|| {
+            CopulaError::Numerical(format!(
+              "{:?} partial_derivative is NaN at (u={u:?}, v={v_i:?})",
+              copula.family()
+            ))
+          }));
+        }
+        0.0
+      }
+    };
+
+    let f_lo = gap(lo);
+    if let Some(e) = inner_err.borrow_mut().take() {
+      return Err(e);
+    }
+    if f_lo >= 0.0 {
+      results[i] = lo;
+      continue;
+    }
+    let f_hi = gap(1.0);
+    if let Some(e) = inner_err.borrow_mut().take() {
+      return Err(e);
+    }
+    if f_hi <= 0.0 {
+      results[i] = 1.0;
+      continue;
+    }
+
+    let root = zero(lo, 1.0, ABSOLUTE_TOLERANCE, &gap);
+    if let Some(e) = inner_err.borrow_mut().take() {
+      return Err(e);
+    }
+    results[i] = root.ok_or_else(|| {
+      CopulaError::Numerical(format!(
+        "{:?} h-inverse did not converge at (y={y_i:?}, v={v_i:?})",
+        copula.family()
+      ))
+    })?;
+  }
+
+  Ok(results)
 }
 
 /// `theta` when the family admits it; an inverse that rounds onto an excluded value is the `tau` error, which names it.

@@ -400,7 +400,7 @@ mod tests {
       Ok(&x.column(0) * &x.column(1))
     }
 
-    fn percent_point(
+    fn percent_point_unchecked(
       &self,
       y: ArrayView1<f64>,
       _v: ArrayView1<f64>,

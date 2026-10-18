@@ -436,7 +436,7 @@ impl BivariateExt for Bb7 {
   }
 
   /// `numerical_quantiles` of `Bb7::ln_h`.
-  fn percent_point(
+  fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     conditioning: ArrayView1<f64>,

@@ -274,22 +274,25 @@ impl BivariateExt for Frank {
 
   /// `Frank::inverse`, `θ < 0` through `C_{−θ}(u, v) = u − C_θ(u, 1 − v)`, which swaps `v` and `1 − v`; the identity
   /// below `INDEPENDENT_BELOW`.
-  fn percent_point(
+  fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v_col: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit()?;
     let theta = self.theta.unwrap();
     if theta.abs() < INDEPENDENT_BELOW {
-      return conditional_quantiles(y, v_col, |y, _| y);
+      return Ok(conditional_quantiles(y, v_col, |y, _| y));
     }
     // One closure per sign keeps the reflection out of the per-pair work.
     let inverse = Self::inverse(theta.abs());
     if theta > 0.0 {
-      conditional_quantiles(y, v_col, |y, v| inverse(y, v, 1.0 - v))
+      Ok(conditional_quantiles(y, v_col, |y, v| {
+        inverse(y, v, 1.0 - v)
+      }))
     } else {
-      conditional_quantiles(y, v_col, |y, v| inverse(y, 1.0 - v, v))
+      Ok(conditional_quantiles(y, v_col, |y, v| {
+        inverse(y, 1.0 - v, v)
+      }))
     }
   }
 

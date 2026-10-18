@@ -81,12 +81,12 @@ impl BivariateExt for Independence {
   }
 
   /// The identity.
-  fn percent_point(
+  fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
-    conditional_quantiles(y, v, |y, _| y)
+    Ok(conditional_quantiles(y, v, |y, _| y))
   }
 
   fn tau_from_theta(&self, _theta: f64) -> f64 {

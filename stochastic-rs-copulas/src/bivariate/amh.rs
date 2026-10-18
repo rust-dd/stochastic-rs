@@ -226,19 +226,18 @@ impl BivariateExt for Amh {
   }
 
   /// `Amh::inverse`'s root, `Amh::inverse_near_one`'s above `θ = 1/2`, `Amh::inverse_at_one`'s at `θ = 1`.
-  fn percent_point(
+  fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit()?;
     let theta = self.theta.unwrap();
     if theta == 1.0 {
-      conditional_quantiles(y, v, Self::inverse_at_one())
+      Ok(conditional_quantiles(y, v, Self::inverse_at_one()))
     } else if theta > 0.5 {
-      conditional_quantiles(y, v, Self::inverse_near_one(theta))
+      Ok(conditional_quantiles(y, v, Self::inverse_near_one(theta)))
     } else {
-      conditional_quantiles(y, v, Self::inverse(theta))
+      Ok(conditional_quantiles(y, v, Self::inverse(theta)))
     }
   }
 

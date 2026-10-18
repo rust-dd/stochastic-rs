@@ -259,13 +259,16 @@ impl BivariateExt for Plackett {
   }
 
   /// `Plackett::inverse`'s root.
-  fn percent_point(
+  fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit()?;
-    conditional_quantiles(y, v, Self::inverse(self.theta.unwrap()))
+    Ok(conditional_quantiles(
+      y,
+      v,
+      Self::inverse(self.theta.unwrap()),
+    ))
   }
 
   /// `1 − Plackett::tau_complement(θ)`, through `τ(1/θ) = −τ(θ)` below `θ = 1`.

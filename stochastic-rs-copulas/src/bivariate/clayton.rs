@@ -11,8 +11,6 @@ use ndarray::ArrayView2;
 use ndarray::Zip;
 
 use super::BivariateFamily;
-use crate::bivariate::conditional::check_lengths;
-use crate::bivariate::conditional::check_unit;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::confine;
@@ -224,24 +222,22 @@ impl BivariateExt for Clayton {
   }
 
   /// `h⁻¹(y | v)` by `Clayton::level` and `Clayton::finish`, `y` at `θ = 0` and below `INDEPENDENT_BELOW` but at `v = 0`.
-  fn percent_point(
+  fn percent_point_unchecked(
     &self,
     y: ArrayView1<f64>,
     v_col: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit()?;
-
     let theta = self.theta.unwrap();
 
     if theta == 0.0 {
-      return conditional_quantiles(y, v_col, |y, _| y);
+      return Ok(conditional_quantiles(y, v_col, |y, _| y));
     }
     if theta < INDEPENDENT_BELOW {
-      return conditional_quantiles(y, v_col, |y, v| if v <= 0.0 { 0.0 } else { y });
+      return Ok(conditional_quantiles(y, v_col, |y, v| {
+        if v <= 0.0 { 0.0 } else { y }
+      }));
     }
 
-    check_lengths(y, v_col)?;
-    check_unit(y.iter().chain(v_col))?;
     // Whole-array passes keep each pass's transcendental calls independent, which a fused per-pair closure does not.
     let v_theta = v_col.powf(theta);
     let mut u = y.mapv(|y| Self::level(theta, y));
