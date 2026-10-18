@@ -17,6 +17,7 @@ use crate::bivariate::conditional::copula_density;
 use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::ln_log_ratio;
 use crate::bivariate::conditional::ln_ratio;
+use crate::bivariate::conditional::log_score_parts;
 use crate::bivariate::conditional::numerical_quantiles;
 use crate::bivariate::conditional::softplus;
 use crate::error::CopulaError;
@@ -71,26 +72,13 @@ impl Gumbel {
     }
   }
 
-  /// `(m, M, ln(m/M), ℓ)`, `m ≤ M` the two of `x, y = −ln u, −ln v`, the ratio's logarithm by `ln_log_ratio` and
-  /// `ℓ = ln(1 + (m/M)^θ)`, so `−ln C = M e^{ℓ/θ}`.
-  fn parts(theta: f64, u: f64, v: f64) -> (f64, f64, f64, f64) {
-    let (x, y) = (-u.ln(), -v.ln());
-    let ln_ratio = -ln_log_ratio(u, v, x, y).abs();
-    (
-      x.min(y),
-      x.max(y),
-      ln_ratio,
-      (theta * ln_ratio).exp().ln_1p(),
-    )
-  }
-
   /// `ln c = m − M expm1(ℓ/θ) + (θ − 1) ln(m/M) − 2(1 − 1/θ)ℓ + ln(1 + (θ − 1)/W)`, `W = M e^{ℓ/θ}`: the `θ`-sized parts of
   /// `(θ − 1) ln(xy) + (1 − 2θ) ln W` cancelled exactly, the last term as a softplus of logarithms.
   fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
     if theta == 1.0 {
       return 0.0;
     }
-    let (small, big, ln_ratio, ell) = Self::parts(theta, u, v);
+    let (small, big, ln_ratio, ell) = log_score_parts(theta, u, v);
     let ln_w = big.ln() + ell / theta;
     small - big * (ell / theta).exp_m1() + (theta - 1.0) * ln_ratio
       - 2.0 * (1.0 - 1.0 / theta) * ell
@@ -145,7 +133,7 @@ impl BivariateExt for Gumbel {
       return copula_cdf(x, |u, v| u * v);
     }
     copula_cdf(x, |u, v| {
-      let (_, big, _, ell) = Self::parts(theta, u, v);
+      let (_, big, _, ell) = log_score_parts(theta, u, v);
       u.min(v) * (-big * (ell / theta).exp_m1()).exp()
     })
   }

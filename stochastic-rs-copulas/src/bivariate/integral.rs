@@ -209,6 +209,7 @@ pub(crate) fn march(
     }
     let (gn, f_next) = eval(next);
     let width = (next - x).abs();
+    // A panel within 8 roundings of `x` cannot be halved: it is kept as integrated, its disagreement unchecked.
     let refinable = width > 1e-300 && width > 8.0 * f64::EPSILON * x.abs();
     // An end where an exponent is −∞ is a zero of the integrand; the panel's variation is read just inside it.
     let inside = if gn == f64::NEG_INFINITY || f_next == f64::NEG_INFINITY {

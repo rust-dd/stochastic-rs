@@ -94,27 +94,32 @@ pub(crate) fn gaussian_copula_cdf(u: f64, v: f64, rho: f64) -> f64 {
     return u * v;
   }
   let (x, y) = (normal_quantile(u), normal_quantile(v));
-  bivariate_normal_cdf(x, y, rho, || GaussianCopula::sum(u, v, x, y))
+  // The integral reads `x + y` only at `ρ < 0`, at its end `(x + y)/α`, whose error it amplifies `end²`-fold up to `38`.
+  let reach = 38.0 * (2.0 * (1.0 - rho.abs())).sqrt();
+  bivariate_normal_cdf(x, y, rho, || GaussianCopula::sum(u, v, x, y, reach))
     .clamp(sum_minus_one(u, v).max(0.0), u.min(v))
 }
 
 impl GaussianCopula {
-  /// `x + y`, `x, y = Φ⁻¹(u), Φ⁻¹(v)`: below `1/max(1, |x|, |y|)` from the exact gap `u + v − 1` by `quantile_gap`
-  /// (`Φ(x) − Φ(−y) = u + v − 1`); above it the plain sum loses under `εx²`.
-  fn sum(u: f64, v: f64, x: f64, y: f64) -> f64 {
-    if (x + y).abs() < 1.0 / x.abs().max(y.abs()).max(1.0) {
-      quantile_gap(if u <= v { x } else { y }, sum_minus_one(u, v))
+  /// `x + y`, `x, y = Φ⁻¹(u), Φ⁻¹(v)`: below `max(reach, 1/max(1, |x|, |y|))` from the exact gap `u + v − 1` by
+  /// `quantile_gap` (`Φ(x) − Φ(−y) = u + v − 1`); above it the plain sum loses under `εx²`.
+  fn sum(u: f64, v: f64, x: f64, y: f64, reach: f64) -> f64 {
+    let plain = x + y;
+    if plain.abs() < reach.max(1.0 / x.abs().max(y.abs()).max(1.0)) {
+      let (p, score) = if u <= v { (u, x) } else { (v, y) };
+      quantile_gap(score, p, sum_minus_one(u, v), plain)
     } else {
-      x + y
+      plain
     }
   }
 
-  /// `x − y`, from the exact gap `u − v` below the same scale.
+  /// `x − y`, from the exact gap `u − v` below `1/max(1, |x|, |y|)`.
   fn difference(u: f64, v: f64, x: f64, y: f64) -> f64 {
-    if (x - y).abs() < 1.0 / x.abs().max(y.abs()).max(1.0) {
-      quantile_gap(x, u - v)
+    let plain = x - y;
+    if plain.abs() < 1.0 / x.abs().max(y.abs()).max(1.0) {
+      quantile_gap(x, u, u - v, plain)
     } else {
-      x - y
+      plain
     }
   }
 
@@ -127,7 +132,7 @@ impl GaussianCopula {
     let d = if rho >= 0.0 {
       Self::difference(u, v, x, y)
     } else {
-      Self::sum(u, v, x, y)
+      Self::sum(u, v, x, y, 0.0)
     };
     -r * d * d / (2.0 * one_minus_rho2) + r * (x * x + y * y) / (2.0 * (1.0 + r))
       - 0.5 * one_minus_rho2.ln()
@@ -235,6 +240,99 @@ mod tests {
 
   fn approx(a: f64, b: f64, tol: f64) -> bool {
     (a - b).abs() <= tol
+  }
+
+  /// The countermonotone window off the grid, `ρ` within `1e-4` of `−1`, a level near 0 against one near 1: within `1e-12`
+  /// of a fixed 96- and 192-node composite Gauss–Legendre rule at 60 digits, agreeing to `2e-58`.
+  #[test]
+  fn the_countermonotone_window_holds_off_the_grid() {
+    let cells = [
+      (
+        -0.9999,
+        9.86587645037698e-10,
+        0.999999996684254,
+        1.1381334977018348e-56,
+      ),
+      (
+        -0.99995,
+        6.220960574271784e-16,
+        0.9999999999999982,
+        2.9449919914769766e-56,
+      ),
+      (
+        -0.99995,
+        9.86587645037698e-10,
+        0.9999999978210243,
+        4.163594543410096e-50,
+      ),
+      (
+        -0.99995,
+        9.86587645037698e-10,
+        0.999999996684254,
+        1.508533801399695e-100,
+      ),
+      (
+        -0.99999,
+        6.220960574271784e-16,
+        0.9999999999999986,
+        2.0775677337256595e-138,
+      ),
+      (
+        -0.99999,
+        6.220960574271784e-16,
+        0.9999999999999982,
+        1.3595017696382188e-204,
+      ),
+      (
+        -0.99999,
+        3.1908916729108963e-14,
+        0.9999999999999319,
+        4.7426203454676765e-127,
+      ),
+      (
+        -0.99999,
+        3.1908916729108963e-14,
+        0.9999999999999147,
+        4.433830796164244e-202,
+      ),
+      (
+        -0.99999,
+        9.86587645037698e-10,
+        0.9999999981824922,
+        7.754875054488471e-123,
+      ),
+      (
+        -0.99999,
+        9.86587645037698e-10,
+        0.9999999978210243,
+        6.1045028744763634e-198,
+      ),
+      (
+        -0.999995,
+        6.220960574271784e-16,
+        0.9999999999999986,
+        6.1259167977910865e-257,
+      ),
+      (
+        -0.999995,
+        3.1908916729108963e-14,
+        0.9999999999999319,
+        6.350698233817352e-236,
+      ),
+      (
+        -0.999995,
+        9.86587645037698e-10,
+        0.9999999981824922,
+        7.340533050083157e-232,
+      ),
+    ];
+    for (rho, u, v, want) in cells {
+      let got = gaussian_copula_cdf(u, v, rho);
+      assert!(
+        (got - want).abs() <= 1e-12 * want,
+        "C_{rho}({u:e}, {v}) = {got:e}, want {want:e}"
+      );
+    }
   }
 
   #[test]

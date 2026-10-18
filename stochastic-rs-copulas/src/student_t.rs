@@ -443,9 +443,8 @@ fn ln_abs_expm1(z: f64) -> f64 {
   }
 }
 
-/// `ln c` of the t copula at the features of `x`, `y` and the exact `|t_y| − |t_x|`: `c = f_{Y|X}(y | x)/f_ν(y)`, so
-/// `ln c = G − ½ ln(1 − ρ²) − ((ν + 2)/2) ln(1 + A²/(ν + 1)) − ln cosh t_x + (ν + 1) ln cosh t_y`, `A` at `t_x`, with
-/// `(ν + 1)|t_y| − |t_x| = ν|t_y| + (|t_y| − |t_x|)` where both `|t| ≥ 1`, which keeps the huge scores' terms exact.
+/// `ln c = G − ½ ln(1 − ρ²) − ((ν + 2)/2) ln(1 + A²/(ν + 1)) − ln cosh t_x + (ν + 1) ln cosh t_y`, `A` at `t_x`, from the
+/// features and the exact `|t_y| − |t_x|`: `(ν + 1)|t_y| − |t_x| = ν|t_y| + (|t_y| − |t_x|)` keeps huge scores' terms exact.
 pub(crate) fn ln_density(fx: &Feature, fy: &Feature, gap: f64, rho: f64, nu: f64) -> f64 {
   if gap.is_infinite() {
     return f64::NEG_INFINITY;

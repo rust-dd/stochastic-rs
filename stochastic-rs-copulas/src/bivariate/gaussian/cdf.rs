@@ -45,22 +45,70 @@ pub(crate) fn ln_normal_interval(c: f64, d: f64) -> f64 {
   }
 }
 
-/// `Φ⁻¹(p) − Φ⁻¹(p − g)` from `x = Φ⁻¹(p)` and the exact gap `g`: Newton on `Φ(x) − Φ(x − D) = g`, so two near quantiles
-/// differ to a relative rounding, which their separately rounded values lose.
-pub(crate) fn quantile_gap(x: f64, g: f64) -> f64 {
+/// `Φ⁻¹(p) − Φ⁻¹(p − g)` from `x ≈ Φ⁻¹(p)`, its residual `r = Φ(x) − p` and the exact gap `g`: Newton on `Φ(x) − Φ(x − D) =
+/// g + r` from `start`, less `r/φ(x)`, so two near quantiles differ to a few roundings, which their rounded values lose.
+pub(crate) fn quantile_gap(x: f64, p: f64, g: f64, start: f64) -> f64 {
   if g == 0.0 {
     return 0.0;
   }
-  let mut d = g / ln_pdf(x).exp();
+  let r = if x <= 0.0 {
+    upper_tail(-x) - p
+  } else {
+    (1.0 - p) - upper_tail(x)
+  };
+  let (target, mut d) = (g + r, start);
   for _ in 0..8 {
-    let mass = ln_normal_interval(x - 0.5 * d, d.abs()).exp().copysign(d);
-    let step = (g - mass) / ln_pdf(x - d).exp();
+    let step = (target - normal_mass(x, d)) / pdf(x - d);
     d += step;
     if step.abs() <= 1e-16 * d.abs() {
       break;
     }
   }
-  d
+  d - r / pdf(x)
+}
+
+/// `φ(x)`, `x²` split by one fma, so `e^{−x²/2}` keeps the relative digits its rounded square would cost.
+fn pdf(x: f64) -> f64 {
+  let square = x * x;
+  let low = x.mul_add(x, -square);
+  (-0.5 * square).exp() * (1.0 - 0.5 * low) * FRAC_1_SQRT_TAU
+}
+
+/// `1/√(2π)`.
+const FRAC_1_SQRT_TAU: f64 = 0.398_942_280_401_432_7;
+
+/// `Φ(s + e)`, `e` the rounding of the sum `s`, corrected to first order, by the tail on the side of 0 `s` lies.
+fn phi_of_sum(s: f64, e: f64) -> f64 {
+  if s <= 0.0 {
+    upper_tail(-s) + e * pdf(s)
+  } else {
+    1.0 - (upper_tail(s) - e * pdf(s))
+  }
+}
+
+/// `Φ(x) − Φ(x − d)` at exact `x`, `d` to a few roundings: `dφ(x)∫₀¹ e^{tdx − t²d²/2} dt` by Gauss–Legendre while
+/// `|d| max(1, |x|) ≤ 1`, else the two tails on the side of 0 both ends lie, with `x − d` by TwoSum.
+fn normal_mass(x: f64, d: f64) -> f64 {
+  if d.abs() * x.abs().max(1.0) <= 1.0 {
+    let sum = rule()
+      .iter()
+      .map(|&(t, w)| {
+        let s = 0.5 * (1.0 + t);
+        w * (s * d * x - 0.5 * s * s * d * d).exp()
+      })
+      .sum::<f64>();
+    return 0.5 * d * pdf(x) * sum;
+  }
+  let z = x - d;
+  let back = z - x;
+  let e = (x - (z - back)) + (-d - back);
+  if x <= 0.0 && z <= 0.0 {
+    upper_tail(-x) - (upper_tail(-z) + e * pdf(z))
+  } else if x >= 0.0 && z >= 0.0 {
+    (upper_tail(z) - e * pdf(z)) - upper_tail(x)
+  } else {
+    phi_of_sum(x, 0.0) - phi_of_sum(z, e)
+  }
 }
 
 /// `Φ₂(h, k; ρ) = P(X ≤ h, Y ≤ k)` to a relative `1e-12`: `owen` where it holds, else `conditional_integral`, which

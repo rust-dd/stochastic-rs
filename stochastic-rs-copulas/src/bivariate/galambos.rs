@@ -39,6 +39,7 @@ use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::ln_log_ratio;
 use crate::bivariate::conditional::ln_one_minus_exp;
 use crate::bivariate::conditional::ln_ratio;
+use crate::bivariate::conditional::log_score_parts;
 use crate::bivariate::conditional::numerical_quantiles;
 use crate::bivariate::conditional::softplus;
 use crate::bivariate::integral::ln_integral_from_peak;
@@ -107,26 +108,13 @@ impl Galambos {
     }
   }
 
-  /// `(m, M, ln(m/M), ℓ)`, `m ≤ M` the two of `x, y = −ln u, −ln v`, the ratio's logarithm by `ln_log_ratio` and
-  /// `ℓ = ln(1 + s)`, `s = (m/M)^θ`, so `T = (x^{−θ} + y^{−θ})^{−1/θ} = m e^{−ℓ/θ}`.
-  fn parts(theta: f64, u: f64, v: f64) -> (f64, f64, f64, f64) {
-    let (x, y) = (-u.ln(), -v.ln());
-    let ln_ratio = -ln_log_ratio(u, v, x, y).abs();
-    (
-      x.min(y),
-      x.max(y),
-      ln_ratio,
-      (theta * ln_ratio).exp().ln_1p(),
-    )
-  }
-
   /// `ln c = T + θ ln(m/M) + ln(a₁a₂/s + (θ + 1)(1 + s)^{−2−1/θ}/M)`, `a₁ = 1 − (1 + s)^{−k}`, `a₂ = 1 − (s/(1 + s))^k`,
   /// `k = 1 + 1/θ`: the `(1 − (T/x)^{θ+1})` factor of the chain rule kept as `a₁/s`, its limit `k` once `s` is subnormal.
   fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
     if theta == 0.0 {
       return 0.0;
     }
-    let (small, big, ln_ratio, ell) = Self::parts(theta, u, v);
+    let (small, big, ln_ratio, ell) = log_score_parts(theta, u, v);
     let (k, s, ln_s) = (
       1.0 + 1.0 / theta,
       (theta * ln_ratio).exp(),
@@ -228,7 +216,7 @@ impl BivariateExt for Galambos {
     self.check_fit()?;
     let theta = self.theta.unwrap();
     copula_cdf(x, |u, v| {
-      let (small, _, _, ell) = Self::parts(theta, u, v);
+      let (small, _, _, ell) = log_score_parts(theta, u, v);
       u.min(v) * (small * (-ell / theta).exp_m1()).exp()
     })
   }

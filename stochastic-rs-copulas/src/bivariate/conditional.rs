@@ -40,6 +40,19 @@ pub(crate) fn ln_ratio(a: f64, b: f64) -> f64 {
   }
 }
 
+/// `(m, M, ln(m/M), ℓ)`, `m ≤ M` the two of `x, y = −ln u, −ln v`, the ratio's logarithm by `ln_log_ratio` and
+/// `ℓ = ln(1 + (m/M)^θ)`: Gumbel's `−ln C = M e^{ℓ/θ}` and Galambos's `T = m e^{−ℓ/θ}`.
+pub(crate) fn log_score_parts(theta: f64, u: f64, v: f64) -> (f64, f64, f64, f64) {
+  let (x, y) = (-u.ln(), -v.ln());
+  let ln_ratio = -ln_log_ratio(u, v, x, y).abs();
+  (
+    x.min(y),
+    x.max(y),
+    ln_ratio,
+    (theta * ln_ratio).exp().ln_1p(),
+  )
+}
+
 /// `ln(x/y)` for `x, y = −ln a, −ln b`: near a ratio of 1, `ln_1p` of `x − y = ln(b/a)`, which `ln_ratio` holds to a
 /// rounding error, so `θ ln(x/y)` stays exact where `(x/y)^θ` is not negligible.
 pub(crate) fn ln_log_ratio(a: f64, b: f64, x: f64, y: f64) -> f64 {
