@@ -42,6 +42,7 @@ use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::tau_out_of_range;
+pub(crate) use cdf::CLOSED_FORM_BUDGET;
 use cdf::bivariate_normal_cdf;
 use cdf::quantile_gap;
 
@@ -92,36 +93,42 @@ pub(crate) fn gaussian_copula_cdf(u: f64, v: f64, rho: f64) -> f64 {
   if rho == 0.0 {
     return u * v;
   }
-  let (x, y, sum, _) = GaussianCopula::scores(u, v);
-  bivariate_normal_cdf(x, y, sum, rho).clamp(sum_minus_one(u, v).max(0.0), u.min(v))
+  let (x, y) = (normal_quantile(u), normal_quantile(v));
+  bivariate_normal_cdf(x, y, rho, || GaussianCopula::sum(u, v, x, y))
+    .clamp(sum_minus_one(u, v).max(0.0), u.min(v))
 }
 
 impl GaussianCopula {
-  /// `(x, y, x + y, x − y)`, `x, y = Φ⁻¹(u), Φ⁻¹(v)`: a sum or difference below `1/max(1, |x|, |y|)` from the exact gap
-  /// `u + v − 1` or `u − v` by `quantile_gap` (`Φ(x) − Φ(−y) = u + v − 1`); above it the plain one loses under `εx²`.
-  fn scores(u: f64, v: f64) -> (f64, f64, f64, f64) {
-    let (x, y) = (normal_quantile(u), normal_quantile(v));
-    let scale = 1.0 / x.abs().max(y.abs()).max(1.0);
-    let sum = if (x + y).abs() < scale {
+  /// `x + y`, `x, y = Φ⁻¹(u), Φ⁻¹(v)`: below `1/max(1, |x|, |y|)` from the exact gap `u + v − 1` by `quantile_gap`
+  /// (`Φ(x) − Φ(−y) = u + v − 1`); above it the plain sum loses under `εx²`.
+  fn sum(u: f64, v: f64, x: f64, y: f64) -> f64 {
+    if (x + y).abs() < 1.0 / x.abs().max(y.abs()).max(1.0) {
       quantile_gap(if u <= v { x } else { y }, sum_minus_one(u, v))
     } else {
       x + y
-    };
-    let difference = if (x - y).abs() < scale {
+    }
+  }
+
+  /// `x − y`, from the exact gap `u − v` below the same scale.
+  fn difference(u: f64, v: f64, x: f64, y: f64) -> f64 {
+    if (x - y).abs() < 1.0 / x.abs().max(y.abs()).max(1.0) {
       quantile_gap(x, u - v)
     } else {
       x - y
-    };
-    (x, y, sum, difference)
+    }
   }
 
   /// `ln c = −|ρ|d²/(2(1 − ρ)(1 + ρ)) + |ρ|(x² + y²)/(2(1 + |ρ|)) − ln √((1 − ρ)(1 + ρ))`, `d = x ∓ y` with the sign of
   /// `ρ`: the quadratic form in two same-signed terms, so `ρ` near `±1` cancels only in the inputs.
   pub(crate) fn ln_density(rho: f64, u: f64, v: f64) -> f64 {
-    let (x, y, sum, difference) = Self::scores(u, v);
+    let (x, y) = (normal_quantile(u), normal_quantile(v));
     let one_minus_rho2 = (1.0 - rho) * (1.0 + rho);
     let r = rho.abs();
-    let d = if rho >= 0.0 { difference } else { sum };
+    let d = if rho >= 0.0 {
+      Self::difference(u, v, x, y)
+    } else {
+      Self::sum(u, v, x, y)
+    };
     -r * d * d / (2.0 * one_minus_rho2) + r * (x * x + y * y) / (2.0 * (1.0 + r))
       - 0.5 * one_minus_rho2.ln()
   }

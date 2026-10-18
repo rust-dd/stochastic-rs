@@ -1,5 +1,5 @@
-//! The bivariate t cdf to a relative `1e-12`: `P(Y ≤ y | X ≤ x)` from the law of `Y` given `X = √ν sinh t`, integrated
-//! in `t` by panels marched out of each feature in its own offsets, the plateaus between features in closed form.
+//! The bivariate t cdf to a relative `1e-12`: Dunnett & Sobel's sums at an integer `ν` where their bound allows, else
+//! `P(Y ≤ y | X ≤ x)` from the law of `Y` given `X = √ν sinh t`, by panels marched out of each feature in `t`.
 //! Reference: Genz, A. (2004), "Numerical computation of rectangular bivariate and trivariate normal and t probabilities", *Statistics and Computing* 14(3), 251-260, DOI 10.1023/B:STCO.0000035304.20635.31 (the conditional representation).
 
 use std::cell::Cell;
@@ -16,10 +16,13 @@ use crate::bivariate::gaussian::gaussian_copula_cdf;
 use crate::bivariate::integral::March;
 use crate::bivariate::integral::NEGLIGIBLE_FALL;
 use crate::bivariate::integral::march;
+use crate::bivariate::t_copula::dunnett_sobel::admits;
+use crate::bivariate::t_copula::dunnett_sobel::dunnett_sobel;
 use crate::student_t::Conditional;
 use crate::student_t::Feature;
 use crate::student_t::Law;
 use crate::student_t::NORMAL_ABOVE;
+use crate::student_t::Score;
 use crate::student_t::ln_cosh;
 
 /// Below this `ν` the copula is its `ν → 0` limit `pM + (1 − p)W` to rounding: the remainder is under `50ν/min(p, 1 − p)`,
@@ -81,6 +84,8 @@ pub(crate) struct BivariateT {
   q: f64,
   /// `ln B(ν/2, 1/2)`, the normaliser of the density `sech^ν t` of `t`, to within `1/(4ν)` past `ν = 40`.
   ln_beta: f64,
+  /// The integer `ν` whose Dunnett–Sobel sums can meet the closed forms' budget.
+  sums: Option<u32>,
 }
 
 impl BivariateT {
@@ -107,6 +112,7 @@ impl BivariateT {
       } else {
         ln_gamma(0.5 * nu) + 0.5 * PI.ln() - ln_gamma(0.5 * (nu + 1.0))
       },
+      sums: admits(nu).then_some(nu as u32),
     }
   }
 
@@ -138,17 +144,20 @@ impl BivariateT {
         floor + self.p * band
       };
     }
-    let ratio = self.ln_conditional(u, v).exp();
+    let (su, sv) = (self.law.quantile(u), self.law.quantile(v));
+    if let Some(n) = self.sums
+      && let Some(c) = dunnett_sobel(su.value, sv.value, self.rho, n)
+    {
+      return c.clamp(floor, u);
+    }
+    let ratio = self.ln_conditional(u, v, su, sv).exp();
     (u * ratio).clamp(floor, u)
   }
 
   /// `ln P(Y ≤ y | X ≤ x)` at `u ≤ v`: `∫ w H / ∫ w` over `t ≤ t_x`, `w = sech^ν t` the density of `t`, so its constant
   /// cancels, and `H = T_{ν+1}(A)` the law of `Y` given `t`.
-  fn ln_conditional(&self, u: f64, v: f64) -> f64 {
-    let (fx, fy) = (
-      self.law.feature(self.law.quantile(u)),
-      self.law.feature(self.law.quantile(v)),
-    );
+  fn ln_conditional(&self, u: f64, v: f64, su: Score, sv: Score) -> f64 {
+    let (fx, fy) = (self.law.feature(su), self.law.feature(sv));
     if !(self.reachable(u, &fx) && self.reachable(v, &fy)) {
       return f64::NAN;
     }

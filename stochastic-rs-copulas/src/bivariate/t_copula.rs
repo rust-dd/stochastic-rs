@@ -281,6 +281,7 @@ impl BivariateExt for TCopula {
 }
 
 pub(crate) mod cdf;
+mod dunnett_sobel;
 
 #[cfg(test)]
 mod tests;
