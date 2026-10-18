@@ -241,8 +241,8 @@ impl MultivariateExt for TMultivariate {
     Ok(u)
   }
 
-  /// Σ from Kendall's τ and ν by the profile likelihood, on pseudo-observations inside `(0, 1)`: a 0 or 1, where the
-  /// density is not defined, is an `InvalidStructure`.
+  /// Σ from Kendall's τ and ν by the profile likelihood, on pseudo-observations: a 0 or 1, where the density is not
+  /// defined either, is a `MarginalOnBoundary`.
   fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     if x.ncols() < 2 {
       return Err(CopulaError::InvalidStructure(format!(
@@ -259,7 +259,7 @@ impl MultivariateExt for TMultivariate {
     if x.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
       return Err(CopulaError::MarginalOutOfRange);
     }
-    check_open(x, "the t copula's fit, which searches ν by the likelihood,")?;
+    check_open(x)?;
     let corr = CorrelationMatrix::try_new(shrink_to_spd(Self::estimate_corr_from_kendall(x)?))?;
     // Profile MLE for ν conditional on Σ.
     self.nu = Self::optimise_nu(&corr, x);

@@ -21,10 +21,16 @@ pub enum CopulaError {
   InsufficientData { needed: usize, got: usize },
   /// A pseudo-observation outside `[0, 1]`.
   MarginalOutOfRange,
+  /// A pseudo-observation at 0 or 1, which every fit and test refuses: ranks `k/(n + 1)` never reach either end.
+  MarginalOnBoundary {
+    row: usize,
+    column: usize,
+    value: f64,
+  },
   /// A column fails the uniformity test of [`BivariateExt::check_marginal`](crate::traits::BivariateExt::check_marginal), which no fit runs.
   MarginalNotUniform,
-  /// Not well-formed: a correlation matrix, a vine or NAC tree, fewer than two dimensions, data with no variation to estimate
-  /// from (a constant or non-finite margin, an undefined Kendall's τ), or a 0 or 1 where a fit evaluates the density.
+  /// Not well-formed: a correlation matrix, a vine or NAC tree, fewer than two dimensions, or data with no variation to
+  /// estimate from (a constant or non-finite margin, an undefined Kendall's τ).
   InvalidStructure(String),
   /// The family has no such operation (an Archimedean generator, an unimplemented fit).
   Unsupported(String),
@@ -56,6 +62,10 @@ impl fmt::Display for CopulaError {
         write!(f, "too few observations: {got}, at least {needed} needed")
       }
       CopulaError::MarginalOutOfRange => f.write_str("marginal values must lie in [0, 1]"),
+      CopulaError::MarginalOnBoundary { row, column, value } => write!(
+        f,
+        "pseudo-observations must lie inside (0, 1): column {column} holds {value:?} at row {row}"
+      ),
       CopulaError::MarginalNotUniform => {
         f.write_str("marginal values do not follow a uniform distribution")
       }

@@ -389,10 +389,7 @@ fn check_vine_data(
   if u.iter().any(|v| !(0.0..=1.0).contains(v)) {
     return Err(CopulaError::MarginalOutOfRange);
   }
-  check_open(
-    u,
-    "the vine fit, which selects each pair by its likelihood,",
-  )?;
+  check_open(u)?;
   if let Some(family) = families
     .iter()
     .find(|f| !BivariateFamily::VINE_CANDIDATES.contains(f))
@@ -406,8 +403,8 @@ fn check_vine_data(
   Ok(tau)
 }
 
-/// Fits a vine of `structure` to the pseudo-observations `u` (rows = observations); `MarginalOutOfRange` outside `[0, 1]`, `Unsupported` for a
-/// family outside `VINE_CANDIDATES` or an edge no family represents, `InvalidStructure` for a constant or NaN column or a 0 or 1.
+/// Fits a vine of `structure` to the pseudo-observations `u` (rows = observations); `MarginalOutOfRange` outside `[0, 1]`, `MarginalOnBoundary` at
+/// 0 or 1, `Unsupported` for a family outside `VINE_CANDIDATES` or an edge no family represents, `InvalidStructure` for a constant or NaN column.
 pub fn fit_vine(
   u: ArrayView2<f64>,
   structure: VineStructure,

@@ -481,11 +481,11 @@ impl BivariateExt for Bb7 {
     admitted(self, tau, theta)
   }
 
-  /// Maximum-likelihood fit of `(θ, δ)` on pseudo-observations inside `(0, 1)`, a 0 or 1 an `InvalidStructure`, started
+  /// Maximum-likelihood fit of `(θ, δ)` on pseudo-observations, a 0 or 1 a `MarginalOnBoundary`, started
   /// from the Kendall inversion at the current `δ`.
   fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     check_pairs(x)?;
-    check_open(x, "the BB7 likelihood fit")?;
+    check_open(x)?;
     self.fit_parameters(x.column(0), x.column(1))
   }
 

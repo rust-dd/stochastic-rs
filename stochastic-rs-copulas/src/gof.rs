@@ -103,8 +103,8 @@ impl stochastic_rs_distributions::traits::HypothesisTest for GofResult {
   }
 }
 
-/// Parametric-bootstrap Cramér–von Mises test of the fitted `copula` on pseudo-observations `x` inside `(0, 1)`, one `seed` stream per replication
-/// (Genest, Rémillard & Beaudoin 2009, §4, Appendix D); errs on a bad `x` or a non-finite statistic; panics unless `0 < alpha < 1`, `replications > 0`.
+/// Parametric-bootstrap Cramér–von Mises test of the fitted `copula` on pseudo-observations `x`, one `seed` stream per replication (Genest,
+/// Rémillard & Beaudoin 2009, §4, Appendix D); errs on a bad `x` (a 0 or 1 is `MarginalOnBoundary`) or a non-finite statistic; panics unless `0 < alpha < 1`, `replications > 0`.
 pub fn gof_cramer_von_mises<C: BivariateExt + Clone, S: SeedExt>(
   copula: &C,
   x: ArrayView2<f64>,
@@ -123,10 +123,7 @@ pub fn gof_cramer_von_mises<C: BivariateExt + Clone, S: SeedExt>(
     config.alpha
   );
   check_pairs(x)?;
-  check_open(
-    x,
-    "the goodness-of-fit test, whose bootstrap refits on pseudo-observations,",
-  )?;
+  check_open(x)?;
   let statistic = finite(
     cramer_von_mises_independence(rosenblatt(copula, x)?.view()),
     "data",

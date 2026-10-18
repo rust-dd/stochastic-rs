@@ -197,14 +197,11 @@ pub(crate) fn check_unit<'a>(values: impl IntoIterator<Item = &'a f64>) -> Resul
   }
 }
 
-/// `InvalidStructure` naming the rule at a 0 or 1 in `x`: `what` evaluates the density, which lives on the open cube, so
-/// its data are pseudo-observations inside `(0, 1)`.
-pub(crate) fn check_open(x: ArrayView2<f64>, what: &str) -> Result<(), CopulaError> {
+/// `MarginalOnBoundary` at the first 0 or 1 in `x`: a fit or test runs on pseudo-observations, which never reach either end.
+pub(crate) fn check_open(x: ArrayView2<f64>) -> Result<(), CopulaError> {
   match x.indexed_iter().find(|&(_, &u)| u == 0.0 || u == 1.0) {
     None => Ok(()),
-    Some(((row, column), u)) => Err(CopulaError::InvalidStructure(format!(
-      "{what} evaluates the copula density, which lives on the open cube: pass pseudo-observations inside (0, 1), got {u:?} at row {row}, column {column}"
-    ))),
+    Some(((row, column), &value)) => Err(CopulaError::MarginalOnBoundary { row, column, value }),
   }
 }
 

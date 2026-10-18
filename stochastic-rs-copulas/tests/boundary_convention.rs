@@ -1,5 +1,5 @@
 //! One input convention for every copula: a batch method answers `MarginalOutOfRange` for a value outside `[0, 1]` or
-//! NaN, the densities are NaN on the boundary, where none lives, and a fit that evaluates one needs data inside `(0, 1)`.
+//! NaN, the densities are NaN on the boundary, where none lives, and the fits and tests on pseudo-observations need them inside `(0, 1)`.
 
 use ndarray::Array2;
 use ndarray::ArrayView2;
@@ -215,19 +215,21 @@ fn data(columns: usize, cell: (usize, usize), value: f64) -> Array2<f64> {
   x
 }
 
-/// The rule the fits name: a 0 or 1 is an `InvalidStructure` that says `(0, 1)`, a value off `[0, 1]` stays
+/// The rule the fits name: a 0 or 1 is a `MarginalOnBoundary` at its cell, saying `(0, 1)`, a value off `[0, 1]` stays
 /// `MarginalOutOfRange`.
 fn assert_density_fit_rule(
   fit: impl Fn(ArrayView2<f64>) -> Result<(), CopulaError>,
   columns: usize,
 ) {
   for value in [0.0, 1.0] {
-    match fit(data(columns, (7, columns - 1), value).view()) {
-      Err(CopulaError::InvalidStructure(message)) => {
-        assert!(message.contains("(0, 1)"), "{message}")
-      }
-      other => panic!("{value}: {other:?}"),
-    }
+    let got = fit(data(columns, (7, columns - 1), value).view());
+    let want = CopulaError::MarginalOnBoundary {
+      row: 7,
+      column: columns - 1,
+      value,
+    };
+    assert_eq!(got, Err(want.clone()), "{value}");
+    assert!(want.to_string().contains("(0, 1)"), "{want}");
   }
   assert_eq!(
     fit(data(columns, (7, 0), 1.5).view()),
