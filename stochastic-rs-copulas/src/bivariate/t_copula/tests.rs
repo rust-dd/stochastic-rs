@@ -295,7 +295,7 @@ fn bivariate_t_cdf_matches_50_digit_references_at_adversarial_limits() {
     (1.0, 1.0, 0.7, 2000.0, 0.7665979783590774),
   ];
   for (h, k, rho, nu, want) in pins {
-    let got = t_copula_cdf(student_t::cdf(h, nu), student_t::cdf(k, nu), rho, nu);
+    let got = BivariateT::new(rho, nu).copula_cdf(student_t::cdf(h, nu), student_t::cdf(k, nu));
     assert!(
       (got - want).abs() <= 1e-12,
       "T_{nu}({h}, {k}; {rho}) = {got}, want {want}"
@@ -309,7 +309,7 @@ fn bivariate_t_cdf_matches_50_digit_references_at_adversarial_limits() {
 fn the_cdf_survives_limits_whose_squares_overflow() {
   for (nu, want) in [(0.01, 0.9822283110927638), (0.05, 0.999999985792761)] {
     let law = Law::new(nu);
-    let got = t_copula_cdf(law.cdf_at(1e150), law.cdf_at(1e200), 0.0, nu);
+    let got = BivariateT::new(0.0, nu).copula_cdf(law.cdf_at(1e150), law.cdf_at(1e200));
     assert!((got - want).abs() <= 1e-12, "nu={nu}: {got} vs {want}");
   }
 }

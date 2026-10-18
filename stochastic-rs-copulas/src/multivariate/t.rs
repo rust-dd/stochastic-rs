@@ -66,7 +66,7 @@ use super::genz::open_coordinates;
 use super::genz::prioritize;
 use super::qmc::sobol_points;
 use crate::bivariate::conditional::check_open;
-use crate::bivariate::t_copula::t_copula_cdf;
+use crate::bivariate::t_copula::cdf::BivariateT;
 use crate::correlation::check_defined;
 use crate::correlation::kendall_tau;
 use crate::error::CopulaError;
@@ -320,6 +320,9 @@ impl MultivariateExt for TMultivariate {
     self.check_fit(uv)?;
     let corr = self.fitted()?;
     let mut points = None;
+    let d = corr.dim();
+    // One bivariate law per pair of free coordinates, built on the first row that needs it.
+    let mut pairs: Vec<Option<BivariateT>> = vec![None; d * d];
     Ok(
       uv.rows()
         .into_iter()
@@ -327,7 +330,9 @@ impl MultivariateExt for TMultivariate {
           None => 0.0,
           Some([]) => 1.0,
           Some(&[i]) => u[i],
-          Some(&[i, j]) => t_copula_cdf(u[i], u[j], corr.corr()[[i, j]], self.nu),
+          Some(&[i, j]) => pairs[i * d + j]
+            .get_or_insert_with(|| BivariateT::new(corr.corr()[[i, j]], self.nu))
+            .copula_cdf(u[i], u[j]),
           Some(open) => {
             let points = points.get_or_insert_with(|| sobol_points(corr.dim()));
             let scale = self.chi.get_or_init(|| chi_scale(self.nu));

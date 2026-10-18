@@ -19,6 +19,9 @@ const TAIL_FALL: f64 = 50.0;
 /// A maximum below this leaves nothing an f64 holds.
 const NEGLIGIBLE: f64 = -1000.0;
 
+/// `e^{−45}` of a sum: what a remainder's bound, or a panel's largest exponent, must fall under to leave it unmoved.
+pub(crate) const NEGLIGIBLE_FALL: f64 = 45.0;
+
 /// The 16-point Gauss–Legendre `(node, weight)` pairs on `[−1, 1]`.
 pub(crate) fn rule() -> &'static [(f64, f64)] {
   static RULE: OnceLock<GaussLegendre> = OnceLock::new();
@@ -94,7 +97,7 @@ pub(crate) fn ln_integral_concave(
   };
   let breaks: Vec<f64> = breaks.iter().map(|&b| b - x0).collect();
   let side = |end: f64| {
-    march(eval, end, 0.5, &breaks, |_, (_, fx), _| {
+    march(eval, end, 0.5, &breaks, UNSUMMED, |_, (_, fx), _| {
       fx <= f0 - TAIL_FALL
     })
     .ln_f
@@ -113,11 +116,19 @@ pub(crate) fn ln_integral_from_peak(f: impl Fn(f64) -> f64, first_step: f64) -> 
     let v = f(x);
     (v, v)
   };
-  march(eval, f64::INFINITY, first_step, &[], |_, (_, fx), _| {
-    fx <= top - TAIL_FALL
-  })
+  march(
+    eval,
+    f64::INFINITY,
+    first_step,
+    &[],
+    UNSUMMED,
+    |_, (_, fx), _| fx <= top - TAIL_FALL,
+  )
   .ln_f
 }
+
+/// `ln ∫ e^g` and `ln ∫ e^f` of nothing: what a march that has no other part of its integral to lean on passes as `outer`.
+pub(crate) const UNSUMMED: (f64, f64) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
 
 /// QUADPACK's 15-point Kronrod nodes on `[0, 1)` (with their mirrors) and weights, and the weights of the 7-point Gauss
 /// rule inside it on the odd nodes: K15 is exact to degree 23, G7 to 13, both checked in mpmath.
@@ -152,8 +163,12 @@ const GAUSS_WEIGHTS: [f64; 4] = [
 ];
 
 /// A panel is kept once K15 and G7 agree to this, relative: for an integrand analytic on the panel, G7's error `r^{−14}`
-/// under `1e-9` puts K15's `r^{−23}` under `2e-15`, and the integrands' own rounding noise stays below it.
+/// under `1e-9` puts K15's `r^{−23}` under `2e-15`, an extrapolation the tables test but no theorem bounds.
 const KRONROD_AGREEMENT: f64 = 1e-9;
+
+/// The bisections one position may take for Kronrod's disagreement: past them, or once a bisection no longer halves it
+/// (noise, not curvature), the panel is kept and the march resumes its stride, so noise cannot shrink it to a crawl.
+const ROUNDOFF_BISECTIONS: u32 = 40;
 
 /// What `march` integrated: `ln ∫ e^g` and `ln ∫ e^f` from offset 0 to `end`, and `(g, f)` at `end`.
 pub(crate) struct March {
@@ -163,19 +178,21 @@ pub(crate) struct March {
   pub(crate) last: (f64, f64),
 }
 
-/// `∫ e^g` and `∫ e^f` of `eval(x) = (g, f)` from offset 0 toward `end`, either sign: Kronrod panels halved while either
-/// exponent moves past `PANEL_FALL` across one or K15 and G7 part by more than `KRONROD_AGREEMENT`, doubled after a gentle
-/// one, ended at `breaks`; `stop(x, (g, f), (∫ e^g, ∫ e^f) so far)` ends the march at a panel end.
+/// `∫ e^g` and `∫ e^f` of `eval(x) = (g, f)` from offset 0 toward `end`: panels halved past `PANEL_FALL` or Kronrod's
+/// disagreement unless `NEGLIGIBLE_FALL` under the sums with `outer`'s, doubled when gentle; `stop` ends it at a panel end.
 pub(crate) fn march(
   eval: impl Fn(f64) -> (f64, f64),
   end: f64,
   first_step: f64,
   breaks: &[f64],
+  outer: (f64, f64),
   mut stop: impl FnMut(f64, (f64, f64), (f64, f64)) -> bool,
 ) -> March {
   let (mut x, (mut gx, mut fx)) = (0.0, eval(0.0));
   let (mut ln_g, mut ln_f) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
   let mut step = first_step;
+  // The bisections taken at `x` for Kronrod's disagreement, the disagreement the last one left, and the stride before them.
+  let (mut bisections, mut parted, mut stride) = (0, f64::INFINITY, first_step);
   while x != end {
     let mut next = if end > 0.0 {
       (x + step).min(end)
@@ -199,7 +216,18 @@ pub(crate) fn march(
     } else {
       (gn, f_next)
     };
-    let moves = moved(gx, inside.0).max(moved(fx, inside.1));
+    let totals = (ln_add_exp(ln_g, outer.0), ln_add_exp(ln_f, outer.1));
+    // A NaN sum is the answer already, and leaves nothing to measure a panel against.
+    if totals.0.is_nan() || totals.1.is_nan() {
+      break;
+    }
+    // An exponent `NEGLIGIBLE_FALL` under its sum at both ends cannot move it, so its variation halves nothing.
+    let quiet_g = gx.max(inside.0) < totals.0 - NEGLIGIBLE_FALL;
+    let quiet_f = fx.max(inside.1) < totals.1 - NEGLIGIBLE_FALL;
+    let negligible = quiet_g && quiet_f;
+    let moves_g = if quiet_g { 0.0 } else { moved(gx, inside.0) };
+    let moves_f = if quiet_f { 0.0 } else { moved(fx, inside.1) };
+    let moves = moves_g.max(moves_f);
     if moves > PANEL_FALL && refinable {
       step = 0.5 * width;
       continue;
@@ -216,13 +244,22 @@ pub(crate) fn march(
       kronrod(&nodes, |n| n.0, half),
       kronrod(&nodes, |n| n.1, half),
     );
-    if refinable && (unsettled(g, ln_g) || unsettled(f, ln_f)) {
-      step = 0.5 * width;
-      continue;
+    let disagreement = unsettled(g, totals.0).max(unsettled(f, totals.1));
+    if refinable && disagreement > 0.0 {
+      if bisections == 0 {
+        stride = width;
+      }
+      if disagreement <= 0.5 * parted && bisections < ROUNDOFF_BISECTIONS {
+        (bisections, parted) = (bisections + 1, disagreement);
+        step = 0.5 * width;
+        continue;
+      }
+      step = stride;
     }
+    (bisections, parted) = (0, f64::INFINITY);
     ln_g = ln_add_exp(ln_g, g.0);
     ln_f = ln_add_exp(ln_f, f.0);
-    if moves < 0.25 * PANEL_FALL {
+    if moves < 0.25 * PANEL_FALL || negligible {
       step = step.max(2.0 * width);
     }
     (x, gx, fx) = (next, gn, f_next);
@@ -238,10 +275,14 @@ pub(crate) fn march(
   }
 }
 
-/// A panel `(ln K15, |K15 − G7|/K15)` whose rules part by more than `KRONROD_AGREEMENT`, unless its error is under
-/// `e^{−40}` of the integral so far, as at a zero of the integrand, where rounding noise would otherwise halve forever.
-fn unsettled(panel: (f64, f64), ln_total: f64) -> bool {
-  panel.1 > KRONROD_AGREEMENT && panel.0 + panel.1.ln() > ln_total - 40.0
+/// The disagreement `|K15 − G7|/K15` of a panel `(ln K15, |K15 − G7|/K15)` past `KRONROD_AGREEMENT`, 0 when within it or
+/// when its error is under `e^{−40}` of the integral so far, as at a zero of the integrand.
+fn unsettled(panel: (f64, f64), ln_total: f64) -> f64 {
+  if panel.1 > KRONROD_AGREEMENT && panel.0 + panel.1.ln() > ln_total - 40.0 {
+    panel.1
+  } else {
+    0.0
+  }
 }
 
 /// `|a − b|`, 0 between two `−∞` and `∞` between `−∞` and a finite value.

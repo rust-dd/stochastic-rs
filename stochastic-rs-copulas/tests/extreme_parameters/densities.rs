@@ -1,3 +1,10 @@
+use std::time::Duration;
+use std::time::Instant;
+
+use ndarray::array;
+use stochastic_rs_copulas::bivariate::t_copula::TCopula;
+use stochastic_rs_copulas::traits::BivariateExt;
+
 use super::GRID;
 use super::build;
 use super::matches;
@@ -8,13 +15,54 @@ use super::on_grid;
 const DENSITIES: &str = include_str!("../fixtures/extreme_densities.txt");
 
 /// The 88 t cells `(ρ, ν, kind, cells)`, a cell `side · row + column`, where `SimdStudentT::quantile` past `1 − 1e-12` is
-/// off by up to 12% (16c's `T_LAW_MISSES`); with `−t_ν⁻¹(1 − p)` all pass. Each must keep missing, so a fix fails this test.
-const T_LAW_MISSES: [(f64, f64, &str, &[usize]); 5] = [
-  (-0.8, 2.5, "cdf", &CDF_MISSES),
-  (0.5, 4.0, "cdf", &CDF_MISSES),
-  (-0.8, 2.5, "log_pdf", &DENSITY_MISSES),
-  (0.5, 4.0, "log_pdf", &DENSITY_MISSES),
-  (0.99, 30.0, "log_pdf", &DENSITY_MISSES),
+/// off by up to 12%; with `−t_ν⁻¹(1 − p)` all pass. Each must keep missing, so a fix fails this test.
+const T_LAW_MISSES: [(f64, f64, &str, Misses); 5] = [
+  (-0.8, 2.5, "cdf", Misses::Only(&CDF_MISSES)),
+  (0.5, 4.0, "cdf", Misses::Only(&CDF_MISSES)),
+  (-0.8, 2.5, "log_pdf", Misses::Only(&DENSITY_MISSES)),
+  (0.5, 4.0, "log_pdf", Misses::Only(&DENSITY_MISSES)),
+  (0.99, 30.0, "log_pdf", Misses::Only(&DENSITY_MISSES)),
+];
+
+/// The t rows at large `ν`, which the table holds for their time and the misses below.
+const WALL_CLOCK: [(f64, f64); 3] = [(0.5, 1e8), (-0.8, 1e15), (-0.999999, 9.99e21)];
+
+/// Where `SimdStudentT`, off the t law by `7e-8` at `ν = 1e8` and meaningless from `ν ≈ 1e13`, puts a large-`ν` cell past
+/// `1e-12` or at NaN: 215 cells, each of which must keep missing, so a fix of that law fails this test.
+const LARGE_NU_MISSES: [(f64, f64, &str, Misses); 6] = [
+  (0.5, 1e8, "cdf", Misses::Only(&[30, 31, 39, 40, 50])),
+  (
+    0.5,
+    1e8,
+    "log_pdf",
+    Misses::AllBut(&[32, 33, 34, 39, 40, 41, 46, 47, 48]),
+  ),
+  (-0.8, 1e15, "cdf", Misses::Only(&NARROW_CDF)),
+  (-0.8, 1e15, "log_pdf", Misses::AllBut(&[32])),
+  (-0.999999, 9.99e21, "cdf", Misses::AllBut(&[])),
+  (-0.999999, 9.99e21, "log_pdf", Misses::AllBut(&[32])),
+];
+
+/// The cells of a row that miss: those listed, or every other one (the cdf's edges, which are exact, never miss).
+#[derive(Clone, Copy)]
+enum Misses {
+  Only(&'static [usize]),
+  AllBut(&'static [usize]),
+}
+
+impl Misses {
+  fn contains(self, cell: usize) -> bool {
+    match self {
+      Misses::Only(cells) => cells.contains(&cell),
+      Misses::AllBut(cells) => !cells.contains(&cell),
+    }
+  }
+}
+
+/// `C(a, b)` with both levels in `[1e-15, 1 − 2⁻⁵³]`.
+const NARROW_CDF: [usize; 25] = [
+  30, 31, 32, 33, 34, 39, 40, 41, 42, 43, 48, 49, 50, 51, 52, 57, 58, 59, 60, 61, 66, 67, 68, 69,
+  70,
 ];
 
 /// `C(a, b)` with one level in `{1e-15, 2⁻⁵³}` and the other in `{1 − 1e-15, 1 − 2⁻⁵³}`.
@@ -45,10 +93,12 @@ fn cdf_and_log_density_match_the_mpmath_table() {
     let want = values.split(' ').map(|x| x.parse::<f64>().unwrap());
     let got = on_grid(build(family, &params).as_ref(), kind);
     for (i, (&got, want)) in got.iter().zip(want).enumerate() {
+      // `C(u, 0) = C(0, v) = 0`, `C(u, 1) = u`, `C(1, v) = v`, exactly.
+      let edge = kind == "cdf"
+        && [GRID[i / 9], GRID[i % 9]]
+          .iter()
+          .any(|&x| x == 0.0 || x == 1.0);
       let ok = if kind == "cdf" {
-        let (a, b) = (GRID[i / 9], GRID[i % 9]);
-        // `C(u, 0) = C(0, v) = 0`, `C(u, 1) = u`, `C(1, v) = v`, exactly.
-        let edge = [a, b].iter().any(|&x| x == 0.0 || x == 1.0);
         (0.0..=1.0).contains(&got)
           && if edge {
             got == want
@@ -59,14 +109,16 @@ fn cdf_and_log_density_match_the_mpmath_table() {
         log_agrees(got, want)
       };
       let listed = family == "t"
+        && !edge
         && T_LAW_MISSES
           .iter()
-          .any(|&(rho, nu, k, cells)| params == [rho, nu] && kind == k && cells.contains(&i));
+          .chain(&LARGE_NU_MISSES)
+          .any(|&(rho, nu, k, cells)| params == [rho, nu] && kind == k && cells.contains(i));
       if ok == listed {
         let side = if kind == "cdf" { 9 } else { 7 };
         let offset = if kind == "cdf" { 0 } else { 1 };
         let (a, b) = (GRID[i / side + offset], GRID[i % side + offset]);
-        let note = if listed { " (a T_LAW_MISSES cell)" } else { "" };
+        let note = if listed { " (a listed miss)" } else { "" };
         failures.push(format!(
           "{family} {params:?} {kind}({a:e}, {b:e}) = {got:e}, want {want:e}{note}"
         ));
@@ -79,4 +131,58 @@ fn cdf_and_log_density_match_the_mpmath_table() {
     failures.len(),
     failures.join("\n")
   );
+}
+
+/// The wall-clock rows: at large `ν` every evaluation is bounded in time, whatever noise the law it reads carries, with
+/// the cells that took a minute or did not return.
+#[test]
+fn the_t_cdf_is_time_bounded_at_large_nu() {
+  let mut cells: Vec<(f64, f64, f64, f64)> = vec![
+    (-0.8, 1e8, 0.5, 0.5),
+    (0.99, 1e8, 1e-15, 1e-15),
+    (-0.999999, 9.999999999999998e21, 1e-300, 0.5),
+  ];
+  for (rho, nu) in WALL_CLOCK {
+    cells.extend(
+      GRID
+        .iter()
+        .flat_map(|&a| GRID.iter().map(move |&b| (rho, nu, a, b))),
+    );
+  }
+  let mut slow = Vec::new();
+  for (rho, nu, a, b) in cells {
+    let copula = TCopula::new(rho, nu);
+    let start = Instant::now();
+    let _ = copula.cdf(array![[a, b]].view()).unwrap();
+    let elapsed = start.elapsed();
+    if elapsed > Duration::from_millis(500) {
+      slow.push(format!(
+        "({rho}, {nu:e}) cdf({a:e}, {b:e}) took {elapsed:?}"
+      ));
+    }
+  }
+  assert!(slow.is_empty(), "{slow:#?}");
+}
+
+/// The copula should be continuous across the switch to the Gaussian at `ν = 1e22`, but below it `SimdStudentT`'s cdf
+/// and quantile are not the t law's past `ν ≈ 1e13`: each cell must keep missing, so a fix of that law fails this test.
+#[test]
+fn the_t_cdf_is_not_yet_continuous_at_the_gaussian_switch() {
+  let mut held = Vec::new();
+  for (rho, a, b) in [
+    (0.5, 0.3, 0.7),
+    (-0.8, 1e-15, 0.5),
+    (0.99, 0.5, 0.5),
+    (-0.999999, 0.2, 0.9),
+  ] {
+    let x = array![[a, b]];
+    let below = TCopula::new(rho, 9.99e21).cdf(x.view()).unwrap()[0];
+    let above = TCopula::new(rho, 1e22).cdf(x.view()).unwrap()[0];
+    if matches(below, above) {
+      held.push(format!(
+        "ρ = {rho}: C({a:e}, {b:e}) = {below:e} below, {above:e} above"
+      ));
+    }
+  }
+  assert!(held.is_empty(), "{held:#?}");
 }

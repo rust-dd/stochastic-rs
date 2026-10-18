@@ -280,12 +280,7 @@ impl BivariateExt for TCopula {
   }
 }
 
-/// `C_{ρ,ν}(u, v)` on the closed square, the bivariate cdf of both t copulas.
-pub(crate) fn t_copula_cdf(u: f64, v: f64, rho: f64, nu: f64) -> f64 {
-  BivariateT::new(rho, nu).copula_cdf(u, v)
-}
-
-mod cdf;
+pub(crate) mod cdf;
 
 #[cfg(test)]
 mod tests;

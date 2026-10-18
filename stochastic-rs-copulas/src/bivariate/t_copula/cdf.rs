@@ -5,12 +5,16 @@
 use std::cell::Cell;
 use std::f64::consts::FRAC_2_PI;
 use std::f64::consts::LN_2;
+use std::f64::consts::PI;
+
+use stochastic_rs_distributions::special::ln_gamma;
 
 use crate::bivariate::conditional::in_unit;
 use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::sum_minus_one;
 use crate::bivariate::gaussian::gaussian_copula_cdf;
 use crate::bivariate::integral::March;
+use crate::bivariate::integral::NEGLIGIBLE_FALL;
 use crate::bivariate::integral::march;
 use crate::student_t::Conditional;
 use crate::student_t::Feature;
@@ -25,16 +29,21 @@ const LIMIT_NU: f64 = 1e-30;
 /// A point `ln H` must settle within before a plateau takes over: a relative `2⁻⁵⁶` on `H`.
 const SETTLED: f64 = 1.0 / (1u64 << 56) as f64;
 
-/// `e^{−45}` of a sum: what a remainder's bound must fall under to be dropped, and, below `y`'s tail, what lets a gap be
-/// its end value, the slope there being 1.
-const NEGLIGIBLE_FALL: f64 = 45.0;
-
 /// What a march into a gap waits for: `H` on its plateau `ln H`, or, below `y`'s tail, the power law alone at the far end
 /// and the integrand `NEGLIGIBLE_FALL` under its own sum at the end nearer `|t_y|`.
 #[derive(Debug, Clone, Copy)]
 enum Facing {
   Plateau(f64),
   BelowTail { near: bool },
+}
+
+/// What a march outward from an anchor leaves: up to offset `end` (`±∞` for a tail), where `ln H` is `ln_h_end`, with
+/// `H` monotone on either side of `turn`.
+#[derive(Debug, Clone, Copy)]
+struct Rest {
+  end: f64,
+  ln_h_end: f64,
+  turn: f64,
 }
 
 /// A feature of the integrand on `(−∞, t_x]`: `|t|`, its sign, `ν|t|` and `|t| − |t_y|`, the last two exact.
@@ -70,6 +79,8 @@ pub(crate) struct BivariateT {
   /// The `ν → 0` limit's weights `p, 1 − p = (2/π) asin(√((1 ± ρ)/2))`.
   p: f64,
   q: f64,
+  /// `ln B(ν/2, 1/2)`, the normaliser of the density `sech^ν t` of `t`, to within `1/(4ν)` past `ν = 40`.
+  ln_beta: f64,
 }
 
 impl BivariateT {
@@ -91,6 +102,11 @@ impl BivariateT {
       ln_abs_rho: rho.abs().ln(),
       p: FRAC_2_PI * (0.5 * (1.0 + rho)).sqrt().asin(),
       q: FRAC_2_PI * (0.5 * (1.0 - rho)).sqrt().asin(),
+      ln_beta: if nu > 40.0 {
+        0.5 * (PI.ln() - (0.5 * nu).ln())
+      } else {
+        ln_gamma(0.5 * nu) + 0.5 * PI.ln() - ln_gamma(0.5 * (nu + 1.0))
+      },
     }
   }
 
@@ -133,42 +149,61 @@ impl BivariateT {
       self.law.feature(self.law.quantile(u)),
       self.law.feature(self.law.quantile(v)),
     );
+    if !(self.reachable(u, &fx) && self.reachable(v, &fy)) {
+      return f64::NAN;
+    }
     let cond = Conditional::new(self.rho, self.nu, &fy);
     let gap_x = self.law.abs_t_gap(&fy, &fx);
     let anchors = self.anchors(&fx, &fy, gap_x);
+    // Where `A`, and with it `H`, turns: `sinh t = −ρ/sinh t_y`; `H` is monotone on either side of it.
+    let turn = if fy.sign == 0.0 {
+      f64::NAN
+    } else {
+      (-self.rho / (fy.sign * fy.abs_t.sinh())).asinh()
+    };
     let mut sums = (f64::NEG_INFINITY, f64::NEG_INFINITY);
     let add = |sums: &mut (f64, f64), d: f64, n: f64| {
       *sums = (ln_add_exp(sums.0, d), ln_add_exp(sums.1, n));
     };
-    // Every region but the left tail, each anchor's own marches out to the midpoints or into the gaps.
+    // Every region but the left tail, each anchor's own marches out to the midpoints or into the gaps; a march outward
+    // ends once what is left of it is negligible against everything summed so far.
     let mut toward_gap: Vec<(Option<March>, Option<March>)> = Vec::with_capacity(anchors.len());
     for (i, a) in anchors.iter().enumerate() {
-      let eval = |delta: f64| self.eval(&cond, a, delta);
       let step = self.step(a, &fy);
       let mut sides = (None, None);
-      if i > 0 {
-        let prev = &anchors[i - 1];
-        let dist = (a.d_y - prev.d_y).abs();
+      for (side, other) in [(-1.0, i.checked_sub(1)), (1.0, Some(i + 1))] {
+        let Some(b) = other.and_then(|j| anchors.get(j)) else {
+          continue;
+        };
+        let dist = (b.d_y - a.d_y).abs();
         let m = if self.far(dist) {
-          let facing = self.facing(prev.inside_next, fy.sign, !self.near_is_left(prev, a));
-          self.gap_march(&cond, a, step, -self.reach, facing)
+          let (left, right) = if side < 0.0 { (b, a) } else { (a, b) };
+          let near = self.near_is_left(left, right) == (side > 0.0);
+          let facing = self.facing(left.inside_next, fy.sign, near);
+          self.gap_march(&cond, a, step, side * self.reach, facing, sums)
         } else {
-          march(eval, -0.5 * dist, step, &[], |_, _, _| false)
+          let end = side * 0.5 * dist;
+          let rest = Rest {
+            end,
+            ln_h_end: self.ln_h(&cond, a, end),
+            turn,
+          };
+          let outer = sums;
+          march(
+            |delta: f64| self.eval(&cond, a, delta),
+            end,
+            step,
+            &[],
+            outer,
+            |x, value, own| self.rest_negligible(a, x, value, &rest, totals(outer, own)),
+          )
         };
         add(&mut sums, m.ln_g, m.ln_f);
-        sides.0 = Some(m);
-      }
-      if i + 1 < anchors.len() {
-        let next = &anchors[i + 1];
-        let dist = (next.d_y - a.d_y).abs();
-        let m = if self.far(dist) {
-          let facing = self.facing(a.inside_next, fy.sign, self.near_is_left(a, next));
-          self.gap_march(&cond, a, step, self.reach, facing)
+        if side < 0.0 {
+          sides.0 = Some(m);
         } else {
-          march(eval, 0.5 * dist, step, &[], |_, _, _| false)
-        };
-        add(&mut sums, m.ln_g, m.ln_f);
-        sides.1 = Some(m);
+          sides.1 = Some(m);
+        }
       }
       toward_gap.push(sides);
     }
@@ -204,24 +239,26 @@ impl BivariateT {
       };
       add(&mut sums, ln_band, ln_h);
     }
-    // The left tail last, against the rest: it ends on the plateaus, or once the concave `ψ` bounds what is left,
-    // `e^ψ/(ν tanh|t|)` times `max(H, H(−∞))`, under `e^{−45}` of both sums.
+    // The left tail last, against the rest: it ends on the plateaus, or once what is left of it to `−∞` is negligible.
     let first = &anchors[0];
-    let (outer_d, outer_n) = sums;
+    let outer = sums;
+    let rest = Rest {
+      end: f64::NEG_INFINITY,
+      ln_h_end: self.ln_h_left,
+      turn,
+    };
     let negligible = Cell::new(false);
     let tail = march(
       |delta: f64| self.eval(&cond, first, delta),
       -(self.reach + self.power_from),
       self.step(first, &fy),
       &[],
-      |x, (g, f), (own_d, own_n)| {
+      outer,
+      |x, value, own| {
         if self.settled(&cond, first, x, self.ln_h_left) {
           return true;
         }
-        let bound = g - (self.nu * self.abs_t_at(first, x).tanh()).ln();
-        let done = x <= -1.0
-          && bound <= ln_add_exp(outer_d, own_d) - NEGLIGIBLE_FALL
-          && bound + (f - g).max(self.ln_h_left) <= ln_add_exp(outer_n, own_n) - NEGLIGIBLE_FALL;
+        let done = self.rest_negligible(first, x, value, &rest, totals(outer, own));
         negligible.set(done);
         done
       },
@@ -232,6 +269,21 @@ impl BivariateT {
       add(&mut sums, ln_rest, ln_rest + self.ln_h_left);
     }
     sums.1 - sums.0
+  }
+
+  /// Whether the density can carry the tail beyond the quantile `f` of level `p`: the concave `ψ` bounds that tail's mass by
+  /// `e^ψ/(ν tanh|t|)`, so a `ψ` 50 under `ln min(p, 1 − p) B` is not the law's quantile, as `SimdStudentT`'s past `ν ≈ 1e13`.
+  fn reachable(&self, p: f64, f: &Feature) -> bool {
+    if f.sign == 0.0 {
+      return true;
+    }
+    let psi = if f.abs_t >= 1.0 {
+      -f.nu_abs_t + self.nu * (LN_2 - (-2.0 * f.abs_t).exp().ln_1p())
+    } else {
+      -self.nu * ln_cosh(f.abs_t)
+    };
+    let tail = if f.sign < 0.0 { p } else { 1.0 - p };
+    psi >= tail.ln() + self.ln_beta + (self.nu * f.abs_t.tanh()).ln().min(0.0) - 50.0
   }
 
   /// A march's first panel: `first_step`, under `1/(c₀|ρ|)` at an anchor within a few such widths of the centre crossing,
@@ -326,6 +378,32 @@ impl BivariateT {
     }
   }
 
+  /// Whether `rest`, from offset `x` of `a` and away from `t = 0`, is under `e^{−45}` of `totals`: the concave `ψ` bounds
+  /// its density by `e^ψ min(|end − x|, 1/(ν tanh|t|))`, and `H` by `max(H(x), H(end))` where monotone, else by 1.
+  fn rest_negligible(
+    &self,
+    a: &Anchor,
+    x: f64,
+    (g, f): (f64, f64),
+    rest: &Rest,
+    totals: (f64, f64),
+  ) -> bool {
+    let t = a.sign * a.abs_t + x;
+    let t_end = a.sign * a.abs_t + rest.end;
+    if t == 0.0 || (t_end - t) * t <= 0.0 {
+      return false;
+    }
+    let slope = self.nu * self.abs_t_at(a, x).tanh();
+    let ln_bound = g + (rest.end - x).abs().min(slope.recip()).ln();
+    let monotone = !(rest.turn > t.min(t_end) && rest.turn < t.max(t_end));
+    let ln_h = if monotone {
+      (f - g).max(rest.ln_h_end)
+    } else {
+      0.0
+    };
+    ln_bound <= totals.0 - NEGLIGIBLE_FALL && ln_bound + ln_h <= totals.1 - NEGLIGIBLE_FALL
+  }
+
   /// A march from `a` into a gap, until the density is a power law and `facing` holds.
   fn gap_march(
     &self,
@@ -334,14 +412,22 @@ impl BivariateT {
     step: f64,
     end: f64,
     facing: Facing,
+    outer: (f64, f64),
   ) -> March {
     let eval = |delta: f64| self.eval(cond, a, delta);
-    march(eval, end, step, &[], |x, (_, f), (_, own_n)| match facing {
-      Facing::Plateau(plateau) => self.settled(cond, a, x, plateau),
-      Facing::BelowTail { near } => {
-        self.abs_t_at(a, x) >= self.power_from && (!near || f <= own_n - NEGLIGIBLE_FALL)
-      }
-    })
+    march(
+      eval,
+      end,
+      step,
+      &[],
+      outer,
+      |x, (_, f), (_, own_n)| match facing {
+        Facing::Plateau(plateau) => self.settled(cond, a, x, plateau),
+        Facing::BelowTail { near } => {
+          self.abs_t_at(a, x) >= self.power_from && (!near || f <= own_n - NEGLIGIBLE_FALL)
+        }
+      },
+    )
   }
 
   /// The density a power law at offset `x` from `a` and `ln H` there, formed directly rather than as a difference of the
@@ -385,4 +471,9 @@ impl BivariateT {
   fn ln_power_band(&self, nu_abs_t: f64, width: f64) -> f64 {
     self.ln_power_mass(nu_abs_t) + (-(-self.nu * width).exp_m1()).ln()
   }
+}
+
+/// `ln(eᵃ + eᵇ)` of two pairs of log-sums.
+fn totals(a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
+  (ln_add_exp(a.0, b.0), ln_add_exp(a.1, b.1))
 }
