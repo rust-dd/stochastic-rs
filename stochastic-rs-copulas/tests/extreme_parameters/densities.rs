@@ -14,10 +14,10 @@ use super::on_grid;
 /// open part: mpmath of the stable forms, each proved equal to `C` or to sympy's `∂²C/∂u∂v` (`ln` of it) in sympy.
 const DENSITIES: &str = include_str!("../fixtures/extreme_densities.txt");
 
-/// The 88 t cells `(ρ, ν, kind, cells)`, a cell `side · row + column`, where `SimdStudentT::quantile` past `1 − 1e-12` is
+/// The 84 t cells `(ρ, ν, kind, cells)`, a cell `side · row + column`, where `SimdStudentT::quantile` past `1 − 1e-12` is
 /// off by up to 12%; with `−t_ν⁻¹(1 − p)` all pass. Each must keep missing, so a fix fails this test.
 const T_LAW_MISSES: [(f64, f64, &str, Misses); 5] = [
-  (-0.8, 2.5, "cdf", Misses::Only(&CDF_MISSES)),
+  (-0.8, 2.5, "cdf", Misses::Only(&COUNTERMONOTONE_CDF_MISSES)),
   (0.5, 4.0, "cdf", Misses::Only(&CDF_MISSES)),
   (-0.8, 2.5, "log_pdf", Misses::Only(&DENSITY_MISSES)),
   (0.5, 4.0, "log_pdf", Misses::Only(&DENSITY_MISSES)),
@@ -67,6 +67,10 @@ const NARROW_CDF: [usize; 25] = [
 
 /// `C(a, b)` with one level in `{1e-15, 2⁻⁵³}` and the other in `{1 − 1e-15, 1 − 2⁻⁵³}`.
 const CDF_MISSES: [usize; 8] = [33, 34, 42, 43, 57, 58, 66, 67];
+
+/// `CDF_MISSES` at `ρ < 0` where the scores do not cancel: at `(1e-15, 1 − 1e-15)` and `(2⁻⁵³, 1 − 2⁻⁵³)` the cdf reads the
+/// exact `x + y` and the lower quantile alone.
+const COUNTERMONOTONE_CDF_MISSES: [usize; 4] = [34, 42, 58, 66];
 
 /// `ln c(a, b)` with a level in `{1 − 1e-15, 1 − 2⁻⁵³}`.
 const DENSITY_MISSES: [usize; 24] = [

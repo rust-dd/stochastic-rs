@@ -14,6 +14,7 @@ use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::ln_norm_cdf;
 use crate::bivariate::conditional::ln_ratio;
 use crate::bivariate::conditional::normal_quantile;
+use crate::bivariate::integral::rule;
 use crate::error::CopulaError;
 
 /// Above this `ν` the law is normal to rounding: the expansion's first term `(x³ + x)/(4ν)` moves the quantile, and `Φ`
@@ -360,6 +361,50 @@ impl Law {
     };
     ln_gap + (b.corr - a.corr)
   }
+
+  /// `x + y` of the quantiles of `u` and `v` from `x̂`, the exact gap `g = u + v − 1` and `start`: Newton on
+  /// `T(x̂) − T(x̂ − d) = g + r`, `r = T(x̂) − u`, the mass by Gauss–Legendre of the density, less `r/f(x̂)`.
+  pub(crate) fn quantile_sum(&self, x: f64, u: f64, g: f64, start: f64) -> f64 {
+    if g == 0.0 {
+      return 0.0;
+    }
+    // `ln Γ((ν + 1)/2) − ln Γ(ν/2) − ½ ln(νπ) = −½(ln 2π + G)`, free of the gammas' cancellation at large `ν`.
+    let ln_norm = -0.5 * (std::f64::consts::TAU.ln() + ln_gamma_constant(self.nu));
+    let pdf = |s: f64| (ln_norm - 0.5 * (self.nu + 1.0) * (s * s / self.nu).ln_1p()).exp();
+    // `T(x) − T(x − d)` over a `d` within a quarter of the density's scale `√(ν + s²)`, as the caller keeps it.
+    let mass = |d: f64| {
+      let (mid, half) = (x - 0.5 * d, 0.5 * d);
+      half
+        * rule()
+          .iter()
+          .map(|&(t, w)| w * pdf(mid + half * t))
+          .sum::<f64>()
+    };
+    let r = if x <= 0.0 {
+      self.cdf_at(x) - u
+    } else {
+      (1.0 - u) - self.cdf_at(-x)
+    };
+    let (target, mut d) = (g + r, start);
+    for _ in 0..8 {
+      let step = (target - mass(d)) / pdf(x - d);
+      d += step;
+      if step.abs() <= 1e-16 * d.abs() {
+        break;
+      }
+    }
+    d - r / pdf(x)
+  }
+}
+
+/// `asinh(a + δ) − asinh(a)` for `a, a + δ ≥ 0`, without the cancellation of the two `asinh`; past `a = 1e8` the ratio's
+/// logarithm, which it equals to under `1/a²`.
+pub(crate) fn asinh_shift(a: f64, delta: f64) -> f64 {
+  if a > 1e8 {
+    return (delta / a).ln_1p();
+  }
+  let b = a + delta;
+  (delta * (1.0 + (a + b) / (a.hypot(1.0) + b.hypot(1.0))) / (a + a.hypot(1.0))).ln_1p()
 }
 
 /// `ln cosh t`, by `ln_1p(2 sinh²(t/2))` below 1, where `|t| − ln 2 + ln_1p(e^{−2|t|})` cancels.
@@ -395,6 +440,8 @@ pub(crate) struct Conditional {
   sign_y: f64,
   /// `ln(1 − e^{−2|t_y|})`.
   ln_y: f64,
+  /// `expm1(2|t_y|)`.
+  e2y: f64,
 }
 
 impl Conditional {
@@ -405,6 +452,7 @@ impl Conditional {
       ln_abs_rho: rho.abs().ln(),
       sign_y: y.sign,
       ln_y: (-(-2.0 * y.abs_t).exp_m1()).ln(),
+      e2y: (2.0 * y.abs_t).exp_m1(),
     }
   }
 
@@ -423,7 +471,12 @@ impl Conditional {
     } else if sign_r == 0.0 || ln_r == f64::NEG_INFINITY {
       (self.sign_y, ln_y)
     } else if self.sign_y == sign_r {
-      let z = ln_y - ln_r;
+      // Near the crossing `ln(1 − e^{−2|t_y|}) − ln(1 − e^{−2|t|})` from the exact `gap` alone, where the two would cancel.
+      let z = if gap.abs() < 1.0 {
+        gap - self.ln_abs_rho - (-(2.0 * gap).exp_m1() / self.e2y).ln_1p()
+      } else {
+        ln_y - ln_r
+      };
       (self.sign_y * z.signum(), ln_r + ln_abs_expm1(z))
     } else {
       (self.sign_y, ln_add_exp(ln_y, ln_r))

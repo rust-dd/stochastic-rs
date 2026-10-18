@@ -24,6 +24,7 @@ use crate::student_t::Feature;
 use crate::student_t::Law;
 use crate::student_t::NORMAL_ABOVE;
 use crate::student_t::Score;
+use crate::student_t::asinh_shift;
 use crate::student_t::ln_cosh;
 
 /// Below this `ν` the copula is its `ν → 0` limit `pM + (1 − p)W` to rounding: the remainder is under `50ν/min(p, 1 − p)`,
@@ -159,8 +160,10 @@ impl BivariateT {
     if !(self.reachable(u, &fx) && self.reachable(v, &fy)) {
       return f64::NAN;
     }
+    let (fy, gap_x) = self
+      .countermonotone(u, v, su, sv)
+      .unwrap_or_else(|| (fy, self.law.abs_t_gap(&fy, &fx)));
     let cond = Conditional::new(self.rho, self.nu, &fy);
-    let gap_x = self.law.abs_t_gap(&fy, &fx);
     let anchors = self.anchors(&fx, &fy, gap_x);
     // Where `A`, and with it `H`, turns: `sinh t = −ρ/sinh t_y`; `H` is monotone on either side of it.
     let turn = if fy.sign == 0.0 {
@@ -278,6 +281,27 @@ impl BivariateT {
       add(&mut sums, ln_rest, ln_rest + self.ln_h_left);
     }
     sums.1 - sums.0
+  }
+
+  /// `y = (x + y) − x` and `|t_x| − |t_y|` at `ρ < 0` from the exact sum (`Law::quantile_sum`) where at least two bits of
+  /// the opposite scores cancel in it, so neither their rounding nor the upper quantile's error moves the crossing.
+  fn countermonotone(&self, u: f64, v: f64, su: Score, sv: Score) -> Option<(Feature, f64)> {
+    let (x, y) = (su.value, sv.value);
+    let plain = x + y;
+    if !(self.rho < 0.0 && x < 0.0 && 0.0 < y && y.is_finite() && plain.abs() <= 0.25 * y.min(-x)) {
+      return None;
+    }
+    let sum = self.law.quantile_sum(x, u, sum_minus_one(u, v), plain);
+    let y = sum - x;
+    // Positive unless the law's quantiles are not the t law's, past `ν ≈ 4.4e12`.
+    if y.is_nan() || y <= 0.0 {
+      return None;
+    }
+    let root_nu = self.nu.sqrt();
+    Some((
+      Feature::of_value(y, self.nu),
+      asinh_shift(y / root_nu, -sum / root_nu),
+    ))
   }
 
   /// Whether the density can carry the tail beyond the quantile `f` of level `p`: the concave `ψ` bounds that tail's mass by

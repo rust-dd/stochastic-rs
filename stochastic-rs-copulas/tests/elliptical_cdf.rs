@@ -304,6 +304,37 @@ fn the_t_cdf_resolves_a_step_of_h_in_the_first_panel() {
   }
 }
 
+/// `(ρ, ν, u, v, C)` where the scores nearly cancel at `ρ ≈ −1`, so the cdf reads `x + y` from the exact `u + v − 1`: the
+/// re-review's mpmath (`refs.bvt_cdf`, 35 and 50 digits), the last at a level within `2.3e-11` of 1.
+const COUNTERMONOTONE_PINS: [(f64, f64, f64, f64, f64); 3] = [
+  (-0.9999999999999986, 99.5, 0.3, 0.7, 7.447260837254137e-9),
+  (
+    -0.9999999999980917,
+    0.24295914439971203,
+    0.9466469930427689,
+    0.053352178358714086,
+    1.325840016488688e-8,
+  ),
+  (
+    -0.9999999999998845,
+    256.5,
+    1.2548998449780778e-10,
+    0.9999999999774678,
+    1.029577861684353e-10,
+  ),
+];
+
+#[test]
+fn the_t_cdf_reads_the_countermonotone_crossing_from_the_exact_sum() {
+  for (rho, nu, u, v, want) in COUNTERMONOTONE_PINS {
+    let got = TCopula::new(rho, nu).cdf(array![[u, v]].view()).unwrap()[0];
+    assert!(
+      (got - want).abs() <= 1e-12 * want,
+      "nu={nu} rho={rho} u={u} v={v}: {got} vs {want}"
+    );
+  }
+}
+
 /// Two noise-free cells near `ρ = −1` that need fine panels where the integrand vanishes: within `1e-12` of mpmath (Owen's
 /// form, the conditional integral), each in under the 500 ms the large-`ν` rows allow.
 #[test]
