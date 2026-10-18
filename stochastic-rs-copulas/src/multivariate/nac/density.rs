@@ -5,36 +5,16 @@ use stochastic_rs_distributions::RealExt;
 
 use super::Generator;
 use super::NacNode;
+use crate::bivariate::conditional::ln_log_ratio;
+use crate::bivariate::conditional::ln_ratio;
 
-impl Generator {
-  /// `(ln ψ⁻¹(u), ln |ψ⁻¹'(u)|)` for `0 < u < 1`.
-  fn ln_leaf(self, theta: f64, u: f64) -> (f64, f64) {
-    let ln_u = u.ln();
-    match self {
-      Self::Clayton => (ln_expm1(-theta * ln_u), theta.ln() - (1.0 + theta) * ln_u),
-      Self::Gumbel => {
-        let ln_x = (-ln_u).ln();
-        (theta * ln_x, theta.ln() + (theta - 1.0) * ln_x - ln_u)
-      }
-    }
-  }
+/// Up to this `θa` Clayton's offset is `ln(1 + t) − θa`, `t = Σ(e^{θ·part} − 1)`, cancelling by at most `θa` roundings;
+/// past it the sum is taken about the anchor, `ln(Σ e^{θ·gap}(1 − e^{−θ·part}) + e^{−θa})`.
+const CLAYTON_SUM_BELOW: f64 = 36.0;
 
-  /// `ln ψ̊(t)` for the node map `ψ̊ = ψ_parent⁻¹ ∘ ψ_child`: `(1 + t)^α − 1` Clayton, `t^α` Gumbel.
-  fn ln_node_map(self, alpha: f64, ln_t: f64) -> f64 {
-    match self {
-      Self::Clayton => ln_expm1(alpha * ln_1p_exp(ln_t)),
-      Self::Gumbel => alpha * ln_t,
-    }
-  }
-
-  /// `ln b` for the base `b` of the inner coefficients `b^{αl − n} |s_nl(α)|`: `1 + t` Clayton, `t` Gumbel.
-  fn ln_base(self, ln_t: f64) -> f64 {
-    match self {
-      Self::Clayton => ln_1p_exp(ln_t),
-      Self::Gumbel => ln_t,
-    }
-  }
-}
+/// Up to this `θ` the Gumbel gap is the difference of the cached `ln y`, whose rounding (`|ln y| < 37` on the open
+/// interval) `θ` keeps under `1e-13`; past it, near a ratio of 1, the exact `ln(y_j/y_a)`.
+const GUMBEL_EXACT_ABOVE: f64 = 4.0;
 
 /// A subtree node with `ln |s_nl(α)|`, `α = θ_parent / θ`, for `l ≤ n ≤ size`.
 struct Node {
@@ -53,14 +33,18 @@ pub(super) struct Density {
   root_table: Vec<f64>,
 }
 
+/// Per node, the leaf of its subtree's smallest `u`, whose `a = −ln u` is the largest `y`, and the offset `o` of
+/// `L = −ln C` from `a`: Clayton `θ(L − a)`, Gumbel `θ ln(L/a)`, between 0 and `ln` of the subtree's leaf count.
 struct Scratch {
-  ln_t: Vec<f64>,
-  minus_ln_c: Vec<f64>,
+  anchor: Vec<usize>,
+  offset: Vec<f64>,
+  y: Vec<f64>,
+  ln_y: Vec<f64>,
   polys: Vec<Vec<f64>>,
   b: Vec<f64>,
   tmp: Vec<f64>,
-  t_terms: Vec<f64>,
-  parts: Vec<f64>,
+  shifted: Vec<f64>,
+  terms: Vec<(f64, f64)>,
 }
 
 impl Density {
@@ -80,14 +64,17 @@ impl Density {
   }
 
   pub(super) fn log_pdf(&self, x: ArrayView2<f64>) -> Array1<f64> {
+    let n = self.nodes.len();
     let mut scratch = Scratch {
-      ln_t: vec![0.0; self.nodes.len()],
-      minus_ln_c: vec![0.0; self.nodes.len()],
-      polys: vec![vec![]; self.nodes.len()],
+      anchor: vec![0; n],
+      offset: vec![0.0; n],
+      y: vec![0.0; x.ncols()],
+      ln_y: vec![0.0; x.ncols()],
+      polys: vec![vec![]; n],
       b: vec![],
       tmp: vec![],
-      t_terms: vec![],
-      parts: vec![],
+      shifted: vec![],
+      terms: vec![],
     };
     x.rows()
       .into_iter()
@@ -95,18 +82,27 @@ impl Density {
       .collect()
   }
 
-  /// Every coefficient is the absolute value of Hofert & Pham's signed one (their §5 fixes the signs), so each sum runs
-  /// in logs over positive terms; a node's `Ã` follows their eq. (31), carried to any depth as their Remark 6.2 says.
+  /// Hofert & Pham's sums, coefficients made positive (§5), a node's `Ã` by eq. (31) to any depth, in logs, each node
+  /// re-centred on its anchor so `θ·L` and `θ·y` enter only as `θ` times an exact gap.
   fn row(&self, u: ArrayView1<f64>, s: &mut Scratch) -> f64 {
     if u.iter().any(|&x| x <= 0.0 || x >= 1.0) {
       return f64::NAN;
     }
+    for (j, &x) in u.iter().enumerate() {
+      s.y[j] = -x.ln();
+      if self.generator == Generator::Gumbel {
+        s.ln_y[j] = s.y[j].ln();
+      }
+    }
     let mut ln_jacobian = 0.0;
     let last = self.nodes.len() - 1;
-    for i in 0..last {
-      let ln_t = self.gather(i, u, s, &mut ln_jacobian);
+    for i in 0..=last {
+      self.gather(i, u, s, &mut ln_jacobian);
+      if i == last {
+        break;
+      }
       let node = &self.nodes[i];
-      let ln_base = self.generator.ln_base(ln_t);
+      let offset = s.offset[i];
       let top = s.b.len() - 1;
       let low = s
         .b
@@ -117,68 +113,122 @@ impl Density {
       out.clear();
       for l in 0..=top {
         let b = &s.b;
-        let term = move |n: usize| {
-          node.ln_s[tri(n, l)] + (node.alpha * l as f64 - n as f64) * ln_base + b[n]
-        };
+        let term =
+          move |n: usize| node.ln_s[tri(n, l)] + (node.alpha * l as f64 - n as f64) * offset + b[n];
         out.push(lse((l.max(low)..=top).map(term)));
       }
     }
-    let ln_t = self.gather(last, u, s, &mut ln_jacobian);
-    ln_jacobian + self.root_sum(&s.b, ln_t, s.minus_ln_c[last])
+    ln_jacobian + self.root_sum(&s.b, s.y[s.anchor[last]], s.offset[last])
   }
 
-  /// Sets `s.b` to the product of the node's part polynomials (a leaf is `v`) and returns `ln t` at the node.
-  fn gather(&self, i: usize, u: ArrayView1<f64>, s: &mut Scratch, ln_jacobian: &mut f64) -> f64 {
+  /// `θ` times the gap from anchor leaf `a` to leaf `j`, `≤ 0`: Clayton `ln(u_a/u_j)`, Gumbel `ln(y_j/y_a)`, each exact
+  /// near a ratio of 1, where `θ` would scale the rounding of two separate logarithms.
+  fn gap(&self, theta: f64, u: ArrayView1<f64>, s: &Scratch, a: usize, j: usize) -> f64 {
+    if a == j {
+      return 0.0;
+    }
+    match self.generator {
+      Generator::Clayton => theta * ln_ratio(u[a], u[j]),
+      Generator::Gumbel
+        if theta > GUMBEL_EXACT_ABOVE && (0.5..=2.0).contains(&(s.y[j] / s.y[a])) =>
+      {
+        theta * ln_log_ratio(u[j], u[a], s.y[j], s.y[a])
+      }
+      Generator::Gumbel => theta * (s.ln_y[j] - s.ln_y[a]),
+    }
+  }
+
+  /// Sets node `i`'s anchor and offset, `s.b` to the product of its part polynomials (a leaf is `v`, a child's comes
+  /// shifted to this anchor), and adds its leaves' re-centred Jacobian terms.
+  fn gather(&self, i: usize, u: ArrayView1<f64>, s: &mut Scratch, ln_jacobian: &mut f64) {
     let node = &self.nodes[i];
-    s.t_terms.clear();
+    let anchor = node
+      .leaves
+      .iter()
+      .copied()
+      .chain(node.children.iter().map(|&c| s.anchor[c]))
+      .min_by(|&p, &q| u[p].total_cmp(&u[q]))
+      .expect("a node holds a leaf");
+    s.anchor[i] = anchor;
+    let theta = node.theta;
+    // Each part's `θ·gap` to the anchor, and Clayton's `θ·part`; a child's part is its `L`.
+    s.terms.clear();
+    for &j in &node.leaves {
+      let gap = self.gap(theta, u, s, anchor, j);
+      s.terms.push((gap, theta * s.y[j]));
+      *ln_jacobian += theta.ln()
+        + s.y[j]
+        + gap
+        + match self.generator {
+          Generator::Clayton => 0.0,
+          Generator::Gumbel => -s.ln_y[j],
+        };
+    }
     s.b.clear();
     s.b.resize(node.leaves.len() + 1, f64::NEG_INFINITY);
     s.b[node.leaves.len()] = 0.0;
-    for &j in &node.leaves {
-      let (ln_g, ln_dg) = self.generator.ln_leaf(node.theta, u[j]);
-      s.t_terms.push(ln_g);
-      *ln_jacobian += ln_dg;
-    }
     for &c in &node.children {
-      let ln_t = s.ln_t[c];
-      s.t_terms
-        .push(self.generator.ln_node_map(self.nodes[c].alpha, ln_t));
-      cauchy(&s.b, &s.polys[c], &mut s.tmp);
+      let child = &self.nodes[c];
+      let shift = self.gap(theta, u, s, anchor, s.anchor[c]);
+      let lift = child.alpha * s.offset[c];
+      s.terms
+        .push((shift + lift, theta * s.y[s.anchor[c]] + lift));
+      s.shifted.clear();
+      s.shifted.extend(
+        s.polys[c]
+          .iter()
+          .enumerate()
+          .map(|(l, &p)| p + l as f64 * shift),
+      );
+      cauchy(&s.b, &s.shifted, &mut s.tmp);
       std::mem::swap(&mut s.b, &mut s.tmp);
     }
-    let ln_t = lse(s.t_terms.iter().copied());
-    s.ln_t[i] = ln_t;
-    // Only Clayton's root term reads `−ln C`.
-    if self.generator == Generator::Clayton {
-      s.parts.clear();
-      s.parts.extend(node.leaves.iter().map(|&j| -u[j].ln()));
-      s.parts
-        .extend(node.children.iter().map(|&c| s.minus_ln_c[c]));
-      s.minus_ln_c[i] = self.generator.minus_ln_cdf(node.theta, &s.parts);
+    let theta_a = theta * s.y[anchor];
+    s.offset[i] = match self.generator {
+      Generator::Clayton if theta_a <= CLAYTON_SUM_BELOW => {
+        s.terms
+          .iter()
+          .map(|&(_, full)| full.exp_m1())
+          .sum::<f64>()
+          .ln_1p()
+          - theta_a
+      }
+      Generator::Clayton => {
+        let sum = s
+          .terms
+          .iter()
+          .map(|&(gap, full)| gap.exp() * -(-full).exp_m1())
+          .sum::<f64>();
+        sum.ln() + ((-theta_a).exp() / sum).ln_1p()
+      }
+      Generator::Gumbel => lse(s.terms.iter().map(|&(gap, _)| gap)),
+    };
+    // The `1/θ` power of Clayton's root factor `1 + t` leaves `−a` beside its offset term.
+    if i == self.nodes.len() - 1 && self.generator == Generator::Clayton {
+      *ln_jacobian -= s.y[anchor];
     }
-    ln_t
   }
 
-  /// `ln Σ_n B̃_n (−1)^n ψ^{(n)}(t)`: Clayton `(1/θ)_n (1 + t)^{−n−1/θ}`, Gumbel `ψ(t) t^{−n} Σ_k |s_nk(1/θ)| t^{k/θ}`
-  /// (Hofert, Mächler & McNeil 2012, Thm 3.2 (2) and (4)); Clayton's `(n + 1/θ) ln(1 + t)` as `(nθ + 1)(−ln C)`.
-  fn root_sum(&self, b: &[f64], ln_t: f64, minus_ln_c: f64) -> f64 {
+  /// `ln Σ_n B̃_n (−1)^n ψ^{(n)}(t)` re-centred: Clayton `(1/θ)_n e^{−(n + 1/θ)o}`, Gumbel
+  /// `e^{−no − L} Σ_k |s_nk(1/θ)| L^k`, `L = a e^{o/θ}` (Hofert, Mächler & McNeil 2012, Thm 3.2 (2) and (4)).
+  fn root_sum(&self, b: &[f64], a: f64, offset: f64) -> f64 {
     let theta = self.nodes[self.nodes.len() - 1].theta;
     let table = &self.root_table;
     let finite = b.iter().position(|&x| x > f64::NEG_INFINITY).unwrap_or(0);
     match self.generator {
       Generator::Clayton => {
-        lse((finite..b.len()).map(|n| b[n] + table[n] - (n as f64 * theta + 1.0) * minus_ln_c))
+        lse((finite..b.len()).map(|n| b[n] + table[n] - (n as f64 + 1.0 / theta) * offset))
       }
       Generator::Gumbel => {
-        let ln_x = ln_t / theta;
-        let x = ln_x.exp();
+        let ln_l = a.ln() + offset / theta;
+        let l = ln_l.exp();
         lse((finite..b.len()).map(|n| {
           let ln_p = if n == 0 {
             0.0
           } else {
-            lse((1..=n).map(|k| table[tri(n, k)] + k as f64 * ln_x)) - n as f64 * ln_t
+            lse((1..=n).map(|k| table[tri(n, k)] + k as f64 * ln_l))
           };
-          b[n] - x + ln_p
+          b[n] - n as f64 * offset - l + ln_p
         }))
       }
     }
@@ -269,22 +319,6 @@ where
     .map(|x| if x == m { 1.0 } else { (x - m).exp() })
     .sum::<f64>()
     .ln()
-}
-
-fn ln_expm1(x: f64) -> f64 {
-  if x > std::f64::consts::LN_2 {
-    x + (-(-x).exp()).ln_1p()
-  } else {
-    x.exp_m1().ln()
-  }
-}
-
-fn ln_1p_exp(x: f64) -> f64 {
-  if x > 0.0 {
-    x + (-x).exp().ln_1p()
-  } else {
-    x.exp().ln_1p()
-  }
 }
 
 #[cfg(test)]

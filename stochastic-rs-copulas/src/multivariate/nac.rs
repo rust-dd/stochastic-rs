@@ -23,8 +23,8 @@
 //!
 //! ## Density
 //!
-//! Closed form on every tree `new` accepts: Hofert & Pham's (2013) recursion at any depth (their Remark 6.2) over the
-//! generator derivatives of Hofert, Mächler & McNeil (2012), summed in logs of positive terms; NaN on a 0 or 1 coordinate.
+//! Closed form on every tree `new` accepts: Hofert & Pham's (2013) recursion at any depth, in logs of positive terms
+//! re-centred per node on exact gaps, so it holds at every admitted `θ`; NaN on a 0 or 1 coordinate.
 //!
 //! ## Fit
 //!

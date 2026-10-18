@@ -124,9 +124,6 @@ fn nac(family: &str, nested: bool, thetas: &[f64]) -> NestedArchimedean {
   NestedArchimedean::new(family, root, 3).unwrap()
 }
 
-/// Past it the density's terms cancel to within `θ` roundings of `ln c`, so the table holds only `cdf` there.
-const DENSITY_UP_TO: f64 = 500.0;
-
 #[test]
 fn nested_archimedean_cdf_and_density_match_the_mpmath_table() {
   let mut failures = Vec::new();
@@ -148,13 +145,10 @@ fn nested_archimedean_cdf_and_density_match_the_mpmath_table() {
     let x = Array2::from_shape_vec((1, 3), u).unwrap();
     let cdf = copula.cdf(x.view()).unwrap()[0];
     let mut bad = !matches(cdf, want[0]);
-    let (mut pdf, mut log_pdf) = (f64::NAN, f64::NAN);
-    if thetas.iter().all(|&t| t <= DENSITY_UP_TO) {
-      pdf = copula.pdf(x.view()).unwrap()[0];
-      log_pdf = copula.log_pdf(x.view()).unwrap()[0];
-      let log_off = (log_pdf - want[2]).abs() > 1e-12 * want[2].abs().max(1.0);
-      bad |= !matches(pdf, want[1]) || log_off;
-    }
+    let pdf = copula.pdf(x.view()).unwrap()[0];
+    let log_pdf = copula.log_pdf(x.view()).unwrap()[0];
+    let log_off = (log_pdf - want[2]).abs() > 1e-12 * want[2].abs().max(1.0);
+    bad |= !matches(pdf, want[1]) || log_off;
     if bad {
       failures.push(format!(
         "{spec} at {point}: cdf {cdf:e} pdf {pdf:e} log {log_pdf:e}, want {want:?}"
