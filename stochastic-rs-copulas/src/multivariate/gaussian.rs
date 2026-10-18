@@ -22,6 +22,7 @@ use super::genz::mvn_upper;
 use super::genz::open_coordinates;
 use super::genz::prioritize;
 use super::qmc::sobol_points;
+use crate::bivariate::conditional::check_open;
 use crate::bivariate::gaussian::gaussian_copula_cdf;
 use crate::error::CopulaError;
 use crate::multivariate::on_open_cube;
@@ -155,10 +156,10 @@ impl MultivariateExt for GaussianMultivariate {
         got: x.nrows(),
       });
     }
-    // Basic range check
     if x.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
       return Err(CopulaError::MarginalOutOfRange);
     }
+    check_open(x)?;
     let z = self.transform_to_normal(x);
     let corr = shrink_to_spd(Self::estimate_corr_from_normal(z.view()));
     self.corr = Some(CorrelationMatrix::try_new(corr)?);

@@ -3,6 +3,7 @@ use ndarray::ArrayView2;
 use super::Generator;
 use super::NacNode;
 use crate::bivariate::clayton::Clayton;
+use crate::bivariate::conditional::check_open;
 use crate::bivariate::gumbel::Gumbel;
 use crate::correlation::check_defined;
 use crate::correlation::kendall_tau;
@@ -53,7 +54,8 @@ impl Item {
   }
 }
 
-/// The checks run in the order every multivariate fit uses: columns, rows, range, then a defined τ-b for every column.
+/// The checks run in the order every multivariate fit uses: columns, rows, range, the open square, then a defined τ-b
+/// for every column.
 pub(super) fn estimate(generator: Generator, x: ArrayView2<f64>) -> Result<NacNode, CopulaError> {
   let (n, d) = (x.nrows(), x.ncols());
   if d < 2 {
@@ -67,6 +69,7 @@ pub(super) fn estimate(generator: Generator, x: ArrayView2<f64>) -> Result<NacNo
   if x.iter().any(|v| !(0.0..=1.0).contains(v)) {
     return Err(CopulaError::MarginalOutOfRange);
   }
+  check_open(x)?;
   let tau = kendall_tau(x)?;
   check_defined(tau.view())?;
   agglomerate(generator, tau.view())

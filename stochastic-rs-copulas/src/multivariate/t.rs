@@ -241,8 +241,7 @@ impl MultivariateExt for TMultivariate {
     Ok(u)
   }
 
-  /// Σ from Kendall's τ and ν by the profile likelihood, on pseudo-observations: a 0 or 1, where the density is not
-  /// defined either, is a `MarginalOnBoundary`.
+  /// Σ from Kendall's τ and ν by the profile likelihood.
   fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     if x.ncols() < 2 {
       return Err(CopulaError::InvalidStructure(format!(

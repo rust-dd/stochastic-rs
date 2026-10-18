@@ -17,6 +17,7 @@ use stochastic_rs_distributions::uniform::SimdUniform;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::ABSOLUTE_TOLERANCE;
 use crate::bivariate::conditional::check_lengths;
+use crate::bivariate::conditional::check_open;
 use crate::bivariate::conditional::check_pairs;
 use crate::bivariate::conditional::check_unit;
 use crate::correlation::kendall_tau_b;
@@ -32,7 +33,7 @@ pub struct TailDependence<T> {
 }
 
 /// `cdf`, `pdf`, `log_pdf`, `partial_derivative` and `percent_point` answer `MarginalOutOfRange` for a value outside
-/// `[0, 1]` or NaN; `pdf` and `log_pdf` are NaN on the boundary.
+/// `[0, 1]` or NaN, and `pdf` and `log_pdf` are NaN on the boundary; `fit` answers `MarginalOnBoundary` for a 0 or 1.
 pub trait BivariateExt {
   /// Which family this copula is; the label its error messages carry.
   fn family(&self) -> BivariateFamily;
@@ -126,10 +127,11 @@ pub trait BivariateExt {
     Ok(stack![Axis(1), u, v])
   }
 
-  /// Kendall's τ-b of a two-column sample in `[0, 1]`, inverted through `theta_from_tau`; nothing is stored when the
-  /// family cannot represent it (`InvalidParameter { name: "tau", .. }`) or the inverse fails `validate_theta`.
+  /// Kendall's τ-b of a two-column sample of pseudo-observations, inverted through `theta_from_tau`; nothing is stored
+  /// when the family cannot represent it (`InvalidParameter { name: "tau", .. }`) or the inverse fails `validate_theta`.
   fn fit(&mut self, x: ndarray::ArrayView2<f64>) -> Result<(), CopulaError> {
     check_pairs(x)?;
+    check_open(x)?;
     let tau = kendall_tau_b(x.column(0), x.column(1))?;
     let theta = self.theta_from_tau(tau)?;
     self.validate_theta(theta)?;

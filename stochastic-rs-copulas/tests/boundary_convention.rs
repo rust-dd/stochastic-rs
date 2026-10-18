@@ -217,12 +217,9 @@ fn data(columns: usize, cell: (usize, usize), value: f64) -> Array2<f64> {
   x
 }
 
-/// The rule the fits name: a 0 or 1 is a `MarginalOnBoundary` at its cell, saying `(0, 1)`, a value off `[0, 1]` stays
-/// `MarginalOutOfRange`.
-fn assert_density_fit_rule(
-  fit: impl Fn(ArrayView2<f64>) -> Result<(), CopulaError>,
-  columns: usize,
-) {
+/// The rule of every parametric fit and of the test: a 0 or 1 is a `MarginalOnBoundary` at its cell, saying `(0, 1)`, a
+/// value off `[0, 1]` stays `MarginalOutOfRange`.
+fn assert_fit_rule(fit: impl Fn(ArrayView2<f64>) -> Result<(), CopulaError>, columns: usize) {
   for value in [0.0, 1.0] {
     let got = fit(data(columns, (7, columns - 1), value).view());
     let want = CopulaError::MarginalOnBoundary {
@@ -242,13 +239,67 @@ fn assert_density_fit_rule(
 
 #[test]
 fn the_bb_likelihood_fits_reject_a_zero_or_one() {
-  assert_density_fit_rule(|x| Bb1::default().fit(x), 2);
-  assert_density_fit_rule(|x| Bb7::default().fit(x), 2);
+  assert_fit_rule(|x| Bb1::default().fit(x), 2);
+  assert_fit_rule(|x| Bb7::default().fit(x), 2);
+}
+
+/// Every bivariate family's `fit`, the Kendall inversions included: the rule holds before the sample's τ, which some
+/// families cannot represent, is read.
+#[test]
+fn every_bivariate_fit_rejects_a_zero_or_one() {
+  let mut families: Vec<Box<dyn BivariateExt>> = vec![
+    Box::new(Amh::default()),
+    Box::new(Bb1::default()),
+    Box::new(Bb7::default()),
+    Box::new(Clayton::default()),
+    Box::new(Fgm::default()),
+    Box::new(Frank::default()),
+    Box::new(Galambos::default()),
+    Box::new(GaussianCopula::default()),
+    Box::new(Gumbel::default()),
+    Box::new(HuslerReiss::default()),
+    Box::new(Independence),
+    Box::new(Joe::default()),
+    Box::new(MarshallOlkin::default()),
+    Box::new(Plackett::default()),
+    Box::new(TCopula::default()),
+  ];
+  for copula in &mut families {
+    for value in [0.0, 1.0] {
+      let want = CopulaError::MarginalOnBoundary {
+        row: 7,
+        column: 1,
+        value,
+      };
+      let got = copula.fit(data(2, (7, 1), value).view());
+      assert_eq!(got, Err(want), "{:?}", copula.family());
+    }
+    let got = copula.fit(data(2, (7, 0), 1.5).view());
+    assert_eq!(
+      got,
+      Err(CopulaError::MarginalOutOfRange),
+      "{:?}",
+      copula.family()
+    );
+  }
+}
+
+#[test]
+fn the_nested_archimedean_and_gaussian_fits_reject_a_zero_or_one() {
+  assert_fit_rule(
+    |x| {
+      NestedArchimedean::unfitted(BivariateFamily::Gumbel)
+        .unwrap()
+        .fit(x)
+    },
+    3,
+  );
+  assert_fit_rule(|x| GaussianMultivariate::default().fit(x), 3);
 }
 
 #[test]
 fn the_vine_fit_rejects_a_zero_or_one() {
-  assert_density_fit_rule(
+  assert_fit_rule(
     |x| {
       fit_vine(
         x,
@@ -264,7 +315,7 @@ fn the_vine_fit_rejects_a_zero_or_one() {
 
 #[test]
 fn the_t_multivariate_fit_rejects_a_zero_or_one() {
-  assert_density_fit_rule(|x| TMultivariate::default().fit(x), 3);
+  assert_fit_rule(|x| TMultivariate::default().fit(x), 3);
 }
 
 #[test]
@@ -273,7 +324,7 @@ fn the_goodness_of_fit_test_rejects_a_zero_or_one() {
     replications: 1,
     alpha: 0.5,
   };
-  assert_density_fit_rule(
+  assert_fit_rule(
     |x| {
       gof_cramer_von_mises(
         &Clayton::new(2.0),

@@ -21,7 +21,8 @@ pub enum CopulaError {
   InsufficientData { needed: usize, got: usize },
   /// A pseudo-observation outside `[0, 1]`.
   MarginalOutOfRange,
-  /// A pseudo-observation at 0 or 1, which every fit and test refuses: ranks `k/(n + 1)` never reach either end.
+  /// A pseudo-observation at 0 or 1, which every parametric fit and the goodness-of-fit test refuse, as ranks `k/(n + 1)`
+  /// never reach either end; the empirical copula ranks raw series itself, so takes none.
   MarginalOnBoundary {
     row: usize,
     column: usize,

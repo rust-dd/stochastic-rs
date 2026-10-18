@@ -6,8 +6,8 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use crate::error::CopulaError;
 use crate::multivariate::MultivariateFamily;
 
-/// `cdf`, `pdf` and `log_pdf` answer `MarginalOutOfRange` for a value outside `[0, 1]` or NaN; `pdf` and `log_pdf` are
-/// NaN on the boundary.
+/// `cdf`, `pdf` and `log_pdf` answer `MarginalOutOfRange` for a value outside `[0, 1]` or NaN, and `pdf` and `log_pdf`
+/// are NaN on the boundary; `fit` answers `MarginalOnBoundary` for a 0 or 1.
 pub trait MultivariateExt {
   /// Which family this copula is.
   fn family(&self) -> MultivariateFamily;
