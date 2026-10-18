@@ -60,10 +60,11 @@ const T_PINS: [(f64, f64, f64, f64, f64); 42] = [
   (30.5, 0.3, 0.77, 0.21, 0.18465976720811114),
 ];
 
-/// `(rho, u, v, C)` by 50-digit mpmath, the density integrated through the conditional normal law.
+/// `(rho, u, v, C)` by mpmath at 40 and 60 digits, the conditional normal integral scaled by its largest value, as `quad`'s
+/// tolerance is absolute, and Owen's form at 260.
 const GAUSSIAN_PINS: [(f64, f64, f64, f64); 16] = [
   (-0.95, 0.3, 0.6, 0.012781131020882781),
-  (-0.95, 1e-06, 2e-06, 2.1115805479410805e-195),
+  (-0.95, 1e-06, 2e-06, 2.1107372263704096e-195),
   (-0.95, 0.999999, 0.999998, 0.999997),
   (-0.95, 1e-06, 0.999, 6.248500918378766e-13),
   (-0.5, 0.3, 0.6, 0.10810931317508182),
@@ -157,6 +158,15 @@ fn near_singular_six() -> Array2<f64> {
   ]
 }
 
+/// A normal truth to `1e-12` relative; one below `f64::MIN_POSITIVE` to within it.
+fn agrees(got: f64, want: f64) -> bool {
+  if want >= f64::MIN_POSITIVE {
+    (got - want).abs() <= 1e-12 * want
+  } else {
+    (got - want).abs() <= f64::MIN_POSITIVE
+  }
+}
+
 fn pair(rho: f64) -> Array2<f64> {
   array![[1.0, rho], [rho, 1.0]]
 }
@@ -230,10 +240,7 @@ fn bivariate_gaussian_cdf_is_the_bivariate_copulas() {
       .unwrap()[0];
     let bv = GaussianCopula::new(rho).cdf(q.view()).unwrap()[0];
     assert_eq!(mv, bv, "rho={rho} u={u} v={v}");
-    assert!(
-      (mv - want).abs() <= 1e-12,
-      "rho={rho} u={u} v={v}: {mv} vs {want}"
-    );
+    assert!(agrees(mv, want), "rho={rho} u={u} v={v}: {mv} vs {want}");
   }
 }
 
