@@ -1,6 +1,9 @@
 //! The elliptical copula cdfs are deterministic: Genz–Bretz on Sobol points from `d = 3`, pinned against scipy at `1e-9`
 //! and the trivariate orthant identity, and closed forms at `d = 2`, pinned against 50-digit mpmath values.
 
+use std::time::Duration;
+use std::time::Instant;
+
 use ndarray::Array2;
 use ndarray::array;
 use stochastic_rs_copulas::bivariate::gaussian::GaussianCopula;
@@ -264,6 +267,63 @@ fn bivariate_t_cdf_matches_50_digit_references() {
       (bv - want).abs() <= 1e-12,
       "nu={nu} rho={rho} u={u} v={v}: {bv} vs {want}"
     );
+  }
+}
+
+/// `(ρ, ν, u, v, C)` where `H` steps across the march's first panel: `¼ + asin ρ/(2π)` at `(½, ½)`, else 40-digit mpmath.
+const STEP_PINS: [(f64, f64, f64, f64, f64); 7] = [
+  (-0.999999, 0.3, 0.5, 0.5, 0.0002250790977991068),
+  (0.999999, 1.5, 0.5, 0.5, 0.4997749209022009),
+  (0.999999, 30.5, 0.5, 0.5, 0.4997749209022009),
+  (0.999999, 200.5, 0.5, 0.5, 0.4997749209022009),
+  (0.99999999, 2.5, 0.5, 0.5, 0.49997749209202075),
+  (
+    0.9988962907871344,
+    2.5,
+    0.5,
+    0.49125886598344887,
+    0.48719996799382487,
+  ),
+  (
+    0.9999999611070157,
+    0.7,
+    0.8995983323300545,
+    0.9,
+    0.8995974422293114,
+  ),
+];
+
+#[test]
+fn the_t_cdf_resolves_a_step_of_h_in_the_first_panel() {
+  for (rho, nu, u, v, want) in STEP_PINS {
+    let got = TCopula::new(rho, nu).cdf(array![[u, v]].view()).unwrap()[0];
+    assert!(
+      (got - want).abs() <= 1e-12 * want,
+      "nu={nu} rho={rho} u={u} v={v}: {got} vs {want}"
+    );
+  }
+}
+
+/// Two noise-free cells near `ρ = −1` that need fine panels where the integrand vanishes: within `1e-12` of mpmath (Owen's
+/// form, the conditional integral), each in under the 500 ms the large-`ν` rows allow.
+#[test]
+fn the_cells_near_the_countermonotone_limit_return_promptly() {
+  let start = Instant::now();
+  let gaussian = GaussianCopula::new(-0.9997182188114035)
+    .cdf(array![[0.19911836204432967, 0.5143446219176471]].view())
+    .unwrap()[0];
+  let gaussian_took = start.elapsed();
+  let start = Instant::now();
+  let t = TCopula::new(-0.9999999999999921, 600.5)
+    .cdf(array![[0.999999999999989, 0.25476551016987653]].view())
+    .unwrap()[0];
+  let t_took = start.elapsed();
+  for (got, want, took) in [
+    (gaussian, 2.5609941874701457e-258, gaussian_took),
+    (t, 0.25476551016986554, t_took),
+  ] {
+    assert!((got - want).abs() <= 1e-12 * want, "{got:e} vs {want:e}");
+    assert!(took < Duration::from_millis(500), "{took:?}");
   }
 }
 

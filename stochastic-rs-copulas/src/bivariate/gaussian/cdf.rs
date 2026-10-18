@@ -13,6 +13,7 @@ use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::bivariate::conditional::ln_norm_cdf;
 use crate::bivariate::conditional::ln_one_minus_exp;
+use crate::bivariate::integral::BELOW_SUBNORMAL;
 use crate::bivariate::integral::ln_integral_concave;
 use crate::bivariate::integral::rule;
 
@@ -140,18 +141,20 @@ fn conditional_integral(h: f64, k: f64, rho: f64, sum: impl FnOnce() -> f64) -> 
       f64::INFINITY,
       0.0,
       &[kink],
+      BELOW_SUBNORMAL,
     )
   } else {
     // `∫_{v ≤ (h + k)/α} φ(v)(Φ((2h − αv)/β) − Φ((αv − 2k)/β)) dv`: the interval's centre is `(h − k)/β` at every `v`, its
-    // width `2(h + k − αv)/β`, from the given `h + k`.
-    let sum = sum();
-    let (centre, end) = ((h - k) / beta, sum / alpha);
+    // width `2α(end − v)/β`, exact and 0 at the end, where `h + k − αv` would cancel.
+    let end = sum() / alpha;
+    let centre = (h - k) / beta;
     ln_integral_concave(
-      |v| ln_pdf(v) + ln_normal_interval(centre, 2.0 * (sum - alpha * v) / beta),
+      |v| ln_pdf(v) + ln_normal_interval(centre, 2.0 * alpha * (end - v) / beta),
       f64::NEG_INFINITY,
       end,
       (end - 1.0).min(0.0),
       &[],
+      BELOW_SUBNORMAL,
     )
   };
   ln_c.exp()

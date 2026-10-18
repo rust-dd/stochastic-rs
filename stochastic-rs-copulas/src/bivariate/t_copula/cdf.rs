@@ -12,6 +12,8 @@ use stochastic_rs_distributions::special::ln_gamma;
 use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::sum_minus_one;
 use crate::bivariate::gaussian::gaussian_copula_cdf;
+use crate::bivariate::integral::Against;
+use crate::bivariate::integral::BELOW_SUBNORMAL;
 use crate::bivariate::integral::March;
 use crate::bivariate::integral::NEGLIGIBLE_FALL;
 use crate::bivariate::integral::march;
@@ -174,7 +176,7 @@ impl BivariateT {
     // ends once what is left of it is negligible against everything summed so far.
     let mut toward_gap: Vec<(Option<March>, Option<March>)> = Vec::with_capacity(anchors.len());
     for (i, a) in anchors.iter().enumerate() {
-      let step = self.step(a, &fy);
+      let step = self.step(a);
       let mut sides = (None, None);
       for (side, other) in [(-1.0, i.checked_sub(1)), (1.0, Some(i + 1))] {
         let Some(b) = other.and_then(|j| anchors.get(j)) else {
@@ -196,10 +198,11 @@ impl BivariateT {
           let outer = sums;
           march(
             |delta: f64| self.eval(&cond, a, delta),
+            self.origin(a),
             end,
             step,
             &[],
-            outer,
+            self.against(outer),
             |x, value, own| self.rest_negligible(a, x, value, &rest, totals(outer, own)),
           )
         };
@@ -255,10 +258,11 @@ impl BivariateT {
     let negligible = Cell::new(false);
     let tail = march(
       |delta: f64| self.eval(&cond, first, delta),
+      self.origin(first),
       -(self.reach + self.power_from),
-      self.step(first, &fy),
+      self.step(first),
       &[],
-      outer,
+      self.against(outer),
       |x, value, own| {
         if self.settled(&cond, first, x, self.ln_h_left) {
           return true;
@@ -293,8 +297,8 @@ impl BivariateT {
 
   /// A march's first panel: `first_step`, under `1/(c₀|ρ|)` at an anchor within a few such widths of the centre crossing,
   /// `y`'s anchors and an `x` beside them, where `H` steps.
-  fn step(&self, a: &Anchor, fy: &Feature) -> f64 {
-    let near = fy.sign != 0.0 && a.d_y.abs() <= 8.0 * self.crossing_width + self.ln_abs_rho.abs();
+  fn step(&self, a: &Anchor) -> f64 {
+    let near = a.d_y.abs() <= 8.0 * self.crossing_width + self.ln_abs_rho.abs();
     if near {
       self.first_step.min(0.25 * self.crossing_width)
     } else {
@@ -422,10 +426,11 @@ impl BivariateT {
     let eval = |delta: f64| self.eval(cond, a, delta);
     march(
       eval,
+      self.origin(a),
       end,
       step,
       &[],
-      outer,
+      self.against(outer),
       |x, (_, f), (_, own_n)| match facing {
         Facing::Plateau(plateau) => self.settled(cond, a, x, plateau),
         Facing::BelowTail { near } => {
@@ -433,6 +438,21 @@ impl BivariateT {
         }
       },
     )
+  }
+
+  /// The magnitude of the operands a march out of `a` reads at offset `delta`, `|t|` and `|t| − |t_y|`, which bounds its
+  /// resolution.
+  fn origin(&self, a: &Anchor) -> f64 {
+    a.abs_t.max(a.d_y.abs())
+  }
+
+  /// A march's measure: the sums so far, and the floor under which a numerator panel's error cannot move `C = ∫e^f/B`, as
+  /// `∫e^g = uB` in closed form.
+  fn against(&self, outer: (f64, f64)) -> Against {
+    Against {
+      outer,
+      floor: (f64::NEG_INFINITY, self.ln_beta + BELOW_SUBNORMAL),
+    }
   }
 
   /// The density a power law at offset `x` from `a` and `ln H` there, formed directly rather than as a difference of the
