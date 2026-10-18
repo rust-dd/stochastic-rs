@@ -25,7 +25,12 @@ use stochastic_rs_distributions::RealExt;
 
 use super::BivariateFamily;
 use super::conditional::conditional_cdf;
+use super::conditional::copula_cdf;
+use super::conditional::copula_log_pdf;
+use super::conditional::copula_pdf;
 use super::conditional::expm1_over;
+use super::conditional::ln_1p_over;
+use super::conditional::ln_add_exp;
 use super::conditional::ln_expm1;
 use super::conditional::ln_one_minus_exp;
 use super::conditional::ln_one_minus_pow;
@@ -103,29 +108,49 @@ impl Bb1 {
     Ok((self.theta.expect("checked"), self.delta))
   }
 
-  /// `(ln x, ln y, ln s, ln w, ln(1 + w))` for `x = u^{−θ} − 1`,
-  /// `y = v^{−θ} − 1`, `s = x^δ + y^δ` and `w = s^{1/δ}`, evaluated in
-  /// logarithms so that neither the `u → 0` overflow of `u^{−θ}` nor the
-  /// `u → 1` cancellation in `u^{−θ} − 1` costs digits.
-  fn logs(u: f64, v: f64, theta: f64, delta: f64) -> (f64, f64, f64, f64, f64) {
-    // ln(u^{−θ} − 1) = −θ ln u + ln(1 − u^θ)
-    let ln_x = -theta * u.ln() + ln_one_minus_exp(theta * u.ln());
-    let ln_y = -theta * v.ln() + ln_one_minus_exp(theta * v.ln());
-    let (p, q) = (delta * ln_x, delta * ln_y);
-    let m = p.max(q);
-    let ln_s = m + ((p - m).exp() + (q - m).exp()).ln();
-    let ln_w = ln_s / delta;
-    let ln_1pw = if ln_w > 36.0 {
-      ln_w
-    } else {
-      ln_w.exp().ln_1p()
-    };
-    (ln_x, ln_y, ln_s, ln_w, ln_1pw)
+  /// `ln(X/Y)`, `X, Y = u^{−θ} − 1, v^{−θ} − 1`, as `θ ln(v/u) + ln((1 − u^θ)/(1 − v^θ))`, exact near a ratio of 1.
+  fn ln_generator_ratio(u: f64, v: f64, theta: f64) -> f64 {
+    theta * ln_ratio(v, u) + ln_one_minus_pow_ratio(theta, u.ln(), v.ln())
   }
 
+  /// `(W, P, ln r, ℓ)` while `θ max(x, y) ≤ 700`, `x, y = −ln u, −ln v`: `P = X_max/θ = x_max expm1(θx_max)/(θx_max)`,
+  /// `r = X_min/X_max`, `ℓ = ln(1 + r^δ)`, `W = w/θ = Pe^{ℓ/δ}`, so a small `θ` keeps its digits.
+  fn scaled(u: f64, v: f64, theta: f64, delta: f64) -> (f64, f64, f64, f64) {
+    let ln_xy = Self::ln_generator_ratio(u, v, theta);
+    let big = -(if ln_xy >= 0.0 { u } else { v }).ln();
+    let p_big = big * expm1_over(theta * big);
+    let ln_r = -ln_xy.abs();
+    let ell = (delta * ln_r).exp().ln_1p();
+    (p_big * (ell / delta).exp(), p_big, ln_r, ell)
+  }
+
+  /// `(λ_M, λ_m, ln r, ℓ, ln w)` past `θ max(x, y) = 700`, `λ = ln(1 − u^θ)` of the smaller and larger coordinate,
+  /// `ln w = θM + λ_M + ℓ/δ` with `M = −ln min(u, v)`.
+  fn recentred(u: f64, v: f64, theta: f64, delta: f64) -> (f64, f64, f64, f64, f64) {
+    let (low, high) = (u.min(v), u.max(v));
+    let (lam_big, lam_small) = (
+      ln_one_minus_pow(theta, low.ln()),
+      ln_one_minus_pow(theta, high.ln()),
+    );
+    let ln_r = -Self::ln_generator_ratio(u, v, theta).abs();
+    let ell = (delta * ln_r).exp().ln_1p();
+    (
+      lam_big,
+      lam_small,
+      ln_r,
+      ell,
+      -theta * low.ln() + lam_big + ell / delta,
+    )
+  }
+
+  /// `C = (1 + w)^{−1/θ}`: `e^{−W ln(1 + θW)/(θW)}` by `Bb1::scaled`, past it `min(u, v) e^{−(λ_M + ℓ/δ + ln(1 + 1/w))/θ}`.
   pub(crate) fn cdf_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
-    let (.., ln_1pw) = Self::logs(u, v, theta, delta);
-    (-ln_1pw / theta).exp()
+    if -theta * u.min(v).ln() <= 700.0 {
+      let (w_over, ..) = Self::scaled(u, v, theta, delta);
+      return (-w_over * ln_1p_over(theta * w_over)).exp();
+    }
+    let (lam_big, _, _, ell, ln_w) = Self::recentred(u, v, theta, delta);
+    u.min(v) * (-(lam_big + ell / delta + (-ln_w).exp().ln_1p()) / theta).exp()
   }
 
   /// `∂_v C`, held below 1 against rounding: `ln_h_interior` exponentiated, and the limit laws at `v = 0` (`δ₀`) and
@@ -149,10 +174,26 @@ impl Bb1 {
       .min_or_nan(1.0)
   }
 
+  /// `(ln X, ln Y, ln s, ln(1 + w))` of the expanded h, `s = X^δ + Y^δ`, `w = s^{1/δ}`, each from logarithms.
+  fn expanded_logs(u: f64, v: f64, theta: f64, delta: f64) -> (f64, f64, f64, f64) {
+    let ln_x = -theta * u.ln() + ln_one_minus_exp(theta * u.ln());
+    let ln_y = -theta * v.ln() + ln_one_minus_exp(theta * v.ln());
+    let (p, q) = (delta * ln_x, delta * ln_y);
+    let m = p.max(q);
+    let ln_s = m + ((p - m).exp() + (q - m).exp()).ln();
+    let ln_w = ln_s / delta;
+    let ln_1pw = if ln_w > 36.0 {
+      ln_w
+    } else {
+      ln_w.exp().ln_1p()
+    };
+    (ln_x, ln_y, ln_s, ln_1pw)
+  }
+
   /// `ln ∂_v C` on the open square: the expanded form while `ln x`, `ln y` and its exponent terms stay below
   /// `EXPANDED_LIMIT`, `ln_h_log` past it.
   fn ln_h_interior(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
-    let (ln_x, ln_y, ln_s, _, ln_1pw) = Self::logs(u, v, theta, delta);
+    let (ln_x, ln_y, ln_s, ln_1pw) = Self::expanded_logs(u, v, theta, delta);
     let terms = [
       (-1.0 / theta - 1.0) * ln_1pw,
       (1.0 / delta - 1.0) * ln_s,
@@ -203,16 +244,42 @@ impl Bb1 {
       let ln_1p_over = if p == 0.0 { 1.0 } else { p.ln_1p() / p };
       let e = Self::expm1_s_over_delta(ln_u, ln_v, theta, delta, ln_x_over_y, z);
       (1.0 + theta) * (-ln_v * expm1_over(theta * ln_v)) * e * ln_1p_over
+    } else if theta < 0.5 {
+      // `1 + P = v^θ(1 + w)`: `ln P`'s rounding, up to `1500ε`, scaled by `1 + 1/θ`, past `5e-13` below `θ = 1/2`, where
+      // `P ≥ 1` needs `w ≳ 1`, so the generators' terms stay under `2000ε`.
+      let (_, _, ln_s, _) = Self::expanded_logs(u, v, theta, delta);
+      (theta + 1.0) * ln_v + (1.0 + 1.0 / theta) * softplus(ln_s / delta)
     } else {
       (1.0 + 1.0 / theta) * softplus(ln_p)
     };
     -clayton - tail
   }
 
+  /// `ln c` on the open square: `Bb1::scaled`'s form, `ln θ` cancelled, while `θ max(x, y) ≤ 700`, else re-centred on
+  /// `−θδ(M − m)`, where the `θ`-sized terms of `−(1/θ + 2) ln(1 + w) + (θ + 1)(x + y) − ln X_max` cancel exactly.
   pub(crate) fn log_density_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
-    let (ln_x, ln_y, ln_s, ln_w, ln_1pw) = Self::logs(u, v, theta, delta);
-    // ln(θ(δ − 1) + (θδ + 1) w), factored so that neither `w → 0` nor
-    // `w → ∞` overflows.
+    let (x, y) = (-u.ln(), -v.ln());
+    if theta * x.max(y) <= 700.0 {
+      let (w_over, p_big, ln_r, ell) = Self::scaled(u, v, theta, delta);
+      let w = theta * w_over;
+      return -w_over * ln_1p_over(w) - 2.0 * w.ln_1p() + (theta + 1.0) * (x + y) - p_big.ln()
+        + (delta - 1.0) * ln_r
+        + (1.0 / delta - 2.0) * ell
+        + ln_add_exp((delta - 1.0 + w_over).ln(), delta.ln() + w.ln());
+    }
+    let (lam_big, lam_small, _, ell, ln_w) = Self::recentred(u, v, theta, delta);
+    let tail = (-ln_w).exp();
+    -(theta * ln_ratio(u, v).abs()) * delta + x.min(y) - (2.0 + 1.0 / theta) * lam_big
+      + (delta - 1.0) * (lam_small - lam_big)
+      - (2.0 + 1.0 / (theta * delta)) * ell
+      - (2.0 + 1.0 / theta) * tail.ln_1p()
+      + theta.ln()
+      + (delta + 1.0 / theta + (delta - 1.0) * tail).ln()
+  }
+
+  fn edge_log_density(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
+    let (ln_x, ln_y, ln_s, ln_1pw) = Self::expanded_logs(u, v, theta, delta);
+    let ln_w = ln_s / delta;
     let bracket = if ln_w > 0.0 {
       ln_w + (theta * delta + 1.0 + theta * (delta - 1.0) * (-ln_w).exp()).ln()
     } else {
@@ -308,22 +375,25 @@ impl BivariateExt for Bb1 {
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    Ok(
-      x.rows()
-        .into_iter()
-        .map(|r| Self::log_density_scalar(clip(r[0]), clip(r[1]), theta, delta).exp())
-        .collect(),
-    )
+    Ok(copula_pdf(
+      x,
+      |u, v| Self::log_density_scalar(u, v, theta, delta),
+      |u, v| Self::edge_log_density(clip(u), clip(v), theta, delta).exp(),
+    ))
+  }
+
+  fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    let (theta, delta) = self.params()?;
+    Ok(copula_log_pdf(
+      x,
+      |u, v| Self::log_density_scalar(u, v, theta, delta),
+      |u, v| Self::edge_log_density(clip(u), clip(v), theta, delta).exp(),
+    ))
   }
 
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    Ok(
-      x.rows()
-        .into_iter()
-        .map(|r| Self::cdf_scalar(clip(r[0]), clip(r[1]), theta, delta))
-        .collect(),
-    )
+    Ok(copula_cdf(x, |u, v| Self::cdf_scalar(u, v, theta, delta)))
   }
 
   /// `∂_v C(u, v)`, NaN for `v` outside `[0, 1]`.

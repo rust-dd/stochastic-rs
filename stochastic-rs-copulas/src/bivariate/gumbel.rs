@@ -12,9 +12,13 @@ use ndarray::ArrayView2;
 use super::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::copula_cdf;
+use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::ln_log_ratio;
 use crate::bivariate::conditional::ln_ratio;
 use crate::bivariate::conditional::numerical_quantiles;
+use crate::bivariate::conditional::softplus;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -66,6 +70,45 @@ impl Gumbel {
         + (theta - 1.0) * ln_w_over_m
     }
   }
+
+  /// `(m, M, ln(m/M), ℓ)`, `m ≤ M` the two of `x, y = −ln u, −ln v`, the ratio's logarithm by `ln_log_ratio` and
+  /// `ℓ = ln(1 + (m/M)^θ)`, so `−ln C = M e^{ℓ/θ}`.
+  fn parts(theta: f64, u: f64, v: f64) -> (f64, f64, f64, f64) {
+    let (x, y) = (-u.ln(), -v.ln());
+    let ln_ratio = -ln_log_ratio(u, v, x, y).abs();
+    (
+      x.min(y),
+      x.max(y),
+      ln_ratio,
+      (theta * ln_ratio).exp().ln_1p(),
+    )
+  }
+
+  /// `ln c = m − M expm1(ℓ/θ) + (θ − 1) ln(m/M) − 2(1 − 1/θ)ℓ + ln(1 + (θ − 1)/W)`, `W = M e^{ℓ/θ}`: the `θ`-sized parts of
+  /// `(θ − 1) ln(xy) + (1 − 2θ) ln W` cancelled exactly, the last term as a softplus of logarithms.
+  fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
+    if theta == 1.0 {
+      return 0.0;
+    }
+    let (small, big, ln_ratio, ell) = Self::parts(theta, u, v);
+    let ln_w = big.ln() + ell / theta;
+    small - big * (ell / theta).exp_m1() + (theta - 1.0) * ln_ratio
+      - 2.0 * (1.0 - 1.0 / theta) * ell
+      + softplus((theta - 1.0).ln() - ln_w)
+  }
+
+  fn edge_pdf(theta: f64, u: f64, v: f64) -> f64 {
+    if theta == 1.0 {
+      return 1.0;
+    }
+    let tmp = (-u.ln()).powf(theta) + (-v.ln()).powf(theta);
+    let cdf = (-tmp.powf(1.0 / theta)).exp();
+    let a = (u * v).powf(-1.0);
+    let b = tmp.powf(-2.0 + 2.0 / theta);
+    let c = (u.ln() * v.ln()).powf(theta - 1.0);
+    let d = 1.0 + (theta - 1.0) * tmp.powf(-1.0 / theta);
+    cdf * a * b * c * d
+  }
 }
 
 impl BivariateExt for Gumbel {
@@ -97,43 +140,35 @@ impl BivariateExt for Gumbel {
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
-    let u = x.column(0);
-    let v = x.column(1);
-
     let theta = self.theta.unwrap();
-
-    if theta == 1.0 {
-      return Ok(Array1::ones(u.len()));
-    }
-
-    let a = (&u * &v).powf(-1.0);
-    let tmp = (-u.ln()).powf(theta) + (-v.ln()).powf(theta);
-    let b = tmp.powf(-2.0 + 2.0 / theta);
-    let c = (u.ln() * v.ln()).powf(theta - 1.0);
-    let d = 1.0 + (theta - 1.0) * tmp.powf(-1.0 / theta);
-    let out = self.cdf(x)? * a * b * c * d;
-
-    Ok(out)
+    Ok(copula_pdf(
+      x,
+      |u, v| Self::ln_density(theta, u, v),
+      |u, v| Self::edge_pdf(theta, u, v),
+    ))
   }
 
+  fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let theta = self.theta.unwrap();
+    Ok(copula_log_pdf(
+      x,
+      |u, v| Self::ln_density(theta, u, v),
+      |u, v| Self::edge_pdf(theta, u, v),
+    ))
+  }
+
+  /// `C = min(u, v) e^{−M expm1(ℓ/θ)}`, the pieces of `Gumbel::ln_density`, as `e^{−M} = min(u, v)`; `uv` at `θ = 1`.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
-    let u = x.column(0);
-    let v = x.column(1);
-
     let theta = self.theta.unwrap();
-
     if theta == 1.0 {
-      return Ok(&u * &v);
+      return Ok(copula_cdf(x, |u, v| u * v));
     }
-
-    let h = (-u.ln()).powf(theta) + (-v.ln()).powf(theta);
-    let h = -h.powf(1.0 / theta);
-    let cdfs = h.exp();
-
-    Ok(cdfs)
+    Ok(copula_cdf(x, |u, v| {
+      let (_, big, _, ell) = Self::parts(theta, u, v);
+      u.min(v) * (-big * (ell / theta).exp_m1()).exp()
+    }))
   }
 
   /// `numerical_quantiles` of `Gumbel::ln_h`, the identity at `θ = 1`; NaN for `y` or `v` outside `[0, 1]`.

@@ -272,8 +272,8 @@ fn t_copula_set_theta_rejects_the_rho_boundary() {
   TCopula::default().set_theta(1.0);
 }
 
-/// `T_ν(h, k; ρ)` where both closed forms are stressed: `h ≈ sk` (the Plackett endpoint layer), `|ρ| = 0.999`, limits in
-/// the thousands, `ν` from 0.5 to 2000, each against 50-digit mpmath.
+/// `T_ν(h, k; ρ)` at `h ≈ sk`, `|ρ| = 0.999`, limits in the thousands and `ν` from 0.5 to 2000, against 50-digit mpmath:
+/// the copula at `u, v = t_ν(h), t_ν(k)`, whose rounding moves the answer by under `1e-15`.
 #[test]
 fn bivariate_t_cdf_matches_50_digit_references_at_adversarial_limits() {
   let pins = [
@@ -295,7 +295,7 @@ fn bivariate_t_cdf_matches_50_digit_references_at_adversarial_limits() {
     (1.0, 1.0, 0.7, 2000.0, 0.7665979783590774),
   ];
   for (h, k, rho, nu, want) in pins {
-    let got = bivariate_t_cdf(h, k, rho, nu);
+    let got = t_copula_cdf(student_t::cdf(h, nu), student_t::cdf(k, nu), rho, nu);
     assert!(
       (got - want).abs() <= 1e-12,
       "T_{nu}({h}, {k}; {rho}) = {got}, want {want}"
@@ -303,25 +303,24 @@ fn bivariate_t_cdf_matches_50_digit_references_at_adversarial_limits() {
   }
 }
 
-/// At `ν ≤ 0.05` the limits' squares overflow past `1.34e154·√ν`; the Plackett integral must survive it (50-digit
-/// values, eq. (21) and Cornish's χ mixture agreeing to `2e-29`).
+/// At `ν ≤ 0.05` the limits' squares overflow past `1.34e154·√ν` (50-digit values, eq. (21) and Cornish's χ mixture
+/// agreeing to `2e-29`).
 #[test]
-fn the_plackett_integral_survives_limits_whose_squares_overflow() {
+fn the_cdf_survives_limits_whose_squares_overflow() {
   for (nu, want) in [(0.01, 0.9822283110927638), (0.05, 0.999999985792761)] {
-    let got = bivariate_t_cdf(1e150, 1e200, 0.0, nu);
+    let law = Law::new(nu);
+    let got = t_copula_cdf(law.cdf_at(1e150), law.cdf_at(1e200), 0.0, nu);
     assert!((got - want).abs() <= 1e-12, "nu={nu}: {got} vs {want}");
   }
 }
 
-/// Rounding leaves the Plackett branch just below 0 where the probability is about 0 (`C(1e-12, 1e-12)` at `ν = 1e5`,
-/// `ρ = 0` is `4.84e-25` at 40 digits); the floor keeps it a probability.
+/// `C(1e-12, 1e-12)` at `ν = 30`, `ρ = 0` is `1.8473145194549695e-17`, by the conditional integral at 80 digits and by
+/// Dunnett–Sobel's sums at 200, to its relative digits.
 #[test]
-fn the_plackett_branch_never_returns_a_negative_probability() {
-  let got = TCopula::new(0.0, 1e5)
+fn a_tiny_probability_keeps_its_relative_digits() {
+  let got = TCopula::new(0.0, 30.0)
     .cdf(array![[1e-12, 1e-12]].view())
     .unwrap()[0];
-  assert!(
-    got >= 0.0 && (got - 4.839454974585712e-25).abs() <= 1e-12,
-    "{got}"
-  );
+  let want = 1.8473145194549695e-17;
+  assert!((got - want).abs() <= 1e-12 * want, "{got}");
 }

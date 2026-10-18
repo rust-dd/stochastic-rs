@@ -179,6 +179,19 @@ fn multivariate_sample(c: &mut Criterion) {
   group.finish();
 }
 
+fn bivariate_cdf(c: &mut Criterion) {
+  let mut group = c.benchmark_group("copulas/bivariate_cdf");
+  group.sample_size(20);
+  let q = queries(2);
+  let gaussian = GaussianCopula::new(0.5);
+  group.bench_function("gaussian_16q", |b| {
+    b.iter(|| gaussian.cdf(q.view()).unwrap())
+  });
+  let t = TCopula::new(0.5, 5.0);
+  group.bench_function("t_16q", |b| b.iter(|| t.cdf(q.view()).unwrap()));
+  group.finish();
+}
+
 fn multivariate_cdf(c: &mut Criterion) {
   let mut group = c.benchmark_group("copulas/multivariate_cdf");
   group.sample_size(20);
@@ -203,6 +216,16 @@ fn multivariate_pdf(c: &mut Criterion) {
   let data = pseudo_observations(nac.sample(1_000, &Deterministic::new(1)).unwrap().view());
   group.bench_function("nac_pdf_d4_n1k", |b| {
     b.iter(|| nac.pdf(data.view()).unwrap())
+  });
+  let clayton = nac_clayton_d4();
+  let clayton_data = pseudo_observations(
+    clayton
+      .sample(1_000, &Deterministic::new(1))
+      .unwrap()
+      .view(),
+  );
+  group.bench_function("nac_clayton_pdf_d4_n1k", |b| {
+    b.iter(|| clayton.pdf(clayton_data.view()).unwrap())
   });
   group.finish();
 }
@@ -337,6 +360,7 @@ criterion_group!(
   benches,
   bivariate_sample,
   multivariate_sample,
+  bivariate_cdf,
   multivariate_cdf,
   multivariate_pdf,
   fit,

@@ -216,9 +216,9 @@ fn gaussian_cdf_matches_genz_bretz_references_and_the_orthant_identity() {
   }
 }
 
-/// At `d = 2` both Gaussian copulas evaluate the same Owen's T closed form.
+/// At `d = 2` both Gaussian copulas evaluate the same bivariate normal integral.
 #[test]
-fn bivariate_gaussian_cdf_is_exact_through_owens_t() {
+fn bivariate_gaussian_cdf_is_the_bivariate_copulas() {
   for (rho, u, v, want) in GAUSSIAN_PINS {
     let q = array![[u, v]];
     let mv = GaussianMultivariate::try_new(pair(rho))

@@ -28,7 +28,6 @@ gauss-quad = { workspace = true }
 kendalls = { workspace = true }
 ndarray = { workspace = true }
 numpy = { workspace = true, optional = true }
-owens-t = { workspace = true }
 pyo3 = { workspace = true, optional = true }
 rand = { workspace = true }
 stochastic-rs-core = { workspace = true }

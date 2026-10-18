@@ -31,6 +31,9 @@ use stochastic_rs_distributions::special::digamma;
 
 use super::BivariateFamily;
 use super::conditional::conditional_cdf;
+use super::conditional::copula_cdf;
+use super::conditional::copula_log_pdf;
+use super::conditional::copula_pdf;
 use super::conditional::expm1_over;
 use super::conditional::ln_1p_over;
 use super::conditional::ln_one_minus_exp;
@@ -168,11 +171,6 @@ impl Bb7 {
     (ln_a, ln_b, ln_s, ln_t, ln_one_minus_exp(ln_t))
   }
 
-  pub(crate) fn cdf_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
-    let (.., ln_1mt) = Self::logs(u, v, theta, delta);
-    -(ln_1mt / theta).exp_m1()
-  }
-
   /// `∂_v C`, held below 1 against rounding: `ln_h_interior` exponentiated, and the limit laws at `v = 0` (`δ₀`) and
   /// `v = 1` (`u^{δ+1}` at `θ = 1`, else `δ₁`).
   pub(crate) fn h_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
@@ -293,7 +291,7 @@ impl Bb7 {
     (w, ln_w)
   }
 
-  pub(crate) fn log_density_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
+  fn edge_log_density(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
     let (ln_a, ln_b, ln_s, ln_t, ln_1mt) = Self::logs(u, v, theta, delta);
     (1.0 / theta - 2.0) * ln_1mt - (1.0 / delta + 2.0) * ln_s - (delta + 1.0) * (ln_a + ln_b)
       + (theta - 1.0) * ((-u).ln_1p() + (-v).ln_1p())
@@ -413,22 +411,25 @@ impl BivariateExt for Bb7 {
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    Ok(
-      x.rows()
-        .into_iter()
-        .map(|r| Self::log_density_scalar(clip(r[0]), clip(r[1]), theta, delta).exp())
-        .collect(),
-    )
+    Ok(copula_pdf(
+      x,
+      |u, v| Self::log_density_scalar(u, v, theta, delta),
+      |u, v| Self::edge_log_density(clip(u), clip(v), theta, delta).exp(),
+    ))
+  }
+
+  fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    let (theta, delta) = self.params()?;
+    Ok(copula_log_pdf(
+      x,
+      |u, v| Self::log_density_scalar(u, v, theta, delta),
+      |u, v| Self::edge_log_density(clip(u), clip(v), theta, delta).exp(),
+    ))
   }
 
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    Ok(
-      x.rows()
-        .into_iter()
-        .map(|r| Self::cdf_scalar(clip(r[0]), clip(r[1]), theta, delta))
-        .collect(),
-    )
+    Ok(copula_cdf(x, |u, v| Self::cdf_scalar(u, v, theta, delta)))
   }
 
   /// `∂_v C(u, v)`, NaN for `v` outside `[0, 1]`.
@@ -501,6 +502,8 @@ impl BivariateExt for Bb7 {
     })
   }
 }
+
+mod density;
 
 #[cfg(test)]
 mod tests;

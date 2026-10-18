@@ -3411,7 +3411,6 @@ dependencies = [
  "kendalls",
  "ndarray",
  "numpy",
- "owens-t",
  "pyo3",
  "rand 0.10.3",
  "stochastic-rs-core",

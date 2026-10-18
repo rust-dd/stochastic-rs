@@ -24,6 +24,9 @@ use ndarray::ArrayView2;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::copula_cdf;
+use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::ln_one_minus_pow;
 use crate::bivariate::conditional::ln_ratio_complement;
@@ -73,6 +76,51 @@ impl Joe {
       ln_one_minus_a + (1.0 / theta - 1.0) * ln_add_exp(ln_one_minus_a, ln_a_over_b)
     }
   }
+
+  /// `(t, b − t, ℓ)` for `t ≥ b` the two of `ln(1 − u)`, `ln(1 − v)`, `b − t` by `ln_ratio_complement`, and
+  /// `ℓ = ln S − θt = ln(1 + e^{θ(b − t)}(1 − e^{θt}))`, `S = (1 − u)^θ + (1 − v)^θ − ((1 − u)(1 − v))^θ` about its larger power.
+  fn parts(theta: f64, u: f64, v: f64) -> (f64, f64, f64) {
+    let top = (-u.min(v)).ln_1p();
+    let gap = -ln_ratio_complement(u, v).abs();
+    let ell = (theta * gap + ln_one_minus_pow(theta, top)).exp().ln_1p();
+    (top, gap, ell)
+  }
+
+  /// `ln S = ln(1 − (1 − (1 − u)^θ)(1 − (1 − v)^θ))`: `ln_1p` of the product while it is below `1/2`, so `S` near 1 keeps
+  /// its digits, else `θt + ℓ` of `Joe::parts`, so a power below rounding keeps its own.
+  fn ln_s(theta: f64, u: f64, v: f64) -> f64 {
+    let ln_product = ln_one_minus_pow(theta, (-u).ln_1p()) + ln_one_minus_pow(theta, (-v).ln_1p());
+    if ln_product < -std::f64::consts::LN_2 {
+      (-ln_product.exp()).ln_1p()
+    } else {
+      let (top, _, ell) = Self::parts(theta, u, v);
+      theta * top + ell
+    }
+  }
+
+  /// `ln c = (θ − 1)(b − t) − t + (1/θ − 2)ℓ + ln(θ − 1 + S)`: `(θ − 1)(t + b) + (1/θ − 2) ln S` with its `θ`-sized
+  /// parts cancelled exactly, so the density holds as `θ` grows and `(1 − u)^θ` underflows.
+  fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
+    if theta == 1.0 {
+      return 0.0;
+    }
+    let (top, gap, ell) = Self::parts(theta, u, v);
+    let s = (theta * top + ell).exp();
+    (theta - 1.0) * gap - top + (1.0 / theta - 2.0) * ell + (theta - 1.0 + s).ln()
+  }
+
+  fn edge_pdf(theta: f64, u: f64, v: f64) -> f64 {
+    if u <= 0.0 || u >= 1.0 || v <= 0.0 || v >= 1.0 {
+      return 0.0;
+    }
+    let a = (1.0 - u).powf(theta);
+    let b = (1.0 - v).powf(theta);
+    let s = a + b - a * b;
+    (1.0 - u).powf(theta - 1.0)
+      * (1.0 - v).powf(theta - 1.0)
+      * s.powf(1.0 / theta - 2.0)
+      * (s + theta - 1.0)
+  }
 }
 
 impl BivariateExt for Joe {
@@ -105,60 +153,36 @@ impl BivariateExt for Joe {
     Ok(t.mapv(|t| -ln_one_minus_pow(theta, (-t).ln_1p())))
   }
 
-  /// Density. Let $a = (1-u)^\theta$, $b = (1-v)^\theta$,
-  /// $S = a + b - a b$. Then
-  /// $c(u,v) = (1-u)^{\theta-1}(1-v)^{\theta-1} S^{1/\theta - 2}(S + \theta - 1)$.
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
     let theta = self.theta.unwrap();
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      if u <= 0.0 || u >= 1.0 || v <= 0.0 || v >= 1.0 {
-        out[i] = 0.0;
-        continue;
-      }
-      let a = (1.0 - u).powf(theta);
-      let b = (1.0 - v).powf(theta);
-      let s = a + b - a * b;
-      out[i] = (1.0 - u).powf(theta - 1.0)
-        * (1.0 - v).powf(theta - 1.0)
-        * s.powf(1.0 / theta - 2.0)
-        * (s + theta - 1.0);
-    }
-    Ok(out)
+    Ok(copula_pdf(
+      x,
+      |u, v| Self::ln_density(theta, u, v),
+      |u, v| Self::edge_pdf(theta, u, v),
+    ))
   }
 
-  /// CDF $C(u,v) = 1 - [(1-u)^\theta + (1-v)^\theta - (1-u)^\theta(1-v)^\theta]^{1/\theta}$.
+  fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let theta = self.theta.unwrap();
+    Ok(copula_log_pdf(
+      x,
+      |u, v| Self::ln_density(theta, u, v),
+      |u, v| Self::edge_pdf(theta, u, v),
+    ))
+  }
+
+  /// `C = 1 − S^{1/θ} = −expm1(ln S/θ)`, `ln S` from `Joe::ln_s`.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
     let theta = self.theta.unwrap();
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      if u <= 0.0 || v <= 0.0 {
-        out[i] = 0.0;
-        continue;
-      }
-      if u >= 1.0 {
-        out[i] = v;
-        continue;
-      }
-      if v >= 1.0 {
-        out[i] = u;
-        continue;
-      }
-      let a = (1.0 - u).powf(theta);
-      let b = (1.0 - v).powf(theta);
-      out[i] = 1.0 - (a + b - a * b).powf(1.0 / theta);
+    if theta == 1.0 {
+      return Ok(copula_cdf(x, |u, v| u * v));
     }
-    Ok(out)
+    Ok(copula_cdf(x, |u, v| {
+      -(Self::ln_s(theta, u, v) / theta).exp_m1()
+    }))
   }
 
   /// `exp` of `Joe::ln_h`, `u` at `θ = 1`; NaN for `v` outside `[0, 1]`.

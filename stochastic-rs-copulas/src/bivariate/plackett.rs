@@ -31,6 +31,9 @@ use super::two_parameter::kendall_tau_numeric;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::copula_cdf;
+use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::sum_minus_one;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
@@ -129,6 +132,55 @@ impl Plackett {
 }
 
 impl Plackett {
+  /// `(w, σ, d/σ²)`, `d = a² − 4uvθ(θ − 1) = w² + 2θ(u(1 − u) + v(1 − v)) + θ²(u − v)²` with the exact `w = 1 − u − v`, `σ`
+  /// the largest of `|w|`, `θ|u − v|`, `√(θ(u(1 − u) + v(1 − v)))`; `θ/σ` before each product, so none under- or overflows.
+  fn scaled_d(theta: f64, u: f64, v: f64) -> (f64, f64, f64) {
+    let w = -sum_minus_one(u, v);
+    let r = u * (1.0 - u) + v * (1.0 - v);
+    let sigma = w.abs().max(theta * (u - v).abs()).max((theta * r).sqrt());
+    let (ws, ts) = (w / sigma, theta / sigma);
+    let shift = ts * (u - v);
+    (w, sigma, ws * ws + 2.0 * (ts * (r / sigma)) + shift * shift)
+  }
+
+  /// `C = (a − √d)/(2(θ − 1))`, `a = 1 + (θ − 1)(u + v) = w + θ(u + v)`, rationalised to `2θuv/(a + √d)` where `a ≥ 0` and
+  /// scaled by the larger of `Plackett::scaled_d`'s `σ` and `θ max(u, v)`; the plain quotient where `a < 0`, so `θ < 1/2`.
+  fn cdf_interior(theta: f64, u: f64, v: f64) -> f64 {
+    let (w, sigma, d) = Self::scaled_d(theta, u, v);
+    let scale = sigma.max(theta * u.max(v));
+    let ts = theta / scale;
+    let a = w / scale + ts * u + ts * v;
+    let root = sigma / scale * d.sqrt();
+    if a >= 0.0 {
+      2.0 * (ts * u) * v / (a + root)
+    } else {
+      (a - root) * scale / (2.0 * (theta - 1.0))
+    }
+  }
+
+  /// `ln c = ln θ + ln(p + θq) − (3/2) ln d`, `p = uv + (1 − u)(1 − v)`, `q = u(1 − v) + v(1 − u)`: `1 + (θ − 1)(u + v − 2uv)`
+  /// in two terms `≥ 0` and `d` through `Plackett::scaled_d`, so neither cancels nor overflows.
+  fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
+    let (u_bar, v_bar) = (1.0 - u, 1.0 - v);
+    let (p, q) = (u * v + u_bar * v_bar, u * v_bar + u_bar * v);
+    let (_, sigma, d) = Self::scaled_d(theta, u, v);
+    theta.ln() + (p + theta * q).ln() - 3.0 * sigma.ln() - 1.5 * d.ln()
+  }
+
+  fn edge_pdf(theta: f64, u: f64, v: f64) -> f64 {
+    let eta = theta - 1.0;
+    if (eta).abs() < 1e-12 {
+      return 1.0;
+    }
+    let a = 1.0 + eta * (u + v);
+    let d = a * a - 4.0 * u * v * theta * eta;
+    if d <= 0.0 {
+      return 0.0;
+    }
+    let num = theta * (1.0 + eta * (u + v - 2.0 * u * v));
+    num / d.powf(1.5)
+  }
+
   /// `∂_v C = (1 − (a − 2uθ)/√d)/2`, `a = 1 + (θ − 1)(u + v)`, `d = a² − 4uvθ(θ − 1)`, branch-free: the τ kernel for
   /// `1e-6 ≤ θ ≤ 1e6`, whose nodes keep `d ≥ 4θu(1 − u) > 4e-9`; its error is absolute rounding, all the sum sees.
   fn h_interior(theta: f64, u: f64, v: f64) -> f64 {
@@ -161,55 +213,30 @@ impl BivariateExt for Plackett {
     vec![]
   }
 
-  /// Density (Nelsen 2006 eq.3.3.8):
-  /// $c(u,v) = \frac{\theta [1 + (\theta-1)(u + v - 2 u v)]}{\{[1 + (\theta-1)(u + v)]^2 - 4 u v \theta (\theta - 1)\}^{3/2}}$.
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
     let theta = self.theta.unwrap();
-    let eta = theta - 1.0;
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      if (eta).abs() < 1e-12 {
-        out[i] = 1.0;
-        continue;
-      }
-      let a = 1.0 + eta * (u + v);
-      let d = a * a - 4.0 * u * v * theta * eta;
-      if d <= 0.0 {
-        out[i] = 0.0;
-        continue;
-      }
-      let num = theta * (1.0 + eta * (u + v - 2.0 * u * v));
-      out[i] = num / d.powf(1.5);
-    }
-    Ok(out)
+    Ok(copula_pdf(
+      x,
+      |u, v| Self::ln_density(theta, u, v),
+      |u, v| Self::edge_pdf(theta, u, v),
+    ))
   }
 
-  /// CDF (closed form for $\theta \neq 1$).
+  fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let theta = self.theta.unwrap();
+    Ok(copula_log_pdf(
+      x,
+      |u, v| Self::ln_density(theta, u, v),
+      |u, v| Self::edge_pdf(theta, u, v),
+    ))
+  }
+
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
     let theta = self.theta.unwrap();
-    let eta = theta - 1.0;
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      if (eta).abs() < 1e-12 {
-        out[i] = u * v;
-        continue;
-      }
-      let a = 1.0 + eta * (u + v);
-      let d = a * a - 4.0 * u * v * theta * eta;
-      let d_safe = d.max(0.0).sqrt();
-      out[i] = (a - d_safe) / (2.0 * eta);
-    }
-    Ok(out)
+    Ok(copula_cdf(x, |u, v| Self::cdf_interior(theta, u, v)))
   }
 
   /// $\partial_v C(u,v) = \frac{1}{2}\left[1 - \frac{1 + (\theta-1)(u+v) - 2 u \theta}{\sqrt{\{\cdots\}}}\right]$, NaN

@@ -99,6 +99,7 @@ pub mod gaussian;
 pub mod gumbel;
 pub mod husler_reiss;
 pub mod independence;
+pub(crate) mod integral;
 pub mod joe;
 pub mod marshall_olkin;
 pub mod plackett;

@@ -23,6 +23,10 @@ use ndarray::ArrayView2;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::copula_cdf;
+use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_pdf;
+use crate::bivariate::conditional::ln_add_exp;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
@@ -98,6 +102,40 @@ impl Amh {
     }
   }
 
+  /// `D = 1 − θ(1 − u)(1 − v)` from same-signed terms: `(1 − θ) + θ(u + v(1 − u))` for `θ ≥ 0`.
+  fn denominator(theta: f64, u: f64, v: f64) -> f64 {
+    if theta >= 0.0 {
+      (1.0 - theta) + theta * (u + v * (1.0 - u))
+    } else {
+      1.0 - theta * (1.0 - u) * (1.0 - v)
+    }
+  }
+
+  /// `ln c = ln((1 − θ)D + 2θuv) − 3 ln D` on the open square: the numerator's terms in logarithms for `θ ≥ 0`, where
+  /// `uv` may underflow, and as `(1 + θ)(1 + θūv̄) − 2θ(ū + v̄)`, both terms `≥ 0`, for `θ < 0`.
+  fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
+    let ln_d = Self::denominator(theta, u, v).ln();
+    let ln_numerator = if theta >= 0.0 {
+      ln_add_exp(
+        (1.0 - theta).ln() + ln_d,
+        (2.0 * theta).ln() + u.ln() + v.ln(),
+      )
+    } else {
+      let (u_bar, v_bar) = (1.0 - u, 1.0 - v);
+      ((1.0 + theta) * (1.0 + theta * u_bar * v_bar) - 2.0 * theta * (u_bar + v_bar)).ln()
+    };
+    ln_numerator - 3.0 * ln_d
+  }
+
+  fn edge_pdf(theta: f64, u: f64, v: f64) -> f64 {
+    if u <= 0.0 || u >= 1.0 || v <= 0.0 || v >= 1.0 {
+      return 0.0;
+    }
+    let d = 1.0 - theta * (1.0 - u) * (1.0 - v);
+    let num = (1.0 - theta) * d + 2.0 * theta * u * v;
+    num / (d * d * d)
+  }
+
   /// `(−A, B, 1 − p)` from same-signed terms, `1 − p = (1 − θ) + θv` and `C = y(1 − p)²`, and `hypot`'s second operand
   /// `(1 − θ + 2θv)√y`.
   fn quadratic(theta: f64, y: f64, v: f64) -> (f64, f64, f64, f64) {
@@ -156,53 +194,33 @@ impl BivariateExt for Amh {
     Ok(out)
   }
 
-  /// Density $c(u,v) = \dfrac{(1-\theta) D + 2\theta u v}{D^3}$ where
-  /// $D = 1 - \theta(1-u)(1-v)$.
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
     let theta = self.theta.unwrap();
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      if u <= 0.0 || u >= 1.0 || v <= 0.0 || v >= 1.0 {
-        out[i] = 0.0;
-        continue;
-      }
-      let d = 1.0 - theta * (1.0 - u) * (1.0 - v);
-      let num = (1.0 - theta) * d + 2.0 * theta * u * v;
-      out[i] = num / (d * d * d);
-    }
-    Ok(out)
+    Ok(copula_pdf(
+      x,
+      |u, v| Self::ln_density(theta, u, v),
+      |u, v| Self::edge_pdf(theta, u, v),
+    ))
   }
 
-  /// CDF $C(u,v) = uv / [1 - \theta(1-u)(1-v)]$.
+  fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let theta = self.theta.unwrap();
+    Ok(copula_log_pdf(
+      x,
+      |u, v| Self::ln_density(theta, u, v),
+      |u, v| Self::edge_pdf(theta, u, v),
+    ))
+  }
+
+  /// `C = uv/D`, `D` as in `Amh::ln_density`, as `(u/D)v`, so the product underflows only with the result.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
     let theta = self.theta.unwrap();
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      if u <= 0.0 || v <= 0.0 {
-        out[i] = 0.0;
-        continue;
-      }
-      if u >= 1.0 {
-        out[i] = v;
-        continue;
-      }
-      if v >= 1.0 {
-        out[i] = u;
-        continue;
-      }
-      out[i] = u * v / (1.0 - theta * (1.0 - u) * (1.0 - v));
-    }
-    Ok(out)
+    Ok(copula_cdf(x, |u, v| {
+      (u / Self::denominator(theta, u, v)) * v
+    }))
   }
 
   /// `∂_v C = (u/D)((1 − θ + θu)/D)`, `D = 1 − θ + θ(u + v − uv)`: same-signed terms for `θ ≥ 0` and ratios formed before

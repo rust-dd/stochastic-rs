@@ -15,7 +15,12 @@ use crate::bivariate::conditional::check_lengths;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::confine;
+use crate::bivariate::conditional::copula_cdf;
+use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::expm1_over;
+use crate::bivariate::conditional::ln_one_minus_exp;
+use crate::bivariate::conditional::ln_one_minus_pow;
 use crate::bivariate::conditional::ln_ratio;
 use crate::bivariate::conditional::softplus;
 use crate::error::CopulaError;
@@ -73,6 +78,44 @@ impl Clayton {
       };
       (-exponent * ln_1p_z).exp()
     }
+  }
+
+  /// `δ = x + y + ln C ≥ 0`, `x, y = −ln u, −ln v`: `−ln(1 − (1 − u^θ)(1 − v^θ))/θ` from the logarithms of both factors,
+  /// so a small `θ` keeps its digits and a `u^θ` below rounding its own.
+  fn excess(theta: f64, u: f64, v: f64) -> f64 {
+    -ln_one_minus_exp(ln_one_minus_pow(theta, u.ln()) + ln_one_minus_pow(theta, v.ln())) / theta
+  }
+
+  /// `(M, M − m, ℓ)`, `M ≥ m` the two of `x, y`, `M − m = |ln(u/v)|` to a relative rounding, and
+  /// `ℓ = θ(−ln C − M) = ln(1 + e^{−θ(M − m)}(1 − e^{−θm}))`.
+  fn spread(theta: f64, u: f64, v: f64) -> (f64, f64, f64) {
+    let gap = ln_ratio(u, v).abs();
+    let ell = (-theta * gap + ln_one_minus_pow(theta, u.max(v).ln()))
+      .exp()
+      .ln_1p();
+    (-u.min(v).ln(), gap, ell)
+  }
+
+  /// `ln c = ln(1 + θ) + (1 + θ)(x + y) − (1 + 2θ)(−ln C)`, chosen once per `θ`: `ln(1 + θ) − θ(x + y) + (1 + 2θ)δ` up to
+  /// `θ = 1`, `ln(1 + θ) − (1 + θ)(M − m) + M − (2 + 1/θ)ℓ` above, where the `θ`-sized terms would cancel.
+  fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
+    if theta == 0.0 {
+      0.0
+    } else if theta <= 1.0 {
+      theta.ln_1p() + theta * (u.ln() + v.ln()) + (1.0 + 2.0 * theta) * Self::excess(theta, u, v)
+    } else {
+      let (big, gap, ell) = Self::spread(theta, u, v);
+      theta.ln_1p() - (1.0 + theta) * gap + big - (2.0 + 1.0 / theta) * ell
+    }
+  }
+
+  fn edge_pdf(theta: f64, u: f64, v: f64) -> f64 {
+    if theta == 0.0 {
+      return 1.0;
+    }
+    let a = (theta + 1.0) * (u * v).powf(-theta - 1.0);
+    let b = u.powf(-theta) + v.powf(-theta) - 1.0;
+    a * b.powf(-(2.0 * theta + 1.0) / theta)
   }
 
   /// `Clayton::h` at one point for any `θ > 0`, `u` below `INDEPENDENT_BELOW` (the vine pairs' inputs are never 0).
@@ -158,70 +201,42 @@ impl BivariateExt for Clayton {
     }))
   }
 
-  /// Density $c(u,v) = (\theta+1)(uv)^{-\theta-1}\big(u^{-\theta}+v^{-\theta}-1\big)^{-(1+2\theta)/\theta}$
-  /// — matches the mixed second partial of `cdf` for every `θ` in this
-  /// family's valid range, checked directly. Now special-cased at the
-  /// `θ = 0` independence boundary the same way [`Clayton::percent_point`]
-  /// already is: naive substitution there hits a removable singularity
-  /// (`b.powf(c)` with `b = 1` and `c = -∞`, an IEEE `pow` special case
-  /// that evaluates to `1.0` regardless) that happens to leave `a` — not
-  /// `1.0` — as the answer, i.e. `(uv)^{-1}`.
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
-    let u = x.column(0);
-    let v = x.column(1);
-
     let theta = self.theta.unwrap();
-
-    if theta == 0.0 {
-      return Ok(Array1::ones(u.len()));
-    }
-
-    let a = (theta + 1.0) * (&u * &v).powf(-theta - 1.0);
-    let b = u.powf(-theta) + v.powf(-theta) - 1.0;
-    let c = -(2.0 * theta + 1.0) / theta;
-    Ok(a * b.powf(c))
+    Ok(copula_pdf(
+      x,
+      |u, v| Self::ln_density(theta, u, v),
+      |u, v| Self::edge_pdf(theta, u, v),
+    ))
   }
 
-  /// At `θ=0` (independence), `C(u,v)=uv`; the general closed form
-  /// `(u^{-θ}+v^{-θ}-1)^{-1/θ}` hits the same `1^{-∞}` removable
-  /// singularity as `pdf` there and evaluates to the constant `1.0` for
-  /// every `u,v > 0`, not `uv`.
+  fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let theta = self.theta.unwrap();
+    Ok(copula_log_pdf(
+      x,
+      |u, v| Self::ln_density(theta, u, v),
+      |u, v| Self::edge_pdf(theta, u, v),
+    ))
+  }
+
+  /// `C = uv e^δ` for `θ ≤ 1` and `min(u, v) e^{−ℓ/θ}` above, the pieces of `Clayton::ln_density`; `uv` at `θ = 0`.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
-    let u_col = x.column(0);
-    let v_col = x.column(1);
-
-    let v_all_zeros = v_col.iter().all(|&v| v == 0.0);
-    let u_all_zeros = u_col.iter().all(|&u| u == 0.0);
-
-    if v_all_zeros || u_all_zeros {
-      let shape = v_col.shape();
-      return Ok(Array1::zeros(shape[0]));
-    }
-
     let theta = self.theta.unwrap();
-
-    if theta == 0.0 {
-      return Ok(&u_col * &v_col);
-    }
-
-    let mut cdfs = Array1::<f64>::zeros(u_col.len());
-
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-
-      if u > 0.0 && v > 0.0 {
-        cdfs[i] = (u.powf(-theta) + v.powf(-theta) - 1.0).powf(-1.0 / theta);
-      } else {
-        cdfs[i] = 0.0;
-      }
-    }
-
-    Ok(cdfs)
+    Ok(if theta == 0.0 {
+      copula_cdf(x, |u, v| u * v)
+    } else if theta <= 1.0 {
+      copula_cdf(x, |u, v| {
+        (u.ln() + v.ln() + Self::excess(theta, u, v)).exp()
+      })
+    } else {
+      copula_cdf(x, |u, v| {
+        let (_, _, ell) = Self::spread(theta, u, v);
+        u.min(v) * (-ell / theta).exp()
+      })
+    })
   }
 
   /// `h⁻¹(y | v)` by `Clayton::level` and `Clayton::finish`, `y` at `θ = 0` and below `INDEPENDENT_BELOW` but at `v = 0`;

@@ -32,6 +32,10 @@ use ndarray::ArrayView2;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::copula_cdf;
+use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_pdf;
+use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::ln_log_ratio;
 use crate::bivariate::conditional::ln_one_minus_exp;
 use crate::bivariate::conditional::ln_ratio;
@@ -98,6 +102,56 @@ impl Galambos {
     }
   }
 
+  /// `(m, M, ln(m/M), ℓ)`, `m ≤ M` the two of `x, y = −ln u, −ln v`, the ratio's logarithm by `ln_log_ratio` and
+  /// `ℓ = ln(1 + s)`, `s = (m/M)^θ`, so `T = (x^{−θ} + y^{−θ})^{−1/θ} = m e^{−ℓ/θ}`.
+  fn parts(theta: f64, u: f64, v: f64) -> (f64, f64, f64, f64) {
+    let (x, y) = (-u.ln(), -v.ln());
+    let ln_ratio = -ln_log_ratio(u, v, x, y).abs();
+    (
+      x.min(y),
+      x.max(y),
+      ln_ratio,
+      (theta * ln_ratio).exp().ln_1p(),
+    )
+  }
+
+  /// `ln c = T + θ ln(m/M) + ln(a₁a₂/s + (θ + 1)(1 + s)^{−2−1/θ}/M)`, `a₁ = 1 − (1 + s)^{−k}`, `a₂ = 1 − (s/(1 + s))^k`,
+  /// `k = 1 + 1/θ`: the `(1 − (T/x)^{θ+1})` factor of the chain rule kept as `a₁/s`, its limit `k` once `s` is subnormal.
+  fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
+    if theta == 0.0 {
+      return 0.0;
+    }
+    let (small, big, ln_ratio, ell) = Self::parts(theta, u, v);
+    let (k, s, ln_s) = (
+      1.0 + 1.0 / theta,
+      (theta * ln_ratio).exp(),
+      theta * ln_ratio,
+    );
+    let a1_over_s = if s >= f64::MIN_POSITIVE {
+      -(-k * ell).exp_m1() / s
+    } else {
+      k
+    };
+    let a2 = -(k * (ln_s - ell)).exp_m1();
+    let ln_tail = (theta + 1.0).ln() - (1.0 + k) * ell - big.ln();
+    small * (-ell / theta).exp() + ln_s + ln_add_exp((a1_over_s * a2).ln(), ln_tail)
+  }
+
+  fn edge_pdf(theta: f64, u: f64, v: f64) -> f64 {
+    if u <= 0.0 || u >= 1.0 || v <= 0.0 || v >= 1.0 {
+      return 0.0;
+    }
+    let xx = -u.ln();
+    let yy = -v.ln();
+    let big_t = (xx.powf(-theta) + yy.powf(-theta)).powf(-1.0 / theta);
+    let cuv = u * v * big_t.exp();
+    let r_x = (big_t / xx).powf(theta + 1.0);
+    let r_y = (big_t / yy).powf(theta + 1.0);
+    let extra =
+      (theta + 1.0) * big_t.powf(2.0 * theta + 1.0) / (xx.powf(theta + 1.0) * yy.powf(theta + 1.0));
+    cuv / (u * v) * ((r_x - 1.0) * (r_y - 1.0) + extra)
+  }
+
   /// Pickands dependence function
   /// $A(t) = 1 - (t^{-\theta} + (1-t)^{-\theta})^{-1/\theta}$.
   pub fn pickands(theta: f64, t: f64) -> f64 {
@@ -131,65 +185,34 @@ impl BivariateExt for Galambos {
     vec![]
   }
 
-  /// Density via the closed-form chain-rule derivation
-  /// $c(u,v) = C(u,v)/(uv) \cdot [g(x,y) + (\theta+1)\,T^{2\theta+1}/(xy)^{\theta+1}]$
-  /// where $x = -\ln u$, $y = -\ln v$, $T = (x^{-\theta} + y^{-\theta})^{-1/\theta}$,
-  /// $g(x,y) = ((T/x)^{\theta+1} - 1)((T/y)^{\theta+1} - 1)$.
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    let u_col = x.column(0);
-    let v_col = x.column(1);
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      if u <= 0.0 || u >= 1.0 || v <= 0.0 || v >= 1.0 {
-        out[i] = 0.0;
-        continue;
-      }
-      let xx = -u.ln();
-      let yy = -v.ln();
-      let big_t = (xx.powf(-theta) + yy.powf(-theta)).powf(-1.0 / theta);
-      let cuv = u * v * big_t.exp();
-      let r_x = (big_t / xx).powf(theta + 1.0);
-      let r_y = (big_t / yy).powf(theta + 1.0);
-      let extra = (theta + 1.0) * big_t.powf(2.0 * theta + 1.0)
-        / (xx.powf(theta + 1.0) * yy.powf(theta + 1.0));
-      out[i] = cuv / (u * v) * ((r_x - 1.0) * (r_y - 1.0) + extra);
-    }
-    Ok(out)
+    Ok(copula_pdf(
+      x,
+      |u, v| Self::ln_density(theta, u, v),
+      |u, v| Self::edge_pdf(theta, u, v),
+    ))
   }
 
-  /// CDF $C(u,v) = u v \cdot \exp\!\{(x^{-\theta} + y^{-\theta})^{-1/\theta}\}$
-  /// with $x = -\ln u$, $y = -\ln v$.
+  fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let theta = self.theta.unwrap();
+    Ok(copula_log_pdf(
+      x,
+      |u, v| Self::ln_density(theta, u, v),
+      |u, v| Self::edge_pdf(theta, u, v),
+    ))
+  }
+
+  /// `C = uv e^T = min(u, v) e^{m expm1(−ℓ/θ)}` from `Galambos::parts`, as `e^{−M} = min(u, v)`.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    let u_col = x.column(0);
-    let v_col = x.column(1);
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      if u <= 0.0 || v <= 0.0 {
-        out[i] = 0.0;
-        continue;
-      }
-      if u >= 1.0 {
-        out[i] = v;
-        continue;
-      }
-      if v >= 1.0 {
-        out[i] = u;
-        continue;
-      }
-      let xx = -u.ln();
-      let yy = -v.ln();
-      let t_pow = (xx.powf(-theta) + yy.powf(-theta)).powf(-1.0 / theta);
-      out[i] = u * v * t_pow.exp();
-    }
-    Ok(out)
+    Ok(copula_cdf(x, |u, v| {
+      let (small, _, _, ell) = Self::parts(theta, u, v);
+      u.min(v) * (small * (-ell / theta).exp_m1()).exp()
+    }))
   }
 
   /// `exp` of `Galambos::ln_h`, `u` at `θ = 0`; NaN for `v` outside `[0, 1]`.

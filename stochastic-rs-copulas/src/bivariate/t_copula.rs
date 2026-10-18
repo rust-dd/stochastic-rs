@@ -15,34 +15,30 @@
 //! In the limit $\nu \to \infty$ the t-copula collapses to the Gaussian
 //! copula.
 //!
-//! The bivariate CDF is Dunnett & Sobel's (1954) finite sum for an integer $\nu \le 1000$, else Genz's (2004) eq. (21), its integral by
-//! tanh-sinh to $4 \cdot 10^{-16}$; the value inherits the Student-t quantile's and cdf's error near $u = \tfrac12$ and at large or small $\nu$.
+//! The bivariate CDF integrates the law of $Y$ given $X$ (`cdf.rs`), the Gaussian copula's past $\nu = 10^{22}$ and the
+//! limit $pM + (1 - p)W$ below $\nu = 10^{-30}$; it inherits the Student-t quantile's error near $u = 1$.
 //!
 //! Reference: Embrechts, P., Lindskog, F., McNeil, A.J. (2003),
 //! "Modelling Dependence with Copulas and Applications to Risk
 //! Management", in *Handbook of Heavy Tailed Distributions in Finance*,
 //! Elsevier, ch. 8.
-//! Reference: Dunnett, C.W., Sobel, M. (1954), "A bivariate generalization of Student's t-distribution, with tables for certain special cases", *Biometrika* 41(1/2), 153-169, DOI 10.2307/2333013.
-//! Reference: Genz, A. (2004), "Numerical computation of rectangular bivariate and trivariate normal and t probabilities", *Statistics and Computing* 14(3), 251-260, DOI 10.1023/B:STCO.0000035304.20635.31 (equations numbered as in the author's preprint).
-//! Reference: Takahasi, H., Mori, M. (1974), "Double exponential formulas for numerical integration", *Publ. RIMS* 9(3), 721-741, DOI 10.2977/prims/1195192451.
 //! Reference: Aas, K., Czado, C., Frigessi, A., Bakken, H. (2009), "Pair-copula constructions of multiple dependence", *Insurance: Mathematics and Economics* 44(2), 182-198, App. B.2 (the h-function inverse), DOI 10.1016/j.insmatheco.2007.02.001.
-
-use std::f64::consts::FRAC_2_PI;
-use std::f64::consts::FRAC_PI_2;
-use std::f64::consts::TAU;
-use std::sync::OnceLock;
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
-use stochastic_rs_distributions::special::ln_gamma;
 
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_pdf;
+use crate::bivariate::gaussian::GaussianCopula;
+use crate::bivariate::t_copula::cdf::BivariateT;
 use crate::error::CopulaError;
 use crate::student_t;
 use crate::student_t::Law;
+use crate::student_t::NORMAL_ABOVE;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
@@ -182,16 +178,27 @@ impl TCopula {
     }
   }
 
-  /// Bivariate Student-t density $f_{\rho,\nu}(x, y)$.
-  fn bivariate_t_pdf(x: f64, y: f64, rho: f64, nu: f64) -> f64 {
-    let one_minus_rho2 = 1.0 - rho * rho;
-    let log_norm = ln_gamma(0.5 * (nu + 2.0))
-      - ln_gamma(0.5 * nu)
-      - (nu * std::f64::consts::PI).ln()
-      - 0.5 * one_minus_rho2.ln();
-    let q = (x * x - 2.0 * rho * x * y + y * y) / (nu * one_minus_rho2);
-    let log_kernel = -0.5 * (nu + 2.0) * (1.0 + q).ln();
-    (log_norm + log_kernel).exp()
+  /// `ln c` on the open square: the Gaussian copula's past `NORMAL_ABOVE`, else `student_t::ln_density` at the law's
+  /// scores, whose gap stays exact past `f64::MAX`.
+  fn ln_density(&self) -> impl Fn(f64, f64) -> f64 {
+    let (rho, nu) = (self.theta.unwrap(), self.nu);
+    let law = Law::new(nu);
+    move |u, v| {
+      if nu >= NORMAL_ABOVE {
+        return GaussianCopula::ln_density(rho, u, v);
+      }
+      let (fx, fy) = (law.feature(law.quantile(u)), law.feature(law.quantile(v)));
+      student_t::ln_density(&fx, &fy, law.abs_t_gap(&fx, &fy), rho, nu)
+    }
+  }
+}
+
+/// The density off the open square: 0, NaN for a NaN coordinate.
+fn edge_pdf(u: f64, v: f64) -> f64 {
+  if u.is_nan() || v.is_nan() {
+    f64::NAN
+  } else {
+    0.0
   }
 }
 
@@ -220,34 +227,21 @@ impl BivariateExt for TCopula {
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let rho = self.theta.unwrap();
-    let nu = self.nu;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      if u <= 0.0 || u >= 1.0 || v <= 0.0 || v >= 1.0 {
-        out[i] = 0.0;
-        continue;
-      }
-      let xx = student_t::quantile(u, nu);
-      let yy = student_t::quantile(v, nu);
-      let num = Self::bivariate_t_pdf(xx, yy, rho, nu);
-      let den = student_t::ln_pdf(xx, nu).exp() * student_t::ln_pdf(yy, nu).exp();
-      out[i] = num / den;
-    }
-    Ok(out)
+    Ok(copula_pdf(x, self.ln_density(), edge_pdf))
+  }
+
+  fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    Ok(copula_log_pdf(x, self.ln_density(), edge_pdf))
   }
 
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let (rho, nu) = (self.theta.unwrap(), self.nu);
+    let bivariate = BivariateT::new(self.theta.unwrap(), self.nu);
     Ok(
       x.rows()
         .into_iter()
-        .map(|r| t_copula_cdf(r[0], r[1], rho, nu))
+        .map(|r| bivariate.copula_cdf(r[0], r[1]))
         .collect(),
     )
   }
@@ -299,153 +293,12 @@ impl BivariateExt for TCopula {
   }
 }
 
-/// Integer `ν` up to this takes the Dunnett–Sobel sums, whose `ν/2` terms cost less than the quadrature's 449 nodes.
-const DUNNETT_SOBEL_MAX_NU: f64 = 1000.0;
-
-/// `C_{ρ,ν}(u, v) = T_ν(t_ν⁻¹(u), t_ν⁻¹(v); ρ)` on the closed square, the bivariate cdf of both t copulas: 0 on a zero
-/// coordinate, the other coordinate at a unit one.
+/// `C_{ρ,ν}(u, v)` on the closed square, the bivariate cdf of both t copulas.
 pub(crate) fn t_copula_cdf(u: f64, v: f64, rho: f64, nu: f64) -> f64 {
-  if u <= 0.0 || v <= 0.0 {
-    return 0.0;
-  }
-  if u >= 1.0 {
-    return v;
-  }
-  if v >= 1.0 {
-    return u;
-  }
-  bivariate_t_cdf(
-    student_t::quantile(u, nu),
-    student_t::quantile(v, nu),
-    rho,
-    nu,
-  )
+  BivariateT::new(rho, nu).copula_cdf(u, v)
 }
 
-/// `T_ν(h, k; ρ) = P(X ≤ h, Y ≤ k)` of the standard bivariate t; an infinite limit, an overflowed quantile, takes the
-/// marginal limit.
-fn bivariate_t_cdf(h: f64, k: f64, rho: f64, nu: f64) -> f64 {
-  if h == f64::NEG_INFINITY || k == f64::NEG_INFINITY {
-    return 0.0;
-  }
-  if h == f64::INFINITY {
-    return student_t::cdf(k, nu);
-  }
-  if k == f64::INFINITY {
-    return student_t::cdf(h, nu);
-  }
-  if nu.fract() == 0.0 && nu <= DUNNETT_SOBEL_MAX_NU {
-    dunnett_sobel(h, k, rho, nu as u32)
-  } else {
-    generalized_plackett(h, k, rho, nu)
-  }
-}
-
-/// Dunnett & Sobel's (1954) sums as Genz's BVTL evaluates them, in `sin α = h/√(ν + h²)`, `cos α = √ν/√(ν + h²)` so no
-/// square overflows; the odd leading term is `T₁((h, k)/√ν)`, Genz (2004) eq. (20) at `ν = 1` in closed form.
-fn dunnett_sobel(h: f64, k: f64, rho: f64, n: u32) -> f64 {
-  let rn = f64::from(n).sqrt();
-  let (rh, rk) = (rn.hypot(h), rn.hypot(k));
-  let (sa, ca, sb, cb) = (h / rh, rn / rh, k / rk, rn / rk);
-  let om = ((1.0 - rho) * (1.0 + rho)).sqrt();
-  let (xk, yk, sk) = beta_argument(sb * ca - rho * sa * cb, om * cb);
-  let (xh, yh, sh) = beta_argument(sa * cb - rho * sb * ca, om * ca);
-  let (c2a, c2b) = (ca * ca, cb * cb);
-  if n.is_multiple_of(2) {
-    let mut total = om.atan2(-rho) / TAU;
-    let (mut gh, mut gk) = (0.25 * sa, 0.25 * sb);
-    let (mut ik, mut dk) = (FRAC_2_PI * xk.atan2(yk), FRAC_2_PI * xk * yk);
-    let (mut ih, mut dh) = (FRAC_2_PI * xh.atan2(yh), FRAC_2_PI * xh * yh);
-    for j in 1..=n / 2 {
-      let j = f64::from(j);
-      total += gh * (1.0 + sk * ik) + gk * (1.0 + sh * ih);
-      ik += dk;
-      dk *= 2.0 * j * yk * yk / (2.0 * j + 1.0);
-      ih += dh;
-      dh *= 2.0 * j * yh * yh / (2.0 * j + 1.0);
-      gh *= (2.0 * j - 1.0) / (2.0 * j) * c2a;
-      gk *= (2.0 * j - 1.0) / (2.0 * j) * c2b;
-    }
-    return floor_at_zero(total);
-  }
-  let (alpha, beta) = (h.atan2(rn), k.atan2(rn));
-  let one_minus_z = 2.0 * (0.5 * (alpha - beta)).sin().powi(2) + (1.0 - rho) * ca * cb;
-  let one_plus_z = 2.0 * (0.5 * (alpha + beta)).sin().powi(2) + (1.0 + rho) * ca * cb;
-  let asin_z = (sa * sb + rho * ca * cb).atan2((one_minus_z * one_plus_z).sqrt());
-  let mut total = 0.25 + (alpha + beta + asin_z) / TAU;
-  let (mut gh, mut gk) = (sa * ca / TAU, sb * cb / TAU);
-  let (mut ik, mut dk, mut ih, mut dh) = (xk, xk, xh, xh);
-  for j in 1..=(n - 1) / 2 {
-    let j = f64::from(j);
-    total += gh * (1.0 + sk * ik) + gk * (1.0 + sh * ih);
-    dk *= (2.0 * j - 1.0) * yk * yk / (2.0 * j);
-    ik += dk;
-    dh *= (2.0 * j - 1.0) * yh * yh / (2.0 * j);
-    ih += dh;
-    gh *= 2.0 * j / (2.0 * j + 1.0) * c2a;
-    gk *= 2.0 * j / (2.0 * j + 1.0) * c2b;
-  }
-  floor_at_zero(total)
-}
-
-/// Both forms cancel just below 0 where the probability is 0 (`−2e-16` for the sums); a NaN passes through.
-fn floor_at_zero(t: f64) -> f64 {
-  if t < 0.0 { 0.0 } else { t }
-}
-
-/// `(√x, √(1 − x), sign d)` of `x = d²/(d² + e²)`, the incomplete beta argument of one Dunnett–Sobel sum.
-fn beta_argument(d: f64, e: f64) -> (f64, f64, f64) {
-  let r = d.hypot(e);
-  (d.abs() / r, e / r, if d < 0.0 { -1.0 } else { 1.0 })
-}
-
-/// Genz (2004) eq. (21) at `θ = s(π/2 − φ)`, `s = sign ρ`: `T_ν(b, s) − s/(2π) ∫₀^{acos|ρ|} (1 + c q)^{−ν/2} dφ`, with
-/// `q = (a − sb)²/sin²φ + sab/cos²(φ/2)` in `(a, b) = (h, k)/m`, `c = m²/ν`, `m = max(|h|, |k|, √ν)`; `c` may overflow.
-fn generalized_plackett(h: f64, k: f64, rho: f64, nu: f64) -> f64 {
-  let s = if rho < 0.0 { -1.0 } else { 1.0 };
-  let base = if s > 0.0 {
-    student_t::cdf(h.min(k), nu)
-  } else {
-    (student_t::cdf(h, nu) - student_t::cdf(-k, nu)).max(0.0)
-  };
-  let m = h.abs().max(k.abs()).max(nu.sqrt());
-  let (a, b, c) = (h / m, k / m, m * m / nu);
-  let (ln_c, inv_c) = (2.0 * m.ln() - nu.ln(), nu / (m * m));
-  let (diff2, cross) = ((a - s * b).powi(2), s * a * b);
-  let top = rho.abs().acos();
-  let integral: f64 = tanh_sinh()
-    .iter()
-    .map(|&(x, w)| {
-      let (sh, ch) = (0.5 * top * x).sin_cos();
-      let q = diff2 / (2.0 * sh * ch).powi(2) + cross / (ch * ch);
-      let cq = c * q;
-      // `ln(1 + cq) = ln c + ln(q + 1/c)` where `cq` overflows, `ln_1p` everywhere else for its accuracy at large `ν`.
-      let log = if cq.is_finite() {
-        cq.ln_1p()
-      } else {
-        ln_c + (q + inv_c).ln()
-      };
-      w * (-0.5 * nu * log).exp()
-    })
-    .sum();
-  floor_at_zero(base - s * top * integral / TAU)
-}
-
-/// Tanh-sinh nodes `(x, w)` on `(0, 1)`, step `1/64` over `|t| ≤ 3.5`; at step `1/32` the endpoint layer at `h ≈ sk`
-/// leaves `3e-12` once `ν` is in the thousands.
-fn tanh_sinh() -> &'static [(f64, f64)] {
-  static NODES: OnceLock<Vec<(f64, f64)>> = OnceLock::new();
-  NODES.get_or_init(|| {
-    (-224..=224)
-      .map(|i| {
-        let t = f64::from(i) / 64.0;
-        let s = FRAC_PI_2 * t.sinh();
-        let w = FRAC_PI_2 * t.cosh() / (128.0 * s.cosh().powi(2));
-        (1.0 / (1.0 + (-2.0 * s).exp()), w)
-      })
-      .collect()
-  })
-}
+mod cdf;
 
 #[cfg(test)]
 mod tests;

@@ -25,6 +25,10 @@ use stochastic_rs_distributions::special::norm_pdf;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::copula_cdf;
+use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_pdf;
+use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::ln_log_ratio;
 use crate::bivariate::conditional::ln_norm_cdf;
 use crate::bivariate::conditional::mills;
@@ -85,6 +89,46 @@ impl HuslerReiss {
     }
   }
 
+  /// `(x, y, α, β)`, `x, y = −ln u, −ln v`, `α, β = 1/λ ± (λ/2) ln(x/y)` with `ln(x/y)` by `ln_log_ratio`.
+  fn scores(lambda: f64, u: f64, v: f64) -> (f64, f64, f64, f64) {
+    let (x, y) = (-u.ln(), -v.ln());
+    let half = 0.5 * lambda * ln_log_ratio(u, v, x, y);
+    (x, y, 1.0 / lambda + half, 1.0 / lambda - half)
+  }
+
+  /// `ln c = xΦ(−α) + yΦ(−β) + ln(Φ(α)Φ(β) + (λ/2)φ(α)/y)`, the last a log-sum of positive terms, each normal tail by
+  /// `ln_norm_cdf`, so the density holds where both terms underflow.
+  fn ln_density(lambda: f64, u: f64, v: f64) -> f64 {
+    if lambda == 0.0 {
+      return 0.0;
+    }
+    let (x, y, alpha, beta) = Self::scores(lambda, u, v);
+    let ln_phi = -0.5 * alpha * alpha - 0.5 * std::f64::consts::TAU.ln();
+    x * norm_cdf(-alpha)
+      + y * norm_cdf(-beta)
+      + ln_add_exp(
+        ln_norm_cdf(alpha) + ln_norm_cdf(beta),
+        lambda.ln() - std::f64::consts::LN_2 + ln_phi - y.ln(),
+      )
+  }
+
+  fn edge_pdf(lambda: f64, u: f64, v: f64) -> f64 {
+    if u <= 0.0 || u >= 1.0 || v <= 0.0 || v >= 1.0 {
+      return 0.0;
+    }
+    if lambda == 0.0 {
+      return 1.0;
+    }
+    let xx = -u.ln();
+    let yy = -v.ln();
+    let half_log = 0.5 * (xx / yy).ln();
+    let alpha = 1.0 / lambda + lambda * half_log;
+    let beta = 1.0 / lambda - lambda * half_log;
+    let cuv = (-xx * norm_cdf(alpha) - yy * norm_cdf(beta)).exp();
+    let extra = 0.5 * lambda * norm_pdf(alpha) / yy;
+    cuv / (u * v) * (norm_cdf(alpha) * norm_cdf(beta) + extra)
+  }
+
   /// Pickands dependence function.
   pub fn pickands(lambda: f64, t: f64) -> f64 {
     if t <= 0.0 {
@@ -122,72 +166,37 @@ impl BivariateExt for HuslerReiss {
     vec![]
   }
 
-  /// Density $c(u,v) = C(u,v) / (uv) \cdot [\Phi(\alpha)\Phi(\beta) +
-  /// (\lambda/2)\varphi(\alpha)/y]$ with $x = -\ln u$, $y = -\ln v$,
-  /// $\alpha = 1/\lambda + (\lambda/2)\ln(x/y)$, $\beta = 2/\lambda -
-  /// \alpha$. Uses the Hüsler-Reiss identity for stability.
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
-    let u_col = x.column(0);
-    let v_col = x.column(1);
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      if u <= 0.0 || u >= 1.0 || v <= 0.0 || v >= 1.0 {
-        out[i] = 0.0;
-        continue;
-      }
-      if lambda == 0.0 {
-        out[i] = 1.0;
-        continue;
-      }
-      let xx = -u.ln();
-      let yy = -v.ln();
-      let half_log = 0.5 * (xx / yy).ln();
-      let alpha = 1.0 / lambda + lambda * half_log;
-      let beta = 1.0 / lambda - lambda * half_log;
-      let cuv = (-xx * norm_cdf(alpha) - yy * norm_cdf(beta)).exp();
-      let extra = 0.5 * lambda * norm_pdf(alpha) / yy;
-      out[i] = cuv / (u * v) * (norm_cdf(alpha) * norm_cdf(beta) + extra);
-    }
-    Ok(out)
+    Ok(copula_pdf(
+      x,
+      |u, v| Self::ln_density(lambda, u, v),
+      |u, v| Self::edge_pdf(lambda, u, v),
+    ))
   }
 
+  fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let lambda = self.theta.unwrap();
+    Ok(copula_log_pdf(
+      x,
+      |u, v| Self::ln_density(lambda, u, v),
+      |u, v| Self::edge_pdf(lambda, u, v),
+    ))
+  }
+
+  /// `C = e^{−xΦ(α) − yΦ(β)}` from `HuslerReiss::scores`; `uv` at `λ = 0`.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let lambda = self.theta.unwrap();
-    let u_col = x.column(0);
-    let v_col = x.column(1);
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      if u <= 0.0 || v <= 0.0 {
-        out[i] = 0.0;
-        continue;
-      }
-      if u >= 1.0 {
-        out[i] = v;
-        continue;
-      }
-      if v >= 1.0 {
-        out[i] = u;
-        continue;
-      }
-      if lambda == 0.0 {
-        out[i] = u * v;
-        continue;
-      }
-      let xx = -u.ln();
-      let yy = -v.ln();
-      let half_log = 0.5 * (xx / yy).ln();
-      let alpha = 1.0 / lambda + lambda * half_log;
-      let beta = 1.0 / lambda - lambda * half_log;
-      out[i] = (-xx * norm_cdf(alpha) - yy * norm_cdf(beta)).exp();
+    if lambda == 0.0 {
+      return Ok(copula_cdf(x, |u, v| u * v));
     }
-    Ok(out)
+    Ok(copula_cdf(x, |u, v| {
+      let (x, y, alpha, beta) = Self::scores(lambda, u, v);
+      (-x * norm_cdf(alpha) - y * norm_cdf(beta)).exp()
+    }))
   }
 
   /// `exp` of `HuslerReiss::ln_h`, `u` at `λ = 0`; NaN for `v` outside `[0, 1]`.

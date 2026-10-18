@@ -16,8 +16,14 @@ use ndarray::ArrayView2;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::copula_cdf;
+use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_pdf;
+use crate::bivariate::conditional::expm1_over;
+use crate::bivariate::conditional::ln_1p_over;
 use crate::bivariate::conditional::ln_one_minus_exp;
 use crate::bivariate::conditional::ln_one_minus_pow;
+use crate::bivariate::conditional::softplus;
 use crate::bivariate::conditional::sum_minus_one;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
@@ -130,6 +136,74 @@ impl Frank {
     }
   }
 
+  /// `(M − m, B)` of the `θ = c > 0` copula at `(u, v)`, `B = 1 − e^{−cM} + e^{−c(M − m)}(1 − e^{−c(1 − M)})`, `M ≥ m` the
+  /// two coordinates, so `1 + g(u)g(v)/g(1) = e^{−cm}B/(1 − e^{−c})`; at `(u, 1 − v)` when `reflect`, `M − m` in one rounding.
+  fn spread(c: f64, u: f64, v: f64, reflect: bool) -> (f64, f64) {
+    let (gap, big, rest) = if !reflect {
+      ((u - v).abs(), u.max(v), 1.0 - u.max(v))
+    } else if sum_minus_one(u, v) >= 0.0 {
+      (sum_minus_one(u, v), u, 1.0 - u)
+    } else {
+      (-sum_minus_one(u, v), 1.0 - v, v)
+    };
+    (
+      gap,
+      -(-c * big).exp_m1() + (-c * gap).exp() * -(-c * rest).exp_m1(),
+    )
+  }
+
+  /// `ln c = ln(c(1 − e^{−c})e^{−c(M − m)}/B²)`, `c = |θ|`, with `B` of `Frank::spread` at `(u, v)`, at `(u, 1 − v)` for
+  /// `θ < 0` (`c_θ(u, v) = c_{−θ}(u, 1 − v)`); 0 below `INDEPENDENT_BELOW`.
+  fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
+    let c = theta.abs();
+    if c < INDEPENDENT_BELOW {
+      return 0.0;
+    }
+    let (gap, b) = Self::spread(c, u, v, theta < 0.0);
+    (c / b).ln() + (-(-c).exp_m1() / b).ln() - c * gap
+  }
+
+  /// `C` for `θ > 0` from `x = g(u)g(v)/g(1)`: `−(x/θ) ln_1p(x)/x` while `x > −1/2`, where `ln(1 + x)` is well conditioned,
+  /// else `m − ln(B/(1 − e^{−θ}))/θ`, there `C ≥ ln 2/θ` and `m − C ≤ 2C`; `x/θ` from `expm1(t)/t`, free of a subnormal `θu`.
+  fn cdf_positive(theta: f64, u: f64, v: f64) -> f64 {
+    let ratio_v = if theta < 1.0 {
+      v * expm1_over(-theta * v) / expm1_over(-theta)
+    } else {
+      (-theta * v).exp_m1() / (-theta).exp_m1()
+    };
+    let x_over_theta = -u * expm1_over(-theta * u) * ratio_v;
+    let x = theta * x_over_theta;
+    if x > -0.5 {
+      return -x_over_theta * ln_1p_over(x);
+    }
+    let (_, b) = Self::spread(theta, u, v, false);
+    u.min(v) - (b.ln() - (-(-theta).exp_m1()).ln()) / theta
+  }
+
+  /// `C = (x/c) ln_1p(x)/x`, `x = G(u)G(v)/G(1)`, `G(z) = expm1(cz)`, `c = −θ ≤ 700`, every factor from `expm1(t)/t`.
+  fn cdf_negative(c: f64, u: f64, v: f64) -> f64 {
+    let x_over_c = u * expm1_over(c * u) * (v * expm1_over(c * v) / expm1_over(c));
+    x_over_c * ln_1p_over(c * x_over_c)
+  }
+
+  /// `C = softplus(ln x)/c` past `c = 700`, where `G` overflows: `ln x = c(u + v − 1) + Σ ln(1 − e^{−cz}) − ln(1 − e^{−c})`,
+  /// `u + v − 1` in one rounding.
+  fn cdf_negative_log(c: f64, u: f64, v: f64) -> f64 {
+    let ln_x = c * sum_minus_one(u, v) + ln_one_minus_pow(c, -u) + ln_one_minus_pow(c, -v)
+      - ln_one_minus_exp(-c);
+    softplus(ln_x) / c
+  }
+
+  fn edge_pdf(theta: f64, u: f64, v: f64) -> f64 {
+    if theta == 0.0 {
+      return 1.0;
+    }
+    let g = |z: f64| (-theta * z).exp() - 1.0;
+    let num = (-theta * g(1.0)) * (1.0 + g(u + v));
+    let aux = g(1.0) + g(u) * g(v);
+    num / (aux * aux)
+  }
+
   /// `ln(N/D) = ln((1 − e^{−ct})/(1 − e^{−c}))`, `c > 0`: `ln N − ln D` below `t = 1/2`, where `ct` may be subnormal, and
   /// `ln_1p((N − D)/D)` above it, `N − D = e^{−ct} expm1(−c(1 − t))` free of cancellation as `1 − t` is exact there.
   fn ln_survival_ratio(c: f64, t: f64) -> f64 {
@@ -180,51 +254,40 @@ impl BivariateExt for Frank {
     }))
   }
 
-  /// Density $c(u,v) = -\theta\,g(1)\,e^{-\theta(u+v)} \big/ \big(g(1)+g(u)g(v)\big)^2$,
-  /// $g(z) = e^{-\theta z}-1$ — the mixed second partial of this family's
-  /// own `cdf`, obtained by direct differentiation and cross-checked
-  /// against a finite-difference probe of `cdf`. The previous denominator,
-  /// `g(u)+g(v)+g(1)` (a sum), was wrong for every `θ ≠ 0` — up to 268×
-  /// off at `θ=5` — because nothing checked `pdf` against `cdf` directly;
-  /// `θ = 0` was unaffected (a disjoint, separately special-cased path).
-  /// Reference: Nelsen, R.B. (2006), "An Introduction to Copulas", 2nd
-  /// ed., Springer, Example 4.23 / Table 4.1 (Frank generator
-  /// $\varphi_\theta(t) = -\ln\frac{e^{-\theta t}-1}{e^{-\theta}-1}$).
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
-    let u = x.column(0).to_owned();
-    let v = x.column(1).to_owned();
-
     let theta = self.theta.unwrap();
-
-    if theta == 0.0 {
-      return Ok(Array1::ones(u.len()));
-    }
-
-    let num =
-      (-theta * self._g(Array1::ones(u.len()).view())?) * (1.0 + self._g((&u + &v).view())?);
-    let aux = self._g(Array1::ones(u.len()).view())? + self._g(u.view())? * self._g(v.view())?;
-    let den = aux.pow2();
-    Ok(num / den)
+    Ok(copula_pdf(
+      x,
+      |u, v| Self::ln_density(theta, u, v),
+      |u, v| Self::edge_pdf(theta, u, v),
+    ))
   }
 
+  fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let theta = self.theta.unwrap();
+    Ok(copula_log_pdf(
+      x,
+      |u, v| Self::ln_density(theta, u, v),
+      |u, v| Self::edge_pdf(theta, u, v),
+    ))
+  }
+
+  /// `C = −ln(1 + g(u)g(v)/g(1))/θ`, `g(z) = expm1(−θz)`, by `Frank::cdf_positive` for `θ > 0` and `Frank::cdf_negative`
+  /// below; `uv` below `INDEPENDENT_BELOW`.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-
-    let u = x.column(0);
-    let v = x.column(1);
-
     let theta = self.theta.unwrap();
-
-    if theta == 0.0 {
-      return Ok(&u * &v);
-    }
-
-    let num = ((-theta * &u).exp() - 1.0) * ((-theta * &v).exp() - 1.0);
-    let den = (-theta).exp() - 1.0;
-    let out = -1.0 / theta * (1.0 + num / den).ln();
-    Ok(out)
+    Ok(if theta.abs() < INDEPENDENT_BELOW {
+      copula_cdf(x, |u, v| u * v)
+    } else if theta > 0.0 {
+      copula_cdf(x, |u, v| Self::cdf_positive(theta, u, v))
+    } else if theta >= -700.0 {
+      copula_cdf(x, |u, v| Self::cdf_negative(-theta, u, v))
+    } else {
+      copula_cdf(x, |u, v| Self::cdf_negative_log(-theta, u, v))
+    })
   }
 
   /// `Frank::inverse`, `θ < 0` through `C_{−θ}(u, v) = u − C_θ(u, 1 − v)`, which swaps `v` and `1 − v`; the identity
@@ -303,12 +366,6 @@ impl BivariateExt for Frank {
       lower: 0.0,
       upper: 0.0,
     })
-  }
-}
-
-impl Frank {
-  fn _g(&self, z: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
-    Ok((-self.theta.unwrap() * &z).exp() - 1.0)
   }
 }
 

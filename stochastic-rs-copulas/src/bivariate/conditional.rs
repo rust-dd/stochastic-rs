@@ -9,6 +9,8 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::Zip;
+use stochastic_rs_distributions::RealExt;
+use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
 
@@ -127,9 +129,25 @@ pub(crate) fn ln_norm_cdf(z: f64) -> f64 {
   }
 }
 
-/// `ln(eᵃ + eᵇ)`.
+/// `Φ⁻¹(p)`: `ndtri`, refined by a Newton step on `ln Φ` where the tail is subnormal and `ndtri` loses digits.
+pub(crate) fn normal_quantile(p: f64) -> f64 {
+  let t = ndtri(p);
+  let tail = p.min(1.0 - p);
+  if tail >= f64::MIN_POSITIVE || !(0.0 < p && p < 1.0) {
+    return t;
+  }
+  let z = -t.abs();
+  t.signum() * -(z - (ln_norm_cdf(z) - tail.ln()) * mills(-z))
+}
+
+/// `ln(eᵃ + eᵇ)`; an infinite larger term is the answer, where `a − b` would be NaN.
 pub(crate) fn ln_add_exp(a: f64, b: f64) -> f64 {
-  a.max(b) + softplus(-(a - b).abs())
+  let top = a.max_or_nan(b);
+  if top.is_infinite() {
+    top
+  } else {
+    top + softplus(-(a - b).abs())
+  }
 }
 
 /// `ln((1 − u)/(1 − v))` to a relative rounding error: the complements are exact from `1/2` up, and near a ratio of 1
@@ -291,6 +309,64 @@ pub(crate) fn conditional_cdf(x: ArrayView2<f64>, h: impl Fn(f64, f64) -> f64) -
   Zip::from(x.column(0))
     .and(x.column(1))
     .map_collect(|&u, &v| conditioned(v, h(u, v)))
+}
+
+/// `C(u, v)` over the rows of `x` from `interior` on the open square: 0 on a zero coordinate, the other coordinate on a
+/// unit one, exactly; NaN off the closed square.
+pub(crate) fn copula_cdf(x: ArrayView2<f64>, interior: impl Fn(f64, f64) -> f64) -> Array1<f64> {
+  Zip::from(x.column(0))
+    .and(x.column(1))
+    .map_collect(|&u, &v| {
+      if !(in_unit(u) && in_unit(v)) {
+        f64::NAN
+      } else if u == 0.0 || v == 0.0 {
+        0.0
+      } else if u == 1.0 {
+        v
+      } else if v == 1.0 {
+        u
+      } else {
+        interior(u, v)
+      }
+    })
+}
+
+fn open_square(u: f64, v: f64) -> bool {
+  0.0 < u && u < 1.0 && 0.0 < v && v < 1.0
+}
+
+/// `exp` of `ln_density` on the open square, `edge` elsewhere.
+pub(crate) fn copula_pdf(
+  x: ArrayView2<f64>,
+  ln_density: impl Fn(f64, f64) -> f64,
+  edge: impl Fn(f64, f64) -> f64,
+) -> Array1<f64> {
+  Zip::from(x.column(0))
+    .and(x.column(1))
+    .map_collect(|&u, &v| {
+      if open_square(u, v) {
+        ln_density(u, v).exp()
+      } else {
+        edge(u, v)
+      }
+    })
+}
+
+/// `ln_density` on the open square, `ln` of `edge` elsewhere.
+pub(crate) fn copula_log_pdf(
+  x: ArrayView2<f64>,
+  ln_density: impl Fn(f64, f64) -> f64,
+  edge: impl Fn(f64, f64) -> f64,
+) -> Array1<f64> {
+  Zip::from(x.column(0))
+    .and(x.column(1))
+    .map_collect(|&u, &v| {
+      if open_square(u, v) {
+        ln_density(u, v)
+      } else {
+        edge(u, v).ln()
+      }
+    })
 }
 
 #[cfg(test)]

@@ -16,37 +16,36 @@
 //!   ([`crate::bivariate::t_copula::TCopula`]), which has strictly positive
 //!   tail dependence for every finite degrees-of-freedom parameter.
 //!
-//! The joint CDF is evaluated through the identity
-//! $$
-//! \Phi_2(x,y;\rho) = \Phi(x) + \Phi(y) - 1 + Q(x,y;\rho),
-//! $$
-//! where $Q(x,y;\rho) = \Pr\left[X>x, Y>y\right]$ is the bivariate normal upper
-//! survival probability computed by `owens_t::biv_norm` (an Owen's
-//! T-function reduction) — the crate exposes the survival form, not the
-//! CDF directly, so the inclusion-exclusion identity above bridges the two.
+//! The joint cdf is the conditional integral of `cdf.rs`, to a relative `1e-12` at every admitted $\rho$ and in both tails.
 //!
 //! Reference: Embrechts, P., Lindskog, F., McNeil, A.J. (2003),
 //! "Modelling Dependence with Copulas and Applications to Risk
 //! Management", in *Handbook of Heavy Tailed Distributions in Finance*,
 //! Elsevier, ch. 8.
-//! Reference: Owen, D.B. (1956), "Tables for computing bivariate normal
-//! probabilities", *Ann. Math. Statist.* 27(4), 1075-1090.
 
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
-use owens_t::biv_norm;
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
+use crate::bivariate::conditional::copula_log_pdf;
+use crate::bivariate::conditional::copula_pdf;
+use crate::bivariate::conditional::in_unit;
+use crate::bivariate::conditional::normal_quantile;
+use crate::bivariate::conditional::sum_minus_one;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::tau_out_of_range;
+use cdf::bivariate_normal_cdf;
+use cdf::quantile_gap;
+
+mod cdf;
 
 /// Clamp used to evaluate [`GaussianCopula::partial_derivative`] just
 /// inside `(0, 1)` at the `v` boundary instead of returning a hardcoded
@@ -87,20 +86,68 @@ impl GaussianCopula {
   }
 }
 
-/// `C_ρ(u, v)` on the closed square, the bivariate cdf of both Gaussian copulas: 0 on a zero coordinate, the other
-/// coordinate at a unit one.
+/// `C_ρ(u, v) = Φ₂(Φ⁻¹(u), Φ⁻¹(v); ρ)` on the closed square, the bivariate cdf of both Gaussian copulas: 0 on a zero
+/// coordinate, the other on a unit one, the Fréchet bounds holding the integral's rounding; NaN off the square.
 pub(crate) fn gaussian_copula_cdf(u: f64, v: f64, rho: f64) -> f64 {
-  if u <= 0.0 || v <= 0.0 {
+  if !(in_unit(u) && in_unit(v)) {
+    return f64::NAN;
+  }
+  if u == 0.0 || v == 0.0 {
     return 0.0;
   }
-  if u >= 1.0 {
+  if u == 1.0 {
     return v;
   }
-  if v >= 1.0 {
+  if v == 1.0 {
     return u;
   }
-  let (x, y) = (ndtri(u), ndtri(v));
-  norm_cdf(x) + norm_cdf(y) - 1.0 + biv_norm(x, y, rho)
+  if rho == 0.0 {
+    return u * v;
+  }
+  let (x, y, sum, _) = GaussianCopula::scores(u, v);
+  bivariate_normal_cdf(x, y, sum, rho).clamp(sum_minus_one(u, v).max(0.0), u.min(v))
+}
+
+impl GaussianCopula {
+  /// `(x, y, x + y, x − y)`, `x, y = Φ⁻¹(u), Φ⁻¹(v)`: a sum or difference below `1/max(1, |x|, |y|)` from the exact gap
+  /// `u + v − 1` or `u − v` by `quantile_gap` (`Φ(x) − Φ(−y) = u + v − 1`); above it the plain one loses under `εx²`.
+  fn scores(u: f64, v: f64) -> (f64, f64, f64, f64) {
+    let (x, y) = (normal_quantile(u), normal_quantile(v));
+    let scale = 1.0 / x.abs().max(y.abs()).max(1.0);
+    let sum = if (x + y).abs() < scale {
+      quantile_gap(if u <= v { x } else { y }, sum_minus_one(u, v))
+    } else {
+      x + y
+    };
+    let difference = if (x - y).abs() < scale {
+      quantile_gap(x, u - v)
+    } else {
+      x - y
+    };
+    (x, y, sum, difference)
+  }
+
+  /// `ln c = −|ρ|d²/(2(1 − ρ)(1 + ρ)) + |ρ|(x² + y²)/(2(1 + |ρ|)) − ln √((1 − ρ)(1 + ρ))`, `d = x ∓ y` with the sign of
+  /// `ρ`: the quadratic form in two same-signed terms, so `ρ` near `±1` cancels only in the inputs.
+  pub(crate) fn ln_density(rho: f64, u: f64, v: f64) -> f64 {
+    let (x, y, sum, difference) = Self::scores(u, v);
+    let one_minus_rho2 = (1.0 - rho) * (1.0 + rho);
+    let r = rho.abs();
+    let d = if rho >= 0.0 { difference } else { sum };
+    -r * d * d / (2.0 * one_minus_rho2) + r * (x * x + y * y) / (2.0 * (1.0 + r))
+      - 0.5 * one_minus_rho2.ln()
+  }
+
+  fn edge_pdf(rho: f64, u: f64, v: f64) -> f64 {
+    if u <= 0.0 || u >= 1.0 || v <= 0.0 || v >= 1.0 {
+      return 0.0;
+    }
+    let one_minus_rho2 = 1.0 - rho * rho;
+    let xx = ndtri(u);
+    let yy = ndtri(v);
+    let quad = rho * rho * (xx * xx + yy * yy) - 2.0 * rho * xx * yy;
+    (-quad / (2.0 * one_minus_rho2)).exp() / one_minus_rho2.sqrt()
+  }
 }
 
 impl BivariateExt for GaussianCopula {
@@ -125,35 +172,27 @@ impl BivariateExt for GaussianCopula {
     vec![-1.0, 1.0]
   }
 
-  /// Density $c(u,v) = (1-\rho^2)^{-1/2}\exp\{-(\rho^2(x^2+y^2) -
-  /// 2\rho xy)/(2(1-\rho^2))\}$ with $x = \Phi^{-1}(u)$, $y = \Phi^{-1}(v)$
-  /// — the ratio of the bivariate normal density to the product of its
-  /// marginals.
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
-    let one_minus_rho2 = 1.0 - rho * rho;
-    let u_col = x.column(0);
-    let v_col = x.column(1);
-    let mut out = Array1::<f64>::zeros(u_col.len());
-    for i in 0..u_col.len() {
-      let u = u_col[i];
-      let v = v_col[i];
-      if u <= 0.0 || u >= 1.0 || v <= 0.0 || v >= 1.0 {
-        out[i] = 0.0;
-        continue;
-      }
-      let xx = ndtri(u);
-      let yy = ndtri(v);
-      let quad = rho * rho * (xx * xx + yy * yy) - 2.0 * rho * xx * yy;
-      out[i] = (-quad / (2.0 * one_minus_rho2)).exp() / one_minus_rho2.sqrt();
-    }
-    Ok(out)
+    Ok(copula_pdf(
+      x,
+      |u, v| Self::ln_density(rho, u, v),
+      |u, v| Self::edge_pdf(rho, u, v),
+    ))
   }
 
-  /// $C(u,v) = \Phi_2(x,y;\rho) = \Phi(x) + \Phi(y) - 1 + Q(x,y;\rho)$,
-  /// with $Q$ the `owens_t::biv_norm` survival probability (see module
-  /// header for the inclusion-exclusion derivation).
+  fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let rho = self.theta.unwrap();
+    Ok(copula_log_pdf(
+      x,
+      |u, v| Self::ln_density(rho, u, v),
+      |u, v| Self::edge_pdf(rho, u, v),
+    ))
+  }
+
+  /// `gaussian_copula_cdf` of each row.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();
