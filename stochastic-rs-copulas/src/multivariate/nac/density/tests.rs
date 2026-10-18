@@ -52,7 +52,7 @@ fn misses(label: String, (pdf, log_pdf): (f64, f64), want: f64) -> Option<String
 /// Flat densities at `U10[..d]` against mpmath's exact multilinear derivative of `C` at 80 digits, which matches Hofert,
 /// Mächler & McNeil (2012), Cor. 3.3, to 1e-79.
 #[test]
-fn flat_density_matches_the_60_digit_references() {
+fn flat_density_matches_the_80_digit_references() {
   let pins = [
     (
       BivariateFamily::Clayton,
@@ -116,7 +116,7 @@ fn flat_density_matches_the_60_digit_references() {
 /// The same reference on Hofert & Pham's (2013) two- and three-level shapes (Thm 3.3, eq. (33)) and on `fit`'s binary
 /// shapes down to nine levels, where their Remark 6.2 recursion carries the density.
 #[test]
-fn nested_density_matches_the_60_digit_references() {
+fn nested_density_matches_the_80_digit_references() {
   let trees = [
     (
       BivariateFamily::Gumbel,
