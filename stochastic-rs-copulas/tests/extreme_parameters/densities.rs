@@ -27,16 +27,27 @@ const T_LAW_MISSES: [(f64, f64, &str, Misses); 5] = [
 /// The t rows at large `ν`, which the table holds for their time and the misses below.
 const WALL_CLOCK: [(f64, f64); 3] = [(0.5, 1e8), (-0.8, 1e15), (-0.999999, 9.99e21)];
 
-/// Where `SimdStudentT`, off the t law by `7e-8` at `ν = 1e8` and meaningless from `ν ≈ 1e13`, puts a large-`ν` cell past
-/// `1e-12` or at NaN: 215 cells, each of which must keep missing, so a fix of that law fails this test.
-const LARGE_NU_MISSES: [(f64, f64, &str, Misses); 6] = [
+/// Where `SimdStudentT`, off the t law by `7e-8` at `ν = 1e8` and not the t law's from `ν ≈ 4.4e12`, puts a large-`ν` cell
+/// past `1e-12` or at NaN: 387 cells, each of which must keep missing, so a fix of that law fails this test.
+const LARGE_NU_MISSES: [(f64, f64, &str, Misses); 12] = [
   (0.5, 1e8, "cdf", Misses::Only(&[30, 31, 39, 40, 50])),
+  (0.5, 1e8, "log_pdf", Misses::AllBut(&UPPER_DENSITY)),
   (
-    0.5,
-    1e8,
-    "log_pdf",
-    Misses::AllBut(&[32, 33, 34, 39, 40, 41, 46, 47, 48]),
+    -0.95,
+    4437290359301.342,
+    "cdf",
+    Misses::Only(&[32, 33, 34, 41, 42, 43, 48, 49, 50, 57, 58, 66, 67]),
   ),
+  (
+    -0.95,
+    4437290359301.342,
+    "log_pdf",
+    Misses::AllBut(&UPPER_DENSITY),
+  ),
+  (-0.8, 1e13, "cdf", Misses::Only(&LOWER_CDF)),
+  (-0.8, 1e13, "log_pdf", Misses::AllBut(&UPPER_DENSITY)),
+  (-0.8, 4e13, "cdf", Misses::Only(&LOWER_CDF)),
+  (-0.8, 4e13, "log_pdf", Misses::AllBut(&[32, 34, 46, 48])),
   (-0.8, 1e15, "cdf", Misses::Only(&NARROW_CDF)),
   (-0.8, 1e15, "log_pdf", Misses::AllBut(&[32])),
   (-0.999999, 9.99e21, "cdf", Misses::AllBut(&[])),
@@ -64,6 +75,14 @@ const NARROW_CDF: [usize; 25] = [
   30, 31, 32, 33, 34, 39, 40, 41, 42, 43, 48, 49, 50, 51, 52, 57, 58, 59, 60, 61, 66, 67, 68, 69,
   70,
 ];
+
+/// `NARROW_CDF` with a level under ½, and `(½, ½)`.
+const LOWER_CDF: [usize; 17] = [
+  30, 31, 32, 33, 34, 39, 40, 41, 42, 43, 48, 49, 50, 57, 58, 66, 67,
+];
+
+/// `ln c(a, b)` with both levels in `[½, 1 − 2⁻⁵³]`.
+const UPPER_DENSITY: [usize; 9] = [32, 33, 34, 39, 40, 41, 46, 47, 48];
 
 /// `C(a, b)` with one level in `{1e-15, 2⁻⁵³}` and the other in `{1 − 1e-15, 1 − 2⁻⁵³}`.
 const CDF_MISSES: [usize; 8] = [33, 34, 42, 43, 57, 58, 66, 67];
