@@ -214,8 +214,8 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: nextest
-      # A debug build, which the tests' wall-clock bounds are sized for; `--exclude stochastic-rs-py` because the
-      # cdylib is exercised by pytest in the python_smoke job.
+      # A debug build, which the tests' wall-clock bounds are sized for, on the coverage job's feature set; `--exclude
+      # stochastic-rs-py` because the cdylib is exercised by pytest in the python_smoke job.
       - name: cargo nextest run (workspace)
         run: cargo nextest run --workspace --exclude stochastic-rs-py --profile ci --locked
       # The workspace run leaves quant and viz off; they gate the ai crate's
