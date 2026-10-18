@@ -53,6 +53,7 @@ use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
 use crate::traits::bivariate::invert_tau;
 use crate::traits::bivariate::tau_out_of_range;
+use density::Bb7Density;
 
 /// `ψ(x) − ψ(y)` through `ψ(z) = ψ(z + 1) − 1/z` up past 30, where the asymptotic series of `digamma` holds its digits;
 /// Neumaier's compensated sum keeps the thirty-odd recurrence terms from piling up rounding.
@@ -169,6 +170,11 @@ impl Bb7 {
     let ln_s = s_minus_one.ln_1p();
     let ln_t = -ln_s / delta;
     (ln_a, ln_b, ln_s, ln_t, ln_one_minus_exp(ln_t))
+  }
+
+  /// `ln c` at one point, for a caller holding no `Bb7Density`.
+  pub(crate) fn log_density_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
+    Bb7Density::new(theta, delta).ln_c(u, v)
   }
 
   /// `∂_v C`, held below 1 against rounding: `ln_h_interior` exponentiated, and the limit laws at `v = 0` (`δ₀`) and
@@ -357,7 +363,10 @@ impl Bb7 {
       v,
       (1.0, 0.0),
       (start_theta, self.delta),
-      Self::log_density_scalar,
+      |theta, delta| {
+        let density = Bb7Density::new(theta, delta);
+        move |a, b| density.ln_c(a, b)
+      },
     );
     *self = Self::try_new(theta, delta)?;
     Ok(())
@@ -404,17 +413,20 @@ impl BivariateExt for Bb7 {
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    copula_pdf(x, |u, v| Self::log_density_scalar(u, v, theta, delta))
+    let density = Bb7Density::new(theta, delta);
+    copula_pdf(x, |u, v| density.ln_c(u, v))
   }
 
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    copula_density(x, |u, v| Self::log_density_scalar(u, v, theta, delta))
+    let density = Bb7Density::new(theta, delta);
+    copula_density(x, |u, v| density.ln_c(u, v))
   }
 
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    copula_cdf(x, |u, v| Self::cdf_scalar(u, v, theta, delta))
+    let density = Bb7Density::new(theta, delta);
+    copula_cdf(x, |u, v| density.cdf(u, v))
   }
 
   /// `∂_v C(u, v)`.

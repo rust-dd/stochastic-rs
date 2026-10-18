@@ -242,10 +242,54 @@ pub(crate) fn ln_pdf(x: f64, nu: f64) -> f64 {
   log_norm + log_kernel
 }
 
-/// `ln c` of the t copula at finite scores `x = t_ν⁻¹(u)`, `y = t_ν⁻¹(v)`, through `ln_density`.
+/// `ln c` of the t copula at finite scores `x = t_ν⁻¹(u)`, `y = t_ν⁻¹(v)`: `TDensity::moderate`, else `ln_density`.
 pub(crate) fn ln_copula_density(x: f64, y: f64, rho: f64, nu: f64) -> f64 {
-  let (fx, fy) = (Feature::of_value(x, nu), Feature::of_value(y, nu));
-  ln_density(&fx, &fy, fy.abs_t - fx.abs_t, rho, nu)
+  TDensity::new(rho, nu).ln_c(x, y)
+}
+
+/// The t copula's log-density at one `(ρ, ν)`, with what no point changes formed once.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TDensity {
+  rho: f64,
+  nu: f64,
+  /// `G − ½ ln(1 − ρ²)`, `G = ln(Γ(ν/2 + 1)Γ(ν/2)/Γ(ν/2 + ½)²)`.
+  constant: f64,
+  inv_one_minus_rho2: f64,
+  inv_nu: f64,
+}
+
+impl TDensity {
+  pub(crate) fn new(rho: f64, nu: f64) -> Self {
+    let one_minus_rho2 = (1.0 - rho) * (1.0 + rho);
+    Self {
+      rho,
+      nu,
+      constant: ln_gamma_constant(nu) - 0.5 * one_minus_rho2.ln(),
+      inv_one_minus_rho2: one_minus_rho2.recip(),
+      inv_nu: nu.recip(),
+    }
+  }
+
+  /// `ln c` at finite scores, `moderate` where it holds, else `ln_density` at their features.
+  pub(crate) fn ln_c(&self, x: f64, y: f64) -> f64 {
+    self.moderate(x, y).unwrap_or_else(|| {
+      let (fx, fy) = (Feature::of_value(x, self.nu), Feature::of_value(y, self.nu));
+      ln_density(&fx, &fy, fy.abs_t - fx.abs_t, self.rho, self.nu)
+    })
+  }
+
+  /// `G − ½ ln(1 − ρ²) − ((ν + 2)/2) ln(1 + Q/ν) + ((ν + 1)/2) ln((1 + x²/ν)(1 + y²/ν))`, `Q = (x − ρy)²/(1 − ρ²) + y²`,
+  /// `x − ρy` by one fma, each term within `15u`: `None` unless the terms' sizes sum to `S` with `9εS ≤ 1e-12 max(1, |ln c|)`.
+  pub(crate) fn moderate(&self, x: f64, y: f64) -> Option<f64> {
+    let d = (-self.rho).mul_add(y, x);
+    let q = d * d * self.inv_one_minus_rho2 + y * y;
+    let joint = -0.5 * (self.nu + 2.0) * (q * self.inv_nu).ln_1p();
+    let margins =
+      0.5 * (self.nu + 1.0) * ((x * x * self.inv_nu).ln_1p() + (y * y * self.inv_nu).ln_1p());
+    let sum = self.constant + joint + margins;
+    let size = self.constant.abs() + joint.abs() + margins;
+    (size.is_finite() && 9.0 * f64::EPSILON * size <= 1e-12 * sum.abs().max(1.0)).then_some(sum)
+  }
 }
 
 /// A score `s` in `t = asinh(s/√ν)`, the coordinate the bivariate t's conditional law reads: `|t|` (rounded where huge),

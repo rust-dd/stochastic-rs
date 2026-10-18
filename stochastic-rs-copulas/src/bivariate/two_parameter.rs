@@ -35,13 +35,13 @@ pub(crate) fn kendall_tau_numeric(h: impl Fn(f64, f64) -> f64, panels: usize) ->
 }
 
 /// Maximum-likelihood `(θ, δ)` on the pseudo-observation columns `u`, `v` inside `(0, 1)`: Nelder–Mead over
-/// `lower + exp(c)`, so the search is unconstrained, on the negative log-likelihood of `log_density`.
-pub(crate) fn fit_two_parameters(
+/// `lower + exp(c)`, so the search is unconstrained, on the negative log-likelihood of the kernel `log_density(θ, δ)`.
+pub(crate) fn fit_two_parameters<K: Fn(f64, f64) -> f64>(
   u: ArrayView1<f64>,
   v: ArrayView1<f64>,
   lower: (f64, f64),
   start: (f64, f64),
-  log_density: impl Fn(f64, f64, f64, f64) -> f64,
+  log_density: impl Fn(f64, f64) -> K,
 ) -> (f64, f64) {
   let to_params = |c: &[f64]| (lower.0 + c[0].exp(), lower.1 + c[1].exp());
   let objective = |c: &[f64]| {
@@ -49,11 +49,8 @@ pub(crate) fn fit_two_parameters(
     if !(theta.is_finite() && delta.is_finite()) {
       return f64::INFINITY;
     }
-    let nll: f64 = u
-      .iter()
-      .zip(&v)
-      .map(|(&a, &b)| -log_density(a, b, theta, delta))
-      .sum();
+    let ln_c = log_density(theta, delta);
+    let nll: f64 = u.iter().zip(&v).map(|(&a, &b)| -ln_c(a, b)).sum();
     if nll.is_finite() { nll } else { f64::INFINITY }
   };
   let start_coords = [

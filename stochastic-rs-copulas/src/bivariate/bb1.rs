@@ -109,15 +109,15 @@ impl Bb1 {
   }
 
   /// `ln(X/Y)`, `X, Y = u^{−θ} − 1, v^{−θ} − 1`, as `θ ln(v/u) + ln((1 − u^θ)/(1 − v^θ))`, exact near a ratio of 1.
-  fn ln_generator_ratio(u: f64, v: f64, theta: f64) -> f64 {
-    theta * ln_ratio(v, u) + ln_one_minus_pow_ratio(theta, u.ln(), v.ln())
+  fn ln_generator_ratio(u: f64, v: f64, ln_u: f64, ln_v: f64, theta: f64) -> f64 {
+    theta * ln_ratio(v, u) + ln_one_minus_pow_ratio(theta, ln_u, ln_v)
   }
 
   /// `(W, P, ln r, ℓ)` while `θ max(x, y) ≤ 700`, `x, y = −ln u, −ln v`: `P = X_max/θ = x_max expm1(θx_max)/(θx_max)`,
   /// `r = X_min/X_max`, `ℓ = ln(1 + r^δ)`, `W = w/θ = Pe^{ℓ/δ}`, so a small `θ` keeps its digits.
-  fn scaled(u: f64, v: f64, theta: f64, delta: f64) -> (f64, f64, f64, f64) {
-    let ln_xy = Self::ln_generator_ratio(u, v, theta);
-    let big = -(if ln_xy >= 0.0 { u } else { v }).ln();
+  fn scaled(u: f64, v: f64, ln_u: f64, ln_v: f64, theta: f64, delta: f64) -> (f64, f64, f64, f64) {
+    let ln_xy = Self::ln_generator_ratio(u, v, ln_u, ln_v, theta);
+    let big = -(if ln_xy >= 0.0 { ln_u } else { ln_v });
     let p_big = big * expm1_over(theta * big);
     let ln_r = -ln_xy.abs();
     let ell = (delta * ln_r).exp().ln_1p();
@@ -126,30 +126,38 @@ impl Bb1 {
 
   /// `(λ_M, λ_m, ln r, ℓ, ln w)` past `θ max(x, y) = 700`, `λ = ln(1 − u^θ)` of the smaller and larger coordinate,
   /// `ln w = θM + λ_M + ℓ/δ` with `M = −ln min(u, v)`.
-  fn recentred(u: f64, v: f64, theta: f64, delta: f64) -> (f64, f64, f64, f64, f64) {
-    let (low, high) = (u.min(v), u.max(v));
+  fn recentred(
+    u: f64,
+    v: f64,
+    ln_u: f64,
+    ln_v: f64,
+    theta: f64,
+    delta: f64,
+  ) -> (f64, f64, f64, f64, f64) {
+    let (ln_low, ln_high) = if u <= v { (ln_u, ln_v) } else { (ln_v, ln_u) };
     let (lam_big, lam_small) = (
-      ln_one_minus_pow(theta, low.ln()),
-      ln_one_minus_pow(theta, high.ln()),
+      ln_one_minus_pow(theta, ln_low),
+      ln_one_minus_pow(theta, ln_high),
     );
-    let ln_r = -Self::ln_generator_ratio(u, v, theta).abs();
+    let ln_r = -Self::ln_generator_ratio(u, v, ln_u, ln_v, theta).abs();
     let ell = (delta * ln_r).exp().ln_1p();
     (
       lam_big,
       lam_small,
       ln_r,
       ell,
-      -theta * low.ln() + lam_big + ell / delta,
+      -theta * ln_low + lam_big + ell / delta,
     )
   }
 
   /// `C = (1 + w)^{−1/θ}`: `e^{−W ln(1 + θW)/(θW)}` by `Bb1::scaled`, past it `min(u, v) e^{−(λ_M + ℓ/δ + ln(1 + 1/w))/θ}`.
   pub(crate) fn cdf_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
-    if -theta * u.min(v).ln() <= 700.0 {
-      let (w_over, ..) = Self::scaled(u, v, theta, delta);
+    let (ln_u, ln_v) = (u.ln(), v.ln());
+    if -theta * ln_u.min(ln_v) <= 700.0 {
+      let (w_over, ..) = Self::scaled(u, v, ln_u, ln_v, theta, delta);
       return (-w_over * ln_1p_over(theta * w_over)).exp();
     }
-    let (lam_big, _, _, ell, ln_w) = Self::recentred(u, v, theta, delta);
+    let (lam_big, _, _, ell, ln_w) = Self::recentred(u, v, ln_u, ln_v, theta, delta);
     u.min(v) * (-(lam_big + ell / delta + (-ln_w).exp().ln_1p()) / theta).exp()
   }
 
@@ -255,25 +263,54 @@ impl Bb1 {
     -clayton - tail
   }
 
+  /// `ln c` at one point, for a caller holding no `Bb1Density`.
+  pub(crate) fn log_density_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
+    Bb1Density::new(theta, delta).ln_c(u, v)
+  }
+}
+
+/// BB1's log-density at one `(θ, δ)`, with what no point changes formed once.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Bb1Density {
+  theta: f64,
+  delta: f64,
+  ln_theta: f64,
+  ln_delta: f64,
+}
+
+impl Bb1Density {
+  pub(crate) fn new(theta: f64, delta: f64) -> Self {
+    Self {
+      theta,
+      delta,
+      ln_theta: theta.ln(),
+      ln_delta: delta.ln(),
+    }
+  }
+
   /// `ln c` on the open square: `Bb1::scaled`'s form, `ln θ` cancelled, while `θ max(x, y) ≤ 700`, else re-centred on
   /// `−θδ(M − m)`, where the `θ`-sized terms of `−(1/θ + 2) ln(1 + w) + (θ + 1)(x + y) − ln X_max` cancel exactly.
-  pub(crate) fn log_density_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
-    let (x, y) = (-u.ln(), -v.ln());
+  pub(crate) fn ln_c(&self, u: f64, v: f64) -> f64 {
+    let (theta, delta) = (self.theta, self.delta);
+    let (ln_u, ln_v) = (u.ln(), v.ln());
+    let (x, y) = (-ln_u, -ln_v);
     if theta * x.max(y) <= 700.0 {
-      let (w_over, p_big, ln_r, ell) = Self::scaled(u, v, theta, delta);
+      let (w_over, p_big, ln_r, ell) = Bb1::scaled(u, v, ln_u, ln_v, theta, delta);
       let w = theta * w_over;
-      return -w_over * ln_1p_over(w) - 2.0 * w.ln_1p() + (theta + 1.0) * (x + y) - p_big.ln()
+      let ln_1pw = w.ln_1p();
+      let ln_1p_over_w = if w == 0.0 { 1.0 } else { ln_1pw / w };
+      return -w_over * ln_1p_over_w - 2.0 * ln_1pw + (theta + 1.0) * (x + y) - p_big.ln()
         + (delta - 1.0) * ln_r
         + (1.0 / delta - 2.0) * ell
-        + ln_add_exp((delta - 1.0 + w_over).ln(), delta.ln() + w.ln());
+        + ln_add_exp((delta - 1.0 + w_over).ln(), self.ln_delta + w.ln());
     }
-    let (lam_big, lam_small, _, ell, ln_w) = Self::recentred(u, v, theta, delta);
+    let (lam_big, lam_small, _, ell, ln_w) = Bb1::recentred(u, v, ln_u, ln_v, theta, delta);
     let tail = (-ln_w).exp();
     -(theta * ln_ratio(u, v).abs()) * delta + x.min(y) - (2.0 + 1.0 / theta) * lam_big
       + (delta - 1.0) * (lam_small - lam_big)
       - (2.0 + 1.0 / (theta * delta)) * ell
       - (2.0 + 1.0 / theta) * tail.ln_1p()
-      + theta.ln()
+      + self.ln_theta
       + (delta + 1.0 / theta + (delta - 1.0) * tail).ln()
   }
 }
@@ -313,7 +350,10 @@ impl Bb1 {
       v,
       (0.0, 1.0),
       (start_theta, self.delta),
-      Self::log_density_scalar,
+      |theta, delta| {
+        let density = Bb1Density::new(theta, delta);
+        move |a, b| density.ln_c(a, b)
+      },
     );
     *self = Self::try_new(theta, delta)?;
     Ok(())
@@ -362,12 +402,14 @@ impl BivariateExt for Bb1 {
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    copula_pdf(x, |u, v| Self::log_density_scalar(u, v, theta, delta))
+    let density = Bb1Density::new(theta, delta);
+    copula_pdf(x, |u, v| density.ln_c(u, v))
   }
 
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     let (theta, delta) = self.params()?;
-    copula_density(x, |u, v| Self::log_density_scalar(u, v, theta, delta))
+    let density = Bb1Density::new(theta, delta);
+    copula_density(x, |u, v| density.ln_c(u, v))
   }
 
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {

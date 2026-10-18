@@ -1,3 +1,5 @@
+use stochastic_rs_distributions::RealExt;
+
 use super::Bb7;
 use super::ln_phi;
 use crate::bivariate::conditional::expm1_over;
@@ -18,8 +20,7 @@ struct Leg {
 }
 
 impl Leg {
-  fn new(theta: f64, u: f64) -> Self {
-    let ln_bar = (-u).ln_1p();
+  fn new(theta: f64, ln_bar: f64) -> Self {
     let ln_alpha = theta * ln_bar;
     let (w, ln_w) = Bb7::w_of(theta, ln_bar, ln_alpha);
     let kappa = if ln_alpha < -36.7 {
@@ -49,23 +50,88 @@ struct Tail {
   ell_over: f64,
 }
 
-impl Bb7 {
+/// BB7's log-density at one `(θ, δ)`, with what no point changes formed once.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Bb7Density {
+  theta: f64,
+  delta: f64,
+  ln_delta: f64,
+  /// `ln(1 + θδ)` and `ln(θ − 1)`, the logarithms of the last factor's two terms.
+  ln_1p_theta_delta: f64,
+  ln_theta_m1: f64,
+}
+
+impl Bb7Density {
+  pub(crate) fn new(theta: f64, delta: f64) -> Self {
+    let ln_delta = delta.ln();
+    Self {
+      theta,
+      delta,
+      ln_delta,
+      ln_1p_theta_delta: softplus(theta.ln() + ln_delta),
+      ln_theta_m1: (theta - 1.0).ln(),
+    }
+  }
+
+  /// `ln c` on the open square: the module's `c` term by term while its terms are finite and under `L`, `7Lε ≤ 1e-12 ·
+  /// max(1, |ln c|)`, each then within a few `ε` of `L`, and `θ ln(1 − u)`, `s − 1`, `−ln T` are normal; else `recentred`.
+  pub(crate) fn ln_c(&self, u: f64, v: f64) -> f64 {
+    let (theta, delta) = (self.theta, self.delta);
+    let (bar_u, bar_v) = ((-u).ln_1p(), (-v).ln_1p());
+    let (ln_a, ln_b) = (
+      ln_one_minus_exp(theta * bar_u),
+      ln_one_minus_exp(theta * bar_v),
+    );
+    let ln_s = ((-delta * ln_a).exp_m1() + (-delta * ln_b).exp_m1()).ln_1p();
+    let ln_t = -ln_s / delta;
+    let ln_1mt = ln_one_minus_exp(ln_t);
+    let terms = [
+      (1.0 / theta - 2.0) * ln_1mt,
+      -(1.0 / delta + 2.0) * ln_s,
+      -(delta + 1.0) * (ln_a + ln_b),
+      (theta - 1.0) * (bar_u + bar_v),
+      ln_add_exp(self.ln_1p_theta_delta + ln_1mt, self.ln_theta_m1),
+    ];
+    let sum = terms.iter().sum::<f64>();
+    let size = terms.iter().fold(0.0_f64, |m, t| m.max_or_nan(t.abs()));
+    let normal = -theta * bar_u.max(bar_v) >= f64::MIN_POSITIVE
+      && ln_s >= f64::MIN_POSITIVE
+      && -ln_t >= f64::MIN_POSITIVE;
+    if normal && size.is_finite() && 7.0 * f64::EPSILON * size <= 1e-12 * sum.abs().max(1.0) {
+      return sum;
+    }
+    self.recentred(u, v, bar_u, bar_v)
+  }
+
+  /// `ln c` re-centred twice: `(θ − 1)(b − t) − t + (1/θ − 2)R` for `(θ − 1)(t + b) + (1/θ − 2) ln(1 − T)` and
+  /// `−δΔ + w_min − (1/δ + 2)ℓ` for `−(1/δ + 2) ln s + (δ + 1)(w_u + w_v)`, the last factor `(θδ + 1)(1 − T) + θ − 1`.
+  fn recentred(&self, u: f64, v: f64, bar_u: f64, bar_v: f64) -> f64 {
+    let (theta, delta) = (self.theta, self.delta);
+    let t = self.tail(u, v, bar_u, bar_v);
+    (theta - 1.0) * t.gap - t.top + (1.0 / theta - 2.0) * t.r - delta * t.spread + t.w_min
+      - t.ell_over
+      - 2.0 * t.ell
+      + ln_add_exp(self.ln_1p_theta_delta + t.ln_1mt, self.ln_theta_m1)
+  }
+
   /// `T = s^{−1/δ}`, `s = 1 + F(α) + F(β)`, `F = expm1(δw)`: while `δw_max < 1`, `ln(L/δ)`, `L = ln s`, from `ln(S/δ) − θt`
   /// of the `κ`s, which holds as `α` underflows; past it `L/δ = w_max + ℓ/δ`, `ℓ/δ` from `expm1(t)/t`, free of `ln δ`.
-  fn tail(u: f64, v: f64, theta: f64, delta: f64) -> Tail {
+  fn tail(&self, u: f64, v: f64, bar_u: f64, bar_v: f64) -> Tail {
+    let (theta, delta) = (self.theta, self.delta);
     // `w` grows as `u` falls, so the order of `u, v` is that of `w` where both powers underflow and `Δ` rounds to 0.
     let (hi, lo) = if u <= v {
-      (Leg::new(theta, u), Leg::new(theta, v))
+      (Leg::new(theta, bar_u), Leg::new(theta, bar_v))
     } else {
-      (Leg::new(theta, v), Leg::new(theta, u))
+      (Leg::new(theta, bar_v), Leg::new(theta, bar_u))
     };
     let gap = -ln_ratio_complement(u, v).abs();
-    let spread = ln_one_minus_pow_ratio(theta, (-v).ln_1p(), (-u).ln_1p()).abs();
+    let spread = ln_one_minus_pow_ratio(theta, bar_v, bar_u).abs();
     let z_lo = delta * lo.w;
     let (ell, ell_over) = if z_lo < 1.0 {
       let t_over = (-delta * spread).exp() * lo.w * expm1_over(-z_lo);
       let t = delta * t_over;
-      (t.ln_1p(), t_over * ln_1p_over(t))
+      let ell = t.ln_1p();
+      (ell, t_over * if t == 0.0 { 1.0 } else { ell / t })
     } else {
       let ell = ((-delta * spread).exp() * -(-z_lo).exp_m1()).ln_1p();
       (ell, ell / delta)
@@ -77,7 +143,7 @@ impl Bb7 {
         hi.kappa + expm1_over(z_hi).ln(),
         theta * gap + lo.kappa + expm1_over(z_lo).ln(),
       );
-      let rel = rel + ln_1p_over((hi.ln_alpha + rel + delta.ln()).exp()).ln();
+      let rel = rel + ln_1p_over((hi.ln_alpha + rel + self.ln_delta).exp()).ln();
       (hi.ln_alpha + rel, rel)
     } else {
       let ln_ld = (hi.w + ell_over).ln();
@@ -104,21 +170,9 @@ impl Bb7 {
     }
   }
 
-  /// `C = 1 − (1 − T)^{1/θ} = −expm1(ln(1 − T)/θ)` on the open square, `ln(1 − T)` from `Bb7::tail`.
-  pub(crate) fn cdf_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
-    -(Self::tail(u, v, theta, delta).ln_1mt / theta).exp_m1()
-  }
-
-  /// `ln c` on the open square, re-centred twice: `(θ − 1)(b − t) − t + (1/θ − 2)R` for `(θ − 1)(t + b) + (1/θ − 2) ln(1 − T)`
-  /// and `−δΔ + w_min − (1/δ + 2)ℓ` for `−(1/δ + 2) ln s + (δ + 1)(w_u + w_v)`, the last factor `(θδ + 1)(1 − T) + θ − 1`.
-  pub(crate) fn log_density_scalar(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
-    let t = Self::tail(u, v, theta, delta);
-    (theta - 1.0) * t.gap - t.top + (1.0 / theta - 2.0) * t.r - delta * t.spread + t.w_min
-      - t.ell_over
-      - 2.0 * t.ell
-      + ln_add_exp(
-        softplus(theta.ln() + delta.ln()) + t.ln_1mt,
-        (theta - 1.0).ln(),
-      )
+  /// `C = 1 − (1 − T)^{1/θ} = −expm1(ln(1 − T)/θ)` on the open square, `ln(1 − T)` from `tail`.
+  pub(crate) fn cdf(&self, u: f64, v: f64) -> f64 {
+    let t = self.tail(u, v, (-u).ln_1p(), (-v).ln_1p());
+    -(t.ln_1mt / self.theta).exp_m1()
   }
 }

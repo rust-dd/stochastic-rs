@@ -40,6 +40,7 @@ use crate::error::CopulaError;
 use crate::student_t;
 use crate::student_t::Law;
 use crate::student_t::NORMAL_ABOVE;
+use crate::student_t::TDensity;
 use crate::traits::BivariateExt;
 use crate::traits::TailDependence;
 use crate::traits::bivariate::admitted;
@@ -179,16 +180,20 @@ impl TCopula {
     }
   }
 
-  /// `ln c` on the open square: the Gaussian copula's past `NORMAL_ABOVE`, else `student_t::ln_density` at the law's
-  /// scores, whose gap stays exact past `f64::MAX`.
+  /// `ln c` on the open square: the Gaussian copula's past `NORMAL_ABOVE`, else `TDensity::moderate` at the law's scores,
+  /// else `student_t::ln_density` at their features, whose gap stays exact past `f64::MAX`.
   fn ln_density(&self) -> impl Fn(f64, f64) -> f64 {
     let (rho, nu) = (self.theta.unwrap(), self.nu);
-    let law = Law::new(nu);
+    let (law, density) = (Law::new(nu), TDensity::new(rho, nu));
     move |u, v| {
       if nu >= NORMAL_ABOVE {
         return GaussianCopula::ln_density(rho, u, v);
       }
-      let (fx, fy) = (law.feature(law.quantile(u)), law.feature(law.quantile(v)));
+      let (sx, sy) = (law.quantile(u), law.quantile(v));
+      if let Some(ln_c) = density.moderate(sx.value, sy.value) {
+        return ln_c;
+      }
+      let (fx, fy) = (law.feature(sx), law.feature(sy));
       student_t::ln_density(&fx, &fy, law.abs_t_gap(&fx, &fy), rho, nu)
     }
   }

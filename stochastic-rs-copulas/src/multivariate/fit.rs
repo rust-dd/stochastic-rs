@@ -30,6 +30,7 @@ use crate::error::CopulaError;
 use crate::optim::SQRT_MACHEPS;
 use crate::optim::localmin;
 use crate::student_t;
+use crate::student_t::TDensity;
 use crate::traits::BivariateExt;
 
 /// Information criterion used to pick the family of each edge.
@@ -206,12 +207,10 @@ fn student_t(u: &[f64], v: &[f64]) -> Option<PairCopula> {
       .map(|&b| student_t::quantile(pair_copula::clamp(b), nu))
       .collect();
     let nll = |t: f64| match copula.theta_from_tau(t) {
-      Ok(rho) => objective(
-        x.iter()
-          .zip(&y)
-          .map(|(&a, &b)| student_t::ln_copula_density(a, b, rho, nu))
-          .sum(),
-      ),
+      Ok(rho) => {
+        let density = TDensity::new(rho, nu);
+        objective(x.iter().zip(&y).map(|(&a, &b)| density.ln_c(a, b)).sum())
+      }
       Err(_) => f64::INFINITY,
     };
     localmin(lo, hi, SQRT_MACHEPS, SQRT_MACHEPS, nll)
