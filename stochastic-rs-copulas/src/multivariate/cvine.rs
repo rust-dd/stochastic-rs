@@ -23,11 +23,8 @@ use crate::error::CopulaError;
 use crate::multivariate::on_open_cube;
 use crate::traits::MultivariateExt;
 
-/// Canonical vine (C-vine) pair-copula construction over `dim` marginals.
-///
-/// `pair_copulas[m][i]` is the bivariate pair-copula on edge
-/// $(m+1,\,m+i+2 \mid 1,\dots,m)$ of tree $T_{m+1}$. Outer length = $d-1$;
-/// inner length of tree $m$ is $d-1-m$.
+/// Canonical vine (C-vine) over `dim` marginals: `pair_copulas[m][i]` is the pair-copula on edge
+/// $(m+1,\,m+i+2 \mid 1,\dots,m)$ of tree $T_{m+1}$, which has $d-1-m$ edges.
 #[derive(Debug, Clone)]
 pub struct CVine {
   dim: usize,
@@ -269,9 +266,8 @@ mod tests {
     );
   }
 
-  /// 3-dim C-vine with Gaussian pair-copulas T_1 = [ρ_12, ρ_13] and
-  /// independence T_2 = [(2,3|1)]: variables 2 and 3 are conditionally
-  /// independent given 1, and both share strong dependence with the root.
+  /// 3-dim C-vine with Gaussian pairs ρ_12, ρ_13 and an independent (2,3|1): variables 2 and 3 are
+  /// conditionally independent given the root 1, yet both depend strongly on it.
   #[test]
   fn cvine_three_dim_gaussian_star() {
     let t1 = vec![
@@ -295,9 +291,7 @@ mod tests {
       "τ_(0,2) = {} vs expected {expected_tau}",
       tau[[0, 2]]
     );
-    // (2, 3) has the implied "shared root" dependence ≈ ρ² in Gaussian.
-    // ρ = 0.36 → τ ≈ 0.234. The conditional copula is independence so
-    // the unconditional correlation comes from the shared common factor.
+    // (2, 3) are tied only through the root: ρ_23 = 0.6² = 0.36, so τ ≈ 0.234.
     assert!(
       tau[[1, 2]] > 0.15 && tau[[1, 2]] < 0.32,
       "τ_(1,2) = {} should sit between [0.15, 0.32] (Gaussian common-factor)",

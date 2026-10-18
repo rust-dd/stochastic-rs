@@ -68,11 +68,8 @@ fn two_dimensional_fit_over_all_families_keeps_the_clayton_dependence() {
   assert!((tau - 0.5).abs() < 0.05, "fitted tau {tau}");
 }
 
-/// A four-dimensional D-vine with a Gaussian, a Clayton and a Frank edge in
-/// the first tree and independence above: the fitted model reaches at
-/// least the true model's likelihood up to sampling noise, the strong
-/// first-tree edges are recovered as neighbours in the fitted order, and
-/// the second and third trees select independence.
+/// A 4-D D-vine of Gaussian, Clayton and Frank first-tree edges over independence: the fit matches
+/// the true likelihood up to noise, keeps strong edges as neighbours, selects independence above.
 #[test]
 fn dvine_fit_recovers_the_first_tree_families() {
   let trees = vec![
@@ -141,9 +138,8 @@ fn dvine_fit_recovers_the_first_tree_families() {
   );
 }
 
-/// Gaussian data: the C-vine picks the Gaussian family on every edge of
-/// the first tree, roots the strongest variable, and beats the
-/// independence vine by AIC.
+/// Gaussian data: the C-vine picks Gaussian on every first-tree edge, roots the strongest variable
+/// and beats the independence vine by AIC.
 #[test]
 fn cvine_fit_on_gaussian_data_selects_gaussian_pairs() {
   let corr = ndarray::array![[1.0, 0.8, 0.6], [0.8, 1.0, 0.5], [0.6, 0.5, 1.0]];

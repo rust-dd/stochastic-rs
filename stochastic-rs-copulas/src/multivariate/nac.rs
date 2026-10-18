@@ -7,29 +7,8 @@
 //! \bigg),
 //! $$
 //!
-//! where $\varphi_0$ is the outer (root) generator with parameter $\theta_0$,
-//! $L_0$ is the set of root-direct leaves, and each $C_i$ is itself a
-//! single-level Archimedean copula on the index set $S_i$ with parameter
-//! $\theta_i$. The **sufficient nesting condition** (Joe 1997, McNeil 2008)
-//! requires $\theta_i \ge \theta_0$ per family:
-//!
-//! - **Clayton:** $0 < 1/\theta < \infty$ globally (the frailty $\Gamma(1/\theta, 1)$ exists) and $\theta_{\text{child}} \ge \theta_{\text{parent}}$.
-//! - **Gumbel:** $\theta \ge 1$ globally and $\theta_{\text{child}} \ge \theta_{\text{parent}}$.
-//!
-//! ## Sampling
-//!
-//! Hofert & Mächler (2011), Algorithm 3.1 in logarithms, frailties by their Table 3, a leaf `ψ(E/V)`: a Clayton child
-//! costs O(V₀) ≈ O(1/θ_root) proposals. Draws lie in `[0, 1]`; a coordinate can round to 0 or 1, where `pdf` is NaN.
-//!
-//! ## Density
-//!
-//! Closed form on every tree `new` accepts: Hofert & Pham's (2013) recursion at any depth, in logs of positive terms
-//! re-centred per node on exact gaps, so it holds at every admitted `θ`; NaN on a 0 or 1 coordinate.
-//!
-//! ## Fit
-//!
-//! `fit` joins bottom-up, as Okhrin, Okhrin & Schmid (2013) do, the two clusters of largest mean cross Kendall τ̂, and sets
-//! θ = τ⁻¹ of that mean, trimmed to the children's θ (Górecki, Hofert & Holeňa 2016, Algorithm 3).
+//! $\varphi_0$ is the root generator, $L_0$ its direct leaves, $C_i$ a nested copula on $S_i$ with
+//! $\theta_i \ge \theta_0$ (sufficient nesting); Clayton needs $\theta > 0$, Gumbel $\theta \ge 1$.
 //!
 //! References:
 //! - Joe, H. (1997), *Multivariate Models and Dependence Concepts*,
@@ -144,14 +123,8 @@ impl Generator {
   }
 }
 
-/// Recursive NAC tree node. Each non-leaf node owns a generator parameter
-/// and a (possibly empty) list of direct leaf indices plus a list of nested
-/// sub-trees.
-///
-/// **Invariant (sufficient nesting condition):** every child node's
-/// `theta` must be **at least** as large as its parent's. Constructors
-/// validate this; mutating individual fields directly bypasses the check —
-/// prefer the builder API.
+/// A node of the NAC tree: a generator parameter, its direct leaf indices and its nested sub-trees;
+/// `NestedArchimedean::new` checks that every child's `theta` is at least its parent's.
 #[derive(Debug, Clone)]
 pub struct NacNode {
   /// Generator parameter $\theta$ of this node: $0 < 1/\theta < \infty$ for Clayton, $\theta \ge 1$ for Gumbel.
@@ -291,9 +264,7 @@ impl NestedArchimedean {
     self.dim
   }
 
-  /// Left-to-right traversal of the leaf indices, as registered at
-  /// construction time. Useful for downstream consumers that need to map
-  /// tree-positional output to original marginal indices.
+  /// The leaf indices left to right, to map tree-positional output back to marginal indices.
   pub fn index_order(&self) -> &[usize] {
     &self.index_order
   }
@@ -313,6 +284,8 @@ impl MultivariateExt for NestedArchimedean {
     MultivariateFamily::NestedArchimedean
   }
 
+  /// Hofert & Mächler (2011), Algorithm 3.1: a Clayton child costs O(V₀) ≈ O(1/θ_root) proposals;
+  /// a draw can round to 0 or 1, where `pdf` is NaN.
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
     Ok(self.sample_with(self.fitted_root()?, n, &mut seed.rng()))
   }
@@ -343,6 +316,8 @@ impl MultivariateExt for NestedArchimedean {
     Ok(self.log_pdf(x)?.mapv_into(f64::exp))
   }
 
+  /// Hofert & Pham (2013)'s recursion in logs, re-centred per node on exact gaps, valid at every
+  /// admitted `θ`; NaN on a 0 or 1 coordinate.
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(x)?;
     Ok(density::Density::new(self.generator, self.fitted_root()?).log_pdf(x))

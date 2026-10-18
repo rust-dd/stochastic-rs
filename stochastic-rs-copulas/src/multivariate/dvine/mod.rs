@@ -25,9 +25,8 @@ pub mod pair_copula;
 
 pub use pair_copula::PairCopula;
 
-/// D-vine pair-copula construction over `dim` marginals. Each edge in the
-/// $d-1$ trees stores a single [`PairCopula`] family + parameter, indexed
-/// as `pair_copulas[tree_m][i]` for `m = 0..d-1`, `i = 0..d-1-m`.
+/// D-vine over `dim` marginals: `pair_copulas[m][i]` is the [`PairCopula`] on edge `i` of tree `m`,
+/// for `m = 0..d-1` and `i = 0..d-1-m`.
 #[derive(Debug, Clone)]
 pub struct DVine {
   dim: usize,
@@ -82,9 +81,7 @@ impl DVine {
     self.order.as_slice()
   }
 
-  /// Build an **all-independence** D-vine of the given dimension. Useful
-  /// as a baseline / pre-fit starting point and for unit tests where the
-  /// copula should reduce to the product.
+  /// An all-independence D-vine of `dim` marginals, the product copula.
   pub fn independence(dim: usize) -> Result<Self, CopulaError> {
     let pair_copulas: Vec<Vec<PairCopula>> = (0..dim - 1)
       .map(|m| vec![PairCopula::Independence; dim - 1 - m])
@@ -300,9 +297,7 @@ mod tests {
     assert!(lp[0].abs() < 1e-12);
   }
 
-  /// 2-dim D-vine reduces to the chosen pair copula on the single edge.
-  /// Sampling a 2-dim Clayton(θ=2) D-vine should produce strong
-  /// lower-tail dependence (Kendall τ ≈ 0.5).
+  /// A 2-dim D-vine is its single pair copula: Clayton(θ=2) samples have Kendall τ ≈ 0.5.
   #[test]
   fn dvine_two_dim_clayton_matches_bivariate() {
     let tree = vec![vec![PairCopula::Clayton { theta: 2.0 }]];
@@ -318,10 +313,8 @@ mod tests {
     );
   }
 
-  /// 3-dim D-vine with Gaussian pair-copulas in T_1 (ρ=0.6) and
-  /// independence in T_2 ⟹ partial-correlation structure with σ(1,3|2) = 0.
-  /// Empirical Spearman / Pearson correlations on samples must satisfy
-  /// |corr(1, 2)| ≈ 0.6 and |corr(2, 3)| ≈ 0.6.
+  /// Gaussian pairs (ρ=0.6) over independence in T_2 leave (1,3|2) uncorrelated: Kendall τ of (1,2)
+  /// and (2,3) is (2/π) arcsin 0.6.
   #[test]
   fn dvine_three_dim_gaussian_chain() {
     let t1 = vec![

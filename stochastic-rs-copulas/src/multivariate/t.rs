@@ -4,35 +4,16 @@
 //! C_{\Sigma,\nu}(u) = t_{\Sigma,\nu}\!\big(t_\nu^{-1}(u_1), \dots, t_\nu^{-1}(u_d)\big),
 //! $$
 //!
-//! where $t_{\Sigma,\nu}$ is the $d$-variate Student-t CDF with correlation
-//! $\Sigma$ and degrees of freedom $\nu > 0$, and $t_\nu^{-1}$ the univariate
-//! Student-t quantile. The corresponding density of the copula is
+//! where $t_{\Sigma,\nu}$ is the $d$-variate t cdf of correlation $\Sigma$ and $t_\nu^{-1}$ the
+//! univariate quantile, $z_j = t_\nu^{-1}(u_j)$; the density is
 //!
 //! $$
 //! c_{\Sigma,\nu}(u) = \frac{f_{\Sigma,\nu}(z)}{\prod_{j=1}^{d} f_\nu(z_j)},
-//! \qquad z_j = t_\nu^{-1}(u_j),
-//! $$
-//!
-//! with
-//!
-//! $$
+//! \qquad
 //! f_{\Sigma,\nu}(z) = \frac{\Gamma\!\big(\tfrac{\nu+d}{2}\big)}
 //! {\Gamma\!\big(\tfrac{\nu}{2}\big)\,(\nu\pi)^{d/2}\,|\Sigma|^{1/2}}
 //! \left(1 + \tfrac{1}{\nu}\,z^\top \Sigma^{-1} z\right)^{-\tfrac{\nu+d}{2}}.
 //! $$
-//!
-//! **Sampling (Demarta-McNeil 2005, §2.3).** Let $Z \sim N(0,\Sigma)$ and
-//! $W \sim \chi^2_\nu / \nu$ independent. Then $X = Z / \sqrt{W}$ is $d$-variate
-//! Student-$t$ with $(\nu, \Sigma)$, and $U_j = t_\nu(X_j)$ are the copula
-//! marginals. The $\nu \to \infty$ limit collapses to the Gaussian copula.
-//!
-//! **Tail dependence.** Symmetric upper/lower:
-//! $\lambda = 2\,t_{\nu+1}\!\big(-\sqrt{(\nu+1)(1-\rho)/(1+\rho)}\big)$ for
-//! every off-diagonal pair $\rho_{ij}$ — strictly positive for finite $\nu$,
-//! in contrast to the Gaussian copula.
-//!
-//! **Calibration.** [`fit`](TMultivariate::fit) takes $\rho_{ij} = \sin(\pi\tau_{ij}/2)$ from Kendall's τ-b, shrunk until every
-//! eigenvalue is at least $10^{-3}$, then the $\nu$ maximising the likelihood by Brent's `localmin` on $[2.1, 50]$ to a relative $10^{-6}$.
 //!
 //! References:
 //! - Demarta, S., McNeil, A.J. (2005), "The t copula and related copulas",
@@ -170,9 +151,7 @@ impl TMultivariate {
     Ok(corr)
   }
 
-  /// Log-density of the multivariate Student-$t$ at the un-transformed
-  /// argument `z` (i.e. **before** dividing by the marginal $f_\nu(z_j)$ to
-  /// obtain the copula density). Used internally by [`log_pdf`].
+  /// Multivariate Student-$t$ log-density at `z`, before dividing out the marginals $f_\nu(z_j)$.
   fn mv_log_pdf(corr: &CorrelationMatrix, nu: f64, z: ArrayView2<f64>) -> Array1<f64> {
     let inv = corr.inverse();
     let log_det = corr.log_det();
@@ -217,7 +196,8 @@ impl MultivariateExt for TMultivariate {
     MultivariateFamily::TMultivariate
   }
 
-  /// The normal and the $\chi^2$ stream both come from `seed`, which advances between them.
+  /// Demarta & McNeil (2005, §2.3): $X = Z/\sqrt{W}$, $U_j = t_\nu(X_j)$; the normal and $\chi^2$
+  /// streams both come from `seed`, which advances between them.
   fn sample<S: SeedExt>(&self, n: usize, seed: &S) -> Result<Array2<f64>, CopulaError> {
     let corr = self.fitted()?;
     let d = corr.dim();
@@ -241,7 +221,7 @@ impl MultivariateExt for TMultivariate {
     Ok(u)
   }
 
-  /// Σ from Kendall's τ and ν by the profile likelihood.
+  /// Σ from Kendall's τ, shrunk until every eigenvalue is at least `1e-3`; ν by profile likelihood.
   fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     if x.ncols() < 2 {
       return Err(CopulaError::InvalidStructure(format!(

@@ -218,9 +218,7 @@ fn nac_gumbel_two_level_inner_pair_more_dependent() {
   let nac = NestedArchimedean::new(BivariateFamily::Gumbel, root, 3).unwrap();
   let u = nac.sample(8_000, &Deterministic::new(7)).unwrap();
   let tau = kendall_tau(u.view()).unwrap();
-  // Gumbel: τ = 1 − 1/θ
-  //   Inner θ=4 → τ ≈ 0.75
-  //   Outer θ=2 → τ ≈ 0.50
+  // Gumbel τ = 1 − 1/θ: inner θ = 4 gives 0.75, outer θ = 2 gives 0.50.
   assert!(
     tau[[1, 2]] > tau[[0, 1]],
     "inner pair τ_(1,2)={} should exceed outer τ_(0,1)={}",

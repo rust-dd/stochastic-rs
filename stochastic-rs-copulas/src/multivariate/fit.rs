@@ -99,8 +99,8 @@ fn log_likelihood(pair: &PairCopula, u: &[f64], v: &[f64]) -> f64 {
   u.iter().zip(v).map(|(&a, &b)| pair.log_density(a, b)).sum()
 }
 
-/// Estimates `family` on the pair `(u, v)` by maximum likelihood; `None` when its Kendall start cannot represent the
-/// dependence (e.g. Clayton at negative τ) or has no finite likelihood, and for a Student t whose ν̂ exceeds 30.
+/// Maximum-likelihood `family` on `(u, v)`; `None` for a non-candidate family, a Kendall start that
+/// cannot represent the dependence (Clayton at negative τ), no finite likelihood, or ν̂ > 30 (t).
 fn estimate(family: BivariateFamily, u: &[f64], v: &[f64]) -> Option<PairCopula> {
   let tau = tau_of(u, v).clamp(-0.99, 0.99);
   match family {
@@ -574,9 +574,8 @@ pub(crate) fn fit_cvine(
     root_values = new_root_values;
     values = next_values;
   }
-  // `CVine` stores edge i of tree m as (m, m + i + 1) in the vine's variable
-  // order, i.e. `order` above, so each tree's edges are laid out by the
-  // position of their variable in that order.
+  // `CVine` stores edge i of tree m as (m, m + i + 1) in the vine's variable order (`order` above),
+  // so each tree's edges are laid out by the position of their variable in that order.
   let mut position = vec![0usize; d];
   for (k, &j) in order.iter().enumerate() {
     position[j] = k;

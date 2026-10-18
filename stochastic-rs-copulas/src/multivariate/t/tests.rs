@@ -31,10 +31,8 @@ fn t_copula_samples_have_uniform_marginals() {
   }
 }
 
-/// In the $\nu \to \infty$ limit the t-copula degenerates to the
-/// Gaussian copula. Pick $\nu = 200$ as a practical proxy and verify
-/// the multivariate density agrees with the Gaussian copula density on
-/// random uniform queries.
+/// At $\nu = 200$ (proxy for $\nu \to \infty$) the density matches the Gaussian copula's on random
+/// uniform queries.
 #[test]
 fn t_copula_large_nu_approaches_gaussian() {
   let corr = array![[1.0, 0.5], [0.5, 1.0]];
@@ -53,9 +51,8 @@ fn t_copula_large_nu_approaches_gaussian() {
   }
 }
 
-/// At u = (0.5, …, 0.5) the t-copula density reduces to the multivariate
-/// kernel at z=0 divided by the marginal kernels at 0. Both reduce to a
-/// closed form involving Γ-ratios and |Σ|^{-1/2}.
+/// At u = (0.5, …, 0.5), z = 0: the density is the multivariate kernel over the marginal kernels,
+/// a closed form in Γ-ratios and |Σ|^{-1/2}.
 #[test]
 fn t_copula_pdf_at_center() {
   let corr = array![[1.0, 0.3], [0.3, 1.0]];
@@ -63,10 +60,8 @@ fn t_copula_pdf_at_center() {
   let cop = TMultivariate::new(corr.clone(), nu);
   let q = array![[0.5, 0.5]];
   let pdf = cop.pdf(q.view()).unwrap()[0];
-  // Analytic value: at z=0 the multivariate kernel = 1, marginal kernel = 1.
-  //   c(0.5, 0.5) = f_{Σ,ν}(0,0) / [f_ν(0)]^2
-  //   f_{Σ,ν}(0,0) = Γ((ν+2)/2) / [Γ(ν/2) · ν · π · √|Σ|]
-  //   f_ν(0)       = Γ((ν+1)/2) / [Γ(ν/2) · √(ν · π)]
+  // c(0.5, 0.5) = f_{Σ,ν}(0,0) / f_ν(0)², with f_{Σ,ν}(0,0) = Γ((ν+2)/2) / [Γ(ν/2) ν π √|Σ|] and
+  // f_ν(0) = Γ((ν+1)/2) / [Γ(ν/2) √(ν π)]; both kernels are 1 at z = 0.
   let det: f64 = 1.0 - 0.3 * 0.3;
   let f_mv = (ln_gamma(0.5 * (nu + 2.0))
     - ln_gamma(0.5 * nu)
@@ -83,11 +78,8 @@ fn t_copula_pdf_at_center() {
   );
 }
 
-/// Round-trip: sample → recover Σ via Kendall-τ → check entries match
-/// the true correlations within MC tolerance. Verifies the fit path.
-/// `n = 5000` keeps the test under 1 minute (the ν-profile Brent search
-/// scales as n × n_iter × t_quantile_cost); recovery quality is still
-/// `|Σ̂ − Σ| < 0.05` on Kendall-τ inversion.
+/// Sample, fit, recover Σ to `|Σ̂ − Σ| < 0.05`; `n = 5000` keeps it short: the ν search costs
+/// n × iterations × t-quantile evaluations.
 #[test]
 fn t_copula_fit_recovers_correlation_from_sample() {
   let true_corr = array![[1.0, 0.6, 0.2], [0.6, 1.0, 0.3], [0.2, 0.3, 1.0]];
@@ -116,8 +108,8 @@ fn t_copula_fit_recovers_correlation_from_sample() {
   );
 }
 
-/// 6e-6 sits above the objective's rounding floor in ν (≈ 3e-6) and below the old search's misses (≥ 1.2e-5).
-/// SciPy values: `w3c16b_nu_reference.py` driving `w3c16b_nu_evaluator.rs`, output `w3c16b_nu_reference.out`.
+/// ν̂ matches SciPy's bounded `minimize_scalar` (`xatol = 1e-10`) on the fit's objective to 6e-6,
+/// above that objective's rounding floor in ν (≈ 3e-6).
 #[test]
 fn t_copula_fit_nu_matches_an_independent_bounded_minimiser() {
   let corr3 = array![[1.0, 0.5, 0.3], [0.5, 1.0, 0.4], [0.3, 0.4, 1.0]];

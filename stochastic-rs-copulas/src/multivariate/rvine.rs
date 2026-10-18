@@ -1,27 +1,7 @@
-//! # Regular vine (R-vine) — D-vine / C-vine wrapper
+//! # Regular vine (R-vine)
 //!
-//! The regular vine is a graph-theoretic generalisation of D-vines and
-//! C-vines (Bedford-Cooke 2002, Joe 2011, Dißmann 2013): an R-vine is a
-//! nested set of trees $T_1, \dots, T_{d-1}$ on $d$ variables satisfying
-//! the **proximity condition** (two edges of $T_{k+1}$ must share a node
-//! of $T_k$).
-//!
-//! Generic free-form R-vine evaluation requires either the Joe-Kurowicka
-//! 2011 lower-triangular **structure matrix** representation or an
-//! explicit edge-list with the proximity-condition recursion that walks
-//! the conditional CDFs up the tree. That, together with the **Dißmann
-//! 2013** sequential structure-selection algorithm, is not yet
-//! implemented.
-//!
-//! [`RVine`] is an enum that wraps either a [`super::dvine::DVine`] or a
-//! [`super::cvine::CVine`] — the two structure-special cases of the
-//! regular vine. All `MultivariateExt` methods delegate to the wrapped
-//! type, giving a unified API; constructor methods exist for the two
-//! supported special cases.
-//!
-//! For general R-vines, pre-route through `DVine` (path-shaped tree) or
-//! `CVine` (star tree per tree-level) — both are special cases of the
-//! R-vine.
+//! A regular vine is trees $T_1,\dots,T_{d-1}$ on $d$ variables, edges of $T_{k+1}$ sharing a node
+//! of $T_k$; [`RVine`] covers the path ([`DVine`]) and star ([`CVine`]) cases only.
 //!
 //! References:
 //! - Bedford, T., Cooke, R.M. (2002), "Vines — a new graphical model for
@@ -45,10 +25,7 @@ use super::fit::VineStructure;
 use crate::error::CopulaError;
 use crate::traits::MultivariateExt;
 
-/// Regular vine pair-copula construction wrapper over the two
-/// structure-special cases (D-vine and C-vine). The matrix-encoded
-/// generic R-vine variant (Dißmann 2013 sequential selection + density
-/// propagation per Joe-Kurowicka) is not yet implemented.
+/// A D- or C-vine behind one type; every `MultivariateExt` method delegates to the wrapped vine.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum RVine {
@@ -70,9 +47,8 @@ impl RVine {
     RVine::C(cvine)
   }
 
-  /// All-Independence R-vine of the given dimension (D-vine backed; the
-  /// independence copula is structure-invariant so the choice between
-  /// D / C wrapping is purely conventional).
+  /// All-independence vine of `dim` marginals, D-backed: independence is structure-invariant, so
+  /// D or C is a convention.
   pub fn independence(dim: usize) -> Result<Self, CopulaError> {
     DVine::independence(dim).map(RVine::D)
   }

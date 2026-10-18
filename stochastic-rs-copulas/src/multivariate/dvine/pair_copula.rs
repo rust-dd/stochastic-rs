@@ -1,31 +1,14 @@
-//! Pair-copula family enum with h-function, inverse h-function and log
-//! density implementations used by the D-vine / C-vine / R-vine pair-copula
-//! constructions (Aas, Czado, Frigessi, Bakken 2009).
+//! # Pair-copula families
 //!
-//! The h-function of a bivariate copula $C(u, v)$ is the conditional CDF
+//! $$
+//! h(u \mid v) = \frac{\partial C(u, v)}{\partial v}, \qquad
+//! h^{-1}(p, v) \text{ solves } h(u \mid v) = p
+//! $$
 //!
-//! $$ h(u \mid v) := \frac{\partial C(u, v)}{\partial v}, $$
+//! the conditional cdf the vines propagate pseudo-observations through (`h`) and sample through
+//! (`h_inverse`); all families but BB1 and BB7, whose `h_inverse` is a Brent root, are closed-form.
 //!
-//! and `h_inverse(p, v)` solves $h(u \mid v) = p$ for $u$. Both are the
-//! workhorses of the Joe (1997) / Aas-Czado (2009) recursive sampling and
-//! density evaluation algorithms — sampling traverses h-inverses,
-//! conditional pseudo-observations traverse h-functions.
-//!
-//! Closed-form $h$ and $h^{-1}$ are provided for the five families with
-//! tractable analytic inverses:
-//!
-//! - **Independence:** trivial identities.
-//! - **Gaussian** $\rho \in (-1, 1)$.
-//! - **Clayton** $\theta > 0$.
-//! - **Frank** any real $\theta$, the identity at $\theta = 0$.
-//! - **Student-$t$** $\rho \in (-1, 1)$, finite $\nu$ with $\nu / 2 > 0$.
-//!
-//! The Gumbel / Joe pair families have no closed-form $h^{-1}$ (only an
-//! iterative bisection) and are not yet included.
-//!
-//! Reference: Aas, Czado, Frigessi, Bakken (2009), "Pair-copula
-//! constructions of multiple dependence", *Insurance: Mathematics and
-//! Economics* 44(2), 182-198, Table 1 and Appendix.
+//! Reference: Aas, K., Czado, C., Frigessi, A. & Bakken, H. (2009), "Pair-copula constructions of multiple dependence", Insurance: Mathematics and Economics 44(2), 182–198, doi:10.1016/j.insmatheco.2007.02.001 (preprint: SFB 386 Discussion Paper 487), eq. (7) for h and App. B for the Gaussian, Student-t and Clayton h-functions and inverses.
 
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
@@ -123,9 +106,8 @@ impl PairCopula {
     clamp(u)
   }
 
-  /// Log copula density $\log c(u, v) = \log \frac{\partial^2 C(u, v)}{\partial u\, \partial v}$.
-  /// Used for sequential MLE fitting and direct density evaluation on the
-  /// PCC tree.
+  /// Log copula density $\log c(u, v) = \log \frac{\partial^2 C(u,v)}{\partial u\,\partial v}$, an
+  /// edge's term of the vine likelihood.
   pub fn log_density(&self, u: f64, v: f64) -> f64 {
     let u = clamp(u);
     let v = clamp(v);
@@ -261,9 +243,8 @@ mod tests {
     }
   }
 
-  /// Gaussian h(u, 0.5) should equal Φ(Φ⁻¹(u) - 0) when ρ=0 (independence
-  /// boundary), i.e. the identity (within ndtri/norm_cdf round-trip error,
-  /// which is ≈ 1e-9 in the bulk and degrades near the tails).
+  /// At ρ = 0 the Gaussian `h(u, 0.5)` is the identity up to the `ndtri`/`norm_cdf` round trip,
+  /// ≈ 1e-9 in the bulk and worse in the tails.
   #[test]
   fn gaussian_h_at_zero_rho_is_identity() {
     let p = PairCopula::Gaussian { rho: 0.0 };
