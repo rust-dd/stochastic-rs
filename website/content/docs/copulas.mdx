@@ -65,7 +65,7 @@ Zero tails in both directions do not imply radial symmetry: `Amh` (below $\theta
 
 ### Sampling cost
 
-`sample` inverts `partial_derivative` once per pair: in closed form for `Amh`, `Clayton`, `Fgm`, `Frank`, `Gaussian`, `Independence`, `MarshallOlkin`, `Plackett` and `TCopula`, and by Brent's root for `Bb1`, `Bb7`, `Galambos`, `HuslerReiss`, `Gumbel` and `Joe`, the last four taking the identity at their independence value. A fit pays for its τ inversion the same way: `theta_from_tau` is closed-form for `Clayton`, `Fgm`, `Gaussian`, `TCopula`, `MarshallOlkin` and `Gumbel`, and a root-find for `Amh`, `Frank`, `Galambos`, `HuslerReiss`, `Joe` and `Plackett`, the last three integrating their τ at every step.
+`sample` inverts `partial_derivative` once per pair: in closed form for `Amh`, `Clayton`, `Fgm`, `Frank`, `Gaussian`, `Independence`, `MarshallOlkin`, `Plackett` and `TCopula`, and by Brent's root for `Bb1`, `Bb7`, `Galambos`, `HuslerReiss`, `Gumbel` and `Joe`, the last four taking the identity at their independence value. A fit pays for its τ inversion the same way: `theta_from_tau` is closed-form for `Clayton`, `Fgm`, `Gaussian`, `TCopula`, `MarshallOlkin` and `Gumbel`, and a root-find for `Amh`, `Frank`, `Joe`, `Galambos`, `HuslerReiss` and `Plackett`, the last three integrating their τ at every step.
 
 ### What fit expects
 
