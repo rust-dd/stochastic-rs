@@ -101,13 +101,19 @@ pub(crate) fn gaussian_copula_cdf(u: f64, v: f64, rho: f64) -> f64 {
 }
 
 impl GaussianCopula {
-  /// `x + y`, `x, y = Φ⁻¹(u), Φ⁻¹(v)`: below `max(reach, 1/max(1, |x|, |y|))` from the exact gap `u + v − 1` by
-  /// `quantile_gap` (`Φ(x) − Φ(−y) = u + v − 1`); above it the plain sum loses under `εx²`.
+  /// `x + y` (`x, y = Φ⁻¹(u), Φ⁻¹(v)`) by `quantile_gap` from the exact gap `g = u + v − 1`: below `1/max(1, |x|, |y|)`, and
+  /// below `reach` for levels in opposite halves or a `g` whose rounding over `φ` at the larger level beats `ε(|x| + |y|)`.
   fn sum(u: f64, v: f64, x: f64, y: f64, reach: f64) -> f64 {
     let plain = x + y;
-    if plain.abs() < reach.max(1.0 / x.abs().max(y.abs()).max(1.0)) {
-      let (p, score) = if u <= v { (u, x) } else { (v, y) };
-      quantile_gap(score, p, sum_minus_one(u, v), plain)
+    let (p, score, other) = if u <= v { (u, x, y) } else { (v, y, x) };
+    let gap = sum_minus_one(u, v);
+    let conditioned = || {
+      u.min(v) <= 0.5 && 0.5 <= u.max(v)
+        || gap.abs().ln()
+          < (x.abs() + y.abs()).ln() - 0.5 * other * other - 0.5 * std::f64::consts::TAU.ln()
+    };
+    if plain.abs() < 1.0 / x.abs().max(y.abs()).max(1.0) || (plain.abs() < reach && conditioned()) {
+      quantile_gap(score, p, gap, plain)
     } else {
       plain
     }
@@ -331,6 +337,26 @@ mod tests {
       assert!(
         (got - want).abs() <= 1e-12 * want,
         "C_{rho}({u:e}, {v}) = {got:e}, want {want:e}"
+      );
+    }
+  }
+
+  /// Both levels in one tail at `ρ < 0`, where the exact gap's solve would divide its rounding by a small `φ(y)`: within
+  /// `1e-12` of Owen's form in mpmath at `|log₁₀ C| + 45` digits.
+  #[test]
+  fn both_levels_in_one_tail_keep_the_plain_sum() {
+    for (rho, u, v, want) in [
+      (-0.8, 1e-9, 1e-9, 2.2395054817534113e-82),
+      (-0.95, 1e-8, 1e-8, 1.1161626607968987e-278),
+      (-0.05, 1e-9, 1e-9, 1.36541358842803e-19),
+      (-0.2, 1e-8, 1e-8, 2.5237469335537594e-20),
+      (-0.5, 1e-7, 1e-7, 5.454311625957889e-27),
+      (-0.5, 1e-5, 1e-5, 3.8412812015102583e-19),
+    ] {
+      let got = gaussian_copula_cdf(u, v, rho);
+      assert!(
+        (got - want).abs() <= 1e-12 * want,
+        "C_{rho}({u:e}, {v:e}) = {got:e}, want {want:e}"
       );
     }
   }
