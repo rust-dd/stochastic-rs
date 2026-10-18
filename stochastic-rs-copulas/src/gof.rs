@@ -217,9 +217,8 @@ mod tests {
     assert!(cramer_von_mises_independence(r.view()) < 0.2);
   }
 
-  /// A Gaussian copula fitted to Clayton data is rejected; the true family
-  /// is not. The true-family p-value is uniform under the null, so three
-  /// pinned data seeds are tried and the best is asserted on.
+  /// A Gaussian copula fitted to Clayton data is rejected, the true family is not; its p-value
+  /// is uniform under the null, so the best of three pinned data seeds is asserted.
   #[test]
   fn bootstrap_test_rejects_the_wrong_family() {
     let refit = |c: &mut Clayton, x: ArrayView2<f64>| c.fit(x);

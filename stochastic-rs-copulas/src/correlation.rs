@@ -116,12 +116,8 @@ pub(crate) fn undefined_tau_b(columns: &[usize], given: &str) -> CopulaError {
   })
 }
 
-/// Convert a Kendall tau to a Gaussian-copula linear correlation:
-/// $\rho = \sin(\pi\tau/2)$.
-///
-/// Exact for the bivariate Gaussian (and t) copula; an excellent approximation
-/// for elliptical copulas in general. Use this to plug a `BivariateExt`-fit
-/// τ into the `MultivariateExt` Gaussian constructor.
+/// $\rho = \sin(\pi\tau/2)$: the correlation of the Gaussian or t copula with Kendall's `tau`;
+/// feeds a `BivariateExt` fit into the `MultivariateExt` Gaussian constructor.
 pub fn tau_to_corr(tau: f64) -> f64 {
   (std::f64::consts::FRAC_PI_2 * tau).sin()
 }

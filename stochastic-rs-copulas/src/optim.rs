@@ -188,9 +188,8 @@ fn evaluation_bound(a: f64, b: f64, t: f64) -> usize {
   (k + 1).pow(2) - 2
 }
 
-/// Minimises `f` from `start` with initial simplex steps `steps`; returns
-/// the best vertex after `max_iter` iterations or once the simplex spread
-/// falls below `tolerance`.
+/// Minimises `f` from `start` over a simplex of initial `steps`; returns the best vertex after
+/// `max_iter` iterations or once the simplex spread falls below `tolerance`.
 pub(crate) fn nelder_mead(
   f: impl Fn(&[f64]) -> f64,
   start: &[f64],

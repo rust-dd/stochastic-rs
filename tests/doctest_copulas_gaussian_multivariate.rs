@@ -1,7 +1,5 @@
 // docs: copulas#gaussian-copula-multivariate-sampling
-//! Backs the Gaussian multivariate copula example on the copulas catalog
-//! page. The Cholesky factorisation runs on the pure-Rust `faer`, so the
-//! file is gated on that feature.
+//! Backs the Gaussian multivariate copula example on the copulas page.
 
 use ndarray::array;
 use stochastic_rs::copulas::multivariate::gaussian::GaussianMultivariate;

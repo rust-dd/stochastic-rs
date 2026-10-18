@@ -1,23 +1,7 @@
 //! # Coupling stochastic processes via copulas
 //!
-//! Bridges [`crate::bivariate`] (Clayton, Frank, Gumbel, …) with the process
-//! samplers in `stochastic-rs-stochastic`: given two univariate marginal
-//! samples, transforms them through a fitted bivariate copula to produce a
-//! joint sample with the desired tail dependence.
-//!
-//! The module deliberately does **not** depend on `stochastic-rs-stochastic`
-//! (to keep the dependency graph acyclic and the copula crate lean). The
-//! pattern is therefore expressed via free helpers operating on
-//! `ArrayView1<f64>` marginals.
-//!
-//! ## Pattern
-//!
-//! 1. Sample two marginal paths independently from any `ProcessExt` (e.g. two
-//!    `Bm`, two `Heston` variance paths, two `Ou`).
-//! 2. Transform each marginal to its empirical CDF on $[0, 1]$.
-//! 3. Apply the bivariate copula's percent-point function to couple them.
-//! 4. Invert through each marginal's empirical quantile to map back to the
-//!    original scale.
+//! Maps copula draws back through each series' empirical quantile, so the coupled sample keeps both
+//! marginals; free helpers over `ArrayView1<f64>` keep this crate off `stochastic-rs-stochastic`.
 //!
 //! ## Example
 //!

@@ -1,12 +1,5 @@
-//! PyO3 wrappers for `stochastic-rs-copulas`.
-//!
-//! Bivariate Archimedean copulas (Clayton, Gumbel, Frank, Independence) wrapped
-//! as `#[pyclass]`. Each exposes `theta` / `tau` setters, `pdf` / `cdf` /
-//! `sample` over numpy arrays.
-//!
-//! The multivariate Gaussian copula is intentionally **not** wrapped because it
-//! depended on a system BLAS at the time it was scoped, which was not part of the default
-//! Python build.
+//! PyO3 wrappers: classes for the Clayton, Gumbel, Frank, Independence, BB1, BB7 and 2-D empirical
+//! copulas; functions for the vine fit, the goodness-of-fit test, ranks and the τ–ρ maps.
 
 #![cfg(feature = "python")]
 #![allow(clippy::too_many_arguments)]
@@ -386,10 +379,8 @@ fn pair_description(pair: &crate::multivariate::dvine::PairCopula) -> (String, V
   }
 }
 
-/// Fits a D-vine or C-vine to pseudo-observations `u` (rows = observations)
-/// with AIC/BIC family selection; returns a dict with `order`, `families`,
-/// `parameters` (per tree, per edge), `log_likelihood`, `parameter_count`,
-/// `aic` and `bic`.
+/// Fits a D- or C-vine to pseudo-observations `u` by AIC/BIC selection; returns a dict of `order`,
+/// `families`, `parameters` (per tree, edge), `log_likelihood`, `parameter_count`, `aic` and `bic`.
 #[pyfunction]
 #[pyo3(signature = (u, structure="dvine", criterion="aic", families=None))]
 pub fn fit_vine<'py>(

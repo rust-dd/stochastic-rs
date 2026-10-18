@@ -5,16 +5,9 @@
 //! \text{ fit from data}
 //! $$
 //!
-//! Parametric marginal transform: [`GaussianUnivariate::fit`] estimates
-//! `(mean, std)` from a data column, then [`GaussianUnivariate::cdf`] maps
-//! raw values onto `[0, 1]` — the input every [`crate::traits::BivariateExt`]
-//! / `MultivariateExt` copula expects. This is the parametric counterpart
-//! to [`crate::empirical::EmpiricalCopula2D`]'s nonparametric rank
-//! transform: reach for it when the margin is known (or assumed) Gaussian
-//! and a smooth, extrapolating CDF is preferable to the empirical
-//! transform's step function (e.g. for query points beyond the observed
-//! data range).
-//!
+//! [`GaussianUnivariate::fit`] estimates `(mean, std)` from a column and `cdf` maps raw values onto
+//! `[0, 1]`, as a copula `fit` expects; unlike [`crate::empirical`] it extrapolates smoothly.
+
 use ndarray::ArrayView1;
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;

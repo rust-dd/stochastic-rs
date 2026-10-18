@@ -169,7 +169,7 @@ fn gumbel_and_joe_sample_at_high_dependence() {
 
 type Row = (f64, f64, f64, f64);
 
-/// `(θ, u, v, h(u | v))`: 60-digit values of sympy's `∂_v C`, where the old forms answered NaN (near 1) or a staircase.
+/// `(θ, u, v, h(u | v))`: sympy's `∂_v C` at 60 digits, down to `1e-100` and at `u = 1e-16`.
 const GUMBEL_H: [Row; 6] = [
   (2.0, 0.3, 0.7, 0.11559784394154603),
   (100.0, 0.99948, 0.99978, 1.0207814815154873e-37),
@@ -351,7 +351,7 @@ const FRANK: [(f64, f64, f64, f64); 16] = [
   (30.0, 0.999999, 0.3, 0.7604917196701405),
 ];
 
-/// The same at `|θ| = 800` and `1000`, where the old closed form overflowed: 1200-digit roots, as `e^{−1000} ≈ 1e-434`.
+/// The same at `|θ| = 800` and `1000`, where `e^{−|θ|}` is below the `f64` range: 1200 digits.
 const FRANK_EXTREME: [Row; 16] = [
   (800.0, 0.3, 0.7, 0.698940877674516),
   (800.0, 1e-06, 0.99, 0.9727306130521259),
@@ -407,8 +407,8 @@ const AMH: [(f64, f64, f64, f64); 12] = [
   (0.99, 0.999999, 0.3, 0.9999983443723467),
 ];
 
-/// The same at `θ = 1` exactly, where the old root divided `0` by `0` on the lines `y = 0`, `v = 0` and `v ≈ 1e-300`:
-/// 400-digit roots, equal there to the closed form `v√y/(1 − (1 − v)√y)`.
+/// The same at `θ = 1` exactly, on the lines `y = 0`, `v = 0`, `v ≈ 1e-300`: 400-digit roots, equal
+/// there to the closed form `v√y/(1 − (1 − v)√y)`.
 const AMH_ONE: [Row; 6] = [
   (1.0, 0.3, 0.7, 0.458793206838249),
   (1.0, 1e-06, 0.99, 0.000990009900099001),

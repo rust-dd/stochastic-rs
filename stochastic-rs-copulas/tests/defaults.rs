@@ -1,4 +1,4 @@
-//! `Default` is the unfitted copula every `fit` starts from; a clone is a plain value copy.
+//! A constructed copula samples finite pairs, and a clone is a plain value copy.
 
 use stochastic_rs_copulas::BivariateExt;
 use stochastic_rs_copulas::bivariate::frank::Frank;

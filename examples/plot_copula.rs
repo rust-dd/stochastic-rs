@@ -1,9 +1,5 @@
-//! Plot a copula: Clayton-sampled (u, v) pairs as a scatter cloud, showing
-//! the family's characteristic lower-tail dependence (points cluster toward
-//! the origin far more than an independence copula would).
-//!
-//! Writes a Plotly HTML chart to `target/plot_copula_clayton.html`. Run with
-//! `cargo run --release --example plot_copula`.
+//! Scatter of Clayton `(u, v)` pairs, clustered toward the origin as an independence copula is not;
+//! writes `target/plot_copula_clayton.html`; run with `cargo run --release --example plot_copula`.
 use plotly::Layout;
 use plotly::Plot;
 use plotly::Scatter;
