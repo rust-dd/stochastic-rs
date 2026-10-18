@@ -255,7 +255,7 @@ impl BivariateExt for Clayton {
     y: ArrayView1<f64>,
     v: ArrayView1<f64>,
   ) -> Result<Array1<f64>, CopulaError> {
-    checked_percent_point(self, y, v)
+    checked_percent_point(self, y, v, Self::unchecked_inverse)
   }
 
   fn percent_point_unchecked(

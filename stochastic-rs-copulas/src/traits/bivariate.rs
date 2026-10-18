@@ -256,19 +256,17 @@ pub(crate) fn invert_tau(
   })
 }
 
-/// `percent_point` of a family with its own inverse: its parameters and inputs checked once, then that inverse, or the
-/// numerical one where it gives none.
+/// `percent_point` of a family with its own `inverse`: its parameters and inputs checked once, then that inverse.
 pub(crate) fn checked_percent_point<C: BivariateExt + ?Sized>(
   copula: &C,
   y: ArrayView1<f64>,
   v: ArrayView1<f64>,
+  inverse: impl FnOnce(&C, ArrayView1<f64>, ArrayView1<f64>) -> Result<Array1<f64>, CopulaError>,
 ) -> Result<Array1<f64>, CopulaError> {
   copula.check_fit()?;
   check_lengths(y, v)?;
   check_unit(y.iter().chain(v))?;
-  copula
-    .percent_point_unchecked(y, v)
-    .unwrap_or_else(|| numerical_inverse(copula, y, v))
+  inverse(copula, y, v)
 }
 
 /// Brent's `zero` in `u` of `partial_derivative` held in `[0, 1]`, on `[0, 1]`, for checked `(y, v)`: the body of

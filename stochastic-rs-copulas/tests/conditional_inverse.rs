@@ -92,6 +92,24 @@ fn every_family_samples_two_thousand_draws_for_fifty_seeds() {
   });
 }
 
+/// Every family answers the sampler's hidden hook with `Some` of the inverse its `percent_point` checks and returns.
+#[test]
+fn every_family_answers_the_hook_with_its_percent_point() {
+  let y = array![1e-12, 0.3, 0.5, 0.9, 1.0 - 1e-12];
+  let v = array![0.2, 0.7, 0.5, 1e-9, 0.6];
+  for (name, copula) in families() {
+    let hook = copula
+      .percent_point_unchecked(y.view(), v.view())
+      .unwrap_or_else(|| panic!("{name} answers None"))
+      .unwrap();
+    assert_eq!(
+      hook,
+      copula.percent_point(y.view(), v.view()).unwrap(),
+      "{name}"
+    );
+  }
+}
+
 /// Levels and conditioning values a uniform draw can reach, where Joe's h is flat enough to cost Brent 150 iterations.
 #[test]
 fn the_numerical_inverse_converges_at_extreme_levels() {
