@@ -127,21 +127,26 @@ impl Galambos {
     small * (-ell / theta).exp() + ln_s + ln_add_exp((a1_over_s * a2).ln(), ln_tail)
   }
 
-  /// Pickands dependence function
-  /// $A(t) = 1 - (t^{-\theta} + (1-t)^{-\theta})^{-1/\theta}$.
+  /// Pickands dependence function $A(t) = 1 - (t^{-\theta} + (1-t)^{-\theta})^{-1/\theta}$, by `ln_pickands` at the nearer
+  /// end `s = min(t, 1 − t)`, so no power overflows up to `θ = f64::MAX`.
   pub fn pickands(theta: f64, t: f64) -> f64 {
     if t <= 0.0 || t >= 1.0 {
       return 1.0;
     }
-    let s = t.powf(-theta) + (1.0 - t).powf(-theta);
-    1.0 - s.powf(-1.0 / theta)
+    let s = t.min(1.0 - t);
+    Self::ln_pickands(theta, s.ln(), softplus(theta * (s / (1.0 - s)).ln())).exp()
+  }
+
+  /// `ln A = ln(1 − s(1 + ρ)^{−1/θ})` from `ln s`, `s = min(t, 1 − t)`, and `sp = ln(1 + ρ)`, `ρ = (s/(1 − s))^θ ≤ 1`.
+  fn ln_pickands(theta: f64, ln_s: f64, sp: f64) -> f64 {
+    ln_one_minus_exp(ln_s - sp / theta)
   }
 
   /// `(ln τ, ln(1 − τ))` from `τ = ∫ t(1 − t)A''/A dt` and, by parts, `1 − τ = ∫ (A − tA')(A + (1 − t)A')/A² dt`, over
   /// the logit `ℓ` of `t ∈ [1/2, 1]` in terms of `ρ = e^{−θℓ}`; the smaller is integrated, the other follows.
   fn ln_tau_parts(theta: f64) -> (f64, f64) {
-    // `ln A`, `A = 1 − (1 − t)(1 + ρ)^{−1/θ}`, from `ln(1 − t) = −softplus(ℓ)` and `sp = ln(1 + ρ)`.
-    let ln_a = |ln_one_minus_t: f64, sp: f64| ln_one_minus_exp(ln_one_minus_t - sp / theta);
+    // `ln A` at `t ≥ 1/2`, where `s = 1 − t`, `ln(1 − t) = −softplus(ℓ)` and `sp = ln(1 + ρ)`.
+    let ln_a = |ln_one_minus_t: f64, sp: f64| Self::ln_pickands(theta, ln_one_minus_t, sp);
     if theta <= 1.0 {
       // `τ = 2∫ (1 + θ)ρ(1 + ρ)^{−1/θ−2}(1 − t)/A dℓ`
       let ln_tau = LN_2
@@ -384,6 +389,26 @@ mod tests {
       assert!(
         approx(a, expected, 1e-12),
         "θ={theta}: A(1/2)={a}, expected {expected}"
+      );
+    }
+  }
+
+  /// 50-digit values of `A(t)` from the plain form, which overflows past `θ ≈ 1023`; the limit `max(t, 1 − t)` at the top.
+  #[test]
+  fn galambos_pickands_holds_to_the_top_of_its_range() {
+    let pins = [
+      (1100.0, 0.5, 0.5003149676539501),
+      (1100.0, 0.3, 0.7),
+      (1e300, 0.3, 0.7),
+      (f64::MAX, 0.3, 0.7),
+      (0.5, 0.2, 0.9111111111111111),
+      (2.0, 0.999, 0.9990000005010011),
+    ];
+    for (theta, t, want) in pins {
+      let got = Galambos::pickands(theta, t);
+      assert!(
+        approx(got, want, 1e-12 * want),
+        "θ={theta}: A({t}) = {got}, want {want}"
       );
     }
   }

@@ -120,18 +120,24 @@ impl HuslerReiss {
       )
   }
 
-  /// Pickands dependence function.
+  /// Pickands dependence function `A(t) = (1 − t)Φ(α) + tΦ(β)` by `pickands_at` at the logit of `t`, whose `λℓ/2` meets an
+  /// infinite score as Φ's 0 or 1, so it holds up to `λ = f64::MAX`.
   pub fn pickands(lambda: f64, t: f64) -> f64 {
-    if t <= 0.0 {
+    if t <= 0.0 || t >= 1.0 {
       return 1.0;
     }
-    if t >= 1.0 {
-      return 1.0;
-    }
-    let log_ratio = ((1.0 - t) / t).ln();
-    let alpha = 1.0 / lambda + 0.5 * lambda * log_ratio;
-    let beta = 1.0 / lambda - 0.5 * lambda * log_ratio;
-    (1.0 - t) * norm_cdf(alpha) + t * norm_cdf(beta)
+    Self::pickands_at(lambda, (t / (1.0 - t)).ln()).4
+  }
+
+  /// `(ln(1 − t), ln t, α, β, A)` at the logit `ℓ` of `t`, `α, β = 1/λ ∓ λℓ/2`.
+  fn pickands_at(lambda: f64, l: f64) -> (f64, f64, f64, f64, f64) {
+    let (alpha, beta) = (
+      1.0 / lambda - 0.5 * lambda * l,
+      1.0 / lambda + 0.5 * lambda * l,
+    );
+    let (ln_one_minus_t, ln_t) = (-softplus(l), -softplus(-l));
+    let a = ln_one_minus_t.exp() * norm_cdf(alpha) + ln_t.exp() * norm_cdf(beta);
+    (ln_one_minus_t, ln_t, alpha, beta, a)
   }
 
   /// `(ln τ, ln(1 − τ))`: as `A' = Φ(β) − Φ(α)`, `τ = λ∫ (1 − t)φ(α)/A` and, by parts, `1 − τ = 2∫ t(1 − t)Φ(α)Φ(β)/A²`
@@ -139,12 +145,7 @@ impl HuslerReiss {
   fn ln_tau_parts(lambda: f64) -> (f64, f64) {
     // `(ln(1 − t), ln t, α, β, ln A)` at `ℓ`.
     let at = |l: f64| {
-      let (alpha, beta) = (
-        1.0 / lambda - 0.5 * lambda * l,
-        1.0 / lambda + 0.5 * lambda * l,
-      );
-      let (ln_one_minus_t, ln_t) = (-softplus(l), -softplus(-l));
-      let a = ln_one_minus_t.exp() * norm_cdf(alpha) + ln_t.exp() * norm_cdf(beta);
+      let (ln_one_minus_t, ln_t, alpha, beta, a) = Self::pickands_at(lambda, l);
       (ln_one_minus_t, ln_t, alpha, beta, a.ln())
     };
     if lambda <= 2.0 {
@@ -388,6 +389,25 @@ mod tests {
       assert!(
         approx(lambda_u_pickands, expected, 1e-12),
         "λ={lambda}: λ_U_pickands={lambda_u_pickands}, expected {expected}"
+      );
+    }
+  }
+
+  /// 50-digit values of `A(t)`, and the limits `max(t, 1 − t)` and 1 at the ends of the range.
+  #[test]
+  fn hr_pickands_holds_to_the_ends_of_its_range() {
+    let pins = [
+      (2.0, 0.2, 0.8138437731916847),
+      (50.0, 0.5, 0.5079783137169019),
+      (300.0, 0.4, 0.6),
+      (f64::MAX, 0.3, 0.7),
+      (1e-300, 0.3, 1.0),
+    ];
+    for (lambda, t, want) in pins {
+      let got = HuslerReiss::pickands(lambda, t);
+      assert!(
+        approx(got, want, 1e-12 * want),
+        "λ={lambda}: A({t}) = {got}, want {want}"
       );
     }
   }
