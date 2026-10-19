@@ -49,8 +49,23 @@ fn with_theta<C: BivariateExt>(mut copula: C, theta: f64) -> C {
 }
 
 /// Densities NaN on every edge and corner and finite inside; `cdf` exact on the edges and `h` and its inverse in `[0, 1]`
-/// there; each of the five batch methods `MarginalOutOfRange` at a bad value in either coordinate.
+/// there; each batch method `MarginalOutOfRange` at a bad value, and `DimensionMismatch` on one or three columns first.
 fn bivariate(copula: &dyn BivariateExt) {
+  for (got, fill) in [(1, 0.5), (3, 0.5), (1, f64::NAN), (3, f64::NAN)] {
+    let x = Array2::from_elem((2, got), fill);
+    let answers = [
+      copula.pdf(x.view()),
+      copula.log_pdf(x.view()),
+      copula.cdf(x.view()),
+      copula.partial_derivative(x.view()),
+    ];
+    for answer in answers {
+      assert_eq!(
+        answer,
+        Err(CopulaError::DimensionMismatch { expected: 2, got })
+      );
+    }
+  }
   let edges = array![
     [0.0, 0.5],
     [1.0, 0.5],

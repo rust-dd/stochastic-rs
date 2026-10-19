@@ -225,15 +225,21 @@ pub(crate) fn check_open(x: ArrayView2<f64>) -> Result<(), CopulaError> {
   }
 }
 
+/// `DimensionMismatch` unless `x` has the two columns `(u, v)`; every batch method runs it before reading a column.
+pub(crate) fn check_columns(x: ArrayView2<f64>) -> Result<(), CopulaError> {
+  if x.ncols() == 2 {
+    return Ok(());
+  }
+  Err(CopulaError::DimensionMismatch {
+    expected: 2,
+    got: x.ncols(),
+  })
+}
+
 /// `x` is n × 2, `n ≥ 2`, with every entry in `[0, 1]` (NaN fails), checked in that order; no uniformity test, so a valid
 /// sample never fails by chance.
 pub(crate) fn check_pairs(x: ArrayView2<f64>) -> Result<(), CopulaError> {
-  if x.ncols() != 2 {
-    return Err(CopulaError::DimensionMismatch {
-      expected: 2,
-      got: x.ncols(),
-    });
-  }
+  check_columns(x)?;
   if x.nrows() < 2 {
     return Err(CopulaError::InsufficientData {
       needed: 2,
@@ -321,11 +327,12 @@ fn numerical_quantile(y: f64, v: f64, ln_h: &impl Fn(f64, f64) -> f64) -> Option
   root.filter(|_| !nan.get())
 }
 
-/// `∂_v C` mapped over the rows `(u, v)` of `x`, each coordinate in `[0, 1]`.
+/// `∂_v C` mapped over the rows `(u, v)` of `x`, two columns with each coordinate in `[0, 1]`.
 pub(crate) fn conditional_cdf(
   x: ArrayView2<f64>,
   h: impl Fn(f64, f64) -> f64,
 ) -> Result<Array1<f64>, CopulaError> {
+  check_columns(x)?;
   check_unit(x)?;
   Ok(
     Zip::from(x.column(0))
@@ -340,6 +347,7 @@ pub(crate) fn copula_cdf(
   x: ArrayView2<f64>,
   interior: impl Fn(f64, f64) -> f64,
 ) -> Result<Array1<f64>, CopulaError> {
+  check_columns(x)?;
   check_unit(x)?;
   Ok(
     Zip::from(x.column(0))
@@ -364,6 +372,7 @@ pub(crate) fn on_open_square(
   x: ArrayView2<f64>,
   density: impl Fn(f64, f64) -> f64,
 ) -> Result<Array1<f64>, CopulaError> {
+  check_columns(x)?;
   check_unit(x)?;
   Ok(
     Zip::from(x.column(0))

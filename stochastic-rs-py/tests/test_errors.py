@@ -68,6 +68,15 @@ def test_copula_tail_dependence_out_of_range_raises_value_error():
         sr.Bb7(theta=0.5, delta=1.0).tail_dependence()
 
 
+def test_copula_batch_methods_on_a_wrong_column_count_raise_value_error():
+    clayton = sr.Clayton(theta=2.0)
+    for columns in (1, 3):
+        x = np.full((3, columns), 0.5)
+        for method in (clayton.pdf, clayton.cdf):
+            with pytest.raises(ValueError, match=f"the copula has dim 2, the input has {columns}"):
+                method(x)
+
+
 def test_copula_parameters_outside_the_domain_raise_value_error():
     with pytest.raises(ValueError, match=r"theta must satisfy `0\.0 <= theta < inf`, got theta = -1\.0"):
         sr.Clayton(theta=-1.0)

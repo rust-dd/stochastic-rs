@@ -16,6 +16,7 @@ use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::ABSOLUTE_TOLERANCE;
+use crate::bivariate::conditional::check_columns;
 use crate::bivariate::conditional::check_lengths;
 use crate::bivariate::conditional::check_open;
 use crate::bivariate::conditional::check_pairs;
@@ -32,8 +33,8 @@ pub struct TailDependence<T> {
   pub upper: T,
 }
 
-/// `cdf`, `pdf`, `log_pdf`, `partial_derivative` and `percent_point` answer `MarginalOutOfRange` for a value outside
-/// `[0, 1]` or NaN, and `pdf` and `log_pdf` are NaN on the boundary; `fit` answers `MarginalOnBoundary` for a 0 or 1.
+/// Batch methods answer `DimensionMismatch` for a column count other than 2, then `MarginalOutOfRange` outside `[0, 1]`
+/// or for NaN; densities are NaN on the boundary, and `fit` answers `MarginalOnBoundary` for a 0 or 1.
 pub trait BivariateExt {
   /// Which family this copula is; the label its error messages carry.
   fn family(&self) -> BivariateFamily;
@@ -214,6 +215,7 @@ pub trait BivariateExt {
   }
 
   fn partial_derivative(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    check_columns(x)?;
     let n = x.nrows();
     let mut x_prime = x.to_owned();
     let mut delta = Array1::zeros(n);
