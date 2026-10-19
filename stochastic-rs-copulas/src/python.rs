@@ -166,8 +166,9 @@ impl PyEmpiricalCopula2D {
     x: numpy::PyReadonlyArray1<'py, f64>,
     y: numpy::PyReadonlyArray1<'py, f64>,
   ) -> pyo3::PyResult<Self> {
-    stochastic_rs_distributions::python::value_error_on_panic(|| Self {
-      inner: crate::empirical::EmpiricalCopula2D::new(x.as_array(), y.as_array()),
+    Ok(Self {
+      inner: crate::empirical::EmpiricalCopula2D::new(x.as_array(), y.as_array())
+        .map_err(err_to_py)?,
     })
   }
 

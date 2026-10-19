@@ -127,7 +127,7 @@ fn mixed_trees() -> Vec<Vec<PairCopula>> {
 fn empirical() -> EmpiricalCopula2D {
   let x = Array1::from_vec((0..50).map(|i| i as f64).collect());
   let y = Array1::from_vec((0..50).map(|i| (i as f64 * 1.7) % 37.0).collect());
-  EmpiricalCopula2D::new(x.view(), y.view())
+  EmpiricalCopula2D::new(x.view(), y.view()).unwrap()
 }
 
 fn samples() -> Vec<(&'static str, Array2<f64>)> {

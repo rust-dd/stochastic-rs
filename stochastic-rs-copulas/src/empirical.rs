@@ -31,26 +31,24 @@ pub struct EmpiricalCopula2D {
 }
 
 impl EmpiricalCopula2D {
-  /// Panics on a length mismatch, an empty series or a NaN entry.
-  pub fn new(x: ArrayView1<f64>, y: ArrayView1<f64>) -> Self {
-    assert_eq!(
-      x.len(),
-      y.len(),
-      "x and y must satisfy `x.len() == y.len()`, got x.len() = {}, y.len() = {}",
-      x.len(),
-      y.len()
-    );
-    assert!(
-      !x.is_empty(),
-      "x must satisfy `!x.is_empty()`, got x.len() = 0"
-    );
-    assert!(
-      !x.iter().chain(y.iter()).any(|v| v.is_nan()),
-      "x and y must satisfy `no entry is NaN`, got a NaN"
-    );
-    Self {
-      pseudo: pseudo_observations(stack![Axis(1), x, y].view()),
+  /// The empirical copula of `x` and `y`: `DimensionMismatch` for unequal lengths, `InsufficientData` for empty series,
+  /// `MarginalOutOfRange` for a NaN entry.
+  pub fn new(x: ArrayView1<f64>, y: ArrayView1<f64>) -> Result<Self, CopulaError> {
+    if x.len() != y.len() {
+      return Err(CopulaError::DimensionMismatch {
+        expected: x.len(),
+        got: y.len(),
+      });
     }
+    if x.is_empty() {
+      return Err(CopulaError::InsufficientData { needed: 1, got: 0 });
+    }
+    if x.iter().chain(y).any(|v| v.is_nan()) {
+      return Err(CopulaError::MarginalOutOfRange);
+    }
+    Ok(Self {
+      pseudo: pseudo_observations(stack![Axis(1), x, y].view()),
+    })
   }
 
   /// The pseudo-observations `(n, 2)`, `rank/(n+1)` per column.
@@ -115,7 +113,7 @@ mod tests {
   fn empirical_copula_ranks_cdf_and_bootstrap() {
     let x = Array1::from_vec(vec![3.0, 1.0, 2.0, 4.0]);
     let y = Array1::from_vec(vec![10.0, 30.0, 20.0, 40.0]);
-    let ec = EmpiricalCopula2D::new(x.view(), y.view());
+    let ec = EmpiricalCopula2D::new(x.view(), y.view()).unwrap();
     assert_eq!(ec.rank_data().row(0).to_vec(), vec![0.6, 0.2]);
     assert_eq!(
       ec.rank_data(),
@@ -139,7 +137,8 @@ mod tests {
     let ec = EmpiricalCopula2D::new(
       array![3.0, 1.0, 2.0, 4.0].view(),
       array![10.0, 30.0, 20.0, 40.0].view(),
-    );
+    )
+    .unwrap();
     let c = ec
       .cdf(array![[0.4, 0.4], [0.0, 1.0], [1.0, 1.0]].view())
       .unwrap();
@@ -157,8 +156,8 @@ mod tests {
   #[test]
   fn the_cdf_does_not_depend_on_the_row_order_of_tied_data() {
     let x = array![1.0, 1.0, 2.0, 3.0];
-    let a = EmpiricalCopula2D::new(x.view(), array![1.0, 2.0, 2.0, 3.0].view());
-    let b = EmpiricalCopula2D::new(x.view(), array![2.0, 1.0, 2.0, 3.0].view());
+    let a = EmpiricalCopula2D::new(x.view(), array![1.0, 2.0, 2.0, 3.0].view()).unwrap();
+    let b = EmpiricalCopula2D::new(x.view(), array![2.0, 1.0, 2.0, 3.0].view()).unwrap();
     let q = array![[0.25, 0.25], [0.3, 0.2], [0.3, 0.5], [0.6, 0.5], [1.0, 1.0]];
     assert_eq!(a.cdf(q.view()), b.cdf(q.view()));
     assert_eq!(
@@ -167,35 +166,33 @@ mod tests {
     );
   }
 
+  /// Data errors are answered, not panicked on: unequal lengths, empty series, a NaN entry.
   #[test]
-  #[should_panic(
-    expected = "x and y must satisfy `x.len() == y.len()`, got x.len() = 2, y.len() = 1"
-  )]
-  fn mismatched_series_are_a_precondition() {
-    let _ = EmpiricalCopula2D::new(array![1.0, 2.0].view(), array![1.0].view());
-  }
-
-  #[test]
-  #[should_panic(expected = "x must satisfy `!x.is_empty()`, got x.len() = 0")]
-  fn an_empty_series_is_a_precondition() {
-    let _ = EmpiricalCopula2D::new(
-      Array1::<f64>::zeros(0).view(),
-      Array1::<f64>::zeros(0).view(),
+  fn data_errors_are_answered() {
+    let mismatch = CopulaError::DimensionMismatch {
+      expected: 2,
+      got: 1,
+    };
+    assert_eq!(
+      EmpiricalCopula2D::new(array![1.0, 2.0].view(), array![1.0].view()).err(),
+      Some(mismatch)
     );
-  }
-
-  #[test]
-  #[should_panic(expected = "x and y must satisfy `no entry is NaN`, got a NaN")]
-  fn a_nan_entry_is_a_precondition() {
-    let _ = EmpiricalCopula2D::new(
+    let empty = Array1::<f64>::zeros(0);
+    let short = CopulaError::InsufficientData { needed: 1, got: 0 };
+    assert_eq!(
+      EmpiricalCopula2D::new(empty.view(), empty.view()).err(),
+      Some(short)
+    );
+    let nan = EmpiricalCopula2D::new(
       array![1.0, f64::NAN, 3.0].view(),
       array![1.0, 2.0, 3.0].view(),
     );
+    assert_eq!(nan.err(), Some(CopulaError::MarginalOutOfRange));
   }
 
   #[test]
   fn the_cdf_takes_pairs() {
-    let ec = EmpiricalCopula2D::new(array![1.0, 2.0].view(), array![2.0, 1.0].view());
+    let ec = EmpiricalCopula2D::new(array![1.0, 2.0].view(), array![2.0, 1.0].view()).unwrap();
     let want = Err(CopulaError::DimensionMismatch {
       expected: 2,
       got: 1,

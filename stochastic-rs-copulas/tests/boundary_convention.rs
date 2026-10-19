@@ -361,7 +361,8 @@ fn the_empirical_copula_follows_the_boundary_convention() {
   let copula = EmpiricalCopula2D::new(
     array![3.0, 1.0, 2.0, 4.0].view(),
     array![10.0, 30.0, 20.0, 40.0].view(),
-  );
+  )
+  .unwrap();
   assert_eq!(
     copula.cdf(array![[0.0, 0.5], [1.0, 1.0]].view()).unwrap(),
     array![0.0, 1.0]
