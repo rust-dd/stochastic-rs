@@ -15,7 +15,6 @@
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
-use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::bivariate::BivariateFamily;
@@ -37,9 +36,6 @@ use cdf::bivariate_normal_cdf;
 use cdf::quantile_gap;
 
 mod cdf;
-
-/// How far inside `(0, 1)` [`GaussianCopula::partial_derivative`] evaluates the `v` edge limits.
-const BOUNDARY_EPS: f64 = 1e-12;
 
 #[derive(Debug, Clone, Default)]
 pub struct GaussianCopula {
@@ -64,11 +60,32 @@ impl GaussianCopula {
     Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
+  /// `∂_v C = Φ((x − ρy)/√(1 − ρ²))`, `x − ρy` as `(x − y) + (1 − ρ)y`, or `(x + y) − (1 + ρ)y` at `ρ < 0`, from the exact
+  /// gap; at `v ∈ {0, 1}` the limit law, a point mass at 0 where `ρ` and the edge agree in sign and at 1 otherwise.
+  pub(crate) fn h(rho: f64) -> impl Fn(f64, f64) -> f64 {
+    let s = ((1.0 - rho) * (1.0 + rho)).sqrt();
+    move |u, v| {
+      if rho == 0.0 || u == 1.0 {
+        return u;
+      }
+      if v == 0.0 || v == 1.0 {
+        return if (v == 0.0) == (rho > 0.0) { 1.0 } else { 0.0 };
+      }
+      let (x, y) = (normal_quantile(u), normal_quantile(v));
+      let shifted = if rho > 0.0 {
+        Self::difference(u, v, x, y) + (1.0 - rho) * y
+      } else {
+        Self::sum(u, v, x, y, 0.0) - (1.0 + rho) * y
+      };
+      norm_cdf(shifted / s)
+    }
+  }
+
   /// `u = Φ(Φ⁻¹(y)√(1 − ρ²) + ρΦ⁻¹(v))` before the domain rule, for `ρ ≠ 0`.
   pub(crate) fn inverse(rho: f64) -> impl Fn(f64, f64) -> f64 {
-    let sqrt_one_minus_rho2 = (1.0 - rho * rho).sqrt();
+    let s = ((1.0 - rho) * (1.0 + rho)).sqrt();
     move |y, v| {
-      let z = ndtri(y) * sqrt_one_minus_rho2 + rho * ndtri(v);
+      let z = normal_quantile(y) * s + rho * normal_quantile(v);
       // `∞ − ∞` only at corners answered by 0: level 0, or level 1 where `v ∈ {0, 1}` puts `h(· | v)`'s mass at 0.
       if z.is_nan() { 0.0 } else { norm_cdf(z) }
     }
@@ -188,16 +205,11 @@ impl BivariateExt for GaussianCopula {
     copula_cdf(x, |u, v| gaussian_copula_cdf(u, v, rho))
   }
 
-  /// $\partial_v C(u,v) = \Phi\big((x - \rho y)/\sqrt{1-\rho^2}\big)$, $x, y = \Phi^{-1}(u), \Phi^{-1}(v)$, with `v`
-  /// clamped `1e-12` inside `(0, 1)` for the edge limits, whose sign follows `ρ`.
+  /// `GaussianCopula::h`: $\Phi\big((x - \rho y)/\sqrt{1-\rho^2}\big)$, $x, y = \Phi^{-1}(u), \Phi^{-1}(v)$, inside, and
+  /// the point mass at 0 or 1 that `ρ`'s sign sends `u` to at `v ∈ {0, 1}`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
-    let rho = self.theta.unwrap();
-    let sqrt_one_minus_rho2 = (1.0 - rho * rho).sqrt();
-    conditional_cdf(x, |u, v| {
-      let v = v.clamp(BOUNDARY_EPS, 1.0 - BOUNDARY_EPS);
-      norm_cdf((ndtri(u) - rho * ndtri(v)) / sqrt_one_minus_rho2)
-    })
+    conditional_cdf(x, Self::h(self.theta.unwrap()))
   }
 
   fn percent_point(
@@ -468,38 +480,31 @@ mod tests {
     assert!(c.generator(t.view()).is_err());
   }
 
-  /// At `ρ>0`, `partial_derivative` at `v=1e-12` is continuous with `v=1e-9`, tracking the
-  /// directional limit (high near `v=0`, low near `v=1`) rather than snapping to `0.0` or `1.0`.
+  /// At `v ∈ {0, 1}` `h` is the limit law: a point mass at 0 where `ρ` and the edge agree in sign and at 1 otherwise,
+  /// counted at 0, with `h(1 | ·) = 1` and the identity at `ρ = 0`.
   #[test]
-  fn gaussian_partial_derivative_no_jump_near_v_boundary() {
-    let mut c = GaussianCopula::default();
-    c.set_theta(0.7);
-    let u = 0.4_f64;
-    let near_zero_a = c.partial_derivative(array![[u, 1e-12]].view()).unwrap()[0];
-    let near_zero_b = c.partial_derivative(array![[u, 1e-9]].view()).unwrap()[0];
-    assert!(
-      approx(near_zero_a, near_zero_b, 1e-6),
-      "expected continuity near v=0: v=1e-12 -> {near_zero_a}, v=1e-9 -> {near_zero_b}"
-    );
-    let near_one_a = c
-      .partial_derivative(array![[u, 1.0 - 1e-12]].view())
-      .unwrap()[0];
-    let near_one_b = c
-      .partial_derivative(array![[u, 1.0 - 1e-9]].view())
-      .unwrap()[0];
-    assert!(
-      approx(near_one_a, near_one_b, 1e-6),
-      "expected continuity near v=1: v=1-1e-12 -> {near_one_a}, v=1-1e-9 -> {near_one_b}"
-    );
-
-    // Directional check: for rho > 0 the limit is high near v=0 and low near v=1.
-    assert!(
-      near_zero_a > 0.99,
-      "rho>0 should push the v->0+ limit toward 1, got {near_zero_a}"
-    );
-    assert!(
-      near_one_a < 0.01,
-      "rho>0 should push the v->1- limit toward 0, got {near_one_a}"
-    );
+  fn gaussian_h_at_the_v_edges_is_the_limit_law() {
+    let x = array![
+      [0.0, 0.0],
+      [0.3, 0.0],
+      [1.0, 0.0],
+      [0.0, 1.0],
+      [0.3, 1.0],
+      [1.0, 1.0]
+    ];
+    for (rho, at_zero, at_one) in [(0.7, 1.0, 0.0), (0.01, 1.0, 0.0), (-0.5, 0.0, 1.0)] {
+      let h = GaussianCopula::new(rho)
+        .partial_derivative(x.view())
+        .unwrap();
+      assert_eq!(
+        h,
+        array![at_zero, at_zero, 1.0, at_one, at_one, 1.0],
+        "rho = {rho}"
+      );
+    }
+    let independent = GaussianCopula::new(0.0)
+      .partial_derivative(x.view())
+      .unwrap();
+    assert_eq!(independent, array![0.0, 0.3, 1.0, 0.0, 0.3, 1.0]);
   }
 }

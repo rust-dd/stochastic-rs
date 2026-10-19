@@ -13,12 +13,15 @@ use stochastic_rs_copulas::bivariate::amh::Amh;
 use stochastic_rs_copulas::bivariate::bb1::Bb1;
 use stochastic_rs_copulas::bivariate::bb7::Bb7;
 use stochastic_rs_copulas::bivariate::clayton::Clayton;
+use stochastic_rs_copulas::bivariate::fgm::Fgm;
 use stochastic_rs_copulas::bivariate::frank::Frank;
 use stochastic_rs_copulas::bivariate::galambos::Galambos;
 use stochastic_rs_copulas::bivariate::gaussian::GaussianCopula;
 use stochastic_rs_copulas::bivariate::gumbel::Gumbel;
 use stochastic_rs_copulas::bivariate::husler_reiss::HuslerReiss;
+use stochastic_rs_copulas::bivariate::independence::Independence;
 use stochastic_rs_copulas::bivariate::joe::Joe;
+use stochastic_rs_copulas::bivariate::marshall_olkin::MarshallOlkin;
 use stochastic_rs_copulas::bivariate::plackett::Plackett;
 use stochastic_rs_copulas::bivariate::t_copula::TCopula;
 use stochastic_rs_copulas::traits::BivariateExt;
@@ -55,6 +58,9 @@ fn build(family: &str, p: &[f64]) -> Box<dyn BivariateExt> {
     "bb7" => Box::new(Bb7::new(p[0], p[1])),
     "t" => Box::new(TCopula::new(p[0], p[1])),
     "gaussian" => Box::new(GaussianCopula::new(p[0])),
+    "fgm" => Box::new(Fgm::new(p[0])),
+    "marshall_olkin" => Box::new(MarshallOlkin::new(p[0], p[1])),
+    "independence" => Box::new(Independence::new()),
     other => panic!("no family {other}"),
   }
 }

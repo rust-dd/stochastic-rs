@@ -1,10 +1,5 @@
-use stochastic_rs_copulas::bivariate::fgm::Fgm;
-use stochastic_rs_copulas::bivariate::gaussian::GaussianCopula;
-use stochastic_rs_copulas::bivariate::independence::Independence;
-use stochastic_rs_copulas::bivariate::marshall_olkin::MarshallOlkin;
 use stochastic_rs_copulas::bivariate::t_copula::TCopula;
 use stochastic_rs_copulas::multivariate::dvine::PairCopula;
-use stochastic_rs_copulas::traits::BivariateExt;
 
 use super::GRID;
 use super::agrees;
@@ -12,7 +7,7 @@ use super::build;
 use super::on_grid;
 
 /// `<family> <h|q> <parameters> ; <81 values>`, row-major in the first argument: mpmath at 60 or more digits of the
-/// stable forms, each proved equal to `∂_v C` in sympy, `q` by bisection of that `h` in `ln u`.
+/// stable forms, each proved equal to `∂_v C` in sympy, `q` by bisection of that `h` in `ln u` or its closed form.
 const REFERENCE: &str = include_str!("../fixtures/extreme_parameters.txt");
 
 /// The 69 t cells `(ρ, ν, kind, cells)`, a cell `9·row + column`, where `SimdStudentT::quantile` misses `1e-12`: past
@@ -76,34 +71,17 @@ fn h_and_its_inverse_match_the_mpmath_table() {
   );
 }
 
-/// The families without a tabulated row, and the t copula from `ν ≈ 1e7` up to its normal limit, where `SimdStudentT`'s
-/// `beta_i` loses accuracy: finite and in `[0, 1]`.
+/// The t copula from `ν ≈ 1e7` up to its normal limit, where `SimdStudentT`'s `beta_i` loses accuracy: finite and in
+/// `[0, 1]`; every other family's `h` and `q` have tabulated rows.
 #[test]
-fn every_family_answers_inside_the_unit_interval() {
-  let mut copulas: Vec<(String, Box<dyn BivariateExt>)> = Vec::new();
-  for rho in [-1.0 + 1e-16, -0.5, 0.0, 0.5, 1.0 - 1e-16] {
-    copulas.push((
-      format!("gaussian {rho}"),
-      Box::new(GaussianCopula::new(rho)),
-    ));
-  }
-  for theta in [-1.0, -0.5, 0.0, 0.5, 1.0] {
-    copulas.push((format!("fgm {theta}"), Box::new(Fgm::new(theta))));
-  }
-  for (alpha, beta) in [(1e-300, 1e-300), (0.3, 0.6), (1.0, 1.0), (1.0, 1e-300)] {
-    let name = format!("marshall_olkin {alpha} {beta}");
-    copulas.push((name, Box::new(MarshallOlkin::new(alpha, beta))));
-  }
-  copulas.push(("independence".into(), Box::new(Independence::new())));
+fn the_t_copula_at_large_nu_answers_inside_the_unit_interval() {
   for (rho, nu) in [(0.5, 1e10), (-0.5, 1e15), (0.999999, 1e300)] {
-    copulas.push((format!("t {rho} {nu}"), Box::new(TCopula::new(rho, nu))));
-  }
-  for (name, copula) in copulas {
+    let copula = TCopula::new(rho, nu);
     for kind in ["h", "q"] {
-      let out = on_grid(copula.as_ref(), kind);
+      let out = on_grid(&copula, kind);
       assert!(
         out.iter().all(|x| x.is_finite() && (0.0..=1.0).contains(x)),
-        "{name} {kind}: {out}"
+        "t {rho} {nu} {kind}: {out}"
       );
     }
   }

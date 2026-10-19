@@ -52,18 +52,36 @@ impl Fgm {
     Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
+  /// `a = θ(1 − 2v)` with `1 ± a` from `(1 ± θ) ∓ 2θv` once below 1/2, where the rounding of `1 − 2v` in `a` would be
+  /// large beside it.
+  fn slope(theta: f64, v: f64) -> (f64, f64, f64) {
+    let a = theta * (1.0 - 2.0 * v);
+    let (above, below) = (1.0 + a, 1.0 - a);
+    let above = if above < 0.5 {
+      (1.0 + theta) - 2.0 * theta * v
+    } else {
+      above
+    };
+    let below = if below < 0.5 {
+      (1.0 - theta) + 2.0 * theta * v
+    } else {
+      below
+    };
+    (a, above, below)
+  }
+
   /// The root in `[0, 1]` of `u(1 + a) − au² = y`, `a = θ(1 − 2v)`, as `2y/((1 + a) + √D)` with `D` summed from
   /// non-negative terms for either sign of `a`; 0 at level 0, where `a = −1` would divide 0 by 0.
   pub(crate) fn inverse(theta: f64) -> impl Fn(f64, f64) -> f64 {
     move |y, v| {
-      let a = theta * (1.0 - 2.0 * v);
+      let (a, above, below) = Self::slope(theta, v);
       let discriminant = if a > 0.0 {
-        (1.0 - a) * (1.0 - a) + 4.0 * a * (1.0 - y)
+        below * below + 4.0 * a * (1.0 - y)
       } else {
-        (1.0 + a) * (1.0 + a) - 4.0 * a * y
+        above * above - 4.0 * a * y
       };
       // `(1 + a) + √D` vanishes only at level 0 on `a = −1`; the floor answers 0 there without a branch.
-      2.0 * y / ((1.0 + a) + discriminant.sqrt()).max(f64::MIN_POSITIVE)
+      2.0 * y / (above + discriminant.sqrt()).max(f64::MIN_POSITIVE)
     }
   }
 
@@ -117,11 +135,14 @@ impl BivariateExt for Fgm {
     copula_cdf(x, |u, v| u * v + theta * u * (1.0 - u) * v * (1.0 - v))
   }
 
-  /// $\partial_v C(u,v) = u + \theta u (1-u)(1 - 2v)$.
+  /// $\partial_v C(u,v) = u + \theta u (1-u)(1 - 2v)$, as `u((1 + a) − au)`: two non-negative terms, `a = θ(1 − 2v)`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();
-    conditional_cdf(x, |u, v| u + theta * u * (1.0 - u) * (1.0 - 2.0 * v))
+    conditional_cdf(x, |u, v| {
+      let (a, above, _) = Self::slope(theta, v);
+      u * (above - a * u)
+    })
   }
 
   fn percent_point(

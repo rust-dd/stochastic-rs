@@ -72,7 +72,9 @@ impl MarshallOlkin {
   pub(crate) fn inverse(alpha: f64, beta: f64) -> impl Fn(f64, f64) -> f64 {
     move |y, v| {
       let w = v.powf(beta * (1.0 - alpha) / alpha);
-      if y < (1.0 - beta) * w {
+      if y == 0.0 {
+        0.0
+      } else if y < (1.0 - beta) * w {
         y * v.powf(beta) / (1.0 - beta)
       } else if y <= w {
         v.powf(beta / alpha)
@@ -183,13 +185,15 @@ impl BivariateExt for MarshallOlkin {
     let (alpha, beta) = self.resolve_params();
     conditional_cdf(x, |u, v| {
       if u <= 0.0 {
-        0.0
+        // At `α = 1` the law at `v = 0` is the point mass at 0, counted at 0.
+        if v == 0.0 && alpha == 1.0 { 1.0 } else { 0.0 }
       } else if u >= 1.0 {
         1.0
       } else if u >= v.powf(beta / alpha) {
         u.powf(1.0 - alpha)
       } else {
-        (1.0 - beta) * u * v.powf(-beta)
+        // `u·v^{−β}` first, so a subnormal `u` meets the factor `1 − β` only once the product is normal.
+        (1.0 - beta) * (u * v.powf(-beta))
       }
     })
   }
