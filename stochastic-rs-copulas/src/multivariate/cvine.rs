@@ -12,7 +12,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 
 use super::MultivariateFamily;
 use super::dvine::PairCopula;
-use super::dvine::pair_copula::check_student_t_nu;
+use super::dvine::pair_copula::check_parameters;
 use super::fit::SelectionCriterion;
 use super::fit::fit_cvine;
 use super::rosenblatt;
@@ -33,7 +33,7 @@ pub struct CVine {
 }
 
 impl CVine {
-  /// Build a C-vine from a precomputed tree of pair copulas, under the shape and Student-t `nu` checks of
+  /// Build a C-vine from a precomputed tree of pair copulas, under the shape and pair-parameter checks of
   /// [`super::dvine::DVine::new`].
   pub fn new(dim: usize, pair_copulas: Vec<Vec<PairCopula>>) -> Result<Self, CopulaError> {
     if dim < 2 {
@@ -58,7 +58,7 @@ impl CVine {
         )));
       }
     }
-    check_student_t_nu(&pair_copulas)?;
+    check_parameters(&pair_copulas)?;
     Ok(Self {
       dim,
       order: VineOrder::identity(dim),

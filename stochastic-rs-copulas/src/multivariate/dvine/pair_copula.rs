@@ -13,15 +13,18 @@
 use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
+use crate::bivariate::bb1::Bb1;
+use crate::bivariate::bb7::Bb7;
 use crate::bivariate::clayton::Clayton;
 use crate::bivariate::frank::Frank;
+use crate::bivariate::gaussian::GaussianCopula;
 use crate::bivariate::t_copula::TCopula;
 use crate::error::CopulaError;
 use crate::optim::zero;
 use crate::student_t;
 
-/// Bivariate pair-copula family of the C-, D- and R-vines, held by value in their `Vec<Vec<PairCopula>>` trees.
-/// Pair families must be exchangeable: the vine recursions call `h` from either end of an edge.
+/// Bivariate pair-copula family of the C-, D- and R-vines, held by value in their `Vec<Vec<PairCopula>>` trees; a vine
+/// constructor admits the parameters the family's bivariate `try_new` does. Pairs must be exchangeable.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub enum PairCopula {
@@ -49,8 +52,8 @@ pub enum PairCopula {
   StudentT {
     /// Correlation $\rho \in (-1, 1)$.
     rho: f64,
-    /// Degrees of freedom, finite with $\nu / 2 > 0$, which the vine constructors check; `h`, `h_inverse` and
-    /// `log_density` panic otherwise.
+    /// Degrees of freedom, finite with $\nu / 2 > 0$; `h`, `h_inverse` and `log_density` panic otherwise, which the
+    /// vine constructors rule out.
     nu: f64,
   },
   /// BB1 (Clayton–Gumbel) copula — see [`crate::bivariate::bb1::Bb1`].
@@ -186,11 +189,18 @@ pub(crate) fn clamp(u: f64) -> f64 {
   u.clamp(EPS, 1.0 - EPS)
 }
 
-/// `InvalidParameter` for a Student-t pair whose `nu` the Student-t law refuses, which its evaluation would panic on.
-pub(crate) fn check_student_t_nu(trees: &[Vec<PairCopula>]) -> Result<(), CopulaError> {
+/// The `InvalidParameter` of the first pair whose parameters its bivariate family's `try_new` refuses, so a vine holds
+/// only pairs that family would build.
+pub(crate) fn check_parameters(trees: &[Vec<PairCopula>]) -> Result<(), CopulaError> {
   for pair in trees.iter().flatten() {
-    if let PairCopula::StudentT { nu, .. } = *pair {
-      student_t::check_nu(nu)?;
+    match *pair {
+      PairCopula::Independence => {}
+      PairCopula::Gaussian { rho } => GaussianCopula::try_new(rho).map(drop)?,
+      PairCopula::Clayton { theta } => Clayton::try_new(theta).map(drop)?,
+      PairCopula::Frank { theta } => Frank::try_new(theta).map(drop)?,
+      PairCopula::StudentT { rho, nu } => TCopula::try_new(rho, nu).map(drop)?,
+      PairCopula::Bb1 { theta, delta } => Bb1::try_new(theta, delta).map(drop)?,
+      PairCopula::Bb7 { theta, delta } => Bb7::try_new(theta, delta).map(drop)?,
     }
   }
   Ok(())
@@ -392,6 +402,115 @@ mod tests {
     for (u, v) in [(0.1, 0.5), (0.25, 0.9), (0.75, 0.1)] {
       assert_eq!(t.h(u, v), TCopula::h(rho, nu)(u, v));
       assert_eq!(t.h_inverse(u, v), TCopula::inverse(rho, nu)(u, v));
+    }
+  }
+
+  /// Each vine constructor refuses, with the same error, a pair its bivariate family's `try_new` refuses, in any tree; the
+  /// match has no wildcard arm, so a new family does not compile until it has rows here.
+  #[test]
+  fn the_vine_constructors_refuse_the_pairs_their_bivariate_families_refuse() {
+    use crate::multivariate::cvine::CVine;
+    use crate::multivariate::dvine::DVine;
+
+    let rows = [
+      (PairCopula::Independence, None),
+      (PairCopula::Gaussian { rho: -0.5 }, None),
+      (PairCopula::Gaussian { rho: 1.0 }, Some("theta")),
+      (PairCopula::Gaussian { rho: 1.5 }, Some("theta")),
+      (PairCopula::Gaussian { rho: f64::NAN }, Some("theta")),
+      (PairCopula::Clayton { theta: 0.0 }, None),
+      (PairCopula::Clayton { theta: -1.0 }, Some("theta")),
+      (
+        PairCopula::Clayton {
+          theta: f64::INFINITY,
+        },
+        Some("theta"),
+      ),
+      (PairCopula::Frank { theta: -3.0 }, None),
+      (PairCopula::Frank { theta: f64::NAN }, Some("theta")),
+      (PairCopula::StudentT { rho: 0.5, nu: 4.0 }, None),
+      (PairCopula::StudentT { rho: 2.0, nu: 4.0 }, Some("theta")),
+      (PairCopula::StudentT { rho: 0.5, nu: -1.0 }, Some("nu")),
+      (
+        PairCopula::Bb1 {
+          theta: 0.8,
+          delta: 1.6,
+        },
+        None,
+      ),
+      (
+        PairCopula::Bb1 {
+          theta: -1.0,
+          delta: 0.5,
+        },
+        Some("delta"),
+      ),
+      (
+        PairCopula::Bb1 {
+          theta: 0.0,
+          delta: 1.6,
+        },
+        Some("theta"),
+      ),
+      (
+        PairCopula::Bb7 {
+          theta: 1.7,
+          delta: 0.9,
+        },
+        None,
+      ),
+      (
+        PairCopula::Bb7 {
+          theta: 1.7,
+          delta: -1.0,
+        },
+        Some("delta"),
+      ),
+      (
+        PairCopula::Bb7 {
+          theta: 0.5,
+          delta: 0.9,
+        },
+        Some("theta"),
+      ),
+    ];
+    for (pair, refused) in rows {
+      let bivariate = match pair {
+        PairCopula::Independence => Ok(()),
+        PairCopula::Gaussian { rho } => GaussianCopula::try_new(rho).map(drop),
+        PairCopula::Clayton { theta } => Clayton::try_new(theta).map(drop),
+        PairCopula::Frank { theta } => Frank::try_new(theta).map(drop),
+        PairCopula::StudentT { rho, nu } => TCopula::try_new(rho, nu).map(drop),
+        PairCopula::Bb1 { theta, delta } => Bb1::try_new(theta, delta).map(drop),
+        PairCopula::Bb7 { theta, delta } => Bb7::try_new(theta, delta).map(drop),
+      };
+      let in_first = || {
+        vec![
+          vec![pair, PairCopula::Independence],
+          vec![PairCopula::Independence],
+        ]
+      };
+      let in_last = || vec![vec![PairCopula::Independence; 2], vec![pair]];
+      let verdicts = [
+        DVine::new(3, in_first()).map(drop),
+        DVine::new(3, in_last()).map(drop),
+        CVine::new(3, in_first()).map(drop),
+        CVine::new(3, in_last()).map(drop),
+      ];
+      for verdict in verdicts {
+        match (refused, &verdict, &bivariate) {
+          (None, Ok(()), Ok(())) => {}
+          (Some(want), Err(CopulaError::InvalidParameter { name, .. }), Err(expected)) => {
+            assert_eq!(*name, want, "{pair:?}");
+            assert_eq!(
+              verdict.unwrap_err().to_string(),
+              expected.to_string(),
+              "{pair:?}"
+            );
+          }
+          _ => panic!("{pair:?}: vine {verdict:?}, bivariate {bivariate:?}"),
+        }
+      }
     }
   }
 
