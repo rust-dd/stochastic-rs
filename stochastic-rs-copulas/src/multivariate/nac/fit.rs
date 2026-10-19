@@ -4,6 +4,7 @@ use super::Generator;
 use super::NacNode;
 use crate::bivariate::clayton::Clayton;
 use crate::bivariate::conditional::check_open;
+use crate::bivariate::conditional::check_unit;
 use crate::bivariate::gumbel::Gumbel;
 use crate::correlation::check_defined;
 use crate::correlation::kendall_tau;
@@ -66,9 +67,7 @@ pub(super) fn estimate(generator: Generator, x: ArrayView2<f64>) -> Result<NacNo
   if n < 2 {
     return Err(CopulaError::InsufficientData { needed: 2, got: n });
   }
-  if x.iter().any(|v| !(0.0..=1.0).contains(v)) {
-    return Err(CopulaError::MarginalOutOfRange);
-  }
+  check_unit(x)?;
   check_open(x)?;
   let tau = kendall_tau(x)?;
   check_defined(tau.view())?;

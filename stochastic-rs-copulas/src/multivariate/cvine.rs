@@ -19,6 +19,7 @@ use super::rosenblatt;
 use super::rosenblatt::Rosenblatt;
 use super::vine_order::VineOrder;
 use crate::bivariate::BivariateFamily;
+use crate::bivariate::conditional::check_unit;
 use crate::error::CopulaError;
 use crate::multivariate::inside;
 use crate::multivariate::on_open_cube;
@@ -168,10 +169,7 @@ impl MultivariateExt for CVine {
         got: x.ncols(),
       });
     }
-    if x.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
-      return Err(CopulaError::MarginalOutOfRange);
-    }
-    Ok(())
+    check_unit(x)
   }
 
   fn pdf(&self, uv: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {

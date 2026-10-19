@@ -36,6 +36,7 @@ use stochastic_rs_core::simd_rng::SeedExt;
 
 use super::MultivariateFamily;
 use crate::bivariate::BivariateFamily;
+use crate::bivariate::conditional::check_unit;
 use crate::bivariate::conditional::expm1_over;
 use crate::bivariate::conditional::ln_1p_over;
 use crate::error::CopulaError;
@@ -306,10 +307,7 @@ impl MultivariateExt for NestedArchimedean {
         got: x.ncols(),
       });
     }
-    if x.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
-      return Err(CopulaError::MarginalOutOfRange);
-    }
-    Ok(())
+    check_unit(x)
   }
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {

@@ -17,6 +17,7 @@ use crate::bivariate::bb1::Bb1;
 use crate::bivariate::bb7::Bb7;
 use crate::bivariate::clayton::Clayton;
 use crate::bivariate::conditional::check_open;
+use crate::bivariate::conditional::check_unit;
 use crate::bivariate::frank::Frank;
 use crate::bivariate::gaussian::GaussianCopula;
 use crate::bivariate::t_copula::TCopula;
@@ -380,9 +381,7 @@ fn check_vine_data(
       got: u.nrows(),
     });
   }
-  if u.iter().any(|v| !(0.0..=1.0).contains(v)) {
-    return Err(CopulaError::MarginalOutOfRange);
-  }
+  check_unit(u)?;
   check_open(u)?;
   if let Some(family) = families
     .iter()
