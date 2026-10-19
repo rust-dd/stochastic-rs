@@ -15,6 +15,12 @@
 //! \left(1 + \tfrac{1}{\nu}\,z^\top \Sigma^{-1} z\right)^{-\tfrac{\nu+d}{2}}.
 //! $$
 //!
+//! Each pair's tail dependence, upper and lower, is positive for finite $\nu$:
+//!
+//! $$
+//! \lambda = 2\,t_{\nu+1}\big(-\sqrt{(\nu+1)(1-\rho)/(1+\rho)}\big).
+//! $$
+//!
 //! References:
 //! - Demarta, S., McNeil, A.J. (2005), "The t copula and related copulas",
 //!   *International Statistical Review* 73(1), 111-129.
@@ -221,7 +227,8 @@ impl MultivariateExt for TMultivariate {
     Ok(u)
   }
 
-  /// Σ from Kendall's τ, shrunk until every eigenvalue is at least `1e-3`; ν by profile likelihood.
+  /// Σ from Kendall's τ, shrunk until every eigenvalue is at least `1e-3`; ν by profile likelihood, Brent's `localmin`
+  /// on `[2.1, 50]` to a relative `1e-6`.
   fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     if x.ncols() < 2 {
       return Err(CopulaError::InvalidStructure(format!(

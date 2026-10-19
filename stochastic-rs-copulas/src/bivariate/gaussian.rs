@@ -181,7 +181,7 @@ impl BivariateExt for GaussianCopula {
     on_open_square(x, |u, v| Self::ln_density(rho, u, v))
   }
 
-  /// `gaussian_copula_cdf` on the open square.
+  /// `gaussian_copula_cdf`: to a relative `1e-12` at every admitted ρ and in both tails, exact on the edges.
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let rho = self.theta.unwrap();

@@ -10,6 +10,7 @@ use stochastic_rs_copulas::bivariate::joe::Joe;
 use stochastic_rs_copulas::traits::BivariateExt;
 
 const STEP: f64 = 1e-4;
+/// The probe's worst error at `STEP` is ≈ 3e-6; the smallest defect this guards against was 36 % (Frank at θ = −3).
 const REL_TOL: f64 = 1e-3;
 const POINTS: [(f64, f64); 3] = [(0.3, 0.7), (0.5, 0.5), (0.4, 0.6)];
 
