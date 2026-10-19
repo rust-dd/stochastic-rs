@@ -1,4 +1,5 @@
 use ndarray::ArrayView2;
+use stochastic_rs_distributions::RealExt;
 
 use super::Generator;
 use super::NacNode;
@@ -104,7 +105,7 @@ pub(super) fn agglomerate(
     let theta = [item_a.theta(), item_b.theta()]
       .into_iter()
       .flatten()
-      .fold(estimate, f64::min);
+      .fold(estimate, f64::min_or_nan);
     let node = Item::merge(theta, item_a, item_b);
     if clusters.is_empty() {
       return Ok(node);

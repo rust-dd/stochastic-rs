@@ -33,6 +33,7 @@ use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::RealExt;
 
 use super::MultivariateFamily;
 use crate::bivariate::BivariateFamily;
@@ -94,7 +95,7 @@ impl Generator {
   /// `−ln C` of a node from its parts' `y = −ln C_k`, a leaf's `−ln u`: Clayton `ln(1 + Σ expm1(θy))/θ`, Gumbel
   /// `(Σ y^θ)^{1/θ}`, each formed about the largest part, so it neither overflows nor drops the digits of a small `θ`.
   fn minus_ln_cdf(self, theta: f64, parts: &[f64]) -> f64 {
-    let top = parts.iter().copied().fold(0.0, f64::max);
+    let top = parts.iter().copied().fold(0.0, f64::max_or_nan);
     if top == 0.0 || top.is_infinite() {
       return top;
     }
