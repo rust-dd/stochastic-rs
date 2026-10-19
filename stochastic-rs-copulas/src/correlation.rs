@@ -116,9 +116,12 @@ pub(crate) fn undefined_tau_b(columns: &[usize], given: &str) -> CopulaError {
   })
 }
 
-/// $\rho = \sin(\pi\tau/2)$: the correlation of the Gaussian or t copula with Kendall's `tau`;
+/// $\rho = \sin(\pi\tau/2)$: the correlation of the Gaussian or t copula with Kendall's `tau`, NaN outside `[-1, 1]`;
 /// feeds a `BivariateExt` fit into the `MultivariateExt` Gaussian constructor.
 pub fn tau_to_corr(tau: f64) -> f64 {
+  if tau.abs() > 1.0 {
+    return f64::NAN;
+  }
   (std::f64::consts::FRAC_PI_2 * tau).sin()
 }
 
@@ -127,8 +130,8 @@ pub fn corr_to_tau(rho: f64) -> f64 {
   2.0 / std::f64::consts::PI * rho.asin()
 }
 
-/// Apply [`tau_to_corr`] elementwise to a Kendall-tau matrix to obtain a
-/// Gaussian-copula correlation matrix on the same indexing.
+/// Apply [`tau_to_corr`] elementwise to a Kendall-tau matrix to obtain a Gaussian-copula correlation matrix on the same
+/// indexing, NaN wherever `|τ| > 1`.
 pub fn tau_matrix_to_corr_matrix(tau: ArrayView2<f64>) -> Array2<f64> {
   tau.mapv(tau_to_corr)
 }
@@ -136,6 +139,17 @@ pub fn tau_matrix_to_corr_matrix(tau: ArrayView2<f64>) -> Array2<f64> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  /// Both τ maps are NaN outside their domain, as `corr_to_tau` is outside `[-1, 1]`.
+  #[test]
+  fn the_tau_maps_are_nan_outside_their_domain() {
+    for tau in [1.5, -1.0000000000000002, f64::NAN, f64::INFINITY] {
+      assert!(tau_to_corr(tau).is_nan(), "{tau}");
+    }
+    assert_eq!(tau_to_corr(1.0), 1.0);
+    let corr = tau_matrix_to_corr_matrix(ndarray::array![[1.0, 1.5], [1.5, 1.0]].view());
+    assert!(corr[[0, 1]].is_nan() && corr[[1, 0]].is_nan() && corr[[0, 0]] == 1.0);
+  }
 
   #[test]
   fn tau_corr_round_trip() {

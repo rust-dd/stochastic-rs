@@ -181,6 +181,26 @@ impl Clayton {
       .for_each(|u, &y, &v, &v_theta| *u = confine(Self::finish(theta, *u, y, v, v_theta)));
     Ok(u)
   }
+
+  /// Nelsen's `φ(t) = (t^{−θ} − 1)/θ` as `−ln t · expm1(x)/x`, `x = −θ ln t`, exact as `θ → 0` and `−ln t` at `θ = 0`;
+  /// `expm1(x)/θ` past `x = 1`, and `e^{x − ln θ}` past `ln(f64::MAX)`, where `expm1(x)` overflows before the quotient.
+  fn unchecked_generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let theta = self.theta.unwrap();
+    Ok(t.mapv(|t| {
+      let minus_ln_t = -t.ln();
+      let x = theta * minus_ln_t;
+      if theta == 0.0 {
+        minus_ln_t
+      } else if x <= 1.0 {
+        minus_ln_t * expm1_over(x)
+      } else if x <= f64::MAX.ln() {
+        x.exp_m1() / theta
+      } else {
+        (x - theta.ln()).exp()
+      }
+    }))
+  }
 }
 
 impl BivariateExt for Clayton {
@@ -205,24 +225,8 @@ impl BivariateExt for Clayton {
     vec![]
   }
 
-  /// Nelsen's `φ(t) = (t^{−θ} − 1)/θ` as `−ln t · expm1(x)/x`, `x = −θ ln t`, exact as `θ → 0` and `−ln t` at `θ = 0`;
-  /// `expm1(x)/θ` past `x = 1`, and `e^{x − ln θ}` past `ln(f64::MAX)`, where `expm1(x)` overflows before the quotient.
-  fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit()?;
-    let theta = self.theta.unwrap();
-    Ok(t.mapv(|t| {
-      let minus_ln_t = -t.ln();
-      let x = theta * minus_ln_t;
-      if theta == 0.0 {
-        minus_ln_t
-      } else if x <= 1.0 {
-        minus_ln_t * expm1_over(x)
-      } else if x <= f64::MAX.ln() {
-        x.exp_m1() / theta
-      } else {
-        (x - theta.ln()).exp()
-      }
-    }))
+  fn generator_unchecked(&self, t: ArrayView1<f64>) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_generator(t))
   }
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {

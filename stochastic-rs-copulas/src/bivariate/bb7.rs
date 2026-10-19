@@ -358,6 +358,13 @@ impl Bb7 {
       Self::ln_h(u, v, theta, delta)
     })
   }
+
+  /// `φ(t) = (1 − (1 − t)^θ)^{−δ} − 1` as `expm1(−δ ln(1 − (1 − t)^θ))` from `ln_1p(−t)`, exact where `δ` is small or
+  /// `(1 − t)^θ` underflows.
+  fn unchecked_generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
+    let (theta, delta) = self.params()?;
+    Ok(t.mapv(|t| (-delta * ln_one_minus_pow(theta, (-t).ln_1p())).exp_m1()))
+  }
 }
 
 impl Bb7 {
@@ -420,11 +427,8 @@ impl BivariateExt for Bb7 {
     vec![]
   }
 
-  /// `φ(t) = (1 − (1 − t)^θ)^{−δ} − 1` as `expm1(−δ ln(1 − (1 − t)^θ))` from `ln_1p(−t)`, exact where `δ` is small or
-  /// `(1 − t)^θ` underflows.
-  fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
-    let (theta, delta) = self.params()?;
-    Ok(t.mapv(|t| (-delta * ln_one_minus_pow(theta, (-t).ln_1p())).exp_m1()))
+  fn generator_unchecked(&self, t: ArrayView1<f64>) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_generator(t))
   }
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {

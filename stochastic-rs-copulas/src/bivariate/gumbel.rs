@@ -98,6 +98,11 @@ impl Gumbel {
     }
     numerical_quantiles(y, v, self.family(), Self::ln_h(theta))
   }
+
+  fn unchecked_generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    Ok((-t.ln()).powf(self.theta.unwrap()))
+  }
 }
 
 impl BivariateExt for Gumbel {
@@ -122,9 +127,8 @@ impl BivariateExt for Gumbel {
     vec![0.0]
   }
 
-  fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit()?;
-    Ok((-t.ln()).powf(self.theta.unwrap()))
+  fn generator_unchecked(&self, t: ArrayView1<f64>) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_generator(t))
   }
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {

@@ -286,6 +286,15 @@ impl Bb1 {
       Self::ln_h(u, v, theta, delta)
     })
   }
+
+  /// `φ(t) = (t^{−θ} − 1)^δ` as `exp(δ ln expm1(−θ ln t))`, which keeps the digits `t^{−θ} − 1` loses as `θ → 0`.
+  fn unchecked_generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
+    let (theta, delta) = self.params()?;
+    Ok(t.mapv(|t| {
+      let minus_ln_t = -t.ln();
+      (delta * ln_expm1(theta * minus_ln_t, theta.ln() + minus_ln_t.ln())).exp()
+    }))
+  }
 }
 
 /// BB1's log-density at one `(θ, δ)`, with what no point changes formed once.
@@ -410,13 +419,8 @@ impl BivariateExt for Bb1 {
     vec![0.0]
   }
 
-  /// `φ(t) = (t^{−θ} − 1)^δ` as `exp(δ ln expm1(−θ ln t))`, which keeps the digits `t^{−θ} − 1` loses as `θ → 0`.
-  fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
-    let (theta, delta) = self.params()?;
-    Ok(t.mapv(|t| {
-      let minus_ln_t = -t.ln();
-      (delta * ln_expm1(theta * minus_ln_t, theta.ln() + minus_ln_t.ln())).exp()
-    }))
+  fn generator_unchecked(&self, t: ArrayView1<f64>) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_generator(t))
   }
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {

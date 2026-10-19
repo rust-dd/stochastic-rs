@@ -121,6 +121,14 @@ impl Joe {
     }
     numerical_quantiles(y, v, self.family(), Self::ln_h(theta))
   }
+
+  /// Archimedean generator $\varphi(t) = -\ln(1 - (1-t)^\theta)$ from `ln_1p(−t)`, so `1 − t` and `(1 − t)^θ` keep their
+  /// digits at both ends of `t` and of `θ`.
+  fn unchecked_generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let theta = self.theta.unwrap();
+    Ok(t.mapv(|t| -ln_one_minus_pow(theta, (-t).ln_1p())))
+  }
 }
 
 impl BivariateExt for Joe {
@@ -145,12 +153,8 @@ impl BivariateExt for Joe {
     vec![]
   }
 
-  /// Archimedean generator $\varphi(t) = -\ln(1 - (1-t)^\theta)$ from `ln_1p(−t)`, so `1 − t` and `(1 − t)^θ` keep their
-  /// digits at both ends of `t` and of `θ`.
-  fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit()?;
-    let theta = self.theta.unwrap();
-    Ok(t.mapv(|t| -ln_one_minus_pow(theta, (-t).ln_1p())))
+  fn generator_unchecked(&self, t: ArrayView1<f64>) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_generator(t))
   }
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {

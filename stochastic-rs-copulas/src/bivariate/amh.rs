@@ -159,6 +159,26 @@ impl Amh {
       Ok(conditional_quantiles(y, v, Self::inverse(theta)))
     }
   }
+
+  /// Archimedean generator $\varphi(t) = \ln\frac{1 - \theta(1-t)}{t}$; at `θ = 1`, where it vanishes, its limit
+  /// `φ/(1 − θ) → (1 − t)/t`, Clayton(1)'s.
+  fn unchecked_generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let theta = self.theta.unwrap();
+    if theta == 1.0 {
+      return Ok(t.mapv(|t| (1.0 - t) / t));
+    }
+    let mut out = Array1::<f64>::zeros(t.len());
+    for i in 0..t.len() {
+      let ti = t[i];
+      if ti <= 0.0 {
+        out[i] = f64::INFINITY;
+        continue;
+      }
+      out[i] = ((1.0 - theta * (1.0 - ti)) / ti).ln();
+    }
+    Ok(out)
+  }
 }
 
 impl BivariateExt for Amh {
@@ -183,24 +203,8 @@ impl BivariateExt for Amh {
     vec![]
   }
 
-  /// Archimedean generator $\varphi(t) = \ln\frac{1 - \theta(1-t)}{t}$; at `θ = 1`, where it vanishes, its limit
-  /// `φ/(1 − θ) → (1 − t)/t`, Clayton(1)'s.
-  fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit()?;
-    let theta = self.theta.unwrap();
-    if theta == 1.0 {
-      return Ok(t.mapv(|t| (1.0 - t) / t));
-    }
-    let mut out = Array1::<f64>::zeros(t.len());
-    for i in 0..t.len() {
-      let ti = t[i];
-      if ti <= 0.0 {
-        out[i] = f64::INFINITY;
-        continue;
-      }
-      out[i] = ((1.0 - theta * (1.0 - ti)) / ti).ln();
-    }
-    Ok(out)
+  fn generator_unchecked(&self, t: ArrayView1<f64>) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_generator(t))
   }
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {

@@ -228,6 +228,23 @@ impl Frank {
       }))
     }
   }
+
+  /// Nelsen's `φ(t) = −ln((e^{−θt} − 1)/(e^{−θ} − 1))` as `−P` for `θ > 0` and `c(1 − t) − P` for `θ < 0`, `c = |θ|`,
+  /// `P = ln((1 − e^{−ct})/(1 − e^{−c}))`, so no exponential overflows; its limit `−ln t` below `INDEPENDENT_BELOW`.
+  fn unchecked_generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit()?;
+    let theta = self.theta.unwrap();
+    let c = theta.abs();
+    Ok(t.mapv(|t| {
+      if c < INDEPENDENT_BELOW {
+        -t.ln()
+      } else if theta > 0.0 {
+        -Self::ln_survival_ratio(c, t)
+      } else {
+        c * (1.0 - t) - Self::ln_survival_ratio(c, t)
+      }
+    }))
+  }
 }
 
 impl BivariateExt for Frank {
@@ -252,21 +269,8 @@ impl BivariateExt for Frank {
     vec![]
   }
 
-  /// Nelsen's `φ(t) = −ln((e^{−θt} − 1)/(e^{−θ} − 1))` as `−P` for `θ > 0` and `c(1 − t) − P` for `θ < 0`, `c = |θ|`,
-  /// `P = ln((1 − e^{−ct})/(1 − e^{−c}))`, so no exponential overflows; its limit `−ln t` below `INDEPENDENT_BELOW`.
-  fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit()?;
-    let theta = self.theta.unwrap();
-    let c = theta.abs();
-    Ok(t.mapv(|t| {
-      if c < INDEPENDENT_BELOW {
-        -t.ln()
-      } else if theta > 0.0 {
-        -Self::ln_survival_ratio(c, t)
-      } else {
-        c * (1.0 - t) - Self::ln_survival_ratio(c, t)
-      }
-    }))
+  fn generator_unchecked(&self, t: ArrayView1<f64>) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_generator(t))
   }
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {

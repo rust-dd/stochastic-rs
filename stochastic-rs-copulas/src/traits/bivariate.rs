@@ -33,8 +33,8 @@ pub struct TailDependence<T> {
   pub upper: T,
 }
 
-/// Batch methods answer `DimensionMismatch` for a column count other than 2, then `MarginalOutOfRange` outside `[0, 1]`
-/// or for NaN; densities are NaN on the boundary, and `fit` answers `MarginalOnBoundary` for a 0 or 1.
+/// Every batch method, `generator` too, answers `DimensionMismatch` off two columns, then `MarginalOutOfRange` outside
+/// `[0, 1]` or for NaN; densities are NaN on the edges, and `fit` answers `MarginalOnBoundary` for a 0 or 1.
 pub trait BivariateExt {
   /// Which family this copula is; the label its error messages carry.
   fn family(&self) -> BivariateFamily;
@@ -91,13 +91,22 @@ pub trait BivariateExt {
   /// `InvalidParameter` outside the family's range.
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError>;
 
-  /// Archimedean generator $\varphi$, $C(u,v) = \varphi^{-1}(\varphi(u) + \varphi(v))$; the default
-  /// is `Unsupported`, named by the `family()` label, for a family with no such form.
-  fn generator(&self, _t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
-    Err(CopulaError::Unsupported(format!(
-      "{:?} is not Archimedean: no generator",
-      self.family()
-    )))
+  /// Archimedean generator $\varphi$, $C(u,v) = \varphi^{-1}(\varphi(u) + \varphi(v))$: `MarginalOutOfRange` outside
+  /// `[0, 1]` or for NaN, then the family's own, or `Unsupported`, named by the `family()` label, for a family with none.
+  fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
+    check_unit(t)?;
+    self.generator_unchecked(t).unwrap_or_else(|| {
+      Err(CopulaError::Unsupported(format!(
+        "{:?} is not Archimedean: no generator",
+        self.family()
+      )))
+    })
+  }
+
+  /// A family's own generator on inputs in `[0, 1]`; `None` by default, a family with none.
+  #[doc(hidden)]
+  fn generator_unchecked(&self, _t: ArrayView1<f64>) -> Option<Result<Array1<f64>, CopulaError>> {
+    None
   }
 
   /// `n` pairs from the conditional-inversion sampler, drawn from `seed`; a fresh `Deterministic` replays them, a shared one advances.

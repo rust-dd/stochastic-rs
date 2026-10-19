@@ -109,6 +109,7 @@ fn bivariate(copula: &dyn BivariateExt) {
         copula.partial_derivative(x.view()),
         copula.percent_point(x.column(0), x.column(1)),
         copula.percent_point_numerical(x.column(0), x.column(1)),
+        copula.generator(ndarray::aview1(&row)),
       ];
       for answer in answers {
         assert_eq!(answer, Err(CopulaError::MarginalOutOfRange), "{row:?}");

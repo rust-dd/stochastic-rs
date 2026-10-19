@@ -37,6 +37,11 @@ impl Independence {
   ) -> Result<Array1<f64>, CopulaError> {
     Ok(conditional_quantiles(y, v, |y, _| y))
   }
+
+  /// `φ(t) = −ln t`, so `φ^{-1}(φ(u) + φ(v)) = uv`.
+  fn unchecked_generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(t.mapv(|t| -t.ln()))
+  }
 }
 
 impl BivariateExt for Independence {
@@ -72,9 +77,8 @@ impl BivariateExt for Independence {
     })
   }
 
-  /// `φ(t) = −ln t`, so `φ^{-1}(φ(u) + φ(v)) = uv`.
-  fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
-    Ok(t.mapv(|t| -t.ln()))
+  fn generator_unchecked(&self, t: ArrayView1<f64>) -> Option<Result<Array1<f64>, CopulaError>> {
+    Some(self.unchecked_generator(t))
   }
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
