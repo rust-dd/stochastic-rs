@@ -1,5 +1,12 @@
+use ndarray::array;
+use stochastic_rs_copulas::bivariate::bb1::Bb1;
+use stochastic_rs_copulas::bivariate::bb7::Bb7;
+use stochastic_rs_copulas::bivariate::clayton::Clayton;
+use stochastic_rs_copulas::bivariate::frank::Frank;
+use stochastic_rs_copulas::bivariate::gaussian::GaussianCopula;
 use stochastic_rs_copulas::bivariate::t_copula::TCopula;
 use stochastic_rs_copulas::multivariate::dvine::PairCopula;
+use stochastic_rs_copulas::traits::BivariateExt;
 
 use super::GRID;
 use super::agrees;
@@ -87,66 +94,106 @@ fn the_t_copula_at_large_nu_answers_inside_the_unit_interval() {
   }
 }
 
-/// The vine pairs against 50-digit values of their clamped arguments: Clayton past `θ|ln v| ≈ 710`, BB1 and BB7 at the
-/// ends of their ranges with their inverses saturating at the bracket, and Frank's density at `θ = 0`.
+/// The vine pairs are their bivariate families' kernels, at strong dependence and across the open grid: `h` the family's
+/// `partial_derivative` with an exact 0 or 1 moved one ulp inside, `h⁻¹` its `percent_point`, `log_density` its `log_pdf`.
 #[test]
-fn vine_pairs_hold_at_strong_dependence() {
-  let clayton = |theta| PairCopula::Clayton { theta };
-  let bb1 = |theta, delta| PairCopula::Bb1 { theta, delta };
-  let bb7 = |theta, delta| PairCopula::Bb7 { theta, delta };
-  let h_pins = [
-    (clayton(103.0), 0.5, 1e-3, 0.999999999999),
-    (clayton(200.0), 0.3, 0.29, 0.998859696596924),
-    (clayton(1e300), 0.5, 0.5, 0.5),
-    (clayton(1e-300), 0.3, 0.6, 0.3),
-    (bb1(100.0, 1.0), 0.5, 0.49, 0.8818101704990862),
-    (bb1(1.0, 100.0), 0.5, 0.51, 0.017983983458559526),
-    (bb1(1e300, 1e300), 0.3, 0.3, 0.5),
-    (bb7(100.0, 1.0), 0.99, 0.99, 0.5034777750283594),
-    (bb7(100.0, 100.0), 0.999, 0.9989, 0.999928165127942),
-    (bb7(1.0, 1e-300), 0.3, 0.6, 0.3),
-  ];
-  for (pair, u, v, want) in h_pins {
-    let got = pair.h(u, v);
-    assert!(
-      (got - want).abs() <= 1e-12 * want,
-      "{pair:?} h({u} | {v}) = {got}, want {want}"
-    );
-  }
-  // Clayton's closed form to 1e-12; the two-parameter pairs' Brent root within its `6 macheps |x| + 2t`, `t = 2.5e-16`.
-  let q_pins = [
-    (clayton(200.0), 0.5, 0.01, 0.01000034545197381, 1e-12 * 0.01),
+fn vine_pairs_are_their_bivariate_kernels() {
+  let cases: Vec<(PairCopula, Box<dyn BivariateExt>)> = vec![
     (
-      clayton(103.0),
-      1e-6,
-      1e-3,
-      0.0008756039198499794,
-      1e-12 * 1e-3,
+      PairCopula::Gaussian { rho: 0.0 },
+      Box::new(GaussianCopula::new(0.0)),
     ),
-    (bb1(0.8, 1.6), 0.3, 0.6, 0.4540659114878789, 2e-15),
-    (bb1(100.0, 1.0), 0.5, 0.49, 0.49006749289180557, 2e-15),
-    (bb7(1.7, 0.9), 0.3, 0.6, 0.4057668416272789, 2e-15),
-    (bb7(100.0, 1.0), 0.5, 0.99, 0.9899986044733178, 2e-15),
+    (
+      PairCopula::Gaussian { rho: 0.6 },
+      Box::new(GaussianCopula::new(0.6)),
+    ),
+    (
+      PairCopula::Gaussian {
+        rho: -0.9999999999999999,
+      },
+      Box::new(GaussianCopula::new(-0.9999999999999999)),
+    ),
+    (
+      PairCopula::Clayton { theta: 0.0 },
+      Box::new(Clayton::new(0.0)),
+    ),
+    (
+      PairCopula::Clayton { theta: 1e-300 },
+      Box::new(Clayton::new(1e-300)),
+    ),
+    (
+      PairCopula::Clayton { theta: 103.0 },
+      Box::new(Clayton::new(103.0)),
+    ),
+    (
+      PairCopula::Clayton { theta: 1e300 },
+      Box::new(Clayton::new(1e300)),
+    ),
+    (PairCopula::Frank { theta: 0.0 }, Box::new(Frank::new(0.0))),
+    (
+      PairCopula::Frank { theta: -40.0 },
+      Box::new(Frank::new(-40.0)),
+    ),
+    (
+      PairCopula::StudentT { rho: 0.5, nu: 4.0 },
+      Box::new(TCopula::new(0.5, 4.0)),
+    ),
+    (
+      PairCopula::StudentT { rho: -0.8, nu: 0.5 },
+      Box::new(TCopula::new(-0.8, 0.5)),
+    ),
+    (
+      PairCopula::Bb1 {
+        theta: 100.0,
+        delta: 1.0,
+      },
+      Box::new(Bb1::new(100.0, 1.0)),
+    ),
+    (
+      PairCopula::Bb1 {
+        theta: 1.0,
+        delta: 100.0,
+      },
+      Box::new(Bb1::new(1.0, 100.0)),
+    ),
+    (
+      PairCopula::Bb7 {
+        theta: 100.0,
+        delta: 100.0,
+      },
+      Box::new(Bb7::new(100.0, 100.0)),
+    ),
+    (
+      PairCopula::Bb7 {
+        theta: 1.0,
+        delta: 1e-300,
+      },
+      Box::new(Bb7::new(1.0, 1e-300)),
+    ),
   ];
-  for (pair, y, v, want, tolerance) in q_pins {
-    let got = pair.h_inverse(y, v);
-    assert!(
-      (got - want).abs() <= tolerance,
-      "{pair:?} h⁻¹({y} | {v}) = {got}, want {want}"
-    );
+  let inside = |h: f64| match h {
+    0.0 => f64::from_bits(1),
+    1.0 => 1.0 - f64::EPSILON / 2.0,
+    h => h,
+  };
+  let same = |a: f64, b: f64| a.to_bits() == b.to_bits() || (a.is_nan() && b.is_nan());
+  let open = &GRID[1..8];
+  let points = open.iter().flat_map(|&u| open.iter().map(move |&v| (u, v)));
+  let strong = [(0.5, 1e-3), (0.3, 0.29), (0.999, 0.9989), (1e-6, 1e-3)];
+  for (pair, family) in &cases {
+    for (u, v) in points.clone().chain(strong) {
+      let x = array![[u, v]];
+      let h = family.partial_derivative(x.view()).unwrap()[0];
+      let q = family
+        .percent_point(array![u].view(), array![v].view())
+        .unwrap()[0];
+      let ln_c = family.log_pdf(x.view()).unwrap()[0];
+      assert!(same(pair.h(u, v), inside(h)), "{pair:?} h({u:e} | {v:e})");
+      assert!(same(pair.h_inverse(u, v), q), "{pair:?} h⁻¹({u:e} | {v:e})");
+      assert!(
+        same(pair.log_density(u, v), ln_c),
+        "{pair:?} ln c({u:e}, {v:e})"
+      );
+    }
   }
-  // `h` at the bracket end already passes the level, so the root lies outside `[1e-12, 1 − 1e-12]`.
-  let saturating = [
-    (bb1(2.0, 1.0), 0.3, 1e-12, 1e-12),
-    (bb1(0.8, 1.6), 0.05, 1e-12, 1e-12),
-    (bb7(1.7, 0.9), 0.2, 1e-12, 1e-12),
-    (bb7(3.0, 1.0), 0.9, 1.0 - 1e-12, 1.0 - 1e-12),
-    (bb1(2.0, 1.0), 1.0 - 1e-12, 1.0 - 1e-12, 1.0 - 1e-12),
-  ];
-  for (pair, y, v, want) in saturating {
-    assert_eq!(pair.h_inverse(y, v), want, "{pair:?} h⁻¹({y} | {v})");
-  }
-  let frank = PairCopula::Frank { theta: 0.0 };
-  assert_eq!(frank.log_density(0.3, 0.6), 0.0);
-  assert_eq!(frank.h(0.3, 0.6), 0.3);
 }

@@ -229,7 +229,7 @@ impl Bb7 {
 
   /// `ln ∂_v C` with `h_scalar`'s limit laws at the edges and `ln_h_log` inside, whose `1 − h` keeps its digits near 1:
   /// what `percent_point` inverts.
-  fn ln_h(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
+  pub(crate) fn ln_h(u: f64, v: f64, theta: f64, delta: f64) -> f64 {
     if u >= 1.0 || v <= 0.0 {
       0.0
     } else if u <= 0.0 {

@@ -33,6 +33,18 @@ pub(crate) fn on_open_cube(
   values
 }
 
+/// `u` with an exact 0 or 1 moved one ulp inside `(0, 1)`: the one adjustment the vines and the t sampler make to a
+/// value they computed, so a draw or a conditioning value never lands on an edge by rounding.
+pub(crate) fn inside(u: f64) -> f64 {
+  if u == 0.0 {
+    0.0_f64.next_up()
+  } else if u == 1.0 {
+    1.0_f64.next_down()
+  } else {
+    u
+  }
+}
+
 /// One variant per multivariate copula of the crate; `MultivariateExt::family` returns it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]

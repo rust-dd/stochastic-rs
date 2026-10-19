@@ -173,7 +173,11 @@ impl TCopula {
   /// `ln c` on the open square: the Gaussian copula's past `NORMAL_ABOVE`, else `TDensity::moderate` at the law's scores,
   /// else `student_t::ln_density` at their features, whose gap stays exact past `f64::MAX`.
   fn ln_density(&self) -> impl Fn(f64, f64) -> f64 {
-    let (rho, nu) = (self.theta.unwrap(), self.nu);
+    Self::ln_density_at(self.theta.unwrap(), self.nu)
+  }
+
+  /// `TCopula::ln_density` at `(ρ, ν)`, the vines' Student-t pair density.
+  pub(crate) fn ln_density_at(rho: f64, nu: f64) -> impl Fn(f64, f64) -> f64 {
     let (law, density) = (Law::new(nu), TDensity::new(rho, nu));
     move |u, v| {
       if nu >= NORMAL_ABOVE {

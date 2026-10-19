@@ -243,11 +243,6 @@ pub(crate) fn ln_pdf(x: f64, nu: f64) -> f64 {
   log_norm + log_kernel
 }
 
-/// `ln c` of the t copula at finite scores `x = t_ν⁻¹(u)`, `y = t_ν⁻¹(v)`: `TDensity::moderate`, else `ln_density`.
-pub(crate) fn ln_copula_density(x: f64, y: f64, rho: f64, nu: f64) -> f64 {
-  TDensity::new(rho, nu).ln_c(x, y)
-}
-
 /// The t copula's log-density at one `(ρ, ν)`, with what no point changes formed once.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TDensity {

@@ -11,7 +11,6 @@ use ndarray::ArrayView2;
 use super::cvine::CVine;
 use super::dvine::DVine;
 use super::dvine::PairCopula;
-use super::dvine::pair_copula;
 use super::rvine::RVine;
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::bb1::Bb1;
@@ -29,7 +28,7 @@ use crate::correlation::undefined_tau_b;
 use crate::error::CopulaError;
 use crate::optim::SQRT_MACHEPS;
 use crate::optim::localmin;
-use crate::student_t;
+use crate::student_t::Law;
 use crate::student_t::TDensity;
 use crate::traits::BivariateExt;
 
@@ -198,14 +197,9 @@ fn student_t(u: &[f64], v: &[f64]) -> Option<PairCopula> {
   let copula = TCopula::default();
   let (lo, hi) = tau_range(&copula);
   let profile = |nu: f64| {
-    let x: Vec<f64> = u
-      .iter()
-      .map(|&a| student_t::quantile(pair_copula::clamp(a), nu))
-      .collect();
-    let y: Vec<f64> = v
-      .iter()
-      .map(|&b| student_t::quantile(pair_copula::clamp(b), nu))
-      .collect();
+    let law = Law::new(nu);
+    let x: Vec<f64> = u.iter().map(|&a| law.quantile(a).value).collect();
+    let y: Vec<f64> = v.iter().map(|&b| law.quantile(b).value).collect();
     let nll = |t: f64| match copula.theta_from_tau(t) {
       Ok(rho) => {
         let density = TDensity::new(rho, nu);

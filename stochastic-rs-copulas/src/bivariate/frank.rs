@@ -155,7 +155,7 @@ impl Frank {
 
   /// `ln c = ln(c(1 − e^{−c})e^{−c(M − m)}/B²)`, `c = |θ|`, with `B` of `Frank::spread` at `(u, v)`, at `(u, 1 − v)` for
   /// `θ < 0` (`c_θ(u, v) = c_{−θ}(u, 1 − v)`); 0 below `INDEPENDENT_BELOW`.
-  fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
+  pub(crate) fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
     let c = theta.abs();
     if c < INDEPENDENT_BELOW {
       return 0.0;

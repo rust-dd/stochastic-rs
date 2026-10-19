@@ -6,22 +6,20 @@
 //! $$
 //!
 //! the conditional cdf the vines propagate pseudo-observations through (`h`) and sample through
-//! (`h_inverse`); all families but BB1 and BB7, whose `h_inverse` is a Brent root, are closed-form.
+//! (`h_inverse`): each family's bivariate kernels, closed-form but for BB1's and BB7's `h_inverse`, a Brent root.
 //!
 //! Reference: Aas, K., Czado, C., Frigessi, A. & Bakken, H. (2009), "Pair-copula constructions of multiple dependence", Insurance: Mathematics and Economics 44(2), 182–198, doi:10.1016/j.insmatheco.2007.02.001 (preprint: SFB 386 Discussion Paper 487), eq. (7) for h and App. B for the Gaussian, Student-t and Clayton h-functions and inverses.
-
-use stochastic_rs_distributions::special::ndtri;
-use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::bivariate::bb1::Bb1;
 use crate::bivariate::bb7::Bb7;
 use crate::bivariate::clayton::Clayton;
+use crate::bivariate::conditional::confine;
+use crate::bivariate::conditional::numerical_quantile;
 use crate::bivariate::frank::Frank;
 use crate::bivariate::gaussian::GaussianCopula;
 use crate::bivariate::t_copula::TCopula;
 use crate::error::CopulaError;
-use crate::optim::zero;
-use crate::student_t;
+use crate::multivariate::inside;
 
 /// Bivariate pair-copula family of the C-, D- and R-vines, held by value in their `Vec<Vec<PairCopula>>` trees; a vine
 /// constructor admits the parameters the family's bivariate `try_new` does. Pairs must be exchangeable.
@@ -63,101 +61,52 @@ pub enum PairCopula {
 }
 
 impl PairCopula {
-  /// Family-specific h-function $h(u \mid v) = \partial C / \partial v$.
-  /// Returns the conditional CDF $F_{U \mid V = v}(u)$.
+  /// `h(u | v) = ∂C/∂v`, the conditional cdf $F_{U \mid V = v}(u)$: the bivariate family's own, an exact 0 or 1 moved one
+  /// ulp inside so the vine recursions never meet an edge they did not start from.
   pub fn h(&self, u: f64, v: f64) -> f64 {
-    let u = clamp(u);
-    let v = clamp(v);
     let h = match *self {
       PairCopula::Independence => u,
-      PairCopula::Gaussian { rho } => {
-        let x = ndtri(u);
-        let y = ndtri(v);
-        let arg = (x - rho * y) / (1.0 - rho * rho).sqrt();
-        norm_cdf(arg)
-      }
+      PairCopula::Gaussian { rho } => GaussianCopula::h(rho)(u, v),
       PairCopula::Clayton { theta } => Clayton::h_at(theta, u, v),
       PairCopula::Frank { theta } => Frank::h(theta)(u, v),
-      PairCopula::Bb1 { theta, delta } => crate::bivariate::bb1::Bb1::h_scalar(u, v, theta, delta),
-      PairCopula::Bb7 { theta, delta } => crate::bivariate::bb7::Bb7::h_scalar(u, v, theta, delta),
+      PairCopula::Bb1 { theta, delta } => Bb1::h_scalar(u, v, theta, delta),
+      PairCopula::Bb7 { theta, delta } => Bb7::h_scalar(u, v, theta, delta),
       PairCopula::StudentT { rho, nu } => TCopula::h(rho, nu)(u, v),
     };
-    clamp(h)
+    inside(h)
   }
 
-  /// Inverse h-function: returns the $u$ that satisfies $h(u \mid v) = p$.
-  /// Used by the vine samplers (Aas et al. 2009, Algorithms 1 and 2).
+  /// The `u` with `h(u | v) = p`, the vine samplers' step (Aas et al. 2009, Algorithms 1 and 2): the bivariate family's
+  /// own inverse under its quantile rule, BB1 and BB7 by Brent's `zero` on their `ln h`.
   pub fn h_inverse(&self, p: f64, v: f64) -> f64 {
-    let p = clamp(p);
-    let v = clamp(v);
     let u = match *self {
       PairCopula::Independence => p,
-      PairCopula::Gaussian { rho } => {
-        let z = ndtri(p);
-        let y = ndtri(v);
-        let arg = z * (1.0 - rho * rho).sqrt() + rho * y;
-        norm_cdf(arg)
-      }
+      PairCopula::Gaussian { rho: 0.0 } => p,
+      PairCopula::Gaussian { rho } => GaussianCopula::inverse(rho)(p, v),
       PairCopula::Clayton { theta } => Clayton::inverse_at(theta, p, v),
       PairCopula::Frank { theta } => Frank::inverse_at(theta, p, v),
-      // Brent on the clamped bracket to `t = 2.5e-16`; a root outside the bracket saturates at its nearer end.
-      PairCopula::Bb1 { .. } | PairCopula::Bb7 { .. } => {
-        zero(EPS, 1.0 - EPS, 2.5e-16, |u| self.h(u, v) - p).unwrap_or_else(|| self.saturated(p, v))
+      PairCopula::Bb1 { theta, delta } => {
+        numerical_quantile(p, v, &|u, v| Bb1::ln_h(u, v, theta, delta)).unwrap_or(f64::NAN)
+      }
+      PairCopula::Bb7 { theta, delta } => {
+        numerical_quantile(p, v, &|u, v| Bb7::ln_h(u, v, theta, delta)).unwrap_or(f64::NAN)
       }
       PairCopula::StudentT { rho, nu } => TCopula::inverse(rho, nu)(p, v),
     };
-    clamp(u)
+    confine(u)
   }
 
-  /// Log copula density $\log c(u, v) = \log \frac{\partial^2 C(u,v)}{\partial u\,\partial v}$, an
-  /// edge's term of the vine likelihood.
+  /// Log copula density $\log c(u, v) = \log \frac{\partial^2 C(u,v)}{\partial u\,\partial v}$, an edge's term of the
+  /// vine likelihood: the bivariate family's own.
   pub fn log_density(&self, u: f64, v: f64) -> f64 {
-    let u = clamp(u);
-    let v = clamp(v);
     match *self {
       PairCopula::Independence => 0.0,
-      PairCopula::Gaussian { rho } => {
-        // c(u, v) = (1 - ρ²)^{-1/2} · exp(-(ρ² (x² + y²) - 2ρ x y) / (2(1 - ρ²)))
-        let x = ndtri(u);
-        let y = ndtri(v);
-        let one_minus_rho2 = 1.0 - rho * rho;
-        let q = rho * rho * (x * x + y * y) - 2.0 * rho * x * y;
-        -0.5 * one_minus_rho2.ln() - 0.5 * q / one_minus_rho2
-      }
-      PairCopula::Clayton { theta } => {
-        // c = (1 + θ)(uv)^{−θ−1} s^{−1/θ−2} with ln s = M + ln(1 + e^{m−M}(1 − e^{−m})), {M ≥ m} = {−θ ln u, −θ ln v}: s in
-        // logarithms, so `u^{−θ}` never overflows.
-        let (a, b) = (-theta * u.ln(), -theta * v.ln());
-        let (big, small) = (a.max(b), a.min(b));
-        let ln_s = big + ((small - big).exp() * -(-small).exp_m1()).ln_1p();
-        theta.ln_1p() + (-theta - 1.0) * (u.ln() + v.ln()) + (-1.0 / theta - 2.0) * ln_s
-      }
-      PairCopula::Frank { theta: 0.0 } => 0.0,
-      PairCopula::Frank { theta } => {
-        // c_θ(u, v) = θ(1 − e^{−θ}) e^{−θ(u+v)} / D² with D = e^{−θu}(1 − e^{−θv}) + e^{−θv}(1 − e^{−θ(1−v)}), two positive terms
-        // for θ > 0; c_θ(u, v) = c_{−θ}(u, 1 − v) for θ < 0.
-        let (t, p, q) = if theta > 0.0 {
-          (theta, v, 1.0 - v)
-        } else {
-          (-theta, 1.0 - v, v)
-        };
-        let first = -t * u + (-(-t * p).exp_m1()).ln();
-        let second = -t * p + (-(-t * q).exp_m1()).ln();
-        let ln_d = first.max(second) + (-(first - second).abs()).exp().ln_1p();
-        t.ln() + (-(-t).exp_m1()).ln() - t * (u + p) - 2.0 * ln_d
-      }
-      PairCopula::Bb1 { theta, delta } => {
-        crate::bivariate::bb1::Bb1::log_density_scalar(u, v, theta, delta)
-      }
-      PairCopula::Bb7 { theta, delta } => {
-        crate::bivariate::bb7::Bb7::log_density_scalar(u, v, theta, delta)
-      }
-      PairCopula::StudentT { rho, nu } => student_t::ln_copula_density(
-        student_t::quantile(u, nu),
-        student_t::quantile(v, nu),
-        rho,
-        nu,
-      ),
+      PairCopula::Gaussian { rho } => GaussianCopula::ln_density(rho, u, v),
+      PairCopula::Clayton { theta } => Clayton::ln_density(theta, u, v),
+      PairCopula::Frank { theta } => Frank::ln_density(theta, u, v),
+      PairCopula::Bb1 { theta, delta } => Bb1::log_density_scalar(u, v, theta, delta),
+      PairCopula::Bb7 { theta, delta } => Bb7::log_density_scalar(u, v, theta, delta),
+      PairCopula::StudentT { rho, nu } => TCopula::ln_density_at(rho, nu)(u, v),
     }
   }
 
@@ -165,28 +114,6 @@ impl PairCopula {
   pub fn density(&self, u: f64, v: f64) -> f64 {
     self.log_density(u, v).exp()
   }
-
-  /// The end of `[EPS, 1 − EPS]` a root outside it saturates at: `EPS` where `h(EPS | v) ≥ p`, `1 − EPS` where
-  /// `h(1 − EPS | v) ≤ p`; NaN for a NaN `h`.
-  fn saturated(&self, p: f64, v: f64) -> f64 {
-    let (low, high) = (self.h(EPS, v), self.h(1.0 - EPS, v));
-    if low.is_nan() || high.is_nan() {
-      f64::NAN
-    } else if low >= p {
-      EPS
-    } else if high <= p {
-      1.0 - EPS
-    } else {
-      f64::NAN
-    }
-  }
-}
-
-const EPS: f64 = 1e-12;
-
-/// The bounds every pair evaluation holds its inputs and outputs in.
-pub(crate) fn clamp(u: f64) -> f64 {
-  u.clamp(EPS, 1.0 - EPS)
 }
 
 /// The `InvalidParameter` of the first pair whose parameters its bivariate family's `try_new` refuses, so a vine holds

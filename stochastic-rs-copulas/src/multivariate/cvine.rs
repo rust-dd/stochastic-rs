@@ -20,6 +20,7 @@ use super::rosenblatt::Rosenblatt;
 use super::vine_order::VineOrder;
 use crate::bivariate::BivariateFamily;
 use crate::error::CopulaError;
+use crate::multivariate::inside;
 use crate::multivariate::on_open_cube;
 use crate::traits::MultivariateExt;
 
@@ -106,7 +107,7 @@ impl CVine {
       }
       self.walk(&mut v, |i, _| Some(w[i]));
       for i in 1..=d {
-        x[i - 1] = v[i][1].clamp(1e-12, 1.0 - 1e-12);
+        x[i - 1] = inside(v[i][1]);
       }
     }
     out

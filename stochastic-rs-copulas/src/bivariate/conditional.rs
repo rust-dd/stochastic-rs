@@ -297,7 +297,7 @@ pub(crate) fn numerical_quantiles(
 }
 
 /// One quantile of `numerical_quantiles`; `None` for a NaN `ln h` or a solve past Brent's bound.
-fn numerical_quantile(y: f64, v: f64, ln_h: &impl Fn(f64, f64) -> f64) -> Option<f64> {
+pub(crate) fn numerical_quantile(y: f64, v: f64, ln_h: &impl Fn(f64, f64) -> f64) -> Option<f64> {
   let nan = Cell::new(false);
   let ln_h = |u: f64| {
     let l = ln_h(u, v);

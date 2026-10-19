@@ -98,7 +98,7 @@ impl Clayton {
 
   /// `ln c = ln(1 + θ) + (1 + θ)(x + y) − (1 + 2θ)(−ln C)`, chosen once per `θ`: `ln(1 + θ) − θ(x + y) + (1 + 2θ)δ` up to
   /// `θ = 1`, `ln(1 + θ) − (1 + θ)(M − m) + M − (2 + 1/θ)ℓ` above, where the `θ`-sized terms would cancel.
-  fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
+  pub(crate) fn ln_density(theta: f64, u: f64, v: f64) -> f64 {
     if theta == 0.0 {
       0.0
     } else if theta <= 1.0 {
@@ -109,19 +109,24 @@ impl Clayton {
     }
   }
 
-  /// `Clayton::h` at one point for any `θ > 0`, `u` below `INDEPENDENT_BELOW` (the vine pairs' inputs are never 0).
+  /// `partial_derivative` at one point: `u` at `θ = 0` and below `INDEPENDENT_BELOW` but for the point mass at `v = 0`.
   pub(crate) fn h_at(theta: f64, u: f64, v: f64) -> f64 {
-    if theta < INDEPENDENT_BELOW {
+    if theta == 0.0 {
       u
+    } else if theta < INDEPENDENT_BELOW {
+      if v <= 0.0 { 1.0 } else { u }
     } else {
       Self::h(theta)(u, v)
     }
   }
 
-  /// `h⁻¹(y | v)` at one point for any `θ > 0`: `Clayton::finish` of `Clayton::level`, `y` below `INDEPENDENT_BELOW`.
+  /// `percent_point` at one point before the quantile rule: `Clayton::finish` of `Clayton::level`, `y` at `θ = 0` and
+  /// below `INDEPENDENT_BELOW` but at `v = 0`.
   pub(crate) fn inverse_at(theta: f64, y: f64, v: f64) -> f64 {
-    if theta < INDEPENDENT_BELOW {
+    if theta == 0.0 {
       y
+    } else if theta < INDEPENDENT_BELOW {
+      if v <= 0.0 { 0.0 } else { y }
     } else {
       Self::finish(theta, Self::level(theta, y), y, v, v.powf(theta))
     }
