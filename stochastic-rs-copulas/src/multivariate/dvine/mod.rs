@@ -84,7 +84,8 @@ impl DVine {
 
   /// An all-independence D-vine of `dim` marginals, the product copula.
   pub fn independence(dim: usize) -> Result<Self, CopulaError> {
-    let pair_copulas: Vec<Vec<PairCopula>> = (0..dim - 1)
+    // `new` names a `dim` below 2; the trees of such a `dim` are empty.
+    let pair_copulas: Vec<Vec<PairCopula>> = (0..dim.saturating_sub(1))
       .map(|m| vec![PairCopula::Independence; dim - 1 - m])
       .collect();
     Self::new(dim, pair_copulas)

@@ -80,7 +80,8 @@ impl CVine {
 
   /// All-Independence C-vine of the given dimension.
   pub fn independence(dim: usize) -> Result<Self, CopulaError> {
-    let pc: Vec<Vec<PairCopula>> = (0..dim - 1)
+    // `new` names a `dim` below 2; the trees of such a `dim` are empty.
+    let pc: Vec<Vec<PairCopula>> = (0..dim.saturating_sub(1))
       .map(|m| vec![PairCopula::Independence; dim - 1 - m])
       .collect();
     Self::new(dim, pc)

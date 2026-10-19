@@ -225,4 +225,22 @@ mod tests {
     }
     assert_eq!(rv.structure(), VineStructure::DVine);
   }
+
+  /// An all-independence vine of fewer than two margins is `InvalidStructure`, at `dim = 0` as at 1.
+  #[test]
+  fn an_independence_vine_needs_two_margins() {
+    for dim in [0, 1] {
+      let verdicts = [
+        RVine::independence(dim).err(),
+        DVine::independence(dim).err(),
+        CVine::independence(dim).err(),
+      ];
+      for verdict in verdicts {
+        assert!(
+          matches!(verdict, Some(CopulaError::InvalidStructure(_))),
+          "dim {dim}: {verdict:?}"
+        );
+      }
+    }
+  }
 }
