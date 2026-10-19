@@ -133,3 +133,13 @@ def test_pseudo_observations_share_mean_ranks_and_propagate_nan():
     holed[50, 0] = np.nan
     out = sr.pseudo_observations(holed)
     assert np.isnan(out[:, 0]).all() and np.array_equal(out[:, 1], np.arange(100, 0, -1) / 101)
+
+
+def test_set_theta_replaces_a_pending_tau():
+    clayton = sr.Clayton(tau=0.5)
+    clayton.set_theta(4.0)
+    assert abs(clayton.tau() - 2.0 / 3.0) < 1e-15
+    assert abs(clayton.compute_theta() - 4.0) < 1e-12
+    bb1 = sr.Bb1(tau=0.5, delta=1.5)
+    bb1.set_theta(0.8)
+    assert abs(bb1.tau() - 0.5) > 0.01 and abs(bb1.compute_theta() - 0.8) < 1e-12

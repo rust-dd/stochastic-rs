@@ -49,9 +49,11 @@ macro_rules! py_bivariate {
         self.pending_tau.or_else(|| BivariateExt::tau(&self.inner))
       }
 
+      /// Replaces the tau set last, as the model's tau now follows theta.
       fn set_theta(&mut self, theta: f64) -> PyResult<()> {
         BivariateExt::validate_theta(&self.inner, theta).map_err(err_to_py)?;
         BivariateExt::set_theta(&mut self.inner, theta);
+        self.pending_tau = None;
         Ok(())
       }
 
@@ -265,9 +267,11 @@ macro_rules! py_two_parameter {
         self.pending_tau.or_else(|| BivariateExt::tau(&self.inner))
       }
 
+      /// Replaces the tau set last, as the model's tau now follows theta.
       fn set_theta(&mut self, theta: f64) -> PyResult<()> {
         BivariateExt::validate_theta(&self.inner, theta).map_err(err_to_py)?;
         BivariateExt::set_theta(&mut self.inner, theta);
+        self.pending_tau = None;
         Ok(())
       }
 
