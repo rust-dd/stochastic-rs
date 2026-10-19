@@ -12,7 +12,6 @@ use ndarray::Axis;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
-use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use super::MultivariateFamily;
@@ -23,6 +22,8 @@ use super::genz::open_coordinates;
 use super::genz::prioritize;
 use super::qmc::sobol_points;
 use crate::bivariate::conditional::check_open;
+use crate::bivariate::conditional::check_unit;
+use crate::bivariate::conditional::normal_quantile;
 use crate::bivariate::gaussian::gaussian_copula_cdf;
 use crate::error::CopulaError;
 use crate::multivariate::on_open_cube;
@@ -56,20 +57,12 @@ impl GaussianMultivariate {
     self.corr.as_ref().ok_or(CopulaError::NotFitted)
   }
 
-  /// Transform U in (0,1)^{n x d} to Z in R^{n x d} via standard normal inverse CDF.
-  fn transform_to_normal(&self, u: ArrayView2<f64>) -> Array2<f64> {
-    let eps = 1e-12;
-    let mut z = u.to_owned();
-    for mut row in z.axis_iter_mut(Axis(0)) {
-      for val in row.iter_mut() {
-        let clamped = val.clamp(eps, 1.0 - eps);
-        *val = ndtri(clamped);
-      }
-    }
-    z
+  /// `Φ⁻¹` of every coordinate, `±∞` at 0 and 1.
+  fn transform_to_normal(u: ArrayView2<f64>) -> Array2<f64> {
+    u.mapv(normal_quantile)
   }
 
-  /// Sample correlation of the columns of Z (n x d), off-diagonals clamped to ±0.999999.
+  /// Sample correlation of the columns of Z (n x d), each of which varies.
   fn estimate_corr_from_normal(z: ArrayView2<f64>) -> Array2<f64> {
     let n = z.nrows() as f64;
     let d = z.ncols();
@@ -89,7 +82,7 @@ impl GaussianMultivariate {
     for j in 0..d {
       let col = zc.column(j);
       let var = col.iter().map(|&x| x * x).sum::<f64>() / (n - 1.0);
-      stds[j] = var.max(1e-18).sqrt();
+      stds[j] = var.sqrt();
     }
     // Correlation matrix
     let mut corr = Array2::<f64>::zeros((d, d));
@@ -108,7 +101,7 @@ impl GaussianMultivariate {
           .map(|(&a, &b)| a * b)
           .sum::<f64>();
         let cov = dot / (n - 1.0);
-        let r = (cov / (stds[i] * stds[j])).clamp(-0.999_999, 0.999_999);
+        let r = cov / (stds[i] * stds[j]);
         corr[[i, j]] = r;
         corr[[j, i]] = r;
       }
@@ -141,8 +134,8 @@ impl MultivariateExt for GaussianMultivariate {
     Ok(u)
   }
 
-  /// Fit the Gaussian copula from U in (0,1)^{n x d}; an indefinite or near-singular estimate is shrunk toward the
-  /// identity until every eigenvalue is at least `1e-3`.
+  /// Fit the Gaussian copula from U in (0,1)^{n x d}, `InvalidStructure` for a constant column; an indefinite or
+  /// near-singular estimate is shrunk toward the identity until every eigenvalue is at least `1e-3`.
   fn fit(&mut self, x: ArrayView2<f64>) -> Result<(), CopulaError> {
     if x.ncols() < 2 {
       return Err(CopulaError::InvalidStructure(format!(
@@ -156,11 +149,14 @@ impl MultivariateExt for GaussianMultivariate {
         got: x.nrows(),
       });
     }
-    if x.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
-      return Err(CopulaError::MarginalOutOfRange);
-    }
+    check_unit(x)?;
     check_open(x)?;
-    let z = self.transform_to_normal(x);
+    if let Some(column) = (0..x.ncols()).find(|&j| x.column(j).iter().all(|&u| u == x[[0, j]])) {
+      return Err(CopulaError::InvalidStructure(format!(
+        "column {column} is constant: a Gaussian copula needs every column to vary"
+      )));
+    }
+    let z = Self::transform_to_normal(x);
     let corr = shrink_to_spd(Self::estimate_corr_from_normal(z.view()));
     self.corr = Some(CorrelationMatrix::try_new(corr)?);
     Ok(())
@@ -174,31 +170,25 @@ impl MultivariateExt for GaussianMultivariate {
         got: x.ncols(),
       });
     }
-    if x.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
-      return Err(CopulaError::MarginalOutOfRange);
-    }
-    Ok(())
+    check_unit(x)
   }
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit(x)?;
-    let z = self.transform_to_normal(x); // n x d
-    let corr = self.fitted()?;
-    let inv = corr.inverse();
-    let log_det = corr.log_det();
+    Ok(self.log_pdf(x)?.mapv(f64::exp))
+  }
 
-    // Compute for each row: -1/2 z^T (inv - I) z - 1/2 log det
-    let mut out = Array1::<f64>::zeros(z.nrows());
-    for (i, row) in z.axis_iter(Axis(0)).enumerate() {
-      // q = (inv - I) * z
-      let mut q = inv.dot(&row.to_owned());
-      for k in 0..q.len() {
-        q[k] -= row[k];
-      }
-      let quad = row.dot(&q);
-      let log_c = -0.5 * (log_det + quad);
-      out[i] = log_c.exp();
-    }
+  /// `ln c = −½(ln|R| + zᵀ(R⁻¹ − I)z)`, `z = Φ⁻¹(u)`, on the open cube: finite where `c` underflows.
+  fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    self.check_fit(x)?;
+    let corr = self.fitted()?;
+    let excess = corr.inverse() - Array2::<f64>::eye(corr.dim());
+    let log_det = corr.log_det();
+    let z = Self::transform_to_normal(x);
+    let out = z
+      .rows()
+      .into_iter()
+      .map(|row| -0.5 * (log_det + row.dot(&excess.dot(&row))))
+      .collect();
     Ok(on_open_cube(x, out))
   }
 
@@ -218,11 +208,11 @@ impl MultivariateExt for GaussianMultivariate {
           Some(&[i, j]) => gaussian_copula_cdf(u[i], u[j], corr.corr()[[i, j]]),
           Some(open) => {
             let points = points.get_or_insert_with(|| sobol_points(corr.dim() - 1));
-            let b: Vec<f64> = open.iter().map(|&i| ndtri(u[i])).collect();
+            let b: Vec<f64> = open.iter().map(|&i| normal_quantile(u[i])).collect();
             match prioritize(corr.corr(), open, &b) {
               Some((l, b)) => mvn_upper(&l, &b, points.view()),
               None => {
-                let b: Vec<f64> = u.iter().map(|&x| ndtri(x)).collect();
+                let b: Vec<f64> = u.iter().map(|&x| normal_quantile(x)).collect();
                 mvn_upper(corr.chol_lower(), &b, points.view())
               }
             }
@@ -268,7 +258,7 @@ mod tests {
     let u = GaussianMultivariate::new(Array2::<f64>::eye(6))
       .sample(6, &Deterministic::new(4))
       .unwrap();
-    let z = GaussianMultivariate::default().transform_to_normal(u.view());
+    let z = GaussianMultivariate::transform_to_normal(u.view());
     let raw = GaussianMultivariate::estimate_corr_from_normal(z.view());
     assert!(smallest_eigenvalue(raw.view()) < 1e-10);
     let mut fitted = GaussianMultivariate::default();
@@ -287,6 +277,33 @@ mod tests {
     fitted.fit(u.view()).unwrap();
     let rho = fitted.correlation().unwrap()[[0, 1]];
     assert!((0.999 - 1e-6..=0.999).contains(&rho), "{rho}");
+  }
+
+  /// A constant column has no correlation to estimate, which the fit names instead of fitting a zero to it.
+  #[test]
+  fn a_fit_rejects_a_constant_column() {
+    let u = Array2::from_shape_fn(
+      (20, 3),
+      |(i, j)| if j == 1 { 0.5 } else { (i + 1) as f64 / 21.0 },
+    );
+    let got = GaussianMultivariate::default().fit(u.view());
+    assert!(
+      matches!(&got, Err(CopulaError::InvalidStructure(why)) if why.contains("column 1 is constant")),
+      "{got:?}"
+    );
+  }
+
+  /// `ln c` is formed directly, so it stays finite where the density underflows.
+  #[test]
+  fn the_log_density_is_finite_where_the_density_underflows() {
+    let x = array![[1e-10, 0.9]];
+    let multivariate = GaussianMultivariate::new(array![[1.0, 0.999], [0.999, 1.0]]);
+    let got = multivariate.log_pdf(x.view()).unwrap()[0];
+    let want = GaussianCopula::new(0.999).log_pdf(x.view()).unwrap()[0];
+    assert!(
+      got.is_finite() && (got - want).abs() <= 1e-12 * want.abs(),
+      "{got} vs {want}"
+    );
   }
 
   #[test]

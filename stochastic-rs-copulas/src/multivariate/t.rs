@@ -37,12 +37,11 @@ use std::sync::OnceLock;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
-use ndarray::Axis;
 use stochastic_rs_core::simd_rng::SeedExt;
+use stochastic_rs_distributions::RealExt;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::chi_square::SimdChiSquared;
 use stochastic_rs_distributions::normal::SimdNormal;
-use stochastic_rs_distributions::special::ln_gamma;
 
 use super::MultivariateFamily;
 use super::correlation_matrix::CorrelationMatrix;
@@ -53,14 +52,19 @@ use super::genz::open_coordinates;
 use super::genz::prioritize;
 use super::qmc::sobol_points;
 use crate::bivariate::conditional::check_open;
+use crate::bivariate::conditional::check_unit;
+use crate::bivariate::conditional::softplus;
 use crate::bivariate::t_copula::cdf::BivariateT;
 use crate::correlation::check_defined;
 use crate::correlation::kendall_tau;
 use crate::error::CopulaError;
+use crate::multivariate::inside;
 use crate::multivariate::on_open_cube;
 use crate::optim::localmin;
 use crate::student_t;
+use crate::student_t::Law;
 use crate::student_t::check_nu;
+use crate::student_t::ln_gamma_constant;
 use crate::traits::MultivariateExt;
 
 /// Multivariate Student-$t$ copula with correlation $\Sigma$ and degrees of freedom $\nu$; as $\nu \to \infty$ it
@@ -122,19 +126,6 @@ impl TMultivariate {
     self.corr.as_ref().ok_or(CopulaError::NotFitted)
   }
 
-  /// Map U ∈ (0,1)^{n×d} → Z ∈ ℝ^{n×d} via the univariate $t_\nu^{-1}$.
-  fn transform_to_t(u: ArrayView2<f64>, nu: f64) -> Array2<f64> {
-    let eps = 1e-12;
-    let mut z = u.to_owned();
-    for mut row in z.axis_iter_mut(Axis(0)) {
-      for val in row.iter_mut() {
-        let clamped = val.clamp(eps, 1.0 - eps);
-        *val = student_t::quantile(clamped, nu);
-      }
-    }
-    z
-  }
-
   /// $\Sigma$ from the sample Kendall τ-b matrix through $\rho_{ij} = \sin(\pi\tau_{ij}/2)$, which holds for any elliptical
   /// copula and so does not depend on $\nu$.
   fn estimate_corr_from_kendall(x: ArrayView2<f64>) -> Result<Array2<f64>, CopulaError> {
@@ -157,33 +148,10 @@ impl TMultivariate {
     Ok(corr)
   }
 
-  /// Multivariate Student-$t$ log-density at `z`, before dividing out the marginals $f_\nu(z_j)$.
-  fn mv_log_pdf(corr: &CorrelationMatrix, nu: f64, z: ArrayView2<f64>) -> Array1<f64> {
-    let inv = corr.inverse();
-    let log_det = corr.log_det();
-    let d = corr.dim() as f64;
-    let log_norm = ln_gamma(0.5 * (nu + d))
-      - ln_gamma(0.5 * nu)
-      - 0.5 * d * (nu * std::f64::consts::PI).ln()
-      - 0.5 * log_det;
-    let mut out = Array1::<f64>::zeros(z.nrows());
-    for (i, row) in z.axis_iter(Axis(0)).enumerate() {
-      let row_owned = row.to_owned();
-      let q = inv.dot(&row_owned).dot(&row_owned);
-      out[i] = log_norm - 0.5 * (nu + d) * (1.0 + q / nu).ln();
-    }
-    out
-  }
-
   /// Log-likelihood of the data under `corr` at `nu`, the objective `optimise_nu` maximises with Σ held fixed.
   fn log_likelihood_for_nu(corr: &CorrelationMatrix, x: ArrayView2<f64>, nu: f64) -> f64 {
-    let z = Self::transform_to_t(x, nu);
-    let mv = Self::mv_log_pdf(corr, nu, z.view());
-    let mut marginal_log = 0.0;
-    for v in z.iter() {
-      marginal_log += student_t::ln_pdf(*v, nu);
-    }
-    mv.iter().sum::<f64>() - marginal_log
+    let density = LogDensity::new(corr, nu);
+    x.rows().into_iter().map(|u| density.at(u)).sum()
   }
 
   /// Brent's `localmin` on [2.1, 50] to 1e-6 (`eps = t = 1e-6`), the resolution the likelihood's rounding leaves in ν; a
@@ -221,7 +189,7 @@ impl MultivariateExt for TMultivariate {
       let scale = 1.0 / w.sqrt();
       for c in 0..d {
         let xc = z[[r, c]] * scale;
-        u[[r, c]] = student_t::cdf(xc, self.nu).clamp(1e-12, 1.0 - 1e-12);
+        u[[r, c]] = inside(student_t::cdf(xc, self.nu));
       }
     }
     Ok(u)
@@ -242,9 +210,7 @@ impl MultivariateExt for TMultivariate {
         got: x.nrows(),
       });
     }
-    if x.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
-      return Err(CopulaError::MarginalOutOfRange);
-    }
+    check_unit(x)?;
     check_open(x)?;
     let corr = CorrelationMatrix::try_new(shrink_to_spd(Self::estimate_corr_from_kendall(x)?))?;
     // Profile MLE for ν conditional on Σ.
@@ -262,41 +228,18 @@ impl MultivariateExt for TMultivariate {
         got: x.ncols(),
       });
     }
-    if x.iter().any(|&v| !(0.0..=1.0).contains(&v)) {
-      return Err(CopulaError::MarginalOutOfRange);
-    }
-    Ok(())
+    check_unit(x)
   }
 
   fn pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    self.check_fit(x)?;
-    let nu = self.nu;
-    let z = Self::transform_to_t(x, nu);
-    let mv = Self::mv_log_pdf(self.fitted()?, nu, z.view());
-    let mut out = Array1::<f64>::zeros(z.nrows());
-    for (i, row) in z.axis_iter(Axis(0)).enumerate() {
-      let mut marginal_log = 0.0;
-      for v in row.iter() {
-        marginal_log += student_t::ln_pdf(*v, nu);
-      }
-      out[i] = (mv[i] - marginal_log).exp();
-    }
-    Ok(on_open_cube(x, out))
+    Ok(self.log_pdf(x)?.mapv(f64::exp))
   }
 
+  /// `LogDensity::at` on the open cube.
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(x)?;
-    let nu = self.nu;
-    let z = Self::transform_to_t(x, nu);
-    let mv = Self::mv_log_pdf(self.fitted()?, nu, z.view());
-    let mut out = Array1::<f64>::zeros(z.nrows());
-    for (i, row) in z.axis_iter(Axis(0)).enumerate() {
-      let mut marginal_log = 0.0;
-      for v in row.iter() {
-        marginal_log += student_t::ln_pdf(*v, nu);
-      }
-      out[i] = mv[i] - marginal_log;
-    }
+    let density = LogDensity::new(self.fitted()?, self.nu);
+    let out = x.rows().into_iter().map(|u| density.at(u)).collect();
     Ok(on_open_cube(x, out))
   }
 
@@ -337,6 +280,64 @@ impl MultivariateExt for TMultivariate {
         })
         .collect(),
     )
+  }
+}
+
+/// The t copula's log-density at one `(R, ν)`, with what no point changes formed once:
+/// `ln c = C_d − ½ ln|R| − ((ν + d)/2) ln(1 + zᵀR⁻¹z/ν) + ((ν + 1)/2) Σ ln(1 + z_j²/ν)` at the law's scores `z_j`.
+struct LogDensity<'a> {
+  law: Law,
+  inverse: &'a Array2<f64>,
+  nu: f64,
+  ln_nu: f64,
+  /// `C_d − ½ ln|R|`, `C_d = ⌊d/2⌋G + Σ_{k<⌊d/2⌋} ln(1 + (2k + d mod 2)/ν)` from `G = student_t::ln_gamma_constant(ν)`,
+  /// the gammas' logarithms cancelled in closed form.
+  constant: f64,
+}
+
+impl<'a> LogDensity<'a> {
+  fn new(corr: &'a CorrelationMatrix, nu: f64) -> Self {
+    let d = corr.dim();
+    let (pairs, odd) = (d / 2, (d % 2) as f64);
+    let rising: f64 = (0..pairs)
+      .map(|k| ((2 * k) as f64 + odd) / nu)
+      .map(f64::ln_1p)
+      .sum();
+    Self {
+      law: Law::new(nu),
+      inverse: corr.inverse(),
+      nu,
+      ln_nu: nu.ln(),
+      constant: pairs as f64 * ln_gamma_constant(nu) + rising - 0.5 * corr.log_det(),
+    }
+  }
+
+  /// `ln c(u)`: in the scores where they and `zᵀR⁻¹z` stay finite, else in `ln|z_j|`, scaled by the largest, so a score
+  /// past `f64::MAX` keeps its terms.
+  fn at(&self, u: ndarray::ArrayView1<f64>) -> f64 {
+    let scores: Vec<_> = u.iter().map(|&p| self.law.quantile(p)).collect();
+    let z = Array1::from_iter(scores.iter().map(|s| s.value));
+    let quadratic = z.dot(&self.inverse.dot(&z));
+    let (joint, margins) = if quadratic.is_finite() && z.iter().all(|x| (x * x).is_finite()) {
+      let margins: f64 = z.iter().map(|&x| (x * x / self.nu).ln_1p()).sum();
+      ((quadratic / self.nu).ln_1p(), margins)
+    } else {
+      let ln_abs: Vec<f64> = scores.iter().map(|s| s.ln_abs()).collect();
+      let top = ln_abs
+        .iter()
+        .fold(f64::NEG_INFINITY, |a, &b| a.max_or_nan(b));
+      let w = Array1::from_iter(
+        scores
+          .iter()
+          .zip(&ln_abs)
+          .map(|(s, &l)| s.sign() * (l - top).exp()),
+      );
+      let ln_quadratic = 2.0 * top + w.dot(&self.inverse.dot(&w)).ln();
+      let margins: f64 = ln_abs.iter().map(|&l| softplus(2.0 * l - self.ln_nu)).sum();
+      (softplus(ln_quadratic - self.ln_nu), margins)
+    };
+    let d = u.len() as f64;
+    self.constant - 0.5 * (self.nu + d) * joint + 0.5 * (self.nu + 1.0) * margins
   }
 }
 

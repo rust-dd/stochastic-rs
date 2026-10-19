@@ -1,5 +1,6 @@
 use ndarray::array;
 use stochastic_rs_core::simd_rng::Deterministic;
+use stochastic_rs_distributions::special::ln_gamma;
 
 use super::*;
 use crate::bivariate::t_copula::TCopula;

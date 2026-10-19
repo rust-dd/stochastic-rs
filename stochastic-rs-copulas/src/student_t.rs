@@ -235,14 +235,6 @@ pub(crate) fn quantile(p: f64, nu: f64) -> f64 {
     .expect("the Student-t law has a quantile")
 }
 
-/// The exponent `SimdStudentT::pdf` takes, so `ln_pdf(x, nu).exp()` is that pdf bit for bit.
-pub(crate) fn ln_pdf(x: f64, nu: f64) -> f64 {
-  let log_norm =
-    ln_gamma(0.5 * (nu + 1.0)) - 0.5 * (nu * std::f64::consts::PI).ln() - ln_gamma(0.5 * nu);
-  let log_kernel = -0.5 * (nu + 1.0) * (1.0 + x * x / nu).ln();
-  log_norm + log_kernel
-}
-
 /// The t copula's log-density at one `(ρ, ν)`, with what no point changes formed once.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TDensity {
@@ -415,7 +407,7 @@ pub(crate) fn ln_cosh(t: f64) -> f64 {
 /// `ln(Γ(ν/2 + 1)Γ(ν/2)/Γ(ν/2 + ½)²)`: Stirling's series from `ν = 40`, where the gammas' logarithms cancel, its
 /// truncation under `4e-17`; `1/(4z) − 1/(96z³) + 1/(320z⁵) − 17/(7168z⁷) + 31/(9216z⁹)`, `z = ν/2`, proved in sympy.
 /// Reference: NIST Digital Library of Mathematical Functions, eq. 5.11.1 (Stirling's series), <https://dlmf.nist.gov/5.11.1>.
-fn ln_gamma_constant(nu: f64) -> f64 {
+pub(crate) fn ln_gamma_constant(nu: f64) -> f64 {
   let z = 0.5 * nu;
   if z < 20.0 {
     // `ln Γ(z) = ln Γ(z + 1) − ln z`, finite where `Γ(z)` overflows.
