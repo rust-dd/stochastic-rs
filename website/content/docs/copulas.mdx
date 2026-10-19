@@ -73,7 +73,7 @@ Both columns are pseudo-observations strictly inside $(0, 1)$: normalised ranks 
 
 ### The conditioning convention
 
-`partial_derivative` is $\partial_v C(u, v)$, the conditional cdf of `U` given `V = v`, in every family. `percent_point` inverts it in `u` at fixed `v`, and the trait's finite-difference default perturbs the second column, so a family that differentiated the other argument would sample the wrong law without an error.
+`partial_derivative` is $\partial_v C(u, v)$, the conditional cdf of `U` given `V = v`, in every family, and an implementation of `BivariateExt` must supply it: there is no default. `percent_point` inverts it in `u` at fixed `v`, so an implementation that differentiated the other argument would sample the wrong law without an error.
 
 ## Multivariate (`MultivariateExt`)
 

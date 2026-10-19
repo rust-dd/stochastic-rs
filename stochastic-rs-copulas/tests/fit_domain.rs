@@ -377,6 +377,10 @@ impl BivariateExt for Careless {
   fn cdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok(&x.column(0) * &x.column(1))
   }
+
+  fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(x.column(0).to_owned())
+  }
 }
 
 /// The default `fit` validates the θ an outside implementor's `theta_from_tau` answers before storing it.

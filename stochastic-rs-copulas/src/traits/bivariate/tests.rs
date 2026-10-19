@@ -6,7 +6,7 @@ use crate::bivariate::amh::Amh;
 use crate::bivariate::clayton::Clayton;
 use crate::bivariate::galambos::Galambos;
 
-/// Overrides no provided method, so every default body answers for it; `pdf` and `cdf` fail.
+/// Overrides no provided method, so every default body answers for it; `pdf`, `cdf` and `partial_derivative` fail.
 struct DummyNonArchimedean {
   theta: Option<f64>,
 }
@@ -55,6 +55,12 @@ impl BivariateExt for DummyNonArchimedean {
   }
 
   fn cdf(&self, _x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Err(CopulaError::Unsupported(
+      "not implemented for DummyNonArchimedean".into(),
+    ))
+  }
+
+  fn partial_derivative(&self, _x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     Err(CopulaError::Unsupported(
       "not implemented for DummyNonArchimedean".into(),
     ))
@@ -168,6 +174,10 @@ impl BivariateExt for HalvesTheLevel {
     Ok(&x.column(0) * &x.column(1))
   }
 
+  fn partial_derivative(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(x.column(0).to_owned())
+  }
+
   fn percent_point(
     &self,
     y: ArrayView1<f64>,
@@ -227,6 +237,10 @@ impl BivariateExt for CallsTheHook {
 
   fn cdf(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     Ok(&x.column(0) * &x.column(1))
+  }
+
+  fn partial_derivative(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
+    Ok(x.column(0).to_owned())
   }
 
   fn percent_point(

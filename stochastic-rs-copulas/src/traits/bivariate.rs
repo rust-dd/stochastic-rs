@@ -16,7 +16,6 @@ use stochastic_rs_distributions::uniform::SimdUniform;
 
 use crate::bivariate::BivariateFamily;
 use crate::bivariate::conditional::ABSOLUTE_TOLERANCE;
-use crate::bivariate::conditional::check_columns;
 use crate::bivariate::conditional::check_lengths;
 use crate::bivariate::conditional::check_open;
 use crate::bivariate::conditional::check_pairs;
@@ -223,26 +222,9 @@ pub trait BivariateExt {
     numerical_inverse(self, y, v)
   }
 
-  fn partial_derivative(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
-    check_columns(x)?;
-    let n = x.nrows();
-    let mut x_prime = x.to_owned();
-    let mut delta = Array1::zeros(n);
-    for i in 0..n {
-      delta[i] = if x[[i, 1]] > 0.5 { -0.0001 } else { 0.0001 };
-      x_prime[[i, 1]] = x[[i, 1]] + delta[i];
-    }
-
-    let f = self.cdf(x)?;
-    let f_prime = self.cdf(x_prime.view())?;
-
-    let mut deriv = Array1::zeros(n);
-    for i in 0..n {
-      deriv[i] = (f_prime[i] - f[i]) / delta[i];
-    }
-
-    Ok(deriv)
-  }
+  /// `h(u | v) = ∂_v C(u, v)`, the conditional cdf of `U` given `V = v`, over the rows `(u, v)` of `x`: what `percent_point`
+  /// inverts in `u` and the samplers draw through. Required, as no finite difference of `cdf` is accurate to rounding.
+  fn partial_derivative(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 
   #[doc(hidden)]
   fn partial_derivative_scalar(&self, u: f64, v: f64) -> Result<f64, CopulaError> {
