@@ -82,8 +82,8 @@ impl Plackett {
     }
   }
 
-  /// `∂_v C = (1 − b/√d)/2`, `b = w + θ(v − u)`, `d = w² + 2θ(u(1 − u) + v(1 − v)) + θ²(u − v)²` with the exact `w = 1 − u − v`,
-  /// each term over the largest so none over- or underflows; `2θu(1 − u)/(√d(√d + b))` for `b ≥ 0`, as `d − b² = 4θu(1 − u)`.
+  /// `∂_v C = (1 − b/√d)/2`, `b = w + θ(v − u)`, `d = w² + 2θ(u(1 − u) + v(1 − v)) + θ²(u − v)²` from the exact
+  /// `w = 1 − u − v`, terms over the largest; `2θu(1 − u)/(√d(√d + b))` for `b ≥ 0`, as `d − b² = 4θu(1 − u)`.
   pub(crate) fn h(theta: f64) -> impl Fn(f64, f64) -> f64 {
     move |u, v| {
       if u <= 0.0 {

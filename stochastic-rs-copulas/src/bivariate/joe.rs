@@ -77,8 +77,8 @@ impl Joe {
     }
   }
 
-  /// `(t, b − t, ℓ)` for `t ≥ b` the two of `ln(1 − u)`, `ln(1 − v)`, `b − t` by `ln_ratio_complement`, and
-  /// `ℓ = ln S − θt = ln(1 + e^{θ(b − t)}(1 − e^{θt}))`, `S = (1 − u)^θ + (1 − v)^θ − ((1 − u)(1 − v))^θ` about its larger power.
+  /// `(t, b − t, ℓ)`, `t ≥ b` of `ln(1 − u)`, `ln(1 − v)`, the gap by `ln_ratio_complement`, `ℓ = ln S − θt` for
+  /// `S = (1 − u)^θ + (1 − v)^θ − ((1 − u)(1 − v))^θ`: `ln(1 + e^{θ(b − t)}(1 − e^{θt}))`, about its larger power.
   fn parts(theta: f64, u: f64, v: f64) -> (f64, f64, f64) {
     let top = (-u.min(v)).ln_1p();
     let gap = -ln_ratio_complement(u, v).abs();

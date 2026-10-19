@@ -1,4 +1,4 @@
-//! `MultivariateExt` — feature-gated multivariate copula trait.
+//! `MultivariateExt` — multivariate copula trait.
 
 use ndarray::Array1;
 use stochastic_rs_core::simd_rng::SeedExt;

@@ -1,7 +1,8 @@
 //! # BB7
 //!
 //! $$
-//! C_{\theta,\delta}(u,v)=1-\Bigl(1-\bigl[(1-\bar u^\theta)^{-\delta}+(1-\bar v^\theta)^{-\delta}-1\bigr]^{-1/\delta}\Bigr)^{1/\theta},\qquad \bar u=1-u,\ \theta\ge1,\ \delta>0
+//! C_{\theta,\delta}(u,v)=1-\Bigl(1-\bigl[(1-\bar u^\theta)^{-\delta}+(1-\bar v^\theta)^{-\delta}-1\bigr]^{-1/\delta}
+//! \Bigr)^{1/\theta},\qquad \bar u=1-u,\ \theta\ge1,\ \delta>0
 //! $$
 //!
 //! Joe–Clayton copula: Archimedean, generator $(1-(1-t)^\theta)^{-\delta}-1$, Joe's upper tail and

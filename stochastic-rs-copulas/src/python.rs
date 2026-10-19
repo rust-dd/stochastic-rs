@@ -2,7 +2,6 @@
 //! copulas; functions for the vine fit, the goodness-of-fit test, ranks and the τ–ρ maps.
 
 #![cfg(feature = "python")]
-#![allow(clippy::too_many_arguments)]
 
 use numpy::IntoPyArray;
 use numpy::PyReadonlyArray2;

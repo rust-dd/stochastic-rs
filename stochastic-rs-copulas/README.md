@@ -11,10 +11,10 @@ dimensions, vine and nested constructions in higher dimensions.
 
 ## What is in it
 
-- **Bivariate (`BivariateExt`)** — Clayton, Frank, Gumbel, Joe, AMH,
-  Plackett, FGM, Galambos, Hüsler-Reiss, Marshall-Olkin, Student-t and
-  independence. Each ships cdf, pdf, conditional inverse, Kendall's tau and
-  a sampler.
+- **Bivariate (`BivariateExt`)** — Gaussian, Student-t, Clayton, Frank,
+  Gumbel, Joe, AMH, Plackett, FGM, Galambos, Hüsler-Reiss, Marshall-Olkin,
+  BB1, BB7 and independence. Each ships cdf, pdf, conditional inverse,
+  Kendall's tau and a sampler.
 - **Multivariate (`MultivariateExt`)** — Gaussian, Student-t, C-vine,
   D-vine, R-vine and nested Archimedean copulas, in the default build
   (linear algebra via the pure-Rust `faer`); the nested Archimedean copula
