@@ -1,9 +1,11 @@
 use stochastic_rs_core::simd_rng::Deterministic;
 
 use super::*;
+use crate::bivariate::clayton::Clayton;
+use crate::traits::BivariateExt;
 
 /// In a two-level Clayton NAC's cdf, a pair across levels is exchangeable Clayton on the root generator, a pair inside
-/// the sub-tree on the inner one.
+/// the sub-tree on the inner one: with the third coordinate at 1, its bivariate margin, to `1e-12` relative.
 #[test]
 fn nac_clayton_two_level_cdf_pair_margins() {
   let inner = NacNode::leaf_group(4.0, vec![1, 2]);
@@ -13,29 +15,18 @@ fn nac_clayton_two_level_cdf_pair_margins() {
     children: vec![inner],
   };
   let nac = NestedArchimedean::new(BivariateFamily::Clayton, root, 3).unwrap();
-  // Outer-inner pair margin: C(u_0, u_1, 1) = (u_0^{-θ_root} + u_1^{-θ_root} - 1)^{-1/θ_root}
-  let q_outer_inner = ndarray::array![[0.3, 0.7, 1.0 - 1e-15]];
-  let c_oi = nac.cdf(q_outer_inner.view()).unwrap()[0];
-  let theta_root: f64 = 1.5;
-  let expected_oi =
-    (0.3f64.powf(-theta_root) + 0.7f64.powf(-theta_root) - 1.0).powf(-1.0 / theta_root);
+  let pair = ndarray::array![[0.3, 0.7]];
+  let c_oi = nac.cdf(ndarray::array![[0.3, 0.7, 1.0]].view()).unwrap()[0];
+  let expected_oi = Clayton::new(1.5).cdf(pair.view()).unwrap()[0];
   assert!(
-    (c_oi - expected_oi).abs() < 5e-3,
-    "outer-inner pair CDF={} vs Clayton(θ_root) expected={}",
-    c_oi,
-    expected_oi
+    (c_oi - expected_oi).abs() <= 1e-12 * expected_oi,
+    "outer-inner pair CDF={c_oi} vs Clayton(θ_root) expected={expected_oi}"
   );
-  // Inner-inner pair margin: C(1, u_1, u_2) = (u_1^{-θ_inner} + u_2^{-θ_inner} - 1)^{-1/θ_inner}
-  let q_inner_inner = ndarray::array![[1.0 - 1e-15, 0.3, 0.7]];
-  let c_ii = nac.cdf(q_inner_inner.view()).unwrap()[0];
-  let theta_inner: f64 = 4.0;
-  let expected_ii =
-    (0.3f64.powf(-theta_inner) + 0.7f64.powf(-theta_inner) - 1.0).powf(-1.0 / theta_inner);
+  let c_ii = nac.cdf(ndarray::array![[1.0, 0.3, 0.7]].view()).unwrap()[0];
+  let expected_ii = Clayton::new(4.0).cdf(pair.view()).unwrap()[0];
   assert!(
-    (c_ii - expected_ii).abs() < 5e-3,
-    "inner-inner pair CDF={} vs Clayton(θ_inner) expected={}",
-    c_ii,
-    expected_ii
+    (c_ii - expected_ii).abs() <= 1e-12 * expected_ii,
+    "inner-inner pair CDF={c_ii} vs Clayton(θ_inner) expected={expected_ii}"
   );
   // Inner pair should be MORE dependent: larger CDF at off-diagonal
   // input pair than the outer pair at the same input.

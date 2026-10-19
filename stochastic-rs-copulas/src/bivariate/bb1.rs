@@ -540,7 +540,7 @@ mod tests {
       let ours = c.cdf(array![[u, v]].view()).unwrap()[0];
       let theirs = clayton.cdf(array![[u, v]].view()).unwrap()[0];
       assert!((ours - theirs).abs() < 1e-12, "{ours} vs {theirs}");
-      assert!((c.cdf(array![[u, 1.0 - 1e-12]].view()).unwrap()[0] - u).abs() < 1e-8);
+      assert_eq!(c.cdf(array![[u, 1.0]].view()).unwrap()[0], u);
     }
   }
 

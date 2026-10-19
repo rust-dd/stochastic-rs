@@ -63,9 +63,9 @@ def test_copula_tail_dependence_before_parameters_raises_value_error():
         sr.Bb1().tail_dependence()
 
 
-def test_copula_tail_dependence_out_of_range_raises_value_error():
-    with pytest.raises(ValueError, match="theta must satisfy"):
-        sr.Bb7(theta=0.5, delta=1.0).tail_dependence()
+def test_copula_bb7_below_its_theta_range_raises_value_error():
+    with pytest.raises(ValueError, match=r"theta must satisfy `1\.0 <= theta < inf`, got theta = 0\.5"):
+        sr.Bb7(theta=0.5, delta=1.0)
 
 
 def test_copula_batch_methods_on_a_wrong_column_count_raise_value_error():

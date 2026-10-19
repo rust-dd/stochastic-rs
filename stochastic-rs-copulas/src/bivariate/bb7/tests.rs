@@ -44,8 +44,8 @@ fn density_is_the_mixed_derivative_of_the_cdf() {
 fn cdf_has_uniform_margins_and_nests_the_limits() {
   let c = Bb7::new(1.7, 0.8);
   for (u, v) in [(0.2, 0.7), (0.9, 0.4)] {
-    assert!((c.cdf(array![[u, 1.0 - 1e-12]].view()).unwrap()[0] - u).abs() < 1e-8);
-    assert!((c.cdf(array![[1.0 - 1e-12, v]].view()).unwrap()[0] - v).abs() < 1e-8);
+    assert_eq!(c.cdf(array![[u, 1.0]].view()).unwrap()[0], u);
+    assert_eq!(c.cdf(array![[1.0, v]].view()).unwrap()[0], v);
   }
   // θ = 1 is Clayton(δ).
   let mut clayton = crate::bivariate::clayton::Clayton::default();
