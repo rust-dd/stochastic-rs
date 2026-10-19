@@ -271,7 +271,7 @@ fn bivariate_t_cdf_matches_50_digit_references() {
     let bv = TCopula::new(rho, nu).cdf(q.view()).unwrap()[0];
     assert_eq!(mv, bv, "nu={nu} rho={rho} u={u} v={v}");
     assert!(
-      (bv - want).abs() <= 1e-12,
+      agrees(bv, want),
       "nu={nu} rho={rho} u={u} v={v}: {bv} vs {want}"
     );
   }

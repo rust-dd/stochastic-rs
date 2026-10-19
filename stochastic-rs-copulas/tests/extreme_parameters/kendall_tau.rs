@@ -33,14 +33,19 @@ fn rows() -> impl Iterator<Item = (&'static str, f64, f64)> {
   })
 }
 
-/// `τ` within `1e-12`, and a positive extreme-value `τ` below `1e-3` to `1e-12` of itself: the families' whole ranges.
+/// `τ` within `1e-12`, and within `1e-12` of itself below `|τ| = 1e-3`, Plackett's either side of `θ = 1` included: the
+/// families' whole ranges.
 #[test]
 fn kendall_tau_matches_the_mpmath_table() {
   let mut failures = Vec::new();
   for (name, theta, want) in rows() {
     let got = family(name).tau_from_theta(theta);
-    let relative = name != "plackett" && want < 1e-3;
-    if !((got - want).abs() <= 1e-12 && (!relative || agrees(got, want))) {
+    let close = if want.abs() < 1e-3 {
+      agrees(got.abs(), want.abs()) && (got == want || got.signum() == want.signum())
+    } else {
+      (got - want).abs() <= 1e-12
+    };
+    if !close {
       failures.push(format!("{name} τ({theta:e}) = {got:e}, want {want:e}"));
     }
   }
