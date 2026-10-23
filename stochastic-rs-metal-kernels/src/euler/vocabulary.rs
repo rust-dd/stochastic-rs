@@ -16,8 +16,10 @@ pub(crate) fn abs(value: f32) -> f32 {
   value.abs()
 }
 
+#[allow(clippy::neg_multiply)]
 pub(crate) fn negate(value: f32) -> f32 {
-  -value
+  // Keep negation available to the family kernels' fast-math contractions.
+  value * -1.0
 }
 
 pub(crate) fn recip(value: f32) -> f32 {

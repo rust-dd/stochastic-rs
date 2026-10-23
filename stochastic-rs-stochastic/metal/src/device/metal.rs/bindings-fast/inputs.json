@@ -1,17 +1,27 @@
 {
-  "format": 2,
-  "artifact": "3e92c32239f4e0a7bd618a539dc7b7605f54b70c0777dff626712f141bd45c50",
+  "format": 3,
+  "artifact": "3f8483e35749cd4b27f4a3af810d3007fa8fcbde0adc1f21f5b4b90f918fba31",
   "request": {
     "source": "754667489b9a5ecf65525d4308f1a9f99018bdc43fe0b63d8557d56aa93740a2",
     "math_mode": "fast",
     "debug_info": false
   },
+  "profile": {},
+  "configuration": {
+    "root": "..",
+    "copied": false,
+    "files": {},
+    "home": null,
+    "environment": {}
+  },
+  "environment": {},
   "lock": "../Cargo.lock",
   "packages": [
-    "metal-oxide-device 0.1.0-alpha.1 git+https://github.com/rust-dd/metal-oxide?rev=4b53fc97f8915413b6e75d580dc5fb8840007a63#4b53fc97f8915413b6e75d580dc5fb8840007a63",
-    "metal-oxide-macros 0.1.0-alpha.1 git+https://github.com/rust-dd/metal-oxide?rev=4b53fc97f8915413b6e75d580dc5fb8840007a63#4b53fc97f8915413b6e75d580dc5fb8840007a63"
+    "metal-oxide-device 0.1.0-alpha.1 registry+https://github.com/rust-lang/crates.io-index",
+    "metal-oxide-macros 0.1.0-alpha.1 registry+https://github.com/rust-lang/crates.io-index"
   ],
   "files": {
+    "../Cargo.toml": "c865927c3c7223a2db20fb63fb7709fca960a9d622fc71f0b96f45804c60fc6f",
     "../stochastic-rs-metal-kernels/Cargo.toml": "0567c5d8ccc2c985fd3131a07eecc4f83829674b95551bce135d61d1917ef06e",
     "../stochastic-rs-metal-kernels/src/euler/args.rs": "50e0d44df3818e975a38fedab91e8f227ad4eaadbf7f97534bc7d8be8d24ae9e",
     "../stochastic-rs-metal-kernels/src/euler/draws.rs": "3a781609861bf7b5dd773bc0513114a0754f6bd2e73ae337ae0f55713f440122",
@@ -24,11 +34,11 @@
     "../stochastic-rs-metal-kernels/src/euler/families.rs": "99aa9258fb6b7dc86e20fd7613d1964b683c58c56b9b32cd87d56cd264a26ec8",
     "../stochastic-rs-metal-kernels/src/euler/families/codegen.rs": "b807845df5a0925e4a0a3223840833c73822f800745263bef55bcfbc848472f5",
     "../stochastic-rs-metal-kernels/src/euler/frame.rs": "9005bc0b543286f1d3239447a02423d33827e0c08287919b622bfad7f442fe60",
-    "../stochastic-rs-metal-kernels/src/euler/jumps.rs": "a94edcad879e937ae907af64b7d24965803150f805d3507a94b1e08be3c44645",
-    "../stochastic-rs-metal-kernels/src/euler/memory.rs": "b58259e98c01e4ed247011a027be2b4379500abdaca0b5afd717e46c48e67deb",
+    "../stochastic-rs-metal-kernels/src/euler/jumps.rs": "3aaf97fa36de4beed85a45bbf879133db39d5dceaa110b90bd014f5c31015b42",
+    "../stochastic-rs-metal-kernels/src/euler/memory.rs": "44e21aa002dfec028b3abec61ed674882063dc8109cd9aefa998fa58d3e18b04",
     "../stochastic-rs-metal-kernels/src/euler/mod.rs": "0cd4d089aed8e64ecb64b1a38ccbdcf5c201f629499c9b16d8d719e635d2d7ff",
-    "../stochastic-rs-metal-kernels/src/euler/program.rs": "9f88c3d06f021a4622a602bbdda47570f0fc648679539a7604bcb0a29ffb08b5",
-    "../stochastic-rs-metal-kernels/src/euler/vocabulary.rs": "a38c3aa184cad0aedf31f78a1d10d0469379e0ee9dcd04cd5948f3f80cc300e9",
+    "../stochastic-rs-metal-kernels/src/euler/program.rs": "6104691dc32ea5c174a5bb044788b2eb37ae8431b19b5d3374f5718f55fa14e8",
+    "../stochastic-rs-metal-kernels/src/euler/vocabulary.rs": "e6903956da09608b76e01d0ed2e978a08755112798777e1fa56da3397cf583ef",
     "../stochastic-rs-metal-kernels/src/fft.rs": "b6a8d29bcc78db33353d8e4d6fb9bf3369834c0dafd1bafee18485e1170fce43",
     "../stochastic-rs-metal-kernels/src/lib.rs": "fef644f0644feeeb2ddd31a3328455c4b22bffc19af8133e0cb41e73d93c090d",
     "../stochastic-rs-metal-kernels/src/random.rs": "bea494af0702b39b3a69e06fbaa677348cf5fce25addb2b8be53e5e4c824b2f4",

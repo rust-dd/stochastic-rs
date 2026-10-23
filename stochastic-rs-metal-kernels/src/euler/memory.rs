@@ -5,6 +5,7 @@ use metal_oxide_device::math;
 use super::args::EulerArgs;
 use super::draws::{open, uniform};
 use super::families::Inputs;
+use super::vocabulary::negate;
 
 pub(super) fn key(path: u32, term: u32) -> u32 {
   path.wrapping_mul(2_654_435_761) ^ term.wrapping_mul(40_503) ^ 3_266_489_917
@@ -30,12 +31,22 @@ pub(super) unsafe fn cell(key: u32, seed: u32, steps: u32) -> u32 {
 
 /// Exponential gap between consecutive arrivals of the series clock.
 pub(super) fn gap(key: u32, seed: u32) -> f32 {
-  -math::ln(open(uniform(key, 2_654_435_769, seed, 2_654_435_761)))
+  negate(math::ln(open(uniform(
+    key,
+    2_654_435_769,
+    seed,
+    2_654_435_761,
+  ))))
 }
 
 pub(super) fn term(mut input: Inputs, key: u32, seed: u32, arrival: f32) -> Inputs {
   input.arrival = arrival;
-  input.exponential = -math::ln(open(uniform(key, 2_246_822_507, seed, 2_654_435_761)));
+  input.exponential = negate(math::ln(open(uniform(
+    key,
+    2_246_822_507,
+    seed,
+    2_654_435_761,
+  ))));
   input.series_uniform = [
     uniform(key, 3_266_489_909, seed, 2_654_435_761),
     uniform(key, 668_265_263, seed, 2_654_435_761),

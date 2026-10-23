@@ -28,13 +28,17 @@ fn exponential(up: f32, uniform: f32, a: f32, b: f32, c: f32) -> f32 {
 }
 
 pub(crate) fn draw(key: u32, seed: u32, law: u32, a: f32, b: f32, c: f32, count: f32) -> f32 {
-  if law == 1 || law == 6 {
+  // Separate return expressions preserve the seeded paths' fast-math rounding.
+  if law == 1 {
     let first = open(uniform(key, 1_103_515_245, seed, 2_654_435_761));
     let second = uniform(key, 1_013_904_223, seed, 2_654_435_761);
     let z = normal(first, second);
-    if law == 1 {
-      return a * count + b * math::sqrt(count) * z;
-    }
+    return a * count + b * math::sqrt(count) * z;
+  }
+  if law == 6 {
+    let first = open(uniform(key, 1_103_515_245, seed, 2_654_435_761));
+    let second = uniform(key, 1_013_904_223, seed, 2_654_435_761);
+    let z = normal(first, second);
     return a + b * z;
   }
   if law == 7 {

@@ -32,8 +32,8 @@ kendalls = "1.0.0"
 libm = "0.2.16"
 linreg = "0.2.0"
 log = "0.4.34"
-metal-oxide = { git = "https://github.com/rust-dd/metal-oxide", rev = "4b53fc97f8915413b6e75d580dc5fb8840007a63" }
-metal-oxide-device = { git = "https://github.com/rust-dd/metal-oxide", rev = "4b53fc97f8915413b6e75d580dc5fb8840007a63" }
+metal-oxide = "=0.1.0-alpha.1"
+metal-oxide-device = "=0.1.0-alpha.1"
 ndarray = { version = "0.17.2", features = ["rayon", "matrixmultiply-threading"] }
 ndarray-npy = "0.10.0"
 ndrustfft = "0.6.2"

@@ -97,7 +97,7 @@ fn binary(code: u32, left: f32, right: f32) -> f32 {
 
 fn unary(code: u32, value: f32) -> f32 {
   match code {
-    10 => vocabulary::negate(value),
+    10 => -value,
     11 => vocabulary::sqrt(value),
     12 => vocabulary::exp(value),
     13 => vocabulary::ln(value),
