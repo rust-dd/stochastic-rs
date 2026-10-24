@@ -63,6 +63,7 @@ use crate::multivariate::on_open_cube;
 use crate::optim::localmin;
 use crate::student_t;
 use crate::student_t::Law;
+use crate::student_t::Score;
 use crate::student_t::check_nu;
 use crate::student_t::ln_gamma_constant;
 use crate::traits::MultivariateExt;
@@ -150,8 +151,7 @@ impl TMultivariate {
 
   /// Log-likelihood of the data under `corr` at `nu`, the objective `optimise_nu` maximises with Σ held fixed.
   fn log_likelihood_for_nu(corr: &CorrelationMatrix, x: ArrayView2<f64>, nu: f64) -> f64 {
-    let density = LogDensity::new(corr, nu);
-    x.rows().into_iter().map(|u| density.at(u)).sum()
+    LogDensity::new(corr, nu).rows(x).sum()
   }
 
   /// Brent's `localmin` on [2.1, 50] to 1e-6 (`eps = t = 1e-6`), the resolution the likelihood's rounding leaves in ν; a
@@ -235,11 +235,10 @@ impl MultivariateExt for TMultivariate {
     Ok(self.log_pdf(x)?.mapv(f64::exp))
   }
 
-  /// `LogDensity::at` on the open cube.
+  /// `LogDensity::rows` on the open cube.
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(x)?;
-    let density = LogDensity::new(self.fitted()?, self.nu);
-    let out = x.rows().into_iter().map(|u| density.at(u)).collect();
+    let out = LogDensity::new(self.fitted()?, self.nu).rows(x);
     Ok(on_open_cube(x, out))
   }
 
@@ -312,32 +311,61 @@ impl<'a> LogDensity<'a> {
     }
   }
 
-  /// `ln c(u)`: in the scores where they and `zᵀR⁻¹z` stay finite, else in `ln|z_j|`, scaled by the largest, so a score
-  /// past `f64::MAX` keeps its terms.
-  fn at(&self, u: ndarray::ArrayView1<f64>) -> f64 {
-    let scores: Vec<_> = u.iter().map(|&p| self.law.quantile(p)).collect();
-    let z = Array1::from_iter(scores.iter().map(|s| s.value));
-    let quadratic = z.dot(&self.inverse.dot(&z));
-    let (joint, margins) = if quadratic.is_finite() && z.iter().all(|x| (x * x).is_finite()) {
-      let margins: f64 = z.iter().map(|&x| (x * x / self.nu).ln_1p()).sum();
+  /// `ln c` of every row of `x`, at the scores the law forms from its body quantiles, with one buffer for all rows.
+  fn rows(&self, x: ArrayView2<f64>) -> Array1<f64> {
+    let body = self.law.body_quantiles(x);
+    let scores: Vec<Score> = x
+      .iter()
+      .zip(body.iter())
+      .map(|(&p, &t)| self.law.score(p, t))
+      .collect();
+    let mut w = vec![0.0; x.ncols()];
+    scores
+      .chunks(x.ncols())
+      .map(|row| self.at(row, &mut w))
+      .collect()
+  }
+
+  /// `ln c` at one row's scores: in the scores where they and `zᵀR⁻¹z` stay finite, else in `ln|z_j|`, scaled by the
+  /// largest, so a score past `f64::MAX` keeps its terms.
+  fn at(&self, scores: &[Score], w: &mut [f64]) -> f64 {
+    for (w, s) in w.iter_mut().zip(scores) {
+      *w = s.value;
+    }
+    let quadratic = self.quadratic(w);
+    let (joint, margins) = if quadratic.is_finite() && w.iter().all(|x| (x * x).is_finite()) {
+      let margins: f64 = w.iter().map(|&x| (x * x / self.nu).ln_1p()).sum();
       ((quadratic / self.nu).ln_1p(), margins)
     } else {
-      let ln_abs: Vec<f64> = scores.iter().map(|s| s.ln_abs()).collect();
-      let top = ln_abs
+      let top = scores
         .iter()
-        .fold(f64::NEG_INFINITY, |a, &b| a.max_or_nan(b));
-      let w = Array1::from_iter(
-        scores
-          .iter()
-          .zip(&ln_abs)
-          .map(|(s, &l)| s.sign() * (l - top).exp()),
-      );
-      let ln_quadratic = 2.0 * top + w.dot(&self.inverse.dot(&w)).ln();
-      let margins: f64 = ln_abs.iter().map(|&l| softplus(2.0 * l - self.ln_nu)).sum();
+        .fold(f64::NEG_INFINITY, |a, s| a.max_or_nan(s.ln_abs()));
+      for (w, s) in w.iter_mut().zip(scores.iter()) {
+        *w = s.sign() * (s.ln_abs() - top).exp();
+      }
+      let ln_quadratic = 2.0 * top + self.quadratic(w).ln();
+      let margins: f64 = scores
+        .iter()
+        .map(|s| softplus(2.0 * s.ln_abs() - self.ln_nu))
+        .sum();
       (softplus(ln_quadratic - self.ln_nu), margins)
     };
-    let d = u.len() as f64;
+    let d = scores.len() as f64;
     self.constant - 0.5 * (self.nu + d) * joint + 0.5 * (self.nu + 1.0) * margins
+  }
+
+  /// `wᵀR⁻¹w`.
+  fn quadratic(&self, w: &[f64]) -> f64 {
+    w.iter()
+      .enumerate()
+      .map(|(i, &a)| {
+        a * w
+          .iter()
+          .enumerate()
+          .map(|(j, &b)| self.inverse[[i, j]] * b)
+          .sum::<f64>()
+      })
+      .sum()
   }
 }
 

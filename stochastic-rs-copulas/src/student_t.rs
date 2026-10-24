@@ -5,6 +5,9 @@
 use std::f64::consts::LN_2;
 use std::f64::consts::PI;
 
+use ndarray::Array2;
+use ndarray::ArrayView2;
+use ndarray::Axis;
 use stochastic_rs_distributions::DistributionExt;
 use stochastic_rs_distributions::special::ln_gamma;
 use stochastic_rs_distributions::special::norm_cdf;
@@ -123,6 +126,37 @@ impl Law {
         .quantile(p)
         .expect("the Student-t law has a quantile"),
     )
+  }
+
+  /// Whether `p` is in the body, where the quantile is `SimdStudentT`'s.
+  fn in_body(&self, p: f64) -> bool {
+    p.min(1.0 - p) > self.tail_level && p != 0.5 && self.nu < NORMAL_ABOVE
+  }
+
+  /// `SimdStudentT`'s quantile wherever `u` is in the body, NaN elsewhere, in a loop of its own: one the quantile
+  /// inlines into whole, so its work in `ν` alone leaves the loop.
+  pub(crate) fn body_quantiles(&self, u: ArrayView2<f64>) -> Array2<f64> {
+    let nu = self.nu;
+    let mut z = u.to_owned();
+    for mut row in z.axis_iter_mut(Axis(0)) {
+      for p in row.iter_mut() {
+        *p = if self.in_body(*p) {
+          quantile(*p, nu)
+        } else {
+          f64::NAN
+        };
+      }
+    }
+    z
+  }
+
+  /// The quantile at `p`, from `t`, its `body_quantiles` entry, where `p` is in the body.
+  pub(crate) fn score(&self, p: f64, t: f64) -> Score {
+    if self.in_body(p) {
+      Score::of(t)
+    } else {
+      self.quantile(p)
+    }
   }
 
   /// `ln(|a|/|b|)` of two of this law's quantiles: `ln(P_b/P_a)/ν` of their tail probabilities when both have one, so
