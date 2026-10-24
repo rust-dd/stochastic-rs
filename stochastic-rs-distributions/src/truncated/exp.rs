@@ -174,6 +174,13 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
     if !(0.0..=1.0).contains(&p) {
       return Some(f64::NAN);
     }
+    // The bounds exactly, which the inverse map misses by a few ulps.
+    if p == 0.0 {
+      return self.lower.to_f64();
+    }
+    if p == 1.0 {
+      return self.upper.to_f64();
+    }
     Some(self.inverse_cdf(p))
   }
 
@@ -214,6 +221,9 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedExp<T> {
 
   /// Finite for every `t` on a bounded interval (`λL e^{λ·lower}/(1 − r)` at `t = λ`); an open tail diverges from `t = λ` on.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    if t.is_nan() {
+      return Some(f64::NAN);
+    }
     if t == 0.0 {
       return Some(1.0);
     }

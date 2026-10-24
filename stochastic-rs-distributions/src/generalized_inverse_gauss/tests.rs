@@ -286,6 +286,13 @@ fn half_negative_lambda_boundary_mgf_is_the_inverse_gaussian() {
   }
 }
 
+/// Where `K_λ` overflows (λ = −172 at a small argument) the boundary limit is NaN, not a silent 0.
+#[test]
+fn boundary_limit_with_an_overflowing_k_is_nan() {
+  let gig = SimdGig::<f64>::new(-172.0, 1.0, 1.0);
+  assert!(gig.moment_generating_function(0.5).unwrap().is_nan());
+}
+
 /// `pdf(∞) = 0` for every index (`λ ≥ 1` reads `∞ − ∞` in log space) and `E[e^{tX}] → 0` as `t → −∞`.
 #[test]
 fn pdf_and_mgf_at_infinity() {

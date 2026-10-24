@@ -347,6 +347,13 @@ impl<T: SimdFloatExt> DistributionExt for SimdTruncatedNormal<T> {
     if !(0.0..=1.0).contains(&p) {
       return Some(f64::NAN);
     }
+    // The bounds exactly, which the inverse map misses by a few ulps.
+    if p == 0.0 {
+      return self.lower.to_f64();
+    }
+    if p == 1.0 {
+      return self.upper.to_f64();
+    }
     Some(self.inverse_cdf(p))
   }
 

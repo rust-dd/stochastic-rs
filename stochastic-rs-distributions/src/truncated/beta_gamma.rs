@@ -30,7 +30,8 @@ fn reject<T: SimdFloatExt>(lower: T, upper: T, mut base: impl FnMut() -> T) -> T
   (lower + upper) * T::from_f64_fast(0.5)
 }
 
-/// The parent's quantile at the renormalised level `F(lower) + p(F(upper) − F(lower))`.
+/// The parent's quantile at the renormalised level `F(lower) + p(F(upper) − F(lower))`; the interval's own ends
+/// at levels 0 and 1, which that level's rounding can miss.
 fn renormalised_quantile(
   base: &impl DistributionExt,
   lower: f64,
@@ -39,6 +40,12 @@ fn renormalised_quantile(
 ) -> Option<f64> {
   if !(0.0..=1.0).contains(&p) {
     return Some(f64::NAN);
+  }
+  if p == 0.0 {
+    return Some(lower);
+  }
+  if p == 1.0 {
+    return Some(upper);
   }
   let (f_lo, f_up) = (base.cdf(lower)?, base.cdf(upper)?);
   base.quantile(f_lo + p * (f_up - f_lo))

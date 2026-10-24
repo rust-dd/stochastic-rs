@@ -270,6 +270,17 @@ impl<T: SimdFloatExt> DistributionExt for SimdGev<T> {
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
+    // At level 1 `−ln p` is `−0.0`, which an odd-integer `ξ > 0` would send to `−∞`.
+    let (lo, hi) = self.support();
+    if p == 0.0 {
+      return Some(lo);
+    }
+    if p == 1.0 {
+      return Some(hi);
+    }
     let (mu, sigma, xi) = self.params();
     let m_ln_p = -p.ln();
     if xi.abs() < 1e-12 {

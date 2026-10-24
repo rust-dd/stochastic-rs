@@ -265,6 +265,13 @@ impl<T: SimdFloatExt> DistributionExt for SimdSkewT<T> {
     if !(0.0..=1.0).contains(&p) {
       return Some(f64::NAN);
     }
+    // The level map below rounds level 1 off 1 for some λ.
+    if p == 0.0 {
+      return Some(f64::NEG_INFINITY);
+    }
+    if p == 1.0 {
+      return Some(f64::INFINITY);
+    }
     let lambda = self.lambda.to_f64().unwrap();
     let split = 0.5 * (1.0 - lambda);
     let (side, q) = if p < split {

@@ -184,7 +184,7 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdUniform<T> {
     }
   }
 
-  /// `low + p·(high − low)`; `high` itself at `p = 1`, which an `f32` law's rounded width can miss.
+  /// `high` itself at `p = 1`, which an `f32` law's rounded width can miss.
   fn quantile(&self, p: f64) -> Option<f64> {
     if !(0.0..=1.0).contains(&p) {
       return Some(f64::NAN);

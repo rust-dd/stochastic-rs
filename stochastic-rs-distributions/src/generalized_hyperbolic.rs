@@ -328,8 +328,12 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     }
     let gamma = (alpha * alpha - beta * beta).sqrt();
     if shifted == 0.0 {
-      // s^{-λ} K_λ(δs) → ½ Γ(−λ) (2/δ)^{−λ} as s → 0, in log space past Γ's and K's overflow.
+      // s^{-λ} K_λ(δs) → ½ Γ(−λ) (2/δ)^{−λ} as s → 0, in log space past Γ's overflow and K's underflow;
+      // a K that overflows (a large |λ| at a small argument) answers NaN, not a silent 0.
       let ln_k = bessel_ke(lambda, delta * gamma).ln() - delta * gamma;
+      if !ln_k.is_finite() {
+        return Some(f64::NAN);
+      }
       return Some(
         (mu * t + lambda * (0.5 * delta * gamma).ln() + ln_gamma(-lambda)
           - std::f64::consts::LN_2
@@ -462,6 +466,13 @@ mod tests {
       nig.moment_generating_function(edge).unwrap(),
       1e-13
     ));
+  }
+
+  /// Where `K_λ` overflows (λ = −172 at a small argument) the boundary limit is NaN, not a silent 0.
+  #[test]
+  fn boundary_limit_with_an_overflowing_k_is_nan() {
+    let gh = SimdGeneralizedHyperbolic::<f64>::new(-172.0, 2.0, 0.5, 0.5, 0.0);
+    assert!(gh.moment_generating_function(1.5).unwrap().is_nan());
   }
 
   #[test]

@@ -280,7 +280,7 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdBinomial<T> {
     ))
   }
 
-  /// The support's ends at `prob = 0` and `1`: `{0}` at `p = 0`, `{n}` at `p = 1`, else `0` and `n`.
+  /// At `p = 0` or `p = 1` the support is one point, and both ends answer it.
   fn quantile(&self, prob: f64) -> Option<f64> {
     if !(0.0..=1.0).contains(&prob) {
       return Some(f64::NAN);
@@ -334,7 +334,11 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdBinomial<T> {
     Some((1.0 - 6.0 * self.p * q) / (self.n as f64 * self.p * q))
   }
 
+  /// `n = 0` would read `NaN⁰ = 1` for a NaN `t`.
   fn characteristic_function(&self, t: f64) -> Option<num_complex::Complex64> {
+    if t.is_nan() {
+      return Some(num_complex::Complex64::new(f64::NAN, f64::NAN));
+    }
     if t == 0.0 {
       return Some(num_complex::Complex64::new(1.0, 0.0));
     }
@@ -344,7 +348,11 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdBinomial<T> {
     Some(z.powi(self.n as i32))
   }
 
+  /// `n = 0` would read `NaN⁰ = 1` for a NaN `t`.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    if t.is_nan() {
+      return Some(f64::NAN);
+    }
     if t == 0.0 {
       return Some(1.0);
     }

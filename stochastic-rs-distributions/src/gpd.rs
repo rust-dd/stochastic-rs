@@ -219,7 +219,11 @@ impl<T: SimdFloatExt> Distribution<T> for SimdGpd<T> {
 }
 
 impl<T: SimdFloatExt> DistributionExt for SimdGpd<T> {
+  /// `ξ = −1` would read `NaN⁰ = 1` for a NaN `x`.
   fn pdf(&self, x: f64) -> Option<f64> {
+    if x.is_nan() {
+      return Some(f64::NAN);
+    }
     let (mu, sigma, xi) = self.params();
     let z = (x - mu) / sigma;
     if z < 0.0 {

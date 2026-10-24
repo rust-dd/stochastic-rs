@@ -418,8 +418,12 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
     }
     let b = (chi * psi).sqrt();
     if shifted == 0.0 {
-      // s^{-λ} K_λ(√χ s) → ½ Γ(−λ) (2/√χ)^{−λ} as s → 0, in log space past Γ's and K's overflow.
+      // s^{-λ} K_λ(√χ s) → ½ Γ(−λ) (2/√χ)^{−λ} as s → 0, in log space past Γ's overflow and K's underflow;
+      // a K that overflows (a large |λ| at a small argument) answers NaN, not a silent 0.
       let ln_k = bessel_ke(lambda, b).ln() - b;
+      if !ln_k.is_finite() {
+        return Some(f64::NAN);
+      }
       return Some(
         (lambda * (0.5 * b).ln() + ln_gamma(-lambda) - std::f64::consts::LN_2 - ln_k).exp(),
       );
