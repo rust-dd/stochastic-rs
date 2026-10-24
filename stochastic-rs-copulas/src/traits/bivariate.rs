@@ -132,12 +132,14 @@ pub trait BivariateExt {
     let mut c = Array1::<f64>::zeros(n);
     ud.fill_slice(c.as_slice_mut().unwrap());
     // The uniforms are its own, in `[0, 1]` and of equal length: nothing for a family's own inverse to check again.
-    let u = match self.percent_point_unchecked(c.view(), v.view()) {
+    let mut u = match self.percent_point_unchecked(c.view(), v.view()) {
       Some(u) => u?,
       None => self.percent_point(c.view(), v.view())?,
     };
+    u.mapv_inplace(inside);
+    v.mapv_inplace(inside);
 
-    Ok(stack![Axis(1), u.mapv(inside), v.mapv(inside)])
+    Ok(stack![Axis(1), u, v])
   }
 
   /// Kendall's τ-b of a two-column sample of pseudo-observations, inverted through `theta_from_tau`; nothing is stored
