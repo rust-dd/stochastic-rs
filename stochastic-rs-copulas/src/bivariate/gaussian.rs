@@ -60,8 +60,8 @@ impl GaussianCopula {
     Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
-  /// `∂_v C = Φ((x − ρy)/√(1 − ρ²))`, `x − ρy` as `(x − y) + (1 − ρ)y`, or `(x + y) − (1 + ρ)y` at `ρ < 0`, from the exact
-  /// gap; at `v ∈ {0, 1}` the limit law, a point mass at 0 where `ρ` and the edge agree in sign and at 1 otherwise.
+  /// `∂_v C = Φ((x − ρy)/√(1 − ρ²))`, `x − ρy` from the exact gap as `(x − y) + (1 − ρ)y` where it cancels (and
+  /// `(x + y) − (1 + ρ)y` at `ρ < 0`); at `v ∈ {0, 1}` the limit law, a point mass at 0 or 1 by the sign of `ρ`.
   pub(crate) fn h(rho: f64) -> impl Fn(f64, f64) -> f64 {
     let s = ((1.0 - rho) * (1.0 + rho)).sqrt();
     move |u, v| {
@@ -72,6 +72,11 @@ impl GaussianCopula {
         return if (v == 0.0) == (rho > 0.0) { 1.0 } else { 0.0 };
       }
       let (x, y) = (normal_quantile(u), normal_quantile(v));
+      let z = (x - rho * y) / s;
+      // `x − ρy` rounds by `ε(|x| + |y|)`, which `1/s` and Φ's relative slope `|z| + 1` amplify: past `150ε`, the gap.
+      if !z.is_finite() || (x.abs() + y.abs()) * (z.abs() + 1.0) <= 150.0 * s {
+        return norm_cdf(z);
+      }
       let shifted = if rho > 0.0 {
         Self::difference(u, v, x, y) + (1.0 - rho) * y
       } else {
