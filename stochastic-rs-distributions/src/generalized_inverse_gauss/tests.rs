@@ -307,6 +307,72 @@ fn mgf_and_pdf_hold_where_k_overflows() {
   }
 }
 
+/// mpmath at 120 and 250 digits where both `K` overflow; the central moments lose the raw moments' `ε|ln K|` to their
+/// cancellation, hence a tolerance per moment.
+#[test]
+fn moments_hold_where_k_overflows() {
+  for ((lambda, chi, psi), want) in [
+    (
+      (-172.0, 1.0, 1.0),
+      [
+        0.002_923_951_462_624_529_6,
+        5.029_025_511_391_121e-8,
+        0.308_597_197_431_851_7,
+        0.179_411_615_657_454_17,
+      ],
+    ),
+    (
+      (172.0, 1e-3, 1.0),
+      [
+        344.000_002_923_976_6,
+        688.0,
+        0.152_498_570_332_604_64,
+        0.034_883_720_930_232_55,
+      ],
+    ),
+  ] {
+    let d = SimdGig::<f64>::new(lambda, chi, psi);
+    let got = [d.mean(), d.variance(), d.skewness(), d.kurtosis()].map(Option::unwrap);
+    for ((g, w), tol) in got.into_iter().zip(want).zip([1e-12, 1e-10, 1e-7, 1e-5]) {
+      assert!(
+        close(g, w, tol),
+        "GIG({lambda}, {chi}, {psi}): {g}, want {w}"
+      );
+    }
+  }
+}
+
+/// No digit survives here: `ε·Σ|ln terms|` reaches 1 at these orders, and this concentrated a law's kurtosis cancels
+/// below its raw moments' rounding.
+#[test]
+fn no_surviving_digit_answers_nan() {
+  let far = SimdGig::<f64>::new(-1e15, 1.0, 1.0);
+  assert!(far.moment_generating_function(0.5).unwrap().is_nan());
+  assert!(far.mean().unwrap().is_nan());
+  let farther = SimdGig::<f64>::new(-1e300, 1.0, 1.0);
+  assert!(farther.moment_generating_function(0.25).unwrap().is_nan());
+  assert!(
+    SimdGig::<f64>::new(1.0, 1e12, 1e12)
+      .kurtosis()
+      .unwrap()
+      .is_nan()
+  );
+}
+
+/// mpmath: within `1e-12` at `|λ| = 10³`, within the documented `3ε|λ| ln|λ|` at `|λ| = 10¹⁰`.
+#[test]
+fn large_orders_keep_the_documented_bound() {
+  let near = SimdGig::<f64>::new(-1e3, 1.0, 1.0)
+    .moment_generating_function(0.5)
+    .unwrap();
+  assert!(close(near, 1.000_250_281_534_073, 1e-12), "{near}");
+  let far = SimdGig::<f64>::new(-1e10, 1.0, 1.0)
+    .moment_generating_function(0.25)
+    .unwrap();
+  let bound = 3.0 * f64::EPSILON * 1e10 * 1e10_f64.ln();
+  assert!(close(far, 1.000_000_000_012_5, bound), "{far}");
+}
+
 /// `pdf(∞) = 0` for every index (`λ ≥ 1` reads `∞ − ∞` in log space) and `E[e^{tX}] → 0` as `t → −∞`.
 #[test]
 fn pdf_and_mgf_at_infinity() {

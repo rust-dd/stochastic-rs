@@ -37,6 +37,7 @@ use super::gamma::SimdGamma;
 use super::normal::SimdNormal;
 use crate::seeded::Buffered;
 use crate::seeded::StreamState;
+use crate::special::Estimate;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
 use crate::traits::distribution::Sealed;
@@ -45,8 +46,8 @@ use crate::traits::distribution::SimdKernel;
 
 const SMALL_VG_THRESHOLD: usize = 16;
 
-/// Variance-gamma distribution with volatility `σ > 0`, variance rate
-/// `ν > 0` of the gamma clock, drift `θ` and location `μ`; a [`Seeded`](crate::Seeded) stream draws it in bulk.
+/// Variance-gamma distribution: volatility `σ > 0`, gamma-clock variance rate `ν > 0`, drift `θ`, location `μ`; a [`Seeded`](crate::Seeded) stream draws it.
+/// Its density is within `1e-12` to `ν = 1/400` and `3ε ln(1/ν)/ν` below it; NaN past every digit.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdVarianceGamma<T> {
   sigma: T,
@@ -243,25 +244,42 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
     let (sigma, nu, theta, mu) = self.params();
     let a = 1.0 / nu - 0.5;
     let root = (2.0 * sigma * sigma / nu + theta * theta).sqrt();
-    let log_norm = std::f64::consts::LN_2
-      - sigma.ln()
-      - 0.5 * (2.0 * std::f64::consts::PI).ln()
-      - nu.ln() / nu
-      - ln_gamma(1.0 / nu);
+    let (t_sigma, t_nu, t_gamma) = (sigma.ln(), nu.ln() / nu, ln_gamma(1.0 / nu));
+    let log_norm =
+      std::f64::consts::LN_2 - t_sigma - 0.5 * (2.0 * std::f64::consts::PI).ln() - t_nu - t_gamma;
     let d = x - mu;
     if d == 0.0 {
       if a <= 0.0 {
         return Some(f64::INFINITY);
       }
       let scale = sigma * sigma / (root * root);
+      let (t_scale, t_two, t_ga) = (
+        a * scale.ln(),
+        (a - 1.0) * std::f64::consts::LN_2,
+        ln_gamma(a),
+      );
       return Some(
-        (log_norm + a * scale.ln() + (a - 1.0) * std::f64::consts::LN_2 + ln_gamma(a)).exp(),
+        Estimate::from_log_sum(
+          log_norm + t_scale + t_two + t_ga,
+          &[t_sigma, t_nu, t_gamma, t_scale, t_two, t_ga],
+        )
+        .or_nan(),
       );
     }
     let y = d.abs() * root / (sigma * sigma);
-    let log_kernel =
-      theta * d / (sigma * sigma) + a * (d.abs() / root).ln() + ln_bessel_ke(a, y) - y;
-    Some((log_norm + log_kernel).exp())
+    let (t_drift, t_pow, k) = (
+      theta * d / (sigma * sigma),
+      a * (d.abs() / root).ln(),
+      ln_bessel_ke(a, y),
+    );
+    let log_kernel = t_drift + t_pow + k - y;
+    Some(
+      Estimate::from_log_sum(
+        log_norm + log_kernel,
+        &[t_sigma, t_nu, t_gamma, t_drift, t_pow, k, y],
+      )
+      .or_nan(),
+    )
   }
 
   fn mean(&self) -> Option<f64> {
@@ -488,6 +506,22 @@ mod tests {
       let got = d.pdf(x).unwrap();
       assert!(close(got, want, 1e-12), "pdf({x}) = {got}");
     }
+  }
+
+  /// mpmath: within `1e-12` at `ν = 10⁻³`, within the documented `3ε ln(1/ν)/ν` at `ν = 10⁻¹⁰`, NaN at `ν = 10⁻¹⁷`.
+  #[test]
+  fn small_rates_keep_the_documented_bound() {
+    let near = SimdVarianceGamma::<f64>::new(0.2, 1e-3, 0.1, 0.0)
+      .pdf(0.1)
+      .unwrap();
+    assert!(close(near, 1.995_209_861_116_764_1, 1e-12), "{near}");
+    let far = SimdVarianceGamma::<f64>::new(0.2, 1e-10, 0.1, 0.0)
+      .pdf(0.1)
+      .unwrap();
+    let bound = 3.0 * f64::EPSILON * 1e10 * 1e10_f64.ln();
+    assert!(close(far, 1.994_711_402_057_031_1, bound), "{far}");
+    let farthest = SimdVarianceGamma::<f64>::new(0.2, 1e-17, 0.1, 0.0);
+    assert!(farthest.pdf(0.1).unwrap().is_nan());
   }
 }
 

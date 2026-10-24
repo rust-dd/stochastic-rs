@@ -5,6 +5,7 @@
 mod bessel;
 mod bessel_i;
 mod bessel_k;
+mod estimate;
 mod incomplete;
 
 pub use bessel::bessel_i0;
@@ -18,6 +19,7 @@ pub use bessel_i::ln_bessel_ie;
 pub use bessel_k::bessel_k;
 pub use bessel_k::bessel_ke;
 pub use bessel_k::ln_bessel_ke;
+pub(crate) use estimate::Estimate;
 pub use incomplete::beta_i;
 pub use incomplete::gamma_li;
 pub use incomplete::gamma_p;
