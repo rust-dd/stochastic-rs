@@ -1083,21 +1083,21 @@ checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 
 [[package]]
 name = "futures-core"
-version = "0.3.33"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cd50c473c80f6d7c3670a752354b8e569b1a7cbfdc0419ec88e5edad85e0dc7"
+checksum = "92d699e522242e69e3003b94ecc1f960f3a5e015aa7c5d7486e65ad01dd94f5e"
 
 [[package]]
 name = "futures-task"
-version = "0.3.33"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b231ed28831efb4a61a08580c4bc233ec56bc009f4cd8f52da2c3cb97df0c109"
+checksum = "cd417de3d1d015fc3bfd2b1ea46dfc7bab72ef86f1cc7cc9c78e728b34a6d1fd"
 
 [[package]]
 name = "futures-util"
-version = "0.3.33"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a77a90a256fce34da66415271e30f94ee91c57b04b8a2c042d9cf3220179deaa"
+checksum = "0d50a92467f8ba5dd6e3ee5d4bd04d73ab2e4e1c44474a0674821dfce14b79bc"
 dependencies = [
  "futures-core",
  "futures-task",
@@ -1910,10 +1910,12 @@ dependencies = [
 [[package]]
 name = "metal-oxide"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=4b53fc97f8915413b6e75d580dc5fb8840007a63#4b53fc97f8915413b6e75d580dc5fb8840007a63"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fada1dd5ebfa3b3c91bba2acda3860ff20e3a780261a10ec7d129178cd699072"
 dependencies = [
  "block2",
  "dispatch2",
+ "futures-util",
  "half",
  "metal-oxide-artifact",
  "metal-oxide-device",
@@ -1926,7 +1928,8 @@ dependencies = [
 [[package]]
 name = "metal-oxide-artifact"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=4b53fc97f8915413b6e75d580dc5fb8840007a63#4b53fc97f8915413b6e75d580dc5fb8840007a63"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f7846749676be3fdafd4a73382d513c436eb972a13bc26e2185625cc8e77206"
 dependencies = [
  "serde",
  "serde_json",
@@ -1936,17 +1939,20 @@ dependencies = [
 [[package]]
 name = "metal-oxide-build"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=4b53fc97f8915413b6e75d580dc5fb8840007a63#4b53fc97f8915413b6e75d580dc5fb8840007a63"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db8a492d07a15b105ce875833a25ef807eadc85ccedc5180156192ec313e8a59"
 dependencies = [
  "metal-oxide-artifact",
  "serde",
  "serde_json",
+ "toml",
 ]
 
 [[package]]
 name = "metal-oxide-device"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=4b53fc97f8915413b6e75d580dc5fb8840007a63#4b53fc97f8915413b6e75d580dc5fb8840007a63"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7660aaf673f6ac202ceb81ed6028693f3b8c43d06f421a9bd486cb7311449c7d"
 dependencies = [
  "metal-oxide-macros",
 ]
@@ -1954,7 +1960,8 @@ dependencies = [
 [[package]]
 name = "metal-oxide-kernels"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=4b53fc97f8915413b6e75d580dc5fb8840007a63#4b53fc97f8915413b6e75d580dc5fb8840007a63"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "939b9718253dbaf0b2987a8a4e0f81770cd36ba3a56b9130e339e17b5d6bb4da"
 dependencies = [
  "metal-oxide-artifact",
  "metal-oxide-build",
@@ -1966,7 +1973,8 @@ dependencies = [
 [[package]]
 name = "metal-oxide-macros"
 version = "0.1.0-alpha.1"
-source = "git+https://github.com/rust-dd/metal-oxide?rev=4b53fc97f8915413b6e75d580dc5fb8840007a63#4b53fc97f8915413b6e75d580dc5fb8840007a63"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "099eff60620ce482023ffef9698008b046a9389adca9125d9168a426a259fe6e"
 
 [[package]]
 name = "minimal-lexical"
@@ -3202,6 +3210,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_spanned"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e7523beb55eece201a2356bee0bbca0d1ab466c14c07703b2e0ee6d42cb0c2c"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
 name = "serde_with"
 version = "3.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3779,6 +3796,45 @@ dependencies = [
  "unicode-segmentation",
  "unicode_categories",
 ]
+
+[[package]]
+name = "toml"
+version = "1.1.8+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20489e00e4d8741d6be680764cc12e270655e375a20d1011e844a9c3379e678d"
+dependencies = [
+ "indexmap 2.14.0",
+ "serde_core",
+ "serde_spanned",
+ "toml_datetime",
+ "toml_parser",
+ "toml_writer",
+ "winnow",
+]
+
+[[package]]
+name = "toml_datetime"
+version = "1.1.2+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b86d767906c6c42421dcba507eb9d203e779497710a47782a224bb871653053"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
+name = "toml_parser"
+version = "1.1.5+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baa693a8032d7e1cada7d0041e96126df243179ff061456783ac7f12bda4744c"
+dependencies = [
+ "winnow",
+]
+
+[[package]]
+name = "toml_writer"
+version = "1.1.3+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06bdbd8cfc056b8d2e2e85f29b56a3bdbecb527cef81eb39e3e7b98af4652770"
 
 [[package]]
 name = "tracing"
