@@ -187,7 +187,7 @@ const TEMME: [&[f64]; 8] = [
 pub(super) fn tail(a: f64, x: f64) -> Tail {
   let lambda = x / a;
   if (TEMME_BAND.0..=TEMME_BAND.1).contains(&lambda) {
-    let (y, y_lo) = exponent(a, x);
+    let (y, y_lo) = settle(exponent(a, x));
     let upper = x >= a;
     let eta = (2.0 * (y / a)).sqrt().copysign(x - a);
     let sum = TEMME.iter().rev().fold(0.0, |total, d| {
@@ -210,7 +210,7 @@ pub(super) fn tail(a: f64, x: f64) -> Tail {
   let p = a * l;
   let (ln_scale, ln_scale_lo) = if p.is_finite() {
     let (s, s_err) = two_sum(p, -d);
-    (s, s_err + (a.mul_add(l, -p) + a * l_lo) - d_lo)
+    settle((s, s_err + (a.mul_add(l, -p) + a * l_lo) - d_lo))
   } else {
     (p, 0.0)
   };
@@ -305,6 +305,15 @@ fn ln_ratio(x: f64, a: f64) -> (f64, f64) {
     h,
     h_lo + (kf * LN2_LO + 2.0 * s_lo + 2.0 * s * s2 * w + lambda_lo / lambda),
   )
+}
+
+/// `(hi, lo)` with a low part past 1 folded in: it then lies under `hi`'s own ulp, and only a small `lo` is exponentiated.
+fn settle((hi, lo): (f64, f64)) -> (f64, f64) {
+  if lo.abs() > 1.0 {
+    (hi + lo, 0.0)
+  } else {
+    (hi, lo)
+  }
 }
 
 /// `s + e = a + b` exactly.

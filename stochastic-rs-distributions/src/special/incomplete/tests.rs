@@ -276,6 +276,26 @@ fn large_shapes_keep_the_smaller_tail_at_the_band_edges() {
   assert!(rel(ln_gamma_q(1100.0, 3300.0), -996.640_857_633_860_4) < 1e-15);
 }
 
+/// Past an exponent of `2^62` the low parts fold into their high parts, so the tails answer `0` or `1` and their logarithms
+/// stay finite (mpmath: the asymptotic series at 60 digits, and `gammainc` where it converges).
+#[test]
+fn huge_exponents_keep_their_logarithms() {
+  use crate::traits::DistributionExt;
+  let rel = |got: f64, want: f64| ((got - want) / want).abs();
+  assert_eq!(gamma_q(100.0, 1e20), 0.0);
+  assert!(rel(ln_gamma_q(100.0, 1e20), -1e20) < 1e-15);
+  assert_eq!(gamma_p(100.0, 5e19), 1.0);
+  let chi2 = crate::chi_square::SimdChiSquared::<f64>::new(200.0);
+  assert_eq!(chi2.cdf(1e20), Some(1.0));
+  assert_eq!(gamma_p(1e18, 1.0), 0.0);
+  assert!(rel(ln_gamma_p(1e18, 1.0), -4.044_653_167_389_282e19) < 1e-15);
+  assert_eq!(gamma_q(120.0, 4e19), 0.0);
+  assert!(rel(ln_gamma_q(120.0, 4e19), -3.999_999_999_999_999e19) < 1e-15);
+  assert_eq!(gamma_p(1e20, 3e19), 0.0);
+  assert!(rel(ln_gamma_p(1e20, 3e19), -5.039_728_043_259_36e19) < 1e-15);
+  assert!(rel(ln_gamma_q(1e20, 2e20), -3.068_528_194_400_547e19) < 1e-15);
+}
+
 #[test]
 fn beta_i_known_values() {
   // I_{0.5}(1, 1) = 0.5
