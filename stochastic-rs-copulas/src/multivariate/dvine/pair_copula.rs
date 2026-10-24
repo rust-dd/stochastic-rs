@@ -61,8 +61,8 @@ pub enum PairCopula {
 }
 
 impl PairCopula {
-  /// `h(u | v) = ∂C/∂v`, the conditional cdf $F_{U \mid V = v}(u)$: the bivariate family's own, an exact 0 or 1 moved one
-  /// ulp inside so the vine recursions never meet an edge they did not start from.
+  /// `h(u | v) = ∂C/∂v`, the conditional cdf $F_{U \mid V = v}(u)$: the bivariate family's own, an exact 0 or 1 moved
+  /// one ulp inside so the vine recursions never meet an edge they did not start from.
   pub fn h(&self, u: f64, v: f64) -> f64 {
     let h = match *self {
       PairCopula::Independence => u,
@@ -332,7 +332,7 @@ mod tests {
     }
   }
 
-  /// Each vine constructor refuses, with the same error, a pair its bivariate family's `try_new` refuses, in any tree; the
+  /// Each vine constructor refuses, with its error, a pair its bivariate family's `try_new` refuses, in any tree; the
   /// match has no wildcard arm, so a new family does not compile until it has rows here.
   #[test]
   fn the_vine_constructors_refuse_the_pairs_their_bivariate_families_refuse() {

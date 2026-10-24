@@ -26,8 +26,8 @@ use stochastic_rs_core::simd_rng::SeedExt;
 use crate::error::CopulaError;
 use crate::traits::BivariateExt;
 
-/// Couples two marginal samples through a bivariate copula drawn from `seed`: an `(n, 2)` sample that keeps both empirical
-/// marginals; `DimensionMismatch` for unequal lengths, `InsufficientData` below two values, `MarginalOutOfRange` for a NaN.
+/// Two marginal samples coupled through a copula drawn from `seed`, in an `(n, 2)` sample that keeps both marginals:
+/// `DimensionMismatch` for unequal lengths, `InsufficientData` below two values, `MarginalOutOfRange` for a NaN.
 pub fn couple_marginals<C: BivariateExt, S: SeedExt>(
   s1: ArrayView1<f64>,
   s2: ArrayView1<f64>,

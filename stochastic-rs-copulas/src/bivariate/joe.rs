@@ -122,8 +122,8 @@ impl Joe {
     numerical_quantiles(y, v, self.family(), Self::ln_h(theta))
   }
 
-  /// Archimedean generator $\varphi(t) = -\ln(1 - (1-t)^\theta)$ from `ln_1p(−t)`, so `1 − t` and `(1 − t)^θ` keep their
-  /// digits at both ends of `t` and of `θ`.
+  /// Archimedean generator $\varphi(t) = -\ln(1 - (1-t)^\theta)$ from `ln_1p(−t)`, so `1 − t` and `(1 − t)^θ` keep
+  /// their digits at both ends of `t` and of `θ`.
   fn unchecked_generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let theta = self.theta.unwrap();

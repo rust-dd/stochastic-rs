@@ -91,7 +91,7 @@ pub trait BivariateExt {
   fn tail_dependence(&self) -> Result<TailDependence<f64>, CopulaError>;
 
   /// Archimedean generator $\varphi$, $C(u,v) = \varphi^{-1}(\varphi(u) + \varphi(v))$: `MarginalOutOfRange` outside
-  /// `[0, 1]` or for NaN, then the family's own, or `Unsupported`, named by the `family()` label, for a family with none.
+  /// `[0, 1]` or for NaN, then the family's own, or `Unsupported`, named by `family()`, for a family with none.
   fn generator(&self, t: ArrayView1<f64>) -> Result<Array1<f64>, CopulaError> {
     check_unit(t)?;
     self.generator_unchecked(t).unwrap_or_else(|| {
@@ -222,8 +222,8 @@ pub trait BivariateExt {
     numerical_inverse(self, y, v)
   }
 
-  /// `h(u | v) = ∂_v C(u, v)`, the conditional cdf of `U` given `V = v`, over the rows `(u, v)` of `x`: what `percent_point`
-  /// inverts in `u` and the samplers draw through. Required, as no finite difference of `cdf` is accurate to rounding.
+  /// `h(u | v) = ∂_v C(u, v)`, the conditional cdf of `U` given `V = v`, over the rows `(u, v)` of `x`: what
+  /// `percent_point` inverts in `u` and the samplers draw through; required, as no difference of `cdf` is exact.
   fn partial_derivative(&self, x: ndarray::ArrayView2<f64>) -> Result<Array1<f64>, CopulaError>;
 
   #[doc(hidden)]

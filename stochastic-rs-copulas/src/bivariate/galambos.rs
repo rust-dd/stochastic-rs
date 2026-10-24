@@ -127,8 +127,8 @@ impl Galambos {
     small * (-ell / theta).exp() + ln_s + ln_add_exp((a1_over_s * a2).ln(), ln_tail)
   }
 
-  /// Pickands dependence function $A(t) = 1 - (t^{-\theta} + (1-t)^{-\theta})^{-1/\theta}$, by `ln_pickands` at the nearer
-  /// end `s = min(t, 1 − t)`, so no power overflows up to `θ = f64::MAX`.
+  /// Pickands dependence function $A(t) = 1 - (t^{-\theta} + (1-t)^{-\theta})^{-1/\theta}$, by `ln_pickands` at
+  /// the nearer end `s = min(t, 1 − t)`, so no power overflows up to `θ = f64::MAX`.
   pub fn pickands(theta: f64, t: f64) -> f64 {
     if t <= 0.0 || t >= 1.0 {
       return 1.0;
@@ -393,7 +393,7 @@ mod tests {
     }
   }
 
-  /// 50-digit values of `A(t)` from the plain form, which overflows past `θ ≈ 1023`; the limit `max(t, 1 − t)` at the top.
+  /// 50-digit values of `A(t)`, which the plain form loses past `θ ≈ 1023`, and the limit `max(t, 1 − t)` at the top.
   #[test]
   fn galambos_pickands_holds_to_the_top_of_its_range() {
     let pins = [

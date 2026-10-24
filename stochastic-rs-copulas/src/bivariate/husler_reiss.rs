@@ -120,8 +120,8 @@ impl HuslerReiss {
       )
   }
 
-  /// Pickands dependence function `A(t) = (1 − t)Φ(α) + tΦ(β)` by `pickands_at` at the logit of `t`, whose `λℓ/2` meets an
-  /// infinite score as Φ's 0 or 1, so it holds up to `λ = f64::MAX`.
+  /// Pickands dependence function `A(t) = (1 − t)Φ(α) + tΦ(β)` by `pickands_at` at the logit of `t`, an infinite `λℓ/2`
+  /// meeting Φ's 0 or 1, so it holds up to `λ = f64::MAX`.
   pub fn pickands(lambda: f64, t: f64) -> f64 {
     if t <= 0.0 || t >= 1.0 {
       return 1.0;

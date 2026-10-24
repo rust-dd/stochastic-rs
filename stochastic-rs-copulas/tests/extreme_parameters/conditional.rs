@@ -94,8 +94,8 @@ fn the_t_copula_at_large_nu_answers_inside_the_unit_interval() {
   }
 }
 
-/// The vine pairs are their bivariate families' kernels, at strong dependence and across the open grid: `h` the family's
-/// `partial_derivative` with an exact 0 or 1 moved one ulp inside, `h⁻¹` its `percent_point`, `log_density` its `log_pdf`.
+/// The vine pairs are their families' kernels, at strong dependence and across the open grid: `h` the family's
+/// `partial_derivative`, an exact 0 or 1 moved one ulp inside, `h⁻¹` its `percent_point`, `log_density` its `log_pdf`.
 #[test]
 fn vine_pairs_are_their_bivariate_kernels() {
   let cases: Vec<(PairCopula, Box<dyn BivariateExt>)> = vec![

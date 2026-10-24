@@ -210,8 +210,8 @@ impl BivariateExt for GaussianCopula {
     copula_cdf(x, |u, v| gaussian_copula_cdf(u, v, rho))
   }
 
-  /// `GaussianCopula::h`: $\Phi\big((x - \rho y)/\sqrt{1-\rho^2}\big)$, $x, y = \Phi^{-1}(u), \Phi^{-1}(v)$, inside, and
-  /// the point mass at 0 or 1 that `ρ`'s sign sends `u` to at `v ∈ {0, 1}`.
+  /// `GaussianCopula::h`: $\Phi\big((x - \rho y)/\sqrt{1-\rho^2}\big)$, $x, y = \Phi^{-1}(u), \Phi^{-1}(v)$, inside,
+  /// and the point mass at 0 or 1 that `ρ`'s sign sends `u` to at `v ∈ {0, 1}`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     conditional_cdf(x, Self::h(self.theta.unwrap()))
