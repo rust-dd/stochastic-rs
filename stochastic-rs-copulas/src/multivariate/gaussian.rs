@@ -268,7 +268,7 @@ mod tests {
     assert!(condition_number(corr.view()) <= 6.0 / 1e-3);
   }
 
-  /// Perfectly dependent columns estimate `0.999999`, a positive definite matrix below the floor, and fit to `0.999`.
+  /// Perfectly dependent columns estimate 1 to rounding, a singular matrix, which the shrink's floor fits to `0.999`.
   #[test]
   fn a_fit_of_perfectly_dependent_columns_stops_at_the_floor() {
     let column = Array1::from_shape_fn(50, |i| (i + 1) as f64 / 51.0);
