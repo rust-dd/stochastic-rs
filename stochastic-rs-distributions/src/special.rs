@@ -1,10 +1,11 @@
-//! Special functions behind the closed-form `DistributionExt` impls: Lanczos `gamma`/`ln_gamma`,
-//! Acklam's `ndtri`, `libm` `erf`/`erfc`; Bessel functions in [`bessel`], [`bessel_i`](mod@bessel_i), [`bessel_k`](mod@bessel_k).
+//! Special functions behind the closed-form `DistributionExt` impls: Lanczos `gamma`/`ln_gamma`, Acklam's `ndtri`,
+//! `libm` `erf`/`erfc`, Mills' ratio, the regularised incomplete gamma and beta functions and the modified Bessel `I`, `K`.
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 7.9.3 (the continued fraction of `w(z)`), <https://dlmf.nist.gov/7.9.3>.
 
-pub mod bessel;
-pub mod bessel_i;
-pub mod bessel_k;
+mod bessel;
+mod bessel_i;
+mod bessel_k;
+mod incomplete;
 
 pub use bessel::bessel_i0;
 pub use bessel::bessel_i1;
@@ -16,6 +17,13 @@ pub use bessel_i::bessel_ie;
 pub use bessel_i::ln_bessel_ie;
 pub use bessel_k::bessel_k;
 pub use bessel_k::bessel_ke;
+pub use incomplete::beta_i;
+pub use incomplete::gamma_li;
+pub use incomplete::gamma_p;
+pub use incomplete::gamma_q;
+pub use incomplete::gamma_ui;
+pub use incomplete::ln_gamma_p;
+pub use incomplete::ln_gamma_q;
 
 const LANCZOS_G: f64 = 7.0;
 const LANCZOS_C: [f64; 9] = [
@@ -265,158 +273,6 @@ pub fn ln_norm_cdf(z: f64) -> f64 {
   }
 }
 
-/// Regularised lower incomplete gamma P(a, x) = γ(a,x)/Γ(a).
-///
-/// Numerical Recipes 3e §6.2: series for x < a+1, continued fraction otherwise.
-///
-/// Returns NaN for a negative `x` or a non-positive `a`.
-pub fn gamma_p(a: f64, x: f64) -> f64 {
-  if x < 0.0 || a.is_nan() || a <= 0.0 {
-    return f64::NAN;
-  }
-  if x == 0.0 {
-    return 0.0;
-  }
-  if x == f64::INFINITY {
-    return 1.0;
-  }
-  if x < a + 1.0 {
-    gser(a, x)
-  } else {
-    1.0 - gcf(a, x)
-  }
-}
-
-/// Regularised upper incomplete gamma Q(a, x) = Γ(a,x)/Γ(a) = 1 − P(a,x).
-#[inline]
-pub fn gamma_q(a: f64, x: f64) -> f64 {
-  1.0 - gamma_p(a, x)
-}
-
-/// Unregularised lower incomplete gamma γ(a, x) = ∫₀ˣ tᵃ⁻¹ e⁻ᵗ dt = P(a,x)·Γ(a).
-#[inline]
-pub fn gamma_li(a: f64, x: f64) -> f64 {
-  gamma_p(a, x) * gamma(a)
-}
-
-/// Unregularised upper incomplete gamma Γ(a, x) = ∫ₓ^∞ tᵃ⁻¹ e⁻ᵗ dt = Q(a,x)·Γ(a).
-#[inline]
-pub fn gamma_ui(a: f64, x: f64) -> f64 {
-  gamma_q(a, x) * gamma(a)
-}
-
-fn gser(a: f64, x: f64) -> f64 {
-  // Series: P(a,x) = x^a e^{-x} / Γ(a+1) · Σ_{n=0}^∞ x^n / Π_{k=0}^n (a+k)
-  let gln = ln_gamma(a);
-  let mut ap = a;
-  let mut sum = 1.0 / a;
-  let mut del = sum;
-  for _ in 0..200 {
-    ap += 1.0;
-    del *= x / ap;
-    sum += del;
-    if del.abs() < sum.abs() * 1e-15 {
-      return sum * (-x + a * x.ln() - gln).exp();
-    }
-  }
-  sum * (-x + a * x.ln() - gln).exp()
-}
-
-fn gcf(a: f64, x: f64) -> f64 {
-  // Continued fraction (Lentz's method) for Q(a,x).
-  let gln = ln_gamma(a);
-  let fpmin = 1e-300_f64;
-  let mut b = x + 1.0 - a;
-  let mut c = 1.0 / fpmin;
-  let mut d = 1.0 / b;
-  let mut h = d;
-  for i in 1..=200 {
-    let an = -(i as f64) * (i as f64 - a);
-    b += 2.0;
-    d = an * d + b;
-    if d.abs() < fpmin {
-      d = fpmin;
-    }
-    c = b + an / c;
-    if c.abs() < fpmin {
-      c = fpmin;
-    }
-    d = 1.0 / d;
-    let del = d * c;
-    h *= del;
-    if (del - 1.0).abs() < 1e-15 {
-      break;
-    }
-  }
-  (-x + a * x.ln() - gln).exp() * h
-}
-
-/// Regularised incomplete beta `I_x(a, b) = B(x; a, b) / B(a, b)`.
-///
-/// Numerical Recipes 3e §6.4: continued fraction with Lentz's method, plus
-/// the symmetry `I_x(a,b) = 1 − I_{1−x}(b,a)` for tail-side stability.
-///
-/// Returns NaN for an `x` outside `[0, 1]`.
-pub fn beta_i(a: f64, b: f64, x: f64) -> f64 {
-  if !(0.0..=1.0).contains(&x) {
-    return f64::NAN;
-  }
-  if x == 0.0 || x == 1.0 {
-    return x;
-  }
-  let bt = (ln_gamma(a + b) - ln_gamma(a) - ln_gamma(b) + a * x.ln() + b * (1.0 - x).ln()).exp();
-  if x < (a + 1.0) / (a + b + 2.0) {
-    bt * betacf(a, b, x) / a
-  } else {
-    1.0 - bt * betacf(b, a, 1.0 - x) / b
-  }
-}
-
-fn betacf(a: f64, b: f64, x: f64) -> f64 {
-  let fpmin = 1e-300_f64;
-  let qab = a + b;
-  let qap = a + 1.0;
-  let qam = a - 1.0;
-  let mut c = 1.0;
-  let mut d = 1.0 - qab * x / qap;
-  if d.abs() < fpmin {
-    d = fpmin;
-  }
-  d = 1.0 / d;
-  let mut h = d;
-  for m in 1..=200 {
-    let m_f = m as f64;
-    let m2 = 2.0 * m_f;
-    let aa = m_f * (b - m_f) * x / ((qam + m2) * (a + m2));
-    d = 1.0 + aa * d;
-    if d.abs() < fpmin {
-      d = fpmin;
-    }
-    c = 1.0 + aa / c;
-    if c.abs() < fpmin {
-      c = fpmin;
-    }
-    d = 1.0 / d;
-    h *= d * c;
-    let aa = -(a + m_f) * (qab + m_f) * x / ((a + m2) * (qap + m2));
-    d = 1.0 + aa * d;
-    if d.abs() < fpmin {
-      d = fpmin;
-    }
-    c = 1.0 + aa / c;
-    if c.abs() < fpmin {
-      c = fpmin;
-    }
-    d = 1.0 / d;
-    let del = d * c;
-    h *= del;
-    if (del - 1.0).abs() < 1e-15 {
-      break;
-    }
-  }
-  h
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -630,33 +486,5 @@ mod tests {
     assert!(ln_norm_cdf(f64::NAN).is_nan());
     assert_eq!(ln_norm_cdf(f64::INFINITY), 0.0);
     assert_eq!(ln_norm_cdf(f64::NEG_INFINITY), f64::NEG_INFINITY);
-  }
-
-  #[test]
-  fn gamma_p_known_values() {
-    // P(1, x) = 1 − e^{−x}
-    assert!(close(gamma_p(1.0, 1.0), 1.0 - (-1.0_f64).exp(), 1e-12));
-    // P(½, x) = erf(√x)
-    assert!(close(gamma_p(0.5, 1.0), erf(1.0), 1e-6));
-    assert_eq!(gamma_p(2.5, f64::INFINITY), 1.0);
-    assert_eq!(gamma_q(2.5, f64::INFINITY), 0.0);
-    assert_eq!(gamma_li(2.5, f64::INFINITY), gamma(2.5));
-    assert_eq!(gamma_ui(2.5, f64::INFINITY), 0.0);
-    for x in [0.0, 1.0, f64::INFINITY] {
-      assert!(gamma_p(f64::NAN, x).is_nan(), "gamma_p(NaN, {x})");
-      assert!(gamma_q(f64::NAN, x).is_nan(), "gamma_q(NaN, {x})");
-      assert!(gamma_li(f64::NAN, x).is_nan(), "gamma_li(NaN, {x})");
-      assert!(gamma_ui(f64::NAN, x).is_nan(), "gamma_ui(NaN, {x})");
-    }
-  }
-
-  #[test]
-  fn beta_i_known_values() {
-    // I_{0.5}(1, 1) = 0.5
-    assert!(close(beta_i(1.0, 1.0, 0.5), 0.5, 1e-10));
-    // I_x(a, a) symmetric: I_{0.7}(2, 2) and I_{0.3}(2,2) sum to 1.
-    let a = beta_i(2.0, 2.0, 0.7);
-    let b = beta_i(2.0, 2.0, 0.3);
-    assert!(close(a + b, 1.0, 1e-10));
   }
 }

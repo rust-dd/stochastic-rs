@@ -46,7 +46,7 @@ use stochastic_rs_core::simd_rng::SimdRngExt;
 
 use super::SimdFloatExt;
 use crate::seeded::StreamState;
-use crate::special::bessel_k::bessel_ke;
+use crate::special::bessel_ke;
 use crate::special::ln_gamma;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;

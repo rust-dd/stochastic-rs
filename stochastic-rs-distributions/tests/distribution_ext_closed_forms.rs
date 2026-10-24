@@ -4,6 +4,7 @@ use num_complex::Complex64;
 use stochastic_rs_distributions::DistributionExt;
 use stochastic_rs_distributions::ged::SimdGed;
 use stochastic_rs_distributions::hypergeometric::SimdHypergeometric;
+use stochastic_rs_distributions::inverse_gauss::SimdInverseGauss;
 use stochastic_rs_distributions::skellam::SimdSkellam;
 use stochastic_rs_distributions::truncated::SimdTruncatedBeta;
 use stochastic_rs_distributions::truncated::SimdTruncatedExp;
@@ -311,4 +312,21 @@ fn hypergeometric_mean_variance_skewness_at_the_edges() {
   assert!(law(5, 2, 5).skewness().unwrap().is_nan());
   assert!(law(20, 0, 12).skewness().unwrap().is_nan());
   assert!(law(1, 1, 1).skewness().unwrap().is_nan());
+}
+
+/// mpmath at 60 digits on both sides of `λ/μ = 355`, where `e^{2λ/μ}` alone overflows, and below it where `Φ(−b)` alone
+/// underflows (`λ = 354` at `x = ½`).
+#[test]
+fn inverse_gaussian_cdf_past_the_overflow() {
+  let rel = |a: f64, b: f64| ((a - b) / b).abs();
+  let d = SimdInverseGauss::<f64>::new(1.0, 400.0);
+  assert!(rel(d.cdf(1.0).unwrap(), 0.509_967_335_188_301_3) < 1e-13);
+  assert!(rel(d.cdf(0.9).unwrap(), 0.018_586_135_705_809_078) < 1e-13);
+  assert!(rel(d.cdf(1.2).unwrap(), 0.999_882_267_491_146) < 1e-13);
+  let far = SimdInverseGauss::<f64>::new(1.0, 1000.0);
+  assert!(rel(far.cdf(1.0).unwrap(), 0.506_306_255_528_466_6) < 1e-13);
+  let near = SimdInverseGauss::<f64>::new(1.0, 350.0);
+  assert!(rel(near.cdf(1.0).unwrap(), 0.510_654_581_349_293_6) < 1e-13);
+  let below = SimdInverseGauss::<f64>::new(1.0, 354.0);
+  assert!(rel(below.cdf(0.5).unwrap(), 1.461_902_914_067_277e-40) < 1e-13);
 }

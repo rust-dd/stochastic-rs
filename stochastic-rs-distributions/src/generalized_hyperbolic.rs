@@ -44,7 +44,7 @@ use super::generalized_inverse_gauss::SimdGig;
 use super::normal::SimdNormal;
 use crate::seeded::Buffered;
 use crate::seeded::StreamState;
-use crate::special::bessel_k::bessel_ke;
+use crate::special::bessel_ke;
 use crate::special::ln_gamma;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;

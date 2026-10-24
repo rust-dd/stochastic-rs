@@ -221,11 +221,11 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdInverseGauss<T> {
     if x <= 0.0 {
       return Some(0.0);
     }
-    // F(x) = Φ(√(λ/x)·(x/μ-1)) + e^(2λ/μ) Φ(-√(λ/x)·(x/μ+1))
     let sqrt_lambda_over_x = (lambda / x).sqrt();
     let a = sqrt_lambda_over_x * (x / mu - 1.0);
     let b = sqrt_lambda_over_x * (x / mu + 1.0);
-    Some(crate::special::norm_cdf(a) + (2.0 * lambda / mu).exp() * crate::special::norm_cdf(-b))
+    // F(x) = Φ(a) + e^{2λ/μ} Φ(−b), the second term in log space: e^{2λ/μ} alone overflows past λ/μ ≈ 355.
+    Some(crate::special::norm_cdf(a) + (2.0 * lambda / mu + crate::special::ln_norm_cdf(-b)).exp())
   }
 
   fn mean(&self) -> Option<f64> {
