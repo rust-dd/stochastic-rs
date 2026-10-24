@@ -77,7 +77,6 @@ impl SimdRng {
     Self::from_seed(next_global_seed())
   }
 
-  /// The 32-bit engine's next eight lanes, reinterpreted as signed.
   #[inline(always)]
   pub(crate) fn next_i32x8(&mut self) -> i32x8 {
     let raw = self.f32_engine.next();
@@ -130,7 +129,7 @@ impl SimdRng {
     v
   }
 
-  /// A single random `i32` from an eight-lane buffer the 32-bit engine refills.
+  /// A uniform `i32` over its whole range.
   #[inline(always)]
   pub fn next_i32(&mut self) -> i32 {
     if self.i32_scalar_idx >= 8 {

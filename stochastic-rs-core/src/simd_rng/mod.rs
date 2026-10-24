@@ -121,14 +121,14 @@ pub fn rng() -> SimdRng {
   SimdRng::new()
 }
 
-/// Advances a sampler's fork basis by one child seed; not part of the public API.
+/// The next child seed of a mutable parent seed, which it advances.
 #[doc(hidden)]
 #[inline]
 pub fn derive_seed(state: &mut u64) -> u64 {
   splitmix64_next(state)
 }
 
-/// Child seed of worker `stream_idx` from one fork basis; pure in both arguments, so a fork sequence replays on any pool size.
+/// Child seed of worker `stream_idx` from one fork basis; pure in both arguments.
 #[doc(hidden)]
 #[inline]
 pub fn derive_fork_seed(parent_seed: u64, stream_idx: u64) -> u64 {

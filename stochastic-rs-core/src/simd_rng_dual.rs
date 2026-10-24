@@ -1,25 +1,5 @@
-//! # Dual-stream SIMD RNG (experimental)
-//!
-//! Two `Xoshiro256++` / `Xoshiro128++` engines run side-by-side and the
-//! public API exposes a `_pair` flavour that returns one batch from each.
-//! Modern out-of-order CPUs can overlap the two engines' state updates with
-//! the consumer's compute / memory ops, exposing more ILP than a
-//! single-stream design where the state update is a hard serial dependency.
-//!
-//! This is a **non-production experiment** parallel to
-//! [`crate::simd_rng::SimdRng`] — same algorithms, doubled state, different
-//! deterministic output sequence under [`SimdRngDual::from_seed`]. Promotion
-//! to the production `SimdRng` is gated on a measurable bulk-fill speedup.
-//!
-//! # Layout
-//!
-//! ```text
-//!   f64_a ────────────► consumer (chunk i)
-//!   f64_b ────────────► consumer (chunk i+1)   ↘
-//!                                                interleaved by OoO core
-//!   f32_a ────────────► consumer (lanes 0..8)  ↗
-//!   f32_b ────────────► consumer (lanes 8..16)
-//! ```
+//! Experimental twin of [`crate::simd_rng::SimdRng`] with two interleaved xoshiro engines, so a consumer can overlap
+//! their state updates; its seeded stream differs.
 
 use core::convert::Infallible;
 use std::sync::OnceLock;
@@ -336,7 +316,7 @@ impl SimdRngDual {
     v
   }
 
-  /// A single random `i32` from engine A, buffered eight lanes at a time.
+  /// A uniform `i32` over its whole range, drawn from engine A only.
   #[inline(always)]
   pub fn next_i32(&mut self) -> i32 {
     if self.i32_scalar_idx >= 8 {

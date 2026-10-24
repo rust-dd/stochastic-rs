@@ -14,7 +14,7 @@ The library is organised around a small set of traits, each capturing one abstra
 |---------------------------|--------------------------------|--------------------------------------------------------|
 | `RealExt`                 | `stochastic-rs-distributions`  | Scalar real bound — open to custom scalars (AAD)       |
 | `FloatExt`                | `stochastic-rs-distributions`  | Full simulation-grade float bound (`f32` / `f64` only) |
-| `SimdFloatExt`            | `stochastic-rs-distributions`  | 8-lane SIMD surface over `RealExt`                     |
+| `SimdFloatExt`            | `stochastic-rs-distributions`  | Uniform fills over `RealExt`; SIMD lanes hidden        |
 | `ProcessExt<T>`           | `stochastic-rs-stochastic`     | Stochastic process simulation (`sample`, `sample_map`, `sample_par`) |
 | `DistributionExt`         | `stochastic-rs-distributions`  | Closed-form pdf / cdf / cf / moments (`f64`-only)      |
 | `BivariateExt`            | `stochastic-rs-copulas`        | Bivariate copulas                                      |
@@ -54,8 +54,7 @@ pub trait RealExt:
 }
 
 pub trait SimdFloatExt: RealExt + Sealed {
-  type Simd; // f32x8 / f64x8
-  // splat, simd_ln/exp/sqrt/…, fill_uniform, sample_uniform
+  // fill_uniform, fill_uniform_simd, sample_uniform, sample_uniform_simd
 }
 
 pub trait FloatExt: RealExt + SimdFloatExt {
@@ -63,7 +62,7 @@ pub trait FloatExt: RealExt + SimdFloatExt {
 }
 ```
 
-`f32` and `f64` implement all three. `RealExt` asks for scalar math only, so a custom scalar — an AAD dual number, a higher-precision float — can implement it and flow through everything bounded on it. `SimdFloatExt` adds the 8-lane SIMD surface and the uniform fills and is sealed to `f32`/`f64`; `FloatExt` adds the batched normal fill and the fGN scratch on top. Analytic pricing code is bounded on `RealExt`; path generation and Monte Carlo on `FloatExt`.
+`f32` and `f64` implement all three. `RealExt` asks for scalar math only, so a custom scalar — an AAD dual number, a higher-precision float — can implement it and flow through everything bounded on it. `SimdFloatExt` adds the uniform fills the SIMD samplers draw from and is sealed to `f32`/`f64` (its lane kernels are hidden, outside the stability promise); `FloatExt` adds the batched normal fill and the fGN scratch on top. Analytic pricing code is bounded on `RealExt`; path generation and Monte Carlo on `FloatExt`.
 
 ## `ProcessExt<T>`
 
