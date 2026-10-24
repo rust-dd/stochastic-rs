@@ -52,21 +52,14 @@ impl Fgm {
     Self::try_new(Self::default().theta_from_tau(tau)?)
   }
 
-  /// `a = θ(1 − 2v)` with `1 ± a` from `(1 ± θ) ∓ 2θv` once below 1/2, where the rounding of `1 − 2v` in `a` would be
-  /// large beside it.
+  /// `a = θ(1 − 2v)` and `1 ± a`, the one below 1/2 as `1 − |a| = (1 − |θ|) + 2|θ| min(v, 1 − v)`: non-negative terms,
+  /// `1 − |θ|` and `1 − v` exact there, where `1 ± a` would round `1 − 2v` and cancel.
   fn slope(theta: f64, v: f64) -> (f64, f64, f64) {
     let a = theta * (1.0 - 2.0 * v);
+    let near = || (1.0 - theta.abs()) + 2.0 * theta.abs() * v.min(1.0 - v);
     let (above, below) = (1.0 + a, 1.0 - a);
-    let above = if above < 0.5 {
-      (1.0 + theta) - 2.0 * theta * v
-    } else {
-      above
-    };
-    let below = if below < 0.5 {
-      (1.0 - theta) + 2.0 * theta * v
-    } else {
-      below
-    };
+    let above = if above < 0.5 { near() } else { above };
+    let below = if below < 0.5 { near() } else { below };
     (a, above, below)
   }
 
