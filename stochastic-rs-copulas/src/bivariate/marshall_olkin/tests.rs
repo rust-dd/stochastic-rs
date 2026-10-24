@@ -155,6 +155,26 @@ fn mo_percent_point_inverts_the_h_function() {
   }
 }
 
+/// Below the atom `v^{−β}` passes `f64::MAX` at a subnormal `v` once `β > 0.953`: h keeps the 80-digit mpmath value,
+/// and 0 at `β = 1`, where `0·∞` would be NaN.
+#[test]
+fn mo_h_holds_where_v_to_the_minus_beta_overflows() {
+  for (alpha, beta, u, v, want) in [
+    (1.0, 0.99, 5e-324, 5e-324, 5.847063987397079e-6),
+    (1.0, 0.96, 1e-320, 5e-324, 9.462848471011173e-12),
+    (0.99, 0.98, 1e-322, 5e-324, 1.367526290908632e-7),
+    (1.0, 1.0, 5e-324, 1e-310, 0.0),
+  ] {
+    let got = MarshallOlkin::new(alpha, beta)
+      .partial_derivative(array![[u, v]].view())
+      .unwrap()[0];
+    assert!(
+      got == want || ((got - want) / want).abs() < 1e-12,
+      "α={alpha} β={beta} h({u:e} | {v:e}) = {got:e}, want {want:e}"
+    );
+  }
+}
+
 /// τ, the singular mass and the cdf on a grid, against Nelsen's closed forms; no `Numerical` failure at any `n`.
 #[test]
 fn mo_sampler_reproduces_tau_the_singular_mass_and_the_cdf() {

@@ -178,8 +178,8 @@ impl BivariateExt for MarshallOlkin {
     })
   }
 
-  /// `∂_v C`: `u^{1-α}` where `u^α ≥ v^β`, `(1 - β) u v^{-β}` below; the jump
-  /// `β v^{β(1-α)/α}` at `u = v^{β/α}` is the singular component's conditional mass.
+  /// `∂_v C`: `u^{1-α}` where `u^α ≥ v^β`, `(1 - β) u v^{-β}` below; the jump `β v^{β(1-α)/α}`, the singular mass,
+  /// sits at the rounded `v^{β/α}` that `percent_point` returns, so `h(percent_point(y | v) | v) ≥ y`.
   fn partial_derivative(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit()?;
     let (alpha, beta) = self.resolve_params();
@@ -192,8 +192,15 @@ impl BivariateExt for MarshallOlkin {
       } else if u >= v.powf(beta / alpha) {
         u.powf(1.0 - alpha)
       } else {
-        // `u·v^{−β}` first, so a subnormal `u` meets the factor `1 − β` only once the product is normal.
-        (1.0 - beta) * (u * v.powf(-beta))
+        // `u·v^{−β}` first, so a subnormal `u` meets the factor `1 − β` only once the product is normal; in logarithms
+        // where `v^{−β}` overflows, the product being below `v^{β(1/α − 1)} ≤ 1` here.
+        let scaled = u * v.powf(-beta);
+        let scaled = if scaled.is_finite() {
+          scaled
+        } else {
+          (u.ln() - beta * v.ln()).exp()
+        };
+        (1.0 - beta) * scaled
       }
     })
   }
