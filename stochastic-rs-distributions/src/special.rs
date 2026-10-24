@@ -1,6 +1,7 @@
 //! Special functions behind the closed-form `DistributionExt` impls: Lanczos `gamma`/`ln_gamma`, Acklam's `ndtri`,
 //! `libm` `erf`/`erfc`, Mills' ratio, the regularised incomplete gamma and beta functions and the modified Bessel `I`, `K`.
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 7.9.3 (the continued fraction of `w(z)`), <https://dlmf.nist.gov/7.9.3>.
+//! Reference: Acklam, P.J. (2003), "An algorithm for computing the inverse normal cumulative distribution function" (the rational approximation and Halley step of `ndtri`).
 
 mod bessel;
 mod bessel_i;
@@ -429,8 +430,8 @@ mod tests {
     assert_eq!(ndtri(0.5), 0.0);
   }
 
-  /// mpmath at 60 digits at subnormal levels, where a Newton step on `ln Φ` refines the approximation; the least normal
-  /// level keeps the unrefined value.
+  /// mpmath at 60 digits at subnormal levels, where a Newton step on `ln Φ` refines the approximation; normal levels keep
+  /// the unrefined value, even `1e-307`, where the step would move it.
   #[test]
   fn ndtri_keeps_its_digits_at_subnormal_levels() {
     for (p, want) in [
@@ -443,6 +444,7 @@ mod tests {
       assert!(((got - want) / want).abs() < 1e-15, "ndtri({p:e}) = {got}");
     }
     assert_eq!(ndtri(f64::MIN_POSITIVE), ndtri_lower(f64::MIN_POSITIVE));
+    assert_eq!(ndtri(1e-307), ndtri_lower(1e-307));
   }
 
   /// mpmath at 60 digits on both sides of the switch to the continued fraction at 3, and far into it.

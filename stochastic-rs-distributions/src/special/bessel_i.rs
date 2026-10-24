@@ -18,7 +18,7 @@ use super::gamma;
 use super::sinpi;
 
 const EPS: f64 = f64::EPSILON;
-const UNIFORM_MIN_ORDER: f64 = 50.0;
+pub(super) const UNIFORM_MIN_ORDER: f64 = 50.0;
 const SERIES_MAX_X: f64 = 2.0;
 const HANKEL_MIN_X: f64 = 50.0;
 const MAX_TERMS: usize = 64;
@@ -218,7 +218,7 @@ fn positive_order(nu: f64, x: f64, scaled: bool) -> f64 {
 }
 
 /// $e^a m$, split so a large `a` does not overflow before the product would.
-fn exp_times(a: f64, m: f64) -> f64 {
+pub(super) fn exp_times(a: f64, m: f64) -> f64 {
   let half = (0.5 * a).exp();
   half * (m * half)
 }

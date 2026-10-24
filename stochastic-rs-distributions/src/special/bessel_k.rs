@@ -27,19 +27,24 @@
 //!   3rd ed., §6.6.
 //!
 //! Reference: Olver, F. W. J. (1954), "The asymptotic expansion of Bessel functions of large order", Phil. Trans. R. Soc. A 247, 328–368, DOI 10.1098/rsta.1954.0021 (Debye's uniform expansion, DLMF 10.41.4, above order 50).
+//! Reference: NIST Digital Library of Mathematical Functions, eq. 10.30.2–10.30.3 (`K_ν` as `x → 0`, below `x = 1e-307`), <https://dlmf.nist.gov/10.30>.
+//! Reference: NIST Digital Library of Mathematical Functions, eq. 10.29.1 (the recurrence whose ratio form sums `ln K` where `K` overflows), <https://dlmf.nist.gov/10.29.1>.
 
 use std::f64::consts::LN_2;
 use std::f64::consts::PI;
+use std::f64::consts::TAU;
 use std::sync::OnceLock;
 
+use super::bessel_i::Debye;
+use super::bessel_i::UNIFORM_MIN_ORDER;
 use super::bessel_i::debye;
 use super::bessel_i::debye_sum;
+use super::bessel_i::exp_times;
 
 const EPS: f64 = 1e-16;
 const MAX_ITER: usize = 10_000;
 const X_MIN: f64 = 2.0;
 const X_TINY: f64 = 1e-307;
-const UNIFORM_MIN_ORDER: f64 = 50.0;
 const EULER_MASCHERONI: f64 = 0.577_215_664_901_532_9;
 const ZETA_TERMS: usize = 64;
 
@@ -101,7 +106,7 @@ pub fn bessel_ke(nu: f64, x: f64) -> f64 {
   }
   let nu = nu.abs();
   if x < X_TINY {
-    return tiny_argument(nu, x);
+    return tiny_argument(nu, x, false);
   }
   if nu > UNIFORM_MIN_ORDER {
     return debye_k(nu, x, true);
@@ -109,8 +114,8 @@ pub fn bessel_ke(nu: f64, x: f64) -> f64 {
   ke_pair(nu, x).0
 }
 
-/// $\ln(e^{x} K_\nu(x))$ for real `nu`, finite wherever [`bessel_ke`] overflows; NaN unless `x > 0` and `nu` is finite,
-/// `−∞` at `x = ∞`.
+/// $\ln(e^{x} K_\nu(x))$ for real `nu`, finite wherever the logarithm is representable; NaN unless `x > 0` and `nu` is
+/// finite, `−∞` at `x = ∞`.
 pub fn ln_bessel_ke(nu: f64, x: f64) -> f64 {
   if !nu.is_finite() || x.is_nan() || x <= 0.0 {
     return f64::NAN;
@@ -120,11 +125,11 @@ pub fn ln_bessel_ke(nu: f64, x: f64) -> f64 {
   }
   let nu = nu.abs();
   if x < X_TINY {
-    return ln_tiny_argument(nu, x);
+    return tiny_argument(nu, x, true);
   }
   if nu > UNIFORM_MIN_ORDER {
-    let d = debye(nu, x);
-    return (PI * d.prefactor * debye_sum(d.p, nu, true)).ln() - d.eta_minus_z;
+    let (m, d) = debye_k_terms(nu, x);
+    return m.ln() - d.eta_minus_z;
   }
   let ke = ke_pair(nu, x).0;
   if ke.is_finite() {
@@ -167,52 +172,50 @@ pub fn bessel_k(nu: f64, x: f64) -> f64 {
   bessel_ke(nu, x) * (-x).exp()
 }
 
-/// DLMF 10.41.4, $K_\nu(\nu z) \sim \sqrt{\pi/2\nu}\,e^{-\nu\eta}(1+z^2)^{-1/4}\sum(-1)^k U_k(p)/\nu^k$: `π·prefactor` is
-/// that constant, and the exponential is split so a large exponent does not overflow before the product would.
-// Out of line, so the small-order path of `bessel_ke` and `bessel_k` keeps its size.
+/// DLMF 10.41.4, `K_ν(νz) ~ √(π/2ν) e^{−νη} (1+z²)^{−1/4} Σ(−1)^k U_k(p)/ν^k`, out of line so the small-order path keeps
+/// its size.
 #[inline(never)]
 fn debye_k(nu: f64, x: f64, scaled: bool) -> f64 {
-  let d = debye(nu, x);
-  let m = PI * d.prefactor * debye_sum(d.p, nu, true);
-  let half = (0.5 * if scaled { -d.eta_minus_z } else { -d.eta }).exp();
-  half * (m * half)
+  let (m, d) = debye_k_terms(nu, x);
+  exp_times(if scaled { -d.eta_minus_z } else { -d.eta }, m)
 }
 
-/// `ln(e^x K_ν(x))` for `ν ≤ 50` below `x = 2`, where alone `K` overflows: the recurrence on `g = (x/2)K_{n+1}/K_n`, which
-/// stays near `n`, so `ln K` is a sum of logarithms that cannot overflow.
+/// Debye's exponents and the factor before `e^{−νη}`, its root split so that `2πν` cannot overflow at a finite order.
+fn debye_k_terms(nu: f64, x: f64) -> (f64, Debye) {
+  let d = debye(nu, x);
+  (
+    PI * ((d.p / TAU).sqrt() / nu.sqrt()) * debye_sum(d.p, nu, true),
+    d,
+  )
+}
+
+/// `ln(e^x K_ν(x))` for `ν ≤ 50` below `x = 2`, where alone `K` overflows: the recurrence on `g = (x/2)K_{n+1}/K_n` keeps
+/// `g` near `n`, and its logarithms are summed apart from the large terms they would otherwise round against.
 fn ln_recurrence(nu: f64, x: f64) -> f64 {
   let nl = (nu + 0.5).floor() as usize;
   let mu = nu - nl as f64;
   let (sum, sum1) = temme_sums(x, mu, mu * mu);
   let mut g = sum1 / sum;
-  let mut total = sum.ln() + x + nl as f64 * (LN_2 - x.ln());
+  let mut small = 0.0;
   for i in 1..=nl {
-    total += g.ln();
+    small += g.ln();
     g = (mu + i as f64) + 0.25 * x * x / g;
   }
-  total
+  small + (sum.ln() + x + nl as f64 * (LN_2 - x.ln()))
 }
 
-/// DLMF 10.30.2's `½Γ(ν)(2/x)^ν` in log space from `ν = ½`, Temme's `f₀` below, where that leading term is no limit as
-/// `ν → 0`; both hold to `O(x²)`, and `e^x = 1` here, so scaled and plain agree.
+/// DLMF 10.30.2's `½Γ(ν)(2/x)^ν` in log space from `ν = ½`, off by `O(x^{2ν})` below `ν = 1` and `O(x²)` above; Temme's `f₀`
+/// below `ν = ½`, where that term is not uniform as `ν → 0`. `e^x = 1` here, so scaled and plain agree.
 #[cold]
 #[inline(never)]
-fn tiny_argument(nu: f64, x: f64) -> f64 {
+fn tiny_argument(nu: f64, x: f64, log: bool) -> f64 {
   let d = LN_2 - x.ln();
   if nu < 0.5 {
-    temme_head(nu, d).0
+    let f0 = temme_head(nu, d).0;
+    if log { f0.ln() } else { f0 }
   } else {
-    (super::ln_gamma(nu) - LN_2 + nu * d).exp()
-  }
-}
-
-/// The logarithm of [`tiny_argument`], finite where the value overflows.
-fn ln_tiny_argument(nu: f64, x: f64) -> f64 {
-  let d = LN_2 - x.ln();
-  if nu < 0.5 {
-    temme_head(nu, d).0.ln()
-  } else {
-    super::ln_gamma(nu) - LN_2 + nu * d
+    let ln = super::ln_gamma(nu) - LN_2 + nu * d;
+    if log { ln } else { ln.exp() }
   }
 }
 
@@ -458,8 +461,8 @@ mod tests {
     assert_eq!(bessel_k(0.5, 1e-323), bessel_ke(0.5, 1e-323));
   }
 
-  /// mpmath `besselk` above order 50, where Debye's expansion replaces the upward recurrence; each side of the switch
-  /// against its own value, and huge orders and arguments return at once.
+  /// mpmath `besselk` above order 50, where `K` is Debye's expansion; each side of the switch against its own value, and
+  /// orders and arguments past `1e17` answer `∞` or `0` without a recurrence.
   #[test]
   fn k_nu_at_large_orders() {
     assert!(close(bessel_k(60.0, 1.0), 7.960_735_226_220_905e97, 1e-12));
@@ -499,6 +502,41 @@ mod tests {
     assert_eq!(bessel_ke(1e300, 1.5), f64::INFINITY);
     assert_eq!(bessel_ke(1e18, 1e18), f64::INFINITY);
     assert_eq!(bessel_k(1e18, 1e18), 0.0);
+  }
+
+  /// mpmath at 120 and 240 digits on the two floats where `e^x K_50(x)` overflows: the recurrence side and the `ke.ln()`
+  /// side each within an ulp of the logarithm.
+  #[test]
+  fn ln_bessel_ke_is_continuous_where_ke_overflows() {
+    let (rec, direct) = (2.429_950_310_934_274e-5, 2.429_950_310_934_274_3e-5);
+    assert_eq!(bessel_ke(50.0, rec), f64::INFINITY);
+    assert!(bessel_ke(50.0, direct).is_finite());
+    for x in [rec, direct] {
+      let got = ln_bessel_ke(50.0, x);
+      assert!(
+        (got - 709.782_712_893_384).abs() <= 1.2e-13,
+        "ln_bessel_ke(50, {x}) = {got}"
+      );
+    }
+  }
+
+  /// Past `2πν`'s overflow at `ν = 2.86e307` an order still answers: `∞` where `K` overflows, the logarithm where it is
+  /// representable (against Debye's leading terms in mpmath).
+  #[test]
+  fn k_nu_past_the_overflow_of_two_pi_nu() {
+    assert_eq!(bessel_ke(2.9e307, 1.5), f64::INFINITY);
+    assert_eq!(bessel_k(2.9e307, 1.5), f64::INFINITY);
+    assert_eq!(ln_bessel_ke(2.9e307, 1.5), f64::INFINITY);
+    assert!(close(
+      ln_bessel_ke(2.9e307, 1e305),
+      1.556_277_287_959_050_6e308,
+      1e-15
+    ));
+    assert!(close(
+      ln_bessel_ke(1e300, 1.5),
+      6.900_632_099_706_655e302,
+      1e-15
+    ));
   }
 
   /// mpmath `ln(e^x K_ν(x))` where `K` overflows: Debye's form above order 50, the logarithmic recurrence below it, the
