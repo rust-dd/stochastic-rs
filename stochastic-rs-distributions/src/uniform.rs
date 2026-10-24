@@ -160,6 +160,9 @@ impl<T: SimdFloatExt> Distribution<T> for SimdUniform<T> {
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdUniform<T> {
   fn pdf(&self, x: f64) -> Option<f64> {
+    if x.is_nan() {
+      return Some(f64::NAN);
+    }
     let a = self.low.to_f64().unwrap();
     let b = self.high.to_f64().unwrap();
     if x >= a && x <= b {
@@ -181,7 +184,14 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdUniform<T> {
     }
   }
 
+  /// `low + p·(high − low)`; `high` itself at `p = 1`, which an `f32` law's rounded width can miss.
   fn quantile(&self, p: f64) -> Option<f64> {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
+    if p == 1.0 {
+      return Some(self.high.to_f64().unwrap());
+    }
     let a = self.low.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
     Some(a + p * scale)

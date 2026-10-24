@@ -292,13 +292,13 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdVarianceGamma<T> {
     Some(m4 / (var * var) - 3.0)
   }
 
-  /// $e^{\mu t}(1 - \theta\nu t - \tfrac12\sigma^2\nu t^2)^{-1/\nu}$ where
-  /// the base is positive, `NaN` outside that domain.
+  /// $e^{\mu t}(1 - \theta\nu t - \tfrac12\sigma^2\nu t^2)^{-1/\nu}$ where the base is positive;
+  /// `+∞` at and beyond its roots, where `E[e^{tX}]` diverges.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
     let (sigma, nu, theta, mu) = self.params();
     let base = 1.0 - theta * nu * t - 0.5 * sigma * sigma * nu * t * t;
     if base <= 0.0 {
-      Some(f64::NAN)
+      Some(f64::INFINITY)
     } else {
       Some((mu * t).exp() * base.powf(-1.0 / nu))
     }
@@ -404,7 +404,7 @@ mod tests {
     let symmetric = SimdVarianceGamma::<f64>::new(0.3, 0.7, 0.0, 0.0);
     assert_eq!(symmetric.skewness().unwrap(), 0.0);
     assert!(close(symmetric.kurtosis().unwrap(), 3.0 * 0.7, 1e-12));
-    assert!(d.moment_generating_function(50.0).unwrap().is_nan());
+    assert_eq!(d.moment_generating_function(50.0), Some(f64::INFINITY));
     assert!(close(
       d.moment_generating_function(0.0).unwrap(),
       1.0,

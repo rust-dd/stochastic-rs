@@ -119,6 +119,9 @@ impl Distribution<i64> for SimdSkellam {
 impl DistributionExt for SimdSkellam {
   /// PMF $P(X = k)$; zero off the integers, as [`SimdPoisson`]'s.
   fn pdf(&self, x: f64) -> Option<f64> {
+    if x.is_nan() {
+      return Some(f64::NAN);
+    }
     if x.fract() != 0.0 {
       return Some(0.0);
     }
@@ -132,6 +135,9 @@ impl DistributionExt for SimdSkellam {
   /// drop super-exponentially so summing ±10·sqrt(μ₁+μ₂) lanes is
   /// numerically tight.
   fn cdf(&self, x: f64) -> Option<f64> {
+    if x.is_nan() {
+      return Some(f64::NAN);
+    }
     let k_max = x.floor() as i64;
     let radius = (10.0 * (self.mu1 + self.mu2).sqrt()) as i64;
     let lower = -radius;

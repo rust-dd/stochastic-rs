@@ -115,10 +115,13 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdChiSquared<T> {
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
-    if p <= 0.0 {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
+    if p == 0.0 {
       return Some(0.0);
     }
-    if p >= 1.0 {
+    if p == 1.0 {
       return Some(f64::INFINITY);
     }
     let k = self.df.to_f64().unwrap();
@@ -196,6 +199,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdChiSquared<T> {
   }
 
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    if t.is_nan() {
+      return Some(f64::NAN);
+    }
     let k = self.df.to_f64().unwrap();
     if t < 0.5 {
       Some((1.0 - 2.0 * t).powf(-0.5 * k))

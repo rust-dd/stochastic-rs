@@ -254,10 +254,13 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGamma<T> {
 
   fn quantile(&self, p: f64) -> Option<f64> {
     // Newton-bisection hybrid on the CDF.
-    if p <= 0.0 {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
+    if p == 0.0 {
       return Some(0.0);
     }
-    if p >= 1.0 {
+    if p == 1.0 {
       return Some(f64::INFINITY);
     }
     let alpha = self.alpha.to_f64().unwrap();
@@ -319,6 +322,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGamma<T> {
   }
 
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    if t.is_nan() {
+      return Some(f64::NAN);
+    }
     let alpha = self.alpha.to_f64().unwrap();
     let scale = self.scale.to_f64().unwrap();
     if t < 1.0 / scale {

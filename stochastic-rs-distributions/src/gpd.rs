@@ -254,6 +254,9 @@ impl<T: SimdFloatExt> DistributionExt for SimdGpd<T> {
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
     let (mu, sigma, xi) = self.params();
     if xi.abs() < 1e-12 {
       Some(mu - sigma * (1.0 - p).ln())

@@ -145,6 +145,15 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdCauchy<T> {
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
+    if p == 0.0 {
+      return Some(f64::NEG_INFINITY);
+    }
+    if p == 1.0 {
+      return Some(f64::INFINITY);
+    }
     let x0 = self.x0.to_f64().unwrap();
     let g = self.gamma.to_f64().unwrap();
     Some(x0 + g * (std::f64::consts::PI * (p - 0.5)).tan())
@@ -194,10 +203,13 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdCauchy<T> {
     Some(num_complex::Complex64::new(-g * t.abs(), t * x0).exp())
   }
 
-  /// 1 at `t = 0`, else `NaN`: the `1/x^2` tail makes `E[e^{tX}]` diverge for every `t != 0`; use
+  /// 1 at `t = 0`, else `+∞`: the `1/x^2` tail makes `E[e^{tX}]` diverge for every `t != 0`; use
   /// `characteristic_function`, which exists for every Cauchy parameter.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
-    Some(if t == 0.0 { 1.0 } else { f64::NAN })
+    if t.is_nan() {
+      return Some(f64::NAN);
+    }
+    Some(if t == 0.0 { 1.0 } else { f64::INFINITY })
   }
 }
 
@@ -230,9 +242,10 @@ mod tests {
     );
     assert!(c.skewness().unwrap().is_nan(), "skewness must be NaN");
     assert!(c.kurtosis().unwrap().is_nan(), "kurtosis must be NaN");
-    assert!(
-      c.moment_generating_function(0.5).unwrap().is_nan(),
-      "MGF at t != 0 must be NaN"
+    assert_eq!(
+      c.moment_generating_function(0.5),
+      Some(f64::INFINITY),
+      "MGF at t != 0 must be +inf"
     );
     assert_eq!(c.median().unwrap(), 1.5, "median must equal x0");
     assert_eq!(c.mode().unwrap(), 1.5, "mode must equal x0");

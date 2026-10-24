@@ -171,6 +171,9 @@ impl<T: PrimInt + Send + Sync + 'static> Distribution<T> for SimdHypergeometric<
 
 impl<T: PrimInt> crate::traits::DistributionExt for SimdHypergeometric<T> {
   fn pdf(&self, x: f64) -> Option<f64> {
+    if x.is_nan() {
+      return Some(f64::NAN);
+    }
     if x < 0.0 || x.fract() != 0.0 {
       return Some(0.0);
     }
@@ -193,6 +196,9 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdHypergeometric<T> {
   }
 
   fn cdf(&self, x: f64) -> Option<f64> {
+    if x.is_nan() {
+      return Some(f64::NAN);
+    }
     if x < 0.0 {
       return Some(0.0);
     }
@@ -214,15 +220,18 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdHypergeometric<T> {
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
     let big_n = self.n_total as i64;
     let big_k = self.k_success as i64;
     let n = self.n_draws as i64;
     let k_min = (n - (big_n - big_k)).max(0);
     let k_max = n.min(big_k);
-    if p <= 0.0 {
+    if p == 0.0 {
       return Some(k_min as f64);
     }
-    if p >= 1.0 {
+    if p == 1.0 {
       return Some(k_max as f64);
     }
     let mut acc = 0.0;

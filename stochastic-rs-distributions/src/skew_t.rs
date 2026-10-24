@@ -262,6 +262,9 @@ impl<T: SimdFloatExt> DistributionExt for SimdSkewT<T> {
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
     let lambda = self.lambda.to_f64().unwrap();
     let split = 0.5 * (1.0 - lambda);
     let (side, q) = if p < split {

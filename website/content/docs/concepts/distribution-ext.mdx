@@ -34,7 +34,7 @@ Implementing the trait does not mean every method has a closed form: eight laws 
 
 ## A missing closed form is None, never zero
 
-A quantity the law has no closed form for is `None`, never a silent `0.0` and never a panic, so generic code can test for it. `Some(NaN)` means the quantity provably does not exist (the Cauchy mean) or the argument is outside the method's domain.
+A quantity the law has no closed form for is `None`, never a silent `0.0` and never a panic, so generic code can test for it. `Some(NaN)` means the quantity provably does not exist (the Cauchy mean) or the argument is outside the method's domain. A NaN argument and a `quantile` level outside `[0, 1]` answer `Some(NaN)`; `quantile(0)` and `quantile(1)` are the ends of the support; a moment generating function whose integral diverges answers `Some(+∞)`.
 
 <RustExample path="tests/doctest_concepts_missing_closed_form.rs" />
 

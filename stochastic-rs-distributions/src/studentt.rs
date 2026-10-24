@@ -194,10 +194,13 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
-    if p <= 0.0 {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
+    if p == 0.0 {
       return Some(f64::NEG_INFINITY);
     }
-    if p >= 1.0 {
+    if p == 1.0 {
       return Some(f64::INFINITY);
     }
     let nu = self.nu.to_f64().unwrap();
@@ -303,10 +306,13 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdStudentT<T> {
     )
   }
 
-  /// 1 at `t = 0`, else `NaN`: the `|x|^{-nu-1}` tail makes `E[e^{tX}]` diverge at every `t != 0`,
+  /// 1 at `t = 0`, else `+∞`: the `|x|^{-nu-1}` tail makes `E[e^{tX}]` diverge at every `t != 0`,
   /// however large `nu` is.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
-    Some(if t == 0.0 { 1.0 } else { f64::NAN })
+    if t.is_nan() {
+      return Some(f64::NAN);
+    }
+    Some(if t == 0.0 { 1.0 } else { f64::INFINITY })
   }
 }
 
@@ -340,9 +346,10 @@ mod tests {
       f64::INFINITY,
       "nu=3 is in (2,4], kurtosis diverges to +inf"
     );
-    assert!(
-      t.moment_generating_function(0.5).unwrap().is_nan(),
-      "MGF must be NaN for every nu"
+    assert_eq!(
+      t.moment_generating_function(0.5),
+      Some(f64::INFINITY),
+      "MGF must be +inf for every nu"
     );
   }
 

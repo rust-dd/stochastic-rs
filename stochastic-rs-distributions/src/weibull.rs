@@ -178,6 +178,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdWeibull<T> {
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
     let lambda = self.lambda.to_f64().unwrap();
     let inv_k = self.inv_k.to_f64().unwrap();
     Some(lambda * (-(1.0 - p).ln()).powf(inv_k))

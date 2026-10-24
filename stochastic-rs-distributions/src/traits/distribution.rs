@@ -15,8 +15,8 @@ use stochastic_rs_core::simd_rng::SimdRngExt;
 use crate::seeded::Seeded;
 use crate::seeded::worker_count;
 
-/// Closed forms of a law: `None` where it has none, never a silent zero; `Some(NaN)` only where the
-/// quantity provably does not exist or the argument lies outside its domain; `kurtosis` is excess.
+/// Closed forms of a law: `None` where it has none, never a silent zero; `Some(NaN)` where the quantity does not exist or the argument
+/// lies outside its domain (a NaN argument, a `quantile` level outside `[0, 1]`); a divergent mgf is `Some(+∞)`; `kurtosis` is excess.
 pub trait DistributionExt {
   fn characteristic_function(&self, _t: f64) -> Option<Complex64> {
     None

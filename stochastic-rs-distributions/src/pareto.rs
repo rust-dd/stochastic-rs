@@ -159,6 +159,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdPareto<T> {
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
     let xm = self.x_m.to_f64().unwrap();
     let a = self.alpha.to_f64().unwrap();
     Some(xm / (1.0 - p).powf(1.0 / a))
@@ -229,15 +232,18 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdPareto<T> {
     Some((xm / a).ln() + 1.0 / a + 1.0)
   }
 
-  /// `NaN` for `t > 0`, where the polynomial tail diverges; `None` for `t < 0`, where the mgf is
+  /// `+∞` for `t > 0`, where the polynomial tail diverges; `None` for `t < 0`, where the mgf is
   /// `α(−x_m t)^α Γ(−α, −x_m t)` and `special` has no incomplete gamma of negative order.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    if t.is_nan() {
+      return Some(f64::NAN);
+    }
     if t < 0.0 {
       None
     } else if t == 0.0 {
       Some(1.0)
     } else {
-      Some(f64::NAN)
+      Some(f64::INFINITY)
     }
   }
 }
@@ -262,17 +268,18 @@ mod tests {
     assert_eq!(p.variance().unwrap(), f64::INFINITY, "alpha=1.16 <= 2");
     assert!(p.skewness().unwrap().is_nan(), "alpha=1.16 <= 3");
     assert!(p.kurtosis().unwrap().is_nan(), "alpha=1.16 <= 4");
-    assert!(
-      p.moment_generating_function(0.5).unwrap().is_nan(),
-      "MGF at t > 0 must be NaN"
+    assert_eq!(
+      p.moment_generating_function(0.5),
+      Some(f64::INFINITY),
+      "MGF at t > 0 must be +inf"
     );
   }
 
-  /// No mgf for t > 0, 1 at t = 0, and for t < 0 one that exists but has no closed form here.
+  /// `+∞` for t > 0, 1 at t = 0, and for t < 0 an mgf that exists but has no closed form here.
   #[test]
   fn mgf_answers_by_the_sign_of_t() {
     let p = SimdPareto::<f64>::new(1.0, 3.0);
-    assert!(p.moment_generating_function(0.4).unwrap().is_nan());
+    assert_eq!(p.moment_generating_function(0.4), Some(f64::INFINITY));
     assert_eq!(p.moment_generating_function(0.0), Some(1.0));
     assert!(p.moment_generating_function(-0.4).is_none());
   }

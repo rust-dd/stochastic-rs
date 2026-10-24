@@ -39,6 +39,10 @@ use stochastic_rs_distributions::uniform::SimdUniform;
 use stochastic_rs_distributions::variance_gamma::SimdVarianceGamma;
 use stochastic_rs_distributions::weibull::SimdWeibull;
 
+mod distribution_ext_coverage {
+  mod domain;
+}
+
 const METHODS: [&str; 12] = [
   "cf", "pdf", "cdf", "quantile", "mean", "median", "mode", "variance", "skewness", "kurtosis",
   "entropy", "mgf",

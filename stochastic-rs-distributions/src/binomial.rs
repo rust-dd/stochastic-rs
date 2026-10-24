@@ -240,6 +240,9 @@ impl<T: PrimInt + Send + Sync + 'static> Distribution<T> for SimdBinomial<T> {
 
 impl<T: PrimInt> crate::traits::DistributionExt for SimdBinomial<T> {
   fn pdf(&self, x: f64) -> Option<f64> {
+    if x.is_nan() {
+      return Some(f64::NAN);
+    }
     if x < 0.0 || x.fract() != 0.0 {
       return Some(0.0);
     }
@@ -258,6 +261,9 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdBinomial<T> {
   }
 
   fn cdf(&self, x: f64) -> Option<f64> {
+    if x.is_nan() {
+      return Some(f64::NAN);
+    }
     if x < 0.0 {
       return Some(0.0);
     }
@@ -274,12 +280,16 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdBinomial<T> {
     ))
   }
 
+  /// The support's ends at `prob = 0` and `1`: `{0}` at `p = 0`, `{n}` at `p = 1`, else `0` and `n`.
   fn quantile(&self, prob: f64) -> Option<f64> {
-    if prob <= 0.0 {
-      return Some(0.0);
+    if !(0.0..=1.0).contains(&prob) {
+      return Some(f64::NAN);
     }
-    if prob >= 1.0 {
-      return Some(self.n as f64);
+    if prob == 0.0 {
+      return Some(if self.p == 1.0 { self.n as f64 } else { 0.0 });
+    }
+    if prob == 1.0 {
+      return Some(if self.p == 0.0 { 0.0 } else { self.n as f64 });
     }
     // Linear scan from a Gaussian-approximation seed.
     let mean = self.n as f64 * self.p;

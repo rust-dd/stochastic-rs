@@ -164,13 +164,17 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdGeometric<T> {
   }
 
   fn quantile(&self, prob: f64) -> Option<f64> {
-    // Smallest k such that 1-(1-p)^k ≥ prob ⟹ k = ⌈ln(1-prob)/ln(1-p)⌉
-    if prob <= 0.0 {
+    if !(0.0..=1.0).contains(&prob) {
+      return Some(f64::NAN);
+    }
+    // At `p = 1` the support is `{1}`; the formula below would read `ln 0` there.
+    if prob == 0.0 || self.p == 1.0 {
       return Some(1.0);
     }
-    if prob >= 1.0 {
+    if prob == 1.0 {
       return Some(f64::INFINITY);
     }
+    // Smallest k such that 1-(1-p)^k ≥ prob ⟹ k = ⌈ln(1-prob)/ln(1-p)⌉
     Some(((1.0 - prob).ln() / (1.0 - self.p).ln()).ceil())
   }
 
@@ -221,6 +225,9 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdGeometric<T> {
   }
 
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    if t.is_nan() {
+      return Some(f64::NAN);
+    }
     let q = 1.0 - self.p;
     if t == 0.0 {
       Some(1.0)
@@ -405,5 +412,14 @@ mod tests {
       (sure.pdf(1.0), sure.pdf(2.0), sure.cdf(1.0)),
       (Some(1.0), Some(0.0), Some(1.0))
     );
+  }
+
+  /// At `p = 1` every level's quantile is the one support point, as every draw is.
+  #[test]
+  fn quantile_at_p_one_is_the_support_point() {
+    let sure = SimdGeometric::<u64>::new(1.0);
+    for prob in [0.0, 1e-300, 0.5, 1.0 - f64::EPSILON, 1.0] {
+      assert_eq!(sure.quantile(prob), Some(1.0), "prob = {prob}");
+    }
   }
 }

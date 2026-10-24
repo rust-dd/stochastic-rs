@@ -328,11 +328,11 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdTemperedStable<T> {
     Some(self.cumulant(4) / self.cumulant(2).powi(2))
   }
 
-  /// $\exp\bigl(\theta(\lambda^\alpha - (\lambda - t)^\alpha)\bigr)$ for $t \le \lambda$, `NaN` beyond.
+  /// $\exp\bigl(\theta(\lambda^\alpha - (\lambda - t)^\alpha)\bigr)$ for $t \le \lambda$, `+∞` beyond.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
     let (alpha, lambda, theta) = self.params();
     if t > lambda {
-      return Some(f64::NAN);
+      return Some(f64::INFINITY);
     }
     Some((theta * (lambda.powf(alpha) - (lambda - t).powf(alpha))).exp())
   }
@@ -414,7 +414,7 @@ mod tests {
     assert!((d.variance().unwrap() - 1.5 * 0.6 * 0.4 * 2.0_f64.powf(-1.4)).abs() < 1e-14);
     assert!(d.skewness().unwrap() > 0.0 && d.kurtosis().unwrap() > 0.0);
     assert!((d.moment_generating_function(0.0).unwrap() - 1.0).abs() < 1e-15);
-    assert!(d.moment_generating_function(3.0).unwrap().is_nan());
+    assert_eq!(d.moment_generating_function(3.0), Some(f64::INFINITY));
     let cf = d.characteristic_function(0.0).unwrap();
     assert!((cf.re - 1.0).abs() < 1e-15 && cf.im.abs() < 1e-15);
   }

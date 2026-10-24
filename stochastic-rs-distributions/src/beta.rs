@@ -214,6 +214,9 @@ impl<T: SimdFloatExt> Distribution<T> for SimdBeta<T> {
 
 impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdBeta<T> {
   fn pdf(&self, x: f64) -> Option<f64> {
+    if x.is_nan() {
+      return Some(f64::NAN);
+    }
     if !(0.0..=1.0).contains(&x) {
       return Some(0.0);
     }
@@ -230,10 +233,13 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdBeta<T> {
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
-    if p <= 0.0 {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
+    if p == 0.0 {
       return Some(0.0);
     }
-    if p >= 1.0 {
+    if p == 1.0 {
       return Some(1.0);
     }
     let a = self.alpha.to_f64().unwrap();

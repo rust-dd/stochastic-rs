@@ -37,6 +37,7 @@
 //! - Jørgensen, B. (1982), *Statistical Properties of the Generalized
 //!   Inverse Gaussian Distribution*, Lecture Notes in Statistics 9,
 //!   Springer. DOI: 10.1007/978-1-4612-5698-4
+//! - Olver, F.W.J. et al. (eds.), *NIST Digital Library of Mathematical Functions*, eq. 10.30.2 (the mgf at its boundary).
 
 use rand::Rng;
 use rand::distr::Distribution;
@@ -46,6 +47,7 @@ use stochastic_rs_core::simd_rng::SimdRngExt;
 use super::SimdFloatExt;
 use crate::seeded::StreamState;
 use crate::special::bessel_k::bessel_ke;
+use crate::special::ln_gamma;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
@@ -403,18 +405,25 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
     Some((m4 - 4.0 * m1 * m3 + 6.0 * m1 * m1 * m2 - 3.0 * m1.powi(4)) / (var * var) - 3.0)
   }
 
-  /// $(\psi/(\psi - 2t))^{\lambda/2}\,K_\lambda(\sqrt{\chi(\psi - 2t)})/K_\lambda(\sqrt{\chi\psi})$
-  /// for $t < \psi/2$, `NaN` beyond.
+  /// $(\psi/(\psi - 2t))^{\lambda/2}\,K_\lambda(\sqrt{\chi(\psi - 2t)})/K_\lambda(\sqrt{\chi\psi})$ for $t < \psi/2$; at $t = \psi/2$
+  /// its limit $(\sqrt{\chi\psi}/2)^\lambda\Gamma(-\lambda)/(2K_\lambda(\sqrt{\chi\psi}))$ for $\lambda < 0$, else there and beyond `+∞`.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
     if t == f64::NEG_INFINITY {
       return Some(0.0);
     }
     let (lambda, chi, psi) = self.params();
     let shifted = psi - 2.0 * t;
-    if shifted <= 0.0 {
-      return Some(f64::NAN);
+    if shifted < 0.0 || (shifted == 0.0 && lambda >= 0.0) {
+      return Some(f64::INFINITY);
     }
     let b = (chi * psi).sqrt();
+    if shifted == 0.0 {
+      // s^{-λ} K_λ(√χ s) → ½ Γ(−λ) (2/√χ)^{−λ} as s → 0, in log space past Γ's and K's overflow.
+      let ln_k = bessel_ke(lambda, b).ln() - b;
+      return Some(
+        (lambda * (0.5 * b).ln() + ln_gamma(-lambda) - std::f64::consts::LN_2 - ln_k).exp(),
+      );
+    }
     let bt = (chi * shifted).sqrt();
     Some(
       (psi / shifted).powf(0.5 * lambda) * bessel_ke(lambda, bt) / bessel_ke(lambda, b)

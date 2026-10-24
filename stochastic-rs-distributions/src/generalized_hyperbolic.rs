@@ -32,6 +32,7 @@
 //! - Prause, K. (1999), *The Generalized Hyperbolic Model: Estimation,
 //!   Financial Derivatives, and Risk Measures*, PhD thesis, University of
 //!   Freiburg, ch. 1.
+//! - Olver, F.W.J. et al. (eds.), *NIST Digital Library of Mathematical Functions*, eq. 10.30.2 (the mgf at its boundary).
 
 use rand::Rng;
 use rand::distr::Distribution;
@@ -44,6 +45,7 @@ use super::normal::SimdNormal;
 use crate::seeded::Buffered;
 use crate::seeded::StreamState;
 use crate::special::bessel_k::bessel_ke;
+use crate::special::ln_gamma;
 use crate::traits::distribution::Sealed;
 use crate::traits::distribution::SimdDistribution;
 use crate::traits::distribution::SimdKernel;
@@ -313,19 +315,28 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
     Some((beta.powi(4) * mu4 + 6.0 * beta * beta * (mu3 + ew * var) + 3.0 * ew2) / (m2 * m2) - 3.0)
   }
 
-  /// $e^{\mu t}\bigl(\tfrac{\alpha^2-\beta^2}{\alpha^2-(\beta+t)^2}\bigr)^{\lambda/2}
-  /// K_\lambda\bigl(\delta\sqrt{\alpha^2-(\beta+t)^2}\bigr)/K_\lambda\bigl(\delta\sqrt{\alpha^2-\beta^2}\bigr)$
-  /// for $|\beta + t| < \alpha$, `NaN` beyond.
+  /// $e^{\mu t}(\gamma_0/\gamma_t)^\lambda K_\lambda(\delta\gamma_t)/K_\lambda(\delta\gamma_0)$, $\gamma_t = \sqrt{\alpha^2-(\beta+t)^2}$; at $\gamma_t = 0$
+  /// its limit $e^{\mu t}(\delta\gamma_0/2)^\lambda\Gamma(-\lambda)/(2K_\lambda(\delta\gamma_0))$ for $\lambda < 0$, else there and beyond `+∞`.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
     if t == 0.0 {
       return Some(1.0);
     }
     let (lambda, alpha, beta, delta, mu) = self.params();
     let shifted = alpha * alpha - (beta + t).powi(2);
-    if shifted <= 0.0 {
-      return Some(f64::NAN);
+    if shifted < 0.0 || (shifted == 0.0 && lambda >= 0.0) {
+      return Some(f64::INFINITY);
     }
     let gamma = (alpha * alpha - beta * beta).sqrt();
+    if shifted == 0.0 {
+      // s^{-λ} K_λ(δs) → ½ Γ(−λ) (2/δ)^{−λ} as s → 0, in log space past Γ's and K's overflow.
+      let ln_k = bessel_ke(lambda, delta * gamma).ln() - delta * gamma;
+      return Some(
+        (mu * t + lambda * (0.5 * delta * gamma).ln() + ln_gamma(-lambda)
+          - std::f64::consts::LN_2
+          - ln_k)
+          .exp(),
+      );
+    }
     let gt = shifted.sqrt();
     Some(
       (mu * t).exp() * (gamma * gamma / shifted).powf(0.5 * lambda) * bessel_ke(lambda, delta * gt)
@@ -423,8 +434,8 @@ mod tests {
     }
   }
 
-  /// GH at λ = −1/2 is the normal-inverse Gaussian: the densities coincide
-  /// with the crate's own NIG, which uses `K₁` directly.
+  /// GH at λ = −1/2 is the normal-inverse Gaussian: densities, moments and the mgf's limit at the
+  /// region's boundary coincide with the crate's own NIG, which needs neither `K_λ` nor the limit.
   #[test]
   fn half_negative_lambda_is_the_nig() {
     let gh = SimdGeneralizedHyperbolic::<f64>::new(-0.5, 2.0, 0.5, 1.0, 0.3);
@@ -445,6 +456,12 @@ mod tests {
     ));
     assert!(close(gh.skewness().unwrap(), nig.skewness().unwrap(), 1e-9));
     assert!(close(gh.kurtosis().unwrap(), nig.kurtosis().unwrap(), 1e-8));
+    let edge = 2.0 - 0.5;
+    assert!(close(
+      gh.moment_generating_function(edge).unwrap(),
+      nig.moment_generating_function(edge).unwrap(),
+      1e-13
+    ));
   }
 
   #[test]

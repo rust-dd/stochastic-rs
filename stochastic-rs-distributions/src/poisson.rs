@@ -140,6 +140,9 @@ impl<T: PrimInt + Send + Sync + 'static> Distribution<T> for SimdPoisson<T> {
 
 impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
   fn pdf(&self, x: f64) -> Option<f64> {
+    if x.is_nan() {
+      return Some(f64::NAN);
+    }
     if x < 0.0 || x.fract() != 0.0 {
       return Some(0.0);
     }
@@ -151,6 +154,9 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
   }
 
   fn cdf(&self, x: f64) -> Option<f64> {
+    if x.is_nan() {
+      return Some(f64::NAN);
+    }
     if x < 0.0 {
       return Some(0.0);
     }
@@ -163,10 +169,13 @@ impl<T: PrimInt> crate::traits::DistributionExt for SimdPoisson<T> {
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
-    if p <= 0.0 {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
+    if p == 0.0 {
       return Some(0.0);
     }
-    if p >= 1.0 {
+    if p == 1.0 {
       return Some(f64::INFINITY);
     }
     // Use the cached cumulative table built in `build_cdf`.

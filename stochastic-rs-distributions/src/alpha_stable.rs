@@ -6,6 +6,7 @@
 //!
 //! Sampling: Chambers, J.M., Mallows, C.L., Stuck, B.W. (1976), "A Method for Simulating Stable Random Variables", *Journal of the American Statistical Association* 71(354), 340-344, DOI 10.1080/01621459.1976.10480344.
 //! Scale, location and the `α = 1` case: Weron, R. (1996), "On the Chambers-Mallows-Stuck method for simulating skewed stable random variables", *Statistics & Probability Letters* 28(2), 165-171, DOI 10.1016/0167-7152(95)00113-1.
+//! Laplace transform at β = ±1: Samorodnitsky, G., Taqqu, M.S. (1994), *Stable Non-Gaussian Random Processes*, Chapman & Hall, Prop. 1.2.12.
 
 use rand::Rng;
 use rand::distr::Distribution;
@@ -425,18 +426,33 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdAlphaStable<T> {
     Some(exponent.exp())
   }
 
+  /// Finite at α = 2 and, for β = ±1, on the light-tailed side `βt < 0`, where it is the Laplace
+  /// transform of Samorodnitsky–Taqqu's Prop. 1.2.12; `+∞` at every other `t ≠ 0`.
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
-    if t == 0.0 {
-      Some(1.0)
-    } else if self.alpha.to_f64().unwrap() == 2.0 {
-      // Gaussian limit: M(t) = exp(μt + c²t²)
-      let mu = self.location.to_f64().unwrap();
-      let c = self.scale.to_f64().unwrap();
-      Some((mu * t + c * c * t * t).exp())
-    } else {
-      // MGF only exists in the Gaussian limit (α = 2).
-      Some(f64::NAN)
+    if t.is_nan() {
+      return Some(f64::NAN);
     }
+    if t == 0.0 {
+      return Some(1.0);
+    }
+    let alpha = self.alpha.to_f64().unwrap();
+    let beta = self.beta.to_f64().unwrap();
+    let mu = self.location.to_f64().unwrap();
+    let c = self.scale.to_f64().unwrap();
+    if alpha == 2.0 {
+      // Gaussian limit: M(t) = exp(μt + c²t²)
+      return Some((mu * t + c * c * t * t).exp());
+    }
+    if beta.abs() == 1.0 && beta * t < 0.0 {
+      let s = t.abs();
+      let exponent = if alpha == 1.0 {
+        2.0 * c / std::f64::consts::PI * s * s.ln()
+      } else {
+        -(c * s).powf(alpha) / (std::f64::consts::PI * alpha / 2.0).cos()
+      };
+      return Some((mu * t + exponent).exp());
+    }
+    Some(f64::INFINITY)
   }
 }
 
@@ -452,6 +468,7 @@ mod tests {
   use super::*;
   use crate::normal::SimdNormal;
   use crate::tests::assert_ecf_matches;
+  use crate::tests::assert_mean_within;
   use crate::tests::scalar_draws;
   use crate::tests::scalar_ks_best_p;
   use crate::traits::DistributionExt;
@@ -524,5 +541,35 @@ mod tests {
     let normal = SimdNormal::<f64>::new(0.0, std::f64::consts::SQRT_2);
     let best = scalar_ks_best_p(&d, |x| normal.cdf(x).unwrap());
     assert!(best > 0.01, "best p = {best}");
+  }
+
+  /// β = ±1 on the light side: mpmath's closed form, which a quadrature of scipy's S1 density matches to 1e-15.
+  #[test]
+  fn totally_skewed_mgf_is_finite_on_the_light_side() {
+    for (alpha, beta, scale, location, t, want) in [
+      (1.5, 1.0, 1.0, 0.0, -1.0, 4.113_250_378_782_927_5),
+      (0.6, -1.0, 1.3, -0.2, 0.8, 0.149_297_822_303_602_06),
+      (1.0, 1.0, 1.0, 0.0, -2.0, 2.417_036_977_698_200_6),
+      (1.0, -1.0, 0.8, 0.4, 1.5, 2.483_707_803_701_905),
+    ] {
+      let d = SimdAlphaStable::<f64>::new(alpha, beta, scale, location);
+      let got = d.moment_generating_function(t).unwrap();
+      assert!(
+        (got - want).abs() < 1e-13 * want,
+        "α={alpha} β={beta} t={t}: {got} vs {want}"
+      );
+      assert_eq!(d.moment_generating_function(-t), Some(f64::INFINITY));
+    }
+    let d = SimdAlphaStable::<f64>::new(1.5, 1.0, 1.0, 0.0);
+    let tilted = scalar_draws(&d, 3, 200_000)
+      .iter()
+      .map(|x| (-x).exp())
+      .collect::<Vec<_>>();
+    assert_mean_within(
+      &tilted,
+      d.moment_generating_function(-1.0).unwrap(),
+      5.0,
+      "E e^(-X)",
+    );
   }
 }

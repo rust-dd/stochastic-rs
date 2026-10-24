@@ -339,6 +339,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdExp<T> {
   }
 
   fn quantile(&self, p: f64) -> Option<f64> {
+    if !(0.0..=1.0).contains(&p) {
+      return Some(f64::NAN);
+    }
     let lambda = self.lambda.to_f64().unwrap();
     Some(-(1.0 - p).ln() / lambda)
   }
@@ -380,6 +383,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdExp<T> {
   }
 
   fn moment_generating_function(&self, t: f64) -> Option<f64> {
+    if t.is_nan() {
+      return Some(f64::NAN);
+    }
     let lambda = self.lambda.to_f64().unwrap();
     if t < lambda {
       Some(lambda / (lambda - t))

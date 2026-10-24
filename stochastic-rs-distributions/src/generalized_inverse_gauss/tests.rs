@@ -267,6 +267,25 @@ fn single_precision_draws_stay_in_the_support() {
   }
 }
 
+/// At λ = −1/2 the mgf's limit at `t = ψ/2` is the inverse Gaussian's `e^{λ/μ}`: `GIG(−½, λ, λ/μ²)` is `IG(μ, λ)`,
+/// and a power-of-two `μ` puts both laws exactly on the boundary.
+#[test]
+fn half_negative_lambda_boundary_mgf_is_the_inverse_gaussian() {
+  for (mu, lambda) in [(2.0, 3.0), (0.5, 0.3), (4.0, 40.0)] {
+    let psi = lambda / (mu * mu);
+    let gig = SimdGig::<f64>::new(-0.5, lambda, psi);
+    let ig = crate::inverse_gauss::SimdInverseGauss::<f64>::new(mu, lambda);
+    let (got, want) = (
+      gig.moment_generating_function(0.5 * psi).unwrap(),
+      ig.moment_generating_function(0.5 * psi).unwrap(),
+    );
+    assert!(
+      close(got, want, 1e-13),
+      "mu = {mu}, lambda = {lambda}: {got} vs {want}"
+    );
+  }
+}
+
 /// `pdf(∞) = 0` for every index (`λ ≥ 1` reads `∞ − ∞` in log space) and `E[e^{tX}] → 0` as `t → −∞`.
 #[test]
 fn pdf_and_mgf_at_infinity() {
