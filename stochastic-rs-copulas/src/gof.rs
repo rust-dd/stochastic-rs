@@ -63,7 +63,8 @@ fn finite(statistic: f64, what: &str) -> Result<f64, CopulaError> {
 /// Settings of the parametric-bootstrap test.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GofConfig {
-  /// Bootstrap replications behind the p-value, which is at least `1/(replications + 1)`: `alpha` needs `⌊1/alpha⌋`.
+  /// Bootstrap replications behind the p-value, which is at least `1/(replications + 1)`: a rejection at `alpha` needs
+  /// `replications ≥ ⌊1/alpha⌋`.
   pub replications: usize,
   /// Significance level of the rejection decision.
   pub alpha: f64,

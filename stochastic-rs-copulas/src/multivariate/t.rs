@@ -235,7 +235,6 @@ impl MultivariateExt for TMultivariate {
     Ok(self.log_pdf(x)?.mapv(f64::exp))
   }
 
-  /// `LogDensity::rows` on the open cube.
   fn log_pdf(&self, x: ArrayView2<f64>) -> Result<Array1<f64>, CopulaError> {
     self.check_fit(x)?;
     let out = LogDensity::new(self.fitted()?, self.nu).rows(x);
@@ -354,7 +353,6 @@ impl<'a> LogDensity<'a> {
     self.constant - 0.5 * (self.nu + d) * joint + 0.5 * (self.nu + 1.0) * margins
   }
 
-  /// `wᵀR⁻¹w`.
   fn quadratic(&self, w: &[f64]) -> f64 {
     w.iter()
       .enumerate()

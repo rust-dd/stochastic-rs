@@ -1,5 +1,4 @@
-//! At `d = 2` every multivariate copula's density is its bivariate family's, near the edges as inside, now that no
-//! 1e-12 clamp moves the coordinates.
+//! At `d = 2` every multivariate copula's density is its bivariate family's, near the edges as inside.
 
 use ndarray::Array1;
 use ndarray::ArrayView2;
@@ -20,7 +19,7 @@ use stochastic_rs_copulas::multivariate::t::TMultivariate;
 use stochastic_rs_copulas::traits::BivariateExt;
 use stochastic_rs_copulas::traits::MultivariateExt;
 
-/// The final review's probe points: a level at `1e-15`, `1e-13` or `1e-300`, one at `1 − 1e-14`, and an interior pair.
+/// A level at `1e-15`, `1e-13` or `1e-300`, one at `1 − 1e-14`, and an interior pair.
 const POINTS: [(f64, f64); 5] = [
   (1e-15, 0.5),
   (1e-13, 0.3),
@@ -42,7 +41,6 @@ fn densities<C: MultivariateExt + Clone + 'static>(copula: C) -> (Density, Densi
   )
 }
 
-/// The pair's bivariate family.
 fn family(pair: PairCopula) -> Box<dyn BivariateExt> {
   match pair {
     PairCopula::Independence => Box::new(Independence::new()),
