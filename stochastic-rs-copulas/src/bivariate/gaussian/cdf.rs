@@ -9,9 +9,9 @@ use std::f64::consts::TAU;
 use owens_t::owens_t;
 use stochastic_rs_distributions::special::erf;
 use stochastic_rs_distributions::special::erfc;
+use stochastic_rs_distributions::special::ln_norm_cdf;
 use stochastic_rs_distributions::special::norm_cdf;
 
-use crate::bivariate::conditional::ln_norm_cdf;
 use crate::bivariate::conditional::ln_one_minus_exp;
 use crate::bivariate::integral::BELOW_SUBNORMAL;
 use crate::bivariate::integral::ln_integral_concave;
@@ -274,8 +274,8 @@ mod tests {
         0.1 + 0.05 * ((i + 3) % 16) as f64,
       );
       let (h, k) = (
-        crate::bivariate::conditional::normal_quantile(u),
-        crate::bivariate::conditional::normal_quantile(v),
+        stochastic_rs_distributions::special::ndtri(u),
+        stochastic_rs_distributions::special::ndtri(v),
       );
       assert!(owen(h, k, 0.5).is_some(), "bench query ({u}, {v})");
     }

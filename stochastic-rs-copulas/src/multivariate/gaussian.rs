@@ -12,6 +12,7 @@ use ndarray::Axis;
 use stochastic_rs_core::simd_rng::SeedExt;
 use stochastic_rs_distributions::SimdDistribution;
 use stochastic_rs_distributions::normal::SimdNormal;
+use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use super::MultivariateFamily;
@@ -24,7 +25,6 @@ use super::qmc::sobol_points;
 use crate::bivariate::conditional::check_open;
 use crate::bivariate::conditional::check_unit;
 use crate::bivariate::conditional::inside;
-use crate::bivariate::conditional::normal_quantile;
 use crate::bivariate::gaussian::gaussian_copula_cdf;
 use crate::error::CopulaError;
 use crate::multivariate::on_open_cube;
@@ -60,7 +60,7 @@ impl GaussianMultivariate {
 
   /// `Φ⁻¹` of every coordinate, `±∞` at 0 and 1.
   fn transform_to_normal(u: ArrayView2<f64>) -> Array2<f64> {
-    u.mapv(normal_quantile)
+    u.mapv(ndtri)
   }
 
   /// Sample correlation of the columns of Z (n x d), each of which varies.
@@ -209,11 +209,11 @@ impl MultivariateExt for GaussianMultivariate {
           Some(&[i, j]) => gaussian_copula_cdf(u[i], u[j], corr.corr()[[i, j]]),
           Some(open) => {
             let points = points.get_or_insert_with(|| sobol_points(corr.dim() - 1));
-            let b: Vec<f64> = open.iter().map(|&i| normal_quantile(u[i])).collect();
+            let b: Vec<f64> = open.iter().map(|&i| ndtri(u[i])).collect();
             match prioritize(corr.corr(), open, &b) {
               Some((l, b)) => mvn_upper(&l, &b, points.view()),
               None => {
-                let b: Vec<f64> = u.iter().map(|&x| normal_quantile(x)).collect();
+                let b: Vec<f64> = u.iter().map(|&x| ndtri(x)).collect();
                 mvn_upper(corr.chol_lower(), &b, points.view())
               }
             }

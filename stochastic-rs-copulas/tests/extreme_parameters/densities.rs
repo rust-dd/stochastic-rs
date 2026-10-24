@@ -34,7 +34,7 @@ const WALL_CLOCK: [(f64, f64, u64); 4] = [
 ];
 
 /// Where `SimdStudentT`, off the t law by `7e-8` at `ν = 1e8` and not the t law's from `ν ≈ 4.4e12`, puts a large-`ν` cell
-/// past `1e-12` or at NaN: 387 cells, each of which must keep missing, so a fix of that law fails this test.
+/// past `1e-12` or at NaN: 368 cells, each of which must keep missing, so a fix of that law fails this test.
 const LARGE_NU_MISSES: [(f64, f64, &str, Misses); 12] = [
   (0.5, 1e8, "cdf", Misses::Only(&[30, 31, 39, 40, 50])),
   (0.5, 1e8, "log_pdf", Misses::AllBut(&UPPER_DENSITY)),
@@ -48,12 +48,22 @@ const LARGE_NU_MISSES: [(f64, f64, &str, Misses); 12] = [
     -0.95,
     4437290359301.342,
     "log_pdf",
-    Misses::AllBut(&UPPER_DENSITY),
+    Misses::AllBut(&UPPER_OR_SUBNORMAL_DENSITY),
   ),
   (-0.8, 1e13, "cdf", Misses::Only(&LOWER_CDF)),
-  (-0.8, 1e13, "log_pdf", Misses::AllBut(&UPPER_DENSITY)),
+  (
+    -0.8,
+    1e13,
+    "log_pdf",
+    Misses::AllBut(&UPPER_OR_SUBNORMAL_DENSITY),
+  ),
   (-0.8, 4e13, "cdf", Misses::Only(&LOWER_CDF)),
-  (-0.8, 4e13, "log_pdf", Misses::AllBut(&[32, 34, 46, 48])),
+  (
+    -0.8,
+    4e13,
+    "log_pdf",
+    Misses::AllBut(&[0, 4, 6, 28, 32, 34, 42, 46, 48]),
+  ),
   (-0.8, 1e15, "cdf", Misses::Only(&NARROW_CDF)),
   (-0.8, 1e15, "log_pdf", Misses::AllBut(&[32])),
   (-0.999999, 9.99e21, "cdf", Misses::AllBut(&[])),
@@ -89,6 +99,11 @@ const LOWER_CDF: [usize; 17] = [
 
 /// `ln c(a, b)` with both levels in `[½, 1 − 2⁻⁵³]`.
 const UPPER_DENSITY: [usize; 9] = [32, 33, 34, 39, 40, 41, 46, 47, 48];
+
+/// `UPPER_DENSITY` and the cells with a level at `5e-324` and the other at `5e-324`, `½`, `1 − 1e-15` or `1 − 2⁻⁵³`,
+/// which the t quantile's seed, `ndtri` with its subnormal step, holds within `1e-12`.
+const UPPER_OR_SUBNORMAL_DENSITY: [usize; 16] =
+  [0, 4, 5, 6, 28, 32, 33, 34, 35, 39, 40, 41, 42, 46, 47, 48];
 
 /// `C(a, b)` with one level in `{1e-15, 2⁻⁵³}` and the other in `{1 − 1e-15, 1 − 2⁻⁵³}`.
 const CDF_MISSES: [usize; 8] = [33, 34, 42, 43, 57, 58, 66, 67];

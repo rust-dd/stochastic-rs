@@ -1,5 +1,6 @@
 //! Special functions behind the closed-form `DistributionExt` impls: Lanczos `gamma`/`ln_gamma`,
 //! Acklam's `ndtri`, `libm` `erf`/`erfc`; Bessel functions in [`bessel`], [`bessel_i`](mod@bessel_i), [`bessel_k`](mod@bessel_k).
+//! Reference: NIST Digital Library of Mathematical Functions, eq. 7.9.3 (the continued fraction of `w(z)`), <https://dlmf.nist.gov/7.9.3>.
 
 pub mod bessel;
 pub mod bessel_i;
@@ -132,17 +133,8 @@ pub fn erfc(x: f64) -> f64 {
   libm::erfc(x)
 }
 
-/// Standard-normal quantile (inverse CDF).
-///
-/// P. J. Acklam, *An algorithm for computing the inverse normal cumulative
-/// distribution function*, 2003: the rational approximation (absolute error
-/// ≈ 1.15e-9) followed by the single Halley step on `Φ(x) − p` that Acklam
-/// gives for refining it, which brings the result to full double precision.
-/// The step runs on the lower half, where `Φ(x) − p` is a difference of small
-/// numbers; an upper-half `p` is mirrored through `1 − p`, which is exact for
-/// `p ≥ ½`.
-///
-/// Returns NaN for a `p` outside `[0, 1]`.
+/// Standard-normal quantile: Acklam's (2003) rational approximation and Halley step on `(0, ½]`, mirrored through the exact
+/// `1 − p` above, and a Newton step on `ln Φ` at a subnormal `p`, where Halley's step loses its digits; NaN off `[0, 1]`.
 pub fn ndtri(p: f64) -> f64 {
   if !(0.0..=1.0).contains(&p) {
     return f64::NAN;
@@ -156,7 +148,19 @@ pub fn ndtri(p: f64) -> f64 {
   if p > 0.5 {
     return -ndtri_lower(1.0 - p);
   }
-  ndtri_lower(p)
+  let t = ndtri_lower(p);
+  if p < f64::MIN_POSITIVE {
+    return subnormal_quantile(p, t);
+  }
+  t
+}
+
+/// The Newton step on `ln Φ` from the approximation `t` at a subnormal `p`.
+#[cold]
+#[inline(never)]
+fn subnormal_quantile(p: f64, t: f64) -> f64 {
+  let z = -t.abs();
+  t.signum() * -(z - (ln_norm_cdf(z) - p.ln()) * mills_ratio(-z))
 }
 
 /// [`ndtri`] on `(0, ½]`.
@@ -224,6 +228,41 @@ pub fn norm_pdf(x: f64) -> f64 {
 #[inline]
 pub fn norm_cdf(x: f64) -> f64 {
   0.5 * erfc(-x / std::f64::consts::SQRT_2)
+}
+
+/// Mills' ratio `R(z) = Φ(−z)/φ(z)` for `z ≥ 0`: the quotient below 3, else Laplace's continued fraction
+/// `1/(z + 1/(z + 2/(z + …)))` (DLMF 7.9.3 at `iz/√2`) by Lentz's method, free of the `e^{−z²/2}` both factors carry.
+pub fn mills_ratio(z: f64) -> f64 {
+  if z < 3.0 {
+    return norm_cdf(-z) / norm_pdf(z);
+  }
+  if z > 1e8 {
+    return 1.0 / z;
+  }
+  let (mut f, mut c, mut d) = (z, z, 0.0);
+  for n in 1..300 {
+    let a = f64::from(n);
+    d = 1.0 / (z + a * d);
+    c = z + a / c;
+    let step = c * d;
+    f *= step;
+    if (step - 1.0).abs() <= f64::EPSILON {
+      break;
+    }
+  }
+  1.0 / f
+}
+
+/// `ln Φ(z)`: `ln_1p(−Φ(−z))` above 0, `ln Φ(z)` to −30 and `−z²/2 − ln √(2π) + ln R(−z)` below, the switch a point of
+/// `[−37.5, −3]`, where `Φ` is still normal and the continued fraction converged, so both forms hold to 3 ulps.
+pub fn ln_norm_cdf(z: f64) -> f64 {
+  if z > 0.0 {
+    (-norm_cdf(-z)).ln_1p()
+  } else if z > -30.0 {
+    norm_cdf(z).ln()
+  } else {
+    -0.5 * z * z - 0.5 * std::f64::consts::TAU.ln() + mills_ratio(-z).ln()
+  }
 }
 
 /// Regularised lower incomplete gamma P(a, x) = γ(a,x)/Γ(a).
@@ -529,6 +568,68 @@ mod tests {
       );
     }
     assert_eq!(ndtri(0.5), 0.0);
+  }
+
+  /// mpmath at 60 digits at subnormal levels, where a Newton step on `ln Φ` refines the approximation; the least normal
+  /// level keeps the unrefined value.
+  #[test]
+  fn ndtri_keeps_its_digits_at_subnormal_levels() {
+    for (p, want) in [
+      (5e-324, -38.467_405_617_144_344),
+      (1e-320, -38.269_125_343_032_65),
+      (1e-310, -37.663_060_331_949_524),
+      (f64::MIN_POSITIVE.next_down(), -37.519_379_347_144_5),
+    ] {
+      let got = ndtri(p);
+      assert!(((got - want) / want).abs() < 1e-15, "ndtri({p:e}) = {got}");
+    }
+    assert_eq!(ndtri(f64::MIN_POSITIVE), ndtri_lower(f64::MIN_POSITIVE));
+  }
+
+  /// mpmath at 60 digits on both sides of the switch to the continued fraction at 3, and far into it.
+  #[test]
+  fn mills_ratio_matches_high_precision_references() {
+    for (z, want) in [
+      (2.999, 0.304_676_550_771_259_44),
+      (3.0, 0.304_590_298_710_103_3),
+      (10.0, 0.099_028_596_471_731_93),
+      (1e4, 9.999_999_900_000_004e-5),
+    ] {
+      let got = mills_ratio(z);
+      assert!(
+        ((got - want) / want).abs() < 1e-14,
+        "mills_ratio({z}) = {got}"
+      );
+    }
+  }
+
+  /// mpmath at 60 digits across the lower tail, both sides of the switch at −30, and the upper tail.
+  #[test]
+  fn ln_norm_cdf_matches_high_precision_references() {
+    for (z, want) in [
+      (-37.0, -689.030_585_576_890_6),
+      (-37.5, -707.668_989_317_507_2),
+      (-38.0, -726.557_216_018_820_1),
+      (-38.5, -745.695_270_290_411),
+      (-40.0, -804.608_442_013_753_8),
+      (-100.0, -5_005.524_208_694_205),
+      (-1000.0, -500_007.826_694_812_16),
+      (-30.000_001, -454.321_273_989_603_4),
+      (-29.999_999, -454.321_213_923_084),
+      (5.0, -2.866_516_129_637_636e-7),
+      (8.0, -6.220_960_574_271_786e-16),
+      (10.0, -7.619_853_024_160_525e-24),
+    ] {
+      let got = ln_norm_cdf(z);
+      assert!(
+        ((got - want) / want).abs() < 1e-14,
+        "ln_norm_cdf({z}) = {got}"
+      );
+    }
+    assert_eq!(ln_norm_cdf(0.0), 0.5_f64.ln());
+    assert!(ln_norm_cdf(f64::NAN).is_nan());
+    assert_eq!(ln_norm_cdf(f64::INFINITY), 0.0);
+    assert_eq!(ln_norm_cdf(f64::NEG_INFINITY), f64::NEG_INFINITY);
   }
 
   #[test]

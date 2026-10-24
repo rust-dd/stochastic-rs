@@ -10,13 +10,13 @@ use ndarray::ArrayView2;
 use ndarray::Axis;
 use stochastic_rs_distributions::DistributionExt;
 use stochastic_rs_distributions::special::ln_gamma;
+use stochastic_rs_distributions::special::ln_norm_cdf;
+use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::studentt::SimdStudentT;
 
 use crate::bivariate::conditional::ln_add_exp;
-use crate::bivariate::conditional::ln_norm_cdf;
 use crate::bivariate::conditional::ln_ratio;
-use crate::bivariate::conditional::normal_quantile;
 use crate::bivariate::integral::rule;
 use crate::error::CopulaError;
 
@@ -108,7 +108,7 @@ impl Law {
     }
     let (tail, sign) = if p < 0.5 { (p, -1.0) } else { (1.0 - p, 1.0) };
     if self.nu >= NORMAL_ABOVE {
-      return Score::of(normal_quantile(p));
+      return Score::of(ndtri(p));
     }
     if tail <= self.tail_level {
       let ln_tail = tail.ln();

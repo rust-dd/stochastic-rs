@@ -15,6 +15,7 @@
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
+use stochastic_rs_distributions::special::ndtri;
 use stochastic_rs_distributions::special::norm_cdf;
 
 use crate::bivariate::BivariateFamily;
@@ -22,7 +23,6 @@ use crate::bivariate::conditional::conditional_cdf;
 use crate::bivariate::conditional::conditional_quantiles;
 use crate::bivariate::conditional::copula_cdf;
 use crate::bivariate::conditional::copula_pdf;
-use crate::bivariate::conditional::normal_quantile;
 use crate::bivariate::conditional::on_open_square;
 use crate::bivariate::conditional::sum_minus_one;
 use crate::error::CopulaError;
@@ -71,7 +71,7 @@ impl GaussianCopula {
       if v == 0.0 || v == 1.0 {
         return if (v == 0.0) == (rho > 0.0) { 1.0 } else { 0.0 };
       }
-      let (x, y) = (normal_quantile(u), normal_quantile(v));
+      let (x, y) = (ndtri(u), ndtri(v));
       let z = (x - rho * y) / s;
       // `x − ρy` rounds by `ε(|x| + |y|)`, which `1/s` and Φ's relative slope `|z| + 1` amplify: past `150ε`, the gap.
       if !z.is_finite() || (x.abs() + y.abs()) * (z.abs() + 1.0) <= 150.0 * s {
@@ -90,7 +90,7 @@ impl GaussianCopula {
   pub(crate) fn inverse(rho: f64) -> impl Fn(f64, f64) -> f64 {
     let s = ((1.0 - rho) * (1.0 + rho)).sqrt();
     move |y, v| {
-      let z = normal_quantile(y) * s + rho * normal_quantile(v);
+      let z = ndtri(y) * s + rho * ndtri(v);
       // `∞ − ∞` only at corners answered by 0: level 0, or level 1 where `v ∈ {0, 1}` puts `h(· | v)`'s mass at 0.
       if z.is_nan() { 0.0 } else { norm_cdf(z) }
     }
@@ -117,7 +117,7 @@ pub(crate) fn gaussian_copula_cdf(u: f64, v: f64, rho: f64) -> f64 {
   if rho == 0.0 {
     return u * v;
   }
-  let (x, y) = (normal_quantile(u), normal_quantile(v));
+  let (x, y) = (ndtri(u), ndtri(v));
   // The integral reads `x + y` only at `ρ < 0`, at its end `(x + y)/α`, whose error it amplifies `end²`-fold up to `38`.
   let reach = 38.0 * (2.0 * (1.0 - rho.abs())).sqrt();
   bivariate_normal_cdf(x, y, rho, || GaussianCopula::sum(u, v, x, y, reach))
@@ -164,7 +164,7 @@ impl GaussianCopula {
   /// `ln c = −|ρ|d²/(2(1 − ρ)(1 + ρ)) + |ρ|(x² + y²)/(2(1 + |ρ|)) − ln √((1 − ρ)(1 + ρ))`, `d = x ∓ y` with the sign of
   /// `ρ`, within `1e-12·max(1, |ln c|)`: `d` from the exact gap wherever its plain rounding would reach past `150ε` of that.
   pub(crate) fn ln_density(rho: f64, u: f64, v: f64) -> f64 {
-    let (x, y) = (normal_quantile(u), normal_quantile(v));
+    let (x, y) = (ndtri(u), ndtri(v));
     let one_minus_rho2 = (1.0 - rho) * (1.0 + rho);
     let r = rho.abs();
     let ln_c = |d: f64| {

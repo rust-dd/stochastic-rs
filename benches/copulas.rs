@@ -17,6 +17,7 @@ use stochastic_rs::copulas::bivariate::frank::Frank;
 use stochastic_rs::copulas::bivariate::galambos::Galambos;
 use stochastic_rs::copulas::bivariate::gaussian::GaussianCopula;
 use stochastic_rs::copulas::bivariate::gumbel::Gumbel;
+use stochastic_rs::copulas::bivariate::husler_reiss::HuslerReiss;
 use stochastic_rs::copulas::bivariate::marshall_olkin::MarshallOlkin;
 use stochastic_rs::copulas::bivariate::plackett::Plackett;
 use stochastic_rs::copulas::bivariate::t_copula::TCopula;
@@ -126,6 +127,10 @@ fn bivariate_sample(c: &mut Criterion) {
   let gumbel = Gumbel::new(2.0);
   group.bench_function("gumbel_brent_n2k", |b| {
     b.iter(|| gumbel.sample(2_000, &Deterministic::new(42)).unwrap())
+  });
+  let husler_reiss = HuslerReiss::new(1.5);
+  group.bench_function("husler_reiss_brent_n2k", |b| {
+    b.iter(|| husler_reiss.sample(2_000, &Deterministic::new(42)).unwrap())
   });
   let bb1 = Bb1::new(0.8, 1.6);
   group.bench_function("bb1_brent_n2k", |b| {
@@ -282,6 +287,18 @@ fn fit(c: &mut Criterion) {
     b.iter(|| {
       let mut fitted = Galambos::default();
       fitted.fit(galambos_pairs.view()).unwrap()
+    })
+  });
+  let husler_reiss_pairs = pseudo_observations(
+    HuslerReiss::new(1.5)
+      .sample(2_000, &Deterministic::new(1))
+      .unwrap()
+      .view(),
+  );
+  group.bench_function("husler_reiss_fit_n2k", |b| {
+    b.iter(|| {
+      let mut fitted = HuslerReiss::default();
+      fitted.fit(husler_reiss_pairs.view()).unwrap()
     })
   });
   let data = pseudo_observations(

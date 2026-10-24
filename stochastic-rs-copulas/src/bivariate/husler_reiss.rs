@@ -20,6 +20,8 @@ use std::f64::consts::TAU;
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
+use stochastic_rs_distributions::special::ln_norm_cdf;
+use stochastic_rs_distributions::special::mills_ratio;
 use stochastic_rs_distributions::special::norm_cdf;
 use stochastic_rs_distributions::special::norm_pdf;
 
@@ -30,9 +32,7 @@ use crate::bivariate::conditional::copula_cdf;
 use crate::bivariate::conditional::copula_pdf;
 use crate::bivariate::conditional::ln_add_exp;
 use crate::bivariate::conditional::ln_log_ratio;
-use crate::bivariate::conditional::ln_norm_cdf;
 use crate::bivariate::conditional::ln_one_minus_exp;
-use crate::bivariate::conditional::mills;
 use crate::bivariate::conditional::numerical_quantiles;
 use crate::bivariate::conditional::on_open_square;
 use crate::bivariate::conditional::softplus;
@@ -89,7 +89,7 @@ impl HuslerReiss {
       let (alpha, beta) = (inv + half, inv - half);
       // For `α < 0 < β` both terms are tails that nearly cancel; `xφ(α) = yφ(β)` turns them into one Mills difference.
       let tails = if alpha < 0.0 {
-        y * norm_pdf(beta) * (mills(beta) - mills(-alpha))
+        y * norm_pdf(beta) * (mills_ratio(beta) - mills_ratio(-alpha))
       } else {
         y * norm_cdf(-beta) - x * norm_cdf(alpha)
       };

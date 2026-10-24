@@ -1,6 +1,5 @@
 //! What every family's fit, conditional inverse and h-function share: the input checks and the NaN rule, the stable
-//! logarithmic helpers the h-functions are built from, Mills' ratio, Knuth's two-sum and the `ln h` quantile solver.
-//! Reference: NIST Digital Library of Mathematical Functions, eq. 7.9.3 (the continued fraction of `w(z)`), <https://dlmf.nist.gov/7.9.3>.
+//! logarithmic helpers the h-functions are built from, Knuth's two-sum and the `ln h` quantile solver.
 //! Reference: Shewchuk, J.R. (1997), "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates", *Discrete & Computational Geometry* 18(3), 305-363, Theorem 7 (Knuth's two-sum).
 
 use std::cell::Cell;
@@ -10,9 +9,6 @@ use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::Zip;
 use stochastic_rs_distributions::RealExt;
-use stochastic_rs_distributions::special::ndtri;
-use stochastic_rs_distributions::special::norm_cdf;
-use stochastic_rs_distributions::special::norm_pdf;
 
 use crate::bivariate::BivariateFamily;
 use crate::error::CopulaError;
@@ -105,60 +101,6 @@ pub(crate) fn ln_expm1(z: f64, ln_z: f64) -> f64 {
   } else {
     z + (-(-z).exp()).ln_1p()
   }
-}
-
-/// Mills' ratio `R(z) = Φ(−z)/φ(z)` for `z ≥ 0`: the quotient below 3, else Laplace's continued fraction
-/// `1/(z + 1/(z + 2/(z + …)))` (DLMF 7.9.3 at `iz/√2`) by Lentz's method, free of the `e^{−z²/2}` both factors carry.
-pub(crate) fn mills(z: f64) -> f64 {
-  if z < 3.0 {
-    return norm_cdf(-z) / norm_pdf(z);
-  }
-  if z > 1e8 {
-    return 1.0 / z;
-  }
-  let (mut f, mut c, mut d) = (z, z, 0.0);
-  for n in 1..300 {
-    let a = f64::from(n);
-    d = 1.0 / (z + a * d);
-    c = z + a / c;
-    let step = c * d;
-    f *= step;
-    if (step - 1.0).abs() <= f64::EPSILON {
-      break;
-    }
-  }
-  1.0 / f
-}
-
-/// `ln Φ(z)`: `ln_1p(−Φ(−z))` above 0, `ln Φ(z)` to −30 and `−z²/2 − ln √(2π) + ln R(−z)` below, the switch a point of
-/// `[−37.5, −3]`, where `Φ` is still normal and the continued fraction converged, so both forms hold to 3 ulps.
-pub(crate) fn ln_norm_cdf(z: f64) -> f64 {
-  if z > 0.0 {
-    (-norm_cdf(-z)).ln_1p()
-  } else if z > -30.0 {
-    norm_cdf(z).ln()
-  } else {
-    -0.5 * z * z - 0.5 * std::f64::consts::TAU.ln() + mills(-z).ln()
-  }
-}
-
-/// `Φ⁻¹(p)`: `ndtri`, refined by a Newton step on `ln Φ` where `p` is subnormal and `ndtri` loses digits (`1 − p`
-/// never is); inlined, so a caller pays `ndtri` and two comparisons.
-#[inline]
-pub(crate) fn normal_quantile(p: f64) -> f64 {
-  let t = ndtri(p);
-  if !(0.0 < p && p < f64::MIN_POSITIVE) {
-    return t;
-  }
-  subnormal_quantile(p, t)
-}
-
-/// The Newton step on `ln Φ` from `ndtri`'s `t` at a subnormal `p`.
-#[cold]
-#[inline(never)]
-fn subnormal_quantile(p: f64, t: f64) -> f64 {
-  let z = -t.abs();
-  t.signum() * -(z - (ln_norm_cdf(z) - p.ln()) * mills(-z))
 }
 
 /// `ln(eᵃ + eᵇ)`; an infinite larger term is the answer, where `a − b` would be NaN.
