@@ -227,6 +227,55 @@ fn large_shapes_keep_the_smaller_tail_to_1e_13() {
   }
 }
 
+/// mpmath at 90 digits near and past the band edges, where the exponent is in the hundreds: the smaller tail to
+/// `1e-13`, and at `λ = 3`, `a = 1100`, where it underflows, its logarithm to `1e-15`.
+#[test]
+fn large_shapes_keep_the_smaller_tail_at_the_band_edges() {
+  let rel = |got: f64, want: f64| ((got - want) / want).abs();
+  for (a, x, lower, want) in [
+    (
+      1_140.268_085_462_692_2,
+      300.150_922_081_388_5,
+      true,
+      1.221_793_964_061_139e-298,
+    ),
+    (1_088.79, 292.79, true, 7.656_305_455_227_544e-278),
+    (
+      1_317.032_022_087_383_4,
+      398.498_579_612_561_6,
+      true,
+      2.230_773_990_223_533_2e-287,
+    ),
+    (
+      1_389.0,
+      3_264.150_000_000_001,
+      false,
+      8.805_613_654_371_118e-302,
+    ),
+    (1_389.0, 3_264.15, false, 8.805_613_654_375_722e-302),
+    (1_100.0, 275.0, true, 1.705_695_816_273_308e-306),
+    (1_300.0, 390.0, true, 4.615_493_113_533_604e-287),
+    (
+      1_389.0,
+      3_264.149_999_999_999_6,
+      false,
+      8.805_613_654_378_025e-302,
+    ),
+    (
+      1_389.0,
+      3_264.150_000_000_000_5,
+      false,
+      8.805_613_654_373_42e-302,
+    ),
+    (700.0, 2_100.0, false, 7.069_986_467_703_053e-277),
+  ] {
+    let got = if lower { gamma_p(a, x) } else { gamma_q(a, x) };
+    assert!(rel(got, want) < 1e-13, "({a}, {x}): {got}, want {want}");
+  }
+  assert_eq!(gamma_q(1100.0, 3300.0), 0.0);
+  assert!(rel(ln_gamma_q(1100.0, 3300.0), -996.640_857_633_860_4) < 1e-15);
+}
+
 #[test]
 fn beta_i_known_values() {
   // I_{0.5}(1, 1) = 0.5

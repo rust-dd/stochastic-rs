@@ -1,6 +1,6 @@
-//! The gamma family's tails from shape 100 on: Temme's uniform expansion for `0.3 ≤ x/a ≤ 2.35`, with the exponent
-//! `a(λ − 1 − ln λ)` carried past double precision, and the series or fraction scaled by Stirling's `Γ*` outside.
-//! Reference: Temme, N.M. (1979), "The asymptotic expansion of the incomplete gamma functions", *SIAM Journal on Mathematical Analysis* 10(4), 757-766, DOI 10.1137/0510071 (DLMF 8.12.3, 8.12.7, 8.12.11-8.12.14).
+//! The gamma family's tails from shape 100 on: Temme's uniform expansion for `0.3 ≤ x/a ≤ 2.35`, the series or fraction
+//! scaled by Stirling's `Γ*` outside, and on both sides the exponent `a(λ − 1 − ln λ)` carried past double precision.
+//! Reference: Temme, N.M. (1979), "The asymptotic expansion of the incomplete gamma functions", *SIAM Journal on Mathematical Analysis* 10(4), 757-766, DOI 10.1137/0510071 (DLMF 8.12.3–8.12.4, 8.12.7, 8.12.11–8.12.14).
 //! Reference: NIST Digital Library of Mathematical Functions, eq. 5.11.1 (Stirling's series for `ln Γ`), <https://dlmf.nist.gov/5.11.1>.
 //! Reference: Shewchuk, J.R. (1997), "Adaptive Precision Floating-Point Arithmetic and Fast Robust Geometric Predicates", *Discrete & Computational Geometry* 18(3), 305-363, Theorem 7 (Knuth's two-sum).
 
@@ -181,7 +181,7 @@ const TEMME: [&[f64]; 8] = [
   ],
 ];
 
-/// Temme's `Q = ½ erfc(η√(a/2)) + S` (DLMF 8.12.3) in the band, as `e^{−aη²/2}/√(2π)` times Mills' ratio at `|η|√a` plus
+/// Temme's `Q = ½ erfc(η√(a/2)) + S` (DLMF 8.12.4) in the band, as `e^{−aη²/2}/√(2π)` times Mills' ratio at `|η|√a` plus
 /// `S`'s `c_k` sum over `√a`, `P` alike below `x = a`; outside, `√(a/2π) e^{−a(λ−1−ln λ)}/Γ*(a)` times the series or fraction.
 #[inline(never)]
 pub(super) fn tail(a: f64, x: f64) -> Tail {
@@ -205,15 +205,16 @@ pub(super) fn tail(a: f64, x: f64) -> Tail {
       ln_scale: -y,
     };
   }
-  let ln_lambda = if lambda >= f64::MIN_POSITIVE {
-    lambda.ln()
-  } else {
-    x.ln() - a.ln()
-  };
+  let (l, l_lo) = ln_ratio(x, a);
   let (d, d_lo) = two_sum(x, -a);
-  let p = a * ln_lambda;
-  let ln_scale = (p - d) + (a.mul_add(ln_lambda, -p) - d_lo);
-  let scale = (a / TAU).sqrt() * (-ln_gamma_star(a)).exp();
+  let p = a * l;
+  let (ln_scale, ln_scale_lo) = if p.is_finite() {
+    let (s, s_err) = two_sum(p, -d);
+    (s, s_err + (a.mul_add(l, -p) + a * l_lo) - d_lo)
+  } else {
+    (p, 0.0)
+  };
+  let scale = (a / TAU).sqrt() * (ln_scale_lo - ln_gamma_star(a)).exp();
   if x < a {
     Tail {
       upper: false,
@@ -230,27 +231,80 @@ pub(super) fn tail(a: f64, x: f64) -> Tail {
 }
 
 /// `a(λ − 1 − ln λ) = D·T − 2aT³ Σ_j T^{2j}/(2j + 3)`, `D = x − a`, `T = D/(x + a)`, as `y + y_lo`: two-sums and fused
-/// multiply-adds recover every rounding of `D·T`, so `e^{−y}` keeps its digits where `y` is in the hundreds.
+/// multiply-adds recover the roundings of `D`, `T`, `D·T`, `T³`, the sum's first term and the cubic term's product.
 fn exponent(a: f64, x: f64) -> (f64, f64) {
+  const THIRD_LO: f64 = 1.0 / 3.0 / 18_014_398_509_481_984.0;
   let (d, d_lo) = two_sum(x, -a);
   let (m, m_lo) = two_sum(0.5 * x, 0.5 * a);
   let t = 0.5 * d / m;
-  let r = (-t).mul_add(m, 0.5 * d);
+  let t_lo = ((-t).mul_add(m, 0.5 * d) + 0.5 * d_lo - t * m_lo) / m;
   let p = d * t;
-  let c = d.mul_add(t, -p) + d * (r / m) + 2.0 * d_lo * t - p * (m_lo / m);
+  let p_lo = d.mul_add(t, -p) + d * t_lo + d_lo * t;
   let t2 = t * t;
-  let mut term = 1.0;
-  let mut u = 1.0 / 3.0;
-  for j in 1..64 {
+  let t2_lo = t.mul_add(t, -t2) + 2.0 * t * t_lo;
+  let t3 = t2 * t;
+  let t3_lo = t2.mul_add(t, -t3) + t2 * t_lo + t2_lo * t;
+  let mut term = t2;
+  let mut rest = 0.0;
+  for j in 2..64 {
     term *= t2;
     let add = term / f64::from(2 * j + 3);
-    u += add;
-    if add <= 1e-17 * u {
+    rest += add;
+    if add <= 1e-19 {
       break;
     }
   }
-  let (y, y_err) = two_sum(p, -(a * (2.0 * t * t2 * u)));
-  (y, y_err + c)
+  let fifth = t2 / 5.0;
+  let fifth_lo = ((-fifth).mul_add(5.0, t2) + t2_lo) / 5.0;
+  let (v, v_err) = two_sum(fifth, rest);
+  let (u, u_err) = two_sum(1.0 / 3.0, v);
+  let u_lo = u_err + v_err + fifth_lo + THIRD_LO;
+  let q = t3 * u;
+  let q_lo = t3.mul_add(u, -q) + t3 * u_lo + t3_lo * u;
+  let e = a * (2.0 * q);
+  let e_lo = a.mul_add(2.0 * q, -e) + a * (2.0 * q_lo);
+  let (y, y_err) = two_sum(p, -e);
+  (y, y_err + p_lo - e_lo)
+}
+
+/// `ln(x/a)` as `(hi, lo)`: the quotient's remainder from a fused multiply-add, then `x/a = 2^k m` with
+/// `m ∈ [1/√2, √2)`, `k ln 2` in two parts and `ln m = 2 atanh((m − 1)/(m + 1))` with its leading term compensated.
+fn ln_ratio(x: f64, a: f64) -> (f64, f64) {
+  const LN2_HI: f64 = f64::from_bits(0x3fe6_2e42_fee0_0000);
+  const LN2_LO: f64 = f64::from_bits(0x3dea_39ef_3579_3c76);
+  let lambda = x / a;
+  if lambda < f64::MIN_POSITIVE {
+    return (x.ln() - a.ln(), 0.0);
+  }
+  let lambda_lo = (-lambda).mul_add(a, x) / a;
+  let bits = lambda.to_bits();
+  let mut k = ((bits >> 52) & 0x7ff) as i32 - 1023;
+  let mut m = f64::from_bits((bits & 0x000f_ffff_ffff_ffff) | 0x3ff0_0000_0000_0000);
+  if m > std::f64::consts::SQRT_2 {
+    m *= 0.5;
+    k += 1;
+  }
+  let num = m - 1.0;
+  let (den, den_lo) = two_sum(m, 1.0);
+  let s = num / den;
+  let s_lo = ((-s).mul_add(den, num) - s * den_lo) / den;
+  let s2 = s * s;
+  let mut term = 1.0;
+  let mut w = 1.0 / 3.0;
+  for j in 1..16 {
+    term *= s2;
+    let add = term / f64::from(2 * j + 3);
+    w += add;
+    if add <= 1e-19 * w {
+      break;
+    }
+  }
+  let kf = f64::from(k);
+  let (h, h_lo) = two_sum(kf * LN2_HI, 2.0 * s);
+  two_sum(
+    h,
+    h_lo + (kf * LN2_LO + 2.0 * s_lo + 2.0 * s * s2 * w + lambda_lo / lambda),
+  )
 }
 
 /// `s + e = a + b` exactly.
