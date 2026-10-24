@@ -47,7 +47,7 @@ use crate::traits::distribution::SimdKernel;
 const SMALL_VG_THRESHOLD: usize = 16;
 
 /// Variance-gamma distribution: volatility `σ > 0`, gamma-clock variance rate `ν > 0`, drift `θ`, location `μ`; a [`Seeded`](crate::Seeded) stream draws it.
-/// Its density is within `1e-12` to `ν = 1/400` and `3ε ln(1/ν)/ν` below it; NaN past every digit.
+/// Its density is within `ε·Σ|ln terms|` (`1e-12` to `ν = 1/400` at `σ ∈ [0.1, 1]`, `|θ| ≤ ½`); NaN past every digit.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdVarianceGamma<T> {
   sigma: T,
@@ -502,7 +502,8 @@ mod tests {
     }
   }
 
-  /// mpmath: within `1e-12` at `ν = 10⁻³`, within the documented `3ε ln(1/ν)/ν` at `ν = 10⁻¹⁰`, NaN at `ν = 10⁻¹⁷`.
+  /// mpmath: within `1e-12` at `ν = 10⁻³` and the documented `ε·Σ|ln terms|` (`1.54e-4`) at `ν = 10⁻¹⁰`, NaN at `ν = 10⁻¹⁷`,
+  /// and the exact 0 in the far tail, where every candidate value underflows.
   #[test]
   fn small_rates_keep_the_documented_bound() {
     let near = SimdVarianceGamma::<f64>::new(0.2, 1e-3, 0.1, 0.0)
@@ -512,10 +513,11 @@ mod tests {
     let far = SimdVarianceGamma::<f64>::new(0.2, 1e-10, 0.1, 0.0)
       .pdf(0.1)
       .unwrap();
-    let bound = 3.0 * f64::EPSILON * 1e10 * 1e10_f64.ln();
-    assert!(close(far, 1.994_711_402_057_031_1, bound), "{far}");
+    assert!(close(far, 1.994_711_402_057_031_1, 1.54e-4), "{far}");
     let farthest = SimdVarianceGamma::<f64>::new(0.2, 1e-17, 0.1, 0.0);
     assert!(farthest.pdf(0.1).unwrap().is_nan());
+    let ordinary = SimdVarianceGamma::<f64>::new(0.2, 0.3, 0.1, 0.0);
+    assert_eq!(ordinary.pdf(1e15), Some(0.0));
   }
 }
 

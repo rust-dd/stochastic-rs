@@ -47,8 +47,8 @@ use stochastic_rs_core::simd_rng::SimdRngExt;
 use super::SimdFloatExt;
 use crate::seeded::StreamState;
 use crate::special::Estimate;
-use crate::special::bessel_ke;
 use crate::special::exp_of_log_sum;
+use crate::special::k_ratio;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
 use crate::traits::distribution::Sealed;
@@ -229,7 +229,7 @@ impl Setup {
 }
 
 /// Generalized inverse Gaussian distribution GIG$(\lambda, \chi, \psi)$, `chi > 0`, `psi > 0`; a [`Seeded`](crate::Seeded) stream draws it in bulk.
-/// Density, mgf and raw moments within `1e-12` to `|λ| = 300`, `3ε|λ| ln|λ|` beyond, central ones looser (kurtosis `1e-8` at 100); NaN past every digit.
+/// Density, mgf and raw moments within `ε·Σ|ln terms|` (`1e-12` to `|λ| = 300` at `χ, ψ ∈ [0.1, 10]`), central ones looser (kurtosis `1e-8` at 100); NaN past every digit.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdGig<T> {
   lambda: T,
@@ -322,32 +322,27 @@ impl<T: SimdFloatExt> SimdGig<T> {
     )
   }
 
-  /// $\mathbb E X^k = (\chi/\psi)^{k/2} K_{\lambda+k}(b)/K_\lambda(b)$, $b = \sqrt{\chi\psi}$: the scaled `K`'s ratio where both
-  /// are normal, the difference of their logarithms, which costs `ε|ln K|`, where either overflows.
+  /// $\mathbb E X^k = (\chi/\psi)^{k/2} K_{\lambda+k}(b)/K_\lambda(b)$, $b = \sqrt{\chi\psi}$: the scaled `K`s' ratio where
+  /// every factor stays normal, the difference of their logarithms, which costs `ε|ln K|`, otherwise.
   pub fn raw_moment(&self, k: u32) -> f64 {
-    let (lambda, chi, psi) = self.params();
-    self.raw(k, bessel_ke(lambda, (chi * psi).sqrt())).or_nan()
+    self.raw(k).or_nan()
   }
 
-  fn raw(&self, k: u32, ke0: f64) -> Estimate {
+  fn raw(&self, k: u32) -> Estimate {
     let (lambda, chi, psi) = self.params();
     let b = (chi * psi).sqrt();
     let order = f64::from(k);
-    let t_pow = 0.5 * order * (chi / psi).ln();
-    let kek = bessel_ke(lambda + order, b);
-    if kek.is_normal() && ke0.is_normal() {
-      let value = (chi / psi).powf(0.5 * order) * kek / ke0;
-      return Estimate::of(value, &[t_pow, kek.ln(), ke0.ln()]);
-    }
-    let (kk, k0) = (ln_bessel_ke(lambda + order, b), ln_bessel_ke(lambda, b));
-    Estimate::from_log_sum(t_pow + kk - k0, &[t_pow, kk, k0])
+    k_ratio(
+      (0.0, chi / psi, 0.5 * order),
+      (lambda + order, b),
+      (lambda, b),
+      0.0,
+    )
   }
 
   /// `(E X, E X², Var X, μ₃, μ₄)`, the estimates carrying the central moments' cancellation.
   pub(crate) fn moments(&self) -> [Estimate; 5] {
-    let (lambda, chi, psi) = self.params();
-    let ke0 = bessel_ke(lambda, (chi * psi).sqrt());
-    let [m1, m2, m3, m4] = [1, 2, 3, 4].map(|k| self.raw(k, ke0));
+    let [m1, m2, m3, m4] = [1, 2, 3, 4].map(|k| self.raw(k));
     let var = m2 - m1 * m1;
     let mu3 = m3 - 3.0 * m1 * m2 + 2.0 * m1.powi(3);
     let mu4 = m4 - 4.0 * m1 * m3 + 6.0 * m1 * m1 * m2 - 3.0 * m1.powi(4);
@@ -450,17 +445,16 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGig<T> {
       ));
     }
     let bt = (chi * shifted).sqrt();
-    // The scaled `K`s' ratio keeps its digits where both are normal; their logarithms' difference costs `ε|ln K|`.
-    let (ke_t, ke_b) = (bessel_ke(lambda, bt), bessel_ke(lambda, b));
-    if ke_t.is_normal() && ke_b.is_normal() {
-      return Some((psi / shifted).powf(0.5 * lambda) * ke_t / ke_b * (b - bt).exp());
-    }
-    let t_pow = 0.5 * lambda * (psi / shifted).ln();
-    let (kt, k0) = (ln_bessel_ke(lambda, bt), ln_bessel_ke(lambda, b));
-    Some(exp_of_log_sum(
-      t_pow + kt - k0 + (b - bt),
-      &[t_pow, kt, k0, b - bt],
-    ))
+    let dx = chi.sqrt() * (2.0 * t) / (psi.sqrt() + shifted.sqrt());
+    Some(
+      k_ratio(
+        (0.0, psi / shifted, 0.5 * lambda),
+        (lambda, bt),
+        (lambda, b),
+        dx,
+      )
+      .or_nan(),
+    )
   }
 }
 

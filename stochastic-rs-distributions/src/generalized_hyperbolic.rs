@@ -44,8 +44,8 @@ use super::generalized_inverse_gauss::SimdGig;
 use super::normal::SimdNormal;
 use crate::seeded::Buffered;
 use crate::seeded::StreamState;
-use crate::special::bessel_ke;
 use crate::special::exp_of_log_sum;
+use crate::special::k_ratio;
 use crate::special::ln_bessel_ke;
 use crate::special::ln_gamma;
 use crate::traits::distribution::Sealed;
@@ -55,7 +55,7 @@ use crate::traits::distribution::SimdKernel;
 const SMALL_GH_THRESHOLD: usize = 16;
 
 /// Generalized hyperbolic distribution GH$(\lambda, \alpha, \beta, \delta, \mu)$; a [`Seeded`](crate::Seeded) stream draws it in bulk.
-/// Density, mgf and mean within `1e-12` to `|λ| = 300`, `3ε|λ| ln|λ|` beyond, higher moments looser (kurtosis `1e-8` at 100); NaN past every digit.
+/// Density, mgf and mean within `ε·Σ|ln terms|` (`1e-12` to `|λ| = 300` at `α ∈ [0.5, 5]`, `δ ∈ [0.1, 5]`), higher moments looser (kurtosis `1e-8` at 100); NaN past every digit.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SimdGeneralizedHyperbolic<T> {
   lambda: T,
@@ -315,7 +315,11 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
       return Some(1.0);
     }
     let (lambda, alpha, beta, delta, mu) = self.params();
-    let shifted = alpha * alpha - (beta + t).powi(2);
+    // `α ∓ β` exactly as two parts (`α > |β|`), so neither factor loses `α ∓ β`'s rounding where `t` cancels it.
+    let (diff, sum) = (alpha - beta, alpha + beta);
+    let below = (diff - t) + ((alpha - diff) - beta);
+    let above = (sum + t) + ((alpha - sum) + beta);
+    let shifted = below * above;
     if shifted < 0.0 || (shifted == 0.0 && lambda >= 0.0) {
       return Some(f64::INFINITY);
     }
@@ -330,27 +334,9 @@ impl<T: SimdFloatExt> crate::traits::DistributionExt for SimdGeneralizedHyperbol
       ));
     }
     let gt = shifted.sqrt();
-    // The scaled `K`s' ratio keeps its digits where both are normal; their logarithms' difference costs `ε|ln K|`.
-    let (ke_t, ke_0) = (
-      bessel_ke(lambda, delta * gt),
-      bessel_ke(lambda, delta * gamma),
-    );
-    if ke_t.is_normal() && ke_0.is_normal() {
-      return Some(
-        (mu * t).exp() * (gamma * gamma / shifted).powf(0.5 * lambda) * ke_t / ke_0
-          * (delta * (gamma - gt)).exp(),
-      );
-    }
-    let (t_mu, t_pow) = (mu * t, 0.5 * lambda * (gamma * gamma / shifted).ln());
-    let (kt, k0, t_exp) = (
-      ln_bessel_ke(lambda, delta * gt),
-      ln_bessel_ke(lambda, delta * gamma),
-      delta * (gamma - gt),
-    );
-    Some(exp_of_log_sum(
-      t_mu + t_pow + kt - k0 + t_exp,
-      &[t_mu, t_pow, kt, k0, t_exp],
-    ))
+    let dx = delta * t * (2.0 * beta + t) / (gamma + gt);
+    let power = (mu * t, gamma * gamma / shifted, 0.5 * lambda);
+    Some(k_ratio(power, (lambda, delta * gt), (lambda, delta * gamma), dx).or_nan())
   }
 }
 

@@ -11,9 +11,8 @@ fn close(a: f64, b: f64, rel: f64) -> bool {
   (a - b).abs() <= rel * b.abs().max(1e-300)
 }
 
-/// The Bessel-form density agrees with `scipy.integrate.quad` over the
-/// GIG-clock normal mixture (`norm.pdf(x; μ+βw, √w)·geninvgauss.pdf(w)`),
-/// and the mixture moments with `geninvgauss.stats`.
+/// The Bessel-form density agrees with `scipy.integrate.quad` over the GIG-clock mixture
+/// (`norm.pdf(x; μ+βw, √w)·geninvgauss.pdf(w)`), and the mixture moments with `geninvgauss.stats`.
 #[test]
 fn pdf_and_moments_match_the_mixture_reference() {
   let cases: [((f64, f64, f64, f64, f64), [f64; 6], f64, f64); 3] = [
@@ -221,8 +220,8 @@ fn moments_hold_where_k_overflows() {
   assert!(close(var, 0.000_730_989_044_336_110_9, 1e-12), "{var}");
 }
 
-/// mpmath: within `1e-12` at `|λ| = 10³`, within the documented `3ε|λ| ln|λ|` at `|λ| = 10¹⁰`, and NaN where no digit
-/// survives.
+/// mpmath: within `1e-12` at `|λ| = 10³` and the documented `ε·Σ|ln terms|` (`1.03e-4`) at `|λ| = 10¹⁰`; NaN where no
+/// digit survives and the value could be representable, the exact 0 where every candidate underflows.
 #[test]
 fn large_orders_keep_the_documented_bound() {
   let near = SimdGeneralizedHyperbolic::<f64>::new(-1e3, 2.0, 0.5, 0.5, 0.0);
@@ -230,16 +229,47 @@ fn large_orders_keep_the_documented_bound() {
   assert!(close(got, 1.000_234_637_105_014, 1e-12), "{got}");
   let far = SimdGeneralizedHyperbolic::<f64>::new(-1e10, 2.0, 0.5, 0.5, 0.0);
   let got = far.moment_generating_function(1.0).unwrap();
-  assert!(
-    close(
-      got,
-      1.000_000_000_012_5,
-      3.0 * f64::EPSILON * 1e10 * 1e10_f64.ln()
-    ),
-    "{got}"
-  );
+  assert!(close(got, 1.000_000_000_012_5, 1.03e-4), "{got}");
+  let farther = SimdGeneralizedHyperbolic::<f64>::new(-1e15, 2.0, 0.5, 0.5, 0.0);
+  assert!(farther.moment_generating_function(1.5).unwrap().is_nan());
   let farthest = SimdGeneralizedHyperbolic::<f64>::new(1e300, 2.0, 0.5, 0.5, 0.0);
-  assert!(farthest.pdf(0.3).unwrap().is_nan());
+  assert_eq!(farthest.pdf(0.3), Some(0.0));
+}
+
+/// mpmath at 120 and 240 digits where the power factor goes subnormal (`λ = −100`) or its product with `K` overflows
+/// (`λ = 100`).
+#[test]
+fn mgf_takes_the_ratio_only_where_every_factor_stays_normal() {
+  for ((lambda, alpha, beta, delta, mu, t), want) in [
+    (
+      (-100.0, 100.0, 0.0, 1.0, 0.0, 99.999_981_999_998_38),
+      7_765_652_107.033_232,
+    ),
+    (
+      (-100.0, 100.0, 0.0, 1.0, 0.0, 99.999_98),
+      7_765_644_262.952_732,
+    ),
+    (
+      (100.0, 1.0, 0.0, 1.0, 0.0, 0.998_198_377_077_422_4),
+      2.348_781_752_490_069_8e244,
+    ),
+  ] {
+    let gh = SimdGeneralizedHyperbolic::<f64>::new(lambda, alpha, beta, delta, mu);
+    let got = gh.moment_generating_function(t).unwrap();
+    assert!(close(got, want, 1e-12), "mgf({t}) = {got}");
+  }
+}
+
+/// Past the exponents `e^x` represents the value is exactly 0 or `∞` whatever its error band: the far tails answer 0 and
+/// an mgf whose `μt` passes `4.5e15` answers `+∞`, not NaN.
+#[test]
+fn far_tails_answer_the_exact_zero_or_infinity() {
+  let gh = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, -0.2);
+  assert_eq!(gh.pdf(3e15), Some(0.0));
+  let nig = SimdGeneralizedHyperbolic::<f64>::new(-0.5, 2.0, 0.5, 1.0, 0.3);
+  assert_eq!(nig.pdf(1e17), Some(0.0));
+  let shifted = SimdGeneralizedHyperbolic::<f64>::new(1.0, 2.0, 0.5, 1.5, 1e16);
+  assert_eq!(shifted.moment_generating_function(1.0), Some(f64::INFINITY));
 }
 
 /// An index of `1e300` returns from the density instead of climbing `1e300` Bessel recurrence steps.

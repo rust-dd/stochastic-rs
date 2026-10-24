@@ -8,6 +8,7 @@ mod bessel_i;
 mod bessel_k;
 mod estimate;
 mod incomplete;
+mod k_ratio;
 
 pub use bessel::bessel_i0;
 pub use bessel::bessel_i1;
@@ -29,6 +30,7 @@ pub use incomplete::gamma_q;
 pub use incomplete::gamma_ui;
 pub use incomplete::ln_gamma_p;
 pub use incomplete::ln_gamma_q;
+pub(crate) use k_ratio::k_ratio;
 
 const LANCZOS_G: f64 = 7.0;
 const LANCZOS_C: [f64; 9] = [

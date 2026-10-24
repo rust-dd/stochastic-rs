@@ -14,17 +14,17 @@ pub(crate) struct Estimate {
 }
 
 impl Estimate {
-  /// `value`, whose logarithm sums `terms`, with the error [`log_sum_rel`] gives it.
-  pub(crate) fn of(value: f64, terms: &[f64]) -> Self {
-    let rel = log_sum_rel(terms);
+  pub(crate) fn with_rel(value: f64, rel: f64) -> Self {
     Self {
-      value: if rel.is_nan() { f64::NAN } else { value },
+      value,
       err: value.abs() * rel,
     }
   }
 
+  /// `e^{sum}` for a sum of the logarithms `terms`, with the error [`log_sum_rel`] gives it.
   pub(crate) fn from_log_sum(sum: f64, terms: &[f64]) -> Self {
-    Self::of(sum.exp(), terms)
+    let rel = log_sum_rel(sum, terms);
+    Self::with_rel(if rel.is_nan() { f64::NAN } else { sum.exp() }, rel)
   }
 
   /// The value, or NaN where a finite value's error reaches its size.
@@ -53,23 +53,27 @@ impl Estimate {
 
 /// `e^{sum}` for a sum of the logarithms `terms`, NaN where [`log_sum_rel`] leaves no digit.
 pub(crate) fn exp_of_log_sum(sum: f64, terms: &[f64]) -> f64 {
-  if log_sum_rel(terms).is_nan() {
+  if log_sum_rel(sum, terms).is_nan() {
     f64::NAN
   } else {
     sum.exp()
   }
 }
 
-/// `ε·Σ|terms|`, the relative error of `e^{Σ terms}`: NaN where it reaches 1, even if the value under- or overflowed, and
-/// 0 where a term is not finite, as IEEE arithmetic then decides.
-fn log_sum_rel(terms: &[f64]) -> f64 {
+/// `ε·Σ|terms|`, the relative error of `e^{sum}`: NaN where it reaches 1 while `sum ± ε·Σ|terms|` still meets the exponents
+/// `e^x` can represent (outside them the value is exactly 0 or ∞), and 0 where a term is not finite and IEEE decides.
+fn log_sum_rel(sum: f64, terms: &[f64]) -> f64 {
+  const LN_MIN: f64 = -745.14;
+  const LN_MAX: f64 = 709.79;
   let rel = f64::EPSILON * terms.iter().map(|t| t.abs()).sum::<f64>();
   if rel < 1.0 {
     rel
-  } else if terms.iter().all(|t| t.is_finite()) {
-    f64::NAN
-  } else {
+  } else if !terms.iter().all(|t| t.is_finite()) {
     0.0
+  } else if sum + rel < LN_MIN || sum - rel > LN_MAX {
+    rel
+  } else {
+    f64::NAN
   }
 }
 

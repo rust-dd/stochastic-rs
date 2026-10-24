@@ -359,7 +359,8 @@ fn no_surviving_digit_answers_nan() {
   );
 }
 
-/// mpmath: within `1e-12` at `|λ| = 10³`, within the documented `3ε|λ| ln|λ|` at `|λ| = 10¹⁰`.
+/// mpmath: within `1e-12` at `|λ| = 10³`, and within the documented `ε·Σ|ln terms|`, worked out beside each cell, at
+/// `|λ| = 10¹⁰` and where small arguments make the terms large at `|λ| = 300`.
 #[test]
 fn large_orders_keep_the_documented_bound() {
   let near = SimdGig::<f64>::new(-1e3, 1.0, 1.0)
@@ -369,8 +370,60 @@ fn large_orders_keep_the_documented_bound() {
   let far = SimdGig::<f64>::new(-1e10, 1.0, 1.0)
     .moment_generating_function(0.25)
     .unwrap();
-  let bound = 3.0 * f64::EPSILON * 1e10 * 1e10_f64.ln();
-  assert!(close(far, 1.000_000_000_012_5, bound), "{far}");
+  assert!(close(far, 1.000_000_000_012_5, 1.03e-4), "{far}");
+  let tiny = SimdGig::<f64>::new(-300.0, 1e-30, 1e-30)
+    .pdf(2.491_694_352_159_468_4e-33)
+    .unwrap();
+  assert!(close(tiny, 1.545_141_899_238_939_7e24, 1.01e-11), "{tiny}");
+  for (scale, t, want, bound) in [
+    (1e-10, 2.5e-11, 1.0, 3.84e-12),
+    (1e-6, -1e-6, 0.999_999_999_999_998_3, 2.56e-12),
+  ] {
+    let got = SimdGig::<f64>::new(-300.0, scale, scale)
+      .moment_generating_function(t)
+      .unwrap();
+    assert!(
+      close(got, want, bound),
+      "GIG(-300, {scale}, {scale}).mgf({t}) = {got}"
+    );
+  }
+}
+
+/// mpmath at 120 and 240 digits where the power factor goes subnormal (`λ = −100`), where its product with `K` overflows
+/// (`λ = 50, 100`), and where a concentrated law's `√(χψ) − √(χs)` would cancel.
+#[test]
+fn mgf_takes_the_ratio_only_where_every_factor_stays_normal() {
+  for ((lambda, chi, psi, t), want) in [
+    ((-100.0, 1.0, 10_000.0, 4_999.998_2), 7_765_652_107.033_22),
+    ((-100.0, 1.0, 10_000.0, 4_999.998), 7_765_644_262.944_897),
+    ((100.0, 1.0, 1.0, 0.475), 1.270_695_290_655_983_9e130),
+    ((100.0, 1.0, 1.0, 0.495), 1.002_503_094_993_455e200),
+    ((100.0, 1.0, 1.0, 0.498), 6.238_686_601_068_762e239),
+    ((50.0, 1.0, 1.0, 0.499_995), 1.005_114_754_835_354_9e250),
+    ((50.0, 1.0, 1.0, 0.499_999_5), 1.005_114_799_314_732_1e300),
+    ((1.0, 1e8, 1e8, 1.0), 2.718_281_882_824_683),
+    ((1.0, 1e12, 1e12, 1.0), 2.718_281_828_464_481_6),
+    ((1.0, 1e16, 1e16, 1.0), 2.718_281_828_459_046),
+  ] {
+    let got = SimdGig::<f64>::new(lambda, chi, psi)
+      .moment_generating_function(t)
+      .unwrap();
+    assert!(
+      close(got, want, 1e-12),
+      "GIG({lambda}, {chi}, {psi}).mgf({t}) = {got}"
+    );
+  }
+}
+
+/// Past the exponents `e^x` represents the value is exactly 0 or `∞` whatever its error band: the far tails answer 0 and
+/// an overflowing mgf `+∞`, not NaN.
+#[test]
+fn far_tails_answer_the_exact_zero_or_infinity() {
+  let d = SimdGig::<f64>::new(1.0, 1.0, 1.0);
+  assert_eq!(d.pdf(1e16), Some(0.0));
+  assert_eq!(d.pdf(1e-16), Some(0.0));
+  let wide = SimdGig::<f64>::new(1e15, 1.0, 1.0);
+  assert_eq!(wide.moment_generating_function(0.4), Some(f64::INFINITY));
 }
 
 /// `pdf(∞) = 0` for every index (`λ ≥ 1` reads `∞ − ∞` in log space) and `E[e^{tX}] → 0` as `t → −∞`.
